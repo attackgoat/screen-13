@@ -1,0 +1,9 @@
+{
+    "type": "SCENE",
+    "items": [
+        {
+            "id": "start",
+            "pos": "0,10,8"
+        }
+    ]
+}

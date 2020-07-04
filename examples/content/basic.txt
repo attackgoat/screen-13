@@ -1,0 +1,11 @@
+# This is a .pak file. It can contain comments such as this, blank lines or .pak content.
+#
+# All .pak content may be one of three formats:
+# - `TEXT filename.xyz`: Adds a file which can later be retrieved as a `String`.
+# - `BLOB filename.xyz`: Adds a file which can later be retrieved as a `Vec<u8>`. 
+# - `filename.json`: Adds a JSON-formatted asset which can later be retrieved as a domain-specfic Screen 13 type.
+#
+# Note: Each asset JSON filetype has a unique schema; see the code or these examples for more detail and options.
+
+TEXT fonts/small_10px.fnt
+fonts/small_10px_0.json

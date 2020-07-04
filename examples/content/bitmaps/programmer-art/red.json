@@ -1,0 +1,5 @@
+{
+    "type": "BITMAP",
+    "bitmap": "red.bmp",
+    "forceOpaque": true
+}

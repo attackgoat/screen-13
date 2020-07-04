@@ -1,0 +1,5 @@
+{
+    "type": "BITMAP",
+    "bitmap": "intro_logo.png",
+    "forceOpaque": true
+}

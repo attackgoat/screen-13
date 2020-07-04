@@ -1,0 +1,73 @@
+[package]
+name = "screen-13"
+version = "0.1.0"
+authors = ["john wells <john@attackgoat.com>"]
+edition = "2018"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/attackgoat/screen-13"
+homepage = "https://github.com/attackgoat/screen-13"
+documentation = "http://doc.rust-lang.org/screen-13"
+keywords = ["gamedev" ]
+categories = ["game-engines"]
+description = """
+An easy-to-use 3D game engine in the spirit of QBasic.
+"""
+
+[dependencies]
+app_dirs = "1.2"
+bincode = "1.3"
+bitflags = "1.2"
+byteorder = "1.3"
+gfx-hal = "0.5"
+glam = "0.8"
+image = "0.23"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.5"
+typenum = "1.12"
+winit = { version = "0.22", features = ["web-sys"] }
+
+# Debug deps below: https://github.com/rust-lang/cargo/issues/7634
+log = "0.4"
+num-format = "0.4.0"
+pretty_env_logger = "0.4"
+
+# TODO: Baking deps here
+fbx_direct = "0.6"
+glob = "0.3"
+sha1 = "0.6"
+shaderc = "0.6"
+
+[dependencies.bmfont]
+branch = "dev"
+git = "https://github.com/attackgoat/bmfont-rust.git"
+
+[build-dependencies]
+lazy_static = "1.4"
+shaderc = "0.6"
+
+# [dev-dependencies]
+# TODO: Things for test and example code!
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+console_error_panic_hook = "0.1"
+console_log = "0.2"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.gfx-backend-gl]
+version = "0.5"
+features = ["wgl"]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
+version = "0.3"
+features = ["console", "Document", "Element", "HtmlElement", "Node", "Window"]
+
+[target.'cfg(any(target_os = "freebsd", target_os = "dragonfly", target_os = "linux", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
+gfx-impl = { version = "0.5", features = ["x11"], package = "gfx-backend-vulkan" }
+
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+gfx-impl = { version = "0.5", package = "gfx-backend-metal" }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+gfx-impl = { version = "0.5", package = "gfx-backend-dx11" }

@@ -1,0 +1,5 @@
+{
+    "type": "BITMAP",
+    "bitmap": "intro_background.png",
+    "forceOpaque": true
+}

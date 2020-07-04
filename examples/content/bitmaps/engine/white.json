@@ -1,0 +1,6 @@
+{
+    "type": "BITMAP",
+    "bitmap": "/3rd_party/corange/textures/white.png",
+    "forceOpaque": true,
+    "storeKey": true
+}
