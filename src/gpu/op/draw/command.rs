@@ -31,12 +31,15 @@ pub enum Command<'a> {
 impl<'a> From<(&'a Bitmap, Rect, RectF, isize)> for Command<'a> {
     fn from((bitmap, src, dst, z): (&'a Bitmap, Rect, RectF, isize)) -> Self {
         Self::Bitmap(BitmapCommand {
-            bitmap, dst, src, z,
+            bitmap,
+            dst,
+            src,
+            z,
         })
     }
 }
 
-// TODO: I dislike these 'from tuple' things, maybe just a bunch of easy-to-understand functions which create the commands would be nicer? 
+// TODO: I dislike these 'from tuple' things, maybe just a bunch of easy-to-understand functions which create the commands would be nicer?
 impl<'a> From<(f32, Vec3, AlphaColor, Vec3, AlphaColor)> for Command<'a> {
     fn from(
         (width, start, start_color, end, end_color): (f32, Vec3, AlphaColor, Vec3, AlphaColor),

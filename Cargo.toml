@@ -18,9 +18,10 @@ An easy-to-use 3D game engine in the spirit of QBasic.
 app_dirs = "1.2"
 bincode = "1.3"
 bitflags = "1.2"
+bmfont = "0.3"
 byteorder = "1.3"
 gfx-hal = "0.5"
-glam = "0.8"
+glam = "0.9"
 image = "0.23"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -38,10 +39,6 @@ fbx_direct = "0.6"
 glob = "0.3"
 sha1 = "0.6"
 shaderc = "0.6"
-
-[dependencies.bmfont]
-branch = "dev"
-git = "https://github.com/attackgoat/bmfont-rust.git"
 
 [build-dependencies]
 lazy_static = "1.4"
