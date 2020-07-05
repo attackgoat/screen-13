@@ -1,5 +1,4 @@
 #![deny(warnings)]
-
 // TODO: Remove before flight!
 #![allow(dead_code)]
 #![allow(unused_assignments)]
