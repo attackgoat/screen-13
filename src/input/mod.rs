@@ -1,8 +1,8 @@
-mod key;
-mod mouse;
+mod key_buf;
+mod mouse_buf;
 mod typing;
 
-pub use self::{key::KeyBuf, mouse::MouseBuf, typing::Typing};
+pub use self::{key_buf::KeyBuf, mouse_buf::MouseBuf, typing::Typing};
 
 #[derive(Default)]
 pub struct Input {
@@ -10,8 +10,9 @@ pub struct Input {
     pub mouse: MouseBuf,
 }
 
+// TODO: Should we add 'normal' keys as something like `Other(char)`?
 #[derive(PartialEq)]
-pub enum KeyCode {
+pub enum Key {
     Back,
     Left,
     Delete,

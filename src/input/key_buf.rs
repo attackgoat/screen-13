@@ -1,13 +1,11 @@
-use winit::event::KeyboardInput;
-
-use super::KeyCode;
+use {super::Key, winit::event::KeyboardInput};
 
 const DEFAULT_EVENT_CAPACITY: usize = 16;
 
 pub struct KeyBuf {
     char_buf: String,
-    pressed_keys: Vec<KeyCode>,
-    released_keys: Vec<KeyCode>,
+    pressed_keys: Vec<Key>,
+    released_keys: Vec<Key>,
 }
 
 impl KeyBuf {
@@ -45,11 +43,11 @@ impl KeyBuf {
         }
     }*/
 
-    pub fn is_key_down(&self, key_code: KeyCode) -> bool {
+    pub fn is_key_down(&self, key_code: Key) -> bool {
         self.pressed_keys.contains(&key_code)
     }
 
-    pub fn was_key_down(&self, key_code: KeyCode) -> bool {
+    pub fn was_key_down(&self, key_code: Key) -> bool {
         self.released_keys.contains(&key_code)
     }
 }

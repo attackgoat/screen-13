@@ -17,13 +17,12 @@ pub use self::{
 use {
     super::{
         driver::{CommandPool, DescriptorPool, Driver, Fence, Image2d, Memory, RenderPass},
-        op::Compiler,
+        op::draw::Compiler,
         BlendMode, Data, Texture, TextureRef,
     },
     crate::math::Extent,
     gfx_hal::{
         buffer::Usage as BufferUsage,
-        device::Device,
         format::Format,
         image::{Layout, Tiling, Usage as ImageUsage},
         pso::{DescriptorRangeDesc, DescriptorType},
@@ -36,6 +35,9 @@ use {
         rc::Rc,
     },
 };
+
+#[cfg(debug_assertions)]
+use gfx_hal::device::Device as _;
 
 fn remove_last_by<T, F: Fn(&T) -> bool>(items: &mut VecDeque<T>, f: F) -> Option<T> {
     // let len = items.len();
@@ -230,9 +232,9 @@ impl Pool {
                 desc_ranges: desc_ranges_key,
             })
             .or_insert_with(Default::default);
-        let item = if let Some(item) =
-            remove_last_by(&mut items.borrow_mut(), |item| item.max_sets() >= max_sets)
-        {
+        let item = if let Some(item) = remove_last_by(&mut items.borrow_mut(), |item| {
+            DescriptorPool::max_sets(&item) >= max_sets
+        }) {
             item
         } else {
             DescriptorPool::new(Driver::clone(&self.driver), max_sets, desc_ranges)
@@ -247,7 +249,7 @@ impl Pool {
 
     pub fn fence(&mut self) -> Lease<Fence> {
         let item = if let Some(mut item) = self.fences.borrow_mut().pop_back() {
-            item.reset();
+            Fence::reset(&mut item);
             item
         } else {
             Fence::new(Driver::clone(&self.driver))
@@ -316,7 +318,7 @@ impl Pool {
                 #[cfg(debug_assertions)]
                 name,
                 &driver,
-                self.render_pass(render_pass_mode).subpass(subpass_idx),
+                RenderPass::subpass(self.render_pass(render_pass_mode), subpass_idx),
                 max_sets,
             )
         };
@@ -335,7 +337,7 @@ impl Pool {
             .entry(mem_type)
             .or_insert_with(Default::default);
         let item = if let Some(item) =
-            remove_last_by(&mut items.borrow_mut(), |item| item.size() >= size)
+            remove_last_by(&mut items.borrow_mut(), |item| Memory::size(&item) >= size)
         {
             item
         } else {

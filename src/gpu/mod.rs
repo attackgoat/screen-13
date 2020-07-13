@@ -1,12 +1,22 @@
 mod data;
+
+/// A collection of smart-pointer types used internally to operate the GFX-HAL API.
 mod driver;
+
+/// A collection of operation implementations mostly used internally to fulfill the Render API.
 mod op;
+
+/// A collection of resource pool types used internally to cache GFX-HAL types.
 mod pool;
+
 mod render;
 mod texture;
 
 pub use self::{
-    op::{Bitmap, BlendMode, Font, Material, WriteMode},
+    op::{
+        draw::{Command, LineCommand, LineVertex, Material},
+        Bitmap, Font, Write, WriteMode,
+    },
     render::{Operation, Render},
     texture::Texture,
 };
@@ -78,6 +88,35 @@ fn create_adapter_surface(window: &Window) -> (Adapter<_Backend>, Surface) {
     let (adapter, instance) = create_adapter();
     let surface = Surface::new(instance, window).unwrap();
     (adapter, surface)
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum BlendMode {
+    Add,
+    Alpha,
+    ColorBurn,
+    ColorDodge,
+    Color,
+    Darken,
+    DarkenColor,
+    Difference,
+    Divide,
+    Exclusion,
+    HardLight,
+    HardMix,
+    LinearBurn,
+    Multiply,
+    Normal,
+    Overlay,
+    Screen,
+    Subtract,
+    VividLight,
+}
+
+impl Default for BlendMode {
+    fn default() -> Self {
+        Self::Normal
+    }
 }
 
 /// Allows you to load resources and begin rendering operations.

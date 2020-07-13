@@ -12,16 +12,16 @@ Asset baking is the industry-standard process of converting files from their nat
 
 ## Quick Start
 
-Included are four examples you might find helpful:
+Included are four examples you might find helpful, in order of complexity:
 
 - `basic.rs` - Displays 'Hello, World!' on the screen. Please start here.
-- `nibbles.rs` - A game built using lines as the only graphical element. (Not started yet)
+- `nibbles.rs` - A game built using lines as the only graphical element. (Done but engine doesn't draw yet)
 - `gorilla.rs` - A game demonstrating 2D bitmaps/tilemaps. (Not started yet)
 - `wasm.rs` - A 3D technology demonstration; runs in your web browser. (Not started yet)
 
 Each of these examples requires an associated asset `.pak` file in order to run, so you will need to run the examples like so:
 
-```
+```bash
 cargo run examples/content/basic.txt
 cargo run --example basic
 ```
@@ -41,6 +41,7 @@ This engine is very young and is likely to change as development continues.
 - Debug names should maybe be a Cargo.toml "feature" for games that aren't attempting to support debuggability via graphics API capturing tools such as RenderDoc. The way it is right now lots of API calls require a string you must attribute with the debug-assertions if-config attribute.
 - There are countless TODO's scattered in this codebase; this project started as a closed-source personal project and so Github issues and such for tracking things were not the original method I used. Feel free to replace TODO's by opening a matching Issue or just removing outdated TODO information.
 - Drawing lines, bitmaps, 3D models, lights (and shadows): I recently ripped out all this code in order to add a compilation stage after you submit rendering commands. This allows for proper z-order painting and batching to reduce GPU resource-switching. It is not complete yet and requires more work.
+- Input: Keyboard has been started but the design is not very good. Mouse input is to-do. Game controllers and joysticks are planned.
 
 ## History
 
@@ -51,7 +52,7 @@ CLS
 SCREEN 13
 ```
 
-These commands cleared the screen of text and setup a 320x200 256-color palletized color video mode. There were other video modes available, but none of them had the 'magic' of 256 colors.
+These commands cleared the screen of text and setup a 320x200 256-color paletized color video mode. There were other video modes available, but none of them had the 'magic' of 256 colors.
 
 Additional commands QBasic offered, such as `DRAW`, allowed you to build very simple games incredibly quickly because you didn't have to grok the enirety of linking and compiling in order get things done. I think we should have options like this today, and this project aims to allow future developers to have the same ability to get things done quickly while using modern tools.
 

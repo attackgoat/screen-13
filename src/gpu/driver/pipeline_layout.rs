@@ -11,7 +11,7 @@ use {
 #[derive(Debug)]
 pub struct PipelineLayout {
     driver: Driver,
-    pipeline_layout: Option<<_Backend as Backend>::PipelineLayout>,
+    ptr: Option<<_Backend as Backend>::PipelineLayout>,
 }
 
 impl PipelineLayout {
@@ -28,15 +28,21 @@ impl PipelineLayout {
         };
 
         Self {
-            pipeline_layout: Some(pipeline_layout),
             driver,
+            ptr: Some(pipeline_layout),
         }
+    }
+}
+
+impl AsMut<<_Backend as Backend>::PipelineLayout> for PipelineLayout {
+    fn as_mut(&mut self) -> &mut <_Backend as Backend>::PipelineLayout {
+        &mut *self
     }
 }
 
 impl AsRef<<_Backend as Backend>::PipelineLayout> for PipelineLayout {
     fn as_ref(&self) -> &<_Backend as Backend>::PipelineLayout {
-        self.pipeline_layout.as_ref().unwrap()
+        &*self
     }
 }
 
@@ -44,23 +50,23 @@ impl Deref for PipelineLayout {
     type Target = <_Backend as Backend>::PipelineLayout;
 
     fn deref(&self) -> &Self::Target {
-        self.pipeline_layout.as_ref().unwrap()
+        self.ptr.as_ref().unwrap()
     }
 }
 
 impl DerefMut for PipelineLayout {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.pipeline_layout.as_mut().unwrap()
+        self.ptr.as_mut().unwrap()
     }
 }
 
 impl Drop for PipelineLayout {
     fn drop(&mut self) {
+        let device = self.driver.as_ref().borrow();
+        let ptr = self.ptr.take().unwrap();
+
         unsafe {
-            self.driver
-                .as_ref()
-                .borrow()
-                .destroy_pipeline_layout(self.pipeline_layout.take().unwrap());
+            device.destroy_pipeline_layout(ptr);
         }
     }
 }

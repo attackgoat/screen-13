@@ -1,5 +1,5 @@
 use {
-    crate::math::{vec3, Vec3},
+    crate::math::{vec3, Coord, Rect, Vec3},
     serde::{Deserialize, Serialize},
     serde_json::{
         map::Map,
@@ -34,6 +34,7 @@ pub fn parse_vector3(value: &str) -> [f32; 3] {
 
 #[derive(Clone, Deserialize, Serialize)]
 pub enum Asset {
+    Atlas(AtlasAsset),
     Bitmap(BitmapAsset),
     FontBitmap(FontBitmapAsset),
     Language(LanguageAsset),
@@ -58,14 +59,33 @@ impl Asset {
 
     fn parse_json(value: &Value) -> Self {
         match value["type"].as_str().unwrap() {
+            "ATLAS" => Asset::Atlas(AtlasAsset::parse_json(value)),
             "BITMAP" => Asset::Bitmap(BitmapAsset::parse_json(value)),
             "FONT_BITMAP" => Asset::FontBitmap(FontBitmapAsset::parse_json(value)),
-            "LOCALIZATION" => Asset::Language(LanguageAsset::parse_json(value)),
+            "LANGUAGE" => Asset::Language(LanguageAsset::parse_json(value)),
             "MESH" => Asset::Mesh(MeshAsset::parse_json(value)),
             "SCENE" => Asset::Scene(SceneAsset::parse_json(value)),
             _ => unimplemented!(),
         }
     }
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub struct AtlasAsset {
+    tiles: Vec<AtlasTile>,
+}
+
+impl AtlasAsset {
+    fn parse_json(_value: &Value) -> Self {
+        todo!();
+    }
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub struct AtlasTile {
+    bitmap: PathBuf,
+    src: Rect,
+    dst: Coord,
 }
 
 #[derive(Clone, Deserialize, Serialize)]

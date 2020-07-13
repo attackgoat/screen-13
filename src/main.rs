@@ -1,9 +1,4 @@
 #![deny(warnings)]
-// TODO: Remove before flight!
-#![allow(unused_imports)]
-#![allow(unused_mut)]
-#![allow(unused_unsafe)]
-#![allow(unused_variables)]
 #![allow(dead_code)]
 
 #[macro_use]
@@ -16,18 +11,17 @@ mod pak;
 use {
     self::{
         bake::{
-            bake_bitmap, bake_blob, bake_font_bitmap, bake_lang, bake_mesh, bake_scene, bake_text,
-            Asset, PakLog,
+            bake_atlas, bake_bitmap, bake_blob, bake_font_bitmap, bake_lang, bake_mesh, bake_scene,
+            bake_text, Asset, PakLog,
         },
         pak::PakBuf,
     },
-    glob::glob,
     pretty_env_logger::init,
     std::{
         env::{args, current_dir, current_exe},
         fs::{create_dir_all, File},
         io::{BufRead, BufReader, BufWriter, Error as IoError},
-        path::{Path, PathBuf},
+        path::PathBuf,
     },
 };
 
@@ -109,10 +103,13 @@ fn main() -> Result<(), IoError> {
 
         let mut assets = vec![line];
         while let Some(asset) = assets.pop() {
-            let mut asset_filename = project_dir.join(PathBuf::from(&asset));
+            let asset_filename = project_dir.join(PathBuf::from(&asset));
 
             match bake {
                 Bake::Asset => match Asset::read(&asset_filename) {
+                    Asset::Atlas(ref atlas) => {
+                        bake_atlas(&project_dir, &asset_filename, atlas, &mut pak, &mut log);
+                    }
                     Asset::Bitmap(ref bitmap) => {
                         bake_bitmap(&project_dir, &asset_filename, bitmap, &mut pak, &mut log);
                     }
@@ -126,7 +123,7 @@ fn main() -> Result<(), IoError> {
                         bake_mesh(&project_dir, &asset_filename, mesh, &mut pak, &mut log);
                     }
                     Asset::Scene(scene) => {
-                        for key in bake_scene(&project_dir, &asset_filename, &scene, &mut pak) {
+                        for _key in bake_scene(&project_dir, &asset_filename, &scene, &mut pak) {
                             //lines.push(key);
                         }
                     }

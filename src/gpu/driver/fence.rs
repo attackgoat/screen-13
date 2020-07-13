@@ -8,7 +8,7 @@ use {
 #[derive(Debug)]
 pub struct Fence {
     driver: Driver,
-    fence: Option<<_Backend as Backend>::Fence>,
+    ptr: Option<<_Backend as Backend>::Fence>,
 }
 
 impl Fence {
@@ -21,23 +21,26 @@ impl Fence {
 
         Self {
             driver,
-            fence: Some(fence),
+            ptr: Some(fence),
         }
     }
 
-    pub fn reset(&mut self) {
-        unsafe {
-            self.driver
-                .borrow()
-                .reset_fence(self.fence.as_mut().unwrap())
-                .unwrap();
-        }
+    pub fn reset(fence: &mut Self) {
+        let device = fence.driver.borrow();
+
+        unsafe { device.reset_fence(&fence) }.unwrap();
+    }
+}
+
+impl AsMut<<_Backend as Backend>::Fence> for Fence {
+    fn as_mut(&mut self) -> &mut <_Backend as Backend>::Fence {
+        &mut *self
     }
 }
 
 impl AsRef<<_Backend as Backend>::Fence> for Fence {
     fn as_ref(&self) -> &<_Backend as Backend>::Fence {
-        self.fence.as_ref().unwrap()
+        &*self
     }
 }
 
@@ -45,26 +48,26 @@ impl Deref for Fence {
     type Target = <_Backend as Backend>::Fence;
 
     fn deref(&self) -> &Self::Target {
-        self.fence.as_ref().unwrap()
+        self.ptr.as_ref().unwrap()
     }
 }
 
 impl DerefMut for Fence {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.fence.as_mut().unwrap()
+        self.ptr.as_mut().unwrap()
     }
 }
 
 impl Drop for Fence {
     fn drop(&mut self) {
+        let device = self.driver.borrow();
+        let ptr = self.ptr.take().unwrap();
+
         unsafe {
-            self.driver
-                .borrow()
-                .wait_for_fence(self.fence.as_ref().unwrap(), 0)
-                .unwrap();
-            self.driver
-                .borrow()
-                .destroy_fence(self.fence.take().unwrap());
+            device
+                .wait_for_fence(&ptr, 0) // TODO: Double-check this zero usage
+                .unwrap(); // TODO: Make a decision about ignoring this or just panic?
+            device.destroy_fence(ptr);
         }
     }
 }

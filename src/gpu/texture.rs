@@ -5,7 +5,6 @@ use {
     },
     gfx_hal::{
         command::CommandBuffer,
-        device::Device,
         format::{Aspects, Format, Swizzle},
         image::{Access, Layout, SubresourceRange, Tiling, Usage, ViewKind},
         memory::{Barrier, Dependencies},
@@ -21,6 +20,9 @@ use {
 };
 
 pub(crate) struct Image(<_Backend as Backend>::Image);
+
+#[cfg(debug_assertions)]
+use gfx_hal::device::Device as _;
 
 impl AsRef<<_Backend as Backend>::Image> for Image {
     fn as_ref(&self) -> &<_Backend as Backend>::Image {
@@ -211,11 +213,11 @@ impl Texture<Image2d> {
         let format = {
             let device = driver.as_ref().borrow();
             device
-                .get_best_format(desired_format, desired_tiling, usage)
+                .best_fmt(desired_format, desired_tiling, usage)
                 .unwrap_or_else(|| {
                     desired_tiling = Tiling::Linear;
                     device
-                        .get_best_format(desired_format, desired_tiling, usage)
+                        .best_fmt(desired_format, desired_tiling, usage)
                         .unwrap()
                 })
         };
@@ -283,12 +285,6 @@ where
 pub struct ImageViewRef<'a> {
     key: ImageViewKey,
     views: Ref<'a, HashMap<ImageViewKey, ImageView>>,
-}
-
-impl<'a> AsRef<<_Backend as Backend>::ImageView> for ImageViewRef<'a> {
-    fn as_ref(&self) -> &<_Backend as Backend>::ImageView {
-        &self.views[&self.key]
-    }
 }
 
 impl<'a> Deref for ImageViewRef<'a> {

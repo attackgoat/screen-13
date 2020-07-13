@@ -1,8 +1,8 @@
 use {
     super::{
         op::{
-            ClearOp, Command, CopyOp, DrawOp, EncodeOp, Font, FontOp, GradientOp, Op, WriteMode,
-            WriteOp,
+            draw::{Command, DrawOp},
+            ClearOp, CopyOp, EncodeOp, Font, FontOp, GradientOp, Op, Write, WriteMode, WriteOp,
         },
         pool::Lease,
         Image, PoolRef, Texture2d, TextureRef,
@@ -10,14 +10,14 @@ use {
     crate::{
         camera::Camera,
         color::{AlphaColor, Color},
-        math::{vec3, Coord, CoordF, Extent, Mat4},
+        math::{vec3, Area, Coord, CoordF, Extent, Mat4},
     },
     gfx_hal::{
         format::Format,
         image::{Access, Layout, Tiling, Usage},
         pso::PipelineStage,
     },
-    std::{collections::VecDeque, path::Path},
+    std::{collections::VecDeque, ops::Deref, path::Path},
 };
 
 /// Holds a potentially in-progress GPU operation. This opaque type represents the work
@@ -72,10 +72,22 @@ impl Render {
         )));
     }
 
-    // TODO: Needs multiple version, one with src/dst rect
+    /// Copies the given texture onto this Render. The implementation uses a copy operation
+    /// and is more efficient than `write` when there is no blending or fractional pixels.
     pub fn copy(&mut self, src: &Texture2d) {
         self.ops.push_front(Operation(Box::new(
             CopyOp::new(&self.pool, &src, &self.target).record(),
+        )));
+    }
+
+    /// Copies a region of the given texture onto this Render at `dst` coordinates. The
+    /// implementation uses a copy operation and is more efficient than `write` when there
+    /// is no blending or fractional pixels.
+    pub fn copy_region(&mut self, src: &Texture2d, src_region: Area, dst: Extent) {
+        self.ops.push_front(Operation(Box::new(
+            CopyOp::new(&self.pool, &src, &self.target)
+                .with_region(src_region, dst)
+                .record(),
         )));
     }
 
@@ -83,6 +95,7 @@ impl Render {
         self.dims
     }
 
+    /// Draws a batch of 3D elements.
     pub fn draw<'c>(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
@@ -100,6 +113,7 @@ impl Render {
         )));
     }
 
+    /// Saves this Render as a JPEG file at the given path.
     pub fn encode<P: AsRef<Path>>(&mut self, #[cfg(debug_assertions)] name: &str, path: P) {
         self.ops.push_front(Operation(Box::new(
             EncodeOp::new(
@@ -126,6 +140,8 @@ impl Render {
         ops.into_iter().for_each(|op| self.ops.push_front(op));
     }
 
+    /// Draws a linear gradient on this Render using the given path.
+    /// TODO: Specialize for radial too?
     pub fn gradient<C>(&mut self, #[cfg(debug_assertions)] name: &str, path: [(Coord, C); 2])
     where
         C: Copy + Into<AlphaColor>,
@@ -142,43 +158,52 @@ impl Render {
         )));
     }
 
+    /// This crate-only helper function is a specialization of the write function which writes this
+    /// Render onto the given destination texture, which should be a swapchain backbuffer image.
+    /// The image is stretched unfiltered so there will be pixel doubling artifacts unless the
+    /// dimensions are equal.
     pub(crate) fn present(&mut self, #[cfg(debug_assertions)] name: &str, dst: &TextureRef<Image>) {
         let dst_dims: CoordF = dst.borrow().dims().into();
         let src_dims: CoordF = self.dims.into();
+
+        // Scale is the larger of either X or Y when stretching to cover all four sides
         let scale_x = dst_dims.x / src_dims.x;
         let scale_y = dst_dims.y / src_dims.y;
         let scale = scale_x.max(scale_y);
+
+        // Transform is scaled and centered on the dst texture
+        let transform = Mat4::from_scale(vec3(
+            src_dims.x * scale / dst_dims.x * 2.0,
+            src_dims.y * scale / dst_dims.y * 2.0,
+            1.0,
+        )) * Mat4::from_translation(vec3(-0.5, -0.5, 0.0));
+
+        // Note: This does not preserve the existing contents of `dst`
         self.ops.push_front(Operation(Box::new(
             WriteOp::new(
                 #[cfg(debug_assertions)]
                 name,
                 &self.pool,
-                self.target.as_ref(),
                 dst,
+                WriteMode::Texture,
             )
-            .with_mode(WriteMode::Texture)
-            .with_transform(
-                Mat4::from_scale(vec3(
-                    src_dims.x * scale / dst_dims.x * 2.0,
-                    src_dims.y * scale / dst_dims.y * 2.0,
-                    1.0,
-                )) * Mat4::from_translation(vec3(-0.5, -0.5, 0.0)),
-            )
-            .with_dst_layout(
+            .with_layout(
                 Layout::Present,
                 PipelineStage::BOTTOM_OF_PIPE,
                 Access::empty(),
             )
-            .record(),
+            .record(&mut [Write::transform(&*self.target, transform)]),
         )));
     }
 
     /// Renders this instance to a texture; it is available once all the ops are waited on
     /// TODO: Find a way to not offer this signature and still have R2T capability?
-    pub fn resolve(mut self) -> (impl AsRef<Texture2d>, Vec<Operation>) {
+    pub fn resolve(mut self) -> (impl Deref<Target = Texture2d>, Vec<Operation>) {
         (self.target, self.ops.drain(..).collect::<Vec<_>>())
     }
 
+    /// Draws bitmapped text on this Render using the given details.
+    /// TODO: Accept a list of font/color/text/pos combos so we can batch many at once?
     pub fn text<C>(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
@@ -195,20 +220,22 @@ impl Render {
                 name,
                 &self.pool,
                 &self.target,
+                color,
             )
-            .with_glyph_color(color)
             .with_pos(pos)
             .record(font, text),
         )));
     }
 
+    /// Draws bitmapped text on this Render using the given details.
+    /// TODO: Accept a list of font/color/text/pos combos so we can batch many at once?
     pub fn text_outline<C, O>(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
         font: &Font,
         text: &str,
         pos: Coord,
-        glyph_color: C,
+        color: C,
         outline_color: O,
     ) where
         C: Into<AlphaColor>,
@@ -220,101 +247,32 @@ impl Render {
                 name,
                 &self.pool,
                 &self.target,
+                color,
             )
-            .with_glyph_color(glyph_color)
             .with_outline_color(outline_color)
             .with_pos(pos)
             .record(font, text),
         )));
     }
 
-    pub fn write(&mut self, #[cfg(debug_assertions)] name: &str, src: &Texture2d, pos: Coord) {
-        let dims = src.borrow().dims();
-        self.write_dims(
-            #[cfg(debug_assertions)]
-            name,
-            src,
-            pos,
-            dims,
-        );
-    }
-
-    pub fn write_dims(
+    /// Draws the given texture writes onto this Render. Note that the given texture writes will all be applied at once and there
+    /// is no 'layering' of the individual writes going on - so if you need blending between writes you must submit a new batch.
+    pub fn write(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
-        src: &Texture2d,
-        pos: Coord,
-        dims: Extent,
-    ) {
-        self.write_mode(
-            #[cfg(debug_assertions)]
-            name,
-            src,
-            pos,
-            dims,
-            WriteMode::Texture,
-        );
-    }
-
-    pub fn write_mode(
-        &mut self,
-        #[cfg(debug_assertions)] name: &str,
-        src: &Texture2d,
-        pos: Coord,
-        dims: Extent,
         mode: WriteMode,
+        writes: &mut [Write],
     ) {
-        let transform = Mat4::from_translation(vec3(-1.0, -1.0, 0.0))
-            * Mat4::from_scale(vec3(
-                dims.x as f32 * 2.0 / self.dims.x as f32,
-                dims.y as f32 * 2.0 / self.dims.y as f32,
-                1.0,
-            ))
-            * Mat4::from_translation(vec3(
-                pos.x as f32 / dims.x as f32,
-                pos.y as f32 / dims.y as f32,
-                0.0,
-            ));
-
         self.ops.push_front(Operation(Box::new(
             WriteOp::new(
                 #[cfg(debug_assertions)]
                 name,
                 &self.pool,
-                src,
                 &self.target,
+                mode,
             )
-            .with_mode(mode)
-            .with_transform(transform)
-            .with_preserve_dst()
-            .record(),
+            .with_preserve()
+            .record(writes),
         )));
-    }
-
-    pub fn write_transform(
-        &mut self,
-        #[cfg(debug_assertions)] name: &str,
-        src: &Texture2d,
-        transform: Mat4,
-        mode: WriteMode,
-    ) {
-        self.ops.push_front(Operation(Box::new({
-            let mut op = WriteOp::new(
-                #[cfg(debug_assertions)]
-                name,
-                &self.pool,
-                src,
-                &self.target,
-            )
-            .with_mode(mode)
-            .with_transform(transform);
-
-            // The write-texture mode does not preserve the destination beneath this operation
-            if mode != WriteMode::Texture {
-                op = op.with_preserve_dst();
-            }
-
-            op.record()
-        })));
     }
 }

@@ -1,7 +1,7 @@
 use {
     crate::{
-        gpu::{BlendMode, WriteMode},
-        math::Coord,
+        gpu::{BlendMode, Write, WriteMode},
+        math::{Coord, Rect},
         DynScreen, Gpu, Input, Render, Screen,
     },
     std::{
@@ -37,11 +37,11 @@ impl Fade {
 
 impl Screen for Fade {
     fn render(&self, gpu: &Gpu) -> Render {
-        let origin = Coord::zero();
+        // Render each of the a and b screens normally
         let mut a = self.a.as_ref().unwrap().render(gpu);
-        let mut b = self.b.as_ref().unwrap().render(gpu);
+        let b = self.b.as_ref().unwrap().render(gpu);
 
-        // Figure out `ab` which is 0..255 as we fade from a to b
+        // Figure out `ab` which is 0..1 as we fade from a to b
         let elapsed = match Instant::now() - self.started {
             elapsed if elapsed < self.duration => elapsed,
             _ => self.duration,
@@ -56,13 +56,17 @@ impl Screen for Fade {
         let (b, b_ops) = b.resolve();
         a.extend_ops(b_ops);
 
-        a.write_mode(
+        a.write(
             #[cfg(debug_assertions)]
             "Fade write B",
-            b.as_ref(),
-            origin,
-            dims,
             WriteMode::Blend((ab, self.mode)),
+            &mut [Write::region(
+                &*b,
+                Rect {
+                    pos: Coord::ZERO,
+                    dims,
+                },
+            )],
         );
 
         a

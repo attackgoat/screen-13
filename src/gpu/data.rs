@@ -95,7 +95,7 @@ impl Data {
             Dependencies::empty(),
             &[Barrier::Buffer {
                 states: src_state.access_mask..Access::TRANSFER_READ,
-                target: src.0.as_ref(),
+                target: &*src.0,
                 families: None,
                 range: SubRange {
                     offset: range.start,
@@ -123,7 +123,7 @@ impl Data {
             Dependencies::empty(),
             &[Barrier::Buffer {
                 states: dst_state.access_mask..access_mask,
-                target: dst.0.as_ref(),
+                target: &*dst.0,
                 families: None,
                 range: SubRange {
                     offset: range.start,
@@ -202,7 +202,7 @@ impl Data {
     ) -> impl DerefMut<Target = [u8]> + 'a {
         let device = self.driver.borrow();
         let len = range.end - range.start;
-        let mem = self.cpu_buf.0.mem();
+        let mem = Buffer::mem(&self.cpu_buf.0);
         let ptr = device
             .map_memory(
                 mem,
@@ -257,7 +257,7 @@ impl Data {
                 families: None,
                 range: SubRange::WHOLE,
                 states: state.access_mask..access_mask,
-                target: buf.0.as_ref(),
+                target: &*buf.0,
             }],
         );
 
@@ -268,14 +268,6 @@ impl Data {
 
 impl AsRef<<_Backend as Backend>::Buffer> for Data {
     fn as_ref(&self) -> &<_Backend as Backend>::Buffer {
-        self.gpu_buf.0.as_ref()
-    }
-}
-
-impl Deref for Data {
-    type Target = <_Backend as Backend>::Buffer;
-
-    fn deref(&self) -> &Self::Target {
         &*self.gpu_buf.0
     }
 }

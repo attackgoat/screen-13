@@ -1,7 +1,7 @@
 use {
     super::{wait_for_fence, Op},
     crate::gpu::{
-        driver::{CommandPool, Driver, Fence, PhysicalDevice},
+        driver::{CommandPool, Device, Driver, Fence, PhysicalDevice},
         pool::{Lease, Pool},
         Data, TextureRef,
     },
@@ -75,8 +75,10 @@ where
 {
     fn wait(&self) {
         if let Some(op) = &self.op {
+            let device = op.driver.borrow();
+
             unsafe {
-                wait_for_fence(&*op.driver.borrow(), &op.fence);
+                wait_for_fence(&device, &op.fence);
             }
         }
     }
@@ -111,7 +113,7 @@ where
             len as _,
         );
 
-        let family = pool.driver().borrow().get_queue_family(QUEUE_TYPE);
+        let family = Device::queue_family(&pool.driver().borrow(), QUEUE_TYPE);
         let mut cmd_pool = pool.cmd_pool(family);
 
         Self {
@@ -147,8 +149,9 @@ where
     }
 
     unsafe fn submit(&mut self) {
+        let mut device = self.driver.borrow_mut();
         let len = Self::byte_len(&self.texture);
-        let buf = self.buf.as_mut();
+        let buf = &mut *self.buf;
         let mut texture = self.texture.borrow_mut();
         let dims = texture.dims();
 
@@ -203,13 +206,13 @@ where
         self.cmd_buf.finish();
 
         // Submit
-        self.driver.borrow_mut().get_queue_mut(QUEUE_TYPE).submit(
+        Device::queue_mut(&mut device, QUEUE_TYPE).submit(
             Submission {
                 command_buffers: once(&self.cmd_buf),
                 wait_semaphores: empty(),
                 signal_semaphores: empty::<&<_Backend as Backend>::Semaphore>(),
             },
-            Some(self.fence.as_ref()),
+            Some(&self.fence),
         );
     }
 }

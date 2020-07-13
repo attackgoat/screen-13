@@ -18,7 +18,7 @@ where
 {
     __: PhantomData<D>,
     driver: Driver,
-    frame_buf: Option<<_Backend as Backend>::Framebuffer>,
+    ptr: Option<<_Backend as Backend>::Framebuffer>,
 }
 
 #[doc = "Specialized new function for 2D framebuffers"]
@@ -33,11 +33,11 @@ impl Framebuffer<U2> {
         I: IntoIterator<Item = II>,
         II: Borrow<<_Backend as Backend>::ImageView>,
     {
-        let frame_buf = unsafe {
-            driver
-                .as_ref()
-                .borrow()
-                .create_framebuffer(
+        let frame_buf = {
+            let device = driver.as_ref().borrow();
+
+            unsafe {
+                device.create_framebuffer(
                     render_pass,
                     image_views,
                     ImageExtent {
@@ -46,14 +46,24 @@ impl Framebuffer<U2> {
                         depth: 1,
                     },
                 )
-                .unwrap()
+            }
+            .unwrap()
         };
 
         Self {
-            __: PhantomData,
+            __: Default::default(),
             driver,
-            frame_buf: Some(frame_buf),
+            ptr: Some(frame_buf),
         }
+    }
+}
+
+impl<D> AsMut<<_Backend as Backend>::Framebuffer> for Framebuffer<D>
+where
+    D: Dim,
+{
+    fn as_mut(&mut self) -> &mut <_Backend as Backend>::Framebuffer {
+        &mut *self
     }
 }
 
@@ -62,7 +72,7 @@ where
     D: Dim,
 {
     fn as_ref(&self) -> &<_Backend as Backend>::Framebuffer {
-        self.frame_buf.as_ref().unwrap()
+        &*self
     }
 }
 
@@ -73,7 +83,7 @@ where
     type Target = <_Backend as Backend>::Framebuffer;
 
     fn deref(&self) -> &Self::Target {
-        self.frame_buf.as_ref().unwrap()
+        self.ptr.as_ref().unwrap()
     }
 }
 
@@ -82,7 +92,7 @@ where
     D: Dim,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.frame_buf.as_mut().unwrap()
+        self.ptr.as_mut().unwrap()
     }
 }
 
@@ -91,11 +101,11 @@ where
     D: Dim,
 {
     fn drop(&mut self) {
+        let device = self.driver.as_ref().borrow();
+        let ptr = self.ptr.take().unwrap();
+
         unsafe {
-            self.driver
-                .as_ref()
-                .borrow()
-                .destroy_framebuffer(self.frame_buf.take().unwrap());
+            device.destroy_framebuffer(ptr);
         }
     }
 }

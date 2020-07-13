@@ -15,7 +15,7 @@ pub type SamplerBuilder = SamplerDesc;
 #[derive(Debug)]
 pub struct Sampler {
     driver: Driver,
-    sampler: Option<<_Backend as Backend>::Sampler>,
+    ptr: Option<<_Backend as Backend>::Sampler>,
 }
 
 impl Sampler {
@@ -32,32 +32,41 @@ impl Sampler {
         normalized: bool,
         anisotropy_clamp: Option<u8>,
     ) -> Self {
-        let sampler = unsafe {
-            driver.borrow().create_sampler(&SamplerDesc {
-                min_filter: min,
-                mag_filter: mag,
-                mip_filter: mip,
-                wrap_mode,
-                lod_bias: lod.0,
-                lod_range: lod.1,
-                comparison,
-                border,
-                normalized,
-                anisotropy_clamp,
-            })
+        let sampler = {
+            let device = driver.borrow();
+            unsafe {
+                device.create_sampler(&SamplerDesc {
+                    min_filter: min,
+                    mag_filter: mag,
+                    mip_filter: mip,
+                    wrap_mode,
+                    lod_bias: lod.0,
+                    lod_range: lod.1,
+                    comparison,
+                    border,
+                    normalized,
+                    anisotropy_clamp,
+                })
+            }
         }
         .unwrap();
 
         Self {
-            sampler: Some(sampler),
             driver,
+            ptr: Some(sampler),
         }
+    }
+}
+
+impl AsMut<<_Backend as Backend>::Sampler> for Sampler {
+    fn as_mut(&mut self) -> &mut <_Backend as Backend>::Sampler {
+        &mut *self
     }
 }
 
 impl AsRef<<_Backend as Backend>::Sampler> for Sampler {
     fn as_ref(&self) -> &<_Backend as Backend>::Sampler {
-        self.sampler.as_ref().unwrap()
+        &*self
     }
 }
 
@@ -65,22 +74,23 @@ impl Deref for Sampler {
     type Target = <_Backend as Backend>::Sampler;
 
     fn deref(&self) -> &Self::Target {
-        self.sampler.as_ref().unwrap()
+        self.ptr.as_ref().unwrap()
     }
 }
 
 impl DerefMut for Sampler {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.sampler.as_mut().unwrap()
+        self.ptr.as_mut().unwrap()
     }
 }
 
 impl Drop for Sampler {
     fn drop(&mut self) {
+        let device = self.driver.borrow();
+        let ptr = self.ptr.take().unwrap();
+
         unsafe {
-            self.driver
-                .borrow()
-                .destroy_sampler(self.sampler.take().unwrap());
+            device.destroy_sampler(ptr);
         }
     }
 }

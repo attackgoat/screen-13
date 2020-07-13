@@ -1,11 +1,11 @@
 use {
-    super::{mat4_to_u32_array, wait_for_fence, BitmapOp},
+    super::{wait_for_fence, BitmapOp},
     crate::{
-        color::{AlphaColor, BLACK, TRANSPARENT_BLACK},
+        color::{AlphaColor, TRANSPARENT_BLACK},
         gpu::{
             driver::{
-                bind_graphics_descriptor_set, CommandPool, Driver, Fence, Framebuffer2d, Image2d,
-                PhysicalDevice,
+                bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
+                Image2d, PhysicalDevice,
             },
             op::{Bitmap, Op},
             pool::{FontVertex, Graphics, GraphicsMode, Lease, RenderPassMode},
@@ -18,7 +18,7 @@ use {
     gfx_hal::{
         buffer::{Access as BufferAccess, SubRange, Usage as BufferUsage},
         command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, SubpassContents},
-        device::Device,
+        device::Device as _,
         format::{Aspects, Format},
         image::{
             Access as ImageAccess, Layout, Offset, SubresourceLayers, Tiling, Usage as ImageUsage,
@@ -146,7 +146,7 @@ impl Font {
         res
     }
 
-    pub fn measure(&self, text: &str) -> Coord {
+    pub fn measure(&self, text: &str) -> Extent {
         let mut x = 0;
         let mut y = 0;
         for char_pos in self.def.parse(text).unwrap() {
@@ -154,7 +154,10 @@ impl Font {
             y = char_pos.screen_rect.height as i32;
         }
 
-        Coord::new(x, y)
+        assert!(x >= 0);
+        assert!(y >= 0);
+
+        Extent::new(x as _, y as _)
     }
 
     fn tessellate(&self, text: &str, texture_dims: Extent) -> Vec<(usize, Vec<u8>)> {
@@ -215,7 +218,15 @@ impl<I> FontOp<I>
 where
     I: AsRef<<_Backend as Backend>::Image>,
 {
-    pub fn new(#[cfg(debug_assertions)] name: &str, pool: &PoolRef, dst: &TextureRef<I>) -> Self {
+    pub fn new<C>(
+        #[cfg(debug_assertions)] name: &str,
+        pool: &PoolRef,
+        dst: &TextureRef<I>,
+        color: C,
+    ) -> Self
+    where
+        C: Into<AlphaColor>,
+    {
         let (dims, format) = {
             let dst = dst.borrow();
             (dst.dims(), dst.format())
@@ -237,7 +248,7 @@ where
             1,
             1,
         );
-        let family = pool_ref.driver().borrow().get_queue_family(QUEUE_TYPE);
+        let family = Device::queue_family(&pool_ref.driver().borrow(), QUEUE_TYPE);
         let mut cmd_pool = pool_ref.cmd_pool(family);
         let cmd_buf = unsafe { cmd_pool.allocate_one(Level::Primary) };
         let fence = pool_ref.fence();
@@ -251,7 +262,7 @@ where
             dst: TextureRef::clone(dst),
             fence,
             frame_buf: None,
-            glyph_color: BLACK.into(),
+            glyph_color: color.into(),
             graphics: None,
             outline_color: None,
             pool: PoolRef::clone(&pool),
@@ -269,14 +280,6 @@ where
                 pos.y as f32 / dims.y as f32,
                 0.0,
             ));
-        self
-    }
-
-    pub fn with_glyph_color<C>(mut self, color: C) -> Self
-    where
-        C: Into<AlphaColor>,
-    {
-        self.glyph_color = color.into();
         self
     }
 
@@ -367,7 +370,7 @@ where
             self.submit_finish(dims);
         };
 
-        FontSubmission { op: self }
+        self
     }
 
     fn mode(&self) -> GraphicsMode {
@@ -477,7 +480,7 @@ where
         self.cmd_buf.bind_vertex_buffers(
             0,
             Some((
-                vertex_buf.as_ref().as_ref(),
+                &*vertex_buf.as_ref(),
                 SubRange {
                     offset: 0,
                     size: None,
@@ -490,14 +493,18 @@ where
             graphics.layout(),
             ShaderStageFlags::VERTEX,
             0,
-            &mat4_to_u32_array(self.transform),
+            VertexConsts {
+                transform: self.transform,
+            }
+            .as_ref(),
         );
 
         // Push the glyph (and optional outline color) constants
+        // TODO: Maybe slice extend instead
         let mut push_constants = vec![];
-        push_constants.extend(&self.glyph_color.to_rgba_unorm_u32_array());
+        push_constants.extend(&self.glyph_color.to_unorm_bits());
         if let Some(outline_color) = self.outline_color {
-            push_constants.extend(&outline_color.to_rgba_unorm_u32_array())
+            push_constants.extend(&outline_color.to_unorm_bits())
         }
         self.cmd_buf.push_graphics_constants(
             graphics.layout(),
@@ -510,6 +517,8 @@ where
     }
 
     unsafe fn submit_finish(&mut self, dims: Extent) {
+        let pool = self.pool.borrow();
+        let mut device = pool.driver().borrow_mut();
         let mut dst = self.dst.borrow_mut();
         let mut back_buf = self.back_buf.borrow_mut();
 
@@ -555,19 +564,14 @@ where
         self.cmd_buf.finish();
 
         // Submit
-        self.pool
-            .borrow()
-            .driver()
-            .borrow_mut()
-            .get_queue_mut(QUEUE_TYPE)
-            .submit(
-                Submission {
-                    command_buffers: once(&self.cmd_buf),
-                    wait_semaphores: empty(),
-                    signal_semaphores: empty::<&<_Backend as Backend>::Semaphore>(),
-                },
-                Some(self.fence.as_ref()),
-            );
+        Device::queue_mut(&mut device, QUEUE_TYPE).submit(
+            Submission {
+                command_buffers: once(&self.cmd_buf),
+                wait_semaphores: empty(),
+                signal_semaphores: empty::<&<_Backend as Backend>::Semaphore>(),
+            },
+            Some(&self.fence),
+        );
     }
 
     unsafe fn write_descriptor_sets(&mut self, font: &Font, page_idx: usize) {
@@ -591,15 +595,7 @@ where
     }
 }
 
-#[derive(Debug)]
-struct FontSubmission<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
-    op: FontOp<I>,
-}
-
-impl<I> Drop for FontSubmission<I>
+impl<I> Drop for FontOp<I>
 where
     I: AsRef<<_Backend as Backend>::Image>,
 {
@@ -608,13 +604,28 @@ where
     }
 }
 
-impl<I> Op for FontSubmission<I>
+impl<I> Op for FontOp<I>
 where
     I: AsRef<<_Backend as Backend>::Image>,
 {
     fn wait(&self) {
+        let pool = self.pool.borrow();
+        let device = pool.driver().borrow();
+
         unsafe {
-            wait_for_fence(&self.op.pool.borrow().driver().borrow(), &self.op.fence);
+            wait_for_fence(&device, &self.fence);
         }
+    }
+}
+
+#[repr(C)]
+struct VertexConsts {
+    transform: Mat4,
+}
+
+impl AsRef<[u32; 16]> for VertexConsts {
+    #[inline]
+    fn as_ref(&self) -> &[u32; 16] {
+        unsafe { &*(self as *const Self as *const [u32; 16]) }
     }
 }

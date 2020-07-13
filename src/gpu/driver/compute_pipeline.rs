@@ -14,9 +14,9 @@ use {
 
 #[derive(Debug)]
 pub struct ComputePipeline {
-    compute_pipeline: Option<<_Backend as Backend>::ComputePipeline>,
     driver: Driver,
     layout: PipelineLayout,
+    ptr: Option<<_Backend as Backend>::ComputePipeline>,
 }
 
 impl ComputePipeline {
@@ -33,7 +33,7 @@ impl ComputePipeline {
         IR::Item: Borrow<(ShaderStageFlags, Range<u32>)>,
     {
         let layout = PipelineLayout::new(Driver::clone(&driver), set_layouts, push_constants);
-        let desc = ComputePipelineDesc::new(entry_point, layout.as_ref());
+        let desc = ComputePipelineDesc::new(entry_point, &*layout);
         let compute_pipeline = driver
             .as_ref()
             .borrow()
@@ -41,20 +41,26 @@ impl ComputePipeline {
             .unwrap();
 
         Self {
-            compute_pipeline: Some(compute_pipeline),
+            ptr: Some(compute_pipeline),
             driver,
             layout,
         }
     }
 
-    pub fn layout(&self) -> &<_Backend as Backend>::PipelineLayout {
-        &self.layout
+    pub fn layout(pipeline: &Self) -> &<_Backend as Backend>::PipelineLayout {
+        &pipeline.layout
+    }
+}
+
+impl AsMut<<_Backend as Backend>::ComputePipeline> for ComputePipeline {
+    fn as_mut(&mut self) -> &mut <_Backend as Backend>::ComputePipeline {
+        &mut *self
     }
 }
 
 impl AsRef<<_Backend as Backend>::ComputePipeline> for ComputePipeline {
     fn as_ref(&self) -> &<_Backend as Backend>::ComputePipeline {
-        self.compute_pipeline.as_ref().unwrap()
+        &*self
     }
 }
 
@@ -62,23 +68,23 @@ impl Deref for ComputePipeline {
     type Target = <_Backend as Backend>::ComputePipeline;
 
     fn deref(&self) -> &Self::Target {
-        self.compute_pipeline.as_ref().unwrap()
+        self.ptr.as_ref().unwrap()
     }
 }
 
 impl DerefMut for ComputePipeline {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.compute_pipeline.as_mut().unwrap()
+        self.ptr.as_mut().unwrap()
     }
 }
 
 impl Drop for ComputePipeline {
     fn drop(&mut self) {
+        let device = self.driver.as_ref().borrow();
+        let ptr = self.ptr.take().unwrap();
+
         unsafe {
-            self.driver
-                .as_ref()
-                .borrow()
-                .destroy_compute_pipeline(self.compute_pipeline.take().unwrap());
+            device.destroy_compute_pipeline(ptr);
         }
     }
 }

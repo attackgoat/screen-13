@@ -48,12 +48,7 @@ impl PakBuf {
     fn id<K: AsRef<str>>(&self, key: K) -> Id {
         self.ids
             .get(key.as_ref())
-            .unwrap_or_else(|| {
-                panic!(
-                    #[cfg(debug_assertions)]
-                    format!("Key `{}` not found", key.as_ref())
-                )
-            })
+            .unwrap_or_else(|| panic!(format!("Key `{}` not found", key.as_ref())))
             .clone()
     }
 

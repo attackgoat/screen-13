@@ -57,77 +57,88 @@ pub struct Frame {
 #[derive(Debug)]
 pub struct Swapchain {
     driver: Driver,
-    format: Format,
+    fmt: Format,
     image_count: u32,
-    supported_formats: Vec<Format>,
+    ptr: Option<<_Backend as Backend>::Swapchain>,
+    supported_fmts: Vec<Format>,
     surface: Surface,
-    swapchain: Option<<_Backend as Backend>::Swapchain>,
 }
 
 impl Swapchain {
-    pub fn from_surface(
-        mut surface: Surface,
+    pub fn new(
         driver: Driver,
+        mut surface: Surface,
         dims: Extent,
         image_count: u32,
     ) -> (Self, Vec<<_Backend as Backend>::Image>) {
-        let (backbuffer_images, format, supported_formats, swapchain) = {
+        let (backbuffer_images, fmt, supported_fmts, swapchain) = {
             let device = driver.borrow();
             let gpu = device.gpu();
-            let format = pick_format(gpu, &surface);
+            let fmt = pick_format(gpu, &surface);
             let caps = surface.capabilities(gpu);
-            let swap_config = swapchain_config(caps, dims, format, image_count);
-            let (swapchain, backbuffer_images) = unsafe {
-                device
-                    .create_swapchain(&mut surface, swap_config, None)
-                    .unwrap()
-            };
-            let supported_formats = surface.supported_formats(gpu).unwrap_or_default();
-            (backbuffer_images, format, supported_formats, swapchain)
+            let swap_config = swapchain_config(caps, dims, fmt, image_count);
+            let (swapchain, backbuffer_images) =
+                unsafe { device.create_swapchain(&mut surface, swap_config, None) }.unwrap();
+            let supported_fmts = surface.supported_formats(gpu).unwrap_or_default();
+            (backbuffer_images, fmt, supported_fmts, swapchain)
         };
 
         (
             Self {
                 driver,
-                format,
+                fmt,
                 image_count,
-                supported_formats,
+                ptr: Some(swapchain),
+                supported_fmts,
                 surface,
-                swapchain: Some(swapchain),
             },
             backbuffer_images,
         )
     }
 
-    pub fn format(&self) -> Format {
-        self.format
+    pub fn fmt(swapchain: &Self) -> Format {
+        swapchain.fmt
     }
 
-    pub fn recreate(&mut self, dims: Extent) -> Vec<<_Backend as Backend>::Image> {
-        let device = self.driver.borrow();
+    pub fn recreate(swapchain: &mut Self, dims: Extent) -> Vec<<_Backend as Backend>::Image> {
+        let device = swapchain.driver.borrow();
         let gpu = device.gpu();
-        self.format = pick_format(gpu, &self.surface);
 
-        let caps = self.surface.capabilities(gpu);
-        let swap_config = swapchain_config(caps, dims, self.format, self.image_count);
-        let (swapchain, backbuffer_images) = unsafe {
-            device
-                .create_swapchain(
-                    &mut self.surface,
-                    swap_config,
-                    Some(self.swapchain.take().unwrap()),
-                )
-                .unwrap()
+        // Update the format as it may have changed
+        swapchain.fmt = pick_format(gpu, &swapchain.surface);
+
+        let caps = swapchain.surface.capabilities(gpu);
+        let swap_config = swapchain_config(caps, dims, swapchain.fmt, swapchain.image_count);
+        let (new_ptr, backbuffer_images) = {
+            let old_ptr = swapchain.ptr.take().unwrap();
+
+            unsafe {
+                device
+                    .create_swapchain(&mut swapchain.surface, swap_config, Some(old_ptr))
+                    .unwrap() // TODO: Handle this error!
+            }
         };
 
-        self.swapchain.replace(swapchain);
-        self.supported_formats = self.surface.supported_formats(gpu).unwrap_or_default();
+        swapchain.ptr.replace(new_ptr);
+        swapchain.supported_fmts = swapchain.surface.supported_formats(gpu).unwrap_or_default();
 
         backbuffer_images
     }
 
-    pub fn supported_formats(&self) -> &[Format] {
-        &self.supported_formats
+    pub fn supported_formats(self: &Self) -> &[Format] {
+        &self.supported_fmts
+    }
+}
+
+impl AsMut<<_Backend as Backend>::Swapchain> for Swapchain {
+    fn as_mut(&mut self) -> &mut <_Backend as Backend>::Swapchain {
+        &mut *self
+    }
+}
+
+impl AsRef<<_Backend as Backend>::Swapchain> for Swapchain {
+    fn as_ref(&self) -> &<_Backend as Backend>::Swapchain {
+        &*self
     }
 }
 
@@ -135,21 +146,23 @@ impl Deref for Swapchain {
     type Target = <_Backend as Backend>::Swapchain;
 
     fn deref(&self) -> &Self::Target {
-        self.swapchain.as_ref().unwrap()
+        self.ptr.as_ref().unwrap()
     }
 }
 
 impl DerefMut for Swapchain {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.swapchain.as_mut().unwrap()
+        self.ptr.as_mut().unwrap()
     }
 }
 
 impl Drop for Swapchain {
     fn drop(&mut self) {
-        if let Some(swapchain) = self.swapchain.take() {
+        if let Some(ptr) = self.ptr.take() {
+            let device = self.driver.borrow();
+
             unsafe {
-                self.driver.borrow().destroy_swapchain(swapchain);
+                device.destroy_swapchain(ptr);
             }
         }
     }

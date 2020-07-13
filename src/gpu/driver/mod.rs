@@ -25,7 +25,7 @@ pub use self::{
     compute_pipeline::ComputePipeline,
     desc_pool::DescriptorPool,
     desc_set_layout::DescriptorSetLayout,
-    device::PhysicalDevice,
+    device::{Device, PhysicalDevice},
     fence::Fence,
     graphics_pipeline::GraphicsPipeline,
     help::{
@@ -45,7 +45,6 @@ pub use self::{
 
 use {
     self::{
-        device::Device,
         framebuffer::Framebuffer,
         image::{Dim, Image},
     },

@@ -12,10 +12,7 @@ use {
         common::OwnedProperty,
         reader::{EventReader, FbxEvent},
     },
-    std::{
-        fs::File,
-        path::{Path, PathBuf},
-    },
+    std::{fs::File, path::Path},
 };
 
 pub fn bake_mesh<P1: AsRef<Path>, P2: AsRef<Path>>(

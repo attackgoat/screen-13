@@ -12,7 +12,7 @@ use {
         Backend,
     },
     gfx_impl::Backend as _Backend,
-    std::{borrow::Borrow, ops::Range},
+    std::{borrow::Borrow, iter::once, ops::Range},
 };
 
 #[derive(Debug)]
@@ -56,15 +56,15 @@ impl Compute {
         let pipeline = unsafe {
             ComputePipeline::new(
                 Driver::clone(&driver),
-                shader.entry_point(),
-                Some(set_layout.as_ref()),
+                ShaderModule::entry_point(&shader),
+                once(&*set_layout),
                 consts,
             )
         };
 
         let mut desc_pool = DescriptorPool::new(Driver::clone(&driver), max_sets, desc_ranges);
         let desc_sets = (0..max_sets)
-            .map(|_| unsafe { desc_pool.allocate_set(set_layout.as_ref()).unwrap() })
+            .map(|_| unsafe { desc_pool.allocate_set(&*set_layout).unwrap() })
             .collect();
 
         let samplers = samplers.collect();
@@ -143,11 +143,7 @@ impl Compute {
         }
 
         for set in &mut self.desc_sets {
-            *set = unsafe {
-                self.desc_pool
-                    .allocate_set(self.set_layout.as_ref())
-                    .unwrap()
-            }
+            *set = unsafe { self.desc_pool.allocate_set(&*self.set_layout).unwrap() }
         }
     }
 

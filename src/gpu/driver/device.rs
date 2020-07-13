@@ -1,7 +1,7 @@
 use {
     crate::{private::Sealed, Error},
     gfx_hal::{
-        adapter::{MemoryProperties, PhysicalDevice as HalPhysicalDevice},
+        adapter::{MemoryProperties, PhysicalDevice as _},
         format::{Format, ImageFeature, Properties as FormatProperties},
         image::{Tiling, Usage},
         memory::Properties,
@@ -9,33 +9,37 @@ use {
         Backend, Features, MemoryTypeId,
     },
     gfx_impl::Backend as _Backend,
-    std::{cell::RefCell, collections::HashMap, ops::Deref},
+    std::{
+        cell::RefCell,
+        collections::HashMap,
+        ops::{Deref, DerefMut},
+    },
 };
 
 #[derive(Debug)]
 pub struct Device {
     compute: Option<QueueGroup<_Backend>>,
-    device: <_Backend as Backend>::Device,
-    formats: RefCell<HashMap<FormatKey, Option<Format>>>,
+    fmts: RefCell<HashMap<FormatKey, Option<Format>>>,
     graphics: QueueGroup<_Backend>,
     mem: MemoryProperties,
-    physical_device: <_Backend as Backend>::PhysicalDevice,
+    phys: <_Backend as Backend>::PhysicalDevice,
+    ptr: <_Backend as Backend>::Device,
 }
 
 impl Device {
     pub fn new<'i, I>(
-        physical_device: <_Backend as Backend>::PhysicalDevice,
+        phys: <_Backend as Backend>::PhysicalDevice,
         queue_families: I,
     ) -> Result<Self, Error>
     where
         I: Iterator<Item = &'i <_Backend as Backend>::QueueFamily>,
     {
         let default_priority = vec![1f32];
-        let mem = physical_device.memory_properties();
+        let mem = phys.memory_properties();
 
         // Open the GPU device with all given queues
         let mut gpu = unsafe {
-            physical_device.open(
+            phys.open(
                 queue_families
                     .map(|queue_family| (queue_family, default_priority.as_slice()))
                     .collect::<Vec<_>>()
@@ -50,24 +54,36 @@ impl Device {
 
         Ok(Self {
             compute,
-            device: gpu.device,
-            formats: Default::default(),
+            fmts: Default::default(),
             graphics,
             mem,
-            physical_device,
+            phys,
+            ptr: gpu.device,
         })
     }
 
-    pub fn get_queue_family(&self, ty: QueueType) -> QueueFamilyId {
-        if self.compute.is_none() {
-            return self.graphics.family;
+    pub fn queue_family(device: &Self, ty: QueueType) -> QueueFamilyId {
+        if device.compute.is_none() {
+            return device.graphics.family;
         }
 
         match ty {
-            QueueType::Compute => self.compute.as_ref().unwrap().family,
-            QueueType::Graphics => self.graphics.family,
-            _ => unreachable!(),
+            QueueType::Compute => device.compute.as_ref().unwrap().family,
+            QueueType::Graphics => device.graphics.family,
+            _ => unreachable!(), // TODO: Probably shoid use a panic?
         }
+    }
+}
+
+impl AsMut<<_Backend as Backend>::Device> for Device {
+    fn as_mut(&mut self) -> &mut <_Backend as Backend>::Device {
+        &mut *self
+    }
+}
+
+impl AsRef<<_Backend as Backend>::Device> for Device {
+    fn as_ref(&self) -> &<_Backend as Backend>::Device {
+        &*self
     }
 }
 
@@ -75,26 +91,27 @@ impl Deref for Device {
     type Target = <_Backend as Backend>::Device;
 
     fn deref(&self) -> &Self::Target {
-        &self.device
+        &self.ptr
+    }
+}
+
+impl DerefMut for Device {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.ptr
     }
 }
 
 impl PhysicalDevice for Device {
-    fn get_best_format(
-        &self,
-        desired_format: Format,
-        tiling: Tiling,
-        usage: Usage,
-    ) -> Option<Format> {
-        let mut formats = self.formats.borrow_mut();
-        *formats
+    fn best_fmt(&self, desired_fmt: Format, tiling: Tiling, usage: Usage) -> Option<Format> {
+        let mut fmts = self.fmts.borrow_mut();
+        *fmts
             .entry(FormatKey {
-                desired_format,
+                desired_fmt,
                 tiling,
                 usage,
             })
             .or_insert_with(|| {
-                const FALLBACK_FORMATS: [Format; 9] = [
+                const FALLBACK_FMTS: [Format; 9] = [
                     Format::Rgba8Srgb,
                     Format::Rgba8Unorm,
                     Format::Rgba8Uint,
@@ -134,17 +151,17 @@ impl PhysicalDevice for Device {
                 }
 
                 if is_compatible(
-                    self.physical_device.format_properties(Some(desired_format)),
+                    self.phys.format_properties(Some(desired_fmt)),
                     tiling,
                     usage,
                 ) {
                     #[cfg(debug_assertions)]
                     debug!(
                         "Desired format {:?} found (tiling={:?} usage={:?})",
-                        desired_format, tiling, usage
+                        desired_fmt, tiling, usage
                     );
 
-                    return Some(desired_format);
+                    return Some(desired_fmt);
                 }
 
                 // let fallback_formats = match desired_format.base_format().0 {
@@ -154,24 +171,23 @@ impl PhysicalDevice for Device {
                 //     _ => unimplemented!("{:?}", desired_format),
                 // };
 
-                for fallback_format in &FALLBACK_FORMATS {
+                for fallback_fmt in &FALLBACK_FMTS {
                     if is_compatible(
-                        self.physical_device
-                            .format_properties(Some(*fallback_format)),
+                        self.phys.format_properties(Some(*fallback_fmt)),
                         tiling,
                         usage,
                     ) {
                         #[cfg(debug_assertions)]
                         debug!(
                             "Fallback format {:?} found (tiling={:?} usage={:?})",
-                            *fallback_format, tiling, usage
+                            *fallback_fmt, tiling, usage
                         );
 
-                        return Some(*fallback_format);
+                        return Some(*fallback_fmt);
                     }
                 }
 
-                let all_formats = &[
+                let all_fmts = &[
                     Format::Rg4Unorm,
                     Format::Rgba4Unorm,
                     Format::Bgra4Unorm,
@@ -358,14 +374,10 @@ impl PhysicalDevice for Device {
                     Format::Astc12x12Srgb,
                 ];
 
-                let mut compatible_formats = vec![];
-                for format in all_formats.iter() {
-                    if is_compatible(
-                        self.physical_device.format_properties(Some(*format)),
-                        tiling,
-                        usage,
-                    ) {
-                        compatible_formats.push(*format);
+                let mut compatible_fmts = vec![];
+                for fmt in all_fmts.iter() {
+                    if is_compatible(self.phys.format_properties(Some(*fmt)), tiling, usage) {
+                        compatible_fmts.push(*fmt);
                     }
                 }
 
@@ -373,13 +385,13 @@ impl PhysicalDevice for Device {
                 {
                     warn!(
                         "Could not find a compatible format for `{:?}` (Tiling={:?} Usage={:?})",
-                        desired_format, tiling, usage
+                        desired_fmt, tiling, usage
                     );
 
-                    if !compatible_formats.is_empty() {
+                    if !compatible_fmts.is_empty() {
                         info!(
                             "These formats are compatible: {}",
-                            &compatible_formats
+                            &compatible_fmts
                                 .iter()
                                 .map(|format| format!("{:?}", format))
                                 .collect::<Vec<_>>()
@@ -392,34 +404,22 @@ impl PhysicalDevice for Device {
             })
     }
 
-    fn get_queue_mut(&mut self, ty: QueueType) -> &mut <_Backend as Backend>::CommandQueue {
-        let queue = match ty {
-            QueueType::Compute => {
-                if let Some(compute) = &mut self.compute {
-                    compute
-                } else {
-                    &mut self.graphics
-                }
-            }
-            QueueType::Graphics => &mut self.graphics,
-            _ => unimplemented!("unimplemented {:?}", ty),
-        };
-
-        &mut queue.queues[0]
+    fn gpu(&self) -> &<_Backend as Backend>::PhysicalDevice {
+        &self.phys
     }
 
-    fn get_mem_type(&self, type_mask: u64, properties: Properties) -> MemoryTypeId {
+    fn mem_ty(&self, mask: u64, properties: Properties) -> MemoryTypeId {
         //debug!("type_mask={} properties={:?}", type_mask, properties);
         self.mem
             .memory_types
             .iter()
             .enumerate()
-            .position(|(id, mem_type)| {
+            .position(|(id, mem_ty)| {
                 //debug!("Mem ID {} type={:?}", id, mem_type);
                 // type_mask is a bit field where each bit represents a memory type. If the bit is set
                 // to 1 it means we can use that type for our buffer. So this code finds the first
                 // memory type that has a `1` (or, is allowed), and is visible to the CPU.
-                type_mask & (1 << id) != 0 && mem_type.properties.contains(properties)
+                mask & (1 << id) != 0 && mem_ty.properties.contains(properties)
             })
             .unwrap()
             .into()
@@ -436,8 +436,20 @@ impl PhysicalDevice for Device {
         panic!("Memory type not found");*/
     }
 
-    fn gpu(&self) -> &<_Backend as Backend>::PhysicalDevice {
-        &self.physical_device
+    fn queue_mut(&mut self, ty: QueueType) -> &mut <_Backend as Backend>::CommandQueue {
+        let queue = match ty {
+            QueueType::Compute => {
+                if let Some(compute) = &mut self.compute {
+                    compute
+                } else {
+                    &mut self.graphics
+                }
+            }
+            QueueType::Graphics => &mut self.graphics,
+            _ => unimplemented!("unimplemented {:?}", ty),
+        };
+
+        &mut queue.queues[0]
     }
 }
 
@@ -445,19 +457,14 @@ impl Sealed for Device {}
 
 #[derive(Debug, Eq, Hash, PartialEq)]
 struct FormatKey {
-    desired_format: Format,
+    desired_fmt: Format,
     tiling: Tiling,
     usage: Usage,
 }
 
 pub trait PhysicalDevice: Sealed {
-    fn get_best_format(
-        &self,
-        desired_format: Format,
-        tiling: Tiling,
-        usage: Usage,
-    ) -> Option<Format>;
-    fn get_mem_type(&self, type_mask: u64, properties: Properties) -> MemoryTypeId;
-    fn get_queue_mut(&mut self, ty: QueueType) -> &mut <_Backend as Backend>::CommandQueue;
+    fn best_fmt(&self, desired_fmt: Format, tiling: Tiling, usage: Usage) -> Option<Format>;
+    fn mem_ty(&self, type_mask: u64, properties: Properties) -> MemoryTypeId;
+    fn queue_mut(&mut self, ty: QueueType) -> &mut <_Backend as Backend>::CommandQueue;
     fn gpu(&self) -> &<_Backend as Backend>::PhysicalDevice;
 }

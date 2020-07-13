@@ -30,7 +30,7 @@ impl AlphaColor {
         Self { b, g, r, a }
     }
 
-    pub fn to_rgba_f32(self) -> (f32, f32, f32, f32) {
+    pub fn to_unorm(self) -> (f32, f32, f32, f32) {
         (
             f32::from(self.r) / 255.0,
             f32::from(self.g) / 255.0,
@@ -39,8 +39,8 @@ impl AlphaColor {
         )
     }
 
-    pub fn to_rgba_unorm_u32_array(self) -> [u32; 4] {
-        let unorm = self.to_rgba_f32();
+    pub fn to_unorm_bits(self) -> [u32; 4] {
+        let unorm = self.to_unorm();
         [
             unorm.0.to_bits(),
             unorm.1.to_bits(),
@@ -69,7 +69,7 @@ impl From<Color> for AlphaColor {
 
 impl From<AlphaColor> for ClearValue {
     fn from(color: AlphaColor) -> Self {
-        let (r, g, b, a) = color.to_rgba_f32();
+        let (r, g, b, a) = color.to_unorm();
         Self {
             color: ClearColor {
                 float32: [r, g, b, a],

@@ -76,7 +76,7 @@ impl From<ClearValue> for Color {
 impl From<Color> for ClearValue {
     fn from(color: Color) -> Self {
         let alpha_color: AlphaColor = color.into();
-        let (r, g, b, a) = alpha_color.to_rgba_f32();
+        let (r, g, b, a) = alpha_color.to_unorm();
         Self {
             color: ClearColor {
                 float32: [r, g, b, a],

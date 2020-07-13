@@ -3,6 +3,8 @@ use {
     std::ops::{Deref, DerefMut},
 };
 
+/// A smart pointer type which automatically returns the associated resource to
+/// the pool when dropped.
 #[derive(Debug)]
 pub struct Lease<T> {
     item: Option<T>,
@@ -15,18 +17,6 @@ impl<T> Lease<T> {
             item: Some(item),
             pool: PoolRef::clone(pool),
         }
-    }
-}
-
-impl<T> AsMut<T> for Lease<T> {
-    fn as_mut(&mut self) -> &mut T {
-        self
-    }
-}
-
-impl<T> AsRef<T> for Lease<T> {
-    fn as_ref(&self) -> &T {
-        self
     }
 }
 

@@ -8,7 +8,7 @@ use {
 #[derive(Debug)]
 pub struct CommandPool {
     driver: Driver,
-    cmd_pool: Option<<_Backend as Backend>::CommandPool>,
+    ptr: Option<<_Backend as Backend>::CommandPool>,
 }
 
 impl CommandPool {
@@ -21,18 +21,28 @@ impl CommandPool {
         family: QueueFamilyId,
         flags: CommandPoolCreateFlags,
     ) -> Self {
-        let cmd_pool = unsafe { driver.borrow().create_command_pool(family, flags).unwrap() };
+        let cmd_pool = {
+            let device = driver.borrow();
+
+            unsafe { device.create_command_pool(family, flags) }.unwrap()
+        };
 
         Self {
             driver,
-            cmd_pool: Some(cmd_pool),
+            ptr: Some(cmd_pool),
         }
+    }
+}
+
+impl AsMut<<_Backend as Backend>::CommandPool> for CommandPool {
+    fn as_mut(&mut self) -> &mut <_Backend as Backend>::CommandPool {
+        &mut *self
     }
 }
 
 impl AsRef<<_Backend as Backend>::CommandPool> for CommandPool {
     fn as_ref(&self) -> &<_Backend as Backend>::CommandPool {
-        self.cmd_pool.as_ref().unwrap()
+        &*self
     }
 }
 
@@ -40,22 +50,23 @@ impl Deref for CommandPool {
     type Target = <_Backend as Backend>::CommandPool;
 
     fn deref(&self) -> &Self::Target {
-        self.cmd_pool.as_ref().unwrap()
+        self.ptr.as_ref().unwrap()
     }
 }
 
 impl DerefMut for CommandPool {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.cmd_pool.as_mut().unwrap()
+        self.ptr.as_mut().unwrap()
     }
 }
 
 impl Drop for CommandPool {
     fn drop(&mut self) {
+        let device = self.driver.borrow();
+        let ptr = self.ptr.take().unwrap();
+
         unsafe {
-            self.driver
-                .borrow()
-                .destroy_command_pool(self.cmd_pool.take().unwrap());
+            device.destroy_command_pool(ptr);
         }
     }
 }
