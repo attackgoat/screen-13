@@ -1,7 +1,8 @@
+pub(crate) mod draw;
+
 mod bitmap;
 mod clear;
 mod copy;
-mod draw;
 mod encode;
 mod font;
 mod gradient;
@@ -11,71 +12,35 @@ pub use self::{
     bitmap::{Bitmap, BitmapOp},
     clear::ClearOp,
     copy::CopyOp,
-    draw::{Command, Compiler, DrawOp, Material},
+    //draw::{Command, Compiler, DrawOp, Material},
     encode::EncodeOp,
     font::{Font, FontOp},
     gradient::GradientOp,
-    write::{BlendMode, Mode as WriteMode, WriteOp},
+    write::{Mode as WriteMode, Write, WriteOp},
 };
 
 use {
-    crate::math::{Mat3, Mat4},
     gfx_hal::{device::Device as _, Backend},
     gfx_impl::Backend as _Backend,
-    std::time::Instant,
 };
 
-pub(self) fn mat4_to_u32_array(m: Mat4) -> [u32; 16] {
-    let m = m.to_cols_array();
-    [
-        m[0].to_bits(),
-        m[1].to_bits(),
-        m[2].to_bits(),
-        m[3].to_bits(),
-        m[4].to_bits(),
-        m[5].to_bits(),
-        m[6].to_bits(),
-        m[7].to_bits(),
-        m[8].to_bits(),
-        m[9].to_bits(),
-        m[10].to_bits(),
-        m[11].to_bits(),
-        m[12].to_bits(),
-        m[13].to_bits(),
-        m[14].to_bits(),
-        m[15].to_bits(),
-    ]
-}
+#[cfg(debug_assertions)]
+use std::time::Instant;
 
-pub(self) fn mat4_to_mat3_u32_array(m: Mat4) -> [u32; 9] {
-    let m = m.to_cols_array();
-    [
-        m[0].to_bits(),
-        m[1].to_bits(),
-        m[2].to_bits(),
-        m[5].to_bits(),
-        m[6].to_bits(),
-        m[7].to_bits(),
-        m[9].to_bits(),
-        m[10].to_bits(),
-        m[11].to_bits(),
-    ]
-}
-
-pub(self) fn mat3_to_u32_array(m: Mat3) -> [u32; 9] {
-    let m = m.to_cols_array();
-    [
-        m[0].to_bits(),
-        m[1].to_bits(),
-        m[2].to_bits(),
-        m[3].to_bits(),
-        m[4].to_bits(),
-        m[5].to_bits(),
-        m[6].to_bits(),
-        m[7].to_bits(),
-        m[8].to_bits(),
-    ]
-}
+// pub(self) fn mat4_to_mat3_u32_array(val: Mat4) -> [u32; 9] {
+//     let val = val.to_cols_array();
+//     [
+//         val[0].to_bits(),
+//         val[1].to_bits(),
+//         val[2].to_bits(),
+//         val[5].to_bits(),
+//         val[6].to_bits(),
+//         val[7].to_bits(),
+//         val[9].to_bits(),
+//         val[10].to_bits(),
+//         val[11].to_bits(),
+//     ]
+// }
 
 pub(self) unsafe fn wait_for_fence(
     device: &<_Backend as Backend>::Device,
@@ -91,6 +56,7 @@ pub(self) unsafe fn wait_for_fence(
     {
         let started = Instant::now();
 
+        // TODO: Improve later
         for _ in 0..100 {
             if let Ok(true) | Err(_) = device.wait_for_fence(fence, 1_000_000) {
                 let elapsed = Instant::now() - started;

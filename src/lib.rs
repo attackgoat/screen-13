@@ -1,15 +1,8 @@
 #![deny(warnings)]
-// TODO: Remove before flight!
 #![allow(dead_code)]
-#![allow(unused_assignments)]
-//#![allow(unused_imports)]
-#![allow(unused_mut)]
-#![allow(unused_variables)]
 
-#[cfg(debug_assertions)]
 extern crate pretty_env_logger;
 
-#[cfg(debug_assertions)]
 #[macro_use]
 extern crate log as log_crate;
 
@@ -68,7 +61,6 @@ pub type DynScreen = Box<dyn Screen>;
 
 /// Only required when you are not running an engine instance but still using other
 /// engine types and you want debugging setup.
-#[cfg(debug_assertions)]
 pub fn init_debug() {
     pretty_env_logger::init();
 

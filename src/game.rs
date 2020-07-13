@@ -80,8 +80,8 @@ impl Game {
     ) -> Self {
         let window = builder.build(&event_loop).unwrap();
         let (gpu, surface) = Gpu::new(&window);
-        let (swapchain, back_buf_images) =
-            Swapchain::from_surface(surface, Driver::clone(gpu.driver()), dims, swapchain_len);
+        let driver = Driver::clone(gpu.driver());
+        let (swapchain, back_buf_images) = Swapchain::new(driver, surface, dims, swapchain_len);
         let back_buf = Vec::with_capacity(back_buf_images.len());
 
         Self {
@@ -164,7 +164,7 @@ impl Game {
                         .gpu
                         .driver()
                         .borrow_mut()
-                        .get_queue_mut(QueueType::Graphics),
+                        .queue_mut(QueueType::Graphics),
                     idx,
                 )
                 .unwrap_or_else(|_| {
@@ -182,13 +182,13 @@ impl Game {
 
     fn recreate_swapchain(&mut self) {
         self.back_buf.clear();
-        for back_buf_image in self.swapchain.recreate(self.dims) {
+        for back_buf_image in Swapchain::recreate(&mut self.swapchain, self.dims) {
             self.back_buf
                 .push(TextureRef::new(RefCell::new(Texture::from_swapchain(
                     back_buf_image,
                     self.gpu.driver(),
                     self.dims,
-                    self.swapchain.format(),
+                    Swapchain::fmt(&self.swapchain),
                 ))));
         }
 

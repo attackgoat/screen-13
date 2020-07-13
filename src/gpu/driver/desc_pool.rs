@@ -14,9 +14,9 @@ use {
 
 #[derive(Debug)]
 pub struct DescriptorPool {
-    desc_pool: Option<<_Backend as Backend>::DescriptorPool>,
     driver: Driver,
     max_sets: usize,
+    ptr: Option<<_Backend as Backend>::DescriptorPool>,
 }
 
 impl DescriptorPool {
@@ -43,29 +43,33 @@ impl DescriptorPool {
         I: IntoIterator,
         I::Item: Borrow<DescriptorRangeDesc>,
     {
-        let desc_pool = unsafe {
-            driver
-                .as_ref()
-                .borrow()
-                .create_descriptor_pool(max_sets, desc_ranges, flags)
-        }
-        .unwrap();
+        let desc_pool = {
+            let device = driver.as_ref().borrow();
+
+            unsafe { device.create_descriptor_pool(max_sets, desc_ranges, flags) }.unwrap()
+        };
 
         Self {
-            desc_pool: Some(desc_pool),
             driver,
             max_sets,
+            ptr: Some(desc_pool),
         }
     }
 
-    pub fn max_sets(&self) -> usize {
-        self.max_sets
+    pub fn max_sets(pool: &Self) -> usize {
+        pool.max_sets
+    }
+}
+
+impl AsMut<<_Backend as Backend>::DescriptorPool> for DescriptorPool {
+    fn as_mut(&mut self) -> &mut <_Backend as Backend>::DescriptorPool {
+        &mut *self
     }
 }
 
 impl AsRef<<_Backend as Backend>::DescriptorPool> for DescriptorPool {
     fn as_ref(&self) -> &<_Backend as Backend>::DescriptorPool {
-        self.desc_pool.as_ref().unwrap()
+        &*self
     }
 }
 
@@ -73,23 +77,23 @@ impl Deref for DescriptorPool {
     type Target = <_Backend as Backend>::DescriptorPool;
 
     fn deref(&self) -> &Self::Target {
-        self.desc_pool.as_ref().unwrap()
+        self.ptr.as_ref().unwrap()
     }
 }
 
 impl DerefMut for DescriptorPool {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.desc_pool.as_mut().unwrap()
+        self.ptr.as_mut().unwrap()
     }
 }
 
 impl Drop for DescriptorPool {
     fn drop(&mut self) {
+        let device = self.driver.as_ref().borrow();
+        let ptr = self.ptr.take().unwrap();
+
         unsafe {
-            self.driver
-                .as_ref()
-                .borrow()
-                .destroy_descriptor_pool(self.desc_pool.take().unwrap());
+            device.destroy_descriptor_pool(ptr);
         }
     }
 }

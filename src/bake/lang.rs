@@ -1,14 +1,12 @@
 use {
     super::{
+        get_filename_key,
         pak_log::{LogId, PakLog},
         schema::{Asset, LanguageAsset},
     },
     crate::pak::PakBuf,
     std::path::Path,
 };
-
-#[cfg(debug_assertions)]
-use super::get_filename_key;
 
 pub fn bake_lang<P1: AsRef<Path>, P2: AsRef<Path>>(
     project_dir: P1,

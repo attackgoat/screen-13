@@ -1,3 +1,5 @@
+// TODO: This file is way too repetitive with similar code blocks all over the place. It could use some lovin'.
+
 use {
     super::spirv::{
         blending::{
@@ -137,14 +139,17 @@ impl Graphics {
         );
         let layout = PipelineLayout::new(
             Driver::clone(&driver),
-            once(set_layout.as_ref()),
+            once(&*set_layout),
             &[
                 (ShaderStageFlags::VERTEX, 0..64),
                 (ShaderStageFlags::FRAGMENT, 64..72),
             ],
         );
         let mut desc = GraphicsPipelineDesc::new(
-            shader_set(vertex.entry_point(), fragment.entry_point()),
+            shader_set(
+                ShaderModule::entry_point(&vertex),
+                ShaderModule::entry_point(&fragment),
+            ),
             Primitive::TriangleList,
             FILL_RASTERIZER,
             &layout,
@@ -171,7 +176,7 @@ impl Graphics {
                 },
             )),
         );
-        let desc_sets = vec![desc_pool.allocate_set(set_layout.as_ref()).unwrap()];
+        let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
 
         Self {
             desc_pool,
@@ -202,11 +207,14 @@ impl Graphics {
         );
         let layout = PipelineLayout::new(
             Driver::clone(&driver),
-            once(set_layout.as_ref()),
+            once(&*set_layout),
             &[(ShaderStageFlags::VERTEX, 0..64)],
         );
         let mut desc = GraphicsPipelineDesc::new(
-            shader_set(vertex.entry_point(), fragment.entry_point()),
+            shader_set(
+                ShaderModule::entry_point(&vertex),
+                ShaderModule::entry_point(&fragment),
+            ),
             Primitive::LineList,
             LINE_RASTERIZER,
             &layout,
@@ -288,14 +296,17 @@ impl Graphics {
         );
         let layout = PipelineLayout::new(
             Driver::clone(&driver),
-            once(set_layout.as_ref()),
+            once(&*set_layout),
             &[
                 (ShaderStageFlags::VERTEX, 0..100),
                 (ShaderStageFlags::FRAGMENT, 100..104),
             ],
         );
         let mut desc = GraphicsPipelineDesc::new(
-            shader_set(vertex.entry_point(), fragment.entry_point()),
+            shader_set(
+                ShaderModule::entry_point(&vertex),
+                ShaderModule::entry_point(&fragment),
+            ),
             Primitive::TriangleList,
             FILL_RASTERIZER,
             &layout,
@@ -353,7 +364,7 @@ impl Graphics {
                 },
             )),
         );
-        let desc_sets = vec![desc_pool.allocate_set(set_layout.as_ref()).unwrap()];
+        let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
 
         Self {
             desc_pool,
@@ -391,14 +402,17 @@ impl Graphics {
         );
         let layout = PipelineLayout::new(
             Driver::clone(&driver),
-            once(set_layout.as_ref()),
+            once(&*set_layout),
             &[
                 (ShaderStageFlags::VERTEX, 0..100),
                 (ShaderStageFlags::FRAGMENT, 100..104),
             ],
         );
         let mut desc = GraphicsPipelineDesc::new(
-            shader_set(vertex.entry_point(), fragment.entry_point()),
+            shader_set(
+                ShaderModule::entry_point(&vertex),
+                ShaderModule::entry_point(&fragment),
+            ),
             Primitive::TriangleList,
             FILL_RASTERIZER,
             &layout,
@@ -456,7 +470,7 @@ impl Graphics {
                 },
             )),
         );
-        let desc_sets = vec![desc_pool.allocate_set(set_layout.as_ref()).unwrap()];
+        let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
 
         Self {
             desc_pool,
@@ -494,11 +508,14 @@ impl Graphics {
         );
         let layout = PipelineLayout::new(
             Driver::clone(&driver),
-            once(set_layout.as_ref()),
+            once(&*set_layout),
             &[(ShaderStageFlags::VERTEX, 0..64)],
         );
         let mut desc = GraphicsPipelineDesc::new(
-            shader_set(vertex.entry_point(), fragment.entry_point()),
+            shader_set(
+                ShaderModule::entry_point(&vertex),
+                ShaderModule::entry_point(&fragment),
+            ),
             Primitive::TriangleList,
             FILL_RASTERIZER,
             &layout,
@@ -525,7 +542,7 @@ impl Graphics {
                 },
             )),
         );
-        let desc_sets = vec![desc_pool.allocate_set(set_layout.as_ref()).unwrap()];
+        let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
 
         Self {
             desc_pool,
@@ -563,11 +580,14 @@ impl Graphics {
         );
         let layout = PipelineLayout::new(
             Driver::clone(&driver),
-            once(set_layout.as_ref()),
+            once(&*set_layout),
             &[(ShaderStageFlags::VERTEX, 0..64)],
         );
         let mut desc = GraphicsPipelineDesc::new(
-            shader_set(vertex.entry_point(), fragment.entry_point()),
+            shader_set(
+                ShaderModule::entry_point(&vertex),
+                ShaderModule::entry_point(&fragment),
+            ),
             Primitive::TriangleList,
             FILL_RASTERIZER,
             &layout,
@@ -617,7 +637,7 @@ impl Graphics {
                 },
             )),
         );
-        let desc_sets = vec![desc_pool.allocate_set(set_layout.as_ref()).unwrap()];
+        let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
 
         Self {
             desc_pool,
@@ -667,14 +687,17 @@ impl Graphics {
         );
         let layout = PipelineLayout::new(
             Driver::clone(&driver),
-            once(set_layout.as_ref()),
+            once(&*set_layout),
             &[
                 (ShaderStageFlags::VERTEX, 0..100),
                 (ShaderStageFlags::FRAGMENT, 100..104),
             ],
         );
         let mut desc = GraphicsPipelineDesc::new(
-            shader_set(vertex.entry_point(), fragment.entry_point()),
+            shader_set(
+                ShaderModule::entry_point(&vertex),
+                ShaderModule::entry_point(&fragment),
+            ),
             Primitive::TriangleList,
             FILL_RASTERIZER,
             &layout,
@@ -730,7 +753,7 @@ impl Graphics {
                 },
             )),
         );
-        let desc_sets = vec![desc_pool.allocate_set(set_layout.as_ref()).unwrap()];
+        let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
 
         Self {
             desc_pool,
@@ -768,14 +791,17 @@ impl Graphics {
         );
         let layout = PipelineLayout::new(
             Driver::clone(&driver),
-            once(set_layout.as_ref()),
+            once(&*set_layout),
             &[
                 (ShaderStageFlags::VERTEX, 0..64),
                 (ShaderStageFlags::FRAGMENT, 64..80),
             ],
         );
         let mut desc = GraphicsPipelineDesc::new(
-            shader_set(vertex.entry_point(), fragment.entry_point()),
+            shader_set(
+                ShaderModule::entry_point(&vertex),
+                ShaderModule::entry_point(&fragment),
+            ),
             Primitive::TriangleList,
             FILL_RASTERIZER,
             &layout,
@@ -823,7 +849,7 @@ impl Graphics {
                 },
             )),
         );
-        let desc_sets = vec![desc_pool.allocate_set(set_layout.as_ref()).unwrap()];
+        let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
 
         Self {
             desc_pool,
@@ -859,14 +885,17 @@ impl Graphics {
         );
         let layout = PipelineLayout::new(
             Driver::clone(&driver),
-            once(set_layout.as_ref()),
+            once(&*set_layout),
             &[
                 (ShaderStageFlags::VERTEX, 0..64),
                 (ShaderStageFlags::FRAGMENT, 64..96),
             ],
         );
         let mut desc = GraphicsPipelineDesc::new(
-            shader_set(vertex.entry_point(), fragment.entry_point()),
+            shader_set(
+                ShaderModule::entry_point(&vertex),
+                ShaderModule::entry_point(&fragment),
+            ),
             Primitive::TriangleList,
             FILL_RASTERIZER,
             &layout,
@@ -914,7 +943,7 @@ impl Graphics {
                 },
             )),
         );
-        let desc_sets = vec![desc_pool.allocate_set(set_layout.as_ref()).unwrap()];
+        let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
 
         Self {
             desc_pool,
@@ -950,11 +979,14 @@ impl Graphics {
         );
         let layout = PipelineLayout::new(
             Driver::clone(&driver),
-            once(set_layout.as_ref()),
+            once(&*set_layout),
             &[(ShaderStageFlags::FRAGMENT, 0..32)],
         );
         let mut desc = GraphicsPipelineDesc::new(
-            shader_set(vertex.entry_point(), fragment.entry_point()),
+            shader_set(
+                ShaderModule::entry_point(&vertex),
+                ShaderModule::entry_point(&fragment),
+            ),
             Primitive::TriangleList,
             FILL_RASTERIZER,
             &layout,
@@ -981,7 +1013,7 @@ impl Graphics {
                 },
             )),
         );
-        let desc_sets = vec![desc_pool.allocate_set(set_layout.as_ref()).unwrap()];
+        let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
 
         Self {
             desc_pool,
@@ -1017,11 +1049,14 @@ impl Graphics {
         );
         let layout = PipelineLayout::new(
             Driver::clone(&driver),
-            once(set_layout.as_ref()),
+            once(&*set_layout),
             &[(ShaderStageFlags::FRAGMENT, 0..32)],
         );
         let mut desc = GraphicsPipelineDesc::new(
-            shader_set(vertex.entry_point(), fragment.entry_point()),
+            shader_set(
+                ShaderModule::entry_point(&vertex),
+                ShaderModule::entry_point(&fragment),
+            ),
             Primitive::TriangleList,
             FILL_RASTERIZER,
             &layout,
@@ -1048,7 +1083,7 @@ impl Graphics {
                 },
             )),
         );
-        let desc_sets = vec![desc_pool.allocate_set(set_layout.as_ref()).unwrap()];
+        let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
 
         Self {
             desc_pool,
@@ -1084,11 +1119,14 @@ impl Graphics {
         );
         let layout = PipelineLayout::new(
             Driver::clone(&driver),
-            once(set_layout.as_ref()),
+            once(&*set_layout),
             &[(ShaderStageFlags::VERTEX, 0..64)],
         );
         let mut desc = GraphicsPipelineDesc::new(
-            shader_set(vertex.entry_point(), fragment.entry_point()),
+            shader_set(
+                ShaderModule::entry_point(&vertex),
+                ShaderModule::entry_point(&fragment),
+            ),
             Primitive::TriangleList,
             FILL_RASTERIZER,
             &layout,
@@ -1115,7 +1153,7 @@ impl Graphics {
                 },
             )),
         );
-        let desc_sets = vec![desc_pool.allocate_set(set_layout.as_ref()).unwrap()];
+        let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
 
         Self {
             desc_pool,
@@ -1150,11 +1188,7 @@ impl Graphics {
         }
 
         for desc_set in &mut self.desc_sets {
-            *desc_set = unsafe {
-                self.desc_pool
-                    .allocate_set(self.set_layout.as_ref())
-                    .unwrap()
-            }
+            *desc_set = unsafe { self.desc_pool.allocate_set(&*self.set_layout).unwrap() }
         }
     }
 

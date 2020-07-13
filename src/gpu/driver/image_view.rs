@@ -13,7 +13,7 @@ use {
 #[derive(Debug)]
 pub struct ImageView {
     driver: Driver,
-    image_view: Option<<_Backend as Backend>::ImageView>,
+    ptr: Option<<_Backend as Backend>::ImageView>,
 }
 
 impl ImageView {
@@ -28,23 +28,28 @@ impl ImageView {
     where
         I: Deref<Target = <_Backend as Backend>::Image>,
     {
-        let image_view = unsafe {
-            driver
-                .borrow()
-                .create_image_view(&image, view_kind, format, swizzle, range)
-                .unwrap()
+        let image_view = {
+            let device = driver.borrow();
+
+            unsafe { device.create_image_view(&image, view_kind, format, swizzle, range) }.unwrap()
         };
 
         Self {
             driver,
-            image_view: Some(image_view),
+            ptr: Some(image_view),
         }
+    }
+}
+
+impl AsMut<<_Backend as Backend>::ImageView> for ImageView {
+    fn as_mut(&mut self) -> &mut <_Backend as Backend>::ImageView {
+        &mut *self
     }
 }
 
 impl AsRef<<_Backend as Backend>::ImageView> for ImageView {
     fn as_ref(&self) -> &<_Backend as Backend>::ImageView {
-        self.image_view.as_ref().unwrap()
+        &*self
     }
 }
 
@@ -52,22 +57,23 @@ impl Deref for ImageView {
     type Target = <_Backend as Backend>::ImageView;
 
     fn deref(&self) -> &Self::Target {
-        self.image_view.as_ref().unwrap()
+        self.ptr.as_ref().unwrap()
     }
 }
 
 impl DerefMut for ImageView {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.image_view.as_mut().unwrap()
+        self.ptr.as_mut().unwrap()
     }
 }
 
 impl Drop for ImageView {
     fn drop(&mut self) {
+        let device = self.driver.borrow();
+        let ptr = self.ptr.take().unwrap();
+
         unsafe {
-            self.driver
-                .borrow()
-                .destroy_image_view(self.image_view.take().unwrap());
+            device.destroy_image_view(ptr);
         }
     }
 }

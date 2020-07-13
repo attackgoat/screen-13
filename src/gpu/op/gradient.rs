@@ -1,11 +1,11 @@
 use {
     super::{wait_for_fence, Op},
     crate::{
-        color::{AlphaColor, TRANSPARENT_BLACK},
+        color::AlphaColor,
         gpu::{
             driver::{
-                bind_graphics_descriptor_set, CommandPool, Driver, Fence, Framebuffer2d, Image2d,
-                PhysicalDevice,
+                bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
+                Image2d, PhysicalDevice,
             },
             pool::{Graphics, GraphicsMode, Lease, RenderPassMode},
             PoolRef, TextureRef,
@@ -82,7 +82,7 @@ where
         let driver = Driver::clone(pool_ref.driver());
 
         // Allocate the command buffer
-        let family = driver.borrow().get_queue_family(QUEUE_TYPE);
+        let family = Device::queue_family(&driver.borrow(), QUEUE_TYPE);
         let mut cmd_pool = pool_ref.cmd_pool(family);
 
         // Setup the first pass graphics pipeline
@@ -136,7 +136,7 @@ where
         }
     }
 
-    pub fn record(mut self) -> GradientResult<I> {
+    pub fn record(mut self) -> impl Op {
         // Setup the descriptor set
         {
             // let pool = self.pool.borrow();
@@ -221,20 +221,16 @@ where
             self.submit();
         };
 
-        GradientResult {
-            cmd_pool: self.cmd_pool,
-            driver: Driver::clone(self.pool.borrow().driver()),
-            dst: self.dst,
-            fence: self.fence,
-        }
+        self
     }
 
     unsafe fn submit(&mut self) {
-        let mut pool = self.pool.borrow_mut();
+        let pool = self.pool.borrow();
+        let mut device = pool.driver().borrow_mut();
         let mut dst = self.dst.borrow_mut();
         let mut back_buf = self.back_buf.borrow_mut();
         let preserve_dst = must_preserve_dst(&self.path);
-        let mode = render_pass_mode(preserve_dst);
+        let _mode = render_pass_mode(preserve_dst);
         let dims = dst.dims();
         let rect = Rect {
             x: 0,
@@ -303,13 +299,18 @@ where
                 ImageAccess::SHADER_READ,
             );
         }
-        self.cmd_buf.begin_render_pass(
-            pool.render_pass(mode),
-            self.frame_buf.as_ref(),
-            rect,
-            vec![&TRANSPARENT_BLACK.into()].drain(..),
-            SubpassContents::Inline,
-        );
+
+        // self.cmd_buf.begin_render_pass(
+        //     pool.render_pass(mode),
+        //     self.frame_buf.as_ref(),
+        //     rect,
+        //     vec![&TRANSPARENT_BLACK.into()].drain(..),
+        //     SubpassContents::Inline,
+        // );
+        // TEMP
+        let _ = SubpassContents::Inline;
+        // TEMP
+
         self.cmd_buf
             .bind_graphics_pipeline(self.graphics.pipeline());
         if preserve_dst {
@@ -363,28 +364,18 @@ where
         self.cmd_buf.finish();
 
         // Submit
-        pool.driver().borrow_mut().get_queue_mut(QUEUE_TYPE).submit(
+        Device::queue_mut(&mut device, QUEUE_TYPE).submit(
             Submission {
                 command_buffers: once(&self.cmd_buf),
                 wait_semaphores: empty(),
                 signal_semaphores: empty::<&<_Backend as Backend>::Semaphore>(),
             },
-            Some(self.fence.as_ref()),
+            Some(&self.fence),
         );
     }
 }
 
-pub struct GradientResult<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
-    cmd_pool: Lease<CommandPool>,
-    driver: Driver,
-    dst: TextureRef<I>,
-    fence: Lease<Fence>,
-}
-
-impl<I> Drop for GradientResult<I>
+impl<I> Drop for GradientOp<I>
 where
     I: AsRef<<_Backend as Backend>::Image>,
 {
@@ -393,13 +384,16 @@ where
     }
 }
 
-impl<I> Op for GradientResult<I>
+impl<I> Op for GradientOp<I>
 where
     I: AsRef<<_Backend as Backend>::Image>,
 {
     fn wait(&self) {
+        let pool = self.pool.borrow();
+        let device = pool.driver().borrow();
+
         unsafe {
-            wait_for_fence(&self.driver.borrow(), &self.fence);
+            wait_for_fence(&device, &self.fence);
         }
     }
 }

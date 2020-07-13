@@ -12,7 +12,7 @@ use {
 #[derive(Debug)]
 pub struct ShaderModule {
     driver: Driver,
-    shader_module: Option<<_Backend as Backend>::ShaderModule>,
+    ptr: Option<<_Backend as Backend>::ShaderModule>,
 }
 
 impl ShaderModule {
@@ -25,29 +25,35 @@ impl ShaderModule {
 
         Self {
             driver,
-            shader_module: Some(shader_module),
+            ptr: Some(shader_module),
         }
     }
 
-    pub fn entry_point(&self) -> EntryPoint<'_, _Backend> {
-        self.entry_point_specialization(Specialization::EMPTY)
+    pub fn entry_point(module: &Self) -> EntryPoint<'_, _Backend> {
+        Self::entry_point_specialization(module, Specialization::EMPTY)
     }
 
     pub fn entry_point_specialization<'a>(
-        &'a self,
+        module: &'a Self,
         specialization: Specialization<'a>,
     ) -> EntryPoint<'a, _Backend> {
         EntryPoint {
             entry: "main",
-            module: self.shader_module.as_ref().unwrap(),
+            module,
             specialization,
         }
     }
 }
 
+impl AsMut<<_Backend as Backend>::ShaderModule> for ShaderModule {
+    fn as_mut(&mut self) -> &mut <_Backend as Backend>::ShaderModule {
+        &mut *self
+    }
+}
+
 impl AsRef<<_Backend as Backend>::ShaderModule> for ShaderModule {
     fn as_ref(&self) -> &<_Backend as Backend>::ShaderModule {
-        self.shader_module.as_ref().unwrap()
+        &*self
     }
 }
 
@@ -55,23 +61,23 @@ impl Deref for ShaderModule {
     type Target = <_Backend as Backend>::ShaderModule;
 
     fn deref(&self) -> &Self::Target {
-        self.shader_module.as_ref().unwrap()
+        self.ptr.as_ref().unwrap()
     }
 }
 
 impl DerefMut for ShaderModule {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.shader_module.as_mut().unwrap()
+        self.ptr.as_mut().unwrap()
     }
 }
 
 impl Drop for ShaderModule {
     fn drop(&mut self) {
+        let device = self.driver.borrow();
+        let ptr = self.ptr.take().unwrap();
+
         unsafe {
-            self.driver
-                .as_ref()
-                .borrow()
-                .destroy_shader_module(self.shader_module.take().unwrap());
+            device.destroy_shader_module(ptr);
         }
     }
 }

@@ -8,7 +8,7 @@ mod schema;
 mod text;
 
 pub use self::{
-    bitmap::{bake_bitmap, bake_font_bitmap},
+    bitmap::{bake_atlas, bake_bitmap, bake_font_bitmap},
     blob::bake_blob,
     lang::bake_lang,
     mesh::bake_mesh,
@@ -18,10 +18,7 @@ pub use self::{
     text::bake_text,
 };
 
-use std::{
-    env::current_dir,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 // Gets the fully rooted asset path from a given path. If path is relative, then
 // dir is used to determine the relative parent.

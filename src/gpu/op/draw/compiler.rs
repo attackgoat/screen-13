@@ -46,7 +46,7 @@ impl<'c> Iterator for Compilation<'c, '_> {
     type Item = Instruction<'c>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        None
+        Some(Self::Item::Stop)
     }
 }
 
@@ -86,7 +86,7 @@ impl Compiler {
 
         Compilation {
             compiler: self,
-            idx: 0,
+            idx,
             mesh_refs,
             mesh_sets: Default::default(),
             stages: Stages::empty(),
@@ -251,6 +251,7 @@ where
     cmds
 }*/
 
+// TODO: This is fun but completely not needed; should just store a few bools and move on with life?
 bitflags! {
     /// NOTE: I don't bother adding the mesh types here because the only usage of this
     /// is to detect the need to instantiate graphics pipelines; however for the mesh

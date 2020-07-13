@@ -15,7 +15,7 @@ use {
 #[derive(Debug)]
 pub struct RenderPass {
     driver: Driver,
-    render_pass: Option<<_Backend as Backend>::RenderPass>,
+    ptr: Option<<_Backend as Backend>::RenderPass>,
 }
 
 impl RenderPass {
@@ -36,14 +36,13 @@ impl RenderPass {
     {
         let render_pass = {
             let device = driver.as_ref().borrow();
-            let ctor = || unsafe {
-                device
-                    .create_render_pass(attachments, subpasses, dependencies)
-                    .unwrap()
+            let ctor = || {
+                unsafe { device.create_render_pass(attachments, subpasses, dependencies) }.unwrap()
             };
 
             #[cfg(debug_assertions)]
             let mut render_pass = ctor();
+
             #[cfg(not(debug_assertions))]
             let render_pass = ctor();
 
@@ -57,15 +56,24 @@ impl RenderPass {
 
         Self {
             driver,
-            render_pass: Some(render_pass),
+            ptr: Some(render_pass),
         }
     }
 
-    pub fn subpass(&self, index: u8) -> Subpass<'_, _Backend> {
-        Subpass {
-            index,
-            main_pass: self,
-        }
+    pub fn subpass(main_pass: &Self, index: u8) -> Subpass<'_, _Backend> {
+        Subpass { index, main_pass }
+    }
+}
+
+impl AsMut<<_Backend as Backend>::RenderPass> for RenderPass {
+    fn as_mut(&mut self) -> &mut <_Backend as Backend>::RenderPass {
+        &mut *self
+    }
+}
+
+impl AsRef<<_Backend as Backend>::RenderPass> for RenderPass {
+    fn as_ref(&self) -> &<_Backend as Backend>::RenderPass {
+        &*self
     }
 }
 
@@ -73,23 +81,23 @@ impl Deref for RenderPass {
     type Target = <_Backend as Backend>::RenderPass;
 
     fn deref(&self) -> &Self::Target {
-        self.render_pass.as_ref().unwrap()
+        self.ptr.as_ref().unwrap()
     }
 }
 
 impl DerefMut for RenderPass {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.render_pass.as_mut().unwrap()
+        self.ptr.as_mut().unwrap()
     }
 }
 
 impl Drop for RenderPass {
     fn drop(&mut self) {
+        let device = self.driver.as_ref().borrow();
+        let ptr = self.ptr.take().unwrap();
+
         unsafe {
-            self.driver
-                .as_ref()
-                .borrow()
-                .destroy_render_pass(self.render_pass.take().unwrap());
+            device.destroy_render_pass(ptr);
         }
     }
 }

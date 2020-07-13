@@ -6,25 +6,24 @@ mod spotlight;
 mod sunlight;
 
 pub use self::{
-    command::Command,
+    command::{Command, LineCommand, LineVertex, MeshCommand},
     compiler::{Compilation, Compiler},
 };
 
 use {
     self::{
-        command::MeshCommand,
         compiler::Stages,
         graphics_buf::GraphicsBuffer,
         instruction::{LightInstruction, LineInstruction, MeshInstruction},
         spotlight::SpotlightCommand,
         sunlight::SunlightCommand,
     },
-    super::{mat4_to_mat3_u32_array, mat4_to_u32_array, wait_for_fence, Op},
+    super::{wait_for_fence, Op},
     crate::{
         camera::Camera,
         color::TRANSPARENT_BLACK,
         gpu::{
-            driver::{CommandPool, Driver, Fence, Framebuffer2d, PhysicalDevice},
+            driver::{CommandPool, Device, Driver, Fence, Framebuffer2d, PhysicalDevice},
             pool::{Graphics, GraphicsMode, Lease, MeshType, RenderPassMode},
             Data, PoolRef, TextureRef,
         },
@@ -73,8 +72,10 @@ where
     I: AsRef<<_Backend as Backend>::Image>,
 {
     fn wait(&self) {
+        let device = self.driver.borrow();
+
         unsafe {
-            wait_for_fence(&self.driver.borrow(), &self.fence);
+            wait_for_fence(&device, &self.fence);
         }
     }
 }
@@ -113,7 +114,7 @@ where
         let driver = Driver::clone(pool_ref.driver());
 
         // Allocate the command buffer
-        let family = driver.borrow().get_queue_family(QUEUE_TYPE);
+        let family = Device::queue_family(&driver.borrow(), QUEUE_TYPE);
         let mut cmd_pool = pool_ref.cmd_pool(family);
 
         let (dims, format) = {
@@ -262,12 +263,13 @@ where
         }
     }
 
-    // TODO: Return slice!
-    fn mesh_vertex_push_consts(world_view_proj: Mat4, world: Mat4) -> Vec<u32> {
-        let mut res = Vec::with_capacity(100);
-        res.extend(&mat4_to_u32_array(world_view_proj));
-        res.extend(&mat4_to_mat3_u32_array(world));
-        res
+    // TODO: Use new method of unsafe as_ref pointer cast
+    fn mesh_vertex_push_consts(_world_view_proj: Mat4, _world: Mat4) -> Vec<u32> {
+        // let res = Vec::with_capacity(100);
+        // // res.extend(&mat4_bits(world_view_proj));
+        // // res.extend(&mat4_to_mat3_u32_array(world));
+        // res
+        todo!();
     }
 
     // TODO: Specialize this function for cases where we don't do any 3D work and so we don't need the full g-buffer
@@ -302,7 +304,9 @@ where
 
             self.submit_begin(&viewport);
 
-            // Step 1: Lines
+            // Step 1: Bitmaps with z <= 0
+
+            // Step 2: Lines
             if instr.is_line() {
                 self.submit_line_begin(&viewport, instrs.view_proj());
 
@@ -319,7 +323,7 @@ where
                 }
             }
 
-            // Step 2: Meshes (...the opaque ones...)
+            // Step 3: Meshes (...the opaque ones...)
             if instr.is_mesh() {
                 self.submit_mesh_begin();
 
@@ -336,7 +340,7 @@ where
                 }
             }
 
-            // Step 3: Light
+            // Step 4: Light
             if instr.is_light() {
                 self.submit_light_begin();
 
@@ -353,7 +357,7 @@ where
                 }
             }
 
-            // Step 4: Meshes (...the transparent ones...)
+            // Step 5: Meshes (...the transparent ones...)
             if instr.is_mesh() {
                 self.submit_mesh_begin();
 
@@ -369,6 +373,8 @@ where
                     }
                 }
             }
+
+            // Step 6: Bitmaps with z > 0
 
             self.submit_finish();
         };
@@ -473,7 +479,9 @@ where
 
     unsafe fn submit_light_begin(&mut self) {}
 
-    unsafe fn submit_light(&mut self, instr: &LightInstruction) {
+    unsafe fn submit_light(&mut self, _instr: &LightInstruction) {
+        let _ = ShaderStageFlags::VERTEX;
+
         // Step 3: Render sunlight
         // self.cmd_buf.next_subpass(SubpassContents::Inline);
         // if self.cmds[idx].is_sunlight() {
@@ -535,18 +543,18 @@ where
         // idx
     }
 
-    unsafe fn submit_line_begin(&mut self, viewport: &Viewport, view_proj: Mat4) {
+    unsafe fn submit_line_begin(&mut self, viewport: &Viewport, _view_proj: Mat4) {
         let graphics = self.graphics_line.as_ref().unwrap();
 
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
         self.cmd_buf.set_scissors(0, &[viewport.rect]);
         self.cmd_buf.set_viewports(0, &[viewport.clone()]);
-        self.cmd_buf.push_graphics_constants(
-            graphics.layout(),
-            ShaderStageFlags::VERTEX,
-            0,
-            &mat4_to_u32_array(view_proj),
-        );
+        // self.cmd_buf.push_graphics_constants(
+        //     graphics.layout(),
+        //     ShaderStageFlags::VERTEX,
+        //     0,
+        //     &mat4_bits(view_proj),
+        // );
     }
 
     unsafe fn submit_line<'i>(&mut self, instr: &LineInstruction<'i>) {
@@ -568,7 +576,7 @@ where
         self.cmd_buf.bind_vertex_buffers(
             0,
             once((
-                buf.as_ref().as_ref(),
+                &*buf.as_ref(),
                 SubRange {
                     offset: *buf_len,
                     size: Some(len),
@@ -589,13 +597,13 @@ where
         // self.cmd_buf.set_viewports(0, &[self.viewport()]);
     }
 
-    unsafe fn submit_mesh_descriptor_set(&mut self, set: usize) {
+    unsafe fn submit_mesh_descriptor_set(&mut self, _set: usize) {
         // let mesh = self.mesh.as_ref().unwrap();
 
         // bind_graphics_descriptor_set(&mut self.cmd_buf, mesh.layout(), mesh.desc_set(set));
     }
 
-    unsafe fn submit_mesh(&mut self, instr: &MeshInstruction<'_>) {
+    unsafe fn submit_mesh(&mut self, _instr: &MeshInstruction<'_>) {
         // let mesh = self.mesh.as_ref().unwrap();
 
         // self.cmd_buf.bind_vertex_buffers(
@@ -631,7 +639,7 @@ where
         // self.cmd_buf.set_viewports(0, &[self.viewport()]);
     }
 
-    unsafe fn submit_transparency_descriptor_set(&mut self, set: usize) {
+    unsafe fn submit_transparency_descriptor_set(&mut self, _set: usize) {
         // let transparency = self.transparency.as_ref().unwrap();
 
         // bind_graphics_descriptor_set(
@@ -641,7 +649,7 @@ where
         // );
     }
 
-    unsafe fn submit_transparency(&mut self, model_view_proj: Mat4, cmd: MeshCommand<'_>) {
+    unsafe fn submit_transparency(&mut self, _model_view_proj: Mat4, _cmd: MeshCommand<'_>) {
         // let transparency = self.transparency.as_ref().unwrap();
 
         // self.cmd_buf.bind_vertex_buffers(
@@ -672,6 +680,7 @@ where
     unsafe fn submit_finish(&mut self) {
         let pool = self.pool.borrow();
         let driver = pool.driver();
+        let mut device = driver.borrow_mut();
         let mut dst = self.dst.borrow_mut();
         let mut material = self.graphics_buf.material().borrow_mut();
         let dims = dst.dims();
@@ -716,7 +725,7 @@ where
         self.cmd_buf.finish();
 
         // Submit
-        driver.borrow_mut().get_queue_mut(QUEUE_TYPE).submit(
+        Device::queue_mut(&mut device, QUEUE_TYPE).submit(
             Submission {
                 command_buffers: once(&self.cmd_buf),
                 wait_semaphores: empty(),

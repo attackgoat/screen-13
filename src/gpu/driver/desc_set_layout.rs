@@ -10,8 +10,8 @@ use {
 
 #[derive(Debug)]
 pub struct DescriptorSetLayout {
-    set_layout: Option<<_Backend as Backend>::DescriptorSetLayout>,
     driver: Driver,
+    ptr: Option<<_Backend as Backend>::DescriptorSetLayout>,
 }
 
 impl DescriptorSetLayout {
@@ -40,15 +40,21 @@ impl DescriptorSetLayout {
         };
 
         Self {
-            set_layout: Some(set_layout),
             driver,
+            ptr: Some(set_layout),
         }
+    }
+}
+
+impl AsMut<<_Backend as Backend>::DescriptorSetLayout> for DescriptorSetLayout {
+    fn as_mut(&mut self) -> &mut <_Backend as Backend>::DescriptorSetLayout {
+        &mut *self
     }
 }
 
 impl AsRef<<_Backend as Backend>::DescriptorSetLayout> for DescriptorSetLayout {
     fn as_ref(&self) -> &<_Backend as Backend>::DescriptorSetLayout {
-        self.set_layout.as_ref().unwrap()
+        &*self
     }
 }
 
@@ -56,23 +62,23 @@ impl Deref for DescriptorSetLayout {
     type Target = <_Backend as Backend>::DescriptorSetLayout;
 
     fn deref(&self) -> &Self::Target {
-        self.set_layout.as_ref().unwrap()
+        self.ptr.as_ref().unwrap()
     }
 }
 
 impl DerefMut for DescriptorSetLayout {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.set_layout.as_mut().unwrap()
+        self.ptr.as_mut().unwrap()
     }
 }
 
 impl Drop for DescriptorSetLayout {
     fn drop(&mut self) {
+        let device = self.driver.as_ref().borrow();
+        let ptr = self.ptr.take().unwrap();
+
         unsafe {
-            self.driver
-                .as_ref()
-                .borrow()
-                .destroy_descriptor_set_layout(self.set_layout.take().unwrap());
+            device.destroy_descriptor_set_layout(ptr);
         }
     }
 }

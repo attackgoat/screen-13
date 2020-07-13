@@ -7,7 +7,7 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/attackgoat/screen-13"
 homepage = "https://github.com/attackgoat/screen-13"
-documentation = "http://doc.rust-lang.org/screen-13"
+documentation = "https://docs.rs/screen-13"
 keywords = ["gamedev" ]
 categories = ["game-engines"]
 description = """
@@ -34,9 +34,8 @@ log = "0.4"
 num-format = "0.4.0"
 pretty_env_logger = "0.4"
 
-# TODO: Baking deps here
+# TODO: Baking deps here https://github.com/rust-lang/cargo/issues/1982 maybe use features and [[bin]] required features?
 fbx_direct = "0.6"
-glob = "0.3"
 sha1 = "0.6"
 shaderc = "0.6"
 
@@ -44,8 +43,8 @@ shaderc = "0.6"
 lazy_static = "1.4"
 shaderc = "0.6"
 
-# [dev-dependencies]
-# TODO: Things for test and example code!
+[dev-dependencies]
+rand = "0.7"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"
@@ -56,9 +55,9 @@ console_log = "0.2"
 version = "0.5"
 features = ["wgl"]
 
-[target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
-version = "0.3"
-features = ["console", "Document", "Element", "HtmlElement", "Node", "Window"]
+# [target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
+# version = "0.3"
+# features = ["console", "Document", "Element", "HtmlElement", "Node", "Window"]
 
 [target.'cfg(any(target_os = "freebsd", target_os = "dragonfly", target_os = "linux", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
 gfx-impl = { version = "0.5", features = ["x11"], package = "gfx-backend-vulkan" }

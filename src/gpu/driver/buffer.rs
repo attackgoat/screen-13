@@ -7,9 +7,9 @@ use {
 
 #[derive(Debug)]
 pub struct Buffer {
-    mem: Memory,
-    buffer: Option<<_Backend as Backend>::Buffer>,
     driver: Driver,
+    mem: Memory,
+    ptr: Option<<_Backend as Backend>::Buffer>,
 }
 
 impl Buffer {
@@ -30,31 +30,35 @@ impl Buffer {
             }
 
             let requirements = unsafe { device.get_buffer_requirements(&buffer) };
-            let mem_type = device.get_mem_type(requirements.type_mask, properties);
-            let mem = Memory::new(Driver::clone(&driver), mem_type, requirements.size);
+            let mem_ty = device.mem_ty(requirements.type_mask, properties);
+            let mem = Memory::new(Driver::clone(&driver), mem_ty, requirements.size);
 
-            unsafe {
-                device.bind_buffer_memory(&mem, 0, &mut buffer).unwrap();
-            }
+            unsafe { device.bind_buffer_memory(&mem, 0, &mut buffer) }.unwrap();
 
             (buffer, mem)
         };
 
         Self {
             mem,
-            buffer: Some(buffer),
+            ptr: Some(buffer),
             driver,
         }
     }
 
-    pub fn mem(&self) -> &Memory {
-        &self.mem
+    pub fn mem(buf: &Self) -> &Memory {
+        &buf.mem
+    }
+}
+
+impl AsMut<<_Backend as Backend>::Buffer> for Buffer {
+    fn as_mut(&mut self) -> &mut <_Backend as Backend>::Buffer {
+        &mut *self
     }
 }
 
 impl AsRef<<_Backend as Backend>::Buffer> for Buffer {
     fn as_ref(&self) -> &<_Backend as Backend>::Buffer {
-        self.buffer.as_ref().unwrap()
+        &*self
     }
 }
 
@@ -62,22 +66,23 @@ impl Deref for Buffer {
     type Target = <_Backend as Backend>::Buffer;
 
     fn deref(&self) -> &Self::Target {
-        self.buffer.as_ref().unwrap()
+        self.ptr.as_ref().unwrap()
     }
 }
 
 impl DerefMut for Buffer {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.buffer.as_mut().unwrap()
+        self.ptr.as_mut().unwrap()
     }
 }
 
 impl Drop for Buffer {
     fn drop(&mut self) {
+        let device = self.driver.borrow();
+        let ptr = self.ptr.take().unwrap();
+
         unsafe {
-            self.driver
-                .borrow()
-                .destroy_buffer(self.buffer.take().unwrap());
+            device.destroy_buffer(ptr);
         }
     }
 }

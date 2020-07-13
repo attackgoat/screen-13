@@ -29,8 +29,8 @@ where
 {
     __: PhantomData<D>,
     driver: Driver,
-    image: Option<<_Backend as Backend>::Image>,
     mem: Memory,
+    ptr: Option<<_Backend as Backend>::Image>,
 }
 
 /// Specialized new function for 2D images
@@ -61,29 +61,24 @@ impl Image<U2> {
                 )
                 .unwrap();
 
-            // TODO: Fix the over borrowing that happens below
+            let device = driver.borrow();
 
             #[cfg(debug_assertions)]
-            driver.borrow().set_image_name(&mut image, name);
+            device.set_image_name(&mut image, name);
 
-            let req = driver.borrow().get_image_requirements(&image);
-            let mem_type = driver
-                .borrow()
-                .get_mem_type(req.type_mask, Properties::DEVICE_LOCAL);
+            let req = device.get_image_requirements(&image);
+            let mem_type = device.mem_ty(req.type_mask, Properties::DEVICE_LOCAL);
             let mem = Memory::new(Driver::clone(&driver), mem_type, req.size);
-            driver
-                .borrow()
-                .bind_image_memory(&mem, 0, &mut image)
-                .unwrap();
+            device.bind_image_memory(&mem, 0, &mut image).unwrap();
 
             (image, mem)
         };
 
-        Image {
-            __: PhantomData,
+        Self {
+            __: Default::default(),
             driver,
-            image: Some(image),
             mem,
+            ptr: Some(image),
         }
     }
 }
@@ -93,7 +88,7 @@ where
     D: Dim,
 {
     fn as_mut(&mut self) -> &mut <_Backend as Backend>::Image {
-        self.image.as_mut().unwrap()
+        &mut *self
     }
 }
 
@@ -102,7 +97,7 @@ where
     D: Dim,
 {
     fn as_ref(&self) -> &<_Backend as Backend>::Image {
-        self.image.as_ref().unwrap()
+        &*self
     }
 }
 
@@ -113,7 +108,7 @@ where
     type Target = <_Backend as Backend>::Image;
 
     fn deref(&self) -> &Self::Target {
-        self.image.as_ref().unwrap()
+        self.ptr.as_ref().unwrap()
     }
 }
 
@@ -122,7 +117,7 @@ where
     D: Dim,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.image.as_mut().unwrap()
+        self.ptr.as_mut().unwrap()
     }
 }
 
@@ -131,10 +126,11 @@ where
     D: Dim,
 {
     fn drop(&mut self) {
+        let device = self.driver.borrow();
+        let ptr = self.ptr.take().unwrap();
+
         unsafe {
-            self.driver
-                .borrow()
-                .destroy_image(self.image.take().unwrap());
+            device.destroy_image(ptr);
         }
     }
 }

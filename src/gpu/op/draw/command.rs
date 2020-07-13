@@ -2,57 +2,58 @@ use {
     super::{Material, SpotlightCommand, SunlightCommand},
     crate::{
         color::AlphaColor,
-        gpu::{Bitmap, Mesh},
-        math::{Mat4, Rect, RectF, Vec3},
+        gpu::Mesh,
+        math::{Mat4, Vec3},
     },
 };
 
 #[derive(Debug)]
-pub struct BitmapCommand<'a> {
-    pub bitmap: &'a Bitmap,
-    /// The floating-point area to draw the bitmap
-    pub dst: RectF,
-    /// The fixed-point area of the bitmap to draw
-    pub src: Rect,
-    /// Values greater than zero draw above lines and meshes while values less than or equal to zero draw below. Bitmaps are sorted
-    /// relative to each other as well.
-    pub z: isize,
-}
-
-#[derive(Debug)]
 pub enum Command<'a> {
-    Bitmap(BitmapCommand<'a>),
     Line(LineCommand),
     Mesh(MeshCommand<'a>),
     Spotlight(SpotlightCommand),
     Sunlight(SunlightCommand),
 }
 
-impl<'a> From<(&'a Bitmap, Rect, RectF, isize)> for Command<'a> {
-    fn from((bitmap, src, dst, z): (&'a Bitmap, Rect, RectF, isize)) -> Self {
-        Self::Bitmap(BitmapCommand {
-            bitmap,
-            dst,
-            src,
-            z,
+// TODO: This file defines three ways of writing new commands: from a Command function, from a tuple, or from the structure funtions. Do we need all these?
+
+impl<'a> Command<'a> {
+    pub fn line<S: Into<Vec3>, SC: Into<AlphaColor>, E: Into<Vec3>, EC: Into<AlphaColor>>(
+        start: S,
+        start_color: SC,
+        end: E,
+        end_color: EC,
+        width: f32,
+    ) -> Self {
+        Self::Line(LineCommand {
+            vertices: [
+                LineVertex {
+                    color: start_color.into(),
+                    pos: start.into(),
+                },
+                LineVertex {
+                    color: end_color.into(),
+                    pos: end.into(),
+                },
+            ],
+            width,
         })
     }
 }
 
-// TODO: I dislike these 'from tuple' things, maybe just a bunch of easy-to-understand functions which create the commands would be nicer?
-impl<'a> From<(f32, Vec3, AlphaColor, Vec3, AlphaColor)> for Command<'a> {
+impl<'a> From<(Vec3, AlphaColor, Vec3, AlphaColor, f32)> for Command<'a> {
     fn from(
-        (width, start, start_color, end, end_color): (f32, Vec3, AlphaColor, Vec3, AlphaColor),
+        (start, start_color, end, end_color, width): (Vec3, AlphaColor, Vec3, AlphaColor, f32),
     ) -> Self {
         Self::Line(LineCommand {
             vertices: [
                 LineVertex {
                     color: start_color,
-                    position: start,
+                    pos: start,
                 },
                 LineVertex {
                     color: end_color,
-                    position: end,
+                    pos: end,
                 },
             ],
             width,
@@ -99,7 +100,7 @@ impl LineCommand {
 #[derive(Debug)]
 pub struct LineVertex {
     pub color: AlphaColor,
-    pub position: Vec3,
+    pub pos: Vec3,
 }
 
 #[derive(Clone, Debug)]

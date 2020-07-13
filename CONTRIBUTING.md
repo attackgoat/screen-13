@@ -19,21 +19,22 @@ All code must:
 - Be modern Rust code (currently 2018 edition, latest stable compiler)
 - Pass `cargo fmt` and `cargo clippy` (debug and release) with no warnings
 - Support required platforms: Linux, Mac, Windows, Web Assembly
+- Use only `crates.io`-published crates
 
 All code should:
 
-- Use only `crates.io`-published crates
-- Provide useful documentation
-- Expect future platforms: Android, iOS
 - Follow the [guidelines](https://rust-lang.github.io/api-guidelines/)
+- Provide useful documentation and comments, including private code
+- Expect future platforms: Android, iOS
 
 Most code should:
 
-- Create a new file or module for `struct`'s with non-trait `impl` blocks
-- Group all `use` statements into one nested `use` statement; where possible
+- Create a new file for `struct`'s with non-trait `impl` blocks
+- Group all `use` statements into one nested `use` statement; except for visibility modifiers and conditional compilation attributes
 - No star-style `use` statements except in demo code which is intended to be concise 
 - Prefer alphabetical sorting of code items unless there is a well-known non-alpha context
 - Use `// TODO` or `// HACK` comments as needed when breaking these guidelines
+- Make small `unsafe` blocks as needed, separating the safe and unsafe parts for clarity
 
 ### Human Requirements
 

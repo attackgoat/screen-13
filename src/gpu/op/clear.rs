@@ -3,7 +3,7 @@ use {
     crate::{
         color::AlphaColor,
         gpu::{
-            driver::{CommandPool, Driver, Fence, PhysicalDevice},
+            driver::{CommandPool, Device, Driver, Fence, PhysicalDevice},
             pool::{Lease, Pool},
             TextureRef,
         },
@@ -24,34 +24,6 @@ use {
 const QUEUE_TYPE: QueueType = QueueType::Graphics;
 
 #[derive(Debug)]
-struct Clear<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
-    op: ClearOp<I>, // TODO: Dump the extras?
-}
-
-impl<I> Drop for Clear<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
-    fn drop(&mut self) {
-        self.wait();
-    }
-}
-
-impl<I> Op for Clear<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
-    fn wait(&self) {
-        unsafe {
-            wait_for_fence(&*self.op.driver.borrow(), &self.op.fence);
-        }
-    }
-}
-
-#[derive(Debug)]
 pub struct ClearOp<I>
 where
     I: AsRef<<_Backend as Backend>::Image>,
@@ -69,7 +41,7 @@ where
     I: AsRef<<_Backend as Backend>::Image>,
 {
     pub fn new(pool: &mut Pool, texture: &TextureRef<I>) -> Self {
-        let family = pool.driver().borrow().get_queue_family(QUEUE_TYPE);
+        let family = Device::queue_family(&pool.driver().borrow(), QUEUE_TYPE);
         let mut cmd_pool = pool.cmd_pool(family);
         Self {
             clear_value: AlphaColor::rgba(0, 0, 0, 0).into(),
@@ -94,10 +66,11 @@ where
             self.submit();
         };
 
-        Clear { op: self }
+        self
     }
 
     unsafe fn submit(&mut self) {
+        let mut device = self.driver.borrow_mut();
         let mut texture = self.texture.borrow_mut();
 
         // Begin
@@ -126,13 +99,35 @@ where
         self.cmd_buf.finish();
 
         // Submit
-        self.driver.borrow_mut().get_queue_mut(QUEUE_TYPE).submit(
+        Device::queue_mut(&mut device, QUEUE_TYPE).submit(
             Submission {
                 command_buffers: once(&self.cmd_buf),
                 wait_semaphores: empty(),
                 signal_semaphores: empty::<&<_Backend as Backend>::Semaphore>(),
             },
-            Some(self.fence.as_ref()),
+            Some(&self.fence),
         );
+    }
+}
+
+impl<I> Drop for ClearOp<I>
+where
+    I: AsRef<<_Backend as Backend>::Image>,
+{
+    fn drop(&mut self) {
+        self.wait();
+    }
+}
+
+impl<I> Op for ClearOp<I>
+where
+    I: AsRef<<_Backend as Backend>::Image>,
+{
+    fn wait(&self) {
+        let device = self.driver.borrow();
+
+        unsafe {
+            wait_for_fence(&device, &self.fence);
+        }
     }
 }

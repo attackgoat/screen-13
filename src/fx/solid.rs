@@ -22,7 +22,7 @@ impl Screen for Solid {
         frame
     }
 
-    fn update(self: Box<Self>, gpu: &Gpu, input: &Input) -> DynScreen {
+    fn update(self: Box<Self>, _: &Gpu, _: &Input) -> DynScreen {
         self
     }
 }

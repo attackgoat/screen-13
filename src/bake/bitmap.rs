@@ -2,12 +2,22 @@ use {
     super::{
         get_filename_key, get_path,
         pak_log::{LogId, PakLog},
-        schema::{Asset, BitmapAsset, FontBitmapAsset},
+        schema::{Asset, AtlasAsset, BitmapAsset, FontBitmapAsset},
     },
     crate::pak::{Bitmap, BitmapId, PakBuf},
     image::{buffer::ConvertBuffer, open as image_open, DynamicImage, RgbImage, RgbaImage},
     std::path::Path,
 };
+
+pub fn bake_atlas<P1: AsRef<Path>, P2: AsRef<Path>>(
+    _project_dir: P1,
+    _asset_filename: P2,
+    _altas_asset: &AtlasAsset,
+    _pak: &mut PakBuf,
+    _log: &mut PakLog,
+) -> BitmapId {
+    todo!();
+}
 
 pub fn bake_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
     project_dir: P1,
@@ -110,30 +120,30 @@ fn pixels<P: AsRef<Path>>(filename: P, force_opaque: bool) -> (bool, u32, Vec<u8
 }
 
 fn pixels_bgr(image: &RgbImage) -> Vec<u8> {
-    let mut buffer = Vec::with_capacity(image.width() as usize * image.height() as usize * 3);
+    let mut buf = Vec::with_capacity(image.width() as usize * image.height() as usize * 3);
     for y in 0..image.height() {
         for x in 0..image.width() {
             let pixel = image.get_pixel(x, image.height() - y - 1);
-            buffer.push(pixel[2]);
-            buffer.push(pixel[1]);
-            buffer.push(pixel[0]);
+            buf.push(pixel[2]);
+            buf.push(pixel[1]);
+            buf.push(pixel[0]);
         }
     }
 
-    buffer
+    buf
 }
 
 fn pixels_bgra(image: &RgbaImage) -> Vec<u8> {
-    let mut buffer = Vec::with_capacity(image.width() as usize * image.height() as usize * 4);
+    let mut buf = Vec::with_capacity(image.width() as usize * image.height() as usize * 4);
     for y in 0..image.height() {
         for x in 0..image.width() {
             let pixel = image.get_pixel(x, image.height() - y - 1);
-            buffer.push(pixel[2]);
-            buffer.push(pixel[1]);
-            buffer.push(pixel[0]);
-            buffer.push(pixel[3]);
+            buf.push(pixel[2]);
+            buf.push(pixel[1]);
+            buf.push(pixel[0]);
+            buf.push(pixel[3]);
         }
     }
 
-    buffer
+    buf
 }

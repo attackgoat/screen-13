@@ -1,9 +1,14 @@
 use {
-    gfx_hal::{image::Extent, pso::Rect, window::Extent2D},
+    gfx_hal::{
+        image::{Extent, Offset},
+        pso::Rect,
+        window::Extent2D,
+    },
+    serde::{Deserialize, Serialize},
     winit::dpi::PhysicalSize,
 };
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct Coord<T>
 where
     T: Sized,
@@ -22,12 +27,12 @@ where
 }
 
 impl Coord<i32> {
-    pub const fn zero() -> Self {
-        Self { x: 0, y: 0 }
-    }
+    pub const ZERO: Self = Self { x: 0, y: 0 };
 }
 
 impl Coord<u32> {
+    pub const ZERO: Self = Self { x: 0, y: 0 };
+
     pub const fn as_extent(self, depth: u32) -> Extent {
         Extent {
             width: self.x,
@@ -36,21 +41,21 @@ impl Coord<u32> {
         }
     }
 
-    pub const fn as_rect(self) -> Rect {
-        self.as_rect_xy(Self::zero())
-    }
-
-    pub const fn as_rect_xy(self, xy: Self) -> Rect {
-        Rect {
-            x: xy.x as _,
-            y: xy.y as _,
-            w: self.x as _,
-            h: self.y as _,
+    pub const fn as_offset(self, z: i32) -> Offset {
+        Offset {
+            x: self.x as _,
+            y: self.y as _,
+            z,
         }
     }
 
-    pub const fn zero() -> Self {
-        Self { x: 0, y: 0 }
+    pub const fn as_rect(self, pos: Self) -> Rect {
+        Rect {
+            x: pos.x as _,
+            y: pos.y as _,
+            w: self.x as _,
+            h: self.y as _,
+        }
     }
 }
 
@@ -59,6 +64,15 @@ impl From<PhysicalSize<u32>> for Coord<u32> {
         Self {
             x: val.width,
             y: val.height,
+        }
+    }
+}
+
+impl From<Coord<i32>> for Coord<f32> {
+    fn from(val: Coord<i32>) -> Self {
+        Self {
+            x: val.x as _,
+            y: val.y as _,
         }
     }
 }
@@ -86,6 +100,17 @@ impl From<Coord<u32>> for PhysicalSize<u32> {
         Self {
             height: val.y,
             width: val.x,
+        }
+    }
+}
+
+impl From<Coord<u32>> for Rect {
+    fn from(val: Coord<u32>) -> Self {
+        Self {
+            h: val.y as _,
+            w: val.x as _,
+            x: 0,
+            y: 0,
         }
     }
 }

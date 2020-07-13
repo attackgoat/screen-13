@@ -3,8 +3,8 @@ use {
     crate::{
         gpu::{
             driver::{
-                bind_compute_descriptor_set, change_channel_type, CommandPool, Driver, Fence,
-                Image2d, PhysicalDevice,
+                bind_compute_descriptor_set, change_channel_type, CommandPool, ComputePipeline,
+                Device, Driver, Fence, Image2d, PhysicalDevice,
             },
             pool::{Compute, ComputeMode, Lease},
             Data, PoolRef, TextureRef,
@@ -15,7 +15,7 @@ use {
     gfx_hal::{
         buffer::{Access as BufferAccess, SubRange, Usage as BufferUsage},
         command::{CommandBuffer, CommandBufferFlags, Level},
-        device::Device,
+        device::Device as _,
         format::{ChannelType, Format},
         image::{Access as ImageAccess, Layout, Tiling, Usage as ImageUsage},
         pool::CommandPool as _,
@@ -55,8 +55,10 @@ impl Drop for Bitmap {
 
 impl Op for Bitmap {
     fn wait(&self) {
+        let device = self.op.driver.borrow();
+
         unsafe {
-            wait_for_fence(&self.op.driver.borrow(), &self.op.fence);
+            wait_for_fence(&device, &self.op.fence);
         }
     }
 }
@@ -157,7 +159,7 @@ impl BitmapOp {
         );
 
         // Allocate the command buffer
-        let family = pool_ref.driver().borrow().get_queue_family(QUEUE_TYPE);
+        let family = Device::queue_family(&pool_ref.driver().borrow(), QUEUE_TYPE);
         let mut cmd_pool = pool_ref.cmd_pool(family);
 
         Self {
@@ -188,7 +190,11 @@ impl BitmapOp {
     }
 
     unsafe fn submit(&mut self) {
+        let mut device = self.driver.borrow_mut();
         let mut texture = self.texture.borrow_mut();
+        let pipeline = self.compute.pipeline();
+        let layout = ComputePipeline::layout(&pipeline);
+        let desc_set = self.compute.desc_set(0);
 
         // Begin
         self.cmd_buf
@@ -209,30 +215,23 @@ impl BitmapOp {
             PipelineStage::COMPUTE_SHADER,
             ImageAccess::SHADER_WRITE,
         );
-        self.cmd_buf.bind_compute_pipeline(&self.compute.pipeline());
-        self.cmd_buf.push_compute_constants(
-            self.compute.pipeline().layout(),
-            0,
-            &[self.pixel_buf_stride >> 2],
-        );
-        bind_compute_descriptor_set(
-            &mut self.cmd_buf,
-            self.compute.pipeline().layout(),
-            self.compute.desc_set(0),
-        );
+        self.cmd_buf.bind_compute_pipeline(pipeline);
+        self.cmd_buf
+            .push_compute_constants(layout, 0, &[self.pixel_buf_stride >> 2]);
+        bind_compute_descriptor_set(&mut self.cmd_buf, layout, desc_set);
         self.cmd_buf.dispatch([self.dispatch_x, self.dims.y, 1]);
 
         // Finish
         self.cmd_buf.finish();
 
         // Submit
-        self.driver.borrow_mut().get_queue_mut(QUEUE_TYPE).submit(
+        Device::queue_mut(&mut device, QUEUE_TYPE).submit(
             Submission {
                 command_buffers: once(&self.cmd_buf),
                 wait_semaphores: empty(),
                 signal_semaphores: empty::<&<_Backend as Backend>::Semaphore>(),
             },
-            Some(self.fence.as_ref()),
+            Some(&self.fence),
         );
     }
 
@@ -247,7 +246,7 @@ impl BitmapOp {
                     binding: 0,
                     array_offset: 0,
                     descriptors: once(Descriptor::Buffer(
-                        self.pixel_buf.as_ref().as_ref(),
+                        &*self.pixel_buf.as_ref(),
                         SubRange {
                             offset: 0,
                             size: Some(self.pixel_buf_len),

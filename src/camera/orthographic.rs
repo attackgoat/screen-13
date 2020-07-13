@@ -2,6 +2,8 @@ use crate::math::{Mat4, Vec3};
 
 use super::Camera;
 
+// TODO: Should creating a 2D camera (such as in the examples) be a constructor function?
+
 #[derive(Clone, Copy)]
 pub struct Orthographic {
     eye: Vec3,
@@ -12,10 +14,20 @@ pub struct Orthographic {
 }
 
 impl Orthographic {
-    pub fn new(eye: Vec3, proj: Mat4, target: Vec3) -> Self {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        eye: Vec3,
+        target: Vec3,
+        left: f32,
+        right: f32,
+        bottom: f32,
+        top: f32,
+        near: f32,
+        far: f32,
+    ) -> Self {
         let mut result = Self {
             eye,
-            proj,
+            proj: Mat4::orthographic_rh_gl(left, right, bottom, top, near, far),
             target,
             view: Mat4::identity(),
             view_inv: Mat4::identity(),
