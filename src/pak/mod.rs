@@ -138,10 +138,12 @@ where
 
     pub(crate) fn read_mesh<K: AsRef<str>>(&mut self, key: K) -> Mesh {
         let mesh = self.buf.mesh_ref(key);
+        let bounds = mesh.bounds();
         let (pos, len) = mesh.as_ref();
 
         Mesh::new(
             mesh.bitmaps().to_vec(),
+            bounds,
             read_exact(&mut self.reader, pos, len),
         )
     }

@@ -36,9 +36,8 @@ impl<T> DerefMut for Lease<T> {
 
 impl<T> Drop for Lease<T> {
     fn drop(&mut self) {
-        self.pool
-            .as_ref()
-            .borrow_mut()
-            .push_front(self.item.take().unwrap());
+        // Return item to the pool
+        let item = self.item.take().unwrap();
+        self.pool.as_ref().borrow_mut().push_front(item);
     }
 }

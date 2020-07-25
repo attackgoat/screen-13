@@ -221,7 +221,16 @@ where
             self.submit();
         };
 
-        self
+        GradientOpSubmission {
+            back_buf: self.back_buf,
+            cmd_buf: self.cmd_buf,
+            cmd_pool: self.cmd_pool,
+            dst: self.dst,
+            fence: self.fence,
+            frame_buf: self.frame_buf,
+            graphics: self.graphics,
+            pool: self.pool,
+        }
     }
 
     unsafe fn submit(&mut self) {
@@ -279,7 +288,7 @@ where
                         layers: 0..1,
                     },
                     dst_offset: Offset::ZERO,
-                    extent: dims.as_extent(1),
+                    extent: dims.as_extent_with_depth(1),
                 }),
             );
         }
@@ -356,7 +365,7 @@ where
                     layers: 0..1,
                 },
                 dst_offset: Offset::ZERO,
-                extent: dims.as_extent(1),
+                extent: dims.as_extent_with_depth(1),
             }),
         );
 
@@ -375,7 +384,21 @@ where
     }
 }
 
-impl<I> Drop for GradientOp<I>
+pub struct GradientOpSubmission<I>
+where
+    I: AsRef<<_Backend as Backend>::Image>,
+{
+    back_buf: Lease<TextureRef<Image2d>>,
+    cmd_buf: <_Backend as Backend>::CommandBuffer,
+    cmd_pool: Lease<CommandPool>,
+    dst: TextureRef<I>,
+    fence: Lease<Fence>,
+    frame_buf: Framebuffer2d,
+    graphics: Lease<Graphics>,
+    pool: PoolRef,
+}
+
+impl<I> Drop for GradientOpSubmission<I>
 where
     I: AsRef<<_Backend as Backend>::Image>,
 {
@@ -384,7 +407,7 @@ where
     }
 }
 
-impl<I> Op for GradientOp<I>
+impl<I> Op for GradientOpSubmission<I>
 where
     I: AsRef<<_Backend as Backend>::Image>,
 {

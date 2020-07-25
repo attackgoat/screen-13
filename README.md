@@ -1,12 +1,15 @@
 # Screen 13
 
+[![Crates.io](https://img.shields.io/crates/v/screen-13.svg)](https://crates.io/crates/screen-13)
+[![Docs.rs](https://docs.rs/screen-13/badge.svg)](https://docs.rs/screen-13)
+
 Screen 13 is an easy-to-use 3D game engine in the spirit of QBasic.
 
 ## Overview
 
 Games made using Screen 13 are built as regular executables using a design-time asset baking process. Screen 13 provides all asset-baking logic and aims to, but currently does not, provide wide support for texture formats, vertex formats, and other associated data. Baked assets are stored in `.pak` files.
 
-### Asset Baking
+## Asset Baking
 
 Asset baking is the industry-standard process of converting files from their native file formats into a runtime-ready format that is optimized for both speed and size. Currently Screen 13 uses a single file (or single HTTP/S endpoint) for all runtime assets. Assets are baked from `.txt` and `.json` files which you can find examples of in the `examples/content` directory.
 

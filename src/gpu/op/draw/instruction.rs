@@ -2,7 +2,7 @@ use crate::gpu::Mesh;
 
 const LINE_VERTEX_LEN: usize = 28;
 
-// Commands specified by the client become Instructions here
+// Commands specified by the client become Instructions
 pub enum Instruction<'i> {
     Light(LightInstruction),
     Line(LineInstruction<'i>),
@@ -121,18 +121,28 @@ pub enum LightInstruction {
     Sun,
 }
 
-pub struct LineInstruction<'i> {
+pub enum LineInstruction<'i> {
+    Draw(DrawLineInstruction<'i>),
+    SetWidth(f32),
+}
+
+pub struct DrawLineInstruction<'i> {
     pub data: &'i [u8],
     pub width: f32,
 }
 
-impl LineInstruction<'_> {
+impl DrawLineInstruction<'_> {
     pub fn vertices(&self) -> u32 {
         (self.data.len() / LINE_VERTEX_LEN) as _
     }
 }
 
-pub struct MeshInstruction<'i> {
+pub enum MeshInstruction<'i> {
+    BindDescriptorSet(usize),
+    Draw(DrawMeshInstruction<'i>),
+}
+
+pub struct DrawMeshInstruction<'i> {
     pub material: u32,
     pub mesh: &'i Mesh,
     pub transform: &'i [u8],

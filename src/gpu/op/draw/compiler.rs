@@ -1,32 +1,27 @@
 use {
-    super::{instruction::Instruction, Command, Material},
-    crate::{camera::Camera, gpu::Mesh, math::Mat4},
+    super::{instruction::Instruction, Command},
+    crate::{
+        camera::Camera,
+        gpu::{Mesh, Texture2d},
+        math::Mat4,
+    },
     bitflags::bitflags,
+    std::cmp::Ordering,
 };
 
-/// The Compiler struct uses Asm 'assembly' instances internally to
-/// store the operations needed to generate the correct instructions
-#[derive(Debug)]
-enum Asm {
-    Line(LineAsm),
-    Mesh(MeshAsm),
-    // Spotlight(SpotlightCommand),
-    // Sunlight(SunlightCommand),
-    // Transparency((f32, MeshCommand<'a>)),
-}
-
 pub struct Compilation<'c, 'm> {
+    cmds: &'m [Command<'m>],
     compiler: &'c Compiler,
     idx: usize,
-    mesh_refs: Vec<&'m Mesh>,
     mesh_sets: MeshSets,
     stages: Stages,
     view_proj: Mat4,
 }
 
 impl Compilation<'_, '_> {
-    pub fn line_buf_len(&self) -> usize {
-        self.compiler.line_buf.len()
+    /// Returns the accumulated line vertex data for this compilation. It is a blob of all requested lines jammed together.
+    pub fn line_buf(&self) -> &[u8] {
+        &self.compiler.line_buf
     }
 
     pub fn mesh_sets_required(&self) -> &MeshSets {
@@ -50,107 +45,187 @@ impl<'c> Iterator for Compilation<'c, '_> {
     }
 }
 
-/// Compiles a series of drawing commands into renderable instructions. Uses an assembly language of Asm instances
-/// in order to describe the state.
+/// Compiles a series of drawing commands into renderable instructions. The purpose of this structure is
+/// two-fold:
+/// - Reduce per-draw allocations with line and spotlight caches (they are not cleared after each use)
+/// - Store references to the in-use mesh textures during rendering (this cache is cleared after use)
 #[derive(Debug, Default)]
 pub struct Compiler {
-    code: Vec<Asm>,
-    line_buf: Vec<u8>,
+    line_buf: Vec<u8>, // Needs the same treatment as spotlights
+    mesh_textures: Vec<Texture2d>,
+    spotlight_buf: Vec<u8>, // This will store the vertex data for individually rendered spotlights - it will be persistent across frames and it will need to store a seperate list of existing spotlights (to bin search for a match) and which indices make up that light, is it new, etc, so we can not have to re-upload spotlight data frame-to-frame. Will need a maximum size or something which dequeues stale items.
 }
 
 impl Compiler {
-    pub fn compile<'a, 'c, C>(
+    /// Compiles a given set of commands into a ready-to-draw list of instructions. Performs these steps:
+    /// - Cull commands which might not be visible to the camera
+    /// - Sort commands into predictable groupings (opaque meshes, lights, transparent meshes, lines)
+    /// - Sort mesh commands further by texture(s) in order to reduce descriptor set switching/usage
+    /// - Prepare a single buffer of all line vertex data which can be copied to the GPU all at once
+    pub fn compile<'a, 'c>(
         &'a mut self,
         camera: &impl Camera,
-        cmds: &mut [C],
-    ) -> Compilation<'a, 'c>
-    where
-        C: Into<Command<'c>>,
-    {
-        let _len = cmds.len();
-        let view_proj = camera.view() * camera.projection();
-        let mesh_refs = vec![];
-        // for cmd in cmds {
-        //     match cmd.into() {
-        //         Command::Mesh(cmd) => mesh_refs.push(cmd.mesh),
-        //         _ => (),
-        //     }
-        // }
+        cmds: &'c mut [Command<'c>],
+    ) -> Compilation<'a, 'c> {
+        assert!(self.line_buf.is_empty());
+        assert!(self.mesh_textures.is_empty());
 
-        // let camera_planes = vec![
-        //     //Plane::new(normal: Unit<Vector<N>>)
-        // ];
+        // Cull any commands which are not within the camera frustum. Use `len` to keep track of the number of active `cmds`.
+        let mut idx = 0;
+        let mut len = cmds.len();
+        while idx < len {
+            if match &cmds[idx] {
+                Command::Mesh(cmd) => camera.intersects_sphere(cmd.mesh.bounds),
+                Command::PointLight(cmd) => camera.intersects_sphere(cmd.bounds()),
+                Command::RectLight(cmd) => camera.intersects_sphere(cmd.bounds()),
+                Command::Spotlight(cmd) => camera.intersects_cone(cmd.bounds()),
+                _ => {
+                    // Lines and Sunlight do not get culled; we assume they are visible and draw them
+                    // TODO: Test the effect of adding in line culling with lots and lots of lines, make it a feature or argument?
+                    true
+                }
+            } {
+                // The command at `idx` has been culled and won't be drawn (put it at the end of the list/no-mans land)
+                len -= 1;
+                cmds.swap(idx, len);
+            } else {
+                // The command at `idx` is visible and will draw normally
+                idx += 1;
+            }
+        }
 
-        let idx = 0;
-        // while idx < len {}
+        // Keep track of the stages needed to draw these commands
+        // TODO: Roll this into one of the other loops
+        let mut stages = Stages::empty();
+        for cmd in &cmds[0..len] {
+            match cmd {
+                Command::Line(_) => stages |= Stages::LINE,
+                Command::Mesh(_) => {
+                    // TODO: Actual logic!
+                    stages |= Stages::MESH_SINGLE_TEX;
+                }
+                Command::PointLight(_) => stages |= Stages::POINTLIGHT,
+                _ => todo!(),
+            }
+        }
+
+        // Assign a relative measure of distance from the camera for all mesh commands which allows us to submit draw commands
+        // in the best order for the z-buffering algorithm (we use a depth map with comparisons that discard covered fragments)
+        let to_eye = -camera.eye();
+        for cmd in &mut cmds[0..len] {
+            if let Command::Mesh(cmd) = cmd {
+                // Distance from camera (squared; for comparison only)
+                cmd.camera_z = cmd.transform.transform_vector3(to_eye).length_squared();
+            }
+        }
+
+        // TODO: Sorting meshes by material also - helpful or not?
+        // Sort the commands into a predictable and efficient order for drawing
+        cmds[0..len].sort_unstable_by(|lhs, rhs| {
+            // Shorthand - we only care about equal or not-equal here
+            use Ordering::Equal as eq;
+
+            let lhs_idx = Self::group_idx(lhs);
+            let rhs_idx = Self::group_idx(rhs);
+
+            // Compare group indices
+            match lhs_idx.cmp(&rhs_idx) {
+                eq => match lhs {
+                    Command::Line(lhs) => {
+                        let rhs = rhs.as_line_cmd();
+
+                        // Compare line widths
+                        lhs.width.partial_cmp(&rhs.width).unwrap_or(eq)
+                    }
+                    Command::Mesh(lhs) => {
+                        let rhs = rhs.as_mesh_cmd();
+                        let lhs_idx = Self::mesh_group_idx(lhs.mesh);
+                        let rhs_idx = Self::mesh_group_idx(rhs.mesh);
+
+                        // Compare mesh group indices
+                        match lhs_idx.cmp(&rhs_idx) {
+                            eq => {
+                                for (lhs_tex, rhs_tex) in
+                                    lhs.mesh.textures().zip(rhs.mesh.textures())
+                                {
+                                    let lhs_idx = self.mesh_texture_idx(lhs_tex);
+                                    let rhs_idx = self.mesh_texture_idx(rhs_tex);
+
+                                    // Compare mesh texture indices
+                                    match lhs_idx.cmp(&rhs_idx) {
+                                        eq => continue,
+                                        ne => return ne,
+                                    }
+                                }
+
+                                // Compare z-order (sorting in closer to further)
+                                lhs.camera_z.partial_cmp(&rhs.camera_z).unwrap_or(eq)
+                            }
+                            ne => ne,
+                        }
+                    }
+                    _ => eq,
+                },
+                ne => ne,
+            }
+        });
 
         Compilation {
+            cmds: &cmds[0..len],
             compiler: self,
-            idx,
-            mesh_refs,
+            idx: 0,
             mesh_sets: Default::default(),
-            stages: Stages::empty(),
-            view_proj,
+            stages,
+            view_proj: camera.view() * camera.projection(),
         }
     }
 
-    pub fn reset(&mut self) {
-        self.code.clear();
+    /// All commands sort into groups: first meshes (all types), then sunlights, rect lights, spotlights, point lights, followed by lines.
+    fn group_idx(cmd: &Command) -> usize {
+        // TODO: Transparencies?
+        match cmd {
+            Command::Mesh(_) => 0,
+            Command::Sunlight(_) => 1,
+            Command::RectLight(_) => 2,
+            Command::Spotlight(_) => 3,
+            Command::PointLight(_) => 4,
+            Command::Line(_) => 5,
+        }
     }
 
-    // fn mesh_dual_tex_sets_required<'c, C>(mut cmds: C) -> usize
-    // where
-    //     C: Iterator<Item = &'c Instruction<'c>>,
-    // {
-    //     let first_cmd = cmds.next().unwrap().as_mesh();
-    //     if first_cmd.is_none() {
-    //         return 0;
-    //     }
+    /// Meshes sort into sub-groups: first animated, then single texture, followed by dual texture.
+    fn mesh_group_idx(mesh: &Mesh) -> usize {
+        // TODO: Transparencies?
+        if mesh.is_animated() {
+            0
+        } else if mesh.is_single_texture() {
+            1
+        } else {
+            2
+        }
+    }
 
-    //     let mut sets = 1;
-    //     // TODO: let mut diffuse_id = first_cmd.unwrap().mesh.diffuse_id;
-    //     // while let Some(cmd) = cmds.next().unwrap().as_mesh() {
-    //     //     if cmd.mesh.diffuse_id != diffuse_id {
-    //     //         diffuse_id = cmd.mesh.diffuse_id;
-    //     //         sets += 1;
-    //     //     }
-    //     // }
+    /// Returns the index of a given texture in our `mesh texture` list, adding it as needed.
+    fn mesh_texture_idx(&mut self, tex: &Texture2d) -> usize {
+        // TODO: Use `weak_into_raw` feature when available
+        // HACK: This is the same crappy sorting problem/solution as WriteOp
+        for (idx, val) in self.mesh_textures.iter().enumerate() {
+            if Texture2d::ptr_eq(tex, val) {
+                return idx;
+            }
+        }
 
-    //     sets
-    // }
+        // Not in the list - add and return the new index
+        let len = self.mesh_textures.len();
+        self.mesh_textures.push(Texture2d::clone(tex));
+        len
+    }
 
-    // fn mesh_single_tex_sets_required<'c, C>(mut cmds: C) -> usize
-    // where
-    //     C: Iterator<Item = &'c Instruction<'c>>,
-    // {
-    //     let first_cmd = cmds.next().unwrap().as_mesh();
-    //     if first_cmd.is_none() {
-    //         return 0;
-    //     }
-
-    //     let mut sets = 1;
-    //     // TODO: let mut diffuse_id = first_cmd.unwrap().mesh.diffuse_id;
-    //     // while let Some(cmd) = cmds.next().unwrap().as_mesh() {
-    //     //     if cmd.mesh.diffuse_id != diffuse_id {
-    //     //         diffuse_id = cmd.mesh.diffuse_id;
-    //     //         sets += 1;
-    //     //     }
-    //     // }
-
-    //     sets
-    // }
-}
-
-#[derive(Debug)]
-enum LineAsm {
-    Draw(usize),
-    SetSize(f32),
-}
-
-#[derive(Debug)]
-enum MeshAsm {
-    Draw((usize, Mat4)),
-    SetMaterial(Material),
+    /// Resets the internal caches so that this compiler may be reused by calling the `compile` function.
+    pub fn reset(&mut self) {
+        self.line_buf.clear();
+        self.mesh_textures.clear();
+    }
 }
 
 #[derive(Default)]
@@ -160,111 +235,22 @@ pub struct MeshSets {
     pub trans: usize,
 }
 
-/*/ Converts a bunch of client-specified drawing commands into drawable instructions
-pub fn compile<'c, C>(camera: &impl Camera, cmds: impl Iterator<Item = C>) -> Vec<Instruction<'c>>
-where
-    C: Into<Command<'c>>,
-{
-    // Step 1: Filter out commands which are not within the camera frustum
-    // TODO!
-
-    // Step 2: Convert to Instructions, which adds required info for Mesh types
-    let to_eye = -camera.eye();
-    let mut cmds = cmds.map(|cmd| match cmd.into() {
-        Command::Line(cmd) => Instruction::Line(cmd),
-        Command::Sunlight(cmd) => Instruction::Sunlight(cmd),
-        Command::Mesh(cmd) => {
-            // Distance from camera (squared; for comparison only)
-            let z = cmd
-                .transform
-                .transform_vector3(to_eye)
-                .length_squared();
-
-            if cmd.mesh.has_alpha {
-                Instruction::Mesh((z, cmd))
-            } else {
-                Instruction::Transparency((z, cmd))
-            }
-        }
-        Command::Spotlight(cmd) => Instruction::Spotlight(cmd),
-    })
-    .collect::<Vec<_>>();
-
-    // Step 3: Sort instructions into draw order
-    // - Lines (by width)
-    // - Single-Tex Meshes (by texture)
-    // - Dual-Tex Meshes (by textures)
-    // - Lights
-    // - Transparent Meshes (by texture)
-    cmds.sort_unstable_by(|lhs: &Instruction, rhs: &Instruction| -> Ordering {
-        use {
-            Instruction::{Line, Mesh, Spotlight, Sunlight, Transparency},
-            Ordering::{Equal, Greater, Less},
-        };
-        match lhs {
-            Line(lhs) => match rhs {
-                Line(rhs) => lhs.width.partial_cmp(&rhs.width).unwrap(),
-                _ => Less,
-            },
-            Mesh((lhs_z, lhs)) => match rhs {
-                Line(_) => Greater,
-                Mesh((rhs_z, rhs)) => {
-                    match lhs.mesh.bitmaps.len().cmp(&rhs.mesh.bitmaps.len()) {
-                        Equal => {
-                            for idx in 0..lhs.mesh.bitmaps.len() {
-                                let res = lhs.mesh.bitmaps[idx].0.cmp(&rhs.mesh.bitmaps[idx].0);
-                                if res != Equal {
-                                    return res;
-                                }
-                            }
-
-                            lhs_z.partial_cmp(rhs_z).unwrap()
-                        }
-                        Greater => Greater,
-                        Less => Less,
-                    }
-                }
-                _ => Less,
-            },
-            Sunlight(_) => match rhs {
-                Mesh(_) | Spotlight(_) => Greater,
-                Sunlight(_) => Equal,
-                _ => Less,
-            },
-            Spotlight(_) => match rhs {
-                Mesh(_) => Greater,
-                Spotlight(_) => Equal,
-                _ => Less,
-            },
-            Transparency((lhs, _)) => match rhs {
-                // TODO: Sort like mesh!
-                Transparency((rhs, _)) => lhs.partial_cmp(rhs).unwrap(),
-                _ => Less,
-            },
-            _ => panic!(),
-        }
-    });
-
-    // Step 4: Use a stop command to indicate we're done
-    cmds.push(Instruction::Stop);
-
-    cmds
-}*/
-
-// TODO: This is fun but completely not needed; should just store a few bools and move on with life?
 bitflags! {
-    /// NOTE: I don't bother adding the mesh types here because the only usage of this
-    /// is to detect the need to instantiate graphics pipelines; however for the mesh
-    /// types we use the 'sets > 0' test to see if we need one.
     pub struct Stages: usize {
         const LINE = Self::bit(0);
-        const SPOTLIGHT = Self::bit(1);
-        const SUNLIGHT = Self::bit(2);
+        const MESH_ANIMATED = Self::bit(1);
+        const MESH_DUAL_TEX = Self::bit(2);
+        const MESH_SINGLE_TEX = Self::bit(3);
+        const MESH_TRANSPARENT = Self::bit(4);
+        const POINTLIGHT = Self::bit(5);
+        const RECTLIGHT = Self::bit(6);
+        const SPOTLIGHT = Self::bit(7);
+        const SUNLIGHT = Self::bit(8);
     }
 }
 
 impl Stages {
-    /// Returns a usize with the given zero-index bit set to one
+    /// Returns a usize with the given zero-indexed bit set to one
     const fn bit(b: usize) -> usize {
         1 << b
     }
@@ -282,11 +268,12 @@ mod test {
         let camera = {
             let eye = vec3(-10.0, 0.0, 0.0);
             let target = vec3(10.0, 0.0, 0.0);
-            let aspect = 45.0;
-            let fov = 1.0;
+            let width = 320.0;
+            let height = 200.0;
+            let fov = 45.0;
             let near = 1.0;
             let far = 100.0;
-            Perspective::new(eye, target, aspect, fov, near, far)
+            Perspective::new_view(eye, target, near..far, fov, (width, height))
         };
         let mut compiler = Compiler::default();
         let mut cmds: Vec<Command> = vec![];

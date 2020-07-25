@@ -26,21 +26,13 @@ pub fn bake_scene<P1: AsRef<Path>, P2: AsRef<Path>>(
             keys.push(item.key.clone());
         }
 
-        scene.push(SceneRef {
-            id: item.id.clone(),
-            key: item.key.clone(),
-            position: (
-                item.position().x(),
-                item.position().y(),
-                item.position().z(),
-            ),
-            roll_pitch_yaw: (
-                item.roll_pitch_yaw().x(),
-                item.roll_pitch_yaw().y(),
-                item.roll_pitch_yaw().z(),
-            ),
+        scene.push(SceneRef::new(
+            item.id.clone(),
+            item.key.clone(),
+            item.position(),
+            item.roll_pitch_yaw(),
             tags,
-        })
+        ));
     }
 
     // Pak this asset

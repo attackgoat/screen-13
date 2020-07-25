@@ -23,7 +23,6 @@ use {
 
 const QUEUE_TYPE: QueueType = QueueType::Graphics;
 
-#[derive(Debug)]
 pub struct ClearOp<I>
 where
     I: AsRef<<_Backend as Backend>::Image>,
@@ -66,7 +65,13 @@ where
             self.submit();
         };
 
-        self
+        ClearOpSubmission {
+            cmd_buf: self.cmd_buf,
+            cmd_pool: self.cmd_pool,
+            driver: self.driver,
+            fence: self.fence,
+            texture: self.texture,
+        }
     }
 
     unsafe fn submit(&mut self) {
@@ -110,7 +115,18 @@ where
     }
 }
 
-impl<I> Drop for ClearOp<I>
+pub struct ClearOpSubmission<I>
+where
+    I: AsRef<<_Backend as Backend>::Image>,
+{
+    cmd_buf: <_Backend as Backend>::CommandBuffer,
+    cmd_pool: Lease<CommandPool>,
+    driver: Driver,
+    fence: Lease<Fence>,
+    texture: TextureRef<I>,
+}
+
+impl<I> Drop for ClearOpSubmission<I>
 where
     I: AsRef<<_Backend as Backend>::Image>,
 {
@@ -119,7 +135,7 @@ where
     }
 }
 
-impl<I> Op for ClearOp<I>
+impl<I> Op for ClearOpSubmission<I>
 where
     I: AsRef<<_Backend as Backend>::Image>,
 {

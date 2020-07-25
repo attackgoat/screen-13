@@ -3,7 +3,7 @@ mod data;
 /// A collection of smart-pointer types used internally to operate the GFX-HAL API.
 mod driver;
 
-/// A collection of operation implementations mostly used internally to fulfill the Render API.
+/// A collection of operation implementations used internally to fulfill the Render API.
 mod op;
 
 /// A collection of resource pool types used internally to cache GFX-HAL types.
@@ -14,7 +14,7 @@ mod texture;
 
 pub use self::{
     op::{
-        draw::{Command, LineCommand, LineVertex, Material},
+        draw::{Command, Material},
         Bitmap, Font, Write, WriteMode,
     },
     render::{Operation, Render},
@@ -34,7 +34,7 @@ use {
         pool::{Lease, Pool},
     },
     crate::{
-        math::Extent,
+        math::{Extent, Sphere},
         pak::{BitmapId, Pak},
         Error,
     },
@@ -306,6 +306,7 @@ impl Gpu {
 
         Mesh {
             bitmaps,
+            bounds: mesh.bounds(),
             has_alpha,
             vertex_buf,
             vertex_count: vertices.len() as _,
@@ -355,7 +356,48 @@ impl Drop for Gpu {
 #[derive(Debug)]
 pub struct Mesh {
     bitmaps: Vec<(BitmapId, BitmapRef)>,
+    bounds: Sphere,
     has_alpha: bool,
     vertex_buf: Lease<Data>,
     vertex_count: u32,
+}
+
+// TODO: Not sure about *anything* in this impl block. Maybe `textures`, that one is pretty cool.
+impl Mesh {
+    pub fn bounds(&self) -> Sphere {
+        self.bounds
+    }
+
+    pub(crate) fn is_animated(&self) -> bool {
+        // TODO: This needs to be implemented in some fashion - skys the limit here what should we do? hmmmm
+        false
+    }
+
+    pub(crate) fn is_single_texture(&self) -> bool {
+        self.bitmaps.len() == 1
+    }
+
+    pub(crate) fn textures(&self) -> impl Iterator<Item = &Texture2d> {
+        Textures {
+            bitmaps: &self.bitmaps,
+            idx: 0,
+        }
+    }
+}
+
+struct Textures<'a> {
+    bitmaps: &'a Vec<(BitmapId, BitmapRef)>,
+    idx: usize,
+}
+
+impl<'a> Iterator for Textures<'a> {
+    type Item = &'a Texture2d;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.idx < self.bitmaps.len() {
+            Some(&self.bitmaps[self.idx].1)
+        } else {
+            None
+        }
+    }
 }

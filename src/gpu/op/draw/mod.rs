@@ -2,11 +2,9 @@ mod command;
 mod compiler;
 mod graphics_buf;
 mod instruction;
-mod spotlight;
-mod sunlight;
 
 pub use self::{
-    command::{Command, LineCommand, LineVertex, MeshCommand},
+    command::Command,
     compiler::{Compilation, Compiler},
 };
 
@@ -15,19 +13,17 @@ use {
         compiler::Stages,
         graphics_buf::GraphicsBuffer,
         instruction::{LightInstruction, LineInstruction, MeshInstruction},
-        spotlight::SpotlightCommand,
-        sunlight::SunlightCommand,
     },
     super::{wait_for_fence, Op},
     crate::{
         camera::Camera,
-        color::TRANSPARENT_BLACK,
+        color::{AlphaColor, Color, TRANSPARENT_BLACK},
         gpu::{
             driver::{CommandPool, Device, Driver, Fence, Framebuffer2d, PhysicalDevice},
             pool::{Graphics, GraphicsMode, Lease, MeshType, RenderPassMode},
-            Data, PoolRef, TextureRef,
+            Data, Mesh, PoolRef, Texture2d, TextureRef,
         },
-        math::Mat4,
+        math::{Cone, Coord, Extent, Mat4, Sphere, Vec3},
     },
     gfx_hal::{
         buffer::{Access as BufferAccess, SubRange, Usage as BufferUsage},
@@ -37,79 +33,49 @@ use {
             Access as ImageAccess, Layout, Offset, SubresourceLayers, SubresourceRange, ViewKind,
         },
         pool::CommandPool as _,
-        pso::{PipelineStage, Rect, ShaderStageFlags, Viewport},
+        pso::{PipelineStage, ShaderStageFlags, Viewport},
         queue::{CommandQueue as _, QueueType, Submission},
         Backend,
     },
     gfx_impl::Backend as _Backend,
-    std::iter::{empty, once},
+    std::{
+        iter::{empty, once},
+        ops::Range,
+    },
 };
+
+// TODO: Remove!
+const _0: BufferAccess = BufferAccess::MEMORY_WRITE;
+const _1: Extent = Extent::ZERO;
+const _2: SubRange = SubRange::WHOLE;
 
 const QUEUE_TYPE: QueueType = QueueType::Graphics;
 
-pub struct Draw<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
-    cmd_pool: Lease<CommandPool>,
-    driver: Driver,
-    dst: TextureRef<I>,
-    fence: Lease<Fence>,
-    frame_buf: Framebuffer2d,
-}
-
-impl<I> Drop for Draw<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
-    fn drop(&mut self) {
-        self.wait();
-    }
-}
-
-impl<I> Op for Draw<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
-    fn wait(&self) {
-        let device = self.driver.borrow();
-
-        unsafe {
-            wait_for_fence(&device, &self.fence);
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct DrawOp<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
+pub struct DrawOp {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
-    dst: TextureRef<I>,
+    compiler: Lease<Compiler>,
+    dst: Texture2d,
     fence: Lease<Fence>,
     frame_buf: Framebuffer2d,
     graphics_buf: GraphicsBuffer,
     graphics_line: Option<Lease<Graphics>>,
+    graphics_mesh_animated: Option<Lease<Graphics>>,
     graphics_mesh_dual_tex: Option<Lease<Graphics>>,
     graphics_mesh_single_tex: Option<Lease<Graphics>>,
-    graphics_mesh_trans: Option<Lease<Graphics>>,
+    graphics_mesh_transparent: Option<Lease<Graphics>>,
     graphics_spotlight: Option<Lease<Graphics>>,
     graphics_sunlight: Option<Lease<Graphics>>,
-    line_buf: Option<(Lease<Data>, u64)>,
+    line_buf: Option<(Lease<Data>, u64)>, // TODO: Remove the size tuple item
     #[cfg(debug_assertions)]
     name: String,
     pool: PoolRef,
 }
 
-impl<I> DrawOp<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
+impl DrawOp {
     /// # Safety
     /// None
-    pub fn new(#[cfg(debug_assertions)] name: &str, pool: &PoolRef, dst: &TextureRef<I>) -> Self {
+    pub fn new(#[cfg(debug_assertions)] name: &str, pool: &PoolRef, dst: &Texture2d) -> Self {
         let mut pool_ref = pool.borrow_mut();
         let driver = Driver::clone(pool_ref.driver());
 
@@ -168,14 +134,16 @@ where
         Self {
             cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
             cmd_pool,
+            compiler: pool_ref.compiler(),
             dst: TextureRef::clone(dst),
             fence: pool_ref.fence(),
             frame_buf,
             graphics_buf,
             graphics_line: None,
+            graphics_mesh_animated: None,
             graphics_mesh_dual_tex: None,
             graphics_mesh_single_tex: None,
-            graphics_mesh_trans: None,
+            graphics_mesh_transparent: None,
             graphics_spotlight: None,
             graphics_sunlight: None,
             line_buf: None,
@@ -187,44 +155,53 @@ where
 
     /// Sets up the draw op for rendering using the given compilation results by initializing the
     /// required graphics pipeline instances.
-    fn with_compilation(&mut self, compilation: &Compilation<'_, '_>) {
+    fn with_compilation(&mut self, compilation: &Compilation) {
         let mut pool = self.pool.borrow_mut();
 
-        // Setup the mesh graphics pipelines
-        let sets = compilation.mesh_sets_required();
-        if sets.single_tex > 0 {
+        // We lazy-load the number of required mesh descriptor sets
+        let mut mesh_sets = None;
+        let mut set_mesh_sets = || {
+            if mesh_sets.is_none() {
+                mesh_sets = Some(compilation.mesh_sets_required());
+            };
+        };
+
+        // Setup the graphics pipelines
+        let stages = compilation.stages_required();
+        if stages.contains(Stages::MESH_SINGLE_TEX) {
+            set_mesh_sets();
             self.graphics_mesh_single_tex = Some(pool.graphics_sets(
                 #[cfg(debug_assertions)]
                 &format!("{} (Mesh/SingleTex)", &self.name),
                 GraphicsMode::Mesh(MeshType::SingleTexture),
                 RenderPassMode::Draw,
                 0,
-                sets.single_tex,
+                mesh_sets.as_ref().unwrap().single_tex,
             ));
         }
-        if sets.dual_tex > 0 {
+
+        if stages.contains(Stages::MESH_DUAL_TEX) {
             self.graphics_mesh_dual_tex = Some(pool.graphics_sets(
                 #[cfg(debug_assertions)]
                 &format!("{} (Mesh/DualTex)", &self.name),
                 GraphicsMode::Mesh(MeshType::DualTexture),
                 RenderPassMode::Draw,
                 0,
-                sets.dual_tex,
+                mesh_sets.as_ref().unwrap().dual_tex,
             ));
         }
-        if sets.trans > 0 {
-            self.graphics_mesh_trans = Some(pool.graphics_sets(
+
+        if stages.contains(Stages::MESH_TRANSPARENT) {
+            self.graphics_mesh_transparent = Some(pool.graphics_sets(
                 #[cfg(debug_assertions)]
                 &format!("{} (Mesh/Trans)", &self.name),
                 GraphicsMode::Mesh(MeshType::Transparent),
                 RenderPassMode::Draw,
                 2,
-                sets.trans,
+                mesh_sets.as_ref().unwrap().trans,
             ));
         }
 
-        // Setup other graphics pipelines
-        let stages = compilation.stages_required();
         if stages.contains(Stages::LINE) {
             self.graphics_line = Some(pool.graphics(
                 #[cfg(debug_assertions)]
@@ -237,12 +214,13 @@ where
                 pool.data_usage(
                     #[cfg(debug_assertions)]
                     &format!("{} (Line Buf)", &self.name),
-                    compilation.line_buf_len() as _,
+                    compilation.line_buf().len() as _,
                     BufferUsage::STORAGE,
                 ),
                 0,
             ));
         }
+
         if stages.contains(Stages::SPOTLIGHT) {
             self.graphics_spotlight = Some(pool.graphics(
                 #[cfg(debug_assertions)]
@@ -252,6 +230,7 @@ where
                 0,
             ));
         }
+
         if stages.contains(Stages::SUNLIGHT) {
             self.graphics_sunlight = Some(pool.graphics(
                 #[cfg(debug_assertions)]
@@ -272,22 +251,21 @@ where
         todo!();
     }
 
-    // TODO: Specialize this function for cases where we don't do any 3D work and so we don't need the full g-buffer
-    pub fn record<'c>(mut self, camera: &impl Camera, cmds: &mut [Command<'c>]) -> Draw<I> {
-        let dims = self.dst.borrow().dims();
+    // TODO: Returns concrete type instead of impl Op because https://github.com/rust-lang/rust/issues/42940
+    pub fn record<'c>(
+        mut self,
+        camera: &impl Camera,
+        cmds: &'c mut [Command<'c>],
+    ) -> DrawOpSubmission {
+        let dims: Coord = self.dst.borrow().dims().into();
         let viewport = Viewport {
-            rect: Rect {
-                x: 0,
-                y: 0,
-                w: dims.x as _,
-                h: dims.y as _,
-            },
+            rect: dims.as_rect_at(Coord::ZERO),
             depth: 0.0..1.0,
         };
 
         // Use a compiler to figure out rendering instructions without allocating
         // memory per rendering command. The compiler caches code between frames.
-        let (mut compiler, driver) = {
+        let (mut compiler, _driver) = {
             let mut pool = self.pool.borrow_mut();
             let driver = Driver::clone(pool.driver());
             let compiler = pool.compiler();
@@ -300,30 +278,12 @@ where
         self.with_compilation(&instrs);
 
         unsafe {
+            // NOTE: There will always be at least one instruction (Stop)
             let mut instr = instrs.next().unwrap();
 
             self.submit_begin(&viewport);
 
-            // Step 1: Bitmaps with z <= 0
-
-            // Step 2: Lines
-            if instr.is_line() {
-                self.submit_line_begin(&viewport, instrs.view_proj());
-
-                loop {
-                    // This line...
-                    let line = instr.as_line().unwrap();
-                    self.submit_line(line);
-
-                    // Next line...
-                    instr = instrs.next().unwrap();
-                    if !instr.is_line() {
-                        break;
-                    }
-                }
-            }
-
-            // Step 3: Meshes (...the opaque ones...)
+            // Step 1: Opaque meshes (single and dual texture)
             if instr.is_mesh() {
                 self.submit_mesh_begin();
 
@@ -357,7 +317,7 @@ where
                 }
             }
 
-            // Step 5: Meshes (...the transparent ones...)
+            // Step 5: Transparent meshes
             if instr.is_mesh() {
                 self.submit_mesh_begin();
 
@@ -374,17 +334,49 @@ where
                 }
             }
 
-            // Step 6: Bitmaps with z > 0
+            // Step 2: Lines
+            if instr.is_line() {
+                self.submit_line_begin(&viewport, instrs.view_proj());
+
+                loop {
+                    // This line...
+                    let line = instr.as_line().unwrap();
+                    self.submit_line(line);
+
+                    // Next line...
+                    instr = instrs.next().unwrap();
+                    if !instr.is_line() {
+                        break;
+                    }
+                }
+            }
 
             self.submit_finish();
         };
 
-        Draw {
+        let line_buf = if let Some((line_buf, _)) = self.line_buf {
+            Some(line_buf)
+        } else {
+            None
+        };
+
+        DrawOpSubmission {
+            cmd_buf: self.cmd_buf,
             cmd_pool: self.cmd_pool,
-            driver,
+            compiler: self.compiler,
             dst: self.dst,
             fence: self.fence,
             frame_buf: self.frame_buf,
+            graphics_buf: self.graphics_buf,
+            graphics_line: self.graphics_line,
+            graphics_mesh_animated: self.graphics_mesh_animated,
+            graphics_mesh_dual_tex: self.graphics_mesh_dual_tex,
+            graphics_mesh_single_tex: self.graphics_mesh_single_tex,
+            graphics_mesh_transparent: self.graphics_mesh_transparent,
+            graphics_spotlight: self.graphics_spotlight,
+            graphics_sunlight: self.graphics_sunlight,
+            line_buf,
+            pool: self.pool,
         }
     }
 
@@ -433,7 +425,7 @@ where
                     layers: 0..1,
                 },
                 dst_offset: Offset::ZERO,
-                extent: dims.as_extent(1),
+                extent: dims.as_extent_with_depth(1),
             }),
         );
 
@@ -557,36 +549,38 @@ where
         // );
     }
 
-    unsafe fn submit_line<'i>(&mut self, instr: &LineInstruction<'i>) {
-        let len: u64 = instr.data.len() as _;
-        let vertices = instr.vertices();
-        let (ref mut buf, ref mut buf_len) = self.line_buf.as_mut().unwrap();
-        let range = *buf_len..*buf_len + len;
+    unsafe fn submit_line_width<'i>(&mut self, _instr: &LineInstruction<'i>) {}
 
-        // Copy this line data into the buffer
-        buf.map_range_mut(range.clone()).copy_from_slice(instr.data);
-        buf.copy_cpu_range(
-            &mut self.cmd_buf,
-            PipelineStage::VERTEX_INPUT,
-            BufferAccess::VERTEX_BUFFER_READ,
-            range,
-        );
+    unsafe fn submit_line<'i>(&mut self, _instr: &LineInstruction<'i>) {
+        // let len: u64 = instr.data.len() as _;
+        // let vertices = instr.vertices();
+        // let (ref mut buf, ref mut buf_len) = self.line_buf.as_mut().unwrap();
+        // let range = *buf_len..*buf_len + len;
 
-        self.cmd_buf.set_line_width(instr.width);
-        self.cmd_buf.bind_vertex_buffers(
-            0,
-            once((
-                &*buf.as_ref(),
-                SubRange {
-                    offset: *buf_len,
-                    size: Some(len),
-                },
-            )),
-        );
-        self.cmd_buf.draw(0..vertices, 0..1);
+        // // Copy this line data into the buffer
+        // buf.map_range_mut(range.clone()).copy_from_slice(instr.data);
+        // buf.copy_cpu_range(
+        //     &mut self.cmd_buf,
+        //     PipelineStage::VERTEX_INPUT,
+        //     BufferAccess::VERTEX_BUFFER_READ,
+        //     range,
+        // );
 
-        // Advance the buf len value
-        *buf_len += len;
+        // self.cmd_buf.set_line_width(instr.width);
+        // self.cmd_buf.bind_vertex_buffers(
+        //     0,
+        //     once((
+        //         &*buf.as_ref(),
+        //         SubRange {
+        //             offset: *buf_len,
+        //             size: Some(len),
+        //         },
+        //     )),
+        // );
+        // self.cmd_buf.draw(0..vertices, 0..1);
+
+        // // Advance the buf len value
+        // *buf_len += len;
     }
 
     unsafe fn submit_mesh_begin(&mut self) {
@@ -717,7 +711,7 @@ where
                     layers: 0..1,
                 },
                 dst_offset: Offset::ZERO,
-                extent: dims.as_extent(1),
+                extent: dims.as_extent_with_depth(1),
             }),
         );
 
@@ -878,6 +872,58 @@ where
     }
 }
 
+pub struct DrawOpSubmission {
+    cmd_buf: <_Backend as Backend>::CommandBuffer,
+    cmd_pool: Lease<CommandPool>,
+    compiler: Lease<Compiler>,
+    dst: Texture2d,
+    fence: Lease<Fence>,
+    frame_buf: Framebuffer2d,
+    graphics_buf: GraphicsBuffer,
+    graphics_line: Option<Lease<Graphics>>,
+    graphics_mesh_animated: Option<Lease<Graphics>>,
+    graphics_mesh_dual_tex: Option<Lease<Graphics>>,
+    graphics_mesh_single_tex: Option<Lease<Graphics>>,
+    graphics_mesh_transparent: Option<Lease<Graphics>>,
+    graphics_spotlight: Option<Lease<Graphics>>,
+    graphics_sunlight: Option<Lease<Graphics>>,
+    line_buf: Option<Lease<Data>>,
+    pool: PoolRef,
+}
+
+impl Drop for DrawOpSubmission {
+    fn drop(&mut self) {
+        self.wait();
+
+        // Causes the compiler to drop internal caches which store texture refs; they were being held
+        // alive there so that they could not be dropped until we finished GPU execution
+        self.compiler.reset();
+    }
+}
+
+impl Op for DrawOpSubmission {
+    fn wait(&self) {
+        let pool = self.pool.borrow();
+        let device = pool.driver().borrow();
+
+        unsafe {
+            wait_for_fence(&device, &self.fence);
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct LineCommand {
+    vertices: [LineVertex; 2],
+    width: f32,
+}
+
+#[derive(Debug)]
+struct LineVertex {
+    color: AlphaColor,
+    pos: Vec3,
+}
+
 #[derive(Clone, Debug)]
 pub enum Material {
     Standard,
@@ -900,5 +946,71 @@ pub enum Material {
 impl Default for Material {
     fn default() -> Self {
         Self::Standard
+    }
+}
+
+// TODO: cast_shadows, receive_shadows, ambient?
+#[derive(Clone, Debug)]
+pub struct MeshCommand<'m> {
+    camera_z: f32,
+    material: Material,
+    mesh: &'m Mesh,
+    transform: Mat4,
+}
+
+#[derive(Debug)]
+pub struct PointLightCommand {
+    core: Sphere,  // full-bright center and radius
+    color: Color,  // `core` and penumbra-to-transparent color
+    penumbra: f32, // distance after `core` which fades from `color` to transparent
+    power: f32, // sRGB power value, normalized to current gamma so 1.0 == a user setting of 1.2 and 2.0 == 2.4
+}
+
+impl PointLightCommand {
+    /// Returns a tightly fitting sphere around the lit area of this point light, including the penumbra
+    pub(self) fn bounds(&self) -> Sphere {
+        self.core + self.penumbra
+    }
+}
+
+#[derive(Debug)]
+pub struct RectLightCommand {
+    color: Color,   // full-bright and penumbra-to-transparent color
+    penumbra: f32, // size of the area beyond the box formed by `pos` and `range` which fades from `color` to transparent
+    pos: [Vec3; 3], // top-left, bottom-left, and top-right corners when viewed from above
+    power: f32, // sRGB power value, normalized to current gamma so 1.0 == a user setting of 1.2 and 2.0 == 2.4
+    range: f32, // distance from `pos` to the bottom of the rect light
+}
+
+impl RectLightCommand {
+    /// Returns a tightly fitting sphere around the lit area of this rect light, including the penumbra
+    pub(self) fn bounds(&self) -> Sphere {
+        todo!();
+    }
+}
+
+#[derive(Debug)]
+pub struct SunlightCommand {
+    color: Color, // uniform color for any area exposed to the sunlight
+    normal: Vec3, // direction which the sunlight shines
+    power: f32, // sRGB power value, normalized to current gamma so 1.0 == a user setting of 1.2 and 2.0 == 2.4
+}
+
+#[derive(Debug)]
+pub struct SpotlightCommand {
+    normal: Vec3,         // direction from `pos` which the spotlight shines
+    color: Color,         // `cone` and penumbra-to-transparent color
+    cone_radius: f32, // radius of the spotlight cone from the center to the edge of the full-bright area
+    penumbra_radius: f32, // Additional radius beyond `cone_radius` which fades from `color` to transparent
+    pos: Vec3,            // position of the pointy end
+    power: f32, // sRGB power value, normalized to current gamma so 1.0 == a user setting of 1.2 and 2.0 == 2.4
+    range: Range<f32>, // lit distance from `pos` and to the bottom of the spotlight (does not account for the lens-shaped end)
+}
+
+impl SpotlightCommand {
+    /// Returns a tightly fitting cone around the lit area of this spotlight, including the penumbra and
+    /// lens-shaped base.
+    pub(self) fn bounds(&self) -> Cone {
+        Cone::new(self.pos, self.normal, self.range.end, self.cone_radius + self.penumbra_radius)
     }
 }

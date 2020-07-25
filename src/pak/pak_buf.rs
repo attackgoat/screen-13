@@ -163,10 +163,11 @@ impl PakBuf {
         }
 
         for mesh in &self.meshes {
+            let bounds = mesh.bounds();
             let vertices = mesh.vertices();
             let len = vertices.len() as u32;
             writer.write_all(vertices).unwrap();
-            meshes.push(Mesh::new_ref(mesh.bitmaps().to_vec(), pos, len));
+            meshes.push(Mesh::new_ref(mesh.bitmaps().to_vec(), bounds, pos, len));
             pos += len;
             skip += len;
         }

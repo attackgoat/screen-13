@@ -11,7 +11,7 @@ use {
             pool::{FontVertex, Graphics, GraphicsMode, Lease, RenderPassMode},
             Data, PoolRef, TextureRef,
         },
-        math::{vec3, Coord, Extent, Mat4},
+        math::{vec3, CoordF, Extent, Mat4},
         pak::Pak,
     },
     bmfont::{BMFont, CharPosition, OrdinateOrientation},
@@ -193,7 +193,6 @@ impl Font {
     }
 }
 
-#[derive(Debug)]
 pub struct FontOp<I>
 where
     I: AsRef<<_Backend as Backend>::Image>,
@@ -218,14 +217,16 @@ impl<I> FontOp<I>
 where
     I: AsRef<<_Backend as Backend>::Image>,
 {
-    pub fn new<C>(
+    pub fn new<C, P>(
         #[cfg(debug_assertions)] name: &str,
         pool: &PoolRef,
         dst: &TextureRef<I>,
+        pos: P,
         color: C,
     ) -> Self
     where
         C: Into<AlphaColor>,
+        P: Into<CoordF>,
     {
         let (dims, format) = {
             let dst = dst.borrow();
@@ -253,6 +254,11 @@ where
         let cmd_buf = unsafe { cmd_pool.allocate_one(Level::Primary) };
         let fence = pool_ref.fence();
 
+        let pos = pos.into();
+        let transform = Mat4::from_translation(vec3(-1.0, -1.0, 0.0))
+            * Mat4::from_scale(vec3(2.0, 2.0, 1.0))
+            * Mat4::from_translation(vec3(pos.x / dims.x as f32, pos.y / dims.y as f32, 0.0));
+
         Self {
             #[cfg(debug_assertions)]
             name: name.to_owned(),
@@ -266,21 +272,9 @@ where
             graphics: None,
             outline_color: None,
             pool: PoolRef::clone(&pool),
-            transform: Mat4::identity(),
+            transform,
             vertex_buf: None,
         }
-    }
-
-    pub fn with_pos(mut self, pos: Coord) -> Self {
-        let dims = self.dst.borrow().dims();
-        self.transform = Mat4::from_translation(vec3(-1.0, -1.0, 0.0))
-            * Mat4::from_scale(vec3(2.0, 2.0, 1.0))
-            * Mat4::from_translation(vec3(
-                pos.x as f32 / dims.x as f32,
-                pos.y as f32 / dims.y as f32,
-                0.0,
-            ));
-        self
     }
 
     pub fn with_outline_color<C>(mut self, color: C) -> Self
@@ -370,7 +364,17 @@ where
             self.submit_finish(dims);
         };
 
-        self
+        FontOpSubmission {
+            back_buf: self.back_buf,
+            cmd_buf: self.cmd_buf,
+            cmd_pool: self.cmd_pool,
+            dst: self.dst,
+            fence: self.fence,
+            frame_buf: self.frame_buf.unwrap(),
+            graphics: self.graphics.unwrap(),
+            pool: self.pool,
+            vertex_buf: self.vertex_buf.unwrap().0,
+        }
     }
 
     fn mode(&self) -> GraphicsMode {
@@ -439,7 +443,7 @@ where
                     layers: 0..1,
                 },
                 dst_offset: Offset::ZERO,
-                extent: dims.as_extent(1),
+                extent: dims.as_extent_with_depth(1),
             }),
         );
 
@@ -556,7 +560,7 @@ where
                     layers: 0..1,
                 },
                 dst_offset: Offset::ZERO,
-                extent: dims.as_extent(1),
+                extent: dims.as_extent_with_depth(1),
             }),
         );
 
@@ -575,6 +579,7 @@ where
     }
 
     unsafe fn write_descriptor_sets(&mut self, font: &Font, page_idx: usize) {
+        // TODO: Fix, this should be one set per page not the same re-written
         let page = font.pages[page_idx].borrow();
         let page_view = page.as_default_2d_view();
         let graphics = self.graphics.as_ref().unwrap();
@@ -595,7 +600,22 @@ where
     }
 }
 
-impl<I> Drop for FontOp<I>
+pub struct FontOpSubmission<I>
+where
+    I: AsRef<<_Backend as Backend>::Image>,
+{
+    back_buf: Lease<TextureRef<Image2d>>,
+    cmd_buf: <_Backend as Backend>::CommandBuffer,
+    cmd_pool: Lease<CommandPool>,
+    dst: TextureRef<I>,
+    fence: Lease<Fence>,
+    frame_buf: Framebuffer2d,
+    graphics: Lease<Graphics>,
+    pool: PoolRef,
+    vertex_buf: Lease<Data>,
+}
+
+impl<I> Drop for FontOpSubmission<I>
 where
     I: AsRef<<_Backend as Backend>::Image>,
 {
@@ -604,7 +624,7 @@ where
     }
 }
 
-impl<I> Op for FontOp<I>
+impl<I> Op for FontOpSubmission<I>
 where
     I: AsRef<<_Backend as Backend>::Image>,
 {

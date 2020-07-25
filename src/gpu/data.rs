@@ -21,6 +21,9 @@ use {
     },
 };
 
+/// A GPU buffer type which automates some of the tasks related to copying data. Data has two 'sides',
+/// one accesible from the CPU and the other accessible from the GPU. Functions are provided to copy
+/// data from one side to the other, as need be, and the 'map' or update the data on the CPU side.
 #[derive(Debug)]
 pub struct Data {
     capacity: u64,
@@ -31,6 +34,7 @@ pub struct Data {
 }
 
 impl Data {
+    // TODO: This should specialize for GPUs which have CPU-GPU coherent memory types.
     pub fn new(
         #[cfg(debug_assertions)] name: &str,
         driver: Driver,
@@ -136,6 +140,8 @@ impl Data {
         dst_state.pipeline_stage = pipeline_stage;
     }
 
+    /// Copies the entire CPU side of this data to the GPU.
+    ///
     /// # Safety
     /// None
     pub unsafe fn copy_cpu(
@@ -148,6 +154,8 @@ impl Data {
         self.copy_cpu_range(cmd_buf, pipeline_stage, access_mask, 0..len)
     }
 
+    /// Copies a portion of the CPU side of this data to the GPU.
+    ///
     /// # Safety
     /// None
     pub unsafe fn copy_cpu_range(
@@ -160,6 +168,8 @@ impl Data {
         self.copy_range(cmd_buf, pipeline_stage, access_mask, range, true)
     }
 
+    /// Copies the entire GPU side of this data to the CPU.
+    ///
     /// # Safety
     /// None
     pub unsafe fn copy_gpu(
@@ -172,6 +182,8 @@ impl Data {
         self.copy_gpu_range(cmd_buf, pipeline_stage, access_mask, 0..len)
     }
 
+    /// Copies a portion of the GPU side of this data to the CPU.
+    ///
     /// # Safety
     /// None
     pub unsafe fn copy_gpu_range(
@@ -184,18 +196,22 @@ impl Data {
         self.copy_range(cmd_buf, pipeline_stage, access_mask, range, false)
     }
 
+    /// Provides read-only access to the entire CPU side of this data.
     pub unsafe fn map<'a>(&'a self) -> impl Deref<Target = [u8]> + 'a {
         self.map_mut()
     }
 
+    /// Provides read-only access to a portion of the CPU side of this data.
     pub unsafe fn map_range<'a>(&'a self, range: Range<u64>) -> impl Deref<Target = [u8]> + 'a {
         self.map_range_mut(range)
     }
 
+    /// Provides mutable access to the entire CPU side of this data.
     pub unsafe fn map_mut<'a>(&'a self) -> impl DerefMut<Target = [u8]> + 'a {
         self.map_range_mut(0..self.capacity)
     }
 
+    /// Provides mutable access to a portion of the CPU side of this data.
     pub unsafe fn map_range_mut<'a>(
         &'a self,
         range: Range<u64>,

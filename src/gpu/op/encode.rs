@@ -180,7 +180,7 @@ where
                     layers: 0..1,
                 },
                 image_offset: Offset::ZERO,
-                image_extent: dims.as_extent(1),
+                image_extent: dims.as_extent_with_depth(1),
             }],
         );
         buf.pipeline_barrier_gpu(

@@ -13,13 +13,17 @@ use {
         marker::PhantomData,
         ops::{Deref, DerefMut},
     },
-    typenum::{U2, U3},
+    typenum::{U1, U2, U3},
 };
 
 pub trait Dim {}
 
+// TODO: Implement if we use 1D images or just remove it
+impl Dim for U1 {}
+
 impl Dim for U2 {}
 
+// TODO: Implement 3D images
 impl Dim for U3 {}
 
 #[derive(Debug)]

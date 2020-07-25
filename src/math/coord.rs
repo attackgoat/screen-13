@@ -26,35 +26,59 @@ where
     }
 }
 
+impl Coord<f32> {
+    pub const ZERO: Self = Self { x: 0.0, y: 0.0 };
+
+    /// Returns `true` if this coordinate is neither infinite nor `NaN`.
+    pub fn is_finite(self) -> bool {
+        let x = self.x.is_finite() as u8;
+        let y = self.y.is_finite() as u8;
+
+        x * y == 1
+    }
+}
+
 impl Coord<i32> {
     pub const ZERO: Self = Self { x: 0, y: 0 };
+
+    pub const fn as_offset_with_z(self, z: i32) -> Offset {
+        Offset {
+            x: self.x,
+            y: self.y,
+            z,
+        }
+    }
+
+    pub const fn as_rect_at(self, pos: Self) -> Rect {
+        Rect {
+            x: pos.x as _,
+            y: pos.y as _,
+            w: self.x as _,
+            h: self.y as _,
+        }
+    }
 }
 
 impl Coord<u32> {
     pub const ZERO: Self = Self { x: 0, y: 0 };
 
-    pub const fn as_extent(self, depth: u32) -> Extent {
+    pub const fn as_extent_with_depth(self, depth: u32) -> Extent {
         Extent {
             width: self.x,
             height: self.y,
             depth,
         }
     }
+}
 
-    pub const fn as_offset(self, z: i32) -> Offset {
-        Offset {
-            x: self.x as _,
-            y: self.y as _,
-            z,
-        }
-    }
-
-    pub const fn as_rect(self, pos: Self) -> Rect {
-        Rect {
-            x: pos.x as _,
-            y: pos.y as _,
-            w: self.x as _,
-            h: self.y as _,
+impl<T, U> From<(T, T)> for Coord<U>
+where
+    T: Into<U>,
+{
+    fn from(val: (T, T)) -> Self {
+        Self {
+            x: val.0.into(),
+            y: val.1.into(),
         }
     }
 }
@@ -111,6 +135,15 @@ impl From<Coord<u32>> for Rect {
             w: val.x as _,
             x: 0,
             y: 0,
+        }
+    }
+}
+
+impl From<Coord<u32>> for Coord<i32> {
+    fn from(val: Coord<u32>) -> Self {
+        Self {
+            x: val.x as _,
+            y: val.y as _,
         }
     }
 }

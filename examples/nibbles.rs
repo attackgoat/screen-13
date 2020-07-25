@@ -65,18 +65,9 @@ impl Nibbles {
         let font = gpu.load_font(&mut pak, "small_10px");
 
         // Setup an orthographic camera to provide a 2D view
-        let eye = vec3(SCREEN_SIZE.x as f32 * 0.5, SCREEN_SIZE.y as f32 * 0.5, -1.0);
+        let eye = vec3(0.0, 0.0, -1.0);
         let target = vec3(eye.x(), eye.y(), 0.0);
-        let view = Orthographic::new(
-            eye,
-            target,
-            0.0,
-            SCREEN_SIZE.x as f32,
-            SCREEN_SIZE.y as f32,
-            0.0,
-            -1.0,
-            1.0,
-        );
+        let view = Orthographic::new(eye, target, SCREEN_SIZE, 0.0..1.0);
 
         let mut game = Self {
             direction: Direction::Right,

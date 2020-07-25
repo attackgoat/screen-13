@@ -198,27 +198,27 @@ where
         assert_ne!(writes.len(), 0);
 
         if writes.len() > 1 {
-            // This closure returns the index of a given texture in our `source texture` list.
-            let mut src_idx = |src: &Texture2d| -> usize {
-                let len = self.src_textures.len();
-                for idx in 0..len {
-                    if TextureRef::ptr_eq(src, &self.src_textures[idx]) {
+            // HACK: This closure returns the index of a given texture in our `source texture` list.
+            let mut tex_idx = |tex: &Texture2d| -> usize {
+                for (idx, val) in self.src_textures.iter().enumerate() {
+                    if Texture2d::ptr_eq(tex, val) {
                         return idx;
                     }
                 }
 
                 // Not in the list - add and return the new index
-                self.src_textures.push(TextureRef::clone(src));
+                let len = self.src_textures.len();
+                self.src_textures.push(Texture2d::clone(tex));
                 len
             };
 
             // Sort the writes by texture so that we minimize the number of descriptor sets and how often we change sets during submit
             // NOTE: Unstable sort because we don't claim to support ordering or blending of the individual writes within each batch
-            // TODO: When the Rust `weak_into_raw` feature lands in stable we can replace this with more efficient `Rc::as_ptr`-based
+            // HACK: When the Rust `weak_into_raw` feature lands in stable we can replace this with more efficient `Rc::as_ptr`-based
             // logic and do pointer compares as opposed to searching the entire list to find equality (that part is above)
             writes.sort_unstable_by(|lhs, rhs| {
-                let lhs_idx = src_idx(&lhs.src);
-                let rhs_idx = src_idx(&rhs.src);
+                let lhs_idx = tex_idx(&lhs.src);
+                let rhs_idx = tex_idx(&rhs.src);
                 lhs_idx.cmp(&rhs_idx)
             });
         } else {
@@ -266,7 +266,17 @@ where
             self.submit_finish();
         };
 
-        self
+        WriteOpSubmission {
+            back_buf: self.back_buf,
+            cmd_buf: self.cmd_buf,
+            cmd_pool: self.cmd_pool,
+            dst: self.dst,
+            fence: self.fence,
+            frame_buf: self.frame_buf.unwrap(),
+            graphics: self.graphics.unwrap(),
+            pool: self.pool,
+            src_textures: self.src_textures,
+        }
     }
 
     fn render_pass_mode(&self) -> RenderPassMode {
@@ -325,7 +335,7 @@ where
                         layers: 0..1,
                     },
                     dst_offset: Offset::ZERO,
-                    extent: dims.as_extent(1),
+                    extent: dims.as_extent_with_depth(1),
                 }),
             );
             dst.set_layout(
@@ -442,7 +452,7 @@ where
                     layers: 0..1,
                 },
                 dst_offset: Offset::ZERO,
-                extent: dims.as_extent(1),
+                extent: dims.as_extent_with_depth(1),
             }),
         );
 
@@ -516,7 +526,22 @@ where
     }
 }
 
-impl<D> Drop for WriteOp<D>
+pub struct WriteOpSubmission<D>
+where
+    D: AsRef<<_Backend as Backend>::Image>,
+{
+    back_buf: Lease<Texture2d>,
+    cmd_buf: <_Backend as Backend>::CommandBuffer,
+    cmd_pool: Lease<CommandPool>,
+    dst: TextureRef<D>,
+    fence: Lease<Fence>,
+    frame_buf: Framebuffer2d,
+    graphics: Lease<Graphics>,
+    pool: PoolRef,
+    src_textures: Vec<Texture2d>,
+}
+
+impl<D> Drop for WriteOpSubmission<D>
 where
     D: AsRef<<_Backend as Backend>::Image>,
 {
@@ -525,7 +550,7 @@ where
     }
 }
 
-impl<D> Op for WriteOp<D>
+impl<D> Op for WriteOpSubmission<D>
 where
     D: AsRef<<_Backend as Backend>::Image>,
 {

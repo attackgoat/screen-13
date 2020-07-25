@@ -6,7 +6,7 @@ use {
             pool::Lease,
             PoolRef, TextureRef,
         },
-        math::{Area, Extent},
+        math::{Area, Coord, Extent},
     },
     gfx_hal::{
         command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level},
@@ -23,7 +23,6 @@ use {
 
 const QUEUE_TYPE: QueueType = QueueType::Graphics;
 
-#[derive(Debug)]
 pub struct CopyOp<S, D>
 where
     S: AsRef<<_Backend as Backend>::Image>,
@@ -85,13 +84,24 @@ where
             self.submit();
         };
 
-        self
+        CopyOpSubmission {
+            cmd_buf: self.cmd_buf,
+            cmd_pool: self.cmd_pool,
+            driver: self.driver,
+            dst: self.dst,
+            fence: self.fence,
+            src: self.src,
+        }
     }
 
     unsafe fn submit(&mut self) {
         let mut device = self.driver.borrow_mut();
         let mut src = self.src.borrow_mut();
         let mut dst = self.dst.borrow_mut();
+        let dst_offset: Coord = self.dst_offset.into();
+        let dst_offset = dst_offset.as_offset_with_z(0);
+        let src_offset: Coord = self.src_offset.into();
+        let src_offset = src_offset.as_offset_with_z(0);
 
         // Begin
         self.cmd_buf
@@ -121,14 +131,14 @@ where
                     level: 0,
                     layers: 0..1,
                 },
-                dst_offset: self.dst_offset.as_offset(0),
-                extent: self.region.as_extent(1),
+                dst_offset,
+                extent: self.region.as_extent_with_depth(1),
                 src_subresource: SubresourceLayers {
                     aspects: Aspects::COLOR,
                     level: 0,
                     layers: 0..1,
                 },
-                src_offset: self.src_offset.as_offset(0),
+                src_offset,
             }),
         );
 
@@ -147,7 +157,20 @@ where
     }
 }
 
-impl<S, D> Drop for CopyOp<S, D>
+pub struct CopyOpSubmission<S, D>
+where
+    S: AsRef<<_Backend as Backend>::Image>,
+    D: AsRef<<_Backend as Backend>::Image>,
+{
+    cmd_buf: <_Backend as Backend>::CommandBuffer,
+    cmd_pool: Lease<CommandPool>,
+    driver: Driver,
+    dst: TextureRef<D>,
+    fence: Lease<Fence>,
+    src: TextureRef<S>,
+}
+
+impl<S, D> Drop for CopyOpSubmission<S, D>
 where
     S: AsRef<<_Backend as Backend>::Image>,
     D: AsRef<<_Backend as Backend>::Image>,
@@ -157,7 +180,7 @@ where
     }
 }
 
-impl<S, D> Op for CopyOp<S, D>
+impl<S, D> Op for CopyOpSubmission<S, D>
 where
     S: AsRef<<_Backend as Backend>::Image>,
     D: AsRef<<_Backend as Backend>::Image>,

@@ -42,6 +42,7 @@ use std::time::Instant;
 //     ]
 // }
 
+// TODO: Make this an associated function of Fence?
 pub(self) unsafe fn wait_for_fence(
     device: &<_Backend as Backend>::Device,
     fence: &<_Backend as Backend>::Fence,

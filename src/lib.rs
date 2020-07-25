@@ -1,4 +1,4 @@
-#![deny(warnings)]
+//#![deny(warnings)]
 #![allow(dead_code)]
 
 extern crate pretty_env_logger;

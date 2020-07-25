@@ -5,7 +5,7 @@ use {
         Asset, MeshAsset, PakLog, {get_filename_key, get_path},
     },
     crate::{
-        math::{vec2, vec3, Vec2, Vec3},
+        math::{vec2, vec3, Sphere, Vec2, Vec3},
         pak::{Mesh, MeshId, PakBuf},
     },
     fbx_direct::{
@@ -65,14 +65,26 @@ pub fn bake_mesh<P1: AsRef<Path>, P2: AsRef<Path>>(
     unsafe {
         vertex_buf.set_len(len);
     }
+    let mut center = Vec3::zero();
+    let mut radius = 0f32;
     for (idx, vertex) in vertices.iter().enumerate() {
         let start = idx * SingleTexture::BYTES;
         let end = start + SingleTexture::BYTES;
-        vertex.write(&mut vertex_buf[start..end])
+        vertex.write(&mut vertex_buf[start..end]);
+        center += vertex.pos;
+    }
+
+    // Find the bounding sphere parts:
+    // - Center is the average of all vertex positions
+    // - Rradius is the max vertex distance from center
+    center /= vertices.len() as f32;
+    for vertex in &vertices {
+        radius = radius.max((vertex.pos - center).length());
     }
 
     // Pak and log this asset
-    let mesh = Mesh::new(bitmaps, vertex_buf);
+    let bounds = Sphere::new(center, radius);
+    let mesh = Mesh::new(bitmaps, bounds, vertex_buf);
     let mesh_id = pak.push_mesh(key, mesh);
     log.add(&proto, mesh_id);
 
@@ -112,7 +124,7 @@ fn parse_vertices<P: AsRef<Path>>(path: P, scale: Vec3) -> Vec<SingleTexture> {
         let v = fbx.uv_coords[2 * uv_idx + 1];
 
         SingleTexture {
-            position: vec3(px, py, pz),
+            pos: vec3(px, py, pz),
             normal: vec3(0.0, 0.0, 0.0),
             tex_coord: vec2(u, v),
         }
@@ -136,7 +148,7 @@ fn parse_vertices<P: AsRef<Path>>(path: P, scale: Vec3) -> Vec<SingleTexture> {
         let mut c = make_vertex(c, vert_z);
 
         // Calculate normal
-        let normal = compute_tri_normal([a.position, b.position, c.position]);
+        let normal = compute_tri_normal([a.pos, b.pos, c.pos]);
         a.normal = normal;
         b.normal = normal;
         c.normal = normal;
@@ -220,7 +232,7 @@ impl Fbx {
 }
 
 struct SingleTexture {
-    position: Vec3,
+    pos: Vec3,
     normal: Vec3,
     tex_coord: Vec2,
 }
@@ -229,9 +241,9 @@ impl Vertex for SingleTexture {
     const BYTES: usize = 32;
 
     fn write(&self, buf: &mut [u8]) {
-        buf[0..4].copy_from_slice(&self.position.x().to_ne_bytes());
-        buf[4..8].copy_from_slice(&self.position.y().to_ne_bytes());
-        buf[8..12].copy_from_slice(&self.position.z().to_ne_bytes());
+        buf[0..4].copy_from_slice(&self.pos.x().to_ne_bytes());
+        buf[4..8].copy_from_slice(&self.pos.y().to_ne_bytes());
+        buf[8..12].copy_from_slice(&self.pos.z().to_ne_bytes());
         buf[12..16].copy_from_slice(&self.normal.x().to_ne_bytes());
         buf[16..20].copy_from_slice(&self.normal.y().to_ne_bytes());
         buf[20..24].copy_from_slice(&self.normal.z().to_ne_bytes());

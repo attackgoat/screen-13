@@ -95,12 +95,13 @@ impl Render {
         self.dims
     }
 
-    /// Draws a batch of 3D elements.
+    /// Draws a batch of 3D elements. There is no need to give any particular order to the individual commands and the
+    /// implemtation may sort and re-order them, so do not count on indices remaining the same after this call completes.
     pub fn draw<'c>(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
         camera: &impl Camera,
-        cmds: &mut [Command<'c>],
+        cmds: &'c mut [Command<'c>],
     ) {
         self.ops.push_front(Operation(Box::new(
             DrawOp::new(
@@ -204,15 +205,16 @@ impl Render {
 
     /// Draws bitmapped text on this Render using the given details.
     /// TODO: Accept a list of font/color/text/pos combos so we can batch many at once?
-    pub fn text<C>(
+    pub fn text<C, P>(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
         font: &Font,
         text: &str,
-        pos: Coord,
+        pos: P,
         color: C,
     ) where
         C: Into<AlphaColor>,
+        P: Into<CoordF>,
     {
         self.ops.push_front(Operation(Box::new(
             FontOp::new(
@@ -220,26 +222,27 @@ impl Render {
                 name,
                 &self.pool,
                 &self.target,
+                pos,
                 color,
             )
-            .with_pos(pos)
             .record(font, text),
         )));
     }
 
     /// Draws bitmapped text on this Render using the given details.
     /// TODO: Accept a list of font/color/text/pos combos so we can batch many at once?
-    pub fn text_outline<C, O>(
+    pub fn text_outline<C1, C2, P>(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
         font: &Font,
         text: &str,
-        pos: Coord,
-        color: C,
-        outline_color: O,
+        pos: P,
+        color: C1,
+        outline_color: C2,
     ) where
-        C: Into<AlphaColor>,
-        O: Into<AlphaColor>,
+        C1: Into<AlphaColor>,
+        C2: Into<AlphaColor>,
+        P: Into<CoordF>,
     {
         self.ops.push_front(Operation(Box::new(
             FontOp::new(
@@ -247,10 +250,10 @@ impl Render {
                 name,
                 &self.pool,
                 &self.target,
+                pos,
                 color,
             )
             .with_outline_color(outline_color)
-            .with_pos(pos)
             .record(font, text),
         )));
     }

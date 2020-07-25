@@ -222,7 +222,7 @@ impl SceneAsset {
 pub struct SceneItemAsset {
     pub id: String,
     pub key: String,
-    position: [f32; 3],
+    pos: [f32; 3],
     roll_pitch_yaw: [f32; 3],
     tags: Vec<String>,
 }
@@ -237,14 +237,14 @@ impl SceneItemAsset {
         Self {
             id: value["id"].as_str().unwrap_or("").to_owned(),
             key: value["key"].as_str().unwrap_or("").to_owned(),
-            position: parse_vector3(value["pos"].as_str().unwrap_or("0,0,0")),
+            pos: parse_vector3(value["pos"].as_str().unwrap_or("0,0,0")),
             roll_pitch_yaw: parse_vector3(value["rpy"].as_str().unwrap_or("0,0,0")),
             tags,
         }
     }
 
     pub fn position(&self) -> Vec3 {
-        vec3(self.position[0], self.position[1], self.position[2])
+        vec3(self.pos[0], self.pos[1], self.pos[2])
     }
 
     pub fn roll_pitch_yaw(&self) -> Vec3 {

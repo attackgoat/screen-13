@@ -87,16 +87,6 @@ pub enum MeshType {
     Transparent,
 }
 
-#[derive(Debug, Eq, Hash, PartialEq)]
-struct TextureKey {
-    dims: Extent,
-    desired_format: Format,
-    layers: u16,
-    mips: u8,
-    samples: u8,
-    usage: ImageUsage, // TODO: Usage shouldn't be a hard filter like this
-}
-
 #[derive(Debug)]
 pub struct Pool {
     cmd_pools: HashMap<QueueFamilyId, PoolRef<CommandPool>>,
@@ -150,8 +140,7 @@ impl Pool {
     }
 
     pub fn compiler(&mut self) -> Lease<Compiler> {
-        let item = if let Some(mut item) = self.compilers.borrow_mut().pop_back() {
-            item.reset();
+        let item = if let Some(item) = self.compilers.borrow_mut().pop_back() {
             item
         } else {
             Default::default()
@@ -423,6 +412,16 @@ impl Pool {
 
         Lease::new(item, items)
     }
+}
+
+#[derive(Debug, Eq, Hash, PartialEq)]
+struct TextureKey {
+    dims: Extent,
+    desired_format: Format,
+    layers: u16,
+    mips: u8,
+    samples: u8,
+    usage: ImageUsage, // TODO: Usage shouldn't be a hard filter like this
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

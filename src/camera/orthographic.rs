@@ -1,33 +1,27 @@
-use crate::math::{Mat4, Vec3};
-
-use super::Camera;
-
-// TODO: Should creating a 2D camera (such as in the examples) be a constructor function?
+use {
+    super::Camera,
+    crate::math::{Cone, CoordF, Mat4, Sphere, Vec3},
+    std::ops::Range,
+};
 
 #[derive(Clone, Copy)]
 pub struct Orthographic {
     eye: Vec3,
     proj: Mat4,
+    proj_inv: Mat4,
     target: Vec3,
     view: Mat4,
     view_inv: Mat4,
 }
 
 impl Orthographic {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        eye: Vec3,
-        target: Vec3,
-        left: f32,
-        right: f32,
-        bottom: f32,
-        top: f32,
-        near: f32,
-        far: f32,
-    ) -> Self {
+    // TODO: Play around with this and see if depth should be RangeInclusive instead!
+    pub fn new<T: Into<CoordF>>(eye: Vec3, target: Vec3, dims: T, depth: Range<f32>) -> Self {
+        let dims = dims.into();
         let mut result = Self {
             eye,
-            proj: Mat4::orthographic_rh_gl(left, right, bottom, top, near, far),
+            proj: Mat4::orthographic_rh_gl(0.0, dims.x, dims.y, 0.0, depth.start, depth.end),
+            proj_inv: Mat4::identity(), // TODO: Fix this up!
             target,
             view: Mat4::identity(),
             view_inv: Mat4::identity(),
@@ -89,7 +83,16 @@ impl Camera for Orthographic {
         self.eye
     }
 
+    fn intersects_cone(&self, _cone: Cone) -> bool {
+        true
+    }
+
+    fn intersects_sphere(&self, _sphere: Sphere) -> bool {
+        true
+    }
+
     fn project_point(&self, p: Vec3) -> Vec3 {
+        // TODO: These should be view projection transforms!
         self.proj.transform_point3(p)
     }
 
@@ -98,7 +101,8 @@ impl Camera for Orthographic {
     }
 
     fn unproject_point(&self, p: Vec3) -> Vec3 {
-        self.proj.inverse().transform_point3(p) // TODO: Oh no no no
+        // TODO: These should be view projection transforms!
+        self.proj_inv.transform_point3(p)
     }
 
     fn view(&self) -> Mat4 {
