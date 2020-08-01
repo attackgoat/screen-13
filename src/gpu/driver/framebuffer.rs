@@ -11,7 +11,6 @@ use {
     typenum::U2,
 };
 
-#[derive(Debug)]
 pub struct Framebuffer<D>
 where
     D: Dim,
@@ -20,6 +19,23 @@ where
     driver: Driver,
     ptr: Option<<_Backend as Backend>::Framebuffer>,
 }
+
+impl<D> Framebuffer<D>
+where
+    D: Dim,
+{
+    #[cfg(debug_assertions)]
+    pub fn rename(frame_buf: &mut Self, name: &str) {
+        let device = frame_buf.driver.as_ref().borrow();
+        let ptr = frame_buf.ptr.as_mut().unwrap();
+
+        unsafe {
+            device.set_framebuffer_name(ptr, name);
+        }
+    }
+}
+
+// TODO: Allow naming these in the ctor for debug purposes! Gfx supports it!
 
 #[doc = "Specialized new function for 2D framebuffers"]
 impl Framebuffer<U2> {

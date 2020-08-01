@@ -83,11 +83,15 @@ impl Camera for Orthographic {
         self.eye
     }
 
-    fn intersects_cone(&self, _cone: Cone) -> bool {
+    fn overlaps_cone(&self, _c: Cone) -> bool {
         true
     }
 
-    fn intersects_sphere(&self, _sphere: Sphere) -> bool {
+    fn overlaps_point(&self, _p: Vec3) -> bool {
+        true
+    }
+
+    fn overlaps_sphere(&self, _s: Sphere) -> bool {
         true
     }
 

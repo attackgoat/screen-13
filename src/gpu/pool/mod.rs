@@ -53,19 +53,19 @@ fn remove_last_by<T, F: Fn(&T) -> bool>(items: &mut VecDeque<T>, f: F) -> Option
 
 pub(self) type PoolRef<T> = Rc<RefCell<VecDeque<T>>>;
 
-#[derive(Debug, Eq, Hash, PartialEq)]
+#[derive(Eq, Hash, PartialEq)]
 struct DescriptorPoolKey {
     desc_ranges: Vec<(DescriptorType, usize)>,
 }
 
-#[derive(Debug, Eq, Hash, PartialEq)]
+#[derive(Eq, Hash, PartialEq)]
 struct GraphicsKey {
     graphics_mode: GraphicsMode,
     render_pass_mode: RenderPassMode,
     subpass_idx: u8,
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub enum GraphicsMode {
     Blend(BlendMode),
     Font,
@@ -79,7 +79,7 @@ pub enum GraphicsMode {
     Texture,
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub enum MeshType {
     Animated,
     DualTexture,
@@ -87,7 +87,7 @@ pub enum MeshType {
     Transparent,
 }
 
-#[derive(Debug)]
+// TODO: Fill a minimum number of items when pool exhausted to ensure frame-to-frame resource usage hits multiple items/fewer barriers hit?
 pub struct Pool {
     cmd_pools: HashMap<QueueFamilyId, PoolRef<CommandPool>>,
     compilers: PoolRef<Compiler>,
@@ -414,7 +414,7 @@ impl Pool {
     }
 }
 
-#[derive(Debug, Eq, Hash, PartialEq)]
+#[derive(Eq, Hash, PartialEq)]
 struct TextureKey {
     dims: Extent,
     desired_format: Format,
@@ -424,7 +424,7 @@ struct TextureKey {
     usage: ImageUsage, // TODO: Usage shouldn't be a hard filter like this
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub enum RenderPassMode {
     Draw,
     ReadWrite,

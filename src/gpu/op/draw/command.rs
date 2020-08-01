@@ -6,35 +6,87 @@ use {
     crate::{
         color::{AlphaColor, Color},
         gpu::Mesh,
-        math::{Mat4,vec3_is_finite, Vec3},
+        math::{vec3_is_finite, Mat4, Vec3},
     },
     std::{num::FpCategory, ops::Range},
 };
 
 /// An expressive type which allows specification of individual draws.
-#[derive(Debug)]
+#[derive(Clone)]
 pub enum Command<'c> {
     Line(LineCommand),
     Mesh(MeshCommand<'c>),
     PointLight(PointLightCommand),
     RectLight(RectLightCommand),
-    Sunlight(SunlightCommand),
     Spotlight(SpotlightCommand),
+    Sunlight(SunlightCommand),
 }
 
 impl<'c> Command<'c> {
-    pub(crate) fn as_line_cmd(&self) -> &LineCommand {
+    pub(crate) fn as_line(&self) -> Option<&LineCommand> {
         match self {
-            Self::Line(res) => res,
-            _ => panic!(),
+            Self::Line(res) => Some(res),
+            _ => None,
         }
     }
 
-    pub(crate) fn as_mesh_cmd(&self) -> &MeshCommand {
+    pub(crate) fn as_mesh(&self) -> Option<&MeshCommand> {
         match self {
-            Self::Mesh(res) => res,
-            _ => panic!(),
+            Self::Mesh(res) => Some(res),
+            _ => None,
         }
+    }
+
+    pub(crate) fn as_point_light(&self) -> Option<&PointLightCommand> {
+        match self {
+            Self::PointLight(res) => Some(res),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_rect_light(&self) -> Option<&RectLightCommand> {
+        match self {
+            Self::RectLight(res) => Some(res),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_spotlight(&self) -> Option<&SpotlightCommand> {
+        match self {
+            Self::Spotlight(res) => Some(res),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_sunlight(&self) -> Option<&SunlightCommand> {
+        match self {
+            Self::Sunlight(res) => Some(res),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn is_line(&self) -> bool {
+        self.as_line().is_some()
+    }
+
+    pub(crate) fn is_mesh(&self) -> bool {
+        self.as_mesh().is_some()
+    }
+
+    pub(crate) fn is_point_light(&self) -> bool {
+        self.as_point_light().is_some()
+    }
+
+    pub(crate) fn is_rect_light(&self) -> bool {
+        self.as_rect_light().is_some()
+    }
+
+    pub(crate) fn is_spotlight(&self) -> bool {
+        self.as_spotlight().is_some()
+    }
+
+    pub(crate) fn is_sunlight(&self) -> bool {
+        self.as_sunlight().is_some()
     }
 
     /// Draws a line between the given coordinates using a constant width and two colors. The colors specify a gradient if
@@ -80,8 +132,11 @@ impl<'c> Command<'c> {
         })
     }
 
-    /// Draws a spotlight with the given color, position/orientation, and shape. Note that a spotlight with a given `range`
-    /// will light a small hemispherical area beyond `range.end`. TODO: Maybe let that be configurable?
+    /// Draws a spotlight with the given color, position/orientation, and shape.
+    ///
+    /// _Note_: Spotlights have a hemispherical cap on the bottom, so a given `range` will be the maximum range
+    /// and you may not see any light on objects at that distance. Move the light a bit towards the object to
+    /// enter the penumbra.
     ///
     /// # Arguments
     ///
@@ -114,15 +169,17 @@ impl<'c> Command<'c> {
         let half = cone_angle * 0.5;
         let cone_radius = half.tan() * range.end;
         let penumbra_radius = (half + penumbra_angle).tan() * range.end;
+        let top_radius = 0.0; // TODO!
 
         Self::Spotlight(SpotlightCommand {
-            pos,
-            normal,
             color,
             cone_radius,
+            normal,
             penumbra_radius,
-            range,
+            pos,
             power,
+            range,
+            top_radius,
         })
     }
 }

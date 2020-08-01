@@ -16,7 +16,6 @@ use {
     },
 };
 
-#[derive(Debug)]
 pub struct Device {
     compute: Option<QueueGroup<_Backend>>,
     fmts: RefCell<HashMap<FormatKey, Option<Format>>>,
@@ -455,7 +454,7 @@ impl PhysicalDevice for Device {
 
 impl Sealed for Device {}
 
-#[derive(Debug, Eq, Hash, PartialEq)]
+#[derive(Eq, Hash, PartialEq)]
 struct FormatKey {
     desired_fmt: Format,
     tiling: Tiling,

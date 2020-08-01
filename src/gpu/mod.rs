@@ -46,7 +46,7 @@ use {
     std::{
         cell::RefCell,
         collections::HashMap,
-        fmt::Debug,
+        fmt::{Debug, Error as FmtError, Formatter},
         io::{Read, Seek},
         rc::Rc,
     },
@@ -74,7 +74,7 @@ pub(crate) type TextureRef<I> = Rc<RefCell<Texture<I>>>;
 type BitmapCache = RefCell<HashMap<BitmapId, BitmapRef>>;
 
 fn create_adapter() -> (Adapter<_Backend>, InstanceImpl) {
-    let instance = InstanceImpl::create("com.attackgoat.screen13", 1).unwrap();
+    let instance = InstanceImpl::create("attackgoat/screen-13", 1).unwrap();
     let mut adapters = instance.enumerate_adapters();
     if adapters.is_empty() {
         // TODO: Error::adapter
@@ -353,7 +353,6 @@ impl Drop for Gpu {
 }
 
 /// A textured and renderable model.
-#[derive(Debug)]
 pub struct Mesh {
     bitmaps: Vec<(BitmapId, BitmapRef)>,
     bounds: Sphere,
@@ -382,6 +381,12 @@ impl Mesh {
             bitmaps: &self.bitmaps,
             idx: 0,
         }
+    }
+}
+
+impl Debug for Mesh {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+        f.write_str("Mesh")
     }
 }
 

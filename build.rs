@@ -1,11 +1,16 @@
 #![deny(warnings)]
 
 use {
+    genmesh::{
+        generators::{Cylinder, IcoSphere},
+        Triangulate,
+    },
     lazy_static::lazy_static,
     shaderc::{CompileOptions, Compiler, Error, ShaderKind},
     std::{
+        cmp::Ordering::Equal,
         env::var,
-        fs::{create_dir_all, remove_dir_all, File},
+        fs::{create_dir_all, remove_dir_all, remove_file, File},
         io::{BufRead, BufReader, Write},
         path::{Path, PathBuf},
         process::exit,
@@ -15,12 +20,222 @@ use {
 lazy_static! {
     static ref GLSL_DIR: PathBuf = Path::new("src/gpu/glsl").to_owned();
     static ref OUT_DIR: PathBuf = Path::new(var("OUT_DIR").unwrap().as_str()).to_owned();
+    static ref POINT_LIGHT_PATH: PathBuf = OUT_DIR.join("point_light.rs");
     static ref SPIRV_DIR: PathBuf = OUT_DIR.join("spirv");
+    static ref SPOTLIGHT_PATH: PathBuf = OUT_DIR.join("spotlight.rs");
 }
 
 static mut GLSL_FILENAMES: Option<Vec<PathBuf>> = None;
 
 fn main() {
+    compile_shaders();
+    gen_point_light();
+    gen_spotlight_fn();
+}
+
+fn gen_point_light() {
+    if POINT_LIGHT_PATH.exists() {
+        remove_file(POINT_LIGHT_PATH.as_path()).unwrap();
+    }
+
+    let mut output_file = File::create(POINT_LIGHT_PATH.as_path()).unwrap();
+
+    // We use a fixed-resolution icosphere for point lights, it is 320 unique vertices but we are currently
+    // drawing everything as triangle lists so the total is actually 960 vertices, written out as 11,520 bytes
+    let geom = IcoSphere::subdivide(2);
+    let mut vertices = vec![];
+    for tri in geom {
+        vertices.push(tri.x.pos);
+        vertices.push(tri.y.pos);
+        vertices.push(tri.z.pos);
+    }
+
+    // We'll store the data as bytes because we are going to send it straight to the GPU
+    writeln!(
+        output_file,
+        "pub const POINT_LIGHT: [u8; {}] = [",
+        vertices.len() * 12
+    )
+    .unwrap();
+
+    for v in vertices {
+        let y = v.y.to_ne_bytes();
+        let x = v.x.to_ne_bytes();
+        let z = v.z.to_ne_bytes();
+
+        writeln!(output_file, "    {}, {}, {}, {},", x[0], x[1], x[2], x[3]).unwrap();
+        writeln!(output_file, "    {}, {}, {}, {},", y[0], y[1], y[2], y[3]).unwrap();
+        writeln!(output_file, "    {}, {}, {}, {},", z[0], z[1], z[2], z[3]).unwrap();
+    }
+
+    writeln!(output_file, "];").unwrap();
+}
+
+/// This writes out a function that will create a spotlight at runtime without any branching code.
+/// Mostly this exists because I couldn't decide how many segments spotlights should have, so you
+/// can change it below to get smoother/more faceted lights.
+fn gen_spotlight_fn() {
+    if SPOTLIGHT_PATH.exists() {
+        remove_file(SPOTLIGHT_PATH.as_path()).unwrap();
+    }
+
+    let mut output_file = File::create(SPOTLIGHT_PATH.as_path()).unwrap();
+
+    // We use a fixed-resolution cylinder as a base geometry for spotlights
+    let geom = Cylinder::new(16);
+    let mut vertices = vec![];
+    for tri in geom.triangulate() {
+        vertices.push(tri.x.pos);
+        vertices.push(tri.y.pos);
+        vertices.push(tri.z.pos);
+    }
+
+    writeln!(output_file, "use std::ops::Range;\n").unwrap();
+    writeln!(
+        output_file,
+        "pub const SPOTLIGHT_STRIDE: usize = {};\n",
+        vertices.len() * 12
+    )
+    .unwrap();
+
+    writeln!(
+        output_file,
+        r#"/// Produces the vertices of a given spotlight definition, which form a truncated cone. The resulting
+/// mesh will be normalized and requires an additional scale factor to render as intended. The final location
+/// will be (0,0,0) at the center of the top circle, and the orientation will point (0,-1,0).
+#[allow(clippy::approx_constant)]
+pub fn gen_spotlight(
+    radius: Range<u8>,
+    range: Range<u8>,
+) -> [u8; SPOTLIGHT_STRIDE] {{
+    let radius_start = radius.start as f32;
+    let radius_end = radius.end as f32;
+    let range_start = range.start as f32;
+    let range_end = range.start as f32;
+
+    let mut res = [0; SPOTLIGHT_STRIDE];"#
+    )
+    .unwrap();
+
+    let mut radius_start_lookup = vec![];
+    let mut radius_end_lookup = vec![];
+    let mut range_start_lookup = vec![];
+    let mut range_end_lookup = vec![];
+    let search_lookup = |lookup: &mut Vec<f32>, key: f32| -> Option<usize> {
+        match lookup.binary_search_by(|probe| probe.partial_cmp(&key).unwrap_or(Equal)) {
+            Err(idx) => {
+                lookup.insert(idx, key);
+                None
+            }
+            Ok(idx) => Some(idx * 4),
+        }
+    };
+
+    for v in vertices {
+        // Swap y/z so the cylinder points to what we call down (y), also scale/translate it so the height is 1
+        let x = v.x;
+        let y = v.z / 2.0 - 0.5;
+        let z = v.y;
+
+        let mut dst = (radius_start_lookup.len()
+            + radius_end_lookup.len()
+            + range_start_lookup.len()
+            + range_end_lookup.len())
+            * 4;
+
+        if x != 0.0 {
+            let (lookup, part) = if y > -0.5 {
+                (&mut radius_start_lookup, "radius_start")
+            } else {
+                (&mut radius_end_lookup, "radius_end")
+            };
+            if let Some(idx) = search_lookup(lookup, x) {
+                writeln!(
+                    output_file,
+                    "    res.copy_within({}..{}, {});",
+                    idx,
+                    idx + 4,
+                    dst
+                )
+                .unwrap();
+            } else {
+                writeln!(
+                    output_file,
+                    "    res[{}..{}].copy_from_slice(&({}f32 * {}).to_ne_bytes());",
+                    dst,
+                    dst + 4,
+                    x,
+                    part
+                )
+                .unwrap();
+            }
+        }
+
+        dst += 4;
+
+        {
+            let (lookup, part) = if y > -0.5 {
+                (&mut range_start_lookup, "range_start")
+            } else {
+                (&mut range_end_lookup, "range_end")
+            };
+            if let Some(idx) = search_lookup(lookup, y) {
+                writeln!(
+                    output_file,
+                    "    res.copy_within({}..{}, {});",
+                    idx,
+                    idx + 4,
+                    dst
+                )
+                .unwrap();
+            } else {
+                writeln!(
+                    output_file,
+                    "    res[{}..{}].copy_from_slice(&({}f32 + {}).to_ne_bytes());",
+                    dst,
+                    dst + 4,
+                    y,
+                    part
+                )
+                .unwrap();
+            }
+        }
+
+        dst += 4;
+
+        if z != 0.0 {
+            let (lookup, part) = if y > -0.5 {
+                (&mut radius_start_lookup, "radius_start")
+            } else {
+                (&mut radius_end_lookup, "radius_end")
+            };
+            if let Some(idx) = search_lookup(lookup, z) {
+                writeln!(
+                    output_file,
+                    "    res.copy_within({}..{}, {});",
+                    idx,
+                    idx + 4,
+                    dst
+                )
+                .unwrap();
+            } else {
+                writeln!(
+                    output_file,
+                    "    res[{}..{}].copy_from_slice(&({}f32 * {}).to_ne_bytes());",
+                    dst,
+                    dst + 4,
+                    z,
+                    part
+                )
+                .unwrap();
+            }
+        }
+    }
+
+    writeln!(output_file, "    res\n}}").unwrap();
+}
+
+fn compile_shaders() {
     unsafe {
         GLSL_FILENAMES = Some(Vec::default());
     }

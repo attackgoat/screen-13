@@ -13,7 +13,6 @@ use {
     },
 };
 
-#[derive(Debug)]
 pub struct GraphicsBuffer {
     color: Lease<TextureRef<Image2d>>,
     depth: Lease<TextureRef<Image2d>>,

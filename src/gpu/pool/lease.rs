@@ -5,7 +5,6 @@ use {
 
 /// A smart pointer type which automatically returns the associated resource to
 /// the pool when dropped.
-#[derive(Debug)]
 pub struct Lease<T> {
     item: Option<T>,
     pool: PoolRef<T>,

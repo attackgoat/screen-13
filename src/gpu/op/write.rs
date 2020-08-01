@@ -198,18 +198,21 @@ where
         assert_ne!(writes.len(), 0);
 
         if writes.len() > 1 {
-            // HACK: This closure returns the index of a given texture in our `source texture` list.
+            // This closure returns the index of a given texture in our `source texture` list.
             let mut tex_idx = |tex: &Texture2d| -> usize {
-                for (idx, val) in self.src_textures.iter().enumerate() {
-                    if Texture2d::ptr_eq(tex, val) {
-                        return idx;
-                    }
-                }
+                let tex_ptr = tex.as_ptr();
+                match self
+                    .src_textures
+                    .binary_search_by(|probe| probe.as_ptr().cmp(&tex_ptr))
+                {
+                    Err(idx) => {
+                        // Not in the list - add and return the new index
+                        self.src_textures.push(Texture2d::clone(tex));
 
-                // Not in the list - add and return the new index
-                let len = self.src_textures.len();
-                self.src_textures.push(Texture2d::clone(tex));
-                len
+                        idx
+                    }
+                    Ok(idx) => idx,
+                }
             };
 
             // Sort the writes by texture so that we minimize the number of descriptor sets and how often we change sets during submit

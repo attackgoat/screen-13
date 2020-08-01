@@ -5,11 +5,12 @@ use {
     std::ops::{Deref, DerefMut},
 };
 
-#[derive(Debug)]
 pub struct Fence {
     driver: Driver,
     ptr: Option<<_Backend as Backend>::Fence>,
 }
+
+// TODO: Support naming in ctor
 
 impl Fence {
     pub fn new(driver: Driver) -> Self {
@@ -22,6 +23,16 @@ impl Fence {
         Self {
             driver,
             ptr: Some(fence),
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn rename(fence: &mut Self, name: &str) {
+        let device = fence.driver.borrow();
+        let ptr = fence.ptr.as_mut().unwrap();
+
+        unsafe {
+            device.set_fence_name(ptr, name);
         }
     }
 

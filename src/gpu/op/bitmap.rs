@@ -34,7 +34,6 @@ use {
 const QUEUE_TYPE: QueueType = QueueType::Compute;
 
 /// Holds a decoded 2D 4-channel image.
-#[derive(Debug)]
 pub struct Bitmap {
     op: BitmapOp, // TODO: Dump the extras!
 }
@@ -63,7 +62,6 @@ impl Op for Bitmap {
     }
 }
 
-#[derive(Debug)]
 pub struct BitmapOp {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,

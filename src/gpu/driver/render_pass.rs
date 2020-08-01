@@ -12,7 +12,6 @@ use {
     },
 };
 
-#[derive(Debug)]
 pub struct RenderPass {
     driver: Driver,
     ptr: Option<<_Backend as Backend>::RenderPass>,
@@ -57,6 +56,16 @@ impl RenderPass {
         Self {
             driver,
             ptr: Some(render_pass),
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn rename(render_pass: &mut Self, name: &str) {
+        let device = render_pass.driver.as_ref().borrow();
+        let ptr = render_pass.ptr.as_mut().unwrap();
+
+        unsafe {
+            device.set_render_pass_name(ptr, name);
         }
     }
 

@@ -8,7 +8,6 @@ use {
     },
 };
 
-#[derive(Debug)]
 pub struct DescriptorSetLayout {
     driver: Driver,
     ptr: Option<<_Backend as Backend>::DescriptorSetLayout>,
@@ -42,6 +41,16 @@ impl DescriptorSetLayout {
         Self {
             driver,
             ptr: Some(set_layout),
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn rename(set_layout: &mut Self, name: &str) {
+        let device = set_layout.driver.as_ref().borrow();
+        let ptr = set_layout.ptr.as_mut().unwrap();
+
+        unsafe {
+            device.set_descriptor_set_layout_name(ptr, name);
         }
     }
 }

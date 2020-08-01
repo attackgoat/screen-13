@@ -15,7 +15,6 @@ use {
     std::{borrow::Borrow, iter::once, ops::Range},
 };
 
-#[derive(Debug)]
 pub struct Compute {
     desc_pool: DescriptorPool,
     desc_sets: Vec<<_Backend as Backend>::DescriptorSet>,
@@ -152,7 +151,7 @@ impl Compute {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub enum ComputeMode {
     DecodeBgr24,
     DecodeBgra32,

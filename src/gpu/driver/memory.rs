@@ -5,7 +5,6 @@ use {
     std::ops::{Deref, DerefMut},
 };
 
-#[derive(Debug)]
 pub struct Memory {
     driver: Driver,
     ptr: Option<<_Backend as Backend>::Memory>,

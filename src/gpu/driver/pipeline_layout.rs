@@ -8,7 +8,6 @@ use {
     },
 };
 
-#[derive(Debug)]
 pub struct PipelineLayout {
     driver: Driver,
     ptr: Option<<_Backend as Backend>::PipelineLayout>,

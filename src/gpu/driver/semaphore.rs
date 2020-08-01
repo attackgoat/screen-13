@@ -5,11 +5,12 @@ use {
     std::ops::{Deref, DerefMut},
 };
 
-#[derive(Debug)]
 pub struct Semaphore {
     driver: Driver,
     ptr: Option<<_Backend as Backend>::Semaphore>,
 }
+
+// TODO: Support naming in ctor
 
 impl Semaphore {
     pub fn new(driver: Driver) -> Self {
@@ -18,6 +19,16 @@ impl Semaphore {
         Self {
             driver,
             ptr: Some(semaphore),
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn rename(semaphore: &mut Self, name: &str) {
+        let device = semaphore.driver.borrow();
+        let ptr = semaphore.ptr.as_mut().unwrap();
+
+        unsafe {
+            device.set_semaphore_name(ptr, name);
         }
     }
 }

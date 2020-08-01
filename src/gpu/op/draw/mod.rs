@@ -1,7 +1,12 @@
 mod command;
 mod compiler;
+
+/// This module houses all the dynamically created meshes used by the drawing code to fulfill user commands.
+mod geom;
+
 mod graphics_buf;
 mod instruction;
+mod key;
 
 pub use self::{
     command::Command,
@@ -9,11 +14,7 @@ pub use self::{
 };
 
 use {
-    self::{
-        compiler::Stages,
-        graphics_buf::GraphicsBuffer,
-        instruction::{LightInstruction, LineInstruction, MeshInstruction},
-    },
+    self::{compiler::Stages, graphics_buf::GraphicsBuffer, instruction::MeshInstruction},
     super::{wait_for_fence, Op},
     crate::{
         camera::Camera,
@@ -23,7 +24,7 @@ use {
             pool::{Graphics, GraphicsMode, Lease, MeshType, RenderPassMode},
             Data, Mesh, PoolRef, Texture2d, TextureRef,
         },
-        math::{Cone, Coord, Extent, Mat4, Sphere, Vec3},
+        math::{Cone, Coord, CoordF, Extent, Mat4, Sphere, Vec2, Vec3},
     },
     gfx_hal::{
         buffer::{Access as BufferAccess, SubRange, Usage as BufferUsage},
@@ -210,15 +211,15 @@ impl DrawOp {
                 RenderPassMode::Draw,
                 0,
             ));
-            self.line_buf = Some((
-                pool.data_usage(
-                    #[cfg(debug_assertions)]
-                    &format!("{} (Line Buf)", &self.name),
-                    compilation.line_buf().len() as _,
-                    BufferUsage::STORAGE,
-                ),
-                0,
-            ));
+            // // // // self.line_buf = Some((
+            // // // //     pool.data_usage(
+            // // // //         #[cfg(debug_assertions)]
+            // // // //         &format!("{} (Line Buf)", &self.name),
+            // // // //         compilation.line_buf().len() as _,
+            // // // //         BufferUsage::STORAGE,
+            // // // //     ),
+            // // // //     0,
+            // // // // ));
         }
 
         if stages.contains(Stages::SPOTLIGHT) {
@@ -272,7 +273,13 @@ impl DrawOp {
 
             (compiler, driver)
         };
-        let mut instrs = compiler.compile(camera, cmds);
+        let mut instrs = compiler.compile(
+            #[cfg(debug_assertions)]
+            &self.name,
+            &self.pool,
+            camera,
+            cmds,
+        );
 
         // Setup our graphics pipelines for these compiled instructions
         self.with_compilation(&instrs);
@@ -283,73 +290,73 @@ impl DrawOp {
 
             self.submit_begin(&viewport);
 
-            // Step 1: Opaque meshes (single and dual texture)
-            if instr.is_mesh() {
-                self.submit_mesh_begin();
+            // // Step 1: Opaque meshes (single and dual texture)
+            // if instr.is_mesh() {
+            //     self.submit_mesh_begin();
 
-                loop {
-                    // This mesh...
-                    let mesh = instr.as_mesh().unwrap();
-                    self.submit_mesh(mesh);
+            //     loop {
+            //         // This mesh...
+            //         let mesh = instr.as_mesh().unwrap();
+            //         self.submit_mesh(mesh);
 
-                    // Next mesh...
-                    instr = instrs.next().unwrap();
-                    if !instr.is_mesh() {
-                        break;
-                    }
-                }
-            }
+            //         // Next mesh...
+            //         instr = instrs.next().unwrap();
+            //         if !instr.is_mesh() {
+            //             break;
+            //         }
+            //     }
+            // }
 
-            // Step 4: Light
-            if instr.is_light() {
-                self.submit_light_begin();
+            // // Step 4: Light
+            // if instr.is_light() {
+            //     self.submit_light_begin();
 
-                loop {
-                    // This light...
-                    let light = instr.as_light().unwrap();
-                    self.submit_light(light);
+            //     loop {
+            //         // This light...
+            //         let light = instr.as_light().unwrap();
+            //         self.submit_light(light);
 
-                    // Next light...
-                    instr = instrs.next().unwrap();
-                    if !instr.is_light() {
-                        break;
-                    }
-                }
-            }
+            //         // Next light...
+            //         instr = instrs.next().unwrap();
+            //         if !instr.is_light() {
+            //             break;
+            //         }
+            //     }
+            // }
 
-            // Step 5: Transparent meshes
-            if instr.is_mesh() {
-                self.submit_mesh_begin();
+            // // Step 5: Transparent meshes
+            // if instr.is_mesh() {
+            //     self.submit_mesh_begin();
 
-                loop {
-                    // This mesh...
-                    let mesh = instr.as_mesh().unwrap();
-                    self.submit_mesh(mesh);
+            //     loop {
+            //         // This mesh...
+            //         let mesh = instr.as_mesh().unwrap();
+            //         self.submit_mesh(mesh);
 
-                    // Next mesh...
-                    instr = instrs.next().unwrap();
-                    if !instr.is_mesh() {
-                        break;
-                    }
-                }
-            }
+            //         // Next mesh...
+            //         instr = instrs.next().unwrap();
+            //         if !instr.is_mesh() {
+            //             break;
+            //         }
+            //     }
+            // }
 
-            // Step 2: Lines
-            if instr.is_line() {
-                self.submit_line_begin(&viewport, instrs.view_proj());
+            // // Step 2: Lines
+            // if instr.is_line() {
+            //     self.submit_line_begin(&viewport, instrs.view_proj());
 
-                loop {
-                    // This line...
-                    let line = instr.as_line().unwrap();
-                    self.submit_line(line);
+            //     loop {
+            //         // This line...
+            //         let line = instr.as_line().unwrap();
+            //         self.submit_line(line);
 
-                    // Next line...
-                    instr = instrs.next().unwrap();
-                    if !instr.is_line() {
-                        break;
-                    }
-                }
-            }
+            //         // Next line...
+            //         instr = instrs.next().unwrap();
+            //         if !instr.is_line() {
+            //             break;
+            //         }
+            //     }
+            // }
 
             self.submit_finish();
         };
@@ -471,69 +478,69 @@ impl DrawOp {
 
     unsafe fn submit_light_begin(&mut self) {}
 
-    unsafe fn submit_light(&mut self, _instr: &LightInstruction) {
-        let _ = ShaderStageFlags::VERTEX;
+    //unsafe fn submit_light(&mut self, _instr: &LightInstruction) {
+    //   let _ = ShaderStageFlags::VERTEX;
 
-        // Step 3: Render sunlight
-        // self.cmd_buf.next_subpass(SubpassContents::Inline);
-        // if self.cmds[idx].is_sunlight() {
-        //     let sunlight = self.sunlight.as_ref().unwrap();
+    // Step 3: Render sunlight
+    // self.cmd_buf.next_subpass(SubpassContents::Inline);
+    // if self.cmds[idx].is_sunlight() {
+    //     let sunlight = self.sunlight.as_ref().unwrap();
 
-        //     self.cmd_buf.bind_graphics_pipeline(sunlight.pipeline());
-        //     bind_graphics_descriptor_set(
-        //         &mut self.cmd_buf,
-        //         sunlight.layout(),
-        //         sunlight.desc_set(0),
-        //     );
-        //     self.cmd_buf.set_scissors(0, &[self.rect()]);
-        //     self.cmd_buf.set_viewports(0, &[self.viewport()]);
-        //     loop {
-        //         let _ = self.cmds.pop_front();
-        //         // self.cmd_buf.push_graphics_constants(
-        //         //     self.sunlight.layout(),
-        //         //     ShaderStageFlags::VERTEX,
-        //         //     0,
-        //         //     &mat4_to_u32_array(cmd.world * self.view_proj),
-        //         // );
-        //         self.cmd_buf.draw(0..6, 0..1);
+    //     self.cmd_buf.bind_graphics_pipeline(sunlight.pipeline());
+    //     bind_graphics_descriptor_set(
+    //         &mut self.cmd_buf,
+    //         sunlight.layout(),
+    //         sunlight.desc_set(0),
+    //     );
+    //     self.cmd_buf.set_scissors(0, &[self.rect()]);
+    //     self.cmd_buf.set_viewports(0, &[self.viewport()]);
+    //     loop {
+    //         let _ = self.cmds.pop_front();
+    //         // self.cmd_buf.push_graphics_constants(
+    //         //     self.sunlight.layout(),
+    //         //     ShaderStageFlags::VERTEX,
+    //         //     0,
+    //         //     &mat4_to_u32_array(cmd.world * self.view_proj),
+    //         // );
+    //         self.cmd_buf.draw(0..6, 0..1);
 
-        //         if !self.cmds[0].is_sunlight() {
-        //             break;
-        //         }
-        //     }
-        // }
+    //         if !self.cmds[0].is_sunlight() {
+    //             break;
+    //         }
+    //     }
+    // }
 
-        // // Step 4: Render spotlights
-        // if self.cmds[0].is_spotlight() {
-        //     let spotlight = self.spotlight.as_ref().unwrap();
+    // // Step 4: Render spotlights
+    // if self.cmds[0].is_spotlight() {
+    //     let spotlight = self.spotlight.as_ref().unwrap();
 
-        //     self.cmd_buf.bind_graphics_pipeline(spotlight.pipeline());
-        //     bind_graphics_descriptor_set(
-        //         &mut self.cmd_buf,
-        //         spotlight.layout(),
-        //         spotlight.desc_set(0),
-        //     );
-        //     self.cmd_buf.set_scissors(0, &[self.rect()]);
-        //     self.cmd_buf.set_viewports(0, &[self.viewport()]);
-        //     loop {
-        //         let _ = self.cmds.pop_front();
-        //         // self.cmd_buf.push_graphics_constants(
-        //         //     self.sunlight.layout(),
-        //         //     ShaderStageFlags::VERTEX,
-        //         //     0,
-        //         //     &mat4_to_u32_array(cmd.world * self.view_proj),
-        //         // );
-        //         self.cmd_buf.draw(0..6, 0..1);
+    //     self.cmd_buf.bind_graphics_pipeline(spotlight.pipeline());
+    //     bind_graphics_descriptor_set(
+    //         &mut self.cmd_buf,
+    //         spotlight.layout(),
+    //         spotlight.desc_set(0),
+    //     );
+    //     self.cmd_buf.set_scissors(0, &[self.rect()]);
+    //     self.cmd_buf.set_viewports(0, &[self.viewport()]);
+    //     loop {
+    //         let _ = self.cmds.pop_front();
+    //         // self.cmd_buf.push_graphics_constants(
+    //         //     self.sunlight.layout(),
+    //         //     ShaderStageFlags::VERTEX,
+    //         //     0,
+    //         //     &mat4_to_u32_array(cmd.world * self.view_proj),
+    //         // );
+    //         self.cmd_buf.draw(0..6, 0..1);
 
-        //         if !self.cmds[0].is_spotlight() {
-        //             break;
-        //         }
-        //     }
-        // }
+    //         if !self.cmds[0].is_spotlight() {
+    //             break;
+    //         }
+    //     }
+    // }
 
-        // self.cmd_buf.next_subpass(SubpassContents::Inline);
-        // idx
-    }
+    // self.cmd_buf.next_subpass(SubpassContents::Inline);
+    // idx
+    //}
 
     unsafe fn submit_line_begin(&mut self, viewport: &Viewport, _view_proj: Mat4) {
         let graphics = self.graphics_line.as_ref().unwrap();
@@ -549,39 +556,39 @@ impl DrawOp {
         // );
     }
 
-    unsafe fn submit_line_width<'i>(&mut self, _instr: &LineInstruction<'i>) {}
+    //unsafe fn submit_line_width<'i>(&mut self, _instr: &LineInstruction<'i>) {}
 
-    unsafe fn submit_line<'i>(&mut self, _instr: &LineInstruction<'i>) {
-        // let len: u64 = instr.data.len() as _;
-        // let vertices = instr.vertices();
-        // let (ref mut buf, ref mut buf_len) = self.line_buf.as_mut().unwrap();
-        // let range = *buf_len..*buf_len + len;
+    //unsafe fn submit_line<'i>(&mut self, _instr: &LineInstruction<'i>) {
+    // let len: u64 = instr.data.len() as _;
+    // let vertices = instr.vertices();
+    // let (ref mut buf, ref mut buf_len) = self.line_buf.as_mut().unwrap();
+    // let range = *buf_len..*buf_len + len;
 
-        // // Copy this line data into the buffer
-        // buf.map_range_mut(range.clone()).copy_from_slice(instr.data);
-        // buf.copy_cpu_range(
-        //     &mut self.cmd_buf,
-        //     PipelineStage::VERTEX_INPUT,
-        //     BufferAccess::VERTEX_BUFFER_READ,
-        //     range,
-        // );
+    // // Copy this line data into the buffer
+    // buf.map_range_mut(range.clone()).copy_from_slice(instr.data);
+    // buf.copy_cpu_range(
+    //     &mut self.cmd_buf,
+    //     PipelineStage::VERTEX_INPUT,
+    //     BufferAccess::VERTEX_BUFFER_READ,
+    //     range,
+    // );
 
-        // self.cmd_buf.set_line_width(instr.width);
-        // self.cmd_buf.bind_vertex_buffers(
-        //     0,
-        //     once((
-        //         &*buf.as_ref(),
-        //         SubRange {
-        //             offset: *buf_len,
-        //             size: Some(len),
-        //         },
-        //     )),
-        // );
-        // self.cmd_buf.draw(0..vertices, 0..1);
+    // self.cmd_buf.set_line_width(instr.width);
+    // self.cmd_buf.bind_vertex_buffers(
+    //     0,
+    //     once((
+    //         &*buf.as_ref(),
+    //         SubRange {
+    //             offset: *buf_len,
+    //             size: Some(len),
+    //         },
+    //     )),
+    // );
+    // self.cmd_buf.draw(0..vertices, 0..1);
 
-        // // Advance the buf len value
-        // *buf_len += len;
-    }
+    // // Advance the buf len value
+    // *buf_len += len;
+    //}
 
     unsafe fn submit_mesh_begin(&mut self) {
         // let mesh = self.mesh.as_ref().unwrap();
@@ -912,19 +919,19 @@ impl Op for DrawOpSubmission {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct LineCommand {
     vertices: [LineVertex; 2],
     width: f32,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct LineVertex {
     color: AlphaColor,
     pos: Vec3,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy)]
 pub enum Material {
     Standard,
     Shiny,
@@ -950,7 +957,7 @@ impl Default for Material {
 }
 
 // TODO: cast_shadows, receive_shadows, ambient?
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct MeshCommand<'m> {
     camera_z: f32,
     material: Material,
@@ -958,7 +965,13 @@ pub struct MeshCommand<'m> {
     transform: Mat4,
 }
 
-#[derive(Debug)]
+pub struct MeshDrawInstruction<'i> {
+    material: u32,
+    mesh: &'i Mesh,
+    transform: &'i [u8],
+}
+
+#[derive(Clone, Debug)]
 pub struct PointLightCommand {
     core: Sphere,  // full-bright center and radius
     color: Color,  // `core` and penumbra-to-transparent color
@@ -973,44 +986,51 @@ impl PointLightCommand {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct RectLightCommand {
-    color: Color,   // full-bright and penumbra-to-transparent color
-    penumbra: f32, // size of the area beyond the box formed by `pos` and `range` which fades from `color` to transparent
-    pos: [Vec3; 3], // top-left, bottom-left, and top-right corners when viewed from above
+    color: Color, // full-bright and penumbra-to-transparent color
+    dims: CoordF,
+    radius: f32, // size of the penumbra area beyond the box formed by `pos` and `range` which fades from `color` to transparent
+    pos: Vec3,   // top-left corner when viewed from above
     power: f32, // sRGB power value, normalized to current gamma so 1.0 == a user setting of 1.2 and 2.0 == 2.4
-    range: f32, // distance from `pos` to the bottom of the rect light
+    range: f32, // distance from `pos` to the bottom of the rectangular light
 }
 
 impl RectLightCommand {
-    /// Returns a tightly fitting sphere around the lit area of this rect light, including the penumbra
+    /// Returns a tightly fitting sphere around the lit area of this rectangular light, including the penumbra
     pub(self) fn bounds(&self) -> Sphere {
         todo!();
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct SunlightCommand {
     color: Color, // uniform color for any area exposed to the sunlight
     normal: Vec3, // direction which the sunlight shines
     power: f32, // sRGB power value, normalized to current gamma so 1.0 == a user setting of 1.2 and 2.0 == 2.4
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct SpotlightCommand {
-    normal: Vec3,         // direction from `pos` which the spotlight shines
     color: Color,         // `cone` and penumbra-to-transparent color
     cone_radius: f32, // radius of the spotlight cone from the center to the edge of the full-bright area
+    normal: Vec3,     // direction from `pos` which the spotlight shines
     penumbra_radius: f32, // Additional radius beyond `cone_radius` which fades from `color` to transparent
     pos: Vec3,            // position of the pointy end
     power: f32, // sRGB power value, normalized to current gamma so 1.0 == a user setting of 1.2 and 2.0 == 2.4
     range: Range<f32>, // lit distance from `pos` and to the bottom of the spotlight (does not account for the lens-shaped end)
+    top_radius: f32,
 }
 
 impl SpotlightCommand {
     /// Returns a tightly fitting cone around the lit area of this spotlight, including the penumbra and
     /// lens-shaped base.
     pub(self) fn bounds(&self) -> Cone {
-        Cone::new(self.pos, self.normal, self.range.end, self.cone_radius + self.penumbra_radius)
+        Cone::new(
+            self.pos,
+            self.normal,
+            self.range.end,
+            self.cone_radius + self.penumbra_radius,
+        )
     }
 }

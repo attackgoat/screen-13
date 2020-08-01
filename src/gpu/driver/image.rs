@@ -1,5 +1,5 @@
 use {
-    super::{Driver, Memory, PhysicalDevice},
+    super::{Dim, Driver, Memory, PhysicalDevice},
     crate::math::Extent,
     gfx_hal::{
         device::Device,
@@ -13,20 +13,9 @@ use {
         marker::PhantomData,
         ops::{Deref, DerefMut},
     },
-    typenum::{U1, U2, U3},
+    typenum::U2,
 };
 
-pub trait Dim {}
-
-// TODO: Implement if we use 1D images or just remove it
-impl Dim for U1 {}
-
-impl Dim for U2 {}
-
-// TODO: Implement 3D images
-impl Dim for U3 {}
-
-#[derive(Debug)]
 pub struct Image<D>
 where
     D: Dim,
@@ -35,6 +24,21 @@ where
     driver: Driver,
     mem: Memory,
     ptr: Option<<_Backend as Backend>::Image>,
+}
+
+impl<D> Image<D>
+where
+    D: Dim,
+{
+    #[cfg(debug_assertions)]
+    pub fn rename(image: &mut Self, name: &str) {
+        let device = image.driver.borrow();
+        let ptr = image.ptr.as_mut().unwrap();
+
+        unsafe {
+            device.set_image_name(ptr, name);
+        }
+    }
 }
 
 /// Specialized new function for 2D images

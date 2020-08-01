@@ -5,7 +5,6 @@ use {
     std::ops::{Deref, DerefMut},
 };
 
-#[derive(Debug)]
 pub struct Buffer {
     driver: Driver,
     mem: Memory,
@@ -47,6 +46,16 @@ impl Buffer {
 
     pub fn mem(buf: &Self) -> &Memory {
         &buf.mem
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn rename(buf: &mut Self, name: &str) {
+        let device = buf.driver.borrow();
+        let ptr = buf.ptr.as_mut().unwrap();
+
+        unsafe {
+            device.set_buffer_name(ptr, name);
+        }
     }
 }
 

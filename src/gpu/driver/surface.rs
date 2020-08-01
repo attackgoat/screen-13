@@ -6,7 +6,6 @@ use {
     winit::window::Window,
 };
 
-#[derive(Debug)]
 pub struct Surface {
     instance: Option<_InstanceImpl>,
     ptr: Option<<_Backend as Backend>::Surface>,

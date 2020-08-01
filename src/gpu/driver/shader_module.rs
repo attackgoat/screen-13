@@ -9,7 +9,6 @@ use {
     std::ops::{Deref, DerefMut},
 };
 
-#[derive(Debug)]
 pub struct ShaderModule {
     driver: Driver,
     ptr: Option<<_Backend as Backend>::ShaderModule>,

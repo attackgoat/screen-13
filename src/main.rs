@@ -150,7 +150,6 @@ enum Bake {
     Text,
 }
 
-// #[derive(Debug)]
 // enum CookError {
 //     Content(String),
 //     Io(IoError),

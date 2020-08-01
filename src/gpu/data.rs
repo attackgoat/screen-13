@@ -24,7 +24,6 @@ use {
 /// A GPU buffer type which automates some of the tasks related to copying data. Data has two 'sides',
 /// one accesible from the CPU and the other accessible from the GPU. Functions are provided to copy
 /// data from one side to the other, as need be, and the 'map' or update the data on the CPU side.
-#[derive(Debug)]
 pub struct Data {
     capacity: u64,
     cpu_buf: (Buffer, RefCell<State>),
@@ -280,6 +279,12 @@ impl Data {
         state.access_mask = access_mask;
         state.pipeline_stage = pipeline_stage;
     }
+
+    #[cfg(debug_assertions)]
+    pub fn rename(&mut self, name: &str) {
+        Buffer::rename(&mut self.cpu_buf.0, name);
+        Buffer::rename(&mut self.gpu_buf.0, name);
+    }
 }
 
 impl AsRef<<_Backend as Backend>::Buffer> for Data {
@@ -318,7 +323,6 @@ impl Drop for Mapping<'_> {
     }
 }
 
-#[derive(Debug)]
 struct State {
     access_mask: Access,
     pipeline_stage: PipelineStage,

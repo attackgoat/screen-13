@@ -12,7 +12,6 @@ use {
 
 pub type SamplerBuilder = SamplerDesc;
 
-#[derive(Debug)]
 pub struct Sampler {
     driver: Driver,
     ptr: Option<<_Backend as Backend>::Sampler>,

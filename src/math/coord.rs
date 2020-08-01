@@ -5,10 +5,13 @@ use {
         window::Extent2D,
     },
     serde::{Deserialize, Serialize},
+    std::ops::{Div, DivAssign, Mul, MulAssign, Neg},
     winit::dpi::PhysicalSize,
 };
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[derive(
+    Clone, Copy, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize,
+)]
 pub struct Coord<T>
 where
     T: Sized,
@@ -71,6 +74,32 @@ impl Coord<u32> {
     }
 }
 
+impl<T, Rhs> Div<Rhs> for Coord<T>
+where
+    T: Div<Rhs, Output = T>,
+    Rhs: Copy,
+{
+    type Output = Self;
+
+    fn div(self, rhs: Rhs) -> Self::Output {
+        Self {
+            x: self.x / rhs,
+            y: self.y / rhs,
+        }
+    }
+}
+
+impl<T, Rhs> DivAssign<Rhs> for Coord<T>
+where
+    T: DivAssign<Rhs>,
+    Rhs: Copy,
+{
+    fn div_assign(&mut self, rhs: Rhs) {
+        self.x /= rhs;
+        self.y /= rhs;
+    }
+}
+
 impl<T, U> From<(T, T)> for Coord<U>
 where
     T: Into<U>,
@@ -79,15 +108,6 @@ where
         Self {
             x: val.0.into(),
             y: val.1.into(),
-        }
-    }
-}
-
-impl From<PhysicalSize<u32>> for Coord<u32> {
-    fn from(val: PhysicalSize<u32>) -> Self {
-        Self {
-            x: val.width,
-            y: val.height,
         }
     }
 }
@@ -101,11 +121,38 @@ impl From<Coord<i32>> for Coord<f32> {
     }
 }
 
+impl From<Coord<u8>> for Coord<f32> {
+    fn from(val: Coord<u8>) -> Self {
+        Self {
+            x: val.x as _,
+            y: val.y as _,
+        }
+    }
+}
+
 impl From<Coord<u32>> for Coord<f32> {
     fn from(val: Coord<u32>) -> Self {
         Self {
             x: val.x as _,
             y: val.y as _,
+        }
+    }
+}
+
+impl From<Coord<f32>> for Coord<u8> {
+    fn from(val: Coord<f32>) -> Self {
+        Self {
+            x: val.x as _,
+            y: val.y as _,
+        }
+    }
+}
+
+impl From<PhysicalSize<u32>> for Coord<u32> {
+    fn from(val: PhysicalSize<u32>) -> Self {
+        Self {
+            x: val.width,
+            y: val.height,
         }
     }
 }
@@ -144,6 +191,46 @@ impl From<Coord<u32>> for Coord<i32> {
         Self {
             x: val.x as _,
             y: val.y as _,
+        }
+    }
+}
+
+impl<T, Rhs> Mul<Rhs> for Coord<T>
+where
+    T: Mul<Rhs, Output = T>,
+    Rhs: Copy,
+{
+    type Output = Self;
+
+    fn mul(self, rhs: Rhs) -> Self::Output {
+        Self {
+            x: self.x * rhs,
+            y: self.y * rhs,
+        }
+    }
+}
+
+impl<T, Rhs> MulAssign<Rhs> for Coord<T>
+where
+    T: MulAssign<Rhs>,
+    Rhs: Copy,
+{
+    fn mul_assign(&mut self, rhs: Rhs) {
+        self.x *= rhs;
+        self.y *= rhs;
+    }
+}
+
+impl<T> Neg for Coord<T>
+where
+    T: Neg<Output = T>,
+{
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        Self {
+            x: -self.x,
+            y: -self.y,
         }
     }
 }

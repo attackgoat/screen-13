@@ -1,12 +1,12 @@
-use crate::gpu::Mesh;
+use super::MeshDrawInstruction;
 
-const LINE_VERTEX_LEN: usize = 28;
+//const LINE_VERTEX_LEN: usize = 28;
 
 // Commands specified by the client become Instructions
-pub enum Instruction<'i> {
-    Light(LightInstruction),
-    Line(LineInstruction<'i>),
-    Mesh(MeshInstruction<'i>),
+pub enum Instruction<'a> {
+    //Light(LightInstruction),
+    //Line(LineInstruction<'i>),
+    Mesh(MeshInstruction<'a>),
     // Spotlight(SpotlightCommand),
     // Sunlight(SunlightCommand),
     // Transparency((f32, MeshCommand<'a>)),
@@ -14,26 +14,26 @@ pub enum Instruction<'i> {
 }
 
 impl Instruction<'_> {
-    pub fn as_light(&self) -> Option<&LightInstruction> {
-        match self {
-            Self::Light(instr) => Some(instr),
-            _ => None,
-        }
-    }
+    // pub fn as_light(&self) -> Option<&LightInstruction> {
+    //     match self {
+    //         Self::Light(instr) => Some(instr),
+    //         _ => None,
+    //     }
+    // }
 
-    pub fn as_line(&self) -> Option<&LineInstruction> {
-        match self {
-            Self::Line(instr) => Some(instr),
-            _ => None,
-        }
-    }
+    // pub fn as_line(&self) -> Option<&LineInstruction> {
+    //     match self {
+    //         Self::Line(instr) => Some(instr),
+    //         _ => None,
+    //     }
+    // }
 
-    pub fn as_mesh(&self) -> Option<&MeshInstruction> {
-        match self {
-            Self::Mesh(instr) => Some(instr),
-            _ => None,
-        }
-    }
+    // pub fn as_mesh(&self) -> Option<&MeshInstruction> {
+    //     match self {
+    //         Self::Mesh(instr) => Some(instr),
+    //         _ => None,
+    //     }
+    // }
 
     // pub fn as_sunlight(&self) -> Option<&SunlightCommand> {
     //     match self {
@@ -42,26 +42,26 @@ impl Instruction<'_> {
     //     }
     // }
 
-    pub fn is_light(&self) -> bool {
-        match self {
-            Self::Light(_) => true,
-            _ => false,
-        }
-    }
+    // pub fn is_light(&self) -> bool {
+    //     match self {
+    //         Self::Light(_) => true,
+    //         _ => false,
+    //     }
+    // }
 
-    pub fn is_line(&self) -> bool {
-        match self {
-            Self::Line(_) => true,
-            _ => false,
-        }
-    }
+    // pub fn is_line(&self) -> bool {
+    //     match self {
+    //         Self::Line(_) => true,
+    //         _ => false,
+    //     }
+    // }
 
-    pub fn is_mesh(&self) -> bool {
-        match self {
-            Self::Mesh(_) => true,
-            _ => false,
-        }
-    }
+    // pub fn is_mesh(&self) -> bool {
+    //     match self {
+    //         Self::Mesh(_) => true,
+    //         _ => false,
+    //     }
+    // }
 
     // pub fn is_mesh_single(&self) -> bool {
     //     match self {
@@ -114,36 +114,23 @@ impl Instruction<'_> {
     // }
 }
 
-pub enum LightInstruction {
-    Point,
-    Rect,
-    Spot,
-    Sun,
-}
+// pub enum LineInstruction<'i> {
+//     Draw(DrawLineInstruction<'i>),
+//     SetWidth(f32),
+// }
 
-pub enum LineInstruction<'i> {
-    Draw(DrawLineInstruction<'i>),
-    SetWidth(f32),
-}
+// pub struct DrawLineInstruction<'i> {
+//     pub data: &'i [u8],
+//     pub width: f32,
+// }
 
-pub struct DrawLineInstruction<'i> {
-    pub data: &'i [u8],
-    pub width: f32,
-}
-
-impl DrawLineInstruction<'_> {
-    pub fn vertices(&self) -> u32 {
-        (self.data.len() / LINE_VERTEX_LEN) as _
-    }
-}
+// impl DrawLineInstruction<'_> {
+//     pub fn vertices(&self) -> u32 {
+//         (self.data.len() / LINE_VERTEX_LEN) as _
+//     }
+// }
 
 pub enum MeshInstruction<'i> {
     BindDescriptorSet(usize),
-    Draw(DrawMeshInstruction<'i>),
-}
-
-pub struct DrawMeshInstruction<'i> {
-    pub material: u32,
-    pub mesh: &'i Mesh,
-    pub transform: &'i [u8],
+    Draw(MeshDrawInstruction<'i>),
 }

@@ -15,6 +15,7 @@ use {
     std::{
         cell::{Ref, RefCell},
         collections::HashMap,
+        fmt::{Debug, Error, Formatter},
         ops::Deref,
     },
 };
@@ -30,7 +31,7 @@ impl AsRef<<_Backend as Backend>::Image> for Image {
     }
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Eq, Hash, PartialEq)]
 struct ImageViewKey {
     view_kind: ViewKind,
     format: Format,
@@ -38,7 +39,6 @@ struct ImageViewKey {
     range: SubresourceRange,
 }
 
-#[derive(Debug)]
 struct State {
     access_mask: Access,
     layout: Layout,
@@ -46,7 +46,6 @@ struct State {
 }
 
 /// A generic structure which can hold an N dimensional GPU texture.
-#[derive(Debug)]
 pub struct Texture<I>
 where
     I: AsRef<<_Backend as Backend>::Image>,
@@ -269,6 +268,15 @@ where
 {
     fn as_ref(&self) -> &<_Backend as Backend>::Image {
         self.image.as_ref()
+    }
+}
+
+impl<I> Debug for Texture<I>
+where
+    I: AsRef<<_Backend as Backend>::Image>,
+{
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        f.write_str("Texture")
     }
 }
 

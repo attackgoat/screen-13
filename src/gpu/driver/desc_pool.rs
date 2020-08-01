@@ -12,7 +12,6 @@ use {
     },
 };
 
-#[derive(Debug)]
 pub struct DescriptorPool {
     driver: Driver,
     max_sets: usize,

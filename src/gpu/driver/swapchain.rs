@@ -49,12 +49,10 @@ fn swapchain_config(
     swap_config
 }
 
-#[derive(Debug)]
 pub struct Frame {
     image: <_Backend as Backend>::Image,
 }
 
-#[derive(Debug)]
 pub struct Swapchain {
     driver: Driver,
     fmt: Format,

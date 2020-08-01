@@ -12,7 +12,6 @@ use {
     },
 };
 
-#[derive(Debug)]
 pub struct ComputePipeline {
     driver: Driver,
     layout: PipelineLayout,

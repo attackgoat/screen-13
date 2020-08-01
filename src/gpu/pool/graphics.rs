@@ -91,7 +91,6 @@ pub struct FontVertex {
     pub v: f32,
 }
 
-#[derive(Debug)]
 pub struct Graphics {
     desc_pool: DescriptorPool,
     desc_sets: Vec<<_Backend as Backend>::DescriptorSet>,

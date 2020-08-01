@@ -12,6 +12,7 @@ pub use {
 use self::{coord::Coord as GenericCoord, rect::Rect as GenericRect};
 
 pub type Area = GenericRect<u32, u32>;
+pub type Coord8 = GenericCoord<u8>;
 pub type Coord = GenericCoord<i32>;
 pub type CoordF = GenericCoord<f32>;
 pub type Extent = GenericCoord<u32>;

@@ -44,14 +44,11 @@ pub use self::{
 };
 
 use {
-    self::{
-        framebuffer::Framebuffer,
-        image::{Dim, Image},
-    },
+    self::{framebuffer::Framebuffer, image::Image},
     gfx_hal::Backend,
     gfx_impl::Backend as _Backend,
     std::{cell::RefCell, rc::Rc},
-    typenum::U2,
+    typenum::{U1, U2, U3},
 };
 
 pub type Driver = Rc<RefCell<Device>>;
@@ -69,3 +66,13 @@ where
         Device::new(physical_device, queue_families).unwrap(),
     ))
 }
+
+pub trait Dim {}
+
+// TODO: Implement if we use 1D images or just remove it
+impl Dim for U1 {}
+
+impl Dim for U2 {}
+
+// TODO: Implement 3D images
+impl Dim for U3 {}

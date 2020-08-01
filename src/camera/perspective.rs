@@ -1,5 +1,5 @@
 use {
-    super::Camera,
+    super::{Camera, Category},
     crate::math::{vec3_is_finite, Cone, CoordF, Mat4, Sphere, Vec2, Vec3},
     std::ops::Range,
 };
@@ -84,6 +84,83 @@ impl Perspective {
     /// Returns the width of the view of this camera compared to the height.
     pub fn aspect_ratio(&self) -> f32 {
         self.aspect_ratio
+    }
+
+    /// Returns the axial category and sign of a non-overlapping point, or `None`. Tests in
+    /// Z-Y-X order.
+    fn classify_point(&self, p: Vec3) -> Option<Category> {
+        let dir = p - self.eye;
+
+        // The point must be between our near and far planes, which are parallel
+        let mut len = dir.dot(self.z);
+        if len < self.depth.start {
+            return Some(Category::Z(false));
+        } else if len > self.depth.end {
+            return Some(Category::Z(true));
+        }
+
+        len *= self.fov_tan;
+
+        // Compare point to the top and bottom planes, which are not parallel
+        let axis = dir.dot(self.y);
+        if axis < -len {
+            return Some(Category::Y(false));
+        } else if axis > len {
+            return Some(Category::Y(true));
+        }
+
+        len *= self.aspect_ratio;
+
+        // Compare point to the left and right planes, which are not parallel
+        let axis = dir.dot(self.x);
+        if axis < -len {
+            return Some(Category::X(false));
+        } else if axis > len {
+            return Some(Category::X(true));
+        }
+
+        None
+    }
+
+    /// Returns the axial category and sign of a non-overlapping sphere, or `None`. Tests in
+    /// Z-Y-X order.
+    fn classify_sphere(&self, s: Sphere) -> Option<Category> {
+        // Note: This implementation is based on the 'radar' approach detailed here:
+        // http://www.lighthouse3d.com/tutorials/view-frustum-culling/
+        let dir = s.center() - self.eye;
+
+        // The sphere must be between our near and far planes, which are parallel
+        let mut len = dir.dot(self.z);
+        if len < self.depth.start - s.radius() {
+            return Some(Category::Z(false));
+        } else if len > self.depth.end + s.radius() {
+            return Some(Category::Z(true));
+        }
+
+        len *= self.fov_tan;
+
+        // Compare sphere to the top and bottom planes, which are not parallel
+        let axis = dir.dot(self.y);
+        let radius = self.sphere_factor.y() * s.radius();
+        if axis < -len - radius {
+            return Some(Category::Y(false));
+        } else if axis > len + radius {
+            return Some(Category::Y(true));
+        }
+
+        len *= self.aspect_ratio;
+
+        // Compare sphere to the left and right planes, which are not parallel
+        let axis = dir.dot(self.x);
+        let radius = self.sphere_factor.x() * s.radius();
+        if axis < -len - radius {
+            return Some(Category::X(false));
+        } else if axis > len + radius {
+            return Some(Category::X(true));
+        }
+
+        // Not overlapping
+        None
     }
 
     /// Returns the position this camera is pointing from.
@@ -230,40 +307,57 @@ impl Camera for Perspective {
         self.eye
     }
 
-    fn intersects_cone(&self, cone: Cone) -> bool {
-        true
+    fn overlaps_cone(&self, c: Cone) -> bool {
+        // Test the apex point, hoping to early-out if it overlaps
+        let apex = self.classify_point(c.apex());
+        if apex.is_none() {
+            return true;
+        }
+
+        // Test a sphere around the base, hoping to early-out if it overlaps
+        let base =
+            self.classify_sphere(Sphere::new(c.apex() + c.normal() * c.height(), c.radius()));
+        if apex.is_none() {
+            return true;
+        }
+
+        let apex = apex.unwrap();
+        let base = base.unwrap();
+
+        // The cone *may* overlap, so the next step is to throw out the common case we are certain of:
+        // - If `apex` and `base` are on the same side of the same axis then they cannot overlap.
+        match apex {
+            Category::X(apex) => {
+                if let Category::X(base) = base {
+                    return apex != base;
+                }
+            }
+            Category::Y(apex) => {
+                if let Category::Y(base) = base {
+                    return apex != base;
+                }
+            }
+            Category::Z(apex) => {
+                if let Category::Z(base) = base {
+                    return apex != base;
+                }
+            }
+        }
+
+        // TODO: Further refine by classifying yet-unknown X and Y cases - Will require re-doing the math for Z and Y
+
+        // Not sure if they overlap yet, but we can switch to a loose-fitting sphere test which is good enough
+        // TODO: Not correct, need better sphere!
+        let s = Sphere::new(c.apex() + c.normal() * c.height(), c.radius());
+        self.classify_sphere(s).is_none()
     }
 
-    fn intersects_sphere(&self, sphere: Sphere) -> bool {
-        // Note: This implementation is based on the 'radar' approach detailed here:
-        // http://www.lighthouse3d.com/tutorials/view-frustum-culling/
-        let dir = sphere.center() - self.eye;
+    fn overlaps_point(&self, p: Vec3) -> bool {
+        self.classify_point(p).is_none()
+    }
 
-        // The sphere must be between our near and far planes, which are parallel
-        let mut z = dir.dot(self.z);
-        if z < self.depth.start - sphere.radius() || z > self.depth.end + sphere.radius() {
-            return false;
-        }
-
-        z *= self.fov_tan;
-
-        // Compare sphere to the top and bottom planes, which are not parallel
-        let y = dir.dot(self.y);
-        let d = self.sphere_factor.y() * sphere.radius();
-        if y < -z - d || y > z + d {
-            return false;
-        }
-
-        z *= self.aspect_ratio;
-
-        // Compare sphere to the left and right planes, which are not parallel
-        let x = dir.dot(self.x);
-        let d = self.sphere_factor.x() * sphere.radius();
-        if x < -z - d || x > z + d {
-            return false;
-        }
-
-        true
+    fn overlaps_sphere(&self, s: Sphere) -> bool {
+        self.classify_sphere(s).is_none()
     }
 
     fn project_point(&self, p: Vec3) -> Vec3 {

@@ -5,7 +5,6 @@ use {
     std::ops::{Deref, DerefMut},
 };
 
-#[derive(Debug)]
 pub struct GraphicsPipeline {
     driver: Driver,
     ptr: Option<<_Backend as Backend>::GraphicsPipeline>,
