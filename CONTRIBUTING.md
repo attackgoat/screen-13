@@ -8,11 +8,11 @@ If you have any questions or would like private coorespondence with the main aut
 
 This section lists the absolute minimum requirements you must understand and practice in order to be involved with this project. If you fail to uphold the spirit of these rules you will not have any access to make changes within this project and you may be banned entirely.
 
-### Licesnsing Requirements
+## Licesnsing Requirements
 
 All contributions, ideas, issues, or other efforts you expend on this project must be providing using the existing MIT or Apache 2.0 license agreements applied to this project. This means that anything you do for this project will be provided to the public without any strings or conditions attached. You must also have the right to provide any code or ideas under these licenses as you will retain no ownership or control after contribution.
 
-### Technical Requirements
+## Technical Requirements
 
 All code must:
 
@@ -20,6 +20,8 @@ All code must:
 - Pass `cargo fmt` and `cargo clippy` (debug and release) with no warnings
 - Support required platforms: Linux, Mac, Windows, Web Assembly
 - Use only `crates.io`-published crates
+
+### Recommentations
 
 All code should:
 
@@ -36,12 +38,26 @@ Most code should:
 - Use `// TODO` or `// HACK` comments as needed when breaking these guidelines
 - Make small `unsafe` blocks as needed, separating the safe and unsafe parts for clarity
 
-### Human Requirements
+### Layout
 
-All contributors must:
+If you are wondering what logic is used to order and layout the code, you might be interested in this list. These *totally optional* and *completely silly* details should probably be ignored but I am including them for future-me and to give more context. In some cases the code doesn't follow these guidelines and _that's okay_.
 
-- Be courteous and respectful to all humans; including outside of this project
-- Provide and respond to feedback in a friendly and reasonable manner
+Order each file:
+
+- Package-level attributes
+- `pub mod` then `pub(modifier) mod` then `mod`
+- `pub use` then `pub(modifier) use` then `use`, with the itmes of each group listing attributed `use` statements after the non-attributed one
+- `const` then `static` bindings
+- `type` aliases
+- `fn` implementations
+- `enum` and `struct` and `trait` blocks
+- `#[cfg(test)]` modules
+
+Special cases:
+
+- `impl` blocks - Always in the same file directly after their `struct` definition, ordered by generics then alphabetically
+- macro invocations are placed where the items created by the macro output should otherwise appear
+- Name changes: never re-order the item. This is in order to maintain a clean and un-polluted history
 
 ## How do I get started
 
