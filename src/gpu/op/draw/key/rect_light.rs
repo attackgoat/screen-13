@@ -4,7 +4,7 @@ use {
 };
 
 // TODO: Investigate custom Ord implementations for this and SpotlightKey; either store a separate "compare" u32 field or just store all data in one u32 and offer functions to get the individual fields back
-#[derive(Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 pub struct RectLightKey {
     dims: Coord8,
     radius: u8,

@@ -4,7 +4,7 @@ use {
     std::{collections::hash_map::DefaultHasher, hash::Hasher},
 };
 
-#[derive(Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 pub struct LineKey(u64);
 
 impl LineKey {

@@ -8,7 +8,7 @@ use {super::BIT, crate::gpu::op::draw::SpotlightCommand, std::ops::Range};
 /// Note that this type breaks range out into values as opposed to using `Range<u8>` because that type
 /// doesn't implement `Ord` and we really don't care what order these are stored in, we just want to order
 /// them so we can binary search to find them.
-#[derive(Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 pub struct SpotlightKey {
     radius_end: u8,
     radius_start: u8,

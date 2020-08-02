@@ -258,6 +258,11 @@ impl DrawOp {
         camera: &impl Camera,
         cmds: &'c mut [Command<'c>],
     ) -> DrawOpSubmission {
+        // HACK: Hiding these warnings for now in the most I-will-remember-to-remove-later way
+        let _ = ShaderStageFlags::empty();
+        let _ = BufferUsage::STORAGE;
+        let _ = Vec2::zero();
+
         let dims: Coord = self.dst.borrow().dims().into();
         let viewport = Viewport {
             rect: dims.as_rect_at(Coord::ZERO),
@@ -286,7 +291,7 @@ impl DrawOp {
 
         unsafe {
             // NOTE: There will always be at least one instruction (Stop)
-            let mut instr = instrs.next().unwrap();
+            let mut _instr = instrs.next().unwrap();
 
             self.submit_begin(&viewport);
 
