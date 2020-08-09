@@ -23,7 +23,7 @@ impl Semaphore {
     }
 
     #[cfg(debug_assertions)]
-    pub fn rename(semaphore: &mut Self, name: &str) {
+    pub fn set_name(semaphore: &mut Self, name: &str) {
         let device = semaphore.driver.borrow();
         let ptr = semaphore.ptr.as_mut().unwrap();
 

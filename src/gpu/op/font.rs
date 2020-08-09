@@ -3,6 +3,7 @@ use {
     crate::{
         color::{AlphaColor, TRANSPARENT_BLACK},
         gpu::{
+            data::Mapping,
             driver::{
                 bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
                 Image2d, PhysicalDevice,
@@ -43,6 +44,8 @@ const QUEUE_TYPE: QueueType = QueueType::Graphics;
 const RENDER_PASS_MODE: RenderPassMode = RenderPassMode::ReadWrite;
 const SUBPASS_IDX: u8 = 0;
 
+// TODO: Extend this with a DrawOp-like compiler to cache repeated frame-to-frame tesselations
+// TODO: Allow one FontOp to specify a list of colors, make a rainbow-colored text example for it
 /// Holds a decoded bitmap Font.
 pub struct Font {
     def: BMFont,
@@ -337,14 +340,16 @@ where
             ));
 
             // Fill the vertex buffer with each tessellation in order
-            let (vertex_buf, _) = self.vertex_buf.as_ref().unwrap();
-            let mut dst = unsafe { vertex_buf.map_range_mut(0..vertex_buf_len) };
+            let (vertex_buf, _) = self.vertex_buf.as_mut().unwrap();
+            let mut dst = vertex_buf.map_range_mut(0..vertex_buf_len).unwrap(); // TODO: Error handling!
             let mut dst_offset = 0;
             for (_, vertices) in &tessellations {
                 let len = vertices.len();
                 dst[dst_offset..dst_offset + len].copy_from_slice(&vertices);
                 dst_offset += len;
             }
+
+            Mapping::flush(&mut dst).unwrap(); // TODO: Error handling!
         }
 
         unsafe {
@@ -387,7 +392,7 @@ where
 
     unsafe fn submit_begin(&mut self, dims: Extent) {
         let graphics = self.graphics.as_ref().unwrap();
-        let (vertex_buf, vertex_buf_len) = self.vertex_buf.as_ref().unwrap();
+        let (vertex_buf, vertex_buf_len) = self.vertex_buf.as_mut().unwrap();
         let mut back_buf = self.back_buf.borrow_mut();
         let mut dst = self.dst.borrow_mut();
         let mut pool = self.pool.borrow_mut();
@@ -405,11 +410,11 @@ where
             .begin_primary(CommandBufferFlags::ONE_TIME_SUBMIT);
 
         // Step 1: Copy the cpu-local vertex buffer to the gpu
-        vertex_buf.copy_cpu(
+        vertex_buf.write_range(
             &mut self.cmd_buf,
             PipelineStage::VERTEX_INPUT,
             BufferAccess::VERTEX_BUFFER_READ,
-            *vertex_buf_len,
+            0..*vertex_buf_len,
         );
 
         // Step 2: Copy dst into the backbuffer
@@ -466,7 +471,7 @@ where
 
     unsafe fn submit_page(&mut self, dims: Extent, vertices: Range<u32>) {
         let graphics = self.graphics.as_ref().unwrap();
-        let (vertex_buf, _) = self.vertex_buf.as_mut().unwrap();
+        let (vertex_buf, vertex_buf_len) = self.vertex_buf.as_mut().unwrap();
         let rect = Rect {
             x: 0,
             y: 0,
@@ -487,7 +492,7 @@ where
                 &*vertex_buf.as_ref(),
                 SubRange {
                     offset: 0,
-                    size: None,
+                    size: Some(*vertex_buf_len),
                 },
             )),
         );

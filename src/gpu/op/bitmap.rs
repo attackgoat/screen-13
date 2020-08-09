@@ -2,6 +2,7 @@ use {
     super::{wait_for_fence, Op},
     crate::{
         gpu::{
+            data::Mapping,
             driver::{
                 bind_compute_descriptor_set, change_channel_type, CommandPool, ComputePipeline,
                 Device, Driver, Fence, Image2d, PhysicalDevice,
@@ -110,7 +111,7 @@ impl BitmapOp {
         let pool = PoolRef::clone(pool);
         let mut pool_ref = pool.borrow_mut();
         let pixel_buf_len = width * pixel_buf_stride;
-        let pixel_buf = pool_ref.data_usage(
+        let mut pixel_buf = pool_ref.data_usage(
             #[cfg(debug_assertions)]
             name,
             pixel_buf_len as _,
@@ -124,13 +125,15 @@ impl BitmapOp {
             // row allows for additional buffer space on it, which we use stride to track. At this point we
             // must convert from pak-format to gpu-format by copying in each row.
             let src = bitmap.pixels();
-            let mut dst = pixel_buf.map_range_mut(0..pixel_buf_len as _);
+            let mut dst = pixel_buf.map_range_mut(0..pixel_buf_len as _).unwrap(); // TODO: Error handling
             for y in 0..height {
                 let src_offset = y * bitmap_stride;
                 let dst_offset = y * pixel_buf_stride;
                 dst[dst_offset..dst_offset + bitmap_stride]
                     .copy_from_slice(&src[src_offset..src_offset + bitmap_stride]);
             }
+
+            Mapping::flush(&mut dst).unwrap(); // TODO: Error handling
         }
 
         // Lease a texture to hold the decoded bitmap
@@ -198,12 +201,12 @@ impl BitmapOp {
         self.cmd_buf
             .begin_primary(CommandBufferFlags::ONE_TIME_SUBMIT);
 
-        // Step 1: Copy the local cpu memory buffer into the gpu-local buffer
-        self.pixel_buf.copy_cpu(
+        // Step 1: Write the local cpu memory buffer into the gpu-local buffer
+        self.pixel_buf.write_range(
             &mut self.cmd_buf,
             PipelineStage::COMPUTE_SHADER,
             BufferAccess::SHADER_READ,
-            self.pixel_buf_len,
+            0..self.pixel_buf_len,
         );
 
         // Step 2: Use a compute shader to remap the memory layout of the device-local buffer

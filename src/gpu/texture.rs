@@ -1,8 +1,6 @@
 use {
-    crate::{
-        gpu::driver::{Driver, Image2d, ImageView, PhysicalDevice},
-        math::Extent,
-    },
+    super::driver::{Driver, Image2d, ImageView, PhysicalDevice},
+    crate::math::Extent,
     gfx_hal::{
         command::CommandBuffer,
         format::{Aspects, Format, Swizzle},

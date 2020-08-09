@@ -60,7 +60,7 @@ impl RenderPass {
     }
 
     #[cfg(debug_assertions)]
-    pub fn rename(render_pass: &mut Self, name: &str) {
+    pub fn set_name(render_pass: &mut Self, name: &str) {
         let device = render_pass.driver.as_ref().borrow();
         let ptr = render_pass.ptr.as_mut().unwrap();
 

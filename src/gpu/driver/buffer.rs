@@ -49,7 +49,7 @@ impl Buffer {
     }
 
     #[cfg(debug_assertions)]
-    pub fn rename(buf: &mut Self, name: &str) {
+    pub fn set_name(buf: &mut Self, name: &str) {
         let device = buf.driver.borrow();
         let ptr = buf.ptr.as_mut().unwrap();
 

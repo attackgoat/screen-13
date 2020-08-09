@@ -28,7 +28,7 @@ pub(crate) use self::{
 
 use {
     self::{
-        data::Data,
+        data::{Data, Mapping},
         driver::{open, Image2d, Surface},
         op::BitmapOp,
         pool::{Lease, Pool},
@@ -291,17 +291,17 @@ impl Gpu {
             .collect::<Vec<_>>();
         let vertices = mesh.vertices();
         let vertex_buf_len = vertices.len() as _;
-        let vertex_buf = pool.borrow_mut().data_usage(
+        let mut vertex_buf = pool.borrow_mut().data_usage(
             #[cfg(debug_assertions)]
             name,
             vertex_buf_len,
             Usage::VERTEX,
         );
 
-        unsafe {
-            vertex_buf
-                .map_range_mut(0..vertex_buf_len)
-                .copy_from_slice(&vertices);
+        {
+            let mut mapped_range = vertex_buf.map_range_mut(0..vertex_buf_len).unwrap(); // TODO: Error handling!
+            mapped_range.copy_from_slice(&vertices);
+            Mapping::flush(&mut mapped_range).unwrap(); // TODO: Error handling!
         }
 
         Mesh {

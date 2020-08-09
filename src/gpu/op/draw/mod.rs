@@ -8,18 +8,16 @@ mod graphics_buf;
 mod instruction;
 mod key;
 
-pub use self::{
-    command::Command,
-    compiler::{Compilation, Compiler},
-};
+pub use self::{command::Command, compiler::Compiler};
 
 use {
-    self::{compiler::Stages, graphics_buf::GraphicsBuffer, instruction::MeshInstruction},
+    self::{compiler::Compilation, graphics_buf::GraphicsBuffer, instruction::MeshInstruction},
     super::{wait_for_fence, Op},
     crate::{
         camera::Camera,
         color::{AlphaColor, Color, TRANSPARENT_BLACK},
         gpu::{
+            data::CopyRange,
             driver::{CommandPool, Device, Driver, Fence, Framebuffer2d, PhysicalDevice},
             pool::{Graphics, GraphicsMode, Lease, MeshType, RenderPassMode},
             Data, Mesh, PoolRef, Texture2d, TextureRef,
@@ -51,6 +49,11 @@ const _1: Extent = Extent::ZERO;
 const _2: SubRange = SubRange::WHOLE;
 
 const QUEUE_TYPE: QueueType = QueueType::Graphics;
+
+struct CopyInstruction<'a> {
+    data: &'a Data,
+    ranges: &'a [CopyRange],
+}
 
 pub struct DrawOp {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
@@ -154,94 +157,94 @@ impl DrawOp {
         }
     }
 
-    /// Sets up the draw op for rendering using the given compilation results by initializing the
-    /// required graphics pipeline instances.
-    fn with_compilation(&mut self, compilation: &Compilation) {
-        let mut pool = self.pool.borrow_mut();
+    // /// Sets up the draw op for rendering using the given compilation results by initializing the
+    // /// required graphics pipeline instances.
+    // fn with_compilation(&mut self, compilation: &Compilation) {
+    //     let mut pool = self.pool.borrow_mut();
 
-        // We lazy-load the number of required mesh descriptor sets
-        let mut mesh_sets = None;
-        let mut set_mesh_sets = || {
-            if mesh_sets.is_none() {
-                mesh_sets = Some(compilation.mesh_sets_required());
-            };
-        };
+    //     // We lazy-load the number of required mesh descriptor sets
+    //     let mut mesh_sets = None;
+    //     let mut set_mesh_sets = || {
+    //         if mesh_sets.is_none() {
+    //             mesh_sets = Some(compilation.mesh_sets_required());
+    //         };
+    //     };
 
-        // Setup the graphics pipelines
-        let stages = compilation.stages_required();
-        if stages.contains(Stages::MESH_SINGLE_TEX) {
-            set_mesh_sets();
-            self.graphics_mesh_single_tex = Some(pool.graphics_sets(
-                #[cfg(debug_assertions)]
-                &format!("{} (Mesh/SingleTex)", &self.name),
-                GraphicsMode::Mesh(MeshType::SingleTexture),
-                RenderPassMode::Draw,
-                0,
-                mesh_sets.as_ref().unwrap().single_tex,
-            ));
-        }
+    //     // Setup the graphics pipelines
+    //     let stages = compilation.stages_required();
+    //     if stages.contains(Stages::MESH_SINGLE_TEX) {
+    //         set_mesh_sets();
+    //         self.graphics_mesh_single_tex = Some(pool.graphics_sets(
+    //             #[cfg(debug_assertions)]
+    //             &format!("{} (Mesh/SingleTex)", &self.name),
+    //             GraphicsMode::Mesh(MeshType::SingleTexture),
+    //             RenderPassMode::Draw,
+    //             0,
+    //             mesh_sets.as_ref().unwrap().single_tex,
+    //         ));
+    //     }
 
-        if stages.contains(Stages::MESH_DUAL_TEX) {
-            self.graphics_mesh_dual_tex = Some(pool.graphics_sets(
-                #[cfg(debug_assertions)]
-                &format!("{} (Mesh/DualTex)", &self.name),
-                GraphicsMode::Mesh(MeshType::DualTexture),
-                RenderPassMode::Draw,
-                0,
-                mesh_sets.as_ref().unwrap().dual_tex,
-            ));
-        }
+    //     if stages.contains(Stages::MESH_DUAL_TEX) {
+    //         self.graphics_mesh_dual_tex = Some(pool.graphics_sets(
+    //             #[cfg(debug_assertions)]
+    //             &format!("{} (Mesh/DualTex)", &self.name),
+    //             GraphicsMode::Mesh(MeshType::DualTexture),
+    //             RenderPassMode::Draw,
+    //             0,
+    //             mesh_sets.as_ref().unwrap().dual_tex,
+    //         ));
+    //     }
 
-        if stages.contains(Stages::MESH_TRANSPARENT) {
-            self.graphics_mesh_transparent = Some(pool.graphics_sets(
-                #[cfg(debug_assertions)]
-                &format!("{} (Mesh/Trans)", &self.name),
-                GraphicsMode::Mesh(MeshType::Transparent),
-                RenderPassMode::Draw,
-                2,
-                mesh_sets.as_ref().unwrap().trans,
-            ));
-        }
+    //     if stages.contains(Stages::MESH_TRANSPARENT) {
+    //         self.graphics_mesh_transparent = Some(pool.graphics_sets(
+    //             #[cfg(debug_assertions)]
+    //             &format!("{} (Mesh/Trans)", &self.name),
+    //             GraphicsMode::Mesh(MeshType::Transparent),
+    //             RenderPassMode::Draw,
+    //             2,
+    //             mesh_sets.as_ref().unwrap().trans,
+    //         ));
+    //     }
 
-        if stages.contains(Stages::LINE) {
-            self.graphics_line = Some(pool.graphics(
-                #[cfg(debug_assertions)]
-                &format!("{} (Line)", &self.name),
-                GraphicsMode::Line,
-                RenderPassMode::Draw,
-                0,
-            ));
-            // // // // self.line_buf = Some((
-            // // // //     pool.data_usage(
-            // // // //         #[cfg(debug_assertions)]
-            // // // //         &format!("{} (Line Buf)", &self.name),
-            // // // //         compilation.line_buf().len() as _,
-            // // // //         BufferUsage::STORAGE,
-            // // // //     ),
-            // // // //     0,
-            // // // // ));
-        }
+    //     if stages.contains(Stages::LINE) {
+    //         self.graphics_line = Some(pool.graphics(
+    //             #[cfg(debug_assertions)]
+    //             &format!("{} (Line)", &self.name),
+    //             GraphicsMode::Line,
+    //             RenderPassMode::Draw,
+    //             0,
+    //         ));
+    //         // // // // self.line_buf = Some((
+    //         // // // //     pool.data_usage(
+    //         // // // //         #[cfg(debug_assertions)]
+    //         // // // //         &format!("{} (Line Buf)", &self.name),
+    //         // // // //         compilation.line_buf().len() as _,
+    //         // // // //         BufferUsage::STORAGE,
+    //         // // // //     ),
+    //         // // // //     0,
+    //         // // // // ));
+    //     }
 
-        if stages.contains(Stages::SPOTLIGHT) {
-            self.graphics_spotlight = Some(pool.graphics(
-                #[cfg(debug_assertions)]
-                &format!("{} (Spotlight)", &self.name),
-                GraphicsMode::Spotlight,
-                RenderPassMode::Draw,
-                0,
-            ));
-        }
+    //     if stages.contains(Stages::SPOTLIGHT) {
+    //         self.graphics_spotlight = Some(pool.graphics(
+    //             #[cfg(debug_assertions)]
+    //             &format!("{} (Spotlight)", &self.name),
+    //             GraphicsMode::Spotlight,
+    //             RenderPassMode::Draw,
+    //             0,
+    //         ));
+    //     }
 
-        if stages.contains(Stages::SUNLIGHT) {
-            self.graphics_sunlight = Some(pool.graphics(
-                #[cfg(debug_assertions)]
-                &format!("{} (Sunlight)", &self.name),
-                GraphicsMode::Sunlight,
-                RenderPassMode::Draw,
-                0,
-            ));
-        }
-    }
+    //     if stages.contains(Stages::SUNLIGHT) {
+    //         self.graphics_sunlight = Some(pool.graphics(
+    //             #[cfg(debug_assertions)]
+    //             &format!("{} (Sunlight)", &self.name),
+    //             GraphicsMode::Sunlight,
+    //             RenderPassMode::Draw,
+    //             0,
+    //         ));
+    //     }
+    // }
 
     // TODO: Use new method of unsafe as_ref pointer cast
     fn mesh_vertex_push_consts(_world_view_proj: Mat4, _world: Mat4) -> Vec<u32> {
@@ -271,13 +274,7 @@ impl DrawOp {
 
         // Use a compiler to figure out rendering instructions without allocating
         // memory per rendering command. The compiler caches code between frames.
-        let (mut compiler, _driver) = {
-            let mut pool = self.pool.borrow_mut();
-            let driver = Driver::clone(pool.driver());
-            let compiler = pool.compiler();
-
-            (compiler, driver)
-        };
+        let mut compiler = self.pool.borrow_mut().compiler();
         let mut instrs = compiler.compile(
             #[cfg(debug_assertions)]
             &self.name,
@@ -285,9 +282,6 @@ impl DrawOp {
             camera,
             cmds,
         );
-
-        // Setup our graphics pipelines for these compiled instructions
-        self.with_compilation(&instrs);
 
         unsafe {
             // NOTE: There will always be at least one instruction (Stop)
@@ -570,7 +564,7 @@ impl DrawOp {
     // let range = *buf_len..*buf_len + len;
 
     // // Copy this line data into the buffer
-    // buf.map_range_mut(range.clone()).copy_from_slice(instr.data);
+    // buf.map_range_mut(range.clone()).copy_from_slice(instr.data); // TOOD: flush when done!
     // buf.copy_cpu_range(
     //     &mut self.cmd_buf,
     //     PipelineStage::VERTEX_INPUT,

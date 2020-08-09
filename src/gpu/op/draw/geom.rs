@@ -248,30 +248,21 @@ pub(super) fn gen_rect_light(dims: Coord8, range: u8, radius: u8) -> [u8; RECT_L
 const fn v_range(idx: usize) -> Range<usize> {
     let start = x_start(idx);
 
-    Range {
-        start,
-        end: start + 12,
-    }
+    start..start + 12
 }
 
 /// Returns the range of the "x" field of a given vertex
 const fn x_range(idx: usize) -> Range<usize> {
     let start = x_start(idx);
 
-    Range {
-        start,
-        end: start + 4,
-    }
+    start..start + 4
 }
 
 /// Returns the range of the "x" and "y" fields of a given vertex
 const fn xy_range(idx: usize) -> Range<usize> {
     let start = x_start(idx);
 
-    Range {
-        start,
-        end: start + 8,
-    }
+    start..start + 8
 }
 
 /// Returns the start of the "x" field of a given vertex
@@ -283,10 +274,7 @@ const fn x_start(idx: usize) -> usize {
 const fn y_range(idx: usize) -> Range<usize> {
     let start = y_start(idx);
 
-    Range {
-        start,
-        end: start + 4,
-    }
+    start..start + 4
 }
 
 /// Returns the start of the "y" field of a given vertex
@@ -298,20 +286,14 @@ const fn y_start(idx: usize) -> usize {
 const fn yz_range(idx: usize) -> Range<usize> {
     let start = y_start(idx);
 
-    Range {
-        start,
-        end: start + 8,
-    }
+    start..start + 8
 }
 
 /// Returns the range of the "z" field of a given vertex
 const fn z_range(idx: usize) -> Range<usize> {
     let start = z_start(idx);
 
-    Range {
-        start,
-        end: start + 4,
-    }
+    start..start + 4
 }
 
 /// Returns the start of the "z" field of a given vertex

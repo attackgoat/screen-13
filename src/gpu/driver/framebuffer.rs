@@ -25,7 +25,7 @@ where
     D: Dim,
 {
     #[cfg(debug_assertions)]
-    pub fn rename(frame_buf: &mut Self, name: &str) {
+    pub fn set_name(frame_buf: &mut Self, name: &str) {
         let device = frame_buf.driver.as_ref().borrow();
         let ptr = frame_buf.ptr.as_mut().unwrap();
 

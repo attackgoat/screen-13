@@ -34,6 +34,7 @@ Most code should:
 - Create a new file for `struct`'s with non-trait `impl` blocks
 - Group all `use` statements into one nested `use` statement; except for visibility modifiers and conditional compilation attributes
 - No star-style `use` statements except in demo code which is intended to be concise
+- No `super::super` paths in `use` statements, search by `crate::` for those
 - Prefer alphabetical sorting of code items unless there is a well-known non-alpha context
 - Use `// TODO` or `// HACK` comments as needed when breaking these guidelines
 - Make small `unsafe` blocks as needed, separating the safe and unsafe parts for clarity
@@ -57,7 +58,6 @@ Special cases:
 
 - `impl` blocks - Always in the same file directly after their `struct` definition, ordered by generics then alphabetically
 - macro invocations are placed where the items created by the macro output should otherwise appear
-- Name changes: never re-order the item. This is in order to maintain a clean and un-polluted history
 
 ## How do I get started
 

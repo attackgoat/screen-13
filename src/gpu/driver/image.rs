@@ -31,7 +31,7 @@ where
     D: Dim,
 {
     #[cfg(debug_assertions)]
-    pub fn rename(image: &mut Self, name: &str) {
+    pub fn set_name(image: &mut Self, name: &str) {
         let device = image.driver.borrow();
         let ptr = image.ptr.as_mut().unwrap();
 

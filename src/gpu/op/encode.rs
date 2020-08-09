@@ -42,14 +42,11 @@ where
 {
     pub fn flush(&mut self) -> IoResult<()> {
         // We only do this once
-        if let Some(op) = self.op.take() {
+        if let Some(mut op) = self.op.take() {
             self.wait();
             let dims = op.texture.borrow().dims();
             let len = EncodeOp::byte_len(&op.texture);
-            let buf = unsafe {
-                // Safe because it is waited on above
-                op.buf.map_range(0..len as _)
-            };
+            let buf = op.buf.map_range(0..len as _).unwrap(); // TODO: Error handling!
 
             // Encode the 32bpp RGBA source data into a JPEG
             save_buffer(&self.path, &buf, dims.x, dims.y, ColorType::Rgba8).unwrap();
@@ -183,24 +180,9 @@ where
                 image_extent: dims.as_extent_with_depth(1),
             }],
         );
-        buf.pipeline_barrier_gpu(
-            &mut self.cmd_buf,
-            PipelineStage::TRANSFER,
-            BufferAccess::TRANSFER_WRITE,
-        );
 
         // Step 2: Copy our GPU buffer down to the CPU
-        buf.copy_gpu_range(
-            &mut self.cmd_buf,
-            PipelineStage::TRANSFER,
-            BufferAccess::TRANSFER_WRITE,
-            0..len as _,
-        );
-        buf.pipeline_barrier_cpu(
-            &mut self.cmd_buf,
-            PipelineStage::HOST,
-            BufferAccess::HOST_READ,
-        );
+        buf.read_range(&mut self.cmd_buf, 0..len as _);
 
         // Finish
         self.cmd_buf.finish();

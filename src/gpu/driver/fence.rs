@@ -26,20 +26,20 @@ impl Fence {
         }
     }
 
+    pub fn reset(fence: &mut Self) {
+        let device = fence.driver.borrow();
+
+        unsafe { device.reset_fence(&fence) }.unwrap();
+    }
+
     #[cfg(debug_assertions)]
-    pub fn rename(fence: &mut Self, name: &str) {
+    pub fn set_name(fence: &mut Self, name: &str) {
         let device = fence.driver.borrow();
         let ptr = fence.ptr.as_mut().unwrap();
 
         unsafe {
             device.set_fence_name(ptr, name);
         }
-    }
-
-    pub fn reset(fence: &mut Self) {
-        let device = fence.driver.borrow();
-
-        unsafe { device.reset_fence(&fence) }.unwrap();
     }
 }
 

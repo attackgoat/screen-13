@@ -45,7 +45,7 @@ impl DescriptorSetLayout {
     }
 
     #[cfg(debug_assertions)]
-    pub fn rename(set_layout: &mut Self, name: &str) {
+    pub fn set_name(set_layout: &mut Self, name: &str) {
         let device = set_layout.driver.as_ref().borrow();
         let ptr = set_layout.ptr.as_mut().unwrap();
 

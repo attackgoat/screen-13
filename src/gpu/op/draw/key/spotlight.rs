@@ -9,28 +9,9 @@ use {super::BIT, crate::gpu::op::draw::SpotlightCommand, std::ops::Range};
 /// doesn't implement `Ord` and we really don't care what order these are stored in, we just want to order
 /// them so we can binary search to find them.
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
-pub struct SpotlightKey {
-    radius_end: u8,
-    radius_start: u8,
-    range_end: u8,
-    range_start: u8,
-}
+pub struct SpotlightKey(u32);
 
 impl SpotlightKey {
-    pub fn radius(&self) -> Range<u8> {
-        Range {
-            end: self.radius_end,
-            start: self.radius_start,
-        }
-    }
-
-    pub fn range(&self) -> Range<u8> {
-        Range {
-            end: self.range_end,
-            start: self.range_start,
-        }
-    }
-
     /// Returns the normalized and quantized spotlight and the scale needed to undo the normalization.
     pub fn quantize(cmd: &SpotlightCommand) -> (Self, f32) {
         let radius_end = cmd.cone_radius + cmd.penumbra_radius;
@@ -40,13 +21,26 @@ impl SpotlightKey {
             + cmd.range.end * cmd.range.end)
             .sqrt();
         let recip = BIT / scale;
-        let key = Self {
-            radius_start: (cmd.top_radius * recip) as _,
-            radius_end: (radius_end * recip) as _,
-            range_end: (cmd.range.end * recip) as _,
-            range_start: (cmd.range.start * recip) as _,
-        };
+        let radius_start = (cmd.top_radius * recip) as u32;
+        let radius_end = (radius_end * recip) as u32;
+        let range_end = (cmd.range.end * recip) as u32;
+        let range_start = (cmd.range.start * recip) as u32;
+        let key = radius_start | radius_end << 8 | range_start << 16 | range_end << 24;
 
-        (key, scale)
+        (Self(key), scale)
+    }
+
+    pub fn radius(&self) -> Range<u8> {
+        let start = (self.0 & 0xff) as _;
+        let end = (self.0 >> 8 & 0xff) as _;
+
+        start..end
+    }
+
+    pub fn range(&self) -> Range<u8> {
+        let start = (self.0 >> 16 & 0xff) as _;
+        let end = (self.0 >> 24 & 0xff) as _;
+
+        start..end
     }
 }

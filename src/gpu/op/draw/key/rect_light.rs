@@ -1,29 +1,15 @@
 use {
     super::BIT,
-    crate::{gpu::op::draw::RectLightCommand, math::Coord8},
+    crate::{
+        gpu::op::draw::RectLightCommand,
+        math::{Coord8, Extent},
+    },
 };
 
-// TODO: Investigate custom Ord implementations for this and SpotlightKey; either store a separate "compare" u32 field or just store all data in one u32 and offer functions to get the individual fields back
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
-pub struct RectLightKey {
-    dims: Coord8,
-    radius: u8,
-    range: u8,
-}
+pub struct RectLightKey(u32);
 
 impl RectLightKey {
-    pub fn dims(&self) -> Coord8 {
-        self.dims
-    }
-
-    pub fn radius(&self) -> u8 {
-        self.radius
-    }
-
-    pub fn range(&self) -> u8 {
-        self.range
-    }
-
     /// Returns the normalized and quantized rectangular light and the scale needed to undo the normalization.
     pub fn quantize(cmd: &RectLightCommand) -> (Self, f32) {
         let scale = (cmd.dims.x * cmd.dims.x
@@ -32,12 +18,26 @@ impl RectLightKey {
             + cmd.range * cmd.range)
             .sqrt();
         let recip = BIT / scale;
-        let key = Self {
-            dims: (cmd.dims * recip).into(),
-            radius: (cmd.radius * recip) as _,
-            range: (cmd.range * recip) as _,
-        };
+        let dims: Extent = (cmd.dims * recip).into();
+        let radius = (cmd.radius * recip) as u32;
+        let range = (cmd.range * recip) as u32;
+        let key = range | radius << 8 | dims.x << 16 | dims.y << 24;
 
-        (key, scale)
+        (Self(key), scale)
+    }
+
+    pub fn dims(&self) -> Coord8 {
+        let x = (self.0 >> 16 & 0xff) as _;
+        let y = (self.0 >> 24 & 0xff) as _;
+
+        Coord8 { x, y }
+    }
+
+    pub fn radius(&self) -> u8 {
+        (self.0 >> 8 & 0xff) as _
+    }
+
+    pub fn range(&self) -> u8 {
+        (self.0 & 0xff) as _
     }
 }

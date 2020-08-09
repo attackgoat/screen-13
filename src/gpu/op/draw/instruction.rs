@@ -1,9 +1,13 @@
-use super::MeshDrawInstruction;
+use {
+    super::{CopyInstruction, MeshDrawInstruction},
+    crate::gpu::{data::CopyRange, Data},
+};
 
 //const LINE_VERTEX_LEN: usize = 28;
 
 // Commands specified by the client become Instructions
-pub enum Instruction<'a> {
+pub(super) enum Instruction<'a> {
+    CopyGpu(CopyInstruction<'a>),
     //Light(LightInstruction),
     //Line(LineInstruction<'i>),
     Mesh(MeshInstruction<'a>),

@@ -148,6 +148,15 @@ impl From<Coord<f32>> for Coord<u8> {
     }
 }
 
+impl From<Coord<f32>> for Coord<u32> {
+    fn from(val: Coord<f32>) -> Self {
+        Self {
+            x: val.x as _,
+            y: val.y as _,
+        }
+    }
+}
+
 impl From<PhysicalSize<u32>> for Coord<u32> {
     fn from(val: PhysicalSize<u32>) -> Self {
         Self {

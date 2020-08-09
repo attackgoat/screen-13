@@ -6,13 +6,15 @@ use {
         },
         instruction::Instruction,
         key::{Key, LineKey, RectLightKey, SpotlightKey},
-        Command,
+        Command, CopyInstruction,
     },
     crate::{
         camera::Camera,
-        gpu::{Data, Lease, Mesh, PoolRef, Texture2d},
+        gpu::{
+            data::{CopyRange, Mapping},
+            Data, Lease, Mesh, PoolRef, Texture2d,
+        },
     },
-    bitflags::bitflags,
     std::{
         cmp::Ordering,
         mem::take,
@@ -25,48 +27,51 @@ use {
 // the existing cache and then have to copy all the old data over.
 const CACHE_CAPACITY_FACTOR: f32 = 2.0;
 
+// TODO: This code is ready to accept the addition of index buffers, once things stabilize it would be fantastic to add this
 // TODO: Maybe store 'LRU' as a number, 4 or so? Right now it's a bool so if you don't use something each frame it gets removed.
 // TODO: Also stop compaction after a certain number of cycles or % complete, maybe only 10%.
 
 enum Asm {
-    CopyCpu(CopyAsm),
-    CopyGpu(CopyAsm),
+    CopyCpu(Range<usize>),
+    CopyGpu(Range<usize>),
     DrawRectLight(DrawAsm),
     DrawSpotlight(DrawAsm),
 }
 
+// TODO: The note below is good but reset is not enough, we need some sort of additional function to also drop the data, like and `undo` or `rollback`
 /// Note: If the instructions produced by this command are not completed succesfully the state of the `Compiler` instance will
 /// be undefined, and so `reset()` must be called on it. This is because copy operations that don't complete will leave the
 /// buffers with incorrect data.
-pub struct Compilation<'c, 'm> {
-    cmds: &'m [Command<'m>],
-    compiler: &'c mut Compiler, //TODO: Mutable for mut access to vertex_buf, let's revisit this if can be made read-only
+pub(super) struct Compilation<'a> {
+    cmds: &'a [Command<'a>],
+    compiler: &'a mut Compiler, //TODO: Mutable for mut access to vertex_buf, let's revisit this if can be made read-only
     idx: usize,
     mesh_sets: MeshSets,
-    stages: Stages,
 }
 
-impl Compilation<'_, '_> {
-    /// Returns the accumulated vertex buffer for this compilation. It is a blob of all requested lights and lines jammed together.
-    pub fn vertex_buf_mut(&mut self) -> &mut Data {
-        // This can be unwrapped because it is set by the compiler
-        self.compiler.vertex_buf.as_mut().unwrap()
-    }
-
-    pub fn mesh_sets_required(&self) -> &MeshSets {
-        &self.mesh_sets
-    }
-
-    pub fn stages_required(&self) -> Stages {
-        self.stages
+impl Compilation<'_> {
+    fn copy_gpu(&self, range: Range<usize>) -> Instruction {
+        Instruction::CopyGpu(CopyInstruction {
+            data: &self.compiler.vertex_buf.as_ref().unwrap().data,
+            ranges: &self.compiler.copies.as_slice()[range],
+        })
     }
 }
 
-impl<'c> Iterator for Compilation<'c, '_> {
-    type Item = Instruction<'c>;
+// TODO: Workaround impl of "Iterator for" until we (soon?) have GATs: https://github.com/rust-lang/rust/issues/44265
+impl Compilation<'_> {
+    pub fn next(&mut self) -> Option<Instruction> {
+        if self.idx == self.compiler.code.len() {
+            return None;
+        }
 
-    fn next(&mut self) -> Option<Self::Item> {
-        Some(Self::Item::Stop)
+        let idx = self.idx;
+        self.idx += 1;
+
+        Some(match &self.compiler.code[idx] {
+            Asm::CopyGpu(range) => self.copy_gpu(range.start..range.end),
+            _ => todo!(),
+        })
     }
 }
 
@@ -77,6 +82,7 @@ impl<'c> Iterator for Compilation<'c, '_> {
 #[derive(Default)]
 pub struct Compiler {
     code: Vec<Asm>,
+    copies: Vec<CopyRange>,
     line_lru: Vec<Lru<LineKey>>,
     mesh_textures: Vec<Texture2d>,
     point_light_lru: bool,
@@ -93,6 +99,7 @@ impl Compiler {
     /// will have fewer move operations applied to it as a result.
     fn compact_cache(&mut self) {
         if let Some(buf) = self.vertex_buf.as_mut() {
+            let copy_start = self.copies.len();
             let line_lru = &mut self.line_lru;
             let rect_light_lru = &mut self.rect_light_lru;
             let spotlight_lru = &mut self.spotlight_lru;
@@ -100,25 +107,25 @@ impl Compiler {
             // "Forget about" GPU memory regions occupied by unused geometry
             buf.gpu.retain(|(_, key)| match key {
                 Key::Line(line) => {
-                    let lru_idx = line_lru
+                    let idx = line_lru
                         .binary_search_by(|probe| probe.key.cmp(&line))
                         .ok()
                         .unwrap();
-                    line_lru[lru_idx].recently_used
+                    line_lru[idx].recently_used
                 }
                 Key::RectLight(light) => {
-                    let lru_idx = rect_light_lru
+                    let idx = rect_light_lru
                         .binary_search_by(|probe| probe.key.cmp(&light))
                         .ok()
                         .unwrap();
-                    rect_light_lru[lru_idx].recently_used
+                    rect_light_lru[idx].recently_used
                 }
                 Key::Spotlight(light) => {
-                    let lru_idx = spotlight_lru
+                    let idx = spotlight_lru
                         .binary_search_by(|probe| probe.key.cmp(&light))
                         .ok()
                         .unwrap();
-                    spotlight_lru[lru_idx].recently_used
+                    spotlight_lru[idx].recently_used
                 }
             });
 
@@ -158,42 +165,42 @@ impl Compiler {
                     continue;
                 }
 
-                // Produce the assembly code that will re-arrange the GPU buffer
-                self.code.push(Asm::CopyGpu(CopyAsm {
+                // All copies are stored in one contiguous copies buffer (cpu->gpu and gpu->gpu, for vertices)
+                self.copies.push(CopyRange {
                     dst: start,
-                    src: Range {
-                        start: *offset,
-                        end: *offset + stride,
-                    },
-                }));
+                    src: *offset..*offset + stride,
+                });
 
                 // Update the LRU item for this geometry
                 match key {
                     Key::Line(line) => {
-                        let lru_idx = line_lru
+                        let idx = line_lru
                             .binary_search_by(|probe| probe.key.cmp(&line))
                             .ok()
                             .unwrap();
-                        line_lru[lru_idx].offset = start;
+                        line_lru[idx].offset = start;
                     }
                     Key::RectLight(light) => {
-                        let lru_idx = rect_light_lru
+                        let idx = rect_light_lru
                             .binary_search_by(|probe| probe.key.cmp(&light))
                             .ok()
                             .unwrap();
-                        rect_light_lru[lru_idx].offset = start;
+                        rect_light_lru[idx].offset = start;
                     }
                     Key::Spotlight(light) => {
-                        let lru_idx = spotlight_lru
+                        let idx = spotlight_lru
                             .binary_search_by(|probe| probe.key.cmp(&light))
                             .ok()
                             .unwrap();
-                        spotlight_lru[lru_idx].offset = start;
+                        spotlight_lru[idx].offset = start;
                     }
                 };
 
                 start += stride;
             }
+
+            // Produce the assembly code that will re-arrange the GPU buffer
+            self.code.push(Asm::CopyGpu(copy_start..self.copies.len()));
         }
     }
 
@@ -202,15 +209,16 @@ impl Compiler {
     /// - Sort commands into predictable groupings (opaque meshes, lights, transparent meshes, lines)
     /// - Sort mesh commands further by texture(s) in order to reduce descriptor set switching/usage
     /// - Prepare a single buffer of all line and light vertices which can be copied to the GPU all at once
-    pub fn compile<'a, 'c>(
+    pub(super) fn compile<'a, 'b: 'a>(
         &'a mut self,
         #[cfg(debug_assertions)] name: &str,
         pool: &PoolRef,
         camera: &impl Camera,
-        mut cmds: &'c mut [Command<'c>],
-    ) -> Compilation<'a, 'c> {
+        mut cmds: &'b mut [Command<'b>],
+    ) -> Compilation<'a> {
         // TODO: This function has been normalized to be easier to read, may want to combine steps for perf after design stabilizes
-        //assert!(self.line_buf.is_empty());
+        assert!(self.code.is_empty());
+        assert!(self.copies.is_empty());
         assert!(self.mesh_textures.is_empty());
 
         #[cfg(debug_assertions)]
@@ -221,21 +229,6 @@ impl Compiler {
 
         // Remove non-visible commands (also prepares mesh commands for sorting by pre-calculating Z)
         Self::cull(camera, &mut cmds);
-
-        // Keep track of the stages needed to draw these commands
-        // TODO: Roll this into one of the other loops or kill with fire completely, probably not needed
-        let mut stages = Stages::empty();
-        for cmd in cmds.iter() {
-            match cmd {
-                Command::Line(_) => stages |= Stages::LINE,
-                Command::Mesh(_) => {
-                    // TODO: Actual logic!
-                    stages |= Stages::MESH_SINGLE_TEX;
-                }
-                Command::PointLight(_) => stages |= Stages::POINTLIGHT,
-                _ => todo!(),
-            }
-        }
 
         // Rearrange the commands so draw order doesn't cause unnecessary resource-switching
         self.sort(cmds);
@@ -256,7 +249,6 @@ impl Compiler {
             compiler: self,
             idx: 0,
             mesh_sets: Default::default(),
-            stages,
         }
     }
 
@@ -265,9 +257,9 @@ impl Compiler {
     fn cull(camera: &impl Camera, cmds: &mut &mut [Command]) {
         let eye = -camera.eye();
         let mut idx = 0;
-        let mut len = cmds.len();
+        let mut end = cmds.len();
 
-        while idx < len {
+        while idx < end {
             if match &mut cmds[idx] {
                 Command::Mesh(cmd) => {
                     let res = camera.overlaps_sphere(cmd.mesh.bounds);
@@ -288,9 +280,9 @@ impl Compiler {
                     true
                 }
             } {
-                // The command at `idx` has been culled and won't be drawn (put it at the end of the list/no-mans land)
-                len -= 1;
-                cmds.swap(idx, len);
+                // The command at `idx` has been culled and won't be drawn (put it at the end of the list/no-man's land)
+                end -= 1;
+                cmds.swap(idx, end);
             } else {
                 // The command at `idx` is visible and will draw normally
                 idx += 1;
@@ -298,7 +290,7 @@ impl Compiler {
         }
 
         // Safely replace `cmds` with a subslice, this drops the references to the culled commands but not their values
-        *cmds = &mut take(cmds)[0..len];
+        *cmds = &mut take(cmds)[0..end];
     }
 
     /// Gets this compiler ready to use the given commands by pre-filling vertex cache buffers. Also records the range of vertex data
@@ -371,10 +363,10 @@ impl Compiler {
         // Resize the vertex buffer as needed
         if self.vertex_buf.is_none() || len > self.vertex_buf.as_ref().unwrap().capacity() {
             #[cfg(debug_assertions)]
-            let mut should_rename = true;
+            let mut set_name = true;
 
-            if let Some(old_buf) = self.vertex_buf.replace(DirtyData {
-                cpu: Some(Range { start: 0, end }),
+            if let Some(mut old_buf) = self.vertex_buf.replace(DirtyData {
+                cpu: Some(0..end),
                 data: pool.borrow_mut().data(
                     #[cfg(debug_assertions)]
                     &name,
@@ -384,7 +376,7 @@ impl Compiler {
             }) {
                 #[cfg(debug_assertions)]
                 {
-                    should_rename = false;
+                    set_name = false;
                 }
 
                 let new_buf = &mut self.vertex_buf.as_mut().unwrap();
@@ -396,19 +388,20 @@ impl Compiler {
                 let count = end - start;
 
                 unsafe {
+                    let src = old_buf.map_range(start..end).unwrap(); // TODO: Error handling!
+                    let mut dst = new_buf.map_range_mut(start..end).unwrap(); // TODO: Error handling!
+
                     // TODO: Maybe store both buffers and do a GPU copy instead?
                     // Preserve the contents of the old buffer in the new buffer
-                    copy_nonoverlapping(
-                        old_buf.map_range(start..end).as_ptr(),
-                        new_buf.map_range_mut(start..end).as_mut_ptr(),
-                        count as _,
-                    );
+                    copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), count as _);
+
+                    Mapping::flush(&mut dst).unwrap(); // TODO: Error handling!
                 }
             }
 
             #[cfg(debug_assertions)]
-            if should_rename {
-                self.vertex_buf.as_mut().unwrap().rename(&name);
+            if set_name {
+                self.vertex_buf.as_mut().unwrap().set_name(&name);
             }
         }
 
@@ -425,11 +418,15 @@ impl Compiler {
             self.point_light_lru = true;
 
             unsafe {
+                let mut mapped_range = buf.map_range_mut(0..POINT_LIGHT.len() as _).unwrap(); // TODO: Error handling!
+
                 copy_nonoverlapping(
                     POINT_LIGHT.as_ptr(),
-                    buf.map_range_mut(0..POINT_LIGHT.len() as _).as_mut_ptr(),
+                    mapped_range.as_mut_ptr(),
                     POINT_LIGHT.len() as _,
                 );
+
+                Mapping::flush(&mut mapped_range).unwrap(); // TODO: Error handling!
             }
         }
 
@@ -447,11 +444,15 @@ impl Compiler {
                         let vertices = gen_rect_light(key.dims(), key.range(), key.radius());
 
                         unsafe {
+                            let mut mapped_range = buf.map_range_mut(end..new_end).unwrap(); // TODO: Error handling!
+
                             copy_nonoverlapping(
                                 vertices.as_ptr(),
-                                buf.map_range_mut(end..new_end).as_mut_ptr(),
+                                mapped_range.as_mut_ptr(),
                                 SPOTLIGHT_STRIDE,
                             );
+
+                            Mapping::flush(&mut mapped_range).unwrap(); // TODO: Error handling!
                         }
 
                         // Create new cache entries for this rectangular light
@@ -492,11 +493,15 @@ impl Compiler {
                         let vertices = gen_spotlight(key.radius(), key.range());
 
                         unsafe {
+                            let mut mapped_range = buf.map_range_mut(end..new_end).unwrap(); // TODO: Error handling!
+
                             copy_nonoverlapping(
                                 vertices.as_ptr(),
-                                buf.map_range_mut(end..new_end).as_mut_ptr(),
+                                mapped_range.as_mut_ptr(),
                                 SPOTLIGHT_STRIDE,
                             );
+
+                            Mapping::flush(&mut mapped_range).unwrap(); // TODO: Error handling!
                         }
 
                         // Create a new cache entry for this spotlight
@@ -533,11 +538,15 @@ impl Compiler {
                     let vertices = gen_line(&line.vertices);
 
                     unsafe {
+                        let mut mapped_range = buf.map_range_mut(end..new_end).unwrap(); // TODO: Error handling!
+
                         copy_nonoverlapping(
                             vertices.as_ptr(),
-                            buf.map_range_mut(end..new_end).as_mut_ptr(),
+                            mapped_range.as_mut_ptr(),
                             SPOTLIGHT_STRIDE,
                         );
+
+                        Mapping::flush(&mut mapped_range).unwrap(); // TODO: Error handling!
                     }
 
                     // Create a new cache entry for this line segment
@@ -558,7 +567,7 @@ impl Compiler {
         }
 
         // We need to copy these vertices from the CPU to the GPU
-        buf.cpu = Some(Range { start, end });
+        buf.cpu = Some(start..end);
     }
 
     /// All commands sort into groups: first meshes, then lights, followed by lines.
@@ -605,6 +614,7 @@ impl Compiler {
 
     /// Resets the internal caches so that this compiler may be reused by calling the `compile` function.
     pub fn reset(&mut self) {
+        self.copies.clear();
         self.mesh_textures.clear();
 
         // Reset the CPU dirty regions
@@ -691,11 +701,6 @@ impl Compiler {
     }
 }
 
-struct CopyAsm {
-    dst: u64,
-    src: Range<u64>,
-}
-
 /// Extends the data type so we can track which portions require updates. Does not teach an entire city full
 /// of people that dancing is the best thing there is.
 struct DirtyData<T>
@@ -766,27 +771,6 @@ enum SearchIdx {
     RectLight = 5,
     Spotlight = 7,
     Line = 9,
-}
-
-bitflags! {
-    pub struct Stages: usize {
-        const LINE = Self::bit(0);
-        const MESH_ANIMATED = Self::bit(1);
-        const MESH_DUAL_TEX = Self::bit(2);
-        const MESH_SINGLE_TEX = Self::bit(3);
-        const MESH_TRANSPARENT = Self::bit(4);
-        const POINTLIGHT = Self::bit(5);
-        const RECTLIGHT = Self::bit(6);
-        const SPOTLIGHT = Self::bit(7);
-        const SUNLIGHT = Self::bit(8);
-    }
-}
-
-impl Stages {
-    /// Returns a usize with the given zero-indexed bit set to one
-    const fn bit(b: usize) -> usize {
-        1 << b
-    }
 }
 
 #[cfg(test)]
