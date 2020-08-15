@@ -1,6 +1,7 @@
 use {
-    super::driver::{Buffer, Driver},
+    super::driver::{Buffer, Driver, PhysicalDevice},
     gfx_hal::{
+        adapter::PhysicalDevice as _,
         buffer::{Access, SubRange, Usage},
         command::{BufferCopy, CommandBuffer as _},
         device::{Device, MapError, OutOfMemory},
@@ -19,6 +20,16 @@ use {
         u64,
     },
 };
+
+/// Rounds down a multiple of atom; panics if atom is zero
+fn align_down(size: u64, atom: u64) -> u64 {
+    size - size % atom
+}
+
+/// Roudns up to a multiple of atom; panics if either parameter is zero
+fn align_up(size: u64, atom: u64) -> u64 {
+    (size - 1) - (size - 1) % atom + atom
+}
 
 /// An iterator to allow incoming `Iterator`'s of `CopyRange` to output `Barrier::Buffer` for the destination region.
 struct BarrierIter<'a, T>
@@ -110,9 +121,20 @@ impl Data {
     pub fn new(
         #[cfg(debug_assertions)] name: &str,
         driver: Driver,
-        capacity: u64,
+        mut capacity: u64,
         usage: Usage,
     ) -> Self {
+        assert_ne!(capacity, 0);
+
+        // Pre-align the capacity so the entire requested capacity can be mapped later (mapping must be in atom sized units)
+        let non_coherent_atom_size = driver
+            .as_ref()
+            .borrow()
+            .gpu()
+            .limits()
+            .non_coherent_atom_size;
+        capacity = align_up(capacity, non_coherent_atom_size as _);
+
         let cpu_buf = Buffer::new(
             #[cfg(debug_assertions)]
             name,
@@ -263,10 +285,43 @@ impl Data {
         cmd_buf.copy_buffer(&*self.gpu_buf, &*self.cpu_buf, copies);
     }
 
+    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
     #[cfg(debug_assertions)]
     pub fn set_name(&mut self, name: &str) {
         Buffer::set_name(&mut self.cpu_buf, name);
         Buffer::set_name(&mut self.gpu_buf, name);
+    }
+
+    /// Transfers a portion within the graphics device to another instance using a copy.
+    ///
+    /// # Safety
+    ///
+    /// The provided command buffer must be ready to record.
+    pub unsafe fn transfer_range(
+        &mut self,
+        cmd_buf: &mut <_Backend as Backend>::CommandBuffer,
+        other: &mut Self,
+        range: CopyRange,
+    ) {
+        self.transfer_ranges(cmd_buf, other, &[range])
+    }
+
+    /// Transfers portions within the graphics device to another instance using a copy.
+    ///
+    /// # Safety
+    ///
+    /// The provided command buffer must be ready to record.
+    pub unsafe fn transfer_ranges<R>(
+        &mut self,
+        cmd_buf: &mut <_Backend as Backend>::CommandBuffer,
+        other: &mut Self,
+        ranges: R,
+    ) where
+        R: Copy + IntoIterator,
+        R::Item: Borrow<CopyRange>,
+    {
+        let copies = BufferCopyIter(ranges.into_iter());
+        cmd_buf.copy_buffer(&self.gpu_buf, &other.gpu_buf, copies);
     }
 
     /// Writes everything to the graphics device.
@@ -355,15 +410,28 @@ impl<'m> Mapping<'m> {
         mem: &'m <_Backend as Backend>::Memory,
         range: Range<u64>,
     ) -> Result<Self, MapError> {
-        // TODO: round down the start of the range to the nearest multiple of VkPhysicalDeviceLimits::nonCoherentAtomSize, and round the end of the range up to the nearest multiple of VkPhysicalDeviceLimits::nonCoherentAtomSize.
+        assert_ne!(range.end, 0);
+
+        // Mapped host memory ranges must be in multiples of atom size; so we align to a possibly larger window
+        let non_coherent_atom_size = driver
+            .as_ref()
+            .borrow()
+            .gpu()
+            .limits()
+            .non_coherent_atom_size;
+        let offset = align_down(range.start, non_coherent_atom_size as _);
+        let size = align_up(range.end - range.start, non_coherent_atom_size as _);
+
         let segment = Segment {
-            offset: range.start,
-            size: Some(range.end - range.start),
+            offset,
+            size: Some(size),
         };
         let (mapped_mem, ptr) = {
             let device = driver.as_ref().borrow();
             let mapped_mem = (mem, segment.clone());
-            let ptr = device.map_memory(mem, segment)?;
+            let ptr = device
+                .map_memory(mem, segment)?
+                .offset(offset as isize - range.start as isize);
             device.invalidate_mapped_memory_ranges(once(&mapped_mem))?;
 
             (mapped_mem, ptr)

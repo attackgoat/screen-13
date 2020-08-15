@@ -32,6 +32,7 @@ impl Fence {
         unsafe { device.reset_fence(&fence) }.unwrap();
     }
 
+    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
     #[cfg(debug_assertions)]
     pub fn set_name(fence: &mut Self, name: &str) {
         let device = fence.driver.borrow();

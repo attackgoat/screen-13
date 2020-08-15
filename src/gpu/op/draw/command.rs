@@ -90,36 +90,23 @@ impl<'c> Command<'c> {
     }
 
     /// Draws a line between the given coordinates using a constant width and two colors. The colors specify a gradient if
-    /// they differ. NOTE: There are platform limitations on line width that are not currently being handled. Also see hack
-    /// about line width quantization.
-    /// TODO: Support line loops
+    /// they differ. Generally intended to support debugging use cases such as drawing bounding boxes.
     pub fn line<S: Into<Vec3>, SC: Into<AlphaColor>, E: Into<Vec3>, EC: Into<AlphaColor>>(
         start: S,
         start_color: SC,
         end: E,
         end_color: EC,
-        mut width: f32,
     ) -> Self {
-        assert!(width.is_finite());
-        assert!(width > 0.0);
-        assert!(width <= 8.0); // TODO: This is the minimum guaranteed-supported value but it can be larger, should support that
-
-        // HACK: All lines widths are quantized to half-of-a-pixel resolution; this reduces batch count
-        width = (width * 2.0).round() * 0.5;
-
-        Self::Line(LineCommand {
-            vertices: [
-                LineVertex {
-                    color: start_color.into(),
-                    pos: start.into(),
-                },
-                LineVertex {
-                    color: end_color.into(),
-                    pos: end.into(),
-                },
-            ],
-            width,
-        })
+        Self::Line(LineCommand([
+            LineVertex {
+                color: start_color.into(),
+                pos: start.into(),
+            },
+            LineVertex {
+                color: end_color.into(),
+                pos: end.into(),
+            },
+        ]))
     }
 
     pub fn mesh(mesh: &'c Mesh, material: Material, transform: Mat4) -> Self {

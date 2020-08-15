@@ -11,7 +11,11 @@ mod key;
 pub use self::{command::Command, compiler::Compiler};
 
 use {
-    self::{compiler::Compilation, graphics_buf::GraphicsBuffer, instruction::MeshInstruction},
+    self::{
+        compiler::Compilation,
+        graphics_buf::GraphicsBuffer,
+        instruction::{Instruction, MeshInstruction},
+    },
     super::{wait_for_fence, Op},
     crate::{
         camera::Camera,
@@ -50,11 +54,6 @@ const _2: SubRange = SubRange::WHOLE;
 
 const QUEUE_TYPE: QueueType = QueueType::Graphics;
 
-struct CopyInstruction<'a> {
-    data: &'a Data,
-    ranges: &'a [CopyRange],
-}
-
 pub struct DrawOp {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
@@ -70,7 +69,6 @@ pub struct DrawOp {
     graphics_mesh_transparent: Option<Lease<Graphics>>,
     graphics_spotlight: Option<Lease<Graphics>>,
     graphics_sunlight: Option<Lease<Graphics>>,
-    line_buf: Option<(Lease<Data>, u64)>, // TODO: Remove the size tuple item
     #[cfg(debug_assertions)]
     name: String,
     pool: PoolRef,
@@ -150,101 +148,11 @@ impl DrawOp {
             graphics_mesh_transparent: None,
             graphics_spotlight: None,
             graphics_sunlight: None,
-            line_buf: None,
             #[cfg(debug_assertions)]
             name: name.to_owned(),
             pool: PoolRef::clone(pool),
         }
     }
-
-    // /// Sets up the draw op for rendering using the given compilation results by initializing the
-    // /// required graphics pipeline instances.
-    // fn with_compilation(&mut self, compilation: &Compilation) {
-    //     let mut pool = self.pool.borrow_mut();
-
-    //     // We lazy-load the number of required mesh descriptor sets
-    //     let mut mesh_sets = None;
-    //     let mut set_mesh_sets = || {
-    //         if mesh_sets.is_none() {
-    //             mesh_sets = Some(compilation.mesh_sets_required());
-    //         };
-    //     };
-
-    //     // Setup the graphics pipelines
-    //     let stages = compilation.stages_required();
-    //     if stages.contains(Stages::MESH_SINGLE_TEX) {
-    //         set_mesh_sets();
-    //         self.graphics_mesh_single_tex = Some(pool.graphics_sets(
-    //             #[cfg(debug_assertions)]
-    //             &format!("{} (Mesh/SingleTex)", &self.name),
-    //             GraphicsMode::Mesh(MeshType::SingleTexture),
-    //             RenderPassMode::Draw,
-    //             0,
-    //             mesh_sets.as_ref().unwrap().single_tex,
-    //         ));
-    //     }
-
-    //     if stages.contains(Stages::MESH_DUAL_TEX) {
-    //         self.graphics_mesh_dual_tex = Some(pool.graphics_sets(
-    //             #[cfg(debug_assertions)]
-    //             &format!("{} (Mesh/DualTex)", &self.name),
-    //             GraphicsMode::Mesh(MeshType::DualTexture),
-    //             RenderPassMode::Draw,
-    //             0,
-    //             mesh_sets.as_ref().unwrap().dual_tex,
-    //         ));
-    //     }
-
-    //     if stages.contains(Stages::MESH_TRANSPARENT) {
-    //         self.graphics_mesh_transparent = Some(pool.graphics_sets(
-    //             #[cfg(debug_assertions)]
-    //             &format!("{} (Mesh/Trans)", &self.name),
-    //             GraphicsMode::Mesh(MeshType::Transparent),
-    //             RenderPassMode::Draw,
-    //             2,
-    //             mesh_sets.as_ref().unwrap().trans,
-    //         ));
-    //     }
-
-    //     if stages.contains(Stages::LINE) {
-    //         self.graphics_line = Some(pool.graphics(
-    //             #[cfg(debug_assertions)]
-    //             &format!("{} (Line)", &self.name),
-    //             GraphicsMode::Line,
-    //             RenderPassMode::Draw,
-    //             0,
-    //         ));
-    //         // // // // self.line_buf = Some((
-    //         // // // //     pool.data_usage(
-    //         // // // //         #[cfg(debug_assertions)]
-    //         // // // //         &format!("{} (Line Buf)", &self.name),
-    //         // // // //         compilation.line_buf().len() as _,
-    //         // // // //         BufferUsage::STORAGE,
-    //         // // // //     ),
-    //         // // // //     0,
-    //         // // // // ));
-    //     }
-
-    //     if stages.contains(Stages::SPOTLIGHT) {
-    //         self.graphics_spotlight = Some(pool.graphics(
-    //             #[cfg(debug_assertions)]
-    //             &format!("{} (Spotlight)", &self.name),
-    //             GraphicsMode::Spotlight,
-    //             RenderPassMode::Draw,
-    //             0,
-    //         ));
-    //     }
-
-    //     if stages.contains(Stages::SUNLIGHT) {
-    //         self.graphics_sunlight = Some(pool.graphics(
-    //             #[cfg(debug_assertions)]
-    //             &format!("{} (Sunlight)", &self.name),
-    //             GraphicsMode::Sunlight,
-    //             RenderPassMode::Draw,
-    //             0,
-    //         ));
-    //     }
-    // }
 
     // TODO: Use new method of unsafe as_ref pointer cast
     fn mesh_vertex_push_consts(_world_view_proj: Mat4, _world: Mat4) -> Vec<u32> {
@@ -261,11 +169,6 @@ impl DrawOp {
         camera: &impl Camera,
         cmds: &'c mut [Command<'c>],
     ) -> DrawOpSubmission {
-        // HACK: Hiding these warnings for now in the most I-will-remember-to-remove-later way
-        let _ = ShaderStageFlags::empty();
-        let _ = BufferUsage::STORAGE;
-        let _ = Vec2::zero();
-
         let dims: Coord = self.dst.borrow().dims().into();
         let viewport = Viewport {
             rect: dims.as_rect_at(Coord::ZERO),
@@ -283,93 +186,29 @@ impl DrawOp {
             cmds,
         );
 
-        unsafe {
-            // NOTE: There will always be at least one instruction (Stop)
-            let mut _instr = instrs.next().unwrap();
-
+        let view_proj = unsafe {
             self.submit_begin(&viewport);
 
-            // // Step 1: Opaque meshes (single and dual texture)
-            // if instr.is_mesh() {
-            //     self.submit_mesh_begin();
-
-            //     loop {
-            //         // This mesh...
-            //         let mesh = instr.as_mesh().unwrap();
-            //         self.submit_mesh(mesh);
-
-            //         // Next mesh...
-            //         instr = instrs.next().unwrap();
-            //         if !instr.is_mesh() {
-            //             break;
-            //         }
-            //     }
-            // }
-
-            // // Step 4: Light
-            // if instr.is_light() {
-            //     self.submit_light_begin();
-
-            //     loop {
-            //         // This light...
-            //         let light = instr.as_light().unwrap();
-            //         self.submit_light(light);
-
-            //         // Next light...
-            //         instr = instrs.next().unwrap();
-            //         if !instr.is_light() {
-            //             break;
-            //         }
-            //     }
-            // }
-
-            // // Step 5: Transparent meshes
-            // if instr.is_mesh() {
-            //     self.submit_mesh_begin();
-
-            //     loop {
-            //         // This mesh...
-            //         let mesh = instr.as_mesh().unwrap();
-            //         self.submit_mesh(mesh);
-
-            //         // Next mesh...
-            //         instr = instrs.next().unwrap();
-            //         if !instr.is_mesh() {
-            //             break;
-            //         }
-            //     }
-            // }
-
-            // // Step 2: Lines
-            // if instr.is_line() {
-            //     self.submit_line_begin(&viewport, instrs.view_proj());
-
-            //     loop {
-            //         // This line...
-            //         let line = instr.as_line().unwrap();
-            //         self.submit_line(line);
-
-            //         // Next line...
-            //         instr = instrs.next().unwrap();
-            //         if !instr.is_line() {
-            //             break;
-            //         }
-            //     }
-            // }
+            while let Some(instr) = instrs.next() {
+                match instr {
+                    Instruction::CopyVertices((buf, ranges)) => {
+                        self.submit_vertex_copy(buf, ranges)
+                    }
+                    Instruction::TransferData((src, dst)) => {
+                        self.submit_data_transfer(src, dst);
+                    }
+                    _ => panic!(),
+                }
+            }
 
             self.submit_finish();
-        };
-
-        let line_buf = if let Some((line_buf, _)) = self.line_buf {
-            Some(line_buf)
-        } else {
-            None
         };
 
         DrawOpSubmission {
             cmd_buf: self.cmd_buf,
             cmd_pool: self.cmd_pool,
             compiler: self.compiler,
+            driver: Driver::clone(self.pool.borrow().driver()),
             dst: self.dst,
             fence: self.fence,
             frame_buf: self.frame_buf,
@@ -381,8 +220,6 @@ impl DrawOp {
             graphics_mesh_transparent: self.graphics_mesh_transparent,
             graphics_spotlight: self.graphics_spotlight,
             graphics_sunlight: self.graphics_sunlight,
-            line_buf,
-            pool: self.pool,
         }
     }
 
@@ -475,6 +312,31 @@ impl DrawOp {
         );
     }
 
+    unsafe fn submit_bind_geom_buffers(&mut self, vertex_buf: &<_Backend as Backend>::Buffer) {
+        self.cmd_buf
+            .bind_vertex_buffers(0, once((vertex_buf, SubRange::WHOLE)));
+    }
+
+    unsafe fn submit_data_transfer(&mut self, src: &mut Data, dst: &mut Data) {
+        src.transfer_range(
+            &mut self.cmd_buf,
+            dst,
+            CopyRange {
+                dst: 0,
+                src: 0..src.capacity(),
+            },
+        );
+    }
+
+    unsafe fn submit_vertex_copy(&mut self, buf: &mut Data, ranges: &[CopyRange]) {
+        buf.copy_ranges(
+            &mut self.cmd_buf,
+            PipelineStage::VERTEX_INPUT,
+            BufferAccess::VERTEX_BUFFER_READ,
+            ranges,
+        );
+    }
+
     unsafe fn submit_light_begin(&mut self) {}
 
     //unsafe fn submit_light(&mut self, _instr: &LightInstruction) {
@@ -541,53 +403,23 @@ impl DrawOp {
     // idx
     //}
 
-    unsafe fn submit_line_begin(&mut self, viewport: &Viewport, _view_proj: Mat4) {
+    unsafe fn submit_line_begin(&mut self, viewport: &Viewport, view_proj: Mat4) {
         let graphics = self.graphics_line.as_ref().unwrap();
 
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
         self.cmd_buf.set_scissors(0, &[viewport.rect]);
         self.cmd_buf.set_viewports(0, &[viewport.clone()]);
-        // self.cmd_buf.push_graphics_constants(
-        //     graphics.layout(),
-        //     ShaderStageFlags::VERTEX,
-        //     0,
-        //     &mat4_bits(view_proj),
-        // );
+        self.cmd_buf.push_graphics_constants(
+            graphics.layout(),
+            ShaderStageFlags::VERTEX,
+            0,
+            LineVertexConsts { view_proj }.as_ref(),
+        );
     }
 
-    //unsafe fn submit_line_width<'i>(&mut self, _instr: &LineInstruction<'i>) {}
-
-    //unsafe fn submit_line<'i>(&mut self, _instr: &LineInstruction<'i>) {
-    // let len: u64 = instr.data.len() as _;
-    // let vertices = instr.vertices();
-    // let (ref mut buf, ref mut buf_len) = self.line_buf.as_mut().unwrap();
-    // let range = *buf_len..*buf_len + len;
-
-    // // Copy this line data into the buffer
-    // buf.map_range_mut(range.clone()).copy_from_slice(instr.data); // TOOD: flush when done!
-    // buf.copy_cpu_range(
-    //     &mut self.cmd_buf,
-    //     PipelineStage::VERTEX_INPUT,
-    //     BufferAccess::VERTEX_BUFFER_READ,
-    //     range,
-    // );
-
-    // self.cmd_buf.set_line_width(instr.width);
-    // self.cmd_buf.bind_vertex_buffers(
-    //     0,
-    //     once((
-    //         &*buf.as_ref(),
-    //         SubRange {
-    //             offset: *buf_len,
-    //             size: Some(len),
-    //         },
-    //     )),
-    // );
-    // self.cmd_buf.draw(0..vertices, 0..1);
-
-    // // Advance the buf len value
-    // *buf_len += len;
-    //}
+    unsafe fn submit_line<'i>(&mut self, instr: &LineInstruction) {
+        self.cmd_buf.draw(0..instr.0, 0..1);
+    }
 
     unsafe fn submit_mesh_begin(&mut self) {
         // let mesh = self.mesh.as_ref().unwrap();
@@ -882,6 +714,7 @@ pub struct DrawOpSubmission {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
     compiler: Lease<Compiler>,
+    driver: Driver,
     dst: Texture2d,
     fence: Lease<Fence>,
     frame_buf: Framebuffer2d,
@@ -893,8 +726,6 @@ pub struct DrawOpSubmission {
     graphics_mesh_transparent: Option<Lease<Graphics>>,
     graphics_spotlight: Option<Lease<Graphics>>,
     graphics_sunlight: Option<Lease<Graphics>>,
-    line_buf: Option<Lease<Data>>,
-    pool: PoolRef,
 }
 
 impl Drop for DrawOpSubmission {
@@ -909,8 +740,7 @@ impl Drop for DrawOpSubmission {
 
 impl Op for DrawOpSubmission {
     fn wait(&self) {
-        let pool = self.pool.borrow();
-        let device = pool.driver().borrow();
+        let device = self.driver.borrow();
 
         unsafe {
             wait_for_fence(&device, &self.fence);
@@ -918,16 +748,27 @@ impl Op for DrawOpSubmission {
     }
 }
 
+struct LineInstruction(u32);
+
 #[derive(Clone, Debug)]
-pub struct LineCommand {
-    vertices: [LineVertex; 2],
-    width: f32,
-}
+pub struct LineCommand([LineVertex; 2]);
 
 #[derive(Clone, Debug)]
 struct LineVertex {
     color: AlphaColor,
     pos: Vec3,
+}
+
+#[repr(C)]
+struct LineVertexConsts {
+    view_proj: Mat4,
+}
+
+impl AsRef<[u32; 16]> for LineVertexConsts {
+    #[inline]
+    fn as_ref(&self) -> &[u32; 16] {
+        unsafe { &*(self as *const _ as *const _) }
+    }
 }
 
 #[derive(Clone, Copy)]

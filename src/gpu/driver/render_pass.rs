@@ -59,6 +59,7 @@ impl RenderPass {
         }
     }
 
+    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
     #[cfg(debug_assertions)]
     pub fn set_name(render_pass: &mut Self, name: &str) {
         let device = render_pass.driver.as_ref().borrow();

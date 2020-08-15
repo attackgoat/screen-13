@@ -44,6 +44,7 @@ impl DescriptorSetLayout {
         }
     }
 
+    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
     #[cfg(debug_assertions)]
     pub fn set_name(set_layout: &mut Self, name: &str) {
         let device = set_layout.driver.as_ref().borrow();

@@ -30,6 +30,7 @@ impl<D> Image<D>
 where
     D: Dim,
 {
+    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
     #[cfg(debug_assertions)]
     pub fn set_name(image: &mut Self, name: &str) {
         let device = image.driver.borrow();

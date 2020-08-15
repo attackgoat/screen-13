@@ -24,6 +24,7 @@ impl<D> Framebuffer<D>
 where
     D: Dim,
 {
+    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
     #[cfg(debug_assertions)]
     pub fn set_name(frame_buf: &mut Self, name: &str) {
         let device = frame_buf.driver.as_ref().borrow();

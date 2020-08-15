@@ -651,6 +651,6 @@ struct VertexConsts {
 impl AsRef<[u32; 16]> for VertexConsts {
     #[inline]
     fn as_ref(&self) -> &[u32; 16] {
-        unsafe { &*(self as *const Self as *const [u32; 16]) }
+        unsafe { &*(self as *const _ as *const _) }
     }
 }

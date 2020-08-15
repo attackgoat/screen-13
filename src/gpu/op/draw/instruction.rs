@@ -1,20 +1,20 @@
 use {
-    super::{CopyInstruction, MeshDrawInstruction},
+    super::{LineInstruction, MeshDrawInstruction},
     crate::gpu::{data::CopyRange, Data},
+    std::ops::Range,
 };
 
-//const LINE_VERTEX_LEN: usize = 28;
-
-// Commands specified by the client become Instructions
-pub(super) enum Instruction<'a> {
-    CopyGpu(CopyInstruction<'a>),
+// Commands specified by the client become Instructions used by `DrawOp`
+pub enum Instruction<'a> {
+    CopyVertices((&'a mut Data, &'a [CopyRange])),
     //Light(LightInstruction),
-    //Line(LineInstruction<'i>),
-    Mesh(MeshInstruction<'a>),
+    //Line(LineInstruction),
+    //Mesh(MeshInstruction<'a>),
     // Spotlight(SpotlightCommand),
     // Sunlight(SunlightCommand),
     // Transparency((f32, MeshCommand<'a>)),
-    Stop,
+    TransferData((&'a mut Data, &'a mut Data)),
+    WriteVertices((&'a mut Data, Range<u64>)),
 }
 
 impl Instruction<'_> {

@@ -6,7 +6,7 @@ use {
         },
         instruction::Instruction,
         key::{Key, LineKey, RectLightKey, SpotlightKey},
-        Command, CopyInstruction,
+        Command,
     },
     crate::{
         camera::Camera,
@@ -18,7 +18,7 @@ use {
     std::{
         cmp::Ordering,
         mem::take,
-        ops::{Deref, DerefMut, Range},
+        ops::{Add, Deref, DerefMut, Range, Sub},
         ptr::copy_nonoverlapping,
     },
 };
@@ -31,45 +31,100 @@ const CACHE_CAPACITY_FACTOR: f32 = 2.0;
 // TODO: Maybe store 'LRU' as a number, 4 or so? Right now it's a bool so if you don't use something each frame it gets removed.
 // TODO: Also stop compaction after a certain number of cycles or % complete, maybe only 10%.
 
+/// Used to keep track of data allocated during compilation and also the previous value which we will
+/// copy over during the drawing operation.
+struct Allocation<T> {
+    current: T,
+    previous: Option<T>,
+}
+
+// `Asm` is the "assembly op code" that is used to create an `Instruction` instance; it exists because we can't store references
+// but we do want to cache the vector of instructions the compiler creates. Each `Asm` is just a pointer to the `cmds` slice
+// provided by the client which actually contains the references. `Asm` also points to the leased `Data` held by `Compiler`.
 enum Asm {
-    CopyCpu(Range<usize>),
-    CopyGpu(Range<usize>),
+    BeginRectLight,
+    BeginSpotlight,
+    BeginSunlight,
+    BindVertexBuffer,
+    TransferLineData,
+    TransferVertexData,
+    CopyVertices,
+    DrawLines(Range<usize>),
+    DrawPointLights(Range<usize>),
     DrawRectLight(DrawAsm),
     DrawSpotlight(DrawAsm),
+    WriteLightVertices,
+    WriteLineVertices,
 }
 
 // TODO: The note below is good but reset is not enough, we need some sort of additional function to also drop the data, like and `undo` or `rollback`
 /// Note: If the instructions produced by this command are not completed succesfully the state of the `Compiler` instance will
 /// be undefined, and so `reset()` must be called on it. This is because copy operations that don't complete will leave the
 /// buffers with incorrect data.
-pub(super) struct Compilation<'a> {
+pub struct Compilation<'a> {
     cmds: &'a [Command<'a>],
+    code_idx: usize,
     compiler: &'a mut Compiler, //TODO: Mutable for mut access to vertex_buf, let's revisit this if can be made read-only
-    idx: usize,
     mesh_sets: MeshSets,
 }
 
 impl Compilation<'_> {
-    fn copy_gpu(&self, range: Range<usize>) -> Instruction {
-        Instruction::CopyGpu(CopyInstruction {
-            data: &self.compiler.vertex_buf.as_ref().unwrap().data,
-            ranges: &self.compiler.copies.as_slice()[range],
-        })
+    fn copy_vertices(&mut self) -> Instruction {
+        let vertex_buf = self.compiler.vertex_buf.as_mut().unwrap();
+
+        Instruction::CopyVertices((
+            &mut vertex_buf.data.current,
+            vertex_buf.gpu_dirty.as_slice(),
+        ))
+    }
+
+    fn transfer_line_data(&mut self) -> Instruction {
+        let buf = self.compiler.line_buf.as_mut().unwrap();
+
+        Instruction::TransferData((buf.data.previous.as_mut().unwrap(), &mut buf.data.current))
+    }
+
+    fn transfer_vertex_data(&mut self) -> Instruction {
+        let buf = self.compiler.vertex_buf.as_mut().unwrap();
+
+        Instruction::TransferData((buf.data.previous.as_mut().unwrap(), &mut buf.data.current))
+    }
+
+    fn write_light_vertices(&mut self) -> Instruction {
+        let buf = self.compiler.vertex_buf.as_mut().unwrap();
+
+        Instruction::WriteVertices((
+            &mut buf.data.current,
+            buf.cpu_dirty.as_ref().unwrap().clone(),
+        ))
+    }
+
+    fn write_line_vertices(&mut self) -> Instruction {
+        let buf = self.compiler.line_buf.as_mut().unwrap();
+
+        Instruction::WriteVertices((
+            &mut buf.data.current,
+            buf.cpu_dirty.as_ref().unwrap().clone(),
+        ))
     }
 }
 
 // TODO: Workaround impl of "Iterator for" until we (soon?) have GATs: https://github.com/rust-lang/rust/issues/44265
 impl Compilation<'_> {
     pub fn next(&mut self) -> Option<Instruction> {
-        if self.idx == self.compiler.code.len() {
+        if self.code_idx == self.compiler.code.len() {
             return None;
         }
 
-        let idx = self.idx;
-        self.idx += 1;
+        let idx = self.code_idx;
+        self.code_idx += 1;
 
         Some(match &self.compiler.code[idx] {
-            Asm::CopyGpu(range) => self.copy_gpu(range.start..range.end),
+            Asm::CopyVertices => self.copy_vertices(),
+            Asm::TransferLineData => self.transfer_line_data(),
+            Asm::TransferVertexData => self.transfer_vertex_data(),
+            Asm::WriteLightVertices => self.write_light_vertices(),
+            Asm::WriteLineVertices => self.write_line_vertices(),
             _ => todo!(),
         })
     }
@@ -82,7 +137,7 @@ impl Compilation<'_> {
 #[derive(Default)]
 pub struct Compiler {
     code: Vec<Asm>,
-    copies: Vec<CopyRange>,
+    line_buf: Option<DirtyData<Lease<Data>>>,
     line_lru: Vec<Lru<LineKey>>,
     mesh_textures: Vec<Texture2d>,
     point_light_lru: bool,
@@ -92,20 +147,57 @@ pub struct Compiler {
 }
 
 impl Compiler {
+    /// Allocates or re-allocates leased data of the given size. This could be a function of the DirtyData type, however it only
+    /// works because the Compiler happens to know that the host-side of the data
+    fn alloc_data(
+        #[cfg(debug_assertions)] name: &str,
+        pool: &PoolRef,
+        buf: &mut Option<DirtyData<Lease<Data>>>,
+        len: u64,
+    ) -> bool {
+        // Early-our if we do not need to resize the buffer
+        if let Some(existing) = buf.as_ref() {
+            if len <= existing.capacity() {
+                #[cfg(debug_assertions)]
+                {
+                    buf.as_mut().unwrap().set_name(&name);
+                }
+
+                return false;
+            }
+        }
+
+        // We over-allocate the requested capacity to prevent rapid reallocations
+        let capacity = (len as f32 * CACHE_CAPACITY_FACTOR) as u64;
+        let data = pool.borrow_mut().data(
+            #[cfg(debug_assertions)]
+            &name,
+            capacity,
+        );
+
+        if let Some(mut old_buf) = buf.replace(DirtyData::new(data)) {
+            // Preserve the old data so that we can copy it directly over before drawing
+            let new_buf = &mut buf.as_mut().unwrap();
+            new_buf.gpu_usage = old_buf.gpu_usage;
+            new_buf.data.previous = Some(old_buf.data.current);
+        }
+
+        return true;
+    }
+
     /// Moves cache items into clumps so future items can be appended onto the end without needing to
     /// resize the cache buffer. As a side effect this causes dirty regions to be moved on the GPU.
     ///
     /// Geometry used very often will end up closer to the beginning of the GPU memory over time, and
     /// will have fewer move operations applied to it as a result.
-    fn compact_cache(&mut self) {
-        if let Some(buf) = self.vertex_buf.as_mut() {
-            let copy_start = self.copies.len();
+    fn compact_caches(&mut self) {
+        if let Some(vertex_buf) = self.vertex_buf.as_mut() {
             let line_lru = &mut self.line_lru;
             let rect_light_lru = &mut self.rect_light_lru;
             let spotlight_lru = &mut self.spotlight_lru;
 
             // "Forget about" GPU memory regions occupied by unused geometry
-            buf.gpu.retain(|(_, key)| match key {
+            vertex_buf.gpu_usage.retain(|(_, key)| match key {
                 Key::Line(line) => {
                     let idx = line_lru
                         .binary_search_by(|probe| probe.key.cmp(&line))
@@ -132,9 +224,10 @@ impl Compiler {
             // We only need to compact the memory in the region preceding the dirty region, because that geometry will
             // be uploaded and used during this compilation (draw) - we will defer that region to the next compilation
             let mut start = POINT_LIGHT.len() as u64;
-            let end = buf.cpu.as_ref().map_or_else(
+            let end = vertex_buf.cpu_dirty.as_ref().map_or_else(
                 || {
-                    buf.gpu
+                    vertex_buf
+                        .gpu_usage
                         .last()
                         .map_or(start, |(offset, key)| offset + Self::stride(key))
                 },
@@ -142,7 +235,7 @@ impl Compiler {
             );
 
             // Walk through the GPU memory in order, moving items back to the "empty" region and as we go
-            for (offset, key) in &mut buf.gpu {
+            for (offset, key) in &mut vertex_buf.gpu_usage {
                 assert!(start <= end);
                 assert!(start <= *offset);
 
@@ -165,8 +258,8 @@ impl Compiler {
                     continue;
                 }
 
-                // All copies are stored in one contiguous copies buffer (cpu->gpu and gpu->gpu, for vertices)
-                self.copies.push(CopyRange {
+                // Move this item back to the beginning of the empty region
+                vertex_buf.gpu_dirty.push(CopyRange {
                     dst: start,
                     src: *offset..*offset + stride,
                 });
@@ -200,7 +293,7 @@ impl Compiler {
             }
 
             // Produce the assembly code that will re-arrange the GPU buffer
-            self.code.push(Asm::CopyGpu(copy_start..self.copies.len()));
+            self.code.insert(0, Asm::CopyVertices);
         }
     }
 
@@ -216,15 +309,17 @@ impl Compiler {
         camera: &impl Camera,
         mut cmds: &'b mut [Command<'b>],
     ) -> Compilation<'a> {
-        // TODO: This function has been normalized to be easier to read, may want to combine steps for perf after design stabilizes
         assert!(self.code.is_empty());
-        assert!(self.copies.is_empty());
         assert!(self.mesh_textures.is_empty());
 
         #[cfg(debug_assertions)]
+        if let Some(buf) = self.line_buf.as_ref() {
+            assert!(buf.is_clean());
+        }
+
+        #[cfg(debug_assertions)]
         if let Some(buf) = self.vertex_buf.as_ref() {
-            assert!(buf.cpu.is_none());
-            // TODO: Add some assertions here
+            assert!(buf.is_clean());
         }
 
         // Remove non-visible commands (also prepares mesh commands for sorting by pre-calculating Z)
@@ -233,26 +328,26 @@ impl Compiler {
         // Rearrange the commands so draw order doesn't cause unnecessary resource-switching
         self.sort(cmds);
 
-        // Fill the cache buffer for all requested lines and lights (queues copies from CPU to GPU)
-        self.fill_cache(
+        // Fill the cache buffers for all requested lines and lights (queues copies from CPU to GPU)
+        self.fill_caches(
             #[cfg(debug_assertions)]
             name,
             pool,
             cmds,
         );
 
-        // Remove the least recently used line and light data from the cache (queues moves within GPU)
-        self.compact_cache();
+        // Remove the least recently used line and light data from the caches (queues moves within GPU)
+        self.compact_caches();
 
         Compilation {
             cmds,
+            code_idx: 0,
             compiler: self,
-            idx: 0,
             mesh_sets: Default::default(),
         }
     }
 
-    // TODO: Could return counts here and put a tiny bit of speed-up into the `fill_cache` function
+    // TODO: Could return counts here and put a tiny bit of speed-up into the `fill_cache` function - could avoid the first four bin searches fwiw
     /// Cull any commands which are not within the camera frustum. Also adds z-order to meshes.
     fn cull(camera: &impl Camera, cmds: &mut &mut [Command]) {
         let eye = -camera.eye();
@@ -293,22 +388,14 @@ impl Compiler {
         *cmds = &mut take(cmds)[0..end];
     }
 
-    /// Gets this compiler ready to use the given commands by pre-filling vertex cache buffers. Also records the range of vertex data
+    /// Gets this compiler ready to use the given commands by pre-filling vertex cache buffers. Also records the ranges of vertex data
     /// which must be copied from CPU to the GPU.
-    fn fill_cache(
+    fn fill_caches(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
         pool: &PoolRef,
         cmds: &mut [Command],
     ) {
-        #[cfg(debug_assertions)]
-        if self.vertex_buf.is_some() {
-            let buf = self.vertex_buf.as_ref().unwrap();
-
-            assert!(buf.cpu.is_none());
-            assert!(buf.gpu.is_empty());
-        }
-
         // Locate the groups - we know these `SearchIdx` values will not be found as they are gaps in between the groups
         let point_light_idx = cmds
             .binary_search_by(|probe| {
@@ -337,237 +424,232 @@ impl Compiler {
         let spotlight_count = line_idx - spotlight_idx;
         let line_count = cmds.len() - line_idx;
 
-        // Early out if there is no filling of new vertices to be done
-        if point_light_count == 0
-            && rect_light_count == 0
-            && spotlight_count == 0
-            && line_count == 0
-        {
-            return;
-        }
+        if point_light_count + rect_light_count + spotlight_count > 0 {
+            let point_light_count = point_light_count - point_light_idx;
+            let rect_light_count = rect_light_count - rect_light_idx;
+            let spotlight_count = spotlight_count - spotlight_idx;
 
-        // Note that the vertex buffer will always reserve space for a point light icosphere
-        let len = (POINT_LIGHT.len()
-            + line_count * LINE_STRIDE
-            + rect_light_count * RECT_LIGHT_STRIDE
-            + spotlight_count * SPOTLIGHT_STRIDE) as u64;
-        let capacity = (len as f32 * CACHE_CAPACITY_FACTOR) as u64;
-        let mut end = (POINT_LIGHT.len()
-            + self.line_lru.len() * LINE_STRIDE
-            + self.rect_light_lru.len() * RECT_LIGHT_STRIDE
-            + self.spotlight_lru.len() * SPOTLIGHT_STRIDE) as u64;
+            // Note that the vertex buffer will always reserve space for a point light icosphere
+            let len = (POINT_LIGHT.len()
+                + rect_light_count * RECT_LIGHT_STRIDE
+                + spotlight_count * SPOTLIGHT_STRIDE) as u64;
+            let mut end = (POINT_LIGHT.len()
+                + self.line_lru.len() * LINE_STRIDE
+                + self.rect_light_lru.len() * RECT_LIGHT_STRIDE
+                + self.spotlight_lru.len() * SPOTLIGHT_STRIDE) as u64;
 
-        #[cfg(debug_assertions)]
-        let name = format!("{} vertex buffer", name);
-
-        // Resize the vertex buffer as needed
-        if self.vertex_buf.is_none() || len > self.vertex_buf.as_ref().unwrap().capacity() {
             #[cfg(debug_assertions)]
-            let mut set_name = true;
+            let name = format!("{} vertex buffer", name);
 
-            if let Some(mut old_buf) = self.vertex_buf.replace(DirtyData {
-                cpu: Some(0..end),
-                data: pool.borrow_mut().data(
-                    #[cfg(debug_assertions)]
-                    &name,
-                    capacity,
-                ),
-                gpu: Default::default(),
-            }) {
+            // Resize the vertex buffer as needed
+            if Self::alloc_data(
                 #[cfg(debug_assertions)]
-                {
-                    set_name = false;
-                }
-
-                let new_buf = &mut self.vertex_buf.as_mut().unwrap();
-                let start = if self.point_light_lru {
-                    POINT_LIGHT.len() as u64
-                } else {
-                    0
-                };
-                let count = end - start;
-
-                unsafe {
-                    let src = old_buf.map_range(start..end).unwrap(); // TODO: Error handling!
-                    let mut dst = new_buf.map_range_mut(start..end).unwrap(); // TODO: Error handling!
-
-                    // TODO: Maybe store both buffers and do a GPU copy instead?
-                    // Preserve the contents of the old buffer in the new buffer
-                    copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), count as _);
-
-                    Mapping::flush(&mut dst).unwrap(); // TODO: Error handling!
-                }
+                &name,
+                pool,
+                &mut self.vertex_buf,
+                len,
+            ) {
+                self.code.push(Asm::TransferVertexData);
             }
 
-            #[cfg(debug_assertions)]
-            if set_name {
-                self.vertex_buf.as_mut().unwrap().set_name(&name);
-            }
-        }
+            let mut start = end;
+            let vertex_buf = self.vertex_buf.as_mut().unwrap();
 
-        let mut start = end;
-        let buf = self.vertex_buf.as_mut().unwrap();
+            if point_light_count > 0 {
+                // Produce the assembly code that will draw all point lights at once
+                self.code.push(Asm::DrawPointLights(point_light_idx..rect_light_idx));
 
-        // When we resize the buffer there will be pre-existing dirty info from above
-        if let Some(cpu) = &buf.cpu {
-            start = start.min(cpu.start);
-        }
-
-        // Add the point light geometry to the buffer as needed (the spot is reserved for it)
-        if point_light_count > 0 && !self.point_light_lru {
-            self.point_light_lru = true;
-
-            unsafe {
-                let mut mapped_range = buf.map_range_mut(0..POINT_LIGHT.len() as _).unwrap(); // TODO: Error handling!
-
-                copy_nonoverlapping(
-                    POINT_LIGHT.as_ptr(),
-                    mapped_range.as_mut_ptr(),
-                    POINT_LIGHT.len() as _,
-                );
-
-                Mapping::flush(&mut mapped_range).unwrap(); // TODO: Error handling!
-            }
-        }
-
-        // Produce the assembly code that will draw all rectangular lights
-        for cmd in cmds[rect_light_idx..rect_light_idx + rect_light_count].iter() {
-            let (key, scale) = RectLightKey::quantize(cmd.as_rect_light().unwrap());
-            self.code.push(Asm::DrawRectLight(DrawAsm {
-                lru_idx: match self
-                    .rect_light_lru
-                    .binary_search_by(|probe| probe.key.cmp(&key))
-                {
-                    Err(idx) => {
-                        // Cache the normalized geometry for this rectangular light
-                        let new_end = end + SPOTLIGHT_STRIDE as u64;
-                        let vertices = gen_rect_light(key.dims(), key.range(), key.radius());
-
-                        unsafe {
-                            let mut mapped_range = buf.map_range_mut(end..new_end).unwrap(); // TODO: Error handling!
-
-                            copy_nonoverlapping(
-                                vertices.as_ptr(),
-                                mapped_range.as_mut_ptr(),
-                                SPOTLIGHT_STRIDE,
-                            );
-
-                            Mapping::flush(&mut mapped_range).unwrap(); // TODO: Error handling!
-                        }
-
-                        // Create new cache entries for this rectangular light
-                        buf.gpu.push((end, key.into()));
-                        self.rect_light_lru.insert(
-                            idx,
-                            Lru {
-                                key,
-                                offset: end,
-                                recently_used: true,
-                            },
-                        );
-                        end = new_end;
-
-                        idx
-                    }
-                    Ok(idx) => {
-                        self.spotlight_lru[idx].recently_used = true;
-
-                        idx
-                    }
-                },
-                scale,
-            }));
-        }
-
-        // Produce the assembly code that will draw all spotlights
-        for cmd in cmds[spotlight_idx..spotlight_idx + spotlight_count].iter() {
-            let (key, scale) = SpotlightKey::quantize(cmd.as_spotlight().unwrap());
-            self.code.push(Asm::DrawSpotlight(DrawAsm {
-                lru_idx: match self
-                    .spotlight_lru
-                    .binary_search_by(|probe| probe.key.cmp(&key))
-                {
-                    Err(idx) => {
-                        // Cache the normalized geometry for this spotlight
-                        let new_end = end + SPOTLIGHT_STRIDE as u64;
-                        let vertices = gen_spotlight(key.radius(), key.range());
-
-                        unsafe {
-                            let mut mapped_range = buf.map_range_mut(end..new_end).unwrap(); // TODO: Error handling!
-
-                            copy_nonoverlapping(
-                                vertices.as_ptr(),
-                                mapped_range.as_mut_ptr(),
-                                SPOTLIGHT_STRIDE,
-                            );
-
-                            Mapping::flush(&mut mapped_range).unwrap(); // TODO: Error handling!
-                        }
-
-                        // Create a new cache entry for this spotlight
-                        self.spotlight_lru.insert(
-                            idx,
-                            Lru {
-                                key,
-                                offset: end,
-                                recently_used: true,
-                            },
-                        );
-                        end = new_end;
-
-                        idx
-                    }
-                    Ok(idx) => {
-                        self.spotlight_lru[idx].recently_used = true;
-
-                        idx
-                    }
-                },
-                scale,
-            }));
-        }
-
-        // Cache all line vertices
-        for cmd in cmds[line_idx..].iter() {
-            let line = cmd.as_line().unwrap();
-            let key = LineKey::hash(line);
-            match self.line_lru.binary_search_by(|probe| probe.key.cmp(&key)) {
-                Err(idx) => {
-                    // Cache the vertices for this line segment
-                    let new_end = end + LINE_STRIDE as u64;
-                    let vertices = gen_line(&line.vertices);
+                // Add the point light geometry to the buffer as needed (the spot is reserved for it)
+                if !self.point_light_lru {
+                    self.point_light_lru = true;
 
                     unsafe {
-                        let mut mapped_range = buf.map_range_mut(end..new_end).unwrap(); // TODO: Error handling!
+                        let mut mapped_range =
+                            vertex_buf.map_range_mut(0..POINT_LIGHT.len() as _).unwrap(); // TODO: Error handling!
 
                         copy_nonoverlapping(
-                            vertices.as_ptr(),
+                            POINT_LIGHT.as_ptr(),
                             mapped_range.as_mut_ptr(),
-                            SPOTLIGHT_STRIDE,
+                            POINT_LIGHT.len() as _,
                         );
 
                         Mapping::flush(&mut mapped_range).unwrap(); // TODO: Error handling!
                     }
-
-                    // Create a new cache entry for this line segment
-                    self.line_lru.insert(
-                        idx,
-                        Lru {
-                            key,
-                            offset: end,
-                            recently_used: true,
-                        },
-                    );
-                    end = new_end;
-                }
-                Ok(idx) => {
-                    self.line_lru[idx].recently_used = true;
                 }
             }
+
+            // Produce the assembly code that will draw rectangular lights one at a time
+            if rect_light_count > 0 {
+                self.code.push(Asm::BeginRectLight);
+
+                for cmd in cmds[rect_light_idx..spotlight_idx].iter() {
+                    let (key, scale) = RectLightKey::quantize(cmd.as_rect_light().unwrap());
+                    self.code.push(Asm::DrawRectLight(DrawAsm {
+                        lru_idx: match self
+                            .rect_light_lru
+                            .binary_search_by(|probe| probe.key.cmp(&key))
+                        {
+                            Err(idx) => {
+                                // Cache the normalized geometry for this rectangular light
+                                let new_end = end + RECT_LIGHT_STRIDE as u64;
+                                let vertices = gen_rect_light(key.dims(), key.range(), key.radius());
+
+                                unsafe {
+                                    let mut mapped_range =
+                                        vertex_buf.map_range_mut(end..new_end).unwrap(); // TODO: Error handling!
+
+                                    copy_nonoverlapping(
+                                        vertices.as_ptr(),
+                                        mapped_range.as_mut_ptr(),
+                                        RECT_LIGHT_STRIDE,
+                                    );
+
+                                    Mapping::flush(&mut mapped_range).unwrap(); // TODO: Error handling!
+                                }
+
+                                // Create new cache entries for this rectangular light
+                                vertex_buf.gpu_usage.push((end, key.into()));
+                                self.rect_light_lru.insert(
+                                    idx,
+                                    Lru::new(key, end),
+                                );
+                                end = new_end;
+
+                                idx
+                            }
+                            Ok(idx) => {
+                                self.spotlight_lru[idx].recently_used = true;
+
+                                idx
+                            }
+                        },
+                        scale,
+                    }));
+                }
+            }
+
+            // Produce the assembly code that will draw spotlights one at a time
+            if spotlight_count > 0 {
+                self.code.push(Asm::BeginSpotlight);
+
+                for cmd in cmds[spotlight_idx..line_idx].iter() {
+                    let (key, scale) = SpotlightKey::quantize(cmd.as_spotlight().unwrap());
+                    self.code.push(Asm::DrawSpotlight(DrawAsm {
+                        lru_idx: match self
+                            .spotlight_lru
+                            .binary_search_by(|probe| probe.key.cmp(&key))
+                        {
+                            Err(idx) => {
+                                // Cache the normalized geometry for this spotlight
+                                let new_end = end + SPOTLIGHT_STRIDE as u64;
+                                let vertices = gen_spotlight(key.radius(), key.range());
+
+                                unsafe {
+                                    let mut mapped_range =
+                                        vertex_buf.map_range_mut(end..new_end).unwrap(); // TODO: Error handling!
+
+                                    copy_nonoverlapping(
+                                        vertices.as_ptr(),
+                                        mapped_range.as_mut_ptr(),
+                                        SPOTLIGHT_STRIDE,
+                                    );
+
+                                    Mapping::flush(&mut mapped_range).unwrap(); // TODO: Error handling!
+                                }
+
+                                // Create a new cache entry for this spotlight
+                                self.spotlight_lru.insert(
+                                    idx,
+                                    Lru::new(key, end),
+                                );
+                                end = new_end;
+
+                                idx
+                            }
+                            Ok(idx) => {
+                                self.spotlight_lru[idx].recently_used = true;
+
+                                idx
+                            }
+                        },
+                        scale,
+                    }));
+                }
+            }
+
+            // We need to copy these vertices from the CPU to the GPU
+            vertex_buf.cpu_dirty = Some(start..end);
+            self.code.insert(0, Asm::WriteLightVertices);
         }
 
-        // We need to copy these vertices from the CPU to the GPU
-        buf.cpu = Some(start..end);
+        if line_count > 0 {
+            let len = (line_count * LINE_STRIDE) as u64;
+            let mut end = (self.line_lru.len() * LINE_STRIDE) as u64;
+
+            #[cfg(debug_assertions)]
+            let name = format!("{} line buffer", name);
+
+            // Resize the line buffer as needed
+            if Self::alloc_data(
+                #[cfg(debug_assertions)]
+                &name,
+                pool,
+                &mut self.line_buf,
+                len,
+            ) {
+                self.code.push(Asm::TransferLineData);
+            }
+
+            let start = end;
+            let line_buf = self.line_buf.as_mut().unwrap();
+
+            for cmd in cmds[line_idx..cmds.len()].iter() {
+                let line = cmd.as_line().unwrap();
+                let key = LineKey::hash(line);
+
+                // Cache the vertices
+                match self.line_lru.binary_search_by(|probe| probe.key.cmp(&key)) {
+                    Err(idx) => {
+                        // Cache the vertices for this line segment
+                        let new_end = end + LINE_STRIDE as u64;
+                        let vertices = gen_line(&line.0);
+
+                        unsafe {
+                            let mut mapped_range = line_buf.map_range_mut(end..new_end).unwrap(); // TODO: Error handling!
+
+                            copy_nonoverlapping(
+                                vertices.as_ptr(),
+                                mapped_range.as_mut_ptr(),
+                                LINE_STRIDE,
+                            );
+
+                            Mapping::flush(&mut mapped_range).unwrap(); // TODO: Error handling!
+                        }
+
+                        // Create a new cache entry for this line segment
+                        self.line_lru.insert(
+                            idx,
+                            Lru {
+                                key,
+                                offset: end,
+                                recently_used: true,
+                            },
+                        );
+                        end = new_end;
+                    }
+                    Ok(idx) => {
+                        self.line_lru[idx].recently_used = true;
+                    }
+                }
+            }
+
+            // We need to copy these vertices from the CPU to the GPU
+            line_buf.cpu_dirty = Some(start..end);
+            self.code.insert(0, Asm::WriteLineVertices);
+
+            // Produce the assembly code that will draw all lines at once
+            //self.code.push(Asm::DrawLines)
+        }
     }
 
     /// All commands sort into groups: first meshes, then lights, followed by lines.
@@ -614,12 +696,13 @@ impl Compiler {
 
     /// Resets the internal caches so that this compiler may be reused by calling the `compile` function.
     pub fn reset(&mut self) {
-        self.copies.clear();
         self.mesh_textures.clear();
 
-        // Reset the CPU dirty regions
-        if let Some(buf) = self.vertex_buf.as_mut() {
-            buf.cpu = None;
+        // Reset the vertex buffer dirty regions
+        if let Some(vertex_buf) = self.vertex_buf.as_mut() {
+            vertex_buf.cpu_dirty = None;
+            vertex_buf.data.previous = None;
+            vertex_buf.gpu_dirty.clear();
         }
 
         // Finally, reset the "recently used" flags
@@ -651,12 +734,6 @@ impl Compiler {
             // Compare group indices
             match lhs_idx.cmp(&rhs_idx) {
                 eq => match lhs {
-                    Command::Line(lhs) => {
-                        let rhs = rhs.as_line().unwrap();
-
-                        // Compare line widths
-                        lhs.width.partial_cmp(&rhs.width).unwrap_or(eq)
-                    }
                     Command::Mesh(lhs) => {
                         let rhs = rhs.as_mesh().unwrap();
                         let lhs_idx = Self::mesh_group_idx(lhs.mesh);
@@ -707,9 +784,36 @@ struct DirtyData<T>
 where
     T: DerefMut<Target = Data>,
 {
-    cpu: Option<Range<u64>>, // This range, if present, is the portion that needs to be copied from cpu to gpu
-    data: T,
-    gpu: Vec<(u64, Key)>, // Memory usage on the gpu, sorted by the first field which is the start offset.
+    cpu_dirty: Option<Range<u64>>, // This range, if present, is the portion that needs to be copied from cpu to gpu
+    data: Allocation<T>,
+    gpu_dirty: Vec<CopyRange>, // Segments of gpu memory which must be "compacted" (read: copied) within the gpu
+    gpu_usage: Vec<(u64, Key)>, // Memory usage on the gpu, sorted by the first field which is the offset.
+}
+
+impl<T> DirtyData<T>
+where
+    T: DerefMut<Target = Data>,
+{
+    fn new(data: T) -> Self {
+        Self {
+            cpu_dirty: None,
+            data: Allocation {
+                current: data,
+                previous: None,
+            },
+            gpu_dirty: vec![],
+            gpu_usage: vec![],
+        }
+    }
+}
+
+impl<T> DirtyData<T>
+where
+    T: DerefMut<Target = Data>,
+{
+    fn is_clean(&self) -> bool {
+        self.cpu_dirty.is_none() && self.gpu_dirty.is_empty()
+    }
 }
 
 impl<T> Deref for DirtyData<T>
@@ -719,7 +823,7 @@ where
     type Target = T::Target;
 
     fn deref(&self) -> &Self::Target {
-        &self.data
+        &self.data.current
     }
 }
 
@@ -728,7 +832,7 @@ where
     T: DerefMut<Target = Data>,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.data
+        &mut self.data.current
     }
 }
 
@@ -753,6 +857,16 @@ struct Lru<T> {
     key: T,
     offset: u64,
     recently_used: bool, // TODO: Should this hold a number instead?
+}
+
+impl<T> Lru<T> {
+    fn new(key: T, offset: u64) -> Self {
+        Self {
+            key,
+            offset,
+            recently_used: false,
+        }
+    }
 }
 
 #[derive(Default)]
