@@ -6,7 +6,6 @@ use {
         Data, TextureRef,
     },
     gfx_hal::{
-        buffer::Access as BufferAccess,
         command::{BufferImageCopy, CommandBuffer, CommandBufferFlags, Level},
         format::Aspects,
         image::{Access as ImageAccess, Layout, Offset, SubresourceLayers},

@@ -12,7 +12,6 @@ pub use self::{command::Command, compiler::Compiler};
 
 use {
     self::{
-        compiler::Compilation,
         graphics_buf::GraphicsBuffer,
         instruction::{Instruction, MeshInstruction},
     },
@@ -23,13 +22,13 @@ use {
         gpu::{
             data::CopyRange,
             driver::{CommandPool, Device, Driver, Fence, Framebuffer2d, PhysicalDevice},
-            pool::{Graphics, GraphicsMode, Lease, MeshType, RenderPassMode},
+            pool::{Graphics, Lease, RenderPassMode},
             Data, Mesh, PoolRef, Texture2d, TextureRef,
         },
-        math::{Cone, Coord, CoordF, Extent, Mat4, Sphere, Vec2, Vec3},
+        math::{Cone, Coord, CoordF, Extent, Mat4, Sphere, Vec3},
     },
     gfx_hal::{
-        buffer::{Access as BufferAccess, SubRange, Usage as BufferUsage},
+        buffer::{Access as BufferAccess, SubRange},
         command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, SubpassContents},
         format::{Aspects, Format},
         image::{
@@ -186,7 +185,7 @@ impl DrawOp {
             cmds,
         );
 
-        let view_proj = unsafe {
+        unsafe {
             self.submit_begin(&viewport);
 
             while let Some(instr) = instrs.next() {
@@ -417,7 +416,7 @@ impl DrawOp {
         );
     }
 
-    unsafe fn submit_line<'i>(&mut self, instr: &LineInstruction) {
+    unsafe fn submit_line(&mut self, instr: &LineInstruction) {
         self.cmd_buf.draw(0..instr.0, 0..1);
     }
 

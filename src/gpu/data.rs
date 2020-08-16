@@ -532,7 +532,7 @@ where
 
                 Some(CopyRange {
                     dst: range.start,
-                    src: range.clone(),
+                    src: range,
                 })
             }
             _ => None,

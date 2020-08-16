@@ -1,5 +1,5 @@
 use {
-    super::{LineInstruction, MeshDrawInstruction},
+    super::MeshDrawInstruction,
     crate::gpu::{data::CopyRange, Data},
     std::ops::Range,
 };

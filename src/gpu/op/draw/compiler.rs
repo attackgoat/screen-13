@@ -18,7 +18,7 @@ use {
     std::{
         cmp::Ordering,
         mem::take,
-        ops::{Add, Deref, DerefMut, Range, Sub},
+        ops::{Deref, DerefMut, Range},
         ptr::copy_nonoverlapping,
     },
 };
@@ -175,14 +175,14 @@ impl Compiler {
             capacity,
         );
 
-        if let Some(mut old_buf) = buf.replace(DirtyData::new(data)) {
+        if let Some(old_buf) = buf.replace(DirtyData::new(data)) {
             // Preserve the old data so that we can copy it directly over before drawing
             let new_buf = &mut buf.as_mut().unwrap();
             new_buf.gpu_usage = old_buf.gpu_usage;
             new_buf.data.previous = Some(old_buf.data.current);
         }
 
-        return true;
+        true
     }
 
     /// Moves cache items into clumps so future items can be appended onto the end without needing to
@@ -452,12 +452,13 @@ impl Compiler {
                 self.code.push(Asm::TransferVertexData);
             }
 
-            let mut start = end;
+            let start = end;
             let vertex_buf = self.vertex_buf.as_mut().unwrap();
 
             if point_light_count > 0 {
                 // Produce the assembly code that will draw all point lights at once
-                self.code.push(Asm::DrawPointLights(point_light_idx..rect_light_idx));
+                self.code
+                    .push(Asm::DrawPointLights(point_light_idx..rect_light_idx));
 
                 // Add the point light geometry to the buffer as needed (the spot is reserved for it)
                 if !self.point_light_lru {
@@ -492,7 +493,8 @@ impl Compiler {
                             Err(idx) => {
                                 // Cache the normalized geometry for this rectangular light
                                 let new_end = end + RECT_LIGHT_STRIDE as u64;
-                                let vertices = gen_rect_light(key.dims(), key.range(), key.radius());
+                                let vertices =
+                                    gen_rect_light(key.dims(), key.range(), key.radius());
 
                                 unsafe {
                                     let mut mapped_range =
@@ -509,10 +511,7 @@ impl Compiler {
 
                                 // Create new cache entries for this rectangular light
                                 vertex_buf.gpu_usage.push((end, key.into()));
-                                self.rect_light_lru.insert(
-                                    idx,
-                                    Lru::new(key, end),
-                                );
+                                self.rect_light_lru.insert(idx, Lru::new(key, end));
                                 end = new_end;
 
                                 idx
@@ -558,10 +557,7 @@ impl Compiler {
                                 }
 
                                 // Create a new cache entry for this spotlight
-                                self.spotlight_lru.insert(
-                                    idx,
-                                    Lru::new(key, end),
-                                );
+                                self.spotlight_lru.insert(idx, Lru::new(key, end));
                                 end = new_end;
 
                                 idx
