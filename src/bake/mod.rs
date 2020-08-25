@@ -1,20 +1,17 @@
+mod asset;
 mod bitmap;
 mod blob;
-mod lang;
 mod mesh;
 mod pak_log;
-mod scene;
-mod schema;
+// mod scene;
 mod text;
 
 pub use self::{
-    bitmap::{bake_atlas, bake_bitmap, bake_font_bitmap},
+    asset::{Asset, MeshAsset},
+    bitmap::{bake_bitmap, bake_font_bitmap},
     blob::bake_blob,
-    lang::bake_lang,
     mesh::bake_mesh,
     pak_log::PakLog,
-    scene::bake_scene,
-    schema::{Asset, MeshAsset, SceneAsset},
     text::bake_text,
 };
 

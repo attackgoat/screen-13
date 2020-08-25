@@ -35,7 +35,7 @@ fn main() -> ! {
             .unwrap()
             .join("nibbles.pak"),
     )
-    .expect("ERROR: You must first pack the game content into a file by running the following command: `cargo run examples/content/nibbles.txt`");
+    .expect("ERROR: You must first pack the game content into a file by running the following command: `cargo run examples/content/nibbles.s13`");
 
     let nibbles = Box::new(Nibbles::load(engine.gpu(), &mut pak));
 
@@ -199,10 +199,10 @@ impl Screen for Nibbles {
         let bottom_left = vec3(2.5, SCREEN_SIZE.y as f32 - 2.5, 0.0);
         let bottom_right = vec3(SCREEN_SIZE.x as f32 - 2.5, SCREEN_SIZE.y as f32 - 2.5, 0.0);
         let mut cmds = vec![
-            Command::line(top_left, arena_color, top_right, arena_color, 4.0),
-            Command::line(top_right, arena_color, bottom_right, arena_color, 4.0),
-            Command::line(bottom_right, arena_color, bottom_left, arena_color, 4.0),
-            Command::line(bottom_left, arena_color, top_left, arena_color, 4.0),
+            Command::line(top_left, arena_color, top_right, arena_color),
+            Command::line(top_right, arena_color, bottom_right, arena_color),
+            Command::line(bottom_right, arena_color, bottom_left, arena_color),
+            Command::line(bottom_left, arena_color, top_left, arena_color),
         ];
 
         // Drawing commands for sammy (the snake)...
@@ -210,7 +210,7 @@ impl Screen for Nibbles {
         for seg in &self.sammy {
             let start = vec3(seg.x as f32 * 4.0, seg.y as f32 * 4.0, 0.0);
             let end = vec3(start.x() + 4.0, start.y() + 4.0, 0.0);
-            cmds.push(Command::line(start, sammy_color, end, sammy_color, 4.0));
+            cmds.push(Command::line(start, sammy_color, end, sammy_color));
         }
 
         // Drawing commands for the food...
@@ -218,7 +218,7 @@ impl Screen for Nibbles {
         {
             let start = vec3(self.food.x as f32 * 4.0, self.food.y as f32 * 4.0, 0.0);
             let end = vec3(start.x() + 4.0, start.y() + 4.0, 0.0);
-            cmds.push(Command::line(start, food_color, end, food_color, 4.0));
+            cmds.push(Command::line(start, food_color, end, food_color));
         }
 
         // Send the Arena, Sammy, and Food as one batch. Lines will be drawn in the correct

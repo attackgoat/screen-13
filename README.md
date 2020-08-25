@@ -11,7 +11,7 @@ Games made using Screen 13 are built as regular executables using a design-time 
 
 ## Asset Baking
 
-Asset baking is the industry-standard process of converting files from their native file formats into a runtime-ready format that is optimized for both speed and size. Currently Screen 13 uses a single file (or single HTTP/S endpoint) for all runtime assets. Assets are baked from `.txt` and `.json` files which you can find examples of in the `examples/content` directory.
+Asset baking is the process of converting files from their native file formats into a runtime-ready format that is optimized for both speed and size. Currently Screen 13 uses a single file (or single HTTP/S endpoint) for all runtime assets. Assets are baked from `.s13` and `.toml` files which you can find examples of in the `examples/content` directory.
 
 ## Quick Start
 
@@ -25,14 +25,14 @@ Included are four examples you might find helpful, in order of complexity:
 Each of these examples requires an associated asset `.pak` file in order to run, so you will need to run the examples like so:
 
 ```bash
-cargo run examples/content/basic.txt
+cargo run examples/content/basic.s13
 cargo run --example basic
 ```
 
 These commands do the following:
 
 - Build the Screen 13 engine (_runtime_) and executable code (_design-time_)
-- Bake the assets from `basic.txt` into `basic.pak`
+- Bake the assets from `basic.s13` into `basic.pak`
 - Runs the `basic` example (Press ESC to exit)
 
 ## Roadmap/Status/Notes

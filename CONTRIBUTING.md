@@ -68,3 +68,14 @@ Any and all contributions are acceptable, including major changes to design or c
 ### What if my idea is too radical
 
 If we cannot fit your change into the existing design without breaking API for other users or creating other headaches then we will add your code into a `contrib` directory or separate branch as needed.
+
+## Release checklist
+
+- Run `cargo update` to ensure you have the latest dependencies
+- Double-check `cargo clippy --release` and `cargo fmt`
+- Double-check all examples compile and run as intended
+- Double-check the above on all supported platforms
+- Github: Add a tag for the version
+- Change log: Add a section for the new version
+- Change log: Transfer unreleased details to the new version
+- Change log: Add diff links (they are at the bottom)

@@ -1,0 +1,11 @@
+# This .s13 file describes a .pak file. It can contain comments such as this, blank lines or .s13 content.
+#
+# All .s13 content may be one of three formats:
+# - `TEXT filename.xyz`: Adds a file which can later be retrieved as a string.
+# - `BLOB filename.xyz`: Adds a file which can later be retrieved as a byte array.
+# - `filename.toml`: Adds a TOML-formatted asset which can later be retrieved as a domain-specific type.
+#
+# Note: Each asset TOML filetype has a unique schema; see the code or these examples for more detail and options.
+
+TEXT fonts/small_10px.fnt
+fonts/small_10px_0.toml

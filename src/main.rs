@@ -11,7 +11,7 @@ mod pak;
 use {
     self::{
         bake::{
-            bake_atlas, bake_bitmap, bake_blob, bake_font_bitmap, bake_lang, bake_mesh, bake_scene,
+            bake_bitmap, bake_blob, bake_font_bitmap, bake_mesh,
             bake_text, Asset, PakLog,
         },
         pak::PakBuf,
@@ -33,7 +33,7 @@ fn main() -> Result<(), IoError> {
     init();
 
     // What to bake (the input text file)
-    let project_arg = args().nth(1).expect("No project specified; re-run this command with the name of a project file as the argument. Example: `cargo run my_game.txt`");
+    let project_arg = args().nth(1).expect("No project specified; re-run this command with the name of a project file as the argument. Example: `cargo run my_game.s13`");
 
     // Where to put the baked .pak
     // TODO: This needs to be easier to use when not running demos; it should work with relative paths (canonicalized) and such for building external projects!
@@ -91,7 +91,7 @@ fn main() -> Result<(), IoError> {
             // Item is a huge string
             Bake::Text
         } else {
-            // Item is a .json file of some type
+            // Item is a .toml file of some type
             Bake::Asset
         };
 
@@ -107,26 +107,26 @@ fn main() -> Result<(), IoError> {
 
             match bake {
                 Bake::Asset => match Asset::read(&asset_filename) {
-                    Asset::Atlas(ref atlas) => {
-                        bake_atlas(&project_dir, &asset_filename, atlas, &mut pak, &mut log);
-                    }
+                    // Asset::Atlas(ref atlas) => {
+                    //     bake_atlas(&project_dir, &asset_filename, atlas, &mut pak, &mut log);
+                    // }
                     Asset::Bitmap(ref bitmap) => {
                         bake_bitmap(&project_dir, &asset_filename, bitmap, &mut pak, &mut log);
                     }
                     Asset::FontBitmap(ref bitmap) => {
                         bake_font_bitmap(&project_dir, &asset_filename, bitmap, &mut pak, &mut log)
                     }
-                    Asset::Language(ref lang) => {
-                        bake_lang(&project_dir, &asset_filename, lang, &mut pak, &mut log)
-                    }
+                    // Asset::Language(ref lang) => {
+                    //     bake_lang(&project_dir, &asset_filename, lang, &mut pak, &mut log)
+                    // }
                     Asset::Mesh(ref mesh) => {
                         bake_mesh(&project_dir, &asset_filename, mesh, &mut pak, &mut log);
                     }
-                    Asset::Scene(scene) => {
-                        for _key in bake_scene(&project_dir, &asset_filename, &scene, &mut pak) {
-                            //lines.push(key);
-                        }
-                    }
+                    // Asset::Scene(scene) => {
+                    //     for _key in bake_scene(&project_dir, &asset_filename, &scene, &mut pak) {
+                    //         //lines.push(key);
+                    //     }
+                    // }
                 },
                 Bake::Blob => bake_blob(&project_dir, &asset_filename, &mut pak),
                 Bake::Text => bake_text(&project_dir, &asset_filename, &mut pak),

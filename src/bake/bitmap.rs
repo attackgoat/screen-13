@@ -1,23 +1,23 @@
 use {
     super::{
+        asset::{Asset, BitmapAsset, FontBitmapAsset},
         get_filename_key, get_path,
         pak_log::{LogId, PakLog},
-        schema::{Asset, AtlasAsset, BitmapAsset, FontBitmapAsset},
     },
     crate::pak::{Bitmap, BitmapId, PakBuf},
     image::{buffer::ConvertBuffer, open as image_open, DynamicImage, RgbImage, RgbaImage},
     std::path::Path,
 };
 
-pub fn bake_atlas<P1: AsRef<Path>, P2: AsRef<Path>>(
-    _project_dir: P1,
-    _asset_filename: P2,
-    _altas_asset: &AtlasAsset,
-    _pak: &mut PakBuf,
-    _log: &mut PakLog,
-) -> BitmapId {
-    todo!();
-}
+// pub fn bake_atlas<P1: AsRef<Path>, P2: AsRef<Path>>(
+//     _project_dir: P1,
+//     _asset_filename: P2,
+//     _altas_asset: &AtlasAsset,
+//     _pak: &mut PakBuf,
+//     _log: &mut PakLog,
+// ) -> BitmapId {
+//     todo!();
+// }
 
 pub fn bake_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
     project_dir: P1,
@@ -71,7 +71,7 @@ pub fn bake_font_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
 
     // Get the fs objects for this asset
     let dir = asset_filename.as_ref().parent().unwrap();
-    let bitmap_filename = get_path(&dir, font_bitmap_asset.bitmap());
+    let bitmap_filename = get_path(&dir, font_bitmap_asset.src());
 
     // Bake the pixels
     let (_, width, pixels) = pixels(&bitmap_filename, true);

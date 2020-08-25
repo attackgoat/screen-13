@@ -1,5 +1,5 @@
 use {
-    super::schema::Asset,
+    super::Asset,
     crate::pak::{BitmapId, MeshId},
     bincode::serialize,
     sha1::Sha1,
