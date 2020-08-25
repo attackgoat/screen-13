@@ -237,7 +237,7 @@ impl Data {
     // Note: mut because "It is an application error to call vkMapMemory on a memory object that is already host mapped."
     fn map_memory(&mut self, range: Range<u64>) -> Result<Mapping, MapError> {
         assert!(range.start < range.end);
-        assert!(range.end < self.capacity);
+        assert!(range.end <= self.capacity);
 
         let driver = Driver::clone(&self.driver);
         let mem = Buffer::mem(&self.cpu_buf);
