@@ -22,7 +22,7 @@ use {
 };
 
 const THINK_TIME: Duration = Duration::from_millis(120);
-const SCREEN_SIZE: Extent = Extent::new(320, 200);
+const SCREEN_SIZE: Extent = Extent::new(80, 50);
 
 fn main() -> ! {
     let engine = Engine::new(Program::new("nibbles"));
@@ -160,7 +160,7 @@ impl Nibbles {
 }
 
 impl Screen for Nibbles {
-    fn render(&self, gpu: &Gpu) -> Render {
+    fn render(&self, gpu: &Gpu, _: Extent) -> Render {
         let mut frame = gpu.render(
             #[cfg(debug_assertions)]
             "nibbles",

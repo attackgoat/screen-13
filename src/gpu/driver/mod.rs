@@ -17,7 +17,6 @@ mod sampler;
 mod semaphore;
 mod shader_module;
 mod surface;
-mod swapchain;
 
 pub use self::{
     buffer::Buffer,
@@ -40,13 +39,10 @@ pub use self::{
     semaphore::Semaphore,
     shader_module::ShaderModule,
     surface::Surface,
-    swapchain::Swapchain,
 };
 
 use {
     self::{framebuffer::Framebuffer, image::Image},
-    gfx_hal::Backend,
-    gfx_impl::Backend as _Backend,
     std::{cell::RefCell, rc::Rc},
     typenum::{U1, U2, U3},
 };
@@ -54,18 +50,6 @@ use {
 pub type Driver = Rc<RefCell<Device>>;
 pub type Framebuffer2d = Framebuffer<U2>;
 pub type Image2d = Image<U2>;
-
-pub fn open<'i, I>(
-    physical_device: <_Backend as Backend>::PhysicalDevice,
-    queue_families: I,
-) -> Driver
-where
-    I: Iterator<Item = &'i <_Backend as Backend>::QueueFamily>,
-{
-    Driver::new(RefCell::new(
-        Device::new(physical_device, queue_families).unwrap(),
-    ))
-}
 
 pub trait Dim {}
 

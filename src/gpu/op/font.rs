@@ -1,16 +1,16 @@
 use {
-    super::{wait_for_fence, BitmapOp},
+    super::BitmapOp,
     crate::{
         color::{AlphaColor, TRANSPARENT_BLACK},
         gpu::{
             data::Mapping,
             driver::{
                 bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
-                Image2d, PhysicalDevice,
+                PhysicalDevice,
             },
             op::{Bitmap, Op},
             pool::{FontVertex, Graphics, GraphicsMode, Lease, RenderPassMode},
-            Data, PoolRef, TextureRef,
+            Data, PoolRef, Texture2d,
         },
         math::{vec3, CoordF, Extent, Mat4},
         pak::Pak,
@@ -26,7 +26,7 @@ use {
         },
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage, Rect, ShaderStageFlags, Viewport},
-        queue::{CommandQueue, QueueType, Submission},
+        queue::{CommandQueue, Submission},
         Backend,
     },
     gfx_impl::Backend as _Backend,
@@ -40,7 +40,6 @@ use {
 };
 
 const FONT_VERTEX_SIZE: usize = 16;
-const QUEUE_TYPE: QueueType = QueueType::Graphics;
 const RENDER_PASS_MODE: RenderPassMode = RenderPassMode::ReadWrite;
 const SUBPASS_IDX: u8 = 0;
 
@@ -196,14 +195,11 @@ impl Font {
     }
 }
 
-pub struct FontOp<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
-    back_buf: Lease<TextureRef<Image2d>>,
+pub struct FontOp {
+    back_buf: Lease<Texture2d>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
-    dst: TextureRef<I>,
+    dst: Texture2d,
     fence: Lease<Fence>,
     frame_buf: Option<Framebuffer2d>,
     glyph_color: AlphaColor,
@@ -216,14 +212,11 @@ where
     vertex_buf: Option<(Lease<Data>, u64)>,
 }
 
-impl<I> FontOp<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
+impl FontOp {
     pub fn new<C, P>(
         #[cfg(debug_assertions)] name: &str,
         pool: &PoolRef,
-        dst: &TextureRef<I>,
+        dst: Texture2d,
         pos: P,
         color: C,
     ) -> Self
@@ -231,7 +224,7 @@ where
         C: Into<AlphaColor>,
         P: Into<CoordF>,
     {
-        let (dims, format) = {
+        let (dims, fmt) = {
             let dst = dst.borrow();
             (dst.dims(), dst.format())
         };
@@ -242,7 +235,7 @@ where
             name,
             dims,
             Tiling::Optimal,
-            format,
+            fmt,
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT
                 | ImageUsage::INPUT_ATTACHMENT
@@ -252,7 +245,7 @@ where
             1,
             1,
         );
-        let family = Device::queue_family(&pool_ref.driver().borrow(), QUEUE_TYPE);
+        let family = Device::queue_family(&pool_ref.driver().borrow());
         let mut cmd_pool = pool_ref.cmd_pool(family);
         let cmd_buf = unsafe { cmd_pool.allocate_one(Level::Primary) };
         let fence = pool_ref.fence();
@@ -268,7 +261,7 @@ where
             back_buf,
             cmd_buf,
             cmd_pool,
-            dst: TextureRef::clone(dst),
+            dst,
             fence,
             frame_buf: None,
             glyph_color: color.into(),
@@ -280,7 +273,7 @@ where
         }
     }
 
-    pub fn with_outline_color<C>(mut self, color: C) -> Self
+    pub fn with_outline_color<C>(&mut self, color: C) -> &mut Self
     where
         C: Into<AlphaColor>,
     {
@@ -288,7 +281,7 @@ where
         self
     }
 
-    pub fn with_transform(mut self, transform: Mat4) -> Self {
+    pub fn with_transform(&mut self, transform: Mat4) -> &mut Self {
         self.transform = transform;
         self
     }
@@ -319,7 +312,7 @@ where
             self.frame_buf.replace(Framebuffer2d::new(
                 driver,
                 pool.render_pass(RENDER_PASS_MODE),
-                once(self.back_buf.borrow().as_default_2d_view().as_ref()),
+                once(self.back_buf.borrow().as_default_view().as_ref()),
                 dims,
             ));
 
@@ -573,7 +566,7 @@ where
         self.cmd_buf.finish();
 
         // Submit
-        Device::queue_mut(&mut device, QUEUE_TYPE).submit(
+        Device::queue_mut(&mut device).submit(
             Submission {
                 command_buffers: once(&self.cmd_buf),
                 wait_semaphores: empty(),
@@ -586,7 +579,7 @@ where
     unsafe fn write_descriptor_sets(&mut self, font: &Font, page_idx: usize) {
         // TODO: Fix, this should be one set per page not the same re-written
         let page = font.pages[page_idx].borrow();
-        let page_view = page.as_default_2d_view();
+        let page_view = page.as_default_view();
         let graphics = self.graphics.as_ref().unwrap();
         self.pool
             .borrow()
@@ -605,14 +598,11 @@ where
     }
 }
 
-pub struct FontOpSubmission<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
-    back_buf: Lease<TextureRef<Image2d>>,
+pub struct FontOpSubmission {
+    back_buf: Lease<Texture2d>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
-    dst: TextureRef<I>,
+    dst: Texture2d,
     fence: Lease<Fence>,
     frame_buf: Framebuffer2d,
     graphics: Lease<Graphics>,
@@ -620,26 +610,15 @@ where
     vertex_buf: Lease<Data>,
 }
 
-impl<I> Drop for FontOpSubmission<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
+impl Drop for FontOpSubmission {
     fn drop(&mut self) {
         self.wait();
     }
 }
 
-impl<I> Op for FontOpSubmission<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
+impl Op for FontOpSubmission {
     fn wait(&self) {
-        let pool = self.pool.borrow();
-        let device = pool.driver().borrow();
-
-        unsafe {
-            wait_for_fence(&device, &self.fence);
-        }
+        Fence::wait(&self.fence);
     }
 }
 

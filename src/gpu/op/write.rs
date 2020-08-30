@@ -1,5 +1,5 @@
 use {
-    super::{wait_for_fence, Op},
+    super::Op,
     crate::{
         color::TRANSPARENT_BLACK,
         gpu::{
@@ -8,7 +8,7 @@ use {
                 PhysicalDevice,
             },
             pool::{Graphics, GraphicsMode, Lease, RenderPassMode},
-            BlendMode, PoolRef, Texture2d, TextureRef,
+            BlendMode, PoolRef, Texture2d,
         },
         math::{vec3, Area, CoordF, Mat4, RectF, Vec2},
     },
@@ -19,7 +19,7 @@ use {
         image::{Access, Layout, Offset, SubresourceLayers, Tiling, Usage},
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage, ShaderStageFlags, Viewport},
-        queue::{CommandQueue as _, QueueType, Submission},
+        queue::{CommandQueue as _, Submission},
         Backend,
     },
     gfx_impl::Backend as _Backend,
@@ -28,8 +28,6 @@ use {
         u8,
     },
 };
-
-const QUEUE_TYPE: QueueType = QueueType::Graphics;
 
 #[derive(Clone, Copy, Hash, PartialEq)]
 pub enum Mode {
@@ -59,6 +57,7 @@ pub struct Write<'s> {
     transform: Mat4,
 }
 
+// TODO: Add multi-sampled builder function
 impl<'s> Write<'s> {
     /// Writes the whole source texture to the destination at the given position.
     pub fn position<D: Into<CoordF>>(src: &'s Texture2d, dst: D) -> Self {
@@ -112,15 +111,11 @@ impl<'s> Write<'s> {
     }
 }
 
-pub struct WriteOp<D>
-where
-    D: AsRef<<_Backend as Backend>::Image>,
-{
+pub struct WriteOp {
     back_buf: Lease<Texture2d>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
-    dst: TextureRef<D>,
-    dst_layout: Option<(Layout, PipelineStage, Access)>,
+    dst: Texture2d,
     dst_preserve: bool,
     fence: Lease<Fence>,
     frame_buf: Option<Framebuffer2d>,
@@ -132,30 +127,31 @@ where
     src_textures: Vec<Texture2d>,
 }
 
-impl<D> WriteOp<D>
-where
-    D: AsRef<<_Backend as Backend>::Image>,
-{
+impl WriteOp {
     pub fn new(
         #[cfg(debug_assertions)] name: &str,
         pool: &PoolRef,
-        dst: &TextureRef<D>,
+        dst: Texture2d,
         mode: Mode,
     ) -> Self {
         let mut pool_ref = pool.borrow_mut();
         let family = {
             let device = pool_ref.driver().borrow();
-            Device::queue_family(&device, QUEUE_TYPE)
+            Device::queue_family(&device)
         };
         let mut cmd_pool = pool_ref.cmd_pool(family);
+        let (dims, fmt) = {
+            let dst = dst.borrow();
+            (dst.dims(), dst.format())
+        };
 
         Self {
             back_buf: pool_ref.texture(
                 #[cfg(debug_assertions)]
                 &format!("{} backbuffer", name),
-                dst.borrow().dims(),
+                dims,
                 Tiling::Optimal,
-                dst.borrow().format(),
+                fmt,
                 Layout::Undefined,
                 Usage::COLOR_ATTACHMENT
                     | Usage::INPUT_ATTACHMENT
@@ -167,8 +163,7 @@ where
             ),
             cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
             cmd_pool,
-            dst: TextureRef::clone(dst),
-            dst_layout: None,
+            dst,
             dst_preserve: false,
             fence: pool_ref.fence(),
             frame_buf: None,
@@ -181,15 +176,9 @@ where
         }
     }
 
-    /// Sets the destination texture to the given layout after all writes are completed.
-    pub fn with_layout(mut self, layout: Layout, stage: PipelineStage, access: Access) -> Self {
-        self.dst_layout = Some((layout, stage, access));
-        self
-    }
-
     /// Preserves the contents of the destination texture. Without calling this function the existing
     /// contents of the destination texture will not be composited into the final result.
-    pub fn with_preserve(mut self) -> Self {
+    pub fn with_preserve(&mut self) -> &mut Self {
         self.dst_preserve = true;
         self
     }
@@ -217,8 +206,6 @@ where
 
             // Sort the writes by texture so that we minimize the number of descriptor sets and how often we change sets during submit
             // NOTE: Unstable sort because we don't claim to support ordering or blending of the individual writes within each batch
-            // HACK: When the Rust `weak_into_raw` feature lands in stable we can replace this with more efficient `Rc::as_ptr`-based
-            // logic and do pointer compares as opposed to searching the entire list to find equality (that part is above)
             writes.sort_unstable_by(|lhs, rhs| {
                 let lhs_idx = tex_idx(&lhs.src);
                 let rhs_idx = tex_idx(&rhs.src);
@@ -226,7 +213,7 @@ where
             });
         } else {
             // We only have one write - and the above sort logic would not be called (there would be no right-hand-side!)
-            self.src_textures.push(TextureRef::clone(writes[0].src));
+            self.src_textures.push(Texture2d::clone(writes[0].src));
         }
 
         // Final setup bits
@@ -238,7 +225,7 @@ where
             self.frame_buf.replace(Framebuffer2d::new(
                 Driver::clone(&driver),
                 pool.render_pass(self.render_pass_mode()),
-                once(self.back_buf.borrow().as_default_2d_view().as_ref()),
+                once(self.back_buf.borrow().as_default_view().as_ref()),
                 self.dst.borrow().dims(),
             ));
 
@@ -459,15 +446,10 @@ where
             }),
         );
 
-        // Optional step: Set the layout of dst when finsihed
-        if let Some((layout, stage, access)) = self.dst_layout {
-            dst.set_layout(&mut self.cmd_buf, layout, stage, access);
-        }
-
         // Finish
         self.cmd_buf.finish();
 
-        Device::queue_mut(&mut device, QUEUE_TYPE).submit(
+        Device::queue_mut(&mut device).submit(
             Submission {
                 command_buffers: once(&self.cmd_buf),
                 wait_semaphores: empty(),
@@ -479,7 +461,7 @@ where
 
     unsafe fn write_descriptor_sets(&mut self) {
         let dst = self.dst.borrow();
-        let dst_view = dst.as_default_2d_view();
+        let dst_view = dst.as_default_view();
         let graphics = self.graphics.as_ref().unwrap();
         let sampler = graphics.sampler(0).as_ref();
 
@@ -489,7 +471,7 @@ where
 
             // A descriptor for this source texture
             let src_ref = src.borrow();
-            let src_view = src_ref.as_default_2d_view();
+            let src_view = src_ref.as_default_view();
             let src_desc = DescriptorSetWrite {
                 set,
                 binding: 0,
@@ -529,14 +511,11 @@ where
     }
 }
 
-pub struct WriteOpSubmission<D>
-where
-    D: AsRef<<_Backend as Backend>::Image>,
-{
+pub struct WriteOpSubmission {
     back_buf: Lease<Texture2d>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
-    dst: TextureRef<D>,
+    dst: Texture2d,
     fence: Lease<Fence>,
     frame_buf: Framebuffer2d,
     graphics: Lease<Graphics>,
@@ -544,25 +523,14 @@ where
     src_textures: Vec<Texture2d>,
 }
 
-impl<D> Drop for WriteOpSubmission<D>
-where
-    D: AsRef<<_Backend as Backend>::Image>,
-{
+impl Drop for WriteOpSubmission {
     fn drop(&mut self) {
         self.wait();
     }
 }
 
-impl<D> Op for WriteOpSubmission<D>
-where
-    D: AsRef<<_Backend as Backend>::Image>,
-{
+impl Op for WriteOpSubmission {
     fn wait(&self) {
-        let pool = self.pool.borrow();
-        let device = pool.driver().borrow();
-
-        unsafe {
-            wait_for_fence(&device, &self.fence);
-        }
+        Fence::wait(&self.fence);
     }
 }

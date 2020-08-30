@@ -1,14 +1,14 @@
 use {
-    super::{wait_for_fence, Op},
+    super::Op,
     crate::{
         gpu::{
             data::Mapping,
             driver::{
                 bind_compute_descriptor_set, change_channel_type, CommandPool, ComputePipeline,
-                Device, Driver, Fence, Image2d, PhysicalDevice,
+                Device, Driver, Fence, PhysicalDevice,
             },
             pool::{Compute, ComputeMode, Lease},
-            Data, PoolRef, TextureRef,
+            Data, PoolRef, Texture2d,
         },
         math::Extent,
         pak::Bitmap as PakBitmap,
@@ -21,7 +21,7 @@ use {
         image::{Access as ImageAccess, Layout, Tiling, Usage as ImageUsage},
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage},
-        queue::{CommandQueue as _, QueueType, Submission},
+        queue::{CommandQueue as _, Submission},
         Backend,
     },
     gfx_impl::Backend as _Backend,
@@ -32,15 +32,13 @@ use {
     },
 };
 
-const QUEUE_TYPE: QueueType = QueueType::Compute;
-
 /// Holds a decoded 2D 4-channel image.
 pub struct Bitmap {
     op: BitmapOp, // TODO: Dump the extras!
 }
 
 impl Deref for Bitmap {
-    type Target = TextureRef<Image2d>;
+    type Target = Texture2d;
 
     fn deref(&self) -> &Self::Target {
         &self.op.texture
@@ -55,11 +53,7 @@ impl Drop for Bitmap {
 
 impl Op for Bitmap {
     fn wait(&self) {
-        let device = self.op.driver.borrow();
-
-        unsafe {
-            wait_for_fence(&device, &self.op.fence);
-        }
+        Fence::wait(&self.op.fence);
     }
 }
 
@@ -74,7 +68,7 @@ pub struct BitmapOp {
     pixel_buf: Lease<Data>,
     pixel_buf_len: u64,
     pixel_buf_stride: u32,
-    texture: Lease<TextureRef<Image2d>>,
+    texture: Lease<Texture2d>,
 }
 
 impl BitmapOp {
@@ -160,7 +154,7 @@ impl BitmapOp {
         );
 
         // Allocate the command buffer
-        let family = Device::queue_family(&pool_ref.driver().borrow(), QUEUE_TYPE);
+        let family = Device::queue_family(&pool_ref.driver().borrow());
         let mut cmd_pool = pool_ref.cmd_pool(family);
 
         Self {
@@ -226,7 +220,7 @@ impl BitmapOp {
         self.cmd_buf.finish();
 
         // Submit
-        Device::queue_mut(&mut device, QUEUE_TYPE).submit(
+        Device::queue_mut(&mut device).submit(
             Submission {
                 command_buffers: once(&self.cmd_buf),
                 wait_semaphores: empty(),
@@ -239,7 +233,7 @@ impl BitmapOp {
     unsafe fn write_descriptors(&mut self) {
         let texture = self.texture.borrow();
         let texture_view = texture
-            .as_default_2d_view_format(change_channel_type(texture.format(), ChannelType::Uint));
+            .as_default_view_format(change_channel_type(texture.format(), ChannelType::Uint));
         self.driver.borrow().write_descriptor_sets(
             vec![
                 DescriptorSetWrite {

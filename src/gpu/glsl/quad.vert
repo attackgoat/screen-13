@@ -1,21 +1,11 @@
-#version 450
+#include "quad.glsl"
 
-const float X[4] = {
-    0,
-    0,
-    0,
-    0,
-};
-const float Y[4] = {
-    0,
-    0,
-    0,
-    0,
-};
-
-layout(location = 0) out vec2 texcoord;
+layout(push_constant) uniform PushConstants {
+    layout(offset = 0) mat4x4 vertex_transform;
+}
+push_constants;
 
 void main() {
-    texcoord = vec2(X[gl_VertexIndex], Y[gl_VertexIndex]);
-    gl_Position = vec4(texcoord, 0, 1);
+    texcoord_out = vertex();
+    gl_Position = push_constants.vertex_transform * vec4(texcoord_out, 0, 1);
 }

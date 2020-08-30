@@ -11,7 +11,7 @@ impl Solid {
 }
 
 impl Screen for Solid {
-    fn render(&self, gpu: &Gpu) -> Render {
+    fn render(&self, gpu: &Gpu, _: Extent) -> Render {
         let mut frame = gpu.render(
             #[cfg(debug_assertions)]
             &format!("Solid {}", self.color.to_hex()),

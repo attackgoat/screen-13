@@ -18,8 +18,10 @@ impl PipelineLayout {
     where
         IS: IntoIterator,
         IS::Item: Borrow<<_Backend as Backend>::DescriptorSetLayout>,
+        IS::IntoIter: ExactSizeIterator,
         IR: IntoIterator,
         IR::Item: Borrow<(ShaderStageFlags, Range<u32>)>,
+        IR::IntoIter: ExactSizeIterator,
     {
         let pipeline_layout = {
             let device = driver.as_ref().borrow();

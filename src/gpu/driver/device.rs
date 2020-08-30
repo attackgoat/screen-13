@@ -5,7 +5,7 @@ use {
         format::{Format, ImageFeature, Properties as FormatProperties},
         image::{Tiling, Usage},
         memory::Properties,
-        queue::{QueueFamilyId, QueueGroup, QueueType},
+        queue::{QueueFamilyId, QueueGroup},
         Backend, Features, MemoryTypeId,
     },
     gfx_impl::Backend as _Backend,
@@ -16,61 +16,37 @@ use {
     },
 };
 
+// TODO: This only supports one queue family which creates one queue. We don't use async submissions yet but it would be super cool.
 pub struct Device {
-    compute: Option<QueueGroup<_Backend>>,
     fmts: RefCell<HashMap<FormatKey, Option<Format>>>,
-    graphics: QueueGroup<_Backend>,
     mem: MemoryProperties,
     phys: <_Backend as Backend>::PhysicalDevice,
     ptr: <_Backend as Backend>::Device,
+    queue_group: QueueGroup<_Backend>,
 }
 
 impl Device {
-    pub fn new<'i, I>(
+    pub fn new(
         phys: <_Backend as Backend>::PhysicalDevice,
-        queue_families: I,
-    ) -> Result<Self, Error>
-    where
-        I: Iterator<Item = &'i <_Backend as Backend>::QueueFamily>,
-    {
-        let default_priority = vec![1f32];
+        queue: &<_Backend as Backend>::QueueFamily,
+    ) -> Result<Self, Error> {
         let mem = phys.memory_properties();
+        let mut gpu = unsafe { phys.open(&[(queue, &[1f32])], Features::empty())? };
+        let queue_group = gpu.queue_groups.pop().unwrap();
 
-        // Open the GPU device with all given queues
-        let mut gpu = unsafe {
-            phys.open(
-                queue_families
-                    .map(|queue_family| (queue_family, default_priority.as_slice()))
-                    .collect::<Vec<_>>()
-                    .as_slice(),
-                Features::empty(),
-            )?
-        };
-
-        gpu.queue_groups.reverse();
-        let graphics = gpu.queue_groups.pop().unwrap();
-        let compute = gpu.queue_groups.pop();
+        assert!(!queue_group.queues.is_empty());
 
         Ok(Self {
-            compute,
             fmts: Default::default(),
-            graphics,
             mem,
             phys,
             ptr: gpu.device,
+            queue_group,
         })
     }
 
-    pub fn queue_family(device: &Self, ty: QueueType) -> QueueFamilyId {
-        if device.compute.is_none() {
-            return device.graphics.family;
-        }
-
-        match ty {
-            QueueType::Compute => device.compute.as_ref().unwrap().family,
-            QueueType::Graphics => device.graphics.family,
-            _ => unreachable!(), // TODO: Probably shoid use a panic?
-        }
+    pub fn queue_family(device: &Self) -> QueueFamilyId {
+        device.queue_group.family
     }
 }
 
@@ -407,7 +383,7 @@ impl PhysicalDevice for Device {
         &self.phys
     }
 
-    fn mem_ty(&self, mask: u64, properties: Properties) -> MemoryTypeId {
+    fn mem_ty(&self, mask: u32, properties: Properties) -> MemoryTypeId {
         //debug!("type_mask={} properties={:?}", type_mask, properties);
         self.mem
             .memory_types
@@ -435,20 +411,8 @@ impl PhysicalDevice for Device {
         panic!("Memory type not found");*/
     }
 
-    fn queue_mut(&mut self, ty: QueueType) -> &mut <_Backend as Backend>::CommandQueue {
-        let queue = match ty {
-            QueueType::Compute => {
-                if let Some(compute) = &mut self.compute {
-                    compute
-                } else {
-                    &mut self.graphics
-                }
-            }
-            QueueType::Graphics => &mut self.graphics,
-            _ => unimplemented!("unimplemented {:?}", ty),
-        };
-
-        &mut queue.queues[0]
+    fn queue_mut(&mut self) -> &mut <_Backend as Backend>::CommandQueue {
+        &mut self.queue_group.queues[0]
     }
 }
 
@@ -463,7 +427,7 @@ struct FormatKey {
 
 pub trait PhysicalDevice: Sealed {
     fn best_fmt(&self, desired_fmt: Format, tiling: Tiling, usage: Usage) -> Option<Format>;
-    fn mem_ty(&self, type_mask: u64, properties: Properties) -> MemoryTypeId;
-    fn queue_mut(&mut self, ty: QueueType) -> &mut <_Backend as Backend>::CommandQueue;
+    fn mem_ty(&self, type_mask: u32, properties: Properties) -> MemoryTypeId;
+    fn queue_mut(&mut self) -> &mut <_Backend as Backend>::CommandQueue;
     fn gpu(&self) -> &<_Backend as Backend>::PhysicalDevice;
 }

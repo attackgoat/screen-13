@@ -28,8 +28,10 @@ impl ComputePipeline {
     where
         IS: IntoIterator,
         IS::Item: Borrow<<_Backend as Backend>::DescriptorSetLayout>,
+        IS::IntoIter: ExactSizeIterator,
         IR: IntoIterator,
         IR::Item: Borrow<(ShaderStageFlags, Range<u32>)>,
+        IR::IntoIter: ExactSizeIterator,
     {
         let layout = PipelineLayout::new(Driver::clone(&driver), set_layouts, push_constants);
         let desc = ComputePipelineDesc::new(entry_point, &*layout);

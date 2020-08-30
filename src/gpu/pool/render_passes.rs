@@ -178,6 +178,29 @@ pub fn draw_ms(driver: &Driver, format: Format) -> RenderPass {
     )
 }
 
+pub fn present(driver: &Driver, format: Format) -> RenderPass {
+    RenderPass::new(
+        #[cfg(debug_assertions)]
+        "Write",
+        Driver::clone(&driver),
+        &[Attachment {
+            format: Some(format),
+            samples: 1,
+            ops: AttachmentOps::new(AttachmentLoadOp::DontCare, AttachmentStoreOp::Store), // TODO: Another render pass for AttachmentLoadOp::Clear when we need to render to a transparent window?
+            stencil_ops: AttachmentOps::DONT_CARE,
+            layouts: Layout::Undefined..Layout::Present,
+        }],
+        &[SubpassDesc {
+            colors: &[(0, Layout::ColorAttachmentOptimal)],
+            depth_stencil: None,
+            inputs: &[],
+            resolves: &[],
+            preserves: &[],
+        }],
+        &[],
+    )
+}
+
 pub fn read_write(driver: &Driver, format: Format) -> RenderPass {
     RenderPass::new(
         #[cfg(debug_assertions)]

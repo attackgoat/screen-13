@@ -40,8 +40,10 @@ impl Compute {
         I: IntoIterator,
         I::Item: Borrow<DescriptorSetLayoutBinding>,
         IR: IntoIterator,
+        IR::IntoIter: ExactSizeIterator,
         IR::Item: Borrow<(ShaderStageFlags, Range<u32>)>,
         ID: IntoIterator,
+        ID::IntoIter: ExactSizeIterator,
         ID::Item: Borrow<DescriptorRangeDesc>,
         IS: Iterator<Item = Sampler>,
     {

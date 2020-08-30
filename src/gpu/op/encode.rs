@@ -1,9 +1,9 @@
 use {
-    super::{wait_for_fence, Op},
+    super::Op,
     crate::gpu::{
         driver::{CommandPool, Device, Driver, Fence, PhysicalDevice},
         pool::{Lease, Pool},
-        Data, TextureRef,
+        Data, Texture2d,
     },
     gfx_hal::{
         command::{BufferImageCopy, CommandBuffer, CommandBufferFlags, Level},
@@ -11,7 +11,7 @@ use {
         image::{Access as ImageAccess, Layout, Offset, SubresourceLayers},
         pool::CommandPool as _,
         pso::PipelineStage,
-        queue::{CommandQueue as _, QueueType, Submission},
+        queue::{CommandQueue as _, Submission},
         Backend,
     },
     gfx_impl::Backend as _Backend,
@@ -25,20 +25,13 @@ use {
 };
 
 const DEFAULT_QUALITY: u8 = (0.9f32 * u8::MAX as f32) as u8;
-const QUEUE_TYPE: QueueType = QueueType::Graphics;
 
-pub struct Encode<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
-    op: Option<EncodeOp<I>>,
+pub struct Encode {
+    op: Option<EncodeOp>,
     path: PathBuf,
 }
 
-impl<I> Encode<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
+impl Encode {
     pub fn flush(&mut self) -> IoResult<()> {
         // We only do this once
         if let Some(mut op) = self.op.take() {
@@ -55,53 +48,33 @@ where
     }
 }
 
-impl<I> Drop for Encode<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
+impl Drop for Encode {
     fn drop(&mut self) {
         // If you don't manually call flush errors will be ignored
         self.flush().unwrap_or_default();
     }
 }
 
-impl<I> Op for Encode<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
+impl Op for Encode {
     fn wait(&self) {
         if let Some(op) = &self.op {
-            let device = op.driver.borrow();
-
-            unsafe {
-                wait_for_fence(&device, &op.fence);
-            }
+            Fence::wait(&op.fence);
         }
     }
 }
 
-pub struct EncodeOp<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
+pub struct EncodeOp {
     buf: Lease<Data>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
     driver: Driver,
     fence: Lease<Fence>,
     quality: u8,
-    texture: TextureRef<I>,
+    texture: Texture2d,
 }
 
-impl<I> EncodeOp<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
-    pub fn new(
-        #[cfg(debug_assertions)] name: &str,
-        pool: &mut Pool,
-        texture: TextureRef<I>,
-    ) -> Self {
+impl EncodeOp {
+    pub fn new(#[cfg(debug_assertions)] name: &str, pool: &mut Pool, texture: Texture2d) -> Self {
         let len = Self::byte_len(&texture);
         let buf = pool.data(
             #[cfg(debug_assertions)]
@@ -109,7 +82,7 @@ where
             len as _,
         );
 
-        let family = Device::queue_family(&pool.driver().borrow(), QUEUE_TYPE);
+        let family = Device::queue_family(&pool.driver().borrow());
         let mut cmd_pool = pool.cmd_pool(family);
 
         Self {
@@ -123,17 +96,17 @@ where
         }
     }
 
-    fn byte_len(texture: &TextureRef<I>) -> usize {
-        let dims = texture.borrow().dims();
-        (dims.x * dims.y * 4) as _
-    }
-
-    pub fn with_quality(mut self, quality: u8) -> Self {
+    pub fn with_quality(&mut self, quality: u8) -> &mut Self {
         self.quality = quality;
         self
     }
 
-    pub fn record<P: AsRef<Path>>(mut self, path: P) -> Encode<I> {
+    fn byte_len(texture: &Texture2d) -> usize {
+        let dims = texture.borrow().dims();
+        (dims.x * dims.y * 4) as _
+    }
+
+    pub fn record<P: AsRef<Path>>(mut self, path: P) -> Encode {
         unsafe {
             self.submit();
         };
@@ -187,7 +160,7 @@ where
         self.cmd_buf.finish();
 
         // Submit
-        Device::queue_mut(&mut device, QUEUE_TYPE).submit(
+        Device::queue_mut(&mut device).submit(
             Submission {
                 command_buffers: once(&self.cmd_buf),
                 wait_semaphores: empty(),

@@ -1,28 +1,28 @@
 use {
-    crate::Error,
-    gfx_hal::{Backend, Instance},
-    gfx_impl::{Backend as _Backend, Instance as _InstanceImpl},
+    gfx_hal::{window::InitError, Backend, Instance as _},
+    gfx_impl::{Backend as _Backend, Instance},
     std::ops::{Deref, DerefMut},
     winit::window::Window,
 };
 
 pub struct Surface {
-    instance: Option<_InstanceImpl>,
+    instance: Option<Instance>,
     ptr: Option<<_Backend as Backend>::Surface>,
 }
 
 impl Surface {
-    pub fn new(instance: _InstanceImpl, window: &Window) -> Result<Self, Error> {
+    pub fn new(instance: Instance, window: &Window) -> Result<Self, InitError> {
         let surface = unsafe { instance.create_surface(window)? };
-        Surface::with_surface(Some(instance), surface)
+
+        Ok(Self {
+            instance: Some(instance),
+            ptr: Some(surface),
+        })
     }
 
-    pub fn with_surface(
-        instance: Option<_InstanceImpl>,
-        surface: <_Backend as Backend>::Surface,
-    ) -> Result<Self, Error> {
+    pub fn from_raw_surface(surface: <_Backend as Backend>::Surface) -> Result<Self, InitError> {
         Ok(Self {
-            instance,
+            instance: None,
             ptr: Some(surface),
         })
     }

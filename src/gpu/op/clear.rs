@@ -1,5 +1,5 @@
 use {
-    super::{wait_for_fence, Op},
+    super::Op,
     crate::{
         color::AlphaColor,
         gpu::{
@@ -40,7 +40,7 @@ where
     I: AsRef<<_Backend as Backend>::Image>,
 {
     pub fn new(pool: &mut Pool, texture: &TextureRef<I>) -> Self {
-        let family = Device::queue_family(&pool.driver().borrow(), QUEUE_TYPE);
+        let family = Device::queue_family(&pool.driver().borrow());
         let mut cmd_pool = pool.cmd_pool(family);
         Self {
             clear_value: AlphaColor::rgba(0, 0, 0, 0).into(),
@@ -52,7 +52,7 @@ where
         }
     }
 
-    pub fn with_clear_value<C>(mut self, clear_value: C) -> Self
+    pub fn with_clear_value<C>(&mut self, clear_value: C) -> &mut Self
     where
         C: Into<ClearValue>,
     {
@@ -95,8 +95,7 @@ where
             self.clear_value,
             &[SubresourceRange {
                 aspects: Aspects::COLOR,
-                levels: 0..1,
-                layers: 0..1,
+                ..Default::default()
             }],
         );
 
@@ -104,7 +103,7 @@ where
         self.cmd_buf.finish();
 
         // Submit
-        Device::queue_mut(&mut device, QUEUE_TYPE).submit(
+        Device::queue_mut(&mut device).submit(
             Submission {
                 command_buffers: once(&self.cmd_buf),
                 wait_semaphores: empty(),
@@ -140,10 +139,6 @@ where
     I: AsRef<<_Backend as Backend>::Image>,
 {
     fn wait(&self) {
-        let device = self.driver.borrow();
-
-        unsafe {
-            wait_for_fence(&device, &self.fence);
-        }
+        Fence::wait(&self.fence);
     }
 }

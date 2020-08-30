@@ -18,17 +18,6 @@ use {
     },
 };
 
-pub(crate) struct Image(<_Backend as Backend>::Image);
-
-#[cfg(debug_assertions)]
-use gfx_hal::device::Device as _;
-
-impl AsRef<<_Backend as Backend>::Image> for Image {
-    fn as_ref(&self) -> &<_Backend as Backend>::Image {
-        &self.0
-    }
-}
-
 #[derive(Clone, Eq, Hash, PartialEq)]
 struct ImageViewKey {
     view_kind: ViewKind,
@@ -43,6 +32,8 @@ struct State {
     pipeline_stage: PipelineStage,
 }
 
+// TODO: Remove backend image and replace with image<T>
+
 /// A generic structure which can hold an N dimensional GPU texture.
 pub struct Texture<I>
 where
@@ -56,64 +47,10 @@ where
     views: RefCell<HashMap<ImageViewKey, ImageView>>,
 }
 
-impl Texture<Image> {
-    pub(crate) fn from_swapchain(
-        image: <_Backend as Backend>::Image,
-        driver: &Driver,
-        dims: Extent,
-        format: Format,
-    ) -> Self {
-        Self {
-            dims,
-            driver: Driver::clone(driver),
-            format,
-            image: Image(image),
-            state: RefCell::new(State {
-                access_mask: Access::empty(),
-                layout: Layout::Undefined,
-                pipeline_stage: PipelineStage::TOP_OF_PIPE, // TODO: Was BOTTOM_ in vlb. What to do?
-            }),
-            views: Default::default(),
-        }
-    }
-
-    /// # Safety
-    /// None
-    pub(crate) unsafe fn acquire_swapchain(&mut self) {
-        let mut state = self.state.borrow_mut();
-        state.access_mask = Access::empty();
-        state.layout = Layout::Undefined;
-        state.pipeline_stage = PipelineStage::TOP_OF_PIPE;
-
-        #[cfg(debug_assertions)]
-        self.driver
-            .as_ref()
-            .borrow()
-            .set_image_name(&mut self.image.0, "Swapchain image");
-    }
-}
-
 impl<I> Texture<I>
 where
     I: AsRef<<_Backend as Backend>::Image>,
 {
-    pub(crate) fn as_default_2d_view(&self) -> ImageViewRef {
-        self.as_default_2d_view_format(self.format())
-    }
-
-    pub(crate) fn as_default_2d_view_format(&self, format: Format) -> ImageViewRef {
-        self.as_view(
-            ViewKind::D2,
-            format,
-            Default::default(),
-            SubresourceRange {
-                aspects: Aspects::COLOR,
-                levels: 0..1,
-                layers: 0..1,
-            },
-        )
-    }
-
     pub(crate) fn as_view(
         &self,
         view_kind: ViewKind,
@@ -149,10 +86,6 @@ where
         }
     }
 
-    pub fn dims(&self) -> Extent {
-        self.dims
-    }
-
     pub(crate) fn format(&self) -> Format {
         self.format
     }
@@ -181,8 +114,7 @@ where
                     } else {
                         Aspects::COLOR
                     },
-                    levels: 0..1,
-                    layers: 0..1,
+                    ..Default::default()
                 },
             }],
         );
@@ -248,6 +180,26 @@ impl Texture<Image2d> {
             }),
             views: Default::default(),
         }
+    }
+
+    pub(crate) fn as_default_view(&self) -> ImageViewRef {
+        self.as_default_view_format(self.format())
+    }
+
+    pub(crate) fn as_default_view_format(&self, format: Format) -> ImageViewRef {
+        self.as_view(
+            ViewKind::D2,
+            format,
+            Default::default(),
+            SubresourceRange {
+                aspects: Aspects::COLOR,
+                ..Default::default()
+            },
+        )
+    }
+
+    pub fn dims(&self) -> Extent {
+        self.dims
     }
 }
 

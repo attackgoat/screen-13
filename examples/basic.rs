@@ -36,7 +36,7 @@ struct Basic {
 }
 
 impl Screen for Basic {
-    fn render(&self, gpu: &Gpu) -> Render {
+    fn render(&self, gpu: &Gpu, _: Extent) -> Render {
         // This creates a canvas-like "Render" type which we can use to record graphic commands
         let mut frame = gpu.render(
             #[cfg(debug_assertions)]

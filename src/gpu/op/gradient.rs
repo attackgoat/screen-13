@@ -1,14 +1,14 @@
 use {
-    super::{wait_for_fence, Op},
+    super::Op,
     crate::{
         color::AlphaColor,
         gpu::{
             driver::{
                 bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
-                Image2d, PhysicalDevice,
+                PhysicalDevice,
             },
             pool::{Graphics, GraphicsMode, Lease, RenderPassMode},
-            PoolRef, TextureRef,
+            PoolRef, Texture2d,
         },
         math::Coord,
     },
@@ -20,7 +20,7 @@ use {
         },
         pool::CommandPool as _,
         pso::{PipelineStage, Rect, Viewport},
-        queue::{CommandQueue as _, QueueType, Submission},
+        queue::{CommandQueue as _, Submission},
         Backend,
     },
     gfx_impl::Backend as _Backend,
@@ -28,8 +28,6 @@ use {
 };
 
 type Path = [(Coord, AlphaColor); 2];
-
-const QUEUE_TYPE: QueueType = QueueType::Graphics;
 
 fn graphics_mode(preserve_dst: bool) -> GraphicsMode {
     if preserve_dst {
@@ -51,14 +49,12 @@ fn render_pass_mode(preserve_dst: bool) -> RenderPassMode {
     }
 }
 
-pub struct GradientOp<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
-    back_buf: Lease<TextureRef<Image2d>>,
+pub struct GradientOp {
+    back_buf: Lease<Texture2d>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
-    dst: TextureRef<I>,
+    dst: Texture2d,
+    dst_preserve: bool,
     fence: Lease<Fence>,
     frame_buf: Framebuffer2d,
     graphics: Lease<Graphics>,
@@ -66,23 +62,20 @@ where
     pool: PoolRef,
 }
 
-impl<I> GradientOp<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
+impl GradientOp {
     /// # Safety
     /// None
     pub fn new(
         #[cfg(debug_assertions)] name: &str,
         pool: &PoolRef,
-        dst: &TextureRef<I>,
+        dst: &Texture2d,
         path: Path,
     ) -> Self {
         let mut pool_ref = pool.borrow_mut();
         let driver = Driver::clone(pool_ref.driver());
 
         // Allocate the command buffer
-        let family = Device::queue_family(&driver.borrow(), QUEUE_TYPE);
+        let family = Device::queue_family(&driver.borrow());
         let mut cmd_pool = pool_ref.cmd_pool(family);
 
         // Setup the first pass graphics pipeline
@@ -119,7 +112,7 @@ where
         let frame_buf = Framebuffer2d::new(
             Driver::clone(&driver),
             pool_ref.render_pass(mode),
-            once(back_buf.borrow().as_default_2d_view().as_ref()),
+            once(back_buf.borrow().as_default_view().as_ref()),
             dims,
         );
 
@@ -127,13 +120,21 @@ where
             back_buf,
             cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
             cmd_pool,
-            dst: TextureRef::clone(dst),
+            dst: Texture2d::clone(dst),
+            dst_preserve: false,
             fence: pool_ref.fence(),
             frame_buf,
             graphics,
             path,
             pool: PoolRef::clone(pool),
         }
+    }
+
+    /// Preserves the contents of the destination texture. Without calling this function the existing
+    /// contents of the destination texture will not be composited into the final result.
+    pub fn with_preserve(&mut self) -> &mut Self {
+        self.dst_preserve = true;
+        self
     }
 
     pub fn record(mut self) -> impl Op {
@@ -238,7 +239,7 @@ where
         let mut device = pool.driver().borrow_mut();
         let mut dst = self.dst.borrow_mut();
         let mut back_buf = self.back_buf.borrow_mut();
-        let preserve_dst = must_preserve_dst(&self.path);
+        let preserve_dst = self.dst_preserve && must_preserve_dst(&self.path);
         let _mode = render_pass_mode(preserve_dst);
         let dims = dst.dims();
         let rect = Rect {
@@ -373,7 +374,7 @@ where
         self.cmd_buf.finish();
 
         // Submit
-        Device::queue_mut(&mut device, QUEUE_TYPE).submit(
+        Device::queue_mut(&mut device).submit(
             Submission {
                 command_buffers: once(&self.cmd_buf),
                 wait_semaphores: empty(),
@@ -384,39 +385,25 @@ where
     }
 }
 
-pub struct GradientOpSubmission<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
-    back_buf: Lease<TextureRef<Image2d>>,
+pub struct GradientOpSubmission {
+    back_buf: Lease<Texture2d>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
-    dst: TextureRef<I>,
+    dst: Texture2d,
     fence: Lease<Fence>,
     frame_buf: Framebuffer2d,
     graphics: Lease<Graphics>,
     pool: PoolRef,
 }
 
-impl<I> Drop for GradientOpSubmission<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
+impl Drop for GradientOpSubmission {
     fn drop(&mut self) {
         self.wait();
     }
 }
 
-impl<I> Op for GradientOpSubmission<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
+impl Op for GradientOpSubmission {
     fn wait(&self) {
-        let pool = self.pool.borrow();
-        let device = pool.driver().borrow();
-
-        unsafe {
-            wait_for_fence(&device, &self.fence);
-        }
+        Fence::wait(&self.fence);
     }
 }

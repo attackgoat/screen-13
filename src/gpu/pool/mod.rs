@@ -11,7 +11,7 @@ pub use self::{
     compute::{Compute, ComputeMode},
     graphics::{FontVertex, Graphics},
     lease::Lease,
-    render_passes::{draw, read_write, read_write_ms, write, write_ms},
+    render_passes::{draw, present, read_write, read_write_ms, write, write_ms},
 };
 
 use {
@@ -25,6 +25,7 @@ use {
         buffer::Usage as BufferUsage,
         format::Format,
         image::{Layout, Tiling, Usage as ImageUsage},
+        pool::CommandPool as _,
         pso::{DescriptorRangeDesc, DescriptorType},
         queue::QueueFamilyId,
         MemoryTypeId,
@@ -58,6 +59,16 @@ struct DescriptorPoolKey {
     desc_ranges: Vec<(DescriptorType, usize)>,
 }
 
+pub struct Drain<'a>(&'a mut Pool);
+
+impl<'a> Iterator for Drain<'a> {
+    type Item = ();
+
+    fn next(&mut self) -> Option<()> {
+        unimplemented!();
+    }
+}
+
 #[derive(Eq, Hash, PartialEq)]
 struct GraphicsKey {
     graphics_mode: GraphicsMode,
@@ -87,7 +98,6 @@ pub enum MeshType {
     Transparent,
 }
 
-// TODO: Fill a minimum number of items when pool exhausted to ensure frame-to-frame resource usage hits multiple items/fewer barriers hit?
 pub struct Pool {
     cmd_pools: HashMap<QueueFamilyId, PoolRef<CommandPool>>,
     compilers: PoolRef<Compiler>,
@@ -130,11 +140,15 @@ impl Pool {
             .cmd_pools
             .entry(family)
             .or_insert_with(Default::default);
-        let item = if let Some(item) = items.borrow_mut().pop_back() {
+        let mut item = if let Some(item) = items.borrow_mut().pop_back() {
             item
         } else {
             CommandPool::new(Driver::clone(&self.driver), family)
         };
+
+        unsafe {
+            item.as_mut().reset(false);
+        }
 
         Lease::new(item, items)
     }
@@ -208,7 +222,7 @@ impl Pool {
     // TODO: I don't really like the function signature here
     pub fn desc_pool<'i, I>(&mut self, max_sets: usize, desc_ranges: I) -> Lease<DescriptorPool>
     where
-        I: Clone + Iterator<Item = &'i DescriptorRangeDesc>,
+        I: Clone + ExactSizeIterator<Item = &'i DescriptorRangeDesc>,
     {
         let desc_ranges_key = desc_ranges
             .clone()
@@ -230,6 +244,11 @@ impl Pool {
         };
 
         Lease::new(item, items)
+    }
+
+    /// Allows callers to remove unused memory-consuming items from the pool.
+    pub fn drain(&mut self) -> Drain {
+        Drain(self)
     }
 
     pub fn driver(&self) -> &Driver {
@@ -383,31 +402,50 @@ impl Pool {
                 usage,
             })
             .or_insert_with(Default::default);
-        let item = if let Some(item) = items.as_ref().borrow_mut().pop_back() {
-            // Set a new name on this texture
-            #[cfg(debug_assertions)]
-            unsafe {
-                self.driver
-                    .as_ref()
-                    .borrow()
-                    .set_image_name(item.as_ref().borrow_mut().as_mut(), name);
-            }
-
-            item
-        } else {
-            TextureRef::new(RefCell::new(Texture::new(
+        let item = {
+            let mut items_ref = items.as_ref().borrow_mut();
+            if let Some(item) = items_ref.pop_back() {
+                // Set a new name on this texture
                 #[cfg(debug_assertions)]
-                name,
-                Driver::clone(&self.driver),
-                dims,
-                desired_tiling,
-                desired_format,
-                layout,
-                usage,
-                layers,
-                samples,
-                mips,
-            )))
+                unsafe {
+                    self.driver
+                        .as_ref()
+                        .borrow()
+                        .set_image_name(item.as_ref().borrow_mut().as_mut(), name);
+                }
+
+                item
+            } else {
+                // Add a cache item so there will be an unused item waiting next time
+                items_ref.push_front(TextureRef::new(RefCell::new(Texture::new(
+                    #[cfg(debug_assertions)]
+                    &format!("{} (Unused)", name),
+                    Driver::clone(&self.driver),
+                    dims,
+                    desired_tiling,
+                    desired_format,
+                    layout,
+                    usage,
+                    layers,
+                    samples,
+                    mips,
+                ))));
+
+                // Return a brand new instance
+                TextureRef::new(RefCell::new(Texture::new(
+                    #[cfg(debug_assertions)]
+                    name,
+                    Driver::clone(&self.driver),
+                    dims,
+                    desired_tiling,
+                    desired_format,
+                    layout,
+                    usage,
+                    layers,
+                    samples,
+                    mips,
+                )))
+            }
         };
 
         Lease::new(item, items)

@@ -38,17 +38,12 @@ where
 
 // TODO: Allow naming these in the ctor for debug purposes! Gfx supports it!
 
-#[doc = "Specialized new function for 2D framebuffers"]
 impl Framebuffer<U2> {
-    pub fn new<I, II>(
-        driver: Driver,
-        render_pass: &RenderPass,
-        image_views: I,
-        dims: Extent,
-    ) -> Self
+    /// Specialized new function for 2D framebuffers
+    pub fn new<I>(driver: Driver, render_pass: &RenderPass, image_views: I, dims: Extent) -> Self
     where
-        I: IntoIterator<Item = II>,
-        II: Borrow<<_Backend as Backend>::ImageView>,
+        I: IntoIterator,
+        I::Item: Borrow<<_Backend as Backend>::ImageView>,
     {
         let frame_buf = {
             let device = driver.as_ref().borrow();

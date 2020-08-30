@@ -7,11 +7,10 @@ pub use winit::{
 
 use {
     crate::{
-        gpu::{Driver, Gpu, Image, PhysicalDevice, Render, Swapchain, Texture, TextureRef},
+        gpu::{Driver, Gpu, Op, Render, Swapchain},
         math::Extent,
     },
-    gfx_hal::{queue::QueueType, window::Swapchain as _Swapchain},
-    std::{cell::RefCell, cmp::Ordering},
+    std::cmp::Ordering,
     winit::monitor::VideoMode,
 };
 
@@ -38,10 +37,9 @@ fn cmp_area_and_refresh_rate(lhs: &VideoMode, rhs: &VideoMode) -> Ordering {
 
 /// The result of presenting a render to the screen. Hold this around for a few frames to
 /// give the GPU time to finish processing it.
-pub struct Frame(Render);
+pub struct Frame(Vec<Box<dyn Op>>);
 
 pub struct Game {
-    back_buf: Vec<TextureRef<Image>>,
     event_loop: Option<EventLoop<()>>,
     dims: Extent,
     gpu: Gpu,
@@ -81,11 +79,9 @@ impl Game {
         let window = builder.build(&event_loop).unwrap();
         let (gpu, surface) = Gpu::new(&window);
         let driver = Driver::clone(gpu.driver());
-        let (swapchain, back_buf_images) = Swapchain::new(driver, surface, dims, swapchain_len);
-        let back_buf = Vec::with_capacity(back_buf_images.len());
+        let swapchain = Swapchain::new(driver, surface, dims, swapchain_len);
 
         Self {
-            back_buf,
             dims,
             event_loop: Some(event_loop),
             gpu,
@@ -124,76 +120,28 @@ impl Game {
         Self::new(event_loop, builder, dims, swapchain_len as u32)
     }
 
+    pub fn dims(&self) -> Extent {
+        self.dims
+    }
+
     pub fn gpu(&self) -> &Gpu {
         &self.gpu
     }
 
-    pub fn present(&mut self, mut frame: Render) -> Option<Frame> {
-        // Recreate the backbuffer textures if we have none
-        if self.back_buf.is_empty() {
-            self.recreate_swapchain();
+    pub fn present(&mut self, frame: Render) -> Frame {
+        let (mut target, ops) = frame.resolve();
+
+        // We work-around this condition, below, but it is not expected that a well-formed game would ever do this
+        assert!(!ops.is_empty());
+
+        // If the render had no operations performed on it then it is uninitialized and we don't need to do anything with it
+        if !ops.is_empty() {
+            // Target can be dropped directly after presentation, it will return to the pool. If for some reason the pool
+            // is drained before the hardware is finished with target the underlying texture is still referenced by the operations.
+            self.swapchain.present(&mut target);
         }
 
-        let (idx, _suboptimal) = unsafe {
-            // TODO: Handle suboptimal conditions
-            match self.swapchain.acquire_image(0, None, None) {
-                Err(_) => return None,
-                Ok(image) => image,
-            }
-        };
-        let texture = &mut self.back_buf[idx as usize];
-
-        {
-            let mut texture = texture.borrow_mut();
-            unsafe {
-                texture.acquire_swapchain();
-            }
-        }
-
-        frame.present(
-            #[cfg(debug_assertions)]
-            "Game::present()",
-            &texture,
-        );
-
-        let mut dropped = false;
-        unsafe {
-            self.swapchain
-                .present_without_semaphores(
-                    &mut self
-                        .gpu
-                        .driver()
-                        .borrow_mut()
-                        .queue_mut(QueueType::Graphics),
-                    idx,
-                )
-                .unwrap_or_else(|_| {
-                    dropped = true;
-                    None
-                });
-        }
-
-        if dropped {
-            self.back_buf.clear();
-        }
-
-        Some(Frame(frame))
-    }
-
-    fn recreate_swapchain(&mut self) {
-        self.back_buf.clear();
-        for back_buf_image in Swapchain::recreate(&mut self.swapchain, self.dims) {
-            self.back_buf
-                .push(TextureRef::new(RefCell::new(Texture::from_swapchain(
-                    back_buf_image,
-                    self.gpu.driver(),
-                    self.dims,
-                    Swapchain::fmt(&self.swapchain),
-                ))));
-        }
-
-        // TODO: ?
-        //self.pool.borrow_mut().set_format(self.swapchain.format());
+        Frame(ops)
     }
 
     pub fn request_redraw(&self) {
@@ -202,7 +150,6 @@ impl Game {
 
     pub fn resize(&mut self, dims: Extent) {
         self.dims = dims;
-        self.back_buf.clear();
     }
 
     pub fn run<F>(mut self, mut event_handler: F) -> !

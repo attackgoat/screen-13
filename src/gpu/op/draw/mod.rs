@@ -15,7 +15,7 @@ use {
         graphics_buf::GraphicsBuffer,
         instruction::{Instruction, MeshInstruction},
     },
-    super::{wait_for_fence, Op},
+    super::Op,
     crate::{
         camera::Camera,
         color::{AlphaColor, Color, TRANSPARENT_BLACK},
@@ -36,7 +36,7 @@ use {
         },
         pool::CommandPool as _,
         pso::{PipelineStage, ShaderStageFlags, Viewport},
-        queue::{CommandQueue as _, QueueType, Submission},
+        queue::{CommandQueue as _, Submission},
         Backend,
     },
     gfx_impl::Backend as _Backend,
@@ -51,13 +51,12 @@ const _0: BufferAccess = BufferAccess::MEMORY_WRITE;
 const _1: Extent = Extent::ZERO;
 const _2: SubRange = SubRange::WHOLE;
 
-const QUEUE_TYPE: QueueType = QueueType::Graphics;
-
 pub struct DrawOp {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
     compiler: Lease<Compiler>,
     dst: Texture2d,
+    dst_preserve: bool,
     fence: Lease<Fence>,
     frame_buf: Framebuffer2d,
     graphics_buf: GraphicsBuffer,
@@ -81,7 +80,7 @@ impl DrawOp {
         let driver = Driver::clone(pool_ref.driver());
 
         // Allocate the command buffer
-        let family = Device::queue_family(&driver.borrow(), QUEUE_TYPE);
+        let family = Device::queue_family(&driver.borrow());
         let mut cmd_pool = pool_ref.cmd_pool(family);
 
         let (dims, format) = {
@@ -101,18 +100,10 @@ impl DrawOp {
             Driver::clone(&driver),
             pool_ref.render_pass(RenderPassMode::Draw),
             vec![
-                graphics_buf.color().borrow().as_default_2d_view().as_ref(),
-                graphics_buf
-                    .position()
-                    .borrow()
-                    .as_default_2d_view()
-                    .as_ref(),
-                graphics_buf.normal().borrow().as_default_2d_view().as_ref(),
-                graphics_buf
-                    .material()
-                    .borrow()
-                    .as_default_2d_view()
-                    .as_ref(),
+                graphics_buf.color().borrow().as_default_view().as_ref(),
+                graphics_buf.position().borrow().as_default_view().as_ref(),
+                graphics_buf.normal().borrow().as_default_view().as_ref(),
+                graphics_buf.material().borrow().as_default_view().as_ref(),
                 graphics_buf
                     .depth()
                     .borrow()
@@ -122,8 +113,7 @@ impl DrawOp {
                         Default::default(),
                         SubresourceRange {
                             aspects: Aspects::DEPTH,
-                            levels: 0..1,
-                            layers: 0..1,
+                            ..Default::default()
                         },
                     )
                     .as_ref(),
@@ -137,6 +127,7 @@ impl DrawOp {
             cmd_pool,
             compiler: pool_ref.compiler(),
             dst: TextureRef::clone(dst),
+            dst_preserve: false,
             fence: pool_ref.fence(),
             frame_buf,
             graphics_buf,
@@ -151,6 +142,13 @@ impl DrawOp {
             name: name.to_owned(),
             pool: PoolRef::clone(pool),
         }
+    }
+
+    /// Preserves the contents of the destination texture. Without calling this function the existing
+    /// contents of the destination texture will not be composited into the final result.
+    pub fn with_preserve(&mut self) -> &mut Self {
+        self.dst_preserve = true;
+        self
     }
 
     // TODO: Use new method of unsafe as_ref pointer cast
@@ -556,7 +554,7 @@ impl DrawOp {
         self.cmd_buf.finish();
 
         // Submit
-        Device::queue_mut(&mut device, QUEUE_TYPE).submit(
+        Device::queue_mut(&mut device).submit(
             Submission {
                 command_buffers: once(&self.cmd_buf),
                 wait_semaphores: empty(),
@@ -739,11 +737,7 @@ impl Drop for DrawOpSubmission {
 
 impl Op for DrawOpSubmission {
     fn wait(&self) {
-        let device = self.driver.borrow();
-
-        unsafe {
-            wait_for_fence(&device, &self.fence);
-        }
+        Fence::wait(&self.fence);
     }
 }
 

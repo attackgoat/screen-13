@@ -72,12 +72,22 @@ where
 /// An iterator to allow incoming `Iterator`'s of `CopyRange` to output `BufferCopy` instead.
 struct BufferCopyIter<T>(T)
 where
-    T: Iterator,
+    T: ExactSizeIterator, // TODO: Can I drop these specifications and keep the impls? Test
     T::Item: Borrow<CopyRange>;
+
+impl<T> ExactSizeIterator for BufferCopyIter<T>
+where
+    T: ExactSizeIterator,
+    T::Item: Borrow<CopyRange>,
+{
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
 
 impl<T> Iterator for BufferCopyIter<T>
 where
-    T: Iterator,
+    T: ExactSizeIterator,
     T::Item: Borrow<CopyRange>,
 {
     type Item = BufferCopy;
@@ -195,6 +205,7 @@ impl Data {
     ) where
         R: Copy + IntoIterator,
         R::Item: Borrow<CopyRange>,
+        R::IntoIter: ExactSizeIterator,
     {
         let copies = BufferCopyIter(ranges.into_iter());
         cmd_buf.copy_buffer(&self.gpu_buf, &self.gpu_buf, copies);
@@ -272,13 +283,14 @@ impl Data {
     /// # Safety
     ///
     /// The provided command buffer must be ready to record.
-    pub unsafe fn read_ranges<T>(
+    pub unsafe fn read_ranges<R>(
         &mut self,
         cmd_buf: &mut <_Backend as Backend>::CommandBuffer,
-        ranges: T,
+        ranges: R,
     ) where
-        T: Copy + IntoIterator,
-        T::Item: Borrow<Range<u64>>,
+        R: Copy + IntoIterator,
+        R::Item: Borrow<Range<u64>>,
+        R::IntoIter: ExactSizeIterator,
     {
         let ranges = RangeAdapter(ranges);
         let copies = BufferCopyIter(ranges.into_iter());
@@ -319,6 +331,7 @@ impl Data {
     ) where
         R: Copy + IntoIterator,
         R::Item: Borrow<CopyRange>,
+        R::IntoIter: ExactSizeIterator,
     {
         let copies = BufferCopyIter(ranges.into_iter());
         cmd_buf.copy_buffer(&self.gpu_buf, &other.gpu_buf, copies);
@@ -358,15 +371,16 @@ impl Data {
     /// # Safety
     ///
     /// The provided command buffer must be ready to record.
-    pub unsafe fn write_ranges<T>(
+    pub unsafe fn write_ranges<R>(
         &mut self,
         cmd_buf: &mut <_Backend as Backend>::CommandBuffer,
         pipeline_stage: PipelineStage,
         access_mask: Access,
-        ranges: T,
+        ranges: R,
     ) where
-        T: Copy + IntoIterator,
-        T::Item: Borrow<Range<u64>>,
+        R: Copy + IntoIterator,
+        R::Item: Borrow<Range<u64>>,
+        R::IntoIter: ExactSizeIterator,
     {
         let ranges = RangeAdapter(ranges);
         let copies = BufferCopyIter(ranges.into_iter());
@@ -496,12 +510,14 @@ impl Drop for Mapping<'_> {
 struct RangeAdapter<T>(T)
 where
     T: Copy + IntoIterator,
-    T::Item: Borrow<Range<u64>>;
+    T::Item: Borrow<Range<u64>>,
+    T::IntoIter: ExactSizeIterator;
 
 impl<T> IntoIterator for RangeAdapter<T>
 where
     T: Copy + IntoIterator,
     T::Item: Borrow<Range<u64>>,
+    T::IntoIter: ExactSizeIterator,
 {
     type IntoIter = RangeIter<T::IntoIter>;
     type Item = CopyRange;
@@ -515,12 +531,22 @@ where
 #[derive(Clone, Copy)]
 struct RangeIter<T>(T)
 where
-    T: Iterator,
+    T: ExactSizeIterator,
     T::Item: Borrow<Range<u64>>;
+
+impl<T> ExactSizeIterator for RangeIter<T>
+where
+    T: ExactSizeIterator,
+    T::Item: Borrow<Range<u64>>,
+{
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
 
 impl<T> Iterator for RangeIter<T>
 where
-    T: Iterator,
+    T: ExactSizeIterator,
     T::Item: Borrow<Range<u64>>,
 {
     type Item = CopyRange;

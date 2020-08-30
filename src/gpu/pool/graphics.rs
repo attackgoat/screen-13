@@ -10,7 +10,7 @@ use {
             SUNLIGHT_FRAG, TRANS_FRAG,
         },
         FONT_FRAG, FONT_OUTLINE_FRAG, FONT_VERT, GRADIENT_FRAG, GRADIENT_VERT, LINE_FRAG,
-        LINE_VERT, QUAD_TRANSFORM_VERT, TEXTURE_FRAG,
+        LINE_VERT, QUAD_TRANSFORM_VERT, QUAD_VERT, TEXTURE_FRAG,
     },
     crate::{
         color::TRANSPARENT_BLACK,
@@ -25,10 +25,10 @@ use {
         pass::Subpass,
         pso::{
             AttributeDesc, BlendState, ColorBlendDesc, ColorMask, DescriptorPool as _,
-            DescriptorRangeDesc, DescriptorSetLayoutBinding, DescriptorType, Element, EntryPoint,
-            Face, FrontFace, GraphicsPipelineDesc, GraphicsShaderSet, ImageDescriptorType, LogicOp,
-            PolygonMode, Primitive, Rasterizer, ShaderStageFlags, State, VertexBufferDesc,
-            VertexInputRate,
+            DescriptorRangeDesc, DescriptorSetLayoutBinding, DescriptorType, Element, Face,
+            FrontFace, GraphicsPipelineDesc, ImageDescriptorType, InputAssemblerDesc, LogicOp,
+            PolygonMode, Primitive, PrimitiveAssemblerDesc, Rasterizer, ShaderStageFlags, State,
+            VertexBufferDesc, VertexInputRate,
         },
         Backend,
     },
@@ -68,19 +68,6 @@ fn sampler(driver: Driver, filter: Filter) -> Sampler {
         true,
         None,
     )
-}
-
-fn shader_set<'a>(
-    vertex: EntryPoint<'a, _Backend>,
-    fragment: EntryPoint<'a, _Backend>,
-) -> GraphicsShaderSet<'a, _Backend> {
-    GraphicsShaderSet {
-        domain: None,
-        fragment: Some(fragment),
-        geometry: None,
-        hull: None,
-        vertex,
-    }
 }
 
 #[derive(Clone, Copy, Default)]
@@ -145,12 +132,20 @@ impl Graphics {
             ],
         );
         let mut desc = GraphicsPipelineDesc::new(
-            shader_set(
-                ShaderModule::entry_point(&vertex),
-                ShaderModule::entry_point(&fragment),
-            ),
-            Primitive::TriangleList,
+            PrimitiveAssemblerDesc::Vertex {
+                attributes: &[],
+                buffers: &[],
+                geometry: None,
+                input_assembler: InputAssemblerDesc {
+                    primitive: Primitive::TriangleList,
+                    restart_index: None,
+                    with_adjacency: false,
+                },
+                tessellation: None,
+                vertex: ShaderModule::entry_point(&vertex),
+            },
             FILL_RASTERIZER,
+            Some(ShaderModule::entry_point(&fragment)),
             &layout,
             subpass,
         );
@@ -210,12 +205,41 @@ impl Graphics {
             &[(ShaderStageFlags::VERTEX, 0..64)],
         );
         let mut desc = GraphicsPipelineDesc::new(
-            shader_set(
-                ShaderModule::entry_point(&vertex),
-                ShaderModule::entry_point(&fragment),
-            ),
-            Primitive::LineList,
+            PrimitiveAssemblerDesc::Vertex {
+                attributes: &[
+                    AttributeDesc {
+                        binding: 0,
+                        location: 0,
+                        element: Element {
+                            format: Format::Rgb32Sfloat,
+                            offset: 0,
+                        },
+                    },
+                    AttributeDesc {
+                        binding: 0,
+                        location: 1,
+                        element: Element {
+                            format: Format::Rgba32Sfloat,
+                            offset: 12,
+                        },
+                    },
+                ],
+                buffers: &[VertexBufferDesc {
+                    binding: 0,
+                    stride: 32,
+                    rate: VertexInputRate::Vertex,
+                }],
+                geometry: None,
+                input_assembler: InputAssemblerDesc {
+                    primitive: Primitive::LineList,
+                    restart_index: None,
+                    with_adjacency: false,
+                },
+                tessellation: None,
+                vertex: ShaderModule::entry_point(&vertex),
+            },
             LINE_RASTERIZER,
+            Some(ShaderModule::entry_point(&fragment)),
             &layout,
             subpass,
         );
@@ -226,27 +250,6 @@ impl Graphics {
                 mask: ColorMask::empty(),
             });
         }
-        desc.vertex_buffers.push(VertexBufferDesc {
-            binding: 0,
-            stride: 32,
-            rate: VertexInputRate::Vertex,
-        });
-        desc.attributes.push(AttributeDesc {
-            binding: 0,
-            location: 0,
-            element: Element {
-                format: Format::Rgb32Sfloat,
-                offset: 0,
-            },
-        });
-        desc.attributes.push(AttributeDesc {
-            binding: 0,
-            location: 1,
-            element: Element {
-                format: Format::Rgba32Sfloat,
-                offset: 12,
-            },
-        });
         let pipeline = GraphicsPipeline::new(
             #[cfg(debug_assertions)]
             name,
@@ -302,12 +305,49 @@ impl Graphics {
             ],
         );
         let mut desc = GraphicsPipelineDesc::new(
-            shader_set(
-                ShaderModule::entry_point(&vertex),
-                ShaderModule::entry_point(&fragment),
-            ),
-            Primitive::TriangleList,
+            PrimitiveAssemblerDesc::Vertex {
+                attributes: &[
+                    AttributeDesc {
+                        binding: 0,
+                        location: 0,
+                        element: Element {
+                            format: Format::Rgb32Sfloat,
+                            offset: 0,
+                        },
+                    },
+                    AttributeDesc {
+                        binding: 0,
+                        location: 1,
+                        element: Element {
+                            format: Format::Rgb32Sfloat,
+                            offset: 12,
+                        },
+                    },
+                    AttributeDesc {
+                        binding: 0,
+                        location: 2,
+                        element: Element {
+                            format: Format::Rg32Sfloat,
+                            offset: 24,
+                        },
+                    },
+                ],
+                buffers: &[VertexBufferDesc {
+                    binding: 0,
+                    stride: 32,
+                    rate: VertexInputRate::Vertex,
+                }],
+                geometry: None,
+                input_assembler: InputAssemblerDesc {
+                    primitive: Primitive::TriangleList,
+                    restart_index: None,
+                    with_adjacency: false,
+                },
+                tessellation: None,
+                vertex: ShaderModule::entry_point(&vertex),
+            },
             FILL_RASTERIZER,
+            Some(ShaderModule::entry_point(&fragment)),
             &layout,
             subpass,
         );
@@ -318,35 +358,6 @@ impl Graphics {
                 mask: ColorMask::empty(),
             });
         }
-        desc.vertex_buffers.push(VertexBufferDesc {
-            binding: 0,
-            stride: 32,
-            rate: VertexInputRate::Vertex,
-        });
-        desc.attributes.push(AttributeDesc {
-            binding: 0,
-            location: 0,
-            element: Element {
-                format: Format::Rgb32Sfloat,
-                offset: 0,
-            },
-        });
-        desc.attributes.push(AttributeDesc {
-            binding: 0,
-            location: 1,
-            element: Element {
-                format: Format::Rgb32Sfloat,
-                offset: 12,
-            },
-        });
-        desc.attributes.push(AttributeDesc {
-            binding: 0,
-            location: 2,
-            element: Element {
-                format: Format::Rg32Sfloat,
-                offset: 24,
-            },
-        });
         let pipeline = GraphicsPipeline::new(
             #[cfg(debug_assertions)]
             name,
@@ -408,12 +419,49 @@ impl Graphics {
             ],
         );
         let mut desc = GraphicsPipelineDesc::new(
-            shader_set(
-                ShaderModule::entry_point(&vertex),
-                ShaderModule::entry_point(&fragment),
-            ),
-            Primitive::TriangleList,
+            PrimitiveAssemblerDesc::Vertex {
+                attributes: &[
+                    AttributeDesc {
+                        binding: 0,
+                        location: 0,
+                        element: Element {
+                            format: Format::Rgb32Sfloat,
+                            offset: 0,
+                        },
+                    },
+                    AttributeDesc {
+                        binding: 0,
+                        location: 1,
+                        element: Element {
+                            format: Format::Rgb32Sfloat,
+                            offset: 12,
+                        },
+                    },
+                    AttributeDesc {
+                        binding: 0,
+                        location: 2,
+                        element: Element {
+                            format: Format::Rg32Sfloat,
+                            offset: 24,
+                        },
+                    },
+                ],
+                buffers: &[VertexBufferDesc {
+                    binding: 0,
+                    stride: 32,
+                    rate: VertexInputRate::Vertex,
+                }],
+                geometry: None,
+                input_assembler: InputAssemblerDesc {
+                    primitive: Primitive::TriangleList,
+                    restart_index: None,
+                    with_adjacency: false,
+                },
+                tessellation: None,
+                vertex: ShaderModule::entry_point(&vertex),
+            },
             FILL_RASTERIZER,
+            Some(ShaderModule::entry_point(&fragment)),
             &layout,
             subpass,
         );
@@ -424,35 +472,6 @@ impl Graphics {
                 mask: ColorMask::empty(),
             });
         }
-        desc.vertex_buffers.push(VertexBufferDesc {
-            binding: 0,
-            stride: 32,
-            rate: VertexInputRate::Vertex,
-        });
-        desc.attributes.push(AttributeDesc {
-            binding: 0,
-            location: 0,
-            element: Element {
-                format: Format::Rgb32Sfloat,
-                offset: 0,
-            },
-        });
-        desc.attributes.push(AttributeDesc {
-            binding: 0,
-            location: 1,
-            element: Element {
-                format: Format::Rgb32Sfloat,
-                offset: 12,
-            },
-        });
-        desc.attributes.push(AttributeDesc {
-            binding: 0,
-            location: 2,
-            element: Element {
-                format: Format::Rg32Sfloat,
-                offset: 24,
-            },
-        });
         let pipeline = GraphicsPipeline::new(
             #[cfg(debug_assertions)]
             name,
@@ -511,12 +530,20 @@ impl Graphics {
             &[(ShaderStageFlags::VERTEX, 0..64)],
         );
         let mut desc = GraphicsPipelineDesc::new(
-            shader_set(
-                ShaderModule::entry_point(&vertex),
-                ShaderModule::entry_point(&fragment),
-            ),
-            Primitive::TriangleList,
+            PrimitiveAssemblerDesc::Vertex {
+                attributes: &[],
+                buffers: &[],
+                geometry: None,
+                input_assembler: InputAssemblerDesc {
+                    primitive: Primitive::TriangleList,
+                    restart_index: None,
+                    with_adjacency: false,
+                },
+                tessellation: None,
+                vertex: ShaderModule::entry_point(&vertex),
+            },
             FILL_RASTERIZER,
+            Some(ShaderModule::entry_point(&fragment)),
             &layout,
             subpass,
         );
@@ -583,12 +610,20 @@ impl Graphics {
             &[(ShaderStageFlags::VERTEX, 0..64)],
         );
         let mut desc = GraphicsPipelineDesc::new(
-            shader_set(
-                ShaderModule::entry_point(&vertex),
-                ShaderModule::entry_point(&fragment),
-            ),
-            Primitive::TriangleList,
+            PrimitiveAssemblerDesc::Vertex {
+                attributes: &[],
+                buffers: &[],
+                geometry: None,
+                input_assembler: InputAssemblerDesc {
+                    primitive: Primitive::TriangleList,
+                    restart_index: None,
+                    with_adjacency: false,
+                },
+                tessellation: None,
+                vertex: ShaderModule::entry_point(&vertex),
+            },
             FILL_RASTERIZER,
+            Some(ShaderModule::entry_point(&fragment)),
             &layout,
             subpass,
         );
@@ -693,12 +728,49 @@ impl Graphics {
             ],
         );
         let mut desc = GraphicsPipelineDesc::new(
-            shader_set(
-                ShaderModule::entry_point(&vertex),
-                ShaderModule::entry_point(&fragment),
-            ),
-            Primitive::TriangleList,
+            PrimitiveAssemblerDesc::Vertex {
+                attributes: &[
+                    AttributeDesc {
+                        binding: 0,
+                        location: 0,
+                        element: Element {
+                            format: Format::Rgb32Sfloat,
+                            offset: 0,
+                        },
+                    },
+                    AttributeDesc {
+                        binding: 0,
+                        location: 1,
+                        element: Element {
+                            format: Format::Rgb32Sfloat,
+                            offset: 12,
+                        },
+                    },
+                    AttributeDesc {
+                        binding: 0,
+                        location: 2,
+                        element: Element {
+                            format: Format::Rg32Sfloat,
+                            offset: 24,
+                        },
+                    },
+                ],
+                buffers: &[VertexBufferDesc {
+                    binding: 0,
+                    stride: 32,
+                    rate: VertexInputRate::Vertex,
+                }],
+                geometry: None,
+                input_assembler: InputAssemblerDesc {
+                    primitive: Primitive::TriangleList,
+                    restart_index: None,
+                    with_adjacency: false,
+                },
+                tessellation: None,
+                vertex: ShaderModule::entry_point(&vertex),
+            },
             FILL_RASTERIZER,
+            Some(ShaderModule::entry_point(&fragment)),
             &layout,
             subpass,
         );
@@ -706,35 +778,6 @@ impl Graphics {
         desc.blender.targets.push(ColorBlendDesc {
             blend: Some(BlendState::PREMULTIPLIED_ALPHA),
             mask: ColorMask::ALL,
-        });
-        desc.vertex_buffers.push(VertexBufferDesc {
-            binding: 0,
-            stride: 32,
-            rate: VertexInputRate::Vertex,
-        });
-        desc.attributes.push(AttributeDesc {
-            binding: 0,
-            location: 0,
-            element: Element {
-                format: Format::Rgb32Sfloat,
-                offset: 0,
-            },
-        });
-        desc.attributes.push(AttributeDesc {
-            binding: 0,
-            location: 1,
-            element: Element {
-                format: Format::Rgb32Sfloat,
-                offset: 12,
-            },
-        });
-        desc.attributes.push(AttributeDesc {
-            binding: 0,
-            location: 2,
-            element: Element {
-                format: Format::Rg32Sfloat,
-                offset: 24,
-            },
         });
         let pipeline = GraphicsPipeline::new(
             #[cfg(debug_assertions)]
@@ -797,12 +840,41 @@ impl Graphics {
             ],
         );
         let mut desc = GraphicsPipelineDesc::new(
-            shader_set(
-                ShaderModule::entry_point(&vertex),
-                ShaderModule::entry_point(&fragment),
-            ),
-            Primitive::TriangleList,
+            PrimitiveAssemblerDesc::Vertex {
+                attributes: &[
+                    AttributeDesc {
+                        binding: 0,
+                        location: 0,
+                        element: Element {
+                            format: Format::Rg32Sfloat,
+                            offset: 0,
+                        },
+                    },
+                    AttributeDesc {
+                        binding: 0,
+                        location: 1,
+                        element: Element {
+                            format: Format::Rg32Sfloat,
+                            offset: 8,
+                        },
+                    },
+                ],
+                buffers: &[VertexBufferDesc {
+                    binding: 0,
+                    stride: 16,
+                    rate: VertexInputRate::Vertex,
+                }],
+                geometry: None,
+                input_assembler: InputAssemblerDesc {
+                    primitive: Primitive::TriangleList,
+                    restart_index: None,
+                    with_adjacency: false,
+                },
+                tessellation: None,
+                vertex: ShaderModule::entry_point(&vertex),
+            },
             FILL_RASTERIZER,
+            Some(ShaderModule::entry_point(&fragment)),
             &layout,
             subpass,
         );
@@ -810,27 +882,6 @@ impl Graphics {
         desc.blender.targets.push(ColorBlendDesc {
             blend: Some(BlendState::PREMULTIPLIED_ALPHA),
             mask: ColorMask::ALL,
-        });
-        desc.vertex_buffers.push(VertexBufferDesc {
-            binding: 0,
-            stride: 16,
-            rate: VertexInputRate::Vertex,
-        });
-        desc.attributes.push(AttributeDesc {
-            binding: 0,
-            location: 0,
-            element: Element {
-                format: Format::Rg32Sfloat,
-                offset: 0,
-            },
-        });
-        desc.attributes.push(AttributeDesc {
-            binding: 0,
-            location: 1,
-            element: Element {
-                format: Format::Rg32Sfloat,
-                offset: 8,
-            },
         });
         let pipeline = GraphicsPipeline::new(
             #[cfg(debug_assertions)]
@@ -891,12 +942,41 @@ impl Graphics {
             ],
         );
         let mut desc = GraphicsPipelineDesc::new(
-            shader_set(
-                ShaderModule::entry_point(&vertex),
-                ShaderModule::entry_point(&fragment),
-            ),
-            Primitive::TriangleList,
+            PrimitiveAssemblerDesc::Vertex {
+                attributes: &[
+                    AttributeDesc {
+                        binding: 0,
+                        location: 0,
+                        element: Element {
+                            format: Format::Rg32Sfloat,
+                            offset: 0,
+                        },
+                    },
+                    AttributeDesc {
+                        binding: 0,
+                        location: 1,
+                        element: Element {
+                            format: Format::Rg32Sfloat,
+                            offset: 8,
+                        },
+                    },
+                ],
+                buffers: &[VertexBufferDesc {
+                    binding: 0,
+                    stride: 16,
+                    rate: VertexInputRate::Vertex,
+                }],
+                geometry: None,
+                input_assembler: InputAssemblerDesc {
+                    primitive: Primitive::TriangleList,
+                    restart_index: None,
+                    with_adjacency: false,
+                },
+                tessellation: None,
+                vertex: ShaderModule::entry_point(&vertex),
+            },
             FILL_RASTERIZER,
+            Some(ShaderModule::entry_point(&fragment)),
             &layout,
             subpass,
         );
@@ -904,27 +984,6 @@ impl Graphics {
         desc.blender.targets.push(ColorBlendDesc {
             blend: Some(BlendState::PREMULTIPLIED_ALPHA),
             mask: ColorMask::ALL,
-        });
-        desc.vertex_buffers.push(VertexBufferDesc {
-            binding: 0,
-            stride: 16,
-            rate: VertexInputRate::Vertex,
-        });
-        desc.attributes.push(AttributeDesc {
-            binding: 0,
-            location: 0,
-            element: Element {
-                format: Format::Rg32Sfloat,
-                offset: 0,
-            },
-        });
-        desc.attributes.push(AttributeDesc {
-            binding: 0,
-            location: 1,
-            element: Element {
-                format: Format::Rg32Sfloat,
-                offset: 8,
-            },
         });
         let pipeline = GraphicsPipeline::new(
             #[cfg(debug_assertions)]
@@ -982,12 +1041,20 @@ impl Graphics {
             &[(ShaderStageFlags::FRAGMENT, 0..32)],
         );
         let mut desc = GraphicsPipelineDesc::new(
-            shader_set(
-                ShaderModule::entry_point(&vertex),
-                ShaderModule::entry_point(&fragment),
-            ),
-            Primitive::TriangleList,
+            PrimitiveAssemblerDesc::Vertex {
+                attributes: &[],
+                buffers: &[],
+                geometry: None,
+                input_assembler: InputAssemblerDesc {
+                    primitive: Primitive::TriangleList,
+                    restart_index: None,
+                    with_adjacency: false,
+                },
+                tessellation: None,
+                vertex: ShaderModule::entry_point(&vertex),
+            },
             FILL_RASTERIZER,
+            Some(ShaderModule::entry_point(&fragment)),
             &layout,
             subpass,
         );
@@ -1052,18 +1119,103 @@ impl Graphics {
             &[(ShaderStageFlags::FRAGMENT, 0..32)],
         );
         let mut desc = GraphicsPipelineDesc::new(
-            shader_set(
-                ShaderModule::entry_point(&vertex),
-                ShaderModule::entry_point(&fragment),
-            ),
-            Primitive::TriangleList,
+            PrimitiveAssemblerDesc::Vertex {
+                attributes: &[],
+                buffers: &[],
+                geometry: None,
+                input_assembler: InputAssemblerDesc {
+                    primitive: Primitive::TriangleList,
+                    restart_index: None,
+                    with_adjacency: false,
+                },
+                tessellation: None,
+                vertex: ShaderModule::entry_point(&vertex),
+            },
             FILL_RASTERIZER,
+            Some(ShaderModule::entry_point(&fragment)),
             &layout,
             subpass,
         );
         desc.blender.logic_op = None;
         desc.blender.targets.push(ColorBlendDesc {
             blend: Some(BlendState::PREMULTIPLIED_ALPHA),
+            mask: ColorMask::ALL,
+        });
+        let pipeline = GraphicsPipeline::new(
+            #[cfg(debug_assertions)]
+            name,
+            Driver::clone(&driver),
+            &desc,
+        );
+        let mut desc_pool = DescriptorPool::new(
+            Driver::clone(&driver),
+            max_sets,
+            once(descriptor_range_desc(
+                1,
+                DescriptorType::Image {
+                    ty: ImageDescriptorType::Sampled { with_sampler: true },
+                },
+            )),
+        );
+        let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
+
+        Self {
+            desc_pool,
+            desc_sets,
+            layout,
+            max_sets,
+            pipeline,
+            set_layout,
+            samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
+        }
+    }
+
+    pub unsafe fn present(
+        #[cfg(debug_assertions)] name: &str,
+        driver: &Driver,
+        subpass: Subpass<'_, _Backend>,
+        max_sets: usize,
+    ) -> Self {
+        let vertex = ShaderModule::new(Driver::clone(&driver), &QUAD_VERT);
+        let fragment = ShaderModule::new(Driver::clone(&driver), &TEXTURE_FRAG);
+        let set_layout = DescriptorSetLayout::new(
+            #[cfg(debug_assertions)]
+            name,
+            Driver::clone(&driver),
+            once(descriptor_set_layout_binding(
+                0,
+                1,
+                ShaderStageFlags::FRAGMENT,
+                DescriptorType::Image {
+                    ty: ImageDescriptorType::Sampled { with_sampler: true },
+                },
+            )),
+        );
+        let layout = PipelineLayout::new(
+            Driver::clone(&driver),
+            once(&*set_layout),
+            &[(ShaderStageFlags::VERTEX, 0..64)],
+        );
+        let mut desc = GraphicsPipelineDesc::new(
+            PrimitiveAssemblerDesc::Vertex {
+                attributes: &[],
+                buffers: &[],
+                geometry: None,
+                input_assembler: InputAssemblerDesc {
+                    primitive: Primitive::TriangleList,
+                    restart_index: None,
+                    with_adjacency: false,
+                },
+                tessellation: None,
+                vertex: ShaderModule::entry_point(&vertex),
+            },
+            FILL_RASTERIZER,
+            Some(ShaderModule::entry_point(&fragment)),
+            &layout,
+            subpass,
+        );
+        desc.blender.targets.push(ColorBlendDesc {
+            blend: Some(BlendState::ALPHA),
             mask: ColorMask::ALL,
         });
         let pipeline = GraphicsPipeline::new(
@@ -1119,15 +1271,23 @@ impl Graphics {
         let layout = PipelineLayout::new(
             Driver::clone(&driver),
             once(&*set_layout),
-            &[(ShaderStageFlags::VERTEX, 0..64)],
+            &[(ShaderStageFlags::VERTEX, 0..80)],
         );
         let mut desc = GraphicsPipelineDesc::new(
-            shader_set(
-                ShaderModule::entry_point(&vertex),
-                ShaderModule::entry_point(&fragment),
-            ),
-            Primitive::TriangleList,
+            PrimitiveAssemblerDesc::Vertex {
+                attributes: &[],
+                buffers: &[],
+                geometry: None,
+                input_assembler: InputAssemblerDesc {
+                    primitive: Primitive::TriangleList,
+                    restart_index: None,
+                    with_adjacency: false,
+                },
+                tessellation: None,
+                vertex: ShaderModule::entry_point(&vertex),
+            },
             FILL_RASTERIZER,
+            Some(ShaderModule::entry_point(&fragment)),
             &layout,
             subpass,
         );

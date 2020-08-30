@@ -1,10 +1,10 @@
 use {
-    super::{wait_for_fence, Op},
+    super::Op,
     crate::{
         gpu::{
             driver::{CommandPool, Device, Driver, Fence, PhysicalDevice},
             pool::Lease,
-            PoolRef, TextureRef,
+            PoolRef, Texture2d,
         },
         math::{Area, Coord, Extent},
     },
@@ -14,40 +14,30 @@ use {
         image::{Access, Layout, SubresourceLayers},
         pool::CommandPool as _,
         pso::PipelineStage,
-        queue::{CommandQueue as _, QueueType, Submission},
+        queue::{CommandQueue as _, Submission},
         Backend,
     },
     gfx_impl::Backend as _Backend,
     std::iter::{empty, once},
 };
 
-const QUEUE_TYPE: QueueType = QueueType::Graphics;
-
-pub struct CopyOp<S, D>
-where
-    S: AsRef<<_Backend as Backend>::Image>,
-    D: AsRef<<_Backend as Backend>::Image>,
-{
+pub struct CopyOp {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
     driver: Driver,
-    dst: TextureRef<D>,
+    dst: Texture2d,
     dst_offset: Extent,
     fence: Lease<Fence>,
     region: Extent,
-    src: TextureRef<S>,
+    src: Texture2d,
     src_offset: Extent,
 }
 
-impl<S, D> CopyOp<S, D>
-where
-    S: AsRef<<_Backend as Backend>::Image>,
-    D: AsRef<<_Backend as Backend>::Image>,
-{
-    pub fn new(pool: &PoolRef, src: &TextureRef<S>, dst: &TextureRef<D>) -> Self {
+impl CopyOp {
+    pub fn new(pool: &PoolRef, src: &Texture2d, dst: &Texture2d) -> Self {
         let (cmd_buf, cmd_pool, driver, fence) = {
             let mut pool_ref = pool.borrow_mut();
-            let family = Device::queue_family(&pool_ref.driver().borrow(), QUEUE_TYPE);
+            let family = Device::queue_family(&pool_ref.driver().borrow());
             let mut cmd_pool = pool_ref.cmd_pool(family);
             let driver = Driver::clone(pool_ref.driver());
             let fence = pool_ref.fence();
@@ -61,18 +51,18 @@ where
             cmd_buf,
             cmd_pool,
             driver,
-            dst: TextureRef::clone(dst),
+            dst: Texture2d::clone(dst),
             dst_offset: Extent::ZERO,
             fence,
             region: src.borrow().dims(),
-            src: TextureRef::clone(src),
+            src: Texture2d::clone(src),
             src_offset: Extent::ZERO,
         }
     }
 
     /// Specifies an identically-sized area of the source and destination to copy, and the position on the
     /// destination where the data will go.
-    pub fn with_region(mut self, src_region: Area, dst: Extent) -> Self {
+    pub fn with_region(&mut self, src_region: Area, dst: Extent) -> &mut Self {
         self.dst_offset = dst;
         self.region = src_region.dims;
         self.src_offset = src_region.pos;
@@ -146,7 +136,7 @@ where
         self.cmd_buf.finish();
 
         // Submit
-        Device::queue_mut(&mut device, QUEUE_TYPE).submit(
+        Device::queue_mut(&mut device).submit(
             Submission {
                 command_buffers: once(&self.cmd_buf),
                 wait_semaphores: empty(),
@@ -157,39 +147,23 @@ where
     }
 }
 
-pub struct CopyOpSubmission<S, D>
-where
-    S: AsRef<<_Backend as Backend>::Image>,
-    D: AsRef<<_Backend as Backend>::Image>,
-{
+pub struct CopyOpSubmission {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
     driver: Driver,
-    dst: TextureRef<D>,
+    dst: Texture2d,
     fence: Lease<Fence>,
-    src: TextureRef<S>,
+    src: Texture2d,
 }
 
-impl<S, D> Drop for CopyOpSubmission<S, D>
-where
-    S: AsRef<<_Backend as Backend>::Image>,
-    D: AsRef<<_Backend as Backend>::Image>,
-{
+impl Drop for CopyOpSubmission {
     fn drop(&mut self) {
         self.wait();
     }
 }
 
-impl<S, D> Op for CopyOpSubmission<S, D>
-where
-    S: AsRef<<_Backend as Backend>::Image>,
-    D: AsRef<<_Backend as Backend>::Image>,
-{
+impl Op for CopyOpSubmission {
     fn wait(&self) {
-        let device = self.driver.borrow();
-
-        unsafe {
-            wait_for_fence(&device, &self.fence);
-        }
+        Fence::wait(&self.fence);
     }
 }

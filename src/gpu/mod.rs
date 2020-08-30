@@ -10,6 +10,7 @@ mod op;
 mod pool;
 
 mod render;
+mod swapchain;
 mod texture;
 
 pub use self::{
@@ -17,19 +18,20 @@ pub use self::{
         draw::{Command, Material},
         Bitmap, Font, Write, WriteMode,
     },
-    render::{Operation, Render},
+    render::Render,
+    swapchain::Swapchain,
     texture::Texture,
 };
 
 pub(crate) use self::{
-    driver::{Driver, PhysicalDevice, Swapchain},
-    texture::Image,
+    driver::{Driver, PhysicalDevice},
+    op::Op,
 };
 
 use {
     self::{
         data::{Data, Mapping},
-        driver::{open, Image2d, Surface},
+        driver::{Device, Image2d, Surface},
         op::BitmapOp,
         pool::{Lease, Pool},
     },
@@ -39,10 +41,10 @@ use {
         Error,
     },
     gfx_hal::{
-        adapter::Adapter, buffer::Usage, device::Device, format::Format, queue::QueueFamily,
-        window::Surface as _, Instance,
+        adapter::Adapter, buffer::Usage, device::Device as _, format::Format, queue::QueueFamily,
+        window::Surface as _, Instance as _,
     },
-    gfx_impl::{Backend as _Backend, Instance as InstanceImpl},
+    gfx_impl::{Backend as _Backend, Instance},
     std::{
         cell::RefCell,
         collections::HashMap,
@@ -68,13 +70,14 @@ pub const MULTISAMPLE_COUNT: u8 = 4;
 pub type Texture2d = TextureRef<Image2d>;
 
 pub(self) type BitmapRef = Rc<Bitmap>;
-pub(self) type PoolRef = Rc<RefCell<Pool>>;
+pub(crate) type PoolRef = Rc<RefCell<Pool>>;
 pub(crate) type TextureRef<I> = Rc<RefCell<Texture<I>>>;
 
 type BitmapCache = RefCell<HashMap<BitmapId, BitmapRef>>;
+type OpCache = RefCell<Option<Vec<Box<dyn Op>>>>;
 
-fn create_adapter() -> (Adapter<_Backend>, InstanceImpl) {
-    let instance = InstanceImpl::create("attackgoat/screen-13", 1).unwrap();
+fn create_instance() -> (Adapter<_Backend>, Instance) {
+    let instance = Instance::create("attackgoat/screen-13", 1).unwrap();
     let mut adapters = instance.enumerate_adapters();
     if adapters.is_empty() {
         // TODO: Error::adapter
@@ -84,8 +87,8 @@ fn create_adapter() -> (Adapter<_Backend>, InstanceImpl) {
 }
 
 // TODO: Different path for webgl and need this -> #[cfg(any(feature = "vulkan", feature = "metal"))]
-fn create_adapter_surface(window: &Window) -> (Adapter<_Backend>, Surface) {
-    let (adapter, instance) = create_adapter();
+fn create_surface(window: &Window) -> (Adapter<_Backend>, Surface) {
+    let (adapter, instance) = create_instance();
     let surface = Surface::new(instance, window).unwrap();
     (adapter, surface)
 }
@@ -123,86 +126,62 @@ impl Default for BlendMode {
 pub struct Gpu {
     bitmaps: BitmapCache,
     driver: Driver,
+    ops: OpCache,
     pool: PoolRef,
 }
 
 impl Gpu {
     pub(super) fn new(window: &Window) -> (Self, Surface) {
-        let (adapter, surface) = create_adapter_surface(window);
-
-        // Note to future self: These two sections of code are basically the same, however attempting
-        // to fold them together produced something with multiple lifetimes and generic parameters
-        // that had to be spelled out. It was horrific. Duplicating code seemed like a better choice.
-        let compute_queue_family = adapter
+        let (adapter, surface) = create_surface(window);
+        let queue = adapter
             .queue_families
             .iter()
-            .find(|queue_family| {
-                let queue_type = queue_family.queue_type();
-                surface.supports_queue_family(queue_family) && queue_type.supports_compute()
-            })
-            .ok_or_else(Error::compute_queue_family)
-            .unwrap();
-        let graphics_queue_family = adapter
-            .queue_families
-            .iter()
-            .find(|queue_family| {
-                let queue_type = queue_family.queue_type();
-                surface.supports_queue_family(queue_family) && queue_type.supports_graphics()
+            .find(|family| {
+                let ty = family.queue_type();
+                surface.supports_queue_family(family)
+                    && ty.supports_graphics()
+                    && ty.supports_compute()
             })
             .ok_or_else(Error::graphics_queue_family)
             .unwrap();
-
-        let mut queue_families = vec![graphics_queue_family];
-        if compute_queue_family.id() != queue_families[0].id() {
-            queue_families.push(compute_queue_family);
-        }
-
-        let driver = open(adapter.physical_device, queue_families.into_iter());
+        let driver = Driver::new(RefCell::new(
+            Device::new(adapter.physical_device, queue).unwrap(),
+        ));
         let pool = PoolRef::new(RefCell::new(Pool::new(&driver, Format::Rgba8Unorm)));
 
         (
             Self {
                 bitmaps: Default::default(),
                 driver,
+                ops: Default::default(),
                 pool,
             },
             surface,
         )
     }
 
+    // TODO: This is a useful function, but things you end up rendering with it cannot be used with the window's presentation
+    // surface. Maybe change the way this whole thing works. Or document better?
     pub fn offscreen() -> Self {
-        let (adapter, _) = create_adapter();
-
-        let compute_queue_family = adapter
+        let (adapter, _) = create_instance();
+        let queue = adapter
             .queue_families
             .iter()
-            .find(|queue_family| {
-                let queue_type = queue_family.queue_type();
-                queue_type.supports_compute()
-            })
-            .ok_or_else(Error::compute_queue_family)
-            .unwrap();
-        let graphics_queue_family = adapter
-            .queue_families
-            .iter()
-            .find(|queue_family| {
-                let queue_type = queue_family.queue_type();
-                queue_type.supports_graphics()
+            .find(|family| {
+                let ty = family.queue_type();
+                ty.supports_graphics() && ty.supports_compute()
             })
             .ok_or_else(Error::graphics_queue_family)
             .unwrap();
-
-        let mut queue_families = vec![graphics_queue_family];
-        if compute_queue_family.id() != queue_families[0].id() {
-            queue_families.push(compute_queue_family);
-        }
-
-        let driver = open(adapter.physical_device, queue_families.into_iter());
+        let driver = Driver::new(RefCell::new(
+            Device::new(adapter.physical_device, queue).unwrap(),
+        ));
         let pool = PoolRef::new(RefCell::new(Pool::new(&driver, Format::Rgba8Unorm)));
 
         Self {
             bitmaps: Default::default(),
             driver,
+            ops: Default::default(),
             pool,
         }
     }
@@ -319,13 +298,35 @@ impl Gpu {
     }
 
     pub fn render(&self, #[cfg(debug_assertions)] name: &str, dims: Extent) -> Render {
+        // There may be pending operations from a previously resolved render; if so
+        // we just stick them into the next render that goes out the door.
+        let ops = if let Some(ops) = self.ops.borrow_mut().take() {
+            ops
+        } else {
+            Default::default()
+        };
+
         Render::new(
             #[cfg(debug_assertions)]
             name,
             &self.pool,
             dims,
             Format::Rgba8Unorm,
+            ops,
         )
+    }
+
+    /// Resolves a render into a texture which can be written to other renders.
+    pub fn resolve(&self, render: Render) -> Lease<Texture2d> {
+        let (target, ops) = render.resolve();
+        let mut cache = self.ops.borrow_mut();
+        if let Some(cache) = cache.as_mut() {
+            cache.extend(ops);
+        } else {
+            cache.replace(ops);
+        }
+
+        target
     }
 
     pub(crate) fn wait_idle(&self) {

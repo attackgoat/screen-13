@@ -2,38 +2,30 @@ use {
     super::{
         op::{
             draw::{Command, DrawOp},
-            ClearOp, CopyOp, EncodeOp, Font, FontOp, GradientOp, Op, Write, WriteMode, WriteOp,
+            ClearOp, CopyOp, EncodeOp, Font, FontOp, GradientOp, Write, WriteMode, WriteOp,
         },
         pool::Lease,
-        Image, PoolRef, Texture2d, TextureRef,
+        Op, PoolRef, Texture2d, TextureRef,
     },
     crate::{
         camera::Camera,
         color::{AlphaColor, Color},
-        math::{vec3, Area, Coord, CoordF, Extent, Mat4},
+        math::{Area, Coord, CoordF, Extent},
     },
     gfx_hal::{
         format::Format,
-        image::{Access, Layout, Tiling, Usage},
-        pso::PipelineStage,
+        image::{Layout, Tiling, Usage},
     },
-    std::{collections::VecDeque, ops::Deref, path::Path},
+    std::path::Path,
 };
-
-/// Holds a potentially in-progress GPU operation. This opaque type represents the work
-/// being done by the GPU and will cause the GPU to stall if dropped prematurely. You
-/// must give the GPU time to finish this work, so keep it in a queue of some sort for
-/// a few frames.
-pub struct Operation(Box<dyn Op>);
 
 /// A powerful structure which allows you to combine various operations and other render
 /// instances to create just about any creative effect.
 pub struct Render {
-    dims: Extent,
-    format: Format,
     pool: PoolRef,
     target: Lease<Texture2d>,
-    ops: VecDeque<Operation>, // TODO: Should be just a vec?
+    target_dirty: bool,
+    ops: Vec<Box<dyn Op>>, // TODO: Should be just a vec?
 }
 
 impl Render {
@@ -42,10 +34,9 @@ impl Render {
         pool: &PoolRef,
         dims: Extent,
         format: Format,
+        ops: Vec<Box<dyn Op>>,
     ) -> Self {
         Self {
-            dims,
-            format,
             pool: PoolRef::clone(pool),
             target: pool.borrow_mut().texture(
                 #[cfg(debug_assertions)]
@@ -59,40 +50,41 @@ impl Render {
                 1,
                 1,
             ),
-            ops: Default::default(),
+            target_dirty: false,
+            ops,
         }
     }
 
     /// Clears the screen of all text and graphics.
     pub fn clear(&mut self, color: Color) {
-        self.ops.push_front(Operation(Box::new(
-            ClearOp::new(&mut self.pool.borrow_mut(), &self.target)
-                .with_clear_value(color.swizzle(self.format))
-                .record(),
-        )));
+        let format = self.target.borrow().format();
+        let mut op = ClearOp::new(&mut self.pool.borrow_mut(), &self.target);
+        op.with_clear_value(color.swizzle(format));
+        self.ops.push(Box::new(op.record()));
+        self.target_dirty = true;
     }
 
     /// Copies the given texture onto this Render. The implementation uses a copy operation
     /// and is more efficient than `write` when there is no blending or fractional pixels.
     pub fn copy(&mut self, src: &Texture2d) {
-        self.ops.push_front(Operation(Box::new(
+        self.ops.push(Box::new(
             CopyOp::new(&self.pool, &src, &self.target).record(),
-        )));
+        ));
+        self.target_dirty = true;
     }
 
     /// Copies a region of the given texture onto this Render at `dst` coordinates. The
     /// implementation uses a copy operation and is more efficient than `write` when there
     /// is no blending or fractional pixels.
     pub fn copy_region(&mut self, src: &Texture2d, src_region: Area, dst: Extent) {
-        self.ops.push_front(Operation(Box::new(
-            CopyOp::new(&self.pool, &src, &self.target)
-                .with_region(src_region, dst)
-                .record(),
-        )));
+        let mut op = CopyOp::new(&self.pool, &src, &self.target);
+        op.with_region(src_region, dst);
+        self.ops.push(Box::new(op.record()));
+        self.target_dirty = true;
     }
 
     pub fn dims(&self) -> Extent {
-        self.dims
+        self.target.borrow().dims()
     }
 
     /// Draws a batch of 3D elements. There is no need to give any particular order to the individual commands and the
@@ -103,20 +95,24 @@ impl Render {
         camera: &impl Camera,
         cmds: &'c mut [Command<'c>],
     ) {
-        self.ops.push_front(Operation(Box::new(
-            DrawOp::new(
-                #[cfg(debug_assertions)]
-                name,
-                &self.pool,
-                &self.target,
-            )
-            .record(camera, cmds),
-        )));
+        let mut op = DrawOp::new(
+            #[cfg(debug_assertions)]
+            name,
+            &self.pool,
+            &self.target,
+        );
+
+        if self.target_dirty {
+            op.with_preserve();
+        }
+
+        self.ops.push(Box::new(op.record(camera, cmds)));
+        self.target_dirty = true;
     }
 
     /// Saves this Render as a JPEG file at the given path.
     pub fn encode<P: AsRef<Path>>(&mut self, #[cfg(debug_assertions)] name: &str, path: P) {
-        self.ops.push_front(Operation(Box::new(
+        self.ops.push(Box::new(
             EncodeOp::new(
                 #[cfg(debug_assertions)]
                 name,
@@ -124,21 +120,7 @@ impl Render {
                 TextureRef::clone(&self.target),
             )
             .record(path),
-        )))
-    }
-
-    // TODO: Kill with resolve!
-    pub fn extend_ops<O>(&mut self, ops: O)
-    where
-        O: IntoIterator<Item = Operation>,
-    {
-        // Best practice?
-        // // let (render, mut ops) = render.resolve();
-        // // if !ops.is_empty() {
-        // //     self.extend_ops(ops.drain(ops.len() - 1..=0));
-        // // }
-
-        ops.into_iter().for_each(|op| self.ops.push_front(op));
+        ));
     }
 
     /// Draws a linear gradient on this Render using the given path.
@@ -147,7 +129,7 @@ impl Render {
     where
         C: Copy + Into<AlphaColor>,
     {
-        self.ops.push_front(Operation(Box::new(
+        self.ops.push(Box::new(
             GradientOp::new(
                 #[cfg(debug_assertions)]
                 name,
@@ -156,51 +138,12 @@ impl Render {
                 [(path[0].0, path[0].1.into()), (path[1].0, path[1].1.into())],
             )
             .record(),
-        )));
+        ));
+        self.target_dirty = true;
     }
 
-    /// This crate-only helper function is a specialization of the write function which writes this
-    /// Render onto the given destination texture, which should be a swapchain backbuffer image.
-    /// The image is stretched unfiltered so there will be pixel doubling artifacts unless the
-    /// dimensions are equal.
-    pub(crate) fn present(&mut self, #[cfg(debug_assertions)] name: &str, dst: &TextureRef<Image>) {
-        let dst_dims: CoordF = dst.borrow().dims().into();
-        let src_dims: CoordF = self.dims.into();
-
-        // Scale is the larger of either X or Y when stretching to cover all four sides
-        let scale_x = dst_dims.x / src_dims.x;
-        let scale_y = dst_dims.y / src_dims.y;
-        let scale = scale_x.max(scale_y);
-
-        // Transform is scaled and centered on the dst texture
-        let transform = Mat4::from_scale(vec3(
-            src_dims.x * scale / dst_dims.x * 2.0,
-            src_dims.y * scale / dst_dims.y * 2.0,
-            1.0,
-        )) * Mat4::from_translation(vec3(-0.5, -0.5, 0.0));
-
-        // Note: This does not preserve the existing contents of `dst`
-        self.ops.push_front(Operation(Box::new(
-            WriteOp::new(
-                #[cfg(debug_assertions)]
-                name,
-                &self.pool,
-                dst,
-                WriteMode::Texture,
-            )
-            .with_layout(
-                Layout::Present,
-                PipelineStage::BOTTOM_OF_PIPE,
-                Access::empty(),
-            )
-            .record(&mut [Write::transform(&*self.target, transform)]),
-        )));
-    }
-
-    /// Renders this instance to a texture; it is available once all the ops are waited on
-    /// TODO: Find a way to not offer this signature and still have R2T capability?
-    pub fn resolve(mut self) -> (impl Deref<Target = Texture2d>, Vec<Operation>) {
-        (self.target, self.ops.drain(..).collect::<Vec<_>>())
+    pub(crate) fn resolve(self) -> (Lease<Texture2d>, Vec<Box<dyn Op>>) {
+        (self.target, self.ops)
     }
 
     /// Draws bitmapped text on this Render using the given details.
@@ -216,17 +159,18 @@ impl Render {
         C: Into<AlphaColor>,
         P: Into<CoordF>,
     {
-        self.ops.push_front(Operation(Box::new(
+        self.ops.push(Box::new(
             FontOp::new(
                 #[cfg(debug_assertions)]
                 name,
                 &self.pool,
-                &self.target,
+                TextureRef::clone(&self.target),
                 pos,
                 color,
             )
             .record(font, text),
-        )));
+        ));
+        self.target_dirty = true;
     }
 
     /// Draws bitmapped text on this Render using the given details.
@@ -244,18 +188,17 @@ impl Render {
         C2: Into<AlphaColor>,
         P: Into<CoordF>,
     {
-        self.ops.push_front(Operation(Box::new(
-            FontOp::new(
-                #[cfg(debug_assertions)]
-                name,
-                &self.pool,
-                &self.target,
-                pos,
-                color,
-            )
-            .with_outline_color(outline_color)
-            .record(font, text),
-        )));
+        let mut op = FontOp::new(
+            #[cfg(debug_assertions)]
+            name,
+            &self.pool,
+            TextureRef::clone(&self.target),
+            pos,
+            color,
+        );
+        op.with_outline_color(outline_color);
+        self.ops.push(Box::new(op.record(font, text)));
+        self.target_dirty = true;
     }
 
     /// Draws the given texture writes onto this Render. Note that the given texture writes will all be applied at once and there
@@ -266,16 +209,19 @@ impl Render {
         mode: WriteMode,
         writes: &mut [Write],
     ) {
-        self.ops.push_front(Operation(Box::new(
-            WriteOp::new(
-                #[cfg(debug_assertions)]
-                name,
-                &self.pool,
-                &self.target,
-                mode,
-            )
-            .with_preserve()
-            .record(writes),
-        )));
+        let mut op = WriteOp::new(
+            #[cfg(debug_assertions)]
+            name,
+            &self.pool,
+            TextureRef::clone(&self.target),
+            mode,
+        );
+
+        if self.target_dirty {
+            op.with_preserve();
+        }
+
+        self.ops.push(Box::new(op.record(writes)));
+        self.target_dirty = true;
     }
 }

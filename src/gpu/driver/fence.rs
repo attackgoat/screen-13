@@ -5,6 +5,9 @@ use {
     std::ops::{Deref, DerefMut},
 };
 
+#[cfg(debug_assertions)]
+use std::time::Instant;
+
 pub struct Fence {
     driver: Driver,
     ptr: Option<<_Backend as Backend>::Fence>,
@@ -14,10 +17,10 @@ pub struct Fence {
 
 impl Fence {
     pub fn new(driver: Driver) -> Self {
-        Self::new_signaled(driver, false)
+        Self::with_signal(driver, false)
     }
 
-    pub fn new_signaled(driver: Driver, value: bool) -> Self {
+    pub fn with_signal(driver: Driver, value: bool) -> Self {
         let fence = driver.borrow().create_fence(value).unwrap();
 
         Self {
@@ -41,6 +44,35 @@ impl Fence {
         unsafe {
             device.set_fence_name(ptr, name);
         }
+    }
+
+    pub fn wait(fence: &Self) {
+        let device = fence.driver.borrow();
+
+        unsafe {
+            // If the fence was ready or anything happened; just return as if we waited
+            // otherwise we might hold up a drop function
+            if let Ok(true) | Err(_) = device.wait_for_fence(fence, 0) {
+                return;
+            }
+
+            #[cfg(debug_assertions)]
+            {
+                let started = Instant::now();
+
+                // TODO: Improve later
+                for _ in 0..100 {
+                    if let Ok(true) | Err(_) = device.wait_for_fence(fence, 1_000_000) {
+                        let elapsed = Instant::now() - started;
+                        warn!("Graphics driver stalled! ({}ms)", elapsed.as_millis());
+
+                        return;
+                    }
+                }
+            }
+        }
+
+        error!("Graphics driver stalled!");
     }
 }
 

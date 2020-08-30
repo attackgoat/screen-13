@@ -28,10 +28,13 @@ impl RenderPass {
     where
         IA: IntoIterator,
         IA::Item: Borrow<Attachment>,
+        IA::IntoIter: ExactSizeIterator,
         IS: IntoIterator,
         IS::Item: Borrow<SubpassDesc<'s>>,
+        IS::IntoIter: ExactSizeIterator,
         ID: IntoIterator,
         ID::Item: Borrow<SubpassDependency>,
+        ID::IntoIter: ExactSizeIterator,
     {
         let render_pass = {
             let device = driver.as_ref().borrow();

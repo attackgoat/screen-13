@@ -40,7 +40,7 @@ pub use self::{
 };
 
 use {
-    self::{config::Config, game::Game},
+    self::{config::Config, game::Game, math::Extent},
     std::{
         collections::VecDeque,
         ops::Add,
@@ -167,10 +167,8 @@ impl Engine {
             }
 
             // Render & present the screen, saving the result in our buffer
-            let render = screen.as_ref().unwrap().render(game.gpu());
-            if let Some(frame) = game.present(render) {
-                render_buf.push_front(frame);
-            }
+            let render = screen.as_ref().unwrap().render(game.gpu(), game.dims());
+            render_buf.push_front(game.present(render));
 
             // Update the current scene state, potentially returning a new one
             screen = Some(screen.take().unwrap().update(game.gpu(), &input));
@@ -215,7 +213,7 @@ impl Engine {
 /// GPU and optionally to provide a new Screen result.
 pub trait Screen {
     /// TODO
-    fn render(&self, gpu: &Gpu) -> Render;
+    fn render(&self, gpu: &Gpu, dims: Extent) -> Render;
 
     /// TODO
     fn update(self: Box<Self>, gpu: &Gpu, input: &Input) -> DynScreen;

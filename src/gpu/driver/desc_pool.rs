@@ -23,6 +23,7 @@ impl DescriptorPool {
     where
         I: IntoIterator,
         I::Item: Borrow<DescriptorRangeDesc>,
+        I::IntoIter: ExactSizeIterator,
     {
         Self::with_flags(
             driver,
@@ -41,6 +42,7 @@ impl DescriptorPool {
     where
         I: IntoIterator,
         I::Item: Borrow<DescriptorRangeDesc>,
+        I::IntoIter: ExactSizeIterator,
     {
         let desc_pool = {
             let device = driver.as_ref().borrow();

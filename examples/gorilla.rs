@@ -45,7 +45,7 @@ struct Intro {
 }
 
 impl Screen for Intro {
-    fn render(&self, gpu: &Gpu) -> Render {
+    fn render(&self, gpu: &Gpu, _: Extent) -> Render {
         let mut frame = gpu.render(
             #[cfg(debug_assertions)]
             "intro",
@@ -65,7 +65,7 @@ struct Gorilla {
 }
 
 impl Screen for Gorilla {
-    fn render(&self, gpu: &Gpu) -> Render {
+    fn render(&self, gpu: &Gpu, _: Extent) -> Render {
         let mut frame = gpu.render(
             #[cfg(debug_assertions)]
             "gorilla render",
