@@ -9,9 +9,9 @@ use {super::BIT, crate::gpu::op::draw::SpotlightCommand, std::ops::Range};
 /// doesn't implement `Ord` and we really don't care what order these are stored in, we just want to order
 /// them so we can binary search to find them.
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
-pub struct SpotlightKey(u32);
+pub struct Spotlight(u32);
 
-impl SpotlightKey {
+impl Spotlight {
     /// Returns the normalized and quantized spotlight and the scale needed to undo the normalization.
     pub fn quantize(cmd: &SpotlightCommand) -> (Self, f32) {
         let radius_end = cmd.cone_radius + cmd.penumbra_radius;

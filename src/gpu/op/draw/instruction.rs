@@ -8,13 +8,17 @@ use {
 pub enum Instruction<'a> {
     CopyVertices((&'a mut Data, &'a [CopyRange])),
     //Light(LightInstruction),
-    //Line(LineInstruction),
+    DrawLines((&'a mut Data, u32)),
+    //DrawPointLights(&),
+    DrawRectLightBegin(&'a mut Data),
+    DrawRectLight(),
+    DrawRectLightEnd,
     //Mesh(MeshInstruction<'a>),
     // Spotlight(SpotlightCommand),
     // Sunlight(SunlightCommand),
     // Transparency((f32, MeshCommand<'a>)),
     TransferData((&'a mut Data, &'a mut Data)),
-    WriteVertices((&'a mut Data, Range<u64>)),
+    WriteVertces((&'a mut Data, Range<u64>)),
 }
 
 impl Instruction<'_> {

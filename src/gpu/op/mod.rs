@@ -1,8 +1,7 @@
-pub(crate) mod draw;
-
 mod bitmap;
 mod clear;
 mod copy;
+mod draw;
 mod encode;
 mod font;
 mod gradient;
@@ -12,7 +11,7 @@ pub use self::{
     bitmap::{Bitmap, BitmapOp},
     clear::ClearOp,
     copy::CopyOp,
-    //draw::{Command, Compiler, DrawOp, Material},
+    draw::{Command, Compiler, DrawOp, Material},
     encode::EncodeOp,
     font::{Font, FontOp},
     gradient::GradientOp,

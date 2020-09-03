@@ -29,6 +29,24 @@ where
     }
 }
 
+impl From<GenericCoord<i32>> for Rect<f32, f32> {
+    fn from(val: GenericCoord<i32>) -> Self {
+        Self {
+            dims: val.into(),
+            pos: GenericCoord::<f32>::ZERO,
+        }
+    }
+}
+
+impl From<GenericCoord<u32>> for Rect<f32, f32> {
+    fn from(val: GenericCoord<u32>) -> Self {
+        Self {
+            dims: val.into(),
+            pos: GenericCoord::<f32>::ZERO,
+        }
+    }
+}
+
 impl From<GenericCoord<u32>> for Rect<u32, u32> {
     fn from(val: GenericCoord<u32>) -> Self {
         Self {

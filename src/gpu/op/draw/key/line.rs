@@ -1,13 +1,13 @@
 use {
     crate::gpu::op::draw::LineCommand,
     gfx_hal::image::PackedColor,
-    std::{collections::hash_map::DefaultHasher, hash::Hasher},
+    std::{cmp::Ordering, collections::hash_map::DefaultHasher, hash::Hasher},
 };
 
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
-pub struct LineKey(u64);
+pub struct Line(u64);
 
-impl LineKey {
+impl Line {
     /// Returns the hashed line. This process differs from quantization of lights in that it does not need to
     /// be later reproduced as a line; it only needs to assist with searching the cache for identical lines.
     pub fn hash(cmd: &LineCommand) -> Self {

@@ -15,7 +15,7 @@ mod texture;
 
 pub use self::{
     op::{
-        draw::{Command, Material},
+        Command, Material,
         Bitmap, Font, Write, WriteMode,
     },
     render::Render,

@@ -1,7 +1,7 @@
 use {
     super::{
         op::{
-            draw::{Command, DrawOp},
+            Command, DrawOp,
             ClearOp, CopyOp, EncodeOp, Font, FontOp, GradientOp, Write, WriteMode, WriteOp,
         },
         pool::Lease,

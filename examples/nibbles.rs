@@ -8,7 +8,7 @@ use {
     screen_13::{
         camera::Orthographic,
         color::qb_color,
-        gpu::{Command, Font},
+        gpu::{Command, Font, Write, WriteMode},
         input::Key,
         math::{vec3, Coord},
         pak::Pak,
@@ -65,7 +65,7 @@ impl Nibbles {
         let font = gpu.load_font(&mut pak, "small_10px");
 
         // Setup an orthographic camera to provide a 2D view
-        let eye = vec3(0.0, 0.0, -1.0);
+        let eye = vec3(SCREEN_SIZE.x as f32 / 2.0, SCREEN_SIZE.y as f32 / 2.0, -1.0);
         let target = vec3(eye.x(), eye.y(), 0.0);
         let view = Orthographic::new(eye, target, SCREEN_SIZE, 0.0..1.0);
 
@@ -161,17 +161,70 @@ impl Nibbles {
 
 impl Screen for Nibbles {
     fn render(&self, gpu: &Gpu, _: Extent) -> Render {
-        let mut frame = gpu.render(
+        let mut lo_frame = gpu.render(
             #[cfg(debug_assertions)]
             "nibbles",
             SCREEN_SIZE,
         );
+        let hi_dims = SCREEN_SIZE * 8;
+        let mut hi_frame = gpu.render(
+            #[cfg(debug_assertions)]
+            "nibbles",
+            hi_dims,
+        );
 
         // Blue background
-        frame.clear(qb_color(1));
+        lo_frame.clear(qb_color(1));
+
+        // Drawing commands for the arena (the deadly walls of death)...
+        let arena_color = qb_color(4);
+        let top_left = vec3(0.0, 0.0, 0.0);
+        let top_right = vec3(SCREEN_SIZE.x as f32 - 1.0, 1.0, 0.0);
+        let bottom_left = vec3(0.0, SCREEN_SIZE.y as f32 - 1.0, 0.0);
+        let bottom_right = vec3(SCREEN_SIZE.x as f32 - 1.0, SCREEN_SIZE.y as f32 - 1.0, 0.0);
+        let mut cmds = vec![
+            Command::line(top_left, arena_color, top_right, arena_color),
+            Command::line(top_right, arena_color, bottom_right, arena_color),
+            Command::line(bottom_right, arena_color, bottom_left, arena_color),
+            Command::line(bottom_left, arena_color, top_left, arena_color),
+        ];
+
+        // Drawing commands for sammy (the snake)...
+        let sammy_color = qb_color(14);
+        for seg in &self.sammy {
+            let start = vec3(seg.x as f32, seg.y as f32, 0.0);
+            let end = vec3(start.x(), start.y(), 0.0);
+            cmds.push(Command::line(start, sammy_color, end, sammy_color));
+        }
+
+        // Drawing commands for the food...
+        let food_color = qb_color(10);
+        {
+            let start = vec3(self.food.x as f32, self.food.y as f32, 0.0);
+            let end = vec3(self.food.x as f32, self.food.y as f32, 0.0);
+            cmds.push(Command::line(start, food_color, end, food_color));
+        }
+
+        // Send the Arena, Sammy, and Food as one batch. Lines will be drawn in the correct
+        // z-order given their 3D coordinates however in this case all lines have a Z of 0,
+        // so the order of submission is important - Food will be drawn last on top.
+        lo_frame.draw(
+            #[cfg(debug_assertions)]
+            "arena and sammy",
+            &self.view,
+            &mut cmds,
+        );
+
+        let lo_texture = gpu.resolve(lo_frame);
+        hi_frame.write(
+            #[cfg(debug_assertions)]
+            "lo frame",
+            WriteMode::Texture,
+            &mut [Write::region(&lo_texture, hi_dims)],
+        );
 
         // Player name on the left-top of the screen
-        frame.text(
+        hi_frame.text(
             #[cfg(debug_assertions)]
             "player name",
             &self.font,
@@ -183,7 +236,7 @@ impl Screen for Nibbles {
         // Score at the right-top of the screen
         let score = format!("Score: {}", self.score);
         let score_size = self.font.measure(&score);
-        frame.text(
+        hi_frame.text(
             #[cfg(debug_assertions)]
             "score",
             &self.font,
@@ -192,47 +245,8 @@ impl Screen for Nibbles {
             qb_color(15),
         );
 
-        // Drawing commands for the arena (the deadly walls of death)...
-        let arena_color = qb_color(4);
-        let top_left = vec3(2.5, 12.5, 0.0);
-        let top_right = vec3(SCREEN_SIZE.x as f32 - 2.5, 12.5, 0.0);
-        let bottom_left = vec3(2.5, SCREEN_SIZE.y as f32 - 2.5, 0.0);
-        let bottom_right = vec3(SCREEN_SIZE.x as f32 - 2.5, SCREEN_SIZE.y as f32 - 2.5, 0.0);
-        let mut cmds = vec![
-            Command::line(top_left, arena_color, top_right, arena_color),
-            Command::line(top_right, arena_color, bottom_right, arena_color),
-            Command::line(bottom_right, arena_color, bottom_left, arena_color),
-            Command::line(bottom_left, arena_color, top_left, arena_color),
-        ];
-
-        // Drawing commands for sammy (the snake)...
-        let sammy_color = qb_color(14);
-        for seg in &self.sammy {
-            let start = vec3(seg.x as f32 * 4.0, seg.y as f32 * 4.0, 0.0);
-            let end = vec3(start.x() + 4.0, start.y() + 4.0, 0.0);
-            cmds.push(Command::line(start, sammy_color, end, sammy_color));
-        }
-
-        // Drawing commands for the food...
-        let food_color = qb_color(10);
-        {
-            let start = vec3(self.food.x as f32 * 4.0, self.food.y as f32 * 4.0, 0.0);
-            let end = vec3(start.x() + 4.0, start.y() + 4.0, 0.0);
-            cmds.push(Command::line(start, food_color, end, food_color));
-        }
-
-        // Send the Arena, Sammy, and Food as one batch. Lines will be drawn in the correct
-        // z-order given their 3D coordinates however in this case all lines have a Z of 0,
-        // so the order of submission is important - Food will be drawn last on top.
-        frame.draw(
-            #[cfg(debug_assertions)]
-            "arena and sammy",
-            &self.view,
-            &mut cmds,
-        );
-
         // Present the completed frame to the screen
-        frame
+        hi_frame
     }
 
     fn update(mut self: Box<Self>, _: &Gpu, input: &Input) -> DynScreen {

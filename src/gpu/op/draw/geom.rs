@@ -20,27 +20,32 @@ use {
 // TODO: use genmesh::{LruIndexer, Triangulate} (both here and in the bake::mesh code!! switch to a more efficient drawing mode!!)
 // TODO: Use https://doc.rust-lang.org/std/primitive.slice.html#method.get_unchecked_mut
 
-pub const LINE_STRIDE: usize = 32;
+pub const LINE_STRIDE: usize = 64;
 pub const RECT_LIGHT_STRIDE: usize = 144;
 
 /// Produces the vertices of a given line definition.
 pub(super) fn gen_line(vertices: &[LineVertex; 2]) -> [u8; LINE_STRIDE] {
     let mut res = [0; LINE_STRIDE];
 
-    res[x_range(0)].copy_from_slice(&vertices[0].pos.x().to_ne_bytes());
-    res[y_range(0)].copy_from_slice(&vertices[0].pos.y().to_ne_bytes());
-    res[z_range(0)].copy_from_slice(&vertices[0].pos.z().to_ne_bytes());
-    res[x_range(1)].copy_from_slice(&vertices[1].pos.x().to_ne_bytes());
-    res[y_range(1)].copy_from_slice(&vertices[1].pos.y().to_ne_bytes());
-    res[z_range(2)].copy_from_slice(&vertices[1].pos.z().to_ne_bytes());
-    res[24] = vertices[0].color.r;
-    res[25] = vertices[0].color.g;
-    res[26] = vertices[0].color.b;
-    res[27] = vertices[0].color.a;
-    res[28] = vertices[1].color.r;
-    res[29] = vertices[1].color.g;
-    res[30] = vertices[1].color.b;
-    res[31] = vertices[1].color.a;
+    res[0..4].copy_from_slice(&vertices[0].pos.x().to_ne_bytes());
+    res[4..8].copy_from_slice(&vertices[0].pos.y().to_ne_bytes());
+    res[8..12].copy_from_slice(&vertices[0].pos.z().to_ne_bytes());
+
+    let (r, g, b, a) = vertices[0].color.to_unorm();
+    res[12..16].copy_from_slice(&r.to_ne_bytes());
+    res[16..20].copy_from_slice(&g.to_ne_bytes());
+    res[20..24].copy_from_slice(&b.to_ne_bytes());
+    res[24..28].copy_from_slice(&a.to_ne_bytes());
+
+    res[32..36].copy_from_slice(&vertices[1].pos.x().to_ne_bytes());
+    res[36..40].copy_from_slice(&vertices[1].pos.y().to_ne_bytes());
+    res[40..44].copy_from_slice(&vertices[1].pos.z().to_ne_bytes());
+
+    let (r, g, b, a) = vertices[1].color.to_unorm();
+    res[44..48].copy_from_slice(&r.to_ne_bytes());
+    res[48..52].copy_from_slice(&g.to_ne_bytes());
+    res[52..56].copy_from_slice(&b.to_ne_bytes());
+    res[56..60].copy_from_slice(&a.to_ne_bytes());
 
     res
 }

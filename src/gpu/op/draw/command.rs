@@ -113,6 +113,7 @@ impl<'c> Command<'c> {
         // Initially we set `camera_z` to a non-value because we will fill it in once we get the camera during draw
         Self::Mesh(MeshCommand {
             camera_z: f32::NAN,
+            cull_group: 0,
             material,
             mesh,
             transform,

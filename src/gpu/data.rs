@@ -411,6 +411,7 @@ impl AsRef<<_Backend as Backend>::Buffer> for Data {
 pub struct Mapping<'m> {
     driver: Driver,
     flushed: bool,
+    len: usize,
     mapped_mem: (&'m <_Backend as Backend>::Memory, Segment),
     ptr: *mut u8,
 }
@@ -425,6 +426,7 @@ impl<'m> Mapping<'m> {
         range: Range<u64>,
     ) -> Result<Self, MapError> {
         assert_ne!(range.end, 0);
+        assert!(range.start < range.end);
 
         // Mapped host memory ranges must be in multiples of atom size; so we align to a possibly larger window
         let non_coherent_atom_size = driver
@@ -436,6 +438,8 @@ impl<'m> Mapping<'m> {
         let offset = align_down(range.start, non_coherent_atom_size as _);
         let size = align_up(range.end - range.start, non_coherent_atom_size as _);
 
+        debug!("Request {}..{} got {}..{} (ncas {})", range.start, range.end, offset, offset + size, non_coherent_atom_size);
+
         let segment = Segment {
             offset,
             size: Some(size),
@@ -445,7 +449,7 @@ impl<'m> Mapping<'m> {
             let mapped_mem = (mem, segment.clone());
             let ptr = device
                 .map_memory(mem, segment)?
-                .offset(offset as isize - range.start as isize);
+                .offset((range.start - offset) as _);
             device.invalidate_mapped_memory_ranges(once(&mapped_mem))?;
 
             (mapped_mem, ptr)
@@ -454,6 +458,7 @@ impl<'m> Mapping<'m> {
         Ok(Self {
             driver,
             flushed: true,
+            len: (range.end - range.start) as _,
             mapped_mem,
             ptr,
         })
@@ -479,7 +484,7 @@ impl Deref for Mapping<'_> {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
-        unsafe { slice_from_raw_parts(self.ptr, self.mapped_mem.1.size.unwrap() as _) }
+        unsafe { slice_from_raw_parts(self.ptr, self.len) }
     }
 }
 
@@ -488,7 +493,7 @@ impl DerefMut for Mapping<'_> {
         // Set the flag because we must tell the device this segment has been written to!
         self.flushed = false;
 
-        unsafe { slice_from_raw_parts_mut(self.ptr, self.mapped_mem.1.size.unwrap() as _) }
+        unsafe { slice_from_raw_parts_mut(self.ptr, self.len) }
     }
 }
 

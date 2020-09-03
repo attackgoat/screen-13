@@ -17,7 +17,7 @@ pub use self::{
 use {
     super::{
         driver::{CommandPool, DescriptorPool, Driver, Fence, Image2d, Memory, RenderPass},
-        op::draw::Compiler,
+        op::Compiler,
         BlendMode, Data, Texture, TextureRef,
     },
     crate::math::Extent,
@@ -83,10 +83,8 @@ pub enum GraphicsMode {
     FontOutline,
     Gradient,
     GradientTransparency,
-    Line,
-    Mesh(MeshType),
-    Spotlight,
-    Sunlight,
+    DrawLine,
+    DrawMesh(MeshType),
     Texture,
 }
 
@@ -157,6 +155,7 @@ impl Pool {
         let item = if let Some(item) = self.compilers.borrow_mut().pop_back() {
             item
         } else {
+            debug!("Creating new compiler");
             Default::default()
         };
 
@@ -308,15 +307,14 @@ impl Pool {
         }
         let ctor = match graphics_mode {
             GraphicsMode::Blend(BlendMode::Normal) => Graphics::blend_normal,
+            GraphicsMode::DrawLine => Graphics::draw_line,
+            GraphicsMode::DrawMesh(MeshType::DualTexture) => Graphics::draw_mesh_dual,
+            GraphicsMode::DrawMesh(MeshType::SingleTexture) => Graphics::draw_mesh_single,
+            GraphicsMode::DrawMesh(MeshType::Transparent) => Graphics::draw_trans,
             GraphicsMode::Font => Graphics::font,
             GraphicsMode::FontOutline => Graphics::font_outline,
             GraphicsMode::Gradient => Graphics::gradient,
             GraphicsMode::GradientTransparency => Graphics::gradient_transparency,
-            GraphicsMode::Mesh(MeshType::DualTexture) => Graphics::draw_mesh_dual,
-            GraphicsMode::Mesh(MeshType::SingleTexture) => Graphics::draw_mesh_single,
-            GraphicsMode::Mesh(MeshType::Transparent) => Graphics::draw_trans,
-            GraphicsMode::Spotlight => Graphics::draw_spotlight,
-            GraphicsMode::Sunlight => Graphics::draw_sunlight,
             GraphicsMode::Texture => Graphics::texture,
             _ => panic!(),
         };

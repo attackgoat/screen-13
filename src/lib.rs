@@ -19,7 +19,7 @@ pub mod pak;
 /// Things, particularly traits, which are used in almost every single Screen 13 game.
 pub mod prelude {
     pub use {
-        super::{math::Extent, DynScreen, Engine, Gpu, Input, Program, Render, Screen},
+        super::{math::Extent, color::CORNFLOWER_BLUE, DynScreen, Engine, Gpu, Input, Program, Render, Screen},
         log_crate::{debug, error, info, trace, warn},
     };
 }
@@ -115,14 +115,12 @@ impl Engine {
         let mut last_frame = Instant::now();
         #[cfg(debug_assertions)]
         let mut started = last_frame;
-        let mut redraw = false;
 
         let config = self.config;
 
         // Pump events until the application exits
         self.game.run(move |event, game, control_flow| {
-            *control_flow =
-                ControlFlow::WaitUntil(last_frame.add(Duration::from_micros(NOMINAL_FRAME_MICROS)));
+            *control_flow = ControlFlow::Wait;
             match event {
                 Event::WindowEvent { event, .. } => match event {
                     WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
@@ -144,67 +142,53 @@ impl Engine {
                     _ => {}
                 },
                 Event::RedrawEventsCleared => game.request_redraw(),
-                Event::RedrawRequested(_) => redraw = true,
+                Event::RedrawRequested(_) => {
+                    // Keep the rendering buffer from overflowing
+                    while render_buf.len() >= config.render_buf_len() {
+                        render_buf.pop_back();
+                    }
+
+                    // Render & present the screen, saving the result in our buffer
+                    let render = screen.as_ref().unwrap().render(game.gpu(), game.dims());
+                    render_buf.push_front(game.present(render));
+
+                    // Update the current scene state, potentially returning a new one
+                    screen = Some(screen.take().unwrap().update(game.gpu(), &input));
+
+                    // We have handled all input
+                    input.keys.clear();
+
+                    #[cfg(debug_assertions)]
+                    {
+                        let now = Instant::now();
+                        let elapsed = now - started;
+                        started = now;
+                        let fps = (1_000_000_000.0 / elapsed.as_nanos() as f64) as usize;
+                        match fps {
+                            fps if fps >= 59 => debug!(
+                                "Frame complete: {}ns ({}fps buf={})",
+                                elapsed.as_nanos().to_formatted_string(&Locale::en),
+                                fps.to_formatted_string(&Locale::en),
+                                render_buf.len()
+                            ),
+                            fps if fps >= 50 => info!(
+                                "Frame complete: {}ns ({}fps buf={}) (FRAME DROPPED)",
+                                elapsed.as_nanos().to_formatted_string(&Locale::en),
+                                fps.to_formatted_string(&Locale::en),
+                                render_buf.len()
+                            ),
+                            _ => warn!(
+                                "Frame complete: {}ns ({}fps buf={}) (STALLED)",
+                                elapsed.as_nanos().to_formatted_string(&Locale::en),
+                                fps.to_formatted_string(&Locale::en),
+                                render_buf.len()
+                            ),
+                        }
+                        last_frame = now;
+                    }
+                },
                 _ => {}
             }
-
-            let now = Instant::now();
-
-            if *control_flow == ControlFlow::Exit {
-                return;
-            } else if !redraw || now < last_frame.add(Duration::from_micros(NOMINAL_FRAME_MICROS)) {
-                *control_flow = ControlFlow::WaitUntil(
-                    last_frame.add(Duration::from_micros(NOMINAL_FRAME_MICROS)),
-                );
-                return;
-            } else {
-                redraw = false
-            }
-
-            // Keep the rendering buffer from overflowing
-            while render_buf.len() >= config.render_buf_len() {
-                render_buf.pop_back();
-            }
-
-            // Render & present the screen, saving the result in our buffer
-            let render = screen.as_ref().unwrap().render(game.gpu(), game.dims());
-            render_buf.push_front(game.present(render));
-
-            // Update the current scene state, potentially returning a new one
-            screen = Some(screen.take().unwrap().update(game.gpu(), &input));
-
-            // We have handled all input
-            input.keys.clear();
-
-            #[cfg(debug_assertions)]
-            {
-                let now = Instant::now();
-                let elapsed = now - started;
-                started = now;
-                let fps = (1_000_000_000.0 / elapsed.as_nanos() as f64) as usize;
-                match fps {
-                    fps if fps >= 59 => debug!(
-                        "Frame complete: {}ns ({}fps buf={})",
-                        elapsed.as_nanos().to_formatted_string(&Locale::en),
-                        fps.to_formatted_string(&Locale::en),
-                        render_buf.len()
-                    ),
-                    fps if fps >= 50 => info!(
-                        "Frame complete: {}ns ({}fps buf={}) (FRAME DROPPED)",
-                        elapsed.as_nanos().to_formatted_string(&Locale::en),
-                        fps.to_formatted_string(&Locale::en),
-                        render_buf.len()
-                    ),
-                    _ => warn!(
-                        "Frame complete: {}ns ({}fps buf={}) (STALLED)",
-                        elapsed.as_nanos().to_formatted_string(&Locale::en),
-                        fps.to_formatted_string(&Locale::en),
-                        render_buf.len()
-                    ),
-                }
-            }
-
-            last_frame = now;
         });
     }
 }

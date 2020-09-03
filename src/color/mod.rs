@@ -13,6 +13,7 @@ use gfx_hal::{
 
 pub const BLACK: Color = Color::rgb(0, 0, 0);
 pub const BLUE: Color = Color::rgb(0, 0, 255);
+pub const CORNFLOWER_BLUE: Color = Color::rgb(154, 206, 235);
 pub const MAGENTA: Color = Color::rgb(255, 0, 255);
 pub const GREEN: Color = Color::rgb(0, 255, 0);
 pub const RED: Color = Color::rgb(255, 0, 0);

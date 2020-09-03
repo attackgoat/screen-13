@@ -12,6 +12,7 @@ pub use self::{command::Command, compiler::Compiler};
 
 use {
     self::{
+        geom::LINE_STRIDE,
         graphics_buf::GraphicsBuffer,
         instruction::{Instruction, MeshInstruction},
     },
@@ -22,7 +23,7 @@ use {
         gpu::{
             data::CopyRange,
             driver::{CommandPool, Device, Driver, Fence, Framebuffer2d, PhysicalDevice},
-            pool::{Graphics, Lease, RenderPassMode},
+            pool::{Graphics, GraphicsMode, Lease, RenderPassMode},
             Data, Mesh, PoolRef, Texture2d, TextureRef,
         },
         math::{Cone, Coord, CoordF, Extent, Mat4, Sphere, Vec3},
@@ -171,6 +172,7 @@ impl DrawOp {
             rect: dims.as_rect_at(Coord::ZERO),
             depth: 0.0..1.0,
         };
+        let view_projection = camera.view() * camera.projection();
 
         // Use a compiler to figure out rendering instructions without allocating
         // memory per rendering command. The compiler caches code between frames.
@@ -189,16 +191,24 @@ impl DrawOp {
             while let Some(instr) = instrs.next() {
                 match instr {
                     Instruction::CopyVertices((buf, ranges)) => {
-                        self.submit_vertex_copy(buf, ranges)
+                        self.submit_vertex_copies(buf, ranges);
+                    }
+                    Instruction::DrawLines((buf, count)) => {
+                        self.submit_draw_lines(buf, count, &viewport, &view_projection);
                     }
                     Instruction::TransferData((src, dst)) => {
                         self.submit_data_transfer(src, dst);
+                    }
+                    Instruction::WriteVertces((buf, range)) => {
+                        self.submit_vertex_write(buf, range);
                     }
                     _ => panic!(),
                 }
             }
 
             self.submit_finish();
+
+            debug!("Done drawing");
         };
 
         DrawOpSubmission {
@@ -325,12 +335,65 @@ impl DrawOp {
         );
     }
 
-    unsafe fn submit_vertex_copy(&mut self, buf: &mut Data, ranges: &[CopyRange]) {
+    unsafe fn submit_draw_lines(
+        &mut self,
+        buf: &mut Data,
+        count: u32,
+        viewport: &Viewport,
+        transform: &Mat4,
+    ) {
+        debug!("Drawing {} lines", count );
+
+        self.graphics_line = Some(self.pool.borrow_mut().graphics(
+            #[cfg(debug_assertions)]
+            &format!("{} line", &self.name),
+            GraphicsMode::DrawLine,
+            RenderPassMode::Draw,
+            0,
+        ));
+        let graphics = self.graphics_line.as_ref().unwrap();
+
+        self.cmd_buf.set_scissors(0, &[viewport.rect]);
+        self.cmd_buf.set_viewports(0, &[viewport.clone()]);
+        self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
+        self.cmd_buf.push_graphics_constants(
+            graphics.layout(),
+            ShaderStageFlags::VERTEX,
+            0,
+            LineVertexConsts {
+                transform: transform.clone(),
+            }
+            .as_ref(),
+        );
+        self.cmd_buf.bind_vertex_buffers(
+            0,
+            Some((
+                buf.as_ref(),
+                SubRange {
+                    offset: 0,
+                    size: Some((count * LINE_STRIDE as u32) as _),
+                },
+            )),
+        );
+        self.cmd_buf.draw(0..count, 0..1);
+    }
+
+    unsafe fn submit_vertex_copies(&mut self, buf: &mut Data, ranges: &[CopyRange]) {
         buf.copy_ranges(
             &mut self.cmd_buf,
             PipelineStage::VERTEX_INPUT,
             BufferAccess::VERTEX_BUFFER_READ,
             ranges,
+        );
+    }
+
+    unsafe fn submit_vertex_write(&mut self, buf: &mut Data, range: Range<u64>) {
+        debug!("Submitting vertex write");
+        buf.write_range(
+            &mut self.cmd_buf,
+            PipelineStage::VERTEX_INPUT,
+            BufferAccess::VERTEX_BUFFER_READ,
+            range,
         );
     }
 
@@ -399,24 +462,6 @@ impl DrawOp {
     // self.cmd_buf.next_subpass(SubpassContents::Inline);
     // idx
     //}
-
-    unsafe fn submit_line_begin(&mut self, viewport: &Viewport, view_proj: Mat4) {
-        let graphics = self.graphics_line.as_ref().unwrap();
-
-        self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
-        self.cmd_buf.set_scissors(0, &[viewport.rect]);
-        self.cmd_buf.set_viewports(0, &[viewport.clone()]);
-        self.cmd_buf.push_graphics_constants(
-            graphics.layout(),
-            ShaderStageFlags::VERTEX,
-            0,
-            LineVertexConsts { view_proj }.as_ref(),
-        );
-    }
-
-    unsafe fn submit_line(&mut self, instr: &LineInstruction) {
-        self.cmd_buf.draw(0..instr.0, 0..1);
-    }
 
     unsafe fn submit_mesh_begin(&mut self) {
         // let mesh = self.mesh.as_ref().unwrap();
@@ -754,7 +799,7 @@ struct LineVertex {
 
 #[repr(C)]
 struct LineVertexConsts {
-    view_proj: Mat4,
+    transform: Mat4,
 }
 
 impl AsRef<[u32; 16]> for LineVertexConsts {
@@ -793,6 +838,7 @@ impl Default for Material {
 #[derive(Clone)]
 pub struct MeshCommand<'m> {
     camera_z: f32,
+    cull_group: usize,
     material: Material,
     mesh: &'m Mesh,
     transform: Mat4,

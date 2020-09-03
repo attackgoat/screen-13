@@ -7,9 +7,9 @@ use {
 };
 
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
-pub struct RectLightKey(u32);
+pub struct RectLight(u32);
 
-impl RectLightKey {
+impl RectLight {
     /// Returns the normalized and quantized rectangular light and the scale needed to undo the normalization.
     pub fn quantize(cmd: &RectLightCommand) -> (Self, f32) {
         let scale = (cmd.dims.x * cmd.dims.x

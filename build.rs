@@ -246,13 +246,15 @@ fn compile_shaders() {
     }
 
     // Deferred renderings
-    compile_glsl(ShaderKind::Fragment, "deferred/mesh_dual.frag");
-    compile_glsl(ShaderKind::Vertex, "deferred/mesh_dual.vert");
-    compile_glsl(ShaderKind::Fragment, "deferred/mesh_single.frag");
-    compile_glsl(ShaderKind::Vertex, "deferred/mesh_single.vert");
-    compile_glsl(ShaderKind::Fragment, "deferred/trans.frag");
-    compile_glsl(ShaderKind::Fragment, "deferred/spotlight.frag");
-    compile_glsl(ShaderKind::Fragment, "deferred/sunlight.frag");
+    compile_glsl(ShaderKind::Vertex, "deferred/line.vert");
+    compile_glsl(ShaderKind::Fragment, "deferred/line.frag");
+    // compile_glsl(ShaderKind::Fragment, "deferred/mesh_dual.frag");
+    // compile_glsl(ShaderKind::Vertex, "deferred/mesh_dual.vert");
+    // compile_glsl(ShaderKind::Fragment, "deferred/mesh_single.frag");
+    // compile_glsl(ShaderKind::Vertex, "deferred/mesh_single.vert");
+    // compile_glsl(ShaderKind::Fragment, "deferred/trans.frag");
+    // compile_glsl(ShaderKind::Fragment, "deferred/spotlight.frag");
+    // compile_glsl(ShaderKind::Fragment, "deferred/sunlight.frag");
 
     // Blending
     compile_glsl(ShaderKind::Fragment, "blending/add.frag");
@@ -317,8 +319,6 @@ fn compile_shaders() {
     compile_glsl(ShaderKind::Fragment, "gradient.frag");
     compile_glsl(ShaderKind::Vertex, "gradient.vert");
     compile_glsl(ShaderKind::Fragment, "hdr_tonemap.frag");
-    compile_glsl(ShaderKind::Vertex, "line.vert");
-    compile_glsl(ShaderKind::Fragment, "line.frag");
     compile_glsl(ShaderKind::Fragment, "post_dof.frag");
     compile_glsl(ShaderKind::Fragment, "post_vignette.frag");
     compile_glsl(ShaderKind::Vertex, "quad_transform.vert");
