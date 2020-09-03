@@ -14,10 +14,7 @@ mod swapchain;
 mod texture;
 
 pub use self::{
-    op::{
-        Command, Material,
-        Bitmap, Font, Write, WriteMode,
-    },
+    op::{Bitmap, Command, Font, Material, Write, WriteMode},
     render::Render,
     swapchain::Swapchain,
     texture::Texture,

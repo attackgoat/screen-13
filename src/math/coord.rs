@@ -195,7 +195,6 @@ impl From<Coord<u32>> for Rect {
     }
 }
 
-
 impl From<Coord<u32>> for Coord<i32> {
     fn from(val: Coord<u32>) -> Self {
         Self {

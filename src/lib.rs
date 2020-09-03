@@ -19,7 +19,10 @@ pub mod pak;
 /// Things, particularly traits, which are used in almost every single Screen 13 game.
 pub mod prelude {
     pub use {
-        super::{math::Extent, color::CORNFLOWER_BLUE, DynScreen, Engine, Gpu, Input, Program, Render, Screen},
+        super::{
+            color::CORNFLOWER_BLUE, math::Extent, DynScreen, Engine, Gpu, Input, Program, Render,
+            Screen,
+        },
         log_crate::{debug, error, info, trace, warn},
     };
 }
@@ -186,7 +189,7 @@ impl Engine {
                         }
                         last_frame = now;
                     }
-                },
+                }
                 _ => {}
             }
         });

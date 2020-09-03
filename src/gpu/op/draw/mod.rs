@@ -342,7 +342,7 @@ impl DrawOp {
         viewport: &Viewport,
         transform: &Mat4,
     ) {
-        debug!("Drawing {} lines", count );
+        debug!("Drawing {} lines", count);
 
         self.graphics_line = Some(self.pool.borrow_mut().graphics(
             #[cfg(debug_assertions)]

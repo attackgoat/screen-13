@@ -438,7 +438,14 @@ impl<'m> Mapping<'m> {
         let offset = align_down(range.start, non_coherent_atom_size as _);
         let size = align_up(range.end - range.start, non_coherent_atom_size as _);
 
-        debug!("Request {}..{} got {}..{} (ncas {})", range.start, range.end, offset, offset + size, non_coherent_atom_size);
+        debug!(
+            "Request {}..{} got {}..{} (ncas {})",
+            range.start,
+            range.end,
+            offset,
+            offset + size,
+            non_coherent_atom_size
+        );
 
         let segment = Segment {
             offset,

@@ -16,8 +16,8 @@ use {
         },
     },
     std::{
-        collections::BTreeSet,
         cmp::{Ord, Ordering},
+        collections::BTreeSet,
         mem::take,
         ops::Range,
         ptr::copy_nonoverlapping,
@@ -200,7 +200,11 @@ impl Compiler {
 
         #[cfg(debug_assertions)]
         {
-            info!("Reallocating {} to {}", buf.as_ref().map_or(0, |buf| buf.data.current.capacity()), len);
+            info!(
+                "Reallocating {} to {}",
+                buf.as_ref().map_or(0, |buf| buf.data.current.capacity()),
+                len
+            );
         }
 
         // We over-allocate the requested capacity to prevent rapid reallocations
@@ -273,7 +277,7 @@ impl Compiler {
                     buf.gpu_dirty.push(CopyRange {
                         dst: start,
                         src: *offset..*offset + stride,
-                    });    
+                    });
                 }
             } else {
                 buf.gpu_dirty.push(CopyRange {
@@ -650,10 +654,10 @@ impl Compiler {
                         // Cache the vertices for this line segment
                         let new_end = end + LINE_STRIDE as u64;
                         let vertices = gen_line(&line.0);
-                        
+
                         unsafe {
                             let mut mapped_range =
-                            buf.data.current.map_range_mut(end..new_end).unwrap(); // TODO: Error handling!
+                                buf.data.current.map_range_mut(end..new_end).unwrap(); // TODO: Error handling!
                             copy_nonoverlapping(
                                 vertices.as_ptr(),
                                 mapped_range.as_mut_ptr(),
@@ -679,7 +683,6 @@ impl Compiler {
 
             // Produce the assembly code that will draw all lines at once
             self.code.push(Asm::DrawLines(line_count as _));
-
         }
     }
 

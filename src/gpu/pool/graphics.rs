@@ -5,9 +5,7 @@ use {
         blending::{
             NORMAL_FRAG as BLEND_NORMAL_FRAG, QUAD_TRANSFORM_VERT as BLEND_QUAD_TRANSFORM_VERT,
         },
-        deferred::{
-            LINE_FRAG, LINE_VERT,
-        },
+        deferred::{LINE_FRAG, LINE_VERT},
         FONT_FRAG, FONT_OUTLINE_FRAG, FONT_VERT, GRADIENT_FRAG, GRADIENT_VERT, QUAD_TRANSFORM_VERT,
         QUAD_VERT, TEXTURE_FRAG,
     },

@@ -1,8 +1,8 @@
 use {
     super::{
         op::{
-            Command, DrawOp,
-            ClearOp, CopyOp, EncodeOp, Font, FontOp, GradientOp, Write, WriteMode, WriteOp,
+            ClearOp, Command, CopyOp, DrawOp, EncodeOp, Font, FontOp, GradientOp, Write, WriteMode,
+            WriteOp,
         },
         pool::Lease,
         Op, PoolRef, Texture2d, TextureRef,
