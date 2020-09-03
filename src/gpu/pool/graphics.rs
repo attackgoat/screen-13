@@ -273,10 +273,10 @@ impl Graphics {
     /// # Safety
     /// None
     pub unsafe fn draw_mesh_dual(
-        #[cfg(debug_assertions)] name: &str,
-        driver: &Driver,
-        subpass: Subpass<'_, _Backend>,
-        max_sets: usize,
+        #[cfg(debug_assertions)] _name: &str,
+        _driver: &Driver,
+        _subpass: Subpass<'_, _Backend>,
+        _max_sets: usize,
     ) -> Self {
         // let vertex = ShaderModule::new(Driver::clone(&driver), &MESH_DUAL_VERT);
         // let fragment = ShaderModule::new(Driver::clone(&driver), &MESH_DUAL_FRAG);
@@ -388,10 +388,10 @@ impl Graphics {
     /// # Safety
     /// None
     pub unsafe fn draw_mesh_single(
-        #[cfg(debug_assertions)] name: &str,
-        driver: &Driver,
-        subpass: Subpass<'_, _Backend>,
-        max_sets: usize,
+        #[cfg(debug_assertions)] _name: &str,
+        _driver: &Driver,
+        _subpass: Subpass<'_, _Backend>,
+        _max_sets: usize,
     ) -> Self {
         // let vertex = ShaderModule::new(Driver::clone(&driver), &MESH_SINGLE_VERT);
         // let fragment = ShaderModule::new(Driver::clone(&driver), &MESH_SINGLE_FRAG);
@@ -503,10 +503,10 @@ impl Graphics {
     /// # Safety
     /// None
     pub unsafe fn draw_spotlight(
-        #[cfg(debug_assertions)] name: &str,
-        driver: &Driver,
-        subpass: Subpass<'_, _Backend>,
-        max_sets: usize,
+        #[cfg(debug_assertions)] _name: &str,
+        _driver: &Driver,
+        _subpass: Subpass<'_, _Backend>,
+        _max_sets: usize,
     ) -> Self {
         // let vertex = ShaderModule::new(Driver::clone(&driver), &QUAD_TRANSFORM_VERT);
         // let fragment = ShaderModule::new(Driver::clone(&driver), &SPOTLIGHT_FRAG);
@@ -584,10 +584,10 @@ impl Graphics {
     /// # Safety
     /// None
     pub unsafe fn draw_sunlight(
-        #[cfg(debug_assertions)] name: &str,
-        driver: &Driver,
-        subpass: Subpass<'_, _Backend>,
-        max_sets: usize,
+        #[cfg(debug_assertions)] _name: &str,
+        _driver: &Driver,
+        _subpass: Subpass<'_, _Backend>,
+        _max_sets: usize,
     ) -> Self {
         // let vertex = ShaderModule::new(Driver::clone(&driver), &QUAD_TRANSFORM_VERT);
         // let fragment = ShaderModule::new(Driver::clone(&driver), &SUNLIGHT_FRAG);
@@ -690,10 +690,10 @@ impl Graphics {
     /// # Safety
     /// None
     pub unsafe fn draw_trans(
-        #[cfg(debug_assertions)] name: &str,
-        driver: &Driver,
-        subpass: Subpass<'_, _Backend>,
-        max_sets: usize,
+        #[cfg(debug_assertions)] _name: &str,
+        _driver: &Driver,
+        _subpass: Subpass<'_, _Backend>,
+        _max_sets: usize,
     ) -> Self {
         // let vertex = ShaderModule::new(Driver::clone(&driver), &MESH_SINGLE_VERT);
         // let fragment = ShaderModule::new(Driver::clone(&driver), &TRANS_FRAG);

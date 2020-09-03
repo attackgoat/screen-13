@@ -1,7 +1,7 @@
 use {
     crate::gpu::op::draw::LineCommand,
     gfx_hal::image::PackedColor,
-    std::{cmp::Ordering, collections::hash_map::DefaultHasher, hash::Hasher},
+    std::{collections::hash_map::DefaultHasher, hash::Hasher},
 };
 
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]

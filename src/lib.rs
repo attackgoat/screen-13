@@ -44,11 +44,7 @@ pub use self::{
 
 use {
     self::{config::Config, game::Game, math::Extent},
-    std::{
-        collections::VecDeque,
-        ops::Add,
-        time::{Duration, Instant},
-    },
+    std::{collections::VecDeque, time::Instant},
     winit::{
         event::{Event, VirtualKeyCode, WindowEvent},
         event_loop::ControlFlow,
@@ -115,9 +111,8 @@ impl Engine {
         let mut screen: Option<DynScreen> = Some(screen);
 
         // Event loop state variables
-        let mut last_frame = Instant::now();
         #[cfg(debug_assertions)]
-        let mut started = last_frame;
+        let mut started = Instant::now();
 
         let config = self.config;
 
@@ -187,7 +182,6 @@ impl Engine {
                                 render_buf.len()
                             ),
                         }
-                        last_frame = now;
                     }
                 }
                 _ => {}
