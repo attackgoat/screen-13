@@ -195,6 +195,7 @@ impl Font {
     }
 }
 
+// TODO: This really needs to cache data like the draw compiler does
 pub struct FontOp {
     back_buf: Lease<Texture2d>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,

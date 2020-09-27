@@ -67,7 +67,7 @@ impl Nibbles {
         // Setup an orthographic camera to provide a 2D view
         let eye = vec3(SCREEN_SIZE.x as f32 / 2.0, SCREEN_SIZE.y as f32 / 2.0, -1.0);
         let target = vec3(eye.x(), eye.y(), 0.0);
-        let view = Orthographic::new(eye, target, SCREEN_SIZE, 0.0..1.0);
+        let view = Orthographic::new(eye, target, SCREEN_SIZE, 0.9..1.1);
 
         let mut game = Self {
             direction: Direction::Right,
@@ -179,7 +179,7 @@ impl Screen for Nibbles {
         // Drawing commands for the arena (the deadly walls of death)...
         let arena_color = qb_color(4);
         let top_left = vec3(0.0, 0.0, 0.0);
-        let top_right = vec3(SCREEN_SIZE.x as f32 - 1.0, 1.0, 0.0);
+        let top_right = vec3(SCREEN_SIZE.x as f32 - 1.0, 0.0, 0.0);
         let bottom_left = vec3(0.0, SCREEN_SIZE.y as f32 - 1.0, 0.0);
         let bottom_right = vec3(SCREEN_SIZE.x as f32 - 1.0, SCREEN_SIZE.y as f32 - 1.0, 0.0);
         let mut cmds = vec![

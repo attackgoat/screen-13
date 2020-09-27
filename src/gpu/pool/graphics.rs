@@ -48,7 +48,7 @@ const LINE_RASTERIZER: Rasterizer = Rasterizer {
     depth_bias: None,
     depth_clamping: false,
     front_face: FrontFace::Clockwise,
-    line_width: State::Static(11.0),
+    line_width: State::Static(1.0),
     polygon_mode: PolygonMode::Line,
 };
 

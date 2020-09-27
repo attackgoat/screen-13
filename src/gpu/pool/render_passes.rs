@@ -12,7 +12,7 @@ use {
     },
 };
 
-pub fn draw(driver: &Driver, format: Format) -> RenderPass {
+pub fn draw(driver: Driver, format: Format) -> RenderPass {
     // Borrows from https://github.com/SaschaWillems/Vulkan/blob/master/examples/subpasses/subpasses.cpp
     //
     // Attachments:
@@ -29,7 +29,7 @@ pub fn draw(driver: &Driver, format: Format) -> RenderPass {
     RenderPass::new(
         #[cfg(debug_assertions)]
         "Draw",
-        Driver::clone(&driver),
+        driver,
         &[
             Attachment {
                 format: Some(format),
@@ -134,11 +134,11 @@ pub fn draw(driver: &Driver, format: Format) -> RenderPass {
     )
 }
 
-pub fn draw_ms(driver: &Driver, format: Format) -> RenderPass {
+pub fn draw_ms(driver: Driver, format: Format) -> RenderPass {
     RenderPass::new(
         #[cfg(debug_assertions)]
         "Draw Multisampled",
-        Driver::clone(&driver),
+        driver,
         &[Attachment {
             format: Some(format),
             samples: 1,
@@ -201,11 +201,11 @@ pub fn present(driver: &Driver, format: Format) -> RenderPass {
     )
 }
 
-pub fn read_write(driver: &Driver, format: Format) -> RenderPass {
+pub fn read_write(driver: Driver, format: Format) -> RenderPass {
     RenderPass::new(
         #[cfg(debug_assertions)]
         "Read/Write",
-        Driver::clone(&driver),
+        driver,
         &[Attachment {
             format: Some(format),
             samples: 1,
@@ -224,16 +224,16 @@ pub fn read_write(driver: &Driver, format: Format) -> RenderPass {
     )
 }
 
-pub fn read_write_ms(_driver: &Driver, _format: Format) -> RenderPass {
+pub fn read_write_ms(_driver: Driver, _format: Format) -> RenderPass {
     //&self.read_write_ms
     todo!();
 }
 
-pub fn write(driver: &Driver, format: Format) -> RenderPass {
+pub fn write(driver: Driver, format: Format) -> RenderPass {
     RenderPass::new(
         #[cfg(debug_assertions)]
         "Write",
-        Driver::clone(&driver),
+        driver,
         &[Attachment {
             format: Some(format),
             samples: 1,
@@ -252,7 +252,7 @@ pub fn write(driver: &Driver, format: Format) -> RenderPass {
     )
 }
 
-pub fn write_ms(_driver: &Driver, _format: Format) -> RenderPass {
+pub fn write_ms(_driver: Driver, _format: Format) -> RenderPass {
     //&self.write_ms
     todo!();
 }

@@ -338,8 +338,6 @@ impl Compiler {
     // TODO: Could return counts here and put a tiny bit of speed-up into the `fill_cache` function - could avoid the first four bin searches fwiw
     /// Cull any commands which are not within the camera frustum. Also adds z-order to meshes.
     fn cull(&mut self, camera: &impl Camera, cmds: &mut &mut [Command]) {
-        debug!("Culling {} commands", cmds.len());
-
         // We use `cull_groups` as a cache for this function only
         self.cull_groups.clear();
 
@@ -379,8 +377,6 @@ impl Compiler {
 
         // Safely replace `cmds` with a subslice, this drops the references to the culled commands but not their values
         *cmds = &mut take(cmds)[0..end];
-
-        debug!("Rendering {} commands", cmds.len());
     }
 
     /// Gets this compiler ready to use the given commands by pre-filling vertex cache buffers. Also records the ranges of vertex data
@@ -730,17 +726,23 @@ impl Compiler {
 
     /// Resets the internal caches so that this compiler may be reused by calling the `compile` function.
     pub fn reset(&mut self) {
+        self.code.clear();
         self.mesh_textures.clear();
 
-        // Reset the vertex buffer dirty regions
-        // if let Some(vertex_buf) = self.vertex_buf.as_mut() {
-        //     vertex_buf.cpu_dirty = None;
-        //     vertex_buf.data.previous = None;
-        //     vertex_buf.gpu_dirty.clear();
-        // }
+        if let Some(buf) = self.line_buf.as_mut() {
+            buf.cpu_dirty = None;
+            buf.gpu_dirty.clear();
+        }
 
-        // Finally, reset the "recently used" flags
-        //self.point_light_lru = false;
+        if let Some(buf) = self.rect_light_buf.as_mut() {
+            buf.cpu_dirty = None;
+            buf.gpu_dirty.clear();
+        }
+
+        if let Some(buf) = self.spotlight_buf.as_mut() {
+            buf.cpu_dirty = None;
+            buf.gpu_dirty.clear();
+        }
 
         for item in self.line_lru.iter_mut() {
             item.recently_used = false;

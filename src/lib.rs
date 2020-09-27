@@ -54,8 +54,6 @@ use {
 #[cfg(debug_assertions)]
 use num_format::{Locale, ToFormattedString};
 
-const NOMINAL_FRAME_MICROS: u64 = 15_000; // TODO: Kill with fire - Need to sync up with latest Winit patterns and get rid of this!!!!
-
 pub type DynScreen = Box<dyn Screen>;
 
 /// Only required when you are not running an engine instance but still using other

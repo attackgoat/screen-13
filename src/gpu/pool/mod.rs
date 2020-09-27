@@ -354,7 +354,7 @@ impl Pool {
     }
 
     pub fn render_pass(&mut self, mode: RenderPassMode) -> &RenderPass {
-        let driver = &self.driver;
+        let driver = Driver::clone(&self.driver);
         let format = self.format;
         self.render_passes
             .entry(mode)

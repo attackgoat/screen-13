@@ -4,7 +4,7 @@ mod compiler;
 /// This module houses all the dynamically created meshes used by the drawing code to fulfill user commands.
 mod geom;
 
-mod graphics_buf;
+mod geom_buf;
 mod instruction;
 mod key;
 
@@ -13,7 +13,7 @@ pub use self::{command::Command, compiler::Compiler};
 use {
     self::{
         geom::LINE_STRIDE,
-        graphics_buf::GraphicsBuffer,
+        geom_buf::GeometryBuffer,
         instruction::{Instruction, MeshInstruction},
     },
     super::Op,
@@ -60,7 +60,7 @@ pub struct DrawOp {
     dst_preserve: bool,
     fence: Lease<Fence>,
     frame_buf: Framebuffer2d,
-    graphics_buf: GraphicsBuffer,
+    geom_buf: GeometryBuffer,
     graphics_line: Option<Lease<Graphics>>,
     graphics_mesh_animated: Option<Lease<Graphics>>,
     graphics_mesh_dual_tex: Option<Lease<Graphics>>,
@@ -90,7 +90,7 @@ impl DrawOp {
         };
 
         // Setup the framebuffer
-        let graphics_buf = GraphicsBuffer::new(
+        let geom_buf = GeometryBuffer::new(
             #[cfg(debug_assertions)]
             name,
             &mut pool_ref,
@@ -101,11 +101,11 @@ impl DrawOp {
             Driver::clone(&driver),
             pool_ref.render_pass(RenderPassMode::Draw),
             vec![
-                graphics_buf.color().borrow().as_default_view().as_ref(),
-                graphics_buf.position().borrow().as_default_view().as_ref(),
-                graphics_buf.normal().borrow().as_default_view().as_ref(),
-                graphics_buf.material().borrow().as_default_view().as_ref(),
-                graphics_buf
+                geom_buf.color().borrow().as_default_view().as_ref(),
+                geom_buf.position().borrow().as_default_view().as_ref(),
+                geom_buf.normal().borrow().as_default_view().as_ref(),
+                geom_buf.material().borrow().as_default_view().as_ref(),
+                geom_buf
                     .depth()
                     .borrow()
                     .as_view(
@@ -131,7 +131,7 @@ impl DrawOp {
             dst_preserve: false,
             fence: pool_ref.fence(),
             frame_buf,
-            graphics_buf,
+            geom_buf,
             graphics_line: None,
             graphics_mesh_animated: None,
             graphics_mesh_dual_tex: None,
@@ -219,7 +219,7 @@ impl DrawOp {
             dst: self.dst,
             fence: self.fence,
             frame_buf: self.frame_buf,
-            graphics_buf: self.graphics_buf,
+            geom_buf: self.geom_buf,
             graphics_line: self.graphics_line,
             graphics_mesh_animated: self.graphics_mesh_animated,
             graphics_mesh_dual_tex: self.graphics_mesh_dual_tex,
@@ -233,11 +233,11 @@ impl DrawOp {
     unsafe fn submit_begin(&mut self, viewport: &Viewport) {
         let mut pool = self.pool.borrow_mut();
         let mut dst = self.dst.borrow_mut();
-        let mut color = self.graphics_buf.color().borrow_mut();
-        let mut position = self.graphics_buf.position().borrow_mut();
-        let mut normal = self.graphics_buf.normal().borrow_mut();
-        let mut material = self.graphics_buf.material().borrow_mut();
-        let mut depth = self.graphics_buf.depth().borrow_mut();
+        let mut color = self.geom_buf.color().borrow_mut();
+        let mut position = self.geom_buf.position().borrow_mut();
+        let mut normal = self.geom_buf.normal().borrow_mut();
+        let mut material = self.geom_buf.material().borrow_mut();
+        let mut depth = self.geom_buf.depth().borrow_mut();
         let dims = dst.dims();
 
         // Begin
@@ -556,7 +556,7 @@ impl DrawOp {
         let driver = pool.driver();
         let mut device = driver.borrow_mut();
         let mut dst = self.dst.borrow_mut();
-        let mut material = self.graphics_buf.material().borrow_mut();
+        let mut material = self.geom_buf.material().borrow_mut();
         let dims = dst.dims();
 
         // Step 6: Copy the color graphics buffer into dst
@@ -760,7 +760,7 @@ pub struct DrawOpSubmission {
     dst: Texture2d,
     fence: Lease<Fence>,
     frame_buf: Framebuffer2d,
-    graphics_buf: GraphicsBuffer,
+    geom_buf: GeometryBuffer,
     graphics_line: Option<Lease<Graphics>>,
     graphics_mesh_animated: Option<Lease<Graphics>>,
     graphics_mesh_dual_tex: Option<Lease<Graphics>>,

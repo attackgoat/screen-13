@@ -13,7 +13,7 @@ use {
     },
 };
 
-pub struct GraphicsBuffer {
+pub struct GeometryBuffer {
     color: Lease<TextureRef<Image2d>>,
     depth: Lease<TextureRef<Image2d>>,
     material: Lease<TextureRef<Image2d>>,
@@ -21,7 +21,7 @@ pub struct GraphicsBuffer {
     position: Lease<TextureRef<Image2d>>,
 }
 
-impl GraphicsBuffer {
+impl GeometryBuffer {
     pub fn new(
         #[cfg(debug_assertions)] name: &str,
         pool: &mut Pool,
