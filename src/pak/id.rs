@@ -28,7 +28,7 @@ impl From<Id> for BlobId {
 pub enum Id {
     Bitmap(BitmapId),
     Blob(BlobId),
-    Mesh(MeshId),
+    Model(ModelId),
     Scene(SceneId),
 }
 
@@ -44,9 +44,9 @@ impl From<BlobId> for Id {
     }
 }
 
-impl From<MeshId> for Id {
-    fn from(id: MeshId) -> Self {
-        Self::Mesh(id)
+impl From<ModelId> for Id {
+    fn from(id: ModelId) -> Self {
+        Self::Model(id)
     }
 }
 
@@ -57,12 +57,12 @@ impl From<SceneId> for Id {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-pub struct MeshId(pub(crate) u16);
+pub struct ModelId(pub(crate) u16);
 
-impl From<Id> for MeshId {
+impl From<Id> for ModelId {
     fn from(id: Id) -> Self {
         match id {
-            Id::Mesh(id) => id,
+            Id::Model(id) => id,
             _ => panic!(),
         }
     }

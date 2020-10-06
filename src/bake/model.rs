@@ -2,36 +2,36 @@ use {
     super::{
         bake_bitmap,
         pak_log::LogId,
-        Asset, MeshAsset, PakLog, {get_filename_key, get_path},
+        Asset, ModelAsset, PakLog, {get_filename_key, get_path},
     },
     crate::{
         math::{vec2, vec3, Sphere, Vec2, Vec3},
-        pak::{Mesh, MeshId, PakBuf},
+        pak::{Model, ModelId, PakBuf},
     },
-    fbx_direct::{
-        common::OwnedProperty,
-        reader::{EventReader, FbxEvent},
-    },
+    gltf::Gltf,
     std::{fs::File, path::Path},
 };
 
-pub fn bake_mesh<P1: AsRef<Path>, P2: AsRef<Path>>(
+pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
     project_dir: P1,
     asset_filename: P2,
-    mesh_asset: &MeshAsset,
+    model_asset: &ModelAsset,
     mut pak: &mut PakBuf,
     mut log: &mut PakLog,
-) -> MeshId {
+) -> ModelId {
+    let dir = asset_filename.as_ref().parent().unwrap();
+    let src = get_path(&dir, model_asset.src());
+
     // Early out if we've already baked this asset
     // Also - the loggable asset won't have any texture so we can
     // reuse our vertices
-    let proto = Asset::Mesh(MeshAsset {
+    let proto = Asset::Model(ModelAsset {
         bitmaps: Default::default(),
-        scale: mesh_asset.scale,
-        src: mesh_asset.src.clone(),
-        translation: mesh_asset.translation,
+        offset: model_asset.offset,
+        scale: model_asset.scale,
+        src: src.clone(),
     });
-    if let Some(LogId::Mesh(id)) = log.get(&proto) {
+    if let Some(LogId::Model(id)) = log.get(&proto) {
         return id;
     }
 
@@ -40,9 +40,8 @@ pub fn bake_mesh<P1: AsRef<Path>, P2: AsRef<Path>>(
     info!("Processing asset: {}", key);
 
     // Get the fs objects for this asset
-    let dir = asset_filename.as_ref().parent().unwrap();
-    let src_filename = get_path(&dir, mesh_asset.src());
-    let bitmaps = mesh_asset
+    // SRC now ! let src_filename = get_path(&dir, model_asset.src());
+    let bitmaps = model_asset
         .bitmaps()
         .iter()
         .map(|bitmap| {
@@ -58,11 +57,14 @@ pub fn bake_mesh<P1: AsRef<Path>, P2: AsRef<Path>>(
         })
         .collect();
 
+    let data = Gltf::open(src).unwrap();
+
     // Bake the vertices
-    let vertices = parse_vertices(&src_filename, mesh_asset.scale());
-    let len = SingleTexture::BYTES * vertices.len();
+    //let vertices = parse_vertices(&src_filename, model_asset.scale);
+    //let len = SingleTexture::BYTES * vertices.len();
+    let len = 0;
     let mut vertex_buf = Vec::with_capacity(len);
-    unsafe {
+    /*unsafe {
         vertex_buf.set_len(len);
     }
     let mut center = Vec3::zero();
@@ -80,17 +82,20 @@ pub fn bake_mesh<P1: AsRef<Path>, P2: AsRef<Path>>(
     center /= vertices.len() as f32;
     for vertex in &vertices {
         radius = radius.max((vertex.pos - center).length());
-    }
+    }*/
+
+    let center = Vec3::zero();
+    let radius = 0.0;
 
     // Pak and log this asset
     let bounds = Sphere::new(center, radius);
-    let mesh = Mesh::new(bitmaps, bounds, vertex_buf);
-    let mesh_id = pak.push_mesh(key, mesh);
-    log.add(&proto, mesh_id);
+    let model = Model::new(bitmaps, bounds, vertex_buf);
+    let model_id = pak.push_model(key, model);
+    log.add(&proto, model_id);
 
-    mesh_id
+    model_id
 }
-
+/*
 fn compute_tri_normal(tri: [Vec3; 3]) -> Vec3 {
     let v0 = vec3(tri[0].x(), tri[0].y(), tri[0].z());
     let v1 = vec3(tri[1].x(), tri[1].y(), tri[1].z());
@@ -257,3 +262,4 @@ trait Vertex {
 
     fn write(&self, buf: &mut [u8]);
 }
+*/

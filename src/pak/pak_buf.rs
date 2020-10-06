@@ -1,5 +1,5 @@
 use {
-    super::{id::Id, Bitmap, BitmapId, BlobId, DataRef, Mesh, MeshId, SceneId, SceneRef},
+    super::{id::Id, Bitmap, BitmapId, BlobId, DataRef, Model, ModelId, SceneId, SceneRef},
     bincode::serialize_into,
     serde::{Deserialize, Serialize},
     std::{
@@ -27,7 +27,7 @@ pub struct PakBuf {
     // These fields have special care because bincode doesn't handle byte arrays well (they're slow)
     bitmaps: Vec<Bitmap>,
     blobs: Vec<DataRef<Vec<u8>>>,
-    meshes: Vec<Mesh>,
+    models: Vec<Model>,
 }
 
 impl PakBuf {
@@ -52,9 +52,9 @@ impl PakBuf {
             .clone()
     }
 
-    pub(super) fn mesh_ref<K: AsRef<str>>(&self, key: K) -> &Mesh {
-        let id: MeshId = self.id(key).into();
-        &self.meshes[id.0 as usize]
+    pub(super) fn model_ref<K: AsRef<str>>(&self, key: K) -> &Model {
+        let id: ModelId = self.id(key).into();
+        &self.models[id.0 as usize]
     }
 
     pub fn push_bitmap(&mut self, key: String, value: Bitmap) -> BitmapId {
@@ -91,12 +91,12 @@ impl PakBuf {
         id
     }
 
-    pub fn push_mesh(&mut self, key: String, value: Mesh) -> MeshId {
+    pub fn push_model(&mut self, key: String, value: Model) -> ModelId {
         assert!(self.ids.get(&key).is_none());
 
-        let id = MeshId(self.meshes.len() as _);
-        self.ids.insert(key, Id::Mesh(id));
-        self.meshes.push(value);
+        let id = ModelId(self.models.len() as _);
+        self.ids.insert(key, Id::Model(id));
+        self.models.push(value);
 
         id
     }
@@ -129,7 +129,7 @@ impl PakBuf {
         let mut pos = 4;
         let mut bitmaps = vec![];
         let mut blobs = vec![];
-        let mut meshes = vec![];
+        let mut models = vec![];
 
         #[cfg(debug_assertions)]
         let started = Instant::now();
@@ -162,12 +162,12 @@ impl PakBuf {
             skip += len;
         }
 
-        for mesh in &self.meshes {
-            let bounds = mesh.bounds();
-            let vertices = mesh.vertices();
+        for model in &self.models {
+            let bounds = model.bounds();
+            let vertices = model.vertices();
             let len = vertices.len() as u32;
             writer.write_all(vertices).unwrap();
-            meshes.push(Mesh::new_ref(mesh.bitmaps().to_vec(), bounds, pos, len));
+            models.push(Model::new_ref(model.bitmaps().to_vec(), bounds, pos, len));
             pos += len;
             skip += len;
         }
@@ -176,7 +176,7 @@ impl PakBuf {
         // slow when serializing the byte vectors - that is why those are saved raw.
         self.bitmaps = bitmaps;
         self.blobs = blobs;
-        self.meshes = meshes;
+        self.models = models;
 
         // Write the data portion and then re-seek to the beginning to write the skip header
         serialize_into(&mut writer, &self).unwrap(); // TODO unwrap

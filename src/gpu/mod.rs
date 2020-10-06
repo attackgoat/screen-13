@@ -225,17 +225,17 @@ impl Gpu {
         )
     }
 
-    pub fn load_mesh<K: AsRef<str>, R: Read + Seek>(
+    pub fn load_model<K: AsRef<str>, R: Read + Seek>(
         &self,
         #[cfg(debug_assertions)] name: &str,
         pak: &mut Pak<R>,
         key: K,
-    ) -> Mesh {
+    ) -> Model {
         #[cfg(debug_assertions)]
         debug!("Loading mesh `{}`", key.as_ref());
 
         let pool = PoolRef::clone(&self.pool);
-        let mesh = pak.read_mesh(key.as_ref());
+        let mesh = pak.read_model(key.as_ref());
         let mut cache = self.bitmaps.borrow_mut();
         let mut has_alpha = false;
         let bitmaps = mesh
@@ -280,7 +280,7 @@ impl Gpu {
             Mapping::flush(&mut mapped_range).unwrap(); // TODO: Error handling!
         }
 
-        Mesh {
+        Model {
             bitmaps,
             bounds: mesh.bounds(),
             has_alpha,
@@ -351,7 +351,7 @@ impl Drop for Gpu {
 }
 
 /// A textured and renderable model.
-pub struct Mesh {
+pub struct Model {
     bitmaps: Vec<(BitmapId, BitmapRef)>,
     bounds: Sphere,
     has_alpha: bool,
@@ -360,7 +360,7 @@ pub struct Mesh {
 }
 
 // TODO: Not sure about *anything* in this impl block. Maybe `textures`, that one is pretty cool.
-impl Mesh {
+impl Model {
     pub fn bounds(&self) -> Sphere {
         self.bounds
     }
@@ -382,7 +382,7 @@ impl Mesh {
     }
 }
 
-impl Debug for Mesh {
+impl Debug for Model {
     fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         f.write_str("Mesh")
     }

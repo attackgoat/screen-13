@@ -12,7 +12,7 @@ use {
         camera::Camera,
         gpu::{
             data::{CopyRange, Mapping},
-            Data, Lease, Mesh, PoolRef, Texture2d,
+            Data, Lease, Model, PoolRef, Texture2d,
         },
     },
     std::{
@@ -347,8 +347,8 @@ impl Compiler {
 
         while idx < end {
             if match &mut cmds[idx] {
-                Command::Mesh(cmd) => {
-                    let res = camera.overlaps_sphere(cmd.mesh.bounds);
+                Command::Model(cmd) => {
+                    let res = camera.overlaps_sphere(cmd.model.bounds);
                     if res {
                         // Assign a relative measure of distance from the camera for all mesh commands which allows us to submit draw commands
                         // in the best order for the z-buffering algorithm (we use a depth map with comparisons that discard covered fragments)
@@ -503,7 +503,7 @@ impl Compiler {
                             }
 
                             // Create new cache entries for this rectangular light
-                            buf.gpu_usage.push((end, key.into()));
+                            buf.gpu_usage.push((end, key));
                             self.rect_light_lru.insert(idx, Lru::new(key, end));
                             end = new_end;
 
@@ -686,7 +686,7 @@ impl Compiler {
     fn group_idx(cmd: &Command) -> GroupIdx {
         // TODO: Transparencies?
         match cmd {
-            Command::Mesh(_) => GroupIdx::Mesh,
+            Command::Model(_) => GroupIdx::Model,
             Command::PointLight(_) => GroupIdx::PointLight,
             Command::RectLight(_) => GroupIdx::RectLight,
             Command::Spotlight(_) => GroupIdx::Spotlight,
@@ -695,12 +695,12 @@ impl Compiler {
         }
     }
 
-    /// Meshes sort into sub-groups: first animated, then single texture, followed by dual texture.
-    fn mesh_group_idx(mesh: &Mesh) -> usize {
+    /// Models sort into sub-groups: first animated, then single texture, followed by dual texture.
+    fn model_group_idx(model: &Model) -> usize {
         // TODO: Transparencies?
-        if mesh.is_animated() {
+        if model.is_animated() {
             0
-        } else if mesh.is_single_texture() {
+        } else if model.is_single_texture() {
             1
         } else {
             2
@@ -770,16 +770,16 @@ impl Compiler {
             // Compare group indices
             match lhs_idx.cmp(&rhs_idx) {
                 eq => match lhs {
-                    Command::Mesh(lhs) => {
-                        let rhs = rhs.as_mesh().unwrap();
-                        let lhs_idx = Self::mesh_group_idx(lhs.mesh);
-                        let rhs_idx = Self::mesh_group_idx(rhs.mesh);
+                    Command::Model(lhs) => {
+                        let rhs = rhs.as_model().unwrap();
+                        let lhs_idx = Self::model_group_idx(lhs.model);
+                        let rhs_idx = Self::model_group_idx(rhs.model);
 
                         // Compare mesh group indices
                         match lhs_idx.cmp(&rhs_idx) {
                             eq => {
                                 for (lhs_tex, rhs_tex) in
-                                    lhs.mesh.textures().zip(rhs.mesh.textures())
+                                    lhs.model.textures().zip(rhs.model.textures())
                                 {
                                     let lhs_idx = self.mesh_texture_idx(lhs_tex);
                                     let rhs_idx = self.mesh_texture_idx(rhs_tex);
@@ -837,7 +837,7 @@ struct DrawAsm {
 /// Evenly numbered because we use `SearchIdx` to quickly locate these groups while filling the cache.
 #[derive(Clone, Copy)]
 enum GroupIdx {
-    Mesh = 0,
+    Model = 0,
     Sunlight = 2,
     PointLight = 4,
     RectLight = 6,

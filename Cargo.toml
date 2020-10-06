@@ -25,7 +25,7 @@ image = "0.23"
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.5"
 typenum = "1.12"
-winit = { version = "0.22", features = ["web-sys"] }
+winit = { version = "0.23", features = ["web-sys"] }
 
 # Debug deps below: https://github.com/rust-lang/cargo/issues/7634
 log = "0.4"
@@ -33,7 +33,7 @@ num-format = "0.4.0"
 pretty_env_logger = "0.4"
 
 # TODO: Baking deps here https://github.com/rust-lang/cargo/issues/1982 maybe use features and [[bin]] required features?
-fbx_direct = "0.6"
+gltf = "0.15"
 sha1 = "0.6"
 shaderc = "0.6"
 

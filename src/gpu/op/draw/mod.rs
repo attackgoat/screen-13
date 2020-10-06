@@ -14,7 +14,7 @@ use {
     self::{
         geom::LINE_STRIDE,
         geom_buf::GeometryBuffer,
-        instruction::{Instruction, MeshInstruction},
+        instruction::{Instruction, ModelInstruction},
     },
     super::Op,
     crate::{
@@ -24,7 +24,7 @@ use {
             data::CopyRange,
             driver::{CommandPool, Device, Driver, Fence, Framebuffer2d, PhysicalDevice},
             pool::{Graphics, GraphicsMode, Lease, RenderPassMode},
-            Data, Mesh, PoolRef, Texture2d, TextureRef,
+            Data, Model, PoolRef, Texture2d, TextureRef,
         },
         math::{Cone, Coord, CoordF, Extent, Mat4, Sphere, Vec3},
     },
@@ -361,7 +361,7 @@ impl DrawOp {
             ShaderStageFlags::VERTEX,
             0,
             LineVertexConsts {
-                transform: transform.clone(),
+                transform: *transform,
             }
             .as_ref(),
         );
@@ -477,7 +477,7 @@ impl DrawOp {
         // bind_graphics_descriptor_set(&mut self.cmd_buf, mesh.layout(), mesh.desc_set(set));
     }
 
-    unsafe fn submit_mesh(&mut self, _instr: &MeshInstruction<'_>) {
+    unsafe fn submit_model(&mut self, _instr: &ModelInstruction<'_>) {
         // let mesh = self.mesh.as_ref().unwrap();
 
         // self.cmd_buf.bind_vertex_buffers(
@@ -523,7 +523,7 @@ impl DrawOp {
         // );
     }
 
-    unsafe fn submit_transparency(&mut self, _model_view_proj: Mat4, _cmd: MeshCommand<'_>) {
+    unsafe fn submit_transparency(&mut self, _model_view_proj: Mat4, _cmd: ModelCommand<'_>) {
         // let transparency = self.transparency.as_ref().unwrap();
 
         // self.cmd_buf.bind_vertex_buffers(
@@ -836,17 +836,17 @@ impl Default for Material {
 
 // TODO: cast_shadows, receive_shadows, ambient?
 #[derive(Clone)]
-pub struct MeshCommand<'m> {
+pub struct ModelCommand<'m> {
     camera_z: f32,
     cull_group: usize,
     material: Material,
-    mesh: &'m Mesh,
+    model: &'m Model,
     transform: Mat4,
 }
 
-pub struct MeshDrawInstruction<'i> {
+pub struct ModelDrawInstruction<'i> {
     material: u32,
-    mesh: &'i Mesh,
+    model: &'i Model,
     transform: &'i [u8],
 }
 

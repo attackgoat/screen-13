@@ -51,7 +51,7 @@ impl Game {
     pub fn fullscreen(title: &str, swapchain_len: usize) -> Self {
         let mut builder = WindowBuilder::new().with_title(title);
         let event_loop = EventLoop::new();
-        let primary_monitor = event_loop.primary_monitor();
+        let primary_monitor = event_loop.primary_monitor().unwrap();
         // TODO: let dpi = primary_monitor.scale_factor();
 
         #[cfg(debug_assertions)]

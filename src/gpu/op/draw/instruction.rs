@@ -1,5 +1,5 @@
 use {
-    super::MeshDrawInstruction,
+    super::ModelDrawInstruction,
     crate::gpu::{data::CopyRange, Data},
     std::ops::Range,
 };
@@ -138,7 +138,7 @@ impl Instruction<'_> {
 //     }
 // }
 
-pub enum MeshInstruction<'i> {
+pub enum ModelInstruction<'i> {
     BindDescriptorSet(usize),
-    Draw(MeshDrawInstruction<'i>),
+    Draw(ModelDrawInstruction<'i>),
 }

@@ -5,13 +5,13 @@ use {
 };
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct Mesh {
+pub struct Model {
     bounds: Sphere,
     bitmaps: Vec<BitmapId>,
     vertices: DataRef<Vec<u8>>,
 }
 
-impl Mesh {
+impl Model {
     pub fn new(bitmaps: Vec<BitmapId>, bounds: Sphere, vertices: Vec<u8>) -> Self {
         assert_ne!(vertices.len(), 0);
 

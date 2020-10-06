@@ -1,7 +1,7 @@
 mod bitmap;
 mod data_ref;
 mod id;
-mod mesh;
+mod model;
 mod pak_buf;
 mod scene;
 
@@ -9,8 +9,8 @@ mod scene;
 pub use {
     self::{
         bitmap::Bitmap,
-        id::{BitmapId, BlobId, MeshId, SceneId},
-        mesh::Mesh,
+        id::{BitmapId, BlobId, ModelId, SceneId},
+        model::Model,
         pak_buf::PakBuf,
         scene::SceneRef,
     },
@@ -136,13 +136,13 @@ where
         )
     }
 
-    pub(crate) fn read_mesh<K: AsRef<str>>(&mut self, key: K) -> Mesh {
-        let mesh = self.buf.mesh_ref(key);
-        let bounds = mesh.bounds();
-        let (pos, len) = mesh.as_ref();
+    pub(crate) fn read_model<K: AsRef<str>>(&mut self, key: K) -> Model {
+        let model = self.buf.model_ref(key);
+        let bounds = model.bounds();
+        let (pos, len) = model.as_ref();
 
-        Mesh::new(
-            mesh.bitmaps().to_vec(),
+        Model::new(
+            model.bitmaps().to_vec(),
             bounds,
             read_exact(&mut self.reader, pos, len),
         )

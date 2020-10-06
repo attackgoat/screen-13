@@ -1,16 +1,16 @@
 mod asset;
 mod bitmap;
 mod blob;
-mod mesh;
+mod model;
 mod pak_log;
 // mod scene;
 mod text;
 
 pub use self::{
-    asset::{Asset, MeshAsset},
+    asset::{Asset, ModelAsset},
     bitmap::{bake_bitmap, bake_font_bitmap},
     blob::bake_blob,
-    mesh::bake_mesh,
+    model::bake_model,
     pak_log::PakLog,
     text::bake_text,
 };

@@ -1,5 +1,5 @@
 use {
-    crate::math::{vec3, Vec3},
+    crate::math::Vec3,
     serde::{Deserialize, Serialize},
     std::{
         fs::read_to_string,
@@ -34,7 +34,7 @@ pub enum Asset {
     Bitmap(BitmapAsset),
     FontBitmap(FontBitmapAsset),
     // Language(LanguageAsset),
-    Mesh(MeshAsset),
+    Model(ModelAsset),
     // Scene(SceneAsset),
 }
 
@@ -47,16 +47,16 @@ impl Asset {
             Self::Bitmap(val)
         } else if let Some(val) = val.font_bitmap {
             Self::FontBitmap(val)
-        } else if let Some(val) = val.mesh {
-            Self::Mesh(val)
+        } else if let Some(val) = val.model {
+            Self::Model(val)
         } else {
             unimplemented!();
         }
     }
 
-    pub fn into_mesh(self) -> Option<MeshAsset> {
+    pub fn into_model(self) -> Option<ModelAsset> {
         match self {
-            Self::Mesh(res) => Some(res),
+            Self::Model(res) => Some(res),
             _ => None,
         }
     }
@@ -128,46 +128,20 @@ impl FontBitmapAsset {
 // }
 
 #[derive(Clone, Deserialize, Serialize)]
-pub struct MeshAsset {
+pub struct ModelAsset {
     pub bitmaps: Vec<PathBuf>,
-    pub scale: [f32; 3],
+    pub scale: Vec3,
     pub src: PathBuf,
-    pub translation: [f32; 3],
+    pub offset: Vec3,
 }
 
-impl MeshAsset {
-    // fn parse_json(value: &Value) -> Self {
-    //     let bitmaps = value["bitmaps"].as_array().expect("unspecified bitmaps");
-
-    //     Self {
-    //         bitmaps: bitmaps
-    //             .iter()
-    //             .map(|bitmap| PathBuf::from(bitmap.as_str().expect("unspecified bitmap")))
-    //             .collect(),
-    //         scale: parse_vector3(value["scale"].as_str().unwrap_or("1,1,1")),
-    //         src: PathBuf::from(value["src"].as_str().expect("unspecified src")),
-    //         translation: parse_vector3(value["translation"].as_str().unwrap_or("0,0,0")),
-    //     }
-    // }
-
+impl ModelAsset {
     pub fn bitmaps(&self) -> &[PathBuf] {
         &self.bitmaps
     }
 
     pub fn src(&self) -> &Path {
         self.src.as_path()
-    }
-
-    pub fn scale(&self) -> Vec3 {
-        vec3(self.scale[0], self.scale[1], self.scale[2])
-    }
-
-    pub fn translation(&self) -> Vec3 {
-        vec3(
-            self.translation[0],
-            self.translation[1],
-            self.translation[2],
-        )
     }
 }
 
@@ -238,5 +212,5 @@ struct Schema {
     bitmap: Option<BitmapAsset>,
     #[serde(rename = "font-bitmap")]
     font_bitmap: Option<FontBitmapAsset>,
-    mesh: Option<MeshAsset>,
+    model: Option<ModelAsset>,
 }

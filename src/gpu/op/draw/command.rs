@@ -1,11 +1,11 @@
 use {
     super::{
-        LineCommand, LineVertex, Material, MeshCommand, PointLightCommand, RectLightCommand,
+        LineCommand, LineVertex, Material, ModelCommand, PointLightCommand, RectLightCommand,
         SpotlightCommand, SunlightCommand,
     },
     crate::{
         color::{AlphaColor, Color},
-        gpu::Mesh,
+        gpu::Model,
         math::{vec3_is_finite, Mat4, Vec3},
     },
     std::{num::FpCategory, ops::Range},
@@ -15,7 +15,7 @@ use {
 #[derive(Clone)]
 pub enum Command<'c> {
     Line(LineCommand),
-    Mesh(MeshCommand<'c>),
+    Model(ModelCommand<'c>),
     PointLight(PointLightCommand),
     RectLight(RectLightCommand),
     Spotlight(SpotlightCommand),
@@ -30,9 +30,9 @@ impl<'c> Command<'c> {
         }
     }
 
-    pub(crate) fn as_mesh(&self) -> Option<&MeshCommand> {
+    pub(crate) fn as_model(&self) -> Option<&ModelCommand> {
         match self {
-            Self::Mesh(res) => Some(res),
+            Self::Model(res) => Some(res),
             _ => None,
         }
     }
@@ -69,8 +69,8 @@ impl<'c> Command<'c> {
         self.as_line().is_some()
     }
 
-    pub(crate) fn is_mesh(&self) -> bool {
-        self.as_mesh().is_some()
+    pub(crate) fn is_model(&self) -> bool {
+        self.as_model().is_some()
     }
 
     pub(crate) fn is_point_light(&self) -> bool {
@@ -109,13 +109,13 @@ impl<'c> Command<'c> {
         ]))
     }
 
-    pub fn mesh(mesh: &'c Mesh, material: Material, transform: Mat4) -> Self {
+    pub fn model(model: &'c Model, material: Material, transform: Mat4) -> Self {
         // Initially we set `camera_z` to a non-value because we will fill it in once we get the camera during draw
-        Self::Mesh(MeshCommand {
+        Self::Model(ModelCommand {
             camera_z: f32::NAN,
             cull_group: 0,
             material,
-            mesh,
+            model,
             transform,
         })
     }

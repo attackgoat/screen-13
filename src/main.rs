@@ -1,4 +1,4 @@
-#![deny(warnings)]
+//#![deny(warnings)]
 #![allow(dead_code)]
 
 #[macro_use]
@@ -10,7 +10,7 @@ mod pak;
 
 use {
     self::{
-        bake::{bake_bitmap, bake_blob, bake_font_bitmap, bake_mesh, bake_text, Asset, PakLog},
+        bake::{bake_bitmap, bake_blob, bake_font_bitmap, bake_model, bake_text, Asset, PakLog},
         pak::PakBuf,
     },
     pretty_env_logger::init,
@@ -116,8 +116,8 @@ fn main() -> Result<(), IoError> {
                     // Asset::Language(ref lang) => {
                     //     bake_lang(&project_dir, &asset_filename, lang, &mut pak, &mut log)
                     // }
-                    Asset::Mesh(ref mesh) => {
-                        bake_mesh(&project_dir, &asset_filename, mesh, &mut pak, &mut log);
+                    Asset::Model(ref model) => {
+                        bake_model(&project_dir, &asset_filename, model, &mut pak, &mut log);
                     } // Asset::Scene(scene) => {
                       //     for _key in bake_scene(&project_dir, &asset_filename, &scene, &mut pak) {
                       //         //lines.push(key);
