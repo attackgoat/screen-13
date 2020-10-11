@@ -2,8 +2,8 @@ use {
     screen_13::{
         camera::Perspective,
         color::WHITE,
-        gpu::{Command, Font, Model},
-        math::Coord,
+        gpu::{Command, Material, Font, Model},
+        math::{Coord, Mat4},
         pak::Pak,
         prelude::*,
     },
@@ -54,13 +54,13 @@ impl Screen for Display {
     fn render(&self, gpu: &Gpu, dims: Extent) -> Render {
         let mut frame = gpu.render(
             #[cfg(debug_assertions)]
-            "models render",
+            "model render",
             dims,
         );
 
         frame.draw(
             #[cfg(debug_assertions)]
-            "basic line",
+            "model draw",
             &Perspective::new(
                 screen_13::math::vec3(0.0, 0.0, 0.0),
                 screen_13::math::vec3(0.0, 0.0, 1.0),
@@ -68,11 +68,10 @@ impl Screen for Display {
                 45.0,
                 0.5,
             ),
-            &mut [Command::line(
-                screen_13::math::vec3(0.0, 0.0, 0.0),
-                screen_13::color::RED,
-                screen_13::math::vec3(320.0, 200.0, 0.0),
-                screen_13::color::BLUE,
+            &mut [Command::model(
+                &self.models[self.model_idx].0,
+                Material::Standard,
+                Mat4::from_rotation_y(0.0)
             )],
         );
         frame.text(

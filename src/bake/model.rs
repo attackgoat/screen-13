@@ -59,6 +59,8 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
 
     let data = Gltf::open(src).unwrap();
 
+    data.meshes()
+
     // Bake the vertices
     //let vertices = parse_vertices(&src_filename, model_asset.scale);
     //let len = SingleTexture::BYTES * vertices.len();
