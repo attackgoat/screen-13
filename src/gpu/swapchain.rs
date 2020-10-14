@@ -305,7 +305,7 @@ impl Swapchain {
         }
     }
 
-    pub fn supported_formats(self: &Self) -> &[Format] {
+    pub fn supported_formats(&self) -> &[Format] {
         &self.supported_fmts
     }
 }
