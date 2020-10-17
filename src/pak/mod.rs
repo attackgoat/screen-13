@@ -3,7 +3,7 @@ mod data_ref;
 mod id;
 mod model;
 mod pak_buf;
-mod scene;
+mod scene_ref;
 
 // TODO: Remove ErrorKind!
 pub use {
@@ -12,7 +12,7 @@ pub use {
         id::{BitmapId, BlobId, ModelId, SceneId},
         model::Model,
         pak_buf::PakBuf,
-        scene::SceneRef,
+        scene_ref::SceneRef,
     },
     bincode::ErrorKind,
 };

@@ -1,6 +1,6 @@
 use {
     super::{
-        asset::{Asset, BitmapAsset, FontBitmapAsset},
+        asset::{Asset, Bitmap as BitmapAsset, FontBitmap},
         get_filename_key, get_path,
         pak_log::{LogId, PakLog},
     },
@@ -40,7 +40,7 @@ pub fn bake_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
 
     // Get the fs objects for this asset
     let dir = asset_filename.as_ref().parent().unwrap();
-    let bitmap_filename = get_path(&dir, bitmap_asset.bitmap());
+    let bitmap_filename = get_path(&dir, bitmap_asset.src());
 
     // Bake the pixels
     let (has_alpha, width, pixels) = pixels(&bitmap_filename, bitmap_asset.force_opaque());
@@ -56,7 +56,7 @@ pub fn bake_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
 pub fn bake_font_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
     project_dir: P1,
     asset_filename: P2,
-    font_bitmap_asset: &FontBitmapAsset,
+    font_bitmap_asset: &FontBitmap,
     pak: &mut PakBuf,
     log: &mut PakLog,
 ) {

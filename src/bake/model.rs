@@ -2,14 +2,14 @@ use {
     super::{
         bake_bitmap,
         pak_log::LogId,
-        Asset, ModelAsset, PakLog, {get_filename_key, get_path},
+        Asset, Model as ModelAsset, PakLog, {get_filename_key, get_path},
     },
     crate::{
         math::{vec2, vec3, Sphere, Vec2, Vec3},
         pak::{Model, ModelId, PakBuf},
     },
-    gltf::Gltf,
-    std::{fs::File, path::Path},
+    fbxcel_dom::any::AnyDocument,
+    std::{fs::File, io::BufReader, path::Path},
 };
 
 pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
@@ -25,12 +25,11 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
     // Early out if we've already baked this asset
     // Also - the loggable asset won't have any texture so we can
     // reuse our vertices
-    let proto = Asset::Model(ModelAsset {
-        bitmaps: Default::default(),
-        offset: model_asset.offset,
-        scale: model_asset.scale,
-        src: src.clone(),
-    });
+    let proto = Asset::Model(ModelAsset::new(
+        &src,
+        model_asset.offset(),
+        model_asset.scale(),
+    ));
     if let Some(LogId::Model(id)) = log.get(&proto) {
         return id;
     }
@@ -57,8 +56,14 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
         })
         .collect();
 
-    let data = Gltf::open(src).unwrap();
+    let src = File::open(src).unwrap();
+    let src = BufReader::new(src);
+    let doc = match AnyDocument::from_seekable_reader(src).unwrap() {
+        AnyDocument::V7400(_, doc) => doc,
+        _ => todo!(),
+    };
 
+    
     //data.meshes()
 
     // Bake the vertices

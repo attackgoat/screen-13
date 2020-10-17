@@ -33,7 +33,7 @@ num-format = "0.4.0"
 pretty_env_logger = "0.4"
 
 # TODO: Baking deps here https://github.com/rust-lang/cargo/issues/1982 maybe use features and [[bin]] required features?
-gltf = "0.15"
+fbxcel-dom = "0.0.5"
 sha1 = "0.6"
 shaderc = "0.6"
 

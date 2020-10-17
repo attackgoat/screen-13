@@ -3,15 +3,16 @@ mod bitmap;
 mod blob;
 mod model;
 mod pak_log;
-// mod scene;
+mod scene;
 mod text;
 
 pub use self::{
-    asset::{Asset, ModelAsset},
+    asset::{Asset, Model},
     bitmap::{bake_bitmap, bake_font_bitmap},
     blob::bake_blob,
     model::bake_model,
     pak_log::PakLog,
+    scene::bake_scene,
     text::bake_text,
 };
 

@@ -5,20 +5,20 @@ use {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct SceneRef {
-    id: String,
-    key: String,
-    pos: Vec3,
-    rot: Vec3,
+    id: Option<String>,
+    key: Option<String>,
+    position: Vec3,
+    rotation: Quat,
     tags: Vec<String>,
 }
 
 impl SceneRef {
-    pub fn new(id: String, key: String, pos: Vec3, rot: Vec3, tags: Vec<String>) -> Self {
+    pub fn new(id: Option<String>, key: Option<String>, position: Vec3, rotation: Quat, tags: Vec<String>) -> Self {
         Self {
             id,
             key,
-            pos,
-            rot,
+            position,
+            rotation,
             tags,
         }
     }
@@ -28,12 +28,10 @@ impl SceneRef {
     }
 
     pub fn position(&self) -> Vec3 {
-        self.pos
+        self.position
     }
 
     pub fn rotation(&self) -> Quat {
-        //let rpw = self.roll_pitch_yaw;
-        //Quat::from_euler_angles(rpw.0, rpw.1, rpw.2)
-        todo!("Result should be normalized")
+        self.rotation
     }
 }
