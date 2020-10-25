@@ -220,7 +220,7 @@ impl Gpu {
         Font::load(
             &pool,
             pak,
-            &format!("fonts/{}.fnt", face.as_ref()),
+            face.as_ref(),
             Format::Rgba8Unorm,
         )
     }

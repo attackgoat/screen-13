@@ -62,7 +62,7 @@ struct Nibbles {
 impl Nibbles {
     fn load<R: Read + Seek>(gpu: &Gpu, mut pak: &mut Pak<R>) -> Self {
         // We only need a font
-        let font = gpu.load_font(&mut pak, "small_10px");
+        let font = gpu.load_font(&mut pak, "fonts/small_10px.fnt");
 
         // Setup an orthographic camera to provide a 2D view
         let eye = vec3(SCREEN_SIZE.x as f32 / 2.0, SCREEN_SIZE.y as f32 / 2.0, -1.0);
