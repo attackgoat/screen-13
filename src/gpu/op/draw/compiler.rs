@@ -348,7 +348,7 @@ impl Compiler {
         while idx < end {
             if match &mut cmds[idx] {
                 Command::Model(cmd) => {
-                    let res = camera.overlaps_sphere(cmd.model.bounds);
+                    let res = camera.overlaps_sphere(cmd.model.bounds());
                     if res {
                         // Assign a relative measure of distance from the camera for all mesh commands which allows us to submit draw commands
                         // in the best order for the z-buffering algorithm (we use a depth map with comparisons that discard covered fragments)

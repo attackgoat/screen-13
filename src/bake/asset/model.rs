@@ -13,7 +13,7 @@ pub struct Mesh {
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Model {
     bitmaps: Vec<PathBuf>,
-    meshes: Option<Vec<Mesh>>,
+    meshes: Vec<Mesh>,
     offset: Option<Vec3>,
     scale: Option<Vec3>,
     src: PathBuf,

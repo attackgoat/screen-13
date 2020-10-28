@@ -3,6 +3,8 @@ mod data;
 /// A collection of smart-pointer types used internally to operate the GFX-HAL API.
 mod driver;
 
+mod model;
+
 /// A collection of operation implementations used internally to fulfill the Render API.
 mod op;
 
@@ -14,6 +16,7 @@ mod swapchain;
 mod texture;
 
 pub use self::{
+    model::Model,
     op::{Bitmap, Command, Font, Material, Write, WriteMode},
     render::Render,
     swapchain::Swapchain,
@@ -280,13 +283,14 @@ impl Gpu {
             Mapping::flush(&mut mapped_range).unwrap(); // TODO: Error handling!
         }
 
-        Model {
-            bitmaps,
-            bounds: mesh.bounds(),
-            has_alpha,
-            vertex_buf,
-            vertex_count: vertices.len() as _,
-        }
+        // Model {
+        //     bitmaps,
+        //     bounds: mesh.bounds(),
+        //     has_alpha,
+        //     vertex_buf,
+        //     vertex_count: vertices.len() as _,
+        // }
+        todo!("Impl the above into a ::new fn or something");
     }
 
     // TODO: This should not be exposed, bring users into this code?
@@ -347,60 +351,5 @@ impl Gpu {
 impl Drop for Gpu {
     fn drop(&mut self) {
         self.wait_idle();
-    }
-}
-
-/// A textured and renderable model.
-pub struct Model {
-    bitmaps: Vec<(BitmapId, BitmapRef)>,
-    bounds: Sphere,
-    has_alpha: bool,
-    vertex_buf: Lease<Data>,
-    vertex_count: u32,
-}
-
-// TODO: Not sure about *anything* in this impl block. Maybe `textures`, that one is pretty cool.
-impl Model {
-    pub fn bounds(&self) -> Sphere {
-        self.bounds
-    }
-
-    pub(crate) fn is_animated(&self) -> bool {
-        // TODO: This needs to be implemented in some fashion - skys the limit here what should we do? hmmmm
-        false
-    }
-
-    pub(crate) fn is_single_texture(&self) -> bool {
-        self.bitmaps.len() == 1
-    }
-
-    pub(crate) fn textures(&self) -> impl Iterator<Item = &Texture2d> {
-        Textures {
-            bitmaps: &self.bitmaps,
-            idx: 0,
-        }
-    }
-}
-
-impl Debug for Model {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
-        f.write_str("Mesh")
-    }
-}
-
-struct Textures<'a> {
-    bitmaps: &'a Vec<(BitmapId, BitmapRef)>,
-    idx: usize,
-}
-
-impl<'a> Iterator for Textures<'a> {
-    type Item = &'a Texture2d;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.idx < self.bitmaps.len() {
-            Some(&self.bitmaps[self.idx].1)
-        } else {
-            None
-        }
     }
 }
