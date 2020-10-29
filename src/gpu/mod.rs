@@ -48,7 +48,7 @@ use {
     std::{
         cell::RefCell,
         collections::HashMap,
-        fmt::{Debug, Error as FmtError, Formatter},
+        fmt::{Debug},
         io::{Read, Seek},
         rc::Rc,
     },
@@ -213,8 +213,7 @@ impl Gpu {
         }
     }
 
-    /// Note: The specfied font face must exist in the `fonts` directory and have an `fnt` extension.
-    /// Only bitmapped fonts are supported. TODO: Maybe file locations should not be forced like this?
+    /// Only bitmapped fonts are supported.
     pub fn load_font<F: AsRef<str>, R: Read + Seek>(&self, pak: &mut Pak<R>, face: F) -> Font {
         #[cfg(debug_assertions)]
         debug!("Loading font `{}`", face.as_ref());
