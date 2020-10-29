@@ -4,7 +4,7 @@ use {
 };
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct OrientationSceneRef {
+pub struct SceneRef {
     id: Option<String>,
     key: Option<String>,
     position: Vec3,
