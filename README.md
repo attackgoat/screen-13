@@ -68,7 +68,7 @@ _NOTE:_ If you look within the `examples/content/kenney.nl` directory you will f
 
 ## Notes
 
-- Run your game with the `RUST_LOG` environment variable set to `trace` for detailed debugging messages
+- Run your game with the `RUST_LOG` environment variable set to `screen_13=trace` for detailed debugging messages
 - Make all panics/todos/unreachables and others only have messages in debug builds?
 - Consider removing the extra derived things
 - Create new BMFont files on Windows using [this](http://www.angelcode.com/products/bmfont/)

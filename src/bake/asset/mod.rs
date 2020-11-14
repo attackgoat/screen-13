@@ -1,9 +1,10 @@
 mod bitmap;
 mod font_bitmap;
+mod mesh;
 mod model;
 mod scene;
 
-pub use self::{bitmap::Bitmap, font_bitmap::FontBitmap, model::Model, scene::Scene};
+pub use self::{bitmap::Bitmap, font_bitmap::FontBitmap, mesh::Mesh, model::Model, scene::Scene};
 
 use {
     serde::{Deserialize, Serialize},

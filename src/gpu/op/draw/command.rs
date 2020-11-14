@@ -13,16 +13,16 @@ use {
 
 /// An expressive type which allows specification of individual draws.
 #[derive(Clone)]
-pub enum Command<'c> {
+pub enum Command {
     Line(LineCommand),
-    Model(ModelCommand<'c>),
+    Model(ModelCommand),
     PointLight(PointLightCommand),
     RectLight(RectLightCommand),
     Spotlight(SpotlightCommand),
     Sunlight(SunlightCommand),
 }
 
-impl<'c> Command<'c> {
+impl Command {
     pub(crate) fn as_line(&self) -> Option<&LineCommand> {
         match self {
             Self::Line(res) => Some(res),
@@ -109,7 +109,7 @@ impl<'c> Command<'c> {
         ]))
     }
 
-    pub fn model(model: &'c Model, material: Material, transform: Mat4) -> Self {
+    pub fn model(model: i8, material: Material, transform: Mat4) -> Self {
         // Initially we set `camera_z` to a non-value because we will fill it in once we get the camera during draw
         Self::Model(ModelCommand {
             camera_z: f32::NAN,

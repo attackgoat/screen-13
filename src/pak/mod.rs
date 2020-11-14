@@ -10,7 +10,7 @@ pub use {
     self::{
         bitmap::Bitmap,
         id::{BitmapId, BlobId, ModelId, SceneId},
-        model::Model,
+        model::{Mesh, Model, TriangleMode},
         pak_buf::PakBuf,
         scene_ref::SceneRef,
     },
@@ -141,10 +141,8 @@ where
         let bounds = model.bounds();
         let (pos, len) = model.as_ref();
 
-        Model::new(
-            model.bitmaps().to_vec(),
-            bounds,
-            read_exact(&mut self.reader, pos, len),
-        )
+        //Model::new(bounds, read_exact(&mut self.reader, pos, len))
+
+        todo!();
     }
 }

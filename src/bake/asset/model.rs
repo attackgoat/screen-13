@@ -1,28 +1,22 @@
 use {
+    super::Mesh,
     crate::math::Vec3,
     serde::{Deserialize, Serialize},
     std::path::{Path, PathBuf},
 };
 
 #[derive(Clone, Deserialize, Serialize)]
-pub struct Mesh {
-    dst_name: Option<String>,
-    src_name: String,
-}
-
-#[derive(Clone, Deserialize, Serialize)]
 pub struct Model {
-    bitmaps: Vec<PathBuf>,
-    meshes: Vec<Mesh>,
     offset: Option<Vec3>,
     scale: Option<Vec3>,
     src: PathBuf,
+    #[serde(rename = "mesh")]
+    meshes: Vec<Mesh>,
 }
 
 impl Model {
     pub fn new<P: AsRef<Path>>(src: P, offset: Vec3, scale: Vec3) -> Self {
         Self {
-            bitmaps: vec![],
             meshes: vec![],
             offset: Some(offset),
             scale: Some(scale),
@@ -30,8 +24,8 @@ impl Model {
         }
     }
 
-    pub fn bitmaps(&self) -> &[PathBuf] {
-        &self.bitmaps
+    pub fn meshes(&self) -> &[Mesh] {
+        &self.meshes
     }
 
     pub fn offset(&self) -> Vec3 {

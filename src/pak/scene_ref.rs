@@ -13,7 +13,13 @@ pub struct SceneRef {
 }
 
 impl SceneRef {
-    pub fn new(id: Option<String>, key: Option<String>, position: Vec3, rotation: Quat, tags: Vec<String>) -> Self {
+    pub fn new(
+        id: Option<String>,
+        key: Option<String>,
+        position: Vec3,
+        rotation: Quat,
+        tags: Vec<String>,
+    ) -> Self {
         Self {
             id,
             key,

@@ -17,6 +17,7 @@ impl Scene {
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Ref {
+    bitmap: Option<String>,
     id: Option<String>,
     key: Option<String>,
     position: Option<Vec3>,
@@ -25,6 +26,10 @@ pub struct Ref {
 }
 
 impl Ref {
+    pub fn bitmap(&self) -> Option<&str> {
+        self.bitmap.as_deref()
+    }
+
     pub fn id(&self) -> Option<&str> {
         self.id.as_deref()
     }

@@ -1,35 +1,39 @@
 use {
     super::{
-        bake_bitmap,
         pak_log::LogId,
         Asset, Model as ModelAsset, PakLog, {get_filename_key, get_path},
     },
     crate::{
         math::{vec2, vec3, Sphere, Vec2, Vec3},
-        pak::{Model, ModelId, PakBuf},
+        pak::{Model, ModelId, PakBuf, TriangleMode},
     },
-    fbxcel_dom::any::AnyDocument,
-    std::{fs::File, io::BufReader, path::Path},
+    gltf::{
+        accessor::{DataType, Dimensions},
+        import,
+        mesh::{Mode, Semantic},
+        Gltf, Node, Primitive,
+    },
+    std::{path::Path, u16, u8},
 };
+
+enum IndexMode {
+    U8,
+    U16,
+    U32,
+}
 
 pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
     project_dir: P1,
     asset_filename: P2,
-    model_asset: &ModelAsset,
+    asset: &ModelAsset,
     mut pak: &mut PakBuf,
     mut log: &mut PakLog,
 ) -> ModelId {
     let dir = asset_filename.as_ref().parent().unwrap();
-    let src = get_path(&dir, model_asset.src());
+    let src = get_path(&dir, asset.src());
 
     // Early out if we've already baked this asset
-    // Also - the loggable asset won't have any texture so we can
-    // reuse our vertices
-    let proto = Asset::Model(ModelAsset::new(
-        &src,
-        model_asset.offset(),
-        model_asset.scale(),
-    ));
+    let proto = Asset::Model(ModelAsset::new(&src, asset.offset(), asset.scale()));
     if let Some(LogId::Model(id)) = log.get(&proto) {
         return id;
     }
@@ -38,235 +42,174 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
 
     info!("Processing asset: {}", key);
 
-    // Get the fs objects for this asset
-    // SRC now ! let src_filename = get_path(&dir, model_asset.src());
-    let bitmaps = model_asset
-        .bitmaps()
+    let mesh_names = sorted_mesh_names(asset);
+    let (doc, bufs, _) = import(src).unwrap();
+    let nodes = doc
+        .nodes()
+        .filter(|node| node.mesh().is_some())
+        .map(|node| (node.mesh().unwrap(), node))
+        .filter(|(mesh, _)| mesh.name().is_some())
+        .map(|(mesh, node)| (mesh.name().unwrap(), mesh, node))
+        .filter(|(name, _, _)| mesh_names.binary_search(&name).is_ok())
+        .collect::<Vec<_>>();
+    let index_count = nodes
         .iter()
-        .map(|bitmap| {
-            let bitmap_filename = get_path(&dir, &bitmap);
-
-            // Bake the bitmap
-            match Asset::read(&bitmap_filename) {
-                Asset::Bitmap(bitmap) => {
-                    bake_bitmap(&project_dir, &bitmap_filename, &bitmap, &mut pak, &mut log)
-                }
-                _ => panic!(),
-            }
+        .map(|(_, mesh, _)| {
+            mesh.primitives()
+                .filter(|primitive| tri_mode(primitive).is_some())
+                .map(|primitive| primitive.indices().unwrap().count())
+                .sum::<usize>()
         })
-        .collect();
-
-    let src = File::open(src).unwrap();
-    let src = BufReader::new(src);
-    let doc = match AnyDocument::from_seekable_reader(src).unwrap() {
-        AnyDocument::V7400(_, doc) => doc,
-        _ => todo!(),
+        .sum::<usize>();
+    let vertex_count = nodes
+        .iter()
+        .map(|(_, mesh, _)| {
+            mesh.primitives()
+                .filter(|primitive| tri_mode(primitive).is_some())
+                .map(|primitive| primitive.get(&Semantic::Positions).unwrap().count())
+                .sum::<usize>()
+        })
+        .sum::<usize>();
+    let vertex_buf_len = nodes
+        .iter()
+        .map(|(_, mesh, node)| {
+            let stride = node_stride(&node);
+            mesh.primitives()
+                .filter(|primitive| tri_mode(primitive).is_some())
+                .map(|primitive| stride * primitive.get(&Semantic::Positions).unwrap().count())
+                .sum::<usize>()
+        })
+        .sum::<usize>();
+    let (index_buf_len, index_mode) = if index_count <= u8::MAX as usize {
+        (index_count, IndexMode::U8)
+    } else if vertex_count <= u16::MAX as usize {
+        (index_count << 1, IndexMode::U16)
+    } else {
+        (index_count << 2, IndexMode::U32)
     };
+    let mut index_buf = Vec::with_capacity(index_buf_len);
+    let mut vertex_buf = Vec::with_capacity(vertex_buf_len);
 
-    
-    //data.meshes()
+    for (name, mesh, node) in nodes {
+        let skin = node.skin();
+        //let (translation, rotation, scale) = node.transform().decomposed();
 
-    // Bake the vertices
-    //let vertices = parse_vertices(&src_filename, model_asset.scale);
-    //let len = SingleTexture::BYTES * vertices.len();
-    let len = 0;
-    let mut vertex_buf = Vec::with_capacity(len);
-    /*unsafe {
-        vertex_buf.set_len(len);
+        for (mode, primitive) in mesh
+            .primitives()
+            .map(|primitive| (tri_mode(&primitive), primitive))
+            .filter(|(mode, _)| mode.is_some())
+            .map(|(mode, primitive)| (mode.unwrap(), primitive))
+        {
+            let data = primitive.reader(|buf| bufs.get(buf.index()).map(|data| &*data.0));
+            let indices = data
+                .read_indices()
+                .unwrap()
+                .into_u32()
+                .collect::<Vec<_>>();
+            let positions = data.read_positions().unwrap().collect::<Vec<_>>();
+            let normals = data.read_normals().unwrap().collect::<Vec<_>>();
+            let tex_coords = data
+                .read_tex_coords(0)
+                .unwrap()
+                .into_f32()
+                .collect::<Vec<_>>();
+
+            for idx in indices {
+                match index_mode {
+                    IndexMode::U8 => index_buf.push(idx as u8),
+                    IndexMode::U16 => index_buf.extend_from_slice(&(idx as u16).to_ne_bytes()),
+                    IndexMode::U32 => index_buf.extend_from_slice(&idx.to_ne_bytes()),
+                }
+            }
+
+            if let Some(_) = &skin {
+                let joints = data.read_joints(0).unwrap().into_u16().collect::<Vec<_>>();
+                let weights = data.read_weights(0).unwrap().into_f32().collect::<Vec<_>>();
+
+                for idx in 0..positions.len() {
+                    let position = positions[idx];
+                    vertex_buf.extend_from_slice(&position[0].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&position[1].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&position[2].to_ne_bytes());
+
+                    let normal = normals[idx];
+                    vertex_buf.extend_from_slice(&normal[0].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&normal[1].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&normal[2].to_ne_bytes());
+
+                    let tex_coord = tex_coords[idx];
+                    vertex_buf.extend_from_slice(&tex_coord[0].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&tex_coord[1].to_ne_bytes());
+
+                    let joint = joints[idx];
+                    vertex_buf.extend_from_slice(&joint[0].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&joint[1].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&joint[2].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&joint[3].to_ne_bytes());
+
+                    let weight = weights[idx];
+                    vertex_buf.extend_from_slice(&weight[0].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&weight[1].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&weight[2].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&weight[3].to_ne_bytes());
+                }
+            } else {
+                for idx in 0..positions.len() {
+                    let position = positions[idx];
+                    vertex_buf.extend_from_slice(&position[0].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&position[1].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&position[2].to_ne_bytes());
+
+                    let normal = normals[idx];
+                    vertex_buf.extend_from_slice(&normal[0].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&normal[1].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&normal[2].to_ne_bytes());
+
+                    let tex_coord = tex_coords[idx];
+                    vertex_buf.extend_from_slice(&tex_coord[0].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&tex_coord[1].to_ne_bytes());
+                }
+            }
+        }
     }
-    let mut center = Vec3::zero();
-    let mut radius = 0f32;
-    for (idx, vertex) in vertices.iter().enumerate() {
-        let start = idx * SingleTexture::BYTES;
-        let end = start + SingleTexture::BYTES;
-        vertex.write(&mut vertex_buf[start..end]);
-        center += vertex.pos;
-    }
-
-    // Find the bounding sphere parts:
-    // - Center is the average of all vertex positions
-    // - Rradius is the max vertex distance from center
-    center /= vertices.len() as f32;
-    for vertex in &vertices {
-        radius = radius.max((vertex.pos - center).length());
-    }*/
 
     let center = Vec3::zero();
     let radius = 0.0;
 
     // Pak and log this asset
     let bounds = Sphere::new(center, radius);
-    let model = Model::new(bitmaps, bounds, vertex_buf);
+    let model = Model::new(index_buf, vertex_buf);
     let model_id = pak.push_model(key, model);
     log.add(&proto, model_id);
 
     model_id
 }
-/*
-fn compute_tri_normal(tri: [Vec3; 3]) -> Vec3 {
-    let v0 = vec3(tri[0].x(), tri[0].y(), tri[0].z());
-    let v1 = vec3(tri[1].x(), tri[1].y(), tri[1].z());
-    let v2 = vec3(tri[2].x(), tri[2].y(), tri[2].z());
-    let u = v0 - v1;
-    let v = v0 - v2;
 
-    u.cross(v).normalize()
-}
-
-// TODO: Make this a bit more generic so we can accept dual-tex and animated vertices too
-fn parse_vertices<P: AsRef<Path>>(path: P, scale: Vec3) -> Vec<SingleTexture> {
-    let fbx = Fbx::read(path);
-
-    /*debug!("Found {} vertices", fbx_vertices.len());
-    debug!("Found {} poly_indices", fbx_poly_indices.len());
-    debug!("Found {} uv_coords", fbx_uv_coords.len());
-    debug!("Found {} uv_indices", fbx_uv_indices.len());*/
-
-    let tri_count = fbx.tri_count();
-    let mut vertices = Vec::with_capacity(tri_count * 3);
-
-    let make_vertex = |tri_idx, uv_idx| {
-        // Position
-        let px = fbx.vertices[3 * tri_idx] * scale.x();
-        let py = fbx.vertices[3 * tri_idx + 1] * scale.y();
-        let pz = fbx.vertices[3 * tri_idx + 2] * scale.z();
-
-        // Texture coords
-        let u = fbx.uv_coords[2 * uv_idx];
-        let v = fbx.uv_coords[2 * uv_idx + 1];
-
-        SingleTexture {
-            pos: vec3(px, py, pz),
-            normal: vec3(0.0, 0.0, 0.0),
-            tex_coord: vec2(u, v),
-        }
-    };
-
-    for index in 0..tri_count {
-        let a = fbx.poly_indices[3 * index] as usize;
-        let b = fbx.poly_indices[3 * index + 1] as usize;
-        let c = (-fbx.poly_indices[3 * index + 2] - 1) as usize;
-
-        assert!(3 * a < fbx.vertices.len() - 2);
-        assert!(3 * b < fbx.vertices.len() - 2);
-        assert!(3 * c < fbx.vertices.len() - 2);
-
-        let vert_x = fbx.uv_indices[3 * index] as usize;
-        let vert_y = fbx.uv_indices[3 * index + 1] as usize;
-        let vert_z = fbx.uv_indices[3 * index + 2] as usize;
-
-        let mut a = make_vertex(a, vert_x);
-        let mut b = make_vertex(b, vert_y);
-        let mut c = make_vertex(c, vert_z);
-
-        // Calculate normal
-        let normal = compute_tri_normal([a.pos, b.pos, c.pos]);
-        a.normal = normal;
-        b.normal = normal;
-        c.normal = normal;
-
-        vertices.push(a);
-        vertices.push(b);
-        vertices.push(c);
-    }
-
-    assert_ne!(vertices.len(), 0);
-
-    vertices
-}
-
-#[derive(Default)]
-struct Fbx {
-    vertices: Vec<f32>,
-    poly_indices: Vec<isize>,
-    uv_coords: Vec<f32>,
-    uv_indices: Vec<isize>,
-}
-
-impl Fbx {
-    fn read<P: AsRef<Path>>(path: P) -> Self {
-        let mut file = File::open(path.as_ref()).unwrap();
-        let parser = EventReader::new(&mut file);
-
-        let mut res = Self::default();
-
-        for e in parser {
-            match e {
-                Ok(FbxEvent::StartNode {
-                    ref name,
-                    ref properties,
-                }) => {
-                    if "Vertices" == name {
-                        if let OwnedProperty::VecF64(ref vertices) = properties[0] {
-                            for vertex in vertices {
-                                res.vertices.push(*vertex as _);
-                            }
-                        }
-                    } else if "PolygonVertexIndex" == name {
-                        if let OwnedProperty::VecI32(ref poly_indices) = properties[0] {
-                            for poly_index in poly_indices {
-                                res.poly_indices.push(*poly_index as isize);
-                            }
-                        }
-                    } else if "UV" == name {
-                        if let OwnedProperty::VecF64(ref uv_coords) = properties[0] {
-                            for uv_coord in uv_coords {
-                                res.uv_coords.push(*uv_coord as f32);
-                            }
-                        }
-                    } else if "UVIndex" == name {
-                        if let OwnedProperty::VecI32(ref uv_indices) = properties[0] {
-                            for uv_index in uv_indices {
-                                res.uv_indices.push(*uv_index as isize);
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    panic!("Error parsing fbx: {}", e);
-                }
-                _ => {
-                    continue;
-                }
-            }
-        }
-
-        // Model must be triangulated for us with 1 uv set
-        assert!(0 == res.poly_indices.len() % 3);
-        assert!(res.poly_indices.len() == res.uv_indices.len());
-
-        res
-    }
-
-    fn tri_count(&self) -> usize {
-        self.poly_indices.len() / 3
+fn node_stride(node: &Node) -> usize {
+    if let Some(_) = node.skin() {
+        32
+    } else {
+        56
     }
 }
 
-struct SingleTexture {
-    pos: Vec3,
-    normal: Vec3,
-    tex_coord: Vec2,
+fn sorted_mesh_names<'a>(asset: &'a ModelAsset) -> Vec<&'a str> {
+    let meshes = asset.meshes();
+    let mut mesh_names = Vec::with_capacity(meshes.len());
+    for mesh in meshes {
+        mesh_names.push(mesh.src_name());
+    }
+
+    mesh_names.sort();
+
+    mesh_names
 }
 
-impl Vertex for SingleTexture {
-    const BYTES: usize = 32;
-
-    fn write(&self, buf: &mut [u8]) {
-        buf[0..4].copy_from_slice(&self.pos.x().to_ne_bytes());
-        buf[4..8].copy_from_slice(&self.pos.y().to_ne_bytes());
-        buf[8..12].copy_from_slice(&self.pos.z().to_ne_bytes());
-        buf[12..16].copy_from_slice(&self.normal.x().to_ne_bytes());
-        buf[16..20].copy_from_slice(&self.normal.y().to_ne_bytes());
-        buf[20..24].copy_from_slice(&self.normal.z().to_ne_bytes());
-        buf[24..28].copy_from_slice(&self.tex_coord.x().to_ne_bytes());
-        buf[28..32].copy_from_slice(&self.tex_coord.y().to_ne_bytes());
+fn tri_mode(primitive: &Primitive) -> Option<TriangleMode> {
+    match primitive.mode() {
+        Mode::TriangleFan => Some(TriangleMode::Fan),
+        Mode::Triangles => Some(TriangleMode::List),
+        Mode::TriangleStrip => Some(TriangleMode::Strip),
+        _ => None,
     }
 }
-
-trait Vertex {
-    const BYTES: usize; // TODO: name should be Size-ish not bytes-ish
-
-    fn write(&self, buf: &mut [u8]);
-}
-*/

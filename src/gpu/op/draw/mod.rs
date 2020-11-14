@@ -162,11 +162,7 @@ impl DrawOp {
     }
 
     // TODO: Returns concrete type instead of impl Op because https://github.com/rust-lang/rust/issues/42940
-    pub fn record<'c>(
-        mut self,
-        camera: &impl Camera,
-        cmds: &'c mut [Command<'c>],
-    ) -> DrawOpSubmission {
+    pub fn record<'c>(mut self, camera: &impl Camera, cmds: &'c mut [Command]) -> DrawOpSubmission {
         let dims: Coord = self.dst.borrow().dims().into();
         let viewport = Viewport {
             rect: dims.as_rect_at(Coord::ZERO),
@@ -523,7 +519,7 @@ impl DrawOp {
         // );
     }
 
-    unsafe fn submit_transparency(&mut self, _model_view_proj: Mat4, _cmd: ModelCommand<'_>) {
+    unsafe fn submit_transparency(&mut self, _model_view_proj: Mat4, _cmd: ModelCommand) {
         // let transparency = self.transparency.as_ref().unwrap();
 
         // self.cmd_buf.bind_vertex_buffers(
@@ -836,11 +832,11 @@ impl Default for Material {
 
 // TODO: cast_shadows, receive_shadows, ambient?
 #[derive(Clone)]
-pub struct ModelCommand<'m> {
+pub struct ModelCommand {
     camera_z: f32,
     cull_group: usize,
     material: Material,
-    model: &'m Model,
+    model: i8,
     transform: Mat4,
 }
 

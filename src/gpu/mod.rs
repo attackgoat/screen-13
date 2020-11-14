@@ -48,7 +48,7 @@ use {
     std::{
         cell::RefCell,
         collections::HashMap,
-        fmt::{Debug},
+        fmt::Debug,
         io::{Read, Seek},
         rc::Rc,
     },
@@ -186,6 +186,7 @@ impl Gpu {
         }
     }
 
+    // TODO: This should not be exposed, bring users into this code?
     pub(crate) fn driver(&self) -> &Driver {
         &self.driver
     }
@@ -219,12 +220,7 @@ impl Gpu {
         debug!("Loading font `{}`", face.as_ref());
 
         let pool = PoolRef::clone(&self.pool);
-        Font::load(
-            &pool,
-            pak,
-            face.as_ref(),
-            Format::Rgba8Unorm,
-        )
+        Font::load(&pool, pak, face.as_ref(), Format::Rgba8Unorm)
     }
 
     pub fn load_model<K: AsRef<str>, R: Read + Seek>(
@@ -240,33 +236,33 @@ impl Gpu {
         let mesh = pak.read_model(key.as_ref());
         let mut cache = self.bitmaps.borrow_mut();
         let mut has_alpha = false;
-        let bitmaps = mesh
-            .bitmaps()
-            .iter()
-            .map(|id| {
-                let id = *id;
-                let bitmap = pak.read_bitmap_id(id);
-                has_alpha |= bitmap.has_alpha();
-                (
-                    id,
-                    BitmapRef::clone(cache.entry(id).or_insert_with(|| {
-                        #[cfg(debug_assertions)]
-                        info!("Caching bitmap #{}", id.0);
+        // let bitmaps = mesh
+        //     .bitmaps()
+        //     .iter()
+        //     .map(|id| {
+        //         let id = *id;
+        //         let bitmap = pak.read_bitmap_id(id);
+        //         has_alpha |= bitmap.has_alpha();
+        //         (
+        //             id,
+        //             BitmapRef::clone(cache.entry(id).or_insert_with(|| {
+        //                 #[cfg(debug_assertions)]
+        //                 info!("Caching bitmap #{}", id.0);
 
-                        BitmapRef::new(unsafe {
-                            BitmapOp::new(
-                                #[cfg(debug_assertions)]
-                                name,
-                                &pool,
-                                &bitmap,
-                                Format::Rgba8Unorm,
-                            )
-                            .record()
-                        })
-                    })),
-                )
-            })
-            .collect::<Vec<_>>();
+        //                 BitmapRef::new(unsafe {
+        //                     BitmapOp::new(
+        //                         #[cfg(debug_assertions)]
+        //                         name,
+        //                         &pool,
+        //                         &bitmap,
+        //                         Format::Rgba8Unorm,
+        //                     )
+        //                     .record()
+        //                 })
+        //             })),
+        //         )
+        //     })
+        //     .collect::<Vec<_>>();
         let vertices = mesh.vertices();
         let vertex_buf_len = vertices.len() as _;
         let mut vertex_buf = pool.borrow_mut().data_usage(

@@ -20,7 +20,7 @@ bincode = "1.3"
 bmfont = "0.3"
 byteorder = "1.3"
 gfx-hal = "0.6"
-glam = { version = "0.9", features = ["serde"] }
+glam = { version = "0.10", features = ["serde"] }
 image = "0.23"
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.5"
@@ -33,14 +33,14 @@ num-format = "0.4.0"
 pretty_env_logger = "0.4"
 
 # TODO: Baking deps here https://github.com/rust-lang/cargo/issues/1982 maybe use features and [[bin]] required features?
-fbxcel-dom = "0.0.5"
+gltf = "0.15"
 sha1 = "0.6"
-shaderc = "0.6"
+shaderc = "0.7"
 
 [build-dependencies]
 genmesh = "0.6"
 lazy_static = "1.4"
-shaderc = "0.6"
+shaderc = "0.7"
 
 [dev-dependencies]
 rand = "0.7"
@@ -51,8 +51,7 @@ console_error_panic_hook = "0.1"
 console_log = "0.2"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies.gfx-backend-gl]
-version = "0.5"
-features = ["wgl"]
+version = "0.6"
 
 # [target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
 # version = "0.3"

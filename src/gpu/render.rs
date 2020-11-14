@@ -88,12 +88,12 @@ impl Render {
     }
 
     /// Draws a batch of 3D elements. There is no need to give any particular order to the individual commands and the
-    /// implemtation may sort and re-order them, so do not count on indices remaining the same after this call completes.
+    /// implementation may sort and re-order them, so do not count on indices remaining the same after this call completes.
     pub fn draw<'c>(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
         camera: &impl Camera,
-        cmds: &'c mut [Command<'c>],
+        cmds: &'c mut [Command],
     ) {
         let mut op = DrawOp::new(
             #[cfg(debug_assertions)]

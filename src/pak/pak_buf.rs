@@ -167,7 +167,7 @@ impl PakBuf {
             let vertices = model.vertices();
             let len = vertices.len() as u32;
             writer.write_all(vertices).unwrap();
-            models.push(Model::new_ref(model.bitmaps().to_vec(), bounds, pos, len));
+            models.push(Model::new_ref(bounds, pos, len));
             pos += len;
             skip += len;
         }

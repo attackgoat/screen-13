@@ -71,7 +71,7 @@ enum Asm {
 /// be undefined, and so `reset()` must be called on it. This is because copy operations that don't complete will leave the
 /// buffers with incorrect data.
 pub struct Compilation<'a> {
-    cmds: &'a [Command<'a>],
+    cmds: &'a [Command],
     code_idx: usize,
     compiler: &'a mut Compiler, //TODO: Mutable for mut access to vertex_buf, let's revisit this if can be made read-only
     mesh_sets: MeshSets,
@@ -307,7 +307,7 @@ impl Compiler {
         #[cfg(debug_assertions)] name: &str,
         pool: &PoolRef,
         camera: &impl Camera,
-        mut cmds: &'b mut [Command<'b>],
+        mut cmds: &'b mut [Command],
     ) -> Compilation<'a> {
         assert!(self.code.is_empty());
         assert!(self.mesh_textures.is_empty());
@@ -348,7 +348,7 @@ impl Compiler {
         while idx < end {
             if match &mut cmds[idx] {
                 Command::Model(cmd) => {
-                    let res = camera.overlaps_sphere(cmd.model.bounds());
+                    let res = false; // TODO: camera.overlaps_sphere(cmd.model.bounds());
                     if res {
                         // Assign a relative measure of distance from the camera for all mesh commands which allows us to submit draw commands
                         // in the best order for the z-buffering algorithm (we use a depth map with comparisons that discard covered fragments)
@@ -700,8 +700,8 @@ impl Compiler {
         // TODO: Transparencies?
         if model.is_animated() {
             0
-        } else if model.is_single_texture() {
-            1
+        // } else if model.is_single_texture() {
+        //     1
         } else {
             2
         }
@@ -772,10 +772,10 @@ impl Compiler {
                 eq => match lhs {
                     Command::Model(lhs) => {
                         let rhs = rhs.as_model().unwrap();
-                        let lhs_idx = Self::model_group_idx(lhs.model);
-                        let rhs_idx = Self::model_group_idx(rhs.model);
+                        let lhs_idx = 0; // TODO: Self::model_group_idx(lhs.model);
+                        let rhs_idx = 0; // TODO: Self::model_group_idx(rhs.model);
 
-                        // Compare mesh group indices
+                        /*/ Compare mesh group indices
                         match lhs_idx.cmp(&rhs_idx) {
                             eq => {
                                 for (lhs_tex, rhs_tex) in
@@ -795,7 +795,9 @@ impl Compiler {
                                 lhs.camera_z.partial_cmp(&rhs.camera_z).unwrap_or(eq)
                             }
                             ne => ne,
-                        }
+                        }*/
+
+                        todo!()
                     }
                     _ => eq,
                 },
