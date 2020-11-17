@@ -8,12 +8,28 @@ use {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Mesh {
     bounds: Sphere,
-    indices: Range<usize>,
+    indices: Range<u32>,
     name: Option<String>,
     tri_mode: TriangleMode,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+impl Mesh {
+    pub(crate) fn new<N: Into<Option<String>>>(
+        bounds: Sphere,
+        indices: Range<u32>,
+        name: N,
+        tri_mode: TriangleMode,
+    ) -> Self {
+        Self {
+            bounds,
+            indices,
+            name: name.into(),
+            tri_mode,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub struct Model {
     indices: DataRef<Vec<u8>>,
     meshes: Vec<Mesh>,
@@ -21,45 +37,52 @@ pub struct Model {
 }
 
 impl Model {
-    pub fn new(indices: Vec<u8>, vertices: Vec<u8>) -> Self {
+    pub(crate) fn new(meshes: Vec<Mesh>, indices: Vec<u8>, vertices: Vec<u8>) -> Self {
+        assert_ne!(meshes.len(), 0);
+        assert_ne!(indices.len(), 0);
         assert_ne!(vertices.len(), 0);
 
-        // Self {
-        //     bounds,
-        //     vertices: DataRef::Data(vertices),
-        // }
-
-        todo!();
+        Self {
+            indices: DataRef::Data(indices),
+            meshes,
+            vertices: DataRef::Data(vertices),
+        }
     }
 
-    pub(crate) fn new_ref(bounds: Sphere, pos: u32, len: u32) -> Self {
-        assert_ne!(len, 0);
+    pub(crate) fn new_ref(meshes: Vec<Mesh>, indices: Range<u32>, vertices: Range<u32>) -> Self {
+        assert_ne!(meshes.len(), 0);
+        assert_ne!(indices.len(), 0);
+        assert_ne!(vertices.len(), 0);
 
-        // Self {
-        //     bounds,
-        //     vertices: DataRef::Ref((pos, len)),
-        // }
-        todo!();
+        Self {
+            indices: DataRef::Ref(indices),
+            meshes,
+            vertices: DataRef::Ref(vertices),
+        }
     }
 
-    // TODO: Hmmm....
-    pub(crate) fn as_ref(&self) -> (u64, usize) {
-        self.vertices.as_ref()
+    pub(crate) fn indices(&self) -> &[u8] {
+        self.indices.data()
     }
 
-    /// Returns the components of a bounding sphere enclosing all vertices of this mesh.
-    pub fn bounds(&self) -> Sphere {
-        // self.bounds
-
-        todo!();
+    pub(crate) fn indices_pos_len(&self) -> (u64, usize) {
+        self.indices.pos_len()
     }
 
-    pub fn vertices(&self) -> &[u8] {
-        self.vertices.as_data()
+    pub(crate) fn meshes(&self) -> impl Iterator<Item = &Mesh> {
+        self.meshes.iter()
+    }
+
+    pub(crate) fn vertices(&self) -> &[u8] {
+        self.vertices.data()
+    }
+
+    pub(crate) fn vertices_pos_len(&self) -> (u64, usize) {
+        self.vertices.pos_len()
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub enum TriangleMode {
     Fan,
     List,

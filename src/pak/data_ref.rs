@@ -1,23 +1,29 @@
-use serde::{Deserialize, Serialize};
+use {
+    serde::{Deserialize, Serialize},
+    std::{
+        fmt::{Debug, Formatter, Result},
+        ops::Range,
+    },
+};
 
 /// Exists only to allow data to be stored "raw" instead of letting Bincode do the work
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Deserialize, PartialEq, Serialize)]
 pub enum DataRef<T> {
     Data(T),
-    Ref((u32, u32)),
+    Ref(Range<u32>),
 }
 
 impl<T> DataRef<T> {
-    pub fn as_data(&self) -> &T {
+    pub fn data(&self) -> &T {
         match self {
             Self::Data(ref t) => t,
             _ => panic!("This DataRef is a ref when it should be data"),
         }
     }
 
-    pub fn as_ref(&self) -> (u64, usize) {
+    pub fn pos_len(&self) -> (u64, usize) {
         match self {
-            Self::Ref((pos, len)) => (*pos as _, *len as _),
+            Self::Ref(range) => (range.start as _, (range.end - range.start) as _),
             _ => panic!("This DataRef is data when it should be a ref"),
         }
     }
@@ -27,5 +33,14 @@ impl<T> DataRef<T> {
             Self::Data(_) => true,
             _ => false,
         }
+    }
+}
+
+impl<T> Debug for DataRef<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        f.write_str(match self {
+            Self::Data(_) => "Data",
+            Self::Ref(_) => "DataRef",
+        })
     }
 }

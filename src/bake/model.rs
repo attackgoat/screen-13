@@ -5,7 +5,7 @@ use {
     },
     crate::{
         math::{vec2, vec3, Sphere, Vec2, Vec3},
-        pak::{Model, ModelId, PakBuf, TriangleMode},
+        pak::{Mesh, Model, ModelId, PakBuf, TriangleMode},
     },
     gltf::{
         accessor::{DataType, Dimensions},
@@ -13,14 +13,8 @@ use {
         mesh::{Mode, Semantic},
         Gltf, Node, Primitive,
     },
-    std::{path::Path, u16, u8},
+    std::{collections::HashMap, path::Path, u16, u8},
 };
-
-enum IndexMode {
-    U8,
-    U16,
-    U32,
-}
 
 pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
     project_dir: P1,
@@ -42,7 +36,13 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
 
     info!("Processing asset: {}", key);
 
-    let mesh_names = sorted_mesh_names(asset);
+    let mut mesh_names: HashMap<&str, Option<&str>> = HashMap::default();
+    for mesh in asset.meshes() {
+        mesh_names
+            .entry(mesh.src_name())
+            .or_insert_with(|| mesh.dst_name());
+    }
+
     let (doc, bufs, _) = import(src).unwrap();
     let nodes = doc
         .nodes()
@@ -50,7 +50,7 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
         .map(|node| (node.mesh().unwrap(), node))
         .filter(|(mesh, _)| mesh.name().is_some())
         .map(|(mesh, node)| (mesh.name().unwrap(), mesh, node))
-        .filter(|(name, _, _)| mesh_names.binary_search(&name).is_ok())
+        .filter(|(name, _, _)| mesh_names.contains_key(name))
         .collect::<Vec<_>>();
     let index_count = nodes
         .iter()
@@ -89,6 +89,9 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
     };
     let mut index_buf = Vec::with_capacity(index_buf_len);
     let mut vertex_buf = Vec::with_capacity(vertex_buf_len);
+    let mut index_count = 0;
+
+    let mut meshes = vec![];
 
     for (name, mesh, node) in nodes {
         let skin = node.skin();
@@ -101,11 +104,7 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
             .map(|(mode, primitive)| (mode.unwrap(), primitive))
         {
             let data = primitive.reader(|buf| bufs.get(buf.index()).map(|data| &*data.0));
-            let indices = data
-                .read_indices()
-                .unwrap()
-                .into_u32()
-                .collect::<Vec<_>>();
+            let indices = data.read_indices().unwrap().into_u32().collect::<Vec<_>>();
             let positions = data.read_positions().unwrap().collect::<Vec<_>>();
             let normals = data.read_normals().unwrap().collect::<Vec<_>>();
             let tex_coords = data
@@ -113,6 +112,20 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
                 .unwrap()
                 .into_f32()
                 .collect::<Vec<_>>();
+
+            let dst_name = mesh_names[name];
+            let index_end = index_count + indices.len() as u32;
+            meshes.push(Mesh::new(
+                Sphere::from_point_cloud(
+                    positions
+                        .iter()
+                        .map(|position| vec3(position[0], position[1], position[2])),
+                ),
+                index_count..index_end,
+                dst_name.map_or(None, |name| Some(name.to_owned())),
+                mode,
+            ));
+            index_count = index_end;
 
             for idx in indices {
                 match index_mode {
@@ -122,7 +135,7 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
                 }
             }
 
-            if let Some(_) = &skin {
+            if skin.is_some() {
                 let joints = data.read_joints(0).unwrap().into_u16().collect::<Vec<_>>();
                 let weights = data.read_weights(0).unwrap().into_f32().collect::<Vec<_>>();
 
@@ -173,12 +186,8 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
         }
     }
 
-    let center = Vec3::zero();
-    let radius = 0.0;
-
     // Pak and log this asset
-    let bounds = Sphere::new(center, radius);
-    let model = Model::new(index_buf, vertex_buf);
+    let model = Model::new(meshes, index_buf, vertex_buf);
     let model_id = pak.push_model(key, model);
     log.add(&proto, model_id);
 
@@ -186,23 +195,11 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
 }
 
 fn node_stride(node: &Node) -> usize {
-    if let Some(_) = node.skin() {
-        32
-    } else {
+    if node.skin().is_some() {
         56
+    } else {
+        32
     }
-}
-
-fn sorted_mesh_names<'a>(asset: &'a ModelAsset) -> Vec<&'a str> {
-    let meshes = asset.meshes();
-    let mut mesh_names = Vec::with_capacity(meshes.len());
-    for mesh in meshes {
-        mesh_names.push(mesh.src_name());
-    }
-
-    mesh_names.sort();
-
-    mesh_names
 }
 
 fn tri_mode(primitive: &Primitive) -> Option<TriangleMode> {
@@ -212,4 +209,10 @@ fn tri_mode(primitive: &Primitive) -> Option<TriangleMode> {
         Mode::TriangleStrip => Some(TriangleMode::Strip),
         _ => None,
     }
+}
+
+enum IndexMode {
+    U8,
+    U16,
+    U32,
 }

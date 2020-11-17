@@ -4,7 +4,7 @@ use {
         get_filename_key, get_path,
         pak_log::{LogId, PakLog},
     },
-    crate::pak::{Bitmap, BitmapId, PakBuf},
+    crate::pak::{Bitmap, BitmapFormat, BitmapId, PakBuf},
     image::{buffer::ConvertBuffer, open as image_open, DynamicImage, RgbImage, RgbaImage},
     std::path::Path,
 };
@@ -43,8 +43,8 @@ pub fn bake_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
     let bitmap_filename = get_path(&dir, bitmap_asset.src());
 
     // Bake the pixels
-    let (has_alpha, width, pixels) = pixels(&bitmap_filename, bitmap_asset.force_opaque());
-    let bitmap = Bitmap::new(has_alpha, width as u16, pixels);
+    let (fmt, width, pixels) = pixels(&bitmap_filename, bitmap_asset.force_opaque());
+    let bitmap = Bitmap::new(fmt, width as u16, pixels);
 
     // Pak and log this asset
     let bitmap_id = pak.push_bitmap(key, bitmap);
@@ -95,7 +95,7 @@ pub fn bake_font_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
             }
         }
     }
-    let bitmap = Bitmap::new(false, width as u16, better_pixels);
+    let bitmap = Bitmap::new(BitmapFormat::Rgb, width as u16, better_pixels);
 
     // Pak and log this asset
     let key_len = key.len();
@@ -105,14 +105,18 @@ pub fn bake_font_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
     log.add(&asset, bitmap_id);
 }
 
-fn pixels<P: AsRef<Path>>(filename: P, force_opaque: bool) -> (bool, u32, Vec<u8>) {
+fn pixels<P: AsRef<Path>>(filename: P, force_opaque: bool) -> (BitmapFormat, u32, Vec<u8>) {
     match image_open(&filename).unwrap() {
-        DynamicImage::ImageRgb8(image) => (false, image.width(), pixels_bgr(&image)),
+        DynamicImage::ImageRgb8(image) => (BitmapFormat::Rgb, image.width(), pixels_bgr(&image)),
         DynamicImage::ImageRgba8(image) => {
             if force_opaque {
-                (false, image.width(), pixels_bgr(&image.convert()))
+                (
+                    BitmapFormat::Rgb,
+                    image.width(),
+                    pixels_bgr(&image.convert()),
+                )
             } else {
-                (true, image.width(), pixels_bgra(&image))
+                (BitmapFormat::Rgba, image.width(), pixels_bgra(&image))
             }
         }
         _ => unimplemented!(),

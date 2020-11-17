@@ -16,7 +16,7 @@ use {
     std::time::Instant,
 };
 
-#[derive(Clone, Default, Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct PakBuf {
     // These fields are handled by bincode serialization as-is
     ids: HashMap<String, Id>,
@@ -40,9 +40,9 @@ impl PakBuf {
         &self.bitmaps[id.0 as usize]
     }
 
-    pub(super) fn blob_ref<K: AsRef<str>>(&self, key: K) -> (u64, usize) {
+    pub(super) fn blob_pos_len<K: AsRef<str>>(&self, key: K) -> (u64, usize) {
         let id: BlobId = self.id(key).into();
-        self.blobs[id.0 as usize].as_ref()
+        self.blobs[id.0 as usize].pos_len()
     }
 
     fn id<K: AsRef<str>>(&self, key: K) -> Id {
@@ -57,7 +57,7 @@ impl PakBuf {
         &self.models[id.0 as usize]
     }
 
-    pub fn push_bitmap(&mut self, key: String, value: Bitmap) -> BitmapId {
+    pub(crate) fn push_bitmap(&mut self, key: String, value: Bitmap) -> BitmapId {
         assert!(self.ids.get(&key).is_none());
 
         let id = BitmapId(self.bitmaps.len() as _);
@@ -67,7 +67,7 @@ impl PakBuf {
         id
     }
 
-    pub fn push_blob(&mut self, key: String, value: Vec<u8>) -> BlobId {
+    pub(crate) fn push_blob(&mut self, key: String, value: Vec<u8>) -> BlobId {
         assert!(self.ids.get(&key).is_none());
 
         let id = BlobId(self.blobs.len() as _);
@@ -77,11 +77,11 @@ impl PakBuf {
         id
     }
 
-    pub fn push_localization(&mut self, locale: String, texts: HashMap<String, String>) {
+    pub(crate) fn push_localization(&mut self, locale: String, texts: HashMap<String, String>) {
         self.localizations.insert(locale, texts);
     }
 
-    pub fn push_scene(&mut self, key: String, value: Vec<SceneRef>) -> SceneId {
+    pub(crate) fn push_scene(&mut self, key: String, value: Vec<SceneRef>) -> SceneId {
         assert!(self.ids.get(&key).is_none());
 
         let id = SceneId(self.scenes.len() as _);
@@ -91,7 +91,7 @@ impl PakBuf {
         id
     }
 
-    pub fn push_model(&mut self, key: String, value: Model) -> ModelId {
+    pub(crate) fn push_model(&mut self, key: String, value: Model) -> ModelId {
         assert!(self.ids.get(&key).is_none());
 
         let id = ModelId(self.models.len() as _);
@@ -101,7 +101,7 @@ impl PakBuf {
         id
     }
 
-    pub fn push_text(&mut self, key: String, value: String) {
+    pub(crate) fn push_text(&mut self, key: String, value: String) {
         self.texts.insert(key, value);
     }
 
@@ -124,9 +124,8 @@ impl PakBuf {
         )
     }
 
-    pub fn write<W: Seek + Write>(mut self, mut writer: &mut W) -> Result<(), Error> {
-        let mut skip = 0u32;
-        let mut pos = 4;
+    pub(crate) fn write<W: Seek + Write>(mut self, mut writer: &mut W) -> Result<(), Error> {
+        let mut start = 4u32;
         let mut bitmaps = vec![];
         let mut blobs = vec![];
         let mut models = vec![];
@@ -135,41 +134,45 @@ impl PakBuf {
         let started = Instant::now();
 
         // Write a blank spot that we'll use for the skip header later
-        writer.write_all(&skip.to_ne_bytes())?;
+        writer.write_all(&0u32.to_ne_bytes())?;
 
         for bitmap in &self.bitmaps {
             let pixels = bitmap.pixels();
-            let len = pixels.len() as u32;
             writer.write_all(pixels).unwrap();
-            bitmaps.push(Bitmap::new_ref(
-                bitmap.has_alpha(),
-                bitmap.width() as u16,
-                pos,
-                len,
-            ));
 
-            pos += len;
-            skip += len;
+            let end = start + pixels.len() as u32;
+            bitmaps.push(Bitmap::new_ref(
+                bitmap.fmt(),
+                bitmap.width() as u16,
+                start..end,
+            ));
+            start = end;
         }
 
         for blob in &self.blobs {
-            let data = blob.as_data();
-            let len = data.len() as u32;
+            let data = blob.data();
             writer.write_all(data).unwrap();
-            blobs.push(DataRef::Ref((pos, len)));
 
-            pos += len;
-            skip += len;
+            let end = start + data.len() as u32;
+            blobs.push(DataRef::Ref(start..end));
+            start = end;
         }
 
         for model in &self.models {
-            let bounds = model.bounds();
+            let indices = model.indices();
+            writer.write_all(indices).unwrap();
+
             let vertices = model.vertices();
-            let len = vertices.len() as u32;
             writer.write_all(vertices).unwrap();
-            models.push(Model::new_ref(bounds, pos, len));
-            pos += len;
-            skip += len;
+
+            let indices_end = start + indices.len() as u32;
+            let vertices_end = indices_end + vertices.len() as u32;
+            models.push(Model::new_ref(
+                model.meshes().map(Clone::clone).collect(),
+                start..indices_end,
+                indices_end..vertices_end,
+            ));
+            start = vertices_end;
         }
 
         // Update these items with the refs we created; saving with bincode was very
@@ -181,7 +184,7 @@ impl PakBuf {
         // Write the data portion and then re-seek to the beginning to write the skip header
         serialize_into(&mut writer, &self).unwrap(); // TODO unwrap
         writer.seek(SeekFrom::Start(0))?;
-        writer.write_all(&skip.to_ne_bytes())?;
+        writer.write_all(&(start as u32 - 4u32).to_ne_bytes())?;
 
         #[cfg(debug_assertions)]
         {

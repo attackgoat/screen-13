@@ -8,7 +8,7 @@ mod scene_ref;
 // TODO: Remove ErrorKind!
 pub use {
     self::{
-        bitmap::Bitmap,
+        bitmap::{Bitmap, Format as BitmapFormat},
         id::{BitmapId, BlobId, ModelId, SceneId},
         model::{Mesh, Model, TriangleMode},
         pak_buf::PakBuf,
@@ -113,7 +113,7 @@ where
     }
 
     pub fn read_blob<K: AsRef<str>>(&mut self, key: K) -> Vec<u8> {
-        let (pos, len) = self.buf.blob_ref(key);
+        let (pos, len) = self.buf.blob_pos_len(key);
 
         read_exact(&mut self.reader, pos, len)
     }
@@ -127,10 +127,10 @@ where
     }
 
     fn read_bitmap_ref(mut reader: &mut R, bitmap: &Bitmap) -> Bitmap {
-        let (pos, len) = bitmap.as_ref();
+        let (pos, len) = bitmap.pixels_pos_len();
 
         Bitmap::new(
-            bitmap.has_alpha(),
+            bitmap.fmt(),
             bitmap.width() as _,
             read_exact(&mut reader, pos, len),
         )
@@ -138,11 +138,16 @@ where
 
     pub(crate) fn read_model<K: AsRef<str>>(&mut self, key: K) -> Model {
         let model = self.buf.model_ref(key);
-        let bounds = model.bounds();
-        let (pos, len) = model.as_ref();
+        let meshes = model.meshes().map(Clone::clone).collect();
 
-        //Model::new(bounds, read_exact(&mut self.reader, pos, len))
-
-        todo!();
+        let indices = {
+            let (pos, len) = model.indices_pos_len();
+            read_exact(&mut self.reader, pos, len)
+        };
+        let vertices = {
+            let (pos, len) = model.vertices_pos_len();
+            read_exact(&mut self.reader, pos, len)
+        };
+        Model::new(meshes, indices, vertices)
     }
 }

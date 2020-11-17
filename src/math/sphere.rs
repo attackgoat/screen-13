@@ -1,5 +1,5 @@
 use {
-    super::{vec3_is_finite, Vec3},
+    super::{vec3, vec3_is_finite, Vec3},
     serde::{Deserialize, Serialize},
     std::ops::{Add, AddAssign},
 };
@@ -17,6 +17,28 @@ impl Sphere {
         assert!(radius > 0.0);
 
         Self { center, radius }
+    }
+
+    pub fn from_point_cloud<I: Iterator<Item = Vec3>>(cloud: I) -> Self {
+        let cloud = cloud.collect::<Vec<_>>();
+
+        let mut center = Vec3::zero();
+        for point in &cloud {
+            center += *point;
+        }
+
+        let count = cloud.len() as f32;
+        center /= vec3(count, count, count);
+
+        let mut distance_squared = 0.0f32;
+        for point in &cloud {
+            distance_squared = distance_squared.max(center.distance_squared(*point));
+        }
+
+        Self {
+            center,
+            radius: distance_squared.sqrt(),
+        }
     }
 
     /// Returns the average of all points of this sphere.

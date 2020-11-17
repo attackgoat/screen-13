@@ -11,7 +11,7 @@ use {
             Data, PoolRef, Texture2d,
         },
         math::Extent,
-        pak::Bitmap as PakBitmap,
+        pak::{Bitmap as PakBitmap, BitmapFormat},
     },
     gfx_hal::{
         buffer::{Access as BufferAccess, SubRange, Usage as BufferUsage},
@@ -85,21 +85,22 @@ impl BitmapOp {
         let height: usize = dims.y as _;
 
         // Figure out what kind of bitmap we're decoding
-        let (mode, dispatch_x, bitmap_stride, pixel_buf_stride) = if bitmap.has_alpha() {
-            //(ComputeMode::DecodeBgra32, 0, 0, 0)
-            todo!()
-        } else {
-            let dispatch_x = (dims.x >> 2) + (dims.x % 3);
-            let bitmap_stride = width * 3;
-            let mod_12 = bitmap_stride % 12;
-            let pixel_buf_stride = bitmap_stride + 12 - mod_12;
-            (
-                ComputeMode::DecodeBgr24,
-                dispatch_x,
-                bitmap_stride,
-                pixel_buf_stride,
-            )
-        };
+        let (mode, dispatch_x, bitmap_stride, pixel_buf_stride) =
+            if bitmap.fmt() == BitmapFormat::Rgba {
+                //(ComputeMode::DecodeBgra32, 0, 0, 0)
+                todo!()
+            } else {
+                let dispatch_x = (dims.x >> 2) + (dims.x % 3);
+                let bitmap_stride = width * 3;
+                let mod_12 = bitmap_stride % 12;
+                let pixel_buf_stride = bitmap_stride + 12 - mod_12;
+                (
+                    ComputeMode::DecodeBgr24,
+                    dispatch_x,
+                    bitmap_stride,
+                    pixel_buf_stride,
+                )
+            };
 
         // Lease some data from the pool
         let pool = PoolRef::clone(pool);
