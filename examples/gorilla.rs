@@ -3,6 +3,8 @@
 // gravity, and the city skyline. I didn't have gorilla or banana graphics so we have bunnies
 // and bullets instead, sorry folks.
 
+#![allow(warnings)]
+
 use {
     screen_13::{
         gpu::{Bitmap, Font},
