@@ -46,14 +46,14 @@ impl Screen for Basic {
 
         // Draws "Hello, World" onto a blue background
         frame.clear(qb_color(1));
-        // frame.text(
-        //     #[cfg(debug_assertions)]
-        //     "basic text",
-        //     &self.small_10px,
-        //     "Hello, world!",
-        //     Coord::new(137, 96),
-        //     qb_color(15),
-        // );
+        frame.text(
+            #[cfg(debug_assertions)]
+            "basic text",
+            &self.small_10px,
+            "Hello, world!",
+            Coord::new(137, 96),
+            qb_color(15),
+        );
         frame.draw(
             #[cfg(debug_assertions)]
             "basic line",
