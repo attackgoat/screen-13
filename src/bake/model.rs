@@ -4,14 +4,13 @@ use {
         Asset, Model as ModelAsset, PakLog, {get_filename_key, get_path},
     },
     crate::{
-        math::{vec2, vec3, Sphere, Vec2, Vec3},
+        math::{quat, vec3, Mat4, Quat, Sphere, Vec3},
         pak::{Mesh, Model, ModelId, PakBuf, TriangleMode},
     },
     gltf::{
-        accessor::{DataType, Dimensions},
         import,
         mesh::{Mode, Semantic},
-        Gltf, Node, Primitive,
+        Node, Primitive,
     },
     std::{collections::HashMap, path::Path, u16, u8},
 };
@@ -20,8 +19,8 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
     project_dir: P1,
     asset_filename: P2,
     asset: &ModelAsset,
-    mut pak: &mut PakBuf,
-    mut log: &mut PakLog,
+    pak: &mut PakBuf,
+    log: &mut PakLog,
 ) -> ModelId {
     let dir = asset_filename.as_ref().parent().unwrap();
     let src = get_path(&dir, asset.src());
@@ -95,7 +94,22 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
 
     for (name, mesh, node) in nodes {
         let skin = node.skin();
-        //let (translation, rotation, scale) = node.transform().decomposed();
+        let (translation, rotation, scale) = node.transform().decomposed();
+        let rotation = quat(rotation[0], rotation[1], rotation[2], rotation[3]);
+        let scale = vec3(scale[0], scale[1], scale[2]);
+        let translation = vec3(translation[0], translation[1], translation[2]);
+        let transform = if scale != Vec3::one()
+            || rotation != Quat::identity()
+            || translation != Vec3::zero()
+        {
+            Some(Mat4::from_scale_rotation_translation(
+                scale,
+                rotation,
+                translation,
+            ))
+        } else {
+            None
+        };
 
         for (mode, primitive) in mesh
             .primitives()
@@ -123,16 +137,19 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
                 ),
                 index_count..index_end,
                 dst_name.map_or(None, |name| Some(name.to_owned())),
+                transform,
                 mode,
             ));
             index_count = index_end;
 
-            for idx in indices {
-                match index_mode {
-                    IndexMode::U8 => index_buf.push(idx as u8),
-                    IndexMode::U16 => index_buf.extend_from_slice(&(idx as u16).to_ne_bytes()),
-                    IndexMode::U32 => index_buf.extend_from_slice(&idx.to_ne_bytes()),
-                }
+            match index_mode {
+                IndexMode::U8 => indices.iter().for_each(|idx| index_buf.push(*idx as u8)),
+                IndexMode::U16 => indices
+                    .iter()
+                    .for_each(|idx| index_buf.extend_from_slice(&(*idx as u16).to_ne_bytes())),
+                IndexMode::U32 => indices
+                    .iter()
+                    .for_each(|idx| index_buf.extend_from_slice(&idx.to_ne_bytes())),
             }
 
             if skin.is_some() {

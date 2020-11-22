@@ -35,11 +35,7 @@ use {
         op::BitmapOp,
         pool::{Lease, Pool},
     },
-    crate::{
-        math::{Extent, Sphere},
-        pak::{BitmapId, Pak},
-        Error,
-    },
+    crate::{math::Extent, pak::Pak, Error},
     gfx_hal::{
         adapter::Adapter, buffer::Usage, device::Device as _, format::Format, queue::QueueFamily,
         window::Surface as _, Instance as _,
@@ -47,7 +43,6 @@ use {
     gfx_impl::{Backend as _Backend, Instance},
     std::{
         cell::RefCell,
-        collections::HashMap,
         fmt::Debug,
         io::{Read, Seek},
         rc::Rc,
@@ -69,11 +64,12 @@ pub const MULTISAMPLE_COUNT: u8 = 4;
 /// A two dimensional rendering result.
 pub type Texture2d = TextureRef<Image2d>;
 
-pub(self) type BitmapRef = Rc<Bitmap>;
+pub type BitmapRef = Rc<Bitmap>;
+pub type ModelRef = Rc<Model>;
+
 pub(crate) type PoolRef = Rc<RefCell<Pool>>;
 pub(crate) type TextureRef<I> = Rc<RefCell<Texture<I>>>;
 
-type BitmapCache = RefCell<HashMap<BitmapId, BitmapRef>>;
 type OpCache = RefCell<Option<Vec<Box<dyn Op>>>>;
 
 fn create_instance() -> (Adapter<_Backend>, Instance) {
@@ -124,7 +120,6 @@ impl Default for BlendMode {
 
 /// Allows you to load resources and begin rendering operations.
 pub struct Gpu {
-    bitmaps: BitmapCache,
     driver: Driver,
     ops: OpCache,
     pool: PoolRef,
@@ -151,7 +146,6 @@ impl Gpu {
 
         (
             Self {
-                bitmaps: Default::default(),
                 driver,
                 ops: Default::default(),
                 pool,
@@ -179,7 +173,6 @@ impl Gpu {
         let pool = PoolRef::new(RefCell::new(Pool::new(&driver, Format::Rgba8Unorm)));
 
         Self {
-            bitmaps: Default::default(),
             driver,
             ops: Default::default(),
             pool,
@@ -191,18 +184,68 @@ impl Gpu {
         &self.driver
     }
 
+    pub fn load_animation<K: AsRef<str>, R: Read + Seek>(
+        &self,
+        #[cfg(debug_assertions)] name: &str,
+        pak: &mut Pak<R>,
+        key: K,
+    ) -> ModelRef {
+        #[cfg(debug_assertions)]
+        debug!("Loading animation `{}`", key.as_ref());
+
+        let pool = PoolRef::clone(&self.pool);
+        let model = pak.read_model(key.as_ref());
+        let indices = model.indices();
+        let index_buf_len = indices.len() as _;
+        let mut index_buf = pool.borrow_mut().data_usage(
+            #[cfg(debug_assertions)]
+            name,
+            index_buf_len,
+            Usage::INDEX,
+        );
+
+        {
+            let mut mapped_range = index_buf.map_range_mut(0..index_buf_len).unwrap();
+            mapped_range.copy_from_slice(&indices);
+            Mapping::flush(&mut mapped_range).unwrap();
+        }
+
+        let vertices = model.vertices();
+        let vertex_buf_len = vertices.len() as _;
+        let mut vertex_buf = pool.borrow_mut().data_usage(
+            #[cfg(debug_assertions)]
+            name,
+            vertex_buf_len,
+            Usage::VERTEX,
+        );
+
+        {
+            let mut mapped_range = vertex_buf.map_range_mut(0..vertex_buf_len).unwrap();
+            mapped_range.copy_from_slice(&vertices);
+            Mapping::flush(&mut mapped_range).unwrap();
+        }
+
+        let model = Model::new(
+            model.meshes().map(Clone::clone).collect(),
+            index_buf,
+            vertex_buf,
+        );
+
+        ModelRef::new(model)
+    }
+
     pub fn load_bitmap<K: AsRef<str>, R: Read + Seek>(
         &self,
         #[cfg(debug_assertions)] name: &str,
         pak: &mut Pak<R>,
         key: K,
-    ) -> Bitmap {
+    ) -> BitmapRef {
         #[cfg(debug_assertions)]
         debug!("Loading bitmap `{}`", key.as_ref());
 
         let bitmap = pak.read_bitmap(key.as_ref());
         let pool = PoolRef::clone(&self.pool);
-        unsafe {
+        let bitmap = unsafe {
             BitmapOp::new(
                 #[cfg(debug_assertions)]
                 name,
@@ -211,7 +254,9 @@ impl Gpu {
                 Format::Rgba8Unorm,
             )
             .record()
-        }
+        };
+
+        BitmapRef::new(bitmap)
     }
 
     /// Only bitmapped fonts are supported.
@@ -228,42 +273,28 @@ impl Gpu {
         #[cfg(debug_assertions)] name: &str,
         pak: &mut Pak<R>,
         key: K,
-    ) -> Model {
+    ) -> ModelRef {
         #[cfg(debug_assertions)]
-        debug!("Loading mesh `{}`", key.as_ref());
+        debug!("Loading model `{}`", key.as_ref());
 
         let pool = PoolRef::clone(&self.pool);
-        let mesh = pak.read_model(key.as_ref());
-        let mut cache = self.bitmaps.borrow_mut();
-        let mut has_alpha = false;
-        // let bitmaps = mesh
-        //     .bitmaps()
-        //     .iter()
-        //     .map(|id| {
-        //         let id = *id;
-        //         let bitmap = pak.read_bitmap_id(id);
-        //         has_alpha |= bitmap.has_alpha();
-        //         (
-        //             id,
-        //             BitmapRef::clone(cache.entry(id).or_insert_with(|| {
-        //                 #[cfg(debug_assertions)]
-        //                 info!("Caching bitmap #{}", id.0);
+        let model = pak.read_model(key.as_ref());
+        let indices = model.indices();
+        let index_buf_len = indices.len() as _;
+        let mut index_buf = pool.borrow_mut().data_usage(
+            #[cfg(debug_assertions)]
+            name,
+            index_buf_len,
+            Usage::INDEX,
+        );
 
-        //                 BitmapRef::new(unsafe {
-        //                     BitmapOp::new(
-        //                         #[cfg(debug_assertions)]
-        //                         name,
-        //                         &pool,
-        //                         &bitmap,
-        //                         Format::Rgba8Unorm,
-        //                     )
-        //                     .record()
-        //                 })
-        //             })),
-        //         )
-        //     })
-        //     .collect::<Vec<_>>();
-        let vertices = mesh.vertices();
+        {
+            let mut mapped_range = index_buf.map_range_mut(0..index_buf_len).unwrap();
+            mapped_range.copy_from_slice(&indices);
+            Mapping::flush(&mut mapped_range).unwrap();
+        }
+
+        let vertices = model.vertices();
         let vertex_buf_len = vertices.len() as _;
         let mut vertex_buf = pool.borrow_mut().data_usage(
             #[cfg(debug_assertions)]
@@ -273,19 +304,18 @@ impl Gpu {
         );
 
         {
-            let mut mapped_range = vertex_buf.map_range_mut(0..vertex_buf_len).unwrap(); // TODO: Error handling!
+            let mut mapped_range = vertex_buf.map_range_mut(0..vertex_buf_len).unwrap();
             mapped_range.copy_from_slice(&vertices);
-            Mapping::flush(&mut mapped_range).unwrap(); // TODO: Error handling!
+            Mapping::flush(&mut mapped_range).unwrap();
         }
 
-        // Model {
-        //     bitmaps,
-        //     bounds: mesh.bounds(),
-        //     has_alpha,
-        //     vertex_buf,
-        //     vertex_count: vertices.len() as _,
-        // }
-        todo!("Impl the above into a ::new fn or something");
+        let model = Model::new(
+            model.meshes().map(Clone::clone).collect(),
+            index_buf,
+            vertex_buf,
+        );
+
+        ModelRef::new(model)
     }
 
     // TODO: This should not be exposed, bring users into this code?

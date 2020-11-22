@@ -1,3 +1,4 @@
+mod anim;
 mod bitmap;
 mod data_ref;
 mod id;
@@ -8,8 +9,9 @@ mod scene_ref;
 // TODO: Remove ErrorKind!
 pub use {
     self::{
+        anim::{Animation, Channel},
         bitmap::{Bitmap, Format as BitmapFormat},
-        id::{BitmapId, BlobId, ModelId, SceneId},
+        id::{AnimationId, BitmapId, BlobId, ModelId, SceneId},
         model::{Mesh, Model, TriangleMode},
         pak_buf::PakBuf,
         scene_ref::SceneRef,

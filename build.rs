@@ -246,37 +246,37 @@ fn compile_shaders() {
     }
 
     // Deferred renderings
-    compile_glsl(ShaderKind::Vertex, "deferred/line.vert");
-    compile_glsl(ShaderKind::Fragment, "deferred/line.frag");
-    // compile_glsl(ShaderKind::Fragment, "deferred/mesh_dual.frag");
-    // compile_glsl(ShaderKind::Vertex, "deferred/mesh_dual.vert");
-    // compile_glsl(ShaderKind::Fragment, "deferred/mesh_single.frag");
-    // compile_glsl(ShaderKind::Vertex, "deferred/mesh_single.vert");
-    // compile_glsl(ShaderKind::Fragment, "deferred/trans.frag");
-    // compile_glsl(ShaderKind::Fragment, "deferred/spotlight.frag");
-    // compile_glsl(ShaderKind::Fragment, "deferred/sunlight.frag");
+    compile_glsl(ShaderKind::Vertex, "defer/line.vert");
+    compile_glsl(ShaderKind::Fragment, "defer/line.frag");
+    // compile_glsl(ShaderKind::Fragment, "defer/mesh_dual.frag");
+    // compile_glsl(ShaderKind::Vertex, "defer/mesh_dual.vert");
+    // compile_glsl(ShaderKind::Fragment, "defer/mesh_single.frag");
+    // compile_glsl(ShaderKind::Vertex, "defer/mesh_single.vert");
+    // compile_glsl(ShaderKind::Fragment, "defer/trans.frag");
+    // compile_glsl(ShaderKind::Fragment, "defer/spotlight.frag");
+    // compile_glsl(ShaderKind::Fragment, "defer/sunlight.frag");
 
     // Blending
-    compile_glsl(ShaderKind::Fragment, "blending/add.frag");
-    compile_glsl(ShaderKind::Fragment, "blending/alpha_add.frag");
-    compile_glsl(ShaderKind::Fragment, "blending/color.frag");
-    compile_glsl(ShaderKind::Fragment, "blending/color_burn.frag");
-    compile_glsl(ShaderKind::Fragment, "blending/color_dodge.frag");
-    compile_glsl(ShaderKind::Fragment, "blending/darken.frag");
-    compile_glsl(ShaderKind::Fragment, "blending/darker_color.frag");
-    compile_glsl(ShaderKind::Fragment, "blending/difference.frag");
-    compile_glsl(ShaderKind::Fragment, "blending/divide.frag");
-    compile_glsl(ShaderKind::Fragment, "blending/exclusion.frag");
-    compile_glsl(ShaderKind::Fragment, "blending/hard_light.frag");
-    compile_glsl(ShaderKind::Fragment, "blending/hard_mix.frag");
-    compile_glsl(ShaderKind::Fragment, "blending/linear_burn.frag");
-    compile_glsl(ShaderKind::Fragment, "blending/multiply.frag");
-    compile_glsl(ShaderKind::Fragment, "blending/normal.frag");
-    compile_glsl(ShaderKind::Fragment, "blending/overlay.frag");
-    compile_glsl(ShaderKind::Vertex, "blending/quad_transform.vert");
-    compile_glsl(ShaderKind::Fragment, "blending/screen.frag");
-    compile_glsl(ShaderKind::Fragment, "blending/subtract.frag");
-    compile_glsl(ShaderKind::Fragment, "blending/vivid_light.frag");
+    compile_glsl(ShaderKind::Vertex, "blend/quad_transform.vert");
+    compile_glsl(ShaderKind::Fragment, "blend/add.frag");
+    compile_glsl(ShaderKind::Fragment, "blend/alpha_add.frag");
+    compile_glsl(ShaderKind::Fragment, "blend/color.frag");
+    compile_glsl(ShaderKind::Fragment, "blend/color_burn.frag");
+    compile_glsl(ShaderKind::Fragment, "blend/color_dodge.frag");
+    compile_glsl(ShaderKind::Fragment, "blend/darken.frag");
+    compile_glsl(ShaderKind::Fragment, "blend/darker_color.frag");
+    compile_glsl(ShaderKind::Fragment, "blend/difference.frag");
+    compile_glsl(ShaderKind::Fragment, "blend/divide.frag");
+    compile_glsl(ShaderKind::Fragment, "blend/exclusion.frag");
+    compile_glsl(ShaderKind::Fragment, "blend/hard_light.frag");
+    compile_glsl(ShaderKind::Fragment, "blend/hard_mix.frag");
+    compile_glsl(ShaderKind::Fragment, "blend/linear_burn.frag");
+    compile_glsl(ShaderKind::Fragment, "blend/multiply.frag");
+    compile_glsl(ShaderKind::Fragment, "blend/normal.frag");
+    compile_glsl(ShaderKind::Fragment, "blend/overlay.frag");
+    compile_glsl(ShaderKind::Fragment, "blend/screen.frag");
+    compile_glsl(ShaderKind::Fragment, "blend/subtract.frag");
+    compile_glsl(ShaderKind::Fragment, "blend/vivid_light.frag");
 
     // Compute - blurs
     compile_glsl(ShaderKind::Compute, "compute/box_blur_x.comp");
@@ -291,21 +291,25 @@ fn compile_shaders() {
     compile_glsl(ShaderKind::Compute, "compute/encode_bgra32.comp");
 
     // Masking
-    compile_glsl(ShaderKind::Fragment, "masking/add.frag");
-    compile_glsl(ShaderKind::Fragment, "masking/apply.frag");
-    compile_glsl(ShaderKind::Fragment, "masking/darken.frag");
-    compile_glsl(ShaderKind::Fragment, "masking/difference.frag");
-    compile_glsl(ShaderKind::Fragment, "masking/draw.frag");
-    compile_glsl(ShaderKind::Fragment, "masking/intersect.frag");
-    compile_glsl(ShaderKind::Fragment, "masking/lighten.frag");
-    compile_glsl(ShaderKind::Fragment, "masking/subtract.frag");
-    compile_glsl(ShaderKind::Vertex, "masking/vertex.vert");
+    compile_glsl(ShaderKind::Vertex, "mask/vertex.vert");
+    compile_glsl(ShaderKind::Fragment, "mask/add.frag");
+    compile_glsl(ShaderKind::Fragment, "mask/apply.frag");
+    compile_glsl(ShaderKind::Fragment, "mask/darken.frag");
+    compile_glsl(ShaderKind::Fragment, "mask/difference.frag");
+    compile_glsl(ShaderKind::Fragment, "mask/draw.frag");
+    compile_glsl(ShaderKind::Fragment, "mask/intersect.frag");
+    compile_glsl(ShaderKind::Fragment, "mask/lighten.frag");
+    compile_glsl(ShaderKind::Fragment, "mask/subtract.frag");
 
     // Matting
-    compile_glsl(ShaderKind::Fragment, "matting/alpha.frag");
-    compile_glsl(ShaderKind::Fragment, "matting/alpha_inverted.frag");
-    compile_glsl(ShaderKind::Fragment, "matting/luma.frag");
-    compile_glsl(ShaderKind::Fragment, "matting/luma_inverted.frag");
+    compile_glsl(ShaderKind::Fragment, "matte/alpha.frag");
+    compile_glsl(ShaderKind::Fragment, "matte/alpha_inverted.frag");
+    compile_glsl(ShaderKind::Fragment, "matte/luma.frag");
+    compile_glsl(ShaderKind::Fragment, "matte/luma_inverted.frag");
+
+    // Skinning
+    // compile_glsl(ShaderKind::Vertex, "skin/anim.vert");
+    // compile_glsl(ShaderKind::Vertex, "skin/pose.vert");
 
     // Effects
     compile_glsl(ShaderKind::Fragment, "brightness.frag");
@@ -313,22 +317,22 @@ fn compile_shaders() {
     compile_glsl(ShaderKind::Fragment, "opacity.frag");
 
     // General purpose
+    compile_glsl(ShaderKind::Vertex, "font.vert");
+    compile_glsl(ShaderKind::Vertex, "gradient.vert");
+    compile_glsl(ShaderKind::Vertex, "quad_transform.vert");
+    compile_glsl(ShaderKind::Vertex, "quad.vert");
+    compile_glsl(ShaderKind::Vertex, "shadow.vert");
+    compile_glsl(ShaderKind::Vertex, "vertex_transform.vert");
+    compile_glsl(ShaderKind::Vertex, "vertex.vert");
     compile_glsl(ShaderKind::Fragment, "font_outline.frag");
     compile_glsl(ShaderKind::Fragment, "font.frag");
-    compile_glsl(ShaderKind::Vertex, "font.vert");
     compile_glsl(ShaderKind::Fragment, "gradient.frag");
-    compile_glsl(ShaderKind::Vertex, "gradient.vert");
     compile_glsl(ShaderKind::Fragment, "hdr_tonemap.frag");
     compile_glsl(ShaderKind::Fragment, "post_dof.frag");
     compile_glsl(ShaderKind::Fragment, "post_vignette.frag");
-    compile_glsl(ShaderKind::Vertex, "quad_transform.vert");
-    compile_glsl(ShaderKind::Vertex, "quad.vert");
     compile_glsl(ShaderKind::Fragment, "shadow.frag");
-    compile_glsl(ShaderKind::Vertex, "shadow.vert");
     compile_glsl(ShaderKind::Fragment, "ssao.frag");
     compile_glsl(ShaderKind::Fragment, "texture.frag");
-    compile_glsl(ShaderKind::Vertex, "vertex_transform.vert");
-    compile_glsl(ShaderKind::Vertex, "vertex.vert");
 
     write_spriv_mod();
 }

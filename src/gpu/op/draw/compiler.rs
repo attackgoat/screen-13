@@ -12,7 +12,7 @@ use {
         camera::Camera,
         gpu::{
             data::{CopyRange, Mapping},
-            Data, Lease, Model, PoolRef, Texture2d,
+            Data, Lease, PoolRef, Texture2d,
         },
     },
     std::{
@@ -166,7 +166,6 @@ impl Compilation<'_> {
 #[derive(Default)]
 pub struct Compiler {
     code: Vec<Asm>,
-    cull_groups: BTreeSet<usize>,
     line_buf: Option<DirtyData<Line>>,
     line_lru: Vec<Lru<Line>>,
     mesh_textures: Vec<Texture2d>,
@@ -307,14 +306,23 @@ impl Compiler {
         #[cfg(debug_assertions)] name: &str,
         pool: &PoolRef,
         camera: &impl Camera,
-        mut cmds: &'b mut [Command],
+        cmds: &'b mut [Command],
     ) -> Compilation<'a> {
         assert!(self.code.is_empty());
         assert!(self.mesh_textures.is_empty());
         assert_ne!(cmds.len(), 0);
 
-        // Remove non-visible commands (also prepares mesh commands for sorting by pre-calculating Z)
-        self.cull(camera, &mut cmds);
+        let eye = -camera.eye();
+        for cmd in cmds.iter_mut() {
+            match cmd {
+                Command::Mesh(cmd) => {
+                    // Assign a relative measure of distance from the camera for all mesh commands which allows us to submit draw commands
+                    // in the best order for the z-buffering algorithm (we use a depth map with comparisons that discard covered fragments)
+                    cmd.camera_z = cmd.transform.transform_vector3(eye).length_squared();
+                }
+                _ => (),
+            }
+        }
 
         // Rearrange the commands so draw order doesn't cause unnecessary resource-switching
         self.sort(cmds);
@@ -333,50 +341,6 @@ impl Compiler {
             compiler: self,
             mesh_sets: Default::default(),
         }
-    }
-
-    // TODO: Could return counts here and put a tiny bit of speed-up into the `fill_cache` function - could avoid the first four bin searches fwiw
-    /// Cull any commands which are not within the camera frustum. Also adds z-order to meshes.
-    fn cull(&mut self, camera: &impl Camera, cmds: &mut &mut [Command]) {
-        // We use `cull_groups` as a cache for this function only
-        self.cull_groups.clear();
-
-        let eye = -camera.eye();
-        let mut idx = 0;
-        let mut end = cmds.len();
-
-        while idx < end {
-            if match &mut cmds[idx] {
-                Command::Model(cmd) => {
-                    let res = false; // TODO: camera.overlaps_sphere(cmd.model.bounds());
-                    if res {
-                        // Assign a relative measure of distance from the camera for all mesh commands which allows us to submit draw commands
-                        // in the best order for the z-buffering algorithm (we use a depth map with comparisons that discard covered fragments)
-                        cmd.camera_z = cmd.transform.transform_vector3(eye).length_squared();
-                    }
-
-                    res
-                }
-                Command::PointLight(cmd) => camera.overlaps_sphere(cmd.bounds()),
-                Command::RectLight(cmd) => camera.overlaps_sphere(cmd.bounds()),
-                Command::Spotlight(cmd) => camera.overlaps_cone(cmd.bounds()),
-                _ => {
-                    // Lines and Sunlight do not get culled; we assume they are visible and draw them
-                    // TODO: Test the effect of adding in line culling with lots and lots of lines, make it a feature or argument?
-                    false
-                }
-            } {
-                // The command at `idx` has been culled and won't be drawn (put it at the end of the list/no-man's land)
-                end -= 1;
-                cmds.swap(idx, end);
-            } else {
-                // The command at `idx` is visible and will draw normally
-                idx += 1;
-            }
-        }
-
-        // Safely replace `cmds` with a subslice, this drops the references to the culled commands but not their values
-        *cmds = &mut take(cmds)[0..end];
     }
 
     /// Gets this compiler ready to use the given commands by pre-filling vertex cache buffers. Also records the ranges of vertex data
@@ -686,7 +650,7 @@ impl Compiler {
     fn group_idx(cmd: &Command) -> GroupIdx {
         // TODO: Transparencies?
         match cmd {
-            Command::Model(_) => GroupIdx::Model,
+            Command::Mesh(_) => GroupIdx::Mesh,
             Command::PointLight(_) => GroupIdx::PointLight,
             Command::RectLight(_) => GroupIdx::RectLight,
             Command::Spotlight(_) => GroupIdx::Spotlight,
@@ -695,17 +659,17 @@ impl Compiler {
         }
     }
 
-    /// Models sort into sub-groups: first animated, then single texture, followed by dual texture.
-    fn model_group_idx(model: &Model) -> usize {
-        // TODO: Transparencies?
-        if model.is_animated() {
-            0
-        // } else if model.is_single_texture() {
-        //     1
-        } else {
-            2
-        }
-    }
+    // /// Meshes sort into sub-groups: first animated, then single texture, followed by dual texture.
+    // fn mesh_group_idx(mesh: &Mesh) -> usize {
+    //     // TODO: Transparencies?
+    //     if model.is_animated() {
+    //         0
+    //     // } else if model.is_single_texture() {
+    //     //     1
+    //     } else {
+    //         2
+    //     }
+    // }
 
     /// Returns the index of a given texture in our `mesh texture` list, adding it as needed.
     fn mesh_texture_idx(&mut self, tex: &Texture2d) -> usize {
@@ -770,10 +734,10 @@ impl Compiler {
             // Compare group indices
             match lhs_idx.cmp(&rhs_idx) {
                 eq => match lhs {
-                    Command::Model(lhs) => {
-                        let rhs = rhs.as_model().unwrap();
-                        let lhs_idx = 0; // TODO: Self::model_group_idx(lhs.model);
-                        let rhs_idx = 0; // TODO: Self::model_group_idx(rhs.model);
+                    Command::Mesh(_lhs) => {
+                        // let rhs = rhs.as_mesh().unwrap();
+                        // let lhs_idx = 0; // TODO: Self::model_group_idx(lhs.model);
+                        // let rhs_idx = 0; // TODO: Self::model_group_idx(rhs.model);
 
                         /*/ Compare mesh group indices
                         match lhs_idx.cmp(&rhs_idx) {
@@ -839,7 +803,7 @@ struct DrawAsm {
 /// Evenly numbered because we use `SearchIdx` to quickly locate these groups while filling the cache.
 #[derive(Clone, Copy)]
 enum GroupIdx {
-    Model = 0,
+    Mesh = 0,
     Sunlight = 2,
     PointLight = 4,
     RectLight = 6,

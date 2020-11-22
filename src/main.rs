@@ -11,8 +11,8 @@ mod pak;
 use {
     self::{
         bake::{
-            bake_bitmap, bake_blob, bake_font_bitmap, bake_model, bake_scene, bake_text, Asset,
-            PakLog,
+            bake_animation, bake_bitmap, bake_blob, bake_font_bitmap, bake_model, bake_scene,
+            bake_text, Asset, PakLog,
         },
         pak::PakBuf,
     },
@@ -107,6 +107,9 @@ fn main() -> Result<(), IoError> {
 
             match bake {
                 Bake::Asset => match Asset::read(&asset_filename) {
+                    Asset::Animation(ref anim) => {
+                        bake_animation(&project_dir, asset_filename, anim, &mut pak, &mut log);
+                    }
                     // Asset::Atlas(ref atlas) => {
                     //     bake_atlas(&project_dir, &asset_filename, atlas, &mut pak, &mut log);
                     // }

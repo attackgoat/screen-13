@@ -1,5 +1,8 @@
 use {
-    super::{id::Id, Bitmap, BitmapId, BlobId, DataRef, Model, ModelId, SceneId, SceneRef},
+    super::{
+        id::Id, Animation, AnimationId, Bitmap, BitmapId, BlobId, DataRef, Model, ModelId, SceneId,
+        SceneRef,
+    },
     bincode::serialize_into,
     serde::{Deserialize, Serialize},
     std::{
@@ -25,12 +28,22 @@ pub struct PakBuf {
     texts: HashMap<String, String>,
 
     // These fields have special care because bincode doesn't handle byte arrays well (they're slow)
+    anims: Vec<Animation>,
     bitmaps: Vec<Bitmap>,
     blobs: Vec<DataRef<Vec<u8>>>,
     models: Vec<Model>,
 }
 
 impl PakBuf {
+    pub(super) fn anim_ref<K: AsRef<str>>(&self, key: K) -> &Animation {
+        let id: AnimationId = self.id(key).into();
+        self.anim_id_ref(id)
+    }
+
+    pub(super) fn anim_id_ref(&self, id: AnimationId) -> &Animation {
+        &self.anims[id.0 as usize]
+    }
+
     pub(super) fn bitmap_ref<K: AsRef<str>>(&self, key: K) -> &Bitmap {
         let id: BitmapId = self.id(key).into();
         self.bitmap_id_ref(id)
@@ -55,6 +68,16 @@ impl PakBuf {
     pub(super) fn model_ref<K: AsRef<str>>(&self, key: K) -> &Model {
         let id: ModelId = self.id(key).into();
         &self.models[id.0 as usize]
+    }
+
+    pub(crate) fn push_animation(&mut self, key: String, value: Animation) -> AnimationId {
+        assert!(self.ids.get(&key).is_none());
+
+        let id = AnimationId(self.anims.len() as _);
+        self.ids.insert(key, Id::Animation(id));
+        self.anims.push(value);
+
+        id
     }
 
     pub(crate) fn push_bitmap(&mut self, key: String, value: Bitmap) -> BitmapId {
@@ -135,6 +158,8 @@ impl PakBuf {
 
         // Write a blank spot that we'll use for the skip header later
         writer.write_all(&0u32.to_ne_bytes())?;
+
+        for anim in &self.anims {}
 
         for bitmap in &self.bitmaps {
             let pixels = bitmap.pixels();

@@ -1,11 +1,11 @@
 use {
     super::{
-        LineCommand, LineVertex, Material, ModelCommand, PointLightCommand, RectLightCommand,
+        LineCommand, LineVertex, Material, MeshCommand, PointLightCommand, RectLightCommand,
         SpotlightCommand, SunlightCommand,
     },
     crate::{
         color::{AlphaColor, Color},
-        gpu::Model,
+        gpu::ModelRef,
         math::{vec3_is_finite, Mat4, Vec3},
     },
     std::{num::FpCategory, ops::Range},
@@ -15,7 +15,7 @@ use {
 #[derive(Clone)]
 pub enum Command {
     Line(LineCommand),
-    Model(ModelCommand),
+    Mesh(MeshCommand),
     PointLight(PointLightCommand),
     RectLight(RectLightCommand),
     Spotlight(SpotlightCommand),
@@ -30,9 +30,9 @@ impl Command {
         }
     }
 
-    pub(crate) fn as_model(&self) -> Option<&ModelCommand> {
+    pub(crate) fn as_mesh(&self) -> Option<&MeshCommand> {
         match self {
-            Self::Model(res) => Some(res),
+            Self::Mesh(res) => Some(res),
             _ => None,
         }
     }
@@ -69,8 +69,8 @@ impl Command {
         self.as_line().is_some()
     }
 
-    pub(crate) fn is_model(&self) -> bool {
-        self.as_model().is_some()
+    pub(crate) fn is_mesh(&self) -> bool {
+        self.as_mesh().is_some()
     }
 
     pub(crate) fn is_point_light(&self) -> bool {
@@ -109,13 +109,14 @@ impl Command {
         ]))
     }
 
-    pub fn model(model: i8, material: Material, transform: Mat4) -> Self {
-        // Initially we set `camera_z` to a non-value because we will fill it in once we get the camera during draw
-        Self::Model(ModelCommand {
+    pub fn mesh<M: Into<Mesh>>(mesh: M, material: Material, transform: Mat4) -> Self {
+        let mesh = mesh.into();
+        Self::Mesh(MeshCommand {
             camera_z: f32::NAN,
-            cull_group: 0,
             material,
-            model,
+            name_filter: mesh.name_filter,
+            model: mesh.model,
+            skin: mesh.skin,
             transform,
         })
     }
@@ -283,3 +284,39 @@ impl Command {
 //         todo!();
 //     }
 // }
+
+pub struct Mesh {
+    model: ModelRef,
+    name_filter: Option<Option<&'static str>>,
+    skin: Option<u8>,
+}
+
+impl From<ModelRef> for Mesh {
+    fn from(model: ModelRef) -> Self {
+        Self {
+            model,
+            name_filter: None,
+            skin: None,
+        }
+    }
+}
+
+impl From<(ModelRef, Option<&'static str>)> for Mesh {
+    fn from((model, name_filter): (ModelRef, Option<&'static str>)) -> Self {
+        Self {
+            model,
+            name_filter: Some(name_filter),
+            skin: None,
+        }
+    }
+}
+
+impl From<(ModelRef, Option<&'static str>, u8)> for Mesh {
+    fn from((model, name_filter, skin): (ModelRef, Option<&'static str>, u8)) -> Self {
+        Self {
+            model,
+            name_filter: Some(name_filter),
+            skin: Some(skin),
+        }
+    }
+}

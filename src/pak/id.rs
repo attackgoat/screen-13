@@ -1,6 +1,18 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+pub struct AnimationId(pub(crate) u16);
+
+impl From<Id> for AnimationId {
+    fn from(id: Id) -> Self {
+        match id {
+            Id::Animation(id) => id,
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct BitmapId(pub(crate) u16);
 
 impl From<Id> for BitmapId {
@@ -26,10 +38,17 @@ impl From<Id> for BlobId {
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum Id {
+    Animation(AnimationId),
     Bitmap(BitmapId),
     Blob(BlobId),
     Model(ModelId),
     Scene(SceneId),
+}
+
+impl From<AnimationId> for Id {
+    fn from(id: AnimationId) -> Self {
+        Self::Animation(id)
+    }
 }
 
 impl From<BitmapId> for Id {
@@ -63,7 +82,7 @@ impl From<Id> for ModelId {
     fn from(id: Id) -> Self {
         match id {
             Id::Model(id) => id,
-            _ => panic!(),
+            _ => unreachable!(),
         }
     }
 }
@@ -75,7 +94,7 @@ impl From<Id> for SceneId {
     fn from(id: Id) -> Self {
         match id {
             Id::Scene(id) => id,
-            _ => panic!(),
+            _ => unreachable!(),
         }
     }
 }

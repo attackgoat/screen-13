@@ -1,10 +1,14 @@
+mod anim;
 mod bitmap;
 mod font_bitmap;
 mod mesh;
 mod model;
 mod scene;
 
-pub use self::{bitmap::Bitmap, font_bitmap::FontBitmap, mesh::Mesh, model::Model, scene::Scene};
+pub use self::{
+    anim::Animation, bitmap::Bitmap, font_bitmap::FontBitmap, mesh::Mesh, model::Model,
+    scene::Scene,
+};
 
 use {
     serde::{Deserialize, Serialize},
@@ -14,6 +18,7 @@ use {
 
 #[derive(Clone, Deserialize, Serialize)]
 pub enum Asset {
+    Animation(Animation),
     // Atlas(AtlasAsset),
     Bitmap(Bitmap),
     FontBitmap(FontBitmap),
@@ -33,7 +38,9 @@ impl Asset {
             filename.as_ref().display()
         ));
 
-        if let Some(val) = val.bitmap {
+        if let Some(val) = val.anim {
+            Self::Animation(val)
+        } else if let Some(val) = val.bitmap {
             Self::Bitmap(val)
         } else if let Some(val) = val.font_bitmap {
             Self::FontBitmap(val)
@@ -94,6 +101,8 @@ impl Asset {
 
 #[derive(Deserialize)]
 struct Schema {
+    #[serde(rename = "animation")]
+    anim: Option<Animation>,
     bitmap: Option<Bitmap>,
     #[serde(rename = "font-bitmap")]
     font_bitmap: Option<FontBitmap>,

@@ -1,3 +1,4 @@
+mod anim;
 mod asset;
 mod bitmap;
 mod blob;
@@ -7,6 +8,7 @@ mod scene;
 mod text;
 
 pub use self::{
+    anim::bake_animation,
     asset::{Asset, Model},
     bitmap::{bake_bitmap, bake_font_bitmap},
     blob::bake_blob,

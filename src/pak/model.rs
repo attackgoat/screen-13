@@ -1,6 +1,6 @@
 use {
-    super::{BitmapId, DataRef},
-    crate::math::Sphere,
+    super::DataRef,
+    crate::math::{Mat4, Sphere},
     serde::{Deserialize, Serialize},
     std::ops::Range,
 };
@@ -10,6 +10,7 @@ pub struct Mesh {
     bounds: Sphere,
     indices: Range<u32>,
     name: Option<String>,
+    transform: Option<Mat4>,
     tri_mode: TriangleMode,
 }
 
@@ -18,12 +19,14 @@ impl Mesh {
         bounds: Sphere,
         indices: Range<u32>,
         name: N,
+        transform: Option<Mat4>,
         tri_mode: TriangleMode,
     ) -> Self {
         Self {
             bounds,
             indices,
             name: name.into(),
+            transform,
             tri_mode,
         }
     }

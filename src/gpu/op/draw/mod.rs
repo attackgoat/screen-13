@@ -14,7 +14,7 @@ use {
     self::{
         geom::LINE_STRIDE,
         geom_buf::GeometryBuffer,
-        instruction::{Instruction, ModelInstruction},
+        instruction::{Instruction, MeshInstruction},
     },
     super::Op,
     crate::{
@@ -24,7 +24,7 @@ use {
             data::CopyRange,
             driver::{CommandPool, Device, Driver, Fence, Framebuffer2d, PhysicalDevice},
             pool::{Graphics, GraphicsMode, Lease, RenderPassMode},
-            Data, Model, PoolRef, Texture2d, TextureRef,
+            BitmapRef, Data, Model, ModelRef, PoolRef, Texture2d, TextureRef,
         },
         math::{Cone, Coord, CoordF, Extent, Mat4, Sphere, Vec3},
     },
@@ -473,7 +473,7 @@ impl DrawOp {
         // bind_graphics_descriptor_set(&mut self.cmd_buf, mesh.layout(), mesh.desc_set(set));
     }
 
-    unsafe fn submit_model(&mut self, _instr: &ModelInstruction<'_>) {
+    unsafe fn submit_mesh(&mut self, _instr: &MeshInstruction<'_>) {
         // let mesh = self.mesh.as_ref().unwrap();
 
         // self.cmd_buf.bind_vertex_buffers(
@@ -519,7 +519,7 @@ impl DrawOp {
         // );
     }
 
-    unsafe fn submit_transparency(&mut self, _model_view_proj: Mat4, _cmd: ModelCommand) {
+    unsafe fn submit_transparency(&mut self, _model_view_proj: Mat4, _cmd: MeshCommand) {
         // let transparency = self.transparency.as_ref().unwrap();
 
         // self.cmd_buf.bind_vertex_buffers(
@@ -805,42 +805,29 @@ impl AsRef<[u32; 16]> for LineVertexConsts {
     }
 }
 
-#[derive(Clone, Copy)]
-pub enum Material {
-    Standard,
-    Shiny,
-    Dull,
-    Plastic,
-    Metal,
-    MetalRusty,
-    Water,
-    Foliage,
-    FoliageDense,
-    FoliageGrass,
-    Fire,
-    Glass,
-    GlassDirty,
-    Lava,
-    Neon,
-}
-
-impl Default for Material {
-    fn default() -> Self {
-        Self::Standard
-    }
-}
-
-// TODO: cast_shadows, receive_shadows, ambient?
 #[derive(Clone)]
-pub struct ModelCommand {
+pub enum Material {
+    Unlit {
+        diffuse: BitmapRef,
+    },
+    Pbr {
+        albedo: BitmapRef,
+        normal: BitmapRef,
+        metalness: BitmapRef,
+    },
+}
+
+#[derive(Clone)]
+pub struct MeshCommand {
     camera_z: f32,
-    cull_group: usize,
     material: Material,
-    model: i8,
+    name_filter: Option<Option<&'static str>>,
+    model: ModelRef,
+    skin: Option<u8>, // TODO
     transform: Mat4,
 }
 
-pub struct ModelDrawInstruction<'i> {
+pub struct MeshDrawInstruction<'i> {
     material: u32,
     model: &'i Model,
     transform: &'i [u8],

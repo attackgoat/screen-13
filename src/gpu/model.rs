@@ -1,32 +1,24 @@
 // TODO: Not all of these should come from super, remove from parent mod!
 use {
-    super::{Data, Lease, Sphere},
+    super::{Data, Lease},
+    crate::pak::Mesh,
     std::fmt::{Debug, Error, Formatter},
 };
 
-/// A textured and renderable model.
+/// An drawable collection of individually adressable meshes.
 pub struct Model {
-    bounds: Sphere,
+    index_buf: Lease<Data>,
+    meshes: Vec<Mesh>,
     vertex_buf: Lease<Data>,
-    vertex_count: u32,
 }
 
 impl Model {
-    pub fn new(bounds: Sphere, vertex_buf: Lease<Data>, vertex_count: u32) -> Self {
+    pub(crate) fn new(meshes: Vec<Mesh>, index_buf: Lease<Data>, vertex_buf: Lease<Data>) -> Self {
         Self {
-            bounds,
+            index_buf,
+            meshes,
             vertex_buf,
-            vertex_count,
         }
-    }
-
-    pub fn bounds(&self) -> Sphere {
-        self.bounds
-    }
-
-    pub(crate) fn is_animated(&self) -> bool {
-        // TODO: This needs to be implemented in some fashion - skys the limit here what should we do? hmmmm
-        false
     }
 }
 
