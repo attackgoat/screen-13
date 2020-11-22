@@ -8,7 +8,7 @@ use {
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub struct Bitmap {
     fmt: Format,
-    pixels: DataRef<Vec<u8>>,
+    pixels: Vec<u8>,
     width: u16,
 }
 
@@ -16,21 +16,9 @@ impl Bitmap {
     pub(crate) fn new(fmt: Format, width: u16, pixels: Vec<u8>) -> Self {
         Self {
             fmt,
-            pixels: DataRef::Data(pixels),
+            pixels,
             width,
         }
-    }
-
-    pub(crate) fn new_ref(fmt: Format, width: u16, pixels: Range<u32>) -> Self {
-        Self {
-            fmt,
-            pixels: DataRef::Ref(pixels),
-            width,
-        }
-    }
-
-    pub(crate) fn pixels_pos_len(&self) -> (u64, usize) {
-        self.pixels.pos_len()
     }
 
     pub fn dims(&self) -> Extent {
@@ -42,7 +30,7 @@ impl Bitmap {
     }
 
     pub(crate) fn height(&self) -> usize {
-        let len = self.pixels.data().len();
+        let len = self.pixels.len();
         let width = self.width();
         let byte_height = len / width;
 
@@ -53,10 +41,7 @@ impl Bitmap {
     }
 
     pub(crate) fn pixels(&self) -> &[u8] {
-        match self.pixels {
-            DataRef::Data(ref pixels) => pixels,
-            _ => unreachable!(),
-        }
+        &self.pixels
     }
 
     pub(crate) fn width(&self) -> usize {

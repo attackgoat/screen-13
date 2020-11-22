@@ -28,29 +28,21 @@ pub struct PakBuf {
     texts: HashMap<String, String>,
 
     // These fields have special care because bincode doesn't handle byte arrays well (they're slow)
-    anims: Vec<Animation>,
-    bitmaps: Vec<Bitmap>,
+    anims: Vec<DataRef<Animation>>,
+    bitmaps: Vec<DataRef<Bitmap>>,
     blobs: Vec<DataRef<Vec<u8>>>,
-    models: Vec<Model>,
+    models: Vec<DataRef<Model>>,
 }
 
 impl PakBuf {
-    pub(super) fn anim_ref<K: AsRef<str>>(&self, key: K) -> &Animation {
+    pub(super) fn animation<K: AsRef<str>>(&self, key: K) -> (u64, usize) {
         let id: AnimationId = self.id(key).into();
-        self.anim_id_ref(id)
+        self.anims[id.0 as usize].pos_len()
     }
 
-    pub(super) fn anim_id_ref(&self, id: AnimationId) -> &Animation {
-        &self.anims[id.0 as usize]
-    }
-
-    pub(super) fn bitmap_ref<K: AsRef<str>>(&self, key: K) -> &Bitmap {
+    pub(super) fn bitmap<K: AsRef<str>>(&self, key: K) -> (u64, usize) {
         let id: BitmapId = self.id(key).into();
-        self.bitmap_id_ref(id)
-    }
-
-    pub(super) fn bitmap_id_ref(&self, id: BitmapId) -> &Bitmap {
-        &self.bitmaps[id.0 as usize]
+        self.bitmaps[id.0 as usize].pos_len()
     }
 
     pub(super) fn blob_pos_len<K: AsRef<str>>(&self, key: K) -> (u64, usize) {
@@ -65,9 +57,9 @@ impl PakBuf {
             .clone()
     }
 
-    pub(super) fn model_ref<K: AsRef<str>>(&self, key: K) -> &Model {
+    pub(super) fn model<K: AsRef<str>>(&self, key: K) -> (u64, usize) {
         let id: ModelId = self.id(key).into();
-        &self.models[id.0 as usize]
+        self.models[id.0 as usize].pos_len()
     }
 
     pub(crate) fn push_animation(&mut self, key: String, value: Animation) -> AnimationId {
@@ -75,7 +67,7 @@ impl PakBuf {
 
         let id = AnimationId(self.anims.len() as _);
         self.ids.insert(key, Id::Animation(id));
-        self.anims.push(value);
+        self.anims.push(DataRef::Data(value));
 
         id
     }
@@ -85,7 +77,7 @@ impl PakBuf {
 
         let id = BitmapId(self.bitmaps.len() as _);
         self.ids.insert(key, Id::Bitmap(id));
-        self.bitmaps.push(value);
+        self.bitmaps.push(DataRef::Data(value));
 
         id
     }
@@ -119,7 +111,7 @@ impl PakBuf {
 
         let id = ModelId(self.models.len() as _);
         self.ids.insert(key, Id::Model(id));
-        self.models.push(value);
+        self.models.push(DataRef::Data(value));
 
         id
     }
@@ -149,6 +141,7 @@ impl PakBuf {
 
     pub(crate) fn write<W: Seek + Write>(mut self, mut writer: &mut W) -> Result<(), Error> {
         let mut start = 4u32;
+        let mut anims = vec![];
         let mut bitmaps = vec![];
         let mut blobs = vec![];
         let mut models = vec![];
@@ -159,18 +152,21 @@ impl PakBuf {
         // Write a blank spot that we'll use for the skip header later
         writer.write_all(&0u32.to_ne_bytes())?;
 
-        for anim in &self.anims {}
+        for anim in &self.anims {
+            let data = anim.to_vec();
+            writer.write_all(&data).unwrap();
+
+            let end = start + data.len() as u32;
+            anims.push(DataRef::Ref(start..end));
+            start = end;
+        }
 
         for bitmap in &self.bitmaps {
-            let pixels = bitmap.pixels();
-            writer.write_all(pixels).unwrap();
+            let data = bitmap.to_vec();
+            writer.write_all(&data).unwrap();
 
-            let end = start + pixels.len() as u32;
-            bitmaps.push(Bitmap::new_ref(
-                bitmap.fmt(),
-                bitmap.width() as u16,
-                start..end,
-            ));
+            let end = start + data.len() as u32;
+            bitmaps.push(DataRef::Ref(start..end));
             start = end;
         }
 
@@ -184,24 +180,17 @@ impl PakBuf {
         }
 
         for model in &self.models {
-            let indices = model.indices();
-            writer.write_all(indices).unwrap();
+            let data = model.to_vec();
+            writer.write_all(&data).unwrap();
 
-            let vertices = model.vertices();
-            writer.write_all(vertices).unwrap();
-
-            let indices_end = start + indices.len() as u32;
-            let vertices_end = indices_end + vertices.len() as u32;
-            models.push(Model::new_ref(
-                model.meshes().map(Clone::clone).collect(),
-                start..indices_end,
-                indices_end..vertices_end,
-            ));
-            start = vertices_end;
+            let end = start + data.len() as u32;
+            models.push(DataRef::Ref(start..end));
+            start = end;
         }
 
         // Update these items with the refs we created; saving with bincode was very
         // slow when serializing the byte vectors - that is why those are saved raw.
+        self.bitmaps = anims;
         self.bitmaps = bitmaps;
         self.blobs = blobs;
         self.models = models;

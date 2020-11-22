@@ -16,7 +16,7 @@ pub use {
         pak_buf::PakBuf,
         scene_ref::SceneRef,
     },
-    bincode::ErrorKind,
+    bincode::{ErrorKind},
 };
 
 use {
@@ -25,7 +25,7 @@ use {
         borrow::Cow,
         env::current_exe,
         fs::File,
-        io::{BufReader, Error, Read, Seek, SeekFrom},
+        io::{Cursor, BufReader, Error, Read, Seek, SeekFrom},
         path::Path,
     },
 };
@@ -114,6 +114,14 @@ where
         self.buf.text(key)
     }
 
+    pub(crate) fn read_animation<K: AsRef<str>>(&mut self, key: K) -> Animation {
+        let (pos, len) = self.buf.animation(key);
+        let buf = read_exact(&mut self.reader, pos, len);
+        let mut reader = Cursor::new(buf);
+
+        deserialize_from(&mut reader).unwrap()
+    }
+
     pub fn read_blob<K: AsRef<str>>(&mut self, key: K) -> Vec<u8> {
         let (pos, len) = self.buf.blob_pos_len(key);
 
@@ -121,35 +129,18 @@ where
     }
 
     pub(crate) fn read_bitmap<K: AsRef<str>>(&mut self, key: K) -> Bitmap {
-        Self::read_bitmap_ref(&mut self.reader, self.buf.bitmap_ref(key))
-    }
+        let (pos, len) = self.buf.bitmap(key);
+        let buf = read_exact(&mut self.reader, pos, len);
+        let mut reader = Cursor::new(buf);
 
-    pub(crate) fn read_bitmap_id(&mut self, id: BitmapId) -> Bitmap {
-        Self::read_bitmap_ref(&mut self.reader, self.buf.bitmap_id_ref(id))
-    }
-
-    fn read_bitmap_ref(mut reader: &mut R, bitmap: &Bitmap) -> Bitmap {
-        let (pos, len) = bitmap.pixels_pos_len();
-
-        Bitmap::new(
-            bitmap.fmt(),
-            bitmap.width() as _,
-            read_exact(&mut reader, pos, len),
-        )
+        deserialize_from(&mut reader).unwrap()
     }
 
     pub(crate) fn read_model<K: AsRef<str>>(&mut self, key: K) -> Model {
-        let model = self.buf.model_ref(key);
-        let meshes = model.meshes().map(Clone::clone).collect();
+        let (pos, len) = self.buf.model(key);
+        let buf = read_exact(&mut self.reader, pos, len);
+        let mut reader = Cursor::new(buf);
 
-        let indices = {
-            let (pos, len) = model.indices_pos_len();
-            read_exact(&mut self.reader, pos, len)
-        };
-        let vertices = {
-            let (pos, len) = model.vertices_pos_len();
-            read_exact(&mut self.reader, pos, len)
-        };
-        Model::new(meshes, indices, vertices)
+        deserialize_from(&mut reader).unwrap()
     }
 }

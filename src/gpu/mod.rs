@@ -193,45 +193,47 @@ impl Gpu {
         #[cfg(debug_assertions)]
         debug!("Loading animation `{}`", key.as_ref());
 
-        let pool = PoolRef::clone(&self.pool);
-        let model = pak.read_model(key.as_ref());
-        let indices = model.indices();
-        let index_buf_len = indices.len() as _;
-        let mut index_buf = pool.borrow_mut().data_usage(
-            #[cfg(debug_assertions)]
-            name,
-            index_buf_len,
-            Usage::INDEX,
-        );
+        todo!()
 
-        {
-            let mut mapped_range = index_buf.map_range_mut(0..index_buf_len).unwrap();
-            mapped_range.copy_from_slice(&indices);
-            Mapping::flush(&mut mapped_range).unwrap();
-        }
+        // let pool = PoolRef::clone(&self.pool);
+        // let anim = pak.read_animation(key.as_ref());
+        // let indices = model.indices();
+        // let index_buf_len = indices.len() as _;
+        // let mut index_buf = pool.borrow_mut().data_usage(
+        //     #[cfg(debug_assertions)]
+        //     name,
+        //     index_buf_len,
+        //     Usage::INDEX,
+        // );
 
-        let vertices = model.vertices();
-        let vertex_buf_len = vertices.len() as _;
-        let mut vertex_buf = pool.borrow_mut().data_usage(
-            #[cfg(debug_assertions)]
-            name,
-            vertex_buf_len,
-            Usage::VERTEX,
-        );
+        // {
+        //     let mut mapped_range = index_buf.map_range_mut(0..index_buf_len).unwrap();
+        //     mapped_range.copy_from_slice(&indices);
+        //     Mapping::flush(&mut mapped_range).unwrap();
+        // }
 
-        {
-            let mut mapped_range = vertex_buf.map_range_mut(0..vertex_buf_len).unwrap();
-            mapped_range.copy_from_slice(&vertices);
-            Mapping::flush(&mut mapped_range).unwrap();
-        }
+        // let vertices = model.vertices();
+        // let vertex_buf_len = vertices.len() as _;
+        // let mut vertex_buf = pool.borrow_mut().data_usage(
+        //     #[cfg(debug_assertions)]
+        //     name,
+        //     vertex_buf_len,
+        //     Usage::VERTEX,
+        // );
 
-        let model = Model::new(
-            model.meshes().map(Clone::clone).collect(),
-            index_buf,
-            vertex_buf,
-        );
+        // {
+        //     let mut mapped_range = vertex_buf.map_range_mut(0..vertex_buf_len).unwrap();
+        //     mapped_range.copy_from_slice(&vertices);
+        //     Mapping::flush(&mut mapped_range).unwrap();
+        // }
 
-        ModelRef::new(model)
+        // let model = Model::new(
+        //     model.meshes().map(Clone::clone).collect(),
+        //     index_buf,
+        //     vertex_buf,
+        // );
+
+        // ModelRef::new(model)
     }
 
     pub fn load_bitmap<K: AsRef<str>, R: Read + Seek>(
