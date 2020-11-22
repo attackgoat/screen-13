@@ -16,7 +16,7 @@ pub use {
         pak_buf::PakBuf,
         scene_ref::SceneRef,
     },
-    bincode::{ErrorKind},
+    bincode::ErrorKind,
 };
 
 use {
@@ -25,7 +25,7 @@ use {
         borrow::Cow,
         env::current_exe,
         fs::File,
-        io::{Cursor, BufReader, Error, Read, Seek, SeekFrom},
+        io::{BufReader, Cursor, Error, Read, Seek, SeekFrom},
         path::Path,
     },
 };

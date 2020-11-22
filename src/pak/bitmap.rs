@@ -14,11 +14,7 @@ pub struct Bitmap {
 
 impl Bitmap {
     pub(crate) fn new(fmt: Format, width: u16, pixels: Vec<u8>) -> Self {
-        Self {
-            fmt,
-            pixels,
-            width,
-        }
+        Self { fmt, pixels, width }
     }
 
     pub fn dims(&self) -> Extent {

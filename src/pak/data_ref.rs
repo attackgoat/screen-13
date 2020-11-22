@@ -1,6 +1,6 @@
 use {
-    serde::{Deserialize, Serialize},
     bincode::serialize_into,
+    serde::{Deserialize, Serialize},
     std::{
         fmt::{Debug, Formatter, Result},
         ops::Range,
@@ -37,7 +37,10 @@ impl<T> DataRef<T> {
     }
 }
 
-impl<T> DataRef<T> where T: Serialize {
+impl<T> DataRef<T>
+where
+    T: Serialize,
+{
     pub fn to_vec(&self) -> Vec<u8> {
         let mut buf = vec![];
         serialize_into(&mut buf, self.data()).unwrap();
