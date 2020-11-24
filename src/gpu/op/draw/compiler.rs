@@ -17,8 +17,6 @@ use {
     },
     std::{
         cmp::{Ord, Ordering},
-        collections::BTreeSet,
-        mem::take,
         ops::Range,
         ptr::copy_nonoverlapping,
     },

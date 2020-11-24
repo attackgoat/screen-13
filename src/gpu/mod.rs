@@ -16,7 +16,7 @@ mod swapchain;
 mod texture;
 
 pub use self::{
-    model::Model,
+    model::{Model, Pose},
     op::{Bitmap, Command, Font, Material, Write, WriteMode},
     render::Render,
     swapchain::Swapchain,
@@ -186,17 +186,15 @@ impl Gpu {
 
     pub fn load_animation<K: AsRef<str>, R: Read + Seek>(
         &self,
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(debug_assertions)] _name: &str,
         pak: &mut Pak<R>,
         key: K,
     ) -> ModelRef {
         #[cfg(debug_assertions)]
         debug!("Loading animation `{}`", key.as_ref());
 
-        todo!()
-
-        // let pool = PoolRef::clone(&self.pool);
-        // let anim = pak.read_animation(key.as_ref());
+        let _pool = PoolRef::clone(&self.pool);
+        let _anim = pak.read_animation(key.as_ref());
         // let indices = model.indices();
         // let index_buf_len = indices.len() as _;
         // let mut index_buf = pool.borrow_mut().data_usage(
@@ -234,6 +232,7 @@ impl Gpu {
         // );
 
         // ModelRef::new(model)
+        todo!()
     }
 
     pub fn load_bitmap<K: AsRef<str>, R: Read + Seek>(
@@ -312,7 +311,8 @@ impl Gpu {
         }
 
         let model = Model::new(
-            model.meshes().map(Clone::clone).collect(),
+            pool,
+            model.take_meshes(),
             index_buf,
             vertex_buf,
         );

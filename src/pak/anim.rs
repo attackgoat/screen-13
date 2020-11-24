@@ -47,4 +47,8 @@ impl Channel {
             target,
         }
     }
+
+    pub fn target(&self) -> &str {
+        &self.target
+    }
 }

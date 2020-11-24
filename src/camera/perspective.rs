@@ -141,7 +141,7 @@ impl Perspective {
 
         // Compare sphere to the top and bottom planes, which are not parallel
         let axis = dir.dot(self.y);
-        let radius = self.sphere_factor.y() * s.radius();
+        let radius = self.sphere_factor.y * s.radius();
         if axis < -len - radius {
             return Some(Category::Y(false));
         } else if axis > len + radius {
@@ -152,7 +152,7 @@ impl Perspective {
 
         // Compare sphere to the left and right planes, which are not parallel
         let axis = dir.dot(self.x);
-        let radius = self.sphere_factor.x() * s.radius();
+        let radius = self.sphere_factor.x * s.radius();
         if axis < -len - radius {
             return Some(Category::X(false));
         } else if axis > len + radius {
@@ -280,8 +280,8 @@ impl Perspective {
 
         // Update values we use for frustum-sphere intersection checks
         self.fov_tan = self.fov.tan();
-        *self.sphere_factor.x_mut() = 1.0 / (self.fov_tan * self.aspect_ratio).atan().cos();
-        *self.sphere_factor.y_mut() = 1.0 / self.fov.cos();
+        self.sphere_factor.x = 1.0 / (self.fov_tan * self.aspect_ratio).atan().cos();
+        self.sphere_factor.y = 1.0 / self.fov.cos();
     }
 
     fn update_view(&mut self) {

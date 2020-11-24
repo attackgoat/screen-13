@@ -24,14 +24,14 @@ pub type RectF = GenericRect<f32, f32>;
 pub fn vec3_is_finite(val: Vec3) -> bool {
     // Use saturating casts so we can swap three `jbe` instructions for two `and` instructions.
     // Probably not needed but branchless code sure is fun: https://godbolt.org/z/P58cdq
-    let x = val.x().is_finite() as u8;
-    let y = val.y().is_finite() as u8;
-    let z = val.z().is_finite() as u8;
+    let x = val.x.is_finite() as u8;
+    let y = val.y.is_finite() as u8;
+    let z = val.z.is_finite() as u8;
 
     x * y * z == 1
 }
 
 #[inline]
 pub fn vec4_from_vec3(vec: Vec3, w: f32) -> Vec4 {
-    vec4(vec.x(), vec.y(), vec.z(), w)
+    vec4(vec.x, vec.y, vec.z, w)
 }

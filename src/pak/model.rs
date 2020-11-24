@@ -1,38 +1,61 @@
 use {
-    super::DataRef,
     crate::math::{Mat4, Sphere},
     serde::{Deserialize, Serialize},
-    std::ops::Range,
+    std::{
+        collections::HashMap,
+        fmt::{Debug, Error, Formatter},
+        ops::Range,
+    },
 };
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct Mesh {
-    bounds: Sphere,
+#[derive(Deserialize, PartialEq, Serialize)]
+pub struct Batch {
     indices: Range<u32>,
+    mode: TriangleMode,
+}
+
+impl Batch {
+    pub fn new(indices: Range<u32>, mode: TriangleMode) -> Self {
+        Self { indices, mode }
+    }
+
+    pub fn indices(&self) -> Range<u32> {
+        self.indices.clone()
+    }
+
+    pub fn mode(&self) -> TriangleMode {
+        self.mode
+    }
+}
+
+#[derive(Deserialize, PartialEq, Serialize)]
+pub struct Mesh {
+    batches: Vec<Batch>,
+    bounds: Sphere,
     name: Option<String>,
+    skin_inv_binds: Option<HashMap<String, Mat4>>,
     transform: Option<Mat4>,
-    tri_mode: TriangleMode,
 }
 
 impl Mesh {
-    pub(crate) fn new<N: Into<Option<String>>>(
+    pub fn new<N: Into<Option<String>>>(
+        batches: Vec<Batch>,
         bounds: Sphere,
-        indices: Range<u32>,
         name: N,
         transform: Option<Mat4>,
-        tri_mode: TriangleMode,
+        skin_inv_binds: Option<HashMap<String, Mat4>>,
     ) -> Self {
         Self {
+            batches,
             bounds,
-            indices,
             name: name.into(),
+            skin_inv_binds,
             transform,
-            tri_mode,
         }
     }
 }
 
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Deserialize, PartialEq, Serialize)]
 pub struct Model {
     indices: Vec<u8>,
     meshes: Vec<Mesh>,
@@ -56,12 +79,18 @@ impl Model {
         &self.indices
     }
 
-    pub(crate) fn meshes(&self) -> impl Iterator<Item = &Mesh> {
-        self.meshes.iter()
+    pub(crate) fn take_meshes(self) -> Vec<Mesh> {
+        self.meshes
     }
 
     pub(crate) fn vertices(&self) -> &[u8] {
         &self.vertices
+    }
+}
+
+impl Debug for Model {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        f.write_str("Model")
     }
 }
 

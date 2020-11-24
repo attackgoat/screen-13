@@ -6,42 +6,44 @@ use {
     std::collections::HashMap,
 };
 
-fn get_key(asset: &Asset) -> [u8; 20] {
+type Hash = [u8; 20];
+
+fn get_key(asset: &Asset) -> Hash {
     Sha1::from(serialize(asset).unwrap()).digest().bytes()
 }
 
 #[derive(Clone)]
-pub enum LogId {
+pub enum Id {
     Animation(AnimationId),
     Bitmap(BitmapId),
     Locale(String),
     Model(ModelId),
 }
 
-impl From<AnimationId> for LogId {
-    fn from(id: AnimationId) -> LogId {
-        LogId::Animation(id)
+impl From<AnimationId> for Id {
+    fn from(id: AnimationId) -> Id {
+        Id::Animation(id)
     }
 }
 
-impl From<BitmapId> for LogId {
-    fn from(id: BitmapId) -> LogId {
-        LogId::Bitmap(id)
+impl From<BitmapId> for Id {
+    fn from(id: BitmapId) -> Id {
+        Id::Bitmap(id)
     }
 }
 
-impl From<ModelId> for LogId {
-    fn from(id: ModelId) -> LogId {
-        LogId::Model(id)
+impl From<ModelId> for Id {
+    fn from(id: ModelId) -> Id {
+        Id::Model(id)
     }
 }
 
 pub struct PakLog {
-    ids: HashMap<[u8; 20], LogId>,
+    ids: HashMap<Hash, Id>,
 }
 
 impl PakLog {
-    pub fn add<I: Into<LogId>>(&mut self, asset: &Asset, value: I) {
+    pub fn add<I: Into<Id>>(&mut self, asset: &Asset, value: I) {
         self.ids.insert(get_key(asset), value.into());
     }
 
@@ -49,7 +51,7 @@ impl PakLog {
         self.get(asset).is_some()
     }
 
-    pub fn get(&self, asset: &Asset) -> Option<LogId> {
+    pub fn get(&self, asset: &Asset) -> Option<Id> {
         self.ids.get(&get_key(asset)).cloned()
     }
 }

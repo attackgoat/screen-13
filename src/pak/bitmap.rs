@@ -1,8 +1,6 @@
 use {
-    super::DataRef,
     crate::math::Extent,
     serde::{Deserialize, Serialize},
-    std::ops::Range,
 };
 
 #[derive(Debug, Deserialize, PartialEq, Serialize)]

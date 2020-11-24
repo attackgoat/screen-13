@@ -158,6 +158,9 @@ pub fn bake_animation<P1: AsRef<Path>, P2: AsRef<Path>>(
         // println!(")");
     }
 
+    // Sort channels by name (they are all rotations)
+    channels.sort_unstable_by(|a, b| a.target().cmp(b.target()));
+
     // Pak and log this asset
     let anim = Animation { channels };
     let anim_id = pak.push_animation(key, anim);

@@ -5,14 +5,13 @@ use {
     },
     crate::{
         color::{AlphaColor, Color},
-        gpu::ModelRef,
+        gpu::{ModelRef, Pose},
         math::{vec3_is_finite, Mat4, Vec3},
     },
     std::{num::FpCategory, ops::Range},
 };
 
 /// An expressive type which allows specification of individual draws.
-#[derive(Clone)]
 pub enum Command {
     Line(LineCommand),
     Mesh(MeshCommand),
@@ -114,9 +113,9 @@ impl Command {
         Self::Mesh(MeshCommand {
             camera_z: f32::NAN,
             material,
-            name_filter: mesh.name_filter,
+            name: mesh.name,
             model: mesh.model,
-            skin: mesh.skin,
+            pose: mesh.pose,
             transform,
         })
     }
@@ -287,16 +286,34 @@ impl Command {
 
 pub struct Mesh {
     model: ModelRef,
-    name_filter: Option<Option<&'static str>>,
-    skin: Option<u8>,
+    name: Option<Option<&'static str>>,
+    pose: Option<Pose>,
+}
+
+impl Mesh {
+    pub fn new(model: ModelRef) -> Self {
+        model.into()
+    }
+
+    pub fn new_pose(model: ModelRef, pose: Pose) -> Self {
+        (model, pose).into()
+    }
+
+    pub fn new_named(model: ModelRef, name: Option<&'static str>) -> Self {
+        (model, name).into()
+    }
+
+    pub fn new_named_pose(model: ModelRef, name: Option<&'static str>, pose: Pose) -> Self {
+        (model, name, pose).into()
+    }
 }
 
 impl From<ModelRef> for Mesh {
     fn from(model: ModelRef) -> Self {
         Self {
             model,
-            name_filter: None,
-            skin: None,
+            name: None,
+            pose: None,
         }
     }
 }
@@ -305,18 +322,38 @@ impl From<(ModelRef, Option<&'static str>)> for Mesh {
     fn from((model, name_filter): (ModelRef, Option<&'static str>)) -> Self {
         Self {
             model,
-            name_filter: Some(name_filter),
-            skin: None,
+            name: Some(name_filter),
+            pose: None,
         }
     }
 }
 
-impl From<(ModelRef, Option<&'static str>, u8)> for Mesh {
-    fn from((model, name_filter, skin): (ModelRef, Option<&'static str>, u8)) -> Self {
+impl From<(ModelRef, Pose)> for Mesh {
+    fn from((model, pose): (ModelRef, Pose)) -> Self {
         Self {
             model,
-            name_filter: Some(name_filter),
-            skin: Some(skin),
+            name: None,
+            pose: Some(pose),
+        }
+    }
+}
+
+impl From<(ModelRef, Option<&'static str>, Pose)> for Mesh {
+    fn from((model, name_filter, pose): (ModelRef, Option<&'static str>, Pose)) -> Self {
+        Self {
+            model,
+            name: Some(name_filter),
+            pose: Some(pose),
+        }
+    }
+}
+
+impl From<(ModelRef, Pose, Option<&'static str>)> for Mesh {
+    fn from((model, pose, name_filter): (ModelRef, Pose, Option<&'static str>)) -> Self {
+        Self {
+            model,
+            name: Some(name_filter),
+            pose: Some(pose),
         }
     }
 }

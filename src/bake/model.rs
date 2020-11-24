@@ -5,7 +5,7 @@ use {
     },
     crate::{
         math::{quat, vec3, Mat4, Quat, Sphere, Vec3},
-        pak::{Mesh, Model, ModelId, PakBuf, TriangleMode},
+        pak::{Batch, Mesh, Model, ModelId, PakBuf, TriangleMode},
     },
     gltf::{
         import,
@@ -93,6 +93,7 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
     let mut meshes = vec![];
 
     for (name, mesh, node) in nodes {
+        let dst_name = mesh_names[name];
         let skin = node.skin();
         let (translation, rotation, scale) = node.transform().decomposed();
         let rotation = quat(rotation[0], rotation[1], rotation[2], rotation[3]);
@@ -110,6 +111,8 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
         } else {
             None
         };
+        let mut batches = vec![];
+        let mut all_positions = vec![];
 
         for (mode, primitive) in mesh
             .primitives()
@@ -127,19 +130,10 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
                 .into_f32()
                 .collect::<Vec<_>>();
 
-            let dst_name = mesh_names[name];
+            all_positions.extend_from_slice(&positions);
+
             let index_end = index_count + indices.len() as u32;
-            meshes.push(Mesh::new(
-                Sphere::from_point_cloud(
-                    positions
-                        .iter()
-                        .map(|position| vec3(position[0], position[1], position[2])),
-                ),
-                index_count..index_end,
-                dst_name.map_or(None, |name| Some(name.to_owned())),
-                transform,
-                mode,
-            ));
+            batches.push(Batch::new(index_count..index_end, mode));
             index_count = index_end;
 
             match index_mode {
@@ -201,6 +195,27 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
                 }
             }
         }
+
+        meshes.push(Mesh::new(
+            batches,
+            Sphere::from_point_cloud(
+                all_positions
+                    .iter()
+                    .map(|position| vec3(position[0], position[1], position[2])),
+            ),
+            dst_name.map_or(None, |name| Some(name.to_owned())),
+            transform,
+            skin.map(|s| {
+                let joints = s.joints().map(|node| node.name().unwrap().to_owned());
+                let inv_binds = s
+                    .reader(|buf| bufs.get(buf.index()).map(|data| &*data.0))
+                    .read_inverse_bind_matrices()
+                    .unwrap()
+                    .map(|ibp| Mat4::from_cols_array_2d(&ibp));
+
+                joints.zip(inv_binds).into_iter().collect()
+            }),
+        ));
     }
 
     // Pak and log this asset

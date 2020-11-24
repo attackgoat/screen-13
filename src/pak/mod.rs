@@ -12,12 +12,14 @@ pub use {
         anim::{Animation, Channel},
         bitmap::{Bitmap, Format as BitmapFormat},
         id::{AnimationId, BitmapId, BlobId, ModelId, SceneId},
-        model::{Mesh, Model, TriangleMode},
+        model::Model,
         pak_buf::PakBuf,
         scene_ref::SceneRef,
     },
     bincode::ErrorKind,
 };
+
+pub(crate) use self::model::{ Mesh};
 
 use {
     bincode::deserialize_from,

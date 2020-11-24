@@ -21,6 +21,7 @@ use {
         camera::Camera,
         color::{AlphaColor, Color, TRANSPARENT_BLACK},
         gpu::{
+            Pose,
             data::CopyRange,
             driver::{CommandPool, Device, Driver, Fence, Framebuffer2d, PhysicalDevice},
             pool::{Graphics, GraphicsMode, Lease, RenderPassMode},
@@ -817,13 +818,12 @@ pub enum Material {
     },
 }
 
-#[derive(Clone)]
 pub struct MeshCommand {
     camera_z: f32,
     material: Material,
-    name_filter: Option<Option<&'static str>>,
+    name: Option<Option<&'static str>>,
     model: ModelRef,
-    skin: Option<u8>, // TODO
+    pose: Option<Pose>,
     transform: Mat4,
 }
 

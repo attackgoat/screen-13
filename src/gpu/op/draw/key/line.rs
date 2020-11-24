@@ -15,9 +15,9 @@ impl Line {
 
         for idx in 0..cmd.0.len() {
             hasher.write_u32(PackedColor::from(cmd.0[idx].color).0);
-            hasher.write_u32(cmd.0[idx].pos.x().to_bits());
-            hasher.write_u32(cmd.0[idx].pos.y().to_bits());
-            hasher.write_u32(cmd.0[idx].pos.z().to_bits());
+            hasher.write_u32(cmd.0[idx].pos.x.to_bits());
+            hasher.write_u32(cmd.0[idx].pos.y.to_bits());
+            hasher.write_u32(cmd.0[idx].pos.z.to_bits());
         }
 
         Self(hasher.finish())
