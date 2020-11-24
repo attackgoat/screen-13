@@ -1,11 +1,14 @@
 use {
     super::{
-        pak_log::LogId,
+        pak_log::Id,
         Asset, Model as ModelAsset, PakLog, {get_filename_key, get_path},
     },
     crate::{
         math::{quat, vec3, Mat4, Quat, Sphere, Vec3},
-        pak::{Batch, Mesh, Model, ModelId, PakBuf, TriangleMode},
+        pak::{
+            model::{Batch, Mesh, TriangleMode},
+            Model, ModelId, PakBuf,
+        },
     },
     gltf::{
         import,
@@ -27,7 +30,7 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
 
     // Early out if we've already baked this asset
     let proto = Asset::Model(ModelAsset::new(&src, asset.offset(), asset.scale()));
-    if let Some(LogId::Model(id)) = log.get(&proto) {
+    if let Some(Id::Model(id)) = log.get(&proto) {
         return id;
     }
 
@@ -93,6 +96,11 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
     let mut meshes = vec![];
 
     for (name, mesh, node) in nodes {
+        if meshes.len() == u16::MAX as usize {
+            warn!("Maximum number of meshes supported per model have been loaded, others have been skipped");
+            break;
+        }
+
         let dst_name = mesh_names[name];
         let skin = node.skin();
         let (translation, rotation, scale) = node.transform().decomposed();
@@ -203,7 +211,7 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
                     .iter()
                     .map(|position| vec3(position[0], position[1], position[2])),
             ),
-            dst_name.map_or(None, |name| Some(name.to_owned())),
+            dst_name.map(|name| name.to_owned()),
             transform,
             skin.map(|s| {
                 let joints = s.joints().map(|node| node.name().unwrap().to_owned());

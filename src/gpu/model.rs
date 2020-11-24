@@ -1,19 +1,42 @@
 use {
     super::{Data, Lease, PoolRef},
-    crate::{math::{Quat,Sphere},pak::Mesh},
+    crate::{
+        math::{Quat, Sphere},
+        pak::model::Mesh as PakMesh,
+    },
     std::fmt::{Debug, Error, Formatter},
 };
 
-/// An drawable collection of individually adressable meshes.
+// TODO: Could not force the lifetime to work without an explicit function which means I'm missing something really basic
+#[inline]
+fn deref_str<'a, S: AsRef<str>>(s: &'a Option<S>) -> Option<&'a str> {
+    if let Some(s) = s {
+        Some(s.as_ref())
+    } else {
+        None
+    }
+}
+
+/// A reference to an individual mesh. Only useful with the Model it was received from.
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+pub struct Mesh(u16);
+
+/// A drawable collection of individually adressable meshes.
 pub struct Model {
     index_buf: Lease<Data>,
-    meshes: Vec<Mesh>,
+    meshes: Vec<PakMesh>,
     pool: PoolRef,
     vertex_buf: Lease<Data>,
 }
 
 impl Model {
-    pub(crate) fn new(pool: PoolRef, meshes: Vec<Mesh>, index_buf: Lease<Data>, vertex_buf: Lease<Data>) -> Self {
+    /// Meshes must be sorted by name
+    pub(crate) fn new(
+        pool: PoolRef,
+        meshes: Vec<PakMesh>,
+        index_buf: Lease<Data>,
+        vertex_buf: Lease<Data>,
+    ) -> Self {
         Self {
             index_buf,
             meshes,
@@ -24,6 +47,29 @@ impl Model {
 
     pub fn bounds(&self) -> Sphere {
         todo!("Get bounds")
+    }
+
+    pub fn mesh<N: AsRef<str>>(&self, name: Option<N>) -> Option<Mesh> {
+        let name_str = deref_str(&name);
+        match self
+            .meshes
+            .binary_search_by(|probe| probe.name().cmp(&name_str))
+        {
+            Err(_) => None,
+            Ok(mut idx) => {
+                // Rewind to the start of this same-named group
+                while idx > 0 {
+                    let next_idx = idx - 1;
+                    if self.meshes[next_idx].name() == name_str {
+                        idx = next_idx;
+                    } else {
+                        break;
+                    }
+                }
+
+                Some(Mesh(idx as _))
+            }
+        }
     }
 
     pub fn pose_bounds(&self, _pose: &Pose) -> Sphere {
@@ -37,14 +83,15 @@ impl Debug for Model {
     }
 }
 
+#[derive(Clone)]
 pub struct Pose {
-    pub(crate) joints: Vec<Quat>
+    joints: Vec<Quat>,
 }
 
 impl Pose {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            joints: Vec::with_capacity(capacity)
+            joints: Vec::with_capacity(capacity),
         }
     }
 
@@ -62,5 +109,5 @@ impl Pose {
         //     Err(idx) => self.joints.insert(idx, (name, val)),
         //     Ok(idx) => self.joints[idx].1 = val,
         // }
-    } 
+    }
 }

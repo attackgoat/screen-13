@@ -31,7 +31,7 @@ impl Animation {
     }
 
     pub fn exclude(&self) -> Option<&[String]> {
-        self.exclude.as_ref().map(|e| e.as_slice())
+        self.exclude.as_deref()
     }
 
     pub fn name(&self) -> Option<&str> {

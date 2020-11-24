@@ -53,6 +53,10 @@ impl Mesh {
             transform,
         }
     }
+
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
 }
 
 #[derive(Deserialize, PartialEq, Serialize)]
@@ -63,10 +67,12 @@ pub struct Model {
 }
 
 impl Model {
-    pub(crate) fn new(meshes: Vec<Mesh>, indices: Vec<u8>, vertices: Vec<u8>) -> Self {
+    pub(crate) fn new(mut meshes: Vec<Mesh>, indices: Vec<u8>, vertices: Vec<u8>) -> Self {
         assert_ne!(meshes.len(), 0);
         assert_ne!(indices.len(), 0);
         assert_ne!(vertices.len(), 0);
+
+        meshes.sort_unstable_by(|lhs, rhs| lhs.name().cmp(&rhs.name()));
 
         Self {
             indices,

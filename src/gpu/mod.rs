@@ -16,7 +16,7 @@ mod swapchain;
 mod texture;
 
 pub use self::{
-    model::{Model, Pose},
+    model::{Mesh, Model, Pose},
     op::{Bitmap, Command, Font, Material, Write, WriteMode},
     render::Render,
     swapchain::Swapchain,
@@ -310,12 +310,7 @@ impl Gpu {
             Mapping::flush(&mut mapped_range).unwrap();
         }
 
-        let model = Model::new(
-            pool,
-            model.take_meshes(),
-            index_buf,
-            vertex_buf,
-        );
+        let model = Model::new(pool, model.take_meshes(), index_buf, vertex_buf);
 
         ModelRef::new(model)
     }

@@ -34,30 +34,14 @@ pub trait Camera {
         const P: f32 = 1.0;
         const N: f32 = -1.0;
         [
-            (view_inv * vec4_from_vec3(self.unproject_point(vec3(N, N, N)), 1.0))
-                .truncate()
-                .into(),
-            (view_inv * vec4_from_vec3(self.unproject_point(vec3(N, N, P)), 1.0))
-                .truncate()
-                .into(),
-            (view_inv * vec4_from_vec3(self.unproject_point(vec3(N, P, N)), 1.0))
-                .truncate()
-                .into(),
-            (view_inv * vec4_from_vec3(self.unproject_point(vec3(N, P, P)), 1.0))
-                .truncate()
-                .into(),
-            (view_inv * vec4_from_vec3(self.unproject_point(vec3(P, N, N)), 1.0))
-                .truncate()
-                .into(),
-            (view_inv * vec4_from_vec3(self.unproject_point(vec3(P, N, P)), 1.0))
-                .truncate()
-                .into(),
-            (view_inv * vec4_from_vec3(self.unproject_point(vec3(P, P, N)), 1.0))
-                .truncate()
-                .into(),
-            (view_inv * vec4_from_vec3(self.unproject_point(vec3(P, P, P)), 1.0))
-                .truncate()
-                .into(),
+            (view_inv * vec4_from_vec3(self.unproject_point(vec3(N, N, N)), 1.0)).truncate(),
+            (view_inv * vec4_from_vec3(self.unproject_point(vec3(N, N, P)), 1.0)).truncate(),
+            (view_inv * vec4_from_vec3(self.unproject_point(vec3(N, P, N)), 1.0)).truncate(),
+            (view_inv * vec4_from_vec3(self.unproject_point(vec3(N, P, P)), 1.0)).truncate(),
+            (view_inv * vec4_from_vec3(self.unproject_point(vec3(P, N, N)), 1.0)).truncate(),
+            (view_inv * vec4_from_vec3(self.unproject_point(vec3(P, N, P)), 1.0)).truncate(),
+            (view_inv * vec4_from_vec3(self.unproject_point(vec3(P, P, N)), 1.0)).truncate(),
+            (view_inv * vec4_from_vec3(self.unproject_point(vec3(P, P, P)), 1.0)).truncate(),
         ]
     }
 }

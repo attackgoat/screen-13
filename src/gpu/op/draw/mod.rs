@@ -12,6 +12,7 @@ pub use self::{command::Command, compiler::Compiler};
 
 use {
     self::{
+        command::MeshCommand,
         geom::LINE_STRIDE,
         geom_buf::GeometryBuffer,
         instruction::{Instruction, MeshInstruction},
@@ -21,11 +22,10 @@ use {
         camera::Camera,
         color::{AlphaColor, Color, TRANSPARENT_BLACK},
         gpu::{
-            Pose,
             data::CopyRange,
             driver::{CommandPool, Device, Driver, Fence, Framebuffer2d, PhysicalDevice},
             pool::{Graphics, GraphicsMode, Lease, RenderPassMode},
-            BitmapRef, Data, Model, ModelRef, PoolRef, Texture2d, TextureRef,
+            BitmapRef, Data, Model, PoolRef, Texture2d, TextureRef,
         },
         math::{Cone, Coord, CoordF, Extent, Mat4, Sphere, Vec3},
     },
@@ -818,12 +818,10 @@ pub enum Material {
     },
 }
 
-pub struct MeshCommand {
-    camera_z: f32,
+pub struct ModelCommand {
+    camera_order: f32, // TODO: Could probably be u16?
     material: Material,
-    name: Option<Option<&'static str>>,
-    model: ModelRef,
-    pose: Option<Pose>,
+    mesh: MeshCommand,
     transform: Mat4,
 }
 

@@ -312,13 +312,10 @@ impl Compiler {
 
         let eye = -camera.eye();
         for cmd in cmds.iter_mut() {
-            match cmd {
-                Command::Mesh(cmd) => {
-                    // Assign a relative measure of distance from the camera for all mesh commands which allows us to submit draw commands
-                    // in the best order for the z-buffering algorithm (we use a depth map with comparisons that discard covered fragments)
-                    cmd.camera_z = cmd.transform.transform_vector3(eye).length_squared();
-                }
-                _ => (),
+            if let Command::Model(cmd) = cmd {
+                // Assign a relative measure of distance from the camera for all mesh commands which allows us to submit draw commands
+                // in the best order for the z-buffering algorithm (we use a depth map with comparisons that discard covered fragments)
+                cmd.camera_order = cmd.transform.transform_vector3(eye).length_squared();
             }
         }
 
@@ -644,11 +641,11 @@ impl Compiler {
         }
     }
 
-    /// All commands sort into groups: first meshes, then lights, followed by lines.
+    /// All commands sort into groups: first models, then lights, followed by lines.
     fn group_idx(cmd: &Command) -> GroupIdx {
         // TODO: Transparencies?
         match cmd {
-            Command::Mesh(_) => GroupIdx::Mesh,
+            Command::Model(_) => GroupIdx::Model,
             Command::PointLight(_) => GroupIdx::PointLight,
             Command::RectLight(_) => GroupIdx::RectLight,
             Command::Spotlight(_) => GroupIdx::Spotlight,
@@ -732,7 +729,7 @@ impl Compiler {
             // Compare group indices
             match lhs_idx.cmp(&rhs_idx) {
                 eq => match lhs {
-                    Command::Mesh(_lhs) => {
+                    Command::Model(_lhs) => {
                         // let rhs = rhs.as_mesh().unwrap();
                         // let lhs_idx = 0; // TODO: Self::model_group_idx(lhs.model);
                         // let rhs_idx = 0; // TODO: Self::model_group_idx(rhs.model);
@@ -801,7 +798,7 @@ struct DrawAsm {
 /// Evenly numbered because we use `SearchIdx` to quickly locate these groups while filling the cache.
 #[derive(Clone, Copy)]
 enum GroupIdx {
-    Mesh = 0,
+    Model = 0,
     Sunlight = 2,
     PointLight = 4,
     RectLight = 6,

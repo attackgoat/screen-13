@@ -1,8 +1,9 @@
+pub(crate) mod model;
+
 mod anim;
 mod bitmap;
 mod data_ref;
 mod id;
-mod model;
 mod pak_buf;
 mod scene_ref;
 
@@ -18,8 +19,6 @@ pub use {
     },
     bincode::ErrorKind,
 };
-
-pub(crate) use self::model::{ Mesh};
 
 use {
     bincode::deserialize_from,

@@ -2,7 +2,7 @@ use {
     super::{
         asset::{Animation as AnimationAsset, Asset},
         get_filename_key, get_path,
-        pak_log::{LogId, PakLog},
+        pak_log::{Id, PakLog},
     },
     crate::{
         math::{quat, Quat, Vec3},
@@ -33,14 +33,10 @@ pub fn bake_animation<P1: AsRef<Path>, P2: AsRef<Path>>(
     let src = get_path(&dir, asset.src());
 
     // Early out if we've already baked this asset
-    let exclude = asset
-        .exclude()
-        .unwrap_or_default()
-        .iter()
-        .map(|s| s.clone());
+    let exclude = asset.exclude().unwrap_or_default().iter().cloned();
     let name = asset.name().map(|s| s.to_owned());
     let proto = Asset::Animation(AnimationAsset::new(&src, name, exclude));
-    if let Some(LogId::Animation(id)) = log.get(&proto) {
+    if let Some(Id::Animation(id)) = log.get(&proto) {
         return id;
     }
 

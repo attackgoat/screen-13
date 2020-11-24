@@ -2,7 +2,7 @@ use {
     super::{
         asset::{Asset, Bitmap as BitmapAsset, FontBitmap},
         get_filename_key, get_path,
-        pak_log::{LogId, PakLog},
+        pak_log::{Id, PakLog},
     },
     crate::pak::{Bitmap, BitmapFormat, BitmapId, PakBuf},
     image::{buffer::ConvertBuffer, open as image_open, DynamicImage, RgbImage, RgbaImage},
@@ -29,7 +29,7 @@ pub fn bake_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
     let asset = Asset::Bitmap(bitmap_asset.clone());
     if log.contains(&asset) {
         match log.get(&asset).unwrap() {
-            LogId::Bitmap(id) => return id,
+            Id::Bitmap(id) => return id,
             _ => panic!(),
         }
     }

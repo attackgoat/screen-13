@@ -1,11 +1,11 @@
 use {
     super::{
-        LineCommand, LineVertex, Material, MeshCommand, PointLightCommand, RectLightCommand,
+        LineCommand, LineVertex, Material, ModelCommand, PointLightCommand, RectLightCommand,
         SpotlightCommand, SunlightCommand,
     },
     crate::{
         color::{AlphaColor, Color},
-        gpu::{ModelRef, Pose},
+        gpu::{Mesh, ModelRef, Pose},
         math::{vec3_is_finite, Mat4, Vec3},
     },
     std::{num::FpCategory, ops::Range},
@@ -14,7 +14,7 @@ use {
 /// An expressive type which allows specification of individual draws.
 pub enum Command {
     Line(LineCommand),
-    Mesh(MeshCommand),
+    Model(ModelCommand),
     PointLight(PointLightCommand),
     RectLight(RectLightCommand),
     Spotlight(SpotlightCommand),
@@ -29,9 +29,9 @@ impl Command {
         }
     }
 
-    pub(crate) fn as_mesh(&self) -> Option<&MeshCommand> {
+    pub(crate) fn as_model(&self) -> Option<&ModelCommand> {
         match self {
-            Self::Mesh(res) => Some(res),
+            Self::Model(res) => Some(res),
             _ => None,
         }
     }
@@ -68,8 +68,8 @@ impl Command {
         self.as_line().is_some()
     }
 
-    pub(crate) fn is_mesh(&self) -> bool {
-        self.as_mesh().is_some()
+    pub(crate) fn is_model(&self) -> bool {
+        self.as_model().is_some()
     }
 
     pub(crate) fn is_point_light(&self) -> bool {
@@ -108,14 +108,12 @@ impl Command {
         ]))
     }
 
-    pub fn mesh<M: Into<Mesh>>(mesh: M, material: Material, transform: Mat4) -> Self {
+    pub fn model<M: Into<MeshCommand>>(mesh: M, material: Material, transform: Mat4) -> Self {
         let mesh = mesh.into();
-        Self::Mesh(MeshCommand {
-            camera_z: f32::NAN,
+        Self::Model(ModelCommand {
+            camera_order: f32::NAN,
             material,
-            name: mesh.name,
-            model: mesh.model,
-            pose: mesh.pose,
+            mesh,
             transform,
         })
     }
@@ -284,13 +282,13 @@ impl Command {
 //     }
 // }
 
-pub struct Mesh {
+pub struct MeshCommand {
     model: ModelRef,
-    name: Option<Option<&'static str>>,
+    mesh: Option<Mesh>,
     pose: Option<Pose>,
 }
 
-impl Mesh {
+impl MeshCommand {
     pub fn new(model: ModelRef) -> Self {
         model.into()
     }
@@ -299,61 +297,57 @@ impl Mesh {
         (model, pose).into()
     }
 
-    pub fn new_named(model: ModelRef, name: Option<&'static str>) -> Self {
-        (model, name).into()
+    pub fn new_mesh(model: ModelRef, mesh: Mesh) -> Self {
+        (model, mesh).into()
     }
 
-    pub fn new_named_pose(model: ModelRef, name: Option<&'static str>, pose: Pose) -> Self {
-        (model, name, pose).into()
+    pub fn new_mesh_pose(model: ModelRef, mesh: Mesh, pose: Pose) -> Self {
+        (model, mesh, pose).into()
     }
 }
 
-impl From<ModelRef> for Mesh {
+impl From<ModelRef> for MeshCommand {
     fn from(model: ModelRef) -> Self {
         Self {
             model,
-            name: None,
+            mesh: None,
             pose: None,
         }
     }
 }
 
-impl From<(ModelRef, Option<&'static str>)> for Mesh {
-    fn from((model, name_filter): (ModelRef, Option<&'static str>)) -> Self {
+impl From<(ModelRef, Mesh)> for MeshCommand {
+    fn from((model, mesh): (ModelRef, Mesh)) -> Self {
         Self {
             model,
-            name: Some(name_filter),
+            mesh: Some(mesh),
             pose: None,
         }
     }
 }
 
-impl From<(ModelRef, Pose)> for Mesh {
+impl From<(ModelRef, Pose)> for MeshCommand {
     fn from((model, pose): (ModelRef, Pose)) -> Self {
         Self {
             model,
-            name: None,
+            mesh: None,
             pose: Some(pose),
         }
     }
 }
 
-impl From<(ModelRef, Option<&'static str>, Pose)> for Mesh {
-    fn from((model, name_filter, pose): (ModelRef, Option<&'static str>, Pose)) -> Self {
+impl From<(ModelRef, Mesh, Pose)> for MeshCommand {
+    fn from((model, mesh, pose): (ModelRef, Mesh, Pose)) -> Self {
         Self {
             model,
-            name: Some(name_filter),
+            mesh: Some(mesh),
             pose: Some(pose),
         }
     }
 }
 
-impl From<(ModelRef, Pose, Option<&'static str>)> for Mesh {
-    fn from((model, pose, name_filter): (ModelRef, Pose, Option<&'static str>)) -> Self {
-        Self {
-            model,
-            name: Some(name_filter),
-            pose: Some(pose),
-        }
+impl From<(ModelRef, Pose, Mesh)> for MeshCommand {
+    fn from((model, pose, mesh): (ModelRef, Pose, Mesh)) -> Self {
+        (model, mesh, pose).into()
     }
 }

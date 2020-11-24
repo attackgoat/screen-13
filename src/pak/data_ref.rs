@@ -30,10 +30,7 @@ impl<T> DataRef<T> {
     }
 
     pub fn is_data(&self) -> bool {
-        match self {
-            Self::Data(_) => true,
-            _ => false,
-        }
+        matches!(self, Self::Data(_))
     }
 }
 
