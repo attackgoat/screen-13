@@ -1,8 +1,7 @@
 use {
     super::{
-        id::Id, Animation, AnimationId, AnimationKey, Bitmap, BitmapId, BitmapKey, BlobId, BlobKey,
-        Compression, DataRef, Material, MaterialId, MaterialKey, Model, ModelId, ModelKey, Scene,
-        SceneId, SceneKey,
+        id::Id, Animation, AnimationId, Bitmap, BitmapId, BlobId, Compression, DataRef, Material,
+        MaterialId, Model, ModelId, Scene, SceneId,
     },
     bincode::serialize_into,
     serde::{Deserialize, Serialize},
@@ -42,40 +41,16 @@ pub struct PakBuf {
 }
 
 impl PakBuf {
-    pub(super) fn animation<K: Into<AnimationKey<S>>, S: AsRef<str>>(
-        &self,
-        key: K,
-    ) -> (AnimationId, u64, usize) {
-        let id: AnimationId = match key.into() {
-            AnimationKey::Id(id) => id,
-            AnimationKey::Key(key) => self.id(key).as_animation().unwrap(),
-        };
-        let (pos, len) = self.anims[id.0 as usize].pos_len();
-
-        (id, pos, len)
+    pub(super) fn animation(&self, id: AnimationId) -> (u64, usize) {
+        self.anims[id.0 as usize].pos_len()
     }
 
-    pub(super) fn bitmap<K: Into<BitmapKey<S>>, S: AsRef<str>>(
-        &self,
-        key: K,
-    ) -> (BitmapId, u64, usize) {
-        let id: BitmapId = match key.into() {
-            BitmapKey::Id(id) => id,
-            BitmapKey::Key(key) => self.id(key).as_bitmap().unwrap(),
-        };
-        let (pos, len) = self.bitmaps[id.0 as usize].pos_len();
-
-        (id, pos, len)
+    pub(super) fn bitmap(&self, id: BitmapId) -> (u64, usize) {
+        self.bitmaps[id.0 as usize].pos_len()
     }
 
-    pub(super) fn blob<K: Into<BlobKey<S>>, S: AsRef<str>>(&self, key: K) -> (BlobId, u64, usize) {
-        let id: BlobId = match key.into() {
-            BlobKey::Id(id) => id,
-            BlobKey::Key(key) => self.id(key).as_blob().unwrap(),
-        };
-        let (pos, len) = self.blobs[id.0 as usize].pos_len();
-
-        (id, pos, len)
+    pub(super) fn blob(&self, id: BlobId) -> (u64, usize) {
+        self.blobs[id.0 as usize].pos_len()
     }
 
     pub(super) fn id<K: AsRef<str>>(&self, key: K) -> Id {
@@ -85,30 +60,12 @@ impl PakBuf {
             .clone()
     }
 
-    pub(super) fn material<K: Into<MaterialKey<S>>, S: AsRef<str>>(
-        &self,
-        key: K,
-    ) -> (MaterialId, &Material) {
-        let id: MaterialId = match key.into() {
-            MaterialKey::Id(id) => id,
-            MaterialKey::Key(key) => self.id(key).as_material().unwrap(),
-        };
-        let material = self.materials.get(id.0 as usize).unwrap();
-
-        (id, material)
+    pub(super) fn material(&self, id: MaterialId) -> &Material {
+        self.materials.get(id.0 as usize).unwrap()
     }
 
-    pub(super) fn model<K: Into<ModelKey<S>>, S: AsRef<str>>(
-        &self,
-        key: K,
-    ) -> (ModelId, u64, usize) {
-        let id: ModelId = match key.into() {
-            ModelKey::Id(id) => id,
-            ModelKey::Key(key) => self.id(key).as_model().unwrap(),
-        };
-        let (pos, len) = self.models[id.0 as usize].pos_len();
-
-        (id, pos, len)
+    pub(super) fn model(&self, id: ModelId) -> (u64, usize) {
+        self.models[id.0 as usize].pos_len()
     }
 
     pub(crate) fn push_animation(&mut self, key: String, val: Animation) -> AnimationId {
@@ -179,17 +136,8 @@ impl PakBuf {
         self.texts.insert(key, val);
     }
 
-    pub(super) fn scene<K: Into<SceneKey<S>>, S: AsRef<str>>(
-        &self,
-        key: K,
-    ) -> (SceneId, u64, usize) {
-        let id: SceneId = match key.into() {
-            SceneKey::Id(id) => id,
-            SceneKey::Key(key) => self.id(key).as_scene().unwrap(),
-        };
-        let (pos, len) = self.scenes[id.0 as usize].pos_len();
-
-        (id, pos, len)
+    pub(super) fn scene(&self, id: SceneId) -> (u64, usize) {
+        self.scenes[id.0 as usize].pos_len()
     }
 
     pub(super) fn text<K: AsRef<str>>(&self, key: K) -> Cow<str> {

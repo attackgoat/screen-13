@@ -69,7 +69,8 @@ impl Font {
             .iter()
             .map(|page| {
                 // TODO: Shouldn't be loading bitmaps here!
-                let (_, bitmap) = pak.read_bitmap(&format!("fonts/{}", page));
+                let id = pak.bitmap_id(&format!("fonts/{}", page)).unwrap();
+                let bitmap = pak.read_bitmap(id);
                 unsafe {
                     BitmapOp::new(
                         #[cfg(debug_assertions)]

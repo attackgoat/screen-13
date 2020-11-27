@@ -44,13 +44,6 @@ use {
 
 pub(self) use self::data_ref::DataRef;
 
-pub type AnimationKey<K> = IdKey<AnimationId, K>;
-pub type BitmapKey<K> = IdKey<BitmapId, K>;
-pub type BlobKey<K> = IdKey<BlobId, K>;
-pub type MaterialKey<K> = IdKey<MaterialId, K>;
-pub type ModelKey<K> = IdKey<ModelId, K>;
-pub type SceneKey<K> = IdKey<SceneId, K>;
-
 fn read_exact<R: Read + Seek>(reader: &mut R, pos: u64, len: usize) -> Vec<u8> {
     // Unsafely create a buffer of uninitialized data (this is faster)
     let mut buf = Vec::with_capacity(len);
@@ -126,110 +119,6 @@ impl Default for Compression {
     }
 }
 
-pub enum IdKey<I, K> {
-    Id(I),
-    Key(K),
-}
-
-impl<I, K> IdKey<I, K> {
-    pub fn as_id(&self) -> Option<&I> {
-        match self {
-            Self::Id(id) => Some(id),
-            _ => None,
-        }
-    }
-}
-
-impl<K> From<AnimationId> for AnimationKey<K> {
-    fn from(id: AnimationId) -> Self {
-        Self::Id(id)
-    }
-}
-
-impl<K> From<K> for AnimationKey<K>
-where
-    K: AsRef<str>,
-{
-    fn from(key: K) -> Self {
-        Self::Key(key)
-    }
-}
-
-impl<K> From<BitmapId> for BitmapKey<K> {
-    fn from(id: BitmapId) -> Self {
-        Self::Id(id)
-    }
-}
-
-impl<K> From<K> for BitmapKey<K>
-where
-    K: AsRef<str>,
-{
-    fn from(key: K) -> Self {
-        Self::Key(key)
-    }
-}
-
-impl<K> From<BlobId> for BlobKey<K> {
-    fn from(id: BlobId) -> Self {
-        Self::Id(id)
-    }
-}
-
-impl<K> From<K> for BlobKey<K>
-where
-    K: AsRef<str>,
-{
-    fn from(key: K) -> Self {
-        Self::Key(key)
-    }
-}
-
-impl<K> From<MaterialId> for MaterialKey<K> {
-    fn from(id: MaterialId) -> Self {
-        Self::Id(id)
-    }
-}
-
-impl<K> From<K> for MaterialKey<K>
-where
-    K: AsRef<str>,
-{
-    fn from(key: K) -> Self {
-        Self::Key(key)
-    }
-}
-
-impl<K> From<ModelId> for ModelKey<K> {
-    fn from(id: ModelId) -> Self {
-        Self::Id(id)
-    }
-}
-
-impl<K> From<K> for ModelKey<K>
-where
-    K: AsRef<str>,
-{
-    fn from(key: K) -> Self {
-        Self::Key(key)
-    }
-}
-
-impl<K> From<SceneId> for SceneKey<K> {
-    fn from(id: SceneId) -> Self {
-        Self::Id(id)
-    }
-}
-
-impl<K> From<K> for SceneKey<K>
-where
-    K: AsRef<str>,
-{
-    fn from(key: K) -> Self {
-        Self::Key(key)
-    }
-}
-
 pub struct Pak<R>
 where
     R: Read + Seek,
@@ -298,11 +187,8 @@ where
         self.buf.id(key).as_material()
     }
 
-    pub fn material<K: Into<MaterialKey<S>>, S: AsRef<str>>(
-        &self,
-        key: K,
-    ) -> (MaterialId, &Material) {
-        self.buf.material(key)
+    pub fn material(&self, id: MaterialId) -> &Material {
+        self.buf.material(id)
     }
 
     pub fn model_id<K: AsRef<str>>(&self, key: K) -> Option<ModelId> {
@@ -330,47 +216,41 @@ where
         self.buf.text(key)
     }
 
-    pub fn read_animation<K: Into<AnimationKey<S>>, S: AsRef<str>>(
-        &mut self,
-        key: K,
-    ) -> (AnimationId, Animation) {
-        let (id, pos, len) = self.buf.animation(key);
+    pub fn read_animation(&mut self, id: AnimationId) -> Animation {
+        let (pos, len) = self.buf.animation(id);
         let buf = read_exact(&mut self.reader, pos, len);
         let mut reader = Cursor::new(buf);
 
-        (id, deserialize_from(&mut reader).unwrap())
+        deserialize_from(&mut reader).unwrap()
     }
 
-    pub fn read_blob<K: Into<BlobKey<S>>, S: AsRef<str>>(&mut self, key: K) -> (BlobId, Vec<u8>) {
-        let (id, pos, len) = self.buf.blob(key);
+    pub fn read_blob(&mut self, id: BlobId) -> Vec<u8> {
+        let (pos, len) = self.buf.blob(id);
 
-        (id, read_exact(&mut self.reader, pos, len))
+        read_exact(&mut self.reader, pos, len)
     }
 
-    pub fn read_bitmap<K: Into<BitmapKey<S>>, S: AsRef<str>>(
-        &mut self,
-        key: K,
-    ) -> (BitmapId, Bitmap) {
-        let (id, pos, len) = self.buf.bitmap(key);
+    pub fn read_bitmap(&mut self, id: BitmapId) -> Bitmap {
+        let (pos, len) = self.buf.bitmap(id);
         let buf = read_exact(&mut self.reader, pos, len);
         let mut reader = Cursor::new(buf);
 
-        (id, deserialize_from(&mut reader).unwrap())
+        deserialize_from(&mut reader).unwrap()
     }
 
-    pub fn read_model<K: Into<ModelKey<S>>, S: AsRef<str>>(&mut self, key: K) -> (ModelId, Model) {
-        let (id, pos, len) = self.buf.model(key);
+    pub fn read_model(&mut self, id: ModelId) -> Model {
+        let (pos, len) = self.buf.model(id);
         let buf = read_exact(&mut self.reader, pos, len);
         let mut reader = Cursor::new(buf);
 
-        (id, deserialize_from(&mut reader).unwrap())
+        deserialize_from(&mut reader).unwrap()
     }
 
-    pub fn read_scene<K: Into<SceneKey<S>>, S: AsRef<str>>(&mut self, key: K) -> (SceneId, Scene) {
-        let (id, pos, len) = self.buf.scene(key);
+    pub fn read_scene(&mut self, id: SceneId) -> Scene {
+        let (pos, len) = self.buf.scene(id);
         let buf = read_exact(&mut self.reader, pos, len);
         let mut reader = Cursor::new(buf);
 
-        (id, deserialize_from(&mut reader).unwrap())
+        deserialize_from(&mut reader).unwrap()
     }
 }

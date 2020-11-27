@@ -37,7 +37,7 @@ use {
     },
     crate::{
         math::Extent,
-        pak::{ModelKey, Pak},
+        pak::{AnimationId, BitmapId, ModelId, Pak},
         Error,
     },
     gfx_hal::{
@@ -188,17 +188,14 @@ impl Gpu {
         &self.driver
     }
 
-    pub fn load_animation<K: AsRef<str>, R: Read + Seek>(
+    pub fn load_animation<R: Read + Seek>(
         &self,
         #[cfg(debug_assertions)] _name: &str,
         pak: &mut Pak<R>,
-        key: K,
+        id: AnimationId,
     ) -> ModelRef {
-        #[cfg(debug_assertions)]
-        debug!("Loading animation `{}`", key.as_ref());
-
         let _pool = PoolRef::clone(&self.pool);
-        let _anim = pak.read_animation(key.as_ref());
+        let _anim = pak.read_animation(id);
         // let indices = model.indices();
         // let index_buf_len = indices.len() as _;
         // let mut index_buf = pool.borrow_mut().data_usage(
@@ -239,16 +236,13 @@ impl Gpu {
         todo!()
     }
 
-    pub fn load_bitmap<K: AsRef<str>, R: Read + Seek>(
+    pub fn load_bitmap<R: Read + Seek>(
         &self,
         #[cfg(debug_assertions)] name: &str,
         pak: &mut Pak<R>,
-        key: K,
+        id: BitmapId,
     ) -> Bitmap {
-        #[cfg(debug_assertions)]
-        debug!("Loading bitmap `{}`", key.as_ref());
-
-        let (_, bitmap) = pak.read_bitmap(key.as_ref());
+        let bitmap = pak.read_bitmap(id);
         let pool = PoolRef::clone(&self.pool);
 
         unsafe {
@@ -272,17 +266,14 @@ impl Gpu {
         Font::load(&pool, pak, face.as_ref(), Format::Rgba8Unorm)
     }
 
-    pub fn load_model<K: Into<ModelKey<S>>, R: Read + Seek, S: AsRef<str>>(
+    pub fn load_model<R: Read + Seek>(
         &self,
         #[cfg(debug_assertions)] name: &str,
         pak: &mut Pak<R>,
-        key: K,
+        id: ModelId,
     ) -> Model {
-        //#[cfg(debug_assertions)]
-        //debug!("Loading model `{}`", key.as_ref());
-
+        let model = pak.read_model(id);
         let pool = PoolRef::clone(&self.pool);
-        let (_, model) = pak.read_model(key);
         let indices = model.indices();
         let index_buf_len = indices.len() as _;
         let mut index_buf = pool.borrow_mut().data_usage(
