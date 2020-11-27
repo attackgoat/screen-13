@@ -1,13 +1,14 @@
 mod anim;
 mod bitmap;
 mod font_bitmap;
+mod material;
 mod mesh;
 mod model;
 mod scene;
 
 pub use self::{
-    anim::Animation, bitmap::Bitmap, font_bitmap::FontBitmap, mesh::Mesh, model::Model,
-    scene::Scene,
+    anim::Animation, bitmap::Bitmap, font_bitmap::FontBitmap, material::Material, mesh::Mesh,
+    model::Model, scene::Scene,
 };
 
 use {
@@ -23,6 +24,7 @@ pub enum Asset {
     Bitmap(Bitmap),
     FontBitmap(FontBitmap),
     // Language(LanguageAsset),
+    Material(Material),
     Model(Model),
     Scene(Scene),
 }
@@ -40,6 +42,8 @@ impl Asset {
             Self::Bitmap(val)
         } else if let Some(val) = val.font_bitmap {
             Self::FontBitmap(val)
+        } else if let Some(val) = val.material {
+            Self::Material(val)
         } else if let Some(val) = val.model {
             Self::Model(val)
         } else if let Some(val) = val.scene {
@@ -49,9 +53,23 @@ impl Asset {
         }
     }
 
+    pub fn into_bitmap(self) -> Option<Bitmap> {
+        match self {
+            Self::Bitmap(bitmap) => Some(bitmap),
+            _ => None,
+        }
+    }
+
+    pub fn into_material(self) -> Option<Material> {
+        match self {
+            Self::Material(material) => Some(material),
+            _ => None,
+        }
+    }
+
     pub fn into_model(self) -> Option<Model> {
         match self {
-            Self::Model(res) => Some(res),
+            Self::Model(model) => Some(model),
             _ => None,
         }
     }
@@ -102,6 +120,7 @@ struct Schema {
     bitmap: Option<Bitmap>,
     #[serde(rename = "font-bitmap")]
     font_bitmap: Option<FontBitmap>,
+    material: Option<Material>,
     model: Option<Model>,
     scene: Option<Scene>,
 }

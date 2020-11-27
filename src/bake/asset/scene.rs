@@ -1,7 +1,10 @@
 use {
     crate::math::{Quat, Vec3},
     serde::{Deserialize, Serialize},
-    std::f32::consts::PI,
+    std::{
+        f32::consts::PI,
+        path::{Path, PathBuf},
+    },
 };
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -17,25 +20,25 @@ impl Scene {
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Ref {
-    bitmap: Option<String>,
     id: Option<String>,
-    key: Option<String>,
+    model: Option<PathBuf>,
+    material: Option<PathBuf>,
     position: Option<Vec3>,
     rotation: Option<Vec3>,
     tags: Option<Vec<String>>,
 }
 
 impl Ref {
-    pub fn bitmap(&self) -> Option<&str> {
-        self.bitmap.as_deref()
-    }
-
     pub fn id(&self) -> Option<&str> {
         self.id.as_deref()
     }
 
-    pub fn key(&self) -> Option<&str> {
-        self.key.as_deref()
+    pub fn model(&self) -> Option<&Path> {
+        self.model.as_deref()
+    }
+
+    pub fn material(&self) -> Option<&Path> {
+        self.material.as_deref()
     }
 
     pub fn position(&self) -> Vec3 {

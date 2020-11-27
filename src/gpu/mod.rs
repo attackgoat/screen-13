@@ -35,7 +35,11 @@ use {
         op::BitmapOp,
         pool::{Lease, Pool},
     },
-    crate::{math::Extent, pak::Pak, Error},
+    crate::{
+        math::Extent,
+        pak::{ModelKey, Pak},
+        Error,
+    },
     gfx_hal::{
         adapter::Adapter, buffer::Usage, device::Device as _, format::Format, queue::QueueFamily,
         window::Surface as _, Instance as _,
@@ -240,13 +244,14 @@ impl Gpu {
         #[cfg(debug_assertions)] name: &str,
         pak: &mut Pak<R>,
         key: K,
-    ) -> BitmapRef {
+    ) -> Bitmap {
         #[cfg(debug_assertions)]
         debug!("Loading bitmap `{}`", key.as_ref());
 
-        let bitmap = pak.read_bitmap(key.as_ref());
+        let (_, bitmap) = pak.read_bitmap(key.as_ref());
         let pool = PoolRef::clone(&self.pool);
-        let bitmap = unsafe {
+
+        unsafe {
             BitmapOp::new(
                 #[cfg(debug_assertions)]
                 name,
@@ -255,9 +260,7 @@ impl Gpu {
                 Format::Rgba8Unorm,
             )
             .record()
-        };
-
-        BitmapRef::new(bitmap)
+        }
     }
 
     /// Only bitmapped fonts are supported.
@@ -269,17 +272,17 @@ impl Gpu {
         Font::load(&pool, pak, face.as_ref(), Format::Rgba8Unorm)
     }
 
-    pub fn load_model<K: AsRef<str>, R: Read + Seek>(
+    pub fn load_model<K: Into<ModelKey<S>>, R: Read + Seek, S: AsRef<str>>(
         &self,
         #[cfg(debug_assertions)] name: &str,
         pak: &mut Pak<R>,
         key: K,
-    ) -> ModelRef {
-        #[cfg(debug_assertions)]
-        debug!("Loading model `{}`", key.as_ref());
+    ) -> Model {
+        //#[cfg(debug_assertions)]
+        //debug!("Loading model `{}`", key.as_ref());
 
         let pool = PoolRef::clone(&self.pool);
-        let model = pak.read_model(key.as_ref());
+        let (_, model) = pak.read_model(key);
         let indices = model.indices();
         let index_buf_len = indices.len() as _;
         let mut index_buf = pool.borrow_mut().data_usage(
@@ -310,9 +313,7 @@ impl Gpu {
             Mapping::flush(&mut mapped_range).unwrap();
         }
 
-        let model = Model::new(pool, model.take_meshes(), index_buf, vertex_buf);
-
-        ModelRef::new(model)
+        Model::new(pool, model.take_meshes(), index_buf, vertex_buf)
     }
 
     // TODO: This should not be exposed, bring users into this code?

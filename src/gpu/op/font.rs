@@ -68,7 +68,8 @@ impl Font {
             .pages()
             .iter()
             .map(|page| {
-                let bitmap = pak.read_bitmap(&format!("fonts/{}", page));
+                // TODO: Shouldn't be loading bitmaps here!
+                let (_, bitmap) = pak.read_bitmap(&format!("fonts/{}", page));
                 unsafe {
                     BitmapOp::new(
                         #[cfg(debug_assertions)]

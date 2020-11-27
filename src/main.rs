@@ -11,8 +11,8 @@ mod pak;
 use {
     self::{
         bake::{
-            bake_animation, bake_bitmap, bake_blob, bake_font_bitmap, bake_model, bake_scene,
-            bake_text, Asset, PakLog,
+            bake_animation, bake_bitmap, bake_blob, bake_font_bitmap, bake_material, bake_model,
+            bake_scene, bake_text, Asset, PakLog,
         },
         pak::PakBuf,
     },
@@ -117,18 +117,19 @@ fn main() -> Result<(), IoError> {
                         bake_bitmap(&project_dir, &asset_filename, bitmap, &mut pak, &mut log);
                     }
                     Asset::FontBitmap(ref bitmap) => {
-                        bake_font_bitmap(&project_dir, &asset_filename, bitmap, &mut pak, &mut log)
+                        bake_font_bitmap(&project_dir, &asset_filename, bitmap, &mut pak, &mut log);
                     }
                     // Asset::Language(ref lang) => {
                     //     bake_lang(&project_dir, &asset_filename, lang, &mut pak, &mut log)
                     // }
+                    Asset::Material(ref material) => {
+                        bake_material(&project_dir, &asset_filename, material, &mut pak, &mut log);
+                    }
                     Asset::Model(ref model) => {
                         bake_model(&project_dir, &asset_filename, model, &mut pak, &mut log);
                     }
                     Asset::Scene(scene) => {
-                        for key in bake_scene(&project_dir, &asset_filename, &scene, &mut pak) {
-                            assets.push(key);
-                        }
+                        bake_scene(&project_dir, &asset_filename, &scene, &mut pak, &mut log);
                     }
                 },
                 Bake::Blob => bake_blob(&project_dir, &asset_filename, &mut pak),
@@ -140,7 +141,10 @@ fn main() -> Result<(), IoError> {
     // Write the output pak file
     debug!("Writing pak");
 
-    pak.write(&mut BufWriter::new(File::create(&pak_path).unwrap()))?;
+    pak.write(
+        &mut BufWriter::new(File::create(&pak_path).unwrap()),
+        Default::default(),
+    )?;
 
     debug!("Baked project successfully");
 

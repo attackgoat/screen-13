@@ -9,7 +9,7 @@ use {
 
 // TODO: Could not force the lifetime to work without an explicit function which means I'm missing something really basic
 #[inline]
-fn deref_str<'a, S: AsRef<str>>(s: &'a Option<S>) -> Option<&'a str> {
+fn deref_str<S: AsRef<str>>(s: &Option<S>) -> Option<&str> {
     if let Some(s) = s {
         Some(s.as_ref())
     } else {
@@ -74,6 +74,13 @@ impl Model {
 
     pub fn pose_bounds(&self, _pose: &Pose) -> Sphere {
         todo!("Get bounds w/ pose")
+    }
+
+    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
+    #[cfg(debug_assertions)]
+    pub fn set_name(&mut self, name: &str) {
+        self.index_buf.set_name(name);
+        self.vertex_buf.set_name(name);
     }
 }
 

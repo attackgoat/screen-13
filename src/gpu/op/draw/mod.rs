@@ -808,14 +808,21 @@ impl AsRef<[u32; 16]> for LineVertexConsts {
 
 #[derive(Clone)]
 pub enum Material {
+    Debug,
     Unlit {
         diffuse: BitmapRef,
     },
     Pbr {
         albedo: BitmapRef,
         normal: BitmapRef,
-        metalness: BitmapRef,
+        metal: BitmapRef,
     },
+}
+
+impl Default for Material {
+    fn default() -> Self {
+        Self::Debug
+    }
 }
 
 pub struct ModelCommand {

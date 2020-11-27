@@ -1,44 +1,57 @@
 use {
-    super::{asset::Scene, get_filename_key},
-    crate::pak::{PakBuf, SceneRef},
+    super::{
+        asset::Scene as SceneAsset, bake_material, bake_model, get_filename_key, get_path, Asset,
+        PakLog,
+    },
+    crate::pak::{scene::Instance, PakBuf, Scene, SceneId},
     std::path::Path,
 };
 
 pub fn bake_scene<P1: AsRef<Path>, P2: AsRef<Path>>(
     project_dir: P1,
-    asset_filename: P2,
-    value: &Scene,
-    pak: &mut PakBuf,
-) -> Vec<String> {
-    let key = get_filename_key(&project_dir, &asset_filename);
+    filename: P2,
+    asset: &SceneAsset,
+    mut pak: &mut PakBuf,
+    mut log: &mut PakLog,
+) -> SceneId {
+    let dir = filename.as_ref().parent().unwrap();
+    let key = get_filename_key(&project_dir, &filename);
 
     info!("Processing asset: {}", key);
 
-    let mut keys = vec![];
-    let mut scene = vec![];
-    for r in value.refs() {
-        println!("Ref: {} ({})", r.id().unwrap_or(""), r.key().unwrap_or(""));
-
+    let mut refs = vec![];
+    for scene_ref in asset.refs() {
         // all tags must be lower case (no localized text!)
         let mut tags = vec![];
-        for tag in r.tags() {
-            tags.push(tag.as_str().to_lowercase());
+        for tag in scene_ref.tags() {
+            let baked = tag.as_str().trim().to_lowercase();
+            if let Err(idx) = tags.binary_search(&baked) {
+                tags.insert(idx, baked);
+            }
         }
 
-        if r.key().is_some() && !r.key().unwrap().is_empty() {
-            keys.push(r.key().unwrap().to_owned());
-        }
+        let material = scene_ref.material().map(|src| {
+            let src = get_path(&dir, src);
+            let material = Asset::read(&src).into_material().unwrap();
+            bake_material(&project_dir, src, &material, &mut pak, &mut log)
+        });
 
-        scene.push(SceneRef::new(
-            r.id().map(|id| id.to_owned()),
-            r.key().map(|key| key.to_owned()),
-            r.position(),
-            r.rotation(),
+        let model = scene_ref.model().map(|src| {
+            let src = get_path(&dir, src);
+            let model = Asset::read(&src).into_model().unwrap();
+            bake_model(&project_dir, src, &model, &mut pak, &mut log)
+        });
+
+        refs.push(Instance {
+            id: scene_ref.id().map(|id| id.to_owned()),
+            material,
+            model,
+            position: scene_ref.position(),
+            rotation: scene_ref.rotation(),
             tags,
-        ));
+        });
     }
 
     // Pak this asset
-    pak.push_scene(key, scene);
-    keys
+    pak.push_scene(key, Scene::new(refs.drain(..)))
 }

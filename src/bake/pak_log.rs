@@ -1,6 +1,6 @@
 use {
     super::Asset,
-    crate::pak::{AnimationId, BitmapId, ModelId},
+    crate::pak::{AnimationId, BitmapId, MaterialId, ModelId},
     bincode::serialize,
     sha1::Sha1,
     std::collections::HashMap,
@@ -17,6 +17,7 @@ pub enum Id {
     Animation(AnimationId),
     Bitmap(BitmapId),
     Locale(String),
+    Material(MaterialId),
     Model(ModelId),
 }
 
@@ -29,6 +30,12 @@ impl From<AnimationId> for Id {
 impl From<BitmapId> for Id {
     fn from(id: BitmapId) -> Id {
         Id::Bitmap(id)
+    }
+}
+
+impl From<MaterialId> for Id {
+    fn from(id: MaterialId) -> Id {
+        Id::Material(id)
     }
 }
 
