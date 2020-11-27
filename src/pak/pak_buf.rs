@@ -60,8 +60,8 @@ impl PakBuf {
             .clone()
     }
 
-    pub(super) fn material(&self, id: MaterialId) -> &Material {
-        self.materials.get(id.0 as usize).unwrap()
+    pub(super) fn material(&self, id: MaterialId) -> Material {
+        *self.materials.get(id.0 as usize).unwrap()
     }
 
     pub(super) fn model(&self, id: ModelId) -> (u64, usize) {

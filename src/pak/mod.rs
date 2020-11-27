@@ -187,7 +187,7 @@ where
         self.buf.id(key).as_material()
     }
 
-    pub fn material(&self, id: MaterialId) -> &Material {
+    pub fn material(&self, id: MaterialId) -> Material {
         self.buf.material(id)
     }
 
