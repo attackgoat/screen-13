@@ -44,7 +44,7 @@ pub use self::{
 
 use {
     self::{config::Config, game::Game, math::Extent},
-    std::{collections::VecDeque, time::Instant},
+    std::collections::VecDeque,
     winit::{
         event::{Event, VirtualKeyCode, WindowEvent},
         event_loop::ControlFlow,
@@ -52,7 +52,10 @@ use {
 };
 
 #[cfg(debug_assertions)]
-use num_format::{Locale, ToFormattedString};
+use {
+    num_format::{Locale, ToFormattedString},
+    std::time::Instant,
+};
 
 pub type DynScreen = Box<dyn Screen>;
 

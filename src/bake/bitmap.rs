@@ -22,20 +22,13 @@ pub fn bake_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
 
     info!("Processing asset: {}", key);
 
-    let started = std::time::Instant::now();
-
     // Get the fs objects for this asset
     let dir = asset_filename.as_ref().parent().unwrap();
     let bitmap_filename = get_path(&dir, bitmap_asset.src(), project_dir);
 
     // Bake the pixels
     let (fmt, width, pixels) = pixels(&bitmap_filename, bitmap_asset.force_opaque());
-    let xxx = pixels.len();
     let bitmap = Bitmap::new(fmt, width as u16, pixels);
-
-    let elapsed = std::time::Instant::now() - started;
-
-    info!(" {}s {:#?} {} {}", elapsed.as_secs_f32(), fmt, width, xxx);
 
     // Pak this asset
     pak.push_bitmap(key, bitmap)

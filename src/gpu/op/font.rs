@@ -58,29 +58,20 @@ impl Font {
         key: K,
         format: Format,
     ) -> Self {
-        let def = BMFont::new(
-            // This text is raw/it does not have any locale specialization
-            pak.text_raw(key.as_ref()).as_bytes(),
-            OrdinateOrientation::TopToBottom,
-        )
-        .unwrap();
-        let pages = def
+        let id = pak.font_bitmap_id(key).unwrap();
+        let font_bitmap = pak.read_font_bitmap(id);
+        let def = BMFont::new(font_bitmap.def(), OrdinateOrientation::TopToBottom).unwrap();
+        let pages = font_bitmap
             .pages()
-            .iter()
-            .map(|page| {
-                // TODO: Shouldn't be loading bitmaps here!
-                let id = pak.bitmap_id(&format!("fonts/{}", page)).unwrap();
-                let bitmap = pak.read_bitmap(id);
-                unsafe {
-                    BitmapOp::new(
-                        #[cfg(debug_assertions)]
-                        &format!("Font {} {}", key.as_ref(), page),
-                        &pool,
-                        &bitmap,
-                        format,
-                    )
-                    .record()
-                }
+            .map(|page| unsafe {
+                BitmapOp::new(
+                    #[cfg(debug_assertions)]
+                    "Font",
+                    pool,
+                    &page,
+                    format,
+                )
+                .record()
             })
             .collect();
 

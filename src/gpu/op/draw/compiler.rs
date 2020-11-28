@@ -412,7 +412,13 @@ impl Compiler {
             // Allocate enough `buf` to hold everything in the existing cache and everything we could possibly draw
             let len = (self.rect_light_lru.len() * RECT_LIGHT_STRIDE
                 + rect_light_count * RECT_LIGHT_STRIDE) as u64;
-            Self::alloc_data(&name, pool, &mut self.rect_light_buf, len);
+            Self::alloc_data(
+                #[cfg(debug_assertions)]
+                &name,
+                pool,
+                &mut self.rect_light_buf,
+                len,
+            );
             let buf = self.rect_light_buf.as_mut().unwrap();
 
             // Copy data from the previous GPU buffer to the new one
@@ -496,7 +502,13 @@ impl Compiler {
             // Allocate enough `buf` to hold everything in the existing cache and everything we could possibly draw
             let len = (self.spotlight_lru.len() * SPOTLIGHT_STRIDE
                 + spotlight_count * SPOTLIGHT_STRIDE) as u64;
-            Self::alloc_data(&name, pool, &mut self.spotlight_buf, len);
+            Self::alloc_data(
+                #[cfg(debug_assertions)]
+                &name,
+                pool,
+                &mut self.spotlight_buf,
+                len,
+            );
             let buf = self.spotlight_buf.as_mut().unwrap();
 
             // Copy data from the previous GPU buffer to the new one
@@ -578,7 +590,13 @@ impl Compiler {
 
             // Allocate enough `buf` to hold everything in the existing cache and everything we could possibly draw
             let len = (self.line_lru.len() * LINE_STRIDE + line_count * LINE_STRIDE) as u64;
-            Self::alloc_data(&name, pool, &mut self.line_buf, len);
+            Self::alloc_data(
+                #[cfg(debug_assertions)]
+                &name,
+                pool,
+                &mut self.line_buf,
+                len,
+            );
             let buf = self.line_buf.as_mut().unwrap();
 
             // Copy data from the previous GPU buffer to the new one
