@@ -22,7 +22,7 @@ fn main() -> ! {
             .unwrap()
             .join("basic.pak"),
     )
-    .expect("ERROR: You must first pack the game content into a file by running the following command: `cargo run examples/content/basic.s13`");
+    .expect("ERROR: You must first pack the game content into a file by running the following command: `cargo run examples/content/basic.toml`");
 
     // Initialize our "game" by loading everything it requires to run
     let small_10px = engine.gpu().load_font(&mut pak, "fonts/small_10px.fnt");

@@ -12,7 +12,7 @@ use {
     self::{
         bake::{
             bake_animation, bake_bitmap, bake_blob, bake_font_bitmap, bake_material, bake_model,
-            bake_scene, bake_text, Asset, PakLog,
+            bake_scene, bake_text, Asset, Content, PakLog,
         },
         pak::PakBuf,
     },
@@ -20,13 +20,10 @@ use {
     std::{
         env::{args, current_dir, current_exe},
         fs::{create_dir_all, File},
-        io::{BufRead, BufReader, BufWriter, Error as IoError},
+        io::{BufWriter, Error as IoError},
         path::PathBuf,
     },
 };
-
-// #[cfg(debug_assertions)]
-// use engine::{init_debug, log::debug};
 
 fn main() -> Result<(), IoError> {
     // Enable logging
@@ -47,7 +44,7 @@ fn main() -> Result<(), IoError> {
             .to_owned()
     });
 
-    // Input project text file
+    // Input project content .toml file
     let project_path = current_dir()
         .unwrap()
         .join(&project_arg)
@@ -76,37 +73,18 @@ fn main() -> Result<(), IoError> {
     let mut pak = PakBuf::default();
     let mut log = PakLog::default();
 
+    // TODO: Find a home:
+    // Bake::Blob => bake_blob(&project_dir, &asset_filename, &mut pak),
+    // Bake::Text => bake_text(&project_dir, &asset_filename, &mut pak),
+
     // Process each file we find
-    for line in BufReader::new(File::open(&project_path).unwrap()).lines() {
-        let mut line = line.unwrap();
+    let content = Asset::read(&project_path).into_content().unwrap();
+    for group in content.groups() {
+        if group.enabled() {
+            for asset in group.assets() {
+                let asset_filename = project_dir.join(asset);
 
-        // Figure out which type of thing we're baking
-        let bake = if line.trim_start().starts_with('#') || line.trim_start().is_empty() {
-            // Nothing - this was a comment or blank
-            continue;
-        } else if line.starts_with("BLOB ") {
-            // Item is a raw byte array
-            Bake::Blob
-        } else if line.starts_with("TEXT ") {
-            // Item is a huge string
-            Bake::Text
-        } else {
-            // Item is a .toml file of some type
-            Bake::Asset
-        };
-
-        // Strip the leading text from basic asset types (BLOB or TEXT)
-        match bake {
-            Bake::Blob | Bake::Text => line = line.split_off(5),
-            _ => (),
-        }
-
-        let mut assets = vec![line];
-        while let Some(asset) = assets.pop() {
-            let asset_filename = project_dir.join(PathBuf::from(&asset));
-
-            match bake {
-                Bake::Asset => match Asset::read(&asset_filename) {
+                match Asset::read(&asset_filename) {
                     Asset::Animation(ref anim) => {
                         bake_animation(&project_dir, asset_filename, anim, &mut pak, &mut log);
                     }
@@ -131,9 +109,8 @@ fn main() -> Result<(), IoError> {
                     Asset::Scene(scene) => {
                         bake_scene(&project_dir, &asset_filename, &scene, &mut pak, &mut log);
                     }
-                },
-                Bake::Blob => bake_blob(&project_dir, &asset_filename, &mut pak),
-                Bake::Text => bake_text(&project_dir, &asset_filename, &mut pak),
+                    _ => panic!(),
+                }
             }
         }
     }
@@ -143,40 +120,10 @@ fn main() -> Result<(), IoError> {
 
     pak.write(
         &mut BufWriter::new(File::create(&pak_path).unwrap()),
-        Default::default(),
+        content.compression(),
     )?;
 
     debug!("Baked project successfully");
 
     Ok(())
 }
-
-enum Bake {
-    Asset,
-    Blob,
-    Text,
-}
-
-// enum CookError {
-//     Content(String),
-//     Io(IoError),
-//     Pak(Box<PakErrorKind>),
-// }
-
-// impl<'a> From<&'a str> for CookError {
-//     fn from(value: &str) -> CookError {
-//         CookError::Content(value.to_owned())
-//     }
-// }
-
-// impl From<IoError> for CookError {
-//     fn from(value: IoError) -> CookError {
-//         CookError::Io(value)
-//     }
-// }
-
-// impl From<Box<PakErrorKind>> for CookError {
-//     fn from(value: Box<PakErrorKind>) -> CookError {
-//         CookError::Pak(value)
-//     }
-// }

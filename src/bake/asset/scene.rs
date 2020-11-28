@@ -9,6 +9,7 @@ use {
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Scene {
+    #[serde(rename = "ref")]
     refs: Vec<Ref>,
 }
 

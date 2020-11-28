@@ -11,7 +11,7 @@ Games made using Screen 13 are built as regular executables using a design-time 
 
 ## Asset Baking
 
-Asset baking is the process of converting files from their native file formats into a runtime-ready format that is optimized for both speed and size. Currently Screen 13 uses a single file (or single HTTP/S endpoint) for all runtime assets. Assets are baked from `.s13` and `.toml` files which you can find examples of in the `examples/content` directory.
+Asset baking is the process of converting files from their native file formats into a runtime-ready format that is optimized for both speed and size. Currently Screen 13 uses a single file (or single HTTP/S endpoint) for all runtime assets. Assets are baked from `.toml` files which you can find examples of in the `examples/content` directory.
 
 ## Quick Start
 
@@ -46,6 +46,29 @@ This engine is very young and is likely to change as development continues.
 - There are countless TODO's scattered in this codebase; this project started as a closed-source personal project and so Github issues and such for tracking things were not the original method I used. Feel free to replace TODO's by opening a matching Issue or just removing outdated TODO information.
 - Drawing lines, bitmaps, 3D models, lights (and shadows): I recently ripped out all this code in order to add a compilation stage after you submit rendering commands. This allows for proper z-order painting and batching to reduce GPU resource-switching. It is not complete yet and requires more work. Update: The design of this section is really coming along and likely to remain somewhat stable as it scrolls towards dev-complete.
 - Input: Keyboard has been started but the design is not very good. Mouse input is to-do. Game controllers and joysticks are planned.
+
+## Content Baking Procedures
+
+### Brotli Compression
+
+Higher compression ratio, but somewhat slow during compression.
+
+```toml
+[content]
+compression = 'brotli'
+buf_size = 4096
+quality = 10
+window_size = 20
+```
+
+### Snap Compression
+
+Faster compression but a worse ratio compared to Brotli.
+
+```toml
+[content]
+compression = 'snap'
+```
 
 ## History
 

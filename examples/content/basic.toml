@@ -7,5 +7,5 @@
 #
 # Note: Each asset TOML filetype has a unique schema; see the code or these examples for more detail and options.
 
-TEXT fonts/small_10px.fnt
-fonts/small_10px_0.toml
+# TEXT fonts/small_10px.fnt
+# fonts/small_10px_0.toml

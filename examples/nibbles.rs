@@ -35,7 +35,7 @@ fn main() -> ! {
             .unwrap()
             .join("nibbles.pak"),
     )
-    .expect("ERROR: You must first pack the game content into a file by running the following command: `cargo run examples/content/nibbles.s13`");
+    .expect("ERROR: You must first pack the game content into a file by running the following command: `cargo run examples/content/nibbles.toml`");
 
     let nibbles = Box::new(Nibbles::load(engine.gpu(), &mut pak));
 
