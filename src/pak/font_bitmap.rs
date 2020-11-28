@@ -1,6 +1,5 @@
 use {
     super::Bitmap,
-    crate::math::Extent,
     serde::{Deserialize, Serialize},
 };
 

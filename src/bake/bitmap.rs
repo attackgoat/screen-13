@@ -1,45 +1,24 @@
 use {
     super::{
-        asset::{Asset, Bitmap as BitmapAsset, FontBitmap as FontBitmapAsset},
+        asset::{Bitmap as BitmapAsset, FontBitmap as FontBitmapAsset},
         get_filename_key, get_path,
-        pak_log::{Id, PakLog},
     },
     crate::pak::{Bitmap, BitmapFormat, BitmapId, FontBitmap, FontBitmapId, PakBuf},
     bmfont::{BMFont, OrdinateOrientation},
     image::{buffer::ConvertBuffer, open as image_open, DynamicImage, RgbImage, RgbaImage},
-    std::{
-        fs::{read, File},
-        io::BufReader,
-        path::Path,
-    },
+    std::{fs::read, path::Path},
 };
-
-// pub fn bake_atlas<P1: AsRef<Path>, P2: AsRef<Path>>(
-//     _project_dir: P1,
-//     _asset_filename: P2,
-//     _altas_asset: &AtlasAsset,
-//     _pak: &mut PakBuf,
-//     _log: &mut PakLog,
-// ) -> BitmapId {
-//     todo!();
-// }
 
 pub fn bake_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
     project_dir: P1,
     asset_filename: P2,
     bitmap_asset: &BitmapAsset,
     pak: &mut PakBuf,
-    log: &mut PakLog,
 ) -> BitmapId {
-    let asset = Asset::Bitmap(bitmap_asset.clone());
-    if log.contains(&asset) {
-        match log.get(&asset).unwrap() {
-            Id::Bitmap(id) => return id,
-            _ => panic!(),
-        }
-    }
-
     let key = get_filename_key(&project_dir, &asset_filename);
+    if let Some(id) = pak.id(&key) {
+        return id.as_bitmap().unwrap();
+    }
 
     info!("Processing asset: {}", key);
 
@@ -51,11 +30,8 @@ pub fn bake_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
     let (fmt, width, pixels) = pixels(&bitmap_filename, bitmap_asset.force_opaque());
     let bitmap = Bitmap::new(fmt, width as u16, pixels);
 
-    // Pak and log this asset
-    let bitmap_id = pak.push_bitmap(key, bitmap);
-    log.add(&asset, bitmap_id);
-
-    bitmap_id
+    // Pak this asset
+    pak.push_bitmap(key, bitmap)
 }
 
 pub fn bake_font_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
@@ -63,14 +39,11 @@ pub fn bake_font_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
     asset_filename: P2,
     font_bitmap_asset: &FontBitmapAsset,
     pak: &mut PakBuf,
-    log: &mut PakLog,
 ) -> FontBitmapId {
-    let asset = Asset::FontBitmap(font_bitmap_asset.clone());
-    if log.contains(&asset) && log.get(&asset).is_some() {
-        panic!("unexpected state");
+    let key = get_filename_key(&project_dir, &asset_filename);
+    if let Some(id) = pak.id(&key) {
+        return id.as_font_bitmap().unwrap();
     }
-
-    let mut key = get_filename_key(&project_dir, &asset_filename);
 
     info!("Processing asset: {}", key);
 
@@ -113,11 +86,8 @@ pub fn bake_font_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
         })
         .collect();
 
-    // Pak and log this asset
-    let font_bitmap_id = pak.push_font_bitmap(key, FontBitmap::new(def_file, pages));
-    log.add(&asset, font_bitmap_id);
-
-    font_bitmap_id
+    // Pak this asset
+    pak.push_font_bitmap(key, FontBitmap::new(def_file, pages))
 }
 
 fn pixels<P: AsRef<Path>>(filename: P, force_opaque: bool) -> (BitmapFormat, u32, Vec<u8>) {

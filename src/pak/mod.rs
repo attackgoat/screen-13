@@ -25,6 +25,7 @@ pub use {
 };
 
 use {
+    self::id::Id,
     bincode::deserialize_from,
     brotli::{CompressorReader as BrotliReader, CompressorWriter as BrotliWriter},
     serde::{Deserialize, Serialize},
@@ -33,7 +34,7 @@ use {
         borrow::Cow,
         env::current_exe,
         fs::File,
-        io::{BufReader, Cursor, Error, Read, Seek, SeekFrom, Write},
+        io::{BufReader, Error, Read, Seek, SeekFrom, Write},
         path::Path,
     },
 };
@@ -174,23 +175,43 @@ where
     R: Read + Seek,
 {
     pub fn animation_id<K: AsRef<str>>(&self, key: K) -> Option<AnimationId> {
-        self.buf.id(key).as_animation()
+        if let Some(Id::Animation(id)) = self.buf.id(key) {
+            Some(id)
+        } else {
+            None
+        }
     }
 
     pub fn bitmap_id<K: AsRef<str>>(&self, key: K) -> Option<BitmapId> {
-        self.buf.id(key).as_bitmap()
+        if let Some(Id::Bitmap(id)) = self.buf.id(key) {
+            Some(id)
+        } else {
+            None
+        }
     }
 
     pub fn blob_id<K: AsRef<str>>(&self, key: K) -> Option<BlobId> {
-        self.buf.id(key).as_blob()
+        if let Some(Id::Blob(id)) = self.buf.id(key) {
+            Some(id)
+        } else {
+            None
+        }
     }
 
     pub fn font_bitmap_id<K: AsRef<str>>(&self, key: K) -> Option<FontBitmapId> {
-        self.buf.id(key).as_font_bitmap()
+        if let Some(Id::FontBitmap(id)) = self.buf.id(key) {
+            Some(id)
+        } else {
+            None
+        }
     }
 
     pub fn material_id<K: AsRef<str>>(&self, key: K) -> Option<MaterialId> {
-        self.buf.id(key).as_material()
+        if let Some(Id::Material(id)) = self.buf.id(key) {
+            Some(id)
+        } else {
+            None
+        }
     }
 
     pub fn material(&self, id: MaterialId) -> Material {
@@ -198,11 +219,19 @@ where
     }
 
     pub fn model_id<K: AsRef<str>>(&self, key: K) -> Option<ModelId> {
-        self.buf.id(key).as_model()
+        if let Some(Id::Model(id)) = self.buf.id(key) {
+            Some(id)
+        } else {
+            None
+        }
     }
 
     pub fn scene_id<K: AsRef<str>>(&self, key: K) -> Option<SceneId> {
-        self.buf.id(key).as_scene()
+        if let Some(Id::Scene(id)) = self.buf.id(key) {
+            Some(id)
+        } else {
+            None
+        }
     }
 
     pub fn text<K: AsRef<str>>(&self, key: K) -> Cow<str> {
@@ -211,7 +240,11 @@ where
     }
 
     pub fn text_id<K: AsRef<str>>(&self, key: K) -> Option<TextId> {
-        self.buf.id(key).as_text()
+        if let Some(Id::Text(id)) = self.buf.id(key) {
+            Some(id)
+        } else {
+            None
+        }
     }
 
     pub fn text_locale<K: AsRef<str>, L: AsRef<str>>(&self, key: K, locale: L) -> Cow<str> {

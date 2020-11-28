@@ -58,11 +58,8 @@ impl PakBuf {
         self.font_bitmaps[id.0 as usize].pos_len()
     }
 
-    pub(super) fn id<K: AsRef<str>>(&self, key: K) -> Id {
-        self.ids
-            .get(key.as_ref())
-            .unwrap_or_else(|| panic!(format!("Key `{}` not found", key.as_ref())))
-            .clone()
+    pub(crate) fn id<K: AsRef<str>>(&self, key: K) -> Option<Id> {
+        self.ids.get(key.as_ref()).cloned()
     }
 
     pub(super) fn material(&self, id: MaterialId) -> Material {

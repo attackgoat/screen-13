@@ -1,7 +1,6 @@
 use {
     super::{
         asset::Scene as SceneAsset, bake_material, bake_model, get_filename_key, get_path, Asset,
-        PakLog,
     },
     crate::pak::{scene::Instance, PakBuf, Scene, SceneId},
     std::path::Path,
@@ -12,12 +11,15 @@ pub fn bake_scene<P1: AsRef<Path>, P2: AsRef<Path>>(
     filename: P2,
     asset: &SceneAsset,
     mut pak: &mut PakBuf,
-    mut log: &mut PakLog,
 ) -> SceneId {
-    let dir = filename.as_ref().parent().unwrap();
     let key = get_filename_key(&project_dir, &filename);
+    if let Some(id) = pak.id(&key) {
+        return id.as_scene().unwrap();
+    }
 
     info!("Processing asset: {}", key);
+
+    let dir = filename.as_ref().parent().unwrap();
 
     let mut refs = vec![];
     for scene_ref in asset.refs() {
@@ -33,13 +35,13 @@ pub fn bake_scene<P1: AsRef<Path>, P2: AsRef<Path>>(
         let material = scene_ref.material().map(|src| {
             let src = get_path(&dir, src);
             let material = Asset::read(&src).into_material().unwrap();
-            bake_material(&project_dir, src, &material, &mut pak, &mut log)
+            bake_material(&project_dir, src, &material, &mut pak)
         });
 
         let model = scene_ref.model().map(|src| {
             let src = get_path(&dir, src);
             let model = Asset::read(&src).into_model().unwrap();
-            bake_model(&project_dir, src, &model, &mut pak, &mut log)
+            bake_model(&project_dir, src, &model, &mut pak)
         });
 
         refs.push(Instance {

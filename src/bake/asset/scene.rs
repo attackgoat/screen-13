@@ -1,13 +1,13 @@
 use {
     crate::math::{Quat, Vec3},
-    serde::{Deserialize, Serialize},
+    serde::Deserialize,
     std::{
         f32::consts::PI,
         path::{Path, PathBuf},
     },
 };
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize)]
 pub struct Scene {
     #[serde(rename = "ref")]
     refs: Vec<Ref>,
@@ -19,7 +19,7 @@ impl Scene {
     }
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize)]
 pub struct Ref {
     id: Option<String>,
     model: Option<PathBuf>,

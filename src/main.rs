@@ -12,7 +12,7 @@ use {
     self::{
         bake::{
             bake_animation, bake_bitmap, bake_blob, bake_font_bitmap, bake_material, bake_model,
-            bake_scene, bake_text, Asset, Content, PakLog,
+            bake_scene, bake_text, Asset,
         },
         pak::PakBuf,
     },
@@ -71,7 +71,6 @@ fn main() -> Result<(), IoError> {
     // instance is hashed because we cannot count on the source filepath to be the same as
     // it may be a relative path.
     let mut pak = PakBuf::default();
-    let mut log = PakLog::default();
 
     // TODO: Find a home:
     // Bake::Blob => bake_blob(&project_dir, &asset_filename, &mut pak),
@@ -86,34 +85,28 @@ fn main() -> Result<(), IoError> {
 
                 match Asset::read(&asset_filename) {
                     Asset::Animation(ref anim) => {
-                        bake_animation(&project_dir, asset_filename, anim, &mut pak, &mut log);
+                        bake_animation(&project_dir, asset_filename, anim, &mut pak);
                     }
                     // Asset::Atlas(ref atlas) => {
-                    //     bake_atlas(&project_dir, &asset_filename, atlas, &mut pak, &mut log);
+                    //     bake_atlas(&project_dir, &asset_filename, atlas, &mut pak);
                     // }
                     Asset::Bitmap(ref bitmap) => {
-                        bake_bitmap(&project_dir, &asset_filename, bitmap, &mut pak, &mut log);
+                        bake_bitmap(&project_dir, &asset_filename, bitmap, &mut pak);
                     }
                     Asset::FontBitmap(ref font_bitmap) => {
-                        bake_font_bitmap(
-                            &project_dir,
-                            &asset_filename,
-                            font_bitmap,
-                            &mut pak,
-                            &mut log,
-                        );
+                        bake_font_bitmap(&project_dir, &asset_filename, font_bitmap, &mut pak);
                     }
                     // Asset::Language(ref lang) => {
                     //     bake_lang(&project_dir, &asset_filename, lang, &mut pak, &mut log)
                     // }
                     Asset::Material(ref material) => {
-                        bake_material(&project_dir, &asset_filename, material, &mut pak, &mut log);
+                        bake_material(&project_dir, &asset_filename, material, &mut pak);
                     }
                     Asset::Model(ref model) => {
-                        bake_model(&project_dir, &asset_filename, model, &mut pak, &mut log);
+                        bake_model(&project_dir, &asset_filename, model, &mut pak);
                     }
                     Asset::Scene(scene) => {
-                        bake_scene(&project_dir, &asset_filename, &scene, &mut pak, &mut log);
+                        bake_scene(&project_dir, &asset_filename, &scene, &mut pak);
                     }
                     _ => panic!(),
                 }

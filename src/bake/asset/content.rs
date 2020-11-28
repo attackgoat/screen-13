@@ -1,10 +1,10 @@
 use {
     crate::pak::{BrotliCompression, Compression as PakCompression},
-    serde::{Deserialize, Serialize},
+    serde::Deserialize,
     std::path::{Path, PathBuf},
 };
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize)]
 pub struct Content {
     compression: Option<Compression>,
 
@@ -40,7 +40,7 @@ impl Content {
     }
 }
 
-#[derive(Clone, Copy, Deserialize, Serialize)]
+#[derive(Clone, Copy, Deserialize)]
 pub enum Compression {
     #[serde(rename = "brotli")]
     Brotli,
@@ -48,7 +48,7 @@ pub enum Compression {
     Snap,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize)]
 pub struct Group {
     assets: Vec<PathBuf>,
     enabled: Option<bool>,

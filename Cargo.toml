@@ -36,7 +36,6 @@ pretty_env_logger = "0.4"
 
 # TODO: Baking deps here https://github.com/rust-lang/cargo/issues/1982 maybe use features and [[bin]] required features?
 gltf = "0.15"
-sha1 = "0.6"
 shaderc = "0.7"
 
 [build-dependencies]

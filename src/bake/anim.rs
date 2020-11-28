@@ -1,9 +1,5 @@
 use {
-    super::{
-        asset::{Animation as AnimationAsset, Asset},
-        get_filename_key, get_path,
-        pak_log::{Id, PakLog},
-    },
+    super::{asset::Animation as AnimationAsset, get_filename_key, get_path},
     crate::{
         math::{quat, Quat, Vec3},
         pak::{Animation, AnimationId, Channel, PakBuf},
@@ -27,22 +23,16 @@ pub fn bake_animation<P1: AsRef<Path>, P2: AsRef<Path>>(
     asset_filename: P2,
     asset: &AnimationAsset,
     pak: &mut PakBuf,
-    log: &mut PakLog,
 ) -> AnimationId {
-    let dir = asset_filename.as_ref().parent().unwrap();
-    let src = get_path(&dir, asset.src());
-
-    // Early out if we've already baked this asset
-    let exclude = asset.exclude().unwrap_or_default().iter().cloned();
-    let name = asset.name().map(|s| s.to_owned());
-    let proto = Asset::Animation(AnimationAsset::new(&src, name, exclude));
-    if let Some(Id::Animation(id)) = log.get(&proto) {
-        return id;
+    let key = get_filename_key(&project_dir, &asset_filename);
+    if let Some(id) = pak.id(&key) {
+        return id.as_animation().unwrap();
     }
 
-    let key = get_filename_key(&project_dir, &asset_filename);
-
     info!("Processing asset: {}", key);
+
+    let dir = asset_filename.as_ref().parent().unwrap();
+    let src = get_path(&dir, asset.src());
 
     let name = asset.name();
     let (doc, bufs, _) = import(src).unwrap();
@@ -157,10 +147,6 @@ pub fn bake_animation<P1: AsRef<Path>, P2: AsRef<Path>>(
     // Sort channels by name (they are all rotations)
     channels.sort_unstable_by(|a, b| a.target().cmp(b.target()));
 
-    // Pak and log this asset
-    let anim = Animation { channels };
-    let anim_id = pak.push_animation(key, anim);
-    log.add(&proto, anim_id);
-
-    anim_id
+    // Pak this asset
+    pak.push_animation(key, Animation { channels })
 }

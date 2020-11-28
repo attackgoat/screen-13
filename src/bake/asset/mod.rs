@@ -13,12 +13,12 @@ pub use self::{
 };
 
 use {
-    serde::{Deserialize, Serialize},
+    serde::Deserialize,
     std::{fs::read_to_string, path::Path},
     toml::from_str,
 };
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize)]
 pub enum Asset {
     Animation(Animation),
     // Atlas(AtlasAsset),

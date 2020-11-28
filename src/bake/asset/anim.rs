@@ -1,9 +1,9 @@
 use {
-    serde::{Deserialize, Serialize},
+    serde::Deserialize,
     std::path::{Path, PathBuf},
 };
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize)]
 pub struct Animation {
     exclude: Option<Vec<String>>,
     name: Option<String>,

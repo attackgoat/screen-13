@@ -1,7 +1,6 @@
 use {
     super::{
-        pak_log::Id,
-        Asset, Model as ModelAsset, PakLog, {get_filename_key, get_path},
+        Model as ModelAsset, {get_filename_key, get_path},
     },
     crate::{
         math::{quat, vec3, Mat4, Quat, Sphere, Vec3},
@@ -23,20 +22,16 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
     asset_filename: P2,
     asset: &ModelAsset,
     pak: &mut PakBuf,
-    log: &mut PakLog,
 ) -> ModelId {
-    let dir = asset_filename.as_ref().parent().unwrap();
-    let src = get_path(&dir, asset.src());
-
-    // Early out if we've already baked this asset
-    let proto = Asset::Model(ModelAsset::new(&src, asset.offset(), asset.scale()));
-    if let Some(Id::Model(id)) = log.get(&proto) {
-        return id;
+    let key = get_filename_key(&project_dir, &asset_filename);
+    if let Some(id) = pak.id(&key) {
+        return id.as_model().unwrap();
     }
 
-    let key = get_filename_key(&project_dir, &asset_filename);
-
     info!("Processing asset: {}", key);
+
+    let dir = asset_filename.as_ref().parent().unwrap();
+    let src = get_path(&dir, asset.src());
 
     let mut mesh_names: HashMap<&str, Option<&str>> = HashMap::default();
     for mesh in asset.meshes() {
@@ -226,12 +221,8 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
         ));
     }
 
-    // Pak and log this asset
-    let model = Model::new(meshes, index_buf, vertex_buf);
-    let model_id = pak.push_model(key, model);
-    log.add(&proto, model_id);
-
-    model_id
+    // Pak this asset
+    pak.push_model(key, Model::new(meshes, index_buf, vertex_buf))
 }
 
 fn node_stride(node: &Node) -> usize {

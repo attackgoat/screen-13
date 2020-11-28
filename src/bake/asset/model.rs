@@ -1,11 +1,11 @@
 use {
     super::Mesh,
     crate::math::Vec3,
-    serde::{Deserialize, Serialize},
+    serde::Deserialize,
     std::path::{Path, PathBuf},
 };
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize)]
 pub struct Model {
     offset: Option<Vec3>,
     scale: Option<Vec3>,

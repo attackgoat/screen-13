@@ -1,9 +1,9 @@
 use {
-    serde::{Deserialize, Serialize},
+    serde::Deserialize,
     std::path::{Path, PathBuf},
 };
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize)]
 pub struct Bitmap {
     force_opaque: bool,
     src: PathBuf,

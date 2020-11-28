@@ -4,7 +4,6 @@ mod bitmap;
 mod blob;
 mod material;
 mod model;
-mod pak_log;
 mod scene;
 mod text;
 
@@ -15,7 +14,6 @@ pub use self::{
     blob::bake_blob,
     material::bake_material,
     model::bake_model,
-    pak_log::PakLog,
     scene::bake_scene,
     text::bake_text,
 };
