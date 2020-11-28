@@ -4,6 +4,7 @@ pub(crate) mod scene;
 mod anim;
 mod bitmap;
 mod data_ref;
+mod font_bitmap;
 mod id;
 mod material;
 mod pak_buf;
@@ -13,7 +14,8 @@ pub use {
     self::{
         anim::{Animation, Channel},
         bitmap::{Bitmap, Format as BitmapFormat},
-        id::{AnimationId, BitmapId, BlobId, MaterialId, ModelId, SceneId, TextId},
+        font_bitmap::FontBitmap,
+        id::{AnimationId, BitmapId, BlobId, FontBitmapId, MaterialId, ModelId, SceneId, TextId},
         material::Material,
         model::Model,
         pak_buf::PakBuf,
@@ -183,6 +185,10 @@ where
         self.buf.id(key).as_blob()
     }
 
+    pub fn font_bitmap_id<K: AsRef<str>>(&self, key: K) -> Option<FontBitmapId> {
+        self.buf.id(key).as_font_bitmap()
+    }
+
     pub fn material_id<K: AsRef<str>>(&self, key: K) -> Option<MaterialId> {
         self.buf.id(key).as_material()
     }
@@ -219,9 +225,15 @@ where
     pub fn read_animation(&mut self, id: AnimationId) -> Animation {
         let (pos, len) = self.buf.animation(id);
         let buf = read_exact(&mut self.reader, pos, len);
-        let mut reader = Cursor::new(buf);
 
-        deserialize_from(&mut reader).unwrap()
+        deserialize_from(buf.as_slice()).unwrap()
+    }
+
+    pub fn read_bitmap(&mut self, id: BitmapId) -> Bitmap {
+        let (pos, len) = self.buf.bitmap(id);
+        let buf = read_exact(&mut self.reader, pos, len);
+
+        deserialize_from(buf.as_slice()).unwrap()
     }
 
     pub fn read_blob(&mut self, id: BlobId) -> Vec<u8> {
@@ -230,27 +242,24 @@ where
         read_exact(&mut self.reader, pos, len)
     }
 
-    pub fn read_bitmap(&mut self, id: BitmapId) -> Bitmap {
-        let (pos, len) = self.buf.bitmap(id);
+    pub fn read_font_bitmap(&mut self, id: FontBitmapId) -> FontBitmap {
+        let (pos, len) = self.buf.font_bitmap(id);
         let buf = read_exact(&mut self.reader, pos, len);
-        let mut reader = Cursor::new(buf);
 
-        deserialize_from(&mut reader).unwrap()
+        deserialize_from(buf.as_slice()).unwrap()
     }
 
     pub fn read_model(&mut self, id: ModelId) -> Model {
         let (pos, len) = self.buf.model(id);
         let buf = read_exact(&mut self.reader, pos, len);
-        let mut reader = Cursor::new(buf);
 
-        deserialize_from(&mut reader).unwrap()
+        deserialize_from(buf.as_slice()).unwrap()
     }
 
     pub fn read_scene(&mut self, id: SceneId) -> Scene {
         let (pos, len) = self.buf.scene(id);
         let buf = read_exact(&mut self.reader, pos, len);
-        let mut reader = Cursor::new(buf);
 
-        deserialize_from(&mut reader).unwrap()
+        deserialize_from(buf.as_slice()).unwrap()
     }
 }

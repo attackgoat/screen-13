@@ -66,7 +66,7 @@ impl Nibbles {
 
         // Setup an orthographic camera to provide a 2D view
         let eye = vec3(SCREEN_SIZE.x as f32 / 2.0, SCREEN_SIZE.y as f32 / 2.0, -1.0);
-        let target = vec3(eye.x(), eye.y(), 0.0);
+        let target = vec3(eye.x, eye.y, 0.0);
         let view = Orthographic::new(eye, target, SCREEN_SIZE, 0.9..1.1);
 
         let mut game = Self {
@@ -193,7 +193,7 @@ impl Screen for Nibbles {
         let sammy_color = qb_color(14);
         for seg in &self.sammy {
             let start = vec3(seg.x as f32, seg.y as f32, 0.0);
-            let end = vec3(start.x(), start.y(), 0.0);
+            let end = vec3(start.x, start.y, 0.0);
             cmds.push(Command::line(start, sammy_color, end, sammy_color));
         }
 

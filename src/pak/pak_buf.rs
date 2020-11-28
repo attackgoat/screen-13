@@ -1,7 +1,7 @@
 use {
     super::{
-        id::Id, Animation, AnimationId, Bitmap, BitmapId, BlobId, Compression, DataRef, Material,
-        MaterialId, Model, ModelId, Scene, SceneId,
+        id::Id, Animation, AnimationId, Bitmap, BitmapId, BlobId, Compression, DataRef, FontBitmap,
+        FontBitmapId, Material, MaterialId, Model, ModelId, Scene, SceneId,
     },
     bincode::serialize_into,
     serde::{Deserialize, Serialize},
@@ -36,6 +36,7 @@ pub struct PakBuf {
     anims: Vec<DataRef<Animation>>,
     bitmaps: Vec<DataRef<Bitmap>>,
     blobs: Vec<DataRef<Vec<u8>>>,
+    font_bitmaps: Vec<DataRef<FontBitmap>>,
     models: Vec<DataRef<Model>>,
     scenes: Vec<DataRef<Scene>>,
 }
@@ -51,6 +52,10 @@ impl PakBuf {
 
     pub(super) fn blob(&self, id: BlobId) -> (u64, usize) {
         self.blobs[id.0 as usize].pos_len()
+    }
+
+    pub(super) fn font_bitmap(&self, id: FontBitmapId) -> (u64, usize) {
+        self.font_bitmaps[id.0 as usize].pos_len()
     }
 
     pub(super) fn id<K: AsRef<str>>(&self, key: K) -> Id {
@@ -98,18 +103,18 @@ impl PakBuf {
         id
     }
 
-    pub(crate) fn push_localization(&mut self, locale: String, texts: HashMap<String, String>) {
-        self.localizations.insert(locale, texts);
-    }
-
-    pub(crate) fn push_scene(&mut self, key: String, val: Scene) -> SceneId {
+    pub(crate) fn push_font_bitmap(&mut self, key: String, val: FontBitmap) -> FontBitmapId {
         assert!(self.ids.get(&key).is_none());
 
-        let id = SceneId(self.scenes.len() as _);
-        self.ids.insert(key, Id::Scene(id));
-        self.scenes.push(DataRef::Data(val));
+        let id = FontBitmapId(self.blobs.len() as _);
+        self.ids.insert(key, Id::FontBitmap(id));
+        self.font_bitmaps.push(DataRef::Data(val));
 
         id
+    }
+
+    pub(crate) fn push_localization(&mut self, locale: String, texts: HashMap<String, String>) {
+        self.localizations.insert(locale, texts);
     }
 
     pub(crate) fn push_material(&mut self, key: String, val: Material) -> MaterialId {
@@ -128,6 +133,16 @@ impl PakBuf {
         let id = ModelId(self.models.len() as _);
         self.ids.insert(key, Id::Model(id));
         self.models.push(DataRef::Data(val));
+
+        id
+    }
+
+    pub(crate) fn push_scene(&mut self, key: String, val: Scene) -> SceneId {
+        assert!(self.ids.get(&key).is_none());
+
+        let id = SceneId(self.scenes.len() as _);
+        self.ids.insert(key, Id::Scene(id));
+        self.scenes.push(DataRef::Data(val));
 
         id
     }
@@ -173,6 +188,7 @@ impl PakBuf {
         self.anims = Self::write_refs(&mut writer, self.anims.drain(..), compression);
         self.bitmaps = Self::write_refs(&mut writer, self.bitmaps.drain(..), compression);
         self.blobs = Self::write_refs(&mut writer, self.blobs.drain(..), compression);
+        self.font_bitmaps = Self::write_refs(&mut writer, self.font_bitmaps.drain(..), compression);
         self.models = Self::write_refs(&mut writer, self.models.drain(..), compression);
         self.scenes = Self::write_refs(&mut writer, self.scenes.drain(..), compression);
 
@@ -201,12 +217,12 @@ impl PakBuf {
     }
 
     fn write_refs<I: Iterator<Item = DataRef<T>>, T: Serialize, W: Seek + Write>(
-        mut writer: &mut W,
+        mut writer: W,
         refs: I,
         compression: Option<Compression>,
     ) -> Vec<DataRef<T>> {
         let mut res = vec![];
-        let mut start = current_pos(writer);
+        let mut start = current_pos(&mut writer);
 
         for ref data in refs {
             {
@@ -215,7 +231,7 @@ impl PakBuf {
                 writer.write_all(&data).unwrap();
             }
 
-            let end = current_pos(writer);
+            let end = current_pos(&mut writer);
             res.push(DataRef::Ref(start..end));
             start = end;
         }

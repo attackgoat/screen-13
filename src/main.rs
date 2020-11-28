@@ -94,8 +94,14 @@ fn main() -> Result<(), IoError> {
                     Asset::Bitmap(ref bitmap) => {
                         bake_bitmap(&project_dir, &asset_filename, bitmap, &mut pak, &mut log);
                     }
-                    Asset::FontBitmap(ref bitmap) => {
-                        bake_font_bitmap(&project_dir, &asset_filename, bitmap, &mut pak, &mut log);
+                    Asset::FontBitmap(ref font_bitmap) => {
+                        bake_font_bitmap(
+                            &project_dir,
+                            &asset_filename,
+                            font_bitmap,
+                            &mut pak,
+                            &mut log,
+                        );
                     }
                     // Asset::Language(ref lang) => {
                     //     bake_lang(&project_dir, &asset_filename, lang, &mut pak, &mut log)

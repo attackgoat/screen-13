@@ -1,12 +1,17 @@
 use {
     super::{
-        asset::{Asset, Bitmap as BitmapAsset, FontBitmap},
+        asset::{Asset, Bitmap as BitmapAsset, FontBitmap as FontBitmapAsset},
         get_filename_key, get_path,
         pak_log::{Id, PakLog},
     },
-    crate::pak::{Bitmap, BitmapFormat, BitmapId, PakBuf},
+    crate::pak::{Bitmap, BitmapFormat, BitmapId, FontBitmap, FontBitmapId, PakBuf},
+    bmfont::{BMFont, OrdinateOrientation},
     image::{buffer::ConvertBuffer, open as image_open, DynamicImage, RgbImage, RgbaImage},
-    std::path::Path,
+    std::{
+        fs::{read, File},
+        io::BufReader,
+        path::Path,
+    },
 };
 
 // pub fn bake_atlas<P1: AsRef<Path>, P2: AsRef<Path>>(
@@ -56,10 +61,10 @@ pub fn bake_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
 pub fn bake_font_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
     project_dir: P1,
     asset_filename: P2,
-    font_bitmap_asset: &FontBitmap,
+    font_bitmap_asset: &FontBitmapAsset,
     pak: &mut PakBuf,
     log: &mut PakLog,
-) {
+) -> FontBitmapId {
     let asset = Asset::FontBitmap(font_bitmap_asset.clone());
     if log.contains(&asset) && log.get(&asset).is_some() {
         panic!("unexpected state");
@@ -71,38 +76,48 @@ pub fn bake_font_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
 
     // Get the fs objects for this asset
     let dir = asset_filename.as_ref().parent().unwrap();
-    let bitmap_filename = get_path(&dir, font_bitmap_asset.src());
+    let def_filename = get_path(&dir, font_bitmap_asset.src());
+    let def_file = read(&def_filename).unwrap();
+    let def_parent = def_filename.parent().unwrap();
+    let def = BMFont::new(def_file.as_slice(), OrdinateOrientation::TopToBottom).unwrap();
+    let pages = def
+        .pages()
+        .iter()
+        .map(|page| {
+            let page_filename = def_parent.join(page);
 
-    // Bake the pixels
-    let (_, width, pixels) = pixels(&bitmap_filename, true);
-    let mut better_pixels = Vec::with_capacity(pixels.len());
-    for y in 0..width as usize {
-        for x in 0..width as usize {
-            let g = pixels[y * width as usize * 3 + x * 3 + 1];
-            let r = pixels[y * width as usize * 3 + x * 3 + 2];
-            if 0xff == r {
-                better_pixels.push(0xff);
-                better_pixels.push(0x00);
-                better_pixels.push(0x00);
-            } else if 0xff == g {
-                better_pixels.push(0x00);
-                better_pixels.push(0xff);
-                better_pixels.push(0x00);
-            } else {
-                better_pixels.push(0x00);
-                better_pixels.push(0x00);
-                better_pixels.push(0x00);
+            // Bake the pixels
+            let (_, width, pixels) = pixels(&page_filename, true);
+            let mut better_pixels = Vec::with_capacity(pixels.len());
+            for y in 0..width as usize {
+                for x in 0..width as usize {
+                    let g = pixels[y * width as usize * 3 + x * 3 + 1];
+                    let r = pixels[y * width as usize * 3 + x * 3 + 2];
+                    if 0xff == r {
+                        better_pixels.push(0xff);
+                        better_pixels.push(0x00);
+                        better_pixels.push(0x00);
+                    } else if 0xff == g {
+                        better_pixels.push(0x00);
+                        better_pixels.push(0xff);
+                        better_pixels.push(0x00);
+                    } else {
+                        better_pixels.push(0x00);
+                        better_pixels.push(0x00);
+                        better_pixels.push(0x00);
+                    }
+                }
             }
-        }
-    }
-    let bitmap = Bitmap::new(BitmapFormat::Rgb, width as u16, better_pixels);
+
+            Bitmap::new(BitmapFormat::Rgb, width as u16, better_pixels)
+        })
+        .collect();
 
     // Pak and log this asset
-    let key_len = key.len();
-    key.truncate(key_len - 5);
-    let key = format!("{}.png", key);
-    let bitmap_id = pak.push_bitmap(key, bitmap);
-    log.add(&asset, bitmap_id);
+    let font_bitmap_id = pak.push_font_bitmap(key, FontBitmap::new(def_file, pages));
+    log.add(&asset, font_bitmap_id);
+
+    font_bitmap_id
 }
 
 fn pixels<P: AsRef<Path>>(filename: P, force_opaque: bool) -> (BitmapFormat, u32, Vec<u8>) {
