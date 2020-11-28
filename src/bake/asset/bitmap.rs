@@ -5,7 +5,7 @@ use {
 
 #[derive(Clone, Deserialize)]
 pub struct Bitmap {
-    force_opaque: bool,
+    force_opaque: Option<bool>,
     src: PathBuf,
 }
 
@@ -15,6 +15,6 @@ impl Bitmap {
     }
 
     pub fn force_opaque(&self) -> bool {
-        self.force_opaque
+        self.force_opaque.unwrap_or_default()
     }
 }

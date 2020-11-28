@@ -33,13 +33,13 @@ pub fn bake_scene<P1: AsRef<Path>, P2: AsRef<Path>>(
         }
 
         let material = scene_ref.material().map(|src| {
-            let src = get_path(&dir, src);
+            let src = get_path(&dir, src, &project_dir);
             let material = Asset::read(&src).into_material().unwrap();
             bake_material(&project_dir, src, &material, &mut pak)
         });
 
         let model = scene_ref.model().map(|src| {
-            let src = get_path(&dir, src);
+            let src = get_path(&dir, src, &project_dir);
             let model = Asset::read(&src).into_model().unwrap();
             bake_model(&project_dir, src, &model, &mut pak)
         });

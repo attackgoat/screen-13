@@ -11,20 +11,21 @@ pub struct Model {
     scale: Option<Vec3>,
     src: PathBuf,
     #[serde(rename = "mesh")]
-    meshes: Vec<Mesh>,
+    meshes: Option<Vec<Mesh>>,
 }
 
 impl Model {
     pub fn new<P: AsRef<Path>>(src: P, offset: Vec3, scale: Vec3) -> Self {
         Self {
-            meshes: vec![],
+            meshes: Some(vec![]),
             offset: Some(offset),
             scale: Some(scale),
             src: src.as_ref().to_owned(),
         }
     }
 
-    pub fn meshes(&self) -> &[Mesh] {
+    // TODO: Write an iterator or something this is temporary!
+    pub fn meshes(&self) -> &Option<Vec<Mesh>> {
         &self.meshes
     }
 

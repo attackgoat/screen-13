@@ -32,7 +32,7 @@ pub fn bake_animation<P1: AsRef<Path>, P2: AsRef<Path>>(
     info!("Processing asset: {}", key);
 
     let dir = asset_filename.as_ref().parent().unwrap();
-    let src = get_path(&dir, asset.src());
+    let src = get_path(&dir, asset.src(), project_dir);
 
     let name = asset.name();
     let (doc, bufs, _) = import(src).unwrap();

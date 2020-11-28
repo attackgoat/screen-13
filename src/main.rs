@@ -11,8 +11,8 @@ mod pak;
 use {
     self::{
         bake::{
-            bake_animation, bake_bitmap, bake_blob, bake_font_bitmap, bake_material, bake_model,
-            bake_scene, bake_text, Asset,
+            bake_animation, bake_bitmap, bake_font_bitmap, bake_material, bake_model, bake_scene,
+            Asset,
         },
         pak::PakBuf,
     },

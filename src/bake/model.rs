@@ -31,13 +31,15 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
     info!("Processing asset: {}", key);
 
     let dir = asset_filename.as_ref().parent().unwrap();
-    let src = get_path(&dir, asset.src());
+    let src = get_path(&dir, asset.src(), project_dir);
 
     let mut mesh_names: HashMap<&str, Option<&str>> = HashMap::default();
-    for mesh in asset.meshes() {
-        mesh_names
-            .entry(mesh.src_name())
-            .or_insert_with(|| mesh.dst_name());
+    if let Some(meshes) = asset.meshes() {
+        for mesh in meshes {
+            mesh_names
+                .entry(mesh.src_name())
+                .or_insert_with(|| mesh.dst_name());
+        }
     }
 
     let (doc, bufs, _) = import(src).unwrap();
@@ -45,9 +47,18 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
         .nodes()
         .filter(|node| node.mesh().is_some())
         .map(|node| (node.mesh().unwrap(), node))
-        .filter(|(mesh, _)| mesh.name().is_some())
-        .map(|(mesh, node)| (mesh.name().unwrap(), mesh, node))
-        .filter(|(name, _, _)| mesh_names.contains_key(name))
+        .filter(|(mesh, _)| {
+            if mesh_names.is_empty() {
+                return true;
+            }
+
+            if let Some(name) = mesh.name() {
+                return mesh_names.contains_key(name);
+            }
+
+            false
+        })
+        .map(|(mesh, node)| (mesh.name().unwrap_or_default(), mesh, node))
         .collect::<Vec<_>>();
     let index_count = nodes
         .iter()
@@ -96,7 +107,10 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
             break;
         }
 
-        let dst_name = mesh_names[name];
+        let dst_name = mesh_names
+            .get(name)
+            .map(|name| name.map(|name| name.to_owned()))
+            .unwrap_or(None);
         let skin = node.skin();
         let (translation, rotation, scale) = node.transform().decomposed();
         let rotation = quat(rotation[0], rotation[1], rotation[2], rotation[3]);
@@ -206,7 +220,7 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
                     .iter()
                     .map(|position| vec3(position[0], position[1], position[2])),
             ),
-            dst_name.map(|name| name.to_owned()),
+            dst_name,
             transform,
             skin.map(|s| {
                 let joints = s.joints().map(|node| node.name().unwrap().to_owned());

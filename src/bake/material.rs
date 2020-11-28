@@ -22,9 +22,9 @@ pub fn bake_material<P1: AsRef<Path>, P2: AsRef<Path>>(
 
     let dir = filename.as_ref().parent().unwrap();
 
-    let albedo_filename = get_path(dir, material.albedo());
-    let metal_filename = get_path(dir, material.metal());
-    let normal_filename = get_path(dir, material.normal());
+    let albedo_filename = get_path(dir, material.albedo(), &project_dir);
+    let metal_filename = get_path(dir, material.metal(), &project_dir);
+    let normal_filename = get_path(dir, material.normal(), &project_dir);
 
     let albedo = Asset::read(&albedo_filename).into_bitmap().unwrap();
     let metal = Asset::read(&metal_filename).into_bitmap().unwrap();
