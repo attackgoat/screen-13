@@ -43,6 +43,7 @@ use {
     },
     gfx_impl::Backend as _Backend,
     std::{
+        cmp::Ordering,
         iter::{empty, once},
         ops::Range,
     },
@@ -807,21 +808,41 @@ impl AsRef<[u32; 16]> for LineVertexConsts {
 }
 
 #[derive(Clone)]
-pub enum Material {
-    Debug,
-    Unlit {
-        diffuse: BitmapRef,
-    },
-    Pbr {
-        albedo: BitmapRef,
-        normal: BitmapRef,
-        metal: BitmapRef,
-    },
+pub struct Material {
+    pub albedo: BitmapRef,
+    pub normal: BitmapRef,
+    pub metal: BitmapRef,
 }
 
-impl Default for Material {
-    fn default() -> Self {
-        Self::Debug
+impl Eq for Material {}
+
+impl Ord for Material {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let mut res = BitmapRef::as_ptr(&self.albedo).cmp(&BitmapRef::as_ptr(&other.albedo));
+        if res != Ordering::Less {
+            return res;
+        }
+
+        res = BitmapRef::as_ptr(&self.metal).cmp(&BitmapRef::as_ptr(&other.metal));
+        if res != Ordering::Less {
+            return res;
+        }
+
+        BitmapRef::as_ptr(&self.normal).cmp(&BitmapRef::as_ptr(&other.normal))
+    }
+}
+
+impl PartialEq for Material {
+    fn eq(&self, other: &Self) -> bool {
+        BitmapRef::ptr_eq(&self.albedo, &other.albedo)
+            && BitmapRef::ptr_eq(&self.normal, &other.normal)
+            && BitmapRef::ptr_eq(&self.metal, &other.metal)
+    }
+}
+
+impl PartialOrd for Material {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 

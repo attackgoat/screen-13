@@ -304,6 +304,18 @@ impl MeshCommand {
     pub fn new_mesh_pose(model: ModelRef, mesh: Mesh, pose: Pose) -> Self {
         (model, mesh, pose).into()
     }
+
+    pub fn model(&self) -> &ModelRef {
+        &self.model
+    }
+
+    pub fn mesh(&self) -> Option<&Mesh> {
+        self.mesh.as_ref()
+    }
+
+    pub fn pose(&self) -> Option<&Pose> {
+        self.pose.as_ref()
+    }
 }
 
 impl From<ModelRef> for MeshCommand {

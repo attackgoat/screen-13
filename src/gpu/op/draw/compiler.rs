@@ -6,7 +6,7 @@ use {
         },
         instruction::Instruction,
         key::{Line, RectLight, Spotlight},
-        Command,
+        Command, ModelCommand,
     },
     crate::{
         camera::Camera,
@@ -17,7 +17,7 @@ use {
     },
     std::{
         cmp::{Ord, Ordering},
-        ops::Range,
+        ops::{Range, RangeFrom},
         ptr::copy_nonoverlapping,
     },
 };
@@ -51,7 +51,7 @@ enum Asm {
     CopyRectLightVertices,
     CopySpotlightVertices,
     DrawLines(u32),
-    DrawPointLights((usize, usize)),
+    DrawPointLights(Range<usize>),
     DrawRectLightBegin,
     DrawRectLight(DrawAsm),
     DrawRectLightEnd,
@@ -72,7 +72,7 @@ pub struct Compilation<'a> {
     cmds: &'a [Command],
     code_idx: usize,
     compiler: &'a mut Compiler, //TODO: Mutable for mut access to vertex_buf, let's revisit this if can be made read-only
-    mesh_sets: MeshSets,
+                                // mesh_sets: MeshSets,
 }
 
 impl Compilation<'_> {
@@ -310,17 +310,22 @@ impl Compiler {
         assert!(self.mesh_textures.is_empty());
         assert_ne!(cmds.len(), 0);
 
+        // Rearrange the commands so draw order doesn't cause unnecessary resource-switching
+        self.sort(cmds);
+
+        // Set model-specific things
         let eye = -camera.eye();
         for cmd in cmds.iter_mut() {
             if let Command::Model(cmd) = cmd {
                 // Assign a relative measure of distance from the camera for all mesh commands which allows us to submit draw commands
                 // in the best order for the z-buffering algorithm (we use a depth map with comparisons that discard covered fragments)
                 cmd.camera_order = cmd.transform.transform_vector3(eye).length_squared();
+
+            // Add textures to our list!
+            } else {
+                break;
             }
         }
-
-        // Rearrange the commands so draw order doesn't cause unnecessary resource-switching
-        self.sort(cmds);
 
         // Fill the cache buffers for all requested lines and lights (queues copies from CPU to GPU)
         self.fill_caches(
@@ -334,7 +339,7 @@ impl Compiler {
             cmds,
             code_idx: 0,
             compiler: self,
-            mesh_sets: Default::default(),
+            // mesh_sets: Default::default(),
         }
     }
 
@@ -347,56 +352,39 @@ impl Compiler {
         cmds: &mut [Command],
     ) {
         // Locate the groups - we know these `SearchIdx` values will not be found as they are gaps in between the groups
-        let point_light_idx = cmds
-            .binary_search_by(|probe| {
-                (Self::group_idx(probe) as isize).cmp(&(SearchIdx::PointLight as _))
-            })
-            .unwrap_err();
-        let rect_light_idx = cmds[point_light_idx..]
-            .binary_search_by(|probe| {
-                (Self::group_idx(probe) as isize).cmp(&(SearchIdx::RectLight as _))
-            })
-            .unwrap_err();
-        let spotlight_idx = cmds[rect_light_idx..]
-            .binary_search_by(|probe| {
-                (Self::group_idx(probe) as isize).cmp(&(SearchIdx::Spotlight as _))
-            })
-            .unwrap_err();
-        let line_idx = cmds[spotlight_idx..]
-            .binary_search_by(|probe| {
-                (Self::group_idx(probe) as isize).cmp(&(SearchIdx::Line as _))
-            })
-            .unwrap_err();
+        let search_group_idx = |range: RangeFrom<usize>, group: SearchIdx| -> usize {
+            cmds[range]
+                .binary_search_by(|probe| (Self::group_idx(probe) as isize).cmp(&(group as _)))
+                .unwrap_err()
+        };
+        let point_light_idx = search_group_idx(0.., SearchIdx::PointLight);
+        let rect_light_idx = search_group_idx(point_light_idx.., SearchIdx::RectLight);
+        let spotlight_idx = search_group_idx(rect_light_idx.., SearchIdx::Spotlight);
+        let line_idx = search_group_idx(spotlight_idx.., SearchIdx::Line);
 
         // Point light drawing
         let point_light_count = rect_light_idx - point_light_idx;
         if point_light_count > 0 {
-            #[cfg(debug_assertions)]
-            let name = format!("{} point light vertex buffer", name);
-
-            // Produce the assembly code that will draw all point lights at once
             self.code
-                .push(Asm::DrawPointLights((point_light_idx, rect_light_idx)));
+                .push(Asm::DrawPointLights(point_light_idx..rect_light_idx));
 
             // On the first (it is also the only) allocation we will copy in the icosphere vertices
             if self.point_light_buf.as_ref().is_none() {
                 let mut buf = pool.borrow_mut().data(
                     #[cfg(debug_assertions)]
-                    &name,
+                    &format!("{} point light vertex buffer", name),
                     POINT_LIGHT.len() as _,
                 );
 
-                // Add the point light geometry to the buffer as needed (the spot is reserved for it)
                 unsafe {
-                    let mut mapped_range = buf.map_range_mut(0..POINT_LIGHT.len() as _).unwrap(); // TODO: Error handling!
-
+                    let mut mapped_range = buf.map_range_mut(0..POINT_LIGHT.len() as _).unwrap();
                     copy_nonoverlapping(
                         POINT_LIGHT.as_ptr(),
                         mapped_range.as_mut_ptr(),
                         POINT_LIGHT.len() as _,
                     );
 
-                    Mapping::flush(&mut mapped_range).unwrap(); // TODO: Error handling!
+                    Mapping::flush(&mut mapped_range).unwrap();
                 }
 
                 self.point_light_buf = Some(buf);
@@ -406,18 +394,13 @@ impl Compiler {
         // Rect light drawing
         let rect_light_count = spotlight_idx - rect_light_idx;
         if rect_light_count > 0 {
-            #[cfg(debug_assertions)]
-            let name = format!("{} rect light vertex buffer", name);
-
             // Allocate enough `buf` to hold everything in the existing cache and everything we could possibly draw
-            let len = (self.rect_light_lru.len() * RECT_LIGHT_STRIDE
-                + rect_light_count * RECT_LIGHT_STRIDE) as u64;
             Self::alloc_data(
                 #[cfg(debug_assertions)]
-                &name,
+                &format!("{} rect light vertex buffer", name),
                 pool,
                 &mut self.rect_light_buf,
-                len,
+                ((self.rect_light_lru.len() + rect_light_count) * RECT_LIGHT_STRIDE) as _,
             );
             let buf = self.rect_light_buf.as_mut().unwrap();
 
@@ -456,15 +439,14 @@ impl Compiler {
 
                             unsafe {
                                 let mut mapped_range =
-                                    buf.data.current.map_range_mut(end..new_end).unwrap(); // TODO: Error handling!
-
+                                    buf.data.current.map_range_mut(end..new_end).unwrap();
                                 copy_nonoverlapping(
                                     vertices.as_ptr(),
                                     mapped_range.as_mut_ptr(),
                                     RECT_LIGHT_STRIDE,
                                 );
 
-                                Mapping::flush(&mut mapped_range).unwrap(); // TODO: Error handling!
+                                Mapping::flush(&mut mapped_range).unwrap();
                             }
 
                             // Create new cache entries for this rectangular light
@@ -475,7 +457,7 @@ impl Compiler {
                             idx
                         }
                         Ok(idx) => {
-                            self.spotlight_lru[idx].recently_used = true;
+                            self.rect_light_lru[idx].recently_used = true;
 
                             idx
                         }
@@ -496,18 +478,14 @@ impl Compiler {
         // Spotlight drawing
         let spotlight_count = line_idx - spotlight_idx;
         if spotlight_count > 0 {
-            #[cfg(debug_assertions)]
-            let name = format!("{} spotlight vertex buffer", name);
-
             // Allocate enough `buf` to hold everything in the existing cache and everything we could possibly draw
-            let len = (self.spotlight_lru.len() * SPOTLIGHT_STRIDE
-                + spotlight_count * SPOTLIGHT_STRIDE) as u64;
             Self::alloc_data(
                 #[cfg(debug_assertions)]
-                &name,
+                &format!("{} spotlight vertex buffer", name),
                 pool,
                 &mut self.spotlight_buf,
-                len,
+                (self.spotlight_lru.len() * SPOTLIGHT_STRIDE + spotlight_count * SPOTLIGHT_STRIDE)
+                    as _,
             );
             let buf = self.spotlight_buf.as_mut().unwrap();
 
@@ -546,15 +524,14 @@ impl Compiler {
 
                             unsafe {
                                 let mut mapped_range =
-                                    buf.data.current.map_range_mut(end..new_end).unwrap(); // TODO: Error handling!
-
+                                    buf.data.current.map_range_mut(end..new_end).unwrap();
                                 copy_nonoverlapping(
                                     vertices.as_ptr(),
                                     mapped_range.as_mut_ptr(),
                                     SPOTLIGHT_STRIDE,
                                 );
 
-                                Mapping::flush(&mut mapped_range).unwrap(); // TODO: Error handling!
+                                Mapping::flush(&mut mapped_range).unwrap();
                             }
 
                             // Create a new cache entry for this spotlight
@@ -585,17 +562,13 @@ impl Compiler {
         // Line drawing
         let line_count = cmds.len() - line_idx;
         if line_count > 0 {
-            #[cfg(debug_assertions)]
-            let name = format!("{} line vertex buffer", name);
-
             // Allocate enough `buf` to hold everything in the existing cache and everything we could possibly draw
-            let len = (self.line_lru.len() * LINE_STRIDE + line_count * LINE_STRIDE) as u64;
             Self::alloc_data(
                 #[cfg(debug_assertions)]
-                &name,
+                &format!("{} line vertex buffer", name),
                 pool,
                 &mut self.line_buf,
-                len,
+                (self.line_lru.len() * LINE_STRIDE + line_count * LINE_STRIDE) as _,
             );
             let buf = self.line_buf.as_mut().unwrap();
 
@@ -630,7 +603,7 @@ impl Compiler {
 
                         unsafe {
                             let mut mapped_range =
-                                buf.data.current.map_range_mut(end..new_end).unwrap(); // TODO: Error handling!
+                                buf.data.current.map_range_mut(end..new_end).unwrap();
                             copy_nonoverlapping(
                                 vertices.as_ptr(),
                                 mapped_range.as_mut_ptr(),
@@ -661,7 +634,6 @@ impl Compiler {
 
     /// All commands sort into groups: first models, then lights, followed by lines.
     fn group_idx(cmd: &Command) -> GroupIdx {
-        // TODO: Transparencies?
         match cmd {
             Command::Model(_) => GroupIdx::Model,
             Command::PointLight(_) => GroupIdx::PointLight,
@@ -672,17 +644,14 @@ impl Compiler {
         }
     }
 
-    // /// Meshes sort into sub-groups: first animated, then single texture, followed by dual texture.
-    // fn mesh_group_idx(mesh: &Mesh) -> usize {
-    //     // TODO: Transparencies?
-    //     if model.is_animated() {
-    //         0
-    //     // } else if model.is_single_texture() {
-    //     //     1
-    //     } else {
-    //         2
-    //     }
-    // }
+    /// Models sort into sub-groups: static followed by animated.
+    fn model_group_idx(cmd: &ModelCommand) -> ModelGroupIdx {
+        if cmd.mesh.pose().is_some() {
+            ModelGroupIdx::Animated
+        } else {
+            ModelGroupIdx::Static
+        }
+    }
 
     /// Returns the index of a given texture in our `mesh texture` list, adding it as needed.
     fn mesh_texture_idx(&mut self, tex: &Texture2d) -> usize {
@@ -736,45 +705,36 @@ impl Compiler {
 
     /// Sorts commands into a predictable and efficient order for drawing.
     fn sort(&mut self, cmds: &mut [Command]) {
-        // TODO: Sorting meshes by material also - helpful or not?
         cmds.sort_unstable_by(|lhs, rhs| {
-            // Shorthand - we only care about equal or not-equal here
             use Ordering::Equal as eq;
 
-            let lhs_idx = Self::group_idx(lhs) as isize;
-            let rhs_idx = Self::group_idx(rhs) as isize;
+            let lhs_group = Self::group_idx(lhs);
+            let rhs_group = Self::group_idx(rhs);
 
-            // Compare group indices
-            match lhs_idx.cmp(&rhs_idx) {
+            // Compare groups
+            match lhs_group.cmp(&rhs_group) {
                 eq => match lhs {
-                    Command::Model(_lhs) => {
-                        // let rhs = rhs.as_mesh().unwrap();
-                        // let lhs_idx = 0; // TODO: Self::model_group_idx(lhs.model);
-                        // let rhs_idx = 0; // TODO: Self::model_group_idx(rhs.model);
+                    Command::Model(lhs) => {
+                        let rhs = rhs.as_model().unwrap();
+                        let lhs_model = Self::model_group_idx(lhs);
+                        let rhs_model = Self::model_group_idx(rhs);
 
-                        /*/ Compare mesh group indices
-                        match lhs_idx.cmp(&rhs_idx) {
+                        // Compare model group indices
+                        match lhs_model.cmp(&rhs_model) {
                             eq => {
-                                for (lhs_tex, rhs_tex) in
-                                    lhs.model.textures().zip(rhs.model.textures())
-                                {
-                                    let lhs_idx = self.mesh_texture_idx(lhs_tex);
-                                    let rhs_idx = self.mesh_texture_idx(rhs_tex);
-
-                                    // Compare mesh texture indices
-                                    match lhs_idx.cmp(&rhs_idx) {
-                                        eq => continue,
-                                        ne => return ne,
+                                // Compare materials
+                                match lhs.material.cmp(&rhs.material) {
+                                    eq => {
+                                        // Compare z-order (sorting in closer to further)
+                                        lhs.camera_order
+                                            .partial_cmp(&rhs.camera_order)
+                                            .unwrap_or(eq)
                                     }
+                                    ne => ne,
                                 }
-
-                                // Compare z-order (sorting in closer to further)
-                                lhs.camera_z.partial_cmp(&rhs.camera_z).unwrap_or(eq)
                             }
                             ne => ne,
-                        }*/
-
-                        todo!()
+                        }
                     }
                     _ => eq,
                 },
@@ -814,7 +774,7 @@ struct DrawAsm {
 }
 
 /// Evenly numbered because we use `SearchIdx` to quickly locate these groups while filling the cache.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 enum GroupIdx {
     Model = 0,
     Sunlight = 2,
@@ -841,12 +801,18 @@ impl<T> Lru<T> {
     }
 }
 
-#[derive(Default)]
-pub struct MeshSets {
-    pub dual_tex: usize,
-    pub single_tex: usize,
-    pub trans: usize,
+#[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+enum ModelGroupIdx {
+    Static = 0,
+    Animated,
 }
+
+// #[derive(Default)]
+// pub struct MeshSets {
+//     pub dual_tex: usize,
+//     pub single_tex: usize,
+//     pub trans: usize,
+// }
 
 /// These oddly numbered indices are the spaces in between the `GroupIdx` values. This was more efficient than
 /// finding the actual group index because we would have to walk to the front and back of each group after any
