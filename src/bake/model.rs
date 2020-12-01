@@ -150,7 +150,10 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
             all_positions.extend_from_slice(&positions);
 
             let index_end = index_count + indices.len() as u32;
-            batches.push(Batch::new(index_count..index_end, mode));
+            batches.push(Batch {
+                indices: index_count..index_end,
+                mode,
+            });
             index_count = index_end;
 
             match index_mode {

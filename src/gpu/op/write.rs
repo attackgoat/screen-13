@@ -5,7 +5,7 @@ use {
         gpu::{
             driver::{
                 bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
-                PhysicalDevice,
+                PhysicalDevice, RenderPass
             },
             pool::{Graphics, GraphicsMode, Lease, RenderPassMode},
             BlendMode, PoolRef, Texture2d,
@@ -184,37 +184,42 @@ impl WriteOp {
     }
 
     pub fn record(mut self, writes: &mut [Write]) -> impl Op {
+        assert!(self.src_textures.is_empty());
         assert_ne!(writes.len(), 0);
 
         if writes.len() > 1 {
-            // This closure returns the index of a given texture in our `source texture` list.
-            let mut tex_idx = |tex: &Texture2d| -> usize {
-                let tex_ptr = tex.as_ptr();
-                match self
-                    .src_textures
-                    .binary_search_by(|probe| probe.as_ptr().cmp(&tex_ptr))
-                {
-                    Err(idx) => {
-                        // Not in the list - add and return the new index
-                        self.src_textures.push(Texture2d::clone(tex));
-
-                        idx
-                    }
-                    Ok(idx) => idx,
+            // Keeps track of the textures used while the GPU is still busy (so our caller can drop their references)
+            for write in writes.iter() {
+                let write_src_ptr = Texture2d::as_ptr(&write.src);
+                match self.src_textures.binary_search_by(|probe| {
+                    let probe = Texture2d::as_ptr(probe);
+                    probe.cmp(&write_src_ptr)
+                }) {
+                    Err(idx) => self.src_textures.insert(idx, Texture2d::clone(write.src)),
+                    Ok(_) => (),
                 }
-            };
+            }
 
             // Sort the writes by texture so that we minimize the number of descriptor sets and how often we change sets during submit
             // NOTE: Unstable sort because we don't claim to support ordering or blending of the individual writes within each batch
             writes.sort_unstable_by(|lhs, rhs| {
-                let lhs_idx = tex_idx(&lhs.src);
-                let rhs_idx = tex_idx(&rhs.src);
-                lhs_idx.cmp(&rhs_idx)
+                let lhs = Texture2d::as_ptr(&lhs.src);
+                let rhs = Texture2d::as_ptr(&rhs.src);
+                lhs.cmp(&rhs)
             });
         } else {
             // We only have one write - and the above sort logic would not be called (there would be no right-hand-side!)
             self.src_textures.push(Texture2d::clone(writes[0].src));
         }
+
+        let render_pass_mode = {
+            let fmt = self.dst.borrow().format();
+            if self.dst_preserve {
+                RenderPassMode::ReadWrite(fmt)
+            } else {
+                RenderPassMode::Write(fmt)
+            }
+        };
 
         // Final setup bits
         {
@@ -224,7 +229,7 @@ impl WriteOp {
             // Setup the framebuffer
             self.frame_buf.replace(Framebuffer2d::new(
                 Driver::clone(&driver),
-                pool.render_pass(self.render_pass_mode()),
+                pool.render_pass(render_pass_mode),
                 once(self.back_buf.borrow().as_default_view().as_ref()),
                 self.dst.borrow().dims(),
             ));
@@ -238,7 +243,7 @@ impl WriteOp {
                 #[cfg(debug_assertions)]
                 &self.name,
                 graphics_mode,
-                self.render_pass_mode(),
+                render_pass_mode,
                 0,
                 self.src_textures.len(),
             ));
@@ -246,7 +251,7 @@ impl WriteOp {
 
         unsafe {
             self.write_descriptor_sets();
-            self.submit_begin();
+            self.submit_begin(render_pass_mode);
 
             let mut set_idx = 0;
             for write in writes.iter() {
@@ -269,15 +274,7 @@ impl WriteOp {
         }
     }
 
-    fn render_pass_mode(&self) -> RenderPassMode {
-        if self.dst_preserve {
-            RenderPassMode::ReadWrite
-        } else {
-            RenderPassMode::Write
-        }
-    }
-
-    unsafe fn submit_begin(&mut self) {
+    unsafe fn submit_begin(&mut self, render_pass_mode: RenderPassMode) {
         let mut pool = self.pool.borrow_mut();
         let mut back_buf = self.back_buf.borrow_mut();
         let mut dst = self.dst.borrow_mut();
@@ -350,7 +347,7 @@ impl WriteOp {
         //     Access::SHADER_READ,
         // );
         self.cmd_buf.begin_render_pass(
-            pool.render_pass(self.render_pass_mode()),
+            pool.render_pass(render_pass_mode),
             self.frame_buf.as_ref().unwrap(),
             rect,
             &[TRANSPARENT_BLACK.into()],
@@ -495,11 +492,12 @@ impl WriteOp {
                         sampler,
                     )),
                 };
+                // TODO: Borrow in a loop? Can these be lifted?
                 self.pool
                     .borrow()
                     .driver()
                     .borrow_mut()
-                    .write_descriptor_sets(vec![src_desc, dst_desc]);
+                    .write_descriptor_sets(vec![src_desc, dst_desc]); // TODO: Slice/Tuple?
             } else {
                 self.pool
                     .borrow()

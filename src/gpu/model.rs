@@ -2,7 +2,7 @@ use {
     super::{Data, Lease, PoolRef},
     crate::{
         math::{Quat, Sphere},
-        pak::model::Mesh as PakMesh,
+        pak::model::Mesh,
     },
     std::fmt::{Debug, Error, Formatter},
 };
@@ -17,14 +17,42 @@ fn deref_str<S: AsRef<str>>(s: &Option<S>) -> Option<&str> {
     }
 }
 
-/// A reference to an individual mesh. Only useful with the Model it was received from.
+pub(super) struct MeshIter<'a> {
+    filter: Option<MeshFilter>,
+    idx: usize,
+    model: &'a Model,
+}
+
+impl<'a> Iterator for MeshIter<'a> {
+    type Item = &'a Mesh;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(filter) = self.filter {
+            if let Some(mesh) = self.model.meshes.get(filter.0 as usize + self.idx) {
+                if mesh.name() == self.model.meshes[self.idx].name() {
+                    self.idx += 1;
+                    return Some(mesh);
+                }
+            }
+
+            None
+        } else if let Some(mesh) = self.model.meshes.get(self.idx) {
+            self.idx += 1;
+            Some(mesh)
+        } else {
+            None
+        }
+    }
+}
+
+/// A reference to an individual mesh name, which may be shared by multiple meshes. Only useful with the Model it was received from.
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
-pub struct Mesh(u16);
+pub struct MeshFilter(u16);
 
 /// A drawable collection of individually adressable meshes.
 pub struct Model {
     index_buf: Lease<Data>,
-    meshes: Vec<PakMesh>,
+    meshes: Vec<Mesh>,
     pool: PoolRef,
     vertex_buf: Lease<Data>,
 }
@@ -33,7 +61,7 @@ impl Model {
     /// Meshes must be sorted by name
     pub(crate) fn new(
         pool: PoolRef,
-        meshes: Vec<PakMesh>,
+        meshes: Vec<Mesh>,
         index_buf: Lease<Data>,
         vertex_buf: Lease<Data>,
     ) -> Self {
@@ -45,11 +73,19 @@ impl Model {
         }
     }
 
+    pub(super) fn meshes(&self, filter: Option<MeshFilter>) -> impl Iterator<Item = &Mesh> {
+        MeshIter {
+            filter,
+            idx: 0,
+            model: self,
+        }
+    }
+
     pub fn bounds(&self) -> Sphere {
         todo!("Get bounds")
     }
 
-    pub fn mesh<N: AsRef<str>>(&self, name: Option<N>) -> Option<Mesh> {
+    pub fn filter<N: AsRef<str>>(&self, name: Option<N>) -> Option<MeshFilter> {
         let name_str = deref_str(&name);
         match self
             .meshes
@@ -67,7 +103,7 @@ impl Model {
                     }
                 }
 
-                Some(Mesh(idx as _))
+                Some(MeshFilter(idx as _))
             }
         }
     }

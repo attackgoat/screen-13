@@ -10,22 +10,8 @@ use {
 
 #[derive(Deserialize, PartialEq, Serialize)]
 pub struct Batch {
-    indices: Range<u32>,
-    mode: TriangleMode,
-}
-
-impl Batch {
-    pub fn new(indices: Range<u32>, mode: TriangleMode) -> Self {
-        Self { indices, mode }
-    }
-
-    pub fn indices(&self) -> Range<u32> {
-        self.indices.clone()
-    }
-
-    pub fn mode(&self) -> TriangleMode {
-        self.mode
-    }
+    pub indices: Range<u32>,
+    pub mode: TriangleMode,
 }
 
 #[derive(Deserialize, PartialEq, Serialize)]
@@ -54,8 +40,16 @@ impl Mesh {
         }
     }
 
-    pub fn name(&self) -> Option<&str> {
+    pub(crate) fn batches(&self) -> impl Iterator<Item = &Batch> {
+        self.batches.iter()
+    }
+
+    pub(crate) fn name(&self) -> Option<&str> {
         self.name.as_deref()
+    }
+
+    pub fn transform(&self) -> Option<Mat4> {
+        self.transform.clone()
     }
 }
 

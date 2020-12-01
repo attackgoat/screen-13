@@ -12,7 +12,6 @@ pub use self::{command::Command, compiler::Compiler};
 
 use {
     self::{
-        command::MeshCommand,
         geom::LINE_STRIDE,
         geom_buf::GeometryBuffer,
         instruction::{Instruction, MeshInstruction},
@@ -21,7 +20,8 @@ use {
     crate::{
         camera::Camera,
         color::{AlphaColor, Color, TRANSPARENT_BLACK},
-        gpu::{
+        gpu::{MeshFilter,
+            ModelRef, Pose,
             data::CopyRange,
             driver::{CommandPool, Device, Driver, Fence, Framebuffer2d, PhysicalDevice},
             pool::{Graphics, GraphicsMode, Lease, RenderPassMode},
@@ -43,6 +43,7 @@ use {
     },
     gfx_impl::Backend as _Backend,
     std::{
+        hash::{Hash, Hasher},
         cmp::Ordering,
         iter::{empty, once},
         ops::Range,
@@ -64,10 +65,8 @@ pub struct DrawOp {
     frame_buf: Framebuffer2d,
     geom_buf: GeometryBuffer,
     graphics_line: Option<Lease<Graphics>>,
-    graphics_mesh_animated: Option<Lease<Graphics>>,
-    graphics_mesh_dual_tex: Option<Lease<Graphics>>,
-    graphics_mesh_single_tex: Option<Lease<Graphics>>,
-    graphics_mesh_transparent: Option<Lease<Graphics>>,
+    graphics_mesh: Option<Lease<Graphics>>,
+    graphics_mesh_anim: Option<Lease<Graphics>>,
     graphics_spotlight: Option<Lease<Graphics>>,
     graphics_sunlight: Option<Lease<Graphics>>,
     #[cfg(debug_assertions)]
@@ -103,16 +102,15 @@ impl DrawOp {
             Driver::clone(&driver),
             pool_ref.render_pass(RenderPassMode::Draw),
             vec![
-                geom_buf.color().borrow().as_default_view().as_ref(),
-                geom_buf.position().borrow().as_default_view().as_ref(),
-                geom_buf.normal().borrow().as_default_view().as_ref(),
-                geom_buf.material().borrow().as_default_view().as_ref(),
+                geom_buf.albedo_metal.borrow().as_default_view().as_ref(),
+                geom_buf.normal.borrow().as_default_view().as_ref(),
+                geom_buf.light.borrow().as_default_view().as_ref(),
                 geom_buf
-                    .depth()
+                    .depth
                     .borrow()
                     .as_view(
                         ViewKind::D2,
-                        Format::D32Sfloat,
+                        Format::D32Sfloat, // TODO: Use actual format picked by the geom buf!
                         Default::default(),
                         SubresourceRange {
                             aspects: Aspects::DEPTH,
@@ -135,10 +133,8 @@ impl DrawOp {
             frame_buf,
             geom_buf,
             graphics_line: None,
-            graphics_mesh_animated: None,
-            graphics_mesh_dual_tex: None,
-            graphics_mesh_single_tex: None,
-            graphics_mesh_transparent: None,
+            graphics_mesh: None,
+            graphics_skin: None,
             graphics_spotlight: None,
             graphics_sunlight: None,
             #[cfg(debug_assertions)]
@@ -183,22 +179,26 @@ impl DrawOp {
             cmds,
         );
 
+        {
+            //self.graphics_mesh_animated
+        }
+
         unsafe {
             self.submit_begin(&viewport);
 
             while let Some(instr) = instrs.next() {
                 match instr {
-                    Instruction::CopyVertices((buf, ranges)) => {
+                    Instruction::DataCopy((buf, ranges)) => {
                         self.submit_vertex_copies(buf, ranges);
                     }
-                    Instruction::DrawLines((buf, count)) => {
-                        self.submit_draw_lines(buf, count, &viewport, &view_projection);
-                    }
-                    Instruction::TransferData((src, dst)) => {
+                    Instruction::DataTransfer((src, dst)) => {
                         self.submit_data_transfer(src, dst);
                     }
-                    Instruction::WriteVertces((buf, range)) => {
+                    Instruction::DataWrite((buf, range)) => {
                         self.submit_vertex_write(buf, range);
+                    }
+                    Instruction::LineDraw((buf, count)) => {
+                        self.submit_draw_lines(buf, count, &viewport, &view_projection);
                     }
                     _ => panic!(),
                 }
@@ -521,7 +521,7 @@ impl DrawOp {
         // );
     }
 
-    unsafe fn submit_transparency(&mut self, _model_view_proj: Mat4, _cmd: MeshCommand) {
+    unsafe fn submit_transparency(&mut self, _model_view_proj: Mat4, _cmd: u8) {
         // let transparency = self.transparency.as_ref().unwrap();
 
         // self.cmd_buf.bind_vertex_buffers(
@@ -554,44 +554,44 @@ impl DrawOp {
         let driver = pool.driver();
         let mut device = driver.borrow_mut();
         let mut dst = self.dst.borrow_mut();
-        let mut material = self.geom_buf.material().borrow_mut();
+        // let mut material = self.geom_buf.material().borrow_mut();
         let dims = dst.dims();
 
         // Step 6: Copy the color graphics buffer into dst
         self.cmd_buf.end_render_pass();
-        material.set_layout(
-            &mut self.cmd_buf,
-            Layout::TransferSrcOptimal,
-            PipelineStage::TRANSFER,
-            ImageAccess::TRANSFER_READ,
-        );
+        // material.set_layout(
+        //     &mut self.cmd_buf,
+        //     Layout::TransferSrcOptimal,
+        //     PipelineStage::TRANSFER,
+        //     ImageAccess::TRANSFER_READ,
+        // );
         dst.set_layout(
             &mut self.cmd_buf,
             Layout::TransferDstOptimal,
             PipelineStage::TRANSFER,
             ImageAccess::TRANSFER_WRITE,
         );
-        self.cmd_buf.copy_image(
-            material.as_ref(),
-            Layout::TransferSrcOptimal,
-            dst.as_ref(),
-            Layout::TransferDstOptimal,
-            once(ImageCopy {
-                src_subresource: SubresourceLayers {
-                    aspects: Aspects::COLOR,
-                    level: 0,
-                    layers: 0..1,
-                },
-                src_offset: Offset::ZERO,
-                dst_subresource: SubresourceLayers {
-                    aspects: Aspects::COLOR,
-                    level: 0,
-                    layers: 0..1,
-                },
-                dst_offset: Offset::ZERO,
-                extent: dims.as_extent_with_depth(1),
-            }),
-        );
+        // self.cmd_buf.copy_image(
+        //     material.as_ref(),
+        //     Layout::TransferSrcOptimal,
+        //     dst.as_ref(),
+        //     Layout::TransferDstOptimal,
+        //     once(ImageCopy {
+        //         src_subresource: SubresourceLayers {
+        //             aspects: Aspects::COLOR,
+        //             level: 0,
+        //             layers: 0..1,
+        //         },
+        //         src_offset: Offset::ZERO,
+        //         dst_subresource: SubresourceLayers {
+        //             aspects: Aspects::COLOR,
+        //             level: 0,
+        //             layers: 0..1,
+        //         },
+        //         dst_offset: Offset::ZERO,
+        //         extent: dims.as_extent_with_depth(1),
+        //     }),
+        // );
 
         // Finish
         self.cmd_buf.finish();
@@ -607,7 +607,9 @@ impl DrawOp {
         );
     }
 
-    unsafe fn write_mesh_dual_tex_descriptors(&mut self) {
+    unsafe fn write_material_descriptors<'a>(&mut self, materials: impl ExactSizeIterator<Item = &'a Material>) {
+
+
         // let mut cmds = self.cmds.iter();
         // let graphics = self.mesh.as_ref().unwrap();
         // let mut set = 0;
@@ -639,113 +641,6 @@ impl DrawOp {
 
         //     set += 1;
         //     diffuse_id = Some(cmd.mesh.diffuse_id);
-        // }
-    }
-
-    unsafe fn write_mesh_single_tex_descriptors(&mut self) {
-        //let mut cmds = self.cmds.iter();
-        // let graphics = self.mesh.as_ref().unwrap();
-        // let mut set = 0;
-        // TODO: let mut diffuse_id = None;
-
-        // TODO: while let Some(cmd) = cmds.next().unwrap().as_mesh() {
-        //     if let Some(id) = diffuse_id {
-        //         if id == cmd.mesh.diffuse_id {
-        //             continue;
-        //         }
-        //     }
-
-        //     let diffuse = cmd.mesh.diffuse.borrow();
-        //     let diffuse_view = diffuse.as_default_2d_view();
-        //     self.pool
-        //         .borrow()
-        //         .driver()
-        //         .borrow()
-        //         .write_descriptor_sets(once(DescriptorSetWrite {
-        //             set: graphics.desc_set(set),
-        //             binding: 0,
-        //             array_offset: 0,
-        //             descriptors: once(Descriptor::CombinedImageSampler(
-        //                 diffuse_view.as_ref(),
-        //                 Layout::ShaderReadOnlyOptimal,
-        //                 graphics.sampler(0).as_ref(),
-        //             )),
-        //         }));
-
-        //     set += 1;
-        //     diffuse_id = Some(cmd.mesh.diffuse_id);
-        // }
-    }
-
-    unsafe fn write_mesh_trans_descriptors(&mut self) {
-        // let mut cmds = self
-        //     .cmds
-        //     .iter()
-        //     .skip_while(|cmd| !cmd.is_transparency() && !cmd.is_stop());
-        // // let graphics = self.transparency.as_ref().unwrap();
-        // // let mut set = 0;
-        // // TODO: let mut diffuse_id = None;
-
-        // while let Some(cmd) = cmds.next().unwrap().as_mesh() {
-        //     // TODO: if let Some(id) = diffuse_id {
-        //     //     if id == cmd.mesh.diffuse_id {
-        //     //         continue;
-        //     //     }
-        //     // }
-
-        //     // let color = self.g_buf.color.borrow();
-        //     // let depth = self.g_buf.depth.borrow();
-        //     // let diffuse = cmd.mesh.diffuse.borrow();
-        //     // let color_view = color.as_default_2d_view();
-        //     // let diffuse_view = diffuse.as_default_2d_view();
-        //     // let depth_view = depth.as_view(
-        //     //     ViewKind::D2,
-        //     //     Format::D32Sfloat,
-        //     //     Default::default(),
-        //     //     SubresourceRange {
-        //     //         aspects: Aspects::DEPTH,
-        //     //         levels: 0..1,
-        //     //         layers: 0..1,
-        //     //     },
-        //     // );
-        //     // self.pool
-        //     //     .borrow()
-        //     //     .driver()
-        //     //     .borrow()
-        //     //     .write_descriptor_sets(once(DescriptorSetWrite {
-        //     //         set: graphics.desc_set(set),
-        //     //         binding: 0,
-        //     //         array_offset: 0,
-        //     //         descriptors: &[
-        //     //             Descriptor::CombinedImageSampler(
-        //     //                 color_view.as_ref(),
-        //     //                 Layout::ShaderReadOnlyOptimal,
-        //     //                 graphics.sampler(0).as_ref(),
-        //     //             ),
-        //     //             Descriptor::CombinedImageSampler(
-        //     //                 depth_view.as_ref(),
-        //     //                 Layout::ShaderReadOnlyOptimal,
-        //     //                 graphics.sampler(0).as_ref(),
-        //     //             ),
-        //     //         ],
-        //     //     }));
-        //     // self.pool
-        //     //     .borrow()
-        //     //     .driver()
-        //     //     .borrow()
-        //     //     .write_descriptor_sets(once(DescriptorSetWrite {
-        //     //         set: graphics.desc_set(set),
-        //     //         binding: 1,
-        //     //         array_offset: 0,
-        //     //         descriptors: once(Descriptor::CombinedImageSampler(
-        //     //             diffuse_view.as_ref(),
-        //     //             Layout::ShaderReadOnlyOptimal,
-        //     //             graphics.sampler(0).as_ref(),
-        //     //         )),
-        //     //     }));
-
-        //     // set += 1;
-        //     // diffuse_id = Some(cmd.mesh.diffuse_id);
         // }
     }
 }
@@ -810,11 +705,19 @@ impl AsRef<[u32; 16]> for LineVertexConsts {
 #[derive(Clone)]
 pub struct Material {
     pub albedo: BitmapRef,
-    pub normal: BitmapRef,
     pub metal: BitmapRef,
+    pub normal: BitmapRef,
 }
 
 impl Eq for Material {}
+
+impl Hash for Material {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.albedo.as_ptr().hash(state);
+        self.metal.as_ptr().hash(state);
+        self.normal.as_ptr().hash(state);
+    }
+}
 
 impl Ord for Material {
     fn cmp(&self, other: &Self) -> Ordering {
@@ -849,7 +752,9 @@ impl PartialOrd for Material {
 pub struct ModelCommand {
     camera_order: f32, // TODO: Could probably be u16?
     material: Material,
-    mesh: MeshCommand,
+    mesh_filter: Option<MeshFilter>,
+    model: ModelRef,
+    pose: Option<Pose>,
     transform: Mat4,
 }
 

@@ -6,16 +6,17 @@ use {
         },
         instruction::Instruction,
         key::{Line, RectLight, Spotlight},
-        Command, ModelCommand,
+        Command, Material, ModelCommand,
     },
     crate::{
         camera::Camera,
         gpu::{
             data::{CopyRange, Mapping},
-            Data, Lease, PoolRef, Texture2d,
+            Data, Lease, ModelRef, PoolRef, Texture2d,
         },
     },
     std::{
+        collections::HashSet,
         cmp::{Ord, Ordering},
         ops::{Range, RangeFrom},
         ptr::copy_nonoverlapping,
@@ -41,9 +42,11 @@ struct Allocation<T> {
 // but we do want to cache the vector of instructions the compiler creates. Each `Asm` is just a pointer to the `cmds` slice
 // provided by the client which actually contains the references. `Asm` also points to the leased `Data` held by `Compiler`.
 enum Asm {
+    BeginModel,
     BeginSpotlight,
     BeginSunlight,
-    BindVertexBuffer,
+    BindGraphicsDescriptSet,
+    BindModelBuffers,
     TransferLineData,
     TransferRectLightData,
     TransferSpotlightData,
@@ -51,12 +54,13 @@ enum Asm {
     CopyRectLightVertices,
     CopySpotlightVertices,
     DrawLines(u32),
+    DrawModel(usize),
     DrawPointLights(Range<usize>),
     DrawRectLightBegin,
-    DrawRectLight(DrawAsm),
+    DrawRectLight(DrawQuantizedLruAsm),
     DrawRectLightEnd,
     DrawSpotlightBegin,
-    DrawSpotlight(DrawAsm),
+    DrawSpotlight(DrawQuantizedLruAsm),
     DrawSpotlightEnd,
     WriteLineVertices,
     WritePointLightVertices,
@@ -70,18 +74,17 @@ enum Asm {
 /// buffers with incorrect data.
 pub struct Compilation<'a> {
     cmds: &'a [Command],
-    code_idx: usize,
-    compiler: &'a mut Compiler, //TODO: Mutable for mut access to vertex_buf, let's revisit this if can be made read-only
-                                // mesh_sets: MeshSets,
+    compiler: &'a mut Compiler,
+    idx: usize,
 }
 
 impl Compilation<'_> {
     fn copy_vertices<T>(buf: &mut DirtyData<T>) -> Instruction {
-        Instruction::CopyVertices((&mut buf.data.current, buf.gpu_dirty.as_slice()))
+        Instruction::DataCopy((&mut buf.data.current, buf.gpu_dirty.as_slice()))
     }
 
     fn draw_lines(buf: &mut DirtyData<Line>, count: u32) -> Instruction {
-        Instruction::DrawLines((&mut buf.data.current, count))
+        Instruction::LineDraw((&mut buf.data.current, count))
     }
 
     // fn draw_point_lights(buf: &mut Lease<Data>, range: usize) -> Instruction {
@@ -92,19 +95,23 @@ impl Compilation<'_> {
     //     Instruction::DrawLines((&mut buf.data.current, count))
     // }
 
+    pub fn mesh_materials(&self) -> impl ExactSizeIterator<Item = &Material> {
+        self.compiler.mesh_materials.iter()
+    }
+
     fn transfer_data<T>(buf: &mut DirtyData<T>) -> Instruction {
-        Instruction::TransferData((buf.data.previous.as_mut().unwrap(), &mut buf.data.current))
+        Instruction::DataTransfer((buf.data.previous.as_mut().unwrap(), &mut buf.data.current))
     }
 
     fn write_point_light_vertices(&mut self) -> Instruction {
-        Instruction::WriteVertces((
+        Instruction::DataWrite((
             self.compiler.point_light_buf.as_mut().unwrap(),
             0..POINT_LIGHT.len() as _,
         ))
     }
 
     fn write_vertices<T>(buf: &mut DirtyData<T>) -> Instruction {
-        Instruction::WriteVertces((
+        Instruction::DataWrite((
             &mut buf.data.current,
             buf.cpu_dirty.as_ref().unwrap().clone(),
         ))
@@ -114,12 +121,12 @@ impl Compilation<'_> {
 // TODO: Workaround impl of "Iterator for" until we (soon?) have GATs: https://github.com/rust-lang/rust/issues/44265
 impl Compilation<'_> {
     pub fn next(&mut self) -> Option<Instruction> {
-        if self.code_idx == self.compiler.code.len() {
+        if self.idx == self.compiler.code.len() {
             return None;
         }
 
-        let idx = self.code_idx;
-        self.code_idx += 1;
+        let idx = self.idx;
+        self.idx += 1;
 
         Some(match &self.compiler.code[idx] {
             Asm::CopyLineVertices => Self::copy_vertices(self.compiler.line_buf.as_mut().unwrap()),
@@ -166,7 +173,7 @@ pub struct Compiler {
     code: Vec<Asm>,
     line_buf: Option<DirtyData<Line>>,
     line_lru: Vec<Lru<Line>>,
-    mesh_textures: Vec<Texture2d>,
+    mesh_materials: HashSet<Material>,
     point_light_buf: Option<Lease<Data>>,
     rect_light_buf: Option<DirtyData<RectLight>>,
     rect_light_lru: Vec<Lru<RectLight>>,
@@ -307,11 +314,8 @@ impl Compiler {
         cmds: &'b mut [Command],
     ) -> Compilation<'a> {
         assert!(self.code.is_empty());
-        assert!(self.mesh_textures.is_empty());
+        assert!(self.mesh_materials.is_empty());
         assert_ne!(cmds.len(), 0);
-
-        // Rearrange the commands so draw order doesn't cause unnecessary resource-switching
-        self.sort(cmds);
 
         // Set model-specific things
         let eye = -camera.eye();
@@ -320,12 +324,11 @@ impl Compiler {
                 // Assign a relative measure of distance from the camera for all mesh commands which allows us to submit draw commands
                 // in the best order for the z-buffering algorithm (we use a depth map with comparisons that discard covered fragments)
                 cmd.camera_order = cmd.transform.transform_vector3(eye).length_squared();
-
-            // Add textures to our list!
-            } else {
-                break;
             }
         }
+
+        // Rearrange the commands so draw order doesn't cause unnecessary resource-switching
+        self.sort(cmds);
 
         // Fill the cache buffers for all requested lines and lights (queues copies from CPU to GPU)
         self.fill_caches(
@@ -337,9 +340,8 @@ impl Compiler {
 
         Compilation {
             cmds,
-            code_idx: 0,
             compiler: self,
-            // mesh_sets: Default::default(),
+            idx: 0,
         }
     }
 
@@ -361,6 +363,52 @@ impl Compiler {
         let rect_light_idx = search_group_idx(point_light_idx.., SearchIdx::RectLight);
         let spotlight_idx = search_group_idx(rect_light_idx.., SearchIdx::Spotlight);
         let line_idx = search_group_idx(spotlight_idx.., SearchIdx::Line);
+
+        // Model drawing
+        let model_count = point_light_idx;
+        if model_count > 0 {
+            let mut material: Option<&Material> = None;
+            let mut model: Option<&ModelRef> = None;
+
+            // Emit 'start model drawing' assembly code
+            self.code.push(Asm::BeginModel);
+
+            for idx in 0..model_count {
+                let cmd = cmds[idx].as_model().unwrap();
+
+                // Emit 'model buffers have changed' assembly code
+                let next_model = &cmd.model;
+                if let Some(prev_model) = model.as_ref() {
+                    if !ModelRef::ptr_eq(prev_model, next_model) {
+                        self.code.push(Asm::BindModelBuffers);
+                        model = Some(next_model);
+                    }
+                } else {
+                    self.code.push(Asm::BindModelBuffers);
+                    model = Some(next_model);
+                }
+
+                // Emit 'the current descriptor set has changed' assembly code
+                let next_material = &cmd.material;
+                if let Some(prev_material) = material.as_ref() {
+                    if *prev_material != next_material {
+                        if let Some(_pose) = cmd.pose {
+
+                        } else {
+                            self.mesh_materials.insert(Material::clone(&cmd.material));
+                        }
+                        self.code.push(Asm::BindGraphicsDescriptSet);
+                        material = Some(next_material);
+                    }
+                } else {
+                    self.code.push(Asm::BindGraphicsDescriptSet);
+                    material = Some(next_material);
+                }
+
+                // Emit 'draw model' assembly code
+                self.code.push(Asm::DrawModel(idx));
+            }
+        }
 
         // Point light drawing
         let point_light_count = rect_light_idx - point_light_idx;
@@ -427,8 +475,8 @@ impl Compiler {
 
             for cmd in cmds[rect_light_idx..spotlight_idx].iter() {
                 let (key, scale) = RectLight::quantize(cmd.as_rect_light().unwrap());
-                self.code.push(Asm::DrawRectLight(DrawAsm {
-                    lru_idx: match self
+                self.code.push(Asm::DrawRectLight(DrawQuantizedLruAsm {
+                    idx: match self
                         .rect_light_lru
                         .binary_search_by(|probe| probe.key.cmp(&key))
                     {
@@ -512,8 +560,8 @@ impl Compiler {
 
             for cmd in cmds[spotlight_idx..line_idx].iter() {
                 let (key, scale) = Spotlight::quantize(cmd.as_spotlight().unwrap());
-                self.code.push(Asm::DrawSpotlight(DrawAsm {
-                    lru_idx: match self
+                self.code.push(Asm::DrawSpotlight(DrawQuantizedLruAsm {
+                    idx: match self
                         .spotlight_lru
                         .binary_search_by(|probe| probe.key.cmp(&key))
                     {
@@ -646,48 +694,29 @@ impl Compiler {
 
     /// Models sort into sub-groups: static followed by animated.
     fn model_group_idx(cmd: &ModelCommand) -> ModelGroupIdx {
-        if cmd.mesh.pose().is_some() {
+        if cmd.pose.is_some() {
             ModelGroupIdx::Animated
         } else {
             ModelGroupIdx::Static
         }
     }
 
-    /// Returns the index of a given texture in our `mesh texture` list, adding it as needed.
-    fn mesh_texture_idx(&mut self, tex: &Texture2d) -> usize {
-        let tex_ptr = tex.as_ptr();
-        match self
-            .mesh_textures
-            .binary_search_by(|probe| probe.as_ptr().cmp(&tex_ptr))
-        {
-            Err(idx) => {
-                // Not in the list - add and return the new index
-                self.mesh_textures.insert(idx, Texture2d::clone(tex));
-
-                idx
-            }
-            Ok(idx) => idx,
-        }
-    }
-
     /// Resets the internal caches so that this compiler may be reused by calling the `compile` function.
-    pub fn reset(&mut self) {
+    /// Must NOT be called before the previously drawn frame is completed.
+    pub(super) fn reset(&mut self) {
         self.code.clear();
-        self.mesh_textures.clear();
+        self.mesh_materials.clear();
 
         if let Some(buf) = self.line_buf.as_mut() {
-            buf.cpu_dirty = None;
-            buf.gpu_dirty.clear();
+            buf.reset();
         }
 
         if let Some(buf) = self.rect_light_buf.as_mut() {
-            buf.cpu_dirty = None;
-            buf.gpu_dirty.clear();
+            buf.reset();
         }
 
         if let Some(buf) = self.spotlight_buf.as_mut() {
-            buf.cpu_dirty = None;
-            buf.gpu_dirty.clear();
+            buf.reset();
         }
 
         for item in self.line_lru.iter_mut() {
@@ -708,27 +737,34 @@ impl Compiler {
         cmds.sort_unstable_by(|lhs, rhs| {
             use Ordering::Equal as eq;
 
+            // Compare groups
             let lhs_group = Self::group_idx(lhs);
             let rhs_group = Self::group_idx(rhs);
-
-            // Compare groups
             match lhs_group.cmp(&rhs_group) {
                 eq => match lhs {
                     Command::Model(lhs) => {
                         let rhs = rhs.as_model().unwrap();
-                        let lhs_model = Self::model_group_idx(lhs);
-                        let rhs_model = Self::model_group_idx(rhs);
 
-                        // Compare model group indices
-                        match lhs_model.cmp(&rhs_model) {
+                        // Compare model groups (draw static meshes hoping to cover animated ones)
+                        let lhs_group = Self::model_group_idx(lhs);
+                        let rhs_group = Self::model_group_idx(rhs);
+                        match lhs_group.cmp(&rhs_group) {
                             eq => {
-                                // Compare materials
-                                match lhs.material.cmp(&rhs.material) {
+                                // Compare models (reduce vertex/index buffer switching)
+                                let lhs_model = ModelRef::as_ptr(&lhs.model);
+                                let rhs_model = ModelRef::as_ptr(&rhs.model);
+                                match lhs_model.cmp(&rhs_model) {
                                     eq => {
-                                        // Compare z-order (sorting in closer to further)
-                                        lhs.camera_order
-                                            .partial_cmp(&rhs.camera_order)
-                                            .unwrap_or(eq)
+                                        // Compare materials (reduce descriptor set switching)
+                                        match lhs.material.cmp(&rhs.material) {
+                                            eq => {
+                                                // Compare z-order (sorting in closer to further)
+                                                lhs.camera_order
+                                                    .partial_cmp(&rhs.camera_order)
+                                                    .unwrap_or(eq)
+                                            }
+                                            ne => ne,
+                                        }
                                     }
                                     ne => ne,
                                 }
@@ -753,6 +789,13 @@ struct DirtyData<Key> {
     gpu_usage: Vec<(u64, Key)>, // Memory usage on the gpu, sorted by the first field which is the offset.
 }
 
+impl<Key> DirtyData<Key> {
+    fn reset(&mut self) {
+        self.cpu_dirty = None;
+        self.gpu_dirty.clear();
+    }
+}
+
 impl<T> From<Lease<Data>> for DirtyData<T> {
     fn from(val: Lease<Data>) -> Self {
         Self {
@@ -768,8 +811,8 @@ impl<T> From<Lease<Data>> for DirtyData<T> {
 }
 
 #[derive(Clone, Copy)]
-struct DrawAsm {
-    lru_idx: usize,
+struct DrawQuantizedLruAsm {
+    idx: usize,
     scale: f32,
 }
 
@@ -806,13 +849,6 @@ enum ModelGroupIdx {
     Static = 0,
     Animated,
 }
-
-// #[derive(Default)]
-// pub struct MeshSets {
-//     pub dual_tex: usize,
-//     pub single_tex: usize,
-//     pub trans: usize,
-// }
 
 /// These oddly numbered indices are the spaces in between the `GroupIdx` values. This was more efficient than
 /// finding the actual group index because we would have to walk to the front and back of each group after any

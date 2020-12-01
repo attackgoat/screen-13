@@ -16,7 +16,7 @@ mod swapchain;
 mod texture;
 
 pub use self::{
-    model::{Mesh, Model, Pose},
+    model::{MeshFilter, Model, Pose},
     op::{Bitmap, Command, Font, Material, Write, WriteMode},
     render::Render,
     swapchain::Swapchain,

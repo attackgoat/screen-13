@@ -1,9 +1,8 @@
 use {
     crate::{
         gpu::{
-            driver::Image2d,
             pool::{Lease, Pool},
-            TextureRef,
+            Texture2d,
         },
         math::Extent,
     },
@@ -14,11 +13,10 @@ use {
 };
 
 pub struct GeometryBuffer {
-    color: Lease<TextureRef<Image2d>>,
-    depth: Lease<TextureRef<Image2d>>,
-    material: Lease<TextureRef<Image2d>>,
-    normal: Lease<TextureRef<Image2d>>,
-    position: Lease<TextureRef<Image2d>>,
+    pub albedo_metal: Lease<Texture2d>,
+    pub depth: Lease<Texture2d>,
+    pub light: Lease<Texture2d>,
+    pub normal: Lease<Texture2d>,
 }
 
 impl GeometryBuffer {
@@ -26,14 +24,14 @@ impl GeometryBuffer {
         #[cfg(debug_assertions)] name: &str,
         pool: &mut Pool,
         dims: Extent,
-        format: Format,
+        color_format: Format,
     ) -> Self {
-        let color = pool.texture(
+        let albedo_metal = pool.texture(
             #[cfg(debug_assertions)]
-            &format!("{} (Color)", name),
+            &format!("{} (Albedo/Metal buf)", name),
             dims,
             Tiling::Optimal,
-            format,
+            color_format,
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT
                 | ImageUsage::INPUT_ATTACHMENT
@@ -44,12 +42,26 @@ impl GeometryBuffer {
             1,
             1,
         );
-        let position = pool.texture(
+        let depth = pool.texture(
             #[cfg(debug_assertions)]
-            &format!("{} (Position)", name),
+            &format!("{} (Depth buf)", name),
             dims,
             Tiling::Optimal,
-            Format::Rgba16Sfloat,
+            Format::D32Sfloat,// TODO: We're just using this format but it's not guaranteed: VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT feature must be supported for at least one of VK_FORMAT_X8_D24_UNORM_PACK32 and VK_FORMAT_D32_SFLOAT, and must be supported for at least one of VK_FORMAT_D24_UNORM_S8_UINT and VK_FORMAT_D32_SFLOAT_S8_UINT.
+            Layout::Undefined,
+            ImageUsage::DEPTH_STENCIL_ATTACHMENT
+                | ImageUsage::INPUT_ATTACHMENT
+                | ImageUsage::SAMPLED,
+            1,
+            1,
+            1,
+        );
+        let light = pool.texture(
+            #[cfg(debug_assertions)]
+            &format!("{} (Light buf)", name),
+            dims,
+            Tiling::Optimal,
+            Format::R32Uint,
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT | ImageUsage::SAMPLED,
             1,
@@ -61,66 +73,19 @@ impl GeometryBuffer {
             &format!("{} (Normal)", name),
             dims,
             Tiling::Optimal,
-            Format::Rgba16Sfloat,
+            Format::Rgb32Sfloat,// Also need to check this format before use!!!!
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT | ImageUsage::SAMPLED,
-            1,
-            1,
-            1,
-        );
-        let material = pool.texture(
-            #[cfg(debug_assertions)]
-            &format!("{} (Material)", name),
-            dims,
-            Tiling::Optimal,
-            format,
-            Layout::Undefined,
-            ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT | ImageUsage::SAMPLED,
-            1,
-            1,
-            1,
-        );
-        let depth = pool.texture(
-            #[cfg(debug_assertions)]
-            &format!("{} (Depth)", name),
-            dims,
-            Tiling::Optimal,
-            Format::D32Sfloat,
-            Layout::Undefined,
-            ImageUsage::DEPTH_STENCIL_ATTACHMENT
-                | ImageUsage::INPUT_ATTACHMENT
-                | ImageUsage::SAMPLED,
             1,
             1,
             1,
         );
 
         Self {
-            color,
+            albedo_metal,
             depth,
-            material,
+            light,
             normal,
-            position,
         }
-    }
-
-    pub fn color(&self) -> &TextureRef<Image2d> {
-        &self.color
-    }
-
-    pub fn depth(&self) -> &TextureRef<Image2d> {
-        &self.depth
-    }
-
-    pub fn material(&self) -> &TextureRef<Image2d> {
-        &self.material
-    }
-
-    pub fn normal(&self) -> &TextureRef<Image2d> {
-        &self.normal
-    }
-
-    pub fn position(&self) -> &TextureRef<Image2d> {
-        &self.position
     }
 }

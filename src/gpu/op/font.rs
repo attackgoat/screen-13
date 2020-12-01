@@ -40,7 +40,6 @@ use {
 };
 
 const FONT_VERTEX_SIZE: usize = 16;
-const RENDER_PASS_MODE: RenderPassMode = RenderPassMode::ReadWrite;
 const SUBPASS_IDX: u8 = 0;
 
 // TODO: Extend this with a DrawOp-like compiler to cache repeated frame-to-frame tesselations
@@ -288,6 +287,11 @@ impl FontOp {
         // TODO: Cache these using "named" buffers? Let the client 'compile' them for reuse? Likey that more
         let tessellations = font.tessellate(text, dims);
 
+        let render_pass_mode = {
+            let fmt = self.dst.borrow().format();
+            RenderPassMode::ReadWrite(fmt)
+        };
+
         // Finish the remaining setup tasks
         {
             let mut pool = self.pool.borrow_mut();
@@ -298,14 +302,14 @@ impl FontOp {
                 #[cfg(debug_assertions)]
                 &self.name,
                 self.mode(),
-                RENDER_PASS_MODE,
+                render_pass_mode,
                 SUBPASS_IDX,
             ));
 
             // Setup the framebuffer
             self.frame_buf.replace(Framebuffer2d::new(
                 driver,
-                pool.render_pass(RENDER_PASS_MODE),
+                pool.render_pass(render_pass_mode),
                 once(self.back_buf.borrow().as_default_view().as_ref()),
                 dims,
             ));
@@ -340,7 +344,7 @@ impl FontOp {
         }
 
         unsafe {
-            self.submit_begin(dims);
+            self.submit_begin(dims, render_pass_mode);
 
             // Draw each page in the tessellation using those vertices and the correct font page texture index
             let mut base = 0;
@@ -377,7 +381,7 @@ impl FontOp {
         }
     }
 
-    unsafe fn submit_begin(&mut self, dims: Extent) {
+    unsafe fn submit_begin(&mut self, dims: Extent, render_pass_mode: RenderPassMode) {
         let graphics = self.graphics.as_ref().unwrap();
         let (vertex_buf, vertex_buf_len) = self.vertex_buf.as_mut().unwrap();
         let mut back_buf = self.back_buf.borrow_mut();
@@ -447,7 +451,7 @@ impl FontOp {
             ImageAccess::COLOR_ATTACHMENT_WRITE,
         );
         self.cmd_buf.begin_render_pass(
-            pool.render_pass(RENDER_PASS_MODE),
+            pool.render_pass(render_pass_mode),
             self.frame_buf.as_ref().unwrap(),
             rect,
             once(&TRANSPARENT_BLACK.into()),

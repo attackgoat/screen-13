@@ -1,24 +1,32 @@
 use {
     super::MeshDrawInstruction,
-    crate::gpu::{data::CopyRange, Data},
+    crate::gpu::{data::CopyRange,model::MeshIter, Data},
     std::ops::Range,
 };
 
 // Commands specified by the client become Instructions used by `DrawOp`
 pub enum Instruction<'a> {
-    CopyVertices((&'a mut Data, &'a [CopyRange])),
+    DataCopy((&'a mut Data, &'a [CopyRange])),
+    DataTransfer((&'a mut Data, &'a mut Data)),
+    DataWrite((&'a mut Data, Range<u64>)),
+
     //Light(LightInstruction),
-    DrawLines((&'a mut Data, u32)),
+
+    LineDraw((&'a mut Data, u32)),
+
     //DrawPointLights(&),
     DrawRectLightBegin(&'a mut Data),
     DrawRectLight(),
     DrawRectLightEnd,
-    //Mesh(MeshInstruction<'a>),
+
+    MeshBegin,
+    MeshBind(MeshBind<'a>),
+    MeshDescriptorSet(usize),
+    MeshDraw(MeshIter<'a>),
+
     // Spotlight(SpotlightCommand),
     // Sunlight(SunlightCommand),
     // Transparency((f32, MeshCommand<'a>)),
-    TransferData((&'a mut Data, &'a mut Data)),
-    WriteVertces((&'a mut Data, Range<u64>)),
 }
 
 impl Instruction<'_> {
@@ -137,6 +145,11 @@ impl Instruction<'_> {
 //         (self.data.len() / LINE_VERTEX_LEN) as _
 //     }
 // }
+
+pub struct MeshBind<'a> {
+    pub index: &'a Data,
+    pub vertex: &'a Data, 
+}
 
 pub enum MeshInstruction<'i> {
     BindDescriptorSet(usize),

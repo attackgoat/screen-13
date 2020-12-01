@@ -69,6 +69,14 @@ impl<'a> Iterator for Drain<'a> {
     }
 }
 
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+pub struct DrawFormat {
+    color4: Format,
+    depth: Format,
+    float: Format,
+    vec3: Format,
+}
+
 #[derive(Eq, Hash, PartialEq)]
 struct GraphicsKey {
     graphics_mode: GraphicsMode,
@@ -354,26 +362,25 @@ impl Pool {
     }
 
     pub fn render_pass(&mut self, mode: RenderPassMode) -> &RenderPass {
-        let driver = Driver::clone(&self.driver);
-        let format = self.format;
         self.render_passes
-            .entry(mode)
-            .or_insert_with(|| match mode {
-                RenderPassMode::Draw => draw(driver, format),
-                RenderPassMode::ReadWrite => read_write(driver, format),
-                RenderPassMode::ReadWriteMs => read_write_ms(driver, format),
-                RenderPassMode::Write => write(driver, format),
-                RenderPassMode::WriteMs => write_ms(driver, format),
+        .entry(mode)
+        .or_insert_with(|| {
+                let driver = Driver::clone(&self.driver);
+                match mode {
+                    RenderPassMode::Draw(fmt) => draw(driver, fmt),
+                    RenderPassMode::ReadWrite(fmt) => read_write(driver, fmt),
+                    RenderPassMode::ReadWriteMs(fmt) => read_write_ms(driver, fmt),
+                    RenderPassMode::Write(fmt) => write(driver, fmt),
+                    RenderPassMode::WriteMs(fmt) => write_ms(driver, fmt),
+                }
             })
     }
 
     pub fn set_format(&mut self, format: Format) {
         #[cfg(debug_assertions)]
         debug!("Setting GPU pool format to {:?}", format);
-        self.format = format;
 
-        // TODO: This is bad cause it drops the in-use renderpasses
-        self.render_passes.clear();
+        self.format = format;
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -462,9 +469,9 @@ struct TextureKey {
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub enum RenderPassMode {
-    Draw,
-    ReadWrite,
-    ReadWriteMs,
-    Write,
-    WriteMs,
+    Draw(DrawFormat),
+    ReadWrite(Format),
+    ReadWriteMs(Format),
+    Write(Format),
+    WriteMs(Format),
 }

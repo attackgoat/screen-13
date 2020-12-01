@@ -14,7 +14,7 @@ use {
     },
     gfx_hal::{
         command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, SubpassContents},
-        format::Aspects,
+        format::{Format, Aspects},
         image::{
             Access as ImageAccess, Layout, Offset, SubresourceLayers, Tiling, Usage as ImageUsage,
         },
@@ -41,11 +41,11 @@ fn must_preserve_dst(path: &Path) -> bool {
     path[0].1.is_transparent() || path[1].1.is_transparent()
 }
 
-fn render_pass_mode(preserve_dst: bool) -> RenderPassMode {
+fn render_pass_mode(preserve_dst: bool, fmt: Format) -> RenderPassMode {
     if preserve_dst {
-        RenderPassMode::ReadWrite
+        RenderPassMode::ReadWrite(fmt)
     } else {
-        RenderPassMode::Write
+        RenderPassMode::Write(fmt)
     }
 }
 
@@ -78,19 +78,19 @@ impl GradientOp {
         let family = Device::queue_family(&driver.borrow());
         let mut cmd_pool = pool_ref.cmd_pool(family);
 
+        let (dims, fmt) = {
+            let dst = dst.borrow();
+            (dst.dims(), dst.format())
+        };
+
         // Setup the first pass graphics pipeline
         let graphics = pool_ref.graphics(
             #[cfg(debug_assertions)]
             name,
             GraphicsMode::Gradient,
-            RenderPassMode::ReadWrite,
+            RenderPassMode::ReadWrite(fmt),
             0,
         );
-
-        let (dims, format) = {
-            let dst = dst.borrow();
-            (dst.dims(), dst.format())
-        };
 
         // Setup the framebuffer
         let back_buf = pool_ref.texture(
@@ -98,7 +98,7 @@ impl GradientOp {
             name,
             dims,
             Tiling::Optimal,
-            format,
+            fmt,
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT
                 | ImageUsage::INPUT_ATTACHMENT
@@ -108,7 +108,7 @@ impl GradientOp {
             1,
             1,
         );
-        let mode = render_pass_mode(must_preserve_dst(&path));
+        let mode = render_pass_mode(must_preserve_dst(&path), fmt);
         let frame_buf = Framebuffer2d::new(
             Driver::clone(&driver),
             pool_ref.render_pass(mode),
@@ -240,7 +240,7 @@ impl GradientOp {
         let mut dst = self.dst.borrow_mut();
         let mut back_buf = self.back_buf.borrow_mut();
         let preserve_dst = self.dst_preserve && must_preserve_dst(&self.path);
-        let _mode = render_pass_mode(preserve_dst);
+        let _mode = render_pass_mode(preserve_dst, dst.format());
         let dims = dst.dims();
         let rect = Rect {
             x: 0,

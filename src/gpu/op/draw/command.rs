@@ -5,7 +5,7 @@ use {
     },
     crate::{
         color::{AlphaColor, Color},
-        gpu::{Mesh, ModelRef, Pose},
+        gpu::{MeshFilter, ModelRef, Pose},
         math::{vec3_is_finite, Mat4, Vec3},
     },
     std::{num::FpCategory, ops::Range},
@@ -108,12 +108,14 @@ impl Command {
         ]))
     }
 
-    pub fn model<M: Into<MeshCommand>>(mesh: M, material: Material, transform: Mat4) -> Self {
+    pub fn model<M: Into<Mesh>>(mesh: M, material: Material, transform: Mat4) -> Self {
         let mesh = mesh.into();
         Self::Model(ModelCommand {
             camera_order: f32::NAN,
             material,
-            mesh,
+            mesh_filter: mesh.filter,
+            model: mesh.model,
+            pose: mesh.pose,
             transform,
         })
     }
@@ -282,84 +284,48 @@ impl Command {
 //     }
 // }
 
-pub struct MeshCommand {
+pub struct Mesh {
+    filter: Option<MeshFilter>,
     model: ModelRef,
-    mesh: Option<Mesh>,
     pose: Option<Pose>,
 }
 
-impl MeshCommand {
-    pub fn new(model: ModelRef) -> Self {
-        model.into()
-    }
-
-    pub fn new_pose(model: ModelRef, pose: Pose) -> Self {
-        (model, pose).into()
-    }
-
-    pub fn new_mesh(model: ModelRef, mesh: Mesh) -> Self {
-        (model, mesh).into()
-    }
-
-    pub fn new_mesh_pose(model: ModelRef, mesh: Mesh, pose: Pose) -> Self {
-        (model, mesh, pose).into()
-    }
-
-    pub fn model(&self) -> &ModelRef {
-        &self.model
-    }
-
-    pub fn mesh(&self) -> Option<&Mesh> {
-        self.mesh.as_ref()
-    }
-
-    pub fn pose(&self) -> Option<&Pose> {
-        self.pose.as_ref()
-    }
-}
-
-impl From<ModelRef> for MeshCommand {
+impl From<ModelRef> for Mesh {
     fn from(model: ModelRef) -> Self {
         Self {
+            filter: None,
             model,
-            mesh: None,
             pose: None,
         }
     }
 }
 
-impl From<(ModelRef, Mesh)> for MeshCommand {
-    fn from((model, mesh): (ModelRef, Mesh)) -> Self {
+impl From<(ModelRef, MeshFilter)> for Mesh {
+    fn from((model, filter): (ModelRef, MeshFilter)) -> Self {
         Self {
+            filter: Some(filter),
             model,
-            mesh: Some(mesh),
             pose: None,
         }
     }
 }
 
-impl From<(ModelRef, Pose)> for MeshCommand {
+impl From<(ModelRef, Pose)> for Mesh {
     fn from((model, pose): (ModelRef, Pose)) -> Self {
         Self {
+            filter: None,
             model,
-            mesh: None,
             pose: Some(pose),
         }
     }
 }
 
-impl From<(ModelRef, Mesh, Pose)> for MeshCommand {
-    fn from((model, mesh, pose): (ModelRef, Mesh, Pose)) -> Self {
+impl From<(ModelRef, MeshFilter, Pose)> for Mesh {
+    fn from((model, filter, pose): (ModelRef, MeshFilter, Pose)) -> Self {
         Self {
+            filter: Some(filter),
             model,
-            mesh: Some(mesh),
             pose: Some(pose),
         }
-    }
-}
-
-impl From<(ModelRef, Pose, Mesh)> for MeshCommand {
-    fn from((model, pose, mesh): (ModelRef, Pose, Mesh)) -> Self {
-        (model, mesh, pose).into()
     }
 }

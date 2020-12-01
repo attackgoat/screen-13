@@ -1,4 +1,5 @@
 use {
+    super::DrawFormat,
     crate::gpu::driver::{Driver, RenderPass},
     gfx_hal::{
         format::Format,
@@ -12,27 +13,25 @@ use {
     },
 };
 
-pub fn draw(driver: Driver, format: Format) -> RenderPass {
-    // Borrows from https://github.com/SaschaWillems/Vulkan/blob/master/examples/subpasses/subpasses.cpp
-    //
+pub fn draw(driver: Driver, fmt: DrawFormat) -> RenderPass {
     // Attachments:
-    // 0: Color
-    // 1: Position
-    // 2: Normal
-    // 3: Material
-    // 4: Depth
+    // 0: Albedo 32bit (24bit rgb) + Metalness (8bit a)
+    // 1: Normal 48-96bit (xyz)
+    // 2: Position 48-96bit (xyz)
+    // 2: Light 32bit (x)
+    // 4: Depth 16-32bit
     //
     // Subpasses:
-    // 0: Fill Graphics Buffer (`mesh.frag` called many times)
-    // 1: Draw Color Image (`sunlight.frag`, `spotlight.frag`, or other lighting routine called many times)
-    // 2: Forward Transparency (`trans.frag` called many times)
+    // 0: Fill geometry buffer
+    // 1: Accumulate light and dissipate it with shadow
+    // 2: Lines
     RenderPass::new(
         #[cfg(debug_assertions)]
         "Draw",
         driver,
         &[
             Attachment {
-                format: Some(format),
+                format: Some(fmt.color4),
                 samples: 1,
                 ops: AttachmentOps::new(AttachmentLoadOp::Load, AttachmentStoreOp::Store),
                 stencil_ops: AttachmentOps::DONT_CARE,
@@ -53,7 +52,7 @@ pub fn draw(driver: Driver, format: Format) -> RenderPass {
                 layouts: Layout::ColorAttachmentOptimal..Layout::ColorAttachmentOptimal,
             },
             Attachment {
-                format: Some(format),
+                format: Some(fmt.color4),
                 samples: 1,
                 ops: AttachmentOps::new(AttachmentLoadOp::DontCare, AttachmentStoreOp::Store),
                 stencil_ops: AttachmentOps::DONT_CARE,
