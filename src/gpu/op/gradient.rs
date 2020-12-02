@@ -7,14 +7,14 @@ use {
                 bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
                 PhysicalDevice,
             },
-            pool::{Graphics, GraphicsMode, Lease, RenderPassMode},
+            pool::{ColorRenderPassMode, Graphics, GraphicsMode, Lease, RenderPassMode},
             PoolRef, Texture2d,
         },
         math::Coord,
     },
     gfx_hal::{
         command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, SubpassContents},
-        format::{Format, Aspects},
+        format::Aspects,
         image::{
             Access as ImageAccess, Layout, Offset, SubresourceLayers, Tiling, Usage as ImageUsage,
         },
@@ -39,14 +39,6 @@ fn graphics_mode(preserve_dst: bool) -> GraphicsMode {
 
 fn must_preserve_dst(path: &Path) -> bool {
     path[0].1.is_transparent() || path[1].1.is_transparent()
-}
-
-fn render_pass_mode(preserve_dst: bool, fmt: Format) -> RenderPassMode {
-    if preserve_dst {
-        RenderPassMode::ReadWrite(fmt)
-    } else {
-        RenderPassMode::Write(fmt)
-    }
 }
 
 pub struct GradientOp {
@@ -78,17 +70,22 @@ impl GradientOp {
         let family = Device::queue_family(&driver.borrow());
         let mut cmd_pool = pool_ref.cmd_pool(family);
 
-        let (dims, fmt) = {
+        let (dims, format) = {
             let dst = dst.borrow();
             (dst.dims(), dst.format())
         };
+
+        let render_pass_mode = RenderPassMode::Color(ColorRenderPassMode {
+            format,
+            preserve: must_preserve_dst(&path),
+        });
 
         // Setup the first pass graphics pipeline
         let graphics = pool_ref.graphics(
             #[cfg(debug_assertions)]
             name,
             GraphicsMode::Gradient,
-            RenderPassMode::ReadWrite(fmt),
+            render_pass_mode,
             0,
         );
 
@@ -98,7 +95,7 @@ impl GradientOp {
             name,
             dims,
             Tiling::Optimal,
-            fmt,
+            format,
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT
                 | ImageUsage::INPUT_ATTACHMENT
@@ -108,10 +105,9 @@ impl GradientOp {
             1,
             1,
         );
-        let mode = render_pass_mode(must_preserve_dst(&path), fmt);
         let frame_buf = Framebuffer2d::new(
             Driver::clone(&driver),
-            pool_ref.render_pass(mode),
+            pool_ref.render_pass(render_pass_mode),
             once(back_buf.borrow().as_default_view().as_ref()),
             dims,
         );
@@ -239,8 +235,11 @@ impl GradientOp {
         let mut device = pool.driver().borrow_mut();
         let mut dst = self.dst.borrow_mut();
         let mut back_buf = self.back_buf.borrow_mut();
-        let preserve_dst = self.dst_preserve && must_preserve_dst(&self.path);
-        let _mode = render_pass_mode(preserve_dst, dst.format());
+        let preserve = self.dst_preserve && must_preserve_dst(&self.path);
+        let _mode = RenderPassMode::Color(ColorRenderPassMode {
+            format: dst.format(),
+            preserve,
+        });
         let dims = dst.dims();
         let rect = Rect {
             x: 0,
@@ -258,7 +257,7 @@ impl GradientOp {
             .begin_primary(CommandBufferFlags::ONE_TIME_SUBMIT);
 
         // Optional step: Fill dst into the color graphics buffer in order to preserve it in the output
-        if preserve_dst {
+        if preserve {
             dst.set_layout(
                 &mut self.cmd_buf,
                 Layout::TransferSrcOptimal,
@@ -301,7 +300,7 @@ impl GradientOp {
             PipelineStage::COLOR_ATTACHMENT_OUTPUT,
             ImageAccess::COLOR_ATTACHMENT_WRITE,
         );
-        if preserve_dst {
+        if preserve {
             dst.set_layout(
                 &mut self.cmd_buf,
                 Layout::ShaderReadOnlyOptimal,
@@ -323,7 +322,7 @@ impl GradientOp {
 
         self.cmd_buf
             .bind_graphics_pipeline(self.graphics.pipeline());
-        if preserve_dst {
+        if preserve {
             bind_graphics_descriptor_set(
                 &mut self.cmd_buf,
                 self.graphics.layout(),

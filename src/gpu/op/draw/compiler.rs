@@ -12,12 +12,12 @@ use {
         camera::Camera,
         gpu::{
             data::{CopyRange, Mapping},
-            Data, Lease, ModelRef, PoolRef, Texture2d,
+            Data, Lease, ModelRef, PoolRef,
         },
     },
     std::{
-        collections::HashSet,
         cmp::{Ord, Ordering},
+        collections::HashSet,
         ops::{Range, RangeFrom},
         ptr::copy_nonoverlapping,
     },
@@ -373,8 +373,8 @@ impl Compiler {
             // Emit 'start model drawing' assembly code
             self.code.push(Asm::BeginModel);
 
-            for idx in 0..model_count {
-                let cmd = cmds[idx].as_model().unwrap();
+            for (idx, cmd) in cmds[..model_count].iter().enumerate() {
+                let cmd = cmd.as_model().unwrap();
 
                 // Emit 'model buffers have changed' assembly code
                 let next_model = &cmd.model;
@@ -392,8 +392,7 @@ impl Compiler {
                 let next_material = &cmd.material;
                 if let Some(prev_material) = material.as_ref() {
                     if *prev_material != next_material {
-                        if let Some(_pose) = cmd.pose {
-
+                        if let Some(_pose) = &cmd.pose {
                         } else {
                             self.mesh_materials.insert(Material::clone(&cmd.material));
                         }

@@ -17,7 +17,7 @@ fn deref_str<S: AsRef<str>>(s: &Option<S>) -> Option<&str> {
     }
 }
 
-pub(super) struct MeshIter<'a> {
+pub struct MeshIter<'a> {
     filter: Option<MeshFilter>,
     idx: usize,
     model: &'a Model,

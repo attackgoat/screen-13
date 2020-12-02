@@ -1,5 +1,5 @@
 use {
-    super::DrawFormat,
+    super::{ColorRenderPassMode, DrawRenderPassMode},
     crate::gpu::driver::{Driver, RenderPass},
     gfx_hal::{
         format::Format,
@@ -11,97 +11,72 @@ use {
         },
         pso::PipelineStage,
     },
+    std::ops::Range,
 };
 
-pub fn draw(driver: Driver, fmt: DrawFormat) -> RenderPass {
-    // Attachments:
-    // 0: Albedo 32bit (24bit rgb) + Metalness (8bit a)
-    // 1: Normal 48-96bit (xyz)
-    // 2: Position 48-96bit (xyz)
-    // 2: Light 32bit (x)
-    // 4: Depth 16-32bit
-    //
-    // Subpasses:
-    // 0: Fill geometry buffer
-    // 1: Accumulate light and dissipate it with shadow
-    // 2: Lines
+fn const_layout(layout: Layout) -> Range<Layout> {
+    layout..layout
+}
+
+pub fn draw(driver: Driver, mode: DrawRenderPassMode) -> RenderPass {
+    enum Attachments {
+        Albedo,
+        Material,
+        Normal,
+        Light,
+        Depth,
+    }
+
+    // Attachments
+    let albedo = Attachment {
+        format: Some(mode.albedo),
+        samples: 1,
+        ops: AttachmentOps::PRESERVE,
+        stencil_ops: AttachmentOps::DONT_CARE,
+        layouts: const_layout(Layout::ColorAttachmentOptimal),
+    };
+    let dont_care = |format| Attachment {
+        format: Some(format),
+        samples: 1,
+        ops: AttachmentOps::DONT_CARE,
+        stencil_ops: AttachmentOps::DONT_CARE,
+        layouts: const_layout(Layout::ColorAttachmentOptimal),
+    };
+    let material = dont_care(mode.material);
+    let normal = dont_care(mode.normal);
+    let light = dont_care(mode.light);
+    let depth = dont_care(mode.depth);
+
+    // Subpasses
+    let draw_meshes = SubpassDesc {
+        colors: &[
+            (Attachments::Albedo as _, Layout::ColorAttachmentOptimal),
+            (Attachments::Normal as _, Layout::ColorAttachmentOptimal),
+        ],
+        depth_stencil: Some(&(
+            Attachments::Depth as _,
+            Layout::DepthStencilAttachmentOptimal,
+        )),
+        inputs: &[],
+        resolves: &[],
+        preserves: &[],
+    };
+    let accum_light = SubpassDesc {
+        colors: &[(Attachments::Light as _, Layout::ColorAttachmentOptimal)],
+        depth_stencil: None,
+        inputs: &[
+            (Attachments::Albedo as _, Layout::ShaderReadOnlyOptimal),
+            (Attachments::Depth as _, Layout::ShaderReadOnlyOptimal),
+        ],
+        resolves: &[],
+        preserves: &[],
+    };
     RenderPass::new(
         #[cfg(debug_assertions)]
         "Draw",
         driver,
-        &[
-            Attachment {
-                format: Some(fmt.color4),
-                samples: 1,
-                ops: AttachmentOps::new(AttachmentLoadOp::Load, AttachmentStoreOp::Store),
-                stencil_ops: AttachmentOps::DONT_CARE,
-                layouts: Layout::ColorAttachmentOptimal..Layout::ColorAttachmentOptimal,
-            },
-            Attachment {
-                format: Some(Format::Rgba16Sfloat),
-                samples: 1,
-                ops: AttachmentOps::new(AttachmentLoadOp::DontCare, AttachmentStoreOp::DontCare),
-                stencil_ops: AttachmentOps::DONT_CARE,
-                layouts: Layout::ColorAttachmentOptimal..Layout::ColorAttachmentOptimal,
-            },
-            Attachment {
-                format: Some(Format::Rgba16Sfloat),
-                samples: 1,
-                ops: AttachmentOps::new(AttachmentLoadOp::DontCare, AttachmentStoreOp::DontCare),
-                stencil_ops: AttachmentOps::DONT_CARE,
-                layouts: Layout::ColorAttachmentOptimal..Layout::ColorAttachmentOptimal,
-            },
-            Attachment {
-                format: Some(fmt.color4),
-                samples: 1,
-                ops: AttachmentOps::new(AttachmentLoadOp::DontCare, AttachmentStoreOp::Store),
-                stencil_ops: AttachmentOps::DONT_CARE,
-                layouts: Layout::ColorAttachmentOptimal..Layout::ColorAttachmentOptimal,
-            },
-            Attachment {
-                format: Some(Format::D32Sfloat),
-                samples: 1,
-                ops: AttachmentOps::new(AttachmentLoadOp::DontCare, AttachmentStoreOp::DontCare),
-                stencil_ops: AttachmentOps::DONT_CARE,
-                layouts: Layout::DepthStencilAttachmentOptimal
-                    ..Layout::DepthStencilAttachmentOptimal,
-            },
-        ],
-        &[
-            SubpassDesc {
-                colors: &[
-                    (0, Layout::ColorAttachmentOptimal),
-                    (1, Layout::ColorAttachmentOptimal),
-                    (2, Layout::ColorAttachmentOptimal),
-                    (3, Layout::ColorAttachmentOptimal),
-                ],
-                depth_stencil: Some(&(4, Layout::DepthStencilAttachmentOptimal)),
-                inputs: &[],
-                resolves: &[],
-                preserves: &[],
-            },
-            SubpassDesc {
-                colors: &[(0, Layout::ColorAttachmentOptimal)],
-                depth_stencil: None,
-                inputs: &[
-                    (1, Layout::ShaderReadOnlyOptimal),
-                    (2, Layout::ShaderReadOnlyOptimal),
-                    (3, Layout::ShaderReadOnlyOptimal),
-                ],
-                resolves: &[],
-                preserves: &[],
-            },
-            SubpassDesc {
-                colors: &[(3, Layout::ColorAttachmentOptimal)],
-                depth_stencil: None,
-                inputs: &[
-                    (0, Layout::ShaderReadOnlyOptimal),
-                    (4, Layout::ShaderReadOnlyOptimal),
-                ],
-                resolves: &[],
-                preserves: &[],
-            },
-        ],
+        &[albedo, material, normal, light, depth],
+        &[draw_meshes, accum_light],
         &[
             SubpassDependency {
                 passes: None..Some(0),
@@ -133,125 +108,66 @@ pub fn draw(driver: Driver, fmt: DrawFormat) -> RenderPass {
     )
 }
 
-pub fn draw_ms(driver: Driver, format: Format) -> RenderPass {
-    RenderPass::new(
-        #[cfg(debug_assertions)]
-        "Draw Multisampled",
-        driver,
-        &[Attachment {
-            format: Some(format),
-            samples: 1,
-            ops: AttachmentOps::new(AttachmentLoadOp::Load, AttachmentStoreOp::Store),
-            stencil_ops: AttachmentOps::DONT_CARE,
-            layouts: Layout::ColorAttachmentOptimal..Layout::ColorAttachmentOptimal,
-        }],
-        &[
-            SubpassDesc {
-                colors: &[
-                    (0, Layout::ColorAttachmentOptimal),
-                    (1, Layout::ColorAttachmentOptimal),
-                    (2, Layout::ColorAttachmentOptimal),
-                    (3, Layout::DepthStencilAttachmentOptimal),
-                ],
-                depth_stencil: None,
-                inputs: &[(0, Layout::ShaderReadOnlyOptimal)],
-                resolves: &[],
-                preserves: &[],
-            },
-            SubpassDesc {
-                colors: &[(0, Layout::ColorAttachmentOptimal)],
-                depth_stencil: None,
-                inputs: &[(0, Layout::ShaderReadOnlyOptimal)],
-                resolves: &[],
-                preserves: &[],
-            },
-            SubpassDesc {
-                colors: &[(0, Layout::ColorAttachmentOptimal)],
-                depth_stencil: None,
-                inputs: &[(0, Layout::ShaderReadOnlyOptimal)],
-                resolves: &[(0, Layout::ShaderReadOnlyOptimal)],
-                preserves: &[],
-            },
-        ],
-        &[],
-    )
-}
-
 pub fn present(driver: &Driver, format: Format) -> RenderPass {
+    let present_attachment = 0;
+    let present = Attachment {
+        format: Some(format),
+        samples: 1,
+        ops: AttachmentOps::new(AttachmentLoadOp::DontCare, AttachmentStoreOp::Store), // TODO: Another render pass for AttachmentLoadOp::Clear when we need to render to a transparent window?
+        stencil_ops: AttachmentOps::DONT_CARE,
+        layouts: Layout::Undefined..Layout::Present,
+    };
+    let subpass = SubpassDesc {
+        colors: &[(present_attachment, Layout::ColorAttachmentOptimal)],
+        depth_stencil: None,
+        inputs: &[],
+        resolves: &[],
+        preserves: &[],
+    };
     RenderPass::new(
         #[cfg(debug_assertions)]
         "Write",
         Driver::clone(&driver),
-        &[Attachment {
-            format: Some(format),
-            samples: 1,
-            ops: AttachmentOps::new(AttachmentLoadOp::DontCare, AttachmentStoreOp::Store), // TODO: Another render pass for AttachmentLoadOp::Clear when we need to render to a transparent window?
-            stencil_ops: AttachmentOps::DONT_CARE,
-            layouts: Layout::Undefined..Layout::Present,
-        }],
-        &[SubpassDesc {
-            colors: &[(0, Layout::ColorAttachmentOptimal)],
-            depth_stencil: None,
-            inputs: &[],
-            resolves: &[],
-            preserves: &[],
-        }],
+        &[present],
+        &[subpass],
         &[],
     )
 }
 
-pub fn read_write(driver: Driver, format: Format) -> RenderPass {
+pub fn color(driver: Driver, mode: ColorRenderPassMode) -> RenderPass {
+    let color_attachment = 0;
+    let color = Attachment {
+        format: Some(mode.format),
+        samples: 1,
+        ops: if mode.preserve {
+            AttachmentOps::PRESERVE
+        } else {
+            AttachmentOps {
+                load: AttachmentLoadOp::DontCare,
+                store: AttachmentStoreOp::Store,
+            }
+        },
+        stencil_ops: AttachmentOps::DONT_CARE,
+        layouts: Layout::ColorAttachmentOptimal..Layout::ColorAttachmentOptimal,
+    };
+    let subpass = SubpassDesc {
+        colors: &[(color_attachment, Layout::ColorAttachmentOptimal)],
+        depth_stencil: None,
+        inputs: if mode.preserve {
+            &[(0, Layout::ShaderReadOnlyOptimal)]
+        } else {
+            &[]
+        },
+        resolves: &[],
+        preserves: &[],
+    };
+
     RenderPass::new(
         #[cfg(debug_assertions)]
-        "Read/Write",
+        "Color",
         driver,
-        &[Attachment {
-            format: Some(format),
-            samples: 1,
-            ops: AttachmentOps::new(AttachmentLoadOp::Load, AttachmentStoreOp::Store),
-            stencil_ops: AttachmentOps::DONT_CARE,
-            layouts: Layout::ColorAttachmentOptimal..Layout::ColorAttachmentOptimal,
-        }],
-        &[SubpassDesc {
-            colors: &[(0, Layout::ColorAttachmentOptimal)],
-            depth_stencil: None,
-            inputs: &[(0, Layout::ShaderReadOnlyOptimal)],
-            resolves: &[],
-            preserves: &[],
-        }],
+        &[color],
+        &[subpass],
         &[],
     )
-}
-
-pub fn read_write_ms(_driver: Driver, _format: Format) -> RenderPass {
-    //&self.read_write_ms
-    todo!();
-}
-
-pub fn write(driver: Driver, format: Format) -> RenderPass {
-    RenderPass::new(
-        #[cfg(debug_assertions)]
-        "Write",
-        driver,
-        &[Attachment {
-            format: Some(format),
-            samples: 1,
-            ops: AttachmentOps::new(AttachmentLoadOp::DontCare, AttachmentStoreOp::Store),
-            stencil_ops: AttachmentOps::DONT_CARE,
-            layouts: Layout::ColorAttachmentOptimal..Layout::ColorAttachmentOptimal,
-        }],
-        &[SubpassDesc {
-            colors: &[(0, Layout::ColorAttachmentOptimal)],
-            depth_stencil: None,
-            inputs: &[],
-            resolves: &[],
-            preserves: &[],
-        }],
-        &[],
-    )
-}
-
-pub fn write_ms(_driver: Driver, _format: Format) -> RenderPass {
-    //&self.write_ms
-    todo!();
 }

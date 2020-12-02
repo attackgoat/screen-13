@@ -20,31 +20,31 @@ use {
     crate::{
         camera::Camera,
         color::{AlphaColor, Color, TRANSPARENT_BLACK},
-        gpu::{MeshFilter,
-            ModelRef, Pose,
+        gpu::{
             data::CopyRange,
             driver::{CommandPool, Device, Driver, Fence, Framebuffer2d, PhysicalDevice},
-            pool::{Graphics, GraphicsMode, Lease, RenderPassMode},
-            BitmapRef, Data, Model, PoolRef, Texture2d, TextureRef,
+            pool::{DrawRenderPassMode, Graphics, GraphicsMode, Lease, RenderPassMode},
+            BitmapRef, Data, MeshFilter, Model, ModelRef, PoolRef, Pose, Texture2d, TextureRef,
         },
         math::{Cone, Coord, CoordF, Extent, Mat4, Sphere, Vec3},
     },
     gfx_hal::{
         buffer::{Access as BufferAccess, SubRange},
         command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, SubpassContents},
+        device::Device as _,
         format::{Aspects, Format},
         image::{
             Access as ImageAccess, Layout, Offset, SubresourceLayers, SubresourceRange, ViewKind,
         },
         pool::CommandPool as _,
-        pso::{PipelineStage, ShaderStageFlags, Viewport},
+        pso::{Descriptor, DescriptorSetWrite, PipelineStage, ShaderStageFlags, Viewport},
         queue::{CommandQueue as _, Submission},
         Backend,
     },
     gfx_impl::Backend as _Backend,
     std::{
-        hash::{Hash, Hasher},
         cmp::Ordering,
+        hash::{Hash, Hasher},
         iter::{empty, once},
         ops::Range,
     },
@@ -69,6 +69,7 @@ pub struct DrawOp {
     graphics_mesh_anim: Option<Lease<Graphics>>,
     graphics_spotlight: Option<Lease<Graphics>>,
     graphics_sunlight: Option<Lease<Graphics>>,
+    mode: DrawRenderPassMode,
     #[cfg(debug_assertions)]
     name: String,
     pool: PoolRef,
@@ -80,14 +81,23 @@ impl DrawOp {
     pub fn new(#[cfg(debug_assertions)] name: &str, pool: &PoolRef, dst: &Texture2d) -> Self {
         let mut pool_ref = pool.borrow_mut();
         let driver = Driver::clone(pool_ref.driver());
+        let device = driver.borrow();
 
         // Allocate the command buffer
-        let family = Device::queue_family(&driver.borrow());
+        let family = Device::queue_family(&device);
         let mut cmd_pool = pool_ref.cmd_pool(family);
 
-        let (dims, format) = {
+        let (dims, fmt) = {
             let dst = dst.borrow();
             (dst.dims(), dst.format())
+        };
+
+        let mode = DrawRenderPassMode {
+            albedo: fmt,
+            depth: Format::R8Uint,
+            light: Format::R8Uint,
+            material: Format::R8Uint,
+            normal: Format::R8Uint,
         };
 
         // Setup the framebuffer
@@ -96,13 +106,13 @@ impl DrawOp {
             name,
             &mut pool_ref,
             dims,
-            format,
+            mode,
         );
         let frame_buf = Framebuffer2d::new(
             Driver::clone(&driver),
-            pool_ref.render_pass(RenderPassMode::Draw),
+            pool_ref.render_pass(RenderPassMode::Draw(mode)),
             vec![
-                geom_buf.albedo_metal.borrow().as_default_view().as_ref(),
+                geom_buf.albedo.borrow().as_default_view().as_ref(),
                 geom_buf.normal.borrow().as_default_view().as_ref(),
                 geom_buf.light.borrow().as_default_view().as_ref(),
                 geom_buf
@@ -110,7 +120,7 @@ impl DrawOp {
                     .borrow()
                     .as_view(
                         ViewKind::D2,
-                        Format::D32Sfloat, // TODO: Use actual format picked by the geom buf!
+                        mode.depth,
                         Default::default(),
                         SubresourceRange {
                             aspects: Aspects::DEPTH,
@@ -134,9 +144,10 @@ impl DrawOp {
             geom_buf,
             graphics_line: None,
             graphics_mesh: None,
-            graphics_skin: None,
+            graphics_mesh_anim: None,
             graphics_spotlight: None,
             graphics_sunlight: None,
+            mode,
             #[cfg(debug_assertions)]
             name: name.to_owned(),
             pool: PoolRef::clone(pool),
@@ -179,8 +190,28 @@ impl DrawOp {
             cmds,
         );
 
+        // Setup graphics pipelines and descriptor sets
         {
+            let mut pool = self.pool.borrow_mut();
+
             //self.graphics_mesh_animated
+            self.graphics_line = Some(pool.graphics(
+                #[cfg(debug_assertions)]
+                &format!("{} line", &self.name),
+                GraphicsMode::DrawLine,
+                RenderPassMode::Draw(self.mode),
+                0,
+            ));
+
+            let device = pool.driver().borrow();
+
+            unsafe {
+                Self::write_mesh_material_descriptors(
+                    &device,
+                    self.graphics_mesh.as_ref().unwrap(),
+                    instrs.mesh_materials(),
+                );
+            }
         }
 
         unsafe {
@@ -219,10 +250,8 @@ impl DrawOp {
             frame_buf: self.frame_buf,
             geom_buf: self.geom_buf,
             graphics_line: self.graphics_line,
-            graphics_mesh_animated: self.graphics_mesh_animated,
-            graphics_mesh_dual_tex: self.graphics_mesh_dual_tex,
-            graphics_mesh_single_tex: self.graphics_mesh_single_tex,
-            graphics_mesh_transparent: self.graphics_mesh_transparent,
+            graphics_mesh: self.graphics_mesh,
+            graphics_mesh_anim: self.graphics_mesh_anim,
             graphics_spotlight: self.graphics_spotlight,
             graphics_sunlight: self.graphics_sunlight,
         }
@@ -231,12 +260,12 @@ impl DrawOp {
     unsafe fn submit_begin(&mut self, viewport: &Viewport) {
         let mut pool = self.pool.borrow_mut();
         let mut dst = self.dst.borrow_mut();
-        let mut color = self.geom_buf.color().borrow_mut();
-        let mut position = self.geom_buf.position().borrow_mut();
-        let mut normal = self.geom_buf.normal().borrow_mut();
-        let mut material = self.geom_buf.material().borrow_mut();
-        let mut depth = self.geom_buf.depth().borrow_mut();
+        let mut albedo = self.geom_buf.albedo.borrow_mut();
+        let mut normal = self.geom_buf.normal.borrow_mut();
+        let mut material = self.geom_buf.material.borrow_mut();
+        let mut depth = self.geom_buf.depth.borrow_mut();
         let dims = dst.dims();
+        // let fmt = dst.format();
 
         // Begin
         self.cmd_buf
@@ -249,7 +278,7 @@ impl DrawOp {
             PipelineStage::TRANSFER,
             ImageAccess::TRANSFER_READ,
         );
-        color.set_layout(
+        albedo.set_layout(
             &mut self.cmd_buf,
             Layout::TransferDstOptimal,
             PipelineStage::TRANSFER,
@@ -258,7 +287,7 @@ impl DrawOp {
         self.cmd_buf.copy_image(
             dst.as_ref(),
             Layout::TransferSrcOptimal,
-            color.as_ref(),
+            albedo.as_ref(),
             Layout::TransferDstOptimal,
             once(ImageCopy {
                 src_subresource: SubresourceLayers {
@@ -278,13 +307,7 @@ impl DrawOp {
         );
 
         // Prepare the render pass for mesh rendering
-        color.set_layout(
-            &mut self.cmd_buf,
-            Layout::ColorAttachmentOptimal,
-            PipelineStage::COLOR_ATTACHMENT_OUTPUT,
-            ImageAccess::COLOR_ATTACHMENT_WRITE,
-        );
-        position.set_layout(
+        albedo.set_layout(
             &mut self.cmd_buf,
             Layout::ColorAttachmentOptimal,
             PipelineStage::COLOR_ATTACHMENT_OUTPUT,
@@ -309,7 +332,7 @@ impl DrawOp {
             ImageAccess::DEPTH_STENCIL_ATTACHMENT_WRITE,
         );
         self.cmd_buf.begin_render_pass(
-            pool.render_pass(RenderPassMode::Draw),
+            pool.render_pass(RenderPassMode::Draw(self.mode)),
             self.frame_buf.as_ref(),
             viewport.rect,
             vec![&TRANSPARENT_BLACK.into()].drain(..),
@@ -340,15 +363,6 @@ impl DrawOp {
         viewport: &Viewport,
         transform: &Mat4,
     ) {
-        debug!("Drawing {} lines", count);
-
-        self.graphics_line = Some(self.pool.borrow_mut().graphics(
-            #[cfg(debug_assertions)]
-            &format!("{} line", &self.name),
-            GraphicsMode::DrawLine,
-            RenderPassMode::Draw,
-            0,
-        ));
         let graphics = self.graphics_line.as_ref().unwrap();
 
         self.cmd_buf.set_scissors(0, &[viewport.rect]);
@@ -555,7 +569,7 @@ impl DrawOp {
         let mut device = driver.borrow_mut();
         let mut dst = self.dst.borrow_mut();
         // let mut material = self.geom_buf.material().borrow_mut();
-        let dims = dst.dims();
+        let _dims = dst.dims();
 
         // Step 6: Copy the color graphics buffer into dst
         self.cmd_buf.end_render_pass();
@@ -607,41 +621,49 @@ impl DrawOp {
         );
     }
 
-    unsafe fn write_material_descriptors<'a>(&mut self, materials: impl ExactSizeIterator<Item = &'a Material>) {
-
-
-        // let mut cmds = self.cmds.iter();
-        // let graphics = self.mesh.as_ref().unwrap();
-        // let mut set = 0;
-        // TODO: let mut diffuse_id = None;
-
-        // TODO: while let Some(cmd) = cmds.next().unwrap().as_mesh() {
-        //     if let Some(id) = diffuse_id {
-        //         if id == cmd.mesh.diffuse_id {
-        //             continue;
-        //         }
-        //     }
-
-        //     let diffuse = cmd.mesh.diffuse.borrow();
-        //     let diffuse_view = diffuse.as_default_2d_view();
-        //     self.pool
-        //         .borrow()
-        //         .driver()
-        //         .borrow()
-        //         .write_descriptor_sets(once(DescriptorSetWrite {
-        //             set: graphics.desc_set(set),
-        //             binding: 0,
-        //             array_offset: 0,
-        //             descriptors: once(Descriptor::CombinedImageSampler(
-        //                 diffuse_view.as_ref(),
-        //                 Layout::ShaderReadOnlyOptimal,
-        //                 graphics.sampler(0).as_ref(),
-        //             )),
-        //         }));
-
-        //     set += 1;
-        //     diffuse_id = Some(cmd.mesh.diffuse_id);
-        // }
+    unsafe fn write_mesh_material_descriptors<'a>(
+        device: &Device,
+        graphics: &Graphics,
+        materials: impl ExactSizeIterator<Item = &'a Material>,
+    ) {
+        // TODO: Update other write-descriptor functions to use this `default view doesn't borrow device` way of doing things
+        for (idx, material) in materials.enumerate() {
+            device.write_descriptor_sets(
+                vec![
+                    DescriptorSetWrite {
+                        set: graphics.desc_set(idx),
+                        binding: 0,
+                        array_offset: 0,
+                        descriptors: once(Descriptor::CombinedImageSampler(
+                            material.albedo.borrow().as_default_view().as_ref(),
+                            Layout::ShaderReadOnlyOptimal,
+                            graphics.sampler(0).as_ref(),
+                        )),
+                    },
+                    DescriptorSetWrite {
+                        set: graphics.desc_set(idx),
+                        binding: 0,
+                        array_offset: 0,
+                        descriptors: once(Descriptor::CombinedImageSampler(
+                            material.metal.borrow().as_default_view().as_ref(),
+                            Layout::ShaderReadOnlyOptimal,
+                            graphics.sampler(0).as_ref(),
+                        )),
+                    },
+                    DescriptorSetWrite {
+                        set: graphics.desc_set(idx),
+                        binding: 0,
+                        array_offset: 0,
+                        descriptors: once(Descriptor::CombinedImageSampler(
+                            material.normal.borrow().as_default_view().as_ref(),
+                            Layout::ShaderReadOnlyOptimal,
+                            graphics.sampler(0).as_ref(),
+                        )),
+                    },
+                ]
+                .drain(..),
+            );
+        }
     }
 }
 
@@ -655,10 +677,8 @@ pub struct DrawOpSubmission {
     frame_buf: Framebuffer2d,
     geom_buf: GeometryBuffer,
     graphics_line: Option<Lease<Graphics>>,
-    graphics_mesh_animated: Option<Lease<Graphics>>,
-    graphics_mesh_dual_tex: Option<Lease<Graphics>>,
-    graphics_mesh_single_tex: Option<Lease<Graphics>>,
-    graphics_mesh_transparent: Option<Lease<Graphics>>,
+    graphics_mesh: Option<Lease<Graphics>>,
+    graphics_mesh_anim: Option<Lease<Graphics>>,
     graphics_spotlight: Option<Lease<Graphics>>,
     graphics_sunlight: Option<Lease<Graphics>>,
 }

@@ -1,6 +1,6 @@
 use {
     super::MeshDrawInstruction,
-    crate::gpu::{data::CopyRange,model::MeshIter, Data},
+    crate::gpu::{data::CopyRange, model::MeshIter, Data},
     std::ops::Range,
 };
 
@@ -11,7 +11,6 @@ pub enum Instruction<'a> {
     DataWrite((&'a mut Data, Range<u64>)),
 
     //Light(LightInstruction),
-
     LineDraw((&'a mut Data, u32)),
 
     //DrawPointLights(&),
@@ -23,7 +22,6 @@ pub enum Instruction<'a> {
     MeshBind(MeshBind<'a>),
     MeshDescriptorSet(usize),
     MeshDraw(MeshIter<'a>),
-
     // Spotlight(SpotlightCommand),
     // Sunlight(SunlightCommand),
     // Transparency((f32, MeshCommand<'a>)),
@@ -148,7 +146,7 @@ impl Instruction<'_> {
 
 pub struct MeshBind<'a> {
     pub index: &'a Data,
-    pub vertex: &'a Data, 
+    pub vertex: &'a Data,
 }
 
 pub enum MeshInstruction<'i> {

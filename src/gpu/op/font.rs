@@ -9,7 +9,9 @@ use {
                 PhysicalDevice,
             },
             op::{Bitmap, Op},
-            pool::{FontVertex, Graphics, GraphicsMode, Lease, RenderPassMode},
+            pool::{
+                ColorRenderPassMode, FontVertex, Graphics, GraphicsMode, Lease, RenderPassMode,
+            },
             Data, PoolRef, Texture2d,
         },
         math::{vec3, CoordF, Extent, Mat4},
@@ -287,10 +289,10 @@ impl FontOp {
         // TODO: Cache these using "named" buffers? Let the client 'compile' them for reuse? Likey that more
         let tessellations = font.tessellate(text, dims);
 
-        let render_pass_mode = {
-            let fmt = self.dst.borrow().format();
-            RenderPassMode::ReadWrite(fmt)
-        };
+        let render_pass_mode = RenderPassMode::Color(ColorRenderPassMode {
+            format: self.dst.borrow().format(),
+            preserve: false,
+        });
 
         // Finish the remaining setup tasks
         {

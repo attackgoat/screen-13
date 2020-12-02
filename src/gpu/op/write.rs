@@ -5,9 +5,9 @@ use {
         gpu::{
             driver::{
                 bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
-                PhysicalDevice, RenderPass
+                PhysicalDevice,
             },
-            pool::{Graphics, GraphicsMode, Lease, RenderPassMode},
+            pool::{ColorRenderPassMode, Graphics, GraphicsMode, Lease, RenderPassMode},
             BlendMode, PoolRef, Texture2d,
         },
         math::{vec3, Area, CoordF, Mat4, RectF, Vec2},
@@ -191,12 +191,11 @@ impl WriteOp {
             // Keeps track of the textures used while the GPU is still busy (so our caller can drop their references)
             for write in writes.iter() {
                 let write_src_ptr = Texture2d::as_ptr(&write.src);
-                match self.src_textures.binary_search_by(|probe| {
+                if let Err(idx) = self.src_textures.binary_search_by(|probe| {
                     let probe = Texture2d::as_ptr(probe);
                     probe.cmp(&write_src_ptr)
                 }) {
-                    Err(idx) => self.src_textures.insert(idx, Texture2d::clone(write.src)),
-                    Ok(_) => (),
+                    self.src_textures.insert(idx, Texture2d::clone(write.src));
                 }
             }
 
@@ -212,14 +211,10 @@ impl WriteOp {
             self.src_textures.push(Texture2d::clone(writes[0].src));
         }
 
-        let render_pass_mode = {
-            let fmt = self.dst.borrow().format();
-            if self.dst_preserve {
-                RenderPassMode::ReadWrite(fmt)
-            } else {
-                RenderPassMode::Write(fmt)
-            }
-        };
+        let render_pass_mode = RenderPassMode::Color(ColorRenderPassMode {
+            format: self.dst.borrow().format(),
+            preserve: self.dst_preserve,
+        });
 
         // Final setup bits
         {

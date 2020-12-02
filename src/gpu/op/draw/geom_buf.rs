@@ -1,21 +1,19 @@
 use {
     crate::{
         gpu::{
-            pool::{Lease, Pool},
+            pool::{DrawRenderPassMode, Lease, Pool},
             Texture2d,
         },
         math::Extent,
     },
-    gfx_hal::{
-        format::Format,
-        image::{Layout, Tiling, Usage as ImageUsage},
-    },
+    gfx_hal::image::{Layout, Tiling, Usage as ImageUsage},
 };
 
 pub struct GeometryBuffer {
-    pub albedo_metal: Lease<Texture2d>,
+    pub albedo: Lease<Texture2d>,
     pub depth: Lease<Texture2d>,
     pub light: Lease<Texture2d>,
+    pub material: Lease<Texture2d>,
     pub normal: Lease<Texture2d>,
 }
 
@@ -24,14 +22,14 @@ impl GeometryBuffer {
         #[cfg(debug_assertions)] name: &str,
         pool: &mut Pool,
         dims: Extent,
-        color_format: Format,
+        mode: DrawRenderPassMode,
     ) -> Self {
-        let albedo_metal = pool.texture(
+        let albedo = pool.texture(
             #[cfg(debug_assertions)]
-            &format!("{} (Albedo/Metal buf)", name),
+            &format!("{} (Albedo)", name),
             dims,
             Tiling::Optimal,
-            color_format,
+            mode.albedo,
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT
                 | ImageUsage::INPUT_ATTACHMENT
@@ -44,10 +42,10 @@ impl GeometryBuffer {
         );
         let depth = pool.texture(
             #[cfg(debug_assertions)]
-            &format!("{} (Depth buf)", name),
+            &format!("{} (Depth)", name),
             dims,
             Tiling::Optimal,
-            Format::D32Sfloat,// TODO: We're just using this format but it's not guaranteed: VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT feature must be supported for at least one of VK_FORMAT_X8_D24_UNORM_PACK32 and VK_FORMAT_D32_SFLOAT, and must be supported for at least one of VK_FORMAT_D24_UNORM_S8_UINT and VK_FORMAT_D32_SFLOAT_S8_UINT.
+            mode.depth,
             Layout::Undefined,
             ImageUsage::DEPTH_STENCIL_ATTACHMENT
                 | ImageUsage::INPUT_ATTACHMENT
@@ -58,10 +56,22 @@ impl GeometryBuffer {
         );
         let light = pool.texture(
             #[cfg(debug_assertions)]
-            &format!("{} (Light buf)", name),
+            &format!("{} (Light)", name),
             dims,
             Tiling::Optimal,
-            Format::R32Uint,
+            mode.light,
+            Layout::Undefined,
+            ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT | ImageUsage::SAMPLED,
+            1,
+            1,
+            1,
+        );
+        let material = pool.texture(
+            #[cfg(debug_assertions)]
+            &format!("{} (Material)", name),
+            dims,
+            Tiling::Optimal,
+            mode.material,
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT | ImageUsage::SAMPLED,
             1,
@@ -73,7 +83,7 @@ impl GeometryBuffer {
             &format!("{} (Normal)", name),
             dims,
             Tiling::Optimal,
-            Format::Rgb32Sfloat,// Also need to check this format before use!!!!
+            mode.normal,
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT | ImageUsage::SAMPLED,
             1,
@@ -82,9 +92,10 @@ impl GeometryBuffer {
         );
 
         Self {
-            albedo_metal,
+            albedo,
             depth,
             light,
+            material,
             normal,
         }
     }

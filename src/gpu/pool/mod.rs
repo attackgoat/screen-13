@@ -11,7 +11,7 @@ pub use self::{
     compute::{Compute, ComputeMode},
     graphics::{FontVertex, Graphics},
     lease::Lease,
-    render_passes::{draw, present, read_write, read_write_ms, write, write_ms},
+    render_passes::{color, draw, present},
 };
 
 use {
@@ -54,6 +54,12 @@ fn remove_last_by<T, F: Fn(&T) -> bool>(items: &mut VecDeque<T>, f: F) -> Option
 
 pub(self) type PoolRef<T> = Rc<RefCell<VecDeque<T>>>;
 
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+pub struct ColorRenderPassMode {
+    pub format: Format,
+    pub preserve: bool,
+}
+
 #[derive(Eq, Hash, PartialEq)]
 struct DescriptorPoolKey {
     desc_ranges: Vec<(DescriptorType, usize)>,
@@ -70,11 +76,14 @@ impl<'a> Iterator for Drain<'a> {
 }
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
-pub struct DrawFormat {
-    color4: Format,
-    depth: Format,
-    float: Format,
-    vec3: Format,
+pub struct DrawRenderPassMode {
+    pub albedo: Format,
+    pub depth: Format,
+    /// Single channel accumulator
+    pub light: Format,
+    /// Dual channel (metal + roughness)
+    pub material: Format,
+    pub normal: Format,
 }
 
 #[derive(Eq, Hash, PartialEq)]
@@ -362,17 +371,12 @@ impl Pool {
     }
 
     pub fn render_pass(&mut self, mode: RenderPassMode) -> &RenderPass {
+        let driver = Driver::clone(&self.driver);
         self.render_passes
-        .entry(mode)
-        .or_insert_with(|| {
-                let driver = Driver::clone(&self.driver);
-                match mode {
-                    RenderPassMode::Draw(fmt) => draw(driver, fmt),
-                    RenderPassMode::ReadWrite(fmt) => read_write(driver, fmt),
-                    RenderPassMode::ReadWriteMs(fmt) => read_write_ms(driver, fmt),
-                    RenderPassMode::Write(fmt) => write(driver, fmt),
-                    RenderPassMode::WriteMs(fmt) => write_ms(driver, fmt),
-                }
+            .entry(mode)
+            .or_insert_with(|| match mode {
+                RenderPassMode::Color(fmt) => color(driver, fmt),
+                RenderPassMode::Draw(fmt) => draw(driver, fmt),
             })
     }
 
@@ -469,9 +473,6 @@ struct TextureKey {
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub enum RenderPassMode {
-    Draw(DrawFormat),
-    ReadWrite(Format),
-    ReadWriteMs(Format),
-    Write(Format),
-    WriteMs(Format),
+    Color(ColorRenderPassMode),
+    Draw(DrawRenderPassMode),
 }

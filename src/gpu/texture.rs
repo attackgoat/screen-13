@@ -168,7 +168,7 @@ impl Texture<Image2d> {
             usage,
         );
 
-        Self {
+        let res = Self {
             dims,
             driver,
             format,
@@ -179,7 +179,12 @@ impl Texture<Image2d> {
                 pipeline_stage: PipelineStage::TOP_OF_PIPE, // TODO: Was BOTTOM_ in vlb. What to do?
             }),
             views: Default::default(),
-        }
+        };
+
+        // Pre-cache the default view so we don't need to re-borrow the device so often
+        res.as_default_view();
+
+        res
     }
 
     pub(crate) fn as_default_view(&self) -> ImageViewRef {

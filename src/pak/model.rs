@@ -49,7 +49,7 @@ impl Mesh {
     }
 
     pub fn transform(&self) -> Option<Mat4> {
-        self.transform.clone()
+        self.transform
     }
 }
 
