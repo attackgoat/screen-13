@@ -70,13 +70,13 @@ impl GradientOp {
         let family = Device::queue_family(&driver.borrow());
         let mut cmd_pool = pool_ref.cmd_pool(family);
 
-        let (dims, format) = {
+        let (dims, fmt) = {
             let dst = dst.borrow();
             (dst.dims(), dst.format())
         };
 
         let render_pass_mode = RenderPassMode::Color(ColorRenderPassMode {
-            format,
+            format: fmt,
             preserve: must_preserve_dst(&path),
         });
 
@@ -95,7 +95,8 @@ impl GradientOp {
             name,
             dims,
             Tiling::Optimal,
-            format,
+            fmt,
+            &[],
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT
                 | ImageUsage::INPUT_ATTACHMENT

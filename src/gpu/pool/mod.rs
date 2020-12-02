@@ -393,7 +393,8 @@ impl Pool {
         #[cfg(debug_assertions)] name: &str,
         dims: Extent,
         desired_tiling: Tiling,
-        desired_format: Format,
+        desired_fmt: Format,
+        fallback_fmts: &[Format],
         layout: Layout,
         usage: ImageUsage,
         layers: u16,
@@ -404,7 +405,7 @@ impl Pool {
             .textures
             .entry(TextureKey {
                 dims,
-                desired_format,
+                desired_fmt,
                 layers,
                 mips,
                 samples,
@@ -432,7 +433,8 @@ impl Pool {
                     Driver::clone(&self.driver),
                     dims,
                     desired_tiling,
-                    desired_format,
+                    desired_fmt,
+                    fallback_fmts,
                     layout,
                     usage,
                     layers,
@@ -447,7 +449,8 @@ impl Pool {
                     Driver::clone(&self.driver),
                     dims,
                     desired_tiling,
-                    desired_format,
+                    desired_fmt,
+                    fallback_fmts,
                     layout,
                     usage,
                     layers,
@@ -464,7 +467,7 @@ impl Pool {
 #[derive(Eq, Hash, PartialEq)]
 struct TextureKey {
     dims: Extent,
-    desired_format: Format,
+    desired_fmt: Format,
     layers: u16,
     mips: u8,
     samples: u8,

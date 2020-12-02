@@ -78,7 +78,7 @@ impl BitmapOp {
         #[cfg(debug_assertions)] name: &str,
         pool: &PoolRef,
         bitmap: &PakBitmap,
-        format: Format,
+        fmt: Format,
     ) -> Self {
         let dims = bitmap.dims();
         let width: usize = dims.x as _;
@@ -137,7 +137,8 @@ impl BitmapOp {
             name,
             bitmap.dims(),
             Tiling::Optimal, // TODO: Use is_supported and is_compatible to figure this out
-            format,
+            fmt,
+            &[],
             Layout::Undefined,
             ImageUsage::STORAGE
                 | ImageUsage::SAMPLED

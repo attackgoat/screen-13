@@ -152,6 +152,7 @@ impl WriteOp {
                 dims,
                 Tiling::Optimal,
                 fmt,
+                &[],
                 Layout::Undefined,
                 Usage::COLOR_ATTACHMENT
                     | Usage::INPUT_ATTACHMENT

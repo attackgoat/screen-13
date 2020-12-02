@@ -33,7 +33,7 @@ impl Render {
         #[cfg(debug_assertions)] name: &str,
         pool: &PoolRef,
         dims: Extent,
-        format: Format,
+        fmt: Format,
         ops: Vec<Box<dyn Op>>,
     ) -> Self {
         Self {
@@ -43,7 +43,8 @@ impl Render {
                 name,
                 dims,
                 Tiling::Optimal,
-                format,
+                fmt,
+                &[],
                 Layout::Undefined,
                 Usage::SAMPLED | Usage::TRANSFER_DST | Usage::TRANSFER_SRC,
                 1,

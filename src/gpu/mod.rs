@@ -263,7 +263,7 @@ impl Gpu {
         debug!("Loading font `{}`", face.as_ref());
 
         let pool = PoolRef::clone(&self.pool);
-        Font::load(&pool, pak, face.as_ref(), Format::Rgba8Unorm)
+        Font::load(&pool, pak, face.as_ref())
     }
 
     pub fn load_model<R: Read + Seek>(

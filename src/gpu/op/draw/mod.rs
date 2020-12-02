@@ -32,7 +32,7 @@ use {
         buffer::{Access as BufferAccess, SubRange},
         command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, SubpassContents},
         device::Device as _,
-        format::{Aspects, Format},
+        format::Aspects,
         image::{
             Access as ImageAccess, Layout, Offset, SubresourceLayers, SubresourceRange, ViewKind,
         },
@@ -87,27 +87,30 @@ impl DrawOp {
         let family = Device::queue_family(&device);
         let mut cmd_pool = pool_ref.cmd_pool(family);
 
+        // The g-buffer will share formats with the destination texture
         let (dims, fmt) = {
             let dst = dst.borrow();
             (dst.dims(), dst.format())
         };
-
-        let mode = DrawRenderPassMode {
-            albedo: fmt,
-            depth: Format::R8Uint,
-            light: Format::R8Uint,
-            material: Format::R8Uint,
-            normal: Format::R8Uint,
-        };
-
-        // Setup the framebuffer
         let geom_buf = GeometryBuffer::new(
             #[cfg(debug_assertions)]
             name,
             &mut pool_ref,
             dims,
-            mode,
+            fmt,
         );
+
+        //
+        let mode = DrawRenderPassMode {
+            albedo: fmt,
+            depth: geom_buf.depth.borrow().format(),
+            light: geom_buf.light.borrow().format(),
+            material: geom_buf.material.borrow().format(),
+            normal: geom_buf.normal.borrow().format(),
+        };
+
+        // Setup the framebuffer
+
         let frame_buf = Framebuffer2d::new(
             Driver::clone(&driver),
             pool_ref.render_pass(RenderPassMode::Draw(mode)),

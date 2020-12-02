@@ -57,7 +57,6 @@ impl Font {
         pool: &PoolRef,
         pak: &mut Pak<R>,
         key: K,
-        format: Format,
     ) -> Self {
         let id = pak.font_bitmap_id(key).unwrap();
         let font_bitmap = pak.read_font_bitmap(id);
@@ -70,7 +69,7 @@ impl Font {
                     "Font",
                     pool,
                     &page,
-                    format,
+                    Format::Rgba8Unorm,
                 )
                 .record()
             })
@@ -231,6 +230,7 @@ impl FontOp {
             dims,
             Tiling::Optimal,
             fmt,
+            &[],
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT
                 | ImageUsage::INPUT_ATTACHMENT

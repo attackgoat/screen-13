@@ -1,12 +1,15 @@
 use {
     crate::{
         gpu::{
-            pool::{DrawRenderPassMode, Lease, Pool},
+            pool::{Lease, Pool},
             Texture2d,
         },
         math::Extent,
     },
-    gfx_hal::image::{Layout, Tiling, Usage as ImageUsage},
+    gfx_hal::{
+        format::Format,
+        image::{Layout, Tiling, Usage as ImageUsage},
+    },
 };
 
 pub struct GeometryBuffer {
@@ -22,14 +25,15 @@ impl GeometryBuffer {
         #[cfg(debug_assertions)] name: &str,
         pool: &mut Pool,
         dims: Extent,
-        mode: DrawRenderPassMode,
+        albedo_fmt: Format,
     ) -> Self {
         let albedo = pool.texture(
             #[cfg(debug_assertions)]
             &format!("{} (Albedo)", name),
             dims,
             Tiling::Optimal,
-            mode.albedo,
+            albedo_fmt,
+            &[],
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT
                 | ImageUsage::INPUT_ATTACHMENT
@@ -45,7 +49,8 @@ impl GeometryBuffer {
             &format!("{} (Depth)", name),
             dims,
             Tiling::Optimal,
-            mode.depth,
+            Format::R32Sfloat,
+            &[],
             Layout::Undefined,
             ImageUsage::DEPTH_STENCIL_ATTACHMENT
                 | ImageUsage::INPUT_ATTACHMENT
@@ -59,7 +64,8 @@ impl GeometryBuffer {
             &format!("{} (Light)", name),
             dims,
             Tiling::Optimal,
-            mode.light,
+            Format::R32Uint,
+            &[],
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT | ImageUsage::SAMPLED,
             1,
@@ -71,7 +77,8 @@ impl GeometryBuffer {
             &format!("{} (Material)", name),
             dims,
             Tiling::Optimal,
-            mode.material,
+            Format::Rg8Unorm,
+            &[],
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT | ImageUsage::SAMPLED,
             1,
@@ -83,7 +90,8 @@ impl GeometryBuffer {
             &format!("{} (Normal)", name),
             dims,
             Tiling::Optimal,
-            mode.normal,
+            Format::Rgb32Sfloat,
+            &[],
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT | ImageUsage::SAMPLED,
             1,

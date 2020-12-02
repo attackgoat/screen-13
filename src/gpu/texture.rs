@@ -41,7 +41,7 @@ where
 {
     dims: Extent,
     driver: Driver,
-    format: Format,
+    fmt: Format,
     image: I,
     state: RefCell<State>,
     views: RefCell<HashMap<ImageViewKey, ImageView>>,
@@ -87,7 +87,7 @@ where
     }
 
     pub(crate) fn format(&self) -> Format {
-        self.format
+        self.fmt
     }
 
     /// # Safety
@@ -109,7 +109,7 @@ where
                 target: self.image.as_ref(),
                 families: None,
                 range: SubresourceRange {
-                    aspects: if self.format.is_depth() {
+                    aspects: if self.fmt.is_depth() {
                         Aspects::DEPTH
                     } else {
                         Aspects::COLOR
@@ -126,27 +126,29 @@ where
 }
 
 impl Texture<Image2d> {
+    // TODO: Make a builder pattern for this!
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         #[cfg(debug_assertions)] name: &str,
         driver: Driver,
         dims: Extent,
         mut desired_tiling: Tiling,
-        desired_format: Format,
+        desired_fmt: Format,
+        fallback_fmts: &[Format],
         layout: Layout,
         usage: Usage,
         layers: u16,
         samples: u8,
         mips: u8,
     ) -> Self {
-        let format = {
+        let fmt = {
             let device = driver.as_ref().borrow();
             device
-                .best_fmt(desired_format, desired_tiling, usage)
+                .best_fmt(desired_fmt, fallback_fmts, desired_tiling, usage)
                 .unwrap_or_else(|| {
                     desired_tiling = Tiling::Linear;
                     device
-                        .best_fmt(desired_format, desired_tiling, usage)
+                        .best_fmt(desired_fmt, fallback_fmts, desired_tiling, usage)
                         .unwrap()
                 })
         };
@@ -163,7 +165,7 @@ impl Texture<Image2d> {
             layers,
             samples,
             mips,
-            format,
+            fmt,
             desired_tiling,
             usage,
         );
@@ -171,7 +173,7 @@ impl Texture<Image2d> {
         let res = Self {
             dims,
             driver,
-            format,
+            fmt,
             image,
             state: RefCell::new(State {
                 access_mask,
