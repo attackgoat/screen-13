@@ -1,14 +1,7 @@
 // TODO: This file is way too repetitive with similar code blocks all over the place. It could use some lovin'.
 
 use {
-    super::spirv::{
-        blend::{
-            NORMAL_FRAG as BLEND_NORMAL_FRAG, QUAD_TRANSFORM_VERT as BLEND_QUAD_TRANSFORM_VERT,
-        },
-        defer::{LINE_FRAG, LINE_VERT},
-        FONT_FRAG, FONT_OUTLINE_FRAG, FONT_VERT, GRADIENT_FRAG, GRADIENT_VERT, QUAD_TRANSFORM_VERT,
-        QUAD_VERT, TEXTURE_FRAG,
-    },
+    super::spirv,
     crate::{
         color::TRANSPARENT_BLACK,
         gpu::driver::{
@@ -95,8 +88,8 @@ impl Graphics {
         subpass: Subpass<'_, _Backend>,
         max_sets: usize,
     ) -> Self {
-        let vertex = ShaderModule::new(Driver::clone(&driver), &BLEND_QUAD_TRANSFORM_VERT);
-        let fragment = ShaderModule::new(Driver::clone(&driver), &BLEND_NORMAL_FRAG);
+        let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::blend::QUAD_TRANSFORM_VERT);
+        let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::blend::NORMAL_FRAG);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(debug_assertions)]
             name,
@@ -188,8 +181,8 @@ impl Graphics {
         subpass: Subpass<'_, _Backend>,
         max_sets: usize,
     ) -> Self {
-        let vertex = ShaderModule::new(Driver::clone(&driver), &LINE_VERT);
-        let fragment = ShaderModule::new(Driver::clone(&driver), &LINE_FRAG);
+        let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::defer::LINE_VERT);
+        let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::defer::LINE_FRAG);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(debug_assertions)]
             name,
@@ -272,232 +265,116 @@ impl Graphics {
 
     /// # Safety
     /// None
-    pub unsafe fn draw_mesh_dual(
-        #[cfg(debug_assertions)] _name: &str,
-        _driver: &Driver,
-        _subpass: Subpass<'_, _Backend>,
-        _max_sets: usize,
+    pub unsafe fn draw_mesh(
+        #[cfg(debug_assertions)] name: &str,
+        driver: &Driver,
+        subpass: Subpass<'_, _Backend>,
+        max_sets: usize,
     ) -> Self {
-        // let vertex = ShaderModule::new(Driver::clone(&driver), &MESH_DUAL_VERT);
-        // let fragment = ShaderModule::new(Driver::clone(&driver), &MESH_DUAL_FRAG);
-        // let set_layout = DescriptorSetLayout::new(
-        //     #[cfg(debug_assertions)]
-        //     name,
-        //     Driver::clone(&driver),
-        //     once(descriptor_set_layout_binding(
-        //         0,
-        //         1,
-        //         ShaderStageFlags::FRAGMENT,
-        //         DescriptorType::Image {
-        //             ty: ImageDescriptorType::Sampled { with_sampler: true },
-        //         },
-        //     )),
-        // );
-        // let layout = PipelineLayout::new(
-        //     Driver::clone(&driver),
-        //     once(&*set_layout),
-        //     &[
-        //         (ShaderStageFlags::VERTEX, 0..100),
-        //         (ShaderStageFlags::FRAGMENT, 100..104),
-        //     ],
-        // );
-        // let mut desc = GraphicsPipelineDesc::new(
-        //     PrimitiveAssemblerDesc::Vertex {
-        //         attributes: &[
-        //             AttributeDesc {
-        //                 binding: 0,
-        //                 location: 0,
-        //                 element: Element {
-        //                     format: Format::Rgb32Sfloat,
-        //                     offset: 0,
-        //                 },
-        //             },
-        //             AttributeDesc {
-        //                 binding: 0,
-        //                 location: 1,
-        //                 element: Element {
-        //                     format: Format::Rgb32Sfloat,
-        //                     offset: 12,
-        //                 },
-        //             },
-        //             AttributeDesc {
-        //                 binding: 0,
-        //                 location: 2,
-        //                 element: Element {
-        //                     format: Format::Rg32Sfloat,
-        //                     offset: 24,
-        //                 },
-        //             },
-        //         ],
-        //         buffers: &[VertexBufferDesc {
-        //             binding: 0,
-        //             stride: 32,
-        //             rate: VertexInputRate::Vertex,
-        //         }],
-        //         geometry: None,
-        //         input_assembler: InputAssemblerDesc {
-        //             primitive: Primitive::TriangleList,
-        //             restart_index: None,
-        //             with_adjacency: false,
-        //         },
-        //         tessellation: None,
-        //         vertex: ShaderModule::entry_point(&vertex),
-        //     },
-        //     FILL_RASTERIZER,
-        //     Some(ShaderModule::entry_point(&fragment)),
-        //     &layout,
-        //     subpass,
-        // );
-        // desc.blender.logic_op = Some(LogicOp::Set);
-        // for _ in 0..4 {
-        //     desc.blender.targets.push(ColorBlendDesc {
-        //         blend: None,
-        //         mask: ColorMask::empty(),
-        //     });
-        // }
-        // let pipeline = GraphicsPipeline::new(
-        //     #[cfg(debug_assertions)]
-        //     name,
-        //     Driver::clone(&driver),
-        //     &desc,
-        // );
-        // let mut desc_pool = DescriptorPool::new(
-        //     Driver::clone(&driver),
-        //     max_sets,
-        //     once(descriptor_range_desc(
-        //         1,
-        //         DescriptorType::Image {
-        //             ty: ImageDescriptorType::Sampled { with_sampler: true },
-        //         },
-        //     )),
-        // );
-        // let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
+        let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::defer::MESH_VERT);
+        let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::defer::MESH_FRAG);
+        let set_layout = DescriptorSetLayout::new(
+            #[cfg(debug_assertions)]
+            name,
+            Driver::clone(&driver),
+            once(descriptor_set_layout_binding(
+                0,
+                1,
+                ShaderStageFlags::FRAGMENT,
+                DescriptorType::Image {
+                    ty: ImageDescriptorType::Sampled { with_sampler: true },
+                },
+            )),
+        );
+        let layout = PipelineLayout::new(
+            Driver::clone(&driver),
+            once(&*set_layout),
+            &[
+                (ShaderStageFlags::VERTEX, 0..100),
+                (ShaderStageFlags::FRAGMENT, 100..104),
+            ],
+        );
+        let mut desc = GraphicsPipelineDesc::new(
+            PrimitiveAssemblerDesc::Vertex {
+                attributes: &[
+                    AttributeDesc {
+                        binding: 0,
+                        location: 0,
+                        element: Element {
+                            format: Format::Rgb32Sfloat,
+                            offset: 0,
+                        },
+                    },
+                    AttributeDesc {
+                        binding: 0,
+                        location: 1,
+                        element: Element {
+                            format: Format::Rgb32Sfloat,
+                            offset: 12,
+                        },
+                    },
+                    AttributeDesc {
+                        binding: 0,
+                        location: 2,
+                        element: Element {
+                            format: Format::Rg32Sfloat,
+                            offset: 24,
+                        },
+                    },
+                ],
+                buffers: &[VertexBufferDesc {
+                    binding: 0,
+                    stride: 32,
+                    rate: VertexInputRate::Vertex,
+                }],
+                geometry: None,
+                input_assembler: InputAssemblerDesc {
+                    primitive: Primitive::TriangleList,
+                    restart_index: None,
+                    with_adjacency: false,
+                },
+                tessellation: None,
+                vertex: ShaderModule::entry_point(&vertex),
+            },
+            FILL_RASTERIZER,
+            Some(ShaderModule::entry_point(&fragment)),
+            &layout,
+            subpass,
+        );
+        desc.blender.logic_op = Some(LogicOp::Set);
+        for _ in 0..4 {
+            desc.blender.targets.push(ColorBlendDesc {
+                blend: None,
+                mask: ColorMask::empty(),
+            });
+        }
+        let pipeline = GraphicsPipeline::new(
+            #[cfg(debug_assertions)]
+            name,
+            Driver::clone(&driver),
+            &desc,
+        );
+        let mut desc_pool = DescriptorPool::new(
+            Driver::clone(&driver),
+            max_sets,
+            once(descriptor_range_desc(
+                1,
+                DescriptorType::Image {
+                    ty: ImageDescriptorType::Sampled { with_sampler: true },
+                },
+            )),
+        );
+        let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
 
-        // Self {
-        //     desc_pool,
-        //     desc_sets,
-        //     layout,
-        //     max_sets,
-        //     pipeline,
-        //     set_layout,
-        //     samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
-        // }
-        todo!()
-    }
-
-    /// # Safety
-    /// None
-    pub unsafe fn draw_mesh_single(
-        #[cfg(debug_assertions)] _name: &str,
-        _driver: &Driver,
-        _subpass: Subpass<'_, _Backend>,
-        _max_sets: usize,
-    ) -> Self {
-        // let vertex = ShaderModule::new(Driver::clone(&driver), &MESH_SINGLE_VERT);
-        // let fragment = ShaderModule::new(Driver::clone(&driver), &MESH_SINGLE_FRAG);
-        // let set_layout = DescriptorSetLayout::new(
-        //     #[cfg(debug_assertions)]
-        //     name,
-        //     Driver::clone(&driver),
-        //     once(descriptor_set_layout_binding(
-        //         0,
-        //         1,
-        //         ShaderStageFlags::FRAGMENT,
-        //         DescriptorType::Image {
-        //             ty: ImageDescriptorType::Sampled { with_sampler: true },
-        //         },
-        //     )),
-        // );
-        // let layout = PipelineLayout::new(
-        //     Driver::clone(&driver),
-        //     once(&*set_layout),
-        //     &[
-        //         (ShaderStageFlags::VERTEX, 0..100),
-        //         (ShaderStageFlags::FRAGMENT, 100..104),
-        //     ],
-        // );
-        // let mut desc = GraphicsPipelineDesc::new(
-        //     PrimitiveAssemblerDesc::Vertex {
-        //         attributes: &[
-        //             AttributeDesc {
-        //                 binding: 0,
-        //                 location: 0,
-        //                 element: Element {
-        //                     format: Format::Rgb32Sfloat,
-        //                     offset: 0,
-        //                 },
-        //             },
-        //             AttributeDesc {
-        //                 binding: 0,
-        //                 location: 1,
-        //                 element: Element {
-        //                     format: Format::Rgb32Sfloat,
-        //                     offset: 12,
-        //                 },
-        //             },
-        //             AttributeDesc {
-        //                 binding: 0,
-        //                 location: 2,
-        //                 element: Element {
-        //                     format: Format::Rg32Sfloat,
-        //                     offset: 24,
-        //                 },
-        //             },
-        //         ],
-        //         buffers: &[VertexBufferDesc {
-        //             binding: 0,
-        //             stride: 32,
-        //             rate: VertexInputRate::Vertex,
-        //         }],
-        //         geometry: None,
-        //         input_assembler: InputAssemblerDesc {
-        //             primitive: Primitive::TriangleList,
-        //             restart_index: None,
-        //             with_adjacency: false,
-        //         },
-        //         tessellation: None,
-        //         vertex: ShaderModule::entry_point(&vertex),
-        //     },
-        //     FILL_RASTERIZER,
-        //     Some(ShaderModule::entry_point(&fragment)),
-        //     &layout,
-        //     subpass,
-        // );
-        // desc.blender.logic_op = Some(LogicOp::Set);
-        // for _ in 0..4 {
-        //     desc.blender.targets.push(ColorBlendDesc {
-        //         blend: None,
-        //         mask: ColorMask::empty(),
-        //     });
-        // }
-        // let pipeline = GraphicsPipeline::new(
-        //     #[cfg(debug_assertions)]
-        //     name,
-        //     Driver::clone(&driver),
-        //     &desc,
-        // );
-        // let mut desc_pool = DescriptorPool::new(
-        //     Driver::clone(&driver),
-        //     max_sets,
-        //     once(descriptor_range_desc(
-        //         1,
-        //         DescriptorType::Image {
-        //             ty: ImageDescriptorType::Sampled { with_sampler: true },
-        //         },
-        //     )),
-        // );
-        // let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
-
-        // Self {
-        //     desc_pool,
-        //     desc_sets,
-        //     layout,
-        //     max_sets,
-        //     pipeline,
-        //     set_layout,
-        //     samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
-        // }
-        todo!()
+        Self {
+            desc_pool,
+            desc_sets,
+            layout,
+            max_sets,
+            pipeline,
+            set_layout,
+            samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
+        }
     }
 
     /// # Safety
@@ -687,139 +564,14 @@ impl Graphics {
         todo!();
     }
 
-    /// # Safety
-    /// None
-    pub unsafe fn draw_trans(
-        #[cfg(debug_assertions)] _name: &str,
-        _driver: &Driver,
-        _subpass: Subpass<'_, _Backend>,
-        _max_sets: usize,
-    ) -> Self {
-        // let vertex = ShaderModule::new(Driver::clone(&driver), &MESH_SINGLE_VERT);
-        // let fragment = ShaderModule::new(Driver::clone(&driver), &TRANS_FRAG);
-        // let set_layout = DescriptorSetLayout::new(
-        //     #[cfg(debug_assertions)]
-        //     name,
-        //     Driver::clone(&driver),
-        //     &[
-        //         descriptor_set_layout_binding(
-        //             0,
-        //             2,
-        //             ShaderStageFlags::FRAGMENT,
-        //             DescriptorType::Image {
-        //                 ty: ImageDescriptorType::Sampled { with_sampler: true },
-        //             },
-        //         ),
-        //         descriptor_set_layout_binding(
-        //             1,
-        //             1,
-        //             ShaderStageFlags::FRAGMENT,
-        //             DescriptorType::Image {
-        //                 ty: ImageDescriptorType::Sampled { with_sampler: true },
-        //             },
-        //         ),
-        //     ],
-        // );
-        // let layout = PipelineLayout::new(
-        //     Driver::clone(&driver),
-        //     once(&*set_layout),
-        //     &[
-        //         (ShaderStageFlags::VERTEX, 0..100),
-        //         (ShaderStageFlags::FRAGMENT, 100..104),
-        //     ],
-        // );
-        // let mut desc = GraphicsPipelineDesc::new(
-        //     PrimitiveAssemblerDesc::Vertex {
-        //         attributes: &[
-        //             AttributeDesc {
-        //                 binding: 0,
-        //                 location: 0,
-        //                 element: Element {
-        //                     format: Format::Rgb32Sfloat,
-        //                     offset: 0,
-        //                 },
-        //             },
-        //             AttributeDesc {
-        //                 binding: 0,
-        //                 location: 1,
-        //                 element: Element {
-        //                     format: Format::Rgb32Sfloat,
-        //                     offset: 12,
-        //                 },
-        //             },
-        //             AttributeDesc {
-        //                 binding: 0,
-        //                 location: 2,
-        //                 element: Element {
-        //                     format: Format::Rg32Sfloat,
-        //                     offset: 24,
-        //                 },
-        //             },
-        //         ],
-        //         buffers: &[VertexBufferDesc {
-        //             binding: 0,
-        //             stride: 32,
-        //             rate: VertexInputRate::Vertex,
-        //         }],
-        //         geometry: None,
-        //         input_assembler: InputAssemblerDesc {
-        //             primitive: Primitive::TriangleList,
-        //             restart_index: None,
-        //             with_adjacency: false,
-        //         },
-        //         tessellation: None,
-        //         vertex: ShaderModule::entry_point(&vertex),
-        //     },
-        //     FILL_RASTERIZER,
-        //     Some(ShaderModule::entry_point(&fragment)),
-        //     &layout,
-        //     subpass,
-        // );
-        // desc.blender.logic_op = Some(LogicOp::Set);
-        // desc.blender.targets.push(ColorBlendDesc {
-        //     blend: Some(BlendState::PREMULTIPLIED_ALPHA),
-        //     mask: ColorMask::ALL,
-        // });
-        // let pipeline = GraphicsPipeline::new(
-        //     #[cfg(debug_assertions)]
-        //     name,
-        //     Driver::clone(&driver),
-        //     &desc,
-        // );
-        // let mut desc_pool = DescriptorPool::new(
-        //     Driver::clone(&driver),
-        //     max_sets,
-        //     once(descriptor_range_desc(
-        //         3,
-        //         DescriptorType::Image {
-        //             ty: ImageDescriptorType::Sampled { with_sampler: true },
-        //         },
-        //     )),
-        // );
-        // let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
-
-        // Self {
-        //     desc_pool,
-        //     desc_sets,
-        //     layout,
-        //     max_sets,
-        //     pipeline,
-        //     set_layout,
-        //     samplers: (0..3)
-        //         .map(|_| sampler(Driver::clone(&driver), Filter::Nearest))
-        //         .collect(),
-        // }
-        todo!();
-    }
-
     pub unsafe fn font(
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
         subpass: Subpass<'_, _Backend>,
         max_sets: usize,
     ) -> Self {
-        let vertex = ShaderModule::new(Driver::clone(&driver), &FONT_VERT);
-        let fragment = ShaderModule::new(Driver::clone(&driver), &FONT_FRAG);
+        let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::FONT_VERT);
+        let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::FONT_FRAG);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(debug_assertions)]
             name,
@@ -920,8 +672,8 @@ impl Graphics {
         subpass: Subpass<'_, _Backend>,
         max_sets: usize,
     ) -> Self {
-        let vertex = ShaderModule::new(Driver::clone(&driver), &FONT_VERT);
-        let fragment = ShaderModule::new(Driver::clone(&driver), &FONT_OUTLINE_FRAG);
+        let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::FONT_VERT);
+        let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::FONT_OUTLINE_FRAG);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(debug_assertions)]
             name,
@@ -1022,8 +774,8 @@ impl Graphics {
         subpass: Subpass<'_, _Backend>,
         max_sets: usize,
     ) -> Self {
-        let vertex = ShaderModule::new(Driver::clone(&driver), &GRADIENT_VERT);
-        let fragment = ShaderModule::new(Driver::clone(&driver), &GRADIENT_FRAG);
+        let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::GRADIENT_VERT);
+        let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::GRADIENT_FRAG);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(debug_assertions)]
             name,
@@ -1100,8 +852,8 @@ impl Graphics {
         subpass: Subpass<'_, _Backend>,
         max_sets: usize,
     ) -> Self {
-        let vertex = ShaderModule::new(Driver::clone(&driver), &GRADIENT_VERT);
-        let fragment = ShaderModule::new(Driver::clone(&driver), &GRADIENT_FRAG);
+        let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::GRADIENT_VERT);
+        let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::GRADIENT_FRAG);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(debug_assertions)]
             name,
@@ -1178,8 +930,8 @@ impl Graphics {
         subpass: Subpass<'_, _Backend>,
         max_sets: usize,
     ) -> Self {
-        let vertex = ShaderModule::new(Driver::clone(&driver), &QUAD_VERT);
-        let fragment = ShaderModule::new(Driver::clone(&driver), &TEXTURE_FRAG);
+        let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::QUAD_VERT);
+        let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::TEXTURE_FRAG);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(debug_assertions)]
             name,
@@ -1255,8 +1007,8 @@ impl Graphics {
         subpass: Subpass<'_, _Backend>,
         max_sets: usize,
     ) -> Self {
-        let vertex = ShaderModule::new(Driver::clone(&driver), &QUAD_TRANSFORM_VERT);
-        let fragment = ShaderModule::new(Driver::clone(&driver), &TEXTURE_FRAG);
+        let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::QUAD_TRANSFORM_VERT);
+        let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::TEXTURE_FRAG);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(debug_assertions)]
             name,

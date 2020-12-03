@@ -1,6 +1,8 @@
 use {
-    super::MeshDrawInstruction,
-    crate::gpu::{data::CopyRange, model::MeshIter, Data},
+    crate::{
+        gpu::{data::CopyRange, model::MeshIter, Data},
+        pak::IndexType,
+    },
     std::ops::Range,
 };
 
@@ -146,10 +148,6 @@ impl Instruction<'_> {
 
 pub struct MeshBind<'a> {
     pub index: &'a Data,
+    pub index_ty: IndexType,
     pub vertex: &'a Data,
-}
-
-pub enum MeshInstruction<'i> {
-    BindDescriptorSet(usize),
-    Draw(MeshDrawInstruction<'i>),
 }

@@ -6,7 +6,7 @@ use {
         math::{quat, vec3, Mat4, Quat, Sphere, Vec3},
         pak::{
             model::{Batch, Mesh, TriangleMode},
-            Model, ModelId, PakBuf,
+            IndexType, Model, ModelId, PakBuf,
         },
     },
     gltf::{
@@ -14,7 +14,7 @@ use {
         mesh::{Mode, Semantic},
         Node, Primitive,
     },
-    std::{collections::HashMap, path::Path, u16, u8},
+    std::{collections::HashMap, path::Path, u16},
 };
 
 pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
@@ -88,12 +88,10 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
                 .sum::<usize>()
         })
         .sum::<usize>();
-    let (index_buf_len, index_mode) = if index_count <= u8::MAX as usize {
-        (index_count, IndexMode::U8)
-    } else if vertex_count <= u16::MAX as usize {
-        (index_count << 1, IndexMode::U16)
+    let (index_buf_len, index_ty) = if vertex_count <= u16::MAX as usize {
+        (index_count << 1, IndexType::U16)
     } else {
-        (index_count << 2, IndexMode::U32)
+        (index_count << 2, IndexType::U32)
     };
     let mut index_buf = Vec::with_capacity(index_buf_len);
     let mut vertex_buf = Vec::with_capacity(vertex_buf_len);
@@ -156,12 +154,11 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
             });
             index_count = index_end;
 
-            match index_mode {
-                IndexMode::U8 => indices.iter().for_each(|idx| index_buf.push(*idx as u8)),
-                IndexMode::U16 => indices
+            match index_ty {
+                IndexType::U16 => indices
                     .iter()
                     .for_each(|idx| index_buf.extend_from_slice(&(*idx as u16).to_ne_bytes())),
-                IndexMode::U32 => indices
+                IndexType::U32 => indices
                     .iter()
                     .for_each(|idx| index_buf.extend_from_slice(&idx.to_ne_bytes())),
             }
@@ -239,7 +236,7 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
     }
 
     // Pak this asset
-    pak.push_model(key, Model::new(meshes, index_buf, vertex_buf))
+    pak.push_model(key, Model::new(meshes, index_ty, index_buf, vertex_buf))
 }
 
 fn node_stride(node: &Node) -> usize {
@@ -257,10 +254,4 @@ fn tri_mode(primitive: &Primitive) -> Option<TriangleMode> {
         Mode::TriangleStrip => Some(TriangleMode::Strip),
         _ => None,
     }
-}
-
-enum IndexMode {
-    U8,
-    U16,
-    U32,
 }

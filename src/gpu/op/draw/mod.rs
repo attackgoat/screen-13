@@ -14,7 +14,7 @@ use {
     self::{
         geom::LINE_STRIDE,
         geom_buf::GeometryBuffer,
-        instruction::{Instruction, MeshInstruction},
+        instruction::{Instruction, MeshBind},
     },
     super::Op,
     crate::{
@@ -23,13 +23,14 @@ use {
         gpu::{
             data::CopyRange,
             driver::{CommandPool, Device, Driver, Fence, Framebuffer2d, PhysicalDevice},
+            model::MeshIter,
             pool::{DrawRenderPassMode, Graphics, GraphicsMode, Lease, RenderPassMode},
-            BitmapRef, Data, MeshFilter, Model, ModelRef, PoolRef, Pose, Texture2d, TextureRef,
+            BitmapRef, Data, MeshFilter, ModelRef, PoolRef, Pose, Texture2d, TextureRef,
         },
         math::{Cone, Coord, CoordF, Extent, Mat4, Sphere, Vec3},
     },
     gfx_hal::{
-        buffer::{Access as BufferAccess, SubRange},
+        buffer::{Access as BufferAccess, IndexBufferView, SubRange},
         command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, SubpassContents},
         device::Device as _,
         format::Aspects,
@@ -87,7 +88,7 @@ impl DrawOp {
         let family = Device::queue_family(&device);
         let mut cmd_pool = pool_ref.cmd_pool(family);
 
-        // The g-buffer will share formats with the destination texture
+        // The g-buffer will share size and format with the destination texture
         let (dims, fmt) = {
             let dst = dst.borrow();
             (dst.dims(), dst.format())
@@ -100,41 +101,47 @@ impl DrawOp {
             fmt,
         );
 
-        //
-        let mode = DrawRenderPassMode {
-            albedo: fmt,
-            depth: geom_buf.depth.borrow().format(),
-            light: geom_buf.light.borrow().format(),
-            material: geom_buf.material.borrow().format(),
-            normal: geom_buf.normal.borrow().format(),
+        let (frame_buf, mode) = {
+            let albedo = geom_buf.albedo.borrow();
+            let depth = geom_buf.depth.borrow();
+            let light = geom_buf.light.borrow();
+            let material = geom_buf.material.borrow();
+            let normal = geom_buf.normal.borrow();
+
+            let mode = DrawRenderPassMode {
+                albedo: fmt,
+                depth: depth.format(),
+                light: light.format(),
+                material: material.format(),
+                normal: normal.format(),
+            };
+
+            // Setup the framebuffer
+            let frame_buf = Framebuffer2d::new(
+                Driver::clone(&driver),
+                pool_ref.render_pass(RenderPassMode::Draw(mode)),
+                vec![
+                    albedo.as_default_view().as_ref(),
+                    material.as_default_view().as_ref(),
+                    normal.as_default_view().as_ref(),
+                    light.as_default_view().as_ref(),
+                    depth
+                        .as_view(
+                            ViewKind::D2,
+                            mode.depth,
+                            Default::default(),
+                            SubresourceRange {
+                                aspects: Aspects::DEPTH,
+                                ..Default::default()
+                            },
+                        )
+                        .as_ref(),
+                ],
+                dims,
+            );
+
+            (frame_buf, mode)
         };
-
-        // Setup the framebuffer
-
-        let frame_buf = Framebuffer2d::new(
-            Driver::clone(&driver),
-            pool_ref.render_pass(RenderPassMode::Draw(mode)),
-            vec![
-                geom_buf.albedo.borrow().as_default_view().as_ref(),
-                geom_buf.normal.borrow().as_default_view().as_ref(),
-                geom_buf.light.borrow().as_default_view().as_ref(),
-                geom_buf
-                    .depth
-                    .borrow()
-                    .as_view(
-                        ViewKind::D2,
-                        mode.depth,
-                        Default::default(),
-                        SubresourceRange {
-                            aspects: Aspects::DEPTH,
-                            ..Default::default()
-                        },
-                    )
-                    .as_ref(),
-            ]
-            .drain(..),
-            dims,
-        );
 
         Self {
             cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
@@ -195,25 +202,30 @@ impl DrawOp {
 
         // Setup graphics pipelines and descriptor sets
         {
+            let render_pass_mode = RenderPassMode::Draw(self.mode);
             let mut pool = self.pool.borrow_mut();
 
-            //self.graphics_mesh_animated
-            self.graphics_line = Some(pool.graphics(
-                #[cfg(debug_assertions)]
-                &format!("{} line", &self.name),
-                GraphicsMode::DrawLine,
-                RenderPassMode::Draw(self.mode),
-                0,
-            ));
+            let materials = instrs.mesh_materials();
+            let descriptor_sets = materials.len();
+            if descriptor_sets > 0 {
+                self.graphics_mesh = Some(pool.graphics_sets(
+                    #[cfg(debug_assertions)]
+                    &self.name,
+                    GraphicsMode::DrawMesh,
+                    render_pass_mode,
+                    0,
+                    descriptor_sets,
+                ));
 
-            let device = pool.driver().borrow();
+                let device = pool.driver().borrow();
 
-            unsafe {
-                Self::write_mesh_material_descriptors(
-                    &device,
-                    self.graphics_mesh.as_ref().unwrap(),
-                    instrs.mesh_materials(),
-                );
+                unsafe {
+                    Self::write_mesh_material_descriptors(
+                        &device,
+                        self.graphics_mesh.as_ref().unwrap(),
+                        materials,
+                    );
+                }
             }
         }
 
@@ -222,18 +234,15 @@ impl DrawOp {
 
             while let Some(instr) = instrs.next() {
                 match instr {
-                    Instruction::DataCopy((buf, ranges)) => {
-                        self.submit_vertex_copies(buf, ranges);
-                    }
-                    Instruction::DataTransfer((src, dst)) => {
-                        self.submit_data_transfer(src, dst);
-                    }
-                    Instruction::DataWrite((buf, range)) => {
-                        self.submit_vertex_write(buf, range);
-                    }
+                    Instruction::DataCopy((buf, ranges)) => self.submit_vertex_copies(buf, ranges),
+                    Instruction::DataTransfer((src, dst)) => self.submit_data_transfer(src, dst),
+                    Instruction::DataWrite((buf, range)) => self.submit_vertex_write(buf, range),
                     Instruction::LineDraw((buf, count)) => {
-                        self.submit_draw_lines(buf, count, &viewport, &view_projection);
+                        self.submit_lines(buf, count, &viewport, &view_projection)
                     }
+                    Instruction::MeshBegin => self.submit_mesh_begin(),
+                    Instruction::MeshBind(bind) => self.submit_mesh_bind(bind),
+                    Instruction::MeshDescriptorSet(set) => self.submit_mesh_descriptor_set(set),
                     _ => panic!(),
                 }
             }
@@ -343,11 +352,6 @@ impl DrawOp {
         );
     }
 
-    unsafe fn submit_bind_geom_buffers(&mut self, vertex_buf: &<_Backend as Backend>::Buffer) {
-        self.cmd_buf
-            .bind_vertex_buffers(0, once((vertex_buf, SubRange::WHOLE)));
-    }
-
     unsafe fn submit_data_transfer(&mut self, src: &mut Data, dst: &mut Data) {
         src.transfer_range(
             &mut self.cmd_buf,
@@ -359,14 +363,22 @@ impl DrawOp {
         );
     }
 
-    unsafe fn submit_draw_lines(
+    unsafe fn submit_lines(
         &mut self,
         buf: &mut Data,
         count: u32,
         viewport: &Viewport,
         transform: &Mat4,
     ) {
-        let graphics = self.graphics_line.as_ref().unwrap();
+        let render_pass_mode = RenderPassMode::Draw(self.mode);
+        let mut pool = self.pool.borrow_mut();
+        let graphics = pool.graphics(
+            #[cfg(debug_assertions)]
+            &format!("{} line", &self.name),
+            GraphicsMode::DrawLine,
+            render_pass_mode,
+            0,
+        );
 
         self.cmd_buf.set_scissors(0, &[viewport.rect]);
         self.cmd_buf.set_viewports(0, &[viewport.clone()]);
@@ -391,6 +403,8 @@ impl DrawOp {
             )),
         );
         self.cmd_buf.draw(0..count, 0..1);
+
+        self.graphics_line = Some(graphics);
     }
 
     unsafe fn submit_vertex_copies(&mut self, buf: &mut Data, ranges: &[CopyRange]) {
@@ -486,13 +500,23 @@ impl DrawOp {
         // self.cmd_buf.set_viewports(0, &[self.viewport()]);
     }
 
+    unsafe fn submit_mesh_bind(&mut self, bind: MeshBind<'_>) {
+        self.cmd_buf.bind_index_buffer(IndexBufferView {
+            buffer: bind.index.as_ref(),
+            index_type: bind.index_ty.into(),
+            range: SubRange::WHOLE,
+        });
+        self.cmd_buf
+            .bind_vertex_buffers(0, once((bind.vertex.as_ref(), SubRange::WHOLE)));
+    }
+
     unsafe fn submit_mesh_descriptor_set(&mut self, _set: usize) {
         // let mesh = self.mesh.as_ref().unwrap();
 
         // bind_graphics_descriptor_set(&mut self.cmd_buf, mesh.layout(), mesh.desc_set(set));
     }
 
-    unsafe fn submit_mesh(&mut self, _instr: &MeshInstruction<'_>) {
+    unsafe fn submit_mesh(&mut self, _instr: MeshIter<'_>) {
         // let mesh = self.mesh.as_ref().unwrap();
 
         // self.cmd_buf.bind_vertex_buffers(
@@ -631,41 +655,38 @@ impl DrawOp {
     ) {
         // TODO: Update other write-descriptor functions to use this `default view doesn't borrow device` way of doing things
         for (idx, material) in materials.enumerate() {
-            device.write_descriptor_sets(
-                vec![
-                    DescriptorSetWrite {
-                        set: graphics.desc_set(idx),
-                        binding: 0,
-                        array_offset: 0,
-                        descriptors: once(Descriptor::CombinedImageSampler(
-                            material.albedo.borrow().as_default_view().as_ref(),
-                            Layout::ShaderReadOnlyOptimal,
-                            graphics.sampler(0).as_ref(),
-                        )),
-                    },
-                    DescriptorSetWrite {
-                        set: graphics.desc_set(idx),
-                        binding: 0,
-                        array_offset: 0,
-                        descriptors: once(Descriptor::CombinedImageSampler(
-                            material.metal.borrow().as_default_view().as_ref(),
-                            Layout::ShaderReadOnlyOptimal,
-                            graphics.sampler(0).as_ref(),
-                        )),
-                    },
-                    DescriptorSetWrite {
-                        set: graphics.desc_set(idx),
-                        binding: 0,
-                        array_offset: 0,
-                        descriptors: once(Descriptor::CombinedImageSampler(
-                            material.normal.borrow().as_default_view().as_ref(),
-                            Layout::ShaderReadOnlyOptimal,
-                            graphics.sampler(0).as_ref(),
-                        )),
-                    },
-                ]
-                .drain(..),
-            );
+            device.write_descriptor_sets(vec![
+                DescriptorSetWrite {
+                    set: graphics.desc_set(idx),
+                    binding: 0,
+                    array_offset: 0,
+                    descriptors: once(Descriptor::CombinedImageSampler(
+                        material.albedo.borrow().as_default_view().as_ref(),
+                        Layout::ShaderReadOnlyOptimal,
+                        graphics.sampler(0).as_ref(),
+                    )),
+                },
+                DescriptorSetWrite {
+                    set: graphics.desc_set(idx),
+                    binding: 0,
+                    array_offset: 0,
+                    descriptors: once(Descriptor::CombinedImageSampler(
+                        material.metal.borrow().as_default_view().as_ref(),
+                        Layout::ShaderReadOnlyOptimal,
+                        graphics.sampler(0).as_ref(),
+                    )),
+                },
+                DescriptorSetWrite {
+                    set: graphics.desc_set(idx),
+                    binding: 0,
+                    array_offset: 0,
+                    descriptors: once(Descriptor::CombinedImageSampler(
+                        material.normal.borrow().as_default_view().as_ref(),
+                        Layout::ShaderReadOnlyOptimal,
+                        graphics.sampler(0).as_ref(),
+                    )),
+                },
+            ]);
         }
     }
 }
@@ -779,12 +800,6 @@ pub struct ModelCommand {
     model: ModelRef,
     pose: Option<Pose>,
     transform: Mat4,
-}
-
-pub struct MeshDrawInstruction<'i> {
-    material: u32,
-    model: &'i Model,
-    transform: &'i [u8],
 }
 
 #[derive(Clone, Debug)]

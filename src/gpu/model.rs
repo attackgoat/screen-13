@@ -2,7 +2,7 @@ use {
     super::{Data, Lease, PoolRef},
     crate::{
         math::{Quat, Sphere},
-        pak::model::Mesh,
+        pak::{model::Mesh, IndexType},
     },
     std::fmt::{Debug, Error, Formatter},
 };
@@ -52,6 +52,7 @@ pub struct MeshFilter(u16);
 /// A drawable collection of individually adressable meshes.
 pub struct Model {
     index_buf: Lease<Data>,
+    index_ty: IndexType,
     meshes: Vec<Mesh>,
     pool: PoolRef,
     vertex_buf: Lease<Data>,
@@ -62,27 +63,25 @@ impl Model {
     pub(crate) fn new(
         pool: PoolRef,
         meshes: Vec<Mesh>,
+        index_ty: IndexType,
         index_buf: Lease<Data>,
         vertex_buf: Lease<Data>,
     ) -> Self {
         Self {
             index_buf,
+            index_ty,
             meshes,
             pool,
             vertex_buf,
         }
     }
 
-    pub(super) fn meshes(&self, filter: Option<MeshFilter>) -> impl Iterator<Item = &Mesh> {
-        MeshIter {
-            filter,
-            idx: 0,
-            model: self,
-        }
-    }
-
     pub fn bounds(&self) -> Sphere {
         todo!("Get bounds")
+    }
+
+    pub(crate) fn buffers(&self) -> (IndexType, &Data, &Data) {
+        (self.index_ty, &self.index_buf, &self.vertex_buf)
     }
 
     pub fn filter<N: AsRef<str>>(&self, name: Option<N>) -> Option<MeshFilter> {
@@ -105,6 +104,14 @@ impl Model {
 
                 Some(MeshFilter(idx as _))
             }
+        }
+    }
+
+    pub(super) fn meshes(&self, filter: Option<MeshFilter>) -> MeshIter {
+        MeshIter {
+            filter,
+            idx: 0,
+            model: self,
         }
     }
 

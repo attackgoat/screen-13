@@ -24,7 +24,7 @@ fn current_pos<S: Seek>(stream: &mut S) -> u32 {
     stream.seek(SeekFrom::Current(0)).unwrap() as u32
 }
 
-#[derive(Debug, Default, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 pub struct PakBuf {
     // These fields are handled by bincode serialization as-is
     ids: HashMap<String, Id>,

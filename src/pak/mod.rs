@@ -28,6 +28,7 @@ use {
     self::id::Id,
     bincode::deserialize_from,
     brotli::{CompressorReader as BrotliReader, CompressorWriter as BrotliWriter},
+    gfx_hal::IndexType as GfxHalIndexType,
     serde::{Deserialize, Serialize},
     snap::{read::FrameDecoder as SnapReader, write::FrameEncoder as SnapWriter},
     std::{
@@ -119,6 +120,21 @@ impl Compression {
 impl Default for Compression {
     fn default() -> Self {
         Self::Brotli(Default::default())
+    }
+}
+
+#[derive(Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
+pub enum IndexType {
+    U16,
+    U32,
+}
+
+impl From<IndexType> for GfxHalIndexType {
+    fn from(val: IndexType) -> Self {
+        match val {
+            IndexType::U16 => Self::U16,
+            IndexType::U32 => Self::U32,
+        }
     }
 }
 

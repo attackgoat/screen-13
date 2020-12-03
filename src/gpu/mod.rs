@@ -275,6 +275,7 @@ impl Gpu {
         let model = pak.read_model(id);
         let pool = PoolRef::clone(&self.pool);
         let indices = model.indices();
+        let index_ty = model.index_ty();
         let index_buf_len = indices.len() as _;
         let mut index_buf = pool.borrow_mut().data_usage(
             #[cfg(debug_assertions)]
@@ -304,7 +305,7 @@ impl Gpu {
             Mapping::flush(&mut mapped_range).unwrap();
         }
 
-        Model::new(pool, model.take_meshes(), index_buf, vertex_buf)
+        Model::new(pool, model.take_meshes(), index_ty, index_buf, vertex_buf)
     }
 
     // TODO: This should not be exposed, bring users into this code?

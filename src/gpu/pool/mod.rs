@@ -101,16 +101,9 @@ pub enum GraphicsMode {
     Gradient,
     GradientTransparency,
     DrawLine,
-    DrawMesh(MeshType),
+    DrawMesh,
+    DrawMeshAnimated,
     Texture,
-}
-
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
-pub enum MeshType {
-    Animated,
-    DualTexture,
-    SingleTexture,
-    Transparent,
 }
 
 pub struct Pool {
@@ -325,9 +318,7 @@ impl Pool {
         let ctor = match graphics_mode {
             GraphicsMode::Blend(BlendMode::Normal) => Graphics::blend_normal,
             GraphicsMode::DrawLine => Graphics::draw_line,
-            GraphicsMode::DrawMesh(MeshType::DualTexture) => Graphics::draw_mesh_dual,
-            GraphicsMode::DrawMesh(MeshType::SingleTexture) => Graphics::draw_mesh_single,
-            GraphicsMode::DrawMesh(MeshType::Transparent) => Graphics::draw_trans,
+            GraphicsMode::DrawMesh => Graphics::draw_mesh,
             GraphicsMode::Font => Graphics::font,
             GraphicsMode::FontOutline => Graphics::font_outline,
             GraphicsMode::Gradient => Graphics::gradient,

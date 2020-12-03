@@ -1,4 +1,5 @@
 use {
+    super::IndexType,
     crate::math::{Mat4, Sphere},
     serde::{Deserialize, Serialize},
     std::{
@@ -53,15 +54,21 @@ impl Mesh {
     }
 }
 
-#[derive(Deserialize, PartialEq, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Model {
+    index_ty: IndexType,
     indices: Vec<u8>,
     meshes: Vec<Mesh>,
     vertices: Vec<u8>,
 }
 
 impl Model {
-    pub(crate) fn new(mut meshes: Vec<Mesh>, indices: Vec<u8>, vertices: Vec<u8>) -> Self {
+    pub(crate) fn new(
+        mut meshes: Vec<Mesh>,
+        index_ty: IndexType,
+        indices: Vec<u8>,
+        vertices: Vec<u8>,
+    ) -> Self {
         assert_ne!(meshes.len(), 0);
         assert_ne!(indices.len(), 0);
         assert_ne!(vertices.len(), 0);
@@ -69,6 +76,7 @@ impl Model {
         meshes.sort_unstable_by(|lhs, rhs| lhs.name().cmp(&rhs.name()));
 
         Self {
+            index_ty,
             indices,
             meshes,
             vertices,
@@ -77,6 +85,10 @@ impl Model {
 
     pub(crate) fn indices(&self) -> &[u8] {
         &self.indices
+    }
+
+    pub(crate) fn index_ty(&self) -> IndexType {
+        self.index_ty
     }
 
     pub(crate) fn take_meshes(self) -> Vec<Mesh> {
