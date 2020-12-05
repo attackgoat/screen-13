@@ -47,7 +47,7 @@ pub struct Config {
     game: &'static str,
 }
 
-#[derive(Default, Deserialize, Serialize)]
+#[derive(Clone, Default, Deserialize, Serialize)]
 struct Data {
     fullscreen: Option<bool>,
     render_buf_len: Option<usize>,
@@ -59,19 +59,25 @@ impl Config {
     pub fn read(game: &'static str) -> Result<Self, IoError> {
         let config_path = get_config_path(game)?;
         Ok(if config_path.exists() {
+            #[cfg(debug_assertions)]
+            debug!("Loaded config {}", config_path.display());
+
             let config_file = read_to_string(&*config_path).unwrap_or_else(|_| {
                 #[cfg(debug_assertions)]
                 warn!("Engine config file read error, creating a new one");
 
                 "".to_owned()
             });
+            let config: Schema = from_str(&config_file).unwrap_or_default();
+
             Self {
-                data: from_str(&config_file).unwrap_or_default(),
+                data: config.data,
                 game,
             }
         } else {
             #[cfg(debug_assertions)]
             info!("Engine config file not found, creating a new one");
+
             let mut res = Self {
                 data: Data::default(),
                 game,
@@ -82,6 +88,7 @@ impl Config {
             res.data.swapchain_len = Some(res.swapchain_len());
             res.data.window_dimensions = Some((dims.x as _, dims.y as _));
             res.write()?;
+
             res
         })
     }
@@ -117,7 +124,9 @@ impl Config {
         let config_path = get_config_path(self.game)?;
         let mut config_file = File::create(&*config_path)?;
 
-        let toml = to_string_pretty(&self.data);
+        let toml = to_string_pretty(&Schema {
+            data: self.data.clone(),
+        });
         if toml.is_err() {
             return Err(IoError::from(ErrorKind::Other));
         }
@@ -127,4 +136,10 @@ impl Config {
 
         Ok(())
     }
+}
+
+#[derive(Default, Deserialize, Serialize)]
+struct Schema {
+    #[serde(rename = "screen-13")]
+    data: Data,
 }
