@@ -94,9 +94,10 @@ impl Game {
         let event_loop = EventLoop::new();
         let mut builder = WindowBuilder::new().with_title(title);
 
-        // Setup fullscreen or windowed mode
         #[cfg(debug_assertions)]
         debug!("Building {}x{} window", dims.x, dims.y);
+
+        // Setup fullscreen or windowed mode
         let physical_dims: PhysicalSize<_> = dims.into();
         builder = builder
             .with_inner_size(physical_dims) // TODO: Rename
@@ -158,6 +159,9 @@ impl Game {
     {
         let event_loop = self.event_loop.take().unwrap();
         let mut game = self;
+
+        #[cfg(debug_assertions)]
+        info!("Starting event loop");
 
         event_loop.run(move |event, _, control_flow| event_handler(event, &mut game, control_flow));
     }
