@@ -6,32 +6,29 @@ use {
 #[derive(Clone, Deserialize)]
 pub struct Material {
     albedo: PathBuf,
-    metal: PathBuf,
+    metal_src: PathBuf,
     normal: PathBuf,
+    rough_src: PathBuf,
 }
 
 impl Material {
-    pub fn new<P1: AsRef<Path>, P2: AsRef<Path>, P3: AsRef<Path>>(
-        albedo: P1,
-        normal: P2,
-        metal: P3,
-    ) -> Self {
-        Self {
-            albedo: albedo.as_ref().to_path_buf(),
-            metal: metal.as_ref().to_path_buf(),
-            normal: normal.as_ref().to_path_buf(),
-        }
-    }
-
+    /// A three or four channel image
     pub fn albedo(&self) -> &Path {
         self.albedo.as_path()
     }
 
-    pub fn metal(&self) -> &Path {
-        self.metal.as_path()
+    /// A one channel image
+    pub fn metal_src(&self) -> &Path {
+        self.metal_src.as_path()
     }
 
+    /// A three channel image
     pub fn normal(&self) -> &Path {
         self.normal.as_path()
+    }
+
+    /// A one channel image
+    pub fn rough_src(&self) -> &Path {
+        self.rough_src.as_path()
     }
 }

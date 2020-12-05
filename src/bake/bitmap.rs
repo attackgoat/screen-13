@@ -5,7 +5,7 @@ use {
     },
     crate::pak::{Bitmap, BitmapFormat, BitmapId, FontBitmap, FontBitmapId, PakBuf},
     bmfont::{BMFont, OrdinateOrientation},
-    image::{buffer::ConvertBuffer, open as image_open, DynamicImage, RgbImage, RgbaImage},
+    image::{buffer::ConvertBuffer, open as image_open, DynamicImage, RgbaImage},
     std::{fs::read, path::Path},
 };
 
@@ -27,8 +27,8 @@ pub fn bake_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
     let bitmap_filename = get_path(&dir, bitmap_asset.src(), project_dir);
 
     // Bake the pixels
-    let (fmt, width, pixels) = pixels(&bitmap_filename, bitmap_asset.force_opaque());
-    let bitmap = Bitmap::new(fmt, width as u16, pixels);
+    let (width, pixels) = pixels(&bitmap_filename, bitmap_asset.format());
+    let bitmap = Bitmap::new(bitmap_asset.format(), width as u16, pixels);
 
     // Pak this asset
     pak.push_bitmap(key, bitmap)
@@ -60,7 +60,7 @@ pub fn bake_font_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
             let page_filename = def_parent.join(page);
 
             // Bake the pixels
-            let (_, width, pixels) = pixels(&page_filename, true);
+            let (width, pixels) = pixels(&page_filename, BitmapFormat::Rgb);
             let mut better_pixels = Vec::with_capacity(pixels.len());
             for y in 0..width as usize {
                 for x in 0..width as usize {
@@ -90,31 +90,28 @@ pub fn bake_font_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
     pak.push_font_bitmap(key, FontBitmap::new(def_file, pages))
 }
 
-fn pixels<P: AsRef<Path>>(filename: P, force_opaque: bool) -> (BitmapFormat, u32, Vec<u8>) {
-    match image_open(&filename).unwrap() {
-        DynamicImage::ImageRgb8(image) => (BitmapFormat::Rgb, image.width(), pixels_bgr(&image)),
-        DynamicImage::ImageRgba8(image) => {
-            if force_opaque {
-                (
-                    BitmapFormat::Rgb,
-                    image.width(),
-                    pixels_bgr(&image.convert()),
-                )
-            } else {
-                (BitmapFormat::Rgba, image.width(), pixels_bgra(&image))
-            }
-        }
+pub fn pixels<P: AsRef<Path>>(filename: P, fmt: BitmapFormat) -> (u32, Vec<u8>) {
+    let image = match image_open(&filename).unwrap() {
+        DynamicImage::ImageRgb8(image) => image.convert(),
+        DynamicImage::ImageRgba8(image) => image,
         _ => unimplemented!(),
-    }
+    };
+    let width = image.width();
+    let data = match fmt {
+        BitmapFormat::R => pixels_r(&image),
+        BitmapFormat::Rg => pixels_rg(&image),
+        BitmapFormat::Rgb => pixels_rgb(&image),
+        BitmapFormat::Rgba => pixels_rgba(&image),
+    };
+
+    (width, data)
 }
 
-fn pixels_bgr(image: &RgbImage) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(image.width() as usize * image.height() as usize * 3);
+fn pixels_r(image: &RgbaImage) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(image.width() as usize * image.height() as usize);
     for y in 0..image.height() {
         for x in 0..image.width() {
             let pixel = image.get_pixel(x, image.height() - y - 1);
-            buf.push(pixel[2]);
-            buf.push(pixel[1]);
             buf.push(pixel[0]);
         }
     }
@@ -122,14 +119,41 @@ fn pixels_bgr(image: &RgbImage) -> Vec<u8> {
     buf
 }
 
-fn pixels_bgra(image: &RgbaImage) -> Vec<u8> {
+fn pixels_rg(image: &RgbaImage) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(image.width() as usize * image.height() as usize * 2);
+    for y in 0..image.height() {
+        for x in 0..image.width() {
+            let pixel = image.get_pixel(x, image.height() - y - 1);
+            buf.push(pixel[0]);
+            buf.push(pixel[1]);
+        }
+    }
+
+    buf
+}
+
+fn pixels_rgb(image: &RgbaImage) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(image.width() as usize * image.height() as usize * 3);
+    for y in 0..image.height() {
+        for x in 0..image.width() {
+            let pixel = image.get_pixel(x, image.height() - y - 1);
+            buf.push(pixel[0]);
+            buf.push(pixel[1]);
+            buf.push(pixel[2]);
+        }
+    }
+
+    buf
+}
+
+fn pixels_rgba(image: &RgbaImage) -> Vec<u8> {
     let mut buf = Vec::with_capacity(image.width() as usize * image.height() as usize * 4);
     for y in 0..image.height() {
         for x in 0..image.width() {
             let pixel = image.get_pixel(x, image.height() - y - 1);
-            buf.push(pixel[2]);
-            buf.push(pixel[1]);
             buf.push(pixel[0]);
+            buf.push(pixel[1]);
+            buf.push(pixel[2]);
             buf.push(pixel[3]);
         }
     }

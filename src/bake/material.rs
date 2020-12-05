@@ -1,9 +1,11 @@
 use {
     super::{
         asset::{Asset, Material as MaterialAsset},
-        bake_bitmap, get_filename_key, get_path,
+        bake_bitmap,
+        bitmap::pixels,
+        get_filename_key, get_path,
     },
-    crate::pak::{Material, MaterialId, PakBuf},
+    crate::pak::{Bitmap, BitmapFormat, Material, MaterialId, PakBuf},
     std::path::Path,
 };
 
@@ -23,23 +25,54 @@ pub fn bake_material<P1: AsRef<Path>, P2: AsRef<Path>>(
     let dir = filename.as_ref().parent().unwrap();
 
     let albedo_filename = get_path(dir, material.albedo(), &project_dir);
-    let metal_filename = get_path(dir, material.metal(), &project_dir);
+    let metal_filename = get_path(dir, material.metal_src(), &project_dir);
     let normal_filename = get_path(dir, material.normal(), &project_dir);
+    let rough_filename = get_path(dir, material.rough_src(), &project_dir);
 
     let albedo = Asset::read(&albedo_filename).into_bitmap().unwrap();
-    let metal = Asset::read(&metal_filename).into_bitmap().unwrap();
     let normal = Asset::read(&normal_filename).into_bitmap().unwrap();
 
     let albedo = bake_bitmap(&project_dir, albedo_filename, &albedo, &mut pak);
-    let metal = bake_bitmap(&project_dir, metal_filename, &metal, &mut pak);
     let normal = bake_bitmap(&project_dir, normal_filename, &normal, &mut pak);
+
+    // TODO: "Entertaining" key format which is temporary because it starts with a period
+    let metal_rough_key = format!(
+        ".materal-metal-rough:{}+{}",
+        metal_filename.display(),
+        rough_filename.display()
+    );
+    let metal_rough = if let Some(id) = pak.id(&metal_rough_key) {
+        id.as_bitmap().unwrap()
+    } else {
+        let (metal_width, metal_pixels) = pixels(metal_filename, BitmapFormat::R);
+        let (rough_width, rough_pixels) = pixels(rough_filename, BitmapFormat::R);
+
+        // The metalness/roughness map source art must be of equal size
+        assert_eq!(metal_width, rough_width);
+        assert_eq!(metal_pixels.len(), rough_pixels.len());
+
+        let mut metal_rough_pixels = Vec::with_capacity(metal_pixels.len() * 2);
+
+        unsafe {
+            metal_rough_pixels.set_len(metal_pixels.len() * 2);
+        }
+
+        for idx in 0..metal_pixels.len() {
+            metal_rough_pixels[idx * 2] = metal_pixels[idx];
+            metal_rough_pixels[idx * 2 + 1] = rough_pixels[idx];
+        }
+
+        // Pak this asset
+        let metal_rough = Bitmap::new(BitmapFormat::Rg, metal_width as u16, metal_rough_pixels);
+        pak.push_bitmap(metal_rough_key, metal_rough)
+    };
 
     // Pak this asset
     pak.push_material(
         key,
         Material {
             albedo,
-            metal,
+            metal_rough,
             normal,
         },
     )

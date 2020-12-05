@@ -29,8 +29,10 @@ impl Bitmap {
         let byte_height = len / width;
 
         match self.fmt {
-            Format::Rgba => byte_height >> 2,
+            Format::R => byte_height,
+            Format::Rg => byte_height / 2,
             Format::Rgb => byte_height / 3,
+            Format::Rgba => byte_height >> 2,
         }
     }
 
@@ -45,6 +47,15 @@ impl Bitmap {
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub enum Format {
+    #[serde(rename = "r")]
+    R,
+
+    #[serde(rename = "rg")]
+    Rg,
+
+    #[serde(rename = "rgb")]
     Rgb,
+
+    #[serde(rename = "rgba")]
     Rgba,
 }

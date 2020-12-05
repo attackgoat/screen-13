@@ -6,7 +6,7 @@ use {
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Material {
     pub(crate) albedo: BitmapId,
-    pub(crate) metal: BitmapId,
+    pub(crate) metal_rough: BitmapId,
     pub(crate) normal: BitmapId,
 }
 
@@ -15,8 +15,8 @@ impl Material {
         self.albedo
     }
 
-    pub fn metal(&self) -> BitmapId {
-        self.metal
+    pub fn metal_rough(&self) -> BitmapId {
+        self.metal_rough
     }
 
     pub fn normal(&self) -> BitmapId {

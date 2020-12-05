@@ -174,6 +174,9 @@ impl PakBuf {
         #[cfg(debug_assertions)]
         let started = Instant::now();
 
+        // Remove all temporary keys
+        self.ids.retain(|key, _| !key.starts_with('.'));
+
         // Write a blank spot that we'll use for the skip header later
         writer.write_all(&0u32.to_ne_bytes())?;
 
