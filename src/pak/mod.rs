@@ -29,7 +29,7 @@ use {
     bincode::deserialize_from,
     brotli::{CompressorReader as BrotliReader, CompressorWriter as BrotliWriter},
     gfx_hal::IndexType as GfxHalIndexType,
-    serde::{Deserialize, Serialize},
+    serde::{Deserialize,de::DeserializeOwned, Serialize},
     snap::{read::FrameDecoder as SnapReader, write::FrameEncoder as SnapWriter},
     std::{
         borrow::Cow,
@@ -143,6 +143,7 @@ where
     R: Read + Seek,
 {
     buf: PakBuf,
+    compression: Option<Compression>,
     reader: R,
 }
 
@@ -164,7 +165,7 @@ impl Pak<BufReader<File>> {
 
         let compression: Option<Compression> = deserialize_from(&mut reader).unwrap();
 
-        reader.seek(SeekFrom::Current(skip as _))?;
+        reader.seek(SeekFrom::Start(skip as _))?;
 
         let buf = {
             let mut reader = Compression::reader(compression, &mut reader);
@@ -182,7 +183,7 @@ impl Pak<BufReader<File>> {
             }
         }
 
-        Ok(Self { buf, reader })
+        Ok(Self { buf, compression, reader })
     }
 }
 
@@ -271,44 +272,40 @@ where
         self.buf.text(key)
     }
 
+    fn read<T: DeserializeOwned>(&mut self, pos: u64, len: usize) -> T {
+        let buf = read_exact(&mut self.reader, pos, len);
+        let reader = Compression::reader(self.compression, buf.as_slice());
+
+        deserialize_from(reader).unwrap()
+    }
+
     pub fn read_animation(&mut self, id: AnimationId) -> Animation {
         let (pos, len) = self.buf.animation(id);
-        let buf = read_exact(&mut self.reader, pos, len);
-
-        deserialize_from(buf.as_slice()).unwrap()
+        self.read(pos, len)
     }
 
     pub fn read_bitmap(&mut self, id: BitmapId) -> Bitmap {
         let (pos, len) = self.buf.bitmap(id);
-        let buf = read_exact(&mut self.reader, pos, len);
-
-        deserialize_from(buf.as_slice()).unwrap()
+        self.read(pos, len)
     }
 
     pub fn read_blob(&mut self, id: BlobId) -> Vec<u8> {
         let (pos, len) = self.buf.blob(id);
-
-        read_exact(&mut self.reader, pos, len)
+        self.read(pos, len)
     }
 
     pub fn read_font_bitmap(&mut self, id: FontBitmapId) -> FontBitmap {
         let (pos, len) = self.buf.font_bitmap(id);
-        let buf = read_exact(&mut self.reader, pos, len);
-
-        deserialize_from(buf.as_slice()).unwrap()
+        self.read(pos, len)
     }
 
     pub fn read_model(&mut self, id: ModelId) -> Model {
         let (pos, len) = self.buf.model(id);
-        let buf = read_exact(&mut self.reader, pos, len);
-
-        deserialize_from(buf.as_slice()).unwrap()
+        self.read(pos, len)
     }
 
     pub fn read_scene(&mut self, id: SceneId) -> Scene {
         let (pos, len) = self.buf.scene(id);
-        let buf = read_exact(&mut self.reader, pos, len);
-
-        deserialize_from(buf.as_slice()).unwrap()
+        self.read(pos, len)
     }
 }
