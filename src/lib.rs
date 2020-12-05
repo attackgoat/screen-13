@@ -14,6 +14,9 @@ pub mod game;
 pub mod gpu;
 pub mod input;
 pub mod math;
+
+/// Note about keys: When baking assets using the .toml format you will not need to use the .toml extension in order to load and
+/// use the assets at runtime. For instance, when trying to read a model packed at `models/thing.toml` you might: `gpu.load_model("models/thing")`
 pub mod pak;
 
 /// Things, particularly traits, which are used in almost every single Screen 13 game.

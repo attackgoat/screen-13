@@ -93,5 +93,13 @@ pub fn get_filename_key<P1: AsRef<Path>, P2: AsRef<Path>>(dir: P1, filename: P2)
         key.push_str(part);
     }
 
-    key
+    // Strip off the toml extension as needed
+    let mut key = PathBuf::from(key);
+    if let Some(ext) = key.extension() {
+        if ext == "toml" {
+            key = key.with_extension("");
+        }
+    }
+
+    key.to_str().unwrap().to_owned()
 }

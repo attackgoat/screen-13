@@ -29,7 +29,7 @@ use {
     bincode::deserialize_from,
     brotli::{CompressorReader as BrotliReader, CompressorWriter as BrotliWriter},
     gfx_hal::IndexType as GfxHalIndexType,
-    serde::{Deserialize,de::DeserializeOwned, Serialize},
+    serde::{de::DeserializeOwned, Deserialize, Serialize},
     snap::{read::FrameDecoder as SnapReader, write::FrameEncoder as SnapWriter},
     std::{
         borrow::Cow,
@@ -183,7 +183,11 @@ impl Pak<BufReader<File>> {
             }
         }
 
-        Ok(Self { buf, compression, reader })
+        Ok(Self {
+            buf,
+            compression,
+            reader,
+        })
     }
 }
 
