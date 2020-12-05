@@ -289,10 +289,7 @@ impl Graphics {
         let layout = PipelineLayout::new(
             Driver::clone(&driver),
             once(&*set_layout),
-            &[
-                (ShaderStageFlags::VERTEX, 0..100),
-                (ShaderStageFlags::FRAGMENT, 100..104),
-            ],
+            &[(ShaderStageFlags::VERTEX, 0..64)],
         );
         let mut desc = GraphicsPipelineDesc::new(
             PrimitiveAssemblerDesc::Vertex {

@@ -22,7 +22,10 @@ use {
         color::{AlphaColor, Color, TRANSPARENT_BLACK},
         gpu::{
             data::CopyRange,
-            driver::{CommandPool, Device, Driver, Fence, Framebuffer2d, PhysicalDevice},
+            driver::{
+                bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
+                PhysicalDevice,
+            },
             model::MeshIter,
             pool::{DrawRenderPassMode, Graphics, GraphicsMode, Lease, RenderPassMode},
             BitmapRef, Data, MeshFilter, ModelRef, PoolRef, Pose, Texture2d, TextureRef,
@@ -107,6 +110,7 @@ impl DrawOp {
             let light = geom_buf.light.borrow();
             let material = geom_buf.material.borrow();
             let normal = geom_buf.normal.borrow();
+            let output = geom_buf.output.borrow();
 
             let mode = DrawRenderPassMode {
                 albedo: fmt,
@@ -122,9 +126,6 @@ impl DrawOp {
                 pool_ref.render_pass(RenderPassMode::Draw(mode)),
                 vec![
                     albedo.as_default_view().as_ref(),
-                    material.as_default_view().as_ref(),
-                    normal.as_default_view().as_ref(),
-                    light.as_default_view().as_ref(),
                     depth
                         .as_view(
                             ViewKind::D2,
@@ -136,6 +137,10 @@ impl DrawOp {
                             },
                         )
                         .as_ref(),
+                    light.as_default_view().as_ref(),
+                    material.as_default_view().as_ref(),
+                    normal.as_default_view().as_ref(),
+                    output.as_default_view().as_ref(),
                 ],
                 dims,
             );
@@ -171,15 +176,6 @@ impl DrawOp {
         self
     }
 
-    // TODO: Use new method of unsafe as_ref pointer cast
-    fn mesh_vertex_push_consts(_world_view_proj: Mat4, _world: Mat4) -> Vec<u32> {
-        // let res = Vec::with_capacity(100);
-        // // res.extend(&mat4_bits(world_view_proj));
-        // // res.extend(&mat4_to_mat3_u32_array(world));
-        // res
-        todo!();
-    }
-
     // TODO: Returns concrete type instead of impl Op because https://github.com/rust-lang/rust/issues/42940
     pub fn record<'c>(mut self, camera: &impl Camera, cmds: &'c mut [Command]) -> DrawOpSubmission {
         let dims: Coord = self.dst.borrow().dims().into();
@@ -202,17 +198,15 @@ impl DrawOp {
 
         // Setup graphics pipelines and descriptor sets
         {
-            let render_pass_mode = RenderPassMode::Draw(self.mode);
-            let mut pool = self.pool.borrow_mut();
-
             let materials = instrs.mesh_materials();
             let descriptor_sets = materials.len();
             if descriptor_sets > 0 {
+                let mut pool = self.pool.borrow_mut();
                 self.graphics_mesh = Some(pool.graphics_sets(
                     #[cfg(debug_assertions)]
                     &self.name,
                     GraphicsMode::DrawMesh,
-                    render_pass_mode,
+                    RenderPassMode::Draw(self.mode),
                     0,
                     descriptor_sets,
                 ));
@@ -229,28 +223,39 @@ impl DrawOp {
             }
         }
 
-        unsafe {
-            self.submit_begin(&viewport);
+        if !instrs.is_empty() {
+            unsafe {
+                self.submit_begin(&viewport);
 
-            while let Some(instr) = instrs.next() {
-                match instr {
-                    Instruction::DataCopy((buf, ranges)) => self.submit_vertex_copies(buf, ranges),
-                    Instruction::DataTransfer((src, dst)) => self.submit_data_transfer(src, dst),
-                    Instruction::DataWrite((buf, range)) => self.submit_vertex_write(buf, range),
-                    Instruction::LineDraw((buf, count)) => {
-                        self.submit_lines(buf, count, &viewport, &view_projection)
+                while let Some(instr) = instrs.next() {
+                    match instr {
+                        Instruction::DataCopy((buf, ranges)) => {
+                            self.submit_vertex_copies(buf, ranges)
+                        }
+                        Instruction::DataTransfer((src, dst)) => {
+                            self.submit_data_transfer(src, dst)
+                        }
+                        Instruction::DataWrite((buf, range)) => {
+                            self.submit_vertex_write(buf, range)
+                        }
+                        Instruction::LineDraw((buf, count)) => {
+                            self.submit_lines(buf, count, &viewport, view_projection)
+                        }
+                        Instruction::MeshBegin => self.submit_mesh_begin(&viewport),
+                        Instruction::MeshBind(bind) => self.submit_mesh_bind(bind),
+                        Instruction::MeshDescriptorSet(set) => self.submit_mesh_descriptor_set(set),
+                        Instruction::MeshDraw((meshes, world)) => {
+                            self.submit_mesh(meshes, world, view_projection)
+                        }
+                        _ => panic!(),
                     }
-                    Instruction::MeshBegin => self.submit_mesh_begin(),
-                    Instruction::MeshBind(bind) => self.submit_mesh_bind(bind),
-                    Instruction::MeshDescriptorSet(set) => self.submit_mesh_descriptor_set(set),
-                    _ => panic!(),
                 }
+
+                self.submit_finish();
             }
+        }
 
-            self.submit_finish();
-
-            debug!("Done drawing");
-        };
+        debug!("Done drawing");
 
         DrawOpSubmission {
             cmd_buf: self.cmd_buf,
@@ -273,9 +278,11 @@ impl DrawOp {
         let mut pool = self.pool.borrow_mut();
         let mut dst = self.dst.borrow_mut();
         let mut albedo = self.geom_buf.albedo.borrow_mut();
-        let mut normal = self.geom_buf.normal.borrow_mut();
-        let mut material = self.geom_buf.material.borrow_mut();
         let mut depth = self.geom_buf.depth.borrow_mut();
+        let mut light = self.geom_buf.depth.borrow_mut();
+        let mut material = self.geom_buf.material.borrow_mut();
+        let mut normal = self.geom_buf.normal.borrow_mut();
+        let mut output = self.geom_buf.output.borrow_mut();
         let dims = dst.dims();
         // let fmt = dst.format();
 
@@ -283,55 +290,45 @@ impl DrawOp {
         self.cmd_buf
             .begin_primary(CommandBufferFlags::ONE_TIME_SUBMIT);
 
-        // Step 1: Copy dst into the color graphics buffer
-        dst.set_layout(
-            &mut self.cmd_buf,
-            Layout::TransferSrcOptimal,
-            PipelineStage::TRANSFER,
-            ImageAccess::TRANSFER_READ,
-        );
-        albedo.set_layout(
-            &mut self.cmd_buf,
-            Layout::TransferDstOptimal,
-            PipelineStage::TRANSFER,
-            ImageAccess::TRANSFER_WRITE,
-        );
-        self.cmd_buf.copy_image(
-            dst.as_ref(),
-            Layout::TransferSrcOptimal,
-            albedo.as_ref(),
-            Layout::TransferDstOptimal,
-            once(ImageCopy {
-                src_subresource: SubresourceLayers {
-                    aspects: Aspects::COLOR,
-                    level: 0,
-                    layers: 0..1,
-                },
-                src_offset: Offset::ZERO,
-                dst_subresource: SubresourceLayers {
-                    aspects: Aspects::COLOR,
-                    level: 0,
-                    layers: 0..1,
-                },
-                dst_offset: Offset::ZERO,
-                extent: dims.as_extent_with_depth(1),
-            }),
-        );
+        // Optional Step 1: Copy dst into the albedo render target
+        if self.dst_preserve {
+            dst.set_layout(
+                &mut self.cmd_buf,
+                Layout::TransferSrcOptimal,
+                PipelineStage::TRANSFER,
+                ImageAccess::TRANSFER_READ,
+            );
+            albedo.set_layout(
+                &mut self.cmd_buf,
+                Layout::TransferDstOptimal,
+                PipelineStage::TRANSFER,
+                ImageAccess::TRANSFER_WRITE,
+            );
+            self.cmd_buf.copy_image(
+                dst.as_ref(),
+                Layout::TransferSrcOptimal,
+                albedo.as_ref(),
+                Layout::TransferDstOptimal,
+                once(ImageCopy {
+                    src_subresource: SubresourceLayers {
+                        aspects: Aspects::COLOR,
+                        level: 0,
+                        layers: 0..1,
+                    },
+                    src_offset: Offset::ZERO,
+                    dst_subresource: SubresourceLayers {
+                        aspects: Aspects::COLOR,
+                        level: 0,
+                        layers: 0..1,
+                    },
+                    dst_offset: Offset::ZERO,
+                    extent: dims.as_extent_with_depth(1),
+                }),
+            );
+        }
 
         // Prepare the render pass for mesh rendering
         albedo.set_layout(
-            &mut self.cmd_buf,
-            Layout::ColorAttachmentOptimal,
-            PipelineStage::COLOR_ATTACHMENT_OUTPUT,
-            ImageAccess::COLOR_ATTACHMENT_WRITE,
-        );
-        normal.set_layout(
-            &mut self.cmd_buf,
-            Layout::ColorAttachmentOptimal,
-            PipelineStage::COLOR_ATTACHMENT_OUTPUT,
-            ImageAccess::COLOR_ATTACHMENT_WRITE,
-        );
-        material.set_layout(
             &mut self.cmd_buf,
             Layout::ColorAttachmentOptimal,
             PipelineStage::COLOR_ATTACHMENT_OUTPUT,
@@ -343,11 +340,35 @@ impl DrawOp {
             PipelineStage::LATE_FRAGMENT_TESTS, // TODO: VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT or VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT
             ImageAccess::DEPTH_STENCIL_ATTACHMENT_WRITE,
         );
+        light.set_layout(
+            &mut self.cmd_buf,
+            Layout::ColorAttachmentOptimal,
+            PipelineStage::COLOR_ATTACHMENT_OUTPUT,
+            ImageAccess::COLOR_ATTACHMENT_WRITE,
+        );
+        material.set_layout(
+            &mut self.cmd_buf,
+            Layout::ColorAttachmentOptimal,
+            PipelineStage::COLOR_ATTACHMENT_OUTPUT,
+            ImageAccess::COLOR_ATTACHMENT_WRITE,
+        );
+        normal.set_layout(
+            &mut self.cmd_buf,
+            Layout::ColorAttachmentOptimal,
+            PipelineStage::COLOR_ATTACHMENT_OUTPUT,
+            ImageAccess::COLOR_ATTACHMENT_WRITE,
+        );
+        output.set_layout(
+            &mut self.cmd_buf,
+            Layout::ColorAttachmentOptimal,
+            PipelineStage::COLOR_ATTACHMENT_OUTPUT,
+            ImageAccess::COLOR_ATTACHMENT_WRITE,
+        );
         self.cmd_buf.begin_render_pass(
             pool.render_pass(RenderPassMode::Draw(self.mode)),
             self.frame_buf.as_ref(),
             viewport.rect,
-            vec![&TRANSPARENT_BLACK.into()].drain(..),
+            vec![&TRANSPARENT_BLACK.into()],
             SubpassContents::Inline,
         );
     }
@@ -368,7 +389,7 @@ impl DrawOp {
         buf: &mut Data,
         count: u32,
         viewport: &Viewport,
-        transform: &Mat4,
+        transform: Mat4,
     ) {
         let render_pass_mode = RenderPassMode::Draw(self.mode);
         let mut pool = self.pool.borrow_mut();
@@ -387,10 +408,7 @@ impl DrawOp {
             graphics.layout(),
             ShaderStageFlags::VERTEX,
             0,
-            LineVertexConsts {
-                transform: *transform,
-            }
-            .as_ref(),
+            LineVertexConsts { transform }.as_ref(),
         );
         self.cmd_buf.bind_vertex_buffers(
             0,
@@ -492,12 +510,12 @@ impl DrawOp {
     // idx
     //}
 
-    unsafe fn submit_mesh_begin(&mut self) {
-        // let mesh = self.mesh.as_ref().unwrap();
+    unsafe fn submit_mesh_begin(&mut self, viewport: &Viewport) {
+        let graphics = self.graphics_mesh.as_ref().unwrap();
 
-        // self.cmd_buf.bind_graphics_pipeline(mesh.pipeline());
-        // self.cmd_buf.set_scissors(0, &[self.rect()]);
-        // self.cmd_buf.set_viewports(0, &[self.viewport()]);
+        self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
+        self.cmd_buf.set_scissors(0, &[viewport.rect]);
+        self.cmd_buf.set_viewports(0, &[viewport.clone()]);
     }
 
     unsafe fn submit_mesh_bind(&mut self, bind: MeshBind<'_>) {
@@ -510,84 +528,34 @@ impl DrawOp {
             .bind_vertex_buffers(0, once((bind.vertex.as_ref(), SubRange::WHOLE)));
     }
 
-    unsafe fn submit_mesh_descriptor_set(&mut self, _set: usize) {
-        // let mesh = self.mesh.as_ref().unwrap();
+    unsafe fn submit_mesh_descriptor_set(&mut self, set: usize) {
+        let graphics = self.graphics_mesh.as_ref().unwrap();
 
-        // bind_graphics_descriptor_set(&mut self.cmd_buf, mesh.layout(), mesh.desc_set(set));
+        bind_graphics_descriptor_set(&mut self.cmd_buf, graphics.layout(), graphics.desc_set(set));
     }
 
-    unsafe fn submit_mesh(&mut self, _instr: MeshIter<'_>) {
-        // let mesh = self.mesh.as_ref().unwrap();
+    unsafe fn submit_mesh(&mut self, meshes: MeshIter<'_>, world: Mat4, view_projection: Mat4) {
+        let graphics = self.graphics_mesh.as_ref().unwrap();
+        let world_view_proj = world * view_projection;
 
-        // self.cmd_buf.bind_vertex_buffers(
-        //     0,
-        //     Some((
-        //         cmd.mesh.vertex_buf.as_ref(),
-        //         SubRange {
-        //             offset: 0,
-        //             size: None,
-        //         },
-        //     )),
-        // );
-        // self.cmd_buf.push_graphics_constants(
-        //     mesh.layout(),
-        //     ShaderStageFlags::VERTEX,
-        //     0,
-        //     Self::mesh_vertex_push_consts(model_view_proj, cmd.model).as_slice(),
-        // );
-        // self.cmd_buf.push_graphics_constants(
-        //     mesh.layout(),
-        //     ShaderStageFlags::FRAGMENT,
-        //     100,
-        //     &[cmd.material],
-        // );
-        // self.cmd_buf.draw(0..cmd.mesh.vertex_count, 0..1);
-    }
+        for mesh in meshes {
+            let world_view_proj = if let Some(transform) = mesh.transform() {
+                transform * world_view_proj
+            } else {
+                world_view_proj
+            };
 
-    unsafe fn submit_transparency_begin(&mut self) {
-        // let transparency = self.transparency.as_ref().unwrap();
+            self.cmd_buf.push_graphics_constants(
+                graphics.layout(),
+                ShaderStageFlags::VERTEX,
+                0,
+                MeshVertexConsts { world_view_proj }.as_ref(),
+            );
 
-        // self.cmd_buf.bind_graphics_pipeline(transparency.pipeline());
-        // self.cmd_buf.set_scissors(0, &[self.rect()]);
-        // self.cmd_buf.set_viewports(0, &[self.viewport()]);
-    }
-
-    unsafe fn submit_transparency_descriptor_set(&mut self, _set: usize) {
-        // let transparency = self.transparency.as_ref().unwrap();
-
-        // bind_graphics_descriptor_set(
-        //     &mut self.cmd_buf,
-        //     transparency.layout(),
-        //     transparency.desc_set(set),
-        // );
-    }
-
-    unsafe fn submit_transparency(&mut self, _model_view_proj: Mat4, _cmd: u8) {
-        // let transparency = self.transparency.as_ref().unwrap();
-
-        // self.cmd_buf.bind_vertex_buffers(
-        //     0,
-        //     Some((
-        //         cmd.mesh.vertex_buf.as_ref(),
-        //         SubRange {
-        //             offset: 0,
-        //             size: None,
-        //         },
-        //     )),
-        // );
-        // self.cmd_buf.push_graphics_constants(
-        //     transparency.layout(),
-        //     ShaderStageFlags::VERTEX,
-        //     0,
-        //     Self::mesh_vertex_push_consts(model_view_proj, cmd.model).as_slice(),
-        // );
-        // self.cmd_buf.push_graphics_constants(
-        //     transparency.layout(),
-        //     ShaderStageFlags::FRAGMENT,
-        //     100,
-        //     &[cmd.material],
-        // );
-        // self.cmd_buf.draw(0..cmd.mesh.vertex_count, 0..1);
+            for batch in mesh.batches() {
+                self.cmd_buf.draw(batch, 0..1);
+            }
+        }
     }
 
     unsafe fn submit_finish(&mut self) {
@@ -595,44 +563,44 @@ impl DrawOp {
         let driver = pool.driver();
         let mut device = driver.borrow_mut();
         let mut dst = self.dst.borrow_mut();
-        // let mut material = self.geom_buf.material().borrow_mut();
-        let _dims = dst.dims();
+        let mut output = self.geom_buf.output.borrow_mut();
+        let dims = dst.dims();
 
-        // Step 6: Copy the color graphics buffer into dst
+        // Step 6: Copy the output graphics buffer into dst
         self.cmd_buf.end_render_pass();
-        // material.set_layout(
-        //     &mut self.cmd_buf,
-        //     Layout::TransferSrcOptimal,
-        //     PipelineStage::TRANSFER,
-        //     ImageAccess::TRANSFER_READ,
-        // );
+        output.set_layout(
+            &mut self.cmd_buf,
+            Layout::TransferSrcOptimal,
+            PipelineStage::TRANSFER,
+            ImageAccess::TRANSFER_READ,
+        );
         dst.set_layout(
             &mut self.cmd_buf,
             Layout::TransferDstOptimal,
             PipelineStage::TRANSFER,
             ImageAccess::TRANSFER_WRITE,
         );
-        // self.cmd_buf.copy_image(
-        //     material.as_ref(),
-        //     Layout::TransferSrcOptimal,
-        //     dst.as_ref(),
-        //     Layout::TransferDstOptimal,
-        //     once(ImageCopy {
-        //         src_subresource: SubresourceLayers {
-        //             aspects: Aspects::COLOR,
-        //             level: 0,
-        //             layers: 0..1,
-        //         },
-        //         src_offset: Offset::ZERO,
-        //         dst_subresource: SubresourceLayers {
-        //             aspects: Aspects::COLOR,
-        //             level: 0,
-        //             layers: 0..1,
-        //         },
-        //         dst_offset: Offset::ZERO,
-        //         extent: dims.as_extent_with_depth(1),
-        //     }),
-        // );
+        self.cmd_buf.copy_image(
+            output.as_ref(),
+            Layout::TransferSrcOptimal,
+            dst.as_ref(),
+            Layout::TransferDstOptimal,
+            once(ImageCopy {
+                src_subresource: SubresourceLayers {
+                    aspects: Aspects::COLOR,
+                    level: 0,
+                    layers: 0..1,
+                },
+                src_offset: Offset::ZERO,
+                dst_subresource: SubresourceLayers {
+                    aspects: Aspects::COLOR,
+                    level: 0,
+                    layers: 0..1,
+                },
+                dst_offset: Offset::ZERO,
+                extent: dims.as_extent_with_depth(1),
+            }),
+        );
 
         // Finish
         self.cmd_buf.finish();
@@ -790,6 +758,18 @@ impl PartialEq for Material {
 impl PartialOrd for Material {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
+    }
+}
+
+#[repr(C)]
+struct MeshVertexConsts {
+    world_view_proj: Mat4,
+}
+
+impl AsRef<[u32; 16]> for MeshVertexConsts {
+    #[inline]
+    fn as_ref(&self) -> &[u32; 16] {
+        unsafe { &*(self as *const Self as *const [u32; 16]) }
     }
 }
 

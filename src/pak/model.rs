@@ -10,14 +10,8 @@ use {
 };
 
 #[derive(Deserialize, PartialEq, Serialize)]
-pub struct Batch {
-    pub indices: Range<u32>,
-    pub mode: TriangleMode,
-}
-
-#[derive(Deserialize, PartialEq, Serialize)]
 pub struct Mesh {
-    batches: Vec<Batch>,
+    batches: Vec<Range<u32>>,
     bounds: Sphere,
     name: Option<String>,
     skin_inv_binds: Option<HashMap<String, Mat4>>,
@@ -26,7 +20,7 @@ pub struct Mesh {
 
 impl Mesh {
     pub fn new<N: Into<Option<String>>>(
-        batches: Vec<Batch>,
+        batches: Vec<Range<u32>>,
         bounds: Sphere,
         name: N,
         transform: Option<Mat4>,
@@ -41,8 +35,8 @@ impl Mesh {
         }
     }
 
-    pub(crate) fn batches(&self) -> impl Iterator<Item = &Batch> {
-        self.batches.iter()
+    pub(crate) fn batches(&self) -> impl Iterator<Item = Range<u32>> + '_ {
+        self.batches.iter().cloned()
     }
 
     pub(crate) fn name(&self) -> Option<&str> {
@@ -104,11 +98,4 @@ impl Debug for Model {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.write_str("Model")
     }
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
-pub enum TriangleMode {
-    Fan,
-    List,
-    Strip,
 }

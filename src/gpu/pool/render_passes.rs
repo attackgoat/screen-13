@@ -18,122 +18,6 @@ fn const_layout(layout: Layout) -> Range<Layout> {
     layout..layout
 }
 
-pub fn draw(driver: Driver, mode: DrawRenderPassMode) -> RenderPass {
-    enum Attachments {
-        Albedo,
-        Material,
-        Normal,
-        Light,
-        Depth,
-    }
-
-    // Attachments
-    let albedo = Attachment {
-        format: Some(mode.albedo),
-        samples: 1,
-        ops: AttachmentOps::PRESERVE,
-        stencil_ops: AttachmentOps::DONT_CARE,
-        layouts: const_layout(Layout::ColorAttachmentOptimal),
-    };
-    let dont_care = |format| Attachment {
-        format: Some(format),
-        samples: 1,
-        ops: AttachmentOps::DONT_CARE,
-        stencil_ops: AttachmentOps::DONT_CARE,
-        layouts: const_layout(Layout::ColorAttachmentOptimal),
-    };
-    let material = dont_care(mode.material);
-    let normal = dont_care(mode.normal);
-    let light = dont_care(mode.light);
-    let depth = dont_care(mode.depth);
-
-    // Subpasses
-    let draw_meshes = SubpassDesc {
-        colors: &[
-            (Attachments::Albedo as _, Layout::ColorAttachmentOptimal),
-            (Attachments::Normal as _, Layout::ColorAttachmentOptimal),
-        ],
-        depth_stencil: Some(&(
-            Attachments::Depth as _,
-            Layout::DepthStencilAttachmentOptimal,
-        )),
-        inputs: &[],
-        resolves: &[],
-        preserves: &[],
-    };
-    let accum_light = SubpassDesc {
-        colors: &[(Attachments::Light as _, Layout::ColorAttachmentOptimal)],
-        depth_stencil: None,
-        inputs: &[
-            (Attachments::Albedo as _, Layout::ShaderReadOnlyOptimal),
-            (Attachments::Depth as _, Layout::ShaderReadOnlyOptimal),
-        ],
-        resolves: &[],
-        preserves: &[],
-    };
-    RenderPass::new(
-        #[cfg(debug_assertions)]
-        "Draw",
-        driver,
-        &[albedo, material, normal, light, depth],
-        &[draw_meshes, accum_light],
-        &[
-            SubpassDependency {
-                passes: None..Some(0),
-                stages: PipelineStage::BOTTOM_OF_PIPE..PipelineStage::COLOR_ATTACHMENT_OUTPUT,
-                accesses: Access::MEMORY_READ
-                    ..Access::COLOR_ATTACHMENT_READ | Access::COLOR_ATTACHMENT_WRITE,
-                flags: Dependencies::BY_REGION,
-            },
-            SubpassDependency {
-                passes: Some(0)..Some(1),
-                stages: PipelineStage::COLOR_ATTACHMENT_OUTPUT..PipelineStage::FRAGMENT_SHADER,
-                accesses: Access::COLOR_ATTACHMENT_WRITE..Access::SHADER_READ,
-                flags: Dependencies::BY_REGION,
-            },
-            SubpassDependency {
-                passes: Some(1)..Some(2),
-                stages: PipelineStage::COLOR_ATTACHMENT_OUTPUT..PipelineStage::FRAGMENT_SHADER,
-                accesses: Access::COLOR_ATTACHMENT_WRITE..Access::SHADER_READ,
-                flags: Dependencies::BY_REGION,
-            },
-            SubpassDependency {
-                passes: Some(0)..None,
-                stages: PipelineStage::COLOR_ATTACHMENT_OUTPUT..PipelineStage::BOTTOM_OF_PIPE,
-                accesses: Access::COLOR_ATTACHMENT_READ | Access::COLOR_ATTACHMENT_WRITE
-                    ..Access::MEMORY_READ,
-                flags: Dependencies::BY_REGION,
-            },
-        ],
-    )
-}
-
-pub fn present(driver: &Driver, format: Format) -> RenderPass {
-    let present_attachment = 0;
-    let present = Attachment {
-        format: Some(format),
-        samples: 1,
-        ops: AttachmentOps::new(AttachmentLoadOp::DontCare, AttachmentStoreOp::Store), // TODO: Another render pass for AttachmentLoadOp::Clear when we need to render to a transparent window?
-        stencil_ops: AttachmentOps::DONT_CARE,
-        layouts: Layout::Undefined..Layout::Present,
-    };
-    let subpass = SubpassDesc {
-        colors: &[(present_attachment, Layout::ColorAttachmentOptimal)],
-        depth_stencil: None,
-        inputs: &[],
-        resolves: &[],
-        preserves: &[],
-    };
-    RenderPass::new(
-        #[cfg(debug_assertions)]
-        "Write",
-        Driver::clone(&driver),
-        &[present],
-        &[subpass],
-        &[],
-    )
-}
-
 pub fn color(driver: Driver, mode: ColorRenderPassMode) -> RenderPass {
     let color_attachment = 0;
     let color = Attachment {
@@ -167,6 +51,137 @@ pub fn color(driver: Driver, mode: ColorRenderPassMode) -> RenderPass {
         "Color",
         driver,
         &[color],
+        &[subpass],
+        &[],
+    )
+}
+
+pub fn draw(driver: Driver, mode: DrawRenderPassMode) -> RenderPass {
+    // Attachments
+    enum Attachments {
+        Albedo,
+        Depth,
+        Light,
+        Material,
+        Normal,
+        Output,
+    }
+    let attachment = |format, ops| Attachment {
+        format: Some(format),
+        samples: 1,
+        ops,
+        stencil_ops: AttachmentOps::DONT_CARE,
+        layouts: const_layout(Layout::ColorAttachmentOptimal),
+    };
+    let albedo = attachment(mode.albedo, AttachmentOps::DONT_CARE);
+    let material = attachment(mode.material, AttachmentOps::DONT_CARE);
+    let normal = attachment(mode.normal, AttachmentOps::DONT_CARE);
+    let output = attachment(mode.albedo, AttachmentOps::PRESERVE);
+    let light = attachment(mode.light, AttachmentOps::DONT_CARE);
+    let depth = attachment(mode.depth, AttachmentOps::DONT_CARE);
+
+    // Subpasses
+    enum Subpasses {
+        Meshes,
+        Lights,
+        Shadows,
+        Resolves,
+    }
+    let meshes = SubpassDesc {
+        colors: &[
+            (Attachments::Albedo as _, Layout::ColorAttachmentOptimal),
+            (Attachments::Material as _, Layout::ColorAttachmentOptimal),
+            (Attachments::Normal as _, Layout::ColorAttachmentOptimal),
+        ],
+        depth_stencil: Some(&(
+            Attachments::Depth as _,
+            Layout::DepthStencilAttachmentOptimal,
+        )),
+        inputs: &[],
+        resolves: &[],
+        preserves: &[],
+    };
+    let lights = SubpassDesc {
+        colors: &[(Attachments::Light as _, Layout::ColorAttachmentOptimal)],
+        depth_stencil: None,
+        inputs: &[
+            (Attachments::Normal as _, Layout::ShaderReadOnlyOptimal),
+            (Attachments::Depth as _, Layout::ShaderReadOnlyOptimal),
+        ],
+        resolves: &[],
+        preserves: &[],
+    };
+    let render = SubpassDesc {
+        colors: &[(Attachments::Output as _, Layout::ColorAttachmentOptimal)],
+        depth_stencil: None,
+        inputs: &[
+            (Attachments::Albedo as _, Layout::ShaderReadOnlyOptimal),
+            (Attachments::Light as _, Layout::ShaderReadOnlyOptimal),
+            (Attachments::Material as _, Layout::ShaderReadOnlyOptimal),
+            (Attachments::Normal as _, Layout::ShaderReadOnlyOptimal),
+        ],
+        resolves: &[],
+        preserves: &[],
+    };
+
+    RenderPass::new(
+        #[cfg(debug_assertions)]
+        "Draw",
+        driver,
+        &[albedo, depth, light, material, normal, output],
+        &[meshes, lights, render],
+        &[
+            SubpassDependency {
+                passes: None..Some(Subpasses::Meshes as _),
+                stages: PipelineStage::BOTTOM_OF_PIPE..PipelineStage::COLOR_ATTACHMENT_OUTPUT,
+                accesses: Access::MEMORY_READ
+                    ..Access::COLOR_ATTACHMENT_READ | Access::COLOR_ATTACHMENT_WRITE,
+                flags: Dependencies::BY_REGION,
+            },
+            SubpassDependency {
+                passes: Some(Subpasses::Meshes as _)..Some(Subpasses::Lights as _),
+                stages: PipelineStage::COLOR_ATTACHMENT_OUTPUT..PipelineStage::FRAGMENT_SHADER,
+                accesses: Access::COLOR_ATTACHMENT_WRITE..Access::SHADER_READ,
+                flags: Dependencies::BY_REGION,
+            },
+            SubpassDependency {
+                passes: Some(1)..Some(2),
+                stages: PipelineStage::COLOR_ATTACHMENT_OUTPUT..PipelineStage::FRAGMENT_SHADER,
+                accesses: Access::COLOR_ATTACHMENT_WRITE..Access::SHADER_READ,
+                flags: Dependencies::BY_REGION,
+            },
+            SubpassDependency {
+                passes: Some(Subpasses::Meshes as _)..None,
+                stages: PipelineStage::COLOR_ATTACHMENT_OUTPUT..PipelineStage::BOTTOM_OF_PIPE,
+                accesses: Access::COLOR_ATTACHMENT_READ | Access::COLOR_ATTACHMENT_WRITE
+                    ..Access::MEMORY_READ,
+                flags: Dependencies::BY_REGION,
+            },
+        ],
+    )
+}
+
+pub fn present(driver: &Driver, format: Format) -> RenderPass {
+    let present_attachment = 0;
+    let present = Attachment {
+        format: Some(format),
+        samples: 1,
+        ops: AttachmentOps::new(AttachmentLoadOp::DontCare, AttachmentStoreOp::Store), // TODO: Another render pass for AttachmentLoadOp::Clear when we need to render to a transparent window?
+        stencil_ops: AttachmentOps::DONT_CARE,
+        layouts: Layout::Undefined..Layout::Present,
+    };
+    let subpass = SubpassDesc {
+        colors: &[(present_attachment, Layout::ColorAttachmentOptimal)],
+        depth_stencil: None,
+        inputs: &[],
+        resolves: &[],
+        preserves: &[],
+    };
+    RenderPass::new(
+        #[cfg(debug_assertions)]
+        "Write",
+        Driver::clone(&driver),
+        &[present],
         &[subpass],
         &[],
     )

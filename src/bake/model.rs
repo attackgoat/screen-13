@@ -4,10 +4,7 @@ use {
     },
     crate::{
         math::{quat, vec3, Mat4, Quat, Sphere, Vec3},
-        pak::{
-            model::{Batch, Mesh, TriangleMode},
-            IndexType, Model, ModelId, PakBuf,
-        },
+        pak::{model::Mesh, IndexType, Model, ModelId, PakBuf},
     },
     gltf::{
         import,
@@ -135,6 +132,9 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
             .filter(|(mode, _)| mode.is_some())
             .map(|(mode, primitive)| (mode.unwrap(), primitive))
         {
+            // TODO: Support fan/list?
+            assert_eq!(mode, TriangleMode::List);
+
             let data = primitive.reader(|buf| bufs.get(buf.index()).map(|data| &*data.0));
             let indices = data.read_indices().unwrap().into_u32().collect::<Vec<_>>();
             let positions = data.read_positions().unwrap().collect::<Vec<_>>();
@@ -148,10 +148,7 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
             all_positions.extend_from_slice(&positions);
 
             let index_end = index_count + indices.len() as u32;
-            batches.push(Batch {
-                indices: index_count..index_end,
-                mode,
-            });
+            batches.push(index_count..index_end);
             index_count = index_end;
 
             match index_ty {
@@ -254,4 +251,11 @@ fn tri_mode(primitive: &Primitive) -> Option<TriangleMode> {
         Mode::TriangleStrip => Some(TriangleMode::Strip),
         _ => None,
     }
+}
+
+#[derive(Debug, PartialEq)]
+enum TriangleMode {
+    Fan,
+    List,
+    Strip,
 }

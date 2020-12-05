@@ -18,6 +18,7 @@ pub struct GeometryBuffer {
     pub light: Lease<Texture2d>,
     pub material: Lease<Texture2d>,
     pub normal: Lease<Texture2d>,
+    pub output: Lease<Texture2d>,
 }
 
 impl GeometryBuffer {
@@ -98,6 +99,19 @@ impl GeometryBuffer {
             1,
             1,
         );
+        let output = pool.texture(
+            #[cfg(debug_assertions)]
+            &format!("{} (Output)", name),
+            dims,
+            Tiling::Optimal,
+            albedo_fmt,
+            &[],
+            Layout::Undefined,
+            ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSFER_SRC,
+            1,
+            1,
+            1,
+        );
 
         Self {
             albedo,
@@ -105,6 +119,7 @@ impl GeometryBuffer {
             light,
             material,
             normal,
+            output,
         }
     }
 }

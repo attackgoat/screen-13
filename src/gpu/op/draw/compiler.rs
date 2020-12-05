@@ -112,7 +112,7 @@ impl Compilation<'_> {
         let model = cmd.model.as_ref();
         let meshes = model.meshes(cmd.mesh_filter);
 
-        Instruction::MeshDraw(meshes)
+        Instruction::MeshDraw((meshes, cmd.transform))
     }
 
     // fn draw_point_lights(buf: &mut Lease<Data>, range: usize) -> Instruction {
@@ -122,6 +122,11 @@ impl Compilation<'_> {
     // fn draw_rect_light(buf: &mut DirtyData<Line>, count: usize) -> Instruction {
     //     Instruction::DrawLines((&mut buf.data.current, count))
     // }
+
+    /// Returns true if no actual models or lines are rendered
+    pub fn is_empty(&self) -> bool {
+        self.compiler.code.is_empty()
+    }
 
     pub fn mesh_materials(&self) -> impl ExactSizeIterator<Item = &Material> {
         self.compiler.mesh_materials.iter()
@@ -369,50 +374,50 @@ impl Compiler {
         let rect_light_idx = search_group_idx(point_light_idx.., SearchIdx::RectLight);
         let spotlight_idx = search_group_idx(rect_light_idx.., SearchIdx::Spotlight);
         let line_idx = search_group_idx(spotlight_idx.., SearchIdx::Line);
+        let model_count = point_light_idx;
+        let point_light_count = rect_light_idx - point_light_idx;
+        let rect_light_count = spotlight_idx - rect_light_idx;
+        let spotlight_count = line_idx - spotlight_idx;
+        let line_count = cmds.len() - line_idx;
 
         // Model drawing
-        let model_count = point_light_idx;
         if model_count > 0 {
             self.compile_models(&cmds[0..model_count]);
-        }
 
-        // Point light drawing
-        let point_light_count = rect_light_idx - point_light_idx;
-        if point_light_count > 0 {
-            self.compile_point_lights(
-                #[cfg(debug_assertions)]
-                name,
-                pool,
-                point_light_count,
-            );
-        }
+            // Point light drawing
+            if point_light_count > 0 {
+                self.compile_point_lights(
+                    #[cfg(debug_assertions)]
+                    name,
+                    pool,
+                    point_light_count,
+                );
+            }
 
-        // Rect light drawing
-        let rect_light_count = spotlight_idx - rect_light_idx;
-        if rect_light_count > 0 {
-            let rect_lights = rect_light_idx..spotlight_idx;
-            self.compile_rect_lights(
-                #[cfg(debug_assertions)]
-                name,
-                pool,
-                &cmds[rect_lights],
-            );
-        }
+            // Rect light drawing
+            if rect_light_count > 0 {
+                let rect_lights = rect_light_idx..spotlight_idx;
+                self.compile_rect_lights(
+                    #[cfg(debug_assertions)]
+                    name,
+                    pool,
+                    &cmds[rect_lights],
+                );
+            }
 
-        // Spotlight drawing
-        let spotlight_count = line_idx - spotlight_idx;
-        if spotlight_count > 0 {
-            let spotlights = spotlight_idx..line_idx;
-            self.compile_spotlights(
-                #[cfg(debug_assertions)]
-                name,
-                pool,
-                &cmds[spotlights],
-            );
+            // Spotlight drawing
+            if spotlight_count > 0 {
+                let spotlights = spotlight_idx..line_idx;
+                self.compile_spotlights(
+                    #[cfg(debug_assertions)]
+                    name,
+                    pool,
+                    &cmds[spotlights],
+                );
+            }
         }
 
         // Line drawing
-        let line_count = cmds.len() - line_idx;
         if line_count > 0 {
             let lines = line_idx..cmds.len();
             self.compile_lines(

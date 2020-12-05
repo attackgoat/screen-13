@@ -1,6 +1,7 @@
 use {
     crate::{
         gpu::{data::CopyRange, model::MeshIter, Data},
+        math::Mat4,
         pak::IndexType,
     },
     std::ops::Range,
@@ -23,7 +24,7 @@ pub enum Instruction<'a> {
     MeshBegin,
     MeshBind(MeshBind<'a>),
     MeshDescriptorSet(usize),
-    MeshDraw(MeshIter<'a>),
+    MeshDraw((MeshIter<'a>, Mat4)),
     // Spotlight(SpotlightCommand),
     // Sunlight(SunlightCommand),
     // Transparency((f32, MeshCommand<'a>)),
