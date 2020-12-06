@@ -93,10 +93,15 @@ impl BitmapOp {
             Mapping::flush(&mut dst).unwrap(); // TODO: Error handling
         }
 
-        let desired_fmts = match bitmap.format() {
-            BitmapFormat::R => &[Format::R8Unorm],
-            BitmapFormat::Rg => &[Format::Rg8Unorm],
-            BitmapFormat::Rgb => &[Format::Rgb8Unorm],
+        let desired_fmts: &[Format] = match bitmap.format() {
+            BitmapFormat::R => &[
+                Format::R8Unorm,
+                Format::Rg8Unorm,
+                Format::Rgb8Unorm,
+                Format::Rgba8Unorm,
+            ],
+            BitmapFormat::Rg => &[Format::Rg8Unorm, Format::Rgb8Unorm, Format::Rgba8Unorm],
+            BitmapFormat::Rgb => &[Format::Rgb8Unorm, Format::Rgba8Unorm],
             BitmapFormat::Rgba => &[Format::Rgba8Unorm],
         };
 

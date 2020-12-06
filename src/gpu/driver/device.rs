@@ -145,11 +145,11 @@ impl PhysicalDevice for Device {
                         tiling,
                         usage,
                     ) {
-                        #[cfg(debug_assertions)]
-                        debug!(
-                            "Picking format {:?} (desired {:?}) found (tiling={:?} usage={:?})",
-                            *fmt, desired_fmts[0], tiling, usage
-                        );
+                        // #[cfg(debug_assertions)]
+                        // trace!(
+                        //     "Picking format {:?} (desired {:?}) found (tiling={:?} usage={:?})",
+                        //     *fmt, desired_fmts[0], tiling, usage
+                        // );
 
                         return Some(*fmt);
                     }

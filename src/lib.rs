@@ -1,10 +1,8 @@
 //#![deny(warnings)]
 #![allow(dead_code)]
 
-extern crate pretty_env_logger;
-
 #[macro_use]
-extern crate log as log_crate;
+extern crate log;
 
 pub mod camera;
 pub mod color;
@@ -21,12 +19,9 @@ pub mod pak;
 
 /// Things, particularly traits, which are used in almost every single Screen 13 game.
 pub mod prelude {
-    pub use {
-        super::{
-            color::CORNFLOWER_BLUE, math::Extent, DynScreen, Engine, Gpu, Input, Program, Render,
-            Screen,
-        },
-        log_crate::{debug, error, info, trace, warn},
+    pub use super::{
+        color::CORNFLOWER_BLUE, math::Extent, DynScreen, Engine, Gpu, Input, Program, Render,
+        Screen,
     };
 }
 
@@ -62,21 +57,6 @@ use {
 
 pub type DynScreen = Box<dyn Screen>;
 
-/// Only required when you are not running an engine instance but still using other
-/// engine types and you want debugging setup.
-pub fn init_debug() {
-    pretty_env_logger::init();
-
-    /*
-    TODO
-    #[cfg(target_arch = "wasm32")]
-    console_log::init_with_level(log::Level::Debug).unwrap();
-    #[cfg(not(target_arch = "wasm32"))]
-    env_logger::init();*/
-
-    info!("Screen 13 v0.1.0");
-}
-
 pub struct Engine {
     config: Config,
     game: Game,
@@ -84,9 +64,6 @@ pub struct Engine {
 
 impl Engine {
     pub fn new(program: Program) -> Self {
-        #[cfg(debug_assertions)]
-        init_debug();
-
         // Read the config file
         let config = Config::read(program.name).expect("Could not read engine config file");
 
