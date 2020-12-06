@@ -1,7 +1,7 @@
 use {
     super::{
-        id::Id, Animation, AnimationId, Bitmap, BitmapId, BlobId, Compression, DataRef, FontBitmap,
-        FontBitmapId, Material, MaterialId, Model, ModelId, Scene, SceneId,
+        id::Id, Animation, AnimationId, Bitmap, BitmapFont, BitmapFontId, BitmapId, BlobId,
+        Compression, DataRef, Material, MaterialId, Model, ModelId, Scene, SceneId,
     },
     bincode::serialize_into,
     serde::{Deserialize, Serialize},
@@ -34,9 +34,9 @@ pub struct PakBuf {
 
     // These fields are loaded on demand
     anims: Vec<DataRef<Animation>>,
+    bitmap_fonts: Vec<DataRef<BitmapFont>>,
     bitmaps: Vec<DataRef<Bitmap>>,
     blobs: Vec<DataRef<Vec<u8>>>,
-    font_bitmaps: Vec<DataRef<FontBitmap>>,
     models: Vec<DataRef<Model>>,
     scenes: Vec<DataRef<Scene>>,
 }
@@ -50,12 +50,12 @@ impl PakBuf {
         self.bitmaps[id.0 as usize].pos_len()
     }
 
-    pub(super) fn blob(&self, id: BlobId) -> (u64, usize) {
-        self.blobs[id.0 as usize].pos_len()
+    pub(super) fn bitmap_font(&self, id: BitmapFontId) -> (u64, usize) {
+        self.bitmap_fonts[id.0 as usize].pos_len()
     }
 
-    pub(super) fn font_bitmap(&self, id: FontBitmapId) -> (u64, usize) {
-        self.font_bitmaps[id.0 as usize].pos_len()
+    pub(super) fn blob(&self, id: BlobId) -> (u64, usize) {
+        self.blobs[id.0 as usize].pos_len()
     }
 
     pub(crate) fn id<K: AsRef<str>>(&self, key: K) -> Option<Id> {
@@ -90,22 +90,22 @@ impl PakBuf {
         id
     }
 
+    pub(crate) fn push_bitmap_font(&mut self, key: String, val: BitmapFont) -> BitmapFontId {
+        assert!(self.ids.get(&key).is_none());
+
+        let id = BitmapFontId(self.blobs.len() as _);
+        self.ids.insert(key, Id::BitmapFont(id));
+        self.bitmap_fonts.push(DataRef::Data(val));
+
+        id
+    }
+
     pub(crate) fn push_blob(&mut self, key: String, val: Vec<u8>) -> BlobId {
         assert!(self.ids.get(&key).is_none());
 
         let id = BlobId(self.blobs.len() as _);
         self.ids.insert(key, Id::Blob(id));
         self.blobs.push(DataRef::Data(val));
-
-        id
-    }
-
-    pub(crate) fn push_font_bitmap(&mut self, key: String, val: FontBitmap) -> FontBitmapId {
-        assert!(self.ids.get(&key).is_none());
-
-        let id = FontBitmapId(self.blobs.len() as _);
-        self.ids.insert(key, Id::FontBitmap(id));
-        self.font_bitmaps.push(DataRef::Data(val));
 
         id
     }
@@ -188,7 +188,7 @@ impl PakBuf {
         self.anims = Self::write_refs(&mut writer, self.anims.drain(..), compression);
         self.bitmaps = Self::write_refs(&mut writer, self.bitmaps.drain(..), compression);
         self.blobs = Self::write_refs(&mut writer, self.blobs.drain(..), compression);
-        self.font_bitmaps = Self::write_refs(&mut writer, self.font_bitmaps.drain(..), compression);
+        self.bitmap_fonts = Self::write_refs(&mut writer, self.bitmap_fonts.drain(..), compression);
         self.models = Self::write_refs(&mut writer, self.models.drain(..), compression);
         self.scenes = Self::write_refs(&mut writer, self.scenes.drain(..), compression);
 

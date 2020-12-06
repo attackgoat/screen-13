@@ -7,17 +7,17 @@ pub struct AnimationId(pub(crate) u16);
 pub struct BitmapId(pub(crate) u16);
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-pub struct BlobId(pub(crate) u16);
+pub struct BitmapFontId(pub(crate) u16);
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-pub struct FontBitmapId(pub(crate) u16);
+pub struct BlobId(pub(crate) u16);
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum Id {
     Animation(AnimationId),
     Bitmap(BitmapId),
+    BitmapFont(BitmapFontId),
     Blob(BlobId),
-    FontBitmap(FontBitmapId),
     Material(MaterialId),
     Model(ModelId),
     Scene(SceneId),
@@ -39,16 +39,16 @@ impl Id {
         }
     }
 
-    pub fn as_blob(&self) -> Option<BlobId> {
+    pub fn as_bitmap_font(&self) -> Option<BitmapFontId> {
         match self {
-            Self::Blob(id) => Some(*id),
+            Self::BitmapFont(id) => Some(*id),
             _ => None,
         }
     }
 
-    pub fn as_font_bitmap(&self) -> Option<FontBitmapId> {
+    pub fn as_blob(&self) -> Option<BlobId> {
         match self {
-            Self::FontBitmap(id) => Some(*id),
+            Self::Blob(id) => Some(*id),
             _ => None,
         }
     }
@@ -94,15 +94,15 @@ impl From<BitmapId> for Id {
     }
 }
 
-impl From<BlobId> for Id {
-    fn from(id: BlobId) -> Self {
-        Self::Blob(id)
+impl From<BitmapFontId> for Id {
+    fn from(id: BitmapFontId) -> Self {
+        Self::BitmapFont(id)
     }
 }
 
-impl From<FontBitmapId> for Id {
-    fn from(id: FontBitmapId) -> Self {
-        Self::FontBitmap(id)
+impl From<BlobId> for Id {
+    fn from(id: BlobId) -> Self {
+        Self::Blob(id)
     }
 }
 

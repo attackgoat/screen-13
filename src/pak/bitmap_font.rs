@@ -4,18 +4,18 @@ use {
 };
 
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
-pub struct FontBitmap {
-    def: Vec<u8>,
+pub struct BitmapFont {
+    def: String,
     pages: Vec<Bitmap>,
 }
 
-impl FontBitmap {
-    pub(crate) fn new(def: Vec<u8>, pages: Vec<Bitmap>) -> Self {
+impl BitmapFont {
+    pub(crate) fn new(def: String, pages: Vec<Bitmap>) -> Self {
         Self { def, pages }
     }
 
-    pub fn def(&self) -> &[u8] {
-        self.def.as_slice()
+    pub fn def(&self) -> &str {
+        self.def.as_str()
     }
 
     pub fn pages(&self) -> impl Iterator<Item = &Bitmap> {

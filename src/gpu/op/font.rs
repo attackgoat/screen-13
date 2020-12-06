@@ -34,7 +34,7 @@ use {
     gfx_impl::Backend as _Backend,
     std::{
         f32,
-        io::{Read, Seek},
+        io::{Cursor, Read, Seek},
         iter::{empty, once},
         ops::Range,
         u64,
@@ -58,10 +58,14 @@ impl Font {
         pak: &mut Pak<R>,
         key: K,
     ) -> Self {
-        let id = pak.font_bitmap_id(key).unwrap();
-        let font_bitmap = pak.read_font_bitmap(id);
-        let def = BMFont::new(font_bitmap.def(), OrdinateOrientation::TopToBottom).unwrap();
-        let pages = font_bitmap
+        let id = pak.bitmap_font_id(key).unwrap();
+        let bitmap_font = pak.read_bitmap_font(id);
+        let def = BMFont::new(
+            Cursor::new(bitmap_font.def()),
+            OrdinateOrientation::TopToBottom,
+        )
+        .unwrap();
+        let pages = bitmap_font
             .pages()
             .map(|page| unsafe {
                 BitmapOp::new(

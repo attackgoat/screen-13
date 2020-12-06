@@ -3,8 +3,8 @@ pub(crate) mod scene;
 
 mod anim;
 mod bitmap;
+mod bitmap_font;
 mod data_ref;
-mod font_bitmap;
 mod id;
 mod material;
 mod pak_buf;
@@ -14,8 +14,8 @@ pub use {
     self::{
         anim::{Animation, Channel},
         bitmap::{Bitmap, Format as BitmapFormat},
-        font_bitmap::FontBitmap,
-        id::{AnimationId, BitmapId, BlobId, FontBitmapId, MaterialId, ModelId, SceneId, TextId},
+        bitmap_font::BitmapFont,
+        id::{AnimationId, BitmapFontId, BitmapId, BlobId, MaterialId, ModelId, SceneId, TextId},
         material::Material,
         model::Model,
         pak_buf::PakBuf,
@@ -211,16 +211,16 @@ where
         }
     }
 
-    pub fn blob_id<K: AsRef<str>>(&self, key: K) -> Option<BlobId> {
-        if let Some(Id::Blob(id)) = self.buf.id(key) {
+    pub fn bitmap_font_id<K: AsRef<str>>(&self, key: K) -> Option<BitmapFontId> {
+        if let Some(Id::BitmapFont(id)) = self.buf.id(key) {
             Some(id)
         } else {
             None
         }
     }
 
-    pub fn font_bitmap_id<K: AsRef<str>>(&self, key: K) -> Option<FontBitmapId> {
-        if let Some(Id::FontBitmap(id)) = self.buf.id(key) {
+    pub fn blob_id<K: AsRef<str>>(&self, key: K) -> Option<BlobId> {
+        if let Some(Id::Blob(id)) = self.buf.id(key) {
             Some(id)
         } else {
             None
@@ -293,13 +293,13 @@ where
         self.read(pos, len)
     }
 
-    pub fn read_blob(&mut self, id: BlobId) -> Vec<u8> {
-        let (pos, len) = self.buf.blob(id);
+    pub fn read_bitmap_font(&mut self, id: BitmapFontId) -> BitmapFont {
+        let (pos, len) = self.buf.bitmap_font(id);
         self.read(pos, len)
     }
 
-    pub fn read_font_bitmap(&mut self, id: FontBitmapId) -> FontBitmap {
-        let (pos, len) = self.buf.font_bitmap(id);
+    pub fn read_blob(&mut self, id: BlobId) -> Vec<u8> {
+        let (pos, len) = self.buf.blob(id);
         self.read(pos, len)
     }
 

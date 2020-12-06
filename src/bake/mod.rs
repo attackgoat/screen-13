@@ -10,7 +10,7 @@ mod text;
 pub use self::{
     anim::bake_animation,
     asset::{Asset, Content, Model},
-    bitmap::{bake_bitmap, bake_font_bitmap},
+    bitmap::{bake_bitmap, bake_bitmap_font},
     blob::bake_blob,
     material::bake_material,
     model::bake_model,

@@ -4,11 +4,11 @@ use {
 };
 
 #[derive(Clone, Deserialize)]
-pub struct FontBitmap {
+pub struct BitmapFont {
     src: PathBuf,
 }
 
-impl FontBitmap {
+impl BitmapFont {
     pub fn src(&self) -> &Path {
         self.src.as_path()
     }

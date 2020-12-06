@@ -11,7 +11,7 @@ mod pak;
 use {
     self::{
         bake::{
-            bake_animation, bake_bitmap, bake_font_bitmap, bake_material, bake_model, bake_scene,
+            bake_animation, bake_bitmap, bake_bitmap_font, bake_material, bake_model, bake_scene,
             Asset,
         },
         pak::PakBuf,
@@ -93,8 +93,8 @@ fn main() -> Result<(), IoError> {
                     Asset::Bitmap(ref bitmap) => {
                         bake_bitmap(&project_dir, &asset_filename, bitmap, &mut pak);
                     }
-                    Asset::FontBitmap(ref font_bitmap) => {
-                        bake_font_bitmap(&project_dir, &asset_filename, font_bitmap, &mut pak);
+                    Asset::BitmapFont(ref bitmap_font) => {
+                        bake_bitmap_font(&project_dir, &asset_filename, bitmap_font, &mut pak);
                     }
                     // Asset::Language(ref lang) => {
                     //     bake_lang(&project_dir, &asset_filename, lang, &mut pak, &mut log)

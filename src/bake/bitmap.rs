@@ -1,12 +1,12 @@
 use {
     super::{
-        asset::{Bitmap as BitmapAsset, FontBitmap as FontBitmapAsset},
+        asset::{Bitmap as BitmapAsset, BitmapFont as BitmapFontAsset},
         get_filename_key, get_path,
     },
-    crate::pak::{Bitmap, BitmapFormat, BitmapId, FontBitmap, FontBitmapId, PakBuf},
+    crate::pak::{Bitmap, BitmapFont, BitmapFontId, BitmapFormat, BitmapId, PakBuf},
     bmfont::{BMFont, OrdinateOrientation},
     image::{buffer::ConvertBuffer, open as image_open, DynamicImage, RgbaImage},
-    std::{fs::read, path::Path},
+    std::{fs::read_to_string, io::Cursor, path::Path},
 };
 
 pub fn bake_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
@@ -34,25 +34,25 @@ pub fn bake_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
     pak.push_bitmap(key, bitmap)
 }
 
-pub fn bake_font_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
+pub fn bake_bitmap_font<P1: AsRef<Path>, P2: AsRef<Path>>(
     project_dir: P1,
     asset_filename: P2,
-    font_bitmap_asset: &FontBitmapAsset,
+    bitmap_font_asset: &BitmapFontAsset,
     pak: &mut PakBuf,
-) -> FontBitmapId {
+) -> BitmapFontId {
     let key = get_filename_key(&project_dir, &asset_filename);
     if let Some(id) = pak.id(&key) {
-        return id.as_font_bitmap().unwrap();
+        return id.as_bitmap_font().unwrap();
     }
 
     info!("Processing asset: {}", key);
 
     // Get the fs objects for this asset
     let dir = asset_filename.as_ref().parent().unwrap();
-    let def_filename = get_path(&dir, font_bitmap_asset.src(), project_dir);
-    let def_file = read(&def_filename).unwrap();
+    let def_filename = get_path(&dir, bitmap_font_asset.src(), project_dir);
+    let def_file = read_to_string(&def_filename).unwrap();
     let def_parent = def_filename.parent().unwrap();
-    let def = BMFont::new(def_file.as_slice(), OrdinateOrientation::TopToBottom).unwrap();
+    let def = BMFont::new(Cursor::new(&def_file), OrdinateOrientation::TopToBottom).unwrap();
     let pages = def
         .pages()
         .iter()
@@ -87,7 +87,7 @@ pub fn bake_font_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
         .collect();
 
     // Pak this asset
-    pak.push_font_bitmap(key, FontBitmap::new(def_file, pages))
+    pak.push_bitmap_font(key, BitmapFont::new(def_file, pages))
 }
 
 pub fn pixels<P: AsRef<Path>>(filename: P, fmt: BitmapFormat) -> (u32, Vec<u8>) {
