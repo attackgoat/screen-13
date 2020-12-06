@@ -89,9 +89,9 @@ impl CopyOp {
         let mut src = self.src.borrow_mut();
         let mut dst = self.dst.borrow_mut();
         let dst_offset: Coord = self.dst_offset.into();
-        let dst_offset = dst_offset.as_offset_with_z(0);
+        let dst_offset = dst_offset.into();
         let src_offset: Coord = self.src_offset.into();
-        let src_offset = src_offset.as_offset_with_z(0);
+        let src_offset = src_offset.into();
 
         // Begin
         self.cmd_buf
@@ -122,7 +122,7 @@ impl CopyOp {
                     layers: 0..1,
                 },
                 dst_offset,
-                extent: self.region.as_extent_with_depth(1),
+                extent: self.region.as_extent_depth(1),
                 src_subresource: SubresourceLayers {
                     aspects: Aspects::COLOR,
                     level: 0,

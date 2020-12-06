@@ -44,7 +44,7 @@ impl Coord<f32> {
 impl Coord<i32> {
     pub const ZERO: Self = Self { x: 0, y: 0 };
 
-    pub const fn as_offset_with_z(self, z: i32) -> Offset {
+    pub const fn as_offset_z(self, z: i32) -> Offset {
         Offset {
             x: self.x,
             y: self.y,
@@ -65,7 +65,7 @@ impl Coord<i32> {
 impl Coord<u32> {
     pub const ZERO: Self = Self { x: 0, y: 0 };
 
-    pub const fn as_extent_with_depth(self, depth: u32) -> Extent {
+    pub const fn as_extent_depth(self, depth: u32) -> Extent {
         Extent {
             width: self.x,
             height: self.y,
@@ -171,6 +171,16 @@ impl From<Coord<u32>> for Extent2D {
         Self {
             height: val.y,
             width: val.x,
+        }
+    }
+}
+
+impl From<Coord<i32>> for Offset {
+    fn from(val: Coord<i32>) -> Self {
+        Self {
+            x: val.x as _,
+            y: val.y as _,
+            z: 0,
         }
     }
 }

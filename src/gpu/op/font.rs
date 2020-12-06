@@ -22,7 +22,7 @@ use {
         buffer::{Access as BufferAccess, SubRange, Usage as BufferUsage},
         command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, SubpassContents},
         device::Device as _,
-        format::{Aspects, Format},
+        format::Aspects,
         image::{
             Access as ImageAccess, Layout, Offset, SubresourceLayers, Tiling, Usage as ImageUsage,
         },
@@ -69,7 +69,6 @@ impl Font {
                     "Font",
                     pool,
                     &page,
-                    Format::Rgba8Unorm,
                 )
                 .record()
             })
@@ -229,8 +228,7 @@ impl FontOp {
             name,
             dims,
             Tiling::Optimal,
-            fmt,
-            &[],
+            &[fmt],
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT
                 | ImageUsage::INPUT_ATTACHMENT
@@ -441,7 +439,7 @@ impl FontOp {
                     layers: 0..1,
                 },
                 dst_offset: Offset::ZERO,
-                extent: dims.as_extent_with_depth(1),
+                extent: dims.as_extent_depth(1),
             }),
         );
 
@@ -558,7 +556,7 @@ impl FontOp {
                     layers: 0..1,
                 },
                 dst_offset: Offset::ZERO,
-                extent: dims.as_extent_with_depth(1),
+                extent: dims.as_extent_depth(1),
             }),
         );
 

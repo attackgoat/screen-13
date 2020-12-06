@@ -95,8 +95,7 @@ impl GradientOp {
             name,
             dims,
             Tiling::Optimal,
-            fmt,
-            &[],
+            &[fmt],
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT
                 | ImageUsage::INPUT_ATTACHMENT
@@ -289,7 +288,7 @@ impl GradientOp {
                         layers: 0..1,
                     },
                     dst_offset: Offset::ZERO,
-                    extent: dims.as_extent_with_depth(1),
+                    extent: dims.as_extent_depth(1),
                 }),
             );
         }
@@ -366,7 +365,7 @@ impl GradientOp {
                     layers: 0..1,
                 },
                 dst_offset: Offset::ZERO,
-                extent: dims.as_extent_with_depth(1),
+                extent: dims.as_extent_depth(1),
             }),
         );
 

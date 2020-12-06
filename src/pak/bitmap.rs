@@ -19,7 +19,7 @@ impl Bitmap {
         Extent::new(self.width as u32, self.height() as u32)
     }
 
-    pub fn fmt(&self) -> Format {
+    pub fn format(&self) -> Format {
         self.fmt
     }
 
@@ -38,6 +38,17 @@ impl Bitmap {
 
     pub(crate) fn pixels(&self) -> &[u8] {
         &self.pixels
+    }
+
+    pub(crate) fn stride(&self) -> usize {
+        let bytes = match self.fmt {
+            Format::R => 1,
+            Format::Rg => 2,
+            Format::Rgb => 3,
+            Format::Rgba => 4,
+        };
+
+        self.width() * bytes
     }
 
     pub(crate) fn width(&self) -> usize {

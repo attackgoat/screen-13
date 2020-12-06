@@ -322,7 +322,7 @@ impl DrawOp {
                         layers: 0..1,
                     },
                     dst_offset: Offset::ZERO,
-                    extent: dims.as_extent_with_depth(1),
+                    extent: dims.as_extent_depth(1),
                 }),
             );
         }
@@ -598,7 +598,7 @@ impl DrawOp {
                     layers: 0..1,
                 },
                 dst_offset: Offset::ZERO,
-                extent: dims.as_extent_with_depth(1),
+                extent: dims.as_extent_depth(1),
             }),
         );
 
@@ -639,7 +639,7 @@ impl DrawOp {
                     binding: 0,
                     array_offset: 0,
                     descriptors: once(Descriptor::CombinedImageSampler(
-                        material.metal.borrow().as_default_view().as_ref(),
+                        material.metal_rough.borrow().as_default_view().as_ref(),
                         Layout::ShaderReadOnlyOptimal,
                         graphics.sampler(0).as_ref(),
                     )),
@@ -717,7 +717,7 @@ impl AsRef<[u32; 16]> for LineVertexConsts {
 #[derive(Clone)]
 pub struct Material {
     pub albedo: BitmapRef,
-    pub metal: BitmapRef,
+    pub metal_rough: BitmapRef,
     pub normal: BitmapRef,
 }
 
@@ -726,7 +726,7 @@ impl Eq for Material {}
 impl Hash for Material {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.albedo.as_ptr().hash(state);
-        self.metal.as_ptr().hash(state);
+        self.metal_rough.as_ptr().hash(state);
         self.normal.as_ptr().hash(state);
     }
 }
@@ -738,7 +738,7 @@ impl Ord for Material {
             return res;
         }
 
-        res = BitmapRef::as_ptr(&self.metal).cmp(&BitmapRef::as_ptr(&other.metal));
+        res = BitmapRef::as_ptr(&self.metal_rough).cmp(&BitmapRef::as_ptr(&other.metal_rough));
         if res != Ordering::Less {
             return res;
         }
@@ -751,7 +751,7 @@ impl PartialEq for Material {
     fn eq(&self, other: &Self) -> bool {
         BitmapRef::ptr_eq(&self.albedo, &other.albedo)
             && BitmapRef::ptr_eq(&self.normal, &other.normal)
-            && BitmapRef::ptr_eq(&self.metal, &other.metal)
+            && BitmapRef::ptr_eq(&self.metal_rough, &other.metal_rough)
     }
 }
 

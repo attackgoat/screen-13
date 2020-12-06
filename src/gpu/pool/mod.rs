@@ -79,10 +79,13 @@ impl<'a> Iterator for Drain<'a> {
 pub struct DrawRenderPassMode {
     pub albedo: Format,
     pub depth: Format,
+
     /// Single channel accumulator
     pub light: Format,
+
     /// Dual channel (metal + roughness)
     pub material: Format,
+
     pub normal: Format,
 }
 
@@ -384,19 +387,20 @@ impl Pool {
         #[cfg(debug_assertions)] name: &str,
         dims: Extent,
         desired_tiling: Tiling,
-        desired_fmt: Format,
-        fallback_fmts: &[Format],
+        desired_fmts: &[Format],
         layout: Layout,
         usage: ImageUsage,
         layers: u16,
         mips: u8,
         samples: u8,
     ) -> Lease<TextureRef<Image2d>> {
+        assert!(!desired_fmts.is_empty());
+
         let items = self
             .textures
             .entry(TextureKey {
                 dims,
-                desired_fmt,
+                desired_fmt: desired_fmts[0],
                 layers,
                 mips,
                 samples,
@@ -424,8 +428,7 @@ impl Pool {
                     Driver::clone(&self.driver),
                     dims,
                     desired_tiling,
-                    desired_fmt,
-                    fallback_fmts,
+                    desired_fmts,
                     layout,
                     usage,
                     layers,
@@ -440,8 +443,7 @@ impl Pool {
                     Driver::clone(&self.driver),
                     dims,
                     desired_tiling,
-                    desired_fmt,
-                    fallback_fmts,
+                    desired_fmts,
                     layout,
                     usage,
                     layers,

@@ -251,7 +251,6 @@ impl Gpu {
                 name,
                 &pool,
                 &bitmap,
-                Format::Rgba8Unorm,
             )
             .record()
         }

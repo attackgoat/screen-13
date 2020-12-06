@@ -133,22 +133,23 @@ impl Texture<Image2d> {
         driver: Driver,
         dims: Extent,
         mut desired_tiling: Tiling,
-        desired_fmt: Format,
-        fallback_fmts: &[Format],
+        desired_fmts: &[Format],
         layout: Layout,
         usage: Usage,
         layers: u16,
         samples: u8,
         mips: u8,
     ) -> Self {
+        assert!(!desired_fmts.is_empty());
+
         let fmt = {
             let device = driver.as_ref().borrow();
             device
-                .best_fmt(desired_fmt, fallback_fmts, desired_tiling, usage)
+                .best_fmt(desired_fmts, desired_tiling, usage)
                 .unwrap_or_else(|| {
                     desired_tiling = Tiling::Linear;
                     device
-                        .best_fmt(desired_fmt, fallback_fmts, desired_tiling, usage)
+                        .best_fmt(desired_fmts, desired_tiling, usage)
                         .unwrap()
                 })
         };

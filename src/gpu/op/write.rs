@@ -151,8 +151,7 @@ impl WriteOp {
                 &format!("{} backbuffer", name),
                 dims,
                 Tiling::Optimal,
-                fmt,
-                &[],
+                &[fmt],
                 Layout::Undefined,
                 Usage::COLOR_ATTACHMENT
                     | Usage::INPUT_ATTACHMENT
@@ -318,7 +317,7 @@ impl WriteOp {
                         layers: 0..1,
                     },
                     dst_offset: Offset::ZERO,
-                    extent: dims.as_extent_with_depth(1),
+                    extent: dims.as_extent_depth(1),
                 }),
             );
             dst.set_layout(
@@ -435,7 +434,7 @@ impl WriteOp {
                     layers: 0..1,
                 },
                 dst_offset: Offset::ZERO,
-                extent: dims.as_extent_with_depth(1),
+                extent: dims.as_extent_depth(1),
             }),
         );
 
