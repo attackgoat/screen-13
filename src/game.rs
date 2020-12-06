@@ -81,6 +81,8 @@ impl Game {
         let driver = Driver::clone(gpu.driver());
         let swapchain = Swapchain::new(driver, surface, dims, swapchain_len);
 
+        // TODO: Needed? window.request_redraw();
+
         Self {
             dims,
             event_loop: Some(event_loop),

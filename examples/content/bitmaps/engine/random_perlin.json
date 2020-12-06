@@ -1,6 +1,0 @@
-{
-    "type": "BITMAP",
-    "bitmap": "/3rd_party/corange/textures/random_perlin.png",
-    "forceOpaque": false,
-    "storeKey": true
-}

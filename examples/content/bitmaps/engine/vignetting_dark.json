@@ -1,6 +1,0 @@
-{
-    "type": "BITMAP",
-    "bitmap": "/3rd_party/corange/textures/vignetting_dark.png",
-    "forceOpaque": true,
-    "storeKey": true
-}

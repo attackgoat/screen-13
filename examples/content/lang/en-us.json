@@ -1,9 +1,0 @@
-{
-    "type": "LOCALIZATION",
-    "locale": "en-US",
-    "text": {
-        "COPYRIGHT": "Copyright 2020 John Wells - All Rights Reserved",
-        "PLAYER_NAME": "John",
-        "WINDOW_TITLE": "Trainy"
-    }
-}

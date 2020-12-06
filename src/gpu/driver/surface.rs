@@ -19,13 +19,6 @@ impl Surface {
             ptr: Some(surface),
         })
     }
-
-    pub fn from_raw_surface(surface: <_Backend as Backend>::Surface) -> Result<Self, InitError> {
-        Ok(Self {
-            instance: None,
-            ptr: Some(surface),
-        })
-    }
 }
 
 impl AsMut<<_Backend as Backend>::Surface> for Surface {

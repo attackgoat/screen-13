@@ -8,6 +8,8 @@ const SCREEN_SIZE: Extent = Extent::new(320, 200);
 
 /// This example requires a color graphics adapter.
 fn main() -> ! {
+    pretty_env_logger::init();
+
     // Create an engine instance (loads the engine config file for this named game)
     // NOTE: This line also turns on logging so we should do this before anything else
     let engine = Engine::new(Program::new("screen-13-basic-example"));
@@ -25,7 +27,7 @@ fn main() -> ! {
     .expect("ERROR: You must first pack the game content into a file by running the following command: `cargo run examples/content/basic.toml`");
 
     // Initialize our "game" by loading everything it requires to run
-    let small_10px = engine.gpu().load_font(&mut pak, "fonts/small_10px.fnt");
+    let small_10px = engine.gpu().load_font(&mut pak, "fonts/small_10px");
 
     // Voila!
     engine.run(Box::new(Basic { small_10px }));
@@ -53,23 +55,6 @@ impl Screen for Basic {
             "Hello, world!",
             Coord::new(137, 96),
             qb_color(15),
-        );
-        frame.draw(
-            #[cfg(debug_assertions)]
-            "basic line",
-            &screen_13::camera::Perspective::new(
-                screen_13::math::vec3(0.0, 0.0, 0.0),
-                screen_13::math::vec3(0.0, 0.0, 1.0),
-                0.5..1.5,
-                45.0,
-                0.5,
-            ),
-            &mut [screen_13::gpu::Command::line(
-                screen_13::math::vec3(0.0, 0.0, 0.0),
-                screen_13::color::RED,
-                screen_13::math::vec3(320.0, 200.0, 0.0),
-                screen_13::color::BLUE,
-            )],
         );
 
         // Present the completed frame to the screen

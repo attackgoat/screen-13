@@ -15,14 +15,11 @@ Asset baking is the process of converting files from their native file formats i
 
 ## Quick Start
 
-Included are four examples you might find helpful, in order of complexity:
+Included is example you might find helpful:
 
 - `basic.rs` - Displays 'Hello, World!' on the screen. Please start here.
-- `nibbles.rs` - A game built using lines as the only graphical element. (Done but engine doesn't draw yet)
-- `gorilla.rs` - A game demonstrating 2D bitmaps/tilemaps. (Not started yet)
-- `wasm.rs` - A 3D technology demonstration; runs in your web browser. (Not started yet)
 
-Each of these examples requires an associated asset `.pak` file in order to run, so you will need to run the examples like so:
+The example requires an associated asset `.pak` file in order to run, so you will need to run the examples like so:
 
 ```bash
 cargo run examples/content/basic.toml
@@ -51,7 +48,7 @@ This engine is very young and is likely to change as development continues.
 
 ### Brotli Compression
 
-Higher compression ratio, but somewhat slow during compression.
+Higher compression ratio and somewhat slow during compression.
 
 ```toml
 [content]
@@ -63,7 +60,7 @@ window_size = 20
 
 ### Snap Compression
 
-Faster compression but a worse ratio compared to Brotli.
+Faster during compression and lower compression ratio compared to Brotli.
 
 ```toml
 [content]
@@ -82,12 +79,6 @@ SCREEN 13
 These commands cleared the screen of text and setup a 320x200 256-color paletized color video mode. There were other video modes available, but none of them had the 'magic' of 256 colors.
 
 Additional commands QBasic offered, such as `DRAW`, allowed you to build very simple games incredibly quickly because you didn't have to grok the enirety of linking and compiling in order get things done. I think we should have options like this today, and this project aims to allow future developers to have the same ability to get things done quickly while using modern tools.
-
-## Special Shout-out to Kenney Vleugels
-
-The example code uses a few of the awesome 2D, 3D, and audio assets provided by [Kenney Vleugels](https://www.kenney.nl/). These assets have been generously provided under the CC0 1.0 license and we are therefore able to share them with you in this repository. Please consider supporting Kenney for the excellent work and for what it is doing to help the game development community.
-
-_NOTE:_ If you look within the `examples/content/kenney.nl` directory you will find the packages we are using, however these packages are not the complete packages offered on their website because we have removed any assets that are not used in the examples. If you want to use these assets in your game we recommend you get your copy directly from their website.
 
 ## Notes
 

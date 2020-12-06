@@ -1,0 +1,7 @@
+[content]
+compression = "snap"
+
+[[content.group]]
+assets = [
+    "fonts/small_10px.toml",
+]
