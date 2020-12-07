@@ -1,5 +1,8 @@
 use {
-    super::driver::{Buffer, Driver, PhysicalDevice},
+    super::{
+        align_down, align_up,
+        driver::{Buffer, Driver, PhysicalDevice},
+    },
     gfx_hal::{
         adapter::PhysicalDevice as _,
         buffer::{Access, SubRange, Usage},
@@ -20,16 +23,6 @@ use {
         u64,
     },
 };
-
-/// Rounds down a multiple of atom; panics if atom is zero
-fn align_down(size: u64, atom: u64) -> u64 {
-    size - size % atom
-}
-
-/// Roudns up to a multiple of atom; panics if either parameter is zero
-fn align_up(size: u64, atom: u64) -> u64 {
-    (size - 1) - (size - 1) % atom + atom
-}
 
 /// An iterator to allow incoming `Iterator`'s of `CopyRange` to output `Barrier::Buffer` for the destination region.
 struct BarrierIter<'a, T>

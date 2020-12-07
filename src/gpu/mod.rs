@@ -45,6 +45,7 @@ use {
         window::Surface as _, Instance as _,
     },
     gfx_impl::{Backend as _Backend, Instance},
+    num_traits::Num,
     std::{
         cell::RefCell,
         fmt::Debug,
@@ -60,11 +61,6 @@ use {
     std::time::Instant,
 };
 
-// TODO: Make configurable!
-pub const MULTISAMPLE_COUNT: u8 = 4;
-// const DIRECTIONAL_SHADOW_BUFFERS: usize = 1;
-// const SPOT_SHADOW_BUFFERS: usize = 8;
-
 /// A two dimensional rendering result.
 pub type Texture2d = TextureRef<Image2d>;
 
@@ -75,6 +71,16 @@ pub(crate) type PoolRef = Rc<RefCell<Pool>>;
 pub(crate) type TextureRef<I> = Rc<RefCell<Texture<I>>>;
 
 type OpCache = RefCell<Option<Vec<Box<dyn Op>>>>;
+
+/// Rounds down a multiple of atom; panics if atom is zero
+fn align_down<N: Copy + Num>(size: N, atom: N) -> N {
+    size - size % atom
+}
+
+/// Rounds up to a multiple of atom; panics if either parameter is zero
+fn align_up<N: Copy + Num>(size: N, atom: N) -> N {
+    (size - <N>::one()) - (size - <N>::one()) % atom + atom
+}
 
 fn create_instance() -> (Adapter<_Backend>, Instance) {
     let instance = Instance::create("attackgoat/screen-13", 1).unwrap();

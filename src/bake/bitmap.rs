@@ -65,7 +65,7 @@ pub fn bake_bitmap_font<P1: AsRef<Path>, P2: AsRef<Path>>(
             for y in 0..width as usize {
                 for x in 0..width as usize {
                     let g = pixels[y * width as usize * 3 + x * 3 + 1];
-                    let r = pixels[y * width as usize * 3 + x * 3 + 2];
+                    let r = pixels[y * width as usize * 3 + x * 3];
                     if 0xff == r {
                         better_pixels.push(0xff);
                         better_pixels.push(0x00);

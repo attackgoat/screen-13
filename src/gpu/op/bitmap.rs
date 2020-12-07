@@ -2,21 +2,26 @@ use {
     super::Op,
     crate::{
         gpu::{
+            align_up,
             data::Mapping,
-            driver::{CommandPool, Device, Driver, Fence, PhysicalDevice},
-            pool::Lease,
+            driver::{
+                bind_compute_descriptor_set, change_channel_type, CommandPool, ComputePipeline,
+                Device, Driver, Fence, PhysicalDevice,
+            },
+            pool::{Compute, ComputeMode, Lease},
             Data, PoolRef, Texture2d,
         },
-        math::{Coord, Extent},
+        math::Coord,
         pak::{Bitmap as PakBitmap, BitmapFormat},
     },
     gfx_hal::{
-        buffer::{Access as BufferAccess, Usage as BufferUsage},
+        buffer::{Access as BufferAccess, SubRange, Usage as BufferUsage},
         command::{BufferImageCopy, CommandBuffer, CommandBufferFlags, Level},
-        format::{Aspects, Format},
+        device::Device as _,
+        format::{Aspects, ChannelType, Format, SurfaceType},
         image::{Access as ImageAccess, Layout, SubresourceLayers, Tiling, Usage as ImageUsage},
         pool::CommandPool as _,
-        pso::PipelineStage,
+        pso::{Descriptor, DescriptorSetWrite, PipelineStage},
         queue::{CommandQueue as _, Submission},
         Backend,
     },
@@ -31,14 +36,19 @@ use {
 
 /// Holds a decoded 2D image with 1-4 channels.
 pub struct Bitmap {
-    op: BitmapOp, // TODO: Dump the extras!
+    cmd_buf: <_Backend as Backend>::CommandBuffer,
+    cmd_pool: Lease<CommandPool>,
+    conv_fmt: Option<Lease<Compute>>,
+    fence: Lease<Fence>,
+    pixel_buf: Lease<Data>,
+    texture: Lease<Texture2d>,
 }
 
 impl Deref for Bitmap {
     type Target = Texture2d;
 
     fn deref(&self) -> &Self::Target {
-        &self.op.texture
+        &self.texture
     }
 }
 
@@ -50,14 +60,14 @@ impl Drop for Bitmap {
 
 impl Op for Bitmap {
     fn wait(&self) {
-        Fence::wait(&self.op.fence);
+        Fence::wait(&self.fence);
     }
 }
 
 pub struct BitmapOp {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
-    dims: Extent,
+    conv_fmt: Option<ComputeDispatch>,
     driver: Driver,
     fence: Lease<Fence>,
     pixel_buf: Lease<Data>,
@@ -73,26 +83,10 @@ impl BitmapOp {
         pool: &PoolRef,
         bitmap: &PakBitmap,
     ) -> Self {
-        // Lease some data from the pool
         let pool = PoolRef::clone(pool);
         let mut pool_ref = pool.borrow_mut();
-        let pixel_buf_len = bitmap.stride() * bitmap.height();
-        let mut pixel_buf = pool_ref.data_usage(
-            #[cfg(debug_assertions)]
-            name,
-            pixel_buf_len as _,
-            BufferUsage::TRANSFER_SRC,
-        );
 
-        {
-            // Fill the cpu-side buffer with our pixel data
-            let src = bitmap.pixels();
-            let mut dst = pixel_buf.map_range_mut(0..pixel_buf_len as _).unwrap(); // TODO: Error handling
-            copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), pixel_buf_len);
-
-            Mapping::flush(&mut dst).unwrap(); // TODO: Error handling
-        }
-
+        // Lease a texture to hold the decoded bitmap
         let desired_fmts: &[Format] = match bitmap.format() {
             BitmapFormat::R => &[
                 Format::R8Unorm,
@@ -104,13 +98,11 @@ impl BitmapOp {
             BitmapFormat::Rgb => &[Format::Rgb8Unorm, Format::Rgba8Unorm],
             BitmapFormat::Rgba => &[Format::Rgba8Unorm],
         };
-
-        // Lease a texture to hold the decoded bitmap
         let texture = pool_ref.texture(
             #[cfg(debug_assertions)]
             name,
             bitmap.dims(),
-            Tiling::Optimal, // TODO: Use is_supported and is_compatible to figure this out
+            Tiling::Optimal,
             desired_fmts,
             Layout::Undefined,
             ImageUsage::STORAGE
@@ -122,6 +114,96 @@ impl BitmapOp {
             1,
         );
 
+        // Figure out what kind of bitmap we're decoding
+        let bitmap_stride = bitmap.stride();
+        let texture_fmt = texture.borrow().format();
+        let conv_fmt = if texture_fmt == desired_fmts[0] {
+            // No format conversion: We will use a simple copy-buffer-to-image command
+            None
+        } else {
+            // Format conversion: We will use a compute shader to convert buffer-to-image
+            let width = bitmap.dims().x;
+            let surface_ty = texture_fmt.base_format().0;
+            let (mode, dispatch_count, pixel_buf_stride) = match bitmap.format() {
+                // BitmapFormat::R => match surface_ty {
+                //     SurfaceType::R8_G8,
+                //     SurfaceType::R8_G8_B8,
+                //     SurfaceType::B8_G8_R8,
+                //     SurfaceType::R8_G8_B8_A8,
+                //     SurfaceType::B8_G8_R8_A8,
+                //     SurfaceType::A8_B8_G8_R8,
+                // }
+                // BitmapFormat::Rg => match surface_ty {
+                //     SurfaceType::R8_G8_B8,
+                //     SurfaceType::B8_G8_R8,
+                //     SurfaceType::R8_G8_B8_A8,
+                //     SurfaceType::B8_G8_R8_A8,
+                //     SurfaceType::A8_B8_G8_R8,
+                // }
+                BitmapFormat::Rgb => {
+                    let dispatch = (width >> 2) + (width % 3);
+                    let stride = align_up(bitmap_stride as u32, 12);
+                    match surface_ty {
+                        SurfaceType::R8_G8_B8_A8 => (ComputeMode::DecodeRgbRgba, dispatch, stride),
+                        // SurfaceType::B8_G8_R8_A8 => todo!(),
+                        // SurfaceType::A8_B8_G8_R8 => todo!(),
+                        _ => unreachable!(),
+                    }
+                }
+                _ => unreachable!(),
+            };
+
+            let compute = pool_ref.compute(
+                #[cfg(debug_assertions)]
+                name,
+                mode,
+            );
+
+            Some(ComputeDispatch {
+                compute,
+                dispatch_count,
+                pixel_buf_stride,
+            })
+        };
+
+        // Lease some data from the pool
+        let height = bitmap.height();
+        let pixel_buf_len = bitmap_stride * height;
+        let mut pixel_buf = pool_ref.data_usage(
+            #[cfg(debug_assertions)]
+            name,
+            pixel_buf_len as _,
+            if conv_fmt.is_some() {
+                BufferUsage::STORAGE
+            } else {
+                BufferUsage::TRANSFER_SRC
+            },
+        );
+
+        {
+            let src = bitmap.pixels();
+            let mut dst = pixel_buf.map_range_mut(0..pixel_buf_len as _).unwrap(); // TODO: Error handling
+            let pixel_buf_stride = conv_fmt
+                .as_ref()
+                .map(|c| c.pixel_buf_stride as _)
+                .unwrap_or(bitmap_stride);
+
+            // Fill the cpu-side buffer with our pixel data
+            if bitmap_stride == pixel_buf_stride {
+                copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), pixel_buf_len);
+            } else {
+                // At this point we must convert from pak-format to shader-format by copying in each row.
+                for y in 0..height {
+                    let src_offset = y * bitmap_stride;
+                    let dst_offset = y * pixel_buf_stride;
+                    dst[dst_offset..dst_offset + bitmap_stride]
+                        .copy_from_slice(&src[src_offset..src_offset + bitmap_stride]);
+                }
+
+                Mapping::flush(&mut dst).unwrap(); // TODO: Error handling
+            }
+        }
+
         // Allocate the command buffer
         let family = Device::queue_family(&pool_ref.driver().borrow());
         let mut cmd_pool = pool_ref.cmd_pool(family);
@@ -129,7 +211,7 @@ impl BitmapOp {
         Self {
             cmd_buf: cmd_pool.allocate_one(Level::Primary),
             cmd_pool,
-            dims: bitmap.dims(),
+            conv_fmt,
             driver: Driver::clone(pool_ref.driver()),
             fence: pool_ref.fence(),
             pixel_buf,
@@ -143,20 +225,69 @@ impl BitmapOp {
     /// None
     pub fn record(mut self) -> Bitmap {
         unsafe {
-            self.submit();
+            if self.conv_fmt.is_some() {
+                self.write_descriptors();
+            }
+
+            self.submit_begin();
+
+            if self.conv_fmt.is_some() {
+                self.submit_conv();
+            } else {
+                self.submit_copy();
+            }
+
+            self.submit_finish();
         };
 
-        Bitmap { op: self }
+        Bitmap {
+            cmd_buf: self.cmd_buf,
+            cmd_pool: self.cmd_pool,
+            conv_fmt: self.conv_fmt.map(|c| c.compute),
+            fence: self.fence,
+            pixel_buf: self.pixel_buf,
+            texture: self.texture,
+        }
     }
 
-    unsafe fn submit(&mut self) {
-        let mut device = self.driver.borrow_mut();
+    unsafe fn submit_begin(&mut self) {
+        self.cmd_buf
+            .begin_primary(CommandBufferFlags::ONE_TIME_SUBMIT);
+    }
+
+    unsafe fn submit_conv(&mut self) {
+        let conv_fmt = self.conv_fmt.as_ref().unwrap();
+        let desc_set = conv_fmt.compute.desc_set(0);
+        let pipeline = conv_fmt.compute.pipeline();
+        let layout = ComputePipeline::layout(&pipeline);
         let mut texture = self.texture.borrow_mut();
         let dims = texture.dims();
 
-        // Begin
+        // Step 1: Write the local cpu memory buffer into the gpu-local buffer
+        self.pixel_buf.write_range(
+            &mut self.cmd_buf,
+            PipelineStage::COMPUTE_SHADER,
+            BufferAccess::SHADER_READ,
+            0..self.pixel_buf_len,
+        );
+
+        // Step 2: Use a compute shader to remap the memory layout of the device-local buffer
+        texture.set_layout(
+            &mut self.cmd_buf,
+            Layout::General,
+            PipelineStage::COMPUTE_SHADER,
+            ImageAccess::SHADER_WRITE,
+        );
+        self.cmd_buf.bind_compute_pipeline(pipeline);
         self.cmd_buf
-            .begin_primary(CommandBufferFlags::ONE_TIME_SUBMIT);
+            .push_compute_constants(layout, 0, &[conv_fmt.pixel_buf_stride >> 2]);
+        bind_compute_descriptor_set(&mut self.cmd_buf, layout, desc_set);
+        self.cmd_buf.dispatch([conv_fmt.dispatch_count, dims.y, 1]);
+    }
+
+    unsafe fn submit_copy(&mut self) {
+        let mut texture = self.texture.borrow_mut();
+        let dims = texture.dims();
 
         // Step 1: Write the local cpu memory buffer into the gpu-local buffer
         self.pixel_buf.write_range(
@@ -190,6 +321,10 @@ impl BitmapOp {
                 image_extent: dims.as_extent_depth(1),
             }],
         );
+    }
+
+    unsafe fn submit_finish(&mut self) {
+        let mut device = self.driver.borrow_mut();
 
         // Finish
         self.cmd_buf.finish();
@@ -204,4 +339,38 @@ impl BitmapOp {
             Some(&self.fence),
         );
     }
+
+    unsafe fn write_descriptors(&mut self) {
+        let conv_fmt = self.conv_fmt.as_ref().unwrap();
+
+        let texture = self.texture.borrow();
+        let texture_view = texture
+            .as_default_view_format(change_channel_type(texture.format(), ChannelType::Uint));
+        self.driver.borrow().write_descriptor_sets(vec![
+            DescriptorSetWrite {
+                set: conv_fmt.compute.desc_set(0),
+                binding: 0,
+                array_offset: 0,
+                descriptors: once(Descriptor::Buffer(
+                    &*self.pixel_buf.as_ref(),
+                    SubRange {
+                        offset: 0,
+                        size: Some(self.pixel_buf_len),
+                    },
+                )),
+            },
+            DescriptorSetWrite {
+                set: conv_fmt.compute.desc_set(0),
+                binding: 1,
+                array_offset: 0,
+                descriptors: once(Descriptor::Image(texture_view.as_ref(), Layout::General)), // TODO ????? Shouldn't this not be general?
+            },
+        ]);
+    }
+}
+
+struct ComputeDispatch {
+    compute: Lease<Compute>,
+    dispatch_count: u32,
+    pixel_buf_stride: u32,
 }

@@ -8,7 +8,7 @@ mod lease;
 mod render_passes;
 
 pub use self::{
-    compute::{Compute, ComputeMode},
+    compute::Compute,
     graphics::{FontVertex, Graphics},
     lease::Lease,
     render_passes::{color, draw, present},
@@ -58,6 +58,11 @@ pub(self) type PoolRef<T> = Rc<RefCell<VecDeque<T>>>;
 pub struct ColorRenderPassMode {
     pub format: Format,
     pub preserve: bool,
+}
+
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+pub enum ComputeMode {
+    DecodeRgbRgba,
 }
 
 #[derive(Eq, Hash, PartialEq)]
@@ -185,8 +190,7 @@ impl Pool {
             item
         } else {
             let ctor = match mode {
-                ComputeMode::DecodeBgr24 => Compute::decode_bgr24,
-                ComputeMode::DecodeBgra32 => Compute::decode_bgra32,
+                ComputeMode::DecodeRgbRgba => Compute::decode_rgb_rgba,
             };
             ctor(
                 #[cfg(debug_assertions)]

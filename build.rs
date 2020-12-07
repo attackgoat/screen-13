@@ -281,9 +281,8 @@ fn compile_shaders() {
     compile_glsl("compute/box_blur_y.comp");
     compile_glsl("compute/box_blur_y_clamp.comp");
 
-    // Compute - RGB/RGBA
-    compile_glsl("compute/decode_bgr24.comp");
-    compile_glsl("compute/decode_bgra32.comp");
+    // Compute - format conversion
+    compile_glsl("compute/decode_rgb_rgba.comp");
     compile_glsl("compute/encode_bgr24.comp");
     compile_glsl("compute/encode_bgra32.comp");
 

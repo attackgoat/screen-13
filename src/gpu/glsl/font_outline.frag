@@ -13,6 +13,6 @@ layout(set = 0, binding = 0) uniform sampler2D page;
 layout(location = 0) out vec4 color;
 
 void main() {
-    color = texture(page, texcoord).bbbb * push_constants.glyph_color +
-            texture(page, texcoord).gggg * push_constants.outline_color;
+    color = texture(page, texcoord).rrrr * push_constants.glyph_color
+          + texture(page, texcoord).gggg * push_constants.outline_color;
 }

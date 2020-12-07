@@ -1,5 +1,5 @@
 use {
-    super::spirv::compute::DECODE_BGR24_COMP,
+    super::spirv,
     crate::gpu::driver::{
         descriptor_range_desc, descriptor_set_layout_binding, ComputePipeline, DescriptorPool,
         DescriptorSetLayout, Driver, Sampler, ShaderModule,
@@ -12,7 +12,11 @@ use {
         Backend,
     },
     gfx_impl::Backend as _Backend,
-    std::{borrow::Borrow, iter::once, ops::Range},
+    std::{
+        borrow::Borrow,
+        iter::{empty, once},
+        ops::Range,
+    },
 };
 
 pub struct Compute {
@@ -80,12 +84,12 @@ impl Compute {
         }
     }
 
-    pub fn decode_bgr24(#[cfg(debug_assertions)] name: &str, driver: &Driver) -> Self {
+    pub fn decode_rgb_rgba(#[cfg(debug_assertions)] name: &str, driver: &Driver) -> Self {
         Self::new(
             #[cfg(debug_assertions)]
             name,
             driver,
-            &DECODE_BGR24_COMP,
+            &spirv::compute::DECODE_RGB_RGBA_COMP,
             &[(ShaderStageFlags::COMPUTE, 0..4)],
             1,
             &[
@@ -126,12 +130,8 @@ impl Compute {
                     },
                 ),
             ],
-            vec![].drain(..),
+            empty(),
         )
-    }
-
-    pub fn decode_bgra32(#[cfg(debug_assertions)] _name: &str, _driver: &Driver) -> Self {
-        todo!()
     }
 
     pub fn pipeline(&self) -> &ComputePipeline {
@@ -151,10 +151,4 @@ impl Compute {
     pub fn desc_set(&self, idx: usize) -> &<_Backend as Backend>::DescriptorSet {
         &self.desc_sets[idx]
     }
-}
-
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
-pub enum ComputeMode {
-    DecodeBgr24,
-    DecodeBgra32,
 }
