@@ -17,7 +17,7 @@ impl Screen for Solid {
             &format!("Solid {}", self.color.to_hex()),
             Extent::new(8, 8),
         );
-        frame.clear(self.color);
+        frame.clear(#[cfg(debug_assertions)] "Solid", self.color);
 
         frame
     }

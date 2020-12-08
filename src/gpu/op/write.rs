@@ -144,7 +144,7 @@ impl<'a> WriteOp<'a> {
             let dst = dst.borrow();
             (dst.dims(), dst.format())
         };
-        let fence = pool.fence(&driver);
+        let fence = pool.fence(#[cfg(debug_assertions)] name, &driver);
 
         Self {
             back_buf: pool.texture(
@@ -223,6 +223,8 @@ impl<'a> WriteOp<'a> {
         {
             // Setup the framebuffer
             self.frame_buf.replace(Framebuffer2d::new(
+                #[cfg(debug_assertions)]
+                self.name.as_str(),
                 Driver::clone(&self.driver),
                 self.pool.render_pass(&self.driver, render_pass_mode),
                 once(self.back_buf.borrow().as_default_view().as_ref()),

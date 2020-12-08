@@ -262,12 +262,12 @@ impl Pool {
         Drain(self)
     }
 
-    pub(crate) fn fence(&mut self, driver: &Driver) -> Lease<Fence> {
+    pub(crate) fn fence(&mut self,#[cfg(debug_assertions)] name: &str, driver: &Driver) -> Lease<Fence> {
         let item = if let Some(mut item) = self.fences.borrow_mut().pop_back() {
             Fence::reset(&mut item);
             item
         } else {
-            Fence::new(Driver::clone(driver))
+            Fence::new(#[cfg(debug_assertions)] name, Driver::clone(driver))
         };
 
         Lease::new(item, &self.fences)

@@ -23,19 +23,20 @@ impl DescriptorSetLayout {
         // See: `pImmutableSamplers` in https://vulkan.lunarg.com/doc/view/1.2.131.2/windows/vkspec.html#descriptorsets-sets
         let set_layout = {
             let device = driver.as_ref().borrow();
-            let ctor = || unsafe { device.create_descriptor_set_layout(bindings, &[]) }.unwrap();
-
-            #[cfg(debug_assertions)]
-            let mut set_layout = ctor();
-            #[cfg(not(debug_assertions))]
-            let set_layout = ctor();
-
-            #[cfg(debug_assertions)]
             unsafe {
-                device.set_descriptor_set_layout_name(&mut set_layout, name);
-            }
+                let ctor = || device.create_descriptor_set_layout(bindings, &[]).unwrap();
 
-            set_layout
+                #[cfg(debug_assertions)]
+                let mut set_layout = ctor();
+
+                #[cfg(not(debug_assertions))]
+                let set_layout = ctor();
+
+                #[cfg(debug_assertions)]
+                device.set_descriptor_set_layout_name(&mut set_layout, name);
+
+                set_layout
+            }
         };
 
         Self {

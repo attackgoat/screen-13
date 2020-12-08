@@ -16,18 +16,40 @@ impl GraphicsPipeline {
         driver: Driver,
         desc: &GraphicsPipelineDesc<'_, _Backend>,
     ) -> Self {
-        #[cfg(debug_assertions)]
-        debug!("Creating graphics pipeline '{}'", name);
-
         let graphics_pipeline = {
             let device = driver.borrow();
 
-            unsafe { device.create_graphics_pipeline(&desc, None) }.unwrap()
-        }; // TODO: Use a pipeline cache?
+            unsafe {
+                // TODO: Use a pipeline cache?
+                let ctor = || device.create_graphics_pipeline(&desc, None).unwrap();
+
+                #[cfg(debug_assertions)]
+                let mut graphics_pipeline = ctor();
+
+                #[cfg(not(debug_assertions))]
+                let graphics_pipeline = ctor();
+
+                #[cfg(debug_assertions)]
+                device.set_graphics_pipeline_name(&mut graphics_pipeline, name);
+
+                graphics_pipeline
+            }
+        };
 
         Self {
             driver,
             ptr: Some(graphics_pipeline),
+        }
+    }
+
+    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
+    #[cfg(debug_assertions)]
+    pub fn set_name(graphics_pipeline: &mut Self, name: &str) {
+        let device = graphics_pipeline.driver.as_ref().borrow();
+        let ptr = graphics_pipeline.ptr.as_mut().unwrap();
+
+        unsafe {
+            device.set_graphics_pipeline_name(ptr, name);
         }
     }
 }

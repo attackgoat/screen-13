@@ -16,12 +16,28 @@ pub struct Fence {
 // TODO: Support naming in ctor
 
 impl Fence {
-    pub fn new(driver: Driver) -> Self {
-        Self::with_signal(driver, false)
+    pub fn new(#[cfg(debug_assertions)] name: &str, driver: Driver) -> Self {
+        Self::with_signal(#[cfg(debug_assertions)] name, driver, false)
     }
 
-    pub fn with_signal(driver: Driver, value: bool) -> Self {
-        let fence = driver.borrow().create_fence(value).unwrap();
+    pub fn with_signal(#[cfg(debug_assertions)] name: &str, driver: Driver, value: bool) -> Self {
+        let fence = {
+            let device = driver.borrow();
+            let ctor = || device.create_fence(value).unwrap();
+
+            #[cfg(debug_assertions)]
+            let mut fence = ctor();
+
+            #[cfg(not(debug_assertions))]
+            let fence = ctor();
+
+            #[cfg(debug_assertions)]
+            unsafe {
+                device.set_fence_name(&mut fence, name);
+            }
+
+            fence
+        };
 
         Self {
             driver,

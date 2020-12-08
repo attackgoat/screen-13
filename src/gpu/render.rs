@@ -61,9 +61,9 @@ impl Render {
     }
 
     /// Clears the screen of all text and graphics.
-    pub fn clear(&mut self, color: Color) {
+    pub fn clear(&mut self, #[cfg(debug_assertions)] name: &str, color: Color) {
         let format = self.target.borrow().format();
-        let mut op = ClearOp::new(&self.driver, &mut self.pool, &self.target);
+        let mut op = ClearOp::new(#[cfg(debug_assertions)] name, &self.driver, &mut self.pool, &self.target);
         op.with_clear_value(color.swizzle(format));
         self.ops.push(Box::new(op.record()));
         self.target_dirty = true;
@@ -71,9 +71,9 @@ impl Render {
 
     /// Copies the given texture onto this Render. The implementation uses a copy operation
     /// and is more efficient than `write` when there is no blending or fractional pixels.
-    pub fn copy(&mut self, src: &Texture2d) {
+    pub fn copy(&mut self, #[cfg(debug_assertions)] name: &str, src: &Texture2d) {
         self.ops.push(Box::new(
-            CopyOp::new(&self.driver, &mut self.pool, &src, &self.target).record(),
+            CopyOp::new(#[cfg(debug_assertions)] name,&self.driver, &mut self.pool, &src, &self.target).record(),
         ));
         self.target_dirty = true;
     }
@@ -81,8 +81,8 @@ impl Render {
     /// Copies a region of the given texture onto this Render at `dst` coordinates. The
     /// implementation uses a copy operation and is more efficient than `write` when there
     /// is no blending or fractional pixels.
-    pub fn copy_region(&mut self, src: &Texture2d, src_region: Area, dst: Extent) {
-        let mut op = CopyOp::new(&self.driver, &mut self.pool, &src, &self.target);
+    pub fn copy_region(&mut self, #[cfg(debug_assertions)] name: &str, src: &Texture2d, src_region: Area, dst: Extent) {
+        let mut op = CopyOp::new(#[cfg(debug_assertions)] name, &self.driver, &mut self.pool, &src, &self.target);
         op.with_region(src_region, dst);
         self.ops.push(Box::new(op.record()));
         self.target_dirty = true;

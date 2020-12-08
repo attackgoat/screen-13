@@ -34,11 +34,11 @@ pub struct CopyOp {
 }
 
 impl CopyOp {
-    pub fn new(driver: &Driver, pool: &mut Pool, src: &Texture2d, dst: &Texture2d) -> Self {
+    pub fn new(#[cfg(debug_assertions)] name: &str, driver: &Driver, pool: &mut Pool, src: &Texture2d, dst: &Texture2d) -> Self {
         let (cmd_buf, cmd_pool, fence) = {
             let family = Device::queue_family(&driver.borrow());
             let mut cmd_pool = pool.cmd_pool(driver, family);
-            let fence = pool.fence(driver);
+            let fence = pool.fence(#[cfg(debug_assertions)]name, driver);
 
             let cmd_buf = unsafe { cmd_pool.allocate_one(Level::Primary) };
 

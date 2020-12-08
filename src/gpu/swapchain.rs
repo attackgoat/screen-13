@@ -128,8 +128,17 @@ impl Swapchain {
             images.push(Image {
                 cmd_buf,
                 cmd_pool,
-                fence: Fence::with_signal(Driver::clone(&driver), true),
-                signal: Semaphore::new(Driver::clone(&driver)),
+                fence: Fence::with_signal(
+                    #[cfg(debug_assertions)]
+                    "Swapchain image",
+                    Driver::clone(&driver),
+                    true,
+                ),
+                signal: Semaphore::new(
+                    #[cfg(debug_assertions)]
+                    "Swapchain image",
+                    Driver::clone(&driver),
+                ),
             });
         }
 
@@ -195,6 +204,8 @@ impl Swapchain {
         };
 
         let frame_buf = Framebuffer2d::new(
+            #[cfg(debug_assertions)]
+            "Present",
             Driver::clone(&self.driver),
             &self.render_pass,
             once(image_view.borrow()),

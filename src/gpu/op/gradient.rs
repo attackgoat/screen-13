@@ -106,12 +106,14 @@ impl GradientOp {
             1,
         );
         let frame_buf = Framebuffer2d::new(
+            #[cfg(debug_assertions)]
+            name,
             Driver::clone(&driver),
             pool.render_pass(&driver, render_pass_mode),
             once(back_buf.borrow().as_default_view().as_ref()),
             dims,
         );
-        let fence = pool.fence(&driver);
+        let fence = pool.fence(#[cfg(debug_assertions)] name, &driver);
 
         Self {
             back_buf,

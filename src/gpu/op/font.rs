@@ -205,8 +205,10 @@ pub struct FontOp<'a> {
     frame_buf: Option<Framebuffer2d>,
     glyph_color: AlphaColor,
     graphics: Option<Lease<Graphics>>,
+
     #[cfg(debug_assertions)]
     name: String,
+
     outline_color: Option<AlphaColor>,
     pool: &'a mut Pool,
     transform: Mat4,
@@ -250,7 +252,7 @@ impl<'a> FontOp<'a> {
         let family = Device::queue_family(&driver.borrow());
         let mut cmd_pool = pool.cmd_pool(&driver, family);
         let cmd_buf = unsafe { cmd_pool.allocate_one(Level::Primary) };
-        let fence = pool.fence(&driver);
+        let fence = pool.fence(#[cfg(debug_assertions)] name, &driver);
 
         let pos = pos.into();
         let transform = Mat4::from_translation(vec3(-1.0, -1.0, 0.0))
@@ -258,8 +260,6 @@ impl<'a> FontOp<'a> {
             * Mat4::from_translation(vec3(pos.x / dims.x as f32, pos.y / dims.y as f32, 0.0));
 
         Self {
-            #[cfg(debug_assertions)]
-            name: name.to_owned(),
             back_buf,
             cmd_buf,
             cmd_pool,
@@ -269,6 +269,8 @@ impl<'a> FontOp<'a> {
             frame_buf: None,
             glyph_color: color.into(),
             graphics: None,
+            #[cfg(debug_assertions)]
+            name: name.to_owned(),
             outline_color: None,
             pool,
             transform,
@@ -318,6 +320,8 @@ impl<'a> FontOp<'a> {
 
             // Setup the framebuffer
             self.frame_buf.replace(Framebuffer2d::new(
+                #[cfg(debug_assertions)]
+                self.name.as_str(),
                 driver,
                 self.pool.render_pass(&self.driver, render_pass_mode),
                 once(self.back_buf.borrow().as_default_view().as_ref()),

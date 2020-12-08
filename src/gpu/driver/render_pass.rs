@@ -38,22 +38,25 @@ impl RenderPass {
     {
         let render_pass = {
             let device = driver.as_ref().borrow();
-            let ctor = || {
-                unsafe { device.create_render_pass(attachments, subpasses, dependencies) }.unwrap()
-            };
 
-            #[cfg(debug_assertions)]
-            let mut render_pass = ctor();
-
-            #[cfg(not(debug_assertions))]
-            let render_pass = ctor();
-
-            #[cfg(debug_assertions)]
             unsafe {
-                device.set_render_pass_name(&mut render_pass, name)
-            }
+                let ctor = || {
+                    device
+                        .create_render_pass(attachments, subpasses, dependencies)
+                        .unwrap()
+                };
 
-            render_pass
+                #[cfg(debug_assertions)]
+                let mut render_pass = ctor();
+
+                #[cfg(not(debug_assertions))]
+                let render_pass = ctor();
+
+                #[cfg(debug_assertions)]
+                device.set_render_pass_name(&mut render_pass, name);
+
+                render_pass
+            }
         };
 
         Self {

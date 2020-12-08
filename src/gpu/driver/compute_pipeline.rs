@@ -20,6 +20,7 @@ pub struct ComputePipeline {
 
 impl ComputePipeline {
     pub unsafe fn new<IS, IR>(
+        #[cfg(debug_assertions)] name: &str,
         driver: Driver,
         entry_point: EntryPoint<'_, _Backend>,
         set_layouts: IS,
@@ -33,7 +34,13 @@ impl ComputePipeline {
         IR::Item: Borrow<(ShaderStageFlags, Range<u32>)>,
         IR::IntoIter: ExactSizeIterator,
     {
-        let layout = PipelineLayout::new(Driver::clone(&driver), set_layouts, push_constants);
+        let layout = PipelineLayout::new(
+            #[cfg(debug_assertions)]
+            &format!("{} Pipeline layout", name),
+            Driver::clone(&driver),
+            set_layouts,
+            push_constants,
+        );
         let desc = ComputePipelineDesc::new(entry_point, &*layout);
         let compute_pipeline = driver
             .as_ref()

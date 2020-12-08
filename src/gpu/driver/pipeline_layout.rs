@@ -14,7 +14,12 @@ pub struct PipelineLayout {
 }
 
 impl PipelineLayout {
-    pub fn new<IS, IR>(driver: Driver, set_layouts: IS, push_constant: IR) -> Self
+    pub fn new<IS, IR>(
+        #[cfg(debug_assertions)] name: &str,
+        driver: Driver,
+        set_layouts: IS,
+        push_constant: IR,
+    ) -> Self
     where
         IS: IntoIterator,
         IS::Item: Borrow<<_Backend as Backend>::DescriptorSetLayout>,
@@ -25,12 +30,39 @@ impl PipelineLayout {
     {
         let pipeline_layout = {
             let device = driver.as_ref().borrow();
-            unsafe { device.create_pipeline_layout(set_layouts, push_constant) }.unwrap()
+
+            unsafe {
+                let ctor = || device
+                    .create_pipeline_layout(set_layouts, push_constant)
+                    .unwrap();
+
+                #[cfg(debug_assertions)]
+                let mut pipeline_layout = ctor();
+
+                #[cfg(not(debug_assertions))]
+                let pipeline_layout = ctor();
+
+                #[cfg(debug_assertions)]
+                device.set_pipeline_layout_name(&mut pipeline_layout, name);
+
+                pipeline_layout
+            }
         };
 
         Self {
             driver,
             ptr: Some(pipeline_layout),
+        }
+    }
+
+    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
+    #[cfg(debug_assertions)]
+    pub fn set_name(pipeline_layout: &mut Self, name: &str) {
+        let device = pipeline_layout.driver.as_ref().borrow();
+        let ptr = pipeline_layout.ptr.as_mut().unwrap();
+
+        unsafe {
+            device.set_pipeline_layout_name(ptr, name);
         }
     }
 }

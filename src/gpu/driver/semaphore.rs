@@ -10,11 +10,25 @@ pub struct Semaphore {
     ptr: Option<<_Backend as Backend>::Semaphore>,
 }
 
-// TODO: Support naming in ctor
-
 impl Semaphore {
-    pub fn new(driver: Driver) -> Self {
-        let semaphore = driver.borrow().create_semaphore().unwrap();
+    pub fn new(#[cfg(debug_assertions)] name: &str, driver: Driver) -> Self {
+        let semaphore = {
+            let device = driver.borrow();
+            let ctor = || device.create_semaphore().unwrap();
+
+            #[cfg(debug_assertions)]
+            let mut semaphore = ctor();
+
+            #[cfg(not(debug_assertions))]
+            let semaphore = ctor();
+
+            #[cfg(debug_assertions)]
+            unsafe {
+                device.set_semaphore_name(&mut semaphore, name);
+            }
+
+            semaphore
+        };
 
         Self {
             driver,

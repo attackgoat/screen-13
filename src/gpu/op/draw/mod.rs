@@ -127,6 +127,8 @@ impl<'a> DrawOp<'a> {
 
             // Setup the framebuffer
             let frame_buf = Framebuffer2d::new(
+                #[cfg(debug_assertions)]
+                &name,
                 Driver::clone(&driver),
                 pool.render_pass(&driver, RenderPassMode::Draw(mode)),
                 vec![
@@ -152,7 +154,7 @@ impl<'a> DrawOp<'a> {
 
             (frame_buf, mode)
         };
-        let fence = pool.fence(&driver);
+        let fence = pool.fence(#[cfg(debug_assertions)]name, &driver);
 
         Self {
             cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },

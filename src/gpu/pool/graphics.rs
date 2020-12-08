@@ -113,7 +113,7 @@ impl Graphics {
                 ),
             ],
         );
-        let layout = PipelineLayout::new(
+        let layout = PipelineLayout::new(#[cfg(debug_assertions)] name,
             Driver::clone(&driver),
             once(&*set_layout),
             &[
@@ -189,7 +189,7 @@ impl Graphics {
             Driver::clone(&driver),
             empty::<DescriptorSetLayoutBinding>(),
         );
-        let layout = PipelineLayout::new(
+        let layout = PipelineLayout::new(#[cfg(debug_assertions)] name,
             Driver::clone(&driver),
             once(&*set_layout),
             &[(ShaderStageFlags::VERTEX, 0..64)],
@@ -286,7 +286,7 @@ impl Graphics {
                 },
             )),
         );
-        let layout = PipelineLayout::new(
+        let layout = PipelineLayout::new(#[cfg(debug_assertions)] name,
             Driver::clone(&driver),
             once(&*set_layout),
             &[(ShaderStageFlags::VERTEX, 0..64)],
@@ -582,7 +582,7 @@ impl Graphics {
                 },
             )),
         );
-        let layout = PipelineLayout::new(
+        let layout = PipelineLayout::new(#[cfg(debug_assertions)] name,
             Driver::clone(&driver),
             once(&*set_layout),
             &[
@@ -684,7 +684,7 @@ impl Graphics {
                 },
             )),
         );
-        let layout = PipelineLayout::new(
+        let layout = PipelineLayout::new(#[cfg(debug_assertions)] name,
             Driver::clone(&driver),
             once(&*set_layout),
             &[
@@ -786,7 +786,7 @@ impl Graphics {
                 },
             )),
         );
-        let layout = PipelineLayout::new(
+        let layout = PipelineLayout::new(#[cfg(debug_assertions)] name,
             Driver::clone(&driver),
             once(&*set_layout),
             &[(ShaderStageFlags::FRAGMENT, 0..32)],
@@ -864,7 +864,7 @@ impl Graphics {
                 },
             )),
         );
-        let layout = PipelineLayout::new(
+        let layout = PipelineLayout::new(#[cfg(debug_assertions)] name,
             Driver::clone(&driver),
             once(&*set_layout),
             &[(ShaderStageFlags::FRAGMENT, 0..32)],
@@ -942,7 +942,7 @@ impl Graphics {
                 },
             )),
         );
-        let layout = PipelineLayout::new(
+        let layout = PipelineLayout::new(#[cfg(debug_assertions)] name,
             Driver::clone(&driver),
             once(&*set_layout),
             &[(ShaderStageFlags::VERTEX, 0..64)],
@@ -1019,7 +1019,7 @@ impl Graphics {
                 },
             )),
         );
-        let layout = PipelineLayout::new(
+        let layout = PipelineLayout::new(#[cfg(debug_assertions)] name,
             Driver::clone(&driver),
             once(&*set_layout),
             &[(ShaderStageFlags::VERTEX, 0..80)],
