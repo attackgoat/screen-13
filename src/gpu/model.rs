@@ -1,5 +1,5 @@
 use {
-    super::{Data, Lease, PoolRef},
+    super::{Data, Lease},
     crate::{
         math::{Quat, Sphere},
         pak::{model::Mesh, IndexType},
@@ -54,14 +54,12 @@ pub struct Model {
     index_buf: Lease<Data>,
     index_ty: IndexType,
     meshes: Vec<Mesh>,
-    pool: PoolRef,
     vertex_buf: Lease<Data>,
 }
 
 impl Model {
     /// Meshes must be sorted by name
     pub(crate) fn new(
-        pool: PoolRef,
         meshes: Vec<Mesh>,
         index_ty: IndexType,
         index_buf: Lease<Data>,
@@ -71,7 +69,6 @@ impl Model {
             index_buf,
             index_ty,
             meshes,
-            pool,
             vertex_buf,
         }
     }

@@ -310,7 +310,7 @@ impl Gpu {
             Mapping::flush(&mut mapped_range).unwrap();
         }
 
-        Model::new(pool, model.take_meshes(), index_ty, index_buf, vertex_buf)
+        Model::new(model.take_meshes(), index_ty, index_buf, vertex_buf)
     }
 
     // TODO: This should not be exposed, bring users into this code?
