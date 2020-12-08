@@ -39,7 +39,12 @@ impl<I> ClearOp<I>
 where
     I: AsRef<<_Backend as Backend>::Image>,
 {
-    pub fn new(#[cfg(debug_assertions)] name: &str, driver: &Driver, pool: &mut Pool, texture: &TextureRef<I>) -> Self {
+    pub fn new(
+        #[cfg(debug_assertions)] name: &str,
+        driver: &Driver,
+        pool: &mut Pool,
+        texture: &TextureRef<I>,
+    ) -> Self {
         let family = Device::queue_family(&driver.borrow());
         let mut cmd_pool = pool.cmd_pool(driver, family);
         Self {
@@ -47,7 +52,11 @@ where
             cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
             cmd_pool,
             driver: Driver::clone(driver),
-            fence: pool.fence(#[cfg(debug_assertions)] name, driver),
+            fence: pool.fence(
+                #[cfg(debug_assertions)]
+                name,
+                driver,
+            ),
             texture: TextureRef::clone(texture),
         }
     }

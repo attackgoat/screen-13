@@ -113,7 +113,11 @@ impl GradientOp {
             once(back_buf.borrow().as_default_view().as_ref()),
             dims,
         );
-        let fence = pool.fence(#[cfg(debug_assertions)] name, &driver);
+        let fence = pool.fence(
+            #[cfg(debug_assertions)]
+            name,
+            &driver,
+        );
 
         Self {
             back_buf,

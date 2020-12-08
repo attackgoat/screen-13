@@ -144,7 +144,11 @@ impl<'a> WriteOp<'a> {
             let dst = dst.borrow();
             (dst.dims(), dst.format())
         };
-        let fence = pool.fence(#[cfg(debug_assertions)] name, &driver);
+        let fence = pool.fence(
+            #[cfg(debug_assertions)]
+            name,
+            &driver,
+        );
 
         Self {
             back_buf: pool.texture(

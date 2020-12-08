@@ -32,9 +32,11 @@ impl PipelineLayout {
             let device = driver.as_ref().borrow();
 
             unsafe {
-                let ctor = || device
-                    .create_pipeline_layout(set_layouts, push_constant)
-                    .unwrap();
+                let ctor = || {
+                    device
+                        .create_pipeline_layout(set_layouts, push_constant)
+                        .unwrap()
+                };
 
                 #[cfg(debug_assertions)]
                 let mut pipeline_layout = ctor();

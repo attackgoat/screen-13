@@ -40,7 +40,13 @@ where
 
 impl Framebuffer<U2> {
     /// Specialized new function for 2D framebuffers
-    pub fn new<I>(#[cfg(debug_assertions)] name: &str, driver: Driver, render_pass: &RenderPass, image_views: I, dims: Extent) -> Self
+    pub fn new<I>(
+        #[cfg(debug_assertions)] name: &str,
+        driver: Driver,
+        render_pass: &RenderPass,
+        image_views: I,
+        dims: Extent,
+    ) -> Self
     where
         I: IntoIterator,
         I::Item: Borrow<<_Backend as Backend>::ImageView>,
@@ -49,15 +55,19 @@ impl Framebuffer<U2> {
             let device = driver.as_ref().borrow();
 
             unsafe {
-                let ctor = || device.create_framebuffer(
-                    render_pass,
-                    image_views,
-                    ImageExtent {
-                        width: dims.x,
-                        height: dims.y,
-                        depth: 1,
-                    },
-                ).unwrap();
+                let ctor = || {
+                    device
+                        .create_framebuffer(
+                            render_pass,
+                            image_views,
+                            ImageExtent {
+                                width: dims.x,
+                                height: dims.y,
+                                depth: 1,
+                            },
+                        )
+                        .unwrap()
+                };
 
                 #[cfg(debug_assertions)]
                 let mut frame_buf = ctor();

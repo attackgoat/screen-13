@@ -59,7 +59,9 @@ impl Compute {
             bindings,
         );
         let pipeline = unsafe {
-            ComputePipeline::new(#[cfg(debug_assertions)] name,
+            ComputePipeline::new(
+                #[cfg(debug_assertions)]
+                name,
                 Driver::clone(&driver),
                 ShaderModule::entry_point(&shader),
                 once(&*set_layout),

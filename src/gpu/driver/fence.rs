@@ -17,7 +17,12 @@ pub struct Fence {
 
 impl Fence {
     pub fn new(#[cfg(debug_assertions)] name: &str, driver: Driver) -> Self {
-        Self::with_signal(#[cfg(debug_assertions)] name, driver, false)
+        Self::with_signal(
+            #[cfg(debug_assertions)]
+            name,
+            driver,
+            false,
+        )
     }
 
     pub fn with_signal(#[cfg(debug_assertions)] name: &str, driver: Driver, value: bool) -> Self {

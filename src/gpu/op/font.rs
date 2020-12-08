@@ -252,7 +252,11 @@ impl<'a> FontOp<'a> {
         let family = Device::queue_family(&driver.borrow());
         let mut cmd_pool = pool.cmd_pool(&driver, family);
         let cmd_buf = unsafe { cmd_pool.allocate_one(Level::Primary) };
-        let fence = pool.fence(#[cfg(debug_assertions)] name, &driver);
+        let fence = pool.fence(
+            #[cfg(debug_assertions)]
+            name,
+            &driver,
+        );
 
         let pos = pos.into();
         let transform = Mat4::from_translation(vec3(-1.0, -1.0, 0.0))

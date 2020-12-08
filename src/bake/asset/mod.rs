@@ -53,7 +53,7 @@ impl Asset {
         } else if let Some(val) = val.scene {
             Self::Scene(val)
         } else {
-            unimplemented!();
+            panic!("Could not parse asset file {}", filename.as_ref().display());
         }
     }
 

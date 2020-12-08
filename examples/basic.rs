@@ -47,7 +47,11 @@ impl Screen for Basic {
         );
 
         // Draws "Hello, World" onto a blue background
-        frame.clear(qb_color(1));
+        frame.clear(
+            #[cfg(debug_assertions)]
+            "basic clear",
+            qb_color(1),
+        );
         frame.text(
             #[cfg(debug_assertions)]
             "basic text",

@@ -96,7 +96,11 @@ impl EncodeOp {
             cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
             cmd_pool,
             driver: Driver::clone(driver),
-            fence: pool.fence(#[cfg(debug_assertions)]name, driver),
+            fence: pool.fence(
+                #[cfg(debug_assertions)]
+                name,
+                driver,
+            ),
             quality: DEFAULT_QUALITY,
             texture,
         }

@@ -154,7 +154,11 @@ impl<'a> DrawOp<'a> {
 
             (frame_buf, mode)
         };
-        let fence = pool.fence(#[cfg(debug_assertions)]name, &driver);
+        let fence = pool.fence(
+            #[cfg(debug_assertions)]
+            name,
+            &driver,
+        );
 
         Self {
             cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },

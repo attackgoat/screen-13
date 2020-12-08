@@ -214,7 +214,11 @@ impl BitmapOp {
             cmd_pool,
             conv_fmt,
             driver: Driver::clone(driver),
-            fence: pool.fence(#[cfg(debug_assertions)]name, driver),
+            fence: pool.fence(
+                #[cfg(debug_assertions)]
+                name,
+                driver,
+            ),
             pixel_buf,
             pixel_buf_len: pixel_buf_len as _,
             texture,

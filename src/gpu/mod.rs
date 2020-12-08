@@ -201,8 +201,8 @@ impl Gpu {
     pub fn load_animation<R: Read + Seek>(
         &self,
         #[cfg(debug_assertions)] _name: &str,
-        pak: &mut Pak<R>,
-        id: AnimationId,
+        _pak: &mut Pak<R>,
+        _id: AnimationId,
     ) -> ModelRef {
         //let _pool = PoolRef::clone(&self.pool);
         //let _anim = pak.read_animation(id);
