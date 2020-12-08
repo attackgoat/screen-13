@@ -27,8 +27,8 @@ use {
                 PhysicalDevice,
             },
             model::MeshIter,
-            pool::{DrawRenderPassMode, Graphics, GraphicsMode, Lease, RenderPassMode},
-            BitmapRef, Data, MeshFilter, ModelRef, PoolRef, Pose, Texture2d, TextureRef,
+            pool::{DrawRenderPassMode, Graphics, GraphicsMode, Lease, Pool, RenderPassMode},
+            BitmapRef, Data, MeshFilter, ModelRef, Pose, Texture2d, TextureRef,
         },
         math::{Cone, Coord, CoordF, Extent, Mat4, Sphere, Vec3},
     },
@@ -59,10 +59,11 @@ const _0: BufferAccess = BufferAccess::MEMORY_WRITE;
 const _1: Extent = Extent::ZERO;
 const _2: SubRange = SubRange::WHOLE;
 
-pub struct DrawOp {
+pub struct DrawOp<'a> {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
     compiler: Lease<Compiler>,
+    driver: Driver,
     dst: Texture2d,
     dst_preserve: bool,
     fence: Lease<Fence>,
@@ -74,22 +75,25 @@ pub struct DrawOp {
     graphics_spotlight: Option<Lease<Graphics>>,
     graphics_sunlight: Option<Lease<Graphics>>,
     mode: DrawRenderPassMode,
+
     #[cfg(debug_assertions)]
     name: String,
-    pool: PoolRef,
+
+    pool: &'a mut Pool,
 }
 
-impl DrawOp {
+impl<'a> DrawOp<'a> {
     /// # Safety
     /// None
-    pub fn new(#[cfg(debug_assertions)] name: &str, pool: &PoolRef, dst: &Texture2d) -> Self {
-        let mut pool_ref = pool.borrow_mut();
-        let driver = Driver::clone(pool_ref.driver());
-        let device = driver.borrow();
-
+    pub fn new(
+        #[cfg(debug_assertions)] name: &str,
+        driver: Driver,
+        pool: &'a mut Pool,
+        dst: &Texture2d,
+    ) -> Self {
         // Allocate the command buffer
-        let family = Device::queue_family(&device);
-        let mut cmd_pool = pool_ref.cmd_pool(family);
+        let family = Device::queue_family(&driver.borrow());
+        let mut cmd_pool = pool.cmd_pool(&driver, family);
 
         // The g-buffer will share size and format with the destination texture
         let (dims, fmt) = {
@@ -99,7 +103,8 @@ impl DrawOp {
         let geom_buf = GeometryBuffer::new(
             #[cfg(debug_assertions)]
             name,
-            &mut pool_ref,
+            &driver,
+            pool,
             dims,
             fmt,
         );
@@ -123,7 +128,7 @@ impl DrawOp {
             // Setup the framebuffer
             let frame_buf = Framebuffer2d::new(
                 Driver::clone(&driver),
-                pool_ref.render_pass(RenderPassMode::Draw(mode)),
+                pool.render_pass(&driver, RenderPassMode::Draw(mode)),
                 vec![
                     albedo.as_default_view().as_ref(),
                     depth
@@ -147,14 +152,16 @@ impl DrawOp {
 
             (frame_buf, mode)
         };
+        let fence = pool.fence(&driver);
 
         Self {
             cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
             cmd_pool,
-            compiler: pool_ref.compiler(),
+            compiler: pool.compiler(),
+            driver,
             dst: TextureRef::clone(dst),
             dst_preserve: false,
-            fence: pool_ref.fence(),
+            fence,
             frame_buf,
             geom_buf,
             graphics_line: None,
@@ -163,9 +170,11 @@ impl DrawOp {
             graphics_spotlight: None,
             graphics_sunlight: None,
             mode,
+
             #[cfg(debug_assertions)]
             name: name.to_owned(),
-            pool: PoolRef::clone(pool),
+
+            pool,
         }
     }
 
@@ -187,11 +196,12 @@ impl DrawOp {
 
         // Use a compiler to figure out rendering instructions without allocating
         // memory per rendering command. The compiler caches code between frames.
-        let mut compiler = self.pool.borrow_mut().compiler();
+        let mut compiler = self.pool.compiler();
         let mut instrs = compiler.compile(
             #[cfg(debug_assertions)]
             &self.name,
-            &self.pool,
+            &self.driver,
+            &mut self.pool,
             camera,
             cmds,
         );
@@ -201,17 +211,17 @@ impl DrawOp {
             let materials = instrs.mesh_materials();
             let descriptor_sets = materials.len();
             if descriptor_sets > 0 {
-                let mut pool = self.pool.borrow_mut();
-                self.graphics_mesh = Some(pool.graphics_sets(
+                self.graphics_mesh = Some(self.pool.graphics_sets(
                     #[cfg(debug_assertions)]
                     &self.name,
+                    &self.driver,
                     GraphicsMode::DrawMesh,
                     RenderPassMode::Draw(self.mode),
                     0,
                     descriptor_sets,
                 ));
 
-                let device = pool.driver().borrow();
+                let device = self.driver.borrow();
 
                 unsafe {
                     Self::write_mesh_material_descriptors(
@@ -261,7 +271,6 @@ impl DrawOp {
             cmd_buf: self.cmd_buf,
             cmd_pool: self.cmd_pool,
             compiler: self.compiler,
-            driver: Driver::clone(self.pool.borrow().driver()),
             dst: self.dst,
             fence: self.fence,
             frame_buf: self.frame_buf,
@@ -275,7 +284,6 @@ impl DrawOp {
     }
 
     unsafe fn submit_begin(&mut self, viewport: &Viewport) {
-        let mut pool = self.pool.borrow_mut();
         let mut dst = self.dst.borrow_mut();
         let mut albedo = self.geom_buf.albedo.borrow_mut();
         let mut depth = self.geom_buf.depth.borrow_mut();
@@ -365,7 +373,8 @@ impl DrawOp {
             ImageAccess::COLOR_ATTACHMENT_WRITE,
         );
         self.cmd_buf.begin_render_pass(
-            pool.render_pass(RenderPassMode::Draw(self.mode)),
+            self.pool
+                .render_pass(&self.driver, RenderPassMode::Draw(self.mode)),
             self.frame_buf.as_ref(),
             viewport.rect,
             vec![&TRANSPARENT_BLACK.into()],
@@ -392,10 +401,10 @@ impl DrawOp {
         transform: Mat4,
     ) {
         let render_pass_mode = RenderPassMode::Draw(self.mode);
-        let mut pool = self.pool.borrow_mut();
-        let graphics = pool.graphics(
+        let graphics = self.pool.graphics(
             #[cfg(debug_assertions)]
             &format!("{} line", &self.name),
+            &self.driver,
             GraphicsMode::DrawLine,
             render_pass_mode,
             0,
@@ -559,9 +568,7 @@ impl DrawOp {
     }
 
     unsafe fn submit_finish(&mut self) {
-        let pool = self.pool.borrow();
-        let driver = pool.driver();
-        let mut device = driver.borrow_mut();
+        let mut device = self.driver.borrow_mut();
         let mut dst = self.dst.borrow_mut();
         let mut output = self.geom_buf.output.borrow_mut();
         let dims = dst.dims();
@@ -616,10 +623,10 @@ impl DrawOp {
         );
     }
 
-    unsafe fn write_mesh_material_descriptors<'a>(
+    unsafe fn write_mesh_material_descriptors<'m>(
         device: &Device,
         graphics: &Graphics,
-        materials: impl ExactSizeIterator<Item = &'a Material>,
+        materials: impl ExactSizeIterator<Item = &'m Material>,
     ) {
         // TODO: Update other write-descriptor functions to use this `default view doesn't borrow device` way of doing things
         for (idx, material) in materials.enumerate() {
@@ -663,7 +670,6 @@ pub struct DrawOpSubmission {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
     compiler: Lease<Compiler>,
-    driver: Driver,
     dst: Texture2d,
     fence: Lease<Fence>,
     frame_buf: Framebuffer2d,

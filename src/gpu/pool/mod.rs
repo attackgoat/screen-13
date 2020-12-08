@@ -52,7 +52,7 @@ fn remove_last_by<T, F: Fn(&T) -> bool>(items: &mut VecDeque<T>, f: F) -> Option
     None
 }
 
-pub(self) type PoolRef<T> = Rc<RefCell<VecDeque<T>>>;
+pub(super) type PoolRef<T> = Rc<RefCell<VecDeque<T>>>;
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub struct ColorRenderPassMode {
@@ -114,13 +114,13 @@ pub enum GraphicsMode {
     Texture,
 }
 
+#[derive(Default)]
 pub struct Pool {
     cmd_pools: HashMap<QueueFamilyId, PoolRef<CommandPool>>,
     compilers: PoolRef<Compiler>,
     computes: HashMap<ComputeMode, PoolRef<Compute>>,
     data: HashMap<BufferUsage, PoolRef<Data>>,
     desc_pools: HashMap<DescriptorPoolKey, PoolRef<DescriptorPool>>,
-    driver: Driver,
     fences: PoolRef<Fence>,
     graphics: HashMap<GraphicsKey, PoolRef<Graphics>>,
     memories: HashMap<MemoryTypeId, PoolRef<Memory>>,
@@ -129,27 +129,11 @@ pub struct Pool {
 }
 
 impl Pool {
-    pub fn new(driver: &Driver) -> Self {
-        Self {
-            cmd_pools: Default::default(),
-            compilers: Default::default(),
-            computes: Default::default(),
-            data: Default::default(),
-            desc_pools: Default::default(),
-            driver: Driver::clone(driver),
-            fences: Default::default(),
-            graphics: Default::default(),
-            memories: Default::default(),
-            render_passes: Default::default(),
-            textures: Default::default(),
-        }
-    }
-
-    // pub fn clear_textures(&mut self) {
-    //     self.textures.clear();
-    // }
-
-    pub fn cmd_pool(&mut self, family: QueueFamilyId) -> Lease<CommandPool> {
+    pub(crate) fn cmd_pool(
+        &mut self,
+        driver: &Driver,
+        family: QueueFamilyId,
+    ) -> Lease<CommandPool> {
         let items = self
             .cmd_pools
             .entry(family)
@@ -157,7 +141,7 @@ impl Pool {
         let mut item = if let Some(item) = items.borrow_mut().pop_back() {
             item
         } else {
-            CommandPool::new(Driver::clone(&self.driver), family)
+            CommandPool::new(Driver::clone(driver), family)
         };
 
         unsafe {
@@ -167,7 +151,7 @@ impl Pool {
         Lease::new(item, items)
     }
 
-    pub fn compiler(&mut self) -> Lease<Compiler> {
+    pub(crate) fn compiler(&mut self) -> Lease<Compiler> {
         let item = if let Some(item) = self.compilers.borrow_mut().pop_back() {
             item
         } else {
@@ -178,9 +162,10 @@ impl Pool {
         Lease::new(item, &self.compilers)
     }
 
-    pub fn compute(
+    pub(crate) fn compute(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
+        driver: &Driver,
         mode: ComputeMode,
     ) -> Lease<Compute> {
         let items = self.computes.entry(mode).or_insert_with(Default::default);
@@ -193,25 +178,32 @@ impl Pool {
             ctor(
                 #[cfg(debug_assertions)]
                 name,
-                &self.driver,
+                driver,
             )
         };
 
         Lease::new(item, items)
     }
 
-    pub fn data(&mut self, #[cfg(debug_assertions)] name: &str, len: u64) -> Lease<Data> {
+    pub(crate) fn data(
+        &mut self,
+        #[cfg(debug_assertions)] name: &str,
+        driver: &Driver,
+        len: u64,
+    ) -> Lease<Data> {
         self.data_usage(
             #[cfg(debug_assertions)]
             name,
+            driver,
             len,
             BufferUsage::empty(),
         )
     }
 
-    pub fn data_usage(
+    pub(crate) fn data_usage(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
+        driver: &Driver,
         len: u64,
         usage: BufferUsage,
     ) -> Lease<Data> {
@@ -224,7 +216,7 @@ impl Pool {
             Data::new(
                 #[cfg(debug_assertions)]
                 name,
-                Driver::clone(&self.driver),
+                Driver::clone(driver),
                 len,
                 usage,
             )
@@ -234,7 +226,12 @@ impl Pool {
     }
 
     // TODO: I don't really like the function signature here
-    pub fn desc_pool<'i, I>(&mut self, max_sets: usize, desc_ranges: I) -> Lease<DescriptorPool>
+    pub(crate) fn desc_pool<'i, I>(
+        &mut self,
+        driver: &Driver,
+        max_sets: usize,
+        desc_ranges: I,
+    ) -> Lease<DescriptorPool>
     where
         I: Clone + ExactSizeIterator<Item = &'i DescriptorRangeDesc>,
     {
@@ -254,7 +251,7 @@ impl Pool {
         }) {
             item
         } else {
-            DescriptorPool::new(Driver::clone(&self.driver), max_sets, desc_ranges)
+            DescriptorPool::new(Driver::clone(driver), max_sets, desc_ranges)
         };
 
         Lease::new(item, items)
@@ -265,24 +262,21 @@ impl Pool {
         Drain(self)
     }
 
-    pub fn driver(&self) -> &Driver {
-        &self.driver
-    }
-
-    pub fn fence(&mut self) -> Lease<Fence> {
+    pub(crate) fn fence(&mut self, driver: &Driver) -> Lease<Fence> {
         let item = if let Some(mut item) = self.fences.borrow_mut().pop_back() {
             Fence::reset(&mut item);
             item
         } else {
-            Fence::new(Driver::clone(&self.driver))
+            Fence::new(Driver::clone(driver))
         };
 
         Lease::new(item, &self.fences)
     }
 
-    pub fn graphics(
+    pub(crate) fn graphics(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
+        driver: &Driver,
         graphics_mode: GraphicsMode,
         render_pass_mode: RenderPassMode,
         subpass_idx: u8,
@@ -290,6 +284,7 @@ impl Pool {
         self.graphics_sets(
             #[cfg(debug_assertions)]
             name,
+            driver,
             graphics_mode,
             render_pass_mode,
             subpass_idx,
@@ -297,9 +292,10 @@ impl Pool {
         )
     }
 
-    pub fn graphics_sets(
+    pub(crate) fn graphics_sets(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
+        driver: &Driver,
         graphics_mode: GraphicsMode,
         render_pass_mode: RenderPassMode,
         subpass_idx: u8,
@@ -331,13 +327,12 @@ impl Pool {
             GraphicsMode::Texture => Graphics::texture,
             _ => panic!(),
         };
-        let driver = Driver::clone(&self.driver); // TODO: Yuck
         let item = unsafe {
             ctor(
                 #[cfg(debug_assertions)]
                 name,
-                &driver,
-                RenderPass::subpass(self.render_pass(render_pass_mode), subpass_idx),
+                driver,
+                RenderPass::subpass(self.render_pass(driver, render_pass_mode), subpass_idx),
                 max_sets,
             )
         };
@@ -350,7 +345,12 @@ impl Pool {
         Lease::new(item, items)
     }
 
-    pub fn memory(&mut self, mem_type: MemoryTypeId, size: u64) -> Lease<Memory> {
+    pub(crate) fn memory(
+        &mut self,
+        driver: &Driver,
+        mem_type: MemoryTypeId,
+        size: u64,
+    ) -> Lease<Memory> {
         let items = self
             .memories
             .entry(mem_type)
@@ -360,14 +360,14 @@ impl Pool {
         {
             item
         } else {
-            Memory::new(Driver::clone(&self.driver), mem_type, size)
+            Memory::new(Driver::clone(driver), mem_type, size)
         };
 
         Lease::new(item, items)
     }
 
-    pub fn render_pass(&mut self, mode: RenderPassMode) -> &RenderPass {
-        let driver = Driver::clone(&self.driver);
+    pub(crate) fn render_pass(&mut self, driver: &Driver, mode: RenderPassMode) -> &RenderPass {
+        let driver = Driver::clone(driver);
         self.render_passes
             .entry(mode)
             .or_insert_with(|| match mode {
@@ -377,9 +377,10 @@ impl Pool {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn texture(
+    pub(crate) fn texture(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
+        driver: &Driver,
         dims: Extent,
         desired_tiling: Tiling,
         desired_fmts: &[Format],
@@ -408,7 +409,7 @@ impl Pool {
                 // Set a new name on this texture
                 #[cfg(debug_assertions)]
                 unsafe {
-                    self.driver
+                    driver
                         .as_ref()
                         .borrow()
                         .set_image_name(item.as_ref().borrow_mut().as_mut(), name);
@@ -420,7 +421,7 @@ impl Pool {
                 items_ref.push_front(TextureRef::new(RefCell::new(Texture::new(
                     #[cfg(debug_assertions)]
                     &format!("{} (Unused)", name),
-                    Driver::clone(&self.driver),
+                    Driver::clone(driver),
                     dims,
                     desired_tiling,
                     desired_fmts,
@@ -435,7 +436,7 @@ impl Pool {
                 TextureRef::new(RefCell::new(Texture::new(
                     #[cfg(debug_assertions)]
                     name,
-                    Driver::clone(&self.driver),
+                    Driver::clone(driver),
                     dims,
                     desired_tiling,
                     desired_fmts,

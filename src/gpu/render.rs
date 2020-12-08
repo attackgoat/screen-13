@@ -4,8 +4,8 @@ use {
             ClearOp, Command, CopyOp, DrawOp, EncodeOp, Font, FontOp, GradientOp, Write, WriteMode,
             WriteOp,
         },
-        pool::Lease,
-        Op, PoolRef, Texture2d, TextureRef,
+        pool::{Lease, Pool},
+        Driver, Op, Texture2d, TextureRef,
     },
     crate::{
         camera::Camera,
@@ -22,34 +22,39 @@ use {
 /// A powerful structure which allows you to combine various operations and other render
 /// instances to create just about any creative effect.
 pub struct Render {
-    pool: PoolRef,
+    driver: Driver,
+    pool: Lease<Pool>,
     target: Lease<Texture2d>,
     target_dirty: bool,
-    ops: Vec<Box<dyn Op>>, // TODO: Should be just a vec?
+    ops: Vec<Box<dyn Op>>,
 }
 
 impl Render {
     pub(super) fn new(
         #[cfg(debug_assertions)] name: &str,
-        pool: &PoolRef,
+        driver: Driver,
+        mut pool: Lease<Pool>,
         dims: Extent,
-        fmt: Format,
         ops: Vec<Box<dyn Op>>,
     ) -> Self {
+        let target = pool.texture(
+            #[cfg(debug_assertions)]
+            name,
+            &driver,
+            dims,
+            Tiling::Optimal,
+            &[Format::Rgba8Unorm],
+            Layout::Undefined,
+            Usage::SAMPLED | Usage::TRANSFER_DST | Usage::TRANSFER_SRC,
+            1,
+            1,
+            1,
+        );
+
         Self {
-            pool: PoolRef::clone(pool),
-            target: pool.borrow_mut().texture(
-                #[cfg(debug_assertions)]
-                name,
-                dims,
-                Tiling::Optimal,
-                &[fmt],
-                Layout::Undefined,
-                Usage::SAMPLED | Usage::TRANSFER_DST | Usage::TRANSFER_SRC,
-                1,
-                1,
-                1,
-            ),
+            driver,
+            pool,
+            target,
             target_dirty: false,
             ops,
         }
@@ -58,7 +63,7 @@ impl Render {
     /// Clears the screen of all text and graphics.
     pub fn clear(&mut self, color: Color) {
         let format = self.target.borrow().format();
-        let mut op = ClearOp::new(&mut self.pool.borrow_mut(), &self.target);
+        let mut op = ClearOp::new(&self.driver, &mut self.pool, &self.target);
         op.with_clear_value(color.swizzle(format));
         self.ops.push(Box::new(op.record()));
         self.target_dirty = true;
@@ -68,7 +73,7 @@ impl Render {
     /// and is more efficient than `write` when there is no blending or fractional pixels.
     pub fn copy(&mut self, src: &Texture2d) {
         self.ops.push(Box::new(
-            CopyOp::new(&self.pool, &src, &self.target).record(),
+            CopyOp::new(&self.driver, &mut self.pool, &src, &self.target).record(),
         ));
         self.target_dirty = true;
     }
@@ -77,7 +82,7 @@ impl Render {
     /// implementation uses a copy operation and is more efficient than `write` when there
     /// is no blending or fractional pixels.
     pub fn copy_region(&mut self, src: &Texture2d, src_region: Area, dst: Extent) {
-        let mut op = CopyOp::new(&self.pool, &src, &self.target);
+        let mut op = CopyOp::new(&self.driver, &mut self.pool, &src, &self.target);
         op.with_region(src_region, dst);
         self.ops.push(Box::new(op.record()));
         self.target_dirty = true;
@@ -98,7 +103,8 @@ impl Render {
         let mut op = DrawOp::new(
             #[cfg(debug_assertions)]
             name,
-            &self.pool,
+            Driver::clone(&self.driver),
+            &mut self.pool,
             &self.target,
         );
 
@@ -116,7 +122,8 @@ impl Render {
             EncodeOp::new(
                 #[cfg(debug_assertions)]
                 name,
-                &mut self.pool.borrow_mut(),
+                &self.driver,
+                &mut self.pool,
                 TextureRef::clone(&self.target),
             )
             .record(path),
@@ -133,7 +140,8 @@ impl Render {
             GradientOp::new(
                 #[cfg(debug_assertions)]
                 name,
-                &self.pool,
+                Driver::clone(&self.driver),
+                &mut self.pool,
                 &self.target,
                 [(path[0].0, path[0].1.into()), (path[1].0, path[1].1.into())],
             )
@@ -163,7 +171,8 @@ impl Render {
             FontOp::new(
                 #[cfg(debug_assertions)]
                 name,
-                &self.pool,
+                Driver::clone(&self.driver),
+                &mut self.pool,
                 TextureRef::clone(&self.target),
                 pos,
                 color,
@@ -191,7 +200,8 @@ impl Render {
         let mut op = FontOp::new(
             #[cfg(debug_assertions)]
             name,
-            &self.pool,
+            Driver::clone(&self.driver),
+            &mut self.pool,
             TextureRef::clone(&self.target),
             pos,
             color,
@@ -212,7 +222,8 @@ impl Render {
         let mut op = WriteOp::new(
             #[cfg(debug_assertions)]
             name,
-            &self.pool,
+            Driver::clone(&self.driver),
+            &mut self.pool,
             TextureRef::clone(&self.target),
             mode,
         );

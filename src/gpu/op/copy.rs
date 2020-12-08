@@ -3,8 +3,8 @@ use {
     crate::{
         gpu::{
             driver::{CommandPool, Device, Driver, Fence, PhysicalDevice},
-            pool::Lease,
-            PoolRef, Texture2d,
+            pool::{Lease, Pool},
+            Texture2d,
         },
         math::{Area, Coord, Extent},
     },
@@ -34,23 +34,21 @@ pub struct CopyOp {
 }
 
 impl CopyOp {
-    pub fn new(pool: &PoolRef, src: &Texture2d, dst: &Texture2d) -> Self {
-        let (cmd_buf, cmd_pool, driver, fence) = {
-            let mut pool_ref = pool.borrow_mut();
-            let family = Device::queue_family(&pool_ref.driver().borrow());
-            let mut cmd_pool = pool_ref.cmd_pool(family);
-            let driver = Driver::clone(pool_ref.driver());
-            let fence = pool_ref.fence();
+    pub fn new(driver: &Driver, pool: &mut Pool, src: &Texture2d, dst: &Texture2d) -> Self {
+        let (cmd_buf, cmd_pool, fence) = {
+            let family = Device::queue_family(&driver.borrow());
+            let mut cmd_pool = pool.cmd_pool(driver, family);
+            let fence = pool.fence(driver);
 
             let cmd_buf = unsafe { cmd_pool.allocate_one(Level::Primary) };
 
-            (cmd_buf, cmd_pool, driver, fence)
+            (cmd_buf, cmd_pool, fence)
         };
 
         Self {
             cmd_buf,
             cmd_pool,
-            driver,
+            driver: Driver::clone(driver),
             dst: Texture2d::clone(dst),
             dst_offset: Extent::ZERO,
             fence,

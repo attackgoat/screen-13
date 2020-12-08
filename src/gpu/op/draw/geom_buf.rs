@@ -2,7 +2,7 @@ use {
     crate::{
         gpu::{
             pool::{Lease, Pool},
-            Texture2d,
+            Driver, Texture2d,
         },
         math::Extent,
     },
@@ -24,6 +24,7 @@ pub struct GeometryBuffer {
 impl GeometryBuffer {
     pub fn new(
         #[cfg(debug_assertions)] name: &str,
+        driver: &Driver,
         pool: &mut Pool,
         dims: Extent,
         albedo_fmt: Format,
@@ -31,6 +32,7 @@ impl GeometryBuffer {
         let albedo = pool.texture(
             #[cfg(debug_assertions)]
             &format!("{} (Albedo)", name),
+            driver,
             dims,
             Tiling::Optimal,
             &[albedo_fmt],
@@ -47,6 +49,7 @@ impl GeometryBuffer {
         let depth = pool.texture(
             #[cfg(debug_assertions)]
             &format!("{} (Depth)", name),
+            driver,
             dims,
             Tiling::Optimal,
             &[Format::R32Sfloat],
@@ -61,6 +64,7 @@ impl GeometryBuffer {
         let light = pool.texture(
             #[cfg(debug_assertions)]
             &format!("{} (Light)", name),
+            driver,
             dims,
             Tiling::Optimal,
             &[Format::R32Uint],
@@ -73,6 +77,7 @@ impl GeometryBuffer {
         let material = pool.texture(
             #[cfg(debug_assertions)]
             &format!("{} (Material)", name),
+            driver,
             dims,
             Tiling::Optimal,
             &[Format::Rg8Unorm],
@@ -85,6 +90,7 @@ impl GeometryBuffer {
         let normal = pool.texture(
             #[cfg(debug_assertions)]
             &format!("{} (Normal)", name),
+            driver,
             dims,
             Tiling::Optimal,
             &[Format::Rgb32Sfloat],
@@ -97,6 +103,7 @@ impl GeometryBuffer {
         let output = pool.texture(
             #[cfg(debug_assertions)]
             &format!("{} (Output)", name),
+            driver,
             dims,
             Tiling::Optimal,
             &[albedo_fmt],

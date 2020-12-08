@@ -7,8 +7,8 @@ use {
                 bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
                 PhysicalDevice,
             },
-            pool::{ColorRenderPassMode, Graphics, GraphicsMode, Lease, RenderPassMode},
-            BlendMode, PoolRef, Texture2d,
+            pool::{ColorRenderPassMode, Graphics, GraphicsMode, Lease, Pool, RenderPassMode},
+            BlendMode, Texture2d,
         },
         math::{vec3, Area, CoordF, Mat4, RectF, Vec2},
     },
@@ -111,44 +111,46 @@ impl<'s> Write<'s> {
     }
 }
 
-pub struct WriteOp {
+pub struct WriteOp<'a> {
     back_buf: Lease<Texture2d>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
+    driver: Driver,
     dst: Texture2d,
     dst_preserve: bool,
     fence: Lease<Fence>,
     frame_buf: Option<Framebuffer2d>,
     graphics: Option<Lease<Graphics>>,
     mode: Mode,
+
     #[cfg(debug_assertions)]
     name: String,
-    pool: PoolRef,
+
+    pool: &'a mut Pool,
     src_textures: Vec<Texture2d>,
 }
 
-impl WriteOp {
+impl<'a> WriteOp<'a> {
     pub fn new(
         #[cfg(debug_assertions)] name: &str,
-        pool: &PoolRef,
+        driver: Driver,
+        pool: &'a mut Pool,
         dst: Texture2d,
         mode: Mode,
     ) -> Self {
-        let mut pool_ref = pool.borrow_mut();
-        let family = {
-            let device = pool_ref.driver().borrow();
-            Device::queue_family(&device)
-        };
-        let mut cmd_pool = pool_ref.cmd_pool(family);
+        let family = Device::queue_family(&driver.borrow());
+        let mut cmd_pool = pool.cmd_pool(&driver, family);
         let (dims, fmt) = {
             let dst = dst.borrow();
             (dst.dims(), dst.format())
         };
+        let fence = pool.fence(&driver);
 
         Self {
-            back_buf: pool_ref.texture(
+            back_buf: pool.texture(
                 #[cfg(debug_assertions)]
                 &format!("{} backbuffer", name),
+                &driver,
                 dims,
                 Tiling::Optimal,
                 &[fmt],
@@ -163,15 +165,16 @@ impl WriteOp {
             ),
             cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
             cmd_pool,
+            driver,
             dst,
             dst_preserve: false,
-            fence: pool_ref.fence(),
+            fence,
             frame_buf: None,
             graphics: None,
             mode,
             #[cfg(debug_assertions)]
             name: name.to_owned(),
-            pool: PoolRef::clone(pool),
+            pool,
             src_textures: Default::default(),
         }
     }
@@ -218,13 +221,10 @@ impl WriteOp {
 
         // Final setup bits
         {
-            let mut pool = self.pool.borrow_mut();
-            let driver = Driver::clone(pool.driver());
-
             // Setup the framebuffer
             self.frame_buf.replace(Framebuffer2d::new(
-                Driver::clone(&driver),
-                pool.render_pass(render_pass_mode),
+                Driver::clone(&self.driver),
+                self.pool.render_pass(&self.driver, render_pass_mode),
                 once(self.back_buf.borrow().as_default_view().as_ref()),
                 self.dst.borrow().dims(),
             ));
@@ -234,9 +234,10 @@ impl WriteOp {
                 Mode::Blend((_, mode)) => GraphicsMode::Blend(mode),
                 Mode::Texture => GraphicsMode::Texture,
             };
-            self.graphics.replace(pool.graphics_sets(
+            self.graphics.replace(self.pool.graphics_sets(
                 #[cfg(debug_assertions)]
                 &self.name,
+                &self.driver,
                 graphics_mode,
                 render_pass_mode,
                 0,
@@ -264,13 +265,11 @@ impl WriteOp {
             fence: self.fence,
             frame_buf: self.frame_buf.unwrap(),
             graphics: self.graphics.unwrap(),
-            pool: self.pool,
             src_textures: self.src_textures,
         }
     }
 
     unsafe fn submit_begin(&mut self, render_pass_mode: RenderPassMode) {
-        let mut pool = self.pool.borrow_mut();
         let mut back_buf = self.back_buf.borrow_mut();
         let mut dst = self.dst.borrow_mut();
         let graphics = self.graphics.as_ref().unwrap();
@@ -342,7 +341,7 @@ impl WriteOp {
         //     Access::SHADER_READ,
         // );
         self.cmd_buf.begin_render_pass(
-            pool.render_pass(render_pass_mode),
+            self.pool.render_pass(&self.driver, render_pass_mode),
             self.frame_buf.as_ref().unwrap(),
             rect,
             &[TRANSPARENT_BLACK.into()],
@@ -394,8 +393,7 @@ impl WriteOp {
     }
 
     unsafe fn submit_finish(&mut self) {
-        let pool = self.pool.borrow_mut();
-        let mut device = pool.driver().borrow_mut();
+        let mut device = self.driver.borrow_mut();
         let mut back_buf = self.back_buf.borrow_mut();
         let mut dst = self.dst.borrow_mut();
         let dims = dst.dims();
@@ -488,15 +486,11 @@ impl WriteOp {
                     )),
                 };
                 // TODO: Borrow in a loop? Can these be lifted?
-                self.pool
-                    .borrow()
-                    .driver()
+                self.driver
                     .borrow_mut()
                     .write_descriptor_sets(vec![src_desc, dst_desc]); // TODO: Slice/Tuple?
             } else {
-                self.pool
-                    .borrow()
-                    .driver()
+                self.driver
                     .borrow_mut()
                     .write_descriptor_sets(once(src_desc));
             }
@@ -512,7 +506,6 @@ pub struct WriteOpSubmission {
     fence: Lease<Fence>,
     frame_buf: Framebuffer2d,
     graphics: Lease<Graphics>,
-    pool: PoolRef,
     src_textures: Vec<Texture2d>,
 }
 

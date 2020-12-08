@@ -10,9 +10,10 @@ use {
             },
             op::{Bitmap, Op},
             pool::{
-                ColorRenderPassMode, FontVertex, Graphics, GraphicsMode, Lease, RenderPassMode,
+                ColorRenderPassMode, FontVertex, Graphics, GraphicsMode, Lease, Pool,
+                RenderPassMode,
             },
-            Data, PoolRef, Texture2d,
+            Data, Texture2d,
         },
         math::{vec3, CoordF, Extent, Mat4},
         pak::Pak,
@@ -54,7 +55,8 @@ pub struct Font {
 
 impl Font {
     pub(crate) fn load<K: AsRef<str>, R: Read + Seek>(
-        pool: &PoolRef,
+        driver: &Driver,
+        pool: &mut Pool,
         pak: &mut Pak<R>,
         key: K,
     ) -> Self {
@@ -71,6 +73,7 @@ impl Font {
                 BitmapOp::new(
                     #[cfg(debug_assertions)]
                     "Font",
+                    driver,
                     pool,
                     &page,
                 )
@@ -192,10 +195,11 @@ impl Font {
 }
 
 // TODO: This really needs to cache data like the draw compiler does
-pub struct FontOp {
+pub struct FontOp<'a> {
     back_buf: Lease<Texture2d>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
+    driver: Driver,
     dst: Texture2d,
     fence: Lease<Fence>,
     frame_buf: Option<Framebuffer2d>,
@@ -204,15 +208,16 @@ pub struct FontOp {
     #[cfg(debug_assertions)]
     name: String,
     outline_color: Option<AlphaColor>,
-    pool: PoolRef,
+    pool: &'a mut Pool,
     transform: Mat4,
     vertex_buf: Option<(Lease<Data>, u64)>,
 }
 
-impl FontOp {
+impl<'a> FontOp<'a> {
     pub fn new<C, P>(
         #[cfg(debug_assertions)] name: &str,
-        pool: &PoolRef,
+        driver: Driver,
+        pool: &'a mut Pool,
         dst: Texture2d,
         pos: P,
         color: C,
@@ -226,10 +231,10 @@ impl FontOp {
             (dst.dims(), dst.format())
         };
 
-        let mut pool_ref = pool.borrow_mut();
-        let back_buf = pool_ref.texture(
+        let back_buf = pool.texture(
             #[cfg(debug_assertions)]
             name,
+            &driver,
             dims,
             Tiling::Optimal,
             &[fmt],
@@ -242,10 +247,10 @@ impl FontOp {
             1,
             1,
         );
-        let family = Device::queue_family(&pool_ref.driver().borrow());
-        let mut cmd_pool = pool_ref.cmd_pool(family);
+        let family = Device::queue_family(&driver.borrow());
+        let mut cmd_pool = pool.cmd_pool(&driver, family);
         let cmd_buf = unsafe { cmd_pool.allocate_one(Level::Primary) };
-        let fence = pool_ref.fence();
+        let fence = pool.fence(&driver);
 
         let pos = pos.into();
         let transform = Mat4::from_translation(vec3(-1.0, -1.0, 0.0))
@@ -258,13 +263,14 @@ impl FontOp {
             back_buf,
             cmd_buf,
             cmd_pool,
+            driver,
             dst,
             fence,
             frame_buf: None,
             glyph_color: color.into(),
             graphics: None,
             outline_color: None,
-            pool: PoolRef::clone(&pool),
+            pool,
             transform,
             vertex_buf: None,
         }
@@ -298,13 +304,13 @@ impl FontOp {
 
         // Finish the remaining setup tasks
         {
-            let mut pool = self.pool.borrow_mut();
-            let driver = Driver::clone(pool.driver()); // TODO: Yuck
+            let driver = Driver::clone(&self.driver);
 
             // Setup the graphics pipeline
-            self.graphics.replace(pool.graphics(
+            self.graphics.replace(self.pool.graphics(
                 #[cfg(debug_assertions)]
                 &self.name,
+                &self.driver,
                 self.mode(),
                 render_pass_mode,
                 SUBPASS_IDX,
@@ -313,7 +319,7 @@ impl FontOp {
             // Setup the framebuffer
             self.frame_buf.replace(Framebuffer2d::new(
                 driver,
-                pool.render_pass(render_pass_mode),
+                self.pool.render_pass(&self.driver, render_pass_mode),
                 once(self.back_buf.borrow().as_default_view().as_ref()),
                 dims,
             ));
@@ -325,9 +331,10 @@ impl FontOp {
                     .map(|(_, vertices)| vertices.len())
                     .sum::<usize>() as u64;
             self.vertex_buf.replace((
-                pool.data_usage(
+                self.pool.data_usage(
                     #[cfg(debug_assertions)]
                     &self.name,
+                    &self.driver,
                     vertex_buf_len,
                     BufferUsage::VERTEX,
                 ),
@@ -372,7 +379,6 @@ impl FontOp {
             fence: self.fence,
             frame_buf: self.frame_buf.unwrap(),
             graphics: self.graphics.unwrap(),
-            pool: self.pool,
             vertex_buf: self.vertex_buf.unwrap().0,
         }
     }
@@ -390,7 +396,6 @@ impl FontOp {
         let (vertex_buf, vertex_buf_len) = self.vertex_buf.as_mut().unwrap();
         let mut back_buf = self.back_buf.borrow_mut();
         let mut dst = self.dst.borrow_mut();
-        let mut pool = self.pool.borrow_mut();
 
         // TODO: Limit this rect to just where we're drawing text
         let rect = Rect {
@@ -455,7 +460,7 @@ impl FontOp {
             ImageAccess::COLOR_ATTACHMENT_WRITE,
         );
         self.cmd_buf.begin_render_pass(
-            pool.render_pass(render_pass_mode),
+            self.pool.render_pass(&self.driver, render_pass_mode),
             self.frame_buf.as_ref().unwrap(),
             rect,
             once(&TRANSPARENT_BLACK.into()),
@@ -484,7 +489,7 @@ impl FontOp {
         self.cmd_buf.bind_vertex_buffers(
             0,
             Some((
-                &*vertex_buf.as_ref(),
+                vertex_buf.as_ref(),
                 SubRange {
                     offset: 0,
                     size: Some(*vertex_buf_len),
@@ -521,8 +526,7 @@ impl FontOp {
     }
 
     unsafe fn submit_finish(&mut self, dims: Extent) {
-        let pool = self.pool.borrow();
-        let mut device = pool.driver().borrow_mut();
+        let mut device = self.driver.borrow_mut();
         let mut dst = self.dst.borrow_mut();
         let mut back_buf = self.back_buf.borrow_mut();
 
@@ -583,9 +587,7 @@ impl FontOp {
         let page = font.pages[page_idx].borrow();
         let page_view = page.as_default_view();
         let graphics = self.graphics.as_ref().unwrap();
-        self.pool
-            .borrow()
-            .driver()
+        self.driver
             .borrow_mut()
             .write_descriptor_sets(once(DescriptorSetWrite {
                 set: graphics.desc_set(0),
@@ -608,7 +610,6 @@ pub struct FontOpSubmission {
     fence: Lease<Fence>,
     frame_buf: Framebuffer2d,
     graphics: Lease<Graphics>,
-    pool: PoolRef,
     vertex_buf: Lease<Data>,
 }
 

@@ -7,8 +7,8 @@ use {
                 bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
                 PhysicalDevice,
             },
-            pool::{ColorRenderPassMode, Graphics, GraphicsMode, Lease, RenderPassMode},
-            PoolRef, Texture2d,
+            pool::{ColorRenderPassMode, Graphics, GraphicsMode, Lease, Pool, RenderPassMode},
+            Texture2d,
         },
         math::Coord,
     },
@@ -45,13 +45,13 @@ pub struct GradientOp {
     back_buf: Lease<Texture2d>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
+    driver: Driver,
     dst: Texture2d,
     dst_preserve: bool,
     fence: Lease<Fence>,
     frame_buf: Framebuffer2d,
     graphics: Lease<Graphics>,
     path: [(Coord, AlphaColor); 2],
-    pool: PoolRef,
 }
 
 impl GradientOp {
@@ -59,16 +59,14 @@ impl GradientOp {
     /// None
     pub fn new(
         #[cfg(debug_assertions)] name: &str,
-        pool: &PoolRef,
+        driver: Driver,
+        pool: &mut Pool,
         dst: &Texture2d,
         path: Path,
     ) -> Self {
-        let mut pool_ref = pool.borrow_mut();
-        let driver = Driver::clone(pool_ref.driver());
-
         // Allocate the command buffer
         let family = Device::queue_family(&driver.borrow());
-        let mut cmd_pool = pool_ref.cmd_pool(family);
+        let mut cmd_pool = pool.cmd_pool(&driver, family);
 
         let (dims, fmt) = {
             let dst = dst.borrow();
@@ -81,18 +79,20 @@ impl GradientOp {
         });
 
         // Setup the first pass graphics pipeline
-        let graphics = pool_ref.graphics(
+        let graphics = pool.graphics(
             #[cfg(debug_assertions)]
             name,
+            &driver,
             GraphicsMode::Gradient,
             render_pass_mode,
             0,
         );
 
         // Setup the framebuffer
-        let back_buf = pool_ref.texture(
+        let back_buf = pool.texture(
             #[cfg(debug_assertions)]
             name,
+            &driver,
             dims,
             Tiling::Optimal,
             &[fmt],
@@ -107,22 +107,23 @@ impl GradientOp {
         );
         let frame_buf = Framebuffer2d::new(
             Driver::clone(&driver),
-            pool_ref.render_pass(render_pass_mode),
+            pool.render_pass(&driver, render_pass_mode),
             once(back_buf.borrow().as_default_view().as_ref()),
             dims,
         );
+        let fence = pool.fence(&driver);
 
         Self {
             back_buf,
             cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
             cmd_pool,
+            driver,
             dst: Texture2d::clone(dst),
             dst_preserve: false,
-            fence: pool_ref.fence(),
+            fence,
             frame_buf,
             graphics,
             path,
-            pool: PoolRef::clone(pool),
         }
     }
 
@@ -226,13 +227,11 @@ impl GradientOp {
             fence: self.fence,
             frame_buf: self.frame_buf,
             graphics: self.graphics,
-            pool: self.pool,
         }
     }
 
     unsafe fn submit(&mut self) {
-        let pool = self.pool.borrow();
-        let mut device = pool.driver().borrow_mut();
+        let mut device = self.driver.borrow_mut();
         let mut dst = self.dst.borrow_mut();
         let mut back_buf = self.back_buf.borrow_mut();
         let preserve = self.dst_preserve && must_preserve_dst(&self.path);
@@ -392,7 +391,6 @@ pub struct GradientOpSubmission {
     fence: Lease<Fence>,
     frame_buf: Framebuffer2d,
     graphics: Lease<Graphics>,
-    pool: PoolRef,
 }
 
 impl Drop for GradientOpSubmission {

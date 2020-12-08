@@ -39,15 +39,15 @@ impl<I> ClearOp<I>
 where
     I: AsRef<<_Backend as Backend>::Image>,
 {
-    pub fn new(pool: &mut Pool, texture: &TextureRef<I>) -> Self {
-        let family = Device::queue_family(&pool.driver().borrow());
-        let mut cmd_pool = pool.cmd_pool(family);
+    pub fn new(driver: &Driver, pool: &mut Pool, texture: &TextureRef<I>) -> Self {
+        let family = Device::queue_family(&driver.borrow());
+        let mut cmd_pool = pool.cmd_pool(driver, family);
         Self {
             clear_value: AlphaColor::rgba(0, 0, 0, 0).into(),
             cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
             cmd_pool,
-            driver: Driver::clone(pool.driver()),
-            fence: pool.fence(),
+            driver: Driver::clone(driver),
+            fence: pool.fence(driver),
             texture: TextureRef::clone(texture),
         }
     }

@@ -8,8 +8,8 @@ use {
                 bind_compute_descriptor_set, change_channel_type, CommandPool, ComputePipeline,
                 Device, Driver, Fence, PhysicalDevice,
             },
-            pool::{Compute, ComputeMode, Lease},
-            Data, PoolRef, Texture2d,
+            pool::{Compute, ComputeMode, Lease, Pool},
+            Data, Texture2d,
         },
         math::Coord,
         pak::{Bitmap as PakBitmap, BitmapFormat},
@@ -80,12 +80,10 @@ impl BitmapOp {
     /// None
     pub unsafe fn new(
         #[cfg(debug_assertions)] name: &str,
-        pool: &PoolRef,
+        driver: &Driver,
+        pool: &mut Pool,
         bitmap: &PakBitmap,
     ) -> Self {
-        let pool = PoolRef::clone(pool);
-        let mut pool_ref = pool.borrow_mut();
-
         // Lease a texture to hold the decoded bitmap
         let desired_fmts: &[Format] = match bitmap.format() {
             BitmapFormat::R => &[
@@ -98,9 +96,10 @@ impl BitmapOp {
             BitmapFormat::Rgb => &[Format::Rgb8Unorm, Format::Rgba8Unorm],
             BitmapFormat::Rgba => &[Format::Rgba8Unorm],
         };
-        let texture = pool_ref.texture(
+        let texture = pool.texture(
             #[cfg(debug_assertions)]
             name,
+            driver,
             bitmap.dims(),
             Tiling::Optimal,
             desired_fmts,
@@ -153,9 +152,10 @@ impl BitmapOp {
                 _ => unreachable!(),
             };
 
-            let compute = pool_ref.compute(
+            let compute = pool.compute(
                 #[cfg(debug_assertions)]
                 name,
+                driver,
                 mode,
             );
 
@@ -169,9 +169,10 @@ impl BitmapOp {
         // Lease some data from the pool
         let height = bitmap.height();
         let pixel_buf_len = bitmap_stride * height;
-        let mut pixel_buf = pool_ref.data_usage(
+        let mut pixel_buf = pool.data_usage(
             #[cfg(debug_assertions)]
             name,
+            driver,
             pixel_buf_len as _,
             if conv_fmt.is_some() {
                 BufferUsage::STORAGE
@@ -205,15 +206,15 @@ impl BitmapOp {
         }
 
         // Allocate the command buffer
-        let family = Device::queue_family(&pool_ref.driver().borrow());
-        let mut cmd_pool = pool_ref.cmd_pool(family);
+        let family = Device::queue_family(&driver.borrow());
+        let mut cmd_pool = pool.cmd_pool(driver, family);
 
         Self {
             cmd_buf: cmd_pool.allocate_one(Level::Primary),
             cmd_pool,
             conv_fmt,
-            driver: Driver::clone(pool_ref.driver()),
-            fence: pool_ref.fence(),
+            driver: Driver::clone(driver),
+            fence: pool.fence(driver),
             pixel_buf,
             pixel_buf_len: pixel_buf_len as _,
             texture,
@@ -352,7 +353,7 @@ impl BitmapOp {
                 binding: 0,
                 array_offset: 0,
                 descriptors: once(Descriptor::Buffer(
-                    &*self.pixel_buf.as_ref(),
+                    self.pixel_buf.as_ref(),
                     SubRange {
                         offset: 0,
                         size: Some(self.pixel_buf_len),

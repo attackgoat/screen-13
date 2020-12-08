@@ -74,23 +74,29 @@ pub struct EncodeOp {
 }
 
 impl EncodeOp {
-    pub fn new(#[cfg(debug_assertions)] name: &str, pool: &mut Pool, texture: Texture2d) -> Self {
+    pub fn new(
+        #[cfg(debug_assertions)] name: &str,
+        driver: &Driver,
+        pool: &mut Pool,
+        texture: Texture2d,
+    ) -> Self {
         let len = Self::byte_len(&texture);
         let buf = pool.data(
             #[cfg(debug_assertions)]
             name,
+            driver,
             len as _,
         );
 
-        let family = Device::queue_family(&pool.driver().borrow());
-        let mut cmd_pool = pool.cmd_pool(family);
+        let family = Device::queue_family(&driver.borrow());
+        let mut cmd_pool = pool.cmd_pool(driver, family);
 
         Self {
             buf,
             cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
             cmd_pool,
-            driver: Driver::clone(pool.driver()),
-            fence: pool.fence(),
+            driver: Driver::clone(driver),
+            fence: pool.fence(driver),
             quality: DEFAULT_QUALITY,
             texture,
         }

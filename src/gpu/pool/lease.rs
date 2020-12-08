@@ -11,7 +11,7 @@ pub struct Lease<T> {
 }
 
 impl<T> Lease<T> {
-    pub(super) fn new(item: T, pool: &PoolRef<T>) -> Self {
+    pub fn new(item: T, pool: &PoolRef<T>) -> Self {
         Self {
             item: Some(item),
             pool: PoolRef::clone(pool),

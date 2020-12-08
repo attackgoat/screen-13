@@ -12,7 +12,8 @@ use {
         camera::Camera,
         gpu::{
             data::{CopyRange, Mapping},
-            Data, Lease, ModelRef, PoolRef,
+            pool::Pool,
+            Data, Driver, Lease, ModelRef,
         },
     },
     std::{
@@ -220,7 +221,8 @@ impl Compiler {
     /// works because the Compiler happens to know that the host-side of the data
     fn alloc_data<T>(
         #[cfg(debug_assertions)] name: &str,
-        pool: &PoolRef,
+        driver: &Driver,
+        pool: &mut Pool,
         buf: &mut Option<DirtyData<T>>,
         len: u64,
     ) {
@@ -247,9 +249,10 @@ impl Compiler {
 
         // We over-allocate the requested capacity to prevent rapid reallocations
         let capacity = (len as f32 * CACHE_CAPACITY_FACTOR) as u64;
-        let data = pool.borrow_mut().data(
+        let data = pool.data(
             #[cfg(debug_assertions)]
             &name,
+            driver,
             capacity,
         );
 
@@ -343,7 +346,8 @@ impl Compiler {
     pub(super) fn compile<'a, 'b: 'a>(
         &'a mut self,
         #[cfg(debug_assertions)] name: &str,
-        pool: &PoolRef,
+        driver: &Driver,
+        pool: &mut Pool,
         camera: &impl Camera,
         cmds: &'b mut [Command],
     ) -> Compilation<'a> {
@@ -389,6 +393,7 @@ impl Compiler {
                 self.compile_point_lights(
                     #[cfg(debug_assertions)]
                     name,
+                    driver,
                     pool,
                     point_light_count,
                 );
@@ -400,6 +405,7 @@ impl Compiler {
                 self.compile_rect_lights(
                     #[cfg(debug_assertions)]
                     name,
+                    driver,
                     pool,
                     &cmds[rect_lights],
                 );
@@ -411,6 +417,7 @@ impl Compiler {
                 self.compile_spotlights(
                     #[cfg(debug_assertions)]
                     name,
+                    driver,
                     pool,
                     &cmds[spotlights],
                 );
@@ -423,6 +430,7 @@ impl Compiler {
             self.compile_lines(
                 #[cfg(debug_assertions)]
                 name,
+                driver,
                 pool,
                 &cmds[lines],
             );
@@ -489,16 +497,18 @@ impl Compiler {
     fn compile_point_lights(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
-        pool: &PoolRef,
+        driver: &Driver,
+        pool: &mut Pool,
         count: usize,
     ) {
         self.code.push(Asm::DrawPointLights(count as _));
 
         // On the first (it is also the only) allocation we will copy in the icosphere vertices
         if self.point_light_buf.as_ref().is_none() {
-            let mut buf = pool.borrow_mut().data(
+            let mut buf = pool.data(
                 #[cfg(debug_assertions)]
                 &format!("{} point light vertex buffer", name),
+                driver,
                 POINT_LIGHT.len() as _,
             );
 
@@ -522,13 +532,15 @@ impl Compiler {
     fn compile_rect_lights(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
-        pool: &PoolRef,
+        driver: &Driver,
+        pool: &mut Pool,
         cmds: &[Command],
     ) {
         // Allocate enough `buf` to hold everything in the existing cache and everything we could possibly draw
         Self::alloc_data(
             #[cfg(debug_assertions)]
             &format!("{} rect light vertex buffer", name),
+            driver,
             pool,
             &mut self.rect_light.buf,
             ((self.rect_light.lru.len() + cmds.len()) * RECT_LIGHT_STRIDE) as _,
@@ -612,13 +624,15 @@ impl Compiler {
     fn compile_spotlights(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
-        pool: &PoolRef,
+        driver: &Driver,
+        pool: &mut Pool,
         cmds: &[Command],
     ) {
         // Allocate enough `buf` to hold everything in the existing cache and everything we could possibly draw
         Self::alloc_data(
             #[cfg(debug_assertions)]
             &format!("{} spotlight vertex buffer", name),
+            driver,
             pool,
             &mut self.spotlight.buf,
             (self.spotlight.lru.len() * SPOTLIGHT_STRIDE + cmds.len() * SPOTLIGHT_STRIDE) as _,
@@ -701,13 +715,15 @@ impl Compiler {
     fn compile_lines(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
-        pool: &PoolRef,
+        driver: &Driver,
+        pool: &mut Pool,
         cmds: &[Command],
     ) {
         // Allocate enough `buf` to hold everything in the existing cache and everything we could possibly draw
         Self::alloc_data(
             #[cfg(debug_assertions)]
             &format!("{} line vertex buffer", name),
+            driver,
             pool,
             &mut self.line.buf,
             (self.line.lru.len() * LINE_STRIDE + cmds.len() * LINE_STRIDE) as _,

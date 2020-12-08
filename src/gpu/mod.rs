@@ -18,6 +18,7 @@ mod texture;
 pub use self::{
     model::{MeshFilter, Model, Pose},
     op::{Bitmap, Command, Font, Material, Write, WriteMode},
+    pool::Pool,
     render::Render,
     swapchain::Swapchain,
     texture::Texture,
@@ -33,7 +34,7 @@ use {
         data::{Data, Mapping},
         driver::{Device, Image2d, Surface},
         op::BitmapOp,
-        pool::{Lease, Pool},
+        pool::{Lease, PoolRef},
     },
     crate::{
         math::Extent,
@@ -41,7 +42,7 @@ use {
         Error,
     },
     gfx_hal::{
-        adapter::Adapter, buffer::Usage, device::Device as _, format::Format, queue::QueueFamily,
+        adapter::Adapter, buffer::Usage, device::Device as _, queue::QueueFamily,
         window::Surface as _, Instance as _,
     },
     gfx_impl::{Backend as _Backend, Instance},
@@ -67,9 +68,9 @@ pub type Texture2d = TextureRef<Image2d>;
 pub type BitmapRef = Rc<Bitmap>;
 pub type ModelRef = Rc<Model>;
 
-pub(crate) type PoolRef = Rc<RefCell<Pool>>;
 pub(crate) type TextureRef<I> = Rc<RefCell<Texture<I>>>;
 
+type LoadCache = RefCell<Pool>;
 type OpCache = RefCell<Option<Vec<Box<dyn Op>>>>;
 
 /// Rounds down a multiple of atom; panics if atom is zero
@@ -128,11 +129,18 @@ impl Default for BlendMode {
     }
 }
 
+/// Helpful GPU cache; only required if multiple renders happen per frame and they have very different contents.
+///
+/// Remark: If you drop this the game will stutter, so it is best to wait a few frames before dropping it.
+#[derive(Default)]
+pub struct Cache(PoolRef<Pool>);
+
 /// Allows you to load resources and begin rendering operations.
 pub struct Gpu {
     driver: Driver,
+    loads: LoadCache,
     ops: OpCache,
-    pool: PoolRef,
+    renders: Cache,
 }
 
 impl Gpu {
@@ -153,12 +161,12 @@ impl Gpu {
             Device::new(adapter.physical_device, queue).unwrap(),
         ));
         let driver_copy = Driver::clone(&driver);
-        let pool = PoolRef::new(RefCell::new(Pool::new(&driver)));
         (
             Self {
                 driver,
+                loads: Default::default(),
                 ops: Default::default(),
-                pool,
+                renders: Default::default(),
             },
             driver_copy,
             surface,
@@ -181,12 +189,12 @@ impl Gpu {
         let driver = Driver::new(RefCell::new(
             Device::new(adapter.physical_device, queue).unwrap(),
         ));
-        let pool = PoolRef::new(RefCell::new(Pool::new(&driver)));
 
         Self {
             driver,
+            loads: Default::default(),
             ops: Default::default(),
-            pool,
+            renders: Default::default(),
         }
     }
 
@@ -196,8 +204,8 @@ impl Gpu {
         pak: &mut Pak<R>,
         id: AnimationId,
     ) -> ModelRef {
-        let _pool = PoolRef::clone(&self.pool);
-        let _anim = pak.read_animation(id);
+        //let _pool = PoolRef::clone(&self.pool);
+        //let _anim = pak.read_animation(id);
         // let indices = model.indices();
         // let index_buf_len = indices.len() as _;
         // let mut index_buf = pool.borrow_mut().data_usage(
@@ -245,13 +253,14 @@ impl Gpu {
         id: BitmapId,
     ) -> Bitmap {
         let bitmap = pak.read_bitmap(id);
-        let pool = PoolRef::clone(&self.pool);
+        let mut pool = self.loads.borrow_mut();
 
         unsafe {
             BitmapOp::new(
                 #[cfg(debug_assertions)]
                 name,
-                &pool,
+                &self.driver,
+                &mut pool,
                 &bitmap,
             )
             .record()
@@ -263,8 +272,12 @@ impl Gpu {
         #[cfg(debug_assertions)]
         debug!("Loading font `{}`", face.as_ref());
 
-        let pool = PoolRef::clone(&self.pool);
-        Font::load(&pool, pak, face.as_ref())
+        Font::load(
+            &self.driver,
+            &mut self.loads.borrow_mut(),
+            pak,
+            face.as_ref(),
+        )
     }
 
     pub fn load_model<R: Read + Seek>(
@@ -273,14 +286,16 @@ impl Gpu {
         pak: &mut Pak<R>,
         id: ModelId,
     ) -> Model {
+        let mut pool = self.loads.borrow_mut();
+
         let model = pak.read_model(id);
-        let pool = PoolRef::clone(&self.pool);
         let indices = model.indices();
         let index_ty = model.index_ty();
         let index_buf_len = indices.len() as _;
-        let mut index_buf = pool.borrow_mut().data_usage(
+        let mut index_buf = pool.data_usage(
             #[cfg(debug_assertions)]
             name,
+            &self.driver,
             index_buf_len,
             Usage::INDEX,
         );
@@ -293,9 +308,10 @@ impl Gpu {
 
         let vertices = model.vertices();
         let vertex_buf_len = vertices.len() as _;
-        let mut vertex_buf = pool.borrow_mut().data_usage(
+        let mut vertex_buf = pool.data_usage(
             #[cfg(debug_assertions)]
             name,
+            &self.driver,
             vertex_buf_len,
             Usage::VERTEX,
         );
@@ -309,12 +325,21 @@ impl Gpu {
         Model::new(model.take_meshes(), index_ty, index_buf, vertex_buf)
     }
 
-    // TODO: This should not be exposed, bring users into this code?
-    pub(crate) fn pool(&self) -> &PoolRef {
-        &self.pool
+    pub fn render(&self, #[cfg(debug_assertions)] name: &str, dims: Extent) -> Render {
+        self.render_with_cache(
+            #[cfg(debug_assertions)]
+            name,
+            dims,
+            &self.renders,
+        )
     }
 
-    pub fn render(&self, #[cfg(debug_assertions)] name: &str, dims: Extent) -> Render {
+    pub fn render_with_cache(
+        &self,
+        #[cfg(debug_assertions)] name: &str,
+        dims: Extent,
+        cache: &Cache,
+    ) -> Render {
         // There may be pending operations from a previously resolved render; if so
         // we just stick them into the next render that goes out the door.
         let ops = if let Some(ops) = self.ops.borrow_mut().take() {
@@ -323,12 +348,21 @@ impl Gpu {
             Default::default()
         };
 
+        // Pull a rendering pool from the cache or we create and lease a new one
+        let pool = if let Some(pool) = cache.0.borrow_mut().pop_back() {
+            pool
+        } else {
+            debug!("Creating new render pool");
+            Default::default()
+        };
+        let pool = Lease::new(pool, &cache.0);
+
         Render::new(
             #[cfg(debug_assertions)]
             name,
-            &self.pool,
+            Driver::clone(&self.driver),
+            pool,
             dims,
-            Format::Rgba8Unorm,
             ops,
         )
     }
