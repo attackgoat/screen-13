@@ -7,7 +7,7 @@ pub use winit::{
 
 use {
     crate::{
-        gpu::{Driver, Gpu, Op, Render, Swapchain},
+        gpu::{Gpu, Op, Render, Swapchain},
         math::Extent,
     },
     std::cmp::Ordering,
@@ -77,8 +77,7 @@ impl Game {
         swapchain_len: u32,
     ) -> Self {
         let window = builder.build(&event_loop).unwrap();
-        let (gpu, surface) = Gpu::new(&window);
-        let driver = Driver::clone(gpu.driver());
+        let (gpu, driver, surface) = Gpu::new(&window);
         let swapchain = Swapchain::new(driver, surface, dims, swapchain_len);
 
         // TODO: Needed? window.request_redraw();

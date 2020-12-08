@@ -136,7 +136,7 @@ pub struct Gpu {
 }
 
 impl Gpu {
-    pub(super) fn new(window: &Window) -> (Self, Surface) {
+    pub(super) fn new(window: &Window) -> (Self, Driver, Surface) {
         let (adapter, surface) = create_surface(window);
         let queue = adapter
             .queue_families
@@ -152,14 +152,15 @@ impl Gpu {
         let driver = Driver::new(RefCell::new(
             Device::new(adapter.physical_device, queue).unwrap(),
         ));
+        let driver_copy = Driver::clone(&driver);
         let pool = PoolRef::new(RefCell::new(Pool::new(&driver)));
-
         (
             Self {
                 driver,
                 ops: Default::default(),
                 pool,
             },
+            driver_copy,
             surface,
         )
     }
@@ -187,11 +188,6 @@ impl Gpu {
             ops: Default::default(),
             pool,
         }
-    }
-
-    // TODO: This should not be exposed, bring users into this code?
-    pub(crate) fn driver(&self) -> &Driver {
-        &self.driver
     }
 
     pub fn load_animation<R: Read + Seek>(
