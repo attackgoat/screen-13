@@ -122,7 +122,6 @@ pub struct Pool {
     desc_pools: HashMap<DescriptorPoolKey, PoolRef<DescriptorPool>>,
     driver: Driver,
     fences: PoolRef<Fence>,
-    format: Format,
     graphics: HashMap<GraphicsKey, PoolRef<Graphics>>,
     memories: HashMap<MemoryTypeId, PoolRef<Memory>>,
     render_passes: HashMap<RenderPassMode, RenderPass>,
@@ -130,7 +129,7 @@ pub struct Pool {
 }
 
 impl Pool {
-    pub fn new(driver: &Driver, format: Format) -> Self {
+    pub fn new(driver: &Driver) -> Self {
         Self {
             cmd_pools: Default::default(),
             compilers: Default::default(),
@@ -139,7 +138,6 @@ impl Pool {
             desc_pools: Default::default(),
             driver: Driver::clone(driver),
             fences: Default::default(),
-            format,
             graphics: Default::default(),
             memories: Default::default(),
             render_passes: Default::default(),
@@ -147,9 +145,9 @@ impl Pool {
         }
     }
 
-    pub fn clear_textures(&mut self) {
-        self.textures.clear();
-    }
+    // pub fn clear_textures(&mut self) {
+    //     self.textures.clear();
+    // }
 
     pub fn cmd_pool(&mut self, family: QueueFamilyId) -> Lease<CommandPool> {
         let items = self
@@ -373,16 +371,9 @@ impl Pool {
         self.render_passes
             .entry(mode)
             .or_insert_with(|| match mode {
-                RenderPassMode::Color(fmt) => color(driver, fmt),
-                RenderPassMode::Draw(fmt) => draw(driver, fmt),
+                RenderPassMode::Color(mode) => color(driver, mode),
+                RenderPassMode::Draw(mode) => draw(driver, mode),
             })
-    }
-
-    pub fn set_format(&mut self, format: Format) {
-        #[cfg(debug_assertions)]
-        debug!("Setting GPU pool format to {:?}", format);
-
-        self.format = format;
     }
 
     #[allow(clippy::too_many_arguments)]

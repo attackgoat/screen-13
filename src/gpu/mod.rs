@@ -152,7 +152,7 @@ impl Gpu {
         let driver = Driver::new(RefCell::new(
             Device::new(adapter.physical_device, queue).unwrap(),
         ));
-        let pool = PoolRef::new(RefCell::new(Pool::new(&driver, Format::Rgba8Unorm)));
+        let pool = PoolRef::new(RefCell::new(Pool::new(&driver)));
 
         (
             Self {
@@ -180,7 +180,7 @@ impl Gpu {
         let driver = Driver::new(RefCell::new(
             Device::new(adapter.physical_device, queue).unwrap(),
         ));
-        let pool = PoolRef::new(RefCell::new(Pool::new(&driver, Format::Rgba8Unorm)));
+        let pool = PoolRef::new(RefCell::new(Pool::new(&driver)));
 
         Self {
             driver,
