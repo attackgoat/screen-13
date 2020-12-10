@@ -11,14 +11,11 @@ use {
         command::{ClearValue, CommandBuffer as _, CommandBufferFlags, Level, SubpassContents},
         device::Device as _,
         format::{ChannelType, Format},
-        image::{Access, Layout, Usage},
+        image::{Access, Layout},
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage, ShaderStageFlags, Viewport},
         queue::{CommandQueue as _, Submission},
-        window::{
-            PresentMode, PresentationSurface as _, Surface as _, SurfaceCapabilities,
-            SwapchainConfig,
-        },
+        window::{PresentationSurface as _, Surface as _, SurfaceCapabilities, SwapchainConfig},
         Backend,
     },
     gfx_impl::Backend as _Backend,
@@ -32,7 +29,7 @@ use {
 fn pick_format(gpu: &<_Backend as Backend>::PhysicalDevice, surface: &Surface) -> Format {
     surface
         .supported_formats(gpu)
-        .map_or(Format::Bgra8Srgb, |formats| {
+        .map_or(Format::Rgba8Srgb, |formats| {
             *formats
                 .iter()
                 .find(|format| format.base_format().1 == ChannelType::Srgb)
@@ -46,23 +43,11 @@ fn swapchain_config(
     format: Format,
     image_count: u32,
 ) -> SwapchainConfig {
-    // All presentaion will happen by copying intermediately rendered images into the surface images
-    let mut swap_config = SwapchainConfig::from_caps(&caps, format, dims.into())
-        .with_image_usage(Usage::COLOR_ATTACHMENT);
-
-    // We want one image more than the minimum but still less than or equal to the maxium
-    swap_config.image_count = image_count
+    let image_count = image_count
         .max(*caps.image_count.start())
         .min(*caps.image_count.end());
 
-    // We want triple buffering if available
-    if caps.present_modes.contains(PresentMode::MAILBOX) {
-        swap_config.present_mode = PresentMode::MAILBOX;
-    }
-
-    swap_config.image_usage |= Usage::TRANSFER_DST;
-
-    swap_config
+    SwapchainConfig::from_caps(&caps, format, dims.into()).with_image_count(image_count)
 }
 
 struct Image {
@@ -94,18 +79,22 @@ impl Swapchain {
     pub fn new(driver: Driver, mut surface: Surface, dims: Extent, image_count: u32) -> Self {
         assert_ne!(image_count, 0);
 
+        let mut needs_configuration = false;
         let (family, fmt, supported_fmts) = {
             let device = driver.as_ref().borrow();
+            let family = Device::queue_family(&device);
             let gpu = device.gpu();
             let fmt = pick_format(gpu, &surface);
             let caps = surface.capabilities(gpu);
             let swap_config = swapchain_config(caps, dims, fmt, image_count);
 
-            unsafe { surface.configure_swapchain(&device, swap_config) }.unwrap();
+            unsafe {
+                surface
+                    .configure_swapchain(&device, swap_config)
+                    .unwrap_or_else(|_| needs_configuration = true);
+            }
 
             let supported_fmts = surface.supported_formats(gpu).unwrap_or_default();
-
-            let family = Device::queue_family(&device);
 
             (family, fmt, supported_fmts)
         };
@@ -149,7 +138,7 @@ impl Swapchain {
             graphics,
             images,
             image_idx: 0,
-            needs_configuration: true,
+            needs_configuration,
             render_pass,
             supported_fmts,
             surface,
@@ -166,7 +155,15 @@ impl Swapchain {
         let caps = self.surface.capabilities(gpu);
         let swap_config = swapchain_config(caps, self.dims, self.fmt, self.images.len() as _);
 
-        unsafe { self.surface.configure_swapchain(&device, swap_config) }.unwrap(); // TODO: Handle this error before beta version!
+        unsafe {
+            if let Err(e) = self.surface.configure_swapchain(&device, swap_config) {
+                warn!("Error configuring swapchain {:?}", e);
+
+                self.needs_configuration = true;
+            } else {
+                self.needs_configuration = false;
+            }
+        }
 
         self.supported_fmts = self.surface.supported_formats(gpu).unwrap_or_default();
     }
@@ -177,7 +174,13 @@ impl Swapchain {
 
     pub fn present(&mut self, texture: &mut Texture2d) {
         if self.needs_configuration {
+            debug!("Configuring swapchain");
             self.configure();
+
+            if self.needs_configuration {
+                info!("Unable to configure swapchain - not presenting");
+                return;
+            }
         }
 
         self.image_idx += 1;
@@ -185,16 +188,16 @@ impl Swapchain {
         let image = &mut self.images[self.image_idx];
 
         let image_view = unsafe {
-            match self.surface.acquire_image(0) {
+            // Allow 100ms for the next image to be ready
+            match self.surface.acquire_image(100_000_000) {
                 Err(_) => {
-                    self.needs_configuration = true;
-
-                    // TODO: Handle these error conditions before beta version
+                    warn!("Unable to acquire swapchain image");
                     return;
                 }
                 Ok((image_view, suboptimal)) => {
                     // If it is suboptimal we will still present and configure on the next frame
                     if suboptimal.is_some() {
+                        info!("Suboptimal swapchain image");
                         self.needs_configuration = true;
                     }
 
@@ -304,15 +307,22 @@ impl Swapchain {
                 Some(&image.fence),
             );
             match queue.present(&mut self.surface, image_view, Some(&image.signal)) {
-                Err(e) => Err(e),
-                Ok(suboptimal) if suboptimal.is_some() => {
+                Err(e) => {
+                    warn!("Unable to present swapchain image");
                     self.needs_configuration = true;
+                    Err(e)
+                }
+                Ok(suboptimal) => {
+                    // TODO: Learn more about this
+                    // if suboptimal.is_some() {
+                    //     info!("Suboptimal swapchain");
+                    //     //self.needs_configuration = true;
+                    // }
 
                     Ok(())
                 }
-                _ => Ok(()),
             }
-            .unwrap();
+            .unwrap_or_default();
         }
     }
 
