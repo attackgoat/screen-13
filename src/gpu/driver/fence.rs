@@ -93,7 +93,7 @@ impl Fence {
             }
         }
 
-        error!("Graphics driver stalled!");
+        panic!("Graphics driver stalled!");
     }
 }
 
