@@ -11,6 +11,9 @@ use {
 };
 
 // TODO: Specialize with FadeIn, FadeOut, CrossFade versions
+/// Fades between two screens.
+/// 
+/// Remark: Screens are only drawn, and not updated, during fade.
 pub struct Fade {
     a: Option<DynScreen>,
     b: Option<DynScreen>,
@@ -71,12 +74,10 @@ impl Screen for Fade {
         a
     }
 
-    fn update(mut self: Box<Self>, gpu: &Gpu, input: &Input) -> DynScreen {
+    fn update(mut self: Box<Self>, _: &Gpu, _: &Input) -> DynScreen {
         if Instant::now() - self.started > self.duration {
             self.b.take().unwrap()
         } else {
-            self.a = Some(self.a.take().unwrap().update(gpu, input));
-            self.b = Some(self.b.take().unwrap().update(gpu, input));
             self
         }
     }

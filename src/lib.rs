@@ -121,7 +121,7 @@ impl Engine {
                     _ => {}
                 },
                 Event::RedrawEventsCleared => game.request_redraw(),
-                Event::RedrawRequested(_) => {
+                Event::MainEventsCleared | Event::RedrawRequested(_) => {
                     // Keep the rendering buffer from overflowing
                     while render_buf.len() >= config.render_buf_len() {
                         render_buf.pop_back();

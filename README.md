@@ -38,9 +38,8 @@ This engine is very young and is likely to change as development continues.
 
 - Requires Rust 1.45 or later
 - Asset .pak file baking: Needs work, currently written in a script-like or procedural style and should be refactored to become much more general purpose
-- Asset .pak file runtime: 75% complete. Needs byte stream compression and implemetation of HTTP/S support.
+- Asset .pak file runtime: 75% complete. Needs implemetation of HTTP/S support.
 - Debug names should maybe be a Cargo.toml "feature" for games that aren't attempting to support debuggability via graphics API capturing tools such as RenderDoc. The way it is right now lots of API calls require a string you must attribute with the debug-assertions if-config attribute.
-- There are countless TODO's scattered in this codebase; this project started as a closed-source personal project and so Github issues and such for tracking things were not the original method I used. Feel free to replace TODO's by opening a matching Issue or just removing outdated TODO information.
 - Drawing lines, bitmaps, 3D models, lights (and shadows): I recently ripped out all this code in order to add a compilation stage after you submit rendering commands. This allows for proper z-order painting and batching to reduce GPU resource-switching. It is not complete yet and requires more work. Update: The design of this section is really coming along and likely to remain somewhat stable as it scrolls towards dev-complete.
 - Input: Keyboard has been started but the design is not very good. Mouse input is to-do. Game controllers and joysticks are planned.
 
@@ -48,7 +47,7 @@ This engine is very young and is likely to change as development continues.
 
 ### Brotli Compression
 
-Higher compression ratio and somewhat slow during compression.
+Higher compression ratio and somewhat slow during compression. *Currently does not read properly*
 
 ```toml
 [content]

@@ -50,11 +50,11 @@ impl Device {
     }
 }
 
-impl AsMut<<_Backend as Backend>::Device> for Device {
-    fn as_mut(&mut self) -> &mut <_Backend as Backend>::Device {
-        &mut *self
-    }
-}
+// impl AsMut<<_Backend as Backend>::Device> for Device {
+//     fn as_mut(&mut self) -> &mut <_Backend as Backend>::Device {
+//         &mut *self
+//     }
+// }
 
 impl AsRef<<_Backend as Backend>::Device> for Device {
     fn as_ref(&self) -> &<_Backend as Backend>::Device {
@@ -70,11 +70,11 @@ impl Deref for Device {
     }
 }
 
-impl DerefMut for Device {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.ptr
-    }
-}
+// impl DerefMut for Device {
+//     fn deref_mut(&mut self) -> &mut Self::Target {
+//         &mut self.ptr
+//     }
+// }
 
 impl PhysicalDevice for Device {
     fn best_fmt(&self, desired_fmts: &[Format], tiling: Tiling, usage: Usage) -> Option<Format> {
