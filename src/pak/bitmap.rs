@@ -6,7 +6,10 @@ use {
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub struct Bitmap {
     fmt: Format,
+
+    #[serde(with = "serde_bytes")]
     pixels: Vec<u8>,
+
     width: u16,
 }
 

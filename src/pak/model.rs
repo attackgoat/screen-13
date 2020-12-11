@@ -51,8 +51,13 @@ impl Mesh {
 #[derive(Deserialize, Serialize)]
 pub struct Model {
     index_ty: IndexType,
+
+    #[serde(with = "serde_bytes")]
     indices: Vec<u8>,
+
     meshes: Vec<Mesh>,
+
+    #[serde(with = "serde_bytes")]
     vertices: Vec<u8>,
 }
 
