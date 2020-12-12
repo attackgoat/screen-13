@@ -1,6 +1,6 @@
 use {
     super::{
-        driver::PhysicalDevice,
+        driver::Device,
         op::{
             ClearOp, Command, CopyOp, DrawOp, EncodeOp, Font, FontOp, GradientOp, Write, WriteMode,
             WriteOp,
@@ -38,13 +38,12 @@ impl Render {
         dims: Extent,
         ops: Vec<Box<dyn Op>>,
     ) -> Self {
-        let fmt = driver
-            .borrow()
-            .best_fmt(
-                &[Format::Rgba8Unorm, Format::Bgra8Unorm],
-                ImageFeature::COLOR_ATTACHMENT | ImageFeature::SAMPLED,
-            )
-            .unwrap();
+        let fmt = Device::best_fmt(
+            &driver.borrow(),
+            &[Format::Rgba8Unorm, Format::Bgra8Unorm],
+            ImageFeature::COLOR_ATTACHMENT | ImageFeature::SAMPLED,
+        )
+        .unwrap();
         let target = pool.texture(
             #[cfg(debug_assertions)]
             name,

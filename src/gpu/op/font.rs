@@ -6,7 +6,6 @@ use {
             data::Mapping,
             driver::{
                 bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
-                PhysicalDevice,
             },
             op::{Bitmap, Op},
             pool::{

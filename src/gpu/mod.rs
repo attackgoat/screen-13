@@ -24,10 +24,7 @@ pub use self::{
     texture::Texture,
 };
 
-pub(crate) use self::{
-    driver::{Driver, PhysicalDevice},
-    op::Op,
-};
+pub(crate) use self::{driver::Driver, op::Op};
 
 use {
     self::{

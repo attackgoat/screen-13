@@ -24,7 +24,6 @@ use {
             data::CopyRange,
             driver::{
                 bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
-                PhysicalDevice,
             },
             model::MeshIter,
             pool::{DrawRenderPassMode, Graphics, GraphicsMode, Lease, Pool, RenderPassMode},

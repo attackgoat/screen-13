@@ -1,5 +1,5 @@
 use {
-    crate::{private::Sealed, Error},
+    crate::{Error},
     gfx_hal::{
         adapter::{MemoryProperties, PhysicalDevice as _},
         format::{Format, ImageFeature, Properties as FormatProperties},
@@ -40,43 +40,15 @@ impl Device {
         })
     }
 
-    pub fn queue_family(device: &Self) -> QueueFamilyId {
-        device.queue_group.family
-    }
-}
-
-// impl AsMut<<_Backend as Backend>::Device> for Device {
-//     fn as_mut(&mut self) -> &mut <_Backend as Backend>::Device {
-//         &mut *self
-//     }
-// }
-
-impl AsRef<<_Backend as Backend>::Device> for Device {
-    fn as_ref(&self) -> &<_Backend as Backend>::Device {
-        &*self
-    }
-}
-
-impl Deref for Device {
-    type Target = <_Backend as Backend>::Device;
-
-    fn deref(&self) -> &Self::Target {
-        &self.ptr
-    }
-}
-
-// impl DerefMut for Device {
-//     fn deref_mut(&mut self) -> &mut Self::Target {
-//         &mut self.ptr
-//     }
-// }
-
-impl PhysicalDevice for Device {
     /// Remarks: Only considers optimal tiling images.
-    fn best_fmt(&self, desired_fmts: &[Format], features: ImageFeature) -> Option<Format> {
+    pub fn best_fmt(
+        device: &Self,
+        desired_fmts: &[Format],
+        features: ImageFeature,
+    ) -> Option<Format> {
         assert!(!desired_fmts.is_empty());
 
-        let mut fmts = self.fmts.borrow_mut();
+        let mut fmts = device.fmts.borrow_mut();
         *fmts
             .entry(FormatKey {
                 desired_fmt: desired_fmts[0],
@@ -88,7 +60,7 @@ impl PhysicalDevice for Device {
                 }
 
                 for fmt in desired_fmts.iter() {
-                    let props = self.phys.format_properties(Some(*fmt));
+                    let props = device.phys.format_properties(Some(*fmt));
                     if is_compatible(props, features) {
                         // #[cfg(debug_assertions)]
                         // trace!(
@@ -291,7 +263,7 @@ impl PhysicalDevice for Device {
 
                     let mut compatible_fmts = vec![];
                     for fmt in all_fmts.iter() {
-                        if is_compatible(self.phys.format_properties(Some(*fmt)), features) {
+                        if is_compatible(device.phys.format_properties(Some(*fmt)), features) {
                             compatible_fmts.push(*fmt);
                         }
                     }
@@ -317,13 +289,14 @@ impl PhysicalDevice for Device {
             })
     }
 
-    fn gpu(&self) -> &<_Backend as Backend>::PhysicalDevice {
-        &self.phys
+    pub fn gpu(device: &Self) -> &<_Backend as Backend>::PhysicalDevice {
+        &device.phys
     }
 
-    fn mem_ty(&self, mask: u32, properties: Properties) -> MemoryTypeId {
+    pub fn mem_ty(device: &Self, mask: u32, properties: Properties) -> MemoryTypeId {
         //debug!("type_mask={} properties={:?}", type_mask, properties);
-        self.mem
+        device
+            .mem
             .memory_types
             .iter()
             .enumerate()
@@ -349,22 +322,43 @@ impl PhysicalDevice for Device {
         panic!("Memory type not found");*/
     }
 
-    fn queue_mut(&mut self) -> &mut <_Backend as Backend>::CommandQueue {
-        &mut self.queue_group.queues[0]
+    pub fn queue_family(device: &Self) -> QueueFamilyId {
+        device.queue_group.family
+    }
+
+    pub fn queue_mut(device: &mut Self) -> &mut <_Backend as Backend>::CommandQueue {
+        &mut device.queue_group.queues[0]
     }
 }
 
-impl Sealed for Device {}
+// impl AsMut<<_Backend as Backend>::Device> for Device {
+//     fn as_mut(&mut self) -> &mut <_Backend as Backend>::Device {
+//         &mut *self
+//     }
+// }
+
+impl AsRef<<_Backend as Backend>::Device> for Device {
+    fn as_ref(&self) -> &<_Backend as Backend>::Device {
+        &*self
+    }
+}
+
+impl Deref for Device {
+    type Target = <_Backend as Backend>::Device;
+
+    fn deref(&self) -> &Self::Target {
+        &self.ptr
+    }
+}
+
+// impl DerefMut for Device {
+//     fn deref_mut(&mut self) -> &mut Self::Target {
+//         &mut self.ptr
+//     }
+// }
 
 #[derive(Eq, Hash, PartialEq)]
 struct FormatKey {
     desired_fmt: Format,
     features: ImageFeature,
-}
-
-pub trait PhysicalDevice: Sealed {
-    fn best_fmt(&self, desired_fmts: &[Format], features: ImageFeature) -> Option<Format>;
-    fn mem_ty(&self, type_mask: u32, properties: Properties) -> MemoryTypeId;
-    fn queue_mut(&mut self) -> &mut <_Backend as Backend>::CommandQueue;
-    fn gpu(&self) -> &<_Backend as Backend>::PhysicalDevice;
 }

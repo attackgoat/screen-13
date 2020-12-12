@@ -4,7 +4,7 @@ use {
             bind_graphics_descriptor_set, CommandPool, Fence, Framebuffer2d, RenderPass, Semaphore,
         },
         pool::{present, Graphics},
-        Device, Driver, PhysicalDevice, Surface, Texture2d,
+        Device, Driver, Surface, Texture2d,
     },
     crate::math::{vec3, CoordF, Extent, Mat4},
     gfx_hal::{
@@ -83,7 +83,7 @@ impl Swapchain {
         let (family, fmt, supported_fmts) = {
             let device = driver.as_ref().borrow();
             let family = Device::queue_family(&device);
-            let gpu = device.gpu();
+            let gpu = Device::gpu(&device);
             let fmt = pick_format(gpu, &surface);
             let caps = surface.capabilities(gpu);
             let swap_config = swapchain_config(caps, dims, fmt, image_count);
@@ -147,7 +147,7 @@ impl Swapchain {
 
     fn configure(&mut self) {
         let device = self.driver.as_ref().borrow();
-        let gpu = device.gpu();
+        let gpu = Device::gpu(&device);
 
         // Update the format as it may have changed
         self.fmt = pick_format(gpu, &self.surface);

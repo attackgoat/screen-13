@@ -5,7 +5,6 @@ use {
         gpu::{
             driver::{
                 bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
-                PhysicalDevice,
             },
             pool::{ColorRenderPassMode, Graphics, GraphicsMode, Lease, Pool, RenderPassMode},
             Texture2d,

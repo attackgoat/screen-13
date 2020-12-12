@@ -1,7 +1,7 @@
 use {
     super::Op,
     crate::gpu::{
-        driver::{CommandPool, Device, Driver, Fence, PhysicalDevice},
+        driver::{CommandPool, Device, Driver, Fence},
         pool::{Lease, Pool},
         Data, Texture2d,
     },

@@ -1,13 +1,13 @@
 use {
     super::{
         align_down, align_up,
-        driver::{Buffer, Driver, PhysicalDevice},
+        driver::{Buffer, Device, Driver},
     },
     gfx_hal::{
         adapter::PhysicalDevice as _,
         buffer::{Access, SubRange, Usage},
         command::{BufferCopy, CommandBuffer as _},
-        device::{Device, MapError, OutOfMemory},
+        device::{Device as _, MapError, OutOfMemory},
         memory::{Barrier, Dependencies, Properties, Segment},
         pso::PipelineStage,
         Backend,
@@ -130,10 +130,7 @@ impl Data {
         assert_ne!(capacity, 0);
 
         // Pre-align the capacity so the entire requested capacity can be mapped later (mapping must be in atom sized units)
-        let non_coherent_atom_size = driver
-            .as_ref()
-            .borrow()
-            .gpu()
+        let non_coherent_atom_size = Device::gpu(&driver.as_ref().borrow())
             .limits()
             .non_coherent_atom_size;
         capacity = align_up(capacity, non_coherent_atom_size as _);
@@ -422,10 +419,7 @@ impl<'m> Mapping<'m> {
         assert!(range.start < range.end);
 
         // Mapped host memory ranges must be in multiples of atom size; so we align to a possibly larger window
-        let non_coherent_atom_size = driver
-            .as_ref()
-            .borrow()
-            .gpu()
+        let non_coherent_atom_size = Device::gpu(&driver.as_ref().borrow())
             .limits()
             .non_coherent_atom_size;
         let offset = align_down(range.start, non_coherent_atom_size as _);

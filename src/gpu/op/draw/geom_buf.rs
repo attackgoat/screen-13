@@ -1,7 +1,7 @@
 use {
     crate::{
         gpu::{
-            driver::PhysicalDevice,
+            driver::Device,
             pool::{Lease, Pool},
             Driver, Texture2d,
         },
@@ -49,32 +49,32 @@ impl GeometryBuffer {
 
         let (depth_fmt, light_fmt, material_fmt, normal_fmt) = {
             let device = driver.borrow();
-            let depth_fmt = device
-                .best_fmt(
-                    &[Format::D24UnormS8Uint],
-                    ImageFeature::DEPTH_STENCIL_ATTACHMENT | ImageFeature::SAMPLED,
-                )
-                .unwrap();
-            let light_fmt = device
-                .best_fmt(
-                    &[Format::R32Uint],
-                    ImageFeature::COLOR_ATTACHMENT
-                        | ImageFeature::COLOR_ATTACHMENT_BLEND
-                        | ImageFeature::SAMPLED,
-                )
-                .unwrap();
-            let material_fmt = device
-                .best_fmt(
-                    &[Format::Rg8Unorm],
-                    ImageFeature::COLOR_ATTACHMENT | ImageFeature::SAMPLED,
-                )
-                .unwrap();
-            let normal_fmt = device
-                .best_fmt(
-                    &[Format::Rgb32Sfloat],
-                    ImageFeature::COLOR_ATTACHMENT | ImageFeature::SAMPLED,
-                )
-                .unwrap();
+            let depth_fmt = Device::best_fmt(
+                &device,
+                &[Format::D24UnormS8Uint],
+                ImageFeature::DEPTH_STENCIL_ATTACHMENT | ImageFeature::SAMPLED,
+            )
+            .unwrap();
+            let light_fmt = Device::best_fmt(
+                &device,
+                &[Format::R32Uint],
+                ImageFeature::COLOR_ATTACHMENT
+                    | ImageFeature::COLOR_ATTACHMENT_BLEND
+                    | ImageFeature::SAMPLED,
+            )
+            .unwrap();
+            let material_fmt = Device::best_fmt(
+                &device,
+                &[Format::Rg8Unorm],
+                ImageFeature::COLOR_ATTACHMENT | ImageFeature::SAMPLED,
+            )
+            .unwrap();
+            let normal_fmt = Device::best_fmt(
+                &device,
+                &[Format::Rgb32Sfloat],
+                ImageFeature::COLOR_ATTACHMENT | ImageFeature::SAMPLED,
+            )
+            .unwrap();
             (depth_fmt, light_fmt, material_fmt, normal_fmt)
         };
         let depth = pool.texture(

@@ -1,6 +1,6 @@
 use {
-    super::{Driver, Memory, PhysicalDevice},
-    gfx_hal::{buffer::Usage, device::Device, memory::Properties, Backend},
+    super::{Device, Driver, Memory},
+    gfx_hal::{buffer::Usage, device::Device as _, memory::Properties, Backend},
     gfx_impl::Backend as _Backend,
     std::ops::{Deref, DerefMut},
 };
@@ -29,7 +29,7 @@ impl Buffer {
             }
 
             let requirements = unsafe { device.get_buffer_requirements(&buffer) };
-            let mem_ty = device.mem_ty(requirements.type_mask, properties);
+            let mem_ty = Device::mem_ty(&device, requirements.type_mask, properties);
             let mem = Memory::new(Driver::clone(&driver), mem_ty, requirements.size);
 
             unsafe { device.bind_buffer_memory(&mem, 0, &mut buffer) }.unwrap();

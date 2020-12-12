@@ -3,7 +3,7 @@ use {
     crate::{
         color::AlphaColor,
         gpu::{
-            driver::{CommandPool, Device, Driver, Fence, PhysicalDevice},
+            driver::{CommandPool, Device, Driver, Fence},
             pool::{Lease, Pool},
             TextureRef,
         },

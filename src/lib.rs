@@ -25,10 +25,6 @@ pub mod prelude {
     };
 }
 
-pub(crate) mod private {
-    pub trait Sealed {}
-}
-
 mod error;
 mod program;
 

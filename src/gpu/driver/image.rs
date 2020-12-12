@@ -1,8 +1,8 @@
 use {
-    super::{Dim, Driver, Memory, PhysicalDevice},
+    super::{Device, Dim, Driver, Memory},
     crate::math::Extent,
     gfx_hal::{
-        device::Device,
+        device::Device as _,
         format::Format,
         image::{Kind, Tiling, Usage, ViewCapabilities},
         memory::Properties,
@@ -75,7 +75,7 @@ impl Image<U2> {
             device.set_image_name(&mut image, name);
 
             let req = device.get_image_requirements(&image);
-            let mem_type = device.mem_ty(req.type_mask, Properties::DEVICE_LOCAL);
+            let mem_type = Device::mem_ty(&device, req.type_mask, Properties::DEVICE_LOCAL);
             let mem = Memory::new(Driver::clone(&driver), mem_type, req.size);
             device.bind_image_memory(&mem, 0, &mut image).unwrap();
 

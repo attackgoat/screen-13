@@ -6,7 +6,7 @@ use {
             data::Mapping,
             driver::{
                 bind_compute_descriptor_set, change_channel_type, CommandPool, ComputePipeline,
-                Device, Driver, Fence, PhysicalDevice,
+                Device, Driver, Fence,
             },
             pool::{Compute, ComputeMode, Lease, Pool},
             Data, Texture2d,
@@ -96,10 +96,12 @@ impl BitmapOp {
             BitmapFormat::Rgb => &[Format::Rgb8Unorm, Format::Rgba8Unorm],
             BitmapFormat::Rgba => &[Format::Rgba8Unorm],
         };
-        let fmt = driver
-            .borrow()
-            .best_fmt(desired_fmts, ImageFeature::SAMPLED | ImageFeature::STORAGE)
-            .unwrap();
+        let fmt = Device::best_fmt(
+            &driver.borrow(),
+            desired_fmts,
+            ImageFeature::SAMPLED | ImageFeature::STORAGE,
+        )
+        .unwrap();
         let texture = pool.texture(
             #[cfg(debug_assertions)]
             name,

@@ -24,7 +24,7 @@ pub use self::{
     compute_pipeline::ComputePipeline,
     desc_pool::DescriptorPool,
     desc_set_layout::DescriptorSetLayout,
-    device::{Device, PhysicalDevice},
+    device::Device,
     fence::Fence,
     graphics_pipeline::GraphicsPipeline,
     help::{
