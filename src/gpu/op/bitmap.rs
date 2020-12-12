@@ -19,7 +19,7 @@ use {
         command::{BufferImageCopy, CommandBuffer, CommandBufferFlags, Level},
         device::Device as _,
         format::{Aspects, ChannelType, Format, ImageFeature, SurfaceType},
-        image::{Access as ImageAccess, Layout, SubresourceLayers, Tiling, Usage as ImageUsage},
+        image::{Access as ImageAccess, Layout, SubresourceLayers, Usage as ImageUsage},
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage},
         queue::{CommandQueue as _, Submission},
@@ -101,7 +101,6 @@ impl BitmapOp {
             name,
             driver,
             bitmap.dims(),
-            Tiling::Optimal,
             desired_fmts,
             Layout::Undefined,
             ImageUsage::SAMPLED

@@ -15,9 +15,7 @@ use {
     gfx_hal::{
         command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, SubpassContents},
         format::{Aspects, ImageFeature},
-        image::{
-            Access as ImageAccess, Layout, Offset, SubresourceLayers, Tiling, Usage as ImageUsage,
-        },
+        image::{Access as ImageAccess, Layout, Offset, SubresourceLayers, Usage as ImageUsage},
         pool::CommandPool as _,
         pso::{PipelineStage, Rect, Viewport},
         queue::{CommandQueue as _, Submission},
@@ -94,7 +92,6 @@ impl GradientOp {
             name,
             &driver,
             dims,
-            Tiling::Optimal,
             &[fmt],
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT

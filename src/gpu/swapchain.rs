@@ -312,7 +312,7 @@ impl Swapchain {
                     self.needs_configuration = true;
                     Err(e)
                 }
-                Ok(suboptimal) => {
+                Ok(_suboptimal) => {
                     // TODO: Learn more about this
                     // if suboptimal.is_some() {
                     //     info!("Suboptimal swapchain");

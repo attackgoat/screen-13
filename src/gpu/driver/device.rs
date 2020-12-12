@@ -3,17 +3,12 @@ use {
     gfx_hal::{
         adapter::{MemoryProperties, PhysicalDevice as _},
         format::{Format, ImageFeature, Properties as FormatProperties},
-        image::{Tiling, Usage},
         memory::Properties,
         queue::{QueueFamilyId, QueueGroup},
         Backend, Features, MemoryTypeId,
     },
     gfx_impl::Backend as _Backend,
-    std::{
-        cell::RefCell,
-        collections::HashMap,
-        ops::{Deref, DerefMut},
-    },
+    std::{cell::RefCell, collections::HashMap, ops::Deref},
 };
 
 // TODO: This only supports one queue family which creates one queue. We don't use async submissions yet but it would be super cool.
@@ -77,12 +72,8 @@ impl Deref for Device {
 // }
 
 impl PhysicalDevice for Device {
-    fn best_fmt(
-        &self,
-        desired_fmts: &[Format],
-        tiling: Tiling,
-        features: ImageFeature,
-    ) -> Option<Format> {
+    /// Remarks: Only considers optimal tiling images.
+    fn best_fmt(&self, desired_fmts: &[Format], features: ImageFeature) -> Option<Format> {
         assert!(!desired_fmts.is_empty());
 
         let mut fmts = self.fmts.borrow_mut();
@@ -90,25 +81,15 @@ impl PhysicalDevice for Device {
             .entry(FormatKey {
                 desired_fmt: desired_fmts[0],
                 features,
-                tiling,
             })
             .or_insert_with(|| {
-                fn is_compatible(props: FormatProperties, tiling: Tiling, desired_features: ImageFeature) -> bool {
-                    let features = match tiling {
-                        Tiling::Linear => props.linear_tiling,
-                        Tiling::Optimal => props.optimal_tiling,
-                    };
-
-                    features.contains(desired_features)
+                fn is_compatible(props: FormatProperties, desired_features: ImageFeature) -> bool {
+                    props.optimal_tiling.contains(desired_features)
                 }
 
                 for fmt in desired_fmts.iter() {
                     let props = self.phys.format_properties(Some(*fmt));
-                    if is_compatible(
-                        props,
-                        tiling,
-                        features,
-                    ) {
+                    if is_compatible(props, features) {
                         // #[cfg(debug_assertions)]
                         // trace!(
                         //     "Picking format {:?} (desired {:?}) found (tiling={:?} usage={:?})",
@@ -310,14 +291,14 @@ impl PhysicalDevice for Device {
 
                     let mut compatible_fmts = vec![];
                     for fmt in all_fmts.iter() {
-                        if is_compatible(self.phys.format_properties(Some(*fmt)), tiling, features) {
+                        if is_compatible(self.phys.format_properties(Some(*fmt)), features) {
                             compatible_fmts.push(*fmt);
                         }
                     }
 
                     warn!(
-                        "A desired compatible format was not found for `{:?}` (Tiling={:?} Features={:?})",
-                        desired_fmts[0], tiling, features
+                        "A desired compatible format was not found for `{:?}` (Features={:?})",
+                        desired_fmts[0], features
                     );
 
                     if !compatible_fmts.is_empty() {
@@ -379,16 +360,10 @@ impl Sealed for Device {}
 struct FormatKey {
     desired_fmt: Format,
     features: ImageFeature,
-    tiling: Tiling,
 }
 
 pub trait PhysicalDevice: Sealed {
-    fn best_fmt(
-        &self,
-        desired_fmts: &[Format],
-        tiling: Tiling,
-        features: ImageFeature,
-    ) -> Option<Format>;
+    fn best_fmt(&self, desired_fmts: &[Format], features: ImageFeature) -> Option<Format>;
     fn mem_ty(&self, type_mask: u32, properties: Properties) -> MemoryTypeId;
     fn queue_mut(&mut self) -> &mut <_Backend as Backend>::CommandQueue;
     fn gpu(&self) -> &<_Backend as Backend>::PhysicalDevice;

@@ -14,7 +14,7 @@ use {
     },
     gfx_hal::{
         format::{Format, ImageFeature},
-        image::{Layout, Tiling, Usage},
+        image::{Layout, Usage},
     },
     std::path::Path,
 };
@@ -42,7 +42,6 @@ impl Render {
             name,
             &driver,
             dims,
-            Tiling::Optimal,
             &[Format::Rgba8Unorm],
             Layout::Undefined,
             Usage::SAMPLED | Usage::TRANSFER_DST | Usage::TRANSFER_SRC,

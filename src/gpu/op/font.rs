@@ -24,9 +24,7 @@ use {
         command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, SubpassContents},
         device::Device as _,
         format::{Aspects, ImageFeature},
-        image::{
-            Access as ImageAccess, Layout, Offset, SubresourceLayers, Tiling, Usage as ImageUsage,
-        },
+        image::{Access as ImageAccess, Layout, Offset, SubresourceLayers, Usage as ImageUsage},
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage, Rect, ShaderStageFlags, Viewport},
         queue::{CommandQueue, Submission},
@@ -238,7 +236,6 @@ impl<'a> FontOp<'a> {
             name,
             &driver,
             dims,
-            Tiling::Optimal,
             &[fmt],
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT

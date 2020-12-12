@@ -45,15 +45,14 @@ where
 /// Specialized new function for 2D images
 #[allow(clippy::too_many_arguments)]
 impl Image<U2> {
-    pub fn new(
+    pub fn new_optimal(
         #[cfg(debug_assertions)] name: &str,
         driver: Driver,
         dims: Extent,
         layers: u16,
         samples: u8,
         mips: u8,
-        format: Format,
-        tiling: Tiling,
+        fmt: Format,
         usage: Usage,
     ) -> Self {
         let (image, mem) = unsafe {
@@ -63,8 +62,8 @@ impl Image<U2> {
                 .create_image(
                     kind,
                     mips,
-                    format,
-                    tiling,
+                    fmt,
+                    Tiling::Optimal,
                     usage,
                     ViewCapabilities::MUTABLE_FORMAT,
                 )

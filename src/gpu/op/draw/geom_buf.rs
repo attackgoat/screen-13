@@ -8,7 +8,7 @@ use {
     },
     gfx_hal::{
         format::{Format, ImageFeature},
-        image::{Layout, Tiling, Usage as ImageUsage},
+        image::{Layout, Usage as ImageUsage},
     },
 };
 
@@ -34,7 +34,6 @@ impl GeometryBuffer {
             &format!("{} (Albedo)", name),
             driver,
             dims,
-            Tiling::Optimal,
             &[albedo_fmt],
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT
@@ -52,7 +51,6 @@ impl GeometryBuffer {
             &format!("{} (Depth)", name),
             driver,
             dims,
-            Tiling::Optimal,
             &[Format::D24UnormS8Uint],
             Layout::Undefined,
             ImageUsage::DEPTH_STENCIL_ATTACHMENT
@@ -68,7 +66,6 @@ impl GeometryBuffer {
             &format!("{} (Light)", name),
             driver,
             dims,
-            Tiling::Optimal,
             &[Format::R32Uint],
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT | ImageUsage::SAMPLED,
@@ -82,7 +79,6 @@ impl GeometryBuffer {
             &format!("{} (Material)", name),
             driver,
             dims,
-            Tiling::Optimal,
             &[Format::Rg8Unorm],
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT | ImageUsage::SAMPLED,
@@ -96,7 +92,6 @@ impl GeometryBuffer {
             &format!("{} (Normal)", name),
             driver,
             dims,
-            Tiling::Optimal,
             &[Format::Rgb32Sfloat],
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT | ImageUsage::SAMPLED,
@@ -110,7 +105,6 @@ impl GeometryBuffer {
             &format!("{} (Output)", name),
             driver,
             dims,
-            Tiling::Optimal,
             &[albedo_fmt],
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSFER_SRC,

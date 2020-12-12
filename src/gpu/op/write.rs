@@ -16,7 +16,7 @@ use {
         command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, SubpassContents},
         device::Device as _,
         format::{Aspects, ImageFeature},
-        image::{Access, Layout, Offset, SubresourceLayers, Tiling, Usage},
+        image::{Access, Layout, Offset, SubresourceLayers, Usage},
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage, ShaderStageFlags, Viewport},
         queue::{CommandQueue as _, Submission},
@@ -156,7 +156,6 @@ impl<'a> WriteOp<'a> {
                 &format!("{} backbuffer", name),
                 &driver,
                 dims,
-                Tiling::Optimal,
                 &[fmt],
                 Layout::Undefined,
                 Usage::COLOR_ATTACHMENT

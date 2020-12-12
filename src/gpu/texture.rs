@@ -4,7 +4,7 @@ use {
     gfx_hal::{
         command::CommandBuffer,
         format::{Aspects, Format, ImageFeature, Swizzle},
-        image::{Access, Layout, SubresourceRange, Tiling, Usage, ViewKind},
+        image::{Access, Layout, SubresourceRange, Usage, ViewKind},
         memory::{Barrier, Dependencies},
         pso::PipelineStage,
         Backend,
@@ -132,7 +132,6 @@ impl Texture<Image2d> {
         #[cfg(debug_assertions)] name: &str,
         driver: Driver,
         dims: Extent,
-        desired_tiling: Tiling,
         desired_fmts: &[Format],
         layout: Layout,
         usage: Usage,
@@ -145,16 +144,14 @@ impl Texture<Image2d> {
 
         let fmt = {
             let device = driver.as_ref().borrow();
-            device
-                .best_fmt(desired_fmts, desired_tiling, features)
-                .unwrap()
+            device.best_fmt(desired_fmts, features).unwrap()
         };
         let access_mask = if layout == Layout::Preinitialized {
             Access::HOST_WRITE
         } else {
             Access::empty()
         };
-        let image = Image2d::new(
+        let image = Image2d::new_optimal(
             #[cfg(debug_assertions)]
             name,
             Driver::clone(&driver),
@@ -163,7 +160,6 @@ impl Texture<Image2d> {
             samples,
             mips,
             fmt,
-            desired_tiling,
             usage,
         );
 
