@@ -1,9 +1,9 @@
 use {
-    super::driver::{Driver, Image2d, ImageView, PhysicalDevice},
+    super::driver::{Driver, Image2d, ImageView},
     crate::math::Extent,
     gfx_hal::{
         command::CommandBuffer,
-        format::{Aspects, Format, ImageFeature, Swizzle},
+        format::{Aspects, Format, Swizzle},
         image::{Access, Layout, SubresourceRange, Usage, ViewKind},
         memory::{Barrier, Dependencies},
         pso::PipelineStage,
@@ -132,20 +132,13 @@ impl Texture<Image2d> {
         #[cfg(debug_assertions)] name: &str,
         driver: Driver,
         dims: Extent,
-        desired_fmts: &[Format],
+        fmt: Format,
         layout: Layout,
         usage: Usage,
-        features: ImageFeature,
         layers: u16,
         samples: u8,
         mips: u8,
     ) -> Self {
-        assert!(!desired_fmts.is_empty());
-
-        let fmt = {
-            let device = driver.as_ref().borrow();
-            device.best_fmt(desired_fmts, features).unwrap()
-        };
         let access_mask = if layout == Layout::Preinitialized {
             Access::HOST_WRITE
         } else {

@@ -23,7 +23,7 @@ use {
         buffer::{Access as BufferAccess, SubRange, Usage as BufferUsage},
         command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, SubpassContents},
         device::Device as _,
-        format::{Aspects, ImageFeature},
+        format::Aspects,
         image::{Access as ImageAccess, Layout, Offset, SubresourceLayers, Usage as ImageUsage},
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage, Rect, ShaderStageFlags, Viewport},
@@ -236,13 +236,12 @@ impl<'a> FontOp<'a> {
             name,
             &driver,
             dims,
-            &[fmt],
+            fmt,
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT
                 | ImageUsage::INPUT_ATTACHMENT
                 | ImageUsage::TRANSFER_DST
                 | ImageUsage::TRANSFER_SRC,
-            ImageFeature::COLOR_ATTACHMENT,
             1,
             1,
             1,

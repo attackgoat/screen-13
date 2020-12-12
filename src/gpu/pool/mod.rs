@@ -23,7 +23,7 @@ use {
     crate::math::Extent,
     gfx_hal::{
         buffer::Usage as BufferUsage,
-        format::{Format, ImageFeature},
+        format::Format,
         image::{Layout, Usage as ImageUsage},
         pool::CommandPool as _,
         pso::{DescriptorRangeDesc, DescriptorType},
@@ -391,21 +391,18 @@ impl Pool {
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
         dims: Extent,
-        desired_fmts: &[Format],
+        fmt: Format,
         layout: Layout,
         usage: ImageUsage,
-        features: ImageFeature,
         layers: u16,
         mips: u8,
         samples: u8,
     ) -> Lease<TextureRef<Image2d>> {
-        assert!(!desired_fmts.is_empty());
-
         let items = self
             .textures
             .entry(TextureKey {
                 dims,
-                desired_fmt: desired_fmts[0],
+                fmt,
                 layers,
                 mips,
                 samples,
@@ -432,10 +429,9 @@ impl Pool {
                     &format!("{} (Unused)", name),
                     Driver::clone(driver),
                     dims,
-                    desired_fmts,
+                    fmt,
                     layout,
                     usage,
-                    features,
                     layers,
                     samples,
                     mips,
@@ -447,10 +443,9 @@ impl Pool {
                     name,
                     Driver::clone(driver),
                     dims,
-                    desired_fmts,
+                    fmt,
                     layout,
                     usage,
-                    features,
                     layers,
                     samples,
                     mips,
@@ -465,7 +460,7 @@ impl Pool {
 #[derive(Eq, Hash, PartialEq)]
 struct TextureKey {
     dims: Extent,
-    desired_fmt: Format,
+    fmt: Format,
     layers: u16,
     mips: u8,
     samples: u8,

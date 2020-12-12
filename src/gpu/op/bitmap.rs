@@ -96,18 +96,21 @@ impl BitmapOp {
             BitmapFormat::Rgb => &[Format::Rgb8Unorm, Format::Rgba8Unorm],
             BitmapFormat::Rgba => &[Format::Rgba8Unorm],
         };
+        let fmt = driver
+            .borrow()
+            .best_fmt(desired_fmts, ImageFeature::SAMPLED | ImageFeature::STORAGE)
+            .unwrap();
         let texture = pool.texture(
             #[cfg(debug_assertions)]
             name,
             driver,
             bitmap.dims(),
-            desired_fmts,
+            fmt,
             Layout::Undefined,
             ImageUsage::SAMPLED
                 | ImageUsage::STORAGE
                 | ImageUsage::TRANSFER_DST
                 | ImageUsage::TRANSFER_SRC,
-            ImageFeature::SAMPLED | ImageFeature::STORAGE,
             1,
             1,
             1,

@@ -1,6 +1,7 @@
 use {
     crate::{
         gpu::{
+            driver::PhysicalDevice,
             pool::{Lease, Pool},
             Driver, Texture2d,
         },
@@ -34,29 +35,58 @@ impl GeometryBuffer {
             &format!("{} (Albedo)", name),
             driver,
             dims,
-            &[albedo_fmt],
+            albedo_fmt,
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT
                 | ImageUsage::INPUT_ATTACHMENT
                 | ImageUsage::SAMPLED
                 | ImageUsage::TRANSFER_DST
                 | ImageUsage::TRANSFER_SRC,
-            ImageFeature::COLOR_ATTACHMENT | ImageFeature::SAMPLED,
             1,
             1,
             1,
         );
+
+        let (depth_fmt, light_fmt, material_fmt, normal_fmt) = {
+            let device = driver.borrow();
+            let depth_fmt = device
+                .best_fmt(
+                    &[Format::D24UnormS8Uint],
+                    ImageFeature::DEPTH_STENCIL_ATTACHMENT | ImageFeature::SAMPLED,
+                )
+                .unwrap();
+            let light_fmt = device
+                .best_fmt(
+                    &[Format::R32Uint],
+                    ImageFeature::COLOR_ATTACHMENT
+                        | ImageFeature::COLOR_ATTACHMENT_BLEND
+                        | ImageFeature::SAMPLED,
+                )
+                .unwrap();
+            let material_fmt = device
+                .best_fmt(
+                    &[Format::Rg8Unorm],
+                    ImageFeature::COLOR_ATTACHMENT | ImageFeature::SAMPLED,
+                )
+                .unwrap();
+            let normal_fmt = device
+                .best_fmt(
+                    &[Format::Rgb32Sfloat],
+                    ImageFeature::COLOR_ATTACHMENT | ImageFeature::SAMPLED,
+                )
+                .unwrap();
+            (depth_fmt, light_fmt, material_fmt, normal_fmt)
+        };
         let depth = pool.texture(
             #[cfg(debug_assertions)]
             &format!("{} (Depth)", name),
             driver,
             dims,
-            &[Format::D24UnormS8Uint],
+            depth_fmt,
             Layout::Undefined,
             ImageUsage::DEPTH_STENCIL_ATTACHMENT
                 | ImageUsage::INPUT_ATTACHMENT
                 | ImageUsage::SAMPLED,
-            ImageFeature::DEPTH_STENCIL_ATTACHMENT | ImageFeature::SAMPLED,
             1,
             1,
             1,
@@ -66,10 +96,9 @@ impl GeometryBuffer {
             &format!("{} (Light)", name),
             driver,
             dims,
-            &[Format::R32Uint],
+            light_fmt,
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT | ImageUsage::SAMPLED,
-            ImageFeature::COLOR_ATTACHMENT | ImageFeature::SAMPLED,
             1,
             1,
             1,
@@ -79,10 +108,9 @@ impl GeometryBuffer {
             &format!("{} (Material)", name),
             driver,
             dims,
-            &[Format::Rg8Unorm],
+            material_fmt,
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT | ImageUsage::SAMPLED,
-            ImageFeature::COLOR_ATTACHMENT | ImageFeature::SAMPLED,
             1,
             1,
             1,
@@ -92,10 +120,9 @@ impl GeometryBuffer {
             &format!("{} (Normal)", name),
             driver,
             dims,
-            &[Format::Rgb32Sfloat],
+            normal_fmt,
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT | ImageUsage::SAMPLED,
-            ImageFeature::COLOR_ATTACHMENT | ImageFeature::SAMPLED,
             1,
             1,
             1,
@@ -105,10 +132,9 @@ impl GeometryBuffer {
             &format!("{} (Output)", name),
             driver,
             dims,
-            &[albedo_fmt],
+            albedo_fmt,
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSFER_SRC,
-            ImageFeature::COLOR_ATTACHMENT,
             1,
             1,
             1,

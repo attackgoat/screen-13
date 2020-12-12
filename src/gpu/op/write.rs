@@ -15,7 +15,7 @@ use {
     gfx_hal::{
         command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, SubpassContents},
         device::Device as _,
-        format::{Aspects, ImageFeature},
+        format::Aspects,
         image::{Access, Layout, Offset, SubresourceLayers, Usage},
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage, ShaderStageFlags, Viewport},
@@ -156,13 +156,12 @@ impl<'a> WriteOp<'a> {
                 &format!("{} backbuffer", name),
                 &driver,
                 dims,
-                &[fmt],
+                fmt,
                 Layout::Undefined,
                 Usage::COLOR_ATTACHMENT
                     | Usage::INPUT_ATTACHMENT
                     | Usage::TRANSFER_DST
                     | Usage::TRANSFER_SRC,
-                ImageFeature::COLOR_ATTACHMENT,
                 1,
                 1,
                 1,
