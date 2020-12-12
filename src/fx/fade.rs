@@ -12,7 +12,7 @@ use {
 
 // TODO: Specialize with FadeIn, FadeOut, CrossFade versions
 /// Fades between two screens.
-/// 
+///
 /// Remark: Screens are only drawn, and not updated, during fade.
 pub struct Fade {
     a: Option<DynScreen>,

@@ -23,7 +23,7 @@ use {
         buffer::{Access as BufferAccess, SubRange, Usage as BufferUsage},
         command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, SubpassContents},
         device::Device as _,
-        format::Aspects,
+        format::{Aspects, ImageFeature},
         image::{
             Access as ImageAccess, Layout, Offset, SubresourceLayers, Tiling, Usage as ImageUsage,
         },
@@ -245,6 +245,7 @@ impl<'a> FontOp<'a> {
                 | ImageUsage::INPUT_ATTACHMENT
                 | ImageUsage::TRANSFER_DST
                 | ImageUsage::TRANSFER_SRC,
+            ImageFeature::COLOR_ATTACHMENT,
             1,
             1,
             1,

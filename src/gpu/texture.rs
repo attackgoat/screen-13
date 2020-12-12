@@ -3,7 +3,7 @@ use {
     crate::math::Extent,
     gfx_hal::{
         command::CommandBuffer,
-        format::{Aspects, Format, Swizzle},
+        format::{Aspects, Format, ImageFeature, Swizzle},
         image::{Access, Layout, SubresourceRange, Tiling, Usage, ViewKind},
         memory::{Barrier, Dependencies},
         pso::PipelineStage,
@@ -132,10 +132,11 @@ impl Texture<Image2d> {
         #[cfg(debug_assertions)] name: &str,
         driver: Driver,
         dims: Extent,
-        mut desired_tiling: Tiling,
+        desired_tiling: Tiling,
         desired_fmts: &[Format],
         layout: Layout,
         usage: Usage,
+        features: ImageFeature,
         layers: u16,
         samples: u8,
         mips: u8,
@@ -145,13 +146,8 @@ impl Texture<Image2d> {
         let fmt = {
             let device = driver.as_ref().borrow();
             device
-                .best_fmt(desired_fmts, desired_tiling, usage)
-                .unwrap_or_else(|| {
-                    desired_tiling = Tiling::Linear;
-                    device
-                        .best_fmt(desired_fmts, desired_tiling, usage)
-                        .unwrap()
-                })
+                .best_fmt(desired_fmts, desired_tiling, features)
+                .unwrap()
         };
         let access_mask = if layout == Layout::Preinitialized {
             Access::HOST_WRITE

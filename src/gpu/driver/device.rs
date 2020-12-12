@@ -77,73 +77,37 @@ impl Deref for Device {
 // }
 
 impl PhysicalDevice for Device {
-    fn best_fmt(&self, desired_fmts: &[Format], tiling: Tiling, usage: Usage) -> Option<Format> {
+    fn best_fmt(
+        &self,
+        desired_fmts: &[Format],
+        tiling: Tiling,
+        features: ImageFeature,
+    ) -> Option<Format> {
         assert!(!desired_fmts.is_empty());
 
         let mut fmts = self.fmts.borrow_mut();
         *fmts
             .entry(FormatKey {
                 desired_fmt: desired_fmts[0],
+                features,
                 tiling,
-                usage,
             })
             .or_insert_with(|| {
-                fn is_supported(
-                    usage: Usage,
-                    usage_mask: Usage,
-                    features: ImageFeature,
-                    feature_mask: ImageFeature,
-                ) -> bool {
-                    let used = usage.contains(usage_mask);
-                    let supported = features.contains(feature_mask);
-                    supported || !used
-                }
-
-                fn is_compatible(props: FormatProperties, tiling: Tiling, usage: Usage) -> bool {
+                fn is_compatible(props: FormatProperties, tiling: Tiling, desired_features: ImageFeature) -> bool {
                     let features = match tiling {
                         Tiling::Linear => props.linear_tiling,
                         Tiling::Optimal => props.optimal_tiling,
                     };
 
-                    is_supported(usage, Usage::SAMPLED, features, ImageFeature::SAMPLED)
-                        && is_supported(usage, Usage::STORAGE, features, ImageFeature::STORAGE)
-                        && is_supported(
-                            usage,
-                            Usage::COLOR_ATTACHMENT,
-                            features,
-                            ImageFeature::COLOR_ATTACHMENT,
-                        )
-                        && is_supported(
-                            usage,
-                            Usage::COLOR_ATTACHMENT,
-                            features,
-                            ImageFeature::COLOR_ATTACHMENT_BLEND,
-                        )
-                        && is_supported(
-                            usage,
-                            Usage::DEPTH_STENCIL_ATTACHMENT,
-                            features,
-                            ImageFeature::DEPTH_STENCIL_ATTACHMENT,
-                        )
-                        && is_supported(
-                            usage,
-                            Usage::TRANSFER_DST,
-                            features,
-                            ImageFeature::BLIT_DST,
-                        )
-                        && is_supported(
-                            usage,
-                            Usage::TRANSFER_SRC,
-                            features,
-                            ImageFeature::BLIT_SRC,
-                        )
+                    features.contains(desired_features)
                 }
 
                 for fmt in desired_fmts.iter() {
+                    let props = self.phys.format_properties(Some(*fmt));
                     if is_compatible(
-                        self.phys.format_properties(Some(*fmt)),
+                        props,
                         tiling,
-                        usage,
+                        features,
                     ) {
                         // #[cfg(debug_assertions)]
                         // trace!(
@@ -346,14 +310,14 @@ impl PhysicalDevice for Device {
 
                     let mut compatible_fmts = vec![];
                     for fmt in all_fmts.iter() {
-                        if is_compatible(self.phys.format_properties(Some(*fmt)), tiling, usage) {
+                        if is_compatible(self.phys.format_properties(Some(*fmt)), tiling, features) {
                             compatible_fmts.push(*fmt);
                         }
                     }
 
                     warn!(
-                        "A desired compatible format was not found for `{:?}` (Tiling={:?} Usage={:?})",
-                        desired_fmts[0], tiling, usage
+                        "A desired compatible format was not found for `{:?}` (Tiling={:?} Features={:?})",
+                        desired_fmts[0], tiling, features
                     );
 
                     if !compatible_fmts.is_empty() {
@@ -414,12 +378,17 @@ impl Sealed for Device {}
 #[derive(Eq, Hash, PartialEq)]
 struct FormatKey {
     desired_fmt: Format,
+    features: ImageFeature,
     tiling: Tiling,
-    usage: Usage,
 }
 
 pub trait PhysicalDevice: Sealed {
-    fn best_fmt(&self, desired_fmts: &[Format], tiling: Tiling, usage: Usage) -> Option<Format>;
+    fn best_fmt(
+        &self,
+        desired_fmts: &[Format],
+        tiling: Tiling,
+        features: ImageFeature,
+    ) -> Option<Format>;
     fn mem_ty(&self, type_mask: u32, properties: Properties) -> MemoryTypeId;
     fn queue_mut(&mut self) -> &mut <_Backend as Backend>::CommandQueue;
     fn gpu(&self) -> &<_Backend as Backend>::PhysicalDevice;

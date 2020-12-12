@@ -14,7 +14,7 @@ use {
     },
     gfx_hal::{
         command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, SubpassContents},
-        format::Aspects,
+        format::{Aspects, ImageFeature},
         image::{
             Access as ImageAccess, Layout, Offset, SubresourceLayers, Tiling, Usage as ImageUsage,
         },
@@ -101,6 +101,7 @@ impl GradientOp {
                 | ImageUsage::INPUT_ATTACHMENT
                 | ImageUsage::TRANSFER_DST
                 | ImageUsage::TRANSFER_SRC,
+            ImageFeature::COLOR_ATTACHMENT,
             1,
             1,
             1,

@@ -15,7 +15,7 @@ use {
     gfx_hal::{
         command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, SubpassContents},
         device::Device as _,
-        format::Aspects,
+        format::{Aspects, ImageFeature},
         image::{Access, Layout, Offset, SubresourceLayers, Tiling, Usage},
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage, ShaderStageFlags, Viewport},
@@ -163,6 +163,7 @@ impl<'a> WriteOp<'a> {
                     | Usage::INPUT_ATTACHMENT
                     | Usage::TRANSFER_DST
                     | Usage::TRANSFER_SRC,
+                ImageFeature::COLOR_ATTACHMENT,
                 1,
                 1,
                 1,

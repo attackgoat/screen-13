@@ -13,7 +13,7 @@ use {
         math::{Area, Coord, CoordF, Extent},
     },
     gfx_hal::{
-        format::Format,
+        format::{Format, ImageFeature},
         image::{Layout, Tiling, Usage},
     },
     std::path::Path,
@@ -46,6 +46,7 @@ impl Render {
             &[Format::Rgba8Unorm],
             Layout::Undefined,
             Usage::SAMPLED | Usage::TRANSFER_DST | Usage::TRANSFER_SRC,
+            ImageFeature::SAMPLED,
             1,
             1,
             1,

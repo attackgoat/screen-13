@@ -23,7 +23,7 @@ use {
     crate::math::Extent,
     gfx_hal::{
         buffer::Usage as BufferUsage,
-        format::Format,
+        format::{Format, ImageFeature},
         image::{Layout, Tiling, Usage as ImageUsage},
         pool::CommandPool as _,
         pso::{DescriptorRangeDesc, DescriptorType},
@@ -384,6 +384,7 @@ impl Pool {
             })
     }
 
+    // TODO: Bubble format picking up and out of this! (removes desire_tiling+desired_fmts+features, replace with fmt/tiling)
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn texture(
         &mut self,
@@ -394,6 +395,7 @@ impl Pool {
         desired_fmts: &[Format],
         layout: Layout,
         usage: ImageUsage,
+        features: ImageFeature,
         layers: u16,
         mips: u8,
         samples: u8,
@@ -435,6 +437,7 @@ impl Pool {
                     desired_fmts,
                     layout,
                     usage,
+                    features,
                     layers,
                     samples,
                     mips,
@@ -450,6 +453,7 @@ impl Pool {
                     desired_fmts,
                     layout,
                     usage,
+                    features,
                     layers,
                     samples,
                     mips,

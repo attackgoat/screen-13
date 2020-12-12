@@ -146,6 +146,12 @@ pub struct Gpu {
 impl Gpu {
     pub(super) fn new(window: &Window) -> (Self, Driver, Surface) {
         let (adapter, surface) = create_surface(window);
+
+        info!(
+            "Device: {} ({:?})",
+            &adapter.info.name, adapter.info.device_type
+        );
+
         let queue = adapter
             .queue_families
             .iter()

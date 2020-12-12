@@ -18,7 +18,7 @@ use {
         buffer::{Access as BufferAccess, SubRange, Usage as BufferUsage},
         command::{BufferImageCopy, CommandBuffer, CommandBufferFlags, Level},
         device::Device as _,
-        format::{Aspects, ChannelType, Format, SurfaceType},
+        format::{Aspects, ChannelType, Format, ImageFeature, SurfaceType},
         image::{Access as ImageAccess, Layout, SubresourceLayers, Tiling, Usage as ImageUsage},
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage},
@@ -104,10 +104,11 @@ impl BitmapOp {
             Tiling::Optimal,
             desired_fmts,
             Layout::Undefined,
-            ImageUsage::STORAGE
-                | ImageUsage::SAMPLED
+            ImageUsage::SAMPLED
+                | ImageUsage::STORAGE
                 | ImageUsage::TRANSFER_DST
                 | ImageUsage::TRANSFER_SRC,
+            ImageFeature::SAMPLED | ImageFeature::STORAGE,
             1,
             1,
             1,

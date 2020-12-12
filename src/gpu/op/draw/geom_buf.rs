@@ -7,7 +7,7 @@ use {
         math::Extent,
     },
     gfx_hal::{
-        format::Format,
+        format::{Format, ImageFeature},
         image::{Layout, Tiling, Usage as ImageUsage},
     },
 };
@@ -42,6 +42,7 @@ impl GeometryBuffer {
                 | ImageUsage::SAMPLED
                 | ImageUsage::TRANSFER_DST
                 | ImageUsage::TRANSFER_SRC,
+            ImageFeature::COLOR_ATTACHMENT | ImageFeature::SAMPLED,
             1,
             1,
             1,
@@ -52,11 +53,12 @@ impl GeometryBuffer {
             driver,
             dims,
             Tiling::Optimal,
-            &[Format::R32Sfloat],
+            &[Format::D24UnormS8Uint],
             Layout::Undefined,
             ImageUsage::DEPTH_STENCIL_ATTACHMENT
                 | ImageUsage::INPUT_ATTACHMENT
                 | ImageUsage::SAMPLED,
+            ImageFeature::DEPTH_STENCIL_ATTACHMENT | ImageFeature::SAMPLED,
             1,
             1,
             1,
@@ -70,6 +72,7 @@ impl GeometryBuffer {
             &[Format::R32Uint],
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT | ImageUsage::SAMPLED,
+            ImageFeature::COLOR_ATTACHMENT | ImageFeature::SAMPLED,
             1,
             1,
             1,
@@ -83,6 +86,7 @@ impl GeometryBuffer {
             &[Format::Rg8Unorm],
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT | ImageUsage::SAMPLED,
+            ImageFeature::COLOR_ATTACHMENT | ImageFeature::SAMPLED,
             1,
             1,
             1,
@@ -96,6 +100,7 @@ impl GeometryBuffer {
             &[Format::Rgb32Sfloat],
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT | ImageUsage::SAMPLED,
+            ImageFeature::COLOR_ATTACHMENT | ImageFeature::SAMPLED,
             1,
             1,
             1,
@@ -109,6 +114,7 @@ impl GeometryBuffer {
             &[albedo_fmt],
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSFER_SRC,
+            ImageFeature::COLOR_ATTACHMENT,
             1,
             1,
             1,
