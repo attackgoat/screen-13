@@ -46,6 +46,7 @@ use {
     },
     gfx_impl::Backend as _Backend,
     std::{
+        cell::RefMut,
         cmp::Ordering,
         hash::{Hash, Hasher},
         iter::{empty, once},
@@ -61,7 +62,6 @@ const _2: SubRange = SubRange::WHOLE;
 pub struct DrawOp<'a> {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
-    compiler: Lease<Compiler>,
     driver: Driver,
     dst: Texture2d,
     dst_preserve: bool,
@@ -162,7 +162,6 @@ impl<'a> DrawOp<'a> {
         Self {
             cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
             cmd_pool,
-            compiler: pool.compiler(),
             driver,
             dst: TextureRef::clone(dst),
             dst_preserve: false,
@@ -191,7 +190,7 @@ impl<'a> DrawOp<'a> {
     }
 
     // TODO: Returns concrete type instead of impl Op because https://github.com/rust-lang/rust/issues/42940
-    pub fn record<'c>(mut self, camera: &impl Camera, cmds: &'c mut [Command]) -> DrawOpSubmission {
+    pub fn record(mut self, camera: &impl Camera, cmds: &mut [Command]) -> DrawOpSubmission {
         let dims: Coord = self.dst.borrow().dims().into();
         let viewport = Viewport {
             rect: dims.as_rect_at(Coord::ZERO),
@@ -202,80 +201,89 @@ impl<'a> DrawOp<'a> {
         // Use a compiler to figure out rendering instructions without allocating
         // memory per rendering command. The compiler caches code between frames.
         let mut compiler = self.pool.compiler();
-        let mut instrs = compiler.compile(
-            #[cfg(debug_assertions)]
-            &self.name,
-            &self.driver,
-            &mut self.pool,
-            camera,
-            cmds,
-        );
-
-        // Setup graphics pipelines and descriptor sets
         {
-            let materials = instrs.mesh_materials();
-            let descriptor_sets = materials.len();
-            if descriptor_sets > 0 {
-                self.graphics_mesh = Some(self.pool.graphics_sets(
-                    #[cfg(debug_assertions)]
-                    &self.name,
-                    &self.driver,
-                    GraphicsMode::DrawMesh,
-                    RenderPassMode::Draw(self.mode),
-                    0,
-                    descriptor_sets,
-                ));
+            let mut instrs = compiler.compile(
+                #[cfg(debug_assertions)]
+                &self.name,
+                &self.driver,
+                &mut self.pool,
+                camera,
+                cmds,
+            );
 
-                let device = self.driver.borrow();
+            // Setup graphics pipelines and descriptor sets
+            {
+                let materials = instrs.materials();
+                let descriptor_sets = materials.len();
 
-                unsafe {
-                    Self::write_mesh_material_descriptors(
-                        &device,
-                        self.graphics_mesh.as_ref().unwrap(),
-                        materials,
-                    );
-                }
-            }
-        }
+                if descriptor_sets > 0 {
+                    self.graphics_mesh = Some(self.pool.graphics_sets(
+                        #[cfg(debug_assertions)]
+                        &self.name,
+                        &self.driver,
+                        GraphicsMode::DrawMesh,
+                        RenderPassMode::Draw(self.mode),
+                        0,
+                        descriptor_sets,
+                    ));
 
-        if !instrs.is_empty() {
-            unsafe {
-                self.submit_begin(&viewport);
+                    let device = self.driver.borrow();
 
-                while let Some(instr) = instrs.next() {
-                    match instr {
-                        Instruction::DataCopy((buf, ranges)) => {
-                            self.submit_vertex_copies(buf, ranges)
-                        }
-                        Instruction::DataTransfer((src, dst)) => {
-                            self.submit_data_transfer(src, dst)
-                        }
-                        Instruction::DataWrite((buf, range)) => {
-                            self.submit_vertex_write(buf, range)
-                        }
-                        Instruction::LineDraw((buf, count)) => {
-                            self.submit_lines(buf, count, &viewport, view_projection)
-                        }
-                        Instruction::MeshBegin => self.submit_mesh_begin(&viewport),
-                        Instruction::MeshBind(bind) => self.submit_mesh_bind(bind),
-                        Instruction::MeshDescriptorSet(set) => self.submit_mesh_descriptor_set(set),
-                        Instruction::MeshDraw((meshes, world)) => {
-                            self.submit_mesh(meshes, world, view_projection)
-                        }
-                        _ => panic!(),
+                    unsafe {
+                        Self::write_mesh_material_descriptors(
+                            &device,
+                            self.graphics_mesh.as_ref().unwrap(),
+                            materials,
+                        );
                     }
                 }
+            }
 
-                self.submit_finish();
+            if !instrs.is_empty() {
+                unsafe {
+                    self.submit_begin(&viewport);
+
+                    while let Some(instr) = instrs.next() {
+                        match instr {
+                            Instruction::DataTransfer((src, dst)) => {
+                                self.submit_data_transfer(src, dst)
+                            }
+                            Instruction::IndexWriteRef((buf, range)) => {
+                                self.submit_index_write_ref(buf, range)
+                            }
+                            Instruction::LineDraw((buf, count)) => {
+                                self.submit_lines(buf, count, &viewport, view_projection)
+                            }
+                            Instruction::MeshBegin => self.submit_mesh_begin(&viewport),
+                            Instruction::MeshBind(bind) => self.submit_mesh_bind(bind),
+                            Instruction::MeshDescriptorSet(set) => {
+                                self.submit_mesh_descriptor_set(set)
+                            }
+                            Instruction::MeshDraw((meshes, world)) => {
+                                self.submit_mesh(meshes, world, view_projection)
+                            }
+                            Instruction::VertexCopy((buf, ranges)) => {
+                                self.submit_vertex_copies(buf, ranges)
+                            }
+                            Instruction::VertexWrite((buf, range)) => {
+                                self.submit_vertex_write(buf, range)
+                            }
+                            Instruction::VertexWriteRef((buf, range)) => {
+                                self.submit_vertex_write_ref(buf, range)
+                            }
+                            _ => panic!(),
+                        }
+                    }
+
+                    self.submit_finish();
+                }
             }
         }
-
-        debug!("Done drawing");
 
         DrawOpSubmission {
             cmd_buf: self.cmd_buf,
             cmd_pool: self.cmd_pool,
-            compiler: self.compiler,
+            compiler,
             dst: self.dst,
             fence: self.fence,
             frame_buf: self.frame_buf,
@@ -292,7 +300,7 @@ impl<'a> DrawOp<'a> {
         let mut dst = self.dst.borrow_mut();
         let mut albedo = self.geom_buf.albedo.borrow_mut();
         let mut depth = self.geom_buf.depth.borrow_mut();
-        let mut light = self.geom_buf.depth.borrow_mut();
+        let mut light = self.geom_buf.light.borrow_mut();
         let mut material = self.geom_buf.material.borrow_mut();
         let mut normal = self.geom_buf.normal.borrow_mut();
         let mut output = self.geom_buf.output.borrow_mut();
@@ -398,6 +406,19 @@ impl<'a> DrawOp<'a> {
         );
     }
 
+    unsafe fn submit_index_write_ref(
+        &mut self,
+        mut buf: RefMut<'_, Lease<Data>>,
+        range: Range<u64>,
+    ) {
+        buf.write_range(
+            &mut self.cmd_buf,
+            PipelineStage::VERTEX_INPUT, // TODO: Should be DRAW_INDIRECT?
+            BufferAccess::INDEX_BUFFER_READ,
+            range,
+        );
+    }
+
     unsafe fn submit_lines(
         &mut self,
         buf: &mut Data,
@@ -437,25 +458,6 @@ impl<'a> DrawOp<'a> {
         self.cmd_buf.draw(0..count, 0..1);
 
         self.graphics_line = Some(graphics);
-    }
-
-    unsafe fn submit_vertex_copies(&mut self, buf: &mut Data, ranges: &[CopyRange]) {
-        buf.copy_ranges(
-            &mut self.cmd_buf,
-            PipelineStage::VERTEX_INPUT,
-            BufferAccess::VERTEX_BUFFER_READ,
-            ranges,
-        );
-    }
-
-    unsafe fn submit_vertex_write(&mut self, buf: &mut Data, range: Range<u64>) {
-        debug!("Submitting vertex write");
-        buf.write_range(
-            &mut self.cmd_buf,
-            PipelineStage::VERTEX_INPUT,
-            BufferAccess::VERTEX_BUFFER_READ,
-            range,
-        );
     }
 
     unsafe fn submit_light_begin(&mut self) {}
@@ -534,12 +536,12 @@ impl<'a> DrawOp<'a> {
 
     unsafe fn submit_mesh_bind(&mut self, bind: MeshBind<'_>) {
         self.cmd_buf.bind_index_buffer(IndexBufferView {
-            buffer: bind.index.as_ref(),
-            index_type: bind.index_ty.into(),
+            buffer: bind.idx_buf.as_ref(),
+            index_type: bind.idx_ty.into(),
             range: SubRange::WHOLE,
         });
         self.cmd_buf
-            .bind_vertex_buffers(0, once((bind.vertex.as_ref(), SubRange::WHOLE)));
+            .bind_vertex_buffers(0, once((bind.vertex_buf.as_ref(), SubRange::WHOLE)));
     }
 
     unsafe fn submit_mesh_descriptor_set(&mut self, set: usize) {
@@ -570,6 +572,37 @@ impl<'a> DrawOp<'a> {
                 self.cmd_buf.draw(batch, 0..1);
             }
         }
+    }
+
+    unsafe fn submit_vertex_copies(&mut self, buf: &mut Data, ranges: &[CopyRange]) {
+        buf.copy_ranges(
+            &mut self.cmd_buf,
+            PipelineStage::VERTEX_INPUT,
+            BufferAccess::VERTEX_BUFFER_READ,
+            ranges,
+        );
+    }
+
+    unsafe fn submit_vertex_write(&mut self, buf: &mut Data, range: Range<u64>) {
+        buf.write_range(
+            &mut self.cmd_buf,
+            PipelineStage::VERTEX_INPUT,
+            BufferAccess::VERTEX_BUFFER_READ,
+            range,
+        );
+    }
+
+    unsafe fn submit_vertex_write_ref(
+        &mut self,
+        mut buf: RefMut<'_, Lease<Data>>,
+        range: Range<u64>,
+    ) {
+        buf.write_range(
+            &mut self.cmd_buf,
+            PipelineStage::VERTEX_INPUT,
+            BufferAccess::VERTEX_BUFFER_READ,
+            range,
+        );
     }
 
     unsafe fn submit_finish(&mut self) {
@@ -648,22 +681,22 @@ impl<'a> DrawOp<'a> {
                 },
                 DescriptorSetWrite {
                     set: graphics.desc_set(idx),
-                    binding: 0,
+                    binding: 1,
                     array_offset: 0,
                     descriptors: once(Descriptor::CombinedImageSampler(
                         material.metal_rough.borrow().as_default_view().as_ref(),
                         Layout::ShaderReadOnlyOptimal,
-                        graphics.sampler(0).as_ref(),
+                        graphics.sampler(1).as_ref(),
                     )),
                 },
                 DescriptorSetWrite {
                     set: graphics.desc_set(idx),
-                    binding: 0,
+                    binding: 2,
                     array_offset: 0,
                     descriptors: once(Descriptor::CombinedImageSampler(
                         material.normal.borrow().as_default_view().as_ref(),
                         Layout::ShaderReadOnlyOptimal,
-                        graphics.sampler(0).as_ref(),
+                        graphics.sampler(2).as_ref(),
                     )),
                 },
             ]);

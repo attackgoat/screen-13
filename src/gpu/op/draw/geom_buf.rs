@@ -57,7 +57,7 @@ impl GeometryBuffer {
             .unwrap();
             let light_fmt = Device::best_fmt(
                 &device,
-                &[Format::R32Uint],
+                &[Format::R32Uint, Format::R32Sfloat],
                 ImageFeature::COLOR_ATTACHMENT
                     | ImageFeature::COLOR_ATTACHMENT_BLEND
                     | ImageFeature::SAMPLED,
@@ -71,7 +71,7 @@ impl GeometryBuffer {
             .unwrap();
             let normal_fmt = Device::best_fmt(
                 &device,
-                &[Format::Rgb32Sfloat],
+                &[Format::Rgb32Sfloat, Format::Rgba32Sfloat],
                 ImageFeature::COLOR_ATTACHMENT | ImageFeature::SAMPLED,
             )
             .unwrap();

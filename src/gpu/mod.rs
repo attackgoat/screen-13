@@ -325,7 +325,14 @@ impl Gpu {
             Mapping::flush(&mut mapped_range).unwrap();
         }
 
-        Model::new(model.take_meshes(), index_ty, index_buf, vertex_buf)
+        Model::new(
+            model.take_meshes(),
+            index_ty,
+            index_buf,
+            index_buf_len,
+            vertex_buf,
+            vertex_buf_len,
+        )
     }
 
     pub fn render(&self, #[cfg(debug_assertions)] name: &str, dims: Extent) -> Render {

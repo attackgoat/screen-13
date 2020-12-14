@@ -281,14 +281,32 @@ impl Graphics {
             #[cfg(debug_assertions)]
             name,
             Driver::clone(&driver),
-            once(descriptor_set_layout_binding(
-                0,
-                1,
-                ShaderStageFlags::FRAGMENT,
-                DescriptorType::Image {
-                    ty: ImageDescriptorType::Sampled { with_sampler: true },
-                },
-            )),
+            &[
+                descriptor_set_layout_binding(
+                    0,
+                    1,
+                    ShaderStageFlags::FRAGMENT,
+                    DescriptorType::Image {
+                        ty: ImageDescriptorType::Sampled { with_sampler: true },
+                    },
+                ),
+                descriptor_set_layout_binding(
+                    1,
+                    1,
+                    ShaderStageFlags::FRAGMENT,
+                    DescriptorType::Image {
+                        ty: ImageDescriptorType::Sampled { with_sampler: true },
+                    },
+                ),
+                descriptor_set_layout_binding(
+                    2,
+                    1,
+                    ShaderStageFlags::FRAGMENT,
+                    DescriptorType::Image {
+                        ty: ImageDescriptorType::Sampled { with_sampler: true },
+                    },
+                ),
+            ],
         );
         let layout = PipelineLayout::new(
             #[cfg(debug_assertions)]
@@ -345,7 +363,7 @@ impl Graphics {
             subpass,
         );
         desc.blender.logic_op = Some(LogicOp::Set);
-        for _ in 0..4 {
+        for _ in 0..3 {
             desc.blender.targets.push(ColorBlendDesc {
                 blend: None,
                 mask: ColorMask::empty(),
@@ -361,7 +379,7 @@ impl Graphics {
             Driver::clone(&driver),
             max_sets,
             once(descriptor_range_desc(
-                1,
+                3,
                 DescriptorType::Image {
                     ty: ImageDescriptorType::Sampled { with_sampler: true },
                 },
@@ -376,7 +394,11 @@ impl Graphics {
             max_sets,
             pipeline,
             set_layout,
-            samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
+            samplers: vec![
+                sampler(Driver::clone(&driver), Filter::Nearest),
+                sampler(Driver::clone(&driver), Filter::Nearest),
+                sampler(Driver::clone(&driver), Filter::Nearest),
+            ],
         }
     }
 

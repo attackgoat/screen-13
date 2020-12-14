@@ -4,7 +4,10 @@ use {
         math::{Quat, Sphere},
         pak::{model::Mesh, IndexType},
     },
-    std::fmt::{Debug, Error, Formatter},
+    std::{
+        cell::{Ref, RefCell, RefMut},
+        fmt::{Debug, Error, Formatter},
+    },
 };
 
 // TODO: Could not force the lifetime to work without an explicit function which means I'm missing something really basic
@@ -51,34 +54,36 @@ pub struct MeshFilter(u16);
 
 /// A drawable collection of individually adressable meshes.
 pub struct Model {
-    index_buf: Lease<Data>,
-    index_ty: IndexType,
+    idx_buf: RefCell<Lease<Data>>,
+    idx_ty: IndexType,
     meshes: Vec<Mesh>,
-    vertex_buf: Lease<Data>,
+    pending_writes: RefCell<Option<(u64, u64)>>,
+    vertex_buf: RefCell<Lease<Data>>,
 }
 
 impl Model {
     /// Meshes must be sorted by name
     pub(crate) fn new(
         meshes: Vec<Mesh>,
-        index_ty: IndexType,
-        index_buf: Lease<Data>,
+        idx_ty: IndexType,
+        idx_buf: Lease<Data>,
+        idx_buf_len: u64,
         vertex_buf: Lease<Data>,
+        vertex_buf_len: u64,
     ) -> Self {
+        let pending_writes = RefCell::new(Some((idx_buf_len, vertex_buf_len)));
+
         Self {
-            index_buf,
-            index_ty,
+            idx_buf: RefCell::new(idx_buf),
+            idx_ty,
             meshes,
-            vertex_buf,
+            pending_writes,
+            vertex_buf: RefCell::new(vertex_buf),
         }
     }
 
     pub fn bounds(&self) -> Sphere {
         todo!("Get bounds")
-    }
-
-    pub(crate) fn buffers(&self) -> (IndexType, &Data, &Data) {
-        (self.index_ty, &self.index_buf, &self.vertex_buf)
     }
 
     pub fn filter<N: AsRef<str>>(&self, name: Option<N>) -> Option<MeshFilter> {
@@ -104,12 +109,25 @@ impl Model {
         }
     }
 
+    pub(crate) fn indices(&self) -> (IndexType, Ref<Lease<Data>>) {
+        (self.idx_ty, self.idx_buf.borrow())
+    }
+
+    pub(crate) fn indices_mut(&self) -> (IndexType, RefMut<Lease<Data>>) {
+        (self.idx_ty, self.idx_buf.borrow_mut())
+    }
+
     pub(super) fn meshes(&self, filter: Option<MeshFilter>) -> MeshIter {
         MeshIter {
             filter,
             idx: 0,
             model: self,
         }
+    }
+
+    /// You must submit writes for our buffers if you call this.
+    pub(super) fn take_pending_writes(&self) -> Option<(u64, u64)> {
+        self.pending_writes.borrow_mut().take()
     }
 
     pub fn pose_bounds(&self, _pose: &Pose) -> Sphere {
@@ -119,8 +137,16 @@ impl Model {
     /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
     #[cfg(debug_assertions)]
     pub fn set_name(&mut self, name: &str) {
-        self.index_buf.set_name(name);
-        self.vertex_buf.set_name(name);
+        self.idx_buf.borrow_mut().set_name(name);
+        self.vertex_buf.borrow_mut().set_name(name);
+    }
+
+    pub(crate) fn vertices(&self) -> Ref<Lease<Data>> {
+        self.vertex_buf.borrow()
+    }
+
+    pub(crate) fn vertices_mut(&self) -> RefMut<Lease<Data>> {
+        self.vertex_buf.borrow_mut()
     }
 }
 

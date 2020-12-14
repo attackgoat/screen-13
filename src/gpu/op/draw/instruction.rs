@@ -1,17 +1,18 @@
 use {
     crate::{
-        gpu::{data::CopyRange, model::MeshIter, Data},
+        gpu::{data::CopyRange, model::MeshIter, pool::Lease, Data},
         math::Mat4,
         pak::IndexType,
     },
-    std::ops::Range,
+    std::{
+        cell::{Ref, RefMut},
+        ops::Range,
+    },
 };
 
 // Commands specified by the client become Instructions used by `DrawOp`
 pub enum Instruction<'a> {
-    DataCopy((&'a mut Data, &'a [CopyRange])),
     DataTransfer((&'a mut Data, &'a mut Data)),
-    DataWrite((&'a mut Data, Range<u64>)),
 
     //Light(LightInstruction),
     LineDraw((&'a mut Data, u32)),
@@ -21,6 +22,8 @@ pub enum Instruction<'a> {
     DrawRectLight(),
     DrawRectLightEnd,
 
+    IndexWriteRef((RefMut<'a, Lease<Data>>, Range<u64>)),
+
     MeshBegin,
     MeshBind(MeshBind<'a>),
     MeshDescriptorSet(usize),
@@ -28,6 +31,9 @@ pub enum Instruction<'a> {
     // Spotlight(SpotlightCommand),
     // Sunlight(SunlightCommand),
     // Transparency((f32, MeshCommand<'a>)),
+    VertexCopy((&'a mut Data, &'a [CopyRange])),
+    VertexWrite((&'a mut Data, Range<u64>)),
+    VertexWriteRef((RefMut<'a, Lease<Data>>, Range<u64>)),
 }
 
 impl Instruction<'_> {
@@ -148,7 +154,7 @@ impl Instruction<'_> {
 // }
 
 pub struct MeshBind<'a> {
-    pub index: &'a Data,
-    pub index_ty: IndexType,
-    pub vertex: &'a Data,
+    pub idx_buf: Ref<'a, Lease<Data>>,
+    pub idx_ty: IndexType,
+    pub vertex_buf: Ref<'a, Lease<Data>>,
 }

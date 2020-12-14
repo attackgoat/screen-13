@@ -62,7 +62,10 @@ enum Asm {
     DrawSpotlightBegin,
     DrawSpotlight(DrawQuantizedLruAsm),
     DrawSpotlightEnd,
+    DrawSunlight(usize),
     WriteLineVertices,
+    WriteModelIndices((usize, u64)),
+    WriteModelVertices((usize, u64)),
     WritePointLightVertices,
     WriteRectLightVertices,
     WriteSpotlightVertices,
@@ -79,29 +82,31 @@ pub struct Compilation<'a> {
 }
 
 impl Compilation<'_> {
-    fn bind_model_buffers(&self, idx: usize) -> Instruction {
-        let (index_ty, index, vertex) = self.cmds[idx].as_model().unwrap().model.as_ref().buffers();
+    fn bind_model_buffers<'a>(&'a self, idx: usize) -> Instruction<'a> {
+        let cmd = self.cmds[idx].as_model().unwrap();
+        let (idx_ty, idx_buf) = cmd.model.indices();
+        let vertex_buf = cmd.model.vertices();
 
         Instruction::MeshBind(MeshBind {
-            index,
-            index_ty,
-            vertex,
+            idx_buf,
+            idx_ty,
+            vertex_buf,
         })
     }
 
     fn bind_model_descriptor_set(&self, idx: usize) -> Instruction {
-        let material = &self.cmds[idx].as_model().unwrap().material;
+        let cmd = &self.cmds[idx].as_model().unwrap();
         let idx = self
             .compiler
-            .mesh_materials
-            .binary_search_by(|probe| probe.cmp(&material))
-            .unwrap_err();
+            .materials
+            .binary_search_by(|probe| probe.cmp(&cmd.material))
+            .unwrap();
 
         Instruction::MeshDescriptorSet(idx)
     }
 
     fn copy_vertices<T>(buf: &mut DirtyData<T>) -> Instruction {
-        Instruction::DataCopy((&mut buf.data.current, buf.gpu_dirty.as_slice()))
+        Instruction::VertexCopy((&mut buf.data.current, buf.gpu_dirty.as_slice()))
     }
 
     fn draw_lines(buf: &mut DirtyData<Line>, count: u32) -> Instruction {
@@ -110,8 +115,7 @@ impl Compilation<'_> {
 
     fn draw_model(&self, idx: usize) -> Instruction {
         let cmd = self.cmds[idx].as_model().unwrap();
-        let model = cmd.model.as_ref();
-        let meshes = model.meshes(cmd.mesh_filter);
+        let meshes = cmd.model.meshes(cmd.mesh_filter);
 
         Instruction::MeshDraw((meshes, cmd.transform))
     }
@@ -129,23 +133,37 @@ impl Compilation<'_> {
         self.compiler.code.is_empty()
     }
 
-    pub fn mesh_materials(&self) -> impl ExactSizeIterator<Item = &Material> {
-        self.compiler.mesh_materials.iter()
+    pub fn materials(&self) -> impl ExactSizeIterator<Item = &Material> {
+        self.compiler.materials.iter()
     }
 
     fn transfer_data<T>(buf: &mut DirtyData<T>) -> Instruction {
         Instruction::DataTransfer((buf.data.previous.as_mut().unwrap(), &mut buf.data.current))
     }
 
+    fn write_model_indices(&self, idx: usize, len: u64) -> Instruction {
+        let cmd = self.cmds[idx].as_model().unwrap();
+        let (_, buf) = cmd.model.indices_mut();
+
+        Instruction::IndexWriteRef((buf, 0..len))
+    }
+
+    fn write_model_vertices(&self, idx: usize, len: u64) -> Instruction {
+        let cmd = self.cmds[idx].as_model().unwrap();
+        let buf = cmd.model.vertices_mut();
+
+        Instruction::VertexWriteRef((buf, 0..len))
+    }
+
     fn write_point_light_vertices(&mut self) -> Instruction {
-        Instruction::DataWrite((
+        Instruction::VertexWrite((
             self.compiler.point_light_buf.as_mut().unwrap(),
             0..POINT_LIGHT.len() as _,
         ))
     }
 
     fn write_vertices<T>(buf: &mut DirtyData<T>) -> Instruction {
-        Instruction::DataWrite((
+        Instruction::VertexWrite((
             &mut buf.data.current,
             buf.cpu_dirty.as_ref().unwrap().clone(),
         ))
@@ -187,6 +205,8 @@ impl Compilation<'_> {
             Asm::TransferSpotlightData => {
                 Self::transfer_data(self.compiler.spotlight.buf.as_mut().unwrap())
             }
+            Asm::WriteModelIndices((idx, len)) => self.write_model_indices(*idx, *len),
+            Asm::WriteModelVertices((idx, len)) => self.write_model_vertices(*idx, *len),
             Asm::WritePointLightVertices => self.write_point_light_vertices(),
             Asm::WriteRectLightVertices => {
                 Self::write_vertices(self.compiler.rect_light.buf.as_mut().unwrap())
@@ -202,6 +222,12 @@ impl Compilation<'_> {
     }
 }
 
+impl Drop for Compilation<'_> {
+    fn drop(&mut self) {
+        self.compiler.code.clear();
+    }
+}
+
 /// Compiles a series of drawing commands into renderable instructions. The purpose of this structure is
 /// two-fold:
 /// - Reduce per-draw allocations with line and light caches (they are not cleared after each use)
@@ -210,7 +236,7 @@ impl Compilation<'_> {
 pub struct Compiler {
     code: Vec<Asm>,
     line: DirtyLruData<Line>,
-    mesh_materials: Vec<Material>,
+    materials: Vec<Material>,
     point_light_buf: Option<Lease<Data>>,
     rect_light: DirtyLruData<RectLight>,
     spotlight: DirtyLruData<Spotlight>,
@@ -352,8 +378,8 @@ impl Compiler {
         cmds: &'b mut [Command],
     ) -> Compilation<'a> {
         assert!(self.code.is_empty());
-        assert!(self.mesh_materials.is_empty());
-        assert_ne!(cmds.len(), 0);
+        assert!(self.materials.is_empty());
+        assert!(!cmds.is_empty());
 
         // Set model-specific things
         let eye = -camera.eye();
@@ -371,17 +397,21 @@ impl Compiler {
         // Locate the groups - we know these `SearchIdx` values will not be found as they are gaps in between the groups
         let search_group_idx = |range: RangeFrom<usize>, group: SearchIdx| -> usize {
             cmds[range]
-                .binary_search_by(|probe| (Self::group_idx(probe) as isize).cmp(&(group as _)))
+                .binary_search_by(|probe| (Self::group_idx(probe) as usize).cmp(&(group as _)))
                 .unwrap_err()
         };
         let point_light_idx = search_group_idx(0.., SearchIdx::PointLight);
-        let rect_light_idx = search_group_idx(point_light_idx.., SearchIdx::RectLight);
-        let spotlight_idx = search_group_idx(rect_light_idx.., SearchIdx::Spotlight);
-        let line_idx = search_group_idx(spotlight_idx.., SearchIdx::Line);
+        let rect_light_idx =
+            point_light_idx + search_group_idx(point_light_idx.., SearchIdx::RectLight);
+        let spotlight_idx =
+            rect_light_idx + search_group_idx(rect_light_idx.., SearchIdx::Spotlight);
+        let sunlight_idx = spotlight_idx + search_group_idx(spotlight_idx.., SearchIdx::Sunlight);
+        let line_idx = spotlight_idx + search_group_idx(spotlight_idx.., SearchIdx::Line);
         let model_count = point_light_idx;
         let point_light_count = rect_light_idx - point_light_idx;
         let rect_light_count = spotlight_idx - rect_light_idx;
-        let spotlight_count = line_idx - spotlight_idx;
+        let spotlight_count = sunlight_idx - spotlight_idx;
+        let sunlight_count = line_idx - sunlight_idx;
         let line_count = cmds.len() - line_idx;
 
         // Model drawing
@@ -413,7 +443,7 @@ impl Compiler {
 
             // Spotlight drawing
             if spotlight_count > 0 {
-                let spotlights = spotlight_idx..line_idx;
+                let spotlights = spotlight_idx..sunlight_idx;
                 self.compile_spotlights(
                     #[cfg(debug_assertions)]
                     name,
@@ -421,6 +451,12 @@ impl Compiler {
                     pool,
                     &cmds[spotlights],
                 );
+            }
+
+            // Sunlight drawing
+            if sunlight_count > 0 {
+                let sunlights = sunlight_idx..line_idx;
+                self.compile_sunlights(&cmds[sunlights], sunlight_idx);
             }
         }
 
@@ -446,6 +482,8 @@ impl Compiler {
     /// Gets this compiler ready to use the given commands by pre-filling vertex cache buffers. Also records the ranges of vertex data
     /// which must be copied from CPU to the GPU.
     fn compile_models(&mut self, cmds: &[Command]) {
+        debug_assert!(!cmds.is_empty());
+
         let mut material: Option<&Material> = None;
         let mut model: Option<&ModelRef> = None;
 
@@ -455,36 +493,42 @@ impl Compiler {
         for (idx, cmd) in cmds.iter().enumerate() {
             let cmd = cmd.as_model().unwrap();
 
+            // Emit 'write model buffers' assembly code
+            if let Some((idx_buf_len, vertex_buf_len)) = cmd.model.take_pending_writes() {
+                self.code.push(Asm::WriteModelIndices((idx, idx_buf_len)));
+                self.code
+                    .push(Asm::WriteModelVertices((idx, vertex_buf_len)));
+            }
+
             // Emit 'model buffers have changed' assembly code
-            let next_model = &cmd.model;
-            if let Some(prev_model) = model.as_ref() {
-                if !ModelRef::ptr_eq(prev_model, next_model) {
+            if let Some(curr_model) = model.as_ref() {
+                if !ModelRef::ptr_eq(curr_model, &cmd.model) {
                     self.code.push(Asm::BindModelBuffers(idx));
-                    model = Some(next_model);
+                    model = Some(&cmd.model);
                 }
             } else {
                 self.code.push(Asm::BindModelBuffers(idx));
-                model = Some(next_model);
+                model = Some(&cmd.model);
             }
 
             // Emit 'the current descriptor set has changed' assembly code
-            let next_material = &cmd.material;
-            if let Some(prev_material) = material.as_ref() {
-                if *prev_material != next_material {
-                    if let Some(_pose) = &cmd.pose {
-                    } else if let Err(idx) = self
-                        .mesh_materials
+            if let Some(curr_material) = material.as_ref() {
+                if *curr_material != &cmd.material {
+                    // Cache a clone of this material if needed
+                    if let Err(idx) = self
+                        .materials
                         .binary_search_by(|probe| probe.cmp(&cmd.material))
                     {
-                        self.mesh_materials
-                            .insert(idx, Material::clone(&cmd.material));
+                        self.materials.insert(idx, Material::clone(&cmd.material));
                     }
+
                     self.code.push(Asm::BindModelDescriptorSet(idx));
-                    material = Some(next_material);
+                    material = Some(&cmd.material);
                 }
             } else {
                 self.code.push(Asm::BindModelDescriptorSet(idx));
-                material = Some(next_material);
+                material = Some(&cmd.material);
+                self.materials.push(Material::clone(&cmd.material));
             }
 
             // Emit 'draw model' assembly code
@@ -712,6 +756,15 @@ impl Compiler {
 
     /// Gets this compiler ready to use the given commands by pre-filling vertex cache buffers. Also records the ranges of vertex data
     /// which must be copied from CPU to the GPU.
+    fn compile_sunlights(&mut self, cmds: &[Command], base: usize) {
+        for (idx, cmd) in cmds.iter().enumerate() {
+            let _ = cmd.as_sunlight().unwrap();
+            self.code.push(Asm::DrawSunlight(idx + base));
+        }
+    }
+
+    /// Gets this compiler ready to use the given commands by pre-filling vertex cache buffers. Also records the ranges of vertex data
+    /// which must be copied from CPU to the GPU.
     fn compile_lines(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
@@ -813,8 +866,7 @@ impl Compiler {
     /// Resets the internal caches so that this compiler may be reused by calling the `compile` function.
     /// Must NOT be called before the previously drawn frame is completed.
     pub(super) fn reset(&mut self) {
-        self.code.clear();
-        self.mesh_materials.clear();
+        self.materials.clear();
 
         if let Some(buf) = self.line.buf.as_mut() {
             buf.reset();
@@ -944,10 +996,10 @@ struct DrawQuantizedLruAsm {
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 enum GroupIdx {
     Model = 0,
-    Sunlight = 2,
-    PointLight = 4,
-    RectLight = 6,
-    Spotlight = 8,
+    PointLight = 2,
+    RectLight = 4,
+    Spotlight = 6,
+    Sunlight = 8,
     Line = 10,
 }
 
@@ -982,5 +1034,6 @@ enum SearchIdx {
     PointLight = 3,
     RectLight = 5,
     Spotlight = 7,
-    Line = 9,
+    Sunlight = 9,
+    Line = 11,
 }

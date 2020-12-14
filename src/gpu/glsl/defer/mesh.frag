@@ -1,14 +1,14 @@
 #version 450
 
+layout(set = 0, binding = 0) uniform sampler2D albedo_sampler;
+layout(set = 0, binding = 1) uniform sampler2D material_sampler;
+layout(set = 0, binding = 2) uniform sampler2D normal_sampler;
+
 layout(location = 0) in vec3 normal_in; // TODO: USE!
 layout(location = 1) in vec2 texcoord_in;
 
 // // assume it may be modified such that its value will only increase
 // layout(depth_greater) out float gl_FragDepth;
-
-layout(set = 0, binding = 0) uniform sampler2D albedo_sampler;
-layout(set = 0, binding = 1) uniform sampler2D material_sampler;
-layout(set = 0, binding = 2) uniform sampler2D normal_sampler;
 
 layout(location = 0) out vec4 albedo_out;
 layout(location = 1) out vec2 material_out;
