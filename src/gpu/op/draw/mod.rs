@@ -12,9 +12,13 @@ pub use self::{command::Command, compiler::Compiler};
 
 use {
     self::{
-        geom::LINE_STRIDE,
+        geom::{LINE_STRIDE, POINT_LIGHT},
         geom_buf::GeometryBuffer,
-        instruction::{Instruction, MeshBind},
+        instruction::{
+            DataCopyInstruction, DataTransferInstruction, DataWriteInstruction,
+            DataWriteRefInstruction, Instruction, MeshBindInstruction, MeshDrawInstruction,
+            PointLightDrawInstruction,
+        },
     },
     super::Op,
     crate::{
@@ -25,11 +29,10 @@ use {
             driver::{
                 bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
             },
-            model::MeshIter,
             pool::{DrawRenderPassMode, Graphics, GraphicsMode, Lease, Pool, RenderPassMode},
-            BitmapRef, Data, MeshFilter, ModelRef, Pose, Texture2d, TextureRef,
+            BitmapRef, Data, Texture2d, TextureRef,
         },
-        math::{Cone, Coord, CoordF, Extent, Mat4, Sphere, Vec3},
+        math::{Coord, Extent, Mat4, Vec3},
     },
     gfx_hal::{
         buffer::{Access as BufferAccess, IndexBufferView, SubRange},
@@ -49,11 +52,9 @@ use {
     },
     gfx_impl::Backend as _Backend,
     std::{
-        cell::RefMut,
         cmp::Ordering,
         hash::{Hash, Hasher},
         iter::{empty, once},
-        ops::Range,
     },
 };
 
@@ -74,6 +75,7 @@ pub struct DrawOp<'a> {
     graphics_line: Option<Lease<Graphics>>,
     graphics_mesh: Option<Lease<Graphics>>,
     graphics_mesh_anim: Option<Lease<Graphics>>,
+    graphics_point_light: Option<Lease<Graphics>>,
     graphics_spotlight: Option<Lease<Graphics>>,
     graphics_sunlight: Option<Lease<Graphics>>,
     mode: DrawRenderPassMode,
@@ -174,6 +176,7 @@ impl<'a> DrawOp<'a> {
             graphics_line: None,
             graphics_mesh: None,
             graphics_mesh_anim: None,
+            graphics_point_light: None,
             graphics_spotlight: None,
             graphics_sunlight: None,
             mode,
@@ -233,6 +236,18 @@ impl<'a> DrawOp<'a> {
                         );
                     }
                 }
+
+                if instrs.contains_point_light() {
+                    self.graphics_point_light = Some(self.pool.graphics_sets(
+                        #[cfg(debug_assertions)]
+                        &self.name,
+                        &self.driver,
+                        GraphicsMode::DrawPointLight,
+                        RenderPassMode::Draw(self.mode),
+                        1,
+                        0,
+                    ));
+                }
             }
 
             if !instrs.is_empty() {
@@ -248,12 +263,8 @@ impl<'a> DrawOp<'a> {
 
                     while let Some(instr) = instrs.next() {
                         match instr {
-                            Instruction::DataTransfer((src, dst)) => {
-                                self.submit_data_transfer(src, dst)
-                            }
-                            Instruction::IndexWriteRef((buf, range)) => {
-                                self.submit_index_write_ref(buf, range)
-                            }
+                            Instruction::DataTransfer(instr) => self.submit_data_transfer(instr),
+                            Instruction::IndexWriteRef(instr) => self.submit_index_write_ref(instr),
                             Instruction::LineDraw((buf, count)) => {
                                 self.submit_lines(buf, count, &viewport, view_projection)
                             }
@@ -262,19 +273,17 @@ impl<'a> DrawOp<'a> {
                             Instruction::MeshDescriptorSet(set) => {
                                 self.submit_mesh_descriptor_set(set)
                             }
-                            Instruction::MeshDraw((meshes, world)) => {
-                                self.submit_mesh(meshes, world, view_projection)
+                            Instruction::MeshDraw(instr) => {
+                                self.submit_mesh(view_projection, instr)
                             }
-                            Instruction::VertexCopy((buf, ranges)) => {
-                                self.submit_vertex_copies(buf, ranges)
+                            Instruction::PointLightDraw(instr) => {
+                                self.submit_point_lights(&viewport, view_projection, instr)
                             }
-                            Instruction::VertexWrite((buf, range)) => {
-                                self.submit_vertex_write(buf, range)
+                            Instruction::VertexCopy(instr) => self.submit_vertex_copies(instr),
+                            Instruction::VertexWrite(instr) => self.submit_vertex_write(instr),
+                            Instruction::VertexWriteRef(instr) => {
+                                self.submit_vertex_write_ref(instr)
                             }
-                            Instruction::VertexWriteRef((buf, range)) => {
-                                self.submit_vertex_write_ref(buf, range)
-                            }
-                            _ => panic!(),
                         }
                     }
 
@@ -294,6 +303,7 @@ impl<'a> DrawOp<'a> {
             graphics_line: self.graphics_line,
             graphics_mesh: self.graphics_mesh,
             graphics_mesh_anim: self.graphics_mesh_anim,
+            graphics_point_light: self.graphics_point_light,
             graphics_spotlight: self.graphics_spotlight,
             graphics_sunlight: self.graphics_sunlight,
         }
@@ -409,27 +419,23 @@ impl<'a> DrawOp<'a> {
     }
 
     // TODO: Only transfer what we need! Not the whole capacity!!
-    unsafe fn submit_data_transfer(&mut self, src: &mut Data, dst: &mut Data) {
-        src.transfer_range(
+    unsafe fn submit_data_transfer(&mut self, instr: DataTransferInstruction) {
+        instr.src.transfer_range(
             &mut self.cmd_buf,
-            dst,
+            instr.dst,
             CopyRange {
+                src: 0..instr.src.capacity(),
                 dst: 0,
-                src: 0..src.capacity(),
             },
         );
     }
 
-    unsafe fn submit_index_write_ref(
-        &mut self,
-        mut buf: RefMut<'_, Lease<Data>>,
-        range: Range<u64>,
-    ) {
-        buf.write_range(
+    unsafe fn submit_index_write_ref(&mut self, mut instr: DataWriteRefInstruction) {
+        instr.buf.write_range(
             &mut self.cmd_buf,
             PipelineStage::VERTEX_INPUT, // TODO: Should be DRAW_INDIRECT?
             BufferAccess::INDEX_BUFFER_READ,
-            range,
+            instr.range,
         );
     }
 
@@ -549,14 +555,14 @@ impl<'a> DrawOp<'a> {
     }
 
     // TODO: Only bind the portion of these buffers we need!
-    unsafe fn submit_mesh_bind(&mut self, bind: MeshBind<'_>) {
+    unsafe fn submit_mesh_bind(&mut self, instr: MeshBindInstruction<'_>) {
         self.cmd_buf.bind_index_buffer(IndexBufferView {
-            buffer: bind.idx_buf.as_ref(),
-            index_type: bind.idx_ty.into(),
+            buffer: instr.idx_buf.as_ref(),
+            index_type: instr.idx_ty.into(),
             range: SubRange::WHOLE,
         });
         self.cmd_buf
-            .bind_vertex_buffers(0, once((bind.vertex_buf.as_ref(), SubRange::WHOLE)));
+            .bind_vertex_buffers(0, once((instr.vertex_buf.as_ref(), SubRange::WHOLE)));
     }
 
     unsafe fn submit_mesh_descriptor_set(&mut self, set: usize) {
@@ -565,11 +571,11 @@ impl<'a> DrawOp<'a> {
         bind_graphics_descriptor_set(&mut self.cmd_buf, graphics.layout(), graphics.desc_set(set));
     }
 
-    unsafe fn submit_mesh(&mut self, meshes: MeshIter<'_>, world: Mat4, view_projection: Mat4) {
+    unsafe fn submit_mesh(&mut self, view_projection: Mat4, instr: MeshDrawInstruction) {
         let graphics = self.graphics_mesh.as_ref().unwrap();
-        let world_view_proj = view_projection * world;
+        let world_view_proj = view_projection * instr.transform;
 
-        for mesh in meshes {
+        for mesh in instr.meshes {
             let world_view_proj = if let Some(transform) = mesh.transform() {
                 world_view_proj * transform
             } else {
@@ -580,7 +586,7 @@ impl<'a> DrawOp<'a> {
                 graphics.layout(),
                 ShaderStageFlags::VERTEX,
                 0,
-                MeshVertexConsts { world_view_proj }.as_ref(),
+                Mat4Const(world_view_proj).as_ref(),
             );
 
             for batch in mesh.batches() {
@@ -589,34 +595,77 @@ impl<'a> DrawOp<'a> {
         }
     }
 
-    unsafe fn submit_vertex_copies(&mut self, buf: &mut Data, ranges: &[CopyRange]) {
-        buf.copy_ranges(
-            &mut self.cmd_buf,
-            PipelineStage::VERTEX_INPUT,
-            BufferAccess::VERTEX_BUFFER_READ,
-            ranges,
-        );
-    }
-
-    unsafe fn submit_vertex_write(&mut self, buf: &mut Data, range: Range<u64>) {
-        buf.write_range(
-            &mut self.cmd_buf,
-            PipelineStage::VERTEX_INPUT,
-            BufferAccess::VERTEX_BUFFER_READ,
-            range,
-        );
-    }
-
-    unsafe fn submit_vertex_write_ref(
+    unsafe fn submit_point_lights(
         &mut self,
-        mut buf: RefMut<'_, Lease<Data>>,
-        range: Range<u64>,
+        viewport: &Viewport,
+        view_projection: Mat4,
+        instr: PointLightDrawInstruction,
     ) {
-        buf.write_range(
+        let graphics = self.graphics_point_light.as_ref().unwrap();
+
+        self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
+        self.cmd_buf.set_scissors(0, &[viewport.rect]);
+        self.cmd_buf.set_viewports(0, &[viewport.clone()]);
+
+        self.cmd_buf.bind_vertex_buffers(
+            0,
+            once((
+                instr.buf.as_ref(),
+                SubRange {
+                    offset: 0,
+                    size: Some(POINT_LIGHT.len() as _),
+                },
+            )),
+        );
+
+        for point_light in instr.point_lights {
+            let world_view_proj = view_projection * Mat4::from_translation(point_light.center);
+
+            self.cmd_buf.push_graphics_constants(
+                graphics.layout(),
+                ShaderStageFlags::VERTEX,
+                0,
+                Mat4Const(world_view_proj).as_ref(),
+            );
+            self.cmd_buf.push_graphics_constants(
+                graphics.layout(),
+                ShaderStageFlags::VERTEX,
+                0,
+                PointLightConsts {
+                    color: point_light.color,
+                    power: point_light.power,
+                    radius: point_light.radius,
+                }
+                .as_ref(),
+            );
+            self.cmd_buf.draw(0..POINT_LIGHT.len() as _, 0..1);
+        }
+    }
+
+    unsafe fn submit_vertex_copies(&mut self, instr: DataCopyInstruction) {
+        instr.buf.copy_ranges(
             &mut self.cmd_buf,
             PipelineStage::VERTEX_INPUT,
             BufferAccess::VERTEX_BUFFER_READ,
-            range,
+            instr.ranges,
+        );
+    }
+
+    unsafe fn submit_vertex_write(&mut self, instr: DataWriteInstruction) {
+        instr.buf.write_range(
+            &mut self.cmd_buf,
+            PipelineStage::VERTEX_INPUT,
+            BufferAccess::VERTEX_BUFFER_READ,
+            instr.range,
+        );
+    }
+
+    unsafe fn submit_vertex_write_ref(&mut self, mut instr: DataWriteRefInstruction) {
+        instr.buf.write_range(
+            &mut self.cmd_buf,
+            PipelineStage::VERTEX_INPUT,
+            BufferAccess::VERTEX_BUFFER_READ,
+            instr.range,
         );
     }
 
@@ -730,6 +779,7 @@ pub struct DrawOpSubmission {
     graphics_line: Option<Lease<Graphics>>,
     graphics_mesh: Option<Lease<Graphics>>,
     graphics_mesh_anim: Option<Lease<Graphics>>,
+    graphics_point_light: Option<Lease<Graphics>>,
     graphics_spotlight: Option<Lease<Graphics>>,
     graphics_sunlight: Option<Lease<Graphics>>,
 }
@@ -773,7 +823,7 @@ impl AsRef<[u32; 16]> for LineVertexConsts {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Material {
     pub albedo: BitmapRef,
     pub metal_rough: BitmapRef,
@@ -821,86 +871,25 @@ impl PartialOrd for Material {
 }
 
 #[repr(C)]
-struct MeshVertexConsts {
-    world_view_proj: Mat4,
-}
+struct Mat4Const(Mat4);
 
-impl AsRef<[u32; 16]> for MeshVertexConsts {
+impl AsRef<[u32; 16]> for Mat4Const {
     #[inline]
     fn as_ref(&self) -> &[u32; 16] {
         unsafe { &*(self as *const Self as *const [u32; 16]) }
     }
 }
 
-pub struct ModelCommand {
-    camera_order: f32, // TODO: Could probably be u16?
-    material: Material,
-    mesh_filter: Option<MeshFilter>,
-    model: ModelRef,
-    pose: Option<Pose>,
-    transform: Mat4,
+#[repr(C)]
+struct PointLightConsts {
+    color: Color,
+    power: f32,
+    radius: f32,
 }
 
-#[derive(Clone, Debug)]
-pub struct PointLightCommand {
-    core: Sphere,  // full-bright center and radius
-    color: Color,  // `core` and penumbra-to-transparent color
-    penumbra: f32, // distance after `core` which fades from `color` to transparent
-    power: f32, // sRGB power value, normalized to current gamma so 1.0 == a user setting of 1.2 and 2.0 == 2.4
-}
-
-impl PointLightCommand {
-    /// Returns a tightly fitting sphere around the lit area of this point light, including the penumbra
-    pub(self) fn bounds(&self) -> Sphere {
-        self.core + self.penumbra
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct RectLightCommand {
-    color: Color, // full-bright and penumbra-to-transparent color
-    dims: CoordF,
-    radius: f32, // size of the penumbra area beyond the box formed by `pos` and `range` which fades from `color` to transparent
-    pos: Vec3,   // top-left corner when viewed from above
-    power: f32, // sRGB power value, normalized to current gamma so 1.0 == a user setting of 1.2 and 2.0 == 2.4
-    range: f32, // distance from `pos` to the bottom of the rectangular light
-}
-
-impl RectLightCommand {
-    /// Returns a tightly fitting sphere around the lit area of this rectangular light, including the penumbra
-    pub(self) fn bounds(&self) -> Sphere {
-        todo!();
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct SunlightCommand {
-    color: Color, // uniform color for any area exposed to the sunlight
-    normal: Vec3, // direction which the sunlight shines
-    power: f32, // sRGB power value, normalized to current gamma so 1.0 == a user setting of 1.2 and 2.0 == 2.4
-}
-
-#[derive(Clone, Debug)]
-pub struct SpotlightCommand {
-    color: Color,         // `cone` and penumbra-to-transparent color
-    cone_radius: f32, // radius of the spotlight cone from the center to the edge of the full-bright area
-    normal: Vec3,     // direction from `pos` which the spotlight shines
-    penumbra_radius: f32, // Additional radius beyond `cone_radius` which fades from `color` to transparent
-    pos: Vec3,            // position of the pointy end
-    power: f32, // sRGB power value, normalized to current gamma so 1.0 == a user setting of 1.2 and 2.0 == 2.4
-    range: Range<f32>, // lit distance from `pos` and to the bottom of the spotlight (does not account for the lens-shaped end)
-    top_radius: f32,
-}
-
-impl SpotlightCommand {
-    /// Returns a tightly fitting cone around the lit area of this spotlight, including the penumbra and
-    /// lens-shaped base.
-    pub(self) fn bounds(&self) -> Cone {
-        Cone::new(
-            self.pos,
-            self.normal,
-            self.range.end,
-            self.cone_radius + self.penumbra_radius,
-        )
+impl AsRef<[u32; 3]> for PointLightConsts {
+    #[inline]
+    fn as_ref(&self) -> &[u32; 3] {
+        unsafe { &*(self as *const Self as *const [u32; 3]) }
     }
 }

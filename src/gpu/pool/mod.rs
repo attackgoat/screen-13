@@ -110,7 +110,8 @@ pub enum GraphicsMode {
     GradientTransparency,
     DrawLine,
     DrawMesh,
-    DrawMeshAnimated,
+    //DrawMeshAnimated,
+    DrawPointLight,
     Texture,
 }
 
@@ -326,14 +327,15 @@ impl Pool {
         }
         let ctor = match graphics_mode {
             GraphicsMode::Blend(BlendMode::Normal) => Graphics::blend_normal,
+            GraphicsMode::Blend(_) => todo!(),
             GraphicsMode::DrawLine => Graphics::draw_line,
             GraphicsMode::DrawMesh => Graphics::draw_mesh,
+            GraphicsMode::DrawPointLight => Graphics::draw_point_light,
             GraphicsMode::Font => Graphics::font,
             GraphicsMode::FontOutline => Graphics::font_outline,
             GraphicsMode::Gradient => Graphics::gradient,
             GraphicsMode::GradientTransparency => Graphics::gradient_transparency,
             GraphicsMode::Texture => Graphics::texture,
-            _ => panic!(),
         };
         let item = unsafe {
             ctor(

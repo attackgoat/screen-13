@@ -49,7 +49,7 @@ impl<'a> Iterator for MeshIter<'a> {
 }
 
 /// A reference to an individual mesh name, which may be shared by multiple meshes. Only useful with the Model it was received from.
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct MeshFilter(u16);
 
 /// A drawable collection of individually adressable meshes.
@@ -156,7 +156,7 @@ impl Debug for Model {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Pose {
     joints: Vec<Quat>,
 }

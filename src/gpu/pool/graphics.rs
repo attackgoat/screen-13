@@ -69,13 +69,13 @@ pub struct FontVertex {
 }
 
 pub struct Graphics {
-    desc_pool: DescriptorPool,
+    desc_pool: Option<DescriptorPool>,
     desc_sets: Vec<<_Backend as Backend>::DescriptorSet>,
     layout: PipelineLayout,
     max_sets: usize,
     pipeline: GraphicsPipeline,
     samplers: Vec<Sampler>,
-    set_layout: DescriptorSetLayout,
+    set_layout: Option<DescriptorSetLayout>,
 }
 
 // TODO: VAST, VAST!!!, amounts of refactoring to be done here.
@@ -165,12 +165,12 @@ impl Graphics {
         let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
 
         Self {
-            desc_pool,
+            desc_pool: Some(desc_pool),
             desc_sets,
             layout,
             max_sets,
             pipeline,
-            set_layout,
+            set_layout: Some(set_layout),
             samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
         }
     }
@@ -257,12 +257,12 @@ impl Graphics {
         );
 
         Self {
-            desc_pool,
+            desc_pool: Some(desc_pool),
             desc_sets: vec![],
             layout,
             max_sets,
             pipeline,
-            set_layout,
+            set_layout: Some(set_layout),
             samplers: vec![],
         }
     }
@@ -391,17 +391,92 @@ impl Graphics {
         let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
 
         Self {
-            desc_pool,
+            desc_pool: Some(desc_pool),
             desc_sets,
             layout,
             max_sets,
             pipeline,
-            set_layout,
+            set_layout: Some(set_layout),
             samplers: vec![
                 sampler(Driver::clone(&driver), Filter::Nearest),
                 sampler(Driver::clone(&driver), Filter::Nearest),
                 sampler(Driver::clone(&driver), Filter::Nearest),
             ],
+        }
+    }
+
+    /// # Safety
+    /// None
+    pub unsafe fn draw_point_light(
+        #[cfg(debug_assertions)] name: &str,
+        driver: &Driver,
+        subpass: Subpass<'_, _Backend>,
+        _max_sets: usize,
+    ) -> Self {
+        let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::defer::LIGHT_VERT);
+        let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::defer::POINT_LIGHT_FRAG);
+        let layout = PipelineLayout::new(
+            #[cfg(debug_assertions)]
+            name,
+            Driver::clone(&driver),
+            empty::<&<_Backend as Backend>::DescriptorSetLayout>(),
+            &[
+                (ShaderStageFlags::VERTEX, 0..64),
+                (ShaderStageFlags::FRAGMENT, 0..0),
+            ],
+        );
+        let mut desc = GraphicsPipelineDesc::new(
+            PrimitiveAssemblerDesc::Vertex {
+                attributes: &[AttributeDesc {
+                    binding: 0,
+                    location: 0,
+                    element: Element {
+                        format: Format::Rgb32Sfloat,
+                        offset: 0,
+                    },
+                }],
+                buffers: &[VertexBufferDesc {
+                    binding: 0,
+                    stride: 12,
+                    rate: VertexInputRate::Vertex,
+                }],
+                geometry: None,
+                input_assembler: InputAssemblerDesc {
+                    primitive: Primitive::TriangleList,
+                    restart_index: None,
+                    with_adjacency: false,
+                },
+                tessellation: None,
+                vertex: ShaderModule::entry_point(&vertex),
+            },
+            FILL_RASTERIZER,
+            Some(ShaderModule::entry_point(&fragment)),
+            &layout,
+            subpass,
+        );
+        desc.blender.targets.push(ColorBlendDesc {
+            blend: Some(BlendState::ADD),
+            mask: ColorMask::RED,
+        });
+        desc.depth_stencil.depth = Some(DepthTest {
+            fun: Comparison::LessEqual,
+            write: false,
+        });
+        let pipeline = GraphicsPipeline::new(
+            #[cfg(debug_assertions)]
+            name,
+            Driver::clone(&driver),
+            &desc,
+        );
+
+        Self {
+            desc_pool: None,
+            desc_sets: vec![],
+            layout,
+            max_sets: 0,
+            pipeline,
+            set_layout: None,
+            samplers: vec![],
         }
     }
 
@@ -686,12 +761,12 @@ impl Graphics {
         let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
 
         Self {
-            desc_pool,
+            desc_pool: Some(desc_pool),
             desc_sets,
             layout,
             max_sets,
             pipeline,
-            set_layout,
+            set_layout: Some(set_layout),
             samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
         }
     }
@@ -790,12 +865,12 @@ impl Graphics {
         let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
 
         Self {
-            desc_pool,
+            desc_pool: Some(desc_pool),
             desc_sets,
             layout,
             max_sets,
             pipeline,
-            set_layout,
+            set_layout: Some(set_layout),
             samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
         }
     }
@@ -870,12 +945,12 @@ impl Graphics {
         let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
 
         Self {
-            desc_pool,
+            desc_pool: Some(desc_pool),
             desc_sets,
             layout,
             max_sets,
             pipeline,
-            set_layout,
+            set_layout: Some(set_layout),
             samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
         }
     }
@@ -950,12 +1025,12 @@ impl Graphics {
         let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
 
         Self {
-            desc_pool,
+            desc_pool: Some(desc_pool),
             desc_sets,
             layout,
             max_sets,
             pipeline,
-            set_layout,
+            set_layout: Some(set_layout),
             samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
         }
     }
@@ -1029,12 +1104,12 @@ impl Graphics {
         let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
 
         Self {
-            desc_pool,
+            desc_pool: Some(desc_pool),
             desc_sets,
             layout,
             max_sets,
             pipeline,
-            set_layout,
+            set_layout: Some(set_layout),
             samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
         }
     }
@@ -1109,12 +1184,12 @@ impl Graphics {
         let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
 
         Self {
-            desc_pool,
+            desc_pool: Some(desc_pool),
             desc_sets,
             layout,
             max_sets,
             pipeline,
-            set_layout,
+            set_layout: Some(set_layout),
             samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
         }
     }
@@ -1136,12 +1211,19 @@ impl Graphics {
     }
 
     fn reset(&mut self) {
+        // TODO: Why the odd unwrap pattern twice here?
         unsafe {
-            self.desc_pool.reset();
+            self.desc_pool.as_mut().unwrap().reset();
         }
 
         for desc_set in &mut self.desc_sets {
-            *desc_set = unsafe { self.desc_pool.allocate_set(&*self.set_layout).unwrap() }
+            *desc_set = unsafe {
+                self.desc_pool
+                    .as_mut()
+                    .unwrap()
+                    .allocate_set(self.set_layout.as_ref().unwrap())
+                    .unwrap()
+            }
         }
     }
 

@@ -1,7 +1,7 @@
 use {
     super::BIT,
     crate::{
-        gpu::op::draw::RectLightCommand,
+        gpu::op::draw::command::RectLightCommand,
         math::{Coord8, Extent},
     },
 };

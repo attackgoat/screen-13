@@ -27,6 +27,7 @@ use {
     },
     gfx_impl::Backend as _Backend,
     std::{
+        fmt::{Debug, Error, Formatter},
         iter::{empty, once},
         ops::Deref,
         ptr::copy_nonoverlapping,
@@ -42,6 +43,12 @@ pub struct Bitmap {
     fence: Lease<Fence>,
     pixel_buf: Lease<Data>,
     texture: Lease<Texture2d>,
+}
+
+impl Debug for Bitmap {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        f.write_str("Bitmap")
+    }
 }
 
 impl Deref for Bitmap {

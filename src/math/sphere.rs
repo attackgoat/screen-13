@@ -79,3 +79,12 @@ where
         *self = *self + val.into();
     }
 }
+
+impl<I> From<I> for Sphere
+where
+    I: Iterator<Item = Vec3>,
+{
+    fn from(cloud: I) -> Self {
+        Self::from_point_cloud(cloud)
+    }
+}

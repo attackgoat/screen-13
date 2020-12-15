@@ -1,12 +1,17 @@
 use {
     super::{
+        command::{ModelCommand, PointLightCommand},
         geom::{
             gen_line, gen_rect_light, gen_spotlight, LINE_STRIDE, POINT_LIGHT, RECT_LIGHT_STRIDE,
             SPOTLIGHT_STRIDE,
         },
-        instruction::{Instruction, MeshBind},
+        instruction::{
+            DataCopyInstruction, DataTransferInstruction, DataWriteInstruction,
+            DataWriteRefInstruction, Instruction, MeshBindInstruction, MeshDrawInstruction,
+            PointLightDrawInstruction,
+        },
         key::{Line, RectLight, Spotlight},
-        Command, Material, ModelCommand,
+        Command, Material,
     },
     crate::{
         camera::Camera,
@@ -55,7 +60,7 @@ enum Asm {
     CopySpotlightVertices,
     DrawLines(u32),
     DrawModel(usize),
-    DrawPointLights(u32),
+    DrawPointLights(Range<usize>),
     DrawRectLightBegin,
     DrawRectLight(DrawQuantizedLruAsm),
     DrawRectLightEnd,
@@ -78,6 +83,7 @@ enum Asm {
 pub struct Compilation<'a> {
     cmds: &'a [Command],
     compiler: &'a mut Compiler,
+    contains_point_light: bool,
     idx: usize,
 }
 
@@ -87,7 +93,7 @@ impl Compilation<'_> {
         let (idx_ty, idx_buf) = cmd.model.indices();
         let vertex_buf = cmd.model.vertices();
 
-        Instruction::MeshBind(MeshBind {
+        Instruction::MeshBind(MeshBindInstruction {
             idx_buf,
             idx_ty,
             vertex_buf,
@@ -105,8 +111,15 @@ impl Compilation<'_> {
         Instruction::MeshDescriptorSet(idx)
     }
 
+    pub fn contains_point_light(&self) -> bool {
+        self.contains_point_light
+    }
+
     fn copy_vertices<T>(buf: &mut DirtyData<T>) -> Instruction {
-        Instruction::VertexCopy((&mut buf.data.current, buf.gpu_dirty.as_slice()))
+        Instruction::VertexCopy(DataCopyInstruction {
+            buf: &mut buf.data.current,
+            ranges: buf.gpu_dirty.as_slice(),
+        })
     }
 
     fn draw_lines(buf: &mut DirtyData<Line>, count: u32) -> Instruction {
@@ -117,12 +130,23 @@ impl Compilation<'_> {
         let cmd = self.cmds[idx].as_model().unwrap();
         let meshes = cmd.model.meshes(cmd.mesh_filter);
 
-        Instruction::MeshDraw((meshes, cmd.transform))
+        Instruction::MeshDraw(MeshDrawInstruction {
+            meshes,
+            transform: cmd.transform,
+        })
     }
 
-    // fn draw_point_lights(buf: &mut Lease<Data>, range: usize) -> Instruction {
-    //     Instruction::DrawPointLights((&mut buf, count))
-    // }
+    fn draw_point_lights(&self, range: Range<usize>) -> Instruction {
+        let buf = self.compiler.point_light_buf.as_ref().unwrap();
+
+        Instruction::PointLightDraw(PointLightDrawInstruction {
+            buf,
+            point_lights: PointLightIter {
+                cmds: &self.cmds[range],
+                idx: 0,
+            },
+        })
+    }
 
     // fn draw_rect_light(buf: &mut DirtyData<Line>, count: usize) -> Instruction {
     //     Instruction::DrawLines((&mut buf.data.current, count))
@@ -138,35 +162,38 @@ impl Compilation<'_> {
     }
 
     fn transfer_data<T>(buf: &mut DirtyData<T>) -> Instruction {
-        Instruction::DataTransfer((buf.data.previous.as_mut().unwrap(), &mut buf.data.current))
+        Instruction::DataTransfer(DataTransferInstruction {
+            src: buf.data.previous.as_mut().unwrap(),
+            dst: &mut buf.data.current,
+        })
     }
 
     fn write_model_indices(&self, idx: usize, len: u64) -> Instruction {
         let cmd = self.cmds[idx].as_model().unwrap();
         let (_, buf) = cmd.model.indices_mut();
 
-        Instruction::IndexWriteRef((buf, 0..len))
+        Instruction::IndexWriteRef(DataWriteRefInstruction { buf, range: 0..len })
     }
 
     fn write_model_vertices(&self, idx: usize, len: u64) -> Instruction {
         let cmd = self.cmds[idx].as_model().unwrap();
         let buf = cmd.model.vertices_mut();
 
-        Instruction::VertexWriteRef((buf, 0..len))
+        Instruction::IndexWriteRef(DataWriteRefInstruction { buf, range: 0..len })
     }
 
     fn write_point_light_vertices(&mut self) -> Instruction {
-        Instruction::VertexWrite((
-            self.compiler.point_light_buf.as_mut().unwrap(),
-            0..POINT_LIGHT.len() as _,
-        ))
+        Instruction::VertexWrite(DataWriteInstruction {
+            buf: self.compiler.point_light_buf.as_mut().unwrap(),
+            range: 0..POINT_LIGHT.len() as _,
+        })
     }
 
     fn write_vertices<T>(buf: &mut DirtyData<T>) -> Instruction {
-        Instruction::VertexWrite((
-            &mut buf.data.current,
-            buf.cpu_dirty.as_ref().unwrap().clone(),
-        ))
+        Instruction::VertexWrite(DataWriteInstruction {
+            buf: &mut buf.data.current,
+            range: buf.cpu_dirty.as_ref().unwrap().clone(),
+        })
     }
 }
 
@@ -195,9 +222,7 @@ impl Compilation<'_> {
                 Self::draw_lines(self.compiler.line.buf.as_mut().unwrap(), *count)
             }
             Asm::DrawModel(idx) => self.draw_model(*idx),
-            // Asm::DrawPointLights(range) => {
-            //     Self::draw_point_lights(self.compiler.point_light_buf.as_mut().unwrap(), *range)
-            // }
+            Asm::DrawPointLights(range) => self.draw_point_lights(range.clone()),
             Asm::TransferLineData => Self::transfer_data(self.compiler.line.buf.as_mut().unwrap()),
             Asm::TransferRectLightData => {
                 Self::transfer_data(self.compiler.rect_light.buf.as_mut().unwrap())
@@ -425,7 +450,7 @@ impl Compiler {
                     name,
                     driver,
                     pool,
-                    point_light_count,
+                    point_light_idx..rect_light_idx,
                 );
             }
 
@@ -475,6 +500,7 @@ impl Compiler {
         Compilation {
             cmds,
             compiler: self,
+            contains_point_light: line_count > 0,
             idx: 0,
         }
     }
@@ -543,9 +569,10 @@ impl Compiler {
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
         pool: &mut Pool,
-        count: usize,
+        range: Range<usize>,
     ) {
-        self.code.push(Asm::DrawPointLights(count as _));
+        // Emit 'draw this range of lights' assembly code
+        self.code.push(Asm::DrawPointLights(range));
 
         // On the first (it is also the only) allocation we will copy in the icosphere vertices
         if self.point_light_buf.as_ref().is_none() {
@@ -568,6 +595,9 @@ impl Compiler {
             }
 
             self.point_light_buf = Some(buf);
+
+            // Emit 'write point light buffer' assembly code
+            self.code.push(Asm::WritePointLightVertices);
         }
     }
 
@@ -1024,6 +1054,26 @@ impl<T> Lru<T> {
 enum ModelGroupIdx {
     Static = 0,
     Animated,
+}
+
+pub struct PointLightIter<'a> {
+    cmds: &'a [Command],
+    idx: usize,
+}
+
+impl<'a> Iterator for PointLightIter<'a> {
+    type Item = &'a PointLightCommand;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.idx == self.cmds.len() {
+            None
+        } else {
+            let idx = self.idx;
+            self.idx += 1;
+
+            self.cmds[idx].as_point_light()
+        }
+    }
 }
 
 /// These oddly numbered indices are the spaces in between the `GroupIdx` values. This was more efficient than

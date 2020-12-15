@@ -246,10 +246,12 @@ fn compile_shaders() {
     }
 
     // Deferred rendering
+    compile_glsl("defer/light.vert");
     compile_glsl("defer/line.vert");
     compile_glsl("defer/line.frag");
     compile_glsl("defer/mesh.vert");
     compile_glsl("defer/mesh.frag");
+    compile_glsl("defer/point_light.frag");
     // compile_glsl("defer/spotlight.frag");
     // compile_glsl("defer/sunlight.frag");
 

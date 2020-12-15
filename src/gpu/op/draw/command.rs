@@ -1,12 +1,9 @@
 use {
-    super::{
-        LineCommand, LineVertex, Material, ModelCommand, PointLightCommand, RectLightCommand,
-        SpotlightCommand, SunlightCommand,
-    },
+    super::{LineCommand, LineVertex, Material},
     crate::{
         color::{AlphaColor, Color},
         gpu::{MeshFilter, ModelRef, Pose},
-        math::{vec3_is_finite, Mat4, Vec3},
+        math::{vec3_is_finite, CoordF, Mat4, Sphere, Vec3},
     },
     std::{num::FpCategory, ops::Range},
 };
@@ -120,6 +117,15 @@ impl Command {
         })
     }
 
+    pub fn point_light(center: Vec3, color: Color, power: f32, radius: f32) -> Self {
+        Self::PointLight(PointLightCommand {
+            center,
+            color,
+            power,
+            radius,
+        })
+    }
+
     /// Draws a spotlight with the given color, position/orientation, and shape.
     ///
     /// _Note_: Spotlights have a hemispherical cap on the bottom, so a given `range` will be the maximum range
@@ -170,6 +176,95 @@ impl Command {
             top_radius,
         })
     }
+}
+
+#[derive(Debug)]
+pub struct Mesh {
+    pub filter: Option<MeshFilter>,
+    pub model: ModelRef,
+    pub pose: Option<Pose>,
+}
+
+impl From<ModelRef> for Mesh {
+    fn from(model: ModelRef) -> Self {
+        Self {
+            filter: None,
+            model,
+            pose: None,
+        }
+    }
+}
+
+impl From<(ModelRef, MeshFilter)> for Mesh {
+    fn from((model, filter): (ModelRef, MeshFilter)) -> Self {
+        Self {
+            filter: Some(filter),
+            model,
+            pose: None,
+        }
+    }
+}
+
+impl From<(ModelRef, Pose)> for Mesh {
+    fn from((model, pose): (ModelRef, Pose)) -> Self {
+        Self {
+            filter: None,
+            model,
+            pose: Some(pose),
+        }
+    }
+}
+
+impl From<(ModelRef, MeshFilter, Pose)> for Mesh {
+    fn from((model, filter, pose): (ModelRef, MeshFilter, Pose)) -> Self {
+        Self {
+            filter: Some(filter),
+            model,
+            pose: Some(pose),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ModelCommand {
+    pub(super) camera_order: f32, // TODO: Could probably be u16?
+    pub material: Material,
+    pub mesh_filter: Option<MeshFilter>,
+    pub model: ModelRef,
+    pub pose: Option<Pose>,
+    pub transform: Mat4,
+}
+
+#[derive(Clone, Debug)]
+pub struct PointLightCommand {
+    pub center: Vec3,
+    pub color: Color,
+    pub power: f32,
+    pub radius: f32,
+}
+
+#[derive(Clone, Debug)]
+pub struct RectLightCommand {
+    pub color: Color, // full-bright and penumbra-to-transparent color
+    pub dims: CoordF,
+    pub radius: f32, // size of the penumbra area beyond the box formed by `pos` and `range` which fades from `color` to transparent
+    pub pos: Vec3,   // top-left corner when viewed from above
+    pub power: f32, // sRGB power value, normalized to current gamma so 1.0 == a user setting of 1.2 and 2.0 == 2.4
+    pub range: f32, // distance from `pos` to the bottom of the rectangular light
+}
+
+impl RectLightCommand {
+    /// Returns a tightly fitting sphere around the lit area of this rectangular light, including the penumbra
+    pub(self) fn bounds(&self) -> Sphere {
+        todo!();
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SunlightCommand {
+    pub color: Color, // uniform color for any area exposed to the sunlight
+    pub normal: Vec3, // direction which the sunlight shines
+    pub power: f32, // sRGB power value, normalized to current gamma so 1.0 == a user setting of 1.2 and 2.0 == 2.4
 }
 
 // impl SunlightCommand {
@@ -259,6 +354,18 @@ impl Command {
 //     }
 // }
 
+#[derive(Clone, Debug)]
+pub struct SpotlightCommand {
+    pub color: Color,         // `cone` and penumbra-to-transparent color
+    pub cone_radius: f32, // radius of the spotlight cone from the center to the edge of the full-bright area
+    pub normal: Vec3,     // direction from `pos` which the spotlight shines
+    pub penumbra_radius: f32, // Additional radius beyond `cone_radius` which fades from `color` to transparent
+    pub pos: Vec3,            // position of the pointy end
+    pub power: f32, // sRGB power value, normalized to current gamma so 1.0 == a user setting of 1.2 and 2.0 == 2.4
+    pub range: Range<f32>, // lit distance from `pos` and to the bottom of the spotlight (does not account for the lens-shaped end)
+    pub top_radius: f32,
+}
+
 // impl SpotlightCommand {
 //     fn new() -> Self {
 //         //             let up = Vec3::unit_z();
@@ -283,49 +390,15 @@ impl Command {
 //         todo!();
 //     }
 // }
-
-pub struct Mesh {
-    filter: Option<MeshFilter>,
-    model: ModelRef,
-    pose: Option<Pose>,
-}
-
-impl From<ModelRef> for Mesh {
-    fn from(model: ModelRef) -> Self {
-        Self {
-            filter: None,
-            model,
-            pose: None,
-        }
-    }
-}
-
-impl From<(ModelRef, MeshFilter)> for Mesh {
-    fn from((model, filter): (ModelRef, MeshFilter)) -> Self {
-        Self {
-            filter: Some(filter),
-            model,
-            pose: None,
-        }
-    }
-}
-
-impl From<(ModelRef, Pose)> for Mesh {
-    fn from((model, pose): (ModelRef, Pose)) -> Self {
-        Self {
-            filter: None,
-            model,
-            pose: Some(pose),
-        }
-    }
-}
-
-impl From<(ModelRef, MeshFilter, Pose)> for Mesh {
-    fn from((model, filter, pose): (ModelRef, MeshFilter, Pose)) -> Self {
-        Self {
-            filter: Some(filter),
-            model,
-            pose: Some(pose),
-        }
-    }
-}
+// impl SpotlightCommand {
+//     /// Returns a tightly fitting cone around the lit area of this spotlight, including the penumbra and
+//     /// lens-shaped base.
+//     pub(self) fn bounds(&self) -> Cone {
+//         Cone::new(
+//             self.pos,
+//             self.normal,
+//             self.range.end,
+//             self.cone_radius + self.penumbra_radius,
+//         )
+//     }
+// }

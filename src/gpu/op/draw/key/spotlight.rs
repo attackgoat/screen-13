@@ -1,4 +1,4 @@
-use {super::BIT, crate::gpu::op::draw::SpotlightCommand, std::ops::Range};
+use {super::BIT, crate::gpu::op::draw::command::SpotlightCommand, std::ops::Range};
 
 /// Holds the details of a normalized quanitized spotlight. Regular user-supplied spotlights are first
 /// normalized (range + radius == 1.0) and then quantized to 24 bits. This allows spotlight meshes to be
