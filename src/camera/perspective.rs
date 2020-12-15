@@ -44,7 +44,7 @@ impl Perspective {
             proj: Default::default(),
             sphere_factor: Default::default(),
             target,
-            up: Vec3::unit_y(),
+            up: -Vec3::unit_y(),
             view: Default::default(),
             view_inv: Default::default(),
             x: Default::default(),
@@ -303,6 +303,10 @@ impl Perspective {
 }
 
 impl Camera for Perspective {
+    fn depth(&self) -> &Range<f32> {
+        &self.depth
+    }
+
     fn eye(&self) -> Vec3 {
         self.eye
     }

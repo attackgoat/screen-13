@@ -19,7 +19,7 @@ use {
     super::Op,
     crate::{
         camera::Camera,
-        color::{AlphaColor, Color, TRANSPARENT_BLACK},
+        color::{AlphaColor, Color},
         gpu::{
             data::CopyRange,
             driver::{
@@ -33,7 +33,7 @@ use {
     },
     gfx_hal::{
         buffer::{Access as BufferAccess, IndexBufferView, SubRange},
-        command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, SubpassContents},
+        command::{CommandBuffer as _,ClearDepthStencil,ClearColor, ClearValue, CommandBufferFlags, ImageCopy, Level, SubpassContents},
         device::Device as _,
         format::Aspects,
         image::{
@@ -194,9 +194,9 @@ impl<'a> DrawOp<'a> {
         let dims: Coord = self.dst.borrow().dims().into();
         let viewport = Viewport {
             rect: dims.as_rect_at(Coord::ZERO),
-            depth: 0.0..1.0,
+            depth: camera.depth().clone(),
         };
-        let view_projection = camera.view() * camera.projection();
+        let view_projection = camera.projection() * camera.view();
 
         // Use a compiler to figure out rendering instructions without allocating
         // memory per rendering command. The compiler caches code between frames.
@@ -305,7 +305,15 @@ impl<'a> DrawOp<'a> {
         let mut normal = self.geom_buf.normal.borrow_mut();
         let mut output = self.geom_buf.output.borrow_mut();
         let dims = dst.dims();
-        // let fmt = dst.format();
+        let depth_clear = ClearValue {
+            depth_stencil: ClearDepthStencil {
+                depth: 0.0,
+                stencil: 0,
+            },
+        };
+        let light_clear = ClearValue {
+            color: ClearColor { float32: [0.0, 0.0, 0.0, 0.0], }, // f32::NAN?
+        };
 
         // Begin
         self.cmd_buf
@@ -390,7 +398,7 @@ impl<'a> DrawOp<'a> {
                 .render_pass(&self.driver, RenderPassMode::Draw(self.mode)),
             self.frame_buf.as_ref(),
             viewport.rect,
-            vec![&TRANSPARENT_BLACK.into()],
+            &[depth_clear, light_clear],
             SubpassContents::Inline,
         );
     }
@@ -552,11 +560,12 @@ impl<'a> DrawOp<'a> {
 
     unsafe fn submit_mesh(&mut self, meshes: MeshIter<'_>, world: Mat4, view_projection: Mat4) {
         let graphics = self.graphics_mesh.as_ref().unwrap();
-        let world_view_proj = world * view_projection;
+        let world_view_proj = view_projection * world;
 
         for mesh in meshes {
             let world_view_proj = if let Some(transform) = mesh.transform() {
-                transform * world_view_proj
+                todo!("TEST FIRST!");
+                //transform * world_view_proj
             } else {
                 world_view_proj
             };
@@ -569,7 +578,7 @@ impl<'a> DrawOp<'a> {
             );
 
             for batch in mesh.batches() {
-                self.cmd_buf.draw(batch, 0..1);
+                self.cmd_buf.draw_indexed(batch, 0, 0..1);
             }
         }
     }

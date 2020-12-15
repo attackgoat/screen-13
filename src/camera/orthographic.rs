@@ -4,8 +4,9 @@ use {
     std::ops::Range,
 };
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct Orthographic {
+    depth: Range<f32>,
     eye: Vec3,
     proj: Mat4,
     proj_inv: Mat4,
@@ -15,10 +16,10 @@ pub struct Orthographic {
 }
 
 impl Orthographic {
-    // TODO: Play around with this and see if depth should be RangeInclusive instead!
     pub fn new<T: Into<CoordF>>(eye: Vec3, target: Vec3, dims: T, depth: Range<f32>) -> Self {
         let dims = dims.into();
         let mut result = Self {
+            depth: depth.clone(),
             eye,
             proj: Mat4::orthographic_rh_gl(0.0, dims.x, dims.y, 0.0, depth.start, depth.end),
             proj_inv: Mat4::identity(), // TODO: Fix this up!
@@ -79,6 +80,10 @@ impl Orthographic {
 }
 
 impl Camera for Orthographic {
+    fn depth(&self) -> &Range<f32> {
+        &self.depth
+    }
+
     fn eye(&self) -> Vec3 {
         self.eye
     }

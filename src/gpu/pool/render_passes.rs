@@ -66,19 +66,29 @@ pub fn draw(driver: Driver, mode: DrawRenderPassMode) -> RenderPass {
         Normal,
         Output,
     }
-    let attachment = |format, ops| Attachment {
+    let color_attachment = |format, ops| Attachment {
         format: Some(format),
         samples: 1,
         ops,
         stencil_ops: AttachmentOps::DONT_CARE,
         layouts: const_layout(Layout::ColorAttachmentOptimal),
     };
-    let albedo = attachment(mode.albedo, AttachmentOps::DONT_CARE);
-    let material = attachment(mode.material, AttachmentOps::DONT_CARE);
-    let normal = attachment(mode.normal, AttachmentOps::DONT_CARE);
-    let output = attachment(mode.albedo, AttachmentOps::PRESERVE);
-    let light = attachment(mode.light, AttachmentOps::DONT_CARE);
-    let depth = attachment(mode.depth, AttachmentOps::DONT_CARE);
+    let clear_ops = AttachmentOps {
+        load: AttachmentLoadOp::Clear,
+        store: AttachmentStoreOp::DontCare,
+    };
+    let albedo = color_attachment(mode.albedo, AttachmentOps::DONT_CARE);
+    let material = color_attachment(mode.material, AttachmentOps::DONT_CARE);
+    let normal = color_attachment(mode.normal, AttachmentOps::DONT_CARE);
+    let output = color_attachment(mode.albedo, AttachmentOps::PRESERVE);
+    let light = color_attachment(mode.light, clear_ops);
+    let depth = Attachment {
+        format: Some(mode.depth),
+        samples: 1,
+        ops: clear_ops,
+        stencil_ops: AttachmentOps::DONT_CARE,
+        layouts: Layout::DepthStencilAttachmentOptimal..Layout::DepthStencilReadOnlyOptimal,
+    };
 
     // Subpasses
     enum Subpasses {
@@ -129,7 +139,7 @@ pub fn draw(driver: Driver, mode: DrawRenderPassMode) -> RenderPass {
         "Draw",
         driver,
         &[albedo, depth, light, material, normal, output],
-        &[meshes, lights, render],
+        &[meshes],//, lights, render],
         &[
             SubpassDependency {
                 passes: None..Some(Subpasses::Meshes as _),
@@ -138,18 +148,18 @@ pub fn draw(driver: Driver, mode: DrawRenderPassMode) -> RenderPass {
                     ..Access::COLOR_ATTACHMENT_READ | Access::COLOR_ATTACHMENT_WRITE,
                 flags: Dependencies::BY_REGION,
             },
-            SubpassDependency {
-                passes: Some(Subpasses::Meshes as _)..Some(Subpasses::Lights as _),
-                stages: PipelineStage::COLOR_ATTACHMENT_OUTPUT..PipelineStage::FRAGMENT_SHADER,
-                accesses: Access::COLOR_ATTACHMENT_WRITE..Access::SHADER_READ,
-                flags: Dependencies::BY_REGION,
-            },
-            SubpassDependency {
-                passes: Some(1)..Some(2),
-                stages: PipelineStage::COLOR_ATTACHMENT_OUTPUT..PipelineStage::FRAGMENT_SHADER,
-                accesses: Access::COLOR_ATTACHMENT_WRITE..Access::SHADER_READ,
-                flags: Dependencies::BY_REGION,
-            },
+            // SubpassDependency {
+            //     passes: Some(Subpasses::Meshes as _)..Some(Subpasses::Lights as _),
+            //     stages: PipelineStage::COLOR_ATTACHMENT_OUTPUT..PipelineStage::FRAGMENT_SHADER,
+            //     accesses: Access::COLOR_ATTACHMENT_WRITE..Access::SHADER_READ,
+            //     flags: Dependencies::BY_REGION,
+            // },
+            // SubpassDependency {
+            //     passes: Some(1)..Some(2),
+            //     stages: PipelineStage::COLOR_ATTACHMENT_OUTPUT..PipelineStage::FRAGMENT_SHADER,
+            //     accesses: Access::COLOR_ATTACHMENT_WRITE..Access::SHADER_READ,
+            //     flags: Dependencies::BY_REGION,
+            // },
             SubpassDependency {
                 passes: Some(Subpasses::Meshes as _)..None,
                 stages: PipelineStage::COLOR_ATTACHMENT_OUTPUT..PipelineStage::BOTTOM_OF_PIPE,

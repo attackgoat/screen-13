@@ -48,9 +48,9 @@ impl Ref {
 
     pub fn rotation(&self) -> Quat {
         let rotation = self.rotation.unwrap_or(Vec3::zero());
-        let x = rotation.x * 180.0 * PI;
-        let y = rotation.y * 180.0 * PI;
-        let z = rotation.z * 180.0 * PI;
+        let x = rotation.x * PI / 180.0;
+        let y = rotation.y * PI / 180.0;
+        let z = rotation.z * PI / 180.0;
         Quat::from_rotation_ypr(y, x, z)
     }
 

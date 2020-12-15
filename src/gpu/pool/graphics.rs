@@ -14,6 +14,7 @@ use {
         image::{Filter, Lod, WrapMode},
         pass::Subpass,
         pso::{
+            DepthTest, Comparison,
             AttributeDesc, BlendState, ColorBlendDesc, ColorMask, DescriptorPool as _,
             DescriptorRangeDesc, DescriptorSetLayoutBinding, DescriptorType, Element, Face,
             FrontFace, GraphicsPipelineDesc, ImageDescriptorType, InputAssemblerDesc, LogicOp,
@@ -362,13 +363,16 @@ impl Graphics {
             &layout,
             subpass,
         );
-        desc.blender.logic_op = Some(LogicOp::Set);
         for _ in 0..3 {
             desc.blender.targets.push(ColorBlendDesc {
                 blend: None,
-                mask: ColorMask::empty(),
+                mask: ColorMask::ALL,
             });
         }
+        desc.depth_stencil.depth = Some(DepthTest {
+            fun: Comparison::GreaterEqual,
+            write: true,
+        });
         let pipeline = GraphicsPipeline::new(
             #[cfg(debug_assertions)]
             name,
@@ -661,7 +665,7 @@ impl Graphics {
         );
         desc.blender.logic_op = None;
         desc.blender.targets.push(ColorBlendDesc {
-            blend: Some(BlendState::PREMULTIPLIED_ALPHA),
+            blend: None,
             mask: ColorMask::ALL,
         });
         let pipeline = GraphicsPipeline::new(

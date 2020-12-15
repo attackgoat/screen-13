@@ -3,10 +3,12 @@ mod perspective;
 
 pub use self::{orthographic::Orthographic, perspective::Perspective};
 
-use crate::math::{vec3, vec4_from_vec3, Cone, Mat4, Sphere, Vec3};
+use {crate::math::{vec3, vec4_from_vec3, Cone, Mat4, Sphere, Vec3}, std::ops::Range};
 
 // TODO: Remove unused functions from below and also make sure the impls haven't got conflicting functions!!!
 pub trait Camera {
+    fn depth(&self) -> &Range<f32>;
+
     /// Returns `true` if the given cone can possibly be seen by this camera. Note that this function
     /// may be conservative as implementations are not required do use fully accurate geometric tests.
     fn overlaps_cone(&self, cone: Cone) -> bool;

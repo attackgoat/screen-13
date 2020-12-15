@@ -7,9 +7,6 @@ layout(set = 0, binding = 2) uniform sampler2D normal_sampler;
 layout(location = 0) in vec3 normal_in; // TODO: USE!
 layout(location = 1) in vec2 texcoord_in;
 
-// // assume it may be modified such that its value will only increase
-// layout(depth_greater) out float gl_FragDepth;
-
 layout(location = 0) out vec4 albedo_out;
 layout(location = 1) out vec2 material_out;
 layout(location = 2) out vec3 normal_out;
@@ -24,7 +21,7 @@ void main() {
     // Surface normal perturbation
     vec3 normal = texture(normal_sampler, texcoord_in).rgb;
 
-    albedo_out = vec4(albedo, 1.0f);
+    albedo_out = vec4(albedo, 1.0);
     material_out = material;
     normal_out = normal;
 }
