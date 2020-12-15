@@ -47,11 +47,9 @@ impl Ref {
     }
 
     pub fn rotation(&self) -> Quat {
-        let rotation = self.rotation.unwrap_or(Vec3::zero());
-        let x = rotation.x * PI / 180.0;
-        let y = rotation.y * PI / 180.0;
-        let z = rotation.z * PI / 180.0;
-        Quat::from_rotation_ypr(y, x, z)
+        let rotation = self.rotation.unwrap_or(Vec3::zero()) * PI / 180.0;
+
+        Quat::from_rotation_ypr(rotation.y, rotation.x, rotation.z)
     }
 
     pub fn tags(&self) -> &[String] {

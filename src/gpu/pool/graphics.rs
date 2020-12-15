@@ -14,12 +14,11 @@ use {
         image::{Filter, Lod, WrapMode},
         pass::Subpass,
         pso::{
-            DepthTest, Comparison,
-            AttributeDesc, BlendState, ColorBlendDesc, ColorMask, DescriptorPool as _,
-            DescriptorRangeDesc, DescriptorSetLayoutBinding, DescriptorType, Element, Face,
-            FrontFace, GraphicsPipelineDesc, ImageDescriptorType, InputAssemblerDesc, LogicOp,
-            PolygonMode, Primitive, PrimitiveAssemblerDesc, Rasterizer, ShaderStageFlags, State,
-            VertexBufferDesc, VertexInputRate,
+            AttributeDesc, BlendState, ColorBlendDesc, ColorMask, Comparison, DepthTest,
+            DescriptorPool as _, DescriptorRangeDesc, DescriptorSetLayoutBinding, DescriptorType,
+            Element, Face, FrontFace, GraphicsPipelineDesc, ImageDescriptorType,
+            InputAssemblerDesc, LogicOp, PolygonMode, Primitive, PrimitiveAssemblerDesc,
+            Rasterizer, ShaderStageFlags, State, VertexBufferDesc, VertexInputRate,
         },
         Backend,
     },
@@ -370,7 +369,7 @@ impl Graphics {
             });
         }
         desc.depth_stencil.depth = Some(DepthTest {
-            fun: Comparison::GreaterEqual,
+            fun: Comparison::LessEqual,
             write: true,
         });
         let pipeline = GraphicsPipeline::new(

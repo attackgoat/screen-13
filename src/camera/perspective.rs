@@ -271,7 +271,7 @@ impl Perspective {
         assert!(self.depth.start < self.depth.end);
 
         // Update the projection matrix
-        self.proj = Mat4::perspective_rh_gl(
+        self.proj = Mat4::perspective_lh(
             self.aspect_ratio,
             self.fov * 2.0,
             self.depth.start,
@@ -292,7 +292,7 @@ impl Perspective {
         assert!(self.up.length_squared() > 0.0);
 
         // Update the view matrices
-        self.view = Mat4::look_at_rh(self.eye, self.target, self.up);
+        self.view = Mat4::look_at_lh(self.eye, self.target, self.up);
         self.view_inv = self.view.inverse();
 
         // Update the local X/Y/Z axes aka the reference vectors

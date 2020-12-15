@@ -82,7 +82,7 @@ pub struct Compilation<'a> {
 }
 
 impl Compilation<'_> {
-    fn bind_model_buffers<'a>(&'a self, idx: usize) -> Instruction<'a> {
+    fn bind_model_buffers(&self, idx: usize) -> Instruction {
         let cmd = self.cmds[idx].as_model().unwrap();
         let (idx_ty, idx_buf) = cmd.model.indices();
         let vertex_buf = cmd.model.vertices();

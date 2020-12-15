@@ -33,7 +33,10 @@ use {
     },
     gfx_hal::{
         buffer::{Access as BufferAccess, IndexBufferView, SubRange},
-        command::{CommandBuffer as _,ClearDepthStencil,ClearColor, ClearValue, CommandBufferFlags, ImageCopy, Level, SubpassContents},
+        command::{
+            ClearColor, ClearDepthStencil, ClearValue, CommandBuffer as _, CommandBufferFlags,
+            ImageCopy, Level, SubpassContents,
+        },
         device::Device as _,
         format::Aspects,
         image::{
@@ -191,13 +194,6 @@ impl<'a> DrawOp<'a> {
 
     // TODO: Returns concrete type instead of impl Op because https://github.com/rust-lang/rust/issues/42940
     pub fn record(mut self, camera: &impl Camera, cmds: &mut [Command]) -> DrawOpSubmission {
-        let dims: Coord = self.dst.borrow().dims().into();
-        let viewport = Viewport {
-            rect: dims.as_rect_at(Coord::ZERO),
-            depth: camera.depth().clone(),
-        };
-        let view_projection = camera.projection() * camera.view();
-
         // Use a compiler to figure out rendering instructions without allocating
         // memory per rendering command. The compiler caches code between frames.
         let mut compiler = self.pool.compiler();
@@ -240,6 +236,13 @@ impl<'a> DrawOp<'a> {
             }
 
             if !instrs.is_empty() {
+                let view_projection = camera.projection() * camera.view();
+                let dims: Coord = self.dst.borrow().dims().into();
+                let viewport = Viewport {
+                    rect: dims.as_rect_at(Coord::ZERO),
+                    depth: 0.0..1.0,
+                };
+
                 unsafe {
                     self.submit_begin(&viewport);
 
@@ -307,12 +310,14 @@ impl<'a> DrawOp<'a> {
         let dims = dst.dims();
         let depth_clear = ClearValue {
             depth_stencil: ClearDepthStencil {
-                depth: 0.0,
+                depth: 1.0,
                 stencil: 0,
             },
         };
         let light_clear = ClearValue {
-            color: ClearColor { float32: [0.0, 0.0, 0.0, 0.0], }, // f32::NAN?
+            color: ClearColor {
+                float32: [0.0, 0.0, 0.0, 0.0],
+            }, // f32::NAN?
         };
 
         // Begin
@@ -403,6 +408,7 @@ impl<'a> DrawOp<'a> {
         );
     }
 
+    // TODO: Only transfer what we need! Not the whole capacity!!
     unsafe fn submit_data_transfer(&mut self, src: &mut Data, dst: &mut Data) {
         src.transfer_range(
             &mut self.cmd_buf,
@@ -542,6 +548,7 @@ impl<'a> DrawOp<'a> {
         self.cmd_buf.set_viewports(0, &[viewport.clone()]);
     }
 
+    // TODO: Only bind the portion of these buffers we need!
     unsafe fn submit_mesh_bind(&mut self, bind: MeshBind<'_>) {
         self.cmd_buf.bind_index_buffer(IndexBufferView {
             buffer: bind.idx_buf.as_ref(),
@@ -564,8 +571,7 @@ impl<'a> DrawOp<'a> {
 
         for mesh in meshes {
             let world_view_proj = if let Some(transform) = mesh.transform() {
-                todo!("TEST FIRST!");
-                //transform * world_view_proj
+                world_view_proj * transform
             } else {
                 world_view_proj
             };

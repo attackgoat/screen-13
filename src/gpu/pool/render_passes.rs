@@ -111,7 +111,7 @@ pub fn draw(driver: Driver, mode: DrawRenderPassMode) -> RenderPass {
         resolves: &[],
         preserves: &[],
     };
-    let lights = SubpassDesc {
+    let _lights = SubpassDesc {
         colors: &[(Attachments::Light as _, Layout::ColorAttachmentOptimal)],
         depth_stencil: None,
         inputs: &[
@@ -121,7 +121,7 @@ pub fn draw(driver: Driver, mode: DrawRenderPassMode) -> RenderPass {
         resolves: &[],
         preserves: &[],
     };
-    let render = SubpassDesc {
+    let _render = SubpassDesc {
         colors: &[(Attachments::Output as _, Layout::ColorAttachmentOptimal)],
         depth_stencil: None,
         inputs: &[
@@ -139,7 +139,7 @@ pub fn draw(driver: Driver, mode: DrawRenderPassMode) -> RenderPass {
         "Draw",
         driver,
         &[albedo, depth, light, material, normal, output],
-        &[meshes],//, lights, render],
+        &[meshes], //, lights, render],
         &[
             SubpassDependency {
                 passes: None..Some(Subpasses::Meshes as _),

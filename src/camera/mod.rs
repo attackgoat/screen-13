@@ -3,7 +3,10 @@ mod perspective;
 
 pub use self::{orthographic::Orthographic, perspective::Perspective};
 
-use {crate::math::{vec3, vec4_from_vec3, Cone, Mat4, Sphere, Vec3}, std::ops::Range};
+use {
+    crate::math::{vec3, vec4_from_vec3, Cone, Mat4, Sphere, Vec3},
+    std::ops::Range,
+};
 
 // TODO: Remove unused functions from below and also make sure the impls haven't got conflicting functions!!!
 pub trait Camera {
