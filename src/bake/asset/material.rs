@@ -5,7 +5,7 @@ use {
 
 #[derive(Clone, Deserialize)]
 pub struct Material {
-    albedo: PathBuf,
+    color: PathBuf,
     metal_src: PathBuf,
     normal: PathBuf,
     rough_src: PathBuf,
@@ -13,8 +13,8 @@ pub struct Material {
 
 impl Material {
     /// A three or four channel image
-    pub fn albedo(&self) -> &Path {
-        self.albedo.as_path()
+    pub fn color(&self) -> &Path {
+        self.color.as_path()
     }
 
     /// A one channel image

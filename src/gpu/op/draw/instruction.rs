@@ -1,5 +1,8 @@
 use {
-    super::compiler::PointLightIter,
+    super::{
+        command::{RectLightCommand, SpotlightCommand, SunlightCommand},
+        compiler::PointLightIter,
+    },
     crate::{
         gpu::{data::CopyRange, model::MeshIter, pool::Lease, Data},
         math::Mat4,
@@ -11,21 +14,32 @@ use {
     },
 };
 
+/// Computes the given segment of gpu-side data
+pub struct DataComputeRefInstruction<'a> {
+    pub buf: RefMut<'a, Lease<Data>>,
+    pub len: u64,
+}
+
+/// Copies the gpu-side data from the given range to the cpu-side
 pub struct DataCopyInstruction<'a> {
     pub buf: &'a mut Data,
     pub ranges: &'a [CopyRange],
 }
 
+/// Transfers the gpu-side data from the source range of one Data to another.
 pub struct DataTransferInstruction<'a> {
     pub dst: &'a mut Data,
     pub src: &'a mut Data,
+    pub src_range: Range<u64>,
 }
 
+/// Writes the range of cpu-side data to the gpu-side.
 pub struct DataWriteInstruction<'a> {
     pub buf: &'a mut Data,
     pub range: Range<u64>,
 }
 
+/// Writes the range of cpu-side data to the gpu-side.
 pub struct DataWriteRefInstruction<'a> {
     pub buf: RefMut<'a, Lease<Data>>,
     pub range: Range<u64>,
@@ -34,32 +48,43 @@ pub struct DataWriteRefInstruction<'a> {
 // Commands specified by the client become Instructions used by `DrawOp`
 pub enum Instruction<'a> {
     DataTransfer(DataTransferInstruction<'a>),
-
-    // DrawRectLightBegin(&'a mut Data),
-    // DrawRectLight(),
-    // DrawRectLightEnd,
     IndexWriteRef(DataWriteRefInstruction<'a>),
-
-    LineDraw((&'a mut Data, u32)),
-
+    LightBegin,
+    LightBind(LightBindInstruction<'a>),
+    LineDraw(LineDrawInstruction<'a>),
     MeshBegin,
     MeshBind(MeshBindInstruction<'a>),
     MeshDescriptorSet(usize),
     MeshDraw(MeshDrawInstruction<'a>),
-
     PointLightDraw(PointLightDrawInstruction<'a>),
-
-    // Spotlight(SpotlightCommand),
-    // Sunlight(SunlightCommand),
+    RectLightBegin,
+    RectLightDraw(RectLightDrawInstruction<'a>),
+    SpotlightBegin,
+    SpotlightDraw(SpotlightDrawInstruction<'a>),
+    SunlightBegin,
+    SunlightDraw(&'a SunlightCommand),
+    VertexCalcAttrsRef(DataComputeRefInstruction<'a>),
     VertexCopy(DataCopyInstruction<'a>),
     VertexWrite(DataWriteInstruction<'a>),
     VertexWriteRef(DataWriteRefInstruction<'a>),
 }
 
+pub struct LightBindInstruction<'a> {
+    pub buf: &'a Data,
+    pub buf_len: u64,
+}
+
+pub struct LineDrawInstruction<'a> {
+    pub buf: &'a mut Data, // TODO: Mut??
+    pub line_count: u32,
+}
+
 pub struct MeshBindInstruction<'a> {
     pub idx_buf: Ref<'a, Lease<Data>>,
+    pub idx_buf_len: u64,
     pub idx_ty: IndexType,
     pub vertex_buf: Ref<'a, Lease<Data>>,
+    pub vertex_buf_len: u64,
 }
 
 pub struct MeshDrawInstruction<'a> {
@@ -69,5 +94,15 @@ pub struct MeshDrawInstruction<'a> {
 
 pub struct PointLightDrawInstruction<'a> {
     pub buf: &'a Data,
-    pub point_lights: PointLightIter<'a>,
+    pub lights: PointLightIter<'a>,
+}
+
+pub struct RectLightDrawInstruction<'a> {
+    pub light: &'a RectLightCommand,
+    pub offset: u32,
+}
+
+pub struct SpotlightDrawInstruction<'a> {
+    pub light: &'a SpotlightCommand,
+    pub offset: u32,
 }

@@ -1,5 +1,6 @@
 use {
-    crate::gpu::op::draw::LineCommand,
+    super::Stride,
+    crate::gpu::op::draw::{geom::LINE_STRIDE, LineCommand},
     gfx_hal::image::PackedColor,
     std::{collections::hash_map::DefaultHasher, hash::Hasher},
 };
@@ -21,5 +22,11 @@ impl Line {
         }
 
         Self(hasher.finish())
+    }
+}
+
+impl Stride for Line {
+    fn stride() -> u64 {
+        LINE_STRIDE as _
     }
 }

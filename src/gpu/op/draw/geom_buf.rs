@@ -14,12 +14,11 @@ use {
 };
 
 pub struct GeometryBuffer {
-    pub albedo: Lease<Texture2d>,
-    pub depth: Lease<Texture2d>,
+    pub color_metal: Lease<Texture2d>,
+    pub normal_rough: Lease<Texture2d>,
     pub light: Lease<Texture2d>,
-    pub material: Lease<Texture2d>,
-    pub normal: Lease<Texture2d>,
     pub output: Lease<Texture2d>,
+    pub depth: Lease<Texture2d>,
 }
 
 impl GeometryBuffer {
@@ -28,14 +27,39 @@ impl GeometryBuffer {
         driver: &Driver,
         pool: &mut Pool,
         dims: Extent,
-        albedo_fmt: Format,
+        output_fmt: Format,
     ) -> Self {
-        let albedo = pool.texture(
+        let (geom_fmt, light_fmt, depth_fmt) = {
+            let device = driver.borrow();
+            let geom = Device::best_fmt(
+                &device,
+                &[Format::Rgba8Unorm],
+                ImageFeature::COLOR_ATTACHMENT | ImageFeature::SAMPLED,
+            )
+            .unwrap();
+            let light = Device::best_fmt(
+                &device,
+                &[Format::Rgba32Uint, Format::Rgba32Sfloat],
+                ImageFeature::COLOR_ATTACHMENT
+                    | ImageFeature::COLOR_ATTACHMENT_BLEND
+                    | ImageFeature::SAMPLED,
+            )
+            .unwrap();
+            let depth = Device::best_fmt(
+                &device,
+                &[Format::D24UnormS8Uint],
+                ImageFeature::DEPTH_STENCIL_ATTACHMENT | ImageFeature::SAMPLED,
+            )
+            .unwrap();
+            (geom, light, depth)
+        };
+
+        let color_metal = pool.texture(
             #[cfg(debug_assertions)]
-            &format!("{} (Albedo)", name),
+            &format!("{} (Color)", name),
             driver,
             dims,
-            albedo_fmt,
+            geom_fmt,
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT
                 | ImageUsage::INPUT_ATTACHMENT
@@ -46,47 +70,14 @@ impl GeometryBuffer {
             1,
             1,
         );
-
-        let (depth_fmt, light_fmt, material_fmt, normal_fmt) = {
-            let device = driver.borrow();
-            let depth_fmt = Device::best_fmt(
-                &device,
-                &[Format::D24UnormS8Uint],
-                ImageFeature::DEPTH_STENCIL_ATTACHMENT | ImageFeature::SAMPLED,
-            )
-            .unwrap();
-            let light_fmt = Device::best_fmt(
-                &device,
-                &[Format::R32Uint, Format::R32Sfloat],
-                ImageFeature::COLOR_ATTACHMENT
-                    | ImageFeature::COLOR_ATTACHMENT_BLEND
-                    | ImageFeature::SAMPLED,
-            )
-            .unwrap();
-            let material_fmt = Device::best_fmt(
-                &device,
-                &[Format::Rg8Unorm],
-                ImageFeature::COLOR_ATTACHMENT | ImageFeature::SAMPLED,
-            )
-            .unwrap();
-            let normal_fmt = Device::best_fmt(
-                &device,
-                &[Format::Rgb32Sfloat, Format::Rgba32Sfloat],
-                ImageFeature::COLOR_ATTACHMENT | ImageFeature::SAMPLED,
-            )
-            .unwrap();
-            (depth_fmt, light_fmt, material_fmt, normal_fmt)
-        };
-        let depth = pool.texture(
+        let normal_rough = pool.texture(
             #[cfg(debug_assertions)]
-            &format!("{} (Depth)", name),
+            &format!("{} (Normal)", name),
             driver,
             dims,
-            depth_fmt,
+            geom_fmt,
             Layout::Undefined,
-            ImageUsage::DEPTH_STENCIL_ATTACHMENT
-                | ImageUsage::INPUT_ATTACHMENT
-                | ImageUsage::SAMPLED,
+            ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT | ImageUsage::SAMPLED,
             1,
             1,
             1,
@@ -103,50 +94,39 @@ impl GeometryBuffer {
             1,
             1,
         );
-        let material = pool.texture(
-            #[cfg(debug_assertions)]
-            &format!("{} (Material)", name),
-            driver,
-            dims,
-            material_fmt,
-            Layout::Undefined,
-            ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT | ImageUsage::SAMPLED,
-            1,
-            1,
-            1,
-        );
-        let normal = pool.texture(
-            #[cfg(debug_assertions)]
-            &format!("{} (Normal)", name),
-            driver,
-            dims,
-            normal_fmt,
-            Layout::Undefined,
-            ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT | ImageUsage::SAMPLED,
-            1,
-            1,
-            1,
-        );
         let output = pool.texture(
             #[cfg(debug_assertions)]
             &format!("{} (Output)", name),
             driver,
             dims,
-            albedo_fmt,
+            output_fmt,
             Layout::Undefined,
             ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSFER_SRC,
             1,
             1,
             1,
         );
+        let depth = pool.texture(
+            #[cfg(debug_assertions)]
+            &format!("{} (Depth)", name),
+            driver,
+            dims,
+            depth_fmt,
+            Layout::Undefined,
+            ImageUsage::DEPTH_STENCIL_ATTACHMENT
+                | ImageUsage::INPUT_ATTACHMENT
+                | ImageUsage::SAMPLED,
+            1,
+            1,
+            1,
+        );
 
         Self {
-            albedo,
-            depth,
+            color_metal,
+            normal_rough,
             light,
-            material,
-            normal,
             output,
+            depth,
         }
     }
 }

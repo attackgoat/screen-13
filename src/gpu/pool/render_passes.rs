@@ -14,6 +14,11 @@ use {
     std::ops::Range,
 };
 
+const ATTACHMENT_OPS_CLEAR: AttachmentOps = AttachmentOps {
+    load: AttachmentLoadOp::Clear,
+    store: AttachmentStoreOp::DontCare,
+};
+
 fn const_layout(layout: Layout) -> Range<Layout> {
     layout..layout
 }
@@ -57,15 +62,6 @@ pub fn color(driver: Driver, mode: ColorRenderPassMode) -> RenderPass {
 }
 
 pub fn draw(driver: Driver, mode: DrawRenderPassMode) -> RenderPass {
-    // Attachments
-    enum Attachments {
-        Albedo,
-        Depth,
-        Light,
-        Material,
-        Normal,
-        Output,
-    }
     let color_attachment = |format, ops| Attachment {
         format: Some(format),
         samples: 1,
@@ -73,101 +69,109 @@ pub fn draw(driver: Driver, mode: DrawRenderPassMode) -> RenderPass {
         stencil_ops: AttachmentOps::DONT_CARE,
         layouts: const_layout(Layout::ColorAttachmentOptimal),
     };
-    let clear_ops = AttachmentOps {
-        load: AttachmentLoadOp::Clear,
-        store: AttachmentStoreOp::DontCare,
-    };
-    let albedo = color_attachment(mode.albedo, AttachmentOps::DONT_CARE);
-    let material = color_attachment(mode.material, AttachmentOps::DONT_CARE);
-    let normal = color_attachment(mode.normal, AttachmentOps::DONT_CARE);
-    let output = color_attachment(mode.albedo, AttachmentOps::PRESERVE);
-    let light = color_attachment(mode.light, clear_ops);
-    let depth = Attachment {
-        format: Some(mode.depth),
+    let depth_stencil_attachment = |format, ops, stencil_ops| Attachment {
+        format: Some(format),
         samples: 1,
-        ops: clear_ops,
-        stencil_ops: AttachmentOps::DONT_CARE,
+        ops,
+        stencil_ops,
         layouts: Layout::DepthStencilAttachmentOptimal..Layout::DepthStencilReadOnlyOptimal,
     };
 
-    // Subpasses
-    enum Subpasses {
-        Meshes,
-        Lights,
-        Shadows,
-        Resolves,
+    /// The list of attachments used by this render pass, in index order.
+    enum Attachments {
+        ColorMetal,
+        NormalRough,
+        Light,
+        Output,
+        Depth,
     }
-    let meshes = SubpassDesc {
+
+    // Attachments
+    let color_metal = color_attachment(mode.geom_buf, AttachmentOps::DONT_CARE);
+    let normal_rough = color_attachment(mode.geom_buf, AttachmentOps::DONT_CARE);
+    let light = color_attachment(mode.light, ATTACHMENT_OPS_CLEAR);
+    let output = color_attachment(mode.output, AttachmentOps::PRESERVE);
+    let depth =
+        depth_stencil_attachment(mode.depth, ATTACHMENT_OPS_CLEAR, AttachmentOps::DONT_CARE);
+
+    /// The list of subpasses used by this render pass, in index order.
+    enum Subpasses {
+        FillGeometryBuffer,
+        AccumulateLight,
+        Tonemap,
+    }
+
+    let fill_geom_buf_depth_stencil_desc = (
+        Attachments::Depth as _,
+        Layout::DepthStencilAttachmentOptimal,
+    );
+
+    // Subpasses
+    let fill_geom_buf = SubpassDesc {
         colors: &[
-            (Attachments::Albedo as _, Layout::ColorAttachmentOptimal),
-            (Attachments::Material as _, Layout::ColorAttachmentOptimal),
-            (Attachments::Normal as _, Layout::ColorAttachmentOptimal),
+            (Attachments::ColorMetal as _, Layout::ColorAttachmentOptimal),
+            (
+                Attachments::NormalRough as _,
+                Layout::ColorAttachmentOptimal,
+            ),
         ],
-        depth_stencil: Some(&(
-            Attachments::Depth as _,
-            Layout::DepthStencilAttachmentOptimal,
-        )),
+        depth_stencil: Some(&fill_geom_buf_depth_stencil_desc),
         inputs: &[],
         resolves: &[],
         preserves: &[],
     };
-    let _lights = SubpassDesc {
+    let accum_light = SubpassDesc {
         colors: &[(Attachments::Light as _, Layout::ColorAttachmentOptimal)],
         depth_stencil: None,
         inputs: &[
-            (Attachments::Normal as _, Layout::ShaderReadOnlyOptimal),
+            (Attachments::NormalRough as _, Layout::ShaderReadOnlyOptimal),
             (Attachments::Depth as _, Layout::ShaderReadOnlyOptimal),
+        ],
+        resolves: &[],
+        preserves: &[Attachments::ColorMetal as _],
+    };
+    let tonemap = SubpassDesc {
+        colors: &[(Attachments::Output as _, Layout::ColorAttachmentOptimal)],
+        depth_stencil: None,
+        inputs: &[
+            (Attachments::ColorMetal as _, Layout::ShaderReadOnlyOptimal),
+            (Attachments::NormalRough as _, Layout::ShaderReadOnlyOptimal),
+            (Attachments::Light as _, Layout::ShaderReadOnlyOptimal),
         ],
         resolves: &[],
         preserves: &[],
     };
-    let _render = SubpassDesc {
-        colors: &[(Attachments::Output as _, Layout::ColorAttachmentOptimal)],
-        depth_stencil: None,
-        inputs: &[
-            (Attachments::Albedo as _, Layout::ShaderReadOnlyOptimal),
-            (Attachments::Light as _, Layout::ShaderReadOnlyOptimal),
-            (Attachments::Material as _, Layout::ShaderReadOnlyOptimal),
-            (Attachments::Normal as _, Layout::ShaderReadOnlyOptimal),
-        ],
-        resolves: &[],
-        preserves: &[],
+
+    // TODO: These things hurt my brain are they correct how do I tell ugh
+    // Subpass-to-Subpass dependencies
+    let begin = SubpassDependency {
+        passes: None..Some(Subpasses::FillGeometryBuffer as _),
+        stages: PipelineStage::BOTTOM_OF_PIPE..PipelineStage::COLOR_ATTACHMENT_OUTPUT,
+        accesses: Access::MEMORY_READ
+            ..Access::COLOR_ATTACHMENT_READ | Access::COLOR_ATTACHMENT_WRITE,
+        flags: Dependencies::BY_REGION,
+    };
+    let between_fill_and_light = SubpassDependency {
+        passes: Some(Subpasses::FillGeometryBuffer as _)..Some(Subpasses::AccumulateLight as _),
+        stages: PipelineStage::COLOR_ATTACHMENT_OUTPUT..PipelineStage::FRAGMENT_SHADER,
+        accesses: Access::COLOR_ATTACHMENT_WRITE..Access::SHADER_READ,
+        flags: Dependencies::BY_REGION,
+    };
+    let end = SubpassDependency {
+        passes: Some(Subpasses::FillGeometryBuffer as _)..None,
+        stages: PipelineStage::COLOR_ATTACHMENT_OUTPUT..PipelineStage::BOTTOM_OF_PIPE,
+        accesses: Access::COLOR_ATTACHMENT_READ | Access::COLOR_ATTACHMENT_WRITE
+            ..Access::MEMORY_READ,
+        flags: Dependencies::BY_REGION,
     };
 
     RenderPass::new(
         #[cfg(debug_assertions)]
         "Draw",
         driver,
-        &[albedo, depth, light, material, normal, output],
-        &[meshes], //, lights, render],
-        &[
-            SubpassDependency {
-                passes: None..Some(Subpasses::Meshes as _),
-                stages: PipelineStage::BOTTOM_OF_PIPE..PipelineStage::COLOR_ATTACHMENT_OUTPUT,
-                accesses: Access::MEMORY_READ
-                    ..Access::COLOR_ATTACHMENT_READ | Access::COLOR_ATTACHMENT_WRITE,
-                flags: Dependencies::BY_REGION,
-            },
-            // SubpassDependency {
-            //     passes: Some(Subpasses::Meshes as _)..Some(Subpasses::Lights as _),
-            //     stages: PipelineStage::COLOR_ATTACHMENT_OUTPUT..PipelineStage::FRAGMENT_SHADER,
-            //     accesses: Access::COLOR_ATTACHMENT_WRITE..Access::SHADER_READ,
-            //     flags: Dependencies::BY_REGION,
-            // },
-            // SubpassDependency {
-            //     passes: Some(1)..Some(2),
-            //     stages: PipelineStage::COLOR_ATTACHMENT_OUTPUT..PipelineStage::FRAGMENT_SHADER,
-            //     accesses: Access::COLOR_ATTACHMENT_WRITE..Access::SHADER_READ,
-            //     flags: Dependencies::BY_REGION,
-            // },
-            SubpassDependency {
-                passes: Some(Subpasses::Meshes as _)..None,
-                stages: PipelineStage::COLOR_ATTACHMENT_OUTPUT..PipelineStage::BOTTOM_OF_PIPE,
-                accesses: Access::COLOR_ATTACHMENT_READ | Access::COLOR_ATTACHMENT_WRITE
-                    ..Access::MEMORY_READ,
-                flags: Dependencies::BY_REGION,
-            },
-        ],
+        &[color_metal, normal_rough, light, output, depth],
+        &[fill_geom_buf, accum_light, tonemap],
+        &[begin, between_fill_and_light, end],
     )
 }
 

@@ -40,6 +40,8 @@ use {
 #[cfg(debug_assertions)]
 use gfx_hal::device::Device as _;
 
+const DEFAULT_LRU_THRESHOLD: usize = 8;
+
 fn remove_last_by<T, F: Fn(&T) -> bool>(items: &mut VecDeque<T>, f: F) -> Option<T> {
     // let len = items.len();
     // TODO: This is no longer remove by last!!
@@ -62,6 +64,7 @@ pub struct ColorRenderPassMode {
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub enum ComputeMode {
+    CalculateVertexAttributes,
     DecodeRgbRgba,
 }
 
@@ -82,16 +85,10 @@ impl<'a> Iterator for Drain<'a> {
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub struct DrawRenderPassMode {
-    pub albedo: Format,
     pub depth: Format,
-
-    /// Single channel accumulator
+    pub geom_buf: Format,
     pub light: Format,
-
-    /// Dual channel (metal + roughness)
-    pub material: Format,
-
-    pub normal: Format,
+    pub output: Format,
 }
 
 #[derive(Eq, Hash, PartialEq)]
@@ -110,12 +107,13 @@ pub enum GraphicsMode {
     GradientTransparency,
     DrawLine,
     DrawMesh,
-    //DrawMeshAnimated,
     DrawPointLight,
+    DrawRectLight,
+    DrawSpotlight,
+    DrawSunlight,
     Texture,
 }
 
-#[derive(Default)]
 pub struct Pool {
     cmd_pools: HashMap<QueueFamilyId, PoolRef<CommandPool>>,
     compilers: PoolRef<Compiler>,
@@ -124,6 +122,12 @@ pub struct Pool {
     desc_pools: HashMap<DescriptorPoolKey, PoolRef<DescriptorPool>>,
     fences: PoolRef<Fence>,
     graphics: HashMap<GraphicsKey, PoolRef<Graphics>>,
+
+    /// The number of frames which must elapse before a least-recently-used cache item is considered obsolete.
+    ///
+    /// Remarks: Higher numbers such as 10 will use more memory but have less thrashing than lower numbers, such as 1.
+    pub lru_threshold: usize,
+
     memories: HashMap<MemoryTypeId, PoolRef<Memory>>,
     render_passes: HashMap<RenderPassMode, RenderPass>,
     textures: HashMap<TextureKey, PoolRef<TextureRef<Image2d>>>,
@@ -174,6 +178,7 @@ impl Pool {
             item
         } else {
             let ctor = match mode {
+                ComputeMode::CalculateVertexAttributes => Compute::calc_vertex_attrs,
                 ComputeMode::DecodeRgbRgba => Compute::decode_rgb_rgba,
             };
             ctor(
@@ -331,6 +336,9 @@ impl Pool {
             GraphicsMode::DrawLine => Graphics::draw_line,
             GraphicsMode::DrawMesh => Graphics::draw_mesh,
             GraphicsMode::DrawPointLight => Graphics::draw_point_light,
+            GraphicsMode::DrawRectLight => Graphics::draw_rect_light,
+            GraphicsMode::DrawSpotlight => Graphics::draw_spotlight,
+            GraphicsMode::DrawSunlight => Graphics::draw_sunlight,
             GraphicsMode::Font => Graphics::font,
             GraphicsMode::FontOutline => Graphics::font_outline,
             GraphicsMode::Gradient => Graphics::gradient,
@@ -456,6 +464,24 @@ impl Pool {
         };
 
         Lease::new(item, items)
+    }
+}
+
+impl Default for Pool {
+    fn default() -> Self {
+        Self {
+            cmd_pools: Default::default(),
+            compilers: Default::default(),
+            computes: Default::default(),
+            data: Default::default(),
+            desc_pools: Default::default(),
+            fences: Default::default(),
+            graphics: Default::default(),
+            lru_threshold: DEFAULT_LRU_THRESHOLD,
+            memories: Default::default(),
+            render_passes: Default::default(),
+            textures: Default::default(),
+        }
     }
 }
 

@@ -86,6 +86,38 @@ impl Compute {
         }
     }
 
+    pub fn calc_vertex_attrs(#[cfg(debug_assertions)] name: &str, driver: &Driver) -> Self {
+        Self::new(
+            #[cfg(debug_assertions)]
+            name,
+            driver,
+            &spirv::compute::CALC_VERTEX_ATTRS_COMP,
+            &[(ShaderStageFlags::COMPUTE, 0..4)],
+            1,
+            &[descriptor_range_desc(
+                1,
+                DescriptorType::Buffer {
+                    format: BufferDescriptorFormat::Structured {
+                        dynamic_offset: false,
+                    },
+                    ty: BufferDescriptorType::Storage { read_only: false },
+                },
+            )],
+            &[descriptor_set_layout_binding(
+                0,
+                1,
+                ShaderStageFlags::COMPUTE,
+                DescriptorType::Buffer {
+                    format: BufferDescriptorFormat::Structured {
+                        dynamic_offset: false,
+                    },
+                    ty: BufferDescriptorType::Storage { read_only: false },
+                },
+            )],
+            empty(),
+        )
+    }
+
     pub fn decode_rgb_rgba(#[cfg(debug_assertions)] name: &str, driver: &Driver) -> Self {
         Self::new(
             #[cfg(debug_assertions)]

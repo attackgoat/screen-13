@@ -1,4 +1,5 @@
 use {
+    super::Vec2,
     gfx_hal::{
         image::{Extent, Offset},
         pso::Rect,
@@ -154,6 +155,12 @@ impl From<Coord<f32>> for Coord<u32> {
             x: val.x as _,
             y: val.y as _,
         }
+    }
+}
+
+impl From<Coord<f32>> for Vec2 {
+    fn from(val: Coord<f32>) -> Self {
+        Self::new(val.x as _, val.y as _)
     }
 }
 

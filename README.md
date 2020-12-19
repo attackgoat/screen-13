@@ -88,3 +88,10 @@ Additional commands QBasic offered, such as `DRAW`, allowed you to build very si
 - Regenerate files by cd'ing to correct directory and run this:
   - "c:\Program Files (x86)\AngelCode\BMFont\bmfont.com" -c SmallFonts-12px.bmfc -o SmallFonts-12px.fnt
   - "c:\Program Files (x86)\AngelCode\BMFont\bmfont.com" -c SmallFonts-10px.bmfc -o SmallFonts-10px.fnt
+
+https://www.hiagodesena.com/pbr-deferred-renderer.html
+https://thomasdeliot.wixsite.com/blog/single-post/2018/04/26/Small-project-OpenGL-engine-and-PBR-deferred-pipeline-with-SSRSSAO
+
+https://www.google.com/search?q=deferred+pbr+pipeline&oq=deferred+pbr+pipeline&aqs=chrome..69i57j0i433i457j0i433j0l3j69i60l2.6933j0j7&sourceid=chrome&ie=UTF-8
+
+http://filmicworlds.com/blog/linear-space-lighting-i-e-gamma/

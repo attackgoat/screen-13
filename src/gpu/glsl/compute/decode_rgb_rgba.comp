@@ -2,12 +2,12 @@
 
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
-layout(push_constant) uniform PushConstants {
+layout(push_constant) uniform CCCCCPushConstants {
     layout(offset = 0) uint stride;
 } push_constants;
 
-layout(set = 0, binding = 0, std430) readonly buffer PixelBuffer {
-    uint pixel_buffer[];
+layout(set = 0, binding = 0, std430) readonly buffer XXXXXXPixelBuffer {
+    uint pixel_buf[];
 };
 
 layout(set = 0, binding = 1, rgba8ui) restrict writeonly uniform uimage2D image;
@@ -17,12 +17,12 @@ uint shift(uint packed, uint bits) {
 }
 
 void main() {
-    uint index = 3 * gl_GlobalInvocationID.x + push_constants.stride * gl_GlobalInvocationID.y;
+    uint idx = 3 * gl_GlobalInvocationID.x + push_constants.stride * gl_GlobalInvocationID.y;
 
     uint pixels[3];
-    pixels[0] = pixel_buffer[index];
-    pixels[1] = pixel_buffer[++index];
-    pixels[2] = pixel_buffer[++index];
+    pixels[0] = pixel_buf[idx];
+    pixels[1] = pixel_buf[++idx];
+    pixels[2] = pixel_buf[++idx];
 
     int x4 = int(gl_GlobalInvocationID.x) << 2;
     int y = imageSize(image).y - int(gl_GlobalInvocationID.y) - 1;

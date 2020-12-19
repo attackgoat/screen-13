@@ -55,10 +55,12 @@ pub struct MeshFilter(u16);
 /// A drawable collection of individually adressable meshes.
 pub struct Model {
     idx_buf: RefCell<Lease<Data>>,
+    idx_buf_len: u64,
     idx_ty: IndexType,
     meshes: Vec<Mesh>,
-    pending_writes: RefCell<Option<(u64, u64)>>,
+    pending_writes: RefCell<Option<()>>,
     vertex_buf: RefCell<Lease<Data>>,
+    vertex_buf_len: u64,
 }
 
 impl Model {
@@ -71,14 +73,16 @@ impl Model {
         vertex_buf: Lease<Data>,
         vertex_buf_len: u64,
     ) -> Self {
-        let pending_writes = RefCell::new(Some((idx_buf_len, vertex_buf_len)));
+        let pending_writes = RefCell::new(Some(()));
 
         Self {
             idx_buf: RefCell::new(idx_buf),
+            idx_buf_len,
             idx_ty,
             meshes,
             pending_writes,
             vertex_buf: RefCell::new(vertex_buf),
+            vertex_buf_len,
         }
     }
 
@@ -109,12 +113,16 @@ impl Model {
         }
     }
 
-    pub(crate) fn indices(&self) -> (IndexType, Ref<Lease<Data>>) {
-        (self.idx_ty, self.idx_buf.borrow())
+    pub(crate) fn indices(&self) -> (Ref<Lease<Data>>, u64, IndexType) {
+        (self.idx_buf.borrow(), self.idx_buf_len, self.idx_ty)
     }
 
-    pub(crate) fn indices_mut(&self) -> (IndexType, RefMut<Lease<Data>>) {
-        (self.idx_ty, self.idx_buf.borrow_mut())
+    pub(crate) fn indices_len(&self) -> u64 {
+        self.idx_buf_len
+    }
+
+    pub(crate) fn indices_mut(&self) -> (RefMut<Lease<Data>>, u64, IndexType) {
+        (self.idx_buf.borrow_mut(), self.idx_buf_len, self.idx_ty)
     }
 
     pub(super) fn meshes(&self, filter: Option<MeshFilter>) -> MeshIter {
@@ -126,8 +134,8 @@ impl Model {
     }
 
     /// You must submit writes for our buffers if you call this.
-    pub(super) fn take_pending_writes(&self) -> Option<(u64, u64)> {
-        self.pending_writes.borrow_mut().take()
+    pub(super) fn take_pending_writes(&self) -> bool {
+        self.pending_writes.borrow_mut().take().is_some()
     }
 
     pub fn pose_bounds(&self, _pose: &Pose) -> Sphere {
@@ -141,12 +149,16 @@ impl Model {
         self.vertex_buf.borrow_mut().set_name(name);
     }
 
-    pub(crate) fn vertices(&self) -> Ref<Lease<Data>> {
-        self.vertex_buf.borrow()
+    pub(crate) fn vertices(&self) -> (Ref<Lease<Data>>, u64) {
+        (self.vertex_buf.borrow(), self.vertex_buf_len)
     }
 
-    pub(crate) fn vertices_mut(&self) -> RefMut<Lease<Data>> {
-        self.vertex_buf.borrow_mut()
+    pub(crate) fn vertices_len(&self) -> u64 {
+        self.vertex_buf_len
+    }
+
+    pub(crate) fn vertices_mut(&self) -> (RefMut<Lease<Data>>, u64) {
+        (self.vertex_buf.borrow_mut(), self.vertex_buf_len)
     }
 }
 

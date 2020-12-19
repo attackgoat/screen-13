@@ -6,9 +6,12 @@ pub use self::{
     qbasic::qb_color,
 };
 
-use gfx_hal::{
-    command::{ClearColor, ClearValue},
-    format::Format,
+use {
+    crate::math::{vec3, Vec3},
+    gfx_hal::{
+        command::{ClearColor, ClearValue},
+        format::Format,
+    },
 };
 
 pub const BLACK: Color = Color::rgb(0, 0, 0);
@@ -43,11 +46,13 @@ impl Color {
         format!("#{:x}{:x}{:x}", self.r, self.g, self.b)
     }
 
-    pub fn to_rgb_f32(self) -> (f32, f32, f32) {
-        (
-            f32::from(self.r) / 255.0,
-            f32::from(self.g) / 255.0,
-            f32::from(self.b) / 255.0,
+    pub fn to_rgb(self) -> Vec3 {
+        const SCALE: f32 = 1.0 / u8::MAX as f32;
+
+        vec3(
+            self.r as f32 * SCALE,
+            self.g as f32 * SCALE,
+            self.b as f32 * SCALE,
         )
     }
 }

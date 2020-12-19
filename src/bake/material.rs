@@ -24,15 +24,15 @@ pub fn bake_material<P1: AsRef<Path>, P2: AsRef<Path>>(
 
     let dir = filename.as_ref().parent().unwrap();
 
-    let albedo_filename = get_path(dir, material.albedo(), &project_dir);
+    let color_filename = get_path(dir, material.color(), &project_dir);
     let metal_filename = get_path(dir, material.metal_src(), &project_dir);
     let normal_filename = get_path(dir, material.normal(), &project_dir);
     let rough_filename = get_path(dir, material.rough_src(), &project_dir);
 
-    let albedo = Asset::read(&albedo_filename).into_bitmap().unwrap();
+    let color = Asset::read(&color_filename).into_bitmap().unwrap();
     let normal = Asset::read(&normal_filename).into_bitmap().unwrap();
 
-    let albedo = bake_bitmap(&project_dir, albedo_filename, &albedo, &mut pak);
+    let color = bake_bitmap(&project_dir, color_filename, &color, &mut pak);
     let normal = bake_bitmap(&project_dir, normal_filename, &normal, &mut pak);
 
     // TODO: "Entertaining" key format which is temporary because it starts with a period
@@ -71,7 +71,7 @@ pub fn bake_material<P1: AsRef<Path>, P2: AsRef<Path>>(
     pak.push_material(
         key,
         Material {
-            albedo,
+            color,
             metal_rough,
             normal,
         },

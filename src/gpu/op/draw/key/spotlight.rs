@@ -1,4 +1,8 @@
-use {super::BIT, crate::gpu::op::draw::command::SpotlightCommand, std::ops::Range};
+use {
+    super::{Stride, BIT},
+    crate::gpu::op::draw::{command::SpotlightCommand, geom::SPOTLIGHT_STRIDE},
+    std::ops::Range,
+};
 
 /// Holds the details of a normalized quanitized spotlight. Regular user-supplied spotlights are first
 /// normalized (range + radius == 1.0) and then quantized to 24 bits. This allows spotlight meshes to be
@@ -13,7 +17,7 @@ pub struct Spotlight(u32);
 
 impl Spotlight {
     /// Returns the normalized and quantized spotlight and the scale needed to undo the normalization.
-    pub fn quantize(cmd: &SpotlightCommand) -> (Self, f32) {
+    pub fn quantize(cmd: &SpotlightCommand) -> Self {
         let radius_end = cmd.cone_radius + cmd.penumbra_radius;
         let scale = (cmd.top_radius * cmd.top_radius
             + radius_end * radius_end
@@ -27,7 +31,7 @@ impl Spotlight {
         let range_start = (cmd.range.start * recip) as u32;
         let key = radius_start | radius_end << 8 | range_start << 16 | range_end << 24;
 
-        (Self(key), scale)
+        Self(key)
     }
 
     pub fn radius(&self) -> Range<u8> {
@@ -42,5 +46,11 @@ impl Spotlight {
         let end = (self.0 >> 24 & 0xff) as _;
 
         start..end
+    }
+}
+
+impl Stride for Spotlight {
+    fn stride() -> u64 {
+        SPOTLIGHT_STRIDE as _
     }
 }

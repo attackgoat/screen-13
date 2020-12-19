@@ -338,14 +338,22 @@ impl Graphics {
                         binding: 0,
                         location: 2,
                         element: Element {
-                            format: Format::Rg32Sfloat,
+                            format: Format::Rgba32Sfloat,
                             offset: 24,
+                        },
+                    },
+                    AttributeDesc {
+                        binding: 0,
+                        location: 3,
+                        element: Element {
+                            format: Format::Rg32Sfloat,
+                            offset: 56,
                         },
                     },
                 ],
                 buffers: &[VertexBufferDesc {
                     binding: 0,
-                    stride: 32,
+                    stride: 64,
                     rate: VertexInputRate::Vertex,
                 }],
                 geometry: None,
@@ -362,7 +370,7 @@ impl Graphics {
             &layout,
             subpass,
         );
-        for _ in 0..3 {
+        for _ in 0..2 {
             desc.blender.targets.push(ColorBlendDesc {
                 blend: None,
                 mask: ColorMask::ALL,
@@ -408,6 +416,81 @@ impl Graphics {
     /// # Safety
     /// None
     pub unsafe fn draw_point_light(
+        #[cfg(debug_assertions)] name: &str,
+        driver: &Driver,
+        subpass: Subpass<'_, _Backend>,
+        _max_sets: usize,
+    ) -> Self {
+        let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::defer::LIGHT_VERT);
+        let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::defer::POINT_LIGHT_FRAG);
+        let layout = PipelineLayout::new(
+            #[cfg(debug_assertions)]
+            name,
+            Driver::clone(&driver),
+            empty::<&<_Backend as Backend>::DescriptorSetLayout>(),
+            &[
+                (ShaderStageFlags::VERTEX, 0..64),
+                (ShaderStageFlags::FRAGMENT, 0..0),
+            ],
+        );
+        let mut desc = GraphicsPipelineDesc::new(
+            PrimitiveAssemblerDesc::Vertex {
+                attributes: &[AttributeDesc {
+                    binding: 0,
+                    location: 0,
+                    element: Element {
+                        format: Format::Rgb32Sfloat,
+                        offset: 0,
+                    },
+                }],
+                buffers: &[VertexBufferDesc {
+                    binding: 0,
+                    stride: 12,
+                    rate: VertexInputRate::Vertex,
+                }],
+                geometry: None,
+                input_assembler: InputAssemblerDesc {
+                    primitive: Primitive::TriangleList,
+                    restart_index: None,
+                    with_adjacency: false,
+                },
+                tessellation: None,
+                vertex: ShaderModule::entry_point(&vertex),
+            },
+            FILL_RASTERIZER,
+            Some(ShaderModule::entry_point(&fragment)),
+            &layout,
+            subpass,
+        );
+        desc.blender.targets.push(ColorBlendDesc {
+            blend: Some(BlendState::ADD),
+            mask: ColorMask::RED,
+        });
+        desc.depth_stencil.depth = Some(DepthTest {
+            fun: Comparison::LessEqual,
+            write: false,
+        });
+        let pipeline = GraphicsPipeline::new(
+            #[cfg(debug_assertions)]
+            name,
+            Driver::clone(&driver),
+            &desc,
+        );
+
+        Self {
+            desc_pool: None,
+            desc_sets: vec![],
+            layout,
+            max_sets: 0,
+            pipeline,
+            set_layout: None,
+            samplers: vec![],
+        }
+    }
+
+    /// # Safety
+    /// None
+    pub unsafe fn draw_rect_light(
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
         subpass: Subpass<'_, _Backend>,

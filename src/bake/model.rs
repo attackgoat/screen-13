@@ -136,12 +136,18 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
             assert_eq!(mode, TriangleMode::List);
 
             let data = primitive.reader(|buf| bufs.get(buf.index()).map(|data| &*data.0));
-            let indices = data.read_indices().unwrap().into_u32().collect::<Vec<_>>();
-            let positions = data.read_positions().unwrap().collect::<Vec<_>>();
-            let normals = data.read_normals().unwrap().collect::<Vec<_>>();
+            let indices = data
+                .read_indices()
+                .expect("Unable to read mesh indices")
+                .into_u32()
+                .collect::<Vec<_>>();
+            let positions = data
+                .read_positions()
+                .expect("Unable to read mesh positions")
+                .collect::<Vec<_>>();
             let tex_coords = data
                 .read_tex_coords(0)
-                .unwrap()
+                .expect("Unable to read mesh texture cooordinates")
                 .into_f32()
                 .collect::<Vec<_>>();
 
@@ -170,11 +176,6 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
                     vertex_buf.extend_from_slice(&position[1].to_ne_bytes());
                     vertex_buf.extend_from_slice(&position[2].to_ne_bytes());
 
-                    let normal = normals[idx];
-                    vertex_buf.extend_from_slice(&normal[0].to_ne_bytes());
-                    vertex_buf.extend_from_slice(&normal[1].to_ne_bytes());
-                    vertex_buf.extend_from_slice(&normal[2].to_ne_bytes());
-
                     let tex_coord = tex_coords[idx];
                     vertex_buf.extend_from_slice(&tex_coord[0].to_ne_bytes());
                     vertex_buf.extend_from_slice(&tex_coord[1].to_ne_bytes());
@@ -197,11 +198,6 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
                     vertex_buf.extend_from_slice(&position[0].to_ne_bytes());
                     vertex_buf.extend_from_slice(&position[1].to_ne_bytes());
                     vertex_buf.extend_from_slice(&position[2].to_ne_bytes());
-
-                    let normal = normals[idx];
-                    vertex_buf.extend_from_slice(&normal[0].to_ne_bytes());
-                    vertex_buf.extend_from_slice(&normal[1].to_ne_bytes());
-                    vertex_buf.extend_from_slice(&normal[2].to_ne_bytes());
 
                     let tex_coord = tex_coords[idx];
                     vertex_buf.extend_from_slice(&tex_coord[0].to_ne_bytes());
@@ -238,9 +234,9 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
 
 fn node_stride(node: &Node) -> usize {
     if node.skin().is_some() {
-        56
+        88
     } else {
-        32
+        64
     }
 }
 

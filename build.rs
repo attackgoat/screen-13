@@ -288,6 +288,9 @@ fn compile_shaders() {
     compile_glsl("compute/encode_bgr24.comp");
     compile_glsl("compute/encode_bgra32.comp");
 
+    // Compute - General
+    compile_glsl("compute/calc_vertex_attrs.comp");
+
     // Masking
     compile_glsl("mask/add.frag");
     compile_glsl("mask/apply.frag");
