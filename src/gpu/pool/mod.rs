@@ -1,24 +1,14 @@
-pub mod spirv {
-    include!(concat!(env!("OUT_DIR"), "/spirv/mod.rs"));
-}
-
-mod compute;
-mod graphics;
 mod lease;
-mod render_passes;
 
-pub use self::{
-    compute::Compute,
-    graphics::{FontVertex, Graphics},
-    lease::Lease,
-    render_passes::{color, draw, present},
-};
+pub use self::lease::Lease;
 
 use {
     super::{
         driver::{CommandPool, DescriptorPool, Driver, Fence, Image2d, Memory, RenderPass},
         op::Compiler,
-        BlendMode, Data, Texture, TextureRef,
+        render_passes::{color, draw},
+        BlendMode, Compute, ComputeMode, Data, Graphics, GraphicsMode, RenderPassMode, Texture,
+        TextureRef,
     },
     crate::math::Extent,
     gfx_hal::{
@@ -56,18 +46,6 @@ fn remove_last_by<T, F: Fn(&T) -> bool>(items: &mut VecDeque<T>, f: F) -> Option
 
 pub(super) type PoolRef<T> = Rc<RefCell<VecDeque<T>>>;
 
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
-pub struct ColorRenderPassMode {
-    pub format: Format,
-    pub preserve: bool,
-}
-
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
-pub enum ComputeMode {
-    CalculateVertexAttributes,
-    DecodeRgbRgba,
-}
-
 #[derive(Eq, Hash, PartialEq)]
 struct DescriptorPoolKey {
     desc_ranges: Vec<(DescriptorType, usize)>,
@@ -83,35 +61,11 @@ impl<'a> Iterator for Drain<'a> {
     }
 }
 
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
-pub struct DrawRenderPassMode {
-    pub depth: Format,
-    pub geom_buf: Format,
-    pub light: Format,
-    pub output: Format,
-}
-
 #[derive(Eq, Hash, PartialEq)]
 struct GraphicsKey {
     graphics_mode: GraphicsMode,
     render_pass_mode: RenderPassMode,
     subpass_idx: u8,
-}
-
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
-pub enum GraphicsMode {
-    Blend(BlendMode),
-    Font,
-    FontOutline,
-    Gradient,
-    GradientTransparency,
-    DrawLine,
-    DrawMesh,
-    DrawPointLight,
-    DrawRectLight,
-    DrawSpotlight,
-    DrawSunlight,
-    Texture,
 }
 
 pub struct Pool {
@@ -134,7 +88,7 @@ pub struct Pool {
 }
 
 impl Pool {
-    pub(crate) fn cmd_pool(
+    pub(super) fn cmd_pool(
         &mut self,
         driver: &Driver,
         family: QueueFamilyId,
@@ -156,7 +110,7 @@ impl Pool {
         Lease::new(item, items)
     }
 
-    pub(crate) fn compiler(&mut self) -> Lease<Compiler> {
+    pub(super) fn compiler(&mut self) -> Lease<Compiler> {
         let item = if let Some(item) = self.compilers.borrow_mut().pop_back() {
             item
         } else {
@@ -167,7 +121,7 @@ impl Pool {
         Lease::new(item, &self.compilers)
     }
 
-    pub(crate) fn compute(
+    pub(super) fn compute(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
@@ -191,7 +145,7 @@ impl Pool {
         Lease::new(item, items)
     }
 
-    pub(crate) fn data(
+    pub(super) fn data(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
@@ -206,7 +160,7 @@ impl Pool {
         )
     }
 
-    pub(crate) fn data_usage(
+    pub(super) fn data_usage(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
@@ -232,7 +186,7 @@ impl Pool {
     }
 
     // TODO: I don't really like the function signature here
-    pub(crate) fn desc_pool<'i, I>(
+    pub(super) fn desc_pool<'i, I>(
         &mut self,
         driver: &Driver,
         max_sets: usize,
@@ -268,7 +222,7 @@ impl Pool {
         Drain(self)
     }
 
-    pub(crate) fn fence(
+    pub(super) fn fence(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
@@ -287,7 +241,7 @@ impl Pool {
         Lease::new(item, &self.fences)
     }
 
-    pub(crate) fn graphics(
+    pub(super) fn graphics(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
@@ -306,7 +260,7 @@ impl Pool {
         )
     }
 
-    pub(crate) fn graphics_sets(
+    pub(super) fn graphics_sets(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
@@ -363,7 +317,7 @@ impl Pool {
         Lease::new(item, items)
     }
 
-    pub(crate) fn memory(
+    pub(super) fn memory(
         &mut self,
         driver: &Driver,
         mem_type: MemoryTypeId,
@@ -384,7 +338,7 @@ impl Pool {
         Lease::new(item, items)
     }
 
-    pub(crate) fn render_pass(&mut self, driver: &Driver, mode: RenderPassMode) -> &RenderPass {
+    pub(super) fn render_pass(&mut self, driver: &Driver, mode: RenderPassMode) -> &RenderPass {
         let driver = Driver::clone(driver);
         self.render_passes
             .entry(mode)
@@ -396,7 +350,7 @@ impl Pool {
 
     // TODO: Bubble format picking up and out of this! (removes desire_tiling+desired_fmts+features, replace with fmt/tiling)
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn texture(
+    pub(super) fn texture(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
@@ -493,10 +447,4 @@ struct TextureKey {
     mips: u8,
     samples: u8,
     usage: ImageUsage, // TODO: Usage shouldn't be a hard filter like this
-}
-
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
-pub enum RenderPassMode {
-    Color(ColorRenderPassMode),
-    Draw(DrawRenderPassMode),
 }

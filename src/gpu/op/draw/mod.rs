@@ -31,11 +31,9 @@ use {
             driver::{
                 bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
             },
-            pool::{
-                Compute, ComputeMode, DrawRenderPassMode, Graphics, GraphicsMode, Lease, Pool,
-                RenderPassMode,
-            },
-            BitmapRef, Texture2d, TextureRef,
+            pool::{Lease, Pool},
+            BitmapRef, Compute, ComputeMode, DrawRenderPassMode, Graphics, GraphicsMode,
+            RenderPassMode, Texture2d, TextureRef,
         },
         math::{Coord, Extent, Mat4, Vec2, Vec3},
     },

@@ -6,8 +6,8 @@ use {
             driver::{
                 bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
             },
-            pool::{ColorRenderPassMode, Graphics, GraphicsMode, Lease, Pool, RenderPassMode},
-            BlendMode, Texture2d,
+            pool::{Lease, Pool},
+            BlendMode, ColorRenderPassMode, Graphics, GraphicsMode, RenderPassMode, Texture2d,
         },
         math::{vec3, Area, CoordF, Mat4, RectF, Vec2},
     },
@@ -217,7 +217,7 @@ impl<'a> WriteOp<'a> {
         }
 
         let render_pass_mode = RenderPassMode::Color(ColorRenderPassMode {
-            format: self.dst.borrow().format(),
+            fmt: self.dst.borrow().format(),
             preserve: self.dst_preserve,
         });
 

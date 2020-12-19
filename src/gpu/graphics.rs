@@ -60,14 +60,6 @@ fn sampler(driver: Driver, filter: Filter) -> Sampler {
     )
 }
 
-#[derive(Clone, Copy, Default)]
-pub struct FontVertex {
-    pub x: f32,
-    pub y: f32,
-    pub u: f32,
-    pub v: f32,
-}
-
 pub struct Graphics {
     desc_pool: Option<DescriptorPool>,
     desc_sets: Vec<<_Backend as Backend>::DescriptorSet>,

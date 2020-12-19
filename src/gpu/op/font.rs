@@ -8,11 +8,8 @@ use {
                 bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
             },
             op::{Bitmap, Op},
-            pool::{
-                ColorRenderPassMode, FontVertex, Graphics, GraphicsMode, Lease, Pool,
-                RenderPassMode,
-            },
-            Data, Texture2d,
+            pool::{Lease, Pool},
+            ColorRenderPassMode, Data, Graphics, GraphicsMode, RenderPassMode, Texture2d,
         },
         math::{vec3, CoordF, Extent, Mat4},
         pak::Pak,
@@ -300,7 +297,7 @@ impl<'a> FontOp<'a> {
         let tessellations = font.tessellate(text, dims);
 
         let render_pass_mode = RenderPassMode::Color(ColorRenderPassMode {
-            format: self.dst.borrow().format(),
+            fmt: self.dst.borrow().format(),
             preserve: false,
         });
 
@@ -627,6 +624,14 @@ impl Op for FontOpSubmission {
     fn wait(&self) {
         Fence::wait(&self.fence);
     }
+}
+
+#[derive(Clone, Copy, Default)]
+struct FontVertex {
+    x: f32,
+    y: f32,
+    u: f32,
+    v: f32,
 }
 
 #[repr(C)]

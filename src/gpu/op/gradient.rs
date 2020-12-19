@@ -6,8 +6,8 @@ use {
             driver::{
                 bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
             },
-            pool::{ColorRenderPassMode, Graphics, GraphicsMode, Lease, Pool, RenderPassMode},
-            Texture2d,
+            pool::{Lease, Pool},
+            ColorRenderPassMode, Graphics, GraphicsMode, RenderPassMode, Texture2d,
         },
         math::Coord,
     },
@@ -71,7 +71,7 @@ impl GradientOp {
         };
 
         let render_pass_mode = RenderPassMode::Color(ColorRenderPassMode {
-            format: fmt,
+            fmt,
             preserve: must_preserve_dst(&path),
         });
 
@@ -238,7 +238,7 @@ impl GradientOp {
         let mut back_buf = self.back_buf.borrow_mut();
         let preserve = self.dst_preserve && must_preserve_dst(&self.path);
         let _mode = RenderPassMode::Color(ColorRenderPassMode {
-            format: dst.format(),
+            fmt: dst.format(),
             preserve,
         });
         let dims = dst.dims();

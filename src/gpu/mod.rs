@@ -1,8 +1,10 @@
+mod compute;
 mod data;
 
 /// A collection of smart-pointer types used internally to operate the GFX-HAL API.
 mod driver;
 
+mod graphics;
 mod model;
 
 /// A collection of operation implementations used internally to fulfill the Render API.
@@ -12,6 +14,10 @@ mod op;
 mod pool;
 
 mod render;
+mod render_passes;
+mod spirv {
+    include!(concat!(env!("OUT_DIR"), "/spirv/mod.rs"));
+}
 mod swapchain;
 mod texture;
 
@@ -24,7 +30,7 @@ pub use self::{
     texture::Texture,
 };
 
-pub(crate) use self::{driver::Driver, op::Op};
+pub(crate) use self::{compute::Compute, driver::Driver, graphics::Graphics, op::Op};
 
 use {
     self::{
@@ -39,7 +45,7 @@ use {
         Error,
     },
     gfx_hal::{
-        adapter::Adapter, buffer::Usage, device::Device as _, queue::QueueFamily,
+        adapter::Adapter, buffer::Usage, device::Device as _, format::Format, queue::QueueFamily,
         window::Surface as _, Instance as _,
     },
     gfx_impl::{Backend as _Backend, Instance},
@@ -131,6 +137,26 @@ impl Default for BlendMode {
 /// Remark: If you drop this the game will stutter, so it is best to wait a few frames before dropping it.
 #[derive(Default)]
 pub struct Cache(PoolRef<Pool>);
+
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+struct ColorRenderPassMode {
+    fmt: Format,
+    preserve: bool,
+}
+
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+enum ComputeMode {
+    CalculateVertexAttributes,
+    DecodeRgbRgba,
+}
+
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+struct DrawRenderPassMode {
+    depth: Format,
+    geom_buf: Format,
+    light: Format,
+    output: Format,
+}
 
 /// Allows you to load resources and begin rendering operations.
 pub struct Gpu {
@@ -412,4 +438,26 @@ impl Drop for Gpu {
     fn drop(&mut self) {
         self.wait_idle();
     }
+}
+
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+enum GraphicsMode {
+    Blend(BlendMode),
+    Font,
+    FontOutline,
+    Gradient,
+    GradientTransparency,
+    DrawLine,
+    DrawMesh,
+    DrawPointLight,
+    DrawRectLight,
+    DrawSpotlight,
+    DrawSunlight,
+    Texture,
+}
+
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+enum RenderPassMode {
+    Color(ColorRenderPassMode),
+    Draw(DrawRenderPassMode),
 }

@@ -23,10 +23,10 @@ fn const_layout(layout: Layout) -> Range<Layout> {
     layout..layout
 }
 
-pub fn color(driver: Driver, mode: ColorRenderPassMode) -> RenderPass {
+pub(super) fn color(driver: Driver, mode: ColorRenderPassMode) -> RenderPass {
     let color_attachment = 0;
     let color = Attachment {
-        format: Some(mode.format),
+        format: Some(mode.fmt),
         samples: 1,
         ops: if mode.preserve {
             AttachmentOps::PRESERVE
@@ -61,7 +61,7 @@ pub fn color(driver: Driver, mode: ColorRenderPassMode) -> RenderPass {
     )
 }
 
-pub fn draw(driver: Driver, mode: DrawRenderPassMode) -> RenderPass {
+pub(super) fn draw(driver: Driver, mode: DrawRenderPassMode) -> RenderPass {
     let color_attachment = |format, ops| Attachment {
         format: Some(format),
         samples: 1,
@@ -175,10 +175,10 @@ pub fn draw(driver: Driver, mode: DrawRenderPassMode) -> RenderPass {
     )
 }
 
-pub fn present(driver: &Driver, format: Format) -> RenderPass {
+pub fn present(driver: &Driver, fmt: Format) -> RenderPass {
     let present_attachment = 0;
     let present = Attachment {
-        format: Some(format),
+        format: Some(fmt),
         samples: 1,
         ops: AttachmentOps::new(AttachmentLoadOp::DontCare, AttachmentStoreOp::Store), // TODO: Another render pass for AttachmentLoadOp::Clear when we need to render to a transparent window?
         stencil_ops: AttachmentOps::DONT_CARE,

@@ -3,8 +3,8 @@ use {
         driver::{
             bind_graphics_descriptor_set, CommandPool, Fence, Framebuffer2d, RenderPass, Semaphore,
         },
-        pool::{present, Graphics},
-        Device, Driver, Surface, Texture2d,
+        render_passes::present,
+        Device, Driver, Graphics, Surface, Texture2d,
     },
     crate::math::{vec3, CoordF, Extent, Mat4},
     gfx_hal::{
