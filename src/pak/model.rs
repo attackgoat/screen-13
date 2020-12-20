@@ -11,35 +11,38 @@ use {
 
 #[derive(Deserialize, PartialEq, Serialize)]
 pub struct Mesh {
-    batches: Vec<Range<u32>>,
     bounds: Sphere,
+    indices: Range<u32>,
     name: Option<String>,
     skin_inv_binds: Option<HashMap<String, Mat4>>,
     transform: Option<Mat4>,
-    vertex_base: u64,
+    vertex_count: u32,
+    vertex_offset: u32,
 }
 
 impl Mesh {
     pub fn new<N: Into<Option<String>>>(
-        batches: Vec<Range<u32>>,
-        bounds: Sphere,
         name: N,
+        indices: Range<u32>,
+        vertex_count: u32,
+        vertex_offset: u32,
+        bounds: Sphere,
         transform: Option<Mat4>,
         skin_inv_binds: Option<HashMap<String, Mat4>>,
-        vertex_base: u64,
     ) -> Self {
         Self {
-            batches,
             bounds,
+            indices,
             name: name.into(),
             skin_inv_binds,
             transform,
-            vertex_base,
+            vertex_count,
+            vertex_offset,
         }
     }
 
-    pub(crate) fn batches(&self) -> impl Iterator<Item = Range<u32>> + '_ {
-        self.batches.iter().cloned()
+    pub(crate) fn indices(&self) -> Range<u32> {
+        self.indices.clone()
     }
 
     pub fn is_animated(&self) -> bool {
@@ -58,14 +61,24 @@ impl Mesh {
         self.transform
     }
 
-    pub(crate) fn vertex_base(&self) -> u64 {
-        self.vertex_base
+    pub fn vertex_count(&self) -> u32 {
+        self.vertex_count
+    }
+
+    pub fn vertex_offset(&self) -> u32 {
+        self.vertex_offset
+    }
+}
+
+impl Debug for Mesh {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        f.write_str("Mesh")
     }
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct Model {
-    index_ty: IndexType,
+    idx_ty: IndexType,
 
     #[serde(with = "serde_bytes")]
     indices: Vec<u8>,
@@ -79,7 +92,7 @@ pub struct Model {
 impl Model {
     pub(crate) fn new(
         mut meshes: Vec<Mesh>,
-        index_ty: IndexType,
+        idx_ty: IndexType,
         indices: Vec<u8>,
         vertices: Vec<u8>,
     ) -> Self {
@@ -87,22 +100,23 @@ impl Model {
         assert_ne!(indices.len(), 0);
         assert_ne!(vertices.len(), 0);
 
+        // Filtering relies on meshes being sorted by name
         meshes.sort_unstable_by(|lhs, rhs| lhs.name().cmp(&rhs.name()));
 
         Self {
-            index_ty,
+            idx_ty,
             indices,
             meshes,
             vertices,
         }
     }
 
-    pub(crate) fn indices(&self) -> &[u8] {
-        &self.indices
+    pub(crate) fn idx_ty(&self) -> IndexType {
+        self.idx_ty
     }
 
-    pub(crate) fn index_ty(&self) -> IndexType {
-        self.index_ty
+    pub(crate) fn indices(&self) -> &[u8] {
+        &self.indices
     }
 
     pub(crate) fn take_meshes(self) -> Vec<Mesh> {

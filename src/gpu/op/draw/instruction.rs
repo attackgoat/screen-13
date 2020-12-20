@@ -15,7 +15,6 @@ use {
 };
 
 pub struct DataComputeInstruction {
-    pub desc_set: usize,
     pub dispatch: u32,
     pub offset: u32,
 }

@@ -207,8 +207,8 @@ impl Compute {
             self.desc_pool.reset();
         }
 
-        for set in &mut self.desc_sets {
-            *set = unsafe { self.desc_pool.allocate_set(&*self.set_layout).unwrap() }
+        for desc_set in &mut self.desc_sets {
+            *desc_set = unsafe { self.desc_pool.allocate_set(&*self.set_layout).unwrap() }
         }
     }
 

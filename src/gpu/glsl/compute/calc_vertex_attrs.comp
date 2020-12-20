@@ -4,8 +4,8 @@
 
 #version 450
 
-const STRIDE_IN = 15;
-const STRIDE_OUT = 36;
+const uint STRIDE_IN = 15;
+const uint STRIDE_OUT = 36;
 
 struct Vertex {
     vec3 position;

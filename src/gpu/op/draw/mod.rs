@@ -16,8 +16,7 @@ use {
         geom::{LINE_STRIDE, POINT_LIGHT, RECT_LIGHT_STRIDE, SPOTLIGHT_STRIDE},
         geom_buf::GeometryBuffer,
         instruction::{
-            DataComputeInstruction,
-             DataCopyInstruction, DataTransferInstruction,
+            DataComputeInstruction, DataCopyInstruction, DataTransferInstruction,
             DataWriteInstruction, DataWriteRefInstruction, Instruction, LightBindInstruction,
             LineDrawInstruction, MeshBindInstruction, MeshDrawInstruction,
             PointLightDrawInstruction, RectLightDrawInstruction, SpotlightDrawInstruction,
@@ -30,8 +29,8 @@ use {
         gpu::{
             data::CopyRange,
             driver::{
-                bind_compute_descriptor_set, bind_graphics_descriptor_set, CommandPool, ComputePipeline, Device, Driver, Fence,
-                Framebuffer2d,
+                bind_compute_descriptor_set, bind_graphics_descriptor_set, CommandPool,
+                ComputePipeline, Device, Driver, Fence, Framebuffer2d,
             },
             pool::{Lease, Pool},
             BitmapRef, Compute, ComputeMode, DrawRenderPassMode, Graphics, GraphicsMode,
@@ -240,11 +239,7 @@ impl<'a> DrawOp<'a> {
                     let device = self.driver.borrow();
 
                     unsafe {
-                        Self::write_material_descriptors(
-                            &device,
-                            &graphics,
-                            materials,
-                        );
+                        Self::write_material_descriptors(&device, &graphics, materials);
                     }
 
                     self.graphics_mesh = Some(graphics);
@@ -311,11 +306,7 @@ impl<'a> DrawOp<'a> {
                     let device = self.driver.borrow();
 
                     unsafe {
-                        Self::write_vertex_descriptors(
-                            &device,
-                            &compute,
-                            vertex_bufs,
-                        );
+                        Self::write_vertex_descriptors(&device, &compute, vertex_bufs);
                     }
 
                     self.compute_vertex_attrs = Some(compute);
@@ -344,9 +335,7 @@ impl<'a> DrawOp<'a> {
                             }
                             Instruction::MeshBegin => self.submit_mesh_begin(&viewport),
                             Instruction::MeshBind(instr) => self.submit_mesh_bind(instr),
-                            Instruction::MeshDescriptors(set) => {
-                                self.submit_mesh_descriptors(set)
-                            }
+                            Instruction::MeshDescriptors(set) => self.submit_mesh_descriptors(set),
                             Instruction::MeshDraw(instr) => self.submit_mesh(instr, view_proj),
                             Instruction::PointLightDraw(instr) => {
                                 self.submit_point_lights(instr, &viewport, view_proj)
@@ -362,8 +351,12 @@ impl<'a> DrawOp<'a> {
                             Instruction::SunlightBegin => self.submit_sunlight_begin(&viewport),
                             Instruction::SunlightDraw(instr) => self.submit_sunlights(instr),
                             Instruction::VertexAttrsBegin => self.submit_vertex_attrs_begin(),
-                            Instruction::VertexAttrsCalc(instr) => self.submit_vertex_attrs_calc(instr),
-                            Instruction::VertexAttrsDescriptors(set) => self.submit_vertex_attrs_descriptors(set),
+                            Instruction::VertexAttrsCalc(instr) => {
+                                self.submit_vertex_attrs_calc(instr)
+                            }
+                            Instruction::VertexAttrsDescriptors(set) => {
+                                self.submit_vertex_attrs_descriptors(set)
+                            }
                             Instruction::VertexCopy(instr) => self.submit_vertex_copies(instr),
                             Instruction::VertexWrite(instr) => self.submit_vertex_write(instr),
                             Instruction::VertexWriteRef(instr) => {
@@ -603,9 +596,9 @@ impl<'a> DrawOp<'a> {
         );
     }
 
-    unsafe fn submit_mesh_descriptors(&mut self, set: usize) {
+    unsafe fn submit_mesh_descriptors(&mut self, desc_set: usize) {
         let graphics = self.graphics_mesh.as_ref().unwrap();
-        let desc_set = graphics.desc_set(set);
+        let desc_set = graphics.desc_set(desc_set);
         let layout = graphics.layout();
 
         bind_graphics_descriptor_set(&mut self.cmd_buf, layout, desc_set);
@@ -616,7 +609,7 @@ impl<'a> DrawOp<'a> {
         let layout = graphics.layout();
         let world_view_proj = view_proj * instr.transform;
 
-        for mesh in instr.meshes {
+        for mesh in instr.meshes.filter(|mesh| !mesh.is_animated()) {
             let world_view_proj = if let Some(transform) = mesh.transform() {
                 world_view_proj * transform
             } else {
@@ -630,9 +623,7 @@ impl<'a> DrawOp<'a> {
                 Mat4Const(world_view_proj).as_ref(),
             );
 
-            for batch in mesh.batches() {
-                self.cmd_buf.draw_indexed(batch, 0, 0..1);
-            }
+            self.cmd_buf.draw_indexed(mesh.indices(), 0, 0..1);
         }
     }
 
@@ -873,9 +864,9 @@ impl<'a> DrawOp<'a> {
         self.cmd_buf.bind_compute_pipeline(pipeline);
     }
 
-    unsafe fn submit_vertex_attrs_descriptors(&mut self, set: usize) {
+    unsafe fn submit_vertex_attrs_descriptors(&mut self, desc_set: usize) {
         let compute = self.compute_vertex_attrs.as_ref().unwrap();
-        let desc_set = compute.desc_set(set);
+        let desc_set = compute.desc_set(desc_set);
         let pipeline = compute.pipeline();
         let layout = ComputePipeline::layout(&pipeline);
 
@@ -884,7 +875,6 @@ impl<'a> DrawOp<'a> {
 
     unsafe fn submit_vertex_attrs_calc(&mut self, instr: DataComputeInstruction) {
         let compute = self.compute_vertex_attrs.as_ref().unwrap();
-        let desc_set = compute.desc_set(instr.desc_set);
         let pipeline = compute.pipeline();
         let layout = ComputePipeline::layout(&pipeline);
 
@@ -892,8 +882,9 @@ impl<'a> DrawOp<'a> {
             layout,
             0,
             CalcVertexAttrsConsts {
-                offset: instr.offset
-            }.as_ref(),
+                offset: instr.offset,
+            }
+            .as_ref(),
         );
         self.cmd_buf.dispatch([instr.dispatch, 1, 1]);
     }
@@ -1054,7 +1045,7 @@ impl<'a> DrawOp<'a> {
                             size: Some(vertex_buf.dst_len),
                         },
                     )),
-                }
+                },
             ]);
         }
     }

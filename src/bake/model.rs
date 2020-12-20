@@ -6,11 +6,7 @@ use {
         math::{quat, vec3, Mat4, Quat, Sphere, Vec3},
         pak::{model::Mesh, IndexType, Model, ModelId, PakBuf},
     },
-    gltf::{
-        import,
-        mesh::{Mode, Semantic},
-        Node, Primitive,
-    },
+    gltf::{import, mesh::Mode, Node, Primitive},
     std::{collections::HashMap, path::Path, u16},
 };
 
@@ -57,45 +53,32 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
         })
         .map(|(mesh, node)| (mesh.name().unwrap_or_default(), mesh, node))
         .collect::<Vec<_>>();
-    let index_count = nodes
-        .iter()
-        .map(|(_, mesh, _)| {
-            mesh.primitives()
-                .filter(|primitive| tri_mode(primitive).is_some())
-                .map(|primitive| primitive.indices().unwrap().count())
-                .sum::<usize>()
-        })
-        .sum::<usize>();
-    let vertex_count = nodes
-        .iter()
-        .map(|(_, mesh, _)| {
-            mesh.primitives()
-                .filter(|primitive| tri_mode(primitive).is_some())
-                .map(|primitive| primitive.get(&Semantic::Positions).unwrap().count())
-                .sum::<usize>()
-        })
-        .sum::<usize>();
-    let vertex_buf_len = nodes
-        .iter()
-        .map(|(_, mesh, node)| {
-            let stride = node_stride(&node);
-            mesh.primitives()
-                .filter(|primitive| tri_mode(primitive).is_some())
-                .map(|primitive| stride * primitive.get(&Semantic::Positions).unwrap().count())
-                .sum::<usize>()
-        })
-        .sum::<usize>();
-    let (index_buf_len, index_ty) = if vertex_count <= u16::MAX as usize {
-        (index_count << 1, IndexType::U16)
-    } else {
-        (index_count << 2, IndexType::U32)
-    };
-    let mut index_buf = Vec::with_capacity(index_buf_len);
-    let mut vertex_buf = Vec::with_capacity(vertex_buf_len);
-    let mut index_count = 0;
-
+    let mut idx_buf = vec![];
+    let mut vertex_buf = vec![];
     let mut meshes = vec![];
 
+    // The whole model will use either 16 or 32 bit indices
+    let tiny_idx = nodes.iter().all(|(_, mesh, _)| {
+        mesh.primitives()
+            .map(|primitive| (tri_mode(&primitive), primitive))
+            .filter(|(mode, _)| mode.is_some())
+            .map(|(mode, primitive)| (mode.unwrap(), primitive))
+            .all(|(_, primitive)| {
+                primitive
+                    .reader(|buf| bufs.get(buf.index()).map(|data| &*data.0))
+                    .read_positions()
+                    .expect("Unable to read mesh positions")
+                    .count()
+                    <= u16::MAX as _
+            })
+    });
+    let idx_ty = if tiny_idx {
+        IndexType::U16
+    } else {
+        IndexType::U32
+    };
+
+    let mut base_idx = 0;
     for (name, mesh, node) in nodes {
         if meshes.len() == u16::MAX as usize {
             warn!("Maximum number of meshes supported per model have been loaded, others have been skipped");
@@ -123,9 +106,10 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
         } else {
             None
         };
-        let mut batches = vec![];
         let mut all_positions = vec![];
-        let vertex_base = vertex_buf.len() as u64;
+        let mut idx_count = 0;
+        let mut vertex_count = 0;
+        let vertex_offset = vertex_buf.len() as u32;
 
         for (mode, primitive) in mesh
             .primitives()
@@ -142,10 +126,7 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
                 .expect("Unable to read mesh indices")
                 .into_u32()
                 .collect::<Vec<_>>();
-            let positions = data
-                .read_positions()
-                .expect("Unable to read mesh positions")
-                .collect::<Vec<_>>();
+            let positions = data.read_positions().unwrap().collect::<Vec<_>>();
             let tex_coords = data
                 .read_tex_coords(0)
                 .expect("Unable to read mesh texture cooordinates")
@@ -153,18 +134,16 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
                 .collect::<Vec<_>>();
 
             all_positions.extend_from_slice(&positions);
+            idx_count += indices.len() as u32;
+            vertex_count += positions.len();
 
-            let index_end = index_count + indices.len() as u32;
-            batches.push(index_count..index_end);
-            index_count = index_end;
-
-            match index_ty {
+            match idx_ty {
                 IndexType::U16 => indices
                     .iter()
-                    .for_each(|idx| index_buf.extend_from_slice(&(*idx as u16).to_ne_bytes())),
+                    .for_each(|idx| idx_buf.extend_from_slice(&(*idx as u16).to_ne_bytes())),
                 IndexType::U32 => indices
                     .iter()
-                    .for_each(|idx| index_buf.extend_from_slice(&idx.to_ne_bytes())),
+                    .for_each(|idx| idx_buf.extend_from_slice(&idx.to_ne_bytes())),
             }
 
             if skin.is_some() {
@@ -198,13 +177,15 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
         }
 
         meshes.push(Mesh::new(
-            batches,
+            dst_name,
+            base_idx..base_idx + idx_count,
+            vertex_count as _,
+            vertex_offset,
             Sphere::from_point_cloud(
                 all_positions
                     .iter()
                     .map(|position| vec3(position[0], position[1], position[2])),
             ),
-            dst_name,
             transform,
             skin.map(|s| {
                 let joints = s.joints().map(|node| node.name().unwrap().to_owned());
@@ -216,12 +197,12 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
 
                 joints.zip(inv_binds).into_iter().collect()
             }),
-            vertex_base,
         ));
+        base_idx += idx_count;
     }
 
     // Pak this asset
-    pak.push_model(key, Model::new(meshes, index_ty, index_buf, vertex_buf))
+    pak.push_model(key, Model::new(meshes, idx_ty, idx_buf, vertex_buf))
 }
 
 fn node_stride(node: &Node) -> usize {

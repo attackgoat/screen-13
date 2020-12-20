@@ -58,7 +58,7 @@ pub struct Model {
     idx_buf_len: u64,
     idx_ty: IndexType,
     meshes: Vec<Mesh>,
-    staging_buf: RefCell<Option<Lease<Data>>>,
+    staging_buf: RefCell<Option<(Lease<Data>, u64)>>,
     vertex_buf: RefCell<Lease<Data>>,
     vertex_buf_len: u64,
 }
@@ -71,6 +71,7 @@ impl Model {
         idx_buf: Lease<Data>,
         idx_buf_len: u64,
         staging_buf: Lease<Data>,
+        staging_buf_len: u64,
         vertex_buf: Lease<Data>,
         vertex_buf_len: u64,
     ) -> Self {
@@ -79,7 +80,7 @@ impl Model {
             idx_buf_len,
             idx_ty,
             meshes,
-            staging_buf: RefCell::new(Some(staging_buf)),
+            staging_buf: RefCell::new(Some((staging_buf, staging_buf_len))),
             vertex_buf: RefCell::new(vertex_buf),
             vertex_buf_len,
         }
@@ -110,6 +111,10 @@ impl Model {
                 Some(MeshFilter(idx as _))
             }
         }
+    }
+
+    pub(crate) fn idx_ty(&self) -> IndexType {
+        self.idx_ty
     }
 
     pub(crate) fn indices(&self) -> (Ref<Lease<Data>>, u64, IndexType) {
@@ -152,7 +157,7 @@ impl Model {
     }
 
     /// You must submit writes for our buffers if you call this.
-    pub(super) fn take_pending_writes(&self) -> Option<Lease<Data>> {
+    pub(super) fn take_pending_writes(&self) -> Option<(Lease<Data>, u64)> {
         self.staging_buf.borrow_mut().take()
     }
 

@@ -6,8 +6,7 @@ use {
             SPOTLIGHT_STRIDE,
         },
         instruction::{
-            DataComputeInstruction,
-            DataCopyInstruction, DataTransferInstruction,
+            DataComputeInstruction, DataCopyInstruction, DataTransferInstruction,
             DataWriteInstruction, DataWriteRefInstruction, Instruction, LightBindInstruction,
             LineDrawInstruction, MeshBindInstruction, MeshDrawInstruction,
             PointLightDrawInstruction, RectLightDrawInstruction, SpotlightDrawInstruction,
@@ -24,7 +23,7 @@ use {
         },
     },
     std::{
-        cell::Ref,
+        cell::RefMut,
         cmp::{Ord, Ordering},
         ops::{Range, RangeFrom},
         ptr::copy_nonoverlapping,
@@ -129,33 +128,27 @@ impl Compilation<'_> {
 
     fn bind_model_descriptors(&self, idx: usize) -> Instruction {
         let cmd = &self.cmds[idx].as_model().unwrap();
-        let set = self
+        let desc_set = self
             .compiler
             .materials
             .binary_search_by(|probe| probe.cmp(&cmd.material))
             .unwrap();
 
-        Instruction::MeshDescriptors(set)
+        Instruction::MeshDescriptors(desc_set)
     }
 
     fn bind_vertex_attrs_descriptors(&self, idx: usize) -> Instruction {
-        let cmd = &self.cmds[idx].as_model().unwrap();
-        let set = self
+        let desc_set = self
             .compiler
             .vertex_bufs
             .binary_search_by(|probe| probe.idx.cmp(&idx))
             .unwrap();
 
-        Instruction::VertexAttrsDescriptors(set)
+        Instruction::VertexAttrsDescriptors(desc_set)
     }
 
     fn calc_vertex_attrs(&self, asm: &CalcVertexAttrsAsm) -> Instruction {
-        let cmd = &self.cmds[asm.idx].as_model().unwrap();
-        let desc_set = self.compiler.vertex_bufs.binary_search_by(|probe| probe.idx.cmp(&asm.idx)).unwrap();
-        let (vertex_buf, vertex_buf_len) = cmd.model.vertices_mut();
-
         Instruction::VertexAttrsCalc(DataComputeInstruction {
-            desc_set,
             dispatch: asm.dispatch,
             offset: asm.offset,
         })
@@ -193,7 +186,7 @@ impl Compilation<'_> {
 
     fn draw_model(&self, idx: usize) -> Instruction {
         let cmd = self.cmds[idx].as_model().unwrap();
-        let meshes = cmd.model.meshes(cmd.mesh_filter);
+        let meshes = cmd.model.meshes_filterable(cmd.mesh_filter);
 
         Instruction::MeshDraw(MeshDrawInstruction {
             meshes,
@@ -257,7 +250,7 @@ impl Compilation<'_> {
 
     pub fn vertex_bufs(&self) -> impl ExactSizeIterator<Item = VertexBuffers> {
         VertexBuffersIter {
-            compiler: self.compiler,
+            compilation: self,
             idx: 0,
         }
     }
@@ -724,7 +717,7 @@ impl Compiler {
         for (idx, cmd) in cmds.iter().enumerate() {
             let cmd = cmd.as_model().unwrap();
 
-            if let Some(buf) = cmd.model.take_pending_writes() {
+            if let Some((buf, buf_len)) = cmd.model.take_pending_writes() {
                 // Emit 'write model buffers' assembly codes
                 self.code.push(Asm::WriteModelIndices(idx));
                 self.code.push(Asm::WriteModelVertices(idx));
@@ -734,19 +727,32 @@ impl Compiler {
                     self.code.push(Asm::BeginCalcVertexAttrs);
                 }
 
+                // Store the instance of the leased data which contains the packed/staging vertices
+                // (This lease will be returned to the pool after this operation completes)
+                self.vertex_bufs.insert(
+                    self.vertex_bufs
+                        .binary_search_by(|probe| probe.idx.cmp(&idx))
+                        .unwrap_err(),
+                    VertexBuffer {
+                        buf,
+                        idx,
+                        len: buf_len,
+                    },
+                );
+
+                // Emit 'the current compute descriptor set has changed' assembly code
+                self.code.push(Asm::BindVertexAttrsDescriptors(idx));
+
                 // Emit code to cause the normal and tangent vertex attributes of each mesh to be
                 // calculated (source is leased data, destination lives as long as the model does)
-                let mut offset = 0;
-                self.vertex_bufs.insert(self.vertex_bufs.binary_search_by(|probe| probe.idx.cmp(&idx)).unwrap_err(), VertexBuffer { buf, idx, });               
                 for mesh in cmd.model.meshes() {
-                    for batch in mesh.batches() {
-
-                        self.code.push(Asm::CalcVertexAttrs(CalcVertexAttrsAsm {
-                            idx, offset, count,
-                        }));
-
-                        offset += 
-                    }
+                    let dispatch = mesh.vertex_count();
+                    let offset = mesh.vertex_offset();
+                    self.code.push(Asm::CalcVertexAttrs(CalcVertexAttrsAsm {
+                        dispatch,
+                        idx,
+                        offset,
+                    }));
                 }
             }
 
@@ -761,7 +767,7 @@ impl Compiler {
                 model = Some(&cmd.model);
             }
 
-            // Emit 'the current descriptor set has changed' assembly code
+            // Emit 'the current graphics descriptor set has changed' assembly code
             if let Some(curr_material) = material.as_ref() {
                 if *curr_material != &cmd.material {
                     // Cache a clone of this material if needed
@@ -772,11 +778,11 @@ impl Compiler {
                         self.materials.insert(idx, Material::clone(&cmd.material));
                     }
 
-                    self.code.push(Asm::BindModelDescriptorSet(idx));
+                    self.code.push(Asm::BindModelDescriptors(idx));
                     material = Some(&cmd.material);
                 }
             } else {
-                self.code.push(Asm::BindModelDescriptorSet(idx));
+                self.code.push(Asm::BindModelDescriptors(idx));
                 material = Some(&cmd.material);
                 self.materials.push(Material::clone(&cmd.material));
             }
@@ -1253,23 +1259,24 @@ impl<'a> Iterator for SunlightIter<'a> {
 struct VertexBuffer {
     buf: Lease<Data>,
     idx: usize,
+    len: u64,
 }
 
 pub struct VertexBuffers<'a> {
-    pub dst: Ref<'a, Lease<Data>>,
+    pub dst: RefMut<'a, Lease<Data>>,
     pub dst_len: u64,
     pub src: &'a Lease<Data>,
     pub src_len: u64,
 }
 
 struct VertexBuffersIter<'a> {
-    compiler: &'a Compiler,
+    compilation: &'a Compilation<'a>,
     idx: usize,
 }
 
 impl<'a> ExactSizeIterator for VertexBuffersIter<'a> {
     fn len(&self) -> usize {
-        self.compiler.vertex_bufs.len()
+        self.compilation.compiler.vertex_bufs.len()
     }
 }
 
@@ -1277,11 +1284,27 @@ impl<'a> Iterator for VertexBuffersIter<'a> {
     type Item = VertexBuffers<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.compiler.vertex_bufs.binary_search_by(|probe| probe.idx.cmp(&self.idx)) {
+        match self
+            .compilation
+            .compiler
+            .vertex_bufs
+            .binary_search_by(|probe| probe.idx.cmp(&self.idx))
+        {
             Err(_) => None,
-            Ok(idx) => Some(VertexBuffers {
-                src: &self.compiler.vertex_bufs[idx].buf,
-            })
+            Ok(idx) => {
+                let cmd = self.compilation.cmds[idx].as_model().unwrap();
+                let model = cmd.model.as_ref();
+                let src = &self.compilation.compiler.vertex_bufs[self.idx];
+                let (dst, dst_len) = model.vertices_mut();
+                self.idx += 1;
+
+                Some(VertexBuffers {
+                    dst,
+                    dst_len,
+                    src: &src.buf,
+                    src_len: src.len,
+                })
+            }
         }
     }
 }

@@ -317,12 +317,9 @@ impl Gpu {
     ) -> Model {
         let mut pool = self.loads.borrow_mut();
         let model = pak.read_model(id);
-        let idx_ty = model.index_ty();
-        let (idx_buf, idx_buf_len, staging_buf) = {
-            let indices = model.indices();
-            let vertices = model.vertices();
-
+        let (idx_buf, idx_buf_len, staging_buf, staging_buf_len) = {
             // Create an index buffer
+            let indices = model.indices();
             let idx_buf_len = indices.len() as _;
             let mut idx_buf = pool.data_usage(
                 #[cfg(debug_assertions)]
@@ -340,6 +337,7 @@ impl Gpu {
             }
 
             // Create a staging buffer (holds vertices before we calculate additional vertex attributes)
+            let vertices = model.vertices();
             let staging_buf_len = vertices.len() as _;
             let mut staging_buf = pool.data_usage(
                 #[cfg(debug_assertions)]
@@ -356,24 +354,15 @@ impl Gpu {
                 Mapping::flush(&mut mapped_range).unwrap();
             }
 
-            (idx_buf, idx_buf_len, staging_buf)
+            (idx_buf, idx_buf_len, staging_buf, staging_buf_len)
         };
 
+        let idx_ty = model.idx_ty();
         let meshes = model.take_meshes();
-
-        let mut vertex_buf_len: u64 = 0;
+        let mut vertex_buf_len = 0;
         for mesh in &meshes {
-            let count: u64 = mesh
-                .batches()
-                .map(|batch| (batch.end - batch.start) as u64)
-                .sum();
-            let stride = if mesh.skin_inv_binds().next().is_some() {
-                20 << 2
-            } else {
-                12 << 2
-            };
-
-            vertex_buf_len += count * stride;
+            let stride = if mesh.is_animated() { 80 } else { 48 };
+            vertex_buf_len += mesh.vertex_count() as u64 * stride;
         }
 
         // This is the real vertex buffer which will hold the calculated attributes
@@ -391,6 +380,7 @@ impl Gpu {
             idx_buf,
             idx_buf_len,
             staging_buf,
+            staging_buf_len,
             vertex_buf,
             vertex_buf_len,
         )
