@@ -377,12 +377,9 @@ impl Gpu {
         Model::new(
             meshes,
             idx_ty,
-            idx_buf,
-            idx_buf_len,
-            staging_buf,
-            staging_buf_len,
-            vertex_buf,
-            vertex_buf_len,
+            (idx_buf, idx_buf_len),
+            (staging_buf, staging_buf_len),
+            (vertex_buf, vertex_buf_len),
         )
     }
 

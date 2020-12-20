@@ -68,13 +68,14 @@ impl Model {
     pub(crate) fn new(
         meshes: Vec<Mesh>,
         idx_ty: IndexType,
-        idx_buf: Lease<Data>,
-        idx_buf_len: u64,
-        staging_buf: Lease<Data>,
-        staging_buf_len: u64,
-        vertex_buf: Lease<Data>,
-        vertex_buf_len: u64,
+        idx: (Lease<Data>, u64),
+        staging: (Lease<Data>, u64),
+        vertex: (Lease<Data>, u64),
     ) -> Self {
+        let (idx_buf, idx_buf_len) = idx;
+        let (staging_buf, staging_buf_len) = staging;
+        let (vertex_buf, vertex_buf_len) = vertex;
+
         Self {
             idx_buf: RefCell::new(idx_buf),
             idx_buf_len,
