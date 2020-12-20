@@ -12,11 +12,12 @@ pub use self::{command::Command, compiler::Compiler};
 
 use {
     self::{
-        command::SunlightCommand,
+        compiler::{SunlightIter, VertexBuffers},
         geom::{LINE_STRIDE, POINT_LIGHT, RECT_LIGHT_STRIDE, SPOTLIGHT_STRIDE},
         geom_buf::GeometryBuffer,
         instruction::{
-            DataComputeRefInstruction, DataCopyInstruction, DataTransferInstruction,
+            DataComputeInstruction,
+             DataCopyInstruction, DataTransferInstruction,
             DataWriteInstruction, DataWriteRefInstruction, Instruction, LightBindInstruction,
             LineDrawInstruction, MeshBindInstruction, MeshDrawInstruction,
             PointLightDrawInstruction, RectLightDrawInstruction, SpotlightDrawInstruction,
@@ -29,13 +30,14 @@ use {
         gpu::{
             data::CopyRange,
             driver::{
-                bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
+                bind_compute_descriptor_set, bind_graphics_descriptor_set, CommandPool, ComputePipeline, Device, Driver, Fence,
+                Framebuffer2d,
             },
             pool::{Lease, Pool},
             BitmapRef, Compute, ComputeMode, DrawRenderPassMode, Graphics, GraphicsMode,
             RenderPassMode, Texture2d, TextureRef,
         },
-        math::{Coord, Extent, Mat4, Vec2, Vec3},
+        math::{Coord, Mat4, Vec2, Vec3},
     },
     gfx_hal::{
         buffer::{Access as BufferAccess, IndexBufferView, SubRange},
@@ -61,10 +63,17 @@ use {
     },
 };
 
-// TODO: Remove!
-const _0: BufferAccess = BufferAccess::MEMORY_WRITE;
-const _1: Extent = Extent::ZERO;
-const _2: SubRange = SubRange::WHOLE;
+#[repr(C)]
+struct CalcVertexAttrsConsts {
+    offset: u32,
+}
+
+impl AsRef<[u32; 1]> for CalcVertexAttrsConsts {
+    #[inline]
+    fn as_ref(&self) -> &[u32; 1] {
+        unsafe { &*(self as *const Self as *const [u32; 1]) }
+    }
+}
 
 pub struct DrawOp<'a> {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
@@ -214,30 +223,31 @@ impl<'a> DrawOp<'a> {
                 cmds,
             );
 
-            // Setup graphics pipelines and descriptor sets
+            // Setup compute and graphics pipelines and with their descriptor sets
             {
                 let materials = instrs.materials();
-                let descriptor_sets = materials.len();
-                if descriptor_sets > 0 {
-                    self.graphics_mesh = Some(self.pool.graphics_sets(
+                let desc_sets = materials.len();
+                if desc_sets > 0 {
+                    let graphics = self.pool.graphics_sets(
                         #[cfg(debug_assertions)]
                         &self.name,
                         &self.driver,
                         GraphicsMode::DrawMesh,
                         RenderPassMode::Draw(self.mode),
                         0,
-                        descriptor_sets,
-                    ));
-
+                        desc_sets,
+                    );
                     let device = self.driver.borrow();
 
                     unsafe {
-                        Self::write_mesh_material_descriptors(
+                        Self::write_material_descriptors(
                             &device,
-                            self.graphics_mesh.as_ref().unwrap(),
+                            &graphics,
                             materials,
                         );
                     }
+
+                    self.graphics_mesh = Some(graphics);
                 }
 
                 if instrs.contains_point_light() {
@@ -288,13 +298,27 @@ impl<'a> DrawOp<'a> {
                     ));
                 }
 
-                if instrs.contains_vertex_calc_attrs() {
-                    self.compute_vertex_attrs = Some(self.pool.compute(
+                let vertex_bufs = instrs.vertex_bufs();
+                let desc_sets = vertex_bufs.len();
+                if desc_sets > 0 {
+                    let compute = self.pool.compute_sets(
                         #[cfg(debug_assertions)]
                         &self.name,
                         &self.driver,
                         ComputeMode::CalculateVertexAttributes,
-                    ));
+                        desc_sets,
+                    );
+                    let device = self.driver.borrow();
+
+                    unsafe {
+                        Self::write_vertex_descriptors(
+                            &device,
+                            &compute,
+                            vertex_bufs,
+                        );
+                    }
+
+                    self.compute_vertex_attrs = Some(compute);
                 }
             }
 
@@ -320,8 +344,8 @@ impl<'a> DrawOp<'a> {
                             }
                             Instruction::MeshBegin => self.submit_mesh_begin(&viewport),
                             Instruction::MeshBind(instr) => self.submit_mesh_bind(instr),
-                            Instruction::MeshDescriptorSet(set) => {
-                                self.submit_mesh_descriptor_set(set)
+                            Instruction::MeshDescriptors(set) => {
+                                self.submit_mesh_descriptors(set)
                             }
                             Instruction::MeshDraw(instr) => self.submit_mesh(instr, view_proj),
                             Instruction::PointLightDraw(instr) => {
@@ -336,10 +360,10 @@ impl<'a> DrawOp<'a> {
                                 self.submit_spotlight(instr, view_proj)
                             }
                             Instruction::SunlightBegin => self.submit_sunlight_begin(&viewport),
-                            Instruction::SunlightDraw(instr) => self.submit_sunlight(instr),
-                            Instruction::VertexCalcAttrsRef(instr) => {
-                                self.submit_vertex_calc_attrs(instr)
-                            }
+                            Instruction::SunlightDraw(instr) => self.submit_sunlights(instr),
+                            Instruction::VertexAttrsBegin => self.submit_vertex_attrs_begin(),
+                            Instruction::VertexAttrsCalc(instr) => self.submit_vertex_attrs_calc(instr),
+                            Instruction::VertexAttrsDescriptors(set) => self.submit_vertex_attrs_descriptors(set),
                             Instruction::VertexCopy(instr) => self.submit_vertex_copies(instr),
                             Instruction::VertexWrite(instr) => self.submit_vertex_write(instr),
                             Instruction::VertexWriteRef(instr) => {
@@ -357,6 +381,7 @@ impl<'a> DrawOp<'a> {
             cmd_buf: self.cmd_buf,
             cmd_pool: self.cmd_pool,
             compiler,
+            compute_vertex_attrs: self.compute_vertex_attrs,
             dst: self.dst,
             fence: self.fence,
             frame_buf: self.frame_buf,
@@ -578,14 +603,17 @@ impl<'a> DrawOp<'a> {
         );
     }
 
-    unsafe fn submit_mesh_descriptor_set(&mut self, set: usize) {
+    unsafe fn submit_mesh_descriptors(&mut self, set: usize) {
         let graphics = self.graphics_mesh.as_ref().unwrap();
+        let desc_set = graphics.desc_set(set);
+        let layout = graphics.layout();
 
-        bind_graphics_descriptor_set(&mut self.cmd_buf, graphics.layout(), graphics.desc_set(set));
+        bind_graphics_descriptor_set(&mut self.cmd_buf, layout, desc_set);
     }
 
     unsafe fn submit_mesh(&mut self, instr: MeshDrawInstruction, view_proj: Mat4) {
         let graphics = self.graphics_mesh.as_ref().unwrap();
+        let layout = graphics.layout();
         let world_view_proj = view_proj * instr.transform;
 
         for mesh in instr.meshes {
@@ -596,7 +624,7 @@ impl<'a> DrawOp<'a> {
             };
 
             self.cmd_buf.push_graphics_constants(
-                graphics.layout(),
+                layout,
                 ShaderStageFlags::VERTEX,
                 0,
                 Mat4Const(world_view_proj).as_ref(),
@@ -739,7 +767,7 @@ impl<'a> DrawOp<'a> {
         self.cmd_buf.set_viewports(0, &[viewport.clone()]);
     }
 
-    unsafe fn submit_sunlight(&mut self, light: &SunlightCommand) {
+    unsafe fn submit_sunlights(&mut self, lights: SunlightIter) {
         let graphics = self.graphics_spotlight.as_ref().unwrap();
 
         /*let view_inv = camera.view_inv();
@@ -822,21 +850,53 @@ impl<'a> DrawOp<'a> {
             light_space,
         }*/
 
-        self.cmd_buf.push_graphics_constants(
-            graphics.layout(),
-            ShaderStageFlags::FRAGMENT,
-            0,
-            SunlightConsts {
-                intensity: light.color.to_rgb() * light.lumens,
-                normal: light.normal,
-            }
-            .as_ref(),
-        );
+        for light in lights {
+            self.cmd_buf.push_graphics_constants(
+                graphics.layout(),
+                ShaderStageFlags::FRAGMENT,
+                0,
+                SunlightConsts {
+                    intensity: light.color.to_rgb() * light.lumens,
+                    normal: light.normal,
+                }
+                .as_ref(),
+            );
 
-        self.cmd_buf.draw(0..6, 0..1);
+            self.cmd_buf.draw(0..6, 0..1);
+        }
     }
 
-    unsafe fn submit_vertex_calc_attrs(&mut self, _instr: DataComputeRefInstruction) {}
+    unsafe fn submit_vertex_attrs_begin(&mut self) {
+        let compute = self.compute_vertex_attrs.as_ref().unwrap();
+        let pipeline = compute.pipeline();
+
+        self.cmd_buf.bind_compute_pipeline(pipeline);
+    }
+
+    unsafe fn submit_vertex_attrs_descriptors(&mut self, set: usize) {
+        let compute = self.compute_vertex_attrs.as_ref().unwrap();
+        let desc_set = compute.desc_set(set);
+        let pipeline = compute.pipeline();
+        let layout = ComputePipeline::layout(&pipeline);
+
+        bind_compute_descriptor_set(&mut self.cmd_buf, layout, desc_set);
+    }
+
+    unsafe fn submit_vertex_attrs_calc(&mut self, instr: DataComputeInstruction) {
+        let compute = self.compute_vertex_attrs.as_ref().unwrap();
+        let desc_set = compute.desc_set(instr.desc_set);
+        let pipeline = compute.pipeline();
+        let layout = ComputePipeline::layout(&pipeline);
+
+        self.cmd_buf.push_compute_constants(
+            layout,
+            0,
+            CalcVertexAttrsConsts {
+                offset: instr.offset
+            }.as_ref(),
+        );
+        self.cmd_buf.dispatch([instr.dispatch, 1, 1]);
+    }
 
     unsafe fn submit_vertex_copies(&mut self, instr: DataCopyInstruction) {
         instr.buf.copy_ranges(
@@ -921,15 +981,16 @@ impl<'a> DrawOp<'a> {
         );
     }
 
-    unsafe fn write_mesh_material_descriptors<'m>(
+    unsafe fn write_material_descriptors<'m>(
         device: &Device,
         graphics: &Graphics,
         materials: impl ExactSizeIterator<Item = &'m Material>,
     ) {
         for (idx, material) in materials.enumerate() {
+            let set = graphics.desc_set(idx);
             device.write_descriptor_sets(vec![
                 DescriptorSetWrite {
-                    set: graphics.desc_set(idx),
+                    set,
                     binding: 0,
                     array_offset: 0,
                     descriptors: once(Descriptor::CombinedImageSampler(
@@ -939,7 +1000,7 @@ impl<'a> DrawOp<'a> {
                     )),
                 },
                 DescriptorSetWrite {
-                    set: graphics.desc_set(idx),
+                    set,
                     binding: 1,
                     array_offset: 0,
                     descriptors: once(Descriptor::CombinedImageSampler(
@@ -949,7 +1010,7 @@ impl<'a> DrawOp<'a> {
                     )),
                 },
                 DescriptorSetWrite {
-                    set: graphics.desc_set(idx),
+                    set,
                     binding: 2,
                     array_offset: 0,
                     descriptors: once(Descriptor::CombinedImageSampler(
@@ -961,12 +1022,49 @@ impl<'a> DrawOp<'a> {
             ]);
         }
     }
+
+    unsafe fn write_vertex_descriptors<'v>(
+        device: &Device,
+        compute: &Compute,
+        vertex_bufs: impl ExactSizeIterator<Item = VertexBuffers<'v>>,
+    ) {
+        for (idx, vertex_buf) in vertex_bufs.enumerate() {
+            let set = compute.desc_set(idx);
+            device.write_descriptor_sets(vec![
+                DescriptorSetWrite {
+                    set,
+                    binding: 0,
+                    array_offset: 0,
+                    descriptors: once(Descriptor::Buffer(
+                        vertex_buf.src.as_ref(),
+                        SubRange {
+                            offset: 0,
+                            size: Some(vertex_buf.src_len),
+                        },
+                    )),
+                },
+                DescriptorSetWrite {
+                    set,
+                    binding: 1,
+                    array_offset: 0,
+                    descriptors: once(Descriptor::Buffer(
+                        vertex_buf.dst.as_ref(),
+                        SubRange {
+                            offset: 0,
+                            size: Some(vertex_buf.dst_len),
+                        },
+                    )),
+                }
+            ]);
+        }
+    }
 }
 
 pub struct DrawOpSubmission {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
     compiler: Lease<Compiler>,
+    compute_vertex_attrs: Option<Lease<Compute>>,
     dst: Texture2d,
     fence: Lease<Fence>,
     frame_buf: Framebuffer2d,

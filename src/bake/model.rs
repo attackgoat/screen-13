@@ -125,6 +125,7 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
         };
         let mut batches = vec![];
         let mut all_positions = vec![];
+        let vertex_base = vertex_buf.len() as u64;
 
         for (mode, primitive) in mesh
             .primitives()
@@ -171,37 +172,27 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
                 let weights = data.read_weights(0).unwrap().into_f32().collect::<Vec<_>>();
 
                 for idx in 0..positions.len() {
-                    let position = positions[idx];
-                    vertex_buf.extend_from_slice(&position[0].to_ne_bytes());
-                    vertex_buf.extend_from_slice(&position[1].to_ne_bytes());
-                    vertex_buf.extend_from_slice(&position[2].to_ne_bytes());
-
-                    let tex_coord = tex_coords[idx];
-                    vertex_buf.extend_from_slice(&tex_coord[0].to_ne_bytes());
-                    vertex_buf.extend_from_slice(&tex_coord[1].to_ne_bytes());
-
-                    let joint = joints[idx];
-                    vertex_buf.extend_from_slice(&joint[0].to_ne_bytes());
-                    vertex_buf.extend_from_slice(&joint[1].to_ne_bytes());
-                    vertex_buf.extend_from_slice(&joint[2].to_ne_bytes());
-                    vertex_buf.extend_from_slice(&joint[3].to_ne_bytes());
-
-                    let weight = weights[idx];
-                    vertex_buf.extend_from_slice(&weight[0].to_ne_bytes());
-                    vertex_buf.extend_from_slice(&weight[1].to_ne_bytes());
-                    vertex_buf.extend_from_slice(&weight[2].to_ne_bytes());
-                    vertex_buf.extend_from_slice(&weight[3].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&positions[idx][0].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&positions[idx][1].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&positions[idx][2].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&tex_coords[idx][0].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&tex_coords[idx][1].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&joints[idx][0].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&joints[idx][1].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&joints[idx][2].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&joints[idx][3].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&weights[idx][0].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&weights[idx][1].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&weights[idx][2].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&weights[idx][3].to_ne_bytes());
                 }
             } else {
                 for idx in 0..positions.len() {
-                    let position = positions[idx];
-                    vertex_buf.extend_from_slice(&position[0].to_ne_bytes());
-                    vertex_buf.extend_from_slice(&position[1].to_ne_bytes());
-                    vertex_buf.extend_from_slice(&position[2].to_ne_bytes());
-
-                    let tex_coord = tex_coords[idx];
-                    vertex_buf.extend_from_slice(&tex_coord[0].to_ne_bytes());
-                    vertex_buf.extend_from_slice(&tex_coord[1].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&positions[idx][0].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&positions[idx][1].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&positions[idx][2].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&tex_coords[idx][0].to_ne_bytes());
+                    vertex_buf.extend_from_slice(&tex_coords[idx][1].to_ne_bytes());
                 }
             }
         }
@@ -225,6 +216,7 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
 
                 joints.zip(inv_binds).into_iter().collect()
             }),
+            vertex_base,
         ));
     }
 

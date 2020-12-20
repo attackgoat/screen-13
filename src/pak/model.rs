@@ -16,6 +16,7 @@ pub struct Mesh {
     name: Option<String>,
     skin_inv_binds: Option<HashMap<String, Mat4>>,
     transform: Option<Mat4>,
+    vertex_base: u64,
 }
 
 impl Mesh {
@@ -25,6 +26,7 @@ impl Mesh {
         name: N,
         transform: Option<Mat4>,
         skin_inv_binds: Option<HashMap<String, Mat4>>,
+        vertex_base: u64,
     ) -> Self {
         Self {
             batches,
@@ -32,6 +34,7 @@ impl Mesh {
             name: name.into(),
             skin_inv_binds,
             transform,
+            vertex_base,
         }
     }
 
@@ -39,12 +42,24 @@ impl Mesh {
         self.batches.iter().cloned()
     }
 
+    pub fn is_animated(&self) -> bool {
+        self.skin_inv_binds.is_some()
+    }
+
     pub(crate) fn name(&self) -> Option<&str> {
         self.name.as_deref()
     }
 
+    pub(crate) fn skin_inv_binds(&self) -> impl Iterator<Item = &Mat4> {
+        self.skin_inv_binds.as_ref().unwrap().values()
+    }
+
     pub fn transform(&self) -> Option<Mat4> {
         self.transform
+    }
+
+    pub(crate) fn vertex_base(&self) -> u64 {
+        self.vertex_base
     }
 }
 

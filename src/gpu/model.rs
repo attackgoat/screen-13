@@ -58,7 +58,7 @@ pub struct Model {
     idx_buf_len: u64,
     idx_ty: IndexType,
     meshes: Vec<Mesh>,
-    pending_writes: RefCell<Option<()>>,
+    staging_buf: RefCell<Option<Lease<Data>>>,
     vertex_buf: RefCell<Lease<Data>>,
     vertex_buf_len: u64,
 }
@@ -70,17 +70,16 @@ impl Model {
         idx_ty: IndexType,
         idx_buf: Lease<Data>,
         idx_buf_len: u64,
+        staging_buf: Lease<Data>,
         vertex_buf: Lease<Data>,
         vertex_buf_len: u64,
     ) -> Self {
-        let pending_writes = RefCell::new(Some(()));
-
         Self {
             idx_buf: RefCell::new(idx_buf),
             idx_buf_len,
             idx_ty,
             meshes,
-            pending_writes,
+            staging_buf: RefCell::new(Some(staging_buf)),
             vertex_buf: RefCell::new(vertex_buf),
             vertex_buf_len,
         }
@@ -125,7 +124,26 @@ impl Model {
         (self.idx_buf.borrow_mut(), self.idx_buf_len, self.idx_ty)
     }
 
-    pub(super) fn meshes(&self, filter: Option<MeshFilter>) -> MeshIter {
+    /// Remarks: Guaranteed to be in vertex buffer order (each mesh has a unique block of vertices)
+    pub(super) fn meshes(&self) -> MeshIter {
+        MeshIter {
+            filter: None,
+            idx: 0,
+            model: self,
+        }
+    }
+
+    /// Remarks: Guaranteed to be in vertex buffer order (each mesh has a unique block of vertices)
+    pub(super) fn meshes_filter(&self, filter: MeshFilter) -> MeshIter {
+        MeshIter {
+            filter: Some(filter),
+            idx: 0,
+            model: self,
+        }
+    }
+
+    /// Remarks: Guaranteed to be in vertex buffer order (each mesh has a unique block of vertices)
+    pub(super) fn meshes_filterable(&self, filter: Option<MeshFilter>) -> MeshIter {
         MeshIter {
             filter,
             idx: 0,
@@ -134,8 +152,8 @@ impl Model {
     }
 
     /// You must submit writes for our buffers if you call this.
-    pub(super) fn take_pending_writes(&self) -> bool {
-        self.pending_writes.borrow_mut().take().is_some()
+    pub(super) fn take_pending_writes(&self) -> Option<Lease<Data>> {
+        self.staging_buf.borrow_mut().take()
     }
 
     pub fn pose_bounds(&self, _pose: &Pose) -> Sphere {

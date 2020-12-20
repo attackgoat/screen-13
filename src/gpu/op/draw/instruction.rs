@@ -1,7 +1,7 @@
 use {
     super::{
-        command::{RectLightCommand, SpotlightCommand, SunlightCommand},
-        compiler::PointLightIter,
+        command::{RectLightCommand, SpotlightCommand},
+        compiler::{PointLightIter, SunlightIter},
     },
     crate::{
         gpu::{data::CopyRange, model::MeshIter, pool::Lease, Data},
@@ -14,10 +14,10 @@ use {
     },
 };
 
-/// Computes the given segment of gpu-side data
-pub struct DataComputeRefInstruction<'a> {
-    pub buf: RefMut<'a, Lease<Data>>,
-    pub len: u64,
+pub struct DataComputeInstruction {
+    pub desc_set: usize,
+    pub dispatch: u32,
+    pub offset: u32,
 }
 
 /// Copies the gpu-side data from the given range to the cpu-side
@@ -54,7 +54,7 @@ pub enum Instruction<'a> {
     LineDraw(LineDrawInstruction<'a>),
     MeshBegin,
     MeshBind(MeshBindInstruction<'a>),
-    MeshDescriptorSet(usize),
+    MeshDescriptors(usize),
     MeshDraw(MeshDrawInstruction<'a>),
     PointLightDraw(PointLightDrawInstruction<'a>),
     RectLightBegin,
@@ -62,8 +62,10 @@ pub enum Instruction<'a> {
     SpotlightBegin,
     SpotlightDraw(SpotlightDrawInstruction<'a>),
     SunlightBegin,
-    SunlightDraw(&'a SunlightCommand),
-    VertexCalcAttrsRef(DataComputeRefInstruction<'a>),
+    SunlightDraw(SunlightIter<'a>),
+    VertexAttrsBegin,
+    VertexAttrsCalc(DataComputeInstruction),
+    VertexAttrsDescriptors(usize),
     VertexCopy(DataCopyInstruction<'a>),
     VertexWrite(DataWriteInstruction<'a>),
     VertexWriteRef(DataWriteRefInstruction<'a>),

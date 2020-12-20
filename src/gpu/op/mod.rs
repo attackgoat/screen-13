@@ -21,3 +21,6 @@ pub use self::{
 pub trait Op {
     fn wait(&self);
 }
+
+// TODO: All the places where we bind descriptor sets blindly allow the number of descriptors to be unbounded. Should work in groups beyond the limit so the API doesn't have to change.
+// TODO: Like above, the places where we dispatch compute resources should probably also allow for batch-sized groups within device limits

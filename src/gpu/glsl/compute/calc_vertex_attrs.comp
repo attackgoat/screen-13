@@ -1,66 +1,79 @@
+// NOTE: This program is intended to help "inflate" model vertex buffers which have been read from
+// disk or the network. We do not store normal or tangent in the asset .pak file, so these
+// attributes must be reconstructed at runtime; prior to rendering use.
+
 #version 450
+
+const STRIDE_IN = 15;
+const STRIDE_OUT = 36;
+
+struct Vertex {
+    vec3 position;
+    vec2 texcoord;
+};
 
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
-layout(push_constant) uniform CCCCCCCCPushConstants {
-    layout(offset = 0) uint stride;
+layout(push_constant) uniform PushConstants {
+    layout(offset = 0) uint offset;
 } push_constants;
 
-layout(set = 0, binding = 0, std430) buffer XXXXXVertexBuffer {
-    uint vertex_buf[];
+layout(set = 0, binding = 0, std430) restrict readonly buffer SrcBuffer {
+    float src_buf[];
 };
 
-void main() {
-    // uint index = 3 * gl_GlobalInvocationID.x + push_constants.stride * gl_GlobalInvocationID.y;
+layout(set = 0, binding = 1, std430) buffer DstBuffer {
+    float dst_buf[];
+};
 
-    // uint pixels[3];
-    // pixels[0] = pixel_buffer[index];
-    // pixels[1] = pixel_buffer[++index];
-    // pixels[2] = pixel_buffer[++index];
+Vertex read(uint idx) {
+    float x = src_buf[idx];
+    float y = src_buf[++idx];
+    float z = src_buf[++idx];
+    float u = src_buf[++idx];
+    float v = src_buf[++idx];
+    vec3 position = vec3(x, y, z);
+    vec2 texcoord = vec2(u, v);
 
-    // int x4 = int(gl_GlobalInvocationID.x) << 2;
-    // int y = imageSize(image).y - int(gl_GlobalInvocationID.y) - 1;
+    return Vertex(position, texcoord);
 }
-// fn calc_tangents(positions: &Vec<[f32; 3]>, tex_coords: &Vec<[f32; 2]>) -> Vec<Vec3> {
-//     let mut temp = Vec::with_capacity(positions.len());
-//     let tri_count = positions.len() / 3;
-//     for tri_idx in 0..tri_count {
-//         let idx = tri_idx * 3;
 
-//         let v1 = positions[idx];
-//         let v2 = positions[idx + 1];
-//         let v3 = positions[idx + 2];
+void write(uint idx, Vertex vertex, vec3 normal, vec4 tangent) {
+    dst_buf[idx] = vertex.position.x;
+    dst_buf[++idx] = vertex.position.y;
+    dst_buf[++idx] = vertex.position.z;
+    dst_buf[++idx] = normal.x;
+    dst_buf[++idx] = normal.y;
+    dst_buf[++idx] = normal.z;
+    dst_buf[++idx] = tangent.x;
+    dst_buf[++idx] = tangent.y;
+    dst_buf[++idx] = tangent.z;
+    dst_buf[++idx] = tangent.w;
+    dst_buf[++idx] = vertex.texcoord.x;
+    dst_buf[++idx] = vertex.texcoord.y;
+}
 
-//         let w1 = tex_coords[idx];
-//         let w2 = tex_coords[idx + 1];
-//         let w3 = tex_coords[idx + 2];
+void main() {
+    // Read three vertices of a triangle from the source
+    uint src_idx = push_constants.offset + gl_GlobalInvocationID.x * STRIDE_IN;
+    Vertex v1 = read(src_idx);
+    Vertex v2 = read(src_idx + 5);
+    Vertex v3 = read(src_idx + 10);
 
-//         let x1 = v2[0] - v1[0];
-//         let x2 = v3[0] - v1[0];
-//         let y1 = v2[1] - v1[1];
-//         let y2 = v3[1] - v1[1];
-//         let z1 = v2[2] - v1[2];
-//         let z2 = v3[2] - v1[2];
+    // Calculate the normal of the front face of this triangle
+    vec3 normal = vec3(0);
 
-//         let s1 = w2[0] - w1[0];
-//         let s2 = w3[0] - w1[0];
-//         let t1 = w2[1] - w1[1];
-//         let t2 = w3[1] - w1[1];
+    // Calculate the four-component tangent (with handedness)
+    vec3 p2 = v2.position - v1.position;
+    vec3 p3 = v3.position - v1.position;
+    vec2 st2 = v2.texcoord - v1.texcoord;
+    vec2 st3 = v3.texcoord - v1.texcoord;
+    float r = 1 / (st2.x * st3.y - st3.x * st2.y);
+    vec4 tangent = vec4(0);
 
-//         let r = 1.0 / (s1 * t2 - s2 * t1);
-
-//         let s = vec3(
-//             (t2 * x1 - t1 * x2) * r,
-//             (t2 * y1 - t1 * y2) * r,
-//             (t2 * z1 - t1 * z2) * r,
-//         );
-//         let t = vec3(
-//             (s1 * x2 - s2 * x1) * r,
-//             (s1 * y2 - s2 * y1) * r,
-//             (s1 * z2 - s2 * z1) * r,
-//         );
-//         temp.push((s, t));
-//     }
-
-//     vec![]
-// }
+    // Write the (larger) output vertices for one triangle
+    uint dst_idx = push_constants.offset + gl_GlobalInvocationID.x * STRIDE_OUT;
+    write(dst_idx, v1, normal, tangent);
+    write(dst_idx + 12, v2, normal, tangent);
+    write(dst_idx + 24, v3, normal, tangent);
+}

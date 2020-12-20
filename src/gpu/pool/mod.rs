@@ -87,6 +87,7 @@ pub struct Pool {
     textures: HashMap<TextureKey, PoolRef<TextureRef<Image2d>>>,
 }
 
+// TODO: Add some way to track memory usage so that using drain has some sort of feedback for users, tell them about the usage
 impl Pool {
     pub(super) fn cmd_pool(
         &mut self,
@@ -127,8 +128,26 @@ impl Pool {
         driver: &Driver,
         mode: ComputeMode,
     ) -> Lease<Compute> {
+        self.compute_sets(
+            #[cfg(debug_assertions)]
+            name,
+            driver,
+            mode,
+            1,
+        )
+    }
+
+    pub(super) fn compute_sets(
+        &mut self,
+        #[cfg(debug_assertions)] name: &str,
+        driver: &Driver,
+        mode: ComputeMode,
+        max_sets: usize,
+    ) -> Lease<Compute> {
         let items = self.computes.entry(mode).or_insert_with(Default::default);
-        let item = if let Some(item) = items.borrow_mut().pop_back() {
+        let item = if let Some(item) =
+            remove_last_by(&mut items.borrow_mut(), |item| item.max_sets() >= max_sets)
+        {
             item
         } else {
             let ctor = match mode {

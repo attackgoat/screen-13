@@ -297,8 +297,14 @@ impl BitmapOp {
             ImageAccess::SHADER_WRITE,
         );
         self.cmd_buf.bind_compute_pipeline(pipeline);
-        self.cmd_buf
-            .push_compute_constants(layout, 0, &[conv_fmt.pixel_buf_stride >> 2]);
+        self.cmd_buf.push_compute_constants(
+            layout,
+            0,
+            DecodeConsts {
+                stride: conv_fmt.pixel_buf_stride >> 2,
+            }
+            .as_ref(),
+        );
         bind_compute_descriptor_set(&mut self.cmd_buf, layout, desc_set);
         self.cmd_buf.dispatch([conv_fmt.dispatch_count, dims.y, 1]);
     }
@@ -391,4 +397,16 @@ struct ComputeDispatch {
     compute: Lease<Compute>,
     dispatch_count: u32,
     pixel_buf_stride: u32,
+}
+
+#[repr(C)]
+struct DecodeConsts {
+    stride: u32,
+}
+
+impl AsRef<[u32; 1]> for DecodeConsts {
+    #[inline]
+    fn as_ref(&self) -> &[u32; 1] {
+        unsafe { &*(self as *const Self as *const [u32; 1]) }
+    }
 }

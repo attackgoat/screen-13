@@ -22,6 +22,7 @@ use {
 pub struct Compute {
     desc_pool: DescriptorPool,
     desc_sets: Vec<<_Backend as Backend>::DescriptorSet>,
+    max_sets: usize,
     pipeline: ComputePipeline,
     set_layout: DescriptorSetLayout,
     samplers: Vec<Sampler>,
@@ -79,6 +80,7 @@ impl Compute {
         Compute {
             desc_pool,
             desc_sets,
+            max_sets,
             pipeline,
             set_layout,
             samplers,
@@ -94,26 +96,50 @@ impl Compute {
             &spirv::compute::CALC_VERTEX_ATTRS_COMP,
             &[(ShaderStageFlags::COMPUTE, 0..4)],
             1,
-            &[descriptor_range_desc(
-                1,
-                DescriptorType::Buffer {
-                    format: BufferDescriptorFormat::Structured {
-                        dynamic_offset: false,
+            &[
+                descriptor_range_desc(
+                    1,
+                    DescriptorType::Buffer {
+                        format: BufferDescriptorFormat::Structured {
+                            dynamic_offset: false,
+                        },
+                        ty: BufferDescriptorType::Storage { read_only: true },
                     },
-                    ty: BufferDescriptorType::Storage { read_only: false },
-                },
-            )],
-            &[descriptor_set_layout_binding(
-                0,
-                1,
-                ShaderStageFlags::COMPUTE,
-                DescriptorType::Buffer {
-                    format: BufferDescriptorFormat::Structured {
-                        dynamic_offset: false,
+                ),
+                descriptor_range_desc(
+                    1,
+                    DescriptorType::Buffer {
+                        format: BufferDescriptorFormat::Structured {
+                            dynamic_offset: false,
+                        },
+                        ty: BufferDescriptorType::Storage { read_only: false },
                     },
-                    ty: BufferDescriptorType::Storage { read_only: false },
-                },
-            )],
+                ),
+            ],
+            &[
+                descriptor_set_layout_binding(
+                    0,
+                    1,
+                    ShaderStageFlags::COMPUTE,
+                    DescriptorType::Buffer {
+                        format: BufferDescriptorFormat::Structured {
+                            dynamic_offset: false,
+                        },
+                        ty: BufferDescriptorType::Storage { read_only: true },
+                    },
+                ),
+                descriptor_set_layout_binding(
+                    1,
+                    1,
+                    ShaderStageFlags::COMPUTE,
+                    DescriptorType::Buffer {
+                        format: BufferDescriptorFormat::Structured {
+                            dynamic_offset: false,
+                        },
+                        ty: BufferDescriptorType::Storage { read_only: false },
+                    },
+                ),
+            ],
             empty(),
         )
     }
@@ -166,6 +192,10 @@ impl Compute {
             ],
             empty(),
         )
+    }
+
+    pub fn max_sets(&self) -> usize {
+        self.max_sets
     }
 
     pub fn pipeline(&self) -> &ComputePipeline {
