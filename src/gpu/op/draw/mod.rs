@@ -39,6 +39,7 @@ use {
         math::{Coord, Mat4, Vec2, Vec3},
     },
     gfx_hal::{
+        adapter::PhysicalDevice as _,
         buffer::{Access as BufferAccess, IndexBufferView, SubRange},
         command::{
             ClearColor, ClearDepthStencil, ClearValue, CommandBuffer as _, CommandBufferFlags,
@@ -874,19 +875,26 @@ impl<'a> DrawOp<'a> {
     }
 
     unsafe fn submit_vertex_attrs_calc(&mut self, instr: DataComputeInstruction) {
+        let device = self.driver.borrow();
+        let limit = Device::gpu(&device).limits().max_compute_work_group_size[0];
         let compute = self.compute_vertex_attrs.as_ref().unwrap();
         let pipeline = compute.pipeline();
         let layout = ComputePipeline::layout(&pipeline);
 
-        self.cmd_buf.push_compute_constants(
-            layout,
-            0,
-            CalcVertexAttrsConsts {
-                offset: instr.offset,
-            }
-            .as_ref(),
-        );
-        self.cmd_buf.dispatch([instr.dispatch, 1, 1]);
+        // We may be limited by the count of dispatches we issue; so use a loop
+        // to dispatch as many times as needed
+        let mut dispatch = instr.dispatch;
+        let mut offset = instr.offset;
+        while dispatch > 0 {
+            self.cmd_buf.push_compute_constants(
+                layout,
+                0,
+                CalcVertexAttrsConsts { offset }.as_ref(),
+            );
+            self.cmd_buf.dispatch([dispatch.max(limit), 1, 1]);
+            dispatch = dispatch.saturating_sub(limit);
+            offset += limit;
+        }
     }
 
     unsafe fn submit_vertex_copies(&mut self, instr: DataCopyInstruction) {

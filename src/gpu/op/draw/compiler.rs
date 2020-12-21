@@ -722,8 +722,8 @@ impl Compiler {
                 self.code.push(Asm::WriteModelIndices(idx));
                 self.code.push(Asm::WriteModelVertices(idx));
 
+                // Emit 'start vertex attribute calculations' assembly code
                 if self.vertex_bufs.is_empty() {
-                    // Emit 'start vertex attribute calculations' assembly code
                     self.code.push(Asm::BeginCalcVertexAttrs);
                 }
 
