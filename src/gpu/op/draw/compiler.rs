@@ -552,6 +552,18 @@ impl Compiler {
         let sunlight_count = line_idx - sunlight_idx;
         let line_count = cmds.len() - line_idx;
 
+        debug!("point_light_idx {}", point_light_idx);
+        debug!("rect_light_idx {}", rect_light_idx);
+        debug!("spotlight_idx {}", spotlight_idx);
+        debug!("sunlight_idx {}", sunlight_idx);
+        debug!("line_idx {}", line_idx);
+        debug!("model_count {}", model_count);
+        debug!("point_light_count {}", point_light_count);
+        debug!("rect_light_count {}", rect_light_count);
+        debug!("spotlight_count {}", spotlight_count);
+        debug!("sunlight_count {}", sunlight_count);
+        debug!("line_count {}", line_count);
+
         // Model drawing
         if model_count > 0 {
             self.compile_models(&cmds[0..model_count]);
@@ -618,7 +630,7 @@ impl Compiler {
         Compilation {
             cmds,
             compiler: self,
-            contains_point_light: line_count > 0,
+            contains_point_light: point_light_count > 0,
             contains_rect_light: rect_light_count > 0,
             contains_spotlight: spotlight_count > 0,
             contains_sunlight: sunlight_count > 0,
@@ -1229,11 +1241,11 @@ impl<'a> Iterator for PointLightIter<'a> {
 /// binary search in order to find the whole group.
 #[derive(Clone, Copy)]
 enum SearchIdx {
-    PointLight = 3,
-    RectLight = 5,
-    Spotlight = 7,
-    Sunlight = 9,
-    Line = 11,
+    PointLight = 1,
+    RectLight = 3,
+    Spotlight = 5,
+    Sunlight = 7,
+    Line = 9,
 }
 
 pub struct SunlightIter<'a> {

@@ -361,7 +361,7 @@ impl<'a> FontOp<'a> {
             // Draw each page in the tessellation using those vertices and the correct font page texture index
             let mut base = 0;
             for (page_idx, vertices) in &tessellations {
-                self.write_descriptor_sets(font, *page_idx);
+                self.write_descriptors(font, *page_idx);
 
                 // Submit the vertices for this page of the tessellation
                 let len = vertices.len() as u32;
@@ -583,7 +583,7 @@ impl<'a> FontOp<'a> {
         );
     }
 
-    unsafe fn write_descriptor_sets(&mut self, font: &Font, page_idx: usize) {
+    unsafe fn write_descriptors(&mut self, font: &Font, page_idx: usize) {
         // TODO: Fix, this should be one set per page not the same re-written
         let page = font.pages[page_idx].borrow();
         let page_view = page.as_default_view();

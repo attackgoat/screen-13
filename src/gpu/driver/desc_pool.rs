@@ -14,12 +14,12 @@ use {
 
 pub struct DescriptorPool {
     driver: Driver,
-    max_sets: usize,
+    max_desc_sets: usize,
     ptr: Option<<_Backend as Backend>::DescriptorPool>,
 }
 
 impl DescriptorPool {
-    pub fn new<I>(driver: Driver, max_sets: usize, desc_ranges: I) -> Self
+    pub fn new<I>(driver: Driver, max_desc_sets: usize, desc_ranges: I) -> Self
     where
         I: IntoIterator,
         I::Item: Borrow<DescriptorRangeDesc>,
@@ -27,7 +27,7 @@ impl DescriptorPool {
     {
         Self::with_flags(
             driver,
-            max_sets,
+            max_desc_sets,
             desc_ranges,
             DescriptorPoolCreateFlags::empty(),
         )
@@ -35,7 +35,7 @@ impl DescriptorPool {
 
     pub fn with_flags<I>(
         driver: Driver,
-        max_sets: usize,
+        max_desc_sets: usize,
         desc_ranges: I,
         flags: DescriptorPoolCreateFlags,
     ) -> Self
@@ -47,18 +47,22 @@ impl DescriptorPool {
         let desc_pool = {
             let device = driver.as_ref().borrow();
 
-            unsafe { device.create_descriptor_pool(max_sets, desc_ranges, flags) }.unwrap()
+            unsafe {
+                device
+                    .create_descriptor_pool(max_desc_sets, desc_ranges, flags)
+                    .unwrap()
+            }
         };
 
         Self {
             driver,
-            max_sets,
+            max_desc_sets,
             ptr: Some(desc_pool),
         }
     }
 
-    pub fn max_sets(pool: &Self) -> usize {
-        pool.max_sets
+    pub fn max_desc_sets(pool: &Self) -> usize {
+        pool.max_desc_sets
     }
 }
 

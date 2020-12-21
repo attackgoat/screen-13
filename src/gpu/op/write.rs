@@ -238,7 +238,7 @@ impl<'a> WriteOp<'a> {
                 Mode::Blend((_, mode)) => GraphicsMode::Blend(mode),
                 Mode::Texture => GraphicsMode::Texture,
             };
-            self.graphics.replace(self.pool.graphics_sets(
+            self.graphics.replace(self.pool.graphics_desc_sets(
                 #[cfg(debug_assertions)]
                 &self.name,
                 &self.driver,
@@ -250,7 +250,7 @@ impl<'a> WriteOp<'a> {
         }
 
         unsafe {
-            self.write_descriptor_sets();
+            self.write_descriptors();
             self.submit_begin(render_pass_mode);
 
             let mut set_idx = 0;
@@ -453,7 +453,7 @@ impl<'a> WriteOp<'a> {
         );
     }
 
-    unsafe fn write_descriptor_sets(&mut self) {
+    unsafe fn write_descriptors(&mut self) {
         let dst = self.dst.borrow();
         let dst_view = dst.as_default_view();
         let graphics = self.graphics.as_ref().unwrap();

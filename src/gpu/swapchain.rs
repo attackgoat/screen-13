@@ -99,14 +99,15 @@ impl Swapchain {
             (family, fmt, supported_fmts)
         };
 
+        let desc_sets = 1;
         let render_pass = present(&driver, fmt);
         let graphics = unsafe {
             Graphics::present(
                 #[cfg(debug_assertions)]
                 "Swapchain",
                 &driver,
+                desc_sets,
                 RenderPass::subpass(&render_pass, 0),
-                1,
             )
         };
 

@@ -22,7 +22,7 @@ use {
 pub struct Compute {
     desc_pool: DescriptorPool,
     desc_sets: Vec<<_Backend as Backend>::DescriptorSet>,
-    max_sets: usize,
+    max_desc_sets: usize,
     pipeline: ComputePipeline,
     set_layout: DescriptorSetLayout,
     samplers: Vec<Sampler>,
@@ -36,7 +36,7 @@ impl Compute {
         driver: &Driver,
         spirv: &[u32],
         consts: IR,
-        max_sets: usize,
+        max_desc_sets: usize,
         desc_ranges: ID,
         bindings: I,
         samplers: IS,
@@ -69,18 +69,22 @@ impl Compute {
                 consts,
             )
         };
-
-        let mut desc_pool = DescriptorPool::new(Driver::clone(&driver), max_sets, desc_ranges);
-        let desc_sets = (0..max_sets)
-            .map(|_| unsafe { desc_pool.allocate_set(&*set_layout).unwrap() })
-            .collect();
+        let mut desc_pool = DescriptorPool::new(Driver::clone(&driver), max_desc_sets, desc_ranges);
+        // let desc_sets = (0..max_desc_sets)
+        //     .map(|_| unsafe { desc_pool.allocate_set(&*set_layout).unwrap() })
+        //     .collect();
+        let layouts = (0..max_desc_sets).map(|_| &*set_layout);
+        let mut desc_sets = Vec::with_capacity(max_desc_sets);
+        unsafe {
+            desc_pool.allocate(layouts, &mut desc_sets).unwrap();
+        }
 
         let samplers = samplers.collect();
 
         Compute {
             desc_pool,
             desc_sets,
-            max_sets,
+            max_desc_sets,
             pipeline,
             set_layout,
             samplers,
@@ -88,17 +92,21 @@ impl Compute {
         }
     }
 
-    pub fn calc_vertex_attrs(#[cfg(debug_assertions)] name: &str, driver: &Driver) -> Self {
+    pub fn calc_vertex_attrs(
+        #[cfg(debug_assertions)] name: &str,
+        driver: &Driver,
+        max_desc_sets: usize,
+    ) -> Self {
         Self::new(
             #[cfg(debug_assertions)]
             name,
             driver,
             &spirv::compute::CALC_VERTEX_ATTRS_COMP,
             &[(ShaderStageFlags::COMPUTE, 0..4)],
-            1,
+            max_desc_sets,
             &[
                 descriptor_range_desc(
-                    1,
+                    max_desc_sets,
                     DescriptorType::Buffer {
                         format: BufferDescriptorFormat::Structured {
                             dynamic_offset: false,
@@ -107,7 +115,7 @@ impl Compute {
                     },
                 ),
                 descriptor_range_desc(
-                    1,
+                    max_desc_sets,
                     DescriptorType::Buffer {
                         format: BufferDescriptorFormat::Structured {
                             dynamic_offset: false,
@@ -144,14 +152,18 @@ impl Compute {
         )
     }
 
-    pub fn decode_rgb_rgba(#[cfg(debug_assertions)] name: &str, driver: &Driver) -> Self {
+    pub fn decode_rgb_rgba(
+        #[cfg(debug_assertions)] name: &str,
+        driver: &Driver,
+        max_desc_sets: usize,
+    ) -> Self {
         Self::new(
             #[cfg(debug_assertions)]
             name,
             driver,
             &spirv::compute::DECODE_RGB_RGBA_COMP,
             &[(ShaderStageFlags::COMPUTE, 0..4)],
-            1,
+            max_desc_sets,
             &[
                 descriptor_range_desc(
                     1,
@@ -194,8 +206,8 @@ impl Compute {
         )
     }
 
-    pub fn max_sets(&self) -> usize {
-        self.max_sets
+    pub fn max_desc_sets(&self) -> usize {
+        self.max_desc_sets
     }
 
     pub fn pipeline(&self) -> &ComputePipeline {

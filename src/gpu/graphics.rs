@@ -64,7 +64,7 @@ pub struct Graphics {
     desc_pool: Option<DescriptorPool>,
     desc_sets: Vec<<_Backend as Backend>::DescriptorSet>,
     layout: PipelineLayout,
-    max_sets: usize,
+    max_desc_sets: usize,
     pipeline: GraphicsPipeline,
     samplers: Vec<Sampler>,
     set_layout: Option<DescriptorSetLayout>,
@@ -77,8 +77,8 @@ impl Graphics {
     pub unsafe fn blend_normal(
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
+        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
-        max_sets: usize,
     ) -> Self {
         let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::blend::QUAD_TRANSFORM_VERT);
         let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::blend::NORMAL_FRAG);
@@ -146,7 +146,7 @@ impl Graphics {
         );
         let mut desc_pool = DescriptorPool::new(
             Driver::clone(&driver),
-            max_sets,
+            max_desc_sets,
             once(descriptor_range_desc(
                 2,
                 DescriptorType::Image {
@@ -160,7 +160,7 @@ impl Graphics {
             desc_pool: Some(desc_pool),
             desc_sets,
             layout,
-            max_sets,
+            max_desc_sets,
             pipeline,
             set_layout: Some(set_layout),
             samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
@@ -172,8 +172,8 @@ impl Graphics {
     pub unsafe fn draw_line(
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
+        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
-        max_sets: usize,
     ) -> Self {
         let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::defer::LINE_VERT);
         let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::defer::LINE_FRAG);
@@ -244,7 +244,7 @@ impl Graphics {
         );
         let desc_pool = DescriptorPool::new(
             Driver::clone(&driver),
-            max_sets,
+            max_desc_sets,
             empty::<DescriptorRangeDesc>(),
         );
 
@@ -252,7 +252,7 @@ impl Graphics {
             desc_pool: Some(desc_pool),
             desc_sets: vec![],
             layout,
-            max_sets,
+            max_desc_sets,
             pipeline,
             set_layout: Some(set_layout),
             samplers: vec![],
@@ -264,8 +264,8 @@ impl Graphics {
     pub unsafe fn draw_mesh(
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
+        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
-        max_sets: usize,
     ) -> Self {
         let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::defer::MESH_VERT);
         let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::defer::MESH_FRAG);
@@ -380,28 +380,29 @@ impl Graphics {
         );
         let mut desc_pool = DescriptorPool::new(
             Driver::clone(&driver),
-            max_sets,
+            max_desc_sets,
             once(descriptor_range_desc(
-                3,
+                3 * max_desc_sets,
                 DescriptorType::Image {
                     ty: ImageDescriptorType::Sampled { with_sampler: true },
                 },
             )),
         );
-        let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
+        let desc_sets = (0..max_desc_sets)
+            .map(|_| desc_pool.allocate_set(&*set_layout).unwrap())
+            .collect();
+        let samplers = (0..3)
+            .map(|_| sampler(Driver::clone(&driver), Filter::Nearest))
+            .collect();
 
         Self {
             desc_pool: Some(desc_pool),
             desc_sets,
             layout,
-            max_sets,
+            max_desc_sets,
             pipeline,
             set_layout: Some(set_layout),
-            samplers: vec![
-                sampler(Driver::clone(&driver), Filter::Nearest),
-                sampler(Driver::clone(&driver), Filter::Nearest),
-                sampler(Driver::clone(&driver), Filter::Nearest),
-            ],
+            samplers,
         }
     }
 
@@ -410,8 +411,8 @@ impl Graphics {
     pub unsafe fn draw_point_light(
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
+        _max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
-        _max_sets: usize,
     ) -> Self {
         let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::defer::LIGHT_VERT);
         let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::defer::POINT_LIGHT_FRAG);
@@ -473,7 +474,7 @@ impl Graphics {
             desc_pool: None,
             desc_sets: vec![],
             layout,
-            max_sets: 0,
+            max_desc_sets: 0,
             pipeline,
             set_layout: None,
             samplers: vec![],
@@ -485,8 +486,8 @@ impl Graphics {
     pub unsafe fn draw_rect_light(
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
+        _max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
-        _max_sets: usize,
     ) -> Self {
         let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::defer::LIGHT_VERT);
         let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::defer::POINT_LIGHT_FRAG);
@@ -548,7 +549,7 @@ impl Graphics {
             desc_pool: None,
             desc_sets: vec![],
             layout,
-            max_sets: 0,
+            max_desc_sets: 0,
             pipeline,
             set_layout: None,
             samplers: vec![],
@@ -560,8 +561,8 @@ impl Graphics {
     pub unsafe fn draw_spotlight(
         #[cfg(debug_assertions)] _name: &str,
         _driver: &Driver,
+        _max_desc_sets: usize,
         _subpass: Subpass<'_, _Backend>,
-        _max_sets: usize,
     ) -> Self {
         // let vertex = ShaderModule::new(Driver::clone(&driver), &QUAD_TRANSFORM_VERT);
         // let fragment = ShaderModule::new(Driver::clone(&driver), &SPOTLIGHT_FRAG);
@@ -614,7 +615,7 @@ impl Graphics {
         // );
         // let mut desc_pool = DescriptorPool::new(
         //     Driver::clone(&driver),
-        //     max_sets,
+        //     max_desc_sets,
         //     once(descriptor_range_desc(
         //         1,
         //         DescriptorType::Image {
@@ -628,7 +629,7 @@ impl Graphics {
         //     desc_pool,
         //     desc_sets,
         //     layout,
-        //     max_sets,
+        //     max_desc_sets,
         //     pipeline,
         //     set_layout,
         //     samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
@@ -641,8 +642,8 @@ impl Graphics {
     pub unsafe fn draw_sunlight(
         #[cfg(debug_assertions)] _name: &str,
         _driver: &Driver,
+        _max_desc_sets: usize,
         _subpass: Subpass<'_, _Backend>,
-        _max_sets: usize,
     ) -> Self {
         // let vertex = ShaderModule::new(Driver::clone(&driver), &QUAD_TRANSFORM_VERT);
         // let fragment = ShaderModule::new(Driver::clone(&driver), &SUNLIGHT_FRAG);
@@ -718,7 +719,7 @@ impl Graphics {
         // );
         // let mut desc_pool = DescriptorPool::new(
         //     Driver::clone(&driver),
-        //     max_sets,
+        //     max_desc_sets,
         //     once(descriptor_range_desc(
         //         5,
         //         DescriptorType::Image {
@@ -732,7 +733,7 @@ impl Graphics {
         //     desc_pool,
         //     desc_sets,
         //     layout,
-        //     max_sets,
+        //     max_desc_sets,
         //     pipeline,
         //     set_layout,
         //     samplers: (0..=4)
@@ -745,8 +746,8 @@ impl Graphics {
     pub unsafe fn font(
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
+        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
-        max_sets: usize,
     ) -> Self {
         let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::FONT_VERT);
         let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::FONT_FRAG);
@@ -825,7 +826,7 @@ impl Graphics {
         );
         let mut desc_pool = DescriptorPool::new(
             Driver::clone(&driver),
-            max_sets,
+            max_desc_sets,
             once(descriptor_range_desc(
                 1,
                 DescriptorType::Image {
@@ -839,7 +840,7 @@ impl Graphics {
             desc_pool: Some(desc_pool),
             desc_sets,
             layout,
-            max_sets,
+            max_desc_sets,
             pipeline,
             set_layout: Some(set_layout),
             samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
@@ -849,8 +850,8 @@ impl Graphics {
     pub unsafe fn font_outline(
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
+        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
-        max_sets: usize,
     ) -> Self {
         let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::FONT_VERT);
         let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::FONT_OUTLINE_FRAG);
@@ -929,7 +930,7 @@ impl Graphics {
         );
         let mut desc_pool = DescriptorPool::new(
             Driver::clone(&driver),
-            max_sets,
+            max_desc_sets,
             once(descriptor_range_desc(
                 1,
                 DescriptorType::Image {
@@ -943,7 +944,7 @@ impl Graphics {
             desc_pool: Some(desc_pool),
             desc_sets,
             layout,
-            max_sets,
+            max_desc_sets,
             pipeline,
             set_layout: Some(set_layout),
             samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
@@ -953,8 +954,8 @@ impl Graphics {
     pub unsafe fn gradient(
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
+        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
-        max_sets: usize,
     ) -> Self {
         let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::GRADIENT_VERT);
         let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::GRADIENT_FRAG);
@@ -1009,7 +1010,7 @@ impl Graphics {
         );
         let mut desc_pool = DescriptorPool::new(
             Driver::clone(&driver),
-            max_sets,
+            max_desc_sets,
             once(descriptor_range_desc(
                 1,
                 DescriptorType::Image {
@@ -1023,7 +1024,7 @@ impl Graphics {
             desc_pool: Some(desc_pool),
             desc_sets,
             layout,
-            max_sets,
+            max_desc_sets,
             pipeline,
             set_layout: Some(set_layout),
             samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
@@ -1033,8 +1034,8 @@ impl Graphics {
     pub unsafe fn gradient_transparency(
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
+        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
-        max_sets: usize,
     ) -> Self {
         let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::GRADIENT_VERT);
         let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::GRADIENT_FRAG);
@@ -1089,7 +1090,7 @@ impl Graphics {
         );
         let mut desc_pool = DescriptorPool::new(
             Driver::clone(&driver),
-            max_sets,
+            max_desc_sets,
             once(descriptor_range_desc(
                 1,
                 DescriptorType::Image {
@@ -1103,7 +1104,7 @@ impl Graphics {
             desc_pool: Some(desc_pool),
             desc_sets,
             layout,
-            max_sets,
+            max_desc_sets,
             pipeline,
             set_layout: Some(set_layout),
             samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
@@ -1113,8 +1114,8 @@ impl Graphics {
     pub unsafe fn present(
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
+        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
-        max_sets: usize,
     ) -> Self {
         let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::QUAD_VERT);
         let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::TEXTURE_FRAG);
@@ -1168,7 +1169,7 @@ impl Graphics {
         );
         let mut desc_pool = DescriptorPool::new(
             Driver::clone(&driver),
-            max_sets,
+            max_desc_sets,
             once(descriptor_range_desc(
                 1,
                 DescriptorType::Image {
@@ -1182,7 +1183,7 @@ impl Graphics {
             desc_pool: Some(desc_pool),
             desc_sets,
             layout,
-            max_sets,
+            max_desc_sets,
             pipeline,
             set_layout: Some(set_layout),
             samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
@@ -1192,8 +1193,8 @@ impl Graphics {
     pub unsafe fn texture(
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
+        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
-        max_sets: usize,
     ) -> Self {
         let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::QUAD_TRANSFORM_VERT);
         let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::TEXTURE_FRAG);
@@ -1248,7 +1249,7 @@ impl Graphics {
         );
         let mut desc_pool = DescriptorPool::new(
             Driver::clone(&driver),
-            max_sets,
+            max_desc_sets,
             once(descriptor_range_desc(
                 1,
                 DescriptorType::Image {
@@ -1262,7 +1263,7 @@ impl Graphics {
             desc_pool: Some(desc_pool),
             desc_sets,
             layout,
-            max_sets,
+            max_desc_sets,
             pipeline,
             set_layout: Some(set_layout),
             samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
@@ -1277,8 +1278,8 @@ impl Graphics {
         &self.layout
     }
 
-    pub fn max_sets(&self) -> usize {
-        self.max_sets
+    pub fn max_desc_sets(&self) -> usize {
+        self.max_desc_sets
     }
 
     pub fn pipeline(&self) -> &GraphicsPipeline {

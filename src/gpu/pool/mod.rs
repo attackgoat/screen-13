@@ -128,7 +128,7 @@ impl Pool {
         driver: &Driver,
         mode: ComputeMode,
     ) -> Lease<Compute> {
-        self.compute_sets(
+        self.compute_desc_sets(
             #[cfg(debug_assertions)]
             name,
             driver,
@@ -137,17 +137,17 @@ impl Pool {
         )
     }
 
-    pub(super) fn compute_sets(
+    pub(super) fn compute_desc_sets(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
         mode: ComputeMode,
-        max_sets: usize,
+        max_desc_sets: usize,
     ) -> Lease<Compute> {
         let items = self.computes.entry(mode).or_insert_with(Default::default);
-        let item = if let Some(item) =
-            remove_last_by(&mut items.borrow_mut(), |item| item.max_sets() >= max_sets)
-        {
+        let item = if let Some(item) = remove_last_by(&mut items.borrow_mut(), |item| {
+            item.max_desc_sets() >= max_desc_sets
+        }) {
             item
         } else {
             let ctor = match mode {
@@ -158,6 +158,7 @@ impl Pool {
                 #[cfg(debug_assertions)]
                 name,
                 driver,
+                max_desc_sets,
             )
         };
 
@@ -208,7 +209,7 @@ impl Pool {
     pub(super) fn desc_pool<'i, I>(
         &mut self,
         driver: &Driver,
-        max_sets: usize,
+        max_desc_sets: usize,
         desc_ranges: I,
     ) -> Lease<DescriptorPool>
     where
@@ -226,11 +227,11 @@ impl Pool {
             })
             .or_insert_with(Default::default);
         let item = if let Some(item) = remove_last_by(&mut items.borrow_mut(), |item| {
-            DescriptorPool::max_sets(&item) >= max_sets
+            DescriptorPool::max_desc_sets(&item) >= max_desc_sets
         }) {
             item
         } else {
-            DescriptorPool::new(Driver::clone(driver), max_sets, desc_ranges)
+            DescriptorPool::new(Driver::clone(driver), max_desc_sets, desc_ranges)
         };
 
         Lease::new(item, items)
@@ -268,7 +269,7 @@ impl Pool {
         render_pass_mode: RenderPassMode,
         subpass_idx: u8,
     ) -> Lease<Graphics> {
-        self.graphics_sets(
+        self.graphics_desc_sets(
             #[cfg(debug_assertions)]
             name,
             driver,
@@ -279,14 +280,14 @@ impl Pool {
         )
     }
 
-    pub(super) fn graphics_sets(
+    pub(super) fn graphics_desc_sets(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
         graphics_mode: GraphicsMode,
         render_pass_mode: RenderPassMode,
         subpass_idx: u8,
-        max_sets: usize,
+        max_desc_sets: usize,
     ) -> Lease<Graphics> {
         {
             let items = self
@@ -297,9 +298,9 @@ impl Pool {
                     subpass_idx,
                 })
                 .or_insert_with(Default::default);
-            if let Some(item) =
-                remove_last_by(&mut items.borrow_mut(), |item| item.max_sets() >= max_sets)
-            {
+            if let Some(item) = remove_last_by(&mut items.borrow_mut(), |item| {
+                item.max_desc_sets() >= max_desc_sets
+            }) {
                 return Lease::new(item, items);
             }
         }
@@ -323,8 +324,8 @@ impl Pool {
                 #[cfg(debug_assertions)]
                 name,
                 driver,
+                max_desc_sets,
                 RenderPass::subpass(self.render_pass(driver, render_pass_mode), subpass_idx),
-                max_sets,
             )
         };
 

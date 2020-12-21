@@ -228,7 +228,7 @@ impl<'a> DrawOp<'a> {
                 let materials = instrs.materials();
                 let desc_sets = materials.len();
                 if desc_sets > 0 {
-                    let graphics = self.pool.graphics_sets(
+                    let graphics = self.pool.graphics_desc_sets(
                         #[cfg(debug_assertions)]
                         &self.name,
                         &self.driver,
@@ -247,7 +247,7 @@ impl<'a> DrawOp<'a> {
                 }
 
                 if instrs.contains_point_light() {
-                    self.graphics_point_light = Some(self.pool.graphics_sets(
+                    self.graphics_point_light = Some(self.pool.graphics_desc_sets(
                         #[cfg(debug_assertions)]
                         &self.name,
                         &self.driver,
@@ -259,7 +259,7 @@ impl<'a> DrawOp<'a> {
                 }
 
                 if instrs.contains_rect_light() {
-                    self.graphics_point_light = Some(self.pool.graphics_sets(
+                    self.graphics_rect_light = Some(self.pool.graphics_desc_sets(
                         #[cfg(debug_assertions)]
                         &self.name,
                         &self.driver,
@@ -271,7 +271,7 @@ impl<'a> DrawOp<'a> {
                 }
 
                 if instrs.contains_spotlight() {
-                    self.graphics_point_light = Some(self.pool.graphics_sets(
+                    self.graphics_spotlight = Some(self.pool.graphics_desc_sets(
                         #[cfg(debug_assertions)]
                         &self.name,
                         &self.driver,
@@ -283,7 +283,7 @@ impl<'a> DrawOp<'a> {
                 }
 
                 if instrs.contains_sunlight() {
-                    self.graphics_point_light = Some(self.pool.graphics_sets(
+                    self.graphics_sunlight = Some(self.pool.graphics_desc_sets(
                         #[cfg(debug_assertions)]
                         &self.name,
                         &self.driver,
@@ -297,7 +297,7 @@ impl<'a> DrawOp<'a> {
                 let vertex_bufs = instrs.vertex_bufs();
                 let desc_sets = vertex_bufs.len();
                 if desc_sets > 0 {
-                    let compute = self.pool.compute_sets(
+                    let compute = self.pool.compute_desc_sets(
                         #[cfg(debug_assertions)]
                         &self.name,
                         &self.driver,
