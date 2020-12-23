@@ -293,33 +293,21 @@ impl Device {
         &device.phys
     }
 
-    pub fn mem_ty(device: &Self, mask: u32, properties: Properties) -> MemoryTypeId {
+    pub fn mem_ty(device: &Self, mask: u32, props: Properties) -> Option<MemoryTypeId> {
         //debug!("type_mask={} properties={:?}", type_mask, properties);
         device
             .mem
             .memory_types
             .iter()
             .enumerate()
-            .position(|(id, mem_ty)| {
+            .position(|(idx, mem_ty)| {
                 //debug!("Mem ID {} type={:?}", id, mem_type);
                 // type_mask is a bit field where each bit represents a memory type. If the bit is set
                 // to 1 it means we can use that type for our buffer. So this code finds the first
                 // memory type that has a `1` (or, is allowed), and is visible to the CPU.
-                mask & (1 << id) != 0 && mem_ty.properties.contains(properties)
+                mask & (1 << idx) != 0 && mem_ty.properties.contains(props)
             })
-            .unwrap()
-            .into()
-        /*
-        for index in 0..self.mem.memory_types.len() {
-            if type_mask & (1 << index) > 0 {
-                let mem_type = &self.mem.memory_types[index];
-                if properties == properties & mem_type.properties {
-                    return MemoryTypeId(index);
-                }
-            }
-        }
-
-        panic!("Memory type not found");*/
+            .map(|idx| MemoryTypeId(idx))
     }
 
     pub fn queue_family(device: &Self) -> QueueFamilyId {

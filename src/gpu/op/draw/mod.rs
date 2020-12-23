@@ -16,7 +16,7 @@ use {
         geom::{LINE_STRIDE, POINT_LIGHT, RECT_LIGHT_STRIDE, SPOTLIGHT_STRIDE},
         geom_buf::GeometryBuffer,
         instruction::{
-            DataComputeInstruction, DataCopyInstruction, DataTransferInstruction,
+            DataComputeInstruction, DataCopyInstruction, DataTransferInstruction,VertexAttrsDescriptorsInstruction,
             DataWriteInstruction, DataWriteRefInstruction, Instruction, LightBindInstruction,
             LineDrawInstruction, MeshBindInstruction, MeshDrawInstruction,
             PointLightDrawInstruction, RectLightDrawInstruction, SpotlightDrawInstruction,
@@ -36,6 +36,7 @@ use {
             BitmapRef, Compute, ComputeMode, DrawRenderPassMode, Graphics, GraphicsMode,
             RenderPassMode, Texture2d, TextureRef,
         },
+        pak::IndexType,
         math::{Coord, Mat4, Vec2, Vec3},
     },
     gfx_hal::{
@@ -78,7 +79,8 @@ impl AsRef<[u32; 1]> for CalcVertexAttrsConsts {
 pub struct DrawOp<'a> {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
-    compute_vertex_attrs: Option<Lease<Compute>>,
+    compute_u32_vertex_attrs: Option<Lease<Compute>>,
+    compute_u16_vertex_attrs: Option<Lease<Compute>>,
     driver: Driver,
     dst: Texture2d,
     dst_preserve: bool,
@@ -178,7 +180,8 @@ impl<'a> DrawOp<'a> {
         Self {
             cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
             cmd_pool,
-            compute_vertex_attrs: None,
+            compute_u16_vertex_attrs: None,
+            compute_u32_vertex_attrs: None,
             driver,
             dst: TextureRef::clone(dst),
             dst_preserve: false,
@@ -225,8 +228,9 @@ impl<'a> DrawOp<'a> {
 
             // Setup compute and graphics pipelines and with their descriptor sets
             {
-                let materials = instrs.materials();
-                let desc_sets = materials.len();
+                // Material descriptors for PBR rendering (Color+Normal+Metal/Rough)
+                let descriptors = instrs.materials();
+                let desc_sets = descriptors.len();
                 if desc_sets > 0 {
                     let graphics = self.pool.graphics_desc_sets(
                         #[cfg(debug_assertions)]
@@ -240,7 +244,7 @@ impl<'a> DrawOp<'a> {
                     let device = self.driver.borrow();
 
                     unsafe {
-                        Self::write_material_descriptors(&device, &graphics, materials);
+                        Self::write_material_descriptors(&device, &graphics, descriptors);
                     }
 
                     self.graphics_mesh = Some(graphics);
@@ -294,23 +298,44 @@ impl<'a> DrawOp<'a> {
                     ));
                 }
 
-                let vertex_bufs = instrs.vertex_bufs();
-                let desc_sets = vertex_bufs.len();
+                // Buffer descriptors for calculation of u16-indexed vertex attributes
+                let descriptors = instrs.u16_vertex_bufs();
+                let desc_sets = descriptors.len();
                 if desc_sets > 0 {
                     let compute = self.pool.compute_desc_sets(
                         #[cfg(debug_assertions)]
                         &self.name,
                         &self.driver,
-                        ComputeMode::CalculateVertexAttributes,
+                        ComputeMode::CalcVertexAttrs(IndexType::U16),
                         desc_sets,
                     );
                     let device = self.driver.borrow();
 
                     unsafe {
-                        Self::write_vertex_descriptors(&device, &compute, vertex_bufs);
+                        Self::write_vertex_descriptors(&device, &compute, descriptors);
                     }
 
-                    self.compute_vertex_attrs = Some(compute);
+                    self.compute_u16_vertex_attrs = Some(compute);
+                }
+
+                // Buffer descriptors for calculation of u32-indexed vertex attributes
+                let descriptors = instrs.u32_vertex_bufs();
+                let desc_sets = descriptors.len();
+                if desc_sets > 0 {
+                    let compute = self.pool.compute_desc_sets(
+                        #[cfg(debug_assertions)]
+                        &self.name,
+                        &self.driver,
+                        ComputeMode::CalcVertexAttrs(IndexType::U32),
+                        desc_sets,
+                    );
+                    let device = self.driver.borrow();
+
+                    unsafe {
+                        Self::write_vertex_descriptors(&device, &compute, descriptors);
+                    }
+
+                    self.compute_u32_vertex_attrs = Some(compute);
                 }
             }
 
@@ -351,12 +376,12 @@ impl<'a> DrawOp<'a> {
                             }
                             Instruction::SunlightBegin => self.submit_sunlight_begin(&viewport),
                             Instruction::SunlightDraw(instr) => self.submit_sunlights(instr),
-                            Instruction::VertexAttrsBegin => self.submit_vertex_attrs_begin(),
+                            Instruction::VertexAttrsBegin(idx_ty) => self.submit_vertex_attrs_begin(idx_ty),
                             Instruction::VertexAttrsCalc(instr) => {
                                 self.submit_vertex_attrs_calc(instr)
                             }
-                            Instruction::VertexAttrsDescriptors(set) => {
-                                self.submit_vertex_attrs_descriptors(set)
+                            Instruction::VertexAttrsDescriptors(instr) => {
+                                self.submit_vertex_attrs_descriptors(instr)
                             }
                             Instruction::VertexCopy(instr) => self.submit_vertex_copies(instr),
                             Instruction::VertexWrite(instr) => self.submit_vertex_write(instr),
@@ -375,7 +400,8 @@ impl<'a> DrawOp<'a> {
             cmd_buf: self.cmd_buf,
             cmd_pool: self.cmd_pool,
             compiler,
-            compute_vertex_attrs: self.compute_vertex_attrs,
+            compute_u16_vertex_attrs: self.compute_u16_vertex_attrs,
+            compute_u32_vertex_attrs: self.compute_u32_vertex_attrs,
             dst: self.dst,
             fence: self.fence,
             frame_buf: self.frame_buf,
@@ -390,6 +416,8 @@ impl<'a> DrawOp<'a> {
     }
 
     unsafe fn submit_begin(&mut self, viewport: &Viewport) {
+        trace!("submit_begin");
+
         let mut dst = self.dst.borrow_mut();
         let mut color_metal = self.geom_buf.color_metal.borrow_mut();
         let mut normal_rough = self.geom_buf.normal_rough.borrow_mut();
@@ -492,6 +520,8 @@ impl<'a> DrawOp<'a> {
     }
 
     unsafe fn submit_data_transfer(&mut self, instr: DataTransferInstruction) {
+        trace!("submit_data_transfer");
+
         instr.src.transfer_range(
             &mut self.cmd_buf,
             instr.dst,
@@ -503,6 +533,8 @@ impl<'a> DrawOp<'a> {
     }
 
     unsafe fn submit_index_write_ref(&mut self, mut instr: DataWriteRefInstruction) {
+        trace!("submit_index_write_ref");
+
         instr.buf.write_range(
             &mut self.cmd_buf,
             PipelineStage::VERTEX_INPUT, // TODO: Should be DRAW_INDIRECT?
@@ -517,6 +549,8 @@ impl<'a> DrawOp<'a> {
         viewport: &Viewport,
         transform: Mat4,
     ) {
+        trace!("submit_lines");
+
         let render_pass_mode = RenderPassMode::Draw(self.mode);
         let graphics = self.pool.graphics(
             #[cfg(debug_assertions)]
@@ -552,10 +586,14 @@ impl<'a> DrawOp<'a> {
     }
 
     unsafe fn submit_light_begin(&mut self) {
+        trace!("submit_light_begin");
+
         self.cmd_buf.next_subpass(SubpassContents::Inline);
     }
 
     unsafe fn submit_light_bind(&mut self, instr: LightBindInstruction) {
+        trace!("submit_light_bind");
+
         self.cmd_buf.bind_vertex_buffers(
             0,
             once((
@@ -569,6 +607,8 @@ impl<'a> DrawOp<'a> {
     }
 
     unsafe fn submit_mesh_begin(&mut self, viewport: &Viewport) {
+        trace!("submit_mesh_begin");
+
         let graphics = self.graphics_mesh.as_ref().unwrap();
 
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
@@ -577,6 +617,8 @@ impl<'a> DrawOp<'a> {
     }
 
     unsafe fn submit_mesh_bind(&mut self, instr: MeshBindInstruction<'_>) {
+        trace!("submit_mesh_bind");
+
         self.cmd_buf.bind_index_buffer(IndexBufferView {
             buffer: instr.idx_buf.as_ref(),
             index_type: instr.idx_ty.into(),
@@ -591,13 +633,15 @@ impl<'a> DrawOp<'a> {
                 instr.vertex_buf.as_ref(),
                 SubRange {
                     offset: 0,
-                    size: Some(instr.idx_buf_len),
+                    size: Some(instr.vertex_buf_len),
                 },
             )),
         );
     }
 
     unsafe fn submit_mesh_descriptors(&mut self, desc_set: usize) {
+        trace!("submit_mesh_descriptors");
+
         let graphics = self.graphics_mesh.as_ref().unwrap();
         let desc_set = graphics.desc_set(desc_set);
         let layout = graphics.layout();
@@ -606,6 +650,8 @@ impl<'a> DrawOp<'a> {
     }
 
     unsafe fn submit_mesh(&mut self, instr: MeshDrawInstruction, view_proj: Mat4) {
+        trace!("submit_mesh");
+
         let graphics = self.graphics_mesh.as_ref().unwrap();
         let layout = graphics.layout();
         let world_view_proj = view_proj * instr.transform;
@@ -634,6 +680,8 @@ impl<'a> DrawOp<'a> {
         viewport: &Viewport,
         view_proj: Mat4,
     ) {
+        trace!("submit_point_lights");
+
         const POINT_LIGHT_DRAW_COUNT: u32 = POINT_LIGHT.len() as u32 / 12;
 
         let graphics = self.graphics_point_light.as_ref().unwrap();
@@ -676,6 +724,8 @@ impl<'a> DrawOp<'a> {
     }
 
     unsafe fn submit_rect_light_begin(&mut self, viewport: &Viewport) {
+        trace!("submit_rect_light_begin");
+
         let graphics = self.graphics_rect_light.as_ref().unwrap();
 
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
@@ -684,6 +734,8 @@ impl<'a> DrawOp<'a> {
     }
 
     unsafe fn submit_rect_light(&mut self, instr: RectLightDrawInstruction, view_proj: Mat4) {
+        trace!("submit_rect_light");
+
         const RECT_LIGHT_DRAW_COUNT: u32 = RECT_LIGHT_STRIDE as u32 / 12;
 
         let graphics = self.graphics_rect_light.as_ref().unwrap();
@@ -709,6 +761,8 @@ impl<'a> DrawOp<'a> {
     }
 
     unsafe fn submit_spotlight_begin(&mut self, viewport: &Viewport) {
+        trace!("submit_spotlight_begin");
+
         let graphics = self.graphics_spotlight.as_ref().unwrap();
 
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
@@ -717,6 +771,8 @@ impl<'a> DrawOp<'a> {
     }
 
     unsafe fn submit_spotlight(&mut self, instr: SpotlightDrawInstruction, view_proj: Mat4) {
+        trace!("submit_spotlight");
+
         const SPOTLIGHT_DRAW_COUNT: u32 = SPOTLIGHT_STRIDE as u32 / 12;
 
         let graphics = self.graphics_spotlight.as_ref().unwrap();
@@ -752,6 +808,8 @@ impl<'a> DrawOp<'a> {
     }
 
     unsafe fn submit_sunlight_begin(&mut self, viewport: &Viewport) {
+        trace!("submit_sunlight_begin");
+
         let graphics = self.graphics_sunlight.as_ref().unwrap();
 
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
@@ -858,16 +916,26 @@ impl<'a> DrawOp<'a> {
         }
     }
 
-    unsafe fn submit_vertex_attrs_begin(&mut self) {
-        let compute = self.compute_vertex_attrs.as_ref().unwrap();
+    unsafe fn submit_vertex_attrs_begin(&mut self, idx_ty: IndexType) {
+        trace!("submit_vertex_attrs_begin");
+
+        let compute = match idx_ty {
+            IndexType::U16 => self.compute_u16_vertex_attrs.as_ref(),
+            IndexType::U32 => self.compute_u32_vertex_attrs.as_ref(),
+        }.unwrap();
         let pipeline = compute.pipeline();
 
         self.cmd_buf.bind_compute_pipeline(pipeline);
     }
 
-    unsafe fn submit_vertex_attrs_descriptors(&mut self, desc_set: usize) {
-        let compute = self.compute_vertex_attrs.as_ref().unwrap();
-        let desc_set = compute.desc_set(desc_set);
+    unsafe fn submit_vertex_attrs_descriptors(&mut self, instr: VertexAttrsDescriptorsInstruction) {
+        trace!("submit_vertex_attrs_descriptors");
+
+        let compute = match instr.idx_ty {
+            IndexType::U16 => self.compute_u16_vertex_attrs.as_ref(),
+            IndexType::U32 => self.compute_u32_vertex_attrs.as_ref(),
+        }.unwrap();
+        let desc_set = compute.desc_set(instr.desc_set);
         let pipeline = compute.pipeline();
         let layout = ComputePipeline::layout(&pipeline);
 
@@ -875,29 +943,34 @@ impl<'a> DrawOp<'a> {
     }
 
     unsafe fn submit_vertex_attrs_calc(&mut self, instr: DataComputeInstruction) {
+        trace!("submit_vertex_attrs_calc");
+
         let device = self.driver.borrow();
         let limit = Device::gpu(&device).limits().max_compute_work_group_size[0];
-        let compute = self.compute_vertex_attrs.as_ref().unwrap();
+
+        let compute = match instr.idx_ty {
+            IndexType::U16 => self.compute_u16_vertex_attrs.as_ref(),
+            IndexType::U32 => self.compute_u32_vertex_attrs.as_ref(),
+        }.unwrap();
         let pipeline = compute.pipeline();
         let layout = ComputePipeline::layout(&pipeline);
 
         // We may be limited by the count of dispatches we issue; so use a loop
         // to dispatch as many times as needed
-        let mut dispatch = instr.dispatch;
-        let mut offset = instr.offset;
-        while dispatch > 0 {
-            self.cmd_buf.push_compute_constants(
-                layout,
-                0,
-                CalcVertexAttrsConsts { offset }.as_ref(),
-            );
-            self.cmd_buf.dispatch([dispatch.max(limit), 1, 1]);
-            dispatch = dispatch.saturating_sub(limit);
-            offset += limit;
-        }
+        self.cmd_buf.push_compute_constants(
+            layout,
+            0,
+            CalcVertexAttrsConsts {
+                offset: instr.offset,
+            }
+            .as_ref(),
+        );
+        self.cmd_buf.dispatch([instr.dispatch, 1, 1]);
     }
 
     unsafe fn submit_vertex_copies(&mut self, instr: DataCopyInstruction) {
+        trace!("submit_vertex_copies");
+
         instr.buf.copy_ranges(
             &mut self.cmd_buf,
             PipelineStage::VERTEX_INPUT,
@@ -907,6 +980,8 @@ impl<'a> DrawOp<'a> {
     }
 
     unsafe fn submit_vertex_write(&mut self, instr: DataWriteInstruction) {
+        trace!("submit_vertex_write");
+
         instr.buf.write_range(
             &mut self.cmd_buf,
             PipelineStage::VERTEX_INPUT,
@@ -916,15 +991,19 @@ impl<'a> DrawOp<'a> {
     }
 
     unsafe fn submit_vertex_write_ref(&mut self, mut instr: DataWriteRefInstruction) {
+        trace!("submit_vertex_write_ref");
+
         instr.buf.write_range(
             &mut self.cmd_buf,
-            PipelineStage::VERTEX_INPUT,
-            BufferAccess::VERTEX_BUFFER_READ,
+            PipelineStage::COMPUTE_SHADER,
+            BufferAccess::SHADER_READ,
             instr.range,
         );
     }
 
     unsafe fn submit_finish(&mut self) {
+        trace!("submit_finish");
+
         let mut device = self.driver.borrow_mut();
         let mut dst = self.dst.borrow_mut();
         let mut output = self.geom_buf.output.borrow_mut();
@@ -1035,6 +1114,18 @@ impl<'a> DrawOp<'a> {
                     binding: 0,
                     array_offset: 0,
                     descriptors: once(Descriptor::Buffer(
+                        vertex_buf.idx.as_ref(),
+                        SubRange {
+                            offset: 0,
+                            size: Some(vertex_buf.idx_len),
+                        },
+                    )),
+                },
+                DescriptorSetWrite {
+                    set,
+                    binding: 1,
+                    array_offset: 0,
+                    descriptors: once(Descriptor::Buffer(
                         vertex_buf.src.as_ref(),
                         SubRange {
                             offset: 0,
@@ -1044,13 +1135,25 @@ impl<'a> DrawOp<'a> {
                 },
                 DescriptorSetWrite {
                     set,
-                    binding: 1,
+                    binding: 2,
                     array_offset: 0,
                     descriptors: once(Descriptor::Buffer(
                         vertex_buf.dst.as_ref(),
                         SubRange {
                             offset: 0,
                             size: Some(vertex_buf.dst_len),
+                        },
+                    )),
+                },
+                DescriptorSetWrite {
+                    set,
+                    binding: 3,
+                    array_offset: 0,
+                    descriptors: once(Descriptor::Buffer(
+                        vertex_buf.write_mask.as_ref(),
+                        SubRange {
+                            offset: 0,
+                            size: Some(vertex_buf.write_mask_len),
                         },
                     )),
                 },
@@ -1063,7 +1166,8 @@ pub struct DrawOpSubmission {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
     compiler: Lease<Compiler>,
-    compute_vertex_attrs: Option<Lease<Compute>>,
+    compute_u16_vertex_attrs: Option<Lease<Compute>>,
+    compute_u32_vertex_attrs: Option<Lease<Compute>>,
     dst: Texture2d,
     fence: Lease<Fence>,
     frame_buf: Framebuffer2d,

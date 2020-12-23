@@ -1,32 +1,4 @@
-// NOTE: This program is intended to help "inflate" model vertex buffers which have been read from
-// disk or the network. We do not store normal or tangent in the asset .pak file, so these
-// attributes must be reconstructed at runtime; prior to rendering use.
-
-#version 450
-
-const uint DST_STRIDE = 36;
-const uint SRC_STRIDE = 15;
-
-struct Vertex {
-    vec3 position;
-    vec2 texcoord;
-};
-
-layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
-
-layout(push_constant) uniform PushConstants {
-    layout(offset = 0) uint offset;
-} push_constants;
-
-layout(set = 0, binding = 0, std430) restrict readonly buffer SrcBuffer {
-    float src_buf[];
-};
-
-layout(set = 0, binding = 1, std430) restrict writeonly buffer DstBuffer {
-    float dst_buf[];
-};
-
-Vertex read(uint idx) {
+Vertex read_vertex(uint idx) {
     float x = src_buf[idx];
     float y = src_buf[++idx];
     float z = src_buf[++idx];
@@ -38,7 +10,7 @@ Vertex read(uint idx) {
     return Vertex(position, texcoord);
 }
 
-void write(Vertex vertex, vec3 normal, vec4 tangent, uint idx) {
+void write_vertex(Vertex vertex, vec3 normal, vec4 tangent, uint idx) {
     dst_buf[idx] = vertex.position.x;
     dst_buf[++idx] = vertex.position.y;
     dst_buf[++idx] = vertex.position.z;
@@ -53,12 +25,14 @@ void write(Vertex vertex, vec3 normal, vec4 tangent, uint idx) {
     dst_buf[++idx] = vertex.texcoord.y;
 }
 
-void main() {
-    // Read three vertices of a triangle from the source
-    uint src_idx = push_constants.offset + gl_GlobalInvocationID.x * SRC_STRIDE;
-    Vertex a = read(src_idx);
-    Vertex b = read(src_idx + 5);
-    Vertex c = read(src_idx + 10);
+void calc_vertex_attrs() {
+    uint idx = push_constants.offset + gl_GlobalInvocationID.x;
+    uint a_idx = read_idx(idx);
+    uint b_idx = read_idx(++idx);
+    uint c_idx = read_idx(++idx);
+    Vertex a = read_vertex(a_idx);
+    Vertex b = read_vertex(b_idx);
+    Vertex c = read_vertex(c_idx);
 
     // Calculate the normal of the front face of this triangle
     vec3 ba = b.position - a.position;
@@ -80,9 +54,20 @@ void main() {
         dot(cross(normal, s_dir), t_dir) >= 0 ? 1 : -1
     );
 
-    // Write the (larger) output vertices for one triangle
-    uint dst_idx = push_constants.offset + gl_GlobalInvocationID.x * DST_STRIDE;
-    write(a, normal, tangent, dst_idx);
-    write(b, normal, tangent, dst_idx + 12);
-    write(c, normal, tangent, dst_idx + 24);
+    // The write mask tells us if we are allowed to write these vertices
+    uint a_mask = 1 & write_mask[a_idx >> 5] >> a_idx % 32;
+    uint b_mask = 1 & write_mask[b_idx >> 5] >> b_idx % 32;
+    uint c_mask = 1 & write_mask[c_idx >> 5] >> c_idx % 32;
+
+    if (a_mask != 0) {
+        write_vertex(a, normal, tangent, a_idx);
+    }
+
+    if (b_mask != 0) {
+        write_vertex(b, normal, tangent, b_idx);
+    }
+
+    if (c_mask != 0) {
+        write_vertex(c, normal, tangent, c_idx);
+    }
 }

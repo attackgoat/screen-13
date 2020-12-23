@@ -339,13 +339,13 @@ impl Graphics {
                         location: 3,
                         element: Element {
                             format: Format::Rg32Sfloat,
-                            offset: 56,
+                            offset: 40,
                         },
                     },
                 ],
                 buffers: &[VertexBufferDesc {
                     binding: 0,
-                    stride: 64,
+                    stride: 48,
                     rate: VertexInputRate::Vertex,
                 }],
                 geometry: None,
@@ -388,9 +388,10 @@ impl Graphics {
                 },
             )),
         );
-        let desc_sets = (0..max_desc_sets)
-            .map(|_| desc_pool.allocate_set(&*set_layout).unwrap())
-            .collect();
+        let layouts = (0..max_desc_sets).map(|_| &*set_layout);
+        let mut desc_sets = Vec::with_capacity(max_desc_sets);
+        desc_pool.allocate(layouts, &mut desc_sets).unwrap();
+
         let samplers = (0..3)
             .map(|_| sampler(Driver::clone(&driver), Filter::Nearest))
             .collect();

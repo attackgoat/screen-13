@@ -123,7 +123,7 @@ impl Default for Compression {
     }
 }
 
-#[derive(Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum IndexType {
     U16,
     U32,

@@ -136,7 +136,7 @@ impl BitmapOp {
             // Format conversion: We will use a compute shader to convert buffer-to-image
             let width = bitmap.dims().x;
             let surface_ty = texture_fmt.base_format().0;
-            let (mode, dispatch_count, pixel_buf_stride) = match bitmap.format() {
+            let (mode, dispatch, pixel_buf_stride) = match bitmap.format() {
                 // BitmapFormat::R => match surface_ty {
                 //     SurfaceType::R8_G8,
                 //     SurfaceType::R8_G8_B8,
@@ -174,7 +174,7 @@ impl BitmapOp {
 
             Some(ComputeDispatch {
                 compute,
-                dispatch_count,
+                dispatch,
                 pixel_buf_stride,
             })
         };
@@ -306,7 +306,7 @@ impl BitmapOp {
             .as_ref(),
         );
         bind_compute_descriptor_set(&mut self.cmd_buf, layout, desc_set);
-        self.cmd_buf.dispatch([conv_fmt.dispatch_count, dims.y, 1]);
+        self.cmd_buf.dispatch([conv_fmt.dispatch, dims.y, 1]);
     }
 
     unsafe fn submit_copy(&mut self) {
@@ -366,13 +366,13 @@ impl BitmapOp {
 
     unsafe fn write_descriptors(&mut self) {
         let conv_fmt = self.conv_fmt.as_ref().unwrap();
-
+        let set = conv_fmt.compute.desc_set(0);
         let texture = self.texture.borrow();
         let texture_view = texture
             .as_default_view_format(change_channel_type(texture.format(), ChannelType::Uint));
         self.driver.borrow().write_descriptor_sets(vec![
             DescriptorSetWrite {
-                set: conv_fmt.compute.desc_set(0),
+                set,
                 binding: 0,
                 array_offset: 0,
                 descriptors: once(Descriptor::Buffer(
@@ -384,7 +384,7 @@ impl BitmapOp {
                 )),
             },
             DescriptorSetWrite {
-                set: conv_fmt.compute.desc_set(0),
+                set,
                 binding: 1,
                 array_offset: 0,
                 descriptors: once(Descriptor::Image(texture_view.as_ref(), Layout::General)), // TODO ????? Shouldn't this not be general?
@@ -395,7 +395,7 @@ impl BitmapOp {
 
 struct ComputeDispatch {
     compute: Lease<Compute>,
-    dispatch_count: u32,
+    dispatch: u32,
     pixel_buf_stride: u32,
 }
 

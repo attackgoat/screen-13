@@ -58,7 +58,7 @@ pub struct Model {
     idx_buf_len: u64,
     idx_ty: IndexType,
     meshes: Vec<Mesh>,
-    staging_buf: RefCell<Option<(Lease<Data>, u64)>>,
+    staging: RefCell<Option<(Lease<Data>, u64, Lease<Data>)>>,
     vertex_buf: RefCell<Lease<Data>>,
     vertex_buf_len: u64,
 }
@@ -69,11 +69,11 @@ impl Model {
         meshes: Vec<Mesh>,
         idx_ty: IndexType,
         idx: (Lease<Data>, u64),
-        staging: (Lease<Data>, u64),
+        staging: (Lease<Data>, u64, Lease<Data>),
         vertex: (Lease<Data>, u64),
     ) -> Self {
         let (idx_buf, idx_buf_len) = idx;
-        let (staging_buf, staging_buf_len) = staging;
+        let (staging_buf, staging_buf_len, write_mask) = staging;
         let (vertex_buf, vertex_buf_len) = vertex;
 
         Self {
@@ -81,7 +81,7 @@ impl Model {
             idx_buf_len,
             idx_ty,
             meshes,
-            staging_buf: RefCell::new(Some((staging_buf, staging_buf_len))),
+            staging: RefCell::new(Some((staging_buf, staging_buf_len, write_mask))),
             vertex_buf: RefCell::new(vertex_buf),
             vertex_buf_len,
         }
@@ -158,8 +158,8 @@ impl Model {
     }
 
     /// You must submit writes for our buffers if you call this.
-    pub(super) fn take_pending_writes(&self) -> Option<(Lease<Data>, u64)> {
-        self.staging_buf.borrow_mut().take()
+    pub(super) fn take_pending_writes(&self) -> Option<(Lease<Data>, u64, Lease<Data>)> {
+        self.staging.borrow_mut().take()
     }
 
     pub fn pose_bounds(&self, _pose: &Pose) -> Sphere {

@@ -10,7 +10,7 @@ use {
         BlendMode, Compute, ComputeMode, Data, Graphics, GraphicsMode, RenderPassMode, Texture,
         TextureRef,
     },
-    crate::math::Extent,
+    crate::{math::Extent, pak::IndexType},
     gfx_hal::{
         buffer::Usage as BufferUsage,
         format::Format,
@@ -151,7 +151,8 @@ impl Pool {
             item
         } else {
             let ctor = match mode {
-                ComputeMode::CalculateVertexAttributes => Compute::calc_vertex_attrs,
+                ComputeMode::CalcVertexAttrs(IndexType::U16) => Compute::calc_vertex_attrs_u16,
+                ComputeMode::CalcVertexAttrs(IndexType::U32) => Compute::calc_vertex_attrs_u32,
                 ComputeMode::DecodeRgbRgba => Compute::decode_rgb_rgba,
             };
             ctor(

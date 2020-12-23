@@ -1,7 +1,8 @@
 #version 450
 
-layout(push_constant) uniform PushConstants { layout(offset = 0) mat4x4 proj; }
-push_constants;
+layout(push_constant) uniform PushConstants {
+    layout(offset = 0) mat4x4 proj;
+} push_constants;
 
 layout(location = 0) in vec2 position_in;
 layout(location = 1) in vec2 texcoord_in;

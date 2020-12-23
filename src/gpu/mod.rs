@@ -41,7 +41,7 @@ use {
     },
     crate::{
         math::Extent,
-        pak::{AnimationId, BitmapId, ModelId, Pak},
+        pak::{AnimationId,IndexType, BitmapId, ModelId, Pak},
         Error,
     },
     gfx_hal::{
@@ -146,7 +146,7 @@ struct ColorRenderPassMode {
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
 enum ComputeMode {
-    CalculateVertexAttributes,
+    CalcVertexAttrs(IndexType),
     DecodeRgbRgba,
 }
 
@@ -326,7 +326,7 @@ impl Gpu {
                 name,
                 &self.driver,
                 idx_buf_len,
-                Usage::INDEX,
+                Usage::INDEX | Usage::STORAGE,
             );
 
             // Fill the index buffer
@@ -371,14 +371,22 @@ impl Gpu {
             name,
             &self.driver,
             vertex_buf_len,
-            Usage::VERTEX,
+            Usage::STORAGE | Usage::VERTEX,
+        );
+
+        let write_mask = pool.data_usage(
+            #[cfg(debug_assertions)]
+            name,
+            &self.driver,
+            vertex_buf_len,
+            Usage::STORAGE | Usage::VERTEX,
         );
 
         Model::new(
             meshes,
             idx_ty,
             (idx_buf, idx_buf_len),
-            (staging_buf, staging_buf_len),
+            (staging_buf, staging_buf_len, write_mask),
             (vertex_buf, vertex_buf_len),
         )
     }

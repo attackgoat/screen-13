@@ -1,13 +1,12 @@
 use {
-    super::{Device, Driver, Memory},
-    gfx_hal::{buffer::Usage, device::Device as _, memory::Properties, Backend},
+    super::Driver,
+    gfx_hal::{buffer::Usage, device::Device as _, Backend},
     gfx_impl::Backend as _Backend,
     std::ops::{Deref, DerefMut},
 };
 
 pub struct Buffer {
     driver: Driver,
-    mem: Memory,
     ptr: Option<<_Backend as Backend>::Buffer>,
 }
 
@@ -16,36 +15,30 @@ impl Buffer {
         #[cfg(debug_assertions)] name: &str,
         driver: Driver,
         usage: Usage,
-        properties: Properties,
         len: u64,
     ) -> Self {
-        let (buffer, mem) = {
+        let buffer = {
             let device = driver.borrow();
-            let mut buffer = unsafe { device.create_buffer(len as u64, usage) }.unwrap();
+            let ctor = || unsafe { device.create_buffer(len as u64, usage).unwrap() };
+
+            #[cfg(debug_assertions)]
+            let mut buffer = ctor();
+
+            #[cfg(not(debug_assertions))]
+            let buffer = ctor();
 
             #[cfg(debug_assertions)]
             unsafe {
                 device.set_buffer_name(&mut buffer, name);
             }
 
-            let requirements = unsafe { device.get_buffer_requirements(&buffer) };
-            let mem_ty = Device::mem_ty(&device, requirements.type_mask, properties);
-            let mem = Memory::new(Driver::clone(&driver), mem_ty, requirements.size);
-
-            unsafe { device.bind_buffer_memory(&mem, 0, &mut buffer) }.unwrap();
-
-            (buffer, mem)
+            buffer
         };
 
         Self {
-            mem,
             ptr: Some(buffer),
             driver,
         }
-    }
-
-    pub fn mem(buf: &Self) -> &Memory {
-        &buf.mem
     }
 
     /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.

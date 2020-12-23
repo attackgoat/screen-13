@@ -22,7 +22,7 @@ where
 {
     __: PhantomData<D>,
     driver: Driver,
-    mem: Memory,
+    mem: Memory, // TODO: Remove! This should not be here!
     ptr: Option<<_Backend as Backend>::Image>,
 }
 
@@ -75,7 +75,7 @@ impl Image<U2> {
             device.set_image_name(&mut image, name);
 
             let req = device.get_image_requirements(&image);
-            let mem_type = Device::mem_ty(&device, req.type_mask, Properties::DEVICE_LOCAL);
+            let mem_type = Device::mem_ty(&device, req.type_mask, Properties::DEVICE_LOCAL).unwrap();
             let mem = Memory::new(Driver::clone(&driver), mem_type, req.size);
             device.bind_image_memory(&mem, 0, &mut image).unwrap();
 

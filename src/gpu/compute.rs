@@ -1,9 +1,9 @@
 use {
     super::spirv,
-    crate::gpu::driver::{
+    crate::{pak::IndexType,gpu::driver::{
         descriptor_range_desc, descriptor_set_layout_binding, ComputePipeline, DescriptorPool,
         DescriptorSetLayout, Driver, Sampler, ShaderModule,
-    },
+    }},
     gfx_hal::{
         pso::{
             BufferDescriptorFormat, BufferDescriptorType, DescriptorPool as _, DescriptorRangeDesc,
@@ -70,11 +70,9 @@ impl Compute {
             )
         };
         let mut desc_pool = DescriptorPool::new(Driver::clone(&driver), max_desc_sets, desc_ranges);
-        // let desc_sets = (0..max_desc_sets)
-        //     .map(|_| unsafe { desc_pool.allocate_set(&*set_layout).unwrap() })
-        //     .collect();
         let layouts = (0..max_desc_sets).map(|_| &*set_layout);
         let mut desc_sets = Vec::with_capacity(max_desc_sets);
+
         unsafe {
             desc_pool.allocate(layouts, &mut desc_sets).unwrap();
         }
@@ -92,21 +90,25 @@ impl Compute {
         }
     }
 
-    pub fn calc_vertex_attrs(
+    fn calc_vertex_attrs(
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
         max_desc_sets: usize,
+        idx_ty: IndexType,
     ) -> Self {
         Self::new(
             #[cfg(debug_assertions)]
             name,
             driver,
-            &spirv::compute::CALC_VERTEX_ATTRS_COMP,
+            match idx_ty {
+                IndexType::U16 => &spirv::compute::CALC_VERTEX_ATTRS_U16_COMP,
+                IndexType::U32 => &spirv::compute::CALC_VERTEX_ATTRS_U32_COMP,
+            },
             &[(ShaderStageFlags::COMPUTE, 0..4)],
             max_desc_sets,
             &[
                 descriptor_range_desc(
-                    max_desc_sets,
+                    3 * max_desc_sets,
                     DescriptorType::Buffer {
                         format: BufferDescriptorFormat::Structured {
                             dynamic_offset: false,
@@ -144,11 +146,61 @@ impl Compute {
                         format: BufferDescriptorFormat::Structured {
                             dynamic_offset: false,
                         },
+                        ty: BufferDescriptorType::Storage { read_only: true },
+                    },
+                ),
+                descriptor_set_layout_binding(
+                    2,
+                    1,
+                    ShaderStageFlags::COMPUTE,
+                    DescriptorType::Buffer {
+                        format: BufferDescriptorFormat::Structured {
+                            dynamic_offset: false,
+                        },
                         ty: BufferDescriptorType::Storage { read_only: false },
+                    },
+                ),
+                descriptor_set_layout_binding(
+                    3,
+                    1,
+                    ShaderStageFlags::COMPUTE,
+                    DescriptorType::Buffer {
+                        format: BufferDescriptorFormat::Structured {
+                            dynamic_offset: false,
+                        },
+                        ty: BufferDescriptorType::Storage { read_only: true },
                     },
                 ),
             ],
             empty(),
+        )
+    }
+
+    pub fn calc_vertex_attrs_u16(
+        #[cfg(debug_assertions)] name: &str,
+        driver: &Driver,
+        max_desc_sets: usize,
+    ) -> Self {
+        Self::calc_vertex_attrs(
+            #[cfg(debug_assertions)]
+            name,
+            driver,
+            max_desc_sets,
+            IndexType::U16
+        )
+    }
+
+    pub fn calc_vertex_attrs_u32(
+        #[cfg(debug_assertions)] name: &str,
+        driver: &Driver,
+        max_desc_sets: usize,
+    ) -> Self {
+        Self::calc_vertex_attrs(
+            #[cfg(debug_assertions)]
+            name,
+            driver,
+            max_desc_sets,
+            IndexType::U32
         )
     }
 

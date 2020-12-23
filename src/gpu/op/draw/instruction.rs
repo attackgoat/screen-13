@@ -16,6 +16,7 @@ use {
 
 pub struct DataComputeInstruction {
     pub dispatch: u32,
+    pub idx_ty: IndexType,
     pub offset: u32,
 }
 
@@ -62,9 +63,9 @@ pub enum Instruction<'a> {
     SpotlightDraw(SpotlightDrawInstruction<'a>),
     SunlightBegin,
     SunlightDraw(SunlightIter<'a>),
-    VertexAttrsBegin,
+    VertexAttrsBegin(IndexType),
     VertexAttrsCalc(DataComputeInstruction),
-    VertexAttrsDescriptors(usize),
+    VertexAttrsDescriptors(VertexAttrsDescriptorsInstruction),
     VertexCopy(DataCopyInstruction<'a>),
     VertexWrite(DataWriteInstruction<'a>),
     VertexWriteRef(DataWriteRefInstruction<'a>),
@@ -106,4 +107,9 @@ pub struct RectLightDrawInstruction<'a> {
 pub struct SpotlightDrawInstruction<'a> {
     pub light: &'a SpotlightCommand,
     pub offset: u32,
+}
+
+pub struct VertexAttrsDescriptorsInstruction {
+    pub desc_set: usize,
+    pub idx_ty: IndexType,
 }

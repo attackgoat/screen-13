@@ -87,6 +87,9 @@ pub struct Model {
 
     #[serde(with = "serde_bytes")]
     vertices: Vec<u8>,
+
+    #[serde(with = "serde_bytes")]
+    write_mask: Vec<u8>,
 }
 
 impl Model {
@@ -95,10 +98,12 @@ impl Model {
         idx_ty: IndexType,
         indices: Vec<u8>,
         vertices: Vec<u8>,
+        write_mask: Vec<u8>,
     ) -> Self {
         assert_ne!(meshes.len(), 0);
         assert_ne!(indices.len(), 0);
         assert_ne!(vertices.len(), 0);
+        assert_ne!(write_mask.len(), 0);
 
         // Filtering relies on meshes being sorted by name
         meshes.sort_unstable_by(|lhs, rhs| lhs.name().cmp(&rhs.name()));
@@ -108,6 +113,7 @@ impl Model {
             indices,
             meshes,
             vertices,
+            write_mask,
         }
     }
 
@@ -125,6 +131,10 @@ impl Model {
 
     pub(crate) fn vertices(&self) -> &[u8] {
         &self.vertices
+    }
+
+    pub(crate) fn write_mask(&self) -> &[u8] {
+        &self.write_mask
     }
 }
 

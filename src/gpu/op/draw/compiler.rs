@@ -10,6 +10,7 @@ use {
             DataWriteInstruction, DataWriteRefInstruction, Instruction, LightBindInstruction,
             LineDrawInstruction, MeshBindInstruction, MeshDrawInstruction,
             PointLightDrawInstruction, RectLightDrawInstruction, SpotlightDrawInstruction,
+            VertexAttrsDescriptorsInstruction,
         },
         key::{Line, RectLight, Spotlight, Stride},
         Command, Material,
@@ -21,9 +22,10 @@ use {
             pool::Pool,
             Data, Driver, Lease, ModelRef,
         },
+        pak::IndexType,
     },
     std::{
-        cell::RefMut,
+        cell::Ref,
         cmp::{Ord, Ordering},
         ops::{Range, RangeFrom},
         ptr::copy_nonoverlapping,
@@ -49,7 +51,8 @@ struct Allocation<T> {
 // but we do want to cache the vector of instructions the compiler creates. Each `Asm` is just a pointer to the `cmds` slice
 // provided by the client which actually contains the references. `Asm` also points to the leased `Data` held by `Compiler`.
 enum Asm {
-    BeginCalcVertexAttrs,
+    BeginCalcU16VertexAttrs,
+    BeginCalcU32VertexAttrs,
     BeginLight,
     BeginModel,
     BeginRectLight,
@@ -57,13 +60,15 @@ enum Asm {
     BeginSunlight,
     BindModelBuffers(usize), // value is index into compiler.cmds which is a model command with the index+vertex buffers
     BindModelDescriptors(usize), // value is index into compiler.cmds which is a model command with the new material
-    BindVertexAttrsDescriptors(usize),
+    BindU16VertexAttrsDescriptors(usize),
+    BindU32VertexAttrsDescriptors(usize),
     BindRectLightBuffer,
     BindSpotlightBuffer,
     TransferLineData,
     TransferRectLightData,
     TransferSpotlightData,
-    CalcVertexAttrs(CalcVertexAttrsAsm),
+    CalcU16VertexAttrs(CalcVertexAttrsAsm),
+    CalcU32VertexAttrs(CalcVertexAttrsAsm),
     CopyLineVertices,
     CopyRectLightVertices,
     CopySpotlightVertices,
@@ -137,19 +142,44 @@ impl Compilation<'_> {
         Instruction::MeshDescriptors(desc_set)
     }
 
-    fn bind_vertex_attrs_descriptors(&self, idx: usize) -> Instruction {
+    fn bind_u16_vertex_attrs_descriptors(&self, idx: usize) -> Instruction {
         let desc_set = self
             .compiler
-            .vertex_bufs
+            .u16_vertex_bufs
             .binary_search_by(|probe| probe.idx.cmp(&idx))
             .unwrap();
 
-        Instruction::VertexAttrsDescriptors(desc_set)
+        Instruction::VertexAttrsDescriptors(VertexAttrsDescriptorsInstruction {
+            desc_set,
+            idx_ty: IndexType::U16,
+        })
     }
 
-    fn calc_vertex_attrs(&self, asm: &CalcVertexAttrsAsm) -> Instruction {
+    fn bind_u32_vertex_attrs_descriptors(&self, idx: usize) -> Instruction {
+        let desc_set = self
+            .compiler
+            .u32_vertex_bufs
+            .binary_search_by(|probe| probe.idx.cmp(&idx))
+            .unwrap();
+
+        Instruction::VertexAttrsDescriptors(VertexAttrsDescriptorsInstruction {
+            desc_set,
+            idx_ty: IndexType::U32,
+        })
+    }
+
+    fn calc_u16_vertex_attrs(&self, asm: &CalcVertexAttrsAsm) -> Instruction {
         Instruction::VertexAttrsCalc(DataComputeInstruction {
             dispatch: asm.dispatch,
+            idx_ty: IndexType::U16,
+            offset: asm.offset,
+        })
+    }
+
+    fn calc_u32_vertex_attrs(&self, asm: &CalcVertexAttrsAsm) -> Instruction {
+        Instruction::VertexAttrsCalc(DataComputeInstruction {
+            dispatch: asm.dispatch,
+            idx_ty: IndexType::U32,
             offset: asm.offset,
         })
     }
@@ -248,9 +278,18 @@ impl Compilation<'_> {
         })
     }
 
-    pub fn vertex_bufs(&self) -> impl ExactSizeIterator<Item = VertexBuffers> {
+    pub fn u16_vertex_bufs(&self) -> impl ExactSizeIterator<Item = VertexBuffers> {
         VertexBuffersIter {
-            compilation: self,
+            bufs: &self.compiler.u16_vertex_bufs,
+            cmds: &self.cmds,
+            idx: 0,
+        }
+    }
+
+    pub fn u32_vertex_bufs(&self) -> impl ExactSizeIterator<Item = VertexBuffers> {
+        VertexBuffersIter {
+            bufs: &self.compiler.u32_vertex_bufs,
+            cmds: &self.cmds,
             idx: 0,
         }
     }
@@ -297,7 +336,8 @@ impl Compilation<'_> {
         self.idx += 1;
 
         Some(match &self.compiler.code[idx] {
-            Asm::BeginCalcVertexAttrs => Instruction::VertexAttrsBegin,
+            Asm::BeginCalcU16VertexAttrs => Instruction::VertexAttrsBegin(IndexType::U16),
+            Asm::BeginCalcU32VertexAttrs => Instruction::VertexAttrsBegin(IndexType::U32),
             Asm::BeginLight => Instruction::LightBegin,
             Asm::BeginModel => Instruction::MeshBegin,
             Asm::BeginRectLight => Instruction::RectLightBegin,
@@ -305,14 +345,16 @@ impl Compilation<'_> {
             Asm::BeginSunlight => Instruction::SunlightBegin,
             Asm::BindModelBuffers(idx) => self.bind_model_buffers(*idx),
             Asm::BindModelDescriptors(idx) => self.bind_model_descriptors(*idx),
-            Asm::BindVertexAttrsDescriptors(idx) => self.bind_vertex_attrs_descriptors(*idx),
+            Asm::BindU16VertexAttrsDescriptors(idx) => self.bind_u16_vertex_attrs_descriptors(*idx),
+            Asm::BindU32VertexAttrsDescriptors(idx) => self.bind_u32_vertex_attrs_descriptors(*idx),
             Asm::BindRectLightBuffer => {
                 Self::bind_light(self.compiler.rect_light.buf.as_ref().unwrap())
             }
             Asm::BindSpotlightBuffer => {
                 Self::bind_light(self.compiler.spotlight.buf.as_ref().unwrap())
             }
-            Asm::CalcVertexAttrs(asm) => self.calc_vertex_attrs(asm),
+            Asm::CalcU16VertexAttrs(asm) => self.calc_u16_vertex_attrs(asm),
+            Asm::CalcU32VertexAttrs(asm) => self.calc_u32_vertex_attrs(asm),
             Asm::CopyLineVertices => Self::copy_vertices(self.compiler.line.buf.as_mut().unwrap()),
             Asm::CopyRectLightVertices => {
                 Self::copy_vertices(self.compiler.rect_light.buf.as_mut().unwrap())
@@ -371,7 +413,8 @@ pub struct Compiler {
     rect_lights: Vec<RectLight>,
     spotlight: DirtyLruData<Spotlight>,
     spotlights: Vec<Spotlight>,
-    vertex_bufs: Vec<VertexBuffer>,
+    u16_vertex_bufs: Vec<VertexBuffer>,
+    u32_vertex_bufs: Vec<VertexBuffer>,
 }
 
 impl Compiler {
@@ -552,17 +595,17 @@ impl Compiler {
         let sunlight_count = line_idx - sunlight_idx;
         let line_count = cmds.len() - line_idx;
 
-        debug!("point_light_idx {}", point_light_idx);
-        debug!("rect_light_idx {}", rect_light_idx);
-        debug!("spotlight_idx {}", spotlight_idx);
-        debug!("sunlight_idx {}", sunlight_idx);
-        debug!("line_idx {}", line_idx);
-        debug!("model_count {}", model_count);
-        debug!("point_light_count {}", point_light_count);
-        debug!("rect_light_count {}", rect_light_count);
-        debug!("spotlight_count {}", spotlight_count);
-        debug!("sunlight_count {}", sunlight_count);
-        debug!("line_count {}", line_count);
+        // debug!("point_light_idx {}", point_light_idx);
+        // debug!("rect_light_idx {}", rect_light_idx);
+        // debug!("spotlight_idx {}", spotlight_idx);
+        // debug!("sunlight_idx {}", sunlight_idx);
+        // debug!("line_idx {}", line_idx);
+        // debug!("model_count {}", model_count);
+        // debug!("point_light_count {}", point_light_count);
+        // debug!("rect_light_count {}", rect_light_count);
+        // debug!("spotlight_count {}", spotlight_count);
+        // debug!("sunlight_count {}", sunlight_count);
+        // debug!("line_count {}", line_count);
 
         // Model drawing
         if model_count > 0 {
@@ -726,45 +769,71 @@ impl Compiler {
         // Emit 'start model drawing' assembly code
         self.code.push(Asm::BeginModel);
 
+        let mut vertex_calc_mode = None;
         for (idx, cmd) in cmds.iter().enumerate() {
             let cmd = cmd.as_model().unwrap();
 
-            if let Some((buf, buf_len)) = cmd.model.take_pending_writes() {
+            if let Some((buf, len, write_mask)) = cmd.model.take_pending_writes() {
                 // Emit 'write model buffers' assembly codes
                 self.code.push(Asm::WriteModelIndices(idx));
                 self.code.push(Asm::WriteModelVertices(idx));
 
-                // Emit 'start vertex attribute calculations' assembly code
-                if self.vertex_bufs.is_empty() {
-                    self.code.push(Asm::BeginCalcVertexAttrs);
+                // Emit 'start vertex attribute calculations' assembly code when the mode changes
+                if match vertex_calc_mode {
+                    None => true,
+                    Some(idx_ty) if idx_ty != cmd.model.idx_ty() => true,
+                    _ => false,
+                } {
+                    let idx_ty = cmd.model.idx_ty();
+                    vertex_calc_mode = Some(idx_ty);
+                    self.code.push(match idx_ty {
+                        IndexType::U16 => Asm::BeginCalcU16VertexAttrs,
+                        IndexType::U32 => Asm::BeginCalcU32VertexAttrs,
+                    });
                 }
 
                 // Store the instance of the leased data which contains the packed/staging vertices
                 // (This lease will be returned to the pool after this operation completes)
-                self.vertex_bufs.insert(
-                    self.vertex_bufs
+                let (vertex_bufs, bind_asm) = match cmd.model.idx_ty() {
+                    IndexType::U16 => (
+                        &mut self.u16_vertex_bufs,
+                        Asm::BindU16VertexAttrsDescriptors(idx),
+                    ),
+                    IndexType::U32 => (
+                        &mut self.u32_vertex_bufs,
+                        Asm::BindU32VertexAttrsDescriptors(idx),
+                    ),
+                };
+                vertex_bufs.insert(
+                    vertex_bufs
                         .binary_search_by(|probe| probe.idx.cmp(&idx))
                         .unwrap_err(),
                     VertexBuffer {
                         buf,
                         idx,
-                        len: buf_len,
+                        len,
+                        write_mask,
                     },
                 );
 
                 // Emit 'the current compute descriptor set has changed' assembly code
-                self.code.push(Asm::BindVertexAttrsDescriptors(idx));
+                self.code.push(bind_asm);
 
                 // Emit code to cause the normal and tangent vertex attributes of each mesh to be
                 // calculated (source is leased data, destination lives as long as the model does)
                 for mesh in cmd.model.meshes() {
                     let dispatch = mesh.vertex_count();
                     let offset = mesh.vertex_offset();
-                    self.code.push(Asm::CalcVertexAttrs(CalcVertexAttrsAsm {
+                    let calc_asm = CalcVertexAttrsAsm {
                         dispatch,
                         idx,
                         offset,
-                    }));
+                    };
+
+                    self.code.push(match cmd.model.idx_ty() {
+                        IndexType::U16 => Asm::CalcU16VertexAttrs(calc_asm),
+                        IndexType::U32 => Asm::CalcU32VertexAttrs(calc_asm),
+                    });
                 }
             }
 
@@ -1070,7 +1139,8 @@ impl Compiler {
         self.materials.clear();
         self.rect_lights.clear();
         self.spotlights.clear();
-        self.vertex_bufs.clear();
+        self.u16_vertex_bufs.clear();
+        self.u32_vertex_bufs.clear();
 
         self.line.step();
         self.rect_light.step();
@@ -1272,23 +1342,29 @@ struct VertexBuffer {
     buf: Lease<Data>,
     idx: usize,
     len: u64,
+    write_mask: Lease<Data>,
 }
 
 pub struct VertexBuffers<'a> {
-    pub dst: RefMut<'a, Lease<Data>>,
+    pub dst: Ref<'a, Lease<Data>>,
     pub dst_len: u64,
+    pub idx: Ref<'a, Lease<Data>>,
+    pub idx_len: u64,
     pub src: &'a Lease<Data>,
     pub src_len: u64,
+    pub write_mask: &'a Lease<Data>,
+    pub write_mask_len: u64,
 }
 
 struct VertexBuffersIter<'a> {
-    compilation: &'a Compilation<'a>,
+    bufs: &'a Vec<VertexBuffer>,
+    cmds: &'a [Command],
     idx: usize,
 }
 
 impl<'a> ExactSizeIterator for VertexBuffersIter<'a> {
     fn len(&self) -> usize {
-        self.compilation.compiler.vertex_bufs.len()
+        self.bufs.len()
     }
 }
 
@@ -1296,27 +1372,30 @@ impl<'a> Iterator for VertexBuffersIter<'a> {
     type Item = VertexBuffers<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self
-            .compilation
-            .compiler
-            .vertex_bufs
-            .binary_search_by(|probe| probe.idx.cmp(&self.idx))
-        {
-            Err(_) => None,
-            Ok(idx) => {
-                let cmd = self.compilation.cmds[idx].as_model().unwrap();
-                let model = cmd.model.as_ref();
-                let src = &self.compilation.compiler.vertex_bufs[self.idx];
-                let (dst, dst_len) = model.vertices_mut();
-                self.idx += 1;
+        self.bufs.get(self.idx).map(|src| {
+            let cmd = &self.cmds[src.idx].as_model().unwrap();
+            let model = cmd.model.as_ref();
+            let (idx, idx_len, idx_ty) = model.indices();
+            let (dst, dst_len) = model.vertices();
+            self.idx += 1;
 
-                Some(VertexBuffers {
-                    dst,
-                    dst_len,
-                    src: &src.buf,
-                    src_len: src.len,
-                })
+            // We didn't store the length of the write mask because we have the data to calculate here
+            let (part, shift) = match idx_ty {
+                IndexType::U16 => (63, 6),
+                IndexType::U32 => (31, 5),
+            };
+            let write_mask_len = (idx_len + part) >> shift;
+
+            VertexBuffers {
+                dst,
+                dst_len,
+                idx,
+                idx_len,
+                src: &src.buf,
+                src_len: src.len,
+                write_mask: &src.write_mask,
+                write_mask_len,
             }
-        }
+        })
     }
 }

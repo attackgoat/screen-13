@@ -1,7 +1,7 @@
 use {
     super::{
         align_down, align_up,
-        driver::{Buffer, Device, Driver},
+        driver::{Buffer, Device, Driver, Memory},
     },
     gfx_hal::{
         adapter::PhysicalDevice as _,
@@ -101,6 +101,11 @@ where
     }
 }
 
+struct BufferMemory {
+    buf: Buffer,
+    mem: Memory,
+}
+
 #[derive(Clone)]
 pub struct CopyRange {
     pub dst: u64,
@@ -113,14 +118,13 @@ pub struct CopyRange {
 pub struct Data {
     access_mask: Access,
     capacity: u64,
-    cpu_buf: Buffer,
     driver: Driver,
-    gpu_buf: Buffer,
     pipeline_stage: PipelineStage,
+    staging: Option<BufferMemory>,
+    storage: BufferMemory,
 }
 
 impl Data {
-    // TODO: This should specialize for GPUs which have CPU-GPU coherent memory types.
     pub fn new(
         #[cfg(debug_assertions)] name: &str,
         driver: Driver,
@@ -135,30 +139,84 @@ impl Data {
             .non_coherent_atom_size;
         capacity = align_up(capacity, non_coherent_atom_size as _);
 
-        let cpu_buf = Buffer::new(
-            #[cfg(debug_assertions)]
-            name,
-            Driver::clone(&driver),
-            Usage::TRANSFER_DST | Usage::TRANSFER_SRC,
-            Properties::CPU_VISIBLE,
-            capacity,
-        );
-        let gpu_buf = Buffer::new(
+        let mut storage_buf = Buffer::new(
             #[cfg(debug_assertions)]
             name,
             Driver::clone(&driver),
             Usage::TRANSFER_DST | Usage::TRANSFER_SRC | usage,
-            Properties::DEVICE_LOCAL,
             capacity,
         );
+        let (storage_mem, staging) = {
+            let device = driver.as_ref().borrow();
+
+            // Get the main storage buffer memory requirements and find out if we're using a unified memory architecutre
+            let storage_req = unsafe { device.get_buffer_requirements(&storage_buf) };
+            let (storage_mem_ty, is_uma) = if let Some(mem_ty) = Device::mem_ty(
+                &device,
+                storage_req.type_mask,
+                Properties::CPU_VISIBLE | Properties::DEVICE_LOCAL,
+            ) {
+                (mem_ty, true)
+            } else {
+                let mem_ty =
+                    Device::mem_ty(&device, storage_req.type_mask, Properties::DEVICE_LOCAL)
+                        .unwrap();
+                (mem_ty, false)
+            };
+            let storage_mem = Memory::new(Driver::clone(&driver), storage_mem_ty, storage_req.size);
+
+            // Bind the main storage memory
+            unsafe {
+                device
+                    .bind_buffer_memory(&storage_mem, 0, &mut storage_buf)
+                    .unwrap();
+            }
+
+            // Optionally create a staging buffer on non-unified memory architectures
+            let staging = if is_uma {
+                None
+            } else {
+                let mut staging_buf = Buffer::new(
+                    #[cfg(debug_assertions)]
+                    name,
+                    Driver::clone(&driver),
+                    Usage::TRANSFER_DST | Usage::TRANSFER_SRC,
+                    capacity,
+                );
+                let staging_req = unsafe { device.get_buffer_requirements(&staging_buf) };
+                let staging_mem_ty =
+                    Device::mem_ty(&device, staging_req.type_mask, Properties::CPU_VISIBLE)
+                        .unwrap();
+                let staging_mem =
+                    Memory::new(Driver::clone(&driver), staging_mem_ty, staging_req.size);
+
+                // Bind the optional staging memory
+                unsafe {
+                    device
+                        .bind_buffer_memory(&staging_mem, 0, &mut staging_buf)
+                        .unwrap();
+                }
+
+                Some(BufferMemory {
+                    buf: staging_buf,
+                    mem: staging_mem,
+                })
+            };
+
+            (storage_mem, staging)
+        };
+        let storage = BufferMemory {
+            buf: storage_buf,
+            mem: storage_mem,
+        };
 
         Self {
             access_mask: Access::empty(),
             capacity,
-            cpu_buf,
             driver,
-            gpu_buf,
             pipeline_stage: PipelineStage::TOP_OF_PIPE,
+            staging,
+            storage,
         }
     }
 
@@ -198,12 +256,12 @@ impl Data {
         R::IntoIter: ExactSizeIterator,
     {
         let copies = BufferCopyIter(ranges.into_iter());
-        cmd_buf.copy_buffer(&self.gpu_buf, &self.gpu_buf, copies);
+        cmd_buf.copy_buffer(&self.storage.buf, &self.storage.buf, copies);
 
         let barriers = BarrierIter {
             ranges: ranges.into_iter(),
             states: self.access_mask..access_mask,
-            target: &*self.gpu_buf,
+            target: &*self.storage.buf,
         };
         cmd_buf.pipeline_barrier(
             self.pipeline_stage..pipeline_stage,
@@ -241,7 +299,11 @@ impl Data {
         assert!(range.end <= self.capacity);
 
         let driver = Driver::clone(&self.driver);
-        let mem = Buffer::mem(&self.cpu_buf);
+        let mem = self
+            .staging
+            .as_ref()
+            .map(|staging| &staging.mem)
+            .unwrap_or(&self.storage.mem);
 
         unsafe { Mapping::new(driver, mem, range) }
     }
@@ -282,16 +344,22 @@ impl Data {
         R::Item: Borrow<Range<u64>>,
         R::IntoIter: ExactSizeIterator,
     {
-        let ranges = RangeAdapter(ranges);
-        let copies = BufferCopyIter(ranges.into_iter());
-        cmd_buf.copy_buffer(&*self.gpu_buf, &*self.cpu_buf, copies);
+        // This is a no-op on unified memory architectures
+        if let Some(staging) = &self.staging {
+            let ranges = RangeAdapter(ranges);
+            let copies = BufferCopyIter(ranges.into_iter());
+            cmd_buf.copy_buffer(&self.storage.buf, &staging.buf, copies);
+        }
     }
 
     /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
     #[cfg(debug_assertions)]
     pub fn set_name(&mut self, name: &str) {
-        Buffer::set_name(&mut self.cpu_buf, name);
-        Buffer::set_name(&mut self.gpu_buf, name);
+        if let Some(staging) = &mut self.staging {
+            Buffer::set_name(&mut staging.buf, name);
+        }
+
+        Buffer::set_name(&mut self.storage.buf, name);
     }
 
     /// Transfers a portion within the graphics device to another instance using a copy.
@@ -324,7 +392,7 @@ impl Data {
         R::IntoIter: ExactSizeIterator,
     {
         let copies = BufferCopyIter(ranges.into_iter());
-        cmd_buf.copy_buffer(&self.gpu_buf, &other.gpu_buf, copies);
+        cmd_buf.copy_buffer(&self.storage.buf, &other.storage.buf, copies);
     }
 
     /// Writes everything to the graphics device.
@@ -373,13 +441,15 @@ impl Data {
         R::IntoIter: ExactSizeIterator,
     {
         let ranges = RangeAdapter(ranges);
-        let copies = BufferCopyIter(ranges.into_iter());
-        cmd_buf.copy_buffer(&self.cpu_buf, &self.gpu_buf, copies);
+        if let Some(staging) = &self.staging {
+            let copies = BufferCopyIter(ranges.into_iter());
+            cmd_buf.copy_buffer(&staging.buf, &self.storage.buf, copies);
+        }
 
         let barriers = BarrierIter {
             ranges: ranges.into_iter(),
             states: self.access_mask..access_mask,
-            target: &*self.gpu_buf,
+            target: &*self.storage.buf,
         };
         cmd_buf.pipeline_barrier(
             self.pipeline_stage..pipeline_stage,
@@ -394,7 +464,7 @@ impl Data {
 
 impl AsRef<<_Backend as Backend>::Buffer> for Data {
     fn as_ref(&self) -> &<_Backend as Backend>::Buffer {
-        &*self.gpu_buf
+        &*self.storage.buf
     }
 }
 
