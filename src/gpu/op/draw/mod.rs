@@ -18,7 +18,7 @@ use {
         instruction::{
             DataComputeInstruction, DataCopyInstruction, DataTransferInstruction,VertexAttrsDescriptorsInstruction,
             DataWriteInstruction, DataWriteRefInstruction, Instruction, LightBindInstruction,
-            LineDrawInstruction, MeshBindInstruction, MeshDrawInstruction,
+            LineDrawInstruction, MeshBindInstruction, MeshDrawInstruction,VertexAttrsBeginInstruction,
             PointLightDrawInstruction, RectLightDrawInstruction, SpotlightDrawInstruction,
         },
     },
@@ -27,6 +27,7 @@ use {
         camera::Camera,
         color::AlphaColor,
         gpu::{
+            CalcVertexAttrsComputeMode,
             data::CopyRange,
             driver::{
                 bind_compute_descriptor_set, bind_graphics_descriptor_set, CommandPool,
@@ -79,8 +80,10 @@ impl AsRef<[u32; 1]> for CalcVertexAttrsConsts {
 pub struct DrawOp<'a> {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
-    compute_u32_vertex_attrs: Option<Lease<Compute>>,
     compute_u16_vertex_attrs: Option<Lease<Compute>>,
+    compute_u16_skin_vertex_attrs: Option<Lease<Compute>>,
+    compute_u32_vertex_attrs: Option<Lease<Compute>>,
+    compute_u32_skin_vertex_attrs: Option<Lease<Compute>>,
     driver: Driver,
     dst: Texture2d,
     dst_preserve: bool,
@@ -181,7 +184,9 @@ impl<'a> DrawOp<'a> {
             cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
             cmd_pool,
             compute_u16_vertex_attrs: None,
+            compute_u16_skin_vertex_attrs: None,
             compute_u32_vertex_attrs: None,
+            compute_u32_skin_vertex_attrs: None,
             driver,
             dst: TextureRef::clone(dst),
             dst_preserve: false,
@@ -306,7 +311,10 @@ impl<'a> DrawOp<'a> {
                         #[cfg(debug_assertions)]
                         &self.name,
                         &self.driver,
-                        ComputeMode::CalcVertexAttrs(IndexType::U16),
+                        ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode {
+                            idx_ty: IndexType::U16,
+                            skin: false,
+                        }),
                         desc_sets,
                     );
                     let device = self.driver.borrow();
@@ -318,6 +326,29 @@ impl<'a> DrawOp<'a> {
                     self.compute_u16_vertex_attrs = Some(compute);
                 }
 
+                // Buffer descriptors for calculation of u16-indexed skinned vertex attributes
+                let descriptors = instrs.u16_skin_vertex_bufs();
+                let desc_sets = descriptors.len();
+                if desc_sets > 0 {
+                    let compute = self.pool.compute_desc_sets(
+                        #[cfg(debug_assertions)]
+                        &self.name,
+                        &self.driver,
+                        ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode {
+                            idx_ty: IndexType::U16,
+                            skin: true,
+                        }),
+                        desc_sets,
+                    );
+                    let device = self.driver.borrow();
+
+                    unsafe {
+                        Self::write_vertex_descriptors(&device, &compute, descriptors);
+                    }
+
+                    self.compute_u16_skin_vertex_attrs = Some(compute);
+                }
+
                 // Buffer descriptors for calculation of u32-indexed vertex attributes
                 let descriptors = instrs.u32_vertex_bufs();
                 let desc_sets = descriptors.len();
@@ -326,7 +357,10 @@ impl<'a> DrawOp<'a> {
                         #[cfg(debug_assertions)]
                         &self.name,
                         &self.driver,
-                        ComputeMode::CalcVertexAttrs(IndexType::U32),
+                        ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode {
+                            idx_ty: IndexType::U32,
+                            skin: false,
+                        }),
                         desc_sets,
                     );
                     let device = self.driver.borrow();
@@ -336,6 +370,29 @@ impl<'a> DrawOp<'a> {
                     }
 
                     self.compute_u32_vertex_attrs = Some(compute);
+                }
+
+                // Buffer descriptors for calculation of u32-indexed skinned vertex attributes
+                let descriptors = instrs.u32_vertex_bufs();
+                let desc_sets = descriptors.len();
+                if desc_sets > 0 {
+                    let compute = self.pool.compute_desc_sets(
+                        #[cfg(debug_assertions)]
+                        &self.name,
+                        &self.driver,
+                        ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode {
+                            idx_ty: IndexType::U32,
+                            skin: true,
+                        }),
+                        desc_sets,
+                    );
+                    let device = self.driver.borrow();
+
+                    unsafe {
+                        Self::write_vertex_descriptors(&device, &compute, descriptors);
+                    }
+
+                    self.compute_u32_skin_vertex_attrs = Some(compute);
                 }
             }
 
@@ -376,7 +433,7 @@ impl<'a> DrawOp<'a> {
                             }
                             Instruction::SunlightBegin => self.submit_sunlight_begin(&viewport),
                             Instruction::SunlightDraw(instr) => self.submit_sunlights(instr),
-                            Instruction::VertexAttrsBegin(idx_ty) => self.submit_vertex_attrs_begin(idx_ty),
+                            Instruction::VertexAttrsBegin(instr) => self.submit_vertex_attrs_begin(instr),
                             Instruction::VertexAttrsCalc(instr) => {
                                 self.submit_vertex_attrs_calc(instr)
                             }
@@ -916,12 +973,12 @@ impl<'a> DrawOp<'a> {
         }
     }
 
-    unsafe fn submit_vertex_attrs_begin(&mut self, idx_ty: IndexType) {
+    unsafe fn submit_vertex_attrs_begin(&mut self, instr: VertexAttrsBeginInstruction) {
         trace!("submit_vertex_attrs_begin");
 
-        let compute = match idx_ty {
-            IndexType::U16 => self.compute_u16_vertex_attrs.as_ref(),
-            IndexType::U32 => self.compute_u32_vertex_attrs.as_ref(),
+        let compute = match instr.idx_ty {
+            IndexType::U16 => if instr.skin { self.compute_u16_skin_vertex_attrs.as_ref() } else {self.compute_u16_vertex_attrs.as_ref()},
+            IndexType::U32 => if instr.skin { self.compute_u32_skin_vertex_attrs.as_ref() } else {self.compute_u32_vertex_attrs.as_ref()},
         }.unwrap();
         let pipeline = compute.pipeline();
 
@@ -932,8 +989,8 @@ impl<'a> DrawOp<'a> {
         trace!("submit_vertex_attrs_descriptors");
 
         let compute = match instr.idx_ty {
-            IndexType::U16 => self.compute_u16_vertex_attrs.as_ref(),
-            IndexType::U32 => self.compute_u32_vertex_attrs.as_ref(),
+            IndexType::U16 => if instr.skin { self.compute_u16_skin_vertex_attrs.as_ref() } else {self.compute_u16_vertex_attrs.as_ref()},
+            IndexType::U32 => if instr.skin { self.compute_u32_skin_vertex_attrs.as_ref() } else {self.compute_u32_vertex_attrs.as_ref()},
         }.unwrap();
         let desc_set = compute.desc_set(instr.desc_set);
         let pipeline = compute.pipeline();
@@ -949,8 +1006,8 @@ impl<'a> DrawOp<'a> {
         let limit = Device::gpu(&device).limits().max_compute_work_group_size[0];
 
         let compute = match instr.idx_ty {
-            IndexType::U16 => self.compute_u16_vertex_attrs.as_ref(),
-            IndexType::U32 => self.compute_u32_vertex_attrs.as_ref(),
+            IndexType::U16 => if instr.skin { self.compute_u16_skin_vertex_attrs.as_ref() } else {self.compute_u16_vertex_attrs.as_ref()},
+            IndexType::U32 => if instr.skin { self.compute_u32_skin_vertex_attrs.as_ref() } else {self.compute_u32_vertex_attrs.as_ref()},
         }.unwrap();
         let pipeline = compute.pipeline();
         let layout = ComputePipeline::layout(&pipeline);

@@ -8,7 +8,7 @@ use {
         instruction::{
             DataComputeInstruction, DataCopyInstruction, DataTransferInstruction,
             DataWriteInstruction, DataWriteRefInstruction, Instruction, LightBindInstruction,
-            LineDrawInstruction, MeshBindInstruction, MeshDrawInstruction,
+            LineDrawInstruction, MeshBindInstruction, MeshDrawInstruction,VertexAttrsBeginInstruction,
             PointLightDrawInstruction, RectLightDrawInstruction, SpotlightDrawInstruction,
             VertexAttrsDescriptorsInstruction,
         },
@@ -52,7 +52,9 @@ struct Allocation<T> {
 // provided by the client which actually contains the references. `Asm` also points to the leased `Data` held by `Compiler`.
 enum Asm {
     BeginCalcU16VertexAttrs,
+    BeginCalcU16SkinVertexAttrs,
     BeginCalcU32VertexAttrs,
+    BeginCalcU32SkinVertexAttrs,
     BeginLight,
     BeginModel,
     BeginRectLight,
@@ -61,14 +63,18 @@ enum Asm {
     BindModelBuffers(usize), // value is index into compiler.cmds which is a model command with the index+vertex buffers
     BindModelDescriptors(usize), // value is index into compiler.cmds which is a model command with the new material
     BindU16VertexAttrsDescriptors(usize),
+    BindU16SkinVertexAttrsDescriptors(usize),
     BindU32VertexAttrsDescriptors(usize),
+    BindU32SkinVertexAttrsDescriptors(usize),
     BindRectLightBuffer,
     BindSpotlightBuffer,
     TransferLineData,
     TransferRectLightData,
     TransferSpotlightData,
     CalcU16VertexAttrs(CalcVertexAttrsAsm),
+    CalcU16SkinVertexAttrs(CalcVertexAttrsAsm),
     CalcU32VertexAttrs(CalcVertexAttrsAsm),
+    CalcU32SkinVertexAttrs(CalcVertexAttrsAsm),
     CopyLineVertices,
     CopyRectLightVertices,
     CopySpotlightVertices,
@@ -107,6 +113,34 @@ pub struct Compilation<'a> {
 }
 
 impl Compilation<'_> {
+    fn begin_calc_u16_vertex_attrs() -> Instruction<'static> {
+        Instruction::VertexAttrsBegin(VertexAttrsBeginInstruction {
+            idx_ty: IndexType::U16,
+            skin: false,
+        })
+    }
+
+    fn begin_calc_u16_skin_vertex_attrs() -> Instruction<'static> {
+        Instruction::VertexAttrsBegin(VertexAttrsBeginInstruction {
+            idx_ty: IndexType::U16,
+            skin: true,
+        })
+    }
+
+    fn begin_calc_u32_vertex_attrs() -> Instruction<'static> {
+        Instruction::VertexAttrsBegin(VertexAttrsBeginInstruction {
+            idx_ty: IndexType::U32,
+            skin: false,
+        })
+    }
+
+    fn begin_calc_u32_skin_vertex_attrs() -> Instruction<'static> {
+        Instruction::VertexAttrsBegin(VertexAttrsBeginInstruction {
+            idx_ty: IndexType::U32,
+            skin: true,
+        })
+    }
+
     fn bind_light<T: Stride>(buf: &DirtyData<T>) -> Instruction {
         Instruction::LightBind(LightBindInstruction {
             buf: &buf.data.current,
@@ -152,6 +186,21 @@ impl Compilation<'_> {
         Instruction::VertexAttrsDescriptors(VertexAttrsDescriptorsInstruction {
             desc_set,
             idx_ty: IndexType::U16,
+            skin: false,
+        })
+    }
+
+    fn bind_u16_skin_vertex_attrs_descriptors(&self, idx: usize) -> Instruction {
+        let desc_set = self
+            .compiler
+            .u16_skin_vertex_bufs
+            .binary_search_by(|probe| probe.idx.cmp(&idx))
+            .unwrap();
+
+        Instruction::VertexAttrsDescriptors(VertexAttrsDescriptorsInstruction {
+            desc_set,
+            idx_ty: IndexType::U16,
+            skin: true,
         })
     }
 
@@ -165,6 +214,21 @@ impl Compilation<'_> {
         Instruction::VertexAttrsDescriptors(VertexAttrsDescriptorsInstruction {
             desc_set,
             idx_ty: IndexType::U32,
+            skin: false,
+        })
+    }
+
+    fn bind_u32_skin_vertex_attrs_descriptors(&self, idx: usize) -> Instruction {
+        let desc_set = self
+            .compiler
+            .u32_skin_vertex_bufs
+            .binary_search_by(|probe| probe.idx.cmp(&idx))
+            .unwrap();
+
+        Instruction::VertexAttrsDescriptors(VertexAttrsDescriptorsInstruction {
+            desc_set,
+            idx_ty: IndexType::U32,
+            skin: true,
         })
     }
 
@@ -173,6 +237,16 @@ impl Compilation<'_> {
             dispatch: asm.dispatch,
             idx_ty: IndexType::U16,
             offset: asm.offset,
+            skin: false,
+        })
+    }
+
+    fn calc_u16_skin_vertex_attrs(&self, asm: &CalcVertexAttrsAsm) -> Instruction {
+        Instruction::VertexAttrsCalc(DataComputeInstruction {
+            dispatch: asm.dispatch,
+            idx_ty: IndexType::U16,
+            offset: asm.offset,
+            skin: true,
         })
     }
 
@@ -181,6 +255,16 @@ impl Compilation<'_> {
             dispatch: asm.dispatch,
             idx_ty: IndexType::U32,
             offset: asm.offset,
+            skin: false,
+        })
+    }
+
+    fn calc_u32_skin_vertex_attrs(&self, asm: &CalcVertexAttrsAsm) -> Instruction {
+        Instruction::VertexAttrsCalc(DataComputeInstruction {
+            dispatch: asm.dispatch,
+            idx_ty: IndexType::U32,
+            offset: asm.offset,
+            skin: true,
         })
     }
 
@@ -286,9 +370,25 @@ impl Compilation<'_> {
         }
     }
 
+    pub fn u16_skin_vertex_bufs(&self) -> impl ExactSizeIterator<Item = VertexBuffers> {
+        VertexBuffersIter {
+            bufs: &self.compiler.u16_skin_vertex_bufs,
+            cmds: &self.cmds,
+            idx: 0,
+        }
+    }
+
     pub fn u32_vertex_bufs(&self) -> impl ExactSizeIterator<Item = VertexBuffers> {
         VertexBuffersIter {
             bufs: &self.compiler.u32_vertex_bufs,
+            cmds: &self.cmds,
+            idx: 0,
+        }
+    }
+
+    pub fn u32_skin_vertex_bufs(&self) -> impl ExactSizeIterator<Item = VertexBuffers> {
+        VertexBuffersIter {
+            bufs: &self.compiler.u32_skin_vertex_bufs,
             cmds: &self.cmds,
             idx: 0,
         }
@@ -336,8 +436,10 @@ impl Compilation<'_> {
         self.idx += 1;
 
         Some(match &self.compiler.code[idx] {
-            Asm::BeginCalcU16VertexAttrs => Instruction::VertexAttrsBegin(IndexType::U16),
-            Asm::BeginCalcU32VertexAttrs => Instruction::VertexAttrsBegin(IndexType::U32),
+            Asm::BeginCalcU16VertexAttrs => Self::begin_calc_u16_vertex_attrs(),
+            Asm::BeginCalcU16SkinVertexAttrs => Self::begin_calc_u16_skin_vertex_attrs(),
+            Asm::BeginCalcU32VertexAttrs => Self::begin_calc_u32_vertex_attrs(),
+            Asm::BeginCalcU32SkinVertexAttrs => Self::begin_calc_u32_skin_vertex_attrs(),
             Asm::BeginLight => Instruction::LightBegin,
             Asm::BeginModel => Instruction::MeshBegin,
             Asm::BeginRectLight => Instruction::RectLightBegin,
@@ -346,7 +448,9 @@ impl Compilation<'_> {
             Asm::BindModelBuffers(idx) => self.bind_model_buffers(*idx),
             Asm::BindModelDescriptors(idx) => self.bind_model_descriptors(*idx),
             Asm::BindU16VertexAttrsDescriptors(idx) => self.bind_u16_vertex_attrs_descriptors(*idx),
+            Asm::BindU16SkinVertexAttrsDescriptors(idx) => self.bind_u16_skin_vertex_attrs_descriptors(*idx),
             Asm::BindU32VertexAttrsDescriptors(idx) => self.bind_u32_vertex_attrs_descriptors(*idx),
+            Asm::BindU32SkinVertexAttrsDescriptors(idx) => self.bind_u32_skin_vertex_attrs_descriptors(*idx),
             Asm::BindRectLightBuffer => {
                 Self::bind_light(self.compiler.rect_light.buf.as_ref().unwrap())
             }
@@ -354,7 +458,9 @@ impl Compilation<'_> {
                 Self::bind_light(self.compiler.spotlight.buf.as_ref().unwrap())
             }
             Asm::CalcU16VertexAttrs(asm) => self.calc_u16_vertex_attrs(asm),
+            Asm::CalcU16SkinVertexAttrs(asm) => self.calc_u16_skin_vertex_attrs(asm),
             Asm::CalcU32VertexAttrs(asm) => self.calc_u32_vertex_attrs(asm),
+            Asm::CalcU32SkinVertexAttrs(asm) => self.calc_u32_skin_vertex_attrs(asm),
             Asm::CopyLineVertices => Self::copy_vertices(self.compiler.line.buf.as_mut().unwrap()),
             Asm::CopyRectLightVertices => {
                 Self::copy_vertices(self.compiler.rect_light.buf.as_mut().unwrap())
@@ -414,7 +520,9 @@ pub struct Compiler {
     spotlight: DirtyLruData<Spotlight>,
     spotlights: Vec<Spotlight>,
     u16_vertex_bufs: Vec<VertexBuffer>,
+    u16_skin_vertex_bufs: Vec<VertexBuffer>,
     u32_vertex_bufs: Vec<VertexBuffer>,
+    u32_skin_vertex_bufs: Vec<VertexBuffer>,
 }
 
 impl Compiler {

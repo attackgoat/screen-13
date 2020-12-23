@@ -139,6 +139,12 @@ impl Default for BlendMode {
 pub struct Cache(PoolRef<Pool>);
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
+pub struct CalcVertexAttrsComputeMode {
+    pub idx_ty: IndexType,
+    pub skin: bool,
+}
+
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
 struct ColorRenderPassMode {
     fmt: Format,
     preserve: bool,
@@ -146,7 +152,7 @@ struct ColorRenderPassMode {
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
 enum ComputeMode {
-    CalcVertexAttrs(IndexType),
+    CalcVertexAttrs(CalcVertexAttrsComputeMode),
     DecodeRgbRgba,
 }
 

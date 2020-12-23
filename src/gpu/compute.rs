@@ -93,17 +93,16 @@ impl Compute {
     fn calc_vertex_attrs(
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
+        spirv: &[u32],
         idx_ty: IndexType,
+        max_desc_sets: usize,
+        skin: bool,
     ) -> Self {
         Self::new(
             #[cfg(debug_assertions)]
             name,
             driver,
-            match idx_ty {
-                IndexType::U16 => &spirv::compute::CALC_VERTEX_ATTRS_U16_COMP,
-                IndexType::U32 => &spirv::compute::CALC_VERTEX_ATTRS_U32_COMP,
-            },
+            spirv,
             &[(ShaderStageFlags::COMPUTE, 0..4)],
             max_desc_sets,
             &[
@@ -185,8 +184,26 @@ impl Compute {
             #[cfg(debug_assertions)]
             name,
             driver,
+            &spirv::compute::CALC_VERTEX_ATTRS_U16_COMP,
+            IndexType::U16,
             max_desc_sets,
-            IndexType::U16
+            false,
+        )
+    }
+
+    pub fn calc_vertex_attrs_u16_skin(
+        #[cfg(debug_assertions)] name: &str,
+        driver: &Driver,
+        max_desc_sets: usize,
+    ) -> Self {
+        Self::calc_vertex_attrs(
+            #[cfg(debug_assertions)]
+            name,
+            driver,
+            &spirv::compute::CALC_VERTEX_ATTRS_U16_SKIN_COMP,
+            IndexType::U16,
+            max_desc_sets,
+            true,
         )
     }
 
@@ -199,8 +216,26 @@ impl Compute {
             #[cfg(debug_assertions)]
             name,
             driver,
+            &spirv::compute::CALC_VERTEX_ATTRS_U32_COMP,
+            IndexType::U32,
             max_desc_sets,
-            IndexType::U32
+            false,
+        )
+    }
+
+    pub fn calc_vertex_attrs_u32_skin(
+        #[cfg(debug_assertions)] name: &str,
+        driver: &Driver,
+        max_desc_sets: usize,
+    ) -> Self {
+        Self::calc_vertex_attrs(
+            #[cfg(debug_assertions)]
+            name,
+            driver,
+            &spirv::compute::CALC_VERTEX_ATTRS_U32_SKIN_COMP,
+            IndexType::U32,
+            max_desc_sets,
+            true,
         )
     }
 

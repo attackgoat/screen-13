@@ -4,4 +4,6 @@
 
 #version 450
 
+#define SKIN
+
 #include "calc_vertex_attrs_u32.glsl"

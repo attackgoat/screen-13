@@ -290,7 +290,9 @@ fn compile_shaders() {
 
     // Compute - General
     compile_glsl("compute/calc_vertex_attrs_u16.comp");
+    compile_glsl("compute/calc_vertex_attrs_u16_skin.comp");
     compile_glsl("compute/calc_vertex_attrs_u32.comp");
+    compile_glsl("compute/calc_vertex_attrs_u32_skin.comp");
 
     // Masking
     compile_glsl("mask/add.frag");

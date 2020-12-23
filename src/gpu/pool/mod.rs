@@ -151,8 +151,22 @@ impl Pool {
             item
         } else {
             let ctor = match mode {
-                ComputeMode::CalcVertexAttrs(IndexType::U16) => Compute::calc_vertex_attrs_u16,
-                ComputeMode::CalcVertexAttrs(IndexType::U32) => Compute::calc_vertex_attrs_u32,
+                ComputeMode::CalcVertexAttrs(mode) => match mode.idx_ty {
+                    IndexType::U16 => {
+                        if mode.skin {
+                            Compute::calc_vertex_attrs_u16_skin
+                        } else {
+                            Compute::calc_vertex_attrs_u16
+                        }
+                    }
+                    IndexType::U32 => {
+                        if mode.skin {
+                            Compute::calc_vertex_attrs_u32_skin
+                        } else {
+                            Compute::calc_vertex_attrs_u32
+                        }
+                    }
+                },
                 ComputeMode::DecodeRgbRgba => Compute::decode_rgb_rgba,
             };
             ctor(

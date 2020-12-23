@@ -2,6 +2,15 @@
 // disk or the network. We do not store normal or tangent in the asset .pak file, so these
 // attributes must be reconstructed at runtime; prior to rendering use.
 
-#version 450
+#include "calc_vertex_attrs.glsl"
 
-#include "calc_vertex_attrs_u32.glsl"
+// Reads a 32 bit index out of the 32 bit index buffer
+uint read_idx(uint idx) {
+    return idx_buf[idx];
+}
+
+#include "calc_vertex_attrs_fn.glsl"
+
+void main() {
+    calc_vertex_attrs();
+}

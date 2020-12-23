@@ -1,3 +1,5 @@
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
 layout(push_constant) uniform PushConstants {
     layout(offset = 0) uint offset;
 } push_constants;
@@ -21,4 +23,9 @@ layout(set = 0, binding = 4, std430) buffer WriteMask {
 struct Vertex {
     vec3 position;
     vec2 texcoord;
+
+#ifdef SKIN
+    vec4 joints;
+    vec4 weights;
+#endif
 };

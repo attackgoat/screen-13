@@ -7,7 +7,22 @@ Vertex read_vertex(uint idx) {
     vec3 position = vec3(x, y, z);
     vec2 texcoord = vec2(u, v);
 
+#ifndef SKIN
     return Vertex(position, texcoord);
+#else
+    float j0 = src_buf[++idx];
+    float j1 = src_buf[++idx];
+    float j2 = src_buf[++idx];
+    float j3 = src_buf[++idx];
+    float w0 = src_buf[++idx];
+    float w1 = src_buf[++idx];
+    float w2 = src_buf[++idx];
+    float w3 = src_buf[++idx];
+    vec4 joints = vec4(j0, j1, j2, j3);
+    vec4 weights = vec4(w0, w1, w2, w3);
+
+    return Vertex(position, texcoord, joints, weights);
+#endif
 }
 
 void write_vertex(Vertex vertex, vec3 normal, vec4 tangent, uint idx) {
@@ -21,6 +36,18 @@ void write_vertex(Vertex vertex, vec3 normal, vec4 tangent, uint idx) {
     dst_buf[++idx] = tangent.y;
     dst_buf[++idx] = tangent.z;
     dst_buf[++idx] = tangent.w;
+
+#ifdef SKIN
+    dst_buf[++idx] = vertex.joints.x;
+    dst_buf[++idx] = vertex.joints.y;
+    dst_buf[++idx] = vertex.joints.z;
+    dst_buf[++idx] = vertex.joints.w;
+    dst_buf[++idx] = vertex.weights.x;
+    dst_buf[++idx] = vertex.weights.y;
+    dst_buf[++idx] = vertex.weights.z;
+    dst_buf[++idx] = vertex.weights.w;
+#endif
+
     dst_buf[++idx] = vertex.texcoord.x;
     dst_buf[++idx] = vertex.texcoord.y;
 }

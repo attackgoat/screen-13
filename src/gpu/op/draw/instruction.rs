@@ -18,6 +18,7 @@ pub struct DataComputeInstruction {
     pub dispatch: u32,
     pub idx_ty: IndexType,
     pub offset: u32,
+    pub skin: bool,
 }
 
 /// Copies the gpu-side data from the given range to the cpu-side
@@ -63,7 +64,7 @@ pub enum Instruction<'a> {
     SpotlightDraw(SpotlightDrawInstruction<'a>),
     SunlightBegin,
     SunlightDraw(SunlightIter<'a>),
-    VertexAttrsBegin(IndexType),
+    VertexAttrsBegin(VertexAttrsBeginInstruction),
     VertexAttrsCalc(DataComputeInstruction),
     VertexAttrsDescriptors(VertexAttrsDescriptorsInstruction),
     VertexCopy(DataCopyInstruction<'a>),
@@ -109,7 +110,13 @@ pub struct SpotlightDrawInstruction<'a> {
     pub offset: u32,
 }
 
+pub struct VertexAttrsBeginInstruction {
+    pub idx_ty: IndexType,
+    pub skin: bool,
+}
+
 pub struct VertexAttrsDescriptorsInstruction {
     pub desc_set: usize,
     pub idx_ty: IndexType,
+    pub skin: bool,
 }
