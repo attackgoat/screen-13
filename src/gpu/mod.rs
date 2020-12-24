@@ -144,6 +144,25 @@ pub struct CalcVertexAttrsComputeMode {
     pub skin: bool,
 }
 
+impl CalcVertexAttrsComputeMode {
+    pub const U16: Self = Self {
+        idx_ty: IndexType::U16,
+        skin: false,
+    };
+    pub const U16_SKIN: Self = Self {
+        idx_ty: IndexType::U16,
+        skin: true,
+    };
+    pub const U32: Self = Self {
+        idx_ty: IndexType::U32,
+        skin: false,
+    };
+    pub const U32_SKIN: Self = Self {
+        idx_ty: IndexType::U32,
+        skin: true,
+    };
+}
+
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
 struct ColorRenderPassMode {
     fmt: Format,

@@ -1,9 +1,7 @@
 use {
-    super::command::{
-        PointLightIter, RectLightCommand, SpotlightCommand, SunlightIter,
-    },
+    super::command::{PointLightIter, RectLightCommand, SpotlightCommand, SunlightIter},
     crate::{
-        gpu::{data::CopyRange, model::MeshIter, pool::Lease, Data},
+        gpu::{data::CopyRange, model::MeshIter, pool::Lease, CalcVertexAttrsComputeMode, Data},
         math::Mat4,
         pak::IndexType,
     },
@@ -62,7 +60,7 @@ pub enum Instruction<'a> {
     SpotlightDraw(SpotlightDrawInstruction<'a>),
     SunlightBegin,
     SunlightDraw(SunlightIter<'a>),
-    VertexAttrsBegin(VertexAttrsBeginInstruction),
+    VertexAttrsBegin(CalcVertexAttrsComputeMode),
     VertexAttrsCalc(DataComputeInstruction),
     VertexAttrsDescriptors(VertexAttrsDescriptorsInstruction),
     VertexCopy(DataCopyInstruction<'a>),
@@ -108,13 +106,7 @@ pub struct SpotlightDrawInstruction<'a> {
     pub offset: u32,
 }
 
-pub struct VertexAttrsBeginInstruction {
-    pub idx_ty: IndexType,
-    pub skin: bool,
-}
-
 pub struct VertexAttrsDescriptorsInstruction {
     pub desc_set: usize,
-    pub idx_ty: IndexType,
-    pub skin: bool,
+    pub mode: CalcVertexAttrsComputeMode,
 }

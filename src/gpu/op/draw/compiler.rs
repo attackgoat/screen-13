@@ -10,7 +10,7 @@ use {
             DataWriteInstruction, DataWriteRefInstruction, Instruction, LightBindInstruction,
             LineDrawInstruction, MeshBindInstruction, MeshDrawInstruction,
             PointLightDrawInstruction, RectLightDrawInstruction, SpotlightDrawInstruction,
-            VertexAttrsBeginInstruction, VertexAttrsDescriptorsInstruction,
+            VertexAttrsDescriptorsInstruction,
         },
         key::{Line, RectLight, Spotlight, Stride},
         Command, Material,
@@ -20,7 +20,7 @@ use {
         gpu::{
             data::{CopyRange, Mapping},
             pool::Pool,
-            Data, Driver, Lease, ModelRef,
+            CalcVertexAttrsComputeMode, Data, Driver, Lease, ModelRef,
         },
         pak::IndexType,
     },
@@ -51,10 +51,7 @@ struct Allocation<T> {
 // but we do want to cache the vector of instructions the compiler creates. Each `Asm` is just a pointer to the `cmds` slice
 // provided by the client which actually contains the references. `Asm` also points to the leased `Data` held by `Compiler`.
 enum Asm {
-    BeginCalcU16VertexAttrs,
-    BeginCalcU16SkinVertexAttrs,
-    BeginCalcU32VertexAttrs,
-    BeginCalcU32SkinVertexAttrs,
+    BeginCalcVertexAttrs(CalcVertexAttrsComputeMode),
     BeginLight,
     BeginModel,
     BeginRectLight,
@@ -62,10 +59,7 @@ enum Asm {
     BeginSunlight,
     BindModelBuffers(usize),
     BindModelDescriptors(usize),
-    BindU16VertexAttrsDescriptors(usize),
-    BindU16SkinVertexAttrsDescriptors(usize),
-    BindU32VertexAttrsDescriptors(usize),
-    BindU32SkinVertexAttrsDescriptors(usize),
+    BindVertexAttrsDescriptors(BindVertexAttrsDescriptorsAsm),
     BindRectLightBuffer,
     BindSpotlightBuffer,
     TransferLineData,
@@ -89,6 +83,11 @@ enum Asm {
     WriteSpotlightVertices,
 }
 
+struct BindVertexAttrsDescriptorsAsm {
+    idx: usize,
+    mode: CalcVertexAttrsComputeMode,
+}
+
 struct CalcVertexAttrsAsm {
     base_idx: u32,
     base_vertex: u32,
@@ -106,32 +105,8 @@ pub struct Compilation<'a> {
 }
 
 impl Compilation<'_> {
-    fn begin_calc_u16_vertex_attrs() -> Instruction<'static> {
-        Instruction::VertexAttrsBegin(VertexAttrsBeginInstruction {
-            idx_ty: IndexType::U16,
-            skin: false,
-        })
-    }
-
-    fn begin_calc_u16_skin_vertex_attrs() -> Instruction<'static> {
-        Instruction::VertexAttrsBegin(VertexAttrsBeginInstruction {
-            idx_ty: IndexType::U16,
-            skin: true,
-        })
-    }
-
-    fn begin_calc_u32_vertex_attrs() -> Instruction<'static> {
-        Instruction::VertexAttrsBegin(VertexAttrsBeginInstruction {
-            idx_ty: IndexType::U32,
-            skin: false,
-        })
-    }
-
-    fn begin_calc_u32_skin_vertex_attrs() -> Instruction<'static> {
-        Instruction::VertexAttrsBegin(VertexAttrsBeginInstruction {
-            idx_ty: IndexType::U32,
-            skin: true,
-        })
+    fn begin_calc_vertex_attrs(mode: CalcVertexAttrsComputeMode) -> Instruction<'static> {
+        Instruction::VertexAttrsBegin(mode)
     }
 
     fn bind_light<T: Stride>(buf: &DirtyData<T>) -> Instruction {
@@ -169,59 +144,18 @@ impl Compilation<'_> {
         Instruction::MeshDescriptors(desc_set)
     }
 
-    fn bind_u16_vertex_attrs_descriptors(&self, idx: usize) -> Instruction {
-        let desc_set = self
-            .compiler
-            .vertex_bufs
-            .binary_search_by(|probe| probe.idx.cmp(&idx))
-            .unwrap();
+    fn bind_vertex_attrs_descriptors(&self, asm: &BindVertexAttrsDescriptorsAsm) -> Instruction {
+        let usage = match asm.mode {
+            CalcVertexAttrsComputeMode::U16 => &self.compiler.u16_vertex_cmds,
+            CalcVertexAttrsComputeMode::U16_SKIN => &self.compiler.u16_skin_vertex_cmds,
+            CalcVertexAttrsComputeMode::U32 => &self.compiler.u32_vertex_cmds,
+            CalcVertexAttrsComputeMode::U32_SKIN => &self.compiler.u32_skin_vertex_cmds,
+        };
+        let desc_set = usage.binary_search(&asm.idx).unwrap();
 
         Instruction::VertexAttrsDescriptors(VertexAttrsDescriptorsInstruction {
             desc_set,
-            idx_ty: IndexType::U16,
-            skin: false,
-        })
-    }
-
-    fn bind_u16_skin_vertex_attrs_descriptors(&self, idx: usize) -> Instruction {
-        let desc_set = self
-            .compiler
-            .vertex_bufs
-            .binary_search_by(|probe| probe.idx.cmp(&idx))
-            .unwrap();
-
-        Instruction::VertexAttrsDescriptors(VertexAttrsDescriptorsInstruction {
-            desc_set,
-            idx_ty: IndexType::U16,
-            skin: true,
-        })
-    }
-
-    fn bind_u32_vertex_attrs_descriptors(&self, idx: usize) -> Instruction {
-        let desc_set = self
-            .compiler
-            .vertex_bufs
-            .binary_search_by(|probe| probe.idx.cmp(&idx))
-            .unwrap();
-
-        Instruction::VertexAttrsDescriptors(VertexAttrsDescriptorsInstruction {
-            desc_set,
-            idx_ty: IndexType::U32,
-            skin: false,
-        })
-    }
-
-    fn bind_u32_skin_vertex_attrs_descriptors(&self, idx: usize) -> Instruction {
-        let desc_set = self
-            .compiler
-            .vertex_bufs
-            .binary_search_by(|probe| probe.idx.cmp(&idx))
-            .unwrap();
-
-        Instruction::VertexAttrsDescriptors(VertexAttrsDescriptorsInstruction {
-            desc_set,
-            idx_ty: IndexType::U32,
-            skin: true,
+            mode: asm.mode,
         })
     }
 
@@ -310,6 +244,7 @@ impl Compilation<'_> {
             bufs: &self.compiler.vertex_bufs,
             cmds: &self.cmds,
             idx: 0,
+            usage: &self.compiler.u16_vertex_cmds,
         }
     }
 
@@ -318,6 +253,7 @@ impl Compilation<'_> {
             bufs: &self.compiler.vertex_bufs,
             cmds: &self.cmds,
             idx: 0,
+            usage: &self.compiler.u16_skin_vertex_cmds,
         }
     }
 
@@ -326,6 +262,7 @@ impl Compilation<'_> {
             bufs: &self.compiler.vertex_bufs,
             cmds: &self.cmds,
             idx: 0,
+            usage: &self.compiler.u32_vertex_cmds,
         }
     }
 
@@ -334,6 +271,7 @@ impl Compilation<'_> {
             bufs: &self.compiler.vertex_bufs,
             cmds: &self.cmds,
             idx: 0,
+            usage: &self.compiler.u32_skin_vertex_cmds,
         }
     }
 
@@ -377,10 +315,7 @@ impl Compilation<'_> {
         self.idx += 1;
 
         Some(match &self.compiler.code[idx] {
-            Asm::BeginCalcU16VertexAttrs => Self::begin_calc_u16_vertex_attrs(),
-            Asm::BeginCalcU16SkinVertexAttrs => Self::begin_calc_u16_skin_vertex_attrs(),
-            Asm::BeginCalcU32VertexAttrs => Self::begin_calc_u32_vertex_attrs(),
-            Asm::BeginCalcU32SkinVertexAttrs => Self::begin_calc_u32_skin_vertex_attrs(),
+            Asm::BeginCalcVertexAttrs(mode) => Self::begin_calc_vertex_attrs(*mode),
             Asm::BeginLight => Instruction::LightBegin,
             Asm::BeginModel => Instruction::MeshBegin,
             Asm::BeginRectLight => Instruction::RectLightBegin,
@@ -388,14 +323,7 @@ impl Compilation<'_> {
             Asm::BeginSunlight => Instruction::SunlightBegin,
             Asm::BindModelBuffers(idx) => self.bind_model_buffers(*idx),
             Asm::BindModelDescriptors(idx) => self.bind_model_descriptors(*idx),
-            Asm::BindU16VertexAttrsDescriptors(idx) => self.bind_u16_vertex_attrs_descriptors(*idx),
-            Asm::BindU16SkinVertexAttrsDescriptors(idx) => {
-                self.bind_u16_skin_vertex_attrs_descriptors(*idx)
-            }
-            Asm::BindU32VertexAttrsDescriptors(idx) => self.bind_u32_vertex_attrs_descriptors(*idx),
-            Asm::BindU32SkinVertexAttrsDescriptors(idx) => {
-                self.bind_u32_skin_vertex_attrs_descriptors(*idx)
-            }
+            Asm::BindVertexAttrsDescriptors(asm) => self.bind_vertex_attrs_descriptors(asm),
             Asm::BindRectLightBuffer => {
                 Self::bind_light(self.compiler.rect_light.buf.as_ref().unwrap())
             }
@@ -443,7 +371,12 @@ impl Compilation<'_> {
 
 impl Drop for Compilation<'_> {
     fn drop(&mut self) {
+        // Reset non-critical resources
         self.compiler.code.clear();
+        self.compiler.u16_vertex_cmds.clear();
+        self.compiler.u16_skin_vertex_cmds.clear();
+        self.compiler.u32_vertex_cmds.clear();
+        self.compiler.u32_skin_vertex_cmds.clear();
     }
 }
 
@@ -461,6 +394,13 @@ pub struct Compiler {
     rect_lights: Vec<RectLight>,
     spotlight: DirtyLruData<Spotlight>,
     spotlights: Vec<Spotlight>,
+
+    // These store which command indices use which vertex attribute calculation type
+    u16_vertex_cmds: Vec<usize>,
+    u16_skin_vertex_cmds: Vec<usize>,
+    u32_vertex_cmds: Vec<usize>,
+    u32_skin_vertex_cmds: Vec<usize>,
+
     vertex_bufs: Vec<VertexBuffer>,
 }
 
@@ -821,20 +761,6 @@ impl Compiler {
                 self.code.push(Asm::WriteModelIndices(idx));
                 self.code.push(Asm::WriteModelVertices(idx));
 
-                // Emit 'start vertex attribute calculations' assembly code when the mode changes
-                if match vertex_calc_mode {
-                    None => true,
-                    Some(idx_ty) if idx_ty != cmd.model.idx_ty() => true,
-                    _ => false,
-                } {
-                    let idx_ty = cmd.model.idx_ty();
-                    vertex_calc_mode = Some(idx_ty);
-                    self.code.push(match idx_ty {
-                        IndexType::U16 => Asm::BeginCalcU16VertexAttrs,
-                        IndexType::U32 => Asm::BeginCalcU32VertexAttrs,
-                    });
-                }
-
                 // Store the instance of the leased data which contains the packed/staging vertices
                 // (This lease will be returned to the pool after this operation completes)
                 self.vertex_bufs.insert(
@@ -849,14 +775,44 @@ impl Compiler {
                     },
                 );
 
-                // Emit 'the current compute descriptor set has changed' assembly code
-                self.code.push(match cmd.model.idx_ty() {
-                    IndexType::U16 => Asm::BindU16VertexAttrsDescriptors(idx),
-                    IndexType::U32 => Asm::BindU32VertexAttrsDescriptors(idx),
-                });
+                let idx_ty = cmd.model.idx_ty();
+                let mut vertex_calc_bind = true;
 
-                
                 for mesh in cmd.model.meshes() {
+                    let mode = CalcVertexAttrsComputeMode {
+                        idx_ty,
+                        skin: mesh.is_animated(),
+                    };
+
+                    // Emit 'start vertex attribute calculations' assembly code when the mode changes
+                    if match vertex_calc_mode {
+                        None => true,
+                        Some(m) if m != mode => true,
+                        _ => false,
+                    } {
+                        self.code.push(Asm::BeginCalcVertexAttrs(mode));
+                        vertex_calc_bind = true;
+                        vertex_calc_mode = Some(mode);
+                    }
+
+                    // Emit 'the current compute descriptor set has changed' assembly code
+                    if vertex_calc_bind {
+                        self.code.push(Asm::BindVertexAttrsDescriptors(
+                            BindVertexAttrsDescriptorsAsm { idx, mode },
+                        ));
+                        vertex_calc_bind = false;
+
+                        // This keeps track of the fact that this command index uses the current calculation mode
+                        let usage = match mode {
+                            CalcVertexAttrsComputeMode::U16 => &mut self.u16_vertex_cmds,
+                            CalcVertexAttrsComputeMode::U16_SKIN => &mut self.u16_skin_vertex_cmds,
+                            CalcVertexAttrsComputeMode::U32 => &mut self.u32_vertex_cmds,
+                            CalcVertexAttrsComputeMode::U32_SKIN => &mut self.u32_skin_vertex_cmds,
+                        };
+                        if let Err(usage_idx) = usage.binary_search(&idx) {
+                            usage.insert(usage_idx, idx);
+                        }
+                    }
 
                     // Emit code to cause the normal and tangent vertex attributes of each mesh to be
                     // calculated (source is leased data, destination lives as long as the model does)
@@ -1168,11 +1124,13 @@ impl Compiler {
     /// Resets the internal caches so that this compiler may be reused by calling the `compile` function.
     /// Must NOT be called before the previously drawn frame is completed.
     pub(super) fn reset(&mut self) {
+        // Reset critical resources
         self.materials.clear();
         self.rect_lights.clear();
         self.spotlights.clear();
         self.vertex_bufs.clear();
 
+        // Advance the least-recently-used caching algorithm one step forward
         self.line.step();
         self.rect_light.step();
         self.spotlight.step();
@@ -1357,11 +1315,12 @@ struct VertexBuffersIter<'a> {
     bufs: &'a Vec<VertexBuffer>,
     cmds: &'a [Command],
     idx: usize,
+    usage: &'a Vec<usize>,
 }
 
 impl<'a> ExactSizeIterator for VertexBuffersIter<'a> {
     fn len(&self) -> usize {
-        self.bufs.len()
+        self.usage.len()
     }
 }
 
@@ -1369,12 +1328,21 @@ impl<'a> Iterator for VertexBuffersIter<'a> {
     type Item = VertexBuffers<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.bufs.get(self.idx).map(|src| {
-            let cmd = &self.cmds[src.idx].as_model().unwrap();
+        self.usage.get(self.idx).map(|idx| {
+            self.idx += 1;
+
+            // Get the vertex buffer for this command index
+            let src_idx = self
+                .bufs
+                .binary_search_by(|probe| probe.idx.cmp(&idx))
+                .unwrap();
+            let src = &self.bufs[src_idx];
+
+            // Get the GPU model for this command index
+            let cmd = &self.cmds[*idx].as_model().unwrap();
             let model = cmd.model.as_ref();
             let (idx, idx_len, idx_ty) = model.indices();
             let (dst, dst_len) = model.vertices();
-            self.idx += 1;
 
             // We didn't store the length of the write mask because we have the data to calculate here
             let (part, shift) = match idx_ty {

@@ -21,7 +21,7 @@ use {
             DataWriteInstruction, DataWriteRefInstruction, Instruction, LightBindInstruction,
             LineDrawInstruction, MeshBindInstruction, MeshDrawInstruction,
             PointLightDrawInstruction, RectLightDrawInstruction, SpotlightDrawInstruction,
-            VertexAttrsBeginInstruction, VertexAttrsDescriptorsInstruction,
+            VertexAttrsDescriptorsInstruction,
         },
     },
     super::Op,
@@ -235,6 +235,8 @@ impl<'a> DrawOp<'a> {
 
             // Setup compute and graphics pipelines and with their descriptor sets
             {
+                // TODO: It would be fancy to reduce the duplicate code here (without introducing spaghetti stuff)
+
                 // Material descriptors for PBR rendering (Color+Normal+Metal/Rough)
                 let descriptors = instrs.materials();
                 let desc_sets = descriptors.len();
@@ -265,10 +267,7 @@ impl<'a> DrawOp<'a> {
                         #[cfg(debug_assertions)]
                         &self.name,
                         &self.driver,
-                        ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode {
-                            idx_ty: IndexType::U16,
-                            skin: false,
-                        }),
+                        ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode::U16),
                         desc_sets,
                     );
                     let device = self.driver.borrow();
@@ -288,10 +287,7 @@ impl<'a> DrawOp<'a> {
                         #[cfg(debug_assertions)]
                         &self.name,
                         &self.driver,
-                        ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode {
-                            idx_ty: IndexType::U16,
-                            skin: true,
-                        }),
+                        ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode::U16_SKIN),
                         desc_sets,
                     );
                     let device = self.driver.borrow();
@@ -311,10 +307,7 @@ impl<'a> DrawOp<'a> {
                         #[cfg(debug_assertions)]
                         &self.name,
                         &self.driver,
-                        ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode {
-                            idx_ty: IndexType::U32,
-                            skin: false,
-                        }),
+                        ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode::U32),
                         desc_sets,
                     );
                     let device = self.driver.borrow();
@@ -334,10 +327,7 @@ impl<'a> DrawOp<'a> {
                         #[cfg(debug_assertions)]
                         &self.name,
                         &self.driver,
-                        ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode {
-                            idx_ty: IndexType::U32,
-                            skin: true,
-                        }),
+                        ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode::U32_SKIN),
                         desc_sets,
                     );
                     let device = self.driver.borrow();
@@ -980,24 +970,14 @@ impl<'a> DrawOp<'a> {
         }
     }
 
-    unsafe fn submit_vertex_attrs_begin(&mut self, instr: VertexAttrsBeginInstruction) {
+    unsafe fn submit_vertex_attrs_begin(&mut self, instr: CalcVertexAttrsComputeMode) {
         trace!("submit_vertex_attrs_begin");
 
-        let compute = match instr.idx_ty {
-            IndexType::U16 => {
-                if instr.skin {
-                    self.compute_u16_skin_vertex_attrs.as_ref()
-                } else {
-                    self.compute_u16_vertex_attrs.as_ref()
-                }
-            }
-            IndexType::U32 => {
-                if instr.skin {
-                    self.compute_u32_skin_vertex_attrs.as_ref()
-                } else {
-                    self.compute_u32_vertex_attrs.as_ref()
-                }
-            }
+        let compute = match instr {
+            CalcVertexAttrsComputeMode::U16 => self.compute_u16_vertex_attrs.as_ref(),
+            CalcVertexAttrsComputeMode::U16_SKIN => self.compute_u16_skin_vertex_attrs.as_ref(),
+            CalcVertexAttrsComputeMode::U32 => self.compute_u32_vertex_attrs.as_ref(),
+            CalcVertexAttrsComputeMode::U32_SKIN => self.compute_u32_skin_vertex_attrs.as_ref(),
         }
         .unwrap();
         let pipeline = compute.pipeline();
@@ -1008,21 +988,11 @@ impl<'a> DrawOp<'a> {
     unsafe fn submit_vertex_attrs_descriptors(&mut self, instr: VertexAttrsDescriptorsInstruction) {
         trace!("submit_vertex_attrs_descriptors");
 
-        let compute = match instr.idx_ty {
-            IndexType::U16 => {
-                if instr.skin {
-                    self.compute_u16_skin_vertex_attrs.as_ref()
-                } else {
-                    self.compute_u16_vertex_attrs.as_ref()
-                }
-            }
-            IndexType::U32 => {
-                if instr.skin {
-                    self.compute_u32_skin_vertex_attrs.as_ref()
-                } else {
-                    self.compute_u32_vertex_attrs.as_ref()
-                }
-            }
+        let compute = match instr.mode {
+            CalcVertexAttrsComputeMode::U16 => self.compute_u16_vertex_attrs.as_ref(),
+            CalcVertexAttrsComputeMode::U16_SKIN => self.compute_u16_skin_vertex_attrs.as_ref(),
+            CalcVertexAttrsComputeMode::U32 => self.compute_u32_vertex_attrs.as_ref(),
+            CalcVertexAttrsComputeMode::U32_SKIN => self.compute_u32_skin_vertex_attrs.as_ref(),
         }
         .unwrap();
         let desc_set = compute.desc_set(instr.desc_set);
