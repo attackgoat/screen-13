@@ -1,6 +1,6 @@
 use {
     super::{
-        command::{ModelCommand, PointLightCommand, SunlightCommand},
+        command::{CommandIter, ModelCommand},
         geom::{
             gen_line, gen_rect_light, gen_spotlight, LINE_STRIDE, POINT_LIGHT, RECT_LIGHT_STRIDE,
             SPOTLIGHT_STRIDE,
@@ -106,10 +106,6 @@ struct CalcVertexAttrsAsm {
 pub struct Compilation<'a> {
     cmds: &'a [Command],
     compiler: &'a mut Compiler,
-    contains_point_light: bool,
-    contains_rect_light: bool,
-    contains_spotlight: bool,
-    contains_sunlight: bool,
     idx: usize,
 }
 
@@ -180,7 +176,7 @@ impl Compilation<'_> {
     fn bind_u16_vertex_attrs_descriptors(&self, idx: usize) -> Instruction {
         let desc_set = self
             .compiler
-            .u16_vertex_bufs
+            .vertex_bufs
             .binary_search_by(|probe| probe.idx.cmp(&idx))
             .unwrap();
 
@@ -194,7 +190,7 @@ impl Compilation<'_> {
     fn bind_u16_skin_vertex_attrs_descriptors(&self, idx: usize) -> Instruction {
         let desc_set = self
             .compiler
-            .u16_skin_vertex_bufs
+            .vertex_bufs
             .binary_search_by(|probe| probe.idx.cmp(&idx))
             .unwrap();
 
@@ -208,7 +204,7 @@ impl Compilation<'_> {
     fn bind_u32_vertex_attrs_descriptors(&self, idx: usize) -> Instruction {
         let desc_set = self
             .compiler
-            .u32_vertex_bufs
+            .vertex_bufs
             .binary_search_by(|probe| probe.idx.cmp(&idx))
             .unwrap();
 
@@ -222,7 +218,7 @@ impl Compilation<'_> {
     fn bind_u32_skin_vertex_attrs_descriptors(&self, idx: usize) -> Instruction {
         let desc_set = self
             .compiler
-            .u32_skin_vertex_bufs
+            .vertex_bufs
             .binary_search_by(|probe| probe.idx.cmp(&idx))
             .unwrap();
 
@@ -289,22 +285,6 @@ impl Compilation<'_> {
         })
     }
 
-    pub fn contains_point_light(&self) -> bool {
-        self.contains_point_light
-    }
-
-    pub fn contains_rect_light(&self) -> bool {
-        self.contains_rect_light
-    }
-
-    pub fn contains_spotlight(&self) -> bool {
-        self.contains_spotlight
-    }
-
-    pub fn contains_sunlight(&self) -> bool {
-        self.contains_sunlight
-    }
-
     fn copy_vertices<T>(buf: &mut DirtyData<T>) -> Instruction {
         Instruction::VertexCopy(DataCopyInstruction {
             buf: &mut buf.data.current,
@@ -334,10 +314,7 @@ impl Compilation<'_> {
 
         Instruction::PointLightDraw(PointLightDrawInstruction {
             buf,
-            lights: PointLightIter {
-                cmds: &self.cmds[range],
-                idx: 0,
-            },
+            lights: CommandIter::new(&self.cmds[range]),
         })
     }
 
@@ -358,10 +335,7 @@ impl Compilation<'_> {
     }
 
     fn draw_sunlights(&self, range: Range<usize>) -> Instruction {
-        Instruction::SunlightDraw(SunlightIter {
-            cmds: &self.cmds[range],
-            idx: 0,
-        })
+        Instruction::SunlightDraw(CommandIter::new(&self.cmds[range]))
     }
 
     /// Returns true if no actual models or lines are rendered
@@ -385,7 +359,7 @@ impl Compilation<'_> {
 
     pub fn u16_vertex_bufs(&self) -> impl ExactSizeIterator<Item = VertexBuffers> {
         VertexBuffersIter {
-            bufs: &self.compiler.u16_vertex_bufs,
+            bufs: &self.compiler.vertex_bufs,
             cmds: &self.cmds,
             idx: 0,
         }
@@ -393,7 +367,7 @@ impl Compilation<'_> {
 
     pub fn u16_skin_vertex_bufs(&self) -> impl ExactSizeIterator<Item = VertexBuffers> {
         VertexBuffersIter {
-            bufs: &self.compiler.u16_skin_vertex_bufs,
+            bufs: &self.compiler.vertex_bufs,
             cmds: &self.cmds,
             idx: 0,
         }
@@ -401,7 +375,7 @@ impl Compilation<'_> {
 
     pub fn u32_vertex_bufs(&self) -> impl ExactSizeIterator<Item = VertexBuffers> {
         VertexBuffersIter {
-            bufs: &self.compiler.u32_vertex_bufs,
+            bufs: &self.compiler.vertex_bufs,
             cmds: &self.cmds,
             idx: 0,
         }
@@ -409,7 +383,7 @@ impl Compilation<'_> {
 
     pub fn u32_skin_vertex_bufs(&self) -> impl ExactSizeIterator<Item = VertexBuffers> {
         VertexBuffersIter {
-            bufs: &self.compiler.u32_skin_vertex_bufs,
+            bufs: &self.compiler.vertex_bufs,
             cmds: &self.cmds,
             idx: 0,
         }
@@ -542,10 +516,7 @@ pub struct Compiler {
     rect_lights: Vec<RectLight>,
     spotlight: DirtyLruData<Spotlight>,
     spotlights: Vec<Spotlight>,
-    u16_vertex_bufs: Vec<VertexBuffer>,
-    u16_skin_vertex_bufs: Vec<VertexBuffer>,
-    u32_vertex_bufs: Vec<VertexBuffer>,
-    u32_skin_vertex_bufs: Vec<VertexBuffer>,
+    vertex_bufs: Vec<VertexBuffer>,
 }
 
 impl Compiler {
@@ -804,10 +775,6 @@ impl Compiler {
         Compilation {
             cmds,
             compiler: self,
-            contains_point_light: point_light_count > 0,
-            contains_rect_light: rect_light_count > 0,
-            contains_spotlight: spotlight_count > 0,
-            contains_sunlight: sunlight_count > 0,
             idx: 0,
         }
     }
@@ -925,18 +892,8 @@ impl Compiler {
 
                 // Store the instance of the leased data which contains the packed/staging vertices
                 // (This lease will be returned to the pool after this operation completes)
-                let (bind_asm, vertex_bufs) = match cmd.model.idx_ty() {
-                    IndexType::U16 => (
-                        Asm::BindU16VertexAttrsDescriptors(idx),
-                        &mut self.u16_vertex_bufs,
-                    ),
-                    IndexType::U32 => (
-                        Asm::BindU32VertexAttrsDescriptors(idx),
-                        &mut self.u32_vertex_bufs,
-                    ),
-                };
-                vertex_bufs.insert(
-                    vertex_bufs
+                self.vertex_bufs.insert(
+                    self.vertex_bufs
                         .binary_search_by(|probe| probe.idx.cmp(&idx))
                         .unwrap_err(),
                     VertexBuffer {
@@ -948,7 +905,10 @@ impl Compiler {
                 );
 
                 // Emit 'the current compute descriptor set has changed' assembly code
-                self.code.push(bind_asm);
+                self.code.push(match cmd.model.idx_ty() {
+                    IndexType::U16 => Asm::BindU16VertexAttrsDescriptors(idx),
+                    IndexType::U32 => Asm::BindU32VertexAttrsDescriptors(idx),
+                });
 
                 // Emit code to cause the normal and tangent vertex attributes of each mesh to be
                 // calculated (source is leased data, destination lives as long as the model does)
@@ -1270,10 +1230,7 @@ impl Compiler {
         self.materials.clear();
         self.rect_lights.clear();
         self.spotlights.clear();
-        self.u16_vertex_bufs.clear();
-        self.u16_skin_vertex_bufs.clear();
-        self.u32_vertex_bufs.clear();
-        self.u32_skin_vertex_bufs.clear();
+        self.vertex_bufs.clear();
 
         self.line.step();
         self.rect_light.step();
@@ -1419,26 +1376,6 @@ enum ModelGroupIdx {
     Animated,
 }
 
-pub struct PointLightIter<'a> {
-    cmds: &'a [Command],
-    idx: usize,
-}
-
-impl<'a> Iterator for PointLightIter<'a> {
-    type Item = &'a PointLightCommand;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.idx == self.cmds.len() {
-            None
-        } else {
-            let idx = self.idx;
-            self.idx += 1;
-
-            self.cmds[idx].as_point_light()
-        }
-    }
-}
-
 /// These oddly numbered indices are the spaces in between the `GroupIdx` values. This was more efficient than
 /// finding the actual group index because we would have to walk to the front and back of each group after any
 /// binary search in order to find the whole group.
@@ -1451,30 +1388,16 @@ enum SearchIdx {
     Line = 9,
 }
 
-pub struct SunlightIter<'a> {
-    cmds: &'a [Command],
-    idx: usize,
-}
-
-impl<'a> Iterator for SunlightIter<'a> {
-    type Item = &'a SunlightCommand;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.idx == self.cmds.len() {
-            None
-        } else {
-            let idx = self.idx;
-            self.idx += 1;
-
-            self.cmds[idx].as_sunlight()
-        }
-    }
-}
-
 struct VertexBuffer {
+    /// Staging data (position + tex coord, optional joints + weights)
     buf: Lease<Data>,
+
+    /// Command index
     idx: usize,
+
+    /// Length of the staging data, in bytes
     len: u64,
+
     write_mask: Lease<Data>,
 }
 

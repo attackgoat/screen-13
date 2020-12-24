@@ -5,7 +5,7 @@ use {
         gpu::{MeshFilter, ModelRef, Pose},
         math::{vec3_is_finite, CoordF, Mat4, Sphere, Vec3},
     },
-    std::{num::FpCategory, ops::Range},
+    std::{marker::PhantomData, num::FpCategory, ops::Range},
 };
 
 /// An expressive type which allows specification of individual drawing operations.
@@ -175,6 +175,74 @@ impl Command {
             range,
             top_radius,
         })
+    }
+}
+
+pub struct CommandIter<'a, T> {
+    __: PhantomData<T>,
+    cmds: &'a [Command],
+    idx: isize,
+}
+
+impl<'a, T> CommandIter<'a, T> {
+    pub fn new(cmds: &'a [Command]) -> Self {
+        Self {
+            __: PhantomData,
+            cmds,
+            idx: -1,
+        }
+    }
+}
+
+impl<'a> Iterator for CommandIter<'a, PointLightCommand> {
+    type Item = &'a PointLightCommand;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.idx == self.cmds.len() as isize {
+            None
+        } else {
+            self.idx += 1;
+            self.cmds[self.idx as usize].as_point_light()
+        }
+    }
+}
+
+impl<'a> Iterator for CommandIter<'a, RectLightCommand> {
+    type Item = &'a RectLightCommand;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.idx == self.cmds.len() as isize {
+            None
+        } else {
+            self.idx += 1;
+            self.cmds[self.idx as usize].as_rect_light()
+        }
+    }
+}
+
+impl<'a> Iterator for CommandIter<'a, SpotlightCommand> {
+    type Item = &'a SpotlightCommand;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.idx == self.cmds.len() as isize {
+            None
+        } else {
+            self.idx += 1;
+            self.cmds[self.idx as usize].as_spotlight()
+        }
+    }
+}
+
+impl<'a> Iterator for CommandIter<'a, SunlightCommand> {
+    type Item = &'a SunlightCommand;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.idx == self.cmds.len() as isize {
+            None
+        } else {
+            self.idx += 1;
+            self.cmds[self.idx as usize].as_sunlight()
+        }
     }
 }
 

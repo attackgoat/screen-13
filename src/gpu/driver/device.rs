@@ -307,7 +307,7 @@ impl Device {
                 // memory type that has a `1` (or, is allowed), and is visible to the CPU.
                 mask & (1 << idx) != 0 && mem_ty.properties.contains(props)
             })
-            .map(|idx| MemoryTypeId(idx))
+            .map(MemoryTypeId)
     }
 
     pub fn queue_family(device: &Self) -> QueueFamilyId {

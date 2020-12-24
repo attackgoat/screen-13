@@ -4,7 +4,10 @@ pub use self::lease::Lease;
 
 use {
     super::{
-        driver::{CommandPool, DescriptorPool, Driver, Fence, Image2d, Memory, RenderPass},
+        driver::{
+            CommandPool, DescriptorPool, DescriptorSetLayout, Driver, Fence, Image2d, Memory,
+            PipelineLayout, RenderPass,
+        },
         op::Compiler,
         render_passes::{color, draw},
         BlendMode, Compute, ComputeMode, Data, Graphics, GraphicsMode, RenderPassMode, Texture,
@@ -16,13 +19,16 @@ use {
         format::Format,
         image::{Layout, Usage as ImageUsage},
         pool::CommandPool as _,
-        pso::{DescriptorRangeDesc, DescriptorType},
+        pso::{DescriptorRangeDesc, DescriptorSetLayoutBinding, DescriptorType, ShaderStageFlags},
         queue::QueueFamilyId,
         MemoryTypeId,
     },
     std::{
+        borrow::Borrow,
         cell::RefCell,
         collections::{HashMap, VecDeque},
+        iter::once,
+        ops::Range,
         rc::Rc,
     },
 };
@@ -68,6 +74,79 @@ struct GraphicsKey {
     subpass_idx: u8,
 }
 
+#[derive(Default)]
+pub(super) struct Layouts {
+    compute_calc_vertex_attrs: Option<(DescriptorSetLayout, PipelineLayout)>,
+    compute_decode_rgb_rgba: Option<(DescriptorSetLayout, PipelineLayout)>,
+}
+
+impl Layouts {
+    fn lazy_init<I, P>(
+        #[cfg(debug_assertions)] name: &str,
+        driver: &Driver,
+        layouts: &mut Option<(DescriptorSetLayout, PipelineLayout)>,
+        bindings: I,
+        push_consts: P,
+    ) where
+        I: IntoIterator,
+        I::Item: Borrow<DescriptorSetLayoutBinding>,
+        P: IntoIterator,
+        P::Item: Borrow<(ShaderStageFlags, Range<u32>)>,
+        P::IntoIter: ExactSizeIterator,
+    {
+        if layouts.is_none() {
+            let desc_set_layout = DescriptorSetLayout::new(
+                #[cfg(debug_assertions)]
+                name,
+                Driver::clone(&driver),
+                bindings,
+            );
+            let pipeline_layout = PipelineLayout::new(
+                #[cfg(debug_assertions)]
+                name,
+                Driver::clone(&driver),
+                once(desc_set_layout.as_ref()),
+                push_consts,
+            );
+            *layouts = Some((desc_set_layout, pipeline_layout));
+        }
+    }
+
+    pub(crate) fn compute_calc_vertex_attrs(
+        &mut self,
+        #[cfg(debug_assertions)] name: &str,
+        driver: &Driver,
+    ) -> &(DescriptorSetLayout, PipelineLayout) {
+        Self::lazy_init(
+            #[cfg(debug_assertions)]
+            name,
+            driver,
+            &mut self.compute_calc_vertex_attrs,
+            &Compute::CALC_VERTEX_ATTRS_DESC_SET_LAYOUT,
+            &Compute::CALC_VERTEX_ATTRS_PUSH_CONSTS,
+        );
+
+        self.compute_calc_vertex_attrs.as_ref().unwrap()
+    }
+
+    pub(crate) fn compute_decode_rgb_rgba(
+        &mut self,
+        #[cfg(debug_assertions)] name: &str,
+        driver: &Driver,
+    ) -> &(DescriptorSetLayout, PipelineLayout) {
+        Self::lazy_init(
+            #[cfg(debug_assertions)]
+            name,
+            driver,
+            &mut self.compute_decode_rgb_rgba,
+            &Compute::DECODE_RGB_RGBA_DESC_SET_LAYOUT,
+            &Compute::DECODE_RGB_RGBA_PUSH_CONSTS,
+        );
+
+        self.compute_decode_rgb_rgba.as_ref().unwrap()
+    }
+}
+
 pub struct Pool {
     cmd_pools: HashMap<QueueFamilyId, PoolRef<CommandPool>>,
     compilers: PoolRef<Compiler>,
@@ -76,6 +155,7 @@ pub struct Pool {
     desc_pools: HashMap<DescriptorPoolKey, PoolRef<DescriptorPool>>,
     fences: PoolRef<Fence>,
     graphics: HashMap<GraphicsKey, PoolRef<Graphics>>,
+    pub(super) layouts: Layouts,
 
     /// The number of frames which must elapse before a least-recently-used cache item is considered obsolete.
     ///
@@ -151,30 +231,44 @@ impl Pool {
             item
         } else {
             let ctor = match mode {
-                ComputeMode::CalcVertexAttrs(mode) => match mode.idx_ty {
-                    IndexType::U16 => {
-                        if mode.skin {
-                            Compute::calc_vertex_attrs_u16_skin
-                        } else {
-                            Compute::calc_vertex_attrs_u16
-                        }
-                    }
-                    IndexType::U32 => {
-                        if mode.skin {
-                            Compute::calc_vertex_attrs_u32_skin
-                        } else {
-                            Compute::calc_vertex_attrs_u32
-                        }
-                    }
-                },
+                ComputeMode::CalcVertexAttrs(m) if m.idx_ty == IndexType::U16 && !m.skin => {
+                    Compute::calc_vertex_attrs_u16
+                }
+                ComputeMode::CalcVertexAttrs(m) if m.idx_ty == IndexType::U16 && m.skin => {
+                    Compute::calc_vertex_attrs_u16_skin
+                }
+                ComputeMode::CalcVertexAttrs(m) if m.idx_ty == IndexType::U32 && !m.skin => {
+                    Compute::calc_vertex_attrs_u32
+                }
+                ComputeMode::CalcVertexAttrs(m) if m.idx_ty == IndexType::U32 && m.skin => {
+                    Compute::calc_vertex_attrs_u32_skin
+                }
                 ComputeMode::DecodeRgbRgba => Compute::decode_rgb_rgba,
+                _ => unreachable!(),
             };
-            ctor(
-                #[cfg(debug_assertions)]
-                name,
-                driver,
-                max_desc_sets,
-            )
+            let (desc_set_layout, pipeline_layout) = match mode {
+                ComputeMode::CalcVertexAttrs(_) => self.layouts.compute_calc_vertex_attrs(
+                    #[cfg(debug_assertions)]
+                    name,
+                    driver,
+                ),
+                ComputeMode::DecodeRgbRgba => self.layouts.compute_decode_rgb_rgba(
+                    #[cfg(debug_assertions)]
+                    name,
+                    driver,
+                ),
+            };
+
+            unsafe {
+                ctor(
+                    #[cfg(debug_assertions)]
+                    name,
+                    driver,
+                    desc_set_layout,
+                    pipeline_layout,
+                    max_desc_sets,
+                )
+            }
         };
 
         Lease::new(item, items)
@@ -466,11 +560,20 @@ impl Default for Pool {
             desc_pools: Default::default(),
             fences: Default::default(),
             graphics: Default::default(),
+            layouts: Default::default(),
             lru_threshold: DEFAULT_LRU_THRESHOLD,
             memories: Default::default(),
             render_passes: Default::default(),
             textures: Default::default(),
         }
+    }
+}
+
+impl Drop for Pool {
+    fn drop(&mut self) {
+        // Make sure these get dropped before the layouts! (They contain unsafe references!)
+        self.computes.clear();
+        self.graphics.clear();
     }
 }
 

@@ -1,7 +1,6 @@
 use {
-    super::{
-        command::{RectLightCommand, SpotlightCommand},
-        compiler::{PointLightIter, SunlightIter},
+    super::command::{
+        CommandIter, PointLightCommand, RectLightCommand, SpotlightCommand, SunlightCommand,
     },
     crate::{
         gpu::{data::CopyRange, model::MeshIter, pool::Lease, Data},
@@ -65,7 +64,7 @@ pub enum Instruction<'a> {
     SpotlightBegin,
     SpotlightDraw(SpotlightDrawInstruction<'a>),
     SunlightBegin,
-    SunlightDraw(SunlightIter<'a>),
+    SunlightDraw(CommandIter<'a, SunlightCommand>),
     VertexAttrsBegin(VertexAttrsBeginInstruction),
     VertexAttrsCalc(DataComputeInstruction<'a>),
     VertexAttrsDescriptors(VertexAttrsDescriptorsInstruction),
@@ -99,7 +98,7 @@ pub struct MeshDrawInstruction<'a> {
 
 pub struct PointLightDrawInstruction<'a> {
     pub buf: &'a Data,
-    pub lights: PointLightIter<'a>,
+    pub lights: CommandIter<'a, PointLightCommand>,
 }
 
 pub struct RectLightDrawInstruction<'a> {

@@ -28,7 +28,7 @@ pub unsafe fn bind_graphics_descriptor_set(
     cmd_buf.bind_graphics_descriptor_sets(layout, 0, once(desc_set), &None);
 }
 
-pub fn buffer_copy(len: u64) -> BufferCopy {
+pub const fn buffer_copy(len: u64) -> BufferCopy {
     BufferCopy {
         dst: 0,
         size: len,
@@ -60,11 +60,11 @@ pub fn change_channel_type(format: Format, ty: ChannelType) -> Format {
     }
 }
 
-pub fn descriptor_range_desc(count: usize, ty: DescriptorType) -> DescriptorRangeDesc {
+pub const fn descriptor_range_desc(count: usize, ty: DescriptorType) -> DescriptorRangeDesc {
     DescriptorRangeDesc { count, ty }
 }
 
-pub fn descriptor_set_layout_binding(
+pub const fn descriptor_set_layout_binding(
     binding: DescriptorBinding,
     stage_flags: ShaderStageFlags,
     ty: DescriptorType,
@@ -72,7 +72,7 @@ pub fn descriptor_set_layout_binding(
     descriptor_set_layout_binding_count(binding, 1, stage_flags, ty)
 }
 
-pub fn descriptor_set_layout_binding_count(
+pub const fn descriptor_set_layout_binding_count(
     binding: DescriptorBinding,
     count: DescriptorArrayIndex,
     stage_flags: ShaderStageFlags,

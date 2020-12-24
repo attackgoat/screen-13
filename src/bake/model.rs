@@ -204,12 +204,10 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
     // *could* be done at runtime but the model loading code would have to iterate through the
     // indices - this extra storage space (basically 1/32 index count in uncompressed bytes)
     // prevents that.
-    let mask_len = idx_write.len() + 31 >> 5;
+    let mask_len = (idx_write.len() + 31) >> 5;
 
     // The index-write vector requires padding space because of each stride of the loop below
-    for _ in idx_write.len()..mask_len << 5 {
-        idx_write.push(false);
-    }
+    idx_write.resize(mask_len << 5, false);
 
     // Turn the vec of bools into a vec of u32s where each bit is one of the bools
     let mut write_mask = vec![];

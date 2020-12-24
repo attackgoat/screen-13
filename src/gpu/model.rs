@@ -10,6 +10,8 @@ use {
     },
 };
 
+pub type StagingBuffers = (Lease<Data>, u64, Lease<Data>);
+
 // TODO: Could not force the lifetime to work without an explicit function which means I'm missing something really basic
 #[inline]
 fn deref_str<S: AsRef<str>>(s: &Option<S>) -> Option<&str> {
@@ -58,7 +60,7 @@ pub struct Model {
     idx_buf_len: u64,
     idx_ty: IndexType,
     meshes: Vec<Mesh>,
-    staging: RefCell<Option<(Lease<Data>, u64, Lease<Data>)>>,
+    staging: RefCell<Option<StagingBuffers>>,
     vertex_buf: RefCell<Lease<Data>>,
     vertex_buf_len: u64,
 }
@@ -69,8 +71,8 @@ impl Model {
         meshes: Vec<Mesh>,
         idx_ty: IndexType,
         idx: (Lease<Data>, u64),
-        staging: (Lease<Data>, u64, Lease<Data>),
         vertex: (Lease<Data>, u64),
+        staging: StagingBuffers,
     ) -> Self {
         let (idx_buf, idx_buf_len) = idx;
         let (staging_buf, staging_buf_len, write_mask) = staging;

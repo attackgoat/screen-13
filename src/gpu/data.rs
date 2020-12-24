@@ -367,8 +367,7 @@ impl Data {
     {
         // This is a no-op on unified memory architectures
         if let Some(staging) = &self.staging {
-            let ranges = RangeCopyRangeIter(ranges.into_iter());
-            let copies = CopyRangeBufferCopyIter(ranges.into_iter());
+            let copies = CopyRangeBufferCopyIter(RangeCopyRangeIter(ranges.into_iter()));
             cmd_buf.copy_buffer(&self.storage.buf, &staging.buf, copies);
         }
     }
@@ -462,8 +461,7 @@ impl Data {
         R::IntoIter: ExactSizeIterator,
     {
         if let Some(staging) = &self.staging {
-            let ranges = RangeCopyRangeIter(ranges.into_iter());
-            let copies = CopyRangeBufferCopyIter(ranges.into_iter());
+            let copies = CopyRangeBufferCopyIter(RangeCopyRangeIter(ranges.into_iter()));
             cmd_buf.copy_buffer(&staging.buf, &self.storage.buf, copies);
         }
 

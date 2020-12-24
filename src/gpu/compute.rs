@@ -2,7 +2,7 @@ use {
     super::spirv,
     crate::gpu::driver::{
         descriptor_range_desc, descriptor_set_layout_binding, ComputePipeline, DescriptorPool,
-        DescriptorSetLayout, Driver, Sampler, ShaderModule,
+        DescriptorSetLayout, Driver, PipelineLayout, Sampler, ShaderModule,
     },
     gfx_hal::{
         pso::{
@@ -12,11 +12,7 @@ use {
         Backend,
     },
     gfx_impl::Backend as _Backend,
-    std::{
-        borrow::Borrow,
-        iter::{empty, once},
-        ops::Range,
-    },
+    std::{borrow::Borrow, iter::empty, ops::Range},
 };
 
 pub struct Compute {
@@ -24,58 +20,104 @@ pub struct Compute {
     desc_sets: Vec<<_Backend as Backend>::DescriptorSet>,
     max_desc_sets: usize,
     pipeline: ComputePipeline,
-    set_layout: DescriptorSetLayout,
     samplers: Vec<Sampler>,
     shader: ShaderModule,
 }
 
 impl Compute {
+    pub const CALC_VERTEX_ATTRS_DESC_SET_LAYOUT: [DescriptorSetLayoutBinding; 4] = [
+        descriptor_set_layout_binding(
+            0, // idx_buf
+            ShaderStageFlags::COMPUTE,
+            DescriptorType::Buffer {
+                format: Compute::STRUCTURED_BUF,
+                ty: Compute::READ_ONLY_BUF,
+            },
+        ),
+        descriptor_set_layout_binding(
+            1, // src_buf
+            ShaderStageFlags::COMPUTE,
+            DescriptorType::Buffer {
+                format: Compute::STRUCTURED_BUF,
+                ty: Compute::READ_ONLY_BUF,
+            },
+        ),
+        descriptor_set_layout_binding(
+            2, // dst_buf
+            ShaderStageFlags::COMPUTE,
+            DescriptorType::Buffer {
+                format: Compute::STRUCTURED_BUF,
+                ty: Compute::READ_WRITE_BUF,
+            },
+        ),
+        descriptor_set_layout_binding(
+            3, // write_mask
+            ShaderStageFlags::COMPUTE,
+            DescriptorType::Buffer {
+                format: Compute::STRUCTURED_BUF,
+                ty: Compute::READ_ONLY_BUF,
+            },
+        ),
+    ];
+    pub const CALC_VERTEX_ATTRS_PUSH_CONSTS: [(ShaderStageFlags, Range<u32>); 1] =
+        [(ShaderStageFlags::COMPUTE, 0..8)];
+    pub const DECODE_RGB_RGBA_DESC_SET_LAYOUT: [DescriptorSetLayoutBinding; 2] = [
+        descriptor_set_layout_binding(
+            0, // pixel_buf
+            ShaderStageFlags::COMPUTE,
+            DescriptorType::Buffer {
+                format: Compute::STRUCTURED_BUF,
+                ty: Compute::READ_ONLY_BUF,
+            },
+        ),
+        descriptor_set_layout_binding(
+            1, // image
+            ShaderStageFlags::COMPUTE,
+            DescriptorType::Image {
+                ty: Compute::READ_WRITE_STORAGE_IMAGE,
+            },
+        ),
+    ];
+    pub const DECODE_RGB_RGBA_PUSH_CONSTS: [(ShaderStageFlags, Range<u32>); 1] =
+        [(ShaderStageFlags::COMPUTE, 0..4)];
+    const READ_ONLY_BUF: BufferDescriptorType = BufferDescriptorType::Storage { read_only: true };
+    const READ_WRITE_BUF: BufferDescriptorType = BufferDescriptorType::Storage { read_only: false };
+    const READ_WRITE_STORAGE_IMAGE: ImageDescriptorType =
+        ImageDescriptorType::Storage { read_only: false };
+    const STRUCTURED_BUF: BufferDescriptorFormat = BufferDescriptorFormat::Structured {
+        dynamic_offset: false,
+    };
+
     #[allow(clippy::too_many_arguments)]
-    fn new<I, IR, ID, IS>(
+    unsafe fn new<ID, IS>(
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
-        spirv: &[u32],
-        push_consts: IR,
+        desc_set_layout: &DescriptorSetLayout,
+        pipeline_layout: &PipelineLayout,
         max_desc_sets: usize,
+        spirv: &[u32],
         desc_ranges: ID,
-        bindings: I,
         samplers: IS,
     ) -> Self
     where
-        I: IntoIterator,
-        I::Item: Borrow<DescriptorSetLayoutBinding>,
-        IR: IntoIterator,
-        IR::IntoIter: ExactSizeIterator,
-        IR::Item: Borrow<(ShaderStageFlags, Range<u32>)>,
         ID: IntoIterator,
         ID::IntoIter: ExactSizeIterator,
         ID::Item: Borrow<DescriptorRangeDesc>,
         IS: Iterator<Item = Sampler>,
     {
-        let shader = unsafe { ShaderModule::new(Driver::clone(&driver), spirv) };
-        let set_layout = DescriptorSetLayout::new(
+        let shader = ShaderModule::new(Driver::clone(&driver), spirv);
+        let pipeline = ComputePipeline::new(
             #[cfg(debug_assertions)]
             name,
             Driver::clone(&driver),
-            bindings,
+            pipeline_layout.as_ref(),
+            ShaderModule::entry_point(&shader),
         );
-        let pipeline = unsafe {
-            ComputePipeline::new(
-                #[cfg(debug_assertions)]
-                name,
-                Driver::clone(&driver),
-                ShaderModule::entry_point(&shader),
-                once(&*set_layout),
-                push_consts,
-            )
-        };
         let mut desc_pool = DescriptorPool::new(Driver::clone(&driver), max_desc_sets, desc_ranges);
-        let layouts = (0..max_desc_sets).map(|_| &*set_layout);
+        let layouts = (0..max_desc_sets).map(|_| desc_set_layout.as_ref());
         let mut desc_sets = Vec::with_capacity(max_desc_sets);
 
-        unsafe {
-            desc_pool.allocate(layouts, &mut desc_sets).unwrap();
-        }
+        desc_pool.allocate(layouts, &mut desc_sets).unwrap();
 
         let samplers = samplers.collect();
 
@@ -84,78 +126,40 @@ impl Compute {
             desc_sets,
             max_desc_sets,
             pipeline,
-            set_layout,
             samplers,
             shader,
         }
     }
 
-    fn calc_vertex_attrs(
+    unsafe fn calc_vertex_attrs(
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
-        spirv: &[u32],
+        desc_set_layout: &DescriptorSetLayout,
+        pipeline_layout: &PipelineLayout,
         max_desc_sets: usize,
+        spirv: &[u32],
     ) -> Self {
-        const READ_ONLY: BufferDescriptorType = BufferDescriptorType::Storage { read_only: true };
-        const READ_WRITE: BufferDescriptorType = BufferDescriptorType::Storage { read_only: false };
-        const STRUCTURED: BufferDescriptorFormat = BufferDescriptorFormat::Structured {
-            dynamic_offset: false,
-        };
-
         Self::new(
             #[cfg(debug_assertions)]
             name,
             driver,
-            spirv,
-            &[(ShaderStageFlags::COMPUTE, 0..8)],
+            desc_set_layout,
+            pipeline_layout,
             max_desc_sets,
+            spirv,
             &[
                 descriptor_range_desc(
                     3 * max_desc_sets,
                     DescriptorType::Buffer {
-                        format: STRUCTURED,
-                        ty: READ_ONLY,
+                        format: Compute::STRUCTURED_BUF,
+                        ty: Compute::READ_ONLY_BUF,
                     },
                 ),
                 descriptor_range_desc(
                     max_desc_sets,
                     DescriptorType::Buffer {
-                        format: STRUCTURED,
-                        ty: READ_WRITE,
-                    },
-                ),
-            ],
-            &[
-                descriptor_set_layout_binding(
-                    0, // idx_buf
-                    ShaderStageFlags::COMPUTE,
-                    DescriptorType::Buffer {
-                        format: STRUCTURED,
-                        ty: READ_ONLY,
-                    },
-                ),
-                descriptor_set_layout_binding(
-                    1, // src_buf
-                    ShaderStageFlags::COMPUTE,
-                    DescriptorType::Buffer {
-                        format: STRUCTURED,
-                        ty: READ_ONLY,
-                    },
-                ),
-                descriptor_set_layout_binding(
-                    2, // dst_buf
-                    ShaderStageFlags::COMPUTE,
-                    DescriptorType::Buffer {
-                        format: STRUCTURED,
-                        ty: READ_WRITE,
-                    },
-                ),
-                descriptor_set_layout_binding(
-                    3, // write_mask
-                    ShaderStageFlags::COMPUTE,
-                    DescriptorType::Buffer {
-                        format: STRUCTURED,
-                        ty: READ_ONLY,
+                        format: Compute::STRUCTURED_BUF,
+                        ty: Compute::READ_WRITE_BUF,
                     },
                 ),
             ],
@@ -163,77 +167,100 @@ impl Compute {
         )
     }
 
-    pub fn calc_vertex_attrs_u16(
+    /// Safety: Don't let desc_set_layout or pipeline_layout drop before this!
+    pub unsafe fn calc_vertex_attrs_u16(
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
+        desc_set_layout: &DescriptorSetLayout,
+        pipeline_layout: &PipelineLayout,
         max_desc_sets: usize,
     ) -> Self {
         Self::calc_vertex_attrs(
             #[cfg(debug_assertions)]
             name,
             driver,
+            desc_set_layout,
+            pipeline_layout,
+            max_desc_sets,
             &spirv::compute::CALC_VERTEX_ATTRS_U16_COMP,
-            max_desc_sets,
         )
     }
 
-    pub fn calc_vertex_attrs_u16_skin(
+    /// Safety: Don't let desc_set_layout or pipeline_layout drop before this!
+    pub unsafe fn calc_vertex_attrs_u16_skin(
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
+        desc_set_layout: &DescriptorSetLayout,
+        pipeline_layout: &PipelineLayout,
         max_desc_sets: usize,
     ) -> Self {
         Self::calc_vertex_attrs(
             #[cfg(debug_assertions)]
             name,
             driver,
+            desc_set_layout,
+            pipeline_layout,
+            max_desc_sets,
             &spirv::compute::CALC_VERTEX_ATTRS_U16_SKIN_COMP,
-            max_desc_sets,
         )
     }
 
-    pub fn calc_vertex_attrs_u32(
+    /// Safety: Don't let desc_set_layout or pipeline_layout drop before this!
+    pub unsafe fn calc_vertex_attrs_u32(
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
+        desc_set_layout: &DescriptorSetLayout,
+        pipeline_layout: &PipelineLayout,
         max_desc_sets: usize,
     ) -> Self {
         Self::calc_vertex_attrs(
             #[cfg(debug_assertions)]
             name,
             driver,
+            desc_set_layout,
+            pipeline_layout,
+            max_desc_sets,
             &spirv::compute::CALC_VERTEX_ATTRS_U32_COMP,
-            max_desc_sets,
         )
     }
 
-    pub fn calc_vertex_attrs_u32_skin(
+    /// Safety: Don't let desc_set_layout or pipeline_layout drop before this!
+    pub unsafe fn calc_vertex_attrs_u32_skin(
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
+        desc_set_layout: &DescriptorSetLayout,
+        pipeline_layout: &PipelineLayout,
         max_desc_sets: usize,
     ) -> Self {
         Self::calc_vertex_attrs(
             #[cfg(debug_assertions)]
             name,
             driver,
-            &spirv::compute::CALC_VERTEX_ATTRS_U32_SKIN_COMP,
+            desc_set_layout,
+            pipeline_layout,
             max_desc_sets,
+            &spirv::compute::CALC_VERTEX_ATTRS_U32_SKIN_COMP,
         )
     }
 
-    pub fn decode_rgb_rgba(
+    pub unsafe fn decode_rgb_rgba(
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
+        desc_set_layout: &DescriptorSetLayout,
+        pipeline_layout: &PipelineLayout,
         max_desc_sets: usize,
     ) -> Self {
         Self::new(
             #[cfg(debug_assertions)]
             name,
             driver,
-            &spirv::compute::DECODE_RGB_RGBA_COMP,
-            &[(ShaderStageFlags::COMPUTE, 0..4)],
+            desc_set_layout,
+            pipeline_layout,
             max_desc_sets,
+            &spirv::compute::DECODE_RGB_RGBA_COMP,
             &[
                 descriptor_range_desc(
-                    1,
+                    max_desc_sets,
                     DescriptorType::Buffer {
                         format: BufferDescriptorFormat::Structured {
                             dynamic_offset: false,
@@ -242,26 +269,7 @@ impl Compute {
                     },
                 ),
                 descriptor_range_desc(
-                    1,
-                    DescriptorType::Image {
-                        ty: ImageDescriptorType::Storage { read_only: false },
-                    },
-                ),
-            ],
-            &[
-                descriptor_set_layout_binding(
-                    0,
-                    ShaderStageFlags::COMPUTE,
-                    DescriptorType::Buffer {
-                        format: BufferDescriptorFormat::Structured {
-                            dynamic_offset: false,
-                        },
-                        ty: BufferDescriptorType::Storage { read_only: true },
-                    },
-                ),
-                descriptor_set_layout_binding(
-                    1,
-                    ShaderStageFlags::COMPUTE,
+                    max_desc_sets,
                     DescriptorType::Image {
                         ty: ImageDescriptorType::Storage { read_only: false },
                     },
@@ -279,14 +287,15 @@ impl Compute {
         &self.pipeline
     }
 
-    fn reset(&mut self) {
-        unsafe {
-            self.desc_pool.reset();
-        }
+    fn _reset(&mut self) {
+        // TODO: I think we're safe to not call this code; test!
+        // unsafe {
+        //     self.desc_pool.reset();
+        // }
 
-        for desc_set in &mut self.desc_sets {
-            *desc_set = unsafe { self.desc_pool.allocate_set(&*self.set_layout).unwrap() }
-        }
+        // for desc_set in &mut self.desc_sets {
+        //     *desc_set = unsafe { self.desc_pool.allocate_set(&*self.set_layout).unwrap() }
+        // }
     }
 
     pub fn desc_set(&self, idx: usize) -> &<_Backend as Backend>::DescriptorSet {

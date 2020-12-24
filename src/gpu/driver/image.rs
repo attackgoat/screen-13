@@ -84,7 +84,7 @@ impl Image<U2> {
         };
 
         Self {
-            __: Default::default(),
+            __: PhantomData,
             driver,
             mem,
             ptr: Some(image),

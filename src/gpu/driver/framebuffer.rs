@@ -83,7 +83,7 @@ impl Framebuffer<U2> {
         };
 
         Self {
-            __: Default::default(),
+            __: PhantomData,
             driver,
             ptr: Some(frame_buf),
         }

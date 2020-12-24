@@ -12,7 +12,8 @@ pub use self::{command::Command, compiler::Compiler};
 
 use {
     self::{
-        compiler::{SunlightIter, VertexBuffers},
+        command::SunlightCommand,
+        compiler::VertexBuffers,
         geom::{LINE_STRIDE, POINT_LIGHT, RECT_LIGHT_STRIDE, SPOTLIGHT_STRIDE},
         geom_buf::GeometryBuffer,
         instruction::{
@@ -30,8 +31,8 @@ use {
         gpu::{
             data::CopyRange,
             driver::{
-                bind_compute_descriptor_set, bind_graphics_descriptor_set, CommandPool,
-                ComputePipeline, Device, Driver, Fence, Framebuffer2d,
+                bind_compute_descriptor_set, bind_graphics_descriptor_set, CommandPool, Device,
+                Driver, Fence, Framebuffer2d,
             },
             pool::{Lease, Pool},
             BitmapRef, CalcVertexAttrsComputeMode, Compute, ComputeMode, DrawRenderPassMode,
@@ -256,53 +257,9 @@ impl<'a> DrawOp<'a> {
                     self.graphics_mesh = Some(graphics);
                 }
 
-                if instrs.contains_point_light() {
-                    self.graphics_point_light = Some(self.pool.graphics_desc_sets(
-                        #[cfg(debug_assertions)]
-                        &self.name,
-                        &self.driver,
-                        GraphicsMode::DrawPointLight,
-                        RenderPassMode::Draw(self.mode),
-                        1,
-                        0,
-                    ));
-                }
+                // let set_compute = |descriptors, mode| {
 
-                if instrs.contains_rect_light() {
-                    self.graphics_rect_light = Some(self.pool.graphics_desc_sets(
-                        #[cfg(debug_assertions)]
-                        &self.name,
-                        &self.driver,
-                        GraphicsMode::DrawRectLight,
-                        RenderPassMode::Draw(self.mode),
-                        1,
-                        0,
-                    ));
-                }
-
-                if instrs.contains_spotlight() {
-                    self.graphics_spotlight = Some(self.pool.graphics_desc_sets(
-                        #[cfg(debug_assertions)]
-                        &self.name,
-                        &self.driver,
-                        GraphicsMode::DrawSpotlight,
-                        RenderPassMode::Draw(self.mode),
-                        1,
-                        0,
-                    ));
-                }
-
-                if instrs.contains_sunlight() {
-                    self.graphics_sunlight = Some(self.pool.graphics_desc_sets(
-                        #[cfg(debug_assertions)]
-                        &self.name,
-                        &self.driver,
-                        GraphicsMode::DrawSunlight,
-                        RenderPassMode::Draw(self.mode),
-                        1,
-                        0,
-                    ));
-                }
+                // };
 
                 // Buffer descriptors for calculation of u16-indexed vertex attributes
                 let descriptors = instrs.u16_vertex_bufs();
@@ -347,53 +304,7 @@ impl<'a> DrawOp<'a> {
                         Self::write_vertex_descriptors(&device, &compute, descriptors);
                     }
 
-                    self.compute_u16_skin_vertex_attrs = Some(compute);
-                }
-
-                // Buffer descriptors for calculation of u32-indexed vertex attributes
-                let descriptors = instrs.u32_vertex_bufs();
-                let desc_sets = descriptors.len();
-                if desc_sets > 0 {
-                    let compute = self.pool.compute_desc_sets(
-                        #[cfg(debug_assertions)]
-                        &self.name,
-                        &self.driver,
-                        ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode {
-                            idx_ty: IndexType::U32,
-                            skin: false,
-                        }),
-                        desc_sets,
-                    );
-                    let device = self.driver.borrow();
-
-                    unsafe {
-                        Self::write_vertex_descriptors(&device, &compute, descriptors);
-                    }
-
-                    self.compute_u32_vertex_attrs = Some(compute);
-                }
-
-                // Buffer descriptors for calculation of u32-indexed skinned vertex attributes
-                let descriptors = instrs.u32_skin_vertex_bufs();
-                let desc_sets = descriptors.len();
-                if desc_sets > 0 {
-                    let compute = self.pool.compute_desc_sets(
-                        #[cfg(debug_assertions)]
-                        &self.name,
-                        &self.driver,
-                        ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode {
-                            idx_ty: IndexType::U32,
-                            skin: true,
-                        }),
-                        desc_sets,
-                    );
-                    let device = self.driver.borrow();
-
-                    unsafe {
-                        Self::write_vertex_descriptors(&device, &compute, descriptors);
-                    }
-
-                    self.compute_u32_skin_vertex_attrs = Some(compute);
+                    self.compute_u16_vertex_attrs = Some(compute);
                 }
             }
 
@@ -749,6 +660,17 @@ impl<'a> DrawOp<'a> {
 
         const POINT_LIGHT_DRAW_COUNT: u32 = POINT_LIGHT.len() as u32 / 12;
 
+        // Lazy-init point light graphics
+        assert!(self.graphics_point_light.is_none());
+        self.graphics_point_light = Some(self.pool.graphics_desc_sets(
+            #[cfg(debug_assertions)]
+            &self.name,
+            &self.driver,
+            GraphicsMode::DrawPointLight,
+            RenderPassMode::Draw(self.mode),
+            1,
+            0,
+        ));
         let graphics = self.graphics_point_light.as_ref().unwrap();
 
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
@@ -791,6 +713,17 @@ impl<'a> DrawOp<'a> {
     unsafe fn submit_rect_light_begin(&mut self, viewport: &Viewport) {
         trace!("submit_rect_light_begin");
 
+        // Lazy-init rect light graphics
+        assert!(self.graphics_rect_light.is_none());
+        self.graphics_rect_light = Some(self.pool.graphics_desc_sets(
+            #[cfg(debug_assertions)]
+            &self.name,
+            &self.driver,
+            GraphicsMode::DrawRectLight,
+            RenderPassMode::Draw(self.mode),
+            1,
+            0,
+        ));
         let graphics = self.graphics_rect_light.as_ref().unwrap();
 
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
@@ -828,6 +761,17 @@ impl<'a> DrawOp<'a> {
     unsafe fn submit_spotlight_begin(&mut self, viewport: &Viewport) {
         trace!("submit_spotlight_begin");
 
+        // Lazy-init spotlight graphics
+        assert!(self.graphics_spotlight.is_none());
+        self.graphics_spotlight = Some(self.pool.graphics_desc_sets(
+            #[cfg(debug_assertions)]
+            &self.name,
+            &self.driver,
+            GraphicsMode::DrawSpotlight,
+            RenderPassMode::Draw(self.mode),
+            1,
+            0,
+        ));
         let graphics = self.graphics_spotlight.as_ref().unwrap();
 
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
@@ -882,7 +826,20 @@ impl<'a> DrawOp<'a> {
         self.cmd_buf.set_viewports(0, &[viewport.clone()]);
     }
 
-    unsafe fn submit_sunlights(&mut self, lights: SunlightIter) {
+    unsafe fn submit_sunlights<'c, L: Iterator<Item = &'c SunlightCommand>>(&mut self, lights: L) {
+        trace!("submit_sunlights");
+
+        // Lazy-init point light graphics
+        assert!(self.graphics_point_light.is_none());
+        self.graphics_sunlight = Some(self.pool.graphics_desc_sets(
+            #[cfg(debug_assertions)]
+            &self.name,
+            &self.driver,
+            GraphicsMode::DrawSunlight,
+            RenderPassMode::Draw(self.mode),
+            1,
+            0,
+        ));
         let graphics = self.graphics_spotlight.as_ref().unwrap();
 
         /*let view_inv = camera.view_inv();
@@ -1027,10 +984,13 @@ impl<'a> DrawOp<'a> {
         }
         .unwrap();
         let desc_set = compute.desc_set(instr.desc_set);
-        let pipeline = compute.pipeline();
-        let layout = ComputePipeline::layout(&pipeline);
+        let (_, pipeline_layout) = self.pool.layouts.compute_calc_vertex_attrs(
+            #[cfg(debug_assertions)]
+            &self.name,
+            &self.driver,
+        );
 
-        bind_compute_descriptor_set(&mut self.cmd_buf, layout, desc_set);
+        bind_compute_descriptor_set(&mut self.cmd_buf, pipeline_layout, desc_set);
     }
 
     unsafe fn submit_vertex_attrs_calc(&mut self, instr: DataComputeInstruction) {
@@ -1039,31 +999,16 @@ impl<'a> DrawOp<'a> {
         // TODO: Do I need to work within limits? Why is it not broken right now?
         let device = self.driver.borrow();
         let _limit = Device::gpu(&device).limits().max_compute_work_group_size[0];
-
-        let compute = match instr.idx_ty {
-            IndexType::U16 => {
-                if instr.skin {
-                    self.compute_u16_skin_vertex_attrs.as_ref()
-                } else {
-                    self.compute_u16_vertex_attrs.as_ref()
-                }
-            }
-            IndexType::U32 => {
-                if instr.skin {
-                    self.compute_u32_skin_vertex_attrs.as_ref()
-                } else {
-                    self.compute_u32_vertex_attrs.as_ref()
-                }
-            }
-        }
-        .unwrap();
-        let pipeline = compute.pipeline();
-        let layout = ComputePipeline::layout(&pipeline);
+        let (_, pipeline_layout) = self.pool.layouts.compute_calc_vertex_attrs(
+            #[cfg(debug_assertions)]
+            &self.name,
+            &self.driver,
+        );
 
         // We may be limited by the count of dispatches we issue; so use a loop
         // to dispatch as many times as needed
         self.cmd_buf.push_compute_constants(
-            layout,
+            pipeline_layout,
             0,
             CalcVertexAttrsConsts {
                 base_idx: instr.base_idx,
@@ -1072,12 +1017,12 @@ impl<'a> DrawOp<'a> {
             .as_ref(),
         );
         self.cmd_buf.dispatch([instr.dispatch, 1, 1]);
-        instr.buf.barrier_range(
-            &mut self.cmd_buf,
-            PipelineStage::COMPUTE_SHADER,
-            BufferAccess::SHADER_READ,
-            instr.range,
-        );
+        // instr.buf.barrier_range(
+        //     &mut self.cmd_buf,
+        //     PipelineStage::COMPUTE_SHADER,
+        //     BufferAccess::SHADER_READ,
+        //     instr.range,
+        // );
     }
 
     unsafe fn submit_vertex_copies(&mut self, instr: DataCopyInstruction) {

@@ -422,8 +422,8 @@ impl Gpu {
             meshes,
             idx_ty,
             (idx_buf, idx_buf_len),
-            (staging_buf, staging_buf_len, write_mask),
             (vertex_buf, vertex_buf_len),
+            (staging_buf, staging_buf_len, write_mask),
         )
     }
 

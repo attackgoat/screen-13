@@ -6,8 +6,8 @@ use {
             compute::Compute,
             data::Mapping,
             driver::{
-                bind_compute_descriptor_set, change_channel_type, CommandPool, ComputePipeline,
-                Device, Driver, Fence,
+                bind_compute_descriptor_set, change_channel_type, CommandPool, Device, Driver,
+                Fence,
             },
             pool::{Lease, Pool},
             ComputeMode, Data, Texture2d,
@@ -72,24 +72,29 @@ impl Op for Bitmap {
     }
 }
 
-pub struct BitmapOp {
+pub struct BitmapOp<'a> {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
     conv_fmt: Option<ComputeDispatch>,
     driver: Driver,
     fence: Lease<Fence>,
+
+    #[cfg(debug_assertions)]
+    name: String,
+
     pixel_buf: Lease<Data>,
     pixel_buf_len: u64,
+    pool: &'a mut Pool,
     texture: Lease<Texture2d>,
 }
 
-impl BitmapOp {
+impl<'a> BitmapOp<'a> {
     /// # Safety
     /// None
     pub unsafe fn new(
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
-        pool: &mut Pool,
+        pool: &'a mut Pool,
         bitmap: &PakBitmap,
     ) -> Self {
         // Lease a texture to hold the decoded bitmap
@@ -232,8 +237,11 @@ impl BitmapOp {
                 name,
                 driver,
             ),
+            #[cfg(debug_assertions)]
+            name: name.to_owned(),
             pixel_buf,
             pixel_buf_len: pixel_buf_len as _,
+            pool,
             texture,
         }
     }
@@ -277,7 +285,11 @@ impl BitmapOp {
         let conv_fmt = self.conv_fmt.as_ref().unwrap();
         let desc_set = conv_fmt.compute.desc_set(0);
         let pipeline = conv_fmt.compute.pipeline();
-        let layout = ComputePipeline::layout(&pipeline);
+        let (_, pipeline_layout) = self.pool.layouts.compute_decode_rgb_rgba(
+            #[cfg(debug_assertions)]
+            &self.name,
+            &self.driver,
+        );
         let mut texture = self.texture.borrow_mut();
         let dims = texture.dims();
 
@@ -298,14 +310,14 @@ impl BitmapOp {
         );
         self.cmd_buf.bind_compute_pipeline(pipeline);
         self.cmd_buf.push_compute_constants(
-            layout,
+            pipeline_layout,
             0,
             DecodeConsts {
                 stride: conv_fmt.pixel_buf_stride >> 2,
             }
             .as_ref(),
         );
-        bind_compute_descriptor_set(&mut self.cmd_buf, layout, desc_set);
+        bind_compute_descriptor_set(&mut self.cmd_buf, pipeline_layout, desc_set);
         self.cmd_buf.dispatch([conv_fmt.dispatch, dims.y, 1]);
     }
 

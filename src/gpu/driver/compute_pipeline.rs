@@ -1,62 +1,58 @@
 use {
-    super::{Driver, PipelineLayout},
+    super::Driver,
     gfx_hal::{
         device::Device,
-        pso::{ComputePipelineDesc, EntryPoint, ShaderStageFlags},
+        pso::{ComputePipelineDesc, EntryPoint},
         Backend,
     },
     gfx_impl::Backend as _Backend,
-    std::{
-        borrow::Borrow,
-        ops::{Deref, DerefMut, Range},
-    },
+    std::ops::{Deref, DerefMut},
 };
 
 pub struct ComputePipeline {
     driver: Driver,
-    layout: PipelineLayout,
     ptr: Option<<_Backend as Backend>::ComputePipeline>,
 }
 
 impl ComputePipeline {
-    pub unsafe fn new<IS, IR>(
+    pub unsafe fn new(
         #[cfg(debug_assertions)] name: &str,
         driver: Driver,
+        layout: &<_Backend as Backend>::PipelineLayout,
         entry_point: EntryPoint<'_, _Backend>,
-        set_layouts: IS,
-        push_consts: IR,
-    ) -> Self
-    where
-        IS: IntoIterator,
-        IS::Item: Borrow<<_Backend as Backend>::DescriptorSetLayout>,
-        IS::IntoIter: ExactSizeIterator,
-        IR: IntoIterator,
-        IR::Item: Borrow<(ShaderStageFlags, Range<u32>)>,
-        IR::IntoIter: ExactSizeIterator,
-    {
-        let layout = PipelineLayout::new(
+    ) -> Self {
+        let desc = ComputePipelineDesc::new(entry_point, layout);
+        let compute_pipeline = {
+            let device = driver.as_ref().borrow();
+            let ctor = || device.create_compute_pipeline(&desc, None).unwrap();
+
             #[cfg(debug_assertions)]
-            &format!("{} Pipeline layout", name),
-            Driver::clone(&driver),
-            set_layouts,
-            push_consts,
-        );
-        let desc = ComputePipelineDesc::new(entry_point, &*layout);
-        let compute_pipeline = driver
-            .as_ref()
-            .borrow()
-            .create_compute_pipeline(&desc, None)
-            .unwrap();
+            let mut compute_pipeline = ctor();
+
+            #[cfg(not(debug_assertions))]
+            let compute_pipeline = ctor();
+
+            #[cfg(debug_assertions)]
+            device.set_compute_pipeline_name(&mut compute_pipeline, name);
+
+            compute_pipeline
+        };
 
         Self {
             ptr: Some(compute_pipeline),
             driver,
-            layout,
         }
     }
 
-    pub fn layout(pipeline: &Self) -> &<_Backend as Backend>::PipelineLayout {
-        &pipeline.layout
+    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
+    #[cfg(debug_assertions)]
+    pub fn set_name(compute_pipeline: &mut Self, name: &str) {
+        let device = compute_pipeline.driver.as_ref().borrow();
+        let ptr = compute_pipeline.ptr.as_mut().unwrap();
+
+        unsafe {
+            device.set_compute_pipeline_name(ptr, name);
+        }
     }
 }
 
