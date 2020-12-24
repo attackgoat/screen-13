@@ -24,51 +24,24 @@ use {
     },
 };
 
-/// An iterator to allow incoming `Iterator`'s of `CopyRange` to output `Barrier::Buffer` for the destination region.
-struct BarrierIter<'a, T>
-where
-    T: Iterator,
-    T::Item: Borrow<CopyRange>,
-{
-    ranges: T,
-    states: Range<Access>,
-    target: &'a <_Backend as Backend>::Buffer,
+struct BufferMemory {
+    buf: Buffer,
+    mem: Memory,
 }
 
-impl<'a, T> Iterator for BarrierIter<'a, T>
-where
-    T: Iterator,
-    T::Item: Borrow<CopyRange>,
-{
-    type Item = Barrier<'a, _Backend>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.ranges.next() {
-            Some(range) => {
-                let r = range.borrow();
-
-                Some(Barrier::Buffer {
-                    families: None,
-                    range: SubRange {
-                        offset: r.dst,
-                        size: Some(r.src.end - r.src.start),
-                    },
-                    states: self.states.clone(),
-                    target: self.target,
-                })
-            }
-            _ => None,
-        }
-    }
+#[derive(Clone)]
+pub struct CopyRange {
+    pub dst: u64,
+    pub src: Range<u64>,
 }
 
 /// An iterator to allow incoming `Iterator`'s of `CopyRange` to output `BufferCopy` instead.
-struct BufferCopyIter<T>(T)
+struct CopyRangeBufferCopyIter<T>(T)
 where
     T: ExactSizeIterator, // TODO: Can I drop these specifications and keep the impls? Test
     T::Item: Borrow<CopyRange>;
 
-impl<T> ExactSizeIterator for BufferCopyIter<T>
+impl<T> ExactSizeIterator for CopyRangeBufferCopyIter<T>
 where
     T: ExactSizeIterator,
     T::Item: Borrow<CopyRange>,
@@ -78,7 +51,7 @@ where
     }
 }
 
-impl<T> Iterator for BufferCopyIter<T>
+impl<T> Iterator for CopyRangeBufferCopyIter<T>
 where
     T: ExactSizeIterator,
     T::Item: Borrow<CopyRange>,
@@ -101,15 +74,29 @@ where
     }
 }
 
-struct BufferMemory {
-    buf: Buffer,
-    mem: Memory,
-}
+/// An iterator to allow incoming `Iterator`'s of `CopyRange` to output `Range` instead.
+struct CopyRangeRangeIter<T>(T)
+where
+    T: Iterator,
+    T::Item: Borrow<CopyRange>;
 
-#[derive(Clone)]
-pub struct CopyRange {
-    pub dst: u64,
-    pub src: Range<u64>,
+impl<T> Iterator for CopyRangeRangeIter<T>
+where
+    T: Iterator,
+    T::Item: Borrow<CopyRange>,
+{
+    type Item = Range<u64>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.0.next() {
+            Some(range) => {
+                let r = range.borrow();
+
+                Some(r.dst..r.dst + r.src.end - r.src.start)
+            }
+            _ => None,
+        }
+    }
 }
 
 /// A buffer type which automates the tasks related to transferring bytes to the graphics device.
@@ -220,6 +207,51 @@ impl Data {
         }
     }
 
+    /// Submits a pipeline barrier and updates the state of this data.
+    ///
+    /// # Safety
+    ///
+    /// The provided command buffer must be ready to record.
+    pub unsafe fn barrier_range(
+        &mut self,
+        cmd_buf: &mut <_Backend as Backend>::CommandBuffer,
+        pipeline_stage: PipelineStage,
+        access_mask: Access,
+        range: Range<u64>,
+    ) {
+        self.barrier_ranges(cmd_buf, pipeline_stage, access_mask, &[range])
+    }
+
+    /// Submits a pipeline barrier and updates the state of this data.
+    ///
+    /// # Safety
+    ///
+    /// The provided command buffer must be ready to record.
+    pub unsafe fn barrier_ranges<R>(
+        &mut self,
+        cmd_buf: &mut <_Backend as Backend>::CommandBuffer,
+        pipeline_stage: PipelineStage,
+        access_mask: Access,
+        ranges: R,
+    ) where
+        R: IntoIterator,
+        R::Item: Borrow<Range<u64>>,
+    {
+        let barriers = RangeBarrierIter {
+            ranges: ranges.into_iter(),
+            states: self.access_mask..access_mask,
+            target: &*self.storage.buf,
+        };
+        cmd_buf.pipeline_barrier(
+            self.pipeline_stage..pipeline_stage,
+            Dependencies::empty(),
+            barriers,
+        );
+
+        self.access_mask = access_mask;
+        self.pipeline_stage = pipeline_stage;
+    }
+
     pub fn capacity(&self) -> u64 {
         self.capacity
     }
@@ -255,22 +287,11 @@ impl Data {
         R::Item: Borrow<CopyRange>,
         R::IntoIter: ExactSizeIterator,
     {
-        let copies = BufferCopyIter(ranges.into_iter());
+        let copies = CopyRangeBufferCopyIter(ranges.into_iter());
         cmd_buf.copy_buffer(&self.storage.buf, &self.storage.buf, copies);
 
-        let barriers = BarrierIter {
-            ranges: ranges.into_iter(),
-            states: self.access_mask..access_mask,
-            target: &*self.storage.buf,
-        };
-        cmd_buf.pipeline_barrier(
-            self.pipeline_stage..pipeline_stage,
-            Dependencies::empty(),
-            barriers,
-        );
-
-        self.access_mask = access_mask;
-        self.pipeline_stage = pipeline_stage;
+        let ranges = CopyRangeRangeIter(ranges.into_iter());
+        self.barrier_ranges(cmd_buf, pipeline_stage, access_mask, ranges);
     }
 
     /// Provides read-only access to the raw bytes.
@@ -346,8 +367,8 @@ impl Data {
     {
         // This is a no-op on unified memory architectures
         if let Some(staging) = &self.staging {
-            let ranges = RangeAdapter(ranges);
-            let copies = BufferCopyIter(ranges.into_iter());
+            let ranges = RangeCopyRangeIter(ranges.into_iter());
+            let copies = CopyRangeBufferCopyIter(ranges.into_iter());
             cmd_buf.copy_buffer(&self.storage.buf, &staging.buf, copies);
         }
     }
@@ -391,7 +412,7 @@ impl Data {
         R::Item: Borrow<CopyRange>,
         R::IntoIter: ExactSizeIterator,
     {
-        let copies = BufferCopyIter(ranges.into_iter());
+        let copies = CopyRangeBufferCopyIter(ranges.into_iter());
         cmd_buf.copy_buffer(&self.storage.buf, &other.storage.buf, copies);
     }
 
@@ -440,25 +461,13 @@ impl Data {
         R::Item: Borrow<Range<u64>>,
         R::IntoIter: ExactSizeIterator,
     {
-        let ranges = RangeAdapter(ranges);
         if let Some(staging) = &self.staging {
-            let copies = BufferCopyIter(ranges.into_iter());
+            let ranges = RangeCopyRangeIter(ranges.into_iter());
+            let copies = CopyRangeBufferCopyIter(ranges.into_iter());
             cmd_buf.copy_buffer(&staging.buf, &self.storage.buf, copies);
         }
 
-        let barriers = BarrierIter {
-            ranges: ranges.into_iter(),
-            states: self.access_mask..access_mask,
-            target: &*self.storage.buf,
-        };
-        cmd_buf.pipeline_barrier(
-            self.pipeline_stage..pipeline_stage,
-            Dependencies::empty(),
-            barriers,
-        );
-
-        self.access_mask = access_mask;
-        self.pipeline_stage = pipeline_stage;
+        self.barrier_ranges(cmd_buf, pipeline_stage, access_mask, ranges);
     }
 }
 
@@ -576,36 +585,52 @@ impl Drop for Mapping<'_> {
     }
 }
 
-/// An adapter to allow incoming `IntoIter`'s of `Range` to output `CopyRange` instead.
-#[derive(Clone, Copy)]
-struct RangeAdapter<T>(T)
+/// An iterator to allow incoming `Iterator`'s of `Range<u64>` to output `Barrier::Buffer` for the destination region.
+struct RangeBarrierIter<'a, T>
 where
-    T: Copy + IntoIterator,
+    T: Iterator,
     T::Item: Borrow<Range<u64>>,
-    T::IntoIter: ExactSizeIterator;
-
-impl<T> IntoIterator for RangeAdapter<T>
-where
-    T: Copy + IntoIterator,
-    T::Item: Borrow<Range<u64>>,
-    T::IntoIter: ExactSizeIterator,
 {
-    type IntoIter = RangeIter<T::IntoIter>;
-    type Item = CopyRange;
+    ranges: T,
+    states: Range<Access>,
+    target: &'a <_Backend as Backend>::Buffer,
+}
 
-    fn into_iter(self) -> Self::IntoIter {
-        RangeIter(self.0.into_iter())
+impl<'a, T> Iterator for RangeBarrierIter<'a, T>
+where
+    T: Iterator,
+    T::Item: Borrow<Range<u64>>,
+{
+    type Item = Barrier<'a, _Backend>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.ranges.next() {
+            Some(range) => {
+                let r = range.borrow();
+
+                Some(Barrier::Buffer {
+                    families: None,
+                    range: SubRange {
+                        offset: r.start,
+                        size: Some(r.end - r.start),
+                    },
+                    states: self.states.clone(),
+                    target: self.target,
+                })
+            }
+            _ => None,
+        }
     }
 }
 
 /// An iterator to allow incoming `Iterator`'s of `Range` to output `CopyRange` instead.
 #[derive(Clone, Copy)]
-struct RangeIter<T>(T)
+struct RangeCopyRangeIter<T>(T)
 where
     T: ExactSizeIterator,
     T::Item: Borrow<Range<u64>>;
 
-impl<T> ExactSizeIterator for RangeIter<T>
+impl<T> ExactSizeIterator for RangeCopyRangeIter<T>
 where
     T: ExactSizeIterator,
     T::Item: Borrow<Range<u64>>,
@@ -615,7 +640,7 @@ where
     }
 }
 
-impl<T> Iterator for RangeIter<T>
+impl<T> Iterator for RangeCopyRangeIter<T>
 where
     T: ExactSizeIterator,
     T::Item: Borrow<Range<u64>>,

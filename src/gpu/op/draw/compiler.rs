@@ -234,9 +234,13 @@ impl Compilation<'_> {
     }
 
     fn calc_u16_vertex_attrs(&self, asm: &CalcVertexAttrsAsm) -> Instruction {
+        let cmd = self.cmds[asm.idx].as_model().unwrap();
+        let (buf, _) = cmd.model.vertices_mut();
+
         Instruction::VertexAttrsCalc(DataComputeInstruction {
             base_idx: asm.base_idx,
             base_vertex: asm.base_vertex,
+            buf,
             dispatch: asm.dispatch,
             idx_ty: IndexType::U16,
             skin: false,
@@ -244,9 +248,13 @@ impl Compilation<'_> {
     }
 
     fn calc_u16_skin_vertex_attrs(&self, asm: &CalcVertexAttrsAsm) -> Instruction {
+        let cmd = self.cmds[asm.idx].as_model().unwrap();
+        let (buf, _) = cmd.model.vertices_mut();
+
         Instruction::VertexAttrsCalc(DataComputeInstruction {
             base_idx: asm.base_idx,
             base_vertex: asm.base_vertex,
+            buf,
             dispatch: asm.dispatch,
             idx_ty: IndexType::U16,
             skin: true,
@@ -254,9 +262,13 @@ impl Compilation<'_> {
     }
 
     fn calc_u32_vertex_attrs(&self, asm: &CalcVertexAttrsAsm) -> Instruction {
+        let cmd = self.cmds[asm.idx].as_model().unwrap();
+        let (buf, _) = cmd.model.vertices_mut();
+
         Instruction::VertexAttrsCalc(DataComputeInstruction {
             base_idx: asm.base_idx,
             base_vertex: asm.base_vertex,
+            buf,
             dispatch: asm.dispatch,
             idx_ty: IndexType::U32,
             skin: false,
@@ -264,9 +276,13 @@ impl Compilation<'_> {
     }
 
     fn calc_u32_skin_vertex_attrs(&self, asm: &CalcVertexAttrsAsm) -> Instruction {
+        let cmd = self.cmds[asm.idx].as_model().unwrap();
+        let (buf, _) = cmd.model.vertices_mut();
+
         Instruction::VertexAttrsCalc(DataComputeInstruction {
             base_idx: asm.base_idx,
             base_vertex: asm.base_vertex,
+            buf,
             dispatch: asm.dispatch,
             idx_ty: IndexType::U32,
             skin: true,
@@ -401,16 +417,14 @@ impl Compilation<'_> {
 
     fn write_model_indices(&self, idx: usize) -> Instruction {
         let cmd = self.cmds[idx].as_model().unwrap();
-        let (buf, _, _) = cmd.model.indices_mut();
-        let len = cmd.model.indices_len();
+        let (buf, len, _) = cmd.model.indices_mut();
 
         Instruction::IndexWriteRef(DataWriteRefInstruction { buf, range: 0..len })
     }
 
     fn write_model_vertices(&self, idx: usize) -> Instruction {
         let cmd = self.cmds[idx].as_model().unwrap();
-        let (buf, _) = cmd.model.vertices_mut();
-        let len = cmd.model.vertices_len();
+        let (buf, len) = cmd.model.vertices_mut();
 
         Instruction::VertexWriteRef(DataWriteRefInstruction { buf, range: 0..len })
     }

@@ -14,9 +14,10 @@ use {
     },
 };
 
-pub struct DataComputeInstruction {
+pub struct DataComputeInstruction<'a> {
     pub base_idx: u32,
     pub base_vertex: u32,
+    pub buf: RefMut<'a, Lease<Data>>,
     pub dispatch: u32,
     pub idx_ty: IndexType,
     pub skin: bool,
@@ -66,7 +67,7 @@ pub enum Instruction<'a> {
     SunlightBegin,
     SunlightDraw(SunlightIter<'a>),
     VertexAttrsBegin(VertexAttrsBeginInstruction),
-    VertexAttrsCalc(DataComputeInstruction),
+    VertexAttrsCalc(DataComputeInstruction<'a>),
     VertexAttrsDescriptors(VertexAttrsDescriptorsInstruction),
     VertexCopy(DataCopyInstruction<'a>),
     VertexWrite(DataWriteInstruction<'a>),

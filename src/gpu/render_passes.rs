@@ -175,7 +175,7 @@ pub(super) fn draw(driver: Driver, mode: DrawRenderPassMode) -> RenderPass {
     )
 }
 
-pub fn present(driver: &Driver, fmt: Format) -> RenderPass {
+pub(super) fn present(driver: &Driver, fmt: Format) -> RenderPass {
     let present_attachment = 0;
     let present = Attachment {
         format: Some(fmt),

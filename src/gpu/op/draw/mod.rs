@@ -374,7 +374,7 @@ impl<'a> DrawOp<'a> {
                 }
 
                 // Buffer descriptors for calculation of u32-indexed skinned vertex attributes
-                let descriptors = instrs.u32_vertex_bufs();
+                let descriptors = instrs.u32_skin_vertex_bufs();
                 let desc_sets = descriptors.len();
                 if desc_sets > 0 {
                     let compute = self.pool.compute_desc_sets(
@@ -1072,6 +1072,12 @@ impl<'a> DrawOp<'a> {
             .as_ref(),
         );
         self.cmd_buf.dispatch([instr.dispatch, 1, 1]);
+        instr.buf.barrier_range(
+            &mut self.cmd_buf,
+            PipelineStage::COMPUTE_SHADER,
+            BufferAccess::SHADER_READ,
+            instr.range,
+        );
     }
 
     unsafe fn submit_vertex_copies(&mut self, instr: DataCopyInstruction) {
