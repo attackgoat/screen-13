@@ -30,6 +30,7 @@ pub use self::{
     help::{
         bind_compute_descriptor_set, bind_graphics_descriptor_set, buffer_copy,
         change_channel_type, descriptor_range_desc, descriptor_set_layout_binding,
+        descriptor_set_layout_binding_count,
     },
     image_view::ImageView,
     memory::Memory,

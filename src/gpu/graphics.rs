@@ -89,14 +89,12 @@ impl Graphics {
             &[
                 descriptor_set_layout_binding(
                     0,
-                    1,
                     ShaderStageFlags::FRAGMENT,
                     DescriptorType::Image {
                         ty: ImageDescriptorType::Sampled { with_sampler: true },
                     },
                 ),
                 descriptor_set_layout_binding(
-                    1,
                     1,
                     ShaderStageFlags::FRAGMENT,
                     DescriptorType::Image {
@@ -276,14 +274,12 @@ impl Graphics {
             &[
                 descriptor_set_layout_binding(
                     0,
-                    1,
                     ShaderStageFlags::FRAGMENT,
                     DescriptorType::Image {
                         ty: ImageDescriptorType::Sampled { with_sampler: true },
                     },
                 ),
                 descriptor_set_layout_binding(
-                    1,
                     1,
                     ShaderStageFlags::FRAGMENT,
                     DescriptorType::Image {
@@ -292,7 +288,6 @@ impl Graphics {
                 ),
                 descriptor_set_layout_binding(
                     2,
-                    1,
                     ShaderStageFlags::FRAGMENT,
                     DescriptorType::Image {
                         ty: ImageDescriptorType::Sampled { with_sampler: true },
@@ -758,7 +753,6 @@ impl Graphics {
             Driver::clone(&driver),
             once(descriptor_set_layout_binding(
                 0,
-                1,
                 ShaderStageFlags::FRAGMENT,
                 DescriptorType::Image {
                     ty: ImageDescriptorType::Sampled { with_sampler: true },
@@ -862,7 +856,6 @@ impl Graphics {
             Driver::clone(&driver),
             once(descriptor_set_layout_binding(
                 0,
-                1,
                 ShaderStageFlags::FRAGMENT,
                 DescriptorType::Image {
                     ty: ImageDescriptorType::Sampled { with_sampler: true },
@@ -966,7 +959,6 @@ impl Graphics {
             Driver::clone(&driver),
             once(descriptor_set_layout_binding(
                 0,
-                1,
                 ShaderStageFlags::FRAGMENT,
                 DescriptorType::Image {
                     ty: ImageDescriptorType::Sampled { with_sampler: true },
@@ -1046,7 +1038,6 @@ impl Graphics {
             Driver::clone(&driver),
             once(descriptor_set_layout_binding(
                 0,
-                1,
                 ShaderStageFlags::FRAGMENT,
                 DescriptorType::Image {
                     ty: ImageDescriptorType::Sampled { with_sampler: true },
@@ -1126,7 +1117,6 @@ impl Graphics {
             Driver::clone(&driver),
             once(descriptor_set_layout_binding(
                 0,
-                1,
                 ShaderStageFlags::FRAGMENT,
                 DescriptorType::Image {
                     ty: ImageDescriptorType::Sampled { with_sampler: true },
@@ -1205,7 +1195,6 @@ impl Graphics {
             Driver::clone(&driver),
             once(descriptor_set_layout_binding(
                 0,
-                1,
                 ShaderStageFlags::FRAGMENT,
                 DescriptorType::Image {
                     ty: ImageDescriptorType::Sampled { with_sampler: true },

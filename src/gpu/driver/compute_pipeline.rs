@@ -24,7 +24,7 @@ impl ComputePipeline {
         driver: Driver,
         entry_point: EntryPoint<'_, _Backend>,
         set_layouts: IS,
-        push_constants: IR,
+        push_consts: IR,
     ) -> Self
     where
         IS: IntoIterator,
@@ -39,7 +39,7 @@ impl ComputePipeline {
             &format!("{} Pipeline layout", name),
             Driver::clone(&driver),
             set_layouts,
-            push_constants,
+            push_consts,
         );
         let desc = ComputePipelineDesc::new(entry_point, &*layout);
         let compute_pipeline = driver

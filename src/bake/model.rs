@@ -58,6 +58,7 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
         .map(|(mesh, node)| (mesh.name().unwrap_or_default(), mesh, node))
         .collect::<Vec<_>>();
     let mut idx_buf = vec![];
+    let mut idx_write = vec![];
     let mut vertex_buf = vec![];
     let mut meshes = vec![];
 
@@ -82,9 +83,6 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
         IndexType::U32
     };
 
-    let mut idx_write = vec![];
-
-    let mut all_indices = vec![];
     let mut base_idx = 0;
     for (name, mesh, node) in nodes {
         if meshes.len() == u16::MAX as usize {
@@ -109,6 +107,7 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
             .filter(|(mode, _)| mode.is_some())
             .map(|(mode, primitive)| (mode.unwrap(), primitive))
         {
+            // TODO: Convert Fan & Strip -> List
             assert_eq!(mode, TriangleMode::List);
 
             let data = primitive.reader(|buf| bufs.get(buf.index()).map(|data| &*data.0));
@@ -124,7 +123,6 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
                 .into_f32()
                 .collect::<Vec<_>>();
 
-            all_indices.extend_from_slice(&indices);
             all_positions.extend_from_slice(&positions);
             idx_count += indices.len() as u32;
             vertex_count += positions.len();
@@ -154,8 +152,8 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
             };
 
             for idx in 0..positions.len() {
-                vertex_buf.extend_from_slice(&positions[idx][0].to_ne_bytes());
-                vertex_buf.extend_from_slice(&positions[idx][1].to_ne_bytes());
+                vertex_buf.extend_from_slice(&420f32.to_ne_bytes()); //vertex_buf.extend_from_slice(&positions[idx][0].to_ne_bytes());
+                vertex_buf.extend_from_slice(&(idx as f32).to_ne_bytes()); //vertex_buf.extend_from_slice(&positions[idx][1].to_ne_bytes());
                 vertex_buf.extend_from_slice(&positions[idx][2].to_ne_bytes());
                 vertex_buf.extend_from_slice(&tex_coords[idx][0].to_ne_bytes());
                 vertex_buf.extend_from_slice(&tex_coords[idx][1].to_ne_bytes());
@@ -178,7 +176,7 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
 
         meshes.push(Mesh::new(
             dst_name,
-            base_idx..base_idx + idx_count,
+            base_idx..idx_count,
             vertex_count as _,
             vertex_offset,
             Sphere::from_point_cloud(
@@ -203,10 +201,12 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
 
     // The write mask is a compression structure. It is used to allow the compute shaders which
     // calculate extra vertex attributes (normal and tangent) to run in a lock-free manner. This
-    // *could* be done at runtime but it is very small and takes a bit of effort to figure out.
+    // *could* be done at runtime but the model loading code would have to iterate through the
+    // indices - this extra storage space (basically 1/32 index count in uncompressed bytes)
+    // prevents that.
     let mask_len = idx_write.len() + 31 >> 5;
 
-    // The index-write vector has unused space which we must pad out for the next loop
+    // The index-write vector requires padding space because of each stride of the loop below
     for _ in idx_write.len()..mask_len << 5 {
         idx_write.push(false);
     }
@@ -215,39 +215,38 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
     let mut write_mask = vec![];
     for idx in 0..mask_len {
         let idx = idx << 5;
-        let mask: u32 = 0
-            | 1 << idx_write[idx] as u32
-            | 2 << idx_write[idx + 1] as u32
-            | 3 << idx_write[idx + 2] as u32
-            | 4 << idx_write[idx + 3] as u32
-            | 5 << idx_write[idx + 4] as u32
-            | 6 << idx_write[idx + 5] as u32
-            | 7 << idx_write[idx + 6] as u32
-            | 8 << idx_write[idx + 7] as u32
-            | 9 << idx_write[idx + 8] as u32
-            | 10 << idx_write[idx + 9] as u32
-            | 11 << idx_write[idx + 10] as u32
-            | 12 << idx_write[idx + 11] as u32
-            | 13 << idx_write[idx + 12] as u32
-            | 14 << idx_write[idx + 13] as u32
-            | 15 << idx_write[idx + 14] as u32
-            | 16 << idx_write[idx + 15] as u32
-            | 17 << idx_write[idx + 16] as u32
-            | 18 << idx_write[idx + 17] as u32
-            | 19 << idx_write[idx + 18] as u32
-            | 20 << idx_write[idx + 19] as u32
-            | 21 << idx_write[idx + 20] as u32
-            | 22 << idx_write[idx + 21] as u32
-            | 23 << idx_write[idx + 22] as u32
-            | 24 << idx_write[idx + 23] as u32
-            | 25 << idx_write[idx + 24] as u32
-            | 26 << idx_write[idx + 25] as u32
-            | 27 << idx_write[idx + 26] as u32
-            | 28 << idx_write[idx + 27] as u32
-            | 29 << idx_write[idx + 28] as u32
-            | 30 << idx_write[idx + 29] as u32
-            | 31 << idx_write[idx + 30] as u32
-            | 32 << idx_write[idx + 31] as u32;
+        let mask = idx_write[idx] as u32
+            | (idx_write[idx + 1] as u32) << 1
+            | (idx_write[idx + 2] as u32) << 2
+            | (idx_write[idx + 3] as u32) << 3
+            | (idx_write[idx + 4] as u32) << 4
+            | (idx_write[idx + 5] as u32) << 5
+            | (idx_write[idx + 6] as u32) << 6
+            | (idx_write[idx + 7] as u32) << 7
+            | (idx_write[idx + 8] as u32) << 8
+            | (idx_write[idx + 9] as u32) << 9
+            | (idx_write[idx + 10] as u32) << 10
+            | (idx_write[idx + 11] as u32) << 11
+            | (idx_write[idx + 12] as u32) << 12
+            | (idx_write[idx + 13] as u32) << 13
+            | (idx_write[idx + 14] as u32) << 14
+            | (idx_write[idx + 15] as u32) << 15
+            | (idx_write[idx + 16] as u32) << 16
+            | (idx_write[idx + 17] as u32) << 17
+            | (idx_write[idx + 18] as u32) << 18
+            | (idx_write[idx + 19] as u32) << 19
+            | (idx_write[idx + 20] as u32) << 20
+            | (idx_write[idx + 21] as u32) << 21
+            | (idx_write[idx + 22] as u32) << 22
+            | (idx_write[idx + 23] as u32) << 23
+            | (idx_write[idx + 24] as u32) << 24
+            | (idx_write[idx + 25] as u32) << 25
+            | (idx_write[idx + 26] as u32) << 26
+            | (idx_write[idx + 27] as u32) << 27
+            | (idx_write[idx + 28] as u32) << 28
+            | (idx_write[idx + 29] as u32) << 29
+            | (idx_write[idx + 30] as u32) << 30
+            | (idx_write[idx + 31] as u32) << 31;
         write_mask.extend_from_slice(&mask.to_ne_bytes());
     }
 
@@ -258,76 +257,12 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
     )
 }
 
-fn create_write_mask<I: ExactSizeIterator<Item = u32>>(indices: I) -> Vec<u8> {
-    let idx_len = indices.len();
-    let mask_len = idx_len + 31 >> 5;
-    let mut write_idx = Vec::with_capacity(mask_len);
-    let mut write_seen = HashSet::new();
-
-    // For each index, store a true if it has not yet appeared in the list
-    for idx in indices {
-        let seen = write_seen.contains(&idx);
-        write_idx.push(!seen);
-        write_seen.insert(idx);
-    }
-
-    // The write index vector has unused space which we must pad out so the below logic is easier to write
-    for _ in idx_len..mask_len {
-        write_idx.push(false);
-    }
-
-    // Turn the vec of bools into a vec of u32s where each bit is one of the bools
-    let mut write_mask = vec![];
-    for idx in 0..mask_len {
-        let idx = idx << 5;
-        let mask: u32 = 0
-            | 1 << write_idx[idx] as u32
-            | 2 << write_idx[idx + 1] as u32
-            | 3 << write_idx[idx + 2] as u32
-            | 4 << write_idx[idx + 3] as u32
-            | 5 << write_idx[idx + 4] as u32
-            | 6 << write_idx[idx + 5] as u32
-            | 7 << write_idx[idx + 6] as u32
-            | 8 << write_idx[idx + 7] as u32
-            | 9 << write_idx[idx + 8] as u32
-            | 10 << write_idx[idx + 9] as u32
-            | 11 << write_idx[idx + 10] as u32
-            | 12 << write_idx[idx + 11] as u32
-            | 13 << write_idx[idx + 12] as u32
-            | 14 << write_idx[idx + 13] as u32
-            | 15 << write_idx[idx + 14] as u32
-            | 16 << write_idx[idx + 15] as u32
-            | 17 << write_idx[idx + 16] as u32
-            | 18 << write_idx[idx + 17] as u32
-            | 19 << write_idx[idx + 18] as u32
-            | 20 << write_idx[idx + 19] as u32
-            | 21 << write_idx[idx + 20] as u32
-            | 22 << write_idx[idx + 21] as u32
-            | 23 << write_idx[idx + 22] as u32
-            | 24 << write_idx[idx + 23] as u32
-            | 25 << write_idx[idx + 24] as u32
-            | 26 << write_idx[idx + 25] as u32
-            | 27 << write_idx[idx + 26] as u32
-            | 28 << write_idx[idx + 27] as u32
-            | 29 << write_idx[idx + 28] as u32
-            | 30 << write_idx[idx + 29] as u32
-            | 31 << write_idx[idx + 30] as u32
-            | 32 << write_idx[idx + 31] as u32;
-        write_mask.extend_from_slice(&mask.to_ne_bytes());
-    }
-
-    write_mask
-}
-
 fn get_transform(node: &Node) -> Option<Mat4> {
     let (translation, rotation, scale) = node.transform().decomposed();
     let rotation = quat(rotation[0], rotation[1], rotation[2], rotation[3]);
     let scale = vec3(scale[0], scale[1], scale[2]);
     let translation = vec3(translation[0], translation[1], translation[2]);
-    if scale != Vec3::one()
-        || rotation != Quat::identity()
-        || translation != Vec3::zero()
-    {
+    if scale != Vec3::one() || rotation != Quat::identity() || translation != Vec3::zero() {
         Some(Mat4::from_scale_rotation_translation(
             scale,
             rotation,

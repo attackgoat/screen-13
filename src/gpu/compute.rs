@@ -1,9 +1,9 @@
 use {
     super::spirv,
-    crate::{pak::IndexType,gpu::driver::{
+    crate::gpu::driver::{
         descriptor_range_desc, descriptor_set_layout_binding, ComputePipeline, DescriptorPool,
         DescriptorSetLayout, Driver, Sampler, ShaderModule,
-    }},
+    },
     gfx_hal::{
         pso::{
             BufferDescriptorFormat, BufferDescriptorType, DescriptorPool as _, DescriptorRangeDesc,
@@ -35,7 +35,7 @@ impl Compute {
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
         spirv: &[u32],
-        consts: IR,
+        push_consts: IR,
         max_desc_sets: usize,
         desc_ranges: ID,
         bindings: I,
@@ -66,7 +66,7 @@ impl Compute {
                 Driver::clone(&driver),
                 ShaderModule::entry_point(&shader),
                 once(&*set_layout),
-                consts,
+                push_consts,
             )
         };
         let mut desc_pool = DescriptorPool::new(Driver::clone(&driver), max_desc_sets, desc_ranges);
@@ -94,80 +94,68 @@ impl Compute {
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
         spirv: &[u32],
-        idx_ty: IndexType,
         max_desc_sets: usize,
-        skin: bool,
     ) -> Self {
+        const READ_ONLY: BufferDescriptorType = BufferDescriptorType::Storage { read_only: true };
+        const READ_WRITE: BufferDescriptorType = BufferDescriptorType::Storage { read_only: false };
+        const STRUCTURED: BufferDescriptorFormat = BufferDescriptorFormat::Structured {
+            dynamic_offset: false,
+        };
+
         Self::new(
             #[cfg(debug_assertions)]
             name,
             driver,
             spirv,
-            &[(ShaderStageFlags::COMPUTE, 0..4)],
+            &[(ShaderStageFlags::COMPUTE, 0..8)],
             max_desc_sets,
             &[
                 descriptor_range_desc(
                     3 * max_desc_sets,
                     DescriptorType::Buffer {
-                        format: BufferDescriptorFormat::Structured {
-                            dynamic_offset: false,
-                        },
-                        ty: BufferDescriptorType::Storage { read_only: true },
+                        format: STRUCTURED,
+                        ty: READ_ONLY,
                     },
                 ),
                 descriptor_range_desc(
                     max_desc_sets,
                     DescriptorType::Buffer {
-                        format: BufferDescriptorFormat::Structured {
-                            dynamic_offset: false,
-                        },
-                        ty: BufferDescriptorType::Storage { read_only: false },
+                        format: STRUCTURED,
+                        ty: READ_WRITE,
                     },
                 ),
             ],
             &[
                 descriptor_set_layout_binding(
-                    0,
-                    1,
+                    0, // idx_buf
                     ShaderStageFlags::COMPUTE,
                     DescriptorType::Buffer {
-                        format: BufferDescriptorFormat::Structured {
-                            dynamic_offset: false,
-                        },
-                        ty: BufferDescriptorType::Storage { read_only: true },
+                        format: STRUCTURED,
+                        ty: READ_ONLY,
                     },
                 ),
                 descriptor_set_layout_binding(
-                    1,
-                    1,
+                    1, // src_buf
                     ShaderStageFlags::COMPUTE,
                     DescriptorType::Buffer {
-                        format: BufferDescriptorFormat::Structured {
-                            dynamic_offset: false,
-                        },
-                        ty: BufferDescriptorType::Storage { read_only: true },
+                        format: STRUCTURED,
+                        ty: READ_ONLY,
                     },
                 ),
                 descriptor_set_layout_binding(
-                    2,
-                    1,
+                    2, // dst_buf
                     ShaderStageFlags::COMPUTE,
                     DescriptorType::Buffer {
-                        format: BufferDescriptorFormat::Structured {
-                            dynamic_offset: false,
-                        },
-                        ty: BufferDescriptorType::Storage { read_only: false },
+                        format: STRUCTURED,
+                        ty: READ_WRITE,
                     },
                 ),
                 descriptor_set_layout_binding(
-                    3,
-                    1,
+                    3, // write_mask
                     ShaderStageFlags::COMPUTE,
                     DescriptorType::Buffer {
-                        format: BufferDescriptorFormat::Structured {
-                            dynamic_offset: false,
-                        },
-                        ty: BufferDescriptorType::Storage { read_only: true },
+                        format: STRUCTURED,
+                        ty: READ_ONLY,
                     },
                 ),
             ],
@@ -185,9 +173,7 @@ impl Compute {
             name,
             driver,
             &spirv::compute::CALC_VERTEX_ATTRS_U16_COMP,
-            IndexType::U16,
             max_desc_sets,
-            false,
         )
     }
 
@@ -201,9 +187,7 @@ impl Compute {
             name,
             driver,
             &spirv::compute::CALC_VERTEX_ATTRS_U16_SKIN_COMP,
-            IndexType::U16,
             max_desc_sets,
-            true,
         )
     }
 
@@ -217,9 +201,7 @@ impl Compute {
             name,
             driver,
             &spirv::compute::CALC_VERTEX_ATTRS_U32_COMP,
-            IndexType::U32,
             max_desc_sets,
-            false,
         )
     }
 
@@ -233,9 +215,7 @@ impl Compute {
             name,
             driver,
             &spirv::compute::CALC_VERTEX_ATTRS_U32_SKIN_COMP,
-            IndexType::U32,
             max_desc_sets,
-            true,
         )
     }
 
@@ -271,7 +251,6 @@ impl Compute {
             &[
                 descriptor_set_layout_binding(
                     0,
-                    1,
                     ShaderStageFlags::COMPUTE,
                     DescriptorType::Buffer {
                         format: BufferDescriptorFormat::Structured {
@@ -281,7 +260,6 @@ impl Compute {
                     },
                 ),
                 descriptor_set_layout_binding(
-                    1,
                     1,
                     ShaderStageFlags::COMPUTE,
                     DescriptorType::Image {

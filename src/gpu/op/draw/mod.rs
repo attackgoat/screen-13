@@ -16,10 +16,11 @@ use {
         geom::{LINE_STRIDE, POINT_LIGHT, RECT_LIGHT_STRIDE, SPOTLIGHT_STRIDE},
         geom_buf::GeometryBuffer,
         instruction::{
-            DataComputeInstruction, DataCopyInstruction, DataTransferInstruction,VertexAttrsDescriptorsInstruction,
+            DataComputeInstruction, DataCopyInstruction, DataTransferInstruction,
             DataWriteInstruction, DataWriteRefInstruction, Instruction, LightBindInstruction,
-            LineDrawInstruction, MeshBindInstruction, MeshDrawInstruction,VertexAttrsBeginInstruction,
+            LineDrawInstruction, MeshBindInstruction, MeshDrawInstruction,
             PointLightDrawInstruction, RectLightDrawInstruction, SpotlightDrawInstruction,
+            VertexAttrsBeginInstruction, VertexAttrsDescriptorsInstruction,
         },
     },
     super::Op,
@@ -27,18 +28,17 @@ use {
         camera::Camera,
         color::AlphaColor,
         gpu::{
-            CalcVertexAttrsComputeMode,
             data::CopyRange,
             driver::{
                 bind_compute_descriptor_set, bind_graphics_descriptor_set, CommandPool,
                 ComputePipeline, Device, Driver, Fence, Framebuffer2d,
             },
             pool::{Lease, Pool},
-            BitmapRef, Compute, ComputeMode, DrawRenderPassMode, Graphics, GraphicsMode,
-            RenderPassMode, Texture2d, TextureRef,
+            BitmapRef, CalcVertexAttrsComputeMode, Compute, ComputeMode, DrawRenderPassMode,
+            Graphics, GraphicsMode, RenderPassMode, Texture2d, TextureRef,
         },
-        pak::IndexType,
         math::{Coord, Mat4, Vec2, Vec3},
+        pak::IndexType,
     },
     gfx_hal::{
         adapter::PhysicalDevice as _,
@@ -67,13 +67,14 @@ use {
 
 #[repr(C)]
 struct CalcVertexAttrsConsts {
-    offset: u32,
+    base_idx: u32,
+    base_vertex: u32,
 }
 
-impl AsRef<[u32; 1]> for CalcVertexAttrsConsts {
+impl AsRef<[u32; 2]> for CalcVertexAttrsConsts {
     #[inline]
-    fn as_ref(&self) -> &[u32; 1] {
-        unsafe { &*(self as *const Self as *const [u32; 1]) }
+    fn as_ref(&self) -> &[u32; 2] {
+        unsafe { &*(self as *const Self as *const [u32; 2]) }
     }
 }
 
@@ -433,7 +434,9 @@ impl<'a> DrawOp<'a> {
                             }
                             Instruction::SunlightBegin => self.submit_sunlight_begin(&viewport),
                             Instruction::SunlightDraw(instr) => self.submit_sunlights(instr),
-                            Instruction::VertexAttrsBegin(instr) => self.submit_vertex_attrs_begin(instr),
+                            Instruction::VertexAttrsBegin(instr) => {
+                                self.submit_vertex_attrs_begin(instr)
+                            }
                             Instruction::VertexAttrsCalc(instr) => {
                                 self.submit_vertex_attrs_calc(instr)
                             }
@@ -458,7 +461,9 @@ impl<'a> DrawOp<'a> {
             cmd_pool: self.cmd_pool,
             compiler,
             compute_u16_vertex_attrs: self.compute_u16_vertex_attrs,
+            compute_u16_skin_vertex_attrs: self.compute_u16_skin_vertex_attrs,
             compute_u32_vertex_attrs: self.compute_u32_vertex_attrs,
+            compute_u32_skin_vertex_attrs: self.compute_u32_skin_vertex_attrs,
             dst: self.dst,
             fence: self.fence,
             frame_buf: self.frame_buf,
@@ -676,6 +681,32 @@ impl<'a> DrawOp<'a> {
     unsafe fn submit_mesh_bind(&mut self, instr: MeshBindInstruction<'_>) {
         trace!("submit_mesh_bind");
 
+        // NOTE: These sub ranges are not SubRange::WHOLE because the leased data may have
+        // additional capacity beyond the indices/vertices we're using
+
+        self.cmd_buf.bind_index_buffer(IndexBufferView {
+            buffer: instr.idx_buf.as_ref(),
+            index_type: instr.idx_ty.into(),
+            range: SubRange {
+                offset: 0,
+                size: Some(instr.idx_buf_len),
+            },
+        });
+        self.cmd_buf.bind_vertex_buffers(
+            0,
+            once((
+                instr.vertex_buf.as_ref(),
+                SubRange {
+                    offset: 0,
+                    size: Some(instr.vertex_buf_len),
+                },
+            )),
+        );
+    }
+
+    unsafe fn submit_mesh_bind_vertex(&mut self, instr: MeshBindInstruction<'_>) {
+        trace!("submit_mesh_bind_vertex");
+
         self.cmd_buf.bind_index_buffer(IndexBufferView {
             buffer: instr.idx_buf.as_ref(),
             index_type: instr.idx_ty.into(),
@@ -726,7 +757,6 @@ impl<'a> DrawOp<'a> {
                 0,
                 Mat4Const(world_view_proj).as_ref(),
             );
-
             self.cmd_buf.draw_indexed(mesh.indices(), 0, 0..1);
         }
     }
@@ -977,9 +1007,22 @@ impl<'a> DrawOp<'a> {
         trace!("submit_vertex_attrs_begin");
 
         let compute = match instr.idx_ty {
-            IndexType::U16 => if instr.skin { self.compute_u16_skin_vertex_attrs.as_ref() } else {self.compute_u16_vertex_attrs.as_ref()},
-            IndexType::U32 => if instr.skin { self.compute_u32_skin_vertex_attrs.as_ref() } else {self.compute_u32_vertex_attrs.as_ref()},
-        }.unwrap();
+            IndexType::U16 => {
+                if instr.skin {
+                    self.compute_u16_skin_vertex_attrs.as_ref()
+                } else {
+                    self.compute_u16_vertex_attrs.as_ref()
+                }
+            }
+            IndexType::U32 => {
+                if instr.skin {
+                    self.compute_u32_skin_vertex_attrs.as_ref()
+                } else {
+                    self.compute_u32_vertex_attrs.as_ref()
+                }
+            }
+        }
+        .unwrap();
         let pipeline = compute.pipeline();
 
         self.cmd_buf.bind_compute_pipeline(pipeline);
@@ -989,9 +1032,22 @@ impl<'a> DrawOp<'a> {
         trace!("submit_vertex_attrs_descriptors");
 
         let compute = match instr.idx_ty {
-            IndexType::U16 => if instr.skin { self.compute_u16_skin_vertex_attrs.as_ref() } else {self.compute_u16_vertex_attrs.as_ref()},
-            IndexType::U32 => if instr.skin { self.compute_u32_skin_vertex_attrs.as_ref() } else {self.compute_u32_vertex_attrs.as_ref()},
-        }.unwrap();
+            IndexType::U16 => {
+                if instr.skin {
+                    self.compute_u16_skin_vertex_attrs.as_ref()
+                } else {
+                    self.compute_u16_vertex_attrs.as_ref()
+                }
+            }
+            IndexType::U32 => {
+                if instr.skin {
+                    self.compute_u32_skin_vertex_attrs.as_ref()
+                } else {
+                    self.compute_u32_vertex_attrs.as_ref()
+                }
+            }
+        }
+        .unwrap();
         let desc_set = compute.desc_set(instr.desc_set);
         let pipeline = compute.pipeline();
         let layout = ComputePipeline::layout(&pipeline);
@@ -1002,13 +1058,27 @@ impl<'a> DrawOp<'a> {
     unsafe fn submit_vertex_attrs_calc(&mut self, instr: DataComputeInstruction) {
         trace!("submit_vertex_attrs_calc");
 
+        // TODO: Do I need to work within limits? Why is it not broken right now?
         let device = self.driver.borrow();
-        let limit = Device::gpu(&device).limits().max_compute_work_group_size[0];
+        let _limit = Device::gpu(&device).limits().max_compute_work_group_size[0];
 
         let compute = match instr.idx_ty {
-            IndexType::U16 => if instr.skin { self.compute_u16_skin_vertex_attrs.as_ref() } else {self.compute_u16_vertex_attrs.as_ref()},
-            IndexType::U32 => if instr.skin { self.compute_u32_skin_vertex_attrs.as_ref() } else {self.compute_u32_vertex_attrs.as_ref()},
-        }.unwrap();
+            IndexType::U16 => {
+                if instr.skin {
+                    self.compute_u16_skin_vertex_attrs.as_ref()
+                } else {
+                    self.compute_u16_vertex_attrs.as_ref()
+                }
+            }
+            IndexType::U32 => {
+                if instr.skin {
+                    self.compute_u32_skin_vertex_attrs.as_ref()
+                } else {
+                    self.compute_u32_vertex_attrs.as_ref()
+                }
+            }
+        }
+        .unwrap();
         let pipeline = compute.pipeline();
         let layout = ComputePipeline::layout(&pipeline);
 
@@ -1018,7 +1088,8 @@ impl<'a> DrawOp<'a> {
             layout,
             0,
             CalcVertexAttrsConsts {
-                offset: instr.offset,
+                base_idx: instr.base_idx,
+                base_vertex: instr.base_vertex,
             }
             .as_ref(),
         );
@@ -1224,7 +1295,9 @@ pub struct DrawOpSubmission {
     cmd_pool: Lease<CommandPool>,
     compiler: Lease<Compiler>,
     compute_u16_vertex_attrs: Option<Lease<Compute>>,
+    compute_u16_skin_vertex_attrs: Option<Lease<Compute>>,
     compute_u32_vertex_attrs: Option<Lease<Compute>>,
+    compute_u32_skin_vertex_attrs: Option<Lease<Compute>>,
     dst: Texture2d,
     fence: Lease<Fence>,
     frame_buf: Framebuffer2d,

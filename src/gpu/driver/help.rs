@@ -66,6 +66,14 @@ pub fn descriptor_range_desc(count: usize, ty: DescriptorType) -> DescriptorRang
 
 pub fn descriptor_set_layout_binding(
     binding: DescriptorBinding,
+    stage_flags: ShaderStageFlags,
+    ty: DescriptorType,
+) -> DescriptorSetLayoutBinding {
+    descriptor_set_layout_binding_count(binding, 1, stage_flags, ty)
+}
+
+pub fn descriptor_set_layout_binding_count(
+    binding: DescriptorBinding,
     count: DescriptorArrayIndex,
     stage_flags: ShaderStageFlags,
     ty: DescriptorType,

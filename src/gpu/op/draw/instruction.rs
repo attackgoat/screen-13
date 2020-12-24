@@ -15,9 +15,10 @@ use {
 };
 
 pub struct DataComputeInstruction {
+    pub base_idx: u32,
+    pub base_vertex: u32,
     pub dispatch: u32,
     pub idx_ty: IndexType,
-    pub offset: u32,
     pub skin: bool,
 }
 

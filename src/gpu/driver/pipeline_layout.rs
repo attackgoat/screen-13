@@ -18,7 +18,7 @@ impl PipelineLayout {
         #[cfg(debug_assertions)] name: &str,
         driver: Driver,
         set_layouts: IS,
-        push_constant: IR,
+        push_consts: IR,
     ) -> Self
     where
         IS: IntoIterator,
@@ -34,7 +34,7 @@ impl PipelineLayout {
             unsafe {
                 let ctor = || {
                     device
-                        .create_pipeline_layout(set_layouts, push_constant)
+                        .create_pipeline_layout(set_layouts, push_consts)
                         .unwrap()
                 };
 

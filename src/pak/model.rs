@@ -65,6 +65,7 @@ impl Mesh {
         self.vertex_count
     }
 
+    /// Offset in the vertex buffer, in bytes, where our first vertex begins
     pub fn vertex_offset(&self) -> u32 {
         self.vertex_offset
     }

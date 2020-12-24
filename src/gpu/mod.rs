@@ -41,7 +41,7 @@ use {
     },
     crate::{
         math::Extent,
-        pak::{AnimationId,IndexType, BitmapId, ModelId, Pak},
+        pak::{AnimationId, BitmapId, IndexType, ModelId, Pak},
         Error,
     },
     gfx_hal::{
@@ -323,44 +323,71 @@ impl Gpu {
     ) -> Model {
         let mut pool = self.loads.borrow_mut();
         let model = pak.read_model(id);
-        let (idx_buf, idx_buf_len, staging_buf, staging_buf_len) = {
-            // Create an index buffer
-            let indices = model.indices();
-            let idx_buf_len = indices.len() as _;
-            let mut idx_buf = pool.data_usage(
+
+        // Create an index buffer
+        let (idx_buf, idx_buf_len) = {
+            let src = model.indices();
+            let len = src.len() as _;
+            let mut buf = pool.data_usage(
                 #[cfg(debug_assertions)]
                 name,
                 &self.driver,
-                idx_buf_len,
+                len,
                 Usage::INDEX | Usage::STORAGE,
             );
 
             // Fill the index buffer
             {
-                let mut mapped_range = idx_buf.map_range_mut(0..idx_buf_len).unwrap();
-                mapped_range.copy_from_slice(&indices);
+                let mut mapped_range = buf.map_range_mut(0..len).unwrap();
+                mapped_range.copy_from_slice(src);
                 Mapping::flush(&mut mapped_range).unwrap();
             }
 
-            // Create a staging buffer (holds vertices before we calculate additional vertex attributes)
-            let vertices = model.vertices();
-            let staging_buf_len = vertices.len() as _;
-            let mut staging_buf = pool.data_usage(
+            (buf, len)
+        };
+
+        // Create a staging buffer (holds vertices before we calculate additional vertex attributes)
+        let (staging_buf, staging_buf_len) = {
+            let src = model.vertices();
+            let len = src.len() as _;
+            let mut buf = pool.data_usage(
                 #[cfg(debug_assertions)]
                 name,
                 &self.driver,
-                staging_buf_len,
+                len,
                 Usage::STORAGE,
             );
 
             // Fill the staging buffer
             {
-                let mut mapped_range = staging_buf.map_range_mut(0..staging_buf_len).unwrap();
-                mapped_range.copy_from_slice(&vertices);
+                let mut mapped_range = buf.map_range_mut(0..len).unwrap();
+                mapped_range.copy_from_slice(src);
                 Mapping::flush(&mut mapped_range).unwrap();
             }
 
-            (idx_buf, idx_buf_len, staging_buf, staging_buf_len)
+            (buf, len)
+        };
+
+        // The write mask is the used during vertex attribute calculation
+        let write_mask = {
+            let src = model.write_mask();
+            let len = src.len() as _;
+            let mut buf = pool.data_usage(
+                #[cfg(debug_assertions)]
+                name,
+                &self.driver,
+                len,
+                Usage::STORAGE,
+            );
+
+            // Fill the write mask buffer
+            {
+                let mut mapped_range = buf.map_range_mut(0..len).unwrap();
+                mapped_range.copy_from_slice(src);
+                Mapping::flush(&mut mapped_range).unwrap();
+            }
+
+            buf
         };
 
         let idx_ty = model.idx_ty();
@@ -373,14 +400,6 @@ impl Gpu {
 
         // This is the real vertex buffer which will hold the calculated attributes
         let vertex_buf = pool.data_usage(
-            #[cfg(debug_assertions)]
-            name,
-            &self.driver,
-            vertex_buf_len,
-            Usage::STORAGE | Usage::VERTEX,
-        );
-
-        let write_mask = pool.data_usage(
             #[cfg(debug_assertions)]
             name,
             &self.driver,

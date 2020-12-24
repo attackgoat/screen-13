@@ -8,9 +8,9 @@ use {
         instruction::{
             DataComputeInstruction, DataCopyInstruction, DataTransferInstruction,
             DataWriteInstruction, DataWriteRefInstruction, Instruction, LightBindInstruction,
-            LineDrawInstruction, MeshBindInstruction, MeshDrawInstruction,VertexAttrsBeginInstruction,
+            LineDrawInstruction, MeshBindInstruction, MeshDrawInstruction,
             PointLightDrawInstruction, RectLightDrawInstruction, SpotlightDrawInstruction,
-            VertexAttrsDescriptorsInstruction,
+            VertexAttrsBeginInstruction, VertexAttrsDescriptorsInstruction,
         },
         key::{Line, RectLight, Spotlight, Stride},
         Command, Material,
@@ -60,8 +60,8 @@ enum Asm {
     BeginRectLight,
     BeginSpotlight,
     BeginSunlight,
-    BindModelBuffers(usize), // value is index into compiler.cmds which is a model command with the index+vertex buffers
-    BindModelDescriptors(usize), // value is index into compiler.cmds which is a model command with the new material
+    BindModelBuffers(usize),
+    BindModelDescriptors(usize),
     BindU16VertexAttrsDescriptors(usize),
     BindU16SkinVertexAttrsDescriptors(usize),
     BindU32VertexAttrsDescriptors(usize),
@@ -93,9 +93,10 @@ enum Asm {
 }
 
 struct CalcVertexAttrsAsm {
+    base_idx: u32,
+    base_vertex: u32,
     dispatch: u32,
     idx: usize,
-    offset: u32,
 }
 
 // TODO: The note below is good but reset is not enough, we need some sort of additional function to also drop the data, like and `undo` or `rollback`
@@ -234,36 +235,40 @@ impl Compilation<'_> {
 
     fn calc_u16_vertex_attrs(&self, asm: &CalcVertexAttrsAsm) -> Instruction {
         Instruction::VertexAttrsCalc(DataComputeInstruction {
+            base_idx: asm.base_idx,
+            base_vertex: asm.base_vertex,
             dispatch: asm.dispatch,
             idx_ty: IndexType::U16,
-            offset: asm.offset,
             skin: false,
         })
     }
 
     fn calc_u16_skin_vertex_attrs(&self, asm: &CalcVertexAttrsAsm) -> Instruction {
         Instruction::VertexAttrsCalc(DataComputeInstruction {
+            base_idx: asm.base_idx,
+            base_vertex: asm.base_vertex,
             dispatch: asm.dispatch,
             idx_ty: IndexType::U16,
-            offset: asm.offset,
             skin: true,
         })
     }
 
     fn calc_u32_vertex_attrs(&self, asm: &CalcVertexAttrsAsm) -> Instruction {
         Instruction::VertexAttrsCalc(DataComputeInstruction {
+            base_idx: asm.base_idx,
+            base_vertex: asm.base_vertex,
             dispatch: asm.dispatch,
             idx_ty: IndexType::U32,
-            offset: asm.offset,
             skin: false,
         })
     }
 
     fn calc_u32_skin_vertex_attrs(&self, asm: &CalcVertexAttrsAsm) -> Instruction {
         Instruction::VertexAttrsCalc(DataComputeInstruction {
+            base_idx: asm.base_idx,
+            base_vertex: asm.base_vertex,
             dispatch: asm.dispatch,
             idx_ty: IndexType::U32,
-            offset: asm.offset,
             skin: true,
         })
     }
@@ -448,9 +453,13 @@ impl Compilation<'_> {
             Asm::BindModelBuffers(idx) => self.bind_model_buffers(*idx),
             Asm::BindModelDescriptors(idx) => self.bind_model_descriptors(*idx),
             Asm::BindU16VertexAttrsDescriptors(idx) => self.bind_u16_vertex_attrs_descriptors(*idx),
-            Asm::BindU16SkinVertexAttrsDescriptors(idx) => self.bind_u16_skin_vertex_attrs_descriptors(*idx),
+            Asm::BindU16SkinVertexAttrsDescriptors(idx) => {
+                self.bind_u16_skin_vertex_attrs_descriptors(*idx)
+            }
             Asm::BindU32VertexAttrsDescriptors(idx) => self.bind_u32_vertex_attrs_descriptors(*idx),
-            Asm::BindU32SkinVertexAttrsDescriptors(idx) => self.bind_u32_skin_vertex_attrs_descriptors(*idx),
+            Asm::BindU32SkinVertexAttrsDescriptors(idx) => {
+                self.bind_u32_skin_vertex_attrs_descriptors(*idx)
+            }
             Asm::BindRectLightBuffer => {
                 Self::bind_light(self.compiler.rect_light.buf.as_ref().unwrap())
             }
@@ -902,14 +911,14 @@ impl Compiler {
 
                 // Store the instance of the leased data which contains the packed/staging vertices
                 // (This lease will be returned to the pool after this operation completes)
-                let (vertex_bufs, bind_asm) = match cmd.model.idx_ty() {
+                let (bind_asm, vertex_bufs) = match cmd.model.idx_ty() {
                     IndexType::U16 => (
-                        &mut self.u16_vertex_bufs,
                         Asm::BindU16VertexAttrsDescriptors(idx),
+                        &mut self.u16_vertex_bufs,
                     ),
                     IndexType::U32 => (
-                        &mut self.u32_vertex_bufs,
                         Asm::BindU32VertexAttrsDescriptors(idx),
+                        &mut self.u32_vertex_bufs,
                     ),
                 };
                 vertex_bufs.insert(
@@ -930,12 +939,12 @@ impl Compiler {
                 // Emit code to cause the normal and tangent vertex attributes of each mesh to be
                 // calculated (source is leased data, destination lives as long as the model does)
                 for mesh in cmd.model.meshes() {
-                    let dispatch = mesh.vertex_count();
-                    let offset = mesh.vertex_offset();
+                    let indices = mesh.indices();
                     let calc_asm = CalcVertexAttrsAsm {
-                        dispatch,
+                        base_idx: indices.start,
+                        base_vertex: mesh.vertex_offset() >> 2,
+                        dispatch: (indices.end - indices.start) / 3,
                         idx,
-                        offset,
                     };
 
                     self.code.push(match cmd.model.idx_ty() {
@@ -1248,7 +1257,9 @@ impl Compiler {
         self.rect_lights.clear();
         self.spotlights.clear();
         self.u16_vertex_bufs.clear();
+        self.u16_skin_vertex_bufs.clear();
         self.u32_vertex_bufs.clear();
+        self.u32_skin_vertex_bufs.clear();
 
         self.line.step();
         self.rect_light.step();
@@ -1492,7 +1503,7 @@ impl<'a> Iterator for VertexBuffersIter<'a> {
                 IndexType::U16 => (63, 6),
                 IndexType::U32 => (31, 5),
             };
-            let write_mask_len = (idx_len + part) >> shift;
+            let write_mask_len = (idx_len + part) >> shift << 2;
 
             VertexBuffers {
                 dst,

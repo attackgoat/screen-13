@@ -529,6 +529,8 @@ impl<'m> Mapping<'m> {
     }
 
     /// Releases the mapped memory back to the device, only needs to be called if this a mutable mapping.
+    ///
+    /// Remarks: Failing to call this function before dropping a Mapping may cause a panic.
     pub fn flush(mapping: &mut Self) -> Result<(), OutOfMemory> {
         if !mapping.flushed {
             mapping.flushed = true;
