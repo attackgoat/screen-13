@@ -257,10 +257,6 @@ impl<'a> DrawOp<'a> {
                     self.graphics_mesh = Some(graphics);
                 }
 
-                // let set_compute = |descriptors, mode| {
-
-                // };
-
                 // Buffer descriptors for calculation of u16-indexed vertex attributes
                 let descriptors = instrs.u16_vertex_bufs();
                 let desc_sets = descriptors.len();
@@ -304,7 +300,53 @@ impl<'a> DrawOp<'a> {
                         Self::write_vertex_descriptors(&device, &compute, descriptors);
                     }
 
-                    self.compute_u16_vertex_attrs = Some(compute);
+                    self.compute_u16_skin_vertex_attrs = Some(compute);
+                }
+
+                // Buffer descriptors for calculation of u32-indexed vertex attributes
+                let descriptors = instrs.u32_vertex_bufs();
+                let desc_sets = descriptors.len();
+                if desc_sets > 0 {
+                    let compute = self.pool.compute_desc_sets(
+                        #[cfg(debug_assertions)]
+                        &self.name,
+                        &self.driver,
+                        ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode {
+                            idx_ty: IndexType::U32,
+                            skin: false,
+                        }),
+                        desc_sets,
+                    );
+                    let device = self.driver.borrow();
+
+                    unsafe {
+                        Self::write_vertex_descriptors(&device, &compute, descriptors);
+                    }
+
+                    self.compute_u32_vertex_attrs = Some(compute);
+                }
+
+                // Buffer descriptors for calculation of u32-indexed skinned vertex attributes
+                let descriptors = instrs.u32_skin_vertex_bufs();
+                let desc_sets = descriptors.len();
+                if desc_sets > 0 {
+                    let compute = self.pool.compute_desc_sets(
+                        #[cfg(debug_assertions)]
+                        &self.name,
+                        &self.driver,
+                        ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode {
+                            idx_ty: IndexType::U32,
+                            skin: true,
+                        }),
+                        desc_sets,
+                    );
+                    let device = self.driver.borrow();
+
+                    unsafe {
+                        Self::write_vertex_descriptors(&device, &compute, descriptors);
+                    }
+
+                    self.compute_u32_skin_vertex_attrs = Some(compute);
                 }
             }
 

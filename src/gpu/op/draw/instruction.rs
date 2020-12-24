@@ -1,6 +1,6 @@
 use {
     super::command::{
-        CommandIter, PointLightCommand, RectLightCommand, SpotlightCommand, SunlightCommand,
+        PointLightIter, RectLightCommand, SpotlightCommand, SunlightIter,
     },
     crate::{
         gpu::{data::CopyRange, model::MeshIter, pool::Lease, Data},
@@ -13,13 +13,10 @@ use {
     },
 };
 
-pub struct DataComputeInstruction<'a> {
+pub struct DataComputeInstruction {
     pub base_idx: u32,
     pub base_vertex: u32,
-    pub buf: RefMut<'a, Lease<Data>>,
     pub dispatch: u32,
-    pub idx_ty: IndexType,
-    pub skin: bool,
 }
 
 /// Copies the gpu-side data from the given range to the cpu-side
@@ -64,9 +61,9 @@ pub enum Instruction<'a> {
     SpotlightBegin,
     SpotlightDraw(SpotlightDrawInstruction<'a>),
     SunlightBegin,
-    SunlightDraw(CommandIter<'a, SunlightCommand>),
+    SunlightDraw(SunlightIter<'a>),
     VertexAttrsBegin(VertexAttrsBeginInstruction),
-    VertexAttrsCalc(DataComputeInstruction<'a>),
+    VertexAttrsCalc(DataComputeInstruction),
     VertexAttrsDescriptors(VertexAttrsDescriptorsInstruction),
     VertexCopy(DataCopyInstruction<'a>),
     VertexWrite(DataWriteInstruction<'a>),
@@ -98,7 +95,7 @@ pub struct MeshDrawInstruction<'a> {
 
 pub struct PointLightDrawInstruction<'a> {
     pub buf: &'a Data,
-    pub lights: CommandIter<'a, PointLightCommand>,
+    pub lights: PointLightIter<'a>,
 }
 
 pub struct RectLightDrawInstruction<'a> {

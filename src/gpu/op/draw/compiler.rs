@@ -71,10 +71,7 @@ enum Asm {
     TransferLineData,
     TransferRectLightData,
     TransferSpotlightData,
-    CalcU16VertexAttrs(CalcVertexAttrsAsm),
-    CalcU16SkinVertexAttrs(CalcVertexAttrsAsm),
-    CalcU32VertexAttrs(CalcVertexAttrsAsm),
-    CalcU32SkinVertexAttrs(CalcVertexAttrsAsm),
+    CalcVertexAttrs(CalcVertexAttrsAsm),
     CopyLineVertices,
     CopyRectLightVertices,
     CopySpotlightVertices,
@@ -96,7 +93,6 @@ struct CalcVertexAttrsAsm {
     base_idx: u32,
     base_vertex: u32,
     dispatch: u32,
-    idx: usize,
 }
 
 // TODO: The note below is good but reset is not enough, we need some sort of additional function to also drop the data, like and `undo` or `rollback`
@@ -229,59 +225,11 @@ impl Compilation<'_> {
         })
     }
 
-    fn calc_u16_vertex_attrs(&self, asm: &CalcVertexAttrsAsm) -> Instruction {
-        let cmd = self.cmds[asm.idx].as_model().unwrap();
-        let (buf, _) = cmd.model.vertices_mut();
-
+    fn calc_vertex_attrs(&self, asm: &CalcVertexAttrsAsm) -> Instruction {
         Instruction::VertexAttrsCalc(DataComputeInstruction {
             base_idx: asm.base_idx,
             base_vertex: asm.base_vertex,
-            buf,
             dispatch: asm.dispatch,
-            idx_ty: IndexType::U16,
-            skin: false,
-        })
-    }
-
-    fn calc_u16_skin_vertex_attrs(&self, asm: &CalcVertexAttrsAsm) -> Instruction {
-        let cmd = self.cmds[asm.idx].as_model().unwrap();
-        let (buf, _) = cmd.model.vertices_mut();
-
-        Instruction::VertexAttrsCalc(DataComputeInstruction {
-            base_idx: asm.base_idx,
-            base_vertex: asm.base_vertex,
-            buf,
-            dispatch: asm.dispatch,
-            idx_ty: IndexType::U16,
-            skin: true,
-        })
-    }
-
-    fn calc_u32_vertex_attrs(&self, asm: &CalcVertexAttrsAsm) -> Instruction {
-        let cmd = self.cmds[asm.idx].as_model().unwrap();
-        let (buf, _) = cmd.model.vertices_mut();
-
-        Instruction::VertexAttrsCalc(DataComputeInstruction {
-            base_idx: asm.base_idx,
-            base_vertex: asm.base_vertex,
-            buf,
-            dispatch: asm.dispatch,
-            idx_ty: IndexType::U32,
-            skin: false,
-        })
-    }
-
-    fn calc_u32_skin_vertex_attrs(&self, asm: &CalcVertexAttrsAsm) -> Instruction {
-        let cmd = self.cmds[asm.idx].as_model().unwrap();
-        let (buf, _) = cmd.model.vertices_mut();
-
-        Instruction::VertexAttrsCalc(DataComputeInstruction {
-            base_idx: asm.base_idx,
-            base_vertex: asm.base_vertex,
-            buf,
-            dispatch: asm.dispatch,
-            idx_ty: IndexType::U32,
-            skin: true,
         })
     }
 
@@ -454,10 +402,7 @@ impl Compilation<'_> {
             Asm::BindSpotlightBuffer => {
                 Self::bind_light(self.compiler.spotlight.buf.as_ref().unwrap())
             }
-            Asm::CalcU16VertexAttrs(asm) => self.calc_u16_vertex_attrs(asm),
-            Asm::CalcU16SkinVertexAttrs(asm) => self.calc_u16_skin_vertex_attrs(asm),
-            Asm::CalcU32VertexAttrs(asm) => self.calc_u32_vertex_attrs(asm),
-            Asm::CalcU32SkinVertexAttrs(asm) => self.calc_u32_skin_vertex_attrs(asm),
+            Asm::CalcVertexAttrs(asm) => self.calc_vertex_attrs(asm),
             Asm::CopyLineVertices => Self::copy_vertices(self.compiler.line.buf.as_mut().unwrap()),
             Asm::CopyRectLightVertices => {
                 Self::copy_vertices(self.compiler.rect_light.buf.as_mut().unwrap())
@@ -910,21 +855,17 @@ impl Compiler {
                     IndexType::U32 => Asm::BindU32VertexAttrsDescriptors(idx),
                 });
 
-                // Emit code to cause the normal and tangent vertex attributes of each mesh to be
-                // calculated (source is leased data, destination lives as long as the model does)
+                
                 for mesh in cmd.model.meshes() {
+
+                    // Emit code to cause the normal and tangent vertex attributes of each mesh to be
+                    // calculated (source is leased data, destination lives as long as the model does)
                     let indices = mesh.indices();
-                    let calc_asm = CalcVertexAttrsAsm {
+                    self.code.push(Asm::CalcVertexAttrs(CalcVertexAttrsAsm {
                         base_idx: indices.start,
                         base_vertex: mesh.vertex_offset() >> 2,
                         dispatch: (indices.end - indices.start) / 3,
-                        idx,
-                    };
-
-                    self.code.push(match cmd.model.idx_ty() {
-                        IndexType::U16 => Asm::CalcU16VertexAttrs(calc_asm),
-                        IndexType::U32 => Asm::CalcU32VertexAttrs(calc_asm),
-                    });
+                    }));
                 }
             }
 

@@ -8,6 +8,11 @@ use {
     std::{marker::PhantomData, num::FpCategory, ops::Range},
 };
 
+pub type PointLightIter<'a> = CommandIter<'a, PointLightCommand>;
+pub type RectLightIter<'a> = CommandIter<'a, RectLightCommand>;
+pub type SpotlightIter<'a> = CommandIter<'a, SpotlightCommand>;
+pub type SunlightIter<'a> = CommandIter<'a, SunlightCommand>;
+
 /// An expressive type which allows specification of individual drawing operations.
 pub enum Command {
     Line(LineCommand),
