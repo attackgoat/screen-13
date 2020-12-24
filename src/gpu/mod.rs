@@ -391,10 +391,21 @@ impl Gpu {
         };
 
         let idx_ty = model.idx_ty();
-        let meshes = model.take_meshes();
+        let mut meshes = model.take_meshes();
         let mut vertex_buf_len = 0;
-        for mesh in &meshes {
+        for mesh in &mut meshes {
             let stride = if mesh.is_animated() { 80 } else { 48 };
+
+            // We pad each mesh in the vertex buffer so that drawing is easier (no vertex
+            // re-binds; but this requires that all vertices in the buffer have a compatible
+            // alignment. Because we have static (12 floats/48 bytes) and animated (20 floats/
+            // 80 bytes) vertices, we round up to 60 floats/240 bytes. This means any possible
+            // boundary we try to draw at will start at some multiple of either the static
+            // or animated vertices.
+            vertex_buf_len += vertex_buf_len % 240;
+            mesh.set_base_vertex((vertex_buf_len / stride) as _);
+
+            // Account for the vertices, updating the base vertex
             vertex_buf_len += mesh.vertex_count() as u64 * stride;
         }
 

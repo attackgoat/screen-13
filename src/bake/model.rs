@@ -152,8 +152,8 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
             };
 
             for idx in 0..positions.len() {
-                vertex_buf.extend_from_slice(&420f32.to_ne_bytes()); //vertex_buf.extend_from_slice(&positions[idx][0].to_ne_bytes());
-                vertex_buf.extend_from_slice(&(idx as f32).to_ne_bytes()); //vertex_buf.extend_from_slice(&positions[idx][1].to_ne_bytes());
+                vertex_buf.extend_from_slice(&positions[idx][0].to_ne_bytes());
+                vertex_buf.extend_from_slice(&positions[idx][1].to_ne_bytes());
                 vertex_buf.extend_from_slice(&positions[idx][2].to_ne_bytes());
                 vertex_buf.extend_from_slice(&tex_coords[idx][0].to_ne_bytes());
                 vertex_buf.extend_from_slice(&tex_coords[idx][1].to_ne_bytes());

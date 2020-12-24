@@ -11,6 +11,7 @@ use {
 
 #[derive(Deserialize, PartialEq, Serialize)]
 pub struct Mesh {
+    base_vertex: Option<u32>,
     bounds: Sphere,
     indices: Range<u32>,
     name: Option<String>,
@@ -31,6 +32,7 @@ impl Mesh {
         skin_inv_binds: Option<HashMap<String, Mat4>>,
     ) -> Self {
         Self {
+            base_vertex: None,
             bounds,
             indices,
             name: name.into(),
@@ -39,6 +41,12 @@ impl Mesh {
             vertex_count,
             vertex_offset,
         }
+    }
+
+    // The number of (same sized) vertices that appear before this one in the vertex buffer, by simple
+    // division of the position and stride of the vertices of this mesh.
+    pub fn base_vertex(&self) -> u32 {
+        self.base_vertex.unwrap()
     }
 
     pub(crate) fn indices(&self) -> Range<u32> {
@@ -51,6 +59,10 @@ impl Mesh {
 
     pub(crate) fn name(&self) -> Option<&str> {
         self.name.as_deref()
+    }
+
+    pub(crate) fn set_base_vertex(&mut self, val: u32) {
+        self.base_vertex = Some(val);
     }
 
     pub(crate) fn skin_inv_binds(&self) -> impl Iterator<Item = &Mat4> {

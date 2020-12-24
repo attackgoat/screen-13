@@ -704,29 +704,6 @@ impl<'a> DrawOp<'a> {
         );
     }
 
-    unsafe fn submit_mesh_bind_vertex(&mut self, instr: MeshBindInstruction<'_>) {
-        trace!("submit_mesh_bind_vertex");
-
-        self.cmd_buf.bind_index_buffer(IndexBufferView {
-            buffer: instr.idx_buf.as_ref(),
-            index_type: instr.idx_ty.into(),
-            range: SubRange {
-                offset: 0,
-                size: Some(instr.idx_buf_len),
-            },
-        });
-        self.cmd_buf.bind_vertex_buffers(
-            0,
-            once((
-                instr.vertex_buf.as_ref(),
-                SubRange {
-                    offset: 0,
-                    size: Some(instr.vertex_buf_len),
-                },
-            )),
-        );
-    }
-
     unsafe fn submit_mesh_descriptors(&mut self, desc_set: usize) {
         trace!("submit_mesh_descriptors");
 
@@ -757,7 +734,8 @@ impl<'a> DrawOp<'a> {
                 0,
                 Mat4Const(world_view_proj).as_ref(),
             );
-            self.cmd_buf.draw_indexed(mesh.indices(), 0, 0..1);
+            self.cmd_buf
+                .draw_indexed(mesh.indices(), mesh.base_vertex() as _, 0..1);
         }
     }
 

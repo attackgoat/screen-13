@@ -42,7 +42,7 @@ void write_vertex(Vertex vertex, vec3 normal, vec4 tangent, uint idx) {
 
     dst_buf[idx] = vertex.position.x;
     dst_buf[++idx] = vertex.position.y;
-    dst_buf[++idx] = 69;//vertex.position.z;
+    dst_buf[++idx] = vertex.position.z;
     dst_buf[++idx] = normal.x;
     dst_buf[++idx] = normal.y;
     dst_buf[++idx] = normal.z;
@@ -84,7 +84,7 @@ void calc_vertex_attrs() {
 
     // Calculate the four-component tangent (with handedness)
     vec2 s = b.texcoord - a.texcoord;
-    vec2 t = b.texcoord - a.texcoord;
+    vec2 t = c.texcoord - a.texcoord;
     float r = 1 / (s.x * t.y - t.x * s.y);
     vec3 s_dir = r * vec3((t.y * ba.x - s.y * ca.x),
                           (t.y * ba.y - s.y * ca.y),
@@ -98,19 +98,19 @@ void calc_vertex_attrs() {
     );
 
     // The write mask tells us if we are allowed to write these vertices
-    uint a_mask = 1 & (write_mask[idx_a >> 5] >> (idx_a % 32));
-    uint b_mask = 1 & (write_mask[idx_b >> 5] >> (idx_b % 32));
-    uint c_mask = 1 & (write_mask[idx_c >> 5] >> (idx_c % 32));
+    uint a_mask = 1 & write_mask[idx_a >> 5] >> idx_a % 32;
+    uint b_mask = 1 & write_mask[idx_b >> 5] >> idx_b % 32;
+    uint c_mask = 1 & write_mask[idx_c >> 5] >> idx_c % 32;
 
-    //if (a_mask != 0) {
+    if (a_mask != 0) {
         write_vertex(a, normal, tangent, a_idx);
-    //}
+    }
 
-    //if (b_mask != 0) {
+    if (b_mask != 0) {
         write_vertex(b, normal, tangent, b_idx);
-    //}
+    }
 
-    //if (c_mask != 0) {
+    if (c_mask != 0) {
         write_vertex(c, normal, tangent, c_idx);
-    //}
+    }
 }
