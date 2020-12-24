@@ -39,7 +39,6 @@ use {
             Graphics, GraphicsMode, RenderPassMode, Texture2d, TextureRef,
         },
         math::{Coord, Mat4, Vec2, Vec3},
-        pak::IndexType,
     },
     gfx_hal::{
         adapter::PhysicalDevice as _,

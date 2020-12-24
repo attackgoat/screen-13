@@ -186,7 +186,7 @@ impl Command {
 pub struct CommandIter<'a, T> {
     __: PhantomData<T>,
     cmds: &'a [Command],
-    idx: isize,
+    idx: usize,
 }
 
 impl<'a, T> CommandIter<'a, T> {
@@ -194,7 +194,7 @@ impl<'a, T> CommandIter<'a, T> {
         Self {
             __: PhantomData,
             cmds,
-            idx: -1,
+            idx: 0,
         }
     }
 }
@@ -203,12 +203,13 @@ impl<'a> Iterator for CommandIter<'a, PointLightCommand> {
     type Item = &'a PointLightCommand;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.idx == self.cmds.len() as isize {
-            None
-        } else {
-            self.idx += 1;
-            self.cmds[self.idx as usize].as_point_light()
-        }
+        self.cmds
+            .get(self.idx)
+            .map(|cmd| {
+                self.idx += 1;
+                cmd.as_point_light()
+            })
+            .unwrap_or_default()
     }
 }
 
@@ -216,12 +217,13 @@ impl<'a> Iterator for CommandIter<'a, RectLightCommand> {
     type Item = &'a RectLightCommand;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.idx == self.cmds.len() as isize {
-            None
-        } else {
-            self.idx += 1;
-            self.cmds[self.idx as usize].as_rect_light()
-        }
+        self.cmds
+            .get(self.idx)
+            .map(|cmd| {
+                self.idx += 1;
+                cmd.as_rect_light()
+            })
+            .unwrap_or_default()
     }
 }
 
@@ -229,12 +231,13 @@ impl<'a> Iterator for CommandIter<'a, SpotlightCommand> {
     type Item = &'a SpotlightCommand;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.idx == self.cmds.len() as isize {
-            None
-        } else {
-            self.idx += 1;
-            self.cmds[self.idx as usize].as_spotlight()
-        }
+        self.cmds
+            .get(self.idx)
+            .map(|cmd| {
+                self.idx += 1;
+                cmd.as_spotlight()
+            })
+            .unwrap_or_default()
     }
 }
 
@@ -242,12 +245,13 @@ impl<'a> Iterator for CommandIter<'a, SunlightCommand> {
     type Item = &'a SunlightCommand;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.idx == self.cmds.len() as isize {
-            None
-        } else {
-            self.idx += 1;
-            self.cmds[self.idx as usize].as_sunlight()
-        }
+        self.cmds
+            .get(self.idx)
+            .map(|cmd| {
+                self.idx += 1;
+                cmd.as_sunlight()
+            })
+            .unwrap_or_default()
     }
 }
 

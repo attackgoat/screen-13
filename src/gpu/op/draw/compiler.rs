@@ -825,17 +825,6 @@ impl Compiler {
                 }
             }
 
-            // Emit 'model buffers have changed' assembly code
-            if let Some(curr_model) = model.as_ref() {
-                if !ModelRef::ptr_eq(curr_model, &cmd.model) {
-                    self.code.push(Asm::BindModelBuffers(idx));
-                    model = Some(&cmd.model);
-                }
-            } else {
-                self.code.push(Asm::BindModelBuffers(idx));
-                model = Some(&cmd.model);
-            }
-
             // Emit 'the current graphics descriptor set has changed' assembly code
             if let Some(curr_material) = material.as_ref() {
                 if *curr_material != &cmd.material {
@@ -854,6 +843,17 @@ impl Compiler {
                 self.code.push(Asm::BindModelDescriptors(idx));
                 material = Some(&cmd.material);
                 self.materials.push(Material::clone(&cmd.material));
+            }
+
+            // Emit 'model buffers have changed' assembly code
+            if let Some(curr_model) = model.as_ref() {
+                if !ModelRef::ptr_eq(curr_model, &cmd.model) {
+                    self.code.push(Asm::BindModelBuffers(idx));
+                    model = Some(&cmd.model);
+                }
+            } else {
+                self.code.push(Asm::BindModelBuffers(idx));
+                model = Some(&cmd.model);
             }
 
             // Emit 'draw model' assembly code
