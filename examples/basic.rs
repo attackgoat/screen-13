@@ -40,26 +40,12 @@ struct Basic {
 impl Screen for Basic {
     fn render(&self, gpu: &Gpu, _: Extent) -> Render {
         // This creates a canvas-like "Render" type which we can use to record graphic commands
-        let mut frame = gpu.render(
-            #[cfg(debug_assertions)]
-            "basic render",
-            SCREEN_SIZE,
-        );
+        let mut frame = gpu.render(SCREEN_SIZE);
 
         // Draws "Hello, World" onto a blue background
+        frame.clear().with_clear_value(qb_color(1)).record();
         frame
-            .clear(
-                #[cfg(debug_assertions)]
-                "basic clear",
-            )
-            .with_clear_value(qb_color(1));
-        frame
-            .text(
-                #[cfg(debug_assertions)]
-                "basic text",
-                Coord::new(137, 96),
-                qb_color(15),
-            )
+            .text(Coord::new(137, 96), qb_color(15))
             .record(&self.small_10px, "Hello, world!");
 
         // Present the completed frame to the screen

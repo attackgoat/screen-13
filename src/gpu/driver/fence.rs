@@ -13,30 +13,28 @@ pub struct Fence {
     ptr: Option<<_Backend as Backend>::Fence>,
 }
 
-// TODO: Support naming in ctor
-
 impl Fence {
-    pub fn new(#[cfg(debug_assertions)] name: &str, driver: Driver) -> Self {
+    pub fn new(#[cfg(feature = "debug-names")] name: &str, driver: Driver) -> Self {
         Self::with_signal(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             driver,
             false,
         )
     }
 
-    pub fn with_signal(#[cfg(debug_assertions)] name: &str, driver: Driver, value: bool) -> Self {
+    pub fn with_signal(#[cfg(feature = "debug-names")] name: &str, driver: Driver, val: bool) -> Self {
         let fence = {
             let device = driver.borrow();
-            let ctor = || device.create_fence(value).unwrap();
+            let ctor = || device.create_fence(val).unwrap();
 
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             let mut fence = ctor();
 
-            #[cfg(not(debug_assertions))]
+            #[cfg(not(feature = "debug-names"))]
             let fence = ctor();
 
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             unsafe {
                 device.set_fence_name(&mut fence, name);
             }
@@ -57,7 +55,7 @@ impl Fence {
     }
 
     /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "debug-names")]
     pub fn set_name(fence: &mut Self, name: &str) {
         let device = fence.driver.borrow();
         let ptr = fence.ptr.as_mut().unwrap();

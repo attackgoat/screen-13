@@ -123,7 +123,7 @@ pub struct WriteOp {
     graphics: Option<Lease<Graphics>>,
     mode: Mode,
 
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "debug-names")]
     name: String,
 
     pool: Option<Lease<Pool>>,
@@ -133,7 +133,7 @@ pub struct WriteOp {
 impl WriteOp {
     #[must_use]
     pub fn new(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         mut pool: Lease<Pool>,
         dst: &Texture2d,
@@ -146,14 +146,14 @@ impl WriteOp {
             (dst.dims(), dst.format())
         };
         let fence = pool.fence(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             driver,
         );
 
         Self {
             back_buf: pool.texture(
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 &format!("{} backbuffer", name),
                 driver,
                 dims,
@@ -176,7 +176,7 @@ impl WriteOp {
             frame_buf: None,
             graphics: None,
             mode,
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name: name.to_owned(),
             pool: Some(pool),
             src_textures: Default::default(),
@@ -231,7 +231,7 @@ impl WriteOp {
 
             // Setup the framebuffer
             self.frame_buf.replace(Framebuffer2d::new(
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 self.name.as_str(),
                 Driver::clone(&self.driver),
                 render_pass,
@@ -245,7 +245,7 @@ impl WriteOp {
                 Mode::Texture => GraphicsMode::Texture,
             };
             self.graphics.replace(pool.graphics_desc_sets(
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 &self.name,
                 &self.driver,
                 graphics_mode,

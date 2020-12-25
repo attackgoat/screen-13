@@ -66,7 +66,7 @@ impl Font {
             .pages()
             .map(|page| unsafe {
                 BitmapOp::new(
-                    #[cfg(debug_assertions)]
+                    #[cfg(feature = "debug-names")]
                     "Font",
                     driver,
                     pool,
@@ -201,7 +201,7 @@ pub struct FontOp {
     glyph_color: AlphaColor,
     graphics: Option<Lease<Graphics>>,
 
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "debug-names")]
     name: String,
 
     outline_color: Option<AlphaColor>,
@@ -213,7 +213,7 @@ pub struct FontOp {
 impl FontOp {
     #[must_use]
     pub fn new<C, P>(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         mut pool: Lease<Pool>,
         dst: &Texture2d,
@@ -230,7 +230,7 @@ impl FontOp {
         };
 
         let back_buf = pool.texture(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             &driver,
             dims,
@@ -248,7 +248,7 @@ impl FontOp {
         let mut cmd_pool = pool.cmd_pool(&driver, family);
         let cmd_buf = unsafe { cmd_pool.allocate_one(Level::Primary) };
         let fence = pool.fence(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             &driver,
         );
@@ -268,7 +268,7 @@ impl FontOp {
             frame_buf: None,
             glyph_color: color.into(),
             graphics: None,
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name: name.to_owned(),
             outline_color: None,
             pool: Some(pool),
@@ -312,7 +312,7 @@ impl FontOp {
 
             // Setup the graphics pipeline
             self.graphics.replace(pool.graphics(
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 &self.name,
                 &self.driver,
                 graphics_mode,
@@ -322,7 +322,7 @@ impl FontOp {
 
             // Setup the framebuffer
             self.frame_buf.replace(Framebuffer2d::new(
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 self.name.as_str(),
                 driver,
                 pool.render_pass(&self.driver, render_pass_mode),
@@ -338,7 +338,7 @@ impl FontOp {
                     .sum::<usize>() as u64;
             self.vertex_buf.replace((
                 pool.data_usage(
-                    #[cfg(debug_assertions)]
+                    #[cfg(feature = "debug-names")]
                     &self.name,
                     &self.driver,
                     vertex_buf_len,

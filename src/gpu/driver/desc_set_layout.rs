@@ -14,7 +14,7 @@ pub struct DescriptorSetLayout {
 }
 
 impl DescriptorSetLayout {
-    pub fn new<I>(#[cfg(debug_assertions)] name: &str, driver: Driver, bindings: I) -> Self
+    pub fn new<I>(#[cfg(feature = "debug-names")] name: &str, driver: Driver, bindings: I) -> Self
     where
         I: IntoIterator,
         I::Item: Borrow<DescriptorSetLayoutBinding>,
@@ -26,13 +26,13 @@ impl DescriptorSetLayout {
             unsafe {
                 let ctor = || device.create_descriptor_set_layout(bindings, &[]).unwrap();
 
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 let mut set_layout = ctor();
 
-                #[cfg(not(debug_assertions))]
+                #[cfg(not(feature = "debug-names"))]
                 let set_layout = ctor();
 
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 device.set_descriptor_set_layout_name(&mut set_layout, name);
 
                 set_layout
@@ -46,7 +46,7 @@ impl DescriptorSetLayout {
     }
 
     /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "debug-names")]
     pub fn set_name(set_layout: &mut Self, name: &str) {
         let device = set_layout.driver.as_ref().borrow();
         let ptr = set_layout.ptr.as_mut().unwrap();

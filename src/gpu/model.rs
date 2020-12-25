@@ -169,7 +169,7 @@ impl Model {
     }
 
     /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "debug-names")]
     pub fn set_name(&mut self, name: &str) {
         self.idx_buf.borrow_mut().set_name(name);
         self.vertex_buf.borrow_mut().set_name(name);

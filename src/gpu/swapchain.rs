@@ -103,7 +103,7 @@ impl Swapchain {
         let render_pass = present(&driver, fmt);
         let graphics = unsafe {
             Graphics::present(
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 "Swapchain",
                 &driver,
                 desc_sets,
@@ -119,13 +119,13 @@ impl Swapchain {
                 cmd_buf,
                 cmd_pool,
                 fence: Fence::with_signal(
-                    #[cfg(debug_assertions)]
+                    #[cfg(feature = "debug-names")]
                     "Swapchain image",
                     Driver::clone(&driver),
                     true,
                 ),
                 signal: Semaphore::new(
-                    #[cfg(debug_assertions)]
+                    #[cfg(feature = "debug-names")]
                     "Swapchain image",
                     Driver::clone(&driver),
                 ),
@@ -208,7 +208,7 @@ impl Swapchain {
         };
 
         let frame_buf = Framebuffer2d::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             "Present",
             Driver::clone(&self.driver),
             &self.render_pass,

@@ -25,7 +25,7 @@ where
     D: Dim,
 {
     /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "debug-names")]
     pub fn set_name(frame_buf: &mut Self, name: &str) {
         let device = frame_buf.driver.as_ref().borrow();
         let ptr = frame_buf.ptr.as_mut().unwrap();
@@ -41,7 +41,7 @@ where
 impl Framebuffer<U2> {
     /// Specialized new function for 2D framebuffers
     pub fn new<I>(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: Driver,
         render_pass: &RenderPass,
         image_views: I,
@@ -69,13 +69,13 @@ impl Framebuffer<U2> {
                         .unwrap()
                 };
 
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 let mut frame_buf = ctor();
 
-                #[cfg(not(debug_assertions))]
+                #[cfg(not(feature = "debug-names"))]
                 let frame_buf = ctor();
 
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 device.set_framebuffer_name(&mut frame_buf, name);
 
                 frame_buf

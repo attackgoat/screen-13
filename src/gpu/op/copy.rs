@@ -41,7 +41,7 @@ pub struct CopyOp {
 impl CopyOp {
     #[must_use]
     pub fn new(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         mut pool: Lease<Pool>,
         src: &Texture2d,
@@ -51,7 +51,7 @@ impl CopyOp {
             let family = Device::queue_family(&driver.borrow());
             let mut cmd_pool = pool.cmd_pool(driver, family);
             let fence = pool.fence(
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 name,
                 driver,
             );

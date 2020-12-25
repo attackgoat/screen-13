@@ -28,7 +28,7 @@ pub struct Render {
 
 impl Render {
     pub(super) fn new(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: Driver,
         dims: Extent,
         mut pool: Lease<Pool>,
@@ -41,7 +41,7 @@ impl Render {
         )
         .unwrap();
         let target = pool.texture(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             &driver,
             dims,
@@ -63,10 +63,10 @@ impl Render {
     }
 
     /// Clears the screen of all text and graphics.
-    pub fn clear(&mut self, #[cfg(debug_assertions)] name: &str) -> &mut ClearOp {
+    pub fn clear(&mut self, #[cfg(feature = "debug-names")] name: &str) -> &mut ClearOp {
         let pool = self.take_pool();
         let op = ClearOp::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             &self.driver,
             pool,
@@ -86,10 +86,10 @@ impl Render {
 
     /// Copies the given texture onto this Render. The implementation uses a copy operation
     /// and is more efficient than `write` when there is no blending or fractional pixels.
-    pub fn copy(&mut self, #[cfg(debug_assertions)] name: &str, src: &Texture2d) -> &mut CopyOp {
+    pub fn copy(&mut self, #[cfg(feature = "debug-names")] name: &str, src: &Texture2d) -> &mut CopyOp {
         let pool = self.take_pool();
         let op = CopyOp::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             &self.driver,
             pool,
@@ -114,10 +114,10 @@ impl Render {
 
     /// Draws a batch of 3D elements. There is no need to give any particular order to the individual commands and the
     /// implementation may sort and re-order them, so do not count on indices remaining the same after this call completes.
-    pub fn draw(&mut self, #[cfg(debug_assertions)] name: &str) -> &mut DrawOp {
+    pub fn draw(&mut self, #[cfg(feature = "debug-names")] name: &str) -> &mut DrawOp {
         let pool = self.take_pool();
         let mut op = DrawOp::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             &self.driver,
             pool,
@@ -139,10 +139,10 @@ impl Render {
     }
 
     /// Saves this Render as a JPEG file at the given path.
-    pub fn encode<P: AsRef<Path>>(&mut self, #[cfg(debug_assertions)] name: &str) -> &mut EncodeOp {
+    pub fn encode<P: AsRef<Path>>(&mut self, #[cfg(feature = "debug-names")] name: &str) -> &mut EncodeOp {
         let pool = self.take_pool();
         let op = EncodeOp::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             &self.driver,
             pool,
@@ -162,7 +162,7 @@ impl Render {
     /// TODO: Specialize for radial too?
     pub fn gradient<C>(
         &mut self,
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         path: [(Coord, C); 2],
     ) -> &mut EncodeOp
     where
@@ -170,7 +170,7 @@ impl Render {
     {
         let pool = self.take_pool();
         let op = GradientOp::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             &self.driver,
             pool,
@@ -203,7 +203,7 @@ impl Render {
     /// TODO: Accept a list of font/color/text/pos combos so we can batch many at once?
     pub fn text<C, P>(
         &mut self,
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         pos: P,
         color: C,
     ) -> &mut FontOp
@@ -213,7 +213,7 @@ impl Render {
     {
         let pool = self.take_pool();
         let op = FontOp::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             &self.driver,
             pool,
@@ -235,10 +235,10 @@ impl Render {
 
     /// Draws the given texture writes onto this Render. Note that the given texture writes will all be applied at once and there
     /// is no 'layering' of the individual writes going on - so if you need blending between writes you must submit a new batch.
-    pub fn write(&mut self, #[cfg(debug_assertions)] name: &str, mode: WriteMode) -> &mut WriteOp {
+    pub fn write(&mut self, #[cfg(feature = "debug-names")] name: &str, mode: WriteMode) -> &mut WriteOp {
         let pool = self.take_pool();
         let mut op = WriteOp::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             &self.driver,
             pool,

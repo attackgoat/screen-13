@@ -42,14 +42,14 @@ pub struct EncodeOp {
 impl EncodeOp {
     #[must_use]
     pub fn new(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         mut pool: Lease<Pool>,
         texture: &Texture2d,
     ) -> Self {
         let len = Self::byte_len(&texture);
         let buf = pool.data(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             &driver,
             len as _,
@@ -64,7 +64,7 @@ impl EncodeOp {
             cmd_pool,
             driver: Driver::clone(driver),
             fence: pool.fence(
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 name,
                 &driver,
             ),

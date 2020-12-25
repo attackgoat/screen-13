@@ -59,7 +59,7 @@ impl Screen for Fade {
         let b = gpu.resolve(b);
 
         a.write(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             "Fade write B",
             WriteMode::Blend((ab, self.mode)),
         )

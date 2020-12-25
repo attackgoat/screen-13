@@ -52,7 +52,7 @@ pub(super) fn color(driver: Driver, mode: ColorRenderPassMode) -> RenderPass {
     };
 
     RenderPass::new(
-        #[cfg(debug_assertions)]
+        #[cfg(feature = "debug-names")]
         "Color",
         driver,
         &[color],
@@ -166,7 +166,7 @@ pub(super) fn draw(driver: Driver, mode: DrawRenderPassMode) -> RenderPass {
     };
 
     RenderPass::new(
-        #[cfg(debug_assertions)]
+        #[cfg(feature = "debug-names")]
         "Draw",
         driver,
         &[color_metal, normal_rough, light, output, depth],
@@ -192,8 +192,8 @@ pub(super) fn present(driver: &Driver, fmt: Format) -> RenderPass {
         preserves: &[],
     };
     RenderPass::new(
-        #[cfg(debug_assertions)]
-        "Write",
+        #[cfg(feature = "debug-names")]
+        "Present",
         Driver::clone(&driver),
         &[present],
         &[subpass],

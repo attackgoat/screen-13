@@ -302,7 +302,7 @@ impl Gpu {
 
     pub fn load_bitmap<R: Read + Seek>(
         &self,
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         pak: &mut Pak<R>,
         id: BitmapId,
     ) -> Bitmap {
@@ -311,7 +311,7 @@ impl Gpu {
 
         unsafe {
             BitmapOp::new(
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 name,
                 &self.driver,
                 &mut pool,
@@ -336,7 +336,7 @@ impl Gpu {
 
     pub fn load_model<R: Read + Seek>(
         &self,
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         pak: &mut Pak<R>,
         id: ModelId,
     ) -> Model {
@@ -348,7 +348,7 @@ impl Gpu {
             let src = model.indices();
             let len = src.len() as _;
             let mut buf = pool.data_usage(
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 name,
                 &self.driver,
                 len,
@@ -370,7 +370,7 @@ impl Gpu {
             let src = model.vertices();
             let len = src.len() as _;
             let mut buf = pool.data_usage(
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 name,
                 &self.driver,
                 len,
@@ -392,7 +392,7 @@ impl Gpu {
             let src = model.write_mask();
             let len = src.len() as _;
             let mut buf = pool.data_usage(
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 name,
                 &self.driver,
                 len,
@@ -430,7 +430,7 @@ impl Gpu {
 
         // This is the real vertex buffer which will hold the calculated attributes
         let vertex_buf = pool.data_usage(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             &self.driver,
             vertex_buf_len,
@@ -446,9 +446,9 @@ impl Gpu {
         )
     }
 
-    pub fn render(&self, #[cfg(debug_assertions)] name: &str, dims: Extent) -> Render {
+    pub fn render(&self, #[cfg(feature = "debug-names")] name: &str, dims: Extent) -> Render {
         self.render_with_cache(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             dims,
             &self.renders,
@@ -457,7 +457,7 @@ impl Gpu {
 
     pub fn render_with_cache(
         &self,
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         dims: Extent,
         cache: &Cache,
     ) -> Render {
@@ -480,7 +480,7 @@ impl Gpu {
         let driver = Driver::clone(&self.driver);
 
         Render::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             driver,
             dims,

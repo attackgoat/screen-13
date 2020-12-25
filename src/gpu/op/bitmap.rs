@@ -93,7 +93,7 @@ pub struct BitmapOp<'a> {
     driver: Driver,
     fence: Lease<Fence>,
 
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "debug-names")]
     name: String,
 
     pixel_buf: Lease<Data>,
@@ -107,7 +107,7 @@ impl<'a> BitmapOp<'a> {
     /// None
     #[must_use]
     pub unsafe fn new(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         pool: &'a mut Pool,
         bitmap: &PakBitmap,
@@ -131,7 +131,7 @@ impl<'a> BitmapOp<'a> {
         )
         .unwrap();
         let texture = pool.texture(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             driver,
             bitmap.dims(),
@@ -186,7 +186,7 @@ impl<'a> BitmapOp<'a> {
             };
 
             let compute = pool.compute(
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 name,
                 driver,
                 mode,
@@ -203,7 +203,7 @@ impl<'a> BitmapOp<'a> {
         let height = bitmap.height();
         let pixel_buf_len = bitmap_stride * height;
         let mut pixel_buf = pool.data_usage(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             driver,
             pixel_buf_len as _,
@@ -248,11 +248,11 @@ impl<'a> BitmapOp<'a> {
             conv_fmt,
             driver: Driver::clone(driver),
             fence: pool.fence(
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 name,
                 driver,
             ),
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name: name.to_owned(),
             pixel_buf,
             pixel_buf_len: pixel_buf_len as _,
@@ -301,7 +301,7 @@ impl<'a> BitmapOp<'a> {
         let desc_set = conv_fmt.compute.desc_set(0);
         let pipeline = conv_fmt.compute.pipeline();
         let (_, pipeline_layout) = self.pool.layouts.compute_decode_rgb_rgba(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             &self.name,
             &self.driver,
         );

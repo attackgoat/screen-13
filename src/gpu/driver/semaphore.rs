@@ -11,18 +11,18 @@ pub struct Semaphore {
 }
 
 impl Semaphore {
-    pub fn new(#[cfg(debug_assertions)] name: &str, driver: Driver) -> Self {
+    pub fn new(#[cfg(feature = "debug-names")] name: &str, driver: Driver) -> Self {
         let semaphore = {
             let device = driver.borrow();
             let ctor = || device.create_semaphore().unwrap();
 
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             let mut semaphore = ctor();
 
-            #[cfg(not(debug_assertions))]
+            #[cfg(not(feature = "debug-names"))]
             let semaphore = ctor();
 
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             unsafe {
                 device.set_semaphore_name(&mut semaphore, name);
             }
@@ -37,7 +37,7 @@ impl Semaphore {
     }
 
     /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "debug-names")]
     pub fn set_name(semaphore: &mut Self, name: &str) {
         let device = semaphore.driver.borrow();
         let ptr = semaphore.ptr.as_mut().unwrap();

@@ -102,7 +102,7 @@ pub struct DrawOp {
     graphics_sunlight: Option<Lease<Graphics>>,
     mode: DrawRenderPassMode,
 
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "debug-names")]
     name: String,
 
     pool: Option<Lease<Pool>>,
@@ -113,7 +113,7 @@ impl DrawOp {
     /// None
     #[must_use]
     pub fn new(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         mut pool: Lease<Pool>,
         dst: &Texture2d,
@@ -128,7 +128,7 @@ impl DrawOp {
             (dst.dims(), dst.format())
         };
         let geom_buf = GeometryBuffer::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             driver,
             &mut pool,
@@ -152,7 +152,7 @@ impl DrawOp {
 
             // Setup the framebuffer
             let frame_buf = Framebuffer2d::new(
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 &name,
                 Driver::clone(driver),
                 pool.render_pass(&driver, RenderPassMode::Draw(mode)),
@@ -179,7 +179,7 @@ impl DrawOp {
             (frame_buf, mode)
         };
         let fence = pool.fence(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             &driver,
         );
@@ -207,7 +207,7 @@ impl DrawOp {
             graphics_sunlight: None,
             mode,
 
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name: name.to_owned(),
 
             pool: Some(pool),
@@ -230,7 +230,7 @@ impl DrawOp {
         let mut compiler = pool.compiler();
         {
             let mut instrs = compiler.compile(
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 &self.name,
                 &self.driver,
                 &mut pool,
@@ -244,7 +244,7 @@ impl DrawOp {
                 let desc_sets = descriptors.len();
                 if desc_sets > 0 {
                     let graphics = pool.graphics_desc_sets(
-                        #[cfg(debug_assertions)]
+                        #[cfg(feature = "debug-names")]
                         &self.name,
                         &self.driver,
                         GraphicsMode::DrawMesh,
@@ -266,7 +266,7 @@ impl DrawOp {
                 let desc_sets = descriptors.len();
                 if desc_sets > 0 {
                     let compute = pool.compute_desc_sets(
-                        #[cfg(debug_assertions)]
+                        #[cfg(feature = "debug-names")]
                         &self.name,
                         &self.driver,
                         ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode::U16),
@@ -286,7 +286,7 @@ impl DrawOp {
                 let desc_sets = descriptors.len();
                 if desc_sets > 0 {
                     let compute = pool.compute_desc_sets(
-                        #[cfg(debug_assertions)]
+                        #[cfg(feature = "debug-names")]
                         &self.name,
                         &self.driver,
                         ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode::U16_SKIN),
@@ -306,7 +306,7 @@ impl DrawOp {
                 let desc_sets = descriptors.len();
                 if desc_sets > 0 {
                     let compute = pool.compute_desc_sets(
-                        #[cfg(debug_assertions)]
+                        #[cfg(feature = "debug-names")]
                         &self.name,
                         &self.driver,
                         ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode::U32),
@@ -326,7 +326,7 @@ impl DrawOp {
                 let desc_sets = descriptors.len();
                 if desc_sets > 0 {
                     let compute = pool.compute_desc_sets(
-                        #[cfg(debug_assertions)]
+                        #[cfg(feature = "debug-names")]
                         &self.name,
                         &self.driver,
                         ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode::U32_SKIN),
@@ -547,7 +547,7 @@ impl DrawOp {
         // Lazy-init point light graphics
         assert!(self.graphics_line.is_none());
         self.graphics_line = Some(pool.graphics(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             &format!("{} line", &self.name),
             &self.driver,
             GraphicsMode::DrawLine,
@@ -685,7 +685,7 @@ impl DrawOp {
         // Lazy-init point light graphics
         assert!(self.graphics_point_light.is_none());
         self.graphics_point_light = Some(pool.graphics_desc_sets(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             &self.name,
             &self.driver,
             GraphicsMode::DrawPointLight,
@@ -740,7 +740,7 @@ impl DrawOp {
         // Lazy-init rect light graphics
         assert!(self.graphics_rect_light.is_none());
         self.graphics_rect_light = Some(pool.graphics_desc_sets(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             &self.name,
             &self.driver,
             GraphicsMode::DrawRectLight,
@@ -790,7 +790,7 @@ impl DrawOp {
         // Lazy-init spotlight graphics
         assert!(self.graphics_spotlight.is_none());
         self.graphics_spotlight = Some(pool.graphics_desc_sets(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             &self.name,
             &self.driver,
             GraphicsMode::DrawSpotlight,
@@ -850,7 +850,7 @@ impl DrawOp {
         // Lazy-init spotlight graphics
         assert!(self.graphics_sunlight.is_none());
         self.graphics_sunlight = Some(pool.graphics_desc_sets(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             &self.name,
             &self.driver,
             GraphicsMode::DrawSunlight,
@@ -873,7 +873,7 @@ impl DrawOp {
         // Lazy-init point light graphics
         assert!(self.graphics_point_light.is_none());
         self.graphics_sunlight = Some(pool.graphics_desc_sets(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             &self.name,
             &self.driver,
             GraphicsMode::DrawSunlight,
@@ -1007,7 +1007,7 @@ impl DrawOp {
         let desc_set = compute.desc_set(instr.desc_set);
         let pool = self.pool.as_mut().unwrap();
         let (_, pipeline_layout) = pool.layouts.compute_calc_vertex_attrs(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             &self.name,
             &self.driver,
         );
@@ -1023,7 +1023,7 @@ impl DrawOp {
         let _limit = Device::gpu(&device).limits().max_compute_work_group_size[0];
         let pool = self.pool.as_mut().unwrap();
         let (_, pipeline_layout) = pool.layouts.compute_calc_vertex_attrs(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             &self.name,
             &self.driver,
         );

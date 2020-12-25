@@ -129,7 +129,7 @@ impl Texture<Image2d> {
     // TODO: Make a builder pattern for this!
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: Driver,
         dims: Extent,
         fmt: Format,
@@ -145,7 +145,7 @@ impl Texture<Image2d> {
             Access::empty()
         };
         let image = Image2d::new_optimal(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             dims,

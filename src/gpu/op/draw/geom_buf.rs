@@ -23,7 +23,7 @@ pub struct GeometryBuffer {
 
 impl GeometryBuffer {
     pub fn new(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         pool: &mut Pool,
         dims: Extent,
@@ -55,7 +55,7 @@ impl GeometryBuffer {
         };
 
         let color_metal = pool.texture(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             &format!("{} (Color)", name),
             driver,
             dims,
@@ -71,7 +71,7 @@ impl GeometryBuffer {
             1,
         );
         let normal_rough = pool.texture(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             &format!("{} (Normal)", name),
             driver,
             dims,
@@ -83,7 +83,7 @@ impl GeometryBuffer {
             1,
         );
         let light = pool.texture(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             &format!("{} (Light)", name),
             driver,
             dims,
@@ -95,7 +95,7 @@ impl GeometryBuffer {
             1,
         );
         let output = pool.texture(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             &format!("{} (Output)", name),
             driver,
             dims,
@@ -107,7 +107,7 @@ impl GeometryBuffer {
             1,
         );
         let depth = pool.texture(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             &format!("{} (Depth)", name),
             driver,
             dims,

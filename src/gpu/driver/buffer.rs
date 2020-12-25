@@ -12,7 +12,7 @@ pub struct Buffer {
 
 impl Buffer {
     pub fn new(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: Driver,
         usage: Usage,
         len: u64,
@@ -21,13 +21,13 @@ impl Buffer {
             let device = driver.borrow();
             let ctor = || unsafe { device.create_buffer(len as u64, usage).unwrap() };
 
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             let mut buffer = ctor();
 
-            #[cfg(not(debug_assertions))]
+            #[cfg(not(feature = "debug-names"))]
             let buffer = ctor();
 
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             unsafe {
                 device.set_buffer_name(&mut buffer, name);
             }
@@ -42,7 +42,7 @@ impl Buffer {
     }
 
     /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "debug-names")]
     pub fn set_name(buf: &mut Self, name: &str) {
         let device = buf.driver.borrow();
         let ptr = buf.ptr.as_mut().unwrap();

@@ -13,13 +13,13 @@ impl Solid {
 impl Screen for Solid {
     fn render(&self, gpu: &Gpu, _: Extent) -> Render {
         let mut frame = gpu.render(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             &format!("Solid {}", self.color.to_hex()),
             Extent::new(8, 8),
         );
         frame
             .clear(
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 "Solid",
             )
             .with_clear_value(self.color)

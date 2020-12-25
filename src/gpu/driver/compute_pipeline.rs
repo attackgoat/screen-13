@@ -16,7 +16,7 @@ pub struct ComputePipeline {
 
 impl ComputePipeline {
     pub unsafe fn new(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: Driver,
         layout: &<_Backend as Backend>::PipelineLayout,
         entry_point: EntryPoint<'_, _Backend>,
@@ -26,13 +26,13 @@ impl ComputePipeline {
             let device = driver.as_ref().borrow();
             let ctor = || device.create_compute_pipeline(&desc, None).unwrap();
 
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             let mut compute_pipeline = ctor();
 
-            #[cfg(not(debug_assertions))]
+            #[cfg(not(feature = "debug-names"))]
             let compute_pipeline = ctor();
 
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             device.set_compute_pipeline_name(&mut compute_pipeline, name);
 
             compute_pipeline
@@ -45,7 +45,7 @@ impl ComputePipeline {
     }
 
     /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "debug-names")]
     pub fn set_name(compute_pipeline: &mut Self, name: &str) {
         let device = compute_pipeline.driver.as_ref().borrow();
         let ptr = compute_pipeline.ptr.as_mut().unwrap();

@@ -90,7 +90,7 @@ impl Compute {
 
     #[allow(clippy::too_many_arguments)]
     unsafe fn new<ID, IS>(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         desc_set_layout: &DescriptorSetLayout,
         pipeline_layout: &PipelineLayout,
@@ -107,7 +107,7 @@ impl Compute {
     {
         let shader = ShaderModule::new(Driver::clone(&driver), spirv);
         let pipeline = ComputePipeline::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             pipeline_layout.as_ref(),
@@ -132,7 +132,7 @@ impl Compute {
     }
 
     unsafe fn calc_vertex_attrs(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         desc_set_layout: &DescriptorSetLayout,
         pipeline_layout: &PipelineLayout,
@@ -140,7 +140,7 @@ impl Compute {
         spirv: &[u32],
     ) -> Self {
         Self::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             driver,
             desc_set_layout,
@@ -169,14 +169,14 @@ impl Compute {
 
     /// Safety: Don't let desc_set_layout or pipeline_layout drop before this!
     pub unsafe fn calc_vertex_attrs_u16(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         desc_set_layout: &DescriptorSetLayout,
         pipeline_layout: &PipelineLayout,
         max_desc_sets: usize,
     ) -> Self {
         Self::calc_vertex_attrs(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             driver,
             desc_set_layout,
@@ -188,14 +188,14 @@ impl Compute {
 
     /// Safety: Don't let desc_set_layout or pipeline_layout drop before this!
     pub unsafe fn calc_vertex_attrs_u16_skin(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         desc_set_layout: &DescriptorSetLayout,
         pipeline_layout: &PipelineLayout,
         max_desc_sets: usize,
     ) -> Self {
         Self::calc_vertex_attrs(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             driver,
             desc_set_layout,
@@ -207,14 +207,14 @@ impl Compute {
 
     /// Safety: Don't let desc_set_layout or pipeline_layout drop before this!
     pub unsafe fn calc_vertex_attrs_u32(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         desc_set_layout: &DescriptorSetLayout,
         pipeline_layout: &PipelineLayout,
         max_desc_sets: usize,
     ) -> Self {
         Self::calc_vertex_attrs(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             driver,
             desc_set_layout,
@@ -226,14 +226,14 @@ impl Compute {
 
     /// Safety: Don't let desc_set_layout or pipeline_layout drop before this!
     pub unsafe fn calc_vertex_attrs_u32_skin(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         desc_set_layout: &DescriptorSetLayout,
         pipeline_layout: &PipelineLayout,
         max_desc_sets: usize,
     ) -> Self {
         Self::calc_vertex_attrs(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             driver,
             desc_set_layout,
@@ -244,14 +244,14 @@ impl Compute {
     }
 
     pub unsafe fn decode_rgb_rgba(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         desc_set_layout: &DescriptorSetLayout,
         pipeline_layout: &PipelineLayout,
         max_desc_sets: usize,
     ) -> Self {
         Self::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             driver,
             desc_set_layout,

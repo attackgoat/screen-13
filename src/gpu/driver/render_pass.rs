@@ -19,7 +19,7 @@ pub struct RenderPass {
 
 impl RenderPass {
     pub fn new<'s, IA, IS, ID>(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: Driver,
         attachments: IA,
         subpasses: IS,
@@ -46,13 +46,13 @@ impl RenderPass {
                         .unwrap()
                 };
 
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 let mut render_pass = ctor();
 
-                #[cfg(not(debug_assertions))]
+                #[cfg(not(feature = "debug-names"))]
                 let render_pass = ctor();
 
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 device.set_render_pass_name(&mut render_pass, name);
 
                 render_pass
@@ -66,7 +66,7 @@ impl RenderPass {
     }
 
     /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "debug-names")]
     pub fn set_name(render_pass: &mut Self, name: &str) {
         let device = render_pass.driver.as_ref().borrow();
         let ptr = render_pass.ptr.as_mut().unwrap();

@@ -15,7 +15,7 @@ pub struct PipelineLayout {
 
 impl PipelineLayout {
     pub fn new<IS, IR>(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: Driver,
         set_layouts: IS,
         push_consts: IR,
@@ -38,13 +38,13 @@ impl PipelineLayout {
                         .unwrap()
                 };
 
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 let mut pipeline_layout = ctor();
 
-                #[cfg(not(debug_assertions))]
+                #[cfg(not(feature = "debug-names"))]
                 let pipeline_layout = ctor();
 
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 device.set_pipeline_layout_name(&mut pipeline_layout, name);
 
                 pipeline_layout
@@ -58,7 +58,7 @@ impl PipelineLayout {
     }
 
     /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "debug-names")]
     pub fn set_name(pipeline_layout: &mut Self, name: &str) {
         let device = pipeline_layout.driver.as_ref().borrow();
         let ptr = pipeline_layout.ptr.as_mut().unwrap();

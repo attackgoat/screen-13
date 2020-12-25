@@ -113,7 +113,7 @@ pub struct Data {
 
 impl Data {
     pub fn new(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: Driver,
         mut capacity: u64,
         usage: Usage,
@@ -127,7 +127,7 @@ impl Data {
         capacity = align_up(capacity, non_coherent_atom_size as _);
 
         let mut storage_buf = Buffer::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             Usage::TRANSFER_DST | Usage::TRANSFER_SRC | usage,
@@ -164,7 +164,7 @@ impl Data {
                 None
             } else {
                 let mut staging_buf = Buffer::new(
-                    #[cfg(debug_assertions)]
+                    #[cfg(feature = "debug-names")]
                     name,
                     Driver::clone(&driver),
                     Usage::TRANSFER_DST | Usage::TRANSFER_SRC,
@@ -373,7 +373,7 @@ impl Data {
     }
 
     /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "debug-names")]
     pub fn set_name(&mut self, name: &str) {
         if let Some(staging) = &mut self.staging {
             Buffer::set_name(&mut staging.buf, name);

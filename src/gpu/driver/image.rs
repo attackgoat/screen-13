@@ -31,7 +31,7 @@ where
     D: Dim,
 {
     /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "debug-names")]
     pub fn set_name(image: &mut Self, name: &str) {
         let device = image.driver.borrow();
         let ptr = image.ptr.as_mut().unwrap();
@@ -46,7 +46,7 @@ where
 #[allow(clippy::too_many_arguments)]
 impl Image<U2> {
     pub fn new_optimal(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: Driver,
         dims: Extent,
         layers: u16,
@@ -71,7 +71,7 @@ impl Image<U2> {
 
             let device = driver.borrow();
 
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             device.set_image_name(&mut image, name);
 
             let req = device.get_image_requirements(&image);

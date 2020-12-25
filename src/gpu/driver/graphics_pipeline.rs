@@ -12,7 +12,7 @@ pub struct GraphicsPipeline {
 
 impl GraphicsPipeline {
     pub fn new(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: Driver,
         desc: &GraphicsPipelineDesc<'_, _Backend>,
     ) -> Self {
@@ -23,13 +23,13 @@ impl GraphicsPipeline {
                 // TODO: Use a pipeline cache?
                 let ctor = || device.create_graphics_pipeline(&desc, None).unwrap();
 
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 let mut graphics_pipeline = ctor();
 
-                #[cfg(not(debug_assertions))]
+                #[cfg(not(feature = "debug-names"))]
                 let graphics_pipeline = ctor();
 
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 device.set_graphics_pipeline_name(&mut graphics_pipeline, name);
 
                 graphics_pipeline
@@ -43,7 +43,7 @@ impl GraphicsPipeline {
     }
 
     /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "debug-names")]
     pub fn set_name(graphics_pipeline: &mut Self, name: &str) {
         let device = graphics_pipeline.driver.as_ref().borrow();
         let ptr = graphics_pipeline.ptr.as_mut().unwrap();

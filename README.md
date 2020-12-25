@@ -15,11 +15,11 @@ Asset baking is the process of converting files from their native file formats i
 
 ## Quick Start
 
-Included is example you might find helpful:
+Included is an example you might find helpful:
 
 - `basic.rs` - Displays 'Hello, World!' on the screen. Please start here.
 
-The example requires an associated asset `.pak` file in order to run, so you will need to run the examples like so:
+The example requires an associated asset `.pak` file in order to run, so you will need to run the example like so:
 
 ```bash
 cargo run examples/content/basic.toml
@@ -42,6 +42,17 @@ This engine is very young and is likely to change as development continues.
 - Debug names should maybe be a Cargo.toml "feature" for games that aren't attempting to support debuggability via graphics API capturing tools such as RenderDoc. The way it is right now lots of API calls require a string you must attribute with the debug-assertions if-config attribute.
 - Drawing lines, bitmaps, 3D models, lights (and shadows): I recently ripped out all this code in order to add a compilation stage after you submit rendering commands. This allows for proper z-order painting and batching to reduce GPU resource-switching. It is not complete yet and requires more work. Update: The design of this section is really coming along and likely to remain somewhat stable as it scrolls towards dev-complete.
 - Input: Keyboard has been started but the design is not very good. Mouse input is to-do. Game controllers and joysticks are planned.
+- Forward Renderer: not started yet
+
+## Optional features
+
+Screen-13 puts a lot of functionality behind optional features in order to optimize compile time for the most common use cases. The following features are available.
+
+_NOTE_: The deferred and forward renderers have separate code paths and you can choose either on a render-by-render basis.
+
+- **`debug-names`** — Extra name parameter added to most graphics API calls, integrates with your preferred graphics API debugger.
+- **`deferred-renderer`** *(enabled by default)* — Ability to draw models and lights in 3D using a deferred rendering context.
+- **`forward-renderer`** *(enabled by default)* — Similar to the deferred renderer, but using a forward technique.
 
 ## Content Baking Procedures
 

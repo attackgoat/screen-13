@@ -38,7 +38,7 @@ pub struct ClearOp {
 impl ClearOp {
     #[must_use]
     pub fn new(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         mut pool: Lease<Pool>,
         texture: &Texture2d,
@@ -52,7 +52,7 @@ impl ClearOp {
             cmd_pool,
             driver: Driver::clone(driver),
             fence: pool.fence(
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 name,
                 driver,
             ),

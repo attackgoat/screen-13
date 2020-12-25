@@ -60,7 +60,7 @@ impl GradientOp {
     /// None
     #[must_use]
     pub fn new(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         mut pool: Lease<Pool>,
         dst: &Texture2d,
@@ -82,7 +82,7 @@ impl GradientOp {
 
         // Setup the first pass graphics pipeline
         let graphics = pool.graphics(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             driver,
             GraphicsMode::Gradient,
@@ -92,7 +92,7 @@ impl GradientOp {
 
         // Setup the framebuffer
         let back_buf = pool.texture(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             driver,
             dims,
@@ -107,7 +107,7 @@ impl GradientOp {
             1,
         );
         let frame_buf = Framebuffer2d::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             pool.render_pass(&driver, render_pass_mode),
@@ -115,7 +115,7 @@ impl GradientOp {
             dims,
         );
         let fence = pool.fence(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             &driver,
         );

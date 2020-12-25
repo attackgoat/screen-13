@@ -33,7 +33,7 @@ use {
     },
 };
 
-#[cfg(debug_assertions)]
+#[cfg(feature = "debug-names")]
 use gfx_hal::device::Device as _;
 
 const DEFAULT_LRU_THRESHOLD: usize = 8;
@@ -82,7 +82,7 @@ pub(super) struct Layouts {
 
 impl Layouts {
     fn lazy_init<I, P>(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         layouts: &mut Option<(DescriptorSetLayout, PipelineLayout)>,
         bindings: I,
@@ -96,13 +96,13 @@ impl Layouts {
     {
         if layouts.is_none() {
             let desc_set_layout = DescriptorSetLayout::new(
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 name,
                 Driver::clone(&driver),
                 bindings,
             );
             let pipeline_layout = PipelineLayout::new(
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 name,
                 Driver::clone(&driver),
                 once(desc_set_layout.as_ref()),
@@ -114,11 +114,11 @@ impl Layouts {
 
     pub(crate) fn compute_calc_vertex_attrs(
         &mut self,
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
     ) -> &(DescriptorSetLayout, PipelineLayout) {
         Self::lazy_init(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             driver,
             &mut self.compute_calc_vertex_attrs,
@@ -131,11 +131,11 @@ impl Layouts {
 
     pub(crate) fn compute_decode_rgb_rgba(
         &mut self,
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
     ) -> &(DescriptorSetLayout, PipelineLayout) {
         Self::lazy_init(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             driver,
             &mut self.compute_decode_rgb_rgba,
@@ -204,12 +204,12 @@ impl Pool {
 
     pub(super) fn compute(
         &mut self,
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         mode: ComputeMode,
     ) -> Lease<Compute> {
         self.compute_desc_sets(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             driver,
             mode,
@@ -219,7 +219,7 @@ impl Pool {
 
     pub(super) fn compute_desc_sets(
         &mut self,
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         mode: ComputeMode,
         max_desc_sets: usize,
@@ -248,12 +248,12 @@ impl Pool {
             };
             let (desc_set_layout, pipeline_layout) = match mode {
                 ComputeMode::CalcVertexAttrs(_) => self.layouts.compute_calc_vertex_attrs(
-                    #[cfg(debug_assertions)]
+                    #[cfg(feature = "debug-names")]
                     name,
                     driver,
                 ),
                 ComputeMode::DecodeRgbRgba => self.layouts.compute_decode_rgb_rgba(
-                    #[cfg(debug_assertions)]
+                    #[cfg(feature = "debug-names")]
                     name,
                     driver,
                 ),
@@ -261,7 +261,7 @@ impl Pool {
 
             unsafe {
                 ctor(
-                    #[cfg(debug_assertions)]
+                    #[cfg(feature = "debug-names")]
                     name,
                     driver,
                     desc_set_layout,
@@ -276,12 +276,12 @@ impl Pool {
 
     pub(super) fn data(
         &mut self,
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         len: u64,
     ) -> Lease<Data> {
         self.data_usage(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             driver,
             len,
@@ -291,7 +291,7 @@ impl Pool {
 
     pub(super) fn data_usage(
         &mut self,
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         len: u64,
         usage: BufferUsage,
@@ -303,7 +303,7 @@ impl Pool {
             item
         } else {
             Data::new(
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 name,
                 Driver::clone(driver),
                 len,
@@ -353,7 +353,7 @@ impl Pool {
 
     pub(super) fn fence(
         &mut self,
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
     ) -> Lease<Fence> {
         let item = if let Some(mut item) = self.fences.borrow_mut().pop_back() {
@@ -361,7 +361,7 @@ impl Pool {
             item
         } else {
             Fence::new(
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 name,
                 Driver::clone(driver),
             )
@@ -372,14 +372,14 @@ impl Pool {
 
     pub(super) fn graphics(
         &mut self,
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         graphics_mode: GraphicsMode,
         render_pass_mode: RenderPassMode,
         subpass_idx: u8,
     ) -> Lease<Graphics> {
         self.graphics_desc_sets(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             driver,
             graphics_mode,
@@ -391,7 +391,7 @@ impl Pool {
 
     pub(super) fn graphics_desc_sets(
         &mut self,
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         graphics_mode: GraphicsMode,
         render_pass_mode: RenderPassMode,
@@ -430,7 +430,7 @@ impl Pool {
         };
         let item = unsafe {
             ctor(
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 name,
                 driver,
                 max_desc_sets,
@@ -481,7 +481,7 @@ impl Pool {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn texture(
         &mut self,
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         dims: Extent,
         fmt: Format,
@@ -506,7 +506,7 @@ impl Pool {
             let mut items_ref = items.as_ref().borrow_mut();
             if let Some(item) = items_ref.pop_back() {
                 // Set a new name on this texture
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "debug-names")]
                 unsafe {
                     driver
                         .as_ref()
@@ -518,7 +518,7 @@ impl Pool {
             } else {
                 // Add a cache item so there will be an unused item waiting next time
                 items_ref.push_front(TextureRef::new(RefCell::new(Texture::new(
-                    #[cfg(debug_assertions)]
+                    #[cfg(feature = "debug-names")]
                     &format!("{} (Unused)", name),
                     Driver::clone(driver),
                     dims,
@@ -532,7 +532,7 @@ impl Pool {
 
                 // Return a brand new instance
                 TextureRef::new(RefCell::new(Texture::new(
-                    #[cfg(debug_assertions)]
+                    #[cfg(feature = "debug-names")]
                     name,
                     Driver::clone(driver),
                     dims,

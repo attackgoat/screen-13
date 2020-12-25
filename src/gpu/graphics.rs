@@ -75,7 +75,7 @@ impl Graphics {
     /// # Safety
     /// None
     pub unsafe fn blend_normal(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
@@ -83,7 +83,7 @@ impl Graphics {
         let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::blend::QUAD_TRANSFORM_VERT);
         let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::blend::NORMAL_FRAG);
         let set_layout = DescriptorSetLayout::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             &[
@@ -104,7 +104,7 @@ impl Graphics {
             ],
         );
         let layout = PipelineLayout::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             once(&*set_layout),
@@ -137,7 +137,7 @@ impl Graphics {
             mask: ColorMask::ALL,
         });
         let pipeline = GraphicsPipeline::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             &desc,
@@ -168,7 +168,7 @@ impl Graphics {
     /// # Safety
     /// None
     pub unsafe fn draw_line(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
@@ -176,13 +176,13 @@ impl Graphics {
         let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::defer::LINE_VERT);
         let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::defer::LINE_FRAG);
         let set_layout = DescriptorSetLayout::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             empty::<DescriptorSetLayoutBinding>(),
         );
         let layout = PipelineLayout::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             once(&*set_layout),
@@ -235,7 +235,7 @@ impl Graphics {
             });
         }
         let pipeline = GraphicsPipeline::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             &desc,
@@ -260,7 +260,7 @@ impl Graphics {
     /// # Safety
     /// None
     pub unsafe fn draw_mesh(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
@@ -268,7 +268,7 @@ impl Graphics {
         let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::defer::MESH_VERT);
         let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::defer::MESH_FRAG);
         let set_layout = DescriptorSetLayout::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             &[
@@ -296,7 +296,7 @@ impl Graphics {
             ],
         );
         let layout = PipelineLayout::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             once(&*set_layout),
@@ -368,7 +368,7 @@ impl Graphics {
             write: true,
         });
         let pipeline = GraphicsPipeline::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             &desc,
@@ -405,7 +405,7 @@ impl Graphics {
     /// # Safety
     /// None
     pub unsafe fn draw_point_light(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         _max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
@@ -413,7 +413,7 @@ impl Graphics {
         let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::defer::LIGHT_VERT);
         let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::defer::POINT_LIGHT_FRAG);
         let layout = PipelineLayout::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             empty::<&<_Backend as Backend>::DescriptorSetLayout>(),
@@ -460,7 +460,7 @@ impl Graphics {
             write: false,
         });
         let pipeline = GraphicsPipeline::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             &desc,
@@ -480,7 +480,7 @@ impl Graphics {
     /// # Safety
     /// None
     pub unsafe fn draw_rect_light(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         _max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
@@ -488,7 +488,7 @@ impl Graphics {
         let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::defer::LIGHT_VERT);
         let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::defer::POINT_LIGHT_FRAG);
         let layout = PipelineLayout::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             empty::<&<_Backend as Backend>::DescriptorSetLayout>(),
@@ -535,7 +535,7 @@ impl Graphics {
             write: false,
         });
         let pipeline = GraphicsPipeline::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             &desc,
@@ -555,7 +555,7 @@ impl Graphics {
     /// # Safety
     /// None
     pub unsafe fn draw_spotlight(
-        #[cfg(debug_assertions)] _name: &str,
+        #[cfg(feature = "debug-names")] _name: &str,
         _driver: &Driver,
         _max_desc_sets: usize,
         _subpass: Subpass<'_, _Backend>,
@@ -563,7 +563,7 @@ impl Graphics {
         // let vertex = ShaderModule::new(Driver::clone(&driver), &QUAD_TRANSFORM_VERT);
         // let fragment = ShaderModule::new(Driver::clone(&driver), &SPOTLIGHT_FRAG);
         // let set_layout = DescriptorSetLayout::new(
-        //     #[cfg(debug_assertions)]
+        //     #[cfg(feature = "debug-names")]
         //     name,
         //     Driver::clone(&driver),
         //     once(descriptor_set_layout_binding(
@@ -604,7 +604,7 @@ impl Graphics {
         //     mask: ColorMask::ALL,
         // });
         // let pipeline = GraphicsPipeline::new(
-        //     #[cfg(debug_assertions)]
+        //     #[cfg(feature = "debug-names")]
         //     name,
         //     Driver::clone(&driver),
         //     &desc,
@@ -636,7 +636,7 @@ impl Graphics {
     /// # Safety
     /// None
     pub unsafe fn draw_sunlight(
-        #[cfg(debug_assertions)] _name: &str,
+        #[cfg(feature = "debug-names")] _name: &str,
         _driver: &Driver,
         _max_desc_sets: usize,
         _subpass: Subpass<'_, _Backend>,
@@ -644,7 +644,7 @@ impl Graphics {
         // let vertex = ShaderModule::new(Driver::clone(&driver), &QUAD_TRANSFORM_VERT);
         // let fragment = ShaderModule::new(Driver::clone(&driver), &SUNLIGHT_FRAG);
         // let set_layout = DescriptorSetLayout::new(
-        //     #[cfg(debug_assertions)]
+        //     #[cfg(feature = "debug-names")]
         //     name,
         //     Driver::clone(&driver),
         //     &[descriptor_set_layout_binding(
@@ -708,7 +708,7 @@ impl Graphics {
         // //     }),
         // // };
         // let pipeline = GraphicsPipeline::new(
-        //     #[cfg(debug_assertions)]
+        //     #[cfg(feature = "debug-names")]
         //     name,
         //     Driver::clone(&driver),
         //     &desc,
@@ -740,7 +740,7 @@ impl Graphics {
     }
 
     pub unsafe fn font(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
@@ -748,7 +748,7 @@ impl Graphics {
         let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::FONT_VERT);
         let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::FONT_FRAG);
         let set_layout = DescriptorSetLayout::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             once(descriptor_set_layout_binding(
@@ -760,7 +760,7 @@ impl Graphics {
             )),
         );
         let layout = PipelineLayout::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             once(&*set_layout),
@@ -814,7 +814,7 @@ impl Graphics {
             mask: ColorMask::ALL,
         });
         let pipeline = GraphicsPipeline::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             &desc,
@@ -843,7 +843,7 @@ impl Graphics {
     }
 
     pub unsafe fn font_outline(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
@@ -851,7 +851,7 @@ impl Graphics {
         let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::FONT_VERT);
         let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::FONT_OUTLINE_FRAG);
         let set_layout = DescriptorSetLayout::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             once(descriptor_set_layout_binding(
@@ -863,7 +863,7 @@ impl Graphics {
             )),
         );
         let layout = PipelineLayout::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             once(&*set_layout),
@@ -917,7 +917,7 @@ impl Graphics {
             mask: ColorMask::ALL,
         });
         let pipeline = GraphicsPipeline::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             &desc,
@@ -946,7 +946,7 @@ impl Graphics {
     }
 
     pub unsafe fn gradient(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
@@ -954,7 +954,7 @@ impl Graphics {
         let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::GRADIENT_VERT);
         let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::GRADIENT_FRAG);
         let set_layout = DescriptorSetLayout::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             once(descriptor_set_layout_binding(
@@ -966,7 +966,7 @@ impl Graphics {
             )),
         );
         let layout = PipelineLayout::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             once(&*set_layout),
@@ -996,7 +996,7 @@ impl Graphics {
             mask: ColorMask::ALL,
         });
         let pipeline = GraphicsPipeline::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             &desc,
@@ -1025,7 +1025,7 @@ impl Graphics {
     }
 
     pub unsafe fn gradient_transparency(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
@@ -1033,7 +1033,7 @@ impl Graphics {
         let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::GRADIENT_VERT);
         let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::GRADIENT_FRAG);
         let set_layout = DescriptorSetLayout::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             once(descriptor_set_layout_binding(
@@ -1045,7 +1045,7 @@ impl Graphics {
             )),
         );
         let layout = PipelineLayout::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             once(&*set_layout),
@@ -1075,7 +1075,7 @@ impl Graphics {
             mask: ColorMask::ALL,
         });
         let pipeline = GraphicsPipeline::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             &desc,
@@ -1104,7 +1104,7 @@ impl Graphics {
     }
 
     pub unsafe fn present(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
@@ -1112,7 +1112,7 @@ impl Graphics {
         let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::QUAD_VERT);
         let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::TEXTURE_FRAG);
         let set_layout = DescriptorSetLayout::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             once(descriptor_set_layout_binding(
@@ -1124,7 +1124,7 @@ impl Graphics {
             )),
         );
         let layout = PipelineLayout::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             once(&*set_layout),
@@ -1153,7 +1153,7 @@ impl Graphics {
             mask: ColorMask::ALL,
         });
         let pipeline = GraphicsPipeline::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             &desc,
@@ -1182,7 +1182,7 @@ impl Graphics {
     }
 
     pub unsafe fn texture(
-        #[cfg(debug_assertions)] name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
@@ -1190,7 +1190,7 @@ impl Graphics {
         let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::QUAD_TRANSFORM_VERT);
         let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::TEXTURE_FRAG);
         let set_layout = DescriptorSetLayout::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             once(descriptor_set_layout_binding(
@@ -1202,7 +1202,7 @@ impl Graphics {
             )),
         );
         let layout = PipelineLayout::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             once(&*set_layout),
@@ -1232,7 +1232,7 @@ impl Graphics {
             mask: ColorMask::ALL,
         });
         let pipeline = GraphicsPipeline::new(
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug-names")]
             name,
             Driver::clone(&driver),
             &desc,
