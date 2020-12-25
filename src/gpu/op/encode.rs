@@ -17,6 +17,7 @@ use {
     gfx_impl::Backend as _Backend,
     image::{save_buffer, ColorType},
     std::{
+        any::Any,
         io::Result as IoResult,
         iter::{empty, once},
         path::{Path, PathBuf},
@@ -26,70 +27,36 @@ use {
 
 const DEFAULT_QUALITY: u8 = (0.9f32 * u8::MAX as f32) as u8;
 
-pub struct Encode {
-    op: Option<EncodeOp>,
-    path: PathBuf,
-}
-
-impl Encode {
-    pub fn flush(&mut self) -> IoResult<()> {
-        // We only do this once
-        if let Some(mut op) = self.op.take() {
-            self.wait();
-            let dims = op.texture.borrow().dims();
-            let len = EncodeOp::byte_len(&op.texture);
-            let buf = op.buf.map_range(0..len as _).unwrap(); // TODO: Error handling!
-
-            // Encode the 32bpp RGBA source data into a JPEG
-            save_buffer(&self.path, &buf, dims.x, dims.y, ColorType::Rgba8).unwrap();
-        }
-
-        Ok(())
-    }
-}
-
-impl Drop for Encode {
-    fn drop(&mut self) {
-        // If you don't manually call flush errors will be ignored
-        self.flush().unwrap_or_default();
-    }
-}
-
-impl Op for Encode {
-    fn wait(&self) {
-        if let Some(op) = &self.op {
-            Fence::wait(&op.fence);
-        }
-    }
-}
-
 pub struct EncodeOp {
     buf: Lease<Data>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
     driver: Driver,
     fence: Lease<Fence>,
+    pool: Option<Lease<Pool>>,
+    path: Option<PathBuf>,
     quality: u8,
     texture: Texture2d,
 }
 
 impl EncodeOp {
+    #[must_use]
     pub fn new(
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
-        pool: &mut Pool,
-        texture: Texture2d,
+        mut pool: Lease<Pool>,
+        texture: &Texture2d,
     ) -> Self {
         let len = Self::byte_len(&texture);
         let buf = pool.data(
             #[cfg(debug_assertions)]
             name,
-            driver,
+            &driver,
             len as _,
         );
 
         let family = Device::queue_family(&driver.borrow());
-        let mut cmd_pool = pool.cmd_pool(driver, family);
+        let mut cmd_pool = pool.cmd_pool(&driver, family);
 
         Self {
             buf,
@@ -99,13 +66,16 @@ impl EncodeOp {
             fence: pool.fence(
                 #[cfg(debug_assertions)]
                 name,
-                driver,
+                &driver,
             ),
+            pool: Some(pool),
+            path: None,
             quality: DEFAULT_QUALITY,
-            texture,
+            texture: Texture2d::clone(texture),
         }
     }
 
+    #[must_use]
     pub fn with_quality(&mut self, quality: u8) -> &mut Self {
         self.quality = quality;
         self
@@ -116,15 +86,27 @@ impl EncodeOp {
         (dims.x * dims.y * 4) as _
     }
 
-    pub fn record<P: AsRef<Path>>(mut self, path: P) -> Encode {
+    pub fn flush(&mut self) -> IoResult<()> {
+        // We only do this once
+        if let Some(path) = self.path.take() {
+            self.wait();
+            let dims = self.texture.borrow().dims();
+            let len = EncodeOp::byte_len(&self.texture);
+            let buf = self.buf.map_range(0..len as _).unwrap(); // TODO: Error handling!
+
+            // Encode the 32bpp RGBA source data into a JPEG
+            save_buffer(path, &buf, dims.x, dims.y, ColorType::Rgba8).unwrap();
+        }
+
+        Ok(())
+    }
+
+    pub fn record<P: AsRef<Path>>(&mut self, path: P) {
+        self.path = Some(path.as_ref().to_path_buf());
+
         unsafe {
             self.submit();
         };
-
-        Encode {
-            op: Some(self),
-            path: path.as_ref().to_owned(),
-        }
     }
 
     unsafe fn submit(&mut self) {
@@ -178,5 +160,30 @@ impl EncodeOp {
             },
             Some(&self.fence),
         );
+    }
+}
+
+impl Drop for EncodeOp {
+    fn drop(&mut self) {
+        // If you don't manually call flush errors will be ignored
+        self.flush().unwrap_or_default();
+    }
+}
+
+impl Op for EncodeOp {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn take_pool(&mut self) -> Option<Lease<Pool>> {
+        self.pool.take()
+    }
+
+    fn wait(&self) {
+        Fence::wait(&self.fence);
     }
 }

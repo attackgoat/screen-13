@@ -339,13 +339,6 @@ impl RectLightCommand {
 }
 
 #[derive(Clone, Debug)]
-pub struct SunlightCommand {
-    pub color: Color,
-    pub lumens: f32,
-    pub normal: Vec3,
-}
-
-#[derive(Clone, Debug)]
 pub struct SpotlightCommand {
     pub color: Color,     // `cone` and penumbra-to-transparent color
     pub cone_radius: f32, // radius of the spotlight cone from the center to the edge of the full-bright area
@@ -355,4 +348,11 @@ pub struct SpotlightCommand {
     pub position: Vec3,       // position of the pointy end
     pub range: Range<f32>, // lit distance from `pos` and to the bottom of the spotlight (does not account for the lens-shaped end)
     pub top_radius: f32,
+}
+
+#[derive(Clone, Debug)]
+pub struct SunlightCommand {
+    pub color: Color,
+    pub lumens: f32,
+    pub normal: Vec3,
 }

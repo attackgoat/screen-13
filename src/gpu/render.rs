@@ -1,17 +1,13 @@
 use {
     super::{
         driver::Device,
-        op::{
-            ClearOp, Command, CopyOp, DrawOp, EncodeOp, Font, FontOp, GradientOp, Write, WriteMode,
-            WriteOp,
-        },
+        op::{ClearOp, CopyOp, DrawOp, EncodeOp, FontOp, GradientOp, WriteMode, WriteOp},
         pool::{Lease, Pool},
-        Driver, Op, Texture2d, TextureRef,
+        Driver, Op, Texture2d,
     },
     crate::{
-        camera::Camera,
-        color::{AlphaColor, Color},
-        math::{Area, Coord, CoordF, Extent},
+        color::AlphaColor,
+        math::{Coord, CoordF, Extent},
     },
     gfx_hal::{
         format::{Format, ImageFeature},
@@ -24,7 +20,7 @@ use {
 /// instances to create just about any creative effect.
 pub struct Render {
     driver: Driver,
-    pool: Lease<Pool>,
+    pool: Option<Lease<Pool>>,
     target: Lease<Texture2d>,
     target_dirty: bool,
     ops: Vec<Box<dyn Op>>,
@@ -34,8 +30,8 @@ impl Render {
     pub(super) fn new(
         #[cfg(debug_assertions)] name: &str,
         driver: Driver,
-        mut pool: Lease<Pool>,
         dims: Extent,
+        mut pool: Lease<Pool>,
         ops: Vec<Box<dyn Op>>,
     ) -> Self {
         let fmt = Device::best_fmt(
@@ -59,7 +55,7 @@ impl Render {
 
         Self {
             driver,
-            pool,
+            pool: Some(pool),
             target,
             target_dirty: false,
             ops,
@@ -67,58 +63,49 @@ impl Render {
     }
 
     /// Clears the screen of all text and graphics.
-    pub fn clear(&mut self, #[cfg(debug_assertions)] name: &str, color: Color) {
-        let format = self.target.borrow().format();
-        let mut op = ClearOp::new(
+    pub fn clear(&mut self, #[cfg(debug_assertions)] name: &str) -> &mut ClearOp {
+        let pool = self.take_pool();
+        let op = ClearOp::new(
             #[cfg(debug_assertions)]
             name,
             &self.driver,
-            &mut self.pool,
+            pool,
             &self.target,
         );
-        op.with_clear_value(color.swizzle(format));
-        self.ops.push(Box::new(op.record()));
+
         self.target_dirty = true;
+
+        self.ops.push(Box::new(op));
+        self.ops
+            .last_mut()
+            .unwrap()
+            .as_any_mut()
+            .downcast_mut::<ClearOp>()
+            .unwrap()
     }
 
     /// Copies the given texture onto this Render. The implementation uses a copy operation
     /// and is more efficient than `write` when there is no blending or fractional pixels.
-    pub fn copy(&mut self, #[cfg(debug_assertions)] name: &str, src: &Texture2d) {
-        self.ops.push(Box::new(
-            CopyOp::new(
-                #[cfg(debug_assertions)]
-                name,
-                &self.driver,
-                &mut self.pool,
-                &src,
-                &self.target,
-            )
-            .record(),
-        ));
-        self.target_dirty = true;
-    }
-
-    /// Copies a region of the given texture onto this Render at `dst` coordinates. The
-    /// implementation uses a copy operation and is more efficient than `write` when there
-    /// is no blending or fractional pixels.
-    pub fn copy_region(
-        &mut self,
-        #[cfg(debug_assertions)] name: &str,
-        src: &Texture2d,
-        src_region: Area,
-        dst: Extent,
-    ) {
-        let mut op = CopyOp::new(
+    pub fn copy(&mut self, #[cfg(debug_assertions)] name: &str, src: &Texture2d) -> &mut CopyOp {
+        let pool = self.take_pool();
+        let op = CopyOp::new(
             #[cfg(debug_assertions)]
             name,
             &self.driver,
-            &mut self.pool,
+            pool,
             &src,
             &self.target,
         );
-        op.with_region(src_region, dst);
-        self.ops.push(Box::new(op.record()));
+
         self.target_dirty = true;
+
+        self.ops.push(Box::new(op));
+        self.ops
+            .last_mut()
+            .unwrap()
+            .as_any_mut()
+            .downcast_mut::<CopyOp>()
+            .unwrap()
     }
 
     pub fn dims(&self) -> Extent {
@@ -127,64 +114,89 @@ impl Render {
 
     /// Draws a batch of 3D elements. There is no need to give any particular order to the individual commands and the
     /// implementation may sort and re-order them, so do not count on indices remaining the same after this call completes.
-    pub fn draw(
-        &mut self,
-        #[cfg(debug_assertions)] name: &str,
-        camera: &impl Camera,
-        cmds: &mut [Command],
-    ) {
+    pub fn draw(&mut self, #[cfg(debug_assertions)] name: &str) -> &mut DrawOp {
+        let pool = self.take_pool();
         let mut op = DrawOp::new(
             #[cfg(debug_assertions)]
             name,
-            Driver::clone(&self.driver),
-            &mut self.pool,
+            &self.driver,
+            pool,
             &self.target,
         );
 
         if self.target_dirty {
-            op.with_preserve();
+            let _ = op.with_preserve(true);
         }
 
-        self.ops.push(Box::new(op.record(camera, cmds)));
         self.target_dirty = true;
+        self.ops.push(Box::new(op));
+        self.ops
+            .last_mut()
+            .unwrap()
+            .as_any_mut()
+            .downcast_mut::<DrawOp>()
+            .unwrap()
     }
 
     /// Saves this Render as a JPEG file at the given path.
-    pub fn encode<P: AsRef<Path>>(&mut self, #[cfg(debug_assertions)] name: &str, path: P) {
-        self.ops.push(Box::new(
-            EncodeOp::new(
-                #[cfg(debug_assertions)]
-                name,
-                &self.driver,
-                &mut self.pool,
-                TextureRef::clone(&self.target),
-            )
-            .record(path),
-        ));
+    pub fn encode<P: AsRef<Path>>(&mut self, #[cfg(debug_assertions)] name: &str) -> &mut EncodeOp {
+        let pool = self.take_pool();
+        let op = EncodeOp::new(
+            #[cfg(debug_assertions)]
+            name,
+            &self.driver,
+            pool,
+            &self.target,
+        );
+
+        self.ops.push(Box::new(op));
+        self.ops
+            .last_mut()
+            .unwrap()
+            .as_any_mut()
+            .downcast_mut::<EncodeOp>()
+            .unwrap()
     }
 
     /// Draws a linear gradient on this Render using the given path.
     /// TODO: Specialize for radial too?
-    pub fn gradient<C>(&mut self, #[cfg(debug_assertions)] name: &str, path: [(Coord, C); 2])
+    pub fn gradient<C>(
+        &mut self,
+        #[cfg(debug_assertions)] name: &str,
+        path: [(Coord, C); 2],
+    ) -> &mut EncodeOp
     where
         C: Copy + Into<AlphaColor>,
     {
-        self.ops.push(Box::new(
-            GradientOp::new(
-                #[cfg(debug_assertions)]
-                name,
-                Driver::clone(&self.driver),
-                &mut self.pool,
-                &self.target,
-                [(path[0].0, path[0].1.into()), (path[1].0, path[1].1.into())],
-            )
-            .record(),
-        ));
+        let pool = self.take_pool();
+        let op = GradientOp::new(
+            #[cfg(debug_assertions)]
+            name,
+            &self.driver,
+            pool,
+            &self.target,
+            [(path[0].0, path[0].1.into()), (path[1].0, path[1].1.into())],
+        );
+
         self.target_dirty = true;
+
+        self.ops.push(Box::new(op));
+        self.ops
+            .last_mut()
+            .unwrap()
+            .as_any_mut()
+            .downcast_mut::<EncodeOp>()
+            .unwrap()
     }
 
     pub(crate) fn resolve(self) -> (Lease<Texture2d>, Vec<Box<dyn Op>>) {
         (self.target, self.ops)
+    }
+
+    fn take_pool(&mut self) -> Lease<Pool> {
+        self.pool
+            .take()
+            .unwrap_or_else(|| self.ops.last_mut().unwrap().take_pool().unwrap())
     }
 
     /// Draws bitmapped text on this Render using the given details.
@@ -192,80 +204,60 @@ impl Render {
     pub fn text<C, P>(
         &mut self,
         #[cfg(debug_assertions)] name: &str,
-        font: &Font,
-        text: &str,
         pos: P,
         color: C,
-    ) where
+    ) -> &mut FontOp
+    where
         C: Into<AlphaColor>,
         P: Into<CoordF>,
     {
-        self.ops.push(Box::new(
-            FontOp::new(
-                #[cfg(debug_assertions)]
-                name,
-                Driver::clone(&self.driver),
-                &mut self.pool,
-                TextureRef::clone(&self.target),
-                pos,
-                color,
-            )
-            .record(font, text),
-        ));
-        self.target_dirty = true;
-    }
-
-    /// Draws bitmapped text on this Render using the given details.
-    /// TODO: Accept a list of font/color/text/pos combos so we can batch many at once?
-    pub fn text_outline<C1, C2, P>(
-        &mut self,
-        #[cfg(debug_assertions)] name: &str,
-        font: &Font,
-        text: &str,
-        pos: P,
-        color: C1,
-        outline_color: C2,
-    ) where
-        C1: Into<AlphaColor>,
-        C2: Into<AlphaColor>,
-        P: Into<CoordF>,
-    {
-        let mut op = FontOp::new(
+        let pool = self.take_pool();
+        let op = FontOp::new(
             #[cfg(debug_assertions)]
             name,
-            Driver::clone(&self.driver),
-            &mut self.pool,
-            TextureRef::clone(&self.target),
+            &self.driver,
+            pool,
+            &self.target,
             pos,
             color,
         );
-        op.with_outline_color(outline_color);
-        self.ops.push(Box::new(op.record(font, text)));
+
         self.target_dirty = true;
+
+        self.ops.push(Box::new(op));
+        self.ops
+            .last_mut()
+            .unwrap()
+            .as_any_mut()
+            .downcast_mut::<FontOp>()
+            .unwrap()
     }
 
     /// Draws the given texture writes onto this Render. Note that the given texture writes will all be applied at once and there
     /// is no 'layering' of the individual writes going on - so if you need blending between writes you must submit a new batch.
-    pub fn write(
-        &mut self,
-        #[cfg(debug_assertions)] name: &str,
-        mode: WriteMode,
-        writes: &mut [Write],
-    ) {
+    pub fn write(&mut self, #[cfg(debug_assertions)] name: &str, mode: WriteMode) -> &mut WriteOp {
+        let pool = self.take_pool();
         let mut op = WriteOp::new(
             #[cfg(debug_assertions)]
             name,
-            Driver::clone(&self.driver),
-            &mut self.pool,
-            TextureRef::clone(&self.target),
+            &self.driver,
+            pool,
+            &self.target,
             mode,
         );
 
         if self.target_dirty {
-            op.with_preserve();
+            let _ = op.with_preserve(true);
         }
 
-        self.ops.push(Box::new(op.record(writes)));
         self.target_dirty = true;
+
+        self.ops.push(Box::new(op));
+        self.ops
+            .last_mut()
+            .unwrap()
+            .as_any_mut()
+            .downcast_mut::<WriteOp>()
+            .unwrap()
     }
 }

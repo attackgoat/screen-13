@@ -18,7 +18,15 @@ pub use self::{
     write::{Mode as WriteMode, Write, WriteOp},
 };
 
-pub trait Op {
+use {
+    super::{Lease, Pool},
+    std::any::Any,
+};
+
+pub trait Op: Any {
+    fn as_any(&self) -> &dyn Any;
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+    fn take_pool(&mut self) -> Option<Lease<Pool>>;
     fn wait(&self);
 }
 

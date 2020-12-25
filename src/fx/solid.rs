@@ -17,11 +17,13 @@ impl Screen for Solid {
             &format!("Solid {}", self.color.to_hex()),
             Extent::new(8, 8),
         );
-        frame.clear(
-            #[cfg(debug_assertions)]
-            "Solid",
-            self.color,
-        );
+        frame
+            .clear(
+                #[cfg(debug_assertions)]
+                "Solid",
+            )
+            .with_clear_value(self.color)
+            .record();
 
         frame
     }

@@ -4,8 +4,7 @@ use {
         color::AlphaColor,
         gpu::{
             driver::{CommandPool, Device, Driver, Fence},
-            pool::{Lease, Pool},
-            TextureRef,
+            Lease, Pool, Texture2d,
         },
     },
     gfx_hal::{
@@ -18,35 +17,35 @@ use {
         Backend,
     },
     gfx_impl::Backend as _Backend,
-    std::iter::{empty, once},
+    std::{
+        any::Any,
+        iter::{empty, once},
+    },
 };
 
 const QUEUE_TYPE: QueueType = QueueType::Graphics;
 
-pub struct ClearOp<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
+pub struct ClearOp {
     clear_value: ClearValue,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
     driver: Driver,
     fence: Lease<Fence>,
-    texture: TextureRef<I>,
+    pool: Option<Lease<Pool>>,
+    texture: Texture2d,
 }
 
-impl<I> ClearOp<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
+impl ClearOp {
+    #[must_use]
     pub fn new(
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
-        pool: &mut Pool,
-        texture: &TextureRef<I>,
+        mut pool: Lease<Pool>,
+        texture: &Texture2d,
     ) -> Self {
         let family = Device::queue_family(&driver.borrow());
         let mut cmd_pool = pool.cmd_pool(driver, family);
+
         Self {
             clear_value: AlphaColor::rgba(0, 0, 0, 0).into(),
             cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
@@ -57,10 +56,12 @@ where
                 name,
                 driver,
             ),
-            texture: TextureRef::clone(texture),
+            pool: Some(pool),
+            texture: Texture2d::clone(texture),
         }
     }
 
+    #[must_use]
     pub fn with_clear_value<C>(&mut self, clear_value: C) -> &mut Self
     where
         C: Into<ClearValue>,
@@ -69,17 +70,9 @@ where
         self
     }
 
-    pub fn record(mut self) -> impl Op {
+    pub fn record(&mut self) {
         unsafe {
             self.submit();
-        };
-
-        ClearOpSubmission {
-            cmd_buf: self.cmd_buf,
-            cmd_pool: self.cmd_pool,
-            driver: self.driver,
-            fence: self.fence,
-            texture: self.texture,
         }
     }
 
@@ -123,30 +116,25 @@ where
     }
 }
 
-pub struct ClearOpSubmission<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
-    cmd_buf: <_Backend as Backend>::CommandBuffer,
-    cmd_pool: Lease<CommandPool>,
-    driver: Driver,
-    fence: Lease<Fence>,
-    texture: TextureRef<I>,
-}
-
-impl<I> Drop for ClearOpSubmission<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
+impl Drop for ClearOp {
     fn drop(&mut self) {
         self.wait();
     }
 }
 
-impl<I> Op for ClearOpSubmission<I>
-where
-    I: AsRef<<_Backend as Backend>::Image>,
-{
+impl Op for ClearOp {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn take_pool(&mut self) -> Option<Lease<Pool>> {
+        self.pool.take()
+    }
+
     fn wait(&self) {
         Fence::wait(&self.fence);
     }

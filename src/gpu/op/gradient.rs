@@ -21,7 +21,10 @@ use {
         Backend,
     },
     gfx_impl::Backend as _Backend,
-    std::iter::{empty, once},
+    std::{
+        any::Any,
+        iter::{empty, once},
+    },
 };
 
 type Path = [(Coord, AlphaColor); 2];
@@ -48,22 +51,24 @@ pub struct GradientOp {
     fence: Lease<Fence>,
     frame_buf: Framebuffer2d,
     graphics: Lease<Graphics>,
+    pool: Option<Lease<Pool>>,
     path: [(Coord, AlphaColor); 2],
 }
 
 impl GradientOp {
     /// # Safety
     /// None
+    #[must_use]
     pub fn new(
         #[cfg(debug_assertions)] name: &str,
-        driver: Driver,
-        pool: &mut Pool,
+        driver: &Driver,
+        mut pool: Lease<Pool>,
         dst: &Texture2d,
         path: Path,
     ) -> Self {
         // Allocate the command buffer
         let family = Device::queue_family(&driver.borrow());
-        let mut cmd_pool = pool.cmd_pool(&driver, family);
+        let mut cmd_pool = pool.cmd_pool(driver, family);
 
         let (dims, fmt) = {
             let dst = dst.borrow();
@@ -79,7 +84,7 @@ impl GradientOp {
         let graphics = pool.graphics(
             #[cfg(debug_assertions)]
             name,
-            &driver,
+            driver,
             GraphicsMode::Gradient,
             render_pass_mode,
             0,
@@ -89,7 +94,7 @@ impl GradientOp {
         let back_buf = pool.texture(
             #[cfg(debug_assertions)]
             name,
-            &driver,
+            driver,
             dims,
             fmt,
             Layout::Undefined,
@@ -119,24 +124,26 @@ impl GradientOp {
             back_buf,
             cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
             cmd_pool,
-            driver,
+            driver: Driver::clone(driver),
             dst: Texture2d::clone(dst),
             dst_preserve: false,
             fence,
             frame_buf,
             graphics,
+            pool: Some(pool),
             path,
         }
     }
 
     /// Preserves the contents of the destination texture. Without calling this function the existing
     /// contents of the destination texture will not be composited into the final result.
-    pub fn with_preserve(&mut self) -> &mut Self {
-        self.dst_preserve = true;
+    #[must_use]
+    pub fn with_preserve(&mut self, val: bool) -> &mut Self {
+        self.dst_preserve = val;
         self
     }
 
-    pub fn record(mut self) -> impl Op {
+    pub fn record(&mut self) {
         // Setup the descriptor set
         {
             // let pool = self.pool.borrow();
@@ -219,16 +226,6 @@ impl GradientOp {
 
         unsafe {
             self.submit();
-        };
-
-        GradientOpSubmission {
-            back_buf: self.back_buf,
-            cmd_buf: self.cmd_buf,
-            cmd_pool: self.cmd_pool,
-            dst: self.dst,
-            fence: self.fence,
-            frame_buf: self.frame_buf,
-            graphics: self.graphics,
         }
     }
 
@@ -385,23 +382,25 @@ impl GradientOp {
     }
 }
 
-pub struct GradientOpSubmission {
-    back_buf: Lease<Texture2d>,
-    cmd_buf: <_Backend as Backend>::CommandBuffer,
-    cmd_pool: Lease<CommandPool>,
-    dst: Texture2d,
-    fence: Lease<Fence>,
-    frame_buf: Framebuffer2d,
-    graphics: Lease<Graphics>,
-}
-
-impl Drop for GradientOpSubmission {
+impl Drop for GradientOp {
     fn drop(&mut self) {
         self.wait();
     }
 }
 
-impl Op for GradientOpSubmission {
+impl Op for GradientOp {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn take_pool(&mut self) -> Option<Lease<Pool>> {
+        self.pool.take()
+    }
+
     fn wait(&self) {
         Fence::wait(&self.fence);
     }

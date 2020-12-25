@@ -477,13 +477,14 @@ impl Gpu {
             Default::default()
         };
         let pool = Lease::new(pool, &cache.0);
+        let driver = Driver::clone(&self.driver);
 
         Render::new(
             #[cfg(debug_assertions)]
             name,
-            Driver::clone(&self.driver),
-            pool,
+            driver,
             dims,
+            pool,
             ops,
         )
     }

@@ -47,19 +47,20 @@ impl Screen for Basic {
         );
 
         // Draws "Hello, World" onto a blue background
-        frame.clear(
-            #[cfg(debug_assertions)]
-            "basic clear",
-            qb_color(1),
-        );
-        frame.text(
-            #[cfg(debug_assertions)]
-            "basic text",
-            &self.small_10px,
-            "Hello, world!",
-            Coord::new(137, 96),
-            qb_color(15),
-        );
+        frame
+            .clear(
+                #[cfg(debug_assertions)]
+                "basic clear",
+            )
+            .with_clear_value(qb_color(1));
+        frame
+            .text(
+                #[cfg(debug_assertions)]
+                "basic text",
+                Coord::new(137, 96),
+                qb_color(15),
+            )
+            .record(&self.small_10px, "Hello, world!");
 
         // Present the completed frame to the screen
         frame

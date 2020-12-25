@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Changed
 
 - Allow `write` function to specify multiple writes per call
+- Use builder pattern for all rendering commands
 - Switched asset schema from JSON to TOML
 
 ## [0.1.0] - 2020-07-05

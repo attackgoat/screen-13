@@ -28,6 +28,7 @@ use {
     },
     gfx_impl::Backend as _Backend,
     std::{
+        any::Any,
         fmt::{Debug, Error, Formatter},
         iter::{empty, once},
         ops::Deref,
@@ -43,6 +44,7 @@ pub struct Bitmap {
     conv_fmt: Option<Lease<Compute>>,
     fence: Lease<Fence>,
     pixel_buf: Lease<Data>,
+
     texture: Lease<Texture2d>,
 }
 
@@ -67,6 +69,18 @@ impl Drop for Bitmap {
 }
 
 impl Op for Bitmap {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn take_pool(&mut self) -> Option<Lease<Pool>> {
+        todo!();
+    }
+
     fn wait(&self) {
         Fence::wait(&self.fence);
     }
@@ -91,6 +105,7 @@ pub struct BitmapOp<'a> {
 impl<'a> BitmapOp<'a> {
     /// # Safety
     /// None
+    #[must_use]
     pub unsafe fn new(
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,

@@ -28,6 +28,7 @@ use {
     },
     gfx_impl::Backend as _Backend,
     std::{
+        any::Any,
         f32,
         io::{Cursor, Read, Seek},
         iter::{empty, once},
@@ -189,7 +190,7 @@ impl Font {
 }
 
 // TODO: This really needs to cache data like the draw compiler does
-pub struct FontOp<'a> {
+pub struct FontOp {
     back_buf: Lease<Texture2d>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
@@ -204,17 +205,18 @@ pub struct FontOp<'a> {
     name: String,
 
     outline_color: Option<AlphaColor>,
-    pool: &'a mut Pool,
+    pool: Option<Lease<Pool>>,
     transform: Mat4,
     vertex_buf: Option<(Lease<Data>, u64)>,
 }
 
-impl<'a> FontOp<'a> {
+impl FontOp {
+    #[must_use]
     pub fn new<C, P>(
         #[cfg(debug_assertions)] name: &str,
-        driver: Driver,
-        pool: &'a mut Pool,
-        dst: Texture2d,
+        driver: &Driver,
+        mut pool: Lease<Pool>,
+        dst: &Texture2d,
         pos: P,
         color: C,
     ) -> Self
@@ -260,8 +262,8 @@ impl<'a> FontOp<'a> {
             back_buf,
             cmd_buf,
             cmd_pool,
-            driver,
-            dst,
+            driver: Driver::clone(driver),
+            dst: Texture2d::clone(dst),
             fence,
             frame_buf: None,
             glyph_color: color.into(),
@@ -269,12 +271,13 @@ impl<'a> FontOp<'a> {
             #[cfg(debug_assertions)]
             name: name.to_owned(),
             outline_color: None,
-            pool,
+            pool: Some(pool),
             transform,
             vertex_buf: None,
         }
     }
 
+    #[must_use]
     pub fn with_outline_color<C>(&mut self, color: C) -> &mut Self
     where
         C: Into<AlphaColor>,
@@ -283,34 +286,36 @@ impl<'a> FontOp<'a> {
         self
     }
 
+    #[must_use]
     pub fn with_transform(&mut self, transform: Mat4) -> &mut Self {
         self.transform = transform;
         self
     }
 
-    pub fn record(mut self, font: &Font, text: &str) -> impl Op {
+    pub fn record(&mut self, font: &Font, text: &str) {
         assert!(!text.is_empty());
 
         let dims = self.dst.borrow().dims();
-
-        // TODO: Cache these using "named" buffers? Let the client 'compile' them for reuse? Likey that more
-        let tessellations = font.tessellate(text, dims);
-
+        let graphics_mode = self.mode();
         let render_pass_mode = RenderPassMode::Color(ColorRenderPassMode {
             fmt: self.dst.borrow().format(),
             preserve: false,
         });
+        let pool = self.pool.as_mut().unwrap();
+
+        // TODO: Cache these using "named" buffers? Let the client 'compile' them for reuse? Likey that more
+        let tessellations = font.tessellate(text, dims);
 
         // Finish the remaining setup tasks
         {
             let driver = Driver::clone(&self.driver);
 
             // Setup the graphics pipeline
-            self.graphics.replace(self.pool.graphics(
+            self.graphics.replace(pool.graphics(
                 #[cfg(debug_assertions)]
                 &self.name,
                 &self.driver,
-                self.mode(),
+                graphics_mode,
                 render_pass_mode,
                 SUBPASS_IDX,
             ));
@@ -320,7 +325,7 @@ impl<'a> FontOp<'a> {
                 #[cfg(debug_assertions)]
                 self.name.as_str(),
                 driver,
-                self.pool.render_pass(&self.driver, render_pass_mode),
+                pool.render_pass(&self.driver, render_pass_mode),
                 once(self.back_buf.borrow().as_default_view().as_ref()),
                 dims,
             ));
@@ -332,7 +337,7 @@ impl<'a> FontOp<'a> {
                     .map(|(_, vertices)| vertices.len())
                     .sum::<usize>() as u64;
             self.vertex_buf.replace((
-                self.pool.data_usage(
+                pool.data_usage(
                     #[cfg(debug_assertions)]
                     &self.name,
                     &self.driver,
@@ -370,17 +375,6 @@ impl<'a> FontOp<'a> {
             }
 
             self.submit_finish(dims);
-        };
-
-        FontOpSubmission {
-            back_buf: self.back_buf,
-            cmd_buf: self.cmd_buf,
-            cmd_pool: self.cmd_pool,
-            dst: self.dst,
-            fence: self.fence,
-            frame_buf: self.frame_buf.unwrap(),
-            graphics: self.graphics.unwrap(),
-            vertex_buf: self.vertex_buf.unwrap().0,
         }
     }
 
@@ -394,6 +388,8 @@ impl<'a> FontOp<'a> {
 
     unsafe fn submit_begin(&mut self, dims: Extent, render_pass_mode: RenderPassMode) {
         let graphics = self.graphics.as_ref().unwrap();
+        let pool = self.pool.as_mut().unwrap();
+        let render_pass = pool.render_pass(&self.driver, render_pass_mode);
         let (vertex_buf, vertex_buf_len) = self.vertex_buf.as_mut().unwrap();
         let mut back_buf = self.back_buf.borrow_mut();
         let mut dst = self.dst.borrow_mut();
@@ -461,7 +457,7 @@ impl<'a> FontOp<'a> {
             ImageAccess::COLOR_ATTACHMENT_WRITE,
         );
         self.cmd_buf.begin_render_pass(
-            self.pool.render_pass(&self.driver, render_pass_mode),
+            render_pass,
             self.frame_buf.as_ref().unwrap(),
             rect,
             once(&TRANSPARENT_BLACK.into()),
@@ -603,24 +599,25 @@ impl<'a> FontOp<'a> {
     }
 }
 
-pub struct FontOpSubmission {
-    back_buf: Lease<Texture2d>,
-    cmd_buf: <_Backend as Backend>::CommandBuffer,
-    cmd_pool: Lease<CommandPool>,
-    dst: Texture2d,
-    fence: Lease<Fence>,
-    frame_buf: Framebuffer2d,
-    graphics: Lease<Graphics>,
-    vertex_buf: Lease<Data>,
-}
-
-impl Drop for FontOpSubmission {
+impl Drop for FontOp {
     fn drop(&mut self) {
         self.wait();
     }
 }
 
-impl Op for FontOpSubmission {
+impl Op for FontOp {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn take_pool(&mut self) -> Option<Lease<Pool>> {
+        self.pool.take()
+    }
+
     fn wait(&self) {
         Fence::wait(&self.fence);
     }

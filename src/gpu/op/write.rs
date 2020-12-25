@@ -23,6 +23,7 @@ use {
     },
     gfx_impl::Backend as _Backend,
     std::{
+        any::Any,
         iter::{empty, once},
         u8,
     },
@@ -110,7 +111,7 @@ impl<'s> Write<'s> {
     }
 }
 
-pub struct WriteOp<'a> {
+pub struct WriteOp {
     back_buf: Lease<Texture2d>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
@@ -125,20 +126,21 @@ pub struct WriteOp<'a> {
     #[cfg(debug_assertions)]
     name: String,
 
-    pool: &'a mut Pool,
+    pool: Option<Lease<Pool>>,
     src_textures: Vec<Texture2d>,
 }
 
-impl<'a> WriteOp<'a> {
+impl WriteOp {
+    #[must_use]
     pub fn new(
         #[cfg(debug_assertions)] name: &str,
-        driver: Driver,
-        pool: &'a mut Pool,
-        dst: Texture2d,
+        driver: &Driver,
+        mut pool: Lease<Pool>,
+        dst: &Texture2d,
         mode: Mode,
     ) -> Self {
         let family = Device::queue_family(&driver.borrow());
-        let mut cmd_pool = pool.cmd_pool(&driver, family);
+        let mut cmd_pool = pool.cmd_pool(driver, family);
         let (dims, fmt) = {
             let dst = dst.borrow();
             (dst.dims(), dst.format())
@@ -146,14 +148,14 @@ impl<'a> WriteOp<'a> {
         let fence = pool.fence(
             #[cfg(debug_assertions)]
             name,
-            &driver,
+            driver,
         );
 
         Self {
             back_buf: pool.texture(
                 #[cfg(debug_assertions)]
                 &format!("{} backbuffer", name),
-                &driver,
+                driver,
                 dims,
                 fmt,
                 Layout::Undefined,
@@ -167,8 +169,8 @@ impl<'a> WriteOp<'a> {
             ),
             cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
             cmd_pool,
-            driver,
-            dst,
+            driver: Driver::clone(driver),
+            dst: Texture2d::clone(dst),
             dst_preserve: false,
             fence,
             frame_buf: None,
@@ -176,19 +178,20 @@ impl<'a> WriteOp<'a> {
             mode,
             #[cfg(debug_assertions)]
             name: name.to_owned(),
-            pool,
+            pool: Some(pool),
             src_textures: Default::default(),
         }
     }
 
     /// Preserves the contents of the destination texture. Without calling this function the existing
     /// contents of the destination texture will not be composited into the final result.
-    pub fn with_preserve(&mut self) -> &mut Self {
-        self.dst_preserve = true;
+    #[must_use]
+    pub fn with_preserve(&mut self, val: bool) -> &mut Self {
+        self.dst_preserve = val;
         self
     }
 
-    pub fn record(mut self, writes: &mut [Write]) -> impl Op {
+    pub fn record(&mut self, writes: &mut [Write]) {
         assert!(self.src_textures.is_empty());
         assert_ne!(writes.len(), 0);
 
@@ -223,12 +226,15 @@ impl<'a> WriteOp<'a> {
 
         // Final setup bits
         {
+            let pool = self.pool.as_mut().unwrap();
+            let render_pass = pool.render_pass(&self.driver, render_pass_mode);
+
             // Setup the framebuffer
             self.frame_buf.replace(Framebuffer2d::new(
                 #[cfg(debug_assertions)]
                 self.name.as_str(),
                 Driver::clone(&self.driver),
-                self.pool.render_pass(&self.driver, render_pass_mode),
+                render_pass,
                 once(self.back_buf.borrow().as_default_view().as_ref()),
                 self.dst.borrow().dims(),
             ));
@@ -238,7 +244,7 @@ impl<'a> WriteOp<'a> {
                 Mode::Blend((_, mode)) => GraphicsMode::Blend(mode),
                 Mode::Texture => GraphicsMode::Texture,
             };
-            self.graphics.replace(self.pool.graphics_desc_sets(
+            self.graphics.replace(pool.graphics_desc_sets(
                 #[cfg(debug_assertions)]
                 &self.name,
                 &self.driver,
@@ -259,21 +265,12 @@ impl<'a> WriteOp<'a> {
             }
 
             self.submit_finish();
-        };
-
-        WriteOpSubmission {
-            back_buf: self.back_buf,
-            cmd_buf: self.cmd_buf,
-            cmd_pool: self.cmd_pool,
-            dst: self.dst,
-            fence: self.fence,
-            frame_buf: self.frame_buf.unwrap(),
-            graphics: self.graphics.unwrap(),
-            src_textures: self.src_textures,
         }
     }
 
     unsafe fn submit_begin(&mut self, render_pass_mode: RenderPassMode) {
+        let pool = self.pool.as_mut().unwrap();
+        let render_pass = pool.render_pass(&self.driver, render_pass_mode);
         let mut back_buf = self.back_buf.borrow_mut();
         let mut dst = self.dst.borrow_mut();
         let graphics = self.graphics.as_ref().unwrap();
@@ -345,7 +342,7 @@ impl<'a> WriteOp<'a> {
         //     Access::SHADER_READ,
         // );
         self.cmd_buf.begin_render_pass(
-            self.pool.render_pass(&self.driver, render_pass_mode),
+            render_pass,
             self.frame_buf.as_ref().unwrap(),
             rect,
             &[TRANSPARENT_BLACK.into()],
@@ -502,24 +499,25 @@ impl<'a> WriteOp<'a> {
     }
 }
 
-pub struct WriteOpSubmission {
-    back_buf: Lease<Texture2d>,
-    cmd_buf: <_Backend as Backend>::CommandBuffer,
-    cmd_pool: Lease<CommandPool>,
-    dst: Texture2d,
-    fence: Lease<Fence>,
-    frame_buf: Framebuffer2d,
-    graphics: Lease<Graphics>,
-    src_textures: Vec<Texture2d>,
-}
-
-impl Drop for WriteOpSubmission {
+impl Drop for WriteOp {
     fn drop(&mut self) {
         self.wait();
     }
 }
 
-impl Op for WriteOpSubmission {
+impl Op for WriteOp {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn take_pool(&mut self) -> Option<Lease<Pool>> {
+        self.pool.take()
+    }
+
     fn wait(&self) {
         Fence::wait(&self.fence);
     }

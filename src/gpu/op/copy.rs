@@ -18,9 +18,13 @@ use {
         Backend,
     },
     gfx_impl::Backend as _Backend,
-    std::iter::{empty, once},
+    std::{
+        any::Any,
+        iter::{empty, once},
+    },
 };
 
+// TODO: This should use the blit command when possible
 pub struct CopyOp {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
@@ -28,16 +32,18 @@ pub struct CopyOp {
     dst: Texture2d,
     dst_offset: Extent,
     fence: Lease<Fence>,
+    pool: Option<Lease<Pool>>,
     region: Extent,
     src: Texture2d,
     src_offset: Extent,
 }
 
 impl CopyOp {
+    #[must_use]
     pub fn new(
         #[cfg(debug_assertions)] name: &str,
         driver: &Driver,
-        pool: &mut Pool,
+        mut pool: Lease<Pool>,
         src: &Texture2d,
         dst: &Texture2d,
     ) -> Self {
@@ -62,6 +68,7 @@ impl CopyOp {
             dst: Texture2d::clone(dst),
             dst_offset: Extent::ZERO,
             fence,
+            pool: Some(pool),
             region: src.borrow().dims(),
             src: Texture2d::clone(src),
             src_offset: Extent::ZERO,
@@ -70,6 +77,7 @@ impl CopyOp {
 
     /// Specifies an identically-sized area of the source and destination to copy, and the position on the
     /// destination where the data will go.
+    #[must_use]
     pub fn with_region(&mut self, src_region: Area, dst: Extent) -> &mut Self {
         self.dst_offset = dst;
         self.region = src_region.dims;
@@ -77,18 +85,9 @@ impl CopyOp {
         self
     }
 
-    pub fn record(mut self) -> impl Op {
+    pub fn record(&mut self) {
         unsafe {
             self.submit();
-        };
-
-        CopyOpSubmission {
-            cmd_buf: self.cmd_buf,
-            cmd_pool: self.cmd_pool,
-            driver: self.driver,
-            dst: self.dst,
-            fence: self.fence,
-            src: self.src,
         }
     }
 
@@ -155,22 +154,25 @@ impl CopyOp {
     }
 }
 
-pub struct CopyOpSubmission {
-    cmd_buf: <_Backend as Backend>::CommandBuffer,
-    cmd_pool: Lease<CommandPool>,
-    driver: Driver,
-    dst: Texture2d,
-    fence: Lease<Fence>,
-    src: Texture2d,
-}
-
-impl Drop for CopyOpSubmission {
+impl Drop for CopyOp {
     fn drop(&mut self) {
         self.wait();
     }
 }
 
-impl Op for CopyOpSubmission {
+impl Op for CopyOp {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn take_pool(&mut self) -> Option<Lease<Pool>> {
+        self.pool.take()
+    }
+
     fn wait(&self) {
         Fence::wait(&self.fence);
     }

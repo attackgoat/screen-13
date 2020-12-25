@@ -59,6 +59,7 @@ use {
     },
     gfx_impl::Backend as _Backend,
     std::{
+        any::Any,
         cmp::Ordering,
         hash::{Hash, Hasher},
         iter::{empty, once},
@@ -78,9 +79,10 @@ impl AsRef<[u32; 2]> for CalcVertexAttrsConsts {
     }
 }
 
-pub struct DrawOp<'a> {
+pub struct DrawOp {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
+    compiler: Option<Lease<Compiler>>,
     compute_u16_vertex_attrs: Option<Lease<Compute>>,
     compute_u16_skin_vertex_attrs: Option<Lease<Compute>>,
     compute_u32_vertex_attrs: Option<Lease<Compute>>,
@@ -103,21 +105,22 @@ pub struct DrawOp<'a> {
     #[cfg(debug_assertions)]
     name: String,
 
-    pool: &'a mut Pool,
+    pool: Option<Lease<Pool>>,
 }
 
-impl<'a> DrawOp<'a> {
+impl DrawOp {
     /// # Safety
     /// None
+    #[must_use]
     pub fn new(
         #[cfg(debug_assertions)] name: &str,
-        driver: Driver,
-        pool: &'a mut Pool,
+        driver: &Driver,
+        mut pool: Lease<Pool>,
         dst: &Texture2d,
     ) -> Self {
         // Allocate the command buffer
         let family = Device::queue_family(&driver.borrow());
-        let mut cmd_pool = pool.cmd_pool(&driver, family);
+        let mut cmd_pool = pool.cmd_pool(driver, family);
 
         // The geometry buffer will share size and output format with the destination texture
         let (dims, fmt) = {
@@ -127,8 +130,8 @@ impl<'a> DrawOp<'a> {
         let geom_buf = GeometryBuffer::new(
             #[cfg(debug_assertions)]
             name,
-            &driver,
-            pool,
+            driver,
+            &mut pool,
             dims,
             fmt,
         );
@@ -151,7 +154,7 @@ impl<'a> DrawOp<'a> {
             let frame_buf = Framebuffer2d::new(
                 #[cfg(debug_assertions)]
                 &name,
-                Driver::clone(&driver),
+                Driver::clone(driver),
                 pool.render_pass(&driver, RenderPassMode::Draw(mode)),
                 vec![
                     color_metal.as_default_view().as_ref(),
@@ -184,11 +187,12 @@ impl<'a> DrawOp<'a> {
         Self {
             cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
             cmd_pool,
+            compiler: None,
             compute_u16_vertex_attrs: None,
             compute_u16_skin_vertex_attrs: None,
             compute_u32_vertex_attrs: None,
             compute_u32_skin_vertex_attrs: None,
-            driver,
+            driver: Driver::clone(driver),
             dst: TextureRef::clone(dst),
             dst_preserve: false,
             fence,
@@ -206,41 +210,40 @@ impl<'a> DrawOp<'a> {
             #[cfg(debug_assertions)]
             name: name.to_owned(),
 
-            pool,
+            pool: Some(pool),
         }
     }
 
     /// Preserves the contents of the destination texture. Without calling this function the existing
     /// contents of the destination texture will not be composited into the final result.
-    pub fn with_preserve(&mut self) -> &mut Self {
-        self.dst_preserve = true;
+    #[must_use]
+    pub fn with_preserve(&mut self, val: bool) -> &mut Self {
+        self.dst_preserve = val;
         self
     }
 
-    // TODO: Returns concrete type instead of impl Op because https://github.com/rust-lang/rust/issues/42940
-    pub fn record(mut self, camera: &impl Camera, cmds: &mut [Command]) -> DrawOpSubmission {
+    pub fn record(&mut self, camera: &impl Camera, cmds: &mut [Command]) {
+        let mut pool = self.pool.as_mut().unwrap();
+
         // Use a compiler to figure out rendering instructions without allocating
         // memory per rendering command. The compiler caches code between frames.
-        let mut compiler = self.pool.compiler();
+        let mut compiler = pool.compiler();
         {
             let mut instrs = compiler.compile(
                 #[cfg(debug_assertions)]
                 &self.name,
                 &self.driver,
-                &mut self.pool,
+                &mut pool,
                 camera,
                 cmds,
             );
 
-            // Setup compute and graphics pipelines and with their descriptor sets
             {
-                // TODO: It would be fancy to reduce the duplicate code here (without introducing spaghetti stuff)
-
                 // Material descriptors for PBR rendering (Color+Normal+Metal/Rough)
                 let descriptors = instrs.materials();
                 let desc_sets = descriptors.len();
                 if desc_sets > 0 {
-                    let graphics = self.pool.graphics_desc_sets(
+                    let graphics = pool.graphics_desc_sets(
                         #[cfg(debug_assertions)]
                         &self.name,
                         &self.driver,
@@ -262,7 +265,7 @@ impl<'a> DrawOp<'a> {
                 let descriptors = instrs.u16_vertex_bufs();
                 let desc_sets = descriptors.len();
                 if desc_sets > 0 {
-                    let compute = self.pool.compute_desc_sets(
+                    let compute = pool.compute_desc_sets(
                         #[cfg(debug_assertions)]
                         &self.name,
                         &self.driver,
@@ -282,7 +285,7 @@ impl<'a> DrawOp<'a> {
                 let descriptors = instrs.u16_skin_vertex_bufs();
                 let desc_sets = descriptors.len();
                 if desc_sets > 0 {
-                    let compute = self.pool.compute_desc_sets(
+                    let compute = pool.compute_desc_sets(
                         #[cfg(debug_assertions)]
                         &self.name,
                         &self.driver,
@@ -302,7 +305,7 @@ impl<'a> DrawOp<'a> {
                 let descriptors = instrs.u32_vertex_bufs();
                 let desc_sets = descriptors.len();
                 if desc_sets > 0 {
-                    let compute = self.pool.compute_desc_sets(
+                    let compute = pool.compute_desc_sets(
                         #[cfg(debug_assertions)]
                         &self.name,
                         &self.driver,
@@ -322,7 +325,7 @@ impl<'a> DrawOp<'a> {
                 let descriptors = instrs.u32_skin_vertex_bufs();
                 let desc_sets = descriptors.len();
                 if desc_sets > 0 {
-                    let compute = self.pool.compute_desc_sets(
+                    let compute = pool.compute_desc_sets(
                         #[cfg(debug_assertions)]
                         &self.name,
                         &self.driver,
@@ -398,31 +401,16 @@ impl<'a> DrawOp<'a> {
             }
         }
 
-        DrawOpSubmission {
-            cmd_buf: self.cmd_buf,
-            cmd_pool: self.cmd_pool,
-            compiler,
-            compute_u16_vertex_attrs: self.compute_u16_vertex_attrs,
-            compute_u16_skin_vertex_attrs: self.compute_u16_skin_vertex_attrs,
-            compute_u32_vertex_attrs: self.compute_u32_vertex_attrs,
-            compute_u32_skin_vertex_attrs: self.compute_u32_skin_vertex_attrs,
-            dst: self.dst,
-            fence: self.fence,
-            frame_buf: self.frame_buf,
-            geom_buf: self.geom_buf,
-            graphics_line: self.graphics_line,
-            graphics_mesh: self.graphics_mesh,
-            graphics_mesh_anim: self.graphics_mesh_anim,
-            graphics_point_light: self.graphics_point_light,
-            graphics_spotlight: self.graphics_spotlight,
-            graphics_sunlight: self.graphics_sunlight,
-        }
+        self.compiler = Some(compiler);
     }
 
     unsafe fn submit_begin(&mut self, viewport: &Viewport) {
         trace!("submit_begin");
 
         let mut dst = self.dst.borrow_mut();
+        let pool = self.pool.as_mut().unwrap();
+        let render_pass_mode = RenderPassMode::Draw(self.mode);
+        let render_pass = pool.render_pass(&self.driver, render_pass_mode);
         let mut color_metal = self.geom_buf.color_metal.borrow_mut();
         let mut normal_rough = self.geom_buf.normal_rough.borrow_mut();
         let mut light = self.geom_buf.light.borrow_mut();
@@ -514,8 +502,7 @@ impl<'a> DrawOp<'a> {
             ImageAccess::DEPTH_STENCIL_ATTACHMENT_WRITE,
         );
         self.cmd_buf.begin_render_pass(
-            self.pool
-                .render_pass(&self.driver, RenderPassMode::Draw(self.mode)),
+            render_pass,
             self.frame_buf.as_ref(),
             viewport.rect,
             &[depth_clear, light_clear],
@@ -555,15 +542,19 @@ impl<'a> DrawOp<'a> {
     ) {
         trace!("submit_lines");
 
-        let render_pass_mode = RenderPassMode::Draw(self.mode);
-        let graphics = self.pool.graphics(
+        let pool = self.pool.as_mut().unwrap();
+
+        // Lazy-init point light graphics
+        assert!(self.graphics_line.is_none());
+        self.graphics_line = Some(pool.graphics(
             #[cfg(debug_assertions)]
             &format!("{} line", &self.name),
             &self.driver,
             GraphicsMode::DrawLine,
-            render_pass_mode,
+            RenderPassMode::Draw(self.mode),
             0,
-        );
+        ));
+        let graphics = self.graphics_line.as_ref().unwrap();
 
         self.cmd_buf.set_scissors(0, &[viewport.rect]);
         self.cmd_buf.set_viewports(0, &[viewport.clone()]);
@@ -585,8 +576,6 @@ impl<'a> DrawOp<'a> {
             )),
         );
         self.cmd_buf.draw(0..instr.line_count, 0..1);
-
-        self.graphics_line = Some(graphics);
     }
 
     unsafe fn submit_light_begin(&mut self) {
@@ -691,9 +680,11 @@ impl<'a> DrawOp<'a> {
 
         const POINT_LIGHT_DRAW_COUNT: u32 = POINT_LIGHT.len() as u32 / 12;
 
+        let pool = self.pool.as_mut().unwrap();
+
         // Lazy-init point light graphics
         assert!(self.graphics_point_light.is_none());
-        self.graphics_point_light = Some(self.pool.graphics_desc_sets(
+        self.graphics_point_light = Some(pool.graphics_desc_sets(
             #[cfg(debug_assertions)]
             &self.name,
             &self.driver,
@@ -744,9 +735,11 @@ impl<'a> DrawOp<'a> {
     unsafe fn submit_rect_light_begin(&mut self, viewport: &Viewport) {
         trace!("submit_rect_light_begin");
 
+        let pool = self.pool.as_mut().unwrap();
+
         // Lazy-init rect light graphics
         assert!(self.graphics_rect_light.is_none());
-        self.graphics_rect_light = Some(self.pool.graphics_desc_sets(
+        self.graphics_rect_light = Some(pool.graphics_desc_sets(
             #[cfg(debug_assertions)]
             &self.name,
             &self.driver,
@@ -792,9 +785,11 @@ impl<'a> DrawOp<'a> {
     unsafe fn submit_spotlight_begin(&mut self, viewport: &Viewport) {
         trace!("submit_spotlight_begin");
 
+        let pool = self.pool.as_mut().unwrap();
+
         // Lazy-init spotlight graphics
         assert!(self.graphics_spotlight.is_none());
-        self.graphics_spotlight = Some(self.pool.graphics_desc_sets(
+        self.graphics_spotlight = Some(pool.graphics_desc_sets(
             #[cfg(debug_assertions)]
             &self.name,
             &self.driver,
@@ -850,6 +845,19 @@ impl<'a> DrawOp<'a> {
     unsafe fn submit_sunlight_begin(&mut self, viewport: &Viewport) {
         trace!("submit_sunlight_begin");
 
+        let pool = self.pool.as_mut().unwrap();
+
+        // Lazy-init spotlight graphics
+        assert!(self.graphics_sunlight.is_none());
+        self.graphics_sunlight = Some(pool.graphics_desc_sets(
+            #[cfg(debug_assertions)]
+            &self.name,
+            &self.driver,
+            GraphicsMode::DrawSunlight,
+            RenderPassMode::Draw(self.mode),
+            1,
+            0,
+        ));
         let graphics = self.graphics_sunlight.as_ref().unwrap();
 
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
@@ -860,9 +868,11 @@ impl<'a> DrawOp<'a> {
     unsafe fn submit_sunlights<'c, L: Iterator<Item = &'c SunlightCommand>>(&mut self, lights: L) {
         trace!("submit_sunlights");
 
+        let pool = self.pool.as_mut().unwrap();
+
         // Lazy-init point light graphics
         assert!(self.graphics_point_light.is_none());
-        self.graphics_sunlight = Some(self.pool.graphics_desc_sets(
+        self.graphics_sunlight = Some(pool.graphics_desc_sets(
             #[cfg(debug_assertions)]
             &self.name,
             &self.driver,
@@ -995,7 +1005,8 @@ impl<'a> DrawOp<'a> {
         }
         .unwrap();
         let desc_set = compute.desc_set(instr.desc_set);
-        let (_, pipeline_layout) = self.pool.layouts.compute_calc_vertex_attrs(
+        let pool = self.pool.as_mut().unwrap();
+        let (_, pipeline_layout) = pool.layouts.compute_calc_vertex_attrs(
             #[cfg(debug_assertions)]
             &self.name,
             &self.driver,
@@ -1010,7 +1021,8 @@ impl<'a> DrawOp<'a> {
         // TODO: Do I need to work within limits? Why is it not broken right now?
         let device = self.driver.borrow();
         let _limit = Device::gpu(&device).limits().max_compute_work_group_size[0];
-        let (_, pipeline_layout) = self.pool.layouts.compute_calc_vertex_attrs(
+        let pool = self.pool.as_mut().unwrap();
+        let (_, pipeline_layout) = pool.layouts.compute_calc_vertex_attrs(
             #[cfg(debug_assertions)]
             &self.name,
             &self.driver,
@@ -1230,37 +1242,31 @@ impl<'a> DrawOp<'a> {
     }
 }
 
-pub struct DrawOpSubmission {
-    cmd_buf: <_Backend as Backend>::CommandBuffer,
-    cmd_pool: Lease<CommandPool>,
-    compiler: Lease<Compiler>,
-    compute_u16_vertex_attrs: Option<Lease<Compute>>,
-    compute_u16_skin_vertex_attrs: Option<Lease<Compute>>,
-    compute_u32_vertex_attrs: Option<Lease<Compute>>,
-    compute_u32_skin_vertex_attrs: Option<Lease<Compute>>,
-    dst: Texture2d,
-    fence: Lease<Fence>,
-    frame_buf: Framebuffer2d,
-    geom_buf: GeometryBuffer,
-    graphics_line: Option<Lease<Graphics>>,
-    graphics_mesh: Option<Lease<Graphics>>,
-    graphics_mesh_anim: Option<Lease<Graphics>>,
-    graphics_point_light: Option<Lease<Graphics>>,
-    graphics_spotlight: Option<Lease<Graphics>>,
-    graphics_sunlight: Option<Lease<Graphics>>,
-}
-
-impl Drop for DrawOpSubmission {
+impl Drop for DrawOp {
     fn drop(&mut self) {
         self.wait();
 
         // Causes the compiler to drop internal caches which store texture refs; they were being held
         // alive there so that they could not be dropped until we finished GPU execution
-        self.compiler.reset();
+        if let Some(compiler) = self.compiler.as_mut() {
+            compiler.reset();
+        }
     }
 }
 
-impl Op for DrawOpSubmission {
+impl Op for DrawOp {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn take_pool(&mut self) -> Option<Lease<Pool>> {
+        self.pool.take()
+    }
+
     fn wait(&self) {
         Fence::wait(&self.fence);
     }
@@ -1402,3 +1408,15 @@ impl AsRef<[u32; 6]> for SpotlightConsts {
         unsafe { &*(self as *const Self as *const [u32; 6]) }
     }
 }
+
+// #[derive(Clone, Debug)]
+// pub struct SkydomeCommand {
+//     pub clouds: [BitmapRef; 2],
+//     pub moon: BitmapRef,
+//     pub sun: BitmapRef,
+//     pub sun_normal: Vec3,
+//     pub star_rotation: Quat,
+//     pub time: f32,
+//     pub tint: [BitmapRef; 2],
+//     pub weather: f32,
+// }

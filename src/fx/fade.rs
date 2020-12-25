@@ -62,14 +62,14 @@ impl Screen for Fade {
             #[cfg(debug_assertions)]
             "Fade write B",
             WriteMode::Blend((ab, self.mode)),
-            &mut [Write::region(
-                &b,
-                Rect {
-                    pos: Coord::ZERO,
-                    dims,
-                },
-            )],
-        );
+        )
+        .record(&mut [Write::region(
+            &b,
+            Rect {
+                pos: Coord::ZERO,
+                dims,
+            },
+        )]);
 
         a
     }
