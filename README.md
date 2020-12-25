@@ -9,6 +9,14 @@ Screen 13 is an easy-to-use 3D game engine in the spirit of QBasic.
 
 Games made using Screen 13 are built as regular executables using a design-time asset baking process. Screen 13 provides all asset-baking logic and aims to, but currently does not, provide wide support for texture formats, vertex formats, and other associated data. Baked assets are stored in `.pak` files.
 
+Screen 13 is based on the [`gfx-rs`](https://github.com/gfx-rs/gfx) project, and as such targets native Vulkan, Metal, DirectX 12, OpenGL, WebGL, Android, and iOS targets, among others.
+
+### Goals
+
+Screen 13 aims to provide a simple to use, although opinionated, ecosystem of tools and code that enable very high performance portable graphics programs for developers using the Rust programming language.
+
+_Single Threaded:_ Although some things can be shared amongst other threads, such as disk and network IO, the main graphics API of Screen 13 does not support multiple threads. This is a conscious decision to limit complexity while optimizing for the 98% of games that use a "main thread" methodology. I am open to changing this if the proposed API is easy to use and high performance.
+
 ## Asset Baking
 
 Asset baking is the process of converting files from their native file formats into a runtime-ready format that is optimized for both speed and size. Currently Screen 13 uses a single file (or single HTTP/S endpoint) for all runtime assets. Assets are baked from `.toml` files which you can find examples of in the `examples/content` directory.
@@ -30,29 +38,45 @@ These commands do the following:
 
 - Build the Screen 13 engine (_runtime_) and executable code (_design-time_)
 - Bake the assets from `basic.toml` into `basic.pak`
-- Runs the `basic` example (Press ESC to exit)
+- Runs the `basic` example (Close window to exit)
+
+See the example code for more information, including a helpful [getting started guide](examples/README.md).
 
 ## Roadmap/Status/Notes
 
 This engine is very young and is likely to change as development continues.
 
-- Requires Rust 1.45 or later
-- Asset .pak file baking: Needs work, currently written in a script-like or procedural style and should be refactored to become much more general purpose
-- Asset .pak file runtime: 75% complete. Needs implemetation of HTTP/S support.
-- Debug names should maybe be a Cargo.toml "feature" for games that aren't attempting to support debuggability via graphics API capturing tools such as RenderDoc. The way it is right now lots of API calls require a string you must attribute with the debug-assertions if-config attribute.
-- Drawing lines, bitmaps, 3D models, lights (and shadows): I recently ripped out all this code in order to add a compilation stage after you submit rendering commands. This allows for proper z-order painting and batching to reduce GPU resource-switching. It is not complete yet and requires more work. Update: The design of this section is really coming along and likely to remain somewhat stable as it scrolls towards dev-complete.
-- Input: Keyboard has been started but the design is not very good. Mouse input is to-do. Game controllers and joysticks are planned.
-- Forward Renderer: not started yet
+- Requires [Rust](https://www.rust-lang.org/) 1.45 _or later_
+- _Design-time_ Asset Baking:
+  - Animation - **Rotations only**, no scaling, morph targets, or root motion
+  - Bitmaps
+    - Wide format support: .png, .jpg, _etc..._
+    - 1-4 channel support
+    - Unpacked using GPU compute hardware at runtime
+  - Blobs (raw file byte vectors)
+  - Language file (locale to key/value dictionary)
+  - Material file
+    - Supports metalness/roughness workflow with hardware optimized material data
+  - Models - **.gltf** or **.glb** only
+    - Requires `POSITION` and `TEXTURE0`
+    - Static or skinned
+    - Mesh name filtering/renaming/un-naming
+  - Scenes
+- _Runtime_ Asset `.pak` File:
+  - Easy reading of assets
+  - Configurable compression
+- Rendering:
+  - TODO
 
 ## Optional features
 
-Screen-13 puts a lot of functionality behind optional features in order to optimize compile time for the most common use cases. The following features are available.
+Screen 13 puts a lot of functionality behind optional features in order to optimize compile time for the most common use cases. The following features are available.
 
 _NOTE_: The deferred and forward renderers have separate code paths and you can choose either on a render-by-render basis.
 
-- **`debug-names`** — Extra name parameter added to most graphics API calls, integrates with your preferred graphics API debugger.
-- **`deferred-renderer`** *(enabled by default)* — Ability to draw models and lights in 3D using a deferred rendering context.
-- **`forward-renderer`** *(enabled by default)* — Similar to the deferred renderer, but using a forward technique.
+- **`debug-names`** — Name parameter added to most graphics calls, integrates with your preferred graphics debugger.
+- **`deferred-renderer`** *(enabled by default)* — Ability to draw models and lights using a deferred technique.
+- **`forward-renderer`** *(enabled by default)* — Same as the deferred renderer, but using a forward technique.
 
 ## Content Baking Procedures
 
