@@ -23,7 +23,7 @@ mod texture;
 
 pub use self::{
     model::{MeshFilter, Model, Pose},
-    op::{Bitmap, Command, Font, Material, Write, WriteMode},
+    op::{Bitmap, Draw, Font, Material, Write, WriteMode},
     pool::Pool,
     render::Render,
     swapchain::Swapchain,
@@ -300,7 +300,18 @@ impl Gpu {
         todo!()
     }
 
-    pub fn load_bitmap<R: Read + Seek>(
+    pub fn load_bitmap<K: AsRef<str>, R: Read + Seek>(
+        &self,
+        #[cfg(feature = "debug-names")] name: &str,
+        pak: &mut Pak<R>,
+        key: K,
+    ) -> Bitmap {
+        let id = pak.bitmap_id(key).unwrap();
+
+        self.load_bitmap_with_id(#[cfg(feature = "debug-names")] name, pak, id)
+    }
+
+    pub fn load_bitmap_with_id<R: Read + Seek>(
         &self,
         #[cfg(feature = "debug-names")] name: &str,
         pak: &mut Pak<R>,
@@ -334,7 +345,18 @@ impl Gpu {
         )
     }
 
-    pub fn load_model<R: Read + Seek>(
+    pub fn load_model<K: AsRef<str>, R: Read + Seek>(
+        &self,
+        #[cfg(feature = "debug-names")] name: &str,
+        pak: &mut Pak<R>,
+        key: K,
+    ) -> Model {
+        let id = pak.model_id(key).unwrap();
+
+        self.load_model_with_id(#[cfg(feature = "debug-names")] name, pak, id)
+    }
+
+    pub fn load_model_with_id<R: Read + Seek>(
         &self,
         #[cfg(feature = "debug-names")] name: &str,
         pak: &mut Pak<R>,

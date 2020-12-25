@@ -386,3 +386,9 @@ impl Camera for Perspective {
         self.view_inv
     }
 }
+
+impl Default for Perspective {
+    fn default() -> Self {
+        Self::new(Vec3::zero(), Vec3::unit_z(), 0.0..1.0, 45.0, 1.0)
+    }
+}

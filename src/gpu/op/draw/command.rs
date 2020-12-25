@@ -13,6 +13,7 @@ pub type RectLightIter<'a> = CommandIter<'a, RectLightCommand>;
 pub type SpotlightIter<'a> = CommandIter<'a, SpotlightCommand>;
 pub type SunlightIter<'a> = CommandIter<'a, SunlightCommand>;
 
+// TODO: Voxels, landscapes, water, god rays, particle systems
 /// An expressive type which allows specification of individual drawing operations.
 pub enum Command {
     Line(LineCommand),

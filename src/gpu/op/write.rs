@@ -137,7 +137,6 @@ impl WriteOp {
         driver: &Driver,
         mut pool: Lease<Pool>,
         dst: &Texture2d,
-        mode: Mode,
     ) -> Self {
         let family = Device::queue_family(&driver.borrow());
         let mut cmd_pool = pool.cmd_pool(driver, family);
@@ -175,12 +174,19 @@ impl WriteOp {
             fence,
             frame_buf: None,
             graphics: None,
-            mode,
+            mode: Mode::Texture,
             #[cfg(feature = "debug-names")]
             name: name.to_owned(),
             pool: Some(pool),
             src_textures: Default::default(),
         }
+    }
+
+    /// Sets the current write mode.
+    #[must_use]
+    pub fn with_mode(&mut self, mode: Mode) -> &mut Self {
+        self.mode = mode;
+        self
     }
 
     /// Preserves the contents of the destination texture. Without calling this function the existing

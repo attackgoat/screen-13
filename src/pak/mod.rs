@@ -6,7 +6,6 @@ mod bitmap;
 mod bitmap_font;
 mod data_ref;
 mod id;
-mod material;
 mod pak_buf;
 
 // TODO: Remove ErrorKind!
@@ -16,7 +15,6 @@ pub use {
         bitmap::{Bitmap, Format as BitmapFormat},
         bitmap_font::BitmapFont,
         id::{AnimationId, BitmapFontId, BitmapId, BlobId, MaterialId, ModelId, SceneId, TextId},
-        material::Material,
         model::Model,
         pak_buf::PakBuf,
         scene::Scene,
@@ -138,6 +136,13 @@ impl From<IndexType> for GfxHalIndexType {
     }
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+pub struct Material {
+    pub color: BitmapId,
+    pub metal_rough: BitmapId,
+    pub normal: BitmapId,
+}
+
 pub struct Pak<R>
 where
     R: Read + Seek,
@@ -227,7 +232,7 @@ where
         }
     }
 
-    pub fn material_id<K: AsRef<str>>(&self, key: K) -> Option<MaterialId> {
+    pub fn get_material_id<K: AsRef<str>>(&self, key: K) -> Option<MaterialId> {
         if let Some(Id::Material(id)) = self.buf.id(key) {
             Some(id)
         } else {
@@ -235,7 +240,12 @@ where
         }
     }
 
-    pub fn material(&self, id: MaterialId) -> Material {
+    pub fn material<K: AsRef<str>>(&self, key: K) -> Material {
+        let id = self.get_material_id(key).unwrap();
+        self.material_with_id(id)
+    }
+
+    pub fn material_with_id(&self, id: MaterialId) -> Material {
         self.buf.material(id)
     }
 

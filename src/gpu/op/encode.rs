@@ -21,11 +21,12 @@ use {
         io::Result as IoResult,
         iter::{empty, once},
         path::{Path, PathBuf},
-        u8,
     },
 };
 
-const DEFAULT_QUALITY: u8 = (0.9f32 * u8::MAX as f32) as u8;
+const DEFAULT_QUALITY: f32 = 0.9;
+
+// TODO: Quality isn't hooked up!
 
 pub struct EncodeOp {
     buf: Lease<Data>,
@@ -35,7 +36,7 @@ pub struct EncodeOp {
     fence: Lease<Fence>,
     pool: Option<Lease<Pool>>,
     path: Option<PathBuf>,
-    quality: u8,
+    quality: f32,
     texture: Texture2d,
 }
 
@@ -76,7 +77,7 @@ impl EncodeOp {
     }
 
     #[must_use]
-    pub fn with_quality(&mut self, quality: u8) -> &mut Self {
+    pub fn with_quality(&mut self, quality: f32) -> &mut Self {
         self.quality = quality;
         self
     }

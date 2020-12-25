@@ -38,7 +38,7 @@ use {
             BitmapRef, CalcVertexAttrsComputeMode, Compute, ComputeMode, DrawRenderPassMode,
             Graphics, GraphicsMode, RenderPassMode, Texture2d, TextureRef,
         },
-        math::{Coord, Mat4, Vec2, Vec3},
+        math::{Coord, Mat4, Quat, Vec2, Vec3},
     },
     gfx_hal::{
         adapter::PhysicalDevice as _,
@@ -91,7 +91,7 @@ pub struct DrawOp {
     dst: Texture2d,
     dst_preserve: bool,
     fence: Lease<Fence>,
-    frame_buf: Framebuffer2d,
+    frame_buf: Option<(Framebuffer2d, RenderPassMode)>,
     geom_buf: GeometryBuffer,
     graphics_line: Option<Lease<Graphics>>,
     graphics_mesh: Option<Lease<Graphics>>,
@@ -100,12 +100,12 @@ pub struct DrawOp {
     graphics_rect_light: Option<Lease<Graphics>>,
     graphics_spotlight: Option<Lease<Graphics>>,
     graphics_sunlight: Option<Lease<Graphics>>,
-    mode: DrawRenderPassMode,
 
     #[cfg(feature = "debug-names")]
     name: String,
 
     pool: Option<Lease<Pool>>,
+    skydome: Option<Skydome>,
 }
 
 impl DrawOp {
@@ -127,62 +127,6 @@ impl DrawOp {
             let dst = dst.borrow();
             (dst.dims(), dst.format())
         };
-        let geom_buf = GeometryBuffer::new(
-            #[cfg(feature = "debug-names")]
-            name,
-            driver,
-            &mut pool,
-            dims,
-            fmt,
-        );
-
-        let (frame_buf, mode) = {
-            let color_metal = geom_buf.color_metal.borrow();
-            let depth = geom_buf.depth.borrow();
-            let light = geom_buf.light.borrow();
-            let normal_rough = geom_buf.normal_rough.borrow();
-            let output = geom_buf.output.borrow();
-
-            let mode = DrawRenderPassMode {
-                depth: depth.format(),
-                geom_buf: color_metal.format(),
-                light: light.format(),
-                output: output.format(),
-            };
-
-            // Setup the framebuffer
-            let frame_buf = Framebuffer2d::new(
-                #[cfg(feature = "debug-names")]
-                &name,
-                driver,
-                pool.render_pass(driver, RenderPassMode::Draw(mode)),
-                vec![
-                    color_metal.as_default_view().as_ref(),
-                    normal_rough.as_default_view().as_ref(),
-                    light.as_default_view().as_ref(),
-                    output.as_default_view().as_ref(),
-                    depth
-                        .as_view(
-                            ViewKind::D2,
-                            mode.depth,
-                            Default::default(),
-                            SubresourceRange {
-                                aspects: Aspects::DEPTH,
-                                ..Default::default()
-                            },
-                        )
-                        .as_ref(),
-                ],
-                dims,
-            );
-
-            (frame_buf, mode)
-        };
-        let fence = pool.fence(
-            #[cfg(feature = "debug-names")]
-            name,
-            driver,
-        );
 
         Self {
             cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
@@ -195,9 +139,20 @@ impl DrawOp {
             driver: Driver::clone(driver),
             dst: TextureRef::clone(dst),
             dst_preserve: false,
-            fence,
-            frame_buf,
-            geom_buf,
+            fence: pool.fence(
+                #[cfg(feature = "debug-names")]
+                name,
+                driver,
+            ),
+            frame_buf: None,
+            geom_buf: GeometryBuffer::new(
+                #[cfg(feature = "debug-names")]
+                name,
+                driver,
+                &mut pool,
+                dims,
+                fmt,
+            ),
             graphics_line: None,
             graphics_mesh: None,
             graphics_mesh_anim: None,
@@ -205,12 +160,12 @@ impl DrawOp {
             graphics_rect_light: None,
             graphics_spotlight: None,
             graphics_sunlight: None,
-            mode,
 
             #[cfg(feature = "debug-names")]
             name: name.to_owned(),
 
             pool: Some(pool),
+            skydome: None,
         }
     }
 
@@ -222,8 +177,67 @@ impl DrawOp {
         self
     }
 
+    /// Draws the given skydome as a pre-pass before the geometry and lighting.
+    #[must_use]
+    pub fn with_skydome(&mut self, val: Skydome) -> &mut Self {
+        self.skydome = Some(val);
+        self
+    }
+
     pub fn record(&mut self, camera: &impl Camera, cmds: &mut [Command]) {
         let mut pool = self.pool.as_mut().unwrap();
+
+        let render_pass_mode = {
+            let dst = self.dst.borrow();
+            let dims = dst.dims();
+            let color_metal = self.geom_buf.color_metal.borrow();
+            let depth = self.geom_buf.depth.borrow();
+            let light = self.geom_buf.light.borrow();
+            let normal_rough = self.geom_buf.normal_rough.borrow();
+            let output = self.geom_buf.output.borrow();
+            let draw_mode = DrawRenderPassMode {
+                depth: depth.format(),
+                geom_buf: color_metal.format(),
+                light: light.format(),
+                output: output.format(),
+            };
+            let render_pass_mode = if self.skydome.is_some() {
+                RenderPassMode::Draw(draw_mode)
+            } else {
+                RenderPassMode::Draw(draw_mode)
+            };
+            let render_pass = pool.render_pass(&self.driver, render_pass_mode);
+
+            // Setup the framebuffer
+            self.frame_buf = Some((
+                Framebuffer2d::new(
+                    #[cfg(feature = "debug-names")]
+                    &name,
+                    &self.driver,
+                    render_pass,
+                    vec![
+                        color_metal.as_default_view().as_ref(),
+                        normal_rough.as_default_view().as_ref(),
+                        light.as_default_view().as_ref(),
+                        output.as_default_view().as_ref(),
+                        depth
+                            .as_view(
+                                ViewKind::D2,
+                                draw_mode.depth,
+                                Default::default(),
+                                SubresourceRange {
+                                    aspects: Aspects::DEPTH,
+                                    ..Default::default()
+                                },
+                            )
+                            .as_ref(),
+                    ],
+                    dims,
+                ),
+                render_pass_mode,
+            ));
+            render_pass_mode
+        };
 
         // Use a compiler to figure out rendering instructions without allocating
         // memory per rendering command. The compiler caches code between frames.
@@ -248,7 +262,7 @@ impl DrawOp {
                         &self.name,
                         &self.driver,
                         GraphicsMode::DrawMesh,
-                        RenderPassMode::Draw(self.mode),
+                        render_pass_mode,
                         0,
                         desc_sets,
                     );
@@ -409,8 +423,8 @@ impl DrawOp {
 
         let mut dst = self.dst.borrow_mut();
         let pool = self.pool.as_mut().unwrap();
-        let render_pass_mode = RenderPassMode::Draw(self.mode);
-        let render_pass = pool.render_pass(&self.driver, render_pass_mode);
+        let (frame_buf, render_pass_mode) = self.frame_buf.as_ref().unwrap();
+        let render_pass = pool.render_pass(&self.driver, *render_pass_mode);
         let mut color_metal = self.geom_buf.color_metal.borrow_mut();
         let mut normal_rough = self.geom_buf.normal_rough.borrow_mut();
         let mut light = self.geom_buf.light.borrow_mut();
@@ -503,7 +517,7 @@ impl DrawOp {
         );
         self.cmd_buf.begin_render_pass(
             render_pass,
-            self.frame_buf.as_ref(),
+            frame_buf.as_ref(),
             viewport.rect,
             &[depth_clear, light_clear],
             SubpassContents::Inline,
@@ -543,6 +557,7 @@ impl DrawOp {
         trace!("submit_lines");
 
         let pool = self.pool.as_mut().unwrap();
+        let (_, render_pass_mode) = self.frame_buf.as_ref().unwrap();
 
         // Lazy-init point light graphics
         assert!(self.graphics_line.is_none());
@@ -551,7 +566,7 @@ impl DrawOp {
             &format!("{} line", &self.name),
             &self.driver,
             GraphicsMode::DrawLine,
-            RenderPassMode::Draw(self.mode),
+            *render_pass_mode,
             0,
         ));
         let graphics = self.graphics_line.as_ref().unwrap();
@@ -681,6 +696,7 @@ impl DrawOp {
         const POINT_LIGHT_DRAW_COUNT: u32 = POINT_LIGHT.len() as u32 / 12;
 
         let pool = self.pool.as_mut().unwrap();
+        let (_, render_pass_mode) = self.frame_buf.as_ref().unwrap();
 
         // Lazy-init point light graphics
         assert!(self.graphics_point_light.is_none());
@@ -689,7 +705,7 @@ impl DrawOp {
             &self.name,
             &self.driver,
             GraphicsMode::DrawPointLight,
-            RenderPassMode::Draw(self.mode),
+            *render_pass_mode,
             1,
             0,
         ));
@@ -736,6 +752,7 @@ impl DrawOp {
         trace!("submit_rect_light_begin");
 
         let pool = self.pool.as_mut().unwrap();
+        let (_, render_pass_mode) = self.frame_buf.as_ref().unwrap();
 
         // Lazy-init rect light graphics
         assert!(self.graphics_rect_light.is_none());
@@ -744,7 +761,7 @@ impl DrawOp {
             &self.name,
             &self.driver,
             GraphicsMode::DrawRectLight,
-            RenderPassMode::Draw(self.mode),
+            *render_pass_mode,
             1,
             0,
         ));
@@ -786,6 +803,7 @@ impl DrawOp {
         trace!("submit_spotlight_begin");
 
         let pool = self.pool.as_mut().unwrap();
+        let (_, render_pass_mode) = self.frame_buf.as_ref().unwrap();
 
         // Lazy-init spotlight graphics
         assert!(self.graphics_spotlight.is_none());
@@ -794,7 +812,7 @@ impl DrawOp {
             &self.name,
             &self.driver,
             GraphicsMode::DrawSpotlight,
-            RenderPassMode::Draw(self.mode),
+            *render_pass_mode,
             1,
             0,
         ));
@@ -846,6 +864,7 @@ impl DrawOp {
         trace!("submit_sunlight_begin");
 
         let pool = self.pool.as_mut().unwrap();
+        let (_, render_pass_mode) = self.frame_buf.as_ref().unwrap();
 
         // Lazy-init spotlight graphics
         assert!(self.graphics_sunlight.is_none());
@@ -854,7 +873,7 @@ impl DrawOp {
             &self.name,
             &self.driver,
             GraphicsMode::DrawSunlight,
-            RenderPassMode::Draw(self.mode),
+            *render_pass_mode,
             1,
             0,
         ));
@@ -869,6 +888,7 @@ impl DrawOp {
         trace!("submit_sunlights");
 
         let pool = self.pool.as_mut().unwrap();
+        let (_, render_pass_mode) = self.frame_buf.as_ref().unwrap();
 
         // Lazy-init point light graphics
         assert!(self.graphics_point_light.is_none());
@@ -877,7 +897,7 @@ impl DrawOp {
             &self.name,
             &self.driver,
             GraphicsMode::DrawSunlight,
-            RenderPassMode::Draw(self.mode),
+            *render_pass_mode,
             1,
             0,
         ));
@@ -1409,14 +1429,14 @@ impl AsRef<[u32; 6]> for SpotlightConsts {
     }
 }
 
-// #[derive(Clone, Debug)]
-// pub struct SkydomeCommand {
-//     pub clouds: [BitmapRef; 2],
-//     pub moon: BitmapRef,
-//     pub sun: BitmapRef,
-//     pub sun_normal: Vec3,
-//     pub star_rotation: Quat,
-//     pub time: f32,
-//     pub tint: [BitmapRef; 2],
-//     pub weather: f32,
-// }
+#[derive(Clone, Debug)]
+pub struct Skydome {
+    pub clouds: [BitmapRef; 2],
+    pub moon: BitmapRef,
+    pub sun: BitmapRef,
+    pub sun_normal: Vec3,
+    pub star_rotation: Quat,
+    pub time: f32,
+    pub tint: [BitmapRef; 2],
+    pub weather: f32,
+}

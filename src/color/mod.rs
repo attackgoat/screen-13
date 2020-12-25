@@ -57,6 +57,16 @@ impl Color {
     }
 }
 
+impl From<(u8, u8, u8)> for Color {
+    fn from((r, g, b): (u8, u8, u8)) -> Self {
+        Self {
+            b,
+            g,
+            r,
+        }
+    }
+}
+
 impl From<AlphaColor> for Color {
     fn from(alpha_color: AlphaColor) -> Self {
         Self {

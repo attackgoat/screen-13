@@ -1,7 +1,7 @@
 use {
     super::{
         driver::Device,
-        op::{ClearOp, CopyOp, DrawOp, EncodeOp, FontOp, GradientOp, WriteMode, WriteOp},
+        op::{ClearOp, CopyOp, DrawOp, EncodeOp, FontOp, GradientOp, WriteOp},
         pool::{Lease, Pool},
         Driver, Op, Texture2d,
     },
@@ -245,7 +245,6 @@ impl Render {
     pub fn write(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        mode: WriteMode,
     ) -> &mut WriteOp {
         let pool = self.take_pool();
         let mut op = WriteOp::new(
@@ -254,7 +253,6 @@ impl Render {
             &self.driver,
             pool,
             &self.target,
-            mode,
         );
 
         if self.target_dirty {
