@@ -76,7 +76,7 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub fn new(driver: Driver, mut surface: Surface, dims: Extent, image_count: u32) -> Self {
+    pub fn new(driver: &Driver, mut surface: Surface, dims: Extent, image_count: u32) -> Self {
         assert_ne!(image_count, 0);
 
         let mut needs_configuration = false;
@@ -100,12 +100,12 @@ impl Swapchain {
         };
 
         let desc_sets = 1;
-        let render_pass = present(&driver, fmt);
+        let render_pass = present(driver, fmt);
         let graphics = unsafe {
             Graphics::present(
                 #[cfg(feature = "debug-names")]
                 "Swapchain",
-                &driver,
+                driver,
                 desc_sets,
                 RenderPass::subpass(&render_pass, 0),
             )
@@ -113,7 +113,7 @@ impl Swapchain {
 
         let mut images = vec![];
         for _ in 0..image_count {
-            let mut cmd_pool = CommandPool::new(Driver::clone(&driver), family);
+            let mut cmd_pool = CommandPool::new(driver, family);
             let cmd_buf = unsafe { cmd_pool.allocate_one(Level::Primary) };
             images.push(Image {
                 cmd_buf,
@@ -121,20 +121,20 @@ impl Swapchain {
                 fence: Fence::with_signal(
                     #[cfg(feature = "debug-names")]
                     "Swapchain image",
-                    Driver::clone(&driver),
+                    driver,
                     true,
                 ),
                 signal: Semaphore::new(
                     #[cfg(feature = "debug-names")]
                     "Swapchain image",
-                    Driver::clone(&driver),
+                    driver,
                 ),
             });
         }
 
         Self {
             dims,
-            driver,
+            driver: Driver::clone(driver),
             fmt,
             graphics,
             images,
@@ -210,7 +210,7 @@ impl Swapchain {
         let frame_buf = Framebuffer2d::new(
             #[cfg(feature = "debug-names")]
             "Present",
-            Driver::clone(&self.driver),
+            &self.driver,
             &self.render_pass,
             once(image_view.borrow()),
             self.dims,

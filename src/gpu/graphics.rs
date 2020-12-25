@@ -45,7 +45,7 @@ const LINE_RASTERIZER: Rasterizer = Rasterizer {
     polygon_mode: PolygonMode::Line,
 };
 
-fn sampler(driver: Driver, filter: Filter) -> Sampler {
+fn sampler(driver: &Driver, filter: Filter) -> Sampler {
     Sampler::new(
         driver,
         filter,
@@ -80,12 +80,12 @@ impl Graphics {
         max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
     ) -> Self {
-        let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::blend::QUAD_TRANSFORM_VERT);
-        let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::blend::NORMAL_FRAG);
+        let vertex = ShaderModule::new(driver, &spirv::blend::QUAD_TRANSFORM_VERT);
+        let fragment = ShaderModule::new(driver, &spirv::blend::NORMAL_FRAG);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             &[
                 descriptor_set_layout_binding(
                     0,
@@ -106,7 +106,7 @@ impl Graphics {
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             once(&*set_layout),
             &[
                 (ShaderStageFlags::VERTEX, 0..64),
@@ -139,11 +139,11 @@ impl Graphics {
         let pipeline = GraphicsPipeline::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             &desc,
         );
         let mut desc_pool = DescriptorPool::new(
-            Driver::clone(&driver),
+            driver,
             max_desc_sets,
             once(descriptor_range_desc(
                 2,
@@ -161,7 +161,7 @@ impl Graphics {
             max_desc_sets,
             pipeline,
             set_layout: Some(set_layout),
-            samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
+            samplers: vec![sampler(driver, Filter::Nearest)],
         }
     }
 
@@ -173,18 +173,18 @@ impl Graphics {
         max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
     ) -> Self {
-        let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::defer::LINE_VERT);
-        let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::defer::LINE_FRAG);
+        let vertex = ShaderModule::new(driver, &spirv::defer::LINE_VERT);
+        let fragment = ShaderModule::new(driver, &spirv::defer::LINE_FRAG);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             empty::<DescriptorSetLayoutBinding>(),
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             once(&*set_layout),
             &[(ShaderStageFlags::VERTEX, 0..64)],
         );
@@ -237,14 +237,10 @@ impl Graphics {
         let pipeline = GraphicsPipeline::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             &desc,
         );
-        let desc_pool = DescriptorPool::new(
-            Driver::clone(&driver),
-            max_desc_sets,
-            empty::<DescriptorRangeDesc>(),
-        );
+        let desc_pool = DescriptorPool::new(driver, max_desc_sets, empty::<DescriptorRangeDesc>());
 
         Self {
             desc_pool: Some(desc_pool),
@@ -265,12 +261,12 @@ impl Graphics {
         max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
     ) -> Self {
-        let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::defer::MESH_VERT);
-        let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::defer::MESH_FRAG);
+        let vertex = ShaderModule::new(driver, &spirv::defer::MESH_VERT);
+        let fragment = ShaderModule::new(driver, &spirv::defer::MESH_FRAG);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             &[
                 descriptor_set_layout_binding(
                     0,
@@ -298,7 +294,7 @@ impl Graphics {
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             once(&*set_layout),
             &[(ShaderStageFlags::VERTEX, 0..64)],
         );
@@ -370,11 +366,11 @@ impl Graphics {
         let pipeline = GraphicsPipeline::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             &desc,
         );
         let mut desc_pool = DescriptorPool::new(
-            Driver::clone(&driver),
+            driver,
             max_desc_sets,
             once(descriptor_range_desc(
                 3 * max_desc_sets,
@@ -387,9 +383,7 @@ impl Graphics {
         let mut desc_sets = Vec::with_capacity(max_desc_sets);
         desc_pool.allocate(layouts, &mut desc_sets).unwrap();
 
-        let samplers = (0..3)
-            .map(|_| sampler(Driver::clone(&driver), Filter::Nearest))
-            .collect();
+        let samplers = (0..3).map(|_| sampler(driver, Filter::Nearest)).collect();
 
         Self {
             desc_pool: Some(desc_pool),
@@ -410,12 +404,12 @@ impl Graphics {
         _max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
     ) -> Self {
-        let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::defer::LIGHT_VERT);
-        let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::defer::POINT_LIGHT_FRAG);
+        let vertex = ShaderModule::new(driver, &spirv::defer::LIGHT_VERT);
+        let fragment = ShaderModule::new(driver, &spirv::defer::POINT_LIGHT_FRAG);
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             empty::<&<_Backend as Backend>::DescriptorSetLayout>(),
             &[
                 (ShaderStageFlags::VERTEX, 0..64),
@@ -462,7 +456,7 @@ impl Graphics {
         let pipeline = GraphicsPipeline::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             &desc,
         );
 
@@ -485,12 +479,12 @@ impl Graphics {
         _max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
     ) -> Self {
-        let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::defer::LIGHT_VERT);
-        let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::defer::POINT_LIGHT_FRAG);
+        let vertex = ShaderModule::new(driver, &spirv::defer::LIGHT_VERT);
+        let fragment = ShaderModule::new(driver, &spirv::defer::POINT_LIGHT_FRAG);
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             empty::<&<_Backend as Backend>::DescriptorSetLayout>(),
             &[
                 (ShaderStageFlags::VERTEX, 0..64),
@@ -537,7 +531,7 @@ impl Graphics {
         let pipeline = GraphicsPipeline::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             &desc,
         );
 
@@ -560,12 +554,12 @@ impl Graphics {
         _max_desc_sets: usize,
         _subpass: Subpass<'_, _Backend>,
     ) -> Self {
-        // let vertex = ShaderModule::new(Driver::clone(&driver), &QUAD_TRANSFORM_VERT);
-        // let fragment = ShaderModule::new(Driver::clone(&driver), &SPOTLIGHT_FRAG);
+        // let vertex = ShaderModule::new(driver, &QUAD_TRANSFORM_VERT);
+        // let fragment = ShaderModule::new(driver, &SPOTLIGHT_FRAG);
         // let set_layout = DescriptorSetLayout::new(
         //     #[cfg(feature = "debug-names")]
         //     name,
-        //     Driver::clone(&driver),
+        //     driver,
         //     once(descriptor_set_layout_binding(
         //         0,
         //         1,
@@ -576,7 +570,7 @@ impl Graphics {
         //     )),
         // );
         // let layout = PipelineLayout::new(
-        //     Driver::clone(&driver),
+        //     driver,
         //     once(&*set_layout),
         //     &[(ShaderStageFlags::VERTEX, 0..64)],
         // );
@@ -606,11 +600,11 @@ impl Graphics {
         // let pipeline = GraphicsPipeline::new(
         //     #[cfg(feature = "debug-names")]
         //     name,
-        //     Driver::clone(&driver),
+        //     driver,
         //     &desc,
         // );
         // let mut desc_pool = DescriptorPool::new(
-        //     Driver::clone(&driver),
+        //     driver,
         //     max_desc_sets,
         //     once(descriptor_range_desc(
         //         1,
@@ -628,7 +622,7 @@ impl Graphics {
         //     max_desc_sets,
         //     pipeline,
         //     set_layout,
-        //     samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
+        //     samplers: vec![sampler(driver, Filter::Nearest)],
         // }
         todo!();
     }
@@ -641,12 +635,12 @@ impl Graphics {
         _max_desc_sets: usize,
         _subpass: Subpass<'_, _Backend>,
     ) -> Self {
-        // let vertex = ShaderModule::new(Driver::clone(&driver), &QUAD_TRANSFORM_VERT);
-        // let fragment = ShaderModule::new(Driver::clone(&driver), &SUNLIGHT_FRAG);
+        // let vertex = ShaderModule::new(driver, &QUAD_TRANSFORM_VERT);
+        // let fragment = ShaderModule::new(driver, &SUNLIGHT_FRAG);
         // let set_layout = DescriptorSetLayout::new(
         //     #[cfg(feature = "debug-names")]
         //     name,
-        //     Driver::clone(&driver),
+        //     driver,
         //     &[descriptor_set_layout_binding(
         //         0,
         //         5,
@@ -657,7 +651,7 @@ impl Graphics {
         //     )],
         // );
         // let layout = PipelineLayout::new(
-        //     Driver::clone(&driver),
+        //     driver,
         //     once(&*set_layout),
         //     &[(ShaderStageFlags::VERTEX, 0..64)],
         // );
@@ -710,11 +704,11 @@ impl Graphics {
         // let pipeline = GraphicsPipeline::new(
         //     #[cfg(feature = "debug-names")]
         //     name,
-        //     Driver::clone(&driver),
+        //     driver,
         //     &desc,
         // );
         // let mut desc_pool = DescriptorPool::new(
-        //     Driver::clone(&driver),
+        //     driver,
         //     max_desc_sets,
         //     once(descriptor_range_desc(
         //         5,
@@ -733,7 +727,7 @@ impl Graphics {
         //     pipeline,
         //     set_layout,
         //     samplers: (0..=4)
-        //         .map(|_| sampler(Driver::clone(&driver), Filter::Nearest))
+        //         .map(|_| sampler(driver, Filter::Nearest))
         //         .collect(),
         // }
         todo!();
@@ -745,12 +739,12 @@ impl Graphics {
         max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
     ) -> Self {
-        let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::FONT_VERT);
-        let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::FONT_FRAG);
+        let vertex = ShaderModule::new(driver, &spirv::FONT_VERT);
+        let fragment = ShaderModule::new(driver, &spirv::FONT_FRAG);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             once(descriptor_set_layout_binding(
                 0,
                 ShaderStageFlags::FRAGMENT,
@@ -762,7 +756,7 @@ impl Graphics {
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             once(&*set_layout),
             &[
                 (ShaderStageFlags::VERTEX, 0..64),
@@ -816,11 +810,11 @@ impl Graphics {
         let pipeline = GraphicsPipeline::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             &desc,
         );
         let mut desc_pool = DescriptorPool::new(
-            Driver::clone(&driver),
+            driver,
             max_desc_sets,
             once(descriptor_range_desc(
                 1,
@@ -838,7 +832,7 @@ impl Graphics {
             max_desc_sets,
             pipeline,
             set_layout: Some(set_layout),
-            samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
+            samplers: vec![sampler(driver, Filter::Nearest)],
         }
     }
 
@@ -848,12 +842,12 @@ impl Graphics {
         max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
     ) -> Self {
-        let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::FONT_VERT);
-        let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::FONT_OUTLINE_FRAG);
+        let vertex = ShaderModule::new(driver, &spirv::FONT_VERT);
+        let fragment = ShaderModule::new(driver, &spirv::FONT_OUTLINE_FRAG);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             once(descriptor_set_layout_binding(
                 0,
                 ShaderStageFlags::FRAGMENT,
@@ -865,7 +859,7 @@ impl Graphics {
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             once(&*set_layout),
             &[
                 (ShaderStageFlags::VERTEX, 0..64),
@@ -919,11 +913,11 @@ impl Graphics {
         let pipeline = GraphicsPipeline::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             &desc,
         );
         let mut desc_pool = DescriptorPool::new(
-            Driver::clone(&driver),
+            driver,
             max_desc_sets,
             once(descriptor_range_desc(
                 1,
@@ -941,7 +935,7 @@ impl Graphics {
             max_desc_sets,
             pipeline,
             set_layout: Some(set_layout),
-            samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
+            samplers: vec![sampler(driver, Filter::Nearest)],
         }
     }
 
@@ -951,12 +945,12 @@ impl Graphics {
         max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
     ) -> Self {
-        let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::GRADIENT_VERT);
-        let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::GRADIENT_FRAG);
+        let vertex = ShaderModule::new(driver, &spirv::GRADIENT_VERT);
+        let fragment = ShaderModule::new(driver, &spirv::GRADIENT_FRAG);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             once(descriptor_set_layout_binding(
                 0,
                 ShaderStageFlags::FRAGMENT,
@@ -968,7 +962,7 @@ impl Graphics {
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             once(&*set_layout),
             &[(ShaderStageFlags::FRAGMENT, 0..32)],
         );
@@ -998,11 +992,11 @@ impl Graphics {
         let pipeline = GraphicsPipeline::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             &desc,
         );
         let mut desc_pool = DescriptorPool::new(
-            Driver::clone(&driver),
+            driver,
             max_desc_sets,
             once(descriptor_range_desc(
                 1,
@@ -1020,7 +1014,7 @@ impl Graphics {
             max_desc_sets,
             pipeline,
             set_layout: Some(set_layout),
-            samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
+            samplers: vec![sampler(driver, Filter::Nearest)],
         }
     }
 
@@ -1030,12 +1024,12 @@ impl Graphics {
         max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
     ) -> Self {
-        let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::GRADIENT_VERT);
-        let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::GRADIENT_FRAG);
+        let vertex = ShaderModule::new(driver, &spirv::GRADIENT_VERT);
+        let fragment = ShaderModule::new(driver, &spirv::GRADIENT_FRAG);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             once(descriptor_set_layout_binding(
                 0,
                 ShaderStageFlags::FRAGMENT,
@@ -1047,7 +1041,7 @@ impl Graphics {
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             once(&*set_layout),
             &[(ShaderStageFlags::FRAGMENT, 0..32)],
         );
@@ -1077,11 +1071,11 @@ impl Graphics {
         let pipeline = GraphicsPipeline::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             &desc,
         );
         let mut desc_pool = DescriptorPool::new(
-            Driver::clone(&driver),
+            driver,
             max_desc_sets,
             once(descriptor_range_desc(
                 1,
@@ -1099,7 +1093,7 @@ impl Graphics {
             max_desc_sets,
             pipeline,
             set_layout: Some(set_layout),
-            samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
+            samplers: vec![sampler(driver, Filter::Nearest)],
         }
     }
 
@@ -1109,12 +1103,12 @@ impl Graphics {
         max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
     ) -> Self {
-        let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::QUAD_VERT);
-        let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::TEXTURE_FRAG);
+        let vertex = ShaderModule::new(driver, &spirv::QUAD_VERT);
+        let fragment = ShaderModule::new(driver, &spirv::TEXTURE_FRAG);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             once(descriptor_set_layout_binding(
                 0,
                 ShaderStageFlags::FRAGMENT,
@@ -1126,7 +1120,7 @@ impl Graphics {
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             once(&*set_layout),
             &[(ShaderStageFlags::VERTEX, 0..64)],
         );
@@ -1155,11 +1149,11 @@ impl Graphics {
         let pipeline = GraphicsPipeline::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             &desc,
         );
         let mut desc_pool = DescriptorPool::new(
-            Driver::clone(&driver),
+            driver,
             max_desc_sets,
             once(descriptor_range_desc(
                 1,
@@ -1177,7 +1171,7 @@ impl Graphics {
             max_desc_sets,
             pipeline,
             set_layout: Some(set_layout),
-            samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
+            samplers: vec![sampler(driver, Filter::Nearest)],
         }
     }
 
@@ -1187,12 +1181,12 @@ impl Graphics {
         max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
     ) -> Self {
-        let vertex = ShaderModule::new(Driver::clone(&driver), &spirv::QUAD_TRANSFORM_VERT);
-        let fragment = ShaderModule::new(Driver::clone(&driver), &spirv::TEXTURE_FRAG);
+        let vertex = ShaderModule::new(driver, &spirv::QUAD_TRANSFORM_VERT);
+        let fragment = ShaderModule::new(driver, &spirv::TEXTURE_FRAG);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             once(descriptor_set_layout_binding(
                 0,
                 ShaderStageFlags::FRAGMENT,
@@ -1204,7 +1198,7 @@ impl Graphics {
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             once(&*set_layout),
             &[(ShaderStageFlags::VERTEX, 0..80)],
         );
@@ -1234,11 +1228,11 @@ impl Graphics {
         let pipeline = GraphicsPipeline::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             &desc,
         );
         let mut desc_pool = DescriptorPool::new(
-            Driver::clone(&driver),
+            driver,
             max_desc_sets,
             once(descriptor_range_desc(
                 1,
@@ -1256,7 +1250,7 @@ impl Graphics {
             max_desc_sets,
             pipeline,
             set_layout: Some(set_layout),
-            samplers: vec![sampler(Driver::clone(&driver), Filter::Nearest)],
+            samplers: vec![sampler(driver, Filter::Nearest)],
         }
     }
 

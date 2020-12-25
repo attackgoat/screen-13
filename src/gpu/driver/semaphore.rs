@@ -11,7 +11,7 @@ pub struct Semaphore {
 }
 
 impl Semaphore {
-    pub fn new(#[cfg(feature = "debug-names")] name: &str, driver: Driver) -> Self {
+    pub fn new(#[cfg(feature = "debug-names")] name: &str, driver: &Driver) -> Self {
         let semaphore = {
             let device = driver.borrow();
             let ctor = || device.create_semaphore().unwrap();
@@ -31,7 +31,7 @@ impl Semaphore {
         };
 
         Self {
-            driver,
+            driver: Driver::clone(driver),
             ptr: Some(semaphore),
         }
     }

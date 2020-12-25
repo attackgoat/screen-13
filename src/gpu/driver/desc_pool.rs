@@ -19,7 +19,7 @@ pub struct DescriptorPool {
 }
 
 impl DescriptorPool {
-    pub fn new<I>(driver: Driver, max_desc_sets: usize, desc_ranges: I) -> Self
+    pub fn new<I>(driver: &Driver, max_desc_sets: usize, desc_ranges: I) -> Self
     where
         I: IntoIterator,
         I::Item: Borrow<DescriptorRangeDesc>,
@@ -34,7 +34,7 @@ impl DescriptorPool {
     }
 
     pub fn with_flags<I>(
-        driver: Driver,
+        driver: &Driver,
         max_desc_sets: usize,
         desc_ranges: I,
         flags: DescriptorPoolCreateFlags,
@@ -55,7 +55,7 @@ impl DescriptorPool {
         };
 
         Self {
-            driver,
+            driver: Driver::clone(driver),
             max_desc_sets,
             ptr: Some(desc_pool),
         }

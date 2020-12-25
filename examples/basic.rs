@@ -1,10 +1,13 @@
 use {
-    screen_13::{color::qb_color, gpu::Font, math::Coord, pak::Pak, prelude::*},
+    screen_13::{
+        color::{BLUE, WHITE},
+        gpu::Font,
+        math::Coord,
+        pak::Pak,
+        prelude::*,
+    },
     std::env::current_exe,
 };
-
-// We will render a fixed-size retro-resolution screen
-const SCREEN_SIZE: Extent = Extent::new(320, 200);
 
 /// This example requires a color graphics adapter.
 fn main() -> ! {
@@ -40,12 +43,13 @@ struct Basic {
 impl Screen for Basic {
     fn render(&self, gpu: &Gpu, _: Extent) -> Render {
         // This creates a canvas-like "Render" type which we can use to record graphic commands
-        let mut frame = gpu.render(SCREEN_SIZE);
+        // We will use it to render a fixed-size retro-resolution screen
+        let mut frame = gpu.render(Extent::new(320, 200));
 
         // Draws "Hello, World" onto a blue background
-        frame.clear().with_clear_value(qb_color(1)).record();
+        frame.clear().with_value(BLUE).record();
         frame
-            .text(Coord::new(137, 96), qb_color(15))
+            .text(Coord::new(137, 96), WHITE)
             .record(&self.small_10px, "Hello, world!");
 
         // Present the completed frame to the screen

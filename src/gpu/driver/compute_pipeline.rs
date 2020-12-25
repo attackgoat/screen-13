@@ -17,7 +17,7 @@ pub struct ComputePipeline {
 impl ComputePipeline {
     pub unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: Driver,
+        driver: &Driver,
         layout: &<_Backend as Backend>::PipelineLayout,
         entry_point: EntryPoint<'_, _Backend>,
     ) -> Self {
@@ -40,7 +40,7 @@ impl ComputePipeline {
 
         Self {
             ptr: Some(compute_pipeline),
-            driver,
+            driver: Driver::clone(driver),
         }
     }
 

@@ -47,7 +47,7 @@ where
 impl Image<U2> {
     pub fn new_optimal(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: Driver,
+        driver: &Driver,
         dims: Extent,
         layers: u16,
         samples: u8,
@@ -77,7 +77,7 @@ impl Image<U2> {
             let req = device.get_image_requirements(&image);
             let mem_type =
                 Device::mem_ty(&device, req.type_mask, Properties::DEVICE_LOCAL).unwrap();
-            let mem = Memory::new(Driver::clone(&driver), mem_type, req.size);
+            let mem = Memory::new(driver, mem_type, req.size);
             device.bind_image_memory(&mem, 0, &mut image).unwrap();
 
             (image, mem)
@@ -85,7 +85,7 @@ impl Image<U2> {
 
         Self {
             __: PhantomData,
-            driver,
+            driver: Driver::clone(driver),
             mem,
             ptr: Some(image),
         }

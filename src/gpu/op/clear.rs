@@ -62,7 +62,7 @@ impl ClearOp {
     }
 
     #[must_use]
-    pub fn with_clear_value<C>(&mut self, clear_value: C) -> &mut Self
+    pub fn with_value<C>(&mut self, clear_value: C) -> &mut Self
     where
         C: Into<ClearValue>,
     {

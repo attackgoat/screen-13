@@ -14,7 +14,7 @@ pub struct Fence {
 }
 
 impl Fence {
-    pub fn new(#[cfg(feature = "debug-names")] name: &str, driver: Driver) -> Self {
+    pub fn new(#[cfg(feature = "debug-names")] name: &str, driver: &Driver) -> Self {
         Self::with_signal(
             #[cfg(feature = "debug-names")]
             name,
@@ -23,7 +23,11 @@ impl Fence {
         )
     }
 
-    pub fn with_signal(#[cfg(feature = "debug-names")] name: &str, driver: Driver, val: bool) -> Self {
+    pub fn with_signal(
+        #[cfg(feature = "debug-names")] name: &str,
+        driver: &Driver,
+        val: bool,
+    ) -> Self {
         let fence = {
             let device = driver.borrow();
             let ctor = || device.create_fence(val).unwrap();
@@ -43,7 +47,7 @@ impl Fence {
         };
 
         Self {
-            driver,
+            driver: Driver::clone(driver),
             ptr: Some(fence),
         }
     }

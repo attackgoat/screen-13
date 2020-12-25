@@ -20,7 +20,7 @@ pub struct Sampler {
 impl Sampler {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        driver: Driver,
+        driver: &Driver,
         min: Filter,
         mag: Filter,
         mip: Filter,
@@ -51,7 +51,7 @@ impl Sampler {
         .unwrap();
 
         Self {
-            driver,
+            driver: Driver::clone(driver),
             ptr: Some(sampler),
         }
     }

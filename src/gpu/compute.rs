@@ -105,15 +105,15 @@ impl Compute {
         ID::Item: Borrow<DescriptorRangeDesc>,
         IS: Iterator<Item = Sampler>,
     {
-        let shader = ShaderModule::new(Driver::clone(&driver), spirv);
+        let shader = ShaderModule::new(driver, spirv);
         let pipeline = ComputePipeline::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             pipeline_layout.as_ref(),
             ShaderModule::entry_point(&shader),
         );
-        let mut desc_pool = DescriptorPool::new(Driver::clone(&driver), max_desc_sets, desc_ranges);
+        let mut desc_pool = DescriptorPool::new(driver, max_desc_sets, desc_ranges);
         let layouts = (0..max_desc_sets).map(|_| desc_set_layout.as_ref());
         let mut desc_sets = Vec::with_capacity(max_desc_sets);
 
@@ -285,17 +285,6 @@ impl Compute {
 
     pub fn pipeline(&self) -> &ComputePipeline {
         &self.pipeline
-    }
-
-    fn _reset(&mut self) {
-        // TODO: I think we're safe to not call this code; test!
-        // unsafe {
-        //     self.desc_pool.reset();
-        // }
-
-        // for desc_set in &mut self.desc_sets {
-        //     *desc_set = unsafe { self.desc_pool.allocate_set(&*self.set_layout).unwrap() }
-        // }
     }
 
     pub fn desc_set(&self, idx: usize) -> &<_Backend as Backend>::DescriptorSet {

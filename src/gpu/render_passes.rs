@@ -18,35 +18,38 @@ const ATTACHMENT_OPS_CLEAR: AttachmentOps = AttachmentOps {
     load: AttachmentLoadOp::Clear,
     store: AttachmentStoreOp::DontCare,
 };
+const ATTACHMENT_OPS_STORE: AttachmentOps = AttachmentOps {
+    load: AttachmentLoadOp::DontCare,
+    store: AttachmentStoreOp::Store,
+};
 
 fn const_layout(layout: Layout) -> Range<Layout> {
     layout..layout
 }
 
-pub(super) fn color(driver: Driver, mode: ColorRenderPassMode) -> RenderPass {
-    let color_attachment = 0;
+pub(super) fn color(driver: &Driver, mode: ColorRenderPassMode) -> RenderPass {
+    /// The list of attachments used by this render pass, in index order.
+    enum Attachments {
+        Color,
+    }
+    // Attachments
     let color = Attachment {
         format: Some(mode.fmt),
         samples: 1,
         ops: if mode.preserve {
             AttachmentOps::PRESERVE
         } else {
-            AttachmentOps {
-                load: AttachmentLoadOp::DontCare,
-                store: AttachmentStoreOp::Store,
-            }
+            ATTACHMENT_OPS_STORE
         },
         stencil_ops: AttachmentOps::DONT_CARE,
         layouts: Layout::ColorAttachmentOptimal..Layout::ColorAttachmentOptimal,
     };
+
+    // Subpasses
     let subpass = SubpassDesc {
-        colors: &[(color_attachment, Layout::ColorAttachmentOptimal)],
+        colors: &[(Attachments::Color as _, Layout::ColorAttachmentOptimal)],
         depth_stencil: None,
-        inputs: if mode.preserve {
-            &[(0, Layout::ShaderReadOnlyOptimal)]
-        } else {
-            &[]
-        },
+        inputs: &[],
         resolves: &[],
         preserves: &[],
     };
@@ -61,7 +64,7 @@ pub(super) fn color(driver: Driver, mode: ColorRenderPassMode) -> RenderPass {
     )
 }
 
-pub(super) fn draw(driver: Driver, mode: DrawRenderPassMode) -> RenderPass {
+pub(super) fn draw(driver: &Driver, mode: DrawRenderPassMode) -> RenderPass {
     let color_attachment = |format, ops| Attachment {
         format: Some(format),
         samples: 1,
@@ -194,7 +197,7 @@ pub(super) fn present(driver: &Driver, fmt: Format) -> RenderPass {
     RenderPass::new(
         #[cfg(feature = "debug-names")]
         "Present",
-        Driver::clone(&driver),
+        driver,
         &[present],
         &[subpass],
         &[],

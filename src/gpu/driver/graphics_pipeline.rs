@@ -13,7 +13,7 @@ pub struct GraphicsPipeline {
 impl GraphicsPipeline {
     pub fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: Driver,
+        driver: &Driver,
         desc: &GraphicsPipelineDesc<'_, _Backend>,
     ) -> Self {
         let graphics_pipeline = {
@@ -37,7 +37,7 @@ impl GraphicsPipeline {
         };
 
         Self {
-            driver,
+            driver: Driver::clone(driver),
             ptr: Some(graphics_pipeline),
         }
     }

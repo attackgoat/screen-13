@@ -16,7 +16,7 @@ pub struct PipelineLayout {
 impl PipelineLayout {
     pub fn new<IS, IR>(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: Driver,
+        driver: &Driver,
         set_layouts: IS,
         push_consts: IR,
     ) -> Self
@@ -52,7 +52,7 @@ impl PipelineLayout {
         };
 
         Self {
-            driver,
+            driver: Driver::clone(driver),
             ptr: Some(pipeline_layout),
         }
     }

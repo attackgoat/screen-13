@@ -13,7 +13,7 @@ pub struct Buffer {
 impl Buffer {
     pub fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: Driver,
+        driver: &Driver,
         usage: Usage,
         len: u64,
     ) -> Self {
@@ -37,7 +37,7 @@ impl Buffer {
 
         Self {
             ptr: Some(buffer),
-            driver,
+            driver: Driver::clone(driver),
         }
     }
 

@@ -78,7 +78,7 @@ impl Game {
     ) -> Self {
         let window = builder.build(&event_loop).unwrap();
         let (gpu, driver, surface) = Gpu::new(&window);
-        let swapchain = Swapchain::new(driver, surface, dims, swapchain_len);
+        let swapchain = Swapchain::new(&driver, surface, dims, swapchain_len);
 
         // TODO: Needed? window.request_redraw();
 

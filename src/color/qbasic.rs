@@ -19,7 +19,10 @@ const QBASIC_COLORS: [Color; 16] = [
     Color::rgb(0xfc, 0xfc, 0xfc),
 ];
 
-pub const fn qb_color(index: usize) -> Color {
+/// Sets the screen display colors.
+///
+/// idx: A number that sets the foreground screen color
+pub const fn color(idx: usize) -> Color {
     // & 15 to make sure we don't index out of this
-    QBASIC_COLORS[index & 15]
+    QBASIC_COLORS[idx & 15]
 }

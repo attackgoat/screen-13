@@ -3,7 +3,7 @@ mod qbasic;
 
 pub use self::{
     alpha::{AlphaColor, TRANSPARENT_BLACK},
-    qbasic::qb_color,
+    qbasic::color,
 };
 
 use {

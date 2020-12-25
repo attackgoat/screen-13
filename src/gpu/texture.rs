@@ -69,7 +69,7 @@ where
             let mut views = self.views.borrow_mut();
             if !views.contains_key(&key) {
                 let view = ImageView::new(
-                    Driver::clone(&self.driver),
+                    &self.driver,
                     self.image.as_ref(),
                     view_kind,
                     format,
@@ -130,7 +130,7 @@ impl Texture<Image2d> {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: Driver,
+        driver: &Driver,
         dims: Extent,
         fmt: Format,
         layout: Layout,
@@ -147,7 +147,7 @@ impl Texture<Image2d> {
         let image = Image2d::new_optimal(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             dims,
             layers,
             samples,
@@ -158,7 +158,7 @@ impl Texture<Image2d> {
 
         let res = Self {
             dims,
-            driver,
+            driver: Driver::clone(driver),
             fmt,
             image,
             state: RefCell::new(State {

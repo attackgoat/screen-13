@@ -29,7 +29,7 @@ pub struct Render {
 impl Render {
     pub(super) fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: Driver,
+        driver: &Driver,
         dims: Extent,
         mut pool: Lease<Pool>,
         ops: Vec<Box<dyn Op>>,
@@ -43,7 +43,7 @@ impl Render {
         let target = pool.texture(
             #[cfg(feature = "debug-names")]
             name,
-            &driver,
+            driver,
             dims,
             fmt,
             Layout::Undefined,
@@ -54,7 +54,7 @@ impl Render {
         );
 
         Self {
-            driver,
+            driver: Driver::clone(driver),
             pool: Some(pool),
             target,
             target_dirty: false,
@@ -86,7 +86,11 @@ impl Render {
 
     /// Copies the given texture onto this Render. The implementation uses a copy operation
     /// and is more efficient than `write` when there is no blending or fractional pixels.
-    pub fn copy(&mut self, #[cfg(feature = "debug-names")] name: &str, src: &Texture2d) -> &mut CopyOp {
+    pub fn copy(
+        &mut self,
+        #[cfg(feature = "debug-names")] name: &str,
+        src: &Texture2d,
+    ) -> &mut CopyOp {
         let pool = self.take_pool();
         let op = CopyOp::new(
             #[cfg(feature = "debug-names")]
@@ -139,7 +143,10 @@ impl Render {
     }
 
     /// Saves this Render as a JPEG file at the given path.
-    pub fn encode<P: AsRef<Path>>(&mut self, #[cfg(feature = "debug-names")] name: &str) -> &mut EncodeOp {
+    pub fn encode<P: AsRef<Path>>(
+        &mut self,
+        #[cfg(feature = "debug-names")] name: &str,
+    ) -> &mut EncodeOp {
         let pool = self.take_pool();
         let op = EncodeOp::new(
             #[cfg(feature = "debug-names")]
@@ -235,7 +242,11 @@ impl Render {
 
     /// Draws the given texture writes onto this Render. Note that the given texture writes will all be applied at once and there
     /// is no 'layering' of the individual writes going on - so if you need blending between writes you must submit a new batch.
-    pub fn write(&mut self, #[cfg(feature = "debug-names")] name: &str, mode: WriteMode) -> &mut WriteOp {
+    pub fn write(
+        &mut self,
+        #[cfg(feature = "debug-names")] name: &str,
+        mode: WriteMode,
+    ) -> &mut WriteOp {
         let pool = self.take_pool();
         let mut op = WriteOp::new(
             #[cfg(feature = "debug-names")]

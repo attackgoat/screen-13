@@ -11,12 +11,12 @@ pub struct CommandPool {
 }
 
 impl CommandPool {
-    pub fn new(driver: Driver, family: QueueFamilyId) -> Self {
+    pub fn new(driver: &Driver, family: QueueFamilyId) -> Self {
         Self::with_flags(driver, family, CommandPoolCreateFlags::empty())
     }
 
     pub fn with_flags(
-        driver: Driver,
+        driver: &Driver,
         family: QueueFamilyId,
         flags: CommandPoolCreateFlags,
     ) -> Self {
@@ -27,7 +27,7 @@ impl CommandPool {
         };
 
         Self {
-            driver,
+            driver: Driver::clone(driver),
             ptr: Some(cmd_pool),
         }
     }

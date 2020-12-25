@@ -114,7 +114,7 @@ pub struct Data {
 impl Data {
     pub fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: Driver,
+        driver: &Driver,
         mut capacity: u64,
         usage: Usage,
     ) -> Self {
@@ -129,7 +129,7 @@ impl Data {
         let mut storage_buf = Buffer::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             Usage::TRANSFER_DST | Usage::TRANSFER_SRC | usage,
             capacity,
         );
@@ -150,7 +150,7 @@ impl Data {
                         .unwrap();
                 (mem_ty, false)
             };
-            let storage_mem = Memory::new(Driver::clone(&driver), storage_mem_ty, storage_req.size);
+            let storage_mem = Memory::new(driver, storage_mem_ty, storage_req.size);
 
             // Bind the main storage memory
             unsafe {
@@ -166,7 +166,7 @@ impl Data {
                 let mut staging_buf = Buffer::new(
                     #[cfg(feature = "debug-names")]
                     name,
-                    Driver::clone(&driver),
+                    driver,
                     Usage::TRANSFER_DST | Usage::TRANSFER_SRC,
                     capacity,
                 );
@@ -174,8 +174,7 @@ impl Data {
                 let staging_mem_ty =
                     Device::mem_ty(&device, staging_req.type_mask, Properties::CPU_VISIBLE)
                         .unwrap();
-                let staging_mem =
-                    Memory::new(Driver::clone(&driver), staging_mem_ty, staging_req.size);
+                let staging_mem = Memory::new(driver, staging_mem_ty, staging_req.size);
 
                 // Bind the optional staging memory
                 unsafe {
@@ -200,7 +199,7 @@ impl Data {
         Self {
             access_mask: Access::empty(),
             capacity,
-            driver,
+            driver: Driver::clone(driver),
             pipeline_stage: PipelineStage::TOP_OF_PIPE,
             staging,
             storage,
@@ -319,14 +318,13 @@ impl Data {
         assert!(range.start < range.end);
         assert!(range.end <= self.capacity);
 
-        let driver = Driver::clone(&self.driver);
         let mem = self
             .staging
             .as_ref()
             .map(|staging| &staging.mem)
             .unwrap_or(&self.storage.mem);
 
-        unsafe { Mapping::new(driver, mem, range) }
+        unsafe { Mapping::new(&self.driver, mem, range) }
     }
 
     /// Reads everything from the graphics device.
@@ -488,12 +486,14 @@ impl<'m> Mapping<'m> {
     ///
     /// The given memory must not be mapped and contain the given range.
     unsafe fn new(
-        driver: Driver,
+        driver: &Driver,
         mem: &'m <_Backend as Backend>::Memory,
         range: Range<u64>,
     ) -> Result<Self, MapError> {
         assert_ne!(range.end, 0);
         assert!(range.start < range.end);
+
+        // TODO: Combine these two borrows
 
         // Mapped host memory ranges must be in multiples of atom size; so we align to a possibly larger window
         let non_coherent_atom_size = Device::gpu(&driver.as_ref().borrow())
@@ -527,7 +527,7 @@ impl<'m> Mapping<'m> {
         };
 
         Ok(Self {
-            driver,
+            driver: Driver::clone(driver),
             flushed: true,
             len: (range.end - range.start) as _,
             mapped_mem,

@@ -12,7 +12,7 @@ pub struct Memory {
 }
 
 impl Memory {
-    pub fn new<M: Into<MemoryTypeId>>(driver: Driver, mem_ty: M, size: u64) -> Self {
+    pub fn new<M: Into<MemoryTypeId>>(driver: &Driver, mem_ty: M, size: u64) -> Self {
         #[cfg(debug_assertions)]
         assert_ne!(size, 0);
 
@@ -24,7 +24,7 @@ impl Memory {
         };
 
         Self {
-            driver,
+            driver: Driver::clone(driver),
             ptr: Some(mem),
             size,
         }

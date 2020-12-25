@@ -20,7 +20,7 @@ pub struct RenderPass {
 impl RenderPass {
     pub fn new<'s, IA, IS, ID>(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: Driver,
+        driver: &Driver,
         attachments: IA,
         subpasses: IS,
         dependencies: ID,
@@ -60,7 +60,7 @@ impl RenderPass {
         };
 
         Self {
-            driver,
+            driver: Driver::clone(driver),
             ptr: Some(render_pass),
         }
     }

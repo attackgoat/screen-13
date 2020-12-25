@@ -15,7 +15,7 @@ pub struct ShaderModule {
 }
 
 impl ShaderModule {
-    pub unsafe fn new(driver: Driver, spirv: &[u32]) -> Self {
+    pub unsafe fn new(driver: &Driver, spirv: &[u32]) -> Self {
         let shader_module = driver
             .as_ref()
             .borrow()
@@ -23,7 +23,7 @@ impl ShaderModule {
             .unwrap();
 
         Self {
-            driver,
+            driver: Driver::clone(driver),
             ptr: Some(shader_module),
         }
     }

@@ -278,7 +278,7 @@ impl FontOp {
     }
 
     #[must_use]
-    pub fn with_outline_color<C>(&mut self, color: C) -> &mut Self
+    pub fn with_outline<C>(&mut self, color: C) -> &mut Self
     where
         C: Into<AlphaColor>,
     {
@@ -299,7 +299,7 @@ impl FontOp {
         let graphics_mode = self.mode();
         let render_pass_mode = RenderPassMode::Color(ColorRenderPassMode {
             fmt: self.dst.borrow().format(),
-            preserve: false,
+            preserve: true,
         });
         let pool = self.pool.as_mut().unwrap();
 
@@ -308,8 +308,6 @@ impl FontOp {
 
         // Finish the remaining setup tasks
         {
-            let driver = Driver::clone(&self.driver);
-
             // Setup the graphics pipeline
             self.graphics.replace(pool.graphics(
                 #[cfg(feature = "debug-names")]
@@ -324,7 +322,7 @@ impl FontOp {
             self.frame_buf.replace(Framebuffer2d::new(
                 #[cfg(feature = "debug-names")]
                 self.name.as_str(),
-                driver,
+                &self.driver,
                 pool.render_pass(&self.driver, render_pass_mode),
                 once(self.back_buf.borrow().as_default_view().as_ref()),
                 dims,

@@ -14,7 +14,7 @@ pub struct DescriptorSetLayout {
 }
 
 impl DescriptorSetLayout {
-    pub fn new<I>(#[cfg(feature = "debug-names")] name: &str, driver: Driver, bindings: I) -> Self
+    pub fn new<I>(#[cfg(feature = "debug-names")] name: &str, driver: &Driver, bindings: I) -> Self
     where
         I: IntoIterator,
         I::Item: Borrow<DescriptorSetLayoutBinding>,
@@ -40,7 +40,7 @@ impl DescriptorSetLayout {
         };
 
         Self {
-            driver,
+            driver: Driver::clone(driver),
             ptr: Some(set_layout),
         }
     }

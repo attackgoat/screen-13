@@ -154,8 +154,8 @@ impl DrawOp {
             let frame_buf = Framebuffer2d::new(
                 #[cfg(feature = "debug-names")]
                 &name,
-                Driver::clone(driver),
-                pool.render_pass(&driver, RenderPassMode::Draw(mode)),
+                driver,
+                pool.render_pass(driver, RenderPassMode::Draw(mode)),
                 vec![
                     color_metal.as_default_view().as_ref(),
                     normal_rough.as_default_view().as_ref(),
@@ -181,7 +181,7 @@ impl DrawOp {
         let fence = pool.fence(
             #[cfg(feature = "debug-names")]
             name,
-            &driver,
+            driver,
         );
 
         Self {

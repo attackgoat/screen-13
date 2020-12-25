@@ -98,13 +98,13 @@ impl Layouts {
             let desc_set_layout = DescriptorSetLayout::new(
                 #[cfg(feature = "debug-names")]
                 name,
-                Driver::clone(&driver),
+                driver,
                 bindings,
             );
             let pipeline_layout = PipelineLayout::new(
                 #[cfg(feature = "debug-names")]
                 name,
-                Driver::clone(&driver),
+                driver,
                 once(desc_set_layout.as_ref()),
                 push_consts,
             );
@@ -181,7 +181,7 @@ impl Pool {
         let mut item = if let Some(item) = items.borrow_mut().pop_back() {
             item
         } else {
-            CommandPool::new(Driver::clone(driver), family)
+            CommandPool::new(driver, family)
         };
 
         unsafe {
@@ -305,7 +305,7 @@ impl Pool {
             Data::new(
                 #[cfg(feature = "debug-names")]
                 name,
-                Driver::clone(driver),
+                driver,
                 len,
                 usage,
             )
@@ -340,7 +340,7 @@ impl Pool {
         }) {
             item
         } else {
-            DescriptorPool::new(Driver::clone(driver), max_desc_sets, desc_ranges)
+            DescriptorPool::new(driver, max_desc_sets, desc_ranges)
         };
 
         Lease::new(item, items)
@@ -363,7 +363,7 @@ impl Pool {
             Fence::new(
                 #[cfg(feature = "debug-names")]
                 name,
-                Driver::clone(driver),
+                driver,
             )
         };
 
@@ -461,14 +461,13 @@ impl Pool {
         {
             item
         } else {
-            Memory::new(Driver::clone(driver), mem_type, size)
+            Memory::new(driver, mem_type, size)
         };
 
         Lease::new(item, items)
     }
 
     pub(super) fn render_pass(&mut self, driver: &Driver, mode: RenderPassMode) -> &RenderPass {
-        let driver = Driver::clone(driver);
         self.render_passes
             .entry(mode)
             .or_insert_with(|| match mode {
@@ -520,7 +519,7 @@ impl Pool {
                 items_ref.push_front(TextureRef::new(RefCell::new(Texture::new(
                     #[cfg(feature = "debug-names")]
                     &format!("{} (Unused)", name),
-                    Driver::clone(driver),
+                    driver,
                     dims,
                     fmt,
                     layout,
@@ -534,7 +533,7 @@ impl Pool {
                 TextureRef::new(RefCell::new(Texture::new(
                     #[cfg(feature = "debug-names")]
                     name,
-                    Driver::clone(driver),
+                    driver,
                     dims,
                     fmt,
                     layout,

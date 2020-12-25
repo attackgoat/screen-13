@@ -17,7 +17,7 @@ pub struct ImageView {
 
 impl ImageView {
     pub fn new<I>(
-        driver: Driver,
+        driver: &Driver,
         image: I,
         view_kind: ViewKind,
         format: Format,
@@ -34,7 +34,7 @@ impl ImageView {
         };
 
         Self {
-            driver,
+            driver: Driver::clone(driver),
             ptr: Some(image_view),
         }
     }

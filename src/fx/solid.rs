@@ -22,7 +22,7 @@ impl Screen for Solid {
                 #[cfg(feature = "debug-names")]
                 "Solid",
             )
-            .with_clear_value(self.color)
+            .with_value(self.color)
             .record();
 
         frame

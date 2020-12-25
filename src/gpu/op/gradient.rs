@@ -109,7 +109,7 @@ impl GradientOp {
         let frame_buf = Framebuffer2d::new(
             #[cfg(feature = "debug-names")]
             name,
-            Driver::clone(&driver),
+            driver,
             pool.render_pass(&driver, render_pass_mode),
             once(back_buf.borrow().as_default_view().as_ref()),
             dims,

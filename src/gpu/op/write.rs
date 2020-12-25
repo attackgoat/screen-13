@@ -233,7 +233,7 @@ impl WriteOp {
             self.frame_buf.replace(Framebuffer2d::new(
                 #[cfg(feature = "debug-names")]
                 self.name.as_str(),
-                Driver::clone(&self.driver),
+                &self.driver,
                 render_pass,
                 once(self.back_buf.borrow().as_default_view().as_ref()),
                 self.dst.borrow().dims(),

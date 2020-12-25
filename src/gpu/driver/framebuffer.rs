@@ -42,7 +42,7 @@ impl Framebuffer<U2> {
     /// Specialized new function for 2D framebuffers
     pub fn new<I>(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: Driver,
+        driver: &Driver,
         render_pass: &RenderPass,
         image_views: I,
         dims: Extent,
@@ -84,7 +84,7 @@ impl Framebuffer<U2> {
 
         Self {
             __: PhantomData,
-            driver,
+            driver: Driver::clone(driver),
             ptr: Some(frame_buf),
         }
     }
