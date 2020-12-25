@@ -242,10 +242,7 @@ impl Render {
 
     /// Draws the given texture writes onto this Render. Note that the given texture writes will all be applied at once and there
     /// is no 'layering' of the individual writes going on - so if you need blending between writes you must submit a new batch.
-    pub fn write(
-        &mut self,
-        #[cfg(feature = "debug-names")] name: &str,
-    ) -> &mut WriteOp {
+    pub fn write(&mut self, #[cfg(feature = "debug-names")] name: &str) -> &mut WriteOp {
         let pool = self.take_pool();
         let mut op = WriteOp::new(
             #[cfg(feature = "debug-names")]

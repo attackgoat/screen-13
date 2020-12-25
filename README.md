@@ -7,7 +7,7 @@ Screen 13 is an easy-to-use 3D game engine in the spirit of QBasic.
 
 ## Overview
 
-Games made using Screen 13 are built as regular executables using a design-time asset baking process. Screen 13 provides all asset-baking logic and aims to, but currently does not, provide wide support for texture formats, vertex formats, and other associated data. Baked assets are stored in `.pak` files.
+Games made using Screen 13 are built as regular executables using a design-time asset baking process. Screen 13 provides all asset-baking logic and aims to provide wide support for texture formats, vertex formats, and other associated data. Baked assets are stored in `.pak` files.
 
 Screen 13 is based on the [`gfx-rs`](https://github.com/gfx-rs/gfx) project, and as such targets native Vulkan, Metal, DirectX 12, OpenGL, WebGL, Android, and iOS targets, among others.
 
@@ -74,7 +74,7 @@ Screen 13 puts a lot of functionality behind optional features in order to optim
 
 _NOTE_: The deferred and forward renderers have separate code paths and you can choose either on a render-by-render basis.
 
-- **`debug-names`** — Name parameter added to most graphics calls, integrates with your preferred graphics debugger.
+- **`debug-names`** — Name parameter added to most graphics calls, integrates with your graphics debugger.
 - **`deferred-renderer`** *(enabled by default)* — Ability to draw models and lights using a deferred technique.
 - **`forward-renderer`** *(enabled by default)* — Same as the deferred renderer, but using a forward technique.
 
@@ -117,8 +117,6 @@ Additional commands QBasic offered, such as `DRAW`, allowed you to build very si
 ## Notes
 
 - Run your game with the `RUST_LOG` environment variable set to `screen_13=trace` for detailed debugging messages
-- Make all panics/todos/unreachables and others only have messages in debug builds?
-- Consider removing the extra derived things
 - Create new BMFont files on Windows using [this](http://www.angelcode.com/products/bmfont/)
 - Regenerate files by cd'ing to correct directory and run this:
   - "c:\Program Files (x86)\AngelCode\BMFont\bmfont.com" -c SmallFonts-12px.bmfc -o SmallFonts-12px.fnt

@@ -14,7 +14,6 @@ fn main() -> ! {
     pretty_env_logger::init();
 
     // Create an engine instance (loads the engine config file for this named game)
-    // NOTE: This line also turns on logging so we should do this before anything else
     let engine = Engine::new(Program::new("screen-13-basic-example"));
 
     // Open the "pak" file which contains all game art, assests, and other content

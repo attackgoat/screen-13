@@ -308,7 +308,12 @@ impl Gpu {
     ) -> Bitmap {
         let id = pak.bitmap_id(key).unwrap();
 
-        self.load_bitmap_with_id(#[cfg(feature = "debug-names")] name, pak, id)
+        self.load_bitmap_with_id(
+            #[cfg(feature = "debug-names")]
+            name,
+            pak,
+            id,
+        )
     }
 
     pub fn load_bitmap_with_id<R: Read + Seek>(
@@ -353,7 +358,12 @@ impl Gpu {
     ) -> Model {
         let id = pak.model_id(key).unwrap();
 
-        self.load_model_with_id(#[cfg(feature = "debug-names")] name, pak, id)
+        self.load_model_with_id(
+            #[cfg(feature = "debug-names")]
+            name,
+            pak,
+            id,
+        )
     }
 
     pub fn load_model_with_id<R: Read + Seek>(

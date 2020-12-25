@@ -30,8 +30,8 @@ mod program;
 
 // TODO: Remove Error from pub
 pub use self::{
-    error::Error,
     color::{AlphaColor, Color},
+    error::Error,
     gpu::{Gpu, Pool, Render},
     input::Input,
     program::Program,

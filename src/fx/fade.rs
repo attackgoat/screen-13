@@ -61,8 +61,8 @@ impl Screen for Fade {
         a.write(
             #[cfg(feature = "debug-names")]
             "Fade write B",
-            WriteMode::Blend((ab, self.mode)),
         )
+        .with_mode(WriteMode::Blend((ab, self.mode)))
         .record(&mut [Write::region(
             &b,
             Rect {
