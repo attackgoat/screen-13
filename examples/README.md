@@ -81,7 +81,7 @@ In order to save images as JPEGs an encode command is provided:
 render.encode().with_quality(0.92).record("screenshot.jpg");
 ```
 
-_NOTE_: When `render` is dropped the graphics hardware will be flushed in order to complete the disk write. In high-performance situations individual renders should be retained for enough time to allow the graphics hardware to finish. Later in this guide we will describe writing a `Screen` implementation which handles this automatically.
+_NOTE_: When `render` is dropped the graphics hardware will be flushed in order to complete the disk write. In high-performance situations individual renders should be retained for enough time to allow the graphics hardware to finish. See the example code for details on writing a `Screen` implementation which handles this automatically.
 
 #### Gradients [IN PROGRESS]
 
@@ -147,11 +147,9 @@ let comic_sans = gpu.load_font(&mut pak, "comic-sans");
 
 #### Using fonts with render instances
 
-Once an image has been loaded, it can be efficiently written to a `Render` instance. The basic usage is:
+Once an font has been loaded, it can be efficiently used with a `Render` instance. The basic usage is:
 
 ```rust
-use screen_13::gpu::Write;
-
 let pos = (24.0, 10.0);
 render.text(pos, cornflower_blue).record(&comic_sans, "Hello, world!");
 ```
@@ -202,7 +200,7 @@ Additionally you might have this material asset `.toml` file, `glossy.toml`:
 
 ```toml
 [material]
-color ='cat.toml'
+color = 'cat.toml'
 metal_src = 'cat_metal.png'
 normal = 'cat_normal.toml'
 rough_src = 'cat_rough.png'
@@ -218,7 +216,7 @@ let teapot = gpu.load_model(&mut pak, "teapot");
 
 #### Shared references
 
-Bitmaps, as well as models, must be wrapped in `Rc` containers so they can be shared amongst the required graphics pipeline stages. For this purpose we provide the `BitmapRef`. `ModelRef` type re-definitions. Using them is simple and allows bitmap and model cloneability:
+Bitmaps, as well as models, must be wrapped in `Rc` containers so they can be shared amongst the required graphics pipeline stages. For this purpose we provide the `BitmapRef` and `ModelRef` type re-definitions. Using them is simple and allows bitmap and model cloneability:
 
 ```rust
 use screen_13::gpu::BitmapRef;
