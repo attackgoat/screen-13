@@ -9,7 +9,7 @@ use {
             PipelineLayout, RenderPass,
         },
         op::Compiler,
-        render_passes::{color, draw},
+        render_passes::{color, draw, draw_post, draw_pre, draw_pre_post},
         BlendMode, Compute, ComputeMode, Data, Graphics, GraphicsMode, RenderPassMode, Texture,
         TextureRef,
     },
@@ -472,7 +472,17 @@ impl Pool {
             .entry(mode)
             .or_insert_with(|| match mode {
                 RenderPassMode::Color(mode) => color(driver, mode),
-                RenderPassMode::Draw(mode) => draw(driver, mode),
+                RenderPassMode::Draw(mode) => {
+                    if mode.pre_fx as u8 * mode.post_fx as u8 == 1 {
+                        draw_pre_post(driver, mode)
+                    } else if mode.pre_fx {
+                        draw_pre(driver, mode)
+                    } else if mode.post_fx {
+                        draw_post(driver, mode)
+                    } else {
+                        draw(driver, mode)
+                    }
+                }
             })
     }
 

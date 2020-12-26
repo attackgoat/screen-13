@@ -17,7 +17,7 @@ pub mod math;
 /// use the assets at runtime. For instance, when trying to read a model packed at `models/thing.toml` you might: `gpu.load_model("models/thing")`
 pub mod pak;
 
-/// Things, particularly traits, which are used in almost every single Screen 13 game.
+/// Things, particularly traits, which are used in almost every single Screen 13 program.
 pub mod prelude {
     pub use super::{
         color::CORNFLOWER_BLUE, math::Extent, DynScreen, Engine, Gpu, Input, Pool, Program, Render,

@@ -67,9 +67,12 @@ This engine is very young and is likely to change as development continues.
   - Scenes
 - _Runtime_ Asset `.pak` File:
   - Easy reading of assets
-  - Configurable compression
+  - Configurable `compression`
+    - `snap` is really good
+    - `brotli` is amazing, but it has a bug at the moment and fails to read properly
 - Rendering:
-  - TODO
+  - Deferred renderer
+  - Forward renderer - **not started**
 
 ## Optional features
 
@@ -83,9 +86,13 @@ _NOTE_: The deferred and forward renderers have separate code paths and you can 
 
 ## Content Baking Procedures
 
+A main project `.toml` file is required. All content loaded at runtime must be present in this file.
+
+Additional `.toml` asset files are referenced using either relative (`../path/file.ext`) or absolute (`/path/file.ext`) format, where the root is the same directory as the main project `.toml` file.
+
 ### Brotli Compression
 
-Higher compression ratio and somewhat slow during compression. *Currently does not read properly*
+Higher compression ratio but somewhat slow during compression. Compresses 108mb to 3.8mb in a real-world test.
 
 ```toml
 [content]
@@ -97,7 +104,7 @@ window_size = 20
 
 ### Snap Compression
 
-Faster during compression and lower compression ratio compared to Brotli.
+Faster during compression and lower compression ratio compared to Brotli. Compresses 108mb to 12mb in a real-world test. Best for use when re-building assets often.
 
 ```toml
 [content]
@@ -116,18 +123,3 @@ SCREEN 13
 These commands cleared the screen of text and setup a 320x200 256-color paletized color video mode. There were other video modes available, but none of them had the 'magic' of 256 colors.
 
 Additional commands QBasic offered, such as `DRAW`, allowed you to build very simple games incredibly quickly because you didn't have to grok the enirety of linking and compiling in order get things done. I think we should have options like this today, and this project aims to allow future developers to have the same ability to get things done quickly while using modern tools.
-
-## Notes
-
-- Run your game with the `RUST_LOG` environment variable set to `screen_13=trace` for detailed debugging messages
-- Create new BMFont files on Windows using [this](http://www.angelcode.com/products/bmfont/)
-- Regenerate files by cd'ing to correct directory and run this:
-  - "c:\Program Files (x86)\AngelCode\BMFont\bmfont.com" -c SmallFonts-12px.bmfc -o SmallFonts-12px.fnt
-  - "c:\Program Files (x86)\AngelCode\BMFont\bmfont.com" -c SmallFonts-10px.bmfc -o SmallFonts-10px.fnt
-
-https://www.hiagodesena.com/pbr-deferred-renderer.html
-https://thomasdeliot.wixsite.com/blog/single-post/2018/04/26/Small-project-OpenGL-engine-and-PBR-deferred-pipeline-with-SSRSSAO
-
-https://www.google.com/search?q=deferred+pbr+pipeline&oq=deferred+pbr+pipeline&aqs=chrome..69i57j0i433i457j0i433j0l3j69i60l2.6933j0j7&sourceid=chrome&ie=UTF-8
-
-http://filmicworlds.com/blog/linear-space-lighting-i-e-gamma/

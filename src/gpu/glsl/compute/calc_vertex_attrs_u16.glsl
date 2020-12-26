@@ -1,7 +1,3 @@
-// NOTE: This program is intended to help "inflate" model vertex buffers which have been read from
-// disk or the network. We do not store normal or tangent in the asset .pak file, so these
-// attributes must be reconstructed at runtime; prior to rendering use.
-
 #include "calc_vertex_attrs.glsl"
 
 // Reads a 16 bit index out of the 32 bit index buffer

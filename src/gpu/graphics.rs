@@ -23,7 +23,7 @@ use {
         Backend,
     },
     gfx_impl::Backend as _Backend,
-    std::iter::{empty, once},
+    std::{borrow::Borrow,iter::{empty, once}},
 };
 
 const FILL_RASTERIZER: Rasterizer = Rasterizer {
@@ -43,6 +43,16 @@ const LINE_RASTERIZER: Rasterizer = Rasterizer {
     front_face: FrontFace::Clockwise,
     line_width: State::Static(1.0),
     polygon_mode: PolygonMode::Line,
+};
+const LINE_LIST_INPUT_ASSEMBLER: InputAssemblerDesc = InputAssemblerDesc {
+    primitive: Primitive::LineList,
+    restart_index: None,
+    with_adjacency: false,
+};
+const TRI_LIST_INPUT_ASSEMBLER: InputAssemblerDesc = InputAssemblerDesc {
+    primitive: Primitive::TriangleList,
+    restart_index: None,
+    with_adjacency: false,
 };
 
 fn sampler(driver: &Driver, filter: Filter) -> Sampler {
@@ -118,11 +128,7 @@ impl Graphics {
                 attributes: &[],
                 buffers: &[],
                 geometry: None,
-                input_assembler: InputAssemblerDesc {
-                    primitive: Primitive::TriangleList,
-                    restart_index: None,
-                    with_adjacency: false,
-                },
+                input_assembler: TRI_LIST_INPUT_ASSEMBLER,
                 tessellation: None,
                 vertex: ShaderModule::entry_point(&vertex),
             },
@@ -214,11 +220,7 @@ impl Graphics {
                     rate: VertexInputRate::Vertex,
                 }],
                 geometry: None,
-                input_assembler: InputAssemblerDesc {
-                    primitive: Primitive::LineList,
-                    restart_index: None,
-                    with_adjacency: false,
-                },
+                input_assembler: LINE_LIST_INPUT_ASSEMBLER,
                 tessellation: None,
                 vertex: ShaderModule::entry_point(&vertex),
             },
@@ -340,11 +342,7 @@ impl Graphics {
                     rate: VertexInputRate::Vertex,
                 }],
                 geometry: None,
-                input_assembler: InputAssemblerDesc {
-                    primitive: Primitive::TriangleList,
-                    restart_index: None,
-                    with_adjacency: false,
-                },
+                input_assembler: TRI_LIST_INPUT_ASSEMBLER,
                 tessellation: None,
                 vertex: ShaderModule::entry_point(&vertex),
             },
@@ -432,11 +430,7 @@ impl Graphics {
                     rate: VertexInputRate::Vertex,
                 }],
                 geometry: None,
-                input_assembler: InputAssemblerDesc {
-                    primitive: Primitive::TriangleList,
-                    restart_index: None,
-                    with_adjacency: false,
-                },
+                input_assembler: TRI_LIST_INPUT_ASSEMBLER,
                 tessellation: None,
                 vertex: ShaderModule::entry_point(&vertex),
             },
@@ -507,11 +501,7 @@ impl Graphics {
                     rate: VertexInputRate::Vertex,
                 }],
                 geometry: None,
-                input_assembler: InputAssemblerDesc {
-                    primitive: Primitive::TriangleList,
-                    restart_index: None,
-                    with_adjacency: false,
-                },
+                input_assembler: TRI_LIST_INPUT_ASSEMBLER,
                 tessellation: None,
                 vertex: ShaderModule::entry_point(&vertex),
             },
@@ -733,6 +723,35 @@ impl Graphics {
         todo!();
     }
 
+    // unsafe fn font_graphics<B>(
+    //     #[cfg(feature = "debug-names")] name: &str,
+    //     driver: &Driver,
+    //     vertex_spirv: &[u32],
+    //     fragment_spirv: &[u32],
+    //     bindings: B,
+    // ) -> Self where
+    // B: IntoIterator,
+    // B::Item: Borrow<DescriptorSetLayoutBinding>, {
+    //     let vertex = ShaderModule::new(driver, vertex_spirv);
+    //     let fragment = ShaderModule::new(driver, fragment_spirv);
+    //     let set_layout = DescriptorSetLayout::new(
+    //         #[cfg(feature = "debug-names")]
+    //         name,
+    //         driver,
+    //         bindings,
+    //     );
+    //     let layout = PipelineLayout::new(
+    //         #[cfg(feature = "debug-names")]
+    //         name,
+    //         driver,
+    //         once(set_layout.as_ref()),
+    //         &[
+    //             (ShaderStageFlags::VERTEX, 0..64),
+    //             (ShaderStageFlags::FRAGMENT, 64..80),
+    //         ],
+    //     );
+    // }
+
     pub unsafe fn font(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
@@ -789,11 +808,7 @@ impl Graphics {
                     rate: VertexInputRate::Vertex,
                 }],
                 geometry: None,
-                input_assembler: InputAssemblerDesc {
-                    primitive: Primitive::TriangleList,
-                    restart_index: None,
-                    with_adjacency: false,
-                },
+                input_assembler: TRI_LIST_INPUT_ASSEMBLER,
                 tessellation: None,
                 vertex: ShaderModule::entry_point(&vertex),
             },
@@ -804,7 +819,7 @@ impl Graphics {
         );
         desc.blender.logic_op = None;
         desc.blender.targets.push(ColorBlendDesc {
-            blend: None,
+            blend: Some(BlendState::PREMULTIPLIED_ALPHA),
             mask: ColorMask::ALL,
         });
         let pipeline = GraphicsPipeline::new(
@@ -892,11 +907,7 @@ impl Graphics {
                     rate: VertexInputRate::Vertex,
                 }],
                 geometry: None,
-                input_assembler: InputAssemblerDesc {
-                    primitive: Primitive::TriangleList,
-                    restart_index: None,
-                    with_adjacency: false,
-                },
+                input_assembler: TRI_LIST_INPUT_ASSEMBLER,
                 tessellation: None,
                 vertex: ShaderModule::entry_point(&vertex),
             },
@@ -971,11 +982,7 @@ impl Graphics {
                 attributes: &[],
                 buffers: &[],
                 geometry: None,
-                input_assembler: InputAssemblerDesc {
-                    primitive: Primitive::TriangleList,
-                    restart_index: None,
-                    with_adjacency: false,
-                },
+                input_assembler: TRI_LIST_INPUT_ASSEMBLER,
                 tessellation: None,
                 vertex: ShaderModule::entry_point(&vertex),
             },
@@ -1050,11 +1057,7 @@ impl Graphics {
                 attributes: &[],
                 buffers: &[],
                 geometry: None,
-                input_assembler: InputAssemblerDesc {
-                    primitive: Primitive::TriangleList,
-                    restart_index: None,
-                    with_adjacency: false,
-                },
+                input_assembler: TRI_LIST_INPUT_ASSEMBLER,
                 tessellation: None,
                 vertex: ShaderModule::entry_point(&vertex),
             },
@@ -1129,11 +1132,7 @@ impl Graphics {
                 attributes: &[],
                 buffers: &[],
                 geometry: None,
-                input_assembler: InputAssemblerDesc {
-                    primitive: Primitive::TriangleList,
-                    restart_index: None,
-                    with_adjacency: false,
-                },
+                input_assembler: TRI_LIST_INPUT_ASSEMBLER,
                 tessellation: None,
                 vertex: ShaderModule::entry_point(&vertex),
             },
@@ -1207,11 +1206,7 @@ impl Graphics {
                 attributes: &[],
                 buffers: &[],
                 geometry: None,
-                input_assembler: InputAssemblerDesc {
-                    primitive: Primitive::TriangleList,
-                    restart_index: None,
-                    with_adjacency: false,
-                },
+                input_assembler: TRI_LIST_INPUT_ASSEMBLER,
                 tessellation: None,
                 vertex: ShaderModule::entry_point(&vertex),
             },

@@ -36,9 +36,7 @@ use {
 // the existing cache and then have to copy all the old data over.
 const CACHE_CAPACITY_FACTOR: f32 = 2.0;
 
-// TODO: This code is ready to accept the addition of index buffers, once things stabilize it would be fantastic to add this
-// TODO: Maybe store 'LRU' as a number, 4 or so? Right now it's a bool so if you don't use something each frame it gets removed.
-// TODO: Also stop compaction after a certain number of cycles or % complete, maybe only 10%.
+// TODO: Stop compaction after a certain number of cycles or % complete, maybe only 10%.
 
 /// Used to keep track of data allocated during compilation and also the previous value which we will
 /// copy over during the drawing operation.
@@ -1225,6 +1223,7 @@ impl<K> DirtyLruData<K> {
             buf.reset();
         }
 
+        // TODO: This should keep a 'frame' value per item and just increment a single 'age' value, O(1) not O(N)!
         for item in self.lru.iter_mut() {
             item.recently_used = item.recently_used.saturating_sub(1);
         }

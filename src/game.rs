@@ -134,7 +134,7 @@ impl Game {
         let (mut target, ops) = frame.resolve();
 
         // We work-around this condition, below, but it is not expected that a well-formed game would ever do this
-        assert!(!ops.is_empty());
+        debug_assert!(!ops.is_empty());
 
         // If the render had no operations performed on it then it is uninitialized and we don't need to do anything with it
         if !ops.is_empty() {

@@ -200,6 +200,8 @@ impl DrawOp {
                 geom_buf: color_metal.format(),
                 light: light.format(),
                 output: output.format(),
+                pre_fx: self.skydome.is_some(),
+                post_fx: false,
             };
             let render_pass_mode = if self.skydome.is_some() {
                 RenderPassMode::Draw(draw_mode)
@@ -212,7 +214,7 @@ impl DrawOp {
             self.frame_buf = Some((
                 Framebuffer2d::new(
                     #[cfg(feature = "debug-names")]
-                    &name,
+                    &self.name,
                     &self.driver,
                     render_pass,
                     vec![

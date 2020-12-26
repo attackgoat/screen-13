@@ -181,6 +181,8 @@ struct DrawRenderPassMode {
     geom_buf: Format,
     light: Format,
     output: Format,
+    pre_fx: bool,
+    post_fx: bool,
 }
 
 /// Allows you to load resources and begin rendering operations.

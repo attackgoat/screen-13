@@ -232,7 +232,7 @@ where
         }
     }
 
-    pub fn get_material_id<K: AsRef<str>>(&self, key: K) -> Option<MaterialId> {
+    pub fn material_id<K: AsRef<str>>(&self, key: K) -> Option<MaterialId> {
         if let Some(Id::Material(id)) = self.buf.id(key) {
             Some(id)
         } else {
@@ -241,7 +241,7 @@ where
     }
 
     pub fn material<K: AsRef<str>>(&self, key: K) -> Material {
-        let id = self.get_material_id(key).unwrap();
+        let id = self.material_id(key).unwrap();
         self.material_with_id(id)
     }
 
