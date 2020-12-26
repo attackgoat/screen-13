@@ -6,7 +6,7 @@ This guide provides patterns and samples that you can use to gain a further unde
 
 This guide does not cover the `Screen` trait, which is an extension on these concepts to enable rendering to an operating system window. See the example code for more information on those topics.
 
-As you read each of these examples, include the code from the previous examples as they all flow together.
+_NOTE_: The following examples present code which should be read together as one complete program. For example, the first example creates a `Gpu` instance referred to by the `gpu` binding. In later examples bindings with the same name should be created in a similar way to the previous examples.
 
 ## Graphics Processing Unit
 
@@ -22,7 +22,7 @@ let gpu = Gpu::offscreen();
 
 ## Rendering Still Images
 
-Still image rendering is accomplished using the canvas-like `Render` type which allows you to compose a graph of rendering commands. The only required parameter is the image dimensions in pixels.
+Still image rendering is accomplished using the canvas-like Render type, which allows you to compose a graph of commands. The only required parameter is the image dimensions in pixels.
 
 ```rust
 let dims = (128, 128);
@@ -31,9 +31,9 @@ let mut render = gpu.render(dims);
 
 ### Caching
 
-Issuing commands against a `Render` causes resources such as descriptor sets, graphics pipelines, and textures to be created. Although the details of these operations are hidden from Screen 13 users, storage of such resources can be important. By default, Screen 13 maintains all caching automatically.
+Issuing commands against a `Render` causes resources such as descriptor sets, graphics pipelines and textures to be created. Although the details of these operations are hidden from Screen 13 users, storage of such resources can be important. By default, Screen 13 maintains all caching automatically.
 
-In order to control the caching of resources a `Cache` type is available and can be used as a parameter when constructing `Render` instances. Providing a `Cache` during `Render` construction causes all sub-resources to be members of the given cache instance. This is most useful if you have multiple rendering paths happening at the same time, such as multiple player camera viewpoints.
+In order to control the caching of resources a `Cache` type is available and can be used as a parameter when constructing `Render` instances. Providing a `Cache` during `Render` construction causes all sub-resources to be members of the given cache instance. This is most useful if you have multiple rendering paths happening at the same time, such as two player camera viewpoints.
 
 ```rust
 let cache = Default::default();
@@ -70,7 +70,7 @@ let cornflower_blue: Color = (100, 149, 237).into();
 render.clear().with_value(cornflower_blue).record();
 ```
 
-The `render` binding, above, now contains a 128x128 blue image, but we can't see it. The next step helps with this.
+The above `render` binding now contains a 128x128 blue image, but we can't see it. The next step helps with this.
 
 #### Encoding images to disk
 
@@ -80,7 +80,7 @@ In order to save images as JPEGs an encode command is provided:
 render.encode().with_quality(0.92).record("screenshot.jpg");
 ```
 
-_NOTE_: When `render` is dropped the graphics hardware will be flushed in order to complete the disk write. In high-performance situations individual renders should be retained for enough time to allow the graphics hardware to finish. See the example code for details on writing a `Screen` implementation which handles this automatically.
+_NOTE_: When `render` is dropped the graphics hardware will be flushed to complete any disk writes. In high-performance situations individual renders should be retained for enough time to allow the graphics hardware to finish. See the example code for details on writing a `Screen` implementation which handles this automatically.
 
 #### Gradients [IN PROGRESS]
 
@@ -99,7 +99,7 @@ _NOTE_: Currently does not work properly
 
 #### Render-to-Texture
 
-`Render` instances are of course backed by native graphics API textures. For some operations you may have to "resolve" a render into its native texture, for example so that texture may be used for image `Write` operations (more on that later).
+`Render` instances are of course backed by native graphics API textures. In some cases you have to "resolve" a render into its native texture, for example so that it may be used for image `Write` operations (more on that later).
 
 _NOTE_: Resolving a render does not cause any specific pipeline stalling or other such "wait" operations. It merely re-orders the internal command list so that the underlying native graphics API knows to complete the operations on the render before the operations that happen after this resolve.
 
@@ -178,7 +178,7 @@ For some `cat.jpg` file you might have this asset bitmap `.toml` file, `cat.toml
 src = 'cat.jpeg'
 ```
 
-Additionally you have added this file to the main project `.toml` file, `example.toml`. Following the asset baking process you should now have an asset `.pak` file, `example.pak`. In code, the image would be loaded like so:
+Additionally, you must have added this file to the main project `.toml` file, `example.toml`. Following the asset baking process you should now have an asset `.pak` file, `example.pak`. In code, the image would be loaded like so:
 
 ```rust
 let cat = gpu.load_bitmap(&mut pak, "cat");
@@ -207,7 +207,7 @@ render.write().record(&mut [
 ]);
 ```
 
-Additional command builder options include image tiling, sub-image, image strectching, and more. Of note are the numerous blending, matting, and masking write modes available using `WriteMode`.
+Additional command builder options include image tiling/atlasing, image strectching, and more. Of note are the numerous blending, matting, and masking write modes available using `WriteMode`.
 
 ### 3D Models
 
@@ -232,7 +232,7 @@ rough_src = 'cat_rough.png'
 
 _NOTE_: The `cat_normal.toml` file is another bitmap asset file, which is not shown. The `metal_src` and `rough_src` keys point to grayscale images which are the metalness/roughness material parameters.
 
-Additionally you have added this file to the main project `.toml` file, `example.toml`. Following the asset baking process you should now have an asset `.pak` file, `example.pak`. In code, the image would be loaded like so:
+Additionally, you must have added this file to the main project `.toml` file, `example.toml`. Following the asset baking process you should now have an asset `.pak` file, `example.pak`. In code, the image would be loaded like so:
 
 ```rust
 let teapot = gpu.load_model(&mut pak, "teapot");
@@ -240,7 +240,7 @@ let teapot = gpu.load_model(&mut pak, "teapot");
 
 #### Shared references
 
-Bitmaps, as well as models, must be wrapped in `Rc` containers so they can be shared amongst the required graphics pipeline stages. For this purpose we provide the `BitmapRef` and `ModelRef` type re-definitions. Using them is simple and allows bitmap and model cloneability:
+Bitmaps, as well as models, must be wrapped in `Rc` containers so they can be shared among the required graphics pipeline stages. For this purpose we provide the `BitmapRef` and `ModelRef` type re-definitions. Using them is simple and allows bitmap and model cloneability:
 
 ```rust
 use screen_13::gpu::BitmapRef;
@@ -278,7 +278,7 @@ render.draw().record(&camera, &mut [
 ]);
 ```
 
-Numberous additional command builder options include:
+Numerous additional command builder options include:
 
 - Animation pose
 - Lighting (point, rectangular, spot, and sun)
