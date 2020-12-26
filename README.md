@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/screen-13.svg)](https://crates.io/crates/screen-13)
 [![Docs.rs](https://docs.rs/screen-13/badge.svg)](https://docs.rs/screen-13)
-[![LoC](https://tokei.rs/b1/github/attackgoat/screen-13)](https://github.com/attackgoat/screen-13)
+[![LoC](https://tokei.rs/b1/github/attackgoat/screen-13?category=code)](https://github.com/attackgoat/screen-13)
 
 Screen 13 is an easy-to-use 3D game engine in the spirit of QBasic.
 
