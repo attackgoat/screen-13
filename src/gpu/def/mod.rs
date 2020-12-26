@@ -4,7 +4,7 @@ pub mod render_passes;
 
 pub mod desc_set_layouts {
     use {
-        super::{READ_ONLY_BUF, READ_WRITE_BUF, READ_WRITE_IMG},
+        super::{READ_ONLY_BUF, READ_WRITE_BUF, READ_WRITE_STORAGE_IMG},
         crate::gpu::driver::descriptor_set_layout_binding,
         gfx_hal::pso::{DescriptorSetLayoutBinding, ShaderStageFlags},
     };
@@ -40,7 +40,7 @@ pub mod desc_set_layouts {
         descriptor_set_layout_binding(
             1, // image
             ShaderStageFlags::COMPUTE,
-            READ_WRITE_IMG,
+            READ_WRITE_STORAGE_IMG,
         ),
     ];
 }
@@ -48,10 +48,18 @@ pub mod desc_set_layouts {
 pub mod push_consts {
     use {gfx_hal::pso::ShaderStageFlags, std::ops::Range};
 
-    type PushConst = (ShaderStageFlags, Range<u32>);
+    pub type ShaderRange = (ShaderStageFlags, Range<u32>);
 
-    pub const CALC_VERTEX_ATTRS: [PushConst; 1] = [(ShaderStageFlags::COMPUTE, 0..8)];
-    pub const DECODE_RGB_RGBA: [PushConst; 1] = [(ShaderStageFlags::COMPUTE, 0..4)];
+    pub const CALC_VERTEX_ATTRS: [ShaderRange; 1] = [(ShaderStageFlags::COMPUTE, 0..8)];
+    pub const DECODE_RGB_RGBA: [ShaderRange; 1] = [(ShaderStageFlags::COMPUTE, 0..4)];
+    pub const FONT: [ShaderRange; 2] = [
+        (ShaderStageFlags::VERTEX, 0..64),
+        (ShaderStageFlags::FRAGMENT, 64..80),
+    ];
+    pub const FONT_OUTLINE: [ShaderRange; 2] = [
+        (ShaderStageFlags::VERTEX, 0..64),
+        (ShaderStageFlags::FRAGMENT, 64..96),
+    ];
 }
 
 pub use self::{compute::Compute, graphics::Graphics};
@@ -77,8 +85,11 @@ const READ_WRITE_BUF: DescriptorType = DescriptorType::Buffer {
     },
     ty: BufferDescriptorType::Storage { read_only: false },
 };
-const READ_WRITE_IMG: DescriptorType = DescriptorType::Image {
+const READ_WRITE_STORAGE_IMG: DescriptorType = DescriptorType::Image {
     ty: ImageDescriptorType::Storage { read_only: false },
+};
+const READ_WRITE_SAMPLED_IMG: DescriptorType = DescriptorType::Image {
+    ty: ImageDescriptorType::Sampled { with_sampler: true },
 };
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]

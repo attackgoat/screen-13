@@ -1,5 +1,5 @@
 use {
-    super::{READ_ONLY_BUF, READ_WRITE_BUF, READ_WRITE_IMG},
+    super::{READ_ONLY_BUF, READ_WRITE_BUF, READ_WRITE_STORAGE_IMG},
     crate::gpu::{
         driver::{
             descriptor_range_desc, ComputePipeline, DescriptorPool, DescriptorSetLayout, Driver,
@@ -185,7 +185,7 @@ impl Compute {
             &spirv::compute::DECODE_RGB_RGBA_COMP,
             &[
                 descriptor_range_desc(max_desc_sets, READ_ONLY_BUF),
-                descriptor_range_desc(max_desc_sets, READ_WRITE_IMG),
+                descriptor_range_desc(max_desc_sets, READ_WRITE_STORAGE_IMG),
             ],
             empty(),
         )

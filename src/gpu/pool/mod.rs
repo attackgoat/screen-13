@@ -347,7 +347,7 @@ impl Pool {
             GraphicsMode::DrawRectLight => Graphics::draw_rect_light,
             GraphicsMode::DrawSpotlight => Graphics::draw_spotlight,
             GraphicsMode::DrawSunlight => Graphics::draw_sunlight,
-            GraphicsMode::Font => Graphics::font,
+            GraphicsMode::Font => Graphics::font_normal,
             GraphicsMode::FontOutline => Graphics::font_outline,
             GraphicsMode::Gradient => Graphics::gradient,
             GraphicsMode::GradientTransparency => Graphics::gradient_transparency,

@@ -1,6 +1,7 @@
 // TODO: This file is way too repetitive with similar code blocks all over the place. It could use some lovin'.
 
 use {
+    super::{push_consts, push_consts::ShaderRange, READ_WRITE_SAMPLED_IMG},
     crate::{
         color::TRANSPARENT_BLACK,
         gpu::{
@@ -726,64 +727,32 @@ impl Graphics {
         todo!();
     }
 
-    // unsafe fn font_graphics<B>(
-    //     #[cfg(feature = "debug-names")] name: &str,
-    //     driver: &Driver,
-    //     vertex_spirv: &[u32],
-    //     fragment_spirv: &[u32],
-    //     bindings: B,
-    // ) -> Self where
-    // B: IntoIterator,
-    // B::Item: Borrow<DescriptorSetLayoutBinding>, {
-    //     let vertex = ShaderModule::new(driver, vertex_spirv);
-    //     let fragment = ShaderModule::new(driver, fragment_spirv);
-    //     let set_layout = DescriptorSetLayout::new(
-    //         #[cfg(feature = "debug-names")]
-    //         name,
-    //         driver,
-    //         bindings,
-    //     );
-    //     let layout = PipelineLayout::new(
-    //         #[cfg(feature = "debug-names")]
-    //         name,
-    //         driver,
-    //         once(set_layout.as_ref()),
-    //         &[
-    //             (ShaderStageFlags::VERTEX, 0..64),
-    //             (ShaderStageFlags::FRAGMENT, 64..80),
-    //         ],
-    //     );
-    // }
-
-    pub unsafe fn font(
+    unsafe fn font(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        fragment_spirv: &[u32],
+        push_consts: &[ShaderRange],
+        max_desc_sets: usize,
     ) -> Self {
         let vertex = ShaderModule::new(driver, &spirv::FONT_VERT);
-        let fragment = ShaderModule::new(driver, &spirv::FONT_FRAG);
+        let fragment = ShaderModule::new(driver, fragment_spirv);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
             driver,
             once(descriptor_set_layout_binding(
-                0,
+                0, // page
                 ShaderStageFlags::FRAGMENT,
-                DescriptorType::Image {
-                    ty: ImageDescriptorType::Sampled { with_sampler: true },
-                },
+                READ_WRITE_SAMPLED_IMG,
             )),
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            once(&*set_layout),
-            &[
-                (ShaderStageFlags::VERTEX, 0..64),
-                (ShaderStageFlags::FRAGMENT, 64..80),
-            ],
+            once(set_layout.as_ref()),
+            push_consts,
         );
         let mut desc = GraphicsPipelineDesc::new(
             PrimitiveAssemblerDesc::Vertex {
@@ -834,14 +803,9 @@ impl Graphics {
         let mut desc_pool = DescriptorPool::new(
             driver,
             max_desc_sets,
-            once(descriptor_range_desc(
-                1,
-                DescriptorType::Image {
-                    ty: ImageDescriptorType::Sampled { with_sampler: true },
-                },
-            )),
+            once(descriptor_range_desc(1, READ_WRITE_SAMPLED_IMG)),
         );
-        let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
+        let desc_sets = vec![desc_pool.allocate_set(set_layout.as_ref()).unwrap()];
 
         Self {
             desc_pool: Some(desc_pool),
@@ -854,103 +818,38 @@ impl Graphics {
         }
     }
 
+    pub unsafe fn font_normal(
+        #[cfg(feature = "debug-names")] name: &str,
+        driver: &Driver,
+        max_desc_sets: usize,
+        subpass: Subpass<'_, _Backend>,
+    ) -> Self {
+        Self::font(
+            #[cfg(feature = "debug-names")]
+            name,
+            driver,
+            subpass,
+            &spirv::FONT_FRAG,
+            &push_consts::FONT,
+            max_desc_sets,
+        )
+    }
+
     pub unsafe fn font_outline(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
     ) -> Self {
-        let vertex = ShaderModule::new(driver, &spirv::FONT_VERT);
-        let fragment = ShaderModule::new(driver, &spirv::FONT_OUTLINE_FRAG);
-        let set_layout = DescriptorSetLayout::new(
+        Self::font(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            once(descriptor_set_layout_binding(
-                0,
-                ShaderStageFlags::FRAGMENT,
-                DescriptorType::Image {
-                    ty: ImageDescriptorType::Sampled { with_sampler: true },
-                },
-            )),
-        );
-        let layout = PipelineLayout::new(
-            #[cfg(feature = "debug-names")]
-            name,
-            driver,
-            once(&*set_layout),
-            &[
-                (ShaderStageFlags::VERTEX, 0..64),
-                (ShaderStageFlags::FRAGMENT, 64..96),
-            ],
-        );
-        let mut desc = GraphicsPipelineDesc::new(
-            PrimitiveAssemblerDesc::Vertex {
-                attributes: &[
-                    AttributeDesc {
-                        binding: 0,
-                        location: 0,
-                        element: Element {
-                            format: Format::Rg32Sfloat,
-                            offset: 0,
-                        },
-                    },
-                    AttributeDesc {
-                        binding: 0,
-                        location: 1,
-                        element: Element {
-                            format: Format::Rg32Sfloat,
-                            offset: 8,
-                        },
-                    },
-                ],
-                buffers: &[VertexBufferDesc {
-                    binding: 0,
-                    stride: 16,
-                    rate: VertexInputRate::Vertex,
-                }],
-                geometry: None,
-                input_assembler: TRI_LIST_INPUT_ASSEMBLER,
-                tessellation: None,
-                vertex: ShaderModule::entry_point(&vertex),
-            },
-            FILL_RASTERIZER,
-            Some(ShaderModule::entry_point(&fragment)),
-            &layout,
             subpass,
-        );
-        desc.blender.logic_op = None;
-        desc.blender.targets.push(ColorBlendDesc {
-            blend: Some(BlendState::PREMULTIPLIED_ALPHA),
-            mask: ColorMask::ALL,
-        });
-        let pipeline = GraphicsPipeline::new(
-            #[cfg(feature = "debug-names")]
-            name,
-            driver,
-            &desc,
-        );
-        let mut desc_pool = DescriptorPool::new(
-            driver,
+            &spirv::FONT_OUTLINE_FRAG,
+            &push_consts::FONT_OUTLINE,
             max_desc_sets,
-            once(descriptor_range_desc(
-                1,
-                DescriptorType::Image {
-                    ty: ImageDescriptorType::Sampled { with_sampler: true },
-                },
-            )),
-        );
-        let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
-
-        Self {
-            desc_pool: Some(desc_pool),
-            desc_sets,
-            layout,
-            max_desc_sets,
-            pipeline,
-            set_layout: Some(set_layout),
-            samplers: vec![sampler(driver, Filter::Nearest)],
-        }
+        )
     }
 
     pub unsafe fn gradient(
