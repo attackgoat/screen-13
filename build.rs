@@ -252,8 +252,9 @@ fn compile_shaders() {
     compile_glsl("defer/mesh.vert");
     compile_glsl("defer/mesh.frag");
     compile_glsl("defer/point_light.frag");
-    // compile_glsl("defer/spotlight.frag");
-    // compile_glsl("defer/sunlight.frag");
+    compile_glsl("defer/rect_light.frag");
+    compile_glsl("defer/spotlight.frag");
+    compile_glsl("defer/sunlight.frag");
 
     // Blending
     compile_glsl("blend/add.frag");
@@ -307,9 +308,9 @@ fn compile_shaders() {
 
     // Matting
     compile_glsl("matte/alpha.frag");
-    compile_glsl("matte/alpha_inverted.frag");
+    compile_glsl("matte/alpha_inv.frag");
     compile_glsl("matte/luma.frag");
-    compile_glsl("matte/luma_inverted.frag");
+    compile_glsl("matte/luma_inv.frag");
 
     // Skinning
     // compile_glsl("skin/anim.vert");
@@ -321,22 +322,24 @@ fn compile_shaders() {
     compile_glsl("opacity.frag");
 
     // General purpose
-    compile_glsl("font.vert");
-    compile_glsl("gradient.vert");
-    compile_glsl("quad_transform.vert");
-    compile_glsl("quad.vert");
-    compile_glsl("shadow.vert");
-    compile_glsl("vertex_transform.vert");
-    compile_glsl("vertex.vert");
     compile_glsl("font_outline.frag");
     compile_glsl("font.frag");
+    compile_glsl("font.vert");
     compile_glsl("gradient.frag");
+    compile_glsl("gradient.vert");
     compile_glsl("hdr_tonemap.frag");
     compile_glsl("post_dof.frag");
     compile_glsl("post_vignette.frag");
+    compile_glsl("quad_transform.vert");
+    compile_glsl("quad.vert");
+    compile_glsl("skydome.frag");
+    compile_glsl("skydome.vert");
     compile_glsl("shadow.frag");
+    compile_glsl("shadow.vert");
     compile_glsl("ssao.frag");
     compile_glsl("texture.frag");
+    compile_glsl("vertex_transform.vert");
+    compile_glsl("vertex.vert");
 
     write_spriv_mod();
 }

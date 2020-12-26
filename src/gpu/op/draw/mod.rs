@@ -101,6 +101,7 @@ pub struct DrawOp {
     graphics_mesh_anim: Option<Lease<Graphics>>,
     graphics_point_light: Option<Lease<Graphics>>,
     graphics_rect_light: Option<Lease<Graphics>>,
+    graphics_skydome: Option<Lease<Graphics>>,
     graphics_spotlight: Option<Lease<Graphics>>,
     graphics_sunlight: Option<Lease<Graphics>>,
 
@@ -161,6 +162,7 @@ impl DrawOp {
             graphics_mesh_anim: None,
             graphics_point_light: None,
             graphics_rect_light: None,
+            graphics_skydome: None,
             graphics_spotlight: None,
             graphics_sunlight: None,
 
@@ -206,11 +208,7 @@ impl DrawOp {
                 pre_fx: self.skydome.is_some(),
                 post_fx: false,
             };
-            let render_pass_mode = if self.skydome.is_some() {
-                RenderPassMode::Draw(draw_mode)
-            } else {
-                RenderPassMode::Draw(draw_mode)
-            };
+            let render_pass_mode = RenderPassMode::Draw(draw_mode);
             let render_pass = pool.render_pass(&self.driver, render_pass_mode);
 
             // Setup the framebuffer
@@ -243,6 +241,17 @@ impl DrawOp {
             ));
             render_pass_mode
         };
+
+        if self.skydome.is_some() {
+            self.graphics_skydome = Some(pool.graphics(
+                #[cfg(feature = "debug-names")]
+                &self.name,
+                &self.driver,
+                GraphicsMode::Skydome,
+                render_pass_mode,
+                0,
+            ));
+        }
 
         // Use a compiler to figure out rendering instructions without allocating
         // memory per rendering command. The compiler caches code between frames.

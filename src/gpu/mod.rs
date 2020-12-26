@@ -106,12 +106,12 @@ fn create_surface(window: &Window) -> (Adapter<_Backend>, Surface) {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum BlendMode {
     Add,
-    Alpha,
+    AlphaAdd,
     ColorBurn,
     ColorDodge,
     Color,
     Darken,
-    DarkenColor,
+    DarkerColor,
     Difference,
     Divide,
     Exclusion,
@@ -509,5 +509,35 @@ impl Gpu {
 impl Drop for Gpu {
     fn drop(&mut self) {
         self.wait_idle();
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum MaskMode {
+    Add,
+    Darken,
+    Difference,
+    Intersect,
+    Lighten,
+    Subtract,
+}
+
+impl Default for MaskMode {
+    fn default() -> Self {
+        Self::Subtract
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum MatteMode {
+    Alpha,
+    AlphaInverted,
+    Luminance,
+    LuminanceInverted,
+}
+
+impl Default for MatteMode {
+    fn default() -> Self {
+        Self::Alpha
     }
 }
