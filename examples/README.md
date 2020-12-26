@@ -37,7 +37,6 @@ In order to control the caching of resources a `Cache` type is available and can
 
 ```rust
 let cache = Default::default();
-let dims = (128, 128);
 let mut render = gpu.render_with_cache(dims, &cache);
 ```
 
@@ -98,9 +97,21 @@ render.gradient(path).record();
 
 _NOTE_: Currently does not work properly
 
+#### Render-to-Texture
+
+`Render` instances are of course backed by native graphics API textures. For some operations you may have to "resolve" a render into its native texture, for example so that texture may be used for image `Write` operations (more on that later).
+
+_NOTE_: Resolving a render does not cause any specific pipeline stalling or other such "wait" operations. It merely re-orders the internal command list so that the underlying native graphics API knows to complete the operations on the render before the operations that happen after this resolve.
+
+Here's how it works:
+
+```rust
+let tex = gpu.resolve(render);
+```
+
 #### Copying between renders
 
-More advanced image might require copying the visual contents of one render onto another; perhaps to create a feedback buffer of previous images.
+More advanced image rendering might require copying the visual contents of one render onto another; perhaps to create a feedback buffer of previous images.
 
 Basic usage:
 
@@ -111,7 +122,9 @@ let bar = gpu.render((64, 128));
 foo.clear().with_value(cornflower_blue).record();
 bar.clear().record();
 
-foo.copy(&bar).record();
+let bar_tex = gpu.resolve(bar);
+
+foo.copy(&bar_tex).record();
 ```
 
 `foo` now contains two 64x64 squares, the left is blue and the right is black.
@@ -180,6 +193,15 @@ use screen_13::gpu::Write;
 
 render.write().record(&mut [
     Write::position(&cat, (5.0, 5.0))
+]);
+```
+
+_NOTE_: To write a `Render` to another render you must first resolve the source render, as we did with `bar` earlier:
+
+```rust
+render.write().record(&mut [
+    Write::position(&cat, (5.0, 5.0))
+    Write::position(&bar_tex, (2.0, 4.0))
 ]);
 ```
 
