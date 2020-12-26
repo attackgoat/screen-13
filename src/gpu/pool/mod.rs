@@ -1,17 +1,18 @@
+mod layouts;
 mod lease;
 
 pub use self::lease::Lease;
 
 use {
+    self::layouts::Layouts,
     super::{
-        driver::{
-            CommandPool, DescriptorPool, DescriptorSetLayout, Driver, Fence, Image2d, Memory,
-            PipelineLayout, RenderPass,
+        def::{
+            render_passes::{color, draw, draw_post, draw_pre, draw_pre_post},
+            Compute, ComputeMode, Graphics, GraphicsMode, RenderPassMode,
         },
+        driver::{CommandPool, DescriptorPool, Driver, Fence, Image2d, Memory, RenderPass},
         op::Compiler,
-        render_passes::{color, draw, draw_post, draw_pre, draw_pre_post},
-        BlendMode, Compute, ComputeMode, Data, Graphics, GraphicsMode, RenderPassMode, Texture,
-        TextureRef,
+        BlendMode, Data, Texture, TextureRef,
     },
     crate::{math::Extent, pak::IndexType},
     gfx_hal::{
@@ -19,16 +20,13 @@ use {
         format::Format,
         image::{Layout, Usage as ImageUsage},
         pool::CommandPool as _,
-        pso::{DescriptorRangeDesc, DescriptorSetLayoutBinding, DescriptorType, ShaderStageFlags},
+        pso::{DescriptorRangeDesc, DescriptorType},
         queue::QueueFamilyId,
         MemoryTypeId,
     },
     std::{
-        borrow::Borrow,
         cell::RefCell,
         collections::{HashMap, VecDeque},
-        iter::once,
-        ops::Range,
         rc::Rc,
     },
 };
@@ -72,79 +70,6 @@ struct GraphicsKey {
     graphics_mode: GraphicsMode,
     render_pass_mode: RenderPassMode,
     subpass_idx: u8,
-}
-
-#[derive(Default)]
-pub(super) struct Layouts {
-    compute_calc_vertex_attrs: Option<(DescriptorSetLayout, PipelineLayout)>,
-    compute_decode_rgb_rgba: Option<(DescriptorSetLayout, PipelineLayout)>,
-}
-
-impl Layouts {
-    fn lazy_init<I, P>(
-        #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
-        layouts: &mut Option<(DescriptorSetLayout, PipelineLayout)>,
-        bindings: I,
-        push_consts: P,
-    ) where
-        I: IntoIterator,
-        I::Item: Borrow<DescriptorSetLayoutBinding>,
-        P: IntoIterator,
-        P::Item: Borrow<(ShaderStageFlags, Range<u32>)>,
-        P::IntoIter: ExactSizeIterator,
-    {
-        if layouts.is_none() {
-            let desc_set_layout = DescriptorSetLayout::new(
-                #[cfg(feature = "debug-names")]
-                name,
-                driver,
-                bindings,
-            );
-            let pipeline_layout = PipelineLayout::new(
-                #[cfg(feature = "debug-names")]
-                name,
-                driver,
-                once(desc_set_layout.as_ref()),
-                push_consts,
-            );
-            *layouts = Some((desc_set_layout, pipeline_layout));
-        }
-    }
-
-    pub(crate) fn compute_calc_vertex_attrs(
-        &mut self,
-        #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
-    ) -> &(DescriptorSetLayout, PipelineLayout) {
-        Self::lazy_init(
-            #[cfg(feature = "debug-names")]
-            name,
-            driver,
-            &mut self.compute_calc_vertex_attrs,
-            &Compute::CALC_VERTEX_ATTRS_DESC_SET_LAYOUT,
-            &Compute::CALC_VERTEX_ATTRS_PUSH_CONSTS,
-        );
-
-        self.compute_calc_vertex_attrs.as_ref().unwrap()
-    }
-
-    pub(crate) fn compute_decode_rgb_rgba(
-        &mut self,
-        #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
-    ) -> &(DescriptorSetLayout, PipelineLayout) {
-        Self::lazy_init(
-            #[cfg(feature = "debug-names")]
-            name,
-            driver,
-            &mut self.compute_decode_rgb_rgba,
-            &Compute::DECODE_RGB_RGBA_DESC_SET_LAYOUT,
-            &Compute::DECODE_RGB_RGBA_PUSH_CONSTS,
-        );
-
-        self.compute_decode_rgb_rgba.as_ref().unwrap()
-    }
 }
 
 pub struct Pool {

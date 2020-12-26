@@ -3,11 +3,12 @@ use {
     crate::{
         color::TRANSPARENT_BLACK,
         gpu::{
+            def::{ColorRenderPassMode, Graphics, GraphicsMode, RenderPassMode},
             driver::{
                 bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
             },
             pool::{Lease, Pool},
-            BlendMode, ColorRenderPassMode, Graphics, GraphicsMode, RenderPassMode, Texture2d,
+            BlendMode, Texture2d,
         },
         math::{vec3, Area, CoordF, Mat4, RectF, Vec2},
     },

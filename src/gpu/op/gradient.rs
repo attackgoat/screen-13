@@ -3,11 +3,12 @@ use {
     crate::{
         color::AlphaColor,
         gpu::{
+            def::{ColorRenderPassMode, Graphics, GraphicsMode, RenderPassMode},
             driver::{
                 bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
             },
             pool::{Lease, Pool},
-            ColorRenderPassMode, Graphics, GraphicsMode, RenderPassMode, Texture2d,
+            Texture2d,
         },
         math::Coord,
     },

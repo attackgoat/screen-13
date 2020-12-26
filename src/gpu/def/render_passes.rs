@@ -27,7 +27,7 @@ fn const_layout(layout: Layout) -> Range<Layout> {
     layout..layout
 }
 
-pub(super) fn color(driver: &Driver, mode: ColorRenderPassMode) -> RenderPass {
+pub fn color(driver: &Driver, mode: ColorRenderPassMode) -> RenderPass {
     /// The list of attachments used by this render pass, in index order.
     enum Attachments {
         Color,
@@ -65,7 +65,7 @@ pub(super) fn color(driver: &Driver, mode: ColorRenderPassMode) -> RenderPass {
 }
 
 /// The 'core' drawing render pass
-pub(super) fn draw(driver: &Driver, mode: DrawRenderPassMode) -> RenderPass {
+pub fn draw(driver: &Driver, mode: DrawRenderPassMode) -> RenderPass {
     let color_attachment = |format, ops| Attachment {
         format: Some(format),
         samples: 1,
@@ -180,7 +180,7 @@ pub(super) fn draw(driver: &Driver, mode: DrawRenderPassMode) -> RenderPass {
 }
 
 /// Like the draw render pass except it contains a 'pre'-fx step (used to draw skydome)
-pub(super) fn draw_pre(driver: &Driver, mode: DrawRenderPassMode) -> RenderPass {
+pub fn draw_pre(driver: &Driver, mode: DrawRenderPassMode) -> RenderPass {
     let color_attachment = |format, ops| Attachment {
         format: Some(format),
         samples: 1,
@@ -223,9 +223,7 @@ pub(super) fn draw_pre(driver: &Driver, mode: DrawRenderPassMode) -> RenderPass 
 
     // Subpasses
     let fill_color_buf = SubpassDesc {
-        colors: &[
-            (Attachments::ColorMetal as _, Layout::ColorAttachmentOptimal),
-        ],
+        colors: &[(Attachments::ColorMetal as _, Layout::ColorAttachmentOptimal)],
         depth_stencil: None,
         inputs: &[],
         resolves: &[],
@@ -303,16 +301,16 @@ pub(super) fn draw_pre(driver: &Driver, mode: DrawRenderPassMode) -> RenderPass 
 }
 
 /// Like the draw render pass except it contains a 'post'-fx step
-pub(super) fn draw_post(_driver: &Driver, _mode: DrawRenderPassMode) -> RenderPass {
+pub fn draw_post(_driver: &Driver, _mode: DrawRenderPassMode) -> RenderPass {
     todo!();
 }
 
 /// Like the draw render pass except it contains a 'pre' and 'post'-fx step
-pub(super) fn draw_pre_post(_driver: &Driver, _mode: DrawRenderPassMode) -> RenderPass {
+pub fn draw_pre_post(_driver: &Driver, _mode: DrawRenderPassMode) -> RenderPass {
     todo!();
 }
 
-pub(super) fn present(driver: &Driver, fmt: Format) -> RenderPass {
+pub fn present(driver: &Driver, fmt: Format) -> RenderPass {
     let present_attachment = 0;
     let present = Attachment {
         format: Some(fmt),

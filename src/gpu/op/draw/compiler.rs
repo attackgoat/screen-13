@@ -19,8 +19,9 @@ use {
         camera::Camera,
         gpu::{
             data::{CopyRange, Mapping},
+            def::CalcVertexAttrsComputeMode,
             pool::Pool,
-            CalcVertexAttrsComputeMode, Data, Driver, Lease, ModelRef,
+            Data, Driver, Lease, ModelRef,
         },
         pak::IndexType,
     },

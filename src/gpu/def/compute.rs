@@ -1,18 +1,18 @@
 use {
-    super::spirv,
-    crate::gpu::driver::{
-        descriptor_range_desc, descriptor_set_layout_binding, ComputePipeline, DescriptorPool,
-        DescriptorSetLayout, Driver, PipelineLayout, Sampler, ShaderModule,
+    super::{READ_ONLY_BUF, READ_WRITE_BUF, READ_WRITE_IMG},
+    crate::gpu::{
+        driver::{
+            descriptor_range_desc, ComputePipeline, DescriptorPool, DescriptorSetLayout, Driver,
+            PipelineLayout, Sampler, ShaderModule,
+        },
+        spirv,
     },
     gfx_hal::{
-        pso::{
-            BufferDescriptorFormat, BufferDescriptorType, DescriptorPool as _, DescriptorRangeDesc,
-            DescriptorSetLayoutBinding, DescriptorType, ImageDescriptorType, ShaderStageFlags,
-        },
+        pso::{DescriptorPool as _, DescriptorRangeDesc},
         Backend,
     },
     gfx_impl::Backend as _Backend,
-    std::{borrow::Borrow, iter::empty, ops::Range},
+    std::{borrow::Borrow, iter::empty},
 };
 
 pub struct Compute {
@@ -25,69 +25,6 @@ pub struct Compute {
 }
 
 impl Compute {
-    pub const CALC_VERTEX_ATTRS_DESC_SET_LAYOUT: [DescriptorSetLayoutBinding; 4] = [
-        descriptor_set_layout_binding(
-            0, // idx_buf
-            ShaderStageFlags::COMPUTE,
-            DescriptorType::Buffer {
-                format: Compute::STRUCTURED_BUF,
-                ty: Compute::READ_ONLY_BUF,
-            },
-        ),
-        descriptor_set_layout_binding(
-            1, // src_buf
-            ShaderStageFlags::COMPUTE,
-            DescriptorType::Buffer {
-                format: Compute::STRUCTURED_BUF,
-                ty: Compute::READ_ONLY_BUF,
-            },
-        ),
-        descriptor_set_layout_binding(
-            2, // dst_buf
-            ShaderStageFlags::COMPUTE,
-            DescriptorType::Buffer {
-                format: Compute::STRUCTURED_BUF,
-                ty: Compute::READ_WRITE_BUF,
-            },
-        ),
-        descriptor_set_layout_binding(
-            3, // write_mask
-            ShaderStageFlags::COMPUTE,
-            DescriptorType::Buffer {
-                format: Compute::STRUCTURED_BUF,
-                ty: Compute::READ_ONLY_BUF,
-            },
-        ),
-    ];
-    pub const CALC_VERTEX_ATTRS_PUSH_CONSTS: [(ShaderStageFlags, Range<u32>); 1] =
-        [(ShaderStageFlags::COMPUTE, 0..8)];
-    pub const DECODE_RGB_RGBA_DESC_SET_LAYOUT: [DescriptorSetLayoutBinding; 2] = [
-        descriptor_set_layout_binding(
-            0, // pixel_buf
-            ShaderStageFlags::COMPUTE,
-            DescriptorType::Buffer {
-                format: Compute::STRUCTURED_BUF,
-                ty: Compute::READ_ONLY_BUF,
-            },
-        ),
-        descriptor_set_layout_binding(
-            1, // image
-            ShaderStageFlags::COMPUTE,
-            DescriptorType::Image {
-                ty: Compute::READ_WRITE_STORAGE_IMAGE,
-            },
-        ),
-    ];
-    pub const DECODE_RGB_RGBA_PUSH_CONSTS: [(ShaderStageFlags, Range<u32>); 1] =
-        [(ShaderStageFlags::COMPUTE, 0..4)];
-    const READ_ONLY_BUF: BufferDescriptorType = BufferDescriptorType::Storage { read_only: true };
-    const READ_WRITE_BUF: BufferDescriptorType = BufferDescriptorType::Storage { read_only: false };
-    const READ_WRITE_STORAGE_IMAGE: ImageDescriptorType =
-        ImageDescriptorType::Storage { read_only: false };
-    const STRUCTURED_BUF: BufferDescriptorFormat = BufferDescriptorFormat::Structured {
-        dynamic_offset: false,
-    };
-
     #[allow(clippy::too_many_arguments)]
     unsafe fn new<ID, IS>(
         #[cfg(feature = "debug-names")] name: &str,
@@ -148,20 +85,8 @@ impl Compute {
             max_desc_sets,
             spirv,
             &[
-                descriptor_range_desc(
-                    3 * max_desc_sets,
-                    DescriptorType::Buffer {
-                        format: Compute::STRUCTURED_BUF,
-                        ty: Compute::READ_ONLY_BUF,
-                    },
-                ),
-                descriptor_range_desc(
-                    max_desc_sets,
-                    DescriptorType::Buffer {
-                        format: Compute::STRUCTURED_BUF,
-                        ty: Compute::READ_WRITE_BUF,
-                    },
-                ),
+                descriptor_range_desc(3 * max_desc_sets, READ_ONLY_BUF),
+                descriptor_range_desc(max_desc_sets, READ_WRITE_BUF),
             ],
             empty(),
         )
@@ -259,21 +184,8 @@ impl Compute {
             max_desc_sets,
             &spirv::compute::DECODE_RGB_RGBA_COMP,
             &[
-                descriptor_range_desc(
-                    max_desc_sets,
-                    DescriptorType::Buffer {
-                        format: BufferDescriptorFormat::Structured {
-                            dynamic_offset: false,
-                        },
-                        ty: BufferDescriptorType::Storage { read_only: true },
-                    },
-                ),
-                descriptor_range_desc(
-                    max_desc_sets,
-                    DescriptorType::Image {
-                        ty: ImageDescriptorType::Storage { read_only: false },
-                    },
-                ),
+                descriptor_range_desc(max_desc_sets, READ_ONLY_BUF),
+                descriptor_range_desc(max_desc_sets, READ_WRITE_IMG),
             ],
             empty(),
         )

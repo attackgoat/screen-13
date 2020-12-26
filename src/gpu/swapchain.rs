@@ -1,10 +1,10 @@
 use {
     super::{
+        def::{render_passes::present, Graphics},
         driver::{
             bind_graphics_descriptor_set, CommandPool, Fence, Framebuffer2d, RenderPass, Semaphore,
         },
-        render_passes::present,
-        Device, Driver, Graphics, Surface, Texture2d,
+        Device, Driver, Surface, Texture2d,
     },
     crate::math::{vec3, CoordF, Extent, Mat4},
     gfx_hal::{

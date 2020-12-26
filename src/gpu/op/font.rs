@@ -4,12 +4,13 @@ use {
         color::{AlphaColor, TRANSPARENT_BLACK},
         gpu::{
             data::Mapping,
+            def::{ColorRenderPassMode, Graphics, GraphicsMode, RenderPassMode},
             driver::{
                 bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
             },
             op::{Bitmap, Op},
             pool::{Lease, Pool},
-            ColorRenderPassMode, Data, Graphics, GraphicsMode, RenderPassMode, Texture2d,
+            Data, Texture2d,
         },
         math::{vec3, CoordF, Extent, Mat4},
         pak::Pak,

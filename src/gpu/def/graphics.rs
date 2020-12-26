@@ -1,12 +1,15 @@
 // TODO: This file is way too repetitive with similar code blocks all over the place. It could use some lovin'.
 
 use {
-    super::spirv,
     crate::{
         color::TRANSPARENT_BLACK,
-        gpu::driver::{
-            descriptor_range_desc, descriptor_set_layout_binding, DescriptorPool,
-            DescriptorSetLayout, Driver, GraphicsPipeline, PipelineLayout, Sampler, ShaderModule,
+        gpu::{
+            driver::{
+                descriptor_range_desc, descriptor_set_layout_binding, DescriptorPool,
+                DescriptorSetLayout, Driver, GraphicsPipeline, PipelineLayout, Sampler,
+                ShaderModule,
+            },
+            spirv,
         },
     },
     gfx_hal::{
@@ -23,7 +26,7 @@ use {
         Backend,
     },
     gfx_impl::Backend as _Backend,
-    std::{borrow::Borrow,iter::{empty, once}},
+    std::iter::{empty, once},
 };
 
 const FILL_RASTERIZER: Rasterizer = Rasterizer {

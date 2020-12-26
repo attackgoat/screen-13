@@ -3,14 +3,14 @@ use {
     crate::{
         gpu::{
             align_up,
-            compute::Compute,
             data::Mapping,
+            def::{Compute, ComputeMode},
             driver::{
                 bind_compute_descriptor_set, change_channel_type, CommandPool, Device, Driver,
                 Fence,
             },
             pool::{Lease, Pool},
-            ComputeMode, Data, Texture2d,
+            Data, Texture2d,
         },
         math::Coord,
         pak::{Bitmap as PakBitmap, BitmapFormat},

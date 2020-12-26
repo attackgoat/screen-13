@@ -1,10 +1,11 @@
-mod compute;
 mod data;
+
+/// Definitions of all of the GFX-HAL layouts and pipelines this engine uses.
+mod def;
 
 /// A collection of smart-pointer types used internally to operate the GFX-HAL API.
 mod driver;
 
-mod graphics;
 mod model;
 
 /// A collection of operation implementations used internally to fulfill the Render API.
@@ -14,7 +15,6 @@ mod op;
 mod pool;
 
 mod render;
-mod render_passes;
 mod spirv {
     include!(concat!(env!("OUT_DIR"), "/spirv/mod.rs"));
 }
@@ -30,7 +30,7 @@ pub use self::{
     texture::Texture,
 };
 
-pub(crate) use self::{compute::Compute, driver::Driver, graphics::Graphics, op::Op};
+pub(crate) use self::{driver::Driver, op::Op};
 
 use {
     self::{
@@ -41,11 +41,11 @@ use {
     },
     crate::{
         math::Extent,
-        pak::{AnimationId, BitmapId, IndexType, ModelId, Pak},
+        pak::{AnimationId, BitmapId, ModelId, Pak},
         Error,
     },
     gfx_hal::{
-        adapter::Adapter, buffer::Usage, device::Device as _, format::Format, queue::QueueFamily,
+        adapter::Adapter, buffer::Usage, device::Device as _, queue::QueueFamily,
         window::Surface as _, Instance as _,
     },
     gfx_impl::{Backend as _Backend, Instance},
@@ -137,53 +137,6 @@ impl Default for BlendMode {
 /// Remark: If you drop this the game will stutter, so it is best to wait a few frames before dropping it.
 #[derive(Default)]
 pub struct Cache(PoolRef<Pool>);
-
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
-pub struct CalcVertexAttrsComputeMode {
-    pub idx_ty: IndexType,
-    pub skin: bool,
-}
-
-impl CalcVertexAttrsComputeMode {
-    pub const U16: Self = Self {
-        idx_ty: IndexType::U16,
-        skin: false,
-    };
-    pub const U16_SKIN: Self = Self {
-        idx_ty: IndexType::U16,
-        skin: true,
-    };
-    pub const U32: Self = Self {
-        idx_ty: IndexType::U32,
-        skin: false,
-    };
-    pub const U32_SKIN: Self = Self {
-        idx_ty: IndexType::U32,
-        skin: true,
-    };
-}
-
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
-struct ColorRenderPassMode {
-    fmt: Format,
-    preserve: bool,
-}
-
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
-enum ComputeMode {
-    CalcVertexAttrs(CalcVertexAttrsComputeMode),
-    DecodeRgbRgba,
-}
-
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
-struct DrawRenderPassMode {
-    depth: Format,
-    geom_buf: Format,
-    light: Format,
-    output: Format,
-    pre_fx: bool,
-    post_fx: bool,
-}
 
 /// Allows you to load resources and begin rendering operations.
 pub struct Gpu {
@@ -557,26 +510,4 @@ impl Drop for Gpu {
     fn drop(&mut self) {
         self.wait_idle();
     }
-}
-
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
-enum GraphicsMode {
-    Blend(BlendMode),
-    Font,
-    FontOutline,
-    Gradient,
-    GradientTransparency,
-    DrawLine,
-    DrawMesh,
-    DrawPointLight,
-    DrawRectLight,
-    DrawSpotlight,
-    DrawSunlight,
-    Texture,
-}
-
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
-enum RenderPassMode {
-    Color(ColorRenderPassMode),
-    Draw(DrawRenderPassMode),
 }

@@ -30,13 +30,16 @@ use {
         color::AlphaColor,
         gpu::{
             data::CopyRange,
+            def::{
+                CalcVertexAttrsComputeMode, Compute, ComputeMode, DrawRenderPassMode, Graphics,
+                GraphicsMode, RenderPassMode,
+            },
             driver::{
                 bind_compute_descriptor_set, bind_graphics_descriptor_set, CommandPool, Device,
                 Driver, Fence, Framebuffer2d,
             },
             pool::{Lease, Pool},
-            BitmapRef, CalcVertexAttrsComputeMode, Compute, ComputeMode, DrawRenderPassMode,
-            Graphics, GraphicsMode, RenderPassMode, Texture2d, TextureRef,
+            BitmapRef, Texture2d, TextureRef,
         },
         math::{Coord, Mat4, Quat, Vec2, Vec3},
     },

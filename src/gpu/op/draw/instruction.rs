@@ -1,7 +1,9 @@
 use {
     super::command::{PointLightIter, RectLightCommand, SpotlightCommand, SunlightIter},
     crate::{
-        gpu::{data::CopyRange, model::MeshIter, pool::Lease, CalcVertexAttrsComputeMode, Data},
+        gpu::{
+            data::CopyRange, def::CalcVertexAttrsComputeMode, model::MeshIter, pool::Lease, Data,
+        },
         math::Mat4,
         pak::IndexType,
     },
