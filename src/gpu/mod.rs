@@ -8,7 +8,7 @@ mod driver;
 
 mod model;
 
-/// A collection of operation implementations used internally to fulfill the Render API.
+/// A collection of operation implementations used to fulfill the Render API.
 mod op;
 
 /// A collection of resource pool types used internally to cache GFX-HAL types.

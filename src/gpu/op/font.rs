@@ -310,13 +310,14 @@ impl FontOp {
         // Finish the remaining setup tasks
         {
             // Setup the graphics pipeline
-            self.graphics.replace(pool.graphics(
+            self.graphics.replace(pool.graphics_desc_sets(
                 #[cfg(feature = "debug-names")]
                 &self.name,
                 &self.driver,
-                graphics_mode,
                 render_pass_mode,
                 SUBPASS_IDX,
+                graphics_mode,
+                1,
             ));
 
             // Setup the framebuffer

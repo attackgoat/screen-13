@@ -127,6 +127,7 @@ impl Pool {
         Lease::new(item, &self.compilers)
     }
 
+    /// Returns a lease to a compute pipeline with no descriptor sets.
     pub(super) fn compute(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
@@ -138,10 +139,11 @@ impl Pool {
             name,
             driver,
             mode,
-            1,
+            0,
         )
     }
 
+    /// Returns a lease to a compute pipeline with the specified number of descriptor sets.
     pub(super) fn compute_desc_sets(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
@@ -295,32 +297,34 @@ impl Pool {
         Lease::new(item, &self.fences)
     }
 
+    /// Returns a lease to a graphics pipeline with no descriptor sets.
     pub(super) fn graphics(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        graphics_mode: GraphicsMode,
         render_pass_mode: RenderPassMode,
         subpass_idx: u8,
+        graphics_mode: GraphicsMode,
     ) -> Lease<Graphics> {
         self.graphics_desc_sets(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            graphics_mode,
             render_pass_mode,
             subpass_idx,
-            1,
+            graphics_mode,
+            0,
         )
     }
 
+    /// Returns a lease to a graphics pipeline with the specified number of descriptor sets.
     pub(super) fn graphics_desc_sets(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        graphics_mode: GraphicsMode,
         render_pass_mode: RenderPassMode,
         subpass_idx: u8,
+        graphics_mode: GraphicsMode,
         max_desc_sets: usize,
     ) -> Lease<Graphics> {
         {
@@ -382,12 +386,14 @@ impl Pool {
             GraphicsMode::Texture => Graphics::texture,
         };
         let item = unsafe {
+            let render_pass = self.render_pass(driver, render_pass_mode);
+            let subpass = RenderPass::subpass(render_pass, subpass_idx);
             ctor(
                 #[cfg(feature = "debug-names")]
                 name,
                 driver,
                 max_desc_sets,
-                RenderPass::subpass(self.render_pass(driver, render_pass_mode), subpass_idx),
+                subpass,
             )
         };
 

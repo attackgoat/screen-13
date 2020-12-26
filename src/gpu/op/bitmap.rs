@@ -185,11 +185,12 @@ impl<'a> BitmapOp<'a> {
                 _ => unreachable!(),
             };
 
-            let compute = pool.compute(
+            let compute = pool.compute_desc_sets(
                 #[cfg(feature = "debug-names")]
                 name,
                 driver,
                 mode,
+                1,
             );
 
             Some(ComputeDispatch {

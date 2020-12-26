@@ -60,7 +60,6 @@ pub enum Instruction<'a> {
     RectLightDraw(RectLightDrawInstruction<'a>),
     SpotlightBegin,
     SpotlightDraw(SpotlightDrawInstruction<'a>),
-    SunlightBegin,
     SunlightDraw(SunlightIter<'a>),
     VertexAttrsBegin(CalcVertexAttrsComputeMode),
     VertexAttrsCalc(DataComputeInstruction),

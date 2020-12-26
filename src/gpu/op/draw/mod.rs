@@ -190,68 +190,9 @@ impl DrawOp {
     }
 
     pub fn record(&mut self, camera: &impl Camera, cmds: &mut [Command]) {
+        let skydome_subpass_idx = 0;
+        let fill_geom_buf_subpass_idx = self.fill_geom_buf_subpass_idx();
         let mut pool = self.pool.as_mut().unwrap();
-
-        let render_pass_mode = {
-            let dst = self.dst.borrow();
-            let dims = dst.dims();
-            let color_metal = self.geom_buf.color_metal.borrow();
-            let depth = self.geom_buf.depth.borrow();
-            let light = self.geom_buf.light.borrow();
-            let normal_rough = self.geom_buf.normal_rough.borrow();
-            let output = self.geom_buf.output.borrow();
-            let draw_mode = DrawRenderPassMode {
-                depth: depth.format(),
-                geom_buf: color_metal.format(),
-                light: light.format(),
-                output: output.format(),
-                pre_fx: self.skydome.is_some(),
-                post_fx: false,
-            };
-            let render_pass_mode = RenderPassMode::Draw(draw_mode);
-            let render_pass = pool.render_pass(&self.driver, render_pass_mode);
-
-            // Setup the framebuffer
-            self.frame_buf = Some((
-                Framebuffer2d::new(
-                    #[cfg(feature = "debug-names")]
-                    &self.name,
-                    &self.driver,
-                    render_pass,
-                    vec![
-                        color_metal.as_default_view().as_ref(),
-                        normal_rough.as_default_view().as_ref(),
-                        light.as_default_view().as_ref(),
-                        output.as_default_view().as_ref(),
-                        depth
-                            .as_view(
-                                ViewKind::D2,
-                                draw_mode.depth,
-                                Default::default(),
-                                SubresourceRange {
-                                    aspects: Aspects::DEPTH,
-                                    ..Default::default()
-                                },
-                            )
-                            .as_ref(),
-                    ],
-                    dims,
-                ),
-                render_pass_mode,
-            ));
-            render_pass_mode
-        };
-
-        if self.skydome.is_some() {
-            self.graphics_skydome = Some(pool.graphics(
-                #[cfg(feature = "debug-names")]
-                &self.name,
-                &self.driver,
-                GraphicsMode::Skydome,
-                render_pass_mode,
-                0,
-            ));
-        }
 
         // Use a compiler to figure out rendering instructions without allocating
         // memory per rendering command. The compiler caches code between frames.
@@ -266,6 +207,65 @@ impl DrawOp {
                 cmds,
             );
 
+            let render_pass_mode = {
+                let dst = self.dst.borrow();
+                let dims = dst.dims();
+                let color_metal = self.geom_buf.color_metal.borrow();
+                let depth = self.geom_buf.depth.borrow();
+                let light = self.geom_buf.light.borrow();
+                let normal_rough = self.geom_buf.normal_rough.borrow();
+                let output = self.geom_buf.output.borrow();
+                let draw_mode = DrawRenderPassMode {
+                    depth: depth.format(),
+                    geom_buf: color_metal.format(),
+                    light: light.format(),
+                    output: output.format(),
+                    pre_fx: self.skydome.is_some(),
+                    post_fx: false,
+                };
+                let render_pass_mode = RenderPassMode::Draw(draw_mode);
+                let render_pass = pool.render_pass(&self.driver, render_pass_mode);
+                // Setup the framebuffer
+                self.frame_buf = Some((
+                    Framebuffer2d::new(
+                        #[cfg(feature = "debug-names")]
+                        &self.name,
+                        &self.driver,
+                        render_pass,
+                        vec![
+                            color_metal.as_default_view().as_ref(),
+                            normal_rough.as_default_view().as_ref(),
+                            light.as_default_view().as_ref(),
+                            output.as_default_view().as_ref(),
+                            depth
+                                .as_view(
+                                    ViewKind::D2,
+                                    draw_mode.depth,
+                                    Default::default(),
+                                    SubresourceRange {
+                                        aspects: Aspects::DEPTH,
+                                        ..Default::default()
+                                    },
+                                )
+                                .as_ref(),
+                        ],
+                        dims,
+                    ),
+                    render_pass_mode,
+                ));
+                render_pass_mode
+            };
+            if self.skydome.is_some() {
+                self.graphics_skydome = Some(pool.graphics(
+                    #[cfg(feature = "debug-names")]
+                    &self.name,
+                    &self.driver,
+                    render_pass_mode,
+                    skydome_subpass_idx,
+                    GraphicsMode::Skydome,
+                ));
+            }
+
             {
                 // Material descriptors for PBR rendering (Color+Normal+Metal/Rough)
                 let descriptors = instrs.materials();
@@ -275,9 +275,9 @@ impl DrawOp {
                         #[cfg(feature = "debug-names")]
                         &self.name,
                         &self.driver,
-                        GraphicsMode::DrawMesh,
                         render_pass_mode,
-                        0,
+                        fill_geom_buf_subpass_idx,
+                        GraphicsMode::DrawMesh,
                         desc_sets,
                     );
                     let device = self.driver.borrow();
@@ -405,8 +405,9 @@ impl DrawOp {
                             Instruction::SpotlightDraw(instr) => {
                                 self.submit_spotlight(instr, view_proj)
                             }
-                            Instruction::SunlightBegin => self.submit_sunlight_begin(&viewport),
-                            Instruction::SunlightDraw(instr) => self.submit_sunlights(instr),
+                            Instruction::SunlightDraw(instr) => {
+                                self.submit_sunlights(instr, &viewport)
+                            }
                             Instruction::VertexAttrsBegin(instr) => {
                                 self.submit_vertex_attrs_begin(instr)
                             }
@@ -430,6 +431,30 @@ impl DrawOp {
         }
 
         self.compiler = Some(compiler);
+    }
+
+    fn fill_geom_buf_subpass_idx(&self) -> u8 {
+        if self.skydome.is_some() {
+            1
+        } else {
+            0
+        }
+    }
+
+    fn accum_light_subpass_idx(&self) -> u8 {
+        if self.skydome.is_some() {
+            2
+        } else {
+            1
+        }
+    }
+
+    fn post_fx_subpass_idx(&self) -> u8 {
+        if self.skydome.is_some() {
+            4
+        } else {
+            3
+        }
     }
 
     unsafe fn submit_begin(&mut self, viewport: &Viewport) {
@@ -570,6 +595,7 @@ impl DrawOp {
     ) {
         trace!("submit_lines");
 
+        let subpass_idx = self.post_fx_subpass_idx();
         let pool = self.pool.as_mut().unwrap();
         let (_, render_pass_mode) = self.frame_buf.as_ref().unwrap();
 
@@ -579,9 +605,9 @@ impl DrawOp {
             #[cfg(feature = "debug-names")]
             &format!("{} line", &self.name),
             &self.driver,
-            GraphicsMode::DrawLine,
             *render_pass_mode,
-            0,
+            subpass_idx,
+            GraphicsMode::DrawLine,
         ));
         let graphics = self.graphics_line.as_ref().unwrap();
 
@@ -709,19 +735,19 @@ impl DrawOp {
 
         const POINT_LIGHT_DRAW_COUNT: u32 = POINT_LIGHT.len() as u32 / 12;
 
+        let subpass_idx = self.post_fx_subpass_idx();
         let pool = self.pool.as_mut().unwrap();
         let (_, render_pass_mode) = self.frame_buf.as_ref().unwrap();
 
         // Lazy-init point light graphics
         assert!(self.graphics_point_light.is_none());
-        self.graphics_point_light = Some(pool.graphics_desc_sets(
+        self.graphics_point_light = Some(pool.graphics(
             #[cfg(feature = "debug-names")]
             &self.name,
             &self.driver,
-            GraphicsMode::DrawPointLight,
             *render_pass_mode,
-            1,
-            0,
+            subpass_idx,
+            GraphicsMode::DrawPointLight,
         ));
         let graphics = self.graphics_point_light.as_ref().unwrap();
 
@@ -765,19 +791,19 @@ impl DrawOp {
     unsafe fn submit_rect_light_begin(&mut self, viewport: &Viewport) {
         trace!("submit_rect_light_begin");
 
+        let subpass_idx = self.post_fx_subpass_idx();
         let pool = self.pool.as_mut().unwrap();
         let (_, render_pass_mode) = self.frame_buf.as_ref().unwrap();
 
         // Lazy-init rect light graphics
         assert!(self.graphics_rect_light.is_none());
-        self.graphics_rect_light = Some(pool.graphics_desc_sets(
+        self.graphics_rect_light = Some(pool.graphics(
             #[cfg(feature = "debug-names")]
             &self.name,
             &self.driver,
-            GraphicsMode::DrawRectLight,
             *render_pass_mode,
-            1,
-            0,
+            subpass_idx,
+            GraphicsMode::DrawRectLight,
         ));
         let graphics = self.graphics_rect_light.as_ref().unwrap();
 
@@ -816,19 +842,19 @@ impl DrawOp {
     unsafe fn submit_spotlight_begin(&mut self, viewport: &Viewport) {
         trace!("submit_spotlight_begin");
 
+        let subpass_idx = self.post_fx_subpass_idx();
         let pool = self.pool.as_mut().unwrap();
         let (_, render_pass_mode) = self.frame_buf.as_ref().unwrap();
 
         // Lazy-init spotlight graphics
         assert!(self.graphics_spotlight.is_none());
-        self.graphics_spotlight = Some(pool.graphics_desc_sets(
+        self.graphics_spotlight = Some(pool.graphics(
             #[cfg(feature = "debug-names")]
             &self.name,
             &self.driver,
-            GraphicsMode::DrawSpotlight,
             *render_pass_mode,
-            1,
-            0,
+            subpass_idx,
+            GraphicsMode::DrawSpotlight,
         ));
         let graphics = self.graphics_spotlight.as_ref().unwrap();
 
@@ -874,49 +900,32 @@ impl DrawOp {
             .draw(instr.offset..instr.offset + SPOTLIGHT_DRAW_COUNT, 0..1);
     }
 
-    unsafe fn submit_sunlight_begin(&mut self, viewport: &Viewport) {
-        trace!("submit_sunlight_begin");
+    unsafe fn submit_sunlights<'c, L: Iterator<Item = &'c SunlightCommand>>(
+        &mut self,
+        lights: L,
+        viewport: &Viewport,
+    ) {
+        trace!("submit_sunlights");
 
+        let subpass_idx = self.post_fx_subpass_idx();
         let pool = self.pool.as_mut().unwrap();
         let (_, render_pass_mode) = self.frame_buf.as_ref().unwrap();
 
-        // Lazy-init spotlight graphics
+        // Lazy-init sunlight graphics
         assert!(self.graphics_sunlight.is_none());
-        self.graphics_sunlight = Some(pool.graphics_desc_sets(
+        self.graphics_sunlight = Some(pool.graphics(
             #[cfg(feature = "debug-names")]
             &self.name,
             &self.driver,
-            GraphicsMode::DrawSunlight,
             *render_pass_mode,
-            1,
-            0,
+            subpass_idx,
+            GraphicsMode::DrawSunlight,
         ));
         let graphics = self.graphics_sunlight.as_ref().unwrap();
 
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
         self.cmd_buf.set_scissors(0, &[viewport.rect]);
         self.cmd_buf.set_viewports(0, &[viewport.clone()]);
-    }
-
-    unsafe fn submit_sunlights<'c, L: Iterator<Item = &'c SunlightCommand>>(&mut self, lights: L) {
-        trace!("submit_sunlights");
-
-        let pool = self.pool.as_mut().unwrap();
-        let (_, render_pass_mode) = self.frame_buf.as_ref().unwrap();
-
-        // Lazy-init point light graphics
-        assert!(self.graphics_point_light.is_none());
-        self.graphics_sunlight = Some(pool.graphics_desc_sets(
-            #[cfg(feature = "debug-names")]
-            &self.name,
-            &self.driver,
-            GraphicsMode::DrawSunlight,
-            *render_pass_mode,
-            1,
-            0,
-        ));
-        let graphics = self.graphics_spotlight.as_ref().unwrap();
-
         /*let view_inv = camera.view_inv();
 
         // TODO: Calculate this with object AABBs once those are ready (any AABB inside both the camera and shadow projections)

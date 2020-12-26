@@ -86,9 +86,9 @@ impl GradientOp {
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            GraphicsMode::Gradient,
             render_pass_mode,
             0,
+            GraphicsMode::Gradient,
         );
 
         // Setup the framebuffer

@@ -30,6 +30,8 @@ use {
     },
 };
 
+const SUBPASS_IDX: u8 = 0;
+
 #[derive(Clone, Copy, Hash, PartialEq)]
 pub enum Mode {
     Blend((u8, BlendMode)),
@@ -255,9 +257,9 @@ impl WriteOp {
                 #[cfg(feature = "debug-names")]
                 &self.name,
                 &self.driver,
-                graphics_mode,
                 render_pass_mode,
-                0,
+                SUBPASS_IDX,
+                graphics_mode,
                 self.src_textures.len(),
             ));
         }
