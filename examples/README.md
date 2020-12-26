@@ -131,7 +131,7 @@ foo.copy(&bar_tex).record();
 
 ## Loading content
 
-For anything more advanced that colors and lines we'll need to address the topic of content and how Screen 13 prefers to handle it. All assets are baked at design-time using a process [described here](../README.md#Asset%20Baking). We'll describe the additional source files below.
+For anything more advanced than colors and lines we'll need to address the topic of content and how Screen 13 prefers to handle it. All assets are baked at design-time using a process [described here](../README.md#Asset%20Baking). We'll describe the additional source files below.
 
 ### Fonts
 
@@ -195,6 +195,8 @@ render.write().record(&mut [
     Write::position(&cat, (5.0, 5.0))
 ]);
 ```
+
+_NOTE:_ For this code to function we should have already wrapped `cat` in a shared `BitmapRef` as described later.
 
 _NOTE_: To write a `Render` to another render you must first resolve the source render, as we did with `bar` earlier:
 
@@ -284,4 +286,4 @@ Numberous additional command builder options include:
 - Predicated rendering by mesh name
 - Skydome (sun, moon, and stars)
 
-_NOTE_: Currently a deferred volumetic lighting based rendering is available - an additional forward renderer is planned
+_NOTE_: Currently a deferred volumetic lighting based renderer is available - an additional forward renderer is planned
