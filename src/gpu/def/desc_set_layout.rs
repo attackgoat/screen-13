@@ -62,23 +62,50 @@ pub const DECODE_RGB_RGBA: [DescriptorSetLayoutBinding; 2] = [
 ];
 pub const DRAW_MESH: [DescriptorSetLayoutBinding; 3] = [
     descriptor_set_layout_binding(
-        0, // color
+        0, // color_sampler
         ShaderStageFlags::FRAGMENT,
         READ_ONLY_IMG,
     ),
     descriptor_set_layout_binding(
-        1, // metal_rough
+        1, // material_sampler
         ShaderStageFlags::FRAGMENT,
         READ_ONLY_IMG,
     ),
     descriptor_set_layout_binding(
-        2, // normal
+        2, // normal_sampler
         ShaderStageFlags::FRAGMENT,
         READ_ONLY_IMG,
     ),
 ];
-pub const SKYDOME: [DescriptorSetLayoutBinding; 1] = [descriptor_set_layout_binding(
-    0, // ?
-    ShaderStageFlags::FRAGMENT,
-    READ_WRITE_IMG,
-)];
+pub const SKYDOME: [DescriptorSetLayoutBinding; 6] = [
+    descriptor_set_layout_binding(
+        0, // cloud1_sampler
+        ShaderStageFlags::FRAGMENT,
+        READ_WRITE_IMG,
+    ),
+    descriptor_set_layout_binding(
+        1, // cloud2_sampler
+        ShaderStageFlags::FRAGMENT,
+        READ_WRITE_IMG,
+    ),
+    descriptor_set_layout_binding(
+        2, // moon_sampler
+        ShaderStageFlags::FRAGMENT,
+        READ_WRITE_IMG,
+    ),
+    descriptor_set_layout_binding(
+        3, // sun_sampler
+        ShaderStageFlags::FRAGMENT,
+        READ_WRITE_IMG,
+    ),
+    descriptor_set_layout_binding(
+        4, // tint1_sampler
+        ShaderStageFlags::FRAGMENT,
+        READ_WRITE_IMG,
+    ),
+    descriptor_set_layout_binding(
+        5, // tint2_sampler
+        ShaderStageFlags::FRAGMENT,
+        READ_WRITE_IMG,
+    ),
+];

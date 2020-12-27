@@ -99,10 +99,7 @@ impl GradientOp {
             dims,
             fmt,
             Layout::Undefined,
-            ImageUsage::COLOR_ATTACHMENT
-                | ImageUsage::INPUT_ATTACHMENT
-                | ImageUsage::TRANSFER_DST
-                | ImageUsage::TRANSFER_SRC,
+            ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
             1,
             1,
             1,
@@ -231,6 +228,8 @@ impl GradientOp {
     }
 
     unsafe fn submit(&mut self) {
+        trace!("submit");
+
         let mut device = self.driver.borrow_mut();
         let mut dst = self.dst.borrow_mut();
         let mut back_buf = self.back_buf.borrow_mut();

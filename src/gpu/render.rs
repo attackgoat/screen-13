@@ -47,7 +47,7 @@ impl Render {
             dims,
             fmt,
             Layout::Undefined,
-            Usage::SAMPLED | Usage::TRANSFER_DST | Usage::TRANSFER_SRC,
+            Usage::SAMPLED,
             1,
             1,
             1,

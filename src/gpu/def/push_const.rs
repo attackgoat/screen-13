@@ -1,4 +1,39 @@
-use {crate::math::{Vec3,Vec2, Mat3, Mat4}, gfx_hal::pso::ShaderStageFlags, std::ops::Range};
+use {
+    crate::math::{Mat3, Mat4, Vec2, Vec3},
+    gfx_hal::pso::ShaderStageFlags,
+    std::ops::Range,
+};
+
+/// The push constant structs created by this macro implement Default and provide a reference to the
+/// underlying c-formatted data as a u32 slice. This makes it easy to use from our point of view and
+/// it provides what GFX-HAL wants during command recording and submission. To align fields properly
+/// you may need to insert private fields of the needed size.
+///
+/// Syntax and usage:
+/// push_consts!(STRUCT_NAME: U32_LEN {
+///     [VISIBILITY_SPECIFIER] FIELD_NAME: FIELD_TYPE,
+///     ...
+/// });
+macro_rules! push_consts {
+    ($struct: ident: $sz: literal { $($vis: vis $element: ident: $ty: ty,) * }) => {
+        #[derive(Default)]
+        #[repr(C)]
+        pub struct $struct { $($vis $element: $ty),* }
+
+        // TODO: Have a ctor that only fills in the public fields?
+        // impl $struct {
+        //     pub fn new($($element: $ty),*) {
+        //     }
+        // }
+
+        impl AsRef<[u32; $sz]> for $struct {
+            #[inline]
+            fn as_ref(&self) -> &[u32; $sz] {
+                unsafe { &*(self as *const Self as *const [u32; $sz]) }
+            }
+        }
+    }
+}
 
 pub type ShaderRange = (ShaderStageFlags, Range<u32>);
 
@@ -6,25 +41,12 @@ pub type ShaderRange = (ShaderStageFlags, Range<u32>);
 
 pub const VERTEX_MAT4: [ShaderRange; 1] = [(ShaderStageFlags::VERTEX, 0..64)];
 
-#[repr(C)]
-pub struct Mat4PushConst(pub Mat4);
-
-impl AsRef<[u32; 16]> for Mat4PushConst {
-    #[inline]
-    fn as_ref(&self) -> &[u32; 16] {
-        unsafe { &*(self as *const Self as *const [u32; 16]) }
-    }
-}
-
-#[repr(C)]
-pub struct U32PushConst(pub u32);
-
-impl AsRef<[u32; 1]> for U32PushConst {
-    #[inline]
-    fn as_ref(&self) -> &[u32; 1] {
-        unsafe { &*(self as *const Self as *const [u32; 1]) }
-    }
-}
+push_consts!(Mat4PushConst: 16 {
+    pub val: Mat4,
+});
+push_consts!(U32PushConst: 1 {
+    pub val: u32,
+});
 
 // Specific-use consts and types (gives context to fields and alignment control)
 
@@ -58,37 +80,21 @@ pub const FONT_OUTLINE: [ShaderRange; 2] = [
     (ShaderStageFlags::VERTEX, 0..64),
     (ShaderStageFlags::FRAGMENT, 64..96),
 ];
-pub const SKYDOME: [ShaderRange; 0] = [];
+pub const SKYDOME: [ShaderRange; 2] = [
+    (ShaderStageFlags::VERTEX, 0..100),
+    (ShaderStageFlags::FRAGMENT, 100..124),
+];
 pub const TEXTURE: [ShaderRange; 1] = [(ShaderStageFlags::VERTEX, 0..80)];
 
-#[repr(C)]
-pub struct CalcVertexAttrsPushConsts {
+push_consts!(CalcVertexAttrsPushConsts: 2 {
     pub base_idx: u32,
     pub base_vertex: u32,
-}
-
-impl AsRef<[u32; 2]> for CalcVertexAttrsPushConsts {
-    #[inline]
-    fn as_ref(&self) -> &[u32; 2] {
-        unsafe { &*(self as *const Self as *const [u32; 2]) }
-    }
-}
-
-#[repr(C)]
-pub struct PointLightPushConsts {
+});
+push_consts!(PointLightPushConsts: 4 {
     pub intensity: Vec3,
     pub radius: f32,
-}
-
-impl AsRef<[u32; 4]> for PointLightPushConsts {
-    #[inline]
-    fn as_ref(&self) -> &[u32; 4] {
-        unsafe { &*(self as *const Self as *const [u32; 4]) }
-    }
-}
-
-#[repr(C)]
-pub struct RectLightPushConsts {
+});
+push_consts!(RectLightPushConsts: 0 {
     pub dims: Vec2,
     pub intensity: Vec3,
     pub normal: Vec3,
@@ -96,78 +102,27 @@ pub struct RectLightPushConsts {
     pub radius: f32,
     pub range: f32,
     pub view_proj: Mat4,
-}
-
-impl AsRef<[u32; 6]> for RectLightPushConsts {
-    #[inline]
-    fn as_ref(&self) -> &[u32; 6] {
-        unsafe { &*(self as *const Self as *const [u32; 6]) }
-    }
-}
-
-#[repr(C)]
-pub struct SkydomeFragmentPushConsts {
-    pub time: f32,
-    pub weather: f32,
-}
-
-impl AsRef<[u32; 2]> for SkydomeFragmentPushConsts {
-    #[inline]
-    fn as_ref(&self) -> &[u32; 2] {
-        unsafe { &*(self as *const Self as *const [u32; 2]) }
-    }
-}
-
-#[repr(C)]
-pub struct SkydomeVertexPushConsts {
-    pub star_rotation: Mat3,
+});
+push_consts!(SkydomeFragmentPushConsts: 24 {
     pub sun_normal: Vec3,
+    pub time: f32,
+    __: f32,
+    pub weather: f32,
+});
+push_consts!(SkydomeVertexPushConsts: 25 {
     pub view_proj: Mat4,
-}
-
-impl AsRef<[u32; 37]> for SkydomeVertexPushConsts {
-    #[inline]
-    fn as_ref(&self) -> &[u32; 37] {
-        unsafe { &*(self as *const Self as *const [u32; 37]) }
-    }
-}
-
-#[repr(C)]
-pub struct SunlightPushConsts {
+    pub star_rotation: Mat3,
+});
+push_consts!(SunlightPushConsts: 6 {
     pub intensity: Vec3,
     pub normal: Vec3,
-}
-
-impl AsRef<[u32; 6]> for SunlightPushConsts {
-    #[inline]
-    fn as_ref(&self) -> &[u32; 6] {
-        unsafe { &*(self as *const Self as *const [u32; 6]) }
-    }
-}
-
-#[repr(C)]
-pub struct SpotlightPushConsts {
+});
+push_consts!(SpotlightPushConsts: 6 {
     pub intensity: Vec3,
     pub normal: Vec3,
-}
-
-impl AsRef<[u32; 6]> for SpotlightPushConsts {
-    #[inline]
-    fn as_ref(&self) -> &[u32; 6] {
-        unsafe { &*(self as *const Self as *const [u32; 6]) }
-    }
-}
-
-#[repr(C)]
-pub struct WritePushConsts {
+});
+push_consts!(WritePushConsts: 20 {
     pub offset: Vec2,
     pub scale: Vec2,
     pub transform: Mat4,
-}
-
-impl AsRef<[u32; 20]> for WritePushConsts {
-    #[inline]
-    fn as_ref(&self) -> &[u32; 20] {
-        unsafe { &*(self as *const Self as *const [u32; 20]) }
-    }
-}
+});

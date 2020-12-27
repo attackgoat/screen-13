@@ -1,7 +1,7 @@
 #version 450
 
 layout(push_constant) uniform PushConstants {
-    layout(offset = 0) mat4x4 transform;
+    layout(offset = 0) mat4 transform;
 }
 push_constants;
 

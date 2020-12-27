@@ -23,7 +23,7 @@ mod texture;
 
 pub use self::{
     model::{MeshFilter, Model, Pose},
-    op::{Bitmap, Draw, Font, Material, Write, WriteMode, Skydome},
+    op::{Bitmap, Draw, Font, Material, Skydome, Write, WriteMode},
     pool::Pool,
     render::Render,
     swapchain::Swapchain,

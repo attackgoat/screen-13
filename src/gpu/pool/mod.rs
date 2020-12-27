@@ -393,8 +393,8 @@ impl Pool {
                 #[cfg(feature = "debug-names")]
                 name,
                 driver,
-                max_desc_sets,
                 subpass,
+                max_desc_sets,
             )
         };
 
@@ -450,7 +450,11 @@ impl Pool {
     /// only for skydome rendering. If the data is brand new then the skydome vertex data will
     /// be returned at the same time. It is up to the user to load it and provide the proper
     /// pipeline barriers. Good luck!
-    pub(super) fn skydome(&mut self, driver: &Driver) -> (Lease<Data>, u64, Option<&[u8]>) {
+    pub(super) fn skydome(
+        &mut self,
+        #[cfg(feature = "debug-names")] name: &str,
+        driver: &Driver,
+    ) -> (Lease<Data>, u64, Option<&[u8]>) {
         let (item, data) = if let Some(item) = self.skydomes.borrow_mut().pop_back() {
             (item, None)
         } else {

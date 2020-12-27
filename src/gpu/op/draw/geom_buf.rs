@@ -61,11 +61,7 @@ impl GeometryBuffer {
             dims,
             geom_fmt,
             Layout::Undefined,
-            ImageUsage::COLOR_ATTACHMENT
-                | ImageUsage::INPUT_ATTACHMENT
-                | ImageUsage::SAMPLED
-                | ImageUsage::TRANSFER_DST
-                | ImageUsage::TRANSFER_SRC,
+            ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT | ImageUsage::SAMPLED,
             1,
             1,
             1,

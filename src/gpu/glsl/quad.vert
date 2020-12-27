@@ -1,7 +1,7 @@
 #include "quad.glsl"
 
 layout(push_constant) uniform PushConstants {
-    layout(offset = 0) mat4x4 vertex_transform;
+    layout(offset = 0) mat4 vertex_transform;
 }
 push_constants;
 

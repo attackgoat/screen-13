@@ -153,7 +153,7 @@ impl Texture<Image2d> {
             samples,
             mips,
             fmt,
-            usage,
+            Usage::TRANSFER_DST | Usage::TRANSFER_SRC | usage,
         );
 
         let res = Self {

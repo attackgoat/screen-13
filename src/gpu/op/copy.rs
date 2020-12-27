@@ -92,6 +92,8 @@ impl CopyOp {
     }
 
     unsafe fn submit(&mut self) {
+        trace!("submit");
+
         let mut device = self.driver.borrow_mut();
         let mut src = self.src.borrow_mut();
         let mut dst = self.dst.borrow_mut();

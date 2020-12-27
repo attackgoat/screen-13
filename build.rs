@@ -5,11 +5,10 @@ use {
         generators::{Cylinder, IcoSphere},
         Triangulate,
     },
+    glam::vec3,
     lazy_static::lazy_static,
-    glam::{Vec3, vec2, vec3},
     shaderc::{CompileOptions, Compiler, Error, ShaderKind},
     std::{
-        f32::consts::{FRAC_PI_2, PI},
         cmp::Ordering::Equal,
         env::var,
         fs::{create_dir_all, remove_dir_all, remove_file, File},
@@ -89,42 +88,39 @@ fn gen_skydome() {
         let b = vec3(tri.y.pos.x, tri.y.pos.y, tri.y.pos.z).normalize();
         let c = vec3(tri.z.pos.x, tri.z.pos.y, tri.z.pos.z).normalize();
 
-        let u = |p: Vec3| ((p.z / p.x).atan() + FRAC_PI_2) / PI;
-        let v = |p: Vec3| if p.y < 0.0 {
-            0.0
-        } else {
-            p.y.asin() / FRAC_PI_2
-        };
+        let ba = b - a;
+        let ca = c - a;
+        let normal = ca.cross(ba).normalize();
 
-        let aa = vec2(u(a), v(a));
-        let bb = vec2(u(b), v(b));
-        let cc = vec2(u(c), v(c));
-
-        vertices.push((a, aa));
-        vertices.push((b, bb));
-        vertices.push((c, cc));
+        vertices.push((a, normal));
+        vertices.push((b, normal));
+        vertices.push((c, normal));
     }
 
     // We'll store the data as bytes because we are going to send it straight to the GPU
     writeln!(
         output_file,
         "pub const SKYDOME: [u8; {}] = [",
-        vertices.len() * 20
+        vertices.len() * 24
     )
     .unwrap();
 
-    for (pos, tex) in vertices {
+    for (pos, normal) in vertices {
         let x = pos.x.to_ne_bytes();
         let y = pos.y.to_ne_bytes();
         let z = pos.z.to_ne_bytes();
-        let u = tex.x.to_ne_bytes();
-        let v = tex.y.to_ne_bytes();
 
         writeln!(output_file, "    {}, {}, {}, {},", x[0], x[1], x[2], x[3]).unwrap();
         writeln!(output_file, "    {}, {}, {}, {},", y[0], y[1], y[2], y[3]).unwrap();
         writeln!(output_file, "    {}, {}, {}, {},", z[0], z[1], z[2], z[3]).unwrap();
-        writeln!(output_file, "    {}, {}, {}, {},", u[0], u[1], u[2], u[3]).unwrap();
-        writeln!(output_file, "    {}, {}, {}, {},", v[0], v[1], v[2], v[3]).unwrap();
+
+        let x = normal.x.to_ne_bytes();
+        let y = normal.y.to_ne_bytes();
+        let z = normal.z.to_ne_bytes();
+
+        writeln!(output_file, "    {}, {}, {}, {},", x[0], x[1], x[2], x[3]).unwrap();
+        writeln!(output_file, "    {}, {}, {}, {},", y[0], y[1], y[2], y[3]).unwrap();
+        writeln!(output_file, "    {}, {}, {}, {},", z[0], z[1], z[2], z[3]).unwrap();
     }
 
     writeln!(output_file, "];").unwrap();

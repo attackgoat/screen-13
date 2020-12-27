@@ -176,13 +176,17 @@ impl DrawOp {
 
     /// Draws the given skydome as a pre-pass before the geometry and lighting.
     #[must_use]
-    pub fn with_skydome(&mut self, val: Skydome) -> &mut Self {
+    pub fn with_skydome(&mut self, val: &Skydome) -> &mut Self {
         // Either take the existing skydome buffer or get a new one (ignoring the old skydome)
         let (buf, buf_len, write) = if let Some((_, buf, buf_len, write)) = self.skydome.take() {
             (buf, buf_len, write)
         } else {
             let pool = self.pool.as_mut().unwrap();
-            let (mut buf, buf_len, data) = pool.skydome(&self.driver);
+            let (mut buf, buf_len, data) = pool.skydome(
+                #[cfg(feature = "debug-names")]
+                &self.name,
+                &self.driver,
+            );
 
             // Fill the skydome buffer if it is brand new (data was provided)
             if let Some(data) = data {
@@ -194,7 +198,7 @@ impl DrawOp {
             (buf, buf_len, data.is_some())
         };
 
-        self.skydome = Some((val, buf, buf_len, write));
+        self.skydome = Some((val.clone(), buf, buf_len, write));
         self
     }
 
@@ -267,13 +271,14 @@ impl DrawOp {
             };
 
             if let Some((skydome, _, _, _)) = &self.skydome {
-                let graphics = pool.graphics(
+                let graphics = pool.graphics_desc_sets(
                     #[cfg(feature = "debug-names")]
                     &self.name,
                     &self.driver,
                     render_pass_mode,
                     skydome_subpass_idx,
                     GraphicsMode::Skydome,
+                    1,
                 );
                 let device = self.driver.borrow();
 
@@ -398,7 +403,9 @@ impl DrawOp {
             unsafe {
                 self.submit_begin(&viewport);
 
+                // Handle Skydome pre-fx
                 if let Some((_, _, _, write)) = &mut self.skydome {
+                    // Brand new skydomes from the pool must be written before use
                     if *write {
                         *write = false;
                         self.submit_skydome_write();
@@ -627,7 +634,7 @@ impl DrawOp {
             graphics.layout(),
             ShaderStageFlags::VERTEX,
             0,
-            Mat4PushConst(transform).as_ref(),
+            Mat4PushConst { val: transform }.as_ref(),
         );
         self.cmd_buf.bind_vertex_buffers(
             0,
@@ -727,7 +734,10 @@ impl DrawOp {
                 layout,
                 ShaderStageFlags::VERTEX,
                 0,
-                Mat4PushConst(world_view_proj).as_ref(),
+                Mat4PushConst {
+                    val: world_view_proj,
+                }
+                .as_ref(),
             );
             self.cmd_buf
                 .draw_indexed(mesh.indices(), mesh.base_vertex() as _, 0..1);
@@ -744,7 +754,7 @@ impl DrawOp {
 
         const POINT_LIGHT_DRAW_COUNT: u32 = POINT_LIGHT.len() as u32 / 12;
 
-        let subpass_idx = self.post_fx_subpass_idx();
+        let subpass_idx = self.accum_light_subpass_idx();
         let pool = self.pool.as_mut().unwrap();
         let (_, render_pass_mode) = self.frame_buf.as_ref().unwrap();
 
@@ -781,7 +791,10 @@ impl DrawOp {
                 graphics.layout(),
                 ShaderStageFlags::VERTEX,
                 0,
-                Mat4PushConst(world_view_proj).as_ref(),
+                Mat4PushConst {
+                    val: world_view_proj,
+                }
+                .as_ref(),
             );
             self.cmd_buf.push_graphics_constants(
                 graphics.layout(),
@@ -800,7 +813,7 @@ impl DrawOp {
     unsafe fn submit_rect_light_begin(&mut self, viewport: &Viewport) {
         trace!("submit_rect_light_begin");
 
-        let subpass_idx = self.post_fx_subpass_idx();
+        let subpass_idx = self.accum_light_subpass_idx();
         let pool = self.pool.as_mut().unwrap();
         let (_, render_pass_mode) = self.frame_buf.as_ref().unwrap();
 
@@ -857,6 +870,11 @@ impl DrawOp {
         let (skydome, buf, buf_len, _) = self.skydome.as_ref().unwrap();
         let vertex_count = *buf_len as u32 / 20;
 
+        let mut frag_push_consts = SkydomeFragmentPushConsts::default();
+        frag_push_consts.sun_normal = skydome.sun_normal;
+        frag_push_consts.time = 420.0; //skydome.time;
+        frag_push_consts.weather = 69.0; //skydome.weather;
+
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
         self.cmd_buf.set_scissors(0, &[viewport.rect]);
         self.cmd_buf.set_viewports(0, &[viewport.clone()]);
@@ -876,7 +894,6 @@ impl DrawOp {
             0,
             SkydomeVertexPushConsts {
                 star_rotation: Mat3::from_quat(skydome.star_rotation),
-                sun_normal: skydome.sun_normal,
                 view_proj,
             }
             .as_ref(),
@@ -884,12 +901,8 @@ impl DrawOp {
         self.cmd_buf.push_graphics_constants(
             layout,
             ShaderStageFlags::FRAGMENT,
-            0,
-            SkydomeFragmentPushConsts {
-                time: skydome.time,
-                weather: skydome.weather,
-            }
-            .as_ref(),
+            100,
+            frag_push_consts.as_ref(),
         );
         bind_graphics_descriptor_set(&mut self.cmd_buf, layout, desc_set);
         self.cmd_buf.draw(0..vertex_count, 0..1);
@@ -913,7 +926,7 @@ impl DrawOp {
     unsafe fn submit_spotlight_begin(&mut self, viewport: &Viewport) {
         trace!("submit_spotlight_begin");
 
-        let subpass_idx = self.post_fx_subpass_idx();
+        let subpass_idx = self.accum_light_subpass_idx();
         let pool = self.pool.as_mut().unwrap();
         let (_, render_pass_mode) = self.frame_buf.as_ref().unwrap();
 
@@ -964,7 +977,7 @@ impl DrawOp {
             graphics.layout(),
             ShaderStageFlags::FRAGMENT,
             0,
-            Mat4PushConst(view_proj).as_ref(),
+            Mat4PushConst { val: view_proj }.as_ref(),
         );
 
         self.cmd_buf
@@ -978,7 +991,7 @@ impl DrawOp {
     ) {
         trace!("submit_sunlights");
 
-        let subpass_idx = self.post_fx_subpass_idx();
+        let subpass_idx = self.accum_light_subpass_idx();
         let pool = self.pool.as_mut().unwrap();
         let (_, render_pass_mode) = self.frame_buf.as_ref().unwrap();
 
@@ -1303,7 +1316,7 @@ impl DrawOp {
                 binding: 0,
                 array_offset: 0,
                 descriptors: once(Descriptor::CombinedImageSampler(
-                    skydome.tint[0].borrow().as_default_view().as_ref(),
+                    skydome.cloud[0].borrow().as_default_view().as_ref(),
                     Layout::ShaderReadOnlyOptimal,
                     graphics.sampler(0).as_ref(),
                 )),
@@ -1313,7 +1326,7 @@ impl DrawOp {
                 binding: 1,
                 array_offset: 0,
                 descriptors: once(Descriptor::CombinedImageSampler(
-                    skydome.tint[1].borrow().as_default_view().as_ref(),
+                    skydome.cloud[1].borrow().as_default_view().as_ref(),
                     Layout::ShaderReadOnlyOptimal,
                     graphics.sampler(1).as_ref(),
                 )),
@@ -1323,7 +1336,7 @@ impl DrawOp {
                 binding: 2,
                 array_offset: 0,
                 descriptors: once(Descriptor::CombinedImageSampler(
-                    skydome.sun.borrow().as_default_view().as_ref(),
+                    skydome.moon.borrow().as_default_view().as_ref(),
                     Layout::ShaderReadOnlyOptimal,
                     graphics.sampler(2).as_ref(),
                 )),
@@ -1333,7 +1346,7 @@ impl DrawOp {
                 binding: 3,
                 array_offset: 0,
                 descriptors: once(Descriptor::CombinedImageSampler(
-                    skydome.moon.borrow().as_default_view().as_ref(),
+                    skydome.sun.borrow().as_default_view().as_ref(),
                     Layout::ShaderReadOnlyOptimal,
                     graphics.sampler(3).as_ref(),
                 )),
@@ -1343,7 +1356,7 @@ impl DrawOp {
                 binding: 4,
                 array_offset: 0,
                 descriptors: once(Descriptor::CombinedImageSampler(
-                    skydome.cloud[0].borrow().as_default_view().as_ref(),
+                    skydome.tint[0].borrow().as_default_view().as_ref(),
                     Layout::ShaderReadOnlyOptimal,
                     graphics.sampler(4).as_ref(),
                 )),
@@ -1353,7 +1366,7 @@ impl DrawOp {
                 binding: 5,
                 array_offset: 0,
                 descriptors: once(Descriptor::CombinedImageSampler(
-                    skydome.cloud[1].borrow().as_default_view().as_ref(),
+                    skydome.tint[1].borrow().as_default_view().as_ref(),
                     Layout::ShaderReadOnlyOptimal,
                     graphics.sampler(5).as_ref(),
                 )),

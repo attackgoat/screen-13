@@ -3,7 +3,10 @@ use {
     crate::{
         color::TRANSPARENT_BLACK,
         gpu::{
-            def::{ColorRenderPassMode, push_const::WritePushConsts, Graphics, GraphicsMode, RenderPassMode},
+            def::{
+                push_const::WritePushConsts, ColorRenderPassMode, Graphics, GraphicsMode,
+                RenderPassMode,
+            },
             driver::{
                 bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
             },
@@ -147,10 +150,7 @@ impl WriteOp {
                 dims,
                 fmt,
                 Layout::Undefined,
-                Usage::COLOR_ATTACHMENT
-                    | Usage::INPUT_ATTACHMENT
-                    | Usage::TRANSFER_DST
-                    | Usage::TRANSFER_SRC,
+                Usage::COLOR_ATTACHMENT | Usage::INPUT_ATTACHMENT,
                 1,
                 1,
                 1,
@@ -264,6 +264,8 @@ impl WriteOp {
     }
 
     unsafe fn submit_begin(&mut self, render_pass_mode: RenderPassMode) {
+        trace!("submit_begin");
+
         let pool = self.pool.as_mut().unwrap();
         let render_pass = pool.render_pass(&self.driver, render_pass_mode);
         let mut back_buf = self.back_buf.borrow_mut();
@@ -350,6 +352,8 @@ impl WriteOp {
     }
 
     unsafe fn submit_write(&mut self, write: &Write, set_idx: &mut usize) {
+        trace!("submit_write");
+
         let graphics = self.graphics.as_ref().unwrap();
         let layout = graphics.layout();
 
@@ -389,6 +393,8 @@ impl WriteOp {
     }
 
     unsafe fn submit_finish(&mut self) {
+        trace!("submit_finish");
+
         let mut device = self.driver.borrow_mut();
         let mut back_buf = self.back_buf.borrow_mut();
         let mut dst = self.dst.borrow_mut();
@@ -446,6 +452,8 @@ impl WriteOp {
     }
 
     unsafe fn write_descriptors(&mut self) {
+        trace!("write_descriptors");
+
         let dst = self.dst.borrow();
         let dst_view = dst.as_default_view();
         let graphics = self.graphics.as_ref().unwrap();

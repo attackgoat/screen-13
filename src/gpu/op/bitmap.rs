@@ -137,10 +137,7 @@ impl<'a> BitmapOp<'a> {
             bitmap.dims(),
             fmt,
             Layout::Undefined,
-            ImageUsage::SAMPLED
-                | ImageUsage::STORAGE
-                | ImageUsage::TRANSFER_DST
-                | ImageUsage::TRANSFER_SRC,
+            ImageUsage::SAMPLED | ImageUsage::STORAGE,
             1,
             1,
             1,
@@ -202,7 +199,11 @@ impl<'a> BitmapOp<'a> {
 
         // Lease some data from the pool
         let height = bitmap.height();
-        let pixel_buf_len = bitmap_stride * height;
+        let pixel_buf_stride = conv_fmt
+            .as_ref()
+            .map(|c| c.pixel_buf_stride as _)
+            .unwrap_or(bitmap_stride);
+        let pixel_buf_len = pixel_buf_stride * height;
         let mut pixel_buf = pool.data_usage(
             #[cfg(feature = "debug-names")]
             name,
@@ -211,17 +212,13 @@ impl<'a> BitmapOp<'a> {
             if conv_fmt.is_some() {
                 BufferUsage::STORAGE
             } else {
-                BufferUsage::TRANSFER_SRC
+                BufferUsage::empty()
             },
         );
 
         {
             let src = bitmap.pixels();
             let mut dst = pixel_buf.map_range_mut(0..pixel_buf_len as _).unwrap(); // TODO: Error handling
-            let pixel_buf_stride = conv_fmt
-                .as_ref()
-                .map(|c| c.pixel_buf_stride as _)
-                .unwrap_or(bitmap_stride);
 
             // Fill the cpu-side buffer with our pixel data
             if bitmap_stride == pixel_buf_stride {
@@ -293,11 +290,15 @@ impl<'a> BitmapOp<'a> {
     }
 
     unsafe fn submit_begin(&mut self) {
+        trace!("submit_begin");
+
         self.cmd_buf
             .begin_primary(CommandBufferFlags::ONE_TIME_SUBMIT);
     }
 
     unsafe fn submit_conv(&mut self) {
+        trace!("submit_conv");
+
         let conv_fmt = self.conv_fmt.as_ref().unwrap();
         let desc_set = conv_fmt.compute.desc_set(0);
         let pipeline = conv_fmt.compute.pipeline();
@@ -328,13 +329,18 @@ impl<'a> BitmapOp<'a> {
         self.cmd_buf.push_compute_constants(
             pipeline_layout,
             0,
-            U32PushConst(conv_fmt.pixel_buf_stride >> 2).as_ref(),
+            U32PushConst {
+                val: conv_fmt.pixel_buf_stride >> 2,
+            }
+            .as_ref(),
         );
         bind_compute_descriptor_set(&mut self.cmd_buf, pipeline_layout, desc_set);
         self.cmd_buf.dispatch([conv_fmt.dispatch, dims.y, 1]);
     }
 
     unsafe fn submit_copy(&mut self) {
+        trace!("submit_copy");
+
         let mut texture = self.texture.borrow_mut();
         let dims = texture.dims();
 
@@ -373,6 +379,8 @@ impl<'a> BitmapOp<'a> {
     }
 
     unsafe fn submit_finish(&mut self) {
+        trace!("submit_finish");
+
         let mut device = self.driver.borrow_mut();
 
         // Finish
@@ -390,6 +398,8 @@ impl<'a> BitmapOp<'a> {
     }
 
     unsafe fn write_descriptors(&mut self) {
+        trace!("write_descriptors");
+
         let conv_fmt = self.conv_fmt.as_ref().unwrap();
         let set = conv_fmt.compute.desc_set(0);
         let texture = self.texture.borrow();

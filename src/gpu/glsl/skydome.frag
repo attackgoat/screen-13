@@ -12,12 +12,12 @@ layout(push_constant) uniform PushConstants {
 }
 push_constants;
 
-layout(set = 0, binding = 0) uniform sampler2D tint1_sampler;
-layout(set = 0, binding = 1) uniform sampler2D tint2_sampler;
-layout(set = 0, binding = 2) uniform sampler2D sun_sampler;
-layout(set = 0, binding = 3) uniform sampler2D moon_sampler;
-layout(set = 0, binding = 4) uniform sampler2D cloud1_sampler;
-layout(set = 0, binding = 5) uniform sampler2D cloud2_sampler;
+layout(set = 0, binding = 0) uniform sampler2D cloud1_sampler;
+layout(set = 0, binding = 1) uniform sampler2D cloud2_sampler;
+layout(set = 0, binding = 2) uniform sampler2D moon_sampler;
+layout(set = 0, binding = 3) uniform sampler2D sun_sampler;
+layout(set = 0, binding = 4) uniform sampler2D tint1_sampler;
+layout(set = 0, binding = 5) uniform sampler2D tint2_sampler;
 
 layout(location = 0) in vec3 position_in;
 layout(location = 1) in vec3 star_position_in;
@@ -28,7 +28,7 @@ layout(location = 0) out vec3 color_out;
 //Noise generation based on a simple hash, to ensure that if a given point on the dome
 //(after taking into account the rotation of the sky) is a star, it remains a star all night long
 float Hash(float n) {
-        return fract((1.0 + sin(n)) * 415.92653);
+    return fract((1.0 + sin(n)) * 415.92653);
 }
 
 float Noise3d(vec3 x) {
@@ -53,12 +53,15 @@ void main() {
 
     //Cloud color
     //color depending on the weather (shade of grey) *  (day or night) ?
-    vec3 cloud_color = vec3(min(push_constants.weather * 3.0 * 0.5, 1.0)) * (push_constants.sun_normal.y > 0 ? 0.95 : 0.95 + push_constants.sun_normal.y * 1.8);
+    vec3 cloud_color = vec3(min(push_constants.weather * 3.0 * 0.5, 1.0))
+        * (push_constants.sun_normal.y > 0 ? 0.95 : 0.95 + push_constants.sun_normal.y * 1.8);
 
     //Reading from the clouds maps
     //mixing according to the weather (1.0 -> clouds1 (sunny), 0.5 -> clouds2 (rainy))
     //+ time translation along the u-axis (horizontal) for the clouds movement
-    float transparency = mix(texture(cloud2_sampler, vec2(u + push_constants.time, v)).r, texture(cloud1_sampler, vec2(u + push_constants.time, v)).r, (push_constants.weather - 0.5) * 2.0);
+    float transparency = mix(texture(cloud2_sampler, vec2(u + push_constants.time, v)).r,
+                             texture(cloud1_sampler, vec2(u + push_constants.time, v)).r,
+                             (push_constants.weather - 0.5) * 2.0);
 
     // Stars
     if (push_constants.sun_normal.y < 0.1) {//Night or dawn
@@ -107,5 +110,4 @@ void main() {
     //Final mix
     //mixing with the cloud color allows us to hide things behind clouds (sun, stars, moon)
     color_out = mix(color_out, cloud_color, clamp((2 - push_constants.weather) * transparency, 0, 1));
-
 }

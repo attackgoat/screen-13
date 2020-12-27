@@ -111,6 +111,8 @@ impl EncodeOp {
     }
 
     unsafe fn submit(&mut self) {
+        trace!("submit");
+
         let mut device = self.driver.borrow_mut();
         let len = Self::byte_len(&self.texture);
         let buf = &mut *self.buf;

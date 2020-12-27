@@ -5,7 +5,8 @@ use {
         gpu::{
             data::Mapping,
             def::{
-                push_const::Mat4PushConst, ColorRenderPassMode, Graphics, GraphicsMode, RenderPassMode,
+                push_const::Mat4PushConst, ColorRenderPassMode, Graphics, GraphicsMode,
+                RenderPassMode,
             },
             driver::{
                 bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
@@ -239,10 +240,7 @@ impl FontOp {
             dims,
             fmt,
             Layout::Undefined,
-            ImageUsage::COLOR_ATTACHMENT
-                | ImageUsage::INPUT_ATTACHMENT
-                | ImageUsage::TRANSFER_DST
-                | ImageUsage::TRANSFER_SRC,
+            ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
             1,
             1,
             1,
@@ -389,6 +387,8 @@ impl FontOp {
     }
 
     unsafe fn submit_begin(&mut self, dims: Extent, render_pass_mode: RenderPassMode) {
+        trace!("submit_begin");
+
         let graphics = self.graphics.as_ref().unwrap();
         let pool = self.pool.as_mut().unwrap();
         let render_pass = pool.render_pass(&self.driver, render_pass_mode);
@@ -469,6 +469,8 @@ impl FontOp {
     }
 
     unsafe fn submit_page(&mut self, dims: Extent, vertices: Range<u32>) {
+        trace!("submit_page");
+
         let graphics = self.graphics.as_ref().unwrap();
         let (vertex_buf, vertex_buf_len) = self.vertex_buf.as_mut().unwrap();
         let rect = Rect {
@@ -501,7 +503,10 @@ impl FontOp {
             graphics.layout(),
             ShaderStageFlags::VERTEX,
             0,
-            Mat4PushConst(self.transform).as_ref(),
+            Mat4PushConst {
+                val: self.transform,
+            }
+            .as_ref(),
         );
 
         // Push the glyph (and optional outline color) constants
@@ -522,6 +527,8 @@ impl FontOp {
     }
 
     unsafe fn submit_finish(&mut self, dims: Extent) {
+        trace!("submit_finish");
+
         let mut device = self.driver.borrow_mut();
         let mut dst = self.dst.borrow_mut();
         let mut back_buf = self.back_buf.borrow_mut();
@@ -579,6 +586,8 @@ impl FontOp {
     }
 
     unsafe fn write_descriptors(&mut self, font: &Font, page_idx: usize) {
+        trace!("write_descriptors");
+
         // TODO: Fix, this should be one set per page not the same re-written
         let page = font.pages[page_idx].borrow();
         let page_view = page.as_default_view();

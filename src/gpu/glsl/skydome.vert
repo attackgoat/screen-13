@@ -3,8 +3,8 @@
 #version 450
 
 layout(push_constant) uniform PushConstants {
-    layout(offset = 0) mat3 star_rotation;
     layout(offset = 0) mat4 view_proj;
+    layout(offset = 64) mat3 star_rotation;
 }
 push_constants;
 
@@ -15,7 +15,8 @@ layout(location = 0) out vec3 position_out;
 layout(location = 1) out vec3 star_position_out;
 
 void main() {
-    gl_Position = push_constants.view_proj * vec4(position_in, 1);
     position_out = position_in;
     star_position_out = push_constants.star_rotation * normalize(position_in);
+
+    gl_Position = push_constants.view_proj * vec4(position_in, 1);
 }

@@ -101,13 +101,14 @@ impl Swapchain {
 
         let desc_sets = 1;
         let render_pass = present(driver, fmt);
+        let subpass = RenderPass::subpass(&render_pass, 0);
         let graphics = unsafe {
             Graphics::present(
                 #[cfg(feature = "debug-names")]
                 "Swapchain",
                 driver,
+                subpass,
                 desc_sets,
-                RenderPass::subpass(&render_pass, 0),
             )
         };
 
@@ -284,7 +285,7 @@ impl Swapchain {
                 self.graphics.layout(),
                 ShaderStageFlags::VERTEX,
                 0,
-                Mat4PushConst(transform).as_ref(),
+                Mat4PushConst { val: transform }.as_ref(),
             );
             image.cmd_buf.begin_render_pass(
                 &self.render_pass,

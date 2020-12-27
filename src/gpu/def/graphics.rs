@@ -74,6 +74,24 @@ mod attributes {
             },
         },
     ];
+    pub const VEC3_VEC3: [AttributeDesc; 2] = [
+        AttributeDesc {
+            binding: 0,
+            location: 0,
+            element: Element {
+                format: Format::Rgb32Sfloat,
+                offset: 0,
+            },
+        },
+        AttributeDesc {
+            binding: 0,
+            location: 1,
+            element: Element {
+                format: Format::Rgb32Sfloat,
+                offset: 12,
+            },
+        },
+    ];
     pub const VEC3_VEC3_VEC4_VEC2: [AttributeDesc; 4] = [
         AttributeDesc {
             binding: 0,
@@ -203,9 +221,9 @@ impl Graphics {
     unsafe fn blend(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
         fragment_spirv: &[u32],
+        max_desc_sets: usize,
     ) -> Self {
         let vertex = ShaderModule::new(driver, &spirv::blend::QUAD_TRANSFORM_VERT);
         let fragment = ShaderModule::new(driver, fragment_spirv);
@@ -272,313 +290,373 @@ impl Graphics {
     pub unsafe fn blend_add(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::blend::ADD_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn blend_alpha_add(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::blend::ALPHA_ADD_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn blend_color_burn(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::blend::COLOR_BURN_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn blend_color_dodge(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::blend::COLOR_DODGE_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn blend_color(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::blend::COLOR_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn blend_darken(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::blend::DARKEN_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn blend_darker_color(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::blend::DARKER_COLOR_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn blend_difference(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::blend::DIFFERENCE_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn blend_divide(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::blend::DIVIDE_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn blend_exclusion(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::blend::EXCLUSION_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn blend_hard_light(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::blend::HARD_LIGHT_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn blend_hard_mix(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::blend::HARD_MIX_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn blend_linear_burn(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::blend::LINEAR_BURN_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn blend_multiply(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::blend::MULTIPLY_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn blend_normal(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::blend::NORMAL_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn blend_overlay(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::blend::OVERLAY_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn blend_screen(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::blend::SCREEN_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn blend_subtract(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::blend::SUBTRACT_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn blend_vivid_light(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::blend::VIVID_LIGHT_FRAG,
+            max_desc_sets,
         )
+    }
+
+    unsafe fn draw_light(
+        #[cfg(feature = "debug-names")] name: &str,
+        driver: &Driver,
+        subpass: Subpass<'_, _Backend>,
+        fragment_spirv: &[u32],
+        push_consts: &[ShaderRange],
+    ) -> Self {
+        // Create the graphics pipeline
+        let vertex = ShaderModule::new(driver, &spirv::defer::LIGHT_VERT);
+        let fragment = ShaderModule::new(driver, fragment_spirv);
+        let layout = PipelineLayout::new(
+            #[cfg(feature = "debug-names")]
+            name,
+            driver,
+            empty::<&<_Backend as Backend>::DescriptorSetLayout>(),
+            push_consts,
+        );
+        let vertex_buf = vertex_buf_with_stride(12);
+        let mut desc = GraphicsPipelineDesc::new(
+            PrimitiveAssemblerDesc::Vertex {
+                attributes: &attributes::VEC3,
+                buffers: &vertex_buf,
+                geometry: None,
+                input_assembler: input_assemblers::TRIANGLES,
+                tessellation: None,
+                vertex: ShaderModule::entry_point(&vertex),
+            },
+            rasterizers::FILL,
+            Some(ShaderModule::entry_point(&fragment)),
+            &layout,
+            subpass,
+        );
+        desc.blender.targets.push(ColorBlendDesc {
+            blend: Some(BlendState::ADD),
+            mask: ColorMask::RED,
+        });
+        desc.depth_stencil.depth = Some(DepthTest {
+            fun: Comparison::LessEqual,
+            write: false,
+        });
+        let pipeline = GraphicsPipeline::new(
+            #[cfg(feature = "debug-names")]
+            name,
+            driver,
+            &desc,
+        );
+
+        Self {
+            desc_pool: None,
+            desc_sets: vec![],
+            layout,
+            max_desc_sets: 0,
+            pipeline,
+            set_layout: None,
+            samplers: vec![],
+        }
     }
 
     pub unsafe fn draw_line(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        _max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
+        debug_assert_eq!(max_desc_sets, 0);
+
         // Create the graphics pipeline
         let vertex = ShaderModule::new(driver, &spirv::defer::LINE_VERT);
         let fragment = ShaderModule::new(driver, &spirv::defer::LINE_FRAG);
@@ -632,8 +710,8 @@ impl Graphics {
     pub unsafe fn draw_mesh(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         // Create the graphics pipeline
         let vertex = ShaderModule::new(driver, &spirv::defer::MESH_VERT);
@@ -704,70 +782,14 @@ impl Graphics {
         }
     }
 
-    unsafe fn draw_light(
-        #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
-        subpass: Subpass<'_, _Backend>,
-        fragment_spirv: &[u32],
-        push_consts: &[ShaderRange],
-    ) -> Self {
-        // Create the graphics pipeline
-        let vertex = ShaderModule::new(driver, &spirv::defer::LIGHT_VERT);
-        let fragment = ShaderModule::new(driver, fragment_spirv);
-        let layout = PipelineLayout::new(
-            #[cfg(feature = "debug-names")]
-            name,
-            driver,
-            empty::<&<_Backend as Backend>::DescriptorSetLayout>(),
-            push_consts,
-        );
-        let vertex_buf = vertex_buf_with_stride(12);
-        let mut desc = GraphicsPipelineDesc::new(
-            PrimitiveAssemblerDesc::Vertex {
-                attributes: &attributes::VEC3,
-                buffers: &vertex_buf,
-                geometry: None,
-                input_assembler: input_assemblers::TRIANGLES,
-                tessellation: None,
-                vertex: ShaderModule::entry_point(&vertex),
-            },
-            rasterizers::FILL,
-            Some(ShaderModule::entry_point(&fragment)),
-            &layout,
-            subpass,
-        );
-        desc.blender.targets.push(ColorBlendDesc {
-            blend: Some(BlendState::ADD),
-            mask: ColorMask::RED,
-        });
-        desc.depth_stencil.depth = Some(DepthTest {
-            fun: Comparison::LessEqual,
-            write: false,
-        });
-        let pipeline = GraphicsPipeline::new(
-            #[cfg(feature = "debug-names")]
-            name,
-            driver,
-            &desc,
-        );
-
-        Self {
-            desc_pool: None,
-            desc_sets: vec![],
-            layout,
-            max_desc_sets: 0,
-            pipeline,
-            set_layout: None,
-            samplers: vec![],
-        }
-    }
-
     pub unsafe fn draw_point_light(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        _: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
+        debug_assert_eq!(max_desc_sets, 0);
+
         Self::draw_light(
             #[cfg(feature = "debug-names")]
             name,
@@ -781,9 +803,11 @@ impl Graphics {
     pub unsafe fn draw_rect_light(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        _: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
+        debug_assert_eq!(max_desc_sets, 0);
+
         Self::draw_light(
             #[cfg(feature = "debug-names")]
             name,
@@ -797,9 +821,11 @@ impl Graphics {
     pub unsafe fn draw_spotlight(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        _: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
+        debug_assert_eq!(max_desc_sets, 0);
+
         Self::draw_light(
             #[cfg(feature = "debug-names")]
             name,
@@ -813,9 +839,11 @@ impl Graphics {
     pub unsafe fn draw_sunlight(
         #[cfg(feature = "debug-names")] _name: &str,
         _driver: &Driver,
-        _max_desc_sets: usize,
         _subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
+        debug_assert_eq!(max_desc_sets, 0);
+
         todo!();
     }
 
@@ -894,8 +922,8 @@ impl Graphics {
     pub unsafe fn font_normal(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::font(
             #[cfg(feature = "debug-names")]
@@ -911,8 +939,8 @@ impl Graphics {
     pub unsafe fn font_outline(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::font(
             #[cfg(feature = "debug-names")]
@@ -928,9 +956,9 @@ impl Graphics {
     unsafe fn gradient(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
         fragment_spirv: &[u32],
+        max_desc_sets: usize,
     ) -> Self {
         // Create the graphics pipeline
         let vertex = ShaderModule::new(driver, &spirv::GRADIENT_VERT);
@@ -998,41 +1026,41 @@ impl Graphics {
     pub unsafe fn gradient_linear_trans(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::gradient(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::GRADIENT_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn gradient_linear(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::gradient(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::GRADIENT_FRAG,
+            max_desc_sets,
         )
     }
 
     unsafe fn mask(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
         fragment_spirv: &[u32],
+        max_desc_sets: usize,
     ) -> Self {
         let vertex = ShaderModule::new(driver, &spirv::blend::QUAD_TRANSFORM_VERT);
         let fragment = ShaderModule::new(driver, fragment_spirv);
@@ -1099,105 +1127,105 @@ impl Graphics {
     pub unsafe fn mask_add(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::mask(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::mask::ADD_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn mask_darken(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::mask(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::mask::DARKEN_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn mask_difference(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::mask(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::mask::DIFFERENCE_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn mask_intersect(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::mask(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::mask::INTERSECT_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn mask_lighten(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::mask(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::mask::LIGHTEN_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn mask_subtract(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::mask(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::mask::SUBTRACT_FRAG,
+            max_desc_sets,
         )
     }
 
     unsafe fn matte(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
         fragment_spirv: &[u32],
+        max_desc_sets: usize,
     ) -> Self {
         let vertex = ShaderModule::new(driver, &spirv::blend::QUAD_TRANSFORM_VERT);
         let fragment = ShaderModule::new(driver, fragment_spirv);
@@ -1264,72 +1292,72 @@ impl Graphics {
     pub unsafe fn matte_alpha(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::matte(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::matte::ALPHA_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn matte_alpha_inv(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::matte(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::matte::ALPHA_INV_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn matte_luma(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::matte(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::matte::LUMA_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn matte_luma_inv(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         Self::matte(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            max_desc_sets,
             subpass,
             &spirv::matte::LUMA_INV_FRAG,
+            max_desc_sets,
         )
     }
 
     pub unsafe fn present(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         // Create the graphics pipeline
         let vertex = ShaderModule::new(driver, &spirv::QUAD_VERT);
@@ -1396,8 +1424,8 @@ impl Graphics {
     pub unsafe fn skydome(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         // Create the graphics pipeline
         let vertex = ShaderModule::new(driver, &spirv::SKYDOME_VERT);
@@ -1415,10 +1443,10 @@ impl Graphics {
             once(set_layout.as_ref()),
             &push_const::SKYDOME,
         );
-        let vertex_buf = vertex_buf_with_stride(20);
+        let vertex_buf = vertex_buf_with_stride(24);
         let mut desc = GraphicsPipelineDesc::new(
             PrimitiveAssemblerDesc::Vertex {
-                attributes: &attributes::VEC3_VEC2,
+                attributes: &attributes::VEC3_VEC3,
                 buffers: &vertex_buf,
                 geometry: None,
                 input_assembler: input_assemblers::TRIANGLES,
@@ -1466,8 +1494,8 @@ impl Graphics {
     pub unsafe fn texture(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
-        max_desc_sets: usize,
         subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
     ) -> Self {
         // Create the graphics pipeline
         let vertex = ShaderModule::new(driver, &spirv::QUAD_TRANSFORM_VERT);
