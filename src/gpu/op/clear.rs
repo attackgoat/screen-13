@@ -13,7 +13,7 @@ use {
         image::{Access, Layout, SubresourceRange},
         pool::CommandPool as _,
         pso::PipelineStage,
-        queue::{CommandQueue as _, QueueType, Submission},
+        queue::{CommandQueue as _, Submission},
         Backend,
     },
     gfx_impl::Backend as _Backend,
@@ -22,8 +22,6 @@ use {
         iter::{empty, once},
     },
 };
-
-const QUEUE_TYPE: QueueType = QueueType::Graphics;
 
 pub struct ClearOp {
     clear_value: ClearValue,

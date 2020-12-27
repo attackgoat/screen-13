@@ -3,7 +3,7 @@ use {
     crate::{
         color::TRANSPARENT_BLACK,
         gpu::{
-            def::{ColorRenderPassMode, Graphics, GraphicsMode, RenderPassMode},
+            def::{ColorRenderPassMode, push_const::WritePushConsts, Graphics, GraphicsMode, RenderPassMode},
             driver::{
                 bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
             },
@@ -36,20 +36,6 @@ const SUBPASS_IDX: u8 = 0;
 pub enum Mode {
     Blend((u8, BlendMode)),
     Texture,
-}
-
-#[repr(C)]
-struct VertexConsts {
-    offset: Vec2,
-    scale: Vec2,
-    transform: Mat4,
-}
-
-impl AsRef<[u32; 20]> for VertexConsts {
-    #[inline]
-    fn as_ref(&self) -> &[u32; 20] {
-        unsafe { &*(self as *const Self as *const [u32; 20]) }
-    }
 }
 
 /// An expressive type which allows specification of individual texture writes. Texture writes may either specify the
@@ -380,7 +366,7 @@ impl WriteOp {
             graphics.layout(),
             ShaderStageFlags::VERTEX,
             0,
-            VertexConsts {
+            WritePushConsts {
                 offset,
                 scale,
                 transform: write.transform,

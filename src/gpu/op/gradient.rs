@@ -32,9 +32,9 @@ type Path = [(Coord, AlphaColor); 2];
 
 fn graphics_mode(preserve_dst: bool) -> GraphicsMode {
     if preserve_dst {
-        GraphicsMode::GradientTransparency
+        GraphicsMode::Gradient(true)
     } else {
-        GraphicsMode::Gradient
+        GraphicsMode::Gradient(false)
     }
 }
 
@@ -88,7 +88,7 @@ impl GradientOp {
             driver,
             render_pass_mode,
             0,
-            GraphicsMode::Gradient,
+            GraphicsMode::Gradient(false),
         );
 
         // Setup the framebuffer

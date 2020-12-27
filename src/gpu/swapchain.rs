@@ -1,6 +1,6 @@
 use {
     super::{
-        def::{render_passes::present, Graphics},
+        def::{push_const::Mat4PushConst, render_pass::present, Graphics},
         driver::{
             bind_graphics_descriptor_set, CommandPool, Fence, Framebuffer2d, RenderPass, Semaphore,
         },
@@ -284,7 +284,7 @@ impl Swapchain {
                 self.graphics.layout(),
                 ShaderStageFlags::VERTEX,
                 0,
-                VertexConsts { transform }.as_ref(),
+                Mat4PushConst(transform).as_ref(),
             );
             image.cmd_buf.begin_render_pass(
                 &self.render_pass,
@@ -339,17 +339,5 @@ impl Drop for Swapchain {
         unsafe {
             self.surface.unconfigure_swapchain(&device);
         }
-    }
-}
-
-#[repr(C)]
-struct VertexConsts {
-    transform: Mat4,
-}
-
-impl AsRef<[u32; 16]> for VertexConsts {
-    #[inline]
-    fn as_ref(&self) -> &[u32; 16] {
-        unsafe { &*(self as *const Self as *const [u32; 16]) }
     }
 }

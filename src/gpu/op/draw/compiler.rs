@@ -99,6 +99,7 @@ struct CalcVertexAttrsAsm {
 pub struct Compilation<'a> {
     cmds: &'a [Command],
     compiler: &'a mut Compiler,
+    contains_lines: bool,
     idx: usize,
 }
 
@@ -163,6 +164,10 @@ impl Compilation<'_> {
             base_vertex: asm.base_vertex,
             dispatch: asm.dispatch,
         })
+    }
+
+    pub fn contains_lines(&self) -> bool {
+        self.contains_lines
     }
 
     fn copy_vertices<T>(buf: &mut DirtyData<T>) -> Instruction {
@@ -657,6 +662,7 @@ impl Compiler {
         Compilation {
             cmds,
             compiler: self,
+            contains_lines: line_count > 0,
             idx: 0,
         }
     }

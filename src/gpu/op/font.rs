@@ -4,7 +4,9 @@ use {
         color::{AlphaColor, TRANSPARENT_BLACK},
         gpu::{
             data::Mapping,
-            def::{ColorRenderPassMode, Graphics, GraphicsMode, RenderPassMode},
+            def::{
+                push_const::Mat4PushConst, ColorRenderPassMode, Graphics, GraphicsMode, RenderPassMode,
+            },
             driver::{
                 bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
             },
@@ -380,9 +382,9 @@ impl FontOp {
 
     fn mode(&self) -> GraphicsMode {
         if self.outline_color.is_some() {
-            GraphicsMode::FontOutline
+            GraphicsMode::Font(true)
         } else {
-            GraphicsMode::Font
+            GraphicsMode::Font(false)
         }
     }
 
@@ -499,10 +501,7 @@ impl FontOp {
             graphics.layout(),
             ShaderStageFlags::VERTEX,
             0,
-            VertexConsts {
-                transform: self.transform,
-            }
-            .as_ref(),
+            Mat4PushConst(self.transform).as_ref(),
         );
 
         // Push the glyph (and optional outline color) constants
@@ -629,16 +628,4 @@ struct FontVertex {
     y: f32,
     u: f32,
     v: f32,
-}
-
-#[repr(C)]
-struct VertexConsts {
-    transform: Mat4,
-}
-
-impl AsRef<[u32; 16]> for VertexConsts {
-    #[inline]
-    fn as_ref(&self) -> &[u32; 16] {
-        unsafe { &*(self as *const _ as *const _) }
-    }
 }

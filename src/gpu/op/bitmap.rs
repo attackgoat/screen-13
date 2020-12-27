@@ -4,7 +4,7 @@ use {
         gpu::{
             align_up,
             data::Mapping,
-            def::{Compute, ComputeMode},
+            def::{push_const::U32PushConst, Compute, ComputeMode},
             driver::{
                 bind_compute_descriptor_set, change_channel_type, CommandPool, Device, Driver,
                 Fence,
@@ -328,10 +328,7 @@ impl<'a> BitmapOp<'a> {
         self.cmd_buf.push_compute_constants(
             pipeline_layout,
             0,
-            DecodeConsts {
-                stride: conv_fmt.pixel_buf_stride >> 2,
-            }
-            .as_ref(),
+            U32PushConst(conv_fmt.pixel_buf_stride >> 2).as_ref(),
         );
         bind_compute_descriptor_set(&mut self.cmd_buf, pipeline_layout, desc_set);
         self.cmd_buf.dispatch([conv_fmt.dispatch, dims.y, 1]);
@@ -425,16 +422,4 @@ struct ComputeDispatch {
     compute: Lease<Compute>,
     dispatch: u32,
     pixel_buf_stride: u32,
-}
-
-#[repr(C)]
-struct DecodeConsts {
-    stride: u32,
-}
-
-impl AsRef<[u32; 1]> for DecodeConsts {
-    #[inline]
-    fn as_ref(&self) -> &[u32; 1] {
-        unsafe { &*(self as *const Self as *const [u32; 1]) }
-    }
 }

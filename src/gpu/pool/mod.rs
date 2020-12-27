@@ -1,15 +1,16 @@
 mod layouts;
 mod lease;
 
+mod skydome {
+    include!(concat!(env!("OUT_DIR"), "/skydome.rs"));
+}
+
 pub use self::lease::Lease;
 
 use {
-    self::layouts::Layouts,
+    self::{layouts::Layouts, skydome::SKYDOME},
     super::{
-        def::{
-            render_passes::{color, draw, draw_post, draw_pre, draw_pre_post},
-            Compute, ComputeMode, Graphics, GraphicsMode, RenderPassMode,
-        },
+        def::{render_pass, Compute, ComputeMode, Graphics, GraphicsMode, RenderPassMode},
         driver::{CommandPool, DescriptorPool, Driver, Fence, Image2d, Memory, RenderPass},
         op::Compiler,
         BlendMode, Data, MaskMode, MatteMode, Texture, TextureRef,
@@ -89,6 +90,7 @@ pub struct Pool {
 
     memories: HashMap<MemoryTypeId, PoolRef<Memory>>,
     render_passes: HashMap<RenderPassMode, RenderPass>,
+    skydomes: PoolRef<Data>,
     textures: HashMap<TextureKey, PoolRef<TextureRef<Image2d>>>,
 }
 
@@ -120,7 +122,6 @@ impl Pool {
         let item = if let Some(item) = self.compilers.borrow_mut().pop_back() {
             item
         } else {
-            debug!("Creating new compiler");
             Default::default()
         };
 
@@ -368,10 +369,10 @@ impl Pool {
             GraphicsMode::DrawRectLight => Graphics::draw_rect_light,
             GraphicsMode::DrawSpotlight => Graphics::draw_spotlight,
             GraphicsMode::DrawSunlight => Graphics::draw_sunlight,
-            GraphicsMode::Font => Graphics::font_normal,
-            GraphicsMode::FontOutline => Graphics::font_outline,
-            GraphicsMode::Gradient => Graphics::gradient_linear,
-            GraphicsMode::GradientTransparency => Graphics::gradient_linear_trans,
+            GraphicsMode::Font(false) => Graphics::font_normal,
+            GraphicsMode::Font(true) => Graphics::font_outline,
+            GraphicsMode::Gradient(false) => Graphics::gradient_linear,
+            GraphicsMode::Gradient(true) => Graphics::gradient_linear_trans,
             GraphicsMode::Mask(MaskMode::Add) => Graphics::mask_add,
             GraphicsMode::Mask(MaskMode::Darken) => Graphics::mask_darken,
             GraphicsMode::Mask(MaskMode::Difference) => Graphics::mask_difference,
@@ -430,19 +431,41 @@ impl Pool {
         self.render_passes
             .entry(mode)
             .or_insert_with(|| match mode {
-                RenderPassMode::Color(mode) => color(driver, mode),
+                RenderPassMode::Color(mode) => render_pass::color(driver, mode),
                 RenderPassMode::Draw(mode) => {
                     if mode.pre_fx as u8 * mode.post_fx as u8 == 1 {
-                        draw_pre_post(driver, mode)
+                        render_pass::draw_pre_post(driver, mode)
                     } else if mode.pre_fx {
-                        draw_pre(driver, mode)
+                        render_pass::draw_pre(driver, mode)
                     } else if mode.post_fx {
-                        draw_post(driver, mode)
+                        render_pass::draw_post(driver, mode)
                     } else {
-                        draw(driver, mode)
+                        render_pass::draw(driver, mode)
                     }
                 }
             })
+    }
+
+    /// This *highly* specialized pool function returns a fixed size Data which should be used
+    /// only for skydome rendering. If the data is brand new then the skydome vertex data will
+    /// be returned at the same time. It is up to the user to load it and provide the proper
+    /// pipeline barriers. Good luck!
+    pub(super) fn skydome(&mut self, driver: &Driver) -> (Lease<Data>, u64, Option<&[u8]>) {
+        let (item, data) = if let Some(item) = self.skydomes.borrow_mut().pop_back() {
+            (item, None)
+        } else {
+            let data = Data::new(
+                #[cfg(feature = "debug-names")]
+                name,
+                driver,
+                SKYDOME.len() as _,
+                BufferUsage::VERTEX,
+            );
+
+            (data, Some(SKYDOME.as_ref()))
+        };
+
+        (Lease::new(item, &self.skydomes), SKYDOME.len() as _, data)
     }
 
     // TODO: Bubble format picking up and out of this! (removes desire_tiling+desired_fmts+features, replace with fmt/tiling)
@@ -532,6 +555,7 @@ impl Default for Pool {
             lru_threshold: DEFAULT_LRU_THRESHOLD,
             memories: Default::default(),
             render_passes: Default::default(),
+            skydomes: Default::default(),
             textures: Default::default(),
         }
     }

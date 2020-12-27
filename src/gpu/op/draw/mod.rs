@@ -29,8 +29,13 @@ use {
         camera::Camera,
         color::AlphaColor,
         gpu::{
-            data::CopyRange,
+            data::{CopyRange, Mapping},
             def::{
+                push_const::{
+                    CalcVertexAttrsPushConsts, Mat4PushConst, PointLightPushConsts,
+                    RectLightPushConsts, SkydomeFragmentPushConsts, SkydomeVertexPushConsts,
+                    SunlightPushConsts,
+                },
                 CalcVertexAttrsComputeMode, Compute, ComputeMode, DrawRenderPassMode, Graphics,
                 GraphicsMode, RenderPassMode,
             },
@@ -39,9 +44,9 @@ use {
                 Driver, Fence, Framebuffer2d,
             },
             pool::{Lease, Pool},
-            BitmapRef, Texture2d, TextureRef,
+            BitmapRef, Data, Texture2d, TextureRef,
         },
-        math::{Coord, Mat4, Quat, Vec2, Vec3},
+        math::{Coord, Mat3, Mat4, Quat, Vec3},
     },
     gfx_hal::{
         adapter::PhysicalDevice as _,
@@ -68,19 +73,6 @@ use {
         iter::{empty, once},
     },
 };
-
-#[repr(C)]
-struct CalcVertexAttrsConsts {
-    base_idx: u32,
-    base_vertex: u32,
-}
-
-impl AsRef<[u32; 2]> for CalcVertexAttrsConsts {
-    #[inline]
-    fn as_ref(&self) -> &[u32; 2] {
-        unsafe { &*(self as *const Self as *const [u32; 2]) }
-    }
-}
 
 pub struct DrawOp {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
@@ -109,7 +101,7 @@ pub struct DrawOp {
     name: String,
 
     pool: Option<Lease<Pool>>,
-    skydome: Option<Skydome>,
+    skydome: Option<(Skydome, Lease<Data>, u64, bool)>,
 }
 
 impl DrawOp {
@@ -185,7 +177,24 @@ impl DrawOp {
     /// Draws the given skydome as a pre-pass before the geometry and lighting.
     #[must_use]
     pub fn with_skydome(&mut self, val: Skydome) -> &mut Self {
-        self.skydome = Some(val);
+        // Either take the existing skydome buffer or get a new one (ignoring the old skydome)
+        let (buf, buf_len, write) = if let Some((_, buf, buf_len, write)) = self.skydome.take() {
+            (buf, buf_len, write)
+        } else {
+            let pool = self.pool.as_mut().unwrap();
+            let (mut buf, buf_len, data) = pool.skydome(&self.driver);
+
+            // Fill the skydome buffer if it is brand new (data was provided)
+            if let Some(data) = data {
+                let mut mapped_range = buf.map_range_mut(0..data.len() as _).unwrap();
+                mapped_range.copy_from_slice(&data);
+                Mapping::flush(&mut mapped_range).unwrap();
+            }
+
+            (buf, buf_len, data.is_some())
+        };
+
+        self.skydome = Some((val, buf, buf_len, write));
         self
     }
 
@@ -221,10 +230,11 @@ impl DrawOp {
                     light: light.format(),
                     output: output.format(),
                     pre_fx: self.skydome.is_some(),
-                    post_fx: false,
+                    post_fx: instrs.contains_lines(),
                 };
                 let render_pass_mode = RenderPassMode::Draw(draw_mode);
                 let render_pass = pool.render_pass(&self.driver, render_pass_mode);
+
                 // Setup the framebuffer
                 self.frame_buf = Some((
                     Framebuffer2d::new(
@@ -255,15 +265,23 @@ impl DrawOp {
                 ));
                 render_pass_mode
             };
-            if self.skydome.is_some() {
-                self.graphics_skydome = Some(pool.graphics(
+
+            if let Some((skydome, _, _, _)) = &self.skydome {
+                let graphics = pool.graphics(
                     #[cfg(feature = "debug-names")]
                     &self.name,
                     &self.driver,
                     render_pass_mode,
                     skydome_subpass_idx,
                     GraphicsMode::Skydome,
-                ));
+                );
+                let device = self.driver.borrow();
+
+                unsafe {
+                    Self::write_skydome_descriptors(&device, &graphics, skydome);
+                }
+
+                self.graphics_skydome = Some(graphics);
             }
 
             {
@@ -370,63 +388,66 @@ impl DrawOp {
                 }
             }
 
-            if !instrs.is_empty() {
-                let view_proj = camera.projection() * camera.view();
-                let dims: Coord = self.dst.borrow().dims().into();
-                let viewport = Viewport {
-                    rect: dims.as_rect_at(Coord::ZERO),
-                    depth: 0.0..1.0,
-                };
+            let view_proj = camera.projection() * camera.view();
+            let dims: Coord = self.dst.borrow().dims().into();
+            let viewport = Viewport {
+                rect: dims.as_rect_at(Coord::ZERO),
+                depth: 0.0..1.0,
+            };
 
-                unsafe {
-                    self.submit_begin(&viewport);
+            unsafe {
+                self.submit_begin(&viewport);
 
-                    while let Some(instr) = instrs.next() {
-                        match instr {
-                            Instruction::DataTransfer(instr) => self.submit_data_transfer(instr),
-                            Instruction::IndexWriteRef(instr) => self.submit_index_write_ref(instr),
-                            Instruction::LightBegin => self.submit_light_begin(),
-                            Instruction::LightBind(instr) => self.submit_light_bind(instr),
-                            Instruction::LineDraw(instr) => {
-                                self.submit_lines(instr, &viewport, view_proj)
-                            }
-                            Instruction::MeshBegin => self.submit_mesh_begin(&viewport),
-                            Instruction::MeshBind(instr) => self.submit_mesh_bind(instr),
-                            Instruction::MeshDescriptors(set) => self.submit_mesh_descriptors(set),
-                            Instruction::MeshDraw(instr) => self.submit_mesh(instr, view_proj),
-                            Instruction::PointLightDraw(instr) => {
-                                self.submit_point_lights(instr, &viewport, view_proj)
-                            }
-                            Instruction::RectLightBegin => self.submit_rect_light_begin(&viewport),
-                            Instruction::RectLightDraw(instr) => {
-                                self.submit_rect_light(instr, view_proj)
-                            }
-                            Instruction::SpotlightBegin => self.submit_spotlight_begin(&viewport),
-                            Instruction::SpotlightDraw(instr) => {
-                                self.submit_spotlight(instr, view_proj)
-                            }
-                            Instruction::SunlightDraw(instr) => {
-                                self.submit_sunlights(instr, &viewport)
-                            }
-                            Instruction::VertexAttrsBegin(instr) => {
-                                self.submit_vertex_attrs_begin(instr)
-                            }
-                            Instruction::VertexAttrsCalc(instr) => {
-                                self.submit_vertex_attrs_calc(instr)
-                            }
-                            Instruction::VertexAttrsDescriptors(instr) => {
-                                self.submit_vertex_attrs_descriptors(instr)
-                            }
-                            Instruction::VertexCopy(instr) => self.submit_vertex_copies(instr),
-                            Instruction::VertexWrite(instr) => self.submit_vertex_write(instr),
-                            Instruction::VertexWriteRef(instr) => {
-                                self.submit_vertex_write_ref(instr)
-                            }
-                        }
+                if let Some((_, _, _, write)) = &mut self.skydome {
+                    if *write {
+                        *write = false;
+                        self.submit_skydome_write();
                     }
 
-                    self.submit_finish();
+                    self.submit_skydome(&viewport, view_proj);
                 }
+
+                while let Some(instr) = instrs.next() {
+                    match instr {
+                        Instruction::DataTransfer(instr) => self.submit_data_transfer(instr),
+                        Instruction::IndexWriteRef(instr) => self.submit_index_write_ref(instr),
+                        Instruction::LightBegin => self.submit_light_begin(),
+                        Instruction::LightBind(instr) => self.submit_light_bind(instr),
+                        Instruction::LineDraw(instr) => {
+                            self.submit_lines(instr, &viewport, view_proj)
+                        }
+                        Instruction::MeshBegin => self.submit_mesh_begin(&viewport),
+                        Instruction::MeshBind(instr) => self.submit_mesh_bind(instr),
+                        Instruction::MeshDescriptors(set) => self.submit_mesh_descriptors(set),
+                        Instruction::MeshDraw(instr) => self.submit_mesh(instr, view_proj),
+                        Instruction::PointLightDraw(instr) => {
+                            self.submit_point_lights(instr, &viewport, view_proj)
+                        }
+                        Instruction::RectLightBegin => self.submit_rect_light_begin(&viewport),
+                        Instruction::RectLightDraw(instr) => {
+                            self.submit_rect_light(instr, view_proj)
+                        }
+                        Instruction::SpotlightBegin => self.submit_spotlight_begin(&viewport),
+                        Instruction::SpotlightDraw(instr) => {
+                            self.submit_spotlight(instr, view_proj)
+                        }
+                        Instruction::SunlightDraw(instr) => self.submit_sunlights(instr, &viewport),
+                        Instruction::VertexAttrsBegin(instr) => {
+                            self.submit_vertex_attrs_begin(instr)
+                        }
+                        Instruction::VertexAttrsCalc(instr) => self.submit_vertex_attrs_calc(instr),
+                        Instruction::VertexAttrsDescriptors(instr) => {
+                            self.submit_vertex_attrs_descriptors(instr)
+                        }
+                        Instruction::VertexCopy(instr) => self.submit_vertex_copies(instr),
+                        Instruction::VertexWrite(instr) => self.submit_vertex_write(instr),
+                        Instruction::VertexWriteRef(instr) => self.submit_vertex_write_ref(instr),
+                    }
+                }
+
+                // TODO: Submit post-fx here; tone mapping/lens aberrations
+
+                self.submit_finish();
             }
         }
 
@@ -434,27 +455,15 @@ impl DrawOp {
     }
 
     fn fill_geom_buf_subpass_idx(&self) -> u8 {
-        if self.skydome.is_some() {
-            1
-        } else {
-            0
-        }
+        self.skydome.is_some() as u8
     }
 
     fn accum_light_subpass_idx(&self) -> u8 {
-        if self.skydome.is_some() {
-            2
-        } else {
-            1
-        }
+        1 + self.skydome.is_some() as u8
     }
 
     fn post_fx_subpass_idx(&self) -> u8 {
-        if self.skydome.is_some() {
-            4
-        } else {
-            3
-        }
+        3 + self.skydome.is_some() as u8
     }
 
     unsafe fn submit_begin(&mut self, viewport: &Viewport) {
@@ -618,7 +627,7 @@ impl DrawOp {
             graphics.layout(),
             ShaderStageFlags::VERTEX,
             0,
-            LineVertexConsts { transform }.as_ref(),
+            Mat4PushConst(transform).as_ref(),
         );
         self.cmd_buf.bind_vertex_buffers(
             0,
@@ -718,7 +727,7 @@ impl DrawOp {
                 layout,
                 ShaderStageFlags::VERTEX,
                 0,
-                Mat4Const(world_view_proj).as_ref(),
+                Mat4PushConst(world_view_proj).as_ref(),
             );
             self.cmd_buf
                 .draw_indexed(mesh.indices(), mesh.base_vertex() as _, 0..1);
@@ -772,13 +781,13 @@ impl DrawOp {
                 graphics.layout(),
                 ShaderStageFlags::VERTEX,
                 0,
-                Mat4Const(world_view_proj).as_ref(),
+                Mat4PushConst(world_view_proj).as_ref(),
             );
             self.cmd_buf.push_graphics_constants(
                 graphics.layout(),
                 ShaderStageFlags::VERTEX,
                 0,
-                PointLightConsts {
+                PointLightPushConsts {
                     intensity: light.color.to_rgb() * light.lumens,
                     radius: light.radius,
                 }
@@ -823,7 +832,7 @@ impl DrawOp {
             graphics.layout(),
             ShaderStageFlags::FRAGMENT,
             0,
-            RectLightConsts {
+            RectLightPushConsts {
                 dims: instr.light.dims.into(),
                 intensity: instr.light.color.to_rgb() * instr.light.lumens,
                 normal: instr.light.normal,
@@ -837,6 +846,68 @@ impl DrawOp {
 
         self.cmd_buf
             .draw(instr.offset..instr.offset + RECT_LIGHT_DRAW_COUNT, 0..1);
+    }
+
+    unsafe fn submit_skydome(&mut self, viewport: &Viewport, view_proj: Mat4) {
+        trace!("submit_skydome");
+
+        let graphics = self.graphics_skydome.as_ref().unwrap();
+        let desc_set = graphics.desc_set(0);
+        let layout = graphics.layout();
+        let (skydome, buf, buf_len, _) = self.skydome.as_ref().unwrap();
+        let vertex_count = *buf_len as u32 / 20;
+
+        self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
+        self.cmd_buf.set_scissors(0, &[viewport.rect]);
+        self.cmd_buf.set_viewports(0, &[viewport.clone()]);
+        self.cmd_buf.bind_vertex_buffers(
+            0,
+            once((
+                buf.as_ref(),
+                SubRange {
+                    offset: 0,
+                    size: Some(*buf_len),
+                },
+            )),
+        );
+        self.cmd_buf.push_graphics_constants(
+            layout,
+            ShaderStageFlags::VERTEX,
+            0,
+            SkydomeVertexPushConsts {
+                star_rotation: Mat3::from_quat(skydome.star_rotation),
+                sun_normal: skydome.sun_normal,
+                view_proj,
+            }
+            .as_ref(),
+        );
+        self.cmd_buf.push_graphics_constants(
+            layout,
+            ShaderStageFlags::FRAGMENT,
+            0,
+            SkydomeFragmentPushConsts {
+                time: skydome.time,
+                weather: skydome.weather,
+            }
+            .as_ref(),
+        );
+        bind_graphics_descriptor_set(&mut self.cmd_buf, layout, desc_set);
+        self.cmd_buf.draw(0..vertex_count, 0..1);
+
+        self.cmd_buf.next_subpass(SubpassContents::Inline);
+    }
+
+    unsafe fn submit_skydome_write(&mut self) {
+        trace!("submit_skydome_write");
+
+        let (_, buf, len, _) = self.skydome.as_mut().unwrap();
+
+        buf.write_range(
+            &mut self.cmd_buf,
+            PipelineStage::VERTEX_INPUT,
+            BufferAccess::VERTEX_BUFFER_READ,
+            0..*len,
+        );
     }
 
     unsafe fn submit_spotlight_begin(&mut self, viewport: &Viewport) {
@@ -893,7 +964,7 @@ impl DrawOp {
             graphics.layout(),
             ShaderStageFlags::FRAGMENT,
             0,
-            Mat4Const(view_proj).as_ref(),
+            Mat4PushConst(view_proj).as_ref(),
         );
 
         self.cmd_buf
@@ -1011,7 +1082,7 @@ impl DrawOp {
                 graphics.layout(),
                 ShaderStageFlags::FRAGMENT,
                 0,
-                SunlightConsts {
+                SunlightPushConsts {
                     intensity: light.color.to_rgb() * light.lumens,
                     normal: light.normal,
                 }
@@ -1076,7 +1147,7 @@ impl DrawOp {
         self.cmd_buf.push_compute_constants(
             pipeline_layout,
             0,
-            CalcVertexAttrsConsts {
+            CalcVertexAttrsPushConsts {
                 base_idx: instr.base_idx,
                 base_vertex: instr.base_vertex,
             }
@@ -1224,6 +1295,72 @@ impl DrawOp {
         }
     }
 
+    unsafe fn write_skydome_descriptors(device: &Device, graphics: &Graphics, skydome: &Skydome) {
+        let set = graphics.desc_set(0);
+        device.write_descriptor_sets(vec![
+            DescriptorSetWrite {
+                set,
+                binding: 0,
+                array_offset: 0,
+                descriptors: once(Descriptor::CombinedImageSampler(
+                    skydome.tint[0].borrow().as_default_view().as_ref(),
+                    Layout::ShaderReadOnlyOptimal,
+                    graphics.sampler(0).as_ref(),
+                )),
+            },
+            DescriptorSetWrite {
+                set,
+                binding: 1,
+                array_offset: 0,
+                descriptors: once(Descriptor::CombinedImageSampler(
+                    skydome.tint[1].borrow().as_default_view().as_ref(),
+                    Layout::ShaderReadOnlyOptimal,
+                    graphics.sampler(1).as_ref(),
+                )),
+            },
+            DescriptorSetWrite {
+                set,
+                binding: 2,
+                array_offset: 0,
+                descriptors: once(Descriptor::CombinedImageSampler(
+                    skydome.sun.borrow().as_default_view().as_ref(),
+                    Layout::ShaderReadOnlyOptimal,
+                    graphics.sampler(2).as_ref(),
+                )),
+            },
+            DescriptorSetWrite {
+                set,
+                binding: 3,
+                array_offset: 0,
+                descriptors: once(Descriptor::CombinedImageSampler(
+                    skydome.moon.borrow().as_default_view().as_ref(),
+                    Layout::ShaderReadOnlyOptimal,
+                    graphics.sampler(3).as_ref(),
+                )),
+            },
+            DescriptorSetWrite {
+                set,
+                binding: 4,
+                array_offset: 0,
+                descriptors: once(Descriptor::CombinedImageSampler(
+                    skydome.cloud[0].borrow().as_default_view().as_ref(),
+                    Layout::ShaderReadOnlyOptimal,
+                    graphics.sampler(4).as_ref(),
+                )),
+            },
+            DescriptorSetWrite {
+                set,
+                binding: 5,
+                array_offset: 0,
+                descriptors: once(Descriptor::CombinedImageSampler(
+                    skydome.cloud[1].borrow().as_default_view().as_ref(),
+                    Layout::ShaderReadOnlyOptimal,
+                    graphics.sampler(5).as_ref(),
+                )),
+            },
+        ]);
+    }
+
     unsafe fn write_vertex_descriptors<'v>(
         device: &Device,
         compute: &Compute,
@@ -1326,18 +1463,6 @@ struct LineVertex {
     pos: Vec3,
 }
 
-#[repr(C)]
-struct LineVertexConsts {
-    transform: Mat4,
-}
-
-impl AsRef<[u32; 16]> for LineVertexConsts {
-    #[inline]
-    fn as_ref(&self) -> &[u32; 16] {
-        unsafe { &*(self as *const _ as *const _) }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct Material {
     pub color: BitmapRef,
@@ -1385,76 +1510,9 @@ impl PartialOrd for Material {
     }
 }
 
-#[repr(C)]
-struct Mat4Const(Mat4);
-
-impl AsRef<[u32; 16]> for Mat4Const {
-    #[inline]
-    fn as_ref(&self) -> &[u32; 16] {
-        unsafe { &*(self as *const Self as *const [u32; 16]) }
-    }
-}
-
-#[repr(C)]
-struct PointLightConsts {
-    intensity: Vec3,
-    radius: f32,
-}
-
-impl AsRef<[u32; 4]> for PointLightConsts {
-    #[inline]
-    fn as_ref(&self) -> &[u32; 4] {
-        unsafe { &*(self as *const Self as *const [u32; 4]) }
-    }
-}
-
-#[repr(C)]
-struct RectLightConsts {
-    dims: Vec2,
-    intensity: Vec3,
-    normal: Vec3,
-    position: Vec3,
-    radius: f32,
-    range: f32,
-    view_proj: Mat4,
-}
-
-impl AsRef<[u32; 6]> for RectLightConsts {
-    #[inline]
-    fn as_ref(&self) -> &[u32; 6] {
-        unsafe { &*(self as *const Self as *const [u32; 6]) }
-    }
-}
-
-#[repr(C)]
-struct SunlightConsts {
-    intensity: Vec3,
-    normal: Vec3,
-}
-
-impl AsRef<[u32; 6]> for SunlightConsts {
-    #[inline]
-    fn as_ref(&self) -> &[u32; 6] {
-        unsafe { &*(self as *const Self as *const [u32; 6]) }
-    }
-}
-
-#[repr(C)]
-struct SpotlightConsts {
-    intensity: Vec3,
-    normal: Vec3,
-}
-
-impl AsRef<[u32; 6]> for SpotlightConsts {
-    #[inline]
-    fn as_ref(&self) -> &[u32; 6] {
-        unsafe { &*(self as *const Self as *const [u32; 6]) }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct Skydome {
-    pub clouds: [BitmapRef; 2],
+    pub cloud: [BitmapRef; 2],
     pub moon: BitmapRef,
     pub sun: BitmapRef,
     pub sun_normal: Vec3,

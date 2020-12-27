@@ -1,7 +1,5 @@
 use {
-    super::{
-        desc_set_layouts, push_consts, push_consts::ShaderRange, READ_ONLY_IMG, READ_WRITE_IMG,
-    },
+    super::{desc_set_layout, push_const, push_const::ShaderRange, READ_ONLY_IMG, READ_WRITE_IMG},
     crate::{
         color::TRANSPARENT_BLACK,
         gpu::{
@@ -215,14 +213,14 @@ impl Graphics {
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            &desc_set_layouts::BLEND,
+            &desc_set_layout::BLEND,
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
             driver,
             once(set_layout.as_ref()),
-            &push_consts::BLEND,
+            &push_const::BLEND,
         );
         let mut desc = GraphicsPipelineDesc::new(
             PrimitiveAssemblerDesc::Vertex {
@@ -589,7 +587,7 @@ impl Graphics {
             name,
             driver,
             empty::<&<_Backend as Backend>::DescriptorSetLayout>(),
-            &push_consts::VERTEX_MAT4,
+            &push_const::VERTEX_MAT4,
         );
         let vertex_buf = vertex_buf_with_stride(32);
         let mut desc = GraphicsPipelineDesc::new(
@@ -644,14 +642,14 @@ impl Graphics {
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            &desc_set_layouts::DRAW_MESH,
+            &desc_set_layout::DRAW_MESH,
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
             driver,
             once(set_layout.as_ref()),
-            &push_consts::VERTEX_MAT4,
+            &push_const::VERTEX_MAT4,
         );
         let vertex_buf = vertex_buf_with_stride(48);
         let mut desc = GraphicsPipelineDesc::new(
@@ -776,7 +774,7 @@ impl Graphics {
             driver,
             subpass,
             &spirv::defer::POINT_LIGHT_FRAG,
-            &push_consts::DRAW_POINT_LIGHT,
+            &push_const::DRAW_POINT_LIGHT,
         )
     }
 
@@ -792,12 +790,12 @@ impl Graphics {
             driver,
             subpass,
             &spirv::defer::RECT_LIGHT_FRAG,
-            &push_consts::DRAW_RECT_LIGHT,
+            &push_const::DRAW_RECT_LIGHT,
         )
     }
 
     pub unsafe fn draw_spotlight(
-        #[cfg(feature = "debug-names")] _name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         _: usize,
         subpass: Subpass<'_, _Backend>,
@@ -808,7 +806,7 @@ impl Graphics {
             driver,
             subpass,
             &spirv::defer::SPOTLIGHT_FRAG,
-            &push_consts::DRAW_SPOTLIGHT,
+            &push_const::DRAW_SPOTLIGHT,
         )
     }
 
@@ -818,101 +816,6 @@ impl Graphics {
         _max_desc_sets: usize,
         _subpass: Subpass<'_, _Backend>,
     ) -> Self {
-        // let vertex = ShaderModule::new(driver, &QUAD_TRANSFORM_VERT);
-        // let fragment = ShaderModule::new(driver, &SUNLIGHT_FRAG);
-        // let set_layout = DescriptorSetLayout::new(
-        //     #[cfg(feature = "debug-names")]
-        //     name,
-        //     driver,
-        //     &[descriptor_set_layout_binding(
-        //         0,
-        //         5,
-        //         ShaderStageFlags::FRAGMENT,
-        //         DescriptorType::Image {
-        //             ty: ImageDescriptorType::Sampled { with_sampler: true },
-        //         },
-        //     )],
-        // );
-        // let layout = PipelineLayout::new(
-        //     driver,
-        //     once(&*set_layout),
-        //     &[(ShaderStageFlags::VERTEX, 0..64)],
-        // );
-        // let mut desc = GraphicsPipelineDesc::new(
-        //     PrimitiveAssemblerDesc::Vertex {
-        //         attributes: &[],
-        //         buffers: &[],
-        //         geometry: None,
-        //         input_assembler: InputAssemblerDesc {
-        //             primitive: Primitive::TriangleList,
-        //             restart_index: None,
-        //             with_adjacency: false,
-        //         },
-        //         tessellation: None,
-        //         vertex: ShaderModule::entry_point(&vertex),
-        //     },
-        //     rasterizers::FILL,
-        //     Some(ShaderModule::entry_point(&fragment)),
-        //     &layout,
-        //     subpass,
-        // );
-        // desc.blender.logic_op = Some(LogicOp::Set);
-        // desc.blender.targets.push(ColorBlendDesc {
-        //     blend: None,
-        //     mask: ColorMask::empty(),
-        // });
-        // // desc.depth_stencil = DepthStencilDesc {
-        // //     depth: Some(DepthTest::PASS_WRITE),
-        // //     depth_bounds: true,
-        // //     stencil: Some(StencilTest {
-        // //         faces: Sided {
-        // //             back: StencilFace {
-        // //                 fun: Comparison::Never,
-        // //                 op_fail: StencilOp::Keep,
-        // //                 op_depth_fail: StencilOp::Keep,
-        // //                 op_pass: StencilOp::Keep,
-        // //             },
-        // //             front: StencilFace {
-        // //                 fun: Comparison::LessEqual,
-        // //                 op_fail: StencilOp::Zero,
-        // //                 op_depth_fail: StencilOp::Zero,
-        // //                 op_pass: StencilOp::Keep,
-        // //             },
-        // //         },
-        // //         read_masks: State::Static(Sided { back: 0, front: 0 }),
-        // //         write_masks: State::Static(Sided { back: 0, front: 0 }),
-        // //         reference_values: State::Static(Sided { back: 0, front: 0 }),
-        // //     }),
-        // // };
-        // let pipeline = GraphicsPipeline::new(
-        //     #[cfg(feature = "debug-names")]
-        //     name,
-        //     driver,
-        //     &desc,
-        // );
-        // let mut desc_pool = DescriptorPool::new(
-        //     driver,
-        //     max_desc_sets,
-        //     once(descriptor_range_desc(
-        //         5,
-        //         DescriptorType::Image {
-        //             ty: ImageDescriptorType::Sampled { with_sampler: true },
-        //         },
-        //     )),
-        // );
-        // let desc_sets = vec![desc_pool.allocate_set(&*set_layout).unwrap()];
-
-        // Self {
-        //     desc_pool,
-        //     desc_sets,
-        //     layout,
-        //     max_desc_sets,
-        //     pipeline,
-        //     set_layout,
-        //     samplers: (0..=4)
-        //         .map(|_| sampler(driver, Filter::Nearest))
-        //         .collect(),
-        // }
         todo!();
     }
 
@@ -931,7 +834,7 @@ impl Graphics {
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            &desc_set_layouts::SINGLE_READ_ONLY_IMG,
+            &desc_set_layout::SINGLE_READ_ONLY_IMG,
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
@@ -1000,7 +903,7 @@ impl Graphics {
             driver,
             subpass,
             &spirv::FONT_FRAG,
-            &push_consts::FONT,
+            &push_const::FONT,
             max_desc_sets,
         )
     }
@@ -1017,7 +920,7 @@ impl Graphics {
             driver,
             subpass,
             &spirv::FONT_OUTLINE_FRAG,
-            &push_consts::FONT_OUTLINE,
+            &push_const::FONT_OUTLINE,
             max_desc_sets,
         )
     }
@@ -1036,14 +939,14 @@ impl Graphics {
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            &desc_set_layouts::SINGLE_READ_ONLY_IMG,
+            &desc_set_layout::SINGLE_READ_ONLY_IMG,
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
             driver,
             once(set_layout.as_ref()),
-            &push_consts::VERTEX_MAT4,
+            &push_const::VERTEX_MAT4,
         );
         let mut desc = GraphicsPipelineDesc::new(
             PrimitiveAssemblerDesc::Vertex {
@@ -1137,14 +1040,14 @@ impl Graphics {
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            &desc_set_layouts::BLEND,
+            &desc_set_layout::BLEND,
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
             driver,
             once(set_layout.as_ref()),
-            &push_consts::BLEND,
+            &push_const::BLEND,
         );
         let mut desc = GraphicsPipelineDesc::new(
             PrimitiveAssemblerDesc::Vertex {
@@ -1302,14 +1205,14 @@ impl Graphics {
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            &desc_set_layouts::BLEND,
+            &desc_set_layout::BLEND,
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
             driver,
             once(set_layout.as_ref()),
-            &push_consts::BLEND,
+            &push_const::BLEND,
         );
         let mut desc = GraphicsPipelineDesc::new(
             PrimitiveAssemblerDesc::Vertex {
@@ -1435,14 +1338,14 @@ impl Graphics {
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            &desc_set_layouts::SINGLE_READ_ONLY_IMG,
+            &desc_set_layout::SINGLE_READ_ONLY_IMG,
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            once(&*set_layout),
-            &push_consts::VERTEX_MAT4,
+            once(set_layout.as_ref()),
+            &push_const::VERTEX_MAT4,
         );
         let mut desc = GraphicsPipelineDesc::new(
             PrimitiveAssemblerDesc::Vertex {
@@ -1503,14 +1406,14 @@ impl Graphics {
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            &desc_set_layouts::SKYDOME,
+            &desc_set_layout::SKYDOME,
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
             driver,
             once(set_layout.as_ref()),
-            &push_consts::SKYDOME,
+            &push_const::SKYDOME,
         );
         let vertex_buf = vertex_buf_with_stride(20);
         let mut desc = GraphicsPipelineDesc::new(
@@ -1543,7 +1446,7 @@ impl Graphics {
         let mut desc_pool = DescriptorPool::new(
             driver,
             max_desc_sets,
-            once(descriptor_range_desc(max_desc_sets, READ_WRITE_IMG)),
+            once(descriptor_range_desc(6 * max_desc_sets, READ_ONLY_IMG)),
         );
         let layouts = (0..max_desc_sets).map(|_| set_layout.as_ref());
         let mut desc_sets = Vec::with_capacity(max_desc_sets);
@@ -1556,7 +1459,7 @@ impl Graphics {
             max_desc_sets,
             pipeline,
             set_layout: Some(set_layout),
-            samplers: vec![sampler(driver, Filter::Nearest)],
+            samplers: (0..6).map(|_| sampler(driver, Filter::Nearest)).collect(),
         }
     }
 
@@ -1573,14 +1476,14 @@ impl Graphics {
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            &desc_set_layouts::SINGLE_READ_ONLY_IMG,
+            &desc_set_layout::SINGLE_READ_ONLY_IMG,
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
             driver,
-            once(&*set_layout),
-            &push_consts::TEXTURE,
+            once(set_layout.as_ref()),
+            &push_const::TEXTURE,
         );
         let mut desc = GraphicsPipelineDesc::new(
             PrimitiveAssemblerDesc::Vertex {

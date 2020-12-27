@@ -1,6 +1,6 @@
 use {
     crate::gpu::{
-        def::{desc_set_layouts, push_consts},
+        def::{desc_set_layout, push_const},
         driver::{DescriptorSetLayout, PipelineLayout},
         Driver,
     },
@@ -56,8 +56,8 @@ impl Layouts {
             name,
             driver,
             &mut self.compute_calc_vertex_attrs,
-            &desc_set_layouts::CALC_VERTEX_ATTRS,
-            &push_consts::CALC_VERTEX_ATTRS,
+            &desc_set_layout::CALC_VERTEX_ATTRS,
+            &push_const::CALC_VERTEX_ATTRS,
         );
 
         self.compute_calc_vertex_attrs.as_ref().unwrap()
@@ -73,8 +73,8 @@ impl Layouts {
             name,
             driver,
             &mut self.compute_decode_rgb_rgba,
-            &desc_set_layouts::DECODE_RGB_RGBA,
-            &push_consts::DECODE_RGB_RGBA,
+            &desc_set_layout::DECODE_RGB_RGBA,
+            &push_const::DECODE_RGB_RGBA,
         );
 
         self.compute_decode_rgb_rgba.as_ref().unwrap()

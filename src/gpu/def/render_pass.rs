@@ -32,6 +32,7 @@ pub fn color(driver: &Driver, mode: ColorRenderPassMode) -> RenderPass {
     enum Attachments {
         Color,
     }
+
     // Attachments
     let color = Attachment {
         format: Some(mode.fmt),
@@ -311,16 +312,23 @@ pub fn draw_pre_post(_driver: &Driver, _mode: DrawRenderPassMode) -> RenderPass 
 }
 
 pub fn present(driver: &Driver, fmt: Format) -> RenderPass {
-    let present_attachment = 0;
-    let present = Attachment {
+    /// The list of attachments used by this render pass, in index order.
+    enum Attachments {
+        Color,
+    }
+
+    // Attachments
+    let color = Attachment {
         format: Some(fmt),
         samples: 1,
         ops: AttachmentOps::new(AttachmentLoadOp::DontCare, AttachmentStoreOp::Store), // TODO: Another render pass for AttachmentLoadOp::Clear when we need to render to a transparent window?
         stencil_ops: AttachmentOps::DONT_CARE,
         layouts: Layout::Undefined..Layout::Present,
     };
+
+    // Subpasses
     let subpass = SubpassDesc {
-        colors: &[(present_attachment, Layout::ColorAttachmentOptimal)],
+        colors: &[(Attachments::Color as _, Layout::ColorAttachmentOptimal)],
         depth_stencil: None,
         inputs: &[],
         resolves: &[],
@@ -330,7 +338,7 @@ pub fn present(driver: &Driver, fmt: Format) -> RenderPass {
         #[cfg(feature = "debug-names")]
         "Present",
         driver,
-        &[present],
+        &[color],
         &[subpass],
         &[],
     )

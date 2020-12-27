@@ -11,7 +11,7 @@ pub use self::{
     bitmap::{Bitmap, BitmapOp},
     clear::ClearOp,
     copy::CopyOp,
-    draw::{Command as Draw, Compiler, DrawOp, Material},
+    draw::{Command as Draw, Compiler, DrawOp, Material, Skydome},
     encode::EncodeOp,
     font::{Font, FontOp},
     gradient::GradientOp,
