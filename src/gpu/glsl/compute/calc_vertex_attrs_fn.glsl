@@ -1,3 +1,5 @@
+// Some parts based on: https://www.cs.upc.edu/~virtual/G/1.%20Teoria/06.%20Textures/Tangent%20Space%20Calculation.pdf
+
 #ifdef SKIN
 const uint DST_STRIDE = 20;
 const uint SRC_STRIDE = 13;

@@ -5,8 +5,8 @@ use {
         gpu::{
             data::Mapping,
             def::{
-                push_const::Mat4PushConst, ColorRenderPassMode, Graphics, GraphicsMode,
-                RenderPassMode,
+                push_const::{FontPushConsts, Mat4PushConst, Vec4PushConst},
+                ColorRenderPassMode, Graphics, GraphicsMode, RenderPassMode,
             },
             driver::{
                 bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
@@ -368,9 +368,17 @@ impl FontOp {
             for (page_idx, vertices) in &tessellations {
                 self.write_descriptors(font, *page_idx);
 
+                self.submit_page_begin(dims);
+
+                if self.outline_color.is_some() {
+                    self.submit_page_outline();
+                } else {
+                    self.submit_page_normal();
+                }
+
                 // Submit the vertices for this page of the tessellation
                 let len = vertices.len() as u32;
-                self.submit_page(dims, base..base + len);
+                self.submit_page_finish(base..base + len);
                 base += len;
             }
 
@@ -468,8 +476,8 @@ impl FontOp {
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
     }
 
-    unsafe fn submit_page(&mut self, dims: Extent, vertices: Range<u32>) {
-        trace!("submit_page");
+    unsafe fn submit_page_begin(&mut self, dims: Extent) {
+        trace!("submit_page_begin");
 
         let graphics = self.graphics.as_ref().unwrap();
         let (vertex_buf, vertex_buf_len) = self.vertex_buf.as_mut().unwrap();
@@ -508,20 +516,44 @@ impl FontOp {
             }
             .as_ref(),
         );
+    }
 
-        // Push the glyph (and optional outline color) constants
-        // TODO: Maybe slice extend instead
-        let mut push_constants = vec![];
-        push_constants.extend(&self.glyph_color.to_unorm_bits());
-        if let Some(outline_color) = self.outline_color {
-            push_constants.extend(&outline_color.to_unorm_bits())
-        }
+    unsafe fn submit_page_normal(&mut self) {
+        trace!("submit_page_normal");
+
+        let graphics = self.graphics.as_ref().unwrap();
+        let layout = graphics.layout();
+        let push_constants = Vec4PushConst {
+            val: self.glyph_color.to_rgba(),
+        };
+
         self.cmd_buf.push_graphics_constants(
-            graphics.layout(),
+            layout,
             ShaderStageFlags::FRAGMENT,
-            64,
-            push_constants.as_slice(),
+            Mat4PushConst::BYTE_LEN,
+            push_constants.as_ref(),
         );
+    }
+
+    unsafe fn submit_page_outline(&mut self) {
+        trace!("submit_page_outline");
+
+        let graphics = self.graphics.as_ref().unwrap();
+        let layout = graphics.layout();
+        let mut push_constants = FontPushConsts::default();
+        push_constants.glyph_color = self.glyph_color.to_rgba();
+        push_constants.outline_color = self.outline_color.as_ref().unwrap().to_rgba();
+
+        self.cmd_buf.push_graphics_constants(
+            layout,
+            ShaderStageFlags::FRAGMENT,
+            Mat4PushConst::BYTE_LEN,
+            push_constants.as_ref(),
+        );
+    }
+
+    unsafe fn submit_page_finish(&mut self, vertices: Range<u32>) {
+        trace!("submit_page_finish");
 
         self.cmd_buf.draw(vertices, 0..1);
     }

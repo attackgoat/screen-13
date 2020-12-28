@@ -1,5 +1,6 @@
 use {
     super::Color,
+    crate::math::{vec4, Vec4},
     gfx_hal::{
         command::{ClearColor, ClearValue},
         image::PackedColor,
@@ -30,23 +31,15 @@ impl AlphaColor {
         Self { b, g, r, a }
     }
 
-    pub fn to_unorm(self) -> (f32, f32, f32, f32) {
-        (
-            f32::from(self.r) / 255.0,
-            f32::from(self.g) / 255.0,
-            f32::from(self.b) / 255.0,
-            f32::from(self.a) / 255.0,
-        )
-    }
+    pub fn to_rgba(self) -> Vec4 {
+        const SCALE: f32 = 1.0 / u8::MAX as f32;
 
-    pub fn to_unorm_bits(self) -> [u32; 4] {
-        let unorm = self.to_unorm();
-        [
-            unorm.0.to_bits(),
-            unorm.1.to_bits(),
-            unorm.2.to_bits(),
-            unorm.3.to_bits(),
-        ]
+        vec4(
+            self.r as f32 * SCALE,
+            self.g as f32 * SCALE,
+            self.b as f32 * SCALE,
+            self.a as f32 * SCALE,
+        )
     }
 }
 
@@ -69,10 +62,10 @@ impl From<Color> for AlphaColor {
 
 impl From<AlphaColor> for ClearValue {
     fn from(color: AlphaColor) -> Self {
-        let (r, g, b, a) = color.to_unorm();
+        let color = color.to_rgba();
         Self {
             color: ClearColor {
-                float32: [r, g, b, a],
+                float32: [color.x, color.y, color.z, color.w],
             },
         }
     }

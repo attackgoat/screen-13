@@ -384,7 +384,7 @@ impl WriteOp {
             self.cmd_buf.push_graphics_constants(
                 graphics.layout(),
                 ShaderStageFlags::FRAGMENT,
-                64,
+                WritePushConsts::BYTE_LEN,
                 &[ab.to_bits(), inv.to_bits()],
             );
         }

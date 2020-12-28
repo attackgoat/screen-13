@@ -20,8 +20,8 @@ pub mod pak;
 /// Things, particularly traits, which are used in almost every single Screen 13 program.
 pub mod prelude {
     pub use super::{
-        color::CORNFLOWER_BLUE, math::Extent, DynScreen, Engine, Gpu, Input, Pool, Program, Render,
-        Screen,
+        color::CORNFLOWER_BLUE, math::Extent, math::*, DynScreen, Engine, Gpu, Input, Pool,
+        Program, Render, Screen,
     };
 }
 

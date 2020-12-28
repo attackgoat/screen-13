@@ -77,8 +77,8 @@ pub struct DrawRenderPassMode {
     pub geom_buf: Format,
     pub light: Format,
     pub output: Format,
-    pub pre_fx: bool,
     pub post_fx: bool,
+    pub skydome: bool,
 }
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]

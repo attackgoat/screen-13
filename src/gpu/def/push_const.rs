@@ -1,5 +1,5 @@
 use {
-    crate::math::{Mat3, Mat4, Vec2, Vec3},
+    crate::math::{Mat4, Vec2, Vec3, Vec4},
     gfx_hal::pso::ShaderStageFlags,
     std::ops::Range,
 };
@@ -20,11 +20,13 @@ macro_rules! push_consts {
         #[repr(C)]
         pub struct $struct { $($vis $element: $ty),* }
 
-        // TODO: Have a ctor that only fills in the public fields?
-        // impl $struct {
-        //     pub fn new($($element: $ty),*) {
-        //     }
-        // }
+        impl $struct {
+            pub const BYTE_LEN: u32 = $sz << 2;
+
+            // TODO: Have a ctor that only fills in the public fields?
+            // pub fn new($($element: $ty),*) {
+            // }
+        }
 
         impl AsRef<[u32; $sz]> for $struct {
             #[inline]
@@ -46,6 +48,9 @@ push_consts!(Mat4PushConst: 16 {
 });
 push_consts!(U32PushConst: 1 {
     pub val: u32,
+});
+push_consts!(Vec4PushConst: 4 {
+    pub val: Vec4,
 });
 
 // Specific-use consts and types (gives context to fields and alignment control)
@@ -73,16 +78,29 @@ pub const DRAW_SUNLIGHT: [ShaderRange; 2] = [
     (ShaderStageFlags::FRAGMENT, 0..0),
 ];
 pub const FONT: [ShaderRange; 2] = [
-    (ShaderStageFlags::VERTEX, 0..64),
-    (ShaderStageFlags::FRAGMENT, 64..80),
+    (ShaderStageFlags::VERTEX, 0..Mat4PushConst::BYTE_LEN),
+    (
+        ShaderStageFlags::FRAGMENT,
+        Mat4PushConst::BYTE_LEN..Mat4PushConst::BYTE_LEN + Vec4PushConst::BYTE_LEN,
+    ),
 ];
 pub const FONT_OUTLINE: [ShaderRange; 2] = [
-    (ShaderStageFlags::VERTEX, 0..64),
-    (ShaderStageFlags::FRAGMENT, 64..96),
+    (ShaderStageFlags::VERTEX, 0..Mat4PushConst::BYTE_LEN),
+    (
+        ShaderStageFlags::FRAGMENT,
+        Mat4PushConst::BYTE_LEN..Mat4PushConst::BYTE_LEN + FontPushConsts::BYTE_LEN,
+    ),
 ];
 pub const SKYDOME: [ShaderRange; 2] = [
-    (ShaderStageFlags::VERTEX, 0..100),
-    (ShaderStageFlags::FRAGMENT, 100..124),
+    (
+        ShaderStageFlags::VERTEX,
+        0..SkydomeVertexPushConsts::BYTE_LEN,
+    ),
+    (
+        ShaderStageFlags::FRAGMENT,
+        SkydomeVertexPushConsts::BYTE_LEN
+            ..SkydomeVertexPushConsts::BYTE_LEN + SkydomeFragmentPushConsts::BYTE_LEN,
+    ),
 ];
 pub const TEXTURE: [ShaderRange; 1] = [(ShaderStageFlags::VERTEX, 0..80)];
 
@@ -93,6 +111,10 @@ push_consts!(CalcVertexAttrsPushConsts: 2 {
 push_consts!(PointLightPushConsts: 4 {
     pub intensity: Vec3,
     pub radius: f32,
+});
+push_consts!(FontPushConsts: 4 {
+    pub glyph_color: Vec4,
+    pub outline_color: Vec4,
 });
 push_consts!(RectLightPushConsts: 0 {
     pub dims: Vec2,
@@ -105,13 +127,20 @@ push_consts!(RectLightPushConsts: 0 {
 });
 push_consts!(SkydomeFragmentPushConsts: 24 {
     pub sun_normal: Vec3,
+    // _0: f32,
     pub time: f32,
-    __: f32,
+    _1: f32,
     pub weather: f32,
 });
-push_consts!(SkydomeVertexPushConsts: 25 {
-    pub view_proj: Mat4,
-    pub star_rotation: Mat3,
+push_consts!(SkydomeVertexPushConsts: 28 {
+    pub view: Mat4,
+    // `star_rotation` is a Mat3 in GLSL; but we have to break it up like this for alignment
+    pub star_rotation_col0: Vec3,
+    _0: f32,
+    pub star_rotation_col1: Vec3,
+    _1: f32,
+    pub star_rotation_col2: Vec3,
+    _2: f32,
 });
 push_consts!(SunlightPushConsts: 6 {
     pub intensity: Vec3,

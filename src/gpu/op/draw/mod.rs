@@ -233,7 +233,7 @@ impl DrawOp {
                     geom_buf: color_metal.format(),
                     light: light.format(),
                     output: output.format(),
-                    pre_fx: self.skydome.is_some(),
+                    skydome: self.skydome.is_some(),
                     post_fx: instrs.contains_lines(),
                 };
                 let render_pass_mode = RenderPassMode::Draw(draw_mode);
@@ -393,7 +393,9 @@ impl DrawOp {
                 }
             }
 
-            let view_proj = camera.projection() * camera.view();
+            let proj = camera.projection();
+            let view = camera.view();
+            let view_proj = proj * view;
             let dims: Coord = self.dst.borrow().dims().into();
             let viewport = Viewport {
                 rect: dims.as_rect_at(Coord::ZERO),
@@ -411,7 +413,7 @@ impl DrawOp {
                         self.submit_skydome_write();
                     }
 
-                    self.submit_skydome(&viewport, view_proj);
+                    self.submit_skydome(&viewport, view);
                 }
 
                 while let Some(instr) = instrs.next() {
@@ -799,7 +801,7 @@ impl DrawOp {
             self.cmd_buf.push_graphics_constants(
                 graphics.layout(),
                 ShaderStageFlags::VERTEX,
-                0,
+                Mat4PushConst::BYTE_LEN,
                 PointLightPushConsts {
                     intensity: light.color.to_rgb() * light.lumens,
                     radius: light.radius,
@@ -856,24 +858,30 @@ impl DrawOp {
             }
             .as_ref(),
         );
-
         self.cmd_buf
             .draw(instr.offset..instr.offset + RECT_LIGHT_DRAW_COUNT, 0..1);
     }
 
-    unsafe fn submit_skydome(&mut self, viewport: &Viewport, view_proj: Mat4) {
+    unsafe fn submit_skydome(&mut self, viewport: &Viewport, view: Mat4) {
         trace!("submit_skydome");
 
         let graphics = self.graphics_skydome.as_ref().unwrap();
         let desc_set = graphics.desc_set(0);
         let layout = graphics.layout();
         let (skydome, buf, buf_len, _) = self.skydome.as_ref().unwrap();
-        let vertex_count = *buf_len as u32 / 20;
+        let vertex_count = *buf_len as u32 / 12;
+        let star_rotation = Mat3::from_quat(skydome.star_rotation).to_cols_array_2d();
+
+        let mut vertex_push_consts = SkydomeVertexPushConsts::default();
+        vertex_push_consts.star_rotation_col0 = star_rotation[0].into();
+        vertex_push_consts.star_rotation_col1 = star_rotation[1].into();
+        vertex_push_consts.star_rotation_col2 = star_rotation[2].into();
+        vertex_push_consts.view = view.inverse();
 
         let mut frag_push_consts = SkydomeFragmentPushConsts::default();
         frag_push_consts.sun_normal = skydome.sun_normal;
-        frag_push_consts.time = 420.0; //skydome.time;
-        frag_push_consts.weather = 69.0; //skydome.weather;
+        frag_push_consts.time = skydome.time;
+        frag_push_consts.weather = skydome.weather;
 
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
         self.cmd_buf.set_scissors(0, &[viewport.rect]);
@@ -892,21 +900,16 @@ impl DrawOp {
             layout,
             ShaderStageFlags::VERTEX,
             0,
-            SkydomeVertexPushConsts {
-                star_rotation: Mat3::from_quat(skydome.star_rotation),
-                view_proj,
-            }
-            .as_ref(),
+            vertex_push_consts.as_ref(),
         );
         self.cmd_buf.push_graphics_constants(
             layout,
             ShaderStageFlags::FRAGMENT,
-            100,
+            SkydomeVertexPushConsts::BYTE_LEN,
             frag_push_consts.as_ref(),
         );
         bind_graphics_descriptor_set(&mut self.cmd_buf, layout, desc_set);
         self.cmd_buf.draw(0..vertex_count, 0..1);
-
         self.cmd_buf.next_subpass(SubpassContents::Inline);
     }
 

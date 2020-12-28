@@ -48,9 +48,13 @@ fn gen_point_light() {
     let geom = IcoSphere::subdivide(2);
     let mut vertices = vec![];
     for tri in geom {
-        vertices.push(tri.x.pos);
-        vertices.push(tri.y.pos);
-        vertices.push(tri.z.pos);
+        let a = vec3(tri.x.pos.x, tri.x.pos.y, tri.x.pos.z).normalize() * 0.5;
+        let b = vec3(tri.y.pos.x, tri.y.pos.y, tri.y.pos.z).normalize() * 0.5;
+        let c = vec3(tri.z.pos.x, tri.z.pos.y, tri.z.pos.z).normalize() * 0.5;
+
+        vertices.push(a);
+        vertices.push(b);
+        vertices.push(c);
     }
 
     // We'll store the data as bytes because we are going to send it straight to the GPU
@@ -61,10 +65,10 @@ fn gen_point_light() {
     )
     .unwrap();
 
-    for v in vertices {
-        let y = v.y.to_ne_bytes();
-        let x = v.x.to_ne_bytes();
-        let z = v.z.to_ne_bytes();
+    for pos in vertices {
+        let x = pos.x.to_ne_bytes();
+        let y = pos.y.to_ne_bytes();
+        let z = pos.z.to_ne_bytes();
 
         writeln!(output_file, "    {}, {}, {}, {},", x[0], x[1], x[2], x[3]).unwrap();
         writeln!(output_file, "    {}, {}, {}, {},", y[0], y[1], y[2], y[3]).unwrap();
@@ -81,12 +85,12 @@ fn gen_skydome() {
 
     let mut output_file = File::create(SKYDOME_PATH.as_path()).unwrap();
 
-    let geom = IcoSphere::subdivide(2);
+    let geom = IcoSphere::subdivide(1);
     let mut vertices = vec![];
     for tri in geom {
-        let a = vec3(tri.x.pos.x, tri.x.pos.y, tri.x.pos.z).normalize();
-        let b = vec3(tri.y.pos.x, tri.y.pos.y, tri.y.pos.z).normalize();
-        let c = vec3(tri.z.pos.x, tri.z.pos.y, tri.z.pos.z).normalize();
+        let a = vec3(tri.x.pos.x, tri.x.pos.y, tri.x.pos.z).normalize() * 0.5;
+        let b = vec3(tri.y.pos.x, tri.y.pos.y, tri.y.pos.z).normalize() * 0.5;
+        let c = vec3(tri.z.pos.x, tri.z.pos.y, tri.z.pos.z).normalize() * 0.5;
 
         let ba = b - a;
         let ca = c - a;
@@ -101,11 +105,11 @@ fn gen_skydome() {
     writeln!(
         output_file,
         "pub const SKYDOME: [u8; {}] = [",
-        vertices.len() * 24
+        vertices.len() * 12
     )
     .unwrap();
 
-    for (pos, normal) in vertices {
+    for (pos, _normal) in vertices {
         let x = pos.x.to_ne_bytes();
         let y = pos.y.to_ne_bytes();
         let z = pos.z.to_ne_bytes();
@@ -114,13 +118,13 @@ fn gen_skydome() {
         writeln!(output_file, "    {}, {}, {}, {},", y[0], y[1], y[2], y[3]).unwrap();
         writeln!(output_file, "    {}, {}, {}, {},", z[0], z[1], z[2], z[3]).unwrap();
 
-        let x = normal.x.to_ne_bytes();
-        let y = normal.y.to_ne_bytes();
-        let z = normal.z.to_ne_bytes();
+        // let x = normal.x.to_ne_bytes();
+        // let y = normal.y.to_ne_bytes();
+        // let z = normal.z.to_ne_bytes();
 
-        writeln!(output_file, "    {}, {}, {}, {},", x[0], x[1], x[2], x[3]).unwrap();
-        writeln!(output_file, "    {}, {}, {}, {},", y[0], y[1], y[2], y[3]).unwrap();
-        writeln!(output_file, "    {}, {}, {}, {},", z[0], z[1], z[2], z[3]).unwrap();
+        // writeln!(output_file, "    {}, {}, {}, {},", x[0], x[1], x[2], x[3]).unwrap();
+        // writeln!(output_file, "    {}, {}, {}, {},", y[0], y[1], y[2], y[3]).unwrap();
+        // writeln!(output_file, "    {}, {}, {}, {},", z[0], z[1], z[2], z[3]).unwrap();
     }
 
     writeln!(output_file, "];").unwrap();

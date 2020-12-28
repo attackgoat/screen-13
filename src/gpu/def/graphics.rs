@@ -1443,10 +1443,10 @@ impl Graphics {
             once(set_layout.as_ref()),
             &push_const::SKYDOME,
         );
-        let vertex_buf = vertex_buf_with_stride(24);
+        let vertex_buf = vertex_buf_with_stride(12);
         let mut desc = GraphicsPipelineDesc::new(
             PrimitiveAssemblerDesc::Vertex {
-                attributes: &attributes::VEC3_VEC3,
+                attributes: &attributes::VEC3,
                 buffers: &vertex_buf,
                 geometry: None,
                 input_assembler: input_assemblers::TRIANGLES,

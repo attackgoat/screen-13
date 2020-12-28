@@ -31,21 +31,21 @@ pub(super) fn gen_line(vertices: &[LineVertex; 2]) -> [u8; LINE_STRIDE] {
     res[4..8].copy_from_slice(&vertices[0].pos.y.to_ne_bytes());
     res[8..12].copy_from_slice(&vertices[0].pos.z.to_ne_bytes());
 
-    let (r, g, b, a) = vertices[0].color.to_unorm();
-    res[12..16].copy_from_slice(&r.to_ne_bytes());
-    res[16..20].copy_from_slice(&g.to_ne_bytes());
-    res[20..24].copy_from_slice(&b.to_ne_bytes());
-    res[24..28].copy_from_slice(&a.to_ne_bytes());
+    let color = vertices[0].color.to_rgba();
+    res[12..16].copy_from_slice(&color.x.to_ne_bytes());
+    res[16..20].copy_from_slice(&color.y.to_ne_bytes());
+    res[20..24].copy_from_slice(&color.z.to_ne_bytes());
+    res[24..28].copy_from_slice(&color.w.to_ne_bytes());
 
     res[32..36].copy_from_slice(&vertices[1].pos.x.to_ne_bytes());
     res[36..40].copy_from_slice(&vertices[1].pos.y.to_ne_bytes());
     res[40..44].copy_from_slice(&vertices[1].pos.z.to_ne_bytes());
 
-    let (r, g, b, a) = vertices[1].color.to_unorm();
-    res[44..48].copy_from_slice(&r.to_ne_bytes());
-    res[48..52].copy_from_slice(&g.to_ne_bytes());
-    res[52..56].copy_from_slice(&b.to_ne_bytes());
-    res[56..60].copy_from_slice(&a.to_ne_bytes());
+    let color = vertices[1].color.to_rgba();
+    res[44..48].copy_from_slice(&color.x.to_ne_bytes());
+    res[48..52].copy_from_slice(&color.y.to_ne_bytes());
+    res[52..56].copy_from_slice(&color.z.to_ne_bytes());
+    res[56..60].copy_from_slice(&color.w.to_ne_bytes());
 
     res
 }

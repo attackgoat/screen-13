@@ -433,14 +433,14 @@ impl Pool {
             .or_insert_with(|| match mode {
                 RenderPassMode::Color(mode) => render_pass::color(driver, mode),
                 RenderPassMode::Draw(mode) => {
-                    if mode.pre_fx as u8 * mode.post_fx as u8 == 1 {
-                        render_pass::draw_pre_post(driver, mode)
-                    } else if mode.pre_fx {
-                        render_pass::draw_pre(driver, mode)
+                    if mode.skydome as u8 * mode.post_fx as u8 == 1 {
+                        render_pass::draw::fill_skydome_light_tonemap_fx(driver, mode)
+                    } else if mode.skydome {
+                        render_pass::draw::fill_skydome_light_tonemap(driver, mode)
                     } else if mode.post_fx {
-                        render_pass::draw_post(driver, mode)
+                        render_pass::draw::fill_light_tonemap_fx(driver, mode)
                     } else {
-                        render_pass::draw(driver, mode)
+                        render_pass::draw::fill_light_tonemap(driver, mode)
                     }
                 }
             })

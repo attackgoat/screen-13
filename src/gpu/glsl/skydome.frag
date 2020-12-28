@@ -6,9 +6,9 @@ const float PI = 3.14159265;
 const float TWO_PI = 2 * PI;
 
 layout(push_constant) uniform PushConstants {
-    layout(offset = 0) vec3 sun_normal;
-    layout(offset = 12) float time;
-    layout(offset = 16) float weather;
+    layout(offset = 112) vec3 sun_normal;
+    layout(offset = 124) float time;
+    layout(offset = 132) float weather;
 }
 push_constants;
 
