@@ -599,52 +599,52 @@ impl Compiler {
         // Model drawing
         if model_count > 0 {
             self.compile_models(&cmds[0..model_count]);
+        }
 
-            // Emit 'start light drawing' assembly code
-            self.code.push(Asm::BeginLight);
+        // Emit 'start light drawing' assembly code
+        self.code.push(Asm::BeginLight);
 
-            // Point light drawing
-            if point_light_count > 0 {
-                self.compile_point_lights(
-                    #[cfg(feature = "debug-names")]
-                    name,
-                    driver,
-                    pool,
-                    point_light_idx..rect_light_idx,
-                );
-            }
+        // Point light drawing
+        if point_light_count > 0 {
+            self.compile_point_lights(
+                #[cfg(feature = "debug-names")]
+                name,
+                driver,
+                pool,
+                point_light_idx..rect_light_idx,
+            );
+        }
 
-            // Rect light drawing
-            if rect_light_count > 0 {
-                let rect_lights = rect_light_idx..spotlight_idx;
-                self.compile_rect_lights(
-                    #[cfg(feature = "debug-names")]
-                    name,
-                    driver,
-                    pool,
-                    &cmds[rect_lights],
-                    rect_light_idx,
-                );
-            }
+        // Rect light drawing
+        if rect_light_count > 0 {
+            let rect_lights = rect_light_idx..spotlight_idx;
+            self.compile_rect_lights(
+                #[cfg(feature = "debug-names")]
+                name,
+                driver,
+                pool,
+                &cmds[rect_lights],
+                rect_light_idx,
+            );
+        }
 
-            // Spotlight drawing
-            if spotlight_count > 0 {
-                let spotlights = spotlight_idx..sunlight_idx;
-                self.compile_spotlights(
-                    #[cfg(feature = "debug-names")]
-                    name,
-                    driver,
-                    pool,
-                    &cmds[spotlights],
-                    spotlight_idx,
-                );
-            }
+        // Spotlight drawing
+        if spotlight_count > 0 {
+            let spotlights = spotlight_idx..sunlight_idx;
+            self.compile_spotlights(
+                #[cfg(feature = "debug-names")]
+                name,
+                driver,
+                pool,
+                &cmds[spotlights],
+                spotlight_idx,
+            );
+        }
 
-            // Sunlight drawing
-            if sunlight_count > 0 {
-                let sunlights = sunlight_idx..line_idx;
-                self.code.push(Asm::DrawSunlights(sunlights));
-            }
+        // Sunlight drawing
+        if sunlight_count > 0 {
+            let sunlights = sunlight_idx..line_idx;
+            self.code.push(Asm::DrawSunlights(sunlights));
         }
 
         // Line drawing

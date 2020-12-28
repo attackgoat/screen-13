@@ -133,7 +133,7 @@ push_consts!(SkydomeFragmentPushConsts: 24 {
     pub weather: f32,
 });
 push_consts!(SkydomeVertexPushConsts: 28 {
-    pub view: Mat4,
+    pub world_view_proj: Mat4,
     // `star_rotation` is a Mat3 in GLSL; but we have to break it up like this for alignment
     pub star_rotation_col0: Vec3,
     _0: f32,

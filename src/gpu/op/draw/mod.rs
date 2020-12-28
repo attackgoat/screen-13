@@ -74,6 +74,9 @@ use {
     },
 };
 
+// Skydome subpass index
+const SKYDOME_IDX: u8 = 1;
+
 pub struct DrawOp {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
@@ -203,7 +206,6 @@ impl DrawOp {
     }
 
     pub fn record(&mut self, camera: &impl Camera, cmds: &mut [Command]) {
-        let skydome_subpass_idx = 0;
         let fill_geom_buf_subpass_idx = self.fill_geom_buf_subpass_idx();
         let mut pool = self.pool.as_mut().unwrap();
 
@@ -276,7 +278,7 @@ impl DrawOp {
                     &self.name,
                     &self.driver,
                     render_pass_mode,
-                    skydome_subpass_idx,
+                    SKYDOME_IDX,
                     GraphicsMode::Skydome,
                     1,
                 );
@@ -393,6 +395,7 @@ impl DrawOp {
                 }
             }
 
+            let eye = camera.eye();
             let proj = camera.projection();
             let view = camera.view();
             let view_proj = proj * view;
@@ -405,22 +408,27 @@ impl DrawOp {
             unsafe {
                 self.submit_begin(&viewport);
 
-                // Handle Skydome pre-fx
+                // Handle skydome pre-fx
                 if let Some((_, _, _, write)) = &mut self.skydome {
                     // Brand new skydomes from the pool must be written before use
                     if *write {
                         *write = false;
                         self.submit_skydome_write();
                     }
-
-                    self.submit_skydome(&viewport, view);
                 }
 
                 while let Some(instr) = instrs.next() {
                     match instr {
                         Instruction::DataTransfer(instr) => self.submit_data_transfer(instr),
                         Instruction::IndexWriteRef(instr) => self.submit_index_write_ref(instr),
-                        Instruction::LightBegin => self.submit_light_begin(),
+                        Instruction::LightBegin => {
+                            // The skydome happens after all geometry but before lighting
+                            if self.skydome.is_some() {
+                                self.submit_skydome(&viewport, eye, view_proj);
+                            }
+
+                            self.submit_light_begin();
+                        }
                         Instruction::LightBind(instr) => self.submit_light_bind(instr),
                         Instruction::LineDraw(instr) => {
                             self.submit_lines(instr, &viewport, view_proj)
@@ -464,7 +472,7 @@ impl DrawOp {
     }
 
     fn fill_geom_buf_subpass_idx(&self) -> u8 {
-        self.skydome.is_some() as u8
+        0
     }
 
     fn accum_light_subpass_idx(&self) -> u8 {
@@ -496,8 +504,8 @@ impl DrawOp {
         };
         let light_clear = ClearValue {
             color: ClearColor {
-                float32: [0.0, 0.0, 0.0, 0.0],
-            }, // f32::NAN?
+                float32: [0.0, f32::NAN, f32::NAN, f32::NAN],
+            },
         };
 
         // Begin
@@ -576,7 +584,7 @@ impl DrawOp {
             render_pass,
             frame_buf.as_ref(),
             viewport.rect,
-            &[depth_clear, light_clear],
+            &[light_clear, depth_clear],
             SubpassContents::Inline,
         );
     }
@@ -862,7 +870,7 @@ impl DrawOp {
             .draw(instr.offset..instr.offset + RECT_LIGHT_DRAW_COUNT, 0..1);
     }
 
-    unsafe fn submit_skydome(&mut self, viewport: &Viewport, view: Mat4) {
+    unsafe fn submit_skydome(&mut self, viewport: &Viewport, eye: Vec3, view_proj: Mat4) {
         trace!("submit_skydome");
 
         let graphics = self.graphics_skydome.as_ref().unwrap();
@@ -871,18 +879,20 @@ impl DrawOp {
         let (skydome, buf, buf_len, _) = self.skydome.as_ref().unwrap();
         let vertex_count = *buf_len as u32 / 12;
         let star_rotation = Mat3::from_quat(skydome.star_rotation).to_cols_array_2d();
+        let world = Mat4::from_translation(eye);
 
         let mut vertex_push_consts = SkydomeVertexPushConsts::default();
         vertex_push_consts.star_rotation_col0 = star_rotation[0].into();
         vertex_push_consts.star_rotation_col1 = star_rotation[1].into();
         vertex_push_consts.star_rotation_col2 = star_rotation[2].into();
-        vertex_push_consts.view = view.inverse();
+        vertex_push_consts.world_view_proj = view_proj * world;
 
         let mut frag_push_consts = SkydomeFragmentPushConsts::default();
         frag_push_consts.sun_normal = skydome.sun_normal;
         frag_push_consts.time = skydome.time;
         frag_push_consts.weather = skydome.weather;
 
+        self.cmd_buf.next_subpass(SubpassContents::Inline);
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
         self.cmd_buf.set_scissors(0, &[viewport.rect]);
         self.cmd_buf.set_viewports(0, &[viewport.clone()]);
@@ -910,7 +920,6 @@ impl DrawOp {
         );
         bind_graphics_descriptor_set(&mut self.cmd_buf, layout, desc_set);
         self.cmd_buf.draw(0..vertex_count, 0..1);
-        self.cmd_buf.next_subpass(SubpassContents::Inline);
     }
 
     unsafe fn submit_skydome_write(&mut self) {

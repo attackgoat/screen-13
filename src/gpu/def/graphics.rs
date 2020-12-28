@@ -1463,6 +1463,10 @@ impl Graphics {
             blend: None,
             mask: ColorMask::COLOR,
         });
+        desc.depth_stencil.depth = Some(DepthTest {
+            fun: Comparison::LessEqual,
+            write: true,
+        });
         let pipeline = GraphicsPipeline::new(
             #[cfg(feature = "debug-names")]
             name,
