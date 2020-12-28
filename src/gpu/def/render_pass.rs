@@ -9,33 +9,33 @@ pub mod draw {
     const DEPTH: usize = 4;
 
     // Common subpasses
-    const FILL_GEOM_BUF: SubpassDesc = SubpassDesc {
+    const FILL_GEOM_BUF_DESC: SubpassDesc = SubpassDesc {
         colors: &[
-            (COLOR_METAL, Layout::ColorAttachmentOptimal),
-            (NORMAL_ROUGH, Layout::ColorAttachmentOptimal),
+            (COLOR_METAL, ColorAttachmentOptimal),
+            (NORMAL_ROUGH, ColorAttachmentOptimal),
         ],
-        depth_stencil: Some(&(DEPTH, Layout::DepthStencilAttachmentOptimal)),
+        depth_stencil: Some(&(DEPTH, DepthStencilAttachmentOptimal)),
         inputs: &[],
         resolves: &[],
         preserves: &[],
     };
-    const ACCUM_LIGHT: SubpassDesc = SubpassDesc {
-        colors: &[(LIGHT, Layout::ColorAttachmentOptimal)],
+    const ACCUM_LIGHT_DESC: SubpassDesc = SubpassDesc {
+        colors: &[(LIGHT, ColorAttachmentOptimal)],
         depth_stencil: None,
         inputs: &[
-            (NORMAL_ROUGH, Layout::ShaderReadOnlyOptimal),
-            (DEPTH, Layout::ShaderReadOnlyOptimal),
+            (NORMAL_ROUGH, ShaderReadOnlyOptimal),
+            (DEPTH, ShaderReadOnlyOptimal),
         ],
         resolves: &[],
         preserves: &[COLOR_METAL],
     };
-    const TONEMAP: SubpassDesc = SubpassDesc {
-        colors: &[(OUTPUT, Layout::ColorAttachmentOptimal)],
+    const TONEMAP_DESC: SubpassDesc = SubpassDesc {
+        colors: &[(OUTPUT, ColorAttachmentOptimal)],
         depth_stencil: None,
         inputs: &[
-            (COLOR_METAL, Layout::ShaderReadOnlyOptimal),
-            (NORMAL_ROUGH, Layout::ShaderReadOnlyOptimal),
-            (LIGHT, Layout::ShaderReadOnlyOptimal),
+            (COLOR_METAL, ShaderReadOnlyOptimal),
+            (NORMAL_ROUGH, ShaderReadOnlyOptimal),
+            (LIGHT, ShaderReadOnlyOptimal),
         ],
         resolves: &[],
         preserves: &[],
@@ -46,8 +46,8 @@ pub mod draw {
             format: Some(fmt),
             samples: 1,
             ops,
-            stencil_ops: AttachmentOps::DONT_CARE,
-            layouts: const_layout(Layout::ColorAttachmentOptimal),
+            stencil_ops: DONT_CARE,
+            layouts: const_layout(ColorAttachmentOptimal),
         }
     }
 
@@ -61,48 +61,41 @@ pub mod draw {
             samples: 1,
             ops,
             stencil_ops,
-            layouts: Layout::DepthStencilAttachmentOptimal..Layout::DepthStencilReadOnlyOptimal,
+            layouts: DepthStencilAttachmentOptimal..DepthStencilReadOnlyOptimal,
         }
     }
 
     pub fn fill_light_tonemap(driver: &Driver, mode: DrawRenderPassMode) -> RenderPass {
-        use Subpasses::*;
-
-        /// The list of subpasses used by this render pass, in index order.
-        enum Subpasses {
-            FillGeometryBuffer,
-            AccumulateLight,
-            Tonemap,
-        }
+        // Subpass indexes
+        const FILL_GEOM_BUF_IDX: u8 = 0;
+        const ACCUM_LIGHT_IDX: u8 = 1;
+        const TONEMAP_IDX: u8 = 2;
 
         // Attachment instances
-        let color_metal = color_attachment(mode.geom_buf, AttachmentOps::DONT_CARE);
-        let normal_rough = color_attachment(mode.geom_buf, AttachmentOps::DONT_CARE);
-        let light = color_attachment(mode.light, ATTACHMENT_OPS_CLEAR);
-        let output = color_attachment(mode.output, AttachmentOps::PRESERVE);
-        let depth =
-            depth_stencil_attachment(mode.depth, ATTACHMENT_OPS_CLEAR, AttachmentOps::DONT_CARE);
+        let color_metal = color_attachment(mode.geom_buf, DONT_CARE);
+        let normal_rough = color_attachment(mode.geom_buf, DONT_CARE);
+        let light = color_attachment(mode.light, CLEAR_DONT_CARE);
+        let output = color_attachment(mode.output, PRESERVE);
+        let depth = depth_stencil_attachment(mode.depth, CLEAR_DONT_CARE, DONT_CARE);
 
         // TODO: These things hurt my brain are they correct how do I tell ugh
         // Subpass-to-Subpass dependencies
         let begin = SubpassDependency {
-            passes: None..Some(FillGeometryBuffer as _),
-            stages: PipelineStage::BOTTOM_OF_PIPE..PipelineStage::COLOR_ATTACHMENT_OUTPUT,
-            accesses: Access::MEMORY_READ
-                ..Access::COLOR_ATTACHMENT_READ | Access::COLOR_ATTACHMENT_WRITE,
+            passes: None..Some(FILL_GEOM_BUF_IDX),
+            stages: BOTTOM_OF_PIPE..COLOR_ATTACHMENT_OUTPUT,
+            accesses: MEMORY_READ..COLOR_ATTACHMENT_READ | COLOR_ATTACHMENT_WRITE,
             flags: Dependencies::BY_REGION,
         };
         let between_fill_and_light = SubpassDependency {
-            passes: Some(FillGeometryBuffer as _)..Some(AccumulateLight as _),
-            stages: PipelineStage::COLOR_ATTACHMENT_OUTPUT..PipelineStage::FRAGMENT_SHADER,
-            accesses: Access::COLOR_ATTACHMENT_WRITE..Access::SHADER_READ,
+            passes: Some(FILL_GEOM_BUF_IDX)..Some(ACCUM_LIGHT_IDX),
+            stages: COLOR_ATTACHMENT_OUTPUT..FRAGMENT_SHADER,
+            accesses: COLOR_ATTACHMENT_WRITE..SHADER_READ,
             flags: Dependencies::BY_REGION,
         };
         let end = SubpassDependency {
-            passes: Some(FillGeometryBuffer as _)..None,
-            stages: PipelineStage::COLOR_ATTACHMENT_OUTPUT..PipelineStage::BOTTOM_OF_PIPE,
-            accesses: Access::COLOR_ATTACHMENT_READ | Access::COLOR_ATTACHMENT_WRITE
-                ..Access::MEMORY_READ,
+            passes: Some(FILL_GEOM_BUF_IDX)..None,
+            stages: COLOR_ATTACHMENT_OUTPUT..BOTTOM_OF_PIPE,
+            accesses: COLOR_ATTACHMENT_READ | COLOR_ATTACHMENT_WRITE..MEMORY_READ,
             flags: Dependencies::BY_REGION,
         };
 
@@ -110,37 +103,49 @@ pub mod draw {
             #[cfg(feature = "debug-names")]
             "Draw",
             driver,
-            &[color_metal, normal_rough, light, output, depth],
-            &[FILL_GEOM_BUF, ACCUM_LIGHT, TONEMAP],
-            &[begin, between_fill_and_light, end],
+            &[
+                // attachments
+                color_metal,
+                normal_rough,
+                light,
+                output,
+                depth,
+            ],
+            &[
+                // subpasses
+                FILL_GEOM_BUF_DESC,
+                ACCUM_LIGHT_DESC,
+                TONEMAP_DESC,
+            ],
+            &[
+                // dependencies
+                begin,
+                between_fill_and_light,
+                end,
+            ],
         )
     }
 
     /// Like the draw render pass except it contains a step between filling the geometry buffer and
     /// accumulating light
     pub fn fill_skydome_light_tonemap(driver: &Driver, mode: DrawRenderPassMode) -> RenderPass {
-        use Subpasses::*;
-
-        /// The list of subpasses used by this render pass, in index order.
-        enum Subpasses {
-            FillColorBuffer,
-            FillGeometryBuffer,
-            AccumulateLight,
-            Tonemap,
-        }
+        // Subpass indexes
+        const FILL_GEOM_BUF_IDX: u8 = 0;
+        const SKYDOME_IDX: u8 = 0;
+        const ACCUM_LIGHT_IDX: u8 = 1;
+        const TONEMAP_IDX: u8 = 2;
 
         // Attachment instances
-        let color_metal = color_attachment(mode.geom_buf, AttachmentOps::DONT_CARE);
-        let normal_rough = color_attachment(mode.geom_buf, AttachmentOps::DONT_CARE);
-        let light = color_attachment(mode.light, ATTACHMENT_OPS_CLEAR);
-        let output = color_attachment(mode.output, AttachmentOps::PRESERVE);
-        let depth =
-            depth_stencil_attachment(mode.depth, ATTACHMENT_OPS_CLEAR, AttachmentOps::DONT_CARE);
+        let color_metal = color_attachment(mode.geom_buf, DONT_CARE);
+        let normal_rough = color_attachment(mode.geom_buf, DONT_CARE);
+        let light = color_attachment(mode.light, CLEAR_DONT_CARE);
+        let output = color_attachment(mode.output, PRESERVE);
+        let depth = depth_stencil_attachment(mode.depth, CLEAR_DONT_CARE, DONT_CARE);
 
         // Subpasses
-        let skydome = SubpassDesc {
-            colors: &[(COLOR_METAL, Layout::ColorAttachmentOptimal)],
-            depth_stencil: None,
+        let skydome_subpass_desc = SubpassDesc {
+            colors: &[(COLOR_METAL, ColorAttachmentOptimal)],
+            depth_stencil: Some(&(DEPTH, DepthStencilAttachmentOptimal)),
             inputs: &[],
             resolves: &[],
             preserves: &[NORMAL_ROUGH],
@@ -149,23 +154,21 @@ pub mod draw {
         // TODO: These things hurt my brain are they correct how do I tell ugh
         // Subpass-to-Subpass dependencies
         let begin = SubpassDependency {
-            passes: None..Some(FillColorBuffer as _),
-            stages: PipelineStage::BOTTOM_OF_PIPE..PipelineStage::COLOR_ATTACHMENT_OUTPUT,
-            accesses: Access::MEMORY_READ
-                ..Access::COLOR_ATTACHMENT_READ | Access::COLOR_ATTACHMENT_WRITE,
+            passes: None..Some(FILL_GEOM_BUF_IDX),
+            stages: BOTTOM_OF_PIPE..COLOR_ATTACHMENT_OUTPUT,
+            accesses: MEMORY_READ..COLOR_ATTACHMENT_READ | COLOR_ATTACHMENT_WRITE,
             flags: Dependencies::BY_REGION,
         };
         let between_fill_and_light = SubpassDependency {
-            passes: Some(FillColorBuffer as _)..Some(AccumulateLight as _),
-            stages: PipelineStage::COLOR_ATTACHMENT_OUTPUT..PipelineStage::FRAGMENT_SHADER,
-            accesses: Access::COLOR_ATTACHMENT_WRITE..Access::SHADER_READ,
+            passes: Some(FILL_GEOM_BUF_IDX)..Some(ACCUM_LIGHT_IDX),
+            stages: COLOR_ATTACHMENT_OUTPUT..FRAGMENT_SHADER,
+            accesses: COLOR_ATTACHMENT_WRITE..SHADER_READ,
             flags: Dependencies::BY_REGION,
         };
         let end = SubpassDependency {
-            passes: Some(FillColorBuffer as _)..None,
-            stages: PipelineStage::COLOR_ATTACHMENT_OUTPUT..PipelineStage::BOTTOM_OF_PIPE,
-            accesses: Access::COLOR_ATTACHMENT_READ | Access::COLOR_ATTACHMENT_WRITE
-                ..Access::MEMORY_READ,
+            passes: Some(FILL_GEOM_BUF_IDX)..None,
+            stages: COLOR_ATTACHMENT_OUTPUT..BOTTOM_OF_PIPE,
+            accesses: COLOR_ATTACHMENT_READ | COLOR_ATTACHMENT_WRITE..MEMORY_READ,
             flags: Dependencies::BY_REGION,
         };
 
@@ -173,9 +176,27 @@ pub mod draw {
             #[cfg(feature = "debug-names")]
             "Draw",
             driver,
-            &[color_metal, normal_rough, light, output, depth],
-            &[FILL_GEOM_BUF, skydome, ACCUM_LIGHT, TONEMAP],
-            &[begin, between_fill_and_light, end],
+            &[
+                // attachments
+                color_metal,
+                normal_rough,
+                light,
+                output,
+                depth,
+            ],
+            &[
+                // subpassess
+                FILL_GEOM_BUF_DESC,
+                skydome_subpass_desc,
+                ACCUM_LIGHT_DESC,
+                TONEMAP_DESC,
+            ],
+            &[
+                // dependencies
+                begin,
+                between_fill_and_light,
+                end,
+            ],
         )
     }
 
@@ -198,7 +219,7 @@ use {
     crate::gpu::driver::{Driver, RenderPass},
     gfx_hal::{
         format::Format,
-        image::{Access, Layout},
+        image::{Access, Layout, Layout::*},
         memory::Dependencies,
         pass::{
             Attachment, AttachmentLoadOp, AttachmentOps, AttachmentStoreOp, SubpassDependency,
@@ -209,41 +230,73 @@ use {
     std::ops::Range,
 };
 
-const ATTACHMENT_OPS_CLEAR: AttachmentOps = AttachmentOps {
+// Image Access helpers (pulled from v0.)
+const INPUT_ATTACHMENT_READ: Access = Access::INPUT_ATTACHMENT_READ;
+const SHADER_READ: Access = Access::SHADER_READ;
+const SHADER_WRITE: Access = Access::SHADER_WRITE;
+const COLOR_ATTACHMENT_READ: Access = Access::COLOR_ATTACHMENT_READ;
+const COLOR_ATTACHMENT_WRITE: Access = Access::COLOR_ATTACHMENT_WRITE;
+const DEPTH_STENCIL_ATTACHMENT_READ: Access = Access::DEPTH_STENCIL_ATTACHMENT_READ;
+const DEPTH_STENCIL_ATTACHMENT_WRITE: Access = Access::DEPTH_STENCIL_ATTACHMENT_WRITE;
+const TRANSFER_READ: Access = Access::TRANSFER_READ;
+const TRANSFER_WRITE: Access = Access::TRANSFER_WRITE;
+const HOST_READ: Access = Access::HOST_READ;
+const HOST_WRITE: Access = Access::HOST_WRITE;
+const MEMORY_READ: Access = Access::MEMORY_READ;
+const MEMORY_WRITE: Access = Access::MEMORY_WRITE;
+
+// PipelineStage helpers
+const TOP_OF_PIPE: PipelineStage = PipelineStage::TOP_OF_PIPE;
+const DRAW_INDIRECT: PipelineStage = PipelineStage::DRAW_INDIRECT;
+const VERTEX_INPUT: PipelineStage = PipelineStage::VERTEX_INPUT;
+const VERTEX_SHADER: PipelineStage = PipelineStage::VERTEX_SHADER;
+const HULL_SHADER: PipelineStage = PipelineStage::HULL_SHADER;
+const DOMAIN_SHADER: PipelineStage = PipelineStage::DOMAIN_SHADER;
+const GEOMETRY_SHADER: PipelineStage = PipelineStage::GEOMETRY_SHADER;
+const FRAGMENT_SHADER: PipelineStage = PipelineStage::FRAGMENT_SHADER;
+const EARLY_FRAGMENT_TESTS: PipelineStage = PipelineStage::EARLY_FRAGMENT_TESTS;
+const LATE_FRAGMENT_TESTS: PipelineStage = PipelineStage::LATE_FRAGMENT_TESTS;
+const COLOR_ATTACHMENT_OUTPUT: PipelineStage = PipelineStage::COLOR_ATTACHMENT_OUTPUT;
+const COMPUTE_SHADER: PipelineStage = PipelineStage::COMPUTE_SHADER;
+const TRANSFER: PipelineStage = PipelineStage::TRANSFER;
+const BOTTOM_OF_PIPE: PipelineStage = PipelineStage::BOTTOM_OF_PIPE;
+const HOST: PipelineStage = PipelineStage::HOST;
+const TASK_SHADER: PipelineStage = PipelineStage::TASK_SHADER;
+const MESH_SHADER: PipelineStage = PipelineStage::MESH_SHADER;
+
+// AttachmentOps helpers
+const CLEAR_DONT_CARE: AttachmentOps = AttachmentOps {
     load: AttachmentLoadOp::Clear,
     store: AttachmentStoreOp::DontCare,
 };
-const ATTACHMENT_OPS_STORE: AttachmentOps = AttachmentOps {
+const DONT_CARE_STORE: AttachmentOps = AttachmentOps {
     load: AttachmentLoadOp::DontCare,
     store: AttachmentStoreOp::Store,
 };
+const DONT_CARE: AttachmentOps = AttachmentOps::DONT_CARE;
+const INIT: AttachmentOps = AttachmentOps::INIT;
+const PRESERVE: AttachmentOps = AttachmentOps::PRESERVE;
 
 fn const_layout(layout: Layout) -> Range<Layout> {
     layout..layout
 }
 
 pub fn color(driver: &Driver, mode: ColorRenderPassMode) -> RenderPass {
-    /// The list of attachments used by this render pass, in index order.
-    enum Attachments {
-        Color,
-    }
+    const ATTACHMENT: usize = 0;
 
-    // Attachments
-    let color = Attachment {
+    let attachment = Attachment {
         format: Some(mode.fmt),
         samples: 1,
         ops: if mode.preserve {
-            AttachmentOps::PRESERVE
+            PRESERVE
         } else {
-            ATTACHMENT_OPS_STORE
+            DONT_CARE_STORE
         },
-        stencil_ops: AttachmentOps::DONT_CARE,
-        layouts: Layout::ColorAttachmentOptimal..Layout::ColorAttachmentOptimal,
+        stencil_ops: DONT_CARE,
+        layouts: ColorAttachmentOptimal..ColorAttachmentOptimal,
     };
-
-    // Subpasses
-    let subpass = SubpassDesc {
-        colors: &[(Attachments::Color as _, Layout::ColorAttachmentOptimal)],
+    let subpass_desc = SubpassDesc {
+        colors: &[(ATTACHMENT, ColorAttachmentOptimal)],
         depth_stencil: None,
         inputs: &[],
         resolves: &[],
@@ -254,41 +307,36 @@ pub fn color(driver: &Driver, mode: ColorRenderPassMode) -> RenderPass {
         #[cfg(feature = "debug-names")]
         "Color",
         driver,
-        &[color],
-        &[subpass],
+        &[attachment],
+        &[subpass_desc],
         &[],
     )
 }
 
 pub fn present(driver: &Driver, fmt: Format) -> RenderPass {
-    /// The list of attachments used by this render pass, in index order.
-    enum Attachments {
-        Color,
-    }
+    const ATTACHMENT: usize = 0;
 
-    // Attachments
-    let color = Attachment {
+    let attachment = Attachment {
         format: Some(fmt),
         samples: 1,
-        ops: AttachmentOps::new(AttachmentLoadOp::DontCare, AttachmentStoreOp::Store), // TODO: Another render pass for AttachmentLoadOp::Clear when we need to render to a transparent window?
-        stencil_ops: AttachmentOps::DONT_CARE,
-        layouts: Layout::Undefined..Layout::Present,
+        ops: DONT_CARE_STORE,
+        stencil_ops: DONT_CARE,
+        layouts: Undefined..Present,
     };
-
-    // Subpasses
-    let subpass = SubpassDesc {
-        colors: &[(Attachments::Color as _, Layout::ColorAttachmentOptimal)],
+    let subpass_desc = SubpassDesc {
+        colors: &[(ATTACHMENT, ColorAttachmentOptimal)],
         depth_stencil: None,
         inputs: &[],
         resolves: &[],
         preserves: &[],
     };
+
     RenderPass::new(
         #[cfg(feature = "debug-names")]
         "Present",
         driver,
-        &[color],
-        &[subpass],
+        &[attachment],
+        &[subpass_desc],
         &[],
     )
 }
