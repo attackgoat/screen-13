@@ -17,7 +17,7 @@ All contributions, ideas, issues, or other efforts you expend on this project mu
 All code must:
 
 - Be modern Rust code (currently 2018 edition, latest stable compiler)
-- Pass `cargo fmt` and `cargo clippy` (debug and release) with no warnings
+- Pass `cargo fmt` and `cargo clippy` (debug and release, all features) with no warnings
 - Support required platforms: Linux, Mac, Windows, Web Assembly
 - Use only `crates.io`-published crates
 
