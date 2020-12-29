@@ -146,29 +146,6 @@ mod attributes {
     ];
 }
 
-mod rasterizers {
-    use gfx_hal::pso::{Face, FrontFace, PolygonMode, Rasterizer, State};
-
-    pub const FILL: Rasterizer = Rasterizer {
-        conservative: false,
-        cull_face: Face::NONE, // TODO: Face::BACK,
-        depth_bias: None,
-        depth_clamping: false,
-        front_face: FrontFace::Clockwise,
-        line_width: State::Static(1.0),
-        polygon_mode: PolygonMode::Fill,
-    };
-    pub const LINE: Rasterizer = Rasterizer {
-        conservative: false,
-        cull_face: Face::NONE,
-        depth_bias: None,
-        depth_clamping: false,
-        front_face: FrontFace::Clockwise,
-        line_width: State::Static(1.0),
-        polygon_mode: PolygonMode::Line,
-    };
-}
-
 mod input_assemblers {
     use gfx_hal::pso::{InputAssemblerDesc, Primitive};
 
@@ -181,6 +158,29 @@ mod input_assemblers {
         primitive: Primitive::TriangleList,
         restart_index: None,
         with_adjacency: false,
+    };
+}
+
+mod rasterizers {
+    use gfx_hal::pso::{Face, FrontFace, PolygonMode, Rasterizer, State};
+
+    pub const FILL: Rasterizer = Rasterizer {
+        conservative: false,
+        cull_face: Face::BACK,
+        depth_bias: None,
+        depth_clamping: false,
+        front_face: FrontFace::CounterClockwise,
+        line_width: State::Static(1.0),
+        polygon_mode: PolygonMode::Fill,
+    };
+    pub const LINE: Rasterizer = Rasterizer {
+        conservative: false,
+        cull_face: Face::NONE,
+        depth_bias: None,
+        depth_clamping: false,
+        front_face: FrontFace::Clockwise,
+        line_width: State::Static(1.0),
+        polygon_mode: PolygonMode::Line,
     };
 }
 

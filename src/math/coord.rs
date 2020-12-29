@@ -83,9 +83,21 @@ where
     type Output = Self;
 
     fn div(self, rhs: Rhs) -> Self::Output {
-        Self {
+        Self::Output {
             x: self.x / rhs,
             y: self.y / rhs,
+        }
+    }
+}
+
+// TODO: Find a way to make this more generic, my attempts failed (this is for `1.0 / Coord<f32>`)
+impl Div<Coord<f32>> for f32 {
+    type Output = Coord<f32>;
+
+    fn div(self, rhs: Self::Output) -> Self::Output {
+        Self::Output {
+            x: self / rhs.x,
+            y: self / rhs.y,
         }
     }
 }
@@ -160,6 +172,12 @@ impl From<Coord<f32>> for Coord<u32> {
 
 impl From<Coord<f32>> for Vec2 {
     fn from(val: Coord<f32>) -> Self {
+        Self::new(val.x as _, val.y as _)
+    }
+}
+
+impl From<Coord<u32>> for Vec2 {
+    fn from(val: Coord<u32>) -> Self {
         Self::new(val.x as _, val.y as _)
     }
 }

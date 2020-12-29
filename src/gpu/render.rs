@@ -13,7 +13,6 @@ use {
         format::{Format, ImageFeature},
         image::{Layout, Usage},
     },
-    std::path::Path,
 };
 
 /// A powerful structure which allows you to combine various operations and other render
@@ -143,10 +142,7 @@ impl Render {
     }
 
     /// Saves this Render as a JPEG file at the given path.
-    pub fn encode<P: AsRef<Path>>(
-        &mut self,
-        #[cfg(feature = "debug-names")] name: &str,
-    ) -> &mut EncodeOp {
+    pub fn encode(&mut self, #[cfg(feature = "debug-names")] name: &str) -> &mut EncodeOp {
         let pool = self.take_pool();
         let op = EncodeOp::new(
             #[cfg(feature = "debug-names")]

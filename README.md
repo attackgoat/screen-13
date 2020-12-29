@@ -8,7 +8,7 @@ Screen 13 is an easy-to-use 3D game engine in the spirit of QBasic.
 
 ## Overview
 
-Games made using Screen 13 are built as regular executables using a design-time asset baking process. Screen 13 provides all asset-baking logic and aims to provide wide support for texture formats, vertex formats, and other associated data. Baked assets are stored in `.pak` files.
+Programs made using Screen 13 are built as regular executables using a design-time asset baking process. Screen 13 provides all asset-baking logic and aims to provide wide support for texture formats, vertex formats, and other associated data. Baked assets are stored in `.pak` files.
 
 Screen 13 is based on the [`gfx-rs`](https://github.com/gfx-rs/gfx) project, and as such targets native Vulkan, Metal, DirectX 12, OpenGL, WebGL, Android, and iOS targets, among others.
 
@@ -18,7 +18,7 @@ Screen 13 aims to provide a simple to use, although opinionated, ecosystem of to
 
 _Single Threaded:_ Although some things can be shared amongst other threads, such as disk and network IO, the main graphics API of Screen 13 does not support multiple threads. This is a conscious decision to limit complexity while optimizing for the 98% of games that use a "main thread" methodology. I am open to changing this if the proposed API is easy to use and high performance. Perhaps it's as easy as a cargo manifest feature, not sure.
 
-_Just Enough:_ Only core 2D and 3D rendering features are included, along with window event handling and window-based input. Additional things, such as ECS, physics, sound, and gamepad input must be handled by your program.
+_Just Enough:_ Only core 2D and 3D rendering features are included, along with window event handling and window-based input. Additional things, such as an entity component system, physics, sound, and gamepad input must be handled by your code.
 
 ## Asset Baking
 
@@ -71,8 +71,18 @@ This engine is very young and is likely to change as development continues.
     - `snap` is really good
     - `brotli` is amazing, but it has a bug at the moment and fails to read properly
 - Rendering:
-  - Deferred renderer
+  - Deferred renderer - **in progress**
   - Forward renderer - **not started**
+  - Roadmap:
+    - Today: Each graphics operation starts and finishes recording a new gfx-hal command buffer, and then submits it
+    - Today: All render pass/graphics pipeline/compute pipeline/layouts are hard-coded in the `gpu::def` (definition) module
+    - Today: Each graphic operation uses the `def` instances and other types to operate the command buffer directly
+    - Soon: Command buffers will be opened and closed dynamically, lifting ownership of command buffers (and queues) up a level
+    - Later: Each graphic operation will record what it wants, but all graphic operations before a command buffer submit will be grouped
+    - Later: Resources currently in `def` will be created at runtime based on the operation graph
+    - Later: Render passes will be constructed dynamically as well
+- General:
+  - TODO: fonts, models, textures, etc... should be loadable at runtime from regular files
 
 ## Optional features
 

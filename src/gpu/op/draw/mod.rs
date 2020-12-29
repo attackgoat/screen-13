@@ -46,7 +46,7 @@ use {
             pool::{Lease, Pool},
             BitmapRef, Data, Texture2d, TextureRef,
         },
-        math::{Coord, Mat3, Mat4, Quat, Vec3},
+        math::{Coord, Mat3, Mat4, Quat, Vec2, Vec3},
     },
     gfx_hal::{
         adapter::PhysicalDevice as _,
@@ -167,6 +167,18 @@ impl DrawOp {
             pool: Some(pool),
             skydome: None,
         }
+    }
+
+    fn fill_geom_buf_subpass_idx(&self) -> u8 {
+        0
+    }
+
+    fn accum_light_subpass_idx(&self) -> u8 {
+        1 + self.skydome.is_some() as u8
+    }
+
+    fn post_fx_subpass_idx(&self) -> u8 {
+        3 + self.skydome.is_some() as u8
     }
 
     /// Preserves the contents of the destination texture. Without calling this function the existing
@@ -399,6 +411,7 @@ impl DrawOp {
             let proj = camera.projection();
             let view = camera.view();
             let view_proj = proj * view;
+            let view_proj_inv = view_proj.inverse();
             let dims: Coord = self.dst.borrow().dims().into();
             let viewport = Viewport {
                 rect: dims.as_rect_at(Coord::ZERO),
@@ -437,9 +450,13 @@ impl DrawOp {
                         Instruction::MeshBind(instr) => self.submit_mesh_bind(instr),
                         Instruction::MeshDescriptors(set) => self.submit_mesh_descriptors(set),
                         Instruction::MeshDraw(instr) => self.submit_mesh(instr, view_proj),
-                        Instruction::PointLightDraw(instr) => {
-                            self.submit_point_lights(instr, &viewport, view_proj)
-                        }
+                        Instruction::PointLightDraw(instr) => self.submit_point_lights(
+                            instr,
+                            eye,
+                            &viewport,
+                            view_proj,
+                            view_proj_inv,
+                        ),
                         Instruction::RectLightBegin => self.submit_rect_light_begin(&viewport),
                         Instruction::RectLightDraw(instr) => {
                             self.submit_rect_light(instr, view_proj)
@@ -469,18 +486,6 @@ impl DrawOp {
         }
 
         self.compiler = Some(compiler);
-    }
-
-    fn fill_geom_buf_subpass_idx(&self) -> u8 {
-        0
-    }
-
-    fn accum_light_subpass_idx(&self) -> u8 {
-        1 + self.skydome.is_some() as u8
-    }
-
-    fn post_fx_subpass_idx(&self) -> u8 {
-        3 + self.skydome.is_some() as u8
     }
 
     unsafe fn submit_begin(&mut self, viewport: &Viewport) {
@@ -757,12 +762,17 @@ impl DrawOp {
     unsafe fn submit_point_lights(
         &mut self,
         instr: PointLightDrawInstruction,
+        camera_eye: Vec3,
         viewport: &Viewport,
         view_proj: Mat4,
+        view_proj_inv: Mat4,
     ) {
         trace!("submit_point_lights");
 
         const POINT_LIGHT_DRAW_COUNT: u32 = POINT_LIGHT.len() as u32 / 12;
+
+        let depth_dims: Vec2 = self.geom_buf.depth.borrow().dims().into();
+        let depth_dims_inv = 1.0 / depth_dims;
 
         let subpass_idx = self.accum_light_subpass_idx();
         let pool = self.pool.as_mut().unwrap();
@@ -796,6 +806,13 @@ impl DrawOp {
 
         for light in instr.lights {
             let world_view_proj = view_proj * Mat4::from_translation(light.center);
+            let mut fragment_push_consts = PointLightPushConsts::default();
+            fragment_push_consts.camera_eye = camera_eye;
+            fragment_push_consts.depth_dims_inv = depth_dims_inv;
+            fragment_push_consts.light_center = light.center;
+            fragment_push_consts.light_intensity = light.color.to_rgb() * light.lumens;
+            fragment_push_consts.light_radius = light.radius;
+            fragment_push_consts.view_proj_inv = view_proj_inv;
 
             self.cmd_buf.push_graphics_constants(
                 graphics.layout(),
@@ -808,13 +825,9 @@ impl DrawOp {
             );
             self.cmd_buf.push_graphics_constants(
                 graphics.layout(),
-                ShaderStageFlags::VERTEX,
+                ShaderStageFlags::FRAGMENT,
                 Mat4PushConst::BYTE_LEN,
-                PointLightPushConsts {
-                    intensity: light.color.to_rgb() * light.lumens,
-                    radius: light.radius,
-                }
-                .as_ref(),
+                fragment_push_consts.as_ref(),
             );
             self.cmd_buf.draw(0..POINT_LIGHT_DRAW_COUNT, 0..1);
         }

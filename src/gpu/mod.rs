@@ -433,7 +433,11 @@ impl Gpu {
         )
     }
 
-    pub fn render(&self, #[cfg(feature = "debug-names")] name: &str, dims: Extent) -> Render {
+    pub fn render<D: Into<Extent>>(
+        &self,
+        #[cfg(feature = "debug-names")] name: &str,
+        dims: D,
+    ) -> Render {
         self.render_with_cache(
             #[cfg(feature = "debug-names")]
             name,
@@ -442,10 +446,10 @@ impl Gpu {
         )
     }
 
-    pub fn render_with_cache(
+    pub fn render_with_cache<D: Into<Extent>>(
         &self,
         #[cfg(feature = "debug-names")] name: &str,
-        dims: Extent,
+        dims: D,
         cache: &Cache,
     ) -> Render {
         // There may be pending operations from a previously resolved render; if so
@@ -469,7 +473,7 @@ impl Gpu {
             #[cfg(feature = "debug-names")]
             name,
             &self.driver,
-            dims,
+            dims.into(),
             pool,
             ops,
         )

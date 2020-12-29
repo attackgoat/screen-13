@@ -105,15 +105,15 @@ impl Font {
             },
             FontVertex {
                 x: x2,
-                y: y1,
-                u: u2,
-                v: v1,
-            },
-            FontVertex {
-                x: x2,
                 y: y2,
                 u: u2,
                 v: v2,
+            },
+            FontVertex {
+                x: x2,
+                y: y1,
+                u: u2,
+                v: v1,
             },
             FontVertex {
                 x: x1,
@@ -122,15 +122,15 @@ impl Font {
                 v: v1,
             },
             FontVertex {
-                x: x2,
-                y: y2,
-                u: u2,
-                v: v2,
-            },
-            FontVertex {
                 x: x1,
                 y: y2,
                 u: u1,
+                v: v2,
+            },
+            FontVertex {
+                x: x2,
+                y: y2,
+                u: u2,
                 v: v2,
             },
         ];

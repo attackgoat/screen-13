@@ -111,7 +111,7 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
             assert_eq!(mode, TriangleMode::List);
 
             let data = primitive.reader(|buf| bufs.get(buf.index()).map(|data| &*data.0));
-            let indices = data
+            let mut indices = data
                 .read_indices()
                 .expect("Unable to read mesh indices")
                 .into_u32()
@@ -122,6 +122,15 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
                 .expect("Unable to read mesh texture cooordinates")
                 .into_f32()
                 .collect::<Vec<_>>();
+
+            // Flip triangles from CW front faces to CCW front faces
+            for tri_idx in 0..indices.len() / 3 {
+                let a_idx = tri_idx * 3;
+                let c_idx = a_idx + 2;
+                let a = indices[a_idx];
+                indices[a_idx] = indices[c_idx];
+                indices[c_idx] = a;
+            }
 
             all_positions.extend_from_slice(&positions);
             idx_count += indices.len() as u32;

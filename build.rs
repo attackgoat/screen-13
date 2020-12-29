@@ -88,9 +88,9 @@ fn gen_skydome() {
     let geom = IcoSphere::subdivide(1);
     let mut vertices = vec![];
     for tri in geom {
-        let a = vec3(tri.x.pos.x, tri.x.pos.y, tri.x.pos.z).normalize() * 0.5;
+        let a = vec3(tri.z.pos.x, tri.z.pos.y, tri.z.pos.z).normalize() * 0.5;
         let b = vec3(tri.y.pos.x, tri.y.pos.y, tri.y.pos.z).normalize() * 0.5;
-        let c = vec3(tri.z.pos.x, tri.z.pos.y, tri.z.pos.z).normalize() * 0.5;
+        let c = vec3(tri.x.pos.x, tri.x.pos.y, tri.x.pos.z).normalize() * 0.5;
 
         let ba = b - a;
         let ca = c - a;
