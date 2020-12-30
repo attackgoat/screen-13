@@ -40,9 +40,9 @@ use {
         pool::{Lease, PoolRef},
     },
     crate::{
+        error::Error,
         math::Extent,
         pak::{AnimationId, BitmapId, ModelId, Pak},
-        Error,
     },
     gfx_hal::{
         adapter::Adapter, buffer::Usage, device::Device as _, queue::QueueFamily,

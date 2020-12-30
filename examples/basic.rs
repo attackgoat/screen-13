@@ -1,20 +1,10 @@
-use {
-    screen_13::{
-        color::{BLUE, WHITE},
-        gpu::Font,
-        math::Coord,
-        pak::Pak,
-        prelude::*,
-    },
-    std::env::current_exe,
-};
+use {screen_13::prelude_all::*, std::env::current_exe};
 
 /// This example requires a color graphics adapter.
 fn main() -> ! {
     pretty_env_logger::init();
 
-    // Create an engine instance (loads the engine config file for this named game)
-    let engine = Engine::new(Program::new("screen-13-basic-example"));
+    let engine = Engine::default();
 
     // Open the "pak" file which contains all game art, assests, and other content
     let mut pak = Pak::open(
@@ -32,7 +22,7 @@ fn main() -> ! {
     let small_10px = engine.gpu().load_font(&mut pak, "fonts/small_10px");
 
     // Voila!
-    engine.run(Box::new(Basic { small_10px }));
+    engine.run(Box::new(Basic { small_10px }))
 }
 
 struct Basic {

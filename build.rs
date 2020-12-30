@@ -10,8 +10,10 @@ use {
     shaderc::{CompileOptions, Compiler, Error, ShaderKind},
     std::{
         cmp::Ordering::Equal,
+        collections::hash_map::DefaultHasher,
         env::var,
         fs::{create_dir_all, remove_dir_all, remove_file, File},
+        hash::{Hash, Hasher},
         io::{BufRead, BufReader, Write},
         path::{Path, PathBuf},
         process::exit,
@@ -19,6 +21,7 @@ use {
 };
 
 lazy_static! {
+    static ref DEFAULT_PROGRAM_ICON_PATH: PathBuf = OUT_DIR.join("default_program_icon.rs");
     static ref GLSL_DIR: PathBuf = Path::new("src/gpu/glsl").to_owned();
     static ref OUT_DIR: PathBuf = Path::new(var("OUT_DIR").unwrap().as_str()).to_owned();
     static ref POINT_LIGHT_PATH: PathBuf = OUT_DIR.join("point_light.rs");
@@ -34,6 +37,84 @@ fn main() {
     gen_point_light();
     gen_skydome();
     gen_spotlight_fn();
+    gen_default_program_icon();
+}
+
+fn gen_default_program_icon() {
+    if DEFAULT_PROGRAM_ICON_PATH.exists() {
+        remove_file(DEFAULT_PROGRAM_ICON_PATH.as_path()).unwrap();
+    }
+
+    let mut output_file = File::create(DEFAULT_PROGRAM_ICON_PATH.as_path()).unwrap();
+
+    // We make a 64x64 rgba gradient as the default program icon if one is not specified in certain modes.
+    // (Certain modes = Not if user creates a Program but does not provide an icon, only if they pick one
+    // of the pre-made const values and don't change it)
+    let mut pixels = Vec::with_capacity(64 * 64 * 4);
+    let version_major = env!("CARGO_PKG_VERSION_MAJOR");
+    let version_minor = env!("CARGO_PKG_VERSION_MINOR");
+    let qbasic_colors = [
+        [0, 0, 0xa8],
+        [0, 0xa8, 0],
+        [0, 0xa8, 0xa8],
+        [0xa8, 0, 0],
+        [0xa8, 0, 0xa8],
+        [0xa8, 0x54, 0],
+        [0xa8, 0xa8, 0xa8],
+        [0x54, 0x54, 0x54],
+        [0x54, 0x54, 0xfc],
+        [0x54, 0xfc, 0x54],
+        [0x54, 0xfc, 0xfc],
+        [0xfc, 0x54, 0x54],
+        [0xfc, 0x54, 0xfc],
+        [0xfc, 0xfc, 0x54],
+        [0xfc, 0xfc, 0xfc],
+    ];
+    let pick_color = |data: &str| -> [u8; 3] {
+        let mut hasher = DefaultHasher::new();
+        data.hash(&mut hasher);
+        let hash = hasher.finish();
+
+        let idx = hash % qbasic_colors.len() as u64;
+        qbasic_colors[idx as usize]
+    };
+    let colors = [
+        pick_color(&format!("{}{}", version_major, version_minor)),
+        pick_color(version_minor),
+    ];
+    for y in 0..64 {
+        let ab = y as f32 / 63.0;
+        let ba = 1.0 - ab;
+        let a = colors[0];
+        let b = colors[1];
+        let color = [
+            (a[0] as f32 * ab + b[0] as f32 * ba) as u8,
+            (a[1] as f32 * ab + b[1] as f32 * ba) as u8,
+            (a[2] as f32 * ab + b[2] as f32 * ba) as u8,
+        ];
+
+        for _ in 0..64 {
+            pixels.push(color[0]);
+            pixels.push(color[1]);
+            pixels.push(color[2]);
+            pixels.push(0xff);
+        }
+    }
+
+    writeln!(
+        output_file,
+        "pub const HEIGHT: u32 = 64;\npub const WIDTH: u32 = 64;",
+    )
+    .unwrap();
+    writeln!(output_file).unwrap();
+
+    writeln!(output_file, "pub const PIXELS: [u8; {}] = [", pixels.len(),).unwrap();
+
+    for byte in pixels {
+        writeln!(output_file, "{}u8,", byte,).unwrap();
+    }
+
+    writeln!(output_file, "];",).unwrap();
 }
 
 fn gen_point_light() {

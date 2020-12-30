@@ -1,5 +1,5 @@
 use {
-    crate::Error,
+    crate::error::Error,
     gfx_hal::{
         adapter::{MemoryProperties, PhysicalDevice as _},
         format::{Format, ImageFeature, Properties as FormatProperties},

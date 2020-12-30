@@ -127,9 +127,7 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
             for tri_idx in 0..indices.len() / 3 {
                 let a_idx = tri_idx * 3;
                 let c_idx = a_idx + 2;
-                let a = indices[a_idx];
-                indices[a_idx] = indices[c_idx];
-                indices[c_idx] = a;
+                indices.swap(a_idx, c_idx);
             }
 
             all_positions.extend_from_slice(&positions);
