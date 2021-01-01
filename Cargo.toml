@@ -8,7 +8,7 @@ readme = "README.md"
 repository = "https://github.com/attackgoat/screen-13"
 homepage = "https://github.com/attackgoat/screen-13"
 documentation = "https://docs.rs/screen-13"
-keywords = ["gamedev", "gpu", "vulkan", "metal", "directx", "webgl"]
+keywords = ["gamedev", "vulkan", "metal", "directx", "webgl"]
 categories = ["game-development", "multimedia::images", "rendering::engine"]
 description = """
 An easy-to-use 2D/3D rendering engine in the spirit of QBasic.
