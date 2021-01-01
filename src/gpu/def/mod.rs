@@ -3,6 +3,7 @@ pub mod desc_set_layout;
 pub mod graphics;
 pub mod push_const;
 pub mod render_pass;
+pub mod vertex;
 
 pub use self::{compute::Compute, graphics::Graphics};
 

@@ -25,8 +25,8 @@ pub mod prelude {
 /// Like prelude, but everything
 pub mod prelude_all {
     pub use super::{
-        camera::*, color::*, config::*, fx::*, gpu::*, input::*, math::*, pak::*, prelude::*,
-        program::*,
+        camera::*, color::*, config::*, fx::*, gpu::Material, gpu::*, input::*, math::*,
+        pak::Material as PakMaterial, pak::*, prelude::*, program::*,
     };
 }
 

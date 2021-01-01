@@ -1,5 +1,6 @@
 use {screen_13::prelude_all::*, std::iter::once};
 
+/// In this example, we create, render and save a PBR-textured triangle in fewer than 50 lines of code.
 fn main() {
     let gpu = Gpu::offscreen();
 
@@ -13,14 +14,37 @@ fn main() {
         ],
     ).expect("Each mesh must specifiy a valid vertex count for the input list of Vertices; which must be a list of triangles.");
 
-    // Wrap our triangle Model with a shared reference (required so we can draw it)
-    let tri = ModelRef::new(tri);
+    // Create three 1x1 textures:
+    // Color aka albedo/diffuse (RGB) -> https://en.wikipedia.org/wiki/Rust_(color)
+    // Metal/Rough aka material (RG)  -> "Rusty Iron"
+    // Normal map               (RGB) -> Standard pale blue 'flat'
+    let color = gpu.load_bitmap(BitmapFormat::Rgb, &[0xb7, 0x41, 0x0e], 1, 1);
+    let metal_rough = gpu.load_bitmap(BitmapFormat::Rg, &[0xca, 0xc0], 1, 1);
+    let normal = gpu.load_bitmap(BitmapFormat::Rgb, &[0x00, 0x7f, 0xff], 1, 1);
 
-    // Render + encode it to disk
+    // Wrap these types with shared references (required so we can draw them)
+    let tri = ModelRef::new(tri);
+    let color = BitmapRef::new(color);
+    let metal_rough = BitmapRef::new(metal_rough);
+    let normal = BitmapRef::new(normal);
+
+    // Define a pbr material
+    let rust = Material {
+        color,
+        metal_rough,
+        normal,
+    };
+
+    // Define a camera (straight lens/no perspecive)
     let dims = Extent::new(128, 128);
     let eye = Vec3::zero();
     let target = -Vec3::unit_z();
     let camera = Orthographic::new(eye, target, dims, 0.0..1.0);
-    let render = gpu.render(dims);
-    //render.draw().record(&camera, &mut [Draw::model(tri,  Mat4::identity())]);
+
+    // Render + encode it to disk
+    let mut render = gpu.render(dims);
+    render
+        .draw()
+        .record(&camera, &mut [Draw::model(tri, rust, Mat4::identity())]);
+    render.encode().record("output.jpg");
 }

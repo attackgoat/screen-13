@@ -22,12 +22,14 @@ mod swapchain;
 mod texture;
 
 pub use self::{
-    model::{MeshFilter, Model, Pose, Vertex},
+    def::vertex,
+    model::{MeshFilter, Model, Pose},
     op::{Bitmap, Draw, Font, Material, Skydome, Write, WriteMode},
     pool::Pool,
     render::Render,
     swapchain::Swapchain,
     texture::Texture,
+    vertex::Vertex,
 };
 
 pub(crate) use self::{driver::Driver, op::Op};
@@ -42,7 +44,7 @@ use {
     crate::{
         error::Error,
         math::Extent,
-        pak::{model::Mesh, AnimationId, BitmapId, IndexType, ModelId, Pak},
+        pak::{model::Mesh, AnimationId, BitmapFormat, BitmapId, IndexType, ModelId, Pak},
     },
     gfx_hal::{
         adapter::Adapter, buffer::Usage, device::Device as _, queue::QueueFamily,
@@ -209,6 +211,22 @@ impl Gpu {
             ops: Default::default(),
             renders: Default::default(),
         }
+    }
+
+    pub fn load_bitmap(
+        &self,
+        #[cfg(feature = "debug-names")] name: &str,
+        pixel_ty: BitmapFormat,
+        pixels: &[u8],
+        width: u32,
+        stride: u32,
+    ) -> Bitmap {
+        let _ = pixel_ty;
+        let _ = pixels;
+        let _ = width;
+        let _ = stride;
+
+        todo!();
     }
 
     pub fn load_indexed_model<
