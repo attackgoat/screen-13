@@ -10,12 +10,15 @@ pub use self::lease::Lease;
 use {
     self::{layouts::Layouts, skydome::SKYDOME},
     super::{
-        def::{render_pass, Compute, ComputeMode, Graphics, GraphicsMode, RenderPassMode},
+        def::{
+            render_pass, CalcVertexAttrsComputeMode, Compute, ComputeMode, Graphics, GraphicsMode,
+            RenderPassMode,
+        },
         driver::{CommandPool, DescriptorPool, Driver, Fence, Image2d, Memory, RenderPass},
         op::Compiler,
         BlendMode, Data, MaskMode, MatteMode, Texture, TextureRef,
     },
-    crate::{math::Extent, pak::IndexType},
+    crate::math::Extent,
     gfx_hal::{
         buffer::Usage as BufferUsage,
         format::Format,
@@ -159,20 +162,13 @@ impl Pool {
             item
         } else {
             let ctor = match mode {
-                ComputeMode::CalcVertexAttrs(m) if m.idx_ty == IndexType::U16 && !m.skin => {
-                    Compute::calc_vertex_attrs_u16
-                }
-                ComputeMode::CalcVertexAttrs(m) if m.idx_ty == IndexType::U16 && m.skin => {
-                    Compute::calc_vertex_attrs_u16_skin
-                }
-                ComputeMode::CalcVertexAttrs(m) if m.idx_ty == IndexType::U32 && !m.skin => {
-                    Compute::calc_vertex_attrs_u32
-                }
-                ComputeMode::CalcVertexAttrs(m) if m.idx_ty == IndexType::U32 && m.skin => {
-                    Compute::calc_vertex_attrs_u32_skin
-                }
+                ComputeMode::CalcVertexAttrs(mode) => match mode {
+                    CalcVertexAttrsComputeMode::U16 => Compute::calc_vertex_attrs_u16,
+                    CalcVertexAttrsComputeMode::U16_SKIN => Compute::calc_vertex_attrs_u16_skin,
+                    CalcVertexAttrsComputeMode::U32 => Compute::calc_vertex_attrs_u32,
+                    CalcVertexAttrsComputeMode::U32_SKIN => Compute::calc_vertex_attrs_u32_skin,
+                },
                 ComputeMode::DecodeRgbRgba => Compute::decode_rgb_rgba,
-                _ => unreachable!(),
             };
             let (desc_set_layout, pipeline_layout) = match mode {
                 ComputeMode::CalcVertexAttrs(_) => self.layouts.compute_calc_vertex_attrs(

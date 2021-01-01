@@ -22,7 +22,7 @@ mod swapchain;
 mod texture;
 
 pub use self::{
-    model::{MeshFilter, Model, Pose},
+    model::{MeshFilter, Model, Pose, Vertex},
     op::{Bitmap, Draw, Font, Material, Skydome, Write, WriteMode},
     pool::Pool,
     render::Render,
@@ -42,7 +42,7 @@ use {
     crate::{
         error::Error,
         math::Extent,
-        pak::{AnimationId, BitmapId, ModelId, Pak},
+        pak::{model::Mesh, AnimationId, BitmapId, IndexType, ModelId, Pak},
     },
     gfx_hal::{
         adapter::Adapter, buffer::Usage, device::Device as _, queue::QueueFamily,
@@ -102,6 +102,10 @@ fn create_surface(window: &Window) -> (Adapter<_Backend>, Surface) {
     let surface = Surface::new(instance, window).unwrap();
     (adapter, surface)
 }
+
+/// Indicates the provided data was bad.
+#[derive(Debug)]
+pub struct BadData;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum BlendMode {
@@ -207,7 +211,138 @@ impl Gpu {
         }
     }
 
-    pub fn load_animation<R: Read + Seek>(
+    pub fn load_indexed_model<
+        M: IntoIterator<Item = Mesh>,
+        I: IntoIterator<Item = u32>,
+        V: IntoIterator<Item = VV>,
+        VV: Copy + Into<Vertex>,
+    >(
+        &self,
+        #[cfg(feature = "debug-names")] name: &str,
+        meshes: M,
+        _indices: I,
+        _vertices: V,
+    ) -> Result<Model, BadData> {
+        let meshes = meshes.into_iter().collect::<Vec<_>>();
+        // let indices = indices.into_iter().collect::<Vec<_>>();
+        // let vertices = vertices.into_iter().collect::<Vec<_>>();
+
+        // Make sure the incoming meshes are valid
+        for mesh in &meshes {
+            if mesh.vertex_count() % 3 != 0 {
+                return Err(BadData);
+            }
+        }
+
+        let mut pool = self.loads.borrow_mut();
+
+        let idx_buf_len = 0;
+        let idx_buf = pool.data_usage(
+            #[cfg(feature = "debug-names")]
+            name,
+            &self.driver,
+            idx_buf_len,
+            Usage::INDEX | Usage::STORAGE,
+        );
+
+        let vertex_buf_len = 0;
+        let vertex_buf = pool.data_usage(
+            #[cfg(feature = "debug-names")]
+            name,
+            &self.driver,
+            vertex_buf_len,
+            Usage::VERTEX | Usage::STORAGE,
+        );
+
+        let staging_buf_len = 0;
+        let staging_buf = pool.data_usage(
+            #[cfg(feature = "debug-names")]
+            name,
+            &self.driver,
+            staging_buf_len,
+            Usage::VERTEX | Usage::STORAGE,
+        );
+
+        let write_mask_len = 0;
+        let write_mask = pool.data_usage(
+            #[cfg(feature = "debug-names")]
+            name,
+            &self.driver,
+            write_mask_len,
+            Usage::STORAGE,
+        );
+
+        Ok(Model::new(
+            meshes,
+            IndexType::U32,
+            (idx_buf, idx_buf_len),
+            (vertex_buf, vertex_buf_len),
+            (staging_buf, staging_buf_len, write_mask),
+        ))
+    }
+
+    pub fn load_model<
+        IM: IntoIterator<Item = M>,
+        IV: IntoIterator<Item = V>,
+        M: Into<Mesh>,
+        V: Copy + Into<Vertex>,
+    >(
+        &self,
+        #[cfg(feature = "debug-names")] name: &str,
+        meshes: IM,
+        vertices: IV,
+    ) -> Result<Model, BadData> {
+        let mut meshes = meshes
+            .into_iter()
+            .map(|mesh| mesh.into())
+            .collect::<Vec<_>>();
+        let vertices = vertices.into_iter().collect::<Vec<_>>();
+        let mut indices = vec![];
+
+        // Add index data to the meshes (and build a buffer)
+        let mut base_vertex = 0;
+        for mesh in &mut meshes {
+            let base_idx = indices.len();
+            let mut cache: Vec<Vertex> = vec![];
+            let vertex_count = mesh.vertex_count() as usize;
+
+            // First we index the vertices ...
+            for idx in base_vertex..base_vertex + vertex_count {
+                let vertex = if let Some(vertex) = vertices.get(idx) {
+                    (*vertex).into()
+                } else {
+                    return Err(BadData);
+                };
+
+                debug_assert!(vertex.is_finite());
+
+                if let Err(idx) = cache.binary_search_by(|probe| probe.cmp(&vertex)) {
+                    cache.insert(idx, vertex);
+                }
+            }
+
+            // ... and then we push all the indices into the buffer
+            for idx in base_vertex..base_vertex + vertex_count {
+                let vertex = vertices.get(idx).unwrap();
+                let vertex = (*vertex).into();
+                let idx = cache.binary_search_by(|probe| probe.cmp(&vertex)).unwrap();
+                indices.push(idx as _);
+            }
+
+            mesh.indices = base_idx as u32..(base_idx + indices.len()) as u32;
+            base_vertex += vertex_count;
+        }
+
+        self.load_indexed_model(
+            #[cfg(feature = "debug-names")]
+            name,
+            meshes,
+            indices,
+            vertices,
+        )
+    }
+
+    pub fn read_animation<R: Read + Seek>(
         &self,
         #[cfg(debug_assertions)] _name: &str,
         _pak: &mut Pak<R>,
@@ -255,7 +390,7 @@ impl Gpu {
         todo!()
     }
 
-    pub fn load_bitmap<K: AsRef<str>, R: Read + Seek>(
+    pub fn read_bitmap<K: AsRef<str>, R: Read + Seek>(
         &self,
         #[cfg(feature = "debug-names")] name: &str,
         pak: &mut Pak<R>,
@@ -263,7 +398,7 @@ impl Gpu {
     ) -> Bitmap {
         let id = pak.bitmap_id(key).unwrap();
 
-        self.load_bitmap_with_id(
+        self.read_bitmap_with_id(
             #[cfg(feature = "debug-names")]
             name,
             pak,
@@ -271,7 +406,7 @@ impl Gpu {
         )
     }
 
-    pub fn load_bitmap_with_id<R: Read + Seek>(
+    pub fn read_bitmap_with_id<R: Read + Seek>(
         &self,
         #[cfg(feature = "debug-names")] name: &str,
         pak: &mut Pak<R>,
@@ -293,7 +428,7 @@ impl Gpu {
     }
 
     /// Only bitmapped fonts are supported.
-    pub fn load_font<F: AsRef<str>, R: Read + Seek>(&self, pak: &mut Pak<R>, face: F) -> Font {
+    pub fn read_font<F: AsRef<str>, R: Read + Seek>(&self, pak: &mut Pak<R>, face: F) -> Font {
         #[cfg(debug_assertions)]
         debug!("Loading font `{}`", face.as_ref());
 
@@ -305,7 +440,7 @@ impl Gpu {
         )
     }
 
-    pub fn load_model<K: AsRef<str>, R: Read + Seek>(
+    pub fn read_model<K: AsRef<str>, R: Read + Seek>(
         &self,
         #[cfg(feature = "debug-names")] name: &str,
         pak: &mut Pak<R>,
@@ -313,7 +448,7 @@ impl Gpu {
     ) -> Model {
         let id = pak.model_id(key).unwrap();
 
-        self.load_model_with_id(
+        self.read_model_with_id(
             #[cfg(feature = "debug-names")]
             name,
             pak,
@@ -321,7 +456,7 @@ impl Gpu {
         )
     }
 
-    pub fn load_model_with_id<R: Read + Seek>(
+    pub fn read_model_with_id<R: Read + Seek>(
         &self,
         #[cfg(feature = "debug-names")] name: &str,
         pak: &mut Pak<R>,

@@ -1,4 +1,4 @@
-void main() {
+void write_matte() {
     vec4 image = texture(image_sampler, image_uv);
     vec4 matte = texture(matte_sampler, matte_uv);
 

@@ -75,7 +75,10 @@ impl Compute {
         pipeline_layout: &PipelineLayout,
         max_desc_sets: usize,
         spirv: &[u32],
+        idx: bool,
     ) -> Self {
+        let read_only_buf_count = if idx { 3 } else { 1 };
+
         Self::new(
             #[cfg(feature = "debug-names")]
             name,
@@ -85,7 +88,7 @@ impl Compute {
             max_desc_sets,
             spirv,
             &[
-                descriptor_range_desc(3 * max_desc_sets, READ_ONLY_BUF),
+                descriptor_range_desc(read_only_buf_count * max_desc_sets, READ_ONLY_BUF),
                 descriptor_range_desc(max_desc_sets, READ_WRITE_BUF),
             ],
             empty(),
@@ -108,6 +111,7 @@ impl Compute {
             pipeline_layout,
             max_desc_sets,
             &spirv::compute::CALC_VERTEX_ATTRS_U16_COMP,
+            true,
         )
     }
 
@@ -127,6 +131,7 @@ impl Compute {
             pipeline_layout,
             max_desc_sets,
             &spirv::compute::CALC_VERTEX_ATTRS_U16_SKIN_COMP,
+            true,
         )
     }
 
@@ -146,6 +151,7 @@ impl Compute {
             pipeline_layout,
             max_desc_sets,
             &spirv::compute::CALC_VERTEX_ATTRS_U32_COMP,
+            true,
         )
     }
 
@@ -165,6 +171,7 @@ impl Compute {
             pipeline_layout,
             max_desc_sets,
             &spirv::compute::CALC_VERTEX_ATTRS_U32_SKIN_COMP,
+            true,
         )
     }
 

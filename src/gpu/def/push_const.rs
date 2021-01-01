@@ -109,8 +109,8 @@ pub const SKYDOME: [ShaderRange; 2] = [
 pub const TEXTURE: [ShaderRange; 1] = [(ShaderStageFlags::VERTEX, 0..80)];
 
 push_const_struct!(CalcVertexAttrsPushConsts {
-    pub base_idx: u32,
     pub base_vertex: u32,
+    pub base_idx: u32,
 });
 push_const_struct!(FontPushConsts {
     pub glyph_color: Vec4,

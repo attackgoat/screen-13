@@ -86,10 +86,89 @@ struct BindVertexAttrsDescriptorsAsm {
     mode: CalcVertexAttrsComputeMode,
 }
 
+pub struct CalcVertexAttrsDescriptors<'a> {
+    pub dst: Ref<'a, Lease<Data>>,
+    pub dst_len: u64,
+    pub idx_buf: Ref<'a, Lease<Data>>,
+    pub idx_len: u64,
+    pub src: &'a Lease<Data>,
+    pub src_len: u64,
+    pub write_mask: &'a Lease<Data>,
+    pub write_mask_len: u64,
+}
+
 struct CalcVertexAttrsAsm {
     base_idx: u32,
     base_vertex: u32,
     dispatch: u32,
+}
+
+struct CalcVertexAttrsData {
+    /// Staging data (position + tex coord, optional joints + weights)
+    buf: Lease<Data>,
+
+    /// Command index
+    idx: usize,
+
+    /// Length of the staging data, in bytes
+    len: u64,
+
+    write_mask: Lease<Data>,
+}
+
+struct CalcVertexAttrsDescriptorsIter<'a> {
+    cmds: &'a [Command],
+    data: &'a [CalcVertexAttrsData],
+    idx: usize,
+    usage: &'a Vec<usize>,
+}
+
+impl<'a> ExactSizeIterator for CalcVertexAttrsDescriptorsIter<'a> {
+    fn len(&self) -> usize {
+        self.usage.len()
+    }
+}
+
+impl<'a> Iterator for CalcVertexAttrsDescriptorsIter<'a> {
+    type Item = CalcVertexAttrsDescriptors<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.usage.get(self.idx).map(|idx| {
+            self.idx += 1;
+
+            // Get the vertex zattribute calculation data for this command index
+            let src_idx = self
+                .data
+                .binary_search_by(|probe| probe.idx.cmp(&idx))
+                .unwrap();
+            let src = &self.data[src_idx];
+
+            // Get the GPU model for this command index
+            let cmd = &self.cmds[*idx].as_model().unwrap();
+            let model = cmd.model.as_ref();
+            let idx_ty = model.idx_ty();
+            let (idx_buf, idx_len) = model.idx_buf_ref();
+            let (dst, dst_len) = model.vertex_buf_ref();
+
+            // We didn't store the length of the write mask because we have the data to calculate here
+            let (part, shift) = match idx_ty {
+                IndexType::U16 => (63, 6),
+                IndexType::U32 => (31, 5),
+            };
+            let write_mask_len = (idx_len + part) >> shift << 2;
+
+            CalcVertexAttrsDescriptors {
+                dst,
+                dst_len,
+                idx_buf,
+                idx_len,
+                src: &src.buf,
+                src_len: src.len,
+                write_mask: &src.write_mask,
+                write_mask_len,
+            }
+        })
+    }
 }
 
 // TODO: The note below is good but reset is not enough, we need some sort of additional function to also drop the data, like and `undo` or `rollback`
@@ -103,7 +182,7 @@ pub struct Compilation<'a> {
     idx: usize,
 }
 
-impl Compilation<'_> {
+impl<'a> Compilation<'a> {
     fn begin_calc_vertex_attrs(mode: CalcVertexAttrsComputeMode) -> Instruction<'static> {
         Instruction::VertexAttrsBegin(mode)
     }
@@ -120,8 +199,9 @@ impl Compilation<'_> {
 
     fn bind_model_buffers(&self, idx: usize) -> Instruction {
         let cmd = self.cmds[idx].as_model().unwrap();
-        let (idx_buf, idx_buf_len, idx_ty) = cmd.model.indices();
-        let (vertex_buf, vertex_buf_len) = cmd.model.vertices();
+        let idx_ty = cmd.model.idx_ty();
+        let (idx_buf, idx_buf_len) = cmd.model.idx_buf_ref();
+        let (vertex_buf, vertex_buf_len) = cmd.model.vertex_buf_ref();
 
         Instruction::MeshBind(MeshBindInstruction {
             idx_buf,
@@ -158,6 +238,50 @@ impl Compilation<'_> {
         })
     }
 
+    pub fn calc_vertex_attrs_u16_descriptors(
+        &self,
+    ) -> impl ExactSizeIterator<Item = CalcVertexAttrsDescriptors> {
+        CalcVertexAttrsDescriptorsIter {
+            data: &self.compiler.calc_vertex_attrs,
+            cmds: &self.cmds,
+            idx: 0,
+            usage: &self.compiler.u16_vertex_cmds,
+        }
+    }
+
+    pub fn calc_vertex_attrs_u16_skin_descriptors(
+        &self,
+    ) -> impl ExactSizeIterator<Item = CalcVertexAttrsDescriptors> {
+        CalcVertexAttrsDescriptorsIter {
+            data: &self.compiler.calc_vertex_attrs,
+            cmds: &self.cmds,
+            idx: 0,
+            usage: &self.compiler.u16_skin_vertex_cmds,
+        }
+    }
+
+    pub fn calc_vertex_attrs_u32_descriptors(
+        &self,
+    ) -> impl ExactSizeIterator<Item = CalcVertexAttrsDescriptors> {
+        CalcVertexAttrsDescriptorsIter {
+            cmds: &self.cmds,
+            data: &self.compiler.calc_vertex_attrs,
+            idx: 0,
+            usage: &self.compiler.u32_vertex_cmds,
+        }
+    }
+
+    pub fn calc_vertex_attrs_u32_skin_descriptors(
+        &self,
+    ) -> impl ExactSizeIterator<Item = CalcVertexAttrsDescriptors> {
+        CalcVertexAttrsDescriptorsIter {
+            cmds: &self.cmds,
+            data: &self.compiler.calc_vertex_attrs,
+            idx: 0,
+            usage: &self.compiler.u32_skin_vertex_cmds,
+        }
+    }
+
     fn calc_vertex_attrs(&self, asm: &CalcVertexAttrsAsm) -> Instruction {
         Instruction::VertexAttrsCalc(DataComputeInstruction {
             base_idx: asm.base_idx,
@@ -186,7 +310,7 @@ impl Compilation<'_> {
 
     fn draw_model(&self, idx: usize) -> Instruction {
         let cmd = self.cmds[idx].as_model().unwrap();
-        let meshes = cmd.model.meshes_filterable(cmd.mesh_filter);
+        let meshes = cmd.model.meshes_filter_is(cmd.mesh_filter);
 
         Instruction::MeshDraw(MeshDrawInstruction {
             meshes,
@@ -228,7 +352,7 @@ impl Compilation<'_> {
         self.compiler.code.is_empty()
     }
 
-    pub fn materials(&self) -> impl ExactSizeIterator<Item = &Material> {
+    pub fn mesh_materials(&self) -> impl ExactSizeIterator<Item = &Material> {
         self.compiler.materials.iter()
     }
 
@@ -242,52 +366,23 @@ impl Compilation<'_> {
         })
     }
 
-    pub fn u16_vertex_bufs(&self) -> impl ExactSizeIterator<Item = VertexBuffers> {
-        VertexBuffersIter {
-            bufs: &self.compiler.vertex_bufs,
-            cmds: &self.cmds,
-            idx: 0,
-            usage: &self.compiler.u16_vertex_cmds,
-        }
-    }
-
-    pub fn u16_skin_vertex_bufs(&self) -> impl ExactSizeIterator<Item = VertexBuffers> {
-        VertexBuffersIter {
-            bufs: &self.compiler.vertex_bufs,
-            cmds: &self.cmds,
-            idx: 0,
-            usage: &self.compiler.u16_skin_vertex_cmds,
-        }
-    }
-
-    pub fn u32_vertex_bufs(&self) -> impl ExactSizeIterator<Item = VertexBuffers> {
-        VertexBuffersIter {
-            bufs: &self.compiler.vertex_bufs,
-            cmds: &self.cmds,
-            idx: 0,
-            usage: &self.compiler.u32_vertex_cmds,
-        }
-    }
-
-    pub fn u32_skin_vertex_bufs(&self) -> impl ExactSizeIterator<Item = VertexBuffers> {
-        VertexBuffersIter {
-            bufs: &self.compiler.vertex_bufs,
-            cmds: &self.cmds,
-            idx: 0,
-            usage: &self.compiler.u32_skin_vertex_cmds,
-        }
+    fn write_light_vertices<T>(buf: &mut DirtyData<T>) -> Instruction {
+        Instruction::VertexWrite(DataWriteInstruction {
+            buf: &mut buf.data.current,
+            range: buf.cpu_dirty.as_ref().unwrap().clone(),
+        })
     }
 
     fn write_model_indices(&self, idx: usize) -> Instruction {
         let cmd = self.cmds[idx].as_model().unwrap();
-        let (buf, len, _) = cmd.model.indices_mut();
+        let (buf, len) = cmd.model.idx_buf_mut();
 
         Instruction::IndexWriteRef(DataWriteRefInstruction { buf, range: 0..len })
     }
 
     fn write_model_vertices(&self, idx: usize) -> Instruction {
         let cmd = self.cmds[idx].as_model().unwrap();
-        let (buf, len) = cmd.model.vertices_mut();
+        let (buf, len) = cmd.model.vertex_buf_mut();
 
         Instruction::VertexWriteRef(DataWriteRefInstruction { buf, range: 0..len })
     }
@@ -296,13 +391,6 @@ impl Compilation<'_> {
         Instruction::VertexWrite(DataWriteInstruction {
             buf: self.compiler.point_light_buf.as_mut().unwrap(),
             range: 0..POINT_LIGHT.len() as _,
-        })
-    }
-
-    fn write_vertices<T>(buf: &mut DirtyData<T>) -> Instruction {
-        Instruction::VertexWrite(DataWriteInstruction {
-            buf: &mut buf.data.current,
-            range: buf.cpu_dirty.as_ref().unwrap().clone(),
         })
     }
 }
@@ -359,13 +447,13 @@ impl Compilation<'_> {
             Asm::WriteModelVertices(idx) => self.write_model_vertices(*idx),
             Asm::WritePointLightVertices => self.write_point_light_vertices(),
             Asm::WriteRectLightVertices => {
-                Self::write_vertices(self.compiler.rect_light.buf.as_mut().unwrap())
+                Self::write_light_vertices(self.compiler.rect_light.buf.as_mut().unwrap())
             }
             Asm::WriteSpotlightVertices => {
-                Self::write_vertices(self.compiler.spotlight.buf.as_mut().unwrap())
+                Self::write_light_vertices(self.compiler.spotlight.buf.as_mut().unwrap())
             }
             Asm::WriteLineVertices => {
-                Self::write_vertices(self.compiler.line.buf.as_mut().unwrap())
+                Self::write_light_vertices(self.compiler.line.buf.as_mut().unwrap())
             }
         })
     }
@@ -397,13 +485,15 @@ pub struct Compiler {
     spotlight: DirtyLruData<Spotlight>,
     spotlights: Vec<Spotlight>,
 
-    // These store which command indices use which vertex attribute calculation type
+    // These store which command indices use which vertex attribute calculation type (sorted)
     u16_vertex_cmds: Vec<usize>,
     u16_skin_vertex_cmds: Vec<usize>,
     u32_vertex_cmds: Vec<usize>,
     u32_skin_vertex_cmds: Vec<usize>,
 
-    vertex_bufs: Vec<VertexBuffer>,
+    // This stores the data (staging + write mask buffers) needed to cacluate additional vertex
+    // attributes (normal + tangent)
+    calc_vertex_attrs: Vec<CalcVertexAttrsData>,
 }
 
 impl Compiler {
@@ -766,11 +856,11 @@ impl Compiler {
 
                 // Store the instance of the leased data which contains the packed/staging vertices
                 // (This lease will be returned to the pool after this operation completes)
-                self.vertex_bufs.insert(
-                    self.vertex_bufs
+                self.calc_vertex_attrs.insert(
+                    self.calc_vertex_attrs
                         .binary_search_by(|probe| probe.idx.cmp(&idx))
                         .unwrap_err(),
-                    VertexBuffer {
+                    CalcVertexAttrsData {
                         buf,
                         idx,
                         len,
@@ -819,11 +909,10 @@ impl Compiler {
 
                     // Emit code to cause the normal and tangent vertex attributes of each mesh to be
                     // calculated (source is leased data, destination lives as long as the model does)
-                    let indices = mesh.indices();
                     self.code.push(Asm::CalcVertexAttrs(CalcVertexAttrsAsm {
-                        base_idx: indices.start,
+                        base_idx: mesh.indices.start,
                         base_vertex: mesh.vertex_offset() >> 2,
-                        dispatch: (indices.end - indices.start) / 3,
+                        dispatch: (mesh.indices.end - mesh.indices.start) / 3,
                     }));
                 }
             }
@@ -1131,7 +1220,7 @@ impl Compiler {
         self.materials.clear();
         self.rect_lights.clear();
         self.spotlights.clear();
-        self.vertex_bufs.clear();
+        self.calc_vertex_attrs.clear();
 
         // Advance the least-recently-used caching algorithm one step forward
         self.line.step();
@@ -1289,82 +1378,4 @@ enum SearchIdx {
     Spotlight = 5,
     Sunlight = 7,
     Line = 9,
-}
-
-struct VertexBuffer {
-    /// Staging data (position + tex coord, optional joints + weights)
-    buf: Lease<Data>,
-
-    /// Command index
-    idx: usize,
-
-    /// Length of the staging data, in bytes
-    len: u64,
-
-    write_mask: Lease<Data>,
-}
-
-pub struct VertexBuffers<'a> {
-    pub dst: Ref<'a, Lease<Data>>,
-    pub dst_len: u64,
-    pub idx: Ref<'a, Lease<Data>>,
-    pub idx_len: u64,
-    pub src: &'a Lease<Data>,
-    pub src_len: u64,
-    pub write_mask: &'a Lease<Data>,
-    pub write_mask_len: u64,
-}
-
-struct VertexBuffersIter<'a> {
-    bufs: &'a Vec<VertexBuffer>,
-    cmds: &'a [Command],
-    idx: usize,
-    usage: &'a Vec<usize>,
-}
-
-impl<'a> ExactSizeIterator for VertexBuffersIter<'a> {
-    fn len(&self) -> usize {
-        self.usage.len()
-    }
-}
-
-impl<'a> Iterator for VertexBuffersIter<'a> {
-    type Item = VertexBuffers<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.usage.get(self.idx).map(|idx| {
-            self.idx += 1;
-
-            // Get the vertex buffer for this command index
-            let src_idx = self
-                .bufs
-                .binary_search_by(|probe| probe.idx.cmp(&idx))
-                .unwrap();
-            let src = &self.bufs[src_idx];
-
-            // Get the GPU model for this command index
-            let cmd = &self.cmds[*idx].as_model().unwrap();
-            let model = cmd.model.as_ref();
-            let (idx, idx_len, idx_ty) = model.indices();
-            let (dst, dst_len) = model.vertices();
-
-            // We didn't store the length of the write mask because we have the data to calculate here
-            let (part, shift) = match idx_ty {
-                IndexType::U16 => (63, 6),
-                IndexType::U32 => (31, 5),
-            };
-            let write_mask_len = (idx_len + part) >> shift << 2;
-
-            VertexBuffers {
-                dst,
-                dst_len,
-                idx,
-                idx_len,
-                src: &src.buf,
-                src_len: src.len,
-                write_mask: &src.write_mask,
-                write_mask_len,
-            }
-        })
-    }
 }

@@ -1,5 +1,3 @@
-#version 450
-
 const float X[6] = {0, 0, 1, 1, 1, 0};
 const float Y[6] = {0, 1, 0, 1, 0, 1};
 

@@ -155,7 +155,7 @@ Following the asset baking process you should now have an asset `.pak` file, `ex
 
 ```rust
 let mut pak = Pak::open("example.pak")?;
-let comic_sans = gpu.load_font(&mut pak, "comic-sans");
+let comic_sans = gpu.read_font(&mut pak, "comic-sans");
 ```
 
 #### Using fonts with render instances
@@ -181,7 +181,7 @@ src = 'cat.jpeg'
 Additionally, you must have added this file to the main project `.toml` file, `example.toml`. Following the asset baking process you should now have an asset `.pak` file, `example.pak`. In code, the image would be loaded like so:
 
 ```rust
-let cat = gpu.load_bitmap(&mut pak, "cat");
+let cat = gpu.read_bitmap(&mut pak, "cat");
 ```
 
 #### Using images with render instances
@@ -235,7 +235,7 @@ _NOTE_: The `cat_normal.toml` file is another bitmap asset file, which is not sh
 Additionally, you must have added this file to the main project `.toml` file, `example.toml`. Following the asset baking process you should now have an asset `.pak` file, `example.pak`. In code, the image would be loaded like so:
 
 ```rust
-let teapot = gpu.load_model(&mut pak, "teapot");
+let teapot = gpu.read_model(&mut pak, "teapot");
 ```
 
 #### Shared references
@@ -249,8 +249,8 @@ use screen_13::gpu::Material;
 
 // Loading new assets (notice use of IDs and how metalness/roughness have been merged for us)
 let glossy = pak.material("glossy");
-let metal_rough = gpu.load_bitmap_with_id(&mut pak, glossy.metal_rough);
-let normal = gpu.load_bitmap_with_id(&mut pak, glossy.normal);
+let metal_rough = gpu.read_bitmap_with_id(&mut pak, glossy.metal_rough);
+let normal = gpu.read_bitmap_with_id(&mut pak, glossy.normal);
 
 // Make sharable material and model references
 let glossy = Material {

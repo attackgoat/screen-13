@@ -2,8 +2,7 @@
 
 layout(push_constant) uniform PushConstants {
     layout(offset = 8) float opacity;
-}
-push_constants;
+} push_constants;
 
 layout(location = 0) out vec4 color;
 

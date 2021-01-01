@@ -9,8 +9,7 @@ layout(push_constant) uniform PushConstants {
     layout(offset = 112) vec3 sun_normal;
     layout(offset = 124) float time;
     layout(offset = 132) float weather;
-}
-push_constants;
+} push_constants;
 
 layout(set = 0, binding = 0) uniform sampler2D cloud1_sampler;
 layout(set = 0, binding = 1) uniform sampler2D cloud2_sampler;

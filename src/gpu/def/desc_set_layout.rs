@@ -28,19 +28,19 @@ pub const BLEND: [DescriptorSetLayoutBinding; 2] = [
 ];
 pub const CALC_VERTEX_ATTRS: [DescriptorSetLayoutBinding; 4] = [
     descriptor_set_layout_binding(
-        0, // idx_buf
+        0, // src_buf
         ShaderStageFlags::COMPUTE,
         READ_ONLY_BUF,
     ),
     descriptor_set_layout_binding(
-        1, // src_buf
-        ShaderStageFlags::COMPUTE,
-        READ_ONLY_BUF,
-    ),
-    descriptor_set_layout_binding(
-        2, // dst_buf
+        1, // dst_buf
         ShaderStageFlags::COMPUTE,
         READ_WRITE_BUF,
+    ),
+    descriptor_set_layout_binding(
+        2, // idx_buf
+        ShaderStageFlags::COMPUTE,
+        READ_ONLY_BUF,
     ),
     descriptor_set_layout_binding(
         3, // write_mask

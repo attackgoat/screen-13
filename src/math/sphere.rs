@@ -4,7 +4,7 @@ use {
     std::ops::{Add, AddAssign},
 };
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct Sphere {
     center: Vec3,
     radius: f32,

@@ -1,9 +1,10 @@
+#version 450
+
 #include "quad.glsl"
 
 layout(push_constant) uniform PushConstants {
     layout(offset = 0) mat4 vertex_transform;
-}
-push_constants;
+} push_constants;
 
 void main() {
     texcoord_out = vertex();

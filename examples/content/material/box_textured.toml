@@ -1,0 +1,5 @@
+[material]
+color = "box_color.toml"
+metal_src = "box_metal.png"
+normal = "box_normal.toml"
+rough_src = "box_rough.png"

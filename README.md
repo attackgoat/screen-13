@@ -8,7 +8,7 @@ Screen 13 is an easy-to-use 3D game engine in the spirit of QBasic.
 
 ## Overview
 
-Programs made using Screen 13 are built as regular executables using a design-time asset baking process. Screen 13 provides all asset-baking logic and aims to provide wide support for texture formats, vertex formats, and other associated data. Baked assets are stored in `.pak` files.
+Programs made using Screen 13 are built as regular executables using an _optional_ design-time asset baking process. Screen 13 provides all asset-baking logic and aims to provide wide support for texture formats, vertex formats, and other associated data. Baked assets are stored in `.pak` files.
 
 Screen 13 is based on the [`gfx-rs`](https://github.com/gfx-rs/gfx) project, and as such targets native Vulkan, Metal, DirectX 12, OpenGL, WebGL, Android, and iOS targets, among others.
 
@@ -26,11 +26,14 @@ Asset baking is the process of converting files from their native file formats i
 
 ## Quick Start
 
-Included is an example you might find helpful:
+Included are some examples you might find helpful:
 
 - `basic.rs` - Displays 'Hello, World!' on the screen. Please start here.
+- `ecs.rs` - Example of integration with a third-party ECS library ([`hecs`](https://crates.io/crates/hecs), which is _excellent_).
+- `headless.rs` - Rendering without an operating system window, saving to disk.
+- `triangle.rs` - Loads a textured triangle at runtime, with no associated `.pak` file.
 
-The example requires an associated asset `.pak` file in order to run, so you will need to run the example like so:
+Some examples require an associated asset `.pak` file in order to run, so you will need to run the example like so:
 
 ```bash
 cargo run examples/content/basic.toml

@@ -1,5 +1,13 @@
-#include "mask.glsl"
+#version 450
 
-float mask_op(float lhs, float rhs) { return lhs - rhs; }
+#include "mask_decl.glsl"
 
-#include "main.frag"
+float mask_op(float lhs, float rhs) {
+    return lhs - rhs;
+}
+
+#include "mask_fns.glsl"
+
+void main() {
+    write_mask();
+}

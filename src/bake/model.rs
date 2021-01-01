@@ -181,7 +181,7 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
             }
         }
 
-        meshes.push(Mesh::new(
+        meshes.push(Mesh::new_indexed(
             dst_name,
             base_idx..idx_count,
             vertex_count as _,

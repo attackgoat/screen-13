@@ -2,8 +2,7 @@
 
 layout(push_constant) uniform PushConstants {
     layout(offset = 0) mat4 transform;
-}
-push_constants;
+} push_constants;
 
 layout(location = 0) in vec3 position_in;
 layout(location = 1) in vec4 color_in;

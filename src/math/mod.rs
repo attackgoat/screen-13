@@ -21,6 +21,15 @@ pub type RectF = GenericRect<f32, f32>;
 
 /// Returns `true` if the given vector is neither infinite nor `NaN`.
 #[inline]
+pub fn vec2_is_finite(val: Vec2) -> bool {
+    let x = val.x.is_finite() as u8;
+    let y = val.y.is_finite() as u8;
+
+    x * y == 1
+}
+
+/// Returns `true` if the given vector is neither infinite nor `NaN`.
+#[inline]
 pub fn vec3_is_finite(val: Vec3) -> bool {
     // Use saturating casts so we can swap three `jbe` instructions for two `and` instructions.
     // Probably not needed but branchless code sure is fun: https://godbolt.org/z/P58cdq
@@ -29,6 +38,19 @@ pub fn vec3_is_finite(val: Vec3) -> bool {
     let z = val.z.is_finite() as u8;
 
     x * y * z == 1
+}
+
+/// Returns `true` if the given vector is neither infinite nor `NaN`.
+#[inline]
+pub fn vec4_is_finite(val: Vec4) -> bool {
+    // Use saturating casts so we can swap three `jbe` instructions for two `and` instructions.
+    // Probably not needed but branchless code sure is fun: https://godbolt.org/z/P58cdq
+    let x = val.x.is_finite() as u8;
+    let y = val.y.is_finite() as u8;
+    let z = val.z.is_finite() as u8;
+    let w = val.w.is_finite() as u8;
+
+    x * y * z * w == 1
 }
 
 #[inline]

@@ -9,8 +9,7 @@ layout(push_constant) uniform PushConstants {
     layout(offset = 160) vec3 light_center;
     layout(offset = 172) float light_radius;
     layout(offset = 176) vec3 light_intensity;
-}
-push_constants;
+} push_constants;
 
 layout(set = 0, binding = 0) uniform sampler2D depth_sampler;
 layout(set = 0, binding = 1) uniform sampler2D normal_sampler;

@@ -2,6 +2,15 @@
 // disk or the network. We do not store normal or tangent in the asset .pak file, so these
 // attributes must be reconstructed at runtime; prior to rendering use.
 
+// NOTE: This version of the program calculates attributes for U32-INDEXED vertices
+// (POSITION+TEXCOORD -> POSITION/NORMAL/TANGENT/TEXCOORD)
+
 #version 450
 
+#include "calc_vertex_attrs_decl.glsl"
 #include "calc_vertex_attrs_u32.glsl"
+#include "calc_vertex_attrs_fns.glsl"
+
+void main() {
+    calc_vertex_attrs();
+}

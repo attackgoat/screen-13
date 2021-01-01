@@ -75,6 +75,7 @@ void calc_vertex_attrs() {
     uint a_idx = read_idx(idx_a);
     uint b_idx = read_idx(idx_b);
     uint c_idx = read_idx(idx_c);
+
     Vertex a = read_vertex(a_idx);
     Vertex b = read_vertex(b_idx);
     Vertex c = read_vertex(c_idx);

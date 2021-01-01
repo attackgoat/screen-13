@@ -1,4 +1,6 @@
-#include "blend.glsl"
+#version 450
+
+#include "blend_decl.glsl"
 
 void main() {
     vec4 base = texture(base_sampler, base_uv);

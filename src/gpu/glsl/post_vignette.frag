@@ -5,8 +5,7 @@ layout(push_constant) uniform PushConstants {
     layout(offset = 0) float glitch;
     layout(offset = 0) int width;
     layout(offset = 0) int height;
-}
-push_constants;
+} push_constants;
 
 layout(location = 0) in vec2 f_texcoord;
 

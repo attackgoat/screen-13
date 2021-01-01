@@ -1,3 +1,5 @@
+#version 450
+
 #include "../quad_transform.glsl"
 
 layout(location = 1) out vec2 texcoord_base_out;

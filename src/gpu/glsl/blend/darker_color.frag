@@ -1,6 +1,14 @@
-#include "blend.glsl"
+#version 450
+
+#include "blend_decl.glsl"
 #include "../hsl.glsl"
 
-vec3 blend_op(vec3 a, vec3 b) { return min(a, b); }
+vec3 blend_op(vec3 a, vec3 b) {
+    return min(a, b);
+}
 
-#include "main.frag"
+#include "blend_fns.glsl"
+
+void main() {
+    write_blend();
+}

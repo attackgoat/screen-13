@@ -1,20 +1,20 @@
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
 layout(push_constant) uniform PushConstants {
-    layout(offset = 0) uint base_idx;
-    layout(offset = 4) uint base_vertex;
+    layout(offset = 0) uint base_vertex;
+    layout(offset = 4) uint base_idx;
 } push_constants;
 
-layout(set = 0, binding = 0, std430) buffer IdxBuffer {
-    uint idx_buf[];
-};
-
-layout(set = 0, binding = 1, std430) buffer SrcBuffer {
+layout(set = 0, binding = 0, std430) buffer SrcBuffer {
     float src_buf[];
 };
 
-layout(set = 0, binding = 2, std430) buffer DstBuffer {
+layout(set = 0, binding = 1, std430) buffer DstBuffer {
     float dst_buf[];
+};
+
+layout(set = 0, binding = 2, std430) buffer IdxBuffer {
+    uint idx_buf[];
 };
 
 layout(set = 0, binding = 3, std430) buffer WriteMask {

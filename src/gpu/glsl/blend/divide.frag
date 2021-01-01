@@ -1,5 +1,13 @@
-#include "blend.glsl"
+#version 450
 
-vec3 blend_op(vec3 a, vec3 b) { return a / b; }
+#include "blend_decl.glsl"
 
-#include "main.frag"
+vec3 blend_op(vec3 a, vec3 b) {
+    return a / b;
+}
+
+#include "blend_fns.glsl"
+
+void main() {
+    write_blend();
+}

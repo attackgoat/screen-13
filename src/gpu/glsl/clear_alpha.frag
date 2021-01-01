@@ -1,7 +1,8 @@
 #version 450
 
-layout(push_constant) uniform PushConstants { layout(offset = 0) vec3 clear; }
-push_constants;
+layout(push_constant) uniform PushConstants {
+    layout(offset = 0) vec3 clear;
+} push_constants;
 
 layout(location = 0) in vec2 uv;
 

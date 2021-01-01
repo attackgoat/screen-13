@@ -13,7 +13,7 @@ pub use self::{command::Command, compiler::Compiler};
 use {
     self::{
         command::SunlightCommand,
-        compiler::VertexBuffers,
+        compiler::CalcVertexAttrsDescriptors,
         geom::{LINE_STRIDE, POINT_LIGHT, RECT_LIGHT_STRIDE, SPOTLIGHT_STRIDE},
         geom_buf::GeometryBuffer,
         instruction::{
@@ -305,7 +305,7 @@ impl DrawOp {
 
             {
                 // Material descriptors for PBR rendering (Color+Normal+Metal/Rough)
-                let descriptors = instrs.materials();
+                let descriptors = instrs.mesh_materials();
                 let desc_sets = descriptors.len();
                 if desc_sets > 0 {
                     let graphics = pool.graphics_desc_sets(
@@ -320,14 +320,14 @@ impl DrawOp {
                     let device = self.driver.borrow();
 
                     unsafe {
-                        Self::write_material_descriptors(&device, &graphics, descriptors);
+                        Self::write_model_material_descriptors(&device, &graphics, descriptors);
                     }
 
                     self.graphics_mesh = Some(graphics);
                 }
 
                 // Buffer descriptors for calculation of u16-indexed vertex attributes
-                let descriptors = instrs.u16_vertex_bufs();
+                let descriptors = instrs.calc_vertex_attrs_u16_descriptors();
                 let desc_sets = descriptors.len();
                 if desc_sets > 0 {
                     let compute = pool.compute_desc_sets(
@@ -340,14 +340,14 @@ impl DrawOp {
                     let device = self.driver.borrow();
 
                     unsafe {
-                        Self::write_vertex_descriptors(&device, &compute, descriptors);
+                        Self::write_calc_vertex_attrs_descriptors(&device, &compute, descriptors);
                     }
 
                     self.compute_u16_vertex_attrs = Some(compute);
                 }
 
                 // Buffer descriptors for calculation of u16-indexed skinned vertex attributes
-                let descriptors = instrs.u16_skin_vertex_bufs();
+                let descriptors = instrs.calc_vertex_attrs_u16_skin_descriptors();
                 let desc_sets = descriptors.len();
                 if desc_sets > 0 {
                     let compute = pool.compute_desc_sets(
@@ -360,14 +360,14 @@ impl DrawOp {
                     let device = self.driver.borrow();
 
                     unsafe {
-                        Self::write_vertex_descriptors(&device, &compute, descriptors);
+                        Self::write_calc_vertex_attrs_descriptors(&device, &compute, descriptors);
                     }
 
                     self.compute_u16_skin_vertex_attrs = Some(compute);
                 }
 
                 // Buffer descriptors for calculation of u32-indexed vertex attributes
-                let descriptors = instrs.u32_vertex_bufs();
+                let descriptors = instrs.calc_vertex_attrs_u32_descriptors();
                 let desc_sets = descriptors.len();
                 if desc_sets > 0 {
                     let compute = pool.compute_desc_sets(
@@ -380,14 +380,14 @@ impl DrawOp {
                     let device = self.driver.borrow();
 
                     unsafe {
-                        Self::write_vertex_descriptors(&device, &compute, descriptors);
+                        Self::write_calc_vertex_attrs_descriptors(&device, &compute, descriptors);
                     }
 
                     self.compute_u32_vertex_attrs = Some(compute);
                 }
 
                 // Buffer descriptors for calculation of u32-indexed skinned vertex attributes
-                let descriptors = instrs.u32_skin_vertex_bufs();
+                let descriptors = instrs.calc_vertex_attrs_u32_skin_descriptors();
                 let desc_sets = descriptors.len();
                 if desc_sets > 0 {
                     let compute = pool.compute_desc_sets(
@@ -400,7 +400,7 @@ impl DrawOp {
                     let device = self.driver.borrow();
 
                     unsafe {
-                        Self::write_vertex_descriptors(&device, &compute, descriptors);
+                        Self::write_calc_vertex_attrs_descriptors(&device, &compute, descriptors);
                     }
 
                     self.compute_u32_skin_vertex_attrs = Some(compute);
@@ -419,9 +419,16 @@ impl DrawOp {
             };
 
             unsafe {
-                self.submit_begin(&viewport);
+                self.submit_begin();
 
-                // Handle skydome pre-fx
+                // Optional Step: Copy dst into the color render target
+                if self.dst_preserve {
+                    self.submit_begin_preserve();
+                }
+
+                self.submit_begin_finish(&viewport);
+
+                // Optional Step: Skydome pre-fx
                 if let Some((_, _, _, write)) = &mut self.skydome {
                     // Brand new skydomes from the pool must be written before use
                     if *write {
@@ -488,10 +495,59 @@ impl DrawOp {
         self.compiler = Some(compiler);
     }
 
-    unsafe fn submit_begin(&mut self, viewport: &Viewport) {
+    unsafe fn submit_begin(&mut self) {
         trace!("submit_begin");
 
+        // Begin
+        self.cmd_buf
+            .begin_primary(CommandBufferFlags::ONE_TIME_SUBMIT);
+    }
+
+    unsafe fn submit_begin_preserve(&mut self) {
+        trace!("submit_begin_preserve");
+
         let mut dst = self.dst.borrow_mut();
+        let mut color_metal = self.geom_buf.color_metal.borrow_mut();
+        let dims = dst.dims();
+
+        dst.set_layout(
+            &mut self.cmd_buf,
+            Layout::TransferSrcOptimal,
+            PipelineStage::TRANSFER,
+            ImageAccess::TRANSFER_READ,
+        );
+        color_metal.set_layout(
+            &mut self.cmd_buf,
+            Layout::TransferDstOptimal,
+            PipelineStage::TRANSFER,
+            ImageAccess::TRANSFER_WRITE,
+        );
+        self.cmd_buf.copy_image(
+            dst.as_ref(),
+            Layout::TransferSrcOptimal,
+            color_metal.as_ref(),
+            Layout::TransferDstOptimal,
+            once(ImageCopy {
+                src_subresource: SubresourceLayers {
+                    aspects: Aspects::COLOR,
+                    level: 0,
+                    layers: 0..1,
+                },
+                src_offset: Offset::ZERO,
+                dst_subresource: SubresourceLayers {
+                    aspects: Aspects::COLOR,
+                    level: 0,
+                    layers: 0..1,
+                },
+                dst_offset: Offset::ZERO,
+                extent: dims.as_extent_depth(1),
+            }),
+        );
+    }
+
+    unsafe fn submit_begin_finish(&mut self, viewport: &Viewport) {
+        trace!("submit_begin_finish");
+
         let pool = self.pool.as_mut().unwrap();
         let (frame_buf, render_pass_mode) = self.frame_buf.as_ref().unwrap();
         let render_pass = pool.render_pass(&self.driver, *render_pass_mode);
@@ -500,7 +556,6 @@ impl DrawOp {
         let mut light = self.geom_buf.light.borrow_mut();
         let mut output = self.geom_buf.output.borrow_mut();
         let mut depth = self.geom_buf.depth.borrow_mut();
-        let dims = dst.dims();
         let depth_clear = ClearValue {
             depth_stencil: ClearDepthStencil {
                 depth: 1.0,
@@ -512,47 +567,6 @@ impl DrawOp {
                 float32: [0.0, f32::NAN, f32::NAN, f32::NAN],
             },
         };
-
-        // Begin
-        self.cmd_buf
-            .begin_primary(CommandBufferFlags::ONE_TIME_SUBMIT);
-
-        // Optional Step 1: Copy dst into the color render target
-        if self.dst_preserve {
-            dst.set_layout(
-                &mut self.cmd_buf,
-                Layout::TransferSrcOptimal,
-                PipelineStage::TRANSFER,
-                ImageAccess::TRANSFER_READ,
-            );
-            color_metal.set_layout(
-                &mut self.cmd_buf,
-                Layout::TransferDstOptimal,
-                PipelineStage::TRANSFER,
-                ImageAccess::TRANSFER_WRITE,
-            );
-            self.cmd_buf.copy_image(
-                dst.as_ref(),
-                Layout::TransferSrcOptimal,
-                color_metal.as_ref(),
-                Layout::TransferDstOptimal,
-                once(ImageCopy {
-                    src_subresource: SubresourceLayers {
-                        aspects: Aspects::COLOR,
-                        level: 0,
-                        layers: 0..1,
-                    },
-                    src_offset: Offset::ZERO,
-                    dst_subresource: SubresourceLayers {
-                        aspects: Aspects::COLOR,
-                        level: 0,
-                        layers: 0..1,
-                    },
-                    dst_offset: Offset::ZERO,
-                    extent: dims.as_extent_depth(1),
-                }),
-            );
-        }
 
         // Prepare the render pass for mesh rendering
         color_metal.set_layout(
@@ -608,11 +622,11 @@ impl DrawOp {
     }
 
     unsafe fn submit_index_write_ref(&mut self, mut instr: DataWriteRefInstruction) {
-        trace!("submit_index_write_ref");
+        trace!("submit_index_write");
 
         instr.buf.write_range(
             &mut self.cmd_buf,
-            PipelineStage::VERTEX_INPUT, // TODO: Should be DRAW_INDIRECT?
+            PipelineStage::VERTEX_INPUT,
             BufferAccess::INDEX_BUFFER_READ,
             instr.range,
         );
@@ -737,25 +751,24 @@ impl DrawOp {
         let graphics = self.graphics_mesh.as_ref().unwrap();
         let layout = graphics.layout();
         let world_view_proj = view_proj * instr.transform;
-
         for mesh in instr.meshes.filter(|mesh| !mesh.is_animated()) {
-            let world_view_proj = if let Some(transform) = mesh.transform() {
-                world_view_proj * transform
-            } else {
-                world_view_proj
+            let base_vertex = mesh.base_vertex() as _;
+            let push_consts = Mat4PushConst {
+                val: if let Some(transform) = mesh.transform() {
+                    world_view_proj * transform
+                } else {
+                    world_view_proj
+                },
             };
 
             self.cmd_buf.push_graphics_constants(
                 layout,
                 ShaderStageFlags::VERTEX,
                 0,
-                Mat4PushConst {
-                    val: world_view_proj,
-                }
-                .as_ref(),
+                push_consts.as_ref(),
             );
             self.cmd_buf
-                .draw_indexed(mesh.indices(), mesh.base_vertex() as _, 0..1);
+                .draw_indexed(mesh.indices.start..mesh.indices.end, base_vertex, 0..1);
         }
     }
 
@@ -1225,6 +1238,9 @@ impl DrawOp {
     unsafe fn submit_vertex_write_ref(&mut self, mut instr: DataWriteRefInstruction) {
         trace!("submit_vertex_write_ref");
 
+        // HACK: Instead of the instruction providing info about where in the pipeline we will next
+        // see this command, we just hard-code this path to barrier on the shader compute logic.
+        // Supports everything for now but may need more work later.
         instr.buf.write_range(
             &mut self.cmd_buf,
             PipelineStage::COMPUTE_SHADER,
@@ -1291,7 +1307,67 @@ impl DrawOp {
         );
     }
 
-    unsafe fn write_material_descriptors<'m>(
+    unsafe fn write_calc_vertex_attrs_descriptors<'v>(
+        device: &Device,
+        compute: &Compute,
+        vertex_bufs: impl ExactSizeIterator<Item = CalcVertexAttrsDescriptors<'v>>,
+    ) {
+        for (idx, vertex_buf) in vertex_bufs.enumerate() {
+            let set = compute.desc_set(idx);
+            device.write_descriptor_sets(vec![
+                DescriptorSetWrite {
+                    set,
+                    binding: 0,
+                    array_offset: 0,
+                    descriptors: once(Descriptor::Buffer(
+                        vertex_buf.idx_buf.as_ref(),
+                        SubRange {
+                            offset: 0,
+                            size: Some(vertex_buf.idx_len),
+                        },
+                    )),
+                },
+                DescriptorSetWrite {
+                    set,
+                    binding: 1,
+                    array_offset: 0,
+                    descriptors: once(Descriptor::Buffer(
+                        vertex_buf.src.as_ref(),
+                        SubRange {
+                            offset: 0,
+                            size: Some(vertex_buf.src_len),
+                        },
+                    )),
+                },
+                DescriptorSetWrite {
+                    set,
+                    binding: 2,
+                    array_offset: 0,
+                    descriptors: once(Descriptor::Buffer(
+                        vertex_buf.dst.as_ref(),
+                        SubRange {
+                            offset: 0,
+                            size: Some(vertex_buf.dst_len),
+                        },
+                    )),
+                },
+                DescriptorSetWrite {
+                    set,
+                    binding: 3,
+                    array_offset: 0,
+                    descriptors: once(Descriptor::Buffer(
+                        vertex_buf.write_mask.as_ref(),
+                        SubRange {
+                            offset: 0,
+                            size: Some(vertex_buf.write_mask_len),
+                        },
+                    )),
+                },
+            ]);
+        }
+    }
+
+    unsafe fn write_model_material_descriptors<'m>(
         device: &Device,
         graphics: &Graphics,
         materials: impl ExactSizeIterator<Item = &'m Material>,
@@ -1397,66 +1473,6 @@ impl DrawOp {
                 )),
             },
         ]);
-    }
-
-    unsafe fn write_vertex_descriptors<'v>(
-        device: &Device,
-        compute: &Compute,
-        vertex_bufs: impl ExactSizeIterator<Item = VertexBuffers<'v>>,
-    ) {
-        for (idx, vertex_buf) in vertex_bufs.enumerate() {
-            let set = compute.desc_set(idx);
-            device.write_descriptor_sets(vec![
-                DescriptorSetWrite {
-                    set,
-                    binding: 0,
-                    array_offset: 0,
-                    descriptors: once(Descriptor::Buffer(
-                        vertex_buf.idx.as_ref(),
-                        SubRange {
-                            offset: 0,
-                            size: Some(vertex_buf.idx_len),
-                        },
-                    )),
-                },
-                DescriptorSetWrite {
-                    set,
-                    binding: 1,
-                    array_offset: 0,
-                    descriptors: once(Descriptor::Buffer(
-                        vertex_buf.src.as_ref(),
-                        SubRange {
-                            offset: 0,
-                            size: Some(vertex_buf.src_len),
-                        },
-                    )),
-                },
-                DescriptorSetWrite {
-                    set,
-                    binding: 2,
-                    array_offset: 0,
-                    descriptors: once(Descriptor::Buffer(
-                        vertex_buf.dst.as_ref(),
-                        SubRange {
-                            offset: 0,
-                            size: Some(vertex_buf.dst_len),
-                        },
-                    )),
-                },
-                DescriptorSetWrite {
-                    set,
-                    binding: 3,
-                    array_offset: 0,
-                    descriptors: once(Descriptor::Buffer(
-                        vertex_buf.write_mask.as_ref(),
-                        SubRange {
-                            offset: 0,
-                            size: Some(vertex_buf.write_mask_len),
-                        },
-                    )),
-                },
-            ]);
-        }
     }
 }
 

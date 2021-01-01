@@ -2,8 +2,7 @@
 
 layout(push_constant) uniform PushConstants {
     layout(offset = 0) float exposure;
-}
-push_constants;
+} push_constants;
 
 layout(location = 0) in vec2 f_texcoord;
 
