@@ -1,6 +1,6 @@
 [package]
 name = "screen-13"
-version = "0.2.0"
+version = "0.1.1"
 authors = ["john wells <john@attackgoat.com>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
@@ -11,7 +11,7 @@ documentation = "https://docs.rs/screen-13"
 keywords = ["gamedev" ]
 categories = ["game-engines"]
 description = """
-An easy-to-use 3D game engine in the spirit of QBasic.
+An easy-to-use 2D/3D rendering engine in the spirit of QBasic.
 """
 
 [features]

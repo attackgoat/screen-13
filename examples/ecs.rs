@@ -101,7 +101,7 @@ fn main() -> ! {
             .unwrap()
             .join("ecs.pak"),
     )
-    .expect("ERROR: You must first pack the game content into a file by running the following command: `cargo run examples/content/ecs.toml`");
+    .expect("ERROR: You must first pack the runtime content into a file by running the following command: `cargo run examples/content/ecs.toml`");
     let mut game = Game::new(pak);
 
     // ... load and play the game

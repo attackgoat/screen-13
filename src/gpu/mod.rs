@@ -138,7 +138,7 @@ impl Default for BlendMode {
 
 /// Helpful GPU cache; only required if multiple renders happen per frame and they have very different contents.
 ///
-/// Remark: If you drop this the game will stutter, so it is best to wait a few frames before dropping it.
+/// Remark: If you drop this the program will stutter, so it is best to wait a few frames before dropping it.
 #[derive(Default)]
 pub struct Cache(PoolRef<Pool>);
 

@@ -21,7 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Added
 
-- Easy-to-use API designed to allow developers to create games which run on many platforms and require no bare-metal graphics API knowledge
+- Easy-to-use API designed to allow developers to create graphics programs which run on many platforms and require no bare-metal graphics API knowledge
 - "Hello, world!" example using a bitmapped font
 
 [Unreleased]: https://github.com/attackgoat/screen-13/compare/0200335...HEAD

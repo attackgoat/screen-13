@@ -16,7 +16,7 @@ fn main() -> ! {
             .unwrap()
             .join("basic.pak"),
     )
-    .expect("ERROR: You must first pack the game content into a file by running the following command: `cargo run examples/content/basic.toml`");
+    .expect("ERROR: You must first pack the runtime content into a file by running the following command: `cargo run examples/content/basic.toml`");
 
     // Initialize our "game" by loading everything it requires to run
     let small_10px = engine.gpu().read_font(&mut pak, "font/small_10px");

@@ -4,7 +4,7 @@
 [![Docs.rs](https://docs.rs/screen-13/badge.svg)](https://docs.rs/screen-13)
 [![LoC](https://tokei.rs/b1/github/attackgoat/screen-13?category=code)](https://github.com/attackgoat/screen-13)
 
-Screen 13 is an easy-to-use 3D game engine in the spirit of QBasic.
+Screen 13 is an easy-to-use 2D/3D rendering engine in the spirit of QBasic.
 
 ## Overview
 
@@ -16,7 +16,7 @@ Screen 13 is based on the [`gfx-rs`](https://github.com/gfx-rs/gfx) project, and
 
 Screen 13 aims to provide a simple to use, although opinionated, ecosystem of tools and code that enable very high performance portable graphics programs for developers using the Rust programming language.
 
-_Single Threaded:_ Although some things can be shared amongst other threads, such as disk and network IO, the main graphics API of Screen 13 does not support multiple threads. This is a conscious decision to limit complexity while optimizing for the 98% of games that use a "main thread" methodology. I am open to changing this if the proposed API is easy to use and high performance. Perhaps it's as easy as a cargo manifest feature, not sure.
+_Single Threaded:_ Although some things can be shared amongst other threads, such as disk and network IO, the main graphics API of Screen 13 does not support multiple threads. This is a conscious decision to limit complexity while optimizing for the 98% of programs that use a "main thread" methodology. I am open to changing this if the proposed API is easy to use and high performance. Perhaps it's as easy as a cargo manifest feature, not sure.
 
 _Just Enough:_ Only core 2D and 3D rendering features are included, along with window event handling and window-based input. Additional things, such as an entity component system, physics, sound, and gamepad input must be handled by your code.
 
