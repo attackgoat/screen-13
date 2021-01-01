@@ -94,8 +94,8 @@ Screen 13 puts a lot of functionality behind optional features in order to optim
 _NOTE_: The deferred and forward renderers have separate code paths and you can choose either on a render-by-render basis.
 
 - **`debug-names`** — Name parameter added to most graphics calls, integrates with your graphics debugger.
-- **`deferred-renderer`** *(enabled by default)* — Ability to draw models and lights using a deferred technique.
-- **`forward-renderer`** *(enabled by default)* — Same as the deferred renderer, but using a forward technique.
+- **`deferred-3d`** *(enabled by default)* — Ability to draw models and lights using a deferred technique.
+- **`forward-3d`** *(enabled by default)* — Same as the deferred renderer, but using a forward technique.
 
 ## Content Baking Procedures
 

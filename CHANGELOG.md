@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Added
 
 - Implementation of `draw` functionality
-- Features: `debug-names`, `deferred-renderer`, and `forward-renderer`
+- Features: `debug-names`, `deferred-3d`, and `forward-3d`
 
 ### Changed
 
