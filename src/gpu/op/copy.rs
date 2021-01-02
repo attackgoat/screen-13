@@ -25,6 +25,10 @@ use {
 };
 
 // TODO: This should use the blit command when possible
+/// A container of graphics types for efficiently copying textures between each other.
+///
+/// _NOTE:_ Regions submitted for copy operations do not need to be valid regions for
+/// the given textures; they can overlap or fall off the edges.
 pub struct CopyOp {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
@@ -40,7 +44,7 @@ pub struct CopyOp {
 
 impl CopyOp {
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         mut pool: Lease<Pool>,
@@ -85,6 +89,7 @@ impl CopyOp {
         self
     }
 
+    /// Submits the given copy for hardware processing.
     pub fn record(&mut self) {
         unsafe {
             self.submit();

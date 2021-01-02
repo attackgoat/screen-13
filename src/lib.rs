@@ -87,7 +87,8 @@
 //! level documentation for more details on how to use this system with existing files and assets.
 
 #![allow(dead_code)]
-#![deny(warnings)]
+#![allow(clippy::needless_doctest_main)] // <-- The doc code is *intends* to show the whole shebang
+//#![deny(warnings)]
 #![warn(missing_docs)]
 
 #[macro_use]
@@ -104,7 +105,7 @@ pub mod pak;
 /// Things, particularly traits, which are used in almost every single Screen 13 program.
 pub mod prelude {
     pub use super::{
-        gpu::{Gpu, Cache, Render},
+        gpu::{Cache, Gpu, Render},
         input::Input,
         program::Program,
         DynScreen, Engine, Screen,
@@ -114,8 +115,8 @@ pub mod prelude {
 /// Like prelude, but contains all public exports.
 pub mod prelude_all {
     pub use super::{
-        camera::*, color::*, fx::*, gpu::Material, gpu::*, input::*, math::*,
-        pak::Material as PakMaterial, pak::*, prelude::*, program::*,
+        camera::*, color::*, fx::*, gpu::draw::*, gpu::vertex::*, gpu::write::*, gpu::*, input::*,
+        math::*, pak::Material as PakMaterial, pak::*, prelude::*, program::*,
     };
 }
 
@@ -469,10 +470,10 @@ impl From<&Program<'_, '_>> for Engine {
 
 /// A window-painting and user input handling type.
 ///
-/// Types implementing `Screen` are able to render frames to the presentation buffers and
-/// optionally update the current screen. Instances of `Screen` are provided to `Engine` for
-/// normal use, but can also be owned in a parent-child relationship to create sub-screens or
-/// to dynamically render.
+/// Types implementing `Screen` are able to present high-frequency images to the user and control
+/// the flow of the program by switching out `Screen` implementations on the fly. Instances of
+/// `Screen` are provided to `Engine` for normal use, but can also be owned in a parent-child
+/// relationship to create sub-screens or to dynamically render.
 ///
 /// _NOTE:_ See the `fx` module for some pre-built examples of such screen ownership structures.
 ///

@@ -1,6 +1,9 @@
 use {
     crate::{
-        gpu::{BlendMode, Write, WriteMode},
+        gpu::{
+            write::{Write, WriteMode},
+            BlendMode,
+        },
         math::{Coord, Extent, Rect},
         DynScreen, Gpu, Input, Render, Screen,
     },

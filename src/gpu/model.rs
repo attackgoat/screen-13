@@ -123,7 +123,7 @@ impl Model {
     ///
     /// let frame: Render = ...
     /// frame.draw().record(&camera, [
-    ///     // 🔍 Note the foo-bar tuple here which says "_Draw this model with this filter_"
+    ///     // 🔍 Note the foo-bar tuple here which says "Draw the bar part of foo"
     ///     Draw::model((foo, bar), material, Mat4::identity()),
     /// ]);
     ///

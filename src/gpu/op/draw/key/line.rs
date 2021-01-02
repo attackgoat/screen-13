@@ -1,6 +1,6 @@
 use {
     super::Stride,
-    crate::gpu::op::draw::{geom::LINE_STRIDE, LineCommand},
+    crate::gpu::op::draw::{command::LineCommand, geom::LINE_STRIDE},
     gfx_hal::image::PackedColor,
     std::{collections::hash_map::DefaultHasher, hash::Hasher},
 };
@@ -14,11 +14,11 @@ impl Line {
     pub fn hash(cmd: &LineCommand) -> Self {
         let mut hasher = DefaultHasher::default();
 
-        for idx in 0..cmd.0.len() {
-            hasher.write_u32(PackedColor::from(cmd.0[idx].color).0);
-            hasher.write_u32(cmd.0[idx].pos.x.to_bits());
-            hasher.write_u32(cmd.0[idx].pos.y.to_bits());
-            hasher.write_u32(cmd.0[idx].pos.z.to_bits());
+        for idx in 0..cmd.vertices.len() {
+            hasher.write_u32(PackedColor::from(cmd.vertices[idx].color).0);
+            hasher.write_u32(cmd.vertices[idx].pos.x.to_bits());
+            hasher.write_u32(cmd.vertices[idx].pos.y.to_bits());
+            hasher.write_u32(cmd.vertices[idx].pos.z.to_bits());
         }
 
         Self(hasher.finish())

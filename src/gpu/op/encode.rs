@@ -28,6 +28,8 @@ const DEFAULT_QUALITY: f32 = 0.9;
 
 // TODO: Quality isn't hooked up!
 
+/// A container of graphics types which allow the recording of encode operations and the saving
+/// of renders to disk as regular image files.
 pub struct EncodeOp {
     buf: Lease<Data>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
@@ -42,7 +44,7 @@ pub struct EncodeOp {
 
 impl EncodeOp {
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         mut pool: Lease<Pool>,
@@ -76,6 +78,8 @@ impl EncodeOp {
         }
     }
 
+    // TODO: This is non-functional, hook it up!
+    /// Sets the quality to encode with.
     #[must_use]
     pub fn with_quality(&mut self, quality: f32) -> &mut Self {
         self.quality = quality;
@@ -87,6 +91,12 @@ impl EncodeOp {
         (dims.x * dims.y * 4) as _
     }
 
+    /// Waits for the hardware to finish processing all images, returning an error if something
+    /// went wrong.
+    ///
+    /// _NOTE:_ The program will panic if there is an error while flushing _and_ you have not
+    /// manually called the `flush` function. The `flush` function is calle automatically when
+    /// an `EncodeOp` is dropped.
     pub fn flush(&mut self) -> IoResult<()> {
         // We only do this once
         if let Some(path) = self.path.take() {
@@ -102,6 +112,7 @@ impl EncodeOp {
         Ok(())
     }
 
+    /// Submits the given encode for hardware processing.
     pub fn record<P: AsRef<Path>>(&mut self, path: P) {
         self.path = Some(path.as_ref().to_path_buf());
 

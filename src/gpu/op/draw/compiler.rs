@@ -1,6 +1,6 @@
 use {
     super::{
-        command::{CommandIter, ModelCommand},
+        command::{Command, CommandIter, ModelCommand},
         geom::{
             gen_line, gen_rect_light, gen_spotlight, LINE_STRIDE, POINT_LIGHT, RECT_LIGHT_STRIDE,
             SPOTLIGHT_STRIDE,
@@ -13,7 +13,7 @@ use {
             VertexAttrsDescriptorsInstruction,
         },
         key::{Line, RectLight, Spotlight, Stride},
-        Command, Material,
+        Material,
     },
     crate::{
         camera::Camera,
@@ -802,7 +802,7 @@ impl Compiler {
                 Err(idx) => {
                     // Cache the vertices for this line segment
                     let new_end = end + LINE_STRIDE as u64;
-                    let vertices = gen_line(&line.0);
+                    let vertices = gen_line(&line.vertices);
 
                     unsafe {
                         let mut mapped_range =

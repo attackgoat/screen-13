@@ -73,7 +73,6 @@ pub enum Format {
     #[serde(rename = "rg")]
     Rg,
 
-
     /// Red, green and blue channels.
     #[serde(rename = "rgb")]
     Rgb,

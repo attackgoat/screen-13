@@ -23,6 +23,7 @@ use {
     },
 };
 
+/// A container of graphics types which allow for effciently setting texture contents.
 pub struct ClearOp {
     clear_value: ClearValue,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
@@ -35,7 +36,7 @@ pub struct ClearOp {
 
 impl ClearOp {
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         mut pool: Lease<Pool>,
@@ -59,6 +60,8 @@ impl ClearOp {
         }
     }
 
+    // TODO: Just rename this to color? No need to expose this whole "value" business!
+    /// Sets the clear value.
     #[must_use]
     pub fn with_value<C>(&mut self, clear_value: C) -> &mut Self
     where
@@ -68,6 +71,7 @@ impl ClearOp {
         self
     }
 
+    /// Submits the given clear for hardware processing.
     pub fn record(&mut self) {
         unsafe {
             self.submit();

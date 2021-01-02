@@ -8,9 +8,12 @@
 //! - Normal (`POSITION` and `TEXCOORD` _only_)
 //! - Skinned (for animation - includes `JOINTS` and `WEIGHTS` attributes)
 //!
-//! Further, vertexes may be specified in the compact manner mentioned above or using the
+//! Further, vertexes may be specified in the standard manner mentioned above or using the
 //! `Ex`-variety structs. Extended model vertices include the `NORMAL` and `TANGENT`
 //! attributes which are normally calculated at runtime.
+//!
+//! _NOTE:_ Extended vertices are only needed if you want more control over the normal/tangent
+//! generation process.
 
 use {
     crate::math::{
@@ -46,7 +49,7 @@ pub type SkinVertexArrays = ([f32; 3], [f32; 4], [f32; 4], [f32; 2]);
 /// Helpful alias for standard skinned vertex strides as a tuple of vecs.
 pub type SkinVertexTuple = (Vec3, Vec4, Vec4, Vec2);
 
-/// Helpful alias for extended skinnded vertex strides as a single byte array.
+/// Helpful alias for extended skinned vertex strides as a single byte array.
 pub type SkinVertexExArray = [f32; 20];
 
 /// Helpful alias for extended skinned vertex strides as a individual byte arrays.
@@ -67,7 +70,7 @@ pub enum Vertex {
     /// Only needed if you want more control over the normal/tangent generation process.
     NormalEx(NormalVertexEx),
 
-    /// Same as `Normal`, except that additional vertex attributes for joins and weights are
+    /// Same as `Normal`, except that additional vertex attributes for joints and weights are
     /// added.
     Skin(SkinVertex),
 

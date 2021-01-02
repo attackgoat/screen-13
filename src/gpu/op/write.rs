@@ -107,6 +107,46 @@ impl<'s> Write<'s> {
     }
 }
 
+/// Writes an iterator of source textures onto a destination texture, using optional modes.
+///
+/// `WriteOp` is intended to provide high speed image splatting for tile maps, bitmap drawing,
+/// filtered image stretching, _etc..._ Although generic 3D transforms are offered, the main
+/// use of this operation is 2D image composition.
+///
+/// _NOTE:_ When no image filtering or resizing is required the `CopyOp` may provide higher
+/// performance. TODO: We can specialize for this so the API is the same, round the edge.
+///
+/// ## Examples
+///
+/// Writing a nine-sliced UI graphic:
+///
+/// ```
+/// use screen_13::prelude_all::*;
+///
+/// ...
+///
+/// fn render_ui() {
+///     // We've already sliced up a UI box image (🔪 top left, 🔪 top, 🔪 top right, ...)
+///     let slices: [BitmapRef; 9] = ...
+///     let render: &Render = ...
+///
+///     render.write().
+///         .with_mode(WriteMode::Blend(0x7f, BlendMode::ColorDodge))
+///         .with_preserve()
+///         .record(&mut [
+///             // top left
+///             Write::tile_position(&slices[0], Area::new(0, 0, 32, 32), Coord::new(0, 0)),
+///
+///             // top
+///             Write::tile_position(&slices[1], Area::new(32, 0, 384, 32), Coord::new(32, 0)),
+///
+///             // top right
+///             Write::tile_position(&slices[2], Area::new(426, 0, 32, 32), Coord::new(426, 0)),
+///
+///             ...
+///         ]);
+/// }
+/// ```
 pub struct WriteOp {
     back_buf: Lease<Texture2d>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
@@ -128,7 +168,7 @@ pub struct WriteOp {
 
 impl WriteOp {
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         mut pool: Lease<Pool>,
@@ -182,14 +222,21 @@ impl WriteOp {
         self
     }
 
-    /// Preserves the contents of the destination texture. Without calling this function the existing
-    /// contents of the destination texture will not be composited into the final result.
+    /// Preserves the contents of the destination texture. Without calling this function the
+    /// existing contents of the destination texture will not be composited into the final result.
     #[must_use]
-    pub fn with_preserve(&mut self, val: bool) -> &mut Self {
+    pub fn with_preserve(&mut self) -> &mut Self {
+        self.with_preserve_is(true)
+    }
+
+    /// Sets whether the destination texture will be composited into the final result or not.
+    #[must_use]
+    pub fn with_preserve_is(&mut self, val: bool) -> &mut Self {
         self.dst_preserve = val;
         self
     }
 
+    /// Submits the given writes for hardware processing.
     pub fn record(&mut self, writes: &mut [Write]) {
         assert!(self.src_textures.is_empty());
         assert_ne!(writes.len(), 0);

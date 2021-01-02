@@ -1,7 +1,7 @@
 //! Contains color types and functions.
-//! 
+//!
 //! ## Note
-//! 
+//!
 //! I'm not sure this module has enough value on its own; other crates provide good API for this. Hmm.
 
 mod alpha;

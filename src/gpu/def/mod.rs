@@ -1,3 +1,5 @@
+//! Definitions of all of the GFX-HAL layouts and pipelines this engine uses.
+
 pub mod compute;
 pub mod desc_set_layout;
 pub mod graphics;

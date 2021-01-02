@@ -1,9 +1,9 @@
 use {
     super::{
-        driver::Device,
-        op::{ClearOp, CopyOp, DrawOp, EncodeOp, FontOp, GradientOp, WriteOp},
+        driver::{Device, Driver},
+        op::{ClearOp, CopyOp, DrawOp, EncodeOp, FontOp, GradientOp, Op, WriteOp},
         pool::{Lease, Pool},
-        Driver, Op, Texture2d,
+        Texture2d,
     },
     crate::{
         color::AlphaColor,
@@ -250,7 +250,7 @@ impl Render {
         );
 
         if self.target_dirty {
-            let _ = op.with_preserve(true);
+            let _ = op.with_preserve();
         }
 
         self.target_dirty = true;

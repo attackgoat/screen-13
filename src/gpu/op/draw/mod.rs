@@ -1,4 +1,4 @@
-mod command;
+pub(super) mod command;
 mod compiler;
 
 /// This module houses all the dynamically created meshes used by the drawing code to fulfill user commands.
@@ -8,7 +8,7 @@ mod geom_buf;
 mod instruction;
 mod key;
 
-pub use self::{command::Command, compiler::Compiler};
+pub use self::{command::Command as Draw, compiler::Compiler};
 
 use {
     self::{
@@ -77,6 +77,7 @@ use {
 // Skydome subpass index
 const SKYDOME_IDX: u8 = 1;
 
+/// A collection of graphics types which allow models and lights to be drawn onto a texture.
 pub struct DrawOp {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
@@ -111,7 +112,7 @@ impl DrawOp {
     /// # Safety
     /// None
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         mut pool: Lease<Pool>,
@@ -217,7 +218,8 @@ impl DrawOp {
         self
     }
 
-    pub fn record(&mut self, camera: &impl Camera, cmds: &mut [Command]) {
+    /// Submits the given draws for hardware processing.
+    pub fn record(&mut self, camera: &impl Camera, draws: &mut [Draw]) {
         let fill_geom_buf_subpass_idx = self.fill_geom_buf_subpass_idx();
         let mut pool = self.pool.as_mut().unwrap();
 
@@ -231,7 +233,7 @@ impl DrawOp {
                 &self.driver,
                 &mut pool,
                 camera,
-                cmds,
+                draws,
             );
 
             let render_pass_mode = {
@@ -1508,11 +1510,9 @@ impl Op for DrawOp {
 
 struct LineInstruction(u32);
 
+/// TODO: Move me to the vertices module?
 #[derive(Clone, Debug)]
-pub struct LineCommand([LineVertex; 2]);
-
-#[derive(Clone, Debug)]
-struct LineVertex {
+pub struct LineVertex {
     color: AlphaColor,
     pos: Vec3,
 }

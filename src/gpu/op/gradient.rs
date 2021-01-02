@@ -42,6 +42,7 @@ fn must_preserve_dst(path: &Path) -> bool {
     path[0].1.is_transparent() || path[1].1.is_transparent()
 }
 
+/// TODO
 pub struct GradientOp {
     back_buf: Lease<Texture2d>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
@@ -60,7 +61,7 @@ impl GradientOp {
     /// # Safety
     /// None
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         mut pool: Lease<Pool>,
@@ -141,6 +142,7 @@ impl GradientOp {
         self
     }
 
+    /// TODO
     pub fn record(&mut self) {
         // Setup the descriptor set
         {

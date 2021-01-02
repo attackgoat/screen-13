@@ -1,3 +1,5 @@
+//! A collection of resource pool types used internally to cache GFX-HAL types.
+
 mod layouts;
 mod lease;
 

@@ -3,9 +3,9 @@ use super::{Color, BLACK};
 const QBASIC_COLORS: [Color; 16] = [
     BLACK,
     Color::rgb(0, 0, 0xa8),
-    Color::rgb(0, 0xa8, 0),   
+    Color::rgb(0, 0xa8, 0),
     Color::rgb(0, 0xa8, 0xa8),
-    Color::rgb(0xa8, 0, 0),   
+    Color::rgb(0xa8, 0, 0),
     Color::rgb(0xa8, 0, 0xa8),
     Color::rgb(0xa8, 0x54, 0),
     Color::rgb(0xa8, 0xa8, 0xa8),
@@ -22,9 +22,9 @@ const QBASIC_COLORS: [Color; 16] = [
 /// Sets the screen display colors.
 ///
 /// idx: A number that sets the foreground screen color
-/// 
+///
 /// ## Available Colors
-/// 
+///
 /// | idx | Name          | Hexadecimal Value |
 /// |-----|---------------|-------------------|
 /// |  0  | Black         | [`0x000000`](https://miquelvir.github.io/color/#000000)        |

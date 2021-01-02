@@ -195,6 +195,8 @@ impl Font {
 }
 
 // TODO: This really needs to cache data like the draw compiler does
+/// A container of graphics types and the functions which allows the recording and submission of
+/// bitmapped font operations.
 pub struct FontOp {
     back_buf: Lease<Texture2d>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
@@ -217,7 +219,7 @@ pub struct FontOp {
 
 impl FontOp {
     #[must_use]
-    pub fn new<C, P>(
+    pub(crate) fn new<C, P>(
         #[cfg(feature = "debug-names")] name: &str,
         driver: &Driver,
         mut pool: Lease<Pool>,
@@ -279,6 +281,7 @@ impl FontOp {
         }
     }
 
+    /// Sets the font outline color to use.
     #[must_use]
     pub fn with_outline<C>(&mut self, color: C) -> &mut Self
     where
@@ -288,12 +291,16 @@ impl FontOp {
         self
     }
 
+    /// Sets the generalized output transform to use.gradient
+    ///
+    /// _NOTE:_ Overrides placement options.
     #[must_use]
     pub fn with_transform(&mut self, transform: Mat4) -> &mut Self {
         self.transform = transform;
         self
     }
 
+    /// Submits the given font for hardware processing.
     pub fn record(&mut self, font: &Font, text: &str) {
         assert!(!text.is_empty());
 

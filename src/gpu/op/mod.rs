@@ -1,3 +1,5 @@
+//! A collection of operation implementations used to fulfill the Render API.
+
 mod bitmap;
 mod clear;
 mod copy;
@@ -11,7 +13,13 @@ pub use self::{
     bitmap::{Bitmap, BitmapOp},
     clear::ClearOp,
     copy::CopyOp,
-    draw::{Command as Draw, Compiler, DrawOp, Material, Skydome},
+    draw::{
+        command::{
+            LineCommand, Mesh, ModelCommand, PointLightCommand, RectLightCommand, SpotlightCommand,
+            SunlightCommand,
+        },
+        Compiler, Draw, DrawOp, Material, Skydome,
+    },
     encode::EncodeOp,
     font::{Font, FontOp},
     gradient::GradientOp,

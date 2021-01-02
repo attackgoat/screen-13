@@ -1,5 +1,5 @@
 use {
-    super::{LineCommand, LineVertex, Material},
+    super::{LineVertex, Material},
     crate::{
         color::{AlphaColor, Color},
         gpu::{MeshFilter, ModelRef, Pose},
@@ -102,24 +102,28 @@ impl Command {
         self.as_sunlight().is_some()
     }
 
-    /// Draws a line between the given coordinates using a constant width and two colors. The colors specify a gradient if
-    /// they differ. Generally intended to support debugging use cases such as drawing bounding boxes.
+    /// Draws a line between the given coordinates using a constant width and two colors. The colors
+    /// specify a gradient if
+    /// they differ. Generally intended to support debugging use cases such as drawing bounding
+    /// boxes.
     pub fn line<S: Into<Vec3>, SC: Into<AlphaColor>, E: Into<Vec3>, EC: Into<AlphaColor>>(
         start: S,
         start_color: SC,
         end: E,
         end_color: EC,
     ) -> Self {
-        Self::Line(LineCommand([
-            LineVertex {
-                color: start_color.into(),
-                pos: start.into(),
-            },
-            LineVertex {
-                color: end_color.into(),
-                pos: end.into(),
-            },
-        ]))
+        Self::Line(LineCommand {
+            vertices: [
+                LineVertex {
+                    color: start_color.into(),
+                    pos: start.into(),
+                },
+                LineVertex {
+                    color: end_color.into(),
+                    pos: end.into(),
+                },
+            ],
+        })
     }
 
     /// Draws a model using the given material and world transform.
@@ -147,9 +151,9 @@ impl Command {
 
     /// Draws a spotlight with the given color, position/orientation, and shape.
     ///
-    /// _Note_: Spotlights have a hemispherical cap on the bottom, so a given `range` will be the maximum range
-    /// and you may not see any light on objects at that distance. Move the light a bit towards the object to
-    /// enter the penumbra.
+    /// _Note_: Spotlights have a hemispherical cap on the bottom, so a given `range` will be the
+    /// maximum range and you may not see any light on objects at that distance. Move the light a
+    /// bit towards the object to enter the penumbra.
     ///
     /// # Arguments
     ///
@@ -269,10 +273,29 @@ impl<'a> Iterator for CommandIter<'a, SunlightCommand> {
     }
 }
 
+// TODO: This is crufty, fix.
+/// Description of a single line segment.
+#[derive(Clone, Debug)]
+pub struct LineCommand {
+    /// The start and end vertices to draw.
+    pub vertices: [LineVertex; 2],
+}
+
+/// Container of a shared `Model` reference and the optional filter or pose that might be used
+/// during rendering.
 #[derive(Debug)]
 pub struct Mesh {
+    /// The mesh or meshes, if set, to render from within the larger collection of meshes this model
+    /// may contain.
+    ///
+    /// `MeshFilter` instances are acquired from the `Model::filter(&self, ...)` function and can
+    /// only be used with the same model they are retrieved from.
     pub filter: Option<MeshFilter>,
+
+    /// The shared model reference to render.
     pub model: ModelRef,
+
+    /// The animation pose, if set, to use while rendering this model.
     pub pose: Option<Pose>,
 }
 
@@ -346,57 +369,123 @@ impl From<(ModelRef, Option<MeshFilter>, Option<Pose>)> for Mesh {
     }
 }
 
+/// Description of a model, which may be posed or filtered.
 #[derive(Debug)]
 pub struct ModelCommand {
-    pub(super) camera_order: f32, // TODO: Could probably be u16?
+    // TODO: Could probably be u16?
+    pub(super) camera_order: f32,
+
+    /// The material to use while rendering this model.
     pub material: Material,
+
+    /// The mesh or meshes, if set, to render from within the larger collection of meshes this model
+    /// may contain.
+    ///
+    /// `MeshFilter` instances are acquired from the `Model::filter(&self, ...)` function and can
+    /// only be used with the same model they are retrieved from.
     pub mesh_filter: Option<MeshFilter>,
+
+    /// The shared model reference to render.
     pub model: ModelRef,
+
+    /// The animation pose, if set, to use while rendering this model.
     pub pose: Option<Pose>,
+
+    /// The generalized matrix transform usually used to desctibe translation, scale and rotation.
+    ///
+    /// _NOTE_: This is the "world" matrix; view and projection matrices are handled automatically.
     pub transform: Mat4,
 }
 
+/// Description of a point light shining on models.
 #[derive(Clone, Debug)]
 pub struct PointLightCommand {
+    /// The location of the center of this light in world space.
     pub center: Vec3,
+
+    /// Color of the projected light.
     pub color: Color,
+
+    /// Scalar light "power" value, modelled afterm lumens but not realistically.
     pub lumens: f32,
+
+    /// Distance from `center` to the furthest reach of the point light.
     pub radius: f32,
 }
 
+/// Description of a rectangular light shining on models.
+///
+/// The lit area forms a [square frustum](https://en.wikipedia.org/wiki/Frustum).
 #[derive(Clone, Debug)]
 pub struct RectLightCommand {
-    pub color: Color, // full-bright and penumbra-to-transparent color
+    /// Color of the projected light.
+    pub color: Color,
+
+    /// The width and height of the rectangular light, when viewed from above (the unlit side).
     pub dims: CoordF,
+
+    /// Scalar light "power" value, modelled afterm lumens but not realistically.
     pub lumens: f32,
+
+    /// Direction of the light rays.
     pub normal: Vec3,
-    pub position: Vec3, // top-left corner when viewed from above
-    pub radius: f32, // size of the penumbra area beyond the box formed by `pos` and `range` which fades from `color` to transparent
-    pub range: f32,  // distance from `pos` to the bottom of the rectangular light
+
+    /// Top-left corner, when viewed from above (the unlit side).
+    pub position: Vec3,
+
+    /// size of the penumbra area beyond the box formed by `position` and `range` which fades from
+    /// `color` to transparent.
+    pub radius: f32,
+
+    /// Distance from `position` to the bottom of the rectangular light.
+    pub range: f32,
 }
 
 impl RectLightCommand {
-    /// Returns a tightly fitting sphere around the lit area of this rectangular light, including the penumbra
+    /// Returns a tightly fitting sphere around the lit area of this rectangular light, including
+    /// the penumbra
     pub(self) fn bounds(&self) -> Sphere {
         todo!();
     }
 }
 
+/// Description of a spotlight shining on models.
 #[derive(Clone, Debug)]
 pub struct SpotlightCommand {
-    pub color: Color,     // `cone` and penumbra-to-transparent color
-    pub cone_radius: f32, // radius of the spotlight cone from the center to the edge of the full-bright area
+    /// Color of the projected light.
+    pub color: Color,
+
+    /// radius of the spotlight cone from the center to the edge.
+    pub cone_radius: f32,
+
+    /// Scalar light "power" value, modelled afterm lumens but not realistically.
     pub lumens: f32,
-    pub normal: Vec3,         // direction from `pos` which the spotlight shines
-    pub penumbra_radius: f32, // Additional radius beyond `cone_radius` which fades from `color` to transparent
-    pub position: Vec3,       // position of the pointy end
-    pub range: Range<f32>, // lit distance from `pos` and to the bottom of the spotlight (does not account for the lens-shaped end)
+
+    /// Direction of the light rays.
+    pub normal: Vec3,
+
+    /// Additional radius beyond `cone_radius` which fades from `color` to transparent.
+    pub penumbra_radius: f32,
+
+    /// Position of the pointy end.
+    pub position: Vec3,
+
+    /// Lit distance from `position` and to the bottom of the spotlight.
+    pub range: Range<f32>,
+
+    /// TODO: Refactor
     pub top_radius: f32,
 }
 
+/// Description of sunlight shining on models.
 #[derive(Clone, Debug)]
 pub struct SunlightCommand {
+    /// Color of the projected light.
     pub color: Color,
+
+    /// Scalar light "power" value, modelled afterm lumens but not realistically.
     pub lumens: f32,
+
+    /// Direction of the light rays.
     pub normal: Vec3,
 }

@@ -1,3 +1,5 @@
+//! A collection of smart-pointer types used internally to operate the GFX-HAL API.
+
 mod buffer;
 mod command_pool;
 mod compute_pipeline;

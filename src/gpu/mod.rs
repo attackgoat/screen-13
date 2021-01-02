@@ -1,16 +1,16 @@
 //! Contains the heart and soul of Screen 13.
-//! 
+//!
 //! This module does the heavy-lifting work in this library and is made from a number of child
 //! internal-only modules which support the functionality described here.
-//! 
+//!
 //! ## Note About Operations
-//! 
+//!
 //! All of the things `Render` allows are recorded internally using `Op` implementations which are
 //! themselves just containers of graphics API resources and the commands to work on them.
-//! 
+//!
 //! I think this structure is really flexible and clear and might live for a few good versions at
 //! least.
-//! 
+//!
 //! _NOTE:_ `Op` implementations should follow a few rules for sanity:
 //! - Use a `Pool` instance to acquire new resources
 //! - `new(...) -> Self`: function initializes with minimum settings
@@ -20,48 +20,84 @@
 //!   1. Write descriptors
 //!   1. Submit all commands
 //! - `submit_X(&self)`: functions which contain minimal "if" cases and logic; simple calls only.
-//! 
+//!
 //! ## Note About `Rc`
-//! 
+//!
 //! Screen 13 currently uses the `Rc` type in order to synchronize work between various operations.
-//! 
+//!
 //! Unfortunately, this limits Screen 13 resources from being shared across threads. We could
 //! simply replace those references with `Arc` and call it a day (that would work), but I'm not yet
 //! sure that's a good pattern, it would introduce unessecery resource synchronization.
-//! 
-//! I think as the API matures a better solution will become clearer.
-//! 
+//!
+//! I think as the API matures a better solution will become clearer, just not sure which types I
+//! want to be `Send` yet. The driver really could be `Sync`.
+//!
 //! ## Note About `def`
-//! 
+//!
 //! Internally Screen 13 uses pre-defined render passes and pipelines to function.
-//! 
+//!
 //! All of these definitions exist in the `def` module and are *great*, but inflexible. They only
 //! do what I programmed them to do. Lame.
-//! 
+//!
 //! Instead, these definitions should be built and cached at runtime based on the operation which
 //! have been recorded. There are follow-on things such as shaders to handle and so I'm not ready
 //! for this change yet.
-//! 
+//!
 //! Similiarly, the handling of command buffers and submission queues is currently on a
 //! per-operation basis which is very limiting. We should keep running command buffers and only
 //! close them when the graph of operations says so.
 
+pub mod clear {
+    //! Types for clearing textures with a configurable color.
+
+    pub use super::op::ClearOp;
+}
+
+pub mod copy {
+    //! Types for copying textures with configurable source and destination coordinates.
+
+    pub use super::op::CopyOp;
+}
+
+pub mod draw {
+    //! Types for drawing user-specified models and lights onto textures.
+
+    pub use super::op::{
+        Draw, DrawOp, LineCommand, Material, Mesh, ModelCommand, PointLightCommand,
+        RectLightCommand, Skydome, SpotlightCommand, SunlightCommand,
+    };
+}
+
+pub mod encode {
+    //! Types for encoding textures into the `.jpg` or `.png` file formats.
+
+    pub use super::op::EncodeOp;
+}
+
+pub mod font {
+    //! Types for writing text onto textures using stylized fonts.
+
+    pub use super::op::{Font, FontOp};
+}
+
+pub mod gradient {
+    //! Types for filling textures with linear and radial gradients.
+
+    pub use super::op::GradientOp;
+}
+
+pub mod write {
+    //! Types for pasting/splatting textures with configurable source and destination transforms.
+
+    pub use super::op::{Write, WriteMode, WriteOp};
+}
+
 mod data;
-
-/// Definitions of all of the GFX-HAL layouts and pipelines this engine uses.
 mod def;
-
-/// A collection of smart-pointer types used internally to operate the GFX-HAL API.
 mod driver;
-
 mod model;
-
-/// A collection of operation implementations used to fulfill the Render API.
 mod op;
-
-/// A collection of resource pool types used internally to cache GFX-HAL types.
 mod pool;
-
 mod render;
 mod spirv {
     include!(concat!(env!("OUT_DIR"), "/spirv/mod.rs"));
@@ -72,17 +108,18 @@ mod texture;
 pub use self::{
     def::vertex,
     model::{MeshFilter, Model, Pose},
-    op::{Bitmap, Draw, Font, Material, Skydome, Write, WriteMode},
+    op::Bitmap,
     render::Render,
     texture::Texture,
 };
 
-pub(crate) use self::{driver::Driver, op::Op,pool::Pool, swapchain::Swapchain};
+pub(crate) use self::{driver::Driver, op::Op, pool::Pool, swapchain::Swapchain};
 
 use {
     self::{
         data::{Data, Mapping},
         driver::{Device, Image2d, Surface},
+        font::*,
         op::BitmapOp,
         pool::{Lease, PoolRef},
         vertex::Vertex,
@@ -733,9 +770,9 @@ impl Gpu {
         )
     }
 
-    /// Constructs a `Render` of the given dimensions.Default
+    /// Constructs a `Render` of the given dimensions.
     ///
-    /// _NOTE:_ This function will use an internal cache.
+    /// _NOTE:_ This function uses an internal cache.
     ///
     /// ## Examples:
     ///
@@ -773,6 +810,7 @@ impl Gpu {
     /// ```
     /// use screen_13::prelude_all::*;
     ///
+    /// #[derive(Default)]
     /// struct Foo(Cache);
     ///
     /// impl Screen for Foo {
