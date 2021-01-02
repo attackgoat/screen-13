@@ -4,11 +4,14 @@ use {
     serde::{Deserialize, Serialize},
 };
 
+/// Holds an `Animation` in a `.pak` file. For data transport only.
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub struct Animation {
+    /// The channels (joints/bones) of movement used in this `Animation`.
     pub channels: Vec<Channel>,
 }
 
+/// Describes the animation of one joint.
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub struct Channel {
     inputs: Vec<f32>,
@@ -48,6 +51,7 @@ impl Channel {
         }
     }
 
+    /// The target joint/bone.
     pub fn target(&self) -> &str {
         &self.target
     }

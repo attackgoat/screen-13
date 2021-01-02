@@ -4,7 +4,7 @@ use {
     std::ops::{Add, AddAssign},
 };
 
-// A geometrical object in three-dimensional space that is the surface of a ball.
+/// A geometrical object in three-dimensional space that is the surface of a ball.
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct Sphere {
     center: Vec3,

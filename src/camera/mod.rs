@@ -1,3 +1,5 @@
+//! Contains digital representations of traditional film cameras.
+
 mod orthographic;
 mod perspective;
 

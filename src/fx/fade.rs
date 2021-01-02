@@ -34,7 +34,7 @@ use {
 ///         let t = Duration::from_secs(1.0);
 ///
 ///         // The Fade type will call render on (Foo) and bar for u, how handy! 🤖
-///         Fade::new(self, 5, t)
+///         Fade::new(self, b, t)
 ///     }
 /// }
 ///

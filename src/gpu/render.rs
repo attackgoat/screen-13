@@ -111,6 +111,7 @@ impl Render {
             .unwrap()
     }
 
+    /// Gets the dimensions, in pixels, of this `Render`.
     pub fn dims(&self) -> Extent {
         self.target.borrow().dims()
     }

@@ -146,6 +146,7 @@ impl Font {
         res
     }
 
+    /// Returns the area, in pixels, required to render the given text.
     pub fn measure(&self, text: &str) -> Extent {
         let mut x = 0;
         let mut y = 0;

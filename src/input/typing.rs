@@ -1,5 +1,6 @@
 use super::{Key, KeyBuf};
 
+/// TODO
 #[derive(Default, PartialEq)]
 pub struct Typing {
     buf: String,
@@ -7,14 +8,17 @@ pub struct Typing {
 }
 
 impl Typing {
+    /// TODO
     pub fn as_split_str(&self) -> (&str, &str) {
         self.buf.split_at(self.pos)
     }
 
+    /// TODO
     pub fn as_str(&self) -> &str {
         &self.buf
     }
 
+    /// TODO
     pub fn handle_input(&mut self, input: &KeyBuf) {
         // Handle adding new character input
         let chars = input.char_buf();
@@ -67,6 +71,7 @@ impl Typing {
         }
     }
 
+    /// TODO
     pub fn to_split_string(&self) -> (String, String) {
         let (lhs, rhs) = self.as_split_str();
         (lhs.to_owned(), rhs.to_owned())

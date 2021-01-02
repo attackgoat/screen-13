@@ -1,5 +1,6 @@
 use crate::math::Coord;
 
+/// A container for Window-based mouse, tablet and touch input events.
 #[derive(Default)]
 pub struct MouseBuf {}
 

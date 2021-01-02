@@ -87,7 +87,7 @@
 //! level documentation for more details on how to use this system with existing files and assets.
 
 #![allow(dead_code)]
-//#![deny(warnings)]
+#![deny(warnings)]
 #![warn(missing_docs)]
 
 #[macro_use]
@@ -104,7 +104,7 @@ pub mod pak;
 /// Things, particularly traits, which are used in almost every single Screen 13 program.
 pub mod prelude {
     pub use super::{
-        gpu::{Gpu, Pool, Render},
+        gpu::{Gpu, Cache, Render},
         input::Input,
         program::Program,
         DynScreen, Engine, Screen,

@@ -2,6 +2,8 @@ use {super::Key, winit::event::KeyboardInput};
 
 const DEFAULT_EVENT_CAPACITY: usize = 16;
 
+/// A container for Window-based keyboard input events.
+#[derive(Debug)]
 pub struct KeyBuf {
     char_buf: String,
     pressed_keys: Vec<Key>,
@@ -9,17 +11,17 @@ pub struct KeyBuf {
 }
 
 impl KeyBuf {
-    pub fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.char_buf.clear();
         self.pressed_keys.clear();
         self.released_keys.clear();
     }
 
-    pub fn char_buf(&self) -> &str {
+    pub(crate) fn char_buf(&self) -> &str {
         &self.char_buf
     }
 
-    pub fn handle(&mut self, _event: &KeyboardInput) {
+    pub(crate) fn handle(&mut self, _event: &KeyboardInput) {
         /*match event {
             Event::KeyboardInput(state, _, Some(key_code)) => self.handle_key(*state, *key_code),
             Event::ReceivedCharacter(chr) => self.handle_char(*chr),
@@ -43,10 +45,12 @@ impl KeyBuf {
         }
     }*/
 
+    /// Returns `true` if the given key is physically pressed down right now.
     pub fn is_key_down(&self, key_code: Key) -> bool {
         self.pressed_keys.contains(&key_code)
     }
 
+    /// Returns `true` if the given key was physically released just now.
     pub fn was_key_down(&self, key_code: Key) -> bool {
         self.released_keys.contains(&key_code)
     }

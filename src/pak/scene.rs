@@ -101,6 +101,7 @@ impl<'a> Iterator for RefIter<'a> {
     }
 }
 
+/// A container for references.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Scene {
     refs: Vec<Ref>,
@@ -136,6 +137,7 @@ impl Scene {
         Self { refs, strs }
     }
 
+    /// Gets an iterator of the references contained in this `Scene`.
     pub fn refs(&self) -> RefIter {
         RefIter {
             idx: 0,

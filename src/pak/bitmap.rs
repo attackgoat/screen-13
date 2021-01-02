@@ -3,6 +3,7 @@ use {
     serde::{Deserialize, Serialize},
 };
 
+/// Holds a `Bitmap` in a `.pak` file. For data transport only.
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub struct Bitmap {
     fmt: Format,
@@ -18,10 +19,12 @@ impl Bitmap {
         Self { fmt, pixels, width }
     }
 
+    /// Gets the dimensions, in pixels, of this `Bitmap`.
     pub fn dims(&self) -> Extent {
         Extent::new(self.width as u32, self.height() as u32)
     }
 
+    /// Gets a description of the numbe of channels contained in this `Bitmap`.
     pub fn format(&self) -> Format {
         self.fmt
     }
@@ -59,17 +62,23 @@ impl Bitmap {
     }
 }
 
+/// Describes the channels of a `Bitmap`.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub enum Format {
+    /// Red channel only.
     #[serde(rename = "r")]
     R,
 
+    /// Red and green channels.
     #[serde(rename = "rg")]
     Rg,
 
+
+    /// Red, green and blue channels.
     #[serde(rename = "rgb")]
     Rgb,
 
+    /// Red, green, blue and alpha channels.
     #[serde(rename = "rgba")]
     Rgba,
 }

@@ -1,3 +1,51 @@
+//! Contains the heart and soul of Screen 13.
+//! 
+//! This module does the heavy-lifting work in this library and is made from a number of child
+//! internal-only modules which support the functionality described here.
+//! 
+//! ## Note About Operations
+//! 
+//! All of the things `Render` allows are recorded internally using `Op` implementations which are
+//! themselves just containers of graphics API resources and the commands to work on them.
+//! 
+//! I think this structure is really flexible and clear and might live for a few good versions at
+//! least.
+//! 
+//! _NOTE:_ `Op` implementations should follow a few rules for sanity:
+//! - Use a `Pool` instance to acquire new resources
+//! - `new(...) -> Self`: function initializes with minimum settings
+//! - `with_X(&mut self, ...) -> &mut Self`: Use the mutable borrow builder pattern for options/extras
+//! - `record(&mut self, ...)`: function does three things:
+//!   1. Initialize final settings/pipelines
+//!   1. Write descriptors
+//!   1. Submit all commands
+//! - `submit_X(&self)`: functions which contain minimal "if" cases and logic; simple calls only.
+//! 
+//! ## Note About `Rc`
+//! 
+//! Screen 13 currently uses the `Rc` type in order to synchronize work between various operations.
+//! 
+//! Unfortunately, this limits Screen 13 resources from being shared across threads. We could
+//! simply replace those references with `Arc` and call it a day (that would work), but I'm not yet
+//! sure that's a good pattern, it would introduce unessecery resource synchronization.
+//! 
+//! I think as the API matures a better solution will become clearer.
+//! 
+//! ## Note About `def`
+//! 
+//! Internally Screen 13 uses pre-defined render passes and pipelines to function.
+//! 
+//! All of these definitions exist in the `def` module and are *great*, but inflexible. They only
+//! do what I programmed them to do. Lame.
+//! 
+//! Instead, these definitions should be built and cached at runtime based on the operation which
+//! have been recorded. There are follow-on things such as shaders to handle and so I'm not ready
+//! for this change yet.
+//! 
+//! Similiarly, the handling of command buffers and submission queues is currently on a
+//! per-operation basis which is very limiting. We should keep running command buffers and only
+//! close them when the graph of operations says so.
+
 mod data;
 
 /// Definitions of all of the GFX-HAL layouts and pipelines this engine uses.
@@ -25,14 +73,11 @@ pub use self::{
     def::vertex,
     model::{MeshFilter, Model, Pose},
     op::{Bitmap, Draw, Font, Material, Skydome, Write, WriteMode},
-    pool::Pool,
     render::Render,
-    swapchain::Swapchain,
     texture::Texture,
-    vertex::Vertex,
 };
 
-pub(crate) use self::{driver::Driver, op::Op};
+pub(crate) use self::{driver::Driver, op::Op,pool::Pool, swapchain::Swapchain};
 
 use {
     self::{
@@ -40,6 +85,7 @@ use {
         driver::{Device, Image2d, Surface},
         op::BitmapOp,
         pool::{Lease, PoolRef},
+        vertex::Vertex,
     },
     crate::{
         error::Error,

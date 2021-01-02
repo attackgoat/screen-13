@@ -191,6 +191,7 @@ impl Texture<Image2d> {
         )
     }
 
+    /// Gets the dimensions, in pixels, of this `Texture`.
     pub fn dims(&self) -> Extent {
         self.dims
     }

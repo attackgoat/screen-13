@@ -1,19 +1,23 @@
 use serde::{Deserialize, Serialize};
 
+/// An identifier for `Animation` instances which is unique within one `.pak` file.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct AnimationId(pub(crate) u16);
 
+/// An identifier for `Bitmap` instances which is unique within one `.pak` file.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct BitmapId(pub(crate) u16);
 
+/// An identifier for `BitmapFont` instances which is unique within one `.pak` file.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct BitmapFontId(pub(crate) u16);
 
+/// An identifier for byte array instances which is unique within one `.pak` file.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct BlobId(pub(crate) u16);
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-pub enum Id {
+pub(crate) enum Id {
     Animation(AnimationId),
     Bitmap(BitmapId),
     BitmapFont(BitmapFontId),
@@ -130,14 +134,18 @@ impl From<TextId> for Id {
     }
 }
 
+/// An identifier for `Material` instances which is unique within one `.pak` file.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct MaterialId(pub(crate) u16);
 
+/// An identifier for `Model` instances which is unique within one `.pak` file.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct ModelId(pub(crate) u16);
 
+/// An identifier for `Scene` instances which is unique within one `.pak` file.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct SceneId(pub(crate) u16);
 
+/// An identifier for text fragments which is unique within one `.pak` file.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct TextId(pub(crate) u16);

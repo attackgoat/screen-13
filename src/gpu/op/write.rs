@@ -35,9 +35,13 @@ use {
 
 const SUBPASS_IDX: u8 = 0;
 
+/// Describes the way `WriteOp` will write a given texture onto the destination texture.
 #[derive(Clone, Copy, Hash, PartialEq)]
 pub enum Mode {
+    /// Blends source (a) with destination (b) using the given mode.
     Blend((u8, BlendMode)),
+
+    /// Writes source directly onto destination, with no blending.
     Texture,
 }
 
