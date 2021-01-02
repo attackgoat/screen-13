@@ -4,6 +4,7 @@ use {
     std::ops::Range,
 };
 
+/// A standard orthographic camera.
 #[derive(Clone)]
 pub struct Orthographic {
     depth: Range<f32>,
@@ -16,6 +17,7 @@ pub struct Orthographic {
 }
 
 impl Orthographic {
+    /// Constructs an `Orthographic` instance from the given values.
     pub fn new<T: Into<CoordF>>(eye: Vec3, target: Vec3, dims: T, depth: Range<f32>) -> Self {
         let dims = dims.into();
         let mut result = Self {
@@ -47,12 +49,14 @@ impl Orthographic {
     //     self.proj.znear()
     // }
 
+    /// Gets the position this camera is looking at.
     pub fn target(&self) -> Vec3 {
         self.target
     }
 
-    pub fn set_eye(&mut self, value: Vec3) {
-        self.eye = value;
+    /// Sets the position this camera is looking from.
+    pub fn set_eye(&mut self, eye: Vec3) {
+        self.eye = eye;
         self.update_view();
     }
 
@@ -64,8 +68,9 @@ impl Orthographic {
     //     self.proj.set_znear(value);
     // }
 
-    pub fn set_target(&mut self, value: Vec3) {
-        self.target = value;
+    /// Sets the camera target position.
+    pub fn set_target(&mut self, target: Vec3) {
+        self.target = target;
         self.update_view();
     }
 

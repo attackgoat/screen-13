@@ -36,7 +36,7 @@ const READ_WRITE_IMG: DescriptorType = DescriptorType::Image {
 };
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
-pub struct CalcVertexAttrsComputeMode {
+pub(super) struct CalcVertexAttrsComputeMode {
     pub idx_ty: IndexType,
     pub skin: bool,
 }
@@ -61,19 +61,19 @@ impl CalcVertexAttrsComputeMode {
 }
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
-pub struct ColorRenderPassMode {
+pub(super) struct ColorRenderPassMode {
     pub fmt: Format,
     pub preserve: bool,
 }
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
-pub enum ComputeMode {
+pub(super) enum ComputeMode {
     CalcVertexAttrs(CalcVertexAttrsComputeMode),
     DecodeRgbRgba,
 }
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
-pub struct DrawRenderPassMode {
+pub(super) struct DrawRenderPassMode {
     pub depth: Format,
     pub geom_buf: Format,
     pub light: Format,
@@ -83,7 +83,7 @@ pub struct DrawRenderPassMode {
 }
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
-pub enum GraphicsMode {
+pub(super) enum GraphicsMode {
     Blend(BlendMode),
     Font(bool),
     Gradient(bool),
@@ -100,7 +100,7 @@ pub enum GraphicsMode {
 }
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
-pub enum RenderPassMode {
+pub(super) enum RenderPassMode {
     Color(ColorRenderPassMode),
     Draw(DrawRenderPassMode),
 }

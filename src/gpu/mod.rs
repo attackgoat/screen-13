@@ -70,7 +70,10 @@ use {
 /// A two dimensional rendering result.
 pub type Texture2d = TextureRef<Image2d>;
 
+/// A helpful alias used to share `Bitmap` instances used with rendering operations.
 pub type BitmapRef = Rc<Bitmap>;
+
+/// A helpful alias used to share `Model` instances used with rendering operations.
 pub type ModelRef = Rc<Model>;
 
 pub(crate) type TextureRef<I> = Rc<RefCell<Texture<I>>>;
@@ -109,26 +112,96 @@ fn create_surface(window: &Window) -> (Adapter<_Backend>, Surface) {
 #[derive(Debug)]
 pub struct BadData;
 
+/// Specifies a method for combining two images using a mathmatical formula.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum BlendMode {
+    /// Blend formula: a + b
     Add,
+
+    /// Blend formula:
     AlphaAdd,
+
+    /// Blend formula: 1 - (1 - a) / b
     ColorBurn,
+
+    /// Blend formula: a / (1 - b)
     ColorDodge,
+
+    /// Blend formula:
     Color,
+
+    /// Blend formula: min(a, b)
     Darken,
+
+    /// Blend formula: min(a, b) (_per-component_)
     DarkerColor,
+
+    /// Blend formula: abs(a - b)
     Difference,
+
+    /// Blend formula: a / b
     Divide,
+
+    /// Blend formula: a + b - 2 * a * b
     Exclusion,
+
+    /// Blend formula: hard_light(a, b) (_per-component_)
+    ///
+    /// Where:
+    /// - hard_light(a, b) = if b < 0.5 {
+    ///                          2 * a * b
+    ///                      } else {
+    ///                          1 - 2 * (1 - a) * (1 - b)
+    ///                      }
     HardLight,
+
+    // TODO: It looks like this formula is correct and hard light and overlay are wrong or the
+    // other way around?
+    /// Blend formula: hard_mix(a, b) (_per-component_)
+    ///
+    /// Where:
+    /// - hard_mix(a, b) = if b < 0.5 {
+    ///                        2 * a * b
+    ///                    } else {
+    ///                        1 - 2 * (1 - a) * (1 - b)
+    ///                    }
     HardMix,
+
+    /// Blend formula: a + b - 1
     LinearBurn,
+
+    /// Blend formula: a * b
     Multiply,
+
+    /// Blend formula: b
+    ///
+    /// _NOTE:_ This is the default blend mode.
     Normal,
+
+    /// Blend formula: overlay(a, b) (_per-component_)
+    ///
+    /// Where:
+    /// - overlay(a, b) = if b < 0.5 {
+    ///                       2 * a * b
+    ///                   } else {
+    ///                       1 - 2 * (1 - a) * (1 - b)
+    ///                   }
     Overlay,
+
+    /// Blend formula: 1 - (1 - a) * (1 - b)
     Screen,
+
+    /// Blend formula: a - b
     Subtract,
+
+    /// Blend formula: vivid_light(a, b) (_per-component_)
+    ///
+    /// Where:
+    /// - vivid_light(a, b) = if b < 0.5 {
+    ///                           1 - (1 - a) / b
+    ///                       } else {
+    ///                           a / (1 - b)
+    ///                       }
     VividLight,
 }
 
@@ -138,9 +211,14 @@ impl Default for BlendMode {
     }
 }
 
-/// Helpful GPU cache; only required if multiple renders happen per frame and they have very different contents.
+// TODO: Make this drainable?
+/// An opaque cache of graphics API handles and resources.
 ///
-/// Remark: If you drop this the program will stutter, so it is best to wait a few frames before dropping it.
+/// For optimal performance, `Cache` instances should remain as owned values for at least three
+/// hardware frames after their last use.
+///
+/// _NOTE:_ Program execution will halt for a few milliseconds after `Cache` types with active
+/// internal operations are dropped.
 #[derive(Default)]
 pub struct Cache(PoolRef<Pool>);
 
@@ -188,8 +266,12 @@ impl Gpu {
         )
     }
 
-    // TODO: This is a useful function, but things you end up rendering with it cannot be used with the window's presentation
-    // surface. Maybe change the way this whole thing works. Or document better?
+    // TODO: Enable sharing between this and "on-screen"
+    /// Creates a `Gpu` for off-screen or headless use.
+    ///
+    /// _NOTE_: Resources loaded or read from a `Gpu` created in headless or screen modes cannot be
+    /// used with other instances, including of the same mode. This is a limitation only because
+    /// the code to share the resources properly has not be started yet.
     pub fn offscreen() -> Self {
         let (adapter, _) = create_instance();
         let queue = adapter
@@ -213,6 +295,9 @@ impl Gpu {
         }
     }
 
+    /// Loads a bitmap at runtime from the given data.
+    ///
+    ///
     pub fn load_bitmap(
         &self,
         #[cfg(feature = "debug-names")] name: &str,
@@ -221,6 +306,8 @@ impl Gpu {
         width: u32,
         stride: u32,
     ) -> Bitmap {
+        #[cfg(feature = "debug-names")]
+        let _ = name;
         let _ = pixel_ty;
         let _ = pixels;
         let _ = width;
@@ -229,6 +316,9 @@ impl Gpu {
         todo!();
     }
 
+    /// Loads an indexed model at runtime from the given data.
+    ///
+    ///
     pub fn load_indexed_model<
         M: IntoIterator<Item = Mesh>,
         I: IntoIterator<Item = u32>,
@@ -299,6 +389,9 @@ impl Gpu {
         ))
     }
 
+    /// Loads a regular model at runtime from the given data.
+    ///
+    ///
     pub fn load_model<
         IM: IntoIterator<Item = M>,
         IV: IntoIterator<Item = V>,
@@ -360,6 +453,8 @@ impl Gpu {
         )
     }
 
+    // TODO: Finish this bit!
+    /// Reads the `Animation` with the given id from the pak.
     pub fn read_animation<R: Read + Seek>(
         &self,
         #[cfg(debug_assertions)] _name: &str,
@@ -408,6 +503,7 @@ impl Gpu {
         todo!()
     }
 
+    /// Reads the `Bitmap` with the given key from the pak.
     pub fn read_bitmap<K: AsRef<str>, R: Read + Seek>(
         &self,
         #[cfg(feature = "debug-names")] name: &str,
@@ -424,6 +520,7 @@ impl Gpu {
         )
     }
 
+    /// Reads the `Bitmap` with the given id from the pak.
     pub fn read_bitmap_with_id<R: Read + Seek>(
         &self,
         #[cfg(feature = "debug-names")] name: &str,
@@ -445,6 +542,8 @@ impl Gpu {
         }
     }
 
+    /// Reads the `Font` with the given face from the pak.
+    ///
     /// Only bitmapped fonts are supported.
     pub fn read_font<F: AsRef<str>, R: Read + Seek>(&self, pak: &mut Pak<R>, face: F) -> Font {
         #[cfg(debug_assertions)]
@@ -458,6 +557,7 @@ impl Gpu {
         )
     }
 
+    /// Reads the `Model` with the given key from the pak.
     pub fn read_model<K: AsRef<str>, R: Read + Seek>(
         &self,
         #[cfg(feature = "debug-names")] name: &str,
@@ -474,6 +574,7 @@ impl Gpu {
         )
     }
 
+    /// Reads the `Model` with the given id from the pak.
     pub fn read_model_with_id<R: Read + Seek>(
         &self,
         #[cfg(feature = "debug-names")] name: &str,
@@ -586,6 +687,26 @@ impl Gpu {
         )
     }
 
+    /// Constructs a `Render` of the given dimensions.Default
+    ///
+    /// _NOTE:_ This function will use an internal cache.
+    ///
+    /// ## Examples:
+    ///
+    /// ```
+    /// use screen_13::prelude_all::*;
+    ///
+    /// struct Foo;
+    ///
+    /// impl Screen for Foo {
+    ///     fn render(&self, gpu: &Gpu, dims: Extent) -> Render {
+    ///         let frame = gpu.render(dims);
+    ///
+    ///         ...
+    ///     }
+    ///
+    ///     ...
+    /// }
     pub fn render<D: Into<Extent>>(
         &self,
         #[cfg(feature = "debug-names")] name: &str,
@@ -599,6 +720,25 @@ impl Gpu {
         )
     }
 
+    /// Constructs a `Render` of the given dimensions, using the provided cache.
+    ///
+    /// ## Examples:
+    ///
+    /// ```
+    /// use screen_13::prelude_all::*;
+    ///
+    /// struct Foo(Cache);
+    ///
+    /// impl Screen for Foo {
+    ///     fn render(&self, gpu: &Gpu, dims: Extent) -> Render {
+    ///         let cache = &self.0;
+    ///         let frame = gpu.render(dims, cache);
+    ///
+    ///         ...
+    ///     }
+    ///
+    ///     ...
+    /// }
     pub fn render_with_cache<D: Into<Extent>>(
         &self,
         #[cfg(feature = "debug-names")] name: &str,
@@ -669,27 +809,58 @@ impl Drop for Gpu {
     }
 }
 
+/// Masking is the process of modifying a target image alpha channel using a series of
+/// blend-like operations.
+///
+/// TODO: This feature isn't fully implemented yet
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum MaskMode {
+    /// Mask formula: a + b
     Add,
+
+    /// Mask formula: min(a, b)
     Darken,
+
+    /// Mask formula: abs(a - b)
     Difference,
+
+    /// Mask formula: a * b
     Intersect,
+
+    /// Mask formula: max(a, b)
     Lighten,
+
+    /// Mask formula: a - b
     Subtract,
 }
 
 impl Default for MaskMode {
     fn default() -> Self {
-        Self::Subtract
+        Self::Add
     }
 }
 
+/// Matting blends two images (a into b) based on the features of a matte image.
+///
+/// TODO: This feature isn't fully implemented yet
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum MatteMode {
+    /// Matte formula: alpha = min(a, matte)
+    ///                color = a * alpha;
     Alpha,
+
+    /// Matte formula: alpha = min(a, 1 - matte)
+    ///                color = a * alpha;
     AlphaInverted,
+
+    /// Matte formula: gray = hsl-based gray function
+    ///                alpha = min(a, gray(matte))
+    ///                color = a * alpha;
     Luminance,
+
+    /// Matte formula: gray = hsl-based gray function
+    ///                alpha = min(a, 1 - gray(matte))
+    ///                color = a * alpha;
     LuminanceInverted,
 }
 

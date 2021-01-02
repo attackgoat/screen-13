@@ -11,9 +11,42 @@ use {
 };
 
 // TODO: Specialize with FadeIn, FadeOut, CrossFade versions
-/// Fades between two screens.
+/// Visually fades between two `Screen` implementations over time.
 ///
-/// Remark: Screens are only drawn, and not updated, during fade.
+/// ## Examples
+///
+/// In order to fade from `Foo` to `Bar` you might:
+///
+/// ```
+/// use {screen_13::prelude_all::*, std::time::Duration};
+///
+/// fn main() {
+///     Engine::default().run(Box::new(Foo))
+/// }
+///
+/// struct Foo;
+///
+/// impl Screen for Foo {
+///     ...
+///
+///     fn update(self: Box<Self>, gpu: &Gpu, input: &Input) -> DynScreen {
+///         let b = Box::new(bar);
+///         let t = Duration::from_secs(1.0);
+///
+///         // The Fade type will call render on (Foo) and bar for u, how handy! 🤖
+///         Fade::new(self, 5, t)
+///     }
+/// }
+///
+/// struct Bar;
+///
+/// impl Screen for Bar {
+///     ...
+/// }
+///
+/// ```
+///
+/// _Note:_ Screens are only drawn, and not updated, during fade.
 pub struct Fade {
     a: Option<DynScreen>,
     b: Option<DynScreen>,
@@ -23,6 +56,7 @@ pub struct Fade {
 }
 
 impl Fade {
+    /// Constructs a `Fade` from the given `a` and `b` screens and duration.
     pub fn new(a: DynScreen, b: DynScreen, duration: Duration) -> Self {
         Self {
             a: Some(a),
@@ -33,6 +67,7 @@ impl Fade {
         }
     }
 
+    /// Sets the blend mode for this fade.
     pub fn with_blend_mode(&mut self, mode: BlendMode) {
         self.mode = mode;
     }

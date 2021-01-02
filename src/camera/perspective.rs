@@ -5,7 +5,7 @@ use {
 };
 
 // TODO: Play around with this and see if depth should be RangeInclusive instead?
-
+/// A standard perspective camera.
 #[derive(Clone)]
 pub struct Perspective {
     aspect_ratio: f32,

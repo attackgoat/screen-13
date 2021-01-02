@@ -1,3 +1,17 @@
+//! Screen 13 offers a number of vertex formats for use loading models.
+//!
+//! Additional vertex formats will be released to support new features in the future.
+//!
+//! # Model Vertices
+//!
+//! There are two main flavors of model vertex:
+//! - Normal (`POSITION` and `TEXCOORD` _only_)
+//! - Skinned (for animation - includes `JOINTS` and `WEIGHTS` attributes)
+//!
+//! Further, vertexes may be specified in the compact manner mentioned above or using the
+//! `Ex`-variety structs. Extended model vertices include the `NORMAL` and `TANGENT`
+//! attributes which are normally calculated at runtime.
+
 use {
     crate::math::{
         vec2, vec2_is_finite, vec3, vec3_is_finite, vec4, vec4_is_finite, Vec2, Vec3, Vec4,
@@ -5,28 +19,66 @@ use {
     std::cmp::Ordering,
 };
 
+/// Helpful alias for standard vertex strides as a single byte array.
 pub type NormalVertexArray = [f32; 5];
+
+/// Helpful alias for standard vertex strides as a individual byte arrays.
 pub type NormalVertexArrays = ([f32; 3], [f32; 2]);
+
+/// Helpful alias for standard vertex strides as a tuple of vecs.
 pub type NormalVertexTuple = (Vec3, Vec2);
+
+/// Helpful alias for extended vertex strides as a single byte array.
 pub type NormalVertexExArray = [f32; 12];
+
+/// Helpful alias for extended vertex strides as a individual byte arrays.
 pub type NormalVertexExArrays = ([f32; 3], [f32; 3], [f32; 4], [f32; 2]);
+
+/// Helpful alias for extended vertex strides as a tuple of vecs.
 pub type NormalVertexExTuple = (Vec3, Vec3, Vec4, Vec2);
+
+/// Helpful alias for standard skinned vertex strides as a single byte array.
 pub type SkinVertexArray = [f32; 13];
+
+/// Helpful alias for standard skinned vertex strides as a individual byte arrays.
 pub type SkinVertexArrays = ([f32; 3], [f32; 4], [f32; 4], [f32; 2]);
+
+/// Helpful alias for standard skinned vertex strides as a tuple of vecs.
 pub type SkinVertexTuple = (Vec3, Vec4, Vec4, Vec2);
+
+/// Helpful alias for extended skinnded vertex strides as a single byte array.
 pub type SkinVertexExArray = [f32; 20];
+
+/// Helpful alias for extended skinned vertex strides as a individual byte arrays.
 pub type SkinVertexExArrays = ([f32; 3], [f32; 3], [f32; 4], [f32; 4], [f32; 4], [f32; 2]);
+
+/// Helpful alias for extended skinned vertex strides as a tuple of vecs.
 pub type SkinVertexExTuple = (Vec3, Vec3, Vec4, Vec4, Vec4, Vec2);
 
+/// Defines all supported vertex formats.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Vertex {
+    /// The "easy" vertex. If you are not sure what you want, this is probably it.
     Normal(NormalVertex),
+
+    /// Same as `Normal`, except that the additional vertex attributes (normal and tanget) are
+    /// specified here as opposed to being calculated before use.
+    ///
+    /// Only needed if you want more control over the normal/tangent generation process.
     NormalEx(NormalVertexEx),
+
+    /// Same as `Normal`, except that additional vertex attributes for joins and weights are
+    /// added.
     Skin(SkinVertex),
+
+    /// Like `NormalEx`, a combination of `Skin` and extra normal and tangent vertex attributes.
+    ///
+    /// Only needed if you want more control over the normal/tangent generation process.
     SkinEx(SkinVertexEx),
 }
 
 impl Vertex {
+    /// Returns `true` if all fields are finite.
     pub fn is_finite(self) -> bool {
         match self {
             Self::Normal(vertex) => vertex.is_finite(),
@@ -157,10 +209,14 @@ impl From<SkinVertexExTuple> for Vertex {
     }
 }
 
+/// The "easy" vertex. If you are not sure what you want, this is probably it.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 #[repr(C)]
 pub struct NormalVertex {
+    /// POSITION
     pub position: Vec3,
+
+    /// TEXCOORD0
     pub tex_coord: Vec2,
 }
 
@@ -224,12 +280,23 @@ impl PartialOrd for NormalVertex {
     }
 }
 
+/// Same as `Normal`, except that the additional vertex attributes (normal and tanget) are
+/// specified here as opposed to being calculated before use.
+///
+/// Only needed if you want more control over the normal/tangent generation process.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 #[repr(C)]
 pub struct NormalVertexEx {
+    /// POSITION
     pub position: Vec3,
+
+    /// NORMAL
     pub normal: Vec3,
+
+    /// TANGENT (four component with handedness)
     pub tangent: Vec4,
+
+    /// TEXCOORD0
     pub tex_coord: Vec2,
 }
 
@@ -317,12 +384,20 @@ impl PartialOrd for NormalVertexEx {
     }
 }
 
+/// Same as `Normal`, except that additional vertex attributes for joins and weights are added.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 #[repr(C)]
 pub struct SkinVertex {
+    /// POSITION
     pub position: Vec3,
+
+    /// JOINTS (four channel mix)
     pub joints: Vec4,
+
+    /// WEIGHTS (four channel mix)
     pub weights: Vec4,
+
+    /// TEXCOORD0
     pub tex_coord: Vec2,
 }
 
@@ -410,14 +485,28 @@ impl PartialOrd for SkinVertex {
     }
 }
 
+/// Like `NormalEx`, a combination of `Skin` and extra normal and tangent vertex attributes.
+///
+/// Only needed if you want more control over the normal/tangent generation process.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 #[repr(C)]
 pub struct SkinVertexEx {
+    /// POSITION
     pub position: Vec3,
+
+    /// NORMAL
     pub normal: Vec3,
+
+    /// TANGENT (four component with handedness)
     pub tangent: Vec4,
+
+    /// JOINTS (four channel mix)
     pub joints: Vec4,
+
+    /// WEIGHTS (four channel mix)
     pub weights: Vec4,
+
+    /// TEXCOORD0
     pub tex_coord: Vec2,
 }
 

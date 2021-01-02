@@ -8,29 +8,42 @@ use {
     std::u8,
 };
 
+/// Black with zero alpha - 0x00000000
 pub const TRANSPARENT_BLACK: AlphaColor = AlphaColor::rgba(0, 0, 0, 0);
 
+/// A four channel (with alpha) color.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct AlphaColor {
+    /// Alpha channel.
     pub a: u8,
+
+    /// Blue channel.
     pub b: u8,
+
+    /// Green channel.
     pub g: u8,
+
+    /// Red channel.
     pub r: u8,
 }
 
 impl AlphaColor {
+    /// Returns true if the alpha channel is non-zero
     pub fn is_transparent(self) -> bool {
         self.a < u8::MAX
     }
 
+    /// Constructs an `AlphaColor` from the given values.
     pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
         Self { b, g, r, a: 0xff }
     }
 
+    /// Constructs an `AlphaColor` from the given values.
     pub const fn rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
         Self { b, g, r, a }
     }
 
+    /// Constructs a `Vec4` from this color.
     pub fn to_rgba(self) -> Vec4 {
         const SCALE: f32 = 1.0 / u8::MAX as f32;
 

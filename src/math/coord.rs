@@ -43,8 +43,10 @@ impl Coord<f32> {
 }
 
 impl Coord<i32> {
+    /// Constant-time zero value
     pub const ZERO: Self = Self { x: 0, y: 0 };
 
+    /// Constructs an `Offset` value with the given z value.
     pub const fn as_offset_z(self, z: i32) -> Offset {
         Offset {
             x: self.x,
@@ -53,6 +55,7 @@ impl Coord<i32> {
         }
     }
 
+    /// Constructs an `Rect` value with the given position value.
     pub const fn as_rect_at(self, pos: Self) -> Rect {
         Rect {
             x: pos.x as _,
@@ -64,8 +67,10 @@ impl Coord<i32> {
 }
 
 impl Coord<u32> {
+    /// Constant-time zero value
     pub const ZERO: Self = Self { x: 0, y: 0 };
 
+    /// Constructs an `Extent` value with the given depth value.
     pub const fn as_extent_depth(self, depth: u32) -> Extent {
         Extent {
             width: self.x,

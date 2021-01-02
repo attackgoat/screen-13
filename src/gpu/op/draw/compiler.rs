@@ -397,7 +397,7 @@ impl<'a> Compilation<'a> {
 
 // TODO: Workaround impl of "Iterator for" until we (soon?) have GATs: https://github.com/rust-lang/rust/issues/44265
 impl Compilation<'_> {
-    pub fn next(&mut self) -> Option<Instruction> {
+    pub(super) fn next(&mut self) -> Option<Instruction> {
         if self.idx == self.compiler.code.len() {
             return None;
         }

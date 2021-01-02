@@ -1,6 +1,6 @@
 use {
+    super::root,
     crate::math::Extent,
-    app_dirs::{get_app_root, AppDataType, AppDirsError, AppInfo},
     serde::{Deserialize, Serialize},
     std::{
         fs::{create_dir_all, read_to_string, File},
@@ -18,20 +18,8 @@ const CONFIG_FILENAME: &str = "engine-debug.toml";
 #[cfg(not(debug_assertions))]
 const CONFIG_FILENAME: &str = "engine.toml";
 
-pub fn get_program_root(name: &'static str, author: &'static str) -> Result<PathBuf, IoError> {
-    // Converts the app_dirs crate AppDirsError to a regular IO Error
-    match get_app_root(AppDataType::UserConfig, &AppInfo { name, author }) {
-        Err(err) => Err(match err {
-            AppDirsError::Io(err) => err,
-            AppDirsError::InvalidAppInfo => IoError::from(ErrorKind::InvalidInput),
-            AppDirsError::NotSupported => IoError::from(ErrorKind::InvalidData),
-        }),
-        Ok(res) => Ok(res),
-    }
-}
-
-fn get_config_path(name: &'static str, author: &'static str) -> Result<PathBuf, IoError> {
-    let program_root = get_program_root(name, author)?;
+fn config_path(name: &'static str, author: &'static str) -> Result<PathBuf, IoError> {
+    let program_root = root(name, author)?;
 
     Ok(program_root.join(CONFIG_FILENAME))
 }
@@ -51,7 +39,7 @@ struct Data {
 
 impl Config {
     pub fn read(program_name: &'static str, program_author: &'static str) -> Result<Self, IoError> {
-        let config_path = get_config_path(program_name, program_author)?;
+        let config_path = config_path(program_name, program_author)?;
         Ok(if config_path.exists() {
             #[cfg(debug_assertions)]
             debug!("Loaded config {}", config_path.display());
@@ -106,13 +94,13 @@ impl Config {
     }
 
     pub fn write(&self) -> Result<(), IoError> {
-        let program_root = get_program_root(self.program_name, self.program_author)?;
+        let program_root = root(self.program_name, self.program_author)?;
 
         if !program_root.exists() {
             create_dir_all(&*program_root)?;
         }
 
-        let config_path = get_config_path(self.program_name, self.program_author)?;
+        let config_path = config_path(self.program_name, self.program_author)?;
         let mut config_file = File::create(&*config_path)?;
 
         let toml = to_string_pretty(&Schema {

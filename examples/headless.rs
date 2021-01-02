@@ -1,4 +1,4 @@
-use screen_13::Gpu;
+use screen_13::gpu::Gpu;
 
 fn main() {
     // Create a 128x128 pixel render

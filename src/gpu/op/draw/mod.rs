@@ -1517,10 +1517,19 @@ struct LineVertex {
     pos: Vec3,
 }
 
+/// Defines a PBR material.
+///
+/// _NOTE:_ Temporary. I think this will soon become an enum with more options, reflectance probes,
+/// shadow maps, lots more
 #[derive(Clone, Debug)]
 pub struct Material {
+    /// Three channel base color, aka albedo or diffuse, of the material.
     pub color: BitmapRef,
+
+    /// A two channel bitmap of the metalness (red) and roughness (green) PBR parameters.
     pub metal_rough: BitmapRef,
+
+    /// A standard three channel normal map.
     pub normal: BitmapRef,
 }
 
@@ -1564,14 +1573,34 @@ impl PartialOrd for Material {
     }
 }
 
+/// Defines a somewhat fancy skydome.
+///
+/// This skydome is based on https://github.com/kosua20/opengl-skydome
 #[derive(Clone, Debug)]
 pub struct Skydome {
+    /// Images of good and bad weather.
     pub cloud: [BitmapRef; 2],
+
+    /// An image of the moon.
     pub moon: BitmapRef,
+
+    /// A map represent sun height and time to color.
     pub sun: BitmapRef,
+
+    /// The direction of the sun's rays.
     pub sun_normal: Vec3,
+
+    /// Rotation affecting the star map, at night.
     pub star_rotation: Quat,
+
+    /// Time of day in seconds.
     pub time: f32,
+
+    /// Images related to the skydome algorithm, see blog post.
     pub tint: [BitmapRef; 2],
+
+    /// A value 0.5 to 1.0 which represents good-to-bad weather.
+    ///
+    /// TODO: Make this regular 0.0 to 1.0
     pub weather: f32,
 }

@@ -14,7 +14,7 @@ macro_rules! ecs_sys {
             mod [<$name:snake _sys>] {
                 use {
                     super::PakFile,
-                    screen_13::{gpu::[<$name Ref>], pak::[<$name Id>], Gpu},
+                    screen_13::{gpu::{Gpu, [<$name Ref>]}, pak::[<$name Id>]},
                     std::collections::HashMap,
                 };
 
@@ -138,12 +138,21 @@ impl Game {
         // Make a 3x3 grid of boxes, spawned using the HECS system
         for y in -1..1 {
             for x in -1..1 {
-                let position: Position = vec3(x as f32 * 1.5, y as f32 * 1.5, 0.0).into();
+                let position: Position = vec3(x as f32 * 1.5, y as f32 * 1.5, 0.5).into();
                 let rotation: Rotation = Quat::identity().into();
                 self.ecs
                     .spawn((box_model, textured_material, position, rotation));
             }
         }
+
+        // Add a light via HECS
+        let position: Position = Vec3::zero().into();
+        let light = Light {
+            color: WHITE,
+            power: 60.0,
+            radius: 1.0,
+        };
+        self.ecs.spawn((light, position));
     }
 
     fn load_material(&mut self, gpu: &Gpu, key: &'static str) -> Material {

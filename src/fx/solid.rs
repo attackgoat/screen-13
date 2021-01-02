@@ -1,10 +1,12 @@
 use crate::{color::Color, math::Extent, DynScreen, Gpu, Input, Render, Screen};
 
+/// Displays a solid color forever.
 pub struct Solid {
     color: Color,
 }
 
 impl Solid {
+    /// Constructs a new `Solid` from the given color.
     pub fn new(color: Color) -> Self {
         Self { color }
     }

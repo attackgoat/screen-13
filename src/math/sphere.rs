@@ -4,6 +4,7 @@ use {
     std::ops::{Add, AddAssign},
 };
 
+// A geometrical object in three-dimensional space that is the surface of a ball.
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct Sphere {
     center: Vec3,
@@ -11,6 +12,7 @@ pub struct Sphere {
 }
 
 impl Sphere {
+    /// Constructs a sphere from the given center and radius.
     pub fn new(center: Vec3, radius: f32) -> Self {
         assert!(vec3_is_finite(center));
         assert!(radius.is_finite());
@@ -19,6 +21,7 @@ impl Sphere {
         Self { center, radius }
     }
 
+    /// Constructs a sphere from the given list of positions.
     pub fn from_point_cloud<I: Iterator<Item = Vec3>>(cloud: I) -> Self {
         let cloud = cloud.collect::<Vec<_>>();
 

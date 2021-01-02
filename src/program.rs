@@ -3,8 +3,13 @@ mod default_program_icon {
 }
 
 use {
+    super::program_root,
     serde::{Deserialize, Serialize},
-    std::convert::{AsRef, TryFrom},
+    std::{
+        convert::{AsRef, TryFrom},
+        io::Error,
+        path::PathBuf,
+    },
     winit::window::{BadIcon, Icon as WinitIcon},
 };
 
@@ -15,12 +20,20 @@ const DEFAULT_NAME: &str = "default";
 /// ways on each platform. Pixels are RGBA formatted.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Icon<'a> {
+    /// Icon height in pixels.
     pub height: u32,
+
+    /// Array of RGBA-formatted pixel data.
+    ///
+    /// The length is four times the number of pixels.
     pub pixels: &'a [u8],
+
+    /// Icon width in pixels.
     pub width: u32,
 }
 
 impl Icon<'static> {
+    /// A fantastic icon chosen based on the order in which it was generated. 🗿
     pub const DEFAULT: Self = Self {
         height: default_program_icon::HEIGHT,
         pixels: &default_program_icon::PIXELS,
@@ -42,17 +55,32 @@ impl<'a> TryFrom<&'a Icon<'_>> for WinitIcon {
     }
 }
 
-/// Program is the required information to start an event loop.
+/// Program is the required information to start an event loop, and therefore an `Engine`.
 ///
 /// Remarks: The fullscreen/windowed setting this program describes may not be what Screen 13
 /// chooses at runtime if there is a previously written configuration file present.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Program<'a, 'b> {
+    /// Program author, or company.
     pub author: &'static str,
+
+    /// Whether the program uses a full-screen video mode or not.
     pub fullscreen: bool,
+
+    /// Program window icon, if set.
     pub icon: Option<Icon<'b>>,
+
+    /// Program name, or title.
     pub name: &'static str,
+
+    /// Whether the program window is resizable or not, while in window mode.
+    ///
+    /// Has no effect while in fullscreen mode.
     pub resizable: bool,
+
+    /// Program window title.
+    ///
+    /// This is what is shown to the user.
     pub title: &'a str,
 }
 
@@ -91,8 +119,8 @@ impl Program<'_, '_> {
     /// make other important choices.
     ///
     /// Remarks: Programs running in windowed mode automatically select an appropriately sized
-    /// and placed window. Current logic provides a window centered on the primary display
-    /// covering approximately 75% of the desktop area.
+    /// and placed window. Current logic provides a window centered on the primary display at HD
+    /// resolution.
     ///
     /// Remarks: When in debug mode the default is windowed mode.
     pub const fn new(name: &'static str, author: &'static str) -> Self {
@@ -160,6 +188,12 @@ impl Program<'_, '_> {
     pub fn without_icon(mut self) -> Self {
         self.icon = None;
         self
+    }
+
+    /// Gets the filesystem root for this program. The returned path is a good place to store
+    /// program configuration and data on a per-user basis.
+    pub fn root(&self) -> Result<PathBuf, Error> {
+        program_root(self)
     }
 }
 

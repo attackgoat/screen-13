@@ -1,3 +1,5 @@
+//! Window-based inputs captured during event loop processing.
+
 mod key_buf;
 mod mouse_buf;
 mod typing;

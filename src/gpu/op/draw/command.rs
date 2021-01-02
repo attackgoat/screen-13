@@ -16,11 +16,22 @@ pub type SunlightIter<'a> = CommandIter<'a, SunlightCommand>;
 // TODO: Voxels, landscapes, water, god rays, particle systems
 /// An expressive type which allows specification of individual drawing operations.
 pub enum Command {
+    /// Draws a line segment.
     Line(LineCommand),
+
+    /// Draws a model.
     Model(ModelCommand),
+
+    /// Draws a point light.
     PointLight(PointLightCommand),
+
+    /// Draws a rectangular light.
     RectLight(RectLightCommand),
+
+    /// Draws a spotlight.
     Spotlight(SpotlightCommand),
+
+    /// Draws sunlight.
     Sunlight(SunlightCommand),
 }
 
@@ -111,6 +122,7 @@ impl Command {
         ]))
     }
 
+    /// Draws a model using the given material and world transform.
     pub fn model<M: Into<Mesh>>(mesh: M, material: Material, transform: Mat4) -> Self {
         let mesh = mesh.into();
         Self::Model(ModelCommand {
@@ -123,6 +135,7 @@ impl Command {
         })
     }
 
+    /// Draws a point light using the given values.
     pub fn point_light(center: Vec3, color: Color, lumens: f32, radius: f32) -> Self {
         Self::PointLight(PointLightCommand {
             center,
@@ -283,6 +296,16 @@ impl From<(ModelRef, MeshFilter)> for Mesh {
     }
 }
 
+impl From<(ModelRef, Option<MeshFilter>)> for Mesh {
+    fn from((model, filter): (ModelRef, Option<MeshFilter>)) -> Self {
+        Self {
+            filter,
+            model,
+            pose: None,
+        }
+    }
+}
+
 impl From<(ModelRef, Pose)> for Mesh {
     fn from((model, pose): (ModelRef, Pose)) -> Self {
         Self {
@@ -293,12 +316,32 @@ impl From<(ModelRef, Pose)> for Mesh {
     }
 }
 
+impl From<(ModelRef, Option<Pose>)> for Mesh {
+    fn from((model, pose): (ModelRef, Option<Pose>)) -> Self {
+        Self {
+            filter: None,
+            model,
+            pose,
+        }
+    }
+}
+
 impl From<(ModelRef, MeshFilter, Pose)> for Mesh {
     fn from((model, filter, pose): (ModelRef, MeshFilter, Pose)) -> Self {
         Self {
             filter: Some(filter),
             model,
             pose: Some(pose),
+        }
+    }
+}
+
+impl From<(ModelRef, Option<MeshFilter>, Option<Pose>)> for Mesh {
+    fn from((model, filter, pose): (ModelRef, Option<MeshFilter>, Option<Pose>)) -> Self {
+        Self {
+            filter,
+            model,
+            pose,
         }
     }
 }

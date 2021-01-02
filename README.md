@@ -84,6 +84,7 @@ This engine is very young and is likely to change as development continues.
     - Later: Each graphic operation will record what it wants, but all graphic operations before a command buffer submit will be grouped
     - Later: Resources currently in `def` will be created at runtime based on the operation graph
     - Later: Render passes will be constructed dynamically as well
+    - Later: Gently copy the light binning magic from Granite?
 - General:
   - TODO: fonts, models, textures, etc... should be loadable at runtime from regular files
 
@@ -93,6 +94,7 @@ Screen 13 puts a lot of functionality behind optional features in order to optim
 
 _NOTE_: The deferred and forward renderers have separate code paths and you can choose either on a render-by-render basis.
 
+- **`auto-cull`** *(enabled by default)* — Enables draw call camera frustum culling.
 - **`debug-names`** — Name parameter added to most graphics calls, integrates with your graphics debugger.
 - **`deferred-3d`** *(enabled by default)* — Ability to draw models and lights using a deferred technique.
 - **`forward-3d`** *(enabled by default)* — Same as the deferred renderer, but using a forward technique.

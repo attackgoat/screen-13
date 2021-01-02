@@ -3,6 +3,7 @@ use {
     serde::{Deserialize, Serialize},
 };
 
+/// A flat two-dimensional surface that extends infinitely far.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Plane {
     distance: f32,
@@ -10,10 +11,11 @@ pub struct Plane {
 }
 
 impl Plane {
+    /// Constructs a new plane from the given normal and distance from the origin.
     pub fn new(normal: Vec3, distance: f32) -> Self {
-        assert!(distance.is_finite());
-        assert!(vec3_is_finite(normal));
-        assert!(normal.is_normalized());
+        debug_assert!(distance.is_finite());
+        debug_assert!(vec3_is_finite(normal));
+        debug_assert!(normal.is_normalized());
 
         Self { distance, normal }
     }

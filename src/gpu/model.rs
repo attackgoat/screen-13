@@ -96,14 +96,39 @@ impl Model {
         }
     }
 
+    /// Constructs a `Builder` with the given vertex count.
     pub fn mesh<N>(vertex_count: u32) -> Builder<N> {
         Builder::new(vertex_count)
     }
 
+    /// Gets the `Sphere` which defines the rough bounding area for this model.
     pub fn bounds(&self) -> Sphere {
         todo!("Get bounds")
     }
 
+    /// Gets a small value which allows filtered drawing of this mesh.prelude_all
+    ///
+    /// A returned `None` indicates the given name was not found in this model.
+    ///
+    /// _NOTE:_ This API may be a little dangerous because there are no lifetimes or anything
+    /// telling you about the danger of getting this value from one `Model` and using it on
+    /// another. Just don't do that please, or help me patch it.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// let material: Material = ...
+    /// let foo: ModelRef = ...
+    /// let bar = foo.filter("bar");
+    ///
+    /// let frame: Render = ...
+    /// frame.draw().record(&camera, [
+    ///     // 🔍 Note the foo-bar tuple here which says "_Draw this model with this filter_"
+    ///     Draw::model((foo, bar), material, Mat4::identity()),
+    /// ]);
+    ///
+    /// ...
+    /// ```
     pub fn filter<N: AsRef<str>>(&self, name: Option<N>) -> Option<MeshFilter> {
         let name_str = deref_str(&name);
         match self
@@ -171,11 +196,14 @@ impl Model {
         self.staging.borrow_mut().take()
     }
 
+    /// Gets the `Sphere` which defines the rough bounding area for this model, account for the
+    /// given pose.
     pub fn pose_bounds(&self, _pose: &Pose) -> Sphere {
         todo!("Get bounds w/ pose")
     }
 
-    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
+    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as
+    /// RenderDoc.
     #[cfg(feature = "debug-names")]
     pub fn set_name(&mut self, name: &str) {
         self.idx_buf.borrow_mut().set_name(name);
@@ -197,18 +225,21 @@ impl Debug for Model {
     }
 }
 
+/// TODO
 #[derive(Clone, Debug)]
 pub struct Pose {
     joints: Vec<Quat>,
 }
 
 impl Pose {
+    /// TODO
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             joints: Vec::with_capacity(capacity),
         }
     }
 
+    /// TODO
     pub fn joint<N: AsRef<str>>(&self, _name: N) -> Quat {
         // let name = name.as_ref();
         // match self.joints.binary_search_by(|a| name.cmp(&a.0)) {
@@ -218,6 +249,7 @@ impl Pose {
         todo!();
     }
 
+    /// TODO
     pub fn set_joint(&mut self, _name: String, _val: Quat) {
         // match self.joints.binary_search_by(|a| name.cmp(&a.0)) {
         //     Err(idx) => self.joints.insert(idx, (name, val)),

@@ -3,15 +3,17 @@ use {
     serde::{Deserialize, Serialize},
 };
 
+/// A three-dimensional geometric shape that tapers smoothly from a circular base to a point called the apex.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Cone {
     apex: Vec3,
-    height: f32,
+    height: f32, // TODO: Store with normal as direction?
     normal: Vec3,
     radius: f32,
 }
 
 impl Cone {
+    /// Constructs a new cone from values.
     pub fn new(apex: Vec3, normal: Vec3, height: f32, radius: f32) -> Self {
         assert!(vec3_is_finite(apex));
         assert!(vec3_is_finite(normal));

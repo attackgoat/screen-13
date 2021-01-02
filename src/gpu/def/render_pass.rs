@@ -65,7 +65,10 @@ pub mod draw {
         }
     }
 
-    pub fn fill_light_tonemap(driver: &Driver, mode: DrawRenderPassMode) -> RenderPass {
+    pub(in crate::gpu) fn fill_light_tonemap(
+        driver: &Driver,
+        mode: DrawRenderPassMode,
+    ) -> RenderPass {
         // Subpass indexes
         const FILL_GEOM_BUF_IDX: u8 = 0;
         const ACCUM_LIGHT_IDX: u8 = 1;
@@ -128,7 +131,10 @@ pub mod draw {
 
     /// Like the draw render pass except it contains a step between filling the geometry buffer and
     /// accumulating light
-    pub fn fill_skydome_light_tonemap(driver: &Driver, mode: DrawRenderPassMode) -> RenderPass {
+    pub(in crate::gpu) fn fill_skydome_light_tonemap(
+        driver: &Driver,
+        mode: DrawRenderPassMode,
+    ) -> RenderPass {
         // Subpass indexes
         const FILL_GEOM_BUF_IDX: u8 = 0;
         const SKYDOME_IDX: u8 = 0;
@@ -201,12 +207,15 @@ pub mod draw {
     }
 
     /// Like the draw render pass except it contains a 'post'-fx step
-    pub fn fill_light_tonemap_fx(_driver: &Driver, _mode: DrawRenderPassMode) -> RenderPass {
+    pub(in crate::gpu) fn fill_light_tonemap_fx(
+        _driver: &Driver,
+        _mode: DrawRenderPassMode,
+    ) -> RenderPass {
         todo!();
     }
 
     /// Like the draw render pass except it contains a 'pre' and 'post'-fx step
-    pub fn fill_skydome_light_tonemap_fx(
+    pub(in crate::gpu) fn fill_skydome_light_tonemap_fx(
         _driver: &Driver,
         _mode: DrawRenderPassMode,
     ) -> RenderPass {
@@ -281,7 +290,7 @@ fn const_layout(layout: Layout) -> Range<Layout> {
     layout..layout
 }
 
-pub fn color(driver: &Driver, mode: ColorRenderPassMode) -> RenderPass {
+pub(in crate::gpu) fn color(driver: &Driver, mode: ColorRenderPassMode) -> RenderPass {
     const ATTACHMENT: usize = 0;
 
     let attachment = Attachment {

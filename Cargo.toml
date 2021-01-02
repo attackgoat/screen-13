@@ -1,6 +1,6 @@
 [package]
 name = "screen-13"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["john wells <john@attackgoat.com>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
@@ -15,7 +15,8 @@ An easy-to-use 2D/3D rendering engine in the spirit of QBasic.
 """
 
 [features]
-default = ["deferred-3d", "forward-3d"]
+default = ["auto-cull", "deferred-3d", "forward-3d"]
+auto-cull = []
 debug-names = []
 deferred-3d = []
 forward-3d = []

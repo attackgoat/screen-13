@@ -4,7 +4,7 @@ use {
     },
     crate::{
         math::{quat, vec3, Mat4, Quat, Sphere, Vec3},
-        pak::{model::Mesh, IndexType, Model, ModelId, PakBuf},
+        pak::{model::Mesh, model::Model, IndexType, ModelId, PakBuf},
     },
     gltf::{import, mesh::Mode, Node, Primitive},
     std::{

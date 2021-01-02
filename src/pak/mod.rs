@@ -1,3 +1,7 @@
+//! Note about keys: When baking assets using the .toml format you will not need to use the .toml
+//! extension in order to load and use the assets at runtime. For instance, when trying to read a
+//! model packed at `models/thing.toml` you might: `gpu.read_model("models/thing")`
+
 pub(crate) mod model;
 pub(crate) mod scene;
 
@@ -15,7 +19,6 @@ pub use {
         bitmap::{Bitmap, Format as BitmapFormat},
         bitmap_font::BitmapFont,
         id::{AnimationId, BitmapFontId, BitmapId, BlobId, MaterialId, ModelId, SceneId, TextId},
-        model::Model,
         pak_buf::PakBuf,
         scene::Scene,
     },
@@ -23,7 +26,7 @@ pub use {
 };
 
 use {
-    self::id::Id,
+    self::{id::Id, model::Model},
     bincode::deserialize_from,
     brotli::{CompressorReader as BrotliReader, CompressorWriter as BrotliWriter},
     gfx_hal::IndexType as GfxHalIndexType,
@@ -122,7 +125,7 @@ impl Default for Compression {
 }
 
 #[derive(Clone, Copy, Deserialize, Eq, Hash, PartialEq, Serialize)]
-pub enum IndexType {
+pub(crate) enum IndexType {
     U16,
     U32,
 }
@@ -136,13 +139,37 @@ impl From<IndexType> for GfxHalIndexType {
     }
 }
 
+/// Holds bitmap IDs to match what was setup in the asset `.toml` file.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Material {
+    /// Three channel base color, aka albedo or diffuse, of the material.
     pub color: BitmapId,
+
+    /// A two channel bitmap of the metalness (red) and roughness (green) PBR parameters.
     pub metal_rough: BitmapId,
+
+    /// A standard three channel normal map.
     pub normal: BitmapId,
 }
 
+/// A wrapper type which allows callers to specify the `Read` and `Seek` implementations used to
+/// read assets.
+///
+/// Most programs will want to use the provided `open(...)` function of `Pak<BufReader<File>>`,
+/// which provides a buffered file-based `.pak` asset reader.
+///
+/// ## Examples
+///
+/// ```
+/// use {screen_13::prelude_all::*, std::io::Error};
+///
+/// fn main() -> Result<(), Error> {
+///     // This buffers the file so we don't have to re-read the data from disk if the asset is
+///     // re-read. TODO: work on an option for people who don't want buffered IO. 🚧
+///     let pak = Pak::open("/home/john/Desktop/foo.pak")?;
+///     ...
+/// }
+/// ```
 pub struct Pak<R>
 where
     R: Read + Seek,
@@ -153,6 +180,7 @@ where
 }
 
 impl Pak<BufReader<File>> {
+    /// Opens the given path and decodes a `Pak`.
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
         let current_dir = current_exe()?.parent().unwrap().to_path_buf(); // TODO: Unwrap
         let pak_path = current_dir.join(&path);
@@ -200,6 +228,7 @@ impl<R> Pak<R>
 where
     R: Read + Seek,
 {
+    /// Gets the pak-unique `AnimationId` corresponding to the given key, if one exsits.
     pub fn animation_id<K: AsRef<str>>(&self, key: K) -> Option<AnimationId> {
         if let Some(Id::Animation(id)) = self.buf.id(key) {
             Some(id)
@@ -208,6 +237,7 @@ where
         }
     }
 
+    /// Gets the pak-unique `BitmapId` corresponding to the given key, if one exsits.
     pub fn bitmap_id<K: AsRef<str>>(&self, key: K) -> Option<BitmapId> {
         if let Some(Id::Bitmap(id)) = self.buf.id(key) {
             Some(id)
@@ -216,6 +246,7 @@ where
         }
     }
 
+    /// Gets the pak-unique `BitmapFontId` corresponding to the given key, if one exsits.
     pub fn bitmap_font_id<K: AsRef<str>>(&self, key: K) -> Option<BitmapFontId> {
         if let Some(Id::BitmapFont(id)) = self.buf.id(key) {
             Some(id)
@@ -224,6 +255,7 @@ where
         }
     }
 
+    /// Gets the pak-unique `BlobId` corresponding to the given key, if one exsits.
     pub fn blob_id<K: AsRef<str>>(&self, key: K) -> Option<BlobId> {
         if let Some(Id::Blob(id)) = self.buf.id(key) {
             Some(id)
@@ -232,6 +264,7 @@ where
         }
     }
 
+    /// Gets the pak-unique `MaterialId` corresponding to the given key, if one exsits.
     pub fn material_id<K: AsRef<str>>(&self, key: K) -> Option<MaterialId> {
         if let Some(Id::Material(id)) = self.buf.id(key) {
             Some(id)
@@ -240,15 +273,20 @@ where
         }
     }
 
+    // TODO: Make option response
+    /// Gets the material for the given key.
     pub fn material<K: AsRef<str>>(&self, key: K) -> Material {
         let id = self.material_id(key).unwrap();
         self.material_with_id(id)
     }
 
+    // TODO: Make option response
+    /// Gets the material with the given id.
     pub fn material_with_id(&self, id: MaterialId) -> Material {
         self.buf.material(id)
     }
 
+    /// Gets the pak-unique `ModelId` corresponding to the given key, if one exsits.
     pub fn model_id<K: AsRef<str>>(&self, key: K) -> Option<ModelId> {
         if let Some(Id::Model(id)) = self.buf.id(key) {
             Some(id)
@@ -257,6 +295,7 @@ where
         }
     }
 
+    /// Gets the pak-unique `SceneId` corresponding to the given key, if one exsits.
     pub fn scene_id<K: AsRef<str>>(&self, key: K) -> Option<SceneId> {
         if let Some(Id::Scene(id)) = self.buf.id(key) {
             Some(id)
@@ -265,11 +304,14 @@ where
         }
     }
 
+    // TODO: Make less panicy.
+    /// Gets the text corresponding to the given key. Panics if the key doesn't exist.
     pub fn text<K: AsRef<str>>(&self, key: K) -> Cow<str> {
         // TODO: Pick proper user locale or best guess; use additional libs to detect!
         self.buf.text_locale(key, "en-US")
     }
 
+    /// Gets the pak-unique `TextId` corresponding to the given key, if one exsits.
     pub fn text_id<K: AsRef<str>>(&self, key: K) -> Option<TextId> {
         if let Some(Id::Text(id)) = self.buf.id(key) {
             Some(id)
@@ -278,10 +320,14 @@ where
         }
     }
 
+    // TODO: Make less panicy.
+    /// Gets the localized text corresponding to the given key and locale. Panics if the key doesn't exist.
     pub fn text_locale<K: AsRef<str>, L: AsRef<str>>(&self, key: K, locale: L) -> Cow<str> {
         self.buf.text_locale(key, locale)
     }
 
+    // TODO: Make less panicy.
+    /// Gets the text corresponding to the given key. Panics if the key doesn't exist.
     pub fn text_raw<K: AsRef<str>>(&self, key: K) -> Cow<str> {
         self.buf.text(key)
     }
@@ -293,32 +339,38 @@ where
         deserialize_from(reader).unwrap()
     }
 
-    pub fn read_animation(&mut self, id: AnimationId) -> Animation {
+    /// Reads the corresponding animation for the given id.
+    pub(crate) fn read_animation(&mut self, id: AnimationId) -> Animation {
         let (pos, len) = self.buf.animation(id);
         self.read(pos, len)
     }
 
-    pub fn read_bitmap(&mut self, id: BitmapId) -> Bitmap {
+    /// Reads the corresponding bitmap for the given id.
+    pub(crate) fn read_bitmap(&mut self, id: BitmapId) -> Bitmap {
         let (pos, len) = self.buf.bitmap(id);
         self.read(pos, len)
     }
 
-    pub fn read_bitmap_font(&mut self, id: BitmapFontId) -> BitmapFont {
+    /// Reads the corresponding bitmap font for the given id.
+    pub(crate) fn read_bitmap_font(&mut self, id: BitmapFontId) -> BitmapFont {
         let (pos, len) = self.buf.bitmap_font(id);
         self.read(pos, len)
     }
 
-    pub fn read_blob(&mut self, id: BlobId) -> Vec<u8> {
+    /// Reads the corresponding blob for the given id.
+    pub(crate) fn read_blob(&mut self, id: BlobId) -> Vec<u8> {
         let (pos, len) = self.buf.blob(id);
         self.read(pos, len)
     }
 
-    pub fn read_model(&mut self, id: ModelId) -> Model {
+    /// Reads the corresponding model for the given id.
+    pub(crate) fn read_model(&mut self, id: ModelId) -> Model {
         let (pos, len) = self.buf.model(id);
         self.read(pos, len)
     }
 
-    pub fn read_scene(&mut self, id: SceneId) -> Scene {
+    /// Reads the corresponding scene for the given id.
+    pub(crate) fn read_scene(&mut self, id: SceneId) -> Scene {
         let (pos, len) = self.buf.scene(id);
         self.read(pos, len)
     }

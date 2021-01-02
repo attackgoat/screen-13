@@ -9,7 +9,9 @@ use {
 };
 
 // TODO: Remove unused functions from below and also make sure the impls haven't got conflicting functions!!!
+/// A photographic lens type.
 pub trait Camera {
+    /// Returns the camera z-depth range.
     fn depth(&self) -> &Range<f32>;
 
     /// Returns `true` if the given cone can possibly be seen by this camera. Note that this function
@@ -23,11 +25,22 @@ pub trait Camera {
     fn overlaps_sphere(&self, sphere: Sphere) -> bool;
 
     // NOTE: These functions might change!
+    /// Gets the camera viewpoint position.
     fn eye(&self) -> Vec3;
+
+    /// TODO: Maybe remove?
     fn project_point(&self, p: Vec3) -> Vec3;
+
+    /// Gets the pre-calculated projection matrix.
     fn projection(&self) -> Mat4;
+
+    /// TODO: Maybe remove?
     fn unproject_point(&self, p: Vec3) -> Vec3;
+
+    /// Gets the pre-calculated view matrix.
     fn view(&self) -> Mat4;
+
+    /// Gets the pre-calculated inverse view matrix.
     fn view_inv(&self) -> Mat4;
 
     // TODO: Add tests or an example; otherwise just remove this

@@ -13,39 +13,39 @@ use {
     },
 };
 
-pub struct DataComputeInstruction {
+pub(super) struct DataComputeInstruction {
     pub base_idx: u32,
     pub base_vertex: u32,
     pub dispatch: u32,
 }
 
 /// Copies the gpu-side data from the given range to the cpu-side
-pub struct DataCopyInstruction<'a> {
+pub(super) struct DataCopyInstruction<'a> {
     pub buf: &'a mut Data,
     pub ranges: &'a [CopyRange],
 }
 
 /// Transfers the gpu-side data from the source range of one Data to another.
-pub struct DataTransferInstruction<'a> {
+pub(super) struct DataTransferInstruction<'a> {
     pub dst: &'a mut Data,
     pub src: &'a mut Data,
     pub src_range: Range<u64>,
 }
 
 /// Writes the range of cpu-side data to the gpu-side.
-pub struct DataWriteInstruction<'a> {
+pub(super) struct DataWriteInstruction<'a> {
     pub buf: &'a mut Data,
     pub range: Range<u64>,
 }
 
 /// Writes the range of cpu-side data to the gpu-side.
-pub struct DataWriteRefInstruction<'a> {
+pub(super) struct DataWriteRefInstruction<'a> {
     pub buf: RefMut<'a, Lease<Data>>,
     pub range: Range<u64>,
 }
 
 // Commands specified by the client become Instructions used by `DrawOp`
-pub enum Instruction<'a> {
+pub(super) enum Instruction<'a> {
     DataTransfer(DataTransferInstruction<'a>),
     IndexWriteRef(DataWriteRefInstruction<'a>),
     LightBegin,
@@ -69,17 +69,17 @@ pub enum Instruction<'a> {
     VertexWriteRef(DataWriteRefInstruction<'a>),
 }
 
-pub struct LightBindInstruction<'a> {
+pub(super) struct LightBindInstruction<'a> {
     pub buf: &'a Data,
     pub buf_len: u64,
 }
 
-pub struct LineDrawInstruction<'a> {
+pub(super) struct LineDrawInstruction<'a> {
     pub buf: &'a mut Data, // TODO: Mut??
     pub line_count: u32,
 }
 
-pub struct MeshBindInstruction<'a> {
+pub(super) struct MeshBindInstruction<'a> {
     pub idx_buf: Ref<'a, Lease<Data>>,
     pub idx_buf_len: u64,
     pub idx_ty: IndexType,
@@ -87,27 +87,27 @@ pub struct MeshBindInstruction<'a> {
     pub vertex_buf_len: u64,
 }
 
-pub struct MeshDrawInstruction<'a> {
+pub(super) struct MeshDrawInstruction<'a> {
     pub meshes: MeshIter<'a>,
     pub transform: Mat4,
 }
 
-pub struct PointLightDrawInstruction<'a> {
+pub(super) struct PointLightDrawInstruction<'a> {
     pub buf: &'a Data,
     pub lights: PointLightIter<'a>,
 }
 
-pub struct RectLightDrawInstruction<'a> {
+pub(super) struct RectLightDrawInstruction<'a> {
     pub light: &'a RectLightCommand,
     pub offset: u32,
 }
 
-pub struct SpotlightDrawInstruction<'a> {
+pub(super) struct SpotlightDrawInstruction<'a> {
     pub light: &'a SpotlightCommand,
     pub offset: u32,
 }
 
-pub struct VertexAttrsDescriptorsInstruction {
+pub(super) struct VertexAttrsDescriptorsInstruction {
     pub desc_set: usize,
     pub mode: CalcVertexAttrsComputeMode,
 }

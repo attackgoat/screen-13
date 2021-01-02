@@ -211,7 +211,7 @@ impl<N> Default for Builder<N> {
 }
 
 #[derive(Deserialize, Serialize)]
-pub struct Model {
+pub(crate) struct Model {
     idx_ty: IndexType,
 
     #[serde(with = "serde_bytes")]

@@ -1,49 +1,147 @@
-//#![deny(warnings)]
+//! An easy-to-use 2D/3D rendering engine in the spirit of QBasic.
+//!
+//! This crate provides image rendering types and functions. It is intended to be integrated into
+//! other libraries and programs which require very high performance graphics code, but which do
+//! not want to know _anything_ about the underlying graphics hardware or programming interfaces.
+//!
+//! Before starting you should be familar with these topics:
+//! - The Rust Programming Language ([_beginner level_](https://doc.rust-lang.org/book/ch01-02-hello-world.html))
+//! - Common file formats (`.gltf`, `.png`, _etc.._)
+//! - Pixel formats such as 24bpp RGB ([_optional_](https://en.wikipedia.org/wiki/Color_depth#True_color_(24-bit)))
+//! - Vertex formats such as [POSITION, TEXCOORD0] ([_optional_](https://www.khronos.org/opengl/wiki/Vertex_Specification#Theory))
+//! - _Some notion about what a GPU might be_
+//!
+//! With almost striking exception, which appear in "_NOTE:_" sections only, no further graphics
+//! API-specific concepts need to be introduced in order to master Screen 13 and implement
+//! exceptionally fast graphics code.
+//!
+//! _TL;DR:_ Screen 13 adds state-of-the-art Vulkan/Metal/DirectX/GL to your code, easily.
+//!
+//! # Usage
+//!
+//! First, add this to your `Cargo.toml`:
+//!
+//! ```toml
+//! [dependencies]
+//! screen_13 = "0.1"
+//! ```
+//!
+//! Next, for a console program:
+//!
+//! ```
+//! /// Creates a 128x128 pixel jpeg file as `output.jpg`.
+//! fn main() {
+//!     let gpu = screen_13::Gpu::offscreen();
+//!     let render = gpu.render((128u32, 128u32));
+//!     render.clear().record();
+//!     render.encode().record("output.jpg");
+//! }
+//! ```
+//!
+//! Or, for a windowed program:
+//!
+//! ```
+//! use screen_13::prelude_all::*;
+//!
+//! /// Paints a magenta window at 60 glorious frames per second.
+//! fn main() {
+//!     let engine = Engine::default();
+//!     engine.run(Box::new(FooProgram))
+//! }
+//!
+//! struct FooProgram;
+//!
+//! impl Screen for FooProgram {
+//!     fn render(&self, gpu: &Gpu, dims: Extent) -> Render {
+//!         let frame = gpu.render(dims);
+//!         frame.clear().with_value(MAGENTA).record();
+//!         frame
+//!     }
+//!
+//!     fn update(self: Box<Self>, gpu: &Gpu, dims: &Input) -> DynScreen {
+//!         // Never exits
+//!         self
+//!     }
+//! }
+//! ```
+//!
+//! # Screen 13 Concepts
+//!
+//! Screen 13 offers libraries and applications two general modes of operation, both of which focus
+//! on the `Gpu` type:
+//! - `Gpu::offscreen()`:  For headless rendering, such as from a console program
+//! - The `Screen` trait: Provides a fullscreen graphics mode or paints a window
+//!
+//! _NOTE_: Resources loaded or read from a `Gpu` created in headless or screen modes cannot be
+//! used with other instances, including of the same mode. This is a limitation only because the
+//! code to share the resources properly has not be started yet.
+//!
+//! ## Screen 13 PAK Format
+//!
+//! Although data may be loaded at _runtime_, the highest performance can be achieved by pre-baking
+//! data at _design-time_ and simply reading it at _runtime_.
+//!
+//! It is recommended to use the `.pak` file format, _which includes optional *10:1-typical
+//! compression*_, whenever possible. See the main
+//! [README](https://github.com/attackgoat/screen-13) for more on this philosphy and the module
+//! level documentation for more details on how to use this system with existing files and assets.
+
 #![allow(dead_code)]
+//#![deny(warnings)]
+#![warn(missing_docs)]
 
 #[macro_use]
 extern crate log;
 
 pub mod camera;
 pub mod color;
-pub mod config;
 pub mod fx;
 pub mod gpu;
 pub mod input;
 pub mod math;
-
-/// Note about keys: When baking assets using the .toml format you will not need to use the .toml
-/// extension in order to load and use the assets at runtime. For instance, when trying to read a
-/// model packed at `models/thing.toml` you might: `gpu.read_model("models/thing")`
 pub mod pak;
 
 /// Things, particularly traits, which are used in almost every single Screen 13 program.
 pub mod prelude {
-    pub use super::{DynScreen, Engine, Gpu, Input, Pool, Program, Render, Screen};
+    pub use super::{
+        gpu::{Gpu, Pool, Render},
+        input::Input,
+        program::Program,
+        DynScreen, Engine, Screen,
+    };
 }
 
-/// Like prelude, but everything
+/// Like prelude, but contains all public exports.
 pub mod prelude_all {
     pub use super::{
-        camera::*, color::*, config::*, fx::*, gpu::Material, gpu::*, input::*, math::*,
+        camera::*, color::*, fx::*, gpu::Material, gpu::*, input::*, math::*,
         pak::Material as PakMaterial, pak::*, prelude::*, program::*,
     };
 }
 
 pub(crate) mod error;
+
+mod config;
 mod program;
 
-pub use self::{
-    color::{AlphaColor, Color},
-    gpu::{Gpu, Pool, Render},
-    input::Input,
-    program::Program,
-};
+pub use self::program::Program;
 
 use {
-    self::{config::Config, gpu::Swapchain, math::Extent},
+    self::{
+        config::Config,
+        gpu::{Gpu, Render, Swapchain},
+        input::Input,
+        math::Extent,
+    },
     crate::gpu::Op,
-    std::{cmp::Ordering, collections::VecDeque, convert::TryFrom},
+    app_dirs::{get_app_root, AppDataType, AppDirsError, AppInfo},
+    std::{
+        cmp::Ordering,
+        collections::VecDeque,
+        convert::TryFrom,
+        io::{Error, ErrorKind},
+        path::PathBuf,
+    },
     winit::{
         dpi::{LogicalSize, PhysicalPosition, PhysicalSize},
         event::{Event, WindowEvent},
@@ -59,6 +157,7 @@ use {
     std::time::Instant,
 };
 
+/// Helpful alias of `Box<dyn Screen>`; can be used to hold an instance of any `Screen`.
 pub type DynScreen = Box<dyn Screen>;
 
 const MINIMUM_WINDOW_SIZE: usize = 420;
@@ -83,6 +182,26 @@ fn cmp_area_and_refresh_rate(lhs: &VideoMode, rhs: &VideoMode) -> Ordering {
     lhs.refresh_rate().cmp(&rhs.refresh_rate())
 }
 
+fn program_root(program: &Program) -> Result<PathBuf, Error> {
+    root(program.name, program.author)
+}
+
+/// Gets the filesystem root for a given program name and author. The returned path is a good place
+/// to store program configuration and data on a per-user basis.
+pub fn root(name: &'static str, author: &'static str) -> Result<PathBuf, Error> {
+    // Converts the app_dirs crate AppDirsError to a regular IO Error
+    match get_app_root(AppDataType::UserConfig, &AppInfo { name, author }) {
+        Err(err) => Err(match err {
+            AppDirsError::Io(err) => err,
+            AppDirsError::InvalidAppInfo => Error::from(ErrorKind::InvalidInput),
+            AppDirsError::NotSupported => Error::from(ErrorKind::InvalidData),
+        }),
+        Ok(res) => Ok(res),
+    }
+}
+
+/// Pumps an operating system event loop in order to refresh a `Gpu`-created image at the refresh
+/// rate of the monitor. Requires a `DynScreen` instance to render.
 pub struct Engine {
     config: Config,
     event_loop: Option<EventLoop<()>>,
@@ -93,6 +212,24 @@ pub struct Engine {
 }
 
 impl Engine {
+    /// Constructs a new `Engine` from the given `Program` description.
+    ///
+    /// _NOTE:_ This function loads any existing user configuration file and may override program
+    /// description options in order to preserve the user experience.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use screen_13::prelude_all::*;
+    ///
+    /// fn main() {
+    ///     let foo = Program::new("UltraMega III", "Nintari, Inc.")
+    ///                 .with_title("UltraMega III: Breath of Fire")
+    ///                 .with_window();
+    ///     let engine = Engine::new(foo); //    We ask for windowed mode, but we ...
+    ///     engine.run(...)                // <- ... get fullscreen because of some previous run. 😂
+    /// }
+    /// ```
     pub fn new<'a, 'b, P: AsRef<Program<'a, 'b>>>(program: P) -> Self {
         let program = program.as_ref();
         let config = Config::read(program.name, program.author).unwrap();
@@ -190,6 +327,7 @@ impl Engine {
         res
     }
 
+    /// Borrows the `Gpu` instance.
     pub fn gpu(&self) -> &Gpu {
         &self.gpu
     }
@@ -210,6 +348,28 @@ impl Engine {
         ops
     }
 
+    /// Runs a program starting with the given `DynScreen`.
+    ///
+    /// Immediately after this call, `draw` will be called on the screen, followed by `update`, ad
+    /// infinium. This call does not return to the calling code.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use screen_13::prelude_all::*;
+    ///
+    /// fn main() {
+    ///     let engine = Engine::default();
+    ///     engine.run(Box::new(FooScreen)) // <- Note the return value which is the no-return bang
+    ///                                     //    "value", inception. 🤯
+    /// }
+    ///
+    /// struct FooScreen;
+    ///
+    /// impl Screen for FooScreen {
+    ///     ...
+    /// }
+    /// ```
     pub fn run(mut self, screen: DynScreen) -> ! {
         let mut input = Input::default();
         let mut render_buf = VecDeque::with_capacity(RENDER_BUF_LEN);
@@ -295,16 +455,140 @@ impl Default for Engine {
     }
 }
 
-/// The result of presenting a render to the screen. Hold this around for a few frames to
-/// give the GPU time to finish processing it.
-pub struct Frame(Vec<Box<dyn Op>>);
+impl From<Program<'_, '_>> for Engine {
+    fn from(program: Program<'_, '_>) -> Self {
+        Self::new(program)
+    }
+}
 
-/// Screen provides the ability to render using the given
-/// GPU and optionally to provide a new Screen result.
+impl From<&Program<'_, '_>> for Engine {
+    fn from(program: &Program<'_, '_>) -> Self {
+        Self::new(program)
+    }
+}
+
+/// A window-painting and user input handling type.
+///
+/// Types implementing `Screen` are able to render frames to the presentation buffers and
+/// optionally update the current screen. Instances of `Screen` are provided to `Engine` for
+/// normal use, but can also be owned in a parent-child relationship to create sub-screens or
+/// to dynamically render.
+///
+/// _NOTE:_ See the `fx` module for some pre-built examples of such screen ownership structures.
+///
+/// While a program event loop is running the `Screen` functions are called repeatedly in this
+/// order:
+/// 1. `render`: Provide a `Render` instance in which rendering operations have been recorded.
+/// 2. `update`: Respond to window input and either return `self` (no change) or a new `DynScreen`.
+///
+/// ## Implementing `Screen`
+///
+/// Implementors of `Screen` invariably need to access resources loaded or read from the `Gpu`,
+/// such as bitmaps and models. To accomplish resource access you might either offer a loading
+/// function or perform the needed loads at runtime, using `RefCell` to gain interior mutability
+/// during the `render(...)` call.
+///
+/// Example load before `render`:
+///
+/// ```
+/// impl FooScreen {
+///     fn load(gpu: &Gpu, pak: &mut PakFile) -> Self {
+///         Self {
+///             bar: gpu.read_bitmap(gpu, &mut pak, "bar"),
+///         }
+///     }
+/// }
+/// ```
+///
+/// Example load during `render` (_`update` works too_):
+///
+/// ```
+/// impl Screen for FooScreen {
+///     fn render(&self, gpu: &Gpu, dims: Extent) -> Render {
+///         *self.bar.borrow_mut() = Some(gpu.read_bitmap(gpu, self.pak.borrow_mut(), "bar"));
+///         ...
+///     }
+///
+///     ...
+/// }
+/// ```
 pub trait Screen {
-    /// TODO
+    /// When paired with an `Engine`, generates images presented to the physical display adapter
+    /// using a swapchain and fullscreen video mode or operating system window.
+    ///
+    /// ## Examples
+    ///
+    /// Calling `render` on another `Screen`:
+    ///
+    /// ```
+    /// let foo: DynScreen = ...
+    /// let gpu = Gpu::offscreen();
+    ///
+    /// // Ask foo to render a document
+    /// let foo_doc = foo.render(&gpu, Extent::new(1024, 128));
+    ///
+    /// // 🤮 Ugh! I didn't like it!
+    /// foo_doc.clear().record();
+    ///
+    /// println!("{:?}", foo_doc);
+    /// ```
+    ///
+    /// Responding to `render` as a `Screen` implementation:
+    ///
+    /// ```
+    /// fn render(&self, gpu: &Gpu, dims: Extent) -> Render {
+    ///     let frame = gpu.render(dims);
+    ///
+    ///     // 🥇 It's some of my best work!
+    ///     frame.clear().with_value(GREEN).record();
+    ///
+    ///     frame
+    /// }
+    /// ```
+    ///
+    /// _NOTE:_ It is considered undefined behavior to return a render which has not recorded any
+    /// commands, as shown:
+    ///
+    /// ```
+    /// fn render(&self, gpu: &Gpu, dims: Extent) -> Render {
+    ///     // This is UB because the graphics hardware might have been using this render to store
+    ///     // an 8K atlas of 😸's, and it is not guaranteed to be initialized.
+    ///     // Hey, the more you know!
+    ///     gpu.render(dims)
+    /// }
+    /// ```
     fn render(&self, gpu: &Gpu, dims: Extent) -> Render;
 
-    /// TODO
+    /// Responds to user input and either provides a new `DynScreen` instance or `self` to indicate
+    /// no-change. After `update(...)`, `render(...)` will be called on the returned screen, and
+    /// the previous screen will be dropped.
+    ///
+    /// ## Examples
+    ///
+    /// Render this screen forever, never responding to user input or exiting:
+    ///
+    /// ```
+    /// fn update(self: Box<Self>, gpu: &Gpu, input: &Input) -> DynScreen {
+    ///     // 🙈 Yolo!
+    ///     self
+    /// }
+    /// ```
+    ///
+    /// A kind of three way junction. Goes to `BarScreen` when Home is pressed, otherwise
+    /// presents the current screen, rendering for five seconds before quitting:
+    ///
+    /// ```
+    /// fn update(self: Box<Self>, gpu: &Gpu, input: &Input) -> DynScreen {
+    ///     let wall_time = ...
+    ///     if input.keys.is_key_down(Key::Home) {
+    ///         Box::new(BarScreen)
+    ///     } else if wall_time < 5.0 {
+    ///         self
+    ///     } else {
+    ///         // 👋
+    ///         exit(0);
+    ///     }
+    /// }
+    /// ```
     fn update(self: Box<Self>, gpu: &Gpu, input: &Input) -> DynScreen;
 }

@@ -2,17 +2,19 @@
 
 #include "blend_decl.glsl"
 
+float hard_mix(float a, float b) {
+    if (b < 0.5) {
+        return 2 * a * b;
+    } else {
+        return 1 - 2 * (1 - a) * (1 - b);
+    }
+}
+
 vec3 blend_op(vec3 a, vec3 b) {
     vec3 result;
-    result.r = b.r < 0.5
-        ? 2 * a.r * b.r
-        : 1 - 2 * (1 - a.r) * (1 - b.r);
-    result.g = b.g < 0.5
-        ? 2 * a.g * b.g
-        : 1 - 2 * (1 - a.g) * (1 - b.g);
-    result.b = b.b < 0.5
-        ? 2 * a.b * b.b
-        : 1 - 2 * (1 - a.b) * (1 - b.b);
+    result.r = hard_mix(a.r, b.r);
+    result.g = hard_mix(a.g, b.g);
+    result.b = hard_mix(a.b, b.b);
 
     return result;
 }

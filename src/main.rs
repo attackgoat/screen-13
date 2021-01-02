@@ -30,7 +30,7 @@ fn main() -> Result<(), IoError> {
     init();
 
     // What to bake (the input text file)
-    let project_arg = args().nth(1).expect("No project specified; re-run this command with the name of a project file as the argument. Example: `cargo run my_program.toml`");
+    let project_arg = args().nth(1).expect("No project specified; re-run this command with the name of a project file as the argument. Example: `cargo run foo_program.toml`");
 
     // Where to put the baked .pak
     // TODO: This needs to be easier to use when not running demos; it should work with relative paths (canonicalized) and such for building external projects!

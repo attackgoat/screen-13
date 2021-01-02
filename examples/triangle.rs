@@ -43,8 +43,12 @@ fn main() {
 
     // Render + encode it to disk
     let mut render = gpu.render(dims);
-    render
-        .draw()
-        .record(&camera, &mut [Draw::model(tri, rust, Mat4::identity())]);
+    render.draw().record(
+        &camera,
+        &mut [
+            Draw::model(tri, rust, Mat4::identity()),
+            Draw::point_light(Vec3::zero(), WHITE, 1_000.0, 1.0),
+        ],
+    );
     render.encode().record("output.jpg");
 }

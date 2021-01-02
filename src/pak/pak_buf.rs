@@ -1,7 +1,7 @@
 use {
     super::{
-        id::Id, Animation, AnimationId, Bitmap, BitmapFont, BitmapFontId, BitmapId, BlobId,
-        Compression, DataRef, Material, MaterialId, Model, ModelId, Scene, SceneId,
+        id::Id, model::Model, Animation, AnimationId, Bitmap, BitmapFont, BitmapFontId, BitmapId,
+        BlobId, Compression, DataRef, Material, MaterialId, ModelId, Scene, SceneId,
     },
     bincode::serialize_into,
     serde::{Deserialize, Serialize},
