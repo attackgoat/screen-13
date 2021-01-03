@@ -1,7 +1,10 @@
 use {
     super::{
         driver::{Device, Driver},
-        op::{ClearOp, CopyOp, DrawOp, EncodeOp, FontOp, GradientOp, Op, WriteOp},
+        op::{
+            clear::ClearOp, copy::CopyOp, draw::DrawOp, encode::EncodeOp, font::FontOp,
+            gradient::GradientOp, write::WriteOp, Op,
+        },
         pool::{Lease, Pool},
         Texture2d,
     },

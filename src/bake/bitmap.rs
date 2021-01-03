@@ -3,7 +3,10 @@ use {
         asset::{Bitmap as BitmapAsset, BitmapFont as BitmapFontAsset},
         get_filename_key, get_path,
     },
-    crate::pak::{Bitmap, BitmapFont, BitmapFontId, BitmapFormat, BitmapId, PakBuf},
+    crate::pak::{
+        id::{BitmapFontId, BitmapId},
+        Bitmap, BitmapFont, BitmapFormat, PakBuf,
+    },
     bmfont::{BMFont, OrdinateOrientation},
     image::{buffer::ConvertBuffer, open as image_open, DynamicImage, RgbaImage},
     std::{fs::read_to_string, io::Cursor, path::Path},

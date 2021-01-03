@@ -1,30 +1,13 @@
 //! A collection of operation implementations used to fulfill the Render API.
 
-mod bitmap;
-mod clear;
-mod copy;
-mod draw;
-mod encode;
-mod font;
-mod gradient;
-mod write;
-
-pub use self::{
-    bitmap::{Bitmap, BitmapOp},
-    clear::ClearOp,
-    copy::CopyOp,
-    draw::{
-        command::{
-            LineCommand, Mesh, ModelCommand, PointLightCommand, RectLightCommand, SpotlightCommand,
-            SunlightCommand,
-        },
-        Compiler, Draw, DrawOp, Material, Skydome,
-    },
-    encode::EncodeOp,
-    font::{Font, FontOp},
-    gradient::GradientOp,
-    write::{Mode as WriteMode, Write, WriteOp},
-};
+pub mod bitmap;
+pub mod clear;
+pub mod copy;
+pub mod draw;
+pub mod encode;
+pub mod font;
+pub mod gradient;
+pub mod write;
 
 use {
     super::{Lease, Pool},

@@ -1,5 +1,8 @@
 use {
-    super::BitmapOp,
+    super::{
+        bitmap::{Bitmap, BitmapOp},
+        Op,
+    },
     crate::{
         color::{AlphaColor, TRANSPARENT_BLACK},
         gpu::{
@@ -11,7 +14,6 @@ use {
             driver::{
                 bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
             },
-            op::{Bitmap, Op},
             pool::{Lease, Pool},
             Data, Texture2d,
         },
@@ -47,6 +49,7 @@ const SUBPASS_IDX: u8 = 0;
 // TODO: Extend this with a DrawOp-like compiler to cache repeated frame-to-frame tesselations
 // TODO: Allow one FontOp to specify a list of colors, make a rainbow-colored text example for it
 /// Holds a decoded bitmap Font.
+#[derive(Debug)]
 pub struct Font {
     def: BMFont,
     pages: Vec<Bitmap>,

@@ -2,7 +2,11 @@ use {
     super::{asset::Animation as AnimationAsset, get_filename_key, get_path},
     crate::{
         math::{quat, Quat, Vec3},
-        pak::{Animation, AnimationId, Channel, PakBuf},
+        pak::{
+            anim::{Animation, Channel},
+            id::AnimationId,
+            PakBuf,
+        },
     },
     gltf::{
         animation::{

@@ -17,58 +17,6 @@ pub struct Instance {
     pub tags: Vec<String>,
 }
 
-pub struct InstanceRef<'a> {
-    idx: usize,
-    scene: &'a Scene,
-}
-
-impl InstanceRef<'_> {
-    pub fn has_tag<T: AsRef<str>>(&self, tag: T) -> bool {
-        let tag = tag.as_ref();
-        self.scene_ref()
-            .tags
-            .binary_search_by(|probe| self.scene_str(*probe).cmp(tag))
-            .is_ok()
-    }
-
-    pub fn id(&self) -> Option<&str> {
-        self.scene.refs[self.idx]
-            .id
-            .map(|idx| self.scene.strs[idx as usize].as_str())
-    }
-
-    pub fn material(&self) -> Option<MaterialId> {
-        self.scene_ref().material
-    }
-
-    pub fn model(&self) -> Option<ModelId> {
-        self.scene_ref().model
-    }
-
-    pub fn position(&self) -> Vec3 {
-        self.scene_ref().position
-    }
-
-    pub fn rotation(&self) -> Quat {
-        self.scene_ref().rotation
-    }
-
-    fn scene_ref(&self) -> &Ref {
-        &self.scene.refs[self.idx]
-    }
-
-    fn scene_str<I: Into<usize>>(&self, idx: I) -> &str {
-        self.scene.strs[idx.into()].as_str()
-    }
-
-    pub fn tags(&self) -> impl Iterator<Item = &str> {
-        self.scene_ref()
-            .tags
-            .iter()
-            .map(move |idx| self.scene_str(*idx))
-    }
-}
-
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct Ref {
     id: Option<Idx>,
@@ -79,17 +27,19 @@ struct Ref {
     tags: Vec<Idx>,
 }
 
+/// An `Iterator` of `SceneRef` items.
+#[derive(Debug)]
 pub struct RefIter<'a> {
     idx: usize,
     scene: &'a Scene,
 }
 
 impl<'a> Iterator for RefIter<'a> {
-    type Item = InstanceRef<'a>;
+    type Item = SceneRef<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.idx < self.scene.refs.len() {
-            let res = InstanceRef {
+            let res = SceneRef {
                 scene: self.scene,
                 idx: self.idx,
             };
@@ -143,5 +93,66 @@ impl Scene {
             idx: 0,
             scene: self,
         }
+    }
+}
+
+/// An individual `Scene` reference.
+#[derive(Debug)]
+pub struct SceneRef<'a> {
+    idx: usize,
+    scene: &'a Scene,
+}
+
+impl SceneRef<'_> {
+    /// Returns `true` if the scene contains the given tag.
+    pub fn has_tag<T: AsRef<str>>(&self, tag: T) -> bool {
+        let tag = tag.as_ref();
+        self.scene_ref()
+            .tags
+            .binary_search_by(|probe| self.scene_str(*probe).cmp(tag))
+            .is_ok()
+    }
+
+    /// Returns `id`, if set.
+    pub fn id(&self) -> Option<&str> {
+        self.scene.refs[self.idx]
+            .id
+            .map(|idx| self.scene.strs[idx as usize].as_str())
+    }
+
+    /// Returns `material`, if set.
+    pub fn material(&self) -> Option<MaterialId> {
+        self.scene_ref().material
+    }
+
+    /// Returns `model`, if set.
+    pub fn model(&self) -> Option<ModelId> {
+        self.scene_ref().model
+    }
+
+    /// Returns `position` or the zero vector.
+    pub fn position(&self) -> Vec3 {
+        self.scene_ref().position
+    }
+
+    /// Returns `rotation` or the identity quaternion.
+    pub fn rotation(&self) -> Quat {
+        self.scene_ref().rotation
+    }
+
+    fn scene_ref(&self) -> &Ref {
+        &self.scene.refs[self.idx]
+    }
+
+    fn scene_str<I: Into<usize>>(&self, idx: I) -> &str {
+        self.scene.strs[idx.into()].as_str()
+    }
+
+    /// Returns an `Iterator` of tags.
+    pub fn tags(&self) -> impl Iterator<Item = &str> {
+        self.scene_ref()
+            .tags
+            .iter()
+            .map(move |idx| self.scene_str(*idx))
     }
 }

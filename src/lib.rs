@@ -118,8 +118,20 @@ pub mod prelude {
 /// Like prelude, but contains all public exports.
 pub mod prelude_all {
     pub use super::{
-        camera::*, color::*, fx::*, gpu::draw::*, gpu::vertex::*, gpu::write::*, gpu::*, input::*,
-        math::*, pak::Material as PakMaterial, pak::*, prelude::*, program::*,
+        camera::*,
+        color::*,
+        fx::*,
+        gpu::draw::*,
+        gpu::font::*,
+        gpu::vertex::*,
+        gpu::write::*,
+        gpu::*,
+        input::*,
+        math::*,
+        pak::MaterialDesc,
+        pak::{id::*, *},
+        prelude::*,
+        program::*,
     };
 }
 
@@ -147,7 +159,7 @@ use {
         path::PathBuf,
     },
     winit::{
-        dpi::{LogicalSize, PhysicalPosition, PhysicalSize},
+        dpi::{LogicalSize, PhysicalSize},
         event::{Event, WindowEvent},
         event_loop::{ControlFlow, EventLoop},
         monitor::VideoMode,
@@ -310,12 +322,16 @@ impl Engine {
         builder = builder
             .with_fullscreen(None)
             .with_inner_size(physical_dims)
+            // .with_visible(false)
             .with_min_inner_size(LogicalSize::new(
                 MINIMUM_WINDOW_SIZE as f32,
                 MINIMUM_WINDOW_SIZE as f32,
             ));
 
-        let res = Self::new_builder(program, config, event_loop, builder, dims);
+        Self::new_builder(program, config, event_loop, builder, dims)
+
+        /* TODO: This is ugly on x11
+        use winit::dpi::PhysicalPosition;
 
         // In windowed mode set the screen position to be nicely centered
         if let Some(monitor) = res.window.current_monitor() {
@@ -326,9 +342,8 @@ impl Engine {
             let window_y = half_monitor_height - half_window_height;
             res.window
                 .set_outer_position(PhysicalPosition::new(window_x, window_y));
-        }
-
-        res
+            // res.window.set_visible(true);
+        }*/
     }
 
     /// Borrows the `Gpu` instance.

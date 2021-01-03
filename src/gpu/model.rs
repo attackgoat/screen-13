@@ -58,7 +58,7 @@ impl<'a> Iterator for MeshIter<'a> {
 }
 
 /// A reference to an individual mesh name, which may be shared by multiple meshes.
-/// 
+///
 /// It is undefined behavior to use a MeshFilter with any Model other than the one it was received
 /// from.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

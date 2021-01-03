@@ -8,11 +8,16 @@ mod geom_buf;
 mod instruction;
 mod key;
 
-pub use self::{command::Command as Draw, compiler::Compiler};
+pub use self::{
+    command::{
+        Command as Draw, LineCommand, Mesh, ModelCommand, PointLightCommand, RectLightCommand,
+        SpotlightCommand, SunlightCommand,
+    },
+    compiler::Compiler,
+};
 
 use {
     self::{
-        command::SunlightCommand,
         compiler::CalcVertexAttrsDescriptors,
         geom::{LINE_STRIDE, POINT_LIGHT, RECT_LIGHT_STRIDE, SPOTLIGHT_STRIDE},
         geom_buf::GeometryBuffer,

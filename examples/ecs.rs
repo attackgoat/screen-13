@@ -14,7 +14,7 @@ macro_rules! ecs_sys {
             mod [<$name:snake _sys>] {
                 use {
                     super::PakFile,
-                    screen_13::{gpu::{Gpu, [<$name Ref>]}, pak::[<$name Id>]},
+                    screen_13::{gpu::{Gpu, [<$name Ref>]}, pak::id::[<$name Id>]},
                     std::collections::HashMap,
                 };
 
@@ -183,7 +183,7 @@ impl Screen for Game {
                 .iter()
                 .map(|(_, (model, material, position, rotation))| {
                     let model = self.models.model(*model);
-                    let material = screen_13::gpu::Material {
+                    let material = screen_13::gpu::draw::Material {
                         color: self.bitmaps.bitmap(material.color),
                         metal_rough: self.bitmaps.bitmap(material.metal_rough),
                         normal: self.bitmaps.bitmap(material.normal),

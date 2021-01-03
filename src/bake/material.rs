@@ -5,7 +5,7 @@ use {
         bitmap::pixels,
         get_filename_key, get_path,
     },
-    crate::pak::{Bitmap, BitmapFormat, Material, MaterialId, PakBuf},
+    crate::pak::{id::MaterialId, Bitmap, BitmapFormat, MaterialDesc, PakBuf},
     std::path::Path,
 };
 
@@ -70,7 +70,7 @@ pub fn bake_material<P1: AsRef<Path>, P2: AsRef<Path>>(
     // Pak this asset
     pak.push_material(
         key,
-        Material {
+        MaterialDesc {
             color,
             metal_rough,
             normal,

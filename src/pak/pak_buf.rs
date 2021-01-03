@@ -1,7 +1,7 @@
 use {
     super::{
-        id::Id, model::Model, Animation, AnimationId, Bitmap, BitmapFont, BitmapFontId, BitmapId,
-        BlobId, Compression, DataRef, Material, MaterialId, ModelId, Scene, SceneId,
+        anim::Animation, ids::Id, model::Model, AnimationId, Bitmap, BitmapFont, BitmapFontId,
+        BitmapId, BlobId, Compression, DataRef, MaterialDesc, MaterialId, ModelId, Scene, SceneId,
     },
     bincode::serialize_into,
     serde::{Deserialize, Serialize},
@@ -30,7 +30,7 @@ pub struct PakBuf {
     // These fields are handled by bincode serialization as-is
     ids: HashMap<String, Id>,
     localizations: HashMap<String, HashMap<String, String>>,
-    materials: Vec<Material>,
+    materials: Vec<MaterialDesc>,
     texts: HashMap<String, String>,
 
     // These fields are loaded on demand
@@ -63,7 +63,7 @@ impl PakBuf {
         self.ids.get(key.as_ref()).cloned()
     }
 
-    pub(super) fn material(&self, id: MaterialId) -> Material {
+    pub(super) fn material(&self, id: MaterialId) -> MaterialDesc {
         *self.materials.get(id.0 as usize).unwrap()
     }
 
@@ -115,7 +115,7 @@ impl PakBuf {
         self.localizations.insert(locale, texts);
     }
 
-    pub(crate) fn push_material(&mut self, key: String, val: Material) -> MaterialId {
+    pub(crate) fn push_material(&mut self, key: String, val: MaterialDesc) -> MaterialId {
         assert!(self.ids.get(&key).is_none());
 
         let id = MaterialId(self.materials.len() as _);

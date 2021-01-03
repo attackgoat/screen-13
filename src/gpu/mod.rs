@@ -50,19 +50,19 @@
 pub mod clear {
     //! Types for clearing textures with a configurable color.
 
-    pub use super::op::ClearOp;
+    pub use super::op::clear::ClearOp;
 }
 
 pub mod copy {
     //! Types for copying textures with configurable source and destination coordinates.
 
-    pub use super::op::CopyOp;
+    pub use super::op::copy::CopyOp;
 }
 
 pub mod draw {
     //! Types for drawing user-specified models and lights onto textures.
 
-    pub use super::op::{
+    pub use super::op::draw::{
         Draw, DrawOp, LineCommand, Material, Mesh, ModelCommand, PointLightCommand,
         RectLightCommand, Skydome, SpotlightCommand, SunlightCommand,
     };
@@ -71,25 +71,25 @@ pub mod draw {
 pub mod encode {
     //! Types for encoding textures into the `.jpg` or `.png` file formats.
 
-    pub use super::op::EncodeOp;
+    pub use super::op::encode::EncodeOp;
 }
 
 pub mod font {
     //! Types for writing text onto textures using stylized fonts.
 
-    pub use super::op::{Font, FontOp};
+    pub use super::op::font::{Font, FontOp};
 }
 
 pub mod gradient {
     //! Types for filling textures with linear and radial gradients.
 
-    pub use super::op::GradientOp;
+    pub use super::op::gradient::GradientOp;
 }
 
 pub mod write {
     //! Types for pasting/splatting textures with configurable source and destination transforms.
 
-    pub use super::op::{Write, WriteMode, WriteOp};
+    pub use super::op::write::{Mode as WriteMode, Write, WriteOp};
 }
 
 mod data;
@@ -108,7 +108,7 @@ mod texture;
 pub use self::{
     def::vertex,
     model::{MeshFilter, Model, Pose},
-    op::Bitmap,
+    op::bitmap::Bitmap,
     render::Render,
     texture::Texture,
 };
@@ -120,14 +120,18 @@ use {
         data::{Data, Mapping},
         driver::{Device, Image2d, Surface},
         font::*,
-        op::BitmapOp,
+        op::bitmap::BitmapOp,
         pool::{Lease, PoolRef},
         vertex::Vertex,
     },
     crate::{
         error::Error,
         math::Extent,
-        pak::{model::Mesh, AnimationId, BitmapFormat, BitmapId, IndexType, ModelId, Pak},
+        pak::{
+            id::{AnimationId, BitmapId, ModelId},
+            model::Mesh,
+            BitmapFormat, IndexType, Pak,
+        },
     },
     gfx_hal::{
         adapter::Adapter, buffer::Usage, device::Device as _, queue::QueueFamily,

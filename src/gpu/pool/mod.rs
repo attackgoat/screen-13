@@ -17,7 +17,7 @@ use {
             RenderPassMode,
         },
         driver::{CommandPool, DescriptorPool, Driver, Fence, Image2d, Memory, RenderPass},
-        op::Compiler,
+        op::draw::Compiler,
         BlendMode, Data, MaskMode, MatteMode, Texture, TextureRef,
     },
     crate::math::Extent,

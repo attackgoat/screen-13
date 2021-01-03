@@ -2,7 +2,7 @@ use {
     super::{
         asset::Scene as SceneAsset, bake_material, bake_model, get_filename_key, get_path, Asset,
     },
-    crate::pak::{scene::Instance, PakBuf, Scene, SceneId},
+    crate::pak::{id::SceneId, scene::Instance, PakBuf, Scene},
     std::path::Path,
 };
 
