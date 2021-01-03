@@ -140,7 +140,7 @@ pub(crate) mod error;
 mod config;
 mod program;
 
-pub use self::program::Program;
+pub use self::program::{Icon, Program};
 
 use {
     self::{
@@ -163,7 +163,7 @@ use {
         event::{Event, WindowEvent},
         event_loop::{ControlFlow, EventLoop},
         monitor::VideoMode,
-        window::{Fullscreen, Icon, Window, WindowBuilder},
+        window::{Fullscreen, Icon as WinitIcon, Window, WindowBuilder},
     },
 };
 
@@ -268,7 +268,7 @@ impl Engine {
         let icon = program
             .icon
             .as_ref()
-            .map(|icon| Icon::try_from(icon).unwrap());
+            .map(|icon| WinitIcon::try_from(icon).unwrap());
         let window = builder
             .with_resizable(program.resizable)
             .with_title(program.title)

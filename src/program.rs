@@ -16,8 +16,9 @@ use {
 const DEFAULT_AUTHOR: &str = "screen-13";
 const DEFAULT_NAME: &str = "default";
 
-/// A small picture which represents the program, to be used by the operating system in different
-/// ways on each platform. Pixels are RGBA formatted.
+/// A small picture which represents a program, to be used in different ways on each platform.
+///
+/// Pixels are RGBA formatted.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Icon<'a> {
     /// Icon height in pixels.

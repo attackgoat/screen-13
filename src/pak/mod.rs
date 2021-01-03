@@ -208,17 +208,12 @@ mod data_ref;
 mod ids;
 mod pak_buf;
 
-// TODO: Remove ErrorKind!
-pub use {
-    self::{
-        bitmap::Format as BitmapFormat,
-        pak_buf::PakBuf,
-        scene::{RefIter, Scene, SceneRef},
-    },
-    bincode::ErrorKind,
+pub use self::{
+    bitmap::Format as BitmapFormat,
+    scene::{Ref, RefIter, Scene},
 };
 
-pub(crate) use self::{bitmap::Bitmap, bitmap_font::BitmapFont};
+pub(crate) use self::{bitmap::Bitmap, bitmap_font::BitmapFont, pak_buf::PakBuf};
 
 use {
     self::{

@@ -154,13 +154,13 @@ use {
     std::time::Instant,
 };
 
-/// A two dimensional rendering result.
+/// Two-dimensional rendering result.
 pub type Texture2d = TextureRef<Image2d>;
 
-/// A helpful alias used to share `Bitmap` instances used with rendering operations.
+/// Helpful alias of `Rc<Bitmap>`; used to share `Bitmap` instances used with rendering operations.
 pub type BitmapRef = Rc<Bitmap>;
 
-/// A helpful alias used to share `Model` instances used with rendering operations.
+/// Helpful alias of `Rc<Model>`; used to share `Model` instances used with rendering operations.
 pub type ModelRef = Rc<Model>;
 
 pub(crate) type TextureRef<I> = Rc<RefCell<Texture<I>>>;
