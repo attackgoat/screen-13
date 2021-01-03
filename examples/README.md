@@ -156,7 +156,7 @@ let bar_tex = gpu.resolve(bar);
 foo.copy(&bar_tex).record();
 ```
 
-`foo` now contains two 64x64 squares, the left is blue and the right is black.
+`foo` now contains two 64x64 squares, the left is black and the right is blue.
 
 ## Loading content
 
@@ -246,8 +246,8 @@ render.write().record(&mut [
 ]);
 ```
 
-Additional command builder options include image tiling/atlasing, image strectching, and more. Of
-note are the numerous blending, matting, and masking write modes available using `WriteMode`.
+Additional command builder options include image tiling/atlasing, image stretching, and more. Of
+note are the numerous blending, matting, and masking modes available using `WriteMode`.
 
 ### 3D Models
 
