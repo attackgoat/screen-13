@@ -185,7 +185,14 @@ impl DrawOp {
     /// Preserves the contents of the destination texture. Without calling this function the existing
     /// contents of the destination texture will not be composited into the final result.
     #[must_use]
-    pub fn with_preserve(&mut self, val: bool) -> &mut Self {
+    pub fn with_preserve(&mut self) -> &mut Self {
+        self.with_preserve_is(true)
+    }
+
+    /// Preserves the contents of the destination texture. Without calling this function the existing
+    /// contents of the destination texture will not be composited into the final result.
+    #[must_use]
+    pub fn with_preserve_is(&mut self, val: bool) -> &mut Self {
         self.dst_preserve = val;
         self
     }

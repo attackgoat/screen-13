@@ -5,10 +5,13 @@
 //! not want to know _anything_ about the underlying graphics hardware or programming interfaces.
 //!
 //! Before starting you should be familar with these topics:
-//! - The Rust Programming Language ([_beginner level_](https://doc.rust-lang.org/book/ch01-02-hello-world.html))
+//! - The Rust Programming Language
+//!   ([_beginner level_](https://doc.rust-lang.org/book/ch01-02-hello-world.html))
 //! - Common file formats (`.gltf`, `.png`, _etc.._)
-//! - Pixel formats such as 24bpp RGB ([_optional_](https://en.wikipedia.org/wiki/Color_depth#True_color_(24-bit)))
-//! - Vertex formats such as [POSITION, TEXCOORD0] ([_optional_](https://www.khronos.org/opengl/wiki/Vertex_Specification#Theory))
+//! - Pixel formats such as 24bpp RGB
+//!   ([_optional_](https://en.wikipedia.org/wiki/Color_depth#True_color_(24-bit)))
+//! - Vertex formats such as [POSITION, TEXCOORD0]
+//!   ([_optional_](https://www.khronos.org/opengl/wiki/Vertex_Specification#Theory))
 //! - _Some notion about what a GPU might be_
 //!
 //! With almost striking exception, which appear in "_NOTE:_" sections only, no further graphics
@@ -54,7 +57,7 @@
 //! impl Screen for FooProgram {
 //!     fn render(&self, gpu: &Gpu, dims: Extent) -> Render {
 //!         let frame = gpu.render(dims);
-//!         frame.clear().with_value(MAGENTA).record();
+//!         frame.clear().with_value(MAGENTA).record(); // <-- 🔥
 //!         frame
 //!     }
 //!

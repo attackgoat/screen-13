@@ -1,6 +1,6 @@
 //! Contains the heart and soul of Screen 13.
 //!
-//! This module does the heavy-lifting work in this library and is made from a number of child
+//! This module does the heavy-lifting work in this library and is made from a number of
 //! internal-only modules which support the functionality described here.
 //!
 //! ## Note About Operations

@@ -129,7 +129,7 @@ impl Render {
         );
 
         if self.target_dirty {
-            let _ = op.with_preserve(true);
+            let _ = op.with_preserve();
         }
 
         self.target_dirty = true;

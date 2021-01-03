@@ -64,7 +64,7 @@ pub struct Program<'a, 'b> {
     /// Program author, or company.
     pub author: &'static str,
 
-    /// Whether the program uses a full-screen video mode or not.
+    /// Whether the program uses a fullscreen video mode or not.
     pub fullscreen: bool,
 
     /// Program window icon, if set.

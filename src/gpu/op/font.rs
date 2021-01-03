@@ -291,7 +291,7 @@ impl FontOp {
         self
     }
 
-    /// Sets the generalized output transform to use.gradient
+    /// Sets the generalized output transform to use.
     ///
     /// _NOTE:_ Overrides placement options.
     #[must_use]

@@ -406,7 +406,7 @@ pub struct PointLightCommand {
     /// Color of the projected light.
     pub color: Color,
 
-    /// Scalar light "power" value, modelled afterm lumens but not realistically.
+    /// Scalar light "power" value, modelled after lumens but not realistically.
     pub lumens: f32,
 
     /// Distance from `center` to the furthest reach of the point light.
@@ -424,7 +424,7 @@ pub struct RectLightCommand {
     /// The width and height of the rectangular light, when viewed from above (the unlit side).
     pub dims: CoordF,
 
-    /// Scalar light "power" value, modelled afterm lumens but not realistically.
+    /// Scalar light "power" value, modelled after lumens but not realistically.
     pub lumens: f32,
 
     /// Direction of the light rays.
@@ -458,7 +458,7 @@ pub struct SpotlightCommand {
     /// radius of the spotlight cone from the center to the edge.
     pub cone_radius: f32,
 
-    /// Scalar light "power" value, modelled afterm lumens but not realistically.
+    /// Scalar light "power" value, modelled after lumens but not realistically.
     pub lumens: f32,
 
     /// Direction of the light rays.
@@ -483,7 +483,7 @@ pub struct SunlightCommand {
     /// Color of the projected light.
     pub color: Color,
 
-    /// Scalar light "power" value, modelled afterm lumens but not realistically.
+    /// Scalar light "power" value, modelled after lumens but not realistically.
     pub lumens: f32,
 
     /// Direction of the light rays.
