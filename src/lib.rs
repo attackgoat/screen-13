@@ -277,7 +277,7 @@ impl Engine {
             .with_window_icon(icon)
             .build(&event_loop)
             .unwrap();
-        let (gpu, driver, surface) = Gpu::new(&window);
+        let (gpu, driver, surface) = unsafe { Gpu::new(&window) }; 
         let swapchain = Swapchain::new(&driver, surface, dims, config.swapchain_len());
 
         Self {

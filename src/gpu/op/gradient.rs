@@ -47,7 +47,7 @@ pub struct GradientOp {
     back_buf: Lease<Texture2d>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
-    driver: Driver,
+    device: Device,
     dst: Texture2d,
     dst_preserve: bool,
     fence: Lease<Fence>,
@@ -63,7 +63,7 @@ impl GradientOp {
     #[must_use]
     pub(crate) fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         mut pool: Lease<Pool>,
         dst: &Texture2d,
         path: Path,
@@ -123,7 +123,7 @@ impl GradientOp {
             back_buf,
             cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
             cmd_pool,
-            driver: Driver::clone(driver),
+            device: Device::clone(driver),
             dst: Texture2d::clone(dst),
             dst_preserve: false,
             fence,

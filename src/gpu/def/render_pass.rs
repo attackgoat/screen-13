@@ -66,7 +66,7 @@ pub mod draw {
     }
 
     pub(in crate::gpu) fn fill_light_tonemap(
-        driver: &Driver,
+        device: Device,
         mode: DrawRenderPassMode,
     ) -> RenderPass {
         // Subpass indexes
@@ -105,7 +105,7 @@ pub mod draw {
         RenderPass::new(
             #[cfg(feature = "debug-names")]
             "Draw",
-            driver,
+            device,
             &[
                 // attachments
                 color_metal,
@@ -132,7 +132,7 @@ pub mod draw {
     /// Like the draw render pass except it contains a step between filling the geometry buffer and
     /// accumulating light
     pub(in crate::gpu) fn fill_skydome_light_tonemap(
-        driver: &Driver,
+        device: Device,
         mode: DrawRenderPassMode,
     ) -> RenderPass {
         // Subpass indexes
@@ -181,7 +181,7 @@ pub mod draw {
         RenderPass::new(
             #[cfg(feature = "debug-names")]
             "Draw",
-            driver,
+            device,
             &[
                 // attachments
                 color_metal,
@@ -208,7 +208,7 @@ pub mod draw {
 
     /// Like the draw render pass except it contains a 'post'-fx step
     pub(in crate::gpu) fn fill_light_tonemap_fx(
-        _driver: &Driver,
+        _device: Device,
         _mode: DrawRenderPassMode,
     ) -> RenderPass {
         todo!();
@@ -216,7 +216,7 @@ pub mod draw {
 
     /// Like the draw render pass except it contains a 'pre' and 'post'-fx step
     pub(in crate::gpu) fn fill_skydome_light_tonemap_fx(
-        _driver: &Driver,
+        _device: Device,
         _mode: DrawRenderPassMode,
     ) -> RenderPass {
         todo!();
@@ -225,7 +225,7 @@ pub mod draw {
 
 use {
     super::{ColorRenderPassMode, DrawRenderPassMode},
-    crate::gpu::driver::{Driver, RenderPass},
+    crate::gpu::driver::{Device, RenderPass},
     gfx_hal::{
         format::Format,
         image::{Access, Layout, Layout::*},
@@ -290,7 +290,7 @@ fn const_layout(layout: Layout) -> Range<Layout> {
     layout..layout
 }
 
-pub(in crate::gpu) fn color(driver: &Driver, mode: ColorRenderPassMode) -> RenderPass {
+pub(in crate::gpu) fn color(device: Device, mode: ColorRenderPassMode) -> RenderPass {
     const ATTACHMENT: usize = 0;
 
     let attachment = Attachment {
@@ -315,14 +315,14 @@ pub(in crate::gpu) fn color(driver: &Driver, mode: ColorRenderPassMode) -> Rende
     RenderPass::new(
         #[cfg(feature = "debug-names")]
         "Color",
-        driver,
+        device,
         &[attachment],
         &[subpass_desc],
         &[],
     )
 }
 
-pub fn present(driver: &Driver, fmt: Format) -> RenderPass {
+pub fn present(device: Device, fmt: Format) -> RenderPass {
     const ATTACHMENT: usize = 0;
 
     let attachment = Attachment {
@@ -343,7 +343,7 @@ pub fn present(driver: &Driver, fmt: Format) -> RenderPass {
     RenderPass::new(
         #[cfg(feature = "debug-names")]
         "Present",
-        driver,
+        device,
         &[attachment],
         &[subpass_desc],
         &[],

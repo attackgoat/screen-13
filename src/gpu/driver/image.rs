@@ -1,5 +1,5 @@
 use {
-    super::{Device, Dim, Driver, Memory},
+    super::{Device, Dim, Memory},
     crate::math::Extent,
     gfx_hal::{
         device::Device as _,
@@ -21,7 +21,7 @@ where
     D: Dim,
 {
     __: PhantomData<D>,
-    driver: Driver,
+    device: Device,
     mem: Memory, // TODO: Remove! This should not be here!
     ptr: Option<<_Backend as Backend>::Image>,
 }
@@ -47,7 +47,7 @@ where
 impl Image<U2> {
     pub fn new_optimal(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         dims: Extent,
         layers: u16,
         samples: u8,
@@ -57,8 +57,7 @@ impl Image<U2> {
     ) -> Self {
         let (image, mem) = unsafe {
             let kind = Kind::D2(dims.x, dims.y, layers, samples);
-            let mut image = driver
-                .borrow()
+            let mut image = device
                 .create_image(
                     kind,
                     mips,
@@ -69,15 +68,13 @@ impl Image<U2> {
                 )
                 .unwrap();
 
-            let device = driver.borrow();
-
             #[cfg(feature = "debug-names")]
             device.set_image_name(&mut image, name);
 
             let req = device.get_image_requirements(&image);
             let mem_type =
                 Device::mem_ty(&device, req.type_mask, Properties::DEVICE_LOCAL).unwrap();
-            let mem = Memory::new(driver, mem_type, req.size);
+            let mem = Memory::new(device, mem_type, req.size);
             device.bind_image_memory(&mem, 0, &mut image).unwrap();
 
             (image, mem)
@@ -85,7 +82,7 @@ impl Image<U2> {
 
         Self {
             __: PhantomData,
-            driver: Driver::clone(driver),
+            device,
             mem,
             ptr: Some(image),
         }
@@ -135,11 +132,10 @@ where
     D: Dim,
 {
     fn drop(&mut self) {
-        let device = self.driver.borrow();
         let ptr = self.ptr.take().unwrap();
 
         unsafe {
-            device.destroy_image(ptr);
+            self.device.destroy_image(ptr);
         }
     }
 }

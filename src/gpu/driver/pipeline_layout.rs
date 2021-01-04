@@ -1,6 +1,6 @@
 use {
-    super::Driver,
-    gfx_hal::{device::Device, pso::ShaderStageFlags, Backend},
+    super::Device,
+    gfx_hal::{device::Device as _, pso::ShaderStageFlags, Backend},
     gfx_impl::Backend as _Backend,
     std::{
         borrow::Borrow,
@@ -9,14 +9,14 @@ use {
 };
 
 pub struct PipelineLayout {
-    driver: Driver,
+    device: Device,
     ptr: Option<<_Backend as Backend>::PipelineLayout>,
 }
 
 impl PipelineLayout {
     pub fn new<IS, IR>(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         set_layouts: IS,
         push_consts: IR,
     ) -> Self
@@ -28,10 +28,7 @@ impl PipelineLayout {
         IR::Item: Borrow<(ShaderStageFlags, Range<u32>)>,
         IR::IntoIter: ExactSizeIterator,
     {
-        let pipeline_layout = {
-            let device = driver.as_ref().borrow();
-
-            unsafe {
+        let pipeline_layout =          unsafe {
                 let ctor = || {
                     device
                         .create_pipeline_layout(set_layouts, push_consts)
@@ -48,11 +45,10 @@ impl PipelineLayout {
                 device.set_pipeline_layout_name(&mut pipeline_layout, name);
 
                 pipeline_layout
-            }
         };
 
         Self {
-            driver: Driver::clone(driver),
+            device,
             ptr: Some(pipeline_layout),
         }
     }
@@ -97,11 +93,10 @@ impl DerefMut for PipelineLayout {
 
 impl Drop for PipelineLayout {
     fn drop(&mut self) {
-        let device = self.driver.as_ref().borrow();
         let ptr = self.ptr.take().unwrap();
 
         unsafe {
-            device.destroy_pipeline_layout(ptr);
+            self.device.destroy_pipeline_layout(ptr);
         }
     }
 }

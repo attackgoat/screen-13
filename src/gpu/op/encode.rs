@@ -34,7 +34,7 @@ pub struct EncodeOp {
     buf: Lease<Data>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
-    driver: Driver,
+    device: Device,
     fence: Lease<Fence>,
     pool: Option<Lease<Pool>>,
     path: Option<PathBuf>,
@@ -46,7 +46,7 @@ impl EncodeOp {
     #[must_use]
     pub(crate) fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         mut pool: Lease<Pool>,
         texture: &Texture2d,
     ) -> Self {
@@ -65,7 +65,7 @@ impl EncodeOp {
             buf,
             cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
             cmd_pool,
-            driver: Driver::clone(driver),
+            device: Device::clone(driver),
             fence: pool.fence(
                 #[cfg(feature = "debug-names")]
                 name,

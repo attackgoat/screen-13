@@ -125,7 +125,6 @@ use {
         vertex::Vertex,
     },
     crate::{
-        error::Error,
         math::Extent,
         pak::{
             id::{AnimationId, BitmapId, ModelId},
@@ -134,7 +133,8 @@ use {
         },
     },
     gfx_hal::{
-        adapter::Adapter, buffer::Usage, device::Device as _, queue::QueueFamily,
+        Backend, Features,
+        adapter::{MemoryProperties,Adapter,PhysicalDevice as _}, buffer::Usage, device::{Device as _,}, queue::{QueueFamily,QueueGroup},
         window::Surface as _, Instance as _,
     },
     gfx_impl::{Backend as _Backend, Instance},
@@ -143,7 +143,9 @@ use {
         cell::RefCell,
         fmt::Debug,
         io::{Read, Seek},
+        mem::MaybeUninit,
         rc::Rc,
+        sync::Once,
     },
     winit::window::Window,
 };
@@ -153,6 +155,13 @@ use {
     num_format::{Locale, ToFormattedString},
     std::time::Instant,
 };
+
+static mut ADAPTER: MaybeUninit<Adapter<_Backend>> = MaybeUninit::uninit();
+static mut INIT: Once = Once::new();
+static mut INSTANCE: MaybeUninit<Instance> = MaybeUninit::uninit();
+static mut DEVICE: MaybeUninit<<_Backend as Backend>::Device> = MaybeUninit::uninit();
+static mut MEM_PROPS: MaybeUninit<MemoryProperties> = MaybeUninit::uninit();
+static mut QUEUE_GROUP: MaybeUninit<QueueGroup<_Backend>> = MaybeUninit::uninit();
 
 /// Two-dimensional rendering result.
 pub type Texture2d = TextureRef<Image2d>;
@@ -178,21 +187,20 @@ fn align_up<N: Copy + Num>(size: N, atom: N) -> N {
     (size - <N>::one()) - (size - <N>::one()) % atom + atom
 }
 
-fn create_instance() -> (Adapter<_Backend>, Instance) {
-    let instance = Instance::create("attackgoat/screen-13", 1).unwrap();
-    let mut adapters = instance.enumerate_adapters();
-    if adapters.is_empty() {
-        // TODO: Error::adapter
-    }
-    let adapter = adapters.remove(0);
-    (adapter, instance)
-}
+/// 💀 Very unsafe - call *ONLY* once per process!
+unsafe fn init_gfx_hal() {
+    // Initialize the GFX-HAL library
+    let engine = "attackgoat/screen-13";
+    let version = 1;
+    *INSTANCE.as_mut_ptr() = Instance::create(engine, version).expect("Unable to create GFX-HAL instance");
 
-// TODO: Different path for webgl and need this -> #[cfg(any(feature = "vulkan", feature = "metal"))]
-fn create_surface(window: &Window) -> (Adapter<_Backend>, Surface) {
-    let (adapter, instance) = create_instance();
-    let surface = Surface::new(instance, window).unwrap();
-    (adapter, surface)
+    let instance = &*INSTANCE.as_ptr(); 
+    let mut adapters = instance.enumerate_adapters();
+    *ADAPTER.as_mut_ptr() = if !adapters.is_empty() {
+        adapters.remove(0)
+    } else {
+        panic!("Unable to find GFX-HAL adapter");
+    };
 }
 
 /// Indicates the provided data was bad.
@@ -311,46 +319,64 @@ pub struct Cache(PoolRef<Pool>);
 
 /// Allows you to load resources and begin rendering operations.
 pub struct Gpu {
-    driver: Driver,
+    device: Device,
     loads: LoadCache,
     ops: OpCache,
     renders: Cache,
 }
 
 impl Gpu {
-    pub(super) fn new(window: &Window) -> (Self, Driver, Surface) {
-        let (adapter, surface) = create_surface(window);
+    pub(super) unsafe fn new(window: &Window) -> (Self, Driver, Surface) {
+        let mut surface = None;
+        INIT.call_once(|| {
+            init_gfx_hal();
+    
+            // Window mode requires a presentation surface (we check for support here)
+            let adapter = &*ADAPTER.as_ptr();
+            let instance = &*INSTANCE.as_ptr();
+            let surface_instance = Surface::new(instance, window).expect("Unable to create GFX-HAL surface");
+            let queue = adapter
+                .queue_families
+                .iter()
+                .find(|family| {
+                    let ty = family.queue_type();
 
-        info!(
-            "Device: {} ({:?})",
-            &adapter.info.name, adapter.info.device_type
-        );
+                    surface_instance.supports_queue_family(family)
+                        && ty.supports_compute()
+                        && ty.supports_graphics()
+                        && ty.supports_transfer()
+                })
+                .expect("Unable to find GFX-HAL queue");
 
-        let queue = adapter
-            .queue_families
-            .iter()
-            .find(|family| {
-                let ty = family.queue_type();
-                surface.supports_queue_family(family)
-                    && ty.supports_graphics()
-                    && ty.supports_compute()
-            })
-            .ok_or_else(Error::graphics_queue_family)
-            .unwrap();
-        let driver = Driver::new(RefCell::new(
-            Device::new(adapter.physical_device, queue).unwrap(),
-        ));
-        let driver_copy = Driver::clone(&driver);
-        (
-            Self {
-                driver,
-                loads: Default::default(),
-                ops: Default::default(),
-                renders: Default::default(),
-            },
-            driver_copy,
-            surface,
-        )
+            info!("Adapter: {} ({:?})", &adapter.info.name, adapter.info.device_type);
+
+            surface = Some(surface_instance);
+
+            // Acquire hardware access
+            let gpu = adapter.physical_device.open(&[(queue, &[1.0])], Features::empty()).expect("Unable to open GFX-HAL device");
+            *DEVICE.as_mut_ptr() = gpu.device;
+            *MEM_PROPS.as_mut_ptr() = adapter.physical_device.memory_properties();
+            *QUEUE_GROUP.as_mut_ptr() = gpu.queue_groups.pop().expect("Unable to find GFX-HAL queue");
+        });
+
+        todo!();
+
+
+
+        // let driver = Driver::new(RefCell::new(
+        //     Device::new(adapter.physical_device, queue).unwrap(),
+        // ));
+        // let driver_copy = Driver::clone(&driver);
+        // (
+        //     Self {
+        //         driver,
+        //         loads: Default::default(),
+        //         ops: Default::default(),
+        //         renders: Default::default(),
+        //     },
+        //     driver_copy,
+        //     surface,
+        // )
     }
 
     // TODO: Enable sharing between this and "on-screen"
@@ -360,26 +386,27 @@ impl Gpu {
     /// used with other instances, including of the same mode. This is a limitation only because
     /// the code to share the resources properly has not be started yet.
     pub fn offscreen() -> Self {
-        let (adapter, _) = create_instance();
-        let queue = adapter
-            .queue_families
-            .iter()
-            .find(|family| {
-                let ty = family.queue_type();
-                ty.supports_graphics() && ty.supports_compute()
-            })
-            .ok_or_else(Error::graphics_queue_family)
-            .unwrap();
-        let driver = Driver::new(RefCell::new(
-            Device::new(adapter.physical_device, queue).unwrap(),
-        ));
+        todo!();
+        // let (adapter, _) = create_instance();
+        // let queue = ADAPTER
+        //     .queue_families
+        //     .iter()
+        //     .find(|family| {
+        //         let ty = family.queue_type();
+        //         ty.supports_graphics() && ty.supports_compute()
+        //     })
+        //     .ok_or_else(Error::graphics_queue_family)
+        //     .unwrap();
+        // let driver = Driver::new(RefCell::new(
+        //     Device::new(adapter.physical_device, queue).unwrap(),
+        // ));
 
-        Self {
-            driver,
-            loads: Default::default(),
-            ops: Default::default(),
-            renders: Default::default(),
-        }
+        // Self {
+        //     driver,
+        //     loads: Default::default(),
+        //     ops: Default::default(),
+        //     renders: Default::default(),
+        // }
     }
 
     /// Loads a bitmap at runtime from the given data.
@@ -435,7 +462,7 @@ impl Gpu {
         let idx_buf = pool.data_usage(
             #[cfg(feature = "debug-names")]
             name,
-            &self.driver,
+            self.device,
             idx_buf_len,
             Usage::INDEX | Usage::STORAGE,
         );
@@ -444,7 +471,7 @@ impl Gpu {
         let vertex_buf = pool.data_usage(
             #[cfg(feature = "debug-names")]
             name,
-            &self.driver,
+            self.device,
             vertex_buf_len,
             Usage::VERTEX | Usage::STORAGE,
         );
@@ -453,7 +480,7 @@ impl Gpu {
         let staging_buf = pool.data_usage(
             #[cfg(feature = "debug-names")]
             name,
-            &self.driver,
+            self.device,
             staging_buf_len,
             Usage::VERTEX | Usage::STORAGE,
         );
@@ -462,7 +489,7 @@ impl Gpu {
         let write_mask = pool.data_usage(
             #[cfg(feature = "debug-names")]
             name,
-            &self.driver,
+            self.device,
             write_mask_len,
             Usage::STORAGE,
         );
@@ -621,7 +648,7 @@ impl Gpu {
             BitmapOp::new(
                 #[cfg(feature = "debug-names")]
                 name,
-                &self.driver,
+                self.device,
                 &mut pool,
                 &bitmap,
             )
@@ -637,7 +664,7 @@ impl Gpu {
         debug!("Loading font `{}`", face.as_ref());
 
         Font::load(
-            &self.driver,
+            self.device,
             &mut self.loads.borrow_mut(),
             pak,
             face.as_ref(),
@@ -678,7 +705,7 @@ impl Gpu {
             let mut buf = pool.data_usage(
                 #[cfg(feature = "debug-names")]
                 name,
-                &self.driver,
+                self.device,
                 len,
                 Usage::INDEX | Usage::STORAGE,
             );
@@ -700,7 +727,7 @@ impl Gpu {
             let mut buf = pool.data_usage(
                 #[cfg(feature = "debug-names")]
                 name,
-                &self.driver,
+                self.device,
                 len,
                 Usage::STORAGE,
             );
@@ -722,7 +749,7 @@ impl Gpu {
             let mut buf = pool.data_usage(
                 #[cfg(feature = "debug-names")]
                 name,
-                &self.driver,
+                self.device,
                 len,
                 Usage::STORAGE,
             );
@@ -760,7 +787,7 @@ impl Gpu {
         let vertex_buf = pool.data_usage(
             #[cfg(feature = "debug-names")]
             name,
-            &self.driver,
+            self.device,
             vertex_buf_len,
             Usage::STORAGE | Usage::VERTEX,
         );
@@ -853,7 +880,7 @@ impl Gpu {
         Render::new(
             #[cfg(feature = "debug-names")]
             name,
-            &self.driver,
+            self.device,
             dims.into(),
             pool,
             ops,

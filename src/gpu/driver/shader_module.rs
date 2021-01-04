@@ -1,7 +1,7 @@
 use {
-    super::Driver,
+    super::Device,
     gfx_hal::{
-        device::Device,
+        device::Device as _,
         pso::{EntryPoint, Specialization},
         Backend,
     },
@@ -10,20 +10,18 @@ use {
 };
 
 pub struct ShaderModule {
-    driver: Driver,
+    device: Device,
     ptr: Option<<_Backend as Backend>::ShaderModule>,
 }
 
 impl ShaderModule {
-    pub unsafe fn new(driver: &Driver, spirv: &[u32]) -> Self {
-        let shader_module = driver
-            .as_ref()
-            .borrow()
+    pub unsafe fn new(device: Device, spirv: &[u32]) -> Self {
+        let shader_module = device
             .create_shader_module(spirv)
             .unwrap();
 
         Self {
-            driver: Driver::clone(driver),
+            device,
             ptr: Some(shader_module),
         }
     }
@@ -72,11 +70,10 @@ impl DerefMut for ShaderModule {
 
 impl Drop for ShaderModule {
     fn drop(&mut self) {
-        let device = self.driver.borrow();
         let ptr = self.ptr.take().unwrap();
 
         unsafe {
-            device.destroy_shader_module(ptr);
+            self.device.destroy_shader_module(ptr);
         }
     }
 }

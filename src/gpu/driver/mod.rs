@@ -46,11 +46,9 @@ pub use self::{
 
 use {
     self::{framebuffer::Framebuffer, image::Image},
-    std::{cell::RefCell, rc::Rc},
     typenum::{U1, U2, U3},
 };
 
-pub type Driver = Rc<RefCell<Device>>;
 pub type Framebuffer2d = Framebuffer<U2>;
 pub type Image2d = Image<U2>;
 

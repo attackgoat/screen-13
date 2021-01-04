@@ -23,7 +23,7 @@ use {
     crate::math::Extent,
     gfx_hal::{
         buffer::Usage as BufferUsage,
-        format::Format,
+        format::{ImageFeature,Format},
         image::{Layout, Usage as ImageUsage},
         pool::CommandPool as _,
         pso::{DescriptorRangeDesc, DescriptorType},
@@ -72,6 +72,12 @@ impl<'a> Iterator for Drain<'a> {
 }
 
 #[derive(Eq, Hash, PartialEq)]
+struct FormatKey {
+    desired_fmt: Format,
+    features: ImageFeature,
+}
+
+#[derive(Eq, Hash, PartialEq)]
 struct GraphicsKey {
     graphics_mode: GraphicsMode,
     render_pass_mode: RenderPassMode,
@@ -79,6 +85,7 @@ struct GraphicsKey {
 }
 
 pub struct Pool {
+    best_fmts: HashMap<FormatKey, Option<Format>>,
     cmd_pools: HashMap<QueueFamilyId, PoolRef<CommandPool>>,
     compilers: PoolRef<Compiler>,
     computes: HashMap<ComputeMode, PoolRef<Compute>>,
@@ -101,9 +108,257 @@ pub struct Pool {
 
 // TODO: Add some way to track memory usage so that using drain has some sort of feedback for users, tell them about the usage
 impl Pool {
+    /// Remarks: Only considers optimal tiling images.
+    pub fn best_fmt(&mut self,
+        device: Device,
+        desired_fmts: &[Format],
+        features: ImageFeature,
+    ) -> Option<Format> {
+        assert!(!desired_fmts.is_empty());
+
+        self.best_fmts
+            .entry(FormatKey {
+                desired_fmt: desired_fmts[0],
+                features,
+            })
+            .or_insert_with(|| {
+                fn is_compatible(props: FormatProperties, desired_features: ImageFeature) -> bool {
+                    props.optimal_tiling.contains(desired_features)
+                }
+
+                for fmt in desired_fmts.iter() {
+                    let props = device.physical_device.format_properties(Some(*fmt));
+                    if is_compatible(props, features) {
+                        // #[cfg(debug_assertions)]
+                        // trace!(
+                        //     "Picking format {:?} (desired {:?}) found (tiling={:?} usage={:?})",
+                        //     *fmt, desired_fmts[0], tiling, usage
+                        // );
+
+                        return Some(*fmt);
+                    }
+                }
+
+                #[cfg(debug_assertions)]
+                {
+                    let all_fmts = &[
+                        Format::Rg4Unorm,
+                        Format::Rgba4Unorm,
+                        Format::Bgra4Unorm,
+                        Format::R5g6b5Unorm,
+                        Format::B5g6r5Unorm,
+                        Format::R5g5b5a1Unorm,
+                        Format::B5g5r5a1Unorm,
+                        Format::A1r5g5b5Unorm,
+                        Format::R8Unorm,
+                        Format::R8Snorm,
+                        Format::R8Uscaled,
+                        Format::R8Sscaled,
+                        Format::R8Uint,
+                        Format::R8Sint,
+                        Format::R8Srgb,
+                        Format::Rg8Unorm,
+                        Format::Rg8Snorm,
+                        Format::Rg8Uscaled,
+                        Format::Rg8Sscaled,
+                        Format::Rg8Uint,
+                        Format::Rg8Sint,
+                        Format::Rg8Srgb,
+                        Format::Rgb8Unorm,
+                        Format::Rgb8Snorm,
+                        Format::Rgb8Uscaled,
+                        Format::Rgb8Sscaled,
+                        Format::Rgb8Uint,
+                        Format::Rgb8Sint,
+                        Format::Rgb8Srgb,
+                        Format::Bgr8Unorm,
+                        Format::Bgr8Snorm,
+                        Format::Bgr8Uscaled,
+                        Format::Bgr8Sscaled,
+                        Format::Bgr8Uint,
+                        Format::Bgr8Sint,
+                        Format::Bgr8Srgb,
+                        Format::Rgba8Unorm,
+                        Format::Rgba8Snorm,
+                        Format::Rgba8Uscaled,
+                        Format::Rgba8Sscaled,
+                        Format::Rgba8Uint,
+                        Format::Rgba8Sint,
+                        Format::Rgba8Srgb,
+                        Format::Bgra8Unorm,
+                        Format::Bgra8Snorm,
+                        Format::Bgra8Uscaled,
+                        Format::Bgra8Sscaled,
+                        Format::Bgra8Uint,
+                        Format::Bgra8Sint,
+                        Format::Bgra8Srgb,
+                        Format::Abgr8Unorm,
+                        Format::Abgr8Snorm,
+                        Format::Abgr8Uscaled,
+                        Format::Abgr8Sscaled,
+                        Format::Abgr8Uint,
+                        Format::Abgr8Sint,
+                        Format::Abgr8Srgb,
+                        Format::A2r10g10b10Unorm,
+                        Format::A2r10g10b10Snorm,
+                        Format::A2r10g10b10Uscaled,
+                        Format::A2r10g10b10Sscaled,
+                        Format::A2r10g10b10Uint,
+                        Format::A2r10g10b10Sint,
+                        Format::A2b10g10r10Unorm,
+                        Format::A2b10g10r10Snorm,
+                        Format::A2b10g10r10Uscaled,
+                        Format::A2b10g10r10Sscaled,
+                        Format::A2b10g10r10Uint,
+                        Format::A2b10g10r10Sint,
+                        Format::R16Unorm,
+                        Format::R16Snorm,
+                        Format::R16Uscaled,
+                        Format::R16Sscaled,
+                        Format::R16Uint,
+                        Format::R16Sint,
+                        Format::R16Sfloat,
+                        Format::Rg16Unorm,
+                        Format::Rg16Snorm,
+                        Format::Rg16Uscaled,
+                        Format::Rg16Sscaled,
+                        Format::Rg16Uint,
+                        Format::Rg16Sint,
+                        Format::Rg16Sfloat,
+                        Format::Rgb16Unorm,
+                        Format::Rgb16Snorm,
+                        Format::Rgb16Uscaled,
+                        Format::Rgb16Sscaled,
+                        Format::Rgb16Uint,
+                        Format::Rgb16Sint,
+                        Format::Rgb16Sfloat,
+                        Format::Rgba16Unorm,
+                        Format::Rgba16Snorm,
+                        Format::Rgba16Uscaled,
+                        Format::Rgba16Sscaled,
+                        Format::Rgba16Uint,
+                        Format::Rgba16Sint,
+                        Format::Rgba16Sfloat,
+                        Format::R32Uint,
+                        Format::R32Sint,
+                        Format::R32Sfloat,
+                        Format::Rg32Uint,
+                        Format::Rg32Sint,
+                        Format::Rg32Sfloat,
+                        Format::Rgb32Uint,
+                        Format::Rgb32Sint,
+                        Format::Rgb32Sfloat,
+                        Format::Rgba32Uint,
+                        Format::Rgba32Sint,
+                        Format::Rgba32Sfloat,
+                        Format::R64Uint,
+                        Format::R64Sint,
+                        Format::R64Sfloat,
+                        Format::Rg64Uint,
+                        Format::Rg64Sint,
+                        Format::Rg64Sfloat,
+                        Format::Rgb64Uint,
+                        Format::Rgb64Sint,
+                        Format::Rgb64Sfloat,
+                        Format::Rgba64Uint,
+                        Format::Rgba64Sint,
+                        Format::Rgba64Sfloat,
+                        Format::B10g11r11Ufloat,
+                        Format::E5b9g9r9Ufloat,
+                        Format::D16Unorm,
+                        Format::X8D24Unorm,
+                        Format::D32Sfloat,
+                        Format::S8Uint,
+                        Format::D16UnormS8Uint,
+                        Format::D24UnormS8Uint,
+                        Format::D32SfloatS8Uint,
+                        Format::Bc1RgbUnorm,
+                        Format::Bc1RgbSrgb,
+                        Format::Bc1RgbaUnorm,
+                        Format::Bc1RgbaSrgb,
+                        Format::Bc2Unorm,
+                        Format::Bc2Srgb,
+                        Format::Bc3Unorm,
+                        Format::Bc3Srgb,
+                        Format::Bc4Unorm,
+                        Format::Bc4Snorm,
+                        Format::Bc5Unorm,
+                        Format::Bc5Snorm,
+                        Format::Bc6hUfloat,
+                        Format::Bc6hSfloat,
+                        Format::Bc7Unorm,
+                        Format::Bc7Srgb,
+                        Format::Etc2R8g8b8Unorm,
+                        Format::Etc2R8g8b8Srgb,
+                        Format::Etc2R8g8b8a1Unorm,
+                        Format::Etc2R8g8b8a1Srgb,
+                        Format::Etc2R8g8b8a8Unorm,
+                        Format::Etc2R8g8b8a8Srgb,
+                        Format::EacR11Unorm,
+                        Format::EacR11Snorm,
+                        Format::EacR11g11Unorm,
+                        Format::EacR11g11Snorm,
+                        Format::Astc4x4Unorm,
+                        Format::Astc4x4Srgb,
+                        Format::Astc5x4Unorm,
+                        Format::Astc5x4Srgb,
+                        Format::Astc5x5Unorm,
+                        Format::Astc5x5Srgb,
+                        Format::Astc6x5Unorm,
+                        Format::Astc6x5Srgb,
+                        Format::Astc6x6Unorm,
+                        Format::Astc6x6Srgb,
+                        Format::Astc8x5Unorm,
+                        Format::Astc8x5Srgb,
+                        Format::Astc8x6Unorm,
+                        Format::Astc8x6Srgb,
+                        Format::Astc8x8Unorm,
+                        Format::Astc8x8Srgb,
+                        Format::Astc10x5Unorm,
+                        Format::Astc10x5Srgb,
+                        Format::Astc10x6Unorm,
+                        Format::Astc10x6Srgb,
+                        Format::Astc10x8Unorm,
+                        Format::Astc10x8Srgb,
+                        Format::Astc10x10Unorm,
+                        Format::Astc10x10Srgb,
+                        Format::Astc12x10Unorm,
+                        Format::Astc12x10Srgb,
+                        Format::Astc12x12Unorm,
+                        Format::Astc12x12Srgb,
+                    ];
+
+                    let mut compatible_fmts = vec![];
+                    for fmt in all_fmts.iter() {
+                        if is_compatible(device.physical_device.format_properties(Some(*fmt)), features) {
+                            compatible_fmts.push(*fmt);
+                        }
+                    }
+
+                    warn!(
+                        "A desired compatible format was not found for `{:?}` (Features={:?})",
+                        desired_fmts[0], features
+                    );
+
+                    if !compatible_fmts.is_empty() {
+                        info!(
+                            "These formats are compatible: {}",
+                            &compatible_fmts
+                                .iter()
+                                .map(|format| format!("{:?}", format))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        );
+                    }
+                }
+
+                None
+            })
+    }
+
     pub(super) fn cmd_pool(
         &mut self,
-        driver: &Driver,
+        device: Device,
         family: QueueFamilyId,
     ) -> Lease<CommandPool> {
         let items = self
@@ -137,7 +392,7 @@ impl Pool {
     pub(super) fn compute(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         mode: ComputeMode,
     ) -> Lease<Compute> {
         self.compute_desc_sets(
@@ -153,7 +408,7 @@ impl Pool {
     pub(super) fn compute_desc_sets(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         mode: ComputeMode,
         max_desc_sets: usize,
     ) -> Lease<Compute> {
@@ -203,7 +458,7 @@ impl Pool {
     pub(super) fn data(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         len: u64,
     ) -> Lease<Data> {
         self.data_usage(
@@ -218,7 +473,7 @@ impl Pool {
     pub(super) fn data_usage(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         len: u64,
         usage: BufferUsage,
     ) -> Lease<Data> {
@@ -243,7 +498,7 @@ impl Pool {
     // TODO: I don't really like the function signature here
     pub(super) fn desc_pool<'i, I>(
         &mut self,
-        driver: &Driver,
+        device: Device,
         max_desc_sets: usize,
         desc_ranges: I,
     ) -> Lease<DescriptorPool>
@@ -280,7 +535,7 @@ impl Pool {
     pub(super) fn fence(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
     ) -> Lease<Fence> {
         let item = if let Some(mut item) = self.fences.borrow_mut().pop_back() {
             Fence::reset(&mut item);
@@ -300,7 +555,7 @@ impl Pool {
     pub(super) fn graphics(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         render_pass_mode: RenderPassMode,
         subpass_idx: u8,
         graphics_mode: GraphicsMode,
@@ -320,7 +575,7 @@ impl Pool {
     pub(super) fn graphics_desc_sets(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         render_pass_mode: RenderPassMode,
         subpass_idx: u8,
         graphics_mode: GraphicsMode,
@@ -406,7 +661,7 @@ impl Pool {
 
     pub(super) fn memory(
         &mut self,
-        driver: &Driver,
+        device: Device,
         mem_type: MemoryTypeId,
         size: u64,
     ) -> Lease<Memory> {
@@ -425,7 +680,7 @@ impl Pool {
         Lease::new(item, items)
     }
 
-    pub(super) fn render_pass(&mut self, driver: &Driver, mode: RenderPassMode) -> &RenderPass {
+    pub(super) fn render_pass(&mut self, device: Device, mode: RenderPassMode) -> &RenderPass {
         self.render_passes
             .entry(mode)
             .or_insert_with(|| match mode {
@@ -451,7 +706,7 @@ impl Pool {
     pub(super) fn skydome(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
     ) -> (Lease<Data>, u64, Option<&[u8]>) {
         let (item, data) = if let Some(item) = self.skydomes.borrow_mut().pop_back() {
             (item, None)
@@ -475,7 +730,7 @@ impl Pool {
     pub(super) fn texture(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         dims: Extent,
         fmt: Format,
         layout: Layout,

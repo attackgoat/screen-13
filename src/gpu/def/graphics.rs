@@ -3,8 +3,8 @@ use {
     crate::{
         color::TRANSPARENT_BLACK,
         gpu::{
-            driver::{
-                descriptor_range_desc, DescriptorPool, DescriptorSetLayout, Driver,
+            device::{
+                descriptor_range_desc, DescriptorPool, DescriptorSetLayout, Device,
                 GraphicsPipeline, PipelineLayout, Sampler, ShaderModule,
             },
             spirv,
@@ -184,9 +184,9 @@ mod rasterizers {
     };
 }
 
-fn sampler(driver: &Driver, filter: Filter) -> Sampler {
+fn sampler(device: Device, filter: Filter) -> Sampler {
     Sampler::new(
-        driver,
+        device,
         filter,
         filter,
         filter,
@@ -220,23 +220,23 @@ pub struct Graphics {
 impl Graphics {
     unsafe fn blend(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         fragment_spirv: &[u32],
         max_desc_sets: usize,
     ) -> Self {
-        let vertex = ShaderModule::new(driver, &spirv::blend::quad_transform_vert::MAIN);
-        let fragment = ShaderModule::new(driver, fragment_spirv);
+        let vertex = ShaderModule::new(device, &spirv::blend::quad_transform_vert::MAIN);
+        let fragment = ShaderModule::new(device, fragment_spirv);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             &desc_set_layout::BLEND,
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             once(set_layout.as_ref()),
             &push_const::BLEND,
         );
@@ -262,13 +262,13 @@ impl Graphics {
         let pipeline = GraphicsPipeline::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             &desc,
         );
 
         // Allocate all descriptor sets
         let mut desc_pool = DescriptorPool::new(
-            driver,
+            device,
             max_desc_sets,
             once(descriptor_range_desc(2 * max_desc_sets, READ_ONLY_IMG)),
         );
@@ -283,20 +283,20 @@ impl Graphics {
             max_desc_sets,
             pipeline,
             set_layout: Some(set_layout),
-            samplers: vec![sampler(driver, Filter::Nearest)],
+            samplers: vec![sampler(device, Filter::Nearest)],
         }
     }
 
     pub unsafe fn blend_add(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::blend::add_frag::MAIN,
             max_desc_sets,
@@ -305,14 +305,14 @@ impl Graphics {
 
     pub unsafe fn blend_alpha_add(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::blend::alpha_add_frag::MAIN,
             max_desc_sets,
@@ -321,14 +321,14 @@ impl Graphics {
 
     pub unsafe fn blend_color_burn(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::blend::color_burn_frag::MAIN,
             max_desc_sets,
@@ -337,14 +337,14 @@ impl Graphics {
 
     pub unsafe fn blend_color_dodge(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::blend::color_dodge_frag::MAIN,
             max_desc_sets,
@@ -353,14 +353,14 @@ impl Graphics {
 
     pub unsafe fn blend_color(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::blend::color_frag::MAIN,
             max_desc_sets,
@@ -369,14 +369,14 @@ impl Graphics {
 
     pub unsafe fn blend_darken(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::blend::darken_frag::MAIN,
             max_desc_sets,
@@ -385,14 +385,14 @@ impl Graphics {
 
     pub unsafe fn blend_darker_color(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::blend::darker_color_frag::MAIN,
             max_desc_sets,
@@ -401,14 +401,14 @@ impl Graphics {
 
     pub unsafe fn blend_difference(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::blend::difference_frag::MAIN,
             max_desc_sets,
@@ -417,14 +417,14 @@ impl Graphics {
 
     pub unsafe fn blend_divide(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::blend::divide_frag::MAIN,
             max_desc_sets,
@@ -433,14 +433,14 @@ impl Graphics {
 
     pub unsafe fn blend_exclusion(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::blend::exclusion_frag::MAIN,
             max_desc_sets,
@@ -449,14 +449,14 @@ impl Graphics {
 
     pub unsafe fn blend_hard_light(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::blend::hard_light_frag::MAIN,
             max_desc_sets,
@@ -465,14 +465,14 @@ impl Graphics {
 
     pub unsafe fn blend_hard_mix(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::blend::hard_mix_frag::MAIN,
             max_desc_sets,
@@ -481,14 +481,14 @@ impl Graphics {
 
     pub unsafe fn blend_linear_burn(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::blend::linear_burn_frag::MAIN,
             max_desc_sets,
@@ -497,14 +497,14 @@ impl Graphics {
 
     pub unsafe fn blend_multiply(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::blend::multiply_frag::MAIN,
             max_desc_sets,
@@ -513,14 +513,14 @@ impl Graphics {
 
     pub unsafe fn blend_normal(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::blend::normal_frag::MAIN,
             max_desc_sets,
@@ -529,14 +529,14 @@ impl Graphics {
 
     pub unsafe fn blend_overlay(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::blend::overlay_frag::MAIN,
             max_desc_sets,
@@ -545,14 +545,14 @@ impl Graphics {
 
     pub unsafe fn blend_screen(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::blend::screen_frag::MAIN,
             max_desc_sets,
@@ -561,14 +561,14 @@ impl Graphics {
 
     pub unsafe fn blend_subtract(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::blend::subtract_frag::MAIN,
             max_desc_sets,
@@ -577,14 +577,14 @@ impl Graphics {
 
     pub unsafe fn blend_vivid_light(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::blend(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::blend::vivid_light_frag::MAIN,
             max_desc_sets,
@@ -593,18 +593,18 @@ impl Graphics {
 
     unsafe fn draw_light(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         fragment_spirv: &[u32],
         push_consts: &[ShaderRange],
     ) -> Self {
         // Create the graphics pipeline
-        let vertex = ShaderModule::new(driver, &spirv::defer::light_vert::MAIN);
-        let fragment = ShaderModule::new(driver, fragment_spirv);
+        let vertex = ShaderModule::new(device, &spirv::defer::light_vert::MAIN);
+        let fragment = ShaderModule::new(device, fragment_spirv);
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             empty::<&<_Backend as Backend>::DescriptorSetLayout>(),
             push_consts,
         );
@@ -634,7 +634,7 @@ impl Graphics {
         let pipeline = GraphicsPipeline::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             &desc,
         );
 
@@ -651,19 +651,19 @@ impl Graphics {
 
     pub unsafe fn draw_line(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         debug_assert_eq!(max_desc_sets, 0);
 
         // Create the graphics pipeline
-        let vertex = ShaderModule::new(driver, &spirv::defer::line_vert::MAIN);
-        let fragment = ShaderModule::new(driver, &spirv::defer::line_frag::MAIN);
+        let vertex = ShaderModule::new(device, &spirv::defer::line_vert::MAIN);
+        let fragment = ShaderModule::new(device, &spirv::defer::line_frag::MAIN);
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             empty::<&<_Backend as Backend>::DescriptorSetLayout>(),
             &push_const::VERTEX_MAT4,
         );
@@ -692,7 +692,7 @@ impl Graphics {
         let pipeline = GraphicsPipeline::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             &desc,
         );
 
@@ -709,23 +709,23 @@ impl Graphics {
 
     pub unsafe fn draw_mesh(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         // Create the graphics pipeline
-        let vertex = ShaderModule::new(driver, &spirv::defer::mesh_vert::MAIN);
-        let fragment = ShaderModule::new(driver, &spirv::defer::mesh_frag::MAIN);
+        let vertex = ShaderModule::new(device, &spirv::defer::mesh_vert::MAIN);
+        let fragment = ShaderModule::new(device, &spirv::defer::mesh_frag::MAIN);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             &desc_set_layout::DRAW_MESH,
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             once(set_layout.as_ref()),
             &push_const::VERTEX_MAT4,
         );
@@ -757,13 +757,13 @@ impl Graphics {
         let pipeline = GraphicsPipeline::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             &desc,
         );
 
         // Allocate all descriptor sets
         let mut desc_pool = DescriptorPool::new(
-            driver,
+            device,
             max_desc_sets,
             once(descriptor_range_desc(3 * max_desc_sets, READ_ONLY_IMG)),
         );
@@ -778,13 +778,13 @@ impl Graphics {
             max_desc_sets,
             pipeline,
             set_layout: Some(set_layout),
-            samplers: (0..3).map(|_| sampler(driver, Filter::Nearest)).collect(),
+            samplers: (0..3).map(|_| sampler(device, Filter::Nearest)).collect(),
         }
     }
 
     pub unsafe fn draw_point_light(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -793,7 +793,7 @@ impl Graphics {
         Self::draw_light(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::defer::point_light_frag::MAIN,
             &push_const::DRAW_POINT_LIGHT,
@@ -802,7 +802,7 @@ impl Graphics {
 
     pub unsafe fn draw_rect_light(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -811,7 +811,7 @@ impl Graphics {
         Self::draw_light(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::defer::rect_light_frag::MAIN,
             &push_const::DRAW_RECT_LIGHT,
@@ -820,7 +820,7 @@ impl Graphics {
 
     pub unsafe fn draw_spotlight(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -829,7 +829,7 @@ impl Graphics {
         Self::draw_light(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::defer::spotlight_frag::MAIN,
             &push_const::DRAW_SPOTLIGHT,
@@ -838,7 +838,7 @@ impl Graphics {
 
     pub unsafe fn draw_sunlight(
         #[cfg(feature = "debug-names")] _name: &str,
-        _driver: &Driver,
+        _device: Device,
         _subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -849,25 +849,25 @@ impl Graphics {
 
     unsafe fn font(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         fragment_spirv: &[u32],
         push_consts: &[ShaderRange],
         max_desc_sets: usize,
     ) -> Self {
         // Create the graphics pipeline
-        let vertex = ShaderModule::new(driver, &spirv::font_vert::MAIN);
-        let fragment = ShaderModule::new(driver, fragment_spirv);
+        let vertex = ShaderModule::new(device, &spirv::font_vert::MAIN);
+        let fragment = ShaderModule::new(device, fragment_spirv);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             &desc_set_layout::SINGLE_READ_ONLY_IMG,
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             once(set_layout.as_ref()),
             push_consts,
         );
@@ -894,13 +894,13 @@ impl Graphics {
         let pipeline = GraphicsPipeline::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             &desc,
         );
 
         // Allocate all descriptor sets
         let mut desc_pool = DescriptorPool::new(
-            driver,
+            device,
             max_desc_sets,
             once(descriptor_range_desc(max_desc_sets, READ_ONLY_IMG)),
         );
@@ -915,20 +915,20 @@ impl Graphics {
             max_desc_sets,
             pipeline,
             set_layout: Some(set_layout),
-            samplers: vec![sampler(driver, Filter::Nearest)],
+            samplers: vec![sampler(device, Filter::Nearest)],
         }
     }
 
     pub unsafe fn font_normal(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::font(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::font_frag::MAIN,
             &push_const::FONT,
@@ -938,14 +938,14 @@ impl Graphics {
 
     pub unsafe fn font_outline(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::font(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::font_outline_frag::MAIN,
             &push_const::FONT_OUTLINE,
@@ -955,24 +955,24 @@ impl Graphics {
 
     unsafe fn gradient(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         fragment_spirv: &[u32],
         max_desc_sets: usize,
     ) -> Self {
         // Create the graphics pipeline
-        let vertex = ShaderModule::new(driver, &spirv::gradient_frag::MAIN);
-        let fragment = ShaderModule::new(driver, fragment_spirv);
+        let vertex = ShaderModule::new(device, &spirv::gradient_frag::MAIN);
+        let fragment = ShaderModule::new(device, fragment_spirv);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             &desc_set_layout::SINGLE_READ_ONLY_IMG,
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             once(set_layout.as_ref()),
             &push_const::VERTEX_MAT4,
         );
@@ -998,13 +998,13 @@ impl Graphics {
         let pipeline = GraphicsPipeline::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             &desc,
         );
 
         // Allocate all descriptor sets
         let mut desc_pool = DescriptorPool::new(
-            driver,
+            device,
             max_desc_sets,
             once(descriptor_range_desc(max_desc_sets, READ_ONLY_IMG)),
         );
@@ -1019,20 +1019,20 @@ impl Graphics {
             max_desc_sets,
             pipeline,
             set_layout: Some(set_layout),
-            samplers: vec![sampler(driver, Filter::Nearest)],
+            samplers: vec![sampler(device, Filter::Nearest)],
         }
     }
 
     pub unsafe fn gradient_linear_trans(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::gradient(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::gradient_trans_frag::MAIN,
             max_desc_sets,
@@ -1041,14 +1041,14 @@ impl Graphics {
 
     pub unsafe fn gradient_linear(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::gradient(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::gradient_frag::MAIN,
             max_desc_sets,
@@ -1057,23 +1057,23 @@ impl Graphics {
 
     unsafe fn mask(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         fragment_spirv: &[u32],
         max_desc_sets: usize,
     ) -> Self {
-        let vertex = ShaderModule::new(driver, &spirv::blend::quad_transform_vert::MAIN);
-        let fragment = ShaderModule::new(driver, fragment_spirv);
+        let vertex = ShaderModule::new(device, &spirv::blend::quad_transform_vert::MAIN);
+        let fragment = ShaderModule::new(device, fragment_spirv);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             &desc_set_layout::BLEND,
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             once(set_layout.as_ref()),
             &push_const::BLEND,
         );
@@ -1099,13 +1099,13 @@ impl Graphics {
         let pipeline = GraphicsPipeline::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             &desc,
         );
 
         // Allocate all descriptor sets
         let mut desc_pool = DescriptorPool::new(
-            driver,
+            device,
             max_desc_sets,
             once(descriptor_range_desc(2 * max_desc_sets, READ_ONLY_IMG)),
         );
@@ -1120,20 +1120,20 @@ impl Graphics {
             max_desc_sets,
             pipeline,
             set_layout: Some(set_layout),
-            samplers: vec![sampler(driver, Filter::Nearest)],
+            samplers: vec![sampler(device, Filter::Nearest)],
         }
     }
 
     pub unsafe fn mask_add(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::mask(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::mask::add_frag::MAIN,
             max_desc_sets,
@@ -1142,14 +1142,14 @@ impl Graphics {
 
     pub unsafe fn mask_darken(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::mask(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::mask::darken_frag::MAIN,
             max_desc_sets,
@@ -1158,14 +1158,14 @@ impl Graphics {
 
     pub unsafe fn mask_difference(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::mask(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::mask::difference_frag::MAIN,
             max_desc_sets,
@@ -1174,14 +1174,14 @@ impl Graphics {
 
     pub unsafe fn mask_intersect(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::mask(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::mask::intersect_frag::MAIN,
             max_desc_sets,
@@ -1190,14 +1190,14 @@ impl Graphics {
 
     pub unsafe fn mask_lighten(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::mask(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::mask::lighten_frag::MAIN,
             max_desc_sets,
@@ -1206,14 +1206,14 @@ impl Graphics {
 
     pub unsafe fn mask_subtract(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::mask(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::mask::subtract_frag::MAIN,
             max_desc_sets,
@@ -1222,23 +1222,23 @@ impl Graphics {
 
     unsafe fn matte(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         fragment_spirv: &[u32],
         max_desc_sets: usize,
     ) -> Self {
-        let vertex = ShaderModule::new(driver, &spirv::blend::quad_transform_vert::MAIN);
-        let fragment = ShaderModule::new(driver, fragment_spirv);
+        let vertex = ShaderModule::new(device, &spirv::blend::quad_transform_vert::MAIN);
+        let fragment = ShaderModule::new(device, fragment_spirv);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             &desc_set_layout::BLEND,
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             once(set_layout.as_ref()),
             &push_const::BLEND,
         );
@@ -1264,13 +1264,13 @@ impl Graphics {
         let pipeline = GraphicsPipeline::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             &desc,
         );
 
         // Allocate all descriptor sets
         let mut desc_pool = DescriptorPool::new(
-            driver,
+            device,
             max_desc_sets,
             once(descriptor_range_desc(2 * max_desc_sets, READ_ONLY_IMG)),
         );
@@ -1285,20 +1285,20 @@ impl Graphics {
             max_desc_sets,
             pipeline,
             set_layout: Some(set_layout),
-            samplers: vec![sampler(driver, Filter::Nearest)],
+            samplers: vec![sampler(device, Filter::Nearest)],
         }
     }
 
     pub unsafe fn matte_alpha(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::matte(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::matte::alpha_frag::MAIN,
             max_desc_sets,
@@ -1307,14 +1307,14 @@ impl Graphics {
 
     pub unsafe fn matte_alpha_inv(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::matte(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::matte::alpha_inv_frag::MAIN,
             max_desc_sets,
@@ -1323,14 +1323,14 @@ impl Graphics {
 
     pub unsafe fn matte_luma(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::matte(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::matte::luma_frag::MAIN,
             max_desc_sets,
@@ -1339,14 +1339,14 @@ impl Graphics {
 
     pub unsafe fn matte_luma_inv(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         Self::matte(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             subpass,
             &spirv::matte::luma_inv_frag::MAIN,
             max_desc_sets,
@@ -1355,23 +1355,23 @@ impl Graphics {
 
     pub unsafe fn present(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         // Create the graphics pipeline
-        let vertex = ShaderModule::new(driver, &spirv::quad_vert::MAIN);
-        let fragment = ShaderModule::new(driver, &spirv::texture_frag::MAIN);
+        let vertex = ShaderModule::new(device, &spirv::quad_vert::MAIN);
+        let fragment = ShaderModule::new(device, &spirv::texture_frag::MAIN);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             &desc_set_layout::SINGLE_READ_ONLY_IMG,
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             once(set_layout.as_ref()),
             &push_const::VERTEX_MAT4,
         );
@@ -1396,13 +1396,13 @@ impl Graphics {
         let pipeline = GraphicsPipeline::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             &desc,
         );
 
         // Allocate all descriptor sets
         let mut desc_pool = DescriptorPool::new(
-            driver,
+            device,
             max_desc_sets,
             once(descriptor_range_desc(max_desc_sets, READ_WRITE_IMG)),
         );
@@ -1417,29 +1417,29 @@ impl Graphics {
             max_desc_sets,
             pipeline,
             set_layout: Some(set_layout),
-            samplers: vec![sampler(driver, Filter::Nearest)],
+            samplers: vec![sampler(device, Filter::Nearest)],
         }
     }
 
     pub unsafe fn skydome(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         // Create the graphics pipeline
-        let vertex = ShaderModule::new(driver, &spirv::skydome_vert::MAIN);
-        let fragment = ShaderModule::new(driver, &spirv::skydome_frag::MAIN);
+        let vertex = ShaderModule::new(device, &spirv::skydome_vert::MAIN);
+        let fragment = ShaderModule::new(device, &spirv::skydome_frag::MAIN);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             &desc_set_layout::SKYDOME,
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             once(set_layout.as_ref()),
             &push_const::SKYDOME,
         );
@@ -1470,13 +1470,13 @@ impl Graphics {
         let pipeline = GraphicsPipeline::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             &desc,
         );
 
         // Allocate all descriptor sets
         let mut desc_pool = DescriptorPool::new(
-            driver,
+            device,
             max_desc_sets,
             once(descriptor_range_desc(6 * max_desc_sets, READ_ONLY_IMG)),
         );
@@ -1491,29 +1491,29 @@ impl Graphics {
             max_desc_sets,
             pipeline,
             set_layout: Some(set_layout),
-            samplers: (0..6).map(|_| sampler(driver, Filter::Nearest)).collect(),
+            samplers: (0..6).map(|_| sampler(device, Filter::Nearest)).collect(),
         }
     }
 
     pub unsafe fn texture(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
         // Create the graphics pipeline
-        let vertex = ShaderModule::new(driver, &spirv::quad_transform_vert::MAIN);
-        let fragment = ShaderModule::new(driver, &spirv::texture_frag::MAIN);
+        let vertex = ShaderModule::new(device, &spirv::quad_transform_vert::MAIN);
+        let fragment = ShaderModule::new(device, &spirv::texture_frag::MAIN);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             &desc_set_layout::SINGLE_READ_ONLY_IMG,
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             once(set_layout.as_ref()),
             &push_const::TEXTURE,
         );
@@ -1539,13 +1539,13 @@ impl Graphics {
         let pipeline = GraphicsPipeline::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             &desc,
         );
 
         // Allocate all descriptor sets
         let mut desc_pool = DescriptorPool::new(
-            driver,
+            device,
             max_desc_sets,
             once(descriptor_range_desc(1, READ_ONLY_IMG)),
         );
@@ -1560,7 +1560,7 @@ impl Graphics {
             max_desc_sets,
             pipeline,
             set_layout: Some(set_layout),
-            samplers: vec![sampler(driver, Filter::Nearest)],
+            samplers: vec![sampler(device, Filter::Nearest)],
         }
     }
 

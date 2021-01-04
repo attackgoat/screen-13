@@ -151,7 +151,7 @@ pub struct WriteOp {
     back_buf: Lease<Texture2d>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
-    driver: Driver,
+    device: Device,
     dst: Texture2d,
     dst_preserve: bool,
     fence: Lease<Fence>,
@@ -170,7 +170,7 @@ impl WriteOp {
     #[must_use]
     pub(crate) fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         mut pool: Lease<Pool>,
         dst: &Texture2d,
     ) -> Self {
@@ -201,7 +201,7 @@ impl WriteOp {
             ),
             cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
             cmd_pool,
-            driver: Driver::clone(driver),
+            device: Device::clone(driver),
             dst: Texture2d::clone(dst),
             dst_preserve: false,
             fence,
@@ -273,13 +273,13 @@ impl WriteOp {
         // Final setup bits
         {
             let pool = self.pool.as_mut().unwrap();
-            let render_pass = pool.render_pass(&self.driver, render_pass_mode);
+            let render_pass = pool.render_pass(self.device, render_pass_mode);
 
             // Setup the framebuffer
             self.frame_buf.replace(Framebuffer2d::new(
                 #[cfg(feature = "debug-names")]
                 self.name.as_str(),
-                &self.driver,
+                self.device,
                 render_pass,
                 once(self.back_buf.borrow().as_default_view().as_ref()),
                 self.dst.borrow().dims(),
@@ -293,7 +293,7 @@ impl WriteOp {
             self.graphics.replace(pool.graphics_desc_sets(
                 #[cfg(feature = "debug-names")]
                 &self.name,
-                &self.driver,
+                self.device,
                 render_pass_mode,
                 SUBPASS_IDX,
                 graphics_mode,
@@ -318,7 +318,7 @@ impl WriteOp {
         trace!("submit_begin");
 
         let pool = self.pool.as_mut().unwrap();
-        let render_pass = pool.render_pass(&self.driver, render_pass_mode);
+        let render_pass = pool.render_pass(self.device, render_pass_mode);
         let mut back_buf = self.back_buf.borrow_mut();
         let mut dst = self.dst.borrow_mut();
         let graphics = self.graphics.as_ref().unwrap();

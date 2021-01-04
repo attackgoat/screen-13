@@ -1,6 +1,6 @@
 use {
-    super::Driver,
-    gfx_hal::{device::Device, pso::DescriptorSetLayoutBinding, Backend},
+    super::Device,
+    gfx_hal::{device::Device as _, pso::DescriptorSetLayoutBinding, Backend},
     gfx_impl::Backend as _Backend,
     std::{
         borrow::Borrow,
@@ -9,38 +9,35 @@ use {
 };
 
 pub struct DescriptorSetLayout {
-    driver: Driver,
+    device: Device,
     ptr: Option<<_Backend as Backend>::DescriptorSetLayout>,
 }
 
 impl DescriptorSetLayout {
-    pub fn new<I>(#[cfg(feature = "debug-names")] name: &str, driver: &Driver, bindings: I) -> Self
+    pub fn new<I>(#[cfg(feature = "debug-names")] name: &str, device: Device, bindings: I) -> Self
     where
         I: IntoIterator,
         I::Item: Borrow<DescriptorSetLayoutBinding>,
     {
         // TODO: This driver code does not support the imutable samplers feature.
         // See: `pImmutableSamplers` in https://vulkan.lunarg.com/doc/view/1.2.131.2/windows/vkspec.html#descriptorsets-sets
-        let set_layout = {
-            let device = driver.as_ref().borrow();
-            unsafe {
-                let ctor = || device.create_descriptor_set_layout(bindings, &[]).unwrap();
+        let set_layout = unsafe {
+            let ctor = || device.create_descriptor_set_layout(bindings, &[]).unwrap();
 
-                #[cfg(feature = "debug-names")]
-                let mut set_layout = ctor();
+            #[cfg(feature = "debug-names")]
+            let mut set_layout = ctor();
 
-                #[cfg(not(feature = "debug-names"))]
-                let set_layout = ctor();
+            #[cfg(not(feature = "debug-names"))]
+            let set_layout = ctor();
 
-                #[cfg(feature = "debug-names")]
-                device.set_descriptor_set_layout_name(&mut set_layout, name);
+            #[cfg(feature = "debug-names")]
+            device.set_descriptor_set_layout_name(&mut set_layout, name);
 
-                set_layout
-            }
+            set_layout
         };
 
         Self {
-            driver: Driver::clone(driver),
+            device,
             ptr: Some(set_layout),
         }
     }
@@ -85,11 +82,10 @@ impl DerefMut for DescriptorSetLayout {
 
 impl Drop for DescriptorSetLayout {
     fn drop(&mut self) {
-        let device = self.driver.as_ref().borrow();
         let ptr = self.ptr.take().unwrap();
 
         unsafe {
-            device.destroy_descriptor_set_layout(ptr);
+            self.device.destroy_descriptor_set_layout(ptr);
         }
     }
 }

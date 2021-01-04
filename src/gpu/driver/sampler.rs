@@ -1,7 +1,7 @@
 use {
-    super::Driver,
+    super::Device,
     gfx_hal::{
-        device::Device,
+        device::Device as _,
         image::{Filter, Lod, PackedColor, SamplerDesc, WrapMode},
         pso::Comparison,
         Backend,
@@ -13,14 +13,14 @@ use {
 pub type SamplerBuilder = SamplerDesc;
 
 pub struct Sampler {
-    driver: Driver,
+    device: Device,
     ptr: Option<<_Backend as Backend>::Sampler>,
 }
 
 impl Sampler {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        driver: &Driver,
+        device: Device,
         min: Filter,
         mag: Filter,
         mip: Filter,
@@ -31,8 +31,7 @@ impl Sampler {
         normalized: bool,
         anisotropy_clamp: Option<u8>,
     ) -> Self {
-        let sampler = {
-            let device = driver.borrow();
+        let sampler = 
             unsafe {
                 device.create_sampler(&SamplerDesc {
                     min_filter: min,
@@ -46,12 +45,11 @@ impl Sampler {
                     normalized,
                     anisotropy_clamp,
                 })
-            }
         }
         .unwrap();
 
         Self {
-            driver: Driver::clone(driver),
+            device,
             ptr: Some(sampler),
         }
     }
@@ -85,11 +83,10 @@ impl DerefMut for Sampler {
 
 impl Drop for Sampler {
     fn drop(&mut self) {
-        let device = self.driver.borrow();
         let ptr = self.ptr.take().unwrap();
 
         unsafe {
-            device.destroy_sampler(ptr);
+            self.device.destroy_sampler(ptr);
         }
     }
 }

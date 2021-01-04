@@ -1,7 +1,7 @@
 use {
-    super::{Dim, Driver, RenderPass},
+    super::{Dim, Device, RenderPass},
     crate::math::Extent,
-    gfx_hal::{device::Device, image::Extent as ImageExtent, Backend},
+    gfx_hal::{device::Device as _, image::Extent as ImageExtent, Backend},
     gfx_impl::Backend as _Backend,
     std::{
         borrow::Borrow,
@@ -16,7 +16,7 @@ where
     D: Dim,
 {
     __: PhantomData<D>,
-    driver: Driver,
+    device: Device,
     ptr: Option<<_Backend as Backend>::Framebuffer>,
 }
 
@@ -42,7 +42,7 @@ impl Framebuffer<U2> {
     /// Specialized new function for 2D framebuffers
     pub fn new<I>(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         render_pass: &RenderPass,
         image_views: I,
         dims: Extent,
@@ -51,9 +51,7 @@ impl Framebuffer<U2> {
         I: IntoIterator,
         I::Item: Borrow<<_Backend as Backend>::ImageView>,
     {
-        let frame_buf = {
-            let device = driver.as_ref().borrow();
-
+        let frame_buf = 
             unsafe {
                 let ctor = || {
                     device
@@ -79,12 +77,11 @@ impl Framebuffer<U2> {
                 device.set_framebuffer_name(&mut frame_buf, name);
 
                 frame_buf
-            }
         };
 
         Self {
             __: PhantomData,
-            driver: Driver::clone(driver),
+            device,
             ptr: Some(frame_buf),
         }
     }
@@ -133,11 +130,10 @@ where
     D: Dim,
 {
     fn drop(&mut self) {
-        let device = self.driver.as_ref().borrow();
         let ptr = self.ptr.take().unwrap();
 
         unsafe {
-            device.destroy_framebuffer(ptr);
+            self.device.destroy_framebuffer(ptr);
         }
     }
 }

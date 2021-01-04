@@ -21,7 +21,7 @@ use {
             data::{CopyRange, Mapping},
             def::CalcVertexAttrsComputeMode,
             pool::Pool,
-            Data, Driver, Lease, ModelRef,
+            Data, driver::Device, Lease, ModelRef,
         },
         pak::IndexType,
     },
@@ -501,7 +501,7 @@ impl Compiler {
     /// works because the Compiler happens to know that the host-side of the data
     fn alloc_data<T: Stride>(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         pool: &mut Pool,
         buf: &mut Option<DirtyData<T>>,
         len: u64,
@@ -532,7 +532,7 @@ impl Compiler {
         let data = pool.data(
             #[cfg(feature = "debug-names")]
             &name,
-            driver,
+            device,
             capacity,
         );
 
@@ -632,7 +632,7 @@ impl Compiler {
     pub(super) fn compile<'a, 'b: 'a>(
         &'a mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         pool: &mut Pool,
         camera: &impl Camera,
         cmds: &'b mut [Command],
@@ -699,7 +699,7 @@ impl Compiler {
             self.compile_point_lights(
                 #[cfg(feature = "debug-names")]
                 name,
-                driver,
+                device,
                 pool,
                 point_light_idx..rect_light_idx,
             );
@@ -711,7 +711,7 @@ impl Compiler {
             self.compile_rect_lights(
                 #[cfg(feature = "debug-names")]
                 name,
-                driver,
+                device,
                 pool,
                 &cmds[rect_lights],
                 rect_light_idx,
@@ -724,7 +724,7 @@ impl Compiler {
             self.compile_spotlights(
                 #[cfg(feature = "debug-names")]
                 name,
-                driver,
+                device,
                 pool,
                 &cmds[spotlights],
                 spotlight_idx,
@@ -743,7 +743,7 @@ impl Compiler {
             self.compile_lines(
                 #[cfg(feature = "debug-names")]
                 name,
-                driver,
+                device,
                 pool,
                 &cmds[lines],
             );
@@ -760,7 +760,7 @@ impl Compiler {
     fn compile_lines(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         pool: &mut Pool,
         cmds: &[Command],
     ) {
@@ -768,7 +768,7 @@ impl Compiler {
         Self::alloc_data(
             #[cfg(feature = "debug-names")]
             &format!("{} line vertex buffer", name),
-            driver,
+            device,
             pool,
             &mut self.line.buf,
             (self.line.lru.len() * LINE_STRIDE + cmds.len() * LINE_STRIDE) as _,
@@ -956,7 +956,7 @@ impl Compiler {
     fn compile_point_lights(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         pool: &mut Pool,
         range: Range<usize>,
     ) {
@@ -967,7 +967,7 @@ impl Compiler {
             let mut buf = pool.data(
                 #[cfg(feature = "debug-names")]
                 &format!("{} point light vertex buffer", name),
-                driver,
+                device,
                 POINT_LIGHT_LEN,
             );
 
@@ -992,7 +992,7 @@ impl Compiler {
     fn compile_rect_lights(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         pool: &mut Pool,
         cmds: &[Command],
         base_idx: usize,
@@ -1003,7 +1003,7 @@ impl Compiler {
         Self::alloc_data(
             #[cfg(feature = "debug-names")]
             &format!("{} rect light vertex buffer", name),
-            driver,
+            device,
             pool,
             &mut self.rect_light.buf,
             ((self.rect_light.lru.len() + cmds.len()) * RECT_LIGHT_STRIDE) as _,
@@ -1094,7 +1094,7 @@ impl Compiler {
     fn compile_spotlights(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         pool: &mut Pool,
         cmds: &[Command],
         base_idx: usize,
@@ -1105,7 +1105,7 @@ impl Compiler {
         Self::alloc_data(
             #[cfg(feature = "debug-names")]
             &format!("{} spotlight vertex buffer", name),
-            driver,
+            device,
             pool,
             &mut self.spotlight.buf,
             (self.spotlight.lru.len() * SPOTLIGHT_STRIDE + cmds.len() * SPOTLIGHT_STRIDE) as _,

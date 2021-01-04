@@ -40,7 +40,7 @@ where
     I: AsRef<<_Backend as Backend>::Image>,
 {
     dims: Extent,
-    driver: Driver,
+    device: Device,
     fmt: Format,
     image: I,
     state: RefCell<State>,
@@ -69,7 +69,7 @@ where
             let mut views = self.views.borrow_mut();
             if !views.contains_key(&key) {
                 let view = ImageView::new(
-                    &self.driver,
+                    self.device,
                     self.image.as_ref(),
                     view_kind,
                     format,
@@ -130,7 +130,7 @@ impl Texture<Image2d> {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         dims: Extent,
         fmt: Format,
         layout: Layout,
@@ -158,7 +158,7 @@ impl Texture<Image2d> {
 
         let res = Self {
             dims,
-            driver: Driver::clone(driver),
+            device: Device::clone(driver),
             fmt,
             image,
             state: RefCell::new(State {

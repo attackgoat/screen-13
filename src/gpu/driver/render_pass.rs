@@ -1,7 +1,7 @@
 use {
-    super::Driver,
+    super::Device,
     gfx_hal::{
-        device::Device,
+        device::Device as _,
         pass::{Attachment, Subpass, SubpassDependency, SubpassDesc},
         Backend,
     },
@@ -13,14 +13,14 @@ use {
 };
 
 pub struct RenderPass {
-    driver: Driver,
+    device: Device,
     ptr: Option<<_Backend as Backend>::RenderPass>,
 }
 
 impl RenderPass {
     pub fn new<'s, IA, IS, ID>(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         attachments: IA,
         subpasses: IS,
         dependencies: ID,
@@ -36,9 +36,7 @@ impl RenderPass {
         ID::Item: Borrow<SubpassDependency>,
         ID::IntoIter: ExactSizeIterator,
     {
-        let render_pass = {
-            let device = driver.as_ref().borrow();
-
+        let render_pass = 
             unsafe {
                 let ctor = || {
                     device
@@ -56,11 +54,10 @@ impl RenderPass {
                 device.set_render_pass_name(&mut render_pass, name);
 
                 render_pass
-            }
         };
 
         Self {
-            driver: Driver::clone(driver),
+            device,
             ptr: Some(render_pass),
         }
     }
@@ -109,11 +106,10 @@ impl DerefMut for RenderPass {
 
 impl Drop for RenderPass {
     fn drop(&mut self) {
-        let device = self.driver.as_ref().borrow();
         let ptr = self.ptr.take().unwrap();
 
         unsafe {
-            device.destroy_render_pass(ptr);
+            self.device.destroy_render_pass(ptr);
         }
     }
 }

@@ -1,6 +1,6 @@
 use {
-    super::Driver,
-    gfx_hal::{device::Device, Backend},
+    super::Device,
+    gfx_hal::{device::Device as _, Backend},
     gfx_impl::Backend as _Backend,
     std::ops::{Deref, DerefMut},
 };
@@ -9,27 +9,26 @@ use {
 use std::time::Instant;
 
 pub struct Fence {
-    driver: Driver,
+    device: Device,
     ptr: Option<<_Backend as Backend>::Fence>,
 }
 
 impl Fence {
-    pub fn new(#[cfg(feature = "debug-names")] name: &str, driver: &Driver) -> Self {
+    pub fn new(#[cfg(feature = "debug-names")] name: &str, device: Device) -> Self {
         Self::with_signal(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             false,
         )
     }
 
     pub fn with_signal(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         val: bool,
     ) -> Self {
         let fence = {
-            let device = driver.borrow();
             let ctor = || device.create_fence(val).unwrap();
 
             #[cfg(feature = "debug-names")]
@@ -47,35 +46,30 @@ impl Fence {
         };
 
         Self {
-            driver: Driver::clone(driver),
+            device,
             ptr: Some(fence),
         }
     }
 
     pub fn reset(fence: &mut Self) {
-        let device = fence.driver.borrow();
-
-        unsafe { device.reset_fence(&fence) }.unwrap();
+        unsafe { fence.device.reset_fence(&fence).unwrap(); }
     }
 
     /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
     #[cfg(feature = "debug-names")]
     pub fn set_name(fence: &mut Self, name: &str) {
-        let device = fence.driver.borrow();
         let ptr = fence.ptr.as_mut().unwrap();
 
         unsafe {
-            device.set_fence_name(ptr, name);
+            fence.device.set_fence_name(ptr, name);
         }
     }
 
     pub fn wait(fence: &Self) {
-        let device = fence.driver.borrow();
-
         unsafe {
             // If the fence was ready or anything happened; just return as if we waited
             // otherwise we might hold up a drop function
-            if let Ok(true) | Err(_) = device.wait_for_fence(fence, 0) {
+            if let Ok(true) | Err(_) = fence.device.wait_for_fence(fence, 0) {
                 return;
             }
 
@@ -85,7 +79,7 @@ impl Fence {
 
                 // TODO: Improve later
                 for _ in 0..100 {
-                    if let Ok(true) | Err(_) = device.wait_for_fence(fence, 1_000_000) {
+                    if let Ok(true) | Err(_) = fence.device.wait_for_fence(fence, 1_000_000) {
                         let elapsed = Instant::now() - started;
                         warn!("Graphics driver stalled! ({}ms)", elapsed.as_millis());
 
@@ -127,14 +121,13 @@ impl DerefMut for Fence {
 
 impl Drop for Fence {
     fn drop(&mut self) {
-        let device = self.driver.borrow();
         let ptr = self.ptr.take().unwrap();
 
         unsafe {
-            device
+            self.device
                 .wait_for_fence(&ptr, 0) // TODO: Double-check this zero usage
                 .unwrap(); // TODO: Make a decision about ignoring this or just panic?
-            device.destroy_fence(ptr);
+            self.device.destroy_fence(ptr);
         }
     }
 }

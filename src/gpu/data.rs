@@ -105,7 +105,7 @@ where
 pub struct Data {
     access_mask: Access,
     capacity: u64,
-    driver: Driver,
+    device: Device,
     pipeline_stage: PipelineStage,
     staging: Option<BufferMemory>,
     storage: BufferMemory,
@@ -114,7 +114,7 @@ pub struct Data {
 impl Data {
     pub fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         mut capacity: u64,
         usage: Usage,
     ) -> Self {
@@ -199,7 +199,7 @@ impl Data {
         Self {
             access_mask: Access::empty(),
             capacity,
-            driver: Driver::clone(driver),
+            device: Device::clone(driver),
             pipeline_stage: PipelineStage::TOP_OF_PIPE,
             staging,
             storage,
@@ -324,7 +324,7 @@ impl Data {
             .map(|staging| &staging.mem)
             .unwrap_or(&self.storage.mem);
 
-        unsafe { Mapping::new(&self.driver, mem, range) }
+        unsafe { Mapping::new(self.device, mem, range) }
     }
 
     /// Reads everything from the graphics device.
@@ -474,7 +474,7 @@ impl AsRef<<_Backend as Backend>::Buffer> for Data {
 }
 
 pub struct Mapping<'m> {
-    driver: Driver,
+    device: Device,
     flushed: bool,
     len: usize,
     mapped_mem: (&'m <_Backend as Backend>::Memory, Segment),
@@ -486,7 +486,7 @@ impl<'m> Mapping<'m> {
     ///
     /// The given memory must not be mapped and contain the given range.
     unsafe fn new(
-        driver: &Driver,
+        device: Device,
         mem: &'m <_Backend as Backend>::Memory,
         range: Range<u64>,
     ) -> Result<Self, MapError> {
@@ -527,7 +527,7 @@ impl<'m> Mapping<'m> {
         };
 
         Ok(Self {
-            driver: Driver::clone(driver),
+            device: Device::clone(driver),
             flushed: true,
             len: (range.end - range.start) as _,
             mapped_mem,

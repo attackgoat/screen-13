@@ -1,33 +1,29 @@
 use {
-    super::Driver,
-    gfx_hal::{device::Device, pool::CommandPoolCreateFlags, queue::QueueFamilyId, Backend},
+    super::Device,
+    gfx_hal::{device::Device as _, pool::CommandPoolCreateFlags, queue::QueueFamilyId, Backend},
     gfx_impl::Backend as _Backend,
     std::ops::{Deref, DerefMut},
 };
 
 pub struct CommandPool {
-    driver: Driver,
+    device: Device,
     ptr: Option<<_Backend as Backend>::CommandPool>,
 }
 
 impl CommandPool {
-    pub fn new(driver: &Driver, family: QueueFamilyId) -> Self {
-        Self::with_flags(driver, family, CommandPoolCreateFlags::empty())
+    pub fn new(device: Device, family: QueueFamilyId) -> Self {
+        Self::with_flags(device, family, CommandPoolCreateFlags::empty())
     }
 
     pub fn with_flags(
-        driver: &Driver,
+        device: Device,
         family: QueueFamilyId,
         flags: CommandPoolCreateFlags,
     ) -> Self {
-        let cmd_pool = {
-            let device = driver.borrow();
-
-            unsafe { device.create_command_pool(family, flags) }.unwrap()
-        };
+        let cmd_pool = unsafe { device.create_command_pool(family, flags).unwrap() };
 
         Self {
-            driver: Driver::clone(driver),
+            device,
             ptr: Some(cmd_pool),
         }
     }
@@ -61,11 +57,10 @@ impl DerefMut for CommandPool {
 
 impl Drop for CommandPool {
     fn drop(&mut self) {
-        let device = self.driver.borrow();
         let ptr = self.ptr.take().unwrap();
 
         unsafe {
-            device.destroy_command_pool(ptr);
+            self.device.destroy_command_pool(ptr);
         }
     }
 }

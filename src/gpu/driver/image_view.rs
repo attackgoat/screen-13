@@ -1,7 +1,7 @@
 use {
-    super::Driver,
+    super::Device,
     gfx_hal::{
-        device::Device,
+        device::Device as _,
         format::{Format, Swizzle},
         image::{SubresourceRange, ViewKind},
         Backend,
@@ -11,13 +11,13 @@ use {
 };
 
 pub struct ImageView {
-    driver: Driver,
+    device: Device,
     ptr: Option<<_Backend as Backend>::ImageView>,
 }
 
 impl ImageView {
     pub fn new<I>(
-        driver: &Driver,
+        device: Device,
         image: I,
         view_kind: ViewKind,
         format: Format,
@@ -27,14 +27,10 @@ impl ImageView {
     where
         I: Deref<Target = <_Backend as Backend>::Image>,
     {
-        let image_view = {
-            let device = driver.borrow();
-
-            unsafe { device.create_image_view(&image, view_kind, format, swizzle, range) }.unwrap()
-        };
+        let image_view = unsafe { device.create_image_view(&image, view_kind, format, swizzle, range) }.unwrap();
 
         Self {
-            driver: Driver::clone(driver),
+            device,
             ptr: Some(image_view),
         }
     }
@@ -68,11 +64,10 @@ impl DerefMut for ImageView {
 
 impl Drop for ImageView {
     fn drop(&mut self) {
-        let device = self.driver.borrow();
         let ptr = self.ptr.take().unwrap();
 
         unsafe {
-            device.destroy_image_view(ptr);
+            self.device.destroy_image_view(ptr);
         }
     }
 }

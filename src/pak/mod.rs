@@ -116,7 +116,7 @@
 //!
 //! ### Materials
 //!
-//! Materials are used while rendering models as Screen 13 does not retain an material information
+//! Materials are used while rendering models as Screen 13 does not retain any material information
 //! stored in the model source file, other than texture coordinates.
 //!
 //! ```text

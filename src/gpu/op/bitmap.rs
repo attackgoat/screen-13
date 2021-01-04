@@ -6,7 +6,7 @@ use {
             data::Mapping,
             def::{push_const::U32PushConst, Compute, ComputeMode},
             driver::{
-                bind_compute_descriptor_set, change_channel_type, CommandPool, Device, Driver,
+                bind_compute_descriptor_set, change_channel_type, CommandPool, Device,
                 Fence,
             },
             pool::{Lease, Pool},
@@ -90,7 +90,7 @@ pub struct BitmapOp<'a> {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
     conv_fmt: Option<ComputeDispatch>,
-    driver: Driver,
+    device: Device,
     fence: Lease<Fence>,
 
     #[cfg(feature = "debug-names")]
@@ -108,7 +108,7 @@ impl<'a> BitmapOp<'a> {
     #[must_use]
     pub unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         pool: &'a mut Pool,
         bitmap: &PakBitmap,
     ) -> Self {
@@ -124,8 +124,8 @@ impl<'a> BitmapOp<'a> {
             BitmapFormat::Rgb => &[Format::Rgb8Unorm, Format::Rgba8Unorm],
             BitmapFormat::Rgba => &[Format::Rgba8Unorm],
         };
-        let fmt = Device::best_fmt(
-            &driver.borrow(),
+        let fmt = pool.best_fmt(
+            device,
             desired_fmts,
             ImageFeature::SAMPLED | ImageFeature::STORAGE,
         )
@@ -133,7 +133,7 @@ impl<'a> BitmapOp<'a> {
         let texture = pool.texture(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             bitmap.dims(),
             fmt,
             Layout::Undefined,
@@ -185,7 +185,7 @@ impl<'a> BitmapOp<'a> {
             let compute = pool.compute_desc_sets(
                 #[cfg(feature = "debug-names")]
                 name,
-                driver,
+                device,
                 mode,
                 1,
             );
@@ -207,7 +207,7 @@ impl<'a> BitmapOp<'a> {
         let mut pixel_buf = pool.data_usage(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
+            device,
             pixel_buf_len as _,
             if conv_fmt.is_some() {
                 BufferUsage::STORAGE
@@ -244,7 +244,7 @@ impl<'a> BitmapOp<'a> {
             cmd_buf: cmd_pool.allocate_one(Level::Primary),
             cmd_pool,
             conv_fmt,
-            driver: Driver::clone(driver),
+            device: Device::clone(driver),
             fence: pool.fence(
                 #[cfg(feature = "debug-names")]
                 name,
@@ -305,7 +305,7 @@ impl<'a> BitmapOp<'a> {
         let (_, pipeline_layout) = self.pool.layouts.compute_decode_rgb_rgba(
             #[cfg(feature = "debug-names")]
             &self.name,
-            &self.driver,
+            self.device,
         );
         let mut texture = self.texture.borrow_mut();
         let dims = texture.dims();

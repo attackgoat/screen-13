@@ -1,19 +1,18 @@
 use {
-    super::Driver,
-    gfx_hal::{device::Device, Backend},
+    super::Device,
+    gfx_hal::{device::Device as _, Backend},
     gfx_impl::Backend as _Backend,
     std::ops::{Deref, DerefMut},
 };
 
 pub struct Semaphore {
-    driver: Driver,
+    device: Device,
     ptr: Option<<_Backend as Backend>::Semaphore>,
 }
 
 impl Semaphore {
-    pub fn new(#[cfg(feature = "debug-names")] name: &str, driver: &Driver) -> Self {
+    pub fn new(#[cfg(feature = "debug-names")] name: &str, device: Device) -> Self {
         let semaphore = {
-            let device = driver.borrow();
             let ctor = || device.create_semaphore().unwrap();
 
             #[cfg(feature = "debug-names")]
@@ -31,7 +30,7 @@ impl Semaphore {
         };
 
         Self {
-            driver: Driver::clone(driver),
+            device,
             ptr: Some(semaphore),
         }
     }
@@ -76,11 +75,10 @@ impl DerefMut for Semaphore {
 
 impl Drop for Semaphore {
     fn drop(&mut self) {
-        let device = self.driver.borrow();
         let ptr = self.ptr.take().unwrap();
 
         unsafe {
-            device.destroy_semaphore(ptr);
+            self.device.destroy_semaphore(ptr);
         }
     }
 }

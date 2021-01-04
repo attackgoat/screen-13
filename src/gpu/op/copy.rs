@@ -32,7 +32,7 @@ use {
 pub struct CopyOp {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
-    driver: Driver,
+    device: Device,
     dst: Texture2d,
     dst_offset: Extent,
     fence: Lease<Fence>,
@@ -46,7 +46,7 @@ impl CopyOp {
     #[must_use]
     pub(crate) fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         mut pool: Lease<Pool>,
         src: &Texture2d,
         dst: &Texture2d,
@@ -68,7 +68,7 @@ impl CopyOp {
         Self {
             cmd_buf,
             cmd_pool,
-            driver: Driver::clone(driver),
+            device: Device::clone(driver),
             dst: Texture2d::clone(dst),
             dst_offset: Extent::ZERO,
             fence,

@@ -1,7 +1,7 @@
 use {
     crate::{
         gpu::{
-            driver::Device,
+            device::Device,
             pool::{Lease, Pool},
             Driver, Texture2d,
         },
@@ -24,13 +24,13 @@ pub struct GeometryBuffer {
 impl GeometryBuffer {
     pub fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         pool: &mut Pool,
         dims: Extent,
         output_fmt: Format,
     ) -> Self {
         let (geom_fmt, light_fmt, depth_fmt) = {
-            let device = driver.borrow();
+            let device = device.borrow();
             let geom = Device::best_fmt(
                 &device,
                 &[Format::Rgba8Unorm],
@@ -57,7 +57,7 @@ impl GeometryBuffer {
         let color_metal = pool.texture(
             #[cfg(feature = "debug-names")]
             &format!("{} (Color)", name),
-            driver,
+            device,
             dims,
             geom_fmt,
             Layout::Undefined,
@@ -69,7 +69,7 @@ impl GeometryBuffer {
         let normal_rough = pool.texture(
             #[cfg(feature = "debug-names")]
             &format!("{} (Normal)", name),
-            driver,
+            device,
             dims,
             geom_fmt,
             Layout::Undefined,
@@ -81,7 +81,7 @@ impl GeometryBuffer {
         let light = pool.texture(
             #[cfg(feature = "debug-names")]
             &format!("{} (Light)", name),
-            driver,
+            device,
             dims,
             light_fmt,
             Layout::Undefined,
@@ -93,7 +93,7 @@ impl GeometryBuffer {
         let output = pool.texture(
             #[cfg(feature = "debug-names")]
             &format!("{} (Output)", name),
-            driver,
+            device,
             dims,
             output_fmt,
             Layout::Undefined,
@@ -105,7 +105,7 @@ impl GeometryBuffer {
         let depth = pool.texture(
             #[cfg(feature = "debug-names")]
             &format!("{} (Depth)", name),
-            driver,
+            device,
             dims,
             depth_fmt,
             Layout::Undefined,

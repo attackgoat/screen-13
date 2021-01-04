@@ -57,7 +57,7 @@ pub struct Font {
 
 impl Font {
     pub(crate) fn load<K: AsRef<str>, R: Read + Seek>(
-        driver: &Driver,
+        device: Device,
         pool: &mut Pool,
         pak: &mut Pak<R>,
         key: K,
@@ -204,7 +204,7 @@ pub struct FontOp {
     back_buf: Lease<Texture2d>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
-    driver: Driver,
+    device: Device,
     dst: Texture2d,
     fence: Lease<Fence>,
     frame_buf: Option<Framebuffer2d>,
@@ -224,7 +224,7 @@ impl FontOp {
     #[must_use]
     pub(crate) fn new<C, P>(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         mut pool: Lease<Pool>,
         dst: &Texture2d,
         pos: P,
@@ -269,7 +269,7 @@ impl FontOp {
             back_buf,
             cmd_buf,
             cmd_pool,
-            driver: Driver::clone(driver),
+            device: Device::clone(driver),
             dst: Texture2d::clone(dst),
             fence,
             frame_buf: None,
@@ -324,7 +324,7 @@ impl FontOp {
             self.graphics.replace(pool.graphics_desc_sets(
                 #[cfg(feature = "debug-names")]
                 &self.name,
-                &self.driver,
+                self.device,
                 render_pass_mode,
                 SUBPASS_IDX,
                 graphics_mode,
@@ -335,8 +335,8 @@ impl FontOp {
             self.frame_buf.replace(Framebuffer2d::new(
                 #[cfg(feature = "debug-names")]
                 self.name.as_str(),
-                &self.driver,
-                pool.render_pass(&self.driver, render_pass_mode),
+                self.device,
+                pool.render_pass(self.device, render_pass_mode),
                 once(self.back_buf.borrow().as_default_view().as_ref()),
                 dims,
             ));
@@ -351,7 +351,7 @@ impl FontOp {
                 pool.data_usage(
                     #[cfg(feature = "debug-names")]
                     &self.name,
-                    &self.driver,
+                    self.device,
                     vertex_buf_len,
                     BufferUsage::VERTEX,
                 ),
@@ -410,7 +410,7 @@ impl FontOp {
 
         let graphics = self.graphics.as_ref().unwrap();
         let pool = self.pool.as_mut().unwrap();
-        let render_pass = pool.render_pass(&self.driver, render_pass_mode);
+        let render_pass = pool.render_pass(self.device, render_pass_mode);
         let (vertex_buf, vertex_buf_len) = self.vertex_buf.as_mut().unwrap();
         let mut back_buf = self.back_buf.borrow_mut();
         let mut dst = self.dst.borrow_mut();

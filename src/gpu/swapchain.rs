@@ -64,7 +64,7 @@ pub enum PresentError {
 
 pub struct Swapchain {
     dims: Extent,
-    driver: Driver,
+    device: Device,
     fmt: Format,
     graphics: Graphics,
     image_idx: usize,
@@ -76,7 +76,7 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub fn new(driver: &Driver, mut surface: Surface, dims: Extent, image_count: u32) -> Self {
+    pub fn new(device: Device, mut surface: Surface, dims: Extent, image_count: u32) -> Self {
         assert_ne!(image_count, 0);
 
         let mut needs_configuration = false;
@@ -135,7 +135,7 @@ impl Swapchain {
 
         Self {
             dims,
-            driver: Driver::clone(driver),
+            device: Device::clone(driver),
             fmt,
             graphics,
             images,
@@ -211,7 +211,7 @@ impl Swapchain {
         let frame_buf = Framebuffer2d::new(
             #[cfg(feature = "debug-names")]
             "Present",
-            &self.driver,
+            self.device,
             &self.render_pass,
             once(image_view.borrow()),
             self.dims,

@@ -1,30 +1,29 @@
 use {
-    super::Driver,
-    gfx_hal::{device::Device, Backend, MemoryTypeId},
+    super::Device,
+    gfx_hal::{device::Device as _, Backend, MemoryTypeId},
     gfx_impl::Backend as _Backend,
     std::ops::{Deref, DerefMut},
 };
 
 pub struct Memory {
-    driver: Driver,
+    device: Device,
     ptr: Option<<_Backend as Backend>::Memory>,
     size: u64,
 }
 
 impl Memory {
-    pub fn new<M: Into<MemoryTypeId>>(driver: &Driver, mem_ty: M, size: u64) -> Self {
+    pub fn new<M: Into<MemoryTypeId>>(device: Device, mem_ty: M, size: u64) -> Self {
         #[cfg(debug_assertions)]
         assert_ne!(size, 0);
 
         let mem = {
-            let device = driver.borrow();
             let mem_ty = mem_ty.into();
 
-            unsafe { device.allocate_memory(mem_ty, size) }.unwrap()
+            unsafe { device.allocate_memory(mem_ty, size).unwrap() }
         };
 
         Self {
-            driver: Driver::clone(driver),
+            device,
             ptr: Some(mem),
             size,
         }
@@ -63,11 +62,10 @@ impl DerefMut for Memory {
 
 impl Drop for Memory {
     fn drop(&mut self) {
-        let device = self.driver.borrow();
         let ptr = self.ptr.take().unwrap();
 
         unsafe {
-            device.free_memory(ptr);
+            self.device.free_memory(ptr);
         }
     }
 }

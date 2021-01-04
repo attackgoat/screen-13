@@ -49,7 +49,7 @@ use {
             },
             driver::{
                 bind_compute_descriptor_set, bind_graphics_descriptor_set, CommandPool, Device,
-                Driver, Fence, Framebuffer2d,
+                 Fence, Framebuffer2d,
             },
             pool::{Lease, Pool},
             BitmapRef, Data, Texture2d, TextureRef,
@@ -94,7 +94,7 @@ pub struct DrawOp {
     compute_u16_skin_vertex_attrs: Option<Lease<Compute>>,
     compute_u32_vertex_attrs: Option<Lease<Compute>>,
     compute_u32_skin_vertex_attrs: Option<Lease<Compute>>,
-    driver: Driver,
+    device: Device,
     dst: Texture2d,
     dst_preserve: bool,
     fence: Lease<Fence>,
@@ -122,7 +122,7 @@ impl DrawOp {
     #[must_use]
     pub(crate) fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         mut pool: Lease<Pool>,
         dst: &Texture2d,
     ) -> Self {
@@ -144,19 +144,19 @@ impl DrawOp {
             compute_u16_skin_vertex_attrs: None,
             compute_u32_vertex_attrs: None,
             compute_u32_skin_vertex_attrs: None,
-            driver: Driver::clone(driver),
+            device,
             dst: TextureRef::clone(dst),
             dst_preserve: false,
             fence: pool.fence(
                 #[cfg(feature = "debug-names")]
                 name,
-                driver,
+                device,
             ),
             frame_buf: None,
             geom_buf: GeometryBuffer::new(
                 #[cfg(feature = "debug-names")]
                 name,
-                driver,
+                device,
                 &mut pool,
                 dims,
                 fmt,
@@ -216,7 +216,7 @@ impl DrawOp {
             let (mut buf, buf_len, data) = pool.skydome(
                 #[cfg(feature = "debug-names")]
                 &self.name,
-                &self.driver,
+                self.device,
             );
 
             // Fill the skydome buffer if it is brand new (data was provided)
@@ -245,7 +245,7 @@ impl DrawOp {
             let mut instrs = compiler.compile(
                 #[cfg(feature = "debug-names")]
                 &self.name,
-                &self.driver,
+                self.device,
                 &mut pool,
                 camera,
                 draws,
@@ -268,14 +268,14 @@ impl DrawOp {
                     post_fx: instrs.contains_lines(),
                 };
                 let render_pass_mode = RenderPassMode::Draw(draw_mode);
-                let render_pass = pool.render_pass(&self.driver, render_pass_mode);
+                let render_pass = pool.render_pass(self.device, render_pass_mode);
 
                 // Setup the framebuffer
                 self.frame_buf = Some((
                     Framebuffer2d::new(
                         #[cfg(feature = "debug-names")]
                         &self.name,
-                        &self.driver,
+                        self.device,
                         render_pass,
                         vec![
                             color_metal.as_default_view().as_ref(),
@@ -305,16 +305,15 @@ impl DrawOp {
                 let graphics = pool.graphics_desc_sets(
                     #[cfg(feature = "debug-names")]
                     &self.name,
-                    &self.driver,
+                    self.device,
                     render_pass_mode,
                     SKYDOME_IDX,
                     GraphicsMode::Skydome,
                     1,
                 );
-                let device = self.driver.borrow();
 
                 unsafe {
-                    Self::write_skydome_descriptors(&device, &graphics, skydome);
+                    Self::write_skydome_descriptors(self.device, &graphics, skydome);
                 }
 
                 self.graphics_skydome = Some(graphics);
@@ -328,16 +327,15 @@ impl DrawOp {
                     let graphics = pool.graphics_desc_sets(
                         #[cfg(feature = "debug-names")]
                         &self.name,
-                        &self.driver,
+                        self.device,
                         render_pass_mode,
                         fill_geom_buf_subpass_idx,
                         GraphicsMode::DrawMesh,
                         desc_sets,
                     );
-                    let device = self.driver.borrow();
 
                     unsafe {
-                        Self::write_model_material_descriptors(&device, &graphics, descriptors);
+                        Self::write_model_material_descriptors(self.device, &graphics, descriptors);
                     }
 
                     self.graphics_mesh = Some(graphics);
@@ -350,14 +348,13 @@ impl DrawOp {
                     let compute = pool.compute_desc_sets(
                         #[cfg(feature = "debug-names")]
                         &self.name,
-                        &self.driver,
+                        self.device,
                         ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode::U16),
                         desc_sets,
                     );
-                    let device = self.driver.borrow();
 
                     unsafe {
-                        Self::write_calc_vertex_attrs_descriptors(&device, &compute, descriptors);
+                        Self::write_calc_vertex_attrs_descriptors(self.device, &compute, descriptors);
                     }
 
                     self.compute_u16_vertex_attrs = Some(compute);
@@ -370,14 +367,13 @@ impl DrawOp {
                     let compute = pool.compute_desc_sets(
                         #[cfg(feature = "debug-names")]
                         &self.name,
-                        &self.driver,
+                        self.device,
                         ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode::U16_SKIN),
                         desc_sets,
                     );
-                    let device = self.driver.borrow();
 
                     unsafe {
-                        Self::write_calc_vertex_attrs_descriptors(&device, &compute, descriptors);
+                        Self::write_calc_vertex_attrs_descriptors(self.device, &compute, descriptors);
                     }
 
                     self.compute_u16_skin_vertex_attrs = Some(compute);
@@ -390,14 +386,13 @@ impl DrawOp {
                     let compute = pool.compute_desc_sets(
                         #[cfg(feature = "debug-names")]
                         &self.name,
-                        &self.driver,
+                        self.device,
                         ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode::U32),
                         desc_sets,
                     );
-                    let device = self.driver.borrow();
 
                     unsafe {
-                        Self::write_calc_vertex_attrs_descriptors(&device, &compute, descriptors);
+                        Self::write_calc_vertex_attrs_descriptors(self.device, &compute, descriptors);
                     }
 
                     self.compute_u32_vertex_attrs = Some(compute);
@@ -410,14 +405,13 @@ impl DrawOp {
                     let compute = pool.compute_desc_sets(
                         #[cfg(feature = "debug-names")]
                         &self.name,
-                        &self.driver,
+                        self.device,
                         ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode::U32_SKIN),
                         desc_sets,
                     );
-                    let device = self.driver.borrow();
 
                     unsafe {
-                        Self::write_calc_vertex_attrs_descriptors(&device, &compute, descriptors);
+                        Self::write_calc_vertex_attrs_descriptors(self.device, &compute, descriptors);
                     }
 
                     self.compute_u32_skin_vertex_attrs = Some(compute);
@@ -567,7 +561,7 @@ impl DrawOp {
 
         let pool = self.pool.as_mut().unwrap();
         let (frame_buf, render_pass_mode) = self.frame_buf.as_ref().unwrap();
-        let render_pass = pool.render_pass(&self.driver, *render_pass_mode);
+        let render_pass = pool.render_pass(self.device, *render_pass_mode);
         let mut color_metal = self.geom_buf.color_metal.borrow_mut();
         let mut normal_rough = self.geom_buf.normal_rough.borrow_mut();
         let mut light = self.geom_buf.light.borrow_mut();
@@ -666,7 +660,7 @@ impl DrawOp {
         self.graphics_line = Some(pool.graphics(
             #[cfg(feature = "debug-names")]
             &format!("{} line", &self.name),
-            &self.driver,
+            self.device,
             *render_pass_mode,
             subpass_idx,
             GraphicsMode::DrawLine,
@@ -811,7 +805,7 @@ impl DrawOp {
         self.graphics_point_light = Some(pool.graphics(
             #[cfg(feature = "debug-names")]
             &self.name,
-            &self.driver,
+            self.device,
             *render_pass_mode,
             subpass_idx,
             GraphicsMode::DrawPointLight,
@@ -873,7 +867,7 @@ impl DrawOp {
         self.graphics_rect_light = Some(pool.graphics(
             #[cfg(feature = "debug-names")]
             &self.name,
-            &self.driver,
+            self.device,
             *render_pass_mode,
             subpass_idx,
             GraphicsMode::DrawRectLight,
@@ -988,7 +982,7 @@ impl DrawOp {
         self.graphics_spotlight = Some(pool.graphics(
             #[cfg(feature = "debug-names")]
             &self.name,
-            &self.driver,
+            self.device,
             *render_pass_mode,
             subpass_idx,
             GraphicsMode::DrawSpotlight,
@@ -1053,7 +1047,7 @@ impl DrawOp {
         self.graphics_sunlight = Some(pool.graphics(
             #[cfg(feature = "debug-names")]
             &self.name,
-            &self.driver,
+            self.device,
             *render_pass_mode,
             subpass_idx,
             GraphicsMode::DrawSunlight,
@@ -1189,7 +1183,7 @@ impl DrawOp {
         let (_, pipeline_layout) = pool.layouts.compute_calc_vertex_attrs(
             #[cfg(feature = "debug-names")]
             &self.name,
-            &self.driver,
+            self.device,
         );
 
         bind_compute_descriptor_set(&mut self.cmd_buf, pipeline_layout, desc_set);
@@ -1199,13 +1193,12 @@ impl DrawOp {
         trace!("submit_vertex_attrs_calc");
 
         // TODO: Do I need to work within limits? Why is it not broken right now?
-        let device = self.driver.borrow();
-        let _limit = Device::gpu(&device).limits().max_compute_work_group_size[0];
+        //let _limit = Device::gpu(&device).limits().max_compute_work_group_size[0];
         let pool = self.pool.as_mut().unwrap();
         let (_, pipeline_layout) = pool.layouts.compute_calc_vertex_attrs(
             #[cfg(feature = "debug-names")]
             &self.name,
-            &self.driver,
+            self.device,
         );
 
         // We may be limited by the count of dispatches we issue; so use a loop
@@ -1267,7 +1260,6 @@ impl DrawOp {
     unsafe fn submit_finish(&mut self) {
         trace!("submit_finish");
 
-        let mut device = self.driver.borrow_mut();
         let mut dst = self.dst.borrow_mut();
         let mut output = self.geom_buf.output.borrow_mut();
         let dims = dst.dims();
@@ -1323,7 +1315,7 @@ impl DrawOp {
     }
 
     unsafe fn write_calc_vertex_attrs_descriptors<'v>(
-        device: &Device,
+        device: Device,
         compute: &Compute,
         vertex_bufs: impl ExactSizeIterator<Item = CalcVertexAttrsDescriptors<'v>>,
     ) {
@@ -1383,7 +1375,7 @@ impl DrawOp {
     }
 
     unsafe fn write_model_material_descriptors<'m>(
-        device: &Device,
+        device: Device,
         graphics: &Graphics,
         materials: impl ExactSizeIterator<Item = &'m Material>,
     ) {
@@ -1424,7 +1416,7 @@ impl DrawOp {
         }
     }
 
-    unsafe fn write_skydome_descriptors(device: &Device, graphics: &Graphics, skydome: &Skydome) {
+    unsafe fn write_skydome_descriptors(device: Device, graphics: &Graphics, skydome: &Skydome) {
         let set = graphics.desc_set(0);
         device.write_descriptor_sets(vec![
             DescriptorSetWrite {

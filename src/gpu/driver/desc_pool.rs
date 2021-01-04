@@ -1,7 +1,7 @@
 use {
-    super::Driver,
+    super::Device,
     gfx_hal::{
-        device::Device,
+        device::Device as _,
         pso::{DescriptorPoolCreateFlags, DescriptorRangeDesc},
         Backend,
     },
@@ -13,20 +13,20 @@ use {
 };
 
 pub struct DescriptorPool {
-    driver: Driver,
+    device: Device,
     max_desc_sets: usize,
     ptr: Option<<_Backend as Backend>::DescriptorPool>,
 }
 
 impl DescriptorPool {
-    pub fn new<I>(driver: &Driver, max_desc_sets: usize, desc_ranges: I) -> Self
+    pub fn new<I>(device: Device, max_desc_sets: usize, desc_ranges: I) -> Self
     where
         I: IntoIterator,
         I::Item: Borrow<DescriptorRangeDesc>,
         I::IntoIter: ExactSizeIterator,
     {
         Self::with_flags(
-            driver,
+            device,
             max_desc_sets,
             desc_ranges,
             DescriptorPoolCreateFlags::empty(),
@@ -34,7 +34,7 @@ impl DescriptorPool {
     }
 
     pub fn with_flags<I>(
-        driver: &Driver,
+        device: Device,
         max_desc_sets: usize,
         desc_ranges: I,
         flags: DescriptorPoolCreateFlags,
@@ -44,18 +44,14 @@ impl DescriptorPool {
         I::Item: Borrow<DescriptorRangeDesc>,
         I::IntoIter: ExactSizeIterator,
     {
-        let desc_pool = {
-            let device = driver.as_ref().borrow();
-
-            unsafe {
+        let desc_pool = unsafe {
                 device
                     .create_descriptor_pool(max_desc_sets, desc_ranges, flags)
                     .unwrap()
-            }
-        };
+            };
 
         Self {
-            driver: Driver::clone(driver),
+            device,
             max_desc_sets,
             ptr: Some(desc_pool),
         }
@@ -94,11 +90,10 @@ impl DerefMut for DescriptorPool {
 
 impl Drop for DescriptorPool {
     fn drop(&mut self) {
-        let device = self.driver.as_ref().borrow();
         let ptr = self.ptr.take().unwrap();
 
         unsafe {
-            device.destroy_descriptor_pool(ptr);
+            self.device.destroy_descriptor_pool(ptr);
         }
     }
 }

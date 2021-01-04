@@ -17,7 +17,7 @@ pub struct Layouts {
 impl Layouts {
     fn lazy_init<I, P>(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         layouts: &mut Option<(DescriptorSetLayout, PipelineLayout)>,
         bindings: I,
         push_consts: P,
@@ -49,7 +49,7 @@ impl Layouts {
     pub(crate) fn compute_calc_vertex_attrs(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
     ) -> &(DescriptorSetLayout, PipelineLayout) {
         Self::lazy_init(
             #[cfg(feature = "debug-names")]
@@ -66,7 +66,7 @@ impl Layouts {
     pub(crate) fn compute_decode_rgb_rgba(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
     ) -> &(DescriptorSetLayout, PipelineLayout) {
         Self::lazy_init(
             #[cfg(feature = "debug-names")]

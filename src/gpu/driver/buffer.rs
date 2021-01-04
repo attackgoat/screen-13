@@ -1,24 +1,23 @@
 use {
-    super::Driver,
+    super::Device,
     gfx_hal::{buffer::Usage, device::Device as _, Backend},
     gfx_impl::Backend as _Backend,
     std::ops::{Deref, DerefMut},
 };
 
 pub struct Buffer {
-    driver: Driver,
+    device: Device,
     ptr: Option<<_Backend as Backend>::Buffer>,
 }
 
 impl Buffer {
     pub fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         usage: Usage,
         len: u64,
     ) -> Self {
         let buffer = {
-            let device = driver.borrow();
             let ctor = || unsafe { device.create_buffer(len as u64, usage).unwrap() };
 
             #[cfg(feature = "debug-names")]
@@ -37,7 +36,7 @@ impl Buffer {
 
         Self {
             ptr: Some(buffer),
-            driver: Driver::clone(driver),
+            device,
         }
     }
 
@@ -81,11 +80,10 @@ impl DerefMut for Buffer {
 
 impl Drop for Buffer {
     fn drop(&mut self) {
-        let device = self.driver.borrow();
         let ptr = self.ptr.take().unwrap();
 
         unsafe {
-            device.destroy_buffer(ptr);
+            self.device.destroy_buffer(ptr);
         }
     }
 }

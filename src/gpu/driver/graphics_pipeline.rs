@@ -1,25 +1,22 @@
 use {
-    super::Driver,
-    gfx_hal::{device::Device, pso::GraphicsPipelineDesc, Backend},
+    super::Device,
+    gfx_hal::{device::Device as _, pso::GraphicsPipelineDesc, Backend},
     gfx_impl::Backend as _Backend,
     std::ops::{Deref, DerefMut},
 };
 
 pub struct GraphicsPipeline {
-    driver: Driver,
+    device: Device,
     ptr: Option<<_Backend as Backend>::GraphicsPipeline>,
 }
 
 impl GraphicsPipeline {
     pub fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         desc: &GraphicsPipelineDesc<'_, _Backend>,
     ) -> Self {
-        let graphics_pipeline = {
-            let device = driver.borrow();
-
-            unsafe {
+        let graphics_pipeline = unsafe {
                 // TODO: Use a pipeline cache?
                 let ctor = || device.create_graphics_pipeline(&desc, None).unwrap();
 
@@ -33,11 +30,10 @@ impl GraphicsPipeline {
                 device.set_graphics_pipeline_name(&mut graphics_pipeline, name);
 
                 graphics_pipeline
-            }
         };
 
         Self {
-            driver: Driver::clone(driver),
+            device,
             ptr: Some(graphics_pipeline),
         }
     }
@@ -82,11 +78,10 @@ impl DerefMut for GraphicsPipeline {
 
 impl Drop for GraphicsPipeline {
     fn drop(&mut self) {
-        let device = self.driver.borrow();
         let ptr = self.ptr.take().unwrap();
 
         unsafe {
-            device.destroy_graphics_pipeline(ptr);
+            self.device.destroy_graphics_pipeline(ptr);
         }
     }
 }

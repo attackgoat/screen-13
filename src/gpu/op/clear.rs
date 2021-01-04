@@ -28,7 +28,7 @@ pub struct ClearOp {
     clear_value: ClearValue,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
-    driver: Driver,
+    device: Device,
     fence: Lease<Fence>,
     pool: Option<Lease<Pool>>,
     texture: Texture2d,
@@ -38,7 +38,7 @@ impl ClearOp {
     #[must_use]
     pub(crate) fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         mut pool: Lease<Pool>,
         texture: &Texture2d,
     ) -> Self {
@@ -49,7 +49,7 @@ impl ClearOp {
             clear_value: AlphaColor::rgba(0, 0, 0, 0).into(),
             cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
             cmd_pool,
-            driver: Driver::clone(driver),
+            device: Device::clone(driver),
             fence: pool.fence(
                 #[cfg(feature = "debug-names")]
                 name,

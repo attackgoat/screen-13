@@ -1,7 +1,7 @@
 use {
-    super::Driver,
+    super::Device,
     gfx_hal::{
-        device::Device,
+        device::Device as _,
         pso::{ComputePipelineDesc, EntryPoint},
         Backend,
     },
@@ -10,20 +10,19 @@ use {
 };
 
 pub struct ComputePipeline {
-    driver: Driver,
+    device: Device,
     ptr: Option<<_Backend as Backend>::ComputePipeline>,
 }
 
 impl ComputePipeline {
     pub unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         layout: &<_Backend as Backend>::PipelineLayout,
         entry_point: EntryPoint<'_, _Backend>,
     ) -> Self {
         let desc = ComputePipelineDesc::new(entry_point, layout);
         let compute_pipeline = {
-            let device = driver.as_ref().borrow();
             let ctor = || device.create_compute_pipeline(&desc, None).unwrap();
 
             #[cfg(feature = "debug-names")]
@@ -40,18 +39,17 @@ impl ComputePipeline {
 
         Self {
             ptr: Some(compute_pipeline),
-            driver: Driver::clone(driver),
+            device,
         }
     }
 
     /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
     #[cfg(feature = "debug-names")]
     pub fn set_name(compute_pipeline: &mut Self, name: &str) {
-        let device = compute_pipeline.driver.as_ref().borrow();
         let ptr = compute_pipeline.ptr.as_mut().unwrap();
 
         unsafe {
-            device.set_compute_pipeline_name(ptr, name);
+            compute_pipeline.device.set_compute_pipeline_name(ptr, name);
         }
     }
 }
@@ -84,11 +82,10 @@ impl DerefMut for ComputePipeline {
 
 impl Drop for ComputePipeline {
     fn drop(&mut self) {
-        let device = self.driver.as_ref().borrow();
         let ptr = self.ptr.take().unwrap();
 
         unsafe {
-            device.destroy_compute_pipeline(ptr);
+            self.device.destroy_compute_pipeline(ptr);
         }
     }
 }

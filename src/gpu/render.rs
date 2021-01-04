@@ -21,7 +21,7 @@ use {
 /// A powerful structure which allows you to combine various operations and other render
 /// instances to create just about any creative effect.
 pub struct Render {
-    driver: Driver,
+    device: Device,
     pool: Option<Lease<Pool>>,
     target: Lease<Texture2d>,
     target_dirty: bool,
@@ -31,7 +31,7 @@ pub struct Render {
 impl Render {
     pub(super) fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
+        device: Device,
         dims: Extent,
         mut pool: Lease<Pool>,
         ops: Vec<Box<dyn Op>>,
@@ -56,7 +56,7 @@ impl Render {
         );
 
         Self {
-            driver: Driver::clone(driver),
+            device: Device::clone(driver),
             pool: Some(pool),
             target,
             target_dirty: false,
@@ -70,7 +70,7 @@ impl Render {
         let op = ClearOp::new(
             #[cfg(feature = "debug-names")]
             name,
-            &self.driver,
+            self.device,
             pool,
             &self.target,
         );
@@ -97,7 +97,7 @@ impl Render {
         let op = CopyOp::new(
             #[cfg(feature = "debug-names")]
             name,
-            &self.driver,
+            self.device,
             pool,
             &src,
             &self.target,
@@ -126,7 +126,7 @@ impl Render {
         let mut op = DrawOp::new(
             #[cfg(feature = "debug-names")]
             name,
-            &self.driver,
+            self.device,
             pool,
             &self.target,
         );
@@ -151,7 +151,7 @@ impl Render {
         let op = EncodeOp::new(
             #[cfg(feature = "debug-names")]
             name,
-            &self.driver,
+            self.device,
             pool,
             &self.target,
         );
@@ -179,7 +179,7 @@ impl Render {
         let op = GradientOp::new(
             #[cfg(feature = "debug-names")]
             name,
-            &self.driver,
+            self.device,
             pool,
             &self.target,
             [(path[0].0, path[0].1.into()), (path[1].0, path[1].1.into())],
@@ -222,7 +222,7 @@ impl Render {
         let op = FontOp::new(
             #[cfg(feature = "debug-names")]
             name,
-            &self.driver,
+            self.device,
             pool,
             &self.target,
             pos,
@@ -247,7 +247,7 @@ impl Render {
         let mut op = WriteOp::new(
             #[cfg(feature = "debug-names")]
             name,
-            &self.driver,
+            self.device,
             pool,
             &self.target,
         );

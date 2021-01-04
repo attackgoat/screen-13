@@ -6,16 +6,16 @@ use {
 };
 
 pub struct Surface {
-    instance: Option<Instance>,
+    instance: &'static Instance,
     ptr: Option<<_Backend as Backend>::Surface>,
 }
 
 impl Surface {
-    pub fn new(instance: Instance, window: &Window) -> Result<Self, InitError> {
+    pub fn new(instance: &'static Instance, window: &Window) -> Result<Self, InitError> {
         let surface = unsafe { instance.create_surface(window)? };
 
         Ok(Self {
-            instance: Some(instance),
+            instance,
             ptr: Some(surface),
         })
     }
@@ -49,12 +49,10 @@ impl DerefMut for Surface {
 
 impl Drop for Surface {
     fn drop(&mut self) {
-        if let Some(instance) = &self.instance {
-            let ptr = self.ptr.take().unwrap();
+        let ptr = self.ptr.take().unwrap();
 
-            unsafe {
-                instance.destroy_surface(ptr);
-            }
+        unsafe {
+            self.instance.destroy_surface(ptr);
         }
     }
 }
