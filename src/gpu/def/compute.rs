@@ -110,7 +110,7 @@ impl Compute {
             desc_set_layout,
             pipeline_layout,
             max_desc_sets,
-            &spirv::compute::CALC_VERTEX_ATTRS_U16_COMP,
+            &spirv::compute::calc_vertex_attrs_u16_comp::MAIN,
             true,
         )
     }
@@ -130,7 +130,7 @@ impl Compute {
             desc_set_layout,
             pipeline_layout,
             max_desc_sets,
-            &spirv::compute::CALC_VERTEX_ATTRS_U16_SKIN_COMP,
+            &spirv::compute::calc_vertex_attrs_u16_comp::SKIN,
             true,
         )
     }
@@ -150,7 +150,7 @@ impl Compute {
             desc_set_layout,
             pipeline_layout,
             max_desc_sets,
-            &spirv::compute::CALC_VERTEX_ATTRS_U32_COMP,
+            &spirv::compute::calc_vertex_attrs_u32_comp::MAIN,
             true,
         )
     }
@@ -170,7 +170,7 @@ impl Compute {
             desc_set_layout,
             pipeline_layout,
             max_desc_sets,
-            &spirv::compute::CALC_VERTEX_ATTRS_U32_SKIN_COMP,
+            &spirv::compute::calc_vertex_attrs_u32_comp::SKIN,
             true,
         )
     }
@@ -189,7 +189,7 @@ impl Compute {
             desc_set_layout,
             pipeline_layout,
             max_desc_sets,
-            &spirv::compute::DECODE_RGB_RGBA_COMP,
+            &spirv::compute::decode_rgb_rgba_comp::MAIN,
             &[
                 descriptor_range_desc(max_desc_sets, READ_ONLY_BUF),
                 descriptor_range_desc(max_desc_sets, READ_WRITE_IMG),

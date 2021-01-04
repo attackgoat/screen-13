@@ -12,7 +12,7 @@ use {
         cmp::Ordering::Equal,
         collections::hash_map::DefaultHasher,
         env::var,
-        fs::{create_dir_all, remove_dir_all, remove_file, File},
+        fs::{create_dir_all, remove_dir_all, remove_file, File, OpenOptions},
         hash::{Hash, Hasher},
         io::{BufRead, BufReader, Write},
         path::{Path, PathBuf},
@@ -30,7 +30,8 @@ lazy_static! {
     static ref SPOTLIGHT_PATH: PathBuf = OUT_DIR.join("spotlight.rs");
 }
 
-static mut GLSL_FILENAMES: Option<Vec<PathBuf>> = None;
+// TODO: Ugh this is now old and hairy. Kill with the next feature.
+static mut GLSL_FILENAMES: Option<Vec<(PathBuf, Vec<String>)>> = None;
 
 fn main() {
     compile_shaders();
@@ -431,9 +432,9 @@ fn compile_shaders() {
 
     // Compute - General
     compile_glsl("compute/calc_vertex_attrs_u16.comp");
-    compile_glsl("compute/calc_vertex_attrs_u16_skin.comp");
     compile_glsl("compute/calc_vertex_attrs_u32.comp");
-    compile_glsl("compute/calc_vertex_attrs_u32_skin.comp");
+    compile_glsl_with_defines("compute/calc_vertex_attrs_u16.comp", &["skin"]);
+    compile_glsl_with_defines("compute/calc_vertex_attrs_u32.comp", &["skin"]);
 
     // Masking
     compile_glsl("mask/add.frag");
@@ -465,6 +466,7 @@ fn compile_shaders() {
     compile_glsl("font_outline.frag");
     compile_glsl("font.frag");
     compile_glsl("font.vert");
+    compile_glsl("gradient_trans.frag");
     compile_glsl("gradient.frag");
     compile_glsl("gradient.vert");
     compile_glsl("hdr_tonemap.frag");
@@ -485,6 +487,19 @@ fn compile_shaders() {
 }
 
 fn compile_glsl<P: AsRef<Path>>(filename: P) {
+    let no_defines: Vec<&'static str> = Default::default();
+    compile_glsl_with_defines(filename, &no_defines);
+}
+
+/// Supports frag/vert/comp programs and #include/#define directives. No sugar added.
+fn compile_glsl_with_defines<P: AsRef<Path>, D: IntoIterator<Item = impl AsRef<str>>>(
+    filename: P,
+    defines: D,
+) {
+    let defines = defines
+        .into_iter()
+        .map(|define| define.as_ref().to_uppercase().trim().replace(" ", "_"))
+        .collect::<Vec<_>>();
     let ty = match filename.as_ref().extension().unwrap().to_str().unwrap() {
         "comp" => ShaderKind::Compute,
         "frag" => ShaderKind::Fragment,
@@ -492,13 +507,39 @@ fn compile_glsl<P: AsRef<Path>>(filename: P) {
         _ => panic!(),
     };
 
-    // Read the source code
+    // Read the source code with defines inserted after the version tag
     let glsl = read_file_with_includes(GLSL_DIR.join(&filename));
+    let (preamble, code) = glsl.split_at(
+        glsl.find("#version 450\n")
+            .expect("All shaders must be #version 450")
+            + 13,
+    );
+    let glsl = if defines.is_empty() {
+        glsl
+    } else {
+        format!(
+            "{}\n{}\n{}",
+            preamble,
+            defines
+                .iter()
+                .map(|define| format!("#define {}", &define))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            code,
+        )
+    };
 
     let filename = filename.as_ref().to_owned();
 
     unsafe {
-        GLSL_FILENAMES.as_mut().unwrap().push(filename.clone());
+        let glsl_filenames = GLSL_FILENAMES.as_mut().unwrap();
+        if glsl_filenames
+            .iter()
+            .find(|(other, _)| *other == filename)
+            .is_none()
+        {
+            glsl_filenames.push((filename.clone(), defines.clone()));
+        }
     }
 
     // Compile the source code or print out help
@@ -522,6 +563,7 @@ fn compile_glsl<P: AsRef<Path>>(filename: P) {
     };
 
     // Create the output directory and file
+    let glsl_filename = filename.clone();
     let filename = SPIRV_DIR.join(
         &filename
             .with_file_name(format!(
@@ -537,7 +579,11 @@ fn compile_glsl<P: AsRef<Path>>(filename: P) {
             .with_extension("rs"),
     );
     create_dir_all(filename.parent().unwrap()).unwrap();
-    let mut output_file = File::create(&filename).unwrap();
+    let mut output_file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(&filename)
+        .unwrap();
 
     //
     let mut spirv_wide = vec![];
@@ -558,17 +604,57 @@ fn compile_glsl<P: AsRef<Path>>(filename: P) {
         spirv_wide.push(byte_wide);
     }
 
+    // Create a rust doc comment with the annotated source code
+    let comment = glsl
+        .lines()
+        .map(|line| format!("/// {}", line))
+        .collect::<Vec<_>>()
+        .join("\n");
+    writeln!(
+        output_file,
+        "/// SPIR-V compilation of `{}`\n/// ",
+        glsl_filename.file_name().unwrap().to_str().unwrap()
+    )
+    .unwrap();
+
+    if !defines.is_empty() {
+        writeln!(
+            output_file,
+            "/// _NOTE:_ This variant defines:\n{}\n/// ",
+            defines
+                .iter()
+                .map(|define| format!("// - `{}`", define))
+                .collect::<Vec<_>>()
+                .as_slice()
+                .join("\n")
+        )
+        .unwrap();
+    }
+
+    writeln!(
+        output_file,
+        "/// ## GLSL Source Code\n/// \n/// ```glsl\n{}\n/// ```",
+        comment
+    )
+    .unwrap();
+
     // Convert to a byte array string
     let bytes = spirv_wide
         .iter()
         .map(|&val| format!("0x{:x}", val))
-        .collect::<Vec<String>>()
+        .collect::<Vec<_>>()
+        .as_slice()
         .join(", ");
 
     // Write a maybe-okay helper function
-    write!(
+    writeln!(
         output_file,
-        "#[allow(clippy::all)]\npub const SPIRV: [u32; {}] = [{}];",
+        "pub const {}: [u32; {}] = [{}];\n",
+        if defines.is_empty() {
+            "MAIN".to_owned()
+        } else {
+            defines.join("_")
+        },
         spirv_wide.len(),
         bytes
     )
@@ -640,12 +726,15 @@ fn write_spriv_mod() {
     let mut directories = Vec::default();
 
     unsafe {
-        GLSL_FILENAMES.as_mut().unwrap().sort();
+        GLSL_FILENAMES
+            .as_mut()
+            .unwrap()
+            .sort_by_key(|glsl_filename| glsl_filename.0.to_str().unwrap().to_owned());
     }
 
     // Make sure each directory has its own mod
     unsafe {
-        for filename in GLSL_FILENAMES.as_ref().unwrap() {
+        for (filename, _defines) in GLSL_FILENAMES.as_ref().unwrap() {
             // Does filename have a preceding path portion? ex: assets\shader.frag
             if filename.file_name().unwrap() != filename.as_os_str() {
                 let parent = filename.parent().unwrap();
@@ -669,7 +758,7 @@ fn write_spriv_mod_at<P: AsRef<Path>>(path: P) {
 
     // Get the filenames for `path`
     unsafe {
-        for filename in GLSL_FILENAMES.as_ref().unwrap() {
+        for (filename, _defines) in GLSL_FILENAMES.as_ref().unwrap() {
             // Does filename have a preceding path portion? ex: assets\shader.frag
             if filename.file_name().unwrap() != filename.as_os_str() {
                 let parent = filename.parent().unwrap();
@@ -687,7 +776,12 @@ fn write_spriv_mod_at<P: AsRef<Path>>(path: P) {
     }
 
     for directory in &directories {
-        writeln!(output_file, "pub mod {};", directory.display()).unwrap();
+        writeln!(
+            output_file,
+            "pub mod {};",
+            directory.file_name().unwrap().to_str().unwrap()
+        )
+        .unwrap();
     }
 
     writeln!(output_file).unwrap();
@@ -695,7 +789,7 @@ fn write_spriv_mod_at<P: AsRef<Path>>(path: P) {
     for filename in &filenames {
         writeln!(
             output_file,
-            "mod {}_{};",
+            "pub mod {}_{};",
             filename.file_stem().unwrap().to_str().unwrap(),
             filename.extension().unwrap().to_str().unwrap()
         )
@@ -703,26 +797,4 @@ fn write_spriv_mod_at<P: AsRef<Path>>(path: P) {
     }
 
     writeln!(output_file).unwrap();
-
-    for filename in &filenames {
-        writeln!(
-            output_file,
-            "pub use self::{}_{}::SPIRV as {}_{};",
-            filename.file_stem().unwrap().to_str().unwrap(),
-            filename.extension().unwrap().to_str().unwrap(),
-            filename
-                .file_stem()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .to_uppercase(),
-            filename
-                .extension()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .to_uppercase(),
-        )
-        .unwrap();
-    }
 }

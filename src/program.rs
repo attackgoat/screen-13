@@ -191,7 +191,9 @@ impl Program<'_, '_> {
         self
     }
 
-    /// Gets the filesystem root for this program. The returned path is a good place to store
+    /// Gets the filesystem root for this program.
+    ///
+    /// The returned path is a good place to store
     /// program configuration and data on a per-user basis.
     pub fn root(&self) -> Result<PathBuf, Error> {
         program_root(self)

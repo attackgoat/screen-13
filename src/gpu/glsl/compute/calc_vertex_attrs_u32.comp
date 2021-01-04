@@ -8,7 +8,12 @@
 #version 450
 
 #include "calc_vertex_attrs_decl.glsl"
-#include "calc_vertex_attrs_u32.glsl"
+
+// Reads a 32 bit index out of the 32 bit index buffer
+uint read_idx(uint idx) {
+    return idx_buf[idx];
+}
+
 #include "calc_vertex_attrs_fns.glsl"
 
 void main() {

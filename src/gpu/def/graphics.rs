@@ -225,7 +225,7 @@ impl Graphics {
         fragment_spirv: &[u32],
         max_desc_sets: usize,
     ) -> Self {
-        let vertex = ShaderModule::new(driver, &spirv::blend::QUAD_TRANSFORM_VERT);
+        let vertex = ShaderModule::new(driver, &spirv::blend::quad_transform_vert::MAIN);
         let fragment = ShaderModule::new(driver, fragment_spirv);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
@@ -298,7 +298,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::blend::ADD_FRAG,
+            &spirv::blend::add_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -314,7 +314,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::blend::ALPHA_ADD_FRAG,
+            &spirv::blend::alpha_add_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -330,7 +330,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::blend::COLOR_BURN_FRAG,
+            &spirv::blend::color_burn_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -346,7 +346,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::blend::COLOR_DODGE_FRAG,
+            &spirv::blend::color_dodge_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -362,7 +362,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::blend::COLOR_FRAG,
+            &spirv::blend::color_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -378,7 +378,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::blend::DARKEN_FRAG,
+            &spirv::blend::darken_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -394,7 +394,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::blend::DARKER_COLOR_FRAG,
+            &spirv::blend::darker_color_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -410,7 +410,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::blend::DIFFERENCE_FRAG,
+            &spirv::blend::difference_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -426,7 +426,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::blend::DIVIDE_FRAG,
+            &spirv::blend::divide_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -442,7 +442,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::blend::EXCLUSION_FRAG,
+            &spirv::blend::exclusion_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -458,7 +458,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::blend::HARD_LIGHT_FRAG,
+            &spirv::blend::hard_light_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -474,7 +474,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::blend::HARD_MIX_FRAG,
+            &spirv::blend::hard_mix_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -490,7 +490,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::blend::LINEAR_BURN_FRAG,
+            &spirv::blend::linear_burn_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -506,7 +506,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::blend::MULTIPLY_FRAG,
+            &spirv::blend::multiply_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -522,7 +522,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::blend::NORMAL_FRAG,
+            &spirv::blend::normal_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -538,7 +538,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::blend::OVERLAY_FRAG,
+            &spirv::blend::overlay_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -554,7 +554,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::blend::SCREEN_FRAG,
+            &spirv::blend::screen_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -570,7 +570,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::blend::SUBTRACT_FRAG,
+            &spirv::blend::subtract_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -586,7 +586,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::blend::VIVID_LIGHT_FRAG,
+            &spirv::blend::vivid_light_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -599,7 +599,7 @@ impl Graphics {
         push_consts: &[ShaderRange],
     ) -> Self {
         // Create the graphics pipeline
-        let vertex = ShaderModule::new(driver, &spirv::defer::LIGHT_VERT);
+        let vertex = ShaderModule::new(driver, &spirv::defer::light_vert::MAIN);
         let fragment = ShaderModule::new(driver, fragment_spirv);
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
@@ -658,8 +658,8 @@ impl Graphics {
         debug_assert_eq!(max_desc_sets, 0);
 
         // Create the graphics pipeline
-        let vertex = ShaderModule::new(driver, &spirv::defer::LINE_VERT);
-        let fragment = ShaderModule::new(driver, &spirv::defer::LINE_FRAG);
+        let vertex = ShaderModule::new(driver, &spirv::defer::line_vert::MAIN);
+        let fragment = ShaderModule::new(driver, &spirv::defer::line_frag::MAIN);
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
@@ -714,8 +714,8 @@ impl Graphics {
         max_desc_sets: usize,
     ) -> Self {
         // Create the graphics pipeline
-        let vertex = ShaderModule::new(driver, &spirv::defer::MESH_VERT);
-        let fragment = ShaderModule::new(driver, &spirv::defer::MESH_FRAG);
+        let vertex = ShaderModule::new(driver, &spirv::defer::mesh_vert::MAIN);
+        let fragment = ShaderModule::new(driver, &spirv::defer::mesh_frag::MAIN);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
@@ -795,7 +795,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::defer::POINT_LIGHT_FRAG,
+            &spirv::defer::point_light_frag::MAIN,
             &push_const::DRAW_POINT_LIGHT,
         )
     }
@@ -813,7 +813,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::defer::RECT_LIGHT_FRAG,
+            &spirv::defer::rect_light_frag::MAIN,
             &push_const::DRAW_RECT_LIGHT,
         )
     }
@@ -831,7 +831,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::defer::SPOTLIGHT_FRAG,
+            &spirv::defer::spotlight_frag::MAIN,
             &push_const::DRAW_SPOTLIGHT,
         )
     }
@@ -856,7 +856,7 @@ impl Graphics {
         max_desc_sets: usize,
     ) -> Self {
         // Create the graphics pipeline
-        let vertex = ShaderModule::new(driver, &spirv::FONT_VERT);
+        let vertex = ShaderModule::new(driver, &spirv::font_vert::MAIN);
         let fragment = ShaderModule::new(driver, fragment_spirv);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
@@ -930,7 +930,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::FONT_FRAG,
+            &spirv::font_frag::MAIN,
             &push_const::FONT,
             max_desc_sets,
         )
@@ -947,7 +947,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::FONT_OUTLINE_FRAG,
+            &spirv::font_outline_frag::MAIN,
             &push_const::FONT_OUTLINE,
             max_desc_sets,
         )
@@ -961,7 +961,7 @@ impl Graphics {
         max_desc_sets: usize,
     ) -> Self {
         // Create the graphics pipeline
-        let vertex = ShaderModule::new(driver, &spirv::GRADIENT_VERT);
+        let vertex = ShaderModule::new(driver, &spirv::gradient_frag::MAIN);
         let fragment = ShaderModule::new(driver, fragment_spirv);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
@@ -1034,7 +1034,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::GRADIENT_FRAG,
+            &spirv::gradient_trans_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -1050,7 +1050,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::GRADIENT_FRAG,
+            &spirv::gradient_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -1062,7 +1062,7 @@ impl Graphics {
         fragment_spirv: &[u32],
         max_desc_sets: usize,
     ) -> Self {
-        let vertex = ShaderModule::new(driver, &spirv::blend::QUAD_TRANSFORM_VERT);
+        let vertex = ShaderModule::new(driver, &spirv::blend::quad_transform_vert::MAIN);
         let fragment = ShaderModule::new(driver, fragment_spirv);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
@@ -1135,7 +1135,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::mask::ADD_FRAG,
+            &spirv::mask::add_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -1151,7 +1151,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::mask::DARKEN_FRAG,
+            &spirv::mask::darken_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -1167,7 +1167,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::mask::DIFFERENCE_FRAG,
+            &spirv::mask::difference_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -1183,7 +1183,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::mask::INTERSECT_FRAG,
+            &spirv::mask::intersect_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -1199,7 +1199,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::mask::LIGHTEN_FRAG,
+            &spirv::mask::lighten_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -1215,7 +1215,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::mask::SUBTRACT_FRAG,
+            &spirv::mask::subtract_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -1227,7 +1227,7 @@ impl Graphics {
         fragment_spirv: &[u32],
         max_desc_sets: usize,
     ) -> Self {
-        let vertex = ShaderModule::new(driver, &spirv::blend::QUAD_TRANSFORM_VERT);
+        let vertex = ShaderModule::new(driver, &spirv::blend::quad_transform_vert::MAIN);
         let fragment = ShaderModule::new(driver, fragment_spirv);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
@@ -1300,7 +1300,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::matte::ALPHA_FRAG,
+            &spirv::matte::alpha_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -1316,7 +1316,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::matte::ALPHA_INV_FRAG,
+            &spirv::matte::alpha_inv_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -1332,7 +1332,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::matte::LUMA_FRAG,
+            &spirv::matte::luma_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -1348,7 +1348,7 @@ impl Graphics {
             name,
             driver,
             subpass,
-            &spirv::matte::LUMA_INV_FRAG,
+            &spirv::matte::luma_inv_frag::MAIN,
             max_desc_sets,
         )
     }
@@ -1360,8 +1360,8 @@ impl Graphics {
         max_desc_sets: usize,
     ) -> Self {
         // Create the graphics pipeline
-        let vertex = ShaderModule::new(driver, &spirv::QUAD_VERT);
-        let fragment = ShaderModule::new(driver, &spirv::TEXTURE_FRAG);
+        let vertex = ShaderModule::new(driver, &spirv::quad_vert::MAIN);
+        let fragment = ShaderModule::new(driver, &spirv::texture_frag::MAIN);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
@@ -1428,8 +1428,8 @@ impl Graphics {
         max_desc_sets: usize,
     ) -> Self {
         // Create the graphics pipeline
-        let vertex = ShaderModule::new(driver, &spirv::SKYDOME_VERT);
-        let fragment = ShaderModule::new(driver, &spirv::SKYDOME_FRAG);
+        let vertex = ShaderModule::new(driver, &spirv::skydome_vert::MAIN);
+        let fragment = ShaderModule::new(driver, &spirv::skydome_frag::MAIN);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
@@ -1502,8 +1502,8 @@ impl Graphics {
         max_desc_sets: usize,
     ) -> Self {
         // Create the graphics pipeline
-        let vertex = ShaderModule::new(driver, &spirv::QUAD_TRANSFORM_VERT);
-        let fragment = ShaderModule::new(driver, &spirv::TEXTURE_FRAG);
+        let vertex = ShaderModule::new(driver, &spirv::quad_transform_vert::MAIN);
+        let fragment = ShaderModule::new(driver, &spirv::texture_frag::MAIN);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,

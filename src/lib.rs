@@ -202,7 +202,9 @@ fn program_root(program: &Program) -> Result<PathBuf, Error> {
     root(program.name, program.author)
 }
 
-/// Gets the filesystem root for a given program name and author. The returned path is a good place
+/// Gets the filesystem root for a given program name and author.
+///
+/// The returned path is a good place
 /// to store program configuration and data on a per-user basis.
 pub fn root(name: &'static str, author: &'static str) -> Result<PathBuf, Error> {
     // Converts the app_dirs crate AppDirsError to a regular IO Error
