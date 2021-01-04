@@ -7,7 +7,7 @@ mod spotlight {
 }
 
 pub use self::{
-    point_light::POINT_LIGHT,
+    point_light::{POINT_LIGHT, POINT_LIGHT_DRAW_COUNT, POINT_LIGHT_LEN},
     spotlight::{gen_spotlight, SPOTLIGHT_STRIDE},
 };
 

@@ -37,7 +37,7 @@ impl Icon<'static> {
     /// A fantastic icon chosen based on the order in which it was generated. 🗿
     pub const DEFAULT: Self = Self {
         height: default_program_icon::HEIGHT,
-        pixels: &default_program_icon::PIXELS,
+        pixels: &[], // Const can't refer to static (default bytes are static) so set in try_from
         width: default_program_icon::WIDTH,
     };
 }
@@ -51,12 +51,19 @@ impl Default for Icon<'static> {
 impl<'a> TryFrom<&'a Icon<'_>> for WinitIcon {
     type Error = BadIcon;
 
-    fn try_from(val: &'a Icon) -> Result<Self, Self::Error> {
-        Self::from_rgba(val.pixels.to_owned(), val.width, val.height)
+    fn try_from(icon: &'a Icon) -> Result<Self, Self::Error> {
+        let pixels = if icon.pixels.is_empty() {
+            &default_program_icon::PIXELS
+        } else {
+            icon.pixels
+        }
+        .to_owned();
+
+        Self::from_rgba(pixels, icon.width, icon.height)
     }
 }
 
-/// Program is the required information to start an event loop, and therefore an `Engine`.
+/// Program specifies the information required to start an event loop, and therefore an `Engine`.
 ///
 /// Remarks: The fullscreen/windowed setting this program describes may not be what Screen 13
 /// chooses at runtime if there is a previously written configuration file present.

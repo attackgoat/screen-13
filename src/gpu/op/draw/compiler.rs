@@ -2,8 +2,8 @@ use {
     super::{
         command::{Command, CommandIter, ModelCommand},
         geom::{
-            gen_line, gen_rect_light, gen_spotlight, LINE_STRIDE, POINT_LIGHT, RECT_LIGHT_STRIDE,
-            SPOTLIGHT_STRIDE,
+            gen_line, gen_rect_light, gen_spotlight, LINE_STRIDE, POINT_LIGHT, POINT_LIGHT_LEN,
+            RECT_LIGHT_STRIDE, SPOTLIGHT_STRIDE,
         },
         instruction::{
             DataComputeInstruction, DataCopyInstruction, DataTransferInstruction,
@@ -390,7 +390,7 @@ impl<'a> Compilation<'a> {
     fn write_point_light_vertices(&mut self) -> Instruction {
         Instruction::VertexWrite(DataWriteInstruction {
             buf: self.compiler.point_light_buf.as_mut().unwrap(),
-            range: 0..POINT_LIGHT.len() as _,
+            range: 0..POINT_LIGHT_LEN,
         })
     }
 }
@@ -968,15 +968,15 @@ impl Compiler {
                 #[cfg(feature = "debug-names")]
                 &format!("{} point light vertex buffer", name),
                 driver,
-                POINT_LIGHT.len() as _,
+                POINT_LIGHT_LEN,
             );
 
             unsafe {
-                let mut mapped_range = buf.map_range_mut(0..POINT_LIGHT.len() as _).unwrap();
+                let mut mapped_range = buf.map_range_mut(0..POINT_LIGHT_LEN).unwrap();
                 copy_nonoverlapping(
                     POINT_LIGHT.as_ptr(),
                     mapped_range.as_mut_ptr(),
-                    POINT_LIGHT.len() as _,
+                    POINT_LIGHT_LEN as _,
                 );
 
                 Mapping::flush(&mut mapped_range).unwrap();

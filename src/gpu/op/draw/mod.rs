@@ -19,7 +19,10 @@ pub use self::{
 use {
     self::{
         compiler::CalcVertexAttrsDescriptors,
-        geom::{LINE_STRIDE, POINT_LIGHT, RECT_LIGHT_STRIDE, SPOTLIGHT_STRIDE},
+        geom::{
+            LINE_STRIDE, POINT_LIGHT_DRAW_COUNT, POINT_LIGHT_LEN, RECT_LIGHT_STRIDE,
+            SPOTLIGHT_STRIDE,
+        },
         geom_buf::GeometryBuffer,
         instruction::{
             DataComputeInstruction, DataCopyInstruction, DataTransferInstruction,
@@ -796,8 +799,6 @@ impl DrawOp {
     ) {
         trace!("submit_point_lights");
 
-        const POINT_LIGHT_DRAW_COUNT: u32 = POINT_LIGHT.len() as u32 / 12;
-
         let depth_dims: Vec2 = self.geom_buf.depth.borrow().dims().into();
         let depth_dims_inv = 1.0 / depth_dims;
 
@@ -826,7 +827,7 @@ impl DrawOp {
                 instr.buf.as_ref(),
                 SubRange {
                     offset: 0,
-                    size: Some(POINT_LIGHT.len() as _),
+                    size: Some(POINT_LIGHT_LEN),
                 },
             )),
         );

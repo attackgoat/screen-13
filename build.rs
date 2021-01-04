@@ -109,7 +109,7 @@ fn gen_default_program_icon() {
     .unwrap();
     writeln!(output_file).unwrap();
 
-    writeln!(output_file, "pub const PIXELS: [u8; {}] = [", pixels.len(),).unwrap();
+    writeln!(output_file, "pub static PIXELS: [u8; {}] = [", pixels.len(),).unwrap();
 
     for byte in pixels {
         writeln!(output_file, "{}u8,", byte,).unwrap();
@@ -142,7 +142,19 @@ fn gen_point_light() {
     // We'll store the data as bytes because we are going to send it straight to the GPU
     writeln!(
         output_file,
-        "pub const POINT_LIGHT: [u8; {}] = [",
+        "pub static POINT_LIGHT_DRAW_COUNT: u32 = {};",
+        vertices.len()
+    )
+    .unwrap();
+    writeln!(
+        output_file,
+        "pub static POINT_LIGHT_LEN: u64 = {};",
+        vertices.len() * 12
+    )
+    .unwrap();
+    writeln!(
+        output_file,
+        "pub static POINT_LIGHT: [u8; {}] = [",
         vertices.len() * 12
     )
     .unwrap();
@@ -186,7 +198,19 @@ fn gen_skydome() {
     // We'll store the data as bytes because we are going to send it straight to the GPU
     writeln!(
         output_file,
-        "pub const SKYDOME: [u8; {}] = [",
+        "pub const SKYDOME_DRAW_COUNT: u32 = {};",
+        vertices.len()
+    )
+    .unwrap();
+    writeln!(
+        output_file,
+        "pub const SKYDOME_LEN: u64 = {};",
+        vertices.len() * 12
+    )
+    .unwrap();
+    writeln!(
+        output_file,
+        "pub static SKYDOME: [u8; {}] = [",
         vertices.len() * 12
     )
     .unwrap();
@@ -649,7 +673,7 @@ fn compile_glsl_with_defines<P: AsRef<Path>, D: IntoIterator<Item = impl AsRef<s
     // Write a maybe-okay helper function
     writeln!(
         output_file,
-        "pub const {}: [u32; {}] = [{}];\n",
+        "pub static {}: [u32; {}] = [{}];\n",
         if defines.is_empty() {
             "MAIN".to_owned()
         } else {
