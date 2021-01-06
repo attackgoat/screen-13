@@ -16,14 +16,15 @@ use {
             render_pass, CalcVertexAttrsComputeMode, Compute, ComputeMode, Graphics, GraphicsMode,
             RenderPassMode,
         },
-        driver::{CommandPool, DescriptorPool, Driver, Fence, Image2d, Memory, RenderPass},
+        driver::{CommandPool, DescriptorPool, Fence, Image2d, Memory, RenderPass},
         op::draw::Compiler,
-        BlendMode, Data, MaskMode, MatteMode, Texture, TextureRef,
+        physical_device, queue_family, BlendMode, Data, MaskMode, MatteMode, Texture, TextureRef,
     },
     crate::math::Extent,
     gfx_hal::{
+        adapter::PhysicalDevice as _,
         buffer::Usage as BufferUsage,
-        format::{ImageFeature,Format},
+        format::{Format, ImageFeature, Properties},
         image::{Layout, Usage as ImageUsage},
         pool::CommandPool as _,
         pso::{DescriptorRangeDesc, DescriptorType},
@@ -38,7 +39,7 @@ use {
 };
 
 #[cfg(feature = "debug-names")]
-use gfx_hal::device::Device as _;
+use {super::device, gfx_hal::device::Device as _};
 
 const DEFAULT_LRU_THRESHOLD: usize = 8;
 
@@ -109,25 +110,26 @@ pub struct Pool {
 // TODO: Add some way to track memory usage so that using drain has some sort of feedback for users, tell them about the usage
 impl Pool {
     /// Remarks: Only considers optimal tiling images.
-    pub fn best_fmt(&mut self,
-        device: Device,
+    pub unsafe fn best_fmt(
+        &mut self,
         desired_fmts: &[Format],
         features: ImageFeature,
     ) -> Option<Format> {
         assert!(!desired_fmts.is_empty());
 
-        self.best_fmts
+        *self
+            .best_fmts
             .entry(FormatKey {
                 desired_fmt: desired_fmts[0],
                 features,
             })
             .or_insert_with(|| {
-                fn is_compatible(props: FormatProperties, desired_features: ImageFeature) -> bool {
+                fn is_compatible(props: Properties, desired_features: ImageFeature) -> bool {
                     props.optimal_tiling.contains(desired_features)
                 }
 
                 for fmt in desired_fmts.iter() {
-                    let props = device.physical_device.format_properties(Some(*fmt));
+                    let props = physical_device().format_properties(Some(*fmt));
                     if is_compatible(props, features) {
                         // #[cfg(debug_assertions)]
                         // trace!(
@@ -330,7 +332,8 @@ impl Pool {
 
                     let mut compatible_fmts = vec![];
                     for fmt in all_fmts.iter() {
-                        if is_compatible(device.physical_device.format_properties(Some(*fmt)), features) {
+                        if is_compatible(physical_device().format_properties(Some(*fmt)), features)
+                        {
                             compatible_fmts.push(*fmt);
                         }
                     }
@@ -356,9 +359,12 @@ impl Pool {
             })
     }
 
-    pub(super) fn cmd_pool(
+    pub(super) unsafe fn cmd_pool(&mut self) -> Lease<CommandPool> {
+        self.cmd_pool_with_family(queue_family())
+    }
+
+    pub(super) unsafe fn cmd_pool_with_family(
         &mut self,
-        device: Device,
         family: QueueFamilyId,
     ) -> Lease<CommandPool> {
         let items = self
@@ -368,12 +374,10 @@ impl Pool {
         let mut item = if let Some(item) = items.borrow_mut().pop_back() {
             item
         } else {
-            CommandPool::new(driver, family)
+            CommandPool::new(family)
         };
 
-        unsafe {
-            item.as_mut().reset(false);
-        }
+        item.as_mut().reset(false);
 
         Lease::new(item, items)
     }
@@ -389,26 +393,23 @@ impl Pool {
     }
 
     /// Returns a lease to a compute pipeline with no descriptor sets.
-    pub(super) fn compute(
+    pub(super) unsafe fn compute(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        device: Device,
         mode: ComputeMode,
     ) -> Lease<Compute> {
         self.compute_desc_sets(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
             mode,
             0,
         )
     }
 
     /// Returns a lease to a compute pipeline with the specified number of descriptor sets.
-    pub(super) fn compute_desc_sets(
+    pub(super) unsafe fn compute_desc_sets(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        device: Device,
         mode: ComputeMode,
         max_desc_sets: usize,
     ) -> Lease<Compute> {
@@ -431,49 +432,41 @@ impl Pool {
                 ComputeMode::CalcVertexAttrs(_) => self.layouts.compute_calc_vertex_attrs(
                     #[cfg(feature = "debug-names")]
                     name,
-                    driver,
                 ),
                 ComputeMode::DecodeRgbRgba => self.layouts.compute_decode_rgb_rgba(
                     #[cfg(feature = "debug-names")]
                     name,
-                    driver,
                 ),
             };
 
-            unsafe {
-                ctor(
-                    #[cfg(feature = "debug-names")]
-                    name,
-                    driver,
-                    desc_set_layout,
-                    pipeline_layout,
-                    max_desc_sets,
-                )
-            }
+            ctor(
+                #[cfg(feature = "debug-names")]
+                name,
+                desc_set_layout,
+                pipeline_layout,
+                max_desc_sets,
+            )
         };
 
         Lease::new(item, items)
     }
 
-    pub(super) fn data(
+    pub(super) unsafe fn data(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        device: Device,
         len: u64,
     ) -> Lease<Data> {
         self.data_usage(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
             len,
             BufferUsage::empty(),
         )
     }
 
-    pub(super) fn data_usage(
+    pub(super) unsafe fn data_usage(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        device: Device,
         len: u64,
         usage: BufferUsage,
     ) -> Lease<Data> {
@@ -486,7 +479,6 @@ impl Pool {
             Data::new(
                 #[cfg(feature = "debug-names")]
                 name,
-                driver,
                 len,
                 usage,
             )
@@ -495,10 +487,8 @@ impl Pool {
         Lease::new(item, items)
     }
 
-    // TODO: I don't really like the function signature here
-    pub(super) fn desc_pool<'i, I>(
+    pub(super) unsafe fn desc_pool<'i, I>(
         &mut self,
-        device: Device,
         max_desc_sets: usize,
         desc_ranges: I,
     ) -> Lease<DescriptorPool>
@@ -521,7 +511,7 @@ impl Pool {
         }) {
             item
         } else {
-            DescriptorPool::new(driver, max_desc_sets, desc_ranges)
+            DescriptorPool::new(max_desc_sets, desc_ranges)
         };
 
         Lease::new(item, items)
@@ -532,10 +522,9 @@ impl Pool {
         Drain(self)
     }
 
-    pub(super) fn fence(
+    pub(super) unsafe fn fence(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        device: Device,
     ) -> Lease<Fence> {
         let item = if let Some(mut item) = self.fences.borrow_mut().pop_back() {
             Fence::reset(&mut item);
@@ -544,7 +533,6 @@ impl Pool {
             Fence::new(
                 #[cfg(feature = "debug-names")]
                 name,
-                driver,
             )
         };
 
@@ -552,10 +540,9 @@ impl Pool {
     }
 
     /// Returns a lease to a graphics pipeline with no descriptor sets.
-    pub(super) fn graphics(
+    pub(super) unsafe fn graphics(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        device: Device,
         render_pass_mode: RenderPassMode,
         subpass_idx: u8,
         graphics_mode: GraphicsMode,
@@ -563,7 +550,6 @@ impl Pool {
         self.graphics_desc_sets(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
             render_pass_mode,
             subpass_idx,
             graphics_mode,
@@ -572,10 +558,9 @@ impl Pool {
     }
 
     /// Returns a lease to a graphics pipeline with the specified number of descriptor sets.
-    pub(super) fn graphics_desc_sets(
+    pub(super) unsafe fn graphics_desc_sets(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        device: Device,
         render_pass_mode: RenderPassMode,
         subpass_idx: u8,
         graphics_mode: GraphicsMode,
@@ -639,13 +624,12 @@ impl Pool {
             GraphicsMode::Skydome => Graphics::skydome,
             GraphicsMode::Texture => Graphics::texture,
         };
-        let item = unsafe {
-            let render_pass = self.render_pass(driver, render_pass_mode);
+        let item = {
+            let render_pass = self.render_pass(render_pass_mode);
             let subpass = RenderPass::subpass(render_pass, subpass_idx);
             ctor(
                 #[cfg(feature = "debug-names")]
                 name,
-                driver,
                 subpass,
                 max_desc_sets,
             )
@@ -659,12 +643,7 @@ impl Pool {
         Lease::new(item, items)
     }
 
-    pub(super) fn memory(
-        &mut self,
-        device: Device,
-        mem_type: MemoryTypeId,
-        size: u64,
-    ) -> Lease<Memory> {
+    pub(super) unsafe fn memory(&mut self, mem_type: MemoryTypeId, size: u64) -> Lease<Memory> {
         let items = self
             .memories
             .entry(mem_type)
@@ -674,26 +653,26 @@ impl Pool {
         {
             item
         } else {
-            Memory::new(driver, mem_type, size)
+            Memory::new(mem_type, size)
         };
 
         Lease::new(item, items)
     }
 
-    pub(super) fn render_pass(&mut self, device: Device, mode: RenderPassMode) -> &RenderPass {
+    pub(super) unsafe fn render_pass(&mut self, mode: RenderPassMode) -> &RenderPass {
         self.render_passes
             .entry(mode)
             .or_insert_with(|| match mode {
-                RenderPassMode::Color(mode) => render_pass::color(driver, mode),
+                RenderPassMode::Color(mode) => render_pass::color(mode),
                 RenderPassMode::Draw(mode) => {
                     if mode.skydome as u8 * mode.post_fx as u8 == 1 {
-                        render_pass::draw::fill_skydome_light_tonemap_fx(driver, mode)
+                        render_pass::draw::fill_skydome_light_tonemap_fx(mode)
                     } else if mode.skydome {
-                        render_pass::draw::fill_skydome_light_tonemap(driver, mode)
+                        render_pass::draw::fill_skydome_light_tonemap(mode)
                     } else if mode.post_fx {
-                        render_pass::draw::fill_light_tonemap_fx(driver, mode)
+                        render_pass::draw::fill_light_tonemap_fx(mode)
                     } else {
-                        render_pass::draw::fill_light_tonemap(driver, mode)
+                        render_pass::draw::fill_light_tonemap(mode)
                     }
                 }
             })
@@ -703,10 +682,9 @@ impl Pool {
     /// only for skydome rendering. If the data is brand new then the skydome vertex data will
     /// be returned at the same time. It is up to the user to load it and provide the proper
     /// pipeline barriers. Good luck!
-    pub(super) fn skydome(
+    pub(super) unsafe fn skydome(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        device: Device,
     ) -> (Lease<Data>, u64, Option<&[u8]>) {
         let (item, data) = if let Some(item) = self.skydomes.borrow_mut().pop_back() {
             (item, None)
@@ -714,7 +692,6 @@ impl Pool {
             let data = Data::new(
                 #[cfg(feature = "debug-names")]
                 name,
-                driver,
                 SKYDOME.len() as _,
                 BufferUsage::VERTEX,
             );
@@ -727,10 +704,9 @@ impl Pool {
 
     // TODO: Bubble format picking up and out of this! (removes desire_tiling+desired_fmts+features, replace with fmt/tiling)
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn texture(
+    pub(super) unsafe fn texture(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        device: Device,
         dims: Extent,
         fmt: Format,
         layout: Layout,
@@ -755,12 +731,7 @@ impl Pool {
             if let Some(item) = items_ref.pop_back() {
                 // Set a new name on this texture
                 #[cfg(feature = "debug-names")]
-                unsafe {
-                    driver
-                        .as_ref()
-                        .borrow()
-                        .set_image_name(item.as_ref().borrow_mut().as_mut(), name);
-                }
+                device().set_image_name(item.as_ref().borrow_mut().as_mut(), name);
 
                 item
             } else {
@@ -768,7 +739,6 @@ impl Pool {
                 items_ref.push_front(TextureRef::new(RefCell::new(Texture::new(
                     #[cfg(feature = "debug-names")]
                     &format!("{} (Unused)", name),
-                    driver,
                     dims,
                     fmt,
                     layout,
@@ -782,7 +752,6 @@ impl Pool {
                 TextureRef::new(RefCell::new(Texture::new(
                     #[cfg(feature = "debug-names")]
                     name,
-                    driver,
                     dims,
                     fmt,
                     layout,
@@ -801,6 +770,7 @@ impl Pool {
 impl Default for Pool {
     fn default() -> Self {
         Self {
+            best_fmts: Default::default(),
             cmd_pools: Default::default(),
             compilers: Default::default(),
             computes: Default::default(),

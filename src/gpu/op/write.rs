@@ -4,14 +4,13 @@ use {
         color::TRANSPARENT_BLACK,
         gpu::{
             def::{
-                push_const::WritePushConsts, ColorRenderPassMode, Graphics, GraphicsMode,
-                RenderPassMode,
+                push_const::{WriteFragmentPushConsts, WriteVertexPushConsts},
+                ColorRenderPassMode, Graphics, GraphicsMode, RenderPassMode,
             },
-            driver::{
-                bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
-            },
+            device,
+            driver::{bind_graphics_descriptor_set, CommandPool, Fence, Framebuffer2d},
             pool::{Lease, Pool},
-            BlendMode, Texture2d,
+            queue_mut, BlendMode, Texture2d,
         },
         math::{vec3, Area, CoordF, Mat4, RectF, Vec2},
     },
@@ -151,7 +150,6 @@ pub struct WriteOp {
     back_buf: Lease<Texture2d>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
-    device: Device,
     dst: Texture2d,
     dst_preserve: bool,
     fence: Lease<Fence>,
@@ -168,14 +166,12 @@ pub struct WriteOp {
 
 impl WriteOp {
     #[must_use]
-    pub(crate) fn new(
+    pub(crate) unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        device: Device,
         mut pool: Lease<Pool>,
         dst: &Texture2d,
     ) -> Self {
-        let family = Device::queue_family(&driver.borrow());
-        let mut cmd_pool = pool.cmd_pool(driver, family);
+        let mut cmd_pool = pool.cmd_pool();
         let (dims, fmt) = {
             let dst = dst.borrow();
             (dst.dims(), dst.format())
@@ -183,14 +179,12 @@ impl WriteOp {
         let fence = pool.fence(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
         );
 
         Self {
             back_buf: pool.texture(
                 #[cfg(feature = "debug-names")]
                 &format!("{} backbuffer", name),
-                driver,
                 dims,
                 fmt,
                 Layout::Undefined,
@@ -199,9 +193,8 @@ impl WriteOp {
                 1,
                 1,
             ),
-            cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
+            cmd_buf: cmd_pool.allocate_one(Level::Primary),
             cmd_pool,
-            device: Device::clone(driver),
             dst: Texture2d::clone(dst),
             dst_preserve: false,
             fence,
@@ -241,47 +234,45 @@ impl WriteOp {
         assert!(self.src_textures.is_empty());
         assert_ne!(writes.len(), 0);
 
-        if writes.len() > 1 {
-            // Keeps track of the textures used while the GPU is still busy (so our caller can drop their references)
-            for write in writes.iter() {
-                let write_src_ptr = Texture2d::as_ptr(&write.src);
-                if let Err(idx) = self.src_textures.binary_search_by(|probe| {
-                    let probe = Texture2d::as_ptr(probe);
-                    probe.cmp(&write_src_ptr)
-                }) {
-                    self.src_textures.insert(idx, Texture2d::clone(write.src));
+        unsafe {
+            if writes.len() > 1 {
+                // Keeps track of the textures used while the GPU is still busy (so our caller can drop their references)
+                for write in writes.iter() {
+                    let write_src_ptr = Texture2d::as_ptr(&write.src);
+                    if let Err(idx) = self.src_textures.binary_search_by(|probe| {
+                        let probe = Texture2d::as_ptr(probe);
+                        probe.cmp(&write_src_ptr)
+                    }) {
+                        self.src_textures.insert(idx, Texture2d::clone(write.src));
+                    }
                 }
+
+                // Sort the writes by texture so that we minimize the number of descriptor sets and how often we change sets during submit
+                // NOTE: Unstable sort because we don't claim to support ordering or blending of the individual writes within each batch
+                writes.sort_unstable_by(|lhs, rhs| {
+                    let lhs = Texture2d::as_ptr(&lhs.src);
+                    let rhs = Texture2d::as_ptr(&rhs.src);
+                    lhs.cmp(&rhs)
+                });
+            } else {
+                // We only have one write - and the above sort logic would not be called (there would be no right-hand-side!)
+                self.src_textures.push(Texture2d::clone(writes[0].src));
             }
 
-            // Sort the writes by texture so that we minimize the number of descriptor sets and how often we change sets during submit
-            // NOTE: Unstable sort because we don't claim to support ordering or blending of the individual writes within each batch
-            writes.sort_unstable_by(|lhs, rhs| {
-                let lhs = Texture2d::as_ptr(&lhs.src);
-                let rhs = Texture2d::as_ptr(&rhs.src);
-                lhs.cmp(&rhs)
+            let render_pass_mode = RenderPassMode::Color(ColorRenderPassMode {
+                fmt: self.dst.borrow().format(),
+                preserve: self.dst_preserve,
             });
-        } else {
-            // We only have one write - and the above sort logic would not be called (there would be no right-hand-side!)
-            self.src_textures.push(Texture2d::clone(writes[0].src));
-        }
 
-        let render_pass_mode = RenderPassMode::Color(ColorRenderPassMode {
-            fmt: self.dst.borrow().format(),
-            preserve: self.dst_preserve,
-        });
-
-        // Final setup bits
-        {
             let pool = self.pool.as_mut().unwrap();
-            let render_pass = pool.render_pass(self.device, render_pass_mode);
+            let render_pass = pool.render_pass(render_pass_mode);
 
             // Setup the framebuffer
             self.frame_buf.replace(Framebuffer2d::new(
                 #[cfg(feature = "debug-names")]
                 self.name.as_str(),
-                self.device,
                 render_pass,
-                once(self.back_buf.borrow().as_default_view().as_ref()),
+                once(self.back_buf.borrow().as_2d_color().as_ref()),
                 self.dst.borrow().dims(),
             ));
 
@@ -293,15 +284,12 @@ impl WriteOp {
             self.graphics.replace(pool.graphics_desc_sets(
                 #[cfg(feature = "debug-names")]
                 &self.name,
-                self.device,
                 render_pass_mode,
                 SUBPASS_IDX,
                 graphics_mode,
                 self.src_textures.len(),
             ));
-        }
 
-        unsafe {
             self.write_descriptors();
             self.submit_begin(render_pass_mode);
 
@@ -318,7 +306,7 @@ impl WriteOp {
         trace!("submit_begin");
 
         let pool = self.pool.as_mut().unwrap();
-        let render_pass = pool.render_pass(self.device, render_pass_mode);
+        let render_pass = pool.render_pass(render_pass_mode);
         let mut back_buf = self.back_buf.borrow_mut();
         let mut dst = self.dst.borrow_mut();
         let graphics = self.graphics.as_ref().unwrap();
@@ -421,7 +409,7 @@ impl WriteOp {
             graphics.layout(),
             ShaderStageFlags::VERTEX,
             0,
-            WritePushConsts {
+            WriteVertexPushConsts {
                 offset,
                 scale,
                 transform: write.transform,
@@ -430,13 +418,14 @@ impl WriteOp {
         );
 
         if let Mode::Blend((ab, _)) = self.mode {
-            let ab = ab as f32 / u8::MAX as f32;
-            let inv = 1.0 - ab;
+            const RECIP: f32 = 1.0 / u8::MAX as f32;
+            let ab = ab as f32 * RECIP;
+            let ab_inv = 1.0 - ab;
             self.cmd_buf.push_graphics_constants(
                 graphics.layout(),
                 ShaderStageFlags::FRAGMENT,
-                WritePushConsts::BYTE_LEN,
-                &[ab.to_bits(), inv.to_bits()],
+                WriteVertexPushConsts::BYTE_LEN,
+                WriteFragmentPushConsts { ab, ab_inv }.as_ref(),
             );
         }
 
@@ -446,7 +435,6 @@ impl WriteOp {
     unsafe fn submit_finish(&mut self) {
         trace!("submit_finish");
 
-        let mut device = self.driver.borrow_mut();
         let mut back_buf = self.back_buf.borrow_mut();
         let mut dst = self.dst.borrow_mut();
         let dims = dst.dims();
@@ -492,7 +480,7 @@ impl WriteOp {
         // Finish
         self.cmd_buf.finish();
 
-        Device::queue_mut(&mut device).submit(
+        queue_mut().submit(
             Submission {
                 command_buffers: once(&self.cmd_buf),
                 wait_semaphores: empty(),
@@ -506,7 +494,7 @@ impl WriteOp {
         trace!("write_descriptors");
 
         let dst = self.dst.borrow();
-        let dst_view = dst.as_default_view();
+        let dst_view = dst.as_2d_color();
         let graphics = self.graphics.as_ref().unwrap();
         let sampler = graphics.sampler(0).as_ref();
 
@@ -516,7 +504,7 @@ impl WriteOp {
 
             // A descriptor for this source texture
             let src_ref = src.borrow();
-            let src_view = src_ref.as_default_view();
+            let src_view = src_ref.as_2d_color();
             let src_desc = DescriptorSetWrite {
                 set,
                 binding: 0,
@@ -540,14 +528,9 @@ impl WriteOp {
                         sampler,
                     )),
                 };
-                // TODO: Borrow in a loop? Can these be lifted?
-                self.driver
-                    .borrow_mut()
-                    .write_descriptor_sets(vec![src_desc, dst_desc]); // TODO: Slice/Tuple?
+                device().write_descriptor_sets(vec![src_desc, dst_desc]);
             } else {
-                self.driver
-                    .borrow_mut()
-                    .write_descriptor_sets(once(src_desc));
+                device().write_descriptor_sets(once(src_desc));
             }
         }
     }
@@ -555,24 +538,22 @@ impl WriteOp {
 
 impl Drop for WriteOp {
     fn drop(&mut self) {
-        self.wait();
+        unsafe {
+            self.wait();
+        }
     }
 }
 
 impl Op for WriteOp {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 
-    fn take_pool(&mut self) -> Option<Lease<Pool>> {
-        self.pool.take()
+    unsafe fn take_pool(&mut self) -> Lease<Pool> {
+        self.pool.take().unwrap()
     }
 
-    fn wait(&self) {
+    unsafe fn wait(&self) {
         Fence::wait(&self.fence);
     }
 }

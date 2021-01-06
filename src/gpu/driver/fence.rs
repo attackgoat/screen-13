@@ -1,5 +1,5 @@
 use {
-    super::Device,
+    crate::gpu::device,
     gfx_hal::{device::Device as _, Backend},
     gfx_impl::Backend as _Backend,
     std::ops::{Deref, DerefMut},
@@ -8,83 +8,62 @@ use {
 #[cfg(debug_assertions)]
 use std::time::Instant;
 
-pub struct Fence {
-    device: Device,
-    ptr: Option<<_Backend as Backend>::Fence>,
-}
+pub struct Fence(Option<<_Backend as Backend>::Fence>);
 
 impl Fence {
-    pub fn new(#[cfg(feature = "debug-names")] name: &str, device: Device) -> Self {
-        Self::with_signal(
+    pub unsafe fn new(#[cfg(feature = "debug-names")] name: &str) -> Self {
+        Self::new_signal(
             #[cfg(feature = "debug-names")]
             name,
-            device,
             false,
         )
     }
 
-    pub fn with_signal(
-        #[cfg(feature = "debug-names")] name: &str,
-        device: Device,
-        val: bool,
-    ) -> Self {
-        let fence = {
-            let ctor = || device.create_fence(val).unwrap();
+    pub unsafe fn new_signal(#[cfg(feature = "debug-names")] name: &str, val: bool) -> Self {
+        let ctor = || device().create_fence(val).unwrap();
 
-            #[cfg(feature = "debug-names")]
-            let mut fence = ctor();
+        #[cfg(feature = "debug-names")]
+        let mut ptr = ctor();
 
-            #[cfg(not(feature = "debug-names"))]
-            let fence = ctor();
+        #[cfg(not(feature = "debug-names"))]
+        let ptr = ctor();
 
-            #[cfg(feature = "debug-names")]
-            unsafe {
-                device.set_fence_name(&mut fence, name);
-            }
+        #[cfg(feature = "debug-names")]
+        device().set_fence_name(&mut ptr, name);
 
-            fence
-        };
-
-        Self {
-            device,
-            ptr: Some(fence),
-        }
+        Self(Some(ptr))
     }
 
-    pub fn reset(fence: &mut Self) {
-        unsafe { fence.device.reset_fence(&fence).unwrap(); }
+    pub unsafe fn reset(fence: &mut Self) {
+        device().reset_fence(&fence).unwrap();
     }
 
-    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
+    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as
+    /// [RenderDoc](https://renderdoc.org/).
     #[cfg(feature = "debug-names")]
-    pub fn set_name(fence: &mut Self, name: &str) {
-        let ptr = fence.ptr.as_mut().unwrap();
-
-        unsafe {
-            fence.device.set_fence_name(ptr, name);
-        }
+    pub unsafe fn set_name(fence: &mut Self, name: &str) {
+        let ptr = fence.0.as_mut().unwrap();
+        device().set_fence_name(ptr, name);
     }
 
-    pub fn wait(fence: &Self) {
-        unsafe {
-            // If the fence was ready or anything happened; just return as if we waited
-            // otherwise we might hold up a drop function
-            if let Ok(true) | Err(_) = fence.device.wait_for_fence(fence, 0) {
-                return;
-            }
+    pub unsafe fn wait(fence: &Self) {
+        // If the fence was ready or anything happened; just return as if we waited
+        // otherwise we might hold up a drop function
+        if let Ok(true) | Err(_) = device().wait_for_fence(fence, 0) {
+            return;
+        }
 
-            #[cfg(debug_assertions)]
-            {
-                let started = Instant::now();
+        #[cfg(debug_assertions)]
+        {
+            let started = Instant::now();
 
-                // TODO: Improve later
-                for _ in 0..100 {
-                    if let Ok(true) | Err(_) = fence.device.wait_for_fence(fence, 1_000_000) {
-                        let elapsed = Instant::now() - started;
-                        warn!("Graphics driver stalled! ({}ms)", elapsed.as_millis());
+            // TODO: Improve later
+            for _ in 0..100 {
+                if let Ok(true) | Err(_) = device().wait_for_fence(fence, 1_000_000) {
+                    let elapsed = Instant::now() - started;
+                    warn!("Graphics driver stalled! ({}ms)", elapsed.as_millis());
 
-                        return;
-                    }
+                    return;
                 }
             }
         }
@@ -109,25 +88,25 @@ impl Deref for Fence {
     type Target = <_Backend as Backend>::Fence;
 
     fn deref(&self) -> &Self::Target {
-        self.ptr.as_ref().unwrap()
+        self.0.as_ref().unwrap()
     }
 }
 
 impl DerefMut for Fence {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.ptr.as_mut().unwrap()
+        self.0.as_mut().unwrap()
     }
 }
 
 impl Drop for Fence {
     fn drop(&mut self) {
-        let ptr = self.ptr.take().unwrap();
+        let ptr = self.0.take().unwrap();
 
         unsafe {
-            self.device
+            device()
                 .wait_for_fence(&ptr, 0) // TODO: Double-check this zero usage
                 .unwrap(); // TODO: Make a decision about ignoring this or just panic?
-            self.device.destroy_fence(ptr);
+            device().destroy_fence(ptr);
         }
     }
 }

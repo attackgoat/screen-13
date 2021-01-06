@@ -277,8 +277,7 @@ impl Engine {
             .with_window_icon(icon)
             .build(&event_loop)
             .unwrap();
-        let (gpu, driver, surface) = unsafe { Gpu::new(&window) }; 
-        let swapchain = Swapchain::new(&driver, surface, dims, config.swapchain_len());
+        let (gpu, swapchain) = unsafe { Gpu::new(&window, dims, config.swapchain_len()) };
 
         Self {
             config,
@@ -353,7 +352,7 @@ impl Engine {
         &self.gpu
     }
 
-    fn present(&mut self, frame: Render) -> Vec<Box<dyn Op>> {
+    unsafe fn present(&mut self, frame: Render) -> Vec<Box<dyn Op>> {
         let (mut target, ops) = frame.resolve();
 
         // We work-around this condition, below, but it is not expected that a well-formed program would ever do this
@@ -428,7 +427,7 @@ impl Engine {
 
                     // Render & present the screen, saving the result in our buffer
                     let render = screen.as_ref().unwrap().render(&self.gpu, self.dims);
-                    render_buf.push_front(self.present(render));
+                    render_buf.push_front(unsafe { self.present(render) });
 
                     // Update the current scene state, potentially returning a new one
                     screen = Some(screen.take().unwrap().update(&self.gpu, &input));

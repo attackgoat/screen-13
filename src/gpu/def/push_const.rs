@@ -162,8 +162,12 @@ push_const_struct!(SpotlightPushConsts {
     pub intensity: Vec3,
     pub normal: Vec3,
 });
-push_const_struct!(WritePushConsts {
+push_const_struct!(WriteVertexPushConsts {
     pub offset: Vec2,
     pub scale: Vec2,
     pub transform: Mat4,
+});
+push_const_struct!(WriteFragmentPushConsts {
+    pub ab: f32,
+    pub ab_inv: f32,
 });

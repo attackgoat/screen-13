@@ -1,7 +1,8 @@
 use {
     super::{
-        align_down, align_up,
-        driver::{Buffer, Device, Driver, Memory},
+        align_down, align_up, device,
+        driver::{Buffer, Memory},
+        mem_ty, physical_device,
     },
     gfx_hal::{
         adapter::PhysicalDevice as _,
@@ -105,91 +106,70 @@ where
 pub struct Data {
     access_mask: Access,
     capacity: u64,
-    device: Device,
     pipeline_stage: PipelineStage,
     staging: Option<BufferMemory>,
     storage: BufferMemory,
 }
 
 impl Data {
-    pub fn new(
+    pub unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        device: Device,
         mut capacity: u64,
         usage: Usage,
     ) -> Self {
         assert_ne!(capacity, 0);
 
         // Pre-align the capacity so the entire requested capacity can be mapped later (mapping must be in atom sized units)
-        let non_coherent_atom_size = Device::gpu(&driver.as_ref().borrow())
-            .limits()
-            .non_coherent_atom_size;
+        let non_coherent_atom_size = physical_device().limits().non_coherent_atom_size;
         capacity = align_up(capacity, non_coherent_atom_size as _);
 
         let mut storage_buf = Buffer::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
             Usage::TRANSFER_DST | Usage::TRANSFER_SRC | usage,
             capacity,
         );
-        let (storage_mem, staging) = {
-            let device = driver.as_ref().borrow();
+        // Get the main storage buffer memory requirements and find out if we're using a unified memory architecutre
+        let storage_req = device().get_buffer_requirements(&storage_buf);
+        let (storage_mem_ty, is_uma) = if let Some(mem_ty) = mem_ty(
+            storage_req.type_mask,
+            Properties::CPU_VISIBLE | Properties::DEVICE_LOCAL,
+        ) {
+            (mem_ty, true)
+        } else {
+            let mem_ty = mem_ty(storage_req.type_mask, Properties::DEVICE_LOCAL).unwrap();
+            (mem_ty, false)
+        };
+        let storage_mem = Memory::new(storage_mem_ty, storage_req.size);
 
-            // Get the main storage buffer memory requirements and find out if we're using a unified memory architecutre
-            let storage_req = unsafe { device.get_buffer_requirements(&storage_buf) };
-            let (storage_mem_ty, is_uma) = if let Some(mem_ty) = Device::mem_ty(
-                &device,
-                storage_req.type_mask,
-                Properties::CPU_VISIBLE | Properties::DEVICE_LOCAL,
-            ) {
-                (mem_ty, true)
-            } else {
-                let mem_ty =
-                    Device::mem_ty(&device, storage_req.type_mask, Properties::DEVICE_LOCAL)
-                        .unwrap();
-                (mem_ty, false)
-            };
-            let storage_mem = Memory::new(driver, storage_mem_ty, storage_req.size);
+        // Bind the main storage memory
+        device()
+            .bind_buffer_memory(&storage_mem, 0, &mut storage_buf)
+            .unwrap();
 
-            // Bind the main storage memory
-            unsafe {
-                device
-                    .bind_buffer_memory(&storage_mem, 0, &mut storage_buf)
-                    .unwrap();
-            }
+        // Optionally create a staging buffer on non-unified memory architectures
+        let staging = if is_uma {
+            None
+        } else {
+            let mut staging_buf = Buffer::new(
+                #[cfg(feature = "debug-names")]
+                name,
+                Usage::TRANSFER_DST | Usage::TRANSFER_SRC,
+                capacity,
+            );
+            let staging_req = device().get_buffer_requirements(&staging_buf);
+            let staging_mem_ty = mem_ty(staging_req.type_mask, Properties::CPU_VISIBLE).unwrap();
+            let staging_mem = Memory::new(staging_mem_ty, staging_req.size);
 
-            // Optionally create a staging buffer on non-unified memory architectures
-            let staging = if is_uma {
-                None
-            } else {
-                let mut staging_buf = Buffer::new(
-                    #[cfg(feature = "debug-names")]
-                    name,
-                    driver,
-                    Usage::TRANSFER_DST | Usage::TRANSFER_SRC,
-                    capacity,
-                );
-                let staging_req = unsafe { device.get_buffer_requirements(&staging_buf) };
-                let staging_mem_ty =
-                    Device::mem_ty(&device, staging_req.type_mask, Properties::CPU_VISIBLE)
-                        .unwrap();
-                let staging_mem = Memory::new(driver, staging_mem_ty, staging_req.size);
+            // Bind the optional staging memory
+            device()
+                .bind_buffer_memory(&staging_mem, 0, &mut staging_buf)
+                .unwrap();
 
-                // Bind the optional staging memory
-                unsafe {
-                    device
-                        .bind_buffer_memory(&staging_mem, 0, &mut staging_buf)
-                        .unwrap();
-                }
-
-                Some(BufferMemory {
-                    buf: staging_buf,
-                    mem: staging_mem,
-                })
-            };
-
-            (storage_mem, staging)
+            Some(BufferMemory {
+                buf: staging_buf,
+                mem: staging_mem,
+            })
         };
         let storage = BufferMemory {
             buf: storage_buf,
@@ -199,7 +179,6 @@ impl Data {
         Self {
             access_mask: Access::empty(),
             capacity,
-            device: Device::clone(driver),
             pipeline_stage: PipelineStage::TOP_OF_PIPE,
             staging,
             storage,
@@ -324,7 +303,7 @@ impl Data {
             .map(|staging| &staging.mem)
             .unwrap_or(&self.storage.mem);
 
-        unsafe { Mapping::new(self.device, mem, range) }
+        unsafe { Mapping::new(mem, range) }
     }
 
     /// Reads everything from the graphics device.
@@ -370,9 +349,10 @@ impl Data {
         }
     }
 
-    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
+    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as
+    /// [RenderDoc](https://renderdoc.org/).
     #[cfg(feature = "debug-names")]
-    pub fn set_name(&mut self, name: &str) {
+    pub unsafe fn set_name(&mut self, name: &str) {
         if let Some(staging) = &mut self.staging {
             Buffer::set_name(&mut staging.buf, name);
         }
@@ -474,7 +454,6 @@ impl AsRef<<_Backend as Backend>::Buffer> for Data {
 }
 
 pub struct Mapping<'m> {
-    device: Device,
     flushed: bool,
     len: usize,
     mapped_mem: (&'m <_Backend as Backend>::Memory, Segment),
@@ -486,7 +465,6 @@ impl<'m> Mapping<'m> {
     ///
     /// The given memory must not be mapped and contain the given range.
     unsafe fn new(
-        device: Device,
         mem: &'m <_Backend as Backend>::Memory,
         range: Range<u64>,
     ) -> Result<Self, MapError> {
@@ -496,9 +474,7 @@ impl<'m> Mapping<'m> {
         // TODO: Combine these two borrows
 
         // Mapped host memory ranges must be in multiples of atom size; so we align to a possibly larger window
-        let non_coherent_atom_size = Device::gpu(&driver.as_ref().borrow())
-            .limits()
-            .non_coherent_atom_size;
+        let non_coherent_atom_size = physical_device().limits().non_coherent_atom_size;
         let offset = align_down(range.start, non_coherent_atom_size as _);
         let size = align_up(range.end - range.start, non_coherent_atom_size as _);
 
@@ -515,19 +491,13 @@ impl<'m> Mapping<'m> {
             offset,
             size: Some(size),
         };
-        let (mapped_mem, ptr) = {
-            let device = driver.as_ref().borrow();
-            let mapped_mem = (mem, segment.clone());
-            let ptr = device
-                .map_memory(mem, segment)?
-                .offset((range.start - offset) as _);
-            device.invalidate_mapped_memory_ranges(once(&mapped_mem))?;
-
-            (mapped_mem, ptr)
-        };
+        let ptr = device()
+            .map_memory(mem, segment.clone())?
+            .offset((range.start - offset) as _);
+        let mapped_mem = (mem, segment);
+        device().invalidate_mapped_memory_ranges(once(&mapped_mem))?;
 
         Ok(Self {
-            device: Device::clone(driver),
             flushed: true,
             len: (range.end - range.start) as _,
             mapped_mem,
@@ -542,10 +512,8 @@ impl<'m> Mapping<'m> {
         if !mapping.flushed {
             mapping.flushed = true;
 
-            let device = mapping.driver.as_ref().borrow();
-
             unsafe {
-                device.flush_mapped_memory_ranges(once(&mapping.mapped_mem))?;
+                device().flush_mapped_memory_ranges(once(&mapping.mapped_mem))?;
             }
         }
 
@@ -575,10 +543,8 @@ impl Drop for Mapping<'_> {
         // This will panic if it fails; call `flush()` first to prevent this!
         Self::flush(self).unwrap();
 
-        let device = self.driver.as_ref().borrow();
-
         unsafe {
-            device.unmap_memory(self.mapped_mem.0);
+            device().unmap_memory(self.mapped_mem.0);
         }
     }
 }

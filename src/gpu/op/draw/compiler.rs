@@ -21,7 +21,7 @@ use {
             data::{CopyRange, Mapping},
             def::CalcVertexAttrsComputeMode,
             pool::Pool,
-            Data, driver::Device, Lease, ModelRef,
+            Data, Lease, ModelRef,
         },
         pak::IndexType,
     },
@@ -499,9 +499,8 @@ pub struct Compiler {
 impl Compiler {
     /// Allocates or re-allocates leased data of the given size. This could be a function of the DirtyData type, however it only
     /// works because the Compiler happens to know that the host-side of the data
-    fn alloc_data<T: Stride>(
+    unsafe fn alloc_data<T: Stride>(
         #[cfg(feature = "debug-names")] name: &str,
-        device: Device,
         pool: &mut Pool,
         buf: &mut Option<DirtyData<T>>,
         len: u64,
@@ -532,7 +531,6 @@ impl Compiler {
         let data = pool.data(
             #[cfg(feature = "debug-names")]
             &name,
-            device,
             capacity,
         );
 
@@ -629,10 +627,9 @@ impl Compiler {
     /// - Sort commands into predictable groupings (opaque meshes, lights, transparent meshes, lines)
     /// - Sort mesh commands further by texture(s) in order to reduce descriptor set switching/usage
     /// - Prepare a single buffer of all line and light vertices which can be copied to the GPU all at once
-    pub(super) fn compile<'a, 'b: 'a>(
+    pub(super) unsafe fn compile<'a, 'b: 'a>(
         &'a mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        device: Device,
         pool: &mut Pool,
         camera: &impl Camera,
         cmds: &'b mut [Command],
@@ -699,7 +696,6 @@ impl Compiler {
             self.compile_point_lights(
                 #[cfg(feature = "debug-names")]
                 name,
-                device,
                 pool,
                 point_light_idx..rect_light_idx,
             );
@@ -711,7 +707,6 @@ impl Compiler {
             self.compile_rect_lights(
                 #[cfg(feature = "debug-names")]
                 name,
-                device,
                 pool,
                 &cmds[rect_lights],
                 rect_light_idx,
@@ -724,7 +719,6 @@ impl Compiler {
             self.compile_spotlights(
                 #[cfg(feature = "debug-names")]
                 name,
-                device,
                 pool,
                 &cmds[spotlights],
                 spotlight_idx,
@@ -743,7 +737,6 @@ impl Compiler {
             self.compile_lines(
                 #[cfg(feature = "debug-names")]
                 name,
-                device,
                 pool,
                 &cmds[lines],
             );
@@ -757,10 +750,9 @@ impl Compiler {
         }
     }
 
-    fn compile_lines(
+    unsafe fn compile_lines(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        device: Device,
         pool: &mut Pool,
         cmds: &[Command],
     ) {
@@ -768,7 +760,6 @@ impl Compiler {
         Self::alloc_data(
             #[cfg(feature = "debug-names")]
             &format!("{} line vertex buffer", name),
-            device,
             pool,
             &mut self.line.buf,
             (self.line.lru.len() * LINE_STRIDE + cmds.len() * LINE_STRIDE) as _,
@@ -804,7 +795,7 @@ impl Compiler {
                     let new_end = end + LINE_STRIDE as u64;
                     let vertices = gen_line(&line.vertices);
 
-                    unsafe {
+                    {
                         let mut mapped_range =
                             buf.data.current.map_range_mut(end..new_end).unwrap();
                         copy_nonoverlapping(
@@ -953,10 +944,9 @@ impl Compiler {
         }
     }
 
-    fn compile_point_lights(
+    unsafe fn compile_point_lights(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        device: Device,
         pool: &mut Pool,
         range: Range<usize>,
     ) {
@@ -967,11 +957,10 @@ impl Compiler {
             let mut buf = pool.data(
                 #[cfg(feature = "debug-names")]
                 &format!("{} point light vertex buffer", name),
-                device,
                 POINT_LIGHT_LEN,
             );
 
-            unsafe {
+            {
                 let mut mapped_range = buf.map_range_mut(0..POINT_LIGHT_LEN).unwrap();
                 copy_nonoverlapping(
                     POINT_LIGHT.as_ptr(),
@@ -989,10 +978,9 @@ impl Compiler {
         self.code.push(Asm::DrawPointLights(range));
     }
 
-    fn compile_rect_lights(
+    unsafe fn compile_rect_lights(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        device: Device,
         pool: &mut Pool,
         cmds: &[Command],
         base_idx: usize,
@@ -1003,7 +991,6 @@ impl Compiler {
         Self::alloc_data(
             #[cfg(feature = "debug-names")]
             &format!("{} rect light vertex buffer", name),
-            device,
             pool,
             &mut self.rect_light.buf,
             ((self.rect_light.lru.len() + cmds.len()) * RECT_LIGHT_STRIDE) as _,
@@ -1047,7 +1034,7 @@ impl Compiler {
                     let new_end = end + RECT_LIGHT_STRIDE as u64;
                     let vertices = gen_rect_light(key.dims(), key.range(), key.radius());
 
-                    unsafe {
+                    {
                         let mut mapped_range =
                             buf.data.current.map_range_mut(end..new_end).unwrap();
                         copy_nonoverlapping(
@@ -1091,10 +1078,9 @@ impl Compiler {
         }
     }
 
-    fn compile_spotlights(
+    unsafe fn compile_spotlights(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        device: Device,
         pool: &mut Pool,
         cmds: &[Command],
         base_idx: usize,
@@ -1105,7 +1091,6 @@ impl Compiler {
         Self::alloc_data(
             #[cfg(feature = "debug-names")]
             &format!("{} spotlight vertex buffer", name),
-            device,
             pool,
             &mut self.spotlight.buf,
             (self.spotlight.lru.len() * SPOTLIGHT_STRIDE + cmds.len() * SPOTLIGHT_STRIDE) as _,
@@ -1149,7 +1134,7 @@ impl Compiler {
                     let new_end = end + SPOTLIGHT_STRIDE as u64;
                     let vertices = gen_spotlight(key.radius(), key.range());
 
-                    unsafe {
+                    {
                         let mut mapped_range =
                             buf.data.current.map_range_mut(end..new_end).unwrap();
                         copy_nonoverlapping(

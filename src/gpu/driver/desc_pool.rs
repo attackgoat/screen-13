@@ -1,5 +1,5 @@
 use {
-    super::Device,
+    crate::gpu::device,
     gfx_hal::{
         device::Device as _,
         pso::{DescriptorPoolCreateFlags, DescriptorRangeDesc},
@@ -13,28 +13,25 @@ use {
 };
 
 pub struct DescriptorPool {
-    device: Device,
     max_desc_sets: usize,
     ptr: Option<<_Backend as Backend>::DescriptorPool>,
 }
 
 impl DescriptorPool {
-    pub fn new<I>(device: Device, max_desc_sets: usize, desc_ranges: I) -> Self
+    pub unsafe fn new<I>(max_desc_sets: usize, desc_ranges: I) -> Self
     where
         I: IntoIterator,
         I::Item: Borrow<DescriptorRangeDesc>,
         I::IntoIter: ExactSizeIterator,
     {
-        Self::with_flags(
-            device,
+        Self::new_flags(
             max_desc_sets,
             desc_ranges,
             DescriptorPoolCreateFlags::empty(),
         )
     }
 
-    pub fn with_flags<I>(
-        device: Device,
+    pub unsafe fn new_flags<I>(
         max_desc_sets: usize,
         desc_ranges: I,
         flags: DescriptorPoolCreateFlags,
@@ -44,21 +41,18 @@ impl DescriptorPool {
         I::Item: Borrow<DescriptorRangeDesc>,
         I::IntoIter: ExactSizeIterator,
     {
-        let desc_pool = unsafe {
-                device
-                    .create_descriptor_pool(max_desc_sets, desc_ranges, flags)
-                    .unwrap()
-            };
+        let ptr = device()
+            .create_descriptor_pool(max_desc_sets, desc_ranges, flags)
+            .unwrap();
 
         Self {
-            device,
             max_desc_sets,
-            ptr: Some(desc_pool),
+            ptr: Some(ptr),
         }
     }
 
-    pub fn max_desc_sets(pool: &Self) -> usize {
-        pool.max_desc_sets
+    pub fn max_desc_sets(desc_pool: &Self) -> usize {
+        desc_pool.max_desc_sets
     }
 }
 
@@ -93,7 +87,7 @@ impl Drop for DescriptorPool {
         let ptr = self.ptr.take().unwrap();
 
         unsafe {
-            self.device.destroy_descriptor_pool(ptr);
+            device().destroy_descriptor_pool(ptr);
         }
     }
 }

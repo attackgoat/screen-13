@@ -15,10 +15,9 @@ use {
 };
 
 pub trait Op: Any {
-    fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
-    fn take_pool(&mut self) -> Option<Lease<Pool>>;
-    fn wait(&self);
+    unsafe fn take_pool(&mut self) -> Lease<Pool>;
+    unsafe fn wait(&self);
 }
 
 // TODO: All the places where we bind descriptor sets blindly allow the number of descriptors to be unbounded. Should work in groups beyond the limit so the API doesn't have to change.

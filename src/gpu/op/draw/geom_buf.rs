@@ -1,9 +1,8 @@
 use {
     crate::{
         gpu::{
-            device::Device,
             pool::{Lease, Pool},
-            Driver, Texture2d,
+            Texture2d,
         },
         math::Extent,
     },
@@ -22,42 +21,39 @@ pub struct GeometryBuffer {
 }
 
 impl GeometryBuffer {
-    pub fn new(
+    pub unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        device: Device,
         pool: &mut Pool,
         dims: Extent,
         output_fmt: Format,
     ) -> Self {
         let (geom_fmt, light_fmt, depth_fmt) = {
-            let device = device.borrow();
-            let geom = Device::best_fmt(
-                &device,
-                &[Format::Rgba8Unorm],
-                ImageFeature::COLOR_ATTACHMENT | ImageFeature::SAMPLED,
-            )
-            .unwrap();
-            let light = Device::best_fmt(
-                &device,
-                &[Format::Rgba32Uint, Format::Rgba32Sfloat],
-                ImageFeature::COLOR_ATTACHMENT
-                    | ImageFeature::COLOR_ATTACHMENT_BLEND
-                    | ImageFeature::SAMPLED,
-            )
-            .unwrap();
-            let depth = Device::best_fmt(
-                &device,
-                &[Format::D24UnormS8Uint],
-                ImageFeature::DEPTH_STENCIL_ATTACHMENT | ImageFeature::SAMPLED,
-            )
-            .unwrap();
+            let geom = pool
+                .best_fmt(
+                    &[Format::Rgba8Unorm],
+                    ImageFeature::COLOR_ATTACHMENT | ImageFeature::SAMPLED,
+                )
+                .unwrap();
+            let light = pool
+                .best_fmt(
+                    &[Format::Rgba32Uint, Format::Rgba32Sfloat],
+                    ImageFeature::COLOR_ATTACHMENT
+                        | ImageFeature::COLOR_ATTACHMENT_BLEND
+                        | ImageFeature::SAMPLED,
+                )
+                .unwrap();
+            let depth = pool
+                .best_fmt(
+                    &[Format::D24UnormS8Uint],
+                    ImageFeature::DEPTH_STENCIL_ATTACHMENT | ImageFeature::SAMPLED,
+                )
+                .unwrap();
             (geom, light, depth)
         };
 
         let color_metal = pool.texture(
             #[cfg(feature = "debug-names")]
             &format!("{} (Color)", name),
-            device,
             dims,
             geom_fmt,
             Layout::Undefined,
@@ -69,7 +65,6 @@ impl GeometryBuffer {
         let normal_rough = pool.texture(
             #[cfg(feature = "debug-names")]
             &format!("{} (Normal)", name),
-            device,
             dims,
             geom_fmt,
             Layout::Undefined,
@@ -81,7 +76,6 @@ impl GeometryBuffer {
         let light = pool.texture(
             #[cfg(feature = "debug-names")]
             &format!("{} (Light)", name),
-            device,
             dims,
             light_fmt,
             Layout::Undefined,
@@ -93,7 +87,6 @@ impl GeometryBuffer {
         let output = pool.texture(
             #[cfg(feature = "debug-names")]
             &format!("{} (Output)", name),
-            device,
             dims,
             output_fmt,
             Layout::Undefined,
@@ -105,7 +98,6 @@ impl GeometryBuffer {
         let depth = pool.texture(
             #[cfg(feature = "debug-names")]
             &format!("{} (Depth)", name),
-            device,
             dims,
             depth_fmt,
             Layout::Undefined,

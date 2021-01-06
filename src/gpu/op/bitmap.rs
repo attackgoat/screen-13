@@ -5,12 +5,10 @@ use {
             align_up,
             data::Mapping,
             def::{push_const::U32PushConst, Compute, ComputeMode},
-            driver::{
-                bind_compute_descriptor_set, change_channel_type, CommandPool, Device,
-                Fence,
-            },
+            device,
+            driver::{bind_compute_descriptor_set, change_channel_type, CommandPool, Fence},
             pool::{Lease, Pool},
-            Data, Texture2d,
+            queue_mut, Data, Texture2d,
         },
         math::Coord,
         pak::{Bitmap as PakBitmap, BitmapFormat},
@@ -64,24 +62,22 @@ impl Deref for Bitmap {
 
 impl Drop for Bitmap {
     fn drop(&mut self) {
-        self.wait();
+        unsafe {
+            self.wait();
+        }
     }
 }
 
 impl Op for Bitmap {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 
-    fn take_pool(&mut self) -> Option<Lease<Pool>> {
+    unsafe fn take_pool(&mut self) -> Lease<Pool> {
         todo!();
     }
 
-    fn wait(&self) {
+    unsafe fn wait(&self) {
         Fence::wait(&self.fence);
     }
 }
@@ -90,7 +86,6 @@ pub struct BitmapOp<'a> {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
     conv_fmt: Option<ComputeDispatch>,
-    device: Device,
     fence: Lease<Fence>,
 
     #[cfg(feature = "debug-names")]
@@ -108,7 +103,6 @@ impl<'a> BitmapOp<'a> {
     #[must_use]
     pub unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        device: Device,
         pool: &'a mut Pool,
         bitmap: &PakBitmap,
     ) -> Self {
@@ -124,16 +118,12 @@ impl<'a> BitmapOp<'a> {
             BitmapFormat::Rgb => &[Format::Rgb8Unorm, Format::Rgba8Unorm],
             BitmapFormat::Rgba => &[Format::Rgba8Unorm],
         };
-        let fmt = pool.best_fmt(
-            device,
-            desired_fmts,
-            ImageFeature::SAMPLED | ImageFeature::STORAGE,
-        )
-        .unwrap();
+        let fmt = pool
+            .best_fmt(desired_fmts, ImageFeature::SAMPLED | ImageFeature::STORAGE)
+            .unwrap();
         let texture = pool.texture(
             #[cfg(feature = "debug-names")]
             name,
-            device,
             bitmap.dims(),
             fmt,
             Layout::Undefined,
@@ -185,7 +175,6 @@ impl<'a> BitmapOp<'a> {
             let compute = pool.compute_desc_sets(
                 #[cfg(feature = "debug-names")]
                 name,
-                device,
                 mode,
                 1,
             );
@@ -207,7 +196,6 @@ impl<'a> BitmapOp<'a> {
         let mut pixel_buf = pool.data_usage(
             #[cfg(feature = "debug-names")]
             name,
-            device,
             pixel_buf_len as _,
             if conv_fmt.is_some() {
                 BufferUsage::STORAGE
@@ -237,18 +225,15 @@ impl<'a> BitmapOp<'a> {
         }
 
         // Allocate the command buffer
-        let family = Device::queue_family(&driver.borrow());
-        let mut cmd_pool = pool.cmd_pool(driver, family);
+        let mut cmd_pool = pool.cmd_pool();
 
         Self {
             cmd_buf: cmd_pool.allocate_one(Level::Primary),
             cmd_pool,
             conv_fmt,
-            device: Device::clone(driver),
             fence: pool.fence(
                 #[cfg(feature = "debug-names")]
                 name,
-                driver,
             ),
             #[cfg(feature = "debug-names")]
             name: name.to_owned(),
@@ -305,7 +290,6 @@ impl<'a> BitmapOp<'a> {
         let (_, pipeline_layout) = self.pool.layouts.compute_decode_rgb_rgba(
             #[cfg(feature = "debug-names")]
             &self.name,
-            self.device,
         );
         let mut texture = self.texture.borrow_mut();
         let dims = texture.dims();
@@ -381,13 +365,11 @@ impl<'a> BitmapOp<'a> {
     unsafe fn submit_finish(&mut self) {
         trace!("submit_finish");
 
-        let mut device = self.driver.borrow_mut();
-
         // Finish
         self.cmd_buf.finish();
 
         // Submit
-        Device::queue_mut(&mut device).submit(
+        queue_mut().submit(
             Submission {
                 command_buffers: once(&self.cmd_buf),
                 wait_semaphores: empty(),
@@ -403,9 +385,9 @@ impl<'a> BitmapOp<'a> {
         let conv_fmt = self.conv_fmt.as_ref().unwrap();
         let set = conv_fmt.compute.desc_set(0);
         let texture = self.texture.borrow();
-        let texture_view = texture
-            .as_default_view_format(change_channel_type(texture.format(), ChannelType::Uint));
-        self.driver.borrow().write_descriptor_sets(vec![
+        let texture_view =
+            texture.as_2d_color_format(change_channel_type(texture.format(), ChannelType::Uint));
+        device().write_descriptor_sets(vec![
             DescriptorSetWrite {
                 set,
                 binding: 0,

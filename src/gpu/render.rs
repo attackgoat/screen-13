@@ -1,6 +1,5 @@
 use {
     super::{
-        driver::{Device, Driver},
         op::{
             clear::ClearOp, copy::CopyOp, draw::DrawOp, encode::EncodeOp, font::FontOp,
             gradient::GradientOp, write::WriteOp, Op,
@@ -21,7 +20,6 @@ use {
 /// A powerful structure which allows you to combine various operations and other render
 /// instances to create just about any creative effect.
 pub struct Render {
-    device: Device,
     pool: Option<Lease<Pool>>,
     target: Lease<Texture2d>,
     target_dirty: bool,
@@ -29,23 +27,21 @@ pub struct Render {
 }
 
 impl Render {
-    pub(super) fn new(
+    pub(super) unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        device: Device,
         dims: Extent,
         mut pool: Lease<Pool>,
         ops: Vec<Box<dyn Op>>,
     ) -> Self {
-        let fmt = Device::best_fmt(
-            &driver.borrow(),
-            &[Format::Rgba8Unorm, Format::Bgra8Unorm],
-            ImageFeature::COLOR_ATTACHMENT | ImageFeature::SAMPLED,
-        )
-        .unwrap();
+        let fmt = pool
+            .best_fmt(
+                &[Format::Rgba8Unorm, Format::Bgra8Unorm],
+                ImageFeature::COLOR_ATTACHMENT | ImageFeature::SAMPLED,
+            )
+            .unwrap();
         let target = pool.texture(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
             dims,
             fmt,
             Layout::Undefined,
@@ -56,7 +52,6 @@ impl Render {
         );
 
         Self {
-            device: Device::clone(driver),
             pool: Some(pool),
             target,
             target_dirty: false,
@@ -66,14 +61,15 @@ impl Render {
 
     /// Clears the screen of all text and graphics.
     pub fn clear(&mut self, #[cfg(feature = "debug-names")] name: &str) -> &mut ClearOp {
-        let pool = self.take_pool();
-        let op = ClearOp::new(
-            #[cfg(feature = "debug-names")]
-            name,
-            self.device,
-            pool,
-            &self.target,
-        );
+        let op = unsafe {
+            let pool = self.take_pool();
+            ClearOp::new(
+                #[cfg(feature = "debug-names")]
+                name,
+                pool,
+                &self.target,
+            )
+        };
 
         self.target_dirty = true;
 
@@ -93,15 +89,16 @@ impl Render {
         #[cfg(feature = "debug-names")] name: &str,
         src: &Texture2d,
     ) -> &mut CopyOp {
-        let pool = self.take_pool();
-        let op = CopyOp::new(
-            #[cfg(feature = "debug-names")]
-            name,
-            self.device,
-            pool,
-            &src,
-            &self.target,
-        );
+        let op = unsafe {
+            let pool = self.take_pool();
+            CopyOp::new(
+                #[cfg(feature = "debug-names")]
+                name,
+                pool,
+                &src,
+                &self.target,
+            )
+        };
 
         self.target_dirty = true;
 
@@ -122,14 +119,15 @@ impl Render {
     /// Draws a batch of 3D elements. There is no need to give any particular order to the individual commands and the
     /// implementation may sort and re-order them, so do not count on indices remaining the same after this call completes.
     pub fn draw(&mut self, #[cfg(feature = "debug-names")] name: &str) -> &mut DrawOp {
-        let pool = self.take_pool();
-        let mut op = DrawOp::new(
-            #[cfg(feature = "debug-names")]
-            name,
-            self.device,
-            pool,
-            &self.target,
-        );
+        let mut op = unsafe {
+            let pool = self.take_pool();
+            DrawOp::new(
+                #[cfg(feature = "debug-names")]
+                name,
+                pool,
+                &self.target,
+            )
+        };
 
         if self.target_dirty {
             let _ = op.with_preserve();
@@ -147,14 +145,15 @@ impl Render {
 
     /// Saves this Render as a JPEG file at the given path.
     pub fn encode(&mut self, #[cfg(feature = "debug-names")] name: &str) -> &mut EncodeOp {
-        let pool = self.take_pool();
-        let op = EncodeOp::new(
-            #[cfg(feature = "debug-names")]
-            name,
-            self.device,
-            pool,
-            &self.target,
-        );
+        let op = unsafe {
+            let pool = self.take_pool();
+            EncodeOp::new(
+                #[cfg(feature = "debug-names")]
+                name,
+                pool,
+                &self.target,
+            )
+        };
 
         self.ops.push(Box::new(op));
         self.ops
@@ -175,15 +174,16 @@ impl Render {
     where
         C: Copy + Into<AlphaColor>,
     {
-        let pool = self.take_pool();
-        let op = GradientOp::new(
-            #[cfg(feature = "debug-names")]
-            name,
-            self.device,
-            pool,
-            &self.target,
-            [(path[0].0, path[0].1.into()), (path[1].0, path[1].1.into())],
-        );
+        let op = unsafe {
+            let pool = self.take_pool();
+            GradientOp::new(
+                #[cfg(feature = "debug-names")]
+                name,
+                pool,
+                &self.target,
+                [(path[0].0, path[0].1.into()), (path[1].0, path[1].1.into())],
+            )
+        };
 
         self.target_dirty = true;
 
@@ -200,10 +200,10 @@ impl Render {
         (self.target, self.ops)
     }
 
-    fn take_pool(&mut self) -> Lease<Pool> {
+    unsafe fn take_pool(&mut self) -> Lease<Pool> {
         self.pool
             .take()
-            .unwrap_or_else(|| self.ops.last_mut().unwrap().take_pool().unwrap())
+            .unwrap_or_else(|| self.ops.last_mut().unwrap().take_pool())
     }
 
     /// Draws bitmapped text on this Render using the given details.
@@ -218,16 +218,17 @@ impl Render {
         C: Into<AlphaColor>,
         P: Into<CoordF>,
     {
-        let pool = self.take_pool();
-        let op = FontOp::new(
-            #[cfg(feature = "debug-names")]
-            name,
-            self.device,
-            pool,
-            &self.target,
-            pos,
-            color,
-        );
+        let op = unsafe {
+            let pool = self.take_pool();
+            FontOp::new(
+                #[cfg(feature = "debug-names")]
+                name,
+                pool,
+                &self.target,
+                pos,
+                color,
+            )
+        };
 
         self.target_dirty = true;
 
@@ -243,14 +244,15 @@ impl Render {
     /// Draws the given texture writes onto this Render. Note that the given texture writes will all be applied at once and there
     /// is no 'layering' of the individual writes going on - so if you need blending between writes you must submit a new batch.
     pub fn write(&mut self, #[cfg(feature = "debug-names")] name: &str) -> &mut WriteOp {
-        let pool = self.take_pool();
-        let mut op = WriteOp::new(
-            #[cfg(feature = "debug-names")]
-            name,
-            self.device,
-            pool,
-            &self.target,
-        );
+        let mut op = unsafe {
+            let pool = self.take_pool();
+            WriteOp::new(
+                #[cfg(feature = "debug-names")]
+                name,
+                pool,
+                &self.target,
+            )
+        };
 
         if self.target_dirty {
             let _ = op.with_preserve();

@@ -1,5 +1,5 @@
 use {
-    super::driver::{Driver, Image2d, ImageView},
+    super::driver::{Image2d, ImageView},
     crate::math::Extent,
     gfx_hal::{
         command::CommandBuffer,
@@ -40,7 +40,6 @@ where
     I: AsRef<<_Backend as Backend>::Image>,
 {
     dims: Extent,
-    device: Device,
     fmt: Format,
     image: I,
     state: RefCell<State>,
@@ -51,7 +50,7 @@ impl<I> Texture<I>
 where
     I: AsRef<<_Backend as Backend>::Image>,
 {
-    pub(crate) fn as_view(
+    pub(crate) unsafe fn as_view(
         &self,
         view_kind: ViewKind,
         format: Format,
@@ -68,14 +67,7 @@ where
         {
             let mut views = self.views.borrow_mut();
             if !views.contains_key(&key) {
-                let view = ImageView::new(
-                    self.device,
-                    self.image.as_ref(),
-                    view_kind,
-                    format,
-                    swizzle,
-                    range,
-                );
+                let view = ImageView::new(self.image.as_ref(), view_kind, format, swizzle, range);
                 views.insert(key.clone(), view);
             }
         }
@@ -128,9 +120,8 @@ where
 impl Texture<Image2d> {
     // TODO: Make a builder pattern for this!
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn new(
+    pub(crate) unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        device: Device,
         dims: Extent,
         fmt: Format,
         layout: Layout,
@@ -147,7 +138,6 @@ impl Texture<Image2d> {
         let image = Image2d::new_optimal(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
             dims,
             layers,
             samples,
@@ -158,7 +148,6 @@ impl Texture<Image2d> {
 
         let res = Self {
             dims,
-            device: Device::clone(driver),
             fmt,
             image,
             state: RefCell::new(State {
@@ -169,23 +158,39 @@ impl Texture<Image2d> {
             views: Default::default(),
         };
 
-        // Pre-cache the default view so we don't need to re-borrow the device so often
-        res.as_default_view();
+        // Pre-cache the default view
+        res.as_2d_color();
 
         res
     }
 
-    pub(crate) fn as_default_view(&self) -> ImageViewRef {
-        self.as_default_view_format(self.format())
+    pub(crate) unsafe fn as_2d_color(&self) -> ImageViewRef {
+        self.as_2d_color_format(self.format())
     }
 
-    pub(crate) fn as_default_view_format(&self, format: Format) -> ImageViewRef {
+    pub(crate) unsafe fn as_2d_color_format(&self, fmt: Format) -> ImageViewRef {
         self.as_view(
             ViewKind::D2,
-            format,
+            fmt,
             Default::default(),
             SubresourceRange {
                 aspects: Aspects::COLOR,
+                ..Default::default()
+            },
+        )
+    }
+
+    pub(crate) unsafe fn as_2d_depth(&self) -> ImageViewRef {
+        self.as_2d_depth_format(self.format())
+    }
+
+    pub(crate) unsafe fn as_2d_depth_format(&self, fmt: Format) -> ImageViewRef {
+        self.as_view(
+            ViewKind::D2,
+            fmt,
+            Default::default(),
+            SubresourceRange {
+                aspects: Aspects::DEPTH,
                 ..Default::default()
             },
         )

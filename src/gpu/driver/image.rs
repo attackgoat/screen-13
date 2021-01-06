@@ -1,6 +1,9 @@
 use {
-    super::{Device, Dim, Memory},
-    crate::math::Extent,
+    super::{Dim, Memory},
+    crate::{
+        gpu::{device, mem_ty},
+        math::Extent,
+    },
     gfx_hal::{
         device::Device as _,
         format::Format,
@@ -21,7 +24,6 @@ where
     D: Dim,
 {
     __: PhantomData<D>,
-    device: Device,
     mem: Memory, // TODO: Remove! This should not be here!
     ptr: Option<<_Backend as Backend>::Image>,
 }
@@ -30,24 +32,20 @@ impl<D> Image<D>
 where
     D: Dim,
 {
-    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
+    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as
+    /// [RenderDoc](https://renderdoc.org/).
     #[cfg(feature = "debug-names")]
-    pub fn set_name(image: &mut Self, name: &str) {
-        let device = image.driver.borrow();
+    pub unsafe fn set_name(image: &mut Self, name: &str) {
         let ptr = image.ptr.as_mut().unwrap();
-
-        unsafe {
-            device.set_image_name(ptr, name);
-        }
+        device().set_image_name(ptr, name);
     }
 }
 
 /// Specialized new function for 2D images
 #[allow(clippy::too_many_arguments)]
 impl Image<U2> {
-    pub fn new_optimal(
+    pub unsafe fn new_optimal(
         #[cfg(feature = "debug-names")] name: &str,
-        device: Device,
         dims: Extent,
         layers: u16,
         samples: u8,
@@ -55,36 +53,30 @@ impl Image<U2> {
         fmt: Format,
         usage: Usage,
     ) -> Self {
-        let (image, mem) = unsafe {
-            let kind = Kind::D2(dims.x, dims.y, layers, samples);
-            let mut image = device
-                .create_image(
-                    kind,
-                    mips,
-                    fmt,
-                    Tiling::Optimal,
-                    usage,
-                    ViewCapabilities::MUTABLE_FORMAT,
-                )
-                .unwrap();
+        let kind = Kind::D2(dims.x, dims.y, layers, samples);
+        let mut ptr = device()
+            .create_image(
+                kind,
+                mips,
+                fmt,
+                Tiling::Optimal,
+                usage,
+                ViewCapabilities::MUTABLE_FORMAT,
+            )
+            .unwrap();
 
-            #[cfg(feature = "debug-names")]
-            device.set_image_name(&mut image, name);
+        #[cfg(feature = "debug-names")]
+        device().set_image_name(&mut ptr, name);
 
-            let req = device.get_image_requirements(&image);
-            let mem_type =
-                Device::mem_ty(&device, req.type_mask, Properties::DEVICE_LOCAL).unwrap();
-            let mem = Memory::new(device, mem_type, req.size);
-            device.bind_image_memory(&mem, 0, &mut image).unwrap();
-
-            (image, mem)
-        };
+        let req = device().get_image_requirements(&ptr);
+        let mem_type = mem_ty(req.type_mask, Properties::DEVICE_LOCAL).unwrap();
+        let mem = Memory::new(mem_type, req.size);
+        device().bind_image_memory(&mem, 0, &mut ptr).unwrap();
 
         Self {
             __: PhantomData,
-            device,
             mem,
-            ptr: Some(image),
+            ptr: Some(ptr),
         }
     }
 }
@@ -135,7 +127,7 @@ where
         let ptr = self.ptr.take().unwrap();
 
         unsafe {
-            self.device.destroy_image(ptr);
+            device().destroy_image(ptr);
         }
     }
 }

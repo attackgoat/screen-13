@@ -1,5 +1,5 @@
 use {
-    super::Device,
+    crate::gpu::device,
     gfx_hal::{
         device::Device as _,
         pso::{EntryPoint, Specialization},
@@ -9,21 +9,13 @@ use {
     std::ops::{Deref, DerefMut},
 };
 
-pub struct ShaderModule {
-    device: Device,
-    ptr: Option<<_Backend as Backend>::ShaderModule>,
-}
+pub struct ShaderModule(Option<<_Backend as Backend>::ShaderModule>);
 
 impl ShaderModule {
-    pub unsafe fn new(device: Device, spirv: &[u32]) -> Self {
-        let shader_module = device
-            .create_shader_module(spirv)
-            .unwrap();
+    pub unsafe fn new(spirv: &[u32]) -> Self {
+        let ptr = device().create_shader_module(spirv).unwrap();
 
-        Self {
-            device,
-            ptr: Some(shader_module),
-        }
+        Self(Some(ptr))
     }
 
     pub fn entry_point(module: &Self) -> EntryPoint<'_, _Backend> {
@@ -58,22 +50,22 @@ impl Deref for ShaderModule {
     type Target = <_Backend as Backend>::ShaderModule;
 
     fn deref(&self) -> &Self::Target {
-        self.ptr.as_ref().unwrap()
+        self.0.as_ref().unwrap()
     }
 }
 
 impl DerefMut for ShaderModule {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.ptr.as_mut().unwrap()
+        self.0.as_mut().unwrap()
     }
 }
 
 impl Drop for ShaderModule {
     fn drop(&mut self) {
-        let ptr = self.ptr.take().unwrap();
+        let ptr = self.0.take().unwrap();
 
         unsafe {
-            self.device.destroy_shader_module(ptr);
+            device().destroy_shader_module(ptr);
         }
     }
 }

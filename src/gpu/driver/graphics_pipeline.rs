@@ -1,52 +1,38 @@
 use {
-    super::Device,
+    crate::gpu::device,
     gfx_hal::{device::Device as _, pso::GraphicsPipelineDesc, Backend},
     gfx_impl::Backend as _Backend,
     std::ops::{Deref, DerefMut},
 };
 
-pub struct GraphicsPipeline {
-    device: Device,
-    ptr: Option<<_Backend as Backend>::GraphicsPipeline>,
-}
+pub struct GraphicsPipeline(Option<<_Backend as Backend>::GraphicsPipeline>);
 
 impl GraphicsPipeline {
-    pub fn new(
+    pub unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        device: Device,
         desc: &GraphicsPipelineDesc<'_, _Backend>,
     ) -> Self {
-        let graphics_pipeline = unsafe {
-                // TODO: Use a pipeline cache?
-                let ctor = || device.create_graphics_pipeline(&desc, None).unwrap();
+        // TODO: Use a pipeline cache?
+        let ctor = || device().create_graphics_pipeline(&desc, None).unwrap();
 
-                #[cfg(feature = "debug-names")]
-                let mut graphics_pipeline = ctor();
+        #[cfg(feature = "debug-names")]
+        let mut ptr = ctor();
 
-                #[cfg(not(feature = "debug-names"))]
-                let graphics_pipeline = ctor();
+        #[cfg(not(feature = "debug-names"))]
+        let ptr = ctor();
 
-                #[cfg(feature = "debug-names")]
-                device.set_graphics_pipeline_name(&mut graphics_pipeline, name);
+        #[cfg(feature = "debug-names")]
+        device().set_graphics_pipeline_name(&mut ptr, name);
 
-                graphics_pipeline
-        };
-
-        Self {
-            device,
-            ptr: Some(graphics_pipeline),
-        }
+        Self(Some(ptr))
     }
 
-    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
+    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as
+    /// [RenderDoc](https://renderdoc.org/).
     #[cfg(feature = "debug-names")]
-    pub fn set_name(graphics_pipeline: &mut Self, name: &str) {
-        let device = graphics_pipeline.driver.as_ref().borrow();
-        let ptr = graphics_pipeline.ptr.as_mut().unwrap();
-
-        unsafe {
-            device.set_graphics_pipeline_name(ptr, name);
-        }
+    pub unsafe fn set_name(pipeline: &mut Self, name: &str) {
+        let ptr = pipeline.0.as_mut().unwrap();
+        device().set_graphics_pipeline_name(ptr, name);
     }
 }
 
@@ -66,22 +52,22 @@ impl Deref for GraphicsPipeline {
     type Target = <_Backend as Backend>::GraphicsPipeline;
 
     fn deref(&self) -> &Self::Target {
-        self.ptr.as_ref().unwrap()
+        self.0.as_ref().unwrap()
     }
 }
 
 impl DerefMut for GraphicsPipeline {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.ptr.as_mut().unwrap()
+        self.0.as_mut().unwrap()
     }
 }
 
 impl Drop for GraphicsPipeline {
     fn drop(&mut self) {
-        let ptr = self.ptr.take().unwrap();
+        let ptr = self.0.take().unwrap();
 
         unsafe {
-            self.device.destroy_graphics_pipeline(ptr);
+            device().destroy_graphics_pipeline(ptr);
         }
     }
 }

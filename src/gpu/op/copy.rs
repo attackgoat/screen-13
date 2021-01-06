@@ -2,9 +2,9 @@ use {
     super::Op,
     crate::{
         gpu::{
-            driver::{CommandPool, Device, Driver, Fence},
+            driver::{CommandPool, Fence},
             pool::{Lease, Pool},
-            Texture2d,
+            queue_mut, Texture2d,
         },
         math::{Area, Coord, Extent},
     },
@@ -32,7 +32,6 @@ use {
 pub struct CopyOp {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool>,
-    device: Device,
     dst: Texture2d,
     dst_offset: Extent,
     fence: Lease<Fence>,
@@ -44,23 +43,20 @@ pub struct CopyOp {
 
 impl CopyOp {
     #[must_use]
-    pub(crate) fn new(
+    pub(crate) unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        device: Device,
         mut pool: Lease<Pool>,
         src: &Texture2d,
         dst: &Texture2d,
     ) -> Self {
         let (cmd_buf, cmd_pool, fence) = {
-            let family = Device::queue_family(&driver.borrow());
-            let mut cmd_pool = pool.cmd_pool(driver, family);
+            let mut cmd_pool = pool.cmd_pool();
             let fence = pool.fence(
                 #[cfg(feature = "debug-names")]
                 name,
-                driver,
             );
 
-            let cmd_buf = unsafe { cmd_pool.allocate_one(Level::Primary) };
+            let cmd_buf = cmd_pool.allocate_one(Level::Primary);
 
             (cmd_buf, cmd_pool, fence)
         };
@@ -68,7 +64,6 @@ impl CopyOp {
         Self {
             cmd_buf,
             cmd_pool,
-            device: Device::clone(driver),
             dst: Texture2d::clone(dst),
             dst_offset: Extent::ZERO,
             fence,
@@ -99,7 +94,6 @@ impl CopyOp {
     unsafe fn submit(&mut self) {
         trace!("submit");
 
-        let mut device = self.driver.borrow_mut();
         let mut src = self.src.borrow_mut();
         let mut dst = self.dst.borrow_mut();
         let dst_offset: Coord = self.dst_offset.into();
@@ -150,7 +144,7 @@ impl CopyOp {
         self.cmd_buf.finish();
 
         // Submit
-        Device::queue_mut(&mut device).submit(
+        queue_mut().submit(
             Submission {
                 command_buffers: once(&self.cmd_buf),
                 wait_semaphores: empty(),
@@ -163,24 +157,22 @@ impl CopyOp {
 
 impl Drop for CopyOp {
     fn drop(&mut self) {
-        self.wait();
+        unsafe {
+            self.wait();
+        }
     }
 }
 
 impl Op for CopyOp {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 
-    fn take_pool(&mut self) -> Option<Lease<Pool>> {
-        self.pool.take()
+    unsafe fn take_pool(&mut self) -> Lease<Pool> {
+        self.pool.take().unwrap()
     }
 
-    fn wait(&self) {
+    unsafe fn wait(&self) {
         Fence::wait(&self.fence);
     }
 }

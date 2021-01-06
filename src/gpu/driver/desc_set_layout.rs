@@ -1,5 +1,5 @@
 use {
-    super::Device,
+    crate::gpu::device,
     gfx_hal::{device::Device as _, pso::DescriptorSetLayoutBinding, Backend},
     gfx_impl::Backend as _Backend,
     std::{
@@ -8,49 +8,41 @@ use {
     },
 };
 
-pub struct DescriptorSetLayout {
-    device: Device,
-    ptr: Option<<_Backend as Backend>::DescriptorSetLayout>,
-}
+pub struct DescriptorSetLayout(Option<<_Backend as Backend>::DescriptorSetLayout>);
 
 impl DescriptorSetLayout {
-    pub fn new<I>(#[cfg(feature = "debug-names")] name: &str, device: Device, bindings: I) -> Self
+    pub unsafe fn new<I>(#[cfg(feature = "debug-names")] name: &str, bindings: I) -> Self
     where
         I: IntoIterator,
         I::Item: Borrow<DescriptorSetLayoutBinding>,
     {
         // TODO: This driver code does not support the imutable samplers feature.
-        // See: `pImmutableSamplers` in https://vulkan.lunarg.com/doc/view/1.2.131.2/windows/vkspec.html#descriptorsets-sets
-        let set_layout = unsafe {
-            let ctor = || device.create_descriptor_set_layout(bindings, &[]).unwrap();
-
-            #[cfg(feature = "debug-names")]
-            let mut set_layout = ctor();
-
-            #[cfg(not(feature = "debug-names"))]
-            let set_layout = ctor();
-
-            #[cfg(feature = "debug-names")]
-            device.set_descriptor_set_layout_name(&mut set_layout, name);
-
-            set_layout
+        // See: `pImmutableSamplers` at
+        // https://vulkan.lunarg.com/doc/view/1.2.131.2/windows/vkspec.html#descriptorsets-sets
+        let ctor = || {
+            device()
+                .create_descriptor_set_layout(bindings, &[])
+                .unwrap()
         };
 
-        Self {
-            device,
-            ptr: Some(set_layout),
-        }
+        #[cfg(feature = "debug-names")]
+        let mut ptr = ctor();
+
+        #[cfg(not(feature = "debug-names"))]
+        let ptr = ctor();
+
+        #[cfg(feature = "debug-names")]
+        device().set_descriptor_set_layout_name(&mut ptr, name);
+
+        Self(Some(ptr))
     }
 
-    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
+    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as
+    /// [RenderDoc](https://renderdoc.org/).
     #[cfg(feature = "debug-names")]
-    pub fn set_name(set_layout: &mut Self, name: &str) {
-        let device = set_layout.driver.as_ref().borrow();
-        let ptr = set_layout.ptr.as_mut().unwrap();
-
-        unsafe {
-            device.set_descriptor_set_layout_name(ptr, name);
-        }
+    pub unsafe fn set_name(layout: &mut Self, name: &str) {
+        let ptr = layout.0.as_mut().unwrap();
+        device().set_descriptor_set_layout_name(ptr, name);
     }
 }
 
@@ -70,22 +62,22 @@ impl Deref for DescriptorSetLayout {
     type Target = <_Backend as Backend>::DescriptorSetLayout;
 
     fn deref(&self) -> &Self::Target {
-        self.ptr.as_ref().unwrap()
+        self.0.as_ref().unwrap()
     }
 }
 
 impl DerefMut for DescriptorSetLayout {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.ptr.as_mut().unwrap()
+        self.0.as_mut().unwrap()
     }
 }
 
 impl Drop for DescriptorSetLayout {
     fn drop(&mut self) {
-        let ptr = self.ptr.take().unwrap();
+        let ptr = self.0.take().unwrap();
 
         unsafe {
-            self.device.destroy_descriptor_set_layout(ptr);
+            device().destroy_descriptor_set_layout(ptr);
         }
     }
 }

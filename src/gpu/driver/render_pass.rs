@@ -1,5 +1,5 @@
 use {
-    super::Device,
+    crate::gpu::device,
     gfx_hal::{
         device::Device as _,
         pass::{Attachment, Subpass, SubpassDependency, SubpassDesc},
@@ -12,15 +12,11 @@ use {
     },
 };
 
-pub struct RenderPass {
-    device: Device,
-    ptr: Option<<_Backend as Backend>::RenderPass>,
-}
+pub struct RenderPass(Option<<_Backend as Backend>::RenderPass>);
 
 impl RenderPass {
-    pub fn new<'s, IA, IS, ID>(
+    pub unsafe fn new<'s, IA, IS, ID>(
         #[cfg(feature = "debug-names")] name: &str,
-        device: Device,
         attachments: IA,
         subpasses: IS,
         dependencies: ID,
@@ -36,41 +32,30 @@ impl RenderPass {
         ID::Item: Borrow<SubpassDependency>,
         ID::IntoIter: ExactSizeIterator,
     {
-        let render_pass = 
-            unsafe {
-                let ctor = || {
-                    device
-                        .create_render_pass(attachments, subpasses, dependencies)
-                        .unwrap()
-                };
-
-                #[cfg(feature = "debug-names")]
-                let mut render_pass = ctor();
-
-                #[cfg(not(feature = "debug-names"))]
-                let render_pass = ctor();
-
-                #[cfg(feature = "debug-names")]
-                device.set_render_pass_name(&mut render_pass, name);
-
-                render_pass
+        let ctor = || {
+            device()
+                .create_render_pass(attachments, subpasses, dependencies)
+                .unwrap()
         };
 
-        Self {
-            device,
-            ptr: Some(render_pass),
-        }
+        #[cfg(feature = "debug-names")]
+        let mut ptr = ctor();
+
+        #[cfg(not(feature = "debug-names"))]
+        let ptr = ctor();
+
+        #[cfg(feature = "debug-names")]
+        device().set_render_pass_name(&mut ptr, name);
+
+        Self(Some(ptr))
     }
 
-    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
+    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as
+    /// [RenderDoc](https://renderdoc.org/).
     #[cfg(feature = "debug-names")]
-    pub fn set_name(render_pass: &mut Self, name: &str) {
-        let device = render_pass.driver.as_ref().borrow();
-        let ptr = render_pass.ptr.as_mut().unwrap();
-
-        unsafe {
-            device.set_render_pass_name(ptr, name);
-        }
+    pub unsafe fn set_name(render_pass: &mut Self, name: &str) {
+        let ptr = render_pass.0.as_mut().unwrap();
+        device().set_render_pass_name(ptr, name);
     }
 
     pub fn subpass(main_pass: &Self, index: u8) -> Subpass<'_, _Backend> {
@@ -94,22 +79,22 @@ impl Deref for RenderPass {
     type Target = <_Backend as Backend>::RenderPass;
 
     fn deref(&self) -> &Self::Target {
-        self.ptr.as_ref().unwrap()
+        self.0.as_ref().unwrap()
     }
 }
 
 impl DerefMut for RenderPass {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.ptr.as_mut().unwrap()
+        self.0.as_mut().unwrap()
     }
 }
 
 impl Drop for RenderPass {
     fn drop(&mut self) {
-        let ptr = self.ptr.take().unwrap();
+        let ptr = self.0.take().unwrap();
 
         unsafe {
-            self.device.destroy_render_pass(ptr);
+            device().destroy_render_pass(ptr);
         }
     }
 }

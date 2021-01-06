@@ -1,5 +1,5 @@
 use {
-    super::Device,
+    crate::gpu::device,
     gfx_hal::{
         device::Device as _,
         image::{Filter, Lod, PackedColor, SamplerDesc, WrapMode},
@@ -12,15 +12,11 @@ use {
 
 pub type SamplerBuilder = SamplerDesc;
 
-pub struct Sampler {
-    device: Device,
-    ptr: Option<<_Backend as Backend>::Sampler>,
-}
+pub struct Sampler(Option<<_Backend as Backend>::Sampler>);
 
 impl Sampler {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        device: Device,
+    pub unsafe fn new(
         min: Filter,
         mag: Filter,
         mip: Filter,
@@ -31,27 +27,22 @@ impl Sampler {
         normalized: bool,
         anisotropy_clamp: Option<u8>,
     ) -> Self {
-        let sampler = 
-            unsafe {
-                device.create_sampler(&SamplerDesc {
-                    min_filter: min,
-                    mag_filter: mag,
-                    mip_filter: mip,
-                    wrap_mode,
-                    lod_bias: lod.0,
-                    lod_range: lod.1,
-                    comparison,
-                    border,
-                    normalized,
-                    anisotropy_clamp,
-                })
-        }
-        .unwrap();
+        let ptr = device()
+            .create_sampler(&SamplerDesc {
+                min_filter: min,
+                mag_filter: mag,
+                mip_filter: mip,
+                wrap_mode,
+                lod_bias: lod.0,
+                lod_range: lod.1,
+                comparison,
+                border,
+                normalized,
+                anisotropy_clamp,
+            })
+            .unwrap();
 
-        Self {
-            device,
-            ptr: Some(sampler),
-        }
+        Self(Some(ptr))
     }
 }
 
@@ -71,22 +62,22 @@ impl Deref for Sampler {
     type Target = <_Backend as Backend>::Sampler;
 
     fn deref(&self) -> &Self::Target {
-        self.ptr.as_ref().unwrap()
+        self.0.as_ref().unwrap()
     }
 }
 
 impl DerefMut for Sampler {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.ptr.as_mut().unwrap()
+        self.0.as_mut().unwrap()
     }
 }
 
 impl Drop for Sampler {
     fn drop(&mut self) {
-        let ptr = self.ptr.take().unwrap();
+        let ptr = self.0.take().unwrap();
 
         unsafe {
-            self.device.destroy_sampler(ptr);
+            device().destroy_sampler(ptr);
         }
     }
 }
