@@ -5,8 +5,9 @@ use {
             BlendMode,
         },
         math::{Coord, Extent, Rect},
-        DynScreen, Gpu, Input, Render, Screen,
+        DynScreen, Gpu, Input, Render, Screen, Shared,
     },
+    archery::SharedPointerKind,
     std::{
         time::{Duration, Instant},
         u8,
@@ -50,17 +51,23 @@ use {
 /// ```
 ///
 /// _Note:_ Screens are only drawn, and not updated, during fade.
-pub struct Fade {
-    a: Option<DynScreen>,
-    b: Option<DynScreen>,
+pub struct Fade<P>
+where
+    P: SharedPointerKind,
+{
+    a: Option<DynScreen<P>>,
+    b: Option<DynScreen<P>>,
     duration: Duration,
     mode: BlendMode,
     started: Instant,
 }
 
-impl Fade {
+impl<P> Fade<P>
+where
+    P: SharedPointerKind,
+{
     /// Constructs a `Fade` from the given `a` and `b` screens and duration.
-    pub fn new(a: DynScreen, b: DynScreen, duration: Duration) -> Self {
+    pub fn new(a: DynScreen<P>, b: DynScreen<P>, duration: Duration) -> Self {
         Self {
             a: Some(a),
             b: Some(b),
@@ -76,8 +83,11 @@ impl Fade {
     }
 }
 
-impl Screen for Fade {
-    fn render(&self, gpu: &Gpu, dims: Extent) -> Render {
+impl<P> Screen<P> for Fade<P>
+where
+    P: 'static + SharedPointerKind,
+{
+    fn render(&self, gpu: &Gpu<P>, dims: Extent) -> Render<P> {
         // Render each of the a and b screens normally
         let mut a = self.a.as_ref().unwrap().render(gpu, dims);
         let b = self.b.as_ref().unwrap().render(gpu, dims);
@@ -112,7 +122,7 @@ impl Screen for Fade {
         a
     }
 
-    fn update(mut self: Box<Self>, _: &Gpu, _: &Input) -> DynScreen {
+    fn update(mut self: Box<Self>, _: &Gpu<P>, _: &Input) -> DynScreen<P> {
         if Instant::now() - self.started > self.duration {
             self.b.take().unwrap()
         } else {

@@ -1,26 +1,37 @@
 use {
-    super::{LineVertex, Material},
     crate::{
         color::{AlphaColor, Color},
-        gpu::{MeshFilter, ModelRef, Pose},
+        gpu::{Bitmap, MeshFilter, Model, Pose},
         math::{vec3_is_finite, CoordF, Mat4, Sphere, Vec3},
+        Shared,
     },
-    std::{marker::PhantomData, num::FpCategory, ops::Range},
+    archery::SharedPointerKind,
+    std::{
+        cmp::Ordering,
+        fmt::{Debug, Error, Formatter},
+        hash::{Hash, Hasher},
+        marker::PhantomData,
+        num::FpCategory,
+        ops::Range,
+    },
 };
 
-pub type PointLightIter<'a> = CommandIter<'a, PointLightCommand>;
-pub type RectLightIter<'a> = CommandIter<'a, RectLightCommand>;
-pub type SpotlightIter<'a> = CommandIter<'a, SpotlightCommand>;
-pub type SunlightIter<'a> = CommandIter<'a, SunlightCommand>;
+pub type PointLightIter<'a, P> = CommandIter<'a, PointLightCommand, P>;
+pub type RectLightIter<'a, P> = CommandIter<'a, RectLightCommand, P>;
+pub type SpotlightIter<'a, P> = CommandIter<'a, SpotlightCommand, P>;
+pub type SunlightIter<'a, P> = CommandIter<'a, SunlightCommand, P>;
 
 // TODO: Voxels, landscapes, water, god rays, particle systems
 /// An expressive type which allows specification of individual drawing operations.
-pub enum Command {
+pub enum Command<P>
+where
+    P: 'static + SharedPointerKind,
+{
     /// Draws a line segment.
     Line(LineCommand),
 
     /// Draws a model.
-    Model(ModelCommand),
+    Model(ModelCommand<P>),
 
     /// Draws a point light.
     PointLight(PointLightCommand),
@@ -35,7 +46,10 @@ pub enum Command {
     Sunlight(SunlightCommand),
 }
 
-impl Command {
+impl<P> Command<P>
+where
+    P: SharedPointerKind,
+{
     pub(crate) fn as_line(&self) -> Option<&LineCommand> {
         match self {
             Self::Line(res) => Some(res),
@@ -43,7 +57,7 @@ impl Command {
         }
     }
 
-    pub(crate) fn as_model(&self) -> Option<&ModelCommand> {
+    pub(crate) fn as_model(&self) -> Option<&ModelCommand<P>> {
         match self {
             Self::Model(res) => Some(res),
             _ => None,
@@ -127,7 +141,7 @@ impl Command {
     }
 
     /// Draws a model using the given material and world transform.
-    pub fn model<M: Into<Mesh>>(mesh: M, material: Material, transform: Mat4) -> Self {
+    pub fn model<M: Into<Mesh<P>>>(mesh: M, material: Material<P>, transform: Mat4) -> Self {
         let mesh = mesh.into();
         Self::Model(ModelCommand {
             camera_order: f32::NAN,
@@ -201,14 +215,20 @@ impl Command {
     }
 }
 
-pub struct CommandIter<'a, T> {
+pub struct CommandIter<'a, T, P>
+where
+    P: 'static + SharedPointerKind,
+{
     __: PhantomData<T>,
-    cmds: &'a [Command],
+    cmds: &'a [Command<P>],
     idx: usize,
 }
 
-impl<'a, T> CommandIter<'a, T> {
-    pub fn new(cmds: &'a [Command]) -> Self {
+impl<'a, T, P> CommandIter<'a, T, P>
+where
+    P: SharedPointerKind,
+{
+    pub fn new(cmds: &'a [Command<P>]) -> Self {
         Self {
             __: PhantomData,
             cmds,
@@ -217,7 +237,10 @@ impl<'a, T> CommandIter<'a, T> {
     }
 }
 
-impl<'a> Iterator for CommandIter<'a, PointLightCommand> {
+impl<'a, P> Iterator for CommandIter<'a, PointLightCommand, P>
+where
+    P: SharedPointerKind,
+{
     type Item = &'a PointLightCommand;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -231,7 +254,10 @@ impl<'a> Iterator for CommandIter<'a, PointLightCommand> {
     }
 }
 
-impl<'a> Iterator for CommandIter<'a, RectLightCommand> {
+impl<'a, P> Iterator for CommandIter<'a, RectLightCommand, P>
+where
+    P: SharedPointerKind,
+{
     type Item = &'a RectLightCommand;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -245,7 +271,10 @@ impl<'a> Iterator for CommandIter<'a, RectLightCommand> {
     }
 }
 
-impl<'a> Iterator for CommandIter<'a, SpotlightCommand> {
+impl<'a, P> Iterator for CommandIter<'a, SpotlightCommand, P>
+where
+    P: SharedPointerKind,
+{
     type Item = &'a SpotlightCommand;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -259,7 +288,10 @@ impl<'a> Iterator for CommandIter<'a, SpotlightCommand> {
     }
 }
 
-impl<'a> Iterator for CommandIter<'a, SunlightCommand> {
+impl<'a, P> Iterator for CommandIter<'a, SunlightCommand, P>
+where
+    P: SharedPointerKind,
+{
     type Item = &'a SunlightCommand;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -281,10 +313,103 @@ pub struct LineCommand {
     pub vertices: [LineVertex; 2],
 }
 
+/// TODO: Move me to the vertices module?
+#[derive(Clone, Debug)]
+pub struct LineVertex {
+    pub color: AlphaColor,
+    pub pos: Vec3,
+}
+
+/// Defines a PBR material.
+///
+/// _NOTE:_ Temporary. I think this will soon become an enum with more options, reflectance probes,
+/// shadow maps, lots more
+#[derive(Clone)]
+pub struct Material<P>
+where
+    P: 'static + SharedPointerKind,
+{
+    /// Three channel base color, aka albedo or diffuse, of the material.
+    pub color: Shared<Bitmap<P>, P>,
+
+    /// A two channel bitmap of the metalness (red) and roughness (green) PBR parameters.
+    pub metal_rough: Shared<Bitmap<P>, P>,
+
+    /// A standard three channel normal map.
+    pub normal: Shared<Bitmap<P>, P>,
+}
+
+impl<P> Debug for Material<P>
+where
+    P: SharedPointerKind,
+{
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        f.write_str("Material")
+    }
+}
+
+impl<P> Eq for Material<P> where P: SharedPointerKind {}
+
+impl<P> Hash for Material<P>
+where
+    P: SharedPointerKind,
+{
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        // self.color.as_ptr().hash(state);
+        // self.metal_rough.as_ptr().hash(state);
+        // self.normal.as_ptr().hash(state);
+        todo!("DONT CHECKIN");
+    }
+}
+
+impl<P> Ord for Material<P>
+where
+    P: SharedPointerKind,
+{
+    fn cmp(&self, other: &Self) -> Ordering {
+        // let mut res = self.color.cmp(&other.color);
+        // if res != Ordering::Less {
+        //     return res;
+        // }
+
+        // res = self.metal_rough.cmp(&other.metal_rough);
+        // if res != Ordering::Less {
+        //     return res;
+        // }
+
+        // self.normal.cmp(&other.normal)
+        todo!("DONT CHECKIN");
+    }
+}
+
+impl<P> PartialEq for Material<P>
+where
+    P: SharedPointerKind,
+{
+    fn eq(&self, other: &Self) -> bool {
+        // self.color == other.color
+        //     && self.normal == other.normal
+        //     && self.metal_rough == other.metal_rough
+        todo!("DONT CHECKIN");
+    }
+}
+
+impl<P> PartialOrd for Material<P>
+where
+    P: SharedPointerKind,
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 /// Container of a shared `Model` reference and the optional filter or pose that might be used
 /// during rendering.
 #[derive(Debug)]
-pub struct Mesh {
+pub struct Mesh<P>
+where
+    P: 'static + SharedPointerKind,
+{
     /// The mesh or meshes, if set, to render from within the larger collection of meshes this model
     /// may contain.
     ///
@@ -293,77 +418,105 @@ pub struct Mesh {
     pub filter: Option<MeshFilter>,
 
     /// The shared model reference to render.
-    pub model: ModelRef,
+    pub model: Shared<Model<P>, P>,
 
     /// The animation pose, if set, to use while rendering this model.
     pub pose: Option<Pose>,
 }
 
-impl From<ModelRef> for Mesh {
-    fn from(model: ModelRef) -> Self {
+impl<M, P> From<M> for Mesh<P>
+where
+    M: Into<Shared<Model<P>, P>>,
+    P: SharedPointerKind,
+{
+    fn from(model: M) -> Self {
         Self {
             filter: None,
-            model,
+            model: model.into(),
             pose: None,
         }
     }
 }
 
-impl From<(ModelRef, MeshFilter)> for Mesh {
-    fn from((model, filter): (ModelRef, MeshFilter)) -> Self {
+impl<M, P> From<(M, MeshFilter)> for Mesh<P>
+where
+    M: Into<Shared<Model<P>, P>>,
+    P: SharedPointerKind,
+{
+    fn from((model, filter): (M, MeshFilter)) -> Self {
         Self {
             filter: Some(filter),
-            model,
+            model: model.into(),
             pose: None,
         }
     }
 }
 
-impl From<(ModelRef, Option<MeshFilter>)> for Mesh {
-    fn from((model, filter): (ModelRef, Option<MeshFilter>)) -> Self {
+impl<M, P> From<(M, Option<MeshFilter>)> for Mesh<P>
+where
+    M: Into<Shared<Model<P>, P>>,
+    P: SharedPointerKind,
+{
+    fn from((model, filter): (M, Option<MeshFilter>)) -> Self {
         Self {
             filter,
-            model,
+            model: model.into(),
             pose: None,
         }
     }
 }
 
-impl From<(ModelRef, Pose)> for Mesh {
-    fn from((model, pose): (ModelRef, Pose)) -> Self {
+impl<M, P> From<(M, Pose)> for Mesh<P>
+where
+    M: Into<Shared<Model<P>, P>>,
+    P: SharedPointerKind,
+{
+    fn from((model, pose): (M, Pose)) -> Self {
         Self {
             filter: None,
-            model,
+            model: model.into(),
             pose: Some(pose),
         }
     }
 }
 
-impl From<(ModelRef, Option<Pose>)> for Mesh {
-    fn from((model, pose): (ModelRef, Option<Pose>)) -> Self {
+impl<M, P> From<(M, Option<Pose>)> for Mesh<P>
+where
+    M: Into<Shared<Model<P>, P>>,
+    P: SharedPointerKind,
+{
+    fn from((model, pose): (M, Option<Pose>)) -> Self {
         Self {
             filter: None,
-            model,
+            model: model.into(),
             pose,
         }
     }
 }
 
-impl From<(ModelRef, MeshFilter, Pose)> for Mesh {
-    fn from((model, filter, pose): (ModelRef, MeshFilter, Pose)) -> Self {
+impl<M, P> From<(M, MeshFilter, Pose)> for Mesh<P>
+where
+    M: Into<Shared<Model<P>, P>>,
+    P: SharedPointerKind,
+{
+    fn from((model, filter, pose): (M, MeshFilter, Pose)) -> Self {
         Self {
             filter: Some(filter),
-            model,
+            model: model.into(),
             pose: Some(pose),
         }
     }
 }
 
-impl From<(ModelRef, Option<MeshFilter>, Option<Pose>)> for Mesh {
-    fn from((model, filter, pose): (ModelRef, Option<MeshFilter>, Option<Pose>)) -> Self {
+impl<M, P> From<(M, Option<MeshFilter>, Option<Pose>)> for Mesh<P>
+where
+    M: Into<Shared<Model<P>, P>>,
+    P: SharedPointerKind,
+{
+    fn from((model, filter, pose): (M, Option<MeshFilter>, Option<Pose>)) -> Self {
         Self {
             filter,
-            model,
+            model: model.into(),
             pose,
         }
     }
@@ -371,12 +524,15 @@ impl From<(ModelRef, Option<MeshFilter>, Option<Pose>)> for Mesh {
 
 /// Description of a model, which may be posed or filtered.
 #[derive(Debug)]
-pub struct ModelCommand {
+pub struct ModelCommand<P>
+where
+    P: 'static + SharedPointerKind,
+{
     // TODO: Could probably be u16?
     pub(super) camera_order: f32,
 
     /// The material to use while rendering this model.
-    pub material: Material,
+    pub material: Material<P>,
 
     /// The mesh or meshes, if set, to render from within the larger collection of meshes this model
     /// may contain.
@@ -386,7 +542,7 @@ pub struct ModelCommand {
     pub mesh_filter: Option<MeshFilter>,
 
     /// The shared model reference to render.
-    pub model: ModelRef,
+    pub model: Shared<Model<P>, P>,
 
     /// The animation pose, if set, to use while rendering this model.
     pub pose: Option<Pose>,

@@ -10,8 +10,8 @@ mod key;
 
 pub use self::{
     command::{
-        Command as Draw, LineCommand, Mesh, ModelCommand, PointLightCommand, RectLightCommand,
-        SpotlightCommand, SunlightCommand,
+        Command as Draw, LineCommand, Material, Mesh, ModelCommand, PointLightCommand,
+        RectLightCommand, SpotlightCommand, SunlightCommand,
     },
     compiler::Compiler,
 };
@@ -53,10 +53,12 @@ use {
                 Framebuffer2d,
             },
             pool::{Lease, Pool},
-            queue_mut, BitmapRef, Data, Texture2d, TextureRef,
+            queue_mut, Bitmap, Data, Texture2d, TextureRef,
         },
         math::{Coord, Mat3, Mat4, Quat, Vec2, Vec3},
+        Shared,
     },
+    archery::SharedPointerKind,
     gfx_hal::{
         buffer::{Access as BufferAccess, IndexBufferView, SubRange},
         command::{
@@ -75,6 +77,7 @@ use {
     std::{
         any::Any,
         cmp::Ordering,
+        fmt::{Debug, Error, Formatter},
         hash::{Hash, Hasher},
         iter::{empty, once},
     },
@@ -85,42 +88,48 @@ use {
 const SKYDOME_IDX: u8 = 1;
 
 /// A collection of graphics types which allow models and lights to be drawn onto a texture.
-pub struct DrawOp {
+pub struct DrawOp<P>
+where
+    P: 'static + SharedPointerKind,
+{
     cmd_buf: <_Backend as Backend>::CommandBuffer,
-    cmd_pool: Lease<CommandPool>,
-    compiler: Option<Lease<Compiler>>,
-    compute_u16_vertex_attrs: Option<Lease<Compute>>,
-    compute_u16_skin_vertex_attrs: Option<Lease<Compute>>,
-    compute_u32_vertex_attrs: Option<Lease<Compute>>,
-    compute_u32_skin_vertex_attrs: Option<Lease<Compute>>,
+    cmd_pool: Lease<CommandPool, P>,
+    compiler: Option<Lease<Compiler<P>, P>>,
+    compute_u16_vertex_attrs: Option<Lease<Compute, P>>,
+    compute_u16_skin_vertex_attrs: Option<Lease<Compute, P>>,
+    compute_u32_vertex_attrs: Option<Lease<Compute, P>>,
+    compute_u32_skin_vertex_attrs: Option<Lease<Compute, P>>,
     dst: Texture2d,
     dst_preserve: bool,
-    fence: Lease<Fence>,
+    fence: Lease<Fence, P>,
     frame_buf: Option<(Framebuffer2d, RenderPassMode)>,
-    geom_buf: GeometryBuffer,
-    graphics_line: Option<Lease<Graphics>>,
-    graphics_mesh: Option<Lease<Graphics>>,
-    graphics_mesh_anim: Option<Lease<Graphics>>,
-    graphics_point_light: Option<Lease<Graphics>>,
-    graphics_rect_light: Option<Lease<Graphics>>,
-    graphics_skydome: Option<Lease<Graphics>>,
-    graphics_spotlight: Option<Lease<Graphics>>,
-    graphics_sunlight: Option<Lease<Graphics>>,
+    geom_buf: GeometryBuffer<P>,
+    graphics_line: Option<Lease<Graphics, P>>,
+    graphics_mesh: Option<Lease<Graphics, P>>,
+    graphics_mesh_anim: Option<Lease<Graphics, P>>,
+    graphics_point_light: Option<Lease<Graphics, P>>,
+    graphics_rect_light: Option<Lease<Graphics, P>>,
+    graphics_skydome: Option<Lease<Graphics, P>>,
+    graphics_spotlight: Option<Lease<Graphics, P>>,
+    graphics_sunlight: Option<Lease<Graphics, P>>,
 
     #[cfg(feature = "debug-names")]
     name: String,
 
-    pool: Option<Lease<Pool>>,
-    skydome: Option<(Skydome, Lease<Data>, u64, bool)>,
+    pool: Option<Lease<Pool<P>, P>>,
+    skydome: Option<(Skydome<P>, Lease<Data, P>, u64, bool)>,
 }
 
-impl DrawOp {
+impl<P> DrawOp<P>
+where
+    P: SharedPointerKind,
+{
     /// # Safety
     /// None
     #[must_use]
     pub(crate) unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        mut pool: Lease<Pool>,
+        mut pool: Lease<Pool<P>, P>,
         dst: &Texture2d,
     ) -> Self {
         // Allocate the command buffer
@@ -200,7 +209,7 @@ impl DrawOp {
 
     /// Draws the given skydome as a pre-pass before the geometry and lighting.
     #[must_use]
-    pub fn with_skydome(&mut self, val: &Skydome) -> &mut Self {
+    pub fn with_skydome(&mut self, val: &Skydome<P>) -> &mut Self {
         // Either take the existing skydome buffer or get a new one (ignoring the old skydome)
         let (buf, buf_len, write) = if let Some((_, buf, buf_len, write)) = self.skydome.take() {
             (buf, buf_len, write)
@@ -223,12 +232,13 @@ impl DrawOp {
             (buf, buf_len, data.is_some())
         };
 
-        self.skydome = Some((val.clone(), buf, buf_len, write));
-        self
+        //self.skydome = Some((val.clone(), buf, buf_len, write));
+        //self
+        todo!("DONT CHECKIN");
     }
 
     /// Submits the given draws for hardware processing.
-    pub fn record(&mut self, camera: &impl Camera, draws: &mut [Draw]) {
+    pub fn record(&mut self, camera: &impl Camera, draws: &mut [Draw<P>]) {
         unsafe {
             let fill_geom_buf_subpass_idx = self.fill_geom_buf_subpass_idx();
             let mut pool = self.pool.as_mut().unwrap();
@@ -584,7 +594,7 @@ impl DrawOp {
         );
     }
 
-    unsafe fn submit_index_write_ref(&mut self, mut instr: DataWriteRefInstruction) {
+    unsafe fn submit_index_write_ref(&mut self, mut instr: DataWriteRefInstruction<'_, P>) {
         trace!("submit_index_write");
 
         instr.buf.write_range(
@@ -671,7 +681,7 @@ impl DrawOp {
         self.cmd_buf.set_viewports(0, &[viewport.clone()]);
     }
 
-    unsafe fn submit_mesh_bind(&mut self, instr: MeshBindInstruction<'_>) {
+    unsafe fn submit_mesh_bind(&mut self, instr: MeshBindInstruction<'_, P>) {
         trace!("submit_mesh_bind");
 
         // NOTE: These sub ranges are not SubRange::WHOLE because the leased data may have
@@ -707,7 +717,7 @@ impl DrawOp {
         bind_graphics_descriptor_set(&mut self.cmd_buf, layout, desc_set);
     }
 
-    unsafe fn submit_mesh(&mut self, instr: MeshDrawInstruction, view_proj: Mat4) {
+    unsafe fn submit_mesh(&mut self, instr: MeshDrawInstruction<'_, P>, view_proj: Mat4) {
         trace!("submit_mesh");
 
         let graphics = self.graphics_mesh.as_ref().unwrap();
@@ -736,7 +746,7 @@ impl DrawOp {
 
     unsafe fn submit_point_lights(
         &mut self,
-        instr: PointLightDrawInstruction,
+        instr: PointLightDrawInstruction<'_, P>,
         camera_eye: Vec3,
         viewport: &Viewport,
         view_proj: Mat4,
@@ -1188,7 +1198,7 @@ impl DrawOp {
         );
     }
 
-    unsafe fn submit_vertex_write_ref(&mut self, mut instr: DataWriteRefInstruction) {
+    unsafe fn submit_vertex_write_ref(&mut self, mut instr: DataWriteRefInstruction<'_, P>) {
         trace!("submit_vertex_write_ref");
 
         // HACK: Instead of the instruction providing info about where in the pipeline we will next
@@ -1261,105 +1271,107 @@ impl DrawOp {
 
     unsafe fn write_calc_vertex_attrs_descriptors<'v>(
         compute: &Compute,
-        vertex_bufs: impl Iterator<Item = CalcVertexAttrsDescriptors<'v>>,
+        vertex_bufs: impl Iterator<Item = CalcVertexAttrsDescriptors<'v, P>>,
     ) {
-        for (idx, vertex_buf) in vertex_bufs.enumerate() {
-            let set = compute.desc_set(idx);
-            device().write_descriptor_sets(vec![
-                DescriptorSetWrite {
-                    set,
-                    binding: 0,
-                    array_offset: 0,
-                    descriptors: once(Descriptor::Buffer(
-                        vertex_buf.idx_buf.as_ref(),
-                        SubRange {
-                            offset: 0,
-                            size: Some(vertex_buf.idx_len),
-                        },
-                    )),
-                },
-                DescriptorSetWrite {
-                    set,
-                    binding: 1,
-                    array_offset: 0,
-                    descriptors: once(Descriptor::Buffer(
-                        vertex_buf.src.as_ref(),
-                        SubRange {
-                            offset: 0,
-                            size: Some(vertex_buf.src_len),
-                        },
-                    )),
-                },
-                DescriptorSetWrite {
-                    set,
-                    binding: 2,
-                    array_offset: 0,
-                    descriptors: once(Descriptor::Buffer(
-                        vertex_buf.dst.as_ref(),
-                        SubRange {
-                            offset: 0,
-                            size: Some(vertex_buf.dst_len),
-                        },
-                    )),
-                },
-                DescriptorSetWrite {
-                    set,
-                    binding: 3,
-                    array_offset: 0,
-                    descriptors: once(Descriptor::Buffer(
-                        vertex_buf.write_mask.as_ref(),
-                        SubRange {
-                            offset: 0,
-                            size: Some(vertex_buf.write_mask_len),
-                        },
-                    )),
-                },
-            ]);
-        }
+        // for (idx, vertex_buf) in vertex_bufs.enumerate() {
+        //     let set = compute.desc_set(idx);
+        //     device().write_descriptor_sets(vec![
+        //         DescriptorSetWrite {
+        //             set,
+        //             binding: 0,
+        //             array_offset: 0,
+        //             descriptors: once(Descriptor::Buffer(
+        //                 vertex_buf.idx_buf.as_ref(),
+        //                 SubRange {
+        //                     offset: 0,
+        //                     size: Some(vertex_buf.idx_len),
+        //                 },
+        //             )),
+        //         },
+        //         DescriptorSetWrite {
+        //             set,
+        //             binding: 1,
+        //             array_offset: 0,
+        //             descriptors: once(Descriptor::Buffer(
+        //                 vertex_buf.src.as_ref(),
+        //                 SubRange {
+        //                     offset: 0,
+        //                     size: Some(vertex_buf.src_len),
+        //                 },
+        //             )),
+        //         },
+        //         DescriptorSetWrite {
+        //             set,
+        //             binding: 2,
+        //             array_offset: 0,
+        //             descriptors: once(Descriptor::Buffer(
+        //                 vertex_buf.dst.as_ref(),
+        //                 SubRange {
+        //                     offset: 0,
+        //                     size: Some(vertex_buf.dst_len),
+        //                 },
+        //             )),
+        //         },
+        //         DescriptorSetWrite {
+        //             set,
+        //             binding: 3,
+        //             array_offset: 0,
+        //             descriptors: once(Descriptor::Buffer(
+        //                 vertex_buf.write_mask.as_ref(),
+        //                 SubRange {
+        //                     offset: 0,
+        //                     size: Some(vertex_buf.write_mask_len),
+        //                 },
+        //             )),
+        //         },
+        //     ]);
+        // }
+        todo!("DONT CHECKIN");
     }
 
     unsafe fn write_model_material_descriptors<'m>(
         graphics: &Graphics,
-        materials: impl Iterator<Item = &'m Material>,
+        materials: impl Iterator<Item = &'m Material<P>>,
     ) {
-        for (idx, material) in materials.enumerate() {
-            let set = graphics.desc_set(idx);
-            device().write_descriptor_sets(vec![
-                DescriptorSetWrite {
-                    set,
-                    binding: 0,
-                    array_offset: 0,
-                    descriptors: once(Descriptor::CombinedImageSampler(
-                        material.color.borrow().as_2d_color().as_ref(),
-                        Layout::ShaderReadOnlyOptimal,
-                        graphics.sampler(0).as_ref(),
-                    )),
-                },
-                DescriptorSetWrite {
-                    set,
-                    binding: 1,
-                    array_offset: 0,
-                    descriptors: once(Descriptor::CombinedImageSampler(
-                        material.metal_rough.borrow().as_2d_color().as_ref(),
-                        Layout::ShaderReadOnlyOptimal,
-                        graphics.sampler(1).as_ref(),
-                    )),
-                },
-                DescriptorSetWrite {
-                    set,
-                    binding: 2,
-                    array_offset: 0,
-                    descriptors: once(Descriptor::CombinedImageSampler(
-                        material.normal.borrow().as_2d_color().as_ref(),
-                        Layout::ShaderReadOnlyOptimal,
-                        graphics.sampler(2).as_ref(),
-                    )),
-                },
-            ]);
-        }
+        // for (idx, material) in materials.enumerate() {
+        //     let set = graphics.desc_set(idx);
+        //     device().write_descriptor_sets(vec![
+        //         DescriptorSetWrite {
+        //             set,
+        //             binding: 0,
+        //             array_offset: 0,
+        //             descriptors: once(Descriptor::CombinedImageSampler(
+        //                 material.color.borrow().as_2d_color().as_ref(),
+        //                 Layout::ShaderReadOnlyOptimal,
+        //                 graphics.sampler(0).as_ref(),
+        //             )),
+        //         },
+        //         DescriptorSetWrite {
+        //             set,
+        //             binding: 1,
+        //             array_offset: 0,
+        //             descriptors: once(Descriptor::CombinedImageSampler(
+        //                 material.metal_rough.borrow().as_2d_color().as_ref(),
+        //                 Layout::ShaderReadOnlyOptimal,
+        //                 graphics.sampler(1).as_ref(),
+        //             )),
+        //         },
+        //         DescriptorSetWrite {
+        //             set,
+        //             binding: 2,
+        //             array_offset: 0,
+        //             descriptors: once(Descriptor::CombinedImageSampler(
+        //                 material.normal.borrow().as_2d_color().as_ref(),
+        //                 Layout::ShaderReadOnlyOptimal,
+        //                 graphics.sampler(2).as_ref(),
+        //             )),
+        //         },
+        //     ]);
+        // }
+        todo!("DONT CHECKIN");
     }
 
-    unsafe fn write_skydome_descriptors(graphics: &Graphics, skydome: &Skydome) {
+    unsafe fn write_skydome_descriptors(graphics: &Graphics, skydome: &Skydome<P>) {
         let set = graphics.desc_set(0);
         device().write_descriptor_sets(vec![
             DescriptorSetWrite {
@@ -1426,7 +1438,10 @@ impl DrawOp {
     }
 }
 
-impl Drop for DrawOp {
+impl<P> Drop for DrawOp<P>
+where
+    P: SharedPointerKind,
+{
     fn drop(&mut self) {
         unsafe {
             self.wait();
@@ -1440,12 +1455,15 @@ impl Drop for DrawOp {
     }
 }
 
-impl Op for DrawOp {
+impl<P> Op<P> for DrawOp<P>
+where
+    P: SharedPointerKind,
+{
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 
-    unsafe fn take_pool(&mut self) -> Lease<Pool> {
+    unsafe fn take_pool(&mut self) -> Lease<Pool<P>, P> {
         self.pool.take().unwrap()
     }
 
@@ -1456,82 +1474,22 @@ impl Op for DrawOp {
 
 struct LineInstruction(u32);
 
-/// TODO: Move me to the vertices module?
-#[derive(Clone, Debug)]
-pub struct LineVertex {
-    color: AlphaColor,
-    pos: Vec3,
-}
-
-/// Defines a PBR material.
-///
-/// _NOTE:_ Temporary. I think this will soon become an enum with more options, reflectance probes,
-/// shadow maps, lots more
-#[derive(Clone, Debug)]
-pub struct Material {
-    /// Three channel base color, aka albedo or diffuse, of the material.
-    pub color: BitmapRef,
-
-    /// A two channel bitmap of the metalness (red) and roughness (green) PBR parameters.
-    pub metal_rough: BitmapRef,
-
-    /// A standard three channel normal map.
-    pub normal: BitmapRef,
-}
-
-impl Eq for Material {}
-
-impl Hash for Material {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.color.as_ptr().hash(state);
-        self.metal_rough.as_ptr().hash(state);
-        self.normal.as_ptr().hash(state);
-    }
-}
-
-impl Ord for Material {
-    fn cmp(&self, other: &Self) -> Ordering {
-        let mut res = BitmapRef::as_ptr(&self.color).cmp(&BitmapRef::as_ptr(&other.color));
-        if res != Ordering::Less {
-            return res;
-        }
-
-        res = BitmapRef::as_ptr(&self.metal_rough).cmp(&BitmapRef::as_ptr(&other.metal_rough));
-        if res != Ordering::Less {
-            return res;
-        }
-
-        BitmapRef::as_ptr(&self.normal).cmp(&BitmapRef::as_ptr(&other.normal))
-    }
-}
-
-impl PartialEq for Material {
-    fn eq(&self, other: &Self) -> bool {
-        BitmapRef::ptr_eq(&self.color, &other.color)
-            && BitmapRef::ptr_eq(&self.normal, &other.normal)
-            && BitmapRef::ptr_eq(&self.metal_rough, &other.metal_rough)
-    }
-}
-
-impl PartialOrd for Material {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
 /// Defines a somewhat fancy skydome.
 ///
 /// This skydome is based on https://github.com/kosua20/opengl-skydome
-#[derive(Clone, Debug)]
-pub struct Skydome {
+#[derive(Clone)]
+pub struct Skydome<P>
+where
+    P: 'static + SharedPointerKind,
+{
     /// Images of good and bad weather.
-    pub cloud: [BitmapRef; 2],
+    pub cloud: [Shared<Bitmap<P>, P>; 2],
 
     /// An image of the moon.
-    pub moon: BitmapRef,
+    pub moon: Shared<Bitmap<P>, P>,
 
     /// A map represent sun height and time to color.
-    pub sun: BitmapRef,
+    pub sun: Shared<Bitmap<P>, P>,
 
     /// The direction of the sun's rays.
     pub sun_normal: Vec3,
@@ -1543,10 +1501,19 @@ pub struct Skydome {
     pub time: f32,
 
     /// Images related to the skydome algorithm, see blog post.
-    pub tint: [BitmapRef; 2],
+    pub tint: [Shared<Bitmap<P>, P>; 2],
 
     /// A value 0.5 to 1.0 which represents good-to-bad weather.
     ///
     /// TODO: Make this regular 0.0 to 1.0
     pub weather: f32,
+}
+
+impl<P> Debug for Skydome<P>
+where
+    P: SharedPointerKind,
+{
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        f.write_str("Skydome")
+    }
 }

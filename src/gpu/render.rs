@@ -11,6 +11,7 @@ use {
         color::AlphaColor,
         math::{Coord, CoordF, Extent},
     },
+    archery::SharedPointerKind,
     gfx_hal::{
         format::{Format, ImageFeature},
         image::{Layout, Usage},
@@ -19,19 +20,25 @@ use {
 
 /// A powerful structure which allows you to combine various operations and other render
 /// instances to create just about any creative effect.
-pub struct Render {
-    pool: Option<Lease<Pool>>,
-    target: Lease<Texture2d>,
+pub struct Render<P>
+where
+    P: 'static + SharedPointerKind,
+{
+    pool: Option<Lease<Pool<P>, P>>,
+    target: Lease<Texture2d, P>,
     target_dirty: bool,
-    ops: Vec<Box<dyn Op>>,
+    ops: Vec<Box<dyn Op<P>>>,
 }
 
-impl Render {
+impl<P> Render<P>
+where
+    P: 'static + SharedPointerKind,
+{
     pub(super) unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
         dims: Extent,
-        mut pool: Lease<Pool>,
-        ops: Vec<Box<dyn Op>>,
+        mut pool: Lease<Pool<P>, P>,
+        ops: Vec<Box<dyn Op<P>>>,
     ) -> Self {
         let fmt = pool
             .best_fmt(
@@ -60,7 +67,7 @@ impl Render {
     }
 
     /// Clears the screen of all text and graphics.
-    pub fn clear(&mut self, #[cfg(feature = "debug-names")] name: &str) -> &mut ClearOp {
+    pub fn clear(&mut self, #[cfg(feature = "debug-names")] name: &str) -> &mut ClearOp<P> {
         let op = unsafe {
             let pool = self.take_pool();
             ClearOp::new(
@@ -78,7 +85,7 @@ impl Render {
             .last_mut()
             .unwrap()
             .as_any_mut()
-            .downcast_mut::<ClearOp>()
+            .downcast_mut::<ClearOp<P>>()
             .unwrap()
     }
 
@@ -88,7 +95,7 @@ impl Render {
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
         src: &Texture2d,
-    ) -> &mut CopyOp {
+    ) -> &mut CopyOp<P> {
         let op = unsafe {
             let pool = self.take_pool();
             CopyOp::new(
@@ -107,7 +114,7 @@ impl Render {
             .last_mut()
             .unwrap()
             .as_any_mut()
-            .downcast_mut::<CopyOp>()
+            .downcast_mut::<CopyOp<P>>()
             .unwrap()
     }
 
@@ -118,7 +125,7 @@ impl Render {
 
     /// Draws a batch of 3D elements. There is no need to give any particular order to the individual commands and the
     /// implementation may sort and re-order them, so do not count on indices remaining the same after this call completes.
-    pub fn draw(&mut self, #[cfg(feature = "debug-names")] name: &str) -> &mut DrawOp {
+    pub fn draw(&mut self, #[cfg(feature = "debug-names")] name: &str) -> &mut DrawOp<P> {
         let mut op = unsafe {
             let pool = self.take_pool();
             DrawOp::new(
@@ -139,12 +146,12 @@ impl Render {
             .last_mut()
             .unwrap()
             .as_any_mut()
-            .downcast_mut::<DrawOp>()
+            .downcast_mut::<DrawOp<P>>()
             .unwrap()
     }
 
     /// Saves this Render as a JPEG file at the given path.
-    pub fn encode(&mut self, #[cfg(feature = "debug-names")] name: &str) -> &mut EncodeOp {
+    pub fn encode(&mut self, #[cfg(feature = "debug-names")] name: &str) -> &mut EncodeOp<P> {
         let op = unsafe {
             let pool = self.take_pool();
             EncodeOp::new(
@@ -160,7 +167,7 @@ impl Render {
             .last_mut()
             .unwrap()
             .as_any_mut()
-            .downcast_mut::<EncodeOp>()
+            .downcast_mut::<EncodeOp<P>>()
             .unwrap()
     }
 
@@ -170,7 +177,7 @@ impl Render {
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
         path: [(Coord, C); 2],
-    ) -> &mut EncodeOp
+    ) -> &mut GradientOp<P>
     where
         C: Copy + Into<AlphaColor>,
     {
@@ -192,15 +199,15 @@ impl Render {
             .last_mut()
             .unwrap()
             .as_any_mut()
-            .downcast_mut::<EncodeOp>()
+            .downcast_mut::<GradientOp<P>>()
             .unwrap()
     }
 
-    pub(crate) fn resolve(self) -> (Lease<Texture2d>, Vec<Box<dyn Op>>) {
+    pub(crate) fn resolve(self) -> (Lease<Texture2d, P>, Vec<Box<dyn Op<P>>>) {
         (self.target, self.ops)
     }
 
-    unsafe fn take_pool(&mut self) -> Lease<Pool> {
+    unsafe fn take_pool(&mut self) -> Lease<Pool<P>, P> {
         self.pool
             .take()
             .unwrap_or_else(|| self.ops.last_mut().unwrap().take_pool())
@@ -208,15 +215,15 @@ impl Render {
 
     /// Draws bitmapped text on this Render using the given details.
     /// TODO: Accept a list of font/color/text/pos combos so we can batch many at once?
-    pub fn text<C, P>(
+    pub fn text<C, O>(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        pos: P,
+        pos: O,
         color: C,
-    ) -> &mut FontOp
+    ) -> &mut FontOp<P>
     where
         C: Into<AlphaColor>,
-        P: Into<CoordF>,
+        O: Into<CoordF>,
     {
         let op = unsafe {
             let pool = self.take_pool();
@@ -237,13 +244,13 @@ impl Render {
             .last_mut()
             .unwrap()
             .as_any_mut()
-            .downcast_mut::<FontOp>()
+            .downcast_mut::<FontOp<P>>()
             .unwrap()
     }
 
     /// Draws the given texture writes onto this Render. Note that the given texture writes will all be applied at once and there
     /// is no 'layering' of the individual writes going on - so if you need blending between writes you must submit a new batch.
-    pub fn write(&mut self, #[cfg(feature = "debug-names")] name: &str) -> &mut WriteOp {
+    pub fn write(&mut self, #[cfg(feature = "debug-names")] name: &str) -> &mut WriteOp<P> {
         let mut op = unsafe {
             let pool = self.take_pool();
             WriteOp::new(
@@ -265,7 +272,7 @@ impl Render {
             .last_mut()
             .unwrap()
             .as_any_mut()
-            .downcast_mut::<WriteOp>()
+            .downcast_mut::<WriteOp<P>>()
             .unwrap()
     }
 }

@@ -10,6 +10,7 @@ use {
         },
         math::Coord,
     },
+    archery::SharedPointerKind,
     gfx_hal::{
         command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, SubpassContents},
         format::Aspects,
@@ -41,26 +42,32 @@ fn must_preserve_dst(path: &Path) -> bool {
 }
 
 /// TODO
-pub struct GradientOp {
-    back_buf: Lease<Texture2d>,
+pub struct GradientOp<P>
+where
+    P: 'static + SharedPointerKind,
+{
+    back_buf: Lease<Texture2d, P>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
-    cmd_pool: Lease<CommandPool>,
+    cmd_pool: Lease<CommandPool, P>,
     dst: Texture2d,
     dst_preserve: bool,
-    fence: Lease<Fence>,
+    fence: Lease<Fence, P>,
     frame_buf: Framebuffer2d,
-    graphics: Lease<Graphics>,
-    pool: Option<Lease<Pool>>,
+    graphics: Lease<Graphics, P>,
+    pool: Option<Lease<Pool<P>, P>>,
     path: [(Coord, AlphaColor); 2],
 }
 
-impl GradientOp {
+impl<P> GradientOp<P>
+where
+    P: SharedPointerKind,
+{
     /// # Safety
     /// None
     #[must_use]
     pub(crate) unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        mut pool: Lease<Pool>,
+        mut pool: Lease<Pool<P>, P>,
         dst: &Texture2d,
         path: Path,
     ) -> Self {
@@ -380,7 +387,10 @@ impl GradientOp {
     }
 }
 
-impl Drop for GradientOp {
+impl<P> Drop for GradientOp<P>
+where
+    P: SharedPointerKind,
+{
     fn drop(&mut self) {
         unsafe {
             self.wait();
@@ -388,12 +398,15 @@ impl Drop for GradientOp {
     }
 }
 
-impl Op for GradientOp {
+impl<P> Op<P> for GradientOp<P>
+where
+    P: SharedPointerKind,
+{
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 
-    unsafe fn take_pool(&mut self) -> Lease<Pool> {
+    unsafe fn take_pool(&mut self) -> Lease<Pool<P>, P> {
         self.pool.take().unwrap()
     }
 

@@ -1,4 +1,7 @@
-use crate::{color::Color, math::Extent, DynScreen, Gpu, Input, Render, Screen};
+use {
+    crate::{color::Color, math::Extent, DynScreen, Gpu, Input, Render, Screen},
+    archery::SharedPointerKind,
+};
 
 /// Displays a solid color forever.
 pub struct Solid {
@@ -12,8 +15,11 @@ impl Solid {
     }
 }
 
-impl Screen for Solid {
-    fn render(&self, gpu: &Gpu, _: Extent) -> Render {
+impl<P> Screen<P> for Solid
+where
+    P: 'static + SharedPointerKind,
+{
+    fn render(&self, gpu: &Gpu<P>, _: Extent) -> Render<P> {
         let mut frame = gpu.render(
             #[cfg(feature = "debug-names")]
             &format!("Solid {}", self.color.to_hex()),
@@ -24,13 +30,13 @@ impl Screen for Solid {
                 #[cfg(feature = "debug-names")]
                 "Solid",
             )
-            .with_value(self.color)
+            .with(self.color)
             .record();
 
         frame
     }
 
-    fn update(self: Box<Self>, _: &Gpu, _: &Input) -> DynScreen {
+    fn update(self: Box<Self>, _: &Gpu<P>, _: &Input) -> DynScreen<P> {
         self
     }
 }

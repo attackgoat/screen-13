@@ -11,8 +11,9 @@ use {
             queue_mut, Data, Texture2d,
         },
         math::Coord,
-        pak::{Bitmap as PakBitmap, BitmapFormat},
+        pak::{BitmapBuf, BitmapFormat},
     },
+    archery::SharedPointerKind,
     gfx_hal::{
         buffer::{Access as BufferAccess, SubRange, Usage as BufferUsage},
         command::{BufferImageCopy, CommandBuffer, CommandBufferFlags, Level},
@@ -36,23 +37,31 @@ use {
 };
 
 /// Holds a decoded 2D image with 1-4 channels.
-pub struct Bitmap {
+pub struct Bitmap<P>
+where
+    P: 'static + SharedPointerKind,
+{
     cmd_buf: <_Backend as Backend>::CommandBuffer,
-    cmd_pool: Lease<CommandPool>,
-    conv_fmt: Option<Lease<Compute>>,
-    fence: Lease<Fence>,
-    pixel_buf: Lease<Data>,
-
-    texture: Lease<Texture2d>,
+    cmd_pool: Lease<CommandPool, P>,
+    conv_fmt: Option<Lease<Compute, P>>,
+    fence: Lease<Fence, P>,
+    pixel_buf: Lease<Data, P>,
+    texture: Lease<Texture2d, P>,
 }
 
-impl Debug for Bitmap {
+impl<P> Debug for Bitmap<P>
+where
+    P: SharedPointerKind,
+{
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.write_str("Bitmap")
     }
 }
 
-impl Deref for Bitmap {
+impl<P> Deref for Bitmap<P>
+where
+    P: SharedPointerKind,
+{
     type Target = Texture2d;
 
     fn deref(&self) -> &Self::Target {
@@ -60,7 +69,10 @@ impl Deref for Bitmap {
     }
 }
 
-impl Drop for Bitmap {
+impl<P> Drop for Bitmap<P>
+where
+    P: SharedPointerKind,
+{
     fn drop(&mut self) {
         unsafe {
             self.wait();
@@ -68,12 +80,15 @@ impl Drop for Bitmap {
     }
 }
 
-impl Op for Bitmap {
+impl<P> Op<P> for Bitmap<P>
+where
+    P: SharedPointerKind,
+{
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 
-    unsafe fn take_pool(&mut self) -> Lease<Pool> {
+    unsafe fn take_pool(&mut self) -> Lease<Pool<P>, P> {
         todo!();
     }
 
@@ -82,29 +97,35 @@ impl Op for Bitmap {
     }
 }
 
-pub struct BitmapOp<'a> {
+pub struct BitmapOp<'a, P>
+where
+    P: 'static + SharedPointerKind,
+{
     cmd_buf: <_Backend as Backend>::CommandBuffer,
-    cmd_pool: Lease<CommandPool>,
-    conv_fmt: Option<ComputeDispatch>,
-    fence: Lease<Fence>,
+    cmd_pool: Lease<CommandPool, P>,
+    conv_fmt: Option<ComputeDispatch<P>>,
+    fence: Lease<Fence, P>,
 
     #[cfg(feature = "debug-names")]
     name: String,
 
-    pixel_buf: Lease<Data>,
+    pixel_buf: Lease<Data, P>,
     pixel_buf_len: u64,
-    pool: &'a mut Pool,
-    texture: Lease<Texture2d>,
+    pool: &'a mut Pool<P>,
+    texture: Lease<Texture2d, P>,
 }
 
-impl<'a> BitmapOp<'a> {
+impl<'a, P> BitmapOp<'a, P>
+where
+    P: SharedPointerKind,
+{
     /// # Safety
     /// None
     #[must_use]
     pub unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        pool: &'a mut Pool,
-        bitmap: &PakBitmap,
+        pool: &'a mut Pool<P>,
+        bitmap: &BitmapBuf,
     ) -> Self {
         // Lease a texture to hold the decoded bitmap
         let desired_fmts: &[Format] = match bitmap.format() {
@@ -247,7 +268,7 @@ impl<'a> BitmapOp<'a> {
     /// # Safety
     ///
     /// None
-    pub fn record(mut self) -> Bitmap {
+    pub fn record(mut self) -> Bitmap<P> {
         unsafe {
             if self.conv_fmt.is_some() {
                 self.write_descriptors();
@@ -410,8 +431,11 @@ impl<'a> BitmapOp<'a> {
     }
 }
 
-struct ComputeDispatch {
-    compute: Lease<Compute>,
+struct ComputeDispatch<P>
+where
+    P: SharedPointerKind,
+{
+    compute: Lease<Compute, P>,
     dispatch: u32,
     pixel_buf_stride: u32,
 }

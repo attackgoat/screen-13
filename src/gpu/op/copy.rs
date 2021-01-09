@@ -8,6 +8,7 @@ use {
         },
         math::{Area, Coord, Extent},
     },
+    archery::SharedPointerKind,
     gfx_hal::{
         command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level},
         format::Aspects,
@@ -29,23 +30,29 @@ use {
 ///
 /// _NOTE:_ Regions submitted for copy operations do not need to be valid regions for
 /// the given textures; they can overlap or fall off the edges.
-pub struct CopyOp {
+pub struct CopyOp<P>
+where
+    P: 'static + SharedPointerKind,
+{
     cmd_buf: <_Backend as Backend>::CommandBuffer,
-    cmd_pool: Lease<CommandPool>,
+    cmd_pool: Lease<CommandPool, P>,
     dst: Texture2d,
     dst_offset: Extent,
-    fence: Lease<Fence>,
-    pool: Option<Lease<Pool>>,
+    fence: Lease<Fence, P>,
+    pool: Option<Lease<Pool<P>, P>>,
     region: Extent,
     src: Texture2d,
     src_offset: Extent,
 }
 
-impl CopyOp {
+impl<P> CopyOp<P>
+where
+    P: SharedPointerKind,
+{
     #[must_use]
     pub(crate) unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        mut pool: Lease<Pool>,
+        mut pool: Lease<Pool<P>, P>,
         src: &Texture2d,
         dst: &Texture2d,
     ) -> Self {
@@ -155,7 +162,10 @@ impl CopyOp {
     }
 }
 
-impl Drop for CopyOp {
+impl<P> Drop for CopyOp<P>
+where
+    P: SharedPointerKind,
+{
     fn drop(&mut self) {
         unsafe {
             self.wait();
@@ -163,12 +173,15 @@ impl Drop for CopyOp {
     }
 }
 
-impl Op for CopyOp {
+impl<P> Op<P> for CopyOp<P>
+where
+    P: SharedPointerKind,
+{
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 
-    unsafe fn take_pool(&mut self) -> Lease<Pool> {
+    unsafe fn take_pool(&mut self) -> Lease<Pool<P>, P> {
         self.pool.take().unwrap()
     }
 

@@ -213,7 +213,7 @@ pub use self::{
     scene::{Ref, RefIter, Scene},
 };
 
-pub(crate) use self::{bitmap::Bitmap, bitmap_font::BitmapFont, pak_buf::PakBuf};
+pub(crate) use self::{bitmap::BitmapBuf, bitmap_font::BitmapFont, pak_buf::PakBuf};
 
 use {
     self::{
@@ -557,7 +557,7 @@ where
     }
 
     /// Reads the corresponding bitmap for the given id.
-    pub(crate) fn read_bitmap(&mut self, id: BitmapId) -> Bitmap {
+    pub(crate) fn read_bitmap(&mut self, id: BitmapId) -> BitmapBuf {
         let (pos, len) = self.buf.bitmap(id);
         self.read(pos, len)
     }

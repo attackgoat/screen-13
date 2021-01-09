@@ -1,5 +1,5 @@
 use {
-    super::Bitmap,
+    super::BitmapBuf,
     serde::{Deserialize, Serialize},
 };
 
@@ -7,11 +7,11 @@ use {
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub struct BitmapFont {
     def: String,
-    pages: Vec<Bitmap>,
+    pages: Vec<BitmapBuf>,
 }
 
 impl BitmapFont {
-    pub(crate) fn new(def: String, pages: Vec<Bitmap>) -> Self {
+    pub(crate) fn new(def: String, pages: Vec<BitmapBuf>) -> Self {
         Self { def, pages }
     }
 
@@ -22,7 +22,7 @@ impl BitmapFont {
     }
 
     /// Gets an iterator of `Bitmap` pages within this `BitmapFont`.
-    pub fn pages(&self) -> impl Iterator<Item = &Bitmap> {
+    pub fn pages(&self) -> impl Iterator<Item = &BitmapBuf> {
         self.pages.iter()
     }
 }

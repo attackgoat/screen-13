@@ -11,12 +11,16 @@ pub mod write;
 
 use {
     super::{Lease, Pool},
+    archery::SharedPointerKind,
     std::any::Any,
 };
 
-pub trait Op: Any {
+pub trait Op<P>: Any
+where
+    P: SharedPointerKind,
+{
     fn as_any_mut(&mut self) -> &mut dyn Any;
-    unsafe fn take_pool(&mut self) -> Lease<Pool>;
+    unsafe fn take_pool(&mut self) -> Lease<Pool<P>, P>; // TODO: This should become 'take_cmd'! and include cmd buf too
     unsafe fn wait(&self);
 }
 

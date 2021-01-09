@@ -5,6 +5,7 @@ use {
         pool::{Lease, Pool},
         queue_mut, Data, Texture2d,
     },
+    archery::SharedPointerKind,
     gfx_hal::{
         command::{BufferImageCopy, CommandBuffer, CommandBufferFlags, Level},
         format::Aspects,
@@ -30,22 +31,28 @@ const DEFAULT_QUALITY: f32 = 0.9;
 
 /// A container of graphics types which allow the recording of encode operations and the saving
 /// of renders to disk as regular image files.
-pub struct EncodeOp {
-    buf: Lease<Data>,
+pub struct EncodeOp<P>
+where
+    P: 'static + SharedPointerKind,
+{
+    buf: Lease<Data, P>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
-    cmd_pool: Lease<CommandPool>,
-    fence: Lease<Fence>,
-    pool: Option<Lease<Pool>>,
+    cmd_pool: Lease<CommandPool, P>,
+    fence: Lease<Fence, P>,
+    pool: Option<Lease<Pool<P>, P>>,
     path: Option<PathBuf>,
     quality: f32,
     texture: Texture2d,
 }
 
-impl EncodeOp {
+impl<P> EncodeOp<P>
+where
+    P: SharedPointerKind,
+{
     #[must_use]
     pub(crate) unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        mut pool: Lease<Pool>,
+        mut pool: Lease<Pool<P>, P>,
         texture: &Texture2d,
     ) -> Self {
         let len = Self::byte_len(&texture);
@@ -99,7 +106,7 @@ impl EncodeOp {
             }
 
             let dims = self.texture.borrow().dims();
-            let len = EncodeOp::byte_len(&self.texture);
+            let len = Self::byte_len(&self.texture);
             let buf = self.buf.map_range(0..len as _).unwrap(); // TODO: Error handling!
 
             // Encode the 32bpp RGBA source data into a JPEG
@@ -110,7 +117,7 @@ impl EncodeOp {
     }
 
     /// Submits the given encode for hardware processing.
-    pub fn record<P: AsRef<Path>>(&mut self, path: P) {
+    pub fn record<A: AsRef<Path>>(&mut self, path: A) {
         self.path = Some(path.as_ref().to_path_buf());
 
         unsafe {
@@ -173,19 +180,25 @@ impl EncodeOp {
     }
 }
 
-impl Drop for EncodeOp {
+impl<P> Drop for EncodeOp<P>
+where
+    P: SharedPointerKind,
+{
     fn drop(&mut self) {
         // If you don't manually call flush errors will be ignored
         self.flush().unwrap_or_default();
     }
 }
 
-impl Op for EncodeOp {
+impl<P> Op<P> for EncodeOp<P>
+where
+    P: SharedPointerKind,
+{
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 
-    unsafe fn take_pool(&mut self) -> Lease<Pool> {
+    unsafe fn take_pool(&mut self) -> Lease<Pool<P>, P> {
         self.pool.take().unwrap()
     }
 

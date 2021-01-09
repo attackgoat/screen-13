@@ -6,24 +6,31 @@ use {
         },
         math::Extent,
     },
+    archery::SharedPointerKind,
     gfx_hal::{
         format::{Format, ImageFeature},
         image::{Layout, Usage as ImageUsage},
     },
 };
 
-pub struct GeometryBuffer {
-    pub color_metal: Lease<Texture2d>,
-    pub normal_rough: Lease<Texture2d>,
-    pub light: Lease<Texture2d>,
-    pub output: Lease<Texture2d>,
-    pub depth: Lease<Texture2d>,
+pub struct GeometryBuffer<P>
+where
+    P: SharedPointerKind,
+{
+    pub color_metal: Lease<Texture2d, P>,
+    pub normal_rough: Lease<Texture2d, P>,
+    pub light: Lease<Texture2d, P>,
+    pub output: Lease<Texture2d, P>,
+    pub depth: Lease<Texture2d, P>,
 }
 
-impl GeometryBuffer {
+impl<P> GeometryBuffer<P>
+where
+    P: SharedPointerKind,
+{
     pub unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        pool: &mut Pool,
+        pool: &mut Pool<P>,
         dims: Extent,
         output_fmt: Format,
     ) -> Self {

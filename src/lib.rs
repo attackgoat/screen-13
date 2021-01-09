@@ -57,11 +57,11 @@
 //! impl Screen for FooProgram {
 //!     fn render(&self, gpu: &Gpu, dims: Extent) -> Render {
 //!         let frame = gpu.render(dims);
-//!         frame.clear().with_value(MAGENTA).record(); // <-- 🔥
+//!         frame.clear().with(MAGENTA).record(); // <-- 🔥
 //!         frame
 //!     }
 //!
-//!     fn update(self: Box<Self>, gpu: &Gpu, dims: &Input) -> DynScreen {
+//!     fn update(self: Box<Self>, gpu: &Gpu, input: &Input) -> DynScreen {
 //!         // Never exits
 //!         self
 //!     }
@@ -111,18 +111,21 @@ pub mod prelude {
         gpu::{Cache, Gpu, Render},
         input::Input,
         program::Program,
-        DynScreen, Engine, Screen,
+        ArcK, DynScreen, Engine, RcK, Screen,
     };
 }
 
-/// Like prelude, but contains all public exports.
+/// Like `[prelude]`, but contains all public exports.
+///
+/// Use this module for access to all Screen 13 resources from either `[Rc]` or `[Arc]`-backed
+/// `[Gpu]` instances.
 pub mod prelude_all {
     pub use super::{
         camera::*,
         color::*,
         fx::*,
         gpu::draw::*,
-        gpu::font::*,
+        gpu::text::*,
         gpu::vertex::*,
         gpu::write::*,
         gpu::*,
@@ -131,8 +134,34 @@ pub mod prelude_all {
         pak::MaterialDesc,
         pak::{id::*, *},
         prelude::*,
-        program::*,
+        *,
     };
+}
+
+/// Like `[prelude_all]`, but specialized for `[Rc]`-backed `[Gpu]` instances.
+///
+/// Use this module if rendering will be done from one thread only. See the main documentation for
+/// each alias for more information.
+pub mod prelude_rc {
+    pub use super::prelude_all::*;
+
+    /// Helpful type alias of `gpu::draw::Draw::<RcK>`; see module documentation.
+    pub type Draw = super::gpu::draw::Draw<RcK>;
+
+    /// Helpful type alias of `DynScreen::<RcK>`; see module documentation.
+    pub type DynScreen = super::DynScreen<RcK>;
+
+    /// Helpful type alias of `Engine::<RcK>`; see module documentation.
+    pub type Engine = super::Engine<RcK>;
+
+    /// Helpful type alias of `gpu::text::Font::<RcK>`; see module documentation.
+    pub type Font = super::gpu::text::Font<RcK>;
+
+    /// Helpful type alias of `gpu::Gpu::<RcK>`; see module documentation.
+    pub type Gpu = super::gpu::Gpu<RcK>;
+
+    /// Helpful type alias of `gpu::Render::<RcK>`; see module documentation.
+    pub type Render = super::gpu::Render<RcK>;
 }
 
 pub(crate) mod error;
@@ -140,7 +169,10 @@ pub(crate) mod error;
 mod config;
 mod program;
 
-pub use self::program::{Icon, Program};
+pub use {
+    self::program::{Icon, Program},
+    archery::{ArcK, RcK},
+};
 
 use {
     self::{
@@ -151,11 +183,13 @@ use {
     },
     crate::gpu::Op,
     app_dirs::{get_app_root, AppDataType, AppDirsError, AppInfo},
+    archery::{SharedPointer, SharedPointerKind},
     std::{
         cmp::Ordering,
         collections::VecDeque,
         convert::TryFrom,
         io::{Error, ErrorKind},
+        ops::Deref,
         path::PathBuf,
     },
     winit::{
@@ -174,7 +208,7 @@ use {
 };
 
 /// Helpful alias of `Box<dyn Screen>`; can be used to hold an instance of any `Screen`.
-pub type DynScreen = Box<dyn Screen>;
+pub type DynScreen<P> = Box<dyn Screen<P>>;
 
 const MINIMUM_WINDOW_SIZE: usize = 420;
 const RENDER_BUF_LEN: usize = 3;
@@ -220,16 +254,22 @@ pub fn root(name: &'static str, author: &'static str) -> Result<PathBuf, Error> 
 
 /// Pumps an operating system event loop in order to refresh a `Gpu`-created image at the refresh
 /// rate of the monitor. Requires a `DynScreen` instance to render.
-pub struct Engine {
+pub struct Engine<P>
+where
+    P: 'static + SharedPointerKind,
+{
     config: Config,
     event_loop: Option<EventLoop<()>>,
     dims: Extent,
-    gpu: Gpu,
+    gpu: Gpu<P>,
     swapchain: Swapchain,
     window: Window,
 }
 
-impl Engine {
+impl<P> Engine<P>
+where
+    P: SharedPointerKind,
+{
     /// Constructs a new `Engine` from the given `Program` description.
     ///
     /// _NOTE:_ This function loads any existing user configuration file and may override program
@@ -248,7 +288,7 @@ impl Engine {
     ///     engine.run(...)                // <- ... get fullscreen because of some previous run. 😂
     /// }
     /// ```
-    pub fn new<'a, 'b, P: AsRef<Program<'a, 'b>>>(program: P) -> Self {
+    pub fn new<'a, 'b, R: AsRef<Program<'a, 'b>>>(program: R) -> Self {
         let program = program.as_ref();
         let config = Config::read(program.name, program.author).unwrap();
         let fullscreen = config.fullscreen().unwrap_or(program.fullscreen);
@@ -348,11 +388,11 @@ impl Engine {
     }
 
     /// Borrows the `Gpu` instance.
-    pub fn gpu(&self) -> &Gpu {
+    pub fn gpu(&self) -> &Gpu<P> {
         &self.gpu
     }
 
-    unsafe fn present(&mut self, frame: Render) -> Vec<Box<dyn Op>> {
+    unsafe fn present(&mut self, frame: Render<P>) -> Vec<Box<dyn Op<P>>> {
         let (mut target, ops) = frame.resolve();
 
         // We work-around this condition, below, but it is not expected that a well-formed program would ever do this
@@ -390,12 +430,12 @@ impl Engine {
     ///     ...
     /// }
     /// ```
-    pub fn run(mut self, screen: DynScreen) -> ! {
+    pub fn run(mut self, screen: DynScreen<P>) -> ! {
         let mut input = Input::default();
         let mut render_buf = VecDeque::with_capacity(RENDER_BUF_LEN);
 
         // This is the initial scene
-        let mut screen: Option<DynScreen> = Some(screen);
+        let mut screen: Option<DynScreen<P>> = Some(screen);
 
         #[cfg(debug_assertions)]
         info!("Starting event loop");
@@ -469,19 +509,28 @@ impl Engine {
     }
 }
 
-impl Default for Engine {
+impl<P> Default for Engine<P>
+where
+    P: SharedPointerKind,
+{
     fn default() -> Self {
         Self::new(Program::default())
     }
 }
 
-impl From<Program<'_, '_>> for Engine {
+impl<P> From<Program<'_, '_>> for Engine<P>
+where
+    P: SharedPointerKind,
+{
     fn from(program: Program<'_, '_>) -> Self {
         Self::new(program)
     }
 }
 
-impl From<&Program<'_, '_>> for Engine {
+impl<P> From<&Program<'_, '_>> for Engine<P>
+where
+    P: SharedPointerKind,
+{
     fn from(program: &Program<'_, '_>) -> Self {
         Self::new(program)
     }
@@ -532,7 +581,10 @@ impl From<&Program<'_, '_>> for Engine {
 ///     ...
 /// }
 /// ```
-pub trait Screen {
+pub trait Screen<P>
+where
+    P: 'static + SharedPointerKind,
+{
     /// When paired with an `Engine`, generates images presented to the physical display adapter
     /// using a swapchain and fullscreen video mode or operating system window.
     ///
@@ -560,7 +612,7 @@ pub trait Screen {
     ///     let frame = gpu.render(dims);
     ///
     ///     // 🥇 It's some of my best work!
-    ///     frame.clear().with_value(GREEN).record();
+    ///     frame.clear().with(GREEN).record();
     ///
     ///     frame
     /// }
@@ -577,7 +629,7 @@ pub trait Screen {
     ///     gpu.render(dims)
     /// }
     /// ```
-    fn render(&self, gpu: &Gpu, dims: Extent) -> Render;
+    fn render(&self, gpu: &Gpu<P>, dims: Extent) -> Render<P>;
 
     /// Responds to user input and either provides a new `DynScreen` instance or `self` to indicate
     /// no-change. After `update(...)`, `render(...)` will be called on the returned screen, and
@@ -610,5 +662,48 @@ pub trait Screen {
     ///     }
     /// }
     /// ```
-    fn update(self: Box<Self>, gpu: &Gpu, input: &Input) -> DynScreen;
+    fn update(self: Box<Self>, gpu: &Gpu<P>, input: &Input) -> DynScreen<P>;
+}
+
+#[derive(Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+pub struct Shared<T, P>(SharedPointer<T, P>)
+where
+    P: SharedPointerKind;
+
+impl<T, P> Shared<T, P>
+where
+    P: SharedPointerKind,
+{
+    pub fn clone(shared: &Self) -> Self {
+        shared.clone()
+    }
+}
+
+impl<T, P> Shared<T, P>
+where
+    P: SharedPointerKind,
+{
+    pub fn new(val: T) -> Self {
+        Self(SharedPointer::new(val))
+    }
+}
+
+impl<T, P> Clone for Shared<T, P>
+where
+    P: SharedPointerKind,
+{
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<T, P> Deref for Shared<T, P>
+where
+    P: SharedPointerKind,
+{
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }

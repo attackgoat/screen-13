@@ -14,6 +14,7 @@ use {
         },
         math::{vec3, Area, CoordF, Mat4, RectF, Vec2},
     },
+    archery::SharedPointerKind,
     gfx_hal::{
         command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, SubpassContents},
         device::Device as _,
@@ -146,29 +147,35 @@ impl<'s> Write<'s> {
 ///         ]);
 /// }
 /// ```
-pub struct WriteOp {
-    back_buf: Lease<Texture2d>,
+pub struct WriteOp<P>
+where
+    P: 'static + SharedPointerKind,
+{
+    back_buf: Lease<Texture2d, P>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
-    cmd_pool: Lease<CommandPool>,
+    cmd_pool: Lease<CommandPool, P>,
     dst: Texture2d,
     dst_preserve: bool,
-    fence: Lease<Fence>,
+    fence: Lease<Fence, P>,
     frame_buf: Option<Framebuffer2d>,
-    graphics: Option<Lease<Graphics>>,
+    graphics: Option<Lease<Graphics, P>>,
     mode: Mode,
 
     #[cfg(feature = "debug-names")]
     name: String,
 
-    pool: Option<Lease<Pool>>,
+    pool: Option<Lease<Pool<P>, P>>,
     src_textures: Vec<Texture2d>,
 }
 
-impl WriteOp {
+impl<P> WriteOp<P>
+where
+    P: SharedPointerKind,
+{
     #[must_use]
     pub(crate) unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        mut pool: Lease<Pool>,
+        mut pool: Lease<Pool<P>, P>,
         dst: &Texture2d,
     ) -> Self {
         let mut cmd_pool = pool.cmd_pool();
@@ -536,7 +543,10 @@ impl WriteOp {
     }
 }
 
-impl Drop for WriteOp {
+impl<P> Drop for WriteOp<P>
+where
+    P: SharedPointerKind,
+{
     fn drop(&mut self) {
         unsafe {
             self.wait();
@@ -544,12 +554,15 @@ impl Drop for WriteOp {
     }
 }
 
-impl Op for WriteOp {
+impl<P> Op<P> for WriteOp<P>
+where
+    P: SharedPointerKind,
+{
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 
-    unsafe fn take_pool(&mut self) -> Lease<Pool> {
+    unsafe fn take_pool(&mut self) -> Lease<Pool<P>, P> {
         self.pool.take().unwrap()
     }
 

@@ -18,9 +18,11 @@ use {
         },
         driver::{CommandPool, DescriptorPool, Fence, Image2d, Memory, RenderPass},
         op::draw::Compiler,
-        physical_device, queue_family, BlendMode, Data, MaskMode, MatteMode, Texture, TextureRef,
+        physical_device, queue_family, BlendMode, Data, MaskMode, MatteMode, Texture, Texture2d,
+        TextureRef,
     },
-    crate::math::Extent,
+    crate::{math::Extent, Shared},
+    archery::SharedPointerKind,
     gfx_hal::{
         adapter::PhysicalDevice as _,
         buffer::Usage as BufferUsage,
@@ -34,7 +36,6 @@ use {
     std::{
         cell::RefCell,
         collections::{HashMap, VecDeque},
-        rc::Rc,
     },
 };
 
@@ -55,16 +56,21 @@ fn remove_last_by<T, F: Fn(&T) -> bool>(items: &mut VecDeque<T>, f: F) -> Option
     None
 }
 
-pub(super) type PoolRef<T> = Rc<RefCell<VecDeque<T>>>;
+pub(super) type PoolRef<T, P> = Shared<RefCell<VecDeque<T>>, P>;
 
 #[derive(Eq, Hash, PartialEq)]
 struct DescriptorPoolKey {
     desc_ranges: Vec<(DescriptorType, usize)>,
 }
 
-pub struct Drain<'a>(&'a mut Pool);
+pub struct Drain<'a, P>(&'a mut Pool<P>)
+where
+    P: 'static + SharedPointerKind;
 
-impl<'a> Iterator for Drain<'a> {
+impl<'a, P> Iterator for Drain<'a, P>
+where
+    P: SharedPointerKind,
+{
     type Item = ();
 
     fn next(&mut self) -> Option<()> {
@@ -85,15 +91,18 @@ struct GraphicsKey {
     subpass_idx: u8,
 }
 
-pub struct Pool {
+pub struct Pool<P>
+where
+    P: 'static + SharedPointerKind,
+{
     best_fmts: HashMap<FormatKey, Option<Format>>,
-    cmd_pools: HashMap<QueueFamilyId, PoolRef<CommandPool>>,
-    compilers: PoolRef<Compiler>,
-    computes: HashMap<ComputeMode, PoolRef<Compute>>,
-    data: HashMap<BufferUsage, PoolRef<Data>>,
-    desc_pools: HashMap<DescriptorPoolKey, PoolRef<DescriptorPool>>,
-    fences: PoolRef<Fence>,
-    graphics: HashMap<GraphicsKey, PoolRef<Graphics>>,
+    cmd_pools: HashMap<QueueFamilyId, PoolRef<CommandPool, P>>,
+    compilers: PoolRef<Compiler<P>, P>,
+    computes: HashMap<ComputeMode, PoolRef<Compute, P>>,
+    data: HashMap<BufferUsage, PoolRef<Data, P>>,
+    desc_pools: HashMap<DescriptorPoolKey, PoolRef<DescriptorPool, P>>,
+    fences: PoolRef<Fence, P>,
+    graphics: HashMap<GraphicsKey, PoolRef<Graphics, P>>,
     pub(super) layouts: Layouts,
 
     /// The number of frames which must elapse before a least-recently-used cache item is considered obsolete.
@@ -101,14 +110,17 @@ pub struct Pool {
     /// Remarks: Higher numbers such as 10 will use more memory but have less thrashing than lower numbers, such as 1.
     pub lru_threshold: usize,
 
-    memories: HashMap<MemoryTypeId, PoolRef<Memory>>,
+    memories: HashMap<MemoryTypeId, PoolRef<Memory, P>>,
     render_passes: HashMap<RenderPassMode, RenderPass>,
-    skydomes: PoolRef<Data>,
-    textures: HashMap<TextureKey, PoolRef<TextureRef<Image2d>>>,
+    skydomes: PoolRef<Data, P>,
+    textures: HashMap<TextureKey, PoolRef<Texture2d, P>>,
 }
 
 // TODO: Add some way to track memory usage so that using drain has some sort of feedback for users, tell them about the usage
-impl Pool {
+impl<P> Pool<P>
+where
+    P: SharedPointerKind,
+{
     /// Remarks: Only considers optimal tiling images.
     pub unsafe fn best_fmt(
         &mut self,
@@ -359,34 +371,36 @@ impl Pool {
             })
     }
 
-    pub(super) unsafe fn cmd_pool(&mut self) -> Lease<CommandPool> {
+    pub(super) unsafe fn cmd_pool(&mut self) -> Lease<CommandPool, P> {
         self.cmd_pool_with_family(queue_family())
     }
 
     pub(super) unsafe fn cmd_pool_with_family(
         &mut self,
         family: QueueFamilyId,
-    ) -> Lease<CommandPool> {
-        let items = self
-            .cmd_pools
-            .entry(family)
-            .or_insert_with(Default::default);
-        let mut item = if let Some(item) = items.borrow_mut().pop_back() {
-            item
-        } else {
-            CommandPool::new(family)
-        };
+    ) -> Lease<CommandPool, P> {
+        // let items = self
+        //     .cmd_pools
+        //     .entry(family)
+        //     .or_insert_with(Default::default);
+        // let mut item = if let Some(item) = items.borrow_mut().pop_back() {
+        //     item
+        // } else {
+        //     CommandPool::new(family)
+        // };
 
-        item.as_mut().reset(false);
+        // item.as_mut().reset(false);
 
-        Lease::new(item, items)
+        // Lease::new(item, items)
+        todo!("DONT CHECKIN");
     }
 
-    pub(super) fn compiler(&mut self) -> Lease<Compiler> {
+    pub(super) fn compiler(&mut self) -> Lease<Compiler<P>, P> {
         let item = if let Some(item) = self.compilers.borrow_mut().pop_back() {
             item
         } else {
-            Default::default()
+            //Default::default()
+            todo!("DONT CHECKIN");
         };
 
         Lease::new(item, &self.compilers)
@@ -397,7 +411,7 @@ impl Pool {
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
         mode: ComputeMode,
-    ) -> Lease<Compute> {
+    ) -> Lease<Compute, P> {
         self.compute_desc_sets(
             #[cfg(feature = "debug-names")]
             name,
@@ -412,50 +426,52 @@ impl Pool {
         #[cfg(feature = "debug-names")] name: &str,
         mode: ComputeMode,
         max_desc_sets: usize,
-    ) -> Lease<Compute> {
-        let items = self.computes.entry(mode).or_insert_with(Default::default);
-        let item = if let Some(item) = remove_last_by(&mut items.borrow_mut(), |item| {
-            item.max_desc_sets() >= max_desc_sets
-        }) {
-            item
-        } else {
-            let ctor = match mode {
-                ComputeMode::CalcVertexAttrs(mode) => match mode {
-                    CalcVertexAttrsComputeMode::U16 => Compute::calc_vertex_attrs_u16,
-                    CalcVertexAttrsComputeMode::U16_SKIN => Compute::calc_vertex_attrs_u16_skin,
-                    CalcVertexAttrsComputeMode::U32 => Compute::calc_vertex_attrs_u32,
-                    CalcVertexAttrsComputeMode::U32_SKIN => Compute::calc_vertex_attrs_u32_skin,
-                },
-                ComputeMode::DecodeRgbRgba => Compute::decode_rgb_rgba,
-            };
-            let (desc_set_layout, pipeline_layout) = match mode {
-                ComputeMode::CalcVertexAttrs(_) => self.layouts.compute_calc_vertex_attrs(
-                    #[cfg(feature = "debug-names")]
-                    name,
-                ),
-                ComputeMode::DecodeRgbRgba => self.layouts.compute_decode_rgb_rgba(
-                    #[cfg(feature = "debug-names")]
-                    name,
-                ),
-            };
+    ) -> Lease<Compute, P> {
+        // let items = self.computes.entry(mode).or_insert_with(Default::default);
+        // let item = if let Some(item) = remove_last_by(&mut items.borrow_mut(), |item| {
+        //     item.max_desc_sets() >= max_desc_sets
+        // }) {
+        //     item
+        // } else {
+        //     let ctor = match mode {
+        //         ComputeMode::CalcVertexAttrs(mode) => match mode {
+        //             CalcVertexAttrsComputeMode::U16 => Compute::calc_vertex_attrs_u16,
+        //             CalcVertexAttrsComputeMode::U16_SKIN => Compute::calc_vertex_attrs_u16_skin,
+        //             CalcVertexAttrsComputeMode::U32 => Compute::calc_vertex_attrs_u32,
+        //             CalcVertexAttrsComputeMode::U32_SKIN => Compute::calc_vertex_attrs_u32_skin,
+        //         },
+        //         ComputeMode::DecodeRgbRgba => Compute::decode_rgb_rgba,
+        //     };
+        //     let (desc_set_layout, pipeline_layout) = match mode {
+        //         ComputeMode::CalcVertexAttrs(_) => self.layouts.compute_calc_vertex_attrs(
+        //             #[cfg(feature = "debug-names")]
+        //             name,
+        //         ),
+        //         ComputeMode::DecodeRgbRgba => self.layouts.compute_decode_rgb_rgba(
+        //             #[cfg(feature = "debug-names")]
+        //             name,
+        //         ),
+        //     };
 
-            ctor(
-                #[cfg(feature = "debug-names")]
-                name,
-                desc_set_layout,
-                pipeline_layout,
-                max_desc_sets,
-            )
-        };
+        //     ctor(
+        //         #[cfg(feature = "debug-names")]
+        //         name,
+        //         desc_set_layout,
+        //         pipeline_layout,
+        //         max_desc_sets,
+        //     )
+        // };
 
-        Lease::new(item, items)
+        // Lease::new(item, items)
+
+        todo!("DONT CHECKIN");
     }
 
     pub(super) unsafe fn data(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
         len: u64,
-    ) -> Lease<Data> {
+    ) -> Lease<Data, P> {
         self.data_usage(
             #[cfg(feature = "debug-names")]
             name,
@@ -469,63 +485,66 @@ impl Pool {
         #[cfg(feature = "debug-names")] name: &str,
         len: u64,
         usage: BufferUsage,
-    ) -> Lease<Data> {
-        let items = self.data.entry(usage).or_insert_with(Default::default);
-        let item = if let Some(item) =
-            remove_last_by(&mut items.borrow_mut(), |item| item.capacity() >= len)
-        {
-            item
-        } else {
-            Data::new(
-                #[cfg(feature = "debug-names")]
-                name,
-                len,
-                usage,
-            )
-        };
+    ) -> Lease<Data, P> {
+        // let items = self.data.entry(usage).or_insert_with(Default::default);
+        // let item = if let Some(item) =
+        //     remove_last_by(&mut items.borrow_mut(), |item| item.capacity() >= len)
+        // {
+        //     item
+        // } else {
+        //     Data::new(
+        //         #[cfg(feature = "debug-names")]
+        //         name,
+        //         len,
+        //         usage,
+        //     )
+        // };
 
-        Lease::new(item, items)
+        // Lease::new(item, items)
+
+        todo!("DONT CHECKIN");
     }
 
     pub(super) unsafe fn desc_pool<'i, I>(
         &mut self,
         max_desc_sets: usize,
         desc_ranges: I,
-    ) -> Lease<DescriptorPool>
+    ) -> Lease<DescriptorPool, P>
     where
         I: Clone + ExactSizeIterator<Item = &'i DescriptorRangeDesc>,
     {
-        let desc_ranges_key = desc_ranges
-            .clone()
-            .map(|desc_range| (desc_range.ty, desc_range.count))
-            .collect();
-        // TODO: Sort (and possibly combine) desc_ranges so that different orders of the same data don't affect key lookups
-        let items = self
-            .desc_pools
-            .entry(DescriptorPoolKey {
-                desc_ranges: desc_ranges_key,
-            })
-            .or_insert_with(Default::default);
-        let item = if let Some(item) = remove_last_by(&mut items.borrow_mut(), |item| {
-            DescriptorPool::max_desc_sets(&item) >= max_desc_sets
-        }) {
-            item
-        } else {
-            DescriptorPool::new(max_desc_sets, desc_ranges)
-        };
+        // let desc_ranges_key = desc_ranges
+        //     .clone()
+        //     .map(|desc_range| (desc_range.ty, desc_range.count))
+        //     .collect();
+        // // TODO: Sort (and possibly combine) desc_ranges so that different orders of the same data don't affect key lookups
+        // let items = self
+        //     .desc_pools
+        //     .entry(DescriptorPoolKey {
+        //         desc_ranges: desc_ranges_key,
+        //     })
+        //     .or_insert_with(Default::default);
+        // let item = if let Some(item) = remove_last_by(&mut items.borrow_mut(), |item| {
+        //     DescriptorPool::max_desc_sets(&item) >= max_desc_sets
+        // }) {
+        //     item
+        // } else {
+        //     DescriptorPool::new(max_desc_sets, desc_ranges)
+        // };
 
-        Lease::new(item, items)
+        // Lease::new(item, items)
+        todo!("DONT CHECKIN");
     }
 
     /// Allows callers to remove unused memory-consuming items from the pool.
-    pub fn drain(&mut self) -> Drain {
+    pub fn drain(&mut self) -> Drain<'_, P> {
         Drain(self)
     }
 
     pub(super) unsafe fn fence(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-    ) -> Lease<Fence> {
+    ) -> Lease<Fence, P> {
         let item = if let Some(mut item) = self.fences.borrow_mut().pop_back() {
             Fence::reset(&mut item);
             item
@@ -546,7 +565,7 @@ impl Pool {
         render_pass_mode: RenderPassMode,
         subpass_idx: u8,
         graphics_mode: GraphicsMode,
-    ) -> Lease<Graphics> {
+    ) -> Lease<Graphics, P> {
         self.graphics_desc_sets(
             #[cfg(feature = "debug-names")]
             name,
@@ -565,98 +584,101 @@ impl Pool {
         subpass_idx: u8,
         graphics_mode: GraphicsMode,
         max_desc_sets: usize,
-    ) -> Lease<Graphics> {
-        {
-            let items = self
-                .graphics
-                .entry(GraphicsKey {
-                    graphics_mode,
-                    render_pass_mode,
-                    subpass_idx,
-                })
-                .or_insert_with(Default::default);
-            if let Some(item) = remove_last_by(&mut items.borrow_mut(), |item| {
-                item.max_desc_sets() >= max_desc_sets
-            }) {
-                return Lease::new(item, items);
-            }
-        }
-        let ctor = match graphics_mode {
-            GraphicsMode::Blend(BlendMode::Add) => Graphics::blend_add,
-            GraphicsMode::Blend(BlendMode::AlphaAdd) => Graphics::blend_alpha_add,
-            GraphicsMode::Blend(BlendMode::ColorBurn) => Graphics::blend_color_burn,
-            GraphicsMode::Blend(BlendMode::ColorDodge) => Graphics::blend_color_dodge,
-            GraphicsMode::Blend(BlendMode::Color) => Graphics::blend_color,
-            GraphicsMode::Blend(BlendMode::Darken) => Graphics::blend_darken,
-            GraphicsMode::Blend(BlendMode::DarkerColor) => Graphics::blend_darker_color,
-            GraphicsMode::Blend(BlendMode::Difference) => Graphics::blend_difference,
-            GraphicsMode::Blend(BlendMode::Divide) => Graphics::blend_divide,
-            GraphicsMode::Blend(BlendMode::Exclusion) => Graphics::blend_exclusion,
-            GraphicsMode::Blend(BlendMode::HardLight) => Graphics::blend_hard_light,
-            GraphicsMode::Blend(BlendMode::HardMix) => Graphics::blend_hard_mix,
-            GraphicsMode::Blend(BlendMode::LinearBurn) => Graphics::blend_linear_burn,
-            GraphicsMode::Blend(BlendMode::Multiply) => Graphics::blend_multiply,
-            GraphicsMode::Blend(BlendMode::Normal) => Graphics::blend_normal,
-            GraphicsMode::Blend(BlendMode::Overlay) => Graphics::blend_overlay,
-            GraphicsMode::Blend(BlendMode::Screen) => Graphics::blend_screen,
-            GraphicsMode::Blend(BlendMode::Subtract) => Graphics::blend_subtract,
-            GraphicsMode::Blend(BlendMode::VividLight) => Graphics::blend_vivid_light,
-            GraphicsMode::DrawLine => Graphics::draw_line,
-            GraphicsMode::DrawMesh => Graphics::draw_mesh,
-            GraphicsMode::DrawPointLight => Graphics::draw_point_light,
-            GraphicsMode::DrawRectLight => Graphics::draw_rect_light,
-            GraphicsMode::DrawSpotlight => Graphics::draw_spotlight,
-            GraphicsMode::DrawSunlight => Graphics::draw_sunlight,
-            GraphicsMode::Font(false) => Graphics::font_normal,
-            GraphicsMode::Font(true) => Graphics::font_outline,
-            GraphicsMode::Gradient(false) => Graphics::gradient_linear,
-            GraphicsMode::Gradient(true) => Graphics::gradient_linear_trans,
-            GraphicsMode::Mask(MaskMode::Add) => Graphics::mask_add,
-            GraphicsMode::Mask(MaskMode::Darken) => Graphics::mask_darken,
-            GraphicsMode::Mask(MaskMode::Difference) => Graphics::mask_difference,
-            GraphicsMode::Mask(MaskMode::Intersect) => Graphics::mask_intersect,
-            GraphicsMode::Mask(MaskMode::Lighten) => Graphics::mask_lighten,
-            GraphicsMode::Mask(MaskMode::Subtract) => Graphics::mask_subtract,
-            GraphicsMode::Matte(MatteMode::Alpha) => Graphics::matte_alpha,
-            GraphicsMode::Matte(MatteMode::AlphaInverted) => Graphics::matte_alpha_inv,
-            GraphicsMode::Matte(MatteMode::Luminance) => Graphics::matte_luma,
-            GraphicsMode::Matte(MatteMode::LuminanceInverted) => Graphics::matte_luma_inv,
-            GraphicsMode::Skydome => Graphics::skydome,
-            GraphicsMode::Texture => Graphics::texture,
-        };
-        let item = {
-            let render_pass = self.render_pass(render_pass_mode);
-            let subpass = RenderPass::subpass(render_pass, subpass_idx);
-            ctor(
-                #[cfg(feature = "debug-names")]
-                name,
-                subpass,
-                max_desc_sets,
-            )
-        };
+    ) -> Lease<Graphics, P> {
+        // {
+        //     let items = self
+        //         .graphics
+        //         .entry(GraphicsKey {
+        //             graphics_mode,
+        //             render_pass_mode,
+        //             subpass_idx,
+        //         })
+        //         .or_insert_with(Default::default);
+        //     if let Some(item) = remove_last_by(&mut items.borrow_mut(), |item| {
+        //         item.max_desc_sets() >= max_desc_sets
+        //     }) {
+        //         return Lease::new(item, items);
+        //     }
+        // }
+        // let ctor = match graphics_mode {
+        //     GraphicsMode::Blend(BlendMode::Add) => Graphics::blend_add,
+        //     GraphicsMode::Blend(BlendMode::AlphaAdd) => Graphics::blend_alpha_add,
+        //     GraphicsMode::Blend(BlendMode::ColorBurn) => Graphics::blend_color_burn,
+        //     GraphicsMode::Blend(BlendMode::ColorDodge) => Graphics::blend_color_dodge,
+        //     GraphicsMode::Blend(BlendMode::Color) => Graphics::blend_color,
+        //     GraphicsMode::Blend(BlendMode::Darken) => Graphics::blend_darken,
+        //     GraphicsMode::Blend(BlendMode::DarkerColor) => Graphics::blend_darker_color,
+        //     GraphicsMode::Blend(BlendMode::Difference) => Graphics::blend_difference,
+        //     GraphicsMode::Blend(BlendMode::Divide) => Graphics::blend_divide,
+        //     GraphicsMode::Blend(BlendMode::Exclusion) => Graphics::blend_exclusion,
+        //     GraphicsMode::Blend(BlendMode::HardLight) => Graphics::blend_hard_light,
+        //     GraphicsMode::Blend(BlendMode::HardMix) => Graphics::blend_hard_mix,
+        //     GraphicsMode::Blend(BlendMode::LinearBurn) => Graphics::blend_linear_burn,
+        //     GraphicsMode::Blend(BlendMode::Multiply) => Graphics::blend_multiply,
+        //     GraphicsMode::Blend(BlendMode::Normal) => Graphics::blend_normal,
+        //     GraphicsMode::Blend(BlendMode::Overlay) => Graphics::blend_overlay,
+        //     GraphicsMode::Blend(BlendMode::Screen) => Graphics::blend_screen,
+        //     GraphicsMode::Blend(BlendMode::Subtract) => Graphics::blend_subtract,
+        //     GraphicsMode::Blend(BlendMode::VividLight) => Graphics::blend_vivid_light,
+        //     GraphicsMode::DrawLine => Graphics::draw_line,
+        //     GraphicsMode::DrawMesh => Graphics::draw_mesh,
+        //     GraphicsMode::DrawPointLight => Graphics::draw_point_light,
+        //     GraphicsMode::DrawRectLight => Graphics::draw_rect_light,
+        //     GraphicsMode::DrawSpotlight => Graphics::draw_spotlight,
+        //     GraphicsMode::DrawSunlight => Graphics::draw_sunlight,
+        //     GraphicsMode::Font(false) => Graphics::font_normal,
+        //     GraphicsMode::Font(true) => Graphics::font_outline,
+        //     GraphicsMode::Gradient(false) => Graphics::gradient_linear,
+        //     GraphicsMode::Gradient(true) => Graphics::gradient_linear_trans,
+        //     GraphicsMode::Mask(MaskMode::Add) => Graphics::mask_add,
+        //     GraphicsMode::Mask(MaskMode::Darken) => Graphics::mask_darken,
+        //     GraphicsMode::Mask(MaskMode::Difference) => Graphics::mask_difference,
+        //     GraphicsMode::Mask(MaskMode::Intersect) => Graphics::mask_intersect,
+        //     GraphicsMode::Mask(MaskMode::Lighten) => Graphics::mask_lighten,
+        //     GraphicsMode::Mask(MaskMode::Subtract) => Graphics::mask_subtract,
+        //     GraphicsMode::Matte(MatteMode::Alpha) => Graphics::matte_alpha,
+        //     GraphicsMode::Matte(MatteMode::AlphaInverted) => Graphics::matte_alpha_inv,
+        //     GraphicsMode::Matte(MatteMode::Luminance) => Graphics::matte_luma,
+        //     GraphicsMode::Matte(MatteMode::LuminanceInverted) => Graphics::matte_luma_inv,
+        //     GraphicsMode::Skydome => Graphics::skydome,
+        //     GraphicsMode::Texture => Graphics::texture,
+        // };
+        // let item = {
+        //     let render_pass = self.render_pass(render_pass_mode);
+        //     let subpass = RenderPass::subpass(render_pass, subpass_idx);
+        //     ctor(
+        //         #[cfg(feature = "debug-names")]
+        //         name,
+        //         subpass,
+        //         max_desc_sets,
+        //     )
+        // };
 
-        let items = &self.graphics[&GraphicsKey {
-            graphics_mode,
-            render_pass_mode,
-            subpass_idx,
-        }];
-        Lease::new(item, items)
+        // let items = &self.graphics[&GraphicsKey {
+        //     graphics_mode,
+        //     render_pass_mode,
+        //     subpass_idx,
+        // }];
+        // Lease::new(item, items)
+        todo!("DONT CHECKIN");
     }
 
-    pub(super) unsafe fn memory(&mut self, mem_type: MemoryTypeId, size: u64) -> Lease<Memory> {
-        let items = self
-            .memories
-            .entry(mem_type)
-            .or_insert_with(Default::default);
-        let item = if let Some(item) =
-            remove_last_by(&mut items.borrow_mut(), |item| Memory::size(&item) >= size)
-        {
-            item
-        } else {
-            Memory::new(mem_type, size)
-        };
+    pub(super) unsafe fn memory(&mut self, mem_type: MemoryTypeId, size: u64) -> Lease<Memory, P> {
+        // let items = self
+        //     .memories
+        //     .entry(mem_type)
+        //     .or_insert_with(Default::default);
+        // let item = if let Some(item) =
+        //     remove_last_by(&mut items.borrow_mut(), |item| Memory::size(&item) >= size)
+        // {
+        //     item
+        // } else {
+        //     Memory::new(mem_type, size)
+        // };
 
-        Lease::new(item, items)
+        // Lease::new(item, items)
+
+        todo!("DONT CHECKIN");
     }
 
     pub(super) unsafe fn render_pass(&mut self, mode: RenderPassMode) -> &RenderPass {
@@ -685,7 +707,7 @@ impl Pool {
     pub(super) unsafe fn skydome(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-    ) -> (Lease<Data>, u64, Option<&[u8]>) {
+    ) -> (Lease<Data, P>, u64, Option<&[u8]>) {
         let (item, data) = if let Some(item) = self.skydomes.borrow_mut().pop_back() {
             (item, None)
         } else {
@@ -714,81 +736,91 @@ impl Pool {
         layers: u16,
         mips: u8,
         samples: u8,
-    ) -> Lease<TextureRef<Image2d>> {
-        let items = self
-            .textures
-            .entry(TextureKey {
-                dims,
-                fmt,
-                layers,
-                mips,
-                samples,
-                usage,
-            })
-            .or_insert_with(Default::default);
-        let item = {
-            let mut items_ref = items.as_ref().borrow_mut();
-            if let Some(item) = items_ref.pop_back() {
-                // Set a new name on this texture
-                #[cfg(feature = "debug-names")]
-                device().set_image_name(item.as_ref().borrow_mut().as_mut(), name);
+    ) -> Lease<Texture2d, P> {
+        // let items = self
+        //     .textures
+        //     .entry(TextureKey {
+        //         dims,
+        //         fmt,
+        //         layers,
+        //         mips,
+        //         samples,
+        //         usage,
+        //     })
+        //     .or_insert_with(Default::default);
+        // let item = {
+        //     let mut items_ref = items.as_ref().borrow_mut();
+        //     if let Some(item) = items_ref.pop_back() {
+        //         // Set a new name on this texture
+        //         #[cfg(feature = "debug-names")]
+        //         device().set_image_name(item.as_ref().borrow_mut().as_mut(), name);
 
-                item
-            } else {
-                // Add a cache item so there will be an unused item waiting next time
-                items_ref.push_front(TextureRef::new(RefCell::new(Texture::new(
-                    #[cfg(feature = "debug-names")]
-                    &format!("{} (Unused)", name),
-                    dims,
-                    fmt,
-                    layout,
-                    usage,
-                    layers,
-                    samples,
-                    mips,
-                ))));
+        //         item
+        //     } else {
+        //         // Add a cache item so there will be an unused item waiting next time
+        //         items_ref.push_front(TextureRef::new(RefCell::new(Texture::new(
+        //             #[cfg(feature = "debug-names")]
+        //             &format!("{} (Unused)", name),
+        //             dims,
+        //             fmt,
+        //             layout,
+        //             usage,
+        //             layers,
+        //             samples,
+        //             mips,
+        //         ))));
 
-                // Return a brand new instance
-                TextureRef::new(RefCell::new(Texture::new(
-                    #[cfg(feature = "debug-names")]
-                    name,
-                    dims,
-                    fmt,
-                    layout,
-                    usage,
-                    layers,
-                    samples,
-                    mips,
-                )))
-            }
-        };
+        //         // Return a brand new instance
+        //         TextureRef::new(RefCell::new(Texture::new(
+        //             #[cfg(feature = "debug-names")]
+        //             name,
+        //             dims,
+        //             fmt,
+        //             layout,
+        //             usage,
+        //             layers,
+        //             samples,
+        //             mips,
+        //         )))
+        //     }
+        // };
 
-        Lease::new(item, items)
+        // Lease::new(item, items)
+
+        todo!("DONT CHECKIN");
     }
 }
 
-impl Default for Pool {
+impl<P> Default for Pool<P>
+where
+    P: SharedPointerKind,
+{
     fn default() -> Self {
-        Self {
-            best_fmts: Default::default(),
-            cmd_pools: Default::default(),
-            compilers: Default::default(),
-            computes: Default::default(),
-            data: Default::default(),
-            desc_pools: Default::default(),
-            fences: Default::default(),
-            graphics: Default::default(),
-            layouts: Default::default(),
-            lru_threshold: DEFAULT_LRU_THRESHOLD,
-            memories: Default::default(),
-            render_passes: Default::default(),
-            skydomes: Default::default(),
-            textures: Default::default(),
-        }
+        // Self {
+        //     best_fmts: Default::default(),
+        //     cmd_pools: Default::default(),
+        //     compilers: Default::default(),
+        //     computes: Default::default(),
+        //     data: Default::default(),
+        //     desc_pools: Default::default(),
+        //     fences: Default::default(),
+        //     graphics: Default::default(),
+        //     layouts: Default::default(),
+        //     lru_threshold: DEFAULT_LRU_THRESHOLD,
+        //     memories: Default::default(),
+        //     render_passes: Default::default(),
+        //     skydomes: Default::default(),
+        //     textures: Default::default(),
+        // }
+
+        todo!("DONT CHECKIN");
     }
 }
 
-impl Drop for Pool {
+impl<P> Drop for Pool<P>
+where
+    P: SharedPointerKind,
+{
     fn drop(&mut self) {
         // Make sure these get dropped before the layouts! (They contain unsafe references!)
         self.computes.clear();

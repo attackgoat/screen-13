@@ -87,7 +87,7 @@ Unlike `CLS`, you are able to specify a color using the command builder pattern:
 use screen_13::Color;
 
 let cornflower_blue: Color = (100, 149, 237).into();
-render.clear().with_value(cornflower_blue).record();
+render.clear().with(cornflower_blue).record();
 ```
 
 The above `render` binding now contains a 128x128 blue image, but we can't see it. The next step
@@ -148,7 +148,7 @@ Basic usage:
 let foo = gpu.render((128, 64));
 let bar = gpu.render((64, 128));
 
-foo.clear().with_value(cornflower_blue).record();
+foo.clear().with(cornflower_blue).record();
 bar.clear().record();
 
 let bar_tex = gpu.resolve(bar);

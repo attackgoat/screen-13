@@ -7,6 +7,7 @@ use {
             queue_mut, Lease, Pool, Texture2d,
         },
     },
+    archery::SharedPointerKind,
     gfx_hal::{
         command::{ClearValue, CommandBuffer, CommandBufferFlags, Level},
         format::Aspects,
@@ -24,20 +25,26 @@ use {
 };
 
 /// A container of graphics types which allow for effciently setting texture contents.
-pub struct ClearOp {
+pub struct ClearOp<P>
+where
+    P: 'static + SharedPointerKind,
+{
     clear_value: ClearValue,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
-    cmd_pool: Lease<CommandPool>,
-    fence: Lease<Fence>,
-    pool: Option<Lease<Pool>>,
+    cmd_pool: Lease<CommandPool, P>,
+    fence: Lease<Fence, P>,
+    pool: Option<Lease<Pool<P>, P>>,
     texture: Texture2d,
 }
 
-impl ClearOp {
+impl<P> ClearOp<P>
+where
+    P: SharedPointerKind,
+{
     #[must_use]
     pub(crate) unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        mut pool: Lease<Pool>,
+        mut pool: Lease<Pool<P>, P>,
         texture: &Texture2d,
     ) -> Self {
         let mut cmd_pool = pool.cmd_pool();
@@ -55,14 +62,13 @@ impl ClearOp {
         }
     }
 
-    // TODO: Just rename this to color? No need to expose this whole "value" business!
     /// Sets the clear value.
     #[must_use]
-    pub fn with_value<C>(&mut self, clear_value: C) -> &mut Self
+    pub fn with<C>(&mut self, color: C) -> &mut Self
     where
-        C: Into<ClearValue>,
+        C: Into<AlphaColor>,
     {
-        self.clear_value = clear_value.into();
+        self.clear_value = color.into().into();
         self
     }
 
@@ -114,7 +120,10 @@ impl ClearOp {
     }
 }
 
-impl Drop for ClearOp {
+impl<P> Drop for ClearOp<P>
+where
+    P: SharedPointerKind,
+{
     fn drop(&mut self) {
         unsafe {
             self.wait();
@@ -122,12 +131,15 @@ impl Drop for ClearOp {
     }
 }
 
-impl Op for ClearOp {
+impl<P> Op<P> for ClearOp<P>
+where
+    P: SharedPointerKind,
+{
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 
-    unsafe fn take_pool(&mut self) -> Lease<Pool> {
+    unsafe fn take_pool(&mut self) -> Lease<Pool<P>, P> {
         self.pool.take().unwrap()
     }
 

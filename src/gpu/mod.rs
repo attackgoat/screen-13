@@ -74,7 +74,7 @@ pub mod encode {
     pub use super::op::encode::EncodeOp;
 }
 
-pub mod font {
+pub mod text {
     //! Types for writing text onto textures using stylized fonts.
 
     pub use super::op::font::{Font, FontOp};
@@ -119,8 +119,7 @@ use {
     self::{
         data::{Data, Mapping},
         driver::{Image2d, Surface},
-        font::*,
-        op::bitmap::BitmapOp,
+        op::{bitmap::BitmapOp, font::Font},
         pool::{Lease, PoolRef},
         vertex::Vertex,
     },
@@ -131,7 +130,9 @@ use {
             model::Mesh,
             BitmapFormat, IndexType, Pak,
         },
+        Shared,
     },
+    archery::SharedPointerKind,
     gfx_hal::{
         adapter::{Adapter, MemoryProperties, PhysicalDevice},
         buffer::Usage,
@@ -170,16 +171,11 @@ static mut QUEUE_GROUP: MaybeUninit<QueueGroup<_Backend>> = MaybeUninit::uninit(
 /// Two-dimensional rendering result.
 pub type Texture2d = TextureRef<Image2d>;
 
-/// Helpful alias of `Rc<Bitmap>`; used to share `Bitmap` instances used with rendering operations.
-pub type BitmapRef = Rc<Bitmap>;
-
-/// Helpful alias of `Rc<Model>`; used to share `Model` instances used with rendering operations.
-pub type ModelRef = Rc<Model>;
-
+// TODO: Replace with archery?
 pub(crate) type TextureRef<I> = Rc<RefCell<Texture<I>>>;
 
-type LoadCache = RefCell<Pool>;
-type OpCache = RefCell<Option<Vec<Box<dyn Op>>>>;
+type LoadCache<P> = RefCell<Pool<P>>;
+type OpCache<P> = RefCell<Option<Vec<Box<dyn Op<P>>>>>;
 
 /// Rounds down a multiple of atom; panics if atom is zero
 fn align_down<N: Copy + Num>(size: N, atom: N) -> N {
@@ -387,16 +383,24 @@ impl Default for BlendMode {
 /// _NOTE:_ Program execution will halt for a few milliseconds after `Cache` types with active
 /// internal operations are dropped.
 #[derive(Default)]
-pub struct Cache(PoolRef<Pool>);
+pub struct Cache<P>(PoolRef<Pool<P>, P>)
+where
+    P: 'static + SharedPointerKind;
 
 /// Allows you to load resources and begin rendering operations.
-pub struct Gpu {
-    loads: LoadCache,
-    ops: OpCache,
-    renders: Cache,
+pub struct Gpu<P>
+where
+    P: 'static + SharedPointerKind,
+{
+    loads: LoadCache<P>,
+    ops: OpCache<P>,
+    renders: Cache<P>,
 }
 
-impl Gpu {
+impl<P> Gpu<P>
+where
+    P: SharedPointerKind,
+{
     pub(super) unsafe fn new(
         window: &Window,
         dims: Extent,
@@ -432,14 +436,15 @@ impl Gpu {
             open_adapter(adapter, queue);
         });
 
-        let gpu = Self {
-            loads: Default::default(),
-            ops: Default::default(),
-            renders: Default::default(),
-        };
-        let swapchain = Swapchain::new(surface.take().unwrap(), dims, swapchain_len);
+        // let gpu = Self {
+        //     loads: Default::default(),
+        //     ops: Default::default(),
+        //     renders: Default::default(),
+        // };
+        // let swapchain = Swapchain::new(surface.take().unwrap(), dims, swapchain_len);
 
-        (gpu, swapchain)
+        // (gpu, swapchain)
+        todo!("DONT CHECKIN");
     }
 
     // TODO: Enable sharing between this and "on-screen"
@@ -469,11 +474,12 @@ impl Gpu {
             });
         }
 
-        Self {
-            loads: Default::default(),
-            ops: Default::default(),
-            renders: Default::default(),
-        }
+        // Self {
+        //     loads: Default::default(),
+        //     ops: Default::default(),
+        //     renders: Default::default(),
+        // }
+        todo!("DONT CHECKIN");
     }
 
     /// Loads a bitmap at runtime from the given data.
@@ -486,7 +492,7 @@ impl Gpu {
         pixels: &[u8],
         width: u32,
         stride: u32,
-    ) -> Bitmap {
+    ) -> Shared<Bitmap<P>, P> {
         #[cfg(feature = "debug-names")]
         let _ = name;
         let _ = pixel_ty;
@@ -511,7 +517,7 @@ impl Gpu {
         meshes: M,
         _indices: I,
         _vertices: V,
-    ) -> Result<Model, BadData> {
+    ) -> Result<Shared<Model<P>, P>, BadData> {
         unsafe {
             let meshes = meshes.into_iter().collect::<Vec<_>>();
             // let indices = indices.into_iter().collect::<Vec<_>>();
@@ -558,13 +564,13 @@ impl Gpu {
                 Usage::STORAGE,
             );
 
-            Ok(Model::new(
+            Ok(Shared::new(Model::new(
                 meshes,
                 IndexType::U32,
                 (idx_buf, idx_buf_len),
                 (vertex_buf, vertex_buf_len),
                 (staging_buf, staging_buf_len, write_mask),
-            ))
+            )))
         }
     }
 
@@ -581,7 +587,7 @@ impl Gpu {
         #[cfg(feature = "debug-names")] name: &str,
         meshes: IM,
         vertices: IV,
-    ) -> Result<Model, BadData> {
+    ) -> Result<Shared<Model<P>, P>, BadData> {
         let mut meshes = meshes
             .into_iter()
             .map(|mesh| mesh.into())
@@ -639,7 +645,7 @@ impl Gpu {
         #[cfg(debug_assertions)] _name: &str,
         _pak: &mut Pak<R>,
         _id: AnimationId,
-    ) -> ModelRef {
+    ) -> () {
         //let _pool = PoolRef::clone(&self.pool);
         //let _anim = pak.read_animation(id);
         // let indices = model.indices();
@@ -688,7 +694,7 @@ impl Gpu {
         #[cfg(feature = "debug-names")] name: &str,
         pak: &mut Pak<R>,
         key: K,
-    ) -> Bitmap {
+    ) -> Shared<Bitmap<P>, P> {
         let id = pak.bitmap_id(key).unwrap();
 
         self.read_bitmap_with_id(
@@ -705,11 +711,11 @@ impl Gpu {
         #[cfg(feature = "debug-names")] name: &str,
         pak: &mut Pak<R>,
         id: BitmapId,
-    ) -> Bitmap {
+    ) -> Shared<Bitmap<P>, P> {
         let bitmap = pak.read_bitmap(id);
         let mut pool = self.loads.borrow_mut();
 
-        unsafe {
+        Shared::new(unsafe {
             BitmapOp::new(
                 #[cfg(feature = "debug-names")]
                 name,
@@ -717,13 +723,13 @@ impl Gpu {
                 &bitmap,
             )
             .record()
-        }
+        })
     }
 
     /// Reads the `Font` with the given face from the pak.
     ///
     /// Only bitmapped fonts are supported.
-    pub fn read_font<F: AsRef<str>, R: Read + Seek>(&self, pak: &mut Pak<R>, face: F) -> Font {
+    pub fn read_font<F: AsRef<str>, R: Read + Seek>(&self, pak: &mut Pak<R>, face: F) -> Font<P> {
         #[cfg(debug_assertions)]
         debug!("Loading font `{}`", face.as_ref());
 
@@ -736,7 +742,7 @@ impl Gpu {
         #[cfg(feature = "debug-names")] name: &str,
         pak: &mut Pak<R>,
         key: K,
-    ) -> Model {
+    ) -> Shared<Model<P>, P> {
         let id = pak.model_id(key).unwrap();
 
         self.read_model_with_id(
@@ -753,7 +759,7 @@ impl Gpu {
         #[cfg(feature = "debug-names")] name: &str,
         pak: &mut Pak<R>,
         id: ModelId,
-    ) -> Model {
+    ) -> Shared<Model<P>, P> {
         unsafe {
             let mut pool = self.loads.borrow_mut();
             let model = pak.read_model(id);
@@ -848,13 +854,13 @@ impl Gpu {
                 Usage::STORAGE | Usage::VERTEX,
             );
 
-            Model::new(
+            Shared::new(Model::new(
                 meshes,
                 idx_ty,
                 (idx_buf, idx_buf_len),
                 (vertex_buf, vertex_buf_len),
                 (staging_buf, staging_buf_len, write_mask),
-            )
+            ))
         }
     }
 
@@ -882,7 +888,7 @@ impl Gpu {
         &self,
         #[cfg(feature = "debug-names")] name: &str,
         dims: D,
-    ) -> Render {
+    ) -> Render<P> {
         self.render_with_cache(
             #[cfg(feature = "debug-names")]
             name,
@@ -915,8 +921,8 @@ impl Gpu {
         &self,
         #[cfg(feature = "debug-names")] name: &str,
         dims: D,
-        cache: &Cache,
-    ) -> Render {
+        cache: &Cache<P>,
+    ) -> Render<P> {
         // There may be pending operations from a previously resolved render; if so
         // we just stick them into the next render that goes out the door.
         let ops = if let Some(ops) = self.ops.borrow_mut().take() {
@@ -946,7 +952,7 @@ impl Gpu {
     }
 
     /// Resolves a render into a texture which can be written to other renders.
-    pub fn resolve(&self, render: Render) -> Lease<Texture2d> {
+    pub fn resolve(&self, render: Render<P>) -> Lease<Texture2d, P> {
         let (target, ops) = render.resolve();
         let mut cache = self.ops.borrow_mut();
         if let Some(cache) = cache.as_mut() {
@@ -976,7 +982,10 @@ impl Gpu {
     }
 }
 
-impl Drop for Gpu {
+impl<P> Drop for Gpu<P>
+where
+    P: SharedPointerKind,
+{
     fn drop(&mut self) {
         unsafe {
             self.wait_idle();

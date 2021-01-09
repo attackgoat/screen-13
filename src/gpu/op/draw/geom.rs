@@ -12,7 +12,7 @@ pub use self::{
 };
 
 use {
-    super::LineVertex,
+    super::command::LineVertex,
     crate::math::{Coord8, CoordF},
     std::ops::Range,
 };

@@ -19,6 +19,7 @@ use {
         math::{vec3, CoordF, Extent, Mat4},
         pak::Pak,
     },
+    archery::SharedPointerKind,
     bmfont::{BMFont, CharPosition, OrdinateOrientation},
     gfx_hal::{
         buffer::{Access as BufferAccess, SubRange, Usage as BufferUsage},
@@ -49,14 +50,20 @@ const SUBPASS_IDX: u8 = 0;
 // TODO: Allow one FontOp to specify a list of colors, make a rainbow-colored text example for it
 /// Holds a decoded bitmap Font.
 #[derive(Debug)]
-pub struct Font {
+pub struct Font<P>
+where
+    P: 'static + SharedPointerKind,
+{
     def: BMFont,
-    pages: Vec<Bitmap>,
+    pages: Vec<Bitmap<P>>,
 }
 
-impl Font {
+impl<P> Font<P>
+where
+    P: SharedPointerKind,
+{
     pub(crate) fn load<K: AsRef<str>, R: Read + Seek>(
-        pool: &mut Pool,
+        pool: &mut Pool<P>,
         pak: &mut Pak<R>,
         key: K,
     ) -> Self {
@@ -197,37 +204,43 @@ impl Font {
 // TODO: This really needs to cache data like the draw compiler does
 /// A container of graphics types and the functions which allows the recording and submission of
 /// bitmapped font operations.
-pub struct FontOp {
-    back_buf: Lease<Texture2d>,
+pub struct FontOp<P>
+where
+    P: 'static + SharedPointerKind,
+{
+    back_buf: Lease<Texture2d, P>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
-    cmd_pool: Lease<CommandPool>,
+    cmd_pool: Lease<CommandPool, P>,
     dst: Texture2d,
-    fence: Lease<Fence>,
+    fence: Lease<Fence, P>,
     frame_buf: Option<Framebuffer2d>,
     glyph_color: AlphaColor,
-    graphics: Option<Lease<Graphics>>,
+    graphics: Option<Lease<Graphics, P>>,
 
     #[cfg(feature = "debug-names")]
     name: String,
 
     outline_color: Option<AlphaColor>,
-    pool: Option<Lease<Pool>>,
+    pool: Option<Lease<Pool<P>, P>>,
     transform: Mat4,
-    vertex_buf: Option<(Lease<Data>, u64)>,
+    vertex_buf: Option<(Lease<Data, P>, u64)>,
 }
 
-impl FontOp {
+impl<P> FontOp<P>
+where
+    P: SharedPointerKind,
+{
     #[must_use]
-    pub(crate) unsafe fn new<C, P>(
+    pub(crate) unsafe fn new<C, O>(
         #[cfg(feature = "debug-names")] name: &str,
-        mut pool: Lease<Pool>,
+        mut pool: Lease<Pool<P>, P>,
         dst: &Texture2d,
-        pos: P,
+        pos: O,
         color: C,
     ) -> Self
     where
         C: Into<AlphaColor>,
-        P: Into<CoordF>,
+        O: Into<CoordF>,
     {
         let (dims, fmt) = {
             let dst = dst.borrow();
@@ -295,7 +308,7 @@ impl FontOp {
     }
 
     /// Submits the given font for hardware processing.
-    pub fn record(&mut self, font: &Font, text: &str) {
+    pub fn record(&mut self, font: &Font<P>, text: &str) {
         assert!(!text.is_empty());
 
         let dims = self.dst.borrow().dims();
@@ -615,7 +628,7 @@ impl FontOp {
         );
     }
 
-    unsafe fn write_descriptors(&mut self, font: &Font, page_idx: usize) {
+    unsafe fn write_descriptors(&mut self, font: &Font<P>, page_idx: usize) {
         trace!("write_descriptors");
 
         // TODO: Fix, this should be one set per page not the same re-written
@@ -635,7 +648,10 @@ impl FontOp {
     }
 }
 
-impl Drop for FontOp {
+impl<P> Drop for FontOp<P>
+where
+    P: SharedPointerKind,
+{
     fn drop(&mut self) {
         unsafe {
             self.wait();
@@ -643,12 +659,15 @@ impl Drop for FontOp {
     }
 }
 
-impl Op for FontOp {
+impl<P> Op<P> for FontOp<P>
+where
+    P: SharedPointerKind,
+{
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 
-    unsafe fn take_pool(&mut self) -> Lease<Pool> {
+    unsafe fn take_pool(&mut self) -> Lease<Pool<P>, P> {
         self.pool.take().unwrap()
     }
 
