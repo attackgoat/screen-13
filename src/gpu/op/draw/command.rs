@@ -3,7 +3,7 @@ use {
         color::{AlphaColor, Color},
         gpu::{Bitmap, MeshFilter, Model, Pose},
         math::{vec3_is_finite, CoordF, Mat4, Sphere, Vec3},
-        Shared,
+        ptr::Shared,
     },
     archery::SharedPointerKind,
     std::{

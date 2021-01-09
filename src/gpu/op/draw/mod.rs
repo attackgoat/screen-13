@@ -56,7 +56,7 @@ use {
             queue_mut, Bitmap, Data, Texture2d, TextureRef,
         },
         math::{Coord, Mat3, Mat4, Quat, Vec2, Vec3},
-        Shared,
+        ptr::Shared,
     },
     archery::SharedPointerKind,
     gfx_hal::{

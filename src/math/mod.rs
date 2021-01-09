@@ -1,5 +1,5 @@
-//! Mathmatics types and functions, mostly based on
-//! [glam-rs](https://github.com/bitshifter/glam-rs).
+//! Mathematics types and functions, mostly based on
+//! [_glam-rs_](https://github.com/bitshifter/glam-rs).
 //!
 //! Also contains some geometric math types.
 

@@ -5,7 +5,8 @@ use {
             BlendMode,
         },
         math::{Coord, Extent, Rect},
-        DynScreen, Gpu, Input, Render, Screen, Shared,
+        ptr::Shared,
+        DynScreen, Gpu, Input, Render, Screen,
     },
     archery::SharedPointerKind,
     std::{

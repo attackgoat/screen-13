@@ -1,24 +1,25 @@
-//! An easy-to-use 2D/3D rendering engine in the spirit of QBasic.
+//! _Screen 13_ is an easy-to-use 2D/3D rendering engine in the spirit of
+//! [QBasic](https://en.wikipedia.org/wiki/QBasic).
 //!
-//! This crate provides image rendering types and functions. It is intended to be integrated into
-//! other libraries and programs which require very high performance graphics code, but which do
-//! not want to know _anything_ about the underlying graphics hardware or programming interfaces.
+//! _Screen 13_ supports DirectX 11/12, Metal, Vulkan and OpenGL (ES3, WebGL2).
+//!
+//! This crate is intended to be integrated into other libraries and programs which require very
+//! high performance graphics code, but which do not want to know _anything_ about the underlying
+//! graphics hardware or programming interfaces.
 //!
 //! Before starting you should be familar with these topics:
 //! - The Rust Programming Language
 //!   ([_beginner level_](https://doc.rust-lang.org/book/ch01-02-hello-world.html))
-//! - Common file formats (`.gltf`, `.png`, _etc.._)
 //! - Pixel formats such as 24bpp RGB
 //!   ([_optional_](https://en.wikipedia.org/wiki/Color_depth#True_color_(24-bit)))
 //! - Vertex formats such as [POSITION, TEXCOORD0]
 //!   ([_optional_](https://www.khronos.org/opengl/wiki/Vertex_Specification#Theory))
+//! - Common file formats (`.gltf`, `.png`, _etc.._)
 //! - _Some notion about what a GPU might be_
 //!
-//! With almost striking exception, which appear in "_NOTE:_" sections only, no further graphics
-//! API-specific concepts need to be introduced in order to master Screen 13 and implement
+//! With almost striking exception, which appear in **_NOTE:_** sections only, no further graphics
+//! API-specific concepts need to be introduced in order to master _Screen 13_ and implement
 //! exceptionally fast graphics code.
-//!
-//! _TL;DR:_ Screen 13 adds state-of-the-art Vulkan/Metal/DirectX/GL to your code, easily.
 //!
 //! # Usage
 //!
@@ -29,13 +30,19 @@
 //! screen_13 = "0.1"
 //! ```
 //!
-//! Next, for a console program:
+//! Next, pick a shared reference type. We'll use [`std::rc::Rc`]:
+//!
+//! ```
+//! use screen_13::prelude_rc::*;
+//! ```
+//!
+//! Then, for a console program:
 //!
 //! ```
 //! /// Creates a 128x128 pixel jpeg file as `output.jpg`.
 //! fn main() {
-//!     let gpu = screen_13::Gpu::offscreen();
-//!     let render = gpu.render((128u32, 128u32));
+//!     let gpu = Gpu::offscreen();
+//!     let mut render = gpu.render((128u32, 128u32));
 //!     render.clear().record();
 //!     render.encode().record("output.jpg");
 //! }
@@ -44,19 +51,17 @@
 //! Or, for a windowed program:
 //!
 //! ```
-//! use screen_13::prelude_all::*;
-//!
 //! /// Paints a magenta window at 60 glorious frames per second.
 //! fn main() {
 //!     let engine = Engine::default();
-//!     engine.run(Box::new(FooProgram))
+//!     engine.run(Box::new(Foo))
 //! }
 //!
-//! struct FooProgram;
+//! struct Foo;
 //!
-//! impl Screen for FooProgram {
+//! impl Screen<RcK> for Foo {
 //!     fn render(&self, gpu: &Gpu, dims: Extent) -> Render {
-//!         let frame = gpu.render(dims);
+//!         let mut frame = gpu.render(dims);
 //!         frame.clear().with(MAGENTA).record(); // <-- 🔥
 //!         frame
 //!     }
@@ -68,23 +73,33 @@
 //! }
 //! ```
 //!
-//! # Screen 13 Concepts
+//! ## Screen 13 Concepts
 //!
-//! Screen 13 offers libraries and applications two general modes of operation, both of which focus
-//! on the `Gpu` type:
-//! - `Gpu::offscreen()`:  For headless rendering, such as from a console program
-//! - The `Screen` trait: Provides a fullscreen graphics mode or paints a window
+//! _Screen 13_ offers two general modes of operation, both of which focus on the [`Gpu`] type:
+//! - [`Gpu::offscreen()`]: _For headless rendering, such as from a console program_
+//! - The [`Screen`] trait: _Provides a fullscreen graphics mode or paints a window_
 //!
-//! _NOTE_: Resources loaded or read from a `Gpu` created in headless or screen modes cannot be
-//! used with other instances, including of the same mode. This is a limitation only because the
-//! code to share the resources properly has not be started yet.
+//! ## Shared References
 //!
-//! ## Screen 13 PAK Format
+//! A [`Gpu`]'s resources, such as bitmaps and models, use either [`std::sync::Arc`] or
+//! [`std::rc::Rc`] types to track their internal states.
+//!
+//! _Screen 13_ offers the following preludes to easily specifiy the shared reference type:
+//!
+//! | Scenario                    | Recommended `use`            | _Screen 13_ Types               |
+//! |-----------------------------|------------------------------|---------------------------------|
+//! | Single-Threaded Program     | `screen_13::prelude_rc::*;`  | `Gpu`, `Render`, _etc..._       |
+//! | Multi-Threaded Program      | `screen_13::prelude_arc::*;` | `Gpu`, `Render`, _etc..._       |
+//! | Both _or_ Choose at Runtime | `screen_13::prelude_all::*;` | `Gpu<P>`, `Render<P>`, _etc..._ |
+//!
+//! **_NOTE:_** The generic types require [`ptr::ArcK`] or [`ptr::RcK`] type parameters.
+//!
+//! ## `.pak` File Format
 //!
 //! Although data may be loaded at _runtime_, the highest performance can be achieved by pre-baking
 //! data at _design-time_ and simply reading it at _runtime_.
 //!
-//! It is recommended to use the `.pak` file format, _which includes optional *10:1-typical
+//! It is recommended to use the `.pak` format, _which includes optional *10:1-typical
 //! compression*_, whenever possible. See the main
 //! [README](https://github.com/attackgoat/screen-13) for more on this philosphy and the module
 //! level documentation for more details on how to use this system with existing files and assets.
@@ -105,20 +120,21 @@ pub mod input;
 pub mod math;
 pub mod pak;
 
-/// Things, particularly traits, which are used in almost every single Screen 13 program.
+/// Things, particularly traits, which are used in almost every single _Screen 13_ program.
 pub mod prelude {
     pub use super::{
         gpu::{Cache, Gpu, Render},
         input::Input,
         program::Program,
-        ArcK, DynScreen, Engine, RcK, Screen,
+        ptr::{ArcK, RcK, Shared},
+        DynScreen, Engine, Screen,
     };
 }
 
-/// Like `[prelude]`, but contains all public exports.
+/// Like [`prelude`], but contains all public exports.
 ///
-/// Use this module for access to all Screen 13 resources from either `[Rc]` or `[Arc]`-backed
-/// `[Gpu]` instances.
+/// Use this module for access to all _Screen 13_ resources from either [`std::sync::Arc`] or
+/// [`std::rc::Rc`]-backed [`Gpu`] instances.
 pub mod prelude_all {
     pub use super::{
         camera::*,
@@ -138,7 +154,33 @@ pub mod prelude_all {
     };
 }
 
-/// Like `[prelude_all]`, but specialized for `[Rc]`-backed `[Gpu]` instances.
+/// Like [`prelude_all`], but specialized for [`std::sync::Arc`]-backed [`Gpu`] instances.
+///
+/// Use this module if rendering will be done from multiple threads. See the main documentation for
+/// each alias for more information.
+pub mod prelude_arc {
+    pub use super::prelude_all::*;
+
+    /// Helpful type alias of `gpu::draw::Draw::<ArcK>`; see module documentation.
+    pub type Draw = super::gpu::draw::Draw<ArcK>;
+
+    /// Helpful type alias of `DynScreen::<ArcK>`; see module documentation.
+    pub type DynScreen = super::DynScreen<ArcK>;
+
+    /// Helpful type alias of `Engine::<ArcK>`; see module documentation.
+    pub type Engine = super::Engine<ArcK>;
+
+    /// Helpful type alias of `gpu::text::Font::<ArcK>`; see module documentation.
+    pub type Font = super::gpu::text::Font<ArcK>;
+
+    /// Helpful type alias of `gpu::Gpu::<ArcK>`; see module documentation.
+    pub type Gpu = super::gpu::Gpu<ArcK>;
+
+    /// Helpful type alias of `gpu::Render::<ArcK>`; see module documentation.
+    pub type Render = super::gpu::Render<ArcK>;
+}
+
+/// Like [`prelude_all`], but specialized for [`std::rc::Rc`]-backed [`Gpu`] instances.
 ///
 /// Use this module if rendering will be done from one thread only. See the main documentation for
 /// each alias for more information.
@@ -164,15 +206,67 @@ pub mod prelude_rc {
     pub type Render = super::gpu::Render<RcK>;
 }
 
+/// Shared reference (`Arc` and `Rc`) implementation based on
+/// [_archery_](https://crates.io/crates/archery).
+pub mod ptr {
+    pub use archery::{ArcK, RcK};
+
+    use {
+        archery::{SharedPointer, SharedPointerKind},
+        std::ops::Deref,
+    };
+
+    /// A shared reference wrapper type, based on either [`std::sync::Arc`] or [`std::rc::Rc`].
+    #[derive(Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+    pub struct Shared<T, P>(SharedPointer<T, P>)
+    where
+        P: SharedPointerKind;
+
+    impl<T, P> Shared<T, P>
+    where
+        P: SharedPointerKind,
+    {
+        pub fn clone(shared: &Self) -> Self {
+            shared.clone()
+        }
+    }
+
+    impl<T, P> Shared<T, P>
+    where
+        P: SharedPointerKind,
+    {
+        pub fn new(val: T) -> Self {
+            Self(SharedPointer::new(val))
+        }
+    }
+
+    impl<T, P> Clone for Shared<T, P>
+    where
+        P: SharedPointerKind,
+    {
+        fn clone(&self) -> Self {
+            Self(self.0.clone())
+        }
+    }
+
+    impl<T, P> Deref for Shared<T, P>
+    where
+        P: SharedPointerKind,
+    {
+        type Target = T;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+}
+
 pub(crate) mod error;
 
 mod config;
 mod program;
 
-pub use {
-    self::program::{Icon, Program},
-    archery::{ArcK, RcK},
-};
+pub use self::program::{Icon, Program};
 
 use {
     self::{
@@ -183,13 +277,12 @@ use {
     },
     crate::gpu::Op,
     app_dirs::{get_app_root, AppDataType, AppDirsError, AppInfo},
-    archery::{SharedPointer, SharedPointerKind},
+    archery::SharedPointerKind,
     std::{
         cmp::Ordering,
         collections::VecDeque,
         convert::TryFrom,
         io::{Error, ErrorKind},
-        ops::Deref,
         path::PathBuf,
     },
     winit::{
@@ -663,47 +756,4 @@ where
     /// }
     /// ```
     fn update(self: Box<Self>, gpu: &Gpu<P>, input: &Input) -> DynScreen<P>;
-}
-
-#[derive(Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
-pub struct Shared<T, P>(SharedPointer<T, P>)
-where
-    P: SharedPointerKind;
-
-impl<T, P> Shared<T, P>
-where
-    P: SharedPointerKind,
-{
-    pub fn clone(shared: &Self) -> Self {
-        shared.clone()
-    }
-}
-
-impl<T, P> Shared<T, P>
-where
-    P: SharedPointerKind,
-{
-    pub fn new(val: T) -> Self {
-        Self(SharedPointer::new(val))
-    }
-}
-
-impl<T, P> Clone for Shared<T, P>
-where
-    P: SharedPointerKind,
-{
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-
-impl<T, P> Deref for Shared<T, P>
-where
-    P: SharedPointerKind,
-{
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
 }

@@ -21,7 +21,7 @@ use {
         physical_device, queue_family, BlendMode, Data, MaskMode, MatteMode, Texture, Texture2d,
         TextureRef,
     },
-    crate::{math::Extent, Shared},
+    crate::{math::Extent, ptr::Shared},
     archery::SharedPointerKind,
     gfx_hal::{
         adapter::PhysicalDevice as _,

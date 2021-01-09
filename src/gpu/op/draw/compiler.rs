@@ -23,7 +23,7 @@ use {
             Data, Lease, Model,
         },
         pak::IndexType,
-        Shared,
+        ptr::Shared,
     },
     archery::SharedPointerKind,
     std::{

@@ -1,4 +1,4 @@
-//! Contains the heart and soul of Screen 13.
+//! Contains the heart and soul of _Screen 13_.
 //!
 //! This module does the heavy-lifting work in this library and is made from a number of
 //! internal-only modules which support the functionality described here.
@@ -130,7 +130,7 @@ use {
             model::Mesh,
             BitmapFormat, IndexType, Pak,
         },
-        Shared,
+        ptr::Shared,
     },
     archery::SharedPointerKind,
     gfx_hal::{
