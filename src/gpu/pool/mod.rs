@@ -16,7 +16,7 @@ use {
             render_pass, CalcVertexAttrsComputeMode, Compute, ComputeMode, Graphics, GraphicsMode,
             RenderPassMode,
         },
-        driver::{CommandPool, DescriptorPool, Fence, Image2d, Memory, RenderPass},
+        driver::{CommandPool, DescriptorPool, Fence, Memory, RenderPass},
         op::draw::Compiler,
         physical_device, queue_family, BlendMode, Data, MaskMode, MatteMode, Texture, Texture2d,
         TextureRef,
@@ -379,20 +379,19 @@ where
         &mut self,
         family: QueueFamilyId,
     ) -> Lease<CommandPool, P> {
-        // let items = self
-        //     .cmd_pools
-        //     .entry(family)
-        //     .or_insert_with(Default::default);
-        // let mut item = if let Some(item) = items.borrow_mut().pop_back() {
-        //     item
-        // } else {
-        //     CommandPool::new(family)
-        // };
+        let items = self
+            .cmd_pools
+            .entry(family)
+            .or_insert_with(Default::default);
+        let mut item = if let Some(item) = items.borrow_mut().pop_back() {
+            item
+        } else {
+            CommandPool::new(family)
+        };
 
-        // item.as_mut().reset(false);
+        item.as_mut().reset(false);
 
-        // Lease::new(item, items)
-        todo!("DONT CHECKIN");
+        Lease::new(item, items)
     }
 
     pub(super) fn compiler(&mut self) -> Lease<Compiler<P>, P> {
@@ -426,44 +425,42 @@ where
         mode: ComputeMode,
         max_desc_sets: usize,
     ) -> Lease<Compute, P> {
-        // let items = self.computes.entry(mode).or_insert_with(Default::default);
-        // let item = if let Some(item) = remove_last_by(&mut items.borrow_mut(), |item| {
-        //     item.max_desc_sets() >= max_desc_sets
-        // }) {
-        //     item
-        // } else {
-        //     let ctor = match mode {
-        //         ComputeMode::CalcVertexAttrs(mode) => match mode {
-        //             CalcVertexAttrsComputeMode::U16 => Compute::calc_vertex_attrs_u16,
-        //             CalcVertexAttrsComputeMode::U16_SKIN => Compute::calc_vertex_attrs_u16_skin,
-        //             CalcVertexAttrsComputeMode::U32 => Compute::calc_vertex_attrs_u32,
-        //             CalcVertexAttrsComputeMode::U32_SKIN => Compute::calc_vertex_attrs_u32_skin,
-        //         },
-        //         ComputeMode::DecodeRgbRgba => Compute::decode_rgb_rgba,
-        //     };
-        //     let (desc_set_layout, pipeline_layout) = match mode {
-        //         ComputeMode::CalcVertexAttrs(_) => self.layouts.compute_calc_vertex_attrs(
-        //             #[cfg(feature = "debug-names")]
-        //             name,
-        //         ),
-        //         ComputeMode::DecodeRgbRgba => self.layouts.compute_decode_rgb_rgba(
-        //             #[cfg(feature = "debug-names")]
-        //             name,
-        //         ),
-        //     };
+        let items = self.computes.entry(mode).or_insert_with(Default::default);
+        let item = if let Some(item) = remove_last_by(&mut items.borrow_mut(), |item| {
+            item.max_desc_sets() >= max_desc_sets
+        }) {
+            item
+        } else {
+            let ctor = match mode {
+                ComputeMode::CalcVertexAttrs(mode) => match mode {
+                    CalcVertexAttrsComputeMode::U16 => Compute::calc_vertex_attrs_u16,
+                    CalcVertexAttrsComputeMode::U16_SKIN => Compute::calc_vertex_attrs_u16_skin,
+                    CalcVertexAttrsComputeMode::U32 => Compute::calc_vertex_attrs_u32,
+                    CalcVertexAttrsComputeMode::U32_SKIN => Compute::calc_vertex_attrs_u32_skin,
+                },
+                ComputeMode::DecodeRgbRgba => Compute::decode_rgb_rgba,
+            };
+            let (desc_set_layout, pipeline_layout) = match mode {
+                ComputeMode::CalcVertexAttrs(_) => self.layouts.compute_calc_vertex_attrs(
+                    #[cfg(feature = "debug-names")]
+                    name,
+                ),
+                ComputeMode::DecodeRgbRgba => self.layouts.compute_decode_rgb_rgba(
+                    #[cfg(feature = "debug-names")]
+                    name,
+                ),
+            };
 
-        //     ctor(
-        //         #[cfg(feature = "debug-names")]
-        //         name,
-        //         desc_set_layout,
-        //         pipeline_layout,
-        //         max_desc_sets,
-        //     )
-        // };
+            ctor(
+                #[cfg(feature = "debug-names")]
+                name,
+                desc_set_layout,
+                pipeline_layout,
+                max_desc_sets,
+            )
+        };
 
-        // Lease::new(item, items)
-
-        todo!("DONT CHECKIN");
+        Lease::new(item, items)
     }
 
     pub(super) unsafe fn data(
@@ -485,23 +482,21 @@ where
         len: u64,
         usage: BufferUsage,
     ) -> Lease<Data, P> {
-        // let items = self.data.entry(usage).or_insert_with(Default::default);
-        // let item = if let Some(item) =
-        //     remove_last_by(&mut items.borrow_mut(), |item| item.capacity() >= len)
-        // {
-        //     item
-        // } else {
-        //     Data::new(
-        //         #[cfg(feature = "debug-names")]
-        //         name,
-        //         len,
-        //         usage,
-        //     )
-        // };
+        let items = self.data.entry(usage).or_insert_with(Default::default);
+        let item = if let Some(item) =
+            remove_last_by(&mut items.borrow_mut(), |item| item.capacity() >= len)
+        {
+            item
+        } else {
+            Data::new(
+                #[cfg(feature = "debug-names")]
+                name,
+                len,
+                usage,
+            )
+        };
 
-        // Lease::new(item, items)
-
-        todo!("DONT CHECKIN");
+        Lease::new(item, items)
     }
 
     pub(super) unsafe fn desc_pool<'i, I>(
@@ -512,27 +507,26 @@ where
     where
         I: Clone + ExactSizeIterator<Item = &'i DescriptorRangeDesc>,
     {
-        // let desc_ranges_key = desc_ranges
-        //     .clone()
-        //     .map(|desc_range| (desc_range.ty, desc_range.count))
-        //     .collect();
-        // // TODO: Sort (and possibly combine) desc_ranges so that different orders of the same data don't affect key lookups
-        // let items = self
-        //     .desc_pools
-        //     .entry(DescriptorPoolKey {
-        //         desc_ranges: desc_ranges_key,
-        //     })
-        //     .or_insert_with(Default::default);
-        // let item = if let Some(item) = remove_last_by(&mut items.borrow_mut(), |item| {
-        //     DescriptorPool::max_desc_sets(&item) >= max_desc_sets
-        // }) {
-        //     item
-        // } else {
-        //     DescriptorPool::new(max_desc_sets, desc_ranges)
-        // };
+        let desc_ranges_key = desc_ranges
+            .clone()
+            .map(|desc_range| (desc_range.ty, desc_range.count))
+            .collect();
+        // TODO: Sort (and possibly combine) desc_ranges so that different orders of the same data don't affect key lookups
+        let items = self
+            .desc_pools
+            .entry(DescriptorPoolKey {
+                desc_ranges: desc_ranges_key,
+            })
+            .or_insert_with(Default::default);
+        let item = if let Some(item) = remove_last_by(&mut items.borrow_mut(), |item| {
+            DescriptorPool::max_desc_sets(&item) >= max_desc_sets
+        }) {
+            item
+        } else {
+            DescriptorPool::new(max_desc_sets, desc_ranges)
+        };
 
-        // Lease::new(item, items)
-        todo!("DONT CHECKIN");
+        Lease::new(item, items)
     }
 
     /// Allows callers to remove unused memory-consuming items from the pool.
@@ -584,100 +578,97 @@ where
         graphics_mode: GraphicsMode,
         max_desc_sets: usize,
     ) -> Lease<Graphics, P> {
-        // {
-        //     let items = self
-        //         .graphics
-        //         .entry(GraphicsKey {
-        //             graphics_mode,
-        //             render_pass_mode,
-        //             subpass_idx,
-        //         })
-        //         .or_insert_with(Default::default);
-        //     if let Some(item) = remove_last_by(&mut items.borrow_mut(), |item| {
-        //         item.max_desc_sets() >= max_desc_sets
-        //     }) {
-        //         return Lease::new(item, items);
-        //     }
-        // }
-        // let ctor = match graphics_mode {
-        //     GraphicsMode::Blend(BlendMode::Add) => Graphics::blend_add,
-        //     GraphicsMode::Blend(BlendMode::AlphaAdd) => Graphics::blend_alpha_add,
-        //     GraphicsMode::Blend(BlendMode::ColorBurn) => Graphics::blend_color_burn,
-        //     GraphicsMode::Blend(BlendMode::ColorDodge) => Graphics::blend_color_dodge,
-        //     GraphicsMode::Blend(BlendMode::Color) => Graphics::blend_color,
-        //     GraphicsMode::Blend(BlendMode::Darken) => Graphics::blend_darken,
-        //     GraphicsMode::Blend(BlendMode::DarkerColor) => Graphics::blend_darker_color,
-        //     GraphicsMode::Blend(BlendMode::Difference) => Graphics::blend_difference,
-        //     GraphicsMode::Blend(BlendMode::Divide) => Graphics::blend_divide,
-        //     GraphicsMode::Blend(BlendMode::Exclusion) => Graphics::blend_exclusion,
-        //     GraphicsMode::Blend(BlendMode::HardLight) => Graphics::blend_hard_light,
-        //     GraphicsMode::Blend(BlendMode::HardMix) => Graphics::blend_hard_mix,
-        //     GraphicsMode::Blend(BlendMode::LinearBurn) => Graphics::blend_linear_burn,
-        //     GraphicsMode::Blend(BlendMode::Multiply) => Graphics::blend_multiply,
-        //     GraphicsMode::Blend(BlendMode::Normal) => Graphics::blend_normal,
-        //     GraphicsMode::Blend(BlendMode::Overlay) => Graphics::blend_overlay,
-        //     GraphicsMode::Blend(BlendMode::Screen) => Graphics::blend_screen,
-        //     GraphicsMode::Blend(BlendMode::Subtract) => Graphics::blend_subtract,
-        //     GraphicsMode::Blend(BlendMode::VividLight) => Graphics::blend_vivid_light,
-        //     GraphicsMode::DrawLine => Graphics::draw_line,
-        //     GraphicsMode::DrawMesh => Graphics::draw_mesh,
-        //     GraphicsMode::DrawPointLight => Graphics::draw_point_light,
-        //     GraphicsMode::DrawRectLight => Graphics::draw_rect_light,
-        //     GraphicsMode::DrawSpotlight => Graphics::draw_spotlight,
-        //     GraphicsMode::DrawSunlight => Graphics::draw_sunlight,
-        //     GraphicsMode::Font(false) => Graphics::font_normal,
-        //     GraphicsMode::Font(true) => Graphics::font_outline,
-        //     GraphicsMode::Gradient(false) => Graphics::gradient_linear,
-        //     GraphicsMode::Gradient(true) => Graphics::gradient_linear_trans,
-        //     GraphicsMode::Mask(MaskMode::Add) => Graphics::mask_add,
-        //     GraphicsMode::Mask(MaskMode::Darken) => Graphics::mask_darken,
-        //     GraphicsMode::Mask(MaskMode::Difference) => Graphics::mask_difference,
-        //     GraphicsMode::Mask(MaskMode::Intersect) => Graphics::mask_intersect,
-        //     GraphicsMode::Mask(MaskMode::Lighten) => Graphics::mask_lighten,
-        //     GraphicsMode::Mask(MaskMode::Subtract) => Graphics::mask_subtract,
-        //     GraphicsMode::Matte(MatteMode::Alpha) => Graphics::matte_alpha,
-        //     GraphicsMode::Matte(MatteMode::AlphaInverted) => Graphics::matte_alpha_inv,
-        //     GraphicsMode::Matte(MatteMode::Luminance) => Graphics::matte_luma,
-        //     GraphicsMode::Matte(MatteMode::LuminanceInverted) => Graphics::matte_luma_inv,
-        //     GraphicsMode::Skydome => Graphics::skydome,
-        //     GraphicsMode::Texture => Graphics::texture,
-        // };
-        // let item = {
-        //     let render_pass = self.render_pass(render_pass_mode);
-        //     let subpass = RenderPass::subpass(render_pass, subpass_idx);
-        //     ctor(
-        //         #[cfg(feature = "debug-names")]
-        //         name,
-        //         subpass,
-        //         max_desc_sets,
-        //     )
-        // };
+        {
+            let items = self
+                .graphics
+                .entry(GraphicsKey {
+                    graphics_mode,
+                    render_pass_mode,
+                    subpass_idx,
+                })
+                .or_insert_with(Default::default);
+            if let Some(item) = remove_last_by(&mut items.borrow_mut(), |item| {
+                item.max_desc_sets() >= max_desc_sets
+            }) {
+                return Lease::new(item, items);
+            }
+        }
+        let ctor = match graphics_mode {
+            GraphicsMode::Blend(BlendMode::Add) => Graphics::blend_add,
+            GraphicsMode::Blend(BlendMode::AlphaAdd) => Graphics::blend_alpha_add,
+            GraphicsMode::Blend(BlendMode::ColorBurn) => Graphics::blend_color_burn,
+            GraphicsMode::Blend(BlendMode::ColorDodge) => Graphics::blend_color_dodge,
+            GraphicsMode::Blend(BlendMode::Color) => Graphics::blend_color,
+            GraphicsMode::Blend(BlendMode::Darken) => Graphics::blend_darken,
+            GraphicsMode::Blend(BlendMode::DarkerColor) => Graphics::blend_darker_color,
+            GraphicsMode::Blend(BlendMode::Difference) => Graphics::blend_difference,
+            GraphicsMode::Blend(BlendMode::Divide) => Graphics::blend_divide,
+            GraphicsMode::Blend(BlendMode::Exclusion) => Graphics::blend_exclusion,
+            GraphicsMode::Blend(BlendMode::HardLight) => Graphics::blend_hard_light,
+            GraphicsMode::Blend(BlendMode::HardMix) => Graphics::blend_hard_mix,
+            GraphicsMode::Blend(BlendMode::LinearBurn) => Graphics::blend_linear_burn,
+            GraphicsMode::Blend(BlendMode::Multiply) => Graphics::blend_multiply,
+            GraphicsMode::Blend(BlendMode::Normal) => Graphics::blend_normal,
+            GraphicsMode::Blend(BlendMode::Overlay) => Graphics::blend_overlay,
+            GraphicsMode::Blend(BlendMode::Screen) => Graphics::blend_screen,
+            GraphicsMode::Blend(BlendMode::Subtract) => Graphics::blend_subtract,
+            GraphicsMode::Blend(BlendMode::VividLight) => Graphics::blend_vivid_light,
+            GraphicsMode::DrawLine => Graphics::draw_line,
+            GraphicsMode::DrawMesh => Graphics::draw_mesh,
+            GraphicsMode::DrawPointLight => Graphics::draw_point_light,
+            GraphicsMode::DrawRectLight => Graphics::draw_rect_light,
+            GraphicsMode::DrawSpotlight => Graphics::draw_spotlight,
+            GraphicsMode::DrawSunlight => Graphics::draw_sunlight,
+            GraphicsMode::Font(false) => Graphics::font_normal,
+            GraphicsMode::Font(true) => Graphics::font_outline,
+            GraphicsMode::Gradient(false) => Graphics::gradient_linear,
+            GraphicsMode::Gradient(true) => Graphics::gradient_linear_trans,
+            GraphicsMode::Mask(MaskMode::Add) => Graphics::mask_add,
+            GraphicsMode::Mask(MaskMode::Darken) => Graphics::mask_darken,
+            GraphicsMode::Mask(MaskMode::Difference) => Graphics::mask_difference,
+            GraphicsMode::Mask(MaskMode::Intersect) => Graphics::mask_intersect,
+            GraphicsMode::Mask(MaskMode::Lighten) => Graphics::mask_lighten,
+            GraphicsMode::Mask(MaskMode::Subtract) => Graphics::mask_subtract,
+            GraphicsMode::Matte(MatteMode::Alpha) => Graphics::matte_alpha,
+            GraphicsMode::Matte(MatteMode::AlphaInverted) => Graphics::matte_alpha_inv,
+            GraphicsMode::Matte(MatteMode::Luminance) => Graphics::matte_luma,
+            GraphicsMode::Matte(MatteMode::LuminanceInverted) => Graphics::matte_luma_inv,
+            GraphicsMode::Skydome => Graphics::skydome,
+            GraphicsMode::Texture => Graphics::texture,
+        };
+        let item = {
+            let render_pass = self.render_pass(render_pass_mode);
+            let subpass = RenderPass::subpass(render_pass, subpass_idx);
+            ctor(
+                #[cfg(feature = "debug-names")]
+                name,
+                subpass,
+                max_desc_sets,
+            )
+        };
 
-        // let items = &self.graphics[&GraphicsKey {
-        //     graphics_mode,
-        //     render_pass_mode,
-        //     subpass_idx,
-        // }];
-        // Lease::new(item, items)
-        todo!("DONT CHECKIN");
+        let items = &self.graphics[&GraphicsKey {
+            graphics_mode,
+            render_pass_mode,
+            subpass_idx,
+        }];
+        Lease::new(item, items)
     }
 
     pub(super) unsafe fn memory(&mut self, mem_type: MemoryTypeId, size: u64) -> Lease<Memory, P> {
-        // let items = self
-        //     .memories
-        //     .entry(mem_type)
-        //     .or_insert_with(Default::default);
-        // let item = if let Some(item) =
-        //     remove_last_by(&mut items.borrow_mut(), |item| Memory::size(&item) >= size)
-        // {
-        //     item
-        // } else {
-        //     Memory::new(mem_type, size)
-        // };
+        let items = self
+            .memories
+            .entry(mem_type)
+            .or_insert_with(Default::default);
+        let item = if let Some(item) =
+            remove_last_by(&mut items.borrow_mut(), |item| Memory::size(&item) >= size)
+        {
+            item
+        } else {
+            Memory::new(mem_type, size)
+        };
 
-        // Lease::new(item, items)
-
-        todo!("DONT CHECKIN");
+        Lease::new(item, items)
     }
 
     pub(super) unsafe fn render_pass(&mut self, mode: RenderPassMode) -> &RenderPass {
@@ -723,7 +714,6 @@ where
         (Lease::new(item, &self.skydomes), SKYDOME.len() as _, data)
     }
 
-    // TODO: Bubble format picking up and out of this! (removes desire_tiling+desired_fmts+features, replace with fmt/tiling)
     #[allow(clippy::too_many_arguments)]
     pub(super) unsafe fn texture(
         &mut self,
@@ -736,57 +726,55 @@ where
         mips: u8,
         samples: u8,
     ) -> Lease<Texture2d, P> {
-        // let items = self
-        //     .textures
-        //     .entry(TextureKey {
-        //         dims,
-        //         fmt,
-        //         layers,
-        //         mips,
-        //         samples,
-        //         usage,
-        //     })
-        //     .or_insert_with(Default::default);
-        // let item = {
-        //     let mut items_ref = items.as_ref().borrow_mut();
-        //     if let Some(item) = items_ref.pop_back() {
-        //         // Set a new name on this texture
-        //         #[cfg(feature = "debug-names")]
-        //         device().set_image_name(item.as_ref().borrow_mut().as_mut(), name);
+        let items = self
+            .textures
+            .entry(TextureKey {
+                dims,
+                fmt,
+                layers,
+                mips,
+                samples,
+                usage,
+            })
+            .or_insert_with(Default::default);
+        let item = {
+            let mut items_ref = items.borrow_mut();
+            if let Some(item) = items_ref.pop_back() {
+                // Set a new name on this texture
+                #[cfg(feature = "debug-names")]
+                device().set_image_name(item.as_ref().borrow_mut().as_mut(), name);
 
-        //         item
-        //     } else {
-        //         // Add a cache item so there will be an unused item waiting next time
-        //         items_ref.push_front(TextureRef::new(RefCell::new(Texture::new(
-        //             #[cfg(feature = "debug-names")]
-        //             &format!("{} (Unused)", name),
-        //             dims,
-        //             fmt,
-        //             layout,
-        //             usage,
-        //             layers,
-        //             samples,
-        //             mips,
-        //         ))));
+                item
+            } else {
+                // Add a cache item so there will be an unused item waiting next time
+                items_ref.push_front(TextureRef::new(RefCell::new(Texture::new(
+                    #[cfg(feature = "debug-names")]
+                    &format!("{} (Unused)", name),
+                    dims,
+                    fmt,
+                    layout,
+                    usage,
+                    layers,
+                    samples,
+                    mips,
+                ))));
 
-        //         // Return a brand new instance
-        //         TextureRef::new(RefCell::new(Texture::new(
-        //             #[cfg(feature = "debug-names")]
-        //             name,
-        //             dims,
-        //             fmt,
-        //             layout,
-        //             usage,
-        //             layers,
-        //             samples,
-        //             mips,
-        //         )))
-        //     }
-        // };
+                // Return a brand new instance
+                TextureRef::new(RefCell::new(Texture::new(
+                    #[cfg(feature = "debug-names")]
+                    name,
+                    dims,
+                    fmt,
+                    layout,
+                    usage,
+                    layers,
+                    samples,
+                    mips,
+                )))
+            }
+        };
 
-        // Lease::new(item, items)
-
-        todo!("DONT CHECKIN");
+        Lease::new(item, items)
     }
 }
 
@@ -795,24 +783,22 @@ where
     P: SharedPointerKind,
 {
     fn default() -> Self {
-        // Self {
-        //     best_fmts: Default::default(),
-        //     cmd_pools: Default::default(),
-        //     compilers: Default::default(),
-        //     computes: Default::default(),
-        //     data: Default::default(),
-        //     desc_pools: Default::default(),
-        //     fences: Default::default(),
-        //     graphics: Default::default(),
-        //     layouts: Default::default(),
-        //     lru_threshold: DEFAULT_LRU_THRESHOLD,
-        //     memories: Default::default(),
-        //     render_passes: Default::default(),
-        //     skydomes: Default::default(),
-        //     textures: Default::default(),
-        // }
-
-        todo!("DONT CHECKIN");
+        Self {
+            best_fmts: Default::default(),
+            cmd_pools: Default::default(),
+            compilers: Default::default(),
+            computes: Default::default(),
+            data: Default::default(),
+            desc_pools: Default::default(),
+            fences: Default::default(),
+            graphics: Default::default(),
+            layouts: Default::default(),
+            lru_threshold: DEFAULT_LRU_THRESHOLD,
+            memories: Default::default(),
+            render_passes: Default::default(),
+            skydomes: Default::default(),
+            textures: Default::default(),
+        }
     }
 }
 

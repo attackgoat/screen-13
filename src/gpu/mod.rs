@@ -363,7 +363,7 @@ impl Default for BlendMode {
     }
 }
 
-// TODO: Make this drainable?
+// TODO: Make this drainable? Set a drain level for incoming pools and drain current ones?
 /// An opaque cache of graphics API handles and resources.
 ///
 /// For optimal performance, `Cache` instances should remain as owned values for at least three
@@ -371,10 +371,18 @@ impl Default for BlendMode {
 ///
 /// _NOTE:_ Program execution will halt for a few milliseconds after `Cache` types with active
 /// internal operations are dropped.
-#[derive(Default)]
 pub struct Cache<P>(PoolRef<Pool<P>, P>)
 where
     P: 'static + SharedPointerKind;
+
+impl<P> Default for Cache<P>
+where
+    P: SharedPointerKind,
+{
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
 
 /// Allows you to load resources and begin rendering operations.
 pub struct Gpu<P>
@@ -425,15 +433,14 @@ where
             open_adapter(adapter, queue);
         });
 
-        // let gpu = Self {
-        //     loads: Default::default(),
-        //     ops: Default::default(),
-        //     renders: Default::default(),
-        // };
-        // let swapchain = Swapchain::new(surface.take().unwrap(), dims, swapchain_len);
+        let gpu = Self {
+            loads: Default::default(),
+            ops: Default::default(),
+            renders: Default::default(),
+        };
+        let swapchain = Swapchain::new(surface.take().unwrap(), dims, swapchain_len);
 
-        // (gpu, swapchain)
-        todo!("DONT CHECKIN");
+        (gpu, swapchain)
     }
 
     /// Creates a `Gpu` for off-screen or headless use.
@@ -458,12 +465,11 @@ where
             });
         }
 
-        // Self {
-        //     loads: Default::default(),
-        //     ops: Default::default(),
-        //     renders: Default::default(),
-        // }
-        todo!("DONT CHECKIN");
+        Self {
+            loads: Default::default(),
+            ops: Default::default(),
+            renders: Default::default(),
+        }
     }
 
     /// Loads a bitmap at runtime from the given data.
@@ -629,7 +635,7 @@ where
         #[cfg(debug_assertions)] _name: &str,
         _pak: &mut Pak<R>,
         _id: AnimationId,
-    ) -> () {
+    ) -> usize {
         //let _pool = PoolRef::clone(&self.pool);
         //let _anim = pak.read_animation(id);
         // let indices = model.indices();

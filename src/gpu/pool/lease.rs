@@ -19,11 +19,10 @@ where
     P: SharedPointerKind,
 {
     pub fn new(item: T, pool: &PoolRef<T, P>) -> Self {
-        // Self {
-        //     item: Some(item),
-        //     pool: PoolRef::clone(&pool),
-        // }
-        todo!("DONT CHECKIN");
+        Self {
+            item: Some(item),
+            pool: PoolRef::clone(&pool),
+        }
     }
 }
 

@@ -505,7 +505,6 @@ where
 /// two-fold:
 /// - Reduce per-draw allocations with line and light caches (they are not cleared after each use)
 /// - Store references to the in-use mesh textures during rendering (this cache is cleared after use)
-#[derive(Default)]
 pub struct Compiler<P>
 where
     P: 'static + SharedPointerKind,
@@ -520,10 +519,10 @@ where
     spotlights: Vec<Spotlight>,
 
     // These store which command indices use which vertex attribute calculation type (sorted)
-    u16_vertex_cmds: Vec<usize>,
     u16_skin_vertex_cmds: Vec<usize>,
-    u32_vertex_cmds: Vec<usize>,
+    u16_vertex_cmds: Vec<usize>,
     u32_skin_vertex_cmds: Vec<usize>,
+    u32_vertex_cmds: Vec<usize>,
 
     // This stores the data (staging + write mask buffers) needed to cacluate additional vertex
     // attributes (normal + tangent)
@@ -1269,24 +1268,23 @@ where
                         match lhs_group.cmp(&rhs_group) {
                             eq => {
                                 // Compare models (reduce vertex/index buffer switching)
-                                // let lhs_model = ModelRef::as_ptr(&lhs.model);
-                                // let rhs_model = ModelRef::as_ptr(&rhs.model);
-                                // match lhs_model.cmp(&rhs_model) {
-                                //     eq => {
-                                //         // Compare materials (reduce descriptor set switching)
-                                //         match lhs.material.cmp(&rhs.material) {
-                                //             eq => {
-                                //                 // Compare z-order (sorting in closer to further)
-                                //                 lhs.camera_order
-                                //                     .partial_cmp(&rhs.camera_order)
-                                //                     .unwrap_or(eq)
-                                //             }
-                                //             ne => ne,
-                                //         }
-                                //     }
-                                //     ne => ne,
-                                // }
-                                todo!("DONT CHECKIN");
+                                let lhs_model = Shared::as_ptr(&lhs.model);
+                                let rhs_model = Shared::as_ptr(&rhs.model);
+                                match lhs_model.cmp(&rhs_model) {
+                                    eq => {
+                                        // Compare materials (reduce descriptor set switching)
+                                        match lhs.material.cmp(&rhs.material) {
+                                            eq => {
+                                                // Compare z-order (sorting in closer to further)
+                                                lhs.camera_order
+                                                    .partial_cmp(&rhs.camera_order)
+                                                    .unwrap_or(eq)
+                                            }
+                                            ne => ne,
+                                        }
+                                    }
+                                    ne => ne,
+                                }
                             }
                             ne => ne,
                         }
@@ -1296,6 +1294,29 @@ where
                 ne => ne,
             }
         });
+    }
+}
+
+impl<P> Default for Compiler<P>
+where
+    P: SharedPointerKind,
+{
+    fn default() -> Self {
+        Self {
+            code: Default::default(),
+            line: Default::default(),
+            materials: Default::default(),
+            point_light_buf: Default::default(),
+            rect_light: Default::default(),
+            rect_lights: Default::default(),
+            spotlight: Default::default(),
+            spotlights: Default::default(),
+            u16_skin_vertex_cmds: Default::default(),
+            u16_vertex_cmds: Default::default(),
+            u32_skin_vertex_cmds: Default::default(),
+            u32_vertex_cmds: Default::default(),
+            calc_vertex_attrs: Default::default(),
+        }
     }
 }
 

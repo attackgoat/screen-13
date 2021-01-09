@@ -108,6 +108,7 @@
 #![allow(clippy::needless_doctest_main)] // <-- The doc code is *intends* to show the whole shebang
 //#![deny(warnings)]
 #![warn(missing_docs)]
+//#![warn(clippy::pedantic)]
 
 #[macro_use]
 extern crate log;
@@ -217,7 +218,7 @@ pub mod ptr {
     };
 
     /// A shared reference wrapper type, based on either [`std::sync::Arc`] or [`std::rc::Rc`].
-    #[derive(Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+    #[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
     pub struct Shared<T, P>(SharedPointer<T, P>)
     where
         P: SharedPointerKind;
@@ -226,7 +227,18 @@ pub mod ptr {
     where
         P: SharedPointerKind,
     {
+        pub(crate) fn new(val: T) -> Self {
+            Self(SharedPointer::new(val))
+        }
+
+        /// Returns a constant pointer to the value.
+        pub fn as_ptr(shared: &Self) -> *const T {
+            //SharedPointer::as_ptr(&shared.0)
+            SharedPointer::as_ptr(&shared.0)
+        }
+
         /// Returns a copy of the value.
+        #[allow(clippy::should_implement_trait)]
         pub fn clone(shared: &Self) -> Self {
             shared.clone()
         }
@@ -237,21 +249,22 @@ pub mod ptr {
         }
     }
 
-    impl<T, P> Shared<T, P>
-    where
-        P: SharedPointerKind,
-    {
-        pub fn new(val: T) -> Self {
-            Self(SharedPointer::new(val))
-        }
-    }
-
     impl<T, P> Clone for Shared<T, P>
     where
         P: SharedPointerKind,
     {
         fn clone(&self) -> Self {
             Self(self.0.clone())
+        }
+    }
+
+    impl<T, P> Default for Shared<T, P>
+    where
+        P: SharedPointerKind,
+        T: Default,
+    {
+        fn default() -> Self {
+            Self::new(Default::default())
         }
     }
 

@@ -5,7 +5,6 @@ use {
             BlendMode,
         },
         math::{Coord, Extent, Rect},
-        ptr::Shared,
         DynScreen, Gpu, Input, Render, Screen,
     },
     archery::SharedPointerKind,
@@ -23,7 +22,7 @@ use {
 /// In order to fade from `Foo` to `Bar` you might:
 ///
 /// ```
-/// use {screen_13::prelude_all::*, std::time::Duration};
+/// use {screen_13::prelude_rc::*, std::time::Duration};
 ///
 /// fn main() {
 ///     Engine::default().run(Box::new(Foo))

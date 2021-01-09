@@ -35,7 +35,6 @@ use {
     super::Op,
     crate::{
         camera::Camera,
-        color::AlphaColor,
         gpu::{
             data::{CopyRange, Mapping},
             def::{
@@ -76,9 +75,7 @@ use {
     gfx_impl::Backend as _Backend,
     std::{
         any::Any,
-        cmp::Ordering,
         fmt::{Debug, Error, Formatter},
-        hash::{Hash, Hasher},
         iter::{empty, once},
     },
 };
@@ -117,7 +114,7 @@ where
     name: String,
 
     pool: Option<Lease<Pool<P>, P>>,
-    skydome: Option<(Skydome<P>, Lease<Data, P>, u64, bool)>,
+    skydome: Option<SkydomeBuf<P>>,
 }
 
 impl<P> DrawOp<P>
@@ -211,8 +208,12 @@ where
     #[must_use]
     pub fn with_skydome(&mut self, val: &Skydome<P>) -> &mut Self {
         // Either take the existing skydome buffer or get a new one (ignoring the old skydome)
-        let (buf, buf_len, write) = if let Some((_, buf, buf_len, write)) = self.skydome.take() {
-            (buf, buf_len, write)
+        let (buf, buf_len, write) = if let Some(skydome) = self.skydome.take() {
+            (
+                skydome.vertex_buf,
+                skydome.vertex_buf_len,
+                skydome.vertex_buf_write,
+            )
         } else {
             let pool = self.pool.as_mut().unwrap();
             let (mut buf, buf_len, data) = unsafe {
@@ -232,7 +233,12 @@ where
             (buf, buf_len, data.is_some())
         };
 
-        self.skydome = Some((val.clone(), buf, buf_len, write));
+        self.skydome = Some(SkydomeBuf {
+            val: val.clone(),
+            vertex_buf: buf,
+            vertex_buf_len: buf_len,
+            vertex_buf_write: write,
+        });
         self
     }
 
@@ -293,7 +299,7 @@ where
                     render_pass_mode
                 };
 
-                if let Some((skydome, _, _, _)) = &self.skydome {
+                if let Some(skydome) = &self.skydome {
                     let graphics = pool.graphics_desc_sets(
                         #[cfg(feature = "debug-names")]
                         &self.name,
@@ -302,7 +308,7 @@ where
                         GraphicsMode::Skydome,
                         1,
                     );
-                    Self::write_skydome_descriptors(&graphics, skydome);
+                    Self::write_skydome_descriptors(&graphics, &skydome.val);
                     self.graphics_skydome = Some(graphics);
                 }
 
@@ -401,10 +407,10 @@ where
                 self.submit_begin_finish(&viewport);
 
                 // Optional Step: Skydome pre-fx
-                if let Some((_, _, _, write)) = &mut self.skydome {
+                if let Some(skydome) = &mut self.skydome {
                     // Brand new skydomes from the pool must be written before use
-                    if *write {
-                        *write = false;
+                    if skydome.vertex_buf_write {
+                        skydome.vertex_buf_write = false;
                         self.submit_skydome_write();
                     }
                 }
@@ -869,9 +875,9 @@ where
         let graphics = self.graphics_skydome.as_ref().unwrap();
         let desc_set = graphics.desc_set(0);
         let layout = graphics.layout();
-        let (skydome, buf, buf_len, _) = self.skydome.as_ref().unwrap();
-        let vertex_count = *buf_len as u32 / 12;
-        let star_rotation = Mat3::from_quat(skydome.star_rotation).to_cols_array_2d();
+        let skydome = self.skydome.as_ref().unwrap();
+        let vertex_count = skydome.vertex_buf_len as u32 / 12;
+        let star_rotation = Mat3::from_quat(skydome.val.star_rotation).to_cols_array_2d();
         let world = Mat4::from_translation(eye);
 
         let mut vertex_push_consts = SkydomeVertexPushConsts::default();
@@ -881,9 +887,9 @@ where
         vertex_push_consts.world_view_proj = view_proj * world;
 
         let mut frag_push_consts = SkydomeFragmentPushConsts::default();
-        frag_push_consts.sun_normal = skydome.sun_normal;
-        frag_push_consts.time = skydome.time;
-        frag_push_consts.weather = skydome.weather;
+        frag_push_consts.sun_normal = skydome.val.sun_normal;
+        frag_push_consts.time = skydome.val.time;
+        frag_push_consts.weather = skydome.val.weather;
 
         self.cmd_buf.next_subpass(SubpassContents::Inline);
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
@@ -892,10 +898,10 @@ where
         self.cmd_buf.bind_vertex_buffers(
             0,
             once((
-                buf.as_ref(),
+                skydome.vertex_buf.as_ref(),
                 SubRange {
                     offset: 0,
-                    size: Some(*buf_len),
+                    size: Some(skydome.vertex_buf_len),
                 },
             )),
         );
@@ -918,13 +924,13 @@ where
     unsafe fn submit_skydome_write(&mut self) {
         trace!("submit_skydome_write");
 
-        let (_, buf, len, _) = self.skydome.as_mut().unwrap();
+        let skydome = self.skydome.as_mut().unwrap();
 
-        buf.write_range(
+        skydome.vertex_buf.write_range(
             &mut self.cmd_buf,
             PipelineStage::VERTEX_INPUT,
             BufferAccess::VERTEX_BUFFER_READ,
-            0..*len,
+            0..skydome.vertex_buf_len,
         );
     }
 
@@ -1331,42 +1337,41 @@ where
         graphics: &Graphics,
         materials: impl Iterator<Item = &'m Material<P>>,
     ) {
-        // for (idx, material) in materials.enumerate() {
-        //     let set = graphics.desc_set(idx);
-        //     device().write_descriptor_sets(vec![
-        //         DescriptorSetWrite {
-        //             set,
-        //             binding: 0,
-        //             array_offset: 0,
-        //             descriptors: once(Descriptor::CombinedImageSampler(
-        //                 material.color.borrow().as_2d_color().as_ref(),
-        //                 Layout::ShaderReadOnlyOptimal,
-        //                 graphics.sampler(0).as_ref(),
-        //             )),
-        //         },
-        //         DescriptorSetWrite {
-        //             set,
-        //             binding: 1,
-        //             array_offset: 0,
-        //             descriptors: once(Descriptor::CombinedImageSampler(
-        //                 material.metal_rough.borrow().as_2d_color().as_ref(),
-        //                 Layout::ShaderReadOnlyOptimal,
-        //                 graphics.sampler(1).as_ref(),
-        //             )),
-        //         },
-        //         DescriptorSetWrite {
-        //             set,
-        //             binding: 2,
-        //             array_offset: 0,
-        //             descriptors: once(Descriptor::CombinedImageSampler(
-        //                 material.normal.borrow().as_2d_color().as_ref(),
-        //                 Layout::ShaderReadOnlyOptimal,
-        //                 graphics.sampler(2).as_ref(),
-        //             )),
-        //         },
-        //     ]);
-        // }
-        todo!("DONT CHECKIN");
+        for (idx, material) in materials.enumerate() {
+            let set = graphics.desc_set(idx);
+            device().write_descriptor_sets(vec![
+                DescriptorSetWrite {
+                    set,
+                    binding: 0,
+                    array_offset: 0,
+                    descriptors: once(Descriptor::CombinedImageSampler(
+                        material.color.borrow().as_2d_color().as_ref(),
+                        Layout::ShaderReadOnlyOptimal,
+                        graphics.sampler(0).as_ref(),
+                    )),
+                },
+                DescriptorSetWrite {
+                    set,
+                    binding: 1,
+                    array_offset: 0,
+                    descriptors: once(Descriptor::CombinedImageSampler(
+                        material.metal_rough.borrow().as_2d_color().as_ref(),
+                        Layout::ShaderReadOnlyOptimal,
+                        graphics.sampler(1).as_ref(),
+                    )),
+                },
+                DescriptorSetWrite {
+                    set,
+                    binding: 2,
+                    array_offset: 0,
+                    descriptors: once(Descriptor::CombinedImageSampler(
+                        material.normal.borrow().as_2d_color().as_ref(),
+                        Layout::ShaderReadOnlyOptimal,
+                        graphics.sampler(2).as_ref(),
+                    )),
+                },
+            ]);
+        }
     }
 
     unsafe fn write_skydome_descriptors(graphics: &Graphics, skydome: &Skydome<P>) {
@@ -1508,7 +1513,8 @@ where
 
 impl<P> Clone for Skydome<P>
 where
-    P: SharedPointerKind {
+    P: SharedPointerKind,
+{
     fn clone(&self) -> Self {
         Self {
             cloud: [Shared::clone(&self.cloud[0]), Shared::clone(&self.cloud[1])],
@@ -1527,4 +1533,14 @@ where
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.write_str("Skydome")
     }
+}
+
+struct SkydomeBuf<P>
+where
+    P: 'static + SharedPointerKind,
+{
+    val: Skydome<P>,
+    vertex_buf: Lease<Data, P>,
+    vertex_buf_len: u64,
+    vertex_buf_write: bool,
 }

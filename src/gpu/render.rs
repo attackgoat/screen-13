@@ -211,6 +211,10 @@ where
             .unwrap()
     }
 
+    // TODO: Remove this function, allow using Renders as textures naturually
+    /// This is going to change soon! Possibly just go away and be used implicitly without this
+    /// function.
+    #[allow(clippy::type_complexity)]
     pub(crate) fn resolve(self) -> (Lease<Texture2d, P>, Vec<Box<dyn Op<P>>>) {
         (self.target, self.ops)
     }

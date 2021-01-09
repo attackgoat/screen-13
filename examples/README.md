@@ -1,8 +1,5 @@
 # Screen 13 Example Code
 
-**NOTE**: THIS GUIDE IS IN PROGRESS AND MAY HAVE DEFECTS. PLEASE HELP BY OPENING ISSUES IF YOU SEE
-THEM. THANK YOU!
-
 This guide provides patterns and samples that you can use to gain a further understanding of the
 features Screen 13 provides and how to use them effectively. Any developer using Screen 13 for the
 first time should understand these concepts. For a complete reference refer to the
@@ -25,7 +22,7 @@ Most users will use Screen 13 with a regular operating system window or using a 
 mode, but for this guide we will use a headless context. A GPU can be constructed like this:
 
 ```rust
-use screen_13::Gpu;
+use screen_13::prelude_rc::*;
 
 let gpu = Gpu::offscreen();
 ```
@@ -36,7 +33,7 @@ Still image rendering is accomplished using the canvas-like Render type, which a
 a graph of commands. The only required parameter is the image dimensions in pixels.
 
 ```rust
-let dims = (128, 128);
+let dims = (128u32, 128u32);
 let mut render = gpu.render(dims);
 ```
 
@@ -84,8 +81,6 @@ render.clear().record();
 Unlike `CLS`, you are able to specify a color using the command builder pattern:
 
 ```rust
-use screen_13::Color;
-
 let cornflower_blue: Color = (100, 149, 237).into();
 render.clear().with(cornflower_blue).record();
 ```
@@ -226,15 +221,10 @@ Once an image has been loaded, it can be efficiently written onto a `Render` ins
 usage is:
 
 ```rust
-use screen_13::gpu::Write;
-
 render.write().record(&mut [
     Write::position(&cat, (5.0, 5.0))
 ]);
 ```
-
-_NOTE:_ For this code to function we should have already wrapped `cat` in a shared `BitmapRef` as
-described later.
 
 _NOTE_: To write a `Render` to another render you must first resolve the source render, as we did
 with `bar` earlier:
@@ -282,29 +272,22 @@ the image would be loaded like so:
 let teapot = gpu.read_model(&mut pak, "teapot");
 ```
 
-#### Shared references
+#### Physically Based Rendering Materials
 
-Bitmaps, as well as models, must be wrapped in `Rc` containers so they can be shared among the
-required graphics pipeline stages. For this purpose we provide the `BitmapRef` and `ModelRef` type
-re-definitions. Using them is simple and allows bitmap and model cloneability:
+Materials may be created easily:
 
 ```rust
-use screen_13::gpu::BitmapRef;
-use screen_13::gpu::ModelRef;
-use screen_13::gpu::Material;
-
 // Loading new assets (notice use of IDs and how metalness/roughness have been merged for us)
 let glossy = pak.material("glossy");
 let metal_rough = gpu.read_bitmap_with_id(&mut pak, glossy.metal_rough);
 let normal = gpu.read_bitmap_with_id(&mut pak, glossy.normal);
 
-// Make sharable material and model references
+// Make a sharable material
 let glossy = Material {
-    color: BitmapRef::new(cat),
-    metal_rough: BitmapRef::new(metal_rough),
-    normal: BitmapRef::new(normal),
+    color: cat,
+    metal_rough,
+    normal,
 };
-let teapot = ModelRef::new(teapot);
 ```
 
 #### Using models with render instances
@@ -313,10 +296,6 @@ Once a model has been loaded, it can be efficiently drawn onto a `Render` instan
 is:
 
 ```rust
-use screen_13::camera::Perspective;
-use screen_13::gpu::Draw;
-use screen_13::math::Mat4;
-
 let camera = Perspective::default();
 let transform = Mat4::identity();
 

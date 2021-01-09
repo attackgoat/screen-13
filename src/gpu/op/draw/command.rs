@@ -340,7 +340,8 @@ where
 
 impl<P> Clone for Material<P>
 where
-    P: SharedPointerKind {
+    P: SharedPointerKind,
+{
     fn clone(&self) -> Self {
         Self {
             color: Shared::clone(&self.color),
@@ -366,10 +367,9 @@ where
     P: SharedPointerKind,
 {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        // self.color.as_ptr().hash(state);
-        // self.metal_rough.as_ptr().hash(state);
-        // self.normal.as_ptr().hash(state);
-        todo!("DONT CHECKIN");
+        self.color.as_ptr().hash(state);
+        self.metal_rough.as_ptr().hash(state);
+        self.normal.as_ptr().hash(state);
     }
 }
 
@@ -378,18 +378,17 @@ where
     P: SharedPointerKind,
 {
     fn cmp(&self, other: &Self) -> Ordering {
-        // let mut res = self.color.cmp(&other.color);
-        // if res != Ordering::Less {
-        //     return res;
-        // }
+        let mut res = self.color.as_ptr().cmp(&other.color.as_ptr());
+        if res != Ordering::Less {
+            return res;
+        }
 
-        // res = self.metal_rough.cmp(&other.metal_rough);
-        // if res != Ordering::Less {
-        //     return res;
-        // }
+        res = self.metal_rough.as_ptr().cmp(&other.metal_rough.as_ptr());
+        if res != Ordering::Less {
+            return res;
+        }
 
-        // self.normal.cmp(&other.normal)
-        todo!("DONT CHECKIN");
+        self.normal.as_ptr().cmp(&other.normal.as_ptr())
     }
 }
 
@@ -401,7 +400,7 @@ where
         let color = Shared::ptr_eq(&self.color, &other.color) as u8;
         let normal = Shared::ptr_eq(&self.normal, &other.normal) as u8;
         let metal_rough = Shared::ptr_eq(&self.metal_rough, &other.metal_rough) as u8;
-        
+
         color * normal * metal_rough == 1
     }
 }
