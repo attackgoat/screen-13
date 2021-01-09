@@ -261,8 +261,6 @@ pub mod ptr {
     }
 }
 
-pub(crate) mod error;
-
 mod config;
 mod program;
 
@@ -488,13 +486,16 @@ where
     unsafe fn present(&mut self, frame: Render<P>) -> Vec<Box<dyn Op<P>>> {
         let (mut target, ops) = frame.resolve();
 
-        // We work-around this condition, below, but it is not expected that a well-formed program would ever do this
+        // We work-around this condition, below, but it is not expected that a well-formed program
+        // would ever do this
         debug_assert!(!ops.is_empty());
 
-        // If the render had no operations performed on it then it is uninitialized and we don't need to do anything with it
+        // If the render had no operations performed on it then it is uninitialized and we don't
+        // need to do anything with it
         if !ops.is_empty() {
-            // Target can be dropped directly after presentation, it will return to the pool. If for some reason the pool
-            // is drained before the hardware is finished with target the underlying texture is still referenced by the operations.
+            // Target can be dropped directly after presentation, it will return to the pool. If for
+            // some reason the pool is drained before the hardware is finished with target the
+            // underlying texture is still referenced by the operations.
             self.swapchain.present(&mut target);
         }
 
@@ -503,7 +504,7 @@ where
 
     /// Runs a program starting with the given `DynScreen`.
     ///
-    /// Immediately after this call, `draw` will be called on the screen, followed by `update`, ad
+    /// Immediately after this call, `render` will be called on the screen, followed by `update`, ad
     /// infinium. This call does not return to the calling code.
     ///
     /// ## Examples
@@ -636,19 +637,20 @@ where
 /// `Screen` are provided to `Engine` for normal use, but can also be owned in a parent-child
 /// relationship to create sub-screens or to dynamically render.
 ///
-/// _NOTE:_ See the `fx` module for some pre-built examples of such screen ownership structures.
+/// **_NOTE:_** See the [`fx`] module for some pre-built examples of such screen ownership
+/// structures.
 ///
 /// While a program event loop is running the `Screen` functions are called repeatedly in this
 /// order:
-/// 1. `render`: Provide a `Render` instance in which rendering operations have been recorded.
-/// 2. `update`: Respond to window input and either return `self` (no change) or a new `DynScreen`.
+/// 1. `render`: _Provide a `Render` instance in which rendering operations have been recorded_
+/// 2. `update`: _Respond to window input and either return `self` (no change) or a new `DynScreen`_
 ///
 /// ## Implementing `Screen`
 ///
 /// Implementors of `Screen` invariably need to access resources loaded or read from the `Gpu`,
 /// such as bitmaps and models. To accomplish resource access you might either offer a loading
 /// function or perform the needed loads at runtime, using `RefCell` to gain interior mutability
-/// during the `render(...)` call.
+/// during the `render` call.
 ///
 /// Example load before `render`:
 ///
@@ -711,8 +713,8 @@ where
     /// }
     /// ```
     ///
-    /// _NOTE:_ It is considered undefined behavior to return a render which has not recorded any
-    /// commands, as shown:
+    /// **_NOTE:_** It is considered undefined behavior to return a render which has not recorded
+    /// any commands, as shown:
     ///
     /// ```
     /// fn render(&self, gpu: &Gpu, dims: Extent) -> Render {
@@ -725,8 +727,10 @@ where
     fn render(&self, gpu: &Gpu<P>, dims: Extent) -> Render<P>;
 
     /// Responds to user input and either provides a new `DynScreen` instance or `self` to indicate
-    /// no-change. After `update(...)`, `render(...)` will be called on the returned screen, and
-    /// the previous screen will be dropped.
+    /// no-change.
+    ///
+    /// After `update`, `render` will be called on the returned screen, and the previous screen will
+    /// be dropped.
     ///
     /// ## Examples
     ///

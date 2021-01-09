@@ -21,17 +21,6 @@
 //!   1. Submit all commands
 //! - `submit_X(&self)`: functions which contain minimal "if" cases and logic; simple calls only.
 //!
-//! ## Note About `Rc`
-//!
-//! Screen 13 currently uses the `Rc` type in order to synchronize work between various operations.
-//!
-//! Unfortunately, this limits Screen 13 resources from being shared across threads. We could
-//! simply replace those references with `Arc` and call it a day (that would work), but I'm not yet
-//! sure that's a good pattern, it would introduce unessecery resource synchronization.
-//!
-//! I think as the API matures a better solution will become clearer, just not sure which types I
-//! want to be `Send` yet. The driver really could be `Sync`.
-//!
 //! ## Note About `def`
 //!
 //! Internally Screen 13 uses pre-defined render passes and pipelines to function.
@@ -447,12 +436,7 @@ where
         todo!("DONT CHECKIN");
     }
 
-    // TODO: Enable sharing between this and "on-screen"
     /// Creates a `Gpu` for off-screen or headless use.
-    ///
-    /// _NOTE_: Resources loaded or read from a `Gpu` created in headless or screen modes cannot be
-    /// used with other instances, including of the same mode. This is a limitation only because
-    /// the code to share the resources properly has not be started yet.
     pub fn offscreen() -> Self {
         unsafe {
             INIT.call_once(|| {
@@ -871,7 +855,7 @@ where
     /// ## Examples:
     ///
     /// ```
-    /// use screen_13::prelude_all::*;
+    /// use screen_13::prelude_rc::*;
     ///
     /// struct Foo;
     ///
@@ -902,7 +886,7 @@ where
     /// ## Examples:
     ///
     /// ```
-    /// use screen_13::prelude_all::*;
+    /// use screen_13::prelude_rc::*;
     ///
     /// #[derive(Default)]
     /// struct Foo(Cache);

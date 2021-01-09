@@ -89,8 +89,10 @@ where
             .unwrap()
     }
 
-    /// Copies the given texture onto this Render. The implementation uses a copy operation
-    /// and is more efficient than `write` when there is no blending or fractional pixels.
+    /// Copies the given texture onto this Render.
+    ///
+    /// The implementation uses a copy operation and is more efficient than `write` when there is no
+    /// blending or fractional pixels.
     pub fn copy(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
@@ -123,8 +125,12 @@ where
         self.target.borrow().dims()
     }
 
-    /// Draws a batch of 3D elements. There is no need to give any particular order to the individual commands and the
-    /// implementation may sort and re-order them, so do not count on indices remaining the same after this call completes.
+    /// Draws a batch of 3D elements.
+    ///
+    /// **_NOTE:_** The implementation may re-order the provided draws, so do not rely on existing
+    /// indices after this call completes.
+    ///
+    /// **_NOTE:_** Not fully implemented yet
     pub fn draw(&mut self, #[cfg(feature = "debug-names")] name: &str) -> &mut DrawOp<P> {
         let mut op = unsafe {
             let pool = self.take_pool();
@@ -171,8 +177,10 @@ where
             .unwrap()
     }
 
+    // TODO: Specialize for radial too?
     /// Draws a linear gradient on this Render using the given path.
-    /// TODO: Specialize for radial too?
+    ///
+    /// **_NOTE:_** Not fully implemented yet
     pub fn gradient<C>(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
@@ -213,8 +221,8 @@ where
             .unwrap_or_else(|| self.ops.last_mut().unwrap().take_pool())
     }
 
+    // TODO: Accept a list of font/color/text/pos combos so we can batch many at once?
     /// Draws bitmapped text on this Render using the given details.
-    /// TODO: Accept a list of font/color/text/pos combos so we can batch many at once?
     pub fn text<C, O>(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
@@ -248,8 +256,10 @@ where
             .unwrap()
     }
 
-    /// Draws the given texture writes onto this Render. Note that the given texture writes will all be applied at once and there
-    /// is no 'layering' of the individual writes going on - so if you need blending between writes you must submit a new batch.
+    /// Draws the given texture writes onto this Render.
+    ///
+    /// **_Note:_** The given texture writes will all be applied at once without 'layering' of the
+    /// individual writes. If you need blending between writes you must submit multiple batches.
     pub fn write(&mut self, #[cfg(feature = "debug-names")] name: &str) -> &mut WriteOp<P> {
         let mut op = unsafe {
             let pool = self.take_pool();
