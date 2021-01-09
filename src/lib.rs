@@ -226,8 +226,14 @@ pub mod ptr {
     where
         P: SharedPointerKind,
     {
+        /// Returns a copy of the value.
         pub fn clone(shared: &Self) -> Self {
             shared.clone()
+        }
+
+        /// Returns `true` if two `Shared` instances point to the same underlying memory.
+        pub fn ptr_eq(lhs: &Self, rhs: &Self) -> bool {
+            SharedPointer::ptr_eq(&lhs.0, &rhs.0)
         }
     }
 

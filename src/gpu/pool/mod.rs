@@ -399,8 +399,7 @@ where
         let item = if let Some(item) = self.compilers.borrow_mut().pop_back() {
             item
         } else {
-            //Default::default()
-            todo!("DONT CHECKIN");
+            Default::default()
         };
 
         Lease::new(item, &self.compilers)

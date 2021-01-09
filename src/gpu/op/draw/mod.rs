@@ -122,7 +122,7 @@ where
 
 impl<P> DrawOp<P>
 where
-    P: SharedPointerKind,
+    P: 'static + SharedPointerKind,
 {
     /// # Safety
     /// None
@@ -232,9 +232,8 @@ where
             (buf, buf_len, data.is_some())
         };
 
-        //self.skydome = Some((val.clone(), buf, buf_len, write));
-        //self
-        todo!("DONT CHECKIN");
+        self.skydome = Some((val.clone(), buf, buf_len, write));
+        self
     }
 
     /// Submits the given draws for hardware processing.
@@ -1273,60 +1272,59 @@ where
         compute: &Compute,
         vertex_bufs: impl Iterator<Item = CalcVertexAttrsDescriptors<'v, P>>,
     ) {
-        // for (idx, vertex_buf) in vertex_bufs.enumerate() {
-        //     let set = compute.desc_set(idx);
-        //     device().write_descriptor_sets(vec![
-        //         DescriptorSetWrite {
-        //             set,
-        //             binding: 0,
-        //             array_offset: 0,
-        //             descriptors: once(Descriptor::Buffer(
-        //                 vertex_buf.idx_buf.as_ref(),
-        //                 SubRange {
-        //                     offset: 0,
-        //                     size: Some(vertex_buf.idx_len),
-        //                 },
-        //             )),
-        //         },
-        //         DescriptorSetWrite {
-        //             set,
-        //             binding: 1,
-        //             array_offset: 0,
-        //             descriptors: once(Descriptor::Buffer(
-        //                 vertex_buf.src.as_ref(),
-        //                 SubRange {
-        //                     offset: 0,
-        //                     size: Some(vertex_buf.src_len),
-        //                 },
-        //             )),
-        //         },
-        //         DescriptorSetWrite {
-        //             set,
-        //             binding: 2,
-        //             array_offset: 0,
-        //             descriptors: once(Descriptor::Buffer(
-        //                 vertex_buf.dst.as_ref(),
-        //                 SubRange {
-        //                     offset: 0,
-        //                     size: Some(vertex_buf.dst_len),
-        //                 },
-        //             )),
-        //         },
-        //         DescriptorSetWrite {
-        //             set,
-        //             binding: 3,
-        //             array_offset: 0,
-        //             descriptors: once(Descriptor::Buffer(
-        //                 vertex_buf.write_mask.as_ref(),
-        //                 SubRange {
-        //                     offset: 0,
-        //                     size: Some(vertex_buf.write_mask_len),
-        //                 },
-        //             )),
-        //         },
-        //     ]);
-        // }
-        todo!("DONT CHECKIN");
+        for (idx, vertex_buf) in vertex_bufs.enumerate() {
+            let set = compute.desc_set(idx);
+            device().write_descriptor_sets(vec![
+                DescriptorSetWrite {
+                    set,
+                    binding: 0,
+                    array_offset: 0,
+                    descriptors: once(Descriptor::Buffer(
+                        vertex_buf.idx_buf.as_ref(),
+                        SubRange {
+                            offset: 0,
+                            size: Some(vertex_buf.idx_len),
+                        },
+                    )),
+                },
+                DescriptorSetWrite {
+                    set,
+                    binding: 1,
+                    array_offset: 0,
+                    descriptors: once(Descriptor::Buffer(
+                        vertex_buf.src.as_ref(),
+                        SubRange {
+                            offset: 0,
+                            size: Some(vertex_buf.src_len),
+                        },
+                    )),
+                },
+                DescriptorSetWrite {
+                    set,
+                    binding: 2,
+                    array_offset: 0,
+                    descriptors: once(Descriptor::Buffer(
+                        vertex_buf.dst.as_ref(),
+                        SubRange {
+                            offset: 0,
+                            size: Some(vertex_buf.dst_len),
+                        },
+                    )),
+                },
+                DescriptorSetWrite {
+                    set,
+                    binding: 3,
+                    array_offset: 0,
+                    descriptors: once(Descriptor::Buffer(
+                        vertex_buf.write_mask.as_ref(),
+                        SubRange {
+                            offset: 0,
+                            size: Some(vertex_buf.write_mask_len),
+                        },
+                    )),
+                },
+            ]);
+        }
     }
 
     unsafe fn write_model_material_descriptors<'m>(
@@ -1477,7 +1475,6 @@ struct LineInstruction(u32);
 /// Defines a somewhat fancy skydome.
 ///
 /// This skydome is based on https://github.com/kosua20/opengl-skydome
-#[derive(Clone)]
 pub struct Skydome<P>
 where
     P: 'static + SharedPointerKind,
@@ -1507,6 +1504,20 @@ where
     ///
     /// TODO: Make this regular 0.0 to 1.0
     pub weather: f32,
+}
+
+impl<P> Clone for Skydome<P>
+where
+    P: SharedPointerKind {
+    fn clone(&self) -> Self {
+        Self {
+            cloud: [Shared::clone(&self.cloud[0]), Shared::clone(&self.cloud[1])],
+            moon: Shared::clone(&self.moon),
+            sun: Shared::clone(&self.sun),
+            tint: [Shared::clone(&self.tint[0]), Shared::clone(&self.tint[1])],
+            ..*self
+        }
+    }
 }
 
 impl<P> Debug for Skydome<P>

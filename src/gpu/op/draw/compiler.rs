@@ -953,8 +953,7 @@ where
                         .materials
                         .binary_search_by(|probe| probe.cmp(&cmd.material))
                     {
-                        // self.materials.insert(idx, Material::clone(&cmd.material));
-                        todo!("DONT CHECKIN");
+                        self.materials.insert(idx, Material::clone(&cmd.material));
                     }
 
                     self.code.push(Asm::BindModelDescriptors(idx));
@@ -963,17 +962,15 @@ where
             } else {
                 self.code.push(Asm::BindModelDescriptors(idx));
                 material = Some(&cmd.material);
-                // self.materials.push(cmd.material.clone());
-                todo!("DONT CHECKIN");
+                self.materials.push(Material::clone(&cmd.material));
             }
 
             // Emit 'model buffers have changed' assembly code
             if let Some(curr_model) = model.as_ref() {
-                // if !Shared::ptr_eq(curr_model, &cmd.model) {
-                //     self.code.push(Asm::BindModelBuffers(idx));
-                //     model = Some(&cmd.model);
-                // }
-                todo!("DONT CHECKIN");
+                if !Shared::ptr_eq(curr_model, &cmd.model) {
+                    self.code.push(Asm::BindModelBuffers(idx));
+                    model = Some(&cmd.model);
+                }
             } else {
                 self.code.push(Asm::BindModelBuffers(idx));
                 model = Some(&cmd.model);

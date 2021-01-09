@@ -324,7 +324,6 @@ pub struct LineVertex {
 ///
 /// _NOTE:_ Temporary. I think this will soon become an enum with more options, reflectance probes,
 /// shadow maps, lots more
-#[derive(Clone)]
 pub struct Material<P>
 where
     P: 'static + SharedPointerKind,
@@ -337,6 +336,18 @@ where
 
     /// A standard three channel normal map.
     pub normal: Shared<Bitmap<P>, P>,
+}
+
+impl<P> Clone for Material<P>
+where
+    P: SharedPointerKind {
+    fn clone(&self) -> Self {
+        Self {
+            color: Shared::clone(&self.color),
+            metal_rough: Shared::clone(&self.metal_rough),
+            normal: Shared::clone(&self.normal),
+        }
+    }
 }
 
 impl<P> Debug for Material<P>
@@ -387,10 +398,11 @@ where
     P: SharedPointerKind,
 {
     fn eq(&self, other: &Self) -> bool {
-        // self.color == other.color
-        //     && self.normal == other.normal
-        //     && self.metal_rough == other.metal_rough
-        todo!("DONT CHECKIN");
+        let color = Shared::ptr_eq(&self.color, &other.color) as u8;
+        let normal = Shared::ptr_eq(&self.normal, &other.normal) as u8;
+        let metal_rough = Shared::ptr_eq(&self.metal_rough, &other.metal_rough) as u8;
+        
+        color * normal * metal_rough == 1
     }
 }
 
