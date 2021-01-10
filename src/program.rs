@@ -65,7 +65,7 @@ impl<'a> TryFrom<&'a Icon<'_>> for WinitIcon {
 
 /// Program specifies the information required to start an event loop, and therefore an `Engine`.
 ///
-/// Remarks: The fullscreen/windowed setting this program describes may not be what Screen 13
+/// Remarks: The fullscreen/windowed setting this program describes may not be what _Screen 13_
 /// chooses at runtime if there is a previously written configuration file present.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Program<'a, 'b> {

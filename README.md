@@ -4,20 +4,21 @@
 [![Docs.rs](https://docs.rs/screen-13/badge.svg)](https://docs.rs/screen-13)
 [![LoC](https://tokei.rs/b1/github/attackgoat/screen-13?category=code)](https://github.com/attackgoat/screen-13)
 
-Screen 13 is an easy-to-use 2D/3D rendering engine in the spirit of QBasic.
+_Screen 13_ is an easy-to-use 2D/3D rendering engine in the spirit of QBasic.
 
 ## Overview
 
-Programs made using Screen 13 are built as regular executables using an _optional_ design-time asset
-baking process. Screen 13 provides all asset-baking logic and aims to provide wide support for
-texture formats, vertex formats, and other associated data. Baked assets are stored in `.pak` files.
+Programs made using _Screen 13_ are built as regular executables using an _optional_ design-time
+asset baking process. _Screen 13_ provides all asset-baking logic and aims to provide wide support
+for texture formats, vertex formats, and other associated data. Baked assets are stored in `.pak`
+files.
 
-Screen 13 is based on the [`gfx-rs`](https://github.com/gfx-rs/gfx) project, and as such targets
+_Screen 13_ is based on the [_`gfx-rs`_](https://github.com/gfx-rs/gfx) project, and as such targets
 native Vulkan, Metal, DirectX 12, OpenGL, WebGL, Android, and iOS targets, among others.
 
 ### Goals
 
-Screen 13 aims to provide a simple to use, although opinionated, ecosystem of tools and code that
+_Screen 13_ aims to provide a simple to use, although opinionated, ecosystem of tools and code that
 enable very high performance portable graphics programs for developers using the Rust programming
 language.
 
@@ -28,9 +29,9 @@ gamepad input must be handled by your code.
 ## Asset Baking
 
 Asset baking is the process of converting files from their native file formats into a runtime-ready
-format that is optimized for both speed and size. Currently Screen 13 uses a single file (or single
-HTTP/S endpoint) for all runtime assets. Assets are baked from `.toml` files which you can find
-examples of in the `examples/content` directory.
+format that is optimized for both speed and size. Currently _Screen 13_ uses a single file (or
+single HTTP/S endpoint) for all runtime assets. Assets are baked from `.toml` files which you can
+find examples of in the `examples/content` directory.
 
 ## Quick Start
 
@@ -38,26 +39,29 @@ Included are some examples you might find helpful:
 
 - `basic.rs` - Displays 'Hello, World!' on the screen. Please start here.
 - `ecs.rs` - Example of integration with a third-party ECS library
-  ([`hecs`](https://crates.io/crates/hecs), which is _excellent_).
-- `headless.rs` - Rendering without an operating system window, saving to disk.
+  ([_`hecs`_](https://crates.io/crates/hecs), which is _excellent_).
+- `headless.rs` - Renders without an operating system window, saves to disk.
 - `triangle.rs` - Loads a textured triangle at runtime, with no associated `.pak` file.
 
 Some examples require an associated asset `.pak` file in order to run, so you will need to run the
 example like so:
 
 ```bash
-cargo run examples/content/basic.toml
-cargo run --example basic
+cargo run --release examples/content/basic.toml
+cargo run --release --example basic
 ```
 
 These commands do the following:
 
-- Build the Screen 13 engine (_runtime_) and executable code (_design-time_)
+- Build the _Screen 13_ engine (_runtime_) and executable code (_design-time_)
 - Bake the assets from `basic.toml` into `basic.pak`
 - Runs the `basic` example (Close window to exit)
 
 See the example code for more information, including a helpful
 [getting started guide](examples/README.md).
+
+**_NOTE:_** Required development packages and libraries are listed in the _getting started guide_.
+All new users should read and understand the guide.
 
 ## Roadmap/Status/Notes
 
@@ -106,49 +110,21 @@ This engine is very young and is likely to change as development continues.
 
 ## Optional features
 
-Screen 13 puts a lot of functionality behind optional features in order to optimize compile time for
+_Screen 13_ puts a lot of functionality behind optional features in order to optimize compile time for
 the most common use cases. The following features are available.
 
 _NOTE_: The deferred and forward renderers have separate code paths and you can choose either on a
 render-by-render basis.
 
-- **`auto-cull`** *(enabled by default)* — Enables draw call camera frustum culling.
+- **`auto-cull`** *(enabled by default)* — Enables draw call camera frustum culling. TODO.
 - **`debug-names`** — Name parameter added to most graphics calls, integrates with your graphics
   debugger.
 - **`deferred-3d`** *(enabled by default)* — Ability to draw models and lights using a deferred
-  technique.
+  technique. IN PROGRESS.
 - **`forward-3d`** *(enabled by default)* — Same as the deferred renderer, but using a forward
-  technique.
-
-## Content Baking Procedures
-
-A main project `.toml` file is required. All content loaded at runtime must be present in this file.
-
-Additional `.toml` asset files are referenced using either relative (`../path/file.ext`) or absolute
-(`/path/file.ext`) format, where the root is the same directory as the main project `.toml` file.
-
-### Brotli Compression
-
-Higher compression ratio but somewhat slow during compression. Compresses 108mb to 3.8mb in a
-real-world test.
-
-```toml
-[content]
-compression = 'brotli'
-buf_size = 4096
-quality = 10
-window_size = 20
-```
-
-### Snap Compression
-
-Faster during compression and lower compression ratio compared to Brotli. Compresses 108mb to 12mb
-in a real-world test. Best for use when re-building assets often.
-
-```toml
-[content]
-compression = 'snap'
-```
+  technique. TODO.
+- **`multi-monitor`** — Extends the `Screen` trait to support multiple viewports. TODO.
+- **`xr`** — Additional types and functions related to augmented and virtual reality. TODO.
 
 ## History
 

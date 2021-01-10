@@ -1,4 +1,4 @@
-//! Screen 13 offers a number of vertex formats for use loading models.
+//! Vertex format types for loading models.
 //!
 //! Additional vertex formats will be released to support new features in the future.
 //!

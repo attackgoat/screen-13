@@ -162,23 +162,50 @@ pub mod prelude_all {
 pub mod prelude_arc {
     pub use super::prelude_all::*;
 
-    /// Helpful type alias of `gpu::draw::Draw::<ArcK>`; see module documentation.
+    /// Helpful type alias of `gpu::Bitmap<ArcK>`; see module documentation.
+    pub type Bitmap = super::gpu::Bitmap<ArcK>;
+
+    /// Helpful type alias of `gpu::Cache<ArcK>`; see module documentation.
+    pub type Cache = super::gpu::Cache<ArcK>;
+
+    /// Helpful type alias of `gpu::draw::Draw<ArcK>`; see module documentation.
     pub type Draw = super::gpu::draw::Draw<ArcK>;
 
-    /// Helpful type alias of `DynScreen::<ArcK>`; see module documentation.
+    /// Helpful type alias of `DynScreen<ArcK>`; see module documentation.
     pub type DynScreen = super::DynScreen<ArcK>;
 
-    /// Helpful type alias of `Engine::<ArcK>`; see module documentation.
+    /// Helpful type alias of `Engine<ArcK>`; see module documentation.
     pub type Engine = super::Engine<ArcK>;
 
-    /// Helpful type alias of `gpu::text::Font::<ArcK>`; see module documentation.
+    /// Helpful type alias of `fx::Fade<ArcK>`; see module documentation.
+    pub type Fade = super::fx::Fade<ArcK>;
+
+    /// Helpful type alias of `gpu::text::Font<ArcK>`; see module documentation.
     pub type Font = super::gpu::text::Font<ArcK>;
 
-    /// Helpful type alias of `gpu::Gpu::<ArcK>`; see module documentation.
+    /// Helpful type alias of `gpu::Gpu<ArcK>`; see module documentation.
     pub type Gpu = super::gpu::Gpu<ArcK>;
 
-    /// Helpful type alias of `gpu::Render::<ArcK>`; see module documentation.
+    /// Helpful type alias of `gpu::draw::Material<ArcK>`; see module documentation.
+    pub type Material = super::gpu::draw::Material<ArcK>;
+
+    /// Helpful type alias of `gpu::draw::Mesh<ArcK>`; see module documentation.
+    pub type Mesh = super::gpu::draw::Mesh<ArcK>;
+
+    /// Helpful type alias of `gpu::Model<ArcK>`; see module documentation.
+    pub type Model = super::gpu::Model<ArcK>;
+
+    /// Helpful type alias of `gpu::draw::ModelCommand<ArcK>`; see module documentation.
+    pub type ModelCommand = super::gpu::draw::ModelCommand<ArcK>;
+
+    /// Helpful type alias of `gpu::Render<ArcK>`; see module documentation.
     pub type Render = super::gpu::Render<ArcK>;
+
+    /// Helpful type alias of `ptr::Shared<ArcK>`; see module documentation.
+    pub type Shared<T> = super::ptr::Shared<T, ArcK>;
+
+    /// Helpful type alias of `gpu::draw::Skydome<ArcK>`; see module documentation.
+    pub type Skydome = super::gpu::draw::Skydome<ArcK>;
 }
 
 /// Like [`prelude_all`], but specialized for [`std::rc::Rc`]-backed [`Gpu`] instances.
@@ -188,23 +215,50 @@ pub mod prelude_arc {
 pub mod prelude_rc {
     pub use super::prelude_all::*;
 
-    /// Helpful type alias of `gpu::draw::Draw::<RcK>`; see module documentation.
+    /// Helpful type alias of `gpu::Bitmap<RcK>`; see module documentation.
+    pub type Bitmap = super::gpu::Bitmap<RcK>;
+
+    /// Helpful type alias of `gpu::Cache<RcK>`; see module documentation.
+    pub type Cache = super::gpu::Cache<RcK>;
+
+    /// Helpful type alias of `gpu::draw::Draw<RcK>`; see module documentation.
     pub type Draw = super::gpu::draw::Draw<RcK>;
 
-    /// Helpful type alias of `DynScreen::<RcK>`; see module documentation.
+    /// Helpful type alias of `DynScreen<RcK>`; see module documentation.
     pub type DynScreen = super::DynScreen<RcK>;
 
-    /// Helpful type alias of `Engine::<RcK>`; see module documentation.
+    /// Helpful type alias of `Engine<RcK>`; see module documentation.
     pub type Engine = super::Engine<RcK>;
 
-    /// Helpful type alias of `gpu::text::Font::<RcK>`; see module documentation.
+    /// Helpful type alias of `fx::Fade<RcK>`; see module documentation.
+    pub type Fade = super::fx::Fade<RcK>;
+
+    /// Helpful type alias of `gpu::text::Font<RcK>`; see module documentation.
     pub type Font = super::gpu::text::Font<RcK>;
 
-    /// Helpful type alias of `gpu::Gpu::<RcK>`; see module documentation.
+    /// Helpful type alias of `gpu::Gpu<RcK>`; see module documentation.
     pub type Gpu = super::gpu::Gpu<RcK>;
 
-    /// Helpful type alias of `gpu::Render::<RcK>`; see module documentation.
+    /// Helpful type alias of `gpu::draw::Material<RcK>`; see module documentation.
+    pub type Material = super::gpu::draw::Material<RcK>;
+
+    /// Helpful type alias of `gpu::draw::Mesh<RcK>`; see module documentation.
+    pub type Mesh = super::gpu::draw::Mesh<RcK>;
+
+    /// Helpful type alias of `gpu::Model<RcK>`; see module documentation.
+    pub type Model = super::gpu::Model<RcK>;
+
+    /// Helpful type alias of `gpu::draw::ModelCommand<RcK>`; see module documentation.
+    pub type ModelCommand = super::gpu::draw::ModelCommand<RcK>;
+
+    /// Helpful type alias of `gpu::Render<RcK>`; see module documentation.
     pub type Render = super::gpu::Render<RcK>;
+
+    /// Helpful type alias of `ptr::Shared<RcK>`; see module documentation.
+    pub type Shared<T> = super::ptr::Shared<T, RcK>;
+
+    /// Helpful type alias of `gpu::draw::Skydome<RcK>`; see module documentation.
+    pub type Skydome = super::gpu::draw::Skydome<RcK>;
 }
 
 /// Shared reference (`Arc` and `Rc`) implementation based on

@@ -4,7 +4,7 @@ use {screen_13::prelude_rc::*, std::env::current_exe};
 fn main() -> ! {
     pretty_env_logger::init();
 
-    let engine = Engine::default();
+    let engine = Engine::new(Program::default().with_window());
 
     // Open the "pak" file which contains all game art, assests, and other content
     let mut pak = Pak::open(

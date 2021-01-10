@@ -6,7 +6,7 @@ extern crate log;
 #[macro_use]
 extern crate paste;
 
-/// This macro creates a HECS-compatible 'system' which adapts the HECS API to Screen 13
+/// This macro creates a HECS-compatible 'system' which adapts the HECS API to _Screen 13_
 ///
 /// _NOTES:_ Use `cargo expand` to see what this generates.
 macro_rules! ecs_sys {
@@ -27,15 +27,15 @@ macro_rules! ecs_sys {
 
                 #[derive(Default)]
                 pub struct System {
-                    [<$name:snake s>]: HashMap<[<$name Id>], Shared<[<$name>]<RcK>, RcK>>,
+                    [<$name:snake s>]: HashMap<[<$name Id>], Shared<[<$name>]>>,
                 }
 
                 impl System {
                     pub fn [<$name:snake>](
                         &self,
                         [<$name:snake>]: Ref
-                    ) -> Shared<[<$name>]<RcK>, RcK> {
-                        Shared::<[<$name>]<RcK>, RcK>::clone(
+                    ) -> Shared<[<$name>]> {
+                        Shared::<[<$name>]>::clone(
                             &self.[<$name:snake s>][&[<$name:snake>].id])
                     }
 
@@ -55,7 +55,7 @@ macro_rules! ecs_sys {
                         gpu: &Gpu,
                         pak: &mut PakFile,
                         key: K,
-                    ) -> Shared<[<$name>]<RcK>, RcK> {
+                    ) -> Shared<[<$name>]> {
                         let [<$name:snake>] = self.load(gpu, pak, key);
                         self.[<$name:snake>]([<$name:snake>])
                     }

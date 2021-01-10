@@ -23,7 +23,7 @@
 //!
 //! ## Note About `def`
 //!
-//! Internally Screen 13 uses pre-defined render passes and pipelines to function.
+//! Internally _Screen 13_ uses pre-defined render passes and pipelines to function.
 //!
 //! All of these definitions exist in the `def` module and are *great*, but inflexible. They only
 //! do what I programmed them to do. Lame.
@@ -192,10 +192,20 @@ unsafe fn init_gfx_hal() {
 
     let instance = &*INSTANCE.as_ptr();
     let mut adapters = instance.enumerate_adapters();
-    *ADAPTER.as_mut_ptr() = if !adapters.is_empty() {
-        adapters.remove(0)
-    } else {
+    *ADAPTER.as_mut_ptr() = if adapters.is_empty() {
         panic!("Unable to find GFX-HAL adapter");
+    } else {
+        debug!("{} Adapters found", adapters.len());
+        for (idx, adapter) in adapters.iter().enumerate() {
+            debug!(
+                "#{}: {} {:?}",
+                idx + 1,
+                &adapter.info.name,
+                adapter.info.device_type
+            );
+        }
+
+        adapters.remove(1)
     };
 }
 

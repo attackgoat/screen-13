@@ -4,7 +4,7 @@
 //!
 //! Programs which require the smallest download sizes and the fastest runtimes are incompatible
 //! with existing file formats, including `.gltf`. In order to provide the best asset compression
-//! and fastest load times Screen 13 implements a bespoke serialization engine.
+//! and fastest load times _Screen 13_ implements a bespoke serialization engine.
 //!
 //! **_NOTE:_** Basic encoding and compression has been implemented for all types; however bitmaps
 //! in particular have a lot of additional features to go. Hardware texture compression and
@@ -116,8 +116,8 @@
 //!
 //! ### Materials
 //!
-//! Materials are used while rendering models as Screen 13 does not retain any material information
-//! stored in the model source file, other than texture coordinates.
+//! Materials are used while rendering models as _Screen 13_ does not retain any material
+//! information stored in the model source file, other than texture coordinates.
 //!
 //! ```text
 //! [material]
