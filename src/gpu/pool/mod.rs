@@ -12,14 +12,14 @@ pub use self::lease::Lease;
 use {
     self::{layouts::Layouts, skydome::SKYDOME},
     super::{
+        adapter,
         def::{
             render_pass, CalcVertexAttrsComputeMode, Compute, ComputeMode, Graphics, GraphicsMode,
             RenderPassMode,
         },
         driver::{CommandPool, DescriptorPool, Fence, Memory, RenderPass},
         op::draw::Compiler,
-        physical_device, queue_family, BlendMode, Data, MaskMode, MatteMode, Texture, Texture2d,
-        TextureRef,
+        queue_family, BlendMode, Data, MaskMode, MatteMode, Texture, Texture2d, TextureRef,
     },
     crate::{math::Extent, ptr::Shared},
     archery::SharedPointerKind,
@@ -141,7 +141,7 @@ where
                 }
 
                 for fmt in desired_fmts.iter() {
-                    let props = physical_device().format_properties(Some(*fmt));
+                    let props = adapter().physical_device.format_properties(Some(*fmt));
                     if is_compatible(props, features) {
                         // #[cfg(debug_assertions)]
                         // trace!(
@@ -344,8 +344,10 @@ where
 
                     let mut compatible_fmts = vec![];
                     for fmt in all_fmts.iter() {
-                        if is_compatible(physical_device().format_properties(Some(*fmt)), features)
-                        {
+                        if is_compatible(
+                            adapter().physical_device.format_properties(Some(*fmt)),
+                            features,
+                        ) {
                             compatible_fmts.push(*fmt);
                         }
                     }

@@ -1,11 +1,12 @@
 use {
     super::{
+        adapter,
         def::{push_const::Mat4PushConst, render_pass::present, Graphics},
         device,
         driver::{
             bind_graphics_descriptor_set, CommandPool, Fence, Framebuffer2d, RenderPass, Semaphore,
         },
-        physical_device, queue_family, queue_mut, Surface, Texture2d,
+        queue_family, queue_mut, Surface, Texture2d,
     },
     crate::math::{vec3, CoordF, Extent, Mat4},
     gfx_hal::{
@@ -29,7 +30,7 @@ use {
 // TODO: Test things while fiddling with the result of this function
 unsafe fn pick_format(surface: &Surface) -> Format {
     surface
-        .supported_formats(physical_device())
+        .supported_formats(&adapter().physical_device)
         .map_or(Format::Rgba8Srgb, |formats| {
             *formats
                 .iter()
@@ -81,14 +82,14 @@ impl Swapchain {
 
         let mut needs_configuration = false;
         let fmt = pick_format(&surface);
-        let caps = surface.capabilities(physical_device());
+        let caps = surface.capabilities(&adapter().physical_device);
         let swap_config = swapchain_config(caps, dims, fmt, image_count);
         surface
             .configure_swapchain(device(), swap_config)
             .unwrap_or_else(|_| needs_configuration = true);
 
         let supported_fmts = surface
-            .supported_formats(physical_device())
+            .supported_formats(&adapter().physical_device)
             .unwrap_or_default();
 
         let desc_sets = 1;
@@ -137,7 +138,7 @@ impl Swapchain {
         // Update the format as it may have changed
         self.fmt = pick_format(&self.surface);
 
-        let caps = self.surface.capabilities(physical_device());
+        let caps = self.surface.capabilities(&adapter().physical_device);
         let swap_config = swapchain_config(caps, self.dims, self.fmt, self.images.len() as _);
         if let Err(e) = self.surface.configure_swapchain(device(), swap_config) {
             warn!("Error configuring swapchain {:?}", e);
@@ -149,7 +150,7 @@ impl Swapchain {
 
         self.supported_fmts = self
             .surface
-            .supported_formats(physical_device())
+            .supported_formats(&adapter().physical_device)
             .unwrap_or_default();
     }
 

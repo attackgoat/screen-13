@@ -123,7 +123,7 @@ use {
     },
     archery::SharedPointerKind,
     gfx_hal::{
-        adapter::{Adapter, MemoryProperties, PhysicalDevice},
+        adapter::{Adapter, DeviceType, MemoryProperties, PhysicalDevice},
         buffer::Usage,
         device::Device,
         memory::Properties,
@@ -135,6 +135,7 @@ use {
     num_traits::Num,
     std::{
         cell::RefCell,
+        cmp::Ordering,
         fmt::Debug,
         io::{Read, Seek},
         mem::MaybeUninit,
@@ -178,35 +179,101 @@ fn align_up<N: Copy + Num>(size: N, atom: N) -> N {
 
 /// Very unsafe - call *ONLY* after init!
 #[inline]
+unsafe fn adapter() -> &'static Adapter<_Backend> {
+    &*ADAPTER.as_ptr()
+}
+
+/// Very unsafe - call *ONLY* after init!
+#[inline]
 unsafe fn device() -> &'static <_Backend as Backend>::Device {
     &*DEVICE.as_ptr()
 }
 
-/// 💀 Very unsafe - call *ONLY* once per process!
+/// 💀 Extremely unsafe - call *ONLY* once per process!
 unsafe fn init_gfx_hal() {
-    // Initialize the GFX-HAL library
-    let engine = "attackgoat/screen-13";
-    let version = 1;
-    *INSTANCE.as_mut_ptr() =
-        Instance::create(engine, version).expect("Unable to create GFX-HAL instance");
+    const ENGINE: &'static str = "attackgoat/screen-13";
+    const VERSION: u32 = 1;
 
-    let instance = &*INSTANCE.as_ptr();
-    let mut adapters = instance.enumerate_adapters();
-    *ADAPTER.as_mut_ptr() = if adapters.is_empty() {
+    // Initialize the GFX-HAL library
+    INSTANCE
+        .as_mut_ptr()
+        .write(Instance::create(ENGINE, VERSION).expect("Unable to create GFX-HAL instance"));
+
+    let mut adapters = instance().enumerate_adapters();
+    let adapter = if adapters.is_empty() {
         panic!("Unable to find GFX-HAL adapter");
     } else {
-        debug!("{} Adapters found", adapters.len());
+        adapters.sort_unstable_by(|a, b| {
+            // 1. Prefer adapters by type in this order
+            let type_rank = |ty: &DeviceType| -> u8 {
+                match ty {
+                    DeviceType::DiscreteGpu => 0,
+                    DeviceType::IntegratedGpu => 1,
+                    DeviceType::VirtualGpu => 2,
+                    DeviceType::Cpu => 3,
+                    DeviceType::Other => 4,
+                }
+            };
+            let a_type_rank = type_rank(&a.info.device_type);
+            let b_type_rank = type_rank(&b.info.device_type);
+            match a_type_rank.cmp(&b_type_rank) {
+                Ordering::Equal => (),
+                ne @ _ => return ne,
+            }
+
+            // 2. Prefer adapters with the most memory (this is not totally accurate)
+            let a_total_mem: u64 = a
+                .physical_device
+                .memory_properties()
+                .memory_heaps
+                .iter()
+                .sum();
+            let b_total_mem: u64 = b
+                .physical_device
+                .memory_properties()
+                .memory_heaps
+                .iter()
+                .sum();
+            match b_total_mem.cmp(&a_total_mem) {
+                Ordering::Equal => (),
+                ne @ _ => return ne,
+            }
+
+            // Fallback to device PCI ID (basically random, but always the same choice for a given
+            // machine)
+            a.info.device.cmp(&b.info.device)
+        });
+
+        let adapter = adapters.remove(0);
+
+        info!(
+            "Adapter #1: {} {:?} [Total Memory = {}GB]",
+            &adapter.info.name,
+            adapter.info.device_type,
+            adapter
+                .physical_device
+                .memory_properties()
+                .memory_heaps
+                .iter()
+                .sum::<u64>()
+                / 1024
+                / 1024
+                / 1024
+        );
+
         for (idx, adapter) in adapters.iter().enumerate() {
             debug!(
-                "#{}: {} {:?}",
-                idx + 1,
+                "Adapter #{}: {} {:?}",
+                idx + 2,
                 &adapter.info.name,
                 adapter.info.device_type
             );
         }
 
-        adapters.remove(1)
+        adapter
     };
+
+    ADAPTER.as_mut_ptr().write(adapter);
 }
 
 /// Very unsafe - call *ONLY* after init!
@@ -242,18 +309,15 @@ unsafe fn open_adapter(adapter: &Adapter<_Backend>, queue: &<_Backend as Backend
         .physical_device
         .open(&[(queue, &[1.0])], Features::empty())
         .expect("Unable to open GFX-HAL device");
-    *DEVICE.as_mut_ptr() = gpu.device;
-    *MEM_PROPS.as_mut_ptr() = adapter.physical_device.memory_properties();
-    *QUEUE_GROUP.as_mut_ptr() = gpu
-        .queue_groups
-        .pop()
-        .expect("Unable to find GFX-HAL queue");
-}
-
-/// Very unsafe - call *ONLY* after init!
-#[inline]
-unsafe fn physical_device() -> &'static <_Backend as Backend>::PhysicalDevice {
-    &(*ADAPTER.as_ptr()).physical_device
+    DEVICE.as_mut_ptr().write(gpu.device);
+    MEM_PROPS
+        .as_mut_ptr()
+        .write(adapter.physical_device.memory_properties());
+    QUEUE_GROUP.as_mut_ptr().write(
+        gpu.queue_groups
+            .pop()
+            .expect("Unable to find GFX-HAL queue"),
+    );
 }
 
 /// Very unsafe - call *ONLY* after init!
@@ -418,9 +482,8 @@ where
             init_gfx_hal();
 
             // Window mode requires a presentation surface (we check for support here)
-            let adapter = &*ADAPTER.as_ptr();
             let surface_instance = Surface::new(window).expect("Unable to create GFX-HAL surface");
-            let queue = adapter
+            let queue = adapter()
                 .queue_families
                 .iter()
                 .find(|family| {
@@ -435,12 +498,13 @@ where
 
             info!(
                 "Adapter: {} ({:?})",
-                &adapter.info.name, adapter.info.device_type
+                &adapter().info.name,
+                adapter().info.device_type
             );
 
             surface = Some(surface_instance);
 
-            open_adapter(adapter, queue);
+            open_adapter(adapter(), queue);
         });
 
         let gpu = Self {
@@ -460,8 +524,7 @@ where
                 init_gfx_hal();
 
                 // Window mode requires a presentation surface (we check for support here)
-                let adapter = &*ADAPTER.as_ptr();
-                let queue = adapter
+                let queue = adapter()
                     .queue_families
                     .iter()
                     .find(|family| {
@@ -471,7 +534,7 @@ where
                     })
                     .expect("Unable to find GFX-HAL queue");
 
-                open_adapter(adapter, queue);
+                open_adapter(adapter(), queue);
             });
         }
 

@@ -1,8 +1,8 @@
 use {
     super::{
-        align_down, align_up, device,
+        adapter, align_down, align_up, device,
         driver::{Buffer, Memory},
-        mem_ty, physical_device,
+        mem_ty,
     },
     gfx_hal::{
         adapter::PhysicalDevice as _,
@@ -120,7 +120,7 @@ impl Data {
         assert_ne!(capacity, 0);
 
         // Pre-align the capacity so the entire requested capacity can be mapped later (mapping must be in atom sized units)
-        let non_coherent_atom_size = physical_device().limits().non_coherent_atom_size;
+        let non_coherent_atom_size = adapter().physical_device.limits().non_coherent_atom_size;
         capacity = align_up(capacity, non_coherent_atom_size as _);
 
         let mut storage_buf = Buffer::new(
@@ -474,7 +474,7 @@ impl<'m> Mapping<'m> {
         // TODO: Combine these two borrows
 
         // Mapped host memory ranges must be in multiples of atom size; so we align to a possibly larger window
-        let non_coherent_atom_size = physical_device().limits().non_coherent_atom_size;
+        let non_coherent_atom_size = adapter().physical_device.limits().non_coherent_atom_size;
         let offset = align_down(range.start, non_coherent_atom_size as _);
         let size = align_up(range.end - range.start, non_coherent_atom_size as _);
 
