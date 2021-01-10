@@ -9,7 +9,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Added
 
 - Implementation of `draw` functionality
+
+## [0.1.8] - 2021-01-09
+
+### Added
+
 - Features: `debug-names`, `deferred-3d`, and `forward-3d`
+- Selectable `Arc` or `Rc` shared types
 
 ### Changed
 

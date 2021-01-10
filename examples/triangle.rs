@@ -1,18 +1,25 @@
 use {screen_13::prelude_all::*, std::iter::once};
 
-/// In this example, we create, render and save a PBR-textured triangle in fewer than 50 lines of code.
+/// In this example, we create, render and save a PBR-textured triangle in fewer than 50 lines of
+/// code.
 fn main() {
-    let gpu = Gpu::offscreen();
+    let gpu = Gpu::<RcK>::offscreen();
 
     // Create a triangle model, which contains one mesh and three CCW POSITION/TEXCOORD vertices
-    let tri = gpu.load_model(
-        once(3),
-        vec![
-            (vec3(-0.5, -0.5, 0.0), vec2(0.0, 1.0)),
-            (vec3(0.5, -0.5, 0.0), vec2(1.0, 1.0)),
-            (vec3(0.0, 0.5, 0.0), vec2(0.5, 0.0)),
-        ],
-    ).expect("Each mesh must specifiy a valid vertex count for the input list of Vertices; which must be a list of triangles.");
+    let tri = gpu
+        .load_model(
+            once(3),
+            vec![
+                (vec3(-0.5, -0.5, 0.0), vec2(0.0, 1.0)),
+                (vec3(0.5, -0.5, 0.0), vec2(1.0, 1.0)),
+                (vec3(0.0, 0.5, 0.0), vec2(0.5, 0.0)),
+            ],
+        )
+        .expect(&format!(
+            "{} {}",
+            "Each mesh must specifiy a valid vertex count for the input list of Vertices; which",
+            "must be a list of triangles.",
+        ));
 
     // Create three 1x1 textures:
     // Color aka albedo/diffuse (RGB) -> https://en.wikipedia.org/wiki/Rust_(color)
@@ -21,12 +28,6 @@ fn main() {
     let color = gpu.load_bitmap(BitmapFormat::Rgb, &[0xb7, 0x41, 0x0e], 1, 1);
     let metal_rough = gpu.load_bitmap(BitmapFormat::Rg, &[0xca, 0xc0], 1, 1);
     let normal = gpu.load_bitmap(BitmapFormat::Rgb, &[0x00, 0x7f, 0xff], 1, 1);
-
-    // Wrap these types with shared references (required so we can draw them)
-    let tri = ModelRef::new(tri);
-    let color = BitmapRef::new(color);
-    let metal_rough = BitmapRef::new(metal_rough);
-    let normal = BitmapRef::new(normal);
 
     // Define a pbr material
     let rust = Material {

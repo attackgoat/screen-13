@@ -1,35 +1,21 @@
 use {
-    super::Driver,
-    gfx_hal::{device::Device, pool::CommandPoolCreateFlags, queue::QueueFamilyId, Backend},
+    crate::gpu::device,
+    gfx_hal::{device::Device as _, pool::CommandPoolCreateFlags, queue::QueueFamilyId, Backend},
     gfx_impl::Backend as _Backend,
     std::ops::{Deref, DerefMut},
 };
 
-pub struct CommandPool {
-    driver: Driver,
-    ptr: Option<<_Backend as Backend>::CommandPool>,
-}
+pub struct CommandPool(Option<<_Backend as Backend>::CommandPool>);
 
 impl CommandPool {
-    pub fn new(driver: &Driver, family: QueueFamilyId) -> Self {
-        Self::with_flags(driver, family, CommandPoolCreateFlags::empty())
+    pub unsafe fn new(family: QueueFamilyId) -> Self {
+        Self::new_flags(family, CommandPoolCreateFlags::empty())
     }
 
-    pub fn with_flags(
-        driver: &Driver,
-        family: QueueFamilyId,
-        flags: CommandPoolCreateFlags,
-    ) -> Self {
-        let cmd_pool = {
-            let device = driver.borrow();
+    pub unsafe fn new_flags(family: QueueFamilyId, flags: CommandPoolCreateFlags) -> Self {
+        let cmd_pool = device().create_command_pool(family, flags).unwrap();
 
-            unsafe { device.create_command_pool(family, flags) }.unwrap()
-        };
-
-        Self {
-            driver: Driver::clone(driver),
-            ptr: Some(cmd_pool),
-        }
+        Self(Some(cmd_pool))
     }
 }
 
@@ -49,23 +35,22 @@ impl Deref for CommandPool {
     type Target = <_Backend as Backend>::CommandPool;
 
     fn deref(&self) -> &Self::Target {
-        self.ptr.as_ref().unwrap()
+        self.0.as_ref().unwrap()
     }
 }
 
 impl DerefMut for CommandPool {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.ptr.as_mut().unwrap()
+        self.0.as_mut().unwrap()
     }
 }
 
 impl Drop for CommandPool {
     fn drop(&mut self) {
-        let device = self.driver.borrow();
-        let ptr = self.ptr.take().unwrap();
+        let ptr = self.0.take().unwrap();
 
         unsafe {
-            device.destroy_command_pool(ptr);
+            device().destroy_command_pool(ptr);
         }
     }
 }

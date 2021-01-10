@@ -1,23 +1,18 @@
 use {
+    crate::gpu::instance,
     gfx_hal::{window::InitError, Backend, Instance as _},
-    gfx_impl::{Backend as _Backend, Instance},
+    gfx_impl::Backend as _Backend,
     std::ops::{Deref, DerefMut},
     winit::window::Window,
 };
 
-pub struct Surface {
-    instance: Option<Instance>,
-    ptr: Option<<_Backend as Backend>::Surface>,
-}
+pub struct Surface(Option<<_Backend as Backend>::Surface>);
 
 impl Surface {
-    pub fn new(instance: Instance, window: &Window) -> Result<Self, InitError> {
-        let surface = unsafe { instance.create_surface(window)? };
+    pub unsafe fn new(window: &Window) -> Result<Self, InitError> {
+        let ptr = instance().create_surface(window)?;
 
-        Ok(Self {
-            instance: Some(instance),
-            ptr: Some(surface),
-        })
+        Ok(Self(Some(ptr)))
     }
 }
 
@@ -37,24 +32,22 @@ impl Deref for Surface {
     type Target = <_Backend as Backend>::Surface;
 
     fn deref(&self) -> &Self::Target {
-        self.ptr.as_ref().unwrap()
+        self.0.as_ref().unwrap()
     }
 }
 
 impl DerefMut for Surface {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.ptr.as_mut().unwrap()
+        self.0.as_mut().unwrap()
     }
 }
 
 impl Drop for Surface {
     fn drop(&mut self) {
-        if let Some(instance) = &self.instance {
-            let ptr = self.ptr.take().unwrap();
+        let ptr = self.0.take().unwrap();
 
-            unsafe {
-                instance.destroy_surface(ptr);
-            }
+        unsafe {
+            instance().destroy_surface(ptr);
         }
     }
 }

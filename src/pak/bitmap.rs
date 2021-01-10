@@ -5,7 +5,7 @@ use {
 
 /// Holds a `Bitmap` in a `.pak` file. For data transport only.
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
-pub struct Bitmap {
+pub struct BitmapBuf {
     fmt: Format,
 
     #[serde(with = "serde_bytes")]
@@ -14,7 +14,7 @@ pub struct Bitmap {
     width: u16,
 }
 
-impl Bitmap {
+impl BitmapBuf {
     pub(crate) fn new(fmt: Format, width: u16, pixels: Vec<u8>) -> Self {
         Self { fmt, pixels, width }
     }

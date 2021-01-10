@@ -1,6 +1,6 @@
 use {
     super::{
-        anim::Animation, ids::Id, model::Model, AnimationId, Bitmap, BitmapFont, BitmapFontId,
+        anim::Animation, ids::Id, model::Model, AnimationId, BitmapBuf, BitmapFont, BitmapFontId,
         BitmapId, BlobId, Compression, DataRef, MaterialDesc, MaterialId, ModelId, Scene, SceneId,
     },
     bincode::serialize_into,
@@ -36,7 +36,7 @@ pub struct PakBuf {
     // These fields are loaded on demand
     anims: Vec<DataRef<Animation>>,
     bitmap_fonts: Vec<DataRef<BitmapFont>>,
-    bitmaps: Vec<DataRef<Bitmap>>,
+    bitmaps: Vec<DataRef<BitmapBuf>>,
     blobs: Vec<DataRef<Vec<u8>>>,
     models: Vec<DataRef<Model>>,
     scenes: Vec<DataRef<Scene>>,
@@ -81,7 +81,7 @@ impl PakBuf {
         id
     }
 
-    pub(crate) fn push_bitmap(&mut self, key: String, val: Bitmap) -> BitmapId {
+    pub(crate) fn push_bitmap(&mut self, key: String, val: BitmapBuf) -> BitmapId {
         assert!(self.ids.get(&key).is_none());
 
         let id = BitmapId(self.bitmaps.len() as _);

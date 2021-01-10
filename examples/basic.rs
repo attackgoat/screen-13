@@ -1,10 +1,10 @@
-use {screen_13::prelude_all::*, std::env::current_exe};
+use {screen_13::prelude_rc::*, std::env::current_exe};
 
 /// This example requires a color graphics adapter.
 fn main() -> ! {
     pretty_env_logger::init();
 
-    let engine = Engine::default();
+    let engine = Engine::new(Program::default().with_window());
 
     // Open the "pak" file which contains all game art, assests, and other content
     let mut pak = Pak::open(
@@ -29,14 +29,14 @@ struct Basic {
     small_10px: Font,
 }
 
-impl Screen for Basic {
+impl Screen<RcK> for Basic {
     fn render(&self, gpu: &Gpu, _: Extent) -> Render {
         // This creates a canvas-like "Render" type which we can use to record graphic commands
         // We will use it to render a fixed-size retro-resolution screen
         let mut frame = gpu.render(Extent::new(320, 200));
 
         // Draws "Hello, World" onto a blue background
-        frame.clear().with_value(BLUE).record();
+        frame.clear().with(BLUE).record();
         frame
             .text(Coord::new(137, 96), WHITE)
             .record(&self.small_10px, "Hello, world!");

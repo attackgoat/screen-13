@@ -7,6 +7,7 @@ use {
         math::Mat4,
         pak::IndexType,
     },
+    archery::SharedPointerKind,
     std::{
         cell::{Ref, RefMut},
         ops::Range,
@@ -39,34 +40,40 @@ pub(super) struct DataWriteInstruction<'a> {
 }
 
 /// Writes the range of cpu-side data to the gpu-side.
-pub(super) struct DataWriteRefInstruction<'a> {
-    pub buf: RefMut<'a, Lease<Data>>,
+pub(super) struct DataWriteRefInstruction<'a, P>
+where
+    P: SharedPointerKind,
+{
+    pub buf: RefMut<'a, Lease<Data, P>>,
     pub range: Range<u64>,
 }
 
 // Commands specified by the client become Instructions used by `DrawOp`
-pub(super) enum Instruction<'a> {
+pub(super) enum Instruction<'a, P>
+where
+    P: 'static + SharedPointerKind,
+{
     DataTransfer(DataTransferInstruction<'a>),
-    IndexWriteRef(DataWriteRefInstruction<'a>),
+    IndexWriteRef(DataWriteRefInstruction<'a, P>),
     LightBegin,
     LightBind(LightBindInstruction<'a>),
     LineDraw(LineDrawInstruction<'a>),
     MeshBegin,
-    MeshBind(MeshBindInstruction<'a>),
+    MeshBind(MeshBindInstruction<'a, P>),
     MeshDescriptors(usize),
-    MeshDraw(MeshDrawInstruction<'a>),
-    PointLightDraw(PointLightDrawInstruction<'a>),
+    MeshDraw(MeshDrawInstruction<'a, P>),
+    PointLightDraw(PointLightDrawInstruction<'a, P>),
     RectLightBegin,
     RectLightDraw(RectLightDrawInstruction<'a>),
     SpotlightBegin,
     SpotlightDraw(SpotlightDrawInstruction<'a>),
-    SunlightDraw(SunlightIter<'a>),
+    SunlightDraw(SunlightIter<'a, P>),
     VertexAttrsBegin(CalcVertexAttrsComputeMode),
     VertexAttrsCalc(DataComputeInstruction),
     VertexAttrsDescriptors(VertexAttrsDescriptorsInstruction),
     VertexCopy(DataCopyInstruction<'a>),
     VertexWrite(DataWriteInstruction<'a>),
-    VertexWriteRef(DataWriteRefInstruction<'a>),
+    VertexWriteRef(DataWriteRefInstruction<'a, P>),
 }
 
 pub(super) struct LightBindInstruction<'a> {
@@ -79,22 +86,31 @@ pub(super) struct LineDrawInstruction<'a> {
     pub line_count: u32,
 }
 
-pub(super) struct MeshBindInstruction<'a> {
-    pub idx_buf: Ref<'a, Lease<Data>>,
+pub(super) struct MeshBindInstruction<'a, P>
+where
+    P: SharedPointerKind,
+{
+    pub idx_buf: Ref<'a, Lease<Data, P>>,
     pub idx_buf_len: u64,
     pub idx_ty: IndexType,
-    pub vertex_buf: Ref<'a, Lease<Data>>,
+    pub vertex_buf: Ref<'a, Lease<Data, P>>,
     pub vertex_buf_len: u64,
 }
 
-pub(super) struct MeshDrawInstruction<'a> {
-    pub meshes: MeshIter<'a>,
+pub(super) struct MeshDrawInstruction<'a, P>
+where
+    P: SharedPointerKind,
+{
+    pub meshes: MeshIter<'a, P>,
     pub transform: Mat4,
 }
 
-pub(super) struct PointLightDrawInstruction<'a> {
+pub(super) struct PointLightDrawInstruction<'a, P>
+where
+    P: 'static + SharedPointerKind,
+{
     pub buf: &'a Data,
-    pub lights: PointLightIter<'a>,
+    pub lights: PointLightIter<'a, P>,
 }
 
 pub(super) struct RectLightDrawInstruction<'a> {

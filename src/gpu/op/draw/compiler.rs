@@ -1,6 +1,6 @@
 use {
     super::{
-        command::{Command, CommandIter, ModelCommand},
+        command::{Command, CommandIter, Material, ModelCommand},
         geom::{
             gen_line, gen_rect_light, gen_spotlight, LINE_STRIDE, POINT_LIGHT, POINT_LIGHT_LEN,
             RECT_LIGHT_STRIDE, SPOTLIGHT_STRIDE,
@@ -13,7 +13,6 @@ use {
             VertexAttrsDescriptorsInstruction,
         },
         key::{Line, RectLight, Spotlight, Stride},
-        Material,
     },
     crate::{
         camera::Camera,
@@ -21,10 +20,12 @@ use {
             data::{CopyRange, Mapping},
             def::CalcVertexAttrsComputeMode,
             pool::Pool,
-            Data, Driver, Lease, ModelRef,
+            Data, Lease, Model,
         },
         pak::IndexType,
+        ptr::Shared,
     },
+    archery::SharedPointerKind,
     std::{
         cell::Ref,
         cmp::{Ord, Ordering},
@@ -86,14 +87,17 @@ struct BindVertexAttrsDescriptorsAsm {
     mode: CalcVertexAttrsComputeMode,
 }
 
-pub struct CalcVertexAttrsDescriptors<'a> {
-    pub dst: Ref<'a, Lease<Data>>,
+pub struct CalcVertexAttrsDescriptors<'a, P>
+where
+    P: SharedPointerKind,
+{
+    pub dst: Ref<'a, Lease<Data, P>>,
     pub dst_len: u64,
-    pub idx_buf: Ref<'a, Lease<Data>>,
+    pub idx_buf: Ref<'a, Lease<Data, P>>,
     pub idx_len: u64,
-    pub src: &'a Lease<Data>,
+    pub src: &'a Lease<Data, P>,
     pub src_len: u64,
-    pub write_mask: &'a Lease<Data>,
+    pub write_mask: &'a Lease<Data, P>,
     pub write_mask_len: u64,
 }
 
@@ -103,9 +107,12 @@ struct CalcVertexAttrsAsm {
     dispatch: u32,
 }
 
-struct CalcVertexAttrsData {
+struct CalcVertexAttrsData<P>
+where
+    P: SharedPointerKind,
+{
     /// Staging data (position + tex coord, optional joints + weights)
-    buf: Lease<Data>,
+    buf: Lease<Data, P>,
 
     /// Command index
     idx: usize,
@@ -113,24 +120,33 @@ struct CalcVertexAttrsData {
     /// Length of the staging data, in bytes
     len: u64,
 
-    write_mask: Lease<Data>,
+    write_mask: Lease<Data, P>,
 }
 
-struct CalcVertexAttrsDescriptorsIter<'a> {
-    cmds: &'a [Command],
-    data: &'a [CalcVertexAttrsData],
+struct CalcVertexAttrsDescriptorsIter<'a, P>
+where
+    P: 'static + SharedPointerKind,
+{
+    cmds: &'a [Command<P>],
+    data: &'a [CalcVertexAttrsData<P>],
     idx: usize,
     usage: &'a Vec<usize>,
 }
 
-impl<'a> ExactSizeIterator for CalcVertexAttrsDescriptorsIter<'a> {
+impl<'a, P> ExactSizeIterator for CalcVertexAttrsDescriptorsIter<'a, P>
+where
+    P: SharedPointerKind,
+{
     fn len(&self) -> usize {
         self.usage.len()
     }
 }
 
-impl<'a> Iterator for CalcVertexAttrsDescriptorsIter<'a> {
-    type Item = CalcVertexAttrsDescriptors<'a>;
+impl<'a, P> Iterator for CalcVertexAttrsDescriptorsIter<'a, P>
+where
+    P: SharedPointerKind,
+{
+    type Item = CalcVertexAttrsDescriptors<'a, P>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.usage.get(self.idx).map(|idx| {
@@ -145,7 +161,7 @@ impl<'a> Iterator for CalcVertexAttrsDescriptorsIter<'a> {
 
             // Get the GPU model for this command index
             let cmd = &self.cmds[*idx].as_model().unwrap();
-            let model = cmd.model.as_ref();
+            let model = &*cmd.model;
             let idx_ty = model.idx_ty();
             let (idx_buf, idx_len) = model.idx_buf_ref();
             let (dst, dst_len) = model.vertex_buf_ref();
@@ -175,19 +191,25 @@ impl<'a> Iterator for CalcVertexAttrsDescriptorsIter<'a> {
 /// Note: If the instructions produced by this command are not completed succesfully the state of the `Compiler` instance will
 /// be undefined, and so `reset()` must be called on it. This is because copy operations that don't complete will leave the
 /// buffers with incorrect data.
-pub struct Compilation<'a> {
-    cmds: &'a [Command],
-    compiler: &'a mut Compiler,
+pub struct Compilation<'a, P>
+where
+    P: 'static + SharedPointerKind,
+{
+    cmds: &'a [Command<P>],
+    compiler: &'a mut Compiler<P>,
     contains_lines: bool,
     idx: usize,
 }
 
-impl<'a> Compilation<'a> {
-    fn begin_calc_vertex_attrs(mode: CalcVertexAttrsComputeMode) -> Instruction<'static> {
+impl<P> Compilation<'_, P>
+where
+    P: SharedPointerKind,
+{
+    fn begin_calc_vertex_attrs(&self, mode: CalcVertexAttrsComputeMode) -> Instruction<'_, P> {
         Instruction::VertexAttrsBegin(mode)
     }
 
-    fn bind_light<T: Stride>(buf: &DirtyData<T>) -> Instruction {
+    fn bind_light<T: Stride>(buf: &DirtyData<T, P>) -> Instruction<'_, P> {
         Instruction::LightBind(LightBindInstruction {
             buf: &buf.data.current,
             buf_len: buf
@@ -197,7 +219,7 @@ impl<'a> Compilation<'a> {
         })
     }
 
-    fn bind_model_buffers(&self, idx: usize) -> Instruction {
+    fn bind_model_buffers(&self, idx: usize) -> Instruction<'_, P> {
         let cmd = self.cmds[idx].as_model().unwrap();
         let idx_ty = cmd.model.idx_ty();
         let (idx_buf, idx_buf_len) = cmd.model.idx_buf_ref();
@@ -212,7 +234,7 @@ impl<'a> Compilation<'a> {
         })
     }
 
-    fn bind_model_descriptors(&self, idx: usize) -> Instruction {
+    fn bind_model_descriptors(&self, idx: usize) -> Instruction<'_, P> {
         let cmd = &self.cmds[idx].as_model().unwrap();
         let desc_set = self
             .compiler
@@ -223,7 +245,10 @@ impl<'a> Compilation<'a> {
         Instruction::MeshDescriptors(desc_set)
     }
 
-    fn bind_vertex_attrs_descriptors(&self, asm: &BindVertexAttrsDescriptorsAsm) -> Instruction {
+    fn bind_vertex_attrs_descriptors(
+        &self,
+        asm: &BindVertexAttrsDescriptorsAsm,
+    ) -> Instruction<'_, P> {
         let usage = match asm.mode {
             CalcVertexAttrsComputeMode::U16 => &self.compiler.u16_vertex_cmds,
             CalcVertexAttrsComputeMode::U16_SKIN => &self.compiler.u16_skin_vertex_cmds,
@@ -240,7 +265,7 @@ impl<'a> Compilation<'a> {
 
     pub fn calc_vertex_attrs_u16_descriptors(
         &self,
-    ) -> impl ExactSizeIterator<Item = CalcVertexAttrsDescriptors> {
+    ) -> impl ExactSizeIterator<Item = CalcVertexAttrsDescriptors<'_, P>> {
         CalcVertexAttrsDescriptorsIter {
             data: &self.compiler.calc_vertex_attrs,
             cmds: &self.cmds,
@@ -251,7 +276,7 @@ impl<'a> Compilation<'a> {
 
     pub fn calc_vertex_attrs_u16_skin_descriptors(
         &self,
-    ) -> impl ExactSizeIterator<Item = CalcVertexAttrsDescriptors> {
+    ) -> impl ExactSizeIterator<Item = CalcVertexAttrsDescriptors<'_, P>> {
         CalcVertexAttrsDescriptorsIter {
             data: &self.compiler.calc_vertex_attrs,
             cmds: &self.cmds,
@@ -262,7 +287,7 @@ impl<'a> Compilation<'a> {
 
     pub fn calc_vertex_attrs_u32_descriptors(
         &self,
-    ) -> impl ExactSizeIterator<Item = CalcVertexAttrsDescriptors> {
+    ) -> impl ExactSizeIterator<Item = CalcVertexAttrsDescriptors<'_, P>> {
         CalcVertexAttrsDescriptorsIter {
             cmds: &self.cmds,
             data: &self.compiler.calc_vertex_attrs,
@@ -273,7 +298,7 @@ impl<'a> Compilation<'a> {
 
     pub fn calc_vertex_attrs_u32_skin_descriptors(
         &self,
-    ) -> impl ExactSizeIterator<Item = CalcVertexAttrsDescriptors> {
+    ) -> impl ExactSizeIterator<Item = CalcVertexAttrsDescriptors<'_, P>> {
         CalcVertexAttrsDescriptorsIter {
             cmds: &self.cmds,
             data: &self.compiler.calc_vertex_attrs,
@@ -282,7 +307,7 @@ impl<'a> Compilation<'a> {
         }
     }
 
-    fn calc_vertex_attrs(&self, asm: &CalcVertexAttrsAsm) -> Instruction {
+    fn calc_vertex_attrs(&self, asm: &CalcVertexAttrsAsm) -> Instruction<'_, P> {
         Instruction::VertexAttrsCalc(DataComputeInstruction {
             base_idx: asm.base_idx,
             base_vertex: asm.base_vertex,
@@ -294,21 +319,21 @@ impl<'a> Compilation<'a> {
         self.contains_lines
     }
 
-    fn copy_vertices<T>(buf: &mut DirtyData<T>) -> Instruction {
+    fn copy_vertices<T>(buf: &mut DirtyData<T, P>) -> Instruction<'_, P> {
         Instruction::VertexCopy(DataCopyInstruction {
             buf: &mut buf.data.current,
             ranges: buf.gpu_dirty.as_slice(),
         })
     }
 
-    fn draw_lines(buf: &mut DirtyData<Line>, line_count: u32) -> Instruction {
+    fn draw_lines(buf: &mut DirtyData<Line, P>, line_count: u32) -> Instruction<'_, P> {
         Instruction::LineDraw(LineDrawInstruction {
             buf: &mut buf.data.current,
             line_count,
         })
     }
 
-    fn draw_model(&self, idx: usize) -> Instruction {
+    fn draw_model(&self, idx: usize) -> Instruction<'_, P> {
         let cmd = self.cmds[idx].as_model().unwrap();
         let meshes = cmd.model.meshes_filter_is(cmd.mesh_filter);
 
@@ -318,7 +343,7 @@ impl<'a> Compilation<'a> {
         })
     }
 
-    fn draw_point_lights(&self, range: Range<usize>) -> Instruction {
+    fn draw_point_lights(&self, range: Range<usize>) -> Instruction<'_, P> {
         let buf = self.compiler.point_light_buf.as_ref().unwrap();
 
         Instruction::PointLightDraw(PointLightDrawInstruction {
@@ -327,7 +352,7 @@ impl<'a> Compilation<'a> {
         })
     }
 
-    fn draw_rect_light(&self, idx: usize, lru_idx: usize) -> Instruction {
+    fn draw_rect_light(&self, idx: usize, lru_idx: usize) -> Instruction<'_, P> {
         let light = self.cmds[idx].as_rect_light().unwrap();
         let lru = &self.compiler.rect_light.lru[lru_idx];
         let offset = (lru.offset / RECT_LIGHT_STRIDE as u64) as u32;
@@ -335,7 +360,7 @@ impl<'a> Compilation<'a> {
         Instruction::RectLightDraw(RectLightDrawInstruction { light, offset })
     }
 
-    fn draw_spotlight(&self, idx: usize, lru_idx: usize) -> Instruction {
+    fn draw_spotlight(&self, idx: usize, lru_idx: usize) -> Instruction<'_, P> {
         let light = self.cmds[idx].as_spotlight().unwrap();
         let lru = &self.compiler.spotlight.lru[lru_idx];
         let offset = (lru.offset / SPOTLIGHT_STRIDE as u64) as u32;
@@ -343,7 +368,7 @@ impl<'a> Compilation<'a> {
         Instruction::SpotlightDraw(SpotlightDrawInstruction { light, offset })
     }
 
-    fn draw_sunlights(&self, range: Range<usize>) -> Instruction {
+    fn draw_sunlights(&self, range: Range<usize>) -> Instruction<'_, P> {
         Instruction::SunlightDraw(CommandIter::new(&self.cmds[range]))
     }
 
@@ -352,11 +377,11 @@ impl<'a> Compilation<'a> {
         self.compiler.code.is_empty()
     }
 
-    pub fn mesh_materials(&self) -> impl ExactSizeIterator<Item = &Material> {
+    pub fn mesh_materials(&self) -> impl ExactSizeIterator<Item = &Material<P>> {
         self.compiler.materials.iter()
     }
 
-    fn transfer_data<T>(buf: &mut DirtyData<T>) -> Instruction {
+    fn transfer_data<T>(buf: &mut DirtyData<T, P>) -> Instruction<'_, P> {
         let (src, src_len) = buf.data.previous.as_mut().unwrap();
 
         Instruction::DataTransfer(DataTransferInstruction {
@@ -366,28 +391,28 @@ impl<'a> Compilation<'a> {
         })
     }
 
-    fn write_light_vertices<T>(buf: &mut DirtyData<T>) -> Instruction {
+    fn write_light_vertices<T>(buf: &mut DirtyData<T, P>) -> Instruction<'_, P> {
         Instruction::VertexWrite(DataWriteInstruction {
             buf: &mut buf.data.current,
             range: buf.cpu_dirty.as_ref().unwrap().clone(),
         })
     }
 
-    fn write_model_indices(&self, idx: usize) -> Instruction {
+    fn write_model_indices(&self, idx: usize) -> Instruction<'_, P> {
         let cmd = self.cmds[idx].as_model().unwrap();
         let (buf, len) = cmd.model.idx_buf_mut();
 
         Instruction::IndexWriteRef(DataWriteRefInstruction { buf, range: 0..len })
     }
 
-    fn write_model_vertices(&self, idx: usize) -> Instruction {
+    fn write_model_vertices(&self, idx: usize) -> Instruction<'_, P> {
         let cmd = self.cmds[idx].as_model().unwrap();
         let (buf, len) = cmd.model.vertex_buf_mut();
 
         Instruction::VertexWriteRef(DataWriteRefInstruction { buf, range: 0..len })
     }
 
-    fn write_point_light_vertices(&mut self) -> Instruction {
+    fn write_point_light_vertices(&mut self) -> Instruction<'_, P> {
         Instruction::VertexWrite(DataWriteInstruction {
             buf: self.compiler.point_light_buf.as_mut().unwrap(),
             range: 0..POINT_LIGHT_LEN,
@@ -396,8 +421,11 @@ impl<'a> Compilation<'a> {
 }
 
 // TODO: Workaround impl of "Iterator for" until we (soon?) have GATs: https://github.com/rust-lang/rust/issues/44265
-impl Compilation<'_> {
-    pub(super) fn next(&mut self) -> Option<Instruction> {
+impl<P> Compilation<'_, P>
+where
+    P: SharedPointerKind,
+{
+    pub(super) fn next(&mut self) -> Option<Instruction<'_, P>> {
         if self.idx == self.compiler.code.len() {
             return None;
         }
@@ -406,7 +434,7 @@ impl Compilation<'_> {
         self.idx += 1;
 
         Some(match &self.compiler.code[idx] {
-            Asm::BeginCalcVertexAttrs(mode) => Self::begin_calc_vertex_attrs(*mode),
+            Asm::BeginCalcVertexAttrs(mode) => self.begin_calc_vertex_attrs(*mode),
             Asm::BeginLight => Instruction::LightBegin,
             Asm::BeginModel => Instruction::MeshBegin,
             Asm::BeginRectLight => Instruction::RectLightBegin,
@@ -459,7 +487,10 @@ impl Compilation<'_> {
     }
 }
 
-impl Drop for Compilation<'_> {
+impl<P> Drop for Compilation<'_, P>
+where
+    P: SharedPointerKind,
+{
     fn drop(&mut self) {
         // Reset non-critical resources
         self.compiler.code.clear();
@@ -474,36 +505,40 @@ impl Drop for Compilation<'_> {
 /// two-fold:
 /// - Reduce per-draw allocations with line and light caches (they are not cleared after each use)
 /// - Store references to the in-use mesh textures during rendering (this cache is cleared after use)
-#[derive(Default)]
-pub struct Compiler {
+pub struct Compiler<P>
+where
+    P: 'static + SharedPointerKind,
+{
     code: Vec<Asm>,
-    line: DirtyLruData<Line>,
-    materials: Vec<Material>,
-    point_light_buf: Option<Lease<Data>>,
-    rect_light: DirtyLruData<RectLight>,
+    line: DirtyLruData<Line, P>,
+    materials: Vec<Material<P>>,
+    point_light_buf: Option<Lease<Data, P>>,
+    rect_light: DirtyLruData<RectLight, P>,
     rect_lights: Vec<RectLight>,
-    spotlight: DirtyLruData<Spotlight>,
+    spotlight: DirtyLruData<Spotlight, P>,
     spotlights: Vec<Spotlight>,
 
     // These store which command indices use which vertex attribute calculation type (sorted)
-    u16_vertex_cmds: Vec<usize>,
     u16_skin_vertex_cmds: Vec<usize>,
-    u32_vertex_cmds: Vec<usize>,
+    u16_vertex_cmds: Vec<usize>,
     u32_skin_vertex_cmds: Vec<usize>,
+    u32_vertex_cmds: Vec<usize>,
 
     // This stores the data (staging + write mask buffers) needed to cacluate additional vertex
     // attributes (normal + tangent)
-    calc_vertex_attrs: Vec<CalcVertexAttrsData>,
+    calc_vertex_attrs: Vec<CalcVertexAttrsData<P>>,
 }
 
-impl Compiler {
+impl<P> Compiler<P>
+where
+    P: SharedPointerKind,
+{
     /// Allocates or re-allocates leased data of the given size. This could be a function of the DirtyData type, however it only
     /// works because the Compiler happens to know that the host-side of the data
-    fn alloc_data<T: Stride>(
+    unsafe fn alloc_data<T: Stride>(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
-        pool: &mut Pool,
-        buf: &mut Option<DirtyData<T>>,
+        pool: &mut Pool<P>,
+        buf: &mut Option<DirtyData<T, P>>,
         len: u64,
     ) {
         #[cfg(feature = "debug-names")]
@@ -532,7 +567,6 @@ impl Compiler {
         let data = pool.data(
             #[cfg(feature = "debug-names")]
             &name,
-            driver,
             capacity,
         );
 
@@ -553,7 +587,7 @@ impl Compiler {
     ///
     /// Geometry used very often will end up closer to the beginning of the GPU memory over time, and
     /// will have fewer move operations applied to it as a result.
-    fn compact_cache<T: Stride>(buf: &mut DirtyData<T>, lru: &mut Vec<Lru<T>>)
+    fn compact_cache<T: Stride>(buf: &mut DirtyData<T, P>, lru: &mut Vec<Lru<T>>)
     where
         T: Ord,
     {
@@ -629,14 +663,13 @@ impl Compiler {
     /// - Sort commands into predictable groupings (opaque meshes, lights, transparent meshes, lines)
     /// - Sort mesh commands further by texture(s) in order to reduce descriptor set switching/usage
     /// - Prepare a single buffer of all line and light vertices which can be copied to the GPU all at once
-    pub(super) fn compile<'a, 'b: 'a>(
+    pub(super) unsafe fn compile<'a, 'b: 'a>(
         &'a mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
-        pool: &mut Pool,
+        pool: &mut Pool<P>,
         camera: &impl Camera,
-        cmds: &'b mut [Command],
-    ) -> Compilation<'a> {
+        cmds: &'b mut [Command<P>],
+    ) -> Compilation<'a, P> {
         assert!(self.code.is_empty());
         assert!(self.materials.is_empty());
         assert!(!cmds.is_empty());
@@ -652,7 +685,7 @@ impl Compiler {
         }
 
         // Rearrange the commands so draw order doesn't cause unnecessary resource-switching
-        self.sort(cmds);
+        Self::sort(cmds);
 
         // Locate the groups - we know these `SearchIdx` values will not be found as they are gaps in between the groups
         let search_group_idx = |range: RangeFrom<usize>, group: SearchIdx| -> usize {
@@ -699,7 +732,6 @@ impl Compiler {
             self.compile_point_lights(
                 #[cfg(feature = "debug-names")]
                 name,
-                driver,
                 pool,
                 point_light_idx..rect_light_idx,
             );
@@ -711,7 +743,6 @@ impl Compiler {
             self.compile_rect_lights(
                 #[cfg(feature = "debug-names")]
                 name,
-                driver,
                 pool,
                 &cmds[rect_lights],
                 rect_light_idx,
@@ -724,7 +755,6 @@ impl Compiler {
             self.compile_spotlights(
                 #[cfg(feature = "debug-names")]
                 name,
-                driver,
                 pool,
                 &cmds[spotlights],
                 spotlight_idx,
@@ -743,7 +773,6 @@ impl Compiler {
             self.compile_lines(
                 #[cfg(feature = "debug-names")]
                 name,
-                driver,
                 pool,
                 &cmds[lines],
             );
@@ -757,18 +786,16 @@ impl Compiler {
         }
     }
 
-    fn compile_lines(
+    unsafe fn compile_lines(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
-        pool: &mut Pool,
-        cmds: &[Command],
+        pool: &mut Pool<P>,
+        cmds: &[Command<P>],
     ) {
         // Allocate enough `buf` to hold everything in the existing cache and everything we could possibly draw
         Self::alloc_data(
             #[cfg(feature = "debug-names")]
             &format!("{} line vertex buffer", name),
-            driver,
             pool,
             &mut self.line.buf,
             (self.line.lru.len() * LINE_STRIDE + cmds.len() * LINE_STRIDE) as _,
@@ -804,7 +831,7 @@ impl Compiler {
                     let new_end = end + LINE_STRIDE as u64;
                     let vertices = gen_line(&line.vertices);
 
-                    unsafe {
+                    {
                         let mut mapped_range =
                             buf.data.current.map_range_mut(end..new_end).unwrap();
                         copy_nonoverlapping(
@@ -836,11 +863,11 @@ impl Compiler {
         self.code.push(Asm::DrawLines(cmds.len() as _));
     }
 
-    fn compile_models(&mut self, cmds: &[Command]) {
+    fn compile_models(&mut self, cmds: &[Command<P>]) {
         debug_assert!(!cmds.is_empty());
 
-        let mut material: Option<&Material> = None;
-        let mut model: Option<&ModelRef> = None;
+        let mut material: Option<&Material<P>> = None;
+        let mut model: Option<&Shared<Model<P>, P>> = None;
 
         // Emit 'start model drawing' assembly code
         self.code.push(Asm::BeginModel);
@@ -939,7 +966,7 @@ impl Compiler {
 
             // Emit 'model buffers have changed' assembly code
             if let Some(curr_model) = model.as_ref() {
-                if !ModelRef::ptr_eq(curr_model, &cmd.model) {
+                if !Shared::ptr_eq(curr_model, &cmd.model) {
                     self.code.push(Asm::BindModelBuffers(idx));
                     model = Some(&cmd.model);
                 }
@@ -953,11 +980,10 @@ impl Compiler {
         }
     }
 
-    fn compile_point_lights(
+    unsafe fn compile_point_lights(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
-        pool: &mut Pool,
+        pool: &mut Pool<P>,
         range: Range<usize>,
     ) {
         if self.point_light_buf.as_ref().is_none() {
@@ -967,11 +993,10 @@ impl Compiler {
             let mut buf = pool.data(
                 #[cfg(feature = "debug-names")]
                 &format!("{} point light vertex buffer", name),
-                driver,
                 POINT_LIGHT_LEN,
             );
 
-            unsafe {
+            {
                 let mut mapped_range = buf.map_range_mut(0..POINT_LIGHT_LEN).unwrap();
                 copy_nonoverlapping(
                     POINT_LIGHT.as_ptr(),
@@ -989,12 +1014,11 @@ impl Compiler {
         self.code.push(Asm::DrawPointLights(range));
     }
 
-    fn compile_rect_lights(
+    unsafe fn compile_rect_lights(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
-        pool: &mut Pool,
-        cmds: &[Command],
+        pool: &mut Pool<P>,
+        cmds: &[Command<P>],
         base_idx: usize,
     ) {
         assert!(self.rect_lights.is_empty());
@@ -1003,7 +1027,6 @@ impl Compiler {
         Self::alloc_data(
             #[cfg(feature = "debug-names")]
             &format!("{} rect light vertex buffer", name),
-            driver,
             pool,
             &mut self.rect_light.buf,
             ((self.rect_light.lru.len() + cmds.len()) * RECT_LIGHT_STRIDE) as _,
@@ -1047,7 +1070,7 @@ impl Compiler {
                     let new_end = end + RECT_LIGHT_STRIDE as u64;
                     let vertices = gen_rect_light(key.dims(), key.range(), key.radius());
 
-                    unsafe {
+                    {
                         let mut mapped_range =
                             buf.data.current.map_range_mut(end..new_end).unwrap();
                         copy_nonoverlapping(
@@ -1091,12 +1114,11 @@ impl Compiler {
         }
     }
 
-    fn compile_spotlights(
+    unsafe fn compile_spotlights(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
-        pool: &mut Pool,
-        cmds: &[Command],
+        pool: &mut Pool<P>,
+        cmds: &[Command<P>],
         base_idx: usize,
     ) {
         assert!(self.spotlights.is_empty());
@@ -1105,7 +1127,6 @@ impl Compiler {
         Self::alloc_data(
             #[cfg(feature = "debug-names")]
             &format!("{} spotlight vertex buffer", name),
-            driver,
             pool,
             &mut self.spotlight.buf,
             (self.spotlight.lru.len() * SPOTLIGHT_STRIDE + cmds.len() * SPOTLIGHT_STRIDE) as _,
@@ -1149,7 +1170,7 @@ impl Compiler {
                     let new_end = end + SPOTLIGHT_STRIDE as u64;
                     let vertices = gen_spotlight(key.radius(), key.range());
 
-                    unsafe {
+                    {
                         let mut mapped_range =
                             buf.data.current.map_range_mut(end..new_end).unwrap();
                         copy_nonoverlapping(
@@ -1193,7 +1214,7 @@ impl Compiler {
     }
 
     /// All commands sort into groups: first models, then lights, followed by lines.
-    fn group_idx(cmd: &Command) -> GroupIdx {
+    fn group_idx(cmd: &Command<P>) -> GroupIdx {
         match cmd {
             Command::Model(_) => GroupIdx::Model,
             Command::PointLight(_) => GroupIdx::PointLight,
@@ -1205,7 +1226,7 @@ impl Compiler {
     }
 
     /// Models sort into sub-groups: static followed by animated.
-    fn model_group_idx(cmd: &ModelCommand) -> ModelGroupIdx {
+    fn model_group_idx(cmd: &ModelCommand<P>) -> ModelGroupIdx {
         if cmd.pose.is_some() {
             ModelGroupIdx::Animated
         } else {
@@ -1229,7 +1250,7 @@ impl Compiler {
     }
 
     /// Sorts commands into a predictable and efficient order for drawing.
-    fn sort(&mut self, cmds: &mut [Command]) {
+    fn sort(cmds: &mut [Command<P>]) {
         cmds.sort_unstable_by(|lhs, rhs| {
             use Ordering::Equal as eq;
 
@@ -1247,8 +1268,8 @@ impl Compiler {
                         match lhs_group.cmp(&rhs_group) {
                             eq => {
                                 // Compare models (reduce vertex/index buffer switching)
-                                let lhs_model = ModelRef::as_ptr(&lhs.model);
-                                let rhs_model = ModelRef::as_ptr(&rhs.model);
+                                let lhs_model = Shared::as_ptr(&lhs.model);
+                                let rhs_model = Shared::as_ptr(&rhs.model);
                                 match lhs_model.cmp(&rhs_model) {
                                     eq => {
                                         // Compare materials (reduce descriptor set switching)
@@ -1276,24 +1297,56 @@ impl Compiler {
     }
 }
 
+impl<P> Default for Compiler<P>
+where
+    P: SharedPointerKind,
+{
+    fn default() -> Self {
+        Self {
+            code: Default::default(),
+            line: Default::default(),
+            materials: Default::default(),
+            point_light_buf: Default::default(),
+            rect_light: Default::default(),
+            rect_lights: Default::default(),
+            spotlight: Default::default(),
+            spotlights: Default::default(),
+            u16_skin_vertex_cmds: Default::default(),
+            u16_vertex_cmds: Default::default(),
+            u32_skin_vertex_cmds: Default::default(),
+            u32_vertex_cmds: Default::default(),
+            calc_vertex_attrs: Default::default(),
+        }
+    }
+}
+
 /// Extends the data type so we can track which portions require updates. Does not teach an entire city full
 /// of people that dancing is the best thing there is.
-struct DirtyData<Key> {
+struct DirtyData<Key, P>
+where
+    P: SharedPointerKind,
+{
     cpu_dirty: Option<Range<u64>>, // This range, if present, is the portion that needs to be copied from cpu to gpu
-    data: Allocation<Lease<Data>>,
+    data: Allocation<Lease<Data, P>>,
     gpu_dirty: Vec<CopyRange>, // Segments of gpu memory which must be "compacted" (read: copied) within the gpu
     gpu_usage: Vec<(u64, Key)>, // Memory usage on the gpu, sorted by the first field which is the offset.
 }
 
-impl<Key> DirtyData<Key> {
+impl<Key, P> DirtyData<Key, P>
+where
+    P: SharedPointerKind,
+{
     fn reset(&mut self) {
         self.cpu_dirty = None;
         self.gpu_dirty.clear();
     }
 }
 
-impl<T> From<Lease<Data>> for DirtyData<T> {
-    fn from(val: Lease<Data>) -> Self {
+impl<T, P> From<Lease<Data, P>> for DirtyData<T, P>
+where
+    P: SharedPointerKind,
+{
+    fn from(val: Lease<Data, P>) -> Self {
         Self {
             cpu_dirty: None,
             data: Allocation {
@@ -1306,12 +1359,18 @@ impl<T> From<Lease<Data>> for DirtyData<T> {
     }
 }
 
-struct DirtyLruData<Key> {
-    buf: Option<DirtyData<Key>>,
+struct DirtyLruData<Key, P>
+where
+    P: SharedPointerKind,
+{
+    buf: Option<DirtyData<Key, P>>,
     lru: Vec<Lru<Key>>,
 }
 
-impl<K> DirtyLruData<K> {
+impl<K, P> DirtyLruData<K, P>
+where
+    P: SharedPointerKind,
+{
     fn step(&mut self) {
         if let Some(buf) = self.buf.as_mut() {
             buf.reset();
@@ -1325,7 +1384,10 @@ impl<K> DirtyLruData<K> {
 }
 
 // #[derive(Default)] did not work due to Key being unconstrained
-impl<Key> Default for DirtyLruData<Key> {
+impl<Key, P> Default for DirtyLruData<Key, P>
+where
+    P: SharedPointerKind,
+{
     fn default() -> Self {
         Self {
             buf: None,

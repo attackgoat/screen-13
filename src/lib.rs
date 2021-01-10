@@ -1,24 +1,25 @@
-//! An easy-to-use 2D/3D rendering engine in the spirit of QBasic.
+//! _Screen 13_ is an easy-to-use 2D/3D rendering engine in the spirit of
+//! [QBasic](https://en.wikipedia.org/wiki/QBasic).
 //!
-//! This crate provides image rendering types and functions. It is intended to be integrated into
-//! other libraries and programs which require very high performance graphics code, but which do
-//! not want to know _anything_ about the underlying graphics hardware or programming interfaces.
+//! _Screen 13_ supports DirectX 11/12, Metal, Vulkan and OpenGL (ES3, WebGL2).
+//!
+//! This crate is intended to be integrated into other libraries and programs which require very
+//! high performance graphics code, but which do not want to know _anything_ about the underlying
+//! graphics hardware or programming interfaces.
 //!
 //! Before starting you should be familar with these topics:
 //! - The Rust Programming Language
 //!   ([_beginner level_](https://doc.rust-lang.org/book/ch01-02-hello-world.html))
-//! - Common file formats (`.gltf`, `.png`, _etc.._)
 //! - Pixel formats such as 24bpp RGB
 //!   ([_optional_](https://en.wikipedia.org/wiki/Color_depth#True_color_(24-bit)))
 //! - Vertex formats such as [POSITION, TEXCOORD0]
 //!   ([_optional_](https://www.khronos.org/opengl/wiki/Vertex_Specification#Theory))
+//! - Common file formats (`.gltf`, `.png`, _etc.._)
 //! - _Some notion about what a GPU might be_
 //!
-//! With almost striking exception, which appear in "_NOTE:_" sections only, no further graphics
-//! API-specific concepts need to be introduced in order to master Screen 13 and implement
+//! With almost striking exception, which appear in **_NOTE:_** sections only, no further graphics
+//! API-specific concepts need to be introduced in order to master _Screen 13_ and implement
 //! exceptionally fast graphics code.
-//!
-//! _TL;DR:_ Screen 13 adds state-of-the-art Vulkan/Metal/DirectX/GL to your code, easily.
 //!
 //! # Usage
 //!
@@ -29,13 +30,19 @@
 //! screen_13 = "0.1"
 //! ```
 //!
-//! Next, for a console program:
+//! Next, pick a shared reference type. We'll use [`std::rc::Rc`]:
+//!
+//! ```
+//! use screen_13::prelude_rc::*;
+//! ```
+//!
+//! Then, for a console program:
 //!
 //! ```
 //! /// Creates a 128x128 pixel jpeg file as `output.jpg`.
 //! fn main() {
-//!     let gpu = screen_13::Gpu::offscreen();
-//!     let render = gpu.render((128u32, 128u32));
+//!     let gpu = Gpu::offscreen();
+//!     let mut render = gpu.render((128u32, 128u32));
 //!     render.clear().record();
 //!     render.encode().record("output.jpg");
 //! }
@@ -44,47 +51,55 @@
 //! Or, for a windowed program:
 //!
 //! ```
-//! use screen_13::prelude_all::*;
-//!
 //! /// Paints a magenta window at 60 glorious frames per second.
 //! fn main() {
 //!     let engine = Engine::default();
-//!     engine.run(Box::new(FooProgram))
+//!     engine.run(Box::new(Foo))
 //! }
 //!
-//! struct FooProgram;
+//! struct Foo;
 //!
-//! impl Screen for FooProgram {
+//! impl Screen<RcK> for Foo {
 //!     fn render(&self, gpu: &Gpu, dims: Extent) -> Render {
-//!         let frame = gpu.render(dims);
-//!         frame.clear().with_value(MAGENTA).record(); // <-- 🔥
+//!         let mut frame = gpu.render(dims);
+//!         frame.clear().with(MAGENTA).record(); // <-- 🔥
 //!         frame
 //!     }
 //!
-//!     fn update(self: Box<Self>, gpu: &Gpu, dims: &Input) -> DynScreen {
+//!     fn update(self: Box<Self>, gpu: &Gpu, input: &Input) -> DynScreen {
 //!         // Never exits
 //!         self
 //!     }
 //! }
 //! ```
 //!
-//! # Screen 13 Concepts
+//! ## Screen 13 Concepts
 //!
-//! Screen 13 offers libraries and applications two general modes of operation, both of which focus
-//! on the `Gpu` type:
-//! - `Gpu::offscreen()`:  For headless rendering, such as from a console program
-//! - The `Screen` trait: Provides a fullscreen graphics mode or paints a window
+//! _Screen 13_ offers two general modes of operation, both of which focus on the [`Gpu`] type:
+//! - [`Gpu::offscreen()`]: _For headless rendering, such as from a console program_
+//! - The [`Screen`] trait: _Provides a fullscreen graphics mode or paints a window_
 //!
-//! _NOTE_: Resources loaded or read from a `Gpu` created in headless or screen modes cannot be
-//! used with other instances, including of the same mode. This is a limitation only because the
-//! code to share the resources properly has not be started yet.
+//! ## Shared References
 //!
-//! ## Screen 13 PAK Format
+//! A [`Gpu`]'s resources, such as bitmaps and models, use either [`std::sync::Arc`] or
+//! [`std::rc::Rc`] types to track their internal states.
+//!
+//! _Screen 13_ offers the following preludes to easily specifiy the shared reference type:
+//!
+//! | Scenario                    | Recommended `use`            | _Screen 13_ Types               |
+//! |-----------------------------|------------------------------|---------------------------------|
+//! | Single-Threaded Program     | `screen_13::prelude_rc::*;`  | `Gpu`, `Render`, _etc..._       |
+//! | Multi-Threaded Program      | `screen_13::prelude_arc::*;` | `Gpu`, `Render`, _etc..._       |
+//! | Both _or_ Choose at Runtime | `screen_13::prelude_all::*;` | `Gpu<P>`, `Render<P>`, _etc..._ |
+//!
+//! **_NOTE:_** The generic types require [`ptr::ArcK`] or [`ptr::RcK`] type parameters.
+//!
+//! ## `.pak` File Format
 //!
 //! Although data may be loaded at _runtime_, the highest performance can be achieved by pre-baking
 //! data at _design-time_ and simply reading it at _runtime_.
 //!
-//! It is recommended to use the `.pak` file format, _which includes optional *10:1-typical
+//! It is recommended to use the `.pak` format, _which includes optional *10:1-typical
 //! compression*_, whenever possible. See the main
 //! [README](https://github.com/attackgoat/screen-13) for more on this philosphy and the module
 //! level documentation for more details on how to use this system with existing files and assets.
@@ -93,6 +108,7 @@
 #![allow(clippy::needless_doctest_main)] // <-- The doc code is *intends* to show the whole shebang
 //#![deny(warnings)]
 #![warn(missing_docs)]
+//#![warn(clippy::pedantic)]
 
 #[macro_use]
 extern crate log;
@@ -105,24 +121,28 @@ pub mod input;
 pub mod math;
 pub mod pak;
 
-/// Things, particularly traits, which are used in almost every single Screen 13 program.
+/// Things, particularly traits, which are used in almost every single _Screen 13_ program.
 pub mod prelude {
     pub use super::{
         gpu::{Cache, Gpu, Render},
         input::Input,
         program::Program,
+        ptr::{ArcK, RcK, Shared},
         DynScreen, Engine, Screen,
     };
 }
 
-/// Like prelude, but contains all public exports.
+/// Like [`prelude`], but contains all public exports.
+///
+/// Use this module for access to all _Screen 13_ resources from either [`std::sync::Arc`] or
+/// [`std::rc::Rc`]-backed [`Gpu`] instances.
 pub mod prelude_all {
     pub use super::{
         camera::*,
         color::*,
         fx::*,
         gpu::draw::*,
-        gpu::font::*,
+        gpu::text::*,
         gpu::vertex::*,
         gpu::write::*,
         gpu::*,
@@ -131,11 +151,188 @@ pub mod prelude_all {
         pak::MaterialDesc,
         pak::{id::*, *},
         prelude::*,
-        program::*,
+        *,
     };
 }
 
-pub(crate) mod error;
+/// Like [`prelude_all`], but specialized for [`std::sync::Arc`]-backed [`Gpu`] instances.
+///
+/// Use this module if rendering will be done from multiple threads. See the main documentation for
+/// each alias for more information.
+pub mod prelude_arc {
+    pub use super::prelude_all::*;
+
+    /// Helpful type alias of `gpu::Bitmap<ArcK>`; see module documentation.
+    pub type Bitmap = super::gpu::Bitmap<ArcK>;
+
+    /// Helpful type alias of `gpu::Cache<ArcK>`; see module documentation.
+    pub type Cache = super::gpu::Cache<ArcK>;
+
+    /// Helpful type alias of `gpu::draw::Draw<ArcK>`; see module documentation.
+    pub type Draw = super::gpu::draw::Draw<ArcK>;
+
+    /// Helpful type alias of `DynScreen<ArcK>`; see module documentation.
+    pub type DynScreen = super::DynScreen<ArcK>;
+
+    /// Helpful type alias of `Engine<ArcK>`; see module documentation.
+    pub type Engine = super::Engine<ArcK>;
+
+    /// Helpful type alias of `fx::Fade<ArcK>`; see module documentation.
+    pub type Fade = super::fx::Fade<ArcK>;
+
+    /// Helpful type alias of `gpu::text::Font<ArcK>`; see module documentation.
+    pub type Font = super::gpu::text::Font<ArcK>;
+
+    /// Helpful type alias of `gpu::Gpu<ArcK>`; see module documentation.
+    pub type Gpu = super::gpu::Gpu<ArcK>;
+
+    /// Helpful type alias of `gpu::draw::Material<ArcK>`; see module documentation.
+    pub type Material = super::gpu::draw::Material<ArcK>;
+
+    /// Helpful type alias of `gpu::draw::Mesh<ArcK>`; see module documentation.
+    pub type Mesh = super::gpu::draw::Mesh<ArcK>;
+
+    /// Helpful type alias of `gpu::Model<ArcK>`; see module documentation.
+    pub type Model = super::gpu::Model<ArcK>;
+
+    /// Helpful type alias of `gpu::draw::ModelCommand<ArcK>`; see module documentation.
+    pub type ModelCommand = super::gpu::draw::ModelCommand<ArcK>;
+
+    /// Helpful type alias of `gpu::Render<ArcK>`; see module documentation.
+    pub type Render = super::gpu::Render<ArcK>;
+
+    /// Helpful type alias of `ptr::Shared<ArcK>`; see module documentation.
+    pub type Shared<T> = super::ptr::Shared<T, ArcK>;
+
+    /// Helpful type alias of `gpu::draw::Skydome<ArcK>`; see module documentation.
+    pub type Skydome = super::gpu::draw::Skydome<ArcK>;
+}
+
+/// Like [`prelude_all`], but specialized for [`std::rc::Rc`]-backed [`Gpu`] instances.
+///
+/// Use this module if rendering will be done from one thread only. See the main documentation for
+/// each alias for more information.
+pub mod prelude_rc {
+    pub use super::prelude_all::*;
+
+    /// Helpful type alias of `gpu::Bitmap<RcK>`; see module documentation.
+    pub type Bitmap = super::gpu::Bitmap<RcK>;
+
+    /// Helpful type alias of `gpu::Cache<RcK>`; see module documentation.
+    pub type Cache = super::gpu::Cache<RcK>;
+
+    /// Helpful type alias of `gpu::draw::Draw<RcK>`; see module documentation.
+    pub type Draw = super::gpu::draw::Draw<RcK>;
+
+    /// Helpful type alias of `DynScreen<RcK>`; see module documentation.
+    pub type DynScreen = super::DynScreen<RcK>;
+
+    /// Helpful type alias of `Engine<RcK>`; see module documentation.
+    pub type Engine = super::Engine<RcK>;
+
+    /// Helpful type alias of `fx::Fade<RcK>`; see module documentation.
+    pub type Fade = super::fx::Fade<RcK>;
+
+    /// Helpful type alias of `gpu::text::Font<RcK>`; see module documentation.
+    pub type Font = super::gpu::text::Font<RcK>;
+
+    /// Helpful type alias of `gpu::Gpu<RcK>`; see module documentation.
+    pub type Gpu = super::gpu::Gpu<RcK>;
+
+    /// Helpful type alias of `gpu::draw::Material<RcK>`; see module documentation.
+    pub type Material = super::gpu::draw::Material<RcK>;
+
+    /// Helpful type alias of `gpu::draw::Mesh<RcK>`; see module documentation.
+    pub type Mesh = super::gpu::draw::Mesh<RcK>;
+
+    /// Helpful type alias of `gpu::Model<RcK>`; see module documentation.
+    pub type Model = super::gpu::Model<RcK>;
+
+    /// Helpful type alias of `gpu::draw::ModelCommand<RcK>`; see module documentation.
+    pub type ModelCommand = super::gpu::draw::ModelCommand<RcK>;
+
+    /// Helpful type alias of `gpu::Render<RcK>`; see module documentation.
+    pub type Render = super::gpu::Render<RcK>;
+
+    /// Helpful type alias of `ptr::Shared<RcK>`; see module documentation.
+    pub type Shared<T> = super::ptr::Shared<T, RcK>;
+
+    /// Helpful type alias of `gpu::draw::Skydome<RcK>`; see module documentation.
+    pub type Skydome = super::gpu::draw::Skydome<RcK>;
+}
+
+/// Shared reference (`Arc` and `Rc`) implementation based on
+/// [_archery_](https://crates.io/crates/archery).
+pub mod ptr {
+    pub use archery::{ArcK, RcK};
+
+    use {
+        archery::{SharedPointer, SharedPointerKind},
+        std::ops::Deref,
+    };
+
+    /// A shared reference wrapper type, based on either [`std::sync::Arc`] or [`std::rc::Rc`].
+    #[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
+    pub struct Shared<T, P>(SharedPointer<T, P>)
+    where
+        P: SharedPointerKind;
+
+    impl<T, P> Shared<T, P>
+    where
+        P: SharedPointerKind,
+    {
+        pub(crate) fn new(val: T) -> Self {
+            Self(SharedPointer::new(val))
+        }
+
+        /// Returns a constant pointer to the value.
+        pub fn as_ptr(shared: &Self) -> *const T {
+            //SharedPointer::as_ptr(&shared.0)
+            SharedPointer::as_ptr(&shared.0)
+        }
+
+        /// Returns a copy of the value.
+        #[allow(clippy::should_implement_trait)]
+        pub fn clone(shared: &Self) -> Self {
+            shared.clone()
+        }
+
+        /// Returns `true` if two `Shared` instances point to the same underlying memory.
+        pub fn ptr_eq(lhs: &Self, rhs: &Self) -> bool {
+            SharedPointer::ptr_eq(&lhs.0, &rhs.0)
+        }
+    }
+
+    impl<T, P> Clone for Shared<T, P>
+    where
+        P: SharedPointerKind,
+    {
+        fn clone(&self) -> Self {
+            Self(self.0.clone())
+        }
+    }
+
+    impl<T, P> Default for Shared<T, P>
+    where
+        P: SharedPointerKind,
+        T: Default,
+    {
+        fn default() -> Self {
+            Self::new(Default::default())
+        }
+    }
+
+    impl<T, P> Deref for Shared<T, P>
+    where
+        P: SharedPointerKind,
+    {
+        type Target = T;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+}
 
 mod config;
 mod program;
@@ -151,6 +348,7 @@ use {
     },
     crate::gpu::Op,
     app_dirs::{get_app_root, AppDataType, AppDirsError, AppInfo},
+    archery::SharedPointerKind,
     std::{
         cmp::Ordering,
         collections::VecDeque,
@@ -174,7 +372,7 @@ use {
 };
 
 /// Helpful alias of `Box<dyn Screen>`; can be used to hold an instance of any `Screen`.
-pub type DynScreen = Box<dyn Screen>;
+pub type DynScreen<P> = Box<dyn Screen<P>>;
 
 const MINIMUM_WINDOW_SIZE: usize = 420;
 const RENDER_BUF_LEN: usize = 3;
@@ -220,16 +418,22 @@ pub fn root(name: &'static str, author: &'static str) -> Result<PathBuf, Error> 
 
 /// Pumps an operating system event loop in order to refresh a `Gpu`-created image at the refresh
 /// rate of the monitor. Requires a `DynScreen` instance to render.
-pub struct Engine {
+pub struct Engine<P>
+where
+    P: 'static + SharedPointerKind,
+{
     config: Config,
     event_loop: Option<EventLoop<()>>,
     dims: Extent,
-    gpu: Gpu,
+    gpu: Gpu<P>,
     swapchain: Swapchain,
     window: Window,
 }
 
-impl Engine {
+impl<P> Engine<P>
+where
+    P: SharedPointerKind,
+{
     /// Constructs a new `Engine` from the given `Program` description.
     ///
     /// _NOTE:_ This function loads any existing user configuration file and may override program
@@ -248,7 +452,7 @@ impl Engine {
     ///     engine.run(...)                // <- ... get fullscreen because of some previous run. 😂
     /// }
     /// ```
-    pub fn new<'a, 'b, P: AsRef<Program<'a, 'b>>>(program: P) -> Self {
+    pub fn new<'a, 'b, R: AsRef<Program<'a, 'b>>>(program: R) -> Self {
         let program = program.as_ref();
         let config = Config::read(program.name, program.author).unwrap();
         let fullscreen = config.fullscreen().unwrap_or(program.fullscreen);
@@ -277,8 +481,7 @@ impl Engine {
             .with_window_icon(icon)
             .build(&event_loop)
             .unwrap();
-        let (gpu, driver, surface) = Gpu::new(&window);
-        let swapchain = Swapchain::new(&driver, surface, dims, config.swapchain_len());
+        let (gpu, swapchain) = unsafe { Gpu::new(&window, dims, config.swapchain_len()) };
 
         Self {
             config,
@@ -349,20 +552,23 @@ impl Engine {
     }
 
     /// Borrows the `Gpu` instance.
-    pub fn gpu(&self) -> &Gpu {
+    pub fn gpu(&self) -> &Gpu<P> {
         &self.gpu
     }
 
-    fn present(&mut self, frame: Render) -> Vec<Box<dyn Op>> {
+    unsafe fn present(&mut self, frame: Render<P>) -> Vec<Box<dyn Op<P>>> {
         let (mut target, ops) = frame.resolve();
 
-        // We work-around this condition, below, but it is not expected that a well-formed program would ever do this
+        // We work-around this condition, below, but it is not expected that a well-formed program
+        // would ever do this
         debug_assert!(!ops.is_empty());
 
-        // If the render had no operations performed on it then it is uninitialized and we don't need to do anything with it
+        // If the render had no operations performed on it then it is uninitialized and we don't
+        // need to do anything with it
         if !ops.is_empty() {
-            // Target can be dropped directly after presentation, it will return to the pool. If for some reason the pool
-            // is drained before the hardware is finished with target the underlying texture is still referenced by the operations.
+            // Target can be dropped directly after presentation, it will return to the pool. If for
+            // some reason the pool is drained before the hardware is finished with target the
+            // underlying texture is still referenced by the operations.
             self.swapchain.present(&mut target);
         }
 
@@ -371,7 +577,7 @@ impl Engine {
 
     /// Runs a program starting with the given `DynScreen`.
     ///
-    /// Immediately after this call, `draw` will be called on the screen, followed by `update`, ad
+    /// Immediately after this call, `render` will be called on the screen, followed by `update`, ad
     /// infinium. This call does not return to the calling code.
     ///
     /// ## Examples
@@ -391,12 +597,12 @@ impl Engine {
     ///     ...
     /// }
     /// ```
-    pub fn run(mut self, screen: DynScreen) -> ! {
+    pub fn run(mut self, screen: DynScreen<P>) -> ! {
         let mut input = Input::default();
         let mut render_buf = VecDeque::with_capacity(RENDER_BUF_LEN);
 
         // This is the initial scene
-        let mut screen: Option<DynScreen> = Some(screen);
+        let mut screen: Option<DynScreen<P>> = Some(screen);
 
         #[cfg(debug_assertions)]
         info!("Starting event loop");
@@ -428,7 +634,7 @@ impl Engine {
 
                     // Render & present the screen, saving the result in our buffer
                     let render = screen.as_ref().unwrap().render(&self.gpu, self.dims);
-                    render_buf.push_front(self.present(render));
+                    render_buf.push_front(unsafe { self.present(render) });
 
                     // Update the current scene state, potentially returning a new one
                     screen = Some(screen.take().unwrap().update(&self.gpu, &input));
@@ -470,19 +676,28 @@ impl Engine {
     }
 }
 
-impl Default for Engine {
+impl<P> Default for Engine<P>
+where
+    P: SharedPointerKind,
+{
     fn default() -> Self {
         Self::new(Program::default())
     }
 }
 
-impl From<Program<'_, '_>> for Engine {
+impl<P> From<Program<'_, '_>> for Engine<P>
+where
+    P: SharedPointerKind,
+{
     fn from(program: Program<'_, '_>) -> Self {
         Self::new(program)
     }
 }
 
-impl From<&Program<'_, '_>> for Engine {
+impl<P> From<&Program<'_, '_>> for Engine<P>
+where
+    P: SharedPointerKind,
+{
     fn from(program: &Program<'_, '_>) -> Self {
         Self::new(program)
     }
@@ -495,19 +710,20 @@ impl From<&Program<'_, '_>> for Engine {
 /// `Screen` are provided to `Engine` for normal use, but can also be owned in a parent-child
 /// relationship to create sub-screens or to dynamically render.
 ///
-/// _NOTE:_ See the `fx` module for some pre-built examples of such screen ownership structures.
+/// **_NOTE:_** See the [`fx`] module for some pre-built examples of such screen ownership
+/// structures.
 ///
 /// While a program event loop is running the `Screen` functions are called repeatedly in this
 /// order:
-/// 1. `render`: Provide a `Render` instance in which rendering operations have been recorded.
-/// 2. `update`: Respond to window input and either return `self` (no change) or a new `DynScreen`.
+/// 1. `render`: _Provide a `Render` instance in which rendering operations have been recorded_
+/// 2. `update`: _Respond to window input and either return `self` (no change) or a new `DynScreen`_
 ///
 /// ## Implementing `Screen`
 ///
 /// Implementors of `Screen` invariably need to access resources loaded or read from the `Gpu`,
 /// such as bitmaps and models. To accomplish resource access you might either offer a loading
 /// function or perform the needed loads at runtime, using `RefCell` to gain interior mutability
-/// during the `render(...)` call.
+/// during the `render` call.
 ///
 /// Example load before `render`:
 ///
@@ -533,7 +749,10 @@ impl From<&Program<'_, '_>> for Engine {
 ///     ...
 /// }
 /// ```
-pub trait Screen {
+pub trait Screen<P>
+where
+    P: 'static + SharedPointerKind,
+{
     /// When paired with an `Engine`, generates images presented to the physical display adapter
     /// using a swapchain and fullscreen video mode or operating system window.
     ///
@@ -561,14 +780,14 @@ pub trait Screen {
     ///     let frame = gpu.render(dims);
     ///
     ///     // 🥇 It's some of my best work!
-    ///     frame.clear().with_value(GREEN).record();
+    ///     frame.clear().with(GREEN).record();
     ///
     ///     frame
     /// }
     /// ```
     ///
-    /// _NOTE:_ It is considered undefined behavior to return a render which has not recorded any
-    /// commands, as shown:
+    /// **_NOTE:_** It is considered undefined behavior to return a render which has not recorded
+    /// any commands, as shown:
     ///
     /// ```
     /// fn render(&self, gpu: &Gpu, dims: Extent) -> Render {
@@ -578,11 +797,13 @@ pub trait Screen {
     ///     gpu.render(dims)
     /// }
     /// ```
-    fn render(&self, gpu: &Gpu, dims: Extent) -> Render;
+    fn render(&self, gpu: &Gpu<P>, dims: Extent) -> Render<P>;
 
     /// Responds to user input and either provides a new `DynScreen` instance or `self` to indicate
-    /// no-change. After `update(...)`, `render(...)` will be called on the returned screen, and
-    /// the previous screen will be dropped.
+    /// no-change.
+    ///
+    /// After `update`, `render` will be called on the returned screen, and the previous screen will
+    /// be dropped.
     ///
     /// ## Examples
     ///
@@ -611,5 +832,5 @@ pub trait Screen {
     ///     }
     /// }
     /// ```
-    fn update(self: Box<Self>, gpu: &Gpu, input: &Input) -> DynScreen;
+    fn update(self: Box<Self>, gpu: &Gpu<P>, input: &Input) -> DynScreen<P>;
 }

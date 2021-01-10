@@ -6,7 +6,9 @@ extern crate log;
 #[macro_use]
 extern crate paste;
 
-/// This macro creates a HECS-compatible 'system' which adapts the HECS API to Screen 13
+/// This macro creates a HECS-compatible 'system' which adapts the HECS API to _Screen 13_
+///
+/// _NOTES:_ Use `cargo expand` to see what this generates.
 macro_rules! ecs_sys {
     ($name: ident) => {
         paste! {
@@ -14,7 +16,7 @@ macro_rules! ecs_sys {
             mod [<$name:snake _sys>] {
                 use {
                     super::PakFile,
-                    screen_13::{gpu::{Gpu, [<$name Ref>]}, pak::id::[<$name Id>]},
+                    screen_13::prelude_rc::*,
                     std::collections::HashMap,
                 };
 
@@ -25,15 +27,24 @@ macro_rules! ecs_sys {
 
                 #[derive(Default)]
                 pub struct System {
-                    [<$name:snake s>]: HashMap<[<$name Id>], [<$name Ref>]>,
+                    [<$name:snake s>]: HashMap<[<$name Id>], Shared<[<$name>]>>,
                 }
 
                 impl System {
-                    pub fn [<$name:snake>](&self, [<$name:snake>]: Ref) -> [<$name Ref>] {
-                        [<$name Ref>]::clone(&self.[<$name:snake s>][&[<$name:snake>].id])
+                    pub fn [<$name:snake>](
+                        &self,
+                        [<$name:snake>]: Ref
+                    ) -> Shared<[<$name>]> {
+                        Shared::<[<$name>]>::clone(
+                            &self.[<$name:snake s>][&[<$name:snake>].id])
                     }
 
-                    pub fn load<K: AsRef<str>>(&mut self, gpu: &Gpu, pak: &mut PakFile, key: K) -> Ref {
+                    pub fn load<K: AsRef<str>>(
+                        &mut self,
+                        gpu: &Gpu,
+                        pak: &mut PakFile,
+                        key: K
+                    ) -> Ref {
                         let key = key.as_ref();
                         let id = pak.[<$name:snake _id>](key).unwrap();
                         self.load_with_id(gpu, pak, id)
@@ -44,12 +55,17 @@ macro_rules! ecs_sys {
                         gpu: &Gpu,
                         pak: &mut PakFile,
                         key: K,
-                    ) -> [<$name Ref>] {
+                    ) -> Shared<[<$name>]> {
                         let [<$name:snake>] = self.load(gpu, pak, key);
                         self.[<$name:snake>]([<$name:snake>])
                     }
 
-                    pub fn load_with_id(&mut self, gpu: &Gpu, pak: &mut PakFile, id: [<$name Id>]) -> Ref {
+                    pub fn load_with_id(
+                        &mut self,
+                        gpu: &Gpu,
+                        pak: &mut PakFile,
+                        id: [<$name Id>]
+                    ) -> Ref {
                         if self.[<$name:snake s>].contains_key(&id) {
                             return Ref { id };
                         }
@@ -58,10 +74,10 @@ macro_rules! ecs_sys {
 
                         self.[<$name:snake s>].insert(
                             id,
-                            [<$name Ref>]::new(gpu.[<read_ $name:snake _with_id>](
+                            gpu.[<read_ $name:snake _with_id>](
                                 pak,
                                 id,
-                            )),
+                            ),
                         );
 
                         Ref { id }
@@ -81,7 +97,7 @@ use {
         model_sys::{Ref as Model, System as ModelSystem},
     },
     hecs::World,
-    screen_13::prelude_all::*,
+    screen_13::prelude_rc::*,
     std::{cell::RefCell, env::current_exe, fs::File, io::BufReader},
 };
 
@@ -101,7 +117,11 @@ fn main() -> ! {
             .unwrap()
             .join("ecs.pak"),
     )
-    .expect("ERROR: You must first pack the runtime content into a file by running the following command: `cargo run examples/content/ecs.toml`");
+    .expect(&format!(
+        "{} {}",
+        "ERROR: You must first pack the runtime content into a file by running the following",
+        "command: `cargo run examples/content/ecs.toml`"
+    ));
     let mut game = Game::new(pak);
 
     // ... load and play the game
@@ -172,7 +192,7 @@ impl Game {
     }
 }
 
-impl Screen for Game {
+impl Screen<RcK> for Game {
     fn render(&self, gpu: &Gpu, dims: Extent) -> Render {
         // Use HECS to query and fill a local draw cache
         let mut draws = self.draws.borrow_mut();

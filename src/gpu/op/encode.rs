@@ -1,10 +1,11 @@
 use {
     super::Op,
     crate::gpu::{
-        driver::{CommandPool, Device, Driver, Fence},
+        driver::{CommandPool, Fence},
         pool::{Lease, Pool},
-        Data, Texture2d,
+        queue_mut, Data, Texture2d,
     },
+    archery::SharedPointerKind,
     gfx_hal::{
         command::{BufferImageCopy, CommandBuffer, CommandBufferFlags, Level},
         format::Aspects,
@@ -30,46 +31,46 @@ const DEFAULT_QUALITY: f32 = 0.9;
 
 /// A container of graphics types which allow the recording of encode operations and the saving
 /// of renders to disk as regular image files.
-pub struct EncodeOp {
-    buf: Lease<Data>,
+pub struct EncodeOp<P>
+where
+    P: 'static + SharedPointerKind,
+{
+    buf: Lease<Data, P>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
-    cmd_pool: Lease<CommandPool>,
-    driver: Driver,
-    fence: Lease<Fence>,
-    pool: Option<Lease<Pool>>,
+    cmd_pool: Lease<CommandPool, P>,
+    fence: Lease<Fence, P>,
+    pool: Option<Lease<Pool<P>, P>>,
     path: Option<PathBuf>,
     quality: f32,
     texture: Texture2d,
 }
 
-impl EncodeOp {
+impl<P> EncodeOp<P>
+where
+    P: SharedPointerKind,
+{
     #[must_use]
-    pub(crate) fn new(
+    pub(crate) unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
-        mut pool: Lease<Pool>,
+        mut pool: Lease<Pool<P>, P>,
         texture: &Texture2d,
     ) -> Self {
         let len = Self::byte_len(&texture);
         let buf = pool.data(
             #[cfg(feature = "debug-names")]
             name,
-            &driver,
             len as _,
         );
 
-        let family = Device::queue_family(&driver.borrow());
-        let mut cmd_pool = pool.cmd_pool(&driver, family);
+        let mut cmd_pool = pool.cmd_pool();
 
         Self {
             buf,
-            cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
+            cmd_buf: cmd_pool.allocate_one(Level::Primary),
             cmd_pool,
-            driver: Driver::clone(driver),
             fence: pool.fence(
                 #[cfg(feature = "debug-names")]
                 name,
-                &driver,
             ),
             pool: Some(pool),
             path: None,
@@ -100,9 +101,12 @@ impl EncodeOp {
     pub fn flush(&mut self) -> IoResult<()> {
         // We only do this once
         if let Some(path) = self.path.take() {
-            self.wait();
+            unsafe {
+                self.wait();
+            }
+
             let dims = self.texture.borrow().dims();
-            let len = EncodeOp::byte_len(&self.texture);
+            let len = Self::byte_len(&self.texture);
             let buf = self.buf.map_range(0..len as _).unwrap(); // TODO: Error handling!
 
             // Encode the 32bpp RGBA source data into a JPEG
@@ -113,7 +117,7 @@ impl EncodeOp {
     }
 
     /// Submits the given encode for hardware processing.
-    pub fn record<P: AsRef<Path>>(&mut self, path: P) {
+    pub fn record<A: AsRef<Path>>(&mut self, path: A) {
         self.path = Some(path.as_ref().to_path_buf());
 
         unsafe {
@@ -124,7 +128,6 @@ impl EncodeOp {
     unsafe fn submit(&mut self) {
         trace!("submit");
 
-        let mut device = self.driver.borrow_mut();
         let len = Self::byte_len(&self.texture);
         let buf = &mut *self.buf;
         let mut texture = self.texture.borrow_mut();
@@ -166,7 +169,7 @@ impl EncodeOp {
         self.cmd_buf.finish();
 
         // Submit
-        Device::queue_mut(&mut device).submit(
+        queue_mut().submit(
             Submission {
                 command_buffers: once(&self.cmd_buf),
                 wait_semaphores: empty(),
@@ -177,27 +180,29 @@ impl EncodeOp {
     }
 }
 
-impl Drop for EncodeOp {
+impl<P> Drop for EncodeOp<P>
+where
+    P: SharedPointerKind,
+{
     fn drop(&mut self) {
         // If you don't manually call flush errors will be ignored
         self.flush().unwrap_or_default();
     }
 }
 
-impl Op for EncodeOp {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
+impl<P> Op<P> for EncodeOp<P>
+where
+    P: SharedPointerKind,
+{
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 
-    fn take_pool(&mut self) -> Option<Lease<Pool>> {
-        self.pool.take()
+    unsafe fn take_pool(&mut self) -> Lease<Pool<P>, P> {
+        self.pool.take().unwrap()
     }
 
-    fn wait(&self) {
+    unsafe fn wait(&self) {
         Fence::wait(&self.fence);
     }
 }

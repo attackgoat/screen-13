@@ -1,7 +1,7 @@
 use {
-    super::Driver,
+    crate::gpu::device,
     gfx_hal::{
-        device::Device,
+        device::Device as _,
         pso::{ComputePipelineDesc, EntryPoint},
         Backend,
     },
@@ -9,50 +9,35 @@ use {
     std::ops::{Deref, DerefMut},
 };
 
-pub struct ComputePipeline {
-    driver: Driver,
-    ptr: Option<<_Backend as Backend>::ComputePipeline>,
-}
+pub struct ComputePipeline(Option<<_Backend as Backend>::ComputePipeline>);
 
 impl ComputePipeline {
     pub unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
         layout: &<_Backend as Backend>::PipelineLayout,
         entry_point: EntryPoint<'_, _Backend>,
     ) -> Self {
         let desc = ComputePipelineDesc::new(entry_point, layout);
-        let compute_pipeline = {
-            let device = driver.as_ref().borrow();
-            let ctor = || device.create_compute_pipeline(&desc, None).unwrap();
+        let ctor = || device().create_compute_pipeline(&desc, None).unwrap();
 
-            #[cfg(feature = "debug-names")]
-            let mut compute_pipeline = ctor();
+        #[cfg(feature = "debug-names")]
+        let mut ptr = ctor();
 
-            #[cfg(not(feature = "debug-names"))]
-            let compute_pipeline = ctor();
+        #[cfg(not(feature = "debug-names"))]
+        let ptr = ctor();
 
-            #[cfg(feature = "debug-names")]
-            device.set_compute_pipeline_name(&mut compute_pipeline, name);
+        #[cfg(feature = "debug-names")]
+        device().set_compute_pipeline_name(&mut ptr, name);
 
-            compute_pipeline
-        };
-
-        Self {
-            ptr: Some(compute_pipeline),
-            driver: Driver::clone(driver),
-        }
+        Self(Some(ptr))
     }
 
-    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
+    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as
+    /// [RenderDoc](https://renderdoc.org/).
     #[cfg(feature = "debug-names")]
-    pub fn set_name(compute_pipeline: &mut Self, name: &str) {
-        let device = compute_pipeline.driver.as_ref().borrow();
-        let ptr = compute_pipeline.ptr.as_mut().unwrap();
-
-        unsafe {
-            device.set_compute_pipeline_name(ptr, name);
-        }
+    pub unsafe fn set_name(pipeline: &mut Self, name: &str) {
+        let ptr = pipeline.0.as_mut().unwrap();
+        device().set_compute_pipeline_name(ptr, name);
     }
 }
 
@@ -72,23 +57,22 @@ impl Deref for ComputePipeline {
     type Target = <_Backend as Backend>::ComputePipeline;
 
     fn deref(&self) -> &Self::Target {
-        self.ptr.as_ref().unwrap()
+        self.0.as_ref().unwrap()
     }
 }
 
 impl DerefMut for ComputePipeline {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.ptr.as_mut().unwrap()
+        self.0.as_mut().unwrap()
     }
 }
 
 impl Drop for ComputePipeline {
     fn drop(&mut self) {
-        let device = self.driver.as_ref().borrow();
-        let ptr = self.ptr.take().unwrap();
+        let ptr = self.0.take().unwrap();
 
         unsafe {
-            device.destroy_compute_pipeline(ptr);
+            device().destroy_compute_pipeline(ptr);
         }
     }
 }

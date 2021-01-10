@@ -7,6 +7,7 @@ use {
             IndexType,
         },
     },
+    archery::SharedPointerKind,
     std::{
         cell::{Ref, RefCell, RefMut},
         fmt::{Debug, Error, Formatter},
@@ -14,10 +15,10 @@ use {
 };
 
 /// Data and length
-pub type DataBuffer = (Lease<Data>, u64);
+pub type DataBuffer<P> = (Lease<Data, P>, u64);
 
 /// Data, length, and write mask (1 bit per index; all staged data is indexed)
-pub type StagingBuffers = (Lease<Data>, u64, Lease<Data>);
+pub type StagingBuffers<P> = (Lease<Data, P>, u64, Lease<Data, P>);
 
 // TODO: Could not force the lifetime to work without an explicit function which means I'm missing something really basic
 #[inline]
@@ -29,13 +30,19 @@ fn deref_str<S: AsRef<str>>(s: &Option<S>) -> Option<&str> {
     }
 }
 
-pub struct MeshIter<'a> {
+pub struct MeshIter<'a, P>
+where
+    P: SharedPointerKind,
+{
     filter: Option<MeshFilter>,
     idx: usize,
-    model: &'a Model,
+    model: &'a Model<P>,
 }
 
-impl<'a> Iterator for MeshIter<'a> {
+impl<'a, P> Iterator for MeshIter<'a, P>
+where
+    P: SharedPointerKind,
+{
     type Item = &'a Mesh;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -65,24 +72,30 @@ impl<'a> Iterator for MeshIter<'a> {
 pub struct MeshFilter(u16);
 
 /// A drawable collection of individually adressable meshes.
-pub struct Model {
-    idx_buf: RefCell<Lease<Data>>,
+pub struct Model<P>
+where
+    P: SharedPointerKind,
+{
+    idx_buf: RefCell<Lease<Data, P>>,
     idx_buf_len: u64,
     idx_ty: IndexType,
     meshes: Vec<Mesh>,
-    staging: RefCell<Option<StagingBuffers>>,
-    vertex_buf: RefCell<Lease<Data>>,
+    staging: RefCell<Option<StagingBuffers<P>>>,
+    vertex_buf: RefCell<Lease<Data, P>>,
     vertex_buf_len: u64,
 }
 
-impl Model {
+impl<P> Model<P>
+where
+    P: SharedPointerKind,
+{
     /// Meshes must be sorted by name
     pub(crate) fn new(
         meshes: Vec<Mesh>,
         idx_ty: IndexType,
-        idx_buf: DataBuffer,
-        vertex_buf: DataBuffer,
-        staging: StagingBuffers,
+        idx_buf: DataBuffer<P>,
+        vertex_buf: DataBuffer<P>,
+        staging: StagingBuffers<P>,
     ) -> Self {
         let (idx_buf, idx_buf_len) = idx_buf;
         let (vertex_buf, vertex_buf_len) = vertex_buf;
@@ -158,16 +171,16 @@ impl Model {
         self.idx_ty
     }
 
-    pub(crate) fn idx_buf_ref(&self) -> (Ref<'_, Lease<Data>>, u64) {
+    pub(crate) fn idx_buf_ref(&self) -> (Ref<'_, Lease<Data, P>>, u64) {
         (self.idx_buf.borrow(), self.idx_buf_len)
     }
 
-    pub(crate) fn idx_buf_mut(&self) -> (RefMut<'_, Lease<Data>>, u64) {
+    pub(crate) fn idx_buf_mut(&self) -> (RefMut<'_, Lease<Data, P>>, u64) {
         (self.idx_buf.borrow_mut(), self.idx_buf_len)
     }
 
     /// Remarks: Guaranteed to be in vertex buffer order (each mesh has a unique block of vertices)
-    pub(super) fn meshes(&self) -> MeshIter {
+    pub(super) fn meshes(&self) -> MeshIter<'_, P> {
         MeshIter {
             filter: None,
             idx: 0,
@@ -176,7 +189,7 @@ impl Model {
     }
 
     /// Remarks: Guaranteed to be in vertex buffer order (each mesh has a unique block of vertices)
-    pub(super) fn meshes_filter(&self, filter: MeshFilter) -> MeshIter {
+    pub(super) fn meshes_filter(&self, filter: MeshFilter) -> MeshIter<'_, P> {
         MeshIter {
             filter: Some(filter),
             idx: 0,
@@ -185,7 +198,7 @@ impl Model {
     }
 
     /// Remarks: Guaranteed to be in vertex buffer order (each mesh has a unique block of vertices)
-    pub(super) fn meshes_filter_is(&self, filter: Option<MeshFilter>) -> MeshIter {
+    pub(super) fn meshes_filter_is(&self, filter: Option<MeshFilter>) -> MeshIter<'_, P> {
         MeshIter {
             filter,
             idx: 0,
@@ -194,7 +207,7 @@ impl Model {
     }
 
     /// You must submit writes for our buffers if you call this.
-    pub(super) fn take_pending_writes(&self) -> Option<StagingBuffers> {
+    pub(super) fn take_pending_writes(&self) -> Option<StagingBuffers<P>> {
         self.staging.borrow_mut().take()
     }
 
@@ -205,23 +218,28 @@ impl Model {
     }
 
     /// Sets a descriptive name for debugging which can be seen with API tracing tools such as
-    /// RenderDoc.
+    /// [RenderDoc](https://renderdoc.org/).
     #[cfg(feature = "debug-names")]
     pub fn set_name(&mut self, name: &str) {
-        self.idx_buf.borrow_mut().set_name(name);
-        self.vertex_buf.borrow_mut().set_name(name);
+        unsafe {
+            self.idx_buf.borrow_mut().set_name(name);
+            self.vertex_buf.borrow_mut().set_name(name);
+        }
     }
 
-    pub(crate) fn vertex_buf_ref(&self) -> (Ref<'_, Lease<Data>>, u64) {
+    pub(crate) fn vertex_buf_ref(&self) -> (Ref<'_, Lease<Data, P>>, u64) {
         (self.vertex_buf.borrow(), self.vertex_buf_len)
     }
 
-    pub(crate) fn vertex_buf_mut(&self) -> (RefMut<'_, Lease<Data>>, u64) {
+    pub(crate) fn vertex_buf_mut(&self) -> (RefMut<'_, Lease<Data, P>>, u64) {
         (self.vertex_buf.borrow_mut(), self.vertex_buf_len)
     }
 }
 
-impl Debug for Model {
+impl<P> Debug for Model<P>
+where
+    P: SharedPointerKind,
+{
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.write_str("Model")
     }

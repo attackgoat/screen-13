@@ -5,7 +5,6 @@ mod command_pool;
 mod compute_pipeline;
 mod desc_pool;
 mod desc_set_layout;
-mod device;
 mod fence;
 mod framebuffer;
 mod graphics_pipeline;
@@ -26,7 +25,6 @@ pub use self::{
     compute_pipeline::ComputePipeline,
     desc_pool::DescriptorPool,
     desc_set_layout::DescriptorSetLayout,
-    device::Device,
     fence::Fence,
     graphics_pipeline::GraphicsPipeline,
     help::{
@@ -46,11 +44,9 @@ pub use self::{
 
 use {
     self::{framebuffer::Framebuffer, image::Image},
-    std::{cell::RefCell, rc::Rc},
     typenum::{U1, U2, U3},
 };
 
-pub type Driver = Rc<RefCell<Device>>;
 pub type Framebuffer2d = Framebuffer<U2>;
 pub type Image2d = Image<U2>;
 

@@ -1,7 +1,7 @@
 use {
-    super::Driver,
+    crate::gpu::device,
     gfx_hal::{
-        device::Device,
+        device::Device as _,
         pso::{EntryPoint, Specialization},
         Backend,
     },
@@ -9,23 +9,13 @@ use {
     std::ops::{Deref, DerefMut},
 };
 
-pub struct ShaderModule {
-    driver: Driver,
-    ptr: Option<<_Backend as Backend>::ShaderModule>,
-}
+pub struct ShaderModule(Option<<_Backend as Backend>::ShaderModule>);
 
 impl ShaderModule {
-    pub unsafe fn new(driver: &Driver, spirv: &[u32]) -> Self {
-        let shader_module = driver
-            .as_ref()
-            .borrow()
-            .create_shader_module(spirv)
-            .unwrap();
+    pub unsafe fn new(spirv: &[u32]) -> Self {
+        let ptr = device().create_shader_module(spirv).unwrap();
 
-        Self {
-            driver: Driver::clone(driver),
-            ptr: Some(shader_module),
-        }
+        Self(Some(ptr))
     }
 
     pub fn entry_point(module: &Self) -> EntryPoint<'_, _Backend> {
@@ -60,23 +50,22 @@ impl Deref for ShaderModule {
     type Target = <_Backend as Backend>::ShaderModule;
 
     fn deref(&self) -> &Self::Target {
-        self.ptr.as_ref().unwrap()
+        self.0.as_ref().unwrap()
     }
 }
 
 impl DerefMut for ShaderModule {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.ptr.as_mut().unwrap()
+        self.0.as_mut().unwrap()
     }
 }
 
 impl Drop for ShaderModule {
     fn drop(&mut self) {
-        let device = self.driver.borrow();
-        let ptr = self.ptr.take().unwrap();
+        let ptr = self.0.take().unwrap();
 
         unsafe {
-            device.destroy_shader_module(ptr);
+            device().destroy_shader_module(ptr);
         }
     }
 }

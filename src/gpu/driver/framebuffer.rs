@@ -1,7 +1,7 @@
 use {
-    super::{Dim, Driver, RenderPass},
-    crate::math::Extent,
-    gfx_hal::{device::Device, image::Extent as ImageExtent, Backend},
+    super::{Dim, RenderPass},
+    crate::{gpu::device, math::Extent},
+    gfx_hal::{device::Device as _, image::Extent as ImageExtent, Backend},
     gfx_impl::Backend as _Backend,
     std::{
         borrow::Borrow,
@@ -16,7 +16,6 @@ where
     D: Dim,
 {
     __: PhantomData<D>,
-    driver: Driver,
     ptr: Option<<_Backend as Backend>::Framebuffer>,
 }
 
@@ -24,15 +23,12 @@ impl<D> Framebuffer<D>
 where
     D: Dim,
 {
-    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as RenderDoc.
+    /// Sets a descriptive name for debugging which can be seen with API tracing tools such as
+    /// [RenderDoc](https://renderdoc.org/).
     #[cfg(feature = "debug-names")]
-    pub fn set_name(frame_buf: &mut Self, name: &str) {
-        let device = frame_buf.driver.as_ref().borrow();
+    pub unsafe fn set_name(frame_buf: &mut Self, name: &str) {
         let ptr = frame_buf.ptr.as_mut().unwrap();
-
-        unsafe {
-            device.set_framebuffer_name(ptr, name);
-        }
+        device().set_framebuffer_name(ptr, name);
     }
 }
 
@@ -40,9 +36,8 @@ where
 
 impl Framebuffer<U2> {
     /// Specialized new function for 2D framebuffers
-    pub fn new<I>(
+    pub unsafe fn new<I>(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
         render_pass: &RenderPass,
         image_views: I,
         dims: Extent,
@@ -51,41 +46,32 @@ impl Framebuffer<U2> {
         I: IntoIterator,
         I::Item: Borrow<<_Backend as Backend>::ImageView>,
     {
-        let frame_buf = {
-            let device = driver.as_ref().borrow();
-
-            unsafe {
-                let ctor = || {
-                    device
-                        .create_framebuffer(
-                            render_pass,
-                            image_views,
-                            ImageExtent {
-                                width: dims.x,
-                                height: dims.y,
-                                depth: 1,
-                            },
-                        )
-                        .unwrap()
-                };
-
-                #[cfg(feature = "debug-names")]
-                let mut frame_buf = ctor();
-
-                #[cfg(not(feature = "debug-names"))]
-                let frame_buf = ctor();
-
-                #[cfg(feature = "debug-names")]
-                device.set_framebuffer_name(&mut frame_buf, name);
-
-                frame_buf
-            }
+        let ctor = || {
+            device()
+                .create_framebuffer(
+                    render_pass,
+                    image_views,
+                    ImageExtent {
+                        width: dims.x,
+                        height: dims.y,
+                        depth: 1,
+                    },
+                )
+                .unwrap()
         };
+
+        #[cfg(feature = "debug-names")]
+        let mut ptr = ctor();
+
+        #[cfg(not(feature = "debug-names"))]
+        let ptr = ctor();
+
+        #[cfg(feature = "debug-names")]
+        device().set_framebuffer_name(&mut ptr, name);
 
         Self {
             __: PhantomData,
-            driver: Driver::clone(driver),
-            ptr: Some(frame_buf),
+            ptr: Some(ptr),
         }
     }
 }
@@ -133,11 +119,10 @@ where
     D: Dim,
 {
     fn drop(&mut self) {
-        let device = self.driver.as_ref().borrow();
         let ptr = self.ptr.take().unwrap();
 
         unsafe {
-            device.destroy_framebuffer(ptr);
+            device().destroy_framebuffer(ptr);
         }
     }
 }

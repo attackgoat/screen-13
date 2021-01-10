@@ -1,4 +1,4 @@
-//! Contains the heart and soul of Screen 13.
+//! Contains the heart and soul of _Screen 13_.
 //!
 //! This module does the heavy-lifting work in this library and is made from a number of
 //! internal-only modules which support the functionality described here.
@@ -21,20 +21,9 @@
 //!   1. Submit all commands
 //! - `submit_X(&self)`: functions which contain minimal "if" cases and logic; simple calls only.
 //!
-//! ## Note About `Rc`
-//!
-//! Screen 13 currently uses the `Rc` type in order to synchronize work between various operations.
-//!
-//! Unfortunately, this limits Screen 13 resources from being shared across threads. We could
-//! simply replace those references with `Arc` and call it a day (that would work), but I'm not yet
-//! sure that's a good pattern, it would introduce unessecery resource synchronization.
-//!
-//! I think as the API matures a better solution will become clearer, just not sure which types I
-//! want to be `Send` yet. The driver really could be `Sync`.
-//!
 //! ## Note About `def`
 //!
-//! Internally Screen 13 uses pre-defined render passes and pipelines to function.
+//! Internally _Screen 13_ uses pre-defined render passes and pipelines to function.
 //!
 //! All of these definitions exist in the `def` module and are *great*, but inflexible. They only
 //! do what I programmed them to do. Lame.
@@ -74,7 +63,7 @@ pub mod encode {
     pub use super::op::encode::EncodeOp;
 }
 
-pub mod font {
+pub mod text {
     //! Types for writing text onto textures using stylized fonts.
 
     pub use super::op::font::{Font, FontOp};
@@ -113,29 +102,34 @@ pub use self::{
     texture::Texture,
 };
 
-pub(crate) use self::{driver::Driver, op::Op, pool::Pool, swapchain::Swapchain};
+pub(crate) use self::{op::Op, pool::Pool, swapchain::Swapchain};
 
 use {
     self::{
         data::{Data, Mapping},
-        driver::{Device, Image2d, Surface},
-        font::*,
-        op::bitmap::BitmapOp,
+        driver::{Image2d, Surface},
+        op::{bitmap::BitmapOp, font::Font},
         pool::{Lease, PoolRef},
         vertex::Vertex,
     },
     crate::{
-        error::Error,
         math::Extent,
         pak::{
             id::{AnimationId, BitmapId, ModelId},
             model::Mesh,
             BitmapFormat, IndexType, Pak,
         },
+        ptr::Shared,
     },
+    archery::SharedPointerKind,
     gfx_hal::{
-        adapter::Adapter, buffer::Usage, device::Device as _, queue::QueueFamily,
-        window::Surface as _, Instance as _,
+        adapter::{Adapter, MemoryProperties, PhysicalDevice},
+        buffer::Usage,
+        device::Device,
+        memory::Properties,
+        queue::{QueueFamily, QueueFamilyId, QueueGroup},
+        window::Surface as _,
+        Backend, Features, Instance as _, MemoryTypeId,
     },
     gfx_impl::{Backend as _Backend, Instance},
     num_traits::Num,
@@ -143,7 +137,9 @@ use {
         cell::RefCell,
         fmt::Debug,
         io::{Read, Seek},
+        mem::MaybeUninit,
         rc::Rc,
+        sync::Once,
     },
     winit::window::Window,
 };
@@ -154,19 +150,21 @@ use {
     std::time::Instant,
 };
 
+static mut ADAPTER: MaybeUninit<Adapter<_Backend>> = MaybeUninit::uninit();
+static mut INIT: Once = Once::new();
+static mut INSTANCE: MaybeUninit<Instance> = MaybeUninit::uninit();
+static mut DEVICE: MaybeUninit<<_Backend as Backend>::Device> = MaybeUninit::uninit();
+static mut MEM_PROPS: MaybeUninit<MemoryProperties> = MaybeUninit::uninit();
+static mut QUEUE_GROUP: MaybeUninit<QueueGroup<_Backend>> = MaybeUninit::uninit();
+
 /// Two-dimensional rendering result.
 pub type Texture2d = TextureRef<Image2d>;
 
-/// Helpful alias of `Rc<Bitmap>`; used to share `Bitmap` instances used with rendering operations.
-pub type BitmapRef = Rc<Bitmap>;
-
-/// Helpful alias of `Rc<Model>`; used to share `Model` instances used with rendering operations.
-pub type ModelRef = Rc<Model>;
-
+// TODO: Replace with archery?
 pub(crate) type TextureRef<I> = Rc<RefCell<Texture<I>>>;
 
-type LoadCache = RefCell<Pool>;
-type OpCache = RefCell<Option<Vec<Box<dyn Op>>>>;
+type LoadCache<P> = RefCell<Pool<P>>;
+type OpCache<P> = RefCell<Option<Vec<Box<dyn Op<P>>>>>;
 
 /// Rounds down a multiple of atom; panics if atom is zero
 fn align_down<N: Copy + Num>(size: N, atom: N) -> N {
@@ -178,21 +176,98 @@ fn align_up<N: Copy + Num>(size: N, atom: N) -> N {
     (size - <N>::one()) - (size - <N>::one()) % atom + atom
 }
 
-fn create_instance() -> (Adapter<_Backend>, Instance) {
-    let instance = Instance::create("attackgoat/screen-13", 1).unwrap();
-    let mut adapters = instance.enumerate_adapters();
-    if adapters.is_empty() {
-        // TODO: Error::adapter
-    }
-    let adapter = adapters.remove(0);
-    (adapter, instance)
+/// Very unsafe - call *ONLY* after init!
+#[inline]
+unsafe fn device() -> &'static <_Backend as Backend>::Device {
+    &*DEVICE.as_ptr()
 }
 
-// TODO: Different path for webgl and need this -> #[cfg(any(feature = "vulkan", feature = "metal"))]
-fn create_surface(window: &Window) -> (Adapter<_Backend>, Surface) {
-    let (adapter, instance) = create_instance();
-    let surface = Surface::new(instance, window).unwrap();
-    (adapter, surface)
+/// 💀 Very unsafe - call *ONLY* once per process!
+unsafe fn init_gfx_hal() {
+    // Initialize the GFX-HAL library
+    let engine = "attackgoat/screen-13";
+    let version = 1;
+    *INSTANCE.as_mut_ptr() =
+        Instance::create(engine, version).expect("Unable to create GFX-HAL instance");
+
+    let instance = &*INSTANCE.as_ptr();
+    let mut adapters = instance.enumerate_adapters();
+    *ADAPTER.as_mut_ptr() = if adapters.is_empty() {
+        panic!("Unable to find GFX-HAL adapter");
+    } else {
+        debug!("{} Adapters found", adapters.len());
+        for (idx, adapter) in adapters.iter().enumerate() {
+            debug!(
+                "#{}: {} {:?}",
+                idx + 1,
+                &adapter.info.name,
+                adapter.info.device_type
+            );
+        }
+
+        adapters.remove(1)
+    };
+}
+
+/// Very unsafe - call *ONLY* after init!
+#[inline]
+unsafe fn instance() -> &'static Instance {
+    &*INSTANCE.as_ptr()
+}
+
+/// Very unsafe - call *ONLY* after init!
+unsafe fn mem_ty(mask: u32, props: Properties) -> Option<MemoryTypeId> {
+    //debug!("type_mask={} properties={:?}", type_mask, properties);
+    (*MEM_PROPS.as_ptr())
+        .memory_types
+        .iter()
+        .enumerate()
+        .position(|(idx, mem_ty)| {
+            //debug!("Mem ID {} type={:?}", id, mem_type);
+            // type_mask is a bit field where each bit represents a memory type. If the bit is set
+            // to 1 it means we can use that type for our buffer. So this code finds the first
+            // memory type that has a `1` (or, is allowed), and is visible to the CPU.
+            mask & (1 << idx) != 0 && mem_ty.properties.contains(props)
+        })
+        .map(MemoryTypeId)
+}
+
+unsafe fn open_adapter(adapter: &Adapter<_Backend>, queue: &<_Backend as Backend>::QueueFamily) {
+    info!(
+        "Adapter: {} ({:?})",
+        &adapter.info.name, adapter.info.device_type
+    );
+
+    let mut gpu = adapter
+        .physical_device
+        .open(&[(queue, &[1.0])], Features::empty())
+        .expect("Unable to open GFX-HAL device");
+    *DEVICE.as_mut_ptr() = gpu.device;
+    *MEM_PROPS.as_mut_ptr() = adapter.physical_device.memory_properties();
+    *QUEUE_GROUP.as_mut_ptr() = gpu
+        .queue_groups
+        .pop()
+        .expect("Unable to find GFX-HAL queue");
+}
+
+/// Very unsafe - call *ONLY* after init!
+#[inline]
+unsafe fn physical_device() -> &'static <_Backend as Backend>::PhysicalDevice {
+    &(*ADAPTER.as_ptr()).physical_device
+}
+
+/// Very unsafe - call *ONLY* after init!
+#[inline]
+unsafe fn queue_family() -> QueueFamilyId {
+    (*QUEUE_GROUP.as_ptr()).family
+}
+
+/// Very unsafe - call *ONLY* after init!
+#[inline]
+unsafe fn queue_mut() -> &'static mut <_Backend as Backend>::CommandQueue {
+    // TODO: MUTEX!
+
+    &mut (*QUEUE_GROUP.as_mut_ptr()).queues[0]
 }
 
 /// Indicates the provided data was bad.
@@ -298,7 +373,7 @@ impl Default for BlendMode {
     }
 }
 
-// TODO: Make this drainable?
+// TODO: Make this drainable? Set a drain level for incoming pools and drain current ones?
 /// An opaque cache of graphics API handles and resources.
 ///
 /// For optimal performance, `Cache` instances should remain as owned values for at least three
@@ -306,76 +381,101 @@ impl Default for BlendMode {
 ///
 /// _NOTE:_ Program execution will halt for a few milliseconds after `Cache` types with active
 /// internal operations are dropped.
-#[derive(Default)]
-pub struct Cache(PoolRef<Pool>);
+pub struct Cache<P>(PoolRef<Pool<P>, P>)
+where
+    P: 'static + SharedPointerKind;
 
-/// Allows you to load resources and begin rendering operations.
-pub struct Gpu {
-    driver: Driver,
-    loads: LoadCache,
-    ops: OpCache,
-    renders: Cache,
+impl<P> Default for Cache<P>
+where
+    P: SharedPointerKind,
+{
+    fn default() -> Self {
+        Self(Default::default())
+    }
 }
 
-impl Gpu {
-    pub(super) fn new(window: &Window) -> (Self, Driver, Surface) {
-        let (adapter, surface) = create_surface(window);
+/// Allows you to load resources and begin rendering operations.
+pub struct Gpu<P>
+where
+    P: 'static + SharedPointerKind,
+{
+    loads: LoadCache<P>,
+    ops: OpCache<P>,
+    renders: Cache<P>,
+}
 
-        info!(
-            "Device: {} ({:?})",
-            &adapter.info.name, adapter.info.device_type
-        );
+impl<P> Gpu<P>
+where
+    P: SharedPointerKind,
+{
+    pub(super) unsafe fn new(
+        window: &Window,
+        dims: Extent,
+        swapchain_len: u32,
+    ) -> (Self, Swapchain) {
+        let mut surface = None;
+        INIT.call_once(|| {
+            init_gfx_hal();
 
-        let queue = adapter
-            .queue_families
-            .iter()
-            .find(|family| {
-                let ty = family.queue_type();
-                surface.supports_queue_family(family)
-                    && ty.supports_graphics()
-                    && ty.supports_compute()
-            })
-            .ok_or_else(Error::graphics_queue_family)
-            .unwrap();
-        let driver = Driver::new(RefCell::new(
-            Device::new(adapter.physical_device, queue).unwrap(),
-        ));
-        let driver_copy = Driver::clone(&driver);
-        (
-            Self {
-                driver,
-                loads: Default::default(),
-                ops: Default::default(),
-                renders: Default::default(),
-            },
-            driver_copy,
-            surface,
-        )
+            // Window mode requires a presentation surface (we check for support here)
+            let adapter = &*ADAPTER.as_ptr();
+            let surface_instance = Surface::new(window).expect("Unable to create GFX-HAL surface");
+            let queue = adapter
+                .queue_families
+                .iter()
+                .find(|family| {
+                    let ty = family.queue_type();
+
+                    surface_instance.supports_queue_family(family)
+                        && ty.supports_compute()
+                        && ty.supports_graphics()
+                        && ty.supports_transfer()
+                })
+                .expect("Unable to find GFX-HAL queue");
+
+            info!(
+                "Adapter: {} ({:?})",
+                &adapter.info.name, adapter.info.device_type
+            );
+
+            surface = Some(surface_instance);
+
+            open_adapter(adapter, queue);
+        });
+
+        let gpu = Self {
+            loads: Default::default(),
+            ops: Default::default(),
+            renders: Default::default(),
+        };
+        let swapchain = Swapchain::new(surface.take().unwrap(), dims, swapchain_len);
+
+        (gpu, swapchain)
     }
 
-    // TODO: Enable sharing between this and "on-screen"
     /// Creates a `Gpu` for off-screen or headless use.
-    ///
-    /// _NOTE_: Resources loaded or read from a `Gpu` created in headless or screen modes cannot be
-    /// used with other instances, including of the same mode. This is a limitation only because
-    /// the code to share the resources properly has not be started yet.
     pub fn offscreen() -> Self {
-        let (adapter, _) = create_instance();
-        let queue = adapter
-            .queue_families
-            .iter()
-            .find(|family| {
-                let ty = family.queue_type();
-                ty.supports_graphics() && ty.supports_compute()
-            })
-            .ok_or_else(Error::graphics_queue_family)
-            .unwrap();
-        let driver = Driver::new(RefCell::new(
-            Device::new(adapter.physical_device, queue).unwrap(),
-        ));
+        unsafe {
+            INIT.call_once(|| {
+                init_gfx_hal();
+
+                // Window mode requires a presentation surface (we check for support here)
+                let adapter = &*ADAPTER.as_ptr();
+                let queue = adapter
+                    .queue_families
+                    .iter()
+                    .find(|family| {
+                        let ty = family.queue_type();
+
+                        ty.supports_compute() && ty.supports_graphics() && ty.supports_transfer()
+                    })
+                    .expect("Unable to find GFX-HAL queue");
+
+                open_adapter(adapter, queue);
+            });
+        }
 
         Self {
-            driver,
             loads: Default::default(),
             ops: Default::default(),
             renders: Default::default(),
@@ -392,7 +492,7 @@ impl Gpu {
         pixels: &[u8],
         width: u32,
         stride: u32,
-    ) -> Bitmap {
+    ) -> Shared<Bitmap<P>, P> {
         #[cfg(feature = "debug-names")]
         let _ = name;
         let _ = pixel_ty;
@@ -417,63 +517,61 @@ impl Gpu {
         meshes: M,
         _indices: I,
         _vertices: V,
-    ) -> Result<Model, BadData> {
-        let meshes = meshes.into_iter().collect::<Vec<_>>();
-        // let indices = indices.into_iter().collect::<Vec<_>>();
-        // let vertices = vertices.into_iter().collect::<Vec<_>>();
+    ) -> Result<Shared<Model<P>, P>, BadData> {
+        unsafe {
+            let meshes = meshes.into_iter().collect::<Vec<_>>();
+            // let indices = indices.into_iter().collect::<Vec<_>>();
+            // let vertices = vertices.into_iter().collect::<Vec<_>>();
 
-        // Make sure the incoming meshes are valid
-        for mesh in &meshes {
-            if mesh.vertex_count() % 3 != 0 {
-                return Err(BadData);
+            // Make sure the incoming meshes are valid
+            for mesh in &meshes {
+                if mesh.vertex_count() % 3 != 0 {
+                    return Err(BadData);
+                }
             }
+
+            let mut pool = self.loads.borrow_mut();
+
+            let idx_buf_len = 0;
+            let idx_buf = pool.data_usage(
+                #[cfg(feature = "debug-names")]
+                name,
+                idx_buf_len,
+                Usage::INDEX | Usage::STORAGE,
+            );
+
+            let vertex_buf_len = 0;
+            let vertex_buf = pool.data_usage(
+                #[cfg(feature = "debug-names")]
+                name,
+                vertex_buf_len,
+                Usage::VERTEX | Usage::STORAGE,
+            );
+
+            let staging_buf_len = 0;
+            let staging_buf = pool.data_usage(
+                #[cfg(feature = "debug-names")]
+                name,
+                staging_buf_len,
+                Usage::VERTEX | Usage::STORAGE,
+            );
+
+            let write_mask_len = 0;
+            let write_mask = pool.data_usage(
+                #[cfg(feature = "debug-names")]
+                name,
+                write_mask_len,
+                Usage::STORAGE,
+            );
+
+            Ok(Shared::new(Model::new(
+                meshes,
+                IndexType::U32,
+                (idx_buf, idx_buf_len),
+                (vertex_buf, vertex_buf_len),
+                (staging_buf, staging_buf_len, write_mask),
+            )))
         }
-
-        let mut pool = self.loads.borrow_mut();
-
-        let idx_buf_len = 0;
-        let idx_buf = pool.data_usage(
-            #[cfg(feature = "debug-names")]
-            name,
-            &self.driver,
-            idx_buf_len,
-            Usage::INDEX | Usage::STORAGE,
-        );
-
-        let vertex_buf_len = 0;
-        let vertex_buf = pool.data_usage(
-            #[cfg(feature = "debug-names")]
-            name,
-            &self.driver,
-            vertex_buf_len,
-            Usage::VERTEX | Usage::STORAGE,
-        );
-
-        let staging_buf_len = 0;
-        let staging_buf = pool.data_usage(
-            #[cfg(feature = "debug-names")]
-            name,
-            &self.driver,
-            staging_buf_len,
-            Usage::VERTEX | Usage::STORAGE,
-        );
-
-        let write_mask_len = 0;
-        let write_mask = pool.data_usage(
-            #[cfg(feature = "debug-names")]
-            name,
-            &self.driver,
-            write_mask_len,
-            Usage::STORAGE,
-        );
-
-        Ok(Model::new(
-            meshes,
-            IndexType::U32,
-            (idx_buf, idx_buf_len),
-            (vertex_buf, vertex_buf_len),
-            (staging_buf, staging_buf_len, write_mask),
-        ))
     }
 
     /// Loads a regular model at runtime from the given data.
@@ -489,7 +587,7 @@ impl Gpu {
         #[cfg(feature = "debug-names")] name: &str,
         meshes: IM,
         vertices: IV,
-    ) -> Result<Model, BadData> {
+    ) -> Result<Shared<Model<P>, P>, BadData> {
         let mut meshes = meshes
             .into_iter()
             .map(|mesh| mesh.into())
@@ -547,7 +645,7 @@ impl Gpu {
         #[cfg(debug_assertions)] _name: &str,
         _pak: &mut Pak<R>,
         _id: AnimationId,
-    ) -> ModelRef {
+    ) -> usize {
         //let _pool = PoolRef::clone(&self.pool);
         //let _anim = pak.read_animation(id);
         // let indices = model.indices();
@@ -596,7 +694,7 @@ impl Gpu {
         #[cfg(feature = "debug-names")] name: &str,
         pak: &mut Pak<R>,
         key: K,
-    ) -> Bitmap {
+    ) -> Shared<Bitmap<P>, P> {
         let id = pak.bitmap_id(key).unwrap();
 
         self.read_bitmap_with_id(
@@ -613,35 +711,29 @@ impl Gpu {
         #[cfg(feature = "debug-names")] name: &str,
         pak: &mut Pak<R>,
         id: BitmapId,
-    ) -> Bitmap {
+    ) -> Shared<Bitmap<P>, P> {
         let bitmap = pak.read_bitmap(id);
         let mut pool = self.loads.borrow_mut();
 
-        unsafe {
+        Shared::new(unsafe {
             BitmapOp::new(
                 #[cfg(feature = "debug-names")]
                 name,
-                &self.driver,
                 &mut pool,
                 &bitmap,
             )
             .record()
-        }
+        })
     }
 
     /// Reads the `Font` with the given face from the pak.
     ///
     /// Only bitmapped fonts are supported.
-    pub fn read_font<F: AsRef<str>, R: Read + Seek>(&self, pak: &mut Pak<R>, face: F) -> Font {
+    pub fn read_font<F: AsRef<str>, R: Read + Seek>(&self, pak: &mut Pak<R>, face: F) -> Font<P> {
         #[cfg(debug_assertions)]
         debug!("Loading font `{}`", face.as_ref());
 
-        Font::load(
-            &self.driver,
-            &mut self.loads.borrow_mut(),
-            pak,
-            face.as_ref(),
-        )
+        Font::load(&mut self.loads.borrow_mut(), pak, face.as_ref())
     }
 
     /// Reads the `Model` with the given key from the pak.
@@ -650,7 +742,7 @@ impl Gpu {
         #[cfg(feature = "debug-names")] name: &str,
         pak: &mut Pak<R>,
         key: K,
-    ) -> Model {
+    ) -> Shared<Model<P>, P> {
         let id = pak.model_id(key).unwrap();
 
         self.read_model_with_id(
@@ -667,111 +759,109 @@ impl Gpu {
         #[cfg(feature = "debug-names")] name: &str,
         pak: &mut Pak<R>,
         id: ModelId,
-    ) -> Model {
-        let mut pool = self.loads.borrow_mut();
-        let model = pak.read_model(id);
+    ) -> Shared<Model<P>, P> {
+        unsafe {
+            let mut pool = self.loads.borrow_mut();
+            let model = pak.read_model(id);
 
-        // Create an index buffer
-        let (idx_buf, idx_buf_len) = {
-            let src = model.indices();
-            let len = src.len() as _;
-            let mut buf = pool.data_usage(
-                #[cfg(feature = "debug-names")]
-                name,
-                &self.driver,
-                len,
-                Usage::INDEX | Usage::STORAGE,
-            );
+            // Create an index buffer
+            let (idx_buf, idx_buf_len) = {
+                let src = model.indices();
+                let len = src.len() as _;
+                let mut buf = pool.data_usage(
+                    #[cfg(feature = "debug-names")]
+                    name,
+                    len,
+                    Usage::INDEX | Usage::STORAGE,
+                );
 
-            // Fill the index buffer
-            {
-                let mut mapped_range = buf.map_range_mut(0..len).unwrap();
-                mapped_range.copy_from_slice(src);
-                Mapping::flush(&mut mapped_range).unwrap();
+                // Fill the index buffer
+                {
+                    let mut mapped_range = buf.map_range_mut(0..len).unwrap();
+                    mapped_range.copy_from_slice(src);
+                    Mapping::flush(&mut mapped_range).unwrap();
+                }
+
+                (buf, len)
+            };
+
+            // Create a staging buffer (holds vertices before we calculate additional vertex attributes)
+            let (staging_buf, staging_buf_len) = {
+                let src = model.vertices();
+                let len = src.len() as _;
+                let mut buf = pool.data_usage(
+                    #[cfg(feature = "debug-names")]
+                    name,
+                    len,
+                    Usage::STORAGE,
+                );
+
+                // Fill the staging buffer
+                {
+                    let mut mapped_range = buf.map_range_mut(0..len).unwrap();
+                    mapped_range.copy_from_slice(src);
+                    Mapping::flush(&mut mapped_range).unwrap();
+                }
+
+                (buf, len)
+            };
+
+            // The write mask is the used during vertex attribute calculation
+            let write_mask = {
+                let src = model.write_mask();
+                let len = src.len() as _;
+                let mut buf = pool.data_usage(
+                    #[cfg(feature = "debug-names")]
+                    name,
+                    len,
+                    Usage::STORAGE,
+                );
+
+                // Fill the write mask buffer
+                {
+                    let mut mapped_range = buf.map_range_mut(0..len).unwrap();
+                    mapped_range.copy_from_slice(src);
+                    Mapping::flush(&mut mapped_range).unwrap();
+                }
+
+                buf
+            };
+
+            let idx_ty = model.idx_ty();
+            let mut meshes = model.take_meshes();
+            let mut vertex_buf_len = 0;
+            for mesh in &mut meshes {
+                let stride = if mesh.is_animated() { 80 } else { 48 };
+
+                // We pad each mesh in the vertex buffer so that drawing is easier (no vertex
+                // re-binds; but this requires that all vertices in the buffer have a compatible
+                // alignment. Because we have static (12 floats/48 bytes) and animated (20 floats/
+                // 80 bytes) vertices, we round up to 60 floats/240 bytes. This means any possible
+                // boundary we try to draw at will start at some multiple of either the static
+                // or animated vertices.
+                vertex_buf_len += vertex_buf_len % 240;
+                mesh.set_base_vertex((vertex_buf_len / stride) as _);
+
+                // Account for the vertices, updating the base vertex
+                vertex_buf_len += mesh.vertex_count() as u64 * stride;
             }
 
-            (buf, len)
-        };
-
-        // Create a staging buffer (holds vertices before we calculate additional vertex attributes)
-        let (staging_buf, staging_buf_len) = {
-            let src = model.vertices();
-            let len = src.len() as _;
-            let mut buf = pool.data_usage(
+            // This is the real vertex buffer which will hold the calculated attributes
+            let vertex_buf = pool.data_usage(
                 #[cfg(feature = "debug-names")]
                 name,
-                &self.driver,
-                len,
-                Usage::STORAGE,
+                vertex_buf_len,
+                Usage::STORAGE | Usage::VERTEX,
             );
 
-            // Fill the staging buffer
-            {
-                let mut mapped_range = buf.map_range_mut(0..len).unwrap();
-                mapped_range.copy_from_slice(src);
-                Mapping::flush(&mut mapped_range).unwrap();
-            }
-
-            (buf, len)
-        };
-
-        // The write mask is the used during vertex attribute calculation
-        let write_mask = {
-            let src = model.write_mask();
-            let len = src.len() as _;
-            let mut buf = pool.data_usage(
-                #[cfg(feature = "debug-names")]
-                name,
-                &self.driver,
-                len,
-                Usage::STORAGE,
-            );
-
-            // Fill the write mask buffer
-            {
-                let mut mapped_range = buf.map_range_mut(0..len).unwrap();
-                mapped_range.copy_from_slice(src);
-                Mapping::flush(&mut mapped_range).unwrap();
-            }
-
-            buf
-        };
-
-        let idx_ty = model.idx_ty();
-        let mut meshes = model.take_meshes();
-        let mut vertex_buf_len = 0;
-        for mesh in &mut meshes {
-            let stride = if mesh.is_animated() { 80 } else { 48 };
-
-            // We pad each mesh in the vertex buffer so that drawing is easier (no vertex
-            // re-binds; but this requires that all vertices in the buffer have a compatible
-            // alignment. Because we have static (12 floats/48 bytes) and animated (20 floats/
-            // 80 bytes) vertices, we round up to 60 floats/240 bytes. This means any possible
-            // boundary we try to draw at will start at some multiple of either the static
-            // or animated vertices.
-            vertex_buf_len += vertex_buf_len % 240;
-            mesh.set_base_vertex((vertex_buf_len / stride) as _);
-
-            // Account for the vertices, updating the base vertex
-            vertex_buf_len += mesh.vertex_count() as u64 * stride;
+            Shared::new(Model::new(
+                meshes,
+                idx_ty,
+                (idx_buf, idx_buf_len),
+                (vertex_buf, vertex_buf_len),
+                (staging_buf, staging_buf_len, write_mask),
+            ))
         }
-
-        // This is the real vertex buffer which will hold the calculated attributes
-        let vertex_buf = pool.data_usage(
-            #[cfg(feature = "debug-names")]
-            name,
-            &self.driver,
-            vertex_buf_len,
-            Usage::STORAGE | Usage::VERTEX,
-        );
-
-        Model::new(
-            meshes,
-            idx_ty,
-            (idx_buf, idx_buf_len),
-            (vertex_buf, vertex_buf_len),
-            (staging_buf, staging_buf_len, write_mask),
-        )
     }
 
     /// Constructs a `Render` of the given dimensions.
@@ -781,7 +871,7 @@ impl Gpu {
     /// ## Examples:
     ///
     /// ```
-    /// use screen_13::prelude_all::*;
+    /// use screen_13::prelude_rc::*;
     ///
     /// struct Foo;
     ///
@@ -798,7 +888,7 @@ impl Gpu {
         &self,
         #[cfg(feature = "debug-names")] name: &str,
         dims: D,
-    ) -> Render {
+    ) -> Render<P> {
         self.render_with_cache(
             #[cfg(feature = "debug-names")]
             name,
@@ -812,7 +902,7 @@ impl Gpu {
     /// ## Examples:
     ///
     /// ```
-    /// use screen_13::prelude_all::*;
+    /// use screen_13::prelude_rc::*;
     ///
     /// #[derive(Default)]
     /// struct Foo(Cache);
@@ -831,8 +921,8 @@ impl Gpu {
         &self,
         #[cfg(feature = "debug-names")] name: &str,
         dims: D,
-        cache: &Cache,
-    ) -> Render {
+        cache: &Cache<P>,
+    ) -> Render<P> {
         // There may be pending operations from a previously resolved render; if so
         // we just stick them into the next render that goes out the door.
         let ops = if let Some(ops) = self.ops.borrow_mut().take() {
@@ -850,18 +940,19 @@ impl Gpu {
         };
         let pool = Lease::new(pool, &cache.0);
 
-        Render::new(
-            #[cfg(feature = "debug-names")]
-            name,
-            &self.driver,
-            dims.into(),
-            pool,
-            ops,
-        )
+        unsafe {
+            Render::new(
+                #[cfg(feature = "debug-names")]
+                name,
+                dims.into(),
+                pool,
+                ops,
+            )
+        }
     }
 
     /// Resolves a render into a texture which can be written to other renders.
-    pub fn resolve(&self, render: Render) -> Lease<Texture2d> {
+    pub fn resolve(&self, render: Render<P>) -> Lease<Texture2d, P> {
         let (target, ops) = render.resolve();
         let mut cache = self.ops.borrow_mut();
         if let Some(cache) = cache.as_mut() {
@@ -873,12 +964,12 @@ impl Gpu {
         target
     }
 
-    pub(crate) fn wait_idle(&self) {
+    pub(crate) unsafe fn wait_idle(&self) {
         #[cfg(debug_assertions)]
         let started = Instant::now();
 
         // We are required to wait for the GPU to finish what we submitted before dropping the driver
-        self.driver.borrow().wait_idle().unwrap();
+        device().wait_idle().unwrap();
 
         #[cfg(debug_assertions)]
         {
@@ -891,9 +982,14 @@ impl Gpu {
     }
 }
 
-impl Drop for Gpu {
+impl<P> Drop for Gpu<P>
+where
+    P: SharedPointerKind,
+{
     fn drop(&mut self) {
-        self.wait_idle();
+        unsafe {
+            self.wait_idle();
+        }
     }
 }
 

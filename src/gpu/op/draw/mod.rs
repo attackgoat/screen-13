@@ -10,8 +10,8 @@ mod key;
 
 pub use self::{
     command::{
-        Command as Draw, LineCommand, Mesh, ModelCommand, PointLightCommand, RectLightCommand,
-        SpotlightCommand, SunlightCommand,
+        Command as Draw, LineCommand, Material, Mesh, ModelCommand, PointLightCommand,
+        RectLightCommand, SpotlightCommand, SunlightCommand,
     },
     compiler::Compiler,
 };
@@ -35,7 +35,6 @@ use {
     super::Op,
     crate::{
         camera::Camera,
-        color::AlphaColor,
         gpu::{
             data::{CopyRange, Mapping},
             def::{
@@ -47,17 +46,19 @@ use {
                 CalcVertexAttrsComputeMode, Compute, ComputeMode, DrawRenderPassMode, Graphics,
                 GraphicsMode, RenderPassMode,
             },
+            device,
             driver::{
-                bind_compute_descriptor_set, bind_graphics_descriptor_set, CommandPool, Device,
-                Driver, Fence, Framebuffer2d,
+                bind_compute_descriptor_set, bind_graphics_descriptor_set, CommandPool, Fence,
+                Framebuffer2d,
             },
             pool::{Lease, Pool},
-            BitmapRef, Data, Texture2d, TextureRef,
+            queue_mut, Bitmap, Data, Texture2d, TextureRef,
         },
         math::{Coord, Mat3, Mat4, Quat, Vec2, Vec3},
+        ptr::Shared,
     },
+    archery::SharedPointerKind,
     gfx_hal::{
-        adapter::PhysicalDevice as _,
         buffer::{Access as BufferAccess, IndexBufferView, SubRange},
         command::{
             ClearColor, ClearDepthStencil, ClearValue, CommandBuffer as _, CommandBufferFlags,
@@ -65,9 +66,7 @@ use {
         },
         device::Device as _,
         format::Aspects,
-        image::{
-            Access as ImageAccess, Layout, Offset, SubresourceLayers, SubresourceRange, ViewKind,
-        },
+        image::{Access as ImageAccess, Layout, Offset, SubresourceLayers},
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage, ShaderStageFlags, Viewport},
         queue::{CommandQueue as _, Submission},
@@ -76,59 +75,62 @@ use {
     gfx_impl::Backend as _Backend,
     std::{
         any::Any,
-        cmp::Ordering,
-        hash::{Hash, Hasher},
+        fmt::{Debug, Error, Formatter},
         iter::{empty, once},
     },
 };
 
+// TODO?
 // Skydome subpass index
 const SKYDOME_IDX: u8 = 1;
 
 /// A collection of graphics types which allow models and lights to be drawn onto a texture.
-pub struct DrawOp {
+pub struct DrawOp<P>
+where
+    P: 'static + SharedPointerKind,
+{
     cmd_buf: <_Backend as Backend>::CommandBuffer,
-    cmd_pool: Lease<CommandPool>,
-    compiler: Option<Lease<Compiler>>,
-    compute_u16_vertex_attrs: Option<Lease<Compute>>,
-    compute_u16_skin_vertex_attrs: Option<Lease<Compute>>,
-    compute_u32_vertex_attrs: Option<Lease<Compute>>,
-    compute_u32_skin_vertex_attrs: Option<Lease<Compute>>,
-    driver: Driver,
+    cmd_pool: Lease<CommandPool, P>,
+    compiler: Option<Lease<Compiler<P>, P>>,
+    compute_u16_vertex_attrs: Option<Lease<Compute, P>>,
+    compute_u16_skin_vertex_attrs: Option<Lease<Compute, P>>,
+    compute_u32_vertex_attrs: Option<Lease<Compute, P>>,
+    compute_u32_skin_vertex_attrs: Option<Lease<Compute, P>>,
     dst: Texture2d,
     dst_preserve: bool,
-    fence: Lease<Fence>,
+    fence: Lease<Fence, P>,
     frame_buf: Option<(Framebuffer2d, RenderPassMode)>,
-    geom_buf: GeometryBuffer,
-    graphics_line: Option<Lease<Graphics>>,
-    graphics_mesh: Option<Lease<Graphics>>,
-    graphics_mesh_anim: Option<Lease<Graphics>>,
-    graphics_point_light: Option<Lease<Graphics>>,
-    graphics_rect_light: Option<Lease<Graphics>>,
-    graphics_skydome: Option<Lease<Graphics>>,
-    graphics_spotlight: Option<Lease<Graphics>>,
-    graphics_sunlight: Option<Lease<Graphics>>,
+    geom_buf: GeometryBuffer<P>,
+    graphics_line: Option<Lease<Graphics, P>>,
+    graphics_mesh: Option<Lease<Graphics, P>>,
+    graphics_mesh_anim: Option<Lease<Graphics, P>>,
+    graphics_point_light: Option<Lease<Graphics, P>>,
+    graphics_rect_light: Option<Lease<Graphics, P>>,
+    graphics_skydome: Option<Lease<Graphics, P>>,
+    graphics_spotlight: Option<Lease<Graphics, P>>,
+    graphics_sunlight: Option<Lease<Graphics, P>>,
 
     #[cfg(feature = "debug-names")]
     name: String,
 
-    pool: Option<Lease<Pool>>,
-    skydome: Option<(Skydome, Lease<Data>, u64, bool)>,
+    pool: Option<Lease<Pool<P>, P>>,
+    skydome: Option<SkydomeBuf<P>>,
 }
 
-impl DrawOp {
+impl<P> DrawOp<P>
+where
+    P: 'static + SharedPointerKind,
+{
     /// # Safety
     /// None
     #[must_use]
-    pub(crate) fn new(
+    pub(crate) unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
-        mut pool: Lease<Pool>,
+        mut pool: Lease<Pool<P>, P>,
         dst: &Texture2d,
     ) -> Self {
         // Allocate the command buffer
-        let family = Device::queue_family(&driver.borrow());
-        let mut cmd_pool = pool.cmd_pool(driver, family);
+        let mut cmd_pool = pool.cmd_pool();
 
         // The geometry buffer will share size and output format with the destination texture
         let (dims, fmt) = {
@@ -137,26 +139,23 @@ impl DrawOp {
         };
 
         Self {
-            cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
+            cmd_buf: cmd_pool.allocate_one(Level::Primary),
             cmd_pool,
             compiler: None,
             compute_u16_vertex_attrs: None,
             compute_u16_skin_vertex_attrs: None,
             compute_u32_vertex_attrs: None,
             compute_u32_skin_vertex_attrs: None,
-            driver: Driver::clone(driver),
             dst: TextureRef::clone(dst),
             dst_preserve: false,
             fence: pool.fence(
                 #[cfg(feature = "debug-names")]
                 name,
-                driver,
             ),
             frame_buf: None,
             geom_buf: GeometryBuffer::new(
                 #[cfg(feature = "debug-names")]
                 name,
-                driver,
                 &mut pool,
                 dims,
                 fmt,
@@ -207,17 +206,22 @@ impl DrawOp {
 
     /// Draws the given skydome as a pre-pass before the geometry and lighting.
     #[must_use]
-    pub fn with_skydome(&mut self, val: &Skydome) -> &mut Self {
+    pub fn with_skydome(&mut self, val: &Skydome<P>) -> &mut Self {
         // Either take the existing skydome buffer or get a new one (ignoring the old skydome)
-        let (buf, buf_len, write) = if let Some((_, buf, buf_len, write)) = self.skydome.take() {
-            (buf, buf_len, write)
+        let (buf, buf_len, write) = if let Some(skydome) = self.skydome.take() {
+            (
+                skydome.vertex_buf,
+                skydome.vertex_buf_len,
+                skydome.vertex_buf_write,
+            )
         } else {
             let pool = self.pool.as_mut().unwrap();
-            let (mut buf, buf_len, data) = pool.skydome(
-                #[cfg(feature = "debug-names")]
-                &self.name,
-                &self.driver,
-            );
+            let (mut buf, buf_len, data) = unsafe {
+                pool.skydome(
+                    #[cfg(feature = "debug-names")]
+                    &self.name,
+                )
+            };
 
             // Fill the skydome buffer if it is brand new (data was provided)
             if let Some(data) = data {
@@ -229,213 +233,170 @@ impl DrawOp {
             (buf, buf_len, data.is_some())
         };
 
-        self.skydome = Some((val.clone(), buf, buf_len, write));
+        self.skydome = Some(SkydomeBuf {
+            val: val.clone(),
+            vertex_buf: buf,
+            vertex_buf_len: buf_len,
+            vertex_buf_write: write,
+        });
         self
     }
 
     /// Submits the given draws for hardware processing.
-    pub fn record(&mut self, camera: &impl Camera, draws: &mut [Draw]) {
-        let fill_geom_buf_subpass_idx = self.fill_geom_buf_subpass_idx();
-        let mut pool = self.pool.as_mut().unwrap();
+    pub fn record(&mut self, camera: &impl Camera, draws: &mut [Draw<P>]) {
+        unsafe {
+            let fill_geom_buf_subpass_idx = self.fill_geom_buf_subpass_idx();
+            let mut pool = self.pool.as_mut().unwrap();
 
-        // Use a compiler to figure out rendering instructions without allocating
-        // memory per rendering command. The compiler caches code between frames.
-        let mut compiler = pool.compiler();
-        {
-            let mut instrs = compiler.compile(
-                #[cfg(feature = "debug-names")]
-                &self.name,
-                &self.driver,
-                &mut pool,
-                camera,
-                draws,
-            );
-
-            let render_pass_mode = {
-                let dst = self.dst.borrow();
-                let dims = dst.dims();
-                let color_metal = self.geom_buf.color_metal.borrow();
-                let depth = self.geom_buf.depth.borrow();
-                let light = self.geom_buf.light.borrow();
-                let normal_rough = self.geom_buf.normal_rough.borrow();
-                let output = self.geom_buf.output.borrow();
-                let draw_mode = DrawRenderPassMode {
-                    depth: depth.format(),
-                    geom_buf: color_metal.format(),
-                    light: light.format(),
-                    output: output.format(),
-                    skydome: self.skydome.is_some(),
-                    post_fx: instrs.contains_lines(),
-                };
-                let render_pass_mode = RenderPassMode::Draw(draw_mode);
-                let render_pass = pool.render_pass(&self.driver, render_pass_mode);
-
-                // Setup the framebuffer
-                self.frame_buf = Some((
-                    Framebuffer2d::new(
-                        #[cfg(feature = "debug-names")]
-                        &self.name,
-                        &self.driver,
-                        render_pass,
-                        vec![
-                            color_metal.as_default_view().as_ref(),
-                            normal_rough.as_default_view().as_ref(),
-                            light.as_default_view().as_ref(),
-                            output.as_default_view().as_ref(),
-                            depth
-                                .as_view(
-                                    ViewKind::D2,
-                                    draw_mode.depth,
-                                    Default::default(),
-                                    SubresourceRange {
-                                        aspects: Aspects::DEPTH,
-                                        ..Default::default()
-                                    },
-                                )
-                                .as_ref(),
-                        ],
-                        dims,
-                    ),
-                    render_pass_mode,
-                ));
-                render_pass_mode
-            };
-
-            if let Some((skydome, _, _, _)) = &self.skydome {
-                let graphics = pool.graphics_desc_sets(
+            // Use a compiler to figure out rendering instructions without allocating
+            // memory per rendering command. The compiler caches code between frames.
+            let mut compiler = pool.compiler();
+            {
+                let mut instrs = compiler.compile(
                     #[cfg(feature = "debug-names")]
                     &self.name,
-                    &self.driver,
-                    render_pass_mode,
-                    SKYDOME_IDX,
-                    GraphicsMode::Skydome,
-                    1,
+                    &mut pool,
+                    camera,
+                    draws,
                 );
-                let device = self.driver.borrow();
 
-                unsafe {
-                    Self::write_skydome_descriptors(&device, &graphics, skydome);
-                }
+                let render_pass_mode = {
+                    let dst = self.dst.borrow();
+                    let dims = dst.dims();
+                    let color_metal = self.geom_buf.color_metal.borrow();
+                    let depth = self.geom_buf.depth.borrow();
+                    let light = self.geom_buf.light.borrow();
+                    let normal_rough = self.geom_buf.normal_rough.borrow();
+                    let output = self.geom_buf.output.borrow();
+                    let draw_mode = DrawRenderPassMode {
+                        depth: depth.format(),
+                        geom_buf: color_metal.format(),
+                        light: light.format(),
+                        output: output.format(),
+                        skydome: self.skydome.is_some(),
+                        post_fx: instrs.contains_lines(),
+                    };
+                    let render_pass_mode = RenderPassMode::Draw(draw_mode);
+                    let render_pass = pool.render_pass(render_pass_mode);
 
-                self.graphics_skydome = Some(graphics);
-            }
+                    // Setup the framebuffer
+                    self.frame_buf = Some((
+                        Framebuffer2d::new(
+                            #[cfg(feature = "debug-names")]
+                            &self.name,
+                            render_pass,
+                            vec![
+                                color_metal.as_2d_color().as_ref(),
+                                normal_rough.as_2d_color().as_ref(),
+                                light.as_2d_color().as_ref(),
+                                output.as_2d_color().as_ref(),
+                                depth.as_2d_depth().as_ref(),
+                            ],
+                            dims,
+                        ),
+                        render_pass_mode,
+                    ));
+                    render_pass_mode
+                };
 
-            {
-                // Material descriptors for PBR rendering (Color+Normal+Metal/Rough)
-                let descriptors = instrs.mesh_materials();
-                let desc_sets = descriptors.len();
-                if desc_sets > 0 {
+                if let Some(skydome) = &self.skydome {
                     let graphics = pool.graphics_desc_sets(
                         #[cfg(feature = "debug-names")]
                         &self.name,
-                        &self.driver,
                         render_pass_mode,
-                        fill_geom_buf_subpass_idx,
-                        GraphicsMode::DrawMesh,
-                        desc_sets,
+                        SKYDOME_IDX,
+                        GraphicsMode::Skydome,
+                        1,
                     );
-                    let device = self.driver.borrow();
-
-                    unsafe {
-                        Self::write_model_material_descriptors(&device, &graphics, descriptors);
-                    }
-
-                    self.graphics_mesh = Some(graphics);
+                    Self::write_skydome_descriptors(&graphics, &skydome.val);
+                    self.graphics_skydome = Some(graphics);
                 }
 
-                // Buffer descriptors for calculation of u16-indexed vertex attributes
-                let descriptors = instrs.calc_vertex_attrs_u16_descriptors();
-                let desc_sets = descriptors.len();
-                if desc_sets > 0 {
-                    let compute = pool.compute_desc_sets(
-                        #[cfg(feature = "debug-names")]
-                        &self.name,
-                        &self.driver,
-                        ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode::U16),
-                        desc_sets,
-                    );
-                    let device = self.driver.borrow();
-
-                    unsafe {
-                        Self::write_calc_vertex_attrs_descriptors(&device, &compute, descriptors);
+                {
+                    // Material descriptors for PBR rendering (Color+Normal+Metal/Rough)
+                    let descriptors = instrs.mesh_materials();
+                    let desc_sets = descriptors.len();
+                    if desc_sets > 0 {
+                        let graphics = pool.graphics_desc_sets(
+                            #[cfg(feature = "debug-names")]
+                            &self.name,
+                            render_pass_mode,
+                            fill_geom_buf_subpass_idx,
+                            GraphicsMode::DrawMesh,
+                            desc_sets,
+                        );
+                        Self::write_model_material_descriptors(&graphics, descriptors);
+                        self.graphics_mesh = Some(graphics);
                     }
 
-                    self.compute_u16_vertex_attrs = Some(compute);
-                }
-
-                // Buffer descriptors for calculation of u16-indexed skinned vertex attributes
-                let descriptors = instrs.calc_vertex_attrs_u16_skin_descriptors();
-                let desc_sets = descriptors.len();
-                if desc_sets > 0 {
-                    let compute = pool.compute_desc_sets(
-                        #[cfg(feature = "debug-names")]
-                        &self.name,
-                        &self.driver,
-                        ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode::U16_SKIN),
-                        desc_sets,
-                    );
-                    let device = self.driver.borrow();
-
-                    unsafe {
-                        Self::write_calc_vertex_attrs_descriptors(&device, &compute, descriptors);
+                    // Buffer descriptors for calculation of u16-indexed vertex attributes
+                    let descriptors = instrs.calc_vertex_attrs_u16_descriptors();
+                    let desc_sets = descriptors.len();
+                    if desc_sets > 0 {
+                        let compute = pool.compute_desc_sets(
+                            #[cfg(feature = "debug-names")]
+                            &self.name,
+                            ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode::U16),
+                            desc_sets,
+                        );
+                        Self::write_calc_vertex_attrs_descriptors(&compute, descriptors);
+                        self.compute_u16_vertex_attrs = Some(compute);
                     }
 
-                    self.compute_u16_skin_vertex_attrs = Some(compute);
-                }
-
-                // Buffer descriptors for calculation of u32-indexed vertex attributes
-                let descriptors = instrs.calc_vertex_attrs_u32_descriptors();
-                let desc_sets = descriptors.len();
-                if desc_sets > 0 {
-                    let compute = pool.compute_desc_sets(
-                        #[cfg(feature = "debug-names")]
-                        &self.name,
-                        &self.driver,
-                        ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode::U32),
-                        desc_sets,
-                    );
-                    let device = self.driver.borrow();
-
-                    unsafe {
-                        Self::write_calc_vertex_attrs_descriptors(&device, &compute, descriptors);
+                    // Buffer descriptors for calculation of u16-indexed skinned vertex attributes
+                    let descriptors = instrs.calc_vertex_attrs_u16_skin_descriptors();
+                    let desc_sets = descriptors.len();
+                    if desc_sets > 0 {
+                        let compute = pool.compute_desc_sets(
+                            #[cfg(feature = "debug-names")]
+                            &self.name,
+                            ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode::U16_SKIN),
+                            desc_sets,
+                        );
+                        Self::write_calc_vertex_attrs_descriptors(&compute, descriptors);
+                        self.compute_u16_skin_vertex_attrs = Some(compute);
                     }
 
-                    self.compute_u32_vertex_attrs = Some(compute);
-                }
-
-                // Buffer descriptors for calculation of u32-indexed skinned vertex attributes
-                let descriptors = instrs.calc_vertex_attrs_u32_skin_descriptors();
-                let desc_sets = descriptors.len();
-                if desc_sets > 0 {
-                    let compute = pool.compute_desc_sets(
-                        #[cfg(feature = "debug-names")]
-                        &self.name,
-                        &self.driver,
-                        ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode::U32_SKIN),
-                        desc_sets,
-                    );
-                    let device = self.driver.borrow();
-
-                    unsafe {
-                        Self::write_calc_vertex_attrs_descriptors(&device, &compute, descriptors);
+                    // Buffer descriptors for calculation of u32-indexed vertex attributes
+                    let descriptors = instrs.calc_vertex_attrs_u32_descriptors();
+                    let desc_sets = descriptors.len();
+                    if desc_sets > 0 {
+                        let compute = pool.compute_desc_sets(
+                            #[cfg(feature = "debug-names")]
+                            &self.name,
+                            ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode::U32),
+                            desc_sets,
+                        );
+                        Self::write_calc_vertex_attrs_descriptors(&compute, descriptors);
+                        self.compute_u32_vertex_attrs = Some(compute);
                     }
 
-                    self.compute_u32_skin_vertex_attrs = Some(compute);
+                    // Buffer descriptors for calculation of u32-indexed skinned vertex attributes
+                    let descriptors = instrs.calc_vertex_attrs_u32_skin_descriptors();
+                    let desc_sets = descriptors.len();
+                    if desc_sets > 0 {
+                        let compute = pool.compute_desc_sets(
+                            #[cfg(feature = "debug-names")]
+                            &self.name,
+                            ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode::U32_SKIN),
+                            desc_sets,
+                        );
+                        Self::write_calc_vertex_attrs_descriptors(&compute, descriptors);
+                        self.compute_u32_skin_vertex_attrs = Some(compute);
+                    }
                 }
-            }
 
-            let eye = camera.eye();
-            let proj = camera.projection();
-            let view = camera.view();
-            let view_proj = proj * view;
-            let view_proj_inv = view_proj.inverse();
-            let dims: Coord = self.dst.borrow().dims().into();
-            let viewport = Viewport {
-                rect: dims.as_rect_at(Coord::ZERO),
-                depth: 0.0..1.0,
-            };
+                let eye = camera.eye();
+                let proj = camera.projection();
+                let view = camera.view();
+                let view_proj = proj * view;
+                let view_proj_inv = view_proj.inverse();
+                let dims: Coord = self.dst.borrow().dims().into();
+                let viewport = Viewport {
+                    rect: dims.as_rect_at(Coord::ZERO),
+                    depth: 0.0..1.0,
+                };
 
-            unsafe {
                 self.submit_begin();
 
                 // Optional Step: Copy dst into the color render target
@@ -446,10 +407,10 @@ impl DrawOp {
                 self.submit_begin_finish(&viewport);
 
                 // Optional Step: Skydome pre-fx
-                if let Some((_, _, _, write)) = &mut self.skydome {
+                if let Some(skydome) = &mut self.skydome {
                     // Brand new skydomes from the pool must be written before use
-                    if *write {
-                        *write = false;
+                    if skydome.vertex_buf_write {
+                        skydome.vertex_buf_write = false;
                         self.submit_skydome_write();
                     }
                 }
@@ -507,9 +468,9 @@ impl DrawOp {
 
                 self.submit_finish();
             }
-        }
 
-        self.compiler = Some(compiler);
+            self.compiler = Some(compiler);
+        }
     }
 
     unsafe fn submit_begin(&mut self) {
@@ -567,7 +528,7 @@ impl DrawOp {
 
         let pool = self.pool.as_mut().unwrap();
         let (frame_buf, render_pass_mode) = self.frame_buf.as_ref().unwrap();
-        let render_pass = pool.render_pass(&self.driver, *render_pass_mode);
+        let render_pass = pool.render_pass(*render_pass_mode);
         let mut color_metal = self.geom_buf.color_metal.borrow_mut();
         let mut normal_rough = self.geom_buf.normal_rough.borrow_mut();
         let mut light = self.geom_buf.light.borrow_mut();
@@ -638,7 +599,7 @@ impl DrawOp {
         );
     }
 
-    unsafe fn submit_index_write_ref(&mut self, mut instr: DataWriteRefInstruction) {
+    unsafe fn submit_index_write_ref(&mut self, mut instr: DataWriteRefInstruction<'_, P>) {
         trace!("submit_index_write");
 
         instr.buf.write_range(
@@ -666,7 +627,6 @@ impl DrawOp {
         self.graphics_line = Some(pool.graphics(
             #[cfg(feature = "debug-names")]
             &format!("{} line", &self.name),
-            &self.driver,
             *render_pass_mode,
             subpass_idx,
             GraphicsMode::DrawLine,
@@ -726,7 +686,7 @@ impl DrawOp {
         self.cmd_buf.set_viewports(0, &[viewport.clone()]);
     }
 
-    unsafe fn submit_mesh_bind(&mut self, instr: MeshBindInstruction<'_>) {
+    unsafe fn submit_mesh_bind(&mut self, instr: MeshBindInstruction<'_, P>) {
         trace!("submit_mesh_bind");
 
         // NOTE: These sub ranges are not SubRange::WHOLE because the leased data may have
@@ -762,7 +722,7 @@ impl DrawOp {
         bind_graphics_descriptor_set(&mut self.cmd_buf, layout, desc_set);
     }
 
-    unsafe fn submit_mesh(&mut self, instr: MeshDrawInstruction, view_proj: Mat4) {
+    unsafe fn submit_mesh(&mut self, instr: MeshDrawInstruction<'_, P>, view_proj: Mat4) {
         trace!("submit_mesh");
 
         let graphics = self.graphics_mesh.as_ref().unwrap();
@@ -791,7 +751,7 @@ impl DrawOp {
 
     unsafe fn submit_point_lights(
         &mut self,
-        instr: PointLightDrawInstruction,
+        instr: PointLightDrawInstruction<'_, P>,
         camera_eye: Vec3,
         viewport: &Viewport,
         view_proj: Mat4,
@@ -811,7 +771,6 @@ impl DrawOp {
         self.graphics_point_light = Some(pool.graphics(
             #[cfg(feature = "debug-names")]
             &self.name,
-            &self.driver,
             *render_pass_mode,
             subpass_idx,
             GraphicsMode::DrawPointLight,
@@ -873,7 +832,6 @@ impl DrawOp {
         self.graphics_rect_light = Some(pool.graphics(
             #[cfg(feature = "debug-names")]
             &self.name,
-            &self.driver,
             *render_pass_mode,
             subpass_idx,
             GraphicsMode::DrawRectLight,
@@ -917,9 +875,9 @@ impl DrawOp {
         let graphics = self.graphics_skydome.as_ref().unwrap();
         let desc_set = graphics.desc_set(0);
         let layout = graphics.layout();
-        let (skydome, buf, buf_len, _) = self.skydome.as_ref().unwrap();
-        let vertex_count = *buf_len as u32 / 12;
-        let star_rotation = Mat3::from_quat(skydome.star_rotation).to_cols_array_2d();
+        let skydome = self.skydome.as_ref().unwrap();
+        let vertex_count = skydome.vertex_buf_len as u32 / 12;
+        let star_rotation = Mat3::from_quat(skydome.val.star_rotation).to_cols_array_2d();
         let world = Mat4::from_translation(eye);
 
         let mut vertex_push_consts = SkydomeVertexPushConsts::default();
@@ -929,9 +887,9 @@ impl DrawOp {
         vertex_push_consts.world_view_proj = view_proj * world;
 
         let mut frag_push_consts = SkydomeFragmentPushConsts::default();
-        frag_push_consts.sun_normal = skydome.sun_normal;
-        frag_push_consts.time = skydome.time;
-        frag_push_consts.weather = skydome.weather;
+        frag_push_consts.sun_normal = skydome.val.sun_normal;
+        frag_push_consts.time = skydome.val.time;
+        frag_push_consts.weather = skydome.val.weather;
 
         self.cmd_buf.next_subpass(SubpassContents::Inline);
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
@@ -940,10 +898,10 @@ impl DrawOp {
         self.cmd_buf.bind_vertex_buffers(
             0,
             once((
-                buf.as_ref(),
+                skydome.vertex_buf.as_ref(),
                 SubRange {
                     offset: 0,
-                    size: Some(*buf_len),
+                    size: Some(skydome.vertex_buf_len),
                 },
             )),
         );
@@ -966,13 +924,13 @@ impl DrawOp {
     unsafe fn submit_skydome_write(&mut self) {
         trace!("submit_skydome_write");
 
-        let (_, buf, len, _) = self.skydome.as_mut().unwrap();
+        let skydome = self.skydome.as_mut().unwrap();
 
-        buf.write_range(
+        skydome.vertex_buf.write_range(
             &mut self.cmd_buf,
             PipelineStage::VERTEX_INPUT,
             BufferAccess::VERTEX_BUFFER_READ,
-            0..*len,
+            0..skydome.vertex_buf_len,
         );
     }
 
@@ -988,7 +946,6 @@ impl DrawOp {
         self.graphics_spotlight = Some(pool.graphics(
             #[cfg(feature = "debug-names")]
             &self.name,
-            &self.driver,
             *render_pass_mode,
             subpass_idx,
             GraphicsMode::DrawSpotlight,
@@ -1053,7 +1010,6 @@ impl DrawOp {
         self.graphics_sunlight = Some(pool.graphics(
             #[cfg(feature = "debug-names")]
             &self.name,
-            &self.driver,
             *render_pass_mode,
             subpass_idx,
             GraphicsMode::DrawSunlight,
@@ -1189,7 +1145,6 @@ impl DrawOp {
         let (_, pipeline_layout) = pool.layouts.compute_calc_vertex_attrs(
             #[cfg(feature = "debug-names")]
             &self.name,
-            &self.driver,
         );
 
         bind_compute_descriptor_set(&mut self.cmd_buf, pipeline_layout, desc_set);
@@ -1199,13 +1154,11 @@ impl DrawOp {
         trace!("submit_vertex_attrs_calc");
 
         // TODO: Do I need to work within limits? Why is it not broken right now?
-        let device = self.driver.borrow();
-        let _limit = Device::gpu(&device).limits().max_compute_work_group_size[0];
+        //let _limit = Device::gpu(&device).limits().max_compute_work_group_size[0];
         let pool = self.pool.as_mut().unwrap();
         let (_, pipeline_layout) = pool.layouts.compute_calc_vertex_attrs(
             #[cfg(feature = "debug-names")]
             &self.name,
-            &self.driver,
         );
 
         // We may be limited by the count of dispatches we issue; so use a loop
@@ -1250,7 +1203,7 @@ impl DrawOp {
         );
     }
 
-    unsafe fn submit_vertex_write_ref(&mut self, mut instr: DataWriteRefInstruction) {
+    unsafe fn submit_vertex_write_ref(&mut self, mut instr: DataWriteRefInstruction<'_, P>) {
         trace!("submit_vertex_write_ref");
 
         // HACK: Instead of the instruction providing info about where in the pipeline we will next
@@ -1267,7 +1220,6 @@ impl DrawOp {
     unsafe fn submit_finish(&mut self) {
         trace!("submit_finish");
 
-        let mut device = self.driver.borrow_mut();
         let mut dst = self.dst.borrow_mut();
         let mut output = self.geom_buf.output.borrow_mut();
         let dims = dst.dims();
@@ -1312,7 +1264,7 @@ impl DrawOp {
         self.cmd_buf.finish();
 
         // Submit
-        Device::queue_mut(&mut device).submit(
+        queue_mut().submit(
             Submission {
                 command_buffers: once(&self.cmd_buf),
                 wait_semaphores: empty(),
@@ -1323,13 +1275,12 @@ impl DrawOp {
     }
 
     unsafe fn write_calc_vertex_attrs_descriptors<'v>(
-        device: &Device,
         compute: &Compute,
-        vertex_bufs: impl ExactSizeIterator<Item = CalcVertexAttrsDescriptors<'v>>,
+        vertex_bufs: impl Iterator<Item = CalcVertexAttrsDescriptors<'v, P>>,
     ) {
         for (idx, vertex_buf) in vertex_bufs.enumerate() {
             let set = compute.desc_set(idx);
-            device.write_descriptor_sets(vec![
+            device().write_descriptor_sets(vec![
                 DescriptorSetWrite {
                     set,
                     binding: 0,
@@ -1383,19 +1334,18 @@ impl DrawOp {
     }
 
     unsafe fn write_model_material_descriptors<'m>(
-        device: &Device,
         graphics: &Graphics,
-        materials: impl ExactSizeIterator<Item = &'m Material>,
+        materials: impl Iterator<Item = &'m Material<P>>,
     ) {
         for (idx, material) in materials.enumerate() {
             let set = graphics.desc_set(idx);
-            device.write_descriptor_sets(vec![
+            device().write_descriptor_sets(vec![
                 DescriptorSetWrite {
                     set,
                     binding: 0,
                     array_offset: 0,
                     descriptors: once(Descriptor::CombinedImageSampler(
-                        material.color.borrow().as_default_view().as_ref(),
+                        material.color.borrow().as_2d_color().as_ref(),
                         Layout::ShaderReadOnlyOptimal,
                         graphics.sampler(0).as_ref(),
                     )),
@@ -1405,7 +1355,7 @@ impl DrawOp {
                     binding: 1,
                     array_offset: 0,
                     descriptors: once(Descriptor::CombinedImageSampler(
-                        material.metal_rough.borrow().as_default_view().as_ref(),
+                        material.metal_rough.borrow().as_2d_color().as_ref(),
                         Layout::ShaderReadOnlyOptimal,
                         graphics.sampler(1).as_ref(),
                     )),
@@ -1415,7 +1365,7 @@ impl DrawOp {
                     binding: 2,
                     array_offset: 0,
                     descriptors: once(Descriptor::CombinedImageSampler(
-                        material.normal.borrow().as_default_view().as_ref(),
+                        material.normal.borrow().as_2d_color().as_ref(),
                         Layout::ShaderReadOnlyOptimal,
                         graphics.sampler(2).as_ref(),
                     )),
@@ -1424,15 +1374,15 @@ impl DrawOp {
         }
     }
 
-    unsafe fn write_skydome_descriptors(device: &Device, graphics: &Graphics, skydome: &Skydome) {
+    unsafe fn write_skydome_descriptors(graphics: &Graphics, skydome: &Skydome<P>) {
         let set = graphics.desc_set(0);
-        device.write_descriptor_sets(vec![
+        device().write_descriptor_sets(vec![
             DescriptorSetWrite {
                 set,
                 binding: 0,
                 array_offset: 0,
                 descriptors: once(Descriptor::CombinedImageSampler(
-                    skydome.cloud[0].borrow().as_default_view().as_ref(),
+                    skydome.cloud[0].borrow().as_2d_color().as_ref(),
                     Layout::ShaderReadOnlyOptimal,
                     graphics.sampler(0).as_ref(),
                 )),
@@ -1442,7 +1392,7 @@ impl DrawOp {
                 binding: 1,
                 array_offset: 0,
                 descriptors: once(Descriptor::CombinedImageSampler(
-                    skydome.cloud[1].borrow().as_default_view().as_ref(),
+                    skydome.cloud[1].borrow().as_2d_color().as_ref(),
                     Layout::ShaderReadOnlyOptimal,
                     graphics.sampler(1).as_ref(),
                 )),
@@ -1452,7 +1402,7 @@ impl DrawOp {
                 binding: 2,
                 array_offset: 0,
                 descriptors: once(Descriptor::CombinedImageSampler(
-                    skydome.moon.borrow().as_default_view().as_ref(),
+                    skydome.moon.borrow().as_2d_color().as_ref(),
                     Layout::ShaderReadOnlyOptimal,
                     graphics.sampler(2).as_ref(),
                 )),
@@ -1462,7 +1412,7 @@ impl DrawOp {
                 binding: 3,
                 array_offset: 0,
                 descriptors: once(Descriptor::CombinedImageSampler(
-                    skydome.sun.borrow().as_default_view().as_ref(),
+                    skydome.sun.borrow().as_2d_color().as_ref(),
                     Layout::ShaderReadOnlyOptimal,
                     graphics.sampler(3).as_ref(),
                 )),
@@ -1472,7 +1422,7 @@ impl DrawOp {
                 binding: 4,
                 array_offset: 0,
                 descriptors: once(Descriptor::CombinedImageSampler(
-                    skydome.tint[0].borrow().as_default_view().as_ref(),
+                    skydome.tint[0].borrow().as_2d_color().as_ref(),
                     Layout::ShaderReadOnlyOptimal,
                     graphics.sampler(4).as_ref(),
                 )),
@@ -1482,7 +1432,7 @@ impl DrawOp {
                 binding: 5,
                 array_offset: 0,
                 descriptors: once(Descriptor::CombinedImageSampler(
-                    skydome.tint[1].borrow().as_default_view().as_ref(),
+                    skydome.tint[1].borrow().as_2d_color().as_ref(),
                     Layout::ShaderReadOnlyOptimal,
                     graphics.sampler(5).as_ref(),
                 )),
@@ -1491,9 +1441,14 @@ impl DrawOp {
     }
 }
 
-impl Drop for DrawOp {
+impl<P> Drop for DrawOp<P>
+where
+    P: SharedPointerKind,
+{
     fn drop(&mut self) {
-        self.wait();
+        unsafe {
+            self.wait();
+        }
 
         // Causes the compiler to drop internal caches which store texture refs; they were being held
         // alive there so that they could not be dropped until we finished GPU execution
@@ -1503,102 +1458,40 @@ impl Drop for DrawOp {
     }
 }
 
-impl Op for DrawOp {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
+impl<P> Op<P> for DrawOp<P>
+where
+    P: SharedPointerKind,
+{
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 
-    fn take_pool(&mut self) -> Option<Lease<Pool>> {
-        self.pool.take()
+    unsafe fn take_pool(&mut self) -> Lease<Pool<P>, P> {
+        self.pool.take().unwrap()
     }
 
-    fn wait(&self) {
+    unsafe fn wait(&self) {
         Fence::wait(&self.fence);
     }
 }
 
 struct LineInstruction(u32);
 
-/// TODO: Move me to the vertices module?
-#[derive(Clone, Debug)]
-pub struct LineVertex {
-    color: AlphaColor,
-    pos: Vec3,
-}
-
-/// Defines a PBR material.
-///
-/// _NOTE:_ Temporary. I think this will soon become an enum with more options, reflectance probes,
-/// shadow maps, lots more
-#[derive(Clone, Debug)]
-pub struct Material {
-    /// Three channel base color, aka albedo or diffuse, of the material.
-    pub color: BitmapRef,
-
-    /// A two channel bitmap of the metalness (red) and roughness (green) PBR parameters.
-    pub metal_rough: BitmapRef,
-
-    /// A standard three channel normal map.
-    pub normal: BitmapRef,
-}
-
-impl Eq for Material {}
-
-impl Hash for Material {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.color.as_ptr().hash(state);
-        self.metal_rough.as_ptr().hash(state);
-        self.normal.as_ptr().hash(state);
-    }
-}
-
-impl Ord for Material {
-    fn cmp(&self, other: &Self) -> Ordering {
-        let mut res = BitmapRef::as_ptr(&self.color).cmp(&BitmapRef::as_ptr(&other.color));
-        if res != Ordering::Less {
-            return res;
-        }
-
-        res = BitmapRef::as_ptr(&self.metal_rough).cmp(&BitmapRef::as_ptr(&other.metal_rough));
-        if res != Ordering::Less {
-            return res;
-        }
-
-        BitmapRef::as_ptr(&self.normal).cmp(&BitmapRef::as_ptr(&other.normal))
-    }
-}
-
-impl PartialEq for Material {
-    fn eq(&self, other: &Self) -> bool {
-        BitmapRef::ptr_eq(&self.color, &other.color)
-            && BitmapRef::ptr_eq(&self.normal, &other.normal)
-            && BitmapRef::ptr_eq(&self.metal_rough, &other.metal_rough)
-    }
-}
-
-impl PartialOrd for Material {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
 /// Defines a somewhat fancy skydome.
 ///
 /// This skydome is based on https://github.com/kosua20/opengl-skydome
-#[derive(Clone, Debug)]
-pub struct Skydome {
+pub struct Skydome<P>
+where
+    P: 'static + SharedPointerKind,
+{
     /// Images of good and bad weather.
-    pub cloud: [BitmapRef; 2],
+    pub cloud: [Shared<Bitmap<P>, P>; 2],
 
     /// An image of the moon.
-    pub moon: BitmapRef,
+    pub moon: Shared<Bitmap<P>, P>,
 
     /// A map represent sun height and time to color.
-    pub sun: BitmapRef,
+    pub sun: Shared<Bitmap<P>, P>,
 
     /// The direction of the sun's rays.
     pub sun_normal: Vec3,
@@ -1610,10 +1503,44 @@ pub struct Skydome {
     pub time: f32,
 
     /// Images related to the skydome algorithm, see blog post.
-    pub tint: [BitmapRef; 2],
+    pub tint: [Shared<Bitmap<P>, P>; 2],
 
     /// A value 0.5 to 1.0 which represents good-to-bad weather.
     ///
     /// TODO: Make this regular 0.0 to 1.0
     pub weather: f32,
+}
+
+impl<P> Clone for Skydome<P>
+where
+    P: SharedPointerKind,
+{
+    fn clone(&self) -> Self {
+        Self {
+            cloud: [Shared::clone(&self.cloud[0]), Shared::clone(&self.cloud[1])],
+            moon: Shared::clone(&self.moon),
+            sun: Shared::clone(&self.sun),
+            tint: [Shared::clone(&self.tint[0]), Shared::clone(&self.tint[1])],
+            ..*self
+        }
+    }
+}
+
+impl<P> Debug for Skydome<P>
+where
+    P: SharedPointerKind,
+{
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        f.write_str("Skydome")
+    }
+}
+
+struct SkydomeBuf<P>
+where
+    P: 'static + SharedPointerKind,
+{
+    val: Skydome<P>,
+    vertex_buf: Lease<Data, P>,
+    vertex_buf_len: u64,
+    vertex_buf_write: bool,
 }

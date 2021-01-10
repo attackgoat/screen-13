@@ -4,16 +4,16 @@
 //!
 //! Programs which require the smallest download sizes and the fastest runtimes are incompatible
 //! with existing file formats, including `.gltf`. In order to provide the best asset compression
-//! and fastest load times Screen 13 implements a bespoke serialization engine.
+//! and fastest load times _Screen 13_ implements a bespoke serialization engine.
 //!
-//! _NOTE:_ Basic encoding and compression has been implemented for all types; however bitmaps in
-//! particular have a lot of additional features to go. Hardware texture compression and perceptual
-//! encoding such as storing some bitmaps in 4:2:0 is still todo.
+//! **_NOTE:_** Basic encoding and compression has been implemented for all types; however bitmaps
+//! in particular have a lot of additional features to go. Hardware texture compression and
+//! perceptual encoding such as storing some bitmaps in 4:2:0 is still todo.
 //!
 //! ## The `.pak` File Format
 //!
 //! Using the baking process described in the main
-//! [README](https://github.com/attackgoat/screen-13), we are able to run the Screen 13 executable
+//! [README](https://github.com/attackgoat/screen-13), we are able to run the _Screen 13_ executable
 //! and produce `.pak` files. It may help to know more about the processes the internal `bake`
 //! module follows while to writing the `.pak`:
 //! 1. Open the `.toml` project file specified on the command line
@@ -59,7 +59,7 @@
 //! project `.toml` file. Similarly, relative file references are evaluated with respect to the
 //! actual project-directory location in which the references are made.
 //!
-//! _NOTE:_ When the optional `compression` field is `brotli`, `[content]` will accept these
+//! **_NOTE:_** When the optional `compression` field is `brotli`, `[content]` will accept these
 //! additional fields:
 //! - `buf_size`: Default is `4096` if not specified
 //! - `quality`: Default is `10` if not specified
@@ -116,8 +116,8 @@
 //!
 //! ### Materials
 //!
-//! Materials are used while rendering models as Screen 13 does not retain an material information
-//! stored in the model source file, other than texture coordinates.
+//! Materials are used while rendering models as _Screen 13_ does not retain any material
+//! information stored in the model source file, other than texture coordinates.
 //!
 //! ```text
 //! [material]
@@ -182,8 +182,8 @@
 //! - `rotation`: Specified as degrees in `pitch, yaw, roll` format.
 //! - `tags`: An array of strings to attach to a scene reference.
 //!
-//! _NOTE:_ The scene baking code uses a string table to avoid needless duplicates being stored in
-//! the `.pak` file. Compression additionally reduces the burden of dense/complicated scenes.
+//! **_NOTE:_** The scene baking code uses a string table to avoid needless duplicates being stored
+//! in the `.pak` file. Compression additionally reduces the burden of dense/complicated scenes.
 //!
 //! ## Using `.pak` Files at Runtime
 //!
@@ -213,7 +213,7 @@ pub use self::{
     scene::{Ref, RefIter, Scene},
 };
 
-pub(crate) use self::{bitmap::Bitmap, bitmap_font::BitmapFont, pak_buf::PakBuf};
+pub(crate) use self::{bitmap::BitmapBuf, bitmap_font::BitmapFont, pak_buf::PakBuf};
 
 use {
     self::{
@@ -557,7 +557,7 @@ where
     }
 
     /// Reads the corresponding bitmap for the given id.
-    pub(crate) fn read_bitmap(&mut self, id: BitmapId) -> Bitmap {
+    pub(crate) fn read_bitmap(&mut self, id: BitmapId) -> BitmapBuf {
         let (pos, len) = self.buf.bitmap(id);
         self.read(pos, len)
     }

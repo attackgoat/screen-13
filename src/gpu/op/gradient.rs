@@ -4,14 +4,13 @@ use {
         color::AlphaColor,
         gpu::{
             def::{ColorRenderPassMode, Graphics, GraphicsMode, RenderPassMode},
-            driver::{
-                bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
-            },
+            driver::{bind_graphics_descriptor_set, CommandPool, Fence, Framebuffer2d},
             pool::{Lease, Pool},
-            Texture2d,
+            queue_mut, Texture2d,
         },
         math::Coord,
     },
+    archery::SharedPointerKind,
     gfx_hal::{
         command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, SubpassContents},
         format::Aspects,
@@ -43,34 +42,37 @@ fn must_preserve_dst(path: &Path) -> bool {
 }
 
 /// TODO
-pub struct GradientOp {
-    back_buf: Lease<Texture2d>,
+pub struct GradientOp<P>
+where
+    P: 'static + SharedPointerKind,
+{
+    back_buf: Lease<Texture2d, P>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
-    cmd_pool: Lease<CommandPool>,
-    driver: Driver,
+    cmd_pool: Lease<CommandPool, P>,
     dst: Texture2d,
     dst_preserve: bool,
-    fence: Lease<Fence>,
+    fence: Lease<Fence, P>,
     frame_buf: Framebuffer2d,
-    graphics: Lease<Graphics>,
-    pool: Option<Lease<Pool>>,
+    graphics: Lease<Graphics, P>,
+    pool: Option<Lease<Pool<P>, P>>,
     path: [(Coord, AlphaColor); 2],
 }
 
-impl GradientOp {
+impl<P> GradientOp<P>
+where
+    P: SharedPointerKind,
+{
     /// # Safety
     /// None
     #[must_use]
-    pub(crate) fn new(
+    pub(crate) unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
-        mut pool: Lease<Pool>,
+        mut pool: Lease<Pool<P>, P>,
         dst: &Texture2d,
         path: Path,
     ) -> Self {
         // Allocate the command buffer
-        let family = Device::queue_family(&driver.borrow());
-        let mut cmd_pool = pool.cmd_pool(driver, family);
+        let mut cmd_pool = pool.cmd_pool();
 
         let (dims, fmt) = {
             let dst = dst.borrow();
@@ -86,7 +88,6 @@ impl GradientOp {
         let graphics = pool.graphics(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
             render_pass_mode,
             0,
             GraphicsMode::Gradient(false),
@@ -96,7 +97,6 @@ impl GradientOp {
         let back_buf = pool.texture(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
             dims,
             fmt,
             Layout::Undefined,
@@ -108,22 +108,19 @@ impl GradientOp {
         let frame_buf = Framebuffer2d::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
-            pool.render_pass(&driver, render_pass_mode),
-            once(back_buf.borrow().as_default_view().as_ref()),
+            pool.render_pass(render_pass_mode),
+            once(back_buf.borrow().as_2d_color().as_ref()),
             dims,
         );
         let fence = pool.fence(
             #[cfg(feature = "debug-names")]
             name,
-            &driver,
         );
 
         Self {
             back_buf,
-            cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
+            cmd_buf: cmd_pool.allocate_one(Level::Primary),
             cmd_pool,
-            driver: Driver::clone(driver),
             dst: Texture2d::clone(dst),
             dst_preserve: false,
             fence,
@@ -239,7 +236,6 @@ impl GradientOp {
     unsafe fn submit(&mut self) {
         trace!("submit");
 
-        let mut device = self.driver.borrow_mut();
         let mut dst = self.dst.borrow_mut();
         let mut back_buf = self.back_buf.borrow_mut();
         let preserve = self.dst_preserve && must_preserve_dst(&self.path);
@@ -380,7 +376,7 @@ impl GradientOp {
         self.cmd_buf.finish();
 
         // Submit
-        Device::queue_mut(&mut device).submit(
+        queue_mut().submit(
             Submission {
                 command_buffers: once(&self.cmd_buf),
                 wait_semaphores: empty(),
@@ -391,26 +387,30 @@ impl GradientOp {
     }
 }
 
-impl Drop for GradientOp {
+impl<P> Drop for GradientOp<P>
+where
+    P: SharedPointerKind,
+{
     fn drop(&mut self) {
-        self.wait();
+        unsafe {
+            self.wait();
+        }
     }
 }
 
-impl Op for GradientOp {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
+impl<P> Op<P> for GradientOp<P>
+where
+    P: SharedPointerKind,
+{
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 
-    fn take_pool(&mut self) -> Option<Lease<Pool>> {
-        self.pool.take()
+    unsafe fn take_pool(&mut self) -> Lease<Pool<P>, P> {
+        self.pool.take().unwrap()
     }
 
-    fn wait(&self) {
+    unsafe fn wait(&self) {
         Fence::wait(&self.fence);
     }
 }

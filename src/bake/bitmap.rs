@@ -5,7 +5,7 @@ use {
     },
     crate::pak::{
         id::{BitmapFontId, BitmapId},
-        Bitmap, BitmapFont, BitmapFormat, PakBuf,
+        BitmapBuf, BitmapFont, BitmapFormat, PakBuf,
     },
     bmfont::{BMFont, OrdinateOrientation},
     image::{buffer::ConvertBuffer, open as image_open, DynamicImage, RgbaImage},
@@ -31,7 +31,7 @@ pub fn bake_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
 
     // Bake the pixels
     let (width, pixels) = pixels(&bitmap_filename, bitmap_asset.format());
-    let bitmap = Bitmap::new(bitmap_asset.format(), width as u16, pixels);
+    let bitmap = BitmapBuf::new(bitmap_asset.format(), width as u16, pixels);
 
     // Pak this asset
     pak.push_bitmap(key, bitmap)
@@ -85,7 +85,7 @@ pub fn bake_bitmap_font<P1: AsRef<Path>, P2: AsRef<Path>>(
                 }
             }
 
-            Bitmap::new(BitmapFormat::Rgb, width as u16, better_pixels)
+            BitmapBuf::new(BitmapFormat::Rgb, width as u16, better_pixels)
         })
         .collect();
 

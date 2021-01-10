@@ -78,7 +78,7 @@ impl Ref<'_> {
     }
 }
 
-/// An `Iterator` of `SceneRef` items.
+/// An `Iterator` of [`Ref`] items.
 #[derive(Debug)]
 pub struct RefIter<'a> {
     idx: usize,
@@ -102,7 +102,7 @@ impl<'a> Iterator for RefIter<'a> {
     }
 }
 
-/// A container for `Ref` references.
+/// A container for [`Ref`] references.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Scene {
     refs: Vec<SceneRef>,

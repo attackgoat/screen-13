@@ -11,15 +11,15 @@ use {
                 push_const::{FontPushConsts, Mat4PushConst, Vec4PushConst},
                 ColorRenderPassMode, Graphics, GraphicsMode, RenderPassMode,
             },
-            driver::{
-                bind_graphics_descriptor_set, CommandPool, Device, Driver, Fence, Framebuffer2d,
-            },
+            device,
+            driver::{bind_graphics_descriptor_set, CommandPool, Fence, Framebuffer2d},
             pool::{Lease, Pool},
-            Data, Texture2d,
+            queue_mut, Data, Texture2d,
         },
         math::{vec3, CoordF, Extent, Mat4},
         pak::Pak,
     },
+    archery::SharedPointerKind,
     bmfont::{BMFont, CharPosition, OrdinateOrientation},
     gfx_hal::{
         buffer::{Access as BufferAccess, SubRange, Usage as BufferUsage},
@@ -50,15 +50,20 @@ const SUBPASS_IDX: u8 = 0;
 // TODO: Allow one FontOp to specify a list of colors, make a rainbow-colored text example for it
 /// Holds a decoded bitmap Font.
 #[derive(Debug)]
-pub struct Font {
+pub struct Font<P>
+where
+    P: 'static + SharedPointerKind,
+{
     def: BMFont,
-    pages: Vec<Bitmap>,
+    pages: Vec<Bitmap<P>>,
 }
 
-impl Font {
+impl<P> Font<P>
+where
+    P: SharedPointerKind,
+{
     pub(crate) fn load<K: AsRef<str>, R: Read + Seek>(
-        driver: &Driver,
-        pool: &mut Pool,
+        pool: &mut Pool<P>,
         pak: &mut Pak<R>,
         key: K,
     ) -> Self {
@@ -75,7 +80,6 @@ impl Font {
                 BitmapOp::new(
                     #[cfg(feature = "debug-names")]
                     "Font",
-                    driver,
                     pool,
                     &page,
                 )
@@ -200,39 +204,43 @@ impl Font {
 // TODO: This really needs to cache data like the draw compiler does
 /// A container of graphics types and the functions which allows the recording and submission of
 /// bitmapped font operations.
-pub struct FontOp {
-    back_buf: Lease<Texture2d>,
+pub struct FontOp<P>
+where
+    P: 'static + SharedPointerKind,
+{
+    back_buf: Lease<Texture2d, P>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
-    cmd_pool: Lease<CommandPool>,
-    driver: Driver,
+    cmd_pool: Lease<CommandPool, P>,
     dst: Texture2d,
-    fence: Lease<Fence>,
+    fence: Lease<Fence, P>,
     frame_buf: Option<Framebuffer2d>,
     glyph_color: AlphaColor,
-    graphics: Option<Lease<Graphics>>,
+    graphics: Option<Lease<Graphics, P>>,
 
     #[cfg(feature = "debug-names")]
     name: String,
 
     outline_color: Option<AlphaColor>,
-    pool: Option<Lease<Pool>>,
+    pool: Option<Lease<Pool<P>, P>>,
     transform: Mat4,
-    vertex_buf: Option<(Lease<Data>, u64)>,
+    vertex_buf: Option<(Lease<Data, P>, u64)>,
 }
 
-impl FontOp {
+impl<P> FontOp<P>
+where
+    P: SharedPointerKind,
+{
     #[must_use]
-    pub(crate) fn new<C, P>(
+    pub(crate) unsafe fn new<C, O>(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
-        mut pool: Lease<Pool>,
+        mut pool: Lease<Pool<P>, P>,
         dst: &Texture2d,
-        pos: P,
+        pos: O,
         color: C,
     ) -> Self
     where
         C: Into<AlphaColor>,
-        P: Into<CoordF>,
+        O: Into<CoordF>,
     {
         let (dims, fmt) = {
             let dst = dst.borrow();
@@ -242,7 +250,6 @@ impl FontOp {
         let back_buf = pool.texture(
             #[cfg(feature = "debug-names")]
             name,
-            &driver,
             dims,
             fmt,
             Layout::Undefined,
@@ -251,13 +258,11 @@ impl FontOp {
             1,
             1,
         );
-        let family = Device::queue_family(&driver.borrow());
-        let mut cmd_pool = pool.cmd_pool(&driver, family);
-        let cmd_buf = unsafe { cmd_pool.allocate_one(Level::Primary) };
+        let mut cmd_pool = pool.cmd_pool();
+        let cmd_buf = cmd_pool.allocate_one(Level::Primary);
         let fence = pool.fence(
             #[cfg(feature = "debug-names")]
             name,
-            &driver,
         );
 
         let pos = pos.into();
@@ -269,7 +274,6 @@ impl FontOp {
             back_buf,
             cmd_buf,
             cmd_pool,
-            driver: Driver::clone(driver),
             dst: Texture2d::clone(dst),
             fence,
             frame_buf: None,
@@ -304,7 +308,7 @@ impl FontOp {
     }
 
     /// Submits the given font for hardware processing.
-    pub fn record(&mut self, font: &Font, text: &str) {
+    pub fn record(&mut self, font: &Font<P>, text: &str) {
         assert!(!text.is_empty());
 
         let dims = self.dst.borrow().dims();
@@ -319,12 +323,11 @@ impl FontOp {
         let tessellations = font.tessellate(text, dims);
 
         // Finish the remaining setup tasks
-        {
+        unsafe {
             // Setup the graphics pipeline
             self.graphics.replace(pool.graphics_desc_sets(
                 #[cfg(feature = "debug-names")]
                 &self.name,
-                &self.driver,
                 render_pass_mode,
                 SUBPASS_IDX,
                 graphics_mode,
@@ -335,9 +338,8 @@ impl FontOp {
             self.frame_buf.replace(Framebuffer2d::new(
                 #[cfg(feature = "debug-names")]
                 self.name.as_str(),
-                &self.driver,
-                pool.render_pass(&self.driver, render_pass_mode),
-                once(self.back_buf.borrow().as_default_view().as_ref()),
+                pool.render_pass(render_pass_mode),
+                once(self.back_buf.borrow().as_2d_color().as_ref()),
                 dims,
             ));
 
@@ -351,7 +353,6 @@ impl FontOp {
                 pool.data_usage(
                     #[cfg(feature = "debug-names")]
                     &self.name,
-                    &self.driver,
                     vertex_buf_len,
                     BufferUsage::VERTEX,
                 ),
@@ -359,19 +360,19 @@ impl FontOp {
             ));
 
             // Fill the vertex buffer with each tessellation in order
-            let (vertex_buf, _) = self.vertex_buf.as_mut().unwrap();
-            let mut dst = vertex_buf.map_range_mut(0..vertex_buf_len).unwrap(); // TODO: Error handling!
-            let mut dst_offset = 0;
-            for (_, vertices) in &tessellations {
-                let len = vertices.len();
-                dst[dst_offset..dst_offset + len].copy_from_slice(&vertices);
-                dst_offset += len;
+            {
+                let (vertex_buf, _) = self.vertex_buf.as_mut().unwrap();
+                let mut dst = vertex_buf.map_range_mut(0..vertex_buf_len).unwrap(); // TODO: Error handling!
+                let mut dst_offset = 0;
+                for (_, vertices) in &tessellations {
+                    let len = vertices.len();
+                    dst[dst_offset..dst_offset + len].copy_from_slice(&vertices);
+                    dst_offset += len;
+                }
+
+                Mapping::flush(&mut dst).unwrap(); // TODO: Error handling!
             }
 
-            Mapping::flush(&mut dst).unwrap(); // TODO: Error handling!
-        }
-
-        unsafe {
             self.submit_begin(dims, render_pass_mode);
 
             // Draw each page in the tessellation using those vertices and the correct font page texture index
@@ -410,7 +411,7 @@ impl FontOp {
 
         let graphics = self.graphics.as_ref().unwrap();
         let pool = self.pool.as_mut().unwrap();
-        let render_pass = pool.render_pass(&self.driver, render_pass_mode);
+        let render_pass = pool.render_pass(render_pass_mode);
         let (vertex_buf, vertex_buf_len) = self.vertex_buf.as_mut().unwrap();
         let mut back_buf = self.back_buf.borrow_mut();
         let mut dst = self.dst.borrow_mut();
@@ -572,7 +573,6 @@ impl FontOp {
     unsafe fn submit_finish(&mut self, dims: Extent) {
         trace!("submit_finish");
 
-        let mut device = self.driver.borrow_mut();
         let mut dst = self.dst.borrow_mut();
         let mut back_buf = self.back_buf.borrow_mut();
 
@@ -618,7 +618,7 @@ impl FontOp {
         self.cmd_buf.finish();
 
         // Submit
-        Device::queue_mut(&mut device).submit(
+        queue_mut().submit(
             Submission {
                 command_buffers: once(&self.cmd_buf),
                 wait_semaphores: empty(),
@@ -628,48 +628,50 @@ impl FontOp {
         );
     }
 
-    unsafe fn write_descriptors(&mut self, font: &Font, page_idx: usize) {
+    unsafe fn write_descriptors(&mut self, font: &Font<P>, page_idx: usize) {
         trace!("write_descriptors");
 
         // TODO: Fix, this should be one set per page not the same re-written
         let page = font.pages[page_idx].borrow();
-        let page_view = page.as_default_view();
+        let page_view = page.as_2d_color();
         let graphics = self.graphics.as_ref().unwrap();
-        self.driver
-            .borrow_mut()
-            .write_descriptor_sets(once(DescriptorSetWrite {
-                set: graphics.desc_set(0),
-                binding: 0,
-                array_offset: 0,
-                descriptors: Some(Descriptor::CombinedImageSampler(
-                    page_view.as_ref(),
-                    Layout::General,
-                    graphics.sampler(0).as_ref(),
-                )),
-            }));
+        device().write_descriptor_sets(once(DescriptorSetWrite {
+            set: graphics.desc_set(0),
+            binding: 0,
+            array_offset: 0,
+            descriptors: Some(Descriptor::CombinedImageSampler(
+                page_view.as_ref(),
+                Layout::General,
+                graphics.sampler(0).as_ref(),
+            )),
+        }));
     }
 }
 
-impl Drop for FontOp {
+impl<P> Drop for FontOp<P>
+where
+    P: SharedPointerKind,
+{
     fn drop(&mut self) {
-        self.wait();
+        unsafe {
+            self.wait();
+        }
     }
 }
 
-impl Op for FontOp {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
+impl<P> Op<P> for FontOp<P>
+where
+    P: SharedPointerKind,
+{
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 
-    fn take_pool(&mut self) -> Option<Lease<Pool>> {
-        self.pool.take()
+    unsafe fn take_pool(&mut self) -> Lease<Pool<P>, P> {
+        self.pool.take().unwrap()
     }
 
-    fn wait(&self) {
+    unsafe fn wait(&self) {
         Fence::wait(&self.fence);
     }
 }

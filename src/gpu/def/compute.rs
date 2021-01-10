@@ -2,7 +2,7 @@ use {
     super::{READ_ONLY_BUF, READ_WRITE_BUF, READ_WRITE_IMG},
     crate::gpu::{
         driver::{
-            descriptor_range_desc, ComputePipeline, DescriptorPool, DescriptorSetLayout, Driver,
+            descriptor_range_desc, ComputePipeline, DescriptorPool, DescriptorSetLayout,
             PipelineLayout, Sampler, ShaderModule,
         },
         spirv,
@@ -28,7 +28,6 @@ impl Compute {
     #[allow(clippy::too_many_arguments)]
     unsafe fn new<ID, IS>(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
         desc_set_layout: &DescriptorSetLayout,
         pipeline_layout: &PipelineLayout,
         max_desc_sets: usize,
@@ -42,15 +41,14 @@ impl Compute {
         ID::Item: Borrow<DescriptorRangeDesc>,
         IS: Iterator<Item = Sampler>,
     {
-        let shader = ShaderModule::new(driver, spirv);
+        let shader = ShaderModule::new(spirv);
         let pipeline = ComputePipeline::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
             pipeline_layout.as_ref(),
             ShaderModule::entry_point(&shader),
         );
-        let mut desc_pool = DescriptorPool::new(driver, max_desc_sets, desc_ranges);
+        let mut desc_pool = DescriptorPool::new(max_desc_sets, desc_ranges);
         let layouts = (0..max_desc_sets).map(|_| desc_set_layout.as_ref());
         let mut desc_sets = Vec::with_capacity(max_desc_sets);
 
@@ -70,7 +68,6 @@ impl Compute {
 
     unsafe fn calc_vertex_attrs(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
         desc_set_layout: &DescriptorSetLayout,
         pipeline_layout: &PipelineLayout,
         max_desc_sets: usize,
@@ -82,7 +79,6 @@ impl Compute {
         Self::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
             desc_set_layout,
             pipeline_layout,
             max_desc_sets,
@@ -98,7 +94,6 @@ impl Compute {
     /// Safety: Don't let desc_set_layout or pipeline_layout drop before this!
     pub unsafe fn calc_vertex_attrs_u16(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
         desc_set_layout: &DescriptorSetLayout,
         pipeline_layout: &PipelineLayout,
         max_desc_sets: usize,
@@ -106,7 +101,6 @@ impl Compute {
         Self::calc_vertex_attrs(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
             desc_set_layout,
             pipeline_layout,
             max_desc_sets,
@@ -118,7 +112,6 @@ impl Compute {
     /// Safety: Don't let desc_set_layout or pipeline_layout drop before this!
     pub unsafe fn calc_vertex_attrs_u16_skin(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
         desc_set_layout: &DescriptorSetLayout,
         pipeline_layout: &PipelineLayout,
         max_desc_sets: usize,
@@ -126,7 +119,6 @@ impl Compute {
         Self::calc_vertex_attrs(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
             desc_set_layout,
             pipeline_layout,
             max_desc_sets,
@@ -138,7 +130,6 @@ impl Compute {
     /// Safety: Don't let desc_set_layout or pipeline_layout drop before this!
     pub unsafe fn calc_vertex_attrs_u32(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
         desc_set_layout: &DescriptorSetLayout,
         pipeline_layout: &PipelineLayout,
         max_desc_sets: usize,
@@ -146,7 +137,6 @@ impl Compute {
         Self::calc_vertex_attrs(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
             desc_set_layout,
             pipeline_layout,
             max_desc_sets,
@@ -158,7 +148,6 @@ impl Compute {
     /// Safety: Don't let desc_set_layout or pipeline_layout drop before this!
     pub unsafe fn calc_vertex_attrs_u32_skin(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
         desc_set_layout: &DescriptorSetLayout,
         pipeline_layout: &PipelineLayout,
         max_desc_sets: usize,
@@ -166,7 +155,6 @@ impl Compute {
         Self::calc_vertex_attrs(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
             desc_set_layout,
             pipeline_layout,
             max_desc_sets,
@@ -177,7 +165,6 @@ impl Compute {
 
     pub unsafe fn decode_rgb_rgba(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
         desc_set_layout: &DescriptorSetLayout,
         pipeline_layout: &PipelineLayout,
         max_desc_sets: usize,
@@ -185,7 +172,6 @@ impl Compute {
         Self::new(
             #[cfg(feature = "debug-names")]
             name,
-            driver,
             desc_set_layout,
             pipeline_layout,
             max_desc_sets,

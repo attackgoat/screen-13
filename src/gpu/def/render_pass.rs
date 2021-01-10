@@ -65,10 +65,7 @@ pub mod draw {
         }
     }
 
-    pub(in crate::gpu) fn fill_light_tonemap(
-        driver: &Driver,
-        mode: DrawRenderPassMode,
-    ) -> RenderPass {
+    pub(in crate::gpu) unsafe fn fill_light_tonemap(mode: DrawRenderPassMode) -> RenderPass {
         // Subpass indexes
         const FILL_GEOM_BUF_IDX: u8 = 0;
         const ACCUM_LIGHT_IDX: u8 = 1;
@@ -105,7 +102,6 @@ pub mod draw {
         RenderPass::new(
             #[cfg(feature = "debug-names")]
             "Draw",
-            driver,
             &[
                 // attachments
                 color_metal,
@@ -131,8 +127,7 @@ pub mod draw {
 
     /// Like the draw render pass except it contains a step between filling the geometry buffer and
     /// accumulating light
-    pub(in crate::gpu) fn fill_skydome_light_tonemap(
-        driver: &Driver,
+    pub(in crate::gpu) unsafe fn fill_skydome_light_tonemap(
         mode: DrawRenderPassMode,
     ) -> RenderPass {
         // Subpass indexes
@@ -181,7 +176,6 @@ pub mod draw {
         RenderPass::new(
             #[cfg(feature = "debug-names")]
             "Draw",
-            driver,
             &[
                 // attachments
                 color_metal,
@@ -207,25 +201,19 @@ pub mod draw {
     }
 
     /// Like the draw render pass except it contains a 'post'-fx step
-    pub(in crate::gpu) fn fill_light_tonemap_fx(
-        _driver: &Driver,
-        _mode: DrawRenderPassMode,
-    ) -> RenderPass {
+    pub(in crate::gpu) fn fill_light_tonemap_fx(_mode: DrawRenderPassMode) -> RenderPass {
         todo!();
     }
 
     /// Like the draw render pass except it contains a 'pre' and 'post'-fx step
-    pub(in crate::gpu) fn fill_skydome_light_tonemap_fx(
-        _driver: &Driver,
-        _mode: DrawRenderPassMode,
-    ) -> RenderPass {
+    pub(in crate::gpu) fn fill_skydome_light_tonemap_fx(_mode: DrawRenderPassMode) -> RenderPass {
         todo!();
     }
 }
 
 use {
     super::{ColorRenderPassMode, DrawRenderPassMode},
-    crate::gpu::driver::{Driver, RenderPass},
+    crate::gpu::driver::RenderPass,
     gfx_hal::{
         format::Format,
         image::{Access, Layout, Layout::*},
@@ -290,7 +278,7 @@ fn const_layout(layout: Layout) -> Range<Layout> {
     layout..layout
 }
 
-pub(in crate::gpu) fn color(driver: &Driver, mode: ColorRenderPassMode) -> RenderPass {
+pub(in crate::gpu) unsafe fn color(mode: ColorRenderPassMode) -> RenderPass {
     const ATTACHMENT: usize = 0;
 
     let attachment = Attachment {
@@ -315,14 +303,13 @@ pub(in crate::gpu) fn color(driver: &Driver, mode: ColorRenderPassMode) -> Rende
     RenderPass::new(
         #[cfg(feature = "debug-names")]
         "Color",
-        driver,
         &[attachment],
         &[subpass_desc],
         &[],
     )
 }
 
-pub fn present(driver: &Driver, fmt: Format) -> RenderPass {
+pub unsafe fn present(fmt: Format) -> RenderPass {
     const ATTACHMENT: usize = 0;
 
     let attachment = Attachment {
@@ -343,7 +330,6 @@ pub fn present(driver: &Driver, fmt: Format) -> RenderPass {
     RenderPass::new(
         #[cfg(feature = "debug-names")]
         "Present",
-        driver,
         &[attachment],
         &[subpass_desc],
         &[],

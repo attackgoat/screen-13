@@ -3,10 +3,11 @@ use {
     crate::{
         color::AlphaColor,
         gpu::{
-            driver::{CommandPool, Device, Driver, Fence},
-            Lease, Pool, Texture2d,
+            driver::{CommandPool, Fence},
+            queue_mut, Lease, Pool, Texture2d,
         },
     },
+    archery::SharedPointerKind,
     gfx_hal::{
         command::{ClearValue, CommandBuffer, CommandBufferFlags, Level},
         format::Aspects,
@@ -24,50 +25,50 @@ use {
 };
 
 /// A container of graphics types which allow for effciently setting texture contents.
-pub struct ClearOp {
+pub struct ClearOp<P>
+where
+    P: 'static + SharedPointerKind,
+{
     clear_value: ClearValue,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
-    cmd_pool: Lease<CommandPool>,
-    driver: Driver,
-    fence: Lease<Fence>,
-    pool: Option<Lease<Pool>>,
+    cmd_pool: Lease<CommandPool, P>,
+    fence: Lease<Fence, P>,
+    pool: Option<Lease<Pool<P>, P>>,
     texture: Texture2d,
 }
 
-impl ClearOp {
+impl<P> ClearOp<P>
+where
+    P: SharedPointerKind,
+{
     #[must_use]
-    pub(crate) fn new(
+    pub(crate) unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
-        driver: &Driver,
-        mut pool: Lease<Pool>,
+        mut pool: Lease<Pool<P>, P>,
         texture: &Texture2d,
     ) -> Self {
-        let family = Device::queue_family(&driver.borrow());
-        let mut cmd_pool = pool.cmd_pool(driver, family);
+        let mut cmd_pool = pool.cmd_pool();
 
         Self {
             clear_value: AlphaColor::rgba(0, 0, 0, 0).into(),
-            cmd_buf: unsafe { cmd_pool.allocate_one(Level::Primary) },
+            cmd_buf: cmd_pool.allocate_one(Level::Primary),
             cmd_pool,
-            driver: Driver::clone(driver),
             fence: pool.fence(
                 #[cfg(feature = "debug-names")]
                 name,
-                driver,
             ),
             pool: Some(pool),
             texture: Texture2d::clone(texture),
         }
     }
 
-    // TODO: Just rename this to color? No need to expose this whole "value" business!
     /// Sets the clear value.
     #[must_use]
-    pub fn with_value<C>(&mut self, clear_value: C) -> &mut Self
+    pub fn with<C>(&mut self, color: C) -> &mut Self
     where
-        C: Into<ClearValue>,
+        C: Into<AlphaColor>,
     {
-        self.clear_value = clear_value.into();
+        self.clear_value = color.into().into();
         self
     }
 
@@ -81,7 +82,6 @@ impl ClearOp {
     unsafe fn submit(&mut self) {
         trace!("submit");
 
-        let mut device = self.driver.borrow_mut();
         let mut texture = self.texture.borrow_mut();
 
         // Begin
@@ -109,7 +109,7 @@ impl ClearOp {
         self.cmd_buf.finish();
 
         // Submit
-        Device::queue_mut(&mut device).submit(
+        queue_mut().submit(
             Submission {
                 command_buffers: once(&self.cmd_buf),
                 wait_semaphores: empty(),
@@ -120,26 +120,30 @@ impl ClearOp {
     }
 }
 
-impl Drop for ClearOp {
+impl<P> Drop for ClearOp<P>
+where
+    P: SharedPointerKind,
+{
     fn drop(&mut self) {
-        self.wait();
+        unsafe {
+            self.wait();
+        }
     }
 }
 
-impl Op for ClearOp {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
+impl<P> Op<P> for ClearOp<P>
+where
+    P: SharedPointerKind,
+{
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 
-    fn take_pool(&mut self) -> Option<Lease<Pool>> {
-        self.pool.take()
+    unsafe fn take_pool(&mut self) -> Lease<Pool<P>, P> {
+        self.pool.take().unwrap()
     }
 
-    fn wait(&self) {
+    unsafe fn wait(&self) {
         Fence::wait(&self.fence);
     }
 }
