@@ -7,7 +7,7 @@ use {
         math::{Coord, Extent, Rect},
         DynScreen, Input, RenderReturn, Screen,
     },
-    archery::SharedPointerKind,
+    a_r_c_h_e_r_y::SharedPointerKind,
     std::{
         time::{Duration, Instant},
         u8,

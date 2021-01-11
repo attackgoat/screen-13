@@ -11,7 +11,7 @@ use {
         color::AlphaColor,
         math::{Coord, CoordF, Extent},
     },
-    archery::SharedPointerKind,
+    a_r_c_h_e_r_y::SharedPointerKind,
     gfx_hal::{
         format::{Format, ImageFeature},
         image::{Layout, Usage},

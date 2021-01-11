@@ -5,7 +5,7 @@ use {
         pool::{Lease, Pool},
         queue_mut, Data, Texture2d,
     },
-    archery::SharedPointerKind,
+    a_r_c_h_e_r_y::SharedPointerKind,
     gfx_hal::{
         command::{BufferImageCopy, CommandBuffer, CommandBufferFlags, Level},
         format::Aspects,

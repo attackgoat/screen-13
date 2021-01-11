@@ -14,7 +14,7 @@ use {
         },
         math::{vec3, Area, CoordF, Mat4, RectF, Vec2},
     },
-    archery::SharedPointerKind,
+    a_r_c_h_e_r_y::SharedPointerKind,
     gfx_hal::{
         command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, SubpassContents},
         device::Device as _,

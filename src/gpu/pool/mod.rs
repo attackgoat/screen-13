@@ -22,7 +22,7 @@ use {
         queue_family, BlendMode, Data, MaskMode, MatteMode, Texture, Texture2d, TextureRef,
     },
     crate::{math::Extent, ptr::Shared},
-    archery::SharedPointerKind,
+    a_r_c_h_e_r_y::SharedPointerKind,
     gfx_hal::{
         adapter::PhysicalDevice as _,
         buffer::Usage as BufferUsage,

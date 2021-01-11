@@ -7,7 +7,7 @@ use {
             IndexType,
         },
     },
-    archery::SharedPointerKind,
+    a_r_c_h_e_r_y::SharedPointerKind,
     std::{
         cell::{Ref, RefCell, RefMut},
         fmt::{Debug, Error, Formatter},

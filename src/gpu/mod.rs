@@ -121,7 +121,7 @@ use {
         },
         ptr::Shared,
     },
-    archery::SharedPointerKind,
+    a_r_c_h_e_r_y::SharedPointerKind,
     gfx_hal::{
         adapter::{Adapter, DeviceType, MemoryProperties, PhysicalDevice},
         buffer::Usage,

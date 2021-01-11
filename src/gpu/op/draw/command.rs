@@ -5,7 +5,7 @@ use {
         math::{vec3_is_finite, Cone, CoordF, Mat4, Sphere, Vec3},
         ptr::Shared,
     },
-    archery::SharedPointerKind,
+    a_r_c_h_e_r_y::SharedPointerKind,
     std::{
         cmp::Ordering,
         fmt::{Debug, Error, Formatter},

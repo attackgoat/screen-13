@@ -11,7 +11,7 @@ pub mod write;
 
 use {
     super::{Lease, Pool},
-    archery::SharedPointerKind,
+    a_r_c_h_e_r_y::SharedPointerKind,
     std::any::Any,
 };
 

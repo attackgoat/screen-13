@@ -19,7 +19,7 @@ use {
         math::{vec3, CoordF, Extent, Mat4},
         pak::Pak,
     },
-    archery::SharedPointerKind,
+    a_r_c_h_e_r_y::SharedPointerKind,
     bmfont::{BMFont, CharPosition, OrdinateOrientation},
     gfx_hal::{
         buffer::{Access as BufferAccess, SubRange, Usage as BufferUsage},
