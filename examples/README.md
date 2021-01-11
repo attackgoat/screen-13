@@ -321,7 +321,7 @@ let camera = Perspective::default();
 let transform = Mat4::identity();
 
 render.draw().record(&camera, &mut [
-    Draw::model(teapot, glossy, transform)
+    Draw::model(teapot, glossy_cat, transform)
 ]);
 ```
 

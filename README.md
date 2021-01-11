@@ -26,22 +26,16 @@ _Just Enough:_ Only core 2D and 3D rendering features are included, along with w
 and window-based input. Additional things, such as an entity component system, physics, sound, and
 gamepad input must be handled by your code.
 
-## Asset Baking
-
-Asset baking is the process of converting files from their native file formats into a runtime-ready
-format that is optimized for both speed and size. Currently _Screen 13_ uses a single file (or
-single HTTP/S endpoint) for all runtime assets. Assets are baked from `.toml` files which you can
-find examples of in the `examples/content` directory.
-
 ## Quick Start
 
 Included are some examples you might find helpful:
 
-- `basic.rs` - Displays 'Hello, World!' on the screen. Please start here.
-- `ecs.rs` - Example of integration with a third-party ECS library
+- [`basic.rs`](examples/basic.rs) - Displays 'Hello, World!' on the screen. Please start here.
+- [`ecs.rs`](examples/ecs.rs) - Example of integration with a third-party ECS library
   ([_`hecs`_](https://crates.io/crates/hecs), which is _excellent_).
-- `headless.rs` - Renders without an operating system window, saves to disk.
-- `triangle.rs` - Loads a textured triangle at runtime, with no associated `.pak` file.
+- [`headless.rs`](examples/headless.rs) - Renders without an operating system window, saves to disk.
+- [`triangle.rs`](examples/triangle.rs) - Loads a textured triangle at runtime, with no associated
+  `.pak` file.
 
 Some examples require an associated asset `.pak` file in order to run, so you will need to run the
 example like so:
@@ -65,7 +59,8 @@ All new users should read and understand the guide.
 
 ## Roadmap/Status/Notes
 
-This engine is very young and is likely to change as development continues.
+This engine is very young and is likely to change as development continues. Some features may be
+unimplemented.
 
 - Requires [Rust](https://www.rust-lang.org/) 1.45 _or later_
 - _Design-time_ Asset Baking:
@@ -110,8 +105,8 @@ This engine is very young and is likely to change as development continues.
 
 ## Optional features
 
-_Screen 13_ puts a lot of functionality behind optional features in order to optimize compile time for
-the most common use cases. The following features are available.
+_Screen 13_ puts a lot of functionality behind optional features in order to optimize compile time
+for the most common use cases. The following features are available.
 
 _NOTE_: The deferred and forward renderers have separate code paths and you can choose either on a
 render-by-render basis.
@@ -136,10 +131,10 @@ CLS
 SCREEN 13
 ```
 
-These commands cleared the screen of text and setup a 320x200 256-color paletized color video mode.
-There were other video modes available, but none of them had the 'magic' of 256 colors.
+These commands cleared the screen of text and setup a 320x200 256-color paletized video mode. There
+were other video modes available, but none of them had the 'magic' of 256 colors.
 
 Additional commands QBasic offered, such as `DRAW`, allowed you to build very simple games
 incredibly quickly because you didn't have to grok the enirety of linking and compiling in order get
-things done. I think we should have options like this today, and this project aims to allow future
-developers to have the same ability to get things done quickly while using modern tools.
+things done. I think we should have options like this today, and so I started this project to allow
+future developers to have the ability to get things done quickly while using modern tools.
