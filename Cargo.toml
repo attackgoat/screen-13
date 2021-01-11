@@ -27,8 +27,8 @@ xr = []
 [dependencies]
 app_dirs = "1.2"
 
-# TODO: https://github.com/orium/archery/pull/5
-archery = { git = "https://github.com/attackgoat/archery.git", branch = "add_ptr_fns" }
+# TODO: https://github.com/orium/archery/pull/5 waiting on release
+a_r_c_h_e_r_y = "0.4"
 
 bincode = "1.3" # TODO: Maybe replace with rkyv which is faster
 bmfont = "0.3"
