@@ -12,7 +12,7 @@ use {
 pub const TRANSPARENT_BLACK: AlphaColor = AlphaColor::rgba(0, 0, 0, 0);
 
 /// A four channel (with alpha) color.
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
 pub struct AlphaColor {
     /// Alpha channel.
     pub a: u8,
@@ -53,12 +53,6 @@ impl AlphaColor {
             self.b as f32 * SCALE,
             self.a as f32 * SCALE,
         )
-    }
-}
-
-impl Default for AlphaColor {
-    fn default() -> Self {
-        TRANSPARENT_BLACK
     }
 }
 

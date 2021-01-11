@@ -25,6 +25,7 @@ use {
     },
 };
 
+// TODO: Add automatic submit-skipping by adding support for the "auto-cull" feature?
 // TODO: This should use the blit command when possible
 /// A container of graphics types for efficiently copying textures between each other.
 ///

@@ -116,7 +116,7 @@ the most common use cases. The following features are available.
 _NOTE_: The deferred and forward renderers have separate code paths and you can choose either on a
 render-by-render basis.
 
-- **`auto-cull`** *(enabled by default)* — Enables draw call camera frustum culling. TODO.
+- **`auto-cull`** — Enables draw call camera frustum culling.
 - **`debug-names`** — Name parameter added to most graphics calls, integrates with your graphics
   debugger.
 - **`deferred-3d`** *(enabled by default)* — Ability to draw models and lights using a deferred

@@ -1,5 +1,5 @@
 use {
-    super::{vec3, vec3_is_finite, Vec3},
+    super::{vec3, vec3_is_finite, Mat4, Vec3},
     serde::{Deserialize, Serialize},
     std::ops::{Add, AddAssign},
 };
@@ -14,9 +14,9 @@ pub struct Sphere {
 impl Sphere {
     /// Constructs a sphere from the given center and radius.
     pub fn new(center: Vec3, radius: f32) -> Self {
-        assert!(vec3_is_finite(center));
-        assert!(radius.is_finite());
-        assert!(radius > 0.0);
+        debug_assert!(vec3_is_finite(center));
+        debug_assert!(radius.is_finite());
+        debug_assert!(radius > 0.0);
 
         Self { center, radius }
     }
@@ -57,6 +57,38 @@ impl Sphere {
     /// Returns the distance from `center` to any point on the surface of this sphere.
     pub const fn radius(&self) -> f32 {
         self.radius
+    }
+
+    /// Returns a new copy which has been scaled and translated by the given homogenous
+    /// transformation matrix.
+    pub fn transform(self, val: Mat4) -> Self {
+        let (scale, _, translation) = val.to_scale_rotation_translation();
+
+        Self {
+            center: self.center + translation,
+            radius: self.radius * scale.max_element(),
+        }
+    }
+
+    /// Sets the average of all points of this sphere.
+    pub fn with_center(self, center: Vec3) -> Self {
+        debug_assert!(vec3_is_finite(center));
+
+        Self {
+            center,
+            radius: self.radius,
+        }
+    }
+
+    /// Sets the distance from `center` to any point on the surface of this sphere.
+    pub fn with_radius(self, radius: f32) -> Self {
+        debug_assert!(radius.is_finite());
+        debug_assert!(radius > 0.0);
+
+        Self {
+            center: self.center,
+            radius,
+        }
     }
 }
 

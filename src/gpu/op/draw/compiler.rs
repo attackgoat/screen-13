@@ -40,16 +40,17 @@ const CACHE_CAPACITY_FACTOR: f32 = 2.0;
 
 // TODO: Stop compaction after a certain number of cycles or % complete, maybe only 10%.
 
-/// Used to keep track of data allocated during compilation and also the previous value which we will
-/// copy over during the drawing operation.
+/// Used to keep track of data allocated during compilation and also the previous value which we
+/// will copy over during the drawing operation.
 struct Allocation<T> {
     current: T,
     previous: Option<(T, u64)>,
 }
 
-// `Asm` is the "assembly op code" that is used to create an `Instruction` instance; it exists because we can't store references
-// but we do want to cache the vector of instructions the compiler creates. Each `Asm` is just a pointer to the `cmds` slice
-// provided by the client which actually contains the references. `Asm` also points to the leased `Data` held by `Compiler`.
+// `Asm` is the "assembly op code" that is used to create an `Instruction` instance; it exists
+// because we can't store references but we do want to cache the vector of instructions the compiler
+// creates. Each `Asm` is just a pointer to the `cmds` slice provided by the client which actually
+// contains the references. `Asm` also points to the leased `Data` held by `Compiler`.
 enum Asm {
     BeginCalcVertexAttrs(CalcVertexAttrsComputeMode),
     BeginLight,
@@ -166,7 +167,8 @@ where
             let (idx_buf, idx_len) = model.idx_buf_ref();
             let (dst, dst_len) = model.vertex_buf_ref();
 
-            // We didn't store the length of the write mask because we have the data to calculate here
+            // We didn't store the length of the write mask because we have the data to calculate
+            // here
             let (part, shift) = match idx_ty {
                 IndexType::U16 => (63, 6),
                 IndexType::U32 => (31, 5),
@@ -187,10 +189,11 @@ where
     }
 }
 
-// TODO: The note below is good but reset is not enough, we need some sort of additional function to also drop the data, like and `undo` or `rollback`
-/// Note: If the instructions produced by this command are not completed succesfully the state of the `Compiler` instance will
-/// be undefined, and so `reset()` must be called on it. This is because copy operations that don't complete will leave the
-/// buffers with incorrect data.
+// TODO: The note below is good but reset is not enough, we need some sort of additional function to
+// also drop the data, like and `undo` or `rollback`
+/// Note: If the instructions produced by this command are not completed succesfully the state of
+/// the `Compiler` instance will be undefined, and so `reset()` must be called on it. This is
+/// because copy operations that don't complete will leave the buffers with incorrect data.
 pub struct Compilation<'a, P>
 where
     P: 'static + SharedPointerKind,
@@ -420,7 +423,8 @@ where
     }
 }
 
-// TODO: Workaround impl of "Iterator for" until we (soon?) have GATs: https://github.com/rust-lang/rust/issues/44265
+// TODO: Workaround impl of "Iterator for" until we (soon?) have GATs:
+// https://github.com/rust-lang/rust/issues/44265
 impl<P> Compilation<'_, P>
 where
     P: SharedPointerKind,
@@ -501,10 +505,11 @@ where
     }
 }
 
-/// Compiles a series of drawing commands into renderable instructions. The purpose of this structure is
-/// two-fold:
+/// Compiles a series of drawing commands into renderable instructions. The purpose of this
+/// structure is two-fold:
 /// - Reduce per-draw allocations with line and light caches (they are not cleared after each use)
-/// - Store references to the in-use mesh textures during rendering (this cache is cleared after use)
+/// - Store references to the in-use mesh textures during rendering (this cache is cleared after
+///   use)
 pub struct Compiler<P>
 where
     P: 'static + SharedPointerKind,
@@ -533,8 +538,9 @@ impl<P> Compiler<P>
 where
     P: SharedPointerKind,
 {
-    /// Allocates or re-allocates leased data of the given size. This could be a function of the DirtyData type, however it only
-    /// works because the Compiler happens to know that the host-side of the data
+    /// Allocates or re-allocates leased data of the given size. This could be a function of the
+    /// DirtyData type, however it only works because the Compiler happens to know that the
+    /// host-side of the data
     unsafe fn alloc_data<T: Stride>(
         #[cfg(feature = "debug-names")] name: &str,
         pool: &mut Pool<P>,
@@ -582,11 +588,12 @@ where
         }
     }
 
-    /// Moves cache items into clumps so future items can be appended onto the end without needing to
-    /// resize the cache buffer. As a side effect this causes dirty regions to be moved on the GPU.
+    /// Moves cache items into clumps so future items can be appended onto the end without needing
+    /// to resize the cache buffer. As a side effect this causes dirty regions to be moved on the
+    /// GPU.
     ///
-    /// Geometry used very often will end up closer to the beginning of the GPU memory over time, and
-    /// will have fewer move operations applied to it as a result.
+    /// Geometry used very often will end up closer to the beginning of the GPU memory over time,
+    /// and will have fewer move operations applied to it as a result.
     fn compact_cache<T: Stride>(buf: &mut DirtyData<T, P>, lru: &mut Vec<Lru<T>>)
     where
         T: Ord,
@@ -658,11 +665,14 @@ where
         }
     }
 
-    /// Compiles a given set of commands into a ready-to-draw list of instructions. Performs these steps:
-    /// - Cull commands which might not be visible to the camera
-    /// - Sort commands into predictable groupings (opaque meshes, lights, transparent meshes, lines)
+    /// Compiles a given set of commands into a ready-to-draw list of instructions. Performs these
+    /// steps:
+    /// - Cull commands which might not be visible to the camera (if the feature is enabled)
+    /// - Sort commands into predictable groupings (opaque meshes, lights, transparent meshes,
+    ///   lines)
     /// - Sort mesh commands further by texture(s) in order to reduce descriptor set switching/usage
-    /// - Prepare a single buffer of all line and light vertices which can be copied to the GPU all at once
+    /// - Prepare a single buffer of all line and light vertices which can be copied to the GPU all
+    ///   at once
     pub(super) unsafe fn compile<'a, 'b: 'a>(
         &'a mut self,
         #[cfg(feature = "debug-names")] name: &str,
@@ -670,24 +680,111 @@ where
         camera: &impl Camera,
         cmds: &'b mut [Command<P>],
     ) -> Compilation<'a, P> {
-        assert!(self.code.is_empty());
-        assert!(self.materials.is_empty());
-        assert!(!cmds.is_empty());
+        debug_assert!(self.code.is_empty());
+        debug_assert!(self.materials.is_empty());
 
-        // Set model-specific things
+        if cmds.is_empty() {
+            warn!("Empty command list provided");
+
+            return self.empty_compilation();
+        }
+
         let eye = -camera.eye();
-        for cmd in cmds.iter_mut() {
-            if let Command::Model(cmd) = cmd {
-                // Assign a relative measure of distance from the camera for all mesh commands which allows us to submit draw commands
-                // in the best order for the z-buffering algorithm (we use a depth map with comparisons that discard covered fragments)
-                cmd.camera_order = cmd.transform.transform_vector3(eye).length_squared();
+
+        // When using auto-culling, we may reduce len in order to account for culled commands.
+        let mut idx = 0;
+        let len = cmds.len();
+
+        #[cfg(feature = "auto-cull")]
+        let mut len = len;
+
+        // This loop operates on the unsorted command list and:
+        // - Sets camera Z order
+        // - Culls commands outside of the camera frustum (if the feature is enabled)
+        while idx < len {
+            let _overlaps = match &mut cmds[idx] {
+                Command::Model(ref mut cmd) => {
+                    // Assign a relative measure of distance from the camera for all mesh commands
+                    // which allows us to submit draw commands in the best order for the z-buffering
+                    // algorithm (we use a depth map with comparisons that discard covered
+                    // fragments)
+                    cmd.camera_order = cmd.transform.transform_vector3(eye).length_squared();
+
+                    #[cfg(feature = "auto-cull")]
+                    {
+                        // TODO: Add some sort of caching which exploits temporal cohesion. Possibly
+                        // as simple as not checking items for X runs, after a positive check?
+                        camera.overlaps_sphere(cmd.model.bounds())
+                    }
+                    #[cfg(not(feature = "auto-cull"))]
+                    {
+                        ()
+                    }
+                }
+                Command::PointLight(_light) => {
+                    #[cfg(feature = "auto-cull")]
+                    {
+                        camera.overlaps_sphere(_light.bounds())
+                    }
+
+                    #[cfg(not(feature = "auto-cull"))]
+                    {
+                        ()
+                    }
+                }
+                Command::RectLight(_light) => {
+                    #[cfg(feature = "auto-cull")]
+                    {
+                        camera.overlaps_sphere(_light.bounds())
+                    }
+
+                    #[cfg(not(feature = "auto-cull"))]
+                    {
+                        ()
+                    }
+                }
+                Command::Spotlight(_light) => {
+                    #[cfg(feature = "auto-cull")]
+                    {
+                        camera.overlaps_cone(_light.bounds())
+                    }
+
+                    #[cfg(not(feature = "auto-cull"))]
+                    {
+                        ()
+                    }
+                }
+                _ => continue,
+            };
+
+            #[cfg(feature = "auto-cull")]
+            if !_overlaps {
+                // Auto-cull this command by swapping it into an area of the slice which we will
+                // discard at the end of this loop
+                len -= 1;
+                if len > 0 {
+                    cmds.swap(idx, len);
+                }
+
+                continue;
             }
+
+            idx += 1;
+        }
+
+        #[cfg(feature = "auto-cull")]
+        let cmds = &mut cmds[0..len];
+
+        #[cfg(feature = "auto-cull")]
+        if cmds.is_empty() {
+            return self.empty_compilation();
         }
 
         // Rearrange the commands so draw order doesn't cause unnecessary resource-switching
         Self::sort(cmds);
 
-        // Locate the groups - we know these `SearchIdx` values will not be found as they are gaps in between the groups
+        // Locate the groups - we know these `SearchIdx` values will not be found as they are gaps
+        // in between the groups
         let search_group_idx = |range: RangeFrom<usize>, group: SearchIdx| -> usize {
             cmds[range]
                 .binary_search_by(|probe| (Self::group_idx(probe) as usize).cmp(&(group as _)))
@@ -744,7 +841,7 @@ where
                 #[cfg(feature = "debug-names")]
                 name,
                 pool,
-                &cmds[rect_lights],
+                &mut cmds[rect_lights],
                 rect_light_idx,
             );
         }
@@ -756,7 +853,7 @@ where
                 #[cfg(feature = "debug-names")]
                 name,
                 pool,
-                &cmds[spotlights],
+                &mut cmds[spotlights],
                 spotlight_idx,
             );
         }
@@ -1018,7 +1115,7 @@ where
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
         pool: &mut Pool<P>,
-        cmds: &[Command<P>],
+        cmds: &mut [Command<P>],
         base_idx: usize,
     ) {
         assert!(self.rect_lights.is_empty());
@@ -1056,9 +1153,11 @@ where
         self.code.push(Asm::BindRectLightBuffer);
 
         // First we make sure all rectangular lights are in the lru data ...
-        for cmd in cmds.iter() {
-            let key = RectLight::quantize(cmd.as_rect_light().unwrap());
+        for cmd in cmds.iter_mut() {
+            let light = cmd.as_rect_light_mut().unwrap();
+            let (key, scale) = RectLight::quantize(light);
             self.rect_lights.push(key);
+            light.scale = scale;
 
             match self
                 .rect_light
@@ -1118,7 +1217,7 @@ where
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
         pool: &mut Pool<P>,
-        cmds: &[Command<P>],
+        cmds: &mut [Command<P>],
         base_idx: usize,
     ) {
         assert!(self.spotlights.is_empty());
@@ -1156,9 +1255,11 @@ where
         self.code.push(Asm::BindSpotlightBuffer);
 
         // First we make sure all spotlights are in the lru data ...
-        for cmd in cmds.iter() {
-            let key = Spotlight::quantize(cmd.as_spotlight().unwrap());
+        for cmd in cmds.iter_mut() {
+            let light = cmd.as_spotlight_mut().unwrap();
+            let (key, scale) = Spotlight::quantize(light);
             self.spotlights.push(key);
+            light.scale = scale;
 
             match self
                 .spotlight
@@ -1213,6 +1314,15 @@ where
         }
     }
 
+    fn empty_compilation(&mut self) -> Compilation<'_, P> {
+        Compilation {
+            cmds: &[],
+            compiler: self,
+            contains_lines: false,
+            idx: 0,
+        }
+    }
+
     /// All commands sort into groups: first models, then lights, followed by lines.
     fn group_idx(cmd: &Command<P>) -> GroupIdx {
         match cmd {
@@ -1234,7 +1344,9 @@ where
         }
     }
 
-    /// Resets the internal caches so that this compiler may be reused by calling the `compile` function.
+    /// Resets the internal caches so that this compiler may be reused by calling the `compile`
+    /// function.
+    ///
     /// Must NOT be called before the previously drawn frame is completed.
     pub(super) fn reset(&mut self) {
         // Reset critical resources
@@ -1320,16 +1432,22 @@ where
     }
 }
 
-/// Extends the data type so we can track which portions require updates. Does not teach an entire city full
-/// of people that dancing is the best thing there is.
+/// Extends the data type so we can track which portions require updates. Does not teach an entire
+/// city full of people that dancing is the best thing there is.
 struct DirtyData<Key, P>
 where
     P: SharedPointerKind,
 {
-    cpu_dirty: Option<Range<u64>>, // This range, if present, is the portion that needs to be copied from cpu to gpu
+    /// This range, if present, is the portion that needs to be copied from cpu to gpu.
+    cpu_dirty: Option<Range<u64>>,
+
     data: Allocation<Lease<Data, P>>,
-    gpu_dirty: Vec<CopyRange>, // Segments of gpu memory which must be "compacted" (read: copied) within the gpu
-    gpu_usage: Vec<(u64, Key)>, // Memory usage on the gpu, sorted by the first field which is the offset.
+
+    /// Segments of gpu memory which must be "compacted" (read: copied) within the gpu.
+    gpu_dirty: Vec<CopyRange>,
+
+    /// Memory usage on the gpu, sorted by the first field which is the offset.
+    gpu_usage: Vec<(u64, Key)>,
 }
 
 impl<Key, P> DirtyData<Key, P>
@@ -1376,7 +1494,8 @@ where
             buf.reset();
         }
 
-        // TODO: This should keep a 'frame' value per item and just increment a single 'age' value, O(1) not O(N)!
+        // TODO: This should keep a 'frame' value per item and just increment a single 'age' value,
+        // O(1) not O(N)!
         for item in self.lru.iter_mut() {
             item.recently_used = item.recently_used.saturating_sub(1);
         }
@@ -1396,7 +1515,8 @@ where
     }
 }
 
-/// Evenly numbered because we use `SearchIdx` to quickly locate these groups while filling the cache.
+/// Evenly numbered because we use `SearchIdx` to quickly locate these groups while filling the
+/// cache.
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 enum GroupIdx {
     Model = 0,
@@ -1407,7 +1527,8 @@ enum GroupIdx {
     Line = 10,
 }
 
-/// Individual item of a least-recently-used cache vector. Allows tracking the usage of a key which lives at some memory offset.
+/// Individual item of a least-recently-used cache vector. Allows tracking the usage of a key which
+/// lives at some memory offset.
 struct Lru<T> {
     key: T,
     offset: u64,
@@ -1430,9 +1551,9 @@ enum ModelGroupIdx {
     Animated,
 }
 
-/// These oddly numbered indices are the spaces in between the `GroupIdx` values. This was more efficient than
-/// finding the actual group index because we would have to walk to the front and back of each group after any
-/// binary search in order to find the whole group.
+/// These oddly numbered indices are the spaces in between the `GroupIdx` values. This was more
+/// efficient than finding the actual group index because we would have to walk to the front and
+/// back of each group after any binary search in order to find the whole group.
 #[derive(Clone, Copy)]
 enum SearchIdx {
     PointLight = 1,

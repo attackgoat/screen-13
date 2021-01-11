@@ -48,9 +48,9 @@ fn gen_default_program_icon() {
 
     let mut output_file = File::create(DEFAULT_PROGRAM_ICON_PATH.as_path()).unwrap();
 
-    // We make a 64x64 rgba gradient as the default program icon if one is not specified in certain modes.
-    // (Certain modes = Not if user creates a Program but does not provide an icon, only if they pick one
-    // of the pre-made const values and don't change it)
+    // We make a 64x64 rgba gradient as the default program icon if one is not specified in certain
+    // modes. (Certain modes = Not if user creates a Program but does not provide an icon, only if
+    // they pick one of the pre-made const values and don't change it)
     let mut pixels = Vec::with_capacity(64 * 64 * 4);
     let version_major = env!("CARGO_PKG_VERSION_MAJOR");
     let version_minor = env!("CARGO_PKG_VERSION_MINOR");
@@ -265,9 +265,11 @@ fn gen_spotlight_fn() {
 
     writeln!(
         output_file,
-        r#"/// Produces the vertices of a given spotlight definition, which form a truncated cone. The resulting
-/// mesh will be normalized and requires an additional scale factor to render as intended. The final location
-/// will be (0,0,0) at the center of the top circle, and the orientation will point (0,-1,0).
+        r#"/// Produces the vertices of a given spotlight definition, which form a truncated cone.
+/// 
+/// The resulting mesh will be normalized and requires an additional scale factor to render as
+/// intended. The final location will be (0,0,0) at the apex of the untruncated cone, and the
+/// orientation will point (0,-1,0).
 #[allow(clippy::approx_constant)]
 pub fn gen_spotlight(
     radius: Range<u8>,
@@ -297,7 +299,8 @@ pub fn gen_spotlight(
     };
 
     for v in vertices {
-        // Swap y/z so the cylinder points to what we call down (y), also scale/translate it so the height is 1
+        // Swap y/z so the cylinder points to what we call down (y), also scale/translate it so the
+        // height is 1
         let x = v.x;
         let y = v.z / 2.0 - 0.5;
         let z = v.y;
@@ -723,8 +726,11 @@ fn read_file_with_includes<P: AsRef<Path>>(filename: P) -> String {
             let len = line.len();
             line.truncate(len - 1);
 
+            // TODO: Should probably do this so the changes to relative files work
+            // "ie ../folder/thing": `.canonicalize().unwrap();`
+
             // Bring in the contents of the include file
-            let include_filename = filename.as_ref().parent().unwrap().join(line.clone()); // TODO: Should probably do this so the changes to relative files work "ie ../folder/thing": `.canonicalize().unwrap();`
+            let include_filename = filename.as_ref().parent().unwrap().join(line.clone());
             line = read_file_with_includes(include_filename);
 
             // Remove the trailing newline char

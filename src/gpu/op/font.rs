@@ -46,6 +46,7 @@ use {
 const FONT_VERTEX_SIZE: usize = 16;
 const SUBPASS_IDX: u8 = 0;
 
+// TODO: Add automatic character-rejection/skipping by adding support for the "auto-cull" feature?
 // TODO: Extend this with a DrawOp-like compiler to cache repeated frame-to-frame tesselations
 // TODO: Allow one FontOp to specify a list of colors, make a rainbow-colored text example for it
 /// Holds a decoded bitmap Font.

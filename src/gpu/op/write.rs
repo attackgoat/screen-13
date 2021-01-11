@@ -107,6 +107,7 @@ impl<'s> Write<'s> {
     }
 }
 
+// TODO: Add automatic write-rejection/skipping by adding support for the "auto-cull" feature?
 /// Writes an iterator of source textures onto a destination texture, using optional modes.
 ///
 /// `WriteOp` is intended to provide high speed image splatting for tile maps, bitmap drawing,

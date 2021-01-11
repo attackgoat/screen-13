@@ -2,7 +2,7 @@ use {
     crate::{
         color::{AlphaColor, Color},
         gpu::{Bitmap, MeshFilter, Model, Pose},
-        math::{vec3_is_finite, CoordF, Mat4, Sphere, Vec3},
+        math::{vec3_is_finite, Cone, CoordF, Mat4, Sphere, Vec3},
         ptr::Shared,
     },
     archery::SharedPointerKind,
@@ -78,7 +78,21 @@ where
         }
     }
 
+    pub(crate) fn as_rect_light_mut(&mut self) -> Option<&mut RectLightCommand> {
+        match self {
+            Self::RectLight(res) => Some(res),
+            _ => None,
+        }
+    }
+
     pub(crate) fn as_spotlight(&self) -> Option<&SpotlightCommand> {
+        match self {
+            Self::Spotlight(res) => Some(res),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_spotlight_mut(&mut self) -> Option<&mut SpotlightCommand> {
         match self {
             Self::Spotlight(res) => Some(res),
             _ => None,
@@ -163,29 +177,25 @@ where
         })
     }
 
-    /// Draws a spotlight with the given color, position/orientation, and shape.
-    ///
-    /// _Note_: Spotlights have a hemispherical cap on the bottom, so a given `range` will be the
-    /// maximum range and you may not see any light on objects at that distance. Move the light a
-    /// bit towards the object to enter the penumbra.
+    /// Draws a spotlight with the given values.
     ///
     /// # Arguments
     ///
-    /// * `color` - Full-bright color of the cone area.
-    /// * `power` - sRGB power value normalized for gamma, can be greater than 1.0.
-    /// * `pos` - Position of the pointy end of the spotlight.
-    /// * `normal` - Orientation of the spotlight from `pos` towards the spotlight target.
-    /// * `range` - Define the full-bright section along `normal`.
-    /// * `cone_angle` - Interior angle of the full-bright portion of the spotlight, in degrees.
-    /// * `penumbra_angle` - Additional angle which fades from `color` to tranparent, in degrees.
+    /// * `color` - Color of the projected light.
+    /// * `lumens` - Scalar light "power" value, modelled after lumens but not realistically.
+    /// * `position` - Position of the light source.
+    /// * `normal` - Direction of the light rays.
+    /// * `range` - Lit distance from `position` and to the bottom of the spotlight.
+    /// * `angle` - Outer angle of the lit portion of the spotlight, in degrees.
+    ///
+    ///             Must be greater than zero and less than 180.
     pub fn spotlight(
         color: Color,
         lumens: f32,
         position: Vec3,
         normal: Vec3,
         range: Range<f32>,
-        cone_angle: f32,
-        penumbra_angle: f32,
+        angle: f32,
     ) -> Self {
         assert_eq!(lumens.classify(), FpCategory::Normal);
         assert!(vec3_is_finite(position));
@@ -193,24 +203,23 @@ where
         assert_eq!(range.start.classify(), FpCategory::Normal);
         assert_eq!(range.end.classify(), FpCategory::Normal);
         assert!(range.start < range.end);
-        assert_eq!(cone_angle.classify(), FpCategory::Normal);
-        assert!(penumbra_angle >= 0.0);
-        assert!(cone_angle + penumbra_angle < 180.0);
+        assert_eq!(angle.classify(), FpCategory::Normal);
+        assert!(angle > 0.0);
+        assert!(angle < 180.0);
 
-        let half = cone_angle * 0.5;
-        let cone_radius = half.tan() * range.end;
-        let penumbra_radius = (half + penumbra_angle).tan() * range.end;
-        let top_radius = 0.0; // TODO!
+        let tan_half = (angle * 0.5).tan();
+        let radius = tan_half * range.end;
+        let radius_start = tan_half * range.start;
 
         Self::Spotlight(SpotlightCommand {
             color,
-            cone_radius,
             lumens,
             normal,
-            penumbra_radius,
             position,
+            radius,
+            radius_start,
             range,
-            top_radius,
+            ..Default::default()
         })
     }
 }
@@ -564,8 +573,26 @@ where
     pub transform: Mat4,
 }
 
+impl<P> ModelCommand<P>
+where
+    P: SharedPointerKind,
+{
+    /// Returns a tightly fitting sphere around the model.
+    ///
+    /// Includes the animation pose, if specified.
+    pub fn bounds(&self) -> Sphere {
+        let bounds = if let Some(pose) = &self.pose {
+            self.model.pose_bounds(pose)
+        } else {
+            self.model.bounds()
+        };
+
+        bounds.transform(self.transform)
+    }
+}
+
 /// Description of a point light shining on models.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct PointLightCommand {
     /// The location of the center of this light in world space.
     pub center: Vec3,
@@ -580,10 +607,17 @@ pub struct PointLightCommand {
     pub radius: f32,
 }
 
+impl PointLightCommand {
+    /// Returns a tightly fitting sphere around the lit area of this light.
+    pub fn bounds(&self) -> Sphere {
+        Sphere::new(self.center, self.radius)
+    }
+}
+
 /// Description of a rectangular light shining on models.
 ///
 /// The lit area forms a [square frustum](https://en.wikipedia.org/wiki/Frustum).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct RectLightCommand {
     /// Color of the projected light.
     pub color: Color,
@@ -606,24 +640,22 @@ pub struct RectLightCommand {
 
     /// Distance from `position` to the bottom of the rectangular light.
     pub range: f32,
+
+    pub(super) scale: f32,
 }
 
 impl RectLightCommand {
-    /// Returns a tightly fitting sphere around the lit area of this rectangular light, including
-    /// the penumbra
-    pub(self) fn bounds(&self) -> Sphere {
+    /// Returns a tightly fitting sphere around the lit area of this light.
+    pub fn bounds(&self) -> Sphere {
         todo!();
     }
 }
 
 /// Description of a spotlight shining on models.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct SpotlightCommand {
     /// Color of the projected light.
     pub color: Color,
-
-    /// radius of the spotlight cone from the center to the edge.
-    pub cone_radius: f32,
 
     /// Scalar light "power" value, modelled after lumens but not realistically.
     pub lumens: f32,
@@ -631,21 +663,30 @@ pub struct SpotlightCommand {
     /// Direction of the light rays.
     pub normal: Vec3,
 
-    /// Additional radius beyond `cone_radius` which fades from `color` to transparent.
-    pub penumbra_radius: f32,
-
-    /// Position of the pointy end.
+    /// Position of the light source.
     pub position: Vec3,
+
+    /// Radius of the spotlight cone.
+    pub radius: f32,
+
+    pub(crate) radius_start: f32,
 
     /// Lit distance from `position` and to the bottom of the spotlight.
     pub range: Range<f32>,
 
-    /// TODO: Refactor
-    pub top_radius: f32,
+    pub(super) scale: f32,
+}
+
+impl SpotlightCommand {
+    // TODO: Maybe just use a sphere. Heyyyyyyy, benchmarks!!!!! Yay!!!
+    /// Returns a tightly fitting cone around the lit area of this light.
+    pub fn bounds(&self) -> Cone {
+        Cone::new(self.position, self.normal, self.range.end, self.radius)
+    }
 }
 
 /// Description of sunlight shining on models.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct SunlightCommand {
     /// Color of the projected light.
     pub color: Color,

@@ -124,7 +124,7 @@ impl<N> Builder<N> {
     pub fn new(vertex_count: u32) -> Self {
         Self {
             vertex_count,
-            ..Default::default()
+            ..Self::default()
         }
     }
 
