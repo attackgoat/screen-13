@@ -20,6 +20,7 @@ auto-cull = []
 debug-names = []
 deferred-3d = []
 forward-3d = []
+low-power = []
 multi-monitor = []
 xr = []
 

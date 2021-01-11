@@ -204,7 +204,8 @@ unsafe fn init_gfx_hal() {
         panic!("Unable to find GFX-HAL adapter");
     } else {
         adapters.sort_unstable_by(|a, b| {
-            // 1. Prefer adapters by type in this order
+            // 1a. Prefer adapters by type in this order
+            #[cfg(not(feature = "low-power"))]
             let type_rank = |ty: &DeviceType| -> u8 {
                 match ty {
                     DeviceType::DiscreteGpu => 0,
@@ -214,6 +215,19 @@ unsafe fn init_gfx_hal() {
                     DeviceType::Other => 4,
                 }
             };
+
+            // 1b. This order when in low-power mode
+            #[cfg(feature = "low-power")]
+            let type_rank = |ty: &DeviceType| -> u8 {
+                match ty {
+                    DeviceType::IntegratedGpu => 0,
+                    DeviceType::Cpu => 1,
+                    DeviceType::VirtualGpu => 2,
+                    DeviceType::DiscreteGpu => 3,
+                    DeviceType::Other => 4,
+                }
+            };
+
             let a_type_rank = type_rank(&a.info.device_type);
             let b_type_rank = type_rank(&b.info.device_type);
             match a_type_rank.cmp(&b_type_rank) {

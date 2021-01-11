@@ -118,6 +118,7 @@ render-by-render basis.
   technique. **IN PROGRESS**
 - **`forward-3d`** *(enabled by default)* — Same as the deferred renderer, but using a forward
   technique. **TODO**
+- **`low-power`** — Prefer using integrated graphics hardware, instead of higher-power adapters.
 - **`multi-monitor`** — Extends the `Screen` trait to support multiple viewports. **IN PROGRESS**
 - **`xr`** — Additional types and functions related to augmented and virtual reality. **TODO**
 
