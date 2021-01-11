@@ -342,11 +342,10 @@ pub use self::program::{Icon, Program};
 use {
     self::{
         config::Config,
-        gpu::{Gpu, Render, Swapchain},
+        gpu::{Gpu, Op, Render, Swapchain},
         input::Input,
         math::Extent,
     },
-    crate::gpu::Op,
     app_dirs::{get_app_root, AppDataType, AppDirsError, AppInfo},
     archery::SharedPointerKind,
     std::{
@@ -371,8 +370,23 @@ use {
     std::time::Instant,
 };
 
+#[cfg(feature = "multi-monitor")]
+use self::math::Area;
+
 /// Helpful alias of `Box<dyn Screen>`; can be used to hold an instance of any `Screen`.
 pub type DynScreen<P> = Box<dyn Screen<P>>;
+
+/// Alias of either [`Render`] _or_ [`Vec<Render>`], used by [`Screen::render()`].
+///
+/// The output type depends on the value of the `multi-monitor` pacakge feature.
+#[cfg(not(feature = "multi-monitor"))]
+pub type RenderReturn<P> = Render<P>;
+
+/// Alias of either [`Render`] _or_ [`Vec<Render>`], used by [`Screen::render()`].
+///
+/// The output type depends on the value of the `multi-monitor` pacakge feature.
+#[cfg(feature = "multi-monitor")]
+pub type RenderReturn<P> = Vec<Option<Render<P>>>;
 
 const MINIMUM_WINDOW_SIZE: usize = 420;
 const RENDER_BUF_LEN: usize = 3;
@@ -797,7 +811,31 @@ where
     ///     gpu.render(dims)
     /// }
     /// ```
-    fn render(&self, gpu: &Gpu<P>, dims: Extent) -> Render<P>;
+    ///
+    /// ## Multiple Monitors
+    ///
+    /// Support for multiple monitors is an advanced feature which must be enabled manually. To
+    /// enable multiple monitor support, add the `multi-monitor` feature to the _Screen 13_
+    /// dependency in your `Cargo.toml`.
+    ///
+    /// **_NOTE:_** The automatically generated documentation shows the default function signature.
+    /// When in multiple monitor mode, you may want to run `cargo doc --features "multi-monitor"` in
+    /// order to see the correct signature.
+    ///
+    /// Summary of multiple monitor mode differences:
+    /// - The `dims: Extent` parameter becomes `viewports: &[Area]`
+    /// - The `Render` return type becomes `Vec<Option<Render>>`
+    /// - Each returned `Render` corresponds to the viewport of the same index
+    /// - Return `Some` for viewports which should be painted
+    ///
+    /// When in window mode, the `viewports` slice length is `1`. Only one operating system window
+    /// is opened.
+    fn render(
+        &self,
+        gpu: &Gpu<P>,
+        #[cfg(not(feature = "multi-monitor"))] dims: Extent,
+        #[cfg(feature = "multi-monitor")] viewports: &[Area],
+    ) -> RenderReturn<P>;
 
     /// Responds to user input and either provides a new `DynScreen` instance or `self` to indicate
     /// no-change.

@@ -1,7 +1,10 @@
 use {
-    crate::{color::Color, math::Extent, DynScreen, Gpu, Input, Render, Screen},
+    crate::{color::Color, math::Extent, DynScreen, Gpu, Input, Render, RenderReturn, Screen},
     archery::SharedPointerKind,
 };
+
+#[cfg(feature = "multi-monitor")]
+use crate::math::Area;
 
 /// Displays a solid color forever.
 pub struct Solid {
@@ -15,11 +18,11 @@ impl Solid {
     }
 }
 
-impl<P> Screen<P> for Solid
-where
-    P: 'static + SharedPointerKind,
-{
-    fn render(&self, gpu: &Gpu<P>, _: Extent) -> Render<P> {
+impl Solid {
+    fn frame<P>(&self, gpu: &Gpu<P>) -> Render<P>
+    where
+        P: 'static + SharedPointerKind,
+    {
         let mut frame = gpu.render(
             #[cfg(feature = "debug-names")]
             &format!("Solid {}", self.color.to_hex()),
@@ -34,6 +37,28 @@ where
             .record();
 
         frame
+    }
+}
+
+impl<P> Screen<P> for Solid
+where
+    P: 'static + SharedPointerKind,
+{
+    fn render(
+        &self,
+        gpu: &Gpu<P>,
+        #[cfg(not(feature = "multi-monitor"))] _: Extent,
+        #[cfg(feature = "multi-monitor")] viewports: &[Area],
+    ) -> RenderReturn<P> {
+        #[cfg(not(feature = "multi-monitor"))]
+        {
+            self.frame(gpu)
+        }
+
+        #[cfg(feature = "multi-monitor")]
+        {
+            viewports.map(|_| self.frame(gpu)).collect()
+        }
     }
 
     fn update(self: Box<Self>, _: &Gpu<P>, _: &Input) -> DynScreen<P> {

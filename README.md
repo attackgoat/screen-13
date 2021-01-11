@@ -116,15 +116,15 @@ the most common use cases. The following features are available.
 _NOTE_: The deferred and forward renderers have separate code paths and you can choose either on a
 render-by-render basis.
 
-- **`auto-cull`** — Enables draw call camera frustum culling.
+- **`auto-cull`** — Enables automatic draw call camera frustum culling.
 - **`debug-names`** — Name parameter added to most graphics calls, integrates with your graphics
   debugger.
 - **`deferred-3d`** *(enabled by default)* — Ability to draw models and lights using a deferred
-  technique. IN PROGRESS.
+  technique. **IN PROGRESS**
 - **`forward-3d`** *(enabled by default)* — Same as the deferred renderer, but using a forward
-  technique. TODO.
-- **`multi-monitor`** — Extends the `Screen` trait to support multiple viewports. TODO.
-- **`xr`** — Additional types and functions related to augmented and virtual reality. TODO.
+  technique. **TODO**
+- **`multi-monitor`** — Extends the `Screen` trait to support multiple viewports. **IN PROGRESS**
+- **`xr`** — Additional types and functions related to augmented and virtual reality. **TODO**
 
 ## History
 
