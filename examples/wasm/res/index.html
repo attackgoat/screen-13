@@ -1,0 +1,13 @@
+<html>
+  <head>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type"/>
+  </head>
+  <body>
+    <script src="wasm.js"></script>
+    <script>
+      (async function () {
+        await wasm_bindgen('wasm_bg.wasm');
+      })();
+    </script>
+  </body>
+</html>

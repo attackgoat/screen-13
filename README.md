@@ -30,12 +30,13 @@ gamepad input must be handled by your code.
 
 Included are some examples you might find helpful:
 
-- [`basic.rs`](examples/basic.rs) - Displays 'Hello, World!' on the screen. Please start here.
-- [`ecs.rs`](examples/ecs.rs) - Example of integration with a third-party ECS library
+- [`basic.rs`](examples/basic.rs) — Displays 'Hello, World!' on the screen. Please start here.
+- [`ecs.rs`](examples/ecs.rs) — Example of integration with a third-party ECS library
   ([_`hecs`_](https://crates.io/crates/hecs), which is _excellent_).
-- [`headless.rs`](examples/headless.rs) - Renders without an operating system window, saves to disk.
-- [`triangle.rs`](examples/triangle.rs) - Loads a textured triangle at runtime, with no associated
+- [`headless.rs`](examples/headless.rs) — Renders without an operating system window, saves to disk.
+- [`triangle.rs`](examples/triangle.rs) — Loads a textured triangle at runtime, with no associated
   `.pak` file.
+- [`wasm/`](examples/wasm) 🚧 — Runs in a web browser.
 
 Some examples require an associated asset `.pak` file in order to run, so you will need to run the
 example like so:
@@ -61,6 +62,10 @@ All new users should read and understand the guide.
 
 This engine is very young and is likely to change as development continues. Some features may be
 unimplemented.
+
+I expect this engine to remain unstable/poorly documented until version 0.2. Based on current
+progress and my free time (this is just a hobby) I expect version 0.2 (stable) to be released
+before June 2021. Feel free to chip in to speed that up!
 
 - Requires [Rust](https://www.rust-lang.org/) 1.45 _or later_
 - _Design-time_ Asset Baking:
@@ -114,13 +119,23 @@ render-by-render basis.
 - **`auto-cull`** — Enables automatic draw call camera frustum culling.
 - **`debug-names`** — Name parameter added to most graphics calls, integrates with your graphics
   debugger.
-- **`deferred-3d`** *(enabled by default)* — Ability to draw models and lights using a deferred
-  technique. **IN PROGRESS**
-- **`forward-3d`** *(enabled by default)* — Same as the deferred renderer, but using a forward
-  technique. **TODO**
+- **`blend-modes`** *(enabled by default)* —
+  [Normal](https://docs.rs/screen-13/0.1.8/screen_13/gpu/enum.BlendMode.html#variant.Normal),
+  [Add](https://docs.rs/screen-13/0.1.8/screen_13/gpu/enum.BlendMode.html#variant.Add),
+  [Subtract](https://docs.rs/screen-13/0.1.8/screen_13/gpu/enum.BlendMode.html#variant.Subtract),
+  [Color Burn](https://docs.rs/screen-13/0.1.8/screen_13/gpu/enum.BlendMode.html#variant.ColorBurn),
+  _etc..._
+- **`deferred-3d`** 🚧 *(enabled by default)* — Ability to draw models and lights using a deferred
+  technique.
+- **`forward-3d`** 🚧 *(enabled by default)* — Same as the deferred renderer, but using a forward
+  technique.
 - **`low-power`** — Prefer using integrated graphics hardware, instead of higher-power adapters.
-- **`multi-monitor`** — Extends the `Screen` trait to support multiple viewports. **IN PROGRESS**
-- **`xr`** — Additional types and functions related to augmented and virtual reality. **TODO**
+- **`mask-modes`** 🚧 *(enabled by default)* — Ability to use
+  [image masking](https://docs.rs/screen-13/0.1.8/screen_13/gpu/enum.MaskMode.html) functions.
+- **`matte-modes`** 🚧 *(enabled by default)* — Ability to use
+  [image matting](https://docs.rs/screen-13/0.1.8/screen_13/gpu/enum.MatteMode.html) functions.
+- **`multi-monitor`** 🚧 — Extends the `Screen` trait to support multiple viewports.
+- **`xr`** 🚧 — Additional types and functions related to augmented and virtual reality.
 
 ## History
 

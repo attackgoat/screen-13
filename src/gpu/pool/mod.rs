@@ -19,7 +19,7 @@ use {
         },
         driver::{CommandPool, DescriptorPool, Fence, Memory, RenderPass},
         op::draw::Compiler,
-        queue_family, BlendMode, Data, MaskMode, MatteMode, Texture, Texture2d, TextureRef,
+        queue_family, Data, Texture, Texture2d, TextureRef,
     },
     crate::{math::Extent, ptr::Shared},
     a_r_c_h_e_r_y::SharedPointerKind,
@@ -38,6 +38,15 @@ use {
         collections::{HashMap, VecDeque},
     },
 };
+
+#[cfg(feature = "blend-modes")]
+use super::BlendMode;
+
+#[cfg(feature = "mask-modes")]
+use super::MaskMode;
+
+#[cfg(feature = "matte-modes")]
+use super::MatteMode;
 
 #[cfg(feature = "debug-names")]
 use {super::device, gfx_hal::device::Device as _};
@@ -596,25 +605,63 @@ where
             }
         }
         let ctor = match graphics_mode {
+            #[cfg(feature = "blend-modes")]
             GraphicsMode::Blend(BlendMode::Add) => Graphics::blend_add,
+
+            #[cfg(feature = "blend-modes")]
             GraphicsMode::Blend(BlendMode::AlphaAdd) => Graphics::blend_alpha_add,
+
+            #[cfg(feature = "blend-modes")]
             GraphicsMode::Blend(BlendMode::ColorBurn) => Graphics::blend_color_burn,
+
+            #[cfg(feature = "blend-modes")]
             GraphicsMode::Blend(BlendMode::ColorDodge) => Graphics::blend_color_dodge,
+
+            #[cfg(feature = "blend-modes")]
             GraphicsMode::Blend(BlendMode::Color) => Graphics::blend_color,
+
+            #[cfg(feature = "blend-modes")]
             GraphicsMode::Blend(BlendMode::Darken) => Graphics::blend_darken,
+
+            #[cfg(feature = "blend-modes")]
             GraphicsMode::Blend(BlendMode::DarkerColor) => Graphics::blend_darker_color,
+
+            #[cfg(feature = "blend-modes")]
             GraphicsMode::Blend(BlendMode::Difference) => Graphics::blend_difference,
+
+            #[cfg(feature = "blend-modes")]
             GraphicsMode::Blend(BlendMode::Divide) => Graphics::blend_divide,
+
+            #[cfg(feature = "blend-modes")]
             GraphicsMode::Blend(BlendMode::Exclusion) => Graphics::blend_exclusion,
+
+            #[cfg(feature = "blend-modes")]
             GraphicsMode::Blend(BlendMode::HardLight) => Graphics::blend_hard_light,
+
+            #[cfg(feature = "blend-modes")]
             GraphicsMode::Blend(BlendMode::HardMix) => Graphics::blend_hard_mix,
+
+            #[cfg(feature = "blend-modes")]
             GraphicsMode::Blend(BlendMode::LinearBurn) => Graphics::blend_linear_burn,
+
+            #[cfg(feature = "blend-modes")]
             GraphicsMode::Blend(BlendMode::Multiply) => Graphics::blend_multiply,
+
+            #[cfg(feature = "blend-modes")]
             GraphicsMode::Blend(BlendMode::Normal) => Graphics::blend_normal,
+
+            #[cfg(feature = "blend-modes")]
             GraphicsMode::Blend(BlendMode::Overlay) => Graphics::blend_overlay,
+
+            #[cfg(feature = "blend-modes")]
             GraphicsMode::Blend(BlendMode::Screen) => Graphics::blend_screen,
+
+            #[cfg(feature = "blend-modes")]
             GraphicsMode::Blend(BlendMode::Subtract) => Graphics::blend_subtract,
+
+            #[cfg(feature = "blend-modes")]
             GraphicsMode::Blend(BlendMode::VividLight) => Graphics::blend_vivid_light,
+
             GraphicsMode::DrawLine => Graphics::draw_line,
             GraphicsMode::DrawMesh => Graphics::draw_mesh,
             GraphicsMode::DrawPointLight => Graphics::draw_point_light,
@@ -625,16 +672,37 @@ where
             GraphicsMode::Font(true) => Graphics::font_outline,
             GraphicsMode::Gradient(false) => Graphics::gradient_linear,
             GraphicsMode::Gradient(true) => Graphics::gradient_linear_trans,
+
+            #[cfg(feature = "mask-modes")]
             GraphicsMode::Mask(MaskMode::Add) => Graphics::mask_add,
+
+            #[cfg(feature = "mask-modes")]
             GraphicsMode::Mask(MaskMode::Darken) => Graphics::mask_darken,
+
+            #[cfg(feature = "mask-modes")]
             GraphicsMode::Mask(MaskMode::Difference) => Graphics::mask_difference,
+
+            #[cfg(feature = "mask-modes")]
             GraphicsMode::Mask(MaskMode::Intersect) => Graphics::mask_intersect,
+
+            #[cfg(feature = "mask-modes")]
             GraphicsMode::Mask(MaskMode::Lighten) => Graphics::mask_lighten,
+
+            #[cfg(feature = "mask-modes")]
             GraphicsMode::Mask(MaskMode::Subtract) => Graphics::mask_subtract,
+
+            #[cfg(feature = "matte-modes")]
             GraphicsMode::Matte(MatteMode::Alpha) => Graphics::matte_alpha,
+
+            #[cfg(feature = "matte-modes")]
             GraphicsMode::Matte(MatteMode::AlphaInverted) => Graphics::matte_alpha_inv,
+
+            #[cfg(feature = "matte-modes")]
             GraphicsMode::Matte(MatteMode::Luminance) => Graphics::matte_luma,
+
+            #[cfg(feature = "matte-modes")]
             GraphicsMode::Matte(MatteMode::LuminanceInverted) => Graphics::matte_luma_inv,
+
             GraphicsMode::Skydome => Graphics::skydome,
             GraphicsMode::Texture => Graphics::texture,
         };

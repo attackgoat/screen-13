@@ -44,7 +44,7 @@ fn main() -> Result<(), IoError> {
             .to_owned()
     });
 
-    // Input project content .toml file
+    // Input project .toml file
     let project_path = current_dir()
         .unwrap()
         .join(&project_arg)

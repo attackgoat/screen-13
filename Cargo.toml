@@ -15,12 +15,15 @@ An easy-to-use 2D/3D rendering engine in the spirit of QBasic.
 """
 
 [features]
-default = ["deferred-3d", "forward-3d"]
+default = ["blend-modes", "deferred-3d", "forward-3d", "mask-modes", "matte-modes"]
 auto-cull = []
+blend-modes = []
 debug-names = []
 deferred-3d = []
 forward-3d = []
 low-power = []
+mask-modes = []
+matte-modes = []
 multi-monitor = []
 xr = []
 
@@ -43,7 +46,6 @@ serde_bytes = "0.11"
 snap = "1.0"
 toml = "0.5"
 typenum = "1.12"
-winit = { version = "0.24" }
 
 # Debug deps below: https://github.com/rust-lang/cargo/issues/7634
 log = "0.4"
@@ -52,12 +54,13 @@ pretty_env_logger = "0.4"
 
 # TODO: Baking deps here https://github.com/rust-lang/cargo/issues/1982 maybe use features and [[bin]] required features?
 gltf = "0.15"
-shaderc = "0.7"
 
 [build-dependencies]
 genmesh = "0.6"
 glam = "0.11"
 lazy_static = "1.4"
+
+[target.'cfg(not(target_arch = "wasm32"))'.build-dependencies]
 shaderc = "0.7"
 
 [dev-dependencies]
@@ -67,23 +70,28 @@ pretty_env_logger = "0.4"
 rand = "0.8"
 
 [package.metadata.docs.rs]
-features = ["deferred-3d", "forward-3d", "multi-monitor", "xr"]
+features = ["deferred-3d", "forward-3d", "xr"]
 
 # This package is really slow in debug mode; but we don't need the checks here
 [profile.dev.package.image]
 opt-level = 3
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+shaderc = "0.7"
+winit = { version = "0.24" }
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"
 console_error_panic_hook = "0.1"
 console_log = "0.2"
+winit = { version = "0.24", features = ["web-sys"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies.gfx-backend-gl]
 version = "0.6"
 
-# [target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
-# version = "0.3"
-# features = ["console", "Document", "Element", "HtmlElement", "Node", "Window"]
+[target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
+version = "0.3"
+features = ["console", "Document", "Element", "HtmlElement", "Node", "Window"]
 
 [target.'cfg(any(target_os = "freebsd", target_os = "dragonfly", target_os = "linux", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
 gfx-impl = { version = "0.6", features = ["x11"], package = "gfx-backend-vulkan" }

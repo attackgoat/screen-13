@@ -7,34 +7,33 @@ use {
     },
     glam::vec3,
     lazy_static::lazy_static,
-    shaderc::{CompileOptions, Compiler, Error, ShaderKind},
     std::{
         cmp::Ordering::Equal,
         collections::hash_map::DefaultHasher,
         env::var,
-        fs::{create_dir_all, remove_dir_all, remove_file, File, OpenOptions},
+        fs::{remove_file, File},
         hash::{Hash, Hasher},
-        io::{BufRead, BufReader, Write},
+        io::Write,
         path::{Path, PathBuf},
-        process::exit,
     },
 };
 
+#[cfg(not(target_arch = "wasm32"))]
+use self::shader::compile_shaders;
+
 lazy_static! {
     static ref DEFAULT_PROGRAM_ICON_PATH: PathBuf = OUT_DIR.join("default_program_icon.rs");
-    static ref GLSL_DIR: PathBuf = Path::new("src/gpu/glsl").to_owned();
     static ref OUT_DIR: PathBuf = Path::new(var("OUT_DIR").unwrap().as_str()).to_owned();
     static ref POINT_LIGHT_PATH: PathBuf = OUT_DIR.join("point_light.rs");
     static ref SKYDOME_PATH: PathBuf = OUT_DIR.join("skydome.rs");
-    static ref SPIRV_DIR: PathBuf = OUT_DIR.join("spirv");
     static ref SPOTLIGHT_PATH: PathBuf = OUT_DIR.join("spotlight.rs");
 }
 
-// TODO: Ugh this is now old and hairy. Kill with the next feature.
-static mut GLSL_FILENAMES: Option<Vec<(PathBuf, Vec<String>)>> = None;
-
 fn main() {
+    // WASM can't build shaderc so we use it from another build, such as x86_64, see `examples/wasm`
+    #[cfg(not(target_arch = "wasm32"))]
     compile_shaders();
+
     gen_point_light();
     gen_skydome();
     gen_spotlight_fn();
@@ -403,428 +402,469 @@ pub fn gen_spotlight(
     writeln!(output_file, "    res\n}}").unwrap();
 }
 
-fn compile_shaders() {
-    unsafe {
-        GLSL_FILENAMES = Some(Vec::default());
-    }
-
-    // Remove the compiled shaders directory so that we don't think things work when they don't work
-    if SPIRV_DIR.exists() {
-        remove_dir_all(SPIRV_DIR.as_path()).unwrap();
-    }
-
-    // Deferred rendering
-    compile_glsl("defer/light.vert");
-    compile_glsl("defer/line.vert");
-    compile_glsl("defer/line.frag");
-    compile_glsl("defer/mesh.vert");
-    compile_glsl("defer/mesh.frag");
-    compile_glsl("defer/point_light.frag");
-    compile_glsl("defer/rect_light.frag");
-    compile_glsl("defer/spotlight.frag");
-    compile_glsl("defer/sunlight.frag");
-
-    // Blending
-    compile_glsl("blend/add.frag");
-    compile_glsl("blend/alpha_add.frag");
-    compile_glsl("blend/color.frag");
-    compile_glsl("blend/color_burn.frag");
-    compile_glsl("blend/color_dodge.frag");
-    compile_glsl("blend/darken.frag");
-    compile_glsl("blend/darker_color.frag");
-    compile_glsl("blend/difference.frag");
-    compile_glsl("blend/divide.frag");
-    compile_glsl("blend/exclusion.frag");
-    compile_glsl("blend/hard_light.frag");
-    compile_glsl("blend/hard_mix.frag");
-    compile_glsl("blend/linear_burn.frag");
-    compile_glsl("blend/multiply.frag");
-    compile_glsl("blend/normal.frag");
-    compile_glsl("blend/overlay.frag");
-    compile_glsl("blend/quad_transform.vert");
-    compile_glsl("blend/screen.frag");
-    compile_glsl("blend/subtract.frag");
-    compile_glsl("blend/vivid_light.frag");
-
-    // Compute - blurs
-    compile_glsl("compute/box_blur_x.comp");
-    compile_glsl("compute/box_blur_x_clamp.comp");
-    compile_glsl("compute/box_blur_y.comp");
-    compile_glsl("compute/box_blur_y_clamp.comp");
-
-    // Compute - format conversion
-    compile_glsl("compute/decode_rgb_rgba.comp");
-    compile_glsl("compute/encode_bgr24.comp");
-    compile_glsl("compute/encode_bgra32.comp");
-
-    // Compute - General
-    compile_glsl("compute/calc_vertex_attrs_u16.comp");
-    compile_glsl("compute/calc_vertex_attrs_u32.comp");
-    compile_glsl_with_defines("compute/calc_vertex_attrs_u16.comp", &["skin"]);
-    compile_glsl_with_defines("compute/calc_vertex_attrs_u32.comp", &["skin"]);
-
-    // Masking
-    compile_glsl("mask/add.frag");
-    compile_glsl("mask/apply.frag");
-    compile_glsl("mask/darken.frag");
-    compile_glsl("mask/difference.frag");
-    compile_glsl("mask/draw.frag");
-    compile_glsl("mask/intersect.frag");
-    compile_glsl("mask/lighten.frag");
-    compile_glsl("mask/subtract.frag");
-    compile_glsl("mask/vertex.vert");
-
-    // Matting
-    compile_glsl("matte/alpha.frag");
-    compile_glsl("matte/alpha_inv.frag");
-    compile_glsl("matte/luma.frag");
-    compile_glsl("matte/luma_inv.frag");
-
-    // Skinning
-    // compile_glsl("skin/anim.vert");
-    // compile_glsl("skin/pose.vert");
-
-    // Effects
-    compile_glsl("brightness.frag");
-    compile_glsl("clear_alpha.frag");
-    compile_glsl("opacity.frag");
-
-    // General purpose
-    compile_glsl("font_outline.frag");
-    compile_glsl("font.frag");
-    compile_glsl("font.vert");
-    compile_glsl("gradient_trans.frag");
-    compile_glsl("gradient.frag");
-    compile_glsl("gradient.vert");
-    compile_glsl("hdr_tonemap.frag");
-    compile_glsl("post_dof.frag");
-    compile_glsl("post_vignette.frag");
-    compile_glsl("quad_transform.vert");
-    compile_glsl("quad.vert");
-    compile_glsl("skydome.frag");
-    compile_glsl("skydome.vert");
-    compile_glsl("shadow.frag");
-    compile_glsl("shadow.vert");
-    compile_glsl("ssao.frag");
-    compile_glsl("texture.frag");
-    compile_glsl("vertex_transform.vert");
-    compile_glsl("vertex.vert");
-
-    write_spriv_mod();
-}
-
-fn compile_glsl<P: AsRef<Path>>(filename: P) {
-    let no_defines: Vec<&'static str> = Default::default();
-    compile_glsl_with_defines(filename, &no_defines);
-}
-
-/// Supports frag/vert/comp programs and #include/#define directives. No sugar added.
-fn compile_glsl_with_defines<P: AsRef<Path>, D: IntoIterator<Item = impl AsRef<str>>>(
-    filename: P,
-    defines: D,
-) {
-    let defines = defines
-        .into_iter()
-        .map(|define| define.as_ref().to_uppercase().trim().replace(" ", "_"))
-        .collect::<Vec<_>>();
-    let ty = match filename.as_ref().extension().unwrap().to_str().unwrap() {
-        "comp" => ShaderKind::Compute,
-        "frag" => ShaderKind::Fragment,
-        "vert" => ShaderKind::Vertex,
-        _ => panic!(),
+#[cfg(not(target_arch = "wasm32"))]
+mod shader {
+    use {
+        super::OUT_DIR,
+        lazy_static::lazy_static,
+        shaderc::{CompileOptions, Compiler, Error, ShaderKind},
+        std::{
+            env::var_os,
+            fs::{create_dir_all, remove_dir_all, File, OpenOptions},
+            io::{BufRead, BufReader, Write},
+            path::{Path, PathBuf},
+            process::exit,
+        },
     };
 
-    // Read the source code with defines inserted after the version tag
-    let glsl = read_file_with_includes(GLSL_DIR.join(&filename));
-    let (preamble, code) = glsl.split_at(
-        glsl.find("#version 450\n")
-            .expect("All shaders must be #version 450")
-            + 13,
-    );
-    let glsl = if defines.is_empty() {
-        glsl
-    } else {
-        format!(
-            "{}\n{}\n{}",
-            preamble,
-            defines
-                .iter()
-                .map(|define| format!("#define {}", &define))
-                .collect::<Vec<_>>()
-                .join("\n"),
-            code,
-        )
-    };
+    lazy_static! {
+        static ref GLSL_DIR: PathBuf = Path::new("src/gpu/glsl").to_owned();
+        static ref SPIRV_DIR: PathBuf = spirv_dir();
+    }
 
-    let filename = filename.as_ref().to_owned();
+    // TODO: Ugh this is now old and hairy. Kill with the next feature.
+    static mut GLSL_FILENAMES: Option<Vec<(PathBuf, Vec<String>)>> = None;
 
-    unsafe {
-        let glsl_filenames = GLSL_FILENAMES.as_mut().unwrap();
-        if glsl_filenames
-            .iter()
-            .find(|(other, _)| *other == filename)
-            .is_none()
+    fn spirv_dir() -> PathBuf {
+        if let Some(spirv_out_dir) = var_os("SPIRV_OUT_DIR") {
+            PathBuf::from(spirv_out_dir)
+        } else {
+            OUT_DIR.join("spirv")
+        }
+    }
+
+    pub fn compile_shaders() {
+        unsafe {
+            GLSL_FILENAMES = Some(Vec::default());
+        }
+
+        // Remove the compiled shaders directory so that we don't think things work when they don't work
+        if SPIRV_DIR.exists() {
+            remove_dir_all(SPIRV_DIR.as_path()).unwrap();
+        }
+
+        // Deferred rendering
+        compile_glsl("defer/light.vert");
+        compile_glsl("defer/line.vert");
+        compile_glsl("defer/line.frag");
+        compile_glsl("defer/mesh.vert");
+        compile_glsl("defer/mesh.frag");
+        compile_glsl("defer/point_light.frag");
+        compile_glsl("defer/rect_light.frag");
+        compile_glsl("defer/spotlight.frag");
+        compile_glsl("defer/sunlight.frag");
+
+        // Blending
+        #[cfg(feature = "blend-modes")]
         {
-            glsl_filenames.push((filename.clone(), defines.clone()));
+            compile_glsl("blend/add.frag");
+            compile_glsl("blend/alpha_add.frag");
+            compile_glsl("blend/color.frag");
+            compile_glsl("blend/color_burn.frag");
+            compile_glsl("blend/color_dodge.frag");
+            compile_glsl("blend/darken.frag");
+            compile_glsl("blend/darker_color.frag");
+            compile_glsl("blend/difference.frag");
+            compile_glsl("blend/divide.frag");
+            compile_glsl("blend/exclusion.frag");
+            compile_glsl("blend/hard_light.frag");
+            compile_glsl("blend/hard_mix.frag");
+            compile_glsl("blend/linear_burn.frag");
+            compile_glsl("blend/multiply.frag");
+            compile_glsl("blend/normal.frag");
+            compile_glsl("blend/overlay.frag");
+            compile_glsl("blend/quad_transform.vert");
+            compile_glsl("blend/screen.frag");
+            compile_glsl("blend/subtract.frag");
+            compile_glsl("blend/vivid_light.frag");
         }
+
+        // Compute - blurs
+        compile_glsl("compute/box_blur_x.comp");
+        compile_glsl("compute/box_blur_x_clamp.comp");
+        compile_glsl("compute/box_blur_y.comp");
+        compile_glsl("compute/box_blur_y_clamp.comp");
+
+        // Compute - format conversion
+        compile_glsl("compute/decode_rgb_rgba.comp");
+        compile_glsl("compute/encode_bgr24.comp");
+        compile_glsl("compute/encode_bgra32.comp");
+
+        // Compute - General
+        compile_glsl("compute/calc_vertex_attrs_u16.comp");
+        compile_glsl("compute/calc_vertex_attrs_u32.comp");
+        compile_glsl_with_defines("compute/calc_vertex_attrs_u16.comp", &["skin"]);
+        compile_glsl_with_defines("compute/calc_vertex_attrs_u32.comp", &["skin"]);
+
+        // Masking
+        #[cfg(feature = "mask-modes")]
+        {
+            compile_glsl("mask/add.frag");
+            compile_glsl("mask/apply.frag");
+            compile_glsl("mask/darken.frag");
+            compile_glsl("mask/difference.frag");
+            compile_glsl("mask/draw.frag");
+            compile_glsl("mask/intersect.frag");
+            compile_glsl("mask/lighten.frag");
+            compile_glsl("mask/subtract.frag");
+            compile_glsl("mask/vertex.vert");
+        }
+
+        // Matting
+        #[cfg(feature = "matte-modes")]
+        {
+            compile_glsl("matte/alpha.frag");
+            compile_glsl("matte/alpha_inv.frag");
+            compile_glsl("matte/luma.frag");
+            compile_glsl("matte/luma_inv.frag");
+        }
+
+        // Skinning
+        // compile_glsl("skin/anim.vert");
+        // compile_glsl("skin/pose.vert");
+
+        // Effects
+        compile_glsl("brightness.frag");
+        compile_glsl("clear_alpha.frag");
+        compile_glsl("opacity.frag");
+
+        // General purpose
+        compile_glsl("font_outline.frag");
+        compile_glsl("font.frag");
+        compile_glsl("font.vert");
+        compile_glsl("gradient_trans.frag");
+        compile_glsl("gradient.frag");
+        compile_glsl("gradient.vert");
+        compile_glsl("hdr_tonemap.frag");
+        compile_glsl("post_dof.frag");
+        compile_glsl("post_vignette.frag");
+        compile_glsl("quad_transform.vert");
+        compile_glsl("quad.vert");
+        compile_glsl("skydome.frag");
+        compile_glsl("skydome.vert");
+        compile_glsl("shadow.frag");
+        compile_glsl("shadow.vert");
+        compile_glsl("ssao.frag");
+        compile_glsl("texture.frag");
+        compile_glsl("vertex_transform.vert");
+        compile_glsl("vertex.vert");
+
+        write_spriv_mod();
     }
 
-    // Compile the source code or print out help
-    let mut spirv = match compile_spirv(&glsl, ty, filename.to_str().unwrap()) {
-        Ok(spirv) => spirv,
-        Err(err) => {
-            // Print the file that failed
-            eprintln!("Compile failed: {}", filename.to_str().unwrap());
+    fn compile_glsl<P: AsRef<Path>>(filename: P) {
+        let no_defines: Vec<&'static str> = Default::default();
+        compile_glsl_with_defines(filename, &no_defines);
+    }
 
-            // Print each line so we can see what the expansion looked like
-            let mut line_num = 1;
-            for line in glsl.lines() {
-                eprintln!("{}: {}", line_num, line);
-                line_num += 1;
+    /// Supports frag/vert/comp programs and #include/#define directives. No sugar added.
+    fn compile_glsl_with_defines<P: AsRef<Path>, D: IntoIterator<Item = impl AsRef<str>>>(
+        filename: P,
+        defines: D,
+    ) {
+        let defines = defines
+            .into_iter()
+            .map(|define| define.as_ref().to_uppercase().trim().replace(" ", "_"))
+            .collect::<Vec<_>>();
+        let ty = match filename.as_ref().extension().unwrap().to_str().unwrap() {
+            "comp" => ShaderKind::Compute,
+            "frag" => ShaderKind::Fragment,
+            "vert" => ShaderKind::Vertex,
+            _ => panic!(),
+        };
+
+        // Read the source code with defines inserted after the version tag
+        let glsl = read_file_with_includes(GLSL_DIR.join(&filename));
+        let (preamble, code) = glsl.split_at(
+            glsl.find("#version 450\n")
+                .expect("All shaders must be #version 450")
+                + 13,
+        );
+        let glsl = if defines.is_empty() {
+            glsl
+        } else {
+            format!(
+                "{}\n{}\n{}",
+                preamble,
+                defines
+                    .iter()
+                    .map(|define| format!("#define {}", &define))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+                code,
+            )
+        };
+
+        let filename = filename.as_ref().to_owned();
+
+        unsafe {
+            let glsl_filenames = GLSL_FILENAMES.as_mut().unwrap();
+            if glsl_filenames
+                .iter()
+                .find(|(other, _)| *other == filename)
+                .is_none()
+            {
+                glsl_filenames.push((filename.clone(), defines.clone()));
             }
-
-            eprintln!("{}", err);
-
-            exit(1);
         }
-    };
 
-    // Create the output directory and file
-    let glsl_filename = filename.clone();
-    let filename = SPIRV_DIR.join(
-        &filename
-            .with_file_name(format!(
-                "{}_{}",
-                filename.file_stem().unwrap().to_str().unwrap(),
-                filename
-                    .extension()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .replace(".", "_")
-            ))
-            .with_extension("rs"),
-    );
-    create_dir_all(filename.parent().unwrap()).unwrap();
-    let mut output_file = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open(&filename)
-        .unwrap();
+        // Compile the source code or print out help
+        let mut spirv = match compile_spirv(&glsl, ty, filename.to_str().unwrap()) {
+            Ok(spirv) => spirv,
+            Err(err) => {
+                // Print the file that failed
+                eprintln!("Compile failed: {}", filename.to_str().unwrap());
 
-    //
-    let mut spirv_wide = vec![];
-    while !spirv.is_empty() {
-        let mut byte_wide = 0u32;
-        if spirv.len() >= 4 {
-            byte_wide |= (spirv.remove(3) as u32) << 24;
-        }
-        if spirv.len() >= 3 {
-            byte_wide |= (spirv.remove(2) as u32) << 16;
-        }
-        if spirv.len() >= 2 {
-            byte_wide |= (spirv.remove(1) as u32) << 8;
-        }
-        if !spirv.is_empty() {
-            byte_wide |= spirv.remove(0) as u32;
-        }
-        spirv_wide.push(byte_wide);
-    }
+                // Print each line so we can see what the expansion looked like
+                let mut line_num = 1;
+                for line in glsl.lines() {
+                    eprintln!("{}: {}", line_num, line);
+                    line_num += 1;
+                }
 
-    // Create a rust doc comment with the annotated source code
-    let comment = glsl
-        .lines()
-        .map(|line| format!("/// {}", line))
-        .collect::<Vec<_>>()
-        .join("\n");
-    writeln!(
-        output_file,
-        "/// SPIR-V compilation of `{}`\n/// ",
-        glsl_filename.file_name().unwrap().to_str().unwrap()
-    )
-    .unwrap();
+                eprintln!("{}", err);
 
-    if !defines.is_empty() {
+                exit(1);
+            }
+        };
+
+        // Create the output directory and file
+        let glsl_filename = filename.clone();
+        let filename = SPIRV_DIR.join(
+            &filename
+                .with_file_name(format!(
+                    "{}_{}",
+                    filename.file_stem().unwrap().to_str().unwrap(),
+                    filename
+                        .extension()
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .replace(".", "_")
+                ))
+                .with_extension("rs"),
+        );
+        create_dir_all(filename.parent().unwrap()).unwrap();
+        let mut output_file = OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(&filename)
+            .unwrap();
+
+        //
+        let mut spirv_wide = vec![];
+        while !spirv.is_empty() {
+            let mut byte_wide = 0u32;
+            if spirv.len() >= 4 {
+                byte_wide |= (spirv.remove(3) as u32) << 24;
+            }
+            if spirv.len() >= 3 {
+                byte_wide |= (spirv.remove(2) as u32) << 16;
+            }
+            if spirv.len() >= 2 {
+                byte_wide |= (spirv.remove(1) as u32) << 8;
+            }
+            if !spirv.is_empty() {
+                byte_wide |= spirv.remove(0) as u32;
+            }
+            spirv_wide.push(byte_wide);
+        }
+
+        // Create a rust doc comment with the annotated source code
+        let comment = glsl
+            .lines()
+            .map(|line| format!("/// {}", line))
+            .collect::<Vec<_>>()
+            .join("\n");
         writeln!(
             output_file,
-            "/// _NOTE:_ This variant defines:\n{}\n/// ",
-            defines
-                .iter()
-                .map(|define| format!("// - `{}`", define))
-                .collect::<Vec<_>>()
-                .as_slice()
-                .join("\n")
+            "/// SPIR-V compilation of `{}`\n/// ",
+            glsl_filename.file_name().unwrap().to_str().unwrap()
+        )
+        .unwrap();
+
+        if !defines.is_empty() {
+            writeln!(
+                output_file,
+                "/// _NOTE:_ This variant defines:\n{}\n/// ",
+                defines
+                    .iter()
+                    .map(|define| format!("// - `{}`", define))
+                    .collect::<Vec<_>>()
+                    .as_slice()
+                    .join("\n")
+            )
+            .unwrap();
+        }
+
+        writeln!(
+            output_file,
+            "/// ## GLSL Source Code\n/// \n/// ```glsl\n{}\n/// ```",
+            comment
+        )
+        .unwrap();
+
+        // Convert to a byte array string
+        let bytes = spirv_wide
+            .iter()
+            .map(|&val| format!("0x{:x}", val))
+            .collect::<Vec<_>>()
+            .as_slice()
+            .join(", ");
+
+        // Write a maybe-okay helper function
+        writeln!(
+            output_file,
+            "pub static {}: [u32; {}] = [{}];\n",
+            if defines.is_empty() {
+                "MAIN".to_owned()
+            } else {
+                defines.join("_")
+            },
+            spirv_wide.len(),
+            bytes
         )
         .unwrap();
     }
 
-    writeln!(
-        output_file,
-        "/// ## GLSL Source Code\n/// \n/// ```glsl\n{}\n/// ```",
-        comment
-    )
-    .unwrap();
+    fn compile_spirv(glsl: &str, ty: ShaderKind, filename: &str) -> Result<Vec<u8>, Error> {
+        let mut compiler = Compiler::new().unwrap();
+        let mut options = CompileOptions::new().unwrap();
+        options.add_macro_definition("EP", Some("main"));
+        let result = compiler
+            .compile_into_spirv(glsl, ty, filename, "main", Some(&options))?
+            .as_binary_u8()
+            .to_vec();
+        Ok(result)
+    }
 
-    // Convert to a byte array string
-    let bytes = spirv_wide
-        .iter()
-        .map(|&val| format!("0x{:x}", val))
-        .collect::<Vec<_>>()
-        .as_slice()
-        .join(", ");
+    fn read_file_with_includes<P: AsRef<Path>>(filename: P) -> String {
+        println!(
+            "cargo:rerun-if-changed={}",
+            filename.as_ref().to_str().unwrap()
+        );
 
-    // Write a maybe-okay helper function
-    writeln!(
-        output_file,
-        "pub static {}: [u32; {}] = [{}];\n",
-        if defines.is_empty() {
-            "MAIN".to_owned()
-        } else {
-            defines.join("_")
-        },
-        spirv_wide.len(),
-        bytes
-    )
-    .unwrap();
-}
+        let mut result = String::new();
+        let mut reader = BufReader::new(File::open(&filename).unwrap());
+        let mut line = String::new();
 
-fn compile_spirv(glsl: &str, ty: ShaderKind, filename: &str) -> Result<Vec<u8>, Error> {
-    let mut compiler = Compiler::new().unwrap();
-    let mut options = CompileOptions::new().unwrap();
-    options.add_macro_definition("EP", Some("main"));
-    let result = compiler
-        .compile_into_spirv(glsl, ty, filename, "main", Some(&options))?
-        .as_binary_u8()
-        .to_vec();
-    Ok(result)
-}
-
-fn read_file_with_includes<P: AsRef<Path>>(filename: P) -> String {
-    println!(
-        "cargo:rerun-if-changed={}",
-        filename.as_ref().to_str().unwrap()
-    );
-
-    let mut result = String::new();
-    let mut reader = BufReader::new(File::open(&filename).unwrap());
-    let mut line = String::new();
-
-    // Read each line in the file
-    while 0 < reader.read_line(&mut line).unwrap() {
-        // Remove the trailing newline char
-        if line.ends_with('\n') {
-            let len = line.len();
-            line.truncate(len - 1);
-        }
-
-        // If the line is an include tag, recursively include it
-        if line.starts_with("#include \"") && line.ends_with('"') {
-            // Remove leading tag and quote
-            line.drain(0..10);
-
-            // Remove trailing quote
-            let len = line.len();
-            line.truncate(len - 1);
-
-            // TODO: Should probably do this so the changes to relative files work
-            // "ie ../folder/thing": `.canonicalize().unwrap();`
-
-            // Bring in the contents of the include file
-            let include_filename = filename.as_ref().parent().unwrap().join(line.clone());
-            line = read_file_with_includes(include_filename);
-
+        // Read each line in the file
+        while 0 < reader.read_line(&mut line).unwrap() {
             // Remove the trailing newline char
             if line.ends_with('\n') {
                 let len = line.len();
                 line.truncate(len - 1);
             }
+
+            // If the line is an include tag, recursively include it
+            if line.starts_with("#include \"") && line.ends_with('"') {
+                // Remove leading tag and quote
+                line.drain(0..10);
+
+                // Remove trailing quote
+                let len = line.len();
+                line.truncate(len - 1);
+
+                // TODO: Should probably do this so the changes to relative files work
+                // "ie ../folder/thing": `.canonicalize().unwrap();`
+
+                // Bring in the contents of the include file
+                let include_filename = filename.as_ref().parent().unwrap().join(line.clone());
+                line = read_file_with_includes(include_filename);
+
+                // Remove the trailing newline char
+                if line.ends_with('\n') {
+                    let len = line.len();
+                    line.truncate(len - 1);
+                }
+            }
+
+            // Add this line (or lines) to the result
+            result.push_str(&line);
+            result.push('\n');
+            line.clear();
         }
 
-        // Add this line (or lines) to the result
-        result.push_str(&line);
-        result.push('\n');
-        line.clear();
+        result
     }
 
-    result
-}
+    /// Note: This doesn't support multi-level folders, such as assets\complicated\shader.vert
+    ///
+    /// This only supports one level of folder
+    fn write_spriv_mod() {
+        let mut directories = Vec::default();
 
-/// Note: This doesn't support multi-level folders, such as assets\complicated\shader.vert
-///
-/// This only supports one level of folder
-fn write_spriv_mod() {
-    let mut directories = Vec::default();
+        unsafe {
+            GLSL_FILENAMES
+                .as_mut()
+                .unwrap()
+                .sort_by_key(|glsl_filename| glsl_filename.0.to_str().unwrap().to_owned());
+        }
 
-    unsafe {
-        GLSL_FILENAMES
-            .as_mut()
-            .unwrap()
-            .sort_by_key(|glsl_filename| glsl_filename.0.to_str().unwrap().to_owned());
-    }
-
-    // Make sure each directory has its own mod
-    unsafe {
-        for (filename, _defines) in GLSL_FILENAMES.as_ref().unwrap() {
-            // Does filename have a preceding path portion? ex: assets\shader.frag
-            if filename.file_name().unwrap() != filename.as_os_str() {
-                let parent = filename.parent().unwrap();
-                if !directories.contains(&parent) {
-                    write_spriv_mod_at(&parent);
-                    directories.push(parent);
+        // Make sure each directory has its own mod
+        unsafe {
+            for (filename, _defines) in GLSL_FILENAMES.as_ref().unwrap() {
+                // Does filename have a preceding path portion? ex: assets\shader.frag
+                if filename.file_name().unwrap() != filename.as_os_str() {
+                    let parent = filename.parent().unwrap();
+                    if !directories.contains(&parent) {
+                        write_spriv_mod_at(&parent);
+                        directories.push(parent);
+                    }
                 }
             }
         }
+
+        write_spriv_mod_at("");
     }
 
-    write_spriv_mod_at("");
-}
+    fn write_spriv_mod_at<P: AsRef<Path>>(path: P) {
+        let filename = SPIRV_DIR.join(&path).join("mod").with_extension("rs");
+        let mut output_file = File::create(&filename).unwrap();
+        let path = path.as_ref().as_os_str();
+        let mut filenames = Vec::default();
+        let mut directories = Vec::default();
 
-fn write_spriv_mod_at<P: AsRef<Path>>(path: P) {
-    let filename = SPIRV_DIR.join(&path).join("mod").with_extension("rs");
-    let mut output_file = File::create(&filename).unwrap();
-    let path = path.as_ref().as_os_str();
-    let mut filenames = Vec::default();
-    let mut directories = Vec::default();
+        // Get the filenames for `path`
+        unsafe {
+            for (filename, _defines) in GLSL_FILENAMES.as_ref().unwrap() {
+                // Does filename have a preceding path portion? ex: assets\shader.frag
+                if filename.file_name().unwrap() != filename.as_os_str() {
+                    let parent = filename.parent().unwrap();
+                    if parent.as_os_str() == path {
+                        filenames.push(filename.clone());
+                    }
 
-    // Get the filenames for `path`
-    unsafe {
-        for (filename, _defines) in GLSL_FILENAMES.as_ref().unwrap() {
-            // Does filename have a preceding path portion? ex: assets\shader.frag
-            if filename.file_name().unwrap() != filename.as_os_str() {
-                let parent = filename.parent().unwrap();
-                if parent.as_os_str() == path {
+                    if path.is_empty() && !directories.contains(&parent) {
+                        directories.push(parent);
+                    }
+                } else if path.is_empty() {
                     filenames.push(filename.clone());
                 }
-
-                if path.is_empty() && !directories.contains(&parent) {
-                    directories.push(parent);
-                }
-            } else if path.is_empty() {
-                filenames.push(filename.clone());
             }
         }
+
+        for directory in &directories {
+            writeln!(
+                output_file,
+                "pub mod {};",
+                directory.file_name().unwrap().to_str().unwrap()
+            )
+            .unwrap();
+        }
+
+        writeln!(output_file).unwrap();
+
+        for filename in &filenames {
+            writeln!(
+                output_file,
+                "pub mod {}_{};",
+                filename.file_stem().unwrap().to_str().unwrap(),
+                filename.extension().unwrap().to_str().unwrap()
+            )
+            .unwrap();
+        }
+
+        writeln!(output_file).unwrap();
     }
-
-    for directory in &directories {
-        writeln!(
-            output_file,
-            "pub mod {};",
-            directory.file_name().unwrap().to_str().unwrap()
-        )
-        .unwrap();
-    }
-
-    writeln!(output_file).unwrap();
-
-    for filename in &filenames {
-        writeln!(
-            output_file,
-            "pub mod {}_{};",
-            filename.file_stem().unwrap().to_str().unwrap(),
-            filename.extension().unwrap().to_str().unwrap()
-        )
-        .unwrap();
-    }
-
-    writeln!(output_file).unwrap();
 }

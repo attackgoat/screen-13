@@ -178,6 +178,7 @@ pub mod prelude_arc {
     pub type Engine = super::Engine<ArcK>;
 
     /// Helpful type alias of `fx::Fade<ArcK>`; see module documentation.
+    #[cfg(feature = "blend-modes")]
     pub type Fade = super::fx::Fade<ArcK>;
 
     /// Helpful type alias of `gpu::text::Font<ArcK>`; see module documentation.
@@ -231,6 +232,7 @@ pub mod prelude_rc {
     pub type Engine = super::Engine<RcK>;
 
     /// Helpful type alias of `fx::Fade<RcK>`; see module documentation.
+    #[cfg(feature = "blend-modes")]
     pub type Fade = super::fx::Fade<RcK>;
 
     /// Helpful type alias of `gpu::text::Font<RcK>`; see module documentation.
@@ -346,8 +348,8 @@ use {
         input::Input,
         math::Extent,
     },
-    app_dirs::{get_app_root, AppDataType, AppDirsError, AppInfo},
     a_r_c_h_e_r_y::SharedPointerKind,
+    app_dirs::{get_app_root, AppDataType, AppDirsError, AppInfo},
     std::{
         cmp::Ordering,
         collections::VecDeque,
@@ -376,15 +378,19 @@ use self::math::Area;
 /// Helpful alias of `Box<dyn Screen>`; can be used to hold an instance of any `Screen`.
 pub type DynScreen<P> = Box<dyn Screen<P>>;
 
-/// Alias of either [`Render`] _or_ [`Vec<Render>`], used by [`Screen::render()`].
+/// Alias of either [`Render`] _or_ [`Vec<Option<Render>>`], used by [`Screen::render()`].
 ///
 /// The output type depends on the value of the `multi-monitor` pacakge feature.
+///
+/// **_NOTE:_** This documentation was generated _without_ the `multi-monitor` feature.
 #[cfg(not(feature = "multi-monitor"))]
 pub type RenderReturn<P> = Render<P>;
 
-/// Alias of either [`Render`] _or_ [`Vec<Render>`], used by [`Screen::render()`].
+/// Alias of either [`Render`] _or_ [`Vec<Option<Render>>`], used by [`Screen::render()`].
 ///
 /// The output type depends on the value of the `multi-monitor` pacakge feature.
+///
+/// **_NOTE:_** This documentation was generated _with_ the `multi-monitor` feature.
 #[cfg(feature = "multi-monitor")]
 pub type RenderReturn<P> = Vec<Option<Render<P>>>;
 

@@ -10,13 +10,21 @@ pub mod vertex;
 pub use self::{compute::Compute, graphics::Graphics};
 
 use {
-    super::{BlendMode, MaskMode, MatteMode},
     crate::pak::IndexType,
     gfx_hal::{
         format::Format,
         pso::{BufferDescriptorFormat, BufferDescriptorType, DescriptorType, ImageDescriptorType},
     },
 };
+
+#[cfg(feature = "blend-modes")]
+use super::BlendMode;
+
+#[cfg(feature = "mask-modes")]
+use super::MaskMode;
+
+#[cfg(feature = "matte-modes")]
+use super::MatteMode;
 
 const READ_ONLY_BUF: DescriptorType = DescriptorType::Buffer {
     format: BufferDescriptorFormat::Structured {
@@ -86,7 +94,9 @@ pub(super) struct DrawRenderPassMode {
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub(super) enum GraphicsMode {
+    #[cfg(feature = "blend-modes")]
     Blend(BlendMode),
+
     Font(bool),
     Gradient(bool),
     DrawLine,
@@ -95,8 +105,13 @@ pub(super) enum GraphicsMode {
     DrawRectLight,
     DrawSpotlight,
     DrawSunlight,
+
+    #[cfg(feature = "mask-modes")]
     Mask(MaskMode),
+
+    #[cfg(feature = "matte-modes")]
     Matte(MatteMode),
+
     Skydome,
     Texture,
 }

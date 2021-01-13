@@ -217,6 +217,7 @@ pub struct Graphics {
 }
 
 impl Graphics {
+    #[cfg(feature = "blend-modes")]
     unsafe fn blend(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -282,6 +283,7 @@ impl Graphics {
         }
     }
 
+    #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_add(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -297,6 +299,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_alpha_add(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -312,6 +315,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_color_burn(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -327,6 +331,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_color_dodge(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -342,6 +347,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_color(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -357,6 +363,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_darken(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -372,6 +379,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_darker_color(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -387,6 +395,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_difference(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -402,6 +411,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_divide(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -417,6 +427,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_exclusion(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -432,6 +443,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_hard_light(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -447,6 +459,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_hard_mix(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -462,6 +475,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_linear_burn(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -477,6 +491,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_multiply(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -492,6 +507,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_normal(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -507,6 +523,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_overlay(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -522,6 +539,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_screen(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -537,6 +555,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_subtract(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -552,6 +571,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_vivid_light(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -1006,6 +1026,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "mask-modes")]
     unsafe fn mask(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -1013,7 +1034,7 @@ impl Graphics {
         fragment_spirv: &[u32],
         max_desc_sets: usize,
     ) -> Self {
-        let vertex = ShaderModule::new(&spirv::blend::quad_transform_vert::MAIN);
+        let vertex = ShaderModule::new(&spirv::mask::vertex_vert::MAIN);
         let fragment = ShaderModule::new(fragment_spirv);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
@@ -1071,6 +1092,7 @@ impl Graphics {
         }
     }
 
+    #[cfg(feature = "mask-modes")]
     pub unsafe fn mask_add(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -1086,6 +1108,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "mask-modes")]
     pub unsafe fn mask_darken(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -1101,6 +1124,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "mask-modes")]
     pub unsafe fn mask_difference(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -1116,6 +1140,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "mask-modes")]
     pub unsafe fn mask_intersect(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -1131,6 +1156,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "mask-modes")]
     pub unsafe fn mask_lighten(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -1146,6 +1172,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "mask-modes")]
     pub unsafe fn mask_subtract(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -1161,6 +1188,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "matte-modes")]
     unsafe fn matte(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -1168,7 +1196,7 @@ impl Graphics {
         fragment_spirv: &[u32],
         max_desc_sets: usize,
     ) -> Self {
-        let vertex = ShaderModule::new(&spirv::blend::quad_transform_vert::MAIN);
+        let vertex = ShaderModule::new(&spirv::vertex_vert::MAIN);
         let fragment = ShaderModule::new(fragment_spirv);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
@@ -1226,6 +1254,7 @@ impl Graphics {
         }
     }
 
+    #[cfg(feature = "matte-modes")]
     pub unsafe fn matte_alpha(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -1241,6 +1270,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "matte-modes")]
     pub unsafe fn matte_alpha_inv(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -1256,6 +1286,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "matte-modes")]
     pub unsafe fn matte_luma(
         #[cfg(feature = "debug-names")] name: &str,
 
@@ -1271,6 +1302,7 @@ impl Graphics {
         )
     }
 
+    #[cfg(feature = "matte-modes")]
     pub unsafe fn matte_luma_inv(
         #[cfg(feature = "debug-names")] name: &str,
 

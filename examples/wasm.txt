@@ -1,5 +1,5 @@
 // rustup toolchain install nightly
-// rustup target install wasm32-unknown-unknown
+// rustup target add wasm32-unknown-unknown --toolchain nightly
+// cargo +nightly install -f wasm-bindgen-cli
 // rustup update
 // sudo apt install libssl-dev
-// cargo install wasm-bindgen-cli

@@ -120,7 +120,7 @@ fn main() -> ! {
     .expect(&format!(
         "{} {}",
         "ERROR: You must first pack the runtime content into a file by running the following",
-        "command: `cargo run examples/content/ecs.toml`"
+        "command: `cargo run examples/res/ecs.toml`"
     ));
     let mut game = Game::new(pak);
 

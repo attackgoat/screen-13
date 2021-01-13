@@ -353,6 +353,7 @@ unsafe fn queue_mut() -> &'static mut <_Backend as Backend>::CommandQueue {
 pub struct BadData;
 
 /// Specifies a method for combining two images using a mathmatical formula.
+#[cfg(feature = "blend-modes")]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum BlendMode {
     /// Blend formula: a + b
@@ -445,6 +446,7 @@ pub enum BlendMode {
     VividLight,
 }
 
+#[cfg(feature = "blend-modes")]
 impl Default for BlendMode {
     fn default() -> Self {
         Self::Normal

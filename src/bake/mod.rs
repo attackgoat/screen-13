@@ -25,9 +25,10 @@ use std::path::{Path, PathBuf};
 pub fn get_path<P1: AsRef<Path>, P2: AsRef<Path>, P3: AsRef<Path>>(
     path_dir: P1,
     path: P2,
-    content_dir: P3,
+    res_dir: P3,
 ) -> PathBuf {
-    // Absolute paths are 'project aka content directory' absolute, not *your host file system* absolute!
+    // Absolute paths are 'project aka resource directory' absolute, not *your host file system*
+    // absolute!
     if path.as_ref().is_absolute() {
         // Build an array of path items (file and directories) until the root
         let mut temp = Some(path.as_ref());
@@ -41,8 +42,8 @@ pub fn get_path<P1: AsRef<Path>, P2: AsRef<Path>, P3: AsRef<Path>>(
             }
         }
 
-        // Paste the incoming path (minus root) onto the content_dir parameter
-        let mut temp = content_dir.as_ref().to_path_buf();
+        // Paste the incoming path (minus root) onto the res_dir parameter
+        let mut temp = res_dir.as_ref().to_path_buf();
         for part in parts.iter().rev() {
             temp = temp.join(part);
         }
@@ -50,7 +51,7 @@ pub fn get_path<P1: AsRef<Path>, P2: AsRef<Path>, P3: AsRef<Path>>(
         temp.canonicalize().unwrap_or_else(|_| {
             panic!(
                 "{} + {}",
-                content_dir.as_ref().display(),
+                res_dir.as_ref().display(),
                 path.as_ref().display()
             )
         })
@@ -71,11 +72,11 @@ pub fn get_path<P1: AsRef<Path>, P2: AsRef<Path>, P3: AsRef<Path>>(
 
 /// Given some filename and a parent directory, returns just the portion after the directory.
 pub fn get_filename_key<P1: AsRef<Path>, P2: AsRef<Path>>(dir: P1, filename: P2) -> String {
-    let content_dir = dir.as_ref();
+    let res_dir = dir.as_ref();
     let mut filename = filename.as_ref();
     let mut parts = vec![];
 
-    while filename != content_dir {
+    while filename != res_dir {
         {
             let os_filename = filename.file_name().unwrap();
             let filename_str = os_filename.to_str().unwrap();

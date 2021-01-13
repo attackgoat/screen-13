@@ -4,13 +4,13 @@ use {
         color::TRANSPARENT_BLACK,
         gpu::{
             def::{
-                push_const::{WriteFragmentPushConsts, WriteVertexPushConsts},
-                ColorRenderPassMode, Graphics, GraphicsMode, RenderPassMode,
+                push_const::WriteVertexPushConsts, ColorRenderPassMode, Graphics, GraphicsMode,
+                RenderPassMode,
             },
             device,
             driver::{bind_graphics_descriptor_set, CommandPool, Fence, Framebuffer2d},
             pool::{Lease, Pool},
-            queue_mut, BlendMode, Texture2d,
+            queue_mut, Texture2d,
         },
         math::{vec3, Area, CoordF, Mat4, RectF, Vec2},
     },
@@ -33,12 +33,16 @@ use {
     },
 };
 
+#[cfg(feature = "blend-modes")]
+use crate::gpu::{def::push_const::WriteFragmentPushConsts, BlendMode};
+
 const SUBPASS_IDX: u8 = 0;
 
 /// Describes the way `WriteOp` will write a given texture onto the destination texture.
 #[derive(Clone, Copy, Hash, PartialEq)]
 pub enum Mode {
     /// Blends source (a) with destination (b) using the given mode.
+    #[cfg(feature = "blend-modes")]
     Blend((u8, BlendMode)),
 
     /// Writes source directly onto destination, with no blending.
@@ -286,7 +290,9 @@ where
 
             // Setup the graphics pipeline(s) using one descriptor set per unique source texture
             let graphics_mode = match self.mode {
+                #[cfg(feature = "blend-modes")]
                 Mode::Blend((_, mode)) => GraphicsMode::Blend(mode),
+
                 Mode::Texture => GraphicsMode::Texture,
             };
             self.graphics.replace(pool.graphics_desc_sets(
@@ -425,6 +431,7 @@ where
             .as_ref(),
         );
 
+        #[cfg(feature = "blend-modes")]
         if let Mode::Blend((ab, _)) = self.mode {
             const RECIP: f32 = 1.0 / u8::MAX as f32;
             let ab = ab as f32 * RECIP;
@@ -501,8 +508,12 @@ where
     unsafe fn write_descriptors(&mut self) {
         trace!("write_descriptors");
 
+        #[cfg(feature = "blend-modes")]
         let dst = self.dst.borrow();
+
+        #[cfg(feature = "blend-modes")]
         let dst_view = dst.as_2d_color();
+
         let graphics = self.graphics.as_ref().unwrap();
         let sampler = graphics.sampler(0).as_ref();
 
@@ -525,6 +536,7 @@ where
             };
 
             // Blend mode requires a descriptor for the destination texture
+            #[cfg(feature = "blend-modes")]
             if let Mode::Blend(_) = self.mode {
                 let dst_desc = DescriptorSetWrite {
                     set,
@@ -540,6 +552,9 @@ where
             } else {
                 device().write_descriptor_sets(once(src_desc));
             }
+
+            #[cfg(not(feature = "blend-modes"))]
+            device().write_descriptor_sets(once(src_desc));
         }
     }
 }
