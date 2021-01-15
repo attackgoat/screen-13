@@ -35,7 +35,7 @@ impl Fence {
     }
 
     pub unsafe fn reset(fence: &mut Self) {
-        device().reset_fence(&fence).unwrap();
+        device().reset_fence(fence).unwrap();
     }
 
     /// Sets a descriptive name for debugging which can be seen with API tracing tools such as

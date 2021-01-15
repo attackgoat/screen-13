@@ -2,7 +2,7 @@ use {
     crate::gpu::device,
     gfx_hal::{
         device::Device as _,
-        image::{Filter, Lod, PackedColor, SamplerDesc, WrapMode},
+        image::{BorderColor, Filter, Lod, SamplerDesc, WrapMode},
         pso::Comparison,
         Backend,
     },
@@ -23,7 +23,6 @@ impl Sampler {
         wrap_mode: (WrapMode, WrapMode, WrapMode),
         lod: (Lod, Range<Lod>),
         comparison: Option<Comparison>,
-        border: PackedColor,
         normalized: bool,
         anisotropy_clamp: Option<u8>,
     ) -> Self {
@@ -36,7 +35,7 @@ impl Sampler {
                 lod_bias: lod.0,
                 lod_range: lod.1,
                 comparison,
-                border,
+                border: BorderColor::TransparentBlack,
                 normalized,
                 anisotropy_clamp,
             })

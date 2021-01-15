@@ -195,4 +195,8 @@ impl Compute {
     pub fn desc_set(&self, idx: usize) -> &<_Backend as Backend>::DescriptorSet {
         &self.desc_sets[idx]
     }
+
+    pub fn desc_set_mut(&mut self, idx: usize) -> &mut <_Backend as Backend>::DescriptorSet {
+        &mut self.desc_sets[idx]
+    }
 }

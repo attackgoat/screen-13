@@ -1,7 +1,9 @@
+#[rustfmt::skip]
 mod point_light {
     include!(concat!(env!("OUT_DIR"), "/point_light.rs"));
 }
 
+#[rustfmt::skip]
 mod spotlight {
     include!(concat!(env!("OUT_DIR"), "/spotlight.rs"));
 }

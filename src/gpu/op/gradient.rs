@@ -14,7 +14,10 @@ use {
     gfx_hal::{
         command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, SubpassContents},
         format::Aspects,
-        image::{Access as ImageAccess, Layout, Offset, SubresourceLayers, Usage as ImageUsage},
+        image::{
+            Access as ImageAccess, FramebufferAttachment, Layout, Offset, SubresourceLayers,
+            Usage as ImageUsage, ViewCapabilities,
+        },
         pool::CommandPool as _,
         pso::{PipelineStage, Rect, Viewport},
         queue::{CommandQueue as _, Submission},
@@ -109,7 +112,11 @@ where
             #[cfg(feature = "debug-names")]
             name,
             pool.render_pass(render_pass_mode),
-            once(back_buf.borrow().as_2d_color().as_ref()),
+            once(FramebufferAttachment {
+                format: fmt,
+                usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
+                view_caps: ViewCapabilities::MUTABLE_FORMAT,
+            }),
             dims,
         );
         let fence = pool.fence(
@@ -382,7 +389,7 @@ where
                 wait_semaphores: empty(),
                 signal_semaphores: empty::<&<_Backend as Backend>::Semaphore>(),
             },
-            Some(&self.fence),
+            Some(&mut self.fence),
         );
     }
 }

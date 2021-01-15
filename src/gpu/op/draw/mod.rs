@@ -59,14 +59,17 @@ use {
     },
     a_r_c_h_e_r_y::SharedPointerKind,
     gfx_hal::{
-        buffer::{Access as BufferAccess, IndexBufferView, SubRange},
+        buffer::{Access as BufferAccess, SubRange},
         command::{
             ClearColor, ClearDepthStencil, ClearValue, CommandBuffer as _, CommandBufferFlags,
-            ImageCopy, Level, SubpassContents,
+            ImageCopy, Level, RenderAttachmentInfo, SubpassContents,
         },
         device::Device as _,
         format::Aspects,
-        image::{Access as ImageAccess, Layout, Offset, SubresourceLayers},
+        image::{
+            Access as ImageAccess, FramebufferAttachment, Layout, Offset, SubresourceLayers,
+            Usage as ImageUsage, ViewCapabilities,
+        },
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage, ShaderStageFlags, Viewport},
         queue::{CommandQueue as _, Submission},
@@ -286,11 +289,39 @@ where
                             &self.name,
                             render_pass,
                             vec![
-                                color_metal.as_2d_color().as_ref(),
-                                normal_rough.as_2d_color().as_ref(),
-                                light.as_2d_color().as_ref(),
-                                output.as_2d_color().as_ref(),
-                                depth.as_2d_depth().as_ref(),
+                                FramebufferAttachment {
+                                    format: color_metal.format(),
+                                    usage: ImageUsage::COLOR_ATTACHMENT
+                                        | ImageUsage::INPUT_ATTACHMENT
+                                        | ImageUsage::SAMPLED,
+                                    view_caps: ViewCapabilities::MUTABLE_FORMAT,
+                                },
+                                FramebufferAttachment {
+                                    format: normal_rough.format(),
+                                    usage: ImageUsage::COLOR_ATTACHMENT
+                                        | ImageUsage::INPUT_ATTACHMENT
+                                        | ImageUsage::SAMPLED,
+                                    view_caps: ViewCapabilities::MUTABLE_FORMAT,
+                                },
+                                FramebufferAttachment {
+                                    format: light.format(),
+                                    usage: ImageUsage::COLOR_ATTACHMENT
+                                        | ImageUsage::INPUT_ATTACHMENT
+                                        | ImageUsage::SAMPLED,
+                                    view_caps: ViewCapabilities::MUTABLE_FORMAT,
+                                },
+                                FramebufferAttachment {
+                                    format: output.format(),
+                                    usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSFER_SRC,
+                                    view_caps: ViewCapabilities::MUTABLE_FORMAT,
+                                },
+                                FramebufferAttachment {
+                                    format: depth.format(),
+                                    usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT
+                                        | ImageUsage::INPUT_ATTACHMENT
+                                        | ImageUsage::SAMPLED,
+                                    view_caps: ViewCapabilities::MUTABLE_FORMAT,
+                                },
                             ],
                             dims,
                         ),
@@ -300,7 +331,7 @@ where
                 };
 
                 if let Some(skydome) = &self.skydome {
-                    let graphics = pool.graphics_desc_sets(
+                    let mut graphics = pool.graphics_desc_sets(
                         #[cfg(feature = "debug-names")]
                         &self.name,
                         render_pass_mode,
@@ -308,7 +339,7 @@ where
                         GraphicsMode::Skydome,
                         1,
                     );
-                    Self::write_skydome_descriptors(&graphics, &skydome.val);
+                    Self::write_skydome_descriptors(&mut graphics, &skydome.val);
                     self.graphics_skydome = Some(graphics);
                 }
 
@@ -317,7 +348,7 @@ where
                     let descriptors = instrs.mesh_materials();
                     let desc_sets = descriptors.len();
                     if desc_sets > 0 {
-                        let graphics = pool.graphics_desc_sets(
+                        let mut graphics = pool.graphics_desc_sets(
                             #[cfg(feature = "debug-names")]
                             &self.name,
                             render_pass_mode,
@@ -325,7 +356,7 @@ where
                             GraphicsMode::DrawMesh,
                             desc_sets,
                         );
-                        Self::write_model_material_descriptors(&graphics, descriptors);
+                        Self::write_model_material_descriptors(&mut graphics, descriptors);
                         self.graphics_mesh = Some(graphics);
                     }
 
@@ -333,13 +364,13 @@ where
                     let descriptors = instrs.calc_vertex_attrs_u16_descriptors();
                     let desc_sets = descriptors.len();
                     if desc_sets > 0 {
-                        let compute = pool.compute_desc_sets(
+                        let mut compute = pool.compute_desc_sets(
                             #[cfg(feature = "debug-names")]
                             &self.name,
                             ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode::U16),
                             desc_sets,
                         );
-                        Self::write_calc_vertex_attrs_descriptors(&compute, descriptors);
+                        Self::write_calc_vertex_attrs_descriptors(&mut compute, descriptors);
                         self.compute_u16_vertex_attrs = Some(compute);
                     }
 
@@ -347,13 +378,13 @@ where
                     let descriptors = instrs.calc_vertex_attrs_u16_skin_descriptors();
                     let desc_sets = descriptors.len();
                     if desc_sets > 0 {
-                        let compute = pool.compute_desc_sets(
+                        let mut compute = pool.compute_desc_sets(
                             #[cfg(feature = "debug-names")]
                             &self.name,
                             ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode::U16_SKIN),
                             desc_sets,
                         );
-                        Self::write_calc_vertex_attrs_descriptors(&compute, descriptors);
+                        Self::write_calc_vertex_attrs_descriptors(&mut compute, descriptors);
                         self.compute_u16_skin_vertex_attrs = Some(compute);
                     }
 
@@ -361,13 +392,13 @@ where
                     let descriptors = instrs.calc_vertex_attrs_u32_descriptors();
                     let desc_sets = descriptors.len();
                     if desc_sets > 0 {
-                        let compute = pool.compute_desc_sets(
+                        let mut compute = pool.compute_desc_sets(
                             #[cfg(feature = "debug-names")]
                             &self.name,
                             ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode::U32),
                             desc_sets,
                         );
-                        Self::write_calc_vertex_attrs_descriptors(&compute, descriptors);
+                        Self::write_calc_vertex_attrs_descriptors(&mut compute, descriptors);
                         self.compute_u32_vertex_attrs = Some(compute);
                     }
 
@@ -375,13 +406,13 @@ where
                     let descriptors = instrs.calc_vertex_attrs_u32_skin_descriptors();
                     let desc_sets = descriptors.len();
                     if desc_sets > 0 {
-                        let compute = pool.compute_desc_sets(
+                        let mut compute = pool.compute_desc_sets(
                             #[cfg(feature = "debug-names")]
                             &self.name,
                             ComputeMode::CalcVertexAttrs(CalcVertexAttrsComputeMode::U32_SKIN),
                             desc_sets,
                         );
-                        Self::write_calc_vertex_attrs_descriptors(&compute, descriptors);
+                        Self::write_calc_vertex_attrs_descriptors(&mut compute, descriptors);
                         self.compute_u32_skin_vertex_attrs = Some(compute);
                     }
                 }
@@ -581,7 +612,16 @@ where
             render_pass,
             frame_buf.as_ref(),
             viewport.rect,
-            &[light_clear, depth_clear],
+            vec![
+                RenderAttachmentInfo {
+                    clear_value: light_clear,
+                    image_view: light.as_2d_color().as_ref(),
+                },
+                RenderAttachmentInfo {
+                    clear_value: depth_clear,
+                    image_view: depth.as_2d_depth().as_ref(),
+                },
+            ],
             SubpassContents::Inline,
         );
     }
@@ -692,14 +732,14 @@ where
         // NOTE: These sub ranges are not SubRange::WHOLE because the leased data may have
         // additional capacity beyond the indices/vertices we're using
 
-        self.cmd_buf.bind_index_buffer(IndexBufferView {
-            buffer: instr.idx_buf.as_ref(),
-            index_type: instr.idx_ty.into(),
-            range: SubRange {
+        self.cmd_buf.bind_index_buffer(
+            instr.idx_buf.as_ref(),
+            SubRange {
                 offset: 0,
                 size: Some(instr.idx_buf_len),
             },
-        });
+            instr.idx_ty.into(),
+        );
         self.cmd_buf.bind_vertex_buffers(
             0,
             once((
@@ -1270,174 +1310,168 @@ where
                 wait_semaphores: empty(),
                 signal_semaphores: empty::<&<_Backend as Backend>::Semaphore>(),
             },
-            Some(self.fence.as_ref()),
+            Some(self.fence.as_mut()),
         );
     }
 
     unsafe fn write_calc_vertex_attrs_descriptors<'v>(
-        compute: &Compute,
+        compute: &mut Compute,
         vertex_bufs: impl Iterator<Item = CalcVertexAttrsDescriptors<'v, P>>,
     ) {
         for (idx, vertex_buf) in vertex_bufs.enumerate() {
-            let set = compute.desc_set(idx);
-            device().write_descriptor_sets(vec![
-                DescriptorSetWrite {
-                    set,
-                    binding: 0,
-                    array_offset: 0,
-                    descriptors: once(Descriptor::Buffer(
-                        vertex_buf.idx_buf.as_ref(),
-                        SubRange {
-                            offset: 0,
-                            size: Some(vertex_buf.idx_len),
-                        },
-                    )),
-                },
-                DescriptorSetWrite {
-                    set,
-                    binding: 1,
-                    array_offset: 0,
-                    descriptors: once(Descriptor::Buffer(
-                        vertex_buf.src.as_ref(),
-                        SubRange {
-                            offset: 0,
-                            size: Some(vertex_buf.src_len),
-                        },
-                    )),
-                },
-                DescriptorSetWrite {
-                    set,
-                    binding: 2,
-                    array_offset: 0,
-                    descriptors: once(Descriptor::Buffer(
-                        vertex_buf.dst.as_ref(),
-                        SubRange {
-                            offset: 0,
-                            size: Some(vertex_buf.dst_len),
-                        },
-                    )),
-                },
-                DescriptorSetWrite {
-                    set,
-                    binding: 3,
-                    array_offset: 0,
-                    descriptors: once(Descriptor::Buffer(
-                        vertex_buf.write_mask.as_ref(),
-                        SubRange {
-                            offset: 0,
-                            size: Some(vertex_buf.write_mask_len),
-                        },
-                    )),
-                },
-            ]);
+            let set = compute.desc_set_mut(idx);
+            device().write_descriptor_set(DescriptorSetWrite {
+                set,
+                binding: 0,
+                array_offset: 0,
+                descriptors: once(Descriptor::Buffer(
+                    vertex_buf.idx_buf.as_ref(),
+                    SubRange {
+                        offset: 0,
+                        size: Some(vertex_buf.idx_len),
+                    },
+                )),
+            });
+            device().write_descriptor_set(DescriptorSetWrite {
+                set,
+                binding: 1,
+                array_offset: 0,
+                descriptors: once(Descriptor::Buffer(
+                    vertex_buf.src.as_ref(),
+                    SubRange {
+                        offset: 0,
+                        size: Some(vertex_buf.src_len),
+                    },
+                )),
+            });
+            device().write_descriptor_set(DescriptorSetWrite {
+                set,
+                binding: 2,
+                array_offset: 0,
+                descriptors: once(Descriptor::Buffer(
+                    vertex_buf.dst.as_ref(),
+                    SubRange {
+                        offset: 0,
+                        size: Some(vertex_buf.dst_len),
+                    },
+                )),
+            });
+            device().write_descriptor_set(DescriptorSetWrite {
+                set,
+                binding: 3,
+                array_offset: 0,
+                descriptors: once(Descriptor::Buffer(
+                    vertex_buf.write_mask.as_ref(),
+                    SubRange {
+                        offset: 0,
+                        size: Some(vertex_buf.write_mask_len),
+                    },
+                )),
+            });
         }
     }
 
     unsafe fn write_model_material_descriptors<'m>(
-        graphics: &Graphics,
+        graphics: &mut Graphics,
         materials: impl Iterator<Item = &'m Material<P>>,
     ) {
         for (idx, material) in materials.enumerate() {
-            let set = graphics.desc_set(idx);
-            device().write_descriptor_sets(vec![
-                DescriptorSetWrite {
-                    set,
-                    binding: 0,
-                    array_offset: 0,
-                    descriptors: once(Descriptor::CombinedImageSampler(
-                        material.color.borrow().as_2d_color().as_ref(),
-                        Layout::ShaderReadOnlyOptimal,
-                        graphics.sampler(0).as_ref(),
-                    )),
-                },
-                DescriptorSetWrite {
-                    set,
-                    binding: 1,
-                    array_offset: 0,
-                    descriptors: once(Descriptor::CombinedImageSampler(
-                        material.metal_rough.borrow().as_2d_color().as_ref(),
-                        Layout::ShaderReadOnlyOptimal,
-                        graphics.sampler(1).as_ref(),
-                    )),
-                },
-                DescriptorSetWrite {
-                    set,
-                    binding: 2,
-                    array_offset: 0,
-                    descriptors: once(Descriptor::CombinedImageSampler(
-                        material.normal.borrow().as_2d_color().as_ref(),
-                        Layout::ShaderReadOnlyOptimal,
-                        graphics.sampler(2).as_ref(),
-                    )),
-                },
-            ]);
-        }
-    }
-
-    unsafe fn write_skydome_descriptors(graphics: &Graphics, skydome: &Skydome<P>) {
-        let set = graphics.desc_set(0);
-        device().write_descriptor_sets(vec![
-            DescriptorSetWrite {
+            let (set, samplers) = graphics.desc_set_mut_with_samplers(idx);
+            device().write_descriptor_set(DescriptorSetWrite {
                 set,
                 binding: 0,
                 array_offset: 0,
                 descriptors: once(Descriptor::CombinedImageSampler(
-                    skydome.cloud[0].borrow().as_2d_color().as_ref(),
+                    material.color.borrow().as_2d_color().as_ref(),
                     Layout::ShaderReadOnlyOptimal,
-                    graphics.sampler(0).as_ref(),
+                    samplers[0].as_ref(),
                 )),
-            },
-            DescriptorSetWrite {
+            });
+            device().write_descriptor_set(DescriptorSetWrite {
                 set,
                 binding: 1,
                 array_offset: 0,
                 descriptors: once(Descriptor::CombinedImageSampler(
-                    skydome.cloud[1].borrow().as_2d_color().as_ref(),
+                    material.metal_rough.borrow().as_2d_color().as_ref(),
                     Layout::ShaderReadOnlyOptimal,
-                    graphics.sampler(1).as_ref(),
+                    samplers[1].as_ref(),
                 )),
-            },
-            DescriptorSetWrite {
+            });
+            device().write_descriptor_set(DescriptorSetWrite {
                 set,
                 binding: 2,
                 array_offset: 0,
                 descriptors: once(Descriptor::CombinedImageSampler(
-                    skydome.moon.borrow().as_2d_color().as_ref(),
+                    material.normal.borrow().as_2d_color().as_ref(),
                     Layout::ShaderReadOnlyOptimal,
-                    graphics.sampler(2).as_ref(),
+                    samplers[2].as_ref(),
                 )),
-            },
-            DescriptorSetWrite {
-                set,
-                binding: 3,
-                array_offset: 0,
-                descriptors: once(Descriptor::CombinedImageSampler(
-                    skydome.sun.borrow().as_2d_color().as_ref(),
-                    Layout::ShaderReadOnlyOptimal,
-                    graphics.sampler(3).as_ref(),
-                )),
-            },
-            DescriptorSetWrite {
-                set,
-                binding: 4,
-                array_offset: 0,
-                descriptors: once(Descriptor::CombinedImageSampler(
-                    skydome.tint[0].borrow().as_2d_color().as_ref(),
-                    Layout::ShaderReadOnlyOptimal,
-                    graphics.sampler(4).as_ref(),
-                )),
-            },
-            DescriptorSetWrite {
-                set,
-                binding: 5,
-                array_offset: 0,
-                descriptors: once(Descriptor::CombinedImageSampler(
-                    skydome.tint[1].borrow().as_2d_color().as_ref(),
-                    Layout::ShaderReadOnlyOptimal,
-                    graphics.sampler(5).as_ref(),
-                )),
-            },
-        ]);
+            });
+        }
+    }
+
+    unsafe fn write_skydome_descriptors(graphics: &mut Graphics, skydome: &Skydome<P>) {
+        let (set, samplers) = graphics.desc_set_mut_with_samplers(0);
+        device().write_descriptor_set(DescriptorSetWrite {
+            set,
+            binding: 0,
+            array_offset: 0,
+            descriptors: once(Descriptor::CombinedImageSampler(
+                skydome.cloud[0].borrow().as_2d_color().as_ref(),
+                Layout::ShaderReadOnlyOptimal,
+                samplers[0].as_ref(),
+            )),
+        });
+        device().write_descriptor_set(DescriptorSetWrite {
+            set,
+            binding: 1,
+            array_offset: 0,
+            descriptors: once(Descriptor::CombinedImageSampler(
+                skydome.cloud[1].borrow().as_2d_color().as_ref(),
+                Layout::ShaderReadOnlyOptimal,
+                samplers[1].as_ref(),
+            )),
+        });
+        device().write_descriptor_set(DescriptorSetWrite {
+            set,
+            binding: 2,
+            array_offset: 0,
+            descriptors: once(Descriptor::CombinedImageSampler(
+                skydome.moon.borrow().as_2d_color().as_ref(),
+                Layout::ShaderReadOnlyOptimal,
+                samplers[2].as_ref(),
+            )),
+        });
+        device().write_descriptor_set(DescriptorSetWrite {
+            set,
+            binding: 3,
+            array_offset: 0,
+            descriptors: once(Descriptor::CombinedImageSampler(
+                skydome.sun.borrow().as_2d_color().as_ref(),
+                Layout::ShaderReadOnlyOptimal,
+                samplers[3].as_ref(),
+            )),
+        });
+        device().write_descriptor_set(DescriptorSetWrite {
+            set,
+            binding: 4,
+            array_offset: 0,
+            descriptors: once(Descriptor::CombinedImageSampler(
+                skydome.tint[0].borrow().as_2d_color().as_ref(),
+                Layout::ShaderReadOnlyOptimal,
+                samplers[4].as_ref(),
+            )),
+        });
+        device().write_descriptor_set(DescriptorSetWrite {
+            set,
+            binding: 5,
+            array_offset: 0,
+            descriptors: once(Descriptor::CombinedImageSampler(
+                skydome.tint[1].borrow().as_2d_color().as_ref(),
+                Layout::ShaderReadOnlyOptimal,
+                samplers[5].as_ref(),
+            )),
+        });
     }
 }
 

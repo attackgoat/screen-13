@@ -1,10 +1,9 @@
 use {
     super::{Dim, RenderPass},
     crate::{gpu::device, math::Extent},
-    gfx_hal::{device::Device as _, image::Extent as ImageExtent, Backend},
+    gfx_hal::{device::Device as _, image::FramebufferAttachment, Backend},
     gfx_impl::Backend as _Backend,
     std::{
-        borrow::Borrow,
         marker::PhantomData,
         ops::{Deref, DerefMut},
     },
@@ -39,24 +38,15 @@ impl Framebuffer<U2> {
     pub unsafe fn new<I>(
         #[cfg(feature = "debug-names")] name: &str,
         render_pass: &RenderPass,
-        image_views: I,
+        attachments: I,
         dims: Extent,
     ) -> Self
     where
-        I: IntoIterator,
-        I::Item: Borrow<<_Backend as Backend>::ImageView>,
+        I: IntoIterator<Item = FramebufferAttachment>,
     {
         let ctor = || {
             device()
-                .create_framebuffer(
-                    render_pass,
-                    image_views,
-                    ImageExtent {
-                        width: dims.x,
-                        height: dims.y,
-                        depth: 1,
-                    },
-                )
+                .create_framebuffer(render_pass, attachments, dims.as_extent_depth(1))
                 .unwrap()
         };
 

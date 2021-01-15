@@ -1,14 +1,11 @@
 use {
     super::{desc_set_layout, push_const, push_const::ShaderRange, READ_ONLY_IMG, READ_WRITE_IMG},
-    crate::{
-        color::TRANSPARENT_BLACK,
-        gpu::{
-            driver::{
-                descriptor_range_desc, DescriptorPool, DescriptorSetLayout, GraphicsPipeline,
-                PipelineLayout, Sampler, ShaderModule,
-            },
-            spirv,
+    crate::gpu::{
+        driver::{
+            descriptor_range_desc, DescriptorPool, DescriptorSetLayout, GraphicsPipeline,
+            PipelineLayout, Sampler, ShaderModule,
         },
+        spirv,
     },
     gfx_hal::{
         image::{Filter, Lod, WrapMode},
@@ -192,7 +189,6 @@ unsafe fn sampler(filter: Filter) -> Sampler {
         (WrapMode::Tile, WrapMode::Tile, WrapMode::Tile),
         (Lod(0.0), Lod(0.0)..Lod(0.0)),
         None,
-        TRANSPARENT_BLACK.into(),
         true,
         None,
     )
@@ -1519,6 +1515,17 @@ impl Graphics {
         &self.desc_sets[idx]
     }
 
+    pub fn desc_set_mut(&mut self, idx: usize) -> &mut <_Backend as Backend>::DescriptorSet {
+        &mut self.desc_sets[idx]
+    }
+
+    pub fn desc_set_mut_with_samplers(
+        &mut self,
+        idx: usize,
+    ) -> (&mut <_Backend as Backend>::DescriptorSet, &[Sampler]) {
+        (&mut self.desc_sets[idx], self.samplers.as_slice())
+    }
+
     pub fn layout(&self) -> &PipelineLayout {
         &self.layout
     }
@@ -1548,7 +1555,7 @@ impl Graphics {
         }
     }
 
-    pub fn sampler(&self, idx: usize) -> &Sampler {
-        &self.samplers[idx]
-    }
+    // pub fn sampler(&self, idx: usize) -> &Sampler {
+    //     &self.samplers[idx]
+    // }
 }

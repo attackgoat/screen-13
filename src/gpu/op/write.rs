@@ -16,10 +16,16 @@ use {
     },
     a_r_c_h_e_r_y::SharedPointerKind,
     gfx_hal::{
-        command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, SubpassContents},
+        command::{
+            CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, RenderAttachmentInfo,
+            SubpassContents,
+        },
         device::Device as _,
         format::Aspects,
-        image::{Access, Layout, Offset, SubresourceLayers, Usage},
+        image::{
+            Access, FramebufferAttachment, Layout, Offset, SubresourceLayers, Usage,
+            ViewCapabilities,
+        },
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage, ShaderStageFlags, Viewport},
         queue::{CommandQueue as _, Submission},
@@ -271,8 +277,9 @@ where
                 self.src_textures.push(Texture2d::clone(writes[0].src));
             }
 
+            let fmt = self.dst.borrow().format();
             let render_pass_mode = RenderPassMode::Color(ColorRenderPassMode {
-                fmt: self.dst.borrow().format(),
+                fmt,
                 preserve: self.dst_preserve,
             });
 
@@ -284,7 +291,11 @@ where
                 #[cfg(feature = "debug-names")]
                 self.name.as_str(),
                 render_pass,
-                once(self.back_buf.borrow().as_2d_color().as_ref()),
+                once(FramebufferAttachment {
+                    format: fmt,
+                    usage: Usage::COLOR_ATTACHMENT | Usage::INPUT_ATTACHMENT,
+                    view_caps: ViewCapabilities::MUTABLE_FORMAT,
+                }),
                 self.dst.borrow().dims(),
             ));
 
@@ -395,7 +406,10 @@ where
             render_pass,
             self.frame_buf.as_ref().unwrap(),
             rect,
-            &[TRANSPARENT_BLACK.into()],
+            once(RenderAttachmentInfo {
+                image_view: back_buf.as_2d_color().as_ref(),
+                clear_value: TRANSPARENT_BLACK.into(),
+            }),
             SubpassContents::Inline,
         );
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
@@ -501,7 +515,7 @@ where
                 wait_semaphores: empty(),
                 signal_semaphores: empty::<&<_Backend as Backend>::Semaphore>(),
             },
-            Some(&self.fence),
+            Some(&mut self.fence),
         );
     }
 
@@ -514,47 +528,38 @@ where
         #[cfg(feature = "blend-modes")]
         let dst_view = dst.as_2d_color();
 
-        let graphics = self.graphics.as_ref().unwrap();
-        let sampler = graphics.sampler(0).as_ref();
+        let graphics = self.graphics.as_mut().unwrap();
 
         // Each source texture requres a unique descriptor set
         for (idx, src) in self.src_textures.iter().enumerate() {
-            let set = graphics.desc_set(idx);
+            let (set, samplers) = graphics.desc_set_mut_with_samplers(idx);
 
             // A descriptor for this source texture
-            let src_ref = src.borrow();
-            let src_view = src_ref.as_2d_color();
-            let src_desc = DescriptorSetWrite {
+            device().write_descriptor_set(DescriptorSetWrite {
                 set,
                 binding: 0,
                 array_offset: 0,
                 descriptors: once(Descriptor::CombinedImageSampler(
-                    &**src_view,
+                    src.borrow().as_2d_color().as_ref(),
                     Layout::ShaderReadOnlyOptimal,
-                    sampler,
+                    samplers[0].as_ref(),
                 )),
-            };
+            });
 
             // Blend mode requires a descriptor for the destination texture
             #[cfg(feature = "blend-modes")]
             if let Mode::Blend(_) = self.mode {
-                let dst_desc = DescriptorSetWrite {
+                device().write_descriptor_set(DescriptorSetWrite {
                     set,
                     binding: 1,
                     array_offset: 0,
                     descriptors: once(Descriptor::CombinedImageSampler(
-                        &**dst_view,
+                        dst_view.as_ref(),
                         Layout::ShaderReadOnlyOptimal,
-                        sampler,
+                        samplers[1].as_ref(),
                     )),
-                };
-                device().write_descriptor_sets(vec![src_desc, dst_desc]);
-            } else {
-                device().write_descriptor_sets(once(src_desc));
+                });
             }
-
-            #[cfg(not(feature = "blend-modes"))]
-            device().write_descriptor_sets(once(src_desc));
         }
     }
 }

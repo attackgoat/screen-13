@@ -91,7 +91,7 @@ Compiler errors and warnings are raised in these respective conditions so they a
 #### Clearing with solid colors
 
 The most basic operation, like its predecessor [`CLS`](https://en.wikipedia.org/wiki/CLS_(command)),
-simply fills a `Render` with the solid color.
+simply fills a `Render` with a solid color.
 
 Basic usage, fills `render` with black:
 
@@ -220,7 +220,7 @@ Additional command builder options include outline color and generalized matrix 
 
 ### Images
 
-For some `cat.jpg` file you might have this asset bitmap `.toml` file, `cat.toml`:
+For some `cat.jpeg` file you might have this asset bitmap `.toml` file, `cat.toml`:
 
 ```toml
 [bitmap]
@@ -242,7 +242,7 @@ usage is:
 
 ```rust
 render.write().record(&mut [
-    Write::position(&cat, (5.0, 5.0))
+    Write::position(&cat, (5.0, 5.0)),
 ]);
 ```
 
@@ -251,8 +251,8 @@ with `bar` earlier:
 
 ```rust
 render.write().record(&mut [
-    Write::position(&cat, (5.0, 5.0))
-    Write::position(&bar_tex, (2.0, 4.0))
+    Write::position(&cat, (5.0, 5.0)),
+    Write::position(&bar_tex, (2.0, 4.0)),
 ]);
 ```
 
@@ -286,18 +286,12 @@ and `rough_src` keys point to grayscale images which are the metalness/roughness
 
 Additionally, you must have added this file to the main project `.toml` file, `example.toml`.
 Following the asset baking process you should now have an asset `.pak` file, `example.pak`. In code,
-the image would be loaded like so:
+the model and material would be loaded like so:
 
 ```rust
 let teapot = gpu.read_model(&mut pak, "teapot");
-```
 
-#### Physically Based Rendering Materials
-
-Materials may be created easily:
-
-```rust
-// Loading new assets (notice use of IDs and how metalness/roughness have been merged for us)
+// Notice use of IDs and how metalness/roughness have been merged for us
 let glossy_cat = pak.material("glossy_cat");
 let dog = gpu.read_bitmap(&mut pak, "dog"); // Ignroing `glossy_cat.color`! 🙀
 let metal_rough = gpu.read_bitmap_with_id(&mut pak, glossy_cat.metal_rough);
@@ -321,7 +315,7 @@ let camera = Perspective::default();
 let transform = Mat4::identity();
 
 render.draw().record(&camera, &mut [
-    Draw::model(teapot, glossy_cat, transform)
+    Draw::model(teapot, glossy_cat, transform),
 ]);
 ```
 

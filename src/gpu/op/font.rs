@@ -12,9 +12,9 @@ use {
                 ColorRenderPassMode, Graphics, GraphicsMode, RenderPassMode,
             },
             device,
-            driver::{bind_graphics_descriptor_set, CommandPool, Fence, Framebuffer2d},
+            driver::{bind_graphics_descriptor_set, CommandPool, Fence, Framebuffer2d, Image2d},
             pool::{Lease, Pool},
-            queue_mut, Data, Texture2d,
+            queue_mut, Data, Texture, Texture2d,
         },
         math::{vec3, CoordF, Extent, Mat4},
         pak::Pak,
@@ -23,10 +23,16 @@ use {
     bmfont::{BMFont, CharPosition, OrdinateOrientation},
     gfx_hal::{
         buffer::{Access as BufferAccess, SubRange, Usage as BufferUsage},
-        command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, SubpassContents},
+        command::{
+            CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, RenderAttachmentInfo,
+            SubpassContents,
+        },
         device::Device as _,
         format::Aspects,
-        image::{Access as ImageAccess, Layout, Offset, SubresourceLayers, Usage as ImageUsage},
+        image::{
+            Access as ImageAccess, FramebufferAttachment, Layout, Offset, SubresourceLayers,
+            Usage as ImageUsage, ViewCapabilities,
+        },
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage, Rect, ShaderStageFlags, Viewport},
         queue::{CommandQueue, Submission},
@@ -38,7 +44,7 @@ use {
         f32,
         io::{Cursor, Read, Seek},
         iter::{empty, once},
-        ops::Range,
+        ops::{Deref, Range},
         u64,
     },
 };
@@ -312,76 +318,99 @@ where
     pub fn record(&mut self, font: &Font<P>, text: &str) {
         assert!(!text.is_empty());
 
-        let dims = self.dst.borrow().dims();
-        let graphics_mode = self.mode();
-        let render_pass_mode = RenderPassMode::Color(ColorRenderPassMode {
-            fmt: self.dst.borrow().format(),
-            preserve: true,
-        });
-        let pool = self.pool.as_mut().unwrap();
+        let (dims, render_pass_mode, tessellations) = {
+            let dst = self.dst.borrow();
+            let fmt = dst.format();
+            let dims = dst.dims();
+            let graphics_mode = self.mode();
+            let render_pass_mode = RenderPassMode::Color(ColorRenderPassMode {
+                fmt,
+                preserve: true,
+            });
+            let pool = self.pool.as_mut().unwrap();
 
-        // TODO: Cache these using "named" buffers? Let the client 'compile' them for reuse? Likey that more
-        let tessellations = font.tessellate(text, dims);
+            // TODO: Cache these using "named" buffers? Let the client 'compile' them for reuse? Likey that more
+            let tessellations = font.tessellate(text, dims);
 
-        // Finish the remaining setup tasks
-        unsafe {
-            // Setup the graphics pipeline
-            self.graphics.replace(pool.graphics_desc_sets(
-                #[cfg(feature = "debug-names")]
-                &self.name,
-                render_pass_mode,
-                SUBPASS_IDX,
-                graphics_mode,
-                1,
-            ));
+            // Finish the remaining setup tasks
+            unsafe {
+                // TODO: This may ask for too many descriptor sets if the pages are not contiguous
+                // Setup the graphics pipeline
+                self.graphics.replace(
+                    pool.graphics_desc_sets(
+                        #[cfg(feature = "debug-names")]
+                        &self.name,
+                        render_pass_mode,
+                        SUBPASS_IDX,
+                        graphics_mode,
+                        tessellations
+                            .iter()
+                            .map(|(page_idx, _)| page_idx + 1)
+                            .max()
+                            .unwrap_or_default(),
+                    ),
+                );
 
-            // Setup the framebuffer
-            self.frame_buf.replace(Framebuffer2d::new(
-                #[cfg(feature = "debug-names")]
-                self.name.as_str(),
-                pool.render_pass(render_pass_mode),
-                once(self.back_buf.borrow().as_2d_color().as_ref()),
-                dims,
-            ));
-
-            // Setup the vetex buffers
-            let vertex_buf_len = FONT_VERTEX_SIZE as u64
-                * tessellations
-                    .iter()
-                    .map(|(_, vertices)| vertices.len())
-                    .sum::<usize>() as u64;
-            self.vertex_buf.replace((
-                pool.data_usage(
+                // Setup the framebuffer
+                self.frame_buf.replace(Framebuffer2d::new(
                     #[cfg(feature = "debug-names")]
-                    &self.name,
+                    self.name.as_str(),
+                    pool.render_pass(render_pass_mode),
+                    once(FramebufferAttachment {
+                        format: fmt,
+                        usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
+                        view_caps: ViewCapabilities::MUTABLE_FORMAT,
+                    }),
+                    dims,
+                ));
+
+                // Setup the vetex buffers
+                let vertex_buf_len = FONT_VERTEX_SIZE as u64
+                    * tessellations
+                        .iter()
+                        .map(|(_, vertices)| vertices.len())
+                        .sum::<usize>() as u64;
+                self.vertex_buf.replace((
+                    pool.data_usage(
+                        #[cfg(feature = "debug-names")]
+                        &self.name,
+                        vertex_buf_len,
+                        BufferUsage::VERTEX,
+                    ),
                     vertex_buf_len,
-                    BufferUsage::VERTEX,
-                ),
-                vertex_buf_len,
-            ));
+                ));
 
-            // Fill the vertex buffer with each tessellation in order
-            {
-                let (vertex_buf, _) = self.vertex_buf.as_mut().unwrap();
-                let mut dst = vertex_buf.map_range_mut(0..vertex_buf_len).unwrap(); // TODO: Error handling!
-                let mut dst_offset = 0;
-                for (_, vertices) in &tessellations {
-                    let len = vertices.len();
-                    dst[dst_offset..dst_offset + len].copy_from_slice(&vertices);
-                    dst_offset += len;
+                // Fill the vertex buffer with each tessellation in order
+                {
+                    let (vertex_buf, _) = self.vertex_buf.as_mut().unwrap();
+                    let mut dst = vertex_buf.map_range_mut(0..vertex_buf_len).unwrap(); // TODO: Error handling!
+                    let mut dst_offset = 0;
+                    for (_, vertices) in &tessellations {
+                        let len = vertices.len();
+                        dst[dst_offset..dst_offset + len].copy_from_slice(&vertices);
+                        dst_offset += len;
+                    }
+
+                    Mapping::flush(&mut dst).unwrap(); // TODO: Error handling!
                 }
-
-                Mapping::flush(&mut dst).unwrap(); // TODO: Error handling!
             }
+
+            (dims, render_pass_mode, tessellations)
+        };
+
+        unsafe {
+            self.write_descriptors(
+                tessellations
+                    .iter()
+                    .map(|(page_idx, _)| font.pages[*page_idx].borrow()),
+            );
 
             self.submit_begin(dims, render_pass_mode);
 
             // Draw each page in the tessellation using those vertices and the correct font page texture index
             let mut base = 0;
             for (page_idx, vertices) in &tessellations {
-                self.write_descriptors(font, *page_idx);
-
-                self.submit_page_begin(dims);
+                self.submit_page_begin(dims, *page_idx);
 
                 if self.outline_color.is_some() {
                     self.submit_page_outline();
@@ -483,13 +512,16 @@ where
             render_pass,
             self.frame_buf.as_ref().unwrap(),
             rect,
-            once(&TRANSPARENT_BLACK.into()),
+            once(RenderAttachmentInfo {
+                image_view: back_buf.as_2d_color().as_ref(),
+                clear_value: TRANSPARENT_BLACK.into(),
+            }),
             SubpassContents::Inline,
         );
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
     }
 
-    unsafe fn submit_page_begin(&mut self, dims: Extent) {
+    unsafe fn submit_page_begin(&mut self, dims: Extent, page_idx: usize) {
         trace!("submit_page_begin");
 
         let graphics = self.graphics.as_ref().unwrap();
@@ -505,7 +537,11 @@ where
             depth: 0.0..1.0,
         };
 
-        bind_graphics_descriptor_set(&mut self.cmd_buf, graphics.layout(), graphics.desc_set(0));
+        bind_graphics_descriptor_set(
+            &mut self.cmd_buf,
+            graphics.layout(),
+            graphics.desc_set(page_idx),
+        );
         self.cmd_buf.set_scissors(0, &[rect]);
         self.cmd_buf.set_viewports(0, &[viewport]);
         self.cmd_buf.bind_vertex_buffers(
@@ -625,27 +661,32 @@ where
                 wait_semaphores: empty(),
                 signal_semaphores: empty::<&<_Backend as Backend>::Semaphore>(),
             },
-            Some(&self.fence),
+            Some(&mut self.fence),
         );
     }
 
-    unsafe fn write_descriptors(&mut self, font: &Font<P>, page_idx: usize) {
+    unsafe fn write_descriptors<I, T>(&mut self, pages: I)
+    where
+        I: Iterator<Item = T>,
+        T: Deref<Target = Texture<Image2d>>,
+    {
         trace!("write_descriptors");
 
-        // TODO: Fix, this should be one set per page not the same re-written
-        let page = font.pages[page_idx].borrow();
-        let page_view = page.as_2d_color();
-        let graphics = self.graphics.as_ref().unwrap();
-        device().write_descriptor_sets(once(DescriptorSetWrite {
-            set: graphics.desc_set(0),
-            binding: 0,
-            array_offset: 0,
-            descriptors: Some(Descriptor::CombinedImageSampler(
-                page_view.as_ref(),
-                Layout::General,
-                graphics.sampler(0).as_ref(),
-            )),
-        }));
+        let graphics = self.graphics.as_mut().unwrap();
+        for (idx, page) in pages.enumerate() {
+            let (set, samplers) = graphics.desc_set_mut_with_samplers(idx);
+
+            device().write_descriptor_set(DescriptorSetWrite {
+                set,
+                binding: 0,
+                array_offset: 0,
+                descriptors: Some(Descriptor::CombinedImageSampler(
+                    page.as_2d_color().as_ref(),
+                    Layout::General,
+                    samplers[0].as_ref(),
+                )),
+            });
+        }
     }
 }
 

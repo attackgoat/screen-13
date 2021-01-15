@@ -1,3 +1,4 @@
+//! The entrypoint in this file runs a webserver which hosts the index page and WASM code.
 #![deny(warnings)]
 
 use {
@@ -14,7 +15,7 @@ use {
 async fn main() {
     pretty_env_logger::init();
 
-    let addr = "127.0.0.1:1337".parse().unwrap();
+    let addr = "127.0.0.1:8080".parse().unwrap();
     let make_service = make_service_fn(|_| async { Ok::<_, Error>(service_fn(response_examples)) });
     let server = Server::bind(&addr).serve(make_service);
 

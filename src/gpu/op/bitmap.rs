@@ -305,8 +305,7 @@ where
     unsafe fn submit_conv(&mut self) {
         trace!("submit_conv");
 
-        let conv_fmt = self.conv_fmt.as_ref().unwrap();
-        let desc_set = conv_fmt.compute.desc_set(0);
+        let conv_fmt = self.conv_fmt.as_mut().unwrap();
         let pipeline = conv_fmt.compute.pipeline();
         let (_, pipeline_layout) = self.pool.layouts.compute_decode_rgb_rgba(
             #[cfg(feature = "debug-names")]
@@ -339,7 +338,11 @@ where
             }
             .as_ref(),
         );
-        bind_compute_descriptor_set(&mut self.cmd_buf, pipeline_layout, desc_set);
+        bind_compute_descriptor_set(
+            &mut self.cmd_buf,
+            pipeline_layout,
+            conv_fmt.compute.desc_set_mut(0),
+        );
         self.cmd_buf.dispatch([conv_fmt.dispatch, dims.y, 1]);
     }
 
@@ -396,38 +399,40 @@ where
                 wait_semaphores: empty(),
                 signal_semaphores: empty::<&<_Backend as Backend>::Semaphore>(),
             },
-            Some(&self.fence),
+            Some(&mut self.fence),
         );
     }
 
     unsafe fn write_descriptors(&mut self) {
         trace!("write_descriptors");
 
-        let conv_fmt = self.conv_fmt.as_ref().unwrap();
-        let set = conv_fmt.compute.desc_set(0);
+        let conv_fmt = self.conv_fmt.as_mut().unwrap();
+        let set = conv_fmt.compute.desc_set_mut(0);
         let texture = self.texture.borrow();
-        let texture_view =
-            texture.as_2d_color_format(change_channel_type(texture.format(), ChannelType::Uint));
-        device().write_descriptor_sets(vec![
-            DescriptorSetWrite {
-                set,
-                binding: 0,
-                array_offset: 0,
-                descriptors: once(Descriptor::Buffer(
-                    self.pixel_buf.as_ref(),
-                    SubRange {
-                        offset: 0,
-                        size: Some(self.pixel_buf_len),
-                    },
-                )),
-            },
-            DescriptorSetWrite {
-                set,
-                binding: 1,
-                array_offset: 0,
-                descriptors: once(Descriptor::Image(texture_view.as_ref(), Layout::General)), // TODO ????? Shouldn't this not be general?
-            },
-        ]);
+
+        device().write_descriptor_set(DescriptorSetWrite {
+            set,
+            binding: 0,
+            array_offset: 0,
+            descriptors: once(Descriptor::Buffer(
+                self.pixel_buf.as_ref(),
+                SubRange {
+                    offset: 0,
+                    size: Some(self.pixel_buf_len),
+                },
+            )),
+        });
+        device().write_descriptor_set(DescriptorSetWrite {
+            set,
+            binding: 1,
+            array_offset: 0,
+            descriptors: once(Descriptor::Image(
+                texture
+                    .as_2d_color_format(change_channel_type(texture.format(), ChannelType::Uint))
+                    .as_ref(),
+                Layout::General,
+            )), // TODO ????? Shouldn't this not be general?
+        });
     }
 }
 

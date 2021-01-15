@@ -158,7 +158,7 @@ where
                 wait_semaphores: empty(),
                 signal_semaphores: empty::<&<_Backend as Backend>::Semaphore>(),
             },
-            Some(&self.fence),
+            Some(&mut self.fence),
         );
     }
 }

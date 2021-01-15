@@ -3,6 +3,7 @@
 mod layouts;
 mod lease;
 
+#[rustfmt::skip]
 mod skydome {
     include!(concat!(env!("OUT_DIR"), "/skydome.rs"));
 }
