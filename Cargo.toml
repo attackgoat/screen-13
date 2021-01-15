@@ -56,6 +56,10 @@ pretty_env_logger = "0.4"
 # [[bin]] required features?
 gltf = "0.15"
 
+[[bench]]
+name = "my_benchmark"
+harness = false
+
 [build-dependencies]
 genmesh = "0.6"
 glam = "0.12"
@@ -65,6 +69,7 @@ lazy_static = "1.4"
 shaderc = "0.7"
 
 [dev-dependencies]
+criterion = "0.3"
 hecs = "0.3"
 paste = "1.0"
 pretty_env_logger = "0.4"
