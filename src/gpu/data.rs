@@ -299,9 +299,9 @@ impl Data {
 
         let mem = self
             .staging
-            .as_ref()
-            .map(|staging| &staging.mem)
-            .unwrap_or(&self.storage.mem);
+            .as_mut()
+            .map(|staging| &mut staging.mem)
+            .unwrap_or(&mut self.storage.mem);
 
         unsafe { Mapping::new(mem, range) }
     }
@@ -456,7 +456,7 @@ impl AsRef<<_Backend as Backend>::Buffer> for Data {
 pub struct Mapping<'m> {
     flushed: bool,
     len: usize,
-    mapped_mem: (&'m <_Backend as Backend>::Memory, Segment),
+    mapped_mem: (&'m mut <_Backend as Backend>::Memory, Segment),
     ptr: *mut u8,
 }
 
@@ -465,7 +465,7 @@ impl<'m> Mapping<'m> {
     ///
     /// The given memory must not be mapped and contain the given range.
     unsafe fn new(
-        mem: &'m <_Backend as Backend>::Memory,
+        mem: &'m mut <_Backend as Backend>::Memory,
         range: Range<u64>,
     ) -> Result<Self, MapError> {
         assert_ne!(range.end, 0);
@@ -494,13 +494,12 @@ impl<'m> Mapping<'m> {
         let ptr = device()
             .map_memory(mem, segment.clone())?
             .offset((range.start - offset) as _);
-        let mapped_mem = (mem, segment);
-        device().invalidate_mapped_memory_ranges(once(&mapped_mem))?;
+        device().invalidate_mapped_memory_ranges(once(&(&*mem, segment.clone())))?;
 
         Ok(Self {
             flushed: true,
             len: (range.end - range.start) as _,
-            mapped_mem,
+            mapped_mem: (&mut *mem, segment),
             ptr,
         })
     }
@@ -512,8 +511,10 @@ impl<'m> Mapping<'m> {
         if !mapping.flushed {
             mapping.flushed = true;
 
+            let mapped_mem = (&*mapping.mapped_mem.0, mapping.mapped_mem.1.clone());
+
             unsafe {
-                device().flush_mapped_memory_ranges(once(&mapping.mapped_mem))?;
+                device().flush_mapped_memory_ranges(once(&mapped_mem))?;
             }
         }
 
@@ -544,7 +545,7 @@ impl Drop for Mapping<'_> {
         Self::flush(self).unwrap();
 
         unsafe {
-            device().unmap_memory(self.mapped_mem.0);
+            device().unmap_memory(&mut self.mapped_mem.0);
         }
     }
 }

@@ -1,3 +1,4 @@
+#[rustfmt::skip]
 mod default_program_icon {
     include!(concat!(env!("OUT_DIR"), "/default_program_icon.rs"));
 }

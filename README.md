@@ -42,7 +42,7 @@ Some examples require an associated asset `.pak` file in order to run, so you wi
 example like so:
 
 ```bash
-cargo run --release examples/content/basic.toml
+cargo run --release examples/res/basic.toml
 cargo run --release --example basic
 ```
 

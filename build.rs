@@ -30,10 +30,7 @@ lazy_static! {
 }
 
 fn main() {
-    // WASM can't build shaderc so we use it from another build, such as x86_64, see `examples/wasm`
-    #[cfg(not(target_arch = "wasm32"))]
     compile_shaders();
-
     gen_point_light();
     gen_skydome();
     gen_spotlight_fn();
@@ -402,7 +399,6 @@ pub fn gen_spotlight(
     writeln!(output_file, "    res\n}}").unwrap();
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 mod shader {
     use {
         super::OUT_DIR,

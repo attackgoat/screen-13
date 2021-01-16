@@ -88,11 +88,13 @@ mod model;
 mod op;
 mod pool;
 mod render;
+mod swapchain;
+mod texture;
+
+#[rustfmt::skip]
 mod spirv {
     include!(concat!(env!("OUT_DIR"), "/spirv/mod.rs"));
 }
-mod swapchain;
-mod texture;
 
 pub use self::{
     def::vertex,
@@ -126,7 +128,7 @@ use {
         adapter::{Adapter, DeviceType, MemoryProperties, PhysicalDevice},
         buffer::Usage,
         device::Device,
-        memory::Properties,
+        memory::{HeapFlags, Properties},
         queue::{QueueFamily, QueueFamilyId, QueueGroup},
         window::Surface as _,
         Backend, Features, Instance as _, MemoryTypeId,
@@ -203,31 +205,43 @@ unsafe fn init_gfx_hal() {
     let adapter = if adapters.is_empty() {
         panic!("Unable to find GFX-HAL adapter");
     } else {
+        // Prefer adapters by type in this order ...
+        #[cfg(not(feature = "low-power"))]
+        let type_rank = |ty: &DeviceType| -> u8 {
+            match ty {
+                DeviceType::DiscreteGpu => 0,
+                DeviceType::IntegratedGpu => 1,
+                DeviceType::VirtualGpu => 2,
+                DeviceType::Cpu => 3,
+                DeviceType::Other => 4,
+            }
+        };
+
+        // ... this order when in low-power mode.
+        #[cfg(feature = "low-power")]
+        let type_rank = |ty: &DeviceType| -> u8 {
+            match ty {
+                DeviceType::IntegratedGpu => 0,
+                DeviceType::Cpu => 1,
+                DeviceType::VirtualGpu => 2,
+                DeviceType::DiscreteGpu => 3,
+                DeviceType::Other => 4,
+            }
+        };
+
+        // Prefer adapters with the most memory
+        let device_mem = |device: &<_Backend as Backend>::PhysicalDevice| -> u64 {
+            device
+                .memory_properties()
+                .memory_heaps
+                .iter()
+                .filter(|heap| heap.flags.contains(HeapFlags::DEVICE_LOCAL))
+                .map(|heap| heap.size)
+                .sum()
+        };
+
         adapters.sort_unstable_by(|a, b| {
-            // 1a. Prefer adapters by type in this order
-            #[cfg(not(feature = "low-power"))]
-            let type_rank = |ty: &DeviceType| -> u8 {
-                match ty {
-                    DeviceType::DiscreteGpu => 0,
-                    DeviceType::IntegratedGpu => 1,
-                    DeviceType::VirtualGpu => 2,
-                    DeviceType::Cpu => 3,
-                    DeviceType::Other => 4,
-                }
-            };
-
-            // 1b. This order when in low-power mode
-            #[cfg(feature = "low-power")]
-            let type_rank = |ty: &DeviceType| -> u8 {
-                match ty {
-                    DeviceType::IntegratedGpu => 0,
-                    DeviceType::Cpu => 1,
-                    DeviceType::VirtualGpu => 2,
-                    DeviceType::DiscreteGpu => 3,
-                    DeviceType::Other => 4,
-                }
-            };
-
+            // 1. Best type of device for the current feature set (Default = performance)
             let a_type_rank = type_rank(&a.info.device_type);
             let b_type_rank = type_rank(&b.info.device_type);
             match a_type_rank.cmp(&b_type_rank) {
@@ -235,20 +249,10 @@ unsafe fn init_gfx_hal() {
                 ne @ _ => return ne,
             }
 
-            // 2. Prefer adapters with the most memory (this is not totally accurate)
-            let a_total_mem: u64 = a
-                .physical_device
-                .memory_properties()
-                .memory_heaps
-                .iter()
-                .sum();
-            let b_total_mem: u64 = b
-                .physical_device
-                .memory_properties()
-                .memory_heaps
-                .iter()
-                .sum();
-            match b_total_mem.cmp(&a_total_mem) {
+            // 2. Most on-device memory
+            let a_mem = device_mem(&a.physical_device);
+            let b_mem = device_mem(&b.physical_device);
+            match b_mem.cmp(&a_mem) {
                 Ordering::Equal => (),
                 ne @ _ => return ne,
             }
@@ -261,18 +265,10 @@ unsafe fn init_gfx_hal() {
         let adapter = adapters.remove(0);
 
         info!(
-            "Adapter #1: {} {:?} [Total Memory = {}GB]",
+            "Adapter #1: {} {:?} [Total Memory = {} GiB]",
             &adapter.info.name,
             adapter.info.device_type,
-            adapter
-                .physical_device
-                .memory_properties()
-                .memory_heaps
-                .iter()
-                .sum::<u64>()
-                / 1024
-                / 1024
-                / 1024
+            device_mem(&adapter.physical_device) / 1024 / 1024 / 1024
         );
 
         for (idx, adapter) in adapters.iter().enumerate() {

@@ -10,10 +10,12 @@ use {
     },
     crate::math::{vec3, CoordF, Extent, Mat4},
     gfx_hal::{
-        command::{ClearValue, CommandBuffer as _, CommandBufferFlags, Level, SubpassContents},
+        command::{
+            CommandBuffer as _, CommandBufferFlags, Level, RenderAttachmentInfo, SubpassContents,
+        },
         device::Device as _,
         format::{ChannelType, Format},
-        image::{Access, Layout},
+        image::{Access, FramebufferAttachment, Layout},
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage, ShaderStageFlags, Viewport},
         queue::{CommandQueue as _, Submission},
@@ -21,10 +23,7 @@ use {
         Backend,
     },
     gfx_impl::Backend as _Backend,
-    std::{
-        borrow::Borrow,
-        iter::{empty, once},
-    },
+    std::iter::{empty, once},
 };
 
 // TODO: Test things while fiddling with the result of this function
@@ -67,10 +66,10 @@ pub enum PresentError {
 pub struct Swapchain {
     dims: Extent,
     fmt: Format,
+    frame_buf_attachment: Option<FramebufferAttachment>,
     graphics: Graphics,
     image_idx: usize,
     images: Vec<Image>,
-    needs_configuration: bool,
     render_pass: RenderPass,
     supported_fmts: Vec<Format>,
     surface: Surface,
@@ -124,10 +123,10 @@ impl Swapchain {
         Self {
             dims,
             fmt,
+            frame_buf_attachment: None,
             graphics,
             images,
             image_idx: 0,
-            needs_configuration,
             render_pass,
             supported_fmts,
             surface,
@@ -140,12 +139,14 @@ impl Swapchain {
 
         let caps = self.surface.capabilities(&adapter().physical_device);
         let swap_config = swapchain_config(caps, self.dims, self.fmt, self.images.len() as _);
+        let frame_buf_attachment = swap_config.framebuffer_attachment();
         if let Err(e) = self.surface.configure_swapchain(device(), swap_config) {
             warn!("Error configuring swapchain {:?}", e);
 
-            self.needs_configuration = true;
+            // We need configuration!
+            self.frame_buf_attachment = None;
         } else {
-            self.needs_configuration = false;
+            self.frame_buf_attachment = Some(frame_buf_attachment);
         }
 
         self.supported_fmts = self
@@ -159,19 +160,17 @@ impl Swapchain {
     }
 
     pub unsafe fn present(&mut self, texture: &mut Texture2d) {
-        if self.needs_configuration {
+        // We must have a frame buffer attachment (a configured swapchain) in order to present
+        if self.frame_buf_attachment.is_none() {
             debug!("Configuring swapchain");
             self.configure();
 
-            if self.needs_configuration {
+            if self.frame_buf_attachment.is_none() {
+                // TODO: Warn? Or a helpful comment....
                 info!("Unable to configure swapchain - not presenting");
                 return;
             }
         }
-
-        self.image_idx += 1;
-        self.image_idx %= self.images.len();
-        let image = &mut self.images[self.image_idx];
 
         // Allow 100ms for the next image to be ready
         let image_view = match self.surface.acquire_image(100_000_000) {
@@ -183,7 +182,7 @@ impl Swapchain {
                 // If it is suboptimal we will still present and configure on the next frame
                 if suboptimal.is_some() {
                     info!("Suboptimal swapchain image");
-                    self.needs_configuration = true;
+                    self.frame_buf_attachment = None;
                 }
 
                 image_view
@@ -194,27 +193,13 @@ impl Swapchain {
             #[cfg(feature = "debug-names")]
             "Present",
             &self.render_pass,
-            once(image_view.borrow()),
+            once(self.frame_buf_attachment.as_ref().unwrap().clone()),
             self.dims,
         );
 
-        let set = self.graphics.desc_set(0);
+        self.write_descriptor(texture);
+
         let mut src = texture.borrow_mut();
-
-        {
-            let sampler = self.graphics.sampler(0).as_ref();
-            device().write_descriptor_sets(once(DescriptorSetWrite {
-                set,
-                binding: 0,
-                array_offset: 0,
-                descriptors: once(Descriptor::CombinedImageSampler(
-                    src.as_2d_color().as_ref(),
-                    Layout::ShaderReadOnlyOptimal,
-                    sampler,
-                )),
-            }));
-        }
-
         let dst_dims: CoordF = self.dims.into();
         let src_dims: CoordF = src.dims().into();
 
@@ -230,6 +215,9 @@ impl Swapchain {
             1.0,
         )) * Mat4::from_translation(vec3(-0.5, -0.5, 0.0));
 
+        self.image_idx += 1;
+        self.image_idx %= self.images.len();
+        let image = &mut self.images[self.image_idx];
         Fence::wait(&image.fence);
         Fence::reset(&mut image.fence);
 
@@ -257,7 +245,11 @@ impl Swapchain {
         image
             .cmd_buf
             .bind_graphics_pipeline(self.graphics.pipeline());
-        bind_graphics_descriptor_set(&mut image.cmd_buf, self.graphics.layout(), set);
+        bind_graphics_descriptor_set(
+            &mut image.cmd_buf,
+            self.graphics.layout(),
+            self.graphics.desc_set(0),
+        );
         image.cmd_buf.push_graphics_constants(
             self.graphics.layout(),
             ShaderStageFlags::VERTEX,
@@ -268,7 +260,7 @@ impl Swapchain {
             &self.render_pass,
             &frame_buf,
             rect,
-            empty::<&ClearValue>(),
+            empty::<RenderAttachmentInfo<_Backend>>(),
             SubpassContents::Inline,
         );
         image.cmd_buf.draw(0..6, 0..1);
@@ -283,19 +275,19 @@ impl Swapchain {
                 wait_semaphores: empty(),
                 signal_semaphores: once(image.signal.as_ref()),
             },
-            Some(&image.fence),
+            Some(&mut image.fence),
         );
-        match queue.present(&mut self.surface, image_view, Some(&image.signal)) {
+        match queue.present(&mut self.surface, image_view, Some(&mut image.signal)) {
             Err(e) => {
                 warn!("Unable to present swapchain image");
-                self.needs_configuration = true;
+                self.frame_buf_attachment = None;
                 Err(e)
             }
             Ok(_suboptimal) => {
                 // TODO: Learn more about this
                 // if suboptimal.is_some() {
                 //     info!("Suboptimal swapchain");
-                //     //self.needs_configuration = true;
+                //     //self.frame_buf_attachment = None;
                 // }
 
                 Ok(())
@@ -306,6 +298,20 @@ impl Swapchain {
 
     pub fn supported_formats(&self) -> &[Format] {
         &self.supported_fmts
+    }
+
+    unsafe fn write_descriptor(&mut self, texture: &Texture2d) {
+        let (set, samplers) = self.graphics.desc_set_mut_with_samplers(0);
+        device().write_descriptor_set(DescriptorSetWrite {
+            set,
+            binding: 0,
+            array_offset: 0,
+            descriptors: once(Descriptor::CombinedImageSampler(
+                texture.borrow().as_2d_color().as_ref(),
+                Layout::ShaderReadOnlyOptimal,
+                samplers[0].as_ref(),
+            )),
+        });
     }
 }
 

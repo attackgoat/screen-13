@@ -37,7 +37,7 @@ bincode = "1.3" # TODO: Maybe replace with rkyv which is faster
 bmfont = "0.3"
 brotli = "3.3"
 byteorder = "1.4"
-gfx-hal = "0.6"
+gfx-hal = { git = "https://github.com/gfx-rs/gfx", branch = "staging" }
 glam = { version = "0.12", features = ["serde"] }
 image = "0.23"
 num-traits = "0.2"
@@ -52,7 +52,8 @@ log = "0.4"
 num-format = "0.4.0"
 pretty_env_logger = "0.4"
 
-# TODO: Baking deps here https://github.com/rust-lang/cargo/issues/1982 maybe use features and [[bin]] required features?
+# TODO: Baking deps here https://github.com/rust-lang/cargo/issues/1982 maybe use features and
+# [[bin]] required features?
 gltf = "0.15"
 
 [build-dependencies]
@@ -70,7 +71,14 @@ pretty_env_logger = "0.4"
 rand = "0.8"
 
 [package.metadata.docs.rs]
-features = ["deferred-3d", "forward-3d", "xr"]
+features = [
+    "blend-modes",
+    "deferred-3d",
+    "forward-3d",
+    "mask-modes",
+    "matte-modes",
+    "xr",
+]
 
 # This package is really slow in debug mode; but we don't need the checks here
 [profile.dev.package.image]
@@ -84,20 +92,22 @@ winit = { version = "0.24" }
 wasm-bindgen = "0.2"
 console_error_panic_hook = "0.1"
 console_log = "0.2"
+gfx-impl = { git = "https://github.com/gfx-rs/gfx", branch = "staging", package = "gfx-backend-gl" }
+web-sys = { version = "0.3", features = [
+    "console",
+    "Document",
+    "Element",
+    "HtmlElement",
+    "Node",
+    "Window",
+] }
 winit = { version = "0.24", features = ["web-sys"] }
 
-[target.'cfg(target_arch = "wasm32")'.dependencies.gfx-backend-gl]
-version = "0.6"
-
-[target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
-version = "0.3"
-features = ["console", "Document", "Element", "HtmlElement", "Node", "Window"]
-
 [target.'cfg(any(target_os = "freebsd", target_os = "dragonfly", target_os = "linux", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
-gfx-impl = { version = "0.6", features = ["x11"], package = "gfx-backend-vulkan" }
+gfx-impl = { git = "https://github.com/gfx-rs/gfx", branch = "staging", package = "gfx-backend-vulkan" }
 
-[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
-gfx-impl = { version = "0.6", package = "gfx-backend-metal" }
+# [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+# gfx-impl = { version = "0.6", package = "gfx-backend-metal" }
 
-[target.'cfg(target_os = "windows")'.dependencies]
-gfx-impl = { version = "0.6", package = "gfx-backend-dx11" }
+# [target.'cfg(target_os = "windows")'.dependencies]
+# gfx-impl = { version = "0.6", package = "gfx-backend-dx11" }

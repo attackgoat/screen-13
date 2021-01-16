@@ -1,3 +1,5 @@
+// TODO: Probably get rid of the hal types here
+
 use {
     super::Color,
     crate::math::{vec4, Vec4},
