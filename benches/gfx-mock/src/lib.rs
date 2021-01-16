@@ -12,10 +12,13 @@ mod queue_family;
 mod surface;
 mod swapchain;
 
+pub use self::instance::Instance;
+
 use {
+
     self::{
         buffer::*, cmd_buf::*, cmd_pool::*, cmd_queue::*, desc_pool::*, device::*, image::*,
-        instance::*, memory::*, phys_device::*, queue_family::*, surface::*, swapchain::*,
+         memory::*, phys_device::*, queue_family::*, surface::*, swapchain::*,
     },
     gfx_hal::{
         adapter::*, buffer::*, command::*, device::*, format::*, image::*, memory::*, pass::*,
@@ -26,10 +29,10 @@ use {
 const QUEUE_FAMILY_ID: queue::QueueFamilyId = queue::QueueFamilyId(0);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub enum BackendMock {}
+pub enum Backend {}
 
-impl Backend for BackendMock {
-    type Instance = InstanceMock;
+impl gfx_hal::Backend for Backend {
+    type Instance = Instance;
     type PhysicalDevice = PhysicalDeviceMock;
     type Device = DeviceMock;
     type Surface = SurfaceMock;

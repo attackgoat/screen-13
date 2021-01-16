@@ -110,8 +110,8 @@
 #![warn(missing_docs)]
 //#![warn(clippy::pedantic)]
 
-// NOTE: If you are getting an error with the following line it is because both the `real-gfx` and
-// `test-gfx` features are enabled at the same time.
+// NOTE: If you are getting an error with the following line it is because both the `impl-gfx` and
+// `mock-gfx` features are enabled at the same time. Use "--no-default-features" to fix.
 #[cfg(feature = "mock-gfx")]
 extern crate gfx_mock as gfx_impl;
 

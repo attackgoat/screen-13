@@ -1,5 +1,5 @@
 use {
-    super::*,
+    super::{*, Backend},
     gfx_hal::{
         buffer::{CreationError as BufferCreationError, ViewCreationError as BufferViewCreationError, Usage as BufferUsage},
         image::{CreationError as ImageCreationError, ViewCreationError as ImageViewCreationError, Usage as ImageUsage, Level as ImageLevel},
@@ -13,7 +13,7 @@ use {
 #[derive(Debug)]
 pub struct DeviceMock;
 
-impl Device<BackendMock> for DeviceMock {
+impl Device<Backend> for DeviceMock {
     unsafe fn create_command_pool(
         &self,
         _: QueueFamilyId,
@@ -63,7 +63,7 @@ impl Device<BackendMock> for DeviceMock {
 
     unsafe fn create_graphics_pipeline<'a>(
         &self,
-        _: &GraphicsPipelineDesc<'a, BackendMock>,
+        _: &GraphicsPipelineDesc<'a, Backend>,
         _: Option<&()>,
     ) -> Result<(), PsoCreationError> {
         Ok(())
@@ -71,7 +71,7 @@ impl Device<BackendMock> for DeviceMock {
 
     unsafe fn create_compute_pipeline<'a>(
         &self,
-        _: &ComputePipelineDesc<'a, BackendMock>,
+        _: &ComputePipelineDesc<'a, Backend>,
         _: Option<&()>,
     ) -> Result<(), PsoCreationError> {
         todo!()
@@ -186,14 +186,14 @@ impl Device<BackendMock> for DeviceMock {
         })
     }
 
-    unsafe fn write_descriptor_set<'a, I>(&self, _: DescriptorSetWrite<'a, BackendMock, I>)
+    unsafe fn write_descriptor_set<'a, I>(&self, _: DescriptorSetWrite<'a, Backend, I>)
     where
         I: IntoIterator,
-        I::Item: Borrow<Descriptor<'a, BackendMock>>,
+        I::Item: Borrow<Descriptor<'a, Backend>>,
     {
     }
 
-    unsafe fn copy_descriptor_set<'a>(&self, _: DescriptorSetCopy<'a, BackendMock>) {
+    unsafe fn copy_descriptor_set<'a>(&self, _: DescriptorSetCopy<'a, Backend>) {
         todo!()
     }
 

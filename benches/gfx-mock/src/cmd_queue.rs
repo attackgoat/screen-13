@@ -1,9 +1,9 @@
-use {super::*, std::borrow::Borrow};
+use {super::{*, Backend}, std::borrow::Borrow};
 
 #[derive(Debug)]
 pub struct CommandQueueMock;
 
-impl CommandQueue<BackendMock> for CommandQueueMock {
+impl CommandQueue<Backend> for CommandQueueMock {
     unsafe fn submit<'a, T, Ic, S, Iw, Is>(&mut self, _: Submission<Ic, Iw, Is>, _: Option<&mut ()>)
     where
         T: 'a + Borrow<CommandBufferMock>,

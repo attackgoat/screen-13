@@ -1,14 +1,14 @@
-use {super::*, raw_window_handle::HasRawWindowHandle};
+use {super::{*, Backend}, raw_window_handle::HasRawWindowHandle};
 
 #[derive(Debug)]
-pub struct InstanceMock;
+pub struct Instance;
 
-impl Instance<BackendMock> for InstanceMock {
+impl gfx_hal::Instance<Backend> for Instance {
     fn create(name: &str, version: u32) -> Result<Self, UnsupportedBackend> {
-        Ok(InstanceMock)
+        Ok(Instance)
     }
 
-    fn enumerate_adapters(&self) -> Vec<Adapter<BackendMock>> {
+    fn enumerate_adapters(&self) -> Vec<Adapter<Backend>> {
         let info = AdapterInfo {
             name: "Mock Device".to_string(),
             vendor: 0,

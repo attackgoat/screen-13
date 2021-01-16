@@ -1,16 +1,16 @@
 use {
-    super::*,
+    super::{*, Backend},
     std::{borrow::Borrow, ops::Range},
 };
 
 #[derive(Debug)]
 pub struct CommandBufferMock;
 
-impl CommandBuffer<BackendMock> for CommandBufferMock {
+impl CommandBuffer<Backend> for CommandBufferMock {
     unsafe fn begin(
         &mut self,
         _: CommandBufferFlags,
-        _: CommandBufferInheritanceInfo<BackendMock>,
+        _: CommandBufferInheritanceInfo<Backend>,
     ) {
     }
 
@@ -23,7 +23,7 @@ impl CommandBuffer<BackendMock> for CommandBufferMock {
     unsafe fn pipeline_barrier<'a, T>(&mut self, _: Range<PipelineStage>, _: Dependencies, _: T)
     where
         T: IntoIterator,
-        T::Item: Borrow<Barrier<'a, BackendMock>>,
+        T::Item: Borrow<Barrier<'a, Backend>>,
     {
     }
 
@@ -106,7 +106,7 @@ impl CommandBuffer<BackendMock> for CommandBufferMock {
 
     unsafe fn begin_render_pass<'a, T>(&mut self, _: &(), _: &(), _: Rect, _: T, _: SubpassContents)
     where
-        T: IntoIterator<Item = RenderAttachmentInfo<'a, BackendMock>>,
+        T: IntoIterator<Item = RenderAttachmentInfo<'a, Backend>>,
     {
     }
 
@@ -226,16 +226,16 @@ impl CommandBuffer<BackendMock> for CommandBufferMock {
     unsafe fn wait_events<'a, I, J>(&mut self, _: I, _: Range<PipelineStage>, _: J)
     where
         J: IntoIterator,
-        J::Item: Borrow<Barrier<'a, BackendMock>>,
+        J::Item: Borrow<Barrier<'a, Backend>>,
     {
         todo!()
     }
 
-    unsafe fn begin_query(&mut self, _: Query<BackendMock>, _: ControlFlags) {
+    unsafe fn begin_query(&mut self, _: Query<Backend>, _: ControlFlags) {
         todo!()
     }
 
-    unsafe fn end_query(&mut self, _: Query<BackendMock>) {
+    unsafe fn end_query(&mut self, _: Query<Backend>) {
         todo!()
     }
 
@@ -255,7 +255,7 @@ impl CommandBuffer<BackendMock> for CommandBufferMock {
         todo!()
     }
 
-    unsafe fn write_timestamp(&mut self, _: PipelineStage, _: Query<BackendMock>) {
+    unsafe fn write_timestamp(&mut self, _: PipelineStage, _: Query<Backend>) {
         todo!()
     }
 

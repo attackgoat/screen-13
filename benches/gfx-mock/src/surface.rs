@@ -1,9 +1,9 @@
-use {super::*, gfx_hal::image::Usage};
+use {super::{*, Backend}, gfx_hal::image::Usage};
 
 #[derive(Debug)]
 pub struct SurfaceMock;
 
-impl Surface<BackendMock> for SurfaceMock {
+impl Surface<Backend> for SurfaceMock {
     fn supports_queue_family(&self, _: &QueueFamilyMock) -> bool {
         true
     }
@@ -40,7 +40,7 @@ impl Surface<BackendMock> for SurfaceMock {
     }
 }
 
-impl PresentationSurface<BackendMock> for SurfaceMock {
+impl PresentationSurface<Backend> for SurfaceMock {
     type SwapchainImage = SwapchainImageMock;
 
     unsafe fn configure_swapchain(

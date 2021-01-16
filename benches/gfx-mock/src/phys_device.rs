@@ -1,14 +1,14 @@
-use {super::*, gfx_hal::{image::Usage, memory::Properties as MemProperties, device::CreationError}};
+use {super::{*, Backend}, gfx_hal::{image::Usage, memory::Properties as MemProperties, device::CreationError}};
 
 #[derive(Debug)]
 pub struct PhysicalDeviceMock;
 
-impl PhysicalDevice<BackendMock> for PhysicalDeviceMock {
+impl PhysicalDevice<Backend> for PhysicalDeviceMock {
     unsafe fn open(
         &self,
         families: &[(&QueueFamilyMock, &[QueuePriority])],
         _requested_features: Features,
-    ) -> Result<Gpu<BackendMock>, CreationError> {
+    ) -> Result<Gpu<Backend>, CreationError> {
         // Validate the arguments
         assert_eq!(
             families.len(),

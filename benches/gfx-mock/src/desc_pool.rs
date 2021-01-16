@@ -1,9 +1,9 @@
-use {super::*, gfx_hal::pso::AllocationError};
+use {super::{*, Backend}, gfx_hal::pso::AllocationError};
 
 #[derive(Debug)]
 pub struct DescriptorPoolMock;
 
-impl DescriptorPool<BackendMock> for DescriptorPoolMock {
+impl DescriptorPool<Backend> for DescriptorPoolMock {
     unsafe fn allocate_set(
         &mut self,
         _layout: &DescriptorSetLayoutMock,

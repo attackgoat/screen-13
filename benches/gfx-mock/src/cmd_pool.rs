@@ -1,9 +1,9 @@
-use super::*;
+use super::{*, Backend};
 
 #[derive(Debug)]
 pub struct CommandPoolMock;
 
-impl CommandPool<BackendMock> for CommandPoolMock {
+impl CommandPool<Backend> for CommandPoolMock {
     unsafe fn allocate_one(&mut self, level: Level) -> CommandBufferMock {
         assert_eq!(
             level,
