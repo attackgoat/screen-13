@@ -119,7 +119,7 @@ use {
         pak::{
             id::{AnimationId, BitmapId, ModelId},
             model::Mesh,
-            BitmapFormat,BitmapBuf, IndexType, Pak,
+            BitmapBuf, BitmapFormat, IndexType, Pak,
         },
         ptr::Shared,
     },
@@ -567,7 +567,14 @@ where
         width: u16,
         pixels: Vec<u8>,
     ) -> Shared<Bitmap<P>, P> {
-        self.load_bitmap_with_row_stride(#[cfg(feature = "debug-names")] name, fmt, width, pixels, width)
+        self.load_bitmap_with_row_stride(
+            #[cfg(feature = "debug-names")]
+            name,
+            fmt,
+            width,
+            pixels,
+            width,
+        )
     }
 
     /// Loads a bitmap at runtime from the given data, with a configurable row stride.
@@ -576,7 +583,7 @@ where
     ///
     /// * `fmt` — Describes the channels (`R, [G, [B, [A]]]`) of this bitmap.
     /// * `pixels` — Raw bitmap data row-by-row from, ordered from the top left to the bottom.
-    /// 
+    ///
     ///              **_NOTE:_** Each bitmap row must have the same number of pixels as the width of
     ///              the bitmap. To load padded data use the `[load_bitmap_with_row_stride]`
     ///              function.

@@ -5,4 +5,5 @@ authors = ["John Wells <john@attackgoat.com>"]
 edition = "2018"
 
 [dependencies]
-gfx-hal = "0.6"
+gfx-hal = { git = "https://github.com/gfx-rs/gfx", branch = "staging" }
+raw-window-handle = "0.3"

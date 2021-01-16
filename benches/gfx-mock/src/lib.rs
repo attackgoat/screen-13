@@ -1,12 +1,29 @@
+mod buffer;
+mod cmd_buf;
+mod cmd_pool;
 mod cmd_queue;
+mod desc_pool;
+mod device;
+mod image;
+mod instance;
+mod memory;
 mod phys_device;
+mod queue_family;
+mod surface;
+mod swapchain;
 
-use {gfx_hal::{*, adapter::*, buffer::*, command::*, device::*, format::*, image::*, memory::*, pass::*, pool::*, pso::*, query::*, queue::*, window::*},
-self::{
-    cmd_queue::*,
-    phys_device::*,
-}
+use {
+    self::{
+        buffer::*, cmd_buf::*, cmd_pool::*, cmd_queue::*, desc_pool::*, device::*, image::*,
+        instance::*, memory::*, phys_device::*, queue_family::*, surface::*, swapchain::*,
+    },
+    gfx_hal::{
+        adapter::*, buffer::*, command::*, device::*, format::*, image::*, memory::*, pass::*,
+        pool::*, pso::*, query::*, queue::*, window::*, *,
+    },
 };
+
+const QUEUE_FAMILY_ID: queue::QueueFamilyId = queue::QueueFamilyId(0);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum BackendMock {}
@@ -28,9 +45,9 @@ impl Backend for BackendMock {
     type RenderPass = ();
     type Framebuffer = ();
 
-    type Buffer = Buffer;
+    type Buffer = BufferMock;
     type BufferView = ();
-    type Image = Image;
+    type Image = ImageMock;
     type ImageView = ();
     type Sampler = ();
 
@@ -46,4 +63,14 @@ impl Backend for BackendMock {
     type Semaphore = ();
     type Event = ();
     type QueryPool = ();
+}
+
+#[derive(Debug)]
+pub struct DescriptorSetLayoutMock {
+    pub(crate) name: String,
+}
+
+#[derive(Debug)]
+pub struct DescriptorSetMock {
+    pub(crate) name: String,
 }

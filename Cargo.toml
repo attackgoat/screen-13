@@ -68,15 +68,15 @@ winit = { version = "0.24" }
 
 # 🦀📦: Various Unix-based Platforms
 [target.'cfg(any(target_os = "freebsd", target_os = "dragonfly", target_os = "linux", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
-gfx-impl = { version = "0.6", features = ["x11"], optional = true, package = "gfx-backend-vulkan" }
+gfx-impl = { git = "https://github.com/gfx-rs/gfx", branch = "staging", optional = true, package = "gfx-backend-vulkan" }
 
 # 🦀📦: Mac and iOS Platforms
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
-gfx-impl = { version = "0.6", optional = true, package = "gfx-backend-metal" }
+gfx-impl = { git = "https://github.com/gfx-rs/gfx", branch = "staging", optional = true, package = "gfx-backend-metal" }
 
 # 🦀📦: Windows Platform
 [target.'cfg(windows)'.dependencies]
-gfx-impl = { version = "0.6", optional = true, package = "gfx-backend-dx11" }
+gfx-impl = { git = "https://github.com/gfx-rs/gfx", branch = "staging", optional = true, package = "gfx-backend-dx11" }
 
 # 🦀📦: WebAssembly Platform
 [target.'cfg(target_arch = "wasm32")'.dependencies]
@@ -84,7 +84,7 @@ wasm-bindgen = "0.2"
 console_error_panic_hook = "0.1"
 console_log = "0.2"
 winit = { version = "0.24", features = ["web-sys"] }
-gfx-impl = { version = "0.6", package = "gfx-backend-gl" }
+gfx-impl = { git = "https://github.com/gfx-rs/gfx", branch = "staging", package = "gfx-backend-gl" }
 web-sys = { version = "0.3", features = [
     "console",
     "Document",

@@ -111,7 +111,7 @@
 //#![warn(clippy::pedantic)]
 
 // NOTE: If you are getting an error with the following line it is because both the `real-gfx` and
-// `test-gfx` features are enabled at the same time. 
+// `test-gfx` features are enabled at the same time.
 #[cfg(feature = "mock-gfx")]
 extern crate gfx_mock as gfx_impl;
 
