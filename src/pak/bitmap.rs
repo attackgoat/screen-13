@@ -47,14 +47,7 @@ impl BitmapBuf {
     }
 
     pub(crate) fn stride(&self) -> usize {
-        let bytes = match self.fmt {
-            Format::R => 1,
-            Format::Rg => 2,
-            Format::Rgb => 3,
-            Format::Rgba => 4,
-        };
-
-        self.width() * bytes
+        self.width() * self.fmt.byte_len()
     }
 
     pub(crate) fn width(&self) -> usize {
@@ -80,4 +73,17 @@ pub enum Format {
     /// Red, green, blue and alpha channels.
     #[serde(rename = "rgba")]
     Rgba,
+}
+
+impl Format {
+    /// Returns the number of bytes each pixel advances the bitmap stream.
+    #[inline]
+    pub fn byte_len(self) -> usize {
+        match self {
+            Self::R => 1,
+            Self::Rg => 2,
+            Self::Rgb => 3,
+            Self::Rgba => 4,
+        }
+    }
 }

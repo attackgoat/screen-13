@@ -6,7 +6,10 @@ use {
         window::Extent2D,
     },
     serde::{Deserialize, Serialize},
-    std::ops::{Div, DivAssign, Mul, MulAssign, Neg},
+    std::{
+        fmt::{Display, Formatter, Result},
+        ops::{Div, DivAssign, Mul, MulAssign, Neg},
+    },
     winit::dpi::PhysicalSize,
 };
 
@@ -27,6 +30,15 @@ where
 {
     pub const fn new(x: T, y: T) -> Self {
         Self { x, y }
+    }
+}
+
+impl<T> Display for Coord<T>
+where
+    T: Display,
+{
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "({}, {})", self.x, self.y)
     }
 }
 

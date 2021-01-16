@@ -119,7 +119,7 @@ use {
         pak::{
             id::{AnimationId, BitmapId, ModelId},
             model::Mesh,
-            BitmapFormat, IndexType, Pak,
+            BitmapFormat,BitmapBuf, IndexType, Pak,
         },
         ptr::Shared,
     },
@@ -563,19 +563,48 @@ where
     pub fn load_bitmap(
         &self,
         #[cfg(feature = "debug-names")] name: &str,
-        pixel_ty: BitmapFormat,
-        pixels: &[u8],
-        width: u32,
-        stride: u32,
+        fmt: BitmapFormat,
+        width: u16,
+        pixels: Vec<u8>,
     ) -> Shared<Bitmap<P>, P> {
-        #[cfg(feature = "debug-names")]
-        let _ = name;
-        let _ = pixel_ty;
-        let _ = pixels;
-        let _ = width;
-        let _ = stride;
+        self.load_bitmap_with_row_stride(#[cfg(feature = "debug-names")] name, fmt, width, pixels, width)
+    }
 
-        todo!();
+    /// Loads a bitmap at runtime from the given data, with a configurable row stride.
+    ///
+    /// # Arguments
+    ///
+    /// * `fmt` — Describes the channels (`R, [G, [B, [A]]]`) of this bitmap.
+    /// * `pixels` — Raw bitmap data row-by-row from, ordered from the top left to the bottom.
+    /// 
+    ///              **_NOTE:_** Each bitmap row must have the same number of pixels as the width of
+    ///              the bitmap. To load padded data use the `[load_bitmap_with_row_stride]`
+    ///              function.
+    /// * `width` — Count of bitmap pixels along the x axis.
+    /// * `row_stride` — Number of pixels along the x axis, accounting for any per-row padding
+    ///                  bytes which may be present in the source data.
+    pub fn load_bitmap_with_row_stride(
+        &self,
+        #[cfg(feature = "debug-names")] name: &str,
+        fmt: BitmapFormat,
+        width: u16,
+        pixels: Vec<u8>,
+        row_stride: u16,
+    ) -> Shared<Bitmap<P>, P> {
+        debug_assert!(row_stride >= width);
+
+        let bitmap = BitmapBuf::new(fmt, width, pixels);
+        let mut pool = self.loads.borrow_mut();
+
+        Shared::new(unsafe {
+            BitmapOp::new(
+                #[cfg(feature = "debug-names")]
+                name,
+                &mut pool,
+                &bitmap,
+            )
+            .record()
+        })
     }
 
     /// Loads an indexed model at runtime from the given data.

@@ -3,3 +3,5 @@
 // cargo +nightly install -f wasm-bindgen-cli
 // rustup update
 // sudo apt install libssl-dev
+
+TODO: Don't implement debug or display in wasm mode? Is that needed? Sounds like a byte saver....

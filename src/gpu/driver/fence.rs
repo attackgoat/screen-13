@@ -53,6 +53,9 @@ impl Fence {
             return;
         }
 
+        #[cfg(feature = "no-gfx")]
+        return;
+
         #[cfg(debug_assertions)]
         {
             let started = Instant::now();
@@ -68,6 +71,7 @@ impl Fence {
             }
         }
 
+        #[cfg(feature = "use-gfx")]
         panic!("Graphics driver stalled!");
     }
 }

@@ -1,0 +1,8 @@
+[package]
+name = "gfx-mock"
+version = "0.1.0"
+authors = ["John Wells <john@attackgoat.com>"]
+edition = "2018"
+
+[dependencies]
+gfx-hal = "0.6"

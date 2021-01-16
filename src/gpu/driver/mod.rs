@@ -1,7 +1,7 @@
 //! A collection of smart-pointer types used internally to operate the GFX-HAL API.
 
 mod buffer;
-mod command_pool;
+mod cmd_pool;
 mod compute_pipeline;
 mod desc_pool;
 mod desc_set_layout;
@@ -21,7 +21,7 @@ mod surface;
 
 pub use self::{
     buffer::Buffer,
-    command_pool::CommandPool,
+    cmd_pool::CommandPool,
     compute_pipeline::ComputePipeline,
     desc_pool::DescriptorPool,
     desc_set_layout::DescriptorSetLayout,
