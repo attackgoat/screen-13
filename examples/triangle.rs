@@ -25,9 +25,9 @@ fn main() {
     // Color aka albedo/diffuse (RGB) -> https://en.wikipedia.org/wiki/Rust_(color)
     // Metal/Rough aka material (RG)  -> "Rusty Iron"
     // Normal map               (RGB) -> Standard pale blue 'flat'
-    let color = gpu.load_bitmap(BitmapFormat::Rgb, &[0xb7, 0x41, 0x0e], 1, 1);
-    let metal_rough = gpu.load_bitmap(BitmapFormat::Rg, &[0xca, 0xc0], 1, 1);
-    let normal = gpu.load_bitmap(BitmapFormat::Rgb, &[0x00, 0x7f, 0xff], 1, 1);
+    let color = gpu.load_bitmap(BitmapFormat::Rgb, 1, vec![0xb7, 0x41, 0x0e]);
+    let metal_rough = gpu.load_bitmap(BitmapFormat::Rg, 1, vec![0xca, 0xc0]);
+    let normal = gpu.load_bitmap(BitmapFormat::Rgb, 1, vec![0x00, 0x7f, 0xff]);
 
     // Define a pbr material
     let rust = Material {

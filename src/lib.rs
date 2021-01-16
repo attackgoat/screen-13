@@ -42,9 +42,9 @@
 //! /// Creates a 128x128 pixel jpeg file as `output.jpg`.
 //! fn main() {
 //!     let gpu = Gpu::offscreen();
-//!     let mut render = gpu.render((128u32, 128u32));
-//!     render.clear().record();
-//!     render.encode().record("output.jpg");
+//!     let mut image = gpu.render((128u32, 128u32));
+//!     image.clear().record();
+//!     image.encode().record("output.jpg");
 //! }
 //! ```
 //!
@@ -109,6 +109,11 @@
 //#![deny(warnings)]
 #![warn(missing_docs)]
 //#![warn(clippy::pedantic)]
+
+// NOTE: If you are getting an error with the following line it is because both the `real-gfx` and
+// `test-gfx` features are enabled at the same time.
+#[cfg(feature = "mock-gfx")]
+extern crate gfx_mock as gfx_impl;
 
 #[macro_use]
 extern crate log;
