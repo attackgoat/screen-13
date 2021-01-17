@@ -1,0 +1,117 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'screen-13'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=screen-13"
+                ],
+                "filter": {
+                    "name": "screen-13",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'screen-13'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=screen-13",
+                    "--package=screen-13"
+                ],
+                "filter": {
+                    "name": "screen-13",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug example 'basic'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--example=basic",
+                    "--package=screen-13"
+                ],
+                "filter": {
+                    "name": "basic",
+                    "kind": "example"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug example 'ecs'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--example=ecs",
+                    "--package=screen-13"
+                ],
+                "filter": {
+                    "name": "ecs",
+                    "kind": "example"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug example 'headless'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--example=headless",
+                    "--package=screen-13"
+                ],
+                "filter": {
+                    "name": "headless",
+                    "kind": "example"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug example 'triangle'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--example=triangle",
+                    "--package=screen-13"
+                ],
+                "filter": {
+                    "name": "triangle",
+                    "kind": "example"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
