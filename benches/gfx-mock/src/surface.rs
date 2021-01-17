@@ -1,4 +1,7 @@
-use {super::{*, Backend}, gfx_hal::image::Usage};
+use {
+    super::{Backend, *},
+    gfx_hal::image::Usage,
+};
 
 #[derive(Debug)]
 pub struct SurfaceMock;

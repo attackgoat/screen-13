@@ -1,4 +1,4 @@
-use super::{*, Backend};
+use super::{Backend, *};
 
 #[derive(Debug)]
 pub struct CommandPoolMock;

@@ -1,10 +1,16 @@
 use {
-    super::{*, Backend},
+    super::{Backend, *},
     gfx_hal::{
-        buffer::{CreationError as BufferCreationError, ViewCreationError as BufferViewCreationError, Usage as BufferUsage},
-        image::{CreationError as ImageCreationError, ViewCreationError as ImageViewCreationError, Usage as ImageUsage, Level as ImageLevel},
-        pso::CreationError as PsoCreationError,
+        buffer::{
+            CreationError as BufferCreationError, Usage as BufferUsage,
+            ViewCreationError as BufferViewCreationError,
+        },
         device::CreationError as DeviceCreationError,
+        image::{
+            CreationError as ImageCreationError, Level as ImageLevel, Usage as ImageUsage,
+            ViewCreationError as ImageViewCreationError,
+        },
+        pso::CreationError as PsoCreationError,
         query::CreationError as QueryCreationError,
     },
     std::{borrow::Borrow, ops::Range},
@@ -50,16 +56,14 @@ impl Device<Backend> for DeviceMock {
     }
 
     unsafe fn create_pipeline_cache(&self, _data: Option<&[u8]>) -> Result<(), OutOfMemory> {
-        todo!()
+        Ok(())
     }
 
     unsafe fn get_pipeline_cache_data(&self, _cache: &()) -> Result<Vec<u8>, OutOfMemory> {
-        todo!()
+        Ok(vec![0])
     }
 
-    unsafe fn destroy_pipeline_cache(&self, _: ()) {
-        todo!()
-    }
+    unsafe fn destroy_pipeline_cache(&self, _: ()) {}
 
     unsafe fn create_graphics_pipeline<'a>(
         &self,
@@ -74,11 +78,11 @@ impl Device<Backend> for DeviceMock {
         _: &ComputePipelineDesc<'a, Backend>,
         _: Option<&()>,
     ) -> Result<(), PsoCreationError> {
-        todo!()
+        Ok(())
     }
 
     unsafe fn merge_pipeline_caches<I>(&self, _: &(), _: I) -> Result<(), OutOfMemory> {
-        todo!()
+        Ok(())
     }
 
     unsafe fn create_framebuffer<I>(&self, _: &(), _: I, _: Extent) -> Result<(), OutOfMemory> {
@@ -120,7 +124,7 @@ impl Device<Backend> for DeviceMock {
         _: Option<Format>,
         _: SubRange,
     ) -> Result<(), ViewCreationError> {
-        todo!()
+        Ok(())
     }
 
     unsafe fn create_image(
@@ -136,15 +140,15 @@ impl Device<Backend> for DeviceMock {
     }
 
     unsafe fn get_image_requirements(&self, image: &ImageMock) -> Requirements {
-        image.get_requirements()
+        image.requirements()
     }
 
     unsafe fn get_image_subresource_footprint(
         &self,
-        _: &ImageMock,
-        _: Subresource,
+        image: &ImageMock,
+        subresource: Subresource,
     ) -> SubresourceFootprint {
-        todo!()
+        image.subresource_footprint(subresource)
     }
 
     unsafe fn bind_image_memory(
@@ -180,10 +184,8 @@ impl Device<Backend> for DeviceMock {
         &self,
         _bindings: I,
         _samplers: J,
-    ) -> Result<DescriptorSetLayoutMock, OutOfMemory> {
-        Ok(DescriptorSetLayoutMock {
-            name: Default::default(),
-        })
+    ) -> Result<(), OutOfMemory> {
+        Ok(())
     }
 
     unsafe fn write_descriptor_set<'a, I>(&self, _: DescriptorSetWrite<'a, Backend, I>)
@@ -193,9 +195,7 @@ impl Device<Backend> for DeviceMock {
     {
     }
 
-    unsafe fn copy_descriptor_set<'a>(&self, _: DescriptorSetCopy<'a, Backend>) {
-        todo!()
-    }
+    unsafe fn copy_descriptor_set<'a>(&self, _: DescriptorSetCopy<'a, Backend>) {}
 
     fn create_semaphore(&self) -> Result<(), OutOfMemory> {
         Ok(())
@@ -206,32 +206,30 @@ impl Device<Backend> for DeviceMock {
     }
 
     unsafe fn get_fence_status(&self, _: &()) -> Result<bool, DeviceLost> {
-        todo!()
+        Ok(true)
     }
 
     fn create_event(&self) -> Result<(), OutOfMemory> {
-        todo!()
+        Ok(())
     }
 
     unsafe fn get_event_status(&self, _: &()) -> Result<bool, WaitError> {
-        todo!()
+        Ok(true)
     }
 
     unsafe fn set_event(&self, _: &mut ()) -> Result<(), OutOfMemory> {
-        todo!()
+        Ok(())
     }
 
     unsafe fn reset_event(&self, _: &mut ()) -> Result<(), OutOfMemory> {
-        todo!()
+        Ok(())
     }
 
     unsafe fn create_query_pool(&self, _: Type, _: u32) -> Result<(), QueryCreationError> {
-        todo!()
+        Ok(())
     }
 
-    unsafe fn destroy_query_pool(&self, _: ()) {
-        todo!()
-    }
+    unsafe fn destroy_query_pool(&self, _: ()) {}
 
     unsafe fn get_query_pool_results(
         &self,
@@ -241,7 +239,7 @@ impl Device<Backend> for DeviceMock {
         _: Stride,
         _: ResultFlags,
     ) -> Result<bool, WaitError> {
-        todo!()
+        Ok(true)
     }
 
     unsafe fn map_memory(
@@ -267,7 +265,7 @@ impl Device<Backend> for DeviceMock {
         I: IntoIterator,
         I::Item: Borrow<(&'a MemoryMock, Segment)>,
     {
-        todo!()
+        Ok(())
     }
 
     unsafe fn free_memory(&self, _memory: MemoryMock) {}
@@ -280,16 +278,13 @@ impl Device<Backend> for DeviceMock {
 
     unsafe fn destroy_graphics_pipeline(&self, _: ()) {}
 
-    unsafe fn destroy_compute_pipeline(&self, _: ()) {
-        todo!()
-    }
+    unsafe fn destroy_compute_pipeline(&self, _: ()) {}
+
     unsafe fn destroy_framebuffer(&self, _: ()) {}
 
     unsafe fn destroy_buffer(&self, _: BufferMock) {}
 
-    unsafe fn destroy_buffer_view(&self, _: ()) {
-        todo!()
-    }
+    unsafe fn destroy_buffer_view(&self, _: ()) {}
 
     unsafe fn destroy_image(&self, _: ImageMock) {}
 
@@ -299,59 +294,35 @@ impl Device<Backend> for DeviceMock {
 
     unsafe fn destroy_descriptor_pool(&self, _: DescriptorPoolMock) {}
 
-    unsafe fn destroy_descriptor_set_layout(&self, _: DescriptorSetLayoutMock) {}
+    unsafe fn destroy_descriptor_set_layout(&self, _: ()) {}
 
     unsafe fn destroy_fence(&self, _: ()) {}
 
     unsafe fn destroy_semaphore(&self, _: ()) {}
 
-    unsafe fn destroy_event(&self, _: ()) {
-        todo!()
-    }
+    unsafe fn destroy_event(&self, _: ()) {}
 
     fn wait_idle(&self) -> Result<(), OutOfMemory> {
         Ok(())
     }
 
-    unsafe fn set_image_name(&self, _: &mut ImageMock, _: &str) {
-        todo!()
-    }
+    unsafe fn set_image_name(&self, _: &mut ImageMock, _: &str) {}
 
-    unsafe fn set_buffer_name(&self, _: &mut BufferMock, _: &str) {
-        todo!()
-    }
+    unsafe fn set_buffer_name(&self, _: &mut BufferMock, _: &str) {}
 
-    unsafe fn set_command_buffer_name(&self, _: &mut CommandBufferMock, _: &str) {
-        todo!()
-    }
+    unsafe fn set_command_buffer_name(&self, _: &mut CommandBufferMock, _: &str) {}
 
-    unsafe fn set_semaphore_name(&self, _: &mut (), _: &str) {
-        todo!()
-    }
+    unsafe fn set_semaphore_name(&self, _: &mut (), _: &str) {}
 
-    unsafe fn set_fence_name(&self, _: &mut (), _: &str) {
-        todo!()
-    }
+    unsafe fn set_fence_name(&self, _: &mut (), _: &str) {}
 
-    unsafe fn set_framebuffer_name(&self, _: &mut (), _: &str) {
-        todo!()
-    }
+    unsafe fn set_framebuffer_name(&self, _: &mut (), _: &str) {}
 
-    unsafe fn set_render_pass_name(&self, _: &mut (), _: &str) {
-        todo!()
-    }
+    unsafe fn set_render_pass_name(&self, _: &mut (), _: &str) {}
 
-    unsafe fn set_descriptor_set_name(&self, set: &mut DescriptorSetMock, name: &str) {
-        set.name = name.to_string();
-    }
+    unsafe fn set_descriptor_set_name(&self, set: &mut (), name: &str) {}
 
-    unsafe fn set_descriptor_set_layout_name(
-        &self,
-        layout: &mut DescriptorSetLayoutMock,
-        name: &str,
-    ) {
-        layout.name = name.to_string();
-    }
+    unsafe fn set_descriptor_set_layout_name(&self, layout: &mut (), name: &str) {}
 
     unsafe fn set_pipeline_layout_name(&self, _pipeline_layout: &mut (), _name: &str) {
         todo!()

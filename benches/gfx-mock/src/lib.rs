@@ -1,24 +1,48 @@
+#[cfg(not(tarpaulin_include))]
 mod buffer;
+
+#[cfg(not(tarpaulin_include))]
 mod cmd_buf;
+
+#[cfg(not(tarpaulin_include))]
 mod cmd_pool;
+
+#[cfg(not(tarpaulin_include))]
 mod cmd_queue;
+
+#[cfg(not(tarpaulin_include))]
 mod desc_pool;
+
+#[cfg(not(tarpaulin_include))]
 mod device;
+
+#[cfg(not(tarpaulin_include))]
 mod image;
+
+#[cfg(not(tarpaulin_include))]
 mod instance;
+
+#[cfg(not(tarpaulin_include))]
 mod memory;
+
+#[cfg(not(tarpaulin_include))]
 mod phys_device;
+
+#[cfg(not(tarpaulin_include))]
 mod queue_family;
+
+#[cfg(not(tarpaulin_include))]
 mod surface;
+
+#[cfg(not(tarpaulin_include))]
 mod swapchain;
 
 pub use self::instance::Instance;
 
 use {
-
     self::{
         buffer::*, cmd_buf::*, cmd_pool::*, cmd_queue::*, desc_pool::*, device::*, image::*,
-         memory::*, phys_device::*, queue_family::*, surface::*, swapchain::*,
+        memory::*, phys_device::*, queue_family::*, surface::*, swapchain::*,
     },
     gfx_hal::{
         adapter::*, buffer::*, command::*, device::*, format::*, image::*, memory::*, pass::*,
@@ -58,22 +82,12 @@ impl gfx_hal::Backend for Backend {
     type GraphicsPipeline = ();
     type PipelineCache = ();
     type PipelineLayout = ();
-    type DescriptorSetLayout = DescriptorSetLayoutMock;
+    type DescriptorSetLayout = ();
     type DescriptorPool = DescriptorPoolMock;
-    type DescriptorSet = DescriptorSetMock;
+    type DescriptorSet = ();
 
     type Fence = ();
     type Semaphore = ();
     type Event = ();
     type QueryPool = ();
-}
-
-#[derive(Debug)]
-pub struct DescriptorSetLayoutMock {
-    pub(crate) name: String,
-}
-
-#[derive(Debug)]
-pub struct DescriptorSetMock {
-    pub(crate) name: String,
 }

@@ -1,4 +1,7 @@
-use {super::{*, Backend}, gfx_hal::{image::Usage, memory::Properties as MemProperties, device::CreationError}};
+use {
+    super::{Backend, *},
+    gfx_hal::{device::CreationError, image::Usage, memory::Properties as MemProperties},
+};
 
 #[derive(Debug)]
 pub struct PhysicalDeviceMock;
@@ -41,7 +44,11 @@ impl PhysicalDevice<Backend> for PhysicalDeviceMock {
     }
 
     fn format_properties(&self, _: Option<Format>) -> Properties {
-        todo!()
+        Properties {
+            linear_tiling: ImageFeature::all(),
+            optimal_tiling: ImageFeature::all(),
+            buffer_features: BufferFeature::all(),
+        }
     }
 
     fn image_format_properties(

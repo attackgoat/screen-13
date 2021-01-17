@@ -1,4 +1,7 @@
-use {super::*, std::{cell::UnsafeCell, convert::TryInto}};
+use {
+    super::*,
+    std::{cell::UnsafeCell, convert::TryInto},
+};
 
 #[derive(Debug)]
 pub struct MemoryMock {
@@ -13,7 +16,7 @@ impl MemoryMock {
 
         let data = {
             let size = size
-                .                            try_into()
+                .try_into()
                 // If we're on 32-bit and the given size is greater than 2^32,
                 // we certainly can't allocate it.
                 .map_err(|_| AllocationError::OutOfMemory(OutOfMemory::Host))?;

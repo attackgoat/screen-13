@@ -90,3 +90,88 @@ impl From<AlphaColor> for PackedColor {
         )
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    const EPSILON: f32 = 0.01;
+
+    #[test]
+    fn ctor_rgb() {
+        let val = AlphaColor::rgb(1, 2, 3);
+
+        assert_eq!(val.r, 1);
+        assert_eq!(val.g, 2);
+        assert_eq!(val.b, 3);
+        assert_eq!(val.a, 0xff);
+    }
+
+    #[test]
+    fn ctor_rgba() {
+        let val = AlphaColor::rgba(1, 2, 3, 4);
+
+        assert_eq!(val.r, 1);
+        assert_eq!(val.g, 2);
+        assert_eq!(val.b, 3);
+        assert_eq!(val.a, 4);
+    }
+
+    #[test]
+    fn from_color() {
+        let val = AlphaColor::from(Color::rgb(7, 8, 9));
+
+        assert_eq!(val.r, 7);
+        assert_eq!(val.g, 8);
+        assert_eq!(val.b, 9);
+        assert_eq!(val.a, 0xff);
+    }
+
+    #[test]
+    fn is_transparent() {
+        // Transparent colors
+        assert!(AlphaColor::rgba(0, 0, 0, 0x00).is_transparent());
+        assert!(AlphaColor::rgba(0, 0, 0, 0x01).is_transparent());
+        assert!(AlphaColor::rgba(0, 0, 0, 0xfe).is_transparent());
+
+        // Opaque color
+        assert!(!AlphaColor::rgba(0, 0, 0, 0xff).is_transparent());
+    }
+
+    #[test]
+    fn to_clear() {
+        let val: ClearValue = AlphaColor::rgba(1, 2, 3, 4).into();
+
+        unsafe {
+            assert!((val.color.float32[0] - 1.0 / 255.0) < EPSILON);
+            assert!((val.color.float32[1] - 2.0 / 255.0) < EPSILON);
+            assert!((val.color.float32[2] - 3.0 / 255.0) < EPSILON);
+            assert!((val.color.float32[3] - 4.0 / 255.0) < EPSILON);
+        }
+    }
+
+    #[test]
+    fn to_packed() {
+        let val: PackedColor = AlphaColor::rgba(1, 2, 3, 4).into();
+
+        assert_eq!(val.0 >> 24 & 0xff, 1);
+        assert_eq!(val.0 >> 16 & 0xff, 2);
+        assert_eq!(val.0 >> 8 & 0xff, 3);
+        assert_eq!(val.0 & 0xff, 4);
+    }
+
+    #[test]
+    fn to_rgba() {
+        let val = AlphaColor::rgb(0, 0, 0).to_rgba();
+        assert_eq!(val.x, 0.0);
+        assert_eq!(AlphaColor::rgb(0, 0, 0).to_rgba().y, 0.0);
+        assert_eq!(AlphaColor::rgb(0, 0, 0).to_rgba().z, 0.0);
+        assert_eq!(AlphaColor::rgb(0, 0, 0).to_rgba().w, 1.0);
+
+        let val = AlphaColor::rgba(0xff, 0x7f, 0xff, 0x00).to_rgba();
+        assert_eq!(val.x, 1.0);
+        assert!((val.y - 0.5).abs() < EPSILON);
+        assert_eq!(val.z, 1.0);
+        assert_eq!(val.w, 0.0);
+    }
+}

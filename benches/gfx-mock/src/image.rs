@@ -10,7 +10,7 @@ impl ImageMock {
         ImageMock { kind }
     }
 
-    pub fn get_requirements(&self) -> Requirements {
+    pub fn requirements(&self) -> Requirements {
         let size = match self.kind {
             Kind::D2(width, height, layers, samples) => {
                 assert_eq!(layers, 1, "Multi-layer images are not supported");
@@ -25,5 +25,9 @@ impl ImageMock {
             alignment: 1,
             type_mask: !0,
         }
+    }
+
+    pub fn subresource_footprint(&self, _: Subresource) -> SubresourceFootprint {
+        todo!()
     }
 }

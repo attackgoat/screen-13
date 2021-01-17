@@ -1,4 +1,7 @@
-use {super::{*, Backend}, raw_window_handle::HasRawWindowHandle};
+use {
+    super::{Backend, *},
+    raw_window_handle::HasRawWindowHandle,
+};
 
 #[derive(Debug)]
 pub struct Instance;

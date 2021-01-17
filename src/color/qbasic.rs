@@ -47,3 +47,13 @@ pub const fn color(idx: usize) -> Color {
     // & 15 to make sure we don't index out of this
     QBASIC_COLORS[idx & 15]
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn color_idx() {
+        assert_eq!(color(0), color(16));
+    }
+}

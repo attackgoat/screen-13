@@ -39,7 +39,7 @@ pub const RED: Color = Color::rgb(255, 0, 0);
 pub const WHITE: Color = Color::rgb(255, 255, 255);
 
 /// A three channel color
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Color {
     /// Blue channel
     pub b: u8,

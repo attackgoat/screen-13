@@ -1,5 +1,5 @@
 use {
-    super::{*, Backend},
+    super::{Backend, *},
     std::{borrow::Borrow, ops::Range},
 };
 
@@ -7,18 +7,11 @@ use {
 pub struct CommandBufferMock;
 
 impl CommandBuffer<Backend> for CommandBufferMock {
-    unsafe fn begin(
-        &mut self,
-        _: CommandBufferFlags,
-        _: CommandBufferInheritanceInfo<Backend>,
-    ) {
-    }
+    unsafe fn begin(&mut self, _: CommandBufferFlags, _: CommandBufferInheritanceInfo<Backend>) {}
 
     unsafe fn finish(&mut self) {}
 
-    unsafe fn reset(&mut self, _: bool) {
-        todo!()
-    }
+    unsafe fn reset(&mut self, _: bool) {}
 
     unsafe fn pipeline_barrier<'a, T>(&mut self, _: Range<PipelineStage>, _: Dependencies, _: T)
     where
@@ -27,21 +20,13 @@ impl CommandBuffer<Backend> for CommandBufferMock {
     {
     }
 
-    unsafe fn fill_buffer(&mut self, _: &BufferMock, _: SubRange, _: u32) {
-        todo!()
-    }
+    unsafe fn fill_buffer(&mut self, _: &BufferMock, _: SubRange, _: u32) {}
 
-    unsafe fn update_buffer(&mut self, _: &BufferMock, _: Offset, _: &[u8]) {
-        todo!()
-    }
+    unsafe fn update_buffer(&mut self, _: &BufferMock, _: Offset, _: &[u8]) {}
 
-    unsafe fn clear_image<T>(&mut self, _: &ImageMock, _: Layout, _: ClearValue, _: T) {
-        todo!()
-    }
+    unsafe fn clear_image<T>(&mut self, _: &ImageMock, _: Layout, _: ClearValue, _: T) {}
 
-    unsafe fn clear_attachments<T, U>(&mut self, _: T, _: U) {
-        todo!()
-    }
+    unsafe fn clear_attachments<T, U>(&mut self, _: T, _: U) {}
 
     unsafe fn resolve_image<T>(
         &mut self,
@@ -51,7 +36,6 @@ impl CommandBuffer<Backend> for CommandBufferMock {
         _: Layout,
         _: T,
     ) {
-        todo!()
     }
 
     unsafe fn blit_image<T>(
@@ -63,12 +47,9 @@ impl CommandBuffer<Backend> for CommandBufferMock {
         _: Filter,
         _: T,
     ) {
-        todo!()
     }
 
-    unsafe fn bind_index_buffer(&mut self, _: &BufferMock, _: SubRange, _: IndexType) {
-        todo!()
-    }
+    unsafe fn bind_index_buffer(&mut self, _: &BufferMock, _: SubRange, _: IndexType) {}
 
     unsafe fn bind_vertex_buffers<I, T>(&mut self, _: u32, _: I) {}
 
@@ -76,33 +57,19 @@ impl CommandBuffer<Backend> for CommandBufferMock {
 
     unsafe fn set_scissors<T>(&mut self, _: u32, _: T) {}
 
-    unsafe fn set_stencil_reference(&mut self, _: Face, _: StencilValue) {
-        todo!()
-    }
+    unsafe fn set_stencil_reference(&mut self, _: Face, _: StencilValue) {}
 
-    unsafe fn set_stencil_read_mask(&mut self, _: Face, _: StencilValue) {
-        todo!()
-    }
+    unsafe fn set_stencil_read_mask(&mut self, _: Face, _: StencilValue) {}
 
-    unsafe fn set_stencil_write_mask(&mut self, _: Face, _: StencilValue) {
-        todo!()
-    }
+    unsafe fn set_stencil_write_mask(&mut self, _: Face, _: StencilValue) {}
 
-    unsafe fn set_blend_constants(&mut self, _: ColorValue) {
-        todo!()
-    }
+    unsafe fn set_blend_constants(&mut self, _: ColorValue) {}
 
-    unsafe fn set_depth_bounds(&mut self, _: Range<f32>) {
-        todo!()
-    }
+    unsafe fn set_depth_bounds(&mut self, _: Range<f32>) {}
 
-    unsafe fn set_line_width(&mut self, _: f32) {
-        todo!()
-    }
+    unsafe fn set_line_width(&mut self, _: f32) {}
 
-    unsafe fn set_depth_bias(&mut self, _: pso::DepthBias) {
-        todo!()
-    }
+    unsafe fn set_depth_bias(&mut self, _: pso::DepthBias) {}
 
     unsafe fn begin_render_pass<'a, T>(&mut self, _: &(), _: &(), _: Rect, _: T, _: SubpassContents)
     where
@@ -110,47 +77,29 @@ impl CommandBuffer<Backend> for CommandBufferMock {
     {
     }
 
-    unsafe fn next_subpass(&mut self, _: SubpassContents) {
-        todo!()
-    }
+    unsafe fn next_subpass(&mut self, _: SubpassContents) {}
 
     unsafe fn end_render_pass(&mut self) {}
 
     unsafe fn bind_graphics_pipeline(&mut self, _: &()) {}
 
-    unsafe fn bind_graphics_descriptor_sets<I, J>(&mut self, _: &(), _: usize, _: I, _: J) {
-        // Do nothing
-    }
+    unsafe fn bind_graphics_descriptor_sets<I, J>(&mut self, _: &(), _: usize, _: I, _: J) {}
 
-    unsafe fn bind_compute_pipeline(&mut self, _: &()) {
-        todo!()
-    }
+    unsafe fn bind_compute_pipeline(&mut self, _: &()) {}
 
-    unsafe fn bind_compute_descriptor_sets<I, J>(&mut self, _: &(), _: usize, _: I, _: J) {
-        // Do nothing
-    }
+    unsafe fn bind_compute_descriptor_sets<I, J>(&mut self, _: &(), _: usize, _: I, _: J) {}
 
-    unsafe fn dispatch(&mut self, _: WorkGroupCount) {
-        todo!()
-    }
+    unsafe fn dispatch(&mut self, _: WorkGroupCount) {}
 
-    unsafe fn dispatch_indirect(&mut self, _: &BufferMock, _: Offset) {
-        todo!()
-    }
+    unsafe fn dispatch_indirect(&mut self, _: &BufferMock, _: Offset) {}
 
-    unsafe fn copy_buffer<T>(&mut self, _: &BufferMock, _: &BufferMock, _: T) {
-        todo!()
-    }
+    unsafe fn copy_buffer<T>(&mut self, _: &BufferMock, _: &BufferMock, _: T) {}
 
-    unsafe fn copy_image<T>(&mut self, _: &ImageMock, _: Layout, _: &ImageMock, _: Layout, _: T) {
-        todo!()
-    }
+    unsafe fn copy_image<T>(&mut self, _: &ImageMock, _: Layout, _: &ImageMock, _: Layout, _: T) {}
 
     unsafe fn copy_buffer_to_image<T>(&mut self, _: &BufferMock, _: &ImageMock, _: Layout, _: T) {}
 
-    unsafe fn copy_image_to_buffer<T>(&mut self, _: &ImageMock, _: Layout, _: &BufferMock, _: T) {
-        todo!()
-    }
+    unsafe fn copy_image_to_buffer<T>(&mut self, _: &ImageMock, _: Layout, _: &BufferMock, _: T) {}
 
     unsafe fn draw(&mut self, _: Range<VertexCount>, _: Range<InstanceCount>) {}
 
@@ -189,9 +138,7 @@ impl CommandBuffer<Backend> for CommandBufferMock {
     ) {
     }
 
-    unsafe fn draw_mesh_tasks(&mut self, _: TaskCount, _: TaskCount) {
-        todo!()
-    }
+    unsafe fn draw_mesh_tasks(&mut self, _: TaskCount, _: TaskCount) {}
 
     unsafe fn draw_mesh_tasks_indirect(
         &mut self,
@@ -200,7 +147,6 @@ impl CommandBuffer<Backend> for CommandBufferMock {
         _: DrawCount,
         _: Stride,
     ) {
-        todo!()
     }
 
     unsafe fn draw_mesh_tasks_indirect_count(
@@ -212,36 +158,24 @@ impl CommandBuffer<Backend> for CommandBufferMock {
         _: u32,
         _: Stride,
     ) {
-        todo!()
     }
 
-    unsafe fn set_event(&mut self, _: &(), _: PipelineStage) {
-        todo!()
-    }
+    unsafe fn set_event(&mut self, _: &(), _: PipelineStage) {}
 
-    unsafe fn reset_event(&mut self, _: &(), _: PipelineStage) {
-        todo!()
-    }
+    unsafe fn reset_event(&mut self, _: &(), _: PipelineStage) {}
 
     unsafe fn wait_events<'a, I, J>(&mut self, _: I, _: Range<PipelineStage>, _: J)
     where
         J: IntoIterator,
         J::Item: Borrow<Barrier<'a, Backend>>,
     {
-        todo!()
     }
 
-    unsafe fn begin_query(&mut self, _: Query<Backend>, _: ControlFlags) {
-        todo!()
-    }
+    unsafe fn begin_query(&mut self, _: Query<Backend>, _: ControlFlags) {}
 
-    unsafe fn end_query(&mut self, _: Query<Backend>) {
-        todo!()
-    }
+    unsafe fn end_query(&mut self, _: Query<Backend>) {}
 
-    unsafe fn reset_query_pool(&mut self, _: &(), _: Range<Id>) {
-        todo!()
-    }
+    unsafe fn reset_query_pool(&mut self, _: &(), _: Range<Id>) {}
 
     unsafe fn copy_query_pool_results(
         &mut self,
@@ -252,36 +186,24 @@ impl CommandBuffer<Backend> for CommandBufferMock {
         _: Stride,
         _: ResultFlags,
     ) {
-        todo!()
     }
 
-    unsafe fn write_timestamp(&mut self, _: PipelineStage, _: Query<Backend>) {
-        todo!()
-    }
+    unsafe fn write_timestamp(&mut self, _: PipelineStage, _: Query<Backend>) {}
 
-    unsafe fn push_graphics_constants(&mut self, _: &(), _: ShaderStageFlags, _: u32, _: &[u32]) {
-        todo!()
-    }
+    unsafe fn push_graphics_constants(&mut self, _: &(), _: ShaderStageFlags, _: u32, _: &[u32]) {}
 
-    unsafe fn push_compute_constants(&mut self, _: &(), _: u32, _: &[u32]) {
-        todo!()
-    }
+    unsafe fn push_compute_constants(&mut self, _: &(), _: u32, _: &[u32]) {}
 
     unsafe fn execute_commands<'a, T, I>(&mut self, _: I)
     where
         T: 'a + Borrow<CommandBufferMock>,
         I: IntoIterator<Item = &'a T>,
     {
-        todo!()
     }
 
-    unsafe fn insert_debug_marker(&mut self, _: &str, _: u32) {
-        todo!()
-    }
-    unsafe fn begin_debug_marker(&mut self, _: &str, _: u32) {
-        todo!()
-    }
-    unsafe fn end_debug_marker(&mut self) {
-        todo!()
-    }
+    unsafe fn insert_debug_marker(&mut self, _: &str, _: u32) {}
+
+    unsafe fn begin_debug_marker(&mut self, _: &str, _: u32) {}
+
+    unsafe fn end_debug_marker(&mut self) {}
 }

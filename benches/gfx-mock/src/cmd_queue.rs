@@ -1,4 +1,7 @@
-use {super::{*, Backend}, std::borrow::Borrow};
+use {
+    super::{Backend, *},
+    std::borrow::Borrow,
+};
 
 #[derive(Debug)]
 pub struct CommandQueueMock;
