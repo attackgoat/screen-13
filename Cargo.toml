@@ -34,7 +34,7 @@ multi-monitor = []
 xr = []
 
 # Ignore the following features; they are for internal use only.
-mock-gfx = ["gfx-mock"]
+mock-gfx = ["gfx-backend-mock"]
 impl-gfx = ["gfx-impl"]
 
 # 🦀📦: Regular Depedencies
@@ -45,7 +45,7 @@ bmfont = "0.3"
 brotli = "3.3"
 byteorder = "1.4"
 gfx-hal = { git = "https://github.com/gfx-rs/gfx", branch = "staging" }
-gfx-mock = { path = "benches/gfx-mock", optional = true }
+gfx-backend-mock = { path = "benches/gfx-backend-mock", optional = true }
 glam = { version = "0.12", features = ["serde"] }
 gltf = "0.15"
 image = "0.23"
