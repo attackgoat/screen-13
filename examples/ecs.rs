@@ -224,7 +224,7 @@ impl Screen<RcK> for Game {
         // Renders the ECS-generated draws on a black background
         let mut frame = gpu.render(dims);
         frame.clear().record();
-        frame.draw().record(&camera, &mut draws);
+        frame.draw().record(&camera, draws.iter());
         frame
     }
 

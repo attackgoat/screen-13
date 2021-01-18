@@ -27,6 +27,7 @@ use {
     },
     a_r_c_h_e_r_y::SharedPointerKind,
     std::{
+        borrow::Borrow,
         cell::Ref,
         cmp::{Ord, Ordering},
         ops::{Range, RangeFrom},
@@ -198,7 +199,6 @@ pub struct Compilation<'a, P>
 where
     P: 'static + SharedPointerKind,
 {
-    cmds: &'a [Command<P>],
     compiler: &'a mut Compiler<P>,
     contains_lines: bool,
     idx: usize,
@@ -223,7 +223,7 @@ where
     }
 
     fn bind_model_buffers(&self, idx: usize) -> Instruction<'_, P> {
-        let cmd = self.cmds[idx].as_model().unwrap();
+        let cmd = self.compiler.cmds[idx].as_model().unwrap();
         let idx_ty = cmd.model.idx_ty();
         let (idx_buf, idx_buf_len) = cmd.model.idx_buf_ref();
         let (vertex_buf, vertex_buf_len) = cmd.model.vertex_buf_ref();
@@ -238,7 +238,7 @@ where
     }
 
     fn bind_model_descriptors(&self, idx: usize) -> Instruction<'_, P> {
-        let cmd = &self.cmds[idx].as_model().unwrap();
+        let cmd = &self.compiler.cmds[idx].as_model().unwrap();
         let desc_set = self
             .compiler
             .materials
@@ -271,7 +271,7 @@ where
     ) -> impl ExactSizeIterator<Item = CalcVertexAttrsDescriptors<'_, P>> {
         CalcVertexAttrsDescriptorsIter {
             data: &self.compiler.calc_vertex_attrs,
-            cmds: &self.cmds,
+            cmds: &self.compiler.cmds,
             idx: 0,
             usage: &self.compiler.u16_vertex_cmds,
         }
@@ -282,7 +282,7 @@ where
     ) -> impl ExactSizeIterator<Item = CalcVertexAttrsDescriptors<'_, P>> {
         CalcVertexAttrsDescriptorsIter {
             data: &self.compiler.calc_vertex_attrs,
-            cmds: &self.cmds,
+            cmds: &self.compiler.cmds,
             idx: 0,
             usage: &self.compiler.u16_skin_vertex_cmds,
         }
@@ -292,7 +292,7 @@ where
         &self,
     ) -> impl ExactSizeIterator<Item = CalcVertexAttrsDescriptors<'_, P>> {
         CalcVertexAttrsDescriptorsIter {
-            cmds: &self.cmds,
+            cmds: &self.compiler.cmds,
             data: &self.compiler.calc_vertex_attrs,
             idx: 0,
             usage: &self.compiler.u32_vertex_cmds,
@@ -303,7 +303,7 @@ where
         &self,
     ) -> impl ExactSizeIterator<Item = CalcVertexAttrsDescriptors<'_, P>> {
         CalcVertexAttrsDescriptorsIter {
-            cmds: &self.cmds,
+            cmds: &self.compiler.cmds,
             data: &self.compiler.calc_vertex_attrs,
             idx: 0,
             usage: &self.compiler.u32_skin_vertex_cmds,
@@ -337,7 +337,7 @@ where
     }
 
     fn draw_model(&self, idx: usize) -> Instruction<'_, P> {
-        let cmd = self.cmds[idx].as_model().unwrap();
+        let cmd = self.compiler.cmds[idx].as_model().unwrap();
         let meshes = cmd.model.meshes_filter_is(cmd.mesh_filter);
 
         Instruction::MeshDraw(MeshDrawInstruction {
@@ -351,12 +351,12 @@ where
 
         Instruction::PointLightDraw(PointLightDrawInstruction {
             buf,
-            lights: CommandIter::new(&self.cmds[range]),
+            lights: CommandIter::new(&self.compiler.cmds[range]),
         })
     }
 
     fn draw_rect_light(&self, idx: usize, lru_idx: usize) -> Instruction<'_, P> {
-        let light = self.cmds[idx].as_rect_light().unwrap();
+        let light = self.compiler.cmds[idx].as_rect_light().unwrap();
         let lru = &self.compiler.rect_light.lru[lru_idx];
         let offset = (lru.offset / RECT_LIGHT_STRIDE as u64) as u32;
 
@@ -364,7 +364,7 @@ where
     }
 
     fn draw_spotlight(&self, idx: usize, lru_idx: usize) -> Instruction<'_, P> {
-        let light = self.cmds[idx].as_spotlight().unwrap();
+        let light = self.compiler.cmds[idx].as_spotlight().unwrap();
         let lru = &self.compiler.spotlight.lru[lru_idx];
         let offset = (lru.offset / SPOTLIGHT_STRIDE as u64) as u32;
 
@@ -372,7 +372,7 @@ where
     }
 
     fn draw_sunlights(&self, range: Range<usize>) -> Instruction<'_, P> {
-        Instruction::SunlightDraw(CommandIter::new(&self.cmds[range]))
+        Instruction::SunlightDraw(CommandIter::new(&self.compiler.cmds[range]))
     }
 
     /// Returns true if no models or lines are rendered.
@@ -402,14 +402,14 @@ where
     }
 
     fn write_model_indices(&self, idx: usize) -> Instruction<'_, P> {
-        let cmd = self.cmds[idx].as_model().unwrap();
+        let cmd = self.compiler.cmds[idx].as_model().unwrap();
         let (buf, len) = cmd.model.idx_buf_mut();
 
         Instruction::IndexWriteRef(DataWriteRefInstruction { buf, range: 0..len })
     }
 
     fn write_model_vertices(&self, idx: usize) -> Instruction<'_, P> {
-        let cmd = self.cmds[idx].as_model().unwrap();
+        let cmd = self.compiler.cmds[idx].as_model().unwrap();
         let (buf, len) = cmd.model.vertex_buf_mut();
 
         Instruction::VertexWriteRef(DataWriteRefInstruction { buf, range: 0..len })
@@ -514,6 +514,7 @@ pub struct Compiler<P>
 where
     P: 'static + SharedPointerKind,
 {
+    cmds: Vec<Command<P>>,
     code: Vec<Asm>,
     line: DirtyLruData<Line, P>,
     materials: Vec<Material<P>>,
@@ -673,17 +674,25 @@ where
     /// - Sort mesh commands further by texture(s) in order to reduce descriptor set switching/usage
     /// - Prepare a single buffer of all line and light vertices which can be copied to the GPU all
     ///   at once
-    pub(super) unsafe fn compile<'a, 'b: 'a>(
+    pub(super) unsafe fn compile<'a, 'b: 'a, C, I>(
         &'a mut self,
         #[cfg(feature = "debug-names")] name: &str,
         pool: &mut Pool<P>,
         camera: &impl Camera,
-        cmds: &'b mut [Command<P>],
-    ) -> Compilation<'a, P> {
+        cmds: I,
+    ) -> Compilation<'a, P>
+    where
+        C: Borrow<Command<P>>,
+        I: IntoIterator<Item = C>,
+    {
         debug_assert!(self.code.is_empty());
         debug_assert!(self.materials.is_empty());
 
-        if cmds.is_empty() {
+        for cmd in cmds {
+            self.cmds.push(cmd.borrow().clone());
+        }
+
+        if self.cmds.is_empty() {
             warn!("Empty command list provided");
 
             return self.empty_compilation();
@@ -693,7 +702,7 @@ where
 
         // When using auto-culling, we may reduce len in order to account for culled commands.
         let mut idx = 0;
-        let len = cmds.len();
+        let len = self.cmds.len();
 
         #[cfg(feature = "auto-cull")]
         let mut len = len;
@@ -702,7 +711,7 @@ where
         // - Sets camera Z order
         // - Culls commands outside of the camera frustum (if the feature is enabled)
         while idx < len {
-            let _overlaps = match &mut cmds[idx] {
+            let _overlaps = match &mut self.cmds[idx] {
                 Command::Model(ref mut cmd) => {
                     // Assign a relative measure of distance from the camera for all mesh commands
                     // which allows us to submit draw commands in the best order for the z-buffering
@@ -763,7 +772,7 @@ where
                 // discard at the end of this loop
                 len -= 1;
                 if len > 0 {
-                    cmds.swap(idx, len);
+                    self.cmds.swap(idx, len);
                 }
 
                 continue;
@@ -773,20 +782,19 @@ where
         }
 
         #[cfg(feature = "auto-cull")]
-        let cmds = &mut cmds[0..len];
-
-        #[cfg(feature = "auto-cull")]
-        if cmds.is_empty() {
+        if self.cmds.is_empty() {
             return self.empty_compilation();
+        } else {
+            self.cmds.truncate(len);
         }
 
         // Rearrange the commands so draw order doesn't cause unnecessary resource-switching
-        Self::sort(cmds);
+        Self::sort(&mut self.cmds);
 
         // Locate the groups - we know these `SearchIdx` values will not be found as they are gaps
         // in between the groups
         let search_group_idx = |range: RangeFrom<usize>, group: SearchIdx| -> usize {
-            cmds[range]
+            self.cmds[range]
                 .binary_search_by(|probe| (Self::group_idx(probe) as usize).cmp(&(group as _)))
                 .unwrap_err()
         };
@@ -802,7 +810,7 @@ where
         let rect_light_count = spotlight_idx - rect_light_idx;
         let spotlight_count = sunlight_idx - spotlight_idx;
         let sunlight_count = line_idx - sunlight_idx;
-        let line_count = cmds.len() - line_idx;
+        let line_count = self.cmds.len() - line_idx;
 
         // debug!("point_light_idx {}", point_light_idx);
         // debug!("rect_light_idx {}", rect_light_idx);
@@ -818,7 +826,7 @@ where
 
         // Model drawing
         if model_count > 0 {
-            self.compile_models(&cmds[0..model_count]);
+            self.compile_models(0..model_count);
         }
 
         // Emit 'start light drawing' assembly code
@@ -826,11 +834,12 @@ where
 
         // Point light drawing
         if point_light_count > 0 {
+            let point_lights = point_light_idx..rect_light_idx;
             self.compile_point_lights(
                 #[cfg(feature = "debug-names")]
                 name,
                 pool,
-                point_light_idx..rect_light_idx,
+                point_lights,
             );
         }
 
@@ -841,8 +850,7 @@ where
                 #[cfg(feature = "debug-names")]
                 name,
                 pool,
-                &mut cmds[rect_lights],
-                rect_light_idx,
+                rect_lights,
             );
         }
 
@@ -853,8 +861,7 @@ where
                 #[cfg(feature = "debug-names")]
                 name,
                 pool,
-                &mut cmds[spotlights],
-                spotlight_idx,
+                spotlights,
             );
         }
 
@@ -866,17 +873,16 @@ where
 
         // Line drawing
         if line_count > 0 {
-            let lines = line_idx..cmds.len();
+            let lines = line_idx..self.cmds.len();
             self.compile_lines(
                 #[cfg(feature = "debug-names")]
                 name,
                 pool,
-                &cmds[lines],
+                lines,
             );
         }
 
         Compilation {
-            cmds,
             compiler: self,
             contains_lines: line_count > 0,
             idx: 0,
@@ -887,15 +893,16 @@ where
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
         pool: &mut Pool<P>,
-        cmds: &[Command<P>],
+        range: Range<usize>,
     ) {
         // Allocate enough `buf` to hold everything in the existing cache and everything we could possibly draw
+        let line_count = range.end - range.start;
         Self::alloc_data(
             #[cfg(feature = "debug-names")]
             &format!("{} line vertex buffer", name),
             pool,
             &mut self.line.buf,
-            (self.line.lru.len() * LINE_STRIDE + cmds.len() * LINE_STRIDE) as _,
+            (self.line.lru.len() * LINE_STRIDE + line_count * LINE_STRIDE) as _,
         );
         let buf = self.line.buf.as_mut().unwrap();
 
@@ -917,7 +924,7 @@ where
             .map_or(0, |(offset, _)| offset + LINE_STRIDE as u64);
         let mut end = start;
 
-        for cmd in cmds.iter() {
+        for cmd in self.cmds[range].iter() {
             let line = cmd.as_line().unwrap();
             let key = Line::hash(line);
 
@@ -957,11 +964,11 @@ where
         }
 
         // Produce the assembly code that will draw all lines at once
-        self.code.push(Asm::DrawLines(cmds.len() as _));
+        self.code.push(Asm::DrawLines(line_count as _));
     }
 
-    fn compile_models(&mut self, cmds: &[Command<P>]) {
-        debug_assert!(!cmds.is_empty());
+    fn compile_models(&mut self, range: Range<usize>) {
+        debug_assert!(!range.is_empty());
 
         let mut material: Option<&Material<P>> = None;
         let mut model: Option<&Shared<Model<P>, P>> = None;
@@ -970,7 +977,7 @@ where
         self.code.push(Asm::BeginModel);
 
         let mut vertex_calc_mode = None;
-        for (idx, cmd) in cmds.iter().enumerate() {
+        for (idx, cmd) in self.cmds[range].iter().enumerate() {
             let cmd = cmd.as_model().unwrap();
 
             if let Some((buf, len, write_mask)) = cmd.model.take_pending_writes() {
@@ -1115,8 +1122,7 @@ where
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
         pool: &mut Pool<P>,
-        cmds: &mut [Command<P>],
-        base_idx: usize,
+        range: Range<usize>,
     ) {
         assert!(self.rect_lights.is_empty());
 
@@ -1126,7 +1132,7 @@ where
             &format!("{} rect light vertex buffer", name),
             pool,
             &mut self.rect_light.buf,
-            ((self.rect_light.lru.len() + cmds.len()) * RECT_LIGHT_STRIDE) as _,
+            ((self.rect_light.lru.len() + range.end - range.start) * RECT_LIGHT_STRIDE) as _,
         );
         let buf = self.rect_light.buf.as_mut().unwrap();
 
@@ -1153,7 +1159,7 @@ where
         self.code.push(Asm::BindRectLightBuffer);
 
         // First we make sure all rectangular lights are in the lru data ...
-        for cmd in cmds.iter_mut() {
+        for cmd in self.cmds[range.clone()].iter_mut() {
             let light = cmd.as_rect_light_mut().unwrap();
             let (key, scale) = RectLight::quantize(light);
             self.rect_lights.push(key);
@@ -1195,10 +1201,11 @@ where
         }
 
         // ... now we can draw them using index
-        for (idx, _) in cmds.iter().enumerate() {
+        let base = range.start;
+        for (idx, _) in self.cmds[range].iter().enumerate() {
             let key = self.rect_lights[idx];
             self.code.push(Asm::DrawRectLight((
-                base_idx + idx,
+                base + idx,
                 self.rect_light
                     .lru
                     .binary_search_by(|probe| probe.key.cmp(&key))
@@ -1217,8 +1224,7 @@ where
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
         pool: &mut Pool<P>,
-        cmds: &mut [Command<P>],
-        base_idx: usize,
+        range: Range<usize>,
     ) {
         assert!(self.spotlights.is_empty());
 
@@ -1228,7 +1234,8 @@ where
             &format!("{} spotlight vertex buffer", name),
             pool,
             &mut self.spotlight.buf,
-            (self.spotlight.lru.len() * SPOTLIGHT_STRIDE + cmds.len() * SPOTLIGHT_STRIDE) as _,
+            (self.spotlight.lru.len() * SPOTLIGHT_STRIDE
+                + (range.end - range.start) * SPOTLIGHT_STRIDE) as _,
         );
         let buf = self.spotlight.buf.as_mut().unwrap();
 
@@ -1255,7 +1262,7 @@ where
         self.code.push(Asm::BindSpotlightBuffer);
 
         // First we make sure all spotlights are in the lru data ...
-        for cmd in cmds.iter_mut() {
+        for cmd in self.cmds[range.clone()].iter_mut() {
             let light = cmd.as_spotlight_mut().unwrap();
             let (key, scale) = Spotlight::quantize(light);
             self.spotlights.push(key);
@@ -1296,10 +1303,11 @@ where
         }
 
         // ... now we can draw them using index
-        for (idx, _) in cmds.iter().enumerate() {
+        let base = range.start;
+        for (idx, _) in self.cmds[range].iter().enumerate() {
             let key = self.spotlights[idx];
             self.code.push(Asm::DrawSpotlight((
-                base_idx + idx,
+                base + idx,
                 self.spotlight
                     .lru
                     .binary_search_by(|probe| probe.key.cmp(&key))
@@ -1316,7 +1324,6 @@ where
 
     fn empty_compilation(&mut self) -> Compilation<'_, P> {
         Compilation {
-            cmds: &[],
             compiler: self,
             contains_lines: false,
             idx: 0,
@@ -1415,6 +1422,7 @@ where
 {
     fn default() -> Self {
         Self {
+            cmds: Default::default(),
             code: Default::default(),
             line: Default::default(),
             materials: Default::default(),

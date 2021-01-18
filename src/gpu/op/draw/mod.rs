@@ -78,6 +78,7 @@ use {
     gfx_impl::Backend as _Backend,
     std::{
         any::Any,
+        borrow::Borrow,
         fmt::{Debug, Error, Formatter},
         iter::{empty, once},
     },
@@ -244,7 +245,11 @@ where
     }
 
     /// Submits the given draws for hardware processing.
-    pub fn record(&mut self, camera: &impl Camera, draws: &mut [Draw<P>]) {
+    pub fn record<I, D>(&mut self, camera: &impl Camera, draws: I)
+    where
+        D: Borrow<Draw<P>>,
+        I: IntoIterator<Item = D>,
+    {
         unsafe {
             let fill_geom_buf_subpass_idx = self.fill_geom_buf_subpass_idx();
             let mut pool = self.pool.as_mut().unwrap();

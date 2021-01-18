@@ -42,6 +42,7 @@ use {
     gfx_impl::Backend as _Backend,
     std::{
         any::Any,
+        borrow::Borrow,
         iter::{empty, once},
         u8,
     },
@@ -189,9 +190,10 @@ where
     }
 
     /// Submits the given writes for hardware processing.
-    pub fn record<W>(&mut self, writes: W)
+    pub fn record<I, W>(&mut self, writes: I)
     where
-        W: IntoIterator<Item = Write<P>>,
+        I: IntoIterator<Item = W>,
+        W: Borrow<Write<P>>,
     {
         unsafe {
             let pool = self.pool.as_mut().unwrap();

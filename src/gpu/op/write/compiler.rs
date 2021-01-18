@@ -2,6 +2,7 @@ use {
     super::{command::Command, instruction::Instruction},
     crate::{gpu::Texture2d, math::Mat4, ptr::Shared},
     a_r_c_h_e_r_y::SharedPointerKind,
+    std::borrow::Borrow,
 };
 
 // `Asm` is the "assembly op code" that is used to create an `Instruction` instance.
@@ -100,19 +101,20 @@ where
     /// steps:
     /// - Cull commands which might not be visible in the viewport (if the feature is enabled)
     /// - Sort commands by texture in order to reduce descriptor set switching/usage
-    pub(super) unsafe fn compile<C>(
+    pub(super) unsafe fn compile<C, I>(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        cmds: C,
+        cmds: I,
     ) -> Compilation<'_, P>
     where
-        C: IntoIterator<Item = Command<P>>,
+        C: Borrow<Command<P>>,
+        I: IntoIterator<Item = C>,
     {
         debug_assert!(self.code.is_empty());
         debug_assert!(self.textures.is_empty());
 
         for cmd in cmds.into_iter() {
-            self.cmds.push(cmd.clone());
+            self.cmds.push(cmd.borrow().clone());
         }
 
         if self.cmds.is_empty() {

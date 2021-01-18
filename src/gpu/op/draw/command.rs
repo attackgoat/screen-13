@@ -224,6 +224,22 @@ where
     }
 }
 
+impl<P> Clone for Command<P>
+where
+    P: SharedPointerKind,
+{
+    fn clone(&self) -> Self {
+        match self {
+            Self::Line(line) => Self::Line(line.clone()),
+            Self::Model(model) => Self::Model(model.clone()),
+            Self::PointLight(light) => Self::PointLight(light.clone()),
+            Self::RectLight(light) => Self::RectLight(light.clone()),
+            Self::Spotlight(light) => Self::Spotlight(light.clone()),
+            Self::Sunlight(light) => Self::Sunlight(light.clone()),
+        }
+    }
+}
+
 impl<P> Debug for Command<P>
 where
     P: SharedPointerKind,
@@ -597,6 +613,22 @@ where
         };
 
         bounds.transform(self.transform)
+    }
+}
+
+impl<P> Clone for ModelCommand<P>
+where
+    P: SharedPointerKind,
+{
+    fn clone(&self) -> Self {
+        Self {
+            camera_order: self.camera_order,
+            material: self.material.clone(),
+            mesh_filter: self.mesh_filter.clone(),
+            model: Shared::clone(&self.model),
+            pose: self.pose.clone(),
+            transform: self.transform,
+        }
     }
 }
 
