@@ -17,7 +17,7 @@ use {
         format::{Format, ImageFeature},
         image::{Layout, Usage},
     },
-    std::cell::RefCell,
+    std::vec::Drain,
 };
 
 /// A powerful structure which allows you to combine various operations and other render
@@ -173,6 +173,10 @@ where
             .unwrap()
     }
 
+    pub(crate) fn drain_ops(&mut self) -> Drain<'_, Box<dyn Op<P>>> {
+        self.ops.drain(..)
+    }
+
     // TODO: Specialize for radial too?
     /// Draws a linear gradient on this Render using the given path.
     ///
@@ -205,11 +209,6 @@ where
             .as_any_mut()
             .downcast_mut::<GradientOp<P>>()
             .unwrap()
-    }
-
-    #[allow(clippy::type_complexity)]
-    pub(crate) fn resolve(self) -> (Lease<Shared<Texture2d, P>, P>, Vec<Box<dyn Op<P>>>) {
-        (self.target, self.ops)
     }
 
     unsafe fn take_pool(&mut self) -> Lease<Pool<P>, P> {
@@ -290,5 +289,31 @@ where
 {
     fn as_ref(&self) -> &Shared<Texture2d, P> {
         &self.target
+    }
+}
+
+impl<P> AsRef<Texture2d> for Render<P>
+where
+    P: SharedPointerKind,
+{
+    fn as_ref(&self) -> &Texture2d {
+        &**self.target
+    }
+}
+
+impl<P> Drop for Render<P>
+where
+    P: SharedPointerKind,
+{
+    fn drop(&mut self) {
+        if self.ops.is_empty() {
+            return;
+        }
+
+        // Store any un-presented ops in the pool for now
+        let mut pool = unsafe { self.take_pool() };
+        for op in self.ops.drain(..) {
+            pool.ops.push_front(op);
+        }
     }
 }

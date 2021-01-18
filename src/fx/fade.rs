@@ -91,7 +91,7 @@ impl<P> Fade<P>
 where
     P: SharedPointerKind,
 {
-    fn frame(&self, gpu: &Gpu<P>, ab: u8, mut a: Render<P>, b: Render<P>) -> Render<P> {
+    fn frame(&self, mut a: Render<P>, b: Render<P>, ab: u8) -> Render<P> {
         let dims = b.dims();
 
         a.write(
@@ -137,7 +137,7 @@ where
             let a = self.a.as_ref().unwrap().render(gpu, dims);
             let b = self.b.as_ref().unwrap().render(gpu, dims);
 
-            self.frame(gpu, ab, a, b)
+            self.frame(a, b, ab)
         }
 
         #[cfg(feature = "multi-monitor")]

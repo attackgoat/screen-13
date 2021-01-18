@@ -399,8 +399,8 @@ pub type RenderReturn<P> = Render<P>;
 #[cfg(feature = "multi-monitor")]
 pub type RenderReturn<P> = Vec<Option<Render<P>>>;
 
+const DEFAULT_RENDER_BUF_LEN: usize = 128;
 const MINIMUM_WINDOW_SIZE: usize = 420;
-const RENDER_BUF_LEN: usize = 3;
 
 fn area(size: PhysicalSize<u32>) -> u32 {
     size.height * size.width
@@ -451,6 +451,10 @@ where
     event_loop: Option<EventLoop<()>>,
     dims: Extent,
     gpu: Gpu<P>,
+
+    #[cfg(debug_assertions)]
+    started: Instant,
+
     swapchain: Swapchain,
     window: Window,
 }
@@ -513,6 +517,7 @@ where
             dims,
             event_loop: Some(event_loop),
             gpu,
+            started: Instant::now(),
             swapchain,
             window,
         }
@@ -581,23 +586,73 @@ where
         &self.gpu
     }
 
-    unsafe fn present(&mut self, frame: Render<P>) -> Vec<Box<dyn Op<P>>> {
-        let (mut target, ops) = frame.resolve();
+    #[cfg(debug_assertions)]
+    fn perf_begin(&mut self) {
+        info!("Starting event loop");
 
-        // We work-around this condition, below, but it is not expected that a well-formed program
-        // would ever do this
-        debug_assert!(!ops.is_empty());
+        self.started = Instant::now();
+    }
 
-        // If the render had no operations performed on it then it is uninitialized and we don't
-        // need to do anything with it
-        if !ops.is_empty() {
+    #[cfg(debug_assertions)]
+    fn perf_tick(&mut self, render_buf_len: usize) {
+        let now = Instant::now();
+        let elapsed = now - self.started;
+        self.started = now;
+
+        let fps = (1_000_000_000.0 / elapsed.as_nanos() as f64) as usize;
+        match fps {
+            fps if fps >= 59 => debug!(
+                "Frame complete: {}ns ({}fps buf={})",
+                elapsed.as_nanos().to_formatted_string(&Locale::en),
+                fps.to_formatted_string(&Locale::en),
+                render_buf_len,
+            ),
+            fps if fps >= 50 => info!(
+                "Frame complete: {}ns ({}fps buf={}) (FRAME DROPPED)",
+                elapsed.as_nanos().to_formatted_string(&Locale::en),
+                fps.to_formatted_string(&Locale::en),
+                render_buf_len,
+            ),
+            _ => warn!(
+                "Frame complete: {}ns ({}fps buf={}) (STALLED)",
+                elapsed.as_nanos().to_formatted_string(&Locale::en),
+                fps.to_formatted_string(&Locale::en),
+                render_buf_len,
+            ),
+        }
+    }
+
+    unsafe fn present(&mut self, mut frame: Render<P>, buf: &mut VecDeque<Box<dyn Op<P>>>) {
+        if {
+            let mut ops = frame.drain_ops().peekable();
+
+            // We work-around this condition, below, but it is not expected that a well-formed
+            // program would ever do this. It causes undefined behavior when passing a frame with no
+            // operations.
+            debug_assert!(ops.peek().is_some());
+
+            // Pop completed operations off the back of the buffer ...
+            while let Some(op) = buf.back() {
+                if op.is_complete() {
+                    buf.pop_back().unwrap();
+                } else {
+                    break;
+                }
+            }
+
+            // ... and push new operations onto the front.
+            let had_ops = ops.peek().is_some();
+            for op in ops {
+                buf.push_front(op);
+            }
+
+            had_ops
+        } {
             // Target can be dropped directly after presentation, it will return to the pool. If for
             // some reason the pool is drained before the hardware is finished with target the
             // underlying texture is still referenced by the operations.
-            self.swapchain.present(&mut target);
+            self.swapchain.present(&frame);
         }
-
-        ops
     }
 
     /// Runs a program starting with the given `DynScreen`.
@@ -623,18 +678,12 @@ where
     /// }
     /// ```
     pub fn run(mut self, screen: DynScreen<P>) -> ! {
+        #[cfg(debug_assertions)]
+        self.perf_begin();
+
         let mut input = Input::default();
-        let mut render_buf = VecDeque::with_capacity(RENDER_BUF_LEN);
-
-        // This is the initial scene
+        let mut render_buf = VecDeque::with_capacity(DEFAULT_RENDER_BUF_LEN);
         let mut screen: Option<DynScreen<P>> = Some(screen);
-
-        #[cfg(debug_assertions)]
-        info!("Starting event loop");
-
-        #[cfg(debug_assertions)]
-        let mut started = Instant::now();
-
         let event_loop = self.event_loop.take().unwrap();
 
         // Pump events until the application exits
@@ -652,14 +701,13 @@ where
                 },
                 Event::RedrawEventsCleared => self.window.request_redraw(),
                 Event::MainEventsCleared | Event::RedrawRequested(_) => {
-                    // Keep the rendering buffer from overflowing
-                    while render_buf.len() >= RENDER_BUF_LEN {
-                        render_buf.pop_back();
+                    // Render & present the screen, saving the ops in our buffer
+                    unsafe {
+                        self.present(
+                            screen.as_ref().unwrap().render(&self.gpu, self.dims),
+                            &mut render_buf,
+                        );
                     }
-
-                    // Render & present the screen, saving the result in our buffer
-                    let render = screen.as_ref().unwrap().render(&self.gpu, self.dims);
-                    render_buf.push_front(unsafe { self.present(render) });
 
                     // Update the current scene state, potentially returning a new one
                     screen = Some(screen.take().unwrap().update(&self.gpu, &input));
@@ -668,32 +716,7 @@ where
                     input.keys.clear();
 
                     #[cfg(debug_assertions)]
-                    {
-                        let now = Instant::now();
-                        let elapsed = now - started;
-                        started = now;
-                        let fps = (1_000_000_000.0 / elapsed.as_nanos() as f64) as usize;
-                        match fps {
-                            fps if fps >= 59 => debug!(
-                                "Frame complete: {}ns ({}fps buf={})",
-                                elapsed.as_nanos().to_formatted_string(&Locale::en),
-                                fps.to_formatted_string(&Locale::en),
-                                render_buf.len()
-                            ),
-                            fps if fps >= 50 => info!(
-                                "Frame complete: {}ns ({}fps buf={}) (FRAME DROPPED)",
-                                elapsed.as_nanos().to_formatted_string(&Locale::en),
-                                fps.to_formatted_string(&Locale::en),
-                                render_buf.len()
-                            ),
-                            _ => warn!(
-                                "Frame complete: {}ns ({}fps buf={}) (STALLED)",
-                                elapsed.as_nanos().to_formatted_string(&Locale::en),
-                                fps.to_formatted_string(&Locale::en),
-                                render_buf.len()
-                            ),
-                        }
-                    }
+                    self.perf_tick(render_buf.len());
                 }
                 _ => {}
             }

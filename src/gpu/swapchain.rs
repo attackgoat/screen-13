@@ -159,7 +159,7 @@ impl Swapchain {
         swapchain.fmt
     }
 
-    pub unsafe fn present(&mut self, src: &Texture2d) {
+    pub unsafe fn present<S: AsRef<Texture2d>>(&mut self, src: S) {
         // We must have a frame buffer attachment (a configured swapchain) in order to present
         if self.frame_buf_attachment.is_none() {
             debug!("Configuring swapchain");
@@ -188,7 +188,6 @@ impl Swapchain {
                 image_view
             }
         };
-
         let frame_buf = Framebuffer2d::new(
             #[cfg(feature = "debug-names")]
             "Present",
@@ -196,6 +195,7 @@ impl Swapchain {
             once(self.frame_buf_attachment.as_ref().unwrap().clone()),
             self.dims,
         );
+        let src = src.as_ref();
 
         self.write_descriptor(src);
 

@@ -1487,6 +1487,10 @@ where
         self
     }
 
+    unsafe fn is_complete(&self) -> bool {
+        Fence::status(&self.fence)
+    }
+
     unsafe fn take_pool(&mut self) -> Lease<Pool<P>, P> {
         self.pool.take().unwrap()
     }
