@@ -14,8 +14,15 @@ pub struct Command<P>
 where
     P: SharedPointerKind,
 {
+    /// The source texture to write.
     pub src: Shared<Texture2d, P>,
+
+    // TODO: Examples in documentation about this one!
+    /// The pixel-coordinate region of the source texture to write.
     pub src_region: Area,
+
+    // TODO: Examples in documentation about this one!
+    /// The homogenous transformation matrix for this write.
     pub transform: Mat4,
 }
 

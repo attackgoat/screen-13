@@ -1,17 +1,7 @@
 use {
     super::{command::Command, instruction::Instruction},
-    crate::{
-        gpu::{pool::Pool, Data, Lease, Model, Texture2d},
-        math::Mat4,
-        ptr::Shared,
-    },
+    crate::{gpu::Texture2d, math::Mat4, ptr::Shared},
     a_r_c_h_e_r_y::SharedPointerKind,
-    std::{
-        cell::Ref,
-        cmp::{Ord, Ordering},
-        ops::{Deref, Range, RangeFrom},
-        ptr::copy_nonoverlapping,
-    },
 };
 
 // `Asm` is the "assembly op code" that is used to create an `Instruction` instance.
@@ -113,7 +103,6 @@ where
     pub(super) unsafe fn compile<C>(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        pool: &mut Pool<P>,
         cmds: C,
     ) -> Compilation<'_, P>
     where

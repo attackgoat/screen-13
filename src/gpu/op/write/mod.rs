@@ -19,7 +19,7 @@ use {
             pool::{Lease, Pool},
             queue_mut, Texture2d,
         },
-        math::{vec3, Area, CoordF, Mat4, RectF, Vec2},
+        math::{Mat4, Vec2},
         ptr::Shared,
     },
     a_r_c_h_e_r_y::SharedPointerKind,
@@ -42,7 +42,6 @@ use {
     gfx_impl::Backend as _Backend,
     std::{
         any::Any,
-        fmt::{Debug, Error, Formatter},
         iter::{empty, once},
         u8,
     },
@@ -195,13 +194,12 @@ where
         W: IntoIterator<Item = Write<P>>,
     {
         unsafe {
-            let mut pool = self.pool.as_mut().unwrap();
+            let pool = self.pool.as_mut().unwrap();
             let mut compiler = pool.write_compiler();
             {
                 let mut instrs = compiler.compile(
                     #[cfg(feature = "debug-names")]
                     &self.name,
-                    &mut pool,
                     writes,
                 );
 

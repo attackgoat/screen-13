@@ -400,7 +400,7 @@ where
             self.write_descriptors(
                 tessellations
                     .iter()
-                    .map(|(page_idx, _)| &*font.pages[*page_idx]),
+                    .map(|(page_idx, _)| font.pages[*page_idx].as_ref()),
             );
 
             self.submit_begin(dims, render_pass_mode);

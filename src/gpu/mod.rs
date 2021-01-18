@@ -141,7 +141,6 @@ use {
         fmt::Debug,
         io::{Read, Seek},
         mem::MaybeUninit,
-        rc::Rc,
         sync::Once,
     },
     winit::window::Window,

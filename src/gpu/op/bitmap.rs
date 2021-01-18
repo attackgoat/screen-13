@@ -1,5 +1,4 @@
 use {
-    super::Op,
     crate::{
         gpu::{
             align_up,
@@ -28,7 +27,6 @@ use {
     },
     gfx_impl::Backend as _Backend,
     std::{
-        any::Any,
         fmt::{Debug, Error, Formatter},
         iter::{empty, once},
         ops::Deref,
@@ -37,17 +35,59 @@ use {
     },
 };
 
-/// Holds a decoded 2D image with 1-4 channels.
-pub struct Bitmap<P>
+/// Holds a decoded two-dimensional image with 1-4 channels.
+pub struct Bitmap<P>(Load<P>)
 where
-    P: 'static + SharedPointerKind,
+    P: 'static + SharedPointerKind;
+
+impl<P> Bitmap<P>
+where
+    P: SharedPointerKind,
 {
-    cmd_buf: <_Backend as Backend>::CommandBuffer,
-    cmd_pool: Lease<CommandPool, P>,
-    conv_fmt: Option<Lease<Compute, P>>,
-    fence: Lease<Fence, P>,
-    pixel_buf: Lease<Data, P>,
-    texture: Lease<Shared<Texture2d, P>, P>,
+    /// Returns `true` once the graphics hardware has finished processing the operation for this
+    /// bitmap.
+    ///
+    /// **_NOTE:_** Calling this function allows internal caches to be dropped. Once this function
+    /// returns `true` it will always return `true` and should not be called again.
+    ///
+    /// **_NOTE:_** Best practice is to call this function approximately three frames after loading
+    /// a bitmap, and then each frame until `true` is returned.
+    pub fn drop_op(&mut self) -> bool {
+        // Early-out if we are already ready or not ready yet
+        let tex = match &self.0 {
+            Load::Loaded(_) => return true,
+            Load::Loading(op) if unsafe { Fence::status(&op.fence) } => &op.texture,
+            _ => return false,
+        };
+
+        self.0 = Load::Loaded(Shared::clone(tex));
+
+        true
+    }
+}
+
+impl<P> AsRef<Shared<Texture2d, P>> for Bitmap<P>
+where
+    P: SharedPointerKind,
+{
+    fn as_ref(&self) -> &Shared<Texture2d, P> {
+        match &self.0 {
+            Load::Loaded(tex) => tex,
+            Load::Loading(op) => &op.texture,
+        }
+    }
+}
+
+impl<P> AsRef<Texture2d> for Bitmap<P>
+where
+    P: SharedPointerKind,
+{
+    fn as_ref(&self) -> &Texture2d {
+        match &self.0 {
+            Load::Loaded(tex) => tex,
+            Load::Loading(op) => &op.texture,
+        }
+    }
 }
 
 impl<P> Debug for Bitmap<P>
@@ -66,39 +106,38 @@ where
     type Target = Texture2d;
 
     fn deref(&self) -> &Self::Target {
-        &self.texture
+        self.as_ref()
     }
 }
 
-impl<P> Drop for Bitmap<P>
+enum Load<P>
+where
+    P: 'static + SharedPointerKind,
+{
+    Loaded(Shared<Texture2d, P>),
+    Loading(InProgress<P>),
+}
+
+struct InProgress<P>
+where
+    P: 'static + SharedPointerKind,
+{
+    cmd_buf: <_Backend as Backend>::CommandBuffer,
+    cmd_pool: Lease<CommandPool, P>,
+    conv_fmt: Option<Lease<Compute, P>>,
+    fence: Lease<Fence, P>,
+    pixel_buf: Lease<Data, P>,
+    texture: Lease<Shared<Texture2d, P>, P>,
+}
+
+impl<P> Drop for InProgress<P>
 where
     P: SharedPointerKind,
 {
     fn drop(&mut self) {
         unsafe {
-            self.wait();
+            Fence::wait(&self.fence);
         }
-    }
-}
-
-impl<P> Op<P> for Bitmap<P>
-where
-    P: SharedPointerKind,
-{
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-
-    unsafe fn is_complete(&self) -> bool {
-        Fence::status(&self.fence)
-    }
-
-    unsafe fn take_pool(&mut self) -> Lease<Pool<P>, P> {
-        todo!();
-    }
-
-    unsafe fn wait(&self) {
-        Fence::wait(&self.fence);
     }
 }
 
@@ -290,14 +329,14 @@ where
             self.submit_finish();
         };
 
-        Bitmap {
+        Bitmap(Load::Loading(InProgress {
             cmd_buf: self.cmd_buf,
             cmd_pool: self.cmd_pool,
             conv_fmt: self.conv_fmt.map(|c| c.compute),
             fence: self.fence,
             pixel_buf: self.pixel_buf,
             texture: self.texture,
-        }
+        }))
     }
 
     unsafe fn submit_begin(&mut self) {
