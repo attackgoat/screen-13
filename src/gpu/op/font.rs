@@ -18,6 +18,7 @@ use {
         },
         math::{vec3, CoordF, Extent, Mat4},
         pak::Pak,
+        ptr::Shared,
     },
     a_r_c_h_e_r_y::SharedPointerKind,
     bmfont::{BMFont, CharPosition, OrdinateOrientation},
@@ -191,7 +192,7 @@ where
                 .as_mut()
                 .unwrap()
                 .extend(&Self::char_vertices(
-                    font_texture.borrow().dims(),
+                    font_texture.dims(),
                     &char_pos,
                     texture_dims,
                 ));
@@ -215,10 +216,10 @@ pub struct FontOp<P>
 where
     P: 'static + SharedPointerKind,
 {
-    back_buf: Lease<Texture2d, P>,
+    back_buf: Lease<Shared<Texture2d, P>, P>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool, P>,
-    dst: Texture2d,
+    dst: Shared<Texture2d, P>,
     fence: Lease<Fence, P>,
     frame_buf: Option<Framebuffer2d>,
     glyph_color: AlphaColor,
@@ -241,7 +242,7 @@ where
     pub(crate) unsafe fn new<C, O>(
         #[cfg(feature = "debug-names")] name: &str,
         mut pool: Lease<Pool<P>, P>,
-        dst: &Texture2d,
+        dst: &Shared<Texture2d, P>,
         pos: O,
         color: C,
     ) -> Self
@@ -249,10 +250,8 @@ where
         C: Into<AlphaColor>,
         O: Into<CoordF>,
     {
-        let (dims, fmt) = {
-            let dst = dst.borrow();
-            (dst.dims(), dst.format())
-        };
+        let dims = dst.dims();
+        let fmt = dst.format();
 
         let back_buf = pool.texture(
             #[cfg(feature = "debug-names")]
@@ -281,7 +280,7 @@ where
             back_buf,
             cmd_buf,
             cmd_pool,
-            dst: Texture2d::clone(dst),
+            dst: Shared::clone(dst),
             fence,
             frame_buf: None,
             glyph_color: color.into(),
@@ -319,9 +318,8 @@ where
         assert!(!text.is_empty());
 
         let (dims, render_pass_mode, tessellations) = {
-            let dst = self.dst.borrow();
-            let fmt = dst.format();
-            let dims = dst.dims();
+            let fmt = self.dst.format();
+            let dims = self.dst.dims();
             let graphics_mode = self.mode();
             let render_pass_mode = RenderPassMode::Color(ColorRenderPassMode {
                 fmt,
@@ -402,7 +400,7 @@ where
             self.write_descriptors(
                 tessellations
                     .iter()
-                    .map(|(page_idx, _)| font.pages[*page_idx].borrow()),
+                    .map(|(page_idx, _)| &*font.pages[*page_idx]),
             );
 
             self.submit_begin(dims, render_pass_mode);
@@ -443,8 +441,6 @@ where
         let pool = self.pool.as_mut().unwrap();
         let render_pass = pool.render_pass(render_pass_mode);
         let (vertex_buf, vertex_buf_len) = self.vertex_buf.as_mut().unwrap();
-        let mut back_buf = self.back_buf.borrow_mut();
-        let mut dst = self.dst.borrow_mut();
 
         // TODO: Limit this rect to just where we're drawing text
         let rect = Rect {
@@ -467,22 +463,22 @@ where
         );
 
         // Step 2: Copy dst into the backbuffer
-        dst.set_layout(
+        self.dst.set_layout(
             &mut self.cmd_buf,
             Layout::TransferSrcOptimal,
             PipelineStage::TRANSFER,
             ImageAccess::TRANSFER_READ,
         );
-        back_buf.set_layout(
+        self.back_buf.set_layout(
             &mut self.cmd_buf,
             Layout::TransferDstOptimal,
             PipelineStage::TRANSFER,
             ImageAccess::TRANSFER_WRITE,
         );
         self.cmd_buf.copy_image(
-            dst.as_ref(),
+            self.dst.as_ref(),
             Layout::TransferSrcOptimal,
-            back_buf.as_ref(),
+            self.back_buf.as_ref(),
             Layout::TransferDstOptimal,
             once(ImageCopy {
                 src_subresource: SubresourceLayers {
@@ -502,7 +498,7 @@ where
         );
 
         // Step 3: Draw the font vertices into the backbuffer
-        back_buf.set_layout(
+        self.back_buf.set_layout(
             &mut self.cmd_buf,
             Layout::ColorAttachmentOptimal,
             PipelineStage::COLOR_ATTACHMENT_OUTPUT,
@@ -513,7 +509,7 @@ where
             self.frame_buf.as_ref().unwrap(),
             rect,
             once(RenderAttachmentInfo {
-                image_view: back_buf.as_2d_color().as_ref(),
+                image_view: self.back_buf.as_2d_color().as_ref(),
                 clear_value: TRANSPARENT_BLACK.into(),
             }),
             SubpassContents::Inline,
@@ -610,29 +606,26 @@ where
     unsafe fn submit_finish(&mut self, dims: Extent) {
         trace!("submit_finish");
 
-        let mut dst = self.dst.borrow_mut();
-        let mut back_buf = self.back_buf.borrow_mut();
-
         // Continue where submit_page left off
         self.cmd_buf.end_render_pass();
 
         // Step 3: Copy the backbuffer into dst
-        back_buf.set_layout(
+        self.back_buf.set_layout(
             &mut self.cmd_buf,
             Layout::TransferSrcOptimal,
             PipelineStage::TRANSFER,
             ImageAccess::TRANSFER_READ,
         );
-        dst.set_layout(
+        self.dst.set_layout(
             &mut self.cmd_buf,
             Layout::TransferDstOptimal,
             PipelineStage::TRANSFER,
             ImageAccess::TRANSFER_WRITE,
         );
         self.cmd_buf.copy_image(
-            back_buf.as_ref(),
+            self.back_buf.as_ref(),
             Layout::TransferSrcOptimal,
-            dst.as_ref(),
+            self.dst.as_ref(),
             Layout::TransferDstOptimal,
             once(ImageCopy {
                 src_subresource: SubresourceLayers {

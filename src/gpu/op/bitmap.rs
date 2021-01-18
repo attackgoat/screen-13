@@ -12,6 +12,7 @@ use {
         },
         math::Coord,
         pak::{BitmapBuf, BitmapFormat},
+        ptr::Shared,
     },
     a_r_c_h_e_r_y::SharedPointerKind,
     gfx_hal::{
@@ -46,7 +47,7 @@ where
     conv_fmt: Option<Lease<Compute, P>>,
     fence: Lease<Fence, P>,
     pixel_buf: Lease<Data, P>,
-    texture: Lease<Texture2d, P>,
+    texture: Lease<Shared<Texture2d, P>, P>,
 }
 
 impl<P> Debug for Bitmap<P>
@@ -112,7 +113,7 @@ where
     pixel_buf: Lease<Data, P>,
     pixel_buf_len: u64,
     pool: &'a mut Pool<P>,
-    texture: Lease<Texture2d, P>,
+    texture: Lease<Shared<Texture2d, P>, P>,
 }
 
 impl<'a, P> BitmapOp<'a, P>
@@ -156,7 +157,7 @@ where
 
         // Figure out what kind of bitmap we're decoding
         let bitmap_stride = bitmap.stride();
-        let texture_fmt = texture.borrow().format();
+        let texture_fmt = texture.format();
         let conv_fmt = if texture_fmt == desired_fmts[0] {
             // No format conversion: We will use a simple copy-buffer-to-image command
             None
@@ -311,8 +312,7 @@ where
             #[cfg(feature = "debug-names")]
             &self.name,
         );
-        let mut texture = self.texture.borrow_mut();
-        let dims = texture.dims();
+        let dims = self.texture.dims();
 
         // Step 1: Write the local cpu memory buffer into the gpu-local buffer
         self.pixel_buf.write_range(
@@ -323,7 +323,7 @@ where
         );
 
         // Step 2: Use a compute shader to remap the memory layout of the device-local buffer
-        texture.set_layout(
+        self.texture.set_layout(
             &mut self.cmd_buf,
             Layout::General,
             PipelineStage::COMPUTE_SHADER,
@@ -349,8 +349,7 @@ where
     unsafe fn submit_copy(&mut self) {
         trace!("submit_copy");
 
-        let mut texture = self.texture.borrow_mut();
-        let dims = texture.dims();
+        let dims = self.texture.dims();
 
         // Step 1: Write the local cpu memory buffer into the gpu-local buffer
         self.pixel_buf.write_range(
@@ -361,7 +360,7 @@ where
         );
 
         // Step 2: Copy the buffer to the image
-        texture.set_layout(
+        self.texture.set_layout(
             &mut self.cmd_buf,
             Layout::TransferDstOptimal,
             PipelineStage::TRANSFER,
@@ -369,7 +368,7 @@ where
         );
         self.cmd_buf.copy_buffer_to_image(
             self.pixel_buf.as_ref(),
-            texture.as_ref(),
+            self.texture.as_ref(),
             Layout::TransferDstOptimal,
             &[BufferImageCopy {
                 buffer_offset: 0,
@@ -408,7 +407,6 @@ where
 
         let conv_fmt = self.conv_fmt.as_mut().unwrap();
         let set = conv_fmt.compute.desc_set_mut(0);
-        let texture = self.texture.borrow();
 
         device().write_descriptor_set(DescriptorSetWrite {
             set,
@@ -427,8 +425,11 @@ where
             binding: 1,
             array_offset: 0,
             descriptors: once(Descriptor::Image(
-                texture
-                    .as_2d_color_format(change_channel_type(texture.format(), ChannelType::Uint))
+                self.texture
+                    .as_2d_color_format(change_channel_type(
+                        self.texture.format(),
+                        ChannelType::Uint,
+                    ))
                     .as_ref(),
                 Layout::General,
             )), // TODO ????? Shouldn't this not be general?

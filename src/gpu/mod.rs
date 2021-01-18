@@ -161,13 +161,9 @@ static mut MEM_PROPS: MaybeUninit<MemoryProperties> = MaybeUninit::uninit();
 static mut QUEUE_GROUP: MaybeUninit<QueueGroup<_Backend>> = MaybeUninit::uninit();
 
 /// Two-dimensional rendering result.
-pub type Texture2d = TextureRef<Image2d>;
-
-// TODO: Replace with archery?
-pub(crate) type TextureRef<I> = Rc<RefCell<Texture<I>>>;
+pub type Texture2d = Texture<Image2d>;
 
 type LoadCache<P> = RefCell<Pool<P>>;
-type OpCache<P> = RefCell<Option<Vec<Box<dyn Op<P>>>>>;
 
 /// Rounds down a multiple of atom; panics if atom is zero
 fn align_down<N: Copy + Num>(size: N, atom: N) -> N {
@@ -476,7 +472,6 @@ where
     P: 'static + SharedPointerKind,
 {
     loads: LoadCache<P>,
-    ops: OpCache<P>,
     renders: Cache<P>,
 }
 
@@ -521,7 +516,6 @@ where
 
         let gpu = Self {
             loads: Default::default(),
-            ops: Default::default(),
             renders: Default::default(),
         };
         let swapchain = Swapchain::new(surface.take().unwrap(), dims, swapchain_len);
@@ -552,7 +546,6 @@ where
 
         Self {
             loads: Default::default(),
-            ops: Default::default(),
             renders: Default::default(),
         }
     }
@@ -1034,14 +1027,6 @@ where
         dims: D,
         cache: &Cache<P>,
     ) -> Render<P> {
-        // There may be pending operations from a previously resolved render; if so
-        // we just stick them into the next render that goes out the door.
-        let ops = if let Some(ops) = self.ops.borrow_mut().take() {
-            ops
-        } else {
-            Default::default()
-        };
-
         // Pull a rendering pool from the cache or we create and lease a new one
         let pool = if let Some(pool) = cache.0.borrow_mut().pop_back() {
             pool
@@ -1057,22 +1042,8 @@ where
                 name,
                 dims.into(),
                 pool,
-                ops,
             )
         }
-    }
-
-    /// Resolves a render into a texture which can be written to other renders.
-    pub fn resolve(&self, render: Render<P>) -> Lease<Texture2d, P> {
-        let (target, ops) = render.resolve();
-        let mut cache = self.ops.borrow_mut();
-        if let Some(cache) = cache.as_mut() {
-            cache.extend(ops);
-        } else {
-            cache.replace(ops);
-        }
-
-        target
     }
 
     pub(crate) unsafe fn wait_idle(&self) {

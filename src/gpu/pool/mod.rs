@@ -19,8 +19,8 @@ use {
             RenderPassMode,
         },
         driver::{CommandPool, DescriptorPool, Fence, Memory, RenderPass},
-        op::draw::Compiler,
-        queue_family, Data, Texture, Texture2d, TextureRef,
+        op::{draw::Compiler as DrawCompiler, write::Compiler as WriteCompiler},
+        queue_family, Data, Texture, Texture2d,
     },
     crate::{math::Extent, ptr::Shared},
     a_r_c_h_e_r_y::SharedPointerKind,
@@ -54,6 +54,8 @@ use {super::device, gfx_hal::device::Device as _};
 
 const DEFAULT_LRU_THRESHOLD: usize = 8;
 
+pub(super) type PoolRef<T, P> = Shared<RefCell<VecDeque<T>>, P>;
+
 fn remove_last_by<T, F: Fn(&T) -> bool>(items: &mut VecDeque<T>, f: F) -> Option<T> {
     // let len = items.len();
     // TODO: This is no longer remove by last!!
@@ -65,8 +67,6 @@ fn remove_last_by<T, F: Fn(&T) -> bool>(items: &mut VecDeque<T>, f: F) -> Option
 
     None
 }
-
-pub(super) type PoolRef<T, P> = Shared<RefCell<VecDeque<T>>, P>;
 
 #[derive(Eq, Hash, PartialEq)]
 struct DescriptorPoolKey {
@@ -107,10 +107,10 @@ where
 {
     best_fmts: HashMap<FormatKey, Option<Format>>,
     cmd_pools: HashMap<QueueFamilyId, PoolRef<CommandPool, P>>,
-    compilers: PoolRef<Compiler<P>, P>,
     computes: HashMap<ComputeMode, PoolRef<Compute, P>>,
     data: HashMap<BufferUsage, PoolRef<Data, P>>,
     desc_pools: HashMap<DescriptorPoolKey, PoolRef<DescriptorPool, P>>,
+    draw_compilers: PoolRef<DrawCompiler<P>, P>,
     fences: PoolRef<Fence, P>,
     graphics: HashMap<GraphicsKey, PoolRef<Graphics, P>>,
     pub(super) layouts: Layouts,
@@ -123,7 +123,8 @@ where
     memories: HashMap<MemoryTypeId, PoolRef<Memory, P>>,
     render_passes: HashMap<RenderPassMode, RenderPass>,
     skydomes: PoolRef<Data, P>,
-    textures: HashMap<TextureKey, PoolRef<Texture2d, P>>,
+    textures: HashMap<TextureKey, PoolRef<Shared<Texture2d, P>, P>>,
+    write_compilers: PoolRef<WriteCompiler<P>, P>,
 }
 
 // TODO: Add some way to track memory usage so that using drain has some sort of feedback for users, tell them about the usage
@@ -406,14 +407,14 @@ where
         Lease::new(item, items)
     }
 
-    pub(super) fn compiler(&mut self) -> Lease<Compiler<P>, P> {
-        let item = if let Some(item) = self.compilers.borrow_mut().pop_back() {
+    pub(super) fn draw_compiler(&mut self) -> Lease<DrawCompiler<P>, P> {
+        let item = if let Some(item) = self.draw_compilers.borrow_mut().pop_back() {
             item
         } else {
             Default::default()
         };
 
-        Lease::new(item, &self.compilers)
+        Lease::new(item, &self.draw_compilers)
     }
 
     /// Returns a lease to a compute pipeline with no descriptor sets.
@@ -796,7 +797,7 @@ where
         layers: u16,
         mips: u8,
         samples: u8,
-    ) -> Lease<Texture2d, P> {
+    ) -> Lease<Shared<Texture2d, P>, P> {
         let items = self
             .textures
             .entry(TextureKey {
@@ -817,21 +818,8 @@ where
 
                 item
             } else {
-                // Add a cache item so there will be an unused item waiting next time
-                items_ref.push_front(TextureRef::new(RefCell::new(Texture::new(
-                    #[cfg(feature = "debug-names")]
-                    &format!("{} (Unused)", name),
-                    dims,
-                    fmt,
-                    layout,
-                    usage,
-                    layers,
-                    samples,
-                    mips,
-                ))));
-
                 // Return a brand new instance
-                TextureRef::new(RefCell::new(Texture::new(
+                Shared::new(Texture::new(
                     #[cfg(feature = "debug-names")]
                     name,
                     dims,
@@ -841,11 +829,21 @@ where
                     layers,
                     samples,
                     mips,
-                )))
+                ))
             }
         };
 
         Lease::new(item, items)
+    }
+
+    pub(super) fn write_compiler(&mut self) -> Lease<WriteCompiler<P>, P> {
+        let item = if let Some(item) = self.write_compilers.borrow_mut().pop_back() {
+            item
+        } else {
+            Default::default()
+        };
+
+        Lease::new(item, &self.write_compilers)
     }
 }
 
@@ -857,10 +855,10 @@ where
         Self {
             best_fmts: Default::default(),
             cmd_pools: Default::default(),
-            compilers: Default::default(),
             computes: Default::default(),
             data: Default::default(),
             desc_pools: Default::default(),
+            draw_compilers: Default::default(),
             fences: Default::default(),
             graphics: Default::default(),
             layouts: Default::default(),
@@ -869,6 +867,7 @@ where
             render_passes: Default::default(),
             skydomes: Default::default(),
             textures: Default::default(),
+            write_compilers: Default::default(),
         }
     }
 }

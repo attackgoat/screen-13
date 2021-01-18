@@ -159,7 +159,7 @@ impl Swapchain {
         swapchain.fmt
     }
 
-    pub unsafe fn present(&mut self, texture: &mut Texture2d) {
+    pub unsafe fn present(&mut self, src: &Texture2d) {
         // We must have a frame buffer attachment (a configured swapchain) in order to present
         if self.frame_buf_attachment.is_none() {
             debug!("Configuring swapchain");
@@ -197,9 +197,8 @@ impl Swapchain {
             self.dims,
         );
 
-        self.write_descriptor(texture);
+        self.write_descriptor(src);
 
-        let mut src = texture.borrow_mut();
         let dst_dims: CoordF = self.dims.into();
         let src_dims: CoordF = src.dims().into();
 
@@ -307,7 +306,7 @@ impl Swapchain {
             binding: 0,
             array_offset: 0,
             descriptors: once(Descriptor::CombinedImageSampler(
-                texture.borrow().as_2d_color().as_ref(),
+                texture.as_2d_color().as_ref(),
                 Layout::ShaderReadOnlyOptimal,
                 samplers[0].as_ref(),
             )),

@@ -1,4 +1,11 @@
+mod command;
+mod compiler;
+mod instruction;
+
+pub use {command::Command as Write, compiler::Compiler};
+
 use {
+    self::instruction::Instruction,
     super::Op,
     crate::{
         color::TRANSPARENT_BLACK,
@@ -13,6 +20,7 @@ use {
             queue_mut, Texture2d,
         },
         math::{vec3, Area, CoordF, Mat4, RectF, Vec2},
+        ptr::Shared,
     },
     a_r_c_h_e_r_y::SharedPointerKind,
     gfx_hal::{
@@ -34,6 +42,7 @@ use {
     gfx_impl::Backend as _Backend,
     std::{
         any::Any,
+        fmt::{Debug, Error, Formatter},
         iter::{empty, once},
         u8,
     },
@@ -41,8 +50,6 @@ use {
 
 #[cfg(feature = "blend-modes")]
 use crate::gpu::{def::push_const::WriteFragmentPushConsts, BlendMode};
-
-const SUBPASS_IDX: u8 = 0;
 
 /// Describes the way `WriteOp` will write a given texture onto the destination texture.
 #[derive(Clone, Copy, Hash, PartialEq)]
@@ -55,69 +62,6 @@ pub enum Mode {
     Texture,
 }
 
-/// An expressive type which allows specification of individual texture writes. Texture writes may either specify the
-/// entire source texture or a tile sub-portion. Tiles are always specified using integer texel coordinates.
-pub struct Write<'s> {
-    src: &'s Texture2d,
-    src_region: Area,
-    transform: Mat4,
-}
-
-// TODO: Add multi-sampled builder function
-impl<'s> Write<'s> {
-    /// Writes the whole source texture to the destination at the given position.
-    pub fn position<D: Into<CoordF>>(src: &'s Texture2d, dst: D) -> Self {
-        Self::tile_position(src, src.borrow().dims().into(), dst)
-    }
-
-    /// Writes the whole source texture to the destination at the given rectangle.
-    pub fn region<D: Into<RectF>>(src: &'s Texture2d, dst: D) -> Self {
-        Self::tile_region(src, src.borrow().dims().into(), dst)
-    }
-
-    /// Writes a tile area of the source texture to the destination at the given position.
-    pub fn tile_position<D: Into<CoordF>>(src: &'s Texture2d, src_tile: Area, dst: D) -> Self {
-        Self::tile_region(
-            src,
-            src_tile,
-            RectF {
-                dims: src.borrow().dims().into(),
-                pos: dst.into(),
-            },
-        )
-    }
-
-    /// Writes a tile area of the source texture to the destination at the given rectangle.
-    pub fn tile_region<D: Into<RectF>>(src: &'s Texture2d, src_tile: Area, dst: D) -> Self {
-        let dst = dst.into();
-        let src_dims: CoordF = src.borrow().dims().into();
-        let dst_transform = Mat4::from_translation(vec3(-1.0, -1.0, 0.0))
-            * Mat4::from_scale(vec3(
-                dst.dims.x * 2.0 / src_dims.x,
-                dst.dims.y * 2.0 / src_dims.y,
-                1.0,
-            ))
-            * Mat4::from_translation(vec3(dst.pos.x / dst.dims.x, dst.pos.y / dst.dims.y, 0.0));
-
-        Self::tile_transform(src, src_tile, dst_transform)
-    }
-
-    /// Writes a tile area of the source texture to the destination using the given transformation matrix.
-    pub fn tile_transform(src: &'s Texture2d, src_tile: Area, dst: Mat4) -> Self {
-        Self {
-            src,
-            src_region: src_tile,
-            transform: dst,
-        }
-    }
-
-    /// Writes the whole source texture to the destination using the given transformation matrix.
-    pub fn transform(src: &'s Texture2d, dst: Mat4) -> Self {
-        Self::tile_transform(src, src.borrow().dims().into(), dst)
-    }
-}
-
-// TODO: Add automatic write-rejection/skipping by adding support for the "auto-cull" feature?
 /// Writes an iterator of source textures onto a destination texture, using optional modes.
 ///
 /// `WriteOp` is intended to provide high speed image splatting for tile maps, bitmap drawing,
@@ -162,21 +106,21 @@ pub struct WriteOp<P>
 where
     P: 'static + SharedPointerKind,
 {
-    back_buf: Lease<Texture2d, P>,
+    back_buf: Lease<Shared<Texture2d, P>, P>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool, P>,
-    dst: Texture2d,
+    compiler: Option<Lease<Compiler<P>, P>>,
+    dst: Shared<Texture2d, P>,
     dst_preserve: bool,
     fence: Lease<Fence, P>,
     frame_buf: Option<Framebuffer2d>,
-    graphics: Option<Lease<Graphics, P>>,
+    graphics_texture: Option<Lease<Graphics, P>>,
     mode: Mode,
 
     #[cfg(feature = "debug-names")]
     name: String,
 
     pool: Option<Lease<Pool<P>, P>>,
-    src_textures: Vec<Texture2d>,
 }
 
 impl<P> WriteOp<P>
@@ -187,13 +131,11 @@ where
     pub(crate) unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
         mut pool: Lease<Pool<P>, P>,
-        dst: &Texture2d,
+        dst: &Shared<Texture2d, P>,
     ) -> Self {
         let mut cmd_pool = pool.cmd_pool();
-        let (dims, fmt) = {
-            let dst = dst.borrow();
-            (dst.dims(), dst.format())
-        };
+        let dims = dst.dims();
+        let fmt = dst.format();
         let fence = pool.fence(
             #[cfg(feature = "debug-names")]
             name,
@@ -213,16 +155,16 @@ where
             ),
             cmd_buf: cmd_pool.allocate_one(Level::Primary),
             cmd_pool,
-            dst: Texture2d::clone(dst),
+            compiler: None,
+            dst: Shared::clone(dst),
             dst_preserve: false,
             fence,
             frame_buf: None,
-            graphics: None,
+            graphics_texture: None,
             mode: Mode::Texture,
             #[cfg(feature = "debug-names")]
             name: name.to_owned(),
             pool: Some(pool),
-            src_textures: Default::default(),
         }
     }
 
@@ -248,149 +190,159 @@ where
     }
 
     /// Submits the given writes for hardware processing.
-    pub fn record(&mut self, writes: &mut [Write]) {
-        assert!(self.src_textures.is_empty());
-        assert_ne!(writes.len(), 0);
-
+    pub fn record<W>(&mut self, writes: W)
+    where
+        W: IntoIterator<Item = Write<P>>,
+    {
         unsafe {
-            if writes.len() > 1 {
-                // Keeps track of the textures used while the GPU is still busy (so our caller can drop their references)
-                for write in writes.iter() {
-                    let write_src_ptr = Texture2d::as_ptr(&write.src);
-                    if let Err(idx) = self.src_textures.binary_search_by(|probe| {
-                        let probe = Texture2d::as_ptr(probe);
-                        probe.cmp(&write_src_ptr)
-                    }) {
-                        self.src_textures.insert(idx, Texture2d::clone(write.src));
+            let mut pool = self.pool.as_mut().unwrap();
+            let mut compiler = pool.write_compiler();
+            {
+                let mut instrs = compiler.compile(
+                    #[cfg(feature = "debug-names")]
+                    &self.name,
+                    &mut pool,
+                    writes,
+                );
+
+                let render_pass_mode = {
+                    let fmt = self.dst.format();
+                    let render_pass_mode = RenderPassMode::Color(ColorRenderPassMode {
+                        fmt,
+                        preserve: self.dst_preserve,
+                    });
+                    let render_pass = pool.render_pass(render_pass_mode);
+                    self.frame_buf.replace(Framebuffer2d::new(
+                        #[cfg(feature = "debug-names")]
+                        self.name.as_str(),
+                        render_pass,
+                        once(FramebufferAttachment {
+                            format: fmt,
+                            usage: Usage::COLOR_ATTACHMENT | Usage::INPUT_ATTACHMENT,
+                            view_caps: ViewCapabilities::MUTABLE_FORMAT,
+                        }),
+                        self.dst.dims(),
+                    ));
+                    render_pass_mode
+                };
+
+                // Texture descriptors
+                {
+                    let descriptors = instrs.textures();
+                    let desc_sets = descriptors.len();
+                    if desc_sets > 0 {
+                        const SUBPASS_IDX: u8 = 0;
+
+                        let graphics_mode = match self.mode {
+                            #[cfg(feature = "blend-modes")]
+                            Mode::Blend((_, mode)) => GraphicsMode::Blend(mode),
+                            Mode::Texture => GraphicsMode::Texture,
+                        };
+                        let mut graphics = pool.graphics_desc_sets(
+                            #[cfg(feature = "debug-names")]
+                            &self.name,
+                            render_pass_mode,
+                            SUBPASS_IDX,
+                            graphics_mode,
+                            desc_sets,
+                        );
+                        self.write_texture_descriptors(&mut graphics, descriptors);
+                        self.graphics_texture = Some(graphics);
                     }
                 }
 
-                // Sort the writes by texture so that we minimize the number of descriptor sets and how often we change sets during submit
-                // NOTE: Unstable sort because we don't claim to support ordering or blending of the individual writes within each batch
-                writes.sort_unstable_by(|lhs, rhs| {
-                    let lhs = Texture2d::as_ptr(&lhs.src);
-                    let rhs = Texture2d::as_ptr(&rhs.src);
-                    lhs.cmp(&rhs)
-                });
-            } else {
-                // We only have one write - and the above sort logic would not be called (there would be no right-hand-side!)
-                self.src_textures.push(Texture2d::clone(writes[0].src));
+                self.submit_begin();
+
+                // Optional step: Fill dst into the backbuffer in order to preserve it in the output
+                if self.dst_preserve {
+                    self.submit_begin_preserve();
+                }
+
+                self.submit_begin_finish(render_pass_mode);
+
+                while let Some(instr) = instrs.next() {
+                    match instr {
+                        Instruction::TextureDescriptors(desc_set) => {
+                            self.submit_texture_descriptors(desc_set)
+                        }
+                        Instruction::TextureWrite(transform) => {
+                            self.submit_texture_write(transform)
+                        }
+                    }
+                }
+
+                self.submit_finish();
             }
 
-            let fmt = self.dst.borrow().format();
-            let render_pass_mode = RenderPassMode::Color(ColorRenderPassMode {
-                fmt,
-                preserve: self.dst_preserve,
-            });
-
-            let pool = self.pool.as_mut().unwrap();
-            let render_pass = pool.render_pass(render_pass_mode);
-
-            // Setup the framebuffer
-            self.frame_buf.replace(Framebuffer2d::new(
-                #[cfg(feature = "debug-names")]
-                self.name.as_str(),
-                render_pass,
-                once(FramebufferAttachment {
-                    format: fmt,
-                    usage: Usage::COLOR_ATTACHMENT | Usage::INPUT_ATTACHMENT,
-                    view_caps: ViewCapabilities::MUTABLE_FORMAT,
-                }),
-                self.dst.borrow().dims(),
-            ));
-
-            // Setup the graphics pipeline(s) using one descriptor set per unique source texture
-            let graphics_mode = match self.mode {
-                #[cfg(feature = "blend-modes")]
-                Mode::Blend((_, mode)) => GraphicsMode::Blend(mode),
-
-                Mode::Texture => GraphicsMode::Texture,
-            };
-            self.graphics.replace(pool.graphics_desc_sets(
-                #[cfg(feature = "debug-names")]
-                &self.name,
-                render_pass_mode,
-                SUBPASS_IDX,
-                graphics_mode,
-                self.src_textures.len(),
-            ));
-
-            self.write_descriptors();
-            self.submit_begin(render_pass_mode);
-
-            let mut set_idx = 0;
-            for write in writes.iter() {
-                self.submit_write(write, &mut set_idx);
-            }
-
-            self.submit_finish();
+            self.compiler = Some(compiler);
         }
     }
 
-    unsafe fn submit_begin(&mut self, render_pass_mode: RenderPassMode) {
+    unsafe fn submit_begin(&mut self) {
         trace!("submit_begin");
+
+        // Begin
+        self.cmd_buf
+            .begin_primary(CommandBufferFlags::ONE_TIME_SUBMIT);
+    }
+
+    unsafe fn submit_begin_preserve(&mut self) {
+        trace!("submit_begin_preserve");
+
+        self.dst.set_layout(
+            &mut self.cmd_buf,
+            Layout::TransferSrcOptimal,
+            PipelineStage::TRANSFER,
+            Access::TRANSFER_READ,
+        );
+        self.back_buf.set_layout(
+            &mut self.cmd_buf,
+            Layout::TransferDstOptimal,
+            PipelineStage::TRANSFER,
+            Access::TRANSFER_WRITE,
+        );
+        self.cmd_buf.copy_image(
+            self.dst.as_ref(),
+            Layout::TransferSrcOptimal,
+            self.back_buf.as_ref(),
+            Layout::TransferDstOptimal,
+            once(ImageCopy {
+                src_subresource: SubresourceLayers {
+                    aspects: Aspects::COLOR,
+                    level: 0,
+                    layers: 0..1,
+                },
+                src_offset: Offset::ZERO,
+                dst_subresource: SubresourceLayers {
+                    aspects: Aspects::COLOR,
+                    level: 0,
+                    layers: 0..1,
+                },
+                dst_offset: Offset::ZERO,
+                extent: self.dst.dims().as_extent_depth(1),
+            }),
+        );
+        self.dst.set_layout(
+            &mut self.cmd_buf,
+            Layout::ShaderReadOnlyOptimal,
+            PipelineStage::FRAGMENT_SHADER,
+            Access::SHADER_READ,
+        );
+    }
+
+    unsafe fn submit_begin_finish(&mut self, render_pass_mode: RenderPassMode) {
+        trace!("submit_begin_finish");
 
         let pool = self.pool.as_mut().unwrap();
         let render_pass = pool.render_pass(render_pass_mode);
-        let mut back_buf = self.back_buf.borrow_mut();
-        let mut dst = self.dst.borrow_mut();
-        let graphics = self.graphics.as_ref().unwrap();
-        let dims = dst.dims();
-        let rect = dims.into();
+        let graphics = self.graphics_texture.as_ref().unwrap();
+        let rect = self.dst.dims().into();
         let viewport = Viewport {
             rect,
             depth: 0.0..1.0,
         };
 
-        // Begin
-        self.cmd_buf
-            .begin_primary(CommandBufferFlags::ONE_TIME_SUBMIT);
-
-        // Optional step: Fill dst into the backbuffer in order to preserve it in the output
-        if self.dst_preserve {
-            dst.set_layout(
-                &mut self.cmd_buf,
-                Layout::TransferSrcOptimal,
-                PipelineStage::TRANSFER,
-                Access::TRANSFER_READ,
-            );
-            back_buf.set_layout(
-                &mut self.cmd_buf,
-                Layout::TransferDstOptimal,
-                PipelineStage::TRANSFER,
-                Access::TRANSFER_WRITE,
-            );
-            self.cmd_buf.copy_image(
-                dst.as_ref(),
-                Layout::TransferSrcOptimal,
-                back_buf.as_ref(),
-                Layout::TransferDstOptimal,
-                once(ImageCopy {
-                    src_subresource: SubresourceLayers {
-                        aspects: Aspects::COLOR,
-                        level: 0,
-                        layers: 0..1,
-                    },
-                    src_offset: Offset::ZERO,
-                    dst_subresource: SubresourceLayers {
-                        aspects: Aspects::COLOR,
-                        level: 0,
-                        layers: 0..1,
-                    },
-                    dst_offset: Offset::ZERO,
-                    extent: dims.as_extent_depth(1),
-                }),
-            );
-            dst.set_layout(
-                &mut self.cmd_buf,
-                Layout::ShaderReadOnlyOptimal,
-                PipelineStage::FRAGMENT_SHADER,
-                Access::SHADER_READ,
-            );
-        }
-
-        // Step 1: Write src into the backbuffer, but blending using our shader `mode`
-        back_buf.set_layout(
+        self.back_buf.set_layout(
             &mut self.cmd_buf,
             Layout::ColorAttachmentOptimal,
             PipelineStage::COLOR_ATTACHMENT_OUTPUT,
@@ -407,7 +359,7 @@ where
             self.frame_buf.as_ref().unwrap(),
             rect,
             once(RenderAttachmentInfo {
-                image_view: back_buf.as_2d_color().as_ref(),
+                image_view: self.back_buf.as_2d_color().as_ref(),
                 clear_value: TRANSPARENT_BLACK.into(),
             }),
             SubpassContents::Inline,
@@ -418,21 +370,25 @@ where
         bind_graphics_descriptor_set(&mut self.cmd_buf, graphics.layout(), graphics.desc_set(0));
     }
 
-    unsafe fn submit_write(&mut self, write: &Write, set_idx: &mut usize) {
-        trace!("submit_write");
+    unsafe fn submit_texture_descriptors(&mut self, desc_set: usize) {
+        trace!("submit_texture_descriptors");
 
-        let graphics = self.graphics.as_ref().unwrap();
-        let layout = graphics.layout();
+        let graphics = self.graphics_texture.as_ref().unwrap();
 
-        // If this write (writes are sorted identically to `self.src_textures` except the writes have more items) is a different
-        // texture we will need to switch to the next descriptor set - this won't happen on the first write of course.
-        if !Texture2d::ptr_eq(write.src, &self.src_textures[*set_idx]) {
-            *set_idx += 1;
-            bind_graphics_descriptor_set(&mut self.cmd_buf, layout, graphics.desc_set(*set_idx));
-        }
+        bind_graphics_descriptor_set(
+            &mut self.cmd_buf,
+            graphics.layout(),
+            graphics.desc_set(desc_set),
+        );
+    }
 
+    unsafe fn submit_texture_write(&mut self, transform: Mat4) {
+        trace!("submit_texture_write");
+
+        let graphics = self.graphics_texture.as_ref().unwrap();
         let offset = Vec2::zero();
         let scale = Vec2::one();
+
         self.cmd_buf.push_graphics_constants(
             graphics.layout(),
             ShaderStageFlags::VERTEX,
@@ -440,7 +396,7 @@ where
             WriteVertexPushConsts {
                 offset,
                 scale,
-                transform: write.transform,
+                transform,
             }
             .as_ref(),
         );
@@ -464,30 +420,26 @@ where
     unsafe fn submit_finish(&mut self) {
         trace!("submit_finish");
 
-        let mut back_buf = self.back_buf.borrow_mut();
-        let mut dst = self.dst.borrow_mut();
-        let dims = dst.dims();
-
         // End of the previous step...
         self.cmd_buf.end_render_pass();
 
         // Step 2: Copy the now-composited backbuffer to the `dst` texture
-        back_buf.set_layout(
+        self.back_buf.set_layout(
             &mut self.cmd_buf,
             Layout::TransferSrcOptimal,
             PipelineStage::TRANSFER,
             Access::TRANSFER_READ,
         );
-        dst.set_layout(
+        self.dst.set_layout(
             &mut self.cmd_buf,
             Layout::TransferDstOptimal,
             PipelineStage::TRANSFER,
             Access::TRANSFER_WRITE,
         );
         self.cmd_buf.copy_image(
-            back_buf.as_ref(),
+            self.back_buf.as_ref(),
             Layout::TransferSrcOptimal,
-            dst.as_ref(),
+            self.dst.as_ref(),
             Layout::TransferDstOptimal,
             once(ImageCopy {
                 src_subresource: SubresourceLayers {
@@ -502,7 +454,7 @@ where
                     layers: 0..1,
                 },
                 dst_offset: Offset::ZERO,
-                extent: dims.as_extent_depth(1),
+                extent: self.dst.dims().as_extent_depth(1),
             }),
         );
 
@@ -519,19 +471,17 @@ where
         );
     }
 
-    unsafe fn write_descriptors(&mut self) {
-        trace!("write_descriptors");
+    unsafe fn write_texture_descriptors<'a, T>(&mut self, graphics: &mut Graphics, textures: T)
+    where
+        T: Iterator<Item = &'a Texture2d>,
+    {
+        trace!("write_texture_descriptors");
 
         #[cfg(feature = "blend-modes")]
-        let dst = self.dst.borrow();
-
-        #[cfg(feature = "blend-modes")]
-        let dst_view = dst.as_2d_color();
-
-        let graphics = self.graphics.as_mut().unwrap();
+        let dst_view = self.dst.as_2d_color();
 
         // Each source texture requres a unique descriptor set
-        for (idx, src) in self.src_textures.iter().enumerate() {
+        for (idx, texture) in textures.enumerate() {
             let (set, samplers) = graphics.desc_set_mut_with_samplers(idx);
 
             // A descriptor for this source texture
@@ -540,7 +490,7 @@ where
                 binding: 0,
                 array_offset: 0,
                 descriptors: once(Descriptor::CombinedImageSampler(
-                    src.borrow().as_2d_color().as_ref(),
+                    texture.as_2d_color().as_ref(),
                     Layout::ShaderReadOnlyOptimal,
                     samplers[0].as_ref(),
                 )),
@@ -571,6 +521,12 @@ where
     fn drop(&mut self) {
         unsafe {
             self.wait();
+        }
+
+        // Causes the compiler to drop internal caches which store texture refs; they were being
+        // held alive there so that they could not be dropped until we finished GPU execution
+        if let Some(compiler) = self.compiler.as_mut() {
+            compiler.reset();
         }
     }
 }

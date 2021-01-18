@@ -10,12 +10,14 @@ use {
     crate::{
         color::AlphaColor,
         math::{Coord, CoordF, Extent},
+        ptr::Shared,
     },
     a_r_c_h_e_r_y::SharedPointerKind,
     gfx_hal::{
         format::{Format, ImageFeature},
         image::{Layout, Usage},
     },
+    std::cell::RefCell,
 };
 
 /// A powerful structure which allows you to combine various operations and other render
@@ -25,7 +27,7 @@ where
     P: 'static + SharedPointerKind,
 {
     pool: Option<Lease<Pool<P>, P>>,
-    target: Lease<Texture2d, P>,
+    target: Lease<Shared<Texture2d, P>, P>,
     target_dirty: bool,
     ops: Vec<Box<dyn Op<P>>>,
 }
@@ -38,7 +40,6 @@ where
         #[cfg(feature = "debug-names")] name: &str,
         dims: Extent,
         mut pool: Lease<Pool<P>, P>,
-        ops: Vec<Box<dyn Op<P>>>,
     ) -> Self {
         let fmt = pool
             .best_fmt(
@@ -62,7 +63,7 @@ where
             pool: Some(pool),
             target,
             target_dirty: false,
-            ops,
+            ops: Default::default(),
         }
     }
 
@@ -96,7 +97,7 @@ where
     pub fn copy(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        src: &Texture2d,
+        src: &Shared<Texture2d, P>,
     ) -> &mut CopyOp<P> {
         let op = unsafe {
             let pool = self.take_pool();
@@ -122,15 +123,10 @@ where
 
     /// Gets the dimensions, in pixels, of this `Render`.
     pub fn dims(&self) -> Extent {
-        self.target.borrow().dims()
+        self.target.dims()
     }
 
     /// Draws a batch of 3D elements.
-    ///
-    /// **_NOTE:_** The implementation may re-order the provided draws, so do not rely on existing
-    /// indices after this call completes.
-    ///
-    /// **_NOTE:_** Not fully implemented yet
     pub fn draw(&mut self, #[cfg(feature = "debug-names")] name: &str) -> &mut DrawOp<P> {
         let mut op = unsafe {
             let pool = self.take_pool();
@@ -211,11 +207,8 @@ where
             .unwrap()
     }
 
-    // TODO: Remove this function, allow using Renders as textures naturually
-    /// This is going to change soon! Possibly just go away and be used implicitly without this
-    /// function.
     #[allow(clippy::type_complexity)]
-    pub(crate) fn resolve(self) -> (Lease<Texture2d, P>, Vec<Box<dyn Op<P>>>) {
+    pub(crate) fn resolve(self) -> (Lease<Shared<Texture2d, P>, P>, Vec<Box<dyn Op<P>>>) {
         (self.target, self.ops)
     }
 
@@ -288,5 +281,14 @@ where
             .as_any_mut()
             .downcast_mut::<WriteOp<P>>()
             .unwrap()
+    }
+}
+
+impl<P> AsRef<Shared<Texture2d, P>> for Render<P>
+where
+    P: SharedPointerKind,
+{
+    fn as_ref(&self) -> &Shared<Texture2d, P> {
+        &self.target
     }
 }

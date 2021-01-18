@@ -86,7 +86,7 @@ where
     /// None
     /// TODO: Swap order of last two params, better name, layout_barrier?
     pub(crate) unsafe fn set_layout(
-        &mut self,
+        &self,
         cmd_buf: &mut <_Backend as Backend>::CommandBuffer,
         layout: Layout,
         pipeline_stage: PipelineStage,

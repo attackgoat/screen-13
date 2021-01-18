@@ -375,7 +375,7 @@ where
         Instruction::SunlightDraw(CommandIter::new(&self.cmds[range]))
     }
 
-    /// Returns true if no actual models or lines are rendered
+    /// Returns true if no models or lines are rendered.
     pub fn is_empty(&self) -> bool {
         self.compiler.code.is_empty()
     }

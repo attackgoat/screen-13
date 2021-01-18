@@ -224,6 +224,15 @@ where
     }
 }
 
+impl<P> Debug for Command<P>
+where
+    P: SharedPointerKind,
+{
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        f.write_str("Comand")
+    }
+}
+
 pub struct CommandIter<'a, T, P>
 where
     P: 'static + SharedPointerKind,
@@ -376,9 +385,9 @@ where
     P: SharedPointerKind,
 {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.color.as_ptr().hash(state);
-        self.metal_rough.as_ptr().hash(state);
-        self.normal.as_ptr().hash(state);
+        Shared::as_ptr(&self.color).hash(state);
+        Shared::as_ptr(&self.metal_rough).hash(state);
+        Shared::as_ptr(&self.normal).hash(state);
     }
 }
 
@@ -387,17 +396,17 @@ where
     P: SharedPointerKind,
 {
     fn cmp(&self, other: &Self) -> Ordering {
-        let mut res = self.color.as_ptr().cmp(&other.color.as_ptr());
+        let mut res = Shared::as_ptr(&self.color).cmp(&Shared::as_ptr(&other.color));
         if res != Ordering::Less {
             return res;
         }
 
-        res = self.metal_rough.as_ptr().cmp(&other.metal_rough.as_ptr());
+        res = Shared::as_ptr(&self.metal_rough).cmp(&Shared::as_ptr(&other.metal_rough));
         if res != Ordering::Less {
             return res;
         }
 
-        self.normal.as_ptr().cmp(&other.normal.as_ptr())
+        Shared::as_ptr(&self.normal).cmp(&Shared::as_ptr(&other.normal))
     }
 }
 

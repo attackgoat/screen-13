@@ -9,6 +9,7 @@ use {
     },
     a_r_c_h_e_r_y::SharedPointerKind,
     std::{
+        iter::once,
         time::{Duration, Instant},
         u8,
     },
@@ -92,20 +93,19 @@ where
 {
     fn frame(&self, gpu: &Gpu<P>, ab: u8, mut a: Render<P>, b: Render<P>) -> Render<P> {
         let dims = b.dims();
-        let b = gpu.resolve(b);
 
         a.write(
             #[cfg(feature = "debug-names")]
             "Fade write B",
         )
         .with_mode(WriteMode::Blend((ab, self.mode)))
-        .record(&mut [Write::region(
-            &b,
+        .record(once(Write::region(
+            b,
             Rect {
                 pos: Coord::ZERO,
                 dims,
             },
-        )]);
+        )));
 
         a
     }

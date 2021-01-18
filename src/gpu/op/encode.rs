@@ -1,9 +1,12 @@
 use {
     super::Op,
-    crate::gpu::{
-        driver::{CommandPool, Fence},
-        pool::{Lease, Pool},
-        queue_mut, Data, Texture2d,
+    crate::{
+        gpu::{
+            driver::{CommandPool, Fence},
+            pool::{Lease, Pool},
+            queue_mut, Data, Texture2d,
+        },
+        ptr::Shared,
     },
     a_r_c_h_e_r_y::SharedPointerKind,
     gfx_hal::{
@@ -42,7 +45,7 @@ where
     pool: Option<Lease<Pool<P>, P>>,
     path: Option<PathBuf>,
     quality: f32,
-    texture: Texture2d,
+    texture: Shared<Texture2d, P>,
 }
 
 impl<P> EncodeOp<P>
@@ -53,7 +56,7 @@ where
     pub(crate) unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
         mut pool: Lease<Pool<P>, P>,
-        texture: &Texture2d,
+        texture: &Shared<Texture2d, P>,
     ) -> Self {
         let len = Self::byte_len(&texture);
         let buf = pool.data(
@@ -75,7 +78,7 @@ where
             pool: Some(pool),
             path: None,
             quality: DEFAULT_QUALITY,
-            texture: Texture2d::clone(texture),
+            texture: Shared::clone(texture),
         }
     }
 
@@ -88,7 +91,7 @@ where
     }
 
     fn byte_len(texture: &Texture2d) -> usize {
-        let dims = texture.borrow().dims();
+        let dims = texture.dims();
         (dims.x * dims.y * 4) as _
     }
 
@@ -105,7 +108,7 @@ where
                 self.wait();
             }
 
-            let dims = self.texture.borrow().dims();
+            let dims = self.texture.dims();
             let len = Self::byte_len(&self.texture);
             let buf = self.buf.map_range(0..len as _).unwrap(); // TODO: Error handling!
 
@@ -130,22 +133,21 @@ where
 
         let len = Self::byte_len(&self.texture);
         let buf = &mut *self.buf;
-        let mut texture = self.texture.borrow_mut();
-        let dims = texture.dims();
+        let dims = self.texture.dims();
 
         // Begin
         self.cmd_buf
             .begin_primary(CommandBufferFlags::ONE_TIME_SUBMIT);
 
         // Step 1: Copy the image to our temporary buffer (all on the GPU)
-        texture.set_layout(
+        self.texture.set_layout(
             &mut self.cmd_buf,
             Layout::TransferSrcOptimal,
             PipelineStage::TRANSFER,
             ImageAccess::TRANSFER_READ,
         );
         self.cmd_buf.copy_image_to_buffer(
-            &texture.as_ref(),
+            self.texture.as_ref(),
             Layout::TransferSrcOptimal,
             buf.as_ref(),
             &[BufferImageCopy {

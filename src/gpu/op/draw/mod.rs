@@ -52,7 +52,7 @@ use {
                 Framebuffer2d,
             },
             pool::{Lease, Pool},
-            queue_mut, Bitmap, Data, Texture2d, TextureRef,
+            queue_mut, Bitmap, Data, Texture2d,
         },
         math::{Coord, Mat3, Mat4, Quat, Vec2, Vec3},
         ptr::Shared,
@@ -99,7 +99,7 @@ where
     compute_u16_skin_vertex_attrs: Option<Lease<Compute, P>>,
     compute_u32_vertex_attrs: Option<Lease<Compute, P>>,
     compute_u32_skin_vertex_attrs: Option<Lease<Compute, P>>,
-    dst: Texture2d,
+    dst: Shared<Texture2d, P>,
     dst_preserve: bool,
     fence: Lease<Fence, P>,
     frame_buf: Option<(Framebuffer2d, RenderPassMode)>,
@@ -130,16 +130,14 @@ where
     pub(crate) unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
         mut pool: Lease<Pool<P>, P>,
-        dst: &Texture2d,
+        dst: &Shared<Texture2d, P>,
     ) -> Self {
         // Allocate the command buffer
         let mut cmd_pool = pool.cmd_pool();
 
         // The geometry buffer will share size and output format with the destination texture
-        let (dims, fmt) = {
-            let dst = dst.borrow();
-            (dst.dims(), dst.format())
-        };
+        let dims = dst.dims();
+        let fmt = dst.format();
 
         Self {
             cmd_buf: cmd_pool.allocate_one(Level::Primary),
@@ -149,7 +147,7 @@ where
             compute_u16_skin_vertex_attrs: None,
             compute_u32_vertex_attrs: None,
             compute_u32_skin_vertex_attrs: None,
-            dst: TextureRef::clone(dst),
+            dst: Shared::clone(dst),
             dst_preserve: false,
             fence: pool.fence(
                 #[cfg(feature = "debug-names")]
@@ -253,7 +251,7 @@ where
 
             // Use a compiler to figure out rendering instructions without allocating
             // memory per rendering command. The compiler caches code between frames.
-            let mut compiler = pool.compiler();
+            let mut compiler = pool.draw_compiler();
             {
                 let mut instrs = compiler.compile(
                     #[cfg(feature = "debug-names")]
@@ -264,18 +262,11 @@ where
                 );
 
                 let render_pass_mode = {
-                    let dst = self.dst.borrow();
-                    let dims = dst.dims();
-                    let color_metal = self.geom_buf.color_metal.borrow();
-                    let depth = self.geom_buf.depth.borrow();
-                    let light = self.geom_buf.light.borrow();
-                    let normal_rough = self.geom_buf.normal_rough.borrow();
-                    let output = self.geom_buf.output.borrow();
                     let draw_mode = DrawRenderPassMode {
-                        depth: depth.format(),
-                        geom_buf: color_metal.format(),
-                        light: light.format(),
-                        output: output.format(),
+                        depth: self.geom_buf.depth().format(),
+                        geom_buf: self.geom_buf.color_metal().format(),
+                        light: self.geom_buf.light().format(),
+                        output: self.geom_buf.output().format(),
                         skydome: self.skydome.is_some(),
                         post_fx: instrs.contains_lines(),
                     };
@@ -290,46 +281,47 @@ where
                             render_pass,
                             vec![
                                 FramebufferAttachment {
-                                    format: color_metal.format(),
+                                    format: draw_mode.geom_buf,
                                     usage: ImageUsage::COLOR_ATTACHMENT
                                         | ImageUsage::INPUT_ATTACHMENT
                                         | ImageUsage::SAMPLED,
                                     view_caps: ViewCapabilities::MUTABLE_FORMAT,
                                 },
                                 FramebufferAttachment {
-                                    format: normal_rough.format(),
+                                    format: draw_mode.geom_buf,
                                     usage: ImageUsage::COLOR_ATTACHMENT
                                         | ImageUsage::INPUT_ATTACHMENT
                                         | ImageUsage::SAMPLED,
                                     view_caps: ViewCapabilities::MUTABLE_FORMAT,
                                 },
                                 FramebufferAttachment {
-                                    format: light.format(),
+                                    format: draw_mode.light,
                                     usage: ImageUsage::COLOR_ATTACHMENT
                                         | ImageUsage::INPUT_ATTACHMENT
                                         | ImageUsage::SAMPLED,
                                     view_caps: ViewCapabilities::MUTABLE_FORMAT,
                                 },
                                 FramebufferAttachment {
-                                    format: output.format(),
+                                    format: draw_mode.output,
                                     usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSFER_SRC,
                                     view_caps: ViewCapabilities::MUTABLE_FORMAT,
                                 },
                                 FramebufferAttachment {
-                                    format: depth.format(),
+                                    format: draw_mode.depth,
                                     usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT
                                         | ImageUsage::INPUT_ATTACHMENT
                                         | ImageUsage::SAMPLED,
                                     view_caps: ViewCapabilities::MUTABLE_FORMAT,
                                 },
                             ],
-                            dims,
+                            self.dst.dims(),
                         ),
                         render_pass_mode,
                     ));
                     render_pass_mode
                 };
 
+                // Texture descriptors for skydome rendering
                 if let Some(skydome) = &self.skydome {
                     let mut graphics = pool.graphics_desc_sets(
                         #[cfg(feature = "debug-names")]
@@ -343,8 +335,8 @@ where
                     self.graphics_skydome = Some(graphics);
                 }
 
+                // Material descriptors for PBR rendering (Color+Normal+Metal/Rough)
                 {
-                    // Material descriptors for PBR rendering (Color+Normal+Metal/Rough)
                     let descriptors = instrs.mesh_materials();
                     let desc_sets = descriptors.len();
                     if desc_sets > 0 {
@@ -359,8 +351,10 @@ where
                         Self::write_model_material_descriptors(&mut graphics, descriptors);
                         self.graphics_mesh = Some(graphics);
                     }
+                }
 
-                    // Buffer descriptors for calculation of u16-indexed vertex attributes
+                // Buffer descriptors for calculation of u16-indexed vertex attributes
+                {
                     let descriptors = instrs.calc_vertex_attrs_u16_descriptors();
                     let desc_sets = descriptors.len();
                     if desc_sets > 0 {
@@ -373,8 +367,10 @@ where
                         Self::write_calc_vertex_attrs_descriptors(&mut compute, descriptors);
                         self.compute_u16_vertex_attrs = Some(compute);
                     }
+                }
 
-                    // Buffer descriptors for calculation of u16-indexed skinned vertex attributes
+                // Buffer descriptors for calculation of u16-indexed skinned vertex attributes
+                {
                     let descriptors = instrs.calc_vertex_attrs_u16_skin_descriptors();
                     let desc_sets = descriptors.len();
                     if desc_sets > 0 {
@@ -387,8 +383,10 @@ where
                         Self::write_calc_vertex_attrs_descriptors(&mut compute, descriptors);
                         self.compute_u16_skin_vertex_attrs = Some(compute);
                     }
+                }
 
-                    // Buffer descriptors for calculation of u32-indexed vertex attributes
+                // Buffer descriptors for calculation of u32-indexed vertex attributes
+                {
                     let descriptors = instrs.calc_vertex_attrs_u32_descriptors();
                     let desc_sets = descriptors.len();
                     if desc_sets > 0 {
@@ -401,8 +399,10 @@ where
                         Self::write_calc_vertex_attrs_descriptors(&mut compute, descriptors);
                         self.compute_u32_vertex_attrs = Some(compute);
                     }
+                }
 
-                    // Buffer descriptors for calculation of u32-indexed skinned vertex attributes
+                // Buffer descriptors for calculation of u32-indexed skinned vertex attributes
+                {
                     let descriptors = instrs.calc_vertex_attrs_u32_skin_descriptors();
                     let desc_sets = descriptors.len();
                     if desc_sets > 0 {
@@ -422,7 +422,7 @@ where
                 let view = camera.view();
                 let view_proj = proj * view;
                 let view_proj_inv = view_proj.inverse();
-                let dims: Coord = self.dst.borrow().dims().into();
+                let dims: Coord = self.dst.dims().into();
                 let viewport = Viewport {
                     rect: dims.as_rect_at(Coord::ZERO),
                     depth: 0.0..1.0,
@@ -515,26 +515,22 @@ where
     unsafe fn submit_begin_preserve(&mut self) {
         trace!("submit_begin_preserve");
 
-        let mut dst = self.dst.borrow_mut();
-        let mut color_metal = self.geom_buf.color_metal.borrow_mut();
-        let dims = dst.dims();
-
-        dst.set_layout(
+        self.dst.set_layout(
             &mut self.cmd_buf,
             Layout::TransferSrcOptimal,
             PipelineStage::TRANSFER,
             ImageAccess::TRANSFER_READ,
         );
-        color_metal.set_layout(
+        self.geom_buf.color_metal().set_layout(
             &mut self.cmd_buf,
             Layout::TransferDstOptimal,
             PipelineStage::TRANSFER,
             ImageAccess::TRANSFER_WRITE,
         );
         self.cmd_buf.copy_image(
-            dst.as_ref(),
+            self.dst.as_ref(),
             Layout::TransferSrcOptimal,
-            color_metal.as_ref(),
+            self.geom_buf.color_metal().as_ref(),
             Layout::TransferDstOptimal,
             once(ImageCopy {
                 src_subresource: SubresourceLayers {
@@ -549,7 +545,7 @@ where
                     layers: 0..1,
                 },
                 dst_offset: Offset::ZERO,
-                extent: dims.as_extent_depth(1),
+                extent: self.dst.dims().as_extent_depth(1),
             }),
         );
     }
@@ -560,11 +556,6 @@ where
         let pool = self.pool.as_mut().unwrap();
         let (frame_buf, render_pass_mode) = self.frame_buf.as_ref().unwrap();
         let render_pass = pool.render_pass(*render_pass_mode);
-        let mut color_metal = self.geom_buf.color_metal.borrow_mut();
-        let mut normal_rough = self.geom_buf.normal_rough.borrow_mut();
-        let mut light = self.geom_buf.light.borrow_mut();
-        let mut output = self.geom_buf.output.borrow_mut();
-        let mut depth = self.geom_buf.depth.borrow_mut();
         let depth_clear = ClearValue {
             depth_stencil: ClearDepthStencil {
                 depth: 1.0,
@@ -578,31 +569,31 @@ where
         };
 
         // Prepare the render pass for mesh rendering
-        color_metal.set_layout(
+        self.geom_buf.color_metal().set_layout(
             &mut self.cmd_buf,
             Layout::ColorAttachmentOptimal,
             PipelineStage::COLOR_ATTACHMENT_OUTPUT,
             ImageAccess::COLOR_ATTACHMENT_WRITE,
         );
-        normal_rough.set_layout(
+        self.geom_buf.normal_rough().set_layout(
             &mut self.cmd_buf,
             Layout::ColorAttachmentOptimal,
             PipelineStage::COLOR_ATTACHMENT_OUTPUT,
             ImageAccess::COLOR_ATTACHMENT_WRITE,
         );
-        light.set_layout(
+        self.geom_buf.light().set_layout(
             &mut self.cmd_buf,
             Layout::ColorAttachmentOptimal,
             PipelineStage::COLOR_ATTACHMENT_OUTPUT,
             ImageAccess::COLOR_ATTACHMENT_WRITE,
         );
-        output.set_layout(
+        self.geom_buf.output().set_layout(
             &mut self.cmd_buf,
             Layout::ColorAttachmentOptimal,
             PipelineStage::COLOR_ATTACHMENT_OUTPUT,
             ImageAccess::COLOR_ATTACHMENT_WRITE,
         );
-        depth.set_layout(
+        self.geom_buf.depth().set_layout(
             &mut self.cmd_buf,
             Layout::DepthStencilAttachmentOptimal,
             PipelineStage::LATE_FRAGMENT_TESTS, // TODO: VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT or VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT
@@ -615,11 +606,11 @@ where
             vec![
                 RenderAttachmentInfo {
                     clear_value: light_clear,
-                    image_view: light.as_2d_color().as_ref(),
+                    image_view: self.geom_buf.light().as_2d_color().as_ref(),
                 },
                 RenderAttachmentInfo {
                     clear_value: depth_clear,
-                    image_view: depth.as_2d_depth().as_ref(),
+                    image_view: self.geom_buf.depth().as_2d_depth().as_ref(),
                 },
             ],
             SubpassContents::Inline,
@@ -799,7 +790,7 @@ where
     ) {
         trace!("submit_point_lights");
 
-        let depth_dims: Vec2 = self.geom_buf.depth.borrow().dims().into();
+        let depth_dims: Vec2 = self.geom_buf.depth().dims().into();
         let depth_dims_inv = 1.0 / depth_dims;
 
         let subpass_idx = self.accum_light_subpass_idx();
@@ -1260,28 +1251,24 @@ where
     unsafe fn submit_finish(&mut self) {
         trace!("submit_finish");
 
-        let mut dst = self.dst.borrow_mut();
-        let mut output = self.geom_buf.output.borrow_mut();
-        let dims = dst.dims();
-
         // Step 6: Copy the output graphics buffer into dst
         self.cmd_buf.end_render_pass();
-        output.set_layout(
+        self.geom_buf.output().set_layout(
             &mut self.cmd_buf,
             Layout::TransferSrcOptimal,
             PipelineStage::TRANSFER,
             ImageAccess::TRANSFER_READ,
         );
-        dst.set_layout(
+        self.dst.set_layout(
             &mut self.cmd_buf,
             Layout::TransferDstOptimal,
             PipelineStage::TRANSFER,
             ImageAccess::TRANSFER_WRITE,
         );
         self.cmd_buf.copy_image(
-            output.as_ref(),
+            self.geom_buf.output().as_ref(),
             Layout::TransferSrcOptimal,
-            dst.as_ref(),
+            self.dst.as_ref(),
             Layout::TransferDstOptimal,
             once(ImageCopy {
                 src_subresource: SubresourceLayers {
@@ -1296,7 +1283,7 @@ where
                     layers: 0..1,
                 },
                 dst_offset: Offset::ZERO,
-                extent: dims.as_extent_depth(1),
+                extent: self.dst.dims().as_extent_depth(1),
             }),
         );
 
@@ -1382,7 +1369,7 @@ where
                 binding: 0,
                 array_offset: 0,
                 descriptors: once(Descriptor::CombinedImageSampler(
-                    material.color.borrow().as_2d_color().as_ref(),
+                    material.color.as_2d_color().as_ref(),
                     Layout::ShaderReadOnlyOptimal,
                     samplers[0].as_ref(),
                 )),
@@ -1392,7 +1379,7 @@ where
                 binding: 1,
                 array_offset: 0,
                 descriptors: once(Descriptor::CombinedImageSampler(
-                    material.metal_rough.borrow().as_2d_color().as_ref(),
+                    material.metal_rough.as_2d_color().as_ref(),
                     Layout::ShaderReadOnlyOptimal,
                     samplers[1].as_ref(),
                 )),
@@ -1402,7 +1389,7 @@ where
                 binding: 2,
                 array_offset: 0,
                 descriptors: once(Descriptor::CombinedImageSampler(
-                    material.normal.borrow().as_2d_color().as_ref(),
+                    material.normal.as_2d_color().as_ref(),
                     Layout::ShaderReadOnlyOptimal,
                     samplers[2].as_ref(),
                 )),
@@ -1417,7 +1404,7 @@ where
             binding: 0,
             array_offset: 0,
             descriptors: once(Descriptor::CombinedImageSampler(
-                skydome.cloud[0].borrow().as_2d_color().as_ref(),
+                skydome.cloud[0].as_2d_color().as_ref(),
                 Layout::ShaderReadOnlyOptimal,
                 samplers[0].as_ref(),
             )),
@@ -1427,7 +1414,7 @@ where
             binding: 1,
             array_offset: 0,
             descriptors: once(Descriptor::CombinedImageSampler(
-                skydome.cloud[1].borrow().as_2d_color().as_ref(),
+                skydome.cloud[1].as_2d_color().as_ref(),
                 Layout::ShaderReadOnlyOptimal,
                 samplers[1].as_ref(),
             )),
@@ -1437,7 +1424,7 @@ where
             binding: 2,
             array_offset: 0,
             descriptors: once(Descriptor::CombinedImageSampler(
-                skydome.moon.borrow().as_2d_color().as_ref(),
+                skydome.moon.as_2d_color().as_ref(),
                 Layout::ShaderReadOnlyOptimal,
                 samplers[2].as_ref(),
             )),
@@ -1447,7 +1434,7 @@ where
             binding: 3,
             array_offset: 0,
             descriptors: once(Descriptor::CombinedImageSampler(
-                skydome.sun.borrow().as_2d_color().as_ref(),
+                skydome.sun.as_2d_color().as_ref(),
                 Layout::ShaderReadOnlyOptimal,
                 samplers[3].as_ref(),
             )),
@@ -1457,7 +1444,7 @@ where
             binding: 4,
             array_offset: 0,
             descriptors: once(Descriptor::CombinedImageSampler(
-                skydome.tint[0].borrow().as_2d_color().as_ref(),
+                skydome.tint[0].as_2d_color().as_ref(),
                 Layout::ShaderReadOnlyOptimal,
                 samplers[4].as_ref(),
             )),
@@ -1467,7 +1454,7 @@ where
             binding: 5,
             array_offset: 0,
             descriptors: once(Descriptor::CombinedImageSampler(
-                skydome.tint[1].borrow().as_2d_color().as_ref(),
+                skydome.tint[1].as_2d_color().as_ref(),
                 Layout::ShaderReadOnlyOptimal,
                 samplers[5].as_ref(),
             )),
@@ -1484,8 +1471,8 @@ where
             self.wait();
         }
 
-        // Causes the compiler to drop internal caches which store texture refs; they were being held
-        // alive there so that they could not be dropped until we finished GPU execution
+        // Causes the compiler to drop internal caches which store texture refs; they were being
+        // held alive there so that they could not be dropped until we finished GPU execution
         if let Some(compiler) = self.compiler.as_mut() {
             compiler.reset();
         }

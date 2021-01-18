@@ -113,7 +113,7 @@ before June 2021. Feel free to chip in to speed that up!
 _Screen 13_ puts a lot of functionality behind optional features in order to optimize compile time
 for the most common use cases. The following features are available.
 
-_NOTE_: The deferred and forward renderers have separate code paths and you can choose either on a
+**_NOTE:_** The deferred and forward renderers have separate code paths and you can choose either on a
 render-by-render basis.
 
 - **`auto-cull`** — Enables automatic draw call camera frustum culling.
@@ -125,7 +125,7 @@ render-by-render basis.
   [Subtract](https://docs.rs/screen-13/0.1.8/screen_13/gpu/enum.BlendMode.html#variant.Subtract),
   [Color Burn](https://docs.rs/screen-13/0.1.8/screen_13/gpu/enum.BlendMode.html#variant.ColorBurn),
   _etc..._
-- **`deferred-3d`** 🚧 *(enabled by default)* — Ability to draw models and lights using a deferred
+- **`deferred-3d`** *(enabled by default)* — Ability to draw models and lights using a deferred
   technique.
 - **`forward-3d`** 🚧 *(enabled by default)* — Same as the deferred renderer, but using a forward
   technique.
