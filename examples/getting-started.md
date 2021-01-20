@@ -178,12 +178,12 @@ _Screen 13_ prefers to handle it. All assets are baked at design-time using a pr
 
 ### Fonts
 
-For some `comic-sans.fnt` bitmapped font file (BMFont is supported) you might have this bitmap font
+For some `comic-sans.ttf` font file ('.otf' and '.ttc' are also supported) you might have this font
 asset `.toml` file, `comic-sans.toml`:
 
 ```toml
-[bitmap-font]
-src = 'comic-sans.fnt'
+[font]
+src = 'comic-sans.ttf'
 ```
 
 Additionally you have a main project `.toml` file, `example.toml`:

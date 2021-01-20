@@ -1,3 +1,8 @@
 [content]
 # No compression here - we're using brotli on the server side! You might make different choices
 # based on your infrastructure. Pay what you want!
+
+[[content.group]]
+assets = [
+    "font/permanent-marker.toml"
+]

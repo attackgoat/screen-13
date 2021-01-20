@@ -16,12 +16,17 @@ pub struct BitmapFontId(pub(crate) u16);
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct BlobId(pub(crate) u16);
 
+/// An identifier for `Font` instances which is unique within one `.pak` file.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+pub struct FontId(pub(crate) u16);
+
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub(crate) enum Id {
     Animation(AnimationId),
     Bitmap(BitmapId),
     BitmapFont(BitmapFontId),
     Blob(BlobId),
+    Font(FontId),
     Material(MaterialId),
     Model(ModelId),
     Scene(SceneId),
@@ -53,6 +58,13 @@ impl Id {
     pub fn as_blob(&self) -> Option<BlobId> {
         match self {
             Self::Blob(id) => Some(*id),
+            _ => None,
+        }
+    }
+
+    pub fn as_font(&self) -> Option<FontId> {
+        match self {
+            Self::Font(id) => Some(*id),
             _ => None,
         }
     }
@@ -107,6 +119,12 @@ impl From<BitmapFontId> for Id {
 impl From<BlobId> for Id {
     fn from(id: BlobId) -> Self {
         Self::Blob(id)
+    }
+}
+
+impl From<FontId> for Id {
+    fn from(id: FontId) -> Self {
+        Self::Font(id)
     }
 }
 

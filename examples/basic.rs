@@ -1,4 +1,7 @@
-use {screen_13::prelude_rc::*, std::env::current_exe};
+use {
+    screen_13::prelude_rc::*,
+    std::{env::current_exe, iter::once},
+};
 
 /// This example requires a color graphics adapter.
 fn main() -> ! {
@@ -19,14 +22,14 @@ fn main() -> ! {
     .expect("ERROR: You must first pack the runtime content into a file by running the following command: `cargo run examples/res/basic.toml`");
 
     // Initialize our "game" by loading everything it requires to run
-    let small_10px = engine.gpu().read_font(&mut pak, "font/small_10px");
+    let small_10px = engine.gpu().read_bitmap_font(&mut pak, "font/small_10px");
 
     // Voila!
     engine.run(Box::new(Basic { small_10px }))
 }
 
 struct Basic {
-    small_10px: Font,
+    small_10px: BitmapFont,
 }
 
 impl Screen<RcK> for Basic {
@@ -37,9 +40,9 @@ impl Screen<RcK> for Basic {
 
         // Draws "Hello, World" onto a blue background
         frame.clear().with(BLUE).record();
-        frame
-            .text(Coord::new(137, 96), WHITE)
-            .record(&self.small_10px, "Hello, world!");
+        // frame
+        //     .text()
+        //     .record(once(Coord::new(137, 96), WHITE, &self.small_10px, "Hello, world!"));
 
         // Present the completed frame to the screen
         frame

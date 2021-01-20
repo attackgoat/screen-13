@@ -106,9 +106,11 @@
 
 #![allow(dead_code)]
 #![allow(clippy::needless_doctest_main)] // <-- The doc code is *intends* to show the whole shebang
-//#![deny(warnings)]
 #![warn(missing_docs)]
 //#![warn(clippy::pedantic)]
+
+// Enable this only while debugging; remember, they're only warnings.... for us humans...
+//#![deny(warnings)]
 
 // NOTE: If you are getting an error with the following line it is because both the `impl-gfx` and
 // `mock-gfx` features are enabled at the same time. Use "--no-default-features" to fix.
@@ -186,8 +188,8 @@ pub mod prelude_arc {
     #[cfg(feature = "blend-modes")]
     pub type Fade = super::fx::Fade<ArcK>;
 
-    /// Helpful type alias of `gpu::text::Font<ArcK>`; see module documentation.
-    pub type Font = super::gpu::text::Font<ArcK>;
+    /// Helpful type alias of `gpu::text::BitmapFont<ArcK>`; see module documentation.
+    pub type BitmapFont = super::gpu::text::BitmapFont<ArcK>;
 
     /// Helpful type alias of `gpu::Gpu<ArcK>`; see module documentation.
     pub type Gpu = super::gpu::Gpu<ArcK>;
@@ -240,8 +242,8 @@ pub mod prelude_rc {
     #[cfg(feature = "blend-modes")]
     pub type Fade = super::fx::Fade<RcK>;
 
-    /// Helpful type alias of `gpu::text::Font<RcK>`; see module documentation.
-    pub type Font = super::gpu::text::Font<RcK>;
+    /// Helpful type alias of `gpu::text::BitmapFont<RcK>`; see module documentation.
+    pub type BitmapFont = super::gpu::text::BitmapFont<RcK>;
 
     /// Helpful type alias of `gpu::Gpu<RcK>`; see module documentation.
     pub type Gpu = super::gpu::Gpu<RcK>;

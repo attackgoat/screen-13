@@ -1,39 +1,40 @@
+mod bitmap_font;
+mod command;
+mod compiler;
+mod instruction;
+mod scalable_font;
+
+pub use self::{
+    bitmap_font::BitmapFont, command::Command, compiler::Compiler, scalable_font::ScalableFont,
+};
+
 use {
-    super::{
-        bitmap::{Bitmap, BitmapOp},
-        Op,
-    },
+    super::Op,
     crate::{
         color::{AlphaColor, TRANSPARENT_BLACK},
         gpu::{
-            data::Mapping,
             def::{
                 push_const::{FontPushConsts, Mat4PushConst, Vec4PushConst},
-                ColorRenderPassMode, Graphics, GraphicsMode, RenderPassMode,
+                Graphics, GraphicsMode, RenderPassMode,
             },
             device,
             driver::{bind_graphics_descriptor_set, CommandPool, Fence, Framebuffer2d, Image2d},
             pool::{Lease, Pool},
             queue_mut, Data, Texture, Texture2d,
         },
-        math::{vec3, CoordF, Extent, Mat4},
-        pak::Pak,
+        math::{Extent, Mat4},
         ptr::Shared,
     },
     a_r_c_h_e_r_y::SharedPointerKind,
-    bmfont::{BMFont, CharPosition, OrdinateOrientation},
     gfx_hal::{
-        buffer::{Access as BufferAccess, SubRange, Usage as BufferUsage},
+        buffer::{Access as BufferAccess, SubRange},
         command::{
             CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, RenderAttachmentInfo,
             SubpassContents,
         },
         device::Device as _,
         format::Aspects,
-        image::{
-            Access as ImageAccess, FramebufferAttachment, Layout, Offset, SubresourceLayers,
-            Usage as ImageUsage, ViewCapabilities,
-        },
+        image::{Access as ImageAccess, Layout, Offset, SubresourceLayers, Usage as ImageUsage},
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage, Rect, ShaderStageFlags, Viewport},
         queue::{CommandQueue, Submission},
@@ -42,177 +43,46 @@ use {
     gfx_impl::Backend as _Backend,
     std::{
         any::Any,
-        f32,
-        io::{Cursor, Read, Seek},
+        borrow::Borrow,
         iter::{empty, once},
         ops::{Deref, Range},
         u64,
     },
 };
 
+pub const DEFAULT_SIZE: f32 = 32.0;
 const FONT_VERTEX_SIZE: usize = 16;
 const SUBPASS_IDX: u8 = 0;
 
-// TODO: Add automatic character-rejection/skipping by adding support for the "auto-cull" feature?
-// TODO: Extend this with a DrawOp-like compiler to cache repeated frame-to-frame tesselations
-// TODO: Allow one FontOp to specify a list of colors, make a rainbow-colored text example for it
-/// Holds a decoded bitmap Font.
-#[derive(Debug)]
-pub struct Font<P>
+pub enum Font<P>
 where
     P: 'static + SharedPointerKind,
 {
-    def: BMFont,
-    pages: Vec<Bitmap<P>>,
+    Bitmap(BitmapFont<P>),
+    Scalable(ScalableFont),
 }
 
-impl<P> Font<P>
+impl<P> From<BitmapFont<P>> for Font<P>
 where
     P: SharedPointerKind,
 {
-    pub(crate) fn load<K: AsRef<str>, R: Read + Seek>(
-        pool: &mut Pool<P>,
-        pak: &mut Pak<R>,
-        key: K,
-    ) -> Self {
-        let id = pak.bitmap_font_id(key).unwrap();
-        let bitmap_font = pak.read_bitmap_font(id);
-        let def = BMFont::new(
-            Cursor::new(bitmap_font.def()),
-            OrdinateOrientation::TopToBottom,
-        )
-        .unwrap();
-        let pages = bitmap_font
-            .pages()
-            .map(|page| unsafe {
-                BitmapOp::new(
-                    #[cfg(feature = "debug-names")]
-                    "Font",
-                    pool,
-                    &page,
-                )
-                .record()
-            })
-            .collect();
-
-        Self { def, pages }
-    }
-
-    fn char_vertices(page_dims: Extent, char_pos: &CharPosition, texture_dims: Extent) -> Vec<u8> {
-        let x1 = char_pos.screen_rect.x as f32 / texture_dims.x as f32;
-        let y1 = char_pos.screen_rect.y as f32 / texture_dims.y as f32;
-        let x2 = (char_pos.screen_rect.x + char_pos.screen_rect.width as i32) as f32
-            / texture_dims.x as f32;
-        let y2 = (char_pos.screen_rect.y + char_pos.screen_rect.height as i32) as f32
-            / (texture_dims.y as f32);
-        let u1 = char_pos.page_rect.x as f32 / page_dims.x as f32;
-        let v1 = char_pos.page_rect.y as f32 / page_dims.y as f32;
-        let u2 =
-            (char_pos.page_rect.x + char_pos.page_rect.width as i32) as f32 / page_dims.x as f32;
-        let v2 =
-            (char_pos.page_rect.y + char_pos.page_rect.height as i32) as f32 / page_dims.y as f32;
-        let vertices = vec![
-            FontVertex {
-                x: x1,
-                y: y1,
-                u: u1,
-                v: v1,
-            },
-            FontVertex {
-                x: x2,
-                y: y2,
-                u: u2,
-                v: v2,
-            },
-            FontVertex {
-                x: x2,
-                y: y1,
-                u: u2,
-                v: v1,
-            },
-            FontVertex {
-                x: x1,
-                y: y1,
-                u: u1,
-                v: v1,
-            },
-            FontVertex {
-                x: x1,
-                y: y2,
-                u: u1,
-                v: v2,
-            },
-            FontVertex {
-                x: x2,
-                y: y2,
-                u: u2,
-                v: v2,
-            },
-        ];
-
-        let mut res = Vec::with_capacity(96);
-        for vertex in vertices {
-            res.extend(&vertex.x.to_ne_bytes());
-            res.extend(&vertex.y.to_ne_bytes());
-            res.extend(&vertex.u.to_ne_bytes());
-            res.extend(&vertex.v.to_ne_bytes());
-        }
-
-        res
-    }
-
-    /// Returns the area, in pixels, required to render the given text.
-    pub fn measure(&self, text: &str) -> Extent {
-        let mut x = 0;
-        let mut y = 0;
-        for char_pos in self.def.parse(text).unwrap() {
-            x = char_pos.screen_rect.x + char_pos.screen_rect.width as i32 - 1;
-            y = char_pos.screen_rect.height as i32;
-        }
-
-        assert!(x >= 0);
-        assert!(y >= 0);
-
-        Extent::new(x as _, y as _)
-    }
-
-    fn tessellate(&self, text: &str, texture_dims: Extent) -> Vec<(usize, Vec<u8>)> {
-        let mut tess_pages: Vec<Option<Vec<u8>>> = vec![];
-        tess_pages.resize_with(self.pages.len(), Default::default);
-
-        for char_pos in self.def.parse(text).unwrap() {
-            let page_idx = char_pos.page_index as usize;
-            let font_texture = &self.pages[page_idx];
-
-            if tess_pages[page_idx].is_none() {
-                tess_pages[page_idx] = Some(vec![]);
-            }
-
-            tess_pages[page_idx]
-                .as_mut()
-                .unwrap()
-                .extend(&Self::char_vertices(
-                    font_texture.dims(),
-                    &char_pos,
-                    texture_dims,
-                ));
-        }
-
-        let mut res = vec![];
-        for (idx, tess_page) in tess_pages.into_iter().enumerate() {
-            if let Some(tess_page) = tess_page {
-                res.push((idx, tess_page));
-            }
-        }
-
-        res
+    fn from(val: BitmapFont<P>) -> Self {
+        Self::Bitmap(val)
     }
 }
 
-// TODO: This really needs to cache data like the draw compiler does
+impl<P> From<ScalableFont> for Font<P>
+where
+    P: SharedPointerKind,
+{
+    fn from(val: ScalableFont) -> Self {
+        Self::Scalable(val)
+    }
+}
+
 /// A container of graphics types and the functions which allows the recording and submission of
 /// bitmapped font operations.
-pub struct FontOp<P>
+pub struct TextOp<P>
 where
     P: 'static + SharedPointerKind,
 {
@@ -234,22 +104,16 @@ where
     vertex_buf: Option<(Lease<Data, P>, u64)>,
 }
 
-impl<P> FontOp<P>
+impl<P> TextOp<P>
 where
     P: SharedPointerKind,
 {
     #[must_use]
-    pub(crate) unsafe fn new<C, O>(
+    pub(crate) unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
         mut pool: Lease<Pool<P>, P>,
         dst: &Shared<Texture2d, P>,
-        pos: O,
-        color: C,
-    ) -> Self
-    where
-        C: Into<AlphaColor>,
-        O: Into<CoordF>,
-    {
+    ) -> Self {
         let dims = dst.dims();
         let fmt = dst.format();
 
@@ -271,27 +135,29 @@ where
             name,
         );
 
-        let pos = pos.into();
-        let transform = Mat4::from_translation(vec3(-1.0, -1.0, 0.0))
-            * Mat4::from_scale(vec3(2.0, 2.0, 1.0))
-            * Mat4::from_translation(vec3(pos.x / dims.x as f32, pos.y / dims.y as f32, 0.0));
+        // let pos = pos.into();
+        // let transform = Mat4::from_translation(vec3(-1.0, -1.0, 0.0))
+        //     * Mat4::from_scale(vec3(2.0, 2.0, 1.0))
+        //     * Mat4::from_translation(vec3(pos.x / dims.x as f32, pos.y / dims.y as f32, 0.0));
 
-        Self {
-            back_buf,
-            cmd_buf,
-            cmd_pool,
-            dst: Shared::clone(dst),
-            fence,
-            frame_buf: None,
-            glyph_color: color.into(),
-            graphics: None,
-            #[cfg(feature = "debug-names")]
-            name: name.to_owned(),
-            outline_color: None,
-            pool: Some(pool),
-            transform,
-            vertex_buf: None,
-        }
+        // Self {
+        //     back_buf,
+        //     cmd_buf,
+        //     cmd_pool,
+        //     dst: Shared::clone(dst),
+        //     fence,
+        //     frame_buf: None,
+        //     glyph_color: color.into(),
+        //     graphics: None,
+        //     #[cfg(feature = "debug-names")]
+        //     name: name.to_owned(),
+        //     outline_color: None,
+        //     pool: Some(pool),
+        //     transform,
+        //     vertex_buf: None,
+        // }
+
+        todo!()
     }
 
     /// Sets the font outline color to use.
@@ -313,8 +179,14 @@ where
         self
     }
 
-    /// Submits the given font for hardware processing.
-    pub fn record(&mut self, font: &Font<P>, text: &str) {
+    /// Submits the given commands for hardware processing.
+    pub fn record<C, I, T>(&mut self, cmds: I)
+    where
+        C: Borrow<Command<P, T>>,
+        I: IntoIterator<Item = C>,
+        T: AsRef<str>,
+    {
+        /*
         assert!(!text.is_empty());
 
         let (dims, render_pass_mode, tessellations) = {
@@ -424,6 +296,7 @@ where
 
             self.submit_finish(dims);
         }
+        */
     }
 
     fn mode(&self) -> GraphicsMode {
@@ -683,7 +556,7 @@ where
     }
 }
 
-impl<P> Drop for FontOp<P>
+impl<P> Drop for TextOp<P>
 where
     P: SharedPointerKind,
 {
@@ -694,7 +567,7 @@ where
     }
 }
 
-impl<P> Op<P> for FontOp<P>
+impl<P> Op<P> for TextOp<P>
 where
     P: SharedPointerKind,
 {
@@ -713,12 +586,4 @@ where
     unsafe fn wait(&self) {
         Fence::wait(&self.fence);
     }
-}
-
-#[derive(Clone, Copy, Default)]
-struct FontVertex {
-    x: f32,
-    y: f32,
-    u: f32,
-    v: f32,
 }

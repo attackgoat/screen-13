@@ -194,7 +194,7 @@ pub mod id {
     //! Types for keeping track of `.pak` resources.
 
     pub use super::ids::{
-        AnimationId, BitmapFontId, BitmapId, BlobId, MaterialId, ModelId, SceneId, TextId,
+        AnimationId, BitmapFontId, BitmapId, BlobId, FontId, MaterialId, ModelId, SceneId, TextId,
     };
 }
 
@@ -219,12 +219,14 @@ use {
     self::{
         anim::Animation,
         ids::{
-            AnimationId, BitmapFontId, BitmapId, BlobId, Id, MaterialId, ModelId, SceneId, TextId,
+            AnimationId, BitmapFontId, BitmapId, BlobId, FontId, Id, MaterialId, ModelId, SceneId,
+            TextId,
         },
         model::Model,
     },
     bincode::deserialize_from,
     brotli::{CompressorReader as BrotliReader, CompressorWriter as BrotliWriter},
+    fontdue::Font,
     gfx_hal::IndexType as GfxHalIndexType,
     serde::{de::DeserializeOwned, Deserialize, Serialize},
     snap::{read::FrameDecoder as SnapReader, write::FrameEncoder as SnapWriter},
@@ -245,7 +247,10 @@ use {
 
 pub(self) use self::data_ref::DataRef;
 
-fn read_exact<R: Read + Seek>(reader: &mut R, pos: u64, len: usize) -> Vec<u8> {
+fn read_exact<R>(reader: &mut R, pos: u64, len: usize) -> Vec<u8>
+where
+    R: Read + Seek,
+{
     // Unsafely create a buffer of uninitialized data (this is faster)
     let mut buf = Vec::with_capacity(len);
     unsafe {
@@ -283,7 +288,10 @@ pub(crate) enum Compression {
 }
 
 impl Compression {
-    fn reader<'r, R: Read + 'r>(compression: Option<Self>, reader: R) -> Box<dyn Read + 'r> {
+    fn reader<'r, R>(compression: Option<Self>, reader: R) -> Box<dyn Read + 'r>
+    where
+        R: Read + 'r,
+    {
         match compression {
             Some(compression) => match compression {
                 Compression::Brotli(b) => Box::new(BrotliReader::new(
@@ -298,7 +306,10 @@ impl Compression {
         }
     }
 
-    fn writer<'w, W: Write + 'w>(compression: Option<Self>, writer: W) -> Box<dyn Write + 'w> {
+    fn writer<'w, W>(compression: Option<Self>, writer: W) -> Box<dyn Write + 'w>
+    where
+        W: Write + 'w,
+    {
         match compression {
             Some(compression) => match compression {
                 Compression::Brotli(b) => Box::new(BrotliWriter::new(
@@ -391,7 +402,10 @@ where
 
 impl Pak<BufReader<File>> {
     /// Opens the given path and decodes a `Pak`.
-    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+    pub fn open<P>(path: P) -> Result<Self, Error>
+    where
+        P: AsRef<Path>,
+    {
         let current_dir = current_exe()?.parent().unwrap().to_path_buf(); // TODO: Unwrap
         let pak_path = current_dir.join(&path);
         let pak_file = File::open(&pak_path)?;
@@ -439,7 +453,10 @@ where
     R: Read + Seek,
 {
     /// Gets the pak-unique `AnimationId` corresponding to the given key, if one exsits.
-    pub fn animation_id<K: AsRef<str>>(&self, key: K) -> Option<AnimationId> {
+    pub fn animation_id<K>(&self, key: K) -> Option<AnimationId>
+    where
+        K: AsRef<str>,
+    {
         if let Some(Id::Animation(id)) = self.buf.id(key) {
             Some(id)
         } else {
@@ -448,7 +465,10 @@ where
     }
 
     /// Gets the pak-unique `BitmapId` corresponding to the given key, if one exsits.
-    pub fn bitmap_id<K: AsRef<str>>(&self, key: K) -> Option<BitmapId> {
+    pub fn bitmap_id<K>(&self, key: K) -> Option<BitmapId>
+    where
+        K: AsRef<str>,
+    {
         if let Some(Id::Bitmap(id)) = self.buf.id(key) {
             Some(id)
         } else {
@@ -457,7 +477,10 @@ where
     }
 
     /// Gets the pak-unique `BitmapFontId` corresponding to the given key, if one exsits.
-    pub fn bitmap_font_id<K: AsRef<str>>(&self, key: K) -> Option<BitmapFontId> {
+    pub fn bitmap_font_id<K>(&self, key: K) -> Option<BitmapFontId>
+    where
+        K: AsRef<str>,
+    {
         if let Some(Id::BitmapFont(id)) = self.buf.id(key) {
             Some(id)
         } else {
@@ -466,7 +489,10 @@ where
     }
 
     /// Gets the pak-unique `BlobId` corresponding to the given key, if one exsits.
-    pub fn blob_id<K: AsRef<str>>(&self, key: K) -> Option<BlobId> {
+    pub fn blob_id<K>(&self, key: K) -> Option<BlobId>
+    where
+        K: AsRef<str>,
+    {
         if let Some(Id::Blob(id)) = self.buf.id(key) {
             Some(id)
         } else {
@@ -474,8 +500,23 @@ where
         }
     }
 
+    /// Gets the pak-unique `FontId` corresponding to the given key, if one exsits.
+    pub fn font_id<K>(&self, key: K) -> Option<FontId>
+    where
+        K: AsRef<str>,
+    {
+        if let Some(Id::Font(id)) = self.buf.id(key) {
+            Some(id)
+        } else {
+            None
+        }
+    }
+
     /// Gets the pak-unique `MaterialId` corresponding to the given key, if one exsits.
-    pub fn material_id<K: AsRef<str>>(&self, key: K) -> Option<MaterialId> {
+    pub fn material_id<K>(&self, key: K) -> Option<MaterialId>
+    where
+        K: AsRef<str>,
+    {
         if let Some(Id::Material(id)) = self.buf.id(key) {
             Some(id)
         } else {
@@ -485,7 +526,10 @@ where
 
     // TODO: Make option response
     /// Gets the material for the given key.
-    pub fn material<K: AsRef<str>>(&self, key: K) -> MaterialDesc {
+    pub fn material<K>(&self, key: K) -> MaterialDesc
+    where
+        K: AsRef<str>,
+    {
         let id = self.material_id(key).unwrap();
         self.material_with_id(id)
     }
@@ -497,7 +541,10 @@ where
     }
 
     /// Gets the pak-unique `ModelId` corresponding to the given key, if one exsits.
-    pub fn model_id<K: AsRef<str>>(&self, key: K) -> Option<ModelId> {
+    pub fn model_id<K>(&self, key: K) -> Option<ModelId>
+    where
+        K: AsRef<str>,
+    {
         if let Some(Id::Model(id)) = self.buf.id(key) {
             Some(id)
         } else {
@@ -506,7 +553,10 @@ where
     }
 
     /// Gets the pak-unique `SceneId` corresponding to the given key, if one exsits.
-    pub fn scene_id<K: AsRef<str>>(&self, key: K) -> Option<SceneId> {
+    pub fn scene_id<K>(&self, key: K) -> Option<SceneId>
+    where
+        K: AsRef<str>,
+    {
         if let Some(Id::Scene(id)) = self.buf.id(key) {
             Some(id)
         } else {
@@ -516,13 +566,19 @@ where
 
     // TODO: Make less panicy.
     /// Gets the text corresponding to the given key. Panics if the key doesn't exist.
-    pub fn text<K: AsRef<str>>(&self, key: K) -> Cow<str> {
+    pub fn text<K>(&self, key: K) -> Cow<str>
+    where
+        K: AsRef<str>,
+    {
         // TODO: Pick proper user locale or best guess; use additional libs to detect!
         self.buf.text_locale(key, "en-US")
     }
 
     /// Gets the pak-unique `TextId` corresponding to the given key, if one exsits.
-    pub fn text_id<K: AsRef<str>>(&self, key: K) -> Option<TextId> {
+    pub fn text_id<K>(&self, key: K) -> Option<TextId>
+    where
+        K: AsRef<str>,
+    {
         if let Some(Id::Text(id)) = self.buf.id(key) {
             Some(id)
         } else {
@@ -533,17 +589,27 @@ where
     // TODO: Make less panicy.
     /// Gets the localized text corresponding to the given key and locale. Panics if the key doesn't
     /// exist.
-    pub fn text_locale<K: AsRef<str>, L: AsRef<str>>(&self, key: K, locale: L) -> Cow<str> {
+    pub fn text_locale<K, L>(&self, key: K, locale: L) -> Cow<str>
+    where
+        K: AsRef<str>,
+        L: AsRef<str>,
+    {
         self.buf.text_locale(key, locale)
     }
 
     // TODO: Make less panicy.
     /// Gets the text corresponding to the given key. Panics if the key doesn't exist.
-    pub fn text_raw<K: AsRef<str>>(&self, key: K) -> Cow<str> {
+    pub fn text_raw<K>(&self, key: K) -> Cow<str>
+    where
+        K: AsRef<str>,
+    {
         self.buf.text(key)
     }
 
-    fn read<T: DeserializeOwned>(&mut self, pos: u64, len: usize) -> T {
+    fn read<T>(&mut self, pos: u64, len: usize) -> T
+    where
+        T: DeserializeOwned,
+    {
         let buf = read_exact(&mut self.reader, pos, len);
         let reader = Compression::reader(self.compression, buf.as_slice());
 
@@ -571,6 +637,12 @@ where
     /// Reads the corresponding blob for the given id.
     pub fn read_blob(&mut self, id: BlobId) -> Vec<u8> {
         let (pos, len) = self.buf.blob(id);
+        self.read(pos, len)
+    }
+
+    /// Reads the corresponding font for the given id.
+    pub fn read_font(&mut self, id: FontId) -> Font {
+        let (pos, len) = self.buf.font(id);
         self.read(pos, len)
     }
 

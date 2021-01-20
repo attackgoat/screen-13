@@ -5,8 +5,8 @@ pub mod clear;
 pub mod copy;
 pub mod draw;
 pub mod encode;
-pub mod font;
 pub mod gradient;
+pub mod text;
 pub mod write;
 
 use {

@@ -10,8 +10,8 @@ mod key;
 
 pub use self::{
     command::{
-        Command as Draw, LineCommand, Material, Mesh, ModelCommand, PointLightCommand,
-        RectLightCommand, SpotlightCommand, SunlightCommand,
+        Command, LineCommand, Material, Mesh, ModelCommand, PointLightCommand, RectLightCommand,
+        SpotlightCommand, SunlightCommand,
     },
     compiler::Compiler,
 };
@@ -244,11 +244,11 @@ where
         self
     }
 
-    /// Submits the given draws for hardware processing.
-    pub fn record<I, D>(&mut self, camera: &impl Camera, draws: I)
+    /// Submits the given commands for hardware processing.
+    pub fn record<C, I>(&mut self, camera: &impl Camera, cmds: I)
     where
-        D: Borrow<Draw<P>>,
-        I: IntoIterator<Item = D>,
+        C: Borrow<Command<P>>,
+        I: IntoIterator<Item = C>,
     {
         unsafe {
             let fill_geom_buf_subpass_idx = self.fill_geom_buf_subpass_idx();
@@ -263,7 +263,7 @@ where
                     &self.name,
                     &mut pool,
                     camera,
-                    draws,
+                    cmds,
                 );
 
                 let render_pass_mode = {
@@ -436,7 +436,7 @@ where
                 self.submit_begin();
 
                 // Optional Step: Copy dst into the color render target
-                if self.dst_preserve {
+                if self.dst_preserve && self.skydome.is_none() {
                     self.submit_begin_preserve();
                 }
 
@@ -636,7 +636,7 @@ where
     }
 
     unsafe fn submit_index_write_ref(&mut self, mut instr: DataWriteRefInstruction<'_, P>) {
-        trace!("submit_index_write");
+        trace!("submit_index_write_ref");
 
         instr.buf.write_range(
             &mut self.cmd_buf,

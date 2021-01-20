@@ -2,7 +2,7 @@ mod command;
 mod compiler;
 mod instruction;
 
-pub use {command::Command as Write, compiler::Compiler};
+pub use {command::Command, compiler::Compiler};
 
 use {
     self::instruction::Instruction,
@@ -189,11 +189,11 @@ where
         self
     }
 
-    /// Submits the given writes for hardware processing.
-    pub fn record<I, W>(&mut self, writes: I)
+    /// Submits the given commands for hardware processing.
+    pub fn record<C, I>(&mut self, cmds: I)
     where
-        I: IntoIterator<Item = W>,
-        W: Borrow<Write<P>>,
+        C: Borrow<Command<P>>,
+        I: IntoIterator<Item = C>,
     {
         unsafe {
             let pool = self.pool.as_mut().unwrap();
@@ -202,7 +202,7 @@ where
                 let mut instrs = compiler.compile(
                     #[cfg(feature = "debug-names")]
                     &self.name,
-                    writes,
+                    cmds,
                 );
 
                 let render_pass_mode = {

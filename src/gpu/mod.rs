@@ -52,7 +52,7 @@ pub mod draw {
     //! Types for drawing user-specified models and lights onto textures.
 
     pub use super::op::draw::{
-        Draw, DrawOp, LineCommand, Material, Mesh, ModelCommand, PointLightCommand,
+        Command as Draw, DrawOp, LineCommand, Material, Mesh, ModelCommand, PointLightCommand,
         RectLightCommand, Skydome, SpotlightCommand, SunlightCommand,
     };
 }
@@ -66,7 +66,7 @@ pub mod encode {
 pub mod text {
     //! Types for writing text onto textures using stylized fonts.
 
-    pub use super::op::font::{Font, FontOp};
+    pub use super::op::text::{BitmapFont, Command as Text, ScalableFont, TextOp};
 }
 
 pub mod gradient {
@@ -78,7 +78,7 @@ pub mod gradient {
 pub mod write {
     //! Types for pasting/splatting textures with configurable source and destination transforms.
 
-    pub use super::op::write::{Mode as WriteMode, Write, WriteOp};
+    pub use super::op::write::{Command as Write, Mode as WriteMode, WriteOp};
 }
 
 mod data;
@@ -110,7 +110,10 @@ use {
     self::{
         data::{Data, Mapping},
         driver::{Image2d, Surface},
-        op::{bitmap::BitmapOp, font::Font},
+        op::{
+            bitmap::BitmapOp,
+            text::{BitmapFont, ScalableFont},
+        },
         pool::{Lease, PoolRef},
         vertex::Vertex,
     },
@@ -124,6 +127,7 @@ use {
         ptr::Shared,
     },
     a_r_c_h_e_r_y::SharedPointerKind,
+    fontdue::Font,
     gfx_hal::{
         adapter::{Adapter, DeviceType, MemoryProperties, PhysicalDevice},
         buffer::Usage,
@@ -606,21 +610,30 @@ where
         })
     }
 
+    // TODO: Figure out what signature we want here, provide an iter of bitmap arrays plus def?
+    /// Loads a bitmapped font at runtime from the given data.
+    ///
+    ///
+    pub fn load_bitmap_font(&self) -> Result<BitmapFont<P>, BadData> {
+        todo!()
+    }
+
     /// Loads an indexed model at runtime from the given data.
     ///
     ///
-    pub fn load_indexed_model<
-        M: IntoIterator<Item = Mesh>,
-        I: IntoIterator<Item = u32>,
-        V: IntoIterator<Item = VV>,
-        VV: Copy + Into<Vertex>,
-    >(
+    pub fn load_indexed_model<I, Iv, M, V>(
         &self,
         #[cfg(feature = "debug-names")] name: &str,
         meshes: M,
         _indices: I,
-        _vertices: V,
-    ) -> Result<Shared<Model<P>, P>, BadData> {
+        _vertices: Iv,
+    ) -> Result<Shared<Model<P>, P>, BadData>
+    where
+        M: IntoIterator<Item = Mesh>,
+        I: IntoIterator<Item = u32>,
+        Iv: IntoIterator<Item = V>,
+        V: Copy + Into<Vertex>,
+    {
         unsafe {
             let meshes = meshes.into_iter().collect::<Vec<_>>();
             // let indices = indices.into_iter().collect::<Vec<_>>();
@@ -680,17 +693,18 @@ where
     /// Loads a regular model at runtime from the given data.
     ///
     ///
-    pub fn load_model<
-        IM: IntoIterator<Item = M>,
-        IV: IntoIterator<Item = V>,
-        M: Into<Mesh>,
-        V: Copy + Into<Vertex>,
-    >(
+    pub fn load_model<Im, Iv, M, V>(
         &self,
         #[cfg(feature = "debug-names")] name: &str,
-        meshes: IM,
-        vertices: IV,
-    ) -> Result<Shared<Model<P>, P>, BadData> {
+        meshes: Im,
+        vertices: Iv,
+    ) -> Result<Shared<Model<P>, P>, BadData>
+    where
+        Im: IntoIterator<Item = M>,
+        Iv: IntoIterator<Item = V>,
+        M: Into<Mesh>,
+        V: Copy + Into<Vertex>,
+    {
         let mut meshes = meshes
             .into_iter()
             .map(|mesh| mesh.into())
@@ -741,14 +755,22 @@ where
         )
     }
 
+    /// Loads a scalable font at runtime from the given `fontdue::Font`.
+    pub fn load_scalable_font(&self, font: Font) -> ScalableFont {
+        font.into()
+    }
+
     // TODO: Finish this bit!
     /// Reads the `Animation` with the given id from the pak.
-    pub fn read_animation<R: Read + Seek>(
+    pub fn read_animation<R>(
         &self,
         #[cfg(debug_assertions)] _name: &str,
         _pak: &mut Pak<R>,
         _id: AnimationId,
-    ) -> usize {
+    ) -> usize
+    where
+        R: Read + Seek,
+    {
         //let _pool = PoolRef::clone(&self.pool);
         //let _anim = pak.read_animation(id);
         // let indices = model.indices();
@@ -792,12 +814,16 @@ where
     }
 
     /// Reads the `Bitmap` with the given key from the pak.
-    pub fn read_bitmap<K: AsRef<str>, R: Read + Seek>(
+    pub fn read_bitmap<K, R>(
         &self,
         #[cfg(feature = "debug-names")] name: &str,
         pak: &mut Pak<R>,
         key: K,
-    ) -> Shared<Bitmap<P>, P> {
+    ) -> Shared<Bitmap<P>, P>
+    where
+        K: AsRef<str>,
+        R: Read + Seek,
+    {
         let id = pak.bitmap_id(key).unwrap();
 
         self.read_bitmap_with_id(
@@ -809,12 +835,15 @@ where
     }
 
     /// Reads the `Bitmap` with the given id from the pak.
-    pub fn read_bitmap_with_id<R: Read + Seek>(
+    pub fn read_bitmap_with_id<R>(
         &self,
         #[cfg(feature = "debug-names")] name: &str,
         pak: &mut Pak<R>,
         id: BitmapId,
-    ) -> Shared<Bitmap<P>, P> {
+    ) -> Shared<Bitmap<P>, P>
+    where
+        R: Read + Seek,
+    {
         let bitmap = pak.read_bitmap(id);
         let mut pool = self.loads.borrow_mut();
 
@@ -829,23 +858,29 @@ where
         })
     }
 
-    /// Reads the `Font` with the given face from the pak.
-    ///
-    /// Only bitmapped fonts are supported.
-    pub fn read_font<F: AsRef<str>, R: Read + Seek>(&self, pak: &mut Pak<R>, face: F) -> Font<P> {
+    /// Reads the `BitmapFont` with the given face from the pak.
+    pub fn read_bitmap_font<F, R>(&self, pak: &mut Pak<R>, face: F) -> BitmapFont<P>
+    where
+        F: AsRef<str>,
+        R: Read + Seek,
+    {
         #[cfg(debug_assertions)]
-        debug!("Loading font `{}`", face.as_ref());
+        debug!("Loading bitmap font `{}`", face.as_ref());
 
-        Font::load(&mut self.loads.borrow_mut(), pak, face.as_ref())
+        BitmapFont::read(&mut self.loads.borrow_mut(), pak, face.as_ref())
     }
 
     /// Reads the `Model` with the given key from the pak.
-    pub fn read_model<K: AsRef<str>, R: Read + Seek>(
+    pub fn read_model<K, R>(
         &self,
         #[cfg(feature = "debug-names")] name: &str,
         pak: &mut Pak<R>,
         key: K,
-    ) -> Shared<Model<P>, P> {
+    ) -> Shared<Model<P>, P>
+    where
+        K: AsRef<str>,
+        R: Read + Seek,
+    {
         let id = pak.model_id(key).unwrap();
 
         self.read_model_with_id(
@@ -857,12 +892,15 @@ where
     }
 
     /// Reads the `Model` with the given id from the pak.
-    pub fn read_model_with_id<R: Read + Seek>(
+    pub fn read_model_with_id<R>(
         &self,
         #[cfg(feature = "debug-names")] name: &str,
         pak: &mut Pak<R>,
         id: ModelId,
-    ) -> Shared<Model<P>, P> {
+    ) -> Shared<Model<P>, P>
+    where
+        R: Read + Seek,
+    {
         unsafe {
             let mut pool = self.loads.borrow_mut();
             let model = pak.read_model(id);
@@ -967,6 +1005,15 @@ where
         }
     }
 
+    /// Reads the `ScalableFont` with the given face from the pak.
+    pub fn read_scalable_font<F, R>(&self, pak: &mut Pak<R>, face: F) -> ScalableFont
+    where
+        F: AsRef<str>,
+        R: Read + Seek,
+    {
+        ScalableFont::read(&mut self.loads.borrow_mut(), pak, face.as_ref())
+    }
+
     /// Constructs a `Render` of the given dimensions.
     ///
     /// _NOTE:_ This function uses an internal cache.
@@ -987,11 +1034,10 @@ where
     ///
     ///     ...
     /// }
-    pub fn render<D: Into<Extent>>(
-        &self,
-        #[cfg(feature = "debug-names")] name: &str,
-        dims: D,
-    ) -> Render<P> {
+    pub fn render<D>(&self, #[cfg(feature = "debug-names")] name: &str, dims: D) -> Render<P>
+    where
+        D: Into<Extent>,
+    {
         self.render_with_cache(
             #[cfg(feature = "debug-names")]
             name,
@@ -1020,12 +1066,15 @@ where
     ///
     ///     ...
     /// }
-    pub fn render_with_cache<D: Into<Extent>>(
+    pub fn render_with_cache<D>(
         &self,
         #[cfg(feature = "debug-names")] name: &str,
         dims: D,
         cache: &Cache<P>,
-    ) -> Render<P> {
+    ) -> Render<P>
+    where
+        D: Into<Extent>,
+    {
         // Pull a rendering pool from the cache or we create and lease a new one
         let pool = if let Some(pool) = cache.0.borrow_mut().pop_back() {
             pool

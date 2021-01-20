@@ -23,6 +23,7 @@ pub type SunlightIter<'a, P> = CommandIter<'a, SunlightCommand, P>;
 
 // TODO: Voxels, landscapes, water, god rays, particle systems
 /// An expressive type which allows specification of individual drawing operations.
+#[non_exhaustive]
 pub enum Command<P>
 where
     P: 'static + SharedPointerKind,
@@ -158,6 +159,7 @@ where
     pub fn model<M: Into<Mesh<P>>>(mesh: M, material: Material<P>, transform: Mat4) -> Self {
         let mesh = mesh.into();
         Self::Model(ModelCommand {
+            __: (),
             camera_order: f32::NAN,
             material,
             mesh_filter: mesh.filter,
@@ -342,6 +344,7 @@ where
 // TODO: This is crufty, fix.
 /// Description of a single line segment.
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct LineCommand {
     /// The start and end vertices to draw.
     pub vertices: [LineVertex; 2],
@@ -349,6 +352,7 @@ pub struct LineCommand {
 
 /// TODO: Move me to the vertices module?
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct LineVertex {
     pub color: AlphaColor,
     pub pos: Vec3,
@@ -451,10 +455,14 @@ where
 /// Container of a shared `Model` reference and the optional filter or pose that might be used
 /// during rendering.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct Mesh<P>
 where
     P: 'static + SharedPointerKind,
 {
+    // Force non-exhaustive
+    __: (),
+
     /// The mesh or meshes, if set, to render from within the larger collection of meshes this model
     /// may contain.
     ///
@@ -476,6 +484,7 @@ where
 {
     fn from(model: M) -> Self {
         Self {
+            __: (),
             filter: None,
             model: model.into(),
             pose: None,
@@ -490,6 +499,7 @@ where
 {
     fn from((model, filter): (M, MeshFilter)) -> Self {
         Self {
+            __: (),
             filter: Some(filter),
             model: model.into(),
             pose: None,
@@ -504,6 +514,7 @@ where
 {
     fn from((model, filter): (M, Option<MeshFilter>)) -> Self {
         Self {
+            __: (),
             filter,
             model: model.into(),
             pose: None,
@@ -518,6 +529,7 @@ where
 {
     fn from((model, pose): (M, Pose)) -> Self {
         Self {
+            __: (),
             filter: None,
             model: model.into(),
             pose: Some(pose),
@@ -532,6 +544,7 @@ where
 {
     fn from((model, pose): (M, Option<Pose>)) -> Self {
         Self {
+            __: (),
             filter: None,
             model: model.into(),
             pose,
@@ -546,6 +559,7 @@ where
 {
     fn from((model, filter, pose): (M, MeshFilter, Pose)) -> Self {
         Self {
+            __: (),
             filter: Some(filter),
             model: model.into(),
             pose: Some(pose),
@@ -560,6 +574,7 @@ where
 {
     fn from((model, filter, pose): (M, Option<MeshFilter>, Option<Pose>)) -> Self {
         Self {
+            __: (),
             filter,
             model: model.into(),
             pose,
@@ -573,6 +588,9 @@ pub struct ModelCommand<P>
 where
     P: 'static + SharedPointerKind,
 {
+    // Force non-exhaustive
+    __: (),
+
     // TODO: Could probably be u16?
     pub(super) camera_order: f32,
 
@@ -622,6 +640,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
+            __: (),
             camera_order: self.camera_order,
             material: self.material.clone(),
             mesh_filter: self.mesh_filter.clone(),

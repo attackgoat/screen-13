@@ -4,7 +4,7 @@
 [![Docs.rs](https://docs.rs/screen-13/badge.svg)](https://docs.rs/screen-13)
 [![LoC](https://tokei.rs/b1/github/attackgoat/screen-13?category=code)](https://github.com/attackgoat/screen-13)
 
-_Screen 13_ is an easy-to-use 2D/3D rendering engine in the spirit of QBasic.
+_Screen 13_ is an easy-to-use 2D/3D rendering engine in the spirit of _QBasic_.
 
 ## Overview
 
@@ -113,8 +113,8 @@ before June 2021. Feel free to chip in to speed that up!
 _Screen 13_ puts a lot of functionality behind optional features in order to optimize compile time
 for the most common use cases. The following features are available.
 
-**_NOTE:_** The deferred and forward renderers have separate code paths and you can choose either on a
-render-by-render basis.
+**_NOTE:_** The deferred and forward renderers have separate code paths and you can choose either on
+a render-by-render basis.
 
 - **`auto-cull`** — Enables automatic draw call camera frustum culling.
 - **`debug-names`** — Name parameter added to most graphics calls, integrates with your graphics
@@ -139,8 +139,8 @@ render-by-render basis.
 
 ## History
 
-As a child I was given access to a computer that had GW-Basic; and later one with QBasic. All of my
-favorite programs started with:
+As a child I was given access to a computer that had _GW-Basic_; and later one with _QBasic_. All of
+my favorite programs started with:
 
 ```basic
 CLS
@@ -150,7 +150,7 @@ SCREEN 13
 These commands cleared the screen of text and setup a 320x200 256-color paletized video mode. There
 were other video modes available, but none of them had the 'magic' of 256 colors.
 
-Additional commands QBasic offered, such as `DRAW`, allowed you to build very simple games
-incredibly quickly because you didn't have to grok the enirety of linking and compiling in order get
-things done. I think we should have options like this today, and so I started this project to allow
-future developers to have the ability to get things done quickly while using modern tools.
+Additional commands _QBasic_ offered, such as `DRAW`, allowed you to build simple games quickly
+because you didn't have to grok the entirety of compiling and linking. I think we should have
+options like this today, and so I started this project to allow future developers to have the
+ability to get things done quickly while using modern tools.

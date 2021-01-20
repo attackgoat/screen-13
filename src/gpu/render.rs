@@ -1,15 +1,15 @@
 use {
     super::{
         op::{
-            clear::ClearOp, copy::CopyOp, draw::DrawOp, encode::EncodeOp, font::FontOp,
-            gradient::GradientOp, write::WriteOp, Op,
+            clear::ClearOp, copy::CopyOp, draw::DrawOp, encode::EncodeOp, gradient::GradientOp,
+            text::TextOp, write::WriteOp, Op,
         },
         pool::{Lease, Pool},
         Texture2d,
     },
     crate::{
         color::AlphaColor,
-        math::{Coord, CoordF, Extent},
+        math::{Coord, Extent},
         ptr::Shared,
     },
     a_r_c_h_e_r_y::SharedPointerKind,
@@ -217,27 +217,15 @@ where
             .unwrap_or_else(|| self.ops.last_mut().unwrap().take_pool())
     }
 
-    // TODO: Accept a list of font/color/text/pos combos so we can batch many at once?
-    /// Draws bitmapped text on this Render using the given details.
-    pub fn text<C, O>(
-        &mut self,
-        #[cfg(feature = "debug-names")] name: &str,
-        pos: O,
-        color: C,
-    ) -> &mut FontOp<P>
-    where
-        C: Into<AlphaColor>,
-        O: Into<CoordF>,
-    {
+    /// Draws text on this Render using bitmapped or scalable fonts.
+    pub fn text(&mut self, #[cfg(feature = "debug-names")] name: &str) -> &mut TextOp<P> {
         let op = unsafe {
             let pool = self.take_pool();
-            FontOp::new(
+            TextOp::new(
                 #[cfg(feature = "debug-names")]
                 name,
                 pool,
                 &self.target,
-                pos,
-                color,
             )
         };
 
@@ -248,7 +236,7 @@ where
             .last_mut()
             .unwrap()
             .as_any_mut()
-            .downcast_mut::<FontOp<P>>()
+            .downcast_mut::<TextOp<P>>()
             .unwrap()
     }
 
