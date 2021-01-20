@@ -54,28 +54,28 @@ pub const DEFAULT_SIZE: f32 = 32.0;
 const FONT_VERTEX_SIZE: usize = 16;
 const SUBPASS_IDX: u8 = 0;
 
-pub enum Font<P>
+pub enum Font<'f, P>
 where
     P: 'static + SharedPointerKind,
 {
-    Bitmap(BitmapFont<P>),
-    Scalable(ScalableFont),
+    Bitmap(&'f BitmapFont<P>),
+    Scalable(&'f ScalableFont),
 }
 
-impl<P> From<BitmapFont<P>> for Font<P>
+impl<'f, P> From<&'f BitmapFont<P>> for Font<'f, P>
 where
     P: SharedPointerKind,
 {
-    fn from(val: BitmapFont<P>) -> Self {
+    fn from(val: &'f BitmapFont<P>) -> Self {
         Self::Bitmap(val)
     }
 }
 
-impl<P> From<ScalableFont> for Font<P>
+impl<'f, P> From<&'f ScalableFont> for Font<'f, P>
 where
     P: SharedPointerKind,
 {
-    fn from(val: ScalableFont) -> Self {
+    fn from(val: &'f ScalableFont) -> Self {
         Self::Scalable(val)
     }
 }
@@ -180,9 +180,9 @@ where
     }
 
     /// Submits the given commands for hardware processing.
-    pub fn record<C, I, T>(&mut self, cmds: I)
+    pub fn record<'f, C, I, T>(&mut self, cmds: I)
     where
-        C: Borrow<Command<P, T>>,
+        C: Borrow<Command<'f, P, T>>,
         I: IntoIterator<Item = C>,
         T: AsRef<str>,
     {

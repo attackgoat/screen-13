@@ -5,61 +5,68 @@ use {
         math::{CoordF, Mat4},
     },
     a_r_c_h_e_r_y::SharedPointerKind,
+    std::iter::{once, Once},
 };
 
 /// An expressive type which allows specification of individual text operations.
 #[non_exhaustive]
-pub enum Command<P, T>
+pub enum Command<'f, P, T>
 where
     P: 'static + SharedPointerKind,
     T: AsRef<str>,
 {
     /// Draws text at the given coordinates.
-    Position(BitmapCommand<P, CoordF, T>),
+    Position(BitmapCommand<'f, P, CoordF, T>),
 
     /// Draws text of the specified size at the given coordinates.
-    SizePosition(ScalableCommand<CoordF, T>),
+    SizePosition(ScalableCommand<'f, CoordF, T>),
 
     /// Draws text of the specified size using the given homogenous transformation matrix.
-    SizeTransform(ScalableCommand<Mat4, T>),
+    SizeTransform(ScalableCommand<'f, Mat4, T>),
 
     /// Draws text using the given homogenous transformation matrix.
-    Transform(BitmapCommand<P, Mat4, T>),
+    Transform(BitmapCommand<'f, P, Mat4, T>),
 }
 
-impl<P, T> Command<P, T>
+impl<'f, P, T> Command<'f, P, T>
 where
     P: SharedPointerKind,
     T: AsRef<str>,
 {
     /// Draws text at the given coordinates.
-    pub fn position<F, X>(font: F, pos: X, text: T) -> Self
+    pub fn position<F, X>(pos: X, font: F, text: T) -> Self
     where
-        F: Into<Font<P>>,
+        F: Into<Font<'f, P>>,
         X: Into<CoordF>,
     {
         match font.into() {
-            Font::Bitmap(font) => Self::Position(BitmapCommand::position(font, pos, text)),
-            Font::Scalable(font) => Self::SizePosition(ScalableCommand::position(font, pos, text)),
+            Font::Bitmap(font) => Self::Position(BitmapCommand::position(pos, font, text)),
+            Font::Scalable(font) => Self::SizePosition(ScalableCommand::position(pos, font, text)),
         }
     }
 
     /// Draws text using the given homogenous transformation matrix.
-    pub fn transform<F>(font: F, transform: Mat4, text: T) -> Self
+    pub fn transform<F>(transform: Mat4, font: F, text: T) -> Self
     where
-        F: Into<Font<P>>,
+        F: Into<Font<'f, P>>,
     {
         match font.into() {
-            Font::Bitmap(font) => Self::Transform(BitmapCommand::transform(font, transform, text)),
+            Font::Bitmap(font) => Self::Transform(BitmapCommand::transform(transform, font, text)),
             Font::Scalable(font) => {
-                Self::SizeTransform(ScalableCommand::transform(font, transform, text))
+                Self::SizeTransform(ScalableCommand::transform(transform, font, text))
             }
         }
     }
+}
 
+impl<P, T> Command<'_, P, T>
+where
+    P: SharedPointerKind,
+    T: AsRef<str>,
+{
     /// Draws text using the given glyph fill color.
     ///
-    /// **_NOTE:_** This is the main font color.
+    /// **_NOTE:_** This is the primary font color.
     pub fn with_glygh_color<C>(self, color: C) -> Self
     where
         C: Into<AlphaColor>,
@@ -73,24 +80,37 @@ where
     }
 }
 
-pub struct BitmapCommand<P, L, T>
+impl<'f, P, T> IntoIterator for Command<'f, P, T>
+where
+    P: SharedPointerKind,
+    T: AsRef<str>,
+{
+    type Item = Command<'f, P, T>;
+    type IntoIter = Once<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        once(self)
+    }
+}
+
+pub struct BitmapCommand<'f, P, L, T>
 where
     P: 'static + SharedPointerKind,
     T: AsRef<str>,
 {
-    pub font: BitmapFont<P>,
+    pub font: &'f BitmapFont<P>,
     pub glyph_color: AlphaColor,
     pub layout: L,
     pub outline_color: Option<AlphaColor>,
     pub text: T,
 }
 
-impl<P, T> BitmapCommand<P, CoordF, T>
+impl<'f, P, T> BitmapCommand<'f, P, CoordF, T>
 where
     P: SharedPointerKind,
     T: AsRef<str>,
 {
-    pub fn position<X>(font: BitmapFont<P>, pos: X, text: T) -> Self
+    pub fn position<X>(pos: X, font: &'f BitmapFont<P>, text: T) -> Self
     where
         X: Into<CoordF>,
     {
@@ -104,12 +124,12 @@ where
     }
 }
 
-impl<P, T> BitmapCommand<P, Mat4, T>
+impl<'f, P, T> BitmapCommand<'f, P, Mat4, T>
 where
     P: SharedPointerKind,
     T: AsRef<str>,
 {
-    pub fn transform(font: BitmapFont<P>, layout: Mat4, text: T) -> Self {
+    pub fn transform(layout: Mat4, font: &'f BitmapFont<P>, text: T) -> Self {
         Self {
             font,
             glyph_color: WHITE.into(),
@@ -120,14 +140,14 @@ where
     }
 }
 
-impl<P, L, T> BitmapCommand<P, L, T>
+impl<P, L, T> BitmapCommand<'_, P, L, T>
 where
     P: SharedPointerKind,
     T: AsRef<str>,
 {
     /// Draws text using the given glyph fill color.
     ///
-    /// **_NOTE:_** This is the main font color.
+    /// **_NOTE:_** This is the primary font color.
     pub fn with_glygh_color<C>(mut self, color: C) -> Self
     where
         C: Into<AlphaColor>,
@@ -158,22 +178,22 @@ where
     }
 }
 
-pub struct ScalableCommand<L, T>
+pub struct ScalableCommand<'f, L, T>
 where
     T: AsRef<str>,
 {
-    pub font: ScalableFont,
+    pub font: &'f ScalableFont,
     pub glyph_color: AlphaColor,
     pub layout: L,
     pub size: f32,
     pub text: T,
 }
 
-impl<T> ScalableCommand<CoordF, T>
+impl<'f, T> ScalableCommand<'f, CoordF, T>
 where
     T: AsRef<str>,
 {
-    pub fn position<X>(font: ScalableFont, pos: X, text: T) -> Self
+    pub fn position<X>(pos: X, font: &'f ScalableFont, text: T) -> Self
     where
         X: Into<CoordF>,
     {
@@ -187,11 +207,11 @@ where
     }
 }
 
-impl<T> ScalableCommand<Mat4, T>
+impl<'f, T> ScalableCommand<'f, Mat4, T>
 where
     T: AsRef<str>,
 {
-    pub fn transform(font: ScalableFont, layout: Mat4, text: T) -> Self {
+    pub fn transform(layout: Mat4, font: &'f ScalableFont, text: T) -> Self {
         Self {
             font,
             glyph_color: WHITE.into(),
@@ -202,13 +222,13 @@ where
     }
 }
 
-impl<L, T> ScalableCommand<L, T>
+impl<L, T> ScalableCommand<'_, L, T>
 where
     T: AsRef<str>,
 {
     /// Draws text using the given glyph fill color.
     ///
-    /// **_NOTE:_** This is the main font color.
+    /// **_NOTE:_** This is the primary font color.
     pub fn with_glygh_color<C>(mut self, color: C) -> Self
     where
         C: Into<AlphaColor>,

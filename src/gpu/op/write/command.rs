@@ -5,7 +5,10 @@ use {
         ptr::Shared,
     },
     a_r_c_h_e_r_y::SharedPointerKind,
-    std::fmt::{Debug, Error, Formatter},
+    std::{
+        fmt::{Debug, Error, Formatter},
+        iter::{once, Once},
+    },
 };
 
 /// An expressive type which allows specification of individual texture writes. Texture writes may either specify the
@@ -124,5 +127,17 @@ where
 {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.write_str("Comand")
+    }
+}
+
+impl<P> IntoIterator for Command<P>
+where
+    P: SharedPointerKind,
+{
+    type Item = Command<P>;
+    type IntoIter = Once<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        once(self)
     }
 }

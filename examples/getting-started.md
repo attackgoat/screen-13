@@ -209,10 +209,14 @@ Once an font has been loaded, it can be efficiently used with a `Render` instanc
 is:
 
 ```rust
-let pos = (24.0, 10.0);
+let pos = ;
 render
-    .text(pos, MAGENTA)
-    .record(&comic_sans, "Hello, world!");
+    .text()
+    .record(Text::position(
+        (24.0, 10.0),
+        &comic_sans,
+        "Hello, world!",
+    ));
 ```
 
 Additional command builder options include outline color and generalized matrix transform.

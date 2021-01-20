@@ -10,6 +10,7 @@ use {
         cmp::Ordering,
         fmt::{Debug, Error, Formatter},
         hash::{Hash, Hasher},
+        iter::{once, Once},
         marker::PhantomData,
         num::FpCategory,
         ops::Range,
@@ -248,6 +249,18 @@ where
 {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.write_str("Comand")
+    }
+}
+
+impl<P> IntoIterator for Command<P>
+where
+    P: SharedPointerKind,
+{
+    type Item = Command<P>;
+    type IntoIter = Once<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        once(self)
     }
 }
 
