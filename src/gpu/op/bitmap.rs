@@ -446,8 +446,6 @@ where
     }
 
     unsafe fn write_descriptors(&mut self) {
-        trace!("write_descriptors");
-
         let conv_fmt = self.conv_fmt.as_mut().unwrap();
         let set = conv_fmt.compute.desc_set_mut(0);
 

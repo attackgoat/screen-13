@@ -209,14 +209,11 @@ Once an font has been loaded, it can be efficiently used with a `Render` instanc
 is:
 
 ```rust
-let pos = ;
 render
     .text()
-    .record(Text::position(
-        (24.0, 10.0),
-        &comic_sans,
-        "Hello, world!",
-    ));
+    .record(&[
+        Text::position((24.0, 10.0), &comic_sans, "Hello, world!"),
+    ]);
 ```
 
 Additional command builder options include outline color and generalized matrix transform.
@@ -249,7 +246,7 @@ use std::iter::once;
 render
     .write()
     .record(
-        once(Write::position(&cat, (5.0, 5.0)))
+        once(Write::position(&cat, (5.0, 5.0))),
     );
 ```
 

@@ -93,11 +93,17 @@ pub(super) struct DrawRenderPassMode {
 }
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
+pub(super) enum FontMode {
+    Bitmap(bool),
+    Scalable,
+}
+
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub(super) enum GraphicsMode {
     #[cfg(feature = "blend-modes")]
     Blend(BlendMode),
 
-    Font(bool),
+    Font(FontMode),
     Gradient(bool),
     DrawLine,
     DrawMesh,

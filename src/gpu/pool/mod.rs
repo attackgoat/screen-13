@@ -15,11 +15,14 @@ use {
     super::{
         adapter,
         def::{
-            render_pass, CalcVertexAttrsComputeMode, Compute, ComputeMode, Graphics, GraphicsMode,
-            RenderPassMode,
+            render_pass, CalcVertexAttrsComputeMode, Compute, ComputeMode, FontMode, Graphics,
+            GraphicsMode, RenderPassMode,
         },
         driver::{CommandPool, DescriptorPool, Fence, Memory, RenderPass},
-        op::{draw::Compiler as DrawCompiler, write::Compiler as WriteCompiler, Op},
+        op::{
+            draw::Compiler as DrawCompiler, text::Compiler as TextCompiler,
+            write::Compiler as WriteCompiler, Op,
+        },
         queue_family, Data, Texture, Texture2d,
     },
     crate::{math::Extent, ptr::Shared},
@@ -124,6 +127,7 @@ where
     pub(crate) ops: VecDeque<Box<dyn Op<P>>>,
     render_passes: HashMap<RenderPassMode, RenderPass>,
     skydomes: PoolRef<Data, P>,
+    text_compilers: PoolRef<TextCompiler<P>, P>,
     textures: HashMap<TextureKey, PoolRef<Shared<Texture2d, P>, P>>,
     write_compilers: PoolRef<WriteCompiler<P>, P>,
 }
@@ -671,8 +675,9 @@ where
             GraphicsMode::DrawRectLight => Graphics::draw_rect_light,
             GraphicsMode::DrawSpotlight => Graphics::draw_spotlight,
             GraphicsMode::DrawSunlight => Graphics::draw_sunlight,
-            GraphicsMode::Font(false) => Graphics::font_normal,
-            GraphicsMode::Font(true) => Graphics::font_outline,
+            GraphicsMode::Font(FontMode::Bitmap(false)) => Graphics::bitmap_font_normal,
+            GraphicsMode::Font(FontMode::Bitmap(true)) => Graphics::bitmap_font_outline,
+            GraphicsMode::Font(FontMode::Scalable) => Graphics::scalable_font,
             GraphicsMode::Gradient(false) => Graphics::gradient_linear,
             GraphicsMode::Gradient(true) => Graphics::gradient_linear_trans,
 
@@ -787,6 +792,16 @@ where
         (Lease::new(item, &self.skydomes), SKYDOME.len() as _, data)
     }
 
+    pub(super) fn text_compiler(&mut self) -> Lease<TextCompiler<P>, P> {
+        let item = if let Some(item) = self.text_compilers.borrow_mut().pop_back() {
+            item
+        } else {
+            Default::default()
+        };
+
+        Lease::new(item, &self.text_compilers)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(super) unsafe fn texture(
         &mut self,
@@ -868,6 +883,7 @@ where
             ops: Default::default(),
             render_passes: Default::default(),
             skydomes: Default::default(),
+            text_compilers: Default::default(),
             textures: Default::default(),
             write_compilers: Default::default(),
         }

@@ -52,6 +52,7 @@ struct Allocation<T> {
 // because we can't store references but we do want to cache the vector of instructions the compiler
 // creates. Each `Asm` is just a pointer to the `cmds` slice provided by the client which actually
 // contains the references. `Asm` also points to the leased `Data` held by `Compiler`.
+#[non_exhaustive]
 enum Asm {
     BeginCalcVertexAttrs(CalcVertexAttrsComputeMode),
     BeginLight,

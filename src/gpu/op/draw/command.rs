@@ -160,7 +160,6 @@ where
     pub fn model<M: Into<Mesh<P>>>(mesh: M, material: Material<P>, transform: Mat4) -> Self {
         let mesh = mesh.into();
         Self::Model(ModelCommand {
-            __: (),
             camera_order: f32::NAN,
             material,
             mesh_filter: mesh.filter,
@@ -587,13 +586,11 @@ where
 
 /// Description of a model, which may be posed or filtered.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct ModelCommand<P>
 where
     P: 'static + SharedPointerKind,
 {
-    // Force non-exhaustive
-    __: (),
-
     // TODO: Could probably be u16?
     pub(super) camera_order: f32,
 
@@ -643,7 +640,6 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            __: (),
             camera_order: self.camera_order,
             material: self.material.clone(),
             mesh_filter: self.mesh_filter,

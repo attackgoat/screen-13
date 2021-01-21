@@ -9,16 +9,17 @@ pub use self::{
 };
 
 use {
+    self::instruction::Instruction,
     super::Op,
     crate::{
         color::{AlphaColor, TRANSPARENT_BLACK},
         gpu::{
             def::{
                 push_const::{FontPushConsts, Mat4PushConst, Vec4PushConst},
-                Graphics, GraphicsMode, RenderPassMode,
+                ColorRenderPassMode, FontMode, Graphics, GraphicsMode, RenderPassMode,
             },
             device,
-            driver::{bind_graphics_descriptor_set, CommandPool, Fence, Framebuffer2d, Image2d},
+            driver::{bind_graphics_descriptor_set, CommandPool, Fence, Framebuffer2d},
             pool::{Lease, Pool},
             queue_mut, Data, Texture, Texture2d,
         },
@@ -54,11 +55,17 @@ pub const DEFAULT_SIZE: f32 = 32.0;
 const FONT_VERTEX_SIZE: usize = 16;
 const SUBPASS_IDX: u8 = 0;
 
+/// Holds either a bitmapped or TrueType/Opentype font.
 pub enum Font<'f, P>
 where
     P: 'static + SharedPointerKind,
 {
+    /// A fixed-size bitmapped font as produced by programs compatible with the `.fnt` file format.
+    ///
+    /// **_NOTE:_** [BMFont](https://www.angelcode.com/products/bmfont/) is supported.
     Bitmap(&'f BitmapFont<P>),
+
+    /// A variable-size font.
     Scalable(&'f ScalableFont),
 }
 
@@ -89,18 +96,18 @@ where
     back_buf: Lease<Shared<Texture2d, P>, P>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool, P>,
+    compiler: Option<Lease<Compiler<P>, P>>,
     dst: Shared<Texture2d, P>,
     fence: Lease<Fence, P>,
     frame_buf: Option<Framebuffer2d>,
-    glyph_color: AlphaColor,
-    graphics: Option<Lease<Graphics, P>>,
+    graphics_bitmap: Option<Lease<Graphics, P>>,
+    graphics_bitmap_outline: Option<Lease<Graphics, P>>,
+    graphics_scalable: Option<Lease<Graphics, P>>,
 
     #[cfg(feature = "debug-names")]
     name: String,
 
-    outline_color: Option<AlphaColor>,
     pool: Option<Lease<Pool<P>, P>>,
-    transform: Mat4,
     vertex_buf: Option<(Lease<Data, P>, u64)>,
 }
 
@@ -160,43 +167,90 @@ where
         todo!()
     }
 
-    /// Sets the font outline color to use.
-    #[must_use]
-    pub fn with_outline<C>(&mut self, color: C) -> &mut Self
-    where
-        C: Into<AlphaColor>,
-    {
-        self.outline_color = Some(color.into());
-        self
-    }
-
-    /// Sets the generalized output transform to use.
-    ///
-    /// _NOTE:_ Overrides placement options.
-    #[must_use]
-    pub fn with_transform(&mut self, transform: Mat4) -> &mut Self {
-        self.transform = transform;
-        self
-    }
-
     /// Submits the given commands for hardware processing.
-    pub fn record<'f, C, I, T>(&mut self, cmds: I)
+    pub fn record<'c, C, T>(&mut self, cmds: &'c [C])
     where
-        C: Borrow<Command<'f, P, T>>,
-        I: IntoIterator<Item = C>,
+        C: Borrow<Command<'c, P, T>>,
         T: AsRef<str>,
     {
+        unsafe {
+            let pool = self.pool.as_mut().unwrap();
+            let mut compiler = pool.text_compiler();
+            {
+                let mut instrs = compiler.compile(
+                    #[cfg(feature = "debug-names")]
+                    &self.name,
+                    cmds,
+                );
+                let fmt = self.dst.format();
+                let dims = self.dst.dims();
+                let render_pass_mode = RenderPassMode::Color(ColorRenderPassMode {
+                    fmt,
+                    preserve: true,
+                });
+
+                // Texture descriptors for one-color bitmap fonts
+                {
+                    let descriptors = instrs.bitmap_descriptors();
+                    let desc_sets = descriptors.len();
+                    if desc_sets > 0 {
+                        let mut graphics = pool.graphics_desc_sets(
+                            #[cfg(feature = "debug-names")]
+                            &self.name,
+                            render_pass_mode,
+                            SUBPASS_IDX,
+                            GraphicsMode::Font(FontMode::Bitmap(false)),
+                            desc_sets,
+                        );
+                        Self::write_texture_descriptors(&mut graphics, descriptors);
+                        self.graphics_bitmap = Some(graphics);
+                    }
+                }
+
+                // Texture descriptors for two-color bitmap fonts
+                {
+                    let descriptors = instrs.bitmap_outline_descriptors();
+                    let desc_sets = descriptors.len();
+                    if desc_sets > 0 {
+                        let mut graphics = pool.graphics_desc_sets(
+                            #[cfg(feature = "debug-names")]
+                            &self.name,
+                            render_pass_mode,
+                            SUBPASS_IDX,
+                            GraphicsMode::Font(FontMode::Bitmap(true)),
+                            desc_sets,
+                        );
+                        Self::write_texture_descriptors(&mut graphics, descriptors);
+                        self.graphics_bitmap_outline = Some(graphics);
+                    }
+                }
+
+                self.submit_begin(dims, render_pass_mode);
+
+                while let Some(instr) = instrs.next() {
+                    match instr {
+                        Instruction::BitmapDescriptor(desc_set) => {
+                            self.submit_bitmap_descriptor(desc_set)
+                        }
+                        Instruction::BitmapOutlineDescriptor(desc_set) => {
+                            self.submit_bitmap_outline_descriptor(desc_set)
+                        }
+                        Instruction::ScalableDescriptor(desc_set) => {
+                            self.submit_scalable_descriptor(desc_set)
+                        }
+                        _ => todo!(),
+                    }
+                }
+
+                self.submit_finish(dims);
+            }
+
+            self.compiler = Some(compiler);
+        }
         /*
-        assert!(!text.is_empty());
 
         let (dims, render_pass_mode, tessellations) = {
-            let fmt = self.dst.format();
-            let dims = self.dst.dims();
-            let graphics_mode = self.mode();
-            let render_pass_mode = RenderPassMode::Color(ColorRenderPassMode {
-                fmt,
-                preserve: true,
-            });
+
             let pool = self.pool.as_mut().unwrap();
 
             // TODO: Cache these using "named" buffers? Let the client 'compile' them for reuse? Likey that more
@@ -269,14 +323,6 @@ where
         };
 
         unsafe {
-            self.write_descriptors(
-                tessellations
-                    .iter()
-                    .map(|(page_idx, _)| font.pages[*page_idx].as_ref()),
-            );
-
-            self.submit_begin(dims, render_pass_mode);
-
             // Draw each page in the tessellation using those vertices and the correct font page texture index
             let mut base = 0;
             for (page_idx, vertices) in &tessellations {
@@ -294,187 +340,208 @@ where
                 base += len;
             }
 
-            self.submit_finish(dims);
         }
         */
-    }
-
-    fn mode(&self) -> GraphicsMode {
-        if self.outline_color.is_some() {
-            GraphicsMode::Font(true)
-        } else {
-            GraphicsMode::Font(false)
-        }
     }
 
     unsafe fn submit_begin(&mut self, dims: Extent, render_pass_mode: RenderPassMode) {
         trace!("submit_begin");
 
-        let graphics = self.graphics.as_ref().unwrap();
-        let pool = self.pool.as_mut().unwrap();
-        let render_pass = pool.render_pass(render_pass_mode);
-        let (vertex_buf, vertex_buf_len) = self.vertex_buf.as_mut().unwrap();
+        // let graphics = self.graphics.as_ref().unwrap();
+        // let pool = self.pool.as_mut().unwrap();
+        // let render_pass = pool.render_pass(render_pass_mode);
+        // let (vertex_buf, vertex_buf_len) = self.vertex_buf.as_mut().unwrap();
 
-        // TODO: Limit this rect to just where we're drawing text
-        let rect = Rect {
-            x: 0,
-            y: 0,
-            w: dims.x as _,
-            h: dims.y as _,
-        };
+        // // TODO: Limit this rect to just where we're drawing text
+        // let rect = Rect {
+        //     x: 0,
+        //     y: 0,
+        //     w: dims.x as _,
+        //     h: dims.y as _,
+        // };
 
-        // Begin
-        self.cmd_buf
-            .begin_primary(CommandBufferFlags::ONE_TIME_SUBMIT);
+        // // Begin
+        // self.cmd_buf
+        //     .begin_primary(CommandBufferFlags::ONE_TIME_SUBMIT);
 
-        // Step 1: Copy the cpu-local vertex buffer to the gpu
-        vertex_buf.write_range(
-            &mut self.cmd_buf,
-            PipelineStage::VERTEX_INPUT,
-            BufferAccess::VERTEX_BUFFER_READ,
-            0..*vertex_buf_len,
-        );
+        // // Step 1: Copy the cpu-local vertex buffer to the gpu
+        // vertex_buf.write_range(
+        //     &mut self.cmd_buf,
+        //     PipelineStage::VERTEX_INPUT,
+        //     BufferAccess::VERTEX_BUFFER_READ,
+        //     0..*vertex_buf_len,
+        // );
 
-        // Step 2: Copy dst into the backbuffer
-        self.dst.set_layout(
-            &mut self.cmd_buf,
-            Layout::TransferSrcOptimal,
-            PipelineStage::TRANSFER,
-            ImageAccess::TRANSFER_READ,
-        );
-        self.back_buf.set_layout(
-            &mut self.cmd_buf,
-            Layout::TransferDstOptimal,
-            PipelineStage::TRANSFER,
-            ImageAccess::TRANSFER_WRITE,
-        );
-        self.cmd_buf.copy_image(
-            self.dst.as_ref(),
-            Layout::TransferSrcOptimal,
-            self.back_buf.as_ref(),
-            Layout::TransferDstOptimal,
-            once(ImageCopy {
-                src_subresource: SubresourceLayers {
-                    aspects: Aspects::COLOR,
-                    level: 0,
-                    layers: 0..1,
-                },
-                src_offset: Offset::ZERO,
-                dst_subresource: SubresourceLayers {
-                    aspects: Aspects::COLOR,
-                    level: 0,
-                    layers: 0..1,
-                },
-                dst_offset: Offset::ZERO,
-                extent: dims.as_extent_depth(1),
-            }),
-        );
+        // // Step 2: Copy dst into the backbuffer
+        // self.dst.set_layout(
+        //     &mut self.cmd_buf,
+        //     Layout::TransferSrcOptimal,
+        //     PipelineStage::TRANSFER,
+        //     ImageAccess::TRANSFER_READ,
+        // );
+        // self.back_buf.set_layout(
+        //     &mut self.cmd_buf,
+        //     Layout::TransferDstOptimal,
+        //     PipelineStage::TRANSFER,
+        //     ImageAccess::TRANSFER_WRITE,
+        // );
+        // self.cmd_buf.copy_image(
+        //     self.dst.as_ref(),
+        //     Layout::TransferSrcOptimal,
+        //     self.back_buf.as_ref(),
+        //     Layout::TransferDstOptimal,
+        //     once(ImageCopy {
+        //         src_subresource: SubresourceLayers {
+        //             aspects: Aspects::COLOR,
+        //             level: 0,
+        //             layers: 0..1,
+        //         },
+        //         src_offset: Offset::ZERO,
+        //         dst_subresource: SubresourceLayers {
+        //             aspects: Aspects::COLOR,
+        //             level: 0,
+        //             layers: 0..1,
+        //         },
+        //         dst_offset: Offset::ZERO,
+        //         extent: dims.as_extent_depth(1),
+        //     }),
+        // );
 
-        // Step 3: Draw the font vertices into the backbuffer
-        self.back_buf.set_layout(
-            &mut self.cmd_buf,
-            Layout::ColorAttachmentOptimal,
-            PipelineStage::COLOR_ATTACHMENT_OUTPUT,
-            ImageAccess::COLOR_ATTACHMENT_WRITE,
-        );
-        self.cmd_buf.begin_render_pass(
-            render_pass,
-            self.frame_buf.as_ref().unwrap(),
-            rect,
-            once(RenderAttachmentInfo {
-                image_view: self.back_buf.as_2d_color().as_ref(),
-                clear_value: TRANSPARENT_BLACK.into(),
-            }),
-            SubpassContents::Inline,
-        );
-        self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
+        // // Step 3: Draw the font vertices into the backbuffer
+        // self.back_buf.set_layout(
+        //     &mut self.cmd_buf,
+        //     Layout::ColorAttachmentOptimal,
+        //     PipelineStage::COLOR_ATTACHMENT_OUTPUT,
+        //     ImageAccess::COLOR_ATTACHMENT_WRITE,
+        // );
+        // self.cmd_buf.begin_render_pass(
+        //     render_pass,
+        //     self.frame_buf.as_ref().unwrap(),
+        //     rect,
+        //     once(RenderAttachmentInfo {
+        //         image_view: self.back_buf.as_2d_color().as_ref(),
+        //         clear_value: TRANSPARENT_BLACK.into(),
+        //     }),
+        //     SubpassContents::Inline,
+        // );
+        // self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
+    }
+
+    unsafe fn submit_bitmap_descriptor(&mut self, desc_set: usize) {
+        trace!("submit_bitmap_descriptor");
+
+        let graphics = self.graphics_bitmap.as_ref().unwrap();
+        let desc_set = graphics.desc_set(desc_set);
+        let layout = graphics.layout();
+
+        bind_graphics_descriptor_set(&mut self.cmd_buf, layout, desc_set);
+    }
+
+    unsafe fn submit_bitmap_outline_descriptor(&mut self, desc_set: usize) {
+        trace!("submit_bitmap_outline_descriptor");
+
+        let graphics = self.graphics_bitmap_outline.as_ref().unwrap();
+        let desc_set = graphics.desc_set(desc_set);
+        let layout = graphics.layout();
+
+        bind_graphics_descriptor_set(&mut self.cmd_buf, layout, desc_set);
     }
 
     unsafe fn submit_page_begin(&mut self, dims: Extent, page_idx: usize) {
         trace!("submit_page_begin");
 
-        let graphics = self.graphics.as_ref().unwrap();
-        let (vertex_buf, vertex_buf_len) = self.vertex_buf.as_mut().unwrap();
-        let rect = Rect {
-            x: 0,
-            y: 0,
-            w: dims.x as _,
-            h: dims.y as _,
-        };
-        let viewport = Viewport {
-            rect,
-            depth: 0.0..1.0,
-        };
+        // let graphics = self.graphics.as_ref().unwrap();
+        // let (vertex_buf, vertex_buf_len) = self.vertex_buf.as_mut().unwrap();
+        // let rect = Rect {
+        //     x: 0,
+        //     y: 0,
+        //     w: dims.x as _,
+        //     h: dims.y as _,
+        // };
+        // let viewport = Viewport {
+        //     rect,
+        //     depth: 0.0..1.0,
+        // };
 
-        bind_graphics_descriptor_set(
-            &mut self.cmd_buf,
-            graphics.layout(),
-            graphics.desc_set(page_idx),
-        );
-        self.cmd_buf.set_scissors(0, &[rect]);
-        self.cmd_buf.set_viewports(0, &[viewport]);
-        self.cmd_buf.bind_vertex_buffers(
-            0,
-            Some((
-                vertex_buf.as_ref(),
-                SubRange {
-                    offset: 0,
-                    size: Some(*vertex_buf_len),
-                },
-            )),
-        );
+        // bind_graphics_descriptor_set(
+        //     &mut self.cmd_buf,
+        //     graphics.layout(),
+        //     graphics.desc_set(page_idx),
+        // );
+        // self.cmd_buf.set_scissors(0, &[rect]);
+        // self.cmd_buf.set_viewports(0, &[viewport]);
+        // self.cmd_buf.bind_vertex_buffers(
+        //     0,
+        //     Some((
+        //         vertex_buf.as_ref(),
+        //         SubRange {
+        //             offset: 0,
+        //             size: Some(*vertex_buf_len),
+        //         },
+        //     )),
+        // );
 
-        // Push the vertex transform
-        self.cmd_buf.push_graphics_constants(
-            graphics.layout(),
-            ShaderStageFlags::VERTEX,
-            0,
-            Mat4PushConst {
-                val: self.transform,
-            }
-            .as_ref(),
-        );
+        // // Push the vertex transform
+        // self.cmd_buf.push_graphics_constants(
+        //     graphics.layout(),
+        //     ShaderStageFlags::VERTEX,
+        //     0,
+        //     Mat4PushConst {
+        //         val: self.transform,
+        //     }
+        //     .as_ref(),
+        // );
     }
 
     unsafe fn submit_page_normal(&mut self) {
         trace!("submit_page_normal");
 
-        let graphics = self.graphics.as_ref().unwrap();
-        let layout = graphics.layout();
-        let push_constants = Vec4PushConst {
-            val: self.glyph_color.to_rgba(),
-        };
+        // let graphics = self.graphics.as_ref().unwrap();
+        // let layout = graphics.layout();
+        // let push_constants = Vec4PushConst {
+        //     val: self.glyph_color.to_rgba(),
+        // };
 
-        self.cmd_buf.push_graphics_constants(
-            layout,
-            ShaderStageFlags::FRAGMENT,
-            Mat4PushConst::BYTE_LEN,
-            push_constants.as_ref(),
-        );
+        // self.cmd_buf.push_graphics_constants(
+        //     layout,
+        //     ShaderStageFlags::FRAGMENT,
+        //     Mat4PushConst::BYTE_LEN,
+        //     push_constants.as_ref(),
+        // );
     }
 
     unsafe fn submit_page_outline(&mut self) {
         trace!("submit_page_outline");
 
-        let graphics = self.graphics.as_ref().unwrap();
-        let layout = graphics.layout();
-        let push_constants = FontPushConsts {
-            glyph_color: self.glyph_color.to_rgba(),
-            outline_color: self.outline_color.as_ref().unwrap().to_rgba(),
-        };
+        // let graphics = self.graphics.as_ref().unwrap();
+        // let layout = graphics.layout();
+        // let push_constants = FontPushConsts {
+        //     glyph_color: self.glyph_color.to_rgba(),
+        //     outline_color: self.outline_color.as_ref().unwrap().to_rgba(),
+        // };
 
-        self.cmd_buf.push_graphics_constants(
-            layout,
-            ShaderStageFlags::FRAGMENT,
-            Mat4PushConst::BYTE_LEN,
-            push_constants.as_ref(),
-        );
+        // self.cmd_buf.push_graphics_constants(
+        //     layout,
+        //     ShaderStageFlags::FRAGMENT,
+        //     Mat4PushConst::BYTE_LEN,
+        //     push_constants.as_ref(),
+        // );
     }
 
     unsafe fn submit_page_finish(&mut self, vertices: Range<u32>) {
         trace!("submit_page_finish");
 
         self.cmd_buf.draw(vertices, 0..1);
+    }
+
+    unsafe fn submit_scalable_descriptor(&mut self, desc_set: usize) {
+        trace!("submit_scalable_descriptor");
+
+        let graphics = self.graphics_scalable.as_ref().unwrap();
+        let desc_set = graphics.desc_set(desc_set);
+        let layout = graphics.layout();
+
+        bind_graphics_descriptor_set(&mut self.cmd_buf, layout, desc_set);
     }
 
     unsafe fn submit_finish(&mut self, dims: Extent) {
@@ -532,15 +599,12 @@ where
         );
     }
 
-    unsafe fn write_descriptors<I, T>(&mut self, pages: I)
+    unsafe fn write_texture_descriptors<I, T>(graphics: &mut Graphics, textures: I)
     where
         I: Iterator<Item = T>,
-        T: Deref<Target = Texture<Image2d>>,
+        T: Deref<Target = Texture2d>,
     {
-        trace!("write_descriptors");
-
-        let graphics = self.graphics.as_mut().unwrap();
-        for (idx, page) in pages.enumerate() {
+        for (idx, tex) in textures.enumerate() {
             let (set, samplers) = graphics.desc_set_mut_with_samplers(idx);
 
             device().write_descriptor_set(DescriptorSetWrite {
@@ -548,7 +612,7 @@ where
                 binding: 0,
                 array_offset: 0,
                 descriptors: Some(Descriptor::CombinedImageSampler(
-                    page.as_2d_color().as_ref(),
+                    tex.as_2d_color().as_ref(),
                     Layout::General,
                     samplers[0].as_ref(),
                 )),

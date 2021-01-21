@@ -1,11 +1,12 @@
 use {
-    super::{command::Command, instruction::Instruction},
+    super::{Command, Instruction},
     crate::{gpu::Texture2d, math::Mat4, ptr::Shared},
     a_r_c_h_e_r_y::SharedPointerKind,
     std::borrow::Borrow,
 };
 
 // `Asm` is the "assembly op code" that is used to create an `Instruction` instance.
+#[non_exhaustive]
 enum Asm {
     BindTextureDescriptors(usize),
     WriteTexture(Mat4),
