@@ -192,7 +192,7 @@ unsafe fn device() -> &'static <_Backend as Backend>::Device {
 
 /// 💀 Extremely unsafe - call *ONLY* once per process!
 unsafe fn init_gfx_hal() {
-    const ENGINE: &'static str = "attackgoat/screen-13";
+    const ENGINE: &str = "attackgoat/screen-13";
     const VERSION: u32 = 1;
 
     // Initialize the GFX-HAL library
@@ -245,7 +245,7 @@ unsafe fn init_gfx_hal() {
             let b_type_rank = type_rank(&b.info.device_type);
             match a_type_rank.cmp(&b_type_rank) {
                 Ordering::Equal => (),
-                ne @ _ => return ne,
+                ne => return ne,
             }
 
             // 2. Most on-device memory
@@ -253,7 +253,7 @@ unsafe fn init_gfx_hal() {
             let b_mem = device_mem(&b.physical_device);
             match b_mem.cmp(&a_mem) {
                 Ordering::Equal => (),
-                ne @ _ => return ne,
+                ne => return ne,
             }
 
             // Fallback to device PCI ID (basically random, but always the same choice for a given

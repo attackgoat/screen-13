@@ -458,9 +458,10 @@ where
 
         let graphics = self.graphics.as_ref().unwrap();
         let layout = graphics.layout();
-        let mut push_constants = FontPushConsts::default();
-        push_constants.glyph_color = self.glyph_color.to_rgba();
-        push_constants.outline_color = self.outline_color.as_ref().unwrap().to_rgba();
+        let push_constants = FontPushConsts {
+            glyph_color: self.glyph_color.to_rgba(),
+            outline_color: self.outline_color.as_ref().unwrap().to_rgba(),
+        };
 
         self.cmd_buf.push_graphics_constants(
             layout,

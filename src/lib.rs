@@ -625,31 +625,29 @@ where
     }
 
     unsafe fn present(&mut self, mut frame: Render<P>, buf: &mut VecDeque<Box<dyn Op<P>>>) {
-        if {
-            let mut ops = frame.drain_ops().peekable();
+        let mut ops = frame.drain_ops().peekable();
 
-            // We work-around this condition, below, but it is not expected that a well-formed
-            // program would ever do this. It causes undefined behavior when passing a frame with no
-            // operations.
-            debug_assert!(ops.peek().is_some());
+        // We work-around this condition, below, but it is not expected that a well-formed
+        // program would ever do this. It causes undefined behavior when passing a frame with no
+        // operations.
+        debug_assert!(ops.peek().is_some());
 
-            // Pop completed operations off the back of the buffer ...
-            while let Some(op) = buf.back() {
-                if op.is_complete() {
-                    buf.pop_back().unwrap();
-                } else {
-                    break;
-                }
+        // Pop completed operations off the back of the buffer ...
+        while let Some(op) = buf.back() {
+            if op.is_complete() {
+                buf.pop_back().unwrap();
+            } else {
+                break;
             }
+        }
 
-            // ... and push new operations onto the front.
-            let had_ops = ops.peek().is_some();
-            for op in ops {
-                buf.push_front(op);
-            }
+        // ... and push new operations onto the front.
+        let had_ops = ops.peek().is_some();
+        for op in ops {
+            buf.push_front(op);
+        }
 
-            had_ops
-        } {
+        if had_ops {
             // Target can be dropped directly after presentation, it will return to the pool. If for
             // some reason the pool is drained before the hardware is finished with target the
             // underlying texture is still referenced by the operations.

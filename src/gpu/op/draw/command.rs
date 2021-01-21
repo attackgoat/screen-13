@@ -473,9 +473,6 @@ pub struct Mesh<P>
 where
     P: 'static + SharedPointerKind,
 {
-    // Force non-exhaustive
-    __: (),
-
     /// The mesh or meshes, if set, to render from within the larger collection of meshes this model
     /// may contain.
     ///
@@ -497,7 +494,6 @@ where
 {
     fn from(model: M) -> Self {
         Self {
-            __: (),
             filter: None,
             model: model.into(),
             pose: None,
@@ -512,7 +508,6 @@ where
 {
     fn from((model, filter): (M, MeshFilter)) -> Self {
         Self {
-            __: (),
             filter: Some(filter),
             model: model.into(),
             pose: None,
@@ -527,7 +522,6 @@ where
 {
     fn from((model, filter): (M, Option<MeshFilter>)) -> Self {
         Self {
-            __: (),
             filter,
             model: model.into(),
             pose: None,
@@ -542,7 +536,6 @@ where
 {
     fn from((model, pose): (M, Pose)) -> Self {
         Self {
-            __: (),
             filter: None,
             model: model.into(),
             pose: Some(pose),
@@ -557,7 +550,6 @@ where
 {
     fn from((model, pose): (M, Option<Pose>)) -> Self {
         Self {
-            __: (),
             filter: None,
             model: model.into(),
             pose,
@@ -572,7 +564,6 @@ where
 {
     fn from((model, filter, pose): (M, MeshFilter, Pose)) -> Self {
         Self {
-            __: (),
             filter: Some(filter),
             model: model.into(),
             pose: Some(pose),
@@ -587,7 +578,6 @@ where
 {
     fn from((model, filter, pose): (M, Option<MeshFilter>, Option<Pose>)) -> Self {
         Self {
-            __: (),
             filter,
             model: model.into(),
             pose,
@@ -656,7 +646,7 @@ where
             __: (),
             camera_order: self.camera_order,
             material: self.material.clone(),
-            mesh_filter: self.mesh_filter.clone(),
+            mesh_filter: self.mesh_filter,
             model: Shared::clone(&self.model),
             pose: self.pose.clone(),
             transform: self.transform,

@@ -674,7 +674,7 @@ where
     /// - Sort mesh commands further by texture(s) in order to reduce descriptor set switching/usage
     /// - Prepare a single buffer of all line and light vertices which can be copied to the GPU all
     ///   at once
-    pub(super) unsafe fn compile<'a, 'b: 'a, C, I>(
+    pub(super) unsafe fn compile<'a, C, I>(
         &'a mut self,
         #[cfg(feature = "debug-names")] name: &str,
         pool: &mut Pool<P>,
@@ -726,6 +726,7 @@ where
                         camera.overlaps_sphere(cmd.model.bounds())
                     }
                     #[cfg(not(feature = "auto-cull"))]
+                    #[allow(clippy::unused_unit)]
                     {
                         ()
                     }
@@ -737,6 +738,7 @@ where
                     }
 
                     #[cfg(not(feature = "auto-cull"))]
+                    #[allow(clippy::unused_unit)]
                     {
                         ()
                     }
@@ -748,6 +750,7 @@ where
                     }
 
                     #[cfg(not(feature = "auto-cull"))]
+                    #[allow(clippy::unused_unit)]
                     {
                         ()
                     }
@@ -759,6 +762,7 @@ where
                     }
 
                     #[cfg(not(feature = "auto-cull"))]
+                    #[allow(clippy::unused_unit)]
                     {
                         ()
                     }

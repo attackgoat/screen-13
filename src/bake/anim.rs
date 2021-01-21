@@ -17,7 +17,6 @@ use {
     },
     std::{
         collections::{hash_map::RandomState, HashSet},
-        iter::FromIterator,
         path::Path,
     },
 };
@@ -46,13 +45,12 @@ pub fn bake_animation<P1: AsRef<Path>, P2: AsRef<Path>>(
     }
 
     let anim = anim.unwrap();
-    let exclude: HashSet<&str, RandomState> = HashSet::from_iter(
-        asset
-            .exclude()
-            .unwrap_or_default()
-            .iter()
-            .map(|s| s.as_str()),
-    );
+    let exclude: HashSet<&str, RandomState> = asset
+        .exclude()
+        .unwrap_or_default()
+        .iter()
+        .map(|s| s.as_str())
+        .collect();
 
     enum Output {
         Rotations(Vec<Quat>),

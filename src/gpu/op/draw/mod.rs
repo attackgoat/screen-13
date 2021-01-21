@@ -829,13 +829,18 @@ where
 
         for light in instr.lights {
             let world_view_proj = view_proj * Mat4::from_translation(light.center);
-            let mut fragment_push_consts = PointLightPushConsts::default();
-            fragment_push_consts.camera_eye = camera_eye;
-            fragment_push_consts.depth_dims_inv = depth_dims_inv;
-            fragment_push_consts.light_center = light.center;
-            fragment_push_consts.light_intensity = light.color.to_rgb() * light.lumens;
-            fragment_push_consts.light_radius = light.radius;
-            fragment_push_consts.view_proj_inv = view_proj_inv;
+            // TODO: Fixed awaiting release! https://github.com/rust-lang/rust-clippy/issues/6559
+            #[allow(clippy::field_reassign_with_default)]
+            let fragment_push_consts = {
+                let mut fragment_push_consts = PointLightPushConsts::default();
+                fragment_push_consts.camera_eye = camera_eye;
+                fragment_push_consts.depth_dims_inv = depth_dims_inv;
+                fragment_push_consts.light_center = light.center;
+                fragment_push_consts.light_intensity = light.color.to_rgb() * light.lumens;
+                fragment_push_consts.light_radius = light.radius;
+                fragment_push_consts.view_proj_inv = view_proj_inv;
+                fragment_push_consts
+            };
 
             self.cmd_buf.push_graphics_constants(
                 graphics.layout(),
@@ -916,16 +921,26 @@ where
         let star_rotation = Mat3::from_quat(skydome.val.star_rotation).to_cols_array_2d();
         let world = Mat4::from_translation(eye);
 
-        let mut vertex_push_consts = SkydomeVertexPushConsts::default();
-        vertex_push_consts.star_rotation_col0 = star_rotation[0].into();
-        vertex_push_consts.star_rotation_col1 = star_rotation[1].into();
-        vertex_push_consts.star_rotation_col2 = star_rotation[2].into();
-        vertex_push_consts.world_view_proj = view_proj * world;
+        // TODO: Fixed awaiting release! https://github.com/rust-lang/rust-clippy/issues/6559
+        #[allow(clippy::field_reassign_with_default)]
+        let vertex_push_consts = {
+            let mut vertex_push_consts = SkydomeVertexPushConsts::default();
+            vertex_push_consts.star_rotation_col0 = star_rotation[0].into();
+            vertex_push_consts.star_rotation_col1 = star_rotation[1].into();
+            vertex_push_consts.star_rotation_col2 = star_rotation[2].into();
+            vertex_push_consts.world_view_proj = view_proj * world;
+            vertex_push_consts
+        };
 
-        let mut frag_push_consts = SkydomeFragmentPushConsts::default();
-        frag_push_consts.sun_normal = skydome.val.sun_normal;
-        frag_push_consts.time = skydome.val.time;
-        frag_push_consts.weather = skydome.val.weather;
+        // TODO: Fixed awaiting release! https://github.com/rust-lang/rust-clippy/issues/6559
+        #[allow(clippy::field_reassign_with_default)]
+        let frag_push_consts = {
+            let mut frag_push_consts = SkydomeFragmentPushConsts::default();
+            frag_push_consts.sun_normal = skydome.val.sun_normal;
+            frag_push_consts.time = skydome.val.time;
+            frag_push_consts.weather = skydome.val.weather;
+            frag_push_consts
+        };
 
         self.cmd_buf.next_subpass(SubpassContents::Inline);
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
