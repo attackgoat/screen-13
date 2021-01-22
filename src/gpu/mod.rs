@@ -456,16 +456,56 @@ impl Default for BlendMode {
 ///
 /// _NOTE:_ Program execution will halt for a few milliseconds after `Cache` types with active
 /// internal operations are dropped.
-pub struct Cache<P>(PoolRef<Pool<P>, P>)
+pub struct Cache<P>
 where
-    P: 'static + SharedPointerKind;
+    P: 'static + SharedPointerKind,
+{
+    lru_threshold: usize,
+    pool: PoolRef<Pool<P>, P>,
+}
 
 impl<P> Default for Cache<P>
 where
     P: SharedPointerKind,
 {
     fn default() -> Self {
-        Self(Default::default())
+        Self {
+            lru_threshold: Self::DEFAULT_LRU_THRESHOLD,
+            pool: Default::default(),
+        }
+    }
+}
+
+impl<P> Cache<P>
+where
+    P: SharedPointerKind,
+{
+    const DEFAULT_LRU_THRESHOLD: usize = 8;
+
+    // TODO: Automatically call these functions on OOM so client doesn't even know?
+    /// Allows you to remove unused resources from the cache.
+    ///
+    /// THIS API IS NOT IMPLEMENTED YET - Not sure about the final form yet.
+    ///
+    /// **_NOTE:_** _Screen 13_ will automatically drain unused resources.
+    pub fn drain(&self) -> ! {
+        todo!();
+    }
+
+    /// Returns the least-recently-used threshold value.
+    ///
+    /// Resources which have not been used within this number of frames will be automatically
+    /// reclaimed and reused for other commands.
+    pub fn lru_threshold(&self) -> usize {
+        self.lru_threshold
+    }
+
+    /// Sets the least-recently-used threshold value.
+    ///
+    /// Resources which have not been used within this number of frames will be automatically
+    /// reclaimed and reused for other commands.
+    pub fn set_lru_threshold(&mut self, value: usize) {
+        self.lru_threshold = value;
     }
 }
 
@@ -614,7 +654,7 @@ where
     /// Loads a bitmapped font at runtime from the given data.
     ///
     ///
-    pub fn load_bitmap_font(&self) -> Result<BitmapFont<P>, BadData> {
+    pub fn load_bitmap_font(&self) -> Result<Shared<BitmapFont<P>, P>, BadData> {
         todo!()
     }
 
@@ -756,8 +796,8 @@ where
     }
 
     /// Loads a scalable font at runtime from the given `fontdue::Font`.
-    pub fn load_scalable_font(&self, font: Font) -> ScalableFont {
-        font.into()
+    pub fn load_scalable_font(&self, font: Font) -> Shared<ScalableFont, P> {
+        Shared::new(font.into())
     }
 
     // TODO: Finish this bit!
@@ -859,7 +899,7 @@ where
     }
 
     /// Reads the `BitmapFont` with the given face from the pak.
-    pub fn read_bitmap_font<F, R>(&self, pak: &mut Pak<R>, face: F) -> BitmapFont<P>
+    pub fn read_bitmap_font<F, R>(&self, pak: &mut Pak<R>, face: F) -> Shared<BitmapFont<P>, P>
     where
         F: AsRef<str>,
         R: Read + Seek,
@@ -867,7 +907,11 @@ where
         #[cfg(debug_assertions)]
         debug!("Loading bitmap font `{}`", face.as_ref());
 
-        BitmapFont::read(&mut self.loads.borrow_mut(), pak, face.as_ref())
+        Shared::new(BitmapFont::read(
+            &mut self.loads.borrow_mut(),
+            pak,
+            face.as_ref(),
+        ))
     }
 
     /// Reads the `Model` with the given key from the pak.
@@ -1076,13 +1120,14 @@ where
         D: Into<Extent>,
     {
         // Pull a rendering pool from the cache or we create and lease a new one
-        let pool = if let Some(pool) = cache.0.borrow_mut().pop_back() {
+        let mut pool = if let Some(pool) = cache.pool.borrow_mut().pop_back() {
             pool
         } else {
             debug!("Creating new render pool");
             Default::default()
         };
-        let pool = Lease::new(pool, &cache.0);
+        pool.lru_threshold = cache.lru_threshold();
+        let pool = Lease::new(pool, &cache.pool);
 
         unsafe {
             Render::new(

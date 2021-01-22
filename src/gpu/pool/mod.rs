@@ -23,7 +23,7 @@ use {
             draw::Compiler as DrawCompiler, text::Compiler as TextCompiler,
             write::Compiler as WriteCompiler, Op,
         },
-        queue_family, Data, Texture, Texture2d,
+        queue_family, Cache, Data, Texture, Texture2d,
     },
     crate::{math::Extent, ptr::Shared},
     a_r_c_h_e_r_y::SharedPointerKind,
@@ -54,8 +54,6 @@ use super::MatteMode;
 
 #[cfg(feature = "debug-names")]
 use {super::device, gfx_hal::device::Device as _};
-
-const DEFAULT_LRU_THRESHOLD: usize = 8;
 
 pub(super) type PoolRef<T, P> = Shared<RefCell<VecDeque<T>>, P>;
 
@@ -878,7 +876,7 @@ where
             fences: Default::default(),
             graphics: Default::default(),
             layouts: Default::default(),
-            lru_threshold: DEFAULT_LRU_THRESHOLD,
+            lru_threshold: Cache::<P>::DEFAULT_LRU_THRESHOLD,
             memories: Default::default(),
             ops: Default::default(),
             render_passes: Default::default(),

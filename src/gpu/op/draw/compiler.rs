@@ -19,6 +19,7 @@ use {
         gpu::{
             data::{CopyRange, Mapping},
             def::CalcVertexAttrsComputeMode,
+            op::{Allocation, DirtyData, DirtyLruData, Lru},
             pool::Pool,
             Data, Lease, Model,
         },
@@ -40,13 +41,6 @@ use {
 const CACHE_CAPACITY_FACTOR: f32 = 2.0;
 
 // TODO: Stop compaction after a certain number of cycles or % complete, maybe only 10%.
-
-/// Used to keep track of data allocated during compilation and also the previous value which we
-/// will copy over during the drawing operation.
-struct Allocation<T> {
-    current: T,
-    previous: Option<(T, u64)>,
-}
 
 // `Asm` is the "assembly op code" that is used to create an `Instruction` instance; it exists
 // because we can't store references but we do want to cache the vector of instructions the compiler
@@ -217,7 +211,7 @@ where
         Instruction::LightBind(LightBindInstruction {
             buf: &buf.data.current,
             buf_len: buf
-                .gpu_usage
+                .usage
                 .last()
                 .map_or(0, |(offset, _)| offset + T::stride()),
         })
@@ -326,7 +320,7 @@ where
     fn copy_vertices<T>(buf: &mut DirtyData<T, P>) -> Instruction<'_, P> {
         Instruction::VertexCopy(DataCopyInstruction {
             buf: &mut buf.data.current,
-            ranges: buf.gpu_dirty.as_slice(),
+            ranges: buf.pending_copies.as_slice(),
         })
     }
 
@@ -398,7 +392,7 @@ where
     fn write_light_vertices<T>(buf: &mut DirtyData<T, P>) -> Instruction<'_, P> {
         Instruction::VertexWrite(DataWriteInstruction {
             buf: &mut buf.data.current,
-            range: buf.cpu_dirty.as_ref().unwrap().clone(),
+            range: buf.pending_write.as_ref().unwrap().clone(),
         })
     }
 
@@ -581,11 +575,11 @@ where
         if let Some(old_buf) = buf.replace(data.into()) {
             // Preserve the old data so that we can copy it directly over before drawing
             let old_buf_len = old_buf
-                .gpu_usage
+                .usage
                 .last()
                 .map_or(0, |(offset, _)| offset + T::stride());
             let new_buf = &mut buf.as_mut().unwrap();
-            new_buf.gpu_usage = old_buf.gpu_usage;
+            new_buf.usage = old_buf.usage;
             new_buf.data.previous = Some((old_buf.data.current, old_buf_len));
         }
     }
@@ -603,7 +597,7 @@ where
         let stride = T::stride();
 
         // "Forget about" GPU memory regions occupied by unused geometry
-        buf.gpu_usage.retain(|(_, key)| {
+        buf.usage.retain(|(_, key)| {
             let idx = lru
                 .binary_search_by(|probe| probe.key.cmp(&key))
                 .ok()
@@ -614,17 +608,13 @@ where
         // We only need to compact the memory in the region preceding the dirty region, because that geometry will
         // be uploaded and used during this compilation (draw) - we will defer that region to the next compilation
         let mut start = 0;
-        let end = buf.cpu_dirty.as_ref().map_or_else(
-            || {
-                buf.gpu_usage
-                    .last()
-                    .map_or(0, |(offset, _)| offset + stride)
-            },
+        let end = buf.pending_write.as_ref().map_or_else(
+            || buf.usage.last().map_or(0, |(offset, _)| offset + stride),
             |dirty| dirty.start,
         );
 
         // Walk through the GPU memory in order, moving items back to the "empty" region and as we go
-        for (offset, key) in &mut buf.gpu_usage {
+        for (offset, key) in &mut buf.usage {
             // Early out if we have exceeded the non-dirty region
             if *offset >= end {
                 break;
@@ -637,20 +627,20 @@ where
             }
 
             // Move this item back to the beginning of the empty region
-            if let Some(range) = buf.gpu_dirty.last_mut() {
+            if let Some(range) = buf.pending_copies.last_mut() {
                 if range.dst == start - stride && range.src.end == *offset - stride {
                     *range = CopyRange {
                         dst: range.dst,
                         src: range.src.start..*offset + stride,
                     };
                 } else {
-                    buf.gpu_dirty.push(CopyRange {
+                    buf.pending_copies.push(CopyRange {
                         dst: start,
                         src: *offset..*offset + stride,
                     });
                 }
             } else {
-                buf.gpu_dirty.push(CopyRange {
+                buf.pending_copies.push(CopyRange {
                     dst: start,
                     src: *offset..*offset + stride,
                 });
@@ -918,13 +908,13 @@ where
 
         // Copy data from the uncompacted end of the buffer back to linear data
         Self::compact_cache(buf, &mut self.line.lru);
-        if !buf.gpu_dirty.is_empty() {
+        if !buf.pending_copies.is_empty() {
             self.code.push(Asm::CopyLineVertices);
         }
 
         // start..end is the back of the buffer where we push new lines
         let start = buf
-            .gpu_usage
+            .usage
             .last()
             .map_or(0, |(offset, _)| offset + LINE_STRIDE as u64);
         let mut end = start;
@@ -962,9 +952,9 @@ where
             }
         }
 
-        // We may need to copy these vertices from the CPU to the GPU
+        // We may need to write these vertices from the CPU to the GPU
         if end > start {
-            buf.cpu_dirty = Some(start..end);
+            buf.pending_write = Some(start..end);
             self.code.push(Asm::WriteLineVertices);
         }
 
@@ -1148,13 +1138,13 @@ where
 
         // Copy data from the uncompacted end of the buffer back to linear data
         Self::compact_cache(buf, &mut self.rect_light.lru);
-        if !buf.gpu_dirty.is_empty() {
+        if !buf.pending_copies.is_empty() {
             self.code.push(Asm::CopyRectLightVertices);
         }
 
         // start..end is the back of the buffer where we push new lights
         let start = buf
-            .gpu_usage
+            .usage
             .last()
             .map_or(0, |(offset, _)| offset + RECT_LIGHT_STRIDE as u64);
         let mut end = start;
@@ -1193,7 +1183,7 @@ where
                     }
 
                     // Create new cache entries for this rectangular light
-                    buf.gpu_usage.push((end, key));
+                    buf.usage.push((end, key));
                     self.rect_light
                         .lru
                         .insert(idx, Lru::new(key, end, pool.lru_threshold));
@@ -1218,9 +1208,9 @@ where
             )));
         }
 
-        // We may need to copy these vertices from the CPU to the GPU
+        // We may need to write these vertices from the CPU to the GPU
         if start != end {
-            buf.cpu_dirty = Some(start..end);
+            buf.pending_write = Some(start..end);
             self.code.insert(write_idx, Asm::WriteRectLightVertices);
         }
     }
@@ -1251,13 +1241,13 @@ where
 
         // Copy data from the uncompacted end of the buffer back to linear data
         Self::compact_cache(buf, &mut self.spotlight.lru);
-        if !buf.gpu_dirty.is_empty() {
+        if !buf.pending_copies.is_empty() {
             self.code.push(Asm::CopySpotlightVertices);
         }
 
         // start..end is the back of the buffer where we push new lights
         let start = buf
-            .gpu_usage
+            .usage
             .last()
             .map_or(0, |(offset, _)| offset + SPOTLIGHT_STRIDE as u64);
         let mut end = start;
@@ -1320,9 +1310,9 @@ where
             )));
         }
 
-        // We may need to copy these vertices from the CPU to the GPU
+        // We may need to write these vertices from the CPU to the GPU
         if start != end {
-            buf.cpu_dirty = Some(start..end);
+            buf.pending_write = Some(start..end);
             self.code.insert(write_idx, Asm::WriteSpotlightVertices);
         }
     }
@@ -1445,89 +1435,6 @@ where
     }
 }
 
-/// Extends the data type so we can track which portions require updates. Does not teach an entire
-/// city full of people that dancing is the best thing there is.
-struct DirtyData<Key, P>
-where
-    P: SharedPointerKind,
-{
-    /// This range, if present, is the portion that needs to be copied from cpu to gpu.
-    cpu_dirty: Option<Range<u64>>,
-
-    data: Allocation<Lease<Data, P>>,
-
-    /// Segments of gpu memory which must be "compacted" (read: copied) within the gpu.
-    gpu_dirty: Vec<CopyRange>,
-
-    /// Memory usage on the gpu, sorted by the first field which is the offset.
-    gpu_usage: Vec<(u64, Key)>,
-}
-
-impl<Key, P> DirtyData<Key, P>
-where
-    P: SharedPointerKind,
-{
-    fn reset(&mut self) {
-        self.cpu_dirty = None;
-        self.gpu_dirty.clear();
-    }
-}
-
-impl<T, P> From<Lease<Data, P>> for DirtyData<T, P>
-where
-    P: SharedPointerKind,
-{
-    fn from(val: Lease<Data, P>) -> Self {
-        Self {
-            cpu_dirty: None,
-            data: Allocation {
-                current: val,
-                previous: None,
-            },
-            gpu_dirty: vec![],
-            gpu_usage: vec![],
-        }
-    }
-}
-
-struct DirtyLruData<Key, P>
-where
-    P: SharedPointerKind,
-{
-    buf: Option<DirtyData<Key, P>>,
-    lru: Vec<Lru<Key>>,
-}
-
-impl<K, P> DirtyLruData<K, P>
-where
-    P: SharedPointerKind,
-{
-    fn step(&mut self) {
-        if let Some(buf) = self.buf.as_mut() {
-            buf.reset();
-        }
-
-        // TODO: This should keep a 'frame' value per item and just increment a single 'age' value,
-        // O(1) not O(N)!
-        for item in self.lru.iter_mut() {
-            item.recently_used = item.recently_used.saturating_sub(1);
-        }
-    }
-}
-
-// #[derive(Default)] did not work due to Key being unconstrained
-impl<Key, P> Default for DirtyLruData<Key, P>
-where
-    P: SharedPointerKind,
-{
-    fn default() -> Self {
-        Self {
-            buf: None,
-            lru: vec![],
-        }
-    }
-}
-
 /// Evenly numbered because we use `SearchIdx` to quickly locate these groups while filling the
 /// cache.
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
@@ -1538,24 +1445,6 @@ enum GroupIdx {
     Spotlight = 6,
     Sunlight = 8,
     Line = 10,
-}
-
-/// Individual item of a least-recently-used cache vector. Allows tracking the usage of a key which
-/// lives at some memory offset.
-struct Lru<T> {
-    key: T,
-    offset: u64,
-    recently_used: usize,
-}
-
-impl<T> Lru<T> {
-    fn new(key: T, offset: u64, lru_threshold: usize) -> Self {
-        Self {
-            key,
-            offset,
-            recently_used: lru_threshold,
-        }
-    }
 }
 
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]

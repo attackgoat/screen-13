@@ -1,7 +1,4 @@
-use {
-    screen_13::prelude_rc::*,
-    std::{env::current_exe, iter::once},
-};
+use {screen_13::prelude_rc::*, std::env::current_exe};
 
 /// This example requires a color graphics adapter.
 fn main() -> ! {
@@ -29,7 +26,7 @@ fn main() -> ! {
 }
 
 struct Basic {
-    small_10px: BitmapFont,
+    small_10px: Shared<BitmapFont>,
 }
 
 impl Screen<RcK> for Basic {

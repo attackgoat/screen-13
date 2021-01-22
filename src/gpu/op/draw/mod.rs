@@ -469,7 +469,9 @@ where
                         }
                         Instruction::MeshBegin => self.submit_mesh_begin(&viewport),
                         Instruction::MeshBind(instr) => self.submit_mesh_bind(instr),
-                        Instruction::MeshDescriptors(desc_set) => self.submit_mesh_descriptors(desc_set),
+                        Instruction::MeshDescriptors(desc_set) => {
+                            self.submit_mesh_descriptors(desc_set)
+                        }
                         Instruction::MeshDraw(instr) => self.submit_mesh(instr, view_proj),
                         Instruction::PointLightDraw(instr) => self.submit_point_lights(
                             instr,

@@ -2,7 +2,8 @@ use {
     super::{BitmapFont, Font, ScalableFont, DEFAULT_SIZE},
     crate::{
         color::{AlphaColor, WHITE},
-        math::{CoordF, Mat4},
+        math::{vec3, CoordF, Extent, Mat4},
+        ptr::Shared,
     },
     a_r_c_h_e_r_y::SharedPointerKind,
     std::iter::{once, Once},
@@ -10,25 +11,25 @@ use {
 
 /// An expressive type which allows specification of individual text operations.
 #[non_exhaustive]
-pub enum Command<'f, P, T>
+pub enum Command<P, T>
 where
     P: 'static + SharedPointerKind,
     T: AsRef<str>,
 {
     /// Draws text at the given coordinates.
-    Position(BitmapCommand<'f, P, CoordF, T>),
+    Position(BitmapCommand<CoordF, P, T>),
 
     /// Draws text of the specified size at the given coordinates.
-    SizePosition(ScalableCommand<'f, CoordF, T>),
+    SizePosition(ScalableCommand<CoordF, P, T>),
 
     /// Draws text of the specified size using the given homogenous transformation matrix.
-    SizeTransform(ScalableCommand<'f, Mat4, T>),
+    SizeTransform(ScalableCommand<Mat4, P, T>),
 
     /// Draws text using the given homogenous transformation matrix.
-    Transform(BitmapCommand<'f, P, Mat4, T>),
+    Transform(BitmapCommand<Mat4, P, T>),
 }
 
-impl<'f, P, T> Command<'f, P, T>
+impl<P, T> Command<P, T>
 where
     P: SharedPointerKind,
     T: AsRef<str>,
@@ -36,7 +37,7 @@ where
     /// Draws text at the given coordinates.
     pub fn position<F, X>(pos: X, font: F, text: T) -> Self
     where
-        F: Into<Font<'f, P>>,
+        F: Into<Font<P>>,
         X: Into<CoordF>,
     {
         match font.into() {
@@ -48,7 +49,7 @@ where
     /// Draws text using the given homogenous transformation matrix.
     pub fn transform<F>(transform: Mat4, font: F, text: T) -> Self
     where
-        F: Into<Font<'f, P>>,
+        F: Into<Font<P>>,
     {
         match font.into() {
             Font::Bitmap(font) => Self::Transform(BitmapCommand::transform(transform, font, text)),
@@ -57,13 +58,31 @@ where
             }
         }
     }
-}
 
-impl<P, T> Command<'_, P, T>
-where
-    P: SharedPointerKind,
-    T: AsRef<str>,
-{
+    pub(crate) fn as_position(&self) -> Option<CoordF> {
+        match self {
+            Self::SizePosition(cmd) => Some(cmd.layout),
+            Self::Position(cmd) => Some(cmd.layout),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_transform(&self) -> Option<Mat4> {
+        match self {
+            Self::SizeTransform(cmd) => Some(cmd.layout),
+            Self::Transform(cmd) => Some(cmd.layout),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn is_position(&self) -> bool {
+        self.as_position().is_some()
+    }
+
+    pub(crate) fn is_transform(&self) -> bool {
+        self.as_transform().is_some()
+    }
+
     /// Draws text using the given glyph fill color.
     ///
     /// **_NOTE:_** This is the primary font color.
@@ -80,12 +99,12 @@ where
     }
 }
 
-impl<'f, P, T> IntoIterator for Command<'f, P, T>
+impl<P, T> IntoIterator for Command<P, T>
 where
     P: SharedPointerKind,
     T: AsRef<str>,
 {
-    type Item = Command<'f, P, T>;
+    type Item = Command<P, T>;
     type IntoIter = Once<Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -93,24 +112,24 @@ where
     }
 }
 
-pub struct BitmapCommand<'f, P, L, T>
+pub struct BitmapCommand<L, P, T>
 where
     P: 'static + SharedPointerKind,
     T: AsRef<str>,
 {
-    pub font: &'f BitmapFont<P>,
+    pub font: Shared<BitmapFont<P>, P>,
     pub glyph_color: AlphaColor,
     pub layout: L,
     pub outline_color: Option<AlphaColor>,
     pub text: T,
 }
 
-impl<'f, P, T> BitmapCommand<'f, P, CoordF, T>
+impl<P, T> BitmapCommand<CoordF, P, T>
 where
     P: SharedPointerKind,
     T: AsRef<str>,
 {
-    pub fn position<X>(pos: X, font: &'f BitmapFont<P>, text: T) -> Self
+    pub fn position<X>(pos: X, font: Shared<BitmapFont<P>, P>, text: T) -> Self
     where
         X: Into<CoordF>,
     {
@@ -124,12 +143,12 @@ where
     }
 }
 
-impl<'f, P, T> BitmapCommand<'f, P, Mat4, T>
+impl<P, T> BitmapCommand<Mat4, P, T>
 where
     P: SharedPointerKind,
     T: AsRef<str>,
 {
-    pub fn transform(layout: Mat4, font: &'f BitmapFont<P>, text: T) -> Self {
+    pub fn transform(layout: Mat4, font: Shared<BitmapFont<P>, P>, text: T) -> Self {
         Self {
             font,
             glyph_color: WHITE.into(),
@@ -140,7 +159,7 @@ where
     }
 }
 
-impl<P, L, T> BitmapCommand<'_, P, L, T>
+impl<L, P, T> BitmapCommand<L, P, T>
 where
     P: SharedPointerKind,
     T: AsRef<str>,
@@ -178,22 +197,24 @@ where
     }
 }
 
-pub struct ScalableCommand<'f, L, T>
+pub struct ScalableCommand<L, P, T>
 where
+    P: SharedPointerKind,
     T: AsRef<str>,
 {
-    pub font: &'f ScalableFont,
+    pub font: Shared<ScalableFont, P>,
     pub glyph_color: AlphaColor,
     pub layout: L,
     pub size: f32,
     pub text: T,
 }
 
-impl<'f, T> ScalableCommand<'f, CoordF, T>
+impl<P, T> ScalableCommand<CoordF, P, T>
 where
+    P: SharedPointerKind,
     T: AsRef<str>,
 {
-    pub fn position<X>(pos: X, font: &'f ScalableFont, text: T) -> Self
+    pub fn position<X>(pos: X, font: Shared<ScalableFont, P>, text: T) -> Self
     where
         X: Into<CoordF>,
     {
@@ -207,11 +228,12 @@ where
     }
 }
 
-impl<'f, T> ScalableCommand<'f, Mat4, T>
+impl<P, T> ScalableCommand<Mat4, P, T>
 where
+    P: SharedPointerKind,
     T: AsRef<str>,
 {
-    pub fn transform(layout: Mat4, font: &'f ScalableFont, text: T) -> Self {
+    pub fn transform(layout: Mat4, font: Shared<ScalableFont, P>, text: T) -> Self {
         Self {
             font,
             glyph_color: WHITE.into(),
@@ -222,8 +244,9 @@ where
     }
 }
 
-impl<L, T> ScalableCommand<'_, L, T>
+impl<L, P, T> ScalableCommand<L, P, T>
 where
+    P: SharedPointerKind,
     T: AsRef<str>,
 {
     /// Draws text using the given glyph fill color.

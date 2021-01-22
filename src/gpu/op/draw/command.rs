@@ -52,86 +52,6 @@ impl<P> Command<P>
 where
     P: SharedPointerKind,
 {
-    pub(crate) fn as_line(&self) -> Option<&LineCommand> {
-        match self {
-            Self::Line(res) => Some(res),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn as_model(&self) -> Option<&ModelCommand<P>> {
-        match self {
-            Self::Model(res) => Some(res),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn as_point_light(&self) -> Option<&PointLightCommand> {
-        match self {
-            Self::PointLight(res) => Some(res),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn as_rect_light(&self) -> Option<&RectLightCommand> {
-        match self {
-            Self::RectLight(res) => Some(res),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn as_rect_light_mut(&mut self) -> Option<&mut RectLightCommand> {
-        match self {
-            Self::RectLight(res) => Some(res),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn as_spotlight(&self) -> Option<&SpotlightCommand> {
-        match self {
-            Self::Spotlight(res) => Some(res),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn as_spotlight_mut(&mut self) -> Option<&mut SpotlightCommand> {
-        match self {
-            Self::Spotlight(res) => Some(res),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn as_sunlight(&self) -> Option<&SunlightCommand> {
-        match self {
-            Self::Sunlight(res) => Some(res),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn is_line(&self) -> bool {
-        self.as_line().is_some()
-    }
-
-    pub(crate) fn is_model(&self) -> bool {
-        self.as_model().is_some()
-    }
-
-    pub(crate) fn is_point_light(&self) -> bool {
-        self.as_point_light().is_some()
-    }
-
-    pub(crate) fn is_rect_light(&self) -> bool {
-        self.as_rect_light().is_some()
-    }
-
-    pub(crate) fn is_spotlight(&self) -> bool {
-        self.as_spotlight().is_some()
-    }
-
-    pub(crate) fn is_sunlight(&self) -> bool {
-        self.as_sunlight().is_some()
-    }
-
     /// Draws a line between the given coordinates using a constant width and two colors. The colors
     /// specify a gradient if
     /// they differ. Generally intended to support debugging use cases such as drawing bounding
@@ -223,6 +143,86 @@ where
             range,
             ..Default::default()
         })
+    }
+
+    pub(crate) fn as_line(&self) -> Option<&LineCommand> {
+        match self {
+            Self::Line(res) => Some(res),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_model(&self) -> Option<&ModelCommand<P>> {
+        match self {
+            Self::Model(res) => Some(res),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_point_light(&self) -> Option<&PointLightCommand> {
+        match self {
+            Self::PointLight(res) => Some(res),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_rect_light(&self) -> Option<&RectLightCommand> {
+        match self {
+            Self::RectLight(res) => Some(res),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_rect_light_mut(&mut self) -> Option<&mut RectLightCommand> {
+        match self {
+            Self::RectLight(res) => Some(res),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_spotlight(&self) -> Option<&SpotlightCommand> {
+        match self {
+            Self::Spotlight(res) => Some(res),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_spotlight_mut(&mut self) -> Option<&mut SpotlightCommand> {
+        match self {
+            Self::Spotlight(res) => Some(res),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_sunlight(&self) -> Option<&SunlightCommand> {
+        match self {
+            Self::Sunlight(res) => Some(res),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn is_line(&self) -> bool {
+        self.as_line().is_some()
+    }
+
+    pub(crate) fn is_model(&self) -> bool {
+        self.as_model().is_some()
+    }
+
+    pub(crate) fn is_point_light(&self) -> bool {
+        self.as_point_light().is_some()
+    }
+
+    pub(crate) fn is_rect_light(&self) -> bool {
+        self.as_rect_light().is_some()
+    }
+
+    pub(crate) fn is_spotlight(&self) -> bool {
+        self.as_spotlight().is_some()
+    }
+
+    pub(crate) fn is_sunlight(&self) -> bool {
+        self.as_sunlight().is_some()
     }
 }
 

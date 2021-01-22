@@ -35,7 +35,10 @@ use {
         },
         device::Device as _,
         format::Aspects,
-        image::{Access as ImageAccess, Layout, Offset, SubresourceLayers, Usage as ImageUsage},
+        image::{
+            Access as ImageAccess, FramebufferAttachment, Layout, Offset, SubresourceLayers,
+            Usage as ImageUsage, ViewCapabilities,
+        },
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage, Rect, ShaderStageFlags, Viewport},
         queue::{CommandQueue, Submission},
@@ -56,34 +59,52 @@ const FONT_VERTEX_SIZE: usize = 16;
 const SUBPASS_IDX: u8 = 0;
 
 /// Holds either a bitmapped or TrueType/Opentype font.
-pub enum Font<'f, P>
+pub enum Font<P>
 where
     P: 'static + SharedPointerKind,
 {
     /// A fixed-size bitmapped font as produced by programs compatible with the `.fnt` file format.
     ///
     /// **_NOTE:_** [BMFont](https://www.angelcode.com/products/bmfont/) is supported.
-    Bitmap(&'f BitmapFont<P>),
+    Bitmap(Shared<BitmapFont<P>, P>),
 
     /// A variable-size font.
-    Scalable(&'f ScalableFont),
+    Scalable(Shared<ScalableFont, P>),
 }
 
-impl<'f, P> From<&'f BitmapFont<P>> for Font<'f, P>
+impl<P> From<Shared<BitmapFont<P>, P>> for Font<P>
 where
     P: SharedPointerKind,
 {
-    fn from(val: &'f BitmapFont<P>) -> Self {
+    fn from(val: Shared<BitmapFont<P>, P>) -> Self {
         Self::Bitmap(val)
     }
 }
 
-impl<'f, P> From<&'f ScalableFont> for Font<'f, P>
+impl<'a, P> From<&'a Shared<BitmapFont<P>, P>> for Font<P>
 where
     P: SharedPointerKind,
 {
-    fn from(val: &'f ScalableFont) -> Self {
+    fn from(val: &'a Shared<BitmapFont<P>, P>) -> Self {
+        Self::Bitmap(Shared::clone(val))
+    }
+}
+
+impl<P> From<Shared<ScalableFont, P>> for Font<P>
+where
+    P: SharedPointerKind,
+{
+    fn from(val: Shared<ScalableFont, P>) -> Self {
         Self::Scalable(val)
+    }
+}
+
+impl<'a, P> From<&'a Shared<ScalableFont, P>> for Font<P>
+where
+    P: SharedPointerKind,
+{
+    fn from(val: &'a Shared<ScalableFont, P>) -> Self {
+        Self::Scalable(Shared::clone(val))
     }
 }
 
@@ -99,7 +120,7 @@ where
     compiler: Option<Lease<Compiler<P>, P>>,
     dst: Shared<Texture2d, P>,
     fence: Lease<Fence, P>,
-    frame_buf: Option<Framebuffer2d>,
+    frame_buf: Framebuffer2d,
     graphics_bitmap: Option<Lease<Graphics, P>>,
     graphics_bitmap_outline: Option<Lease<Graphics, P>>,
     graphics_scalable: Option<Lease<Graphics, P>>,
@@ -108,7 +129,6 @@ where
     name: String,
 
     pool: Option<Lease<Pool<P>, P>>,
-    vertex_buf: Option<(Lease<Data, P>, u64)>,
 }
 
 impl<P> TextOp<P>
@@ -142,48 +162,59 @@ where
             name,
         );
 
-        // let pos = pos.into();
-        // let transform = Mat4::from_translation(vec3(-1.0, -1.0, 0.0))
-        //     * Mat4::from_scale(vec3(2.0, 2.0, 1.0))
-        //     * Mat4::from_translation(vec3(pos.x / dims.x as f32, pos.y / dims.y as f32, 0.0));
+        // Setup the framebuffer
+        let frame_buf = Framebuffer2d::new(
+            #[cfg(feature = "debug-names")]
+            self.name.as_str(),
+            pool.render_pass(RenderPassMode::Color(ColorRenderPassMode {
+                fmt,
+                preserve: true,
+            })),
+            once(FramebufferAttachment {
+                format: fmt,
+                usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
+                view_caps: ViewCapabilities::MUTABLE_FORMAT,
+            }),
+            dims,
+        );
 
-        // Self {
-        //     back_buf,
-        //     cmd_buf,
-        //     cmd_pool,
-        //     dst: Shared::clone(dst),
-        //     fence,
-        //     frame_buf: None,
-        //     glyph_color: color.into(),
-        //     graphics: None,
-        //     #[cfg(feature = "debug-names")]
-        //     name: name.to_owned(),
-        //     outline_color: None,
-        //     pool: Some(pool),
-        //     transform,
-        //     vertex_buf: None,
-        // }
+        Self {
+            back_buf,
+            cmd_buf,
+            cmd_pool,
+            compiler: None,
+            dst: Shared::clone(dst),
+            fence,
+            frame_buf,
+            graphics_bitmap: None,
+            graphics_bitmap_outline: None,
+            graphics_scalable: None,
 
-        todo!()
+            #[cfg(feature = "debug-names")]
+            name: name.to_owned(),
+
+            pool: Some(pool),
+        }
     }
 
     /// Submits the given commands for hardware processing.
     pub fn record<'c, C, T>(&mut self, cmds: &'c [C])
     where
-        C: Borrow<Command<'c, P, T>>,
+        C: Borrow<Command<P, T>>,
         T: AsRef<str>,
     {
         unsafe {
             let pool = self.pool.as_mut().unwrap();
             let mut compiler = pool.text_compiler();
             {
+                let dims = self.dst.dims();
                 let mut instrs = compiler.compile(
                     #[cfg(feature = "debug-names")]
                     &self.name,
                     cmds,
+                    dims,
                 );
                 let fmt = self.dst.format();
-                let dims = self.dst.dims();
                 let render_pass_mode = RenderPassMode::Color(ColorRenderPassMode {
                     fmt,
                     preserve: true,
@@ -225,6 +256,12 @@ where
                     }
                 }
 
+                // TODO: Replace this!
+                // let pos = pos.into();
+                // let transform = Mat4::from_translation(vec3(-1.0, -1.0, 0.0))
+                //     * Mat4::from_scale(vec3(2.0, 2.0, 1.0))
+                //     * Mat4::from_translation(vec3(pos.x / dims.x as f32, pos.y / dims.y as f32, 0.0));
+
                 self.submit_begin(dims, render_pass_mode);
 
                 while let Some(instr) = instrs.next() {
@@ -258,35 +295,9 @@ where
 
             // Finish the remaining setup tasks
             unsafe {
-                // TODO: This may ask for too many descriptor sets if the pages are not contiguous
-                // Setup the graphics pipeline
-                self.graphics.replace(
-                    pool.graphics_desc_sets(
-                        #[cfg(feature = "debug-names")]
-                        &self.name,
-                        render_pass_mode,
-                        SUBPASS_IDX,
-                        graphics_mode,
-                        tessellations
-                            .iter()
-                            .map(|(page_idx, _)| page_idx + 1)
-                            .max()
-                            .unwrap_or_default(),
-                    ),
-                );
 
-                // Setup the framebuffer
-                self.frame_buf.replace(Framebuffer2d::new(
-                    #[cfg(feature = "debug-names")]
-                    self.name.as_str(),
-                    pool.render_pass(render_pass_mode),
-                    once(FramebufferAttachment {
-                        format: fmt,
-                        usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
-                        view_caps: ViewCapabilities::MUTABLE_FORMAT,
-                    }),
-                    dims,
-                ));
+
+
 
                 // Setup the vetex buffers
                 let vertex_buf_len = FONT_VERTEX_SIZE as u64

@@ -151,6 +151,11 @@ mod input_assemblers {
         restart_index: None,
         with_adjacency: false,
     };
+    pub const TRIANGLE_STRIP: InputAssemblerDesc = InputAssemblerDesc {
+        primitive: Primitive::TriangleStrip,
+        restart_index: None,
+        with_adjacency: false,
+    };
     pub const TRIANGLES: InputAssemblerDesc = InputAssemblerDesc {
         primitive: Primitive::TriangleList,
         restart_index: None,
@@ -240,7 +245,7 @@ impl Graphics {
                 attributes: &attributes::VEC2_VEC2,
                 buffers: &vertex_buf,
                 geometry: None,
-                input_assembler: input_assemblers::TRIANGLES,
+                input_assembler: input_assemblers::TRIANGLE_STRIP,
                 tessellation: None,
                 vertex: ShaderModule::entry_point(&vertex),
             },
