@@ -1,6 +1,8 @@
 use {
-    super::Stride,
-    crate::gpu::op::draw::{command::LineCommand, geom::LINE_STRIDE},
+    crate::gpu::op::{
+        draw::{command::LineCommand, geom::LINE_STRIDE},
+        Stride,
+    },
     gfx_hal::image::PackedColor,
     std::{collections::hash_map::DefaultHasher, hash::Hasher},
 };

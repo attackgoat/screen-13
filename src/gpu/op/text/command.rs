@@ -35,26 +35,26 @@ where
     T: AsRef<str>,
 {
     /// Draws text at the given coordinates.
-    pub fn position<F, X>(pos: X, font: F, text: T) -> Self
+    pub fn position<'f, F, X>(pos: X, font: F, text: T) -> Self
     where
-        F: Into<Font<P>>,
+        F: Into<Font<'f, P>>,
         X: Into<CoordF>,
     {
         match font.into() {
-            Font::Bitmap(font) => Self::Position(BitmapCommand::position(pos, font, text)),
-            Font::Scalable(font) => Self::SizePosition(ScalableCommand::position(pos, font, text)),
+            Font::Bitmap(font) => Self::Position(BitmapCommand::position(pos, font.clone(), text)),
+            Font::Scalable(font) => Self::SizePosition(ScalableCommand::position(pos, font.clone(), text)),
         }
     }
 
     /// Draws text using the given homogenous transformation matrix.
-    pub fn transform<F>(transform: Mat4, font: F, text: T) -> Self
+    pub fn transform<'f, F>(transform: Mat4, font: F, text: T) -> Self
     where
-        F: Into<Font<P>>,
+        F: Into<Font<'f, P>>,
     {
         match font.into() {
-            Font::Bitmap(font) => Self::Transform(BitmapCommand::transform(transform, font, text)),
+            Font::Bitmap(font) => Self::Transform(BitmapCommand::transform(transform, font.clone(), text)),
             Font::Scalable(font) => {
-                Self::SizeTransform(ScalableCommand::transform(transform, font, text))
+                Self::SizeTransform(ScalableCommand::transform(transform, font.clone(), text))
             }
         }
     }

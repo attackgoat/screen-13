@@ -23,7 +23,7 @@ where
     P: 'static + SharedPointerKind,
 {
     def: BMFont,
-    pages: Vec<Bitmap<P>>,
+    pub(super) pages: Vec<Bitmap<P>>,
 }
 
 impl<P> BitmapFont<P>
@@ -179,9 +179,13 @@ where
 }
 
 #[derive(Clone, Copy, Default)]
-struct Vertex {
+pub struct Vertex {
     x: f32,
     y: f32,
     u: f32,
     v: f32,
+}
+
+impl Vertex {
+    pub const STRIDE: u64 = 16;
 }

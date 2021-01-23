@@ -461,6 +461,7 @@ where
     P: 'static + SharedPointerKind,
 {
     lru_threshold: usize,
+    lru_timestamp: RefCell<usize>,
     pool: PoolRef<Pool<P>, P>,
 }
 
@@ -471,6 +472,7 @@ where
     fn default() -> Self {
         Self {
             lru_threshold: Self::DEFAULT_LRU_THRESHOLD,
+            lru_timestamp: RefCell::new(0),
             pool: Default::default(),
         }
     }
@@ -480,7 +482,8 @@ impl<P> Cache<P>
 where
     P: SharedPointerKind,
 {
-    const DEFAULT_LRU_THRESHOLD: usize = 8;
+    /// The default number of frames which elapse before a cache item is considered obsolete.
+    pub const DEFAULT_LRU_THRESHOLD: usize = 8;
 
     // TODO: Automatically call these functions on OOM so client doesn't even know?
     /// Allows you to remove unused resources from the cache.
@@ -492,18 +495,21 @@ where
         todo!();
     }
 
-    /// Returns the least-recently-used threshold value.
+    /// Returns the number of frames which elapse before a cache item is considered obsolete.
     ///
-    /// Resources which have not been used within this number of frames will be automatically
-    /// reclaimed and reused for other commands.
+    /// Internal resources which have not been used within this number of frames will be reclaimed
+    /// for reuse with other operations.
     pub fn lru_threshold(&self) -> usize {
         self.lru_threshold
     }
 
-    /// Sets the least-recently-used threshold value.
+    /// Sets the number of frames which elapse before a cache item is considered obsolete.
     ///
-    /// Resources which have not been used within this number of frames will be automatically
-    /// reclaimed and reused for other commands.
+    /// Internal resources which have not been used within this number of frames will be reclaimed
+    /// for reuse with other operations
+    ///
+    /// **_NOTE:_** Higher numbers such as `10` will use more memory but have less thrashing than
+    /// lower numbers, such as `1`.
     pub fn set_lru_threshold(&mut self, value: usize) {
         self.lru_threshold = value;
     }
@@ -1126,7 +1132,20 @@ where
             debug!("Creating new render pool");
             Default::default()
         };
-        pool.lru_threshold = cache.lru_threshold();
+
+        // Increment the LRU timestamp and handle wrapping (Note that when expiry < timestamp no
+        // caching will happen - this happens once every 2.26 years on a 32bit system or once every
+        // 9.75 billion years on a 64bit system but dont worry it only lasts lru_threshold frames!)
+        let mut lru_timestamp = cache.lru_timestamp.borrow_mut();
+        let (timestamp, _) = lru_timestamp.overflowing_add(1);
+        *lru_timestamp = timestamp;
+
+        // Set the expiry timestamp for resources created during this render
+        let (expiry, _) = timestamp.overflowing_add(cache.lru_threshold);
+        pool.lru_expiry = expiry;
+
+        // Access to this pool is leased to the render from this cache; when dropped it'll be
+        // returned to the cache pool
         let pool = Lease::new(pool, &cache.pool);
 
         unsafe {

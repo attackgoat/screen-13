@@ -115,14 +115,9 @@ where
     fences: PoolRef<Fence, P>,
     graphics: HashMap<GraphicsKey, PoolRef<Graphics, P>>,
     pub(super) layouts: Layouts,
-
-    /// The number of frames which must elapse before a least-recently-used cache item is considered obsolete.
-    ///
-    /// Remarks: Higher numbers such as 10 will use more memory but have less thrashing than lower numbers, such as 1.
-    pub lru_threshold: usize,
-
+    pub(super) lru_expiry: usize,
     memories: HashMap<MemoryTypeId, PoolRef<Memory, P>>,
-    pub(crate) ops: VecDeque<Box<dyn Op<P>>>,
+    pub(super) ops: VecDeque<Box<dyn Op<P>>>,
     render_passes: HashMap<RenderPassMode, RenderPass>,
     skydomes: PoolRef<Data, P>,
     text_compilers: PoolRef<TextCompiler<P>, P>,
@@ -876,7 +871,7 @@ where
             fences: Default::default(),
             graphics: Default::default(),
             layouts: Default::default(),
-            lru_threshold: Cache::<P>::DEFAULT_LRU_THRESHOLD,
+            lru_expiry: Cache::<P>::DEFAULT_LRU_THRESHOLD,
             memories: Default::default(),
             ops: Default::default(),
             render_passes: Default::default(),

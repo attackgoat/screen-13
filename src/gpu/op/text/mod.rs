@@ -58,53 +58,35 @@ pub const DEFAULT_SIZE: f32 = 32.0;
 const FONT_VERTEX_SIZE: usize = 16;
 const SUBPASS_IDX: u8 = 0;
 
-/// Holds either a bitmapped or TrueType/Opentype font.
-pub enum Font<P>
+/// Holds a reference to either a bitmapped or TrueType/Opentype font.
+pub enum Font<'f, P>
 where
     P: 'static + SharedPointerKind,
 {
     /// A fixed-size bitmapped font as produced by programs compatible with the `.fnt` file format.
     ///
     /// **_NOTE:_** [BMFont](https://www.angelcode.com/products/bmfont/) is supported.
-    Bitmap(Shared<BitmapFont<P>, P>),
+    Bitmap(&'f Shared<BitmapFont<P>, P>),
 
     /// A variable-size font.
-    Scalable(Shared<ScalableFont, P>),
+    Scalable(&'f Shared<ScalableFont, P>),
 }
 
-impl<P> From<Shared<BitmapFont<P>, P>> for Font<P>
+impl<'f, P> From<&'f Shared<BitmapFont<P>, P>> for Font<'f, P>
 where
     P: SharedPointerKind,
 {
-    fn from(val: Shared<BitmapFont<P>, P>) -> Self {
-        Self::Bitmap(val)
+    fn from(font: &'f Shared<BitmapFont<P>, P>) -> Self {
+        Self::Bitmap(font)
     }
 }
 
-impl<'a, P> From<&'a Shared<BitmapFont<P>, P>> for Font<P>
+impl<'f, P> From<&'f Shared<ScalableFont, P>> for Font<'f, P>
 where
     P: SharedPointerKind,
 {
-    fn from(val: &'a Shared<BitmapFont<P>, P>) -> Self {
-        Self::Bitmap(Shared::clone(val))
-    }
-}
-
-impl<P> From<Shared<ScalableFont, P>> for Font<P>
-where
-    P: SharedPointerKind,
-{
-    fn from(val: Shared<ScalableFont, P>) -> Self {
-        Self::Scalable(val)
-    }
-}
-
-impl<'a, P> From<&'a Shared<ScalableFont, P>> for Font<P>
-where
-    P: SharedPointerKind,
-{
-    fn from(val: &'a Shared<ScalableFont, P>) -> Self {
-        Self::Scalable(Shared::clone(val))
+    fn from(font: &'f Shared<ScalableFont, P>) -> Self {
+        Self::Scalable(font)
     }
 }
 
@@ -211,6 +193,7 @@ where
                 let mut instrs = compiler.compile(
                     #[cfg(feature = "debug-names")]
                     &self.name,
+                    pool,
                     cmds,
                     dims,
                 );

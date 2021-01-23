@@ -12,14 +12,14 @@ use {
             PointLightDrawInstruction, RectLightDrawInstruction, SpotlightDrawInstruction,
             VertexAttrsDescriptorsInstruction,
         },
-        key::{Line, RectLight, Spotlight, Stride},
+        key::{Line, RectLight, Spotlight},
     },
     crate::{
         camera::Camera,
         gpu::{
-            data::{CopyRange, Mapping},
+            data::Mapping,
             def::CalcVertexAttrsComputeMode,
-            op::{Allocation, DirtyData, DirtyLruData, Lru},
+            op::{DirtyData, DirtyLruData, Lru, Stride},
             pool::Pool,
             Data, Lease, Model,
         },
@@ -35,10 +35,6 @@ use {
         ptr::copy_nonoverlapping,
     },
 };
-
-// Always ask for a bigger cache capacity than needed; it reduces the need to completely replace
-// the existing cache and then have to copy all the old data over.
-const CACHE_CAPACITY_FACTOR: f32 = 2.0;
 
 // TODO: Stop compaction after a certain number of cycles or % complete, maybe only 10%.
 
@@ -534,129 +530,6 @@ impl<P> Compiler<P>
 where
     P: SharedPointerKind,
 {
-    /// Allocates or re-allocates leased data of the given size. This could be a function of the
-    /// DirtyData type, however it only works because the Compiler happens to know that the
-    /// host-side of the data
-    unsafe fn alloc_data<T: Stride>(
-        #[cfg(feature = "debug-names")] name: &str,
-        pool: &mut Pool<P>,
-        buf: &mut Option<DirtyData<T, P>>,
-        len: u64,
-    ) {
-        #[cfg(feature = "debug-names")]
-        if let Some(buf) = buf.as_mut() {
-            buf.data.current.set_name(&name);
-        }
-
-        // Early-our if we do not need to resize the buffer
-        if let Some(existing) = buf.as_ref() {
-            if len <= existing.data.current.capacity() {
-                return;
-            }
-        }
-
-        #[cfg(debug_assertions)]
-        {
-            info!(
-                "Reallocating {} to {}",
-                buf.as_ref().map_or(0, |buf| buf.data.current.capacity()),
-                len
-            );
-        }
-
-        // We over-allocate the requested capacity to prevent rapid reallocations
-        let capacity = (len as f32 * CACHE_CAPACITY_FACTOR) as u64;
-        let data = pool.data(
-            #[cfg(feature = "debug-names")]
-            &name,
-            capacity,
-        );
-
-        if let Some(old_buf) = buf.replace(data.into()) {
-            // Preserve the old data so that we can copy it directly over before drawing
-            let old_buf_len = old_buf
-                .usage
-                .last()
-                .map_or(0, |(offset, _)| offset + T::stride());
-            let new_buf = &mut buf.as_mut().unwrap();
-            new_buf.usage = old_buf.usage;
-            new_buf.data.previous = Some((old_buf.data.current, old_buf_len));
-        }
-    }
-
-    /// Moves cache items into clumps so future items can be appended onto the end without needing
-    /// to resize the cache buffer. As a side effect this causes dirty regions to be moved on the
-    /// GPU.
-    ///
-    /// Geometry used very often will end up closer to the beginning of the GPU memory over time,
-    /// and will have fewer move operations applied to it as a result.
-    fn compact_cache<T: Stride>(buf: &mut DirtyData<T, P>, lru: &mut Vec<Lru<T>>)
-    where
-        T: Ord,
-    {
-        let stride = T::stride();
-
-        // "Forget about" GPU memory regions occupied by unused geometry
-        buf.usage.retain(|(_, key)| {
-            let idx = lru
-                .binary_search_by(|probe| probe.key.cmp(&key))
-                .ok()
-                .unwrap();
-            lru[idx].recently_used > 0
-        });
-
-        // We only need to compact the memory in the region preceding the dirty region, because that geometry will
-        // be uploaded and used during this compilation (draw) - we will defer that region to the next compilation
-        let mut start = 0;
-        let end = buf.pending_write.as_ref().map_or_else(
-            || buf.usage.last().map_or(0, |(offset, _)| offset + stride),
-            |dirty| dirty.start,
-        );
-
-        // Walk through the GPU memory in order, moving items back to the "empty" region and as we go
-        for (offset, key) in &mut buf.usage {
-            // Early out if we have exceeded the non-dirty region
-            if *offset >= end {
-                break;
-            }
-
-            // Skip items which should not be moved
-            if start == *offset {
-                start += stride;
-                continue;
-            }
-
-            // Move this item back to the beginning of the empty region
-            if let Some(range) = buf.pending_copies.last_mut() {
-                if range.dst == start - stride && range.src.end == *offset - stride {
-                    *range = CopyRange {
-                        dst: range.dst,
-                        src: range.src.start..*offset + stride,
-                    };
-                } else {
-                    buf.pending_copies.push(CopyRange {
-                        dst: start,
-                        src: *offset..*offset + stride,
-                    });
-                }
-            } else {
-                buf.pending_copies.push(CopyRange {
-                    dst: start,
-                    src: *offset..*offset + stride,
-                });
-            }
-
-            // Update the LRU item for this geometry
-            let idx = lru
-                .binary_search_by(|probe| probe.key.cmp(&key))
-                .ok()
-                .unwrap();
-            lru[idx].offset = start;
-
-            start += stride;
-        }
-    }
-
     /// Compiles a given set of commands into a ready-to-draw list of instructions. Performs these
     /// steps:
     /// - Cull commands which might not be visible to the camera (if the feature is enabled)
@@ -890,13 +763,13 @@ where
         pool: &mut Pool<P>,
         range: Range<usize>,
     ) {
-        // Allocate enough `buf` to hold everything in the existing cache and everything we could possibly draw
+        // Allocate enough `buf` to hold everything in the existing cache and everything we could
+        // possibly draw
         let line_count = range.end - range.start;
-        Self::alloc_data(
+        self.line.alloc_data(
             #[cfg(feature = "debug-names")]
             &format!("{} line vertex buffer", name),
             pool,
-            &mut self.line.buf,
             (self.line.lru.len() * LINE_STRIDE + line_count * LINE_STRIDE) as _,
         );
         let buf = self.line.buf.as_mut().unwrap();
@@ -907,7 +780,7 @@ where
         }
 
         // Copy data from the uncompacted end of the buffer back to linear data
-        Self::compact_cache(buf, &mut self.line.lru);
+        buf.compact_cache(&mut self.line.lru, pool.lru_expiry);
         if !buf.pending_copies.is_empty() {
             self.code.push(Asm::CopyLineVertices);
         }
@@ -945,10 +818,10 @@ where
                     // Create a new cache entry for this line segment
                     self.line
                         .lru
-                        .insert(idx, Lru::new(key, end, pool.lru_threshold));
+                        .insert(idx, Lru::new(key, end, pool.lru_expiry));
                     end = new_end;
                 }
-                Ok(idx) => self.line.lru[idx].recently_used = pool.lru_threshold,
+                Ok(idx) => self.line.lru[idx].expiry = pool.lru_expiry,
             }
         }
 
@@ -1003,7 +876,8 @@ where
                         skin: mesh.is_animated(),
                     };
 
-                    // Emit 'start vertex attribute calculations' assembly code when the mode changes
+                    // Emit 'start vertex attribute calculations' assembly code when the mode
+                    // changes
                     if match vertex_calc_mode {
                         None => true,
                         Some(m) if m != mode => true,
@@ -1021,7 +895,8 @@ where
                         ));
                         vertex_calc_bind = false;
 
-                        // This keeps track of the fact that this command index uses the current calculation mode
+                        // This keeps track of the fact that this command index uses the current
+                        // calculation mode
                         let usage = match mode {
                             CalcVertexAttrsComputeMode::U16 => &mut self.u16_vertex_cmds,
                             CalcVertexAttrsComputeMode::U16_SKIN => &mut self.u16_skin_vertex_cmds,
@@ -1033,8 +908,9 @@ where
                         }
                     }
 
-                    // Emit code to cause the normal and tangent vertex attributes of each mesh to be
-                    // calculated (source is leased data, destination lives as long as the model does)
+                    // Emit code to cause the normal and tangent vertex attributes of each mesh to
+                    // be calculated (source is leased data, destination lives as long as the model
+                    // does)
                     self.code.push(Asm::CalcVertexAttrs(CalcVertexAttrsAsm {
                         base_idx: mesh.indices.start,
                         base_vertex: mesh.vertex_offset() >> 2,
@@ -1086,7 +962,8 @@ where
         range: Range<usize>,
     ) {
         if self.point_light_buf.as_ref().is_none() {
-            // Emit 'write point light vertices' assembly code (only when we don't yet have a buffer)
+            // Emit 'write point light vertices' assembly code (only when we don't yet have a
+            // buffer)
             self.code.push(Asm::WritePointLightVertices);
 
             let mut buf = pool.data(
@@ -1121,12 +998,12 @@ where
     ) {
         assert!(self.rect_lights.is_empty());
 
-        // Allocate enough `buf` to hold everything in the existing cache and everything we could possibly draw
-        Self::alloc_data(
+        // Allocate enough `buf` to hold everything in the existing cache and everything we could
+        // possibly draw
+        self.rect_light.alloc_data(
             #[cfg(feature = "debug-names")]
             &format!("{} rect light vertex buffer", name),
             pool,
-            &mut self.rect_light.buf,
             ((self.rect_light.lru.len() + range.end - range.start) * RECT_LIGHT_STRIDE) as _,
         );
         let buf = self.rect_light.buf.as_mut().unwrap();
@@ -1137,7 +1014,7 @@ where
         }
 
         // Copy data from the uncompacted end of the buffer back to linear data
-        Self::compact_cache(buf, &mut self.rect_light.lru);
+        buf.compact_cache(&mut self.rect_light.lru, pool.lru_expiry);
         if !buf.pending_copies.is_empty() {
             self.code.push(Asm::CopyRectLightVertices);
         }
@@ -1186,11 +1063,11 @@ where
                     buf.usage.push((end, key));
                     self.rect_light
                         .lru
-                        .insert(idx, Lru::new(key, end, pool.lru_threshold));
+                        .insert(idx, Lru::new(key, end, pool.lru_expiry));
                     end = new_end;
                 }
                 Ok(idx) => {
-                    self.rect_light.lru[idx].recently_used = pool.lru_threshold;
+                    self.rect_light.lru[idx].expiry = pool.lru_expiry;
                 }
             }
         }
@@ -1223,12 +1100,12 @@ where
     ) {
         assert!(self.spotlights.is_empty());
 
-        // Allocate enough `buf` to hold everything in the existing cache and everything we could possibly draw
-        Self::alloc_data(
+        // Allocate enough `buf` to hold everything in the existing cache and everything we could
+        // possibly draw
+        self.spotlight.alloc_data(
             #[cfg(feature = "debug-names")]
             &format!("{} spotlight vertex buffer", name),
             pool,
-            &mut self.spotlight.buf,
             (self.spotlight.lru.len() * SPOTLIGHT_STRIDE
                 + (range.end - range.start) * SPOTLIGHT_STRIDE) as _,
         );
@@ -1240,7 +1117,7 @@ where
         }
 
         // Copy data from the uncompacted end of the buffer back to linear data
-        Self::compact_cache(buf, &mut self.spotlight.lru);
+        buf.compact_cache(&mut self.spotlight.lru, pool.lru_expiry);
         if !buf.pending_copies.is_empty() {
             self.code.push(Asm::CopySpotlightVertices);
         }
@@ -1288,11 +1165,11 @@ where
                     // Create a new cache entry for this spotlight
                     self.spotlight
                         .lru
-                        .insert(idx, Lru::new(key, end, pool.lru_threshold));
+                        .insert(idx, Lru::new(key, end, pool.lru_expiry));
                     end = new_end;
                 }
                 Ok(idx) => {
-                    self.spotlight.lru[idx].recently_used = pool.lru_threshold;
+                    self.spotlight.lru[idx].expiry = pool.lru_expiry;
                 }
             }
         }

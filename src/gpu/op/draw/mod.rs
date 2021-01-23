@@ -265,7 +265,6 @@ where
                     camera,
                     cmds,
                 );
-
                 let render_pass_mode = {
                     let draw_mode = DrawRenderPassMode {
                         depth: self.geom_buf.depth().format(),
