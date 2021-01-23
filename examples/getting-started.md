@@ -211,7 +211,7 @@ is:
 ```rust
 render
     .text()
-    .record(&[
+    .record(&mut [
         Text::position((24.0, 10.0), &comic_sans, "Hello, world!"),
     ]);
 ```

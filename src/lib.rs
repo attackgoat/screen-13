@@ -281,7 +281,7 @@ pub mod ptr {
     };
 
     /// A shared reference wrapper type, based on either [`std::sync::Arc`] or [`std::rc::Rc`].
-    #[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
+    #[derive(Debug, Eq, Ord, PartialOrd)]
     pub struct Shared<T, P>(SharedPointer<T, P>)
     where
         P: SharedPointerKind;
@@ -339,6 +339,14 @@ pub mod ptr {
 
         fn deref(&self) -> &Self::Target {
             &self.0
+        }
+    }
+
+    impl<T, P> PartialEq for Shared<T, P>
+    where
+        P: SharedPointerKind, {
+        fn eq(&self, other: &Self) -> bool {
+            Self::ptr_eq(self, other)
         }
     }
 }

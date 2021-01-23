@@ -75,6 +75,15 @@ where
         }
     }
 
+    pub(crate) fn font(&self) -> Font<'_, P> {
+        match self {
+            Command::Position(cmd) => (&cmd.font).into(),
+            Command::SizePosition(cmd) => (&cmd.font).into(),
+            Command::SizeTransform(cmd) => (&cmd.font).into(),
+            Command::Transform(cmd) => (&cmd.font).into(),
+        }
+    }
+
     pub(crate) fn is_position(&self) -> bool {
         self.as_position().is_some()
     }

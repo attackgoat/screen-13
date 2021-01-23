@@ -37,7 +37,7 @@ impl Screen<RcK> for Basic {
 
         // Draws "Hello, World" onto a blue background
         frame.clear().with(BLUE).record();
-        frame.text().record(&[Text::position(
+        frame.text().record(&mut [Text::position(
             Coord::new(137, 96),
             &self.small_10px,
             "Hello, world!",

@@ -72,6 +72,30 @@ where
     Scalable(&'f Shared<ScalableFont, P>),
 }
 
+impl<'f, P> Font<'f, P> where P: SharedPointerKind {
+    pub(super) fn as_bitmap(&'f self) -> Option<&'f Shared<BitmapFont<P>, P>> {
+        match self {
+            Self::Bitmap(font) => Some(font),
+            _ => None,
+        }
+    }
+
+    pub(super) fn as_scalable(&'f self) -> Option<&'f Shared<ScalableFont, P>> {
+        match self {
+            Self::Scalable(font) => Some(font),
+            _ => None,
+        }
+    }
+
+    pub(super) fn is_bitmap(&'f self) -> bool {
+        self.as_bitmap().is_some()
+    }
+
+    pub(super) fn is_scalable(&'f self) -> bool {
+        self.as_scalable().is_some()
+    }
+}
+
 impl<'f, P> From<&'f Shared<BitmapFont<P>, P>> for Font<'f, P>
 where
     P: SharedPointerKind,
@@ -180,7 +204,10 @@ where
     }
 
     /// Submits the given commands for hardware processing.
-    pub fn record<'c, C, T>(&mut self, cmds: &'c [C])
+    /// 
+    /// **_NOTE:_** Individual commands within this batch will have an unstable draw order. For a
+    /// stable draw order submit additional batches.
+    pub fn record<'c, C, T>(&mut self, cmds: &'c mut [C])
     where
         C: Borrow<Command<P, T>>,
         T: AsRef<str>,

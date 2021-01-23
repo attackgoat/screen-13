@@ -3,6 +3,7 @@ use {
         bitmap_font::{BitmapFont, Vertex as BitmapFontVertex},
         command::{BitmapCommand, Command, ScalableCommand},
         instruction::Instruction,
+        scalable_font::ScalableFont,
         Font,
     },
     crate::{
@@ -16,7 +17,7 @@ use {
         ptr::Shared,
     },
     a_r_c_h_e_r_y::SharedPointerKind,
-    std::{borrow::Borrow, marker::PhantomData, ptr::copy_nonoverlapping},
+    std::{borrow::Borrow, cmp::Ordering, marker::PhantomData, ptr::copy_nonoverlapping},
 };
 
 // `Asm` is the "assembly op code" that is used to create an `Instruction` instance.
@@ -31,9 +32,9 @@ pub enum Asm {
 }
 
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
-struct BitmapFontChar(char);
+struct Char(char);
 
-impl Stride for BitmapFontChar {
+impl Stride for Char {
     fn stride() -> u64 {
         BitmapFontVertex::STRIDE
     }
@@ -134,11 +135,11 @@ pub struct Compiler<P>
 where
     P: 'static + SharedPointerKind,
 {
-    bitmap_fonts: Vec<(Shared<BitmapFont<P>, P>, DirtyLruData<BitmapFontChar, P>)>,
+    bitmap_fonts: Vec<(Shared<BitmapFont<P>, P>, DirtyLruData<Char, P>)>,
     bitmap_textures: Vec<Shared<Texture2d, P>>,
     bitmap_outline_textures: Vec<Shared<Texture2d, P>>,
     code: Vec<Asm>,
-    //scalable_bufs: Vec<Shared<Texture2d, P>>,
+    scalable_fonts: Vec<(Shared<ScalableFont, P>, DirtyLruData<Char, P>)>,
 }
 
 impl<P> Compiler<P>
@@ -149,31 +150,82 @@ where
         &'a mut self,
         #[cfg(feature = "debug-names")] name: &str,
         pool: &mut Pool<P>,
-        cmds: &'c [C],
+        cmds: &'c mut [C],
         dims: Extent,
     ) -> Compilation<'a, 'c, C, P, T>
     where
         C: Borrow<Command<P, T>>,
         T: AsRef<str>,
     {
-        for cmd in cmds.iter() {
-            match match cmd.borrow() {
-                Command::Position(cmd) => (&cmd.font).into(),
-                Command::SizePosition(cmd) => (&cmd.font).into(),
-                Command::SizeTransform(cmd) => (&cmd.font).into(),
-                Command::Transform(cmd) => (&cmd.font).into(),
-            } {
-                Font::Bitmap(font) => {
-                    if let Err(idx) = self.bitmap_fonts.binary_search_by(|probe| {
-                        Shared::as_ptr(&probe.0).cmp(&Shared::as_ptr(font))
-                    }) {
-                        self.bitmap_fonts
-                            .insert(idx, (Shared::clone(font), Default::default()));
+        // Sort by texture: Unstable because we don't claim to offering any ordering within a single
+        // batch - submit additional batches to ensure order!
+        cmds.sort_unstable_by(|lhs, rhs| match lhs.borrow().font() {
+            Font::Bitmap(lhs) => match rhs.borrow().font() {
+                Font::Bitmap(rhs) => Shared::as_ptr(&lhs).cmp(&Shared::as_ptr(&rhs)),
+                _ => Ordering::Less,
+            },
+            Font::Scalable(lhs) => match rhs.borrow().font() {
+                Font::Scalable(rhs) => Shared::as_ptr(&lhs).cmp(&Shared::as_ptr(&rhs)),
+                _ => Ordering::Greater,
+            },
+        });
+
+        // Make sure we have initialized a dirty data and lru for each font
+        {
+            let mut last_bitmap_ptr = None;
+            let mut last_scalable_ptr = None;
+            for (idx, cmd) in cmds.iter().enumerate() {
+                match cmd.borrow().font() {
+                    Font::Bitmap(font) => {
+                        // We are sorted so if we repeat the ptr it's already here
+                        let font_ptr = font;//Shared::as_ptr(font);
+                        if let Some(ptr) = last_bitmap_ptr {
+                            if ptr == font_ptr {
+                                continue;
+                            }
+                        }
+
+                        last_bitmap_ptr = Some(font_ptr);
+
+                        // Ensure we've got the data ready
+                        if let Err(idx) = self.bitmap_fonts.binary_search_by(|probe| {
+                            Shared::as_ptr(&probe.0).cmp(&Shared::as_ptr(font))
+                        }) {
+                            self.bitmap_fonts
+                                .insert(idx, (Shared::clone(font), Default::default()));
+                        }
+
+                        // Compile all uses of this font
+                        self.compile_bitmap_font(
+                            #[cfg(feature = "debug-names")]
+                            name,
+                            pool,
+                            cmds,
+                            dims,
+                            idx,
+                        );
                     }
+                    Font::Scalable(ref font) => {
+                        // We are sorted so if we repeat the ptr it's already here
+                        let font_ptr = Shared::as_ptr(font);
+                        if let Some(ptr) = last_scalable_ptr {
+                            if ptr == font_ptr {
+                                continue;
+                            }
+                        }
+
+                        last_scalable_ptr = Some(font_ptr);
+
+                        // Ensure we've got the data ready
+                        if let Err(idx) = self.scalable_fonts.binary_search_by(|probe| {
+                            Shared::as_ptr(&probe.0).cmp(&Shared::as_ptr(font))
+                        }) {
+                            self.scalable_fonts
+                                .insert(idx, (Shared::clone(font), Default::default()));
+                        }
+                    },
                 }
-                Font::Scalable(ref _font) => (),
             }
-            // desc_sets_per_font = desc_sets_per_font.max(cmd.font.pages.len())
         }
 
         // For all commands:
@@ -185,13 +237,7 @@ where
         //           First time seeing a letter/position: Draw it, prepare instancing
         //           Second time seeing a letter/position: Instance it
 
-        self.compile_bitmaps(
-            #[cfg(feature = "debug-names")]
-            name,
-            pool,
-            cmds,
-            dims,
-        );
+        
 
         // // PERF: Should hand roll this
         // // Read as:
@@ -213,17 +259,20 @@ where
         }
     }
 
-    fn compile_bitmaps<C, T>(
+    fn compile_bitmap_font<C, T>(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
         pool: &mut Pool<P>,
         cmds: &[C],
         dims: Extent,
+        idx: usize,
     ) where
         C: Borrow<Command<P, T>>,
         T: AsRef<str>,
     {
-        let bitmaps = cmds.iter().filter(|cmd| match (*cmd).borrow() {
+        let bitmap_font = cmds[idx].borrow().font().as_bitmap().unwrap();
+
+        let bitmaps = cmds[idx..].iter().filter(|cmd| match (*cmd).borrow() {
             Command::Position(_) | Command::Transform(_) => true,
             Command::SizePosition(_) | Command::SizeTransform(_) => false,
         });
@@ -350,6 +399,7 @@ where
             bitmap_outline_textures: Default::default(),
             bitmap_textures: Default::default(),
             code: Default::default(),
+            scalable_fonts: Default::default(),
         }
     }
 }
