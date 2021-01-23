@@ -766,7 +766,7 @@ where
         // Allocate enough `buf` to hold everything in the existing cache and everything we could
         // possibly draw
         let line_count = range.end - range.start;
-        self.line.alloc_data(
+        self.line.alloc(
             #[cfg(feature = "debug-names")]
             &format!("{} line vertex buffer", name),
             pool,
@@ -1000,7 +1000,7 @@ where
 
         // Allocate enough `buf` to hold everything in the existing cache and everything we could
         // possibly draw
-        self.rect_light.alloc_data(
+        self.rect_light.alloc(
             #[cfg(feature = "debug-names")]
             &format!("{} rect light vertex buffer", name),
             pool,
@@ -1102,7 +1102,7 @@ where
 
         // Allocate enough `buf` to hold everything in the existing cache and everything we could
         // possibly draw
-        self.spotlight.alloc_data(
+        self.spotlight.alloc(
             #[cfg(feature = "debug-names")]
             &format!("{} spotlight vertex buffer", name),
             pool,

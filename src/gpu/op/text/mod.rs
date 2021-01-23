@@ -2,6 +2,7 @@ mod bitmap_font;
 mod command;
 mod compiler;
 mod instruction;
+mod key;
 mod scalable_font;
 
 pub use self::{
@@ -72,7 +73,10 @@ where
     Scalable(&'f Shared<ScalableFont, P>),
 }
 
-impl<'f, P> Font<'f, P> where P: SharedPointerKind {
+impl<'f, P> Font<'f, P>
+where
+    P: SharedPointerKind,
+{
     pub(super) fn as_bitmap(&'f self) -> Option<&'f Shared<BitmapFont<P>, P>> {
         match self {
             Self::Bitmap(font) => Some(font),
@@ -204,7 +208,7 @@ where
     }
 
     /// Submits the given commands for hardware processing.
-    /// 
+    ///
     /// **_NOTE:_** Individual commands within this batch will have an unstable draw order. For a
     /// stable draw order submit additional batches.
     pub fn record<'c, C, T>(&mut self, cmds: &'c mut [C])

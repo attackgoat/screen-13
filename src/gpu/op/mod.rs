@@ -148,26 +148,26 @@ where
     }
 }
 
-struct DirtyLruData<T, P>
+struct DirtyLruData<Key, P>
 where
     P: SharedPointerKind,
 {
-    buf: Option<DirtyData<T, P>>,
-    lru: Vec<Lru<T>>,
+    buf: Option<DirtyData<Key, P>>,
+    lru: Vec<Lru<Key>>,
 }
 
-impl<P, T> DirtyLruData<T, P>
+impl<Key, P> DirtyLruData<Key, P>
 where
     P: SharedPointerKind,
 {
     /// Allocates or re-allocates leased data of the given size.
-    unsafe fn alloc_data(
+    unsafe fn alloc(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
         pool: &mut Pool<P>,
         len: u64,
     ) where
-        T: Stride,
+        Key: Stride,
     {
         #[cfg(feature = "debug-names")]
         if let Some(buf) = buf.as_mut() {
@@ -205,7 +205,7 @@ where
             let old_buf_len = old_buf
                 .usage
                 .last()
-                .map_or(0, |(offset, _)| offset + T::stride());
+                .map_or(0, |(offset, _)| offset + Key::stride());
             let new_buf = &mut self.buf.as_mut().unwrap();
             new_buf.usage = old_buf.usage;
             new_buf.data.previous = Some((old_buf.data.current, old_buf_len));
@@ -222,13 +222,11 @@ where
         // for item in self.lru.iter_mut() {
         //     item.recently_used = item.recently_used.saturating_sub(1);
         // }
-
-
     }
 }
 
 // #[derive(Default)] did not work due to Key being unconstrained
-impl<P, T> Default for DirtyLruData<T, P>
+impl<Key, P> Default for DirtyLruData<Key, P>
 where
     P: SharedPointerKind,
 {
@@ -242,14 +240,14 @@ where
 
 /// Individual item of a least-recently-used cache vector. Allows tracking the usage of a key which
 /// lives at some memory offset.
-struct Lru<T> {
+struct Lru<Key> {
     expiry: usize,
-    key: T,
+    key: Key,
     offset: u64,
 }
 
-impl<T> Lru<T> {
-    fn new(key: T, offset: u64, expiry: usize) -> Self {
+impl<Key> Lru<Key> {
+    fn new(key: Key, offset: u64, expiry: usize) -> Self {
         Self {
             expiry,
             key,

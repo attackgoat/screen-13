@@ -344,7 +344,8 @@ pub mod ptr {
 
     impl<T, P> PartialEq for Shared<T, P>
     where
-        P: SharedPointerKind, {
+        P: SharedPointerKind,
+    {
         fn eq(&self, other: &Self) -> bool {
             Self::ptr_eq(self, other)
         }

@@ -42,7 +42,9 @@ where
     {
         match font.into() {
             Font::Bitmap(font) => Self::Position(BitmapCommand::position(pos, font.clone(), text)),
-            Font::Scalable(font) => Self::SizePosition(ScalableCommand::position(pos, font.clone(), text)),
+            Font::Scalable(font) => {
+                Self::SizePosition(ScalableCommand::position(pos, font.clone(), text))
+            }
         }
     }
 
@@ -52,7 +54,9 @@ where
         F: Into<Font<'f, P>>,
     {
         match font.into() {
-            Font::Bitmap(font) => Self::Transform(BitmapCommand::transform(transform, font.clone(), text)),
+            Font::Bitmap(font) => {
+                Self::Transform(BitmapCommand::transform(transform, font.clone(), text))
+            }
             Font::Scalable(font) => {
                 Self::SizeTransform(ScalableCommand::transform(transform, font.clone(), text))
             }
@@ -90,6 +94,15 @@ where
 
     pub(crate) fn is_transform(&self) -> bool {
         self.as_transform().is_some()
+    }
+
+    pub(crate) fn text(&self) -> &str {
+        match self {
+            Command::Position(cmd) => cmd.text(),
+            Command::SizePosition(cmd) => cmd.text(),
+            Command::SizeTransform(cmd) => cmd.text(),
+            Command::Transform(cmd) => cmd.text(),
+        }
     }
 
     /// Draws text using the given glyph fill color.
@@ -173,6 +186,10 @@ where
     P: SharedPointerKind,
     T: AsRef<str>,
 {
+    pub(crate) fn text(&self) -> &str {
+        self.text.as_ref()
+    }
+
     /// Draws text using the given glyph fill color.
     ///
     /// **_NOTE:_** This is the primary font color.
@@ -258,6 +275,10 @@ where
     P: SharedPointerKind,
     T: AsRef<str>,
 {
+    pub(crate) fn text(&self) -> &str {
+        self.text.as_ref()
+    }
+
     /// Draws text using the given glyph fill color.
     ///
     /// **_NOTE:_** This is the primary font color.
