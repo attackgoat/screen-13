@@ -120,10 +120,10 @@ a render-by-render basis.
 - **`debug-names`** — Name parameter added to most graphics calls, integrates with your graphics
   debugger.
 - **`blend-modes`** *(enabled by default)* —
-  [Normal](https://docs.rs/screen-13/0.1.8/screen_13/gpu/enum.BlendMode.html#variant.Normal),
-  [Add](https://docs.rs/screen-13/0.1.8/screen_13/gpu/enum.BlendMode.html#variant.Add),
-  [Subtract](https://docs.rs/screen-13/0.1.8/screen_13/gpu/enum.BlendMode.html#variant.Subtract),
-  [Color Burn](https://docs.rs/screen-13/0.1.8/screen_13/gpu/enum.BlendMode.html#variant.ColorBurn),
+  [Normal](https://docs.rs/screen-13/latest/screen_13/gpu/enum.BlendMode.html#variant.Normal),
+  [Add](https://docs.rs/screen-13/latest/screen_13/gpu/enum.BlendMode.html#variant.Add),
+  [Subtract](https://docs.rs/screen-13/latest/screen_13/gpu/enum.BlendMode.html#variant.Subtract),
+  [Color Burn](https://docs.rs/screen-13/latest/screen_13/gpu/enum.BlendMode.html#variant.ColorBurn),
   _etc..._
 - **`deferred-3d`** *(enabled by default)* — Ability to draw models and lights using a deferred
   technique.
@@ -131,9 +131,9 @@ a render-by-render basis.
   technique.
 - **`low-power`** — Prefer using integrated graphics hardware, instead of higher-power adapters.
 - **`mask-modes`** 🚧 *(enabled by default)* — Ability to use
-  [image masking](https://docs.rs/screen-13/0.1.8/screen_13/gpu/enum.MaskMode.html) functions.
+  [image masking](https://docs.rs/screen-13/latest/screen_13/gpu/enum.MaskMode.html) functions.
 - **`matte-modes`** 🚧 *(enabled by default)* — Ability to use
-  [image matting](https://docs.rs/screen-13/0.1.8/screen_13/gpu/enum.MatteMode.html) functions.
+  [image matting](https://docs.rs/screen-13/latest/screen_13/gpu/enum.MatteMode.html) functions.
 - **`multi-monitor`** 🚧 — Extends the `Screen` trait to support multiple viewports.
 - **`xr`** 🚧 — Additional types and functions related to augmented and virtual reality.
 

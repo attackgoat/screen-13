@@ -396,7 +396,7 @@ pub type DynScreen<P> = Box<dyn Screen<P>>;
 
 /// Alias of either [`Render`] _or_ [`Vec<Option<Render>>`], used by [`Screen::render()`].
 ///
-/// The output type depends on the value of the `multi-monitor` pacakge feature.
+/// The output type depends on the value of the `multi-monitor` package feature.
 ///
 /// **_NOTE:_** This documentation was generated _without_ the `multi-monitor` feature.
 #[cfg(not(feature = "multi-monitor"))]
@@ -404,7 +404,7 @@ pub type RenderReturn<P> = Render<P>;
 
 /// Alias of either [`Render`] _or_ [`Vec<Option<Render>>`], used by [`Screen::render()`].
 ///
-/// The output type depends on the value of the `multi-monitor` pacakge feature.
+/// The output type depends on the value of the `multi-monitor` package feature.
 ///
 /// **_NOTE:_** This documentation was generated _with_ the `multi-monitor` feature.
 #[cfg(feature = "multi-monitor")]
