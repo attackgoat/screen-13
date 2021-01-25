@@ -58,7 +58,6 @@ pub fn bake_bitmap_font<P1: AsRef<Path>, P2: AsRef<Path>>(
     let def = BMFont::new(Cursor::new(&def_file), OrdinateOrientation::TopToBottom).unwrap();
     let pages = def
         .pages()
-        .iter()
         .map(|page| {
             let page_filename = def_parent.join(page);
 

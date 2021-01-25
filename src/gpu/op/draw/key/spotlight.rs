@@ -1,6 +1,8 @@
 use {
-    super::Stride,
-    crate::gpu::op::draw::{command::SpotlightCommand, geom::SPOTLIGHT_STRIDE},
+    crate::gpu::op::{
+        draw::{command::SpotlightCommand, geom::SPOTLIGHT_STRIDE},
+        Stride,
+    },
     std::ops::Range,
 };
 

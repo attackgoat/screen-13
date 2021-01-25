@@ -5,6 +5,7 @@ use {
             Texture2d,
         },
         math::Extent,
+        ptr::Shared,
     },
     a_r_c_h_e_r_y::SharedPointerKind,
     gfx_hal::{
@@ -13,16 +14,11 @@ use {
     },
 };
 
-pub struct GeometryBuffer<P>
+type BackBuffer<P> = Lease<Shared<Texture2d, P>, P>;
+
+pub struct GeometryBuffer<P>([BackBuffer<P>; 5])
 where
-    P: SharedPointerKind,
-{
-    pub color_metal: Lease<Texture2d, P>,
-    pub normal_rough: Lease<Texture2d, P>,
-    pub light: Lease<Texture2d, P>,
-    pub output: Lease<Texture2d, P>,
-    pub depth: Lease<Texture2d, P>,
-}
+    P: SharedPointerKind;
 
 impl<P> GeometryBuffer<P>
 where
@@ -116,12 +112,26 @@ where
             1,
         );
 
-        Self {
-            color_metal,
-            normal_rough,
-            light,
-            output,
-            depth,
-        }
+        Self([color_metal, normal_rough, light, output, depth])
+    }
+
+    pub fn color_metal(&self) -> &Texture2d {
+        &self.0[0]
+    }
+
+    pub fn depth(&self) -> &Texture2d {
+        &self.0[4]
+    }
+
+    pub fn light(&self) -> &Texture2d {
+        &self.0[2]
+    }
+
+    pub fn normal_rough(&self) -> &Texture2d {
+        &self.0[1]
+    }
+
+    pub fn output(&self) -> &Texture2d {
+        &self.0[3]
     }
 }

@@ -4,7 +4,7 @@
 [![Docs.rs](https://docs.rs/screen-13/badge.svg)](https://docs.rs/screen-13)
 [![LoC](https://tokei.rs/b1/github/attackgoat/screen-13?category=code)](https://github.com/attackgoat/screen-13)
 
-_Screen 13_ is an easy-to-use 2D/3D rendering engine in the spirit of QBasic.
+_Screen 13_ is an easy-to-use 2D/3D rendering engine in the spirit of _QBasic_.
 
 ## Overview
 
@@ -61,9 +61,10 @@ All new users should read and understand the guide.
 ## Roadmap/Status/Notes
 
 This engine is very young and is likely to change as development continues. Some features may be
-unimplemented.
+unimplemented. I add and remove code at whim, some changes get placed on hold. Any existing pushed
+versions are only for documentation/ideas/my testing.
 
-I expect this engine to remain unstable/poorly documented until version 0.2. Based on current
+I expect this engine to remain **unstable**/poorly documented until version 0.2. Based on current
 progress and my free time (this is just a hobby) I expect version 0.2 (stable) to be released
 before June 2021. Feel free to chip in to speed that up!
 
@@ -113,34 +114,34 @@ before June 2021. Feel free to chip in to speed that up!
 _Screen 13_ puts a lot of functionality behind optional features in order to optimize compile time
 for the most common use cases. The following features are available.
 
-_NOTE_: The deferred and forward renderers have separate code paths and you can choose either on a
-render-by-render basis.
+**_NOTE:_** The deferred and forward renderers have separate code paths and you can choose either on
+a render-by-render basis.
 
 - **`auto-cull`** — Enables automatic draw call camera frustum culling.
 - **`debug-names`** — Name parameter added to most graphics calls, integrates with your graphics
   debugger.
 - **`blend-modes`** *(enabled by default)* —
-  [Normal](https://docs.rs/screen-13/0.1.8/screen_13/gpu/enum.BlendMode.html#variant.Normal),
-  [Add](https://docs.rs/screen-13/0.1.8/screen_13/gpu/enum.BlendMode.html#variant.Add),
-  [Subtract](https://docs.rs/screen-13/0.1.8/screen_13/gpu/enum.BlendMode.html#variant.Subtract),
-  [Color Burn](https://docs.rs/screen-13/0.1.8/screen_13/gpu/enum.BlendMode.html#variant.ColorBurn),
+  [Normal](https://docs.rs/screen-13/latest/screen_13/gpu/enum.BlendMode.html#variant.Normal),
+  [Add](https://docs.rs/screen-13/latest/screen_13/gpu/enum.BlendMode.html#variant.Add),
+  [Subtract](https://docs.rs/screen-13/latest/screen_13/gpu/enum.BlendMode.html#variant.Subtract),
+  [Color Burn](https://docs.rs/screen-13/latest/screen_13/gpu/enum.BlendMode.html#variant.ColorBurn),
   _etc..._
-- **`deferred-3d`** 🚧 *(enabled by default)* — Ability to draw models and lights using a deferred
+- **`deferred-3d`** *(enabled by default)* — Ability to draw models and lights using a deferred
   technique.
 - **`forward-3d`** 🚧 *(enabled by default)* — Same as the deferred renderer, but using a forward
   technique.
 - **`low-power`** — Prefer using integrated graphics hardware, instead of higher-power adapters.
 - **`mask-modes`** 🚧 *(enabled by default)* — Ability to use
-  [image masking](https://docs.rs/screen-13/0.1.8/screen_13/gpu/enum.MaskMode.html) functions.
+  [image masking](https://docs.rs/screen-13/latest/screen_13/gpu/enum.MaskMode.html) functions.
 - **`matte-modes`** 🚧 *(enabled by default)* — Ability to use
-  [image matting](https://docs.rs/screen-13/0.1.8/screen_13/gpu/enum.MatteMode.html) functions.
+  [image matting](https://docs.rs/screen-13/latest/screen_13/gpu/enum.MatteMode.html) functions.
 - **`multi-monitor`** 🚧 — Extends the `Screen` trait to support multiple viewports.
 - **`xr`** 🚧 — Additional types and functions related to augmented and virtual reality.
 
 ## History
 
-As a child I was given access to a computer that had GW-Basic; and later one with QBasic. All of my
-favorite programs started with:
+As a child I was given access to a computer that had _GW-Basic_; and later one with _QBasic_. All of
+my favorite programs started with:
 
 ```basic
 CLS
@@ -150,7 +151,7 @@ SCREEN 13
 These commands cleared the screen of text and setup a 320x200 256-color paletized video mode. There
 were other video modes available, but none of them had the 'magic' of 256 colors.
 
-Additional commands QBasic offered, such as `DRAW`, allowed you to build very simple games
-incredibly quickly because you didn't have to grok the enirety of linking and compiling in order get
-things done. I think we should have options like this today, and so I started this project to allow
-future developers to have the ability to get things done quickly while using modern tools.
+Additional commands _QBasic_ offered, such as `DRAW`, allowed you to build simple games quickly
+because you didn't have to grok the entirety of compiling and linking. I think we should have
+options like this today, and so I started this project to allow future developers to have the
+ability to get things done quickly while using modern tools.

@@ -494,7 +494,7 @@ impl<'m> Mapping<'m> {
         let ptr = device()
             .map_memory(mem, segment.clone())?
             .offset((range.start - offset) as _);
-        device().invalidate_mapped_memory_ranges(once(&(&*mem, segment.clone())))?;
+        device().invalidate_mapped_memory_ranges(once((&*mem, segment.clone())))?;
 
         Ok(Self {
             flushed: true,
@@ -514,7 +514,7 @@ impl<'m> Mapping<'m> {
             let mapped_mem = (&*mapping.mapped_mem.0, mapping.mapped_mem.1.clone());
 
             unsafe {
-                device().flush_mapped_memory_ranges(once(&mapped_mem))?;
+                device().flush_mapped_memory_ranges(once(mapped_mem))?;
             }
         }
 

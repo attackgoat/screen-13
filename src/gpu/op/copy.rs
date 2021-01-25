@@ -7,6 +7,7 @@ use {
             queue_mut, Texture2d,
         },
         math::{Area, Coord, Extent},
+        ptr::Shared,
     },
     a_r_c_h_e_r_y::SharedPointerKind,
     gfx_hal::{
@@ -15,7 +16,7 @@ use {
         image::{Access, Layout, SubresourceLayers},
         pool::CommandPool as _,
         pso::PipelineStage,
-        queue::{CommandQueue as _, Submission},
+        queue::CommandQueue as _,
         Backend,
     },
     gfx_impl::Backend as _Backend,
@@ -37,12 +38,12 @@ where
 {
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool, P>,
-    dst: Texture2d,
+    dst: Shared<Texture2d, P>,
     dst_offset: Extent,
     fence: Lease<Fence, P>,
     pool: Option<Lease<Pool<P>, P>>,
     region: Extent,
-    src: Texture2d,
+    src: Shared<Texture2d, P>,
     src_offset: Extent,
 }
 
@@ -54,8 +55,8 @@ where
     pub(crate) unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
         mut pool: Lease<Pool<P>, P>,
-        src: &Texture2d,
-        dst: &Texture2d,
+        src: &Shared<Texture2d, P>,
+        dst: &Shared<Texture2d, P>,
     ) -> Self {
         let (cmd_buf, cmd_pool, fence) = {
             let mut cmd_pool = pool.cmd_pool();
@@ -72,12 +73,12 @@ where
         Self {
             cmd_buf,
             cmd_pool,
-            dst: Texture2d::clone(dst),
+            dst: Shared::clone(dst),
             dst_offset: Extent::ZERO,
             fence,
             pool: Some(pool),
-            region: src.borrow().dims(),
-            src: Texture2d::clone(src),
+            region: src.dims(),
+            src: Shared::clone(src),
             src_offset: Extent::ZERO,
         }
     }
@@ -102,8 +103,6 @@ where
     unsafe fn submit(&mut self) {
         trace!("submit");
 
-        let mut src = self.src.borrow_mut();
-        let mut dst = self.dst.borrow_mut();
         let dst_offset: Coord = self.dst_offset.into();
         let dst_offset = dst_offset.into();
         let src_offset: Coord = self.src_offset.into();
@@ -114,22 +113,22 @@ where
             .begin_primary(CommandBufferFlags::ONE_TIME_SUBMIT);
 
         // Step 1: Copy src image to dst image
-        src.set_layout(
+        self.src.set_layout(
             &mut self.cmd_buf,
             Layout::TransferSrcOptimal,
             PipelineStage::TRANSFER,
             Access::TRANSFER_READ,
         );
-        dst.set_layout(
+        self.dst.set_layout(
             &mut self.cmd_buf,
             Layout::TransferDstOptimal,
             PipelineStage::TRANSFER,
             Access::TRANSFER_WRITE,
         );
         self.cmd_buf.copy_image(
-            src.as_ref(),
+            self.src.as_ref(),
             Layout::TransferSrcOptimal,
-            dst.as_ref(),
+            self.dst.as_ref(),
             Layout::TransferDstOptimal,
             once(ImageCopy {
                 dst_subresource: SubresourceLayers {
@@ -152,14 +151,7 @@ where
         self.cmd_buf.finish();
 
         // Submit
-        queue_mut().submit(
-            Submission {
-                command_buffers: once(&self.cmd_buf),
-                wait_semaphores: empty(),
-                signal_semaphores: empty::<&<_Backend as Backend>::Semaphore>(),
-            },
-            Some(&mut self.fence),
-        );
+        queue_mut().submit(once(&self.cmd_buf), empty(), empty(), Some(&mut self.fence));
     }
 }
 
@@ -180,6 +172,10 @@ where
 {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    unsafe fn is_complete(&self) -> bool {
+        Fence::status(&self.fence)
     }
 
     unsafe fn take_pool(&mut self) -> Lease<Pool<P>, P> {

@@ -4,11 +4,19 @@ Demonstrates compiling and packaging a _Screen 13_ program for the web.
 
 ## Prerequisites
 
-- TODO
+- _Screen 13_: `cargo install screen-13`
+
+## Bake
+
+Bake the source assets into a `.pak` file:
+
+```bash
+screen-13 res/wasm.toml
+```
 
 ## Build
 
-Compile into a `.wasm` file:
+Compile the source code into a `.wasm` file:
 
 ```bash
 cargo +nightly build --lib --target wasm32-unknown-unknown

@@ -151,6 +151,11 @@ mod input_assemblers {
         restart_index: None,
         with_adjacency: false,
     };
+    pub const TRIANGLE_STRIP: InputAssemblerDesc = InputAssemblerDesc {
+        primitive: Primitive::TriangleStrip,
+        restart_index: None,
+        with_adjacency: false,
+    };
     pub const TRIANGLES: InputAssemblerDesc = InputAssemblerDesc {
         primitive: Primitive::TriangleList,
         restart_index: None,
@@ -213,10 +218,110 @@ pub struct Graphics {
 }
 
 impl Graphics {
+    unsafe fn bitmap_font<Ic>(
+        #[cfg(feature = "debug-names")] name: &str,
+        subpass: Subpass<'_, _Backend>,
+        fragment_spirv: &[u32],
+        push_consts: Ic,
+        max_desc_sets: usize,
+    ) -> Self
+    where
+        Ic: IntoIterator<Item = ShaderRange>,
+        Ic::IntoIter: ExactSizeIterator,
+    {
+        // Create the graphics pipeline
+        let vertex = ShaderModule::new(&spirv::font::bitmap_vert::MAIN);
+        let fragment = ShaderModule::new(fragment_spirv);
+        let set_layout = DescriptorSetLayout::new(
+            #[cfg(feature = "debug-names")]
+            name,
+            desc_set_layout::SINGLE_READ_ONLY_IMG.to_vec(),
+        );
+        let layout = PipelineLayout::new(
+            #[cfg(feature = "debug-names")]
+            name,
+            once(set_layout.as_ref()),
+            push_consts,
+        );
+        let vertex_buf = vertex_buf_with_stride(16);
+        let mut desc = GraphicsPipelineDesc::new(
+            PrimitiveAssemblerDesc::Vertex {
+                attributes: &attributes::VEC2_VEC2,
+                buffers: &vertex_buf,
+                geometry: None,
+                input_assembler: input_assemblers::TRIANGLE_STRIP,
+                tessellation: None,
+                vertex: ShaderModule::entry_point(&vertex),
+            },
+            rasterizers::FILL,
+            Some(ShaderModule::entry_point(&fragment)),
+            &layout,
+            subpass,
+        );
+        desc.blender.logic_op = None;
+        desc.blender.targets.push(ColorBlendDesc {
+            blend: Some(BlendState::PREMULTIPLIED_ALPHA),
+            mask: ColorMask::ALL,
+        });
+        let pipeline = GraphicsPipeline::new(
+            #[cfg(feature = "debug-names")]
+            name,
+            &desc,
+        );
+
+        // Allocate all descriptor sets
+        let mut desc_pool = DescriptorPool::new(
+            max_desc_sets,
+            once(descriptor_range_desc(max_desc_sets, READ_ONLY_IMG)),
+        );
+        let layouts = (0..max_desc_sets).map(|_| set_layout.as_ref());
+        let mut desc_sets = Vec::with_capacity(max_desc_sets);
+        desc_pool.allocate(layouts, &mut desc_sets).unwrap();
+
+        Self {
+            desc_pool: Some(desc_pool),
+            desc_sets,
+            layout,
+            max_desc_sets,
+            pipeline,
+            set_layout: Some(set_layout),
+            samplers: vec![sampler(Filter::Nearest)],
+        }
+    }
+
+    pub unsafe fn bitmap_font_normal(
+        #[cfg(feature = "debug-names")] name: &str,
+        subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
+    ) -> Self {
+        Self::bitmap_font(
+            #[cfg(feature = "debug-names")]
+            name,
+            subpass,
+            &spirv::font::bitmap_frag::MAIN,
+            push_const::FONT.to_vec(),
+            max_desc_sets,
+        )
+    }
+
+    pub unsafe fn bitmap_font_outline(
+        #[cfg(feature = "debug-names")] name: &str,
+        subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
+    ) -> Self {
+        Self::bitmap_font(
+            #[cfg(feature = "debug-names")]
+            name,
+            subpass,
+            &spirv::font::bitmap_outline_frag::MAIN,
+            push_const::FONT_OUTLINE.to_vec(),
+            max_desc_sets,
+        )
+    }
+
     #[cfg(feature = "blend-modes")]
     unsafe fn blend(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         fragment_spirv: &[u32],
         max_desc_sets: usize,
@@ -226,13 +331,13 @@ impl Graphics {
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            &desc_set_layout::BLEND,
+            desc_set_layout::BLEND.to_vec(),
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
             once(set_layout.as_ref()),
-            &push_const::BLEND,
+            push_const::BLEND.to_vec(),
         );
         let mut desc = GraphicsPipelineDesc::new(
             PrimitiveAssemblerDesc::Vertex {
@@ -282,7 +387,6 @@ impl Graphics {
     #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_add(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -298,7 +402,6 @@ impl Graphics {
     #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_alpha_add(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -314,7 +417,6 @@ impl Graphics {
     #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_color_burn(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -330,7 +432,6 @@ impl Graphics {
     #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_color_dodge(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -346,7 +447,6 @@ impl Graphics {
     #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_color(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -362,7 +462,6 @@ impl Graphics {
     #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_darken(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -378,7 +477,6 @@ impl Graphics {
     #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_darker_color(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -394,7 +492,6 @@ impl Graphics {
     #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_difference(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -410,7 +507,6 @@ impl Graphics {
     #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_divide(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -426,7 +522,6 @@ impl Graphics {
     #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_exclusion(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -442,7 +537,6 @@ impl Graphics {
     #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_hard_light(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -458,7 +552,6 @@ impl Graphics {
     #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_hard_mix(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -474,7 +567,6 @@ impl Graphics {
     #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_linear_burn(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -490,7 +582,6 @@ impl Graphics {
     #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_multiply(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -506,7 +597,6 @@ impl Graphics {
     #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_normal(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -522,7 +612,6 @@ impl Graphics {
     #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_overlay(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -538,7 +627,6 @@ impl Graphics {
     #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_screen(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -554,7 +642,6 @@ impl Graphics {
     #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_subtract(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -570,7 +657,6 @@ impl Graphics {
     #[cfg(feature = "blend-modes")]
     pub unsafe fn blend_vivid_light(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -583,12 +669,16 @@ impl Graphics {
         )
     }
 
-    unsafe fn draw_light(
+    unsafe fn draw_light<Ic>(
         #[cfg(feature = "debug-names")] name: &str,
         subpass: Subpass<'_, _Backend>,
         fragment_spirv: &[u32],
-        push_consts: &[ShaderRange],
-    ) -> Self {
+        push_consts: Ic,
+    ) -> Self
+    where
+        Ic: IntoIterator<Item = ShaderRange>,
+        Ic::IntoIter: ExactSizeIterator,
+    {
         // Create the graphics pipeline
         let vertex = ShaderModule::new(&spirv::defer::light_vert::MAIN);
         let fragment = ShaderModule::new(fragment_spirv);
@@ -640,7 +730,6 @@ impl Graphics {
 
     pub unsafe fn draw_line(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -653,7 +742,7 @@ impl Graphics {
             #[cfg(feature = "debug-names")]
             name,
             empty::<&<_Backend as Backend>::DescriptorSetLayout>(),
-            &push_const::VERTEX_MAT4,
+            push_const::VERTEX_MAT4.to_vec(),
         );
         let vertex_buf = vertex_buf_with_stride(32);
         let mut desc = GraphicsPipelineDesc::new(
@@ -696,7 +785,6 @@ impl Graphics {
 
     pub unsafe fn draw_mesh(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -706,13 +794,13 @@ impl Graphics {
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            &desc_set_layout::DRAW_MESH,
+            desc_set_layout::DRAW_MESH.to_vec(),
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
             once(set_layout.as_ref()),
-            &push_const::VERTEX_MAT4,
+            push_const::VERTEX_MAT4.to_vec(),
         );
         let vertex_buf = vertex_buf_with_stride(48);
         let mut desc = GraphicsPipelineDesc::new(
@@ -767,7 +855,6 @@ impl Graphics {
 
     pub unsafe fn draw_point_light(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -778,13 +865,12 @@ impl Graphics {
             name,
             subpass,
             &spirv::defer::point_light_frag::MAIN,
-            &push_const::DRAW_POINT_LIGHT,
+            push_const::DRAW_POINT_LIGHT.to_vec(),
         )
     }
 
     pub unsafe fn draw_rect_light(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -795,13 +881,12 @@ impl Graphics {
             name,
             subpass,
             &spirv::defer::rect_light_frag::MAIN,
-            &push_const::DRAW_RECT_LIGHT,
+            push_const::DRAW_RECT_LIGHT.to_vec(),
         )
     }
 
     pub unsafe fn draw_spotlight(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -812,7 +897,7 @@ impl Graphics {
             name,
             subpass,
             &spirv::defer::spotlight_frag::MAIN,
-            &push_const::DRAW_SPOTLIGHT,
+            push_const::DRAW_SPOTLIGHT.to_vec(),
         )
     }
 
@@ -826,109 +911,8 @@ impl Graphics {
         todo!();
     }
 
-    unsafe fn font(
-        #[cfg(feature = "debug-names")] name: &str,
-
-        subpass: Subpass<'_, _Backend>,
-        fragment_spirv: &[u32],
-        push_consts: &[ShaderRange],
-        max_desc_sets: usize,
-    ) -> Self {
-        // Create the graphics pipeline
-        let vertex = ShaderModule::new(&spirv::font_vert::MAIN);
-        let fragment = ShaderModule::new(fragment_spirv);
-        let set_layout = DescriptorSetLayout::new(
-            #[cfg(feature = "debug-names")]
-            name,
-            &desc_set_layout::SINGLE_READ_ONLY_IMG,
-        );
-        let layout = PipelineLayout::new(
-            #[cfg(feature = "debug-names")]
-            name,
-            once(set_layout.as_ref()),
-            push_consts,
-        );
-        let vertex_buf = vertex_buf_with_stride(16);
-        let mut desc = GraphicsPipelineDesc::new(
-            PrimitiveAssemblerDesc::Vertex {
-                attributes: &attributes::VEC2_VEC2,
-                buffers: &vertex_buf,
-                geometry: None,
-                input_assembler: input_assemblers::TRIANGLES,
-                tessellation: None,
-                vertex: ShaderModule::entry_point(&vertex),
-            },
-            rasterizers::FILL,
-            Some(ShaderModule::entry_point(&fragment)),
-            &layout,
-            subpass,
-        );
-        desc.blender.logic_op = None;
-        desc.blender.targets.push(ColorBlendDesc {
-            blend: Some(BlendState::PREMULTIPLIED_ALPHA),
-            mask: ColorMask::ALL,
-        });
-        let pipeline = GraphicsPipeline::new(
-            #[cfg(feature = "debug-names")]
-            name,
-            &desc,
-        );
-
-        // Allocate all descriptor sets
-        let mut desc_pool = DescriptorPool::new(
-            max_desc_sets,
-            once(descriptor_range_desc(max_desc_sets, READ_ONLY_IMG)),
-        );
-        let layouts = (0..max_desc_sets).map(|_| set_layout.as_ref());
-        let mut desc_sets = Vec::with_capacity(max_desc_sets);
-        desc_pool.allocate(layouts, &mut desc_sets).unwrap();
-
-        Self {
-            desc_pool: Some(desc_pool),
-            desc_sets,
-            layout,
-            max_desc_sets,
-            pipeline,
-            set_layout: Some(set_layout),
-            samplers: vec![sampler(Filter::Nearest)],
-        }
-    }
-
-    pub unsafe fn font_normal(
-        #[cfg(feature = "debug-names")] name: &str,
-
-        subpass: Subpass<'_, _Backend>,
-        max_desc_sets: usize,
-    ) -> Self {
-        Self::font(
-            #[cfg(feature = "debug-names")]
-            name,
-            subpass,
-            &spirv::font_frag::MAIN,
-            &push_const::FONT,
-            max_desc_sets,
-        )
-    }
-
-    pub unsafe fn font_outline(
-        #[cfg(feature = "debug-names")] name: &str,
-
-        subpass: Subpass<'_, _Backend>,
-        max_desc_sets: usize,
-    ) -> Self {
-        Self::font(
-            #[cfg(feature = "debug-names")]
-            name,
-            subpass,
-            &spirv::font_outline_frag::MAIN,
-            &push_const::FONT_OUTLINE,
-            max_desc_sets,
-        )
-    }
-
     unsafe fn gradient(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         fragment_spirv: &[u32],
         max_desc_sets: usize,
@@ -939,13 +923,13 @@ impl Graphics {
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            &desc_set_layout::SINGLE_READ_ONLY_IMG,
+            desc_set_layout::SINGLE_READ_ONLY_IMG.to_vec(),
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
             once(set_layout.as_ref()),
-            &push_const::VERTEX_MAT4,
+            push_const::VERTEX_MAT4.to_vec(),
         );
         let mut desc = GraphicsPipelineDesc::new(
             PrimitiveAssemblerDesc::Vertex {
@@ -994,7 +978,6 @@ impl Graphics {
 
     pub unsafe fn gradient_linear_trans(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -1009,7 +992,6 @@ impl Graphics {
 
     pub unsafe fn gradient_linear(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -1025,7 +1007,6 @@ impl Graphics {
     #[cfg(feature = "mask-modes")]
     unsafe fn mask(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         fragment_spirv: &[u32],
         max_desc_sets: usize,
@@ -1035,13 +1016,13 @@ impl Graphics {
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            &desc_set_layout::BLEND,
+            desc_set_layout::BLEND.to_vec(),
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
             once(set_layout.as_ref()),
-            &push_const::BLEND,
+            push_const::BLEND.to_vec(),
         );
         let mut desc = GraphicsPipelineDesc::new(
             PrimitiveAssemblerDesc::Vertex {
@@ -1091,7 +1072,6 @@ impl Graphics {
     #[cfg(feature = "mask-modes")]
     pub unsafe fn mask_add(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -1107,7 +1087,6 @@ impl Graphics {
     #[cfg(feature = "mask-modes")]
     pub unsafe fn mask_darken(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -1123,7 +1102,6 @@ impl Graphics {
     #[cfg(feature = "mask-modes")]
     pub unsafe fn mask_difference(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -1139,7 +1117,6 @@ impl Graphics {
     #[cfg(feature = "mask-modes")]
     pub unsafe fn mask_intersect(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -1155,7 +1132,6 @@ impl Graphics {
     #[cfg(feature = "mask-modes")]
     pub unsafe fn mask_lighten(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -1171,7 +1147,6 @@ impl Graphics {
     #[cfg(feature = "mask-modes")]
     pub unsafe fn mask_subtract(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -1187,7 +1162,6 @@ impl Graphics {
     #[cfg(feature = "matte-modes")]
     unsafe fn matte(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         fragment_spirv: &[u32],
         max_desc_sets: usize,
@@ -1197,13 +1171,13 @@ impl Graphics {
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            &desc_set_layout::BLEND,
+            desc_set_layout::BLEND.to_vec(),
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
             once(set_layout.as_ref()),
-            &push_const::BLEND,
+            push_const::BLEND.to_vec(),
         );
         let mut desc = GraphicsPipelineDesc::new(
             PrimitiveAssemblerDesc::Vertex {
@@ -1253,7 +1227,6 @@ impl Graphics {
     #[cfg(feature = "matte-modes")]
     pub unsafe fn matte_alpha(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -1269,7 +1242,6 @@ impl Graphics {
     #[cfg(feature = "matte-modes")]
     pub unsafe fn matte_alpha_inv(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -1285,7 +1257,6 @@ impl Graphics {
     #[cfg(feature = "matte-modes")]
     pub unsafe fn matte_luma(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -1301,7 +1272,6 @@ impl Graphics {
     #[cfg(feature = "matte-modes")]
     pub unsafe fn matte_luma_inv(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -1316,7 +1286,6 @@ impl Graphics {
 
     pub unsafe fn present(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -1326,13 +1295,13 @@ impl Graphics {
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            &desc_set_layout::SINGLE_READ_ONLY_IMG,
+            desc_set_layout::SINGLE_READ_ONLY_IMG.to_vec(),
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
             once(set_layout.as_ref()),
-            &push_const::VERTEX_MAT4,
+            push_const::VERTEX_MAT4.to_vec(),
         );
         let mut desc = GraphicsPipelineDesc::new(
             PrimitiveAssemblerDesc::Vertex {
@@ -1378,9 +1347,73 @@ impl Graphics {
         }
     }
 
+    pub unsafe fn scalable_font(
+        #[cfg(feature = "debug-names")] name: &str,
+        subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
+    ) -> Self {
+        // Create the graphics pipeline
+        let vertex = ShaderModule::new(&spirv::font::bitmap_vert::MAIN);
+        let fragment = ShaderModule::new(&spirv::font::bitmap_frag::MAIN);
+        let set_layout = DescriptorSetLayout::new(
+            #[cfg(feature = "debug-names")]
+            name,
+            desc_set_layout::SINGLE_READ_ONLY_IMG.to_vec(),
+        );
+        let layout = PipelineLayout::new(
+            #[cfg(feature = "debug-names")]
+            name,
+            once(set_layout.as_ref()),
+            push_const::VERTEX_MAT4.to_vec(),
+        );
+        let vertex_buf = vertex_buf_with_stride(16);
+        let mut desc = GraphicsPipelineDesc::new(
+            PrimitiveAssemblerDesc::Vertex {
+                attributes: &attributes::VEC2_VEC2,
+                buffers: &vertex_buf,
+                geometry: None,
+                input_assembler: input_assemblers::TRIANGLES,
+                tessellation: None,
+                vertex: ShaderModule::entry_point(&vertex),
+            },
+            rasterizers::FILL,
+            Some(ShaderModule::entry_point(&fragment)),
+            &layout,
+            subpass,
+        );
+        desc.blender.logic_op = None;
+        desc.blender.targets.push(ColorBlendDesc {
+            blend: Some(BlendState::PREMULTIPLIED_ALPHA),
+            mask: ColorMask::ALL,
+        });
+        let pipeline = GraphicsPipeline::new(
+            #[cfg(feature = "debug-names")]
+            name,
+            &desc,
+        );
+
+        // Allocate all descriptor sets
+        let mut desc_pool = DescriptorPool::new(
+            max_desc_sets,
+            once(descriptor_range_desc(max_desc_sets, READ_ONLY_IMG)),
+        );
+        let layouts = (0..max_desc_sets).map(|_| set_layout.as_ref());
+        let mut desc_sets = Vec::with_capacity(max_desc_sets);
+        desc_pool.allocate(layouts, &mut desc_sets).unwrap();
+
+        Self {
+            desc_pool: Some(desc_pool),
+            desc_sets,
+            layout,
+            max_desc_sets,
+            pipeline,
+            set_layout: Some(set_layout),
+            samplers: vec![sampler(Filter::Nearest)],
+        }
+    }
+
     pub unsafe fn skydome(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -1390,13 +1423,13 @@ impl Graphics {
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            &desc_set_layout::SKYDOME,
+            desc_set_layout::SKYDOME.to_vec(),
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
             once(set_layout.as_ref()),
-            &push_const::SKYDOME,
+            push_const::SKYDOME.to_vec(),
         );
         let vertex_buf = vertex_buf_with_stride(12);
         let mut desc = GraphicsPipelineDesc::new(
@@ -1450,7 +1483,6 @@ impl Graphics {
 
     pub unsafe fn texture(
         #[cfg(feature = "debug-names")] name: &str,
-
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
     ) -> Self {
@@ -1460,13 +1492,13 @@ impl Graphics {
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            &desc_set_layout::SINGLE_READ_ONLY_IMG,
+            desc_set_layout::SINGLE_READ_ONLY_IMG.to_vec(),
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
             once(set_layout.as_ref()),
-            &push_const::TEXTURE,
+            push_const::TEXTURE.to_vec(),
         );
         let mut desc = GraphicsPipelineDesc::new(
             PrimitiveAssemblerDesc::Vertex {
@@ -1549,7 +1581,7 @@ impl Graphics {
                 self.desc_pool
                     .as_mut()
                     .unwrap()
-                    .allocate_set(self.set_layout.as_ref().unwrap())
+                    .allocate_one(self.set_layout.as_ref().unwrap())
                     .unwrap()
             }
         }

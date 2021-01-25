@@ -524,10 +524,13 @@ mod shader {
         compile_glsl("clear_alpha.frag");
         compile_glsl("opacity.frag");
 
+        // Fonts
+        compile_glsl("font/bitmap_outline.frag");
+        compile_glsl("font/bitmap.frag");
+        compile_glsl("font/bitmap.vert");
+        compile_glsl("font/scalable.frag");
+
         // General purpose
-        compile_glsl("font_outline.frag");
-        compile_glsl("font.frag");
-        compile_glsl("font.vert");
         compile_glsl("gradient_trans.frag");
         compile_glsl("gradient.frag");
         compile_glsl("gradient.vert");

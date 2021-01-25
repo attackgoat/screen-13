@@ -3,7 +3,3 @@ mod rect_light;
 mod spotlight;
 
 pub use self::{line::Line, rect_light::RectLight, spotlight::Spotlight};
-
-pub trait Stride {
-    fn stride() -> u64;
-}

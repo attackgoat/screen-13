@@ -10,6 +10,7 @@ use {
         cmp::Ordering,
         fmt::{Debug, Error, Formatter},
         hash::{Hash, Hasher},
+        iter::{once, Once},
         marker::PhantomData,
         num::FpCategory,
         ops::Range,
@@ -23,6 +24,7 @@ pub type SunlightIter<'a, P> = CommandIter<'a, SunlightCommand, P>;
 
 // TODO: Voxels, landscapes, water, god rays, particle systems
 /// An expressive type which allows specification of individual drawing operations.
+#[non_exhaustive]
 pub enum Command<P>
 where
     P: 'static + SharedPointerKind,
@@ -50,86 +52,6 @@ impl<P> Command<P>
 where
     P: SharedPointerKind,
 {
-    pub(crate) fn as_line(&self) -> Option<&LineCommand> {
-        match self {
-            Self::Line(res) => Some(res),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn as_model(&self) -> Option<&ModelCommand<P>> {
-        match self {
-            Self::Model(res) => Some(res),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn as_point_light(&self) -> Option<&PointLightCommand> {
-        match self {
-            Self::PointLight(res) => Some(res),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn as_rect_light(&self) -> Option<&RectLightCommand> {
-        match self {
-            Self::RectLight(res) => Some(res),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn as_rect_light_mut(&mut self) -> Option<&mut RectLightCommand> {
-        match self {
-            Self::RectLight(res) => Some(res),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn as_spotlight(&self) -> Option<&SpotlightCommand> {
-        match self {
-            Self::Spotlight(res) => Some(res),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn as_spotlight_mut(&mut self) -> Option<&mut SpotlightCommand> {
-        match self {
-            Self::Spotlight(res) => Some(res),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn as_sunlight(&self) -> Option<&SunlightCommand> {
-        match self {
-            Self::Sunlight(res) => Some(res),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn is_line(&self) -> bool {
-        self.as_line().is_some()
-    }
-
-    pub(crate) fn is_model(&self) -> bool {
-        self.as_model().is_some()
-    }
-
-    pub(crate) fn is_point_light(&self) -> bool {
-        self.as_point_light().is_some()
-    }
-
-    pub(crate) fn is_rect_light(&self) -> bool {
-        self.as_rect_light().is_some()
-    }
-
-    pub(crate) fn is_spotlight(&self) -> bool {
-        self.as_spotlight().is_some()
-    }
-
-    pub(crate) fn is_sunlight(&self) -> bool {
-        self.as_sunlight().is_some()
-    }
-
     /// Draws a line between the given coordinates using a constant width and two colors. The colors
     /// specify a gradient if
     /// they differ. Generally intended to support debugging use cases such as drawing bounding
@@ -221,6 +143,123 @@ where
             range,
             ..Default::default()
         })
+    }
+
+    pub(crate) fn as_line(&self) -> Option<&LineCommand> {
+        match self {
+            Self::Line(res) => Some(res),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_model(&self) -> Option<&ModelCommand<P>> {
+        match self {
+            Self::Model(res) => Some(res),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_point_light(&self) -> Option<&PointLightCommand> {
+        match self {
+            Self::PointLight(res) => Some(res),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_rect_light(&self) -> Option<&RectLightCommand> {
+        match self {
+            Self::RectLight(res) => Some(res),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_rect_light_mut(&mut self) -> Option<&mut RectLightCommand> {
+        match self {
+            Self::RectLight(res) => Some(res),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_spotlight(&self) -> Option<&SpotlightCommand> {
+        match self {
+            Self::Spotlight(res) => Some(res),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_spotlight_mut(&mut self) -> Option<&mut SpotlightCommand> {
+        match self {
+            Self::Spotlight(res) => Some(res),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_sunlight(&self) -> Option<&SunlightCommand> {
+        match self {
+            Self::Sunlight(res) => Some(res),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn is_line(&self) -> bool {
+        self.as_line().is_some()
+    }
+
+    pub(crate) fn is_model(&self) -> bool {
+        self.as_model().is_some()
+    }
+
+    pub(crate) fn is_point_light(&self) -> bool {
+        self.as_point_light().is_some()
+    }
+
+    pub(crate) fn is_rect_light(&self) -> bool {
+        self.as_rect_light().is_some()
+    }
+
+    pub(crate) fn is_spotlight(&self) -> bool {
+        self.as_spotlight().is_some()
+    }
+
+    pub(crate) fn is_sunlight(&self) -> bool {
+        self.as_sunlight().is_some()
+    }
+}
+
+impl<P> Clone for Command<P>
+where
+    P: SharedPointerKind,
+{
+    fn clone(&self) -> Self {
+        match self {
+            Self::Line(line) => Self::Line(line.clone()),
+            Self::Model(model) => Self::Model(model.clone()),
+            Self::PointLight(light) => Self::PointLight(light.clone()),
+            Self::RectLight(light) => Self::RectLight(light.clone()),
+            Self::Spotlight(light) => Self::Spotlight(light.clone()),
+            Self::Sunlight(light) => Self::Sunlight(light.clone()),
+        }
+    }
+}
+
+impl<P> Debug for Command<P>
+where
+    P: SharedPointerKind,
+{
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        f.write_str("Comand")
+    }
+}
+
+impl<P> IntoIterator for Command<P>
+where
+    P: SharedPointerKind,
+{
+    type Item = Command<P>;
+    type IntoIter = Once<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        once(self)
     }
 }
 
@@ -317,6 +356,7 @@ where
 // TODO: This is crufty, fix.
 /// Description of a single line segment.
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct LineCommand {
     /// The start and end vertices to draw.
     pub vertices: [LineVertex; 2],
@@ -324,6 +364,7 @@ pub struct LineCommand {
 
 /// TODO: Move me to the vertices module?
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct LineVertex {
     pub color: AlphaColor,
     pub pos: Vec3,
@@ -376,9 +417,9 @@ where
     P: SharedPointerKind,
 {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.color.as_ptr().hash(state);
-        self.metal_rough.as_ptr().hash(state);
-        self.normal.as_ptr().hash(state);
+        Shared::as_ptr(&self.color).hash(state);
+        Shared::as_ptr(&self.metal_rough).hash(state);
+        Shared::as_ptr(&self.normal).hash(state);
     }
 }
 
@@ -387,17 +428,17 @@ where
     P: SharedPointerKind,
 {
     fn cmp(&self, other: &Self) -> Ordering {
-        let mut res = self.color.as_ptr().cmp(&other.color.as_ptr());
+        let mut res = Shared::as_ptr(&self.color).cmp(&Shared::as_ptr(&other.color));
         if res != Ordering::Less {
             return res;
         }
 
-        res = self.metal_rough.as_ptr().cmp(&other.metal_rough.as_ptr());
+        res = Shared::as_ptr(&self.metal_rough).cmp(&Shared::as_ptr(&other.metal_rough));
         if res != Ordering::Less {
             return res;
         }
 
-        self.normal.as_ptr().cmp(&other.normal.as_ptr())
+        Shared::as_ptr(&self.normal).cmp(&Shared::as_ptr(&other.normal))
     }
 }
 
@@ -426,6 +467,7 @@ where
 /// Container of a shared `Model` reference and the optional filter or pose that might be used
 /// during rendering.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct Mesh<P>
 where
     P: 'static + SharedPointerKind,
@@ -544,6 +586,7 @@ where
 
 /// Description of a model, which may be posed or filtered.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct ModelCommand<P>
 where
     P: 'static + SharedPointerKind,
@@ -588,6 +631,22 @@ where
         };
 
         bounds.transform(self.transform)
+    }
+}
+
+impl<P> Clone for ModelCommand<P>
+where
+    P: SharedPointerKind,
+{
+    fn clone(&self) -> Self {
+        Self {
+            camera_order: self.camera_order,
+            material: self.material.clone(),
+            mesh_filter: self.mesh_filter,
+            model: Shared::clone(&self.model),
+            pose: self.pose.clone(),
+            transform: self.transform,
+        }
     }
 }
 

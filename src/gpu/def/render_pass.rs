@@ -99,10 +99,10 @@ pub mod draw {
             flags: Dependencies::BY_REGION,
         };
 
-        RenderPass::new(
+        RenderPass::new_dependencies(
             #[cfg(feature = "debug-names")]
             "Draw",
-            &[
+            vec![
                 // attachments
                 color_metal,
                 normal_rough,
@@ -110,13 +110,13 @@ pub mod draw {
                 output,
                 depth,
             ],
-            &[
+            vec![
                 // subpasses
                 FILL_GEOM_BUF_DESC,
                 ACCUM_LIGHT_DESC,
                 TONEMAP_DESC,
             ],
-            &[
+            vec![
                 // dependencies
                 begin,
                 between_fill_and_light,
@@ -173,10 +173,10 @@ pub mod draw {
             flags: Dependencies::BY_REGION,
         };
 
-        RenderPass::new(
+        RenderPass::new_dependencies(
             #[cfg(feature = "debug-names")]
             "Draw",
-            &[
+            vec![
                 // attachments
                 color_metal,
                 normal_rough,
@@ -184,14 +184,14 @@ pub mod draw {
                 output,
                 depth,
             ],
-            &[
+            vec![
                 // subpassess
                 FILL_GEOM_BUF_DESC,
                 skydome_subpass_desc,
                 ACCUM_LIGHT_DESC,
                 TONEMAP_DESC,
             ],
-            &[
+            vec![
                 // dependencies
                 begin,
                 between_fill_and_light,
@@ -224,7 +224,10 @@ use {
         },
         pso::PipelineStage,
     },
-    std::ops::Range,
+    std::{
+        iter::{once},
+        ops::Range,
+    },
 };
 
 // Image Access helpers (pulled from v0.)
@@ -303,9 +306,8 @@ pub(in crate::gpu) unsafe fn color(mode: ColorRenderPassMode) -> RenderPass {
     RenderPass::new(
         #[cfg(feature = "debug-names")]
         "Color",
-        &[attachment],
-        &[subpass_desc],
-        &[],
+        once(attachment),
+        once(subpass_desc),
     )
 }
 
@@ -330,8 +332,7 @@ pub unsafe fn present(fmt: Format) -> RenderPass {
     RenderPass::new(
         #[cfg(feature = "debug-names")]
         "Present",
-        &[attachment],
-        &[subpass_desc],
-        &[],
+        once(attachment),
+        once(subpass_desc),
     )
 }

@@ -9,6 +9,7 @@ use {
             queue_mut, Texture2d,
         },
         math::Coord,
+        ptr::Shared,
     },
     a_r_c_h_e_r_y::SharedPointerKind,
     gfx_hal::{
@@ -20,7 +21,7 @@ use {
         },
         pool::CommandPool as _,
         pso::{PipelineStage, Rect, Viewport},
-        queue::{CommandQueue as _, Submission},
+        queue::CommandQueue as _,
         Backend,
     },
     gfx_impl::Backend as _Backend,
@@ -49,10 +50,10 @@ pub struct GradientOp<P>
 where
     P: 'static + SharedPointerKind,
 {
-    back_buf: Lease<Texture2d, P>,
+    back_buf: Lease<Shared<Texture2d, P>, P>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool, P>,
-    dst: Texture2d,
+    dst: Shared<Texture2d, P>,
     dst_preserve: bool,
     fence: Lease<Fence, P>,
     frame_buf: Framebuffer2d,
@@ -71,16 +72,14 @@ where
     pub(crate) unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
         mut pool: Lease<Pool<P>, P>,
-        dst: &Texture2d,
+        dst: &Shared<Texture2d, P>,
         path: Path,
     ) -> Self {
         // Allocate the command buffer
         let mut cmd_pool = pool.cmd_pool();
 
-        let (dims, fmt) = {
-            let dst = dst.borrow();
-            (dst.dims(), dst.format())
-        };
+        let dims = dst.dims();
+        let fmt = dst.format();
 
         let render_pass_mode = RenderPassMode::Color(ColorRenderPassMode {
             fmt,
@@ -128,7 +127,7 @@ where
             back_buf,
             cmd_buf: cmd_pool.allocate_one(Level::Primary),
             cmd_pool,
-            dst: Texture2d::clone(dst),
+            dst: Shared::clone(dst),
             dst_preserve: false,
             fence,
             frame_buf,
@@ -243,14 +242,12 @@ where
     unsafe fn submit(&mut self) {
         trace!("submit");
 
-        let mut dst = self.dst.borrow_mut();
-        let mut back_buf = self.back_buf.borrow_mut();
         let preserve = self.dst_preserve && must_preserve_dst(&self.path);
         let _mode = RenderPassMode::Color(ColorRenderPassMode {
-            fmt: dst.format(),
+            fmt: self.dst.format(),
             preserve,
         });
-        let dims = dst.dims();
+        let dims = self.dst.dims();
         let rect = Rect {
             x: 0,
             y: 0,
@@ -268,22 +265,22 @@ where
 
         // Optional step: Fill dst into the color graphics buffer in order to preserve it in the output
         if preserve {
-            dst.set_layout(
+            self.dst.set_layout(
                 &mut self.cmd_buf,
                 Layout::TransferSrcOptimal,
                 PipelineStage::TRANSFER,
                 ImageAccess::TRANSFER_READ,
             );
-            back_buf.set_layout(
+            self.back_buf.set_layout(
                 &mut self.cmd_buf,
                 Layout::TransferDstOptimal,
                 PipelineStage::TRANSFER,
                 ImageAccess::TRANSFER_WRITE,
             );
             self.cmd_buf.copy_image(
-                dst.as_ref(),
+                self.dst.as_ref(),
                 Layout::TransferSrcOptimal,
-                back_buf.as_ref(),
+                self.back_buf.as_ref(),
                 Layout::TransferDstOptimal,
                 once(ImageCopy {
                     src_subresource: SubresourceLayers {
@@ -304,14 +301,14 @@ where
         }
 
         // Step 1: Draw the gradient, optionally providing `dst`
-        back_buf.set_layout(
+        self.back_buf.set_layout(
             &mut self.cmd_buf,
             Layout::ColorAttachmentOptimal,
             PipelineStage::COLOR_ATTACHMENT_OUTPUT,
             ImageAccess::COLOR_ATTACHMENT_WRITE,
         );
         if preserve {
-            dst.set_layout(
+            self.dst.set_layout(
                 &mut self.cmd_buf,
                 Layout::ShaderReadOnlyOptimal,
                 PipelineStage::FRAGMENT_SHADER,
@@ -339,28 +336,28 @@ where
                 self.graphics.desc_set(0),
             );
         }
-        self.cmd_buf.set_scissors(0, &[rect]);
-        self.cmd_buf.set_viewports(0, &[viewport]);
+        self.cmd_buf.set_scissors(0, once(rect));
+        self.cmd_buf.set_viewports(0, once(viewport));
         self.cmd_buf.draw(0..6, 0..1);
         self.cmd_buf.end_render_pass();
 
         // Step 2: Copy the now-composited backbuffer to the `dst` texture
-        back_buf.set_layout(
+        self.back_buf.set_layout(
             &mut self.cmd_buf,
             Layout::TransferSrcOptimal,
             PipelineStage::TRANSFER,
             ImageAccess::TRANSFER_READ,
         );
-        dst.set_layout(
+        self.dst.set_layout(
             &mut self.cmd_buf,
             Layout::TransferDstOptimal,
             PipelineStage::TRANSFER,
             ImageAccess::TRANSFER_WRITE,
         );
         self.cmd_buf.copy_image(
-            back_buf.as_ref(),
+            self.back_buf.as_ref(),
             Layout::TransferSrcOptimal,
-            dst.as_ref(),
+            self.dst.as_ref(),
             Layout::TransferDstOptimal,
             once(ImageCopy {
                 src_subresource: SubresourceLayers {
@@ -383,14 +380,7 @@ where
         self.cmd_buf.finish();
 
         // Submit
-        queue_mut().submit(
-            Submission {
-                command_buffers: once(&self.cmd_buf),
-                wait_semaphores: empty(),
-                signal_semaphores: empty::<&<_Backend as Backend>::Semaphore>(),
-            },
-            Some(&mut self.fence),
-        );
+        queue_mut().submit(once(&self.cmd_buf), empty(), empty(), Some(&mut self.fence));
     }
 }
 
@@ -411,6 +401,10 @@ where
 {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    unsafe fn is_complete(&self) -> bool {
+        Fence::status(&self.fence)
     }
 
     unsafe fn take_pool(&mut self) -> Lease<Pool<P>, P> {

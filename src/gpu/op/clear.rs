@@ -6,6 +6,7 @@ use {
             driver::{CommandPool, Fence},
             queue_mut, Lease, Pool, Texture2d,
         },
+        ptr::Shared,
     },
     a_r_c_h_e_r_y::SharedPointerKind,
     gfx_hal::{
@@ -14,7 +15,7 @@ use {
         image::{Access, Layout, SubresourceRange},
         pool::CommandPool as _,
         pso::PipelineStage,
-        queue::{CommandQueue as _, Submission},
+        queue::CommandQueue as _,
         Backend,
     },
     gfx_impl::Backend as _Backend,
@@ -34,7 +35,7 @@ where
     cmd_pool: Lease<CommandPool, P>,
     fence: Lease<Fence, P>,
     pool: Option<Lease<Pool<P>, P>>,
-    texture: Texture2d,
+    texture: Shared<Texture2d, P>,
 }
 
 impl<P> ClearOp<P>
@@ -45,7 +46,7 @@ where
     pub(crate) unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
         mut pool: Lease<Pool<P>, P>,
-        texture: &Texture2d,
+        texture: &Shared<Texture2d, P>,
     ) -> Self {
         let mut cmd_pool = pool.cmd_pool();
 
@@ -58,7 +59,7 @@ where
                 name,
             ),
             pool: Some(pool),
-            texture: Texture2d::clone(texture),
+            texture: Shared::clone(texture),
         }
     }
 
@@ -82,41 +83,32 @@ where
     unsafe fn submit(&mut self) {
         trace!("submit");
 
-        let mut texture = self.texture.borrow_mut();
-
         // Begin
         self.cmd_buf
             .begin_primary(CommandBufferFlags::ONE_TIME_SUBMIT);
 
         // Step 1: Clear the image
-        texture.set_layout(
+        self.texture.set_layout(
             &mut self.cmd_buf,
             Layout::TransferDstOptimal,
             PipelineStage::TRANSFER,
             Access::TRANSFER_WRITE,
         );
         self.cmd_buf.clear_image(
-            texture.as_ref(),
+            self.texture.as_ref(),
             Layout::TransferDstOptimal,
             self.clear_value,
-            &[SubresourceRange {
+            once(SubresourceRange {
                 aspects: Aspects::COLOR,
                 ..Default::default()
-            }],
+            }),
         );
 
         // Finish
         self.cmd_buf.finish();
 
         // Submit
-        queue_mut().submit(
-            Submission {
-                command_buffers: once(&self.cmd_buf),
-                wait_semaphores: empty(),
-                signal_semaphores: empty::<&<_Backend as Backend>::Semaphore>(),
-            },
-            Some(&mut self.fence),
-        );
+        queue_mut().submit(once(&self.cmd_buf), empty(), empty(), Some(&mut self.fence));
     }
 }
 
@@ -137,6 +129,10 @@ where
 {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    unsafe fn is_complete(&self) -> bool {
+        Fence::status(&self.fence)
     }
 
     unsafe fn take_pool(&mut self) -> Lease<Pool<P>, P> {

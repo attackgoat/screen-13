@@ -1,21 +1,23 @@
 use {
     super::{
         op::{
-            clear::ClearOp, copy::CopyOp, draw::DrawOp, encode::EncodeOp, font::FontOp,
-            gradient::GradientOp, write::WriteOp, Op,
+            clear::ClearOp, copy::CopyOp, draw::DrawOp, encode::EncodeOp, gradient::GradientOp,
+            text::TextOp, write::WriteOp, Op,
         },
         pool::{Lease, Pool},
         Texture2d,
     },
     crate::{
         color::AlphaColor,
-        math::{Coord, CoordF, Extent},
+        math::{Coord, Extent},
+        ptr::Shared,
     },
     a_r_c_h_e_r_y::SharedPointerKind,
     gfx_hal::{
         format::{Format, ImageFeature},
         image::{Layout, Usage},
     },
+    std::vec::Drain,
 };
 
 /// A powerful structure which allows you to combine various operations and other render
@@ -25,7 +27,7 @@ where
     P: 'static + SharedPointerKind,
 {
     pool: Option<Lease<Pool<P>, P>>,
-    target: Lease<Texture2d, P>,
+    target: Lease<Shared<Texture2d, P>, P>,
     target_dirty: bool,
     ops: Vec<Box<dyn Op<P>>>,
 }
@@ -38,7 +40,6 @@ where
         #[cfg(feature = "debug-names")] name: &str,
         dims: Extent,
         mut pool: Lease<Pool<P>, P>,
-        ops: Vec<Box<dyn Op<P>>>,
     ) -> Self {
         let fmt = pool
             .best_fmt(
@@ -62,7 +63,7 @@ where
             pool: Some(pool),
             target,
             target_dirty: false,
-            ops,
+            ops: Default::default(),
         }
     }
 
@@ -96,7 +97,7 @@ where
     pub fn copy(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
-        src: &Texture2d,
+        src: &Shared<Texture2d, P>,
     ) -> &mut CopyOp<P> {
         let op = unsafe {
             let pool = self.take_pool();
@@ -122,15 +123,10 @@ where
 
     /// Gets the dimensions, in pixels, of this `Render`.
     pub fn dims(&self) -> Extent {
-        self.target.borrow().dims()
+        self.target.dims()
     }
 
     /// Draws a batch of 3D elements.
-    ///
-    /// **_NOTE:_** The implementation may re-order the provided draws, so do not rely on existing
-    /// indices after this call completes.
-    ///
-    /// **_NOTE:_** Not fully implemented yet
     pub fn draw(&mut self, #[cfg(feature = "debug-names")] name: &str) -> &mut DrawOp<P> {
         let mut op = unsafe {
             let pool = self.take_pool();
@@ -177,6 +173,10 @@ where
             .unwrap()
     }
 
+    pub(crate) fn drain_ops(&mut self) -> Drain<'_, Box<dyn Op<P>>> {
+        self.ops.drain(..)
+    }
+
     // TODO: Specialize for radial too?
     /// Draws a linear gradient on this Render using the given path.
     ///
@@ -211,41 +211,21 @@ where
             .unwrap()
     }
 
-    // TODO: Remove this function, allow using Renders as textures naturually
-    /// This is going to change soon! Possibly just go away and be used implicitly without this
-    /// function.
-    #[allow(clippy::type_complexity)]
-    pub(crate) fn resolve(self) -> (Lease<Texture2d, P>, Vec<Box<dyn Op<P>>>) {
-        (self.target, self.ops)
-    }
-
     unsafe fn take_pool(&mut self) -> Lease<Pool<P>, P> {
         self.pool
             .take()
             .unwrap_or_else(|| self.ops.last_mut().unwrap().take_pool())
     }
 
-    // TODO: Accept a list of font/color/text/pos combos so we can batch many at once?
-    /// Draws bitmapped text on this Render using the given details.
-    pub fn text<C, O>(
-        &mut self,
-        #[cfg(feature = "debug-names")] name: &str,
-        pos: O,
-        color: C,
-    ) -> &mut FontOp<P>
-    where
-        C: Into<AlphaColor>,
-        O: Into<CoordF>,
-    {
+    /// Draws text on this Render using bitmapped or scalable fonts.
+    pub fn text(&mut self, #[cfg(feature = "debug-names")] name: &str) -> &mut TextOp<P> {
         let op = unsafe {
             let pool = self.take_pool();
-            FontOp::new(
+            TextOp::new(
                 #[cfg(feature = "debug-names")]
                 name,
                 pool,
                 &self.target,
-                pos,
-                color,
             )
         };
 
@@ -256,7 +236,7 @@ where
             .last_mut()
             .unwrap()
             .as_any_mut()
-            .downcast_mut::<FontOp<P>>()
+            .downcast_mut::<TextOp<P>>()
             .unwrap()
     }
 
@@ -288,5 +268,40 @@ where
             .as_any_mut()
             .downcast_mut::<WriteOp<P>>()
             .unwrap()
+    }
+}
+
+impl<P> AsRef<Shared<Texture2d, P>> for Render<P>
+where
+    P: SharedPointerKind,
+{
+    fn as_ref(&self) -> &Shared<Texture2d, P> {
+        &self.target
+    }
+}
+
+impl<P> AsRef<Texture2d> for Render<P>
+where
+    P: SharedPointerKind,
+{
+    fn as_ref(&self) -> &Texture2d {
+        &**self.target
+    }
+}
+
+impl<P> Drop for Render<P>
+where
+    P: SharedPointerKind,
+{
+    fn drop(&mut self) {
+        if self.ops.is_empty() {
+            return;
+        }
+
+        // Store any un-presented ops in the pool for now
+        let mut pool = unsafe { self.take_pool() };
+        for op in self.ops.drain(..) {
+            pool.ops.push_front(op);
+        }
     }
 }

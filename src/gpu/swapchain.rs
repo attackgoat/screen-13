@@ -18,7 +18,7 @@ use {
         image::{Access, FramebufferAttachment, Layout},
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage, ShaderStageFlags, Viewport},
-        queue::{CommandQueue as _, Submission},
+        queue::CommandQueue as _,
         window::{PresentationSurface as _, Surface as _, SurfaceCapabilities, SwapchainConfig},
         Backend,
     },
@@ -159,7 +159,7 @@ impl Swapchain {
         swapchain.fmt
     }
 
-    pub unsafe fn present(&mut self, texture: &mut Texture2d) {
+    pub unsafe fn present<S: AsRef<Texture2d>>(&mut self, src: S) {
         // We must have a frame buffer attachment (a configured swapchain) in order to present
         if self.frame_buf_attachment.is_none() {
             debug!("Configuring swapchain");
@@ -188,7 +188,6 @@ impl Swapchain {
                 image_view
             }
         };
-
         let frame_buf = Framebuffer2d::new(
             #[cfg(feature = "debug-names")]
             "Present",
@@ -196,10 +195,10 @@ impl Swapchain {
             once(self.frame_buf_attachment.as_ref().unwrap().clone()),
             self.dims,
         );
+        let src = src.as_ref();
 
-        self.write_descriptor(texture);
+        self.write_descriptor(src);
 
-        let mut src = texture.borrow_mut();
         let dst_dims: CoordF = self.dims.into();
         let src_dims: CoordF = src.dims().into();
 
@@ -240,8 +239,8 @@ impl Swapchain {
             Access::SHADER_READ,
         );
 
-        image.cmd_buf.set_scissors(0, &[rect]);
-        image.cmd_buf.set_viewports(0, &[viewport]);
+        image.cmd_buf.set_scissors(0, once(rect));
+        image.cmd_buf.set_viewports(0, once(viewport));
         image
             .cmd_buf
             .bind_graphics_pipeline(self.graphics.pipeline());
@@ -270,11 +269,9 @@ impl Swapchain {
 
         let queue = queue_mut();
         queue.submit(
-            Submission {
-                command_buffers: once(&image.cmd_buf),
-                wait_semaphores: empty(),
-                signal_semaphores: once(image.signal.as_ref()),
-            },
+            once(&image.cmd_buf),
+            empty(),
+            once(image.signal.as_ref()),
             Some(&mut image.fence),
         );
         match queue.present(&mut self.surface, image_view, Some(&mut image.signal)) {
@@ -307,7 +304,7 @@ impl Swapchain {
             binding: 0,
             array_offset: 0,
             descriptors: once(Descriptor::CombinedImageSampler(
-                texture.borrow().as_2d_color().as_ref(),
+                texture.as_2d_color().as_ref(),
                 Layout::ShaderReadOnlyOptimal,
                 samplers[0].as_ref(),
             )),

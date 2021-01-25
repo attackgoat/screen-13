@@ -1,9 +1,9 @@
-use {
-    super::Stride,
-    crate::{
-        gpu::op::draw::{command::RectLightCommand, geom::RECT_LIGHT_STRIDE},
-        math::{Coord8, Extent},
+use crate::{
+    gpu::op::{
+        draw::{command::RectLightCommand, geom::RECT_LIGHT_STRIDE},
+        Stride,
     },
+    math::{Coord8, Extent},
 };
 
 /// Holds the details of a normalized quantized rectangular light.
@@ -78,19 +78,19 @@ mod test {
             dims: (0.5, 0.5).into(),
             radius: 1.0,
             range: 1.0,
-            ..Default::default()
+            ..RectLightCommand::default()
         });
         assert_spotlight_cmd(RectLightCommand {
             dims: (0.1, 1.0).into(),
             radius: 0.1,
             range: 1.0,
-            ..Default::default()
+            ..RectLightCommand::default()
         });
         assert_spotlight_cmd(RectLightCommand {
             dims: (4.2, 5.0).into(),
             radius: 2.8,
             range: 2.15,
-            ..Default::default()
+            ..RectLightCommand::default()
         });
     }
 }

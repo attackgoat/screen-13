@@ -49,6 +49,7 @@ where
 }
 
 // Commands specified by the client become Instructions used by `DrawOp`
+#[non_exhaustive]
 pub(super) enum Instruction<'a, P>
 where
     P: 'static + SharedPointerKind,

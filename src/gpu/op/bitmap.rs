@@ -1,5 +1,4 @@
 use {
-    super::Op,
     crate::{
         gpu::{
             align_up,
@@ -12,6 +11,7 @@ use {
         },
         math::Coord,
         pak::{BitmapBuf, BitmapFormat},
+        ptr::Shared,
     },
     a_r_c_h_e_r_y::SharedPointerKind,
     gfx_hal::{
@@ -22,12 +22,11 @@ use {
         image::{Access as ImageAccess, Layout, SubresourceLayers, Usage as ImageUsage},
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage},
-        queue::{CommandQueue as _, Submission},
+        queue::CommandQueue as _,
         Backend,
     },
     gfx_impl::Backend as _Backend,
     std::{
-        any::Any,
         fmt::{Debug, Error, Formatter},
         iter::{empty, once},
         ops::Deref,
@@ -36,17 +35,59 @@ use {
     },
 };
 
-/// Holds a decoded 2D image with 1-4 channels.
-pub struct Bitmap<P>
+/// Holds a decoded two-dimensional image with 1-4 channels.
+pub struct Bitmap<P>(Load<P>)
 where
-    P: 'static + SharedPointerKind,
+    P: 'static + SharedPointerKind;
+
+impl<P> Bitmap<P>
+where
+    P: SharedPointerKind,
 {
-    cmd_buf: <_Backend as Backend>::CommandBuffer,
-    cmd_pool: Lease<CommandPool, P>,
-    conv_fmt: Option<Lease<Compute, P>>,
-    fence: Lease<Fence, P>,
-    pixel_buf: Lease<Data, P>,
-    texture: Lease<Texture2d, P>,
+    /// Returns `true` once the graphics hardware has finished processing the operation for this
+    /// bitmap.
+    ///
+    /// **_NOTE:_** Calling this function allows internal caches to be dropped. Once this function
+    /// returns `true` it will always return `true` and should not be called again.
+    ///
+    /// **_NOTE:_** Best practice is to call this function approximately three frames after loading
+    /// a bitmap, and then each frame until `true` is returned.
+    pub fn drop_op(&mut self) -> bool {
+        // Early-out if we are already ready or not ready yet
+        let tex = match &self.0 {
+            Load::Loaded(_) => return true,
+            Load::Loading(op) if unsafe { Fence::status(&op.fence) } => &op.texture,
+            _ => return false,
+        };
+
+        self.0 = Load::Loaded(Shared::clone(tex));
+
+        true
+    }
+}
+
+impl<P> AsRef<Shared<Texture2d, P>> for Bitmap<P>
+where
+    P: SharedPointerKind,
+{
+    fn as_ref(&self) -> &Shared<Texture2d, P> {
+        match &self.0 {
+            Load::Loaded(tex) => tex,
+            Load::Loading(op) => &op.texture,
+        }
+    }
+}
+
+impl<P> AsRef<Texture2d> for Bitmap<P>
+where
+    P: SharedPointerKind,
+{
+    fn as_ref(&self) -> &Texture2d {
+        match &self.0 {
+            Load::Loaded(tex) => tex,
+            Load::Loading(op) => &op.texture,
+        }
+    }
 }
 
 impl<P> Debug for Bitmap<P>
@@ -65,35 +106,38 @@ where
     type Target = Texture2d;
 
     fn deref(&self) -> &Self::Target {
-        &self.texture
+        self.as_ref()
     }
 }
 
-impl<P> Drop for Bitmap<P>
+enum Load<P>
+where
+    P: 'static + SharedPointerKind,
+{
+    Loaded(Shared<Texture2d, P>),
+    Loading(InProgress<P>),
+}
+
+struct InProgress<P>
+where
+    P: 'static + SharedPointerKind,
+{
+    cmd_buf: <_Backend as Backend>::CommandBuffer,
+    cmd_pool: Lease<CommandPool, P>,
+    conv_fmt: Option<Lease<Compute, P>>,
+    fence: Lease<Fence, P>,
+    pixel_buf: Lease<Data, P>,
+    texture: Lease<Shared<Texture2d, P>, P>,
+}
+
+impl<P> Drop for InProgress<P>
 where
     P: SharedPointerKind,
 {
     fn drop(&mut self) {
         unsafe {
-            self.wait();
+            Fence::wait(&self.fence);
         }
-    }
-}
-
-impl<P> Op<P> for Bitmap<P>
-where
-    P: SharedPointerKind,
-{
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-
-    unsafe fn take_pool(&mut self) -> Lease<Pool<P>, P> {
-        todo!();
-    }
-
-    unsafe fn wait(&self) {
-        Fence::wait(&self.fence);
     }
 }
 
@@ -112,7 +156,7 @@ where
     pixel_buf: Lease<Data, P>,
     pixel_buf_len: u64,
     pool: &'a mut Pool<P>,
-    texture: Lease<Texture2d, P>,
+    texture: Lease<Shared<Texture2d, P>, P>,
 }
 
 impl<'a, P> BitmapOp<'a, P>
@@ -156,7 +200,7 @@ where
 
         // Figure out what kind of bitmap we're decoding
         let bitmap_stride = bitmap.stride();
-        let texture_fmt = texture.borrow().format();
+        let texture_fmt = texture.format();
         let conv_fmt = if texture_fmt == desired_fmts[0] {
             // No format conversion: We will use a simple copy-buffer-to-image command
             None
@@ -285,14 +329,14 @@ where
             self.submit_finish();
         };
 
-        Bitmap {
+        Bitmap(Load::Loading(InProgress {
             cmd_buf: self.cmd_buf,
             cmd_pool: self.cmd_pool,
             conv_fmt: self.conv_fmt.map(|c| c.compute),
             fence: self.fence,
             pixel_buf: self.pixel_buf,
             texture: self.texture,
-        }
+        }))
     }
 
     unsafe fn submit_begin(&mut self) {
@@ -311,8 +355,7 @@ where
             #[cfg(feature = "debug-names")]
             &self.name,
         );
-        let mut texture = self.texture.borrow_mut();
-        let dims = texture.dims();
+        let dims = self.texture.dims();
 
         // Step 1: Write the local cpu memory buffer into the gpu-local buffer
         self.pixel_buf.write_range(
@@ -323,7 +366,7 @@ where
         );
 
         // Step 2: Use a compute shader to remap the memory layout of the device-local buffer
-        texture.set_layout(
+        self.texture.set_layout(
             &mut self.cmd_buf,
             Layout::General,
             PipelineStage::COMPUTE_SHADER,
@@ -349,8 +392,7 @@ where
     unsafe fn submit_copy(&mut self) {
         trace!("submit_copy");
 
-        let mut texture = self.texture.borrow_mut();
-        let dims = texture.dims();
+        let dims = self.texture.dims();
 
         // Step 1: Write the local cpu memory buffer into the gpu-local buffer
         self.pixel_buf.write_range(
@@ -361,7 +403,7 @@ where
         );
 
         // Step 2: Copy the buffer to the image
-        texture.set_layout(
+        self.texture.set_layout(
             &mut self.cmd_buf,
             Layout::TransferDstOptimal,
             PipelineStage::TRANSFER,
@@ -369,9 +411,9 @@ where
         );
         self.cmd_buf.copy_buffer_to_image(
             self.pixel_buf.as_ref(),
-            texture.as_ref(),
+            self.texture.as_ref(),
             Layout::TransferDstOptimal,
-            &[BufferImageCopy {
+            once(BufferImageCopy {
                 buffer_offset: 0,
                 buffer_width: dims.x,
                 buffer_height: dims.y,
@@ -382,7 +424,7 @@ where
                 },
                 image_offset: Coord::ZERO.into(),
                 image_extent: dims.as_extent_depth(1),
-            }],
+            }),
         );
     }
 
@@ -393,22 +435,12 @@ where
         self.cmd_buf.finish();
 
         // Submit
-        queue_mut().submit(
-            Submission {
-                command_buffers: once(&self.cmd_buf),
-                wait_semaphores: empty(),
-                signal_semaphores: empty::<&<_Backend as Backend>::Semaphore>(),
-            },
-            Some(&mut self.fence),
-        );
+        queue_mut().submit(once(&self.cmd_buf), empty(), empty(), Some(&mut self.fence));
     }
 
     unsafe fn write_descriptors(&mut self) {
-        trace!("write_descriptors");
-
         let conv_fmt = self.conv_fmt.as_mut().unwrap();
         let set = conv_fmt.compute.desc_set_mut(0);
-        let texture = self.texture.borrow();
 
         device().write_descriptor_set(DescriptorSetWrite {
             set,
@@ -427,8 +459,11 @@ where
             binding: 1,
             array_offset: 0,
             descriptors: once(Descriptor::Image(
-                texture
-                    .as_2d_color_format(change_channel_type(texture.format(), ChannelType::Uint))
+                self.texture
+                    .as_2d_color_format(change_channel_type(
+                        self.texture.format(),
+                        ChannelType::Uint,
+                    ))
                     .as_ref(),
                 Layout::General,
             )), // TODO ????? Shouldn't this not be general?

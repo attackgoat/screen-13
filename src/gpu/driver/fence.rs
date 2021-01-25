@@ -46,6 +46,13 @@ impl Fence {
         device().set_fence_name(ptr, name);
     }
 
+    pub unsafe fn status(fence: &Self) -> bool {
+        let ptr = fence.0.as_ref().unwrap();
+
+        // NOTE: We don't care if the device is lost!!
+        device().get_fence_status(ptr).unwrap_or(true)
+    }
+
     pub unsafe fn wait(fence: &Self) {
         // If the fence was ready or anything happened; just return as if we waited
         // otherwise we might hold up a drop function

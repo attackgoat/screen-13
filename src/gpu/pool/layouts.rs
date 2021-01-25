@@ -4,7 +4,7 @@ use {
         driver::{DescriptorSetLayout, PipelineLayout},
     },
     gfx_hal::pso::{DescriptorSetLayoutBinding, ShaderStageFlags},
-    std::{borrow::Borrow, iter::once, ops::Range},
+    std::{iter::once, ops::Range},
 };
 
 #[derive(Default)]
@@ -14,17 +14,16 @@ pub struct Layouts {
 }
 
 impl Layouts {
-    unsafe fn lazy_init<I, P>(
+    unsafe fn lazy_init<Ib, Ip>(
         #[cfg(feature = "debug-names")] name: &str,
         layouts: &mut Option<(DescriptorSetLayout, PipelineLayout)>,
-        bindings: I,
-        push_consts: P,
+        bindings: Ib,
+        push_consts: Ip,
     ) where
-        I: IntoIterator,
-        I::Item: Borrow<DescriptorSetLayoutBinding>,
-        P: IntoIterator,
-        P::Item: Borrow<(ShaderStageFlags, Range<u32>)>,
-        P::IntoIter: ExactSizeIterator,
+        Ib: IntoIterator<Item = DescriptorSetLayoutBinding>,
+        Ib::IntoIter: ExactSizeIterator,
+        Ip: IntoIterator<Item = (ShaderStageFlags, Range<u32>)>,
+        Ip::IntoIter: ExactSizeIterator,
     {
         if layouts.is_none() {
             let desc_set_layout = DescriptorSetLayout::new(
@@ -50,8 +49,8 @@ impl Layouts {
             #[cfg(feature = "debug-names")]
             name,
             &mut self.compute_calc_vertex_attrs,
-            &desc_set_layout::CALC_VERTEX_ATTRS,
-            &push_const::CALC_VERTEX_ATTRS,
+            desc_set_layout::CALC_VERTEX_ATTRS.to_vec(),
+            push_const::CALC_VERTEX_ATTRS.to_vec(),
         );
 
         self.compute_calc_vertex_attrs.as_ref().unwrap()
@@ -65,8 +64,8 @@ impl Layouts {
             #[cfg(feature = "debug-names")]
             name,
             &mut self.compute_decode_rgb_rgba,
-            &desc_set_layout::DECODE_RGB_RGBA,
-            &push_const::DECODE_RGB_RGBA,
+            desc_set_layout::DECODE_RGB_RGBA.to_vec(),
+            push_const::DECODE_RGB_RGBA.to_vec(),
         );
 
         self.compute_decode_rgb_rgba.as_ref().unwrap()
