@@ -516,7 +516,7 @@ where
         desc_ranges: I,
     ) -> Lease<DescriptorPool, P>
     where
-        I: Clone + ExactSizeIterator<Item = &'i DescriptorRangeDesc>,
+        I: Clone + ExactSizeIterator<Item = DescriptorRangeDesc>,
     {
         let desc_ranges_key = desc_ranges
             .clone()

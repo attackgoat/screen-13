@@ -72,7 +72,7 @@ use {
         },
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage, ShaderStageFlags, Viewport},
-        queue::{CommandQueue as _, Submission},
+        queue::CommandQueue as _,
         Backend,
     },
     gfx_impl::Backend as _Backend,
@@ -670,8 +670,8 @@ where
         ));
         let graphics = self.graphics_line.as_ref().unwrap();
 
-        self.cmd_buf.set_scissors(0, &[viewport.rect]);
-        self.cmd_buf.set_viewports(0, &[viewport.clone()]);
+        self.cmd_buf.set_scissors(0, once(viewport.rect));
+        self.cmd_buf.set_viewports(0, once(viewport.clone()));
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
         self.cmd_buf.push_graphics_constants(
             graphics.layout(),
@@ -719,8 +719,8 @@ where
         let graphics = self.graphics_mesh.as_ref().unwrap();
 
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
-        self.cmd_buf.set_scissors(0, &[viewport.rect]);
-        self.cmd_buf.set_viewports(0, &[viewport.clone()]);
+        self.cmd_buf.set_scissors(0, once(viewport.rect));
+        self.cmd_buf.set_viewports(0, once(viewport.clone()));
     }
 
     unsafe fn submit_mesh_bind(&mut self, instr: MeshBindInstruction<'_, P>) {
@@ -815,8 +815,8 @@ where
         let graphics = self.graphics_point_light.as_ref().unwrap();
 
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
-        self.cmd_buf.set_scissors(0, &[viewport.rect]); // TODO: Not sure this is needed!
-        self.cmd_buf.set_viewports(0, &[viewport.clone()]); // TODO: Not sure this is needed!
+        self.cmd_buf.set_scissors(0, once(viewport.rect)); // TODO: Not sure this is needed!
+        self.cmd_buf.set_viewports(0, once(viewport.clone())); // TODO: Not sure this is needed!
         self.cmd_buf.bind_vertex_buffers(
             0,
             once((
@@ -881,8 +881,8 @@ where
         let graphics = self.graphics_rect_light.as_ref().unwrap();
 
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
-        self.cmd_buf.set_scissors(0, &[viewport.rect]);
-        self.cmd_buf.set_viewports(0, &[viewport.clone()]);
+        self.cmd_buf.set_scissors(0, once(viewport.rect));
+        self.cmd_buf.set_viewports(0, once(viewport.clone()));
     }
 
     unsafe fn submit_rect_light(&mut self, instr: RectLightDrawInstruction, view_proj: Mat4) {
@@ -945,8 +945,8 @@ where
 
         self.cmd_buf.next_subpass(SubpassContents::Inline);
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
-        self.cmd_buf.set_scissors(0, &[viewport.rect]);
-        self.cmd_buf.set_viewports(0, &[viewport.clone()]);
+        self.cmd_buf.set_scissors(0, once(viewport.rect));
+        self.cmd_buf.set_viewports(0, once(viewport.clone()));
         self.cmd_buf.bind_vertex_buffers(
             0,
             once((
@@ -1005,8 +1005,8 @@ where
         let graphics = self.graphics_spotlight.as_ref().unwrap();
 
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
-        self.cmd_buf.set_scissors(0, &[viewport.rect]);
-        self.cmd_buf.set_viewports(0, &[viewport.clone()]);
+        self.cmd_buf.set_scissors(0, once(viewport.rect));
+        self.cmd_buf.set_viewports(0, once(viewport.clone()));
     }
 
     unsafe fn submit_spotlight(&mut self, instr: SpotlightDrawInstruction, view_proj: Mat4) {
@@ -1069,8 +1069,8 @@ where
         let graphics = self.graphics_sunlight.as_ref().unwrap();
 
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
-        self.cmd_buf.set_scissors(0, &[viewport.rect]);
-        self.cmd_buf.set_viewports(0, &[viewport.clone()]);
+        self.cmd_buf.set_scissors(0, once(viewport.rect));
+        self.cmd_buf.set_viewports(0, once(viewport.clone()));
         /*let view_inv = camera.view_inv();
 
         // TODO: Calculate this with object AABBs once those are ready (any AABB inside both the camera and shadow projections)
@@ -1313,11 +1313,9 @@ where
 
         // Submit
         queue_mut().submit(
-            Submission {
-                command_buffers: once(&self.cmd_buf),
-                wait_semaphores: empty(),
-                signal_semaphores: empty::<&<_Backend as Backend>::Semaphore>(),
-            },
+            once(&self.cmd_buf),
+            empty(),
+            empty(),
             Some(self.fence.as_mut()),
         );
     }

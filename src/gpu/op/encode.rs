@@ -15,7 +15,7 @@ use {
         image::{Access as ImageAccess, Layout, Offset, SubresourceLayers},
         pool::CommandPool as _,
         pso::PipelineStage,
-        queue::{CommandQueue as _, Submission},
+        queue::CommandQueue as _,
         Backend,
     },
     gfx_impl::Backend as _Backend,
@@ -150,7 +150,7 @@ where
             self.texture.as_ref(),
             Layout::TransferSrcOptimal,
             buf.as_ref(),
-            &[BufferImageCopy {
+            once(BufferImageCopy {
                 buffer_offset: 0,
                 buffer_width: dims.x,
                 buffer_height: dims.y,
@@ -161,7 +161,7 @@ where
                 },
                 image_offset: Offset::ZERO,
                 image_extent: dims.as_extent_depth(1),
-            }],
+            }),
         );
 
         // Step 2: Copy our GPU buffer down to the CPU
@@ -171,14 +171,7 @@ where
         self.cmd_buf.finish();
 
         // Submit
-        queue_mut().submit(
-            Submission {
-                command_buffers: once(&self.cmd_buf),
-                wait_semaphores: empty(),
-                signal_semaphores: empty::<&<_Backend as Backend>::Semaphore>(),
-            },
-            Some(&mut self.fence),
-        );
+        queue_mut().submit(once(&self.cmd_buf), empty(), empty(), Some(&mut self.fence));
     }
 }
 

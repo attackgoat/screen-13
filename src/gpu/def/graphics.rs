@@ -218,20 +218,24 @@ pub struct Graphics {
 }
 
 impl Graphics {
-    unsafe fn bitmap_font(
+    unsafe fn bitmap_font<Ic>(
         #[cfg(feature = "debug-names")] name: &str,
         subpass: Subpass<'_, _Backend>,
         fragment_spirv: &[u32],
-        push_consts: &[ShaderRange],
+        push_consts: Ic,
         max_desc_sets: usize,
-    ) -> Self {
+    ) -> Self
+    where
+        Ic: IntoIterator<Item = ShaderRange>,
+        Ic::IntoIter: ExactSizeIterator,
+    {
         // Create the graphics pipeline
         let vertex = ShaderModule::new(&spirv::font::bitmap_vert::MAIN);
         let fragment = ShaderModule::new(fragment_spirv);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            &desc_set_layout::SINGLE_READ_ONLY_IMG,
+            desc_set_layout::SINGLE_READ_ONLY_IMG.to_vec(),
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
@@ -295,7 +299,7 @@ impl Graphics {
             name,
             subpass,
             &spirv::font::bitmap_frag::MAIN,
-            &push_const::FONT,
+            push_const::FONT.to_vec(),
             max_desc_sets,
         )
     }
@@ -310,7 +314,7 @@ impl Graphics {
             name,
             subpass,
             &spirv::font::bitmap_outline_frag::MAIN,
-            &push_const::FONT_OUTLINE,
+            push_const::FONT_OUTLINE.to_vec(),
             max_desc_sets,
         )
     }
@@ -327,13 +331,13 @@ impl Graphics {
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            &desc_set_layout::BLEND,
+            desc_set_layout::BLEND.to_vec(),
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
             once(set_layout.as_ref()),
-            &push_const::BLEND,
+            push_const::BLEND.to_vec(),
         );
         let mut desc = GraphicsPipelineDesc::new(
             PrimitiveAssemblerDesc::Vertex {
@@ -665,12 +669,16 @@ impl Graphics {
         )
     }
 
-    unsafe fn draw_light(
+    unsafe fn draw_light<Ic>(
         #[cfg(feature = "debug-names")] name: &str,
         subpass: Subpass<'_, _Backend>,
         fragment_spirv: &[u32],
-        push_consts: &[ShaderRange],
-    ) -> Self {
+        push_consts: Ic,
+    ) -> Self
+    where
+        Ic: IntoIterator<Item = ShaderRange>,
+        Ic::IntoIter: ExactSizeIterator,
+    {
         // Create the graphics pipeline
         let vertex = ShaderModule::new(&spirv::defer::light_vert::MAIN);
         let fragment = ShaderModule::new(fragment_spirv);
@@ -734,7 +742,7 @@ impl Graphics {
             #[cfg(feature = "debug-names")]
             name,
             empty::<&<_Backend as Backend>::DescriptorSetLayout>(),
-            &push_const::VERTEX_MAT4,
+            push_const::VERTEX_MAT4.to_vec(),
         );
         let vertex_buf = vertex_buf_with_stride(32);
         let mut desc = GraphicsPipelineDesc::new(
@@ -786,13 +794,13 @@ impl Graphics {
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            &desc_set_layout::DRAW_MESH,
+            desc_set_layout::DRAW_MESH.to_vec(),
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
             once(set_layout.as_ref()),
-            &push_const::VERTEX_MAT4,
+            push_const::VERTEX_MAT4.to_vec(),
         );
         let vertex_buf = vertex_buf_with_stride(48);
         let mut desc = GraphicsPipelineDesc::new(
@@ -857,7 +865,7 @@ impl Graphics {
             name,
             subpass,
             &spirv::defer::point_light_frag::MAIN,
-            &push_const::DRAW_POINT_LIGHT,
+            push_const::DRAW_POINT_LIGHT.to_vec(),
         )
     }
 
@@ -873,7 +881,7 @@ impl Graphics {
             name,
             subpass,
             &spirv::defer::rect_light_frag::MAIN,
-            &push_const::DRAW_RECT_LIGHT,
+            push_const::DRAW_RECT_LIGHT.to_vec(),
         )
     }
 
@@ -889,7 +897,7 @@ impl Graphics {
             name,
             subpass,
             &spirv::defer::spotlight_frag::MAIN,
-            &push_const::DRAW_SPOTLIGHT,
+            push_const::DRAW_SPOTLIGHT.to_vec(),
         )
     }
 
@@ -915,13 +923,13 @@ impl Graphics {
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            &desc_set_layout::SINGLE_READ_ONLY_IMG,
+            desc_set_layout::SINGLE_READ_ONLY_IMG.to_vec(),
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
             once(set_layout.as_ref()),
-            &push_const::VERTEX_MAT4,
+            push_const::VERTEX_MAT4.to_vec(),
         );
         let mut desc = GraphicsPipelineDesc::new(
             PrimitiveAssemblerDesc::Vertex {
@@ -1008,13 +1016,13 @@ impl Graphics {
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            &desc_set_layout::BLEND,
+            desc_set_layout::BLEND.to_vec(),
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
             once(set_layout.as_ref()),
-            &push_const::BLEND,
+            push_const::BLEND.to_vec(),
         );
         let mut desc = GraphicsPipelineDesc::new(
             PrimitiveAssemblerDesc::Vertex {
@@ -1163,13 +1171,13 @@ impl Graphics {
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            &desc_set_layout::BLEND,
+            desc_set_layout::BLEND.to_vec(),
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
             once(set_layout.as_ref()),
-            &push_const::BLEND,
+            push_const::BLEND.to_vec(),
         );
         let mut desc = GraphicsPipelineDesc::new(
             PrimitiveAssemblerDesc::Vertex {
@@ -1287,13 +1295,13 @@ impl Graphics {
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            &desc_set_layout::SINGLE_READ_ONLY_IMG,
+            desc_set_layout::SINGLE_READ_ONLY_IMG.to_vec(),
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
             once(set_layout.as_ref()),
-            &push_const::VERTEX_MAT4,
+            push_const::VERTEX_MAT4.to_vec(),
         );
         let mut desc = GraphicsPipelineDesc::new(
             PrimitiveAssemblerDesc::Vertex {
@@ -1350,13 +1358,13 @@ impl Graphics {
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            &desc_set_layout::SINGLE_READ_ONLY_IMG,
+            desc_set_layout::SINGLE_READ_ONLY_IMG.to_vec(),
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
             once(set_layout.as_ref()),
-            &push_const::VERTEX_MAT4,
+            push_const::VERTEX_MAT4.to_vec(),
         );
         let vertex_buf = vertex_buf_with_stride(16);
         let mut desc = GraphicsPipelineDesc::new(
@@ -1415,13 +1423,13 @@ impl Graphics {
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            &desc_set_layout::SKYDOME,
+            desc_set_layout::SKYDOME.to_vec(),
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
             once(set_layout.as_ref()),
-            &push_const::SKYDOME,
+            push_const::SKYDOME.to_vec(),
         );
         let vertex_buf = vertex_buf_with_stride(12);
         let mut desc = GraphicsPipelineDesc::new(
@@ -1484,13 +1492,13 @@ impl Graphics {
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,
-            &desc_set_layout::SINGLE_READ_ONLY_IMG,
+            desc_set_layout::SINGLE_READ_ONLY_IMG.to_vec(),
         );
         let layout = PipelineLayout::new(
             #[cfg(feature = "debug-names")]
             name,
             once(set_layout.as_ref()),
-            &push_const::TEXTURE,
+            push_const::TEXTURE.to_vec(),
         );
         let mut desc = GraphicsPipelineDesc::new(
             PrimitiveAssemblerDesc::Vertex {
@@ -1573,7 +1581,7 @@ impl Graphics {
                 self.desc_pool
                     .as_mut()
                     .unwrap()
-                    .allocate_set(self.set_layout.as_ref().unwrap())
+                    .allocate_one(self.set_layout.as_ref().unwrap())
                     .unwrap()
             }
         }

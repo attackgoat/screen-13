@@ -61,9 +61,10 @@ All new users should read and understand the guide.
 ## Roadmap/Status/Notes
 
 This engine is very young and is likely to change as development continues. Some features may be
-unimplemented.
+unimplemented. I add and remove code at whim, some changes get placed on hold. Any existing pushed
+versions are only for documentation/ideas/my testing.
 
-I expect this engine to remain unstable/poorly documented until version 0.2. Based on current
+I expect this engine to remain **unstable**/poorly documented until version 0.2. Based on current
 progress and my free time (this is just a hobby) I expect version 0.2 (stable) to be released
 before June 2021. Feel free to chip in to speed that up!
 

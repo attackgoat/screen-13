@@ -42,7 +42,7 @@ use {
         },
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage, Rect, ShaderStageFlags, Viewport},
-        queue::{CommandQueue, Submission},
+        queue::CommandQueue,
         Backend,
     },
     gfx_impl::Backend as _Backend,
@@ -369,7 +369,7 @@ where
         */
     }
 
-    unsafe fn submit_begin(&mut self, dims: Extent, render_pass_mode: RenderPassMode) {
+    unsafe fn submit_begin(&mut self, _dims: Extent, _render_pass_mode: RenderPassMode) {
         trace!("submit_begin");
 
         // let graphics = self.graphics.as_ref().unwrap();
@@ -472,7 +472,7 @@ where
         bind_graphics_descriptor_set(&mut self.cmd_buf, layout, desc_set);
     }
 
-    unsafe fn submit_page_begin(&mut self, dims: Extent, page_idx: usize) {
+    unsafe fn submit_page_begin(&mut self, _dims: Extent, _page_idx: usize) {
         trace!("submit_page_begin");
 
         // let graphics = self.graphics.as_ref().unwrap();
@@ -614,14 +614,7 @@ where
         self.cmd_buf.finish();
 
         // Submit
-        queue_mut().submit(
-            Submission {
-                command_buffers: once(&self.cmd_buf),
-                wait_semaphores: empty(),
-                signal_semaphores: empty::<&<_Backend as Backend>::Semaphore>(),
-            },
-            Some(&mut self.fence),
-        );
+        queue_mut().submit(once(&self.cmd_buf), empty(), empty(), Some(&mut self.fence));
     }
 
     unsafe fn write_texture_descriptors<I, T>(graphics: &mut Graphics, textures: I)

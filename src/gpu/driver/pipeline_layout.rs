@@ -2,27 +2,22 @@ use {
     crate::gpu::device,
     gfx_hal::{device::Device as _, pso::ShaderStageFlags, Backend},
     gfx_impl::Backend as _Backend,
-    std::{
-        borrow::Borrow,
-        ops::{Deref, DerefMut, Range},
-    },
+    std::ops::{Deref, DerefMut, Range},
 };
 
 pub struct PipelineLayout(Option<<_Backend as Backend>::PipelineLayout>);
 
 impl PipelineLayout {
-    pub unsafe fn new<IS, IR>(
+    pub unsafe fn new<'a, Is, Ic>(
         #[cfg(feature = "debug-names")] name: &str,
-        set_layouts: IS,
-        push_consts: IR,
+        set_layouts: Is,
+        push_consts: Ic,
     ) -> Self
     where
-        IS: IntoIterator,
-        IS::Item: Borrow<<_Backend as Backend>::DescriptorSetLayout>,
-        IS::IntoIter: ExactSizeIterator,
-        IR: IntoIterator,
-        IR::Item: Borrow<(ShaderStageFlags, Range<u32>)>,
-        IR::IntoIter: ExactSizeIterator,
+        Is: IntoIterator<Item = &'a <_Backend as Backend>::DescriptorSetLayout>,
+        Is::IntoIter: ExactSizeIterator,
+        Ic: IntoIterator<Item = (ShaderStageFlags, Range<u32>)>,
+        Ic::IntoIter: ExactSizeIterator,
     {
         let ctor = || {
             device()

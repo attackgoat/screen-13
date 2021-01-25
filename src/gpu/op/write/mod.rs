@@ -36,7 +36,7 @@ use {
         },
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage, ShaderStageFlags, Viewport},
-        queue::{CommandQueue as _, Submission},
+        queue::CommandQueue as _,
         Backend,
     },
     gfx_impl::Backend as _Backend,
@@ -365,8 +365,8 @@ where
             SubpassContents::Inline,
         );
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
-        self.cmd_buf.set_scissors(0, &[rect]);
-        self.cmd_buf.set_viewports(0, &[viewport]);
+        self.cmd_buf.set_scissors(0, once(rect));
+        self.cmd_buf.set_viewports(0, once(viewport));
         bind_graphics_descriptor_set(&mut self.cmd_buf, graphics.layout(), graphics.desc_set(0));
     }
 
@@ -461,14 +461,7 @@ where
         // Finish
         self.cmd_buf.finish();
 
-        queue_mut().submit(
-            Submission {
-                command_buffers: once(&self.cmd_buf),
-                wait_semaphores: empty(),
-                signal_semaphores: empty::<&<_Backend as Backend>::Semaphore>(),
-            },
-            Some(&mut self.fence),
-        );
+        queue_mut().submit(once(&self.cmd_buf), empty(), empty(), Some(&mut self.fence));
     }
 
     unsafe fn write_texture_descriptors<'a, T>(&mut self, graphics: &mut Graphics, textures: T)

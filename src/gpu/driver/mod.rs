@@ -11,6 +11,7 @@ mod graphics_pipeline;
 mod help;
 mod image;
 mod image_view;
+mod iter;
 mod memory;
 mod pipeline_layout;
 mod render_pass;

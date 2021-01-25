@@ -6,10 +6,7 @@ use {
         Backend,
     },
     gfx_impl::Backend as _Backend,
-    std::{
-        borrow::Borrow,
-        ops::{Deref, DerefMut},
-    },
+    std::ops::{Deref, DerefMut},
 };
 
 pub struct DescriptorPool {
@@ -20,8 +17,7 @@ pub struct DescriptorPool {
 impl DescriptorPool {
     pub unsafe fn new<I>(max_desc_sets: usize, desc_ranges: I) -> Self
     where
-        I: IntoIterator,
-        I::Item: Borrow<DescriptorRangeDesc>,
+        I: IntoIterator<Item = DescriptorRangeDesc>,
         I::IntoIter: ExactSizeIterator,
     {
         Self::new_flags(
@@ -37,8 +33,7 @@ impl DescriptorPool {
         flags: DescriptorPoolCreateFlags,
     ) -> Self
     where
-        I: IntoIterator,
-        I::Item: Borrow<DescriptorRangeDesc>,
+        I: IntoIterator<Item = DescriptorRangeDesc>,
         I::IntoIter: ExactSizeIterator,
     {
         let ptr = device()

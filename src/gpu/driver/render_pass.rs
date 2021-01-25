@@ -7,7 +7,7 @@ use {
     },
     gfx_impl::Backend as _Backend,
     std::{
-        borrow::Borrow,
+        iter::empty,
         ops::{Deref, DerefMut},
     },
 };
@@ -15,22 +15,39 @@ use {
 pub struct RenderPass(Option<<_Backend as Backend>::RenderPass>);
 
 impl RenderPass {
-    pub unsafe fn new<'s, IA, IS, ID>(
+    pub unsafe fn new<'s, Ia, Is>(
         #[cfg(feature = "debug-names")] name: &str,
-        attachments: IA,
-        subpasses: IS,
-        dependencies: ID,
+        attachments: Ia,
+        subpasses: Is,
     ) -> Self
     where
-        IA: IntoIterator,
-        IA::Item: Borrow<Attachment>,
-        IA::IntoIter: ExactSizeIterator,
-        IS: IntoIterator,
-        IS::Item: Borrow<SubpassDesc<'s>>,
-        IS::IntoIter: ExactSizeIterator,
-        ID: IntoIterator,
-        ID::Item: Borrow<SubpassDependency>,
-        ID::IntoIter: ExactSizeIterator,
+        Ia: IntoIterator<Item = Attachment>,
+        Ia::IntoIter: ExactSizeIterator,
+        Is: IntoIterator<Item = SubpassDesc<'s>>,
+        Is::IntoIter: ExactSizeIterator,
+    {
+        Self::new_dependencies(
+            #[cfg(feature = "debug-names")]
+            name,
+            attachments,
+            subpasses,
+            empty(),
+        )
+    }
+
+    pub unsafe fn new_dependencies<'s, Ia, Is, Id>(
+        #[cfg(feature = "debug-names")] name: &str,
+        attachments: Ia,
+        subpasses: Is,
+        dependencies: Id,
+    ) -> Self
+    where
+        Ia: IntoIterator<Item = Attachment>,
+        Ia::IntoIter: ExactSizeIterator,
+        Is: IntoIterator<Item = SubpassDesc<'s>>,
+        Is::IntoIter: ExactSizeIterator,
+        Id: IntoIterator<Item = SubpassDependency>,
+        Id::IntoIter: ExactSizeIterator,
     {
         let ctor = || {
             device()

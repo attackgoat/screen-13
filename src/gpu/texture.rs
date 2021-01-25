@@ -14,6 +14,7 @@ use {
         cell::{Ref, RefCell},
         collections::HashMap,
         fmt::{Debug, Error, Formatter},
+        iter::once,
         ops::Deref,
     },
 };
@@ -96,7 +97,7 @@ where
         cmd_buf.pipeline_barrier(
             state.pipeline_stage..pipeline_stage,
             Dependencies::empty(),
-            &[Barrier::Image {
+            once(Barrier::Image {
                 states: (state.access_mask, state.layout)..(access_mask, layout),
                 target: self.image.as_ref(),
                 families: None,
@@ -108,7 +109,7 @@ where
                     },
                     ..Default::default()
                 },
-            }],
+            }),
         );
 
         state.access_mask = access_mask;

@@ -12,7 +12,7 @@ use {
         Backend,
     },
     gfx_impl::Backend as _Backend,
-    std::{borrow::Borrow, iter::empty},
+    std::{iter::empty},
 };
 
 pub struct Compute {
@@ -26,20 +26,19 @@ pub struct Compute {
 
 impl Compute {
     #[allow(clippy::too_many_arguments)]
-    unsafe fn new<ID, IS>(
+    unsafe fn new<Id, Is>(
         #[cfg(feature = "debug-names")] name: &str,
         desc_set_layout: &DescriptorSetLayout,
         pipeline_layout: &PipelineLayout,
         max_desc_sets: usize,
         spirv: &[u32],
-        desc_ranges: ID,
-        samplers: IS,
+        desc_ranges: Id,
+        samplers: Is,
     ) -> Self
     where
-        ID: IntoIterator,
-        ID::IntoIter: ExactSizeIterator,
-        ID::Item: Borrow<DescriptorRangeDesc>,
-        IS: Iterator<Item = Sampler>,
+        Id: IntoIterator<Item = DescriptorRangeDesc>,
+        Id::IntoIter: ExactSizeIterator,
+        Is: Iterator<Item = Sampler>,
     {
         let shader = ShaderModule::new(spirv);
         let pipeline = ComputePipeline::new(
@@ -83,7 +82,7 @@ impl Compute {
             pipeline_layout,
             max_desc_sets,
             spirv,
-            &[
+            vec![
                 descriptor_range_desc(read_only_buf_count * max_desc_sets, READ_ONLY_BUF),
                 descriptor_range_desc(max_desc_sets, READ_WRITE_BUF),
             ],
@@ -176,7 +175,7 @@ impl Compute {
             pipeline_layout,
             max_desc_sets,
             &spirv::compute::decode_rgb_rgba_comp::MAIN,
-            &[
+            vec![
                 descriptor_range_desc(max_desc_sets, READ_ONLY_BUF),
                 descriptor_range_desc(max_desc_sets, READ_WRITE_IMG),
             ],

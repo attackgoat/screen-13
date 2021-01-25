@@ -2,7 +2,7 @@ use {
     super::{BitmapFont, Font, ScalableFont, DEFAULT_SIZE},
     crate::{
         color::{AlphaColor, WHITE},
-        math::{vec3, CoordF, Extent, Mat4},
+        math::{CoordF, Mat4},
         ptr::Shared,
     },
     a_r_c_h_e_r_y::SharedPointerKind,

@@ -21,7 +21,7 @@ use {
         },
         pool::CommandPool as _,
         pso::{PipelineStage, Rect, Viewport},
-        queue::{CommandQueue as _, Submission},
+        queue::CommandQueue as _,
         Backend,
     },
     gfx_impl::Backend as _Backend,
@@ -336,8 +336,8 @@ where
                 self.graphics.desc_set(0),
             );
         }
-        self.cmd_buf.set_scissors(0, &[rect]);
-        self.cmd_buf.set_viewports(0, &[viewport]);
+        self.cmd_buf.set_scissors(0, once(rect));
+        self.cmd_buf.set_viewports(0, once(viewport));
         self.cmd_buf.draw(0..6, 0..1);
         self.cmd_buf.end_render_pass();
 
@@ -380,14 +380,7 @@ where
         self.cmd_buf.finish();
 
         // Submit
-        queue_mut().submit(
-            Submission {
-                command_buffers: once(&self.cmd_buf),
-                wait_semaphores: empty(),
-                signal_semaphores: empty::<&<_Backend as Backend>::Semaphore>(),
-            },
-            Some(&mut self.fence),
-        );
+        queue_mut().submit(once(&self.cmd_buf), empty(), empty(), Some(&mut self.fence));
     }
 }
 

@@ -18,7 +18,7 @@ use {
         image::{Access, FramebufferAttachment, Layout},
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage, ShaderStageFlags, Viewport},
-        queue::{CommandQueue as _, Submission},
+        queue::CommandQueue as _,
         window::{PresentationSurface as _, Surface as _, SurfaceCapabilities, SwapchainConfig},
         Backend,
     },
@@ -239,8 +239,8 @@ impl Swapchain {
             Access::SHADER_READ,
         );
 
-        image.cmd_buf.set_scissors(0, &[rect]);
-        image.cmd_buf.set_viewports(0, &[viewport]);
+        image.cmd_buf.set_scissors(0, once(rect));
+        image.cmd_buf.set_viewports(0, once(viewport));
         image
             .cmd_buf
             .bind_graphics_pipeline(self.graphics.pipeline());
@@ -269,11 +269,9 @@ impl Swapchain {
 
         let queue = queue_mut();
         queue.submit(
-            Submission {
-                command_buffers: once(&image.cmd_buf),
-                wait_semaphores: empty(),
-                signal_semaphores: once(image.signal.as_ref()),
-            },
+            once(&image.cmd_buf),
+            empty(),
+            once(image.signal.as_ref()),
             Some(&mut image.fence),
         );
         match queue.present(&mut self.surface, image_view, Some(&mut image.signal)) {
