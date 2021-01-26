@@ -71,7 +71,7 @@ pub enum Mode {
 /// _NOTE:_ When no image filtering or resizing is required the `CopyOp` may provide higher
 /// performance. TODO: We can specialize for this so the API is the same, round the edge.
 ///
-/// ## Examples
+/// # Examples
 ///
 /// Writing a nine-sliced UI graphic:
 ///

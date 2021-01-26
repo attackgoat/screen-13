@@ -17,7 +17,10 @@ use {
         format::{Format, ImageFeature},
         image::{Layout, Usage},
     },
-    std::vec::Drain,
+    std::{
+        fmt::{Debug, Error, Formatter},
+        vec::Drain,
+    },
 };
 
 /// A powerful structure which allows you to combine various operations and other render
@@ -286,6 +289,15 @@ where
 {
     fn as_ref(&self) -> &Texture2d {
         &**self.target
+    }
+}
+
+impl<P> Debug for Render<P>
+where
+    P: SharedPointerKind,
+{
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        f.write_str("Render")
     }
 }
 

@@ -12,7 +12,7 @@ use {
         Backend,
     },
     gfx_impl::Backend as _Backend,
-    std::{iter::empty},
+    std::iter::empty,
 };
 
 pub struct Compute {

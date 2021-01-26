@@ -224,10 +224,7 @@ use {
         },
         pso::PipelineStage,
     },
-    std::{
-        iter::{once},
-        ops::Range,
-    },
+    std::{iter::once, ops::Range},
 };
 
 // Image Access helpers (pulled from v0.)

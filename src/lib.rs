@@ -32,13 +32,14 @@
 //!
 //! Next, pick a shared reference type. We'll use [`std::rc::Rc`]:
 //!
-//! ```
+//! ```rust
 //! use screen_13::prelude_rc::*;
 //! ```
 //!
 //! Then, for a console program:
 //!
-//! ```
+//! ```rust
+//! # use screen_13::prelude_rc::*;
 //! /// Creates a 128x128 pixel jpeg file as `output.jpg`.
 //! fn main() {
 //!     let gpu = Gpu::offscreen();
@@ -50,7 +51,8 @@
 //!
 //! Or, for a windowed program:
 //!
-//! ```
+//! ```rust
+//! # use screen_13::prelude_rc::*;
 //! /// Paints a magenta window at 60 glorious frames per second.
 //! fn main() {
 //!     let engine = Engine::default();
@@ -397,22 +399,6 @@ use self::math::Area;
 /// Helpful alias of `Box<dyn Screen>`; can be used to hold an instance of any `Screen`.
 pub type DynScreen<P> = Box<dyn Screen<P>>;
 
-/// Alias of either [`Render`] _or_ [`Vec<Option<Render>>`], used by [`Screen::render()`].
-///
-/// The output type depends on the value of the `multi-monitor` package feature.
-///
-/// **_NOTE:_** This documentation was generated _without_ the `multi-monitor` feature.
-#[cfg(not(feature = "multi-monitor"))]
-pub type RenderReturn<P> = Render<P>;
-
-/// Alias of either [`Render`] _or_ [`Vec<Option<Render>>`], used by [`Screen::render()`].
-///
-/// The output type depends on the value of the `multi-monitor` package feature.
-///
-/// **_NOTE:_** This documentation was generated _with_ the `multi-monitor` feature.
-#[cfg(feature = "multi-monitor")]
-pub type RenderReturn<P> = Vec<Option<Render<P>>>;
-
 const DEFAULT_RENDER_BUF_LEN: usize = 128;
 const MINIMUM_WINDOW_SIZE: usize = 420;
 
@@ -482,18 +468,15 @@ where
     /// _NOTE:_ This function loads any existing user configuration file and may override program
     /// description options in order to preserve the user experience.
     ///
-    /// ## Examples
+    /// # Examples
     ///
-    /// ```
-    /// use screen_13::prelude_all::*;
+    /// ```rust
+    /// #use screen_13::prelude_all::*;
     ///
-    /// fn main() {
-    ///     let foo = Program::new("UltraMega III", "Nintari, Inc.")
-    ///                 .with_title("UltraMega III: Breath of Fire")
-    ///                 .with_window();
-    ///     let engine = Engine::new(foo); //    We ask for windowed mode, but we ...
-    ///     engine.run(...)                // <- ... get fullscreen because of some previous run. 😂
-    /// }
+    /// let ultra_mega = Program::new("UltraMega III", "Nintari, Inc.")
+    ///                   .with_title("UltraMega III: Breath of Fire")
+    ///                   .with_window();
+    /// let engine = Engine::new(ultra_mega);
     /// ```
     pub fn new<'a, 'b, R: AsRef<Program<'a, 'b>>>(program: R) -> Self {
         let program = program.as_ref();
@@ -673,10 +656,10 @@ where
     /// Immediately after this call, `render` will be called on the screen, followed by `update`, ad
     /// infinium. This call does not return to the calling code.
     ///
-    /// ## Examples
+    /// # Examples
     ///
-    /// ```
-    /// use screen_13::prelude_all::*;
+    /// ```rust
+    /// # use screen_13::prelude_rc::*;
     ///
     /// fn main() {
     ///     let engine = Engine::default();
@@ -686,8 +669,12 @@ where
     ///
     /// struct FooScreen;
     ///
-    /// impl Screen for FooScreen {
-    ///     ...
+    /// impl Screen<RcK> for FooScreen {
+    ///     // not shown
+    /// # fn render(&self, _: &Gpu, #[cfg(not(feature = "multi-monitor"))] _: Extent) -> Render {
+    /// # todo!(); }
+    /// # #[cfg(feature = "multi-monitor")] viewports: &[Area],) -> Vec<Option<Render>> { todo!(); }
+    /// # fn update(self: Box<Self>, _: &Gpu, _: &Input) -> DynScreen { todo!(); }
     /// }
     /// ```
     pub fn run(mut self, screen: DynScreen<P>) -> ! {
@@ -788,7 +775,11 @@ where
 ///
 /// Example load before `render`:
 ///
-/// ```
+/// ```rust
+/// # use screen_13::prelude_rc::*;
+/// # use std::fs::File;
+/// # type PakFile = Pak<File>;
+/// # struct FooScreen { bar: Shared<Bitmap>, }
 /// impl FooScreen {
 ///     fn load(gpu: &Gpu, pak: &mut PakFile) -> Self {
 ///         Self {
@@ -800,14 +791,21 @@ where
 ///
 /// Example load during `render` (_`update` works too_):
 ///
-/// ```
-/// impl Screen for FooScreen {
+/// ```rust
+/// # use screen_13::prelude_rc::*;
+/// # use std::cell::RefCell;
+/// # use std::fs::File;
+/// # use std::io::BufReader;
+/// # struct FooScreen { bar: RefCell<Option<Shared<Bitmap>>>, pak: RefCell<Pak<BufReader<File>>>, }
+/// impl Screen<RcK> for FooScreen {
 ///     fn render(&self, gpu: &Gpu, dims: Extent) -> Render {
-///         *self.bar.borrow_mut() = Some(gpu.read_bitmap(gpu, self.pak.borrow_mut(), "bar"));
-///         ...
+///         *self.bar.borrow_mut() = Some(gpu.read_bitmap(&mut self.pak.borrow_mut(), "bar"));
+///         
+///         todo!("🎨🖼️ render something awesome!");
 ///     }
 ///
-///     ...
+///     // update not shown
+/// # fn update(self: Box<Self>, _: &Gpu, _: &Input) -> DynScreen { todo!(); }
 /// }
 /// ```
 pub trait Screen<P>
@@ -817,16 +815,16 @@ where
     /// When paired with an `Engine`, generates images presented to the physical display adapter
     /// using a swapchain and fullscreen video mode or operating system window.
     ///
-    /// ## Examples
+    /// # Examples
     ///
     /// Calling `render` on another `Screen`:
     ///
-    /// ```
-    /// let foo: DynScreen = ...
-    /// let gpu = Gpu::offscreen();
-    ///
-    /// // Ask foo to render a document
-    /// let foo_doc = foo.render(&gpu, Extent::new(1024, 128));
+    /// ```rust
+    /// # use screen_13::prelude_rc::*;
+    /// # let gpu = Gpu::offscreen();
+    /// # let foo = Solid::new(GREEN);
+    /// // "foo" is a DynScreen, let's ask it to render a document!
+    /// let mut foo_doc = foo.render(&gpu, Extent::new(1024, 128));
     ///
     /// // 🤮 Ugh! I didn't like it!
     /// foo_doc.clear().record();
@@ -836,27 +834,37 @@ where
     ///
     /// Responding to `render` as a `Screen` implementation:
     ///
-    /// ```
+    /// ```rust
+    /// # use screen_13::prelude_rc::*;
+    /// # struct Foo;
+    /// # impl Screen<RcK> for Foo {
+    /// # fn update(self: Box<Self>, _: &Gpu, _: &Input) -> DynScreen { todo!(); }
     /// fn render(&self, gpu: &Gpu, dims: Extent) -> Render {
-    ///     let frame = gpu.render(dims);
+    ///     let mut frame = gpu.render(dims);
     ///
     ///     // 🥇 It's some of my best work!
     ///     frame.clear().with(GREEN).record();
     ///
     ///     frame
     /// }
+    /// # }
     /// ```
     ///
     /// **_NOTE:_** It is considered undefined behavior to return a render which has not recorded
     /// any commands, as shown:
     ///
-    /// ```
+    /// ```rust
+    /// # use screen_13::prelude_rc::*;
+    /// # struct Foo;
+    /// # impl Screen<RcK> for Foo {
+    /// # fn update(self: Box<Self>, _: &Gpu, _: &Input) -> DynScreen { todo!(); }
     /// fn render(&self, gpu: &Gpu, dims: Extent) -> Render {
     ///     // This is UB because the graphics hardware might have been using this render to store
     ///     // an 8K atlas of 😸's, and it is not guaranteed to be initialized.
     ///     // Hey, the more you know!
     ///     gpu.render(dims)
     /// }
+    /// # }
     /// ```
     ///
     /// ## Multiple Monitors
@@ -877,12 +885,67 @@ where
     ///
     /// When in window mode, the `viewports` slice length is `1`. Only one operating system window
     /// is opened.
-    fn render(
-        &self,
-        gpu: &Gpu<P>,
-        #[cfg(not(feature = "multi-monitor"))] dims: Extent,
-        #[cfg(feature = "multi-monitor")] viewports: &[Area],
-    ) -> RenderReturn<P>;
+    #[cfg(not(feature = "multi-monitor"))]
+    fn render(&self, gpu: &Gpu<P>, dims: Extent) -> Render<P>;
+
+    /// When paired with an `Engine`, generates images presented to the physical display adapter
+    /// using a swapchain and fullscreen video mode or operating system window.
+    ///
+    /// # Examples
+    ///
+    /// Calling `render` on another `Screen`:
+    ///
+    /// ```rust
+    /// # use screen_13::prelude_rc::*;
+    /// # let gpu = Gpu::offscreen();
+    /// # let foo = Solid::new(GREEN);
+    /// // "foo" is a DynScreen, let's ask it to render some documents!
+    /// let foo_docs = foo.render(&gpu, &[Extent::new(1024, 128)]);
+    ///
+    /// // 🤮 Ugh! I didn't like them!
+    /// foo_docs.for_each(|doc| doc.clear().record());
+    ///
+    /// println!("{:?}", foo_docs);
+    /// ```
+    ///
+    /// Responding to `render` as a `Screen` implementation:
+    ///
+    /// ```rust
+    /// # use screen_13::prelude_rc::*;
+    /// # struct Foo;
+    /// # impl Screen<Rc> for Foo {
+    /// # fn update(self: Box<Self>, _: &Gpu, _: &Input) -> DynScreen { todo!(); }
+    /// fn render(&self, gpu: &Gpu, viewports: &[Area]) -> Vec<Option<Render<P>>> {
+    ///     viewports.iter().map(|viewport| {
+    ///         let frame = gpu.render(dims);
+    ///         
+    ///         // 🥇 It's some of my best work!
+    ///         frame.clear().with(GREEN).record();
+    ///
+    ///         Some(frame)
+    ///     }).collect()
+    /// }
+    /// # }
+    /// ```
+    ///
+    /// **_NOTE:_** It is considered undefined behavior to return a render which has not recorded
+    /// any commands, as shown:
+    ///
+    /// ```rust
+    /// # use screen_13::prelude_rc::*;
+    /// # struct Foo;
+    /// # impl Screen<Rc> for Foo {
+    /// # fn update(self: Box<Self>, _: &Gpu, _: &Input) -> DynScreen { }
+    /// fn render(&self, gpu: &Gpu, viewports: &[Area]) -> Vec<Option<Render<P>>> {
+    ///     // This is UB because the graphics hardware might have been using this render to store
+    ///     // an 8K atlas of 😸's, and it is not guaranteed to be initialized.
+    ///     // Hey, the more you know!
+    ///     viewports.iter().map(|viewport| gpu.render(viewport.dims)).collect()
+    /// }
+    /// # }
+    /// ```
+    #[cfg(feature = "multi-monitor")]
+    fn render(&self, gpu: &Gpu<P>, viewports: &[Area]) -> Vec<Option<Render<P>>>;
 
     /// Responds to user input and either provides a new `DynScreen` instance or `self` to indicate
     /// no-change.
@@ -890,32 +953,56 @@ where
     /// After `update`, `render` will be called on the returned screen, and the previous screen will
     /// be dropped.
     ///
-    /// ## Examples
+    /// # Examples
     ///
     /// Render this screen forever, never responding to user input or exiting:
     ///
-    /// ```
+    /// ```rust
+    /// # use screen_13::prelude_rc::*;
+    /// # struct Foo;
+    /// # impl Screen<RcK> for Foo {
+    /// # #[cfg(not(feature = "multi-monitor"))] fn render(&self, _: &Gpu, _: Extent) -> Render
+    /// # { todo!(); }
+    /// # #[cfg(feature = "multi-monitor")] fn render(&self, _: &Gpu, _: &[Area]) ->
+    /// # Vec<Option<Render>> { todo!(); }
     /// fn update(self: Box<Self>, gpu: &Gpu, input: &Input) -> DynScreen {
     ///     // 🙈 Yolo!
     ///     self
     /// }
+    /// # }
     /// ```
     ///
     /// A kind of three way junction. Goes to `BarScreen` when Home is pressed, otherwise
     /// presents the current screen, rendering for five seconds before quitting:
     ///
-    /// ```
+    /// ```rust
+    /// # use screen_13::prelude_rc::*;
+    /// # use std::process::exit;
+    /// # struct BarScreen;
+    /// # impl Screen<RcK> for BarScreen {
+    /// # #[cfg(not(feature = "multi-monitor"))] fn render(&self, _: &Gpu, _: Extent) -> Render
+    /// # { todo!(); }
+    /// # #[cfg(feature = "multi-monitor")] fn render(&self, _: &Gpu, _: &[Area]) ->
+    /// # Vec<Option<Render>> { todo!(); }
+    /// # fn update(self: Box<Self>, _: &Gpu, _: &Input) -> DynScreen { todo!() }
+    /// # }
+    /// # struct Foo { wall_time: f32, }
+    /// # impl Screen<RcK> for Foo {
+    /// # #[cfg(not(feature = "multi-monitor"))] fn render(&self, _: &Gpu, _: Extent) -> Render
+    /// # { todo!(); }
+    /// # #[cfg(feature = "multi-monitor")] fn render(&self, _: &Gpu, _: &[Area]) ->
+    /// # Vec<Option<Render>> { todo!(); }
     /// fn update(self: Box<Self>, gpu: &Gpu, input: &Input) -> DynScreen {
-    ///     let wall_time = ...
     ///     if input.keys.is_key_down(Key::Home) {
     ///         Box::new(BarScreen)
-    ///     } else if wall_time < 5.0 {
+    ///     } else if self.wall_time < 5.0 {
     ///         self
     ///     } else {
     ///         // 👋
     ///         exit(0);
     ///     }
     /// }
+    /// # }
     /// ```
     fn update(self: Box<Self>, gpu: &Gpu<P>, input: &Input) -> DynScreen<P>;
 }

@@ -14,3 +14,11 @@ mod solid;
 pub use self::fade::Fade;
 
 pub use self::solid::Solid;
+
+use crate::gpu::Render;
+
+#[cfg(not(feature = "multi-monitor"))]
+type RenderReturn<P> = Render<P>;
+
+#[cfg(feature = "multi-monitor")]
+type RenderReturn<P> = Vec<Option<Render<P>>>;

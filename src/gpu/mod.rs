@@ -601,15 +601,44 @@ where
 
     /// Loads a bitmap at runtime from the given data.
     ///
+    /// `width` is specified in whole pixels.
     ///
-    pub fn load_bitmap(
+    /// Pixel data must be specified as `R, [G, [B, [A]]]` bytes eaccording to `fmt`. The first
+    /// index is the top left and the data proceeds left-to-right and row-by-row, top-to-bottom.
+    ///
+    /// **_NOTE:_** Each row must have `width` number of pixels. To load padded data use
+    /// `[load_bitmap_with_stride]`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # fn __() {
+    /// # use screen_13::prelude_rc::*;
+    /// # let gpu = Gpu::offscreen();
+    /// # let height = 32;
+    /// let mut pixels = vec![];
+    /// for y in 0..height {
+    ///     for x in 0..32 {
+    ///         pixels.push(0x00); // 🔴
+    ///         pixels.push(0x80); // 🟢 These values make teal
+    ///         pixels.push(0x80); // 🔵
+    ///     }
+    /// }
+    ///
+    /// let bitmap = gpu.load_bitmap(BitmapFormat::Rgb, 32, pixels);
+    /// # }
+    /// ```
+    pub fn load_bitmap<I>(
         &self,
         #[cfg(feature = "debug-names")] name: &str,
         fmt: BitmapFormat,
         width: u16,
-        pixels: Vec<u8>,
-    ) -> Shared<Bitmap<P>, P> {
-        self.load_bitmap_with_row_stride(
+        pixels: I,
+    ) -> Shared<Bitmap<P>, P>
+    where
+        I: IntoIterator<Item = u8>,
+    {
+        self.load_bitmap_with_stride(
             #[cfg(feature = "debug-names")]
             name,
             fmt,
@@ -619,30 +648,54 @@ where
         )
     }
 
-    /// Loads a bitmap at runtime from the given data, with a configurable row stride.
+    /// Loads a bitmap at runtime from the given data, with a configurable row padding.
     ///
-    /// # Arguments
+    /// `width` is specified in whole pixels.
     ///
-    /// * `fmt` — Describes the channels (`R, [G, [B, [A]]]`) of this bitmap.
-    /// * `pixels` — Raw bitmap data row-by-row from, ordered from the top left to the bottom.
+    /// `stride` is specified in whole pixels and must be equal to or greater than `width`.
     ///
-    ///              **_NOTE:_** Each bitmap row must have the same number of pixels as the width of
-    ///              the bitmap. To load padded data use the `[load_bitmap_with_row_stride]`
-    ///              function.
-    /// * `width` — Count of bitmap pixels along the x axis.
-    /// * `row_stride` — Number of pixels along the x axis, accounting for any per-row padding
-    ///                  bytes which may be present in the source data.
-    pub fn load_bitmap_with_row_stride(
+    /// Pixel data must be specified as `R, [G, [B, [A]]]` bytes eaccording to `fmt`. The first
+    /// index is the top left and the data proceeds left-to-right and row-by-row, top-to-bottom.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # fn __() {
+    /// # use screen_13::prelude_rc::*;
+    /// # let gpu = Gpu::offscreen();
+    /// # let height = 32;
+    /// let mut pixels = vec![];
+    /// for y in 0..height {
+    ///     for x in 0..27 {
+    ///         pixels.push(0x00); // 🔴
+    ///         pixels.push(0x80); // 🟢 These values make teal
+    ///         pixels.push(0x80); // 🔵
+    ///     }
+    ///
+    ///     // Some libraries provide images that might be padded something like this:
+    ///     // (This adds enough padding to make our stride into 32)
+    ///     for x in 0..15 {
+    ///         pixels.push(Default::default());
+    ///     }
+    /// }
+    ///
+    /// let bitmap = gpu.load_bitmap_with_stride(BitmapFormat::Rgb, 27, pixels, 32);
+    /// # }
+    /// ```
+    pub fn load_bitmap_with_stride<I>(
         &self,
         #[cfg(feature = "debug-names")] name: &str,
         fmt: BitmapFormat,
         width: u16,
-        pixels: Vec<u8>,
+        pixels: I,
         row_stride: u16,
-    ) -> Shared<Bitmap<P>, P> {
+    ) -> Shared<Bitmap<P>, P>
+    where
+        I: IntoIterator<Item = u8>,
+    {
         debug_assert!(row_stride >= width);
 
-        let bitmap = BitmapBuf::new(fmt, width, pixels);
+        let bitmap = BitmapBuf::new(fmt, width, pixels.into_iter().collect());
         let mut pool = self.loads.borrow_mut();
 
         Shared::new(unsafe {
@@ -1068,7 +1121,7 @@ where
     ///
     /// _NOTE:_ This function uses an internal cache.
     ///
-    /// ## Examples:
+    /// # Examples:
     ///
     /// ```
     /// use screen_13::prelude_rc::*;
@@ -1098,23 +1151,23 @@ where
 
     /// Constructs a `Render` of the given dimensions, using the provided cache.
     ///
-    /// ## Examples:
+    /// # Examples:
     ///
     /// ```
-    /// use screen_13::prelude_rc::*;
-    ///
+    /// #use screen_13::prelude_rc::*;
     /// #[derive(Default)]
     /// struct Foo(Cache);
     ///
     /// impl Screen for Foo {
     ///     fn render(&self, gpu: &Gpu, dims: Extent) -> Render {
-    ///         let cache = &self.0;
-    ///         let frame = gpu.render(dims, cache);
-    ///
-    ///         ...
+    ///         let frame = gpu.render_with_cache(dims, &self.0);
+    ///     
+    ///         // TODO: call .draw() or .text() or .write() or something else
+    ///         frame
     ///     }
     ///
-    ///     ...
+    ///     // update not shown
+    /// # fn update(self: Box<Self>, _: &Gpu, _: &Input) -> DynScreen { todo!(); }
     /// }
     pub fn render_with_cache<D>(
         &self,

@@ -1,11 +1,12 @@
 use {
+    super::RenderReturn,
     crate::{
         gpu::{
             write::{Write, WriteMode},
             BlendMode, Gpu, Render,
         },
         math::{Coord, Extent, Rect},
-        DynScreen, Input, RenderReturn, Screen,
+        DynScreen, Input, Screen,
     },
     a_r_c_h_e_r_y::SharedPointerKind,
     std::{
@@ -21,7 +22,7 @@ use crate::math::Area;
 // TODO: Specialize with FadeIn, FadeOut, CrossFade versions
 /// Visually fades between two `Screen` implementations over time.
 ///
-/// ## Examples
+/// # Examples
 ///
 /// In order to fade from `Foo` to `Bar` you might:
 ///

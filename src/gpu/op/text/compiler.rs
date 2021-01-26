@@ -121,9 +121,9 @@ where
         self.idx += 1;
 
         // Some(match &self.compiler.code[idx] {
-            // Asm::BindTextureDescriptors(idx) => self.bind_texture_descriptors(*idx),
-            // Asm::WriteTexture(transform) => self.write_texture(*transform),
-            // _ => todo!(),
+        // Asm::BindTextureDescriptors(idx) => self.bind_texture_descriptors(*idx),
+        // Asm::WriteTexture(transform) => self.write_texture(*transform),
+        // _ => todo!(),
         // })
 
         todo!();

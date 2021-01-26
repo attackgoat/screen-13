@@ -394,31 +394,35 @@ pub struct MaterialDesc {
 /// Programs may specify their own implementations with a type definition. For a buffered file which
 /// handles content re-reads better on systems with enough memory:
 ///
-/// ```
+/// ```rust
+/// # use screen_13::prelude_rc::*;
+/// # use std::fs::File;
+/// # use std::io::BufReader;
 /// type PakFile = Pak<BufReader<File>>;
 /// ```
 ///
 /// Or for a basic implementation, one which would be compatible with the ECS sample code which
 /// contains bespoke data buffering:
 ///
-/// ```
+/// ```rust
+/// # use screen_13::prelude_rc::*;
+/// # use std::fs::File;
 /// type PakFile = Pak<File>;
 /// ```
 ///
 /// Most programs will want to use the provided `open(...)` function of `Pak<BufReader<File>>`,
 /// which provides a buffered file-based `.pak` asset reader.
 ///
-/// ## Examples
+/// # Examples
 ///
-/// ```
-/// use {screen_13::prelude_all::*, std::io::Error};
-///
-/// fn main() -> Result<(), Error> {
-///     // This buffers the file so we don't have to re-read the data from disk if the asset is
-///     // re-read.
-///     let pak = Pak::open("/home/john/Desktop/foo.pak")?;
-///     ...
-/// }
+/// ```rust
+/// # use screen_13::prelude_all::*;
+/// # use std::io::Error;
+/// # fn __() -> Result<(), Error> {
+/// // This buffers the file so we don't have to re-read the data from disk if the asset is re-read.
+/// let pak = Pak::open("foo.pak")?;
+/// # Ok(())
+/// # }
 /// ```
 pub struct Pak<R>
 where
