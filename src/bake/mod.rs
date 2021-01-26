@@ -1,5 +1,6 @@
+pub mod asset;
+
 mod anim;
-mod asset;
 mod bitmap;
 mod blob;
 mod font;
@@ -10,7 +11,7 @@ mod text;
 
 pub use self::{
     anim::bake_animation,
-    asset::{Asset, Content, Model},
+    asset::{Asset, Model},
     bitmap::{bake_bitmap, bake_bitmap_font},
     blob::bake_blob,
     font::bake_font,

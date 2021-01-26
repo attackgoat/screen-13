@@ -115,7 +115,7 @@
 // NOTE: If you are getting an error with the following line it is because both the `impl-gfx` and
 // `mock-gfx` features are enabled at the same time. Use "--no-default-features" to fix.
 #[cfg(feature = "mock-gfx")]
-extern crate gfx_mock as gfx_impl;
+extern crate gfx_backend_mock as gfx_impl;
 
 #[macro_use]
 extern crate log;
@@ -127,6 +127,9 @@ pub mod gpu;
 pub mod input;
 pub mod math;
 pub mod pak;
+
+#[cfg(feature = "bake")]
+pub mod bake;
 
 /// Things, particularly traits, which are used in almost every single _Screen 13_ program.
 pub mod prelude {
@@ -528,6 +531,7 @@ where
             dims,
             event_loop: Some(event_loop),
             gpu,
+            #[cfg(debug_assertions)]
             started: Instant::now(),
             swapchain,
             window,

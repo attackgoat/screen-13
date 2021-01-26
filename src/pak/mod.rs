@@ -213,7 +213,13 @@ pub use self::{
     scene::{Ref, RefIter, Scene},
 };
 
-pub(crate) use self::{bitmap::BitmapBuf, bitmap_font::BitmapFont, pak_buf::PakBuf};
+#[cfg(feature = "bake")]
+pub use self::pak_buf::PakBuf;
+
+pub(crate) use self::{bitmap::BitmapBuf, bitmap_font::BitmapFont};
+
+#[cfg(not(feature = "bake"))]
+pub(crate) use self::pak_buf::PakBuf;
 
 use {
     self::{
@@ -264,8 +270,21 @@ where
     buf
 }
 
+// TODO: Fix
+// HACK: See note on Compression
+#[cfg(not(feature = "bake"))]
 #[derive(Clone, Copy, Deserialize, Serialize)]
 pub(crate) struct BrotliCompression {
+    pub buf_size: usize,
+    pub quality: u32,
+    pub window_size: u32,
+}
+
+// TODO: Fix
+// HACK: See note on Compression
+#[cfg(feature = "bake")]
+#[derive(Clone, Copy, Deserialize, Serialize)]
+pub struct BrotliCompression {
     pub buf_size: usize,
     pub quality: u32,
     pub window_size: u32,
@@ -281,8 +300,18 @@ impl Default for BrotliCompression {
     }
 }
 
+// TODO: Make this cleaner, a macro? All this is a a different vis per feature!
+#[cfg(not(feature = "bake"))]
 #[derive(Clone, Copy, Deserialize, Serialize)]
 pub(crate) enum Compression {
+    Brotli(BrotliCompression),
+    Snap,
+}
+
+// TODO: SEE ABOVE!
+#[cfg(feature = "bake")]
+#[derive(Clone, Copy, Deserialize, Serialize)]
+pub enum Compression {
     Brotli(BrotliCompression),
     Snap,
 }
@@ -386,7 +415,7 @@ pub struct MaterialDesc {
 ///
 /// fn main() -> Result<(), Error> {
 ///     // This buffers the file so we don't have to re-read the data from disk if the asset is
-///     // re-read. TODO: work on an option for people who don't want buffered IO. 🚧
+///     // re-read.
 ///     let pak = Pak::open("/home/john/Desktop/foo.pak")?;
 ///     ...
 /// }
@@ -409,8 +438,18 @@ impl Pak<BufReader<File>> {
         let current_dir = current_exe()?.parent().unwrap().to_path_buf(); // TODO: Unwrap
         let pak_path = current_dir.join(&path);
         let pak_file = File::open(&pak_path)?;
-        let mut reader = BufReader::new(pak_file);
+        let reader = BufReader::new(pak_file);
 
+        Self::read(reader)
+    }
+}
+
+impl<R> Pak<R>
+where
+    R: Read + Seek,
+{
+    /// Decodes a `Pak`.
+    pub fn read(mut reader: R) -> Result<Self, Error> {
         #[cfg(debug_assertions)]
         let started = Instant::now();
 
@@ -446,12 +485,7 @@ impl Pak<BufReader<File>> {
             reader,
         })
     }
-}
 
-impl<R> Pak<R>
-where
-    R: Read + Seek,
-{
     /// Gets the pak-unique `AnimationId` corresponding to the given key, if one exsits.
     pub fn animation_id<K>(&self, key: K) -> Option<AnimationId>
     where
@@ -606,7 +640,7 @@ where
         self.buf.text(key)
     }
 
-    fn read<T>(&mut self, pos: u64, len: usize) -> T
+    fn read_deserialize<T>(&mut self, pos: u64, len: usize) -> T
     where
         T: DeserializeOwned,
     {
@@ -619,42 +653,42 @@ where
     /// Reads the corresponding animation for the given id.
     pub(crate) fn read_animation(&mut self, id: AnimationId) -> Animation {
         let (pos, len) = self.buf.animation(id);
-        self.read(pos, len)
+        self.read_deserialize(pos, len)
     }
 
     /// Reads the corresponding bitmap for the given id.
     pub(crate) fn read_bitmap(&mut self, id: BitmapId) -> BitmapBuf {
         let (pos, len) = self.buf.bitmap(id);
-        self.read(pos, len)
+        self.read_deserialize(pos, len)
     }
 
     /// Reads the corresponding bitmap font for the given id.
     pub(crate) fn read_bitmap_font(&mut self, id: BitmapFontId) -> BitmapFont {
         let (pos, len) = self.buf.bitmap_font(id);
-        self.read(pos, len)
+        self.read_deserialize(pos, len)
     }
 
     /// Reads the corresponding blob for the given id.
     pub fn read_blob(&mut self, id: BlobId) -> Vec<u8> {
         let (pos, len) = self.buf.blob(id);
-        self.read(pos, len)
+        self.read_deserialize(pos, len)
     }
 
     /// Reads the corresponding font for the given id.
     pub fn read_font(&mut self, id: FontId) -> Font {
         let (pos, len) = self.buf.font(id);
-        self.read(pos, len)
+        self.read_deserialize(pos, len)
     }
 
     /// Reads the corresponding model for the given id.
     pub(crate) fn read_model(&mut self, id: ModelId) -> Model {
         let (pos, len) = self.buf.model(id);
-        self.read(pos, len)
+        self.read_deserialize(pos, len)
     }
 
     /// Reads the corresponding scene for the given id.
     pub fn read_scene(&mut self, id: SceneId) -> Scene {
         let (pos, len) = self.buf.scene(id);
-        self.read(pos, len)
+        self.read_deserialize(pos, len)
     }
 }

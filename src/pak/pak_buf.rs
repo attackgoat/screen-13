@@ -184,7 +184,27 @@ impl PakBuf {
         )
     }
 
+    #[cfg(not(feature = "bake"))]
+    #[inline]
     pub(crate) fn write<W: Seek + Write>(
+        self,
+        writer: W,
+        compression: Option<Compression>,
+    ) -> Result<(), Error> {
+        self.write_impl(writer, compression)
+    }
+
+    #[cfg(feature = "bake")]
+    #[inline]
+    pub fn write<W: Seek + Write>(
+        self,
+        writer: W,
+        compression: Option<Compression>,
+    ) -> Result<(), Error> {
+        self.write_impl(writer, compression)
+    }
+
+    pub(crate) fn write_impl<W: Seek + Write>(
         mut self,
         mut writer: W,
         compression: Option<Compression>,

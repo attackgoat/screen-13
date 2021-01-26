@@ -1,10 +1,10 @@
-# Benchmarking _Screen 13_
-
-Run the following command, as it avoids the use of any physical GPU and instead uses a
-"[mock](./gfx-mock/)" hardware implementation.
+# Benchmarking Screen 13
 
 In the root _Screen 13_ project directory:
 
 ```bash
-cargo bench --features "mock-gfx" --no-default-features
+cargo bench
 ```
+
+**_NOTE:_** Benchmarking uses a [mock GPU](./gfx-backend-mock/) in order to avoid the use of any
+physical hardware.

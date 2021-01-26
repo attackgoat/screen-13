@@ -1,4 +1,4 @@
-# User Contributions to _Screen 13_
+# User Contributions to Screen 13
 
 These subdirectories contain additions, changes, and other things you might find useful while
 using _Screen 13_. These user-provided contributions are not guaranteed to work and are untested.
