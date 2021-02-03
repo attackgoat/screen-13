@@ -109,19 +109,22 @@ pub mod draw {
                 light,
                 output,
                 depth,
-            ],
+            ]
+            .drain(..),
             vec![
                 // subpasses
                 FILL_GEOM_BUF_DESC,
                 ACCUM_LIGHT_DESC,
                 TONEMAP_DESC,
-            ],
+            ]
+            .drain(..),
             vec![
                 // dependencies
                 begin,
                 between_fill_and_light,
                 end,
-            ],
+            ]
+            .drain(..),
         )
     }
 
@@ -183,20 +186,23 @@ pub mod draw {
                 light,
                 output,
                 depth,
-            ],
+            ]
+            .drain(..),
             vec![
                 // subpassess
                 FILL_GEOM_BUF_DESC,
                 skydome_subpass_desc,
                 ACCUM_LIGHT_DESC,
                 TONEMAP_DESC,
-            ],
+            ]
+            .drain(..),
             vec![
                 // dependencies
                 begin,
                 between_fill_and_light,
                 end,
-            ],
+            ]
+            .drain(..),
         )
     }
 

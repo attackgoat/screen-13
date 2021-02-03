@@ -7,7 +7,7 @@ use {
 pub struct Instance;
 
 impl gfx_hal::Instance<Backend> for Instance {
-    fn create(name: &str, version: u32) -> Result<Self, UnsupportedBackend> {
+    fn create(_name: &str, _version: u32) -> Result<Self, UnsupportedBackend> {
         Ok(Instance)
     }
 

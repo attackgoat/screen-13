@@ -132,17 +132,15 @@ where
     /// ## Examples
     ///
     /// ```
-    /// let material: Material = ...
-    /// let foo: ModelRef = ...
-    /// let bar = foo.filter("bar");
+    /// /// Draws any meshes named "Bar" within Foo
+    /// fn draw_foo_bar(frame: &mut Render, foo: &Shared<Model>, mat: &Material) {
+    ///     let camera = Perspective::default();
+    ///     let bar = foo.filter("bar");
     ///
-    /// let frame: Render = ...
-    /// frame.draw().record(&camera, [
-    ///     // 🔍 Note the foo-bar tuple here which says "Draw the bar part of foo"
-    ///     Draw::model((foo, bar), material, Mat4::identity()),
-    /// ]);
-    ///
-    /// ...
+    ///     frame.draw().record(&camera,
+    ///         once(Draw::model((foo, bar), material, Mat4::identity()),
+    ///     ]);
+    /// }
     /// ```
     pub fn filter<N: AsRef<str>>(&self, name: Option<N>) -> Option<MeshFilter> {
         let name_str = deref_str(&name);

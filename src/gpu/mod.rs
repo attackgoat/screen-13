@@ -1123,20 +1123,12 @@ where
     ///
     /// # Examples:
     ///
+    /// ```rust
+    /// # use screen_13::prelude_rc::*;
+    /// # let gpu = Gpu::offscreen();
+    /// let dims = (128u32, 128u32);
+    /// let mut frame = gpu.render(dims);
     /// ```
-    /// use screen_13::prelude_rc::*;
-    ///
-    /// struct Foo;
-    ///
-    /// impl Screen for Foo {
-    ///     fn render(&self, gpu: &Gpu, dims: Extent) -> Render {
-    ///         let frame = gpu.render(dims);
-    ///
-    ///         ...
-    ///     }
-    ///
-    ///     ...
-    /// }
     pub fn render<D>(&self, #[cfg(feature = "debug-names")] name: &str, dims: D) -> Render<P>
     where
         D: Into<Extent>,
@@ -1153,22 +1145,13 @@ where
     ///
     /// # Examples:
     ///
+    /// ```rust
+    /// # use screen_13::prelude_rc::*;
+    /// # let gpu = Gpu::offscreen();
+    /// let dims = (128u32, 128u32);
+    /// let cache = Default::default();
+    /// let mut frame = gpu.render_with_cache(dims, &cache);
     /// ```
-    /// #use screen_13::prelude_rc::*;
-    /// #[derive(Default)]
-    /// struct Foo(Cache);
-    ///
-    /// impl Screen for Foo {
-    ///     fn render(&self, gpu: &Gpu, dims: Extent) -> Render {
-    ///         let frame = gpu.render_with_cache(dims, &self.0);
-    ///     
-    ///         // TODO: call .draw() or .text() or .write() or something else
-    ///         frame
-    ///     }
-    ///
-    ///     // update not shown
-    /// # fn update(self: Box<Self>, _: &Gpu, _: &Input) -> DynScreen { todo!(); }
-    /// }
     pub fn render_with_cache<D>(
         &self,
         #[cfg(feature = "debug-names")] name: &str,

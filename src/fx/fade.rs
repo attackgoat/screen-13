@@ -9,10 +9,10 @@ use {
         DynScreen, Input, Screen,
     },
     a_r_c_h_e_r_y::SharedPointerKind,
+    f8::f8,
     std::{
         iter::once,
         time::{Duration, Instant},
-        u8,
     },
 };
 
@@ -27,35 +27,26 @@ use crate::math::Area;
 /// In order to fade from `Foo` to `Bar` you might:
 ///
 /// ```
-/// use {screen_13::prelude_rc::*, std::time::Duration};
+/// # use screen_13::prelude_rc::*;
+/// # use std::time::Duration;
+/// # struct FooScreen;
+/// # impl Screen<RcK> for Foo {
+/// # fn update(self: Box<Self>, _: &Gpu, _: &Input) -> DynScreen { todo!(); }
+/// # fn render(&self, _: &Gpu, _: Extent) -> Render { todo!(); }
+/// # }
+/// # type Bar = Foo;
+/// # fn __() {
+/// // The DynScreen types do not need specification and are shown for clarity only.
+/// let a: DynScreen = Box::new(Foo);
+/// let b: DynScreen = Box::new(Bar);
+/// let t = Duration::from_secs(1.0);
 ///
-/// fn main() {
-///     Engine::default().run(Box::new(Foo))
-/// }
-///
-/// struct Foo;
-///
-/// impl Screen for Foo {
-///     ...
-///
-///     fn update(self: Box<Self>, gpu: &Gpu, input: &Input) -> DynScreen {
-///         let b = Box::new(bar);
-///         let t = Duration::from_secs(1.0);
-///
-///         // The Fade type will call render on (Foo) and bar for u, how handy! 🤖
-///         Fade::new(self, b, t)
-///     }
-/// }
-///
-/// struct Bar;
-///
-/// impl Screen for Bar {
-///     ...
-/// }
-///
+/// // The Fade type will call render on (Foo) and bar for u, how handy! 🤖
+/// let c: DynScreen = Fade::new(a, b, t);
+/// # }
 /// ```
 ///
-/// _Note:_ Screens are only drawn, and not updated, during fade.
+/// **_Note:_** Screens are drawn, but not updated, during fade.
 pub struct Fade<P>
 where
     P: SharedPointerKind,
@@ -92,7 +83,7 @@ impl<P> Fade<P>
 where
     P: SharedPointerKind,
 {
-    fn frame(&self, mut a: Render<P>, b: Render<P>, ab: u8) -> Render<P> {
+    fn frame(&self, mut a: Render<P>, b: Render<P>, ab: f8) -> Render<P> {
         let dims = b.dims();
 
         a.write(
@@ -127,8 +118,7 @@ where
             elapsed if elapsed < self.duration => elapsed,
             _ => self.duration,
         };
-        let ab = ((elapsed.as_millis() as f32 / self.duration.as_millis() as f32).min(1.0)
-            * u8::MAX as f32) as u8;
+        let ab = (elapsed.as_millis() as f32 / self.duration.as_millis() as f32).min(1.0);
 
         // // #[cfg(debug_assertions)]
         // // debug!("Fade AB: {}", ab);
@@ -138,7 +128,7 @@ where
             let a = self.a.as_ref().unwrap().render(gpu, dims);
             let b = self.b.as_ref().unwrap().render(gpu, dims);
 
-            self.frame(a, b, ab)
+            self.frame(a, b, ab.into())
         }
 
         #[cfg(feature = "multi-monitor")]

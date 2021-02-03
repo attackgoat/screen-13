@@ -77,11 +77,15 @@ where
     }
 
     /// Draws a model using the given material and world transform.
-    pub fn model<M: Into<Mesh<P>>>(mesh: M, material: Material<P>, transform: Mat4) -> Self {
+    pub fn model<M, Mat>(mesh: M, material: Mat, transform: Mat4) -> Self
+    where
+        M: Into<Mesh<P>>,
+        Mat: Into<Material<P>>,
+    {
         let mesh = mesh.into();
         Self::Model(ModelCommand {
             camera_order: f32::NAN,
-            material,
+            material: material.into(),
             mesh_filter: mesh.filter,
             model: mesh.model,
             pose: mesh.pose,
@@ -103,14 +107,13 @@ where
     ///
     /// # Arguments
     ///
-    /// * `color` - Color of the projected light.
-    /// * `lumens` - Scalar light "power" value, modelled after lumens but not realistically.
-    /// * `position` - Position of the light source.
-    /// * `normal` - Direction of the light rays.
-    /// * `range` - Lit distance from `position` and to the bottom of the spotlight.
-    /// * `angle` - Outer angle of the lit portion of the spotlight, in degrees.
-    ///
-    ///             Must be greater than zero and less than 180.
+    /// * color - Color of the projected light.
+    /// * lumens - Scalar light "power" value, modelled after lumens but not realistically.
+    /// * position - Position of the light source.
+    /// * normal - Direction of the light rays.
+    /// * range - Lit distance from `position` and to the bottom of the spotlight.
+    /// * angle - Outer angle of the lit portion of the spotlight, in degrees. Must be greater than
+    ///   zero and less than 180.
     pub fn spotlight(
         color: Color,
         lumens: f32,
@@ -411,6 +414,15 @@ where
 }
 
 impl<P> Eq for Material<P> where P: SharedPointerKind {}
+
+impl<P> From<&Material<P>> for Material<P>
+where
+    P: SharedPointerKind,
+{
+    fn from(mat: &Material<P>) -> Self {
+        mat.clone()
+    }
+}
 
 impl<P> Hash for Material<P>
 where

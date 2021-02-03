@@ -23,6 +23,7 @@ use {
         ptr::Shared,
     },
     a_r_c_h_e_r_y::SharedPointerKind,
+    f8::f8,
     gfx_hal::{
         command::{
             CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, RenderAttachmentInfo,
@@ -56,7 +57,7 @@ use crate::gpu::{def::push_const::WriteFragmentPushConsts, BlendMode};
 pub enum Mode {
     /// Blends source (a) with destination (b) using the given mode.
     #[cfg(feature = "blend-modes")]
-    Blend((u8, BlendMode)),
+    Blend((f8, BlendMode)),
 
     /// Writes source directly onto destination, with no blending.
     Texture,
@@ -76,31 +77,34 @@ pub enum Mode {
 /// Writing a nine-sliced UI graphic:
 ///
 /// ```
-/// use screen_13::prelude_all::*;
+/// # use screen_13::prelude_rc::*;
 ///
 /// ...
+/// # fn get_nine_slices(_: &str) -> [Shared<Bitmap>; 9] { todo!(); }
+/// fn __() {
+/// # let gpu = Gpu::Offscreen();
+/// # let mut render = gpu.render((32u32, 32u32));
+/// // We've already sliced up a UI button image (🔪 top left, 🔪 top, 🔪 top right, ...)
+/// let self_destruct: [Shared<Bitmap>; 9] = get_nine_slices("dangerous-button");
+/// let color_burn = WriteMode::Blend(0.42, BlendMode::ColorBurn);
+/// let writes = [
+///     // top left
+///     Write::tile_position(&self_destruct[0], Area::new(0, 0, 32, 32), Coord::new(0, 0)),
 ///
-/// fn render_ui() {
-///     // We've already sliced up a UI box image (🔪 top left, 🔪 top, 🔪 top right, ...)
-///     let slices: [BitmapRef; 9] = ...
-///     let render: &Render = ...
+///     // top
+///     Write::tile_position(&self_destruct[1], Area::new(32, 0, 384, 32), Coord::new(32, 0)),
 ///
-///     render.write().
-///         .with_mode(WriteMode::Blend(0x7f, BlendMode::ColorDodge))
-///         .with_preserve()
-///         .record(&mut [
-///             // top left
-///             Write::tile_position(&slices[0], Area::new(0, 0, 32, 32), Coord::new(0, 0)),
+///     // top right
+///     Write::tile_position(&self_destruct[2], Area::new(426, 0, 32, 32), Coord::new(426, 0)),
 ///
-///             // top
-///             Write::tile_position(&slices[1], Area::new(32, 0, 384, 32), Coord::new(32, 0)),
+///     // six additional slices not shown
+///     // ...
+/// ];
 ///
-///             // top right
-///             Write::tile_position(&slices[2], Area::new(426, 0, 32, 32), Coord::new(426, 0)),
-///
-///             ...
-///         ]);
-/// }
+/// render.write()
+///       .with_mode(color_burn)
+///       .record(&writes);
+/// # }
 /// ```
 pub struct WriteOp<P>
 where
@@ -404,7 +408,7 @@ where
         #[cfg(feature = "blend-modes")]
         if let Mode::Blend((ab, _)) = self.mode {
             const RECIP: f32 = 1.0 / u8::MAX as f32;
-            let ab = ab as f32 * RECIP;
+            let ab = ab.float() * RECIP;
             let ab_inv = 1.0 - ab;
             self.cmd_buf.push_graphics_constants(
                 graphics.layout(),

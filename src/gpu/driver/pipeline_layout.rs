@@ -14,10 +14,8 @@ impl PipelineLayout {
         push_consts: Ic,
     ) -> Self
     where
-        Is: IntoIterator<Item = &'a <_Backend as Backend>::DescriptorSetLayout>,
-        Is::IntoIter: ExactSizeIterator,
-        Ic: IntoIterator<Item = (ShaderStageFlags, Range<u32>)>,
-        Ic::IntoIter: ExactSizeIterator,
+        Is: Iterator<Item = &'a <_Backend as Backend>::DescriptorSetLayout>,
+        Ic: Iterator<Item = (ShaderStageFlags, Range<u32>)>,
     {
         let ctor = || {
             device()

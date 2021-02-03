@@ -4,7 +4,8 @@
 [![Docs.rs](https://docs.rs/screen-13/badge.svg)](https://docs.rs/screen-13)
 [![LoC](https://tokei.rs/b1/github/attackgoat/screen-13?category=code)](https://github.com/attackgoat/screen-13)
 
-_Screen 13_ is an easy-to-use 2D/3D rendering engine in the spirit of _QBasic_.
+_Screen 13_ is an easy-to-use 2D/3D rendering engine in the spirit of
+_[QBasic](https://en.wikipedia.org/wiki/QBasic)_.
 
 ## Overview
 

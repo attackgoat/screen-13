@@ -9,7 +9,7 @@ use {
         Backend,
     },
     gfx_impl::Backend as _Backend,
-    std::iter::once,
+    std::iter::{empty, once},
 };
 
 pub unsafe fn bind_compute_descriptor_set(
@@ -17,7 +17,7 @@ pub unsafe fn bind_compute_descriptor_set(
     layout: &<_Backend as Backend>::PipelineLayout,
     desc_set: &<_Backend as Backend>::DescriptorSet,
 ) {
-    cmd_buf.bind_compute_descriptor_sets(layout, 0, once(desc_set), None);
+    cmd_buf.bind_compute_descriptor_sets(layout, 0, once(desc_set), empty());
 }
 
 pub unsafe fn bind_graphics_descriptor_set(
@@ -25,7 +25,7 @@ pub unsafe fn bind_graphics_descriptor_set(
     layout: &<_Backend as Backend>::PipelineLayout,
     desc_set: &<_Backend as Backend>::DescriptorSet,
 ) {
-    cmd_buf.bind_graphics_descriptor_sets(layout, 0, once(desc_set), None);
+    cmd_buf.bind_graphics_descriptor_sets(layout, 0, once(desc_set), empty());
 }
 
 pub const fn buffer_copy(len: u64) -> BufferCopy {

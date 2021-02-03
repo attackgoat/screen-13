@@ -317,7 +317,8 @@ where
                                         | ImageUsage::SAMPLED,
                                     view_caps: ViewCapabilities::MUTABLE_FORMAT,
                                 },
-                            ],
+                            ]
+                            .drain(..),
                             self.dst.dims(),
                         ),
                         render_pass_mode,
@@ -618,7 +619,8 @@ where
                     clear_value: depth_clear,
                     image_view: self.geom_buf.depth().as_2d_depth().as_ref(),
                 },
-            ],
+            ]
+            .drain(..),
             SubpassContents::Inline,
         );
     }
@@ -681,7 +683,7 @@ where
         );
         self.cmd_buf.bind_vertex_buffers(
             0,
-            Some((
+            once((
                 instr.buf.as_ref(),
                 SubRange {
                     offset: 0,

@@ -40,6 +40,7 @@
 //!
 //! ```rust
 //! # use screen_13::prelude_rc::*;
+//! # fn __() {
 //! /// Creates a 128x128 pixel jpeg file as `output.jpg`.
 //! fn main() {
 //!     let gpu = Gpu::offscreen();
@@ -47,12 +48,14 @@
 //!     image.clear().record();
 //!     image.encode().record("output.jpg");
 //! }
+//! # }
 //! ```
 //!
 //! Or, for a windowed program:
 //!
 //! ```rust
 //! # use screen_13::prelude_rc::*;
+//! # fn __() {
 //! /// Paints a magenta window at 60 glorious frames per second.
 //! fn main() {
 //!     let engine = Engine::default();
@@ -73,6 +76,7 @@
 //!         self
 //!     }
 //! }
+//! # }
 //! ```
 //!
 //! ## Screen 13 Concepts
@@ -471,12 +475,13 @@ where
     /// # Examples
     ///
     /// ```rust
-    /// #use screen_13::prelude_all::*;
-    ///
+    /// # use screen_13::prelude_all::*;
+    /// # fn __() {
     /// let ultra_mega = Program::new("UltraMega III", "Nintari, Inc.")
     ///                   .with_title("UltraMega III: Breath of Fire")
     ///                   .with_window();
     /// let engine = Engine::new(ultra_mega);
+    /// # }
     /// ```
     pub fn new<'a, 'b, R: AsRef<Program<'a, 'b>>>(program: R) -> Self {
         let program = program.as_ref();
@@ -660,7 +665,7 @@ where
     ///
     /// ```rust
     /// # use screen_13::prelude_rc::*;
-    ///
+    /// # fn __() {
     /// fn main() {
     ///     let engine = Engine::default();
     ///     engine.run(Box::new(FooScreen)) // <- Note the return value which is the no-return bang
@@ -676,6 +681,7 @@ where
     /// # #[cfg(feature = "multi-monitor")] viewports: &[Area],) -> Vec<Option<Render>> { todo!(); }
     /// # fn update(self: Box<Self>, _: &Gpu, _: &Input) -> DynScreen { todo!(); }
     /// }
+    /// # }
     /// ```
     pub fn run(mut self, screen: DynScreen<P>) -> ! {
         #[cfg(debug_assertions)]
@@ -821,6 +827,7 @@ where
     ///
     /// ```rust
     /// # use screen_13::prelude_rc::*;
+    /// # fn __() {
     /// # let gpu = Gpu::offscreen();
     /// # let foo = Solid::new(GREEN);
     /// // "foo" is a DynScreen, let's ask it to render a document!
@@ -830,6 +837,7 @@ where
     /// foo_doc.clear().record();
     ///
     /// println!("{:?}", foo_doc);
+    /// # }
     /// ```
     ///
     /// Responding to `render` as a `Screen` implementation:
@@ -897,6 +905,7 @@ where
     ///
     /// ```rust
     /// # use screen_13::prelude_rc::*;
+    /// # fn __() {
     /// # let gpu = Gpu::offscreen();
     /// # let foo = Solid::new(GREEN);
     /// // "foo" is a DynScreen, let's ask it to render some documents!
@@ -906,6 +915,7 @@ where
     /// foo_docs.for_each(|doc| doc.clear().record());
     ///
     /// println!("{:?}", foo_docs);
+    /// # }
     /// ```
     ///
     /// Responding to `render` as a `Screen` implementation:

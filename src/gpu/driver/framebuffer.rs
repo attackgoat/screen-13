@@ -42,7 +42,7 @@ impl Framebuffer<U2> {
         dims: Extent,
     ) -> Self
     where
-        I: IntoIterator<Item = FramebufferAttachment>,
+        I: Iterator<Item = FramebufferAttachment>,
     {
         let ctor = || {
             device()

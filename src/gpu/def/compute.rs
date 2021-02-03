@@ -36,8 +36,7 @@ impl Compute {
         samplers: Is,
     ) -> Self
     where
-        Id: IntoIterator<Item = DescriptorRangeDesc>,
-        Id::IntoIter: ExactSizeIterator,
+        Id: Iterator<Item = DescriptorRangeDesc>,
         Is: Iterator<Item = Sampler>,
     {
         let shader = ShaderModule::new(spirv);
@@ -85,7 +84,8 @@ impl Compute {
             vec![
                 descriptor_range_desc(read_only_buf_count * max_desc_sets, READ_ONLY_BUF),
                 descriptor_range_desc(max_desc_sets, READ_WRITE_BUF),
-            ],
+            ]
+            .drain(..),
             empty(),
         )
     }
@@ -178,7 +178,8 @@ impl Compute {
             vec![
                 descriptor_range_desc(max_desc_sets, READ_ONLY_BUF),
                 descriptor_range_desc(max_desc_sets, READ_WRITE_IMG),
-            ],
+            ]
+            .drain(..),
             empty(),
         )
     }

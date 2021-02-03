@@ -1,7 +1,7 @@
 use {
     super::{
         bitmap_font::{BitmapFont, Vertex as BitmapFontVertex},
-        command::{BitmapCommand, Command, ScalableCommand},
+        command::{Command, ScalableCommand},
         instruction::Instruction,
         key::{Position, Transform},
         scalable_font::ScalableFont,
@@ -10,11 +10,11 @@ use {
     crate::{
         gpu::{
             data::Mapping,
-            op::{Allocation, DirtyData, DirtyLruData, Lru, Stride},
+            op::{DirtyLruData, Lru, Stride},
             pool::Pool,
             Texture2d,
         },
-        math::{CoordF, Extent, Mat4},
+        math::Extent,
         ptr::Shared,
     },
     a_r_c_h_e_r_y::SharedPointerKind,

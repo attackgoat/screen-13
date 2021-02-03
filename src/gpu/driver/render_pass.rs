@@ -21,10 +21,8 @@ impl RenderPass {
         subpasses: Is,
     ) -> Self
     where
-        Ia: IntoIterator<Item = Attachment>,
-        Ia::IntoIter: ExactSizeIterator,
-        Is: IntoIterator<Item = SubpassDesc<'s>>,
-        Is::IntoIter: ExactSizeIterator,
+        Ia: Iterator<Item = Attachment>,
+        Is: Iterator<Item = SubpassDesc<'s>>,
     {
         Self::new_dependencies(
             #[cfg(feature = "debug-names")]
@@ -42,12 +40,9 @@ impl RenderPass {
         dependencies: Id,
     ) -> Self
     where
-        Ia: IntoIterator<Item = Attachment>,
-        Ia::IntoIter: ExactSizeIterator,
-        Is: IntoIterator<Item = SubpassDesc<'s>>,
-        Is::IntoIter: ExactSizeIterator,
-        Id: IntoIterator<Item = SubpassDependency>,
-        Id::IntoIter: ExactSizeIterator,
+        Ia: Iterator<Item = Attachment>,
+        Is: Iterator<Item = SubpassDesc<'s>>,
+        Id: Iterator<Item = SubpassDependency>,
     {
         let ctor = || {
             device()

@@ -20,10 +20,8 @@ impl Layouts {
         bindings: Ib,
         push_consts: Ip,
     ) where
-        Ib: IntoIterator<Item = DescriptorSetLayoutBinding>,
-        Ib::IntoIter: ExactSizeIterator,
-        Ip: IntoIterator<Item = (ShaderStageFlags, Range<u32>)>,
-        Ip::IntoIter: ExactSizeIterator,
+        Ib: Iterator<Item = DescriptorSetLayoutBinding>,
+        Ip: Iterator<Item = (ShaderStageFlags, Range<u32>)>,
     {
         if layouts.is_none() {
             let desc_set_layout = DescriptorSetLayout::new(
@@ -49,8 +47,8 @@ impl Layouts {
             #[cfg(feature = "debug-names")]
             name,
             &mut self.compute_calc_vertex_attrs,
-            desc_set_layout::CALC_VERTEX_ATTRS.to_vec(),
-            push_const::CALC_VERTEX_ATTRS.to_vec(),
+            desc_set_layout::CALC_VERTEX_ATTRS.to_vec().drain(..),
+            push_const::CALC_VERTEX_ATTRS.to_vec().drain(..),
         );
 
         self.compute_calc_vertex_attrs.as_ref().unwrap()
@@ -64,8 +62,8 @@ impl Layouts {
             #[cfg(feature = "debug-names")]
             name,
             &mut self.compute_decode_rgb_rgba,
-            desc_set_layout::DECODE_RGB_RGBA.to_vec(),
-            push_const::DECODE_RGB_RGBA.to_vec(),
+            desc_set_layout::DECODE_RGB_RGBA.to_vec().drain(..),
+            push_const::DECODE_RGB_RGBA.to_vec().drain(..),
         );
 
         self.compute_decode_rgb_rgba.as_ref().unwrap()

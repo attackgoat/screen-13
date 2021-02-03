@@ -11,7 +11,7 @@ impl DescriptorPool<Backend> for DescriptorPoolMock {
         Ok(())
     }
 
-    unsafe fn free<I>(&mut self, descriptor_sets: I)
+    unsafe fn free<I>(&mut self, _descriptor_sets: I)
     where
         I: IntoIterator<Item = ()>,
     {

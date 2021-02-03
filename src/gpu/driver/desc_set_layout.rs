@@ -2,7 +2,10 @@ use {
     crate::gpu::device,
     gfx_hal::{device::Device as _, pso::DescriptorSetLayoutBinding, Backend},
     gfx_impl::Backend as _Backend,
-    std::ops::{Deref, DerefMut},
+    std::{
+        iter::empty,
+        ops::{Deref, DerefMut},
+    },
 };
 
 pub struct DescriptorSetLayout(Option<<_Backend as Backend>::DescriptorSetLayout>);
@@ -10,15 +13,14 @@ pub struct DescriptorSetLayout(Option<<_Backend as Backend>::DescriptorSetLayout
 impl DescriptorSetLayout {
     pub unsafe fn new<I>(#[cfg(feature = "debug-names")] name: &str, bindings: I) -> Self
     where
-        I: IntoIterator<Item = DescriptorSetLayoutBinding>,
-        I::IntoIter: ExactSizeIterator,
+        I: Iterator<Item = DescriptorSetLayoutBinding>,
     {
         // TODO: This driver code does not support the imutable samplers feature.
         // See: `pImmutableSamplers` at
         // https://vulkan.lunarg.com/doc/view/1.2.131.2/windows/vkspec.html#descriptorsets-sets
         let ctor = || {
             device()
-                .create_descriptor_set_layout(bindings, &[])
+                .create_descriptor_set_layout(bindings, empty())
                 .unwrap()
         };
 

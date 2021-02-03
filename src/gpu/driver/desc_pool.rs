@@ -17,8 +17,7 @@ pub struct DescriptorPool {
 impl DescriptorPool {
     pub unsafe fn new<I>(max_desc_sets: usize, desc_ranges: I) -> Self
     where
-        I: IntoIterator<Item = DescriptorRangeDesc>,
-        I::IntoIter: ExactSizeIterator,
+        I: Iterator<Item = DescriptorRangeDesc>,
     {
         Self::new_flags(
             max_desc_sets,
@@ -33,8 +32,7 @@ impl DescriptorPool {
         flags: DescriptorPoolCreateFlags,
     ) -> Self
     where
-        I: IntoIterator<Item = DescriptorRangeDesc>,
-        I::IntoIter: ExactSizeIterator,
+        I: Iterator<Item = DescriptorRangeDesc>,
     {
         let ptr = device()
             .create_descriptor_pool(max_desc_sets, desc_ranges, flags)

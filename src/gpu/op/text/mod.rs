@@ -13,27 +13,19 @@ use {
     self::instruction::Instruction,
     super::Op,
     crate::{
-        color::{AlphaColor, TRANSPARENT_BLACK},
         gpu::{
-            def::{
-                push_const::{FontPushConsts, Mat4PushConst, Vec4PushConst},
-                ColorRenderPassMode, FontMode, Graphics, GraphicsMode, RenderPassMode,
-            },
+            def::{ColorRenderPassMode, FontMode, Graphics, GraphicsMode, RenderPassMode},
             device,
             driver::{bind_graphics_descriptor_set, CommandPool, Fence, Framebuffer2d},
             pool::{Lease, Pool},
-            queue_mut, Data, Texture, Texture2d,
+            queue_mut, Texture2d,
         },
-        math::{Extent, Mat4},
+        math::Extent,
         ptr::Shared,
     },
     a_r_c_h_e_r_y::SharedPointerKind,
     gfx_hal::{
-        buffer::{Access as BufferAccess, SubRange},
-        command::{
-            CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, RenderAttachmentInfo,
-            SubpassContents,
-        },
+        command::{CommandBuffer as _, ImageCopy, Level},
         device::Device as _,
         format::Aspects,
         image::{
@@ -41,7 +33,7 @@ use {
             Usage as ImageUsage, ViewCapabilities,
         },
         pool::CommandPool as _,
-        pso::{Descriptor, DescriptorSetWrite, PipelineStage, Rect, ShaderStageFlags, Viewport},
+        pso::{Descriptor, DescriptorSetWrite, PipelineStage},
         queue::CommandQueue,
         Backend,
     },
@@ -51,7 +43,6 @@ use {
         borrow::Borrow,
         iter::{empty, once},
         ops::{Deref, Range},
-        u64,
     },
 };
 
@@ -629,7 +620,7 @@ where
                 set,
                 binding: 0,
                 array_offset: 0,
-                descriptors: Some(Descriptor::CombinedImageSampler(
+                descriptors: once(Descriptor::CombinedImageSampler(
                     tex.as_2d_color().as_ref(),
                     Layout::General,
                     samplers[0].as_ref(),
