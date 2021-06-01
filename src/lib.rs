@@ -374,7 +374,7 @@ use {
         math::Extent,
     },
     a_r_c_h_e_r_y::SharedPointerKind,
-    app_dirs::{get_app_root, AppDataType, AppDirsError, AppInfo},
+    directories::ProjectDirs,
     std::{
         cmp::Ordering,
         collections::VecDeque,
@@ -431,17 +431,12 @@ fn program_root(program: &Program) -> Result<PathBuf, Error> {
 
 /// Gets the filesystem root for a given program name and author.
 ///
-/// The returned path is a good place
-/// to store program configuration and data on a per-user basis.
+/// The returned path is a good place to store program configuration and data on a per-user basis.
 pub fn root(name: &'static str, author: &'static str) -> Result<PathBuf, Error> {
     // Converts the app_dirs crate AppDirsError to a regular IO Error
-    match get_app_root(AppDataType::UserConfig, &AppInfo { name, author }) {
-        Err(err) => Err(match err {
-            AppDirsError::Io(err) => err,
-            AppDirsError::InvalidAppInfo => Error::from(ErrorKind::InvalidInput),
-            AppDirsError::NotSupported => Error::from(ErrorKind::InvalidData),
-        }),
-        Ok(res) => Ok(res),
+    match ProjectDirs::from("", author, name) {
+        None => Err(Error::from(ErrorKind::InvalidInput)),
+        Some(dirs) => Ok(dirs.config_dir().to_owned()),
     }
 }
 
