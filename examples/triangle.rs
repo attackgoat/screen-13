@@ -38,8 +38,8 @@ fn main() {
 
     // Define a camera (straight lens/no perspecive)
     let dims = Extent::new(128, 128);
-    let eye = Vec3::zero();
-    let target = -Vec3::unit_z();
+    let eye = Vec3::ZERO;
+    let target = -Vec3::Z;
     let camera = Orthographic::new(eye, target, dims, 0.0..1.0);
 
     // Render + encode it to disk
@@ -47,8 +47,8 @@ fn main() {
     render.draw().record(
         &camera,
         &[
-            Draw::model(tri, rust, Mat4::identity()),
-            Draw::point_light(Vec3::zero(), WHITE, 1_000.0, 1.0),
+            Draw::model(tri, rust, Mat4::IDENTITY),
+            Draw::point_light(Vec3::ZERO, WHITE, 1_000.0, 1.0),
         ],
     );
     render.encode().record("output.jpg");

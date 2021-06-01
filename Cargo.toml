@@ -49,7 +49,7 @@ f8 = "0.1"
 fontdue = { git = "https://github.com/attackgoat/fontdue", branch = "serde-feature", features = ["serde_derive"] }
 gfx-hal = "0.7"
 gfx-backend-mock = { path = "benches/gfx-backend-mock", optional = true }
-glam = { version = "0.12", features = ["serde"] }
+glam = { version = "0.15", features = ["serde"] }
 gltf = "0.15"
 image = "0.23"
 log = "0.4"
@@ -100,7 +100,7 @@ web-sys = { version = "0.3", features = [
 # 🦀📦: Build Stuff
 [build-dependencies]
 genmesh = "0.6"
-glam = "0.12"
+glam = "0.15"
 lazy_static = "1.4"
 
 [target.'cfg(not(target_arch = "wasm32"))'.build-dependencies]

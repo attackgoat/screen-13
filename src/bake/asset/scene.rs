@@ -43,11 +43,11 @@ impl Ref {
     }
 
     pub fn position(&self) -> Vec3 {
-        self.position.unwrap_or_else(Vec3::zero)
+        self.position.unwrap_or_else(|| Vec3::ZERO)
     }
 
     pub fn rotation(&self) -> Quat {
-        let rotation = self.rotation.unwrap_or_else(Vec3::zero) * PI / 180.0;
+        let rotation = self.rotation.unwrap_or_else(|| Vec3::ZERO) * PI / 180.0;
 
         Quat::from_rotation_ypr(rotation.y, rotation.x, rotation.z)
     }

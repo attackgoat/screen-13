@@ -44,7 +44,7 @@ impl Perspective {
             proj: Default::default(),
             sphere_factor: Default::default(),
             target,
-            up: -Vec3::unit_y(),
+            up: -Vec3::Y,
             view: Default::default(),
             view_inv: Default::default(),
             x: Default::default(),
@@ -389,6 +389,6 @@ impl Camera for Perspective {
 
 impl Default for Perspective {
     fn default() -> Self {
-        Self::new(Vec3::zero(), Vec3::unit_z(), 0.0..1.0, 45.0, 1.0)
+        Self::new(Vec3::ZERO, Vec3::Z, 0.0..1.0, 45.0, 1.0)
     }
 }

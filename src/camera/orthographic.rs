@@ -24,10 +24,10 @@ impl Orthographic {
             depth: depth.clone(),
             eye,
             proj: Mat4::orthographic_rh_gl(0.0, dims.x, dims.y, 0.0, depth.start, depth.end),
-            proj_inv: Mat4::identity(), // TODO: Fix this up!
+            proj_inv: Mat4::IDENTITY, // TODO: Fix this up!
             target,
-            view: Mat4::identity(),
-            view_inv: Mat4::identity(),
+            view: Mat4::IDENTITY,
+            view_inv: Mat4::IDENTITY,
         };
         result.update_view();
         result
@@ -79,7 +79,7 @@ impl Orthographic {
     // }
 
     fn update_view(&mut self) {
-        self.view = Mat4::look_at_rh(self.eye, self.target, Vec3::unit_y());
+        self.view = Mat4::look_at_rh(self.eye, self.target, Vec3::Y);
         self.view_inv = self.view.inverse();
     }
 }

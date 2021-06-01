@@ -267,7 +267,7 @@ fn get_transform(node: &Node) -> Option<Mat4> {
     let rotation = quat(rotation[0], rotation[1], rotation[2], rotation[3]);
     let scale = vec3(scale[0], scale[1], scale[2]);
     let translation = vec3(translation[0], translation[1], translation[2]);
-    if scale != Vec3::one() || rotation != Quat::identity() || translation != Vec3::zero() {
+    if scale != Vec3::ONE || rotation != Quat::IDENTITY || translation != Vec3::ZERO {
         Some(Mat4::from_scale_rotation_translation(
             scale,
             rotation,

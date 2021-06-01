@@ -159,14 +159,14 @@ impl Game {
         for y in -1..1 {
             for x in -1..1 {
                 let position: Position = vec3(x as f32 * 1.5, y as f32 * 1.5, 0.5).into();
-                let rotation: Rotation = Quat::identity().into();
+                let rotation: Rotation = Quat::IDENTITY.into();
                 self.ecs
                     .spawn((box_model, textured_material, position, rotation));
             }
         }
 
         // Add a light via HECS
-        let position: Position = Vec3::zero().into();
+        let position: Position = Vec3::ZERO.into();
         let light = Light {
             color: WHITE,
             power: 60.0,

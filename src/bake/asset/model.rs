@@ -30,11 +30,11 @@ impl Model {
     }
 
     pub fn offset(&self) -> Vec3 {
-        self.offset.unwrap_or_else(Vec3::zero)
+        self.offset.unwrap_or_else(|| Vec3::ZERO)
     }
 
     pub fn scale(&self) -> Vec3 {
-        self.scale.unwrap_or_else(Vec3::one)
+        self.scale.unwrap_or_else(|| Vec3::ONE)
     }
 
     pub fn src(&self) -> &Path {

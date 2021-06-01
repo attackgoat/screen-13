@@ -390,8 +390,8 @@ where
         trace!("submit_texture_write");
 
         let graphics = self.graphics_texture.as_ref().unwrap();
-        let offset = Vec2::zero();
-        let scale = Vec2::one();
+        let offset = Vec2::ZERO;
+        let scale = Vec2::ONE;
 
         self.cmd_buf.push_graphics_constants(
             graphics.layout(),

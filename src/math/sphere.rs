@@ -25,7 +25,7 @@ impl Sphere {
     pub fn from_point_cloud<I: Iterator<Item = Vec3>>(cloud: I) -> Self {
         let cloud = cloud.collect::<Vec<_>>();
 
-        let mut center = Vec3::zero();
+        let mut center = Vec3::ZERO;
         for point in &cloud {
             center += *point;
         }
