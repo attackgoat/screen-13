@@ -50,7 +50,7 @@ fontdue = { git = "https://github.com/attackgoat/fontdue", branch = "serde-featu
 gfx-hal = "0.7"
 gfx-backend-mock = { path = "benches/gfx-backend-mock", optional = true }
 glam = { version = "0.15", features = ["serde"] }
-gltf = "0.15"
+gltf = "0.16"
 image = "0.23"
 log = "0.4"
 num-format = "0.4.0"
