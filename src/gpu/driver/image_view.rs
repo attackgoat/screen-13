@@ -3,7 +3,7 @@ use {
     gfx_hal::{
         device::Device as _,
         format::{Format, Swizzle},
-        image::{SubresourceRange, ViewKind},
+        image::{SubresourceRange, Usage, ViewKind},
         Backend,
     },
     gfx_impl::Backend as _Backend,
@@ -18,13 +18,14 @@ impl ImageView {
         view_kind: ViewKind,
         format: Format,
         swizzle: Swizzle,
+        usage: Usage,
         range: SubresourceRange,
     ) -> Self
     where
         I: Deref<Target = <_Backend as Backend>::Image>,
     {
         let ptr = device()
-            .create_image_view(&image, view_kind, format, swizzle, range)
+            .create_image_view(&image, view_kind, format, swizzle, usage, range)
             .unwrap();
 
         Self(Some(ptr))

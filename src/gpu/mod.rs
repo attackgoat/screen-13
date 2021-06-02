@@ -337,7 +337,7 @@ unsafe fn queue_family() -> QueueFamilyId {
 
 /// Very unsafe - call *ONLY* after init!
 #[inline]
-unsafe fn queue_mut() -> &'static mut <_Backend as Backend>::CommandQueue {
+unsafe fn queue_mut() -> &'static mut <_Backend as Backend>::Queue {
     // TODO: MUTEX!
 
     &mut (*QUEUE_GROUP.as_mut_ptr()).queues[0]

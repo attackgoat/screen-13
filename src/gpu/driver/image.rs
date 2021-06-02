@@ -8,7 +8,7 @@ use {
         device::Device as _,
         format::Format,
         image::{Kind, Tiling, Usage, ViewCapabilities},
-        memory::Properties,
+        memory::{Properties, SparseFlags},
         Backend,
     },
     gfx_impl::Backend as _Backend,
@@ -61,6 +61,7 @@ impl Image<U2> {
                 fmt,
                 Tiling::Optimal,
                 usage,
+                SparseFlags::empty(),
                 ViewCapabilities::MUTABLE_FORMAT,
             )
             .unwrap();

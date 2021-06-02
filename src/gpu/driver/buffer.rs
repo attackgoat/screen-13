@@ -1,6 +1,6 @@
 use {
     crate::gpu::device,
-    gfx_hal::{buffer::Usage, device::Device as _, Backend},
+    gfx_hal::{buffer::Usage, device::Device as _, memory::SparseFlags, Backend},
     gfx_impl::Backend as _Backend,
     std::ops::{Deref, DerefMut},
 };
@@ -9,7 +9,11 @@ pub struct Buffer(Option<<_Backend as Backend>::Buffer>);
 
 impl Buffer {
     pub unsafe fn new(#[cfg(feature = "debug-names")] name: &str, usage: Usage, len: u64) -> Self {
-        let ctor = || device().create_buffer(len as u64, usage).unwrap();
+        let ctor = || {
+            device()
+                .create_buffer(len as u64, usage, SparseFlags::empty())
+                .unwrap()
+        };
 
         #[cfg(feature = "debug-names")]
         let mut ptr = ctor();

@@ -8,7 +8,7 @@ mod cmd_buf;
 mod cmd_pool;
 
 #[cfg(not(tarpaulin_include))]
-mod cmd_queue;
+mod queue;
 
 #[cfg(not(tarpaulin_include))]
 mod desc_pool;
@@ -41,8 +41,8 @@ pub use self::instance::Instance;
 
 use {
     self::{
-        buffer::*, cmd_buf::*, cmd_pool::*, cmd_queue::*, desc_pool::*, device::*, image::*,
-        memory::*, phys_device::*, queue_family::*, surface::*, swapchain::*,
+        buffer::*, cmd_buf::*, cmd_pool::*, desc_pool::*, device::*, image::*, memory::*,
+        phys_device::*, queue::*, queue_family::*, surface::*, swapchain::*,
     },
     gfx_hal::{
         adapter::*, buffer::*, command::*, device::*, format::*, image::*, memory::*, pass::*,
@@ -50,7 +50,7 @@ use {
     },
 };
 
-const QUEUE_FAMILY_ID: queue::QueueFamilyId = queue::QueueFamilyId(0);
+const QUEUE_FAMILY_ID: QueueFamilyId = QueueFamilyId(0);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Backend {}
@@ -62,7 +62,7 @@ impl gfx_hal::Backend for Backend {
     type Surface = SurfaceMock;
 
     type QueueFamily = QueueFamilyMock;
-    type CommandQueue = CommandQueueMock;
+    type Queue = QueueMock;
     type CommandBuffer = CommandBufferMock;
 
     type Memory = MemoryMock;

@@ -47,7 +47,7 @@ byteorder = "1.4"
 directories = "3.0"
 f8 = "0.1"
 fontdue = { git = "https://github.com/attackgoat/fontdue", branch = "serde-feature", features = ["serde_derive"] }
-gfx-hal = "0.7"
+gfx-hal = "0.8"
 gfx-backend-mock = { path = "benches/gfx-backend-mock", optional = true }
 glam = { version = "0.15", features = ["serde"] }
 gltf = "0.16"
@@ -71,15 +71,15 @@ winit = { version = "0.25" }
 
 # 🦀📦: Various Unix-based Platforms
 [target.'cfg(any(target_os = "freebsd", target_os = "dragonfly", target_os = "linux", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
-gfx-impl = { version = "0.7", optional = true, package = "gfx-backend-vulkan" }
+gfx-impl = { version = "0.8", optional = true, package = "gfx-backend-vulkan" }
 
 # 🦀📦: Mac and iOS Platforms
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
-gfx-impl = { version = "0.7", optional = true, package = "gfx-backend-metal" }
+gfx-impl = { version = "0.8", optional = true, package = "gfx-backend-metal" }
 
 # 🦀📦: Windows Platform
 [target.'cfg(windows)'.dependencies]
-gfx-impl = {  version = "0.7", optional = true, package = "gfx-backend-dx11" }
+gfx-impl = {  version = "0.8", optional = true, package = "gfx-backend-dx11" }
 
 # 🦀📦: WebAssembly Platform
 [target.'cfg(target_arch = "wasm32")'.dependencies]
@@ -87,7 +87,7 @@ wasm-bindgen = "0.2"
 console_error_panic_hook = "0.1"
 console_log = "0.2"
 winit = { version = "0.25", features = ["web-sys"] }
-gfx-impl = {  version = "0.7", package = "gfx-backend-gl" }
+gfx-impl = {  version = "0.8", package = "gfx-backend-gl" }
 web-sys = { version = "0.3", features = [
     "console",
     "Document",

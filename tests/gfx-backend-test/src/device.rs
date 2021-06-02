@@ -10,6 +10,7 @@ use {
             CreationError as ImageCreationError, Level as ImageLevel, Usage as ImageUsage,
             ViewCreationError as ImageViewCreationError,
         },
+        memory::SparseFlags,
         pso::CreationError as PsoCreationError,
         query::CreationError as QueryCreationError,
     },
@@ -115,7 +116,12 @@ impl Device<Backend> for DeviceMock {
         Ok(())
     }
 
-    unsafe fn create_buffer(&self, size: u64, _: BufferUsage) -> Result<BufferMock, CreationError> {
+    unsafe fn create_buffer(
+        &self,
+        size: u64,
+        _: BufferUsage,
+        _: SparseFlags,
+    ) -> Result<BufferMock, CreationError> {
         Ok(BufferMock::new(size))
     }
 
@@ -152,6 +158,7 @@ impl Device<Backend> for DeviceMock {
         _: Format,
         _: Tiling,
         _: ImageUsage,
+        _: SparseFlags,
         _: ViewCapabilities,
     ) -> Result<ImageMock, ImageCreationError> {
         Ok(ImageMock::new(kind))
@@ -184,6 +191,7 @@ impl Device<Backend> for DeviceMock {
         _: ViewKind,
         _: Format,
         _: Swizzle,
+        _: ImageUsage,
         _: SubresourceRange,
     ) -> Result<(), ImageViewCreationError> {
         Ok(())
@@ -359,4 +367,8 @@ impl Device<Backend> for DeviceMock {
     unsafe fn wait_for_fence(&self, _: &(), _: u64) -> Result<bool, WaitError> {
         Ok(true)
     }
+
+    fn start_capture(&self) {}
+
+    fn stop_capture(&self) {}
 }

@@ -44,6 +44,7 @@ where
     fmt: Format,
     image: I,
     state: RefCell<State>,
+    usage: Usage,
     views: RefCell<HashMap<ImageViewKey, ImageView>>,
 }
 
@@ -68,7 +69,14 @@ where
         {
             let mut views = self.views.borrow_mut();
             if !views.contains_key(&key) {
-                let view = ImageView::new(self.image.as_ref(), view_kind, format, swizzle, range);
+                let view = ImageView::new(
+                    self.image.as_ref(),
+                    view_kind,
+                    format,
+                    swizzle,
+                    self.usage,
+                    range,
+                );
                 views.insert(key.clone(), view);
             }
         }
@@ -136,6 +144,7 @@ impl Texture<Image2d> {
         } else {
             Access::empty()
         };
+        let usage = Usage::TRANSFER_DST | Usage::TRANSFER_SRC | usage;
         let image = Image2d::new_optimal(
             #[cfg(feature = "debug-names")]
             name,
@@ -144,7 +153,7 @@ impl Texture<Image2d> {
             samples,
             mips,
             fmt,
-            Usage::TRANSFER_DST | Usage::TRANSFER_SRC | usage,
+            usage,
         );
 
         let res = Self {
@@ -156,6 +165,7 @@ impl Texture<Image2d> {
                 layout,
                 pipeline_stage: PipelineStage::TOP_OF_PIPE, // TODO: Was BOTTOM_ in vlb. What to do?
             }),
+            usage,
             views: Default::default(),
         };
 

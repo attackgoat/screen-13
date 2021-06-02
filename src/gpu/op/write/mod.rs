@@ -37,7 +37,7 @@ use {
         },
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage, ShaderStageFlags, Viewport},
-        queue::CommandQueue as _,
+        queue::Queue as _,
         Backend,
     },
     gfx_impl::Backend as _Backend,

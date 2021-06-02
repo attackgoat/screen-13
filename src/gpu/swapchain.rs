@@ -18,7 +18,7 @@ use {
         image::{Access, FramebufferAttachment, Layout},
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage, ShaderStageFlags, Viewport},
-        queue::CommandQueue as _,
+        queue::Queue as _,
         window::{PresentationSurface as _, Surface as _, SurfaceCapabilities, SwapchainConfig},
         Backend,
     },

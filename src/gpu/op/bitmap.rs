@@ -22,7 +22,7 @@ use {
         image::{Access as ImageAccess, Layout, SubresourceLayers, Usage as ImageUsage},
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage},
-        queue::CommandQueue as _,
+        queue::Queue as _,
         Backend,
     },
     gfx_impl::Backend as _Backend,

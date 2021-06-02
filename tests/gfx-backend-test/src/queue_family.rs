@@ -15,4 +15,8 @@ impl QueueFamily for QueueFamilyMock {
     fn id(&self) -> QueueFamilyId {
         QUEUE_FAMILY_ID
     }
+
+    fn supports_sparse_binding(&self) -> bool {
+        false
+    }
 }

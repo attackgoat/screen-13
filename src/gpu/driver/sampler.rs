@@ -2,7 +2,7 @@ use {
     crate::gpu::device,
     gfx_hal::{
         device::Device as _,
-        image::{BorderColor, Filter, Lod, SamplerDesc, WrapMode},
+        image::{BorderColor, Filter, Lod, ReductionMode, SamplerDesc, WrapMode},
         pso::Comparison,
         Backend,
     },
@@ -38,6 +38,7 @@ impl Sampler {
                 border: BorderColor::TransparentBlack,
                 normalized,
                 anisotropy_clamp,
+                reduction_mode: ReductionMode::WeightedAverage,
             })
             .unwrap();
 

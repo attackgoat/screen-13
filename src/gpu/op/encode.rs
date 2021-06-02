@@ -15,7 +15,7 @@ use {
         image::{Access as ImageAccess, Layout, Offset, SubresourceLayers},
         pool::CommandPool as _,
         pso::PipelineStage,
-        queue::CommandQueue as _,
+        queue::Queue as _,
         Backend,
     },
     gfx_impl::Backend as _Backend,

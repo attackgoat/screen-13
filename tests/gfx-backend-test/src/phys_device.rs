@@ -33,7 +33,7 @@ impl PhysicalDevice<Backend> for PhysicalDeviceMock {
         // Create the queues
         let queue_groups = {
             let mut queue_group = QueueGroup::new(QUEUE_FAMILY_ID);
-            queue_group.add_queue(CommandQueueMock);
+            queue_group.add_queue(QueueMock);
             vec![queue_group]
         };
         let gpu = Gpu {
@@ -89,15 +89,7 @@ impl PhysicalDevice<Backend> for PhysicalDeviceMock {
         Features::empty()
     }
 
-    fn capabilities(&self) -> Capabilities {
+    fn properties(&self) -> PhysicalDeviceProperties {
         Default::default()
-    }
-
-    fn limits(&self) -> Limits {
-        Limits {
-            non_coherent_atom_size: 1,
-            optimal_buffer_copy_pitch_alignment: 1,
-            ..Default::default()
-        }
     }
 }
