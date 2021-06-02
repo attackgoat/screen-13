@@ -1,11 +1,7 @@
 use {
     super::{Backend, *},
     gfx_hal::{
-        buffer::{
-            CreationError as BufferCreationError, Usage as BufferUsage,
-            ViewCreationError as BufferViewCreationError,
-        },
-        device::CreationError as DeviceCreationError,
+        buffer::Usage as BufferUsage,
         image::{
             CreationError as ImageCreationError, Level as ImageLevel, Usage as ImageUsage,
             ViewCreationError as ImageViewCreationError,
@@ -54,14 +50,12 @@ impl Device<Backend> for DeviceMock {
 
     unsafe fn create_pipeline_layout<'a, Is, Ic>(
         &self,
-        set_layouts: Is,
-        push_constant: Ic,
+        _set_layouts: Is,
+        _push_constant: Ic,
     ) -> Result<<Backend as gfx_hal::Backend>::PipelineLayout, OutOfMemory>
     where
         Is: IntoIterator<Item = &'a <Backend as gfx_hal::Backend>::DescriptorSetLayout>,
-        Is::IntoIter: ExactSizeIterator,
         Ic: IntoIterator<Item = (ShaderStageFlags, Range<u32>)>,
-        Ic::IntoIter: ExactSizeIterator,
     {
         Ok(())
     }
@@ -99,7 +93,6 @@ impl Device<Backend> for DeviceMock {
     ) -> Result<(), OutOfMemory>
     where
         I: IntoIterator<Item = &'a <Backend as gfx_hal::Backend>::PipelineCache>,
-        I::IntoIter: ExactSizeIterator,
     {
         Ok(())
     }
@@ -208,22 +201,19 @@ impl Device<Backend> for DeviceMock {
 
     unsafe fn create_descriptor_set_layout<'a, I, J>(
         &self,
-        bindings: I,
-        immutable_samplers: J,
+        _bindings: I,
+        _immutable_samplers: J,
     ) -> Result<<Backend as gfx_hal::Backend>::DescriptorSetLayout, OutOfMemory>
     where
         I: IntoIterator<Item = DescriptorSetLayoutBinding>,
-        I::IntoIter: ExactSizeIterator,
         J: IntoIterator<Item = &'a <Backend as gfx_hal::Backend>::Sampler>,
-        J::IntoIter: ExactSizeIterator,
     {
         Ok(())
     }
 
     unsafe fn write_descriptor_set<'a, I>(&self, _: DescriptorSetWrite<'a, Backend, I>)
     where
-        I: IntoIterator<Item = Descriptor<'a, Backend>>,
-        I::IntoIter: ExactSizeIterator,
+        I: Iterator<Item = Descriptor<'a, Backend>>,
     {
     }
 
@@ -352,9 +342,9 @@ impl Device<Backend> for DeviceMock {
 
     unsafe fn set_render_pass_name(&self, _: &mut (), _: &str) {}
 
-    unsafe fn set_descriptor_set_name(&self, set: &mut (), name: &str) {}
+    unsafe fn set_descriptor_set_name(&self, _set: &mut (), _name: &str) {}
 
-    unsafe fn set_descriptor_set_layout_name(&self, layout: &mut (), name: &str) {}
+    unsafe fn set_descriptor_set_layout_name(&self, _layout: &mut (), _name: &str) {}
 
     unsafe fn set_pipeline_layout_name(&self, _pipeline_layout: &mut (), _name: &str) {
         todo!()

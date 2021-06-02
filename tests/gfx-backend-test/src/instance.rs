@@ -13,7 +13,7 @@ impl gfx_hal::Instance<Backend> for Instance {
 
     fn enumerate_adapters(&self) -> Vec<Adapter<Backend>> {
         let info = AdapterInfo {
-            name: "Mock Device".to_string(),
+            name: "Test Device".to_string(),
             vendor: 0,
             device: 1234,
             device_type: DeviceType::Other,

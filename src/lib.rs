@@ -123,6 +123,11 @@
 #[cfg(feature = "mock-gfx")]
 extern crate gfx_backend_mock as gfx_impl;
 
+// NOTE: If you are getting an error with the following line it is because both the `impl-gfx` and
+// `test-gfx` features are enabled at the same time. Use "--no-default-features" to fix.
+#[cfg(feature = "test-gfx")]
+extern crate gfx_backend_test as gfx_impl;
+
 #[macro_use]
 extern crate log;
 

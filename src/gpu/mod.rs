@@ -169,12 +169,17 @@ pub type Texture2d = Texture<Image2d>;
 type LoadCache<P> = RefCell<Pool<P>>;
 
 /// Rounds down a multiple of atom; panics if atom is zero
-fn align_down<N: Copy + Num>(size: N, atom: N) -> N {
+fn align_down<N: Copy + Debug + Num>(size: N, atom: N) -> N {
+    debug_assert_ne!(atom, <N>::zero());
+
     size - size % atom
 }
 
 /// Rounds up to a multiple of atom; panics if either parameter is zero
-fn align_up<N: Copy + Num>(size: N, atom: N) -> N {
+fn align_up<N: Copy + Debug + Num>(size: N, atom: N) -> N {
+    debug_assert_ne!(atom, <N>::zero());
+    debug_assert_ne!(size, <N>::zero());
+
     (size - <N>::one()) - (size - <N>::one()) % atom + atom
 }
 

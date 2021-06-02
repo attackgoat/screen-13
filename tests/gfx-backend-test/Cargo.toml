@@ -1,5 +1,5 @@
 [package]
-name = "gfx-backend-mock"
+name = "gfx-backend-test"
 version = "0.1.0"
 authors = ["John Wells <john@attackgoat.com>"]
 edition = "2018"

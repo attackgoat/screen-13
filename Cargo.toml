@@ -37,6 +37,7 @@ xr = []
 bake = [] # Enables bake module in Screen 13 library, used by benches
 mock-gfx = ["gfx-backend-mock"]
 impl-gfx = ["gfx-impl"]
+test-gfx = ["gfx-backend-test"]
 
 # 🦀📦: Regular Depedencies
 [dependencies]
@@ -49,6 +50,7 @@ f8 = "0.1"
 fontdue = { git = "https://github.com/attackgoat/fontdue", branch = "serde-feature", features = ["serde_derive"] }
 gfx-hal = "0.8"
 gfx-backend-mock = { path = "benches/gfx-backend-mock", optional = true }
+gfx-backend-test = { path = "tests/gfx-backend-test", optional = true }
 glam = { version = "0.15", features = ["serde"] }
 gltf = "0.16"
 image = "0.23"
@@ -114,7 +116,7 @@ image = "0.23"
 paste = "1.0"
 pretty_env_logger = "0.4"
 rand = "0.8"
-screen-13 = { path = ".", default-features = false, features = ["bake", "mock-gfx"] }
+screen-13 = { path = ".", default-features = false, features = ["bake"] }
 
 # Always compile the `image` dependency in release mode; it is slow with debug assertions turned on
 [profile.dev.package.image]

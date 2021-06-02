@@ -51,10 +51,9 @@ impl CommandBuffer<Backend> for CommandBufferMock {
 
     unsafe fn bind_index_buffer(&mut self, _: &BufferMock, _: SubRange, _: IndexType) {}
 
-    unsafe fn bind_vertex_buffers<'a, T>(&mut self, first_binding: BufferIndex, buffers: T)
+    unsafe fn bind_vertex_buffers<'a, T>(&mut self, _first_binding: BufferIndex, _buffers: T)
     where
         T: IntoIterator<Item = (&'a <Backend as gfx_hal::Backend>::Buffer, SubRange)>,
-        T::IntoIter: ExactSizeIterator,
     {
     }
 
@@ -96,9 +95,7 @@ impl CommandBuffer<Backend> for CommandBufferMock {
         _: J,
     ) where
         I: IntoIterator<Item = &'a <Backend as gfx_hal::Backend>::DescriptorSet>,
-        I::IntoIter: ExactSizeIterator,
         J: IntoIterator<Item = DescriptorSetOffset>,
-        J::IntoIter: ExactSizeIterator,
     {
     }
 
@@ -112,9 +109,7 @@ impl CommandBuffer<Backend> for CommandBufferMock {
         _: J,
     ) where
         I: IntoIterator<Item = &'a <Backend as gfx_hal::Backend>::DescriptorSet>,
-        I::IntoIter: ExactSizeIterator,
         J: IntoIterator<Item = DescriptorSetOffset>,
-        J::IntoIter: ExactSizeIterator,
     {
     }
 
@@ -223,10 +218,9 @@ impl CommandBuffer<Backend> for CommandBufferMock {
 
     unsafe fn push_compute_constants(&mut self, _: &(), _: u32, _: &[u32]) {}
 
-    unsafe fn execute_commands<'a, T>(&mut self, cmd_buffers: T)
+    unsafe fn execute_commands<'a, T>(&mut self, _cmd_buffers: T)
     where
         T: IntoIterator<Item = &'a <Backend as gfx_hal::Backend>::CommandBuffer>,
-        T::IntoIter: ExactSizeIterator,
     {
     }
 

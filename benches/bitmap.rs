@@ -124,7 +124,7 @@ fn read_bitmap(c: &mut Criterion) {
                 format!("2 ^ {:0>#2}: {}", idx, criteria),
             ),
             criteria,
-            |b, criteria| {
+            |b, _criteria| {
                 b.iter(|| {
                     gpu.read_bitmap_with_id(black_box(&mut pak), black_box(id));
                 })
@@ -164,7 +164,7 @@ fn write_bitmap_onto_render(c: &mut Criterion) {
                     let mut render = black_box(gpu.render((1024u32, 1024u32)));
                     render.write().record(black_box(
                         (0..*criteria)
-                            .map(|_| Write::position(&*bitmap, (0.0, 0.0)))
+                            .map(|_| Write::position(&bitmap, (0.0, 0.0)))
                             .collect::<Vec<_>>(),
                     ));
                 })
@@ -173,6 +173,5 @@ fn write_bitmap_onto_render(c: &mut Criterion) {
     }
 }
 
-//criterion_group!(benches, load_bitmap, read_bitmap, write_bitmap_onto_render);
-criterion_group!(benches, write_bitmap_onto_render);
+criterion_group!(benches, load_bitmap, read_bitmap, write_bitmap_onto_render);
 criterion_main!(benches);

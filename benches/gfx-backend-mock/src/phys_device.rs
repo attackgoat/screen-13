@@ -90,6 +90,12 @@ impl PhysicalDevice<Backend> for PhysicalDeviceMock {
     }
 
     fn properties(&self) -> PhysicalDeviceProperties {
-        Default::default()
+        PhysicalDeviceProperties {
+            limits: Limits {
+                non_coherent_atom_size: 1,
+                ..Default::default()
+            },
+            ..Default::default()
+        }
     }
 }
