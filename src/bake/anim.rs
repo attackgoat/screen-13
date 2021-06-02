@@ -21,6 +21,7 @@ use {
     },
 };
 
+/// Reads and processes animation source files into an existing `.pak` file buffer.
 pub fn bake_animation<P1: AsRef<Path>, P2: AsRef<Path>>(
     project_dir: P1,
     asset_filename: P2,

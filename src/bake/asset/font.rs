@@ -5,6 +5,7 @@ use {
 
 const DEFAULT_SCALE: f32 = 32.0;
 
+/// Holds a description of `.otf` or `.ttf` scalable fonts.
 #[derive(Clone, Deserialize)]
 pub struct Font {
     collection_index: Option<u32>,
@@ -31,6 +32,7 @@ impl Font {
         self.scale.unwrap_or(DEFAULT_SCALE)
     }
 
+    /// The font file source.
     pub fn src(&self) -> &Path {
         self.src.as_path()
     }

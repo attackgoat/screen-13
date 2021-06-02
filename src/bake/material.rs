@@ -9,6 +9,7 @@ use {
     std::path::Path,
 };
 
+/// Reads and processes 3D model material source files into an existing `.pak` file buffer.
 pub fn bake_material<P1: AsRef<Path>, P2: AsRef<Path>>(
     project_dir: P1,
     filename: P2,

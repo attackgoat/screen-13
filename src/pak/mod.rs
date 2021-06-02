@@ -272,21 +272,29 @@ where
 
 // TODO: Fix
 // HACK: See note on Compression
+/// Describes Brotli-based compression.
 #[cfg(not(feature = "bake"))]
 #[derive(Clone, Copy, Deserialize, Serialize)]
 pub(crate) struct BrotliCompression {
+    /// Buffer size.
     pub buf_size: usize,
+    /// Compression quality.
     pub quality: u32,
+    /// Window size.
     pub window_size: u32,
 }
 
 // TODO: Fix
 // HACK: See note on Compression
+/// Describes Brotli-based compression.
 #[cfg(feature = "bake")]
 #[derive(Clone, Copy, Deserialize, Serialize)]
 pub struct BrotliCompression {
+    /// Buffer size.
     pub buf_size: usize,
+    /// Compression quality.
     pub quality: u32,
+    /// Window size.
     pub window_size: u32,
 }
 
@@ -309,10 +317,13 @@ pub(crate) enum Compression {
 }
 
 // TODO: SEE ABOVE!
+/// Configurable compression types.
 #[cfg(feature = "bake")]
 #[derive(Clone, Copy, Deserialize, Serialize)]
 pub enum Compression {
+    /// Brotli
     Brotli(BrotliCompression),
+    /// Snap
     Snap,
 }
 

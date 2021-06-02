@@ -110,7 +110,7 @@
 //! [README](https://github.com/attackgoat/screen-13) for more on this philosphy and the module
 //! level documentation for more details on how to use this system with existing files and assets.
 
-#![allow(dead_code)]
+#![allow(dead_code)] // TODO: Remove at some point
 #![allow(clippy::needless_doctest_main)] // <-- The doc code is *intends* to show the whole shebang
 #![warn(missing_docs)]
 //#![warn(clippy::pedantic)]

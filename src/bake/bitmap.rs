@@ -12,6 +12,7 @@ use {
     std::{fs::read_to_string, io::Cursor, path::Path},
 };
 
+/// Reads and processes image source files into an existing `.pak` file buffer.
 pub fn bake_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
     project_dir: P1,
     asset_filename: P2,
@@ -37,6 +38,7 @@ pub fn bake_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
     pak.push_bitmap(key, bitmap)
 }
 
+/// Reads and processes bitmapped font source files into an existing `.pak` file buffer.
 pub fn bake_bitmap_font<P1: AsRef<Path>, P2: AsRef<Path>>(
     project_dir: P1,
     asset_filename: P2,
@@ -92,6 +94,7 @@ pub fn bake_bitmap_font<P1: AsRef<Path>, P2: AsRef<Path>>(
     pak.push_bitmap_font(key, BitmapFont::new(def_file, pages))
 }
 
+/// Reads raw pixel data from an image source file and returns them in the given format.
 pub fn pixels<P: AsRef<Path>>(filename: P, fmt: BitmapFormat) -> (u32, Vec<u8>) {
     let image = match image_open(&filename).unwrap() {
         DynamicImage::ImageRgb8(image) => image.convert(),

@@ -14,6 +14,7 @@ use {
     },
 };
 
+/// Reads and processes 3D model source files into an existing `.pak` file buffer.
 pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
     project_dir: P1,
     asset_filename: P2,

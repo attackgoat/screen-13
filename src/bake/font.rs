@@ -5,6 +5,7 @@ use {
     std::{fs::read, path::Path},
 };
 
+/// Reads and processes scalable font source files into an existing `.pak` file buffer.
 pub fn bake_font<P1: AsRef<Path>, P2: AsRef<Path>>(
     project_dir: P1,
     asset_filename: P2,

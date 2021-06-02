@@ -4,6 +4,7 @@ use {
     std::{fs::File, io::Read, path::Path},
 };
 
+/// Reads and processes arbitrary binary source files into an existing `.pak` file buffer.
 pub fn bake_blob<P1: AsRef<Path>, P2: AsRef<Path>>(
     project_dir: P1,
     asset_filename: P2,

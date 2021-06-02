@@ -1,3 +1,7 @@
+//! Contains functions and types used to bake assets into .pak files
+//!
+//! Assets are regular art such as `.glb`, `.jpeg` and `.ttf` files.
+
 pub mod asset;
 
 mod anim;
@@ -23,8 +27,8 @@ pub use self::{
 
 use std::path::{Path, PathBuf};
 
-// Gets the fully rooted asset path from a given path. If path is relative, then
-// dir is used to determine the relative parent.
+/// Gets the fully rooted asset path from a given path. If path is relative, then dir is used to
+/// determine the relative parent.
 pub fn get_path<P1: AsRef<Path>, P2: AsRef<Path>, P3: AsRef<Path>>(
     path_dir: P1,
     path: P2,
@@ -73,7 +77,7 @@ pub fn get_path<P1: AsRef<Path>, P2: AsRef<Path>, P3: AsRef<Path>>(
     }
 }
 
-/// Given some filename and a parent directory, returns just the portion after the directory.
+/// Given some parent directory and a filename, returns just the portion after the directory.
 pub fn get_filename_key<P1: AsRef<Path>, P2: AsRef<Path>>(dir: P1, filename: P2) -> String {
     let res_dir = dir.as_ref();
     let mut filename = filename.as_ref();

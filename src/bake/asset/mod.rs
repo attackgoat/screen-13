@@ -1,3 +1,5 @@
+//! Contains deserializable types which represent all supported asset file types.
+
 mod anim;
 mod bitmap;
 mod bitmap_font;
@@ -19,21 +21,34 @@ use {
     toml::from_str,
 };
 
+/// A collection type containing all supported asset file types.
 #[derive(Clone, Deserialize)]
 pub enum Asset {
+    /// `.glb` or `.gltf` model animations.
     Animation(Animation),
     // Atlas(AtlasAsset),
+    /// `.jpeg` and other regular images.
     Bitmap(Bitmap),
+    /// `.fnt` bitmapped fonts.
     BitmapFont(BitmapFont),
+    /// Top-level content files which simply group other asset files for ease of use.
     Content(Content),
+    /// `.otf` or `.ttf` scalable fonts.
     Font(Font),
     // Language(LanguageAsset),
+    /// Used for model rendering.
     Material(Material),
+    /// `.glb` or `.gltf` 3D models.
     Model(Model),
+    /// Describes position/orientation/scale and tagged data specific to each program.
+    ///
+    /// You are expected to write some manner of and export tool in order to create this file type
+    /// using an external editor.
     Scene(Scene),
 }
 
 impl Asset {
+    /// Reads an asset file from disk.
     pub fn read<P: AsRef<Path>>(filename: P) -> Self {
         let val: Schema = from_str(&read_to_string(&filename).unwrap_or_else(|_| {
             panic!("Could not parse asset file {}", filename.as_ref().display())
@@ -61,6 +76,7 @@ impl Asset {
         }
     }
 
+    /// Attempts to extract a `Bitmap` asset from this collection type.
     pub fn into_bitmap(self) -> Option<Bitmap> {
         match self {
             Self::Bitmap(bitmap) => Some(bitmap),
@@ -68,6 +84,7 @@ impl Asset {
         }
     }
 
+    /// Attempts to extract a `Content` asset from this collection type.
     pub fn into_content(self) -> Option<Content> {
         match self {
             Self::Content(content) => Some(content),
@@ -75,6 +92,7 @@ impl Asset {
         }
     }
 
+    /// Attempts to extract a `Font` asset from this collection type.
     pub fn into_font(self) -> Option<Font> {
         match self {
             Self::Font(font) => Some(font),
@@ -82,6 +100,7 @@ impl Asset {
         }
     }
 
+    /// Attempts to extract a `Material` asset from this collection type.
     pub fn into_material(self) -> Option<Material> {
         match self {
             Self::Material(material) => Some(material),
@@ -89,6 +108,7 @@ impl Asset {
         }
     }
 
+    /// Attempts to extract a `Model` asset from this collection type.
     pub fn into_model(self) -> Option<Model> {
         match self {
             Self::Model(model) => Some(model),

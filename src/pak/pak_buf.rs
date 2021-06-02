@@ -194,6 +194,7 @@ impl PakBuf {
         self.write_impl(writer, compression)
     }
 
+    /// Serializes a `.pak` file buffer into a `Writer` using optional compression.
     #[cfg(feature = "bake")]
     #[inline]
     pub fn write<W: Seek + Write>(

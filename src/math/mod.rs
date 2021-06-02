@@ -11,7 +11,7 @@ mod sphere;
 
 pub use {
     self::{cone::Cone, plane::Plane, sphere::Sphere},
-    glam::{mat4, quat, vec2, vec3, vec4, Mat3, Mat4, Quat, Vec2, Vec3, Vec4},
+    glam::{mat4, quat, vec2, vec3, vec4, EulerRot, Mat3, Mat4, Quat, Vec2, Vec3, Vec4},
 };
 
 use self::{coord::Coord as GenericCoord, rect::Rect as GenericRect};
