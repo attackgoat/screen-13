@@ -30,8 +30,9 @@ struct Allocation<T> {
     previous: Option<(T, u64)>,
 }
 
-/// Extends the data type so we can track which portions require updates. Does not teach an entire
-/// city full of people that dancing is the best thing there is.
+/// Extends the `Data` type so we can track which portions require updates.
+///
+/// Does not teach an entire city full of people that dancing is the best thing there is.
 struct DirtyData<Key, P>
 where
     P: SharedPointerKind,
@@ -56,8 +57,12 @@ where
     /// to resize the cache buffer. As a side effect this causes dirty regions to be moved on the
     /// GPU.
     ///
-    /// Geometry used very often will end up closer to the beginning of the GPU memory over time,
-    /// and will have fewer move operations applied to it as a result.
+    /// Data used very often will end up closer to the beginning of the GPU memory over time, and
+    /// will have fewer move operations applied to it as a result.
+    ///
+    /// The `lru` parameter must be sorted.
+    ///
+    /// Pending copies must have been reset before calling this.
     fn compact_cache(&mut self, lru: &mut [Lru<Key>], timestamp: usize)
     where
         Key: Ord + Stride,
@@ -70,21 +75,22 @@ where
                 .binary_search_by(|probe| probe.key.cmp(&key))
                 .ok()
                 .unwrap();
-            timestamp >= lru[idx].expiry
+            lru[idx].expiry > timestamp
         });
 
-        // We only need to compact the memory in the region preceding the dirty region, because that geometry will
-        // be uploaded and used during this compilation (draw) - we will defer that region to the next compilation
+        // We only need to compact the memory in the region preceding the dirty region, because that
+        // data will be uploaded and used during this compilation - we will defer that region to the
+        // next compilation
         let mut start = 0;
         let end = self.pending_write.as_ref().map_or_else(
-            || self.usage.last().map_or(0, |(offset, _)| offset + stride),
+            || self.usage.last().map_or(0, |(offset, _)| *offset),
             |dirty| dirty.start,
         );
 
-        // Walk through the GPU memory in order, moving items back to the "empty" region and as we go
-        for (offset, key) in &mut self.usage {
+        // Walk through the GPU memory in order, moving items back to the empty region and as we go
+        for (offset, key) in &self.usage {
             // Early out if we have exceeded the non-dirty region
-            if *offset >= end {
+            if *offset > end {
                 break;
             }
 
@@ -96,7 +102,8 @@ where
 
             // Move this item back to the beginning of the empty region
             if let Some(range) = self.pending_copies.last_mut() {
-                if range.dst == start - stride && range.src.end == *offset - stride {
+                if range.src.end == *offset {
+                    // The last pending copy will be expanded to include this key
                     *range = CopyRange {
                         dst: range.dst,
                         src: range.src.start..*offset + stride,
@@ -174,23 +181,21 @@ where
             buf.data.current.set_name(&name);
         }
 
-        // Early-our if we do not need to resize the buffer
+        // Early-out if we do not need to resize the buffer
         if let Some(existing) = self.buf.as_ref() {
-            if len <= existing.data.current.capacity() {
+            if existing.data.current.capacity() >= len {
                 return;
             }
         }
 
         #[cfg(debug_assertions)]
-        {
-            info!(
-                "Reallocating {} to {}",
-                self.buf
-                    .as_ref()
-                    .map_or(0, |buf| buf.data.current.capacity()),
-                len
-            );
-        }
+        info!(
+            "Reallocating {} to {}",
+            self.buf
+                .as_ref()
+                .map_or(0, |buf| buf.data.current.capacity()),
+            len
+        );
 
         // We over-allocate the requested capacity to prevent rapid reallocations
         let capacity = (len as f32 * CACHE_CAPACITY_FACTOR) as u64;
@@ -279,4 +284,79 @@ where
 
 trait Stride {
     fn stride() -> u64;
+}
+
+#[cfg(test)]
+mod test {
+    use {
+        super::*,
+        crate::{gpu::Gpu, ptr::RcK},
+    };
+
+    #[test]
+    fn dirty_data_compacts() {
+        impl Stride for char {
+            fn stride() -> u64 {
+                3 // bytes
+            }
+        }
+
+        Gpu::<RcK>::offscreen();
+
+        let mut pool = Pool::<RcK>::default();
+        let mut data = DirtyData::<char, RcK>::from(unsafe {
+            pool.data(
+                #[cfg(feature = "debug-names")]
+                "my data",
+                1024,
+            )
+        });
+
+        // dirty data usage retains `a` due to timestamp (4) not exceeding expiry (5)
+        data.usage.push((0, 'a'));
+        data.compact_cache(&mut [Lru::new('a', 0, 5)], 4);
+        assert_eq!(data.usage.len(), 1);
+
+        // `a` is dropped after timestamp (5) equals expiry (5)
+        data.compact_cache(&mut [Lru::new('a', 0, 5)], 5);
+        assert_eq!(data.usage.len(), 0);
+
+        // `b` is dropped after timestamp (6) exceeds expiry (5)
+        data.usage.push((0, 'b'));
+        data.compact_cache(&mut [Lru::new('b', 0, 5)], 6);
+        assert_eq!(data.usage.len(), 0);
+
+        // `c` and `d` are compacted
+        data.usage.push((3, 'c'));
+        data.usage.push((6, 'd'));
+        let mut lru = vec![Lru::new('c', 3, 5), Lru::new('d', 6, 5)];
+        data.compact_cache(&mut lru, 2);
+        assert_eq!(lru.len(), 2);
+        assert_eq!(lru[0].key, 'c');
+        assert_eq!(lru[0].offset, 0);
+        assert_eq!(lru[1].key, 'd');
+        assert_eq!(lru[1].offset, 3);
+        assert_eq!(data.pending_copies.len(), 1);
+        assert_eq!(data.pending_copies[0].src, 3..9);
+        assert_eq!(data.pending_copies[0].dst, 0);
+
+        data.reset();
+        data.usage.clear();
+
+        // `e` and `f` are compacted
+        data.usage.push((3, 'e'));
+        data.usage.push((9, 'f'));
+        let mut lru = vec![Lru::new('e', 3, 5), Lru::new('f', 9, 5)];
+        data.compact_cache(&mut lru, 2);
+        assert_eq!(lru.len(), 2);
+        assert_eq!(lru[0].key, 'e');
+        assert_eq!(lru[0].offset, 0);
+        assert_eq!(lru[1].key, 'f');
+        assert_eq!(lru[1].offset, 3);
+        assert_eq!(data.pending_copies.len(), 2);
+        assert_eq!(data.pending_copies[0].src, 3..6);
+        assert_eq!(data.pending_copies[0].dst, 0);
+        assert_eq!(data.pending_copies[1].src, 9..12);
+        assert_eq!(data.pending_copies[1].dst, 3);
+    }
 }

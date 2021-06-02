@@ -117,7 +117,7 @@ where
             return None;
         }
 
-        let idx = self.idx;
+        let _idx = self.idx;
         self.idx += 1;
 
         // Some(match &self.compiler.code[idx] {
@@ -169,7 +169,7 @@ where
         #[cfg(feature = "debug-names")] name: &str,
         pool: &mut Pool<P>,
         cmds: &'c mut [C],
-        dims: Extent,
+        _dims: Extent,
     ) -> Compilation<'a, 'c, C, P, T>
     where
         C: Borrow<Command<P, T>>,
@@ -433,9 +433,9 @@ where
     fn compile_scalable<L, T>(
         &self,
         #[cfg(feature = "debug-names")] name: &str,
-        pool: &mut Pool<P>,
-        cmd: &ScalableCommand<L, P, T>,
-        dims: Extent,
+        _pool: &mut Pool<P>,
+        _cmd: &ScalableCommand<L, P, T>,
+        _dims: Extent,
     ) where
         T: AsRef<str>,
     {

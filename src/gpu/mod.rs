@@ -14,7 +14,8 @@
 //! _NOTE:_ `Op` implementations should follow a few rules for sanity:
 //! - Use a `Pool` instance to acquire new resources
 //! - `new(...) -> Self`: function initializes with minimum settings
-//! - `with_X(&mut self, ...) -> &mut Self`: Use the mutable borrow builder pattern for options/extras
+//! - `with_X(&mut self, ...) -> &mut Self`: Use the mutable borrow builder pattern for
+//!   options/extras
 //! - `record(&mut self, ...)`: function does three things:
 //!   1. Initialize final settings/pipelines
 //!   1. Write descriptors
@@ -290,13 +291,13 @@ unsafe fn init_gfx_hal() {
     ADAPTER.as_mut_ptr().write(adapter);
 }
 
-/// Very unsafe - call *ONLY* after init!
+/// Very unsafe - call *ONLY* after init_gfx_hal!
 #[inline]
 unsafe fn instance() -> &'static Instance {
     &*INSTANCE.as_ptr()
 }
 
-/// Very unsafe - call *ONLY* after init!
+/// Very unsafe - call *ONLY* after init_gfx_hal!
 unsafe fn mem_ty(mask: u32, props: Properties) -> Option<MemoryTypeId> {
     //debug!("type_mask={} properties={:?}", type_mask, properties);
     (*MEM_PROPS.as_ptr())
@@ -334,13 +335,13 @@ unsafe fn open_adapter(adapter: &Adapter<_Backend>, queue: &<_Backend as Backend
     );
 }
 
-/// Very unsafe - call *ONLY* after init!
+/// Very unsafe - call *ONLY* after init_gfx_hal!
 #[inline]
 unsafe fn queue_family() -> QueueFamilyId {
     (*QUEUE_GROUP.as_ptr()).family
 }
 
-/// Very unsafe - call *ONLY* after init!
+/// Very unsafe - call *ONLY* after init_gfx_hal!
 #[inline]
 unsafe fn queue_mut() -> &'static mut <_Backend as Backend>::Queue {
     // TODO: MUTEX!
@@ -1034,7 +1035,8 @@ where
                 (buf, len)
             };
 
-            // Create a staging buffer (holds vertices before we calculate additional vertex attributes)
+            // Create a staging buffer (holds vertices before we calculate additional vertex
+            // attributes)
             let (staging_buf, staging_buf_len) = {
                 let src = model.vertices();
                 let len = src.len() as _;
@@ -1203,7 +1205,8 @@ where
         #[cfg(debug_assertions)]
         let started = Instant::now();
 
-        // We are required to wait for the GPU to finish what we submitted before dropping the driver
+        // We are required to wait for the GPU to finish what we submitted before dropping the
+        // driver
         device().wait_idle().unwrap();
 
         #[cfg(debug_assertions)]

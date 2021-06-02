@@ -589,6 +589,7 @@ where
                         // as simple as not checking items for X runs, after a positive check?
                         camera.overlaps_sphere(cmd.model.bounds())
                     }
+
                     #[cfg(not(feature = "auto-cull"))]
                     #[allow(clippy::unused_unit)]
                     {
