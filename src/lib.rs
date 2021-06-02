@@ -351,6 +351,15 @@ pub mod ptr {
         }
     }
 
+    impl<T, P> From<&Shared<T, P>> for Shared<T, P>
+    where
+        P: SharedPointerKind,
+    {
+        fn from(val: &Self) -> Self {
+            val.clone()
+        }
+    }
+
     impl<T, P> PartialEq for Shared<T, P>
     where
         P: SharedPointerKind,
@@ -470,7 +479,7 @@ where
     /// # Examples
     ///
     /// ```rust
-    /// # use screen_13::prelude_all::*;
+    /// # use screen_13::prelude_rc::*;
     /// # fn __() {
     /// let ultra_mega = Program::new("UltraMega III", "Nintari, Inc.")
     ///                   .with_title("UltraMega III: Breath of Fire")
@@ -671,9 +680,10 @@ where
     ///
     /// impl Screen<RcK> for FooScreen {
     ///     // not shown
-    /// # fn render(&self, _: &Gpu, #[cfg(not(feature = "multi-monitor"))] _: Extent) -> Render {
-    /// # todo!(); }
-    /// # #[cfg(feature = "multi-monitor")] viewports: &[Area],) -> Vec<Option<Render>> { todo!(); }
+    /// # #[cfg(not(feature = "multi-monitor"))] fn render(&self, _: &Gpu, _: Extent) -> Render
+    /// # { todo!(); }
+    /// # #[cfg(feature = "multi-monitor")] fn render(&self, _: &Gpu, _: &[Area]) ->
+    /// # Vec<Option<Render>> { todo!(); }
     /// # fn update(self: Box<Self>, _: &Gpu, _: &Input) -> DynScreen { todo!(); }
     /// }
     /// # }
@@ -784,7 +794,7 @@ where
 /// impl FooScreen {
 ///     fn load(gpu: &Gpu, pak: &mut PakFile) -> Self {
 ///         Self {
-///             bar: gpu.read_bitmap(gpu, &mut pak, "bar"),
+///             bar: gpu.read_bitmap(pak, "bar"),
 ///         }
 ///     }
 /// }

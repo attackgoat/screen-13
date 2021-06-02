@@ -131,15 +131,19 @@ where
     ///
     /// ## Examples
     ///
-    /// ```
+    /// ```rust
+    /// # use screen_13::prelude_rc::*;
+    /// # use std::iter::once;
     /// /// Draws any meshes named "Bar" within Foo
     /// fn draw_foo_bar(frame: &mut Render, foo: &Shared<Model>, mat: &Material) {
     ///     let camera = Perspective::default();
-    ///     let bar = foo.filter("bar");
+    ///     let bar = foo.filter(Some("bar"));
     ///
-    ///     frame.draw().record(&camera,
-    ///         once(Draw::model((foo, bar), material, Mat4::identity()),
-    ///     ]);
+    ///     if let Some(bar) = bar {
+    ///         frame.draw().record(&camera,
+    ///             once(Draw::model((foo, bar), mat, Mat4::IDENTITY)),
+    ///         );
+    ///     }
     /// }
     /// ```
     pub fn filter<N: AsRef<str>>(&self, name: Option<N>) -> Option<MeshFilter> {

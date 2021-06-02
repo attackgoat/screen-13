@@ -29,20 +29,25 @@ use crate::math::Area;
 /// ```
 /// # use screen_13::prelude_rc::*;
 /// # use std::time::Duration;
-/// # struct FooScreen;
+/// # struct Bar;
+/// # impl Screen<RcK> for Bar {
+/// # fn update(self: Box<Self>, _: &Gpu, _: &Input) -> DynScreen { todo!(); }
+/// # fn render(&self, _: &Gpu, _: Extent) -> Render { todo!(); }
+/// # }
+/// # struct Foo;
 /// # impl Screen<RcK> for Foo {
 /// # fn update(self: Box<Self>, _: &Gpu, _: &Input) -> DynScreen { todo!(); }
 /// # fn render(&self, _: &Gpu, _: Extent) -> Render { todo!(); }
 /// # }
-/// # type Bar = Foo;
 /// # fn __() {
-/// // The DynScreen types do not need specification and are shown for clarity only.
+/// // Note 1: The DynScreen type does not need specification and is shown for clarity only.
+/// // Note 2: Foo and Bar have Screen implementations.
 /// let a: DynScreen = Box::new(Foo);
 /// let b: DynScreen = Box::new(Bar);
-/// let t = Duration::from_secs(1.0);
+/// let t = Duration::from_secs(1);
 ///
-/// // The Fade type will call render on (Foo) and bar for u, how handy! 🤖
-/// let c: DynScreen = Fade::new(a, b, t);
+/// // The Fade type will call render on Foo and Bar for you, how handy! 🤖
+/// let c: DynScreen = Box::new(Fade::new(a, b, t));
 /// # }
 /// ```
 ///

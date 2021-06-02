@@ -63,6 +63,122 @@ pub enum Mode {
     Texture,
 }
 
+impl Mode {
+    /// Constructs an add blending mode with the given a/b ratio.
+    #[cfg(feature = "blend-modes")]
+    pub fn add<N: Into<f8>>(val: N) -> Self {
+        Self::Blend((val.into(), BlendMode::Add))
+    }
+
+    /// Constructs an alpha add blending mode with the given a/b ratio.
+    #[cfg(feature = "blend-modes")]
+    pub fn alpha_add<N: Into<f8>>(val: N) -> Self {
+        Self::Blend((val.into(), BlendMode::AlphaAdd))
+    }
+
+    /// Constructs a color burn blending mode with the given a/b ratio.
+    #[cfg(feature = "blend-modes")]
+    pub fn color_burn<N: Into<f8>>(val: N) -> Self {
+        Self::Blend((val.into(), BlendMode::ColorBurn))
+    }
+
+    /// Constructs a color dodge blending mode with the given a/b ratio.
+    #[cfg(feature = "blend-modes")]
+    pub fn color_dodge<N: Into<f8>>(val: N) -> Self {
+        Self::Blend((val.into(), BlendMode::ColorDodge))
+    }
+
+    /// Constructs a color blending mode with the given a/b ratio.
+    #[cfg(feature = "blend-modes")]
+    pub fn color<N: Into<f8>>(val: N) -> Self {
+        Self::Blend((val.into(), BlendMode::Color))
+    }
+
+    /// Constructs a darken blending mode with the given a/b ratio.
+    #[cfg(feature = "blend-modes")]
+    pub fn darken<N: Into<f8>>(val: N) -> Self {
+        Self::Blend((val.into(), BlendMode::Darken))
+    }
+
+    /// Constructs a darker color blending mode with the given a/b ratio.
+    #[cfg(feature = "blend-modes")]
+    pub fn darker_color<N: Into<f8>>(val: N) -> Self {
+        Self::Blend((val.into(), BlendMode::DarkerColor))
+    }
+
+    /// Constructs a difference blending mode with the given a/b ratio.
+    #[cfg(feature = "blend-modes")]
+    pub fn difference<N: Into<f8>>(val: N) -> Self {
+        Self::Blend((val.into(), BlendMode::Difference))
+    }
+
+    /// Constructs a divide blending mode with the given a/b ratio.
+    #[cfg(feature = "blend-modes")]
+    pub fn divide<N: Into<f8>>(val: N) -> Self {
+        Self::Blend((val.into(), BlendMode::Divide))
+    }
+
+    /// Constructs an exclusion blending mode with the given a/b ratio.
+    #[cfg(feature = "blend-modes")]
+    pub fn exclusion<N: Into<f8>>(val: N) -> Self {
+        Self::Blend((val.into(), BlendMode::Exclusion))
+    }
+
+    /// Constructs a hard light blending mode with the given a/b ratio.
+    #[cfg(feature = "blend-modes")]
+    pub fn hard_light<N: Into<f8>>(val: N) -> Self {
+        Self::Blend((val.into(), BlendMode::HardLight))
+    }
+
+    /// Constructs a hard mix blending mode with the given a/b ratio.
+    #[cfg(feature = "blend-modes")]
+    pub fn hard_mix<N: Into<f8>>(val: N) -> Self {
+        Self::Blend((val.into(), BlendMode::HardMix))
+    }
+
+    /// Constructs a linear burn blending mode with the given a/b ratio.
+    #[cfg(feature = "blend-modes")]
+    pub fn linear_burn<N: Into<f8>>(val: N) -> Self {
+        Self::Blend((val.into(), BlendMode::LinearBurn))
+    }
+
+    /// Constructs a multiply blending mode with the given a/b ratio.
+    #[cfg(feature = "blend-modes")]
+    pub fn multiply<N: Into<f8>>(val: N) -> Self {
+        Self::Blend((val.into(), BlendMode::Multiply))
+    }
+
+    /// Constructs a normal blending mode with the given a/b ratio.
+    #[cfg(feature = "blend-modes")]
+    pub fn normal<N: Into<f8>>(val: N) -> Self {
+        Self::Blend((val.into(), BlendMode::Normal))
+    }
+
+    /// Constructs an overlay blending mode with the given a/b ratio.
+    #[cfg(feature = "blend-modes")]
+    pub fn overlay<N: Into<f8>>(val: N) -> Self {
+        Self::Blend((val.into(), BlendMode::Overlay))
+    }
+
+    /// Constructs a screen blending mode with the given a/b ratio.
+    #[cfg(feature = "blend-modes")]
+    pub fn screen<N: Into<f8>>(val: N) -> Self {
+        Self::Blend((val.into(), BlendMode::Screen))
+    }
+
+    /// Constructs a subtract blending mode with the given a/b ratio.
+    #[cfg(feature = "blend-modes")]
+    pub fn subtract<N: Into<f8>>(val: N) -> Self {
+        Self::Blend((val.into(), BlendMode::Subtract))
+    }
+
+    /// Constructs a vivid light blending mode with the given a/b ratio.
+    #[cfg(feature = "blend-modes")]
+    pub fn vivid_light<N: Into<f8>>(val: N) -> Self {
+        Self::Blend((val.into(), BlendMode::VividLight))
+    }
+}
+
 /// Writes an iterator of source textures onto a destination texture, using optional modes.
 ///
 /// `WriteOp` is intended to provide high speed image splatting for tile maps, bitmap drawing,
@@ -78,15 +194,13 @@ pub enum Mode {
 ///
 /// ```
 /// # use screen_13::prelude_rc::*;
-///
-/// ...
 /// # fn get_nine_slices(_: &str) -> [Shared<Bitmap>; 9] { todo!(); }
-/// fn __() {
-/// # let gpu = Gpu::Offscreen();
+/// # fn __() {
+/// # let gpu = Gpu::offscreen();
 /// # let mut render = gpu.render((32u32, 32u32));
 /// // We've already sliced up a UI button image (🔪 top left, 🔪 top, 🔪 top right, ...)
 /// let self_destruct: [Shared<Bitmap>; 9] = get_nine_slices("dangerous-button");
-/// let color_burn = WriteMode::Blend(0.42, BlendMode::ColorBurn);
+/// let color_burn = WriteMode::color_burn(0.42);
 /// let writes = [
 ///     // top left
 ///     Write::tile_position(&self_destruct[0], Area::new(0, 0, 32, 32), Coord::new(0, 0)),

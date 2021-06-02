@@ -5,5 +5,5 @@ authors = ["John Wells <john@attackgoat.com>"]
 edition = "2018"
 
 [dependencies]
-gfx-hal = "0.7"
+gfx-hal = "0.8"
 raw-window-handle = "0.3"

@@ -250,15 +250,14 @@ render
     );
 ```
 
-_NOTE_: To write a `Render` to another render you must first resolve the source render, as we did
-with `bar` earlier:
+_NOTE_: A `Render` may be written to another render, as shown using `bar` which we created earlier:
 
 ```rust
 render
     .write()
     .record(&[
         Write::position(&cat, (5.0, 5.0)),
-        Write::position(&bar_tex, (2.0, 4.0)),
+        Write::position(&bar, (2.0, 4.0)),
     ]);
 ```
 
