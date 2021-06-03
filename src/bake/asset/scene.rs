@@ -56,12 +56,12 @@ impl Ref {
 
     /// Any 3D position or position-like data.
     pub fn position(&self) -> Vec3 {
-        self.position.unwrap_or_else(|| Vec3::ZERO)
+        self.position.unwrap_or(Vec3::ZERO)
     }
 
     /// Any 3D orientation  or orientation-like data.
     pub fn rotation(&self) -> Quat {
-        let rotation = self.rotation.unwrap_or_else(|| Vec3::ZERO) * PI / 180.0;
+        let rotation = self.rotation.unwrap_or(Vec3::ZERO) * PI / 180.0;
 
         // y = yaw
         // x = pitch

@@ -37,12 +37,12 @@ impl AlphaColor {
 
     /// Constructs an `AlphaColor` from the given values.
     pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
-        Self { b, g, r, a: 0xff }
+        Self { a: 0xff, b, g, r }
     }
 
     /// Constructs an `AlphaColor` from the given values.
     pub const fn rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
-        Self { b, g, r, a }
+        Self { a, b, g, r }
     }
 
     /// Constructs a `Vec4` from this color.

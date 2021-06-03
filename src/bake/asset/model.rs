@@ -33,12 +33,12 @@ impl Model {
 
     /// Translation of the model origin.
     pub fn offset(&self) -> Vec3 {
-        self.offset.unwrap_or_else(|| Vec3::ZERO)
+        self.offset.unwrap_or(Vec3::ZERO)
     }
 
     /// Scaling of the model.
     pub fn scale(&self) -> Vec3 {
-        self.scale.unwrap_or_else(|| Vec3::ONE)
+        self.scale.unwrap_or(Vec3::ONE)
     }
 
     /// The model file source.

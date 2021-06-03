@@ -20,16 +20,6 @@ pub type DataBuffer<P> = (Lease<Data, P>, u64);
 /// Data, length, and write mask (1 bit per index; all staged data is indexed)
 pub type StagingBuffers<P> = (Lease<Data, P>, u64, Lease<Data, P>);
 
-// TODO: Could not force the lifetime to work without an explicit function which means I'm missing something really basic
-#[inline]
-fn deref_str<S: AsRef<str>>(s: &Option<S>) -> Option<&str> {
-    if let Some(s) = s {
-        Some(s.as_ref())
-    } else {
-        None
-    }
-}
-
 pub struct MeshIter<'a, P>
 where
     P: SharedPointerKind,
@@ -147,7 +137,7 @@ where
     /// }
     /// ```
     pub fn filter<N: AsRef<str>>(&self, name: Option<N>) -> Option<MeshFilter> {
-        let name_str = deref_str(&name);
+        let name_str = name.as_ref().map(|s| s.as_ref());
         match self
             .meshes
             .binary_search_by(|probe| probe.name().cmp(&name_str))

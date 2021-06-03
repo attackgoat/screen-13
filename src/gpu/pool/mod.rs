@@ -510,7 +510,7 @@ where
         Lease::new(item, items)
     }
 
-    pub(super) unsafe fn desc_pool<'i, I>(
+    pub(super) unsafe fn desc_pool<I>(
         &mut self,
         max_desc_sets: usize,
         desc_ranges: I,

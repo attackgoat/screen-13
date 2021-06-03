@@ -61,7 +61,7 @@ pub fn change_channel_type(format: Format, ty: ChannelType) -> Format {
 }
 
 pub const fn descriptor_range_desc(count: usize, ty: DescriptorType) -> DescriptorRangeDesc {
-    DescriptorRangeDesc { count, ty }
+    DescriptorRangeDesc { ty, count }
 }
 
 pub const fn descriptor_set_layout_binding(
