@@ -8,7 +8,7 @@ use {
         },
         ptr::Shared,
     },
-    a_r_c_h_e_r_y::SharedPointerKind,
+    archery::SharedPointerKind,
     gfx_hal::{
         command::{BufferImageCopy, CommandBuffer, CommandBufferFlags, Level},
         format::Aspects,

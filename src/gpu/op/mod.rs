@@ -14,7 +14,8 @@ pub mod write;
 
 use {
     super::{data::CopyRange, Data, Lease, Pool},
-    a_r_c_h_e_r_y::SharedPointerKind,
+    archery::SharedPointerKind,
+    gfx_hal::buffer::Usage as BufferUsage,
     std::any::Any,
     std::ops::Range,
 };
@@ -30,6 +31,25 @@ struct Allocation<T> {
     previous: Option<(T, u64)>,
 }
 
+/// Copies the gpu-side data from the given ranges to the gpu-side destinations.
+pub(super) struct DataCopyInstruction<'a> {
+    pub buf: &'a mut Data,
+    pub ranges: &'a [CopyRange],
+}
+
+/// Transfers the gpu-side data from the source range of one Data to another.
+struct DataTransferInstruction<'a> {
+    pub dst: &'a mut Data,
+    pub src: &'a mut Data,
+    pub src_range: Range<u64>,
+}
+
+/// Writes the range of cpu-side data to the gpu-side.
+pub(super) struct DataWriteInstruction<'a> {
+    pub buf: &'a mut Data,
+    pub range: Range<u64>,
+}
+
 /// Extends the `Data` type so we can track which portions require updates.
 ///
 /// Does not teach an entire city full of people that dancing is the best thing there is.
@@ -37,7 +57,7 @@ struct DirtyData<Key, P>
 where
     P: SharedPointerKind,
 {
-    data: Allocation<Lease<Data, P>>,
+    allocation: Allocation<Lease<Data, P>>,
 
     /// Segments of gpu memory which must be "compacted" (read: copied) within the gpu.
     pending_copies: Vec<CopyRange>,
@@ -144,7 +164,7 @@ where
 {
     fn from(val: Lease<Data, P>) -> Self {
         Self {
-            data: Allocation {
+            allocation: Allocation {
                 current: val,
                 previous: None,
             },
@@ -173,6 +193,7 @@ where
         #[cfg(feature = "debug-names")] name: &str,
         pool: &mut Pool<P>,
         len: u64,
+        usage: BufferUsage,
     ) where
         Key: Stride,
     {
@@ -183,7 +204,7 @@ where
 
         // Early-out if we do not need to resize the buffer
         if let Some(existing) = self.buf.as_ref() {
-            if existing.data.current.capacity() >= len {
+            if existing.allocation.current.capacity() >= len {
                 return;
             }
         }
@@ -193,16 +214,17 @@ where
             "Reallocating {} to {}",
             self.buf
                 .as_ref()
-                .map_or(0, |buf| buf.data.current.capacity()),
+                .map_or(0, |buf| buf.allocation.current.capacity()),
             len
         );
 
         // We over-allocate the requested capacity to prevent rapid reallocations
         let capacity = (len as f32 * CACHE_CAPACITY_FACTOR) as u64;
-        let data = pool.data(
+        let data = pool.data_usage(
             #[cfg(feature = "debug-names")]
             &name,
             capacity,
+            usage,
         );
 
         if let Some(old_buf) = self.buf.replace(data.into()) {
@@ -213,7 +235,7 @@ where
                 .map_or(0, |(offset, _)| offset + Key::stride());
             let new_buf = &mut self.buf.as_mut().unwrap();
             new_buf.usage = old_buf.usage;
-            new_buf.data.previous = Some((old_buf.data.current, old_buf_len));
+            new_buf.allocation.previous = Some((old_buf.allocation.current, old_buf_len));
         }
     }
 

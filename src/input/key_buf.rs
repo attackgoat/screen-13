@@ -24,14 +24,14 @@ impl KeyBuf {
     pub(crate) fn handle(&mut self, _event: &KeyboardInput) {
         /*match event {
             Event::KeyboardInput(state, _, Some(key_code)) => self.handle_key(*state, *key_code),
-            Event::ReceivedCharacter(chr) => self.handle_char(*chr),
+            Event::ReceivedCharacter(char) => self.handle_char(*char),
             _ => unimplemented!(),
         }*/
     }
 
-    fn handle_char(&mut self, chr: char) {
-        if !chr.is_control() {
-            self.char_buf.push(chr)
+    fn handle_char(&mut self, char: char) {
+        if !char.is_control() {
+            self.char_buf.push(char)
         }
     }
 

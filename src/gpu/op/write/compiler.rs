@@ -1,14 +1,14 @@
 use {
     super::{Command, Instruction},
     crate::{gpu::Texture2d, math::Mat4, ptr::Shared},
-    a_r_c_h_e_r_y::SharedPointerKind,
+    archery::SharedPointerKind,
     std::borrow::Borrow,
 };
 
 // `Asm` is the "assembly op code" that is used to create an `Instruction` instance.
-#[non_exhaustive]
+#[derive(Clone, Copy)]
 enum Asm {
-    BindTextureDescriptors(usize),
+    BindTextureDescriptorSet(usize),
     WriteTexture(Mat4),
 }
 
@@ -24,7 +24,7 @@ impl<P> Compilation<'_, P>
 where
     P: SharedPointerKind,
 {
-    fn bind_texture_descriptors(&self, idx: usize) -> Instruction {
+    fn bind_texture_descriptor_set(&self, idx: usize) -> Instruction {
         let src = Shared::as_ptr(&self.compiler.cmds[idx].src);
         let desc_set = self
             .compiler
@@ -32,7 +32,7 @@ where
             .binary_search_by(|probe| Shared::as_ptr(&probe).cmp(&src))
             .unwrap();
 
-        Instruction::TextureDescriptors(desc_set)
+        Instruction::TextureBindDescriptorSet(desc_set)
     }
 
     fn write_texture(&self, transform: Mat4) -> Instruction {
@@ -63,9 +63,9 @@ where
         let idx = self.idx;
         self.idx += 1;
 
-        Some(match &self.compiler.code[idx] {
-            Asm::BindTextureDescriptors(idx) => self.bind_texture_descriptors(*idx),
-            Asm::WriteTexture(transform) => self.write_texture(*transform),
+        Some(match self.compiler.code[idx] {
+            Asm::BindTextureDescriptorSet(idx) => self.bind_texture_descriptor_set(idx),
+            Asm::WriteTexture(transform) => self.write_texture(transform),
         })
     }
 }

@@ -20,19 +20,17 @@ use {
     self::{
         compiler::CalcVertexAttrsDescriptors,
         geom::{
-            LINE_STRIDE, POINT_LIGHT_DRAW_COUNT, POINT_LIGHT_LEN, RECT_LIGHT_STRIDE,
-            SPOTLIGHT_STRIDE,
+            LINE_STRIDE, POINT_LIGHT, POINT_LIGHT_DRAW_COUNT, RECT_LIGHT_STRIDE, SPOTLIGHT_STRIDE,
         },
         geom_buf::GeometryBuffer,
         instruction::{
-            DataComputeInstruction, DataCopyInstruction, DataTransferInstruction,
-            DataWriteInstruction, DataWriteRefInstruction, Instruction, LightBindInstruction,
-            LineDrawInstruction, MeshBindInstruction, MeshDrawInstruction,
+            DataComputeInstruction, DataWriteRefInstruction, Instruction, LightBindInstruction,
+            LineDrawInstruction, MeshBindBuffersInstruction, MeshDrawInstruction,
             PointLightDrawInstruction, RectLightDrawInstruction, SpotlightDrawInstruction,
             VertexAttrsDescriptorsInstruction,
         },
     },
-    super::Op,
+    super::{DataCopyInstruction, DataTransferInstruction, DataWriteInstruction, Op},
     crate::{
         camera::Camera,
         gpu::{
@@ -57,7 +55,7 @@ use {
         math::{Coord, Mat3, Mat4, Quat, Vec2, Vec3},
         ptr::Shared,
     },
-    a_r_c_h_e_r_y::SharedPointerKind,
+    archery::SharedPointerKind,
     gfx_hal::{
         buffer::{Access as BufferAccess, SubRange},
         command::{
@@ -429,7 +427,7 @@ where
                 let view_proj_inv = view_proj.inverse();
                 let dims: Coord = self.dst.dims().into();
                 let viewport = Viewport {
-                    rect: dims.as_rect_at(Coord::ZERO),
+                    rect: dims.as_rect(),
                     depth: 0.0..1.0,
                 };
 
@@ -468,8 +466,8 @@ where
                             self.submit_lines(instr, &viewport, view_proj)
                         }
                         Instruction::MeshBegin => self.submit_mesh_begin(&viewport),
-                        Instruction::MeshBind(instr) => self.submit_mesh_bind(instr),
-                        Instruction::MeshDescriptors(desc_set) => {
+                        Instruction::MeshBindBuffers(instr) => self.submit_mesh_bind_buffers(instr),
+                        Instruction::MeshBindDescriptorSet(desc_set) => {
                             self.submit_mesh_descriptors(desc_set)
                         }
                         Instruction::MeshDraw(instr) => self.submit_mesh(instr, view_proj),
@@ -649,6 +647,27 @@ where
         );
     }
 
+    unsafe fn submit_light_begin(&mut self) {
+        trace!("submit_light_begin");
+
+        self.cmd_buf.next_subpass(SubpassContents::Inline);
+    }
+
+    unsafe fn submit_light_bind(&mut self, instr: LightBindInstruction) {
+        trace!("submit_light_bind");
+
+        self.cmd_buf.bind_vertex_buffers(
+            0,
+            once((
+                instr.buf.as_ref(),
+                SubRange {
+                    offset: 0,
+                    size: Some(instr.buf_len),
+                },
+            )),
+        );
+    }
+
     unsafe fn submit_lines(
         &mut self,
         instr: LineDrawInstruction,
@@ -694,27 +713,6 @@ where
         self.cmd_buf.draw(0..instr.line_count, 0..1);
     }
 
-    unsafe fn submit_light_begin(&mut self) {
-        trace!("submit_light_begin");
-
-        self.cmd_buf.next_subpass(SubpassContents::Inline);
-    }
-
-    unsafe fn submit_light_bind(&mut self, instr: LightBindInstruction) {
-        trace!("submit_light_bind");
-
-        self.cmd_buf.bind_vertex_buffers(
-            0,
-            once((
-                instr.buf.as_ref(),
-                SubRange {
-                    offset: 0,
-                    size: Some(instr.buf_len),
-                },
-            )),
-        );
-    }
-
     unsafe fn submit_mesh_begin(&mut self, viewport: &Viewport) {
         trace!("submit_mesh_begin");
 
@@ -725,8 +723,8 @@ where
         self.cmd_buf.set_viewports(0, once(viewport.clone()));
     }
 
-    unsafe fn submit_mesh_bind(&mut self, instr: MeshBindInstruction<'_, P>) {
-        trace!("submit_mesh_bind");
+    unsafe fn submit_mesh_bind_buffers(&mut self, instr: MeshBindBuffersInstruction<'_, P>) {
+        trace!("submit_mesh_bind_buffers");
 
         // NOTE: These sub ranges are not SubRange::WHOLE because the leased data may have
         // additional capacity beyond the indices/vertices we're using
@@ -825,7 +823,7 @@ where
                 instr.buf.as_ref(),
                 SubRange {
                     offset: 0,
-                    size: Some(POINT_LIGHT_LEN),
+                    size: Some(POINT_LIGHT.len() as _),
                 },
             )),
         );
@@ -1314,12 +1312,7 @@ where
         self.cmd_buf.finish();
 
         // Submit
-        queue_mut().submit(
-            once(&self.cmd_buf),
-            empty(),
-            empty(),
-            Some(self.fence.as_mut()),
-        );
+        queue_mut().submit(once(&self.cmd_buf), empty(), empty(), Some(&mut self.fence));
     }
 
     unsafe fn write_calc_vertex_attrs_descriptors<'v>(

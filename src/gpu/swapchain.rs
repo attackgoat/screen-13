@@ -23,7 +23,10 @@ use {
         Backend,
     },
     gfx_impl::Backend as _Backend,
-    std::iter::{empty, once},
+    std::{
+        borrow::Borrow,
+        iter::{empty, once},
+    },
 };
 
 // TODO: Test things while fiddling with the result of this function
@@ -259,7 +262,10 @@ impl Swapchain {
             &self.render_pass,
             &frame_buf,
             rect,
-            empty::<RenderAttachmentInfo<_Backend>>(),
+            once(RenderAttachmentInfo {
+                image_view: image_view.borrow(),
+                clear_value: Default::default(),
+            }),
             SubpassContents::Inline,
         );
         image.cmd_buf.draw(0..6, 0..1);

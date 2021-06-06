@@ -31,7 +31,7 @@ pub type CoordF = GenericCoord<f32>;
 /// A coordinate with u32 values.
 pub type Extent = GenericCoord<u32>;
 
-/// A rectangular area with u32 position and i32 size values.
+/// A rectangular area with i32 position and u32 size values.
 pub type Rect = GenericRect<u32, i32>;
 
 /// A rectangular area with f32 position and size values.

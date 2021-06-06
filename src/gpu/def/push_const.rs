@@ -40,7 +40,7 @@ macro_rules! push_const_struct {
 
 pub type ShaderRange = (ShaderStageFlags, Range<u32>);
 
-// General-use consts and types (single values only)
+// General-use consts and types
 
 pub const VERTEX_MAT4: [ShaderRange; 1] = [(ShaderStageFlags::VERTEX, 0..64)];
 
@@ -52,6 +52,9 @@ push_const_struct!(U32PushConst {
 });
 push_const_struct!(Vec4PushConst {
     pub val: Vec4,
+});
+push_const_struct!(Vec4Vec4PushConst {
+    pub val: [Vec4; 2],
 });
 
 // Specific-use consts and types (gives context to fields and alignment control)
@@ -81,18 +84,26 @@ pub const DRAW_SUNLIGHT: [ShaderRange; 2] = [
     (ShaderStageFlags::VERTEX, 0..64),
     (ShaderStageFlags::FRAGMENT, 0..0),
 ];
-pub const FONT: [ShaderRange; 2] = [
-    (ShaderStageFlags::VERTEX, 0..Mat4PushConst::BYTE_LEN),
+pub const BITMAP_FONT_GLYPH: [ShaderRange; 2] = [
+    (
+        ShaderStageFlags::VERTEX,
+        0..BitmapFontVertexPushConsts::BYTE_LEN,
+    ),
     (
         ShaderStageFlags::FRAGMENT,
-        Mat4PushConst::BYTE_LEN..Mat4PushConst::BYTE_LEN + Vec4PushConst::BYTE_LEN,
+        BitmapFontVertexPushConsts::BYTE_LEN
+            ..BitmapFontVertexPushConsts::BYTE_LEN + Vec4PushConst::BYTE_LEN,
     ),
 ];
-pub const FONT_OUTLINE: [ShaderRange; 2] = [
-    (ShaderStageFlags::VERTEX, 0..Mat4PushConst::BYTE_LEN),
+pub const BITMAP_FONT_OUTLINE: [ShaderRange; 2] = [
+    (
+        ShaderStageFlags::VERTEX,
+        0..BitmapFontVertexPushConsts::BYTE_LEN,
+    ),
     (
         ShaderStageFlags::FRAGMENT,
-        Mat4PushConst::BYTE_LEN..Mat4PushConst::BYTE_LEN + FontPushConsts::BYTE_LEN,
+        BitmapFontVertexPushConsts::BYTE_LEN
+            ..BitmapFontVertexPushConsts::BYTE_LEN + Vec4Vec4PushConst::BYTE_LEN,
     ),
 ];
 pub const SKYDOME: [ShaderRange; 2] = [
@@ -108,13 +119,15 @@ pub const SKYDOME: [ShaderRange; 2] = [
 ];
 pub const TEXTURE: [ShaderRange; 1] = [(ShaderStageFlags::VERTEX, 0..80)];
 
+push_const_struct!(BitmapFontVertexPushConsts {
+    pub view_proj: Mat4,
+    pub dims_inv: Vec2,
+    _0: f32,
+    _1: f32,
+});
 push_const_struct!(CalcVertexAttrsPushConsts {
     pub base_vertex: u32,
     pub base_idx: u32,
-});
-push_const_struct!(FontPushConsts {
-    pub glyph_color: Vec4,
-    pub outline_color: Vec4,
 });
 // TODO: Could this be packed better?
 push_const_struct!(PointLightPushConsts {
@@ -127,7 +140,7 @@ push_const_struct!(PointLightPushConsts {
     pub light_center: Vec3,
     pub light_radius: f32,
     pub light_intensity: Vec3,
-    _4: f32, // Not sure this is required
+    _4: f32, // TODO: Ensure this is required or remove it
 });
 push_const_struct!(RectLightPushConsts {
     pub dims: Vec2,

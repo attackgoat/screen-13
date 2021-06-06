@@ -22,7 +22,7 @@ use {
         math::{Mat4, Vec2},
         ptr::Shared,
     },
-    a_r_c_h_e_r_y::SharedPointerKind,
+    archery::SharedPointerKind,
     f8::f8,
     gfx_hal::{
         command::{
@@ -380,8 +380,8 @@ where
 
                 while let Some(instr) = instrs.next() {
                     match instr {
-                        Instruction::TextureDescriptors(desc_set) => {
-                            self.submit_texture_descriptors(desc_set)
+                        Instruction::TextureBindDescriptorSet(desc_set) => {
+                            self.submit_texture_bind_descriptor_set(desc_set)
                         }
                         Instruction::TextureWrite(transform) => {
                             self.submit_texture_write(transform)
@@ -488,8 +488,8 @@ where
         bind_graphics_descriptor_set(&mut self.cmd_buf, graphics.layout(), graphics.desc_set(0));
     }
 
-    unsafe fn submit_texture_descriptors(&mut self, desc_set: usize) {
-        trace!("submit_texture_descriptors");
+    unsafe fn submit_texture_bind_descriptor_set(&mut self, desc_set: usize) {
+        trace!("submit_texture_bind_descriptor_set");
 
         let graphics = self.graphics_texture.as_ref().unwrap();
 

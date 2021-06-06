@@ -3,16 +3,18 @@ use {
         gpu::{
             op::bitmap::{Bitmap, BitmapOp},
             pool::Pool,
+            Texture2d,
         },
-        math::Extent,
+        math::{CoordF, Rect},
         pak::Pak,
     },
-    a_r_c_h_e_r_y::SharedPointerKind,
+    archery::SharedPointerKind,
     bmfont::{BMFont, CharPosition, OrdinateOrientation},
     std::{
         f32,
         fmt::{Debug, Error, Formatter},
         io::{Cursor, Read, Seek},
+        mem::MaybeUninit,
     },
 };
 
@@ -23,13 +25,16 @@ where
     P: 'static + SharedPointerKind,
 {
     def: BMFont,
-    pub(super) pages: Vec<Bitmap<P>>,
+    page: Bitmap<P>,
 }
 
 impl<P> BitmapFont<P>
 where
     P: SharedPointerKind,
 {
+    // // Bytes per character (we render a quad per character)
+    // pub(crate) const STRIDE: usize = 96;
+
     pub(crate) fn read<K: AsRef<str>, R: Read + Seek>(
         pool: &mut Pool<P>,
         pak: &mut Pak<R>,
@@ -42,128 +47,124 @@ where
             OrdinateOrientation::TopToBottom,
         )
         .unwrap();
-        let pages = bitmap_font
-            .pages()
-            .map(|page| unsafe {
-                BitmapOp::new(
-                    #[cfg(feature = "debug-names")]
-                    "Font",
-                    pool,
-                    &page,
-                )
-                .record()
-            })
-            .collect();
+        let page = unsafe {
+            BitmapOp::new(
+                #[cfg(feature = "debug-names")]
+                "Font",
+                pool,
+                bitmap_font.page(),
+            )
+            .record()
+        };
 
-        Self { def, pages }
-    }
-
-    fn char_vertices(page_dims: Extent, char_pos: &CharPosition, texture_dims: Extent) -> Vec<u8> {
-        let x1 = char_pos.screen_rect.x as f32 / texture_dims.x as f32;
-        let y1 = char_pos.screen_rect.y as f32 / texture_dims.y as f32;
-        let x2 = (char_pos.screen_rect.x + char_pos.screen_rect.width as i32) as f32
-            / texture_dims.x as f32;
-        let y2 = (char_pos.screen_rect.y + char_pos.screen_rect.height as i32) as f32
-            / (texture_dims.y as f32);
-        let u1 = char_pos.page_rect.x as f32 / page_dims.x as f32;
-        let v1 = char_pos.page_rect.y as f32 / page_dims.y as f32;
-        let u2 =
-            (char_pos.page_rect.x + char_pos.page_rect.width as i32) as f32 / page_dims.x as f32;
-        let v2 =
-            (char_pos.page_rect.y + char_pos.page_rect.height as i32) as f32 / page_dims.y as f32;
-        let vertices = vec![
-            Vertex {
-                x: x1,
-                y: y1,
-                u: u1,
-                v: v1,
-            },
-            Vertex {
-                x: x2,
-                y: y2,
-                u: u2,
-                v: v2,
-            },
-            Vertex {
-                x: x2,
-                y: y1,
-                u: u2,
-                v: v1,
-            },
-            Vertex {
-                x: x1,
-                y: y1,
-                u: u1,
-                v: v1,
-            },
-            Vertex {
-                x: x1,
-                y: y2,
-                u: u1,
-                v: v2,
-            },
-            Vertex {
-                x: x2,
-                y: y2,
-                u: u2,
-                v: v2,
-            },
-        ];
-
-        let mut res = Vec::with_capacity(96);
-        for vertex in vertices {
-            res.extend(&vertex.x.to_ne_bytes());
-            res.extend(&vertex.y.to_ne_bytes());
-            res.extend(&vertex.u.to_ne_bytes());
-            res.extend(&vertex.v.to_ne_bytes());
-        }
-
-        res
+        Self { def, page }
     }
 
     /// Returns the area, in pixels, required to render the given text.
-    pub fn measure(&self, text: &str) -> Extent {
-        let mut x = 0;
-        let mut y = 0;
-        for char_pos in self.def.parse(text).unwrap() {
-            x = char_pos.screen_rect.x + char_pos.screen_rect.width as i32 - 1;
-            y = char_pos.screen_rect.height as i32;
+    ///
+    /// **_NOTE:_** The 'start' of the render area is at the zero coordinate, however it may extend
+    /// into the negative x direction due to ligatures and right-to-left fonts.
+    pub fn measure(&self, text: &str) -> Rect {
+        let parse = self.def.parse(text);
+
+        // // TODO: Let them know about the missing/unsupported characters?
+        // if parse.is_err() {
+        //     return Rect::ZERO;
+        // }
+
+        let mut min_x = 0;
+        let mut max_x = 0;
+        let mut max_y = 0;
+        for char in parse {
+            if char.screen_rect.x < min_x {
+                min_x = char.screen_rect.x;
+            }
+
+            let screen_x = char.screen_rect.max_x();
+            if screen_x > max_x {
+                max_x = screen_x;
+            }
+
+            let screen_y = char.screen_rect.max_y();
+            if screen_y > max_y {
+                max_y = screen_y;
+            }
         }
 
-        assert!(x >= 0);
-        assert!(y >= 0);
-
-        Extent::new(x as _, y as _)
+        Rect::new(min_x, 0, (max_x - min_x) as _, max_y as _)
     }
 
-    fn tessellate(&self, text: &str, texture_dims: Extent) -> Vec<(usize, Vec<u8>)> {
-        let mut tess_pages: Vec<Option<Vec<u8>>> = vec![];
-        tess_pages.resize_with(self.pages.len(), Default::default);
+    pub(super) fn page(&self) -> &Texture2d {
+        &self.page
+    }
 
-        for char_pos in self.def.parse(text).unwrap() {
-            let page_idx = char_pos.page_index as usize;
-            let font_texture = &self.pages[page_idx];
+    pub(super) fn parse<'a>(&'a self, text: &'a str) -> impl Iterator<Item = CharPosition> + 'a {
+        self.def.parse(text)
+    }
 
-            if tess_pages[page_idx].is_none() {
-                tess_pages[page_idx] = Some(vec![]);
-            }
+    pub(super) fn tessellate(&self, char: &CharPosition) -> [u8; 96] {
+        let x1 = char.screen_rect.x as f32;
+        let y1 = char.screen_rect.y as f32;
+        let x2 = (char.screen_rect.x + char.screen_rect.width as i32) as f32;
+        let y2 = (char.screen_rect.y + char.screen_rect.height as i32) as f32;
 
-            tess_pages[page_idx]
-                .as_mut()
-                .unwrap()
-                .extend(&Self::char_vertices(
-                    font_texture.dims(),
-                    &char_pos,
-                    texture_dims,
-                ));
-        }
+        // BMFont coordinates are based on square pages, but we tile additional pages onto the
+        // bottom of our single page to avoid requiring page switching.
+        let page_dims: CoordF = self.page.dims().into();
+        let page_offset = char.page_index as f32 * page_dims.x / page_dims.y;
 
-        let mut res = vec![];
-        for (idx, tess_page) in tess_pages.into_iter().enumerate() {
-            if let Some(tess_page) = tess_page {
-                res.push((idx, tess_page));
-            }
-        }
+        let u1 = char.page_rect.x as f32 / page_dims.y;
+        let v1 = page_offset + char.page_rect.y as f32 / page_dims.y;
+        let u2 = (char.page_rect.x + char.page_rect.width as i32) as f32 / page_dims.y;
+        let v2 =
+            page_offset + (char.page_rect.y + char.page_rect.height as i32) as f32 / page_dims.y;
+
+        let x1 = x1.to_ne_bytes();
+        let x2 = x2.to_ne_bytes();
+        let y1 = y1.to_ne_bytes();
+        let y2 = y2.to_ne_bytes();
+        let u1 = u1.to_ne_bytes();
+        let u2 = u2.to_ne_bytes();
+        let v1 = v1.to_ne_bytes();
+        let v2 = v2.to_ne_bytes();
+
+        let mut res: [u8; 96] = unsafe { MaybeUninit::uninit().assume_init() };
+
+        // Top left (first triangle)
+        res[0..4].copy_from_slice(&x1);
+        res[4..8].copy_from_slice(&y1);
+        res[8..12].copy_from_slice(&u1);
+        res[12..16].copy_from_slice(&v1);
+
+        // Bottom right
+        res[16..20].copy_from_slice(&x2);
+        res[20..24].copy_from_slice(&y2);
+        res[24..28].copy_from_slice(&u2);
+        res[28..32].copy_from_slice(&v2);
+
+        // Top right
+        res[32..36].copy_from_slice(&x2);
+        res[36..40].copy_from_slice(&y1);
+        res[40..44].copy_from_slice(&u2);
+        res[44..48].copy_from_slice(&v1);
+
+        // Top left (second triangle)
+        res[48..52].copy_from_slice(&x1);
+        res[52..56].copy_from_slice(&y1);
+        res[56..60].copy_from_slice(&u1);
+        res[60..64].copy_from_slice(&v1);
+
+        // Bottom left
+        res[64..68].copy_from_slice(&x1);
+        res[68..72].copy_from_slice(&y2);
+        res[72..76].copy_from_slice(&u1);
+        res[76..80].copy_from_slice(&v2);
+
+        // Bottom right
+        res[80..84].copy_from_slice(&x2);
+        res[84..88].copy_from_slice(&y2);
+        res[88..92].copy_from_slice(&u2);
+        res[92..96].copy_from_slice(&v2);
 
         res
     }
@@ -176,16 +177,4 @@ where
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.write_str("BitmapFont")
     }
-}
-
-#[derive(Clone, Copy, Default)]
-pub struct Vertex {
-    x: f32,
-    y: f32,
-    u: f32,
-    v: f32,
-}
-
-impl Vertex {
-    pub const STRIDE: u64 = 16;
 }

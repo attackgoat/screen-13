@@ -1,7 +1,7 @@
 #version 450
 
 layout(push_constant) uniform PushConstants {
-    layout(offset = 64) vec4 color;
+    layout(offset = 80) vec4 color;
 } push_constants;
 
 layout(set = 0, binding = 0) uniform sampler2D page;

@@ -7,7 +7,7 @@ use {
         math::Extent,
         ptr::Shared,
     },
-    a_r_c_h_e_r_y::SharedPointerKind,
+    archery::SharedPointerKind,
     gfx_hal::{
         format::{Format, ImageFeature},
         image::{Layout, Usage as ImageUsage},

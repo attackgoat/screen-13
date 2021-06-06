@@ -29,7 +29,7 @@ pub fn bake_font<P1: AsRef<Path>, P2: AsRef<Path>>(
     let font = Font::from_bytes(
         src_file,
         FontSettings {
-            enable_offset_bounding_box: true,
+            enable_offset_bounding_box: font_asset.enable_offset_bounding_box(),
             collection_index: font_asset.collection_index(),
             scale: font_asset.scale(),
         },

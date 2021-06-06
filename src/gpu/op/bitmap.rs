@@ -13,7 +13,7 @@ use {
         pak::{BitmapBuf, BitmapFormat},
         ptr::Shared,
     },
-    a_r_c_h_e_r_y::SharedPointerKind,
+    archery::SharedPointerKind,
     gfx_hal::{
         buffer::{Access as BufferAccess, SubRange, Usage as BufferUsage},
         command::{BufferImageCopy, CommandBuffer, CommandBufferFlags, Level},

@@ -2,12 +2,16 @@ use {
     super::command::{PointLightIter, RectLightCommand, SpotlightCommand, SunlightIter},
     crate::{
         gpu::{
-            data::CopyRange, def::CalcVertexAttrsComputeMode, model::MeshIter, pool::Lease, Data,
+            def::CalcVertexAttrsComputeMode,
+            model::MeshIter,
+            op::{DataCopyInstruction, DataTransferInstruction, DataWriteInstruction},
+            pool::Lease,
+            Data,
         },
         math::Mat4,
         pak::IndexType,
     },
-    a_r_c_h_e_r_y::SharedPointerKind,
+    archery::SharedPointerKind,
     std::{
         cell::{Ref, RefMut},
         ops::Range,
@@ -18,25 +22,6 @@ pub(super) struct DataComputeInstruction {
     pub base_idx: u32,
     pub base_vertex: u32,
     pub dispatch: u32,
-}
-
-/// Copies the gpu-side data from the given range to the cpu-side
-pub(super) struct DataCopyInstruction<'a> {
-    pub buf: &'a mut Data,
-    pub ranges: &'a [CopyRange],
-}
-
-/// Transfers the gpu-side data from the source range of one Data to another.
-pub(super) struct DataTransferInstruction<'a> {
-    pub dst: &'a mut Data,
-    pub src: &'a mut Data,
-    pub src_range: Range<u64>,
-}
-
-/// Writes the range of cpu-side data to the gpu-side.
-pub(super) struct DataWriteInstruction<'a> {
-    pub buf: &'a mut Data,
-    pub range: Range<u64>,
 }
 
 /// Writes the range of cpu-side data to the gpu-side.
@@ -60,8 +45,8 @@ where
     LightBind(LightBindInstruction<'a>),
     LineDraw(LineDrawInstruction<'a>),
     MeshBegin,
-    MeshBind(MeshBindInstruction<'a, P>),
-    MeshDescriptors(usize),
+    MeshBindBuffers(MeshBindBuffersInstruction<'a, P>),
+    MeshBindDescriptorSet(usize),
     MeshDraw(MeshDrawInstruction<'a, P>),
     PointLightDraw(PointLightDrawInstruction<'a, P>),
     RectLightBegin,
@@ -87,7 +72,7 @@ pub(super) struct LineDrawInstruction<'a> {
     pub line_count: u32,
 }
 
-pub(super) struct MeshBindInstruction<'a, P>
+pub(super) struct MeshBindBuffersInstruction<'a, P>
 where
     P: SharedPointerKind,
 {

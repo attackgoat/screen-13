@@ -127,7 +127,7 @@ use {
         },
         ptr::Shared,
     },
-    a_r_c_h_e_r_y::SharedPointerKind,
+    archery::SharedPointerKind,
     fontdue::Font,
     gfx_hal::{
         adapter::{Adapter, DeviceType, MemoryProperties, PhysicalDevice},
@@ -557,12 +557,6 @@ where
                         && ty.supports_transfer()
                 })
                 .expect("Unable to find GFX-HAL queue");
-
-            info!(
-                "Adapter: {} ({:?})",
-                &adapter().info.name,
-                adapter().info.device_type
-            );
 
             surface = Some(surface_instance);
 

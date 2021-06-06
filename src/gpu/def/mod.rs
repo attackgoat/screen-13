@@ -94,7 +94,8 @@ pub(super) struct DrawRenderPassMode {
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub(super) enum FontMode {
-    Bitmap(bool),
+    BitmapGlyph,
+    BitmapOutline,
     Scalable,
 }
 

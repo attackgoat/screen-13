@@ -1,6 +1,6 @@
 use {
     super::PoolRef,
-    a_r_c_h_e_r_y::SharedPointerKind,
+    archery::SharedPointerKind,
     std::ops::{Deref, DerefMut},
 };
 

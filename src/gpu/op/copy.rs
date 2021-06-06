@@ -9,7 +9,7 @@ use {
         math::{Area, Coord, Extent},
         ptr::Shared,
     },
-    a_r_c_h_e_r_y::SharedPointerKind,
+    archery::SharedPointerKind,
     gfx_hal::{
         command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level},
         format::Aspects,

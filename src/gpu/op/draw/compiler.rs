@@ -2,13 +2,12 @@ use {
     super::{
         command::{Command, CommandIter, Material, ModelCommand},
         geom::{
-            gen_line, gen_rect_light, gen_spotlight, LINE_STRIDE, POINT_LIGHT, POINT_LIGHT_LEN,
-            RECT_LIGHT_STRIDE, SPOTLIGHT_STRIDE,
+            gen_line, gen_rect_light, gen_spotlight, LINE_STRIDE, POINT_LIGHT, RECT_LIGHT_STRIDE,
+            SPOTLIGHT_STRIDE,
         },
         instruction::{
-            DataComputeInstruction, DataCopyInstruction, DataTransferInstruction,
-            DataWriteInstruction, DataWriteRefInstruction, Instruction, LightBindInstruction,
-            LineDrawInstruction, MeshBindInstruction, MeshDrawInstruction,
+            DataComputeInstruction, DataWriteRefInstruction, Instruction, LightBindInstruction,
+            LineDrawInstruction, MeshBindBuffersInstruction, MeshDrawInstruction,
             PointLightDrawInstruction, RectLightDrawInstruction, SpotlightDrawInstruction,
             VertexAttrsDescriptorsInstruction,
         },
@@ -19,14 +18,18 @@ use {
         gpu::{
             data::Mapping,
             def::CalcVertexAttrsComputeMode,
-            op::{DirtyData, DirtyLruData, Lru, Stride},
+            op::{
+                DataCopyInstruction, DataTransferInstruction, DataWriteInstruction, DirtyData,
+                DirtyLruData, Lru, Stride,
+            },
             pool::Pool,
             Data, Lease, Model,
         },
         pak::IndexType,
         ptr::Shared,
     },
-    a_r_c_h_e_r_y::SharedPointerKind,
+    archery::SharedPointerKind,
+    gfx_hal::buffer::Usage as BufferUsage,
     std::{
         borrow::Borrow,
         cell::Ref,
@@ -42,18 +45,18 @@ use {
 // because we can't store references but we do want to cache the vector of instructions the compiler
 // creates. Each `Asm` is just a pointer to the `cmds` slice provided by the client which actually
 // contains the references. `Asm` also points to the leased `Data` held by `Compiler`.
-#[non_exhaustive]
+#[derive(Clone, Copy)]
 enum Asm {
     BeginCalcVertexAttrs(CalcVertexAttrsComputeMode),
     BeginLight,
     BeginModel,
-    BeginRectLight,
-    BeginSpotlight,
+    BeginRectLight, // TODO: Combine with bind asm?
+    BeginSpotlight, // TODO: Combine with bind asm?
     BindModelBuffers(usize),
-    BindModelDescriptors(usize),
-    BindVertexAttrsDescriptors(BindVertexAttrsDescriptorsAsm),
-    BindRectLightBuffer,
-    BindSpotlightBuffer,
+    BindModelDescriptorSet(usize),
+    BindVertexAttrsDescriptorSet(BindVertexAttrsDescriptorSetAsm),
+    BindRectLight,
+    BindSpotlight,
     TransferLineData,
     TransferRectLightData,
     TransferSpotlightData,
@@ -63,10 +66,10 @@ enum Asm {
     CopySpotlightVertices,
     DrawLines(u32),
     DrawModel(usize),
-    DrawPointLights(Range<usize>),
+    DrawPointLights((usize, usize)),
     DrawRectLight((usize, usize)),
     DrawSpotlight((usize, usize)),
-    DrawSunlights(Range<usize>),
+    DrawSunlights((usize, usize)),
     WriteLineVertices,
     WriteModelIndices(usize),
     WriteModelVertices(usize),
@@ -75,7 +78,8 @@ enum Asm {
     WriteSpotlightVertices,
 }
 
-struct BindVertexAttrsDescriptorsAsm {
+#[derive(Clone, Copy)]
+struct BindVertexAttrsDescriptorSetAsm {
     idx: usize,
     mode: CalcVertexAttrsComputeMode,
 }
@@ -94,6 +98,7 @@ where
     pub write_mask_len: u64,
 }
 
+#[derive(Clone, Copy)]
 struct CalcVertexAttrsAsm {
     base_idx: u32,
     base_vertex: u32,
@@ -205,7 +210,7 @@ where
 
     fn bind_light<T: Stride>(buf: &DirtyData<T, P>) -> Instruction<'_, P> {
         Instruction::LightBind(LightBindInstruction {
-            buf: &buf.data.current,
+            buf: &buf.allocation.current,
             buf_len: buf
                 .usage
                 .last()
@@ -219,7 +224,7 @@ where
         let (idx_buf, idx_buf_len) = cmd.model.idx_buf_ref();
         let (vertex_buf, vertex_buf_len) = cmd.model.vertex_buf_ref();
 
-        Instruction::MeshBind(MeshBindInstruction {
+        Instruction::MeshBindBuffers(MeshBindBuffersInstruction {
             idx_buf,
             idx_buf_len,
             idx_ty,
@@ -228,7 +233,7 @@ where
         })
     }
 
-    fn bind_model_descriptors(&self, idx: usize) -> Instruction<'_, P> {
+    fn bind_model_descriptor_set(&self, idx: usize) -> Instruction<'_, P> {
         let cmd = &self.compiler.cmds[idx].as_model().unwrap();
         let desc_set = self
             .compiler
@@ -236,12 +241,12 @@ where
             .binary_search_by(|probe| probe.cmp(&cmd.material))
             .unwrap();
 
-        Instruction::MeshDescriptors(desc_set)
+        Instruction::MeshBindDescriptorSet(desc_set)
     }
 
-    fn bind_vertex_attrs_descriptors(
+    fn bind_vertex_attrs_descriptor_set(
         &self,
-        asm: &BindVertexAttrsDescriptorsAsm,
+        asm: BindVertexAttrsDescriptorSetAsm,
     ) -> Instruction<'_, P> {
         let usage = match asm.mode {
             CalcVertexAttrsComputeMode::U16 => &self.compiler.u16_vertex_cmds,
@@ -301,7 +306,7 @@ where
         }
     }
 
-    fn calc_vertex_attrs(&self, asm: &CalcVertexAttrsAsm) -> Instruction<'_, P> {
+    fn calc_vertex_attrs(&self, asm: CalcVertexAttrsAsm) -> Instruction<'_, P> {
         Instruction::VertexAttrsCalc(DataComputeInstruction {
             base_idx: asm.base_idx,
             base_vertex: asm.base_vertex,
@@ -315,14 +320,14 @@ where
 
     fn copy_vertices<T>(buf: &mut DirtyData<T, P>) -> Instruction<'_, P> {
         Instruction::VertexCopy(DataCopyInstruction {
-            buf: &mut buf.data.current,
+            buf: &mut buf.allocation.current,
             ranges: buf.pending_copies.as_slice(),
         })
     }
 
     fn draw_lines(buf: &mut DirtyData<Line, P>, line_count: u32) -> Instruction<'_, P> {
         Instruction::LineDraw(LineDrawInstruction {
-            buf: &mut buf.data.current,
+            buf: &mut buf.allocation.current,
             line_count,
         })
     }
@@ -376,18 +381,18 @@ where
     }
 
     fn transfer_data<T>(buf: &mut DirtyData<T, P>) -> Instruction<'_, P> {
-        let (src, src_len) = buf.data.previous.as_mut().unwrap();
+        let (src, src_len) = buf.allocation.previous.as_mut().unwrap();
 
         Instruction::DataTransfer(DataTransferInstruction {
             src,
             src_range: 0..*src_len,
-            dst: &mut buf.data.current,
+            dst: &mut buf.allocation.current,
         })
     }
 
     fn write_light_vertices<T>(buf: &mut DirtyData<T, P>) -> Instruction<'_, P> {
         Instruction::VertexWrite(DataWriteInstruction {
-            buf: &mut buf.data.current,
+            buf: &mut buf.allocation.current,
             range: buf.pending_write.as_ref().unwrap().clone(),
         })
     }
@@ -409,7 +414,7 @@ where
     fn write_point_light_vertices(&mut self) -> Instruction<'_, P> {
         Instruction::VertexWrite(DataWriteInstruction {
             buf: self.compiler.point_light_buf.as_mut().unwrap(),
-            range: 0..POINT_LIGHT_LEN,
+            range: 0..POINT_LIGHT.len() as _,
         })
     }
 }
@@ -428,21 +433,17 @@ where
         let idx = self.idx;
         self.idx += 1;
 
-        Some(match &self.compiler.code[idx] {
-            Asm::BeginCalcVertexAttrs(mode) => self.begin_calc_vertex_attrs(*mode),
+        Some(match self.compiler.code[idx] {
+            Asm::BeginCalcVertexAttrs(mode) => self.begin_calc_vertex_attrs(mode),
             Asm::BeginLight => Instruction::LightBegin,
             Asm::BeginModel => Instruction::MeshBegin,
             Asm::BeginRectLight => Instruction::RectLightBegin,
             Asm::BeginSpotlight => Instruction::SpotlightBegin,
-            Asm::BindModelBuffers(idx) => self.bind_model_buffers(*idx),
-            Asm::BindModelDescriptors(idx) => self.bind_model_descriptors(*idx),
-            Asm::BindVertexAttrsDescriptors(asm) => self.bind_vertex_attrs_descriptors(asm),
-            Asm::BindRectLightBuffer => {
-                Self::bind_light(self.compiler.rect_light.buf.as_ref().unwrap())
-            }
-            Asm::BindSpotlightBuffer => {
-                Self::bind_light(self.compiler.spotlight.buf.as_ref().unwrap())
-            }
+            Asm::BindModelBuffers(idx) => self.bind_model_buffers(idx),
+            Asm::BindModelDescriptorSet(idx) => self.bind_model_descriptor_set(idx),
+            Asm::BindVertexAttrsDescriptorSet(asm) => self.bind_vertex_attrs_descriptor_set(asm),
+            Asm::BindRectLight => Self::bind_light(self.compiler.rect_light.buf.as_ref().unwrap()),
+            Asm::BindSpotlight => Self::bind_light(self.compiler.spotlight.buf.as_ref().unwrap()),
             Asm::CalcVertexAttrs(asm) => self.calc_vertex_attrs(asm),
             Asm::CopyLineVertices => Self::copy_vertices(self.compiler.line.buf.as_mut().unwrap()),
             Asm::CopyRectLightVertices => {
@@ -452,13 +453,13 @@ where
                 Self::copy_vertices(self.compiler.spotlight.buf.as_mut().unwrap())
             }
             Asm::DrawLines(count) => {
-                Self::draw_lines(self.compiler.line.buf.as_mut().unwrap(), *count)
+                Self::draw_lines(self.compiler.line.buf.as_mut().unwrap(), count)
             }
-            Asm::DrawModel(idx) => self.draw_model(*idx),
-            Asm::DrawPointLights(range) => self.draw_point_lights(range.clone()),
-            Asm::DrawRectLight((idx, light)) => self.draw_rect_light(*idx, *light),
-            Asm::DrawSpotlight((idx, light)) => self.draw_spotlight(*idx, *light),
-            Asm::DrawSunlights(range) => self.draw_sunlights(range.clone()),
+            Asm::DrawModel(idx) => self.draw_model(idx),
+            Asm::DrawPointLights((start, end)) => self.draw_point_lights(start..end),
+            Asm::DrawRectLight((idx, light)) => self.draw_rect_light(idx, light),
+            Asm::DrawSpotlight((idx, light)) => self.draw_spotlight(idx, light),
+            Asm::DrawSunlights((start, end)) => self.draw_sunlights(start..end),
             Asm::TransferLineData => Self::transfer_data(self.compiler.line.buf.as_mut().unwrap()),
             Asm::TransferRectLightData => {
                 Self::transfer_data(self.compiler.rect_light.buf.as_mut().unwrap())
@@ -466,8 +467,8 @@ where
             Asm::TransferSpotlightData => {
                 Self::transfer_data(self.compiler.spotlight.buf.as_mut().unwrap())
             }
-            Asm::WriteModelIndices(idx) => self.write_model_indices(*idx),
-            Asm::WriteModelVertices(idx) => self.write_model_vertices(*idx),
+            Asm::WriteModelIndices(idx) => self.write_model_indices(idx),
+            Asm::WriteModelVertices(idx) => self.write_model_vertices(idx),
             Asm::WritePointLightVertices => self.write_point_light_vertices(),
             Asm::WriteRectLightVertices => {
                 Self::write_light_vertices(self.compiler.rect_light.buf.as_mut().unwrap())
@@ -736,8 +737,7 @@ where
 
         // Sunlight drawing
         if sunlight_count > 0 {
-            let sunlights = sunlight_idx..line_idx;
-            self.code.push(Asm::DrawSunlights(sunlights));
+            self.code.push(Asm::DrawSunlights((sunlight_idx, line_idx)));
         }
 
         // Line drawing
@@ -772,11 +772,12 @@ where
             &format!("{} line vertex buffer", name),
             pool,
             (self.line.lru.len() * LINE_STRIDE + line_count * LINE_STRIDE) as _,
+            BufferUsage::VERTEX,
         );
         let buf = self.line.buf.as_mut().unwrap();
 
         // Copy data from the previous GPU buffer to the new one
-        if buf.data.previous.is_some() {
+        if buf.allocation.previous.is_some() {
             self.code.push(Asm::TransferLineData);
         }
 
@@ -801,26 +802,27 @@ where
             match self.line.lru.binary_search_by(|probe| probe.key.cmp(&key)) {
                 Err(idx) => {
                     // Cache the vertices for this line segment
-                    let new_end = end + LINE_STRIDE as u64;
                     let vertices = gen_line(&line.vertices);
+                    let start = end;
+                    end += vertices.len() as u64;
 
                     {
                         let mut mapped_range =
-                            buf.data.current.map_range_mut(end..new_end).unwrap();
+                            buf.allocation.current.map_range_mut(start..end).unwrap();
                         copy_nonoverlapping(
                             vertices.as_ptr(),
                             mapped_range.as_mut_ptr(),
-                            LINE_STRIDE,
+                            vertices.len() as _,
                         );
 
                         Mapping::flush(&mut mapped_range).unwrap(); // TODO: Error handling!
                     }
 
                     // Create a new cache entry for this line segment
+                    buf.usage.push((start, key));
                     self.line
                         .lru
-                        .insert(idx, Lru::new(key, end, pool.lru_expiry));
-                    end = new_end;
+                        .insert(idx, Lru::new(key, start, pool.lru_expiry));
                 }
                 Ok(idx) => self.line.lru[idx].expiry = pool.lru_expiry,
             }
@@ -891,8 +893,8 @@ where
 
                     // Emit 'the current compute descriptor set has changed' assembly code
                     if vertex_calc_bind {
-                        self.code.push(Asm::BindVertexAttrsDescriptors(
-                            BindVertexAttrsDescriptorsAsm { idx, mode },
+                        self.code.push(Asm::BindVertexAttrsDescriptorSet(
+                            BindVertexAttrsDescriptorSetAsm { idx, mode },
                         ));
                         vertex_calc_bind = false;
 
@@ -931,11 +933,11 @@ where
                         self.materials.insert(idx, Material::clone(&cmd.material));
                     }
 
-                    self.code.push(Asm::BindModelDescriptors(idx));
+                    self.code.push(Asm::BindModelDescriptorSet(idx));
                     material = Some(&cmd.material);
                 }
             } else {
-                self.code.push(Asm::BindModelDescriptors(idx));
+                self.code.push(Asm::BindModelDescriptorSet(idx));
                 material = Some(&cmd.material);
                 self.materials.push(Material::clone(&cmd.material));
             }
@@ -970,15 +972,15 @@ where
             let mut buf = pool.data(
                 #[cfg(feature = "debug-names")]
                 &format!("{} point light vertex buffer", name),
-                POINT_LIGHT_LEN,
+                POINT_LIGHT.len() as _,
             );
 
             {
-                let mut mapped_range = buf.map_range_mut(0..POINT_LIGHT_LEN).unwrap();
+                let mut mapped_range = buf.map_range_mut(0..POINT_LIGHT.len() as _).unwrap();
                 copy_nonoverlapping(
                     POINT_LIGHT.as_ptr(),
                     mapped_range.as_mut_ptr(),
-                    POINT_LIGHT_LEN as _,
+                    POINT_LIGHT.len() as _,
                 );
 
                 Mapping::flush(&mut mapped_range).unwrap();
@@ -988,7 +990,8 @@ where
         }
 
         // Emit 'draw this range of lights' assembly code (must happen after vertex write!)
-        self.code.push(Asm::DrawPointLights(range));
+        self.code
+            .push(Asm::DrawPointLights((range.start, range.end)));
     }
 
     unsafe fn compile_rect_lights(
@@ -1006,11 +1009,12 @@ where
             &format!("{} rect light vertex buffer", name),
             pool,
             ((self.rect_light.lru.len() + range.end - range.start) * RECT_LIGHT_STRIDE) as _,
+            BufferUsage::VERTEX,
         );
         let buf = self.rect_light.buf.as_mut().unwrap();
 
         // Copy data from the previous GPU buffer to the new one
-        if buf.data.previous.is_some() {
+        if buf.allocation.previous.is_some() {
             self.code.push(Asm::TransferRectLightData);
         }
 
@@ -1029,7 +1033,7 @@ where
 
         let write_idx = self.code.len();
         self.code.push(Asm::BeginRectLight);
-        self.code.push(Asm::BindRectLightBuffer);
+        self.code.push(Asm::BindRectLight);
 
         // First we make sure all rectangular lights are in the lru data ...
         for cmd in self.cmds[range.clone()].iter_mut() {
@@ -1045,27 +1049,27 @@ where
             {
                 Err(idx) => {
                     // Cache the normalized geometry for this rectangular light
-                    let new_end = end + RECT_LIGHT_STRIDE as u64;
                     let vertices = gen_rect_light(key.dims(), key.range(), key.radius());
+                    let start = end;
+                    end += vertices.len() as u64;
 
                     {
                         let mut mapped_range =
-                            buf.data.current.map_range_mut(end..new_end).unwrap();
+                            buf.allocation.current.map_range_mut(start..end).unwrap();
                         copy_nonoverlapping(
                             vertices.as_ptr(),
                             mapped_range.as_mut_ptr(),
-                            RECT_LIGHT_STRIDE,
+                            vertices.len() as _,
                         );
 
                         Mapping::flush(&mut mapped_range).unwrap();
                     }
 
                     // Create new cache entries for this rectangular light
-                    buf.usage.push((end, key));
+                    buf.usage.push((start, key));
                     self.rect_light
                         .lru
-                        .insert(idx, Lru::new(key, end, pool.lru_expiry));
-                    end = new_end;
+                        .insert(idx, Lru::new(key, start, pool.lru_expiry));
                 }
                 Ok(idx) => {
                     self.rect_light.lru[idx].expiry = pool.lru_expiry;
@@ -1109,11 +1113,12 @@ where
             pool,
             (self.spotlight.lru.len() * SPOTLIGHT_STRIDE
                 + (range.end - range.start) * SPOTLIGHT_STRIDE) as _,
+            BufferUsage::VERTEX,
         );
         let buf = self.spotlight.buf.as_mut().unwrap();
 
         // Copy data from the previous GPU buffer to the new one
-        if buf.data.previous.is_some() {
+        if buf.allocation.previous.is_some() {
             self.code.push(Asm::TransferSpotlightData);
         }
 
@@ -1132,7 +1137,7 @@ where
 
         let write_idx = self.code.len();
         self.code.push(Asm::BeginSpotlight);
-        self.code.push(Asm::BindSpotlightBuffer);
+        self.code.push(Asm::BindSpotlight);
 
         // First we make sure all spotlights are in the lru data ...
         for cmd in self.cmds[range.clone()].iter_mut() {
@@ -1148,26 +1153,27 @@ where
             {
                 Err(idx) => {
                     // Cache the normalized geometry for this spotlight
-                    let new_end = end + SPOTLIGHT_STRIDE as u64;
                     let vertices = gen_spotlight(key.radius(), key.range());
+                    let start = end;
+                    end += vertices.len() as u64;
 
                     {
                         let mut mapped_range =
-                            buf.data.current.map_range_mut(end..new_end).unwrap();
+                            buf.allocation.current.map_range_mut(start..end).unwrap();
                         copy_nonoverlapping(
                             vertices.as_ptr(),
                             mapped_range.as_mut_ptr(),
-                            SPOTLIGHT_STRIDE,
+                            vertices.len() as _,
                         );
 
                         Mapping::flush(&mut mapped_range).unwrap();
                     }
 
                     // Create a new cache entry for this spotlight
+                    buf.usage.push((start, key));
                     self.spotlight
                         .lru
-                        .insert(idx, Lru::new(key, end, pool.lru_expiry));
-                    end = new_end;
+                        .insert(idx, Lru::new(key, start, pool.lru_expiry));
                 }
                 Ok(idx) => {
                     self.spotlight.lru[idx].expiry = pool.lru_expiry;

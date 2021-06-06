@@ -45,6 +45,7 @@ where
 impl Coord<f32> {
     pub const ZERO: Self = Self { x: 0.0, y: 0.0 };
 
+    // TODO: This can become a `const fn` soon
     /// Returns `true` if this coordinate is neither infinite nor `NaN`.
     pub fn is_finite(self) -> bool {
         let x = self.x.is_finite() as u8;
@@ -59,7 +60,7 @@ impl Coord<i32> {
     pub const ZERO: Self = Self { x: 0, y: 0 };
 
     /// Constructs an `Offset` value with the given z value.
-    pub const fn as_offset_z(self, z: i32) -> Offset {
+    pub(crate) const fn as_offset_z(self, z: i32) -> Offset {
         Offset {
             x: self.x,
             y: self.y,
@@ -67,8 +68,13 @@ impl Coord<i32> {
         }
     }
 
+    /// Constructs an `Rect` value.
+    pub(crate) const fn as_rect(self) -> Rect {
+        self.as_rect_at(Self::ZERO)
+    }
+
     /// Constructs an `Rect` value with the given position value.
-    pub const fn as_rect_at(self, pos: Self) -> Rect {
+    pub(crate) const fn as_rect_at(self, pos: Self) -> Rect {
         Rect {
             x: pos.x as _,
             y: pos.y as _,
@@ -83,11 +89,26 @@ impl Coord<u32> {
     pub const ZERO: Self = Self { x: 0, y: 0 };
 
     /// Constructs an `Extent` value with the given depth value.
-    pub const fn as_extent_depth(self, depth: u32) -> Extent {
+    pub(crate) const fn as_extent_depth(self, depth: u32) -> Extent {
         Extent {
             width: self.x,
             height: self.y,
             depth,
+        }
+    }
+
+    /// Constructs an `Rect` value.
+    pub(crate) const fn as_rect(self) -> Rect {
+        self.as_rect_at(Self::ZERO)
+    }
+
+    /// Constructs an `Rect` value with the given position value.
+    pub(crate) const fn as_rect_at(self, pos: Self) -> Rect {
+        Rect {
+            x: pos.x as _,
+            y: pos.y as _,
+            w: self.x as _,
+            h: self.y as _,
         }
     }
 }

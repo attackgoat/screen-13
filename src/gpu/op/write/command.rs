@@ -4,7 +4,7 @@ use {
         math::{vec3, Area, CoordF, Mat4, RectF},
         ptr::Shared,
     },
-    a_r_c_h_e_r_y::SharedPointerKind,
+    archery::SharedPointerKind,
     std::{
         fmt::{Debug, Error, Formatter},
         iter::{once, Once},

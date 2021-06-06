@@ -18,13 +18,34 @@ where
     D: Sized,
     P: Sized,
 {
-    pub fn new(x: P, y: P, width: D, height: D) -> Self {
+    pub const fn new(x: P, y: P, width: D, height: D) -> Self {
         Self {
             dims: GenericCoord {
                 x: width,
                 y: height,
             },
             pos: GenericCoord { x, y },
+        }
+    }
+}
+
+impl Rect<u32, i32> {
+    pub const ZERO: Self = Self::new(0, 0, 0, 0);
+}
+
+impl Rect<u32, u32> {
+    pub const ZERO: Self = Self::new(0, 0, 0, 0);
+}
+
+impl Rect<f32, f32> {
+    pub const ZERO: Self = Self::new(0.0, 0.0, 0.0, 0.0);
+}
+
+impl From<GenericCoord<f32>> for Rect<f32, f32> {
+    fn from(val: GenericCoord<f32>) -> Self {
+        Self {
+            dims: val,
+            pos: GenericCoord::<f32>::ZERO,
         }
     }
 }

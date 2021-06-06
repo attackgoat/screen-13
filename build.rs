@@ -138,20 +138,19 @@ fn gen_point_light() {
     // We'll store the data as bytes because we are going to send it straight to the GPU
     writeln!(
         output_file,
+        "const POINT_LIGHT_LEN: usize = {};",
+        vertices.len() * 12
+    )
+    .unwrap();
+    writeln!(
+        output_file,
         "pub static POINT_LIGHT_DRAW_COUNT: u32 = {};",
         vertices.len()
     )
     .unwrap();
     writeln!(
         output_file,
-        "pub static POINT_LIGHT_LEN: u64 = {};",
-        vertices.len() * 12
-    )
-    .unwrap();
-    writeln!(
-        output_file,
-        "pub static POINT_LIGHT: [u8; {}] = [",
-        vertices.len() * 12
+        "pub static POINT_LIGHT: [u8; POINT_LIGHT_LEN] = ["
     )
     .unwrap();
 
@@ -200,16 +199,11 @@ fn gen_skydome() {
     .unwrap();
     writeln!(
         output_file,
-        "pub const SKYDOME_LEN: u64 = {};",
+        "const SKYDOME_LEN: usize = {};",
         vertices.len() * 12
     )
     .unwrap();
-    writeln!(
-        output_file,
-        "pub static SKYDOME: [u8; {}] = [",
-        vertices.len() * 12
-    )
-    .unwrap();
+    writeln!(output_file, "pub static SKYDOME: [u8; SKYDOME_LEN] = [").unwrap();
 
     for (pos, _normal) in vertices {
         let x = pos.x.to_ne_bytes();
@@ -525,10 +519,11 @@ mod shader {
         compile_glsl("opacity.frag");
 
         // Fonts
+        compile_glsl("font/bitmap_glyph.frag");
         compile_glsl("font/bitmap_outline.frag");
-        compile_glsl("font/bitmap.frag");
         compile_glsl("font/bitmap.vert");
         compile_glsl("font/scalable.frag");
+        compile_glsl("font/scalable.vert");
 
         // General purpose
         compile_glsl("gradient_trans.frag");

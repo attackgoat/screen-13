@@ -1,6 +1,6 @@
 use {
     crate::{gpu::pool::Pool, pak::Pak},
-    a_r_c_h_e_r_y::SharedPointerKind,
+    archery::SharedPointerKind,
     fontdue::Font,
     std::{
         fmt::{Debug, Error, Formatter},

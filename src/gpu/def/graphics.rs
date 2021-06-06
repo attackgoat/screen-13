@@ -290,7 +290,7 @@ impl Graphics {
         }
     }
 
-    pub unsafe fn bitmap_font_normal(
+    pub unsafe fn bitmap_font_glyph(
         #[cfg(feature = "debug-names")] name: &str,
         subpass: Subpass<'_, _Backend>,
         max_desc_sets: usize,
@@ -299,8 +299,8 @@ impl Graphics {
             #[cfg(feature = "debug-names")]
             name,
             subpass,
-            &spirv::font::bitmap_frag::MAIN,
-            push_const::FONT.to_vec().drain(..),
+            &spirv::font::bitmap_glyph_frag::MAIN,
+            push_const::BITMAP_FONT_GLYPH.to_vec().drain(..),
             max_desc_sets,
         )
     }
@@ -315,7 +315,7 @@ impl Graphics {
             name,
             subpass,
             &spirv::font::bitmap_outline_frag::MAIN,
-            push_const::FONT_OUTLINE.to_vec().drain(..),
+            push_const::BITMAP_FONT_OUTLINE.to_vec().drain(..),
             max_desc_sets,
         )
     }
@@ -1353,8 +1353,8 @@ impl Graphics {
         max_desc_sets: usize,
     ) -> Self {
         // Create the graphics pipeline
-        let vertex = ShaderModule::new(&spirv::font::bitmap_vert::MAIN);
-        let fragment = ShaderModule::new(&spirv::font::bitmap_frag::MAIN);
+        let vertex = ShaderModule::new(&spirv::font::scalable_vert::MAIN);
+        let fragment = ShaderModule::new(&spirv::font::scalable_frag::MAIN);
         let set_layout = DescriptorSetLayout::new(
             #[cfg(feature = "debug-names")]
             name,

@@ -11,7 +11,7 @@ use {
         math::Coord,
         ptr::Shared,
     },
-    a_r_c_h_e_r_y::SharedPointerKind,
+    archery::SharedPointerKind,
     gfx_hal::{
         command::{CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, SubpassContents},
         format::Aspects,
@@ -20,7 +20,7 @@ use {
             Usage as ImageUsage, ViewCapabilities,
         },
         pool::CommandPool as _,
-        pso::{PipelineStage, Rect, Viewport},
+        pso::{PipelineStage, Viewport},
         queue::Queue as _,
         Backend,
     },
@@ -248,12 +248,7 @@ where
             preserve,
         });
         let dims = self.dst.dims();
-        let rect = Rect {
-            x: 0,
-            y: 0,
-            w: dims.x as _,
-            h: dims.y as _,
-        };
+        let rect = dims.as_rect();
         let viewport = Viewport {
             rect,
             depth: 0.0..1.0,

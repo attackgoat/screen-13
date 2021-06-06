@@ -26,7 +26,7 @@ use {
         queue_family, Cache, Data, Texture, Texture2d,
     },
     crate::{math::Extent, ptr::Shared},
-    a_r_c_h_e_r_y::SharedPointerKind,
+    archery::SharedPointerKind,
     gfx_hal::{
         adapter::PhysicalDevice as _,
         buffer::Usage as BufferUsage,
@@ -493,7 +493,10 @@ where
         len: u64,
         usage: BufferUsage,
     ) -> Lease<Data, P> {
-        let items = self.data.entry(usage).or_insert_with(Default::default);
+        let items = self
+            .data
+            .entry(usage | BufferUsage::TRANSFER_DST | BufferUsage::TRANSFER_SRC)
+            .or_insert_with(Default::default);
         let item = if let Some(item) =
             remove_last_by(&mut items.borrow_mut(), |item| item.capacity() >= len)
         {
@@ -668,8 +671,8 @@ where
             GraphicsMode::DrawRectLight => Graphics::draw_rect_light,
             GraphicsMode::DrawSpotlight => Graphics::draw_spotlight,
             GraphicsMode::DrawSunlight => Graphics::draw_sunlight,
-            GraphicsMode::Font(FontMode::Bitmap(false)) => Graphics::bitmap_font_normal,
-            GraphicsMode::Font(FontMode::Bitmap(true)) => Graphics::bitmap_font_outline,
+            GraphicsMode::Font(FontMode::BitmapGlyph) => Graphics::bitmap_font_glyph,
+            GraphicsMode::Font(FontMode::BitmapOutline) => Graphics::bitmap_font_outline,
             GraphicsMode::Font(FontMode::Scalable) => Graphics::scalable_font,
             GraphicsMode::Gradient(false) => Graphics::gradient_linear,
             GraphicsMode::Gradient(true) => Graphics::gradient_linear_trans,

@@ -5,7 +5,7 @@ use {
         math::{CoordF, Mat4},
         ptr::Shared,
     },
-    a_r_c_h_e_r_y::SharedPointerKind,
+    archery::SharedPointerKind,
     std::iter::{once, Once},
 };
 
@@ -88,6 +88,15 @@ where
         }
     }
 
+    pub(crate) fn glyph_color(&self) -> AlphaColor {
+        match self {
+            Self::Position(cmd) => cmd.glyph_color,
+            Self::SizePosition(cmd) => cmd.glyph_color,
+            Self::SizeTransform(cmd) => cmd.glyph_color,
+            Self::Transform(cmd) => cmd.glyph_color,
+        }
+    }
+
     pub(crate) fn is_position(&self) -> bool {
         self.as_position().is_some()
     }
@@ -96,12 +105,20 @@ where
         self.as_transform().is_some()
     }
 
+    pub(crate) fn outline_color(&self) -> Option<AlphaColor> {
+        match self {
+            Self::Position(cmd) => cmd.outline_color,
+            Self::Transform(cmd) => cmd.outline_color,
+            _ => None,
+        }
+    }
+
     pub(crate) fn text(&self) -> &str {
         match self {
-            Command::Position(cmd) => cmd.text(),
-            Command::SizePosition(cmd) => cmd.text(),
-            Command::SizeTransform(cmd) => cmd.text(),
-            Command::Transform(cmd) => cmd.text(),
+            Command::Position(cmd) => cmd.text.as_ref(),
+            Command::SizePosition(cmd) => cmd.text.as_ref(),
+            Command::SizeTransform(cmd) => cmd.text.as_ref(),
+            Command::Transform(cmd) => cmd.text.as_ref(),
         }
     }
 
@@ -186,10 +203,6 @@ where
     P: SharedPointerKind,
     T: AsRef<str>,
 {
-    pub(crate) fn text(&self) -> &str {
-        self.text.as_ref()
-    }
-
     /// Draws text using the given glyph fill color.
     ///
     /// **_NOTE:_** This is the primary font color.
@@ -275,10 +288,6 @@ where
     P: SharedPointerKind,
     T: AsRef<str>,
 {
-    pub(crate) fn text(&self) -> &str {
-        self.text.as_ref()
-    }
-
     /// Draws text using the given glyph fill color.
     ///
     /// **_NOTE:_** This is the primary font color.

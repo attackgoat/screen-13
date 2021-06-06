@@ -287,10 +287,10 @@ pub mod prelude_rc {
 /// Shared reference (`Arc` and `Rc`) implementation based on
 /// [_archery_](https://crates.io/crates/archery).
 pub mod ptr {
-    pub use a_r_c_h_e_r_y::{ArcK, RcK};
+    pub use archery::{ArcK, RcK};
 
     use {
-        a_r_c_h_e_r_y::{SharedPointer, SharedPointerKind},
+        archery::{SharedPointer, SharedPointerKind},
         std::ops::Deref,
     };
 
@@ -387,7 +387,7 @@ use {
         input::Input,
         math::Extent,
     },
-    a_r_c_h_e_r_y::SharedPointerKind,
+    archery::SharedPointerKind,
     directories::ProjectDirs,
     std::{
         cmp::Ordering,

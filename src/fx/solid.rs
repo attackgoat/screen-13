@@ -1,7 +1,7 @@
 use {
     super::RenderReturn,
     crate::{color::Color, math::Extent, DynScreen, Gpu, Input, Render, Screen},
-    a_r_c_h_e_r_y::SharedPointerKind,
+    archery::SharedPointerKind,
 };
 
 #[cfg(feature = "multi-monitor")]

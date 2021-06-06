@@ -66,7 +66,7 @@ pub fn bake_bitmap_font<P1: AsRef<Path>, P2: AsRef<Path>>(
             // Bake the pixels
             let (width, pixels) = pixels(&page_filename, BitmapFormat::Rgb);
             let mut better_pixels = Vec::with_capacity(pixels.len());
-            for y in 0..width as usize {
+            for y in 0..pixels.len() / 3 / width as usize {
                 for x in 0..width as usize {
                     let g = pixels[y * width as usize * 3 + x * 3 + 1];
                     let r = pixels[y * width as usize * 3 + x * 3];
@@ -86,12 +86,32 @@ pub fn bake_bitmap_font<P1: AsRef<Path>, P2: AsRef<Path>>(
                 }
             }
 
-            BitmapBuf::new(BitmapFormat::Rgb, width as u16, better_pixels)
+            (width, better_pixels)
         })
-        .collect();
+        .collect::<Vec<_>>();
+
+    // Panic if any page is a different size (the format says they should all be the same)
+    let mut page_size = None;
+    for (page_width, page_pixels) in &pages {
+        let page_height = page_pixels.len() as u32 / 3 / page_width;
+        if page_size.is_none() {
+            page_size = Some((*page_width, page_height));
+        } else if let Some((width, height)) = page_size {
+            if *page_width != width || page_height != height {
+                panic!("Unexpected page size");
+            }
+        }
+    }
+
+    let (width, _) = page_size.unwrap();
+
+    // In order to make drawing text easier, we store the "pages" as one large texture
+    // Each page is just appended to the bottom of the previous page making a tall bitmap
+    let pixels = pages.into_iter().map(|(_, page)| page).flatten().collect();
+    let page = BitmapBuf::new(BitmapFormat::Rgb, width as u16, pixels);
 
     // Pak this asset
-    pak.push_bitmap_font(key, BitmapFont::new(def_file, pages))
+    pak.push_bitmap_font(key, BitmapFont::new(def_file, page))
 }
 
 /// Reads raw pixel data from an image source file and returns them in the given format.

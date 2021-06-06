@@ -5,10 +5,10 @@ use {
             write::{Write, WriteMode},
             BlendMode, Gpu, Render,
         },
-        math::{Coord, Extent, Rect},
+        math::{CoordF, Extent},
         DynScreen, Input, Screen,
     },
-    a_r_c_h_e_r_y::SharedPointerKind,
+    archery::SharedPointerKind,
     f8::f8,
     std::{
         iter::once,
@@ -89,20 +89,14 @@ where
     P: SharedPointerKind,
 {
     fn frame(&self, mut a: Render<P>, b: Render<P>, ab: f8) -> Render<P> {
-        let dims = b.dims();
+        let dims: CoordF = b.dims().into();
 
         a.write(
             #[cfg(feature = "debug-names")]
             "Fade write B",
         )
         .with_mode(WriteMode::Blend((ab, self.mode)))
-        .record(once(Write::region(
-            b,
-            Rect {
-                pos: Coord::ZERO,
-                dims,
-            },
-        )));
+        .record(once(Write::region(b, dims)));
 
         a
     }
