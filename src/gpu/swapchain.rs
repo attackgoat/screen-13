@@ -95,14 +95,13 @@ impl Swapchain {
             .supported_formats(&adapter().physical_device)
             .unwrap_or_default();
 
-        let desc_sets = 1;
         let render_pass = present(fmt);
         let subpass = RenderPass::subpass(&render_pass, 0);
         let graphics = Graphics::present(
             #[cfg(feature = "debug-names")]
             "Swapchain",
             subpass,
-            desc_sets,
+            image_count as _,
         );
 
         let mut images = vec![];
@@ -176,7 +175,9 @@ impl Swapchain {
         swapchain.fmt
     }
 
-    pub unsafe fn present<S: AsRef<Texture2d>>(&mut self, src: S) {
+    pub unsafe fn present(&mut self, src: &Texture2d) {
+        trace!("present image #{}", self.image_idx);
+
         // We must have a frame buffer attachment (a configured swapchain) in order to present
         if self.frame_buf_attachment.is_none() {
             debug!("Configuring swapchain");
@@ -205,50 +206,40 @@ impl Swapchain {
                 image_view
             }
         };
-        let src = src.as_ref();
 
-        self.write_descriptor(src);
-
-        let dst_dims: CoordF = self.dims.into();
-        let src_dims: CoordF = src.dims().into();
-
-        // Scale is the larger of either X or Y when stretching to cover all four sides
-        let scale_x = dst_dims.x / src_dims.x;
-        let scale_y = dst_dims.y / src_dims.y;
-        let scale = scale_x.max(scale_y);
-
-        // Transform is scaled and centered on the dst texture
-        let transform = Mat4::from_scale(vec3(
-            src_dims.x * scale / dst_dims.x * 2.0,
-            src_dims.y * scale / dst_dims.y * 2.0,
-            1.0,
-        )) * Mat4::from_translation(vec3(-0.5, -0.5, 0.0));
-
-        self.image_idx += 1;
-        self.image_idx %= self.images.len();
         let image = &mut self.images[self.image_idx];
         Fence::wait(&image.fence);
         Fence::reset(&mut image.fence);
+        image.cmd_pool.reset(false);
+        Self::write_descriptor(&mut self.graphics, self.image_idx, src);
 
+        let transform = {
+            let dst_dims: CoordF = self.dims.into();
+            let src_dims: CoordF = src.dims().into();
+            let scale_x = dst_dims.x / src_dims.x;
+            let scale_y = dst_dims.y / src_dims.y;
+            let scale = scale_x.max(scale_y);
+            Mat4::from_scale(vec3(
+                src_dims.x * scale / dst_dims.x * 2.0,
+                src_dims.y * scale / dst_dims.y * 2.0,
+                1.0,
+            )) * Mat4::from_translation(vec3(-0.5, -0.5, 0.0))
+        };
         let rect = self.dims.into();
         let viewport = Viewport {
             rect,
             depth: 0.0..1.0,
         };
 
-        image.cmd_pool.reset(false);
-
         image
             .cmd_buf
             .begin_primary(CommandBufferFlags::ONE_TIME_SUBMIT);
-
         src.set_layout(
             &mut image.cmd_buf,
             Layout::ShaderReadOnlyOptimal,
             PipelineStage::FRAGMENT_SHADER,
             Access::SHADER_READ,
         );
-
         image.cmd_buf.set_scissors(0, once(rect));
         image.cmd_buf.set_viewports(0, once(viewport));
         image
@@ -257,7 +248,7 @@ impl Swapchain {
         bind_graphics_descriptor_set(
             &mut image.cmd_buf,
             self.graphics.layout(),
-            self.graphics.desc_set(0),
+            self.graphics.desc_set(self.image_idx),
         );
         image.cmd_buf.push_graphics_constants(
             self.graphics.layout(),
@@ -304,14 +295,18 @@ impl Swapchain {
             }
         }
         .unwrap_or_default();
+
+        // Advance to the next swapchain image
+        self.image_idx += 1;
+        self.image_idx %= self.images.len();
     }
 
     pub fn supported_formats(&self) -> &[Format] {
         &self.supported_fmts
     }
 
-    unsafe fn write_descriptor(&mut self, texture: &Texture2d) {
-        let (set, samplers) = self.graphics.desc_set_mut_with_samplers(0);
+    unsafe fn write_descriptor(graphics: &mut Graphics, idx: usize, texture: &Texture2d) {
+        let (set, samplers) = graphics.desc_set_mut_with_samplers(idx);
         device().write_descriptor_set(DescriptorSetWrite {
             set,
             binding: 0,

@@ -661,7 +661,7 @@ where
             // Target can be dropped directly after presentation, it will return to the pool. If for
             // some reason the pool is drained before the hardware is finished with target the
             // underlying texture is still referenced by the operations.
-            self.swapchain.present(frame);
+            self.swapchain.present(frame.as_ref());
         }
     }
 
