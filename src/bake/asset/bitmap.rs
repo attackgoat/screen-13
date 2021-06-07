@@ -12,15 +12,16 @@ pub struct Bitmap {
 }
 
 impl Bitmap {
-    // pub(crate) fn new<S>(src: S) -> Self
-    // where
-    //     S: AsRef<Path>,
-    // {
-    //     Self {
-    //         format: None,
-    //         src: src.as_ref().to_path_buf(),
-    //     }
-    // }
+    /// Constructs a new Bitmap with the given image file source.
+    pub fn new<S>(src: S) -> Self
+    where
+        S: AsRef<Path>,
+    {
+        Self {
+            format: None,
+            src: src.as_ref().to_path_buf(),
+        }
+    }
 
     pub(crate) fn with_format(mut self, fmt: BitmapFormat) -> Self {
         self.format = Some(fmt);
