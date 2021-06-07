@@ -69,6 +69,7 @@ pub enum PresentError {
 pub struct Swapchain {
     dims: Extent,
     fmt: Format,
+    frame_buf: Option<Framebuffer2d>,
     frame_buf_attachment: Option<FramebufferAttachment>,
     graphics: Graphics,
     image_idx: usize,
@@ -126,6 +127,7 @@ impl Swapchain {
         Self {
             dims,
             fmt,
+            frame_buf: None,
             frame_buf_attachment: None,
             graphics,
             images,
@@ -137,6 +139,11 @@ impl Swapchain {
     }
 
     unsafe fn configure(&mut self) {
+        // Make sure all images have finished presentation first
+        for image in &self.images {
+            Fence::wait(&image.fence);
+        }
+
         // Update the format as it may have changed
         self.fmt = pick_format(&self.surface);
 
@@ -150,6 +157,13 @@ impl Swapchain {
             self.frame_buf_attachment = None;
         } else {
             self.frame_buf_attachment = Some(frame_buf_attachment);
+            self.frame_buf = Some(Framebuffer2d::new(
+                #[cfg(feature = "debug-names")]
+                "Present",
+                &self.render_pass,
+                once(self.frame_buf_attachment.as_ref().unwrap().clone()),
+                self.dims,
+            ));
         }
 
         self.supported_fmts = self
@@ -191,13 +205,6 @@ impl Swapchain {
                 image_view
             }
         };
-        let frame_buf = Framebuffer2d::new(
-            #[cfg(feature = "debug-names")]
-            "Present",
-            &self.render_pass,
-            once(self.frame_buf_attachment.as_ref().unwrap().clone()),
-            self.dims,
-        );
         let src = src.as_ref();
 
         self.write_descriptor(src);
@@ -260,7 +267,7 @@ impl Swapchain {
         );
         image.cmd_buf.begin_render_pass(
             &self.render_pass,
-            &frame_buf,
+            self.frame_buf.as_ref().unwrap(),
             rect,
             once(RenderAttachmentInfo {
                 image_view: image_view.borrow(),

@@ -638,7 +638,7 @@ where
         let mut ops = frame.drain_ops().peekable();
 
         // We work-around this condition, below, but it is not expected that a well-formed
-        // program would ever do this. It causes undefined behavior when passing a frame with no
+        // program would never do this. It causes undefined behavior when passing a frame with no
         // operations.
         debug_assert!(ops.peek().is_some());
 
