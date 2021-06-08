@@ -472,6 +472,9 @@ where
         }
     }
 
+    /// Adds `Asm` code which will be used to drive rendering operations. Also maintains a cache
+    /// buffer of character and position data which can be drawn efficiently given repeated client
+    /// commands.
     fn compile_bitmap_glyph<C, T>(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
@@ -523,7 +526,7 @@ where
             .sum();
 
         // Allocate enough `buf` to hold everything in the existing compilation and everything we
-        // could possibly draw (assuming each character is unique)
+        // could possibly render for these commands (assuming each character is unique)
         let compilation = &mut self.bitmap_glyph_fonts[font_idx];
         unsafe {
             compilation.data.alloc(
@@ -536,7 +539,7 @@ where
         }
         let buf = compilation.data.buf.as_mut().unwrap();
 
-        // Transfer data from the previous GPU buffer to the new one
+        // Transfer data from the previous GPU buffer to the new one, if we have a previous buffer
         if buf.allocation.previous.is_some() {
             self.code
                 .insert(self.render_idx, Asm::TransferBitmapGlyphData(idx));
@@ -558,8 +561,10 @@ where
             .map_or(0, |(offset, _)| offset + BitmapChar::STRIDE);
         let mut end = start;
 
+        // Bind the page texture and vertex buffer
         self.code.push(Asm::BindBitmapGlyph(idx));
 
+        // Fill the vertex buffer for all commands which use this font
         let mut prev_glyph_color = None;
         for cmd in &cmds[idx..end_idx] {
             let cmd = cmd.borrow();

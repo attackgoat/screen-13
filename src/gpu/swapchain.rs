@@ -171,6 +171,10 @@ impl Swapchain {
             .unwrap_or_default();
     }
 
+    pub fn dims(&self) -> Extent {
+        self.dims
+    }
+
     pub fn fmt(swapchain: &Self) -> Format {
         swapchain.fmt
     }
@@ -299,6 +303,11 @@ impl Swapchain {
         // Advance to the next swapchain image
         self.image_idx += 1;
         self.image_idx %= self.images.len();
+    }
+
+    pub fn set_dims(&mut self, dims: Extent) {
+        self.frame_buf_attachment = None;
+        self.dims = dims;
     }
 
     pub fn supported_formats(&self) -> &[Format] {

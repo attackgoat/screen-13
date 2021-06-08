@@ -85,12 +85,11 @@ impl Config {
         self.data.swapchain_len.unwrap_or(3).max(1).min(3)
     }
 
-    /// The dimensions of the window if set, otherwise 1920x1080.
-    pub fn window_dimensions(&self) -> Extent {
+    /// The dimensions of the window if set.
+    pub fn window_dimensions(&self) -> Option<Extent> {
         self.data
             .window_dimensions
             .map(|dims| Extent::new(dims.0 as _, dims.1 as _))
-            .unwrap_or_else(|| Extent::new(1920, 1080))
     }
 
     pub fn write(&self) -> Result<(), IoError> {

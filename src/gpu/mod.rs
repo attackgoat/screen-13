@@ -534,11 +534,7 @@ impl<P> Gpu<P>
 where
     P: SharedPointerKind,
 {
-    pub(super) unsafe fn new(
-        window: &Window,
-        dims: Extent,
-        swapchain_len: u32,
-    ) -> (Self, Swapchain) {
+    pub(super) unsafe fn new(window: &Window, swapchain_len: u32) -> (Self, Swapchain) {
         let mut surface = None;
         INIT.call_once(|| {
             init_gfx_hal();
@@ -567,6 +563,7 @@ where
             loads: Default::default(),
             renders: Default::default(),
         };
+        let dims = window.inner_size().into();
         let swapchain = Swapchain::new(surface.take().unwrap(), dims, swapchain_len);
 
         (gpu, swapchain)

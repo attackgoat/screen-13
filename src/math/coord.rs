@@ -10,7 +10,7 @@ use {
         fmt::{Display, Formatter, Result},
         ops::{Div, DivAssign, Mul, MulAssign, Neg},
     },
-    winit::dpi::PhysicalSize,
+    winit::dpi::{LogicalSize, PhysicalSize},
 };
 
 #[derive(
@@ -220,6 +220,15 @@ impl From<Coord<u32>> for Vec2 {
     }
 }
 
+impl From<PhysicalSize<u32>> for Coord<f32> {
+    fn from(val: PhysicalSize<u32>) -> Self {
+        Self {
+            x: val.width as _,
+            y: val.height as _,
+        }
+    }
+}
+
 impl From<PhysicalSize<u32>> for Coord<u32> {
     fn from(val: PhysicalSize<u32>) -> Self {
         Self {
@@ -230,6 +239,15 @@ impl From<PhysicalSize<u32>> for Coord<u32> {
 }
 
 impl From<Coord<u32>> for Extent2D {
+    fn from(val: Coord<u32>) -> Self {
+        Self {
+            height: val.y,
+            width: val.x,
+        }
+    }
+}
+
+impl From<Coord<u32>> for LogicalSize<u32> {
     fn from(val: Coord<u32>) -> Self {
         Self {
             height: val.y,

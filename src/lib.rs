@@ -310,7 +310,6 @@ pub mod ptr {
 
         /// Returns a constant pointer to the value.
         pub fn as_ptr(shared: &Self) -> *const T {
-            //SharedPointer::as_ptr(&shared.0)
             SharedPointer::as_ptr(&shared.0)
         }
 
@@ -462,7 +461,6 @@ where
 {
     config: Config,
     event_loop: Option<EventLoop<()>>,
-    dims: Extent,
     gpu: Gpu<P>,
 
     #[cfg(debug_assertions)]
@@ -509,7 +507,6 @@ where
         config: Config,
         event_loop: EventLoop<()>,
         builder: WindowBuilder,
-        dims: Extent,
     ) -> Self {
         let icon = program
             .icon
@@ -521,11 +518,10 @@ where
             .with_window_icon(icon)
             .build(&event_loop)
             .unwrap();
-        let (gpu, swapchain) = unsafe { Gpu::new(&window, dims, config.swapchain_len()) };
+        let (gpu, swapchain) = unsafe { Gpu::new(&window, config.swapchain_len()) };
 
         Self {
             config,
-            dims,
             event_loop: Some(event_loop),
             gpu,
             #[cfg(debug_assertions)]
@@ -550,10 +546,9 @@ where
             .collect::<Vec<_>>();
         video_modes.sort_by(cmp_area_and_refresh_rate);
         let best_video_mode = video_modes.pop().unwrap();
-        let dims = best_video_mode.size().into();
         builder = builder.with_fullscreen(Some(Fullscreen::Exclusive(best_video_mode)));
 
-        Self::new_builder(program, config, event_loop, builder, dims)
+        Self::new_builder(program, config, event_loop, builder)
     }
 
     fn new_window(program: &Program, config: Config) -> Self {
@@ -561,36 +556,20 @@ where
         let mut builder = WindowBuilder::new();
         let event_loop = EventLoop::new();
 
-        #[cfg(debug_assertions)]
-        debug!("Building {}x{} window", dims.x, dims.y);
-
         // Setup windowed mode
-        let physical_dims: PhysicalSize<_> = dims.into();
-        builder = builder
-            .with_fullscreen(None)
-            .with_inner_size(physical_dims)
-            // .with_visible(false)
-            .with_min_inner_size(LogicalSize::new(
-                MINIMUM_WINDOW_SIZE as f32,
-                MINIMUM_WINDOW_SIZE as f32,
-            ));
+        builder = builder.with_fullscreen(None);
 
-        Self::new_builder(program, config, event_loop, builder, dims)
+        if let Some(dims) = dims {
+            let physical_dims: LogicalSize<_> = dims.into();
+            builder = builder.with_inner_size(physical_dims);
+        }
 
-        /* TODO: This is ugly on x11
-        use winit::dpi::PhysicalPosition;
+        builder = builder.with_min_inner_size(LogicalSize::new(
+            MINIMUM_WINDOW_SIZE as f32,
+            MINIMUM_WINDOW_SIZE as f32,
+        ));
 
-        // In windowed mode set the screen position to be nicely centered
-        if let Some(monitor) = res.window.current_monitor() {
-            let (half_monitor_width, half_monitor_height) =
-                (monitor.size().width >> 1, monitor.size().height >> 1);
-            let (half_window_width, half_window_height) = (dims.x >> 1, dims.y >> 1);
-            let window_x = half_monitor_width - half_window_width;
-            let window_y = half_monitor_height - half_window_height;
-            res.window
-                .set_outer_position(PhysicalPosition::new(window_x, window_y));
-            // res.window.set_visible(true);
-        }*/
+        Self::new_builder(program, config, event_loop, builder)
     }
 
     /// Borrows the `Gpu` instance.
@@ -706,21 +685,32 @@ where
         event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Wait;
             match event {
-                Event::WindowEvent { event, .. } => match event {
-                    WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                Event::WindowEvent { event, window_id } => match event {
+                    WindowEvent::CloseRequested if window_id == self.window.id() => {
+                        *control_flow = ControlFlow::Exit
+                    }
                     WindowEvent::KeyboardInput {
                         input: keyboard_input,
                         ..
                     } => input.keys.handle(&keyboard_input),
-                    WindowEvent::Resized(dims) => self.dims = dims.into(),
+                    WindowEvent::Resized(dims) => {
+                        let dims: Extent = dims.into();
+
+                        info!("Window resized to {}x{}", dims.x, dims.y);
+
+                        self.swapchain.set_dims(dims.into());
+                    }
                     _ => {}
                 },
-                Event::RedrawEventsCleared => self.window.request_redraw(),
-                Event::MainEventsCleared | Event::RedrawRequested(_) => {
+                Event::MainEventsCleared => self.window.request_redraw(),
+                Event::RedrawRequested(_) => {
                     // Render & present the screen, saving the ops in our buffer
                     unsafe {
                         self.present(
-                            screen.as_ref().unwrap().render(&self.gpu, self.dims),
+                            screen
+                                .as_ref()
+                                .unwrap()
+                                .render(&self.gpu, self.swapchain.dims()),
                             &mut render_buf,
                         );
                     }
