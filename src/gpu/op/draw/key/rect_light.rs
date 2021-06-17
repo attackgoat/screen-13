@@ -1,7 +1,7 @@
 use crate::{
-    gpu::op::{
-        draw::{command::RectLightCommand, geom::RECT_LIGHT_STRIDE},
-        Stride,
+    gpu::{
+        cache::Stride,
+        op::draw::{command::RectLightCommand, geom::RECT_LIGHT_STRIDE},
     },
     math::{Coord8, Extent},
 };
@@ -46,7 +46,7 @@ impl RectLight {
 }
 
 impl Stride for RectLight {
-    fn stride() -> u64 {
+    fn stride(&self) -> u64 {
         RECT_LIGHT_STRIDE as _
     }
 }

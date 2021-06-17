@@ -65,8 +65,8 @@ typenum = "1.12"
 # TODO: https://github.com/orium/archery/pull/5 waiting on release
 archery = { git = "https://github.com/orium/archery" }
 
-# TODO: https://github.com/attackgoat/bmfont-rust/tree/kerned-chars waiting on PR+merge+release
-bmfont = { git = "https://github.com/attackgoat/bmfont-rust", branch = "kerned-chars", default-features = false, features = ["serde"] }
+# TODO: https://github.com/attackgoat/bmfont-rust/tree/iter-char waiting on PR+merge+release
+bmfont = { git = "https://github.com/attackgoat/bmfont-rust", branch = "iter_char", default-features = false, features = ["serde"] }
 
 # TODO: https://github.com/mooman219/fontdue/pull/55 waiting on merge+release
 fontdue = { git = "https://github.com/attackgoat/fontdue", branch = "serde-feature", features = ["serde_derive"] }

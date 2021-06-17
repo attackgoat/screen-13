@@ -1,7 +1,7 @@
 use {
-    crate::gpu::op::{
-        draw::{command::LineCommand, geom::LINE_STRIDE},
-        Stride,
+    crate::gpu::{
+        cache::Stride,
+        op::draw::{command::LineCommand, geom::LINE_STRIDE},
     },
     gfx_hal::image::PackedColor,
     std::{collections::hash_map::DefaultHasher, hash::Hasher},
@@ -28,7 +28,7 @@ impl Line {
 }
 
 impl Stride for Line {
-    fn stride() -> u64 {
+    fn stride(&self) -> u64 {
         LINE_STRIDE as _
     }
 }

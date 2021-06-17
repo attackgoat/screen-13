@@ -270,6 +270,7 @@ where
             } else {
                 BufferUsage::empty()
             },
+            true,
         );
 
         {
@@ -361,10 +362,12 @@ where
         let dims = self.texture.dims();
 
         // Step 1: Write the local cpu memory buffer into the gpu-local buffer
-        self.pixel_buf.write_range(
+        self.pixel_buf
+            .write_range(&mut self.cmd_buf, 0..self.pixel_buf_len);
+        self.pixel_buf.barrier_range(
             &mut self.cmd_buf,
-            PipelineStage::COMPUTE_SHADER,
-            BufferAccess::SHADER_READ,
+            PipelineStage::TRANSFER..PipelineStage::COMPUTE_SHADER,
+            BufferAccess::TRANSFER_WRITE..BufferAccess::SHADER_READ,
             0..self.pixel_buf_len,
         );
 
@@ -389,6 +392,12 @@ where
             pipeline_layout,
             conv_fmt.compute.desc_set_mut(0),
         );
+        // self.pixel_buf.barrier_range(
+        //     &mut self.cmd_buf,
+        //     PipelineStage::HOST | PipelineStage::TRANSFER..PipelineStage::COMPUTE_SHADER,
+        //     BufferAccess::HOST_WRITE | BufferAccess::TRANSFER_WRITE..BufferAccess::SHADER_READ,
+        //     0..self.pixel_buf_len,
+        // );
         self.cmd_buf.dispatch([conv_fmt.dispatch, dims.y, 1]);
     }
 
@@ -398,10 +407,12 @@ where
         let dims = self.texture.dims();
 
         // Step 1: Write the local cpu memory buffer into the gpu-local buffer
-        self.pixel_buf.write_range(
+        self.pixel_buf
+            .write_range(&mut self.cmd_buf, 0..self.pixel_buf_len);
+        self.pixel_buf.barrier_range(
             &mut self.cmd_buf,
-            PipelineStage::TRANSFER,
-            BufferAccess::TRANSFER_READ,
+            PipelineStage::TRANSFER..PipelineStage::TRANSFER,
+            BufferAccess::TRANSFER_WRITE..BufferAccess::TRANSFER_READ,
             0..self.pixel_buf_len,
         );
 

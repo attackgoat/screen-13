@@ -518,7 +518,8 @@ where
             .with_window_icon(icon)
             .build(&event_loop)
             .unwrap();
-        let (gpu, swapchain) = unsafe { Gpu::new(&window, config.swapchain_len()) };
+        let (gpu, swapchain) =
+            unsafe { Gpu::new(&window, config.swapchain_len(), config.v_sync()) };
 
         Self {
             config,
@@ -698,7 +699,7 @@ where
 
                         info!("Window resized to {}x{}", dims.x, dims.y);
 
-                        self.swapchain.set_dims(dims.into());
+                        self.swapchain.set_dims(dims);
                     }
                     _ => {}
                 },

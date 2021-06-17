@@ -636,15 +636,16 @@ where
         );
     }
 
-    unsafe fn submit_index_write_ref(&mut self, mut instr: DataWriteRefInstruction<'_, P>) {
+    unsafe fn submit_index_write_ref(&mut self, _instr: DataWriteRefInstruction<'_, P>) {
         trace!("submit_index_write_ref");
 
-        instr.buf.write_range(
-            &mut self.cmd_buf,
-            PipelineStage::VERTEX_INPUT,
-            BufferAccess::INDEX_BUFFER_READ,
-            instr.range,
-        );
+        // instr.buf.write_range(
+        //     &mut self.cmd_buf,
+        //     PipelineStage::VERTEX_INPUT,
+        //     BufferAccess::INDEX_BUFFER_READ,
+        //     instr.range,
+        // );
+        todo!();
     }
 
     unsafe fn submit_light_begin(&mut self) {
@@ -976,14 +977,15 @@ where
     unsafe fn submit_skydome_write(&mut self) {
         trace!("submit_skydome_write");
 
-        let skydome = self.skydome.as_mut().unwrap();
+        let _skydome = self.skydome.as_mut().unwrap();
 
-        skydome.vertex_buf.write_range(
-            &mut self.cmd_buf,
-            PipelineStage::VERTEX_INPUT,
-            BufferAccess::VERTEX_BUFFER_READ,
-            0..skydome.vertex_buf_len,
-        );
+        // skydome.vertex_buf.write_range(
+        //     &mut self.cmd_buf,
+        //     PipelineStage::VERTEX_INPUT,
+        //     BufferAccess::VERTEX_BUFFER_READ,
+        //     0..skydome.vertex_buf_len,
+        // );
+        todo!();
     }
 
     unsafe fn submit_spotlight_begin(&mut self, viewport: &Viewport) {
@@ -1233,40 +1235,43 @@ where
         // );
     }
 
-    unsafe fn submit_vertex_copies(&mut self, instr: DataCopyInstruction) {
+    unsafe fn submit_vertex_copies(&mut self, _instr: DataCopyInstruction) {
         trace!("submit_vertex_copies");
 
-        instr.buf.copy_ranges(
-            &mut self.cmd_buf,
-            PipelineStage::VERTEX_INPUT,
-            BufferAccess::VERTEX_BUFFER_READ,
-            instr.ranges,
-        );
+        // instr.buf.copy_ranges(
+        //     &mut self.cmd_buf,
+        //     PipelineStage::VERTEX_INPUT,
+        //     BufferAccess::VERTEX_BUFFER_READ,
+        //     instr.ranges,
+        // );
+        todo!();
     }
 
-    unsafe fn submit_vertex_write(&mut self, instr: DataWriteInstruction) {
+    unsafe fn submit_vertex_write(&mut self, _instr: DataWriteInstruction) {
         trace!("submit_vertex_write");
-
-        instr.buf.write_range(
-            &mut self.cmd_buf,
-            PipelineStage::VERTEX_INPUT,
-            BufferAccess::VERTEX_BUFFER_READ,
-            instr.range,
-        );
+        let _ = BufferAccess::HOST_WRITE;
+        // instr.buf.write_range(
+        //     &mut self.cmd_buf,
+        //     PipelineStage::VERTEX_INPUT,
+        //     BufferAccess::VERTEX_BUFFER_READ,
+        //     instr.range,
+        // );
+        todo!();
     }
 
-    unsafe fn submit_vertex_write_ref(&mut self, mut instr: DataWriteRefInstruction<'_, P>) {
+    unsafe fn submit_vertex_write_ref(&mut self, _instr: DataWriteRefInstruction<'_, P>) {
         trace!("submit_vertex_write_ref");
 
         // HACK: Instead of the instruction providing info about where in the pipeline we will next
         // see this command, we just hard-code this path to barrier on the shader compute logic.
         // Supports everything for now but may need more work later.
-        instr.buf.write_range(
-            &mut self.cmd_buf,
-            PipelineStage::COMPUTE_SHADER,
-            BufferAccess::SHADER_READ,
-            instr.range,
-        );
+        // instr.buf.write_range(
+        //     &mut self.cmd_buf,
+        //     PipelineStage::COMPUTE_SHADER,
+        //     BufferAccess::SHADER_READ,
+        //     instr.range,
+        // );
+        todo!();
     }
 
     unsafe fn submit_finish(&mut self) {

@@ -82,6 +82,7 @@ pub mod write {
     pub use super::op::write::{Command as Write, Mode as WriteMode, WriteOp};
 }
 
+mod cache;
 mod data;
 mod def;
 mod driver;
@@ -534,7 +535,11 @@ impl<P> Gpu<P>
 where
     P: SharedPointerKind,
 {
-    pub(super) unsafe fn new(window: &Window, swapchain_len: u32) -> (Self, Swapchain) {
+    pub(super) unsafe fn new(
+        window: &Window,
+        swapchain_len: u32,
+        v_sync: bool,
+    ) -> (Self, Swapchain) {
         let mut surface = None;
         INIT.call_once(|| {
             init_gfx_hal();
@@ -564,7 +569,7 @@ where
             renders: Default::default(),
         };
         let dims = window.inner_size().into();
-        let swapchain = Swapchain::new(surface.take().unwrap(), dims, swapchain_len);
+        let swapchain = Swapchain::new(surface.take().unwrap(), dims, swapchain_len, v_sync);
 
         (gpu, swapchain)
     }
@@ -750,6 +755,7 @@ where
                 name,
                 idx_buf_len,
                 Usage::INDEX | Usage::STORAGE,
+                true,
             );
 
             let vertex_buf_len = 0;
@@ -758,6 +764,7 @@ where
                 name,
                 vertex_buf_len,
                 Usage::VERTEX | Usage::STORAGE,
+                true,
             );
 
             let staging_buf_len = 0;
@@ -766,6 +773,7 @@ where
                 name,
                 staging_buf_len,
                 Usage::VERTEX | Usage::STORAGE,
+                true,
             );
 
             let write_mask_len = 0;
@@ -774,6 +782,7 @@ where
                 name,
                 write_mask_len,
                 Usage::STORAGE,
+                true,
             );
 
             Ok(Shared::new(Model::new(
@@ -1014,6 +1023,7 @@ where
                     name,
                     len,
                     Usage::INDEX | Usage::STORAGE,
+                    true,
                 );
 
                 // Fill the index buffer
@@ -1036,6 +1046,7 @@ where
                     name,
                     len,
                     Usage::STORAGE,
+                    true,
                 );
 
                 // Fill the staging buffer
@@ -1057,6 +1068,7 @@ where
                     name,
                     len,
                     Usage::STORAGE,
+                    true,
                 );
 
                 // Fill the write mask buffer
@@ -1094,6 +1106,7 @@ where
                 name,
                 vertex_buf_len,
                 Usage::STORAGE | Usage::VERTEX,
+                true,
             );
 
             Shared::new(Model::new(
@@ -1173,6 +1186,9 @@ where
         let mut lru_timestamp = cache.lru_timestamp.borrow_mut();
         let (timestamp, _) = lru_timestamp.overflowing_add(1);
         *lru_timestamp = timestamp;
+
+        // Set the timestamp for resources checked during this render
+        pool.lru_timestamp = timestamp;
 
         // Set the expiry timestamp for resources created during this render
         let (expiry, _) = timestamp.overflowing_add(cache.lru_threshold);

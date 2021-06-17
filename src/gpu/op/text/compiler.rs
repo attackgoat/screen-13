@@ -9,11 +9,9 @@ use {
     crate::{
         color::AlphaColor,
         gpu::{
+            cache::{Lru, LruCache, Stride},
             data::Mapping,
-            op::{
-                DataCopyInstruction, DataTransferInstruction, DataWriteInstruction, DirtyData,
-                DirtyLruData, Lru, Stride,
-            },
+            op::{DataCopyInstruction, DataTransferInstruction, DataWriteInstruction},
             pool::Pool,
             Texture2d,
         },
@@ -74,7 +72,7 @@ impl BitmapChar {
 }
 
 impl Stride for BitmapChar {
-    fn stride() -> u64 {
+    fn stride(&self) -> u64 {
         Self::STRIDE
     }
 }
@@ -98,7 +96,7 @@ where
     T: AsRef<str>,
 {
     fn bind_bitmap<'f>(
-        &'f self,
+        &self,
         fonts: &'f [CompiledFont<BitmapFont<P>, BitmapChar, P>],
         idx: usize,
     ) -> BitmapBindInstruction<'f, P> {
@@ -106,14 +104,12 @@ where
         let font_idx = fonts
             .binary_search_by(|probe| Shared::as_ptr(&probe.font).cmp(&font))
             .unwrap();
-        let buf = fonts[font_idx].data.buf.as_ref().unwrap();
+        let cache = &fonts[font_idx].cache;
+        let buf_len = cache.len();
 
         BitmapBindInstruction {
-            buf: &buf.allocation.current,
-            buf_len: buf
-                .usage
-                .last()
-                .map_or(0, |(offset, _)| offset + BitmapChar::STRIDE),
+            buf: &cache.allocation.current,
+            buf_len,
             desc_set: font_idx,
         }
     }
@@ -125,15 +121,11 @@ where
             .scalable_fonts
             .binary_search_by(|probe| Shared::as_ptr(&probe.font).cmp(&font))
             .unwrap();
-        let buf = self.compiler.scalable_fonts[font_idx]
-            .data
-            .buf
-            .as_ref()
-            .unwrap();
+        let cache = &self.compiler.scalable_fonts[font_idx].cache;
 
         Instruction::ScalableBind(ScalableBindInstruction {
-            buf: &buf.allocation.current,
-            buf_len: buf.usage.last().map_or(0, |(offset, _)| offset + 0), // TODO:!!!! + ScalableChar::STRIDE),
+            buf: &cache.allocation.current,
+            buf_len: cache.len(),
         })
     }
 
@@ -160,11 +152,11 @@ where
         let font_idx = fonts
             .binary_search_by(|probe| Shared::as_ptr(&probe.font).cmp(&font))
             .unwrap();
-        let buf = fonts[font_idx].data.buf.as_mut().unwrap();
+        let cache = &mut fonts[font_idx].cache;
 
         Instruction::VertexCopy(DataCopyInstruction {
-            buf: &mut buf.allocation.current,
-            ranges: buf.pending_copies.as_slice(),
+            buf: &mut cache.allocation.current,
+            ranges: cache.pending_copies.as_slice(),
         })
     }
 
@@ -175,15 +167,11 @@ where
             .scalable_fonts
             .binary_search_by(|probe| Shared::as_ptr(&probe.font).cmp(&font))
             .unwrap();
-        let buf = self.compiler.scalable_fonts[font_idx]
-            .data
-            .buf
-            .as_mut()
-            .unwrap();
+        let cache = &mut self.compiler.scalable_fonts[font_idx].cache;
 
         Instruction::VertexCopy(DataCopyInstruction {
-            buf: &mut buf.allocation.current,
-            ranges: buf.pending_copies.as_slice(),
+            buf: &mut cache.allocation.current,
+            ranges: cache.pending_copies.as_slice(),
         })
     }
 
@@ -200,13 +188,7 @@ where
             .binary_search_by(|probe| Shared::as_ptr(&probe.font).cmp(&font))
             .unwrap();
 
-        Self::transfer_data(
-            self.compiler.bitmap_glyph_fonts[font_idx]
-                .data
-                .buf
-                .as_mut()
-                .unwrap(),
-        )
+        Self::transfer_data(&mut self.compiler.bitmap_glyph_fonts[font_idx].cache)
     }
 
     fn transfer_bitmap_outline_data(&mut self, idx: usize) -> Instruction<'_, P> {
@@ -217,22 +199,16 @@ where
             .binary_search_by(|probe| Shared::as_ptr(&probe.font).cmp(&font))
             .unwrap();
 
-        Self::transfer_data(
-            self.compiler.bitmap_outline_fonts[font_idx]
-                .data
-                .buf
-                .as_mut()
-                .unwrap(),
-        )
+        Self::transfer_data(&mut self.compiler.bitmap_outline_fonts[font_idx].cache)
     }
 
-    fn transfer_data<Key>(buf: &mut DirtyData<Key, P>) -> Instruction<'_, P> {
-        let (src, src_len) = buf.allocation.previous.as_mut().unwrap();
+    fn transfer_data<Key>(cache: &mut LruCache<Key, P>) -> Instruction<'_, P> {
+        let (src, src_len) = cache.allocation.previous.as_mut().unwrap();
 
         Instruction::DataTransfer(DataTransferInstruction {
             src,
             src_range: 0..*src_len,
-            dst: &mut buf.allocation.current,
+            dst: &mut cache.allocation.current,
         })
     }
 
@@ -244,13 +220,7 @@ where
             .binary_search_by(|probe| Shared::as_ptr(&probe.font).cmp(&font))
             .unwrap();
 
-        Self::transfer_data(
-            self.compiler.scalable_fonts[font_idx]
-                .data
-                .buf
-                .as_mut()
-                .unwrap(),
-        )
+        Self::transfer_data(&mut self.compiler.scalable_fonts[font_idx].cache)
     }
 
     fn write_bitmap_vertices<'f>(
@@ -262,11 +232,11 @@ where
         let font_idx = fonts
             .binary_search_by(|probe| Shared::as_ptr(&probe.font).cmp(&font))
             .unwrap();
-        let buf = fonts[font_idx].data.buf.as_mut().unwrap();
+        let cache = &mut fonts[font_idx].cache;
 
         Instruction::VertexWrite(DataWriteInstruction {
-            buf: &mut buf.allocation.current,
-            range: buf.pending_write.as_ref().unwrap().clone(),
+            buf: &mut cache.allocation.current,
+            range: cache.pending_write.as_ref().unwrap().clone(),
         })
     }
 
@@ -277,15 +247,11 @@ where
             .scalable_fonts
             .binary_search_by(|probe| Shared::as_ptr(&probe.font).cmp(&font))
             .unwrap();
-        let buf = self.compiler.scalable_fonts[font_idx]
-            .data
-            .buf
-            .as_mut()
-            .unwrap();
+        let cache = &mut self.compiler.scalable_fonts[font_idx].cache;
 
         Instruction::VertexWrite(DataWriteInstruction {
-            buf: &mut buf.allocation.current,
-            range: buf.pending_write.as_ref().unwrap().clone(),
+            buf: &mut cache.allocation.current,
+            range: cache.pending_write.as_ref().unwrap().clone(),
         })
     }
 }
@@ -325,9 +291,9 @@ where
             }
             Asm::CopyScalableVertices(idx) => self.copy_scalable_vertices(idx),
             Asm::RenderBegin => Instruction::RenderBegin,
-            Asm::RenderText(start, end) => Instruction::RenderText(
-                start as u32 / BitmapChar::STRIDE as u32..end as u32 / BitmapChar::STRIDE as u32,
-            ),
+            Asm::RenderText(start, end) => {
+                Instruction::RenderText(start as u32 >> 4..end as u32 >> 4)
+            }
             Asm::TransferBitmapGlyphData(idx) => self.transfer_bitmap_glyph_data(idx),
             Asm::TransferBitmapOutlineData(idx) => self.transfer_bitmap_outline_data(idx),
             Asm::TransferScalableData(idx) => self.transfer_scalable_data(idx),
@@ -357,7 +323,6 @@ where
     fn drop(&mut self) {
         // Reset non-critical resources
         self.compiler.code.clear();
-        self.compiler.render_idx = 0;
     }
 }
 
@@ -365,7 +330,7 @@ struct CompiledFont<F, Key, P>
 where
     P: 'static + SharedPointerKind,
 {
-    data: DirtyLruData<Key, P>,
+    cache: LruCache<Key, P>,
     font: Shared<F, P>,
 }
 
@@ -373,9 +338,9 @@ impl<F, Key, P> CompiledFont<F, Key, P>
 where
     P: 'static + SharedPointerKind,
 {
-    fn new(font: &Shared<F, P>) -> Self {
+    unsafe fn new(pool: &mut Pool<P>, font: &Shared<F, P>) -> Self {
         Self {
-            data: Default::default(),
+            cache: LruCache::new(pool, 1u64, BufferUsage::VERTEX), // TOOD: NOT ONE!
             font: Shared::clone(font),
         }
     }
@@ -393,7 +358,6 @@ where
     bitmap_glyph_fonts: Vec<CompiledFont<BitmapFont<P>, BitmapChar, P>>,
     bitmap_outline_fonts: Vec<CompiledFont<BitmapFont<P>, BitmapChar, P>>,
     code: Vec<Asm>,
-    render_idx: usize,
     scalable_fonts: Vec<CompiledFont<ScalableFont, ScalableChar, P>>,
 }
 
@@ -513,7 +477,7 @@ where
         {
             Err(idx) => {
                 self.bitmap_glyph_fonts
-                    .insert(idx, CompiledFont::new(bitmap));
+                    .insert(idx, unsafe { CompiledFont::new(pool, bitmap) });
                 idx
             }
             Ok(idx) => idx,
@@ -528,37 +492,23 @@ where
         // Allocate enough `buf` to hold everything in the existing compilation and everything we
         // could possibly render for these commands (assuming each character is unique)
         let compilation = &mut self.bitmap_glyph_fonts[font_idx];
+        let eob = compilation.cache.len();
+        let capacity = eob + text_len as u64 * BitmapChar::STRIDE;
+
         unsafe {
-            compilation.data.alloc(
+            compilation.cache.realloc(
                 #[cfg(feature = "debug-names")]
                 &format!("{} bitmap font vertex buffer", name),
                 pool,
-                (compilation.data.lru.len() + text_len) as u64 * BitmapChar::STRIDE,
-                BufferUsage::VERTEX,
+                capacity,
             );
-        }
-        let buf = compilation.data.buf.as_mut().unwrap();
-
-        // Transfer data from the previous GPU buffer to the new one, if we have a previous buffer
-        if buf.allocation.previous.is_some() {
-            self.code
-                .insert(self.render_idx, Asm::TransferBitmapGlyphData(idx));
-            self.render_idx += 1;
         }
 
         // Copy data from the uncompacted end of the GPU buffer back to linear data
-        buf.compact_cache(&mut compilation.data.lru, pool.lru_expiry);
-        if !buf.pending_copies.is_empty() {
-            self.code
-                .insert(self.render_idx, Asm::CopyBitmapGlyphVertices(idx));
-            self.render_idx += 1;
-        }
+        compilation.cache.compact_cache(pool.lru_timestamp);
 
         // start..end is the back of the buffer where we push new characters
-        let start = buf
-            .usage
-            .last()
-            .map_or(0, |(offset, _)| offset + BitmapChar::STRIDE);
+        let start = compilation.cache.len();
         let mut end = start;
 
         // Bind the page texture and vertex buffer
@@ -573,7 +523,7 @@ where
             let view_proj = if let Some(view_proj) = cmd.as_transform() {
                 view_proj
             } else {
-                // // PERF: Should hand roll this
+                // PERF: Should hand roll this
                 // Read as:
                 // 1. Convert layout pixels to normalized coordinates:  pixels ->  0..1
                 // 2. Transform normalized coordinates to NDC:          0..1   -> -1..1
@@ -591,25 +541,26 @@ where
                 self.code.push(Asm::UpdateBitmapGlyphColor(glyph_color));
             }
 
-            // We are going to submit rendering commands but we need to keep track of the current asm
-            // code index so that we can ensure the 'copy to gpu' asm code is executed before rendering
+            // We are going to submit rendering commands but we need to keep track of the current
+            // asm code index so that we can ensure the 'copy to gpu' asm code is executed before
+            // rendering
             let code_idx_before_text = self.code.len();
 
-            // Characters will generally follow eachother so we keep a running range of renderable text
-            // in order to reduce the need to sort/re-group later. This requires a fix-up step after
-            // the loop to capture the last range!
+            // Characters will generally follow eachother so we keep a running range of renderable
+            // text in order to reduce the need to sort/re-group later. This requires a fix-up step
+            // after the loop to capture the last range!
             let mut text_range: Option<Range<u64>> = None;
 
             // Make sure all characters are in the lru data
             for char in bitmap.parse(cmd.text()) {
                 let key = BitmapChar {
-                    char: char.char,
+                    char: char.char(),
                     x: char.screen_rect.x,
                     y: char.screen_rect.y,
                 };
                 let offset = match compilation
-                    .data
-                    .lru
+                    .cache
+                    .items
                     .binary_search_by(|probe| probe.key.cmp(&key))
                 {
                     Err(idx) => {
@@ -619,8 +570,12 @@ where
                         end += vertices.len() as u64;
 
                         unsafe {
-                            let mut mapped_range =
-                                buf.allocation.current.map_range_mut(start..end).unwrap();
+                            let mut mapped_range = compilation
+                                .cache
+                                .allocation
+                                .current
+                                .map_range_mut(start..end)
+                                .unwrap();
                             copy_nonoverlapping(
                                 vertices.as_ptr(),
                                 mapped_range.as_mut_ptr(),
@@ -631,16 +586,21 @@ where
                         }
 
                         // Create a new cache entry for this character
-                        buf.usage.push((start, key));
-                        compilation
-                            .data
-                            .lru
-                            .insert(idx, Lru::new(key, start, pool.lru_expiry));
+                        compilation.cache.usage.push((start, key));
+                        compilation.cache.items.insert(
+                            idx,
+                            Lru {
+                                expiry: pool.lru_expiry,
+                                key,
+                                offset: start,
+                            },
+                        );
                         start
                     }
                     Ok(idx) => {
-                        compilation.data.lru[idx].expiry = pool.lru_expiry;
-                        compilation.data.lru[idx].offset
+                        let lru = &mut compilation.cache.items[idx];
+                        lru.expiry = pool.lru_expiry;
+                        lru.offset
                     }
                 };
 
@@ -693,10 +653,18 @@ where
 
         // We may need to write these vertices from the CPU to the GPU
         if start != end {
-            buf.pending_write = Some(start..end);
-            self.code
-                .insert(self.render_idx, Asm::WriteBitmapGlyphVertices(idx));
-            self.render_idx += 1;
+            compilation.cache.pending_write = Some(start..end);
+            self.code.insert(0, Asm::WriteBitmapGlyphVertices(idx));
+        }
+
+        // Handle copied ranges from earlier
+        if !compilation.cache.pending_copies.is_empty() {
+            self.code.insert(0, Asm::CopyBitmapGlyphVertices(idx));
+        }
+
+        // Transfer data from the previous GPU buffer to the new one, if we have a previous buffer
+        if compilation.cache.allocation.previous.is_some() {
+            self.code.insert(0, Asm::TransferBitmapGlyphData(idx));
         }
 
         end_idx
@@ -746,25 +714,25 @@ where
         // Advance the least-recently-used caching algorithm one step forward
         self.bitmap_glyph_fonts
             .iter_mut()
-            .for_each(|compilation| compilation.data.step());
+            .for_each(|compilation| compilation.cache.reset());
         self.bitmap_outline_fonts
             .iter_mut()
-            .for_each(|compilation| compilation.data.step());
+            .for_each(|compilation| compilation.cache.reset());
         self.scalable_fonts
             .iter_mut()
-            .for_each(|compilation| compilation.data.step());
+            .for_each(|compilation| compilation.cache.reset());
 
         // Remove any fonts which are no longer in use
         self.bitmap_glyph_fonts
-            .retain(|compilation| !compilation.data.lru.is_empty());
+            .retain(|compilation| !compilation.cache.items.is_empty());
         self.bitmap_outline_fonts
-            .retain(|compilation| !compilation.data.lru.is_empty());
+            .retain(|compilation| !compilation.cache.items.is_empty());
         self.scalable_fonts
-            .retain(|compilation| !compilation.data.lru.is_empty());
+            .retain(|compilation| !compilation.cache.items.is_empty());
     }
 
     /// Sorts commands into a predictable and efficient order for drawing.
-    fn sort<'c, C, T>(cmds: &mut [C])
+    fn sort<C, T>(cmds: &mut [C])
     where
         C: Borrow<Command<P, T>>,
         T: AsRef<str>,
@@ -825,7 +793,6 @@ where
             bitmap_glyph_fonts: Default::default(),
             bitmap_outline_fonts: Default::default(),
             code: Default::default(),
-            render_idx: 0,
             scalable_fonts: Default::default(),
         }
     }
@@ -838,7 +805,7 @@ enum GroupIdx {
     Scalable,
 }
 
-#[derive(Clone, Copy, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, PartialEq)]
 struct ScalableChar {
     char: char,
     stride: u32,
@@ -870,8 +837,14 @@ impl Ord for ScalableChar {
     }
 }
 
+impl PartialOrd for ScalableChar {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 impl Stride for ScalableChar {
-    fn stride() -> u64 {
+    fn stride(&self) -> u64 {
         //self.stride as _
         todo!()
     }

@@ -75,13 +75,13 @@ where
     }
 }
 
-/// An iterator to allow incoming `Iterator`'s of `CopyRange` to output `Range` instead.
-struct CopyRangeRangeIter<T>(T)
+/// An iterator to allow incoming `Iterator`'s of `CopyRange` to output the destination `Range` instead.
+pub struct CopyRangeDstRangeIter<T>(pub T)
 where
     T: Iterator,
     T::Item: Borrow<CopyRange>;
 
-impl<T> Iterator for CopyRangeRangeIter<T>
+impl<T> Iterator for CopyRangeDstRangeIter<T>
 where
     T: Iterator,
     T::Item: Borrow<CopyRange>,
@@ -100,22 +100,51 @@ where
     }
 }
 
+/// An iterator to allow incoming `Iterator`'s of `CopyRange` to output the source `Range` instead.
+pub struct CopyRangeSrcRangeIter<T>(pub T)
+where
+    T: Iterator,
+    T::Item: Borrow<CopyRange>;
+
+impl<T> Iterator for CopyRangeSrcRangeIter<T>
+where
+    T: Iterator,
+    T::Item: Borrow<CopyRange>,
+{
+    type Item = Range<u64>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.0.next() {
+            Some(range) => {
+                let r = range.borrow();
+
+                Some(r.src.start..r.src.end)
+            }
+            _ => None,
+        }
+    }
+}
+
 /// A buffer type which automates the tasks related to transferring bytes to the graphics device.
+///
 /// Data can be read from, written to, or copied within the graphics device, and mapped in order
 /// to gain access to the raw bytes.
 pub struct Data {
-    access_mask: Access,
     capacity: u64,
-    pipeline_stage: PipelineStage,
     staging: Option<BufferMemory>,
     storage: BufferMemory,
 }
 
 impl Data {
+    /// Constructs a new Data.
+    ///
+    /// If `allow_uma` is true and the system is a unified memory architecture, only one buffer will
+    /// be created.
     pub unsafe fn new(
         #[cfg(feature = "debug-names")] name: &str,
         mut capacity: u64,
         usage: Usage,
+        allow_uma: bool,
     ) -> Self {
         assert_ne!(capacity, 0);
 
@@ -139,7 +168,7 @@ impl Data {
             storage_req.type_mask,
             Properties::CPU_VISIBLE | Properties::DEVICE_LOCAL,
         ) {
-            (mem_ty, true)
+            (mem_ty, allow_uma)
         } else {
             let mem_ty = mem_ty(storage_req.type_mask, Properties::DEVICE_LOCAL).unwrap();
             (mem_ty, false)
@@ -181,9 +210,7 @@ impl Data {
         };
 
         Self {
-            access_mask: Access::empty(),
             capacity,
-            pipeline_stage: PipelineStage::TOP_OF_PIPE,
             staging,
             storage,
         }
@@ -195,13 +222,13 @@ impl Data {
     ///
     /// The provided command buffer must be ready to record.
     pub unsafe fn barrier_range(
-        &mut self,
+        &self,
         cmd_buf: &mut <_Backend as Backend>::CommandBuffer,
-        pipeline_stage: PipelineStage,
-        access_mask: Access,
+        stages: Range<PipelineStage>,
+        states: Range<Access>,
         range: Range<u64>,
     ) {
-        self.barrier_ranges(cmd_buf, pipeline_stage, access_mask, &[range])
+        self.barrier_ranges(cmd_buf, stages, states, &[range])
     }
 
     /// Submits a pipeline barrier and updates the state of this data.
@@ -210,10 +237,10 @@ impl Data {
     ///
     /// The provided command buffer must be ready to record.
     pub unsafe fn barrier_ranges<R>(
-        &mut self,
+        &self,
         cmd_buf: &mut <_Backend as Backend>::CommandBuffer,
-        pipeline_stage: PipelineStage,
-        access_mask: Access,
+        stages: Range<PipelineStage>,
+        states: Range<Access>,
         ranges: R,
     ) where
         R: IntoIterator,
@@ -221,17 +248,10 @@ impl Data {
     {
         let barriers = RangeBarrierIter {
             ranges: ranges.into_iter(),
-            states: self.access_mask..access_mask,
+            states,
             target: &*self.storage.buf,
         };
-        cmd_buf.pipeline_barrier(
-            self.pipeline_stage..pipeline_stage,
-            Dependencies::empty(),
-            barriers,
-        );
-
-        self.access_mask = access_mask;
-        self.pipeline_stage = pipeline_stage;
+        cmd_buf.pipeline_barrier(stages, Dependencies::empty(), barriers);
     }
 
     pub fn capacity(&self) -> u64 {
@@ -246,11 +266,9 @@ impl Data {
     pub unsafe fn copy_range(
         &mut self,
         cmd_buf: &mut <_Backend as Backend>::CommandBuffer,
-        pipeline_stage: PipelineStage,
-        access_mask: Access,
         range: CopyRange,
     ) {
-        self.copy_ranges(cmd_buf, pipeline_stage, access_mask, &[range])
+        self.copy_ranges(cmd_buf, &[range])
     }
 
     /// Copies portions within the graphics device to other portions.
@@ -261,8 +279,6 @@ impl Data {
     pub unsafe fn copy_ranges<R>(
         &mut self,
         cmd_buf: &mut <_Backend as Backend>::CommandBuffer,
-        pipeline_stage: PipelineStage,
-        access_mask: Access,
         ranges: R,
     ) where
         R: Copy + IntoIterator,
@@ -271,9 +287,6 @@ impl Data {
     {
         let copies = CopyRangeBufferCopyIter(ranges.into_iter());
         cmd_buf.copy_buffer(&self.storage.buf, &self.storage.buf, copies);
-
-        let ranges = CopyRangeRangeIter(ranges.into_iter());
-        self.barrier_ranges(cmd_buf, pipeline_stage, access_mask, ranges);
     }
 
     /// Provides read-only access to the raw bytes.
@@ -296,7 +309,8 @@ impl Data {
         self.map_memory(range)
     }
 
-    // Note: mut because "It is an application error to call vkMapMemory on a memory object that is already host mapped."
+    // Note: mut because "It is an application error to call vkMapMemory on a memory object that is
+    // already host mapped."
     fn map_memory(&mut self, range: Range<u64>) -> Result<Mapping, MapError> {
         assert!(range.start < range.end);
         assert!(range.end <= self.capacity);
@@ -312,14 +326,23 @@ impl Data {
 
     /// Reads everything from the graphics device.
     ///
+    /// This is a no-op on unified memory architectures.
+    ///
     /// # Safety
     ///
     /// The provided command buffer must be ready to record.
-    pub unsafe fn read(&mut self, cmd_buf: &mut <_Backend as Backend>::CommandBuffer) {
-        self.read_range(cmd_buf, 0..self.capacity)
+    pub unsafe fn read(
+        &mut self,
+        cmd_buf: &mut <_Backend as Backend>::CommandBuffer,
+        stage: PipelineStage,
+        state: Access,
+    ) {
+        self.read_range(cmd_buf, stage, state, 0..self.capacity)
     }
 
     /// Reads a portion from the graphics device.
+    ///
+    /// This is a no-op on unified memory architectures.
     ///
     /// # Safety
     ///
@@ -327,12 +350,16 @@ impl Data {
     pub unsafe fn read_range(
         &mut self,
         cmd_buf: &mut <_Backend as Backend>::CommandBuffer,
+        stage: PipelineStage,
+        state: Access,
         range: Range<u64>,
     ) {
-        self.read_ranges(cmd_buf, &[range])
+        self.read_ranges(cmd_buf, stage, state, &[range])
     }
 
     /// Reads portions from the graphics device.
+    ///
+    /// This is a no-op on unified memory architectures.
     ///
     /// # Safety
     ///
@@ -340,14 +367,25 @@ impl Data {
     pub unsafe fn read_ranges<R>(
         &mut self,
         cmd_buf: &mut <_Backend as Backend>::CommandBuffer,
+        stage: PipelineStage,
+        state: Access,
         ranges: R,
     ) where
         R: Copy + IntoIterator,
         R::Item: Borrow<Range<u64>>,
         R::IntoIter: ExactSizeIterator,
     {
-        // This is a no-op on unified memory architectures
         if let Some(staging) = &self.staging {
+            cmd_buf.pipeline_barrier(
+                stage..PipelineStage::TRANSFER,
+                Dependencies::empty(),
+                RangeBarrierIter {
+                    ranges: ranges.into_iter(),
+                    states: state..Access::TRANSFER_READ,
+                    target: &*staging.buf,
+                },
+            );
+
             let copies = CopyRangeBufferCopyIter(RangeCopyRangeIter(ranges.into_iter()));
             cmd_buf.copy_buffer(&self.storage.buf, &staging.buf, copies);
         }
@@ -399,19 +437,18 @@ impl Data {
 
     /// Writes everything to the graphics device.
     ///
+    /// This is a no-op on unified memory architectures.
+    ///
     /// # Safety
     ///
     /// The provided command buffer must be ready to record.
-    pub unsafe fn write(
-        &mut self,
-        cmd_buf: &mut <_Backend as Backend>::CommandBuffer,
-        pipeline_stage: PipelineStage,
-        access_mask: Access,
-    ) {
-        self.write_range(cmd_buf, pipeline_stage, access_mask, 0..self.capacity)
+    pub unsafe fn write(&mut self, cmd_buf: &mut <_Backend as Backend>::CommandBuffer) {
+        self.write_range(cmd_buf, 0..self.capacity)
     }
 
     /// Writes a portion to the graphics device.
+    ///
+    /// This is a no-op on unified memory architectures.
     ///
     /// # Safety
     ///
@@ -419,14 +456,14 @@ impl Data {
     pub unsafe fn write_range(
         &mut self,
         cmd_buf: &mut <_Backend as Backend>::CommandBuffer,
-        pipeline_stage: PipelineStage,
-        access_mask: Access,
         range: Range<u64>,
     ) {
-        self.write_ranges(cmd_buf, pipeline_stage, access_mask, &[range])
+        self.write_ranges(cmd_buf, &[range])
     }
 
     /// Writes portions to the graphics device.
+    ///
+    /// This is a no-op on unified memory architectures.
     ///
     /// # Safety
     ///
@@ -434,8 +471,6 @@ impl Data {
     pub unsafe fn write_ranges<R>(
         &mut self,
         cmd_buf: &mut <_Backend as Backend>::CommandBuffer,
-        pipeline_stage: PipelineStage,
-        access_mask: Access,
         ranges: R,
     ) where
         R: Copy + IntoIterator,
@@ -443,11 +478,19 @@ impl Data {
         R::IntoIter: ExactSizeIterator,
     {
         if let Some(staging) = &self.staging {
+            cmd_buf.pipeline_barrier(
+                PipelineStage::HOST..PipelineStage::TRANSFER,
+                Dependencies::empty(),
+                RangeBarrierIter {
+                    ranges: ranges.into_iter(),
+                    states: Access::HOST_WRITE..Access::TRANSFER_READ,
+                    target: &*staging.buf,
+                },
+            );
+
             let copies = CopyRangeBufferCopyIter(RangeCopyRangeIter(ranges.into_iter()));
             cmd_buf.copy_buffer(&staging.buf, &self.storage.buf, copies);
         }
-
-        self.barrier_ranges(cmd_buf, pipeline_stage, access_mask, ranges);
     }
 }
 
@@ -474,8 +517,6 @@ impl<'m> Mapping<'m> {
     ) -> Result<Self, MapError> {
         assert_ne!(range.end, 0);
         assert!(range.start < range.end);
-
-        // TODO: Combine these two borrows
 
         // Mapped host memory ranges must be in multiples of atom size; so we align to a possibly
         // larger window
@@ -513,7 +554,8 @@ impl<'m> Mapping<'m> {
         })
     }
 
-    /// Releases the mapped memory back to the device, only needs to be called if this a mutable mapping.
+    /// Releases the mapped memory back to the device, only needs to be called if this a mutable
+    /// mapping.
     ///
     /// Remarks: Failing to call this function before dropping a Mapping may cause a panic.
     pub fn flush(mapping: &mut Self) -> Result<(), OutOfMemory> {
@@ -559,7 +601,8 @@ impl Drop for Mapping<'_> {
     }
 }
 
-/// An iterator to allow incoming `Iterator`'s of `Range<u64>` to output `Barrier::Buffer` for the destination region.
+/// An iterator to allow incoming `Iterator`'s of `Range<u64>` to output `Barrier::Buffer` for the
+/// destination region.
 struct RangeBarrierIter<'a, T>
 where
     T: Iterator,

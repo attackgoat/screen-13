@@ -34,6 +34,7 @@ pub struct Config {
 struct Data {
     fullscreen: Option<bool>,
     swapchain_len: Option<u32>,
+    v_sync: Option<bool>,
     window_dimensions: Option<(usize, usize)>,
 }
 
@@ -69,6 +70,7 @@ impl Config {
             res.data.fullscreen = None;
             res.data.swapchain_len = Some(res.swapchain_len());
             res.data.window_dimensions = None;
+            res.data.v_sync = None;
             res.write()?;
 
             res
@@ -83,6 +85,12 @@ impl Config {
     /// Value will be in the range of [1,3]. The default value is 3.
     pub fn swapchain_len(&self) -> u32 {
         self.data.swapchain_len.unwrap_or(3).max(1).min(3)
+    }
+
+    /// If true the window presentation will be synced with the vertical refresh rate of the
+    /// display.
+    pub fn v_sync(&self) -> bool {
+        self.data.v_sync.unwrap_or(true)
     }
 
     /// The dimensions of the window if set.

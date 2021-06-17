@@ -12,3 +12,8 @@ configurations.
 **_NOTE:_** Requires installation of the
 _[CodeLLDB](https://marketplace.visualstudio.com/items?itemName=vadimcn.vscode-lldb)_ extension for
 debugging.
+
+### `rel-mgmt/`
+
+A script which exercises all test cases and build conditions which must succeed prior to merging new
+code into the main branch.

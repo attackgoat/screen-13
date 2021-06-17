@@ -19,7 +19,7 @@ use {
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage, ShaderStageFlags, Viewport},
         queue::Queue as _,
-        window::{PresentationSurface as _, Surface as _, SurfaceCapabilities, SwapchainConfig},
+        window::{PresentMode, PresentationSurface as _, Surface as _, SwapchainConfig},
         Backend,
     },
     gfx_impl::Backend as _Backend,
@@ -39,19 +39,6 @@ unsafe fn pick_format(surface: &Surface) -> Format {
                 .find(|format| format.base_format().1 == ChannelType::Srgb)
                 .unwrap_or(&formats[0])
         })
-}
-
-fn swapchain_config(
-    caps: SurfaceCapabilities,
-    dims: Extent,
-    format: Format,
-    image_count: u32,
-) -> SwapchainConfig {
-    let image_count = image_count
-        .max(*caps.image_count.start())
-        .min(*caps.image_count.end());
-
-    SwapchainConfig::from_caps(&caps, format, dims.into()).with_image_count(image_count)
 }
 
 struct Image {
@@ -77,20 +64,19 @@ pub struct Swapchain {
     render_pass: RenderPass,
     supported_fmts: Vec<Format>,
     surface: Surface,
+    v_sync: bool,
 }
 
 impl Swapchain {
-    pub(super) unsafe fn new(mut surface: Surface, dims: Extent, image_count: u32) -> Self {
+    pub(super) unsafe fn new(
+        surface: Surface,
+        dims: Extent,
+        image_count: u32,
+        v_sync: bool,
+    ) -> Self {
         assert_ne!(image_count, 0);
 
-        let mut needs_configuration = false;
         let fmt = pick_format(&surface);
-        let caps = surface.capabilities(&adapter().physical_device);
-        let swap_config = swapchain_config(caps, dims, fmt, image_count);
-        surface
-            .configure_swapchain(device(), swap_config)
-            .unwrap_or_else(|_| needs_configuration = true);
-
         let supported_fmts = surface
             .supported_formats(&adapter().physical_device)
             .unwrap_or_default();
@@ -134,6 +120,7 @@ impl Swapchain {
             render_pass,
             supported_fmts,
             surface,
+            v_sync,
         }
     }
 
@@ -147,7 +134,21 @@ impl Swapchain {
         self.fmt = pick_format(&self.surface);
 
         let caps = self.surface.capabilities(&adapter().physical_device);
-        let swap_config = swapchain_config(caps, self.dims, self.fmt, self.images.len() as _);
+        let swap_config = SwapchainConfig::from_caps(&caps, self.fmt, self.dims.into())
+            .with_image_count(
+                (self.images.len() as u32)
+                    .max(*caps.image_count.start())
+                    .min(*caps.image_count.end()),
+            )
+            .with_present_mode(
+                if self.v_sync && caps.present_modes.contains(PresentMode::MAILBOX) {
+                    PresentMode::MAILBOX
+                } else if self.v_sync && caps.present_modes.contains(PresentMode::FIFO) {
+                    PresentMode::FIFO
+                } else {
+                    PresentMode::IMMEDIATE
+                },
+            );
         let frame_buf_attachment = swap_config.framebuffer_attachment();
         if let Err(e) = self.surface.configure_swapchain(device(), swap_config) {
             warn!("Error configuring swapchain {:?}", e);

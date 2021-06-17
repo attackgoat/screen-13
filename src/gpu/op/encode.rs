@@ -10,6 +10,7 @@ use {
     },
     archery::SharedPointerKind,
     gfx_hal::{
+        buffer::Access as BufferAccess,
         command::{BufferImageCopy, CommandBuffer, CommandBufferFlags, Level},
         format::Aspects,
         image::{Access as ImageAccess, Layout, Offset, SubresourceLayers},
@@ -63,6 +64,7 @@ where
             #[cfg(feature = "debug-names")]
             name,
             len as _,
+            true,
         );
 
         let mut cmd_pool = pool.cmd_pool();
@@ -165,7 +167,12 @@ where
         );
 
         // Step 2: Copy our GPU buffer down to the CPU
-        buf.read_range(&mut self.cmd_buf, 0..len as _);
+        buf.read_range(
+            &mut self.cmd_buf,
+            PipelineStage::TRANSFER,
+            BufferAccess::TRANSFER_WRITE,
+            0..len as _,
+        );
 
         // Finish
         self.cmd_buf.finish();

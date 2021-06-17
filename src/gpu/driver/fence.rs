@@ -56,8 +56,19 @@ impl Fence {
     pub unsafe fn wait(fence: &Self) {
         // If the fence was ready or anything happened; just return as if we waited
         // otherwise we might hold up a drop function
-        if let Ok(true) | Err(_) = device().wait_for_fence(fence, 0) {
-            return;
+        match device().wait_for_fence(fence, 1) {
+            Err(_) => {
+                warn!("Fence could not be waited on");
+
+                return;
+            }
+            Ok(signaled) => {
+                if signaled {
+                    return;
+                }
+
+                warn!("Fence not signaled");
+            }
         }
 
         #[cfg(feature = "no-gfx")]

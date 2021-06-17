@@ -1,0 +1,9 @@
+#!/bin/sh
+
+set -ex
+
+cargo fmt
+
+cargo check
+cargo check --features "debug-names"
+cargo test

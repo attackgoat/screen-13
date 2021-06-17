@@ -14,7 +14,7 @@ use {
     crate::{
         color::{AlphaColor, TRANSPARENT_BLACK},
         gpu::{
-            data::CopyRange,
+            data::{CopyRange, CopyRangeDstRangeIter, CopyRangeSrcRangeIter},
             def::{
                 push_const::{
                     BitmapFontVertexPushConsts, Mat4PushConst, Vec4PushConst, Vec4Vec4PushConst,
@@ -377,7 +377,7 @@ where
             &mut self.cmd_buf,
             Layout::ColorAttachmentOptimal,
             PipelineStage::COLOR_ATTACHMENT_OUTPUT,
-            ImageAccess::COLOR_ATTACHMENT_WRITE,
+            ImageAccess::COLOR_ATTACHMENT_READ | ImageAccess::COLOR_ATTACHMENT_WRITE,
         );
     }
 
@@ -406,6 +406,12 @@ where
                     size: Some(instr.buf_len),
                 },
             )),
+        );
+        instr.buf.barrier_range(
+            &mut self.cmd_buf,
+            PipelineStage::TRANSFER..PipelineStage::VERTEX_INPUT,
+            BufferAccess::TRANSFER_WRITE..BufferAccess::VERTEX_BUFFER_READ,
+            0..instr.buf_len,
         );
     }
 
@@ -471,6 +477,12 @@ where
                 },
             )),
         );
+        instr.buf.barrier_range(
+            &mut self.cmd_buf,
+            PipelineStage::TRANSFER..PipelineStage::VERTEX_INPUT,
+            BufferAccess::TRANSFER_WRITE..BufferAccess::VERTEX_BUFFER_READ,
+            0..instr.buf_len,
+        );
     }
 
     unsafe fn submit_bitmap_outline_colors(
@@ -514,15 +526,25 @@ where
     }
 
     unsafe fn submit_data_transfer(&mut self, instr: DataTransferInstruction) {
-        trace!("submit_data_transfer");
+        trace!(
+            "submit_data_transfer {}..{}",
+            instr.src_range.start,
+            instr.src_range.end
+        );
 
         instr.src.transfer_range(
             &mut self.cmd_buf,
             instr.dst,
             CopyRange {
-                src: instr.src_range,
+                src: instr.src_range.clone(),
                 dst: 0,
             },
+        );
+        instr.dst.barrier_range(
+            &mut self.cmd_buf,
+            PipelineStage::TRANSFER..PipelineStage::VERTEX_INPUT,
+            BufferAccess::TRANSFER_WRITE..BufferAccess::VERTEX_BUFFER_READ,
+            0..instr.src_range.end - instr.src_range.start,
         );
     }
 
@@ -614,22 +636,50 @@ where
     unsafe fn submit_vertex_copies(&mut self, instr: DataCopyInstruction) {
         trace!("submit_vertex_copies");
 
-        instr.buf.copy_ranges(
+        instr.buf.barrier_ranges(
             &mut self.cmd_buf,
-            PipelineStage::VERTEX_INPUT,
-            BufferAccess::VERTEX_BUFFER_READ,
-            instr.ranges,
+            PipelineStage::TRANSFER..PipelineStage::TRANSFER,
+            BufferAccess::TRANSFER_WRITE..BufferAccess::TRANSFER_READ,
+            CopyRangeSrcRangeIter(instr.ranges.iter()),
+        );
+        instr.buf.barrier_ranges(
+            &mut self.cmd_buf,
+            PipelineStage::TRANSFER..PipelineStage::TRANSFER,
+            BufferAccess::TRANSFER_WRITE..BufferAccess::TRANSFER_WRITE,
+            CopyRangeDstRangeIter(instr.ranges.iter()),
+        );
+        instr.buf.copy_ranges(&mut self.cmd_buf, instr.ranges);
+        instr.buf.barrier_ranges(
+            &mut self.cmd_buf,
+            PipelineStage::TRANSFER..PipelineStage::VERTEX_INPUT,
+            BufferAccess::TRANSFER_WRITE..BufferAccess::VERTEX_BUFFER_READ,
+            CopyRangeDstRangeIter(instr.ranges.iter()),
         );
     }
 
     unsafe fn submit_vertex_write(&mut self, instr: DataWriteInstruction) {
         trace!("submit_vertex_write");
 
-        instr.buf.write_range(
+        instr.buf.barrier_range(
             &mut self.cmd_buf,
-            PipelineStage::VERTEX_INPUT,
-            BufferAccess::VERTEX_BUFFER_READ,
-            instr.range,
+            PipelineStage::TRANSFER..PipelineStage::TRANSFER,
+            BufferAccess::TRANSFER_READ..BufferAccess::TRANSFER_WRITE,
+            instr.range.start..instr.range.end,
+        );
+        instr
+            .buf
+            .write_range(&mut self.cmd_buf, instr.range.start..instr.range.end);
+        instr.buf.barrier_range(
+            &mut self.cmd_buf,
+            PipelineStage::TRANSFER..PipelineStage::VERTEX_INPUT,
+            BufferAccess::TRANSFER_WRITE..BufferAccess::VERTEX_BUFFER_READ,
+            instr.range.start..instr.range.end,
+        );
+        instr.buf.barrier_range(
+            &mut self.cmd_buf,
+            PipelineStage::TRANSFER..PipelineStage::VERTEX_INPUT,
+            BufferAccess::TRANSFER_WRITE..BufferAccess::VERTEX_BUFFER_READ,
+            instr.range.start..instr.range.end,
         );
     }
 
@@ -708,6 +758,12 @@ where
     fn drop(&mut self) {
         unsafe {
             self.wait();
+        }
+
+        // Causes the compiler to drop internal caches which store texture refs; they were being
+        // held alive there so that they could not be dropped until we finished GPU execution
+        if let Some(compiler) = self.compiler.as_mut() {
+            compiler.reset();
         }
     }
 }

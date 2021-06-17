@@ -70,6 +70,12 @@ fn remove_last_by<T, F: Fn(&T) -> bool>(items: &mut VecDeque<T>, f: F) -> Option
 }
 
 #[derive(Eq, Hash, PartialEq)]
+struct DataKey {
+    allow_uma: bool,
+    usage: BufferUsage,
+}
+
+#[derive(Eq, Hash, PartialEq)]
 struct DescriptorPoolKey {
     desc_ranges: Vec<(DescriptorType, usize)>,
 }
@@ -109,13 +115,14 @@ where
     best_fmts: HashMap<FormatKey, Option<Format>>,
     cmd_pools: HashMap<QueueFamilyId, PoolRef<CommandPool, P>>,
     computes: HashMap<ComputeMode, PoolRef<Compute, P>>,
-    data: HashMap<BufferUsage, PoolRef<Data, P>>,
+    data: HashMap<DataKey, PoolRef<Data, P>>,
     desc_pools: HashMap<DescriptorPoolKey, PoolRef<DescriptorPool, P>>,
     draw_compilers: PoolRef<DrawCompiler<P>, P>,
     fences: PoolRef<Fence, P>,
     graphics: HashMap<GraphicsKey, PoolRef<Graphics, P>>,
     pub(super) layouts: Layouts,
     pub(super) lru_expiry: usize,
+    pub(super) lru_timestamp: usize,
     memories: HashMap<MemoryTypeId, PoolRef<Memory, P>>,
     pub(super) ops: VecDeque<Box<dyn Op<P>>>,
     render_passes: HashMap<RenderPassMode, RenderPass>,
@@ -406,11 +413,11 @@ where
     }
 
     pub(super) fn draw_compiler(&mut self) -> Lease<DrawCompiler<P>, P> {
-        let item = if let Some(item) = self.draw_compilers.borrow_mut().pop_back() {
-            item
-        } else {
-            Default::default()
-        };
+        if let Some(item) = self.draw_compilers.borrow_mut().pop_back() {
+            return Lease::new(item, &self.draw_compilers);
+        }
+
+        let item = unsafe { DrawCompiler::new(self) };
 
         Lease::new(item, &self.draw_compilers)
     }
@@ -478,12 +485,14 @@ where
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
         len: u64,
+        allow_uma: bool,
     ) -> Lease<Data, P> {
         self.data_usage(
             #[cfg(feature = "debug-names")]
             name,
             len,
             BufferUsage::empty(),
+            allow_uma,
         )
     }
 
@@ -492,10 +501,11 @@ where
         #[cfg(feature = "debug-names")] name: &str,
         len: u64,
         usage: BufferUsage,
+        allow_uma: bool,
     ) -> Lease<Data, P> {
         let items = self
             .data
-            .entry(usage | BufferUsage::TRANSFER_DST | BufferUsage::TRANSFER_SRC)
+            .entry(DataKey { allow_uma, usage })
             .or_insert_with(Default::default);
         let item = if let Some(item) =
             remove_last_by(&mut items.borrow_mut(), |item| item.capacity() >= len)
@@ -507,6 +517,7 @@ where
                 name,
                 len,
                 usage,
+                allow_uma,
             )
         };
 
@@ -780,6 +791,7 @@ where
                 name,
                 SKYDOME.len() as _,
                 BufferUsage::VERTEX,
+                true,
             );
 
             (data, Some(SKYDOME.as_ref()))
@@ -790,8 +802,10 @@ where
 
     pub(super) fn text_compiler(&mut self) -> Lease<TextCompiler<P>, P> {
         let item = if let Some(item) = self.text_compilers.borrow_mut().pop_back() {
+            warn!("Found text compiler in cache");
             item
         } else {
+            warn!("Creating new text compiler");
             Default::default()
         };
 
@@ -875,6 +889,7 @@ where
             graphics: Default::default(),
             layouts: Default::default(),
             lru_expiry: Cache::<P>::DEFAULT_LRU_THRESHOLD,
+            lru_timestamp: 0,
             memories: Default::default(),
             ops: Default::default(),
             render_passes: Default::default(),

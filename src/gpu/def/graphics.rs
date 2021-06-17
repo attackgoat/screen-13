@@ -250,7 +250,7 @@ impl Graphics {
                 attributes: &attributes::VEC2_VEC2,
                 buffers: &vertex_buf,
                 geometry: None,
-                input_assembler: input_assemblers::TRIANGLE_STRIP,
+                input_assembler: input_assemblers::TRIANGLES,
                 tessellation: None,
                 vertex: ShaderModule::entry_point(&vertex),
             },

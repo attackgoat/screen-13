@@ -1,7 +1,7 @@
 use {
-    crate::gpu::op::{
-        draw::{command::SpotlightCommand, geom::SPOTLIGHT_STRIDE},
-        Stride,
+    crate::gpu::{
+        cache::Stride,
+        op::draw::{command::SpotlightCommand, geom::SPOTLIGHT_STRIDE},
     },
     std::ops::Range,
 };
@@ -46,7 +46,7 @@ impl Spotlight {
 }
 
 impl Stride for Spotlight {
-    fn stride() -> u64 {
+    fn stride(&self) -> u64 {
         SPOTLIGHT_STRIDE as _
     }
 }

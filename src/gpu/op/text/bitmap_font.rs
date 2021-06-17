@@ -14,7 +14,6 @@ use {
         f32,
         fmt::{Debug, Error, Formatter},
         io::{Cursor, Read, Seek},
-        mem::MaybeUninit,
     },
 };
 
@@ -128,7 +127,7 @@ where
         let v1 = v1.to_ne_bytes();
         let v2 = v2.to_ne_bytes();
 
-        let mut res: [u8; 96] = unsafe { MaybeUninit::uninit().assume_init() };
+        let mut res: [u8; 96] = [0; 96];
 
         // Top left (first triangle)
         res[0..4].copy_from_slice(&x1);
