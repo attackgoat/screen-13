@@ -73,16 +73,14 @@ pub fn bake_bitmap_font<P1: AsRef<Path>, P2: AsRef<Path>>(
                     if 0xff == r {
                         better_pixels.push(0xff);
                         better_pixels.push(0x00);
-                        better_pixels.push(0x00);
                     } else if 0xff == g {
                         better_pixels.push(0x00);
                         better_pixels.push(0xff);
-                        better_pixels.push(0x00);
                     } else {
                         better_pixels.push(0x00);
                         better_pixels.push(0x00);
-                        better_pixels.push(0x00);
                     }
+                    better_pixels.push(0x00);
                 }
             }
 

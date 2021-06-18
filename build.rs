@@ -593,11 +593,7 @@ mod shader {
 
         unsafe {
             let glsl_filenames = GLSL_FILENAMES.as_mut().unwrap();
-            if glsl_filenames
-                .iter()
-                .find(|(other, _)| *other == filename)
-                .is_none()
-            {
+            if !glsl_filenames.iter().any(|(other, _)| *other == filename) {
                 glsl_filenames.push((filename.clone(), defines.clone()));
             }
         }
