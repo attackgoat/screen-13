@@ -55,6 +55,7 @@ impl BitmapBuf {
     }
 }
 
+// TODO: Maybe this should be in the gpu mod? Or crate root? Hmmm.
 /// Describes the channels of a `Bitmap`.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub enum Format {

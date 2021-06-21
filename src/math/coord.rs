@@ -113,14 +113,13 @@ impl Coord<u32> {
     }
 }
 
-impl<T, Rhs> Div<Rhs> for Coord<T>
+impl<T> Div<T> for Coord<T>
 where
-    T: Div<Rhs, Output = T>,
-    Rhs: Copy,
+    T: Copy + Div<T, Output = T>,
 {
     type Output = Self;
 
-    fn div(self, rhs: Rhs) -> Self::Output {
+    fn div(self, rhs: T) -> Self::Output {
         Self::Output {
             x: self.x / rhs,
             y: self.y / rhs,
@@ -128,7 +127,6 @@ where
     }
 }
 
-// TODO: Find a way to make this more generic, my attempts failed (this is for `1.0 / Coord<f32>`)
 impl Div<Coord<f32>> for f32 {
     type Output = Coord<f32>;
 
@@ -140,14 +138,27 @@ impl Div<Coord<f32>> for f32 {
     }
 }
 
-impl<T, Rhs> DivAssign<Rhs> for Coord<T>
+impl<T> Div for Coord<T>
 where
-    T: DivAssign<Rhs>,
-    Rhs: Copy,
+    T: Div<T, Output = T>,
 {
-    fn div_assign(&mut self, rhs: Rhs) {
-        self.x /= rhs;
-        self.y /= rhs;
+    type Output = Self;
+
+    fn div(self, rhs: Self) -> Self::Output {
+        Self::Output {
+            x: self.x / rhs.x,
+            y: self.y / rhs.y,
+        }
+    }
+}
+
+impl<T> DivAssign for Coord<T>
+where
+    T: DivAssign<T>,
+{
+    fn div_assign(&mut self, rhs: Coord<T>) {
+        self.x /= rhs.x;
+        self.y /= rhs.y;
     }
 }
 

@@ -1,9 +1,22 @@
 #!/bin/sh
 
-set -ex
+set -e
 
-cargo fmt
+fail() {
+    printf '%s\n' "$1" >&2  ## Send message to stderr. Exclude >&2 if you don't want it that way.
+    exit "${2-1}"  ## Return a code specified by $2 or 1 by default.
+}
+
+diff() {
+    git diff --no-ext-diff --quiet
+}
+
+diff || fail "Uncommitted changes"
+
+cargo fmt && diff || fail "Unformatted rust code"
 
 cargo check
-cargo check --features "debug-names"
+# cargo check --features "debug-names"
 cargo test
+
+echo "OK"

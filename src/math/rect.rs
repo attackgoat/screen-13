@@ -94,3 +94,12 @@ impl From<Rect<u32, i32>> for Rect<f32, f32> {
         }
     }
 }
+
+impl From<Rect<u32, u32>> for Rect<f32, f32> {
+    fn from(val: Rect<u32, u32>) -> Self {
+        Self {
+            dims: val.dims.into(),
+            pos: val.pos.into(),
+        }
+    }
+}

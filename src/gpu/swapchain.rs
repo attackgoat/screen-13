@@ -225,10 +225,10 @@ impl Swapchain {
             let scale_y = dst_dims.y / src_dims.y;
             let scale = scale_x.max(scale_y);
             Mat4::from_scale(vec3(
-                src_dims.x * scale / dst_dims.x * 2.0,
-                src_dims.y * scale / dst_dims.y * 2.0,
+                src_dims.x * scale / dst_dims.x,
+                src_dims.y * scale / dst_dims.y,
                 1.0,
-            )) * Mat4::from_translation(vec3(-0.5, -0.5, 0.0))
+            ))
         };
         let rect = self.dims.into();
         let viewport = Viewport {

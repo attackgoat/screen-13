@@ -101,7 +101,7 @@ where
     /// went wrong.
     ///
     /// _NOTE:_ The program will panic if there is an error while flushing _and_ you have not
-    /// manually called the `flush` function. The `flush` function is calle automatically when
+    /// manually called the `flush` function. The `flush` function is called automatically when
     /// an `EncodeOp` is dropped.
     pub fn flush(&mut self) -> IoResult<()> {
         // We only do this once

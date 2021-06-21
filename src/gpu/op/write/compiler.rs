@@ -1,6 +1,10 @@
 use {
     super::{Command, Instruction},
-    crate::{gpu::Texture2d, math::Mat4, ptr::Shared},
+    crate::{
+        gpu::Texture2d,
+        math::{CoordF, Mat4, RectF},
+        ptr::Shared,
+    },
     archery::SharedPointerKind,
     std::borrow::Borrow,
 };
@@ -9,7 +13,7 @@ use {
 #[derive(Clone, Copy)]
 enum Asm {
     BindTextureDescriptorSet(usize),
-    WriteTexture(Mat4),
+    WriteTexture(RectF, Mat4),
 }
 
 pub struct Compilation<'a, P>
@@ -25,18 +29,20 @@ where
     P: SharedPointerKind,
 {
     fn bind_texture_descriptor_set(&self, idx: usize) -> Instruction {
-        let src = Shared::as_ptr(&self.compiler.cmds[idx].src);
-        let desc_set = self
-            .compiler
-            .textures
-            .binary_search_by(|probe| Shared::as_ptr(&probe).cmp(&src))
-            .unwrap();
+        // Probably going to want this back in the future
+        // let src = Shared::as_ptr(&self.compiler.cmds[idx].src);
+        // let desc_set = self
+        //     .compiler
+        //     .textures
+        //     .binary_search_by(|probe| Shared::as_ptr(&probe).cmp(&src))
+        //     .unwrap();
 
-        Instruction::TextureBindDescriptorSet(desc_set)
+        // Instruction::TextureBindDescriptorSet(desc_set)
+        Instruction::TextureBindDescriptorSet(idx)
     }
 
-    fn write_texture(&self, transform: Mat4) -> Instruction {
-        Instruction::TextureWrite(transform)
+    fn write_texture(&self, src_region: RectF, transform: Mat4) -> Instruction {
+        Instruction::TextureWrite(src_region, transform)
     }
 
     /// Returns true if no writes are rendered.
@@ -65,7 +71,7 @@ where
 
         Some(match self.compiler.code[idx] {
             Asm::BindTextureDescriptorSet(idx) => self.bind_texture_descriptor_set(idx),
-            Asm::WriteTexture(transform) => self.write_texture(transform),
+            Asm::WriteTexture(src_tile, transform) => self.write_texture(src_tile, transform),
         })
     }
 }
@@ -159,6 +165,33 @@ where
 
         // Rearrange the commands so draw order doesn't cause unnecessary resource-switching
         self.sort();
+
+        self.code.push(Asm::BindTextureDescriptorSet(0));
+        self.textures.push(Shared::clone(&self.cmds[0].src));
+
+        for cmd in self.cmds.iter() {
+            // Probably going to want this back in the future
+            // let src = Shared::as_ptr(&cmd.src);
+            // match self.textures.binary_search_by(|probe| Shared::as_ptr(probe).cmp(&src)) {
+            //     Err(idx) => {
+            //         self.textures.push(Shared::clone(&cmd.src));
+            //     }
+            //     Ok()
+            // }
+            let tex = self.textures.last().unwrap();
+            if cmd.src != *tex {
+                self.code
+                    .push(Asm::BindTextureDescriptorSet(self.textures.len()));
+                self.textures.push(Shared::clone(&cmd.src));
+            }
+
+            let src_dims: CoordF = cmd.src.dims().into();
+            let mut src_tile: RectF = cmd.src_tile;
+            src_tile.dims /= src_dims;
+            src_tile.pos /= src_dims;
+
+            self.code.push(Asm::WriteTexture(src_tile, cmd.transform));
+        }
 
         Compilation {
             compiler: self,

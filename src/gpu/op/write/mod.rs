@@ -19,7 +19,7 @@ use {
             pool::{Lease, Pool},
             queue_mut, Texture2d,
         },
-        math::{Mat4, Vec2},
+        math::{vec3, Mat4, RectF, Vec2},
         ptr::Shared,
     },
     archery::SharedPointerKind,
@@ -383,8 +383,8 @@ where
                         Instruction::TextureBindDescriptorSet(desc_set) => {
                             self.submit_texture_bind_descriptor_set(desc_set)
                         }
-                        Instruction::TextureWrite(transform) => {
-                            self.submit_texture_write(transform)
+                        Instruction::TextureWrite(src_tile, transform) => {
+                            self.submit_texture_write(src_tile, transform)
                         }
                     }
                 }
@@ -464,7 +464,7 @@ where
             &mut self.cmd_buf,
             Layout::ColorAttachmentOptimal,
             PipelineStage::COLOR_ATTACHMENT_OUTPUT,
-            Access::COLOR_ATTACHMENT_WRITE,
+            Access::COLOR_ATTACHMENT_READ | Access::COLOR_ATTACHMENT_WRITE,
         );
         // src.set_layout(
         //     &mut self.cmd_buf,
@@ -500,12 +500,13 @@ where
         );
     }
 
-    unsafe fn submit_texture_write(&mut self, transform: Mat4) {
+    unsafe fn submit_texture_write(&mut self, src_tile: RectF, transform: Mat4) {
         trace!("submit_texture_write");
 
         let graphics = self.graphics_texture.as_ref().unwrap();
-        let offset = Vec2::ZERO;
-        let scale = Vec2::ONE;
+        let offset = src_tile.pos.into();
+        let scale: Vec2 = src_tile.dims.into();
+        let dst_dims: Vec2 = self.dst.dims().into();
 
         self.cmd_buf.push_graphics_constants(
             graphics.layout(),
@@ -514,7 +515,10 @@ where
             WriteVertexPushConsts {
                 offset,
                 scale,
-                transform,
+                transform: Mat4::from_scale(vec3(2.0, 2.0, 1.0))
+                    * Mat4::from_translation(vec3(-0.5, -0.5, 0.0))
+                    * Mat4::from_scale(vec3(1.0 / dst_dims.x, 1.0 / dst_dims.y, 1.0))
+                    * transform,
             }
             .as_ref(),
         );
