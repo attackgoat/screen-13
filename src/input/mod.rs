@@ -10,7 +10,7 @@ pub use self::{key_buf::KeyBuf, mouse_buf::MouseBuf, typing::Typing};
 #[derive(Default)]
 pub struct Input {
     /// Gets current keyboard inputs.
-    pub keys: KeyBuf,
+    pub key: KeyBuf,
 
     /// Gets current mouse/tablet/touch inputs.
     pub mouse: MouseBuf,

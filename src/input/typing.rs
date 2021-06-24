@@ -33,7 +33,7 @@ impl Typing {
         }
 
         // Handle back/forward delete and cursor movement
-        if input.is_key_down(Key::Back) && 0 < self.pos {
+        if input.is_down(Key::Back) && 0 < self.pos {
             if self.pos == self.buf.len() {
                 if let Some(c) = self.buf.pop() {
                     self.pos -= c.len_utf8();
@@ -48,25 +48,25 @@ impl Typing {
                 self.buf.push_str(&lhs);
                 self.buf.push_str(&rhs);
             }
-        } else if input.is_key_down(Key::Delete) && self.pos < self.buf.len() {
+        } else if input.is_down(Key::Delete) && self.pos < self.buf.len() {
             let (_, rhs) = self.to_split_string();
             let mut rhs = rhs.chars();
             rhs.next();
             self.buf.truncate(self.pos);
             self.buf.push_str(rhs.as_str());
-        } else if input.is_key_down(Key::Left) && 0 < self.pos {
+        } else if input.is_down(Key::Left) && 0 < self.pos {
             let (lhs, _) = self.buf.split_at(self.pos);
             if let Some(c) = lhs.chars().last() {
                 self.pos -= c.len_utf8();
             }
-        } else if input.is_key_down(Key::Right) && self.pos < self.buf.len() {
+        } else if input.is_down(Key::Right) && self.pos < self.buf.len() {
             let (_, rhs) = self.buf.split_at(self.pos);
             if let Some(c) = rhs.chars().next() {
                 self.pos += c.len_utf8();
             }
-        } else if input.is_key_down(Key::Home) {
+        } else if input.is_down(Key::Home) {
             self.pos = 0;
-        } else if input.is_key_down(Key::End) {
+        } else if input.is_down(Key::End) {
             self.pos = self.buf.len();
         }
     }

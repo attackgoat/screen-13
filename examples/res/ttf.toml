@@ -1,0 +1,7 @@
+[content]
+compression = "snap"
+
+[[content.group]]
+assets = [
+    "font/rye_regular.toml",
+]

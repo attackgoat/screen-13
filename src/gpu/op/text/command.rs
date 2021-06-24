@@ -41,10 +41,8 @@ where
         X: Into<CoordF>,
     {
         match font.into() {
-            Font::Bitmap(font) => Self::Position(BitmapCommand::position(pos, font.clone(), text)),
-            Font::Scalable(font) => {
-                Self::SizePosition(ScalableCommand::position(pos, font.clone(), text))
-            }
+            Font::Bitmap(font) => Self::Position(BitmapCommand::position(pos, font, text)),
+            Font::Scalable(font) => Self::SizePosition(ScalableCommand::position(pos, font, text)),
         }
     }
 
@@ -54,11 +52,9 @@ where
         F: Into<Font<'f, P>>,
     {
         match font.into() {
-            Font::Bitmap(font) => {
-                Self::Transform(BitmapCommand::transform(transform, font.clone(), text))
-            }
+            Font::Bitmap(font) => Self::Transform(BitmapCommand::transform(transform, font, text)),
             Font::Scalable(font) => {
-                Self::SizeTransform(ScalableCommand::transform(transform, font.clone(), text))
+                Self::SizeTransform(ScalableCommand::transform(transform, font, text))
             }
         }
     }
@@ -151,15 +147,42 @@ where
     }
 }
 
+/// An expressive type which allows specification of individual bitmapped text operations.
+///
+/// If you want to set the bitmapped text outline color you will need to construct one of these
+/// instances and build it into a `Text` instance. For example:
+///
+/// ```rust
+/// # use screen_13::prelude_rc::*;
+/// # let gpu = Gpu::offscreen();
+/// # let awesome_font = gpu.load_bitmap_font().unwrap();
+/// let cmd: Text = BitmapText::position(
+///         Coord::new(0, 0),
+///         &awesome_font,
+///         "I have a 1px border color!",
+///     )
+///     .with_glygh_color(screen_13::color::WHITE)
+///     .with_outline_color(screen_13::color::RED)
+///     .build();
+/// ```
 pub struct BitmapCommand<L, P, T>
 where
     P: 'static + SharedPointerKind,
     T: AsRef<str>,
 {
+    /// The font face to render.
     pub font: Shared<BitmapFont<P>, P>,
+
+    /// The color of the font face.
     pub glyph_color: AlphaColor,
+
+    /// The position or general transform matrix.
     pub layout: L,
+
+    /// The outline color of the font face.
     pub outline_color: Option<AlphaColor>,
+
+    /// The text.
     pub text: T,
 }
 
@@ -168,12 +191,18 @@ where
     P: SharedPointerKind,
     T: AsRef<str>,
 {
-    pub fn position<X>(pos: X, font: Shared<BitmapFont<P>, P>, text: T) -> Self
+    /// Constructs a renderable command from the given instance.
+    pub fn build(self) -> Command<P, T> {
+        Command::Position(self)
+    }
+
+    /// Renders bitmapped text at the given position.
+    pub fn position<X>(pos: X, font: &Shared<BitmapFont<P>, P>, text: T) -> Self
     where
         X: Into<CoordF>,
     {
         Self {
-            font,
+            font: Shared::clone(font),
             glyph_color: WHITE.into(),
             layout: pos.into(),
             outline_color: None,
@@ -187,9 +216,15 @@ where
     P: SharedPointerKind,
     T: AsRef<str>,
 {
-    pub fn transform(layout: Mat4, font: Shared<BitmapFont<P>, P>, text: T) -> Self {
+    /// Constructs a renderable command from the given instance.
+    pub fn build(self) -> Command<P, T> {
+        Command::Transform(self)
+    }
+
+    /// Renders bitmapped text using the the given transform matrix.
+    pub fn transform(layout: Mat4, font: &Shared<BitmapFont<P>, P>, text: T) -> Self {
         Self {
-            font,
+            font: Shared::clone(font),
             glyph_color: WHITE.into(),
             layout,
             outline_color: None,
@@ -236,15 +271,42 @@ where
     }
 }
 
+/// An expressive type which allows specification of scalable text operations.
+///
+/// In order to set the glyph height you will need to construct one of these instances and build it
+/// into a `Text` instance. For example:
+///
+/// ```rust
+/// # use fontdue::Font;
+/// # use screen_13::prelude_all::*;
+/// # let gpu = Gpu::offscreen();
+/// # let awesome_font = gpu.load_scalable_font().unwrap();
+/// let cmd: Text = ScalableText::position(
+///         Coord::new(0, 0),
+///         &awesome_font,
+///         "My letters are 48px tall",
+///     )
+///     .with_size(48)
+///     .build();
+/// ```
 pub struct ScalableCommand<L, P, T>
 where
     P: SharedPointerKind,
     T: AsRef<str>,
 {
+    /// The font face to render.
     pub font: Shared<ScalableFont, P>,
+
+    /// The color of the font face.
     pub glyph_color: AlphaColor,
+
+    /// The position or general transform matrix.
     pub layout: L,
+
+    /// The glyph height, in pixels, to render.
     pub size: f32,
+
+    /// The text.
     pub text: T,
 }
 
@@ -253,12 +315,18 @@ where
     P: SharedPointerKind,
     T: AsRef<str>,
 {
-    pub fn position<X>(pos: X, font: Shared<ScalableFont, P>, text: T) -> Self
+    /// Constructs a renderable command from the given instance.
+    pub fn build(self) -> Command<P, T> {
+        Command::SizePosition(self)
+    }
+
+    /// Renders scalable text at the given position.
+    pub fn position<X>(pos: X, font: &Shared<ScalableFont, P>, text: T) -> Self
     where
         X: Into<CoordF>,
     {
         Self {
-            font,
+            font: Shared::clone(font),
             glyph_color: WHITE.into(),
             layout: pos.into(),
             size: DEFAULT_SIZE,
@@ -272,9 +340,15 @@ where
     P: SharedPointerKind,
     T: AsRef<str>,
 {
-    pub fn transform(layout: Mat4, font: Shared<ScalableFont, P>, text: T) -> Self {
+    /// Constructs a renderable command from the given instance.
+    pub fn build(self) -> Command<P, T> {
+        Command::SizeTransform(self)
+    }
+
+    /// Renders scalable text using the the given transform matrix.
+    pub fn transform(layout: Mat4, font: &Shared<ScalableFont, P>, text: T) -> Self {
         Self {
-            font,
+            font: Shared::clone(font),
             glyph_color: WHITE.into(),
             layout,
             size: DEFAULT_SIZE,

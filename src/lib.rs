@@ -693,7 +693,7 @@ where
                     WindowEvent::KeyboardInput {
                         input: keyboard_input,
                         ..
-                    } => input.keys.handle(&keyboard_input),
+                    } => input.key.handle(&keyboard_input),
                     WindowEvent::Resized(dims) => {
                         let dims: Extent = dims.into();
 
@@ -720,7 +720,7 @@ where
                     screen = Some(screen.take().unwrap().update(&self.gpu, &input));
 
                     // We have handled all input
-                    input.keys.clear();
+                    input.key.clear();
 
                     #[cfg(debug_assertions)]
                     self.perf_tick(render_buf.len());

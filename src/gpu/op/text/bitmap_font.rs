@@ -23,7 +23,7 @@ pub struct BitmapFont<P>
 where
     P: 'static + SharedPointerKind,
 {
-    def: BMFont,
+    font: BMFont,
     page: Bitmap<P>,
 }
 
@@ -31,9 +31,6 @@ impl<P> BitmapFont<P>
 where
     P: SharedPointerKind,
 {
-    // // Bytes per character (we render a quad per character)
-    // pub(crate) const STRIDE: usize = 96;
-
     pub(crate) fn read<K: AsRef<str>, R: Read + Seek>(
         pool: &mut Pool<P>,
         pak: &mut Pak<R>,
@@ -41,7 +38,7 @@ where
     ) -> Self {
         let id = pak.bitmap_font_id(key).unwrap();
         let bitmap_font = pak.read_bitmap_font(id);
-        let def = BMFont::new(
+        let font = BMFont::new(
             Cursor::new(bitmap_font.def()),
             OrdinateOrientation::TopToBottom,
         )
@@ -56,7 +53,7 @@ where
             .record()
         };
 
-        Self { def, page }
+        Self { font, page }
     }
 
     /// Returns the area, in pixels, required to render the given text.
@@ -64,7 +61,7 @@ where
     /// **_NOTE:_** The 'start' of the render area is at the zero coordinate, however it may extend
     /// into the negative x direction due to ligatures and right-to-left fonts.
     pub fn measure(&self, text: &str) -> Rect {
-        let parse = self.def.parse(text);
+        let parse = self.font.parse(text);
 
         // // TODO: Let them know about the missing/unsupported characters?
         // if parse.is_err() {
@@ -98,7 +95,7 @@ where
     }
 
     pub(super) fn parse<'a>(&'a self, text: &'a str) -> impl Iterator<Item = CharPosition> + 'a {
-        self.def.parse(text)
+        self.font.parse(text)
     }
 
     pub(super) fn tessellate(&self, char: &CharPosition) -> [u8; 96] {

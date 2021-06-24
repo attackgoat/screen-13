@@ -9,5 +9,5 @@ types and functions.
 
 Example | Instructions | Preview
  --- | --- | :---:
-[basic.rs](basic.rs) | <pre>cargo run --release examples/res/basic.toml<br/>cargo run --release --example basic</pre> | <image alt="Preview" src="../.github/img/basic.png" height=190 width=176>
+[basic.rs](basic.rs) | <pre>cargo run examples/res/basic.toml<br/>cargo run --example basic</pre> | <image alt="Preview" src="../.github/img/basic.png" height=190 width=176>
 [headless.rs](headless.rs) | <pre>cargo run --example headless</pre> | <image alt="Preview" src="../.github/img/headless.png" height=117 width=175>

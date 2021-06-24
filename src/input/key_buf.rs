@@ -11,6 +11,11 @@ pub struct KeyBuf {
 }
 
 impl KeyBuf {
+    /// Returns `true` if any key is physically pressed down right now.
+    pub fn any_down(&self) -> bool {
+        !self.pressed_keys.is_empty()
+    }
+
     pub(crate) fn clear(&mut self) {
         self.char_buf.clear();
         self.pressed_keys.clear();
@@ -46,12 +51,12 @@ impl KeyBuf {
     }*/
 
     /// Returns `true` if the given key is physically pressed down right now.
-    pub fn is_key_down(&self, key_code: Key) -> bool {
+    pub fn is_down(&self, key_code: Key) -> bool {
         self.pressed_keys.contains(&key_code)
     }
 
     /// Returns `true` if the given key was physically released just now.
-    pub fn was_key_down(&self, key_code: Key) -> bool {
+    pub fn was_down(&self, key_code: Key) -> bool {
         self.released_keys.contains(&key_code)
     }
 }

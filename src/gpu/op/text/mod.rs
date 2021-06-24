@@ -5,7 +5,10 @@ mod instruction;
 mod scalable_font;
 
 pub use self::{
-    bitmap_font::BitmapFont, command::Command, compiler::Compiler, scalable_font::ScalableFont,
+    bitmap_font::BitmapFont,
+    command::{BitmapCommand, Command, ScalableCommand},
+    compiler::Compiler,
+    scalable_font::ScalableFont,
 };
 
 use {
@@ -60,6 +63,7 @@ pub const DEFAULT_SIZE: f32 = 32.0;
 const FONT_VERTEX_SIZE: usize = 16;
 const SUBPASS_IDX: u8 = 0;
 
+// TODO: Should we not require fonts to be wrapped in a Shared?
 /// Holds a reference to either a bitmapped or TrueType/Opentype font.
 pub enum Font<'f, P>
 where

@@ -67,7 +67,10 @@ pub mod encode {
 pub mod text {
     //! Types for writing text onto textures using stylized fonts.
 
-    pub use super::op::text::{BitmapFont, Command as Text, ScalableFont, TextOp};
+    pub use super::op::text::{
+        BitmapCommand as BitmapText, BitmapFont, Command as Text, ScalableCommand as ScalableText,
+        ScalableFont, TextOp,
+    };
 }
 
 pub mod gradient {
@@ -1120,12 +1123,16 @@ where
     }
 
     /// Reads the `ScalableFont` with the given face from the pak.
-    pub fn read_scalable_font<F, R>(&self, pak: &mut Pak<R>, face: F) -> ScalableFont
+    pub fn read_scalable_font<F, R>(&self, pak: &mut Pak<R>, face: F) -> Shared<ScalableFont, P>
     where
         F: AsRef<str>,
         R: Read + Seek,
     {
-        ScalableFont::read(&mut self.loads.borrow_mut(), pak, face.as_ref())
+        Shared::new(ScalableFont::read(
+            &mut self.loads.borrow_mut(),
+            pak,
+            face.as_ref(),
+        ))
     }
 
     /// Constructs a `Render` of the given dimensions.
