@@ -1,4 +1,5 @@
 //! The entrypoint in this file runs a webserver which hosts the index page and WASM code.
+
 #![deny(warnings)]
 
 use {

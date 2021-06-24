@@ -1,0 +1,6 @@
+#!/bin/sh
+
+set -e
+
+cargo build --lib --target wasm32-unknown-unknown
+wasm-bindgen target/wasm32-unknown-unknown/debug/wasm.wasm --out-dir target/wasm32-unknown-unknown/debug --target no-modules

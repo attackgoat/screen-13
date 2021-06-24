@@ -1,5 +1,8 @@
-//! The entrypoint in this file is what runs on the HTML page; it starts the engine.
+//! The entrypoint in this file is what runs on the HTML page; it starts the Screen 13 engine.
+
 #![deny(warnings)]
+
+mod screen;
 
 mod browser {
     use wasm_bindgen::prelude::*;
@@ -10,7 +13,7 @@ mod browser {
     }
 }
 
-use wasm_bindgen::prelude::*;
+use {self::screen::Load, screen_13::prelude_rc::*, wasm_bindgen::prelude::*};
 
 #[cfg(debug_assertions)]
 use {
@@ -34,5 +37,5 @@ pub fn main() -> Result<(), JsValue> {
         init_with_level(Level::Trace).unwrap();
     }
 
-    Ok(())
+    Engine::new().run(Box::new(Load))
 }

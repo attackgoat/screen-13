@@ -147,10 +147,12 @@ pub mod prelude {
     pub use super::{
         gpu::{Cache, Gpu, Render},
         input::Input,
-        program::Program,
         ptr::{ArcK, RcK, Shared},
         DynScreen, Engine, Screen,
     };
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub use super::program::Program;
 }
 
 /// Like [`prelude`], but contains all public exports.
@@ -374,14 +376,17 @@ pub mod ptr {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 mod config;
+
+#[cfg(not(target_arch = "wasm32"))]
 mod program;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub use self::program::{Icon, Program};
 
 use {
     self::{
-        config::Config,
         gpu::{Gpu, Op, Render, Swapchain},
         input::Input,
         math::Extent,
@@ -403,6 +408,9 @@ use {
         window::{Fullscreen, Icon as WinitIcon, Window, WindowBuilder},
     },
 };
+
+#[cfg(not(target_arch = "wasm32"))]
+use self::config::Config;
 
 #[cfg(debug_assertions)]
 use {
@@ -438,6 +446,7 @@ fn cmp_area_and_refresh_rate(lhs: &VideoMode, rhs: &VideoMode) -> Ordering {
     lhs.refresh_rate().cmp(&rhs.refresh_rate())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn program_root(program: &Program) -> Result<PathBuf, Error> {
     root(program.name, program.author)
 }
@@ -445,6 +454,7 @@ fn program_root(program: &Program) -> Result<PathBuf, Error> {
 /// Gets the filesystem root for a given program name and author.
 ///
 /// The returned path is a good place to store program configuration and data on a per-user basis.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn root(name: &'static str, author: &'static str) -> Result<PathBuf, Error> {
     // Converts the app_dirs crate AppDirsError to a regular IO Error
     match ProjectDirs::from("", author, name) {
@@ -459,7 +469,9 @@ pub struct Engine<P>
 where
     P: 'static + SharedPointerKind,
 {
+    #[cfg(not(target_arch = "wasm32"))]
     config: Config,
+
     event_loop: Option<EventLoop<()>>,
     gpu: Gpu<P>,
 
@@ -490,6 +502,7 @@ where
     /// let engine = Engine::new(ultra_mega);
     /// # }
     /// ```
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn new<'a, 'b, R: AsRef<Program<'a, 'b>>>(program: R) -> Self {
         let program = program.as_ref();
         let config = Config::read(program.name, program.author).unwrap();
@@ -502,6 +515,23 @@ where
         }
     }
 
+    #[cfg(target_arch = "wasm32")]
+    pub fn new() -> Self {
+        let event_loop = EventLoop::new();
+        let window = WindowBuilder::new().build(&event_loop).unwrap();
+        let (gpu, swapchain) = unsafe { Gpu::new(&window, 3, true) };
+
+        Self {
+            event_loop: Some(event_loop),
+            gpu,
+            #[cfg(debug_assertions)]
+            started: Instant::now(),
+            swapchain,
+            window,
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     fn new_builder(
         program: &Program,
         config: Config,
@@ -532,6 +562,7 @@ where
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn new_fullscreen(program: &Program, config: Config) -> Self {
         let mut builder = WindowBuilder::new();
         let event_loop = EventLoop::new();
@@ -552,6 +583,7 @@ where
         Self::new_builder(program, config, event_loop, builder)
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn new_window(program: &Program, config: Config) -> Self {
         let dims = config.window_dimensions();
         let mut builder = WindowBuilder::new();
@@ -736,10 +768,14 @@ where
     P: SharedPointerKind,
 {
     fn default() -> Self {
-        Self::new(Program::default())
+        Self::new(
+            #[cfg(not(target_arch = "wasm32"))]
+            Program::default(),
+        )
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl<P> From<Program<'_, '_>> for Engine<P>
 where
     P: SharedPointerKind,
@@ -749,6 +785,7 @@ where
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl<P> From<&Program<'_, '_>> for Engine<P>
 where
     P: SharedPointerKind,
