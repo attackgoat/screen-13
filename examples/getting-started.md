@@ -18,17 +18,9 @@ the previous examples.
 
 ## Prerequisites
 
-- Linux: _Vulkan_
-
-  - Latest [Vulkan SDK](https://vulkan.lunarg.com/sdk/home): _for debugging layers, otherwise debug
-    builds will segfault_
-  - If you do not want to install the SDK you can force _Screen 13_ into release mode by adding this
-    to your `Cargo.toml`:
-
-    ```toml
-    [profile.dev.package.screen-13]
-    opt-level = 3
-    ```
+- Linux
+    - `cmake`
+    - _(Optional)_ [Vulkan SDK](https://vulkan.lunarg.com/sdk/home) for debugging tools
 
 - TODO
 
