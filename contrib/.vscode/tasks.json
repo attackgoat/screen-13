@@ -3,7 +3,7 @@
 	"tasks": [
 		{
 			"type": "cargo",
-			"subcommand": "check",
+			"command": "build",
 			"problemMatcher": [
 				"$rustc"
 			],
@@ -13,13 +13,13 @@
 			},
 			"presentation": {
 				"echo": false,
-				"reveal": "silent",
+				"revealProblems": "onProblem",
 				"focus": false,
 				"panel": "shared",
 				"showReuseMessage": false,
 				"clear": true
 			},
-			"label": "Check Screen-13"
+			"label": "Build Screen-13"
 		}
 	]
 }

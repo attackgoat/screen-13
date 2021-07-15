@@ -11,7 +11,7 @@ mod pak;
 use {
     self::{
         bake::{
-            bake_animation, bake_bitmap, bake_bitmap_font, bake_font, bake_material, bake_model,
+            bake_animation, bake_bitmap, bake_bitmap_font, bake_blob, bake_material, bake_model,
             bake_scene, Asset,
         },
         pak::PakBuf,
@@ -90,35 +90,46 @@ fn main() -> Result<(), IoError> {
             for asset in group.assets() {
                 let asset_filename = project_dir.join(asset);
 
-                match Asset::read(&asset_filename) {
-                    Asset::Animation(ref anim) => {
-                        bake_animation(&project_dir, asset_filename, anim, &mut pak);
-                    }
-                    // Asset::Atlas(ref atlas) => {
-                    //     bake_atlas(&project_dir, &asset_filename, atlas, &mut pak);
-                    // }
-                    Asset::Bitmap(ref bitmap) => {
-                        bake_bitmap(&project_dir, &asset_filename, bitmap, &mut pak);
-                    }
-                    Asset::BitmapFont(ref bitmap_font) => {
-                        bake_bitmap_font(&project_dir, &asset_filename, bitmap_font, &mut pak);
-                    }
-                    Asset::Font(font) => {
-                        bake_font(&project_dir, &asset_filename, &font, &mut pak);
-                    }
-                    // Asset::Language(ref lang) => {
-                    //     bake_lang(&project_dir, &asset_filename, lang, &mut pak, &mut log)
-                    // }
-                    Asset::Material(ref material) => {
-                        bake_material(&project_dir, &asset_filename, material, &mut pak);
-                    }
-                    Asset::Model(ref model) => {
-                        bake_model(&project_dir, &asset_filename, model, &mut pak);
-                    }
-                    Asset::Scene(scene) => {
-                        bake_scene(&project_dir, &asset_filename, &scene, &mut pak);
-                    }
-                    _ => panic!(),
+                match asset_filename
+                    .extension()
+                    .map(|ext| ext.to_str())
+                    .flatten()
+                    .map(|ext| ext.to_lowercase())
+                    .as_deref()
+                    .unwrap_or_else(|| {
+                        panic!("Unexpected extensionless file {}", asset_filename.display())
+                    }) {
+                    "otf" | "ttc" | "ttf" => bake_blob(&project_dir, asset_filename, &mut pak),
+                    "toml" => match Asset::read(&asset_filename) {
+                        Asset::Animation(ref anim) => {
+                            bake_animation(&project_dir, asset_filename, anim, &mut pak);
+                        }
+                        // Asset::Atlas(ref atlas) => {
+                        //     bake_atlas(&project_dir, &asset_filename, atlas, &mut pak);
+                        // }
+                        Asset::Bitmap(ref bitmap) => {
+                            bake_bitmap(&project_dir, &asset_filename, bitmap, &mut pak);
+                        }
+                        Asset::BitmapFont(ref bitmap_font) => {
+                            bake_bitmap_font(&project_dir, &asset_filename, bitmap_font, &mut pak);
+                        }
+                        Asset::Content(_) => {
+                            panic!("Unexpected content file {}", asset_filename.display())
+                        }
+                        // Asset::Language(ref lang) => {
+                        //     bake_lang(&project_dir, &asset_filename, lang, &mut pak, &mut log)
+                        // }
+                        Asset::Material(ref material) => {
+                            bake_material(&project_dir, &asset_filename, material, &mut pak);
+                        }
+                        Asset::Model(ref model) => {
+                            bake_model(&project_dir, &asset_filename, model, &mut pak);
+                        }
+                        Asset::Scene(scene) => {
+                            bake_scene(&project_dir, &asset_filename, &scene, &mut pak);
+                        }
+                    },
+                    ext => unimplemented!("Unexpected file extension {}", ext),
                 }
             }
         }

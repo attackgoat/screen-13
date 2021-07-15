@@ -18,26 +18,40 @@ fn main() -> ! {
     )
     .expect("ERROR: You must first pack the runtime content into a file by running the following command: `cargo run examples/res/ttf.toml`");
 
+    let cedarville_cursive =
+        engine
+            .gpu()
+            .read_vector_font(&mut pak, "font/cedarville_cursive_regular.ttf", 32.0);
     let rye_regular = engine
         .gpu()
-        .read_scalable_font(&mut pak, "font/rye_regular");
+        .read_vector_font(&mut pak, "font/rye_regular.ttf", 32.0);
 
-    engine.run(Box::new(Example { rye_regular }))
+    engine.run(Box::new(Example {
+        cedarville_cursive,
+        rye_regular,
+    }))
 }
 
 struct Example {
-    rye_regular: Shared<ScalableFont>,
+    cedarville_cursive: Shared<VectorFont>,
+    rye_regular: Shared<VectorFont>,
 }
 
 impl Screen<RcK> for Example {
     fn render(&self, gpu: &Gpu, dims: Extent) -> Render {
         let mut frame = gpu.render(dims);
-        frame.clear().record();
-        frame.text().record(&mut [Text::position(
-            Coord::new(137, 96),
-            &self.rye_regular,
-            "Hello, world!",
-        )]);
+        frame.clear().with(WHITE).record();
+        frame.text().record(&mut [
+            VectorText::position(Coord::new(5, 50), &self.rye_regular, "Rye Regular")
+                .with_glygh_color(RED)
+                .build(),
+            VectorText::position(
+                Coord::new(5, 150),
+                &self.cedarville_cursive,
+                "Cedarville Cursive",
+            )
+            .build(),
+        ]);
         frame
     }
 

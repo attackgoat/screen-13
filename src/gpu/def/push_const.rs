@@ -84,26 +84,19 @@ pub const DRAW_SUNLIGHT: [ShaderRange; 2] = [
     (ShaderStageFlags::VERTEX, 0..64),
     (ShaderStageFlags::FRAGMENT, 0..0),
 ];
-pub const BITMAP_FONT_GLYPH: [ShaderRange; 2] = [
-    (
-        ShaderStageFlags::VERTEX,
-        0..BitmapFontVertexPushConsts::BYTE_LEN,
-    ),
+pub const FONT_BITMAP: [ShaderRange; 2] = [
+    (ShaderStageFlags::VERTEX, 0..FontVertexPushConsts::BYTE_LEN),
     (
         ShaderStageFlags::FRAGMENT,
-        BitmapFontVertexPushConsts::BYTE_LEN
-            ..BitmapFontVertexPushConsts::BYTE_LEN + Vec4PushConst::BYTE_LEN,
+        FontVertexPushConsts::BYTE_LEN
+            ..FontVertexPushConsts::BYTE_LEN + Vec4Vec4PushConst::BYTE_LEN,
     ),
 ];
-pub const BITMAP_FONT_OUTLINE: [ShaderRange; 2] = [
-    (
-        ShaderStageFlags::VERTEX,
-        0..BitmapFontVertexPushConsts::BYTE_LEN,
-    ),
+pub const FONT_VECTOR: [ShaderRange; 2] = [
+    (ShaderStageFlags::VERTEX, 0..FontVertexPushConsts::BYTE_LEN),
     (
         ShaderStageFlags::FRAGMENT,
-        BitmapFontVertexPushConsts::BYTE_LEN
-            ..BitmapFontVertexPushConsts::BYTE_LEN + Vec4Vec4PushConst::BYTE_LEN,
+        FontVertexPushConsts::BYTE_LEN..FontVertexPushConsts::BYTE_LEN + Vec4PushConst::BYTE_LEN,
     ),
 ];
 pub const SKYDOME: [ShaderRange; 2] = [
@@ -119,15 +112,15 @@ pub const SKYDOME: [ShaderRange; 2] = [
 ];
 pub const TEXTURE: [ShaderRange; 1] = [(ShaderStageFlags::VERTEX, 0..80)];
 
-push_const_struct!(BitmapFontVertexPushConsts {
-    pub view_proj: Mat4,
-    pub dims_inv: Vec2,
-    _0: f32,
-    _1: f32,
-});
 push_const_struct!(CalcVertexAttrsPushConsts {
     pub base_vertex: u32,
     pub base_idx: u32,
+});
+push_const_struct!(FontVertexPushConsts {
+    pub view_proj: Mat4,
+    pub dims: Vec2,
+    _0: f32,
+    _1: f32,
 });
 // TODO: Could this be packed better?
 push_const_struct!(PointLightPushConsts {

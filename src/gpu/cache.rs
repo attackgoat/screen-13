@@ -130,7 +130,7 @@ where
     /// The `lru` parameter must be sorted.
     ///
     /// Pending copies must have been reset before calling this.
-    pub fn compact_cache(&mut self, timestamp: usize) {
+    pub fn compact_usage(&mut self, timestamp: usize) {
         // Remove expired items from the LRU cache
         self.items.retain(|item| item.expiry > timestamp);
 
@@ -225,82 +225,82 @@ pub trait Stride {
     fn stride(&self) -> u64;
 }
 
-#[cfg(test)]
-mod test {
-    use {
-        super::*,
-        crate::{gpu::Gpu, ptr::RcK},
-    };
+// #[cfg(test)]
+// mod test {
+//     use {
+//         super::*,
+//         crate::{gpu::Gpu, ptr::RcK},
+//     };
 
-    #[test]
-    fn dirty_data_compacts() {
-        impl Stride for char {
-            fn stride(&self) -> u64 {
-                3 // bytes
-            }
-        }
+//     #[test]
+//     fn dirty_data_compacts() {
+//         impl Stride for char {
+//             fn stride(&self) -> u64 {
+//                 3 // bytes
+//             }
+//         }
 
-        // Gpu::<RcK>::offscreen();
+//         // Gpu::<RcK>::offscreen();
 
-        // let mut pool = Pool::<RcK>::default();
-        // let mut data = LruCache::<char, RcK>::from(unsafe {
-        //     pool.data(
-        //         #[cfg(feature = "debug-names")]
-        //         "my data",
-        //         1024,
-        //     )
-        // });
+//         // let mut pool = Pool::<RcK>::default();
+//         // let mut data = LruCache::<char, RcK>::from(unsafe {
+//         //     pool.data(
+//         //         #[cfg(feature = "debug-names")]
+//         //         "my data",
+//         //         1024,
+//         //     )
+//         // });
 
-        // // dirty data usage retains `a` due to timestamp (4) not exceeding expiry (5)
-        // pool.lru_timestamp = 4;
-        // data.usage.push((0, 'a'));
-        // data.compact_cache(&mut [Lru::new('a', 0, 5)]);
-        // assert_eq!(data.usage.len(), 1);
+//         // // dirty data usage retains `a` due to timestamp (4) not exceeding expiry (5)
+//         // pool.lru_timestamp = 4;
+//         // data.usage.push((0, 'a'));
+//         // data.compact_cache(&mut [Lru::new('a', 0, 5)]);
+//         // assert_eq!(data.usage.len(), 1);
 
-        // // `a` is dropped after timestamp (5) equals expiry (5)
-        // pool.lru_timestamp = 5;
-        // data.compact_cache(&mut [Lru::new('a', 0, 5)]);
-        // assert_eq!(data.usage.len(), 0);
+//         // // `a` is dropped after timestamp (5) equals expiry (5)
+//         // pool.lru_timestamp = 5;
+//         // data.compact_cache(&mut [Lru::new('a', 0, 5)]);
+//         // assert_eq!(data.usage.len(), 0);
 
-        // // `b` is dropped after timestamp (6) exceeds expiry (5)
-        // pool.lru_timestamp = 6;
-        // data.usage.push((0, 'b'));
-        // data.compact_cache(&mut [Lru::new('b', 0, 5)]);
-        // assert_eq!(data.usage.len(), 0);
+//         // // `b` is dropped after timestamp (6) exceeds expiry (5)
+//         // pool.lru_timestamp = 6;
+//         // data.usage.push((0, 'b'));
+//         // data.compact_cache(&mut [Lru::new('b', 0, 5)]);
+//         // assert_eq!(data.usage.len(), 0);
 
-        // // `c` and `d` are compacted
-        // pool.lru_timestamp = 2;
-        // data.usage.push((3, 'c'));
-        // data.usage.push((6, 'd'));
-        // let mut lru = vec![Lru::new('c', 3, 5), Lru::new('d', 6, 5)];
-        // data.compact_cache(&mut lru);
-        // assert_eq!(lru.len(), 2);
-        // assert_eq!(lru[0].key, 'c');
-        // assert_eq!(lru[0].offset, 0);
-        // assert_eq!(lru[1].key, 'd');
-        // assert_eq!(lru[1].offset, 3);
-        // assert_eq!(data.pending_copies.len(), 1);
-        // assert_eq!(data.pending_copies[0].src, 3..9);
-        // assert_eq!(data.pending_copies[0].dst, 0);
+//         // // `c` and `d` are compacted
+//         // pool.lru_timestamp = 2;
+//         // data.usage.push((3, 'c'));
+//         // data.usage.push((6, 'd'));
+//         // let mut lru = vec![Lru::new('c', 3, 5), Lru::new('d', 6, 5)];
+//         // data.compact_cache(&mut lru);
+//         // assert_eq!(lru.len(), 2);
+//         // assert_eq!(lru[0].key, 'c');
+//         // assert_eq!(lru[0].offset, 0);
+//         // assert_eq!(lru[1].key, 'd');
+//         // assert_eq!(lru[1].offset, 3);
+//         // assert_eq!(data.pending_copies.len(), 1);
+//         // assert_eq!(data.pending_copies[0].src, 3..9);
+//         // assert_eq!(data.pending_copies[0].dst, 0);
 
-        // data.reset();
-        // data.usage.clear();
+//         // data.reset();
+//         // data.usage.clear();
 
-        // // `e` and `f` are compacted
-        // pool.lru_timestamp = 2;
-        // data.usage.push((3, 'e'));
-        // data.usage.push((9, 'f'));
-        // let mut lru = vec![Lru::new('e', 3, 5), Lru::new('f', 9, 5)];
-        // data.compact_cache(&mut lru);
-        // assert_eq!(lru.len(), 2);
-        // assert_eq!(lru[0].key, 'e');
-        // assert_eq!(lru[0].offset, 0);
-        // assert_eq!(lru[1].key, 'f');
-        // assert_eq!(lru[1].offset, 3);
-        // assert_eq!(data.pending_copies.len(), 2);
-        // assert_eq!(data.pending_copies[0].src, 3..6);
-        // assert_eq!(data.pending_copies[0].dst, 0);
-        // assert_eq!(data.pending_copies[1].src, 9..12);
-        // assert_eq!(data.pending_copies[1].dst, 3);
-    }
-}
+//         // // `e` and `f` are compacted
+//         // pool.lru_timestamp = 2;
+//         // data.usage.push((3, 'e'));
+//         // data.usage.push((9, 'f'));
+//         // let mut lru = vec![Lru::new('e', 3, 5), Lru::new('f', 9, 5)];
+//         // data.compact_cache(&mut lru);
+//         // assert_eq!(lru.len(), 2);
+//         // assert_eq!(lru[0].key, 'e');
+//         // assert_eq!(lru[0].offset, 0);
+//         // assert_eq!(lru[1].key, 'f');
+//         // assert_eq!(lru[1].offset, 3);
+//         // assert_eq!(data.pending_copies.len(), 2);
+//         // assert_eq!(data.pending_copies[0].src, 3..6);
+//         // assert_eq!(data.pending_copies[0].dst, 0);
+//         // assert_eq!(data.pending_copies[1].src, 9..12);
+//         // assert_eq!(data.pending_copies[1].dst, 3);
+//     }
+// }

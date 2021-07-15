@@ -194,7 +194,7 @@ pub mod id {
     //! Types for keeping track of `.pak` resources.
 
     pub use super::ids::{
-        AnimationId, BitmapFontId, BitmapId, BlobId, FontId, MaterialId, ModelId, SceneId, TextId,
+        AnimationId, BitmapFontId, BitmapId, BlobId, MaterialId, ModelId, SceneId, TextId,
     };
 }
 
@@ -225,14 +225,12 @@ use {
     self::{
         anim::Animation,
         ids::{
-            AnimationId, BitmapFontId, BitmapId, BlobId, FontId, Id, MaterialId, ModelId, SceneId,
-            TextId,
+            AnimationId, BitmapFontId, BitmapId, BlobId, Id, MaterialId, ModelId, SceneId, TextId,
         },
         model::Model,
     },
     bincode::deserialize_from,
     brotli::{CompressorReader as BrotliReader, CompressorWriter as BrotliWriter},
-    fontdue::Font,
     gfx_hal::IndexType as GfxHalIndexType,
     serde::{de::DeserializeOwned, Deserialize, Serialize},
     snap::{read::FrameDecoder as SnapReader, write::FrameEncoder as SnapWriter},
@@ -549,18 +547,6 @@ where
         }
     }
 
-    /// Gets the pak-unique `FontId` corresponding to the given key, if one exsits.
-    pub fn font_id<K>(&self, key: K) -> Option<FontId>
-    where
-        K: AsRef<str>,
-    {
-        if let Some(Id::Font(id)) = self.buf.id(key) {
-            Some(id)
-        } else {
-            None
-        }
-    }
-
     /// Gets the pak-unique `MaterialId` corresponding to the given key, if one exsits.
     pub fn material_id<K>(&self, key: K) -> Option<MaterialId>
     where
@@ -599,6 +585,52 @@ where
         } else {
             None
         }
+    }
+
+    fn read_deserialize<T>(&mut self, pos: u64, len: usize) -> T
+    where
+        T: DeserializeOwned,
+    {
+        let buf = read_exact(&mut self.reader, pos, len);
+        let reader = Compression::reader(self.compression, buf.as_slice());
+
+        deserialize_from(reader).unwrap()
+    }
+
+    /// Reads the corresponding animation for the given id.
+    pub(crate) fn read_animation(&mut self, id: AnimationId) -> Animation {
+        let (pos, len) = self.buf.animation(id);
+        self.read_deserialize(pos, len)
+    }
+
+    /// Reads the corresponding bitmap for the given id.
+    pub(crate) fn read_bitmap(&mut self, id: BitmapId) -> BitmapBuf {
+        let (pos, len) = self.buf.bitmap(id);
+        self.read_deserialize(pos, len)
+    }
+
+    /// Reads the corresponding bitmap font for the given id.
+    pub(crate) fn read_bitmap_font(&mut self, id: BitmapFontId) -> BitmapFont {
+        let (pos, len) = self.buf.bitmap_font(id);
+        self.read_deserialize(pos, len)
+    }
+
+    /// Reads the corresponding blob for the given id.
+    pub fn read_blob(&mut self, id: BlobId) -> Vec<u8> {
+        let (pos, len) = self.buf.blob(id);
+        self.read_deserialize(pos, len)
+    }
+
+    /// Reads the corresponding model for the given id.
+    pub(crate) fn read_model(&mut self, id: ModelId) -> Model {
+        let (pos, len) = self.buf.model(id);
+        self.read_deserialize(pos, len)
+    }
+
+    /// Reads the corresponding scene for the given id.
+    pub fn read_scene(&mut self, id: SceneId) -> Scene {
+        let (pos, len) = self.buf.scene(id);
+        self.read_deserialize(pos, len)
     }
 
     /// Gets the pak-unique `SceneId` corresponding to the given key, if one exsits.
@@ -653,57 +685,5 @@ where
         K: AsRef<str>,
     {
         self.buf.text(key)
-    }
-
-    fn read_deserialize<T>(&mut self, pos: u64, len: usize) -> T
-    where
-        T: DeserializeOwned,
-    {
-        let buf = read_exact(&mut self.reader, pos, len);
-        let reader = Compression::reader(self.compression, buf.as_slice());
-
-        deserialize_from(reader).unwrap()
-    }
-
-    /// Reads the corresponding animation for the given id.
-    pub(crate) fn read_animation(&mut self, id: AnimationId) -> Animation {
-        let (pos, len) = self.buf.animation(id);
-        self.read_deserialize(pos, len)
-    }
-
-    /// Reads the corresponding bitmap for the given id.
-    pub(crate) fn read_bitmap(&mut self, id: BitmapId) -> BitmapBuf {
-        let (pos, len) = self.buf.bitmap(id);
-        self.read_deserialize(pos, len)
-    }
-
-    /// Reads the corresponding bitmap font for the given id.
-    pub(crate) fn read_bitmap_font(&mut self, id: BitmapFontId) -> BitmapFont {
-        let (pos, len) = self.buf.bitmap_font(id);
-        self.read_deserialize(pos, len)
-    }
-
-    /// Reads the corresponding blob for the given id.
-    pub fn read_blob(&mut self, id: BlobId) -> Vec<u8> {
-        let (pos, len) = self.buf.blob(id);
-        self.read_deserialize(pos, len)
-    }
-
-    /// Reads the corresponding font for the given id.
-    pub fn read_font(&mut self, id: FontId) -> Font {
-        let (pos, len) = self.buf.font(id);
-        self.read_deserialize(pos, len)
-    }
-
-    /// Reads the corresponding model for the given id.
-    pub(crate) fn read_model(&mut self, id: ModelId) -> Model {
-        let (pos, len) = self.buf.model(id);
-        self.read_deserialize(pos, len)
-    }
-
-    /// Reads the corresponding scene for the given id.
-    pub fn read_scene(&mut self, id: SceneId) -> Scene {
-        let (pos, len) = self.buf.scene(id);
-        self.read_deserialize(pos, len)
     }
 }

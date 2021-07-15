@@ -14,6 +14,13 @@ pub const SINGLE_READ_ONLY_IMG: [DescriptorSetLayoutBinding; 1] = [descriptor_se
 
 // Specific-use layouts
 
+pub const FONT: [DescriptorSetLayoutBinding; 1] = [descriptor_set_layout_binding(
+    0,
+    ShaderStageFlags::from_bits_truncate(
+        ShaderStageFlags::VERTEX.bits() | ShaderStageFlags::FRAGMENT.bits(),
+    ),
+    READ_ONLY_IMG,
+)];
 pub const BLEND: [DescriptorSetLayoutBinding; 2] = [
     descriptor_set_layout_binding(
         0, // blend

@@ -68,8 +68,8 @@ pub mod text {
     //! Types for writing text onto textures using stylized fonts.
 
     pub use super::op::text::{
-        BitmapCommand as BitmapText, BitmapFont, Command as Text, ScalableCommand as ScalableText,
-        ScalableFont, TextOp,
+        BitmapCommand as BitmapText, BitmapFont, Command as Text, TextOp,
+        VectorCommand as VectorText, VectorFont, VectorFontSettings,
     };
 }
 
@@ -117,7 +117,7 @@ use {
         driver::{Image2d, Surface},
         op::{
             bitmap::BitmapOp,
-            text::{BitmapFont, ScalableFont},
+            text::{BitmapFont, VectorFont, VectorFontSettings},
         },
         pool::{Lease, PoolRef},
         vertex::Vertex,
@@ -132,7 +132,6 @@ use {
         ptr::Shared,
     },
     archery::SharedPointerKind,
-    fontdue::Font,
     gfx_hal::{
         adapter::{Adapter, DeviceType, MemoryProperties, PhysicalDevice},
         buffer::Usage,
@@ -150,6 +149,7 @@ use {
         fmt::Debug,
         io::{Read, Seek},
         mem::MaybeUninit,
+        ops::Deref,
         sync::Once,
     },
     winit::window::Window,
@@ -863,9 +863,13 @@ where
         )
     }
 
-    /// Loads a scalable font at runtime from the given `fontdue::Font`.
-    pub fn load_scalable_font(&self, font: Font) -> Shared<ScalableFont, P> {
-        Shared::new(font.into())
+    /// Loads a `VectorFont` at runtime from the given data.
+    pub fn load_vector_font<D, S>(&self, data: D, settings: S) -> Shared<VectorFont, P>
+    where
+        D: Deref<Target = [u8]>,
+        S: Into<VectorFontSettings>,
+    {
+        Shared::new(VectorFont::load(data, settings))
     }
 
     // TODO: Finish this bit!
@@ -1122,17 +1126,19 @@ where
         }
     }
 
-    /// Reads the `ScalableFont` with the given face from the pak.
-    pub fn read_scalable_font<F, R>(&self, pak: &mut Pak<R>, face: F) -> Shared<ScalableFont, P>
+    /// Reads the `VectorFont` with the given key from the pak.
+    pub fn read_vector_font<K, R, S>(
+        &self,
+        pak: &mut Pak<R>,
+        key: K,
+        settings: S,
+    ) -> Shared<VectorFont, P>
     where
-        F: AsRef<str>,
+        K: AsRef<str>,
         R: Read + Seek,
+        S: Into<VectorFontSettings>,
     {
-        Shared::new(ScalableFont::read(
-            &mut self.loads.borrow_mut(),
-            pak,
-            face.as_ref(),
-        ))
+        Shared::new(VectorFont::read(pak, key, settings))
     }
 
     /// Constructs a `Render` of the given dimensions.

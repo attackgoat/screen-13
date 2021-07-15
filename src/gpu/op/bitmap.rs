@@ -66,6 +66,18 @@ where
     }
 }
 
+impl<P> AsRef<Texture2d> for Bitmap<P>
+where
+    P: SharedPointerKind,
+{
+    fn as_ref(&self) -> &Texture2d {
+        match &self.0 {
+            Load::Loaded(tex) => tex,
+            Load::Loading(op) => &op.texture,
+        }
+    }
+}
+
 impl<P> AsRef<Shared<Texture2d, P>> for Shared<Bitmap<P>, P>
 where
     P: SharedPointerKind,

@@ -1,27 +1,30 @@
 mod bitmap_font;
 mod command;
 mod compiler;
+mod dyn_atlas;
 mod instruction;
-mod scalable_font;
+mod tess;
+mod vector_font;
 
 pub use self::{
     bitmap_font::BitmapFont,
-    command::{BitmapCommand, Command, ScalableCommand},
+    command::{BitmapCommand, Command, VectorCommand},
     compiler::Compiler,
-    scalable_font::ScalableFont,
+    vector_font::{VectorFont, VectorFontSettings},
 };
 
 use {
-    self::instruction::{BitmapBindInstruction, Instruction, ScalableBindInstruction},
+    self::{
+        dyn_atlas::DynamicAtlas,
+        instruction::{Instruction, VertexBindInstruction},
+    },
     super::{DataCopyInstruction, DataTransferInstruction, DataWriteInstruction, Op},
     crate::{
         color::{AlphaColor, TRANSPARENT_BLACK},
         gpu::{
             data::{CopyRange, CopyRangeDstRangeIter, CopyRangeSrcRangeIter},
             def::{
-                push_const::{
-                    BitmapFontVertexPushConsts, Mat4PushConst, Vec4PushConst, Vec4Vec4PushConst,
-                },
+                push_const::{FontVertexPushConsts, Vec4PushConst, Vec4Vec4PushConst},
                 ColorRenderPassMode, FontMode, Graphics, GraphicsMode, RenderPassMode,
             },
             device,
@@ -36,8 +39,8 @@ use {
     gfx_hal::{
         buffer::{Access as BufferAccess, SubRange},
         command::{
-            CommandBuffer as _, CommandBufferFlags, ImageCopy, Level, RenderAttachmentInfo,
-            SubpassContents,
+            BufferImageCopy, CommandBuffer as _, CommandBufferFlags, ImageCopy, Level,
+            RenderAttachmentInfo, SubpassContents,
         },
         device::Device as _,
         format::Aspects,
@@ -55,73 +58,11 @@ use {
         any::Any,
         borrow::Borrow,
         iter::{empty, once},
-        ops::{Deref, Range},
+        ops::Range,
     },
 };
 
-pub const DEFAULT_SIZE: f32 = 32.0;
-const FONT_VERTEX_SIZE: usize = 16;
 const SUBPASS_IDX: u8 = 0;
-
-// TODO: Should we not require fonts to be wrapped in a Shared?
-/// Holds a reference to either a bitmapped or TrueType/Opentype font.
-pub enum Font<'f, P>
-where
-    P: 'static + SharedPointerKind,
-{
-    /// A fixed-size bitmapped font as produced by programs compatible with the `.fnt` file format.
-    ///
-    /// **_NOTE:_** [BMFont](https://www.angelcode.com/products/bmfont/) is supported.
-    Bitmap(&'f Shared<BitmapFont<P>, P>),
-
-    /// A variable-size font.
-    Scalable(&'f Shared<ScalableFont, P>),
-}
-
-impl<'f, P> Font<'f, P>
-where
-    P: SharedPointerKind,
-{
-    pub(super) fn as_bitmap(&'f self) -> Option<&'f Shared<BitmapFont<P>, P>> {
-        match self {
-            Self::Bitmap(font) => Some(font),
-            _ => None,
-        }
-    }
-
-    pub(super) fn as_scalable(&'f self) -> Option<&'f Shared<ScalableFont, P>> {
-        match self {
-            Self::Scalable(font) => Some(font),
-            _ => None,
-        }
-    }
-
-    pub(super) fn is_bitmap(&'f self) -> bool {
-        self.as_bitmap().is_some()
-    }
-
-    pub(super) fn is_scalable(&'f self) -> bool {
-        self.as_scalable().is_some()
-    }
-}
-
-impl<'f, P> From<&'f Shared<BitmapFont<P>, P>> for Font<'f, P>
-where
-    P: SharedPointerKind,
-{
-    fn from(font: &'f Shared<BitmapFont<P>, P>) -> Self {
-        Self::Bitmap(font)
-    }
-}
-
-impl<'f, P> From<&'f Shared<ScalableFont, P>> for Font<'f, P>
-where
-    P: SharedPointerKind,
-{
-    fn from(font: &'f Shared<ScalableFont, P>) -> Self {
-        Self::Scalable(font)
-    }
-}
 
 /// A container of graphics types and the functions which enable the recording and submission of
 /// font operations.
@@ -132,6 +73,8 @@ pub struct TextOp<P>
 where
     P: 'static + SharedPointerKind,
 {
+    atlas_buf_len: u64,
+    atlas_dims: u32,
     back_buf: Lease<Shared<Texture2d, P>, P>,
     cmd_buf: <_Backend as Backend>::CommandBuffer,
     cmd_pool: Lease<CommandPool, P>,
@@ -139,9 +82,8 @@ where
     dst: Shared<Texture2d, P>,
     fence: Lease<Fence, P>,
     frame_buf: Framebuffer2d,
-    graphics_bitmap_glyph: Option<Lease<Graphics, P>>,
-    graphics_bitmap_outline: Option<Lease<Graphics, P>>,
-    graphics_scalable: Option<Lease<Graphics, P>>,
+    graphics_bitmap: Option<Lease<Graphics, P>>,
+    graphics_vector: Option<Lease<Graphics, P>>,
 
     #[cfg(feature = "debug-names")]
     name: String,
@@ -200,6 +142,8 @@ where
         );
 
         Self {
+            atlas_buf_len: 16384,
+            atlas_dims: 4096,
             back_buf,
             cmd_buf,
             cmd_pool,
@@ -207,15 +151,46 @@ where
             dst: Shared::clone(dst),
             fence,
             frame_buf,
-            graphics_bitmap_glyph: None,
-            graphics_bitmap_outline: None,
-            graphics_scalable: None,
+            graphics_bitmap: None,
+            graphics_vector: None,
 
             #[cfg(feature = "debug-names")]
             name: name.to_owned(),
 
             pool: Some(pool),
         }
+    }
+
+    /// Specifies a specific vector font dynamic atlas buffer size to use for this operation.
+    ///
+    /// **_NOTE:_** This is an advanced option and almost never needs to be used. The default value
+    /// will suffice for nearly all use cases. The buffer in question is used to copy rasterized
+    /// characters into a GPU atlas texture and will be larger than the value specified here if
+    /// needed. Additionally, if the length is not suffucient then additional buffers will be used.
+    ///
+    /// **_NOTE:_** One method of finding out if you need to set this value is to turn on the
+    /// `debug-names` feature and profile your program. If you see multiple `Vector font buffer`
+    /// objects used during a a single text operation you _may_ benefit from a larger value.
+    ///
+    /// The default value is 16384.
+    pub fn with_atlas_buf_len(&mut self, len: u64) -> &mut Self {
+        self.atlas_buf_len = len;
+        self
+    }
+
+    /// Specifies a specific vector font atlas texture size to use for this operation.
+    ///
+    /// **_NOTE:_** This is an advanced option and almost never needs to be used. Atlas dimensions
+    /// will be determined automatically based on device limits and may override any value set here.
+    /// If an atlas cannot fit all required characters then additional atlases will be used.
+    /// Additionally, if a particular character is larger than this size a larger atlas will be
+    /// used.
+    ///
+    /// The default value is 4096.
+    pub fn with_atlas_dims(&mut self, dim: u32) -> &mut Self {
+        // TODO: Use actual maxImageDimension2D from device limits!
+        self.atlas_dims = dim.min(32768);
+        self
     }
 
     /// Submits the given commands for hardware processing.
@@ -238,6 +213,8 @@ where
                     pool,
                     cmds,
                     dims.into(),
+                    self.atlas_buf_len,
+                    self.atlas_dims,
                 );
 
                 // Early-out if no text will be rendered (empty cmds or strings or auto-culled)
@@ -251,39 +228,37 @@ where
                     preserve: true,
                 });
 
-                // Texture descriptors for one-color glyph bitmap fonts
+                // Texture descriptors for bitmap fonts
                 {
-                    let descriptors = instrs.bitmap_glyph_descriptors();
-                    let desc_sets = descriptors.len();
+                    let desc_sets = instrs.bitmap_desc_sets();
                     if desc_sets > 0 {
                         let mut graphics = pool.graphics_desc_sets(
                             #[cfg(feature = "debug-names")]
                             &self.name,
                             render_pass_mode,
                             SUBPASS_IDX,
-                            GraphicsMode::Font(FontMode::BitmapGlyph),
+                            GraphicsMode::Font(FontMode::Bitmap),
                             desc_sets,
                         );
-                        Self::write_texture_descriptors(&mut graphics, descriptors);
-                        self.graphics_bitmap_glyph = Some(graphics);
+                        Self::write_texture_descriptors(&mut graphics, instrs.bitmap_textures());
+                        self.graphics_bitmap = Some(graphics);
                     }
                 }
 
-                // Texture descriptors for two-color outline bitmap fonts
+                // Texture descriptors for vector fonts
                 {
-                    let descriptors = instrs.bitmap_outline_descriptors();
-                    let desc_sets = descriptors.len();
+                    let desc_sets = instrs.vector_desc_sets();
                     if desc_sets > 0 {
                         let mut graphics = pool.graphics_desc_sets(
                             #[cfg(feature = "debug-names")]
                             &self.name,
                             render_pass_mode,
                             SUBPASS_IDX,
-                            GraphicsMode::Font(FontMode::BitmapOutline),
+                            GraphicsMode::Font(FontMode::Vector),
                             desc_sets,
                         );
-                        Self::write_texture_descriptors(&mut graphics, descriptors);
-                        self.graphics_bitmap_outline = Some(graphics);
+                        Self::write_texture_descriptors(&mut graphics, instrs.vector_textures());
+                        self.graphics_vector = Some(graphics);
                     }
                 }
 
@@ -291,37 +266,33 @@ where
 
                 while let Some(instr) = instrs.next() {
                     match instr {
-                        Instruction::BitmapGlyphBegin => self.submit_bitmap_glyph_begin(),
-                        Instruction::BitmapGlyphBind(instr) => self.submit_bitmap_glyph_bind(instr),
-                        Instruction::BitmapGlyphColor(glyph_color) => {
-                            self.submit_bitmap_glyph_color(glyph_color)
+                        Instruction::BitmapBegin => self.submit_bitmap_begin(),
+                        Instruction::BitmapBindDescriptorSet(desc_set) => {
+                            self.submit_bitmap_bind_desc_set(desc_set)
                         }
-                        Instruction::BitmapGlyphTransform(view_proj) => {
-                            self.submit_bitmap_glyph_transform(view_proj)
+                        Instruction::BitmapColors(glyph, outline) => {
+                            self.submit_bitmap_colors(glyph, outline)
                         }
-                        Instruction::BitmapOutlineBegin => self.submit_bitmap_outline_begin(),
-                        Instruction::BitmapOutlineBind(instr) => {
-                            self.submit_bitmap_outline_bind(instr)
-                        }
-                        Instruction::BitmapOutlineColors(glyph_color, outline_color) => {
-                            self.submit_bitmap_outline_colors(glyph_color, outline_color)
-                        }
-                        Instruction::BitmapOutlineTransform(view_proj) => {
-                            self.submit_bitmap_outline_transform(view_proj)
+                        Instruction::BitmapTransform(view_proj) => {
+                            self.submit_bitmap_transform(view_proj)
                         }
                         Instruction::DataTransfer(instr) => self.submit_data_transfer(instr),
-                        Instruction::ScalableBegin => self.submit_scalable_begin(),
-                        Instruction::ScalableBind(instr) => self.submit_scalable_bind(instr),
-                        Instruction::ScalableColor(glyph_color) => {
-                            self.submit_scalable_color(glyph_color)
+                        Instruction::VectorBegin => self.submit_vector_begin(),
+                        Instruction::VectorBindDescriptorSet(desc_set) => {
+                            self.submit_vector_bind_desc_set(desc_set)
                         }
-                        Instruction::ScalableTransform(view_proj) => {
-                            self.submit_scalable_transform(view_proj)
+                        Instruction::VectorColor(glyph_color) => {
+                            self.submit_vector_color(glyph_color)
                         }
-                        Instruction::RenderBegin => {
-                            self.submit_render_begin(dims, render_pass_mode)
+                        Instruction::VectorCopyGlyphs(atlas) => {
+                            self.submit_vector_copy_glyphs(atlas)
                         }
-                        Instruction::RenderText(range) => self.submit_render_text(range),
+                        Instruction::VectorTransform(view_proj) => {
+                            self.submit_vector_transform(view_proj)
+                        }
+                        Instruction::TextBegin => self.submit_text_begin(dims, render_pass_mode),
+                        Instruction::TextRender(range) => self.submit_text_render(range),
+                        Instruction::VertexBind(instr) => self.submit_vertex_bind(instr),
                         Instruction::VertexCopy(instr) => self.submit_vertex_copies(instr),
                         Instruction::VertexWrite(instr) => self.submit_vertex_write(instr),
                     }
@@ -385,140 +356,49 @@ where
         );
     }
 
-    unsafe fn submit_bitmap_glyph_begin(&mut self) {
-        trace!("submit_bitmap_glyph_begin");
+    unsafe fn submit_bitmap_begin(&mut self) {
+        trace!("submit_bitmap_begin");
 
-        let graphics = self.graphics_bitmap_glyph.as_ref().unwrap();
+        let graphics = self.graphics_bitmap.as_ref().unwrap();
 
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
     }
 
-    unsafe fn submit_bitmap_glyph_bind(&mut self, instr: BitmapBindInstruction<'_, P>) {
-        trace!("submit_bitmap_glyph_bind");
+    unsafe fn submit_bitmap_bind_desc_set(&mut self, desc_set: usize) {
+        trace!("submit_bitmap_bind_desc_set");
 
-        let graphics = self.graphics_bitmap_glyph.as_ref().unwrap();
-        let desc_set = graphics.desc_set(instr.desc_set);
+        let graphics = self.graphics_bitmap.as_ref().unwrap();
+        let desc_set = graphics.desc_set(desc_set);
         let layout = graphics.layout();
 
         bind_graphics_descriptor_set(&mut self.cmd_buf, layout, desc_set);
-        self.cmd_buf.bind_vertex_buffers(
-            0,
-            once((
-                instr.buf.as_ref(),
-                SubRange {
-                    offset: 0,
-                    size: Some(instr.buf_len),
-                },
-            )),
-        );
-        instr.buf.barrier_range(
-            &mut self.cmd_buf,
-            PipelineStage::TRANSFER..PipelineStage::VERTEX_INPUT,
-            BufferAccess::TRANSFER_WRITE..BufferAccess::VERTEX_BUFFER_READ,
-            0..instr.buf_len,
-        );
     }
 
-    unsafe fn submit_bitmap_glyph_color(&mut self, glyph_color: AlphaColor) {
-        trace!("submit_bitmap_glyph_color");
+    unsafe fn submit_bitmap_colors(&mut self, glyph: AlphaColor, outline: AlphaColor) {
+        trace!("submit_bitmap_colors");
 
-        let graphics = self.graphics_bitmap_glyph.as_ref().unwrap();
+        let graphics = self.graphics_bitmap.as_ref().unwrap();
         let layout = graphics.layout();
 
         self.cmd_buf.push_graphics_constants(
             layout,
             ShaderStageFlags::FRAGMENT,
-            BitmapFontVertexPushConsts::BYTE_LEN,
-            Vec4PushConst {
-                val: glyph_color.to_rgba(),
-            }
-            .as_ref(),
-        );
-    }
-
-    unsafe fn submit_bitmap_glyph_transform(&mut self, view_proj: Mat4) {
-        trace!("submit_bitmap_glyph_transform");
-
-        let dims: CoordF = self.dst.dims().into();
-        let dims_inv = 1.0 / dims;
-        let graphics = self.graphics_bitmap_glyph.as_ref().unwrap();
-        let layout = graphics.layout();
-        let mut push_consts = BitmapFontVertexPushConsts::default();
-        push_consts.dims_inv = dims_inv.into();
-        push_consts.view_proj = view_proj;
-
-        self.cmd_buf.push_graphics_constants(
-            layout,
-            ShaderStageFlags::VERTEX,
-            0,
-            push_consts.as_ref(),
-        );
-    }
-
-    unsafe fn submit_bitmap_outline_begin(&mut self) {
-        trace!("submit_bitmap_outline_begin");
-
-        let graphics = self.graphics_bitmap_outline.as_ref().unwrap();
-
-        self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
-    }
-
-    unsafe fn submit_bitmap_outline_bind(&mut self, instr: BitmapBindInstruction<'_, P>) {
-        trace!("submit_bitmap_outline_bind");
-
-        let graphics = self.graphics_bitmap_outline.as_ref().unwrap();
-        let desc_set = graphics.desc_set(instr.desc_set);
-        let layout = graphics.layout();
-
-        bind_graphics_descriptor_set(&mut self.cmd_buf, layout, desc_set);
-        self.cmd_buf.bind_vertex_buffers(
-            0,
-            once((
-                instr.buf.as_ref(),
-                SubRange {
-                    offset: 0,
-                    size: Some(instr.buf_len),
-                },
-            )),
-        );
-        instr.buf.barrier_range(
-            &mut self.cmd_buf,
-            PipelineStage::TRANSFER..PipelineStage::VERTEX_INPUT,
-            BufferAccess::TRANSFER_WRITE..BufferAccess::VERTEX_BUFFER_READ,
-            0..instr.buf_len,
-        );
-    }
-
-    unsafe fn submit_bitmap_outline_colors(
-        &mut self,
-        glyph_color: AlphaColor,
-        outline_color: AlphaColor,
-    ) {
-        trace!("submit_bitmap_outline_colors");
-
-        let graphics = self.graphics_bitmap_outline.as_ref().unwrap();
-        let layout = graphics.layout();
-
-        self.cmd_buf.push_graphics_constants(
-            layout,
-            ShaderStageFlags::FRAGMENT,
-            BitmapFontVertexPushConsts::BYTE_LEN,
+            FontVertexPushConsts::BYTE_LEN,
             Vec4Vec4PushConst {
-                val: [glyph_color.to_rgba(), outline_color.to_rgba()],
+                val: [glyph.to_rgba(), outline.to_rgba()],
             }
             .as_ref(),
         );
     }
 
-    unsafe fn submit_bitmap_outline_transform(&mut self, view_proj: Mat4) {
-        trace!("submit_bitmap_outline_transform");
+    unsafe fn submit_bitmap_transform(&mut self, view_proj: Mat4) {
+        trace!("submit_bitmap_transform");
 
         let dims: CoordF = self.dst.dims().into();
-        let dims_inv = 1.0 / dims;
-        let graphics = self.graphics_bitmap_outline.as_ref().unwrap();
+        let graphics = self.graphics_bitmap.as_ref().unwrap();
         let layout = graphics.layout();
-        let mut push_consts = BitmapFontVertexPushConsts::default();
-        push_consts.dims_inv = dims_inv.into();
+        let mut push_consts = FontVertexPushConsts::default();
+        push_consts.dims = dims.into();
         push_consts.view_proj = view_proj;
 
         self.cmd_buf.push_graphics_constants(
@@ -552,8 +432,8 @@ where
         );
     }
 
-    unsafe fn submit_render_begin(&mut self, dims: Extent, render_pass_mode: RenderPassMode) {
-        trace!("submit_render_begin");
+    unsafe fn submit_text_begin(&mut self, dims: Extent, render_pass_mode: RenderPassMode) {
+        trace!("submit_text_begin");
 
         let pool = self.pool.as_mut().unwrap();
         let render_pass = pool.render_pass(render_pass_mode);
@@ -577,22 +457,112 @@ where
         self.cmd_buf.set_viewports(0, once(viewport));
     }
 
-    unsafe fn submit_render_text(&mut self, vertices: Range<VertexCount>) {
-        trace!("submit_render_text");
+    unsafe fn submit_text_render(&mut self, vertices: Range<VertexCount>) {
+        trace!("submit_text_render");
 
         self.cmd_buf.draw(vertices, 0..1);
     }
 
-    unsafe fn submit_scalable_begin(&mut self) {
-        trace!("submit_scalable_begin");
+    unsafe fn submit_vector_begin(&mut self) {
+        trace!("submit_vector_begin");
 
-        let graphics = self.graphics_scalable.as_ref().unwrap();
+        let graphics = self.graphics_vector.as_ref().unwrap();
 
         self.cmd_buf.bind_graphics_pipeline(graphics.pipeline());
     }
 
-    unsafe fn submit_scalable_bind(&mut self, instr: ScalableBindInstruction<'_, P>) {
-        trace!("submit_scalable_bind");
+    unsafe fn submit_vector_bind_desc_set(&mut self, desc_set: usize) {
+        trace!("submit_vector_bind_desc_set");
+
+        let graphics = self.graphics_vector.as_ref().unwrap();
+        let desc_set = graphics.desc_set(desc_set);
+        let layout = graphics.layout();
+
+        bind_graphics_descriptor_set(&mut self.cmd_buf, layout, desc_set);
+    }
+
+    unsafe fn submit_vector_color(&mut self, glyph_color: AlphaColor) {
+        trace!("submit_vector_color");
+
+        let graphics = self.graphics_vector.as_ref().unwrap();
+        let layout = graphics.layout();
+
+        self.cmd_buf.push_graphics_constants(
+            layout,
+            ShaderStageFlags::FRAGMENT,
+            FontVertexPushConsts::BYTE_LEN,
+            Vec4PushConst {
+                val: glyph_color.to_rgba(),
+            }
+            .as_ref(),
+        );
+    }
+
+    unsafe fn submit_vector_copy_glyphs(&mut self, atlas: &mut DynamicAtlas<P>) {
+        trace!("submit_vector_copy_glyphs");
+
+        while let Some(glyph) = atlas.pop_pending_glyph() {
+            glyph
+                .buf
+                .write_range(&mut self.cmd_buf, glyph.buf_range.clone());
+            glyph.buf.barrier_range(
+                &mut self.cmd_buf,
+                PipelineStage::TRANSFER..PipelineStage::TRANSFER,
+                BufferAccess::TRANSFER_WRITE..BufferAccess::TRANSFER_READ,
+                glyph.buf_range,
+            );
+            glyph.page.set_layout(
+                &mut self.cmd_buf,
+                Layout::TransferDstOptimal,
+                PipelineStage::TRANSFER,
+                ImageAccess::TRANSFER_WRITE,
+            );
+            self.cmd_buf.copy_buffer_to_image(
+                glyph.buf.as_ref(),
+                glyph.page.as_ref(),
+                Layout::TransferDstOptimal,
+                once(BufferImageCopy {
+                    buffer_offset: 0,
+                    buffer_width: glyph.buf_dims.x,
+                    buffer_height: glyph.buf_dims.y,
+                    image_layers: SubresourceLayers {
+                        aspects: Aspects::COLOR,
+                        level: 0,
+                        layers: 0..1,
+                    },
+                    image_offset: glyph.page_rect.pos.into(),
+                    image_extent: glyph.page_rect.dims.as_extent_depth(1),
+                }),
+            );
+            glyph.page.set_layout(
+                &mut self.cmd_buf,
+                Layout::ShaderReadOnlyOptimal,
+                PipelineStage::FRAGMENT_SHADER,
+                ImageAccess::SHADER_READ,
+            );
+        }
+    }
+
+    unsafe fn submit_vector_transform(&mut self, view_proj: Mat4) {
+        trace!("submit_vector_transform");
+
+        let dims: CoordF = self.dst.dims().into();
+        let graphics = self.graphics_vector.as_ref().unwrap();
+        let layout = graphics.layout();
+        let mut push_consts = FontVertexPushConsts::default();
+        push_consts.dims = dims.into();
+        push_consts.view_proj = view_proj;
+
+        self.cmd_buf.push_graphics_constants(
+            layout,
+            ShaderStageFlags::VERTEX,
+            0,
+            push_consts.as_ref(),
+        );
+    }
+
+    unsafe fn submit_vertex_bind(&mut self, instr: VertexBindInstruction<'_, P>) {
+        trace!("submit_vertex_bind");
 
         self.cmd_buf.bind_vertex_buffers(
             0,
@@ -603,37 +573,6 @@ where
                     size: Some(instr.buf_len),
                 },
             )),
-        );
-    }
-
-    unsafe fn submit_scalable_color(&mut self, glyph_color: AlphaColor) {
-        trace!("submit_scalable_color");
-
-        let graphics = self.graphics_scalable.as_ref().unwrap();
-        let layout = graphics.layout();
-
-        self.cmd_buf.push_graphics_constants(
-            layout,
-            ShaderStageFlags::FRAGMENT,
-            Mat4PushConst::BYTE_LEN,
-            Vec4PushConst {
-                val: glyph_color.to_rgba(),
-            }
-            .as_ref(),
-        );
-    }
-
-    unsafe fn submit_scalable_transform(&mut self, val: Mat4) {
-        trace!("submit_scalable_transform");
-
-        let graphics = self.graphics_scalable.as_ref().unwrap();
-        let layout = graphics.layout();
-
-        self.cmd_buf.push_graphics_constants(
-            layout,
-            ShaderStageFlags::VERTEX,
-            0,
-            Mat4PushConst { val }.as_ref(),
         );
     }
 
@@ -733,10 +672,9 @@ where
         queue_mut().submit(once(&self.cmd_buf), empty(), empty(), Some(&mut self.fence));
     }
 
-    unsafe fn write_texture_descriptors<I, T>(graphics: &mut Graphics, textures: I)
+    unsafe fn write_texture_descriptors<'i, I>(graphics: &mut Graphics, textures: I)
     where
-        I: Iterator<Item = T>,
-        T: Deref<Target = Texture2d>,
+        I: Iterator<Item = &'i Texture2d>,
     {
         for (idx, tex) in textures.enumerate() {
             let (set, samplers) = graphics.desc_set_mut_with_samplers(idx);
@@ -747,7 +685,7 @@ where
                 array_offset: 0,
                 descriptors: once(Descriptor::CombinedImageSampler(
                     tex.as_2d_color().as_ref(),
-                    Layout::General,
+                    Layout::ShaderReadOnlyOptimal,
                     samplers[0].as_ref(),
                 )),
             });

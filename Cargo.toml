@@ -45,7 +45,9 @@ bincode = "1.3" # TODO: Maybe replace with rkyv which is faster
 brotli = "3.3"
 byteorder = "1.4"
 directories = "3.0"
+etagere = "0.2"
 f8 = "0.1"
+fontdue = "0.5"
 gfx-hal = "0.9"
 gfx-backend-mock = { path="benches/gfx-backend-mock", optional=true }
 gfx-backend-test = { path="tests/gfx-backend-test", optional=true }
@@ -67,9 +69,6 @@ archery = { git="https://github.com/orium/archery" }
 
 # TODO: https://github.com/attackgoat/bmfont-rust/tree/iter-char waiting on PR+merge+release
 bmfont = { git="https://github.com/attackgoat/bmfont-rust", branch="iter_char", default-features=false, features=["serde"] }
-
-# TODO: https://github.com/mooman219/fontdue/pull/55 waiting on merge+release
-fontdue = { git="https://github.com/attackgoat/fontdue", branch="serde-feature", features=["serde_derive"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 shaderc = "0.7"

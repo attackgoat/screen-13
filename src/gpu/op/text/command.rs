@@ -1,5 +1,5 @@
 use {
-    super::{BitmapFont, Font, ScalableFont, DEFAULT_SIZE},
+    super::{BitmapFont, VectorFont},
     crate::{
         color::{AlphaColor, WHITE},
         math::{CoordF, Mat4},
@@ -16,17 +16,17 @@ where
     P: 'static + SharedPointerKind,
     T: AsRef<str>,
 {
-    /// Draws text at the given coordinates.
-    Position(BitmapCommand<CoordF, P, T>),
+    /// Draws bitmapped text at the given coordinates.
+    BitmapPosition(BitmapCommand<CoordF, P, T>),
 
-    /// Draws text of the specified size at the given coordinates.
-    SizePosition(ScalableCommand<CoordF, P, T>),
+    /// Draws bitmapped text using the given transformation matrix.
+    BitmapTransform(BitmapCommand<Mat4, P, T>),
 
-    /// Draws text of the specified size using the given homogenous transformation matrix.
-    SizeTransform(ScalableCommand<Mat4, P, T>),
+    /// Draws vector text of the specified size at the given coordinates.
+    VectorPosition(VectorCommand<CoordF, P, T>),
 
-    /// Draws text using the given homogenous transformation matrix.
-    Transform(BitmapCommand<Mat4, P, T>),
+    /// Draws vector text of the specified size using the given transformation matrix.
+    VectorTransform(VectorCommand<Mat4, P, T>),
 }
 
 impl<P, T> Command<P, T>
@@ -34,102 +34,69 @@ where
     P: SharedPointerKind,
     T: AsRef<str>,
 {
-    /// Draws text at the given coordinates.
-    pub fn position<'f, F, X>(pos: X, font: F, text: T) -> Self
-    where
-        F: Into<Font<'f, P>>,
-        X: Into<CoordF>,
-    {
-        match font.into() {
-            Font::Bitmap(font) => Self::Position(BitmapCommand::position(pos, font, text)),
-            Font::Scalable(font) => Self::SizePosition(ScalableCommand::position(pos, font, text)),
-        }
-    }
-
-    /// Draws text using the given homogenous transformation matrix.
-    pub fn transform<'f, F>(transform: Mat4, font: F, text: T) -> Self
-    where
-        F: Into<Font<'f, P>>,
-    {
-        match font.into() {
-            Font::Bitmap(font) => Self::Transform(BitmapCommand::transform(transform, font, text)),
-            Font::Scalable(font) => {
-                Self::SizeTransform(ScalableCommand::transform(transform, font, text))
-            }
-        }
-    }
-
-    pub(crate) fn as_position(&self) -> Option<CoordF> {
+    pub(crate) fn bitmap_font(&self) -> Option<&Shared<BitmapFont<P>, P>> {
         match self {
-            Self::SizePosition(cmd) => Some(cmd.layout),
-            Self::Position(cmd) => Some(cmd.layout),
+            Command::BitmapPosition(cmd) => Some(&cmd.font),
+            Command::BitmapTransform(cmd) => Some(&cmd.font),
             _ => None,
         }
     }
 
-    pub(crate) fn as_transform(&self) -> Option<Mat4> {
+    pub(crate) fn position(&self) -> Option<CoordF> {
         match self {
-            Self::SizeTransform(cmd) => Some(cmd.layout),
-            Self::Transform(cmd) => Some(cmd.layout),
+            Self::BitmapPosition(cmd) => Some(cmd.layout),
+            Self::VectorPosition(cmd) => Some(cmd.layout),
             _ => None,
         }
     }
 
-    pub(crate) fn font(&self) -> Font<'_, P> {
+    pub(crate) fn transform(&self) -> Option<Mat4> {
         match self {
-            Command::Position(cmd) => (&cmd.font).into(),
-            Command::SizePosition(cmd) => (&cmd.font).into(),
-            Command::SizeTransform(cmd) => (&cmd.font).into(),
-            Command::Transform(cmd) => (&cmd.font).into(),
+            Self::BitmapTransform(cmd) => Some(cmd.layout),
+            Self::VectorTransform(cmd) => Some(cmd.layout),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn vector_font(&self) -> Option<&Shared<VectorFont, P>> {
+        match self {
+            Command::VectorPosition(cmd) => Some(&cmd.font),
+            Command::VectorTransform(cmd) => Some(&cmd.font),
+            _ => None,
         }
     }
 
     pub(crate) fn glyph_color(&self) -> AlphaColor {
         match self {
-            Self::Position(cmd) => cmd.glyph_color,
-            Self::SizePosition(cmd) => cmd.glyph_color,
-            Self::SizeTransform(cmd) => cmd.glyph_color,
-            Self::Transform(cmd) => cmd.glyph_color,
+            Self::BitmapPosition(cmd) => cmd.glyph_color,
+            Self::BitmapTransform(cmd) => cmd.glyph_color,
+            Self::VectorPosition(cmd) => cmd.glyph_color,
+            Self::VectorTransform(cmd) => cmd.glyph_color,
         }
-    }
-
-    pub(crate) fn is_position(&self) -> bool {
-        self.as_position().is_some()
-    }
-
-    pub(crate) fn is_transform(&self) -> bool {
-        self.as_transform().is_some()
     }
 
     pub(crate) fn outline_color(&self) -> Option<AlphaColor> {
         match self {
-            Self::Position(cmd) => cmd.outline_color,
-            Self::Transform(cmd) => cmd.outline_color,
+            Self::BitmapPosition(cmd) => cmd.outline_color,
+            Self::BitmapTransform(cmd) => cmd.outline_color,
             _ => None,
+        }
+    }
+
+    pub(crate) fn size(&self) -> f32 {
+        match self {
+            Command::BitmapPosition(_) | Command::BitmapTransform(_) => 1.0, // TODO: Offer scaled bitmap text?
+            Command::VectorPosition(cmd) => cmd.size,
+            Command::VectorTransform(cmd) => cmd.size,
         }
     }
 
     pub(crate) fn text(&self) -> &str {
         match self {
-            Command::Position(cmd) => cmd.text.as_ref(),
-            Command::SizePosition(cmd) => cmd.text.as_ref(),
-            Command::SizeTransform(cmd) => cmd.text.as_ref(),
-            Command::Transform(cmd) => cmd.text.as_ref(),
-        }
-    }
-
-    /// Draws text using the given glyph fill color.
-    ///
-    /// **_NOTE:_** This is the primary font color.
-    pub fn with_glygh_color<C>(self, color: C) -> Self
-    where
-        C: Into<AlphaColor>,
-    {
-        match self {
-            Self::Position(cmd) => Self::Position(cmd.with_glygh_color(color)),
-            Self::SizePosition(cmd) => Self::SizePosition(cmd.with_glygh_color(color)),
-            Self::SizeTransform(cmd) => Self::SizeTransform(cmd.with_glygh_color(color)),
-            Self::Transform(cmd) => Self::Transform(cmd.with_glygh_color(color)),
+            Command::BitmapPosition(cmd) => cmd.text.as_ref(),
+            Command::BitmapTransform(cmd) => cmd.text.as_ref(),
+            Command::VectorPosition(cmd) => cmd.text.as_ref(),
+            Command::VectorTransform(cmd) => cmd.text.as_ref(),
         }
     }
 }
@@ -193,7 +160,7 @@ where
 {
     /// Constructs a renderable command from the given instance.
     pub fn build(self) -> Command<P, T> {
-        Command::Position(self)
+        Command::BitmapPosition(self)
     }
 
     /// Renders bitmapped text at the given position.
@@ -218,7 +185,7 @@ where
 {
     /// Constructs a renderable command from the given instance.
     pub fn build(self) -> Command<P, T> {
-        Command::Transform(self)
+        Command::BitmapTransform(self)
     }
 
     /// Renders bitmapped text using the the given transform matrix.
@@ -271,7 +238,7 @@ where
     }
 }
 
-/// An expressive type which allows specification of scalable text operations.
+/// An expressive type which allows specification of vector text operations.
 ///
 /// In order to set the glyph height you will need to construct one of these instances and build it
 /// into a `Text` instance. For example:
@@ -280,8 +247,8 @@ where
 /// # use fontdue::Font;
 /// # use screen_13::prelude_all::*;
 /// # let gpu = Gpu::offscreen();
-/// # let awesome_font = gpu.load_scalable_font().unwrap();
-/// let cmd: Text = ScalableText::position(
+/// # let awesome_font = gpu.load_outline_font().unwrap();
+/// let cmd: Text = VectorText::position(
 ///         Coord::new(0, 0),
 ///         &awesome_font,
 ///         "My letters are 48px tall",
@@ -289,13 +256,13 @@ where
 ///     .with_size(48)
 ///     .build();
 /// ```
-pub struct ScalableCommand<L, P, T>
+pub struct VectorCommand<L, P, T>
 where
     P: SharedPointerKind,
     T: AsRef<str>,
 {
     /// The font face to render.
-    pub font: Shared<ScalableFont, P>,
+    pub font: Shared<VectorFont, P>,
 
     /// The color of the font face.
     pub glyph_color: AlphaColor,
@@ -310,18 +277,18 @@ where
     pub text: T,
 }
 
-impl<P, T> ScalableCommand<CoordF, P, T>
+impl<P, T> VectorCommand<CoordF, P, T>
 where
     P: SharedPointerKind,
     T: AsRef<str>,
 {
     /// Constructs a renderable command from the given instance.
     pub fn build(self) -> Command<P, T> {
-        Command::SizePosition(self)
+        Command::VectorPosition(self)
     }
 
-    /// Renders scalable text at the given position.
-    pub fn position<X>(pos: X, font: &Shared<ScalableFont, P>, text: T) -> Self
+    /// Renders vector text at the given position.
+    pub fn position<X>(pos: X, font: &Shared<VectorFont, P>, text: T) -> Self
     where
         X: Into<CoordF>,
     {
@@ -329,35 +296,35 @@ where
             font: Shared::clone(font),
             glyph_color: WHITE.into(),
             layout: pos.into(),
-            size: DEFAULT_SIZE,
+            size: 40.0,
             text,
         }
     }
 }
 
-impl<P, T> ScalableCommand<Mat4, P, T>
+impl<P, T> VectorCommand<Mat4, P, T>
 where
     P: SharedPointerKind,
     T: AsRef<str>,
 {
     /// Constructs a renderable command from the given instance.
     pub fn build(self) -> Command<P, T> {
-        Command::SizeTransform(self)
+        Command::VectorTransform(self)
     }
 
-    /// Renders scalable text using the the given transform matrix.
-    pub fn transform(layout: Mat4, font: &Shared<ScalableFont, P>, text: T) -> Self {
+    /// Renders outlined vector text using the the given transform matrix.
+    pub fn transform(layout: Mat4, font: &Shared<VectorFont, P>, text: T) -> Self {
         Self {
             font: Shared::clone(font),
             glyph_color: WHITE.into(),
             layout,
-            size: DEFAULT_SIZE,
+            size: 40.0,
             text,
         }
     }
 }
 
-impl<L, P, T> ScalableCommand<L, P, T>
+impl<L, P, T> VectorCommand<L, P, T>
 where
     P: SharedPointerKind,
     T: AsRef<str>,

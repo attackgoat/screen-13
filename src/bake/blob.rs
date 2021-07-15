@@ -14,7 +14,7 @@ pub fn bake_blob<P1: AsRef<Path>, P2: AsRef<Path>>(
 
     info!("Processing asset: {}", key);
 
-    let mut file = File::open(&asset_filename).unwrap();
+    let mut file = File::open(asset_filename).unwrap();
     let mut value = vec![];
     file.read_to_end(&mut value).unwrap();
 

@@ -220,7 +220,7 @@ where
             .unwrap_or_else(|| self.ops.last_mut().unwrap().take_pool())
     }
 
-    /// Draws text on this Render using bitmapped or scalable fonts.
+    /// Draws text on this Render using bitmapped or vector fonts.
     pub fn text(&mut self, #[cfg(feature = "debug-names")] name: &str) -> &mut TextOp<P> {
         let op = unsafe {
             let pool = self.take_pool();

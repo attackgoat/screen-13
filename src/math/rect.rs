@@ -3,6 +3,7 @@ use {
     serde::{Deserialize, Serialize},
 };
 
+// TODO: Default impl?
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct Rect<D, P>
 where

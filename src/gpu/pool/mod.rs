@@ -23,7 +23,7 @@ use {
             draw::Compiler as DrawCompiler, text::Compiler as TextCompiler,
             write::Compiler as WriteCompiler, Op,
         },
-        queue_family, Cache, Data, Texture, Texture2d,
+        queue_family, Cache, Data, Texture2d,
     },
     crate::{math::Extent, ptr::Shared},
     archery::SharedPointerKind,
@@ -682,9 +682,8 @@ where
             GraphicsMode::DrawRectLight => Graphics::draw_rect_light,
             GraphicsMode::DrawSpotlight => Graphics::draw_spotlight,
             GraphicsMode::DrawSunlight => Graphics::draw_sunlight,
-            GraphicsMode::Font(FontMode::BitmapGlyph) => Graphics::bitmap_font_glyph,
-            GraphicsMode::Font(FontMode::BitmapOutline) => Graphics::bitmap_font_outline,
-            GraphicsMode::Font(FontMode::Scalable) => Graphics::scalable_font,
+            GraphicsMode::Font(FontMode::Bitmap) => Graphics::font_bitmap,
+            GraphicsMode::Font(FontMode::Vector) => Graphics::font_vector,
             GraphicsMode::Gradient(false) => Graphics::gradient_linear,
             GraphicsMode::Gradient(true) => Graphics::gradient_linear_trans,
 
@@ -845,7 +844,7 @@ where
                 item
             } else {
                 // Return a brand new instance
-                Shared::new(Texture::new(
+                Shared::new(Texture2d::new(
                     #[cfg(feature = "debug-names")]
                     name,
                     dims,

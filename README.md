@@ -109,6 +109,7 @@ before June 2021. Feel free to chip in to speed that up!
     - Later: Gently copy the light binning magic from Granite?
 - General:
   - TODO: fonts, models, textures, etc... should be loadable at runtime from regular files
+  - TODO: Pak should write a version number into the file
 
 ## Optional features
 

@@ -1,11 +1,9 @@
 use {
     super::{
         anim::Animation, ids::Id, model::Model, AnimationId, BitmapBuf, BitmapFont, BitmapFontId,
-        BitmapId, BlobId, Compression, DataRef, FontId, MaterialDesc, MaterialId, ModelId, Scene,
-        SceneId,
+        BitmapId, BlobId, Compression, DataRef, MaterialDesc, MaterialId, ModelId, Scene, SceneId,
     },
     bincode::serialize_into,
-    fontdue::Font,
     serde::{Deserialize, Serialize},
     std::{
         borrow::Cow,
@@ -40,7 +38,6 @@ pub struct PakBuf {
     bitmap_fonts: Vec<DataRef<BitmapFont>>,
     bitmaps: Vec<DataRef<BitmapBuf>>,
     blobs: Vec<DataRef<Vec<u8>>>,
-    fonts: Vec<DataRef<Font>>,
     models: Vec<DataRef<Model>>,
     scenes: Vec<DataRef<Scene>>,
 }
@@ -60,10 +57,6 @@ impl PakBuf {
 
     pub(super) fn blob(&self, id: BlobId) -> (u64, usize) {
         self.blobs[id.0 as usize].pos_len()
-    }
-
-    pub(super) fn font(&self, id: FontId) -> (u64, usize) {
-        self.fonts[id.0 as usize].pos_len()
     }
 
     pub(crate) fn id<K: AsRef<str>>(&self, key: K) -> Option<Id> {
@@ -114,16 +107,6 @@ impl PakBuf {
         let id = BlobId(self.blobs.len() as _);
         self.ids.insert(key, Id::Blob(id));
         self.blobs.push(DataRef::Data(val));
-
-        id
-    }
-
-    pub(crate) fn push_font(&mut self, key: String, val: Font) -> FontId {
-        assert!(self.ids.get(&key).is_none());
-
-        let id = FontId(self.fonts.len() as _);
-        self.ids.insert(key, Id::Font(id));
-        self.fonts.push(DataRef::Data(val));
 
         id
     }

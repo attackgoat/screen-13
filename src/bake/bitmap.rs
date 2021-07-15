@@ -103,13 +103,15 @@ pub fn bake_bitmap_font<P1: AsRef<Path>, P2: AsRef<Path>>(
 
     let (width, _) = page_size.unwrap();
 
-    // In order to make drawing text easier, we store the "pages" as one large texture
+    // In order to make drawing text easier, we optionally store the "pages" as one large texture
     // Each page is just appended to the bottom of the previous page making a tall bitmap
-    let pixels = pages.into_iter().map(|(_, page)| page).flatten().collect();
-    let page = BitmapBuf::new(BitmapFormat::Rgb, width as u16, pixels);
+    let page_bufs = pages
+        .into_iter()
+        .map(|(_, pixels)| BitmapBuf::new(BitmapFormat::Rgb, width as u16, pixels))
+        .collect();
 
     // Pak this asset
-    pak.push_bitmap_font(key, BitmapFont::new(def_file, page))
+    pak.push_bitmap_font(key, BitmapFont::new(def_file, page_bufs))
 }
 
 /// Reads raw pixel data from an image source file and returns them in the given format.

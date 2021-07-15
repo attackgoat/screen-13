@@ -7,7 +7,6 @@ pub mod asset;
 mod anim;
 mod bitmap;
 mod blob;
-mod font;
 mod material;
 mod model;
 mod scene;
@@ -18,7 +17,6 @@ pub use self::{
     asset::{Asset, Model},
     bitmap::{bake_bitmap, bake_bitmap_font},
     blob::bake_blob,
-    font::bake_font,
     material::bake_material,
     model::bake_model,
     scene::bake_scene,

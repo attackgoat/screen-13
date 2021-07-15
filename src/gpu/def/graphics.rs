@@ -220,106 +220,6 @@ pub struct Graphics {
 }
 
 impl Graphics {
-    unsafe fn bitmap_font<Ic>(
-        #[cfg(feature = "debug-names")] name: &str,
-        subpass: Subpass<'_, _Backend>,
-        fragment_spirv: &[u32],
-        push_consts: Ic,
-        max_desc_sets: usize,
-    ) -> Self
-    where
-        Ic: Iterator<Item = ShaderRange>,
-    {
-        // Create the graphics pipeline
-        let vertex = ShaderModule::new(&spirv::font::bitmap_vert::MAIN);
-        let fragment = ShaderModule::new(fragment_spirv);
-        let set_layout = DescriptorSetLayout::new(
-            #[cfg(feature = "debug-names")]
-            name,
-            desc_set_layout::SINGLE_READ_ONLY_IMG.to_vec().drain(..),
-        );
-        let layout = PipelineLayout::new(
-            #[cfg(feature = "debug-names")]
-            name,
-            once(set_layout.as_ref()),
-            push_consts,
-        );
-        let vertex_buf = vertex_buf_with_stride(16);
-        let mut desc = GraphicsPipelineDesc::new(
-            PrimitiveAssemblerDesc::Vertex {
-                attributes: &attributes::VEC2_VEC2,
-                buffers: &vertex_buf,
-                geometry: None,
-                input_assembler: input_assemblers::TRIANGLES,
-                tessellation: None,
-                vertex: ShaderModule::entry_point(&vertex),
-            },
-            rasterizers::FILL,
-            Some(ShaderModule::entry_point(&fragment)),
-            &layout,
-            subpass,
-        );
-        desc.blender.logic_op = None;
-        desc.blender.targets.push(ColorBlendDesc {
-            blend: Some(BlendState::PREMULTIPLIED_ALPHA),
-            mask: ColorMask::ALL,
-        });
-        let pipeline = GraphicsPipeline::new(
-            #[cfg(feature = "debug-names")]
-            name,
-            &desc,
-        );
-
-        // Allocate all descriptor sets
-        let mut desc_pool = DescriptorPool::new(
-            max_desc_sets,
-            once(descriptor_range_desc(max_desc_sets, READ_ONLY_IMG)),
-        );
-        let layouts = (0..max_desc_sets).map(|_| set_layout.as_ref());
-        let mut desc_sets = Vec::with_capacity(max_desc_sets);
-        desc_pool.allocate(layouts, &mut desc_sets).unwrap();
-
-        Self {
-            desc_pool: Some(desc_pool),
-            desc_sets,
-            layout,
-            max_desc_sets,
-            pipeline,
-            set_layout: Some(set_layout),
-            samplers: vec![sampler(Filter::Nearest)],
-        }
-    }
-
-    pub unsafe fn bitmap_font_glyph(
-        #[cfg(feature = "debug-names")] name: &str,
-        subpass: Subpass<'_, _Backend>,
-        max_desc_sets: usize,
-    ) -> Self {
-        Self::bitmap_font(
-            #[cfg(feature = "debug-names")]
-            name,
-            subpass,
-            &spirv::font::bitmap_glyph_frag::MAIN,
-            push_const::BITMAP_FONT_GLYPH.to_vec().drain(..),
-            max_desc_sets,
-        )
-    }
-
-    pub unsafe fn bitmap_font_outline(
-        #[cfg(feature = "debug-names")] name: &str,
-        subpass: Subpass<'_, _Backend>,
-        max_desc_sets: usize,
-    ) -> Self {
-        Self::bitmap_font(
-            #[cfg(feature = "debug-names")]
-            name,
-            subpass,
-            &spirv::font::bitmap_outline_frag::MAIN,
-            push_const::BITMAP_FONT_OUTLINE.to_vec().drain(..),
-            max_desc_sets,
-        )
-    }
-
     #[cfg(feature = "blend-modes")]
     unsafe fn blend(
         #[cfg(feature = "debug-names")] name: &str,
@@ -911,6 +811,107 @@ impl Graphics {
         todo!();
     }
 
+    unsafe fn font<Ic>(
+        #[cfg(feature = "debug-names")] name: &str,
+        subpass: Subpass<'_, _Backend>,
+        fragment_spirv: &[u32],
+        push_consts: Ic,
+        max_desc_sets: usize,
+    ) -> Self
+    where
+        Ic: Iterator<Item = ShaderRange>,
+    {
+        // Create the graphics pipeline
+        let vertex = ShaderModule::new(&spirv::font::font_vert::MAIN);
+        let fragment = ShaderModule::new(fragment_spirv);
+        let set_layout = DescriptorSetLayout::new(
+            #[cfg(feature = "debug-names")]
+            name,
+            desc_set_layout::FONT.to_vec().drain(..),
+        );
+        let layout = PipelineLayout::new(
+            #[cfg(feature = "debug-names")]
+            name,
+            once(set_layout.as_ref()),
+            push_consts,
+        );
+        let vertex_buf = vertex_buf_with_stride(16);
+        let mut desc = GraphicsPipelineDesc::new(
+            PrimitiveAssemblerDesc::Vertex {
+                attributes: &attributes::VEC2_VEC2,
+                buffers: &vertex_buf,
+                geometry: None,
+                input_assembler: input_assemblers::TRIANGLES,
+                tessellation: None,
+                vertex: ShaderModule::entry_point(&vertex),
+            },
+            rasterizers::FILL,
+            Some(ShaderModule::entry_point(&fragment)),
+            &layout,
+            subpass,
+        );
+        desc.blender.logic_op = None;
+        desc.blender.targets.push(ColorBlendDesc {
+            blend: Some(BlendState::PREMULTIPLIED_ALPHA),
+            mask: ColorMask::ALL,
+        });
+        let pipeline = GraphicsPipeline::new(
+            #[cfg(feature = "debug-names")]
+            name,
+            &desc,
+        );
+
+        // Allocate all descriptor sets
+        let mut desc_pool = DescriptorPool::new(
+            max_desc_sets,
+            once(descriptor_range_desc(max_desc_sets, READ_ONLY_IMG)),
+        );
+        let layouts = (0..max_desc_sets).map(|_| set_layout.as_ref());
+        let mut desc_sets = Vec::with_capacity(max_desc_sets);
+        desc_pool.allocate(layouts, &mut desc_sets).unwrap();
+
+        Self {
+            desc_pool: Some(desc_pool),
+            desc_sets,
+            layout,
+            max_desc_sets,
+            pipeline,
+            set_layout: Some(set_layout),
+            samplers: vec![sampler(Filter::Nearest)],
+        }
+    }
+
+    pub unsafe fn font_bitmap(
+        #[cfg(feature = "debug-names")] name: &str,
+        subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
+    ) -> Self {
+        Self::font(
+            #[cfg(feature = "debug-names")]
+            name,
+            subpass,
+            &spirv::font::bitmap_frag::MAIN,
+            push_const::FONT_BITMAP.to_vec().drain(..),
+            max_desc_sets,
+        )
+    }
+
+    // TODO: Re-combine with bitmap font!
+    pub unsafe fn font_vector(
+        #[cfg(feature = "debug-names")] name: &str,
+        subpass: Subpass<'_, _Backend>,
+        max_desc_sets: usize,
+    ) -> Self {
+        Self::font(
+            #[cfg(feature = "debug-names")]
+            name,
+            subpass,
+            &spirv::font::vector_frag::MAIN,
+            push_const::FONT_VECTOR.to_vec().drain(..),
+            max_desc_sets,
+        )
+    }
+
     unsafe fn gradient(
         #[cfg(feature = "debug-names")] name: &str,
         subpass: Subpass<'_, _Backend>,
@@ -1331,71 +1332,6 @@ impl Graphics {
         let mut desc_pool = DescriptorPool::new(
             max_desc_sets,
             once(descriptor_range_desc(max_desc_sets, READ_WRITE_IMG)),
-        );
-        let layouts = (0..max_desc_sets).map(|_| set_layout.as_ref());
-        let mut desc_sets = Vec::with_capacity(max_desc_sets);
-        desc_pool.allocate(layouts, &mut desc_sets).unwrap();
-
-        Self {
-            desc_pool: Some(desc_pool),
-            desc_sets,
-            layout,
-            max_desc_sets,
-            pipeline,
-            set_layout: Some(set_layout),
-            samplers: vec![sampler(Filter::Nearest)],
-        }
-    }
-
-    pub unsafe fn scalable_font(
-        #[cfg(feature = "debug-names")] name: &str,
-        subpass: Subpass<'_, _Backend>,
-        max_desc_sets: usize,
-    ) -> Self {
-        // Create the graphics pipeline
-        let vertex = ShaderModule::new(&spirv::font::scalable_vert::MAIN);
-        let fragment = ShaderModule::new(&spirv::font::scalable_frag::MAIN);
-        let set_layout = DescriptorSetLayout::new(
-            #[cfg(feature = "debug-names")]
-            name,
-            desc_set_layout::SINGLE_READ_ONLY_IMG.to_vec().drain(..),
-        );
-        let layout = PipelineLayout::new(
-            #[cfg(feature = "debug-names")]
-            name,
-            once(set_layout.as_ref()),
-            push_const::VERTEX_MAT4.to_vec().drain(..),
-        );
-        let vertex_buf = vertex_buf_with_stride(16);
-        let mut desc = GraphicsPipelineDesc::new(
-            PrimitiveAssemblerDesc::Vertex {
-                attributes: &attributes::VEC2_VEC2,
-                buffers: &vertex_buf,
-                geometry: None,
-                input_assembler: input_assemblers::TRIANGLES,
-                tessellation: None,
-                vertex: ShaderModule::entry_point(&vertex),
-            },
-            rasterizers::FILL,
-            Some(ShaderModule::entry_point(&fragment)),
-            &layout,
-            subpass,
-        );
-        desc.blender.logic_op = None;
-        desc.blender.targets.push(ColorBlendDesc {
-            blend: Some(BlendState::PREMULTIPLIED_ALPHA),
-            mask: ColorMask::ALL,
-        });
-        let pipeline = GraphicsPipeline::new(
-            #[cfg(feature = "debug-names")]
-            name,
-            &desc,
-        );
-
-        // Allocate all descriptor sets
-        let mut desc_pool = DescriptorPool::new(
-            max_desc_sets,
-            once(descriptor_range_desc(max_desc_sets, READ_ONLY_IMG)),
         );
         let layouts = (0..max_desc_sets).map(|_| set_layout.as_ref());
         let mut desc_sets = Vec::with_capacity(max_desc_sets);

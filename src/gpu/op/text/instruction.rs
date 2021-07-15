@@ -1,4 +1,5 @@
 use {
+    super::dyn_atlas::DynamicAtlas,
     crate::{
         color::AlphaColor,
         gpu::{
@@ -18,35 +19,24 @@ pub(super) enum Instruction<'a, P>
 where
     P: SharedPointerKind,
 {
-    BitmapGlyphBegin,
-    BitmapGlyphBind(BitmapBindInstruction<'a, P>),
-    BitmapGlyphColor(AlphaColor),
-    BitmapGlyphTransform(Mat4),
-    BitmapOutlineBegin,
-    BitmapOutlineBind(BitmapBindInstruction<'a, P>),
-    BitmapOutlineColors(AlphaColor, AlphaColor),
-    BitmapOutlineTransform(Mat4),
+    BitmapBegin,
+    BitmapBindDescriptorSet(usize),
+    BitmapColors(AlphaColor, AlphaColor),
+    BitmapTransform(Mat4),
     DataTransfer(DataTransferInstruction<'a>),
-    RenderBegin,
-    RenderText(Range<VertexCount>),
-    ScalableBegin,
-    ScalableBind(ScalableBindInstruction<'a, P>),
-    ScalableColor(AlphaColor),
-    ScalableTransform(Mat4),
+    TextBegin,
+    TextRender(Range<VertexCount>),
+    VectorBegin,
+    VectorBindDescriptorSet(usize),
+    VectorColor(AlphaColor),
+    VectorCopyGlyphs(&'a mut DynamicAtlas<P>),
+    VectorTransform(Mat4),
+    VertexBind(VertexBindInstruction<'a, P>),
     VertexCopy(DataCopyInstruction<'a>),
     VertexWrite(DataWriteInstruction<'a>),
 }
 
-pub struct BitmapBindInstruction<'a, P>
-where
-    P: SharedPointerKind,
-{
-    pub buf: &'a Lease<Data, P>,
-    pub buf_len: u64,
-    pub desc_set: usize,
-}
-
-pub struct ScalableBindInstruction<'a, P>
+pub struct VertexBindInstruction<'a, P>
 where
     P: SharedPointerKind,
 {

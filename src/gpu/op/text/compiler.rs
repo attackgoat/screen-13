@@ -1,13 +1,10 @@
 use {
     super::{
-        bitmap_font::BitmapFont,
-        command::Command,
-        instruction::{BitmapBindInstruction, Instruction, ScalableBindInstruction},
-        scalable_font::ScalableFont,
-        Font,
+        bitmap_font::BitmapFont, dyn_atlas::DynamicAtlas, tess::tessellate,
+        vector_font::VectorFont, Command, Instruction, VertexBindInstruction,
     },
     crate::{
-        color::AlphaColor,
+        color::{AlphaColor, TRANSPARENT_BLACK},
         gpu::{
             cache::{Lru, LruCache, Stride},
             data::Mapping,
@@ -28,32 +25,31 @@ use {
 // `Asm` is the "assembly op code" that is used to create an `Instruction` instance.
 #[derive(Clone, Copy)]
 enum Asm {
-    BeginBitmapGlyph,
-    BeginBitmapOutline,
-    BeginScalable,
-    BindBitmapGlyph(usize, usize),
-    BindBitmapOutline(usize, usize),
-    BindScalable(usize),
+    BeginBitmap,
+    BeginText,
+    BeginVector,
+    BindBitmapVertices(usize),
+    BindBitmapDescriptorSet(usize),
+    BindVectorDescriptorSet(usize),
+    BindVectorVertices(usize),
     CopyBitmapVertices(usize),
-    CopyScalableVertices(usize),
-    RenderBegin,
-    RenderText(u64, u64),
+    CopyVectorGlyphs(usize),
+    CopyVectorVertices(usize),
+    RenderText(usize, u64, u64),
     TransferBitmapData(usize),
-    TransferScalableData(usize),
-    UpdateBitmapGlyphColor(AlphaColor),
-    UpdateBitmapGlyphTransform(Mat4),
-    UpdateBitmapOutlineColors(AlphaColor, AlphaColor),
-    UpdateBitmapOutlineTransform(Mat4),
-    UpdateScalableColor(AlphaColor),
-    UpdateScalableTransform(Mat4),
+    TransferVectorData(usize),
+    UpdateBitmapColors(AlphaColor, AlphaColor),
+    UpdateBitmapTransform(Mat4),
+    UpdateVectorColor(AlphaColor),
+    UpdateVectorTransform(Mat4),
     WriteBitmapVertices(usize),
-    WriteScalableVertices(usize),
+    WriteVectorVertices(usize),
 }
 
 impl Asm {
-    fn as_render_text(self) -> Option<(u64, u64)> {
+    fn as_render_text(self) -> Option<(usize, u64, u64)> {
         match self {
-            Self::RenderText(start, end) => Some((start, end)),
+            Self::RenderText(desc_set, start, end) => Some((desc_set, start, end)),
             _ => None,
         }
     }
@@ -67,7 +63,6 @@ struct BitmapChar {
 }
 
 impl BitmapChar {
-    // TODO: Remove?
     /// Each character is rendered as a quad
     const STRIDE: u64 = 96;
 }
@@ -96,60 +91,56 @@ where
     P: 'static + SharedPointerKind,
     T: AsRef<str>,
 {
-    fn bind_bitmap(&self, desc_set: usize, idx: usize) -> BitmapBindInstruction<'_, P> {
-        let font = Shared::as_ptr(&self.cmds[idx].borrow().font().as_bitmap().unwrap());
+    fn bind_bitmap_vertices(&self, idx: usize) -> Instruction<'_, P> {
+        let font = Shared::as_ptr(&self.cmds[idx].borrow().bitmap_font().unwrap());
         let font_idx = self
             .compiler
-            .bitmap_fonts
+            .bitmap_chars
             .binary_search_by(|probe| Shared::as_ptr(&probe.font).cmp(&font))
             .unwrap();
-        let cache = &self.compiler.bitmap_fonts[font_idx].cache;
+        let cache = &self.compiler.bitmap_chars[font_idx].cache;
         let buf_len = cache.len();
 
-        BitmapBindInstruction {
+        Instruction::VertexBind(VertexBindInstruction {
             buf: &cache.allocation.current,
             buf_len,
-            desc_set,
-        }
+        })
     }
 
-    fn bind_scalable(&self, idx: usize) -> Instruction<'_, P> {
-        let font = Shared::as_ptr(&self.cmds[idx].borrow().font().as_scalable().unwrap());
+    fn bind_vector_vertices(&self, idx: usize) -> Instruction<'_, P> {
+        let font = Shared::as_ptr(&self.cmds[idx].borrow().vector_font().unwrap());
         let font_idx = self
             .compiler
-            .scalable_fonts
+            .vector_chars
             .binary_search_by(|probe| Shared::as_ptr(&probe.font).cmp(&font))
             .unwrap();
-        let cache = &self.compiler.scalable_fonts[font_idx].cache;
+        let cache = &self.compiler.vector_chars[font_idx].cache;
 
-        Instruction::ScalableBind(ScalableBindInstruction {
+        Instruction::VertexBind(VertexBindInstruction {
             buf: &cache.allocation.current,
             buf_len: cache.len(),
         })
     }
 
-    pub fn bitmap_glyph_descriptors(&self) -> impl ExactSizeIterator<Item = &Texture2d> {
-        self.compiler
-            .bitmap_glyph_descriptors
-            .iter()
-            .map(|font| font.page())
+    pub fn bitmap_desc_sets(&self) -> usize {
+        self.compiler.bitmap_desc_sets
     }
 
-    pub fn bitmap_outline_descriptors(&self) -> impl ExactSizeIterator<Item = &Texture2d> {
+    pub fn bitmap_textures(&self) -> impl Iterator<Item = &Texture2d> {
         self.compiler
-            .bitmap_outline_descriptors
+            .bitmap_fonts
             .iter()
-            .map(|font| font.page())
+            .flat_map(|font| font.pages())
     }
 
     fn copy_bitmap_vertices(&mut self, idx: usize) -> Instruction<'_, P> {
-        let font = Shared::as_ptr(&self.cmds[idx].borrow().font().as_bitmap().unwrap());
+        let font = Shared::as_ptr(&self.cmds[idx].borrow().bitmap_font().unwrap());
         let font_idx = self
             .compiler
-            .bitmap_fonts
+            .bitmap_chars
             .binary_search_by(|probe| Shared::as_ptr(&probe.font).cmp(&font))
             .unwrap();
-        let cache = &mut self.compiler.bitmap_fonts[font_idx].cache;
+        let cache = &mut self.compiler.bitmap_chars[font_idx].cache;
 
         Instruction::VertexCopy(DataCopyInstruction {
             buf: &mut cache.allocation.current,
@@ -157,14 +148,26 @@ where
         })
     }
 
-    fn copy_scalable_vertices(&mut self, idx: usize) -> Instruction<'_, P> {
-        let font = Shared::as_ptr(&self.cmds[idx].borrow().font().as_scalable().unwrap());
+    fn copy_vector_glyphs(&mut self, idx: usize) -> Instruction<'_, P> {
+        let font = Shared::as_ptr(&self.cmds[idx].borrow().vector_font().unwrap());
+        let atlas_idx = self
+            .compiler
+            .vector_atlas
+            .binary_search_by(|probe| Shared::as_ptr(probe.font()).cmp(&font))
+            .unwrap();
+        let atlas = &mut self.compiler.vector_atlas[atlas_idx];
+
+        Instruction::VectorCopyGlyphs(atlas)
+    }
+
+    fn copy_vector_vertices(&mut self, idx: usize) -> Instruction<'_, P> {
+        let font = Shared::as_ptr(&self.cmds[idx].borrow().vector_font().unwrap());
         let font_idx = self
             .compiler
-            .scalable_fonts
+            .vector_chars
             .binary_search_by(|probe| Shared::as_ptr(&probe.font).cmp(&font))
             .unwrap();
-        let cache = &mut self.compiler.scalable_fonts[font_idx].cache;
+        let cache = &mut self.compiler.vector_chars[font_idx].cache;
 
         Instruction::VertexCopy(DataCopyInstruction {
             buf: &mut cache.allocation.current,
@@ -178,14 +181,14 @@ where
     }
 
     fn transfer_bitmap_data(&mut self, idx: usize) -> Instruction<'_, P> {
-        let font = Shared::as_ptr(self.cmds[idx].borrow().font().as_bitmap().unwrap());
+        let font = Shared::as_ptr(self.cmds[idx].borrow().bitmap_font().unwrap());
         let font_idx = self
             .compiler
-            .bitmap_fonts
+            .bitmap_chars
             .binary_search_by(|probe| Shared::as_ptr(&probe.font).cmp(&font))
             .unwrap();
 
-        Self::transfer_data(&mut self.compiler.bitmap_fonts[font_idx].cache)
+        Self::transfer_data(&mut self.compiler.bitmap_chars[font_idx].cache)
     }
 
     fn transfer_data<Key>(cache: &mut LruCache<Key, P>) -> Instruction<'_, P> {
@@ -198,25 +201,36 @@ where
         })
     }
 
-    fn transfer_scalable_data(&mut self, idx: usize) -> Instruction<'_, P> {
-        let font = Shared::as_ptr(self.cmds[idx].borrow().font().as_scalable().unwrap());
+    fn transfer_vector_data(&mut self, idx: usize) -> Instruction<'_, P> {
+        let font = Shared::as_ptr(self.cmds[idx].borrow().vector_font().unwrap());
         let font_idx = self
             .compiler
-            .scalable_fonts
+            .vector_chars
             .binary_search_by(|probe| Shared::as_ptr(&probe.font).cmp(&font))
             .unwrap();
 
-        Self::transfer_data(&mut self.compiler.scalable_fonts[font_idx].cache)
+        Self::transfer_data(&mut self.compiler.vector_chars[font_idx].cache)
+    }
+
+    pub fn vector_desc_sets(&self) -> usize {
+        self.compiler.vector_desc_sets
+    }
+
+    pub fn vector_textures(&self) -> impl Iterator<Item = &Texture2d> {
+        self.compiler
+            .vector_atlas
+            .iter()
+            .flat_map(|atlas| atlas.pages())
     }
 
     fn write_bitmap_vertices(&mut self, idx: usize) -> Instruction<'_, P> {
-        let font = Shared::as_ptr(&self.cmds[idx].borrow().font().as_bitmap().unwrap());
+        let font = Shared::as_ptr(&self.cmds[idx].borrow().bitmap_font().unwrap());
         let font_idx = self
             .compiler
-            .bitmap_fonts
+            .bitmap_chars
             .binary_search_by(|probe| Shared::as_ptr(&probe.font).cmp(&font))
             .unwrap();
-        let cache = &mut self.compiler.bitmap_fonts[font_idx].cache;
+        let cache = &mut self.compiler.bitmap_chars[font_idx].cache;
 
         Instruction::VertexWrite(DataWriteInstruction {
             buf: &mut cache.allocation.current,
@@ -224,14 +238,14 @@ where
         })
     }
 
-    fn write_scalable_vertices(&mut self, idx: usize) -> Instruction<'_, P> {
-        let font = Shared::as_ptr(&self.cmds[idx].borrow().font().as_scalable().unwrap());
+    fn write_vector_vertices(&mut self, idx: usize) -> Instruction<'_, P> {
+        let font = Shared::as_ptr(&self.cmds[idx].borrow().vector_font().unwrap());
         let font_idx = self
             .compiler
-            .scalable_fonts
+            .vector_chars
             .binary_search_by(|probe| Shared::as_ptr(&probe.font).cmp(&font))
             .unwrap();
-        let cache = &mut self.compiler.scalable_fonts[font_idx].cache;
+        let cache = &mut self.compiler.vector_chars[font_idx].cache;
 
         Instruction::VertexWrite(DataWriteInstruction {
             buf: &mut cache.allocation.current,
@@ -257,38 +271,27 @@ where
         self.idx += 1;
 
         Some(match self.compiler.code[idx] {
-            Asm::BeginBitmapGlyph => Instruction::BitmapGlyphBegin,
-            Asm::BeginBitmapOutline => Instruction::BitmapOutlineBegin,
-            Asm::BeginScalable => Instruction::ScalableBegin,
-            Asm::BindBitmapGlyph(desc_set, idx) => {
-                Instruction::BitmapGlyphBind(self.bind_bitmap(desc_set, idx))
-            }
-            Asm::BindBitmapOutline(desc_set, idx) => {
-                Instruction::BitmapOutlineBind(self.bind_bitmap(desc_set, idx))
-            }
-            Asm::BindScalable(idx) => self.bind_scalable(idx),
+            Asm::BeginBitmap => Instruction::BitmapBegin,
+            Asm::BeginText => Instruction::TextBegin,
+            Asm::BeginVector => Instruction::VectorBegin,
+            Asm::BindBitmapDescriptorSet(idx) => Instruction::BitmapBindDescriptorSet(idx),
+            Asm::BindBitmapVertices(idx) => self.bind_bitmap_vertices(idx),
+            Asm::BindVectorDescriptorSet(idx) => Instruction::VectorBindDescriptorSet(idx),
+            Asm::BindVectorVertices(idx) => self.bind_vector_vertices(idx),
             Asm::CopyBitmapVertices(idx) => self.copy_bitmap_vertices(idx),
-            Asm::CopyScalableVertices(idx) => self.copy_scalable_vertices(idx),
-            Asm::RenderBegin => Instruction::RenderBegin,
-            Asm::RenderText(start, end) => {
-                Instruction::RenderText(start as u32 >> 4..end as u32 >> 4)
+            Asm::CopyVectorGlyphs(idx) => self.copy_vector_glyphs(idx),
+            Asm::CopyVectorVertices(idx) => self.copy_vector_vertices(idx),
+            Asm::RenderText(_, start, end) => {
+                Instruction::TextRender(start as u32 >> 4..end as u32 >> 4)
             }
             Asm::TransferBitmapData(idx) => self.transfer_bitmap_data(idx),
-            Asm::TransferScalableData(idx) => self.transfer_scalable_data(idx),
-            Asm::UpdateBitmapGlyphColor(glyph_color) => Instruction::BitmapGlyphColor(glyph_color),
-            Asm::UpdateBitmapGlyphTransform(view_proj) => {
-                Instruction::BitmapGlyphTransform(view_proj)
-            }
-            Asm::UpdateBitmapOutlineColors(glyph, outline) => {
-                Instruction::BitmapOutlineColors(glyph, outline)
-            }
-            Asm::UpdateBitmapOutlineTransform(view_proj) => {
-                Instruction::BitmapOutlineTransform(view_proj)
-            }
-            Asm::UpdateScalableColor(glyph_color) => Instruction::ScalableColor(glyph_color),
-            Asm::UpdateScalableTransform(view_proj) => Instruction::ScalableTransform(view_proj),
+            Asm::TransferVectorData(idx) => self.transfer_vector_data(idx),
+            Asm::UpdateBitmapColors(glyph, outline) => Instruction::BitmapColors(glyph, outline),
+            Asm::UpdateBitmapTransform(view_proj) => Instruction::BitmapTransform(view_proj),
+            Asm::UpdateVectorColor(glyph) => Instruction::VectorColor(glyph),
+            Asm::UpdateVectorTransform(view_proj) => Instruction::VectorTransform(view_proj),
             Asm::WriteBitmapVertices(idx) => self.write_bitmap_vertices(idx),
-            Asm::WriteScalableVertices(idx) => self.write_scalable_vertices(idx),
+            Asm::WriteVectorVertices(idx) => self.write_vector_vertices(idx),
         })
     }
 }
@@ -305,6 +308,7 @@ where
     }
 }
 
+/// Holds a cache of character vertices for a given font
 struct CompiledFont<F, Key, P>
 where
     P: 'static + SharedPointerKind,
@@ -319,7 +323,7 @@ where
 {
     unsafe fn new(pool: &mut Pool<P>, font: &Shared<F, P>) -> Self {
         Self {
-            cache: LruCache::new(pool, 4096u64, BufferUsage::VERTEX),
+            cache: LruCache::new(pool, 4096, BufferUsage::VERTEX),
             font: Shared::clone(font),
         }
     }
@@ -334,11 +338,13 @@ pub struct Compiler<P>
 where
     P: 'static + SharedPointerKind,
 {
-    bitmap_fonts: Vec<CompiledFont<BitmapFont<P>, BitmapChar, P>>,
-    bitmap_glyph_descriptors: Vec<Shared<BitmapFont<P>, P>>,
-    bitmap_outline_descriptors: Vec<Shared<BitmapFont<P>, P>>,
+    bitmap_chars: Vec<CompiledFont<BitmapFont<P>, BitmapChar, P>>,
+    bitmap_desc_sets: usize,
+    bitmap_fonts: Vec<Shared<BitmapFont<P>, P>>,
     code: Vec<Asm>,
-    scalable_fonts: Vec<CompiledFont<ScalableFont, ScalableChar, P>>,
+    vector_atlas: Vec<DynamicAtlas<P>>,
+    vector_chars: Vec<CompiledFont<VectorFont, VectorChar, P>>,
+    vector_desc_sets: usize,
 }
 
 impl<P> Compiler<P>
@@ -351,15 +357,17 @@ where
         pool: &mut Pool<P>,
         mut cmds: &'c mut [C],
         dims: CoordF,
+        atlas_buf_len: u64,
+        atlas_dims: u32,
     ) -> Compilation<'a, 'c, C, P, T>
     where
         C: Borrow<Command<P, T>>,
         T: AsRef<str>,
     {
-        self.code.push(Asm::RenderBegin);
+        self.code.push(Asm::BeginText);
 
         // Rearrange the commands so render order doesn't cause unnecessary resource-switching
-        Self::sort(&mut cmds);
+        Self::sort_cmds(&mut cmds);
 
         // Compile all commands into rendering code
         let mut idx = 0;
@@ -373,15 +381,14 @@ where
             if prev_pipeline.is_none() || prev_pipeline.unwrap() != pipeline {
                 prev_pipeline = Some(pipeline);
                 self.code.push(match pipeline {
-                    Pipeline::BitmapGlyph => Asm::BeginBitmapGlyph,
-                    Pipeline::BitmapOutline => Asm::BeginBitmapOutline,
-                    Pipeline::Scalable => Asm::BeginScalable,
+                    Pipeline::Bitmap => Asm::BeginBitmap,
+                    Pipeline::Vector => Asm::BeginVector,
                 });
             }
 
             // Compile all uses of this individual font, advancing `idx` to the following font
             idx = match pipeline {
-                Pipeline::BitmapGlyph | Pipeline::BitmapOutline => self.compile_bitmap(
+                Pipeline::Bitmap => self.compile_bitmap(
                     #[cfg(feature = "debug-names")]
                     name,
                     pool,
@@ -389,13 +396,15 @@ where
                     dims,
                     idx,
                 ),
-                Pipeline::Scalable => self.compile_scalable(
+                Pipeline::Vector => self.compile_vector(
                     #[cfg(feature = "debug-names")]
                     name,
                     pool,
                     cmds,
                     dims,
                     idx,
+                    atlas_buf_len,
+                    atlas_dims,
                 ),
             }
         }
@@ -423,15 +432,14 @@ where
         C: Borrow<Command<P, T>>,
         T: AsRef<str>,
     {
-        let font = cmds[idx].borrow().font();
-        let bitmap = font.as_bitmap().unwrap();
+        let font_ref = cmds[idx].borrow().bitmap_font();
+        let font = font_ref.unwrap();
 
         // Figure out how many following commands are the same individual font
         let mut end_idx = idx + 1;
         while end_idx < cmds.len() {
-            let next_font = cmds[end_idx].borrow().font();
-            if let Some(next_font) = next_font.as_bitmap() {
-                if next_font != bitmap {
+            if let Some(next_font) = cmds[end_idx].borrow().bitmap_font() {
+                if font != next_font {
                     break;
                 }
 
@@ -442,18 +450,23 @@ where
         }
 
         // Ensure we've got a compiled font ready
-        let font_ptr = Shared::as_ptr(bitmap);
+        let font_ptr = Shared::as_ptr(font);
         let font_idx = match self
-            .bitmap_fonts
+            .bitmap_chars
             .binary_search_by(|probe| Shared::as_ptr(&probe.font).cmp(&font_ptr))
         {
             Err(idx) => {
-                self.bitmap_fonts
-                    .insert(idx, unsafe { CompiledFont::new(pool, bitmap) });
+                self.bitmap_chars
+                    .insert(idx, unsafe { CompiledFont::new(pool, font) });
                 idx
             }
             Ok(idx) => idx,
         };
+
+        // Store a reference to the font so we can later bind these textures
+        let desc_set_base = self.bitmap_desc_sets; //Self::bitmap_desc_sets(self.bitmap_fonts.iter());
+        self.bitmap_fonts.push(Shared::clone(font));
+        self.bitmap_desc_sets += font.pages().len();
 
         // Figure out the total length of all texts using this font
         let text_len: usize = cmds[idx..end_idx]
@@ -461,14 +474,14 @@ where
             .map(|cmd| cmd.borrow().text().len())
             .sum();
 
-        // Allocate enough `buf` to hold everything in the existing compilation and everything we
+        // Allocate enough `buf` to hold everything in the existing chars and everything we
         // could possibly render for these commands (assuming each character is unique)
-        let compilation = &mut self.bitmap_fonts[font_idx];
-        let eob = compilation.cache.len();
-        let capacity = eob + text_len as u64 * BitmapChar::STRIDE;
+        let chars = &mut self.bitmap_chars[font_idx];
+        let cache_len = chars.cache.len();
+        let capacity = cache_len + text_len as u64 * BitmapChar::STRIDE;
 
         unsafe {
-            compilation.cache.realloc(
+            chars.cache.realloc(
                 #[cfg(feature = "debug-names")]
                 &format!("{} bitmap font vertex buffer", name),
                 pool,
@@ -477,74 +490,39 @@ where
         }
 
         // Copy data from the uncompacted end of the GPU buffer back to linear data
-        compilation.cache.compact_cache(pool.lru_timestamp);
+        chars.cache.compact_usage(pool.lru_timestamp);
 
         // start..end is the back of the buffer where we push new characters
-        let start = compilation.cache.len();
+        let start = chars.cache.len();
         let mut end = start;
 
-        // Bind the texture descriptor and vertex buffer
-        let mut prev_pipeline = Self::pipeline(cmds[0].borrow());
-        type UpdateTransformFn = fn(Mat4) -> Asm;
-        let (bind, mut update_transform) = match prev_pipeline {
-            Pipeline::BitmapGlyph => {
-                let res = Asm::BindBitmapGlyph(self.bitmap_glyph_descriptors.len(), idx);
-                self.bitmap_glyph_descriptors.push(Shared::clone(bitmap));
-                let update_transform = |view_proj| Asm::UpdateBitmapGlyphTransform(view_proj);
-                (res, update_transform as UpdateTransformFn)
-            }
-            Pipeline::BitmapOutline => {
-                let res = Asm::BindBitmapOutline(self.bitmap_outline_descriptors.len(), idx);
-                self.bitmap_outline_descriptors.push(Shared::clone(bitmap));
-                let update_transform = |view_proj| Asm::UpdateBitmapOutlineTransform(view_proj);
-                (res, update_transform as UpdateTransformFn)
-            }
-            _ => unreachable!(),
-        };
-        self.code.push(bind);
+        // Bind the vertex buffer
+        self.code.push(Asm::BindBitmapVertices(idx));
 
         // Fill the vertex buffer for all commands which use this font
-        for (idx, cmd) in cmds[idx..end_idx].iter().enumerate() {
+        for cmd in cmds[idx..end_idx].iter() {
             let cmd = cmd.borrow();
 
-            // Change pipeline and re-bind if needed (this will only switch from glyph to outline!!)
-            let pipeline = Self::pipeline(cmd);
-            if pipeline != prev_pipeline {
-                prev_pipeline = pipeline;
-                self.code.push(Asm::BeginBitmapOutline);
-                self.code.push(Asm::BindBitmapOutline(
-                    self.bitmap_outline_descriptors.len(),
-                    idx,
-                ));
-                self.bitmap_outline_descriptors.push(Shared::clone(bitmap));
-                update_transform = |view_proj| Asm::UpdateBitmapOutlineTransform(view_proj);
-            }
-
             // Always update transform
-            let view_proj = if let Some(view_proj) = cmd.as_transform() {
+            let view_proj = if let Some(view_proj) = cmd.transform() {
                 view_proj
             } else {
                 // PERF: Should hand roll this
                 // Read as:
                 // 1. Convert layout pixels to normalized coordinates:  pixels ->  0..1
                 // 2. Transform normalized coordinates to NDC:          0..1   -> -1..1
-                let layout = cmd.as_position().unwrap();
+                let layout = cmd.position().unwrap();
                 Mat4::from_translation(vec3(-1.0, -1.0, 0.0))
                     * Mat4::from_scale(vec3(2.0, 2.0, 1.0))
                     * Mat4::from_translation(vec3(layout.x / dims.x, layout.y / dims.y, 0.0))
             };
-            self.code.push(update_transform(view_proj));
+            self.code.push(Asm::UpdateBitmapTransform(view_proj));
 
             // Always update color(s)
-            let glyph_color = cmd.glyph_color();
-            match pipeline {
-                Pipeline::BitmapGlyph => self.code.push(Asm::UpdateBitmapGlyphColor(glyph_color)),
-                Pipeline::BitmapOutline => self.code.push(Asm::UpdateBitmapOutlineColors(
-                    glyph_color,
-                    cmd.outline_color().unwrap(),
-                )),
-                _ => unreachable!(),
-            }
+            self.code.push(Asm::UpdateBitmapColors(
+                cmd.glyph_color(),
+                cmd.outline_color().unwrap_or(TRANSPARENT_BLACK),
+            ));
 
             // We are going to submit rendering commands but we need to keep track of the current
             // asm code index so that we can ensure the 'copy to gpu' asm code is executed before
@@ -553,29 +531,31 @@ where
 
             // Characters will generally follow each other so we keep a running range of renderable
             // text in order to reduce the need to sort/re-group later. This requires a fix-up step
-            // after the loop to capture the last range!
-            let mut text_range: Option<Range<u64>> = None;
+            // after the loop to capture the last range! First value is which descriptor set index.
+            let mut text: Option<(usize, Range<u64>)> = None;
 
             // Make sure all characters are in the lru data
-            for char in bitmap.parse(cmd.text()) {
+            for layout in font.parse(cmd.text()) {
                 let key = BitmapChar {
-                    char: char.char(),
-                    x: char.screen_rect.x,
-                    y: char.screen_rect.y,
+                    char: layout.char(),
+                    x: layout.screen_rect.x,
+                    y: layout.screen_rect.y,
                 };
-                let offset = match compilation
+                let page_idx = layout.page_index;
+                // TODO: Before searching we should check the index which follows the previous one
+                let offset = match chars
                     .cache
                     .items
                     .binary_search_by(|probe| probe.key.cmp(&key))
                 {
                     Err(idx) => {
                         // Cache the vertices for this character
-                        let vertices = bitmap.tessellate(&char);
+                        let vertices = tessellate(layout);
                         let start = end;
                         end += vertices.len() as u64;
 
                         unsafe {
-                            let mut mapped_range = compilation
+                            let mut mapped_range = chars
                                 .cache
                                 .allocation
                                 .current
@@ -591,8 +571,8 @@ where
                         }
 
                         // Create a new cache entry for this character
-                        compilation.cache.usage.push((start, key));
-                        compilation.cache.items.insert(
+                        chars.cache.usage.push((start, key));
+                        chars.cache.items.insert(
                             idx,
                             Lru {
                                 expiry: pool.lru_expiry,
@@ -603,53 +583,67 @@ where
                         start
                     }
                     Ok(idx) => {
-                        let lru = &mut compilation.cache.items[idx];
+                        let lru = &mut chars.cache.items[idx];
                         lru.expiry = pool.lru_expiry;
                         lru.offset
                     }
                 };
 
                 // Handle text rendering
-                if let Some(range) = &mut text_range {
-                    if range.end == offset {
-                        // Contiguous: Extend current text range with this character
+                let desc_set = desc_set_base + page_idx as usize;
+                if let Some((idx, range)) = &mut text {
+                    if desc_set == *idx && range.end == offset {
+                        // Contiguous: Extend current text with this character
                         range.end += BitmapChar::STRIDE;
                     } else {
-                        // Non-contiguous: Render the current text range and start a new one
-                        self.code.push(Asm::RenderText(range.start, range.end));
-                        text_range = Some(offset..offset + BitmapChar::STRIDE);
+                        // Non-contiguous: Render the current text and start new text
+                        self.code
+                            .push(Asm::RenderText(desc_set, range.start, range.end));
+                        text = Some((desc_set, offset..offset + BitmapChar::STRIDE));
                     }
                 } else {
-                    // First text range
-                    text_range = Some(offset..offset + BitmapChar::STRIDE);
+                    // First text
+                    text = Some((desc_set, offset..offset + BitmapChar::STRIDE));
                 }
             }
 
-            // Fix-up step: Commit the last text range, if any
-            if let Some(range) = text_range {
-                self.code.push(Asm::RenderText(range.start, range.end));
+            // Fix-up step: Commit the last text, if any
+            if let Some((desc_set, range)) = text {
+                self.code
+                    .push(Asm::RenderText(desc_set, range.start, range.end));
+            } else {
+                continue;
             }
 
-            // The rendered text may have been found in non-contiguous sections of the data - so we sort
-            // them and reduce rendering commands by joining any groups the sorting has formed
-            self.code[code_idx_before_text..].sort_unstable_by(|lhs, rhs| {
-                lhs.as_render_text()
-                    .unwrap()
-                    .0
-                    .cmp(&rhs.as_render_text().unwrap().0)
-            });
-            let mut read_idx = code_idx_before_text + 1;
-            let mut write_idx = code_idx_before_text;
+            // The rendered text may have been found in non-contiguous sections of the data - so we
+            // sort them and reduce rendering commands by joining any groups the sorting has formed
+            // We will also jam in some bind-descriptor-set code
+            Self::sort_code(&mut self.code[code_idx_before_text..]);
+            let mut desc_set = self.code[code_idx_before_text].as_render_text().unwrap().0;
+            let mut read_idx = code_idx_before_text + 2;
+            let mut write_idx = code_idx_before_text + 1;
+            self.code
+                .insert(code_idx_before_text, Asm::BindBitmapDescriptorSet(desc_set));
             while read_idx < self.code.len() {
-                let (read_start, read_end) = self.code[read_idx].as_render_text().unwrap();
-                let (write_start, write_end) = self.code[write_idx].as_render_text().unwrap();
-                if read_start == write_end {
-                    self.code[write_idx] = Asm::RenderText(write_start, read_end);
-                    read_idx += 1;
-                } else {
+                let (read_desc_set, read_start, read_end) =
+                    self.code[read_idx].as_render_text().unwrap();
+                let (write_desc_set, write_start, write_end) =
+                    self.code[write_idx].as_render_text().unwrap();
+                if read_desc_set != desc_set {
+                    self.code
+                        .insert(read_idx, Asm::BindBitmapDescriptorSet(desc_set));
+                    desc_set = read_desc_set;
                     read_idx += 1;
                     write_idx += 1;
                 }
+
+                if read_desc_set == write_desc_set && read_start == write_end {
+                    self.code[write_idx] = Asm::RenderText(read_desc_set, write_start, read_end);
+                } else {
+                    write_idx += 1;
+                }
+
+                read_idx += 1;
             }
 
             // Trim off any excess rendering commands
@@ -658,121 +652,135 @@ where
 
         // We may need to write these vertices from the CPU to the GPU
         if start != end {
-            compilation.cache.pending_write = Some(start..end);
+            chars.cache.pending_write = Some(start..end);
             self.code.insert(0, Asm::WriteBitmapVertices(idx));
         }
 
         // Handle copied ranges from earlier
-        if !compilation.cache.pending_copies.is_empty() {
+        if !chars.cache.pending_copies.is_empty() {
             self.code.insert(0, Asm::CopyBitmapVertices(idx));
         }
 
         // Transfer data from the previous GPU buffer to the new one, if we have a previous buffer
-        if compilation.cache.allocation.previous.is_some() {
+        if chars.cache.allocation.previous.is_some() {
             self.code.insert(0, Asm::TransferBitmapData(idx));
         }
 
         end_idx
     }
 
-    fn compile_scalable<C, T>(
+    fn compile_vector<C, T>(
         &mut self,
         #[cfg(feature = "debug-names")] name: &str,
         pool: &mut Pool<P>,
         cmds: &[C],
         dims: CoordF,
         idx: usize,
+        atlas_buf_len: u64,
+        atlas_dims: u32,
     ) -> usize
     where
         C: Borrow<Command<P, T>>,
         T: AsRef<str>,
     {
-        let font = cmds[idx].borrow().font();
-        let scalable = font.as_scalable().unwrap();
+        let font = cmds[idx].borrow().vector_font().unwrap();
 
         // Figure out how many following commands are the same individual font
         let mut end_idx = idx + 1;
         while end_idx < cmds.len() {
-            let next_font = cmds[end_idx].borrow().font();
-            if let Some(next_font) = next_font.as_scalable() {
-                if next_font != scalable {
-                    break;
-                }
-
-                end_idx += 1;
-            } else {
-                // This path won't happen because we sorted the commands bitmapped -> scalable
-                unreachable!();
-                //break;
+            if font != cmds[end_idx].borrow().vector_font().unwrap() {
+                break;
             }
+
+            end_idx += 1;
         }
 
         // Ensure we've got a compiled font ready
-        let font_ptr = Shared::as_ptr(scalable);
+        let font_ptr = Shared::as_ptr(font);
         let font_idx = match self
-            .scalable_fonts
+            .vector_chars
             .binary_search_by(|probe| Shared::as_ptr(&probe.font).cmp(&font_ptr))
         {
             Err(idx) => {
-                self.scalable_fonts
-                    .insert(idx, unsafe { CompiledFont::new(pool, scalable) });
+                self.vector_chars
+                    .insert(idx, unsafe { CompiledFont::new(pool, font) });
                 idx
             }
             Ok(idx) => idx,
         };
 
-        /*/ Figure out the total length of all texts using this font
+        // Store a references to the font so we can later bind these textures
+        let desc_set_base = self.vector_desc_sets;
+        let atlas_idx = match self
+            .vector_atlas
+            .binary_search_by(|probe| Shared::as_ptr(&probe.font()).cmp(&font_ptr))
+        {
+            Err(idx) => {
+                self.vector_atlas.insert(idx, DynamicAtlas::new(pool, font));
+                idx
+            }
+            Ok(idx) => idx,
+        };
+        let atlas = &mut self.vector_atlas[atlas_idx];
+
+        // Figure out the total length of all texts using this font
         let text_len: usize = cmds[idx..end_idx]
             .iter()
             .map(|cmd| cmd.borrow().text().len())
             .sum();
 
-        // Allocate enough `buf` to hold everything in the existing compilation and everything we
+        // Allocate enough `buf` to hold everything in the existing chars and everything we
         // could possibly render for these commands (assuming each character is unique)
-        let compilation = &mut self.scalable_fonts[font_idx];
-        let eob = compilation.cache.len();
-        let capacity = eob + text_len as u64 * BitmapChar::STRIDE;
+        let chars = &mut self.vector_chars[font_idx];
+        let cache_len = chars.cache.len();
+        let capacity = cache_len + text_len as u64 * VectorChar::STRIDE;
 
         unsafe {
-            compilation.cache.realloc(
+            chars.cache.realloc(
                 #[cfg(feature = "debug-names")]
-                &format!("{} scalable font vertex buffer", name),
+                &format!("{} vector font vertex buffer", name),
                 pool,
                 capacity,
             );
         }
 
         // Copy data from the uncompacted end of the GPU buffer back to linear data
-        compilation.cache.compact_cache(pool.lru_timestamp);
+        chars.cache.compact_usage(pool.lru_timestamp);
 
         // start..end is the back of the buffer where we push new characters
-        let start = compilation.cache.len();
+        let start = chars.cache.len();
         let mut end = start;
 
         // Bind the vertex buffer
-        self.code.push(Asm::BindScalable(idx));
+        self.code.push(Asm::BindVectorVertices(idx));
 
         // Fill the vertex buffer for all commands which use this font
-        for (idx, cmd) in cmds[idx..end_idx].iter().enumerate() {
+        for cmd in cmds[idx..end_idx].iter() {
             let cmd = cmd.borrow();
 
+            // Quantize incoming size to 1/3 of a pixel and skip tiny text
+            let size = (cmd.size() * 3.0).trunc() / 3.0;
+            if size < 1.0 / 3.0 {
+                continue;
+            }
+
             // Always update transform
-            let view_proj = if let Some(view_proj) = cmd.as_transform() {
+            let view_proj = if let Some(view_proj) = cmd.transform() {
                 view_proj
             } else {
                 // PERF: Should hand roll this
                 // Read as:
                 // 1. Convert layout pixels to normalized coordinates:  pixels ->  0..1
                 // 2. Transform normalized coordinates to NDC:          0..1   -> -1..1
-                let layout = cmd.as_position().unwrap();
+                let layout = cmd.position().unwrap();
                 Mat4::from_translation(vec3(-1.0, -1.0, 0.0))
                     * Mat4::from_scale(vec3(2.0, 2.0, 1.0))
                     * Mat4::from_translation(vec3(layout.x / dims.x, layout.y / dims.y, 0.0))
             };
-            self.code.push(Asm::UpdateScalableTransform(view_proj));
+            self.code.push(Asm::UpdateVectorTransform(view_proj));
 
-            // Always update color(s)
-            self.code.push(Asm::UpdateScalableColor(cmd.glyph_color()));
+            // Always update color
+            self.code.push(Asm::UpdateVectorColor(cmd.glyph_color()));
 
             // We are going to submit rendering commands but we need to keep track of the current
             // asm code index so that we can ensure the 'copy to gpu' asm code is executed before
@@ -781,29 +789,32 @@ where
 
             // Characters will generally follow each other so we keep a running range of renderable
             // text in order to reduce the need to sort/re-group later. This requires a fix-up step
-            // after the loop to capture the last range!
-            let mut text_range: Option<Range<u64>> = None;
+            // after the loop to capture the last range! First value is which descriptor set index.
+            let mut text: Option<(usize, Range<u64>)> = None;
 
             // Make sure all characters are in the lru data
-            for char in bitmap.parse(cmd.text()) {
-                let key = BitmapChar {
-                    char: char.char(),
-                    x: char.screen_rect.x,
-                    y: char.screen_rect.y,
+            let lru_expiry = pool.lru_expiry;
+            for (char, glyph) in atlas.parse(pool, atlas_buf_len, atlas_dims, size, cmd.text()) {
+                let key = VectorChar {
+                    char,
+                    size,
+                    x: glyph.screen_rect.pos.x,
+                    y: glyph.screen_rect.pos.y,
                 };
-                let offset = match compilation
+                let page_idx = glyph.page_idx;
+                let offset = match chars
                     .cache
                     .items
                     .binary_search_by(|probe| probe.key.cmp(&key))
                 {
                     Err(idx) => {
                         // Cache the vertices for this character
-                        let vertices = bitmap.tessellate(&char);
+                        let vertices = tessellate(glyph);
                         let start = end;
                         end += vertices.len() as u64;
 
                         unsafe {
-                            let mut mapped_range = compilation
+                            let mut mapped_range = chars
                                 .cache
                                 .allocation
                                 .current
@@ -819,11 +830,11 @@ where
                         }
 
                         // Create a new cache entry for this character
-                        compilation.cache.usage.push((start, key));
-                        compilation.cache.items.insert(
+                        chars.cache.usage.push((start, key));
+                        chars.cache.items.insert(
                             idx,
                             Lru {
-                                expiry: pool.lru_expiry,
+                                expiry: lru_expiry,
                                 key,
                                 offset: start,
                             },
@@ -831,74 +842,95 @@ where
                         start
                     }
                     Ok(idx) => {
-                        let lru = &mut compilation.cache.items[idx];
-                        lru.expiry = pool.lru_expiry;
+                        let lru = &mut chars.cache.items[idx];
+                        lru.expiry = lru_expiry;
                         lru.offset
                     }
                 };
 
                 // Handle text rendering
-                if let Some(range) = &mut text_range {
-                    if range.end == offset {
-                        // Contiguous: Extend current text range with this character
-                        range.end += BitmapChar::STRIDE;
+                let desc_set = desc_set_base + page_idx;
+                if let Some((idx, range)) = &mut text {
+                    if desc_set == *idx && range.end == offset {
+                        // Contiguous: Extend current text with this character
+                        range.end += VectorChar::STRIDE;
                     } else {
-                        // Non-contiguous: Render the current text range and start a new one
-                        self.code.push(Asm::RenderText(range.start, range.end));
-                        text_range = Some(offset..offset + BitmapChar::STRIDE);
+                        // Non-contiguous: Render the current text and start new text
+                        self.code
+                            .push(Asm::RenderText(desc_set, range.start, range.end));
+                        text = Some((desc_set, offset..offset + VectorChar::STRIDE));
                     }
                 } else {
-                    // First text range
-                    text_range = Some(offset..offset + BitmapChar::STRIDE);
+                    // First text
+                    text = Some((desc_set, offset..offset + VectorChar::STRIDE));
                 }
             }
 
             // Fix-up step: Commit the last text range, if any
-            if let Some(range) = text_range {
-                self.code.push(Asm::RenderText(range.start, range.end));
+            if let Some((desc_set, range)) = text {
+                self.code
+                    .push(Asm::RenderText(desc_set, range.start, range.end));
+            } else {
+                continue;
             }
 
             // The rendered text may have been found in non-contiguous sections of the data - so we sort
             // them and reduce rendering commands by joining any groups the sorting has formed
-            self.code[code_idx_before_text..].sort_unstable_by(|lhs, rhs| {
-                lhs.as_render_text()
-                    .unwrap()
-                    .0
-                    .cmp(&rhs.as_render_text().unwrap().0)
-            });
-            let mut read_idx = code_idx_before_text + 1;
-            let mut write_idx = code_idx_before_text;
+            // We will also jam in some bind-descriptor-set code
+            Self::sort_code(&mut self.code[code_idx_before_text..]);
+            let mut desc_set = self.code[code_idx_before_text].as_render_text().unwrap().0;
+            let mut read_idx = code_idx_before_text + 2;
+            let mut write_idx = code_idx_before_text + 1;
+            self.code
+                .insert(code_idx_before_text, Asm::BindVectorDescriptorSet(desc_set));
             while read_idx < self.code.len() {
-                let (read_start, read_end) = self.code[read_idx].as_render_text().unwrap();
-                let (write_start, write_end) = self.code[write_idx].as_render_text().unwrap();
-                if read_start == write_end {
-                    self.code[write_idx] = Asm::RenderText(write_start, read_end);
-                    read_idx += 1;
-                } else {
+                let (read_desc_set, read_start, read_end) =
+                    self.code[read_idx].as_render_text().unwrap();
+                let (write_desc_set, write_start, write_end) =
+                    self.code[write_idx].as_render_text().unwrap();
+                if read_desc_set != desc_set {
+                    self.code
+                        .insert(read_idx, Asm::BindVectorDescriptorSet(desc_set));
+                    desc_set = read_desc_set;
                     read_idx += 1;
                     write_idx += 1;
                 }
+
+                if read_desc_set == write_desc_set && read_start == write_end {
+                    self.code[write_idx] = Asm::RenderText(read_desc_set, write_start, read_end);
+                } else {
+                    write_idx += 1;
+                }
+
+                read_idx += 1;
             }
 
             // Trim off any excess rendering commands
             self.code.truncate(write_idx + 1);
         }
 
+        self.vector_desc_sets += atlas.pages().len();
+
         // We may need to write these vertices from the CPU to the GPU
         if start != end {
-            compilation.cache.pending_write = Some(start..end);
-            self.code.insert(0, Asm::WriteBitmapVertices(idx));
+            chars.cache.pending_write = Some(start..end);
+            self.code.insert(0, Asm::WriteVectorVertices(idx));
         }
 
         // Handle copied ranges from earlier
-        if !compilation.cache.pending_copies.is_empty() {
-            self.code.insert(0, Asm::CopyBitmapVertices(idx));
+        if !chars.cache.pending_copies.is_empty() {
+            self.code.insert(0, Asm::CopyVectorVertices(idx));
         }
 
         // Transfer data from the previous GPU buffer to the new one, if we have a previous buffer
-        if compilation.cache.allocation.previous.is_some() {
-            self.code.insert(0, Asm::TransferBitmapData(idx));
-        }*/
+        if chars.cache.allocation.previous.is_some() {
+            self.code.insert(0, Asm::TransferVectorData(idx));
+        }
+
+        // Add code to handle each of the copy-character-from-buffer-to-texture operations
+        if atlas.has_pending_glyphs() {
+            self.code.insert(0, Asm::CopyVectorGlyphs(idx));
+        }
 
         end_idx
     }
@@ -908,21 +940,8 @@ where
         T: AsRef<str>,
     {
         match cmd {
-            Command::Position(cmd) => {
-                if cmd.outline_color.is_none() {
-                    Pipeline::BitmapGlyph
-                } else {
-                    Pipeline::BitmapOutline
-                }
-            }
-            Command::Transform(cmd) => {
-                if cmd.outline_color.is_none() {
-                    Pipeline::BitmapGlyph
-                } else {
-                    Pipeline::BitmapOutline
-                }
-            }
-            _ => Pipeline::Scalable,
+            Command::BitmapPosition(_) | Command::BitmapTransform(_) => Pipeline::Bitmap,
+            _ => Pipeline::Vector,
         }
     }
 
@@ -931,28 +950,30 @@ where
     ///
     /// Must NOT be called before the previously drawn frame is completed.
     pub(super) fn reset(&mut self) {
-        self.bitmap_glyph_descriptors.clear();
-        self.bitmap_outline_descriptors.clear();
+        self.bitmap_fonts.clear();
+        self.bitmap_desc_sets = 0;
+        self.vector_desc_sets = 0;
+        // self.vector_fonts.clear();
 
-        // TODO: Can these things be just two functions called three times each?
+        // TODO: Can these things be just two functions called two times each?
 
         // Advance the least-recently-used caching algorithm one step forward
-        self.bitmap_fonts
+        self.bitmap_chars
             .iter_mut()
             .for_each(|compilation| compilation.cache.reset());
-        self.scalable_fonts
+        self.vector_chars
             .iter_mut()
             .for_each(|compilation| compilation.cache.reset());
 
         // Remove any fonts which are no longer in use
-        self.bitmap_fonts
+        self.bitmap_chars
             .retain(|compilation| !compilation.cache.items.is_empty());
-        self.scalable_fonts
+        self.vector_chars
             .retain(|compilation| !compilation.cache.items.is_empty());
     }
 
     /// Sorts commands into a predictable and efficient order for drawing.
-    fn sort<C, T>(cmds: &mut [C])
+    fn sort_cmds<C, T>(cmds: &mut [C])
     where
         C: Borrow<Command<P, T>>,
         T: AsRef<str>,
@@ -964,24 +985,59 @@ where
 
             // The output order should be:
             // 1. Bitmapped fonts (sorted by pointer)
-            // 3. Scalable fonts (sorted by pointer)
+            // 2. Vector fonts (sorted by pointer)
 
-            match lhs.font() {
-                Font::Bitmap(lhs_font) => match rhs.font() {
-                    Font::Bitmap(rhs_font) => {
-                        match Shared::as_ptr(&lhs_font).cmp(&Shared::as_ptr(&rhs_font)) {
-                            Ordering::Equal => lhs.outline_color().cmp(&rhs.outline_color()),
-                            ne => ne,
-                        }
+            // TODO: Make this smaller with a well genericized function!
+            match lhs {
+                Command::BitmapPosition(lhs) => match rhs {
+                    Command::BitmapPosition(rhs) => {
+                        Shared::as_ptr(&lhs.font).cmp(&Shared::as_ptr(&rhs.font))
+                    }
+                    Command::BitmapTransform(rhs) => {
+                        Shared::as_ptr(&lhs.font).cmp(&Shared::as_ptr(&rhs.font))
                     }
                     _ => Ordering::Less,
                 },
-                Font::Scalable(lhs_font) => match rhs.font() {
-                    Font::Scalable(rhs_font) => {
-                        Shared::as_ptr(&lhs_font).cmp(&Shared::as_ptr(&rhs_font))
+                Command::BitmapTransform(lhs) => match rhs {
+                    Command::BitmapPosition(rhs) => {
+                        Shared::as_ptr(&lhs.font).cmp(&Shared::as_ptr(&rhs.font))
+                    }
+                    Command::BitmapTransform(rhs) => {
+                        Shared::as_ptr(&lhs.font).cmp(&Shared::as_ptr(&rhs.font))
+                    }
+                    _ => Ordering::Less,
+                },
+                Command::VectorPosition(lhs) => match rhs {
+                    Command::VectorPosition(rhs) => {
+                        Shared::as_ptr(&lhs.font).cmp(&Shared::as_ptr(&rhs.font))
+                    }
+                    Command::VectorTransform(rhs) => {
+                        Shared::as_ptr(&lhs.font).cmp(&Shared::as_ptr(&rhs.font))
                     }
                     _ => Ordering::Greater,
                 },
+                Command::VectorTransform(lhs) => match rhs {
+                    Command::VectorPosition(rhs) => {
+                        Shared::as_ptr(&lhs.font).cmp(&Shared::as_ptr(&rhs.font))
+                    }
+                    Command::VectorTransform(rhs) => {
+                        Shared::as_ptr(&lhs.font).cmp(&Shared::as_ptr(&rhs.font))
+                    }
+                    _ => Ordering::Greater,
+                },
+            }
+        });
+    }
+
+    /// Sorts rendering code into optimal descriptor set/range ordering.
+    fn sort_code(code: &mut [Asm]) {
+        code.sort_unstable_by(|lhs, rhs| {
+            let lhs = lhs.as_render_text().unwrap();
+            let rhs = rhs.as_render_text().unwrap();
+
+            match lhs.0.cmp(&rhs.0) {
+                Ordering::Equal => lhs.1.cmp(&rhs.1),
+                ne => ne,
             }
         });
     }
@@ -993,41 +1049,49 @@ where
 {
     fn default() -> Self {
         Self {
+            bitmap_chars: Default::default(),
+            bitmap_desc_sets: 0,
             bitmap_fonts: Default::default(),
-            bitmap_glyph_descriptors: Default::default(),
-            bitmap_outline_descriptors: Default::default(),
             code: Default::default(),
-            scalable_fonts: Default::default(),
+            vector_atlas: Default::default(),
+            vector_chars: Default::default(),
+            vector_desc_sets: 0,
         }
     }
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Pipeline {
-    BitmapGlyph,
-    BitmapOutline,
-    Scalable,
+    Bitmap,
+    Vector,
 }
 
 #[derive(Clone, Copy, PartialEq)]
-struct ScalableChar {
+struct VectorChar {
     char: char,
-    stride: u32,
+    size: f32,
     x: f32,
     y: f32,
 }
 
-impl Eq for ScalableChar {}
+impl VectorChar {
+    /// Each character is rendered as a quad
+    const STRIDE: u64 = 96;
+}
 
-impl Ord for ScalableChar {
+impl Eq for VectorChar {}
+
+impl Ord for VectorChar {
     fn cmp(&self, other: &Self) -> Ordering {
         let res = self.char.cmp(&other.char);
         if res != Ordering::Less {
             return res;
         }
 
-        // TODO: Should probably also store and compare SIZE and just not compare this field? What about eq and partial eq and partial ord!!
-        let res = self.stride.cmp(&other.stride);
+        let res = self
+            .size
+            .partial_cmp(&other.size)
+            .unwrap_or(Ordering::Equal);
         if res != Ordering::Less {
             return res;
         }
@@ -1041,15 +1105,14 @@ impl Ord for ScalableChar {
     }
 }
 
-impl PartialOrd for ScalableChar {
+impl PartialOrd for VectorChar {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Stride for ScalableChar {
+impl Stride for VectorChar {
     fn stride(&self) -> u64 {
-        //self.stride as _
-        todo!()
+        Self::STRIDE
     }
 }

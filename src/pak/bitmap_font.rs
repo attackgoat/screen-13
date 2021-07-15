@@ -7,12 +7,12 @@ use {
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub struct BitmapFont {
     def: String,
-    page: BitmapBuf,
+    pages: Vec<BitmapBuf>,
 }
 
 impl BitmapFont {
-    pub(crate) fn new(def: String, page: BitmapBuf) -> Self {
-        Self { def, page }
+    pub(crate) fn new(def: String, pages: Vec<BitmapBuf>) -> Self {
+        Self { def, pages }
     }
 
     // TODO: We could pre-pack this instead of raw text!
@@ -21,11 +21,8 @@ impl BitmapFont {
         self.def.as_str()
     }
 
-    /// Gets the single `BitmapBuf` page within this `BitmapFont`.
-    ///
-    /// If a given `BMFont` specifies multiple pages, they will be stacked in the Y+ direction
-    /// and so form one tall "page".
-    pub fn page(&self) -> &BitmapBuf {
-        &self.page
+    /// Gets the `BitmapBuf` pages within this `BitmapFont`.
+    pub fn pages(&self) -> impl ExactSizeIterator<Item = &BitmapBuf> {
+        self.pages.iter()
     }
 }

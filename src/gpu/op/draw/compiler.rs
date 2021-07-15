@@ -783,7 +783,7 @@ where
         }
 
         // Copy data from the uncompacted end of the buffer back to linear data
-        self.line.compact_cache(pool.lru_timestamp);
+        self.line.compact_usage(pool.lru_timestamp);
         if !self.line.pending_copies.is_empty() {
             self.code.push(Asm::CopyLineVertices);
         }
@@ -1033,7 +1033,7 @@ where
         }
 
         // Copy data from the uncompacted end of the buffer back to linear data
-        self.rect_light.compact_cache(pool.lru_timestamp);
+        self.rect_light.compact_usage(pool.lru_timestamp);
         if !self.rect_light.pending_copies.is_empty() {
             self.code.push(Asm::CopyRectLightVertices);
         }
@@ -1145,7 +1145,7 @@ where
         }
 
         // Copy data from the uncompacted end of the buffer back to linear data
-        self.spotlight.compact_cache(pool.lru_timestamp);
+        self.spotlight.compact_usage(pool.lru_timestamp);
         if !self.spotlight.pending_copies.is_empty() {
             self.code.push(Asm::CopySpotlightVertices);
         }

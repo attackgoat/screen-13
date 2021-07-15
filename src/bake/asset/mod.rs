@@ -4,15 +4,14 @@ mod anim;
 mod bitmap;
 mod bitmap_font;
 mod content;
-mod font;
 mod material;
 mod mesh;
 mod model;
 mod scene;
 
 pub use self::{
-    anim::Animation, bitmap::Bitmap, bitmap_font::BitmapFont, content::Content, font::Font,
-    material::Material, mesh::Mesh, model::Model, scene::Scene,
+    anim::Animation, bitmap::Bitmap, bitmap_font::BitmapFont, content::Content, material::Material,
+    mesh::Mesh, model::Model, scene::Scene,
 };
 
 use {
@@ -33,8 +32,6 @@ pub enum Asset {
     BitmapFont(BitmapFont),
     /// Top-level content files which simply group other asset files for ease of use.
     Content(Content),
-    /// `.otf` or `.ttf` scalable fonts.
-    Font(Font),
     // Language(LanguageAsset),
     /// Used for model rendering.
     Material(Material),
@@ -63,8 +60,6 @@ impl Asset {
             Self::BitmapFont(val)
         } else if let Some(val) = val.content {
             Self::Content(val)
-        } else if let Some(val) = val.font {
-            Self::Font(val)
         } else if let Some(val) = val.material {
             Self::Material(val)
         } else if let Some(val) = val.model {
@@ -88,14 +83,6 @@ impl Asset {
     pub fn into_content(self) -> Option<Content> {
         match self {
             Self::Content(content) => Some(content),
-            _ => None,
-        }
-    }
-
-    /// Attempts to extract a `Font` asset from this collection type.
-    pub fn into_font(self) -> Option<Font> {
-        match self {
-            Self::Font(font) => Some(font),
             _ => None,
         }
     }
@@ -166,7 +153,6 @@ struct Schema {
     bitmap_font: Option<BitmapFont>,
 
     content: Option<Content>,
-    font: Option<Font>,
     material: Option<Material>,
     model: Option<Model>,
     scene: Option<Scene>,
