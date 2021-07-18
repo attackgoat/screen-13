@@ -152,10 +152,10 @@ where
         let font = Shared::as_ptr(&self.cmds[idx].borrow().vector_font().unwrap());
         let atlas_idx = self
             .compiler
-            .vector_atlas
-            .binary_search_by(|probe| Shared::as_ptr(probe.font()).cmp(&font))
+            .vector_fonts
+            .binary_search_by(|(probe, _)| Shared::as_ptr(probe).cmp(&font))
             .unwrap();
-        let atlas = &mut self.compiler.vector_atlas[atlas_idx];
+        let (_, atlas) = &mut self.compiler.vector_fonts[atlas_idx];
 
         Instruction::VectorGlyphCopy(atlas)
     }
@@ -218,9 +218,9 @@ where
 
     pub fn vector_textures(&self) -> impl Iterator<Item = &Texture2d> {
         self.compiler
-            .vector_atlas
+            .vector_fonts
             .iter()
-            .flat_map(|atlas| atlas.pages())
+            .flat_map(|(_, atlas)| atlas.pages())
     }
 
     fn write_bitmap_vertices(&mut self, idx: usize) -> Instruction<'_, P> {
@@ -342,9 +342,9 @@ where
     bitmap_desc_sets: usize,
     bitmap_fonts: Vec<Shared<BitmapFont<P>, P>>,
     code: Vec<Asm>,
-    vector_atlas: Vec<DynamicAtlas<P>>,
     vector_chars: Vec<CompiledFont<VectorFont, VectorChar, P>>,
     vector_desc_sets: usize,
+    vector_fonts: Vec<(Shared<VectorFont, P>, DynamicAtlas<P>)>,
 }
 
 impl<P> Compiler<P>
@@ -451,7 +451,7 @@ where
 
         // Ensure we've got a compiled font ready
         let font_ptr = Shared::as_ptr(font);
-        let font_idx = match self
+        let chars_idx = match self
             .bitmap_chars
             .binary_search_by(|probe| Shared::as_ptr(&probe.font).cmp(&font_ptr))
         {
@@ -476,7 +476,7 @@ where
 
         // Allocate enough `buf` to hold everything in the existing chars and everything we
         // could possibly render for these commands (assuming each character is unique)
-        let chars = &mut self.bitmap_chars[font_idx];
+        let chars = &mut self.bitmap_chars[chars_idx];
         let cache_len = chars.cache.len();
         let capacity = cache_len + text_len as u64 * BitmapChar::STRIDE;
 
@@ -697,7 +697,7 @@ where
 
         // Ensure we've got a compiled font ready
         let font_ptr = Shared::as_ptr(font);
-        let font_idx = match self
+        let chars_idx = match self
             .vector_chars
             .binary_search_by(|probe| Shared::as_ptr(&probe.font).cmp(&font_ptr))
         {
@@ -711,17 +711,18 @@ where
 
         // Store a references to the font so we can later bind these textures
         let desc_set_base = self.vector_desc_sets;
-        let atlas_idx = match self
-            .vector_atlas
-            .binary_search_by(|probe| Shared::as_ptr(&probe.font()).cmp(&font_ptr))
+        let font_idx = match self
+            .vector_fonts
+            .binary_search_by(|(probe, _)| Shared::as_ptr(probe).cmp(&font_ptr))
         {
             Err(idx) => {
-                self.vector_atlas.insert(idx, DynamicAtlas::new(font));
+                self.vector_fonts
+                    .insert(idx, (Shared::clone(font), Default::default()));
                 idx
             }
             Ok(idx) => idx,
         };
-        let atlas = &mut self.vector_atlas[atlas_idx];
+        let (_, atlas) = &mut self.vector_fonts[font_idx];
 
         // Figure out the total length of all texts using this font
         let text_len: usize = cmds[idx..end_idx]
@@ -731,7 +732,7 @@ where
 
         // Allocate enough `buf` to hold everything in the existing chars and everything we
         // could possibly render for these commands (assuming each character is unique)
-        let chars = &mut self.vector_chars[font_idx];
+        let chars = &mut self.vector_chars[chars_idx];
         let cache_len = chars.cache.len();
         let capacity = cache_len + text_len as u64 * VectorChar::STRIDE;
 
@@ -794,7 +795,14 @@ where
 
             // Make sure all characters are in the lru data
             let lru_expiry = pool.lru_expiry;
-            for (char, glyph) in atlas.parse(pool, atlas_buf_len, atlas_dims, size, cmd.text()) {
+            for (char, glyph) in font.parse(atlas.rasterize(
+                pool,
+                &font.font,
+                atlas_buf_len,
+                atlas_dims,
+                size,
+                cmd.text(),
+            )) {
                 let key = VectorChar {
                     char,
                     size: size.to_bits(),
@@ -1052,9 +1060,9 @@ where
             bitmap_desc_sets: 0,
             bitmap_fonts: Default::default(),
             code: Default::default(),
-            vector_atlas: Default::default(),
             vector_chars: Default::default(),
             vector_desc_sets: 0,
+            vector_fonts: Default::default(),
         }
     }
 }

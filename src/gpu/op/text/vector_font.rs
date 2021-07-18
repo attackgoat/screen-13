@@ -1,6 +1,7 @@
 use {
+    super::dyn_atlas::RasterizedGlyph,
     crate::{
-        math::{Rect, RectF},
+        math::{CoordF, Rect, RectF},
         pak::Pak,
     },
     fontdue::{Font, FontSettings},
@@ -11,9 +12,48 @@ use {
     },
 };
 
+struct Parser<R>
+where
+    R: Iterator<Item = (char, RasterizedGlyph)>,
+{
+    raster: R,
+    pos: CoordF,
+    size: f32,
+}
+
+impl<R> Iterator for Parser<R>
+where
+    R: Iterator<Item = (char, RasterizedGlyph)>,
+{
+    type Item = (char, VectorGlyph);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let pos = &mut self.pos;
+        self.raster.next().map(|(char, raster)| {
+            let glyph = VectorGlyph {
+                page_idx: raster.page_idx,
+                page_rect: raster.page_rect,
+                screen_rect: RectF::new(
+                    pos.x,
+                    raster.metrics.bounds.ymin,
+                    raster.metrics.bounds.width,
+                    raster.metrics.bounds.height,
+                ),
+            };
+
+            pos.x += raster.metrics.advance_width;
+            pos.y += raster.metrics.advance_height;
+
+            (char, glyph)
+        })
+    }
+}
+
 // TODO: Expand to support fallback fonts like emoji
 /// Holds a vector Font.
-pub struct VectorFont(pub(super) Font);
+pub struct VectorFont {
+    pub(super) font: Font,
+}
 
 impl VectorFont {
     pub(crate) fn load<D, S>(data: D, settings: S) -> Self
@@ -22,7 +62,9 @@ impl VectorFont {
         S: Into<VectorFontSettings>,
     {
         // TODO: Use of unwrap here
-        Self(Font::from_bytes(data, settings.into().into()).unwrap())
+        Self {
+            font: Font::from_bytes(data, settings.into().into()).unwrap(),
+        }
     }
 
     pub(crate) fn read<K, R, S>(pak: &mut Pak<R>, key: K, settings: S) -> Self
@@ -48,17 +90,28 @@ impl VectorFont {
     {
         let mut chars = text.as_ref().chars();
         let mut res = chars.next().map_or(RectF::ZERO, |char| {
-            let bounds = self.0.metrics(char, scale).bounds;
+            let bounds = self.font.metrics(char, scale).bounds;
             RectF::new(bounds.xmin, bounds.ymin, bounds.width, bounds.height)
         });
 
         for char in chars {
-            let bounds = self.0.metrics(char, scale).bounds;
+            let bounds = self.font.metrics(char, scale).bounds;
             res.dims.x += bounds.width - bounds.xmin;
             res.dims.y = res.dims.y.min(bounds.height - bounds.xmin);
         }
 
         res
+    }
+
+    pub(crate) fn parse<R>(&self, raster: R) -> impl Iterator<Item = (char, VectorGlyph)>
+    where
+        R: Iterator<Item = (char, RasterizedGlyph)>,
+    {
+        Parser {
+            pos: CoordF::ZERO,
+            raster,
+            size: 0.0,
+        }
     }
 }
 

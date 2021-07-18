@@ -1,17 +1,16 @@
 use {
-    super::vector_font::{VectorFont, VectorGlyph},
     crate::{
         gpu::{
             adapter, align_up,
             pool::{Lease, Pool},
             Data, Mapping, Texture2d,
         },
-        math::{CoordF, Rect, RectF},
+        math::Rect,
         ptr::Shared,
     },
     archery::SharedPointerKind,
     etagere::{AtlasAllocator, Size},
-    fontdue::OutlineBounds,
+    fontdue::{Font, Metrics},
     gfx_hal::{
         adapter::PhysicalDevice as _,
         format::Format,
@@ -33,55 +32,21 @@ where
     P: SharedPointerKind,
 {
     bufs: Vec<Buffer<P>>,
-    glyphs: HashMap<Key, Value>,
-    font: Shared<VectorFont, P>,
+    glyphs: HashMap<Glyph, RasterizedGlyph>,
     pages: Vec<Page<P>>,
-    pending_glyphs: Vec<Glyph>,
+    pending_glyphs: Vec<PendingGlyph>,
 }
 
 impl<P> DynamicAtlas<P>
 where
     P: SharedPointerKind,
 {
-    pub fn new(font: &Shared<VectorFont, P>) -> Self {
-        Self {
-            bufs: Default::default(),
-            glyphs: Default::default(),
-            font: Shared::clone(font),
-            pages: Default::default(),
-            pending_glyphs: Default::default(),
-        }
-    }
-
-    pub fn font(&self) -> &Shared<VectorFont, P> {
-        &self.font
-    }
-
     pub fn page(&self, idx: usize) -> &Texture2d {
         self.pages[idx].as_ref()
     }
 
     pub fn pages(&self) -> impl ExactSizeIterator<Item = &Texture2d> {
         self.pages.iter().map(|page| page.as_ref())
-    }
-
-    pub(super) fn parse<'a>(
-        &'a mut self,
-        pool: &'a mut Pool<P>,
-        buf_len: u64,
-        dims: u32,
-        size: f32,
-        text: &'a str,
-    ) -> impl Iterator<Item = (char, VectorGlyph)> + 'a {
-        Parser {
-            atlas: self,
-            buf_len,
-            chars: text.chars(),
-            dims,
-            pool,
-            pos: CoordF::ZERO,
-            size,
-        }
     }
 
     /// Work-around for pop_pending_glyph not being in the form of an ExactSizeIterator
@@ -92,35 +57,58 @@ where
     /// Pops a glyph off the pending list and returns a reference to the data. I would love for this
     /// to be an Iterator however the mutable Data reference would live longer than the iterator,
     /// unless there is something I'm missing. So we call it one-by-one no biggie.
-    pub(super) fn pop_pending_glyph<'a>(&'a mut self) -> Option<GlyphRef<'a>> {
+    pub(super) fn pop_pending_glyph<'a>(&'a mut self) -> Option<PendingGlyphRef<'a>> {
         let bufs = &mut self.bufs;
         let pages = &self.pages;
-        self.pending_glyphs.pop().map(move |glyph| GlyphRef {
+        self.pending_glyphs.pop().map(move |glyph| PendingGlyphRef {
             buf: &mut bufs[glyph.buf_idx].data,
             buf_range: glyph.buf_range,
             page: pages[glyph.page_idx].as_ref(),
             page_rect: glyph.page_rect,
         })
     }
+
+    /// Returns an iterator which yields a glyph page index and rectangle for every character in the
+    /// input text. If any given character (at the specified size) has not been rasterized then it
+    /// is written to the 'pending glyph' buffer and should be copied to the specified page before
+    /// use.
+    pub(super) fn rasterize<'a>(
+        &'a mut self,
+        pool: &'a mut Pool<P>,
+        font: &'a Font,
+        buf_len: u64,
+        dims: u32,
+        size: f32,
+        text: &'a str,
+    ) -> impl Iterator<Item = (char, RasterizedGlyph)> + 'a {
+        Rasterizer {
+            atlas: self,
+            buf_len,
+            chars: text.chars(),
+            dims,
+            font,
+            pool,
+            size,
+        }
+    }
 }
 
-struct Glyph {
-    buf_idx: usize,
-    buf_range: Range<u64>,
-    page_idx: usize,
-    page_rect: Rect,
+impl<P> Default for DynamicAtlas<P>
+where
+    P: SharedPointerKind,
+{
+    fn default() -> Self {
+        Self {
+            bufs: Default::default(),
+            glyphs: Default::default(),
+            pages: Default::default(),
+            pending_glyphs: Default::default(),
+        }
+    }
 }
 
-pub struct GlyphRef<'a> {
-    pub buf: &'a mut Data,
-    pub buf_range: Range<u64>,
-    pub page: &'a Texture2d,
-    pub page_rect: Rect,
-}
-
-// TODO: Better name
 #[derive(Eq, Hash, PartialEq)]
-pub struct Key {
+struct Glyph {
     char: char,
     scale: u32, // u32 bits of a f32 because we only care about uniqueness
 }
@@ -142,7 +130,31 @@ where
     }
 }
 
-struct Parser<'a, C, P>
+struct PendingGlyph {
+    buf_idx: usize,
+    buf_range: Range<u64>,
+    page_idx: usize,
+    page_rect: Rect,
+}
+
+/// A single glyph which has been rasterized into a staging buffer which needs to be written to the
+/// GPU and then copied into the specified page texture.
+pub struct PendingGlyphRef<'a> {
+    pub buf: &'a mut Data,
+    pub buf_range: Range<u64>,
+    pub page: &'a Texture2d,
+    pub page_rect: Rect,
+}
+
+/// The layout and location of a single rasterized glyph.
+#[derive(Clone, Copy)]
+pub struct RasterizedGlyph {
+    pub metrics: Metrics,
+    pub page_idx: usize,
+    pub page_rect: Rect,
+}
+
+struct Rasterizer<'a, C, P>
 where
     C: Iterator<Item = char>,
     P: 'static + SharedPointerKind,
@@ -151,17 +163,17 @@ where
     buf_len: u64,
     chars: C,
     dims: u32,
+    font: &'a Font,
     pool: &'a mut Pool<P>,
-    pos: CoordF,
     size: f32,
 }
 
-impl<C, P> Iterator for Parser<'_, C, P>
+impl<C, P> Iterator for Rasterizer<'_, C, P>
 where
     C: Iterator<Item = char>,
     P: SharedPointerKind,
 {
-    type Item = (char, VectorGlyph);
+    type Item = (char, RasterizedGlyph);
 
     fn next(&mut self) -> Option<Self::Item> {
         self.chars.next().map(|char| {
@@ -169,20 +181,19 @@ where
             let dims = self.dims;
             let size = self.size;
             let bufs = &mut self.atlas.bufs;
-            let font = &self.atlas.font;
+            let font = &self.font;
             let pages = &mut self.atlas.pages;
             let pending_glyphs = &mut self.atlas.pending_glyphs;
             let pool = &mut self.pool;
-            let pos = &mut self.pos;
-            let glyph = self
+            let raster = self
                 .atlas
                 .glyphs
-                .entry(Key {
+                .entry(Glyph {
                     char,
                     scale: self.size.to_bits(),
                 })
                 .or_insert_with(|| {
-                    let (mut metrics, mut raster) = font.0.rasterize(char, size);
+                    let (mut metrics, mut raster) = font.rasterize(char, size);
 
                     // Whitespace characters have no rasterized pixels - we use a single blank pixel
                     if raster.is_empty() {
@@ -296,7 +307,7 @@ where
                         metrics.width as _,
                         metrics.height as _,
                     );
-                    pending_glyphs.push(Glyph {
+                    pending_glyphs.push(PendingGlyph {
                         buf_idx,
                         buf_range: buf.offset..buf.offset + raster.len() as u64,
                         page_idx,
@@ -304,40 +315,14 @@ where
                     });
                     buf.offset += align_up(raster.len(), non_coherent_atom_size) as u64;
 
-                    Value {
-                        advance: CoordF::new(metrics.advance_width, metrics.advance_height),
-                        bounds: metrics.bounds,
+                    RasterizedGlyph {
+                        metrics,
                         page_idx,
                         page_rect,
                     }
                 });
 
-            let res = (
-                char,
-                VectorGlyph {
-                    page_idx: glyph.page_idx,
-                    page_rect: glyph.page_rect,
-                    screen_rect: RectF::new(
-                        pos.x,
-                        glyph.bounds.height + glyph.bounds.ymin,
-                        glyph.bounds.width,
-                        glyph.bounds.height,
-                    ),
-                },
-            );
-
-            pos.x += glyph.advance.x;
-            pos.y += glyph.advance.y;
-
-            res
+            (char, *raster)
         })
     }
-}
-
-// TODO: Better name
-pub struct Value {
-    pub advance: CoordF,
-    pub bounds: OutlineBounds,
-    pub page_idx: usize,
-    pub page_rect: Rect,
 }
