@@ -34,8 +34,8 @@ where
                 page_idx: raster.page_idx,
                 page_rect: raster.page_rect,
                 screen_rect: RectF::new(
-                    pos.x,
-                    raster.metrics.bounds.ymin,
+                    pos.x + raster.metrics.bounds.xmin,
+                    -raster.metrics.bounds.height - raster.metrics.bounds.ymin,
                     raster.metrics.bounds.width,
                     raster.metrics.bounds.height,
                 ),

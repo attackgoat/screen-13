@@ -461,7 +461,7 @@ where
     }
 
     unsafe fn submit_text_render(&mut self, vertices: Range<VertexCount>) {
-        trace!("submit_text_render");
+        trace!("submit_text_render {}..{}", vertices.start, vertices.end);
 
         self.cmd_buf.draw(vertices, 0..1);
     }

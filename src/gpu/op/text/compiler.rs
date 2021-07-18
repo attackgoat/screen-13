@@ -759,11 +759,13 @@ where
         for cmd in cmds[idx..end_idx].iter() {
             let cmd = cmd.borrow();
 
-            // Quantize incoming size to 1/3 of a pixel and skip tiny text
-            let size = (cmd.size() * 3.0).trunc() / 3.0;
-            if size < 1.0 / 3.0 {
-                continue;
-            }
+            // TODO: Add tests for drawing zero sized or oddly sized text and no text too
+            // // Quantize incoming size to 1/3 of a pixel and skip tiny text
+            // let size = (cmd.size() * 3.0).trunc() / 3.0;
+            // if size < 1.0 / 3.0 {
+            //     debug!("Skipping text with a size of {}", size);
+            //     continue;
+            // }
 
             // Always update transform
             let view_proj = if let Some(view_proj) = cmd.transform() {
@@ -800,12 +802,12 @@ where
                 &font.font,
                 atlas_buf_len,
                 atlas_dims,
-                size,
+                cmd.size(),
                 cmd.text(),
             )) {
                 let key = VectorChar {
                     char,
-                    size: size.to_bits(),
+                    size: cmd.size().to_bits(),
                     x: glyph.screen_rect.pos.x.to_bits(),
                     y: glyph.screen_rect.pos.y.to_bits(),
                 };

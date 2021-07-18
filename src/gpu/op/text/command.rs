@@ -9,6 +9,9 @@ use {
     std::iter::{once, Once},
 };
 
+// TODO: Add .with_layout type patterns for left/center/right top/middle/bottom and line breaking
+// behavior
+
 /// An expressive type which allows specification of individual text operations.
 #[non_exhaustive]
 pub enum Command<P, T>
