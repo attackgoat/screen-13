@@ -1,3 +1,5 @@
+pub use bmfont::CharPosition as BitmapGlyph;
+
 use {
     crate::{
         gpu::{
@@ -9,7 +11,7 @@ use {
         pak::Pak,
     },
     archery::SharedPointerKind,
-    bmfont::{BMFont, CharPosition, OrdinateOrientation},
+    bmfont::{BMFont, OrdinateOrientation},
     std::{
         fmt::{Debug, Error, Formatter},
         io::{Cursor, Read, Seek},
@@ -100,7 +102,7 @@ where
         self.pages.iter().map(|page| page.as_ref())
     }
 
-    pub(super) fn parse<'a>(&'a self, text: &'a str) -> impl Iterator<Item = CharPosition> + 'a {
+    pub(super) fn parse<'a>(&'a self, text: &'a str) -> impl Iterator<Item = BitmapGlyph> + 'a {
         self.font.parse(text)
     }
 }

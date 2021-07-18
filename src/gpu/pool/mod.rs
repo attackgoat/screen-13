@@ -801,10 +801,8 @@ where
 
     pub(super) fn text_compiler(&mut self) -> Lease<TextCompiler<P>, P> {
         let item = if let Some(item) = self.text_compilers.borrow_mut().pop_back() {
-            warn!("Found text compiler in cache");
             item
         } else {
-            warn!("Creating new text compiler");
             Default::default()
         };
 

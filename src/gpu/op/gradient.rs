@@ -102,7 +102,10 @@ where
             dims,
             fmt,
             Layout::Undefined,
-            ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
+            ImageUsage::COLOR_ATTACHMENT
+                | ImageUsage::INPUT_ATTACHMENT
+                | ImageUsage::TRANSFER_DST
+                | ImageUsage::TRANSFER_SRC,
             1,
             1,
             1,

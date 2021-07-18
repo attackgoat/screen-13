@@ -1,5 +1,8 @@
 use {
-    crate::{math::RectF, pak::Pak},
+    crate::{
+        math::{Rect, RectF},
+        pak::Pak,
+    },
     fontdue::{Font, FontSettings},
     std::{
         fmt::{Debug, Error, Formatter},
@@ -102,4 +105,11 @@ impl From<VectorFontSettings> for FontSettings {
             scale: settings.scale,
         }
     }
+}
+
+#[derive(Clone, Copy)]
+pub struct VectorGlyph {
+    pub page_idx: usize,
+    pub page_rect: Rect,
+    pub screen_rect: RectF,
 }

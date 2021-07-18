@@ -15,7 +15,7 @@ use {
         },
         device::Device as _,
         format::{ChannelType, Format},
-        image::{Access, FramebufferAttachment, Layout},
+        image::{Access, FramebufferAttachment, Layout, Usage},
         pool::CommandPool as _,
         pso::{Descriptor, DescriptorSetWrite, PipelineStage, ShaderStageFlags, Viewport},
         queue::Queue as _,
@@ -139,6 +139,12 @@ impl Swapchain {
                 (self.images.len() as u32)
                     .max(*caps.image_count.start())
                     .min(*caps.image_count.end()),
+            )
+            .with_image_usage(
+                Usage::COLOR_ATTACHMENT
+                    | Usage::SAMPLED
+                    | Usage::TRANSFER_DST
+                    | Usage::TRANSFER_SRC,
             )
             .with_present_mode(
                 if self.v_sync && caps.present_modes.contains(PresentMode::MAILBOX) {

@@ -207,7 +207,10 @@ where
             bitmap.dims(),
             fmt,
             Layout::Undefined,
-            ImageUsage::SAMPLED | ImageUsage::STORAGE,
+            ImageUsage::SAMPLED
+                | ImageUsage::STORAGE
+                | ImageUsage::TRANSFER_DST
+                | ImageUsage::TRANSFER_SRC,
             1,
             1,
             1,
@@ -456,6 +459,13 @@ where
 
     unsafe fn submit_finish(&mut self) {
         trace!("submit_finish");
+
+        self.texture.set_layout(
+            &mut self.cmd_buf,
+            Layout::ShaderReadOnlyOptimal,
+            PipelineStage::VERTEX_SHADER,
+            ImageAccess::SHADER_READ,
+        );
 
         // Finish
         self.cmd_buf.finish();

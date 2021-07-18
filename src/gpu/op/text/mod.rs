@@ -2,8 +2,8 @@ mod bitmap_font;
 mod command;
 mod compiler;
 mod dyn_atlas;
+mod glyph;
 mod instruction;
-mod tess;
 mod vector_font;
 
 pub use self::{
@@ -110,7 +110,10 @@ where
             dims,
             fmt,
             Layout::Undefined,
-            ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
+            ImageUsage::COLOR_ATTACHMENT
+                | ImageUsage::SAMPLED
+                | ImageUsage::TRANSFER_DST
+                | ImageUsage::TRANSFER_SRC,
             1,
             1,
             1,
@@ -133,7 +136,7 @@ where
             once(FramebufferAttachment {
                 format: fmt,
                 usage: ImageUsage::COLOR_ATTACHMENT
-                    | ImageUsage::INPUT_ATTACHMENT
+                    | ImageUsage::SAMPLED
                     | ImageUsage::TRANSFER_DST
                     | ImageUsage::TRANSFER_SRC,
                 view_caps: ViewCapabilities::MUTABLE_FORMAT,
@@ -284,8 +287,8 @@ where
                         Instruction::VectorColor(glyph_color) => {
                             self.submit_vector_color(glyph_color)
                         }
-                        Instruction::VectorCopyGlyphs(atlas) => {
-                            self.submit_vector_copy_glyphs(atlas)
+                        Instruction::VectorGlyphCopy(atlas) => {
+                            self.submit_vector_glyph_copies(atlas)
                         }
                         Instruction::VectorTransform(view_proj) => {
                             self.submit_vector_transform(view_proj)
@@ -498,8 +501,8 @@ where
         );
     }
 
-    unsafe fn submit_vector_copy_glyphs(&mut self, atlas: &mut DynamicAtlas<P>) {
-        trace!("submit_vector_copy_glyphs");
+    unsafe fn submit_vector_glyph_copies(&mut self, atlas: &mut DynamicAtlas<P>) {
+        trace!("submit_vector_glyph_copies");
 
         while let Some(glyph) = atlas.pop_pending_glyph() {
             glyph
@@ -509,7 +512,7 @@ where
                 &mut self.cmd_buf,
                 PipelineStage::TRANSFER..PipelineStage::TRANSFER,
                 BufferAccess::TRANSFER_WRITE..BufferAccess::TRANSFER_READ,
-                glyph.buf_range,
+                glyph.buf_range.clone(),
             );
             glyph.page.set_layout(
                 &mut self.cmd_buf,
@@ -522,9 +525,9 @@ where
                 glyph.page.as_ref(),
                 Layout::TransferDstOptimal,
                 once(BufferImageCopy {
-                    buffer_offset: 0,
-                    buffer_width: glyph.buf_dims.x,
-                    buffer_height: glyph.buf_dims.y,
+                    buffer_offset: glyph.buf_range.start,
+                    buffer_width: glyph.page_rect.dims.x,
+                    buffer_height: glyph.page_rect.dims.y,
                     image_layers: SubresourceLayers {
                         aspects: Aspects::COLOR,
                         level: 0,
@@ -537,7 +540,7 @@ where
             glyph.page.set_layout(
                 &mut self.cmd_buf,
                 Layout::ShaderReadOnlyOptimal,
-                PipelineStage::FRAGMENT_SHADER,
+                PipelineStage::VERTEX_SHADER,
                 ImageAccess::SHADER_READ,
             );
         }
@@ -579,29 +582,46 @@ where
     unsafe fn submit_vertex_copies(&mut self, instr: DataCopyInstruction) {
         trace!("submit_vertex_copies");
 
-        instr.buf.barrier_ranges(
-            &mut self.cmd_buf,
-            PipelineStage::TRANSFER..PipelineStage::TRANSFER,
-            BufferAccess::TRANSFER_WRITE..BufferAccess::TRANSFER_READ,
-            CopyRangeSrcRangeIter(instr.ranges.iter()),
-        );
-        instr.buf.barrier_ranges(
-            &mut self.cmd_buf,
-            PipelineStage::TRANSFER..PipelineStage::TRANSFER,
-            BufferAccess::TRANSFER_WRITE..BufferAccess::TRANSFER_WRITE,
-            CopyRangeDstRangeIter(instr.ranges.iter()),
-        );
-        instr.buf.copy_ranges(&mut self.cmd_buf, instr.ranges);
-        instr.buf.barrier_ranges(
-            &mut self.cmd_buf,
-            PipelineStage::TRANSFER..PipelineStage::VERTEX_INPUT,
-            BufferAccess::TRANSFER_WRITE..BufferAccess::VERTEX_BUFFER_READ,
-            CopyRangeDstRangeIter(instr.ranges.iter()),
-        );
+        // Vertex ranges overlap and so must be submitted individually
+        for range in instr.ranges {
+            trace!(
+                "submit_vertex_copies {}..{} -> {}..{} ({} bytes)",
+                range.src.start,
+                range.src.end,
+                range.dst,
+                range.dst + range.src.end - range.src.start,
+                range.src.end - range.src.start
+            );
+
+            instr.buf.barrier_ranges(
+                &mut self.cmd_buf,
+                PipelineStage::TRANSFER..PipelineStage::TRANSFER,
+                BufferAccess::TRANSFER_WRITE..BufferAccess::TRANSFER_READ,
+                CopyRangeSrcRangeIter(once(range)),
+            );
+            instr.buf.barrier_ranges(
+                &mut self.cmd_buf,
+                PipelineStage::TRANSFER..PipelineStage::TRANSFER,
+                BufferAccess::TRANSFER_WRITE..BufferAccess::TRANSFER_WRITE,
+                CopyRangeDstRangeIter(once(range)),
+            );
+            instr.buf.copy_range(&mut self.cmd_buf, range);
+            instr.buf.barrier_ranges(
+                &mut self.cmd_buf,
+                PipelineStage::TRANSFER..PipelineStage::VERTEX_INPUT,
+                BufferAccess::TRANSFER_WRITE..BufferAccess::VERTEX_BUFFER_READ,
+                CopyRangeDstRangeIter(once(range)),
+            );
+        }
     }
 
     unsafe fn submit_vertex_write(&mut self, instr: DataWriteInstruction) {
-        trace!("submit_vertex_write");
+        trace!(
+            "submit_vertex_write {}..{} ({} bytes)",
+            instr.range.start,
+            instr.range.end,
+            instr.range.end - instr.range.start
+        );
 
         instr.buf.barrier_range(
             &mut self.cmd_buf,
@@ -612,12 +632,6 @@ where
         instr
             .buf
             .write_range(&mut self.cmd_buf, instr.range.start..instr.range.end);
-        instr.buf.barrier_range(
-            &mut self.cmd_buf,
-            PipelineStage::TRANSFER..PipelineStage::VERTEX_INPUT,
-            BufferAccess::TRANSFER_WRITE..BufferAccess::VERTEX_BUFFER_READ,
-            instr.range.start..instr.range.end,
-        );
         instr.buf.barrier_range(
             &mut self.cmd_buf,
             PipelineStage::TRANSFER..PipelineStage::VERTEX_INPUT,

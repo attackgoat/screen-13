@@ -1,17 +1,20 @@
 use {
-    super::VectorFont,
+    super::vector_font::{VectorFont, VectorGlyph},
     crate::{
         gpu::{
+            adapter, align_up,
             pool::{Lease, Pool},
             Data, Mapping, Texture2d,
         },
-        math::{Extent, Rect, RectF},
+        math::{CoordF, Rect, RectF},
         ptr::Shared,
     },
     archery::SharedPointerKind,
     etagere::{AtlasAllocator, Size},
+    fontdue::OutlineBounds,
     gfx_hal::{
-        format::{Format, ImageFeature},
+        adapter::PhysicalDevice as _,
+        format::Format,
         image::{Layout as ImageLayout, Usage as ImageUsage},
     },
     std::{collections::HashMap, ops::Range, ptr::copy_nonoverlapping},
@@ -30,9 +33,8 @@ where
     P: SharedPointerKind,
 {
     bufs: Vec<Buffer<P>>,
-    glyphs: HashMap<Key, GlyphPosition>,
+    glyphs: HashMap<Key, Value>,
     font: Shared<VectorFont, P>,
-    has_alpha: bool,
     pages: Vec<Page<P>>,
     pending_glyphs: Vec<Glyph>,
 }
@@ -41,15 +43,11 @@ impl<P> DynamicAtlas<P>
 where
     P: SharedPointerKind,
 {
-    pub fn new(pool: &mut Pool<P>, font: &Shared<VectorFont, P>) -> Self {
-        let desired_fmts = &[Format::Rgb8Unorm, Format::Rgba8Unorm];
-        let fmt = unsafe { pool.best_fmt(desired_fmts, ImageFeature::SAMPLED).unwrap() };
-
+    pub fn new(font: &Shared<VectorFont, P>) -> Self {
         Self {
             bufs: Default::default(),
             glyphs: Default::default(),
             font: Shared::clone(font),
-            has_alpha: fmt == Format::Rgba8Unorm,
             pages: Default::default(),
             pending_glyphs: Default::default(),
         }
@@ -67,7 +65,6 @@ where
         self.pages.iter().map(|page| page.as_ref())
     }
 
-    // TODO: Make the below 'quantization_factor' (the 3.0) configurable?
     pub(super) fn parse<'a>(
         &'a mut self,
         pool: &'a mut Pool<P>,
@@ -75,13 +72,14 @@ where
         dims: u32,
         size: f32,
         text: &'a str,
-    ) -> impl Iterator<Item = (char, GlyphPosition)> + 'a {
+    ) -> impl Iterator<Item = (char, VectorGlyph)> + 'a {
         Parser {
             atlas: self,
             buf_len,
             chars: text.chars(),
             dims,
             pool,
+            pos: CoordF::ZERO,
             size,
         }
     }
@@ -99,7 +97,6 @@ where
         let pages = &self.pages;
         self.pending_glyphs.pop().map(move |glyph| GlyphRef {
             buf: &mut bufs[glyph.buf_idx].data,
-            buf_dims: glyph.buf_dims,
             buf_range: glyph.buf_range,
             page: pages[glyph.page_idx].as_ref(),
             page_rect: glyph.page_rect,
@@ -109,27 +106,19 @@ where
 
 struct Glyph {
     buf_idx: usize,
-    buf_dims: Extent,
     buf_range: Range<u64>,
     page_idx: usize,
     page_rect: Rect,
 }
 
-#[derive(Clone, Copy)]
-pub struct GlyphPosition {
-    pub page_idx: usize,
-    pub page_rect: Rect,
-    pub screen_rect: RectF,
-}
-
 pub struct GlyphRef<'a> {
     pub buf: &'a mut Data,
-    pub buf_dims: Extent,
     pub buf_range: Range<u64>,
     pub page: &'a Texture2d,
     pub page_rect: Rect,
 }
 
+// TODO: Better name
 #[derive(Eq, Hash, PartialEq)]
 pub struct Key {
     char: char,
@@ -163,6 +152,7 @@ where
     chars: C,
     dims: u32,
     pool: &'a mut Pool<P>,
+    pos: CoordF,
     size: f32,
 }
 
@@ -171,7 +161,7 @@ where
     C: Iterator<Item = char>,
     P: SharedPointerKind,
 {
-    type Item = (char, GlyphPosition);
+    type Item = (char, VectorGlyph);
 
     fn next(&mut self) -> Option<Self::Item> {
         self.chars.next().map(|char| {
@@ -180,11 +170,11 @@ where
             let size = self.size;
             let bufs = &mut self.atlas.bufs;
             let font = &self.atlas.font;
-            let has_alpha = self.atlas.has_alpha;
             let pages = &mut self.atlas.pages;
             let pending_glyphs = &mut self.atlas.pending_glyphs;
             let pool = &mut self.pool;
-            let layout = self
+            let pos = &mut self.pos;
+            let glyph = self
                 .atlas
                 .glyphs
                 .entry(Key {
@@ -192,38 +182,13 @@ where
                     scale: self.size.to_bits(),
                 })
                 .or_insert_with(|| {
-                    let (mut metrics, mut raster) = font.0.rasterize_subpixel(char, size);
-
-                    debug!(
-                        "Rasterizing '{}' ({} bytes, metrics = {}x{})",
-                        char,
-                        raster.len(),
-                        metrics.width,
-                        metrics.height
-                    );
+                    let (mut metrics, mut raster) = font.0.rasterize(char, size);
 
                     // Whitespace characters have no rasterized pixels - we use a single blank pixel
                     if raster.is_empty() {
                         metrics.height = 1;
                         metrics.width = 1;
-                        raster.extend_from_slice(&[0, 0, 0]);
-                    }
-
-                    // If we're using an alpha channel we must expand the data to include it
-                    if has_alpha {
-                        raster.resize(metrics.width * metrics.height * 4, 0);
-                        let raster_ptr = raster.as_mut_ptr();
-                        for y in metrics.height as isize - 1..=0 {
-                            for x in metrics.width as isize - 1..=0 {
-                                unsafe {
-                                    copy_nonoverlapping(
-                                        raster_ptr.offset(x * 3 + y),
-                                        raster_ptr.offset(x * 4 + y),
-                                        4,
-                                    );
-                                }
-                            }
-                        }
+                        raster.push(0);
                     }
 
                     // TODO: Assert width and height are reasonable values?
@@ -249,13 +214,11 @@ where
                                     #[cfg(feature = "debug-names")]
                                     "Vector font atlas",
                                     (dims, dims).into(),
-                                    if has_alpha {
-                                        Format::Rgba8Unorm
-                                    } else {
-                                        Format::Rgb8Unorm
-                                    },
+                                    Format::R8Unorm,
                                     ImageLayout::Undefined,
-                                    ImageUsage::SAMPLED,
+                                    ImageUsage::SAMPLED
+                                        | ImageUsage::TRANSFER_DST
+                                        | ImageUsage::TRANSFER_SRC,
                                     1,
                                     1,
                                     1,
@@ -267,12 +230,22 @@ where
                             (page_idx, allocation)
                         });
 
+                    let (non_coherent_atom_size, optimal_buffer_copy_offset_alignment) = unsafe {
+                        let limits = adapter().physical_device.properties().limits;
+
+                        (
+                            limits.non_coherent_atom_size,
+                            limits.optimal_buffer_copy_offset_alignment,
+                        )
+                    };
+
                     // Get a large enough buffer (optimization: must be the last buffer) or a new one
                     let bufs_len = bufs.len();
-                    let (buf, buf_idx) = if let Some(buf) = bufs
-                        .last_mut()
-                        .filter(|buf| buf.data.capacity() - buf.offset >= raster.len() as _)
-                    {
+                    let (buf, buf_idx) = if let Some(buf) = bufs.last_mut().filter(|buf| {
+                        buf.data.capacity() as i64
+                            - align_up(buf.offset, optimal_buffer_copy_offset_alignment) as i64
+                            >= raster.len() as _
+                    }) {
                         (buf, bufs_len - 1)
                     } else {
                         bufs.push(Buffer {
@@ -304,30 +277,67 @@ where
                         Mapping::flush(&mut mapped_range).unwrap();
                     }
 
+                    debug!(
+                        "Rasterized '{}' ({} bytes, metrics={}x{}, buf={}..{} page={} buf={})",
+                        char,
+                        raster.len(),
+                        metrics.width,
+                        metrics.height,
+                        buf.offset,
+                        buf.offset + raster.len() as u64,
+                        page_idx,
+                        buf_idx,
+                    );
+
                     // Keep track of the need to copy this buffer data to the page
                     let page_rect = Rect::new(
                         allocation.rectangle.min.x,
                         allocation.rectangle.min.y,
-                        allocation.rectangle.width() as _,
-                        allocation.rectangle.height() as _,
+                        metrics.width as _,
+                        metrics.height as _,
                     );
                     pending_glyphs.push(Glyph {
                         buf_idx,
-                        buf_dims: Extent::new(metrics.width as _, metrics.height as _),
                         buf_range: buf.offset..buf.offset + raster.len() as u64,
                         page_idx,
                         page_rect,
                     });
-                    buf.offset += raster.len() as u64;
+                    buf.offset += align_up(raster.len(), non_coherent_atom_size) as u64;
 
-                    GlyphPosition {
+                    Value {
+                        advance: CoordF::new(metrics.advance_width, metrics.advance_height),
+                        bounds: metrics.bounds,
                         page_idx,
                         page_rect,
-                        screen_rect: RectF::ZERO,
                     }
                 });
 
-            (char, *layout)
+            let res = (
+                char,
+                VectorGlyph {
+                    page_idx: glyph.page_idx,
+                    page_rect: glyph.page_rect,
+                    screen_rect: RectF::new(
+                        pos.x,
+                        glyph.bounds.height + glyph.bounds.ymin,
+                        glyph.bounds.width,
+                        glyph.bounds.height,
+                    ),
+                },
+            );
+
+            pos.x += glyph.advance.x;
+            pos.y += glyph.advance.y;
+
+            res
         })
     }
+}
+
+// TODO: Better name
+pub struct Value {
+    pub advance: CoordF,
+    pub bounds: OutlineBounds,
+    pub page_idx: usize,
+    pub page_rect: Rect,
 }

@@ -192,9 +192,10 @@ where
                 .ok()
                 .unwrap();
             self.items[idx].offset = start;
+            let next = *offset + stride;
             *offset = start;
 
-            start += stride;
+            start = next;
         }
     }
 

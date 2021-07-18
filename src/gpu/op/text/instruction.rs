@@ -29,7 +29,7 @@ where
     VectorBegin,
     VectorBindDescriptorSet(usize),
     VectorColor(AlphaColor),
-    VectorCopyGlyphs(&'a mut DynamicAtlas<P>),
+    VectorGlyphCopy(&'a mut DynamicAtlas<P>),
     VectorTransform(Mat4),
     VertexBind(VertexBindInstruction<'a, P>),
     VertexCopy(DataCopyInstruction<'a>),

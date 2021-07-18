@@ -60,7 +60,11 @@ where
             dims,
             geom_fmt,
             Layout::Undefined,
-            ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT | ImageUsage::SAMPLED,
+            ImageUsage::COLOR_ATTACHMENT
+                | ImageUsage::INPUT_ATTACHMENT
+                | ImageUsage::SAMPLED
+                | ImageUsage::TRANSFER_DST
+                | ImageUsage::TRANSFER_SRC,
             1,
             1,
             1,
@@ -71,7 +75,11 @@ where
             dims,
             geom_fmt,
             Layout::Undefined,
-            ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT | ImageUsage::SAMPLED,
+            ImageUsage::COLOR_ATTACHMENT
+                | ImageUsage::INPUT_ATTACHMENT
+                | ImageUsage::SAMPLED
+                | ImageUsage::TRANSFER_DST
+                | ImageUsage::TRANSFER_SRC,
             1,
             1,
             1,
@@ -82,7 +90,11 @@ where
             dims,
             light_fmt,
             Layout::Undefined,
-            ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT | ImageUsage::SAMPLED,
+            ImageUsage::COLOR_ATTACHMENT
+                | ImageUsage::INPUT_ATTACHMENT
+                | ImageUsage::SAMPLED
+                | ImageUsage::TRANSFER_DST
+                | ImageUsage::TRANSFER_SRC,
             1,
             1,
             1,
@@ -93,7 +105,7 @@ where
             dims,
             output_fmt,
             Layout::Undefined,
-            ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSFER_SRC,
+            ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSFER_DST | ImageUsage::TRANSFER_SRC,
             1,
             1,
             1,
@@ -106,7 +118,9 @@ where
             Layout::Undefined,
             ImageUsage::DEPTH_STENCIL_ATTACHMENT
                 | ImageUsage::INPUT_ATTACHMENT
-                | ImageUsage::SAMPLED,
+                | ImageUsage::SAMPLED
+                | ImageUsage::TRANSFER_DST
+                | ImageUsage::TRANSFER_SRC,
             1,
             1,
             1,

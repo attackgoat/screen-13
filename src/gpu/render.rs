@@ -56,7 +56,7 @@ where
             dims,
             fmt,
             Layout::Undefined,
-            Usage::SAMPLED,
+            Usage::SAMPLED | Usage::TRANSFER_DST | Usage::TRANSFER_SRC,
             1,
             1,
             1,

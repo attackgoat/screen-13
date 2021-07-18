@@ -144,7 +144,6 @@ impl Texture<Image2d> {
         } else {
             Access::empty()
         };
-        let usage = Usage::TRANSFER_DST | Usage::TRANSFER_SRC | usage;
         let image = Image2d::new_optimal(
             #[cfg(feature = "debug-names")]
             name,
@@ -163,7 +162,7 @@ impl Texture<Image2d> {
             state: RefCell::new(State {
                 access_mask,
                 layout,
-                pipeline_stage: PipelineStage::TOP_OF_PIPE, // TODO: Was BOTTOM_ in vlb. What to do?
+                pipeline_stage: PipelineStage::TOP_OF_PIPE,
             }),
             usage,
             views: Default::default(),

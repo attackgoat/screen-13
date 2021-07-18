@@ -1,6 +1,6 @@
 use {
     super::{
-        bitmap_font::BitmapFont, dyn_atlas::DynamicAtlas, tess::tessellate,
+        bitmap_font::BitmapFont, dyn_atlas::DynamicAtlas, glyph::Glyph as _,
         vector_font::VectorFont, Command, Instruction, VertexBindInstruction,
     },
     crate::{
@@ -157,7 +157,7 @@ where
             .unwrap();
         let atlas = &mut self.compiler.vector_atlas[atlas_idx];
 
-        Instruction::VectorCopyGlyphs(atlas)
+        Instruction::VectorGlyphCopy(atlas)
     }
 
     fn copy_vector_vertices(&mut self, idx: usize) -> Instruction<'_, P> {
@@ -535,13 +535,13 @@ where
             let mut text: Option<(usize, Range<u64>)> = None;
 
             // Make sure all characters are in the lru data
-            for layout in font.parse(cmd.text()) {
+            for glyph in font.parse(cmd.text()) {
                 let key = BitmapChar {
-                    char: layout.char(),
-                    x: layout.screen_rect.x,
-                    y: layout.screen_rect.y,
+                    char: glyph.char(),
+                    x: glyph.screen_rect.x,
+                    y: glyph.screen_rect.y,
                 };
-                let page_idx = layout.page_index;
+                let page_idx = glyph.page_index;
                 // TODO: Before searching we should check the index which follows the previous one
                 let offset = match chars
                     .cache
@@ -550,8 +550,8 @@ where
                 {
                     Err(idx) => {
                         // Cache the vertices for this character
-                        let vertices = tessellate(layout);
-                        let start = end;
+                        let vertices = glyph.tessellate();
+                        let offset = end;
                         end += vertices.len() as u64;
 
                         unsafe {
@@ -559,7 +559,7 @@ where
                                 .cache
                                 .allocation
                                 .current
-                                .map_range_mut(start..end)
+                                .map_range_mut(offset..end)
                                 .unwrap();
                             copy_nonoverlapping(
                                 vertices.as_ptr(),
@@ -571,16 +571,16 @@ where
                         }
 
                         // Create a new cache entry for this character
-                        chars.cache.usage.push((start, key));
+                        chars.cache.usage.push((offset, key));
                         chars.cache.items.insert(
                             idx,
                             Lru {
                                 expiry: pool.lru_expiry,
                                 key,
-                                offset: start,
+                                offset,
                             },
                         );
-                        start
+                        offset
                     }
                     Ok(idx) => {
                         let lru = &mut chars.cache.items[idx];
@@ -716,7 +716,7 @@ where
             .binary_search_by(|probe| Shared::as_ptr(&probe.font()).cmp(&font_ptr))
         {
             Err(idx) => {
-                self.vector_atlas.insert(idx, DynamicAtlas::new(pool, font));
+                self.vector_atlas.insert(idx, DynamicAtlas::new(font));
                 idx
             }
             Ok(idx) => idx,
@@ -797,9 +797,9 @@ where
             for (char, glyph) in atlas.parse(pool, atlas_buf_len, atlas_dims, size, cmd.text()) {
                 let key = VectorChar {
                     char,
-                    size,
-                    x: glyph.screen_rect.pos.x,
-                    y: glyph.screen_rect.pos.y,
+                    size: size.to_bits(),
+                    x: glyph.screen_rect.pos.x.to_bits(),
+                    y: glyph.screen_rect.pos.y.to_bits(),
                 };
                 let page_idx = glyph.page_idx;
                 let offset = match chars
@@ -809,8 +809,8 @@ where
                 {
                     Err(idx) => {
                         // Cache the vertices for this character
-                        let vertices = tessellate(glyph);
-                        let start = end;
+                        let vertices = glyph.tessellate();
+                        let offset = end;
                         end += vertices.len() as u64;
 
                         unsafe {
@@ -818,7 +818,7 @@ where
                                 .cache
                                 .allocation
                                 .current
-                                .map_range_mut(start..end)
+                                .map_range_mut(offset..end)
                                 .unwrap();
                             copy_nonoverlapping(
                                 vertices.as_ptr(),
@@ -830,16 +830,16 @@ where
                         }
 
                         // Create a new cache entry for this character
-                        chars.cache.usage.push((start, key));
+                        chars.cache.usage.push((offset, key));
                         chars.cache.items.insert(
                             idx,
                             Lru {
                                 expiry: lru_expiry,
                                 key,
-                                offset: start,
+                                offset,
                             },
                         );
-                        start
+                        offset
                     }
                     Ok(idx) => {
                         let lru = &mut chars.cache.items[idx];
@@ -953,7 +953,6 @@ where
         self.bitmap_fonts.clear();
         self.bitmap_desc_sets = 0;
         self.vector_desc_sets = 0;
-        // self.vector_fonts.clear();
 
         // TODO: Can these things be just two functions called two times each?
 
@@ -1066,49 +1065,17 @@ enum Pipeline {
     Vector,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 struct VectorChar {
     char: char,
-    size: f32,
-    x: f32,
-    y: f32,
+    size: u32,
+    x: u32,
+    y: u32,
 }
 
 impl VectorChar {
     /// Each character is rendered as a quad
     const STRIDE: u64 = 96;
-}
-
-impl Eq for VectorChar {}
-
-impl Ord for VectorChar {
-    fn cmp(&self, other: &Self) -> Ordering {
-        let res = self.char.cmp(&other.char);
-        if res != Ordering::Less {
-            return res;
-        }
-
-        let res = self
-            .size
-            .partial_cmp(&other.size)
-            .unwrap_or(Ordering::Equal);
-        if res != Ordering::Less {
-            return res;
-        }
-
-        let res = self.x.partial_cmp(&other.x).unwrap_or(Ordering::Equal);
-        if res != Ordering::Less {
-            return res;
-        }
-
-        self.y.partial_cmp(&other.y).unwrap_or(Ordering::Equal)
-    }
-}
-
-impl PartialOrd for VectorChar {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
 }
 
 impl Stride for VectorChar {

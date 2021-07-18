@@ -8,7 +8,7 @@ use {
     serde::{Deserialize, Serialize},
     std::{
         fmt::{Display, Formatter, Result},
-        ops::{Div, DivAssign, Mul, MulAssign, Neg},
+        ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg},
     },
     winit::dpi::{LogicalSize, PhysicalSize},
 };
@@ -110,6 +110,30 @@ impl Coord<u32> {
             w: self.x as _,
             h: self.y as _,
         }
+    }
+}
+
+impl<T> Add for Coord<T>
+where
+    T: Add<T, Output = T>,
+{
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self::Output {
+            x: self.x + rhs.x,
+            y: self.y + rhs.y,
+        }
+    }
+}
+
+impl<T> AddAssign for Coord<T>
+where
+    T: AddAssign<T>,
+{
+    fn add_assign(&mut self, rhs: Coord<T>) {
+        self.x += rhs.x;
+        self.y += rhs.y;
     }
 }
 

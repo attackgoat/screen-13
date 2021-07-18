@@ -11,6 +11,6 @@ layout(location = 0) in vec2 texcoord;
 layout(location = 0) out vec4 color;
 
 void main() {
-    vec4 page_colors = vec4(texture(page, texcoord).rgb, 1);
+    vec4 page_colors = texture(page, texcoord).rrrr;
     color = page_colors * push_constants.glyph_color;
 }

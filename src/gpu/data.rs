@@ -263,12 +263,14 @@ impl Data {
     /// # Safety
     ///
     /// The provided command buffer must be ready to record.
-    pub unsafe fn copy_range(
+    pub unsafe fn copy_range<R>(
         &mut self,
         cmd_buf: &mut <_Backend as Backend>::CommandBuffer,
-        range: CopyRange,
-    ) {
-        self.copy_ranges(cmd_buf, &[range])
+        range: R,
+    ) where
+        R: Borrow<CopyRange>,
+    {
+        self.copy_ranges(cmd_buf, once(range))
     }
 
     /// Copies portions within the graphics device to other portions.
@@ -281,7 +283,7 @@ impl Data {
         cmd_buf: &mut <_Backend as Backend>::CommandBuffer,
         ranges: R,
     ) where
-        R: Copy + IntoIterator,
+        R: IntoIterator,
         R::Item: Borrow<CopyRange>,
         R::IntoIter: ExactSizeIterator,
     {
