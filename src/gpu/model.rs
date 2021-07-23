@@ -61,7 +61,7 @@ where
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct MeshFilter(u16);
 
-/// A drawable collection of individually adressable meshes.
+/// A drawable collection of individually addressable meshes.
 pub struct Model<P>
 where
     P: SharedPointerKind,

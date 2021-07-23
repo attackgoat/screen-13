@@ -85,6 +85,7 @@ pub mod write {
     pub use super::op::write::{Command as Write, Mode as WriteMode, WriteOp};
 }
 
+mod anim;
 mod cache;
 mod data;
 mod def;
@@ -102,6 +103,7 @@ mod spirv {
 }
 
 pub use self::{
+    anim::Animation,
     def::vertex,
     model::{MeshFilter, Model, Pose},
     op::bitmap::Bitmap,
@@ -872,15 +874,15 @@ where
         Shared::new(VectorFont::load(data, settings))
     }
 
-    // TODO: Finish this bit!
-    /// Reads the `Animation` with the given id from the pak.
-    pub fn read_animation<R>(
+    /// Reads the `Animation` with the given key from the pak.
+    pub fn read_animation<K, R>(
         &self,
-        #[cfg(debug_assertions)] _name: &str,
+        #[cfg(feature = "debug-names")] name: &str,
         _pak: &mut Pak<R>,
-        _id: AnimationId,
-    ) -> usize
+        _key: K,
+    ) -> Shared<Animation, P>
     where
+        K: AsRef<str>,
         R: Read + Seek,
     {
         //let _pool = PoolRef::clone(&self.pool);

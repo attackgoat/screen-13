@@ -1,0 +1,9 @@
+[content]
+compression = "snap"
+
+[[content.group]]
+assets = [
+    "gltf/character/character.toml",
+    "gltf/character/criminal.toml",
+    "gltf/character/idle.toml",
+]
