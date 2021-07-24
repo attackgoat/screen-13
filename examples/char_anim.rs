@@ -44,9 +44,9 @@ impl Screen<RcK> for CharacterAnimation {
 
         let mut frame = gpu.render(dims);
         frame.clear().with(CORNFLOWER_BLUE).record();
-        frame.draw().with_preserve().record(&camera, [
-            Draw::model(self.character, self.criminal, Mat4::IDENTITY),
-        ]);
+        // frame.draw().with_preserve().record(&camera, [
+        //     Draw::model(self.character, self.criminal, Mat4::IDENTITY),
+        // ]);
         frame
     }
 
