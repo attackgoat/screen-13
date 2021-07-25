@@ -1,9 +1,11 @@
+use crate::bake::Model;
+
 use {
     super::{
         asset::Scene as SceneAsset, bake_material, bake_model, get_filename_key, get_path, Asset,
     },
     crate::pak::{id::SceneId, scene::Instance, PakBuf, Scene},
-    std::path::Path,
+    std::path::{Path, PathBuf},
 };
 
 /// Reads and processes scene source files into an existing `.pak` file buffer.
@@ -35,14 +37,30 @@ pub fn bake_scene<P1: AsRef<Path>, P2: AsRef<Path>>(
 
         let material = scene_ref.material().map(|src| {
             let src = get_path(&dir, src, &project_dir);
-            let material = Asset::read(&src).into_material().unwrap();
+            let material = if let Some("toml") = src.extension().map(|ext| ext.to_str()).flatten() {
+                Asset::read(&src).into_material().unwrap()
+            } else {
+                // Not sure if I want to use bitmap or a material with None PBR fields
+                //Bitmap::new(&src)
+                todo!();
+            };
             bake_material(&project_dir, src, &material, &mut pak)
         });
 
         let model = scene_ref.model().map(|src| {
-            let src = get_path(&dir, src, &project_dir);
-            let model = Asset::read(&src).into_model().unwrap();
-            bake_model(&project_dir, src, &model, &mut pak)
+            let src_path = get_path(&dir, src, &project_dir);
+            let model = if let Some("toml") = src.extension().map(|ext| ext.to_str()).flatten() {
+                Asset::read(&src_path).into_model().unwrap()
+            } else {
+                Model::new(
+                    PathBuf::from(&key)
+                        .parent()
+                        .map(|path| path.to_owned())
+                        .unwrap_or_else(|| PathBuf::new())
+                        .join(src),
+                )
+            };
+            bake_model(&project_dir, src_path, &model, &mut pak)
         });
 
         refs.push(Instance {

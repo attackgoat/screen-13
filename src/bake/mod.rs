@@ -32,6 +32,8 @@ pub fn get_path<P1: AsRef<Path>, P2: AsRef<Path>, P3: AsRef<Path>>(
     path: P2,
     res_dir: P3,
 ) -> PathBuf {
+    //trace!("Getting path for {} in {} (res_dir={})", path.as_ref().display(), path_dir.as_ref().display(), res_dir.as_ref().display());
+
     // Absolute paths are 'project aka resource directory' absolute, not *your host file system*
     // absolute!
     if path.as_ref().is_absolute() {
@@ -55,22 +57,19 @@ pub fn get_path<P1: AsRef<Path>, P2: AsRef<Path>, P3: AsRef<Path>>(
 
         temp.canonicalize().unwrap_or_else(|_| {
             panic!(
-                "{} + {}",
+                "{} + {} == {}",
                 res_dir.as_ref().display(),
-                path.as_ref().display()
+                path.as_ref().display(),
+                temp.display(),
             )
         })
     } else {
-        path_dir
-            .as_ref()
-            .join(&path)
+        let combined = path_dir.as_ref().join(&path);
+        combined
             .canonicalize()
             .unwrap_or_else(|_| {
-                panic!(
-                    "{} + {}",
-                    path_dir.as_ref().display(),
-                    path.as_ref().display()
-                )
+                error!("Unable to canonicalize {} + {}", path_dir.as_ref().display(), path.as_ref().display());
+                panic!("{} not found", combined.display());
             })
     }
 }

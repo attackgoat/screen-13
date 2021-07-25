@@ -48,9 +48,12 @@ impl Asset {
     /// Reads an asset file from disk.
     pub fn read<P: AsRef<Path>>(filename: P) -> Self {
         let val: Schema = from_str(&read_to_string(&filename).unwrap_or_else(|_| {
-            panic!("Could not parse asset file {}", filename.as_ref().display())
+            panic!("Unable to parse asset file {}", filename.as_ref().display())
         }))
-        .unwrap_or_else(|_| panic!("Could not parse asset file {}", filename.as_ref().display()));
+        .unwrap_or_else(|err| {
+            error!("{}", err);
+            panic!("Unable to parse asset file {}", filename.as_ref().display());
+        });
 
         if let Some(val) = val.anim {
             Self::Animation(val)

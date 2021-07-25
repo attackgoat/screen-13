@@ -1,5 +1,5 @@
 use {
-    super::get_filename_key,
+    super::{get_filename_key},
     crate::pak::PakBuf,
     std::{fs::File, io::Read, path::Path},
 };

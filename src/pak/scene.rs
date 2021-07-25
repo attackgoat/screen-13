@@ -5,6 +5,8 @@ use {
     std::collections::HashMap,
 };
 
+// TODO: Scene refs should be easier to get without using an iterator
+
 type Idx = u16;
 
 #[derive(Default)]

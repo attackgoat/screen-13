@@ -1,5 +1,7 @@
 //#![deny(warnings)]
-#![allow(dead_code)] // TODO: Remove at some point
+#![allow(dead_code)]
+
+use crate::bake::Model; // TODO: Remove at some point
 
 #[macro_use]
 extern crate log;
@@ -86,51 +88,63 @@ fn main() -> Result<(), IoError> {
     // Process each file we find
     let content = Asset::read(&project_path).into_content().unwrap();
     for group in content.groups() {
-        if group.enabled() {
-            for asset in group.assets() {
-                let asset_filename = project_dir.join(asset);
+        if !group.enabled() {
+            continue;
+        }
 
-                match asset_filename
-                    .extension()
-                    .map(|ext| ext.to_str())
-                    .flatten()
-                    .map(|ext| ext.to_lowercase())
-                    .as_deref()
-                    .unwrap_or_else(|| {
-                        panic!("Unexpected extensionless file {}", asset_filename.display())
-                    }) {
-                    "otf" | "ttc" | "ttf" => bake_blob(&project_dir, asset_filename, &mut pak),
-                    "toml" => match Asset::read(&asset_filename) {
-                        Asset::Animation(ref anim) => {
-                            bake_animation(&project_dir, asset_filename, anim, &mut pak);
-                        }
-                        // Asset::Atlas(ref atlas) => {
-                        //     bake_atlas(&project_dir, &asset_filename, atlas, &mut pak);
-                        // }
-                        Asset::Bitmap(ref bitmap) => {
-                            bake_bitmap(&project_dir, &asset_filename, bitmap, &mut pak);
-                        }
-                        Asset::BitmapFont(ref bitmap_font) => {
-                            bake_bitmap_font(&project_dir, &asset_filename, bitmap_font, &mut pak);
-                        }
-                        Asset::Content(_) => {
-                            panic!("Unexpected content file {}", asset_filename.display())
-                        }
-                        // Asset::Language(ref lang) => {
-                        //     bake_lang(&project_dir, &asset_filename, lang, &mut pak, &mut log)
-                        // }
-                        Asset::Material(ref material) => {
-                            bake_material(&project_dir, &asset_filename, material, &mut pak);
-                        }
-                        Asset::Model(ref model) => {
-                            bake_model(&project_dir, &asset_filename, model, &mut pak);
-                        }
-                        Asset::Scene(scene) => {
-                            bake_scene(&project_dir, &asset_filename, &scene, &mut pak);
-                        }
-                    },
-                    ext => unimplemented!("Unexpected file extension {}", ext),
+        for asset in group.assets() {
+            let asset_filename = project_dir.join(asset);
+
+            //debug!("Asset: {}", asset_filename.display());
+
+            match asset_filename
+                .extension()
+                .map(|ext| ext.to_str())
+                .flatten()
+                .map(|ext| ext.to_lowercase())
+                .as_deref()
+                .unwrap_or_else(|| {
+                    panic!("Unexpected extensionless file {}", asset_filename.display())
+                }) {
+                "otf" | "ttc" | "ttf" => bake_blob(&project_dir, asset_filename, &mut pak),
+                "glb" | "gltf" => {
+                    bake_model(
+                        &project_dir,
+                        &asset_filename,
+                        &Model::new(&asset),
+                        &mut pak,
+                    );
                 }
+                "toml" => match Asset::read(&asset_filename) {
+                    Asset::Animation(ref anim) => {
+                        bake_animation(&project_dir, asset_filename, anim, &mut pak);
+                    }
+                    // Asset::Atlas(ref atlas) => {
+                    //     bake_atlas(&project_dir, &asset_filename, atlas, &mut pak);
+                    // }
+                    Asset::Bitmap(ref bitmap) => {
+                        bake_bitmap(&project_dir, &asset_filename, bitmap, &mut pak);
+                    }
+                    Asset::BitmapFont(ref bitmap_font) => {
+                        bake_bitmap_font(&project_dir, &asset_filename, bitmap_font, &mut pak);
+                    }
+                    Asset::Content(_) => {
+                        panic!("Unexpected content file {}", asset_filename.display())
+                    }
+                    // Asset::Language(ref lang) => {
+                    //     bake_lang(&project_dir, &asset_filename, lang, &mut pak, &mut log)
+                    // }
+                    Asset::Material(ref material) => {
+                        bake_material(&project_dir, &asset_filename, material, &mut pak);
+                    }
+                    Asset::Model(ref model) => {
+                        bake_model(&project_dir, &asset_filename, model, &mut pak);
+                    }
+                    Asset::Scene(scene) => {
+                        bake_scene(&project_dir, &asset_filename, &scene, &mut pak);
+                    }
+                },
+                ext => unimplemented!("Unexpected file extension {}", ext),
             }
         }
     }

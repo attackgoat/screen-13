@@ -1,0 +1,17 @@
+[scene]
+
+[[scene.ref]]
+id = "body"
+model = "police.glb"
+
+[[scene.ref]]
+id = "wheel"
+model = "wheelDark.glb"
+
+[[scene.ref]]
+id = "front_left"
+position = [1, 0, 1]
+
+[[scene.ref]]
+id = "back_left"
+position = [1, 0, -1]

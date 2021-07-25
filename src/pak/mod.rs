@@ -627,8 +627,14 @@ where
         self.read_deserialize(pos, len)
     }
 
+    /// Reads the corresponding scene for the given key.
+    pub fn read_scene<K>(&mut self, key: K) -> Scene where K: AsRef<str> {
+        let id = self.scene_id(key).unwrap();
+        self.read_scene_with_id(id)
+    }
+
     /// Reads the corresponding scene for the given id.
-    pub fn read_scene(&mut self, id: SceneId) -> Scene {
+    pub fn read_scene_with_id(&mut self, id: SceneId) -> Scene {
         let (pos, len) = self.buf.scene(id);
         self.read_deserialize(pos, len)
     }

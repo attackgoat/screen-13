@@ -63,10 +63,10 @@ impl Ref {
     pub fn rotation(&self) -> Quat {
         let rotation = self.rotation.unwrap_or(Vec3::ZERO) * PI / 180.0;
 
-        // y = yaw
         // x = pitch
+        // y = yaw
         // z = roll
-        Quat::from_euler(EulerRot::YXZ, rotation.y, rotation.x, rotation.z)
+        Quat::from_euler(EulerRot::XYZ, rotation.x, rotation.y, rotation.z)
     }
 
     /// An arbitrary collection of program-specific strings.

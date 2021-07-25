@@ -127,7 +127,7 @@ use {
     crate::{
         math::Extent,
         pak::{
-            id::{AnimationId, BitmapId, ModelId},
+            id::{BitmapId, ModelId},
             model::Mesh,
             BitmapBuf, BitmapFormat, IndexType, Pak,
         },

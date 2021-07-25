@@ -1,0 +1,17 @@
+[scene]
+
+[[scene.ref]]
+id = "body"
+model = "firetruck.glb"
+
+[[scene.ref]]
+id = "wheel"
+model = "wheelTruck.glb"
+
+[[scene.ref]]
+id = "front_left"
+position = [1, 0, 1]
+
+[[scene.ref]]
+id = "back_left"
+position = [1, 0, -1]

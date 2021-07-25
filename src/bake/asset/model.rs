@@ -16,19 +16,18 @@ pub struct Model {
 }
 
 impl Model {
-    // pub(crate) fn new<P: AsRef<Path>>(src: P, offset: Vec3, scale: Vec3) -> Self {
-    //     Self {
-    //         meshes: Some(vec![]),
-    //         offset: Some(offset),
-    //         scale: Some(scale),
-    //         src: src.as_ref().to_owned(),
-    //     }
-    // }
+    pub(crate) fn new<P: AsRef<Path>>(src: P) -> Self {
+        Self {
+            meshes: None,
+            offset: None,
+            scale: None,
+            src: src.as_ref().to_owned(),
+        }
+    }
 
-    // TODO: Write an iterator or something this is temporary!
     /// The list of meshes within a model.
-    pub fn meshes(&self) -> &Option<Vec<Mesh>> {
-        &self.meshes
+    pub fn meshes(&self) -> impl Iterator<Item = &Mesh> {
+        self.meshes.iter().flatten()
     }
 
     /// Translation of the model origin.

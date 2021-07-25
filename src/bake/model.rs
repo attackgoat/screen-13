@@ -9,7 +9,7 @@ use {
     gltf::{import, mesh::Mode, Node, Primitive},
     std::{
         collections::{HashMap, HashSet},
-        path::Path,
+        path::{Path},
         u16,
     },
 };
@@ -28,16 +28,18 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
 
     info!("Processing asset: {}", key);
 
-    let dir = asset_filename.as_ref().parent().unwrap();
-    let src = get_path(&dir, asset.src(), project_dir);
+    // let dir = asset_filename
+    //     .as_ref()
+    //     .parent()
+    //     .map(|path| path.to_owned())
+    //     .unwrap_or_else(|| PathBuf::new());
+    let src = get_path(&project_dir, asset.src(), &project_dir);
 
     let mut mesh_names: HashMap<&str, Option<&str>> = HashMap::default();
-    if let Some(meshes) = asset.meshes() {
-        for mesh in meshes {
-            mesh_names
-                .entry(mesh.src_name())
-                .or_insert_with(|| mesh.dst_name());
-        }
+    for mesh in asset.meshes() {
+        mesh_names
+            .entry(mesh.src_name())
+            .or_insert_with(|| mesh.dst_name());
     }
 
     let (doc, bufs, _) = import(src).unwrap();
