@@ -80,6 +80,12 @@ impl From<(u8, u8, u8)> for Color {
     }
 }
 
+impl From<Color> for [u8; 4] {
+    fn from(color: Color) -> Self {
+        [color.r, color.g, color.b, u8::MAX]
+    }
+}
+
 impl From<AlphaColor> for Color {
     fn from(alpha_color: AlphaColor) -> Self {
         Self {

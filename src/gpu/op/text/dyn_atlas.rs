@@ -57,7 +57,7 @@ where
     /// Pops a glyph off the pending list and returns a reference to the data. I would love for this
     /// to be an Iterator however the mutable Data reference would live longer than the iterator,
     /// unless there is something I'm missing. So we call it one-by-one no biggie.
-    pub(super) fn pop_pending_glyph<'a>(&'a mut self) -> Option<PendingGlyphRef<'a>> {
+    pub(super) fn pop_pending_glyph(&mut self) -> Option<PendingGlyphRef<'_>> {
         let bufs = &mut self.bufs;
         let pages = &self.pages;
         self.pending_glyphs.pop().map(move |glyph| PendingGlyphRef {

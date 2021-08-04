@@ -137,7 +137,7 @@ where
         // "Forget about" GPU memory regions occupied by unused data
         let lru = &self.items;
         self.usage
-            .retain(|(_, key)| lru.binary_search_by(|probe| probe.key.cmp(&key)).is_ok());
+            .retain(|(_, key)| lru.binary_search_by(|probe| probe.key.cmp(key)).is_ok());
 
         // We only need to compact the memory in the region preceding the dirty region, because that
         // data will be uploaded and used during this compilation - we will defer that region to the
@@ -188,7 +188,7 @@ where
             // Update the LRU item for this key
             let idx = self
                 .items
-                .binary_search_by(|probe| probe.key.cmp(&key))
+                .binary_search_by(|probe| probe.key.cmp(key))
                 .ok()
                 .unwrap();
             self.items[idx].offset = start;

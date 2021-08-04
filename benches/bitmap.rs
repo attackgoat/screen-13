@@ -6,6 +6,7 @@ use {
         prelude_rc::*,
     },
     std::{
+        collections::HashMap,
         env::temp_dir,
         fs::{read, File},
         io::{BufWriter, Cursor},
@@ -103,7 +104,8 @@ fn read_bitmap(c: &mut Criterion) {
             let asset_filename = temp_dir().join("my-bitmap.toml");
             let mut pak = PakBuf::default();
             let pak_filename = temp_dir().join(format!("screen-13-bench-read-bitmap-{}.pak", idx));
-            bake_bitmap(temp_dir(), asset_filename, &asset, &mut pak);
+            let mut context = Default::default();
+            bake_bitmap(&mut context, temp_dir(), asset_filename, &asset, &mut pak);
             pak.write(
                 &mut BufWriter::new(File::create(&pak_filename).unwrap()),
                 None,

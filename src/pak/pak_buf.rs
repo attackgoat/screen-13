@@ -59,7 +59,7 @@ impl PakBuf {
         self.blobs[id.0 as usize].pos_len()
     }
 
-    pub(crate) fn id<K: AsRef<str>>(&self, key: K) -> Option<Id> {
+    pub(super) fn id<K: AsRef<str>>(&self, key: K) -> Option<Id> {
         self.ids.get(key.as_ref()).cloned()
     }
 
@@ -71,81 +71,113 @@ impl PakBuf {
         self.models[id.0 as usize].pos_len()
     }
 
-    pub(crate) fn push_animation(&mut self, key: String, val: Animation) -> AnimationId {
-        assert!(self.ids.get(&key).is_none());
-
+    pub(crate) fn push_animation(&mut self, key: Option<String>, val: Animation) -> AnimationId {
         let id = AnimationId(self.anims.len() as _);
-        self.ids.insert(key, Id::Animation(id));
+
+        if let Some(key) = key {
+            assert!(self.ids.get(&key).is_none());
+
+            self.ids.insert(key, id.into());
+        }
+
         self.anims.push(DataRef::Data(val));
 
         id
     }
 
-    pub(crate) fn push_bitmap(&mut self, key: String, val: BitmapBuf) -> BitmapId {
-        assert!(self.ids.get(&key).is_none());
-
+    pub(crate) fn push_bitmap(&mut self, key: Option<String>, val: BitmapBuf) -> BitmapId {
         let id = BitmapId(self.bitmaps.len() as _);
-        self.ids.insert(key, Id::Bitmap(id));
+
+        if let Some(key) = key {
+            assert!(self.ids.get(&key).is_none());
+
+            self.ids.insert(key, id.into());
+        }
+
         self.bitmaps.push(DataRef::Data(val));
 
         id
     }
 
-    pub(crate) fn push_bitmap_font(&mut self, key: String, val: BitmapFont) -> BitmapFontId {
-        assert!(self.ids.get(&key).is_none());
+    pub(crate) fn push_bitmap_font(&mut self, key: Option<String>, val: BitmapFont) -> BitmapFontId {
+        let id = BitmapFontId(self.bitmap_fonts.len() as _);
 
-        let id = BitmapFontId(self.blobs.len() as _);
-        self.ids.insert(key, Id::BitmapFont(id));
+        if let Some(key) = key {
+            assert!(self.ids.get(&key).is_none());
+
+            self.ids.insert(key, id.into());
+        }
+
         self.bitmap_fonts.push(DataRef::Data(val));
 
         id
     }
 
-    pub(crate) fn push_blob(&mut self, key: String, val: Vec<u8>) -> BlobId {
-        assert!(self.ids.get(&key).is_none());
-
+    pub(crate) fn push_blob(&mut self, key: Option<String>, val: Vec<u8>) -> BlobId {
         let id = BlobId(self.blobs.len() as _);
-        self.ids.insert(key, Id::Blob(id));
+
+        if let Some(key) = key {
+            assert!(self.ids.get(&key).is_none());
+
+            self.ids.insert(key, id.into());
+        }
+
         self.blobs.push(DataRef::Data(val));
 
         id
     }
 
     pub(crate) fn push_localization(&mut self, locale: String, texts: HashMap<String, String>) {
+        assert!(self.localizations.get(&locale).is_none());
+
         self.localizations.insert(locale, texts);
     }
 
-    pub(crate) fn push_material(&mut self, key: String, val: MaterialDesc) -> MaterialId {
-        assert!(self.ids.get(&key).is_none());
-
+    pub(crate) fn push_material(&mut self, key: Option<String>, val: MaterialDesc) -> MaterialId {
         let id = MaterialId(self.materials.len() as _);
-        self.ids.insert(key, Id::Material(id));
+
+        if let Some(key) = key {
+            assert!(self.ids.get(&key).is_none());
+
+            self.ids.insert(key, id.into());
+        }
+
         self.materials.push(val);
 
         id
     }
 
-    pub(crate) fn push_model(&mut self, key: String, val: Model) -> ModelId {
-        assert!(self.ids.get(&key).is_none());
-
+    pub(crate) fn push_model(&mut self, key: Option<String>, val: Model) -> ModelId {
         let id = ModelId(self.models.len() as _);
-        self.ids.insert(key, Id::Model(id));
+
+        if let Some(key) = key {
+            assert!(self.ids.get(&key).is_none());
+
+            self.ids.insert(key, id.into());
+        }
+
         self.models.push(DataRef::Data(val));
 
         id
     }
 
-    pub(crate) fn push_scene(&mut self, key: String, val: Scene) -> SceneId {
-        assert!(self.ids.get(&key).is_none());
-
+    pub(crate) fn push_scene(&mut self, key: Option<String>, val: Scene) -> SceneId {
         let id = SceneId(self.scenes.len() as _);
-        self.ids.insert(key, Id::Scene(id));
+
+        if let Some(key) = key {
+            assert!(self.ids.get(&key).is_none());
+
+            self.ids.insert(key, id.into());
+        }
+
         self.scenes.push(DataRef::Data(val));
 
         id
     }
 
     pub(crate) fn push_text(&mut self, key: String, val: String) {
+        assert!(self.texts.get(&key).is_none());
+
         self.texts.insert(key, val);
     }
 
@@ -195,9 +227,6 @@ impl PakBuf {
     ) -> Result<(), Error> {
         #[cfg(debug_assertions)]
         let started = Instant::now();
-
-        // Remove all temporary keys
-        self.ids.retain(|key, _| !key.starts_with('.'));
 
         // Write a blank spot that we'll use for the skip header later
         writer.write_all(&0u32.to_ne_bytes())?;

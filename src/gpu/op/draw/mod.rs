@@ -226,7 +226,7 @@ where
             // Fill the skydome buffer if it is brand new (data was provided)
             if let Some(data) = data {
                 let mut mapped_range = buf.map_range_mut(0..data.len() as _).unwrap();
-                mapped_range.copy_from_slice(&data);
+                mapped_range.copy_from_slice(data);
                 Mapping::flush(&mut mapped_range).unwrap();
             }
 

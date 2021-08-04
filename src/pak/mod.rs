@@ -196,6 +196,8 @@ pub mod id {
     pub use super::ids::{
         AnimationId, BitmapFontId, BitmapId, BlobId, MaterialId, ModelId, SceneId, TextId,
     };
+
+    pub(crate) use super::ids::Id;
 }
 
 pub(crate) mod anim;

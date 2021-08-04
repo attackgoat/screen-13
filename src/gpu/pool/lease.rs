@@ -21,7 +21,7 @@ where
     pub fn new(item: T, pool: &PoolRef<T, P>) -> Self {
         Self {
             item: Some(item),
-            pool: PoolRef::clone(&pool),
+            pool: PoolRef::clone(pool),
         }
     }
 }

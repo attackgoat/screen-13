@@ -544,7 +544,7 @@ where
             })
             .or_insert_with(Default::default);
         let item = if let Some(item) = remove_last_by(&mut items.borrow_mut(), |item| {
-            DescriptorPool::max_desc_sets(&item) >= max_desc_sets
+            DescriptorPool::max_desc_sets(item) >= max_desc_sets
         }) {
             item
         } else {
@@ -745,7 +745,7 @@ where
             .entry(mem_type)
             .or_insert_with(Default::default);
         let item = if let Some(item) =
-            remove_last_by(&mut items.borrow_mut(), |item| Memory::size(&item) >= size)
+            remove_last_by(&mut items.borrow_mut(), |item| Memory::size(item) >= size)
         {
             item
         } else {

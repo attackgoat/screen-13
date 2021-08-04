@@ -2,16 +2,15 @@
 
 mod anim;
 mod bitmap;
-mod bitmap_font;
+mod blob;
 mod content;
 mod material;
-mod mesh;
 mod model;
 mod scene;
 
 pub use self::{
-    anim::Animation, bitmap::Bitmap, bitmap_font::BitmapFont, content::Content, material::Material,
-    mesh::Mesh, model::Model, scene::Scene,
+    anim::Animation, bitmap::Bitmap, blob::Blob, content::Content, material::{Material, ColorRef},
+    model::{Mesh, Model}, scene::Scene,
 };
 
 use {
@@ -21,7 +20,7 @@ use {
 };
 
 /// A collection type containing all supported asset file types.
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Eq, Hash, PartialEq)]
 pub enum Asset {
     /// `.glb` or `.gltf` model animations.
     Animation(Animation),
@@ -29,7 +28,7 @@ pub enum Asset {
     /// `.jpeg` and other regular images.
     Bitmap(Bitmap),
     /// `.fnt` bitmapped fonts.
-    BitmapFont(BitmapFont),
+    BitmapFont(Blob),
     /// Top-level content files which simply group other asset files for ease of use.
     Content(Content),
     // Language(LanguageAsset),
@@ -153,7 +152,7 @@ struct Schema {
     bitmap: Option<Bitmap>,
 
     #[serde(rename = "bitmap-font")]
-    bitmap_font: Option<BitmapFont>,
+    bitmap_font: Option<Blob>,
 
     content: Option<Content>,
     material: Option<Material>,

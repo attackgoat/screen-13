@@ -7,6 +7,7 @@ use crate::bake::Model; // TODO: Remove at some point
 extern crate log;
 
 mod bake;
+mod color;
 mod math;
 mod pak;
 
@@ -20,6 +21,7 @@ use {
     },
     pretty_env_logger::init,
     std::{
+        collections::HashMap,
         env::{args, current_dir, current_exe},
         fs::{create_dir_all, File},
         io::{BufWriter, Error as IoError},
@@ -85,6 +87,8 @@ fn main() -> Result<(), IoError> {
     // Bake::Blob => bake_blob(&project_dir, &asset_filename, &mut pak),
     // Bake::Text => bake_text(&project_dir, &asset_filename, &mut pak),
 
+    let mut context = HashMap::new();
+
     // Process each file we find
     let content = Asset::read(&project_path).into_content().unwrap();
     for group in content.groups() {
@@ -117,16 +121,18 @@ fn main() -> Result<(), IoError> {
                 }
                 "toml" => match Asset::read(&asset_filename) {
                     Asset::Animation(ref anim) => {
-                        bake_animation(&project_dir, asset_filename, anim, &mut pak);
+                        // bake_animation(&mut context, &project_dir, asset_filename, anim, &mut pak);
+                        todo!();
                     }
                     // Asset::Atlas(ref atlas) => {
                     //     bake_atlas(&project_dir, &asset_filename, atlas, &mut pak);
                     // }
                     Asset::Bitmap(ref bitmap) => {
-                        bake_bitmap(&project_dir, &asset_filename, bitmap, &mut pak);
+                        //bake_bitmap(&mut context, &project_dir, &asset_filename, bitmap, &mut pak);
+                        todo!();
                     }
                     Asset::BitmapFont(ref bitmap_font) => {
-                        bake_bitmap_font(&project_dir, &asset_filename, bitmap_font, &mut pak);
+                        bake_bitmap_font(&mut context, &project_dir, &asset_filename, bitmap_font, &mut pak);
                     }
                     Asset::Content(_) => {
                         panic!("Unexpected content file {}", asset_filename.display())

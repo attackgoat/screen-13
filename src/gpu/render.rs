@@ -108,7 +108,7 @@ where
                 #[cfg(feature = "debug-names")]
                 name,
                 pool,
-                &src,
+                src,
                 &self.target,
             )
         };

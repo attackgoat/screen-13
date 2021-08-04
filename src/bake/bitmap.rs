@@ -1,30 +1,31 @@
 use {
     super::{
-        asset::{Bitmap as BitmapAsset, BitmapFont as BitmapFontAsset},
+        asset::{Bitmap as BitmapAsset, Asset, Blob as BlobAsset},
         get_filename_key, get_path,
     },
     crate::pak::{
-        id::{BitmapFontId, BitmapId},
+        id::{BitmapFontId, Id, BitmapId},
         BitmapBuf, BitmapFont, BitmapFormat, PakBuf,
     },
     bmfont::{BMFont, OrdinateOrientation},
     image::{buffer::ConvertBuffer, open as image_open, DynamicImage, RgbaImage},
-    std::{fs::read_to_string, io::Cursor, path::Path},
+    std::{collections::HashMap, fs::read_to_string, io::Cursor, path::{Path, PathBuf}},
 };
 
 /// Reads and processes image source files into an existing `.pak` file buffer.
 pub fn bake_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
+    context: &mut HashMap<(PathBuf, Asset), Id>,
     project_dir: P1,
     asset_filename: P2,
     bitmap_asset: &BitmapAsset,
     pak: &mut PakBuf,
 ) -> BitmapId {
-    let key = get_filename_key(&project_dir, &asset_filename);
-    if let Some(id) = pak.id(&key) {
-        return id.as_bitmap().unwrap();
-    }
+    // let key = get_filename_key(&project_dir, &asset_filename);
+    // if let Some(id) = pak.id(&key) {
+    //     return id.as_bitmap().unwrap();
+    // }
 
-    info!("Processing asset: {}", key);
+    // info!("Processing asset: {}", key);
 
     // Get the fs objects for this asset
     let dir = asset_filename.as_ref().parent().unwrap();
@@ -35,22 +36,24 @@ pub fn bake_bitmap<P1: AsRef<Path>, P2: AsRef<Path>>(
     let bitmap = BitmapBuf::new(bitmap_asset.format(), width as u16, pixels);
 
     // Pak this asset
-    pak.push_bitmap(key, bitmap)
+    // pak.push_bitmap(key, bitmap)
+    todo!();
 }
 
 /// Reads and processes bitmapped font source files into an existing `.pak` file buffer.
 pub fn bake_bitmap_font<P1: AsRef<Path>, P2: AsRef<Path>>(
+    context: &mut HashMap<Asset, Id>,
     project_dir: P1,
     asset_filename: P2,
-    bitmap_font_asset: &BitmapFontAsset,
+    bitmap_font_asset: &BlobAsset,
     pak: &mut PakBuf,
 ) -> BitmapFontId {
-    let key = get_filename_key(&project_dir, &asset_filename);
-    if let Some(id) = pak.id(&key) {
-        return id.as_bitmap_font().unwrap();
-    }
+    // let key = get_filename_key(&project_dir, &asset_filename);
+    // if let Some(id) = pak.id(&key) {
+    //     return id.as_bitmap_font().unwrap();
+    // }
 
-    info!("Processing asset: {}", key);
+    // info!("Processing asset: {}", key);
 
     // Get the fs objects for this asset
     let dir = asset_filename.as_ref().parent().unwrap();
@@ -105,13 +108,14 @@ pub fn bake_bitmap_font<P1: AsRef<Path>, P2: AsRef<Path>>(
 
     // In order to make drawing text easier, we optionally store the "pages" as one large texture
     // Each page is just appended to the bottom of the previous page making a tall bitmap
-    let page_bufs = pages
-        .into_iter()
-        .map(|(_, pixels)| BitmapBuf::new(BitmapFormat::Rgb, width as u16, pixels))
-        .collect();
+    // let page_bufs = pages
+    //     .into_iter()
+    //     .map(|(_, pixels)| BitmapBuf::new(BitmapFormat::Rgb, width as u16, pixels))
+    //     .collect();
 
     // Pak this asset
-    pak.push_bitmap_font(key, BitmapFont::new(def_file, page_bufs))
+    // pak.push_bitmap_font(key, BitmapFont::new(def_file, page_bufs))
+    todo!();
 }
 
 /// Reads raw pixel data from an image source file and returns them in the given format.

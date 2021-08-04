@@ -2,6 +2,7 @@ use crate::bake::Model;
 
 use {
     super::{
+        is_toml,
         asset::Scene as SceneAsset, bake_material, bake_model, get_filename_key, get_path, Asset,
     },
     crate::pak::{id::SceneId, scene::Instance, PakBuf, Scene},
@@ -16,9 +17,9 @@ pub fn bake_scene<P1: AsRef<Path>, P2: AsRef<Path>>(
     mut pak: &mut PakBuf,
 ) -> SceneId {
     let key = get_filename_key(&project_dir, &filename);
-    if let Some(id) = pak.id(&key) {
-        return id.as_scene().unwrap();
-    }
+    // if let Some(id) = pak.id(&key) {
+    //     return id.as_scene().unwrap();
+    // }
 
     info!("Processing asset: {}", key);
 
@@ -37,7 +38,7 @@ pub fn bake_scene<P1: AsRef<Path>, P2: AsRef<Path>>(
 
         let material = scene_ref.material().map(|src| {
             let src = get_path(&dir, src, &project_dir);
-            let material = if let Some("toml") = src.extension().map(|ext| ext.to_str()).flatten() {
+            let material = if is_toml(&src) {
                 Asset::read(&src).into_material().unwrap()
             } else {
                 // Not sure if I want to use bitmap or a material with None PBR fields
@@ -52,13 +53,14 @@ pub fn bake_scene<P1: AsRef<Path>, P2: AsRef<Path>>(
             let model = if let Some("toml") = src.extension().map(|ext| ext.to_str()).flatten() {
                 Asset::read(&src_path).into_model().unwrap()
             } else {
-                Model::new(
-                    PathBuf::from(&key)
-                        .parent()
-                        .map(|path| path.to_owned())
-                        .unwrap_or_else(|| PathBuf::new())
-                        .join(src),
-                )
+                // Model::new(
+                //     PathBuf::from(&key)
+                //         .parent()
+                //         .map(|path| path.to_owned())
+                //         .unwrap_or_else(|| PathBuf::new())
+                //         .join(src),
+                // )
+                todo!();
             };
             bake_model(&project_dir, src_path, &model, &mut pak)
         });
@@ -73,6 +75,7 @@ pub fn bake_scene<P1: AsRef<Path>, P2: AsRef<Path>>(
         });
     }
 
-    // Pak this asset
-    pak.push_scene(key, Scene::new(refs.drain(..)))
+    // // Pak this asset
+    // pak.push_scene(key, Scene::new(refs.drain(..)))
+    todo!();
 }

@@ -1,15 +1,34 @@
 use {
-    super::Mesh,
-    crate::math::Vec3,
+    crate::math::{vec3, Vec3},
+    ordered_float::OrderedFloat,
     serde::Deserialize,
     std::path::{Path, PathBuf},
 };
 
+/// Holds a description of individual meshes within a `.glb` or `.gltf` 3D model.
+#[derive(Clone, Deserialize, Eq, Hash, PartialEq)]
+pub struct Mesh {
+    dst_name: Option<String>,
+    src_name: String,
+}
+
+impl Mesh {
+    /// Allows the artist-provided name to be different when referenced by a program.
+    pub fn dst_name(&self) -> Option<&str> {
+        self.dst_name.as_deref()
+    }
+
+    /// The artist-provided name of a mesh within the model.
+    pub fn src_name(&self) -> &str {
+        &self.src_name
+    }
+}
+
 /// Holds a description of `.glb` or `.gltf` 3D models.
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Eq, Hash, PartialEq)]
 pub struct Model {
-    offset: Option<Vec3>,
-    scale: Option<Vec3>,
+    offset: Option<[OrderedFloat<f32>; 3]>,
+    scale: Option<[OrderedFloat<f32>; 3]>,
     src: PathBuf,
     #[serde(rename = "mesh")]
     meshes: Option<Vec<Mesh>>,
@@ -32,12 +51,16 @@ impl Model {
 
     /// Translation of the model origin.
     pub fn offset(&self) -> Vec3 {
-        self.offset.unwrap_or(Vec3::ZERO)
+        self.offset
+            .map(|offset| vec3(offset[0].0, offset[1].0, offset[2].0))
+            .unwrap_or(Vec3::ZERO)
     }
 
     /// Scaling of the model.
     pub fn scale(&self) -> Vec3 {
-        self.scale.unwrap_or(Vec3::ONE)
+        self.scale
+            .map(|scale| vec3(scale[0].0, scale[1].0, scale[2].0))
+            .unwrap_or(Vec3::ONE)
     }
 
     /// The model file source.

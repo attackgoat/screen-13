@@ -13,7 +13,7 @@ impl GraphicsPipeline {
         desc: &GraphicsPipelineDesc<'_, _Backend>,
     ) -> Self {
         // TODO: Use a pipeline cache?
-        let ctor = || device().create_graphics_pipeline(&desc, None).unwrap();
+        let ctor = || device().create_graphics_pipeline(desc, None).unwrap();
 
         #[cfg(feature = "debug-names")]
         let mut ptr = ctor();

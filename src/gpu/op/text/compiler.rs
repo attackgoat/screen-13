@@ -92,7 +92,7 @@ where
     T: AsRef<str>,
 {
     fn bind_bitmap_vertices(&self, idx: usize) -> Instruction<'_, P> {
-        let font = Shared::as_ptr(&self.cmds[idx].borrow().bitmap_font().unwrap());
+        let font = Shared::as_ptr(self.cmds[idx].borrow().bitmap_font().unwrap());
         let font_idx = self
             .compiler
             .bitmap_chars
@@ -108,7 +108,7 @@ where
     }
 
     fn bind_vector_vertices(&self, idx: usize) -> Instruction<'_, P> {
-        let font = Shared::as_ptr(&self.cmds[idx].borrow().vector_font().unwrap());
+        let font = Shared::as_ptr(self.cmds[idx].borrow().vector_font().unwrap());
         let font_idx = self
             .compiler
             .vector_chars
@@ -134,7 +134,7 @@ where
     }
 
     fn copy_bitmap_vertices(&mut self, idx: usize) -> Instruction<'_, P> {
-        let font = Shared::as_ptr(&self.cmds[idx].borrow().bitmap_font().unwrap());
+        let font = Shared::as_ptr(self.cmds[idx].borrow().bitmap_font().unwrap());
         let font_idx = self
             .compiler
             .bitmap_chars
@@ -149,7 +149,7 @@ where
     }
 
     fn copy_vector_glyphs(&mut self, idx: usize) -> Instruction<'_, P> {
-        let font = Shared::as_ptr(&self.cmds[idx].borrow().vector_font().unwrap());
+        let font = Shared::as_ptr(self.cmds[idx].borrow().vector_font().unwrap());
         let atlas_idx = self
             .compiler
             .vector_fonts
@@ -161,7 +161,7 @@ where
     }
 
     fn copy_vector_vertices(&mut self, idx: usize) -> Instruction<'_, P> {
-        let font = Shared::as_ptr(&self.cmds[idx].borrow().vector_font().unwrap());
+        let font = Shared::as_ptr(self.cmds[idx].borrow().vector_font().unwrap());
         let font_idx = self
             .compiler
             .vector_chars
@@ -224,7 +224,7 @@ where
     }
 
     fn write_bitmap_vertices(&mut self, idx: usize) -> Instruction<'_, P> {
-        let font = Shared::as_ptr(&self.cmds[idx].borrow().bitmap_font().unwrap());
+        let font = Shared::as_ptr(self.cmds[idx].borrow().bitmap_font().unwrap());
         let font_idx = self
             .compiler
             .bitmap_chars
@@ -239,7 +239,7 @@ where
     }
 
     fn write_vector_vertices(&mut self, idx: usize) -> Instruction<'_, P> {
-        let font = Shared::as_ptr(&self.cmds[idx].borrow().vector_font().unwrap());
+        let font = Shared::as_ptr(self.cmds[idx].borrow().vector_font().unwrap());
         let font_idx = self
             .compiler
             .vector_chars

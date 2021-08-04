@@ -57,6 +57,7 @@ image = "0.23"
 log = "0.4"
 num-format = "0.4.0"
 num-traits = "0.2"
+ordered-float = { version = "2.0", features=["serde"] }
 pretty_env_logger = "0.4"
 serde = { version="1.0", features=["derive"] }
 serde_bytes = "0.11"
@@ -111,7 +112,7 @@ shaderc = "0.7"
 # 🦀📦: Example, Metadata and Test Code Stuff
 [dev-dependencies]
 criterion = "0.3"
-hecs = "0.5"
+hecs = "0.6"
 image = "0.23"
 lazy_static = "1.4"
 paste = "1.0"

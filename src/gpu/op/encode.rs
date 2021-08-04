@@ -59,7 +59,7 @@ where
         mut pool: Lease<Pool<P>, P>,
         texture: &Shared<Texture2d, P>,
     ) -> Self {
-        let len = Self::byte_len(&texture);
+        let len = Self::byte_len(texture);
         let buf = pool.data(
             #[cfg(feature = "debug-names")]
             name,

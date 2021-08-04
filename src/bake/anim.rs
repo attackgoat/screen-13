@@ -1,10 +1,13 @@
 use {
-    super::{asset::Animation as AnimationAsset, get_filename_key, get_path},
+    super::{
+        asset::{Animation as AnimationAsset, Asset},
+        get_filename_key, get_path,
+    },
     crate::{
         math::{quat, Quat, Vec3},
         pak::{
             anim::{Animation, Channel},
-            id::AnimationId,
+            id::{AnimationId, Id},
             PakBuf,
         },
     },
@@ -16,23 +19,26 @@ use {
         import,
     },
     std::{
-        collections::{hash_map::RandomState, HashSet},
-        path::Path,
+        collections::{hash_map::RandomState, HashMap, HashSet},
+        path::{Path, PathBuf},
     },
 };
 
 /// Reads and processes animation source files into an existing `.pak` file buffer.
 pub fn bake_animation<P1: AsRef<Path>, P2: AsRef<Path>>(
+    context: &mut HashMap<Asset, Id>,
     project_dir: P1,
     asset_filename: P2,
-    asset: &AnimationAsset,
+    asset: AnimationAsset,
     pak: &mut PakBuf,
 ) -> AnimationId {
-    let key = get_filename_key(&project_dir, &asset_filename);
-    if let Some(id) = pak.id(&key) {
-        return id.as_animation().unwrap();
-    }
 
+
+    // if let Some(id) = context.get(&asset.into()) {
+    //     return id.as_animation().unwrap();
+    // }
+
+    let key = get_filename_key(&project_dir, &asset_filename);
     info!("Processing asset: {}", key);
 
     let dir = asset_filename.as_ref().parent().unwrap();
@@ -151,5 +157,5 @@ pub fn bake_animation<P1: AsRef<Path>, P2: AsRef<Path>>(
     channels.sort_unstable_by(|a, b| a.target().cmp(b.target()));
 
     // Pak this asset
-    pak.push_animation(key, Animation { channels })
+    pak.push_animation(Some(key), Animation { channels })
 }

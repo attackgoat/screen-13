@@ -22,11 +22,11 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
     pak: &mut PakBuf,
 ) -> ModelId {
     let key = get_filename_key(&project_dir, &asset_filename);
-    if let Some(id) = pak.id(&key) {
-        return id.as_model().unwrap();
-    }
+    // if let Some(id) = pak.id(&key) {
+    //     return id.as_model().unwrap();
+    // }
 
-    info!("Processing asset: {}", key);
+    //info!("Processing asset: {}", key);
 
     // let dir = asset_filename
     //     .as_ref()
@@ -120,11 +120,13 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
                 .into_u32()
                 .collect::<Vec<_>>();
             let positions = data.read_positions().unwrap().collect::<Vec<_>>();
-            let tex_coords = data
-                .read_tex_coords(0)
-                .expect("Unable to read mesh texture cooordinates")
+            let tex_coords = if let Some(data) = data.read_tex_coords(0) {
+                data
                 .into_f32()
-                .collect::<Vec<_>>();
+                .collect::<Vec<_>>()
+            } else {
+                [[0.5, 0.5]].repeat(positions.len())
+            };
 
             // Flip triangles from CW front faces to CCW front faces
             for tri_idx in 0..indices.len() / 3 {
@@ -260,7 +262,7 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
 
     // Pak this asset
     pak.push_model(
-        key,
+        Some(key),
         Model::new(meshes, idx_ty, idx_buf, vertex_buf, write_mask),
     )
 }

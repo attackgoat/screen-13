@@ -58,6 +58,24 @@ impl AlphaColor {
     }
 }
 
+impl From<AlphaColor> for [f32; 4] {
+    fn from(color: AlphaColor) -> Self {
+        let color = color.to_rgba();
+        [color.x, color.y, color.z, color.w]
+    }
+}
+
+impl From<[f32; 4]> for AlphaColor {
+    fn from(color: [f32; 4]) -> Self {
+        Self {
+            a: (color[3] * 255f32) as _,
+            b: (color[2] * 255f32) as _,
+            g: (color[1] * 255f32) as _,
+            r: (color[0] * 255f32) as _,
+        }
+    }
+}
+
 impl From<Color> for AlphaColor {
     fn from(color: Color) -> Self {
         Self {

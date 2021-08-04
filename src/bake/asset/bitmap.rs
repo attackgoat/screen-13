@@ -5,7 +5,7 @@ use {
 };
 
 /// Holds a description of `.jpeg` and other regular images.
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Eq, Hash, PartialEq)]
 pub struct Bitmap {
     format: Option<BitmapFormat>,
     src: PathBuf,

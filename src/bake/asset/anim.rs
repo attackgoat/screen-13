@@ -1,10 +1,12 @@
 use {
+
+    super::Asset,
     serde::Deserialize,
     std::path::{Path, PathBuf},
 };
 
 /// Holds a description of `.glb` or `.gltf` model animations.
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Eq, Hash, PartialEq)]
 pub struct Animation {
     exclude: Option<Vec<String>>,
     name: Option<String>,
@@ -44,5 +46,11 @@ impl Animation {
     /// The animation file source.
     pub fn src(&self) -> &Path {
         self.src.as_path()
+    }
+}
+
+impl From<Animation> for Asset {
+    fn from(anim: Animation) -> Self {
+        Self::Animation(anim)
     }
 }

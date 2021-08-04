@@ -151,7 +151,7 @@ where
             // Get the vertex zattribute calculation data for this command index
             let src_idx = self
                 .data
-                .binary_search_by(|probe| probe.idx.cmp(&idx))
+                .binary_search_by(|probe| probe.idx.cmp(idx))
                 .unwrap();
             let src = &self.data[src_idx];
 

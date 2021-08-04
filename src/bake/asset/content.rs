@@ -6,7 +6,7 @@ use {
 
 /// Holds a description of top-level content files which simply group other asset files for ease of
 /// use.
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Eq, Hash, PartialEq)]
 pub struct Content {
     compression: Option<Compression>,
 
@@ -43,7 +43,7 @@ impl Content {
     }
 }
 
-#[derive(Clone, Copy, Deserialize)]
+#[derive(Clone, Copy,  Deserialize, Eq, Hash, PartialEq)]
 pub enum Compression {
     /// Higher compression ratio but slower to decode and encode.
     #[serde(rename = "brotli")]
@@ -54,7 +54,7 @@ pub enum Compression {
 }
 
 /// Holds a description of asset files.
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Eq, Hash, PartialEq)]
 pub struct Group {
     assets: Vec<PathBuf>,
     enabled: Option<bool>,

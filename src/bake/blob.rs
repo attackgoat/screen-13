@@ -18,5 +18,5 @@ pub fn bake_blob<P1: AsRef<Path>, P2: AsRef<Path>>(
     let mut value = vec![];
     file.read_to_end(&mut value).unwrap();
 
-    pak.push_blob(key, value);
+    pak.push_blob(Some(key), value);
 }
