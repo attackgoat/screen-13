@@ -16,7 +16,7 @@ pub struct BitmapFontId(pub(crate) u16);
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct BlobId(pub(crate) u16);
 
-#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum Id {
     Animation(AnimationId),
     Bitmap(BitmapId),

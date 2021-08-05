@@ -1,7 +1,8 @@
 use {
     super::{
-        anim::Animation, ids::Id, model::Model, AnimationId, BitmapBuf, BitmapFont, BitmapFontId,
-        BitmapId, BlobId, Compression, DataRef, MaterialDesc, MaterialId, ModelId, Scene, SceneId,
+        anim::Animation, ids::Id, model::ModelBuf, AnimationId, BitmapBuf, BitmapFont,
+        BitmapFontId, BitmapId, BlobId, Compression, DataRef, MaterialDesc, MaterialId, ModelId,
+        SceneBuf, SceneId,
     },
     bincode::serialize_into,
     serde::{Deserialize, Serialize},
@@ -38,8 +39,8 @@ pub struct PakBuf {
     bitmap_fonts: Vec<DataRef<BitmapFont>>,
     bitmaps: Vec<DataRef<BitmapBuf>>,
     blobs: Vec<DataRef<Vec<u8>>>,
-    models: Vec<DataRef<Model>>,
-    scenes: Vec<DataRef<Scene>>,
+    models: Vec<DataRef<ModelBuf>>,
+    scenes: Vec<DataRef<SceneBuf>>,
 }
 
 impl PakBuf {
@@ -99,7 +100,11 @@ impl PakBuf {
         id
     }
 
-    pub(crate) fn push_bitmap_font(&mut self, key: Option<String>, val: BitmapFont) -> BitmapFontId {
+    pub(crate) fn push_bitmap_font(
+        &mut self,
+        key: Option<String>,
+        val: BitmapFont,
+    ) -> BitmapFontId {
         let id = BitmapFontId(self.bitmap_fonts.len() as _);
 
         if let Some(key) = key {
@@ -147,7 +152,7 @@ impl PakBuf {
         id
     }
 
-    pub(crate) fn push_model(&mut self, key: Option<String>, val: Model) -> ModelId {
+    pub(crate) fn push_model(&mut self, key: Option<String>, buf: ModelBuf) -> ModelId {
         let id = ModelId(self.models.len() as _);
 
         if let Some(key) = key {
@@ -156,21 +161,18 @@ impl PakBuf {
             self.ids.insert(key, id.into());
         }
 
-        self.models.push(DataRef::Data(val));
+        self.models.push(DataRef::Data(buf));
 
         id
     }
 
-    pub(crate) fn push_scene(&mut self, key: Option<String>, val: Scene) -> SceneId {
+    pub(crate) fn push_scene(&mut self, key: String, buf: SceneBuf) -> SceneId {
+        assert!(self.ids.get(&key).is_none());
+
         let id = SceneId(self.scenes.len() as _);
+        self.ids.insert(key, id.into());
 
-        if let Some(key) = key {
-            assert!(self.ids.get(&key).is_none());
-
-            self.ids.insert(key, id.into());
-        }
-
-        self.scenes.push(DataRef::Data(val));
+        self.scenes.push(DataRef::Data(buf));
 
         id
     }

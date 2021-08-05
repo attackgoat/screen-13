@@ -1,48 +1,72 @@
 use {
     super::{
-        Model as ModelAsset, {get_filename_key, get_path},
+        asset::{Asset, Model},
+        get_filename_key,
     },
     crate::{
         math::{quat, vec3, Mat4, Quat, Sphere, Vec3},
-        pak::{id::ModelId, model::Mesh, model::Model, IndexType, PakBuf},
+        pak::{
+            id::{Id, ModelId},
+            model::{Mesh, ModelBuf},
+            IndexType, PakBuf,
+        },
     },
     gltf::{import, mesh::Mode, Node, Primitive},
     std::{
         collections::{HashMap, HashSet},
-        path::{Path},
+        path::Path,
         u16,
     },
 };
 
 /// Reads and processes 3D model source files into an existing `.pak` file buffer.
-pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
-    project_dir: P1,
-    asset_filename: P2,
-    asset: &ModelAsset,
+pub fn bake_model<P1, P2>(
+    context: &mut HashMap<Asset, Id>,
     pak: &mut PakBuf,
-) -> ModelId {
-    let key = get_filename_key(&project_dir, &asset_filename);
-    // if let Some(id) = pak.id(&key) {
-    //     return id.as_model().unwrap();
-    // }
+    project_dir: P1,
+    src: Option<P2>,
+    model: &Model,
+) -> ModelId
+where
+    P1: AsRef<Path>,
+    P2: AsRef<Path>,
+{
+    // Early-out if we have this asset in our context
+    let context_key = model.clone().into();
+    if let Some(id) = context.get(&context_key) {
+        return id.as_model().unwrap();
+    }
 
-    //info!("Processing asset: {}", key);
+    // If a source is given it will be available as a key inside the .pak (sources are not
+    // given if the asset is specified inline - those are only available in the .pak via ID)
+    let key = src.as_ref().map(|src| get_filename_key(&project_dir, &src));
+    if let Some(key) = &key {
+        // This model will be accessible using this key
+        info!("Baking model: {}", key);
+    } else {
+        // This model will only be accessible using the ID
+        info!(
+            "Baking model: {} (inline)",
+            get_filename_key(&project_dir, model.src())
+        );
+    }
 
-    // let dir = asset_filename
-    //     .as_ref()
-    //     .parent()
-    //     .map(|path| path.to_owned())
-    //     .unwrap_or_else(|| PathBuf::new());
-    let src = get_path(&project_dir, asset.src(), &project_dir);
+    // Pak this asset and add it to the context
+    let buf = bake(model);
+    let id = pak.push_model(key, buf);
+    context.insert(context_key, id.into());
+    id
+}
 
+fn bake(model: &Model) -> ModelBuf {
     let mut mesh_names: HashMap<&str, Option<&str>> = HashMap::default();
-    for mesh in asset.meshes() {
+    for mesh in model.meshes() {
         mesh_names
             .entry(mesh.src_name())
             .or_insert_with(|| mesh.dst_name());
     }
 
-    let (doc, bufs, _) = import(src).unwrap();
+    let (doc, bufs, _) = import(model.src()).unwrap();
     let nodes = doc
         .nodes()
         .filter(|node| node.mesh().is_some())
@@ -121,9 +145,7 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
                 .collect::<Vec<_>>();
             let positions = data.read_positions().unwrap().collect::<Vec<_>>();
             let tex_coords = if let Some(data) = data.read_tex_coords(0) {
-                data
-                .into_f32()
-                .collect::<Vec<_>>()
+                data.into_f32().collect::<Vec<_>>()
             } else {
                 [[0.5, 0.5]].repeat(positions.len())
             };
@@ -260,11 +282,7 @@ pub fn bake_model<P1: AsRef<Path>, P2: AsRef<Path>>(
         write_mask.extend_from_slice(&mask.to_ne_bytes());
     }
 
-    // Pak this asset
-    pak.push_model(
-        Some(key),
-        Model::new(meshes, idx_ty, idx_buf, vertex_buf, write_mask),
-    )
+    ModelBuf::new(meshes, idx_ty, idx_buf, vertex_buf, write_mask)
 }
 
 fn get_transform(node: &Node) -> Option<Mat4> {

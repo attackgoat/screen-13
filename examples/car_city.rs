@@ -51,7 +51,7 @@ fn read_scene_ref_model<R>(
     gpu: &Gpu,
     pak: &mut Pak<R>,
     cache: &mut HashMap<ModelId, Shared<Model>>,
-    scene: &Scene,
+    scene: &SceneBuf,
     key: &'static str,
 ) -> Shared<Model>
 where
@@ -72,7 +72,7 @@ where
 }
 
 /// Helper for reading a scene item position
-fn read_scene_ref_position(scene: &Scene, key: &'static str) -> Vec3 {
+fn read_scene_ref_position(scene: &SceneBuf, key: &'static str) -> Vec3 {
     scene
         .refs()
         .find(|item| item.id() == Some(key))

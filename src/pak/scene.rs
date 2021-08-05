@@ -23,7 +23,7 @@ pub struct Instance {
 #[derive(Debug)]
 pub struct Ref<'a> {
     idx: usize,
-    scene: &'a Scene,
+    scene: &'a SceneBuf,
 }
 
 impl Ref<'_> {
@@ -84,7 +84,7 @@ impl Ref<'_> {
 #[derive(Debug)]
 pub struct RefIter<'a> {
     idx: usize,
-    scene: &'a Scene,
+    scene: &'a SceneBuf,
 }
 
 impl<'a> Iterator for RefIter<'a> {
@@ -106,17 +106,17 @@ impl<'a> Iterator for RefIter<'a> {
 
 /// A container for [`Ref`] references.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct Scene {
+pub struct SceneBuf {
     refs: Vec<SceneRef>,
     strs: Vec<String>,
 }
 
-impl Scene {
+impl SceneBuf {
     pub(crate) fn new<I: Iterator<Item = Instance>>(instances: I) -> Self {
         let mut refs = vec![];
         let mut strs = vec![];
 
-        // Use a cached index function (idx) here
+        // Use a string table
         let mut cache = HashMap::new();
         let mut idx = |s: String| -> Idx {
             *cache.entry(s.clone()).or_insert_with(|| {

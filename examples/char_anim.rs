@@ -5,7 +5,7 @@ fn main() -> ! {
 
     let engine = Engine::new(Program::default().with_window());
     let (character, criminal, idle) = {
-    let mut pak = Pak::open(
+        let mut pak = Pak::open(
         current_exe()
             .unwrap()
             .parent()
@@ -15,12 +15,10 @@ fn main() -> ! {
             .join("char_anim.pak"),
     )
     .expect("ERROR: You must first pack the runtime content into a file by running the following command: `cargo run examples/res/char_anim.toml`");
-    let gpu = engine.gpu();
-    let character = gpu
-        .read_model(&mut pak, "gltf/character/character");
-    let criminal = gpu
-        .read_bitmap(&mut pak, "gltf/character/criminal");
-    let idle = gpu.read_animation(&mut pak, "gltf/character/idle");
+        let gpu = engine.gpu();
+        let character = gpu.read_model(&mut pak, "gltf/character/character");
+        let criminal = gpu.read_bitmap(&mut pak, "gltf/character/criminal");
+        let idle = gpu.read_animation(&mut pak, "gltf/character/idle");
 
         (character, criminal, idle)
     };
@@ -40,7 +38,13 @@ struct CharacterAnimation {
 
 impl Screen<RcK> for CharacterAnimation {
     fn render(&self, gpu: &Gpu, dims: Extent) -> Render {
-        let camera = Perspective::new(vec3(0.0, 0.0, 10.0), vec3(0.0, 0.0, 0.0), 0.1..20.0, 45.0, dims.x as f32 / dims.y as f32);
+        let camera = Perspective::new(
+            vec3(0.0, 0.0, 10.0),
+            vec3(0.0, 0.0, 0.0),
+            0.1..20.0,
+            45.0,
+            dims.x as f32 / dims.y as f32,
+        );
 
         let mut frame = gpu.render(dims);
         frame.clear().with(CORNFLOWER_BLUE).record();

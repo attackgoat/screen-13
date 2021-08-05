@@ -1,7 +1,7 @@
 use {
     super::{
         asset::{Animation as AnimationAsset, Asset},
-        get_filename_key, get_path,
+        get_filename_key,
     },
     crate::{
         math::{quat, Quat, Vec3},
@@ -25,24 +25,26 @@ use {
 };
 
 /// Reads and processes animation source files into an existing `.pak` file buffer.
-pub fn bake_animation<P1: AsRef<Path>, P2: AsRef<Path>>(
+pub fn bake_animation<P1, P2>(
     context: &mut HashMap<Asset, Id>,
-    project_dir: P1,
-    asset_filename: P2,
-    asset: AnimationAsset,
     pak: &mut PakBuf,
-) -> AnimationId {
-
-
+    project_dir: P1,
+    src: P2,
+    asset: AnimationAsset,
+) -> AnimationId
+where
+    P1: AsRef<Path>,
+    P2: AsRef<Path>,
+{
     // if let Some(id) = context.get(&asset.into()) {
     //     return id.as_animation().unwrap();
     // }
 
-    let key = get_filename_key(&project_dir, &asset_filename);
-    info!("Processing asset: {}", key);
+    let key = get_filename_key(&project_dir, &src);
+    info!("Baking animation: {}", key);
 
-    let dir = asset_filename.as_ref().parent().unwrap();
-    let src = get_path(&dir, asset.src(), project_dir);
+    let src_dir = src.as_ref().parent().unwrap();
+    let src = asset.src(); // TODO get_path(&dir, asset.src(), project_dir);
 
     let name = asset.name();
     let (doc, bufs, _) = import(src).unwrap();

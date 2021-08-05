@@ -1,11 +1,14 @@
 use {
     super::{
-        asset::{Asset, Material as MaterialAsset},
+        asset::{Asset, Material},
         bake_bitmap,
         bitmap::pixels,
-        get_filename_key, get_path,
+        get_filename_key,
     },
-    crate::{color::{AlphaColor, MAGENTA}, pak::{id::MaterialId, BitmapBuf, BitmapFormat, MaterialDesc, PakBuf}},
+    crate::{
+        color::{AlphaColor, MAGENTA},
+        pak::{id::MaterialId, BitmapBuf, BitmapFormat, MaterialDesc, PakBuf},
+    },
     std::path::Path,
 };
 
@@ -13,18 +16,22 @@ const DEFAULT_METALNESS: f32 = 0.5;
 const DEFAULT_ROUGHNESS: f32 = 0.5;
 
 /// Reads and processes 3D model material source files into an existing `.pak` file buffer.
-pub fn bake_material<P1: AsRef<Path>, P2: AsRef<Path>>(
+pub fn bake_material<P1, P2>(
+    pak: &mut PakBuf,
     project_dir: P1,
-    filename: P2,
-    material: &MaterialAsset,
-    mut pak: &mut PakBuf,
-) -> MaterialId {
+    src: P2,
+    material: &Material,
+) -> MaterialId
+where
+    P1: AsRef<Path>,
+    P2: AsRef<Path>,
+{
     // let key = get_filename_key(&project_dir, &filename);
     // if let Some(id) = pak.id(&key) {
     //     return id.as_material().unwrap();
     // }
 
-    // info!("Processing asset: {}", key);
+    // info!("Baking material: {}", key);
 
     // let dir = filename.as_ref().parent().unwrap();
 
@@ -122,7 +129,7 @@ pub fn bake_material<P1: AsRef<Path>, P2: AsRef<Path>>(
     // let rough_filename = get_path(dir, material.rough_src(), &project_dir);
 
     // // TODO: "Entertaining" key format which is temporary because it starts with a period
-    
+
     // let metal_rough = if let Some(id) = pak.id(&metal_rough_key) {
     //     id.as_bitmap().unwrap()
     // } else {
@@ -162,5 +169,8 @@ pub fn bake_material<P1: AsRef<Path>, P2: AsRef<Path>>(
 }
 
 fn create_bitmap(val: &[f32], height: usize, width: usize) -> Vec<u8> {
-    val.repeat(width * height).iter().map(|val| (*val * 255f32) as u8).collect()
+    val.repeat(width * height)
+        .iter()
+        .map(|val| (*val * 255f32) as u8)
+        .collect()
 }

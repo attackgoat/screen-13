@@ -68,71 +68,71 @@ fn load_bitmap(c: &mut Criterion) {
 }
 
 fn read_bitmap(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Read bitmap");
-    for (idx, criteria) in [
-        Extent::new(1, 1),
-        Extent::new(2, 2),
-        Extent::new(4, 4),
-        Extent::new(8, 8),
-        Extent::new(16, 16),
-        Extent::new(32, 32),
-        Extent::new(64, 64),
-        Extent::new(128, 128),
-        Extent::new(256, 256),
-        Extent::new(512, 512),
-        Extent::new(1024, 1024),
-        Extent::new(2048, 2048),
-        Extent::new(4096, 4096),
-        Extent::new(8192, 8192),
-        Extent::new(16384, 16384),
-    ]
-    .iter()
-    .enumerate()
-    {
-        // Some pre-work to get a .pak file ready for this criteria
-        {
-            // Create a new image
-            let bitmap: RgbImage = ImageBuffer::new(criteria.x, criteria.y);
-            let bitmap_filename = format!("screen-13-bench-read-bitmap-{}.bmp", idx);
-            let bitmap_path = temp_dir().join(&bitmap_filename);
-            bitmap
-                .save_with_format(&bitmap_path, ImageFormat::Bmp)
-                .unwrap();
+    // let mut group = c.benchmark_group("Read bitmap");
+    // for (idx, criteria) in [
+    //     Extent::new(1, 1),
+    //     Extent::new(2, 2),
+    //     Extent::new(4, 4),
+    //     Extent::new(8, 8),
+    //     Extent::new(16, 16),
+    //     Extent::new(32, 32),
+    //     Extent::new(64, 64),
+    //     Extent::new(128, 128),
+    //     Extent::new(256, 256),
+    //     Extent::new(512, 512),
+    //     Extent::new(1024, 1024),
+    //     Extent::new(2048, 2048),
+    //     Extent::new(4096, 4096),
+    //     Extent::new(8192, 8192),
+    //     Extent::new(16384, 16384),
+    // ]
+    // .iter()
+    // .enumerate()
+    // {
+    //     // Some pre-work to get a .pak file ready for this criteria
+    //     {
+    //         // Create a new image
+    //         let bitmap: RgbImage = ImageBuffer::new(criteria.x, criteria.y);
+    //         let bitmap_filename = format!("screen-13-bench-read-bitmap-{}.bmp", idx);
+    //         let bitmap_path = temp_dir().join(&bitmap_filename);
+    //         bitmap
+    //             .save_with_format(&bitmap_path, ImageFormat::Bmp)
+    //             .unwrap();
 
-            // Bake the image into a .pak (no compression in this bench)
-            let asset = Bitmap::new(bitmap_filename);
-            let asset_filename = temp_dir().join("my-bitmap.toml");
-            let mut pak = PakBuf::default();
-            let pak_filename = temp_dir().join(format!("screen-13-bench-read-bitmap-{}.pak", idx));
-            let mut context = Default::default();
-            bake_bitmap(&mut context, temp_dir(), asset_filename, &asset, &mut pak);
-            pak.write(
-                &mut BufWriter::new(File::create(&pak_filename).unwrap()),
-                None,
-            )
-            .unwrap();
-        }
+    //         // Bake the image into a .pak (no compression in this bench)
+    //         let asset = Bitmap::new(bitmap_filename);
+    //         let asset_filename = temp_dir().join("my-bitmap.toml");
+    //         let mut pak = PakBuf::default();
+    //         let pak_filename = temp_dir().join(format!("screen-13-bench-read-bitmap-{}.pak", idx));
+    //         let mut context = Default::default();
+    //         bake_bitmap(&mut context, temp_dir(), asset_filename, &asset, &mut pak);
+    //         pak.write(
+    //             &mut BufWriter::new(File::create(&pak_filename).unwrap()),
+    //             None,
+    //         )
+    //         .unwrap();
+    //     }
 
-        let gpu = Gpu::offscreen();
-        let mut pak = Pak::read(Cursor::new(
-            read(temp_dir().join(format!("screen-13-bench-read-bitmap-{}.pak", idx))).unwrap(),
-        ))
-        .unwrap();
-        let id = pak.bitmap_id("my-bitmap").unwrap();
+    //     let gpu = Gpu::offscreen();
+    //     let mut pak = Pak::read(Cursor::new(
+    //         read(temp_dir().join(format!("screen-13-bench-read-bitmap-{}.pak", idx))).unwrap(),
+    //     ))
+    //     .unwrap();
+    //     let id = pak.bitmap_id("my-bitmap").unwrap();
 
-        group.bench_with_input(
-            BenchmarkId::new(
-                "Power of two dimensions",
-                format!("2 ^ {:0>#2}: {}", idx, criteria),
-            ),
-            criteria,
-            |b, _criteria| {
-                b.iter(|| {
-                    gpu.read_bitmap_with_id(black_box(&mut pak), black_box(id));
-                })
-            },
-        );
-    }
+    //     group.bench_with_input(
+    //         BenchmarkId::new(
+    //             "Power of two dimensions",
+    //             format!("2 ^ {:0>#2}: {}", idx, criteria),
+    //         ),
+    //         criteria,
+    //         |b, _criteria| {
+    //             b.iter(|| {
+    //                 gpu.read_bitmap_with_id(black_box(&mut pak), black_box(id));
+    //             })
+    //         },
+    //     );
+    // }
 }
 
 fn write_bitmap_onto_render(c: &mut Criterion) {

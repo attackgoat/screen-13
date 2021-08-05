@@ -43,7 +43,7 @@ impl Content {
     }
 }
 
-#[derive(Clone, Copy,  Deserialize, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Deserialize, Eq, Hash, PartialEq)]
 pub enum Compression {
     /// Higher compression ratio but slower to decode and encode.
     #[serde(rename = "brotli")]

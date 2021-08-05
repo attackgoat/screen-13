@@ -1,8 +1,12 @@
 use {
+    super::{parse_hex_color, parse_hex_scalar, Bitmap, Canonicalize},
     crate::color::WHITE,
-    super::Bitmap,
     serde::{
-        de::{self, value::{MapAccessDeserializer, SeqAccessDeserializer}, MapAccess, SeqAccess, Visitor},
+        de::{
+            self,
+            value::{MapAccessDeserializer, SeqAccessDeserializer},
+            MapAccess, SeqAccess, Visitor,
+        },
         Deserialize, Deserializer,
     },
     std::{
@@ -13,14 +17,15 @@ use {
     },
 };
 
-/// A reference to a bitmap asset, three or four channel image file, or single four channel color.
-#[derive(Clone,  Eq, Hash, PartialEq)]
+/// A reference to a `Bitmap` asset, `Bitmap` asset file, three or four channel image source file,
+/// or single four channel color.
+#[derive(Clone, Eq, Hash, PartialEq)]
 pub enum ColorRef {
     /// A `Bitmap` asset specified inline.
     Asset(Bitmap),
 
-    /// A `Bitmap` asset file or image file.
-    File(PathBuf),
+    /// A `Bitmap` asset file or image source file.
+    Path(PathBuf),
 
     /// A single four channel color.
     Value([u8; 4]),
@@ -39,10 +44,10 @@ impl ColorRef {
     /// src of file.png:
     /// .. = "file.png"
     ///
-    /// src of file.toml which must be a Bitmap asset:
+    /// src of file.toml which must be a `Bitmap` asset:
     /// .. = "file.toml"
     ///
-    /// src of a Bitmap asset:
+    /// src of a `Bitmap` asset:
     /// .. = { src = "file.png", format = "Rgb" }
     fn de<'de, D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -85,11 +90,11 @@ impl ColorRef {
                 }
 
                 Ok(ColorRef::Value([
-                        (val[0] * u8::MAX as f32) as u8,
-                        (val[1] * u8::MAX as f32) as u8,
-                        (val[2] * u8::MAX as f32) as u8,
-                        (val[3] * u8::MAX as f32) as u8,
-                    ]))
+                    (val[0] * u8::MAX as f32) as u8,
+                    (val[1] * u8::MAX as f32) as u8,
+                    (val[2] * u8::MAX as f32) as u8,
+                    (val[3] * u8::MAX as f32) as u8,
+                ]))
             }
 
             fn visit_str<E>(self, str: &str) -> Result<Self::Value, E>
@@ -97,43 +102,30 @@ impl ColorRef {
                 E: de::Error,
             {
                 if str.starts_with('#') {
-                    if let Some(val) = ColorRef::parse_hex(str) {
+                    if let Some(val) = parse_hex_color(str) {
                         return Ok(ColorRef::Value(val));
                     }
                 }
 
-                Ok(ColorRef::File(PathBuf::from(str)))
+                Ok(ColorRef::Path(PathBuf::from(str)))
             }
         }
 
         deserializer.deserialize_any(ColorRefVisitor)
     }
+}
 
-    // TODO: Color parsing and error handling should be better and somewhere else
-    fn parse_hex(val: &str) -> Option<[u8; 4]> {
-        let mut res = [1; 4];
-        let len = val.len();
-        match len {
-            4 | 5 => {
-                res[0] = u8::from_str_radix(&val[1..2].repeat(2), 16).unwrap();
-                res[1] = u8::from_str_radix(&val[2..3].repeat(2), 16).unwrap();
-                res[2] = u8::from_str_radix(&val[3..4].repeat(2), 16).unwrap();
-            }
-            7 | 9 => {
-                res[0] = u8::from_str_radix(&val[1..3], 16).unwrap();
-                res[1] = u8::from_str_radix(&val[3..5], 16).unwrap();
-                res[2] = u8::from_str_radix(&val[5..7], 16).unwrap();
-            }
-            _ => return None,
+impl Canonicalize for ColorRef {
+    fn canonicalize<P1, P2>(&mut self, project_dir: P1, src_dir: P2)
+    where
+        P1: AsRef<Path>,
+        P2: AsRef<Path>,
+    {
+        match self {
+            Self::Asset(bitmap) => bitmap.canonicalize(project_dir, src_dir),
+            Self::Path(src) => *src = Self::canonicalize_project_path(project_dir, src_dir, &src),
+            _ => (),
         }
-
-        match len {
-            5 => res[3] = u8::from_str_radix(&val[4..5].repeat(2), 16).unwrap(),
-            9 => res[3] = u8::from_str_radix(&val[7..9], 16).unwrap(),
-            _ => unreachable!(),
-        }
-
-        Some(res)
     }
 }
 
@@ -162,7 +154,8 @@ pub struct Material {
 }
 
 impl Material {
-    /// A bitmap asset, three or four channel image file, or single four channel color.
+    /// A `Bitmap` asset, `Bitmap` asset file, three or four channel image source file, or single
+    /// four channel color.
     pub fn color(&self) -> &ColorRef {
         &self.color
     }
@@ -172,57 +165,51 @@ impl Material {
         self.double_sided.unwrap_or_default()
     }
 
-    /// A Bitmap asset
-    pub fn metal_asset(&self) -> Option<&Bitmap> {
-        self.metal.as_ref().map(|scalar| scalar.asset.as_ref()).flatten()
+    /// A `Bitmap` asset, `Bitmap` asset file, single channel image source file, or a single
+    /// normalized value.
+    pub fn metal(&self) -> Option<&ScalarRef> {
+        self.metal.as_ref()
     }
 
-    /// A one channel image.
-    pub fn metal_src(&self) -> Option<&Path> {
-        self.metal
-            .as_ref()
-            .map(|scalar| scalar.src.as_deref())
-            .flatten()
+    /// A bitmap asset, bitmap asset file, or a three channel image.
+    pub fn normal(&self) -> Option<&NormalRef> {
+        self.normal.as_ref()
     }
 
-    /// A single value.
-    pub fn metal_val(&self) -> Option<u8> {
-        self.metal.as_ref().map(|scalar| scalar.val).flatten()
-    }
-
-    /// A Bitmap asset.
-    pub fn normal_asset(&self) -> Option<&Bitmap> {
-        self.normal.as_ref().map(|normal| normal.asset.as_ref()).flatten()
-    }
-
-    /// A three channel image.
-    pub fn normal_src(&self) -> Option<&Path> {
-        self.normal.as_ref().map(|normal| normal.src.as_deref()).flatten()
-    }
-
-    /// A bitmap asset
-    pub fn rough_asset(&self) -> Option<&Bitmap> {
-        self.rough.as_ref().map(|scalar| scalar.asset.as_ref()).flatten()
-    }
-
-    /// A one channel image.
-    pub fn rough_src(&self) -> Option<&Path> {
-        self.rough
-            .as_ref()
-            .map(|scalar| scalar.src.as_deref())
-            .flatten()
-    }
-
-    /// A single value.
-    pub fn rough_val(&self) -> Option<u8> {
-        self.rough.as_ref().map(|scalar| scalar.val).flatten()
+    /// A `Bitmap` asset, `Bitmap` asset file, single channel image source file, or a single
+    /// normalized value.
+    pub fn rough(&self) -> Option<&ScalarRef> {
+        self.rough.as_ref()
     }
 }
 
+impl Canonicalize for Material {
+    fn canonicalize<P1, P2>(&mut self, project_dir: P1, src_dir: P2)
+    where
+        P1: AsRef<Path>,
+        P2: AsRef<Path>,
+    {
+        self.color.canonicalize(&project_dir, &src_dir);
+        self.metal
+            .as_mut()
+            .map(|metal| metal.canonicalize(&project_dir, &src_dir));
+        self.normal
+            .as_mut()
+            .map(|normal| normal.canonicalize(&project_dir, &src_dir));
+        self.rough
+            .as_mut()
+            .map(|rough| rough.canonicalize(&project_dir, &src_dir));
+    }
+}
+
+/// A reference to a bitmap asset, bitmap asset file, or three channel image source file.
 #[derive(Clone, Eq, Hash, PartialEq)]
-struct NormalRef {
-    asset: Option<Bitmap>,
-    src: Option<PathBuf>,
+pub enum NormalRef {
+    /// A `Bitmap` asset specified inline.
+    Asset(Bitmap),
+
+    /// A `Bitmap` asset file or three channel image source file.
+    Path(PathBuf),
 }
 
 impl NormalRef {
@@ -255,20 +242,14 @@ impl NormalRef {
             {
                 let asset = Deserialize::deserialize(MapAccessDeserializer::new(map))?;
 
-                Ok(Some(NormalRef {
-                    asset: Some(asset),
-                    src: None,
-                }))
+                Ok(Some(NormalRef::Asset(asset)))
             }
 
             fn visit_str<E>(self, str: &str) -> Result<Self::Value, E>
             where
                 E: de::Error,
             {
-                Ok(Some(NormalRef {
-                    asset: None,
-                    src: Some(PathBuf::from(str)),
-                }))
+                Ok(Some(NormalRef::Path(PathBuf::from(str))))
             }
         }
 
@@ -276,11 +257,31 @@ impl NormalRef {
     }
 }
 
+impl Canonicalize for NormalRef {
+    fn canonicalize<P1, P2>(&mut self, project_dir: P1, src_dir: P2)
+    where
+        P1: AsRef<Path>,
+        P2: AsRef<Path>,
+    {
+        match self {
+            Self::Asset(bitmap) => bitmap.canonicalize(project_dir, src_dir),
+            Self::Path(src) => *src = Self::canonicalize_project_path(project_dir, src_dir, &src),
+        }
+    }
+}
+
+/// Reference to a `Bitmap` asset, `Bitmap` asset file, single channel image source file, or a
+/// single value.
 #[derive(Clone, Eq, Hash, PartialEq)]
-struct ScalarRef {
-    asset: Option<Bitmap>,
-    src: Option<PathBuf>,
-    val: Option<u8>,
+pub enum ScalarRef {
+    /// A `Bitmap` asset specified inline.
+    Asset(Bitmap),
+
+    /// A `Bitmap` asset file or single channel image source file.
+    Path(PathBuf),
+
+    /// A single value.
+    Value(u8),
 }
 
 impl ScalarRef {
@@ -309,7 +310,8 @@ impl ScalarRef {
             type Value = Option<ScalarRef>;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("hex string, path string, bitmap asset, or floating point value")
+                formatter
+                    .write_str("hex string, path string, bitmap asset, or floating point value")
             }
 
             fn visit_f64<E>(self, val: f64) -> Result<Self::Value, E>
@@ -322,11 +324,7 @@ impl ScalarRef {
                     _ => panic!("Unexpected scalar value"),
                 }
 
-                Ok(Some(ScalarRef {
-                    asset: None,
-                    src: None,
-                    val: Some((val * u8::MAX as f32) as _),
-                }))
+                Ok(Some(ScalarRef::Value((val * u8::MAX as f32) as _)))
             }
 
             fn visit_map<M>(self, map: M) -> Result<Self::Value, M::Error>
@@ -335,11 +333,7 @@ impl ScalarRef {
             {
                 let asset = Deserialize::deserialize(MapAccessDeserializer::new(map))?;
 
-                Ok(Some(ScalarRef {
-                    asset: Some(asset),
-                    src: None,
-                    val: None,
-                }))
+                Ok(Some(ScalarRef::Asset(asset)))
             }
 
             fn visit_str<E>(self, str: &str) -> Result<Self::Value, E>
@@ -347,32 +341,29 @@ impl ScalarRef {
                 E: de::Error,
             {
                 if str.starts_with('#') {
-                    if let Some(val) = ScalarRef::parse_hex(str) {
-                        return Ok(Some(ScalarRef {
-                            asset: None,
-                            src: None,
-                            val: Some(val),
-                        }));
+                    if let Some(val) = parse_hex_scalar(str) {
+                        return Ok(Some(ScalarRef::Value(val)));
                     }
                 }
 
-                Ok(Some(ScalarRef {
-                    asset: None,
-                    src: Some(PathBuf::from(str)),
-                    val: None,
-                }))
+                Ok(Some(ScalarRef::Path(PathBuf::from(str))))
             }
         }
 
         deserializer.deserialize_any(ScalarRefVisitor)
     }
+}
 
-    // TODO: Scalar parsing and error handling should be better and somewhere else
-    fn parse_hex(val: &str) -> Option<u8> {
-        match val.len() {
-            2 => Some(u8::from_str_radix(&val[1..2].repeat(2), 16).unwrap()),
-            3 => Some(u8::from_str_radix(&val[1..3], 16).unwrap()),
-            _ => None,
+impl Canonicalize for ScalarRef {
+    fn canonicalize<P1, P2>(&mut self, project_dir: P1, src_dir: P2)
+    where
+        P1: AsRef<Path>,
+        P2: AsRef<Path>,
+    {
+        match self {
+            Self::Asset(bitmap) => bitmap.canonicalize(project_dir, src_dir),
+            Self::Path(src) => *src = Self::canonicalize_project_path(project_dir, src_dir, &src),
+            _ => (),
         }
     }
 }

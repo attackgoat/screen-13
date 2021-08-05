@@ -2,7 +2,7 @@
 
 [[scene.ref]]
 id = "body"
-model = "ambulance.glb"
+model = { src = "ambulance.glb", exclude = [""] }
 
 [[scene.ref]]
 id = "wheel"

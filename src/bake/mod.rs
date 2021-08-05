@@ -14,7 +14,6 @@ mod text;
 
 pub use self::{
     anim::bake_animation,
-    asset::{Asset, Model},
     bitmap::{bake_bitmap, bake_bitmap_font},
     blob::bake_blob,
     material::bake_material,
@@ -25,57 +24,7 @@ pub use self::{
 
 use std::path::{Path, PathBuf};
 
-/// Gets the fully rooted asset path from a given path. If path is relative, then dir is used to
-/// determine the relative parent.
-pub fn get_path<P1: AsRef<Path>, P2: AsRef<Path>, P3: AsRef<Path>>(
-    path_dir: P1,
-    path: P2,
-    res_dir: P3,
-) -> PathBuf {
-    //trace!("Getting path for {} in {} (res_dir={})", path.as_ref().display(), path_dir.as_ref().display(), res_dir.as_ref().display());
-
-    // Absolute paths are 'project aka resource directory' absolute, not *your host file system*
-    // absolute!
-    if path.as_ref().is_absolute() {
-        // Build an array of path items (file and directories) until the root
-        let mut temp = Some(path.as_ref());
-        let mut parts = vec![];
-        while let Some(path) = temp {
-            if let Some(part) = path.file_name() {
-                parts.push(part);
-                temp = path.parent();
-            } else {
-                break;
-            }
-        }
-
-        // Paste the incoming path (minus root) onto the res_dir parameter
-        let mut temp = res_dir.as_ref().to_path_buf();
-        for part in parts.iter().rev() {
-            temp = temp.join(part);
-        }
-
-        temp.canonicalize().unwrap_or_else(|_| {
-            panic!(
-                "{} + {} == {}",
-                res_dir.as_ref().display(),
-                path.as_ref().display(),
-                temp.display(),
-            )
-        })
-    } else {
-        let combined = path_dir.as_ref().join(&path);
-        combined.canonicalize().unwrap_or_else(|_| {
-            error!(
-                "Unable to canonicalize {} + {}",
-                path_dir.as_ref().display(),
-                path.as_ref().display()
-            );
-            panic!("{} not found", combined.display());
-        })
-    }
-}
-
+// TODO: TEST!
 /// Given some parent directory and a filename, returns just the portion after the directory.
 pub fn get_filename_key<P1: AsRef<Path>, P2: AsRef<Path>>(dir: P1, filename: P2) -> String {
     let res_dir = dir.as_ref();

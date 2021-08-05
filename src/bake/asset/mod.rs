@@ -9,15 +9,57 @@ mod model;
 mod scene;
 
 pub use self::{
-    anim::Animation, bitmap::Bitmap, blob::Blob, content::Content, material::{Material, ColorRef},
-    model::{Mesh, Model}, scene::Scene,
+    anim::Animation,
+    bitmap::Bitmap,
+    blob::Blob,
+    content::Content,
+    material::{ColorRef, Material, NormalRef, ScalarRef},
+    model::{Mesh, Model},
+    scene::{AssetRef, Scene, SceneRef},
 };
 
 use {
     serde::Deserialize,
-    std::{fs::read_to_string, path::Path},
+    std::{
+        fs::read_to_string,
+        path::{Path, PathBuf},
+    },
     toml::from_str,
 };
+
+fn parse_hex_color(val: &str) -> Option<[u8; 4]> {
+    let mut res = [1; 4];
+    let len = val.len();
+    match len {
+        4 | 5 => {
+            res[0] = u8::from_str_radix(&val[1..2].repeat(2), 16).unwrap();
+            res[1] = u8::from_str_radix(&val[2..3].repeat(2), 16).unwrap();
+            res[2] = u8::from_str_radix(&val[3..4].repeat(2), 16).unwrap();
+        }
+        7 | 9 => {
+            res[0] = u8::from_str_radix(&val[1..3], 16).unwrap();
+            res[1] = u8::from_str_radix(&val[3..5], 16).unwrap();
+            res[2] = u8::from_str_radix(&val[5..7], 16).unwrap();
+        }
+        _ => return None,
+    }
+
+    match len {
+        5 => res[3] = u8::from_str_radix(&val[4..5].repeat(2), 16).unwrap(),
+        9 => res[3] = u8::from_str_radix(&val[7..9], 16).unwrap(),
+        _ => unreachable!(),
+    }
+
+    Some(res)
+}
+
+fn parse_hex_scalar(val: &str) -> Option<u8> {
+    match val.len() {
+        2 => Some(u8::from_str_radix(&val[1..2].repeat(2), 16).unwrap()),
+        3 => Some(u8::from_str_radix(&val[1..3], 16).unwrap()),
+        _ => None,
+    }
+}
 
 /// A collection type containing all supported asset file types.
 #[derive(Clone, Deserialize, Eq, Hash, PartialEq)]
@@ -102,6 +144,89 @@ impl Asset {
         match self {
             Self::Model(model) => Some(model),
             _ => None,
+        }
+    }
+}
+
+impl From<Model> for Asset {
+    fn from(val: Model) -> Self {
+        Self::Model(val)
+    }
+}
+
+impl From<Material> for Asset {
+    fn from(val: Material) -> Self {
+        Self::Material(val)
+    }
+}
+
+impl From<Scene> for Asset {
+    fn from(val: Scene) -> Self {
+        Self::Scene(val)
+    }
+}
+
+pub(super) trait Canonicalize {
+    fn canonicalize<P1, P2>(&mut self, project_dir: P1, src_dir: P2)
+    where
+        P1: AsRef<Path>,
+        P2: AsRef<Path>;
+
+    /// Gets the fully rooted source path.
+    ///
+    /// If `src` is relative, then `src_dir` is used to determine the relative parent.
+    /// If `src` is absolute, then `project_dir` is considered to be its root.
+    fn canonicalize_project_path<P1, P2, P3>(project_dir: P1, src_dir: P2, src: P3) -> PathBuf
+    where
+        P1: AsRef<Path>,
+        P2: AsRef<Path>,
+        P3: AsRef<Path>,
+    {
+        //trace!("Getting path for {} in {} (res_dir={})", path.as_ref().display(), path_dir.as_ref().display(), res_dir.as_ref().display());
+
+        // Absolute paths are 'project aka resource directory' absolute, not *your host file system*
+        // absolute!
+        if src.as_ref().is_absolute() {
+            // TODO: This could be way simpler!
+
+            // Build an array of path items (file and directories) until the root
+            let mut temp = Some(src.as_ref());
+            let mut parts = vec![];
+            while let Some(path) = temp {
+                if let Some(part) = path.file_name() {
+                    parts.push(part);
+                    temp = path.parent();
+                } else {
+                    break;
+                }
+            }
+
+            // Paste the incoming path (minus root) onto the res_dir parameter
+            let mut temp = project_dir.as_ref().to_path_buf();
+            for part in parts.iter().rev() {
+                temp = temp.join(part);
+            }
+
+            temp.canonicalize().unwrap_or_else(|_| {
+                error!(
+                    "Unable to canonicalize {} with {} ({})",
+                    project_dir.as_ref().display(),
+                    src.as_ref().display(),
+                    temp.display(),
+                );
+                panic!("{} not found", temp.display());
+            })
+        } else {
+            let temp = src_dir.as_ref().join(&src);
+            temp.canonicalize().unwrap_or_else(|_| {
+                error!(
+                    "Unable to canonicalize {} with {} ({})",
+                    src_dir.as_ref().display(),
+                    src.as_ref().display(),
+                    temp.display(),
+                );
+                panic!("{} not found", temp.display());
+            })
         }
     }
 }

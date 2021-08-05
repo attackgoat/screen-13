@@ -211,7 +211,7 @@ impl<N> Default for Builder<N> {
 }
 
 #[derive(Deserialize, Serialize)]
-pub(crate) struct Model {
+pub(crate) struct ModelBuf {
     idx_ty: IndexType,
 
     #[serde(with = "serde_bytes")]
@@ -226,7 +226,7 @@ pub(crate) struct Model {
     write_mask: Vec<u8>,
 }
 
-impl Model {
+impl ModelBuf {
     pub(crate) fn new(
         mut meshes: Vec<Mesh>,
         idx_ty: IndexType,
@@ -272,8 +272,8 @@ impl Model {
     }
 }
 
-impl Debug for Model {
+impl Debug for ModelBuf {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        f.write_str("Model")
+        f.write_str("ModelBuf")
     }
 }

@@ -1,29 +1,39 @@
-use crate::bake::Model;
-
 use {
     super::{
-        is_toml,
-        asset::Scene as SceneAsset, bake_material, bake_model, get_filename_key, get_path, Asset,
+        asset::{Asset, AssetRef, Canonicalize as _, Material, Model, Scene},
+        bake_material, bake_model, get_filename_key, is_toml,
     },
-    crate::pak::{id::SceneId, scene::Instance, PakBuf, Scene},
-    std::path::{Path, PathBuf},
+    crate::pak::{
+        id::{Id, SceneId},
+        scene::Instance,
+        PakBuf, SceneBuf,
+    },
+    std::{
+        collections::HashMap,
+        path::{Path, PathBuf},
+    },
 };
 
 /// Reads and processes scene source files into an existing `.pak` file buffer.
-pub fn bake_scene<P1: AsRef<Path>, P2: AsRef<Path>>(
+pub fn bake_scene<P1, P2>(
+    context: &mut HashMap<Asset, Id>,
+    pak: &mut PakBuf,
     project_dir: P1,
-    filename: P2,
-    asset: &SceneAsset,
-    mut pak: &mut PakBuf,
-) -> SceneId {
-    let key = get_filename_key(&project_dir, &filename);
-    // if let Some(id) = pak.id(&key) {
-    //     return id.as_scene().unwrap();
-    // }
+    src: P2,
+    asset: &Scene,
+) -> SceneId
+where
+    P1: AsRef<Path>,
+    P2: AsRef<Path>,
+{
+    let key = get_filename_key(&project_dir, &src);
+    if let Some(id) = context.get(&asset.clone().into()) {
+        return id.as_scene().unwrap();
+    }
 
-    info!("Processing asset: {}", key);
+    info!("Baking scene: {}", key);
 
-    let dir = filename.as_ref().parent().unwrap();
+    let src_dir = src.as_ref().parent().unwrap();
 
     let mut refs = vec![];
     for scene_ref in asset.refs() {
@@ -36,34 +46,57 @@ pub fn bake_scene<P1: AsRef<Path>, P2: AsRef<Path>>(
             }
         }
 
-        let material = scene_ref.material().map(|src| {
-            let src = get_path(&dir, src, &project_dir);
-            let material = if is_toml(&src) {
-                Asset::read(&src).into_material().unwrap()
-            } else {
-                // Not sure if I want to use bitmap or a material with None PBR fields
-                //Bitmap::new(&src)
-                todo!();
-            };
-            bake_material(&project_dir, src, &material, &mut pak)
-        });
+        let material = scene_ref
+            .material()
+            .map(|material| match material {
+                AssetRef::Asset(material) => {
+                    // Material asset specified inline
+                    let mut material = material.clone();
+                    material.canonicalize(&project_dir, &src_dir);
+                    material
+                }
+                AssetRef::Path(src) => {
+                    // Asset file reference
+                    let src = Material::canonicalize_project_path(&project_dir, src_dir, src);
+                    Asset::read(src).into_material().unwrap()
+                }
+            })
+            .map(|material| {
+                // If we do not have this model asset in the context then we must bake it
+                context
+                    .get(&material.clone().into())
+                    .copied()
+                    .unwrap_or_else(|| {
+                        //bake_material(&project_dir, model.src_ref(), &model, &mut pak).into()
+                        todo!()
+                    })
+                    .as_material()
+                    .unwrap()
+            });
 
-        let model = scene_ref.model().map(|src| {
-            let src_path = get_path(&dir, src, &project_dir);
-            let model = if let Some("toml") = src.extension().map(|ext| ext.to_str()).flatten() {
-                Asset::read(&src_path).into_model().unwrap()
-            } else {
-                // Model::new(
-                //     PathBuf::from(&key)
-                //         .parent()
-                //         .map(|path| path.to_owned())
-                //         .unwrap_or_else(|| PathBuf::new())
-                //         .join(src),
-                // )
-                todo!();
-            };
-            bake_model(&project_dir, src_path, &model, &mut pak)
-        });
+        let model = scene_ref
+            .model()
+            .map(|model| match model {
+                AssetRef::Asset(model) => {
+                    // Model asset specified inline
+                    let mut model = model.clone();
+                    model.canonicalize(&project_dir, &src_dir);
+                    (None, model)
+                }
+                AssetRef::Path(src) => {
+                    let src = Model::canonicalize_project_path(&project_dir, src_dir, src);
+                    if is_toml(&src) {
+                        // Asset file reference
+                        let mut model = Asset::read(&src).into_model().unwrap();
+                        model.canonicalize(&project_dir, &src_dir);
+                        (Some(src.to_owned()), model)
+                    } else {
+                        // Model file reference
+                        (None, Model::new(src))
+                    }
+                }
+            })
+            .map(|(src, model)| bake_model(context, pak, &project_dir, src, &model));
 
         refs.push(Instance {
             id: scene_ref.id().map(|id| id.to_owned()),
@@ -75,7 +108,6 @@ pub fn bake_scene<P1: AsRef<Path>, P2: AsRef<Path>>(
         });
     }
 
-    // // Pak this asset
-    // pak.push_scene(key, Scene::new(refs.drain(..)))
-    todo!();
+    // Pak this asset
+    pak.push_scene(key, SceneBuf::new(refs.drain(..)))
 }

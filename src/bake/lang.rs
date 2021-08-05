@@ -2,19 +2,18 @@ use {
     super::{
         get_filename_key,
         pak_log::{LogId, PakLog},
-        schema::{Asset, LanguageAsset},
+        schema::{Asset, Language},
     },
     crate::pak::PakBuf,
     std::path::Path,
 };
 
-pub fn bake_lang<P1: AsRef<Path>, P2: AsRef<Path>>(
-    project_dir: P1,
-    asset_filename: P2,
-    loc_asset: &LanguageAsset,
+pub fn bake_lang<P1, P2>(
     pak: &mut PakBuf,
-    log: &mut PakLog,
-) {
+    project_dir: P1,
+    src: P2,
+    lang: &Language,
+) where P1: AsRef<Path>, P2: AsRef<Path> {
     let asset = Asset::Language(loc_asset.clone());
     if log.contains(&asset) {
         return;
@@ -23,7 +22,7 @@ pub fn bake_lang<P1: AsRef<Path>, P2: AsRef<Path>>(
     }
 
     let key = get_filename_key(&project_dir, &asset_filename);
-    info!("Processing asset: {}", key);
+    info!("Baking language: {}", key);
 
     // Pak this asset
     pak.push_localization(loc_asset.locale().to_owned(), loc_asset.text().clone());

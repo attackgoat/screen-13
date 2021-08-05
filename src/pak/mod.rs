@@ -212,7 +212,7 @@ mod pak_buf;
 
 pub use self::{
     bitmap::Format as BitmapFormat,
-    scene::{Ref, RefIter, Scene},
+    scene::{Ref, RefIter, SceneBuf},
 };
 
 #[cfg(feature = "bake")]
@@ -229,7 +229,7 @@ use {
         ids::{
             AnimationId, BitmapFontId, BitmapId, BlobId, Id, MaterialId, ModelId, SceneId, TextId,
         },
-        model::Model,
+        model::ModelBuf,
     },
     bincode::deserialize_from,
     brotli::{CompressorReader as BrotliReader, CompressorWriter as BrotliWriter},
@@ -624,19 +624,22 @@ where
     }
 
     /// Reads the corresponding model for the given id.
-    pub(crate) fn read_model(&mut self, id: ModelId) -> Model {
+    pub(crate) fn read_model(&mut self, id: ModelId) -> ModelBuf {
         let (pos, len) = self.buf.model(id);
         self.read_deserialize(pos, len)
     }
 
     /// Reads the corresponding scene for the given key.
-    pub fn read_scene<K>(&mut self, key: K) -> Scene where K: AsRef<str> {
+    pub fn read_scene<K>(&mut self, key: K) -> SceneBuf
+    where
+        K: AsRef<str>,
+    {
         let id = self.scene_id(key).unwrap();
         self.read_scene_with_id(id)
     }
 
     /// Reads the corresponding scene for the given id.
-    pub fn read_scene_with_id(&mut self, id: SceneId) -> Scene {
+    pub fn read_scene_with_id(&mut self, id: SceneId) -> SceneBuf {
         let (pos, len) = self.buf.scene(id);
         self.read_deserialize(pos, len)
     }
