@@ -1,0 +1,6 @@
+[model]
+src = "wheel_truck.glb"
+
+[[mesh]]
+name = "Mesh wheelTruck"
+rename = ""

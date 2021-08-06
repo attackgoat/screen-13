@@ -2,11 +2,14 @@
 
 [[scene.ref]]
 id = "body"
-model = "firetruck.glb"
+model = { src = "firetruck.glb", mesh = [
+    { name = "Mesh body" },
+    { name = "Mesh grill" },
+] }
 
 [[scene.ref]]
 id = "wheel"
-model = "wheelTruck.glb"
+model = "wheel_truck.toml"
 
 [[scene.ref]]
 id = "front_left"

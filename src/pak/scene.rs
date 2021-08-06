@@ -21,12 +21,12 @@ pub struct Instance {
 
 /// An individual `Scene` reference.
 #[derive(Debug)]
-pub struct Ref<'a> {
+pub struct SceneBufRef<'a> {
     idx: usize,
     scene: &'a SceneBuf,
 }
 
-impl Ref<'_> {
+impl SceneBufRef<'_> {
     /// Returns `true` if the scene contains the given tag.
     pub fn has_tag<T: AsRef<str>>(&self, tag: T) -> bool {
         let tag = tag.as_ref();
@@ -82,17 +82,17 @@ impl Ref<'_> {
 
 /// An `Iterator` of [`Ref`] items.
 #[derive(Debug)]
-pub struct RefIter<'a> {
+pub struct SceneBufRefIter<'a> {
     idx: usize,
     scene: &'a SceneBuf,
 }
 
-impl<'a> Iterator for RefIter<'a> {
-    type Item = Ref<'a>;
+impl<'a> Iterator for SceneBufRefIter<'a> {
+    type Item = SceneBufRef<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.idx < self.scene.refs.len() {
-            let res = Ref {
+            let res = SceneBufRef {
                 scene: self.scene,
                 idx: self.idx,
             };
@@ -141,8 +141,8 @@ impl SceneBuf {
     }
 
     /// Gets an iterator of the `Ref` instances stored in this `Scene`.
-    pub fn refs(&self) -> RefIter {
-        RefIter {
+    pub fn refs(&self) -> SceneBufRefIter {
+        SceneBufRefIter {
             idx: 0,
             scene: self,
         }

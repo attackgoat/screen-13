@@ -2,11 +2,14 @@
 
 [[scene.ref]]
 id = "body"
-model = "police.glb"
+model = { src = "police.glb", mesh = [
+    { name = "Mesh body" },
+    { name = "Mesh grill" },
+] }
 
 [[scene.ref]]
 id = "wheel"
-model = "wheelDark.glb"
+model = "wheel_dark.glb"
 
 [[scene.ref]]
 id = "front_left"

@@ -212,7 +212,7 @@ mod pak_buf;
 
 pub use self::{
     bitmap::Format as BitmapFormat,
-    scene::{Ref, RefIter, SceneBuf},
+    scene::{SceneBufRef, SceneBufRefIter, SceneBuf},
 };
 
 #[cfg(feature = "bake")]

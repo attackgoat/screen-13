@@ -62,8 +62,8 @@ fn bake(model: &Model) -> ModelBuf {
     let mut mesh_names: HashMap<&str, Option<&str>> = HashMap::default();
     for mesh in model.meshes() {
         mesh_names
-            .entry(mesh.src_name())
-            .or_insert_with(|| mesh.dst_name());
+            .entry(mesh.name())
+            .or_insert_with(|| mesh.rename());
     }
 
     let (doc, bufs, _) = import(model.src()).unwrap();
@@ -72,25 +72,36 @@ fn bake(model: &Model) -> ModelBuf {
         .filter(|node| node.mesh().is_some())
         .map(|node| (node.mesh().unwrap(), node))
         .filter(|(mesh, _)| {
+            // If the model asset contains no mesh array then we bake all meshes
             if mesh_names.is_empty() {
                 return true;
             }
 
+            // If the model asset does contain a mesh array then we only bake what is specified
             if let Some(name) = mesh.name() {
                 return mesh_names.contains_key(name);
             }
 
             false
         })
-        .map(|(mesh, node)| (mesh.name().unwrap_or_default(), mesh, node))
         .collect::<Vec<_>>();
+
+    trace!(
+        "Found {}",
+        doc.nodes()
+            .filter(|node| node.mesh().is_some())
+            .map(|node| node.mesh().unwrap().name().unwrap_or("UNNAMED"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+
     let mut idx_buf = vec![];
     let mut idx_write = vec![];
     let mut vertex_buf = vec![];
     let mut meshes = vec![];
 
     // The whole model will use either 16 or 32 bit indices
-    let tiny_idx = nodes.iter().all(|(_, mesh, _)| {
+    let tiny_idx = nodes.iter().all(|(mesh, _)| {
         mesh.primitives()
             .map(|primitive| (tri_mode(&primitive), primitive))
             .filter(|(mode, _)| mode.is_some())
@@ -111,16 +122,23 @@ fn bake(model: &Model) -> ModelBuf {
     };
 
     let mut base_idx = 0;
-    for (name, mesh, node) in nodes {
+    for (mesh, node) in nodes {
         if meshes.len() == u16::MAX as usize {
             warn!("Maximum number of meshes supported per model have been loaded, others have been skipped");
             break;
         }
 
         let dst_name = mesh_names
-            .get(name)
+            .get(mesh.name().unwrap_or_default())
             .map(|name| name.map(|name| name.to_owned()))
             .unwrap_or(None);
+
+        trace!(
+            "Baking mesh: {} (as {})",
+            mesh.name().unwrap_or("UNNAMED"),
+            dst_name.as_deref().unwrap_or("UNNAMED")
+        );
+
         let skin = node.skin();
         let transform = get_transform(&node);
         let mut all_positions = vec![];

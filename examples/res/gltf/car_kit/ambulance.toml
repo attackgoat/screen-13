@@ -2,11 +2,15 @@
 
 [[scene.ref]]
 id = "body"
-model = { src = "ambulance.glb", exclude = [""] }
+model = { src = "ambulance.glb", mesh = [
+    { name = "Mesh body", rename = "body" },
+    { name = "Mesh doorLeft", rename = "door_left" },
+    { name = "Mesh doorRight", rename = "door_right" },
+] }
 
 [[scene.ref]]
 id = "wheel"
-model = "wheelTruck.glb"
+model = "wheel_truck.toml"
 
 [[scene.ref]]
 id = "front_left"

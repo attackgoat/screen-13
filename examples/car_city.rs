@@ -182,7 +182,7 @@ impl Scenery {
         gpu: &Gpu,
         pak: &mut Pak<R>,
         cache: &mut HashMap<ModelId, Shared<Model>>,
-        item: Ref,
+        item: SceneBufRef,
     ) -> Self
     where
         R: Read + Seek,
