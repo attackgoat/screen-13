@@ -86,14 +86,15 @@ fn bake(model: &Model) -> ModelBuf {
         })
         .collect::<Vec<_>>();
 
-    trace!(
-        "Found {}",
-        doc.nodes()
-            .filter(|node| node.mesh().is_some())
-            .map(|node| node.mesh().unwrap().name().unwrap_or("UNNAMED"))
-            .collect::<Vec<_>>()
-            .join(", ")
-    );
+    // Uncomment to see      meshes this model contains
+    // trace!(
+    //     "Found {}",
+    //     doc.nodes()
+    //         .filter(|node| node.mesh().is_some())
+    //         .map(|node| node.mesh().unwrap().name().unwrap_or("UNNAMED"))
+    //         .collect::<Vec<_>>()
+    //         .join(", ")
+    // );
 
     let mut idx_buf = vec![];
     let mut idx_write = vec![];
@@ -133,11 +134,11 @@ fn bake(model: &Model) -> ModelBuf {
             .map(|name| name.map(|name| name.to_owned()))
             .unwrap_or(None);
 
-        trace!(
-            "Baking mesh: {} (as {})",
-            mesh.name().unwrap_or("UNNAMED"),
-            dst_name.as_deref().unwrap_or("UNNAMED")
-        );
+        // trace!(
+        //     "Baking mesh: {} (as {})",
+        //     mesh.name().unwrap_or("UNNAMED"),
+        //     dst_name.as_deref().unwrap_or("UNNAMED")
+        // );
 
         let skin = node.skin();
         let transform = get_transform(&node);

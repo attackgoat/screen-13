@@ -14,9 +14,9 @@ pub struct Bitmap {
 
 impl Bitmap {
     /// Constructs a new Bitmap with the given image file source.
-    pub fn new<S>(src: S) -> Self
+    pub fn new<P>(src: P) -> Self
     where
-        S: AsRef<Path>,
+        P: AsRef<Path>,
     {
         Self {
             format: None,

@@ -1,15 +1,21 @@
+use crate::bake::asset::Canonicalize;
+
 use {
     super::{
-        asset::{Asset, Material},
+        asset::{Asset, Bitmap, ColorRef, Material, NormalRef, ScalarRef},
         bake_bitmap,
         bitmap::pixels,
-        get_filename_key,
+        get_filename_key, parent,
     },
     crate::{
+        bake::is_toml,
         color::{AlphaColor, MAGENTA},
-        pak::{id::MaterialId, BitmapBuf, BitmapFormat, MaterialDesc, PakBuf},
+        pak::{
+            id::{Id, MaterialId},
+            BitmapBuf, BitmapFormat, MaterialDesc, PakBuf,
+        },
     },
-    std::path::Path,
+    std::{collections::HashMap, path::Path},
 };
 
 const DEFAULT_METALNESS: f32 = 0.5;
@@ -17,23 +23,62 @@ const DEFAULT_ROUGHNESS: f32 = 0.5;
 
 /// Reads and processes 3D model material source files into an existing `.pak` file buffer.
 pub fn bake_material<P1, P2>(
+    context: &mut HashMap<Asset, Id>,
     pak: &mut PakBuf,
     project_dir: P1,
-    src: P2,
+    src: Option<P2>,
     material: &Material,
 ) -> MaterialId
 where
     P1: AsRef<Path>,
     P2: AsRef<Path>,
 {
-    // let key = get_filename_key(&project_dir, &filename);
-    // if let Some(id) = pak.id(&key) {
-    //     return id.as_material().unwrap();
-    // }
+    // Early-out if we have this asset in our context
+    let context_key = material.clone().into();
+    if let Some(id) = context.get(&context_key) {
+        return id.as_material().unwrap();
+    }
 
-    // info!("Baking material: {}", key);
+    // If a source is given it will be available as a key inside the .pak (sources are not
+    // given if the asset is specified inline - those are only available in the .pak via ID)
+    let key = src.as_ref().map(|src| get_filename_key(&project_dir, &src));
+    if let Some(key) = &key {
+        // This material will be accessible using this key
+        info!("Baking material: {}", key);
+    } else {
+        // This model will only be accessible using the ID
+        info!("Baking material: (inline)");
+    }
 
-    // let dir = filename.as_ref().parent().unwrap();
+    // Pak this asset and add it to the context
+    let buf = bake(context, pak, project_dir, material);
+    let id = pak.push_material(key, buf);
+    context.insert(context_key, id.into());
+    id
+}
+
+fn bake<P>(
+    context: &mut HashMap<Asset, Id>,
+    pak: &mut PakBuf,
+    project_dir: P,
+    material: &Material,
+) -> MaterialDesc
+where
+    P: AsRef<Path>,
+{
+    let color: Asset = match material.color() {
+        ColorRef::Asset(bitmap) => bitmap.clone().into(),
+        ColorRef::Path(src) => if is_toml(&src) {
+            let mut bitmap = Asset::read(src).into_bitmap().unwrap();
+            let src_dir = parent(&project_dir, src);
+            bitmap.canonicalize(project_dir, src_dir);
+            bitmap
+        } else {
+            Bitmap::new(src)
+        }
+        .into(),
+        ColorRef::Value(val) => (*val).into(),
+    };
 
     // // Gets the bitmap ID of either the source file or a new bitmap of just one color
     // let color = if let Some(src) = material.color_src() {
@@ -156,16 +201,13 @@ where
     //     pak.push_bitmap(metal_rough_key, metal_rough)
     // };
 
-    // // Pak this asset
-    // pak.push_material(
-    //     key,
     //     MaterialDesc {
     //         color,
     //         metal_rough,
     //         normal,
     //     },
-    // )
-    todo!();
+
+    todo!()
 }
 
 fn create_bitmap(val: &[f32], height: usize, width: usize) -> Vec<u8> {

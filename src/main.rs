@@ -12,9 +12,9 @@ mod pak;
 use {
     self::{
         bake::{
-            asset::{Asset, Model},
+            asset::{Asset, Bitmap, Canonicalize as _, Model},
             bake_animation, bake_bitmap, bake_bitmap_font, bake_blob, bake_material, bake_model,
-            bake_scene,
+            bake_scene, parent,
         },
         pak::PakBuf,
     },
@@ -99,6 +99,7 @@ fn main() -> Result<(), IoError> {
             let src = project_dir.join(asset);
 
             //debug!("Asset: {}", asset_filename.display());
+            let src_dir = parent(project_dir, &src);
 
             match src
                 .extension()
@@ -110,15 +111,19 @@ fn main() -> Result<(), IoError> {
             {
                 "otf" | "ttc" | "ttf" => bake_blob(&mut pak, project_dir, src),
                 "glb" | "gltf" => {
-                    bake_model(
-                        &mut context,
-                        &mut pak,
-                        project_dir,
-                        Some(&src),
-                        &Model::new(&src),
-                    );
+                    // Note that direct references like this build a model, not an animation
+                    // To build an animation you must specify a .toml file
+                    let mut model = Model::new(&src);
+                    model.canonicalize(project_dir, src_dir);
+                    bake_model(&mut context, &mut pak, project_dir, Some(src), &model);
                 }
-                "toml" => match &Asset::read(&src) {
+                "jpg" | "jpeg" | "png" | "bmp" | "tga" | "dds" | "webp" | "gif" | "ico"
+                | "tiff" => {
+                    let mut bitmap = Bitmap::new(&src);
+                    bitmap.canonicalize(project_dir, src_dir);
+                    bake_bitmap(&mut context, &mut pak, &project_dir, Some(src), &bitmap);
+                }
+                "toml" => match Asset::read(&src) {
                     Asset::Animation(anim) => {
                         // bake_animation(&mut context, &project_dir, asset_filename, anim, &mut pak);
                         todo!();
@@ -127,26 +132,27 @@ fn main() -> Result<(), IoError> {
                     //     bake_atlas(&project_dir, &asset_filename, atlas, &mut pak);
                     // }
                     Asset::Bitmap(bitmap) => {
-                        //bake_bitmap(&mut context, &project_dir, &asset_filename, bitmap, &mut pak);
-                        todo!();
+                        bake_bitmap(&mut context, &mut pak, &project_dir, Some(src), &bitmap);
                     }
                     Asset::BitmapFont(bitmap_font) => {
-                        bake_bitmap_font(&mut context, &mut pak, project_dir, &src, bitmap_font);
+                        bake_bitmap_font(&mut context, &mut pak, project_dir, src, &bitmap_font);
                     }
+                    Asset::Color(_) => unreachable!(),
                     Asset::Content(_) => {
-                        panic!("Unexpected content file {}", src.display())
+                        // Nested content files are not yet supported
+                        panic!("Unexpected content file {}", src.display());
                     }
                     // Asset::Language(ref lang) => {
                     //     bake_lang(&project_dir, &asset_filename, lang, &mut pak, &mut log)
                     // }
                     Asset::Material(material) => {
-                        bake_material(&mut pak, project_dir, &src, material);
+                        bake_material(&mut context, &mut pak, project_dir, Some(src), &material);
                     }
                     Asset::Model(model) => {
-                        bake_model(&mut context, &mut pak, project_dir, Some(&src), model);
+                        bake_model(&mut context, &mut pak, project_dir, Some(src), &model);
                     }
                     Asset::Scene(scene) => {
-                        bake_scene(&mut context, &mut pak, &project_dir, &src, &scene);
+                        bake_scene(&mut context, &mut pak, &project_dir, src, &scene);
                     }
                 },
                 ext => unimplemented!("Unexpected file extension {}", ext),

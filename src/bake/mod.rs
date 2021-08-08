@@ -58,8 +58,21 @@ pub fn get_filename_key<P1: AsRef<Path>, P2: AsRef<Path>>(dir: P1, filename: P2)
     key.to_str().unwrap().to_owned()
 }
 
+/// Returns either the parent directory of the given path or the project root if the path has no
+/// parent.
+pub fn parent<P1, P2>(project_dir: P1, path: P2) -> PathBuf
+where
+    P1: AsRef<Path>,
+    P2: AsRef<Path>,
+{
+    path.as_ref()
+        .parent()
+        .map(|path| path.to_owned())
+        .unwrap_or_else(|| PathBuf::from("/"))
+}
+
 /// Returns `true` when a given path has the `.toml` file extension.
-pub fn is_toml<P>(path: P) -> bool
+fn is_toml<P>(path: P) -> bool
 where
     P: AsRef<Path>,
 {

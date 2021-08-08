@@ -1,7 +1,7 @@
 use {
     super::{
         asset::{Asset, AssetRef, Canonicalize as _, Material, Model, Scene},
-        bake_material, bake_model, get_filename_key, is_toml,
+        bake_material, bake_model, get_filename_key, is_toml, parent,
     },
     crate::pak::{
         id::{Id, SceneId},
@@ -33,7 +33,7 @@ where
 
     info!("Baking scene: {}", key);
 
-    let src_dir = src.as_ref().parent().unwrap();
+    let src_dir = parent(&project_dir, &src);
 
     let mut refs = vec![];
     for scene_ref in asset.refs() {
@@ -53,26 +53,22 @@ where
                     // Material asset specified inline
                     let mut material = material.clone();
                     material.canonicalize(&project_dir, &src_dir);
-                    material
+                    (None, material)
                 }
                 AssetRef::Path(src) => {
-                    // Asset file reference
-                    let src = Material::canonicalize_project_path(&project_dir, src_dir, src);
-                    Asset::read(src).into_material().unwrap()
+                    let src = Material::canonicalize_project_path(&project_dir, &src_dir, src);
+                    if is_toml(&src) {
+                        // Asset file reference
+                        let mut material = Asset::read(&src).into_material().unwrap();
+                        material.canonicalize(&project_dir, &src_dir);
+                        (Some(src.to_owned()), material)
+                    } else {
+                        // Material color file reference
+                        (None, Material::new(src))
+                    }
                 }
             })
-            .map(|material| {
-                // If we do not have this model asset in the context then we must bake it
-                context
-                    .get(&material.clone().into())
-                    .copied()
-                    .unwrap_or_else(|| {
-                        //bake_material(&project_dir, model.src_ref(), &model, &mut pak).into()
-                        todo!()
-                    })
-                    .as_material()
-                    .unwrap()
-            });
+            .map(|(src, material)| bake_material(context, pak, &project_dir, src, &material));
 
         let model = scene_ref
             .model()
@@ -84,7 +80,7 @@ where
                     (None, model)
                 }
                 AssetRef::Path(src) => {
-                    let src = Model::canonicalize_project_path(&project_dir, src_dir, src);
+                    let src = Model::canonicalize_project_path(&project_dir, &src_dir, src);
                     if is_toml(&src) {
                         // Asset file reference
                         let mut model = Asset::read(&src).into_model().unwrap();

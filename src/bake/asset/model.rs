@@ -42,7 +42,10 @@ pub struct Model {
 }
 
 impl Model {
-    pub(crate) fn new<P: AsRef<Path>>(src: P) -> Self {
+    pub(crate) fn new<P>(src: P) -> Self
+    where
+        P: AsRef<Path>,
+    {
         Self {
             meshes: None,
             offset: None,

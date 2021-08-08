@@ -1,7 +1,7 @@
 use {
     super::{
         asset::{Asset, Bitmap, Blob},
-        get_filename_key,
+        get_filename_key, parent,
     },
     crate::pak::{
         id::{BitmapFontId, BitmapId, Id},
@@ -22,7 +22,7 @@ pub fn bake_bitmap<P1, P2>(
     context: &mut HashMap<Asset, Id>,
     pak: &mut PakBuf,
     project_dir: P1,
-    res_dir: P2,
+    src: Option<P2>,
     bitmap: &Bitmap,
 ) -> BitmapId
 where

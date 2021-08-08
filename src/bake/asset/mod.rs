@@ -71,6 +71,8 @@ pub enum Asset {
     Bitmap(Bitmap),
     /// `.fnt` bitmapped fonts.
     BitmapFont(Blob),
+    /// Solid color bitmap used internally.
+    Color([u8; 4]),
     /// Top-level content files which simply group other asset files for ease of use.
     Content(Content),
     // Language(LanguageAsset),
@@ -148,6 +150,18 @@ impl Asset {
     }
 }
 
+impl From<Bitmap> for Asset {
+    fn from(val: Bitmap) -> Self {
+        Self::Bitmap(val)
+    }
+}
+
+impl From<[u8; 4]> for Asset {
+    fn from(val: [u8; 4]) -> Self {
+        Self::Color(val)
+    }
+}
+
 impl From<Model> for Asset {
     fn from(val: Model) -> Self {
         Self::Model(val)
@@ -166,7 +180,7 @@ impl From<Scene> for Asset {
     }
 }
 
-pub(super) trait Canonicalize {
+pub(crate) trait Canonicalize {
     fn canonicalize<P1, P2>(&mut self, project_dir: P1, src_dir: P2)
     where
         P1: AsRef<Path>,

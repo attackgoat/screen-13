@@ -154,6 +154,16 @@ pub struct Material {
 }
 
 impl Material {
+    pub(crate) fn new<P>(src: P) -> Self
+    where
+        P: AsRef<Path>,
+    {
+        Self {
+            color: ColorRef::Path(src.as_ref().to_owned()),
+            ..Default::default()
+        }
+    }
+
     /// A `Bitmap` asset, `Bitmap` asset file, three or four channel image source file, or single
     /// four channel color.
     pub fn color(&self) -> &ColorRef {
@@ -199,6 +209,18 @@ impl Canonicalize for Material {
         self.rough
             .as_mut()
             .map(|rough| rough.canonicalize(&project_dir, &src_dir));
+    }
+}
+
+impl Default for Material {
+    fn default() -> Self {
+        Self {
+            color: ColorRef::Value(WHITE.into()),
+            double_sided: None,
+            metal: None,
+            normal: None,
+            rough: None,
+        }
     }
 }
 
