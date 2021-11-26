@@ -135,7 +135,7 @@ fn main() -> Result<(), IoError> {
                         bake_bitmap(&mut context, &mut pak, &project_dir, Some(src), &bitmap);
                     }
                     Asset::BitmapFont(bitmap_font) => {
-                        bake_bitmap_font(&mut context, &mut pak, project_dir, src, &bitmap_font);
+                        bake_bitmap_font(&mut context, &mut pak, project_dir, src, bitmap_font);
                     }
                     Asset::Color(_) => unreachable!(),
                     Asset::Content(_) => {

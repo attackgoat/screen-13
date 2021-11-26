@@ -1,6 +1,6 @@
 use {
     super::{
-        asset::{Asset, Bitmap, Blob},
+        asset::{Asset, Bitmap, Blob, Canonicalize},
         get_filename_key, parent,
     },
     crate::pak::{
@@ -10,7 +10,7 @@ use {
     bmfont::{BMFont, OrdinateOrientation},
     image::{buffer::ConvertBuffer, open as image_open, DynamicImage, RgbaImage},
     std::{
-        collections::HashMap,
+        collections::{hash_map::Entry, HashMap},
         fs::read_to_string,
         io::Cursor,
         path::{Path, PathBuf},
@@ -82,20 +82,27 @@ pub fn bake_bitmap_font<P1: AsRef<Path>, P2: AsRef<Path>>(
     pak: &mut PakBuf,
     project_dir: P1,
     src: P2,
-    bitmap_font_asset: &Blob,
+    mut bitmap_font: Blob,
 ) -> BitmapFontId {
-    // let key = get_filename_key(&project_dir, &asset_filename);
-    // if let Some(id) = pak.id(&key) {
-    //     return id.as_bitmap_font().unwrap();
-    // }
+    assert!(project_dir.as_ref().is_absolute());
+    assert!(src.as_ref().is_absolute());
 
-    // info!("Baking bitmap font: {}", key);
+    let key = get_filename_key(&project_dir, &src);
+    let src_dir = src.as_ref().parent().unwrap();
+    bitmap_font.canonicalize(&project_dir, &src_dir);
+
+    let src = bitmap_font.src().to_owned();
+
+    let entry = context.entry(Asset::BitmapFont(bitmap_font));
+    if let Entry::Occupied(entry) = &entry {
+        return entry.get().as_bitmap_font().unwrap();
+    }
+
+    info!("Baking bitmap font: {}", &key);
 
     // Get the fs objects for this asset
-    let src_dir = src.as_ref().parent().unwrap();
-    let def_filename = bitmap_font_asset.src(); // TODO get_path(&dir, bitmap_font_asset.src(), project_dir);
-    let def_file = read_to_string(&def_filename).unwrap();
-    let def_parent = def_filename.parent().unwrap();
+    let def_parent = src.parent().unwrap();
+    let def_file = read_to_string(&src).unwrap();
     let def = BMFont::new(Cursor::new(&def_file), OrdinateOrientation::TopToBottom).unwrap();
     let pages = def
         .pages()
@@ -144,14 +151,13 @@ pub fn bake_bitmap_font<P1: AsRef<Path>, P2: AsRef<Path>>(
 
     // In order to make drawing text easier, we optionally store the "pages" as one large texture
     // Each page is just appended to the bottom of the previous page making a tall bitmap
-    // let page_bufs = pages
-    //     .into_iter()
-    //     .map(|(_, pixels)| BitmapBuf::new(BitmapFormat::Rgb, width as u16, pixels))
-    //     .collect();
+    let page_bufs = pages
+        .into_iter()
+        .map(|(_, pixels)| BitmapBuf::new(BitmapFormat::Rgb, width as u16, pixels))
+        .collect();
 
     // Pak this asset
-    // pak.push_bitmap_font(key, BitmapFont::new(def_file, page_bufs))
-    todo!();
+    pak.push_bitmap_font(Some(key), BitmapFont::new(def_file, page_bufs))
 }
 
 /// Reads raw pixel data from an image source file and returns them in the given format.

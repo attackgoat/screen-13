@@ -33,9 +33,18 @@ pub fn get_filename_key<P1: AsRef<Path>, P2: AsRef<Path>>(dir: P1, filename: P2)
 
     while filename != res_dir {
         {
-            let os_filename = filename.file_name().unwrap();
-            let filename_str = os_filename.to_str().unwrap();
-            parts.push(filename_str.to_string());
+            let os_filename = filename.file_name();
+            if os_filename.is_none() {
+                break;
+            }
+
+            let os_filename = os_filename.unwrap();
+            let filename_str = os_filename.to_str();
+            if filename_str.is_none() {
+                break;
+            }
+
+            parts.push(filename_str.unwrap().to_string());
         }
         filename = filename.parent().unwrap();
     }
