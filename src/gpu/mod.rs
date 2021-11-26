@@ -129,7 +129,7 @@ use {
         pak::{
             id::{BitmapId, ModelId},
             model::Mesh,
-            BitmapBuf, BitmapFormat, IndexType, Pak,
+            BitmapBuf, BitmapFormat, Pak,
         },
         ptr::Shared,
     },
@@ -141,7 +141,7 @@ use {
         memory::{HeapFlags, Properties},
         queue::{QueueFamily, QueueFamilyId, QueueGroup},
         window::Surface as _,
-        Backend, Features, Instance as _, MemoryTypeId,
+        Backend, Features, IndexType, Instance as _, MemoryTypeId,
     },
     gfx_impl::{Backend as _Backend, Instance},
     num_traits::Num,

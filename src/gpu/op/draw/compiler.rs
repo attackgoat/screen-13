@@ -23,11 +23,10 @@ use {
             pool::Pool,
             Data, Lease, Model,
         },
-        pak::IndexType,
         ptr::Shared,
     },
     archery::SharedPointerKind,
-    gfx_hal::buffer::Usage as BufferUsage,
+    gfx_hal::{buffer::Usage as BufferUsage, IndexType},
     std::{
         borrow::Borrow,
         cell::Ref,

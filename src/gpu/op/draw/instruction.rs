@@ -9,9 +9,9 @@ use {
             Data,
         },
         math::Mat4,
-        pak::IndexType,
     },
     archery::SharedPointerKind,
+    gfx_hal::IndexType,
     std::{
         cell::{Ref, RefMut},
         ops::Range,

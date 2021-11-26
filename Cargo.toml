@@ -48,7 +48,7 @@ directories = "3.0"
 etagere = "0.2"
 f8 = "0.1"
 fontdue = "0.5"
-gfx-hal = "0.9"
+gfx-hal = { version = "0.9", features = ["serde"] }
 gfx-backend-mock = { path="benches/gfx-backend-mock", optional=true }
 gfx-backend-test = { path="tests/gfx-backend-test", optional=true }
 glam = { version="0.17", features=["serde"] }

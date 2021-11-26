@@ -2,12 +2,10 @@ use {
     super::{Data, Lease},
     crate::{
         math::{Quat, Sphere},
-        pak::{
-            model::{Builder, Mesh},
-            IndexType,
-        },
+        pak::model::{Builder, Mesh},
     },
     archery::SharedPointerKind,
+    gfx_hal::IndexType,
     std::{
         cell::{Ref, RefCell, RefMut},
         fmt::{Debug, Error, Formatter},

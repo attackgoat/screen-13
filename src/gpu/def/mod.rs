@@ -9,12 +9,10 @@ pub mod vertex;
 
 pub use self::{compute::Compute, graphics::Graphics};
 
-use {
-    crate::pak::IndexType,
-    gfx_hal::{
-        format::Format,
-        pso::{BufferDescriptorFormat, BufferDescriptorType, DescriptorType, ImageDescriptorType},
-    },
+use gfx_hal::{
+    format::Format,
+    pso::{BufferDescriptorFormat, BufferDescriptorType, DescriptorType, ImageDescriptorType},
+    IndexType,
 };
 
 #[cfg(feature = "blend-modes")]
