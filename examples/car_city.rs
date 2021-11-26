@@ -128,7 +128,7 @@ impl City {
     where
         R: Read + Seek,
     {
-        let mut cache = HashMap::new();
+        let mut cache = Default::default();
         let scene = pak.read_scene("scene/city");
         let scenery = scene
             .refs()

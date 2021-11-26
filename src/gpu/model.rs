@@ -2,7 +2,7 @@ use {
     super::{Data, Lease},
     crate::{
         math::{Quat, Sphere},
-        pak::model::{Builder, Mesh},
+        pak::model::Mesh,
     },
     archery::SharedPointerKind,
     gfx_hal::IndexType,
@@ -99,10 +99,10 @@ where
         }
     }
 
-    /// Constructs a `Builder` with the given vertex count.
-    pub fn mesh<N>(vertex_count: u32) -> Builder<N> {
-        Builder::new(vertex_count)
-    }
+    // /// Constructs a `Builder` with the given vertex count.
+    // pub fn mesh<N>(vertex_count: u32) -> Builder<N> {
+    //     Builder::new(vertex_count)
+    // }
 
     /// Gets the `Sphere` which defines the rough bounding area for this model.
     pub fn bounds(&self) -> Sphere {

@@ -61,7 +61,7 @@ where
                         // Asset file reference
                         let mut material = Asset::read(&src).into_material().unwrap();
                         material.canonicalize(&project_dir, &src_dir);
-                        (Some(src.to_owned()), material)
+                        (Some(src), material)
                     } else {
                         // Material color file reference
                         (None, Material::new(src))
@@ -85,7 +85,7 @@ where
                         // Asset file reference
                         let mut model = Asset::read(&src).into_model().unwrap();
                         model.canonicalize(&project_dir, &src_dir);
-                        (Some(src.to_owned()), model)
+                        (Some(src), model)
                     } else {
                         // Model file reference
                         (None, Model::new(src))

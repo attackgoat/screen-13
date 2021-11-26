@@ -192,11 +192,12 @@ impl Canonicalize for SceneRef {
         P1: AsRef<Path>,
         P2: AsRef<Path>,
     {
-        self.material
-            .as_mut()
-            .map(|material| material.canonicalize(&project_dir, &src_dir));
-        self.model
-            .as_mut()
-            .map(|model| model.canonicalize(&project_dir, &src_dir));
+        if let Some(material) = self.material.as_mut() {
+            material.canonicalize(&project_dir, &src_dir);
+        }
+
+        if let Some(model) = self.model.as_mut() {
+            model.canonicalize(&project_dir, &src_dir);
+        }
     }
 }

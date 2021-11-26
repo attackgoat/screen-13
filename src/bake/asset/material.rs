@@ -200,15 +200,18 @@ impl Canonicalize for Material {
         P2: AsRef<Path>,
     {
         self.color.canonicalize(&project_dir, &src_dir);
-        self.metal
-            .as_mut()
-            .map(|metal| metal.canonicalize(&project_dir, &src_dir));
-        self.normal
-            .as_mut()
-            .map(|normal| normal.canonicalize(&project_dir, &src_dir));
-        self.rough
-            .as_mut()
-            .map(|rough| rough.canonicalize(&project_dir, &src_dir));
+
+        if let Some(metal) = self.metal.as_mut() {
+            metal.canonicalize(&project_dir, &src_dir);
+        }
+
+        if let Some(normal) = self.normal.as_mut() {
+            normal.canonicalize(&project_dir, &src_dir);
+        }
+
+        if let Some(rough) = self.rough.as_mut() {
+            rough.canonicalize(&project_dir, &src_dir);
+        }
     }
 }
 

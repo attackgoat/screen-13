@@ -8,9 +8,10 @@ use {
         pak::{
             id::{Id, ModelId},
             model::{Mesh, ModelBuf},
-            IndexType, PakBuf,
+            PakBuf,
         },
     },
+    gfx_hal::IndexType,
     gltf::{import, mesh::Mode, Node, Primitive},
     std::{
         collections::{HashMap, HashSet},
@@ -59,7 +60,7 @@ where
 }
 
 fn bake(model: &Model) -> ModelBuf {
-    let mut mesh_names: HashMap<&str, Option<&str>> = HashMap::default();
+    let mut mesh_names: HashMap<&str, Option<&str>> = Default::default();
     for mesh in model.meshes() {
         mesh_names
             .entry(mesh.name())
@@ -86,7 +87,7 @@ fn bake(model: &Model) -> ModelBuf {
         })
         .collect::<Vec<_>>();
 
-    // Uncomment to see      meshes this model contains
+    // Uncomment to see what meshes this model contains
     // trace!(
     //     "Found {}",
     //     doc.nodes()
@@ -103,18 +104,19 @@ fn bake(model: &Model) -> ModelBuf {
 
     // The whole model will use either 16 or 32 bit indices
     let tiny_idx = nodes.iter().all(|(mesh, _)| {
-        mesh.primitives()
-            .map(|primitive| (tri_mode(&primitive), primitive))
-            .filter(|(mode, _)| mode.is_some())
-            .map(|(mode, primitive)| (mode.unwrap(), primitive))
-            .all(|(_, primitive)| {
-                primitive
-                    .reader(|buf| bufs.get(buf.index()).map(|data| &*data.0))
-                    .read_positions()
-                    .expect("Unable to read mesh positions")
-                    .count()
-                    <= u16::MAX as _
+        let max_idx = mesh
+            .primitives()
+            .map(|primitive| {
+                // We need to find out how many positions there are for this primitive
+                let data = primitive.reader(|buf| bufs.get(buf.index()).map(|data| &*data.0));
+                data.read_indices()
+                    .map(|indices| indices.into_u32().max())
+                    .unwrap_or_default()
             })
+            .max()
+            .flatten()
+            .unwrap_or_default();
+        max_idx <= u16::MAX as _
     });
     let idx_ty = if tiny_idx {
         IndexType::U16
@@ -125,7 +127,10 @@ fn bake(model: &Model) -> ModelBuf {
     let mut base_idx = 0;
     for (mesh, node) in nodes {
         if meshes.len() == u16::MAX as usize {
-            warn!("Maximum number of meshes supported per model have been loaded, others have been skipped");
+            warn!(
+                "Maximum number of meshes supported per model have been loaded, others have been \
+            skipped"
+            );
             break;
         }
 
@@ -147,29 +152,50 @@ fn bake(model: &Model) -> ModelBuf {
         let mut vertex_count = 0;
         let vertex_offset = vertex_buf.len() as u32;
 
-        for (mode, primitive) in mesh
-            .primitives()
-            .map(|primitive| (tri_mode(&primitive), primitive))
-            .filter(|(mode, _)| mode.is_some())
-            .map(|(mode, primitive)| (mode.unwrap(), primitive))
-        {
-            // TODO: Convert Fan & Strip -> List
-            assert_eq!(mode, TriangleMode::List);
+        for primitive in mesh.primitives() {
+            match tri_mode(&primitive) {
+                Some(TriangleMode::List) => (),
+                _ => continue,
+            }
 
             let data = primitive.reader(|buf| bufs.get(buf.index()).map(|data| &*data.0));
+
+            // Read indices (must have sets of three positions)
             let mut indices = data
                 .read_indices()
-                .expect("Unable to read mesh indices")
-                .into_u32()
-                .collect::<Vec<_>>();
-            let positions = data.read_positions().unwrap().collect::<Vec<_>>();
-            let tex_coords = if let Some(data) = data.read_tex_coords(0) {
-                data.into_f32().collect::<Vec<_>>()
-            } else {
-                [[0.5, 0.5]].repeat(positions.len())
-            };
+                .map(|indices| indices.into_u32().collect::<Vec<_>>())
+                .unwrap_or_default();
+            if indices.is_empty() || indices.len() % 3 != 0 {
+                continue;
+            }
 
-            // Flip triangles from CW front faces to CCW front faces
+            // Read positions (must have data)
+            let positions = data.read_positions();
+            if positions.is_none() {
+                continue;
+            }
+            let positions = positions.unwrap().collect::<Vec<_>>();
+
+            // Read texture coordinates (must have same length as positions)
+            let mut tex_coords = data
+                .read_tex_coords(0)
+                .map(|data| data.into_f32())
+                .map(|tex_coords| tex_coords.collect::<Vec<_>>())
+                .unwrap_or_default();
+            tex_coords.resize(positions.len(), [0.0, 0.0]);
+
+            // Read (optional) skin
+            let joints = data
+                .read_joints(0)
+                .map(|joints| joints.into_u16().collect::<Vec<_>>())
+                .unwrap_or_default();
+            let weights = data
+                .read_weights(0)
+                .map(|weights| weights.into_f32().collect::<Vec<_>>())
+                .unwrap_or_default();
+            let has_skin = joints.len() == positions.len() && weights.len() == joints.len();
+
+            // Flip triangle front faces from CW to CCW
             for tri_idx in 0..indices.len() / 3 {
                 let a_idx = tri_idx * 3;
                 let c_idx = a_idx + 2;
@@ -196,25 +222,15 @@ fn bake(model: &Model) -> ModelBuf {
                     .for_each(|idx| idx_buf.extend_from_slice(&idx.to_ne_bytes())),
             }
 
-            let (joints, weights) = if skin.is_some() {
-                let joints = data.read_joints(0).unwrap().into_u16().collect::<Vec<_>>();
-                let weights = data.read_weights(0).unwrap().into_f32().collect::<Vec<_>>();
-                (Some(joints), Some(weights))
-            } else {
-                (None, None)
-            };
-
             for idx in 0..positions.len() {
                 vertex_buf.extend_from_slice(&positions[idx][0].to_ne_bytes());
                 vertex_buf.extend_from_slice(&positions[idx][1].to_ne_bytes());
                 vertex_buf.extend_from_slice(&positions[idx][2].to_ne_bytes());
+
                 vertex_buf.extend_from_slice(&tex_coords[idx][0].to_ne_bytes());
                 vertex_buf.extend_from_slice(&tex_coords[idx][1].to_ne_bytes());
 
-                if skin.is_some() {
-                    let joints = joints.as_ref().unwrap();
-                    let weights = weights.as_ref().unwrap();
-
+                if has_skin {
                     vertex_buf.extend_from_slice(&joints[idx][0].to_ne_bytes());
                     vertex_buf.extend_from_slice(&joints[idx][1].to_ne_bytes());
                     vertex_buf.extend_from_slice(&joints[idx][2].to_ne_bytes());
@@ -227,16 +243,12 @@ fn bake(model: &Model) -> ModelBuf {
             }
         }
 
-        meshes.push(Mesh::new_indexed(
+        meshes.push(Mesh::new(
             dst_name,
             base_idx..idx_count,
             vertex_count as _,
             vertex_offset,
-            Sphere::from_point_cloud(
-                all_positions
-                    .iter()
-                    .map(|position| vec3(position[0], position[1], position[2])),
-            ),
+            Sphere::from_point_cloud(all_positions.iter().map(|position| (*position).into())),
             transform,
             skin.map(|s| {
                 let joints = s.joints().map(|node| node.name().unwrap().to_owned());
@@ -337,7 +349,7 @@ fn tri_mode(primitive: &Primitive) -> Option<TriangleMode> {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 enum TriangleMode {
     Fan,
     List,

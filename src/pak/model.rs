@@ -24,7 +24,7 @@ pub struct Mesh {
 }
 
 impl Mesh {
-    pub(crate) fn new_indexed<N: Into<Option<String>>>(
+    pub(crate) fn new<N: Into<Option<String>>>(
         name: N,
         indices: Range<u32>,
         vertex_count: u32,

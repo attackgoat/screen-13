@@ -1,7 +1,7 @@
 use {
     super::{
-        asset::{Asset, Bitmap, Blob, Canonicalize},
-        get_filename_key, parent,
+        asset::{Asset, Bitmap, Blob},
+        get_filename_key,
     },
     crate::pak::{
         id::{BitmapFontId, BitmapId, Id},
@@ -9,12 +9,7 @@ use {
     },
     bmfont::{BMFont, OrdinateOrientation},
     image::{buffer::ConvertBuffer, open as image_open, DynamicImage, RgbaImage},
-    std::{
-        collections::{hash_map::Entry, HashMap},
-        fs::read_to_string,
-        io::Cursor,
-        path::{Path, PathBuf},
-    },
+    std::{collections::HashMap, fs::read_to_string, io::Cursor, path::Path},
 };
 
 /// Reads and processes image source files into an existing `.pak` file buffer.
@@ -82,20 +77,18 @@ pub fn bake_bitmap_font<P1: AsRef<Path>, P2: AsRef<Path>>(
     pak: &mut PakBuf,
     project_dir: P1,
     src: P2,
-    mut bitmap_font: Blob,
+    bitmap_font: Blob,
 ) -> BitmapFontId {
     assert!(project_dir.as_ref().is_absolute());
     assert!(src.as_ref().is_absolute());
 
     let key = get_filename_key(&project_dir, &src);
-    let src_dir = src.as_ref().parent().unwrap();
-    bitmap_font.canonicalize(&project_dir, &src_dir);
-
     let src = bitmap_font.src().to_owned();
 
-    let entry = context.entry(Asset::BitmapFont(bitmap_font));
-    if let Entry::Occupied(entry) = &entry {
-        return entry.get().as_bitmap_font().unwrap();
+    // Early-out if we have this asset in our context
+    let context_key = Asset::BitmapFont(bitmap_font);
+    if let Some(id) = context.get(&context_key) {
+        return id.as_bitmap_font().unwrap();
     }
 
     info!("Baking bitmap font: {}", &key);
@@ -156,8 +149,10 @@ pub fn bake_bitmap_font<P1: AsRef<Path>, P2: AsRef<Path>>(
         .map(|(_, pixels)| BitmapBuf::new(BitmapFormat::Rgb, width as u16, pixels))
         .collect();
 
-    // Pak this asset
-    pak.push_bitmap_font(Some(key), BitmapFont::new(def_file, page_bufs))
+    // Pak this asset and add it to the context
+    let id = pak.push_bitmap_font(Some(key), BitmapFont::new(def_file, page_bufs));
+    context.insert(context_key, id.into());
+    id
 }
 
 /// Reads raw pixel data from an image source file and returns them in the given format.

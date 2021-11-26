@@ -131,10 +131,12 @@ fn main() -> Result<(), IoError> {
                     // Asset::Atlas(ref atlas) => {
                     //     bake_atlas(&project_dir, &asset_filename, atlas, &mut pak);
                     // }
-                    Asset::Bitmap(bitmap) => {
+                    Asset::Bitmap(mut bitmap) => {
+                        bitmap.canonicalize(&project_dir, &src_dir);
                         bake_bitmap(&mut context, &mut pak, &project_dir, Some(src), &bitmap);
                     }
-                    Asset::BitmapFont(bitmap_font) => {
+                    Asset::BitmapFont(mut bitmap_font) => {
+                        bitmap_font.canonicalize(&project_dir, &src_dir);
                         bake_bitmap_font(&mut context, &mut pak, project_dir, src, bitmap_font);
                     }
                     Asset::Color(_) => unreachable!(),
@@ -145,10 +147,12 @@ fn main() -> Result<(), IoError> {
                     // Asset::Language(ref lang) => {
                     //     bake_lang(&project_dir, &asset_filename, lang, &mut pak, &mut log)
                     // }
-                    Asset::Material(material) => {
+                    Asset::Material(mut material) => {
+                        material.canonicalize(&project_dir, &src_dir);
                         bake_material(&mut context, &mut pak, project_dir, Some(src), &material);
                     }
-                    Asset::Model(model) => {
+                    Asset::Model(mut model) => {
+                        model.canonicalize(&project_dir, &src_dir);
                         bake_model(&mut context, &mut pak, project_dir, Some(src), &model);
                     }
                     Asset::Scene(scene) => {
