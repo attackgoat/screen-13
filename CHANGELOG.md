@@ -5,11 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - 2022-02-08
+
+### Added
+
+- Render Graph module, bindings, nodes, and executions: with render pass merging/re-ordering/etc
+- `CommandChain` structure
+
+### Changed
+
+- Driver now directly based on vulkan, having removed support for the deprecated Gfx-Hal library
+- Lease/pool functionality simplified: leases are now obtained through a common interface using info
+- `Engine`/`Program` structures have been merged into a simpler EventLoop structure
+
+### Removed
+
+- _Screen 13_ file-based configuration: use DriverConfig now
+- `Gpu` and `Render` structures: use `RenderGraph` and `ImageNode` now
+- Existing bitmap/draw/text/write/etc operations: functionality replaced and in some cases TODO
+
+## [0.1.9] - _Unreleased_
 
 ### Added
 
 - Implementation of `draw` functionality
+- Implementation of `text` functionality
 
 ## [0.1.8] - _Unreleased_
 

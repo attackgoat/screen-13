@@ -15,14 +15,10 @@ description = "An easy-to-use 2D/3D rendering engine in the spirit of QBasic."
 # 🦀📦: Feature Set: https://github.com/attackgoat/screen-13#optional-features
 [features]
 default = [
-    "debug",
-    "event-loop",
     "pak",
 ]
 bake = ["glob", "pak"]
-debug = []
-event-loop = [] #TODO!!!!!! OPTIONALS HERE!~
-pak = [] #TODO!!!!!! OPTIONALS HERE!~
+pak = []
 
 [dependencies]
 arrayvec = "0.7"

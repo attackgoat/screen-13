@@ -9,15 +9,86 @@ _[QBasic](https://en.wikipedia.org/wiki/QBasic)_.
 
 ## Overview
 
+_Screen 13_ provides a thin [_`Vulkan 1.2`_](https://www.vulkan.org/) driver using smart pointers.
+
+Features of the Vulkan driver:
+
+ - Lifetime management calls `free` for you
+ - Resource information comes with each smart pointer
+ - Easy-to-use hashable/orderable types (no raw pointers)
+ - `CommandChain` abstraction for executions outside of render passes
+
+Example usage:
+
+```rust
+let window = ...your winit window...
+let cfg = Default::default();
+let desired_resolution = uvec2(320, 200);
+let driver = Driver::new(&window, cfg, desired_resolution)?;
+
+unsafe {
+    // Let's start using the ash::Device driver provides
+    driver.device.create_fence(....);
+}
+```
+
+### Render Graph
+
+_Screen 13_ provides a fully-generic render graph structure for simple and statically
+typed access to all the resources used while rendering. The `RenderGraph` structure allows Vulkan
+smart pointer resources to be bound as "nodes" which may be used anywhere in a graph. The graph
+itself is not tied to swapchain access and may be used from a headless environment too.
+
+Features of the render graph:
+
+ - Compute, Graphic, and Ray-trace pipelines
+ - You specify _code_ which runs on _input_ and creates _output_
+ - Automatic Vulkan management (Render passes, subpasses, descriptors, pools, etc.)
+ - Automatic render pass scheduling, re-ordering, merging, with resource aliasing
+
+Example usage (_See [source](examples/shader-toy/src/main.rs) for variable values_):
+
+```rust
+render_graph
+    .record_pass("Buffer A")
+    .bind_pipeline(&buf_pipeline)
+    .read_descriptor(0, input)
+    .read_descriptor(1, noise_image)
+    .read_descriptor(2, flowers_image)
+    .read_descriptor(3, blank_image)
+    .clear_color(0)
+    .store_color(0, output)
+    .push_constants(push_consts)
+    .draw(move |device, cmd_buf, _| unsafe {
+        device.cmd_draw(cmd_buf, 6, 1, 0, 0);
+    });
+```
+
+### Event Loop
+
+_Screen 13_ provides an event loop abstraction which helps you setup and display images easily. Also
+included are keyboard, mouse, and typing input helpers.
+
+Example usage:
+
+```rust
+fn main() -> Result<(), DisplayError> {
+    let event_loop = EventLoop::new().build()?;
+
+    event_loop.run(|frame| {
+        // Draw using frame.render_graph here!
+    })
+}
+```
+
+### Pak File Format
+
 Programs made using _Screen 13_ are built as regular executables using an _optional_ design-time
 asset baking process. _Screen 13_ provides all asset-baking logic and aims to provide wide support
 for texture formats, vertex formats, and other associated data. Baked assets are stored in `.pak`
 files.
 
-_Screen 13_ is based on the [_`gfx-rs`_](https://github.com/gfx-rs/gfx) project, and as such targets
-native Vulkan, Metal, DirectX 12, OpenGL, WebGL, Android, and iOS targets, among others.
-
-### Goals
+## Goals
 
 _Screen 13_ aims to provide a simple to use, although opinionated, ecosystem of tools and code that
 enable very high performance portable graphics programs for developers using the Rust programming
@@ -31,27 +102,10 @@ gamepad input must be handled by your code.
 
 Included are some examples you might find helpful:
 
-- [`basic.rs`](examples/basic.rs) — Displays 'Hello, World!' on the screen. Please start here.
-- [`ecs.rs`](examples/ecs.rs) — Example of integration with a third-party ECS library
-  ([_`hecs`_](https://crates.io/crates/hecs), which is _excellent_).
-- [`headless.rs`](examples/headless.rs) — Renders without an operating system window, saves to disk.
-- [`triangle.rs`](examples/triangle.rs) — Loads a textured triangle at runtime, with no associated
-  `.pak` file.
-- [`wasm/`](examples/wasm) 🚧 — Runs in a web browser.
-
-Some examples require an associated asset `.pak` file in order to run, so you will need to run the
-example like so:
-
-```bash
-cargo run --release examples/res/basic.toml
-cargo run --release --example basic
-```
-
-These commands do the following:
-
-- Build the _Screen 13_ engine (_runtime_) and executable code (_design-time_)
-- Bake the assets from `basic.toml` into `basic.pak`
-- Runs the `basic` example (Close window to exit)
+- [`hello_world.rs`](examples/hello_world.rs) — Displays a window on the screen. Please start here.
+- [`bake_pak.rs`](bake_pak.rs) — Bakes a simple `.pak` file from a `.toml` definition.
+- [`shader-toy/`](examples/shader-toy) — Recreation of a two-pass shader toy using the original
+  shader code.
 
 See the example code for more information, including a helpful
 [getting started guide](examples/README.md).
@@ -59,86 +113,13 @@ See the example code for more information, including a helpful
 **_NOTE:_** Required development packages and libraries are listed in the _getting started guide_.
 All new users should read and understand the guide.
 
-## Roadmap/Status/Notes
-
-This engine is very young and is likely to change as development continues. Some features may be
-unimplemented. I add and remove code at whim, some changes get placed on hold. Any existing pushed
-versions are only for documentation/ideas/my testing.
-
-I expect this engine to remain **unstable**/poorly documented until version 0.2. Based on current
-progress and my free time (this is just a hobby) I expect version 0.2 (stable) to be released
-before June 2021. Feel free to chip in to speed that up!
-
-- Requires [Rust](https://www.rust-lang.org/) 1.45 _or later_
-- _Design-time_ Asset Baking:
-  - Animation - **Rotations only**, no scaling, morph targets, or root motion
-  - Bitmaps
-    - Wide format support: .png, .jpg, _etc..._
-    - 1-4 channel support
-    - Unpacked using GPU compute hardware at runtime
-  - Blobs (raw file byte vectors)
-  - Language file (locale to key/value dictionary)
-  - Material file
-    - Supports metalness/roughness workflow with hardware optimized material data
-  - Models - **.gltf** or **.glb** only
-    - Requires `POSITION` and `TEXTURE0`
-    - Static or skinned
-    - Mesh name filtering/renaming/un-naming
-  - Scenes
-- _Runtime_ Asset `.pak` File:
-  - Easy reading of assets
-  - Configurable `compression`
-    - `snap` is really good
-    - `brotli` is amazing, but it has a bug at the moment and fails to read properly
-- Rendering:
-  - Deferred renderer - **in progress**
-  - Forward renderer - **not started**
-  - Roadmap:
-    - Today: Each graphics operation starts and finishes recording a new gfx-hal command buffer, and
-      then submits it
-    - Today: All render pass/graphics pipeline/compute pipeline/layouts are hard-coded in the
-      `gpu::def` (definition) module
-    - Today: Each graphic operation uses the `def` instances and other types to operate the command
-      buffer directly
-    - Soon: Command buffers will be opened and closed dynamically, lifting ownership of command
-      buffers (and queues) up a level
-    - Later: Each graphic operation will record what it wants, but all graphic operations before a
-      command buffer submit will be grouped
-    - Later: Resources currently in `def` will be created at runtime based on the operation graph
-    - Later: Render passes will be constructed dynamically as well
-    - Later: Gently copy the light binning magic from Granite?
-- General:
-  - TODO: fonts, models, textures, etc... should be loadable at runtime from regular files
-  - TODO: Pak should write a version number into the file
-
-## Optional features
+## Optional Features
 
 _Screen 13_ puts a lot of functionality behind optional features in order to optimize compile time
 for the most common use cases. The following features are available.
 
-**_NOTE:_** The deferred and forward renderers have separate code paths and you can choose either on
-a render-by-render basis.
-
-- **`auto-cull`** — Enables automatic draw call camera frustum culling.
-- **`debug-names`** — Name parameter added to most graphics calls, integrates with your graphics
-  debugger.
-- **`blend-modes`** *(enabled by default)* —
-  [Normal](https://docs.rs/screen-13/latest/screen_13/gpu/enum.BlendMode.html#variant.Normal),
-  [Add](https://docs.rs/screen-13/latest/screen_13/gpu/enum.BlendMode.html#variant.Add),
-  [Subtract](https://docs.rs/screen-13/latest/screen_13/gpu/enum.BlendMode.html#variant.Subtract),
-  [Color Burn](https://docs.rs/screen-13/latest/screen_13/gpu/enum.BlendMode.html#variant.ColorBurn),
-  _etc..._
-- **`deferred-3d`** *(enabled by default)* — Ability to draw models and lights using a deferred
-  technique.
-- **`forward-3d`** 🚧 *(enabled by default)* — Same as the deferred renderer, but using a forward
-  technique.
-- **`low-power`** — Prefer using integrated graphics hardware, instead of higher-power adapters.
-- **`mask-modes`** 🚧 *(enabled by default)* — Ability to use
-  [image masking](https://docs.rs/screen-13/latest/screen_13/gpu/enum.MaskMode.html) functions.
-- **`matte-modes`** 🚧 *(enabled by default)* — Ability to use
-  [image matting](https://docs.rs/screen-13/latest/screen_13/gpu/enum.MatteMode.html) functions.
-- **`multi-monitor`** 🚧 — Extends the `Screen` trait to support multiple viewports.
-- **`xr`** 🚧 — Additional types and functions related to augmented and virtual reality.
+- **`pak`** *(enabled by default)* — Ability read `.pak` files.
+- **`bake`** — Ability to write `.pak` files, enables `pak` feature.
 
 ## History
 
@@ -157,3 +138,13 @@ Additional commands _QBasic_ offered, such as `DRAW`, allowed you to build simpl
 because you didn't have to grok the entirety of compiling and linking. I think we should have
 options like this today, and so I started this project to allow future developers to have the
 ability to get things done quickly while using modern tools.
+
+### Insipirations
+
+_`Screen-13`_ was built from the learnings and lessons shared by others throughout our community. In
+particular, here are some of the repositories I found useful:
+
+ - [Bevy](https://bevyengine.org/): A refreshingly simple data-driven game engine built in Rust
+ - [Granite](https://github.com/Themaister/Granite) - Open-source Vulkan renderer
+ - [Kajiya](https://github.com/EmbarkStudios/kajiya) - Experimental real-time global illumination
+   renderer made with Rust and Vulkan
