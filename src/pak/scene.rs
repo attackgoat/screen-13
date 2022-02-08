@@ -80,7 +80,7 @@ impl SceneBufRef<'_> {
     }
 }
 
-/// An `Iterator` of [`Ref`] items.
+/// An `Iterator` of [`SceneBufRef`] items.
 #[derive(Debug)]
 pub struct SceneBufRefIter<'a> {
     idx: usize,
@@ -104,7 +104,7 @@ impl<'a> Iterator for SceneBufRefIter<'a> {
     }
 }
 
-/// A container for [`Ref`] references.
+/// A container for scene references.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct SceneBuf {
     refs: Vec<SceneRef>,

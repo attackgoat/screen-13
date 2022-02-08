@@ -250,7 +250,7 @@ where
     {
         unsafe {
             let fill_geom_buf_subpass_idx = self.fill_geom_buf_subpass_idx();
-            let mut pool = self.pool.as_mut().unwrap();
+            let pool = self.pool.as_mut().unwrap();
 
             // Use a compiler to figure out rendering instructions without allocating
             // memory per rendering command. The compiler caches code between frames.
@@ -259,7 +259,7 @@ where
                 let mut instrs = compiler.compile(
                     #[cfg(feature = "debug-names")]
                     &self.name,
-                    &mut pool,
+                    pool,
                     camera,
                     cmds,
                 );
@@ -736,7 +736,7 @@ where
                 offset: 0,
                 size: Some(instr.idx_buf_len),
             },
-            instr.idx_ty.into(),
+            instr.idx_ty,
         );
         self.cmd_buf.bind_vertex_buffers(
             0,
@@ -1523,7 +1523,7 @@ struct LineInstruction(u32);
 
 /// Defines a somewhat fancy skydome.
 ///
-/// This skydome is based on https://github.com/kosua20/opengl-skydome
+/// This skydome is based on <https://github.com/kosua20/opengl-skydome>
 pub struct Skydome<P>
 where
     P: 'static + SharedPointerKind,

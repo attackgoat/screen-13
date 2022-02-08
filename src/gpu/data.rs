@@ -598,7 +598,7 @@ impl Drop for Mapping<'_> {
         Self::flush(self).unwrap();
 
         unsafe {
-            device().unmap_memory(&mut self.mapped_mem.0);
+            device().unmap_memory(self.mapped_mem.0);
         }
     }
 }

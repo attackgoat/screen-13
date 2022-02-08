@@ -355,7 +355,7 @@ where
         &'a mut self,
         #[cfg(feature = "debug-names")] name: &str,
         pool: &mut Pool<P>,
-        mut cmds: &'c mut [C],
+        cmds: &'c mut [C],
         dims: CoordF,
         atlas_buf_len: u64,
         atlas_dims: u32,
@@ -367,7 +367,7 @@ where
         self.code.push(Asm::BeginText);
 
         // Rearrange the commands so render order doesn't cause unnecessary resource-switching
-        Self::sort_cmds(&mut cmds);
+        Self::sort_cmds(cmds);
 
         // Compile all commands into rendering code
         let mut idx = 0;

@@ -15,7 +15,6 @@
 //! - Vertex formats such as [POSITION, TEXCOORD0]
 //!   ([_optional_](https://www.khronos.org/opengl/wiki/Vertex_Specification#Theory))
 //! - Common file formats (`.gltf`, `.png`, _etc.._)
-//! - _Some notion about what a GPU might be_
 //!
 //! With almost striking exception, which appear in **_NOTE:_** sections only, no further graphics
 //! API-specific concepts need to be introduced in order to master _Screen 13_ and implement
