@@ -1,5 +1,4 @@
 Cargo.lock
-src/gpu/spirv/
 **/target/
 **/.vscode/
 !contrib/.vscode/

@@ -1,0 +1,29 @@
+#version 460 core
+
+#include "../inc/catmull_rom.glsl"
+#include "../inc/content.glsl"
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D src_image_sampler_llr;
+
+layout(set = 0, binding = 1, rgba8) restrict writeonly uniform image2D dst_image;
+
+void main()
+{
+    // Figure out the input/output image sizes
+    uvec2 src_size = textureSize(src_image_sampler_llr, 0);
+    uvec2 dst_size = imageSize(dst_image);
+
+    // Map dst-coord to src-uv (dst coord is the invocation id...)
+    vec2 src_uv = content_fill(src_size, dst_size, gl_GlobalInvocationID.xy);
+
+    // Sample with a fancy filter and store
+    vec3 dst_color = sample_catmull_rom(src_image_sampler_llr, src_uv).rgb;
+
+    imageStore(
+        dst_image,
+        ivec2(gl_GlobalInvocationID.xy),
+        vec4(dst_color, 1.0)
+    );
+}

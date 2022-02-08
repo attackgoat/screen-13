@@ -15,8 +15,10 @@ diff || fail "Uncommitted changes"
 
 cargo fmt && diff || fail "Unformatted rust code"
 
-cargo check
+cargo check --all-targets --all-features
 # cargo check --features "debug-names"
 cargo test
+
+cargo check --manifest-path examples/shader_toy/Cargo.toml --all-targets --all-features
 
 echo "OK"

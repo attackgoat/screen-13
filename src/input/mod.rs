@@ -1,46 +1,64 @@
 //! Window-based inputs captured during event loop processing.
 
 mod key_buf;
+mod key_map;
 mod mouse_buf;
 mod typing;
 
-pub use self::{key_buf::KeyBuf, mouse_buf::MouseBuf, typing::Typing};
+use winit::event::Event;
 
-/// A container of Window input buffers.
-#[derive(Default)]
-pub struct Input {
-    /// Gets current keyboard inputs.
-    pub key: KeyBuf,
+pub use self::{
+    key_buf::KeyBuf,
+    key_map::KeyMap,
+    mouse_buf::{MouseBuf, MouseButton},
+    typing::Typing,
+};
 
-    /// Gets current mouse/tablet/touch inputs.
-    pub mouse: MouseBuf,
+// Handles keyboard and mouse `Event`s while updating the provided buffers.
+pub fn update_input<'a>(
+    keyboard: &'a mut KeyBuf,
+    mouse: &'a mut MouseBuf,
+    events: impl IntoIterator<Item = &'a Event<'a, ()>>,
+) {
+    update_input_opt(Some(keyboard), Some(mouse), events);
 }
 
-// TODO: Should we add 'normal' keys as something like `Other(char)`?
-/// Keys that can be detected as pressed or released.
-#[derive(Debug, PartialEq)]
-pub enum Key {
-    /// Back
-    Back,
+// Handles keyboard `Event`s while updating the provided buffer.
+pub fn update_keyboard<'a>(
+    keyboard: &'a mut KeyBuf,
+    events: impl IntoIterator<Item = &'a Event<'a, ()>>,
+) {
+    update_input_opt(Some(keyboard), None, events);
+}
 
-    /// Left Arrow
-    Left,
+// Handles mouse `Event`s while updating the provided buffer.
+pub fn update_mouse<'a>(
+    mouse: &'a mut MouseBuf,
+    events: impl IntoIterator<Item = &'a Event<'a, ()>>,
+) {
+    update_input_opt(None, Some(mouse), events);
+}
 
-    /// Delete
-    Delete,
+fn update_input_opt<'a>(
+    mut keyboard: Option<&'a mut KeyBuf>,
+    mut mouse: Option<&'a mut MouseBuf>,
+    events: impl IntoIterator<Item = &'a Event<'a, ()>>,
+) {
+    if let Some(keyboard) = keyboard.as_mut() {
+        keyboard.update();
+    }
 
-    /// Right Arrow
-    Right,
+    if let Some(mouse) = mouse.as_mut() {
+        mouse.update();
+    }
 
-    /// Up Arrow
-    Up,
+    for event in events.into_iter() {
+        if let Some(keyboard) = keyboard.as_mut() {
+            keyboard.handle_event(event);
+        }
 
-    /// Down Arrow
-    Down,
-
-    /// Home
-    Home,
-
-    /// End
-    End,
+        if let Some(mouse) = mouse.as_mut() {
+            mouse.handle_event(event);
+        }
+    }
 }

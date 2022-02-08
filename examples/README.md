@@ -1,4 +1,4 @@
-# Screen 13 Example Code
+# _Screen 13_ Example Code
 
 ## Getting Started
 
@@ -9,6 +9,6 @@ types and functions.
 
 Example | Instructions | Preview
  --- | --- | :---:
-[basic.rs](basic.rs) | <pre>cargo run examples/res/basic.toml<br/>cargo run --example basic</pre> | <image alt="Preview" src="../.github/img/basic.png" height=190 width=176>
-[headless.rs](headless.rs) | <pre>cargo run --example headless</pre> | <image alt="Preview" src="../.github/img/headless.png" height=117 width=175>
-[ttf.rs](ttf.rs) | <pre>cargo run examples/res/ttf.toml<br/>cargo run --example ttf</pre> | <image alt="Preview" src="../.github/img/ttf.png" height=190 width=176>
+[bake_pak.rs](bake_pak.rs) | <pre>cargo run --example bake_pak</pre> | _See console output_
+[hello_world.rs](hello_world.rs) | <pre>cargo run --example hello_world</pre> | <image alt="Preview" src="../.github/img/hello_world.png" height=149 width=176>
+[shader-toy/](shader-toy/src/main.rs) | <pre>cargo run --manifest-path examples/shader-toy/Cargo.toml</pre> | <image alt="Preview" src="../.github/img/shader-toy.png" height=105 width=176>

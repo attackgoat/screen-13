@@ -17,3 +17,8 @@ debugging.
 
 A script which exercises all test cases and build conditions which must succeed prior to merging new
 code into the main branch.
+
+### `screen-13-fx/`
+
+Pre-defined effects and tools built using _Screen 13_ features. Generally anything that requires
+shaders or other physical data which shouldn't be part of the main library.

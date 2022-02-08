@@ -1,0 +1,7 @@
+[content]
+# compression = "snap"
+
+[[content.group]]
+assets = [
+   "image/*" # remember when using globs and adding new files you may need to `touch pak.toml`!
+]

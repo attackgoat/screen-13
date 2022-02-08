@@ -26,87 +26,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'screen-13'",
+            "name": "Debug example 'hello_world'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=screen-13",
+                    "--example=hello_world",
                     "--package=screen-13"
                 ],
                 "filter": {
-                    "name": "screen-13",
-                    "kind": "bin"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug example 'basic'",
-            "cargo": {
-                "args": [
-                    "build",
-                    "--example=basic",
-                    "--package=screen-13"
-                ],
-                "filter": {
-                    "name": "basic",
-                    "kind": "example"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug example 'ecs'",
-            "cargo": {
-                "args": [
-                    "build",
-                    "--example=ecs",
-                    "--package=screen-13"
-                ],
-                "filter": {
-                    "name": "ecs",
-                    "kind": "example"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug example 'headless'",
-            "cargo": {
-                "args": [
-                    "build",
-                    "--example=headless",
-                    "--package=screen-13"
-                ],
-                "filter": {
-                    "name": "headless",
-                    "kind": "example"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug example 'triangle'",
-            "cargo": {
-                "args": [
-                    "build",
-                    "--example=triangle",
-                    "--package=screen-13"
-                ],
-                "filter": {
-                    "name": "triangle",
+                    "name": "hello_world",
                     "kind": "example"
                 }
             },

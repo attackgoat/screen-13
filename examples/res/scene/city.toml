@@ -1,7 +1,0 @@
-[scene]
-
-[[scene.ref]]
-id = "start"
-
-[[scene.ref]]
-model = "../gltf/city_kit/road_crossing.glb"

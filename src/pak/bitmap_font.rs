@@ -5,13 +5,13 @@ use {
 
 /// Holds a `BitmapFont` in a `.pak` file. For data transport only.
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
-pub struct BitmapFont {
+pub struct BitmapFontBuf {
     def: String,
     pages: Vec<BitmapBuf>,
 }
 
-impl BitmapFont {
-    pub(crate) fn new(def: String, pages: Vec<BitmapBuf>) -> Self {
+impl BitmapFontBuf {
+    pub fn new(def: String, pages: Vec<BitmapBuf>) -> Self {
         Self { def, pages }
     }
 

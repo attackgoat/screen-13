@@ -1,0 +1,101 @@
+use {
+    super::{Device, DriverConfig, Instance, Surface},
+    crate::ptr::Shared,
+    archery::SharedPointerKind,
+    ash::vk,
+    std::{fmt::Debug, ops::Deref},
+};
+
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+pub struct QueueFamily {
+    pub idx: u32,
+    pub props: QueueFamilyProperties,
+}
+
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+pub struct QueueFamilyProperties {
+    pub queue_flags: vk::QueueFlags,
+    pub queue_count: u32,
+    pub timestamp_valid_bits: u32,
+    pub min_image_transfer_granularity: [u32; 3],
+}
+
+#[derive(Clone)]
+pub struct PhysicalDevice {
+    pub mem_props: vk::PhysicalDeviceMemoryProperties,
+    physical_device: vk::PhysicalDevice,
+    pub props: vk::PhysicalDeviceProperties,
+    queue_families: Vec<QueueFamily>,
+}
+
+impl PhysicalDevice {
+    pub fn new(
+        physical_device: vk::PhysicalDevice,
+        mem_props: vk::PhysicalDeviceMemoryProperties,
+        props: vk::PhysicalDeviceProperties,
+        queue_families: Vec<QueueFamily>,
+    ) -> Self {
+        Self {
+            mem_props,
+            physical_device,
+            props,
+            queue_families,
+        }
+    }
+
+    pub fn has_presentation_support<P>(
+        this: &Self,
+        instance: &Shared<Instance, P>,
+        surface: &Surface<P>,
+    ) -> bool
+    where
+        P: SharedPointerKind,
+    {
+        if let Ok(device) = Device::create(
+            instance,
+            this.clone(),
+            DriverConfig::new().presentation(true).build().unwrap(),
+        ) {
+            this.queue_families
+                .iter()
+                .enumerate()
+                .any(|(queue_idx, info)| unsafe {
+                    info.props.queue_flags.contains(vk::QueueFlags::GRAPHICS)
+                        && device
+                            .surface_ext
+                            .get_physical_device_surface_support(
+                                this.physical_device,
+                                queue_idx as _,
+                                **surface,
+                            )
+                            .ok()
+                            .unwrap_or_default()
+                })
+        } else {
+            false
+        }
+    }
+
+    pub fn has_ray_tracing_support(_this: &Self) -> bool {
+        // TODO!
+        false
+    }
+
+    pub fn queue_families(this: &Self) -> impl Iterator<Item = QueueFamily> + '_ {
+        this.queue_families.iter().copied()
+    }
+}
+
+impl Debug for PhysicalDevice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "PhysicalDevice {{ {:#?} }}", self.props)
+    }
+}
+
+impl Deref for PhysicalDevice {
+    type Target = vk::PhysicalDevice;
+
+    fn deref(&self) -> &Self::Target {
+        &self.physical_device
+    }
+}

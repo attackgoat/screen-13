@@ -1,6 +1,6 @@
 use {
-    super::{MaterialId, ModelId},
-    crate::math::{Quat, Vec3},
+    super::{MaterialHandle, ModelHandle},
+    glam::{Quat, Vec3},
     serde::{Deserialize, Serialize},
     std::collections::HashMap,
 };
@@ -12,8 +12,8 @@ type Idx = u16;
 #[derive(Default)]
 pub struct Instance {
     pub id: Option<String>,
-    pub material: Option<MaterialId>,
-    pub model: Option<ModelId>,
+    pub material: Option<MaterialHandle>, // TODO: MAKE VEC!
+    pub model: Option<ModelHandle>,       // TODO: MAKE VEC!
     pub position: Vec3,
     pub rotation: Quat,
     pub tags: Vec<String>,
@@ -44,12 +44,12 @@ impl SceneBufRef<'_> {
     }
 
     /// Returns `material`, if set.
-    pub fn material(&self) -> Option<MaterialId> {
+    pub fn material(&self) -> Option<MaterialHandle> {
         self.scene_ref().material
     }
 
     /// Returns `model`, if set.
-    pub fn model(&self) -> Option<ModelId> {
+    pub fn model(&self) -> Option<ModelHandle> {
         self.scene_ref().model
     }
 
@@ -80,7 +80,7 @@ impl SceneBufRef<'_> {
     }
 }
 
-/// An `Iterator` of [`SceneBufRef`] items.
+/// An `Iterator` of [`Ref`] items.
 #[derive(Debug)]
 pub struct SceneBufRefIter<'a> {
     idx: usize,
@@ -104,7 +104,7 @@ impl<'a> Iterator for SceneBufRefIter<'a> {
     }
 }
 
-/// A container for scene references.
+/// A container for [`Ref`] references.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct SceneBuf {
     refs: Vec<SceneRef>,
@@ -112,6 +112,7 @@ pub struct SceneBuf {
 }
 
 impl SceneBuf {
+    #[allow(unused)]
     pub(crate) fn new<I: Iterator<Item = Instance>>(instances: I) -> Self {
         let mut refs = vec![];
         let mut strs = vec![];
@@ -152,8 +153,8 @@ impl SceneBuf {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct SceneRef {
     id: Option<Idx>,
-    model: Option<ModelId>,
-    material: Option<MaterialId>,
+    model: Option<ModelHandle>,
+    material: Option<MaterialHandle>,
     position: Vec3,
     rotation: Quat,
     tags: Vec<Idx>,

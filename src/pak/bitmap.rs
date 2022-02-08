@@ -1,64 +1,93 @@
 use {
-    crate::math::Extent,
+    glam::UVec2,
     serde::{Deserialize, Serialize},
 };
 
 /// Holds a `Bitmap` in a `.pak` file. For data transport only.
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub struct BitmapBuf {
-    fmt: Format,
+    color: BitmapColor,
+    fmt: BitmapFormat,
 
     #[serde(with = "serde_bytes")]
     pixels: Vec<u8>,
 
-    width: u16,
+    width: u32,
 }
 
 impl BitmapBuf {
-    pub(crate) fn new(fmt: Format, width: u16, pixels: Vec<u8>) -> Self {
-        Self { fmt, pixels, width }
+    /// Pixel data must be tightly packed (no additional stride)
+    pub fn new(color: BitmapColor, fmt: BitmapFormat, width: u32, pixels: Vec<u8>) -> Self {
+        Self {
+            color,
+            fmt,
+            pixels,
+            width,
+        }
+    }
+
+    pub fn color(&self) -> BitmapColor {
+        self.color
     }
 
     /// Gets the dimensions, in pixels, of this `Bitmap`.
-    pub fn dims(&self) -> Extent {
-        Extent::new(self.width as u32, self.height() as u32)
+    pub fn dims(&self) -> UVec2 {
+        UVec2::new(self.width, self.height())
     }
 
-    /// Gets a description of the numbe of channels contained in this `Bitmap`.
-    pub fn format(&self) -> Format {
+    // TODO: Maybe better naming.. Channels?
+    /// Gets a description of the number of channels contained in this `Bitmap`.
+    pub fn format(&self) -> BitmapFormat {
         self.fmt
     }
 
-    pub(crate) fn height(&self) -> usize {
-        let len = self.pixels.len();
+    pub fn height(&self) -> u32 {
+        let len = self.pixels.len() as u32;
         let width = self.width();
         let byte_height = len / width;
 
         match self.fmt {
-            Format::R => byte_height,
-            Format::Rg => byte_height / 2,
-            Format::Rgb => byte_height / 3,
-            Format::Rgba => byte_height >> 2,
+            BitmapFormat::R => byte_height,
+            BitmapFormat::Rg => byte_height / 2,
+            BitmapFormat::Rgb => byte_height / 3,
+            BitmapFormat::Rgba => byte_height >> 2,
         }
     }
 
-    pub(crate) fn pixels(&self) -> &[u8] {
+    pub fn pixel(&self, x: u32, y: u32) -> &[u8] {
+        let offset = y as usize * self.stride() + x as usize * self.fmt.byte_len();
+        &self.pixels[offset..offset + self.fmt.byte_len()]
+    }
+
+    pub fn pixels(&self) -> &[u8] {
         &self.pixels
     }
 
-    pub(crate) fn stride(&self) -> usize {
-        self.width() * self.fmt.byte_len()
+    pub fn pixels_as_format(&self, dst_fmt: BitmapFormat) -> impl Iterator<Item = u8> + '_ {
+        let stride = self.fmt.byte_len().min(dst_fmt.byte_len());
+        self.pixels
+            .chunks(self.fmt.byte_len())
+            .map(move |src| {
+                let mut dst = [0; 4];
+                dst[0..stride].copy_from_slice(&src[0..stride]);
+                dst.into_iter()
+            })
+            .flatten()
     }
 
-    pub(crate) fn width(&self) -> usize {
-        self.width as _
+    /// Bytes per row of pixels (there is no padding)
+    pub fn stride(&self) -> usize {
+        self.width() as usize * self.fmt.byte_len()
+    }
+
+    pub fn width(&self) -> u32 {
+        self.width
     }
 }
 
-// TODO: Maybe this should be in the gpu mod? Or crate root? Hmmm.
 /// Describes the channels of a `Bitmap`.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-pub enum Format {
+pub enum BitmapFormat {
     /// Red channel only.
     #[serde(rename = "r")]
     R,
@@ -76,10 +105,10 @@ pub enum Format {
     Rgba,
 }
 
-impl Format {
+impl BitmapFormat {
     /// Returns the number of bytes each pixel advances the bitmap stream.
     #[inline]
-    pub fn byte_len(self) -> usize {
+    pub const fn byte_len(self) -> usize {
         match self {
             Self::R => 1,
             Self::Rg => 2,
@@ -87,4 +116,14 @@ impl Format {
             Self::Rgba => 4,
         }
     }
+}
+
+/// Describes the color space of a `Bitmap`.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+pub enum BitmapColor {
+    #[serde(rename = "linear")]
+    Linear,
+
+    #[serde(rename = "srgb")]
+    Srgb,
 }

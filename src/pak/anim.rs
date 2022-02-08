@@ -1,12 +1,12 @@
 use {
-    crate::math::Quat,
+    glam::Quat,
     gltf::animation::Interpolation,
     serde::{Deserialize, Serialize},
 };
 
 /// Holds an `Animation` in a `.pak` file. For data transport only.
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
-pub struct Animation {
+pub struct AnimationBuf {
     /// The channels (joints/bones) of movement used in this `Animation`.
     pub channels: Vec<Channel>,
 }
@@ -21,6 +21,7 @@ pub struct Channel {
 }
 
 impl Channel {
+    #[allow(unused)]
     pub(crate) fn new<T: AsRef<str>, I: IntoIterator<Item = f32>, R: IntoIterator<Item = Quat>>(
         target: T,
         interpolation: Interpolation,

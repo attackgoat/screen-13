@@ -1,8 +1,0 @@
-[content]
-compression = "snap"
-
-[[content.group]]
-assets = [
-    "font/cedarville_cursive_regular.ttf",
-    "font/rye_regular.ttf",
-]
