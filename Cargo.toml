@@ -21,11 +21,13 @@ bake = ["glob", "pak"]
 pak = []
 
 [dependencies]
+archery = { version = "0.4.3", package = "a_r_c_h_e_r_y" } # HACK: Waiting on main pkg to release
 arrayvec = "0.7"
 ash = "0.35"
 ash-window = "0.9"
 bincode = "1.3"
 bitflags = "1.3"
+bmfont = "0.3"
 brotli = "3.3"
 byteorder = "1.4"
 derive_builder = "0.10"
@@ -33,7 +35,7 @@ glam = { version="0.20", features=["serde"] }
 glob = { version="0.3.0", optional=true }
 gltf = "1.0"
 gpu-allocator = "0.16"
-image = "0.23"
+image = "0.24"
 imgui = { version = "0.8", optional = true }
 itertools = "0.10"
 log = "0.4"
@@ -52,18 +54,6 @@ toml = "0.5"
 typenum = "1.12"
 vk-sync = { version = "0.3.0", package="vk-sync-fork" } # // HACK: https://github.com/gwihlidal/vk-sync-rs/pull/4 -> https://github.com/expenses/vk-sync-rs
 winit = { version="0.26" }
-
-# TODO: https://github.com/orium/archery/pull/5 waiting on release
-archery = { git="https://github.com/orium/archery" }
-
-# TODO: https://github.com/attackgoat/bmfont-rust/tree/iter-char waiting on PR+merge+release
-bmfont = { git="https://github.com/attackgoat/bmfont-rust", branch="iter_char", default-features=false, features=["serde"] }
-
-# 🦀📦: Build Stuff
-[build-dependencies]
-genmesh = "0.6"
-glam = "0.20"
-lazy_static = "1.4"
 
 [dev-dependencies]
 anyhow = "1.0"
