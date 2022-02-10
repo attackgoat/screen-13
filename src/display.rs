@@ -14,6 +14,7 @@ use {
         collections::VecDeque,
         error::Error,
         fmt::Formatter,
+        iter::repeat,
         time::{Duration, Instant},
     },
     vk_sync::AccessType,
@@ -97,11 +98,11 @@ where
 
         while self.frames.len() <= swapchain_image_idx {
             self.frames.push(Frame {
-                main_cmd_buf: CommandBuffer::create(&self.device, self.device.queue.family)?,
-                presentation_cmd_buf: CommandBuffer::create(
-                    &self.device,
-                    self.device.queue.family,
-                )?,
+                cmd_bufs: [
+                    CommandBuffer::create(&self.device, self.device.queue.family)?,
+                    CommandBuffer::create(&self.device, self.device.queue.family)?,
+                    CommandBuffer::create(&self.device, self.device.queue.family)?,
+                ],
                 resolved_render_graph: None,
             });
         }
@@ -111,18 +112,16 @@ where
 
         // Record up to but not including the swapchain work
         {
-            unsafe { self.begin(&frame.main_cmd_buf) }?;
+            let cmd_buf = &frame.cmd_bufs[0];
 
-            resolver.record_node_dependencies(
-                &mut self.cache,
-                &frame.main_cmd_buf,
-                swapchain_node,
-            )?;
+            unsafe { self.begin(cmd_buf) }?;
+
+            resolver.record_node_dependencies(&mut self.cache, cmd_buf, swapchain_node)?;
 
             unsafe {
                 self.submit(
-                    &frame.main_cmd_buf,
-                    vk::SubmitInfo::builder().command_buffers(from_ref(&frame.main_cmd_buf)),
+                    cmd_buf,
+                    vk::SubmitInfo::builder().command_buffers(from_ref(cmd_buf)),
                 )
             }?;
         }
@@ -133,12 +132,14 @@ where
         // Switch commnd buffers because we're going to be submitting with a wait semaphore on the
         // swapchain image before we get access to record commands that use it
         {
-            unsafe { self.begin(&frame.presentation_cmd_buf) }?;
+            let cmd_buf = &frame.cmd_bufs[1];
 
-            resolver.record_node(&mut self.cache, &frame.presentation_cmd_buf, swapchain_node)?;
+            unsafe { self.begin(cmd_buf) }?;
+
+            resolver.record_node(&mut self.cache, cmd_buf, swapchain_node)?;
 
             CommandBuffer::image_barrier(
-                &frame.presentation_cmd_buf,
+                cmd_buf,
                 last_swapchain_access,
                 AccessType::Present,
                 **swapchain_image,
@@ -153,12 +154,31 @@ where
 
             unsafe {
                 self.submit(
-                    &frame.presentation_cmd_buf,
+                    cmd_buf,
                     vk::SubmitInfo::builder()
-                        .command_buffers(from_ref(&frame.presentation_cmd_buf))
+                        .command_buffers(from_ref(cmd_buf))
                         .signal_semaphores(from_ref(&swapchain_image.rendered))
                         .wait_semaphores(from_ref(&swapchain_image.acquired))
                         .wait_dst_stage_mask(from_ref(&wait_dst_stage_mask)),
+                )
+            }?;
+        }
+
+        // We may have unresolved nodes; things like copies that happen after present or operations
+        // before present which use nodes that are unused in the remainder of the graph.
+        // These operations are still important, but they don't need to wait for any of the above
+        // things so we do them last
+        if !resolver.is_resolved() {
+            let cmd_buf = &frame.cmd_bufs[2];
+
+            unsafe { self.begin(cmd_buf) }?;
+
+            resolver.record_unscheduled_passes(&mut self.cache, cmd_buf)?;
+
+            unsafe {
+                self.submit(
+                    cmd_buf,
+                    vk::SubmitInfo::builder().command_buffers(from_ref(cmd_buf)),
                 )
             }?;
         }
@@ -233,7 +253,6 @@ struct Frame<P>
 where
     P: SharedPointerKind,
 {
-    main_cmd_buf: CommandBuffer<P>,
-    presentation_cmd_buf: CommandBuffer<P>,
+    cmd_bufs: [CommandBuffer<P>; 3],
     resolved_render_graph: Option<Resolver<P>>, // TODO: Only want the physical passes; could drop rest
 }

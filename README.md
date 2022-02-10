@@ -9,7 +9,7 @@ _[QBasic](https://en.wikipedia.org/wiki/QBasic)_.
 
 ## Overview
 
-_Screen 13_ provides a thin [_`Vulkan 1.2`_](https://www.vulkan.org/) driver using smart pointers.
+_Screen 13_ provides a thin [Vulkan 1.2](https://www.vulkan.org/) driver using smart pointers.
 
 Features of the Vulkan driver:
 
@@ -103,7 +103,7 @@ gamepad input must be handled by your code.
 Included are some examples you might find helpful:
 
 - [`hello_world.rs`](examples/hello_world.rs) — Displays a window on the screen. Please start here.
-- [`bake_pak.rs`](bake_pak.rs) — Bakes a simple `.pak` file from a `.toml` definition.
+- [`bake_pak.rs`](examples/bake_pak.rs) — Bakes a simple `.pak` file from a `.toml` definition.
 - [`shader-toy/`](examples/shader-toy) — Recreation of a two-pass shader toy using the original
   shader code.
 

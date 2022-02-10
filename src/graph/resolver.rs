@@ -369,6 +369,15 @@ where
             .filter(move |pass_idx| already_seen.insert(*pass_idx))
     }
 
+    /// Returns `true` when all recorded passes have been submitted to a driver command buffer.
+    ///
+    /// A fully-resolved graph contains no additional work and may be discarded, although doing so
+    /// will stall the GPU while the fences are waited on. It is preferrable to wait a few frame so
+    /// that the fences will have already been signalled.
+    pub fn is_resolved(&self) -> bool {
+        self.graph.passes.is_empty()
+    }
+
     #[allow(clippy::type_complexity)]
     fn lease_descriptor_pool(
         cache: &mut HashPool<P>,
@@ -1176,7 +1185,7 @@ where
             .unwrap_or_default()
             .min(self.graph.passes.len());
 
-        self.record_passes(cache, cmd_buf, node_idx, end_pass_idx)
+        self.record_node_passes(cache, cmd_buf, node_idx, end_pass_idx)
     }
 
     /// Records any pending render graph passes that the given node requires.
@@ -1193,10 +1202,10 @@ where
 
         assert!(self.graph.bindings.get(node_idx).is_some());
 
-        self.record_passes(cache, cmd_buf, node_idx, self.graph.passes.len())
+        self.record_node_passes(cache, cmd_buf, node_idx, self.graph.passes.len())
     }
 
-    fn record_passes(
+    fn record_node_passes(
         &mut self,
         cache: &mut HashPool<P>,
         cmd_buf: &CommandBuffer<P>,
@@ -1205,11 +1214,23 @@ where
     ) -> Result<(), DriverError> {
         //trace!("record_passes: end_pass_idx = {}", end_pass_idx);
 
-        // Build a schedule for this node and then optimize it; leasing the required stuff it needs
+        // Build a schedule for this node
         let mut schedule = self.schedule_node_passes(node_idx, end_pass_idx);
-        self.reorder_scheduled_passes(schedule.as_mut_slice(), end_pass_idx);
-        self.merge_scheduled_passes(schedule.as_mut_slice());
-        self.lease_scheduled_resources(cache, schedule.as_slice())?;
+
+        self.record_scheduled_passes(cache, cmd_buf, &mut schedule, end_pass_idx)
+    }
+
+    fn record_scheduled_passes(
+        &mut self,
+        cache: &mut HashPool<P>,
+        cmd_buf: &CommandBuffer<P>,
+        schedule: &mut [usize],
+        end_pass_idx: usize,
+    ) -> Result<(), DriverError> {
+        // Optimize the schedule; leasing the required stuff it needs
+        self.reorder_scheduled_passes(schedule, end_pass_idx);
+        self.merge_scheduled_passes(schedule);
+        self.lease_scheduled_resources(cache, schedule)?;
 
         let mut passes = take(&mut self.graph.passes);
         for (physical_pass_idx, pass_idx) in schedule.iter().copied().enumerate() {
@@ -1220,7 +1241,12 @@ where
 
             trace!("record_passes: begin \"{}\"", &pass.name);
 
-            self.write_descriptor_sets(cmd_buf, pass, physical_pass_idx)?;
+            if !self.physical_passes[physical_pass_idx]
+                .descriptor_sets
+                .is_empty()
+            {
+                self.write_descriptor_sets(cmd_buf, pass, physical_pass_idx)?;
+            }
 
             Self::record_execution_barriers(cmd_buf, &mut self.graph.bindings, pass, 0);
 
@@ -1324,6 +1350,20 @@ where
         self.graph.passes.extend(passes);
 
         Ok(())
+    }
+
+    /// Records any pending render graph passes that have not been previously scheduled.
+    pub fn record_unscheduled_passes(
+        &mut self,
+        cache: &mut HashPool<P>,
+        cmd_buf: &CommandBuffer<P>,
+    ) -> Result<(), DriverError>
+    where
+        P: 'static,
+    {
+        let mut schedule = (0..self.graph.passes.len()).collect::<Vec<_>>();
+
+        self.record_scheduled_passes(cache, cmd_buf, &mut schedule, self.graph.passes.len())
     }
 
     fn render_area(&self, pass: &Pass<P>) -> Rect<UVec2, IVec2> {
