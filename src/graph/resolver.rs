@@ -1054,7 +1054,7 @@ where
                             .filter_map(|exec| exec.pipeline.as_ref())
                             .map(|pipeline| pipeline.stage())
                             .reduce(|j, k| j | k)
-                            .unwrap_or_default();
+                            .unwrap_or(vk::PipelineStageFlags::TRANSFER);
 
                         // The execution pipelines of a pass are always the same type
                         continue 'pass;
@@ -1063,7 +1063,11 @@ where
             }
         }
 
-        assert_ne!(res, Default::default());
+        assert_ne!(
+            res,
+            Default::default(),
+            "The given node was not accessed in this graph"
+        );
 
         res
     }
