@@ -1,5 +1,5 @@
 use {
-    super::{file_key, BitmapBuf, BitmapHandle, Canonicalize},
+    super::{file_key, BitmapBuf, BitmapId, Canonicalize},
     crate::pak::{BitmapColor, BitmapFormat},
     image::{buffer::ConvertBuffer, open, DynamicImage, RgbaImage},
     serde::Deserialize,
@@ -22,7 +22,6 @@ pub struct Bitmap {
 
 impl Bitmap {
     /// Constructs a new Bitmap with the given image file source.
-    #[allow(unused)]
     pub fn new<P>(src: P) -> Self
     where
         P: AsRef<Path>,
@@ -34,13 +33,11 @@ impl Bitmap {
         }
     }
 
-    #[allow(unused)]
     pub fn with_color(mut self, color: BitmapColor) -> Self {
         self.color = Some(color);
         self
     }
 
-    #[allow(unused)]
     pub fn with_format(mut self, format: BitmapFormat) -> Self {
         self.format = Some(format);
         self
@@ -53,14 +50,22 @@ impl Bitmap {
         writer: &mut Writer,
         project_dir: impl AsRef<Path>,
         src: Option<impl AsRef<Path>>,
-    ) -> Result<BitmapHandle, Error> {
+    ) -> Result<BitmapId, Error> {
+        // Early-out if we have already baked this bitmap
         if let Some(h) = writer.ctx.get(&self.clone().into()) {
             return Ok(h.as_bitmap().unwrap());
         }
 
         let key = src.as_ref().map(|src| file_key(&project_dir, src));
         if let Some(key) = &key {
+            // This bitmap will be accessible using this key
             info!("Baking bitmap: {}", key);
+        } else {
+            // This bitmap will only be accessible using the id
+            info!(
+                "Baking bitmap: {} (inline)",
+                file_key(&project_dir, self.src())
+            );
         }
 
         // If format was not specified we guess (it is read as it is from disk; this
@@ -83,25 +88,25 @@ impl Bitmap {
             }
         }
 
-        let (width, pixels) = Self::read_pixels(self.src(), self.format())?;
-        let buf = BitmapBuf::new(self.color(), self.format(), width, pixels);
-
-        Ok(writer.push_bitmap(buf, key))
+        Ok(writer.push_bitmap(self.to_bitmap_buf()?, key))
     }
 
-    #[allow(unused)]
+    fn to_bitmap_buf(mut self) -> Result<BitmapBuf, Error> {
+        let (width, pixels) = Self::read_pixels(self.src(), self.format())?;
+
+        Ok(BitmapBuf::new(self.color(), self.format(), width, pixels))
+    }
+
     pub fn color(&self) -> BitmapColor {
         self.color.unwrap_or(BitmapColor::Srgb)
     }
 
     /// Specific pixel channels used.
-    #[allow(unused)]
     pub fn format(&self) -> BitmapFormat {
         self.format.unwrap_or(BitmapFormat::Rgba)
     }
 
     /// Reads raw pixel data from an image source file and returns them in the given format.
-    #[allow(unused)]
     pub fn read_pixels(path: impl AsRef<Path>, fmt: BitmapFormat) -> Result<(u32, Vec<u8>), Error> {
         let image = match open(path).map_err(|_| Error::from(ErrorKind::InvalidData))? {
             DynamicImage::ImageRgb8(image) => image.convert(),
@@ -119,7 +124,6 @@ impl Bitmap {
         Ok((width, data))
     }
 
-    #[allow(unused)]
     fn pixels_r(image: &RgbaImage) -> Vec<u8> {
         let mut buf = Vec::with_capacity(image.width() as usize * image.height() as usize);
         for y in 0..image.height() {
@@ -132,7 +136,6 @@ impl Bitmap {
         buf
     }
 
-    #[allow(unused)]
     fn pixels_rg(image: &RgbaImage) -> Vec<u8> {
         let mut buf = Vec::with_capacity(image.width() as usize * image.height() as usize * 2);
         for y in 0..image.height() {
@@ -146,7 +149,6 @@ impl Bitmap {
         buf
     }
 
-    #[allow(unused)]
     fn pixels_rgb(image: &RgbaImage) -> Vec<u8> {
         let mut buf = Vec::with_capacity(image.width() as usize * image.height() as usize * 3);
         for y in 0..image.height() {
@@ -161,7 +163,6 @@ impl Bitmap {
         buf
     }
 
-    #[allow(unused)]
     fn pixels_rgba(image: &RgbaImage) -> Vec<u8> {
         let mut buf = Vec::with_capacity(image.width() as usize * image.height() as usize * 4);
         for y in 0..image.height() {
@@ -178,7 +179,6 @@ impl Bitmap {
     }
 
     /// The image file source.
-    #[allow(unused)]
     pub fn src(&self) -> &Path {
         self.src.as_path()
     }

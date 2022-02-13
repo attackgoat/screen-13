@@ -192,7 +192,8 @@ impl<P> EventLoopBuilder<P> {
     }
 
     pub fn desired_swapchain_image_count(mut self, desired_swapchain_image_count: u32) -> Self {
-        self.driver_cfg = self.driver_cfg
+        self.driver_cfg = self
+            .driver_cfg
             .desired_swapchain_image_count(desired_swapchain_image_count);
         self
     }

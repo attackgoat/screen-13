@@ -1,7 +1,6 @@
 use {
     super::{
-        bitmap::Bitmap, file_key, Asset, BitmapBuf, BitmapFontBuf, BitmapFontHandle, Canonicalize,
-        Handle,
+        bitmap::Bitmap, file_key, Asset, BitmapBuf, BitmapFontBuf, BitmapFontId, Canonicalize, Id,
     },
     crate::pak::BitmapFormat,
     bmfont::{BMFont, OrdinateOrientation},
@@ -30,12 +29,12 @@ impl Blob {
     #[allow(unused)]
     #[cfg(feature = "bake")]
     pub(super) fn bake_bitmap_font(
-        context: &mut HashMap<Asset, Handle>,
+        context: &mut HashMap<Asset, Id>,
         writer: &mut Writer,
         project_dir: impl AsRef<Path>,
         src: impl AsRef<Path>,
         bitmap_font: Blob,
-    ) -> Result<BitmapFontHandle, Error> {
+    ) -> Result<BitmapFontId, Error> {
         use crate::pak::BitmapColor;
 
         assert!(project_dir.as_ref().is_absolute());

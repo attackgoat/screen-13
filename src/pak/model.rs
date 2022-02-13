@@ -9,294 +9,83 @@ use {
     },
 };
 
-// TODO: Implement!
-pub type IndexType = bool;
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+pub enum IndexType {
+    // U8, requires VK_EXT_index_type_uint8 which has 41% support
+    U16,
+    U32,
+}
 
-// TODO: Probably make a bunch of these fields public
-#[derive(Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Deserialize, PartialEq, Serialize)]
 pub struct Mesh {
-    base_vertex: Option<u32>,
-    // pub(crate) bounds: Sphere,
+    // The number of (same sized) vertices that appear before this one in the vertex buffer, by simple
+    // division of the position and stride of the vertices of this mesh.
+    pub base_vertex: u32,
+
     pub(crate) indices: Range<u32>,
-    name: Option<String>,
-    skin_inv_binds: Option<HashMap<String, Mat4>>,
-    transform: Option<Mat4>,
-    vertex_count: u32,
-    vertex_offset: u32,
+    pub indices_ty: IndexType,
+    pub name: Option<String>,
+    pub skin_inv_binds: Option<HashMap<String, Mat4>>,
+    pub transform: Option<Mat4>,
+    pub vertex_count: u32,
+
+    /// Offset in the vertex buffer, in bytes, where our first vertex begins
+    pub vertex_offset: u32,
 }
 
 impl Mesh {
-    #[allow(unused)]
-    pub(crate) fn new<N: Into<Option<String>>>(
-        name: N,
-        indices: Range<u32>,
-        vertex_count: u32,
-        vertex_offset: u32,
-        // bounds: Sphere,
-        transform: Option<Mat4>,
-        skin_inv_binds: Option<HashMap<String, Mat4>>,
-    ) -> Self {
-        Self {
-            base_vertex: None,
-            // bounds,
-            indices,
-            name: name.into(),
-            skin_inv_binds,
-            transform,
-            vertex_count,
-            vertex_offset,
-        }
-    }
-
-    // The number of (same sized) vertices that appear before this one in the vertex buffer, by simple
-    // division of the position and stride of the vertices of this mesh.
-    #[allow(unused)]
-    pub fn base_vertex(&self) -> u32 {
-        self.base_vertex.unwrap()
-    }
-
-    #[allow(unused)]
     pub fn is_animated(&self) -> bool {
         self.skin_inv_binds.is_some()
-    }
-
-    #[allow(unused)]
-    pub fn mesh_with_vertex_count<N>(vertex_count: u32) -> Builder<N> {
-        Builder::new(vertex_count)
-    }
-
-    #[allow(unused)]
-    pub(crate) fn name(&self) -> Option<&str> {
-        self.name.as_deref()
-    }
-
-    #[allow(unused)]
-    pub(crate) fn set_base_vertex(&mut self, val: u32) {
-        self.base_vertex = Some(val);
-    }
-
-    #[allow(unused)]
-    pub(crate) fn set_vertex_offset(&mut self, val: u32) {
-        self.vertex_offset = val;
-    }
-
-    #[allow(unused)]
-    pub(crate) fn skin_inv_binds(&self) -> impl Iterator<Item = &Mat4> {
-        self.skin_inv_binds.as_ref().unwrap().values()
-    }
-
-    #[allow(unused)]
-    pub fn transform(&self) -> Option<Mat4> {
-        self.transform
-    }
-
-    #[allow(unused)]
-    pub fn vertex_count(&self) -> u32 {
-        self.vertex_count
-    }
-
-    /// Offset in the vertex buffer, in bytes, where our first vertex begins
-    #[allow(unused)]
-    pub fn vertex_offset(&self) -> u32 {
-        self.vertex_offset
     }
 }
 
 impl Debug for Mesh {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        f.write_str("Mesh")
+        f.write_str("ModelBufMesh")
     }
 }
 
-impl From<u32> for Mesh {
-    fn from(vertex_count: u32) -> Self {
-        Self::mesh_with_vertex_count::<String>(vertex_count).into()
-    }
-}
-
-impl<N> From<Builder<N>> for Mesh
-where
-    N: AsRef<str>,
-{
-    fn from(builder: Builder<N>) -> Self {
-        builder.build()
-    }
-}
-
-#[derive(Debug)]
-pub struct Builder<N> {
-    name: Option<N>,
-    // bounds: Option<Sphere>,
-    indices: Option<Range<u32>>,
-    skin_inv_binds: Option<HashMap<String, Mat4>>,
-    transform: Option<Mat4>,
-    vertex_count: u32,
-}
-
-impl<N> Builder<N> {
-    pub fn new(vertex_count: u32) -> Self {
-        Self {
-            vertex_count,
-            ..Self::default()
-        }
-    }
-
-    // pub fn with_bounds(self, bounds: Sphere) -> Self {
-    //     self.with_bounds_is(Some(bounds))
-    // }
-
-    // pub fn with_bounds_is(mut self, bounds: Option<Sphere>) -> Self {
-    //     self.bounds = bounds;
-    //     self
-    // }
-
-    #[allow(unused)]
-    pub fn with_indices(self, indices: Range<u32>) -> Self {
-        self.with_indices_is(Some(indices))
-    }
-
-    #[allow(unused)]
-    pub fn with_indices_is(mut self, indices: Option<Range<u32>>) -> Self {
-        self.indices = indices;
-        self
-    }
-
-    #[allow(unused)]
-    pub fn with_skin<S: IntoIterator<Item = (String, Mat4)>>(self, skin: S) -> Self {
-        self.with_skin_is(Some(skin))
-    }
-
-    #[allow(unused)]
-    pub fn with_skin_is<S: IntoIterator<Item = (String, Mat4)>>(mut self, skin: Option<S>) -> Self {
-        self.skin_inv_binds = skin.map(HashMap::from_iter);
-        self
-    }
-
-    #[allow(unused)]
-    pub fn with_transform(self, transform: Mat4) -> Self {
-        self.with_transform_is(Some(transform))
-    }
-
-    #[allow(unused)]
-    pub fn with_transform_is(mut self, transform: Option<Mat4>) -> Self {
-        self.transform = transform;
-        self
-    }
-
-    #[allow(unused)]
-    pub fn with_vertex_count(mut self, vertex_count: u32) -> Self {
-        self.vertex_count = vertex_count;
-        self
-    }
-}
-
-impl<N> Builder<N>
-where
-    N: AsRef<str>,
-{
-    #[allow(unused)]
-    pub fn with_name(self, name: N) -> Self {
-        self.with_name_is(Some(name))
-    }
-
-    #[allow(unused)]
-    pub fn with_name_is(mut self, name: Option<N>) -> Self {
-        self.name = name;
-        self
-    }
-
-    pub fn build(self) -> Mesh {
-        Mesh {
-            base_vertex: None,
-            // bounds: Default::default(),
-            indices: self.indices.unwrap_or_default(),
-            name: self.name.map(|name| name.as_ref().to_owned()),
-            skin_inv_binds: self.skin_inv_binds,
-            transform: self.transform,
-            vertex_count: self.vertex_count,
-            vertex_offset: 0,
-        }
-    }
-}
-
-impl<N> Default for Builder<N> {
-    fn default() -> Self {
-        Self {
-            name: None,
-            // bounds: None,
-            indices: None,
-            skin_inv_binds: None,
-            transform: None,
-            vertex_count: 0,
-        }
-    }
-}
-
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct ModelBuf {
-    idx_ty: IndexType,
-
     #[serde(with = "serde_bytes")]
     indices: Vec<u8>,
 
-    meshes: Vec<Mesh>,
+    pub meshes: Vec<Mesh>,
 
     #[serde(with = "serde_bytes")]
     vertices: Vec<u8>,
-
-    #[serde(with = "serde_bytes")]
-    write_mask: Vec<u8>,
 }
 
 impl ModelBuf {
-    #[allow(unused)]
-    pub(crate) fn new(
-        mut meshes: Vec<Mesh>,
-        idx_ty: IndexType,
-        indices: Vec<u8>,
-        vertices: Vec<u8>,
-        write_mask: Vec<u8>,
+    pub fn new(
+        meshes: impl Into<Vec<Mesh>>,
+        indices: impl Into<Vec<u8>>,
+        vertices: impl Into<Vec<u8>>,
     ) -> Self {
-        assert_ne!(meshes.len(), 0);
-        assert_ne!(indices.len(), 0);
-        assert_ne!(vertices.len(), 0);
-        assert_ne!(write_mask.len(), 0);
+        let mut meshes = meshes.into();
+        let indices = indices.into();
+        let vertices = vertices.into();
+
+        assert!(!meshes.is_empty());
+        assert!(!indices.is_empty());
+        assert!(!vertices.is_empty());
 
         // Filtering relies on meshes being sorted by name
-        meshes.sort_unstable_by(|lhs, rhs| lhs.name().cmp(&rhs.name()));
+        meshes.sort_unstable_by(|lhs, rhs| lhs.name.cmp(&rhs.name));
 
         Self {
-            idx_ty,
             indices,
             meshes,
             vertices,
-            write_mask,
         }
     }
 
-    #[allow(unused)]
-    pub(crate) fn idx_ty(&self) -> IndexType {
-        self.idx_ty
-    }
-
-    #[allow(unused)]
-    pub(crate) fn indices(&self) -> &[u8] {
+    pub fn indices(&self) -> &[u8] {
         &self.indices
     }
 
-    #[allow(unused)]
-    pub(crate) fn take_meshes(self) -> Vec<Mesh> {
-        self.meshes
-    }
-
-    #[allow(unused)]
-    pub(crate) fn vertices(&self) -> &[u8] {
+    pub fn vertices(&self) -> &[u8] {
         &self.vertices
-    }
-
-    #[allow(unused)]
-    pub(crate) fn write_mask(&self) -> &[u8] {
-        &self.write_mask
     }
 }
 

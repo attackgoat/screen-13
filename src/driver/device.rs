@@ -10,17 +10,17 @@ use {
         vulkan::{Allocator, AllocatorCreateDesc},
         AllocatorDebugSettings,
     },
-    log::{debug,info, trace, warn},
+    log::{debug, info, trace, warn},
     parking_lot::Mutex,
     std::{
         collections::{HashMap, HashSet},
         ffi::CStr,
         fmt::{Debug, Formatter},
         mem::forget,
-        time::Instant,
         ops::Deref,
         os::raw::c_char,
         thread::panicking,
+        time::Instant,
     },
 };
 

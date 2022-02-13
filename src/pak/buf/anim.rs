@@ -1,6 +1,6 @@
 use {
     super::{file_key, Asset, Canonicalize},
-    crate::pak::{AnimationBuf, AnimationHandle, Channel},
+    crate::pak::{AnimationBuf, AnimationId, Channel},
     glam::{quat, Quat, Vec3},
     gltf::{
         animation::{
@@ -38,7 +38,7 @@ impl Animation {
         writer: &mut Writer,
         project_dir: impl AsRef<Path>,
         src: impl AsRef<Path>,
-    ) -> Result<AnimationHandle, Error> {
+    ) -> Result<AnimationId, Error> {
         if let Some(h) = writer.ctx.get(&self.clone().into()) {
             return Ok(h.as_animation().unwrap());
         }

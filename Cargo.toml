@@ -61,6 +61,10 @@ log = "0.4"
 pretty_env_logger = "0.4"
 screen-13-fx = { path = "contrib/screen-13-fx" }
 
+# Always compile the `gltf` dependency in release mode; it is slow with debug assertions turned on
+[profile.dev.package.gltf]
+opt-level = 3
+
 # Always compile the `image` dependency in release mode; it is slow with debug assertions turned on
 [profile.dev.package.image]
 opt-level = 3

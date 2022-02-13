@@ -1,7 +1,7 @@
 use {
     super::{
-        bitmap::Bitmap, file_key, parse_hex_color, parse_hex_scalar, Asset, Canonicalize, Handle,
-        MaterialHandle, MaterialInfo,
+        bitmap::Bitmap, file_key, parse_hex_color, parse_hex_scalar, Asset, Canonicalize, Id,
+        MaterialId, MaterialInfo,
     },
     log::info,
     serde::{
@@ -180,15 +180,13 @@ impl Material {
     #[cfg(feature = "bake")]
     pub(super) fn bake(
         &self,
-        context: &mut HashMap<Asset, Handle>,
         writer: &mut Writer,
         project_dir: impl AsRef<Path>,
         src: Option<impl AsRef<Path>>,
-    ) -> Result<MaterialHandle, Error> {
-        // Early-out if we have this asset in our context
-        let context_key = self.clone().into();
-        if let Some(handle) = context.get(&context_key) {
-            return Ok(handle.as_material().unwrap());
+    ) -> Result<MaterialId, Error> {
+        // Early-out if we have already baked this material
+        if let Some(h) = writer.ctx.get(&self.clone().into()) {
+            return Ok(h.as_material().unwrap());
         }
 
         // If a source is given it will be available as a key inside the .pak (sources are not
@@ -202,18 +200,14 @@ impl Material {
             info!("Baking material: (inline)");
         }
 
-        // Pak this asset and add it to the context
-        let buf = self.bake2(context, writer, project_dir)?;
-        let handle = writer.push_material(buf, key);
-        context.insert(context_key, handle.into());
+        let material_info = self.to_material_info(writer, project_dir)?;
 
-        Ok(handle)
+        Ok(writer.push_material(material_info, key))
     }
 
     #[cfg(feature = "bake")]
-    fn bake2(
+    fn to_material_info(
         &self,
-        _context: &mut HashMap<Asset, Handle>,
         _writer: &mut Writer,
         _project_dir: impl AsRef<Path>,
     ) -> Result<MaterialInfo, Error> {

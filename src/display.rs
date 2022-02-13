@@ -89,7 +89,10 @@ where
 
         trace!("present_image");
 
-        let (last_swapchain_access, _) = render_graph.last_access(swapchain_image).unwrap();
+        // The swapchain should have been written to, otherwise it would be noise and that's a panic
+        let (last_swapchain_access, _) = render_graph
+            .last_access(swapchain_image)
+            .expect("Unable to find last swapchain access");
         let mut resolver = render_graph.resolve();
         let wait_dst_stage_mask = resolver.node_stage_mask(swapchain_image);
         let swapchain_node = swapchain_image;

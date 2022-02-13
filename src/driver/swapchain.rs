@@ -43,7 +43,9 @@ where
 
         // Triple-buffer so that acquiring an image doesn't stall for >16.6ms at 60Hz on AMD
         // when frames take >16.6ms to render. Also allows MAILBOX to work.
-        let mut desired_image_count = info.desired_image_count.max(surface_capabilities.min_image_count);
+        let mut desired_image_count = info
+            .desired_image_count
+            .max(surface_capabilities.min_image_count);
         if surface_capabilities.max_image_count != 0 {
             desired_image_count = desired_image_count.min(surface_capabilities.max_image_count);
         }

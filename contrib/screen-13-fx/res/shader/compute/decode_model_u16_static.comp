@@ -1,0 +1,51 @@
+#version 450
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform PushConstants {
+    layout(offset = 0) uint stride;
+} push_constants;
+
+layout(set = 0, binding = 0, std430) readonly buffer PixelBuffer {
+    uint pixel_buf[];
+};
+
+layout(set = 0, binding = 1, rgba8ui) restrict writeonly uniform uimage2D image;
+
+uint shift(uint packed, uint bits) {
+    return (packed >> bits) & 0xff;
+}
+
+void main()
+{
+    uint idx = 3 * gl_GlobalInvocationID.x + push_constants.stride * gl_GlobalInvocationID.y;
+
+    uint pixels[3];
+    pixels[0] = pixel_buf[idx];
+    pixels[1] = pixel_buf[++idx];
+    pixels[2] = pixel_buf[++idx];
+
+    int x = int(gl_GlobalInvocationID.x) << 2;
+    int y = imageSize(image).y - int(gl_GlobalInvocationID.y) - 1;
+
+    imageStore(image, ivec2(x, y), uvec4(
+        shift(pixels[0], 0),
+        shift(pixels[0], 8),
+        shift(pixels[0], 16),
+        0xff));
+    imageStore(image, ivec2(++x, y), uvec4(
+        shift(pixels[0], 24),
+        shift(pixels[1], 0),
+        shift(pixels[1], 8),
+        0xff));
+    imageStore(image, ivec2(++x, y), uvec4(
+        shift(pixels[1], 16),
+        shift(pixels[1], 24),
+        shift(pixels[2], 0),
+        0xff));
+    imageStore(image, ivec2(++x, y), uvec4(
+        shift(pixels[2], 8),
+        shift(pixels[2], 16),
+        shift(pixels[2], 24),
+        0xff));
+}

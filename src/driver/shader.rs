@@ -53,11 +53,14 @@ fn guess_immutable_sampler(
             )
         };
 
-    Device::immutable_sampler(device, SamplerDesc {
-        texel_filter,
-        mipmap_mode,
-        address_modes,
-    })
+    Device::immutable_sampler(
+        device,
+        SamplerDesc {
+            texel_filter,
+            mipmap_mode,
+            address_modes,
+        },
+    )
 }
 
 /// Set index and binding index - this is a generic representation of the descriptor binding point

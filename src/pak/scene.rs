@@ -1,22 +1,55 @@
 use {
-    super::{MaterialHandle, ModelHandle},
+    super::{MaterialId, ModelId},
     glam::{Quat, Vec3},
     serde::{Deserialize, Serialize},
     std::collections::HashMap,
 };
 
-// TODO: Scene refs should be easier to get without using an iterator
-
 type Idx = u16;
 
-#[derive(Default)]
-pub struct Instance {
-    pub id: Option<String>,
-    pub material: Option<MaterialHandle>, // TODO: MAKE VEC!
-    pub model: Option<ModelHandle>,       // TODO: MAKE VEC!
-    pub position: Vec3,
-    pub rotation: Quat,
-    pub tags: Vec<String>,
+/// A container for [`Ref`] references.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct SceneBuf {
+    refs: Vec<SceneRef>,
+    strs: Vec<String>,
+}
+
+impl SceneBuf {
+    pub(crate) fn new<D: Iterator<Item = SceneRefData>>(data: D) -> Self {
+        let mut refs = vec![];
+        let mut strs = vec![];
+
+        // Use a string table
+        let mut cache = HashMap::new();
+        let mut idx = |s: String| -> Idx {
+            *cache.entry(s.clone()).or_insert_with(|| {
+                let res = strs.len() as Idx;
+                strs.push(s);
+                res
+            })
+        };
+
+        for mut data in data {
+            refs.push(SceneRef {
+                id: data.id.map(&mut idx),
+                model: data.model,
+                material: data.material,
+                position: data.position,
+                rotation: data.rotation,
+                tags: data.tags.drain(..).map(&mut idx).collect(),
+            });
+        }
+
+        Self { refs, strs }
+    }
+
+    /// Gets an iterator of the `Ref` items stored in this `Scene`.
+    pub fn refs(&self) -> impl Iterator<Item = SceneBufRef<'_>> {
+        SceneBufRefIter {
+            idx: 0,
+            scene: self,
+        }
+    }
 }
 
 /// An individual `Scene` reference.
@@ -44,12 +77,12 @@ impl SceneBufRef<'_> {
     }
 
     /// Returns `material`, if set.
-    pub fn material(&self) -> Option<MaterialHandle> {
+    pub fn material(&self) -> Option<MaterialId> {
         self.scene_ref().material
     }
 
     /// Returns `model`, if set.
-    pub fn model(&self) -> Option<ModelHandle> {
+    pub fn model(&self) -> Option<ModelId> {
         self.scene_ref().model
     }
 
@@ -82,7 +115,7 @@ impl SceneBufRef<'_> {
 
 /// An `Iterator` of [`Ref`] items.
 #[derive(Debug)]
-pub struct SceneBufRefIter<'a> {
+struct SceneBufRefIter<'a> {
     idx: usize,
     scene: &'a SceneBuf,
 }
@@ -104,58 +137,22 @@ impl<'a> Iterator for SceneBufRefIter<'a> {
     }
 }
 
-/// A container for [`Ref`] references.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct SceneBuf {
-    refs: Vec<SceneRef>,
-    strs: Vec<String>,
-}
-
-impl SceneBuf {
-    #[allow(unused)]
-    pub(crate) fn new<I: Iterator<Item = Instance>>(instances: I) -> Self {
-        let mut refs = vec![];
-        let mut strs = vec![];
-
-        // Use a string table
-        let mut cache = HashMap::new();
-        let mut idx = |s: String| -> Idx {
-            *cache.entry(s.clone()).or_insert_with(|| {
-                let res = strs.len() as Idx;
-                strs.push(s);
-                res
-            })
-        };
-
-        for mut instance in instances {
-            refs.push(SceneRef {
-                id: instance.id.map(&mut idx),
-                model: instance.model,
-                material: instance.material,
-                position: instance.position,
-                rotation: instance.rotation,
-                tags: instance.tags.drain(..).map(&mut idx).collect(),
-            });
-        }
-
-        Self { refs, strs }
-    }
-
-    /// Gets an iterator of the `Ref` instances stored in this `Scene`.
-    pub fn refs(&self) -> SceneBufRefIter {
-        SceneBufRefIter {
-            idx: 0,
-            scene: self,
-        }
-    }
-}
-
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct SceneRef {
     id: Option<Idx>,
-    model: Option<ModelHandle>,
-    material: Option<MaterialHandle>,
+    material: Option<MaterialId>,
+    model: Option<ModelId>,
     position: Vec3,
     rotation: Quat,
     tags: Vec<Idx>,
+}
+
+#[derive(Default)]
+pub struct SceneRefData {
+    pub id: Option<String>,
+    pub material: Option<MaterialId>, // TODO: MAKE VEC!
+    pub model: Option<ModelId>,       // TODO: MAKE VEC!
+    pub position: Vec3,
+    pub rotation: Quat,
+    pub tags: Vec<String>,
 }

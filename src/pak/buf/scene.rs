@@ -1,9 +1,9 @@
 use {
     super::{
-        file_key, is_toml, material::Material, model::Model, parent, Asset, Canonicalize, Handle,
-        SceneBuf, SceneHandle,
+        file_key, is_toml, material::Material, model::Model, parent, Asset, Canonicalize, Id,
+        SceneBuf, SceneId,
     },
-    crate::pak::Instance,
+    crate::pak::SceneRefData,
     glam::{vec3, EulerRot, Quat, Vec3},
     log::info,
     ordered_float::OrderedFloat,
@@ -15,6 +15,7 @@ use {
         collections::HashMap,
         f32::consts::PI,
         fmt::Formatter,
+        io::Error,
         marker::PhantomData,
         path::{Path, PathBuf},
     },
@@ -105,19 +106,19 @@ pub struct Scene {
 
 impl Scene {
     /// Reads and processes scene source files into an existing `.pak` file buffer.
-    #[allow(unused)]
     #[cfg(feature = "bake")]
-    pub(super) fn bake(
+    pub fn bake(
         &self,
-        context: &mut HashMap<Asset, Handle>,
         mut writer: &mut Writer,
         project_dir: impl AsRef<Path>,
         src: impl AsRef<Path>,
-    ) -> SceneHandle {
-        let key = file_key(&project_dir, &src);
-        if let Some(id) = context.get(&self.clone().into()) {
-            return id.as_scene().unwrap();
+    ) -> Result<SceneId, Error> {
+        // Early-out if we have already baked this scene
+        if let Some(h) = writer.ctx.get(&self.clone().into()) {
+            return Ok(h.as_scene().unwrap());
         }
+
+        let key = file_key(&project_dir, &src);
 
         info!("Baking scene: {}", key);
 
@@ -156,7 +157,7 @@ impl Scene {
                         }
                     }
                 })
-                .map(|(src, material)| material.bake(context, writer, &project_dir, src).unwrap()); // TODO: UNWRAP!
+                .map(|(src, material)| material.bake(writer, &project_dir, src).expect("material"));
 
             let model = scene_ref
                 .model()
@@ -171,7 +172,7 @@ impl Scene {
                         let src = Model::canonicalize_project_path(&project_dir, &src_dir, src);
                         if is_toml(&src) {
                             // Asset file reference
-                            let mut model = Asset::read(&src).unwrap().into_model().unwrap(); // TODO: UNWRAP!
+                            let mut model = Asset::read(&src).unwrap().into_model().expect("model");
                             model.canonicalize(&project_dir, &src_dir);
                             (Some(src), model)
                         } else {
@@ -180,9 +181,13 @@ impl Scene {
                         }
                     }
                 })
-                .map(|(src, model)| model.bake(context, &mut writer, &project_dir, src));
+                .map(|(src, model)| {
+                    model
+                        .bake(&mut writer, &project_dir, src)
+                        .expect("bake model")
+                });
 
-            refs.push(Instance {
+            refs.push(SceneRefData {
                 id: scene_ref.id().map(|id| id.to_owned()),
                 material,
                 model,
@@ -193,7 +198,7 @@ impl Scene {
         }
 
         // Pak this asset
-        writer.push_scene(SceneBuf::new(refs.drain(..)), key)
+        Ok(writer.push_scene(SceneBuf::new(refs.into_iter()), key))
     }
 
     /// Individual references within a scene.

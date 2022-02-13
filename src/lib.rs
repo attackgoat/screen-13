@@ -77,9 +77,9 @@ pub mod prelude_all {
     pub use super::pak::{
         buf::PakBuf,
         compression::{BrotliParams, Compression},
-        AnimationBuf, AnimationHandle, BitmapBuf, BitmapColor, BitmapFontBuf, BitmapFontHandle,
-        BitmapFormat, BitmapHandle, BlobHandle, MaterialHandle, MaterialInfo, ModelBuf,
-        ModelHandle, Pak, SceneBuf, SceneHandle,
+        AnimationBuf, AnimationId, BitmapBuf, BitmapColor, BitmapFontBuf, BitmapFontId,
+        BitmapFormat, BitmapId, BlobId, MaterialId, MaterialInfo, Mesh, ModelBuf, ModelId, Pak,
+        SceneBuf, SceneId,
     };
 
     #[cfg(feature = "bake")]
@@ -91,18 +91,13 @@ pub mod prelude_all {
 /// Use this module if rendering will be done from multiple threads. See the main documentation for
 /// each alias for more information.
 pub mod prelude_arc {
-    pub mod driver {
-        use crate::{driver, ptr::ArcK as P};
-
-        pub type Device = driver::Device<P>;
-        pub type Image = driver::Image<P>;
-    }
-
     pub use super::{
         prelude_all::{self as all, *},
         ptr::ArcK as P,
     };
 
+    pub type Buffer = all::Buffer<P>;
+    pub type BufferBinding = all::BufferBinding<P>;
     pub type BufferNode = all::BufferNode<P>;
     pub type Device = all::Device<P>;
     pub type EventLoop = all::EventLoop<P>;
@@ -124,18 +119,13 @@ pub mod prelude_arc {
 /// Use this module if rendering will be done from one thread only. See the main documentation for
 /// each alias for more information.
 pub mod prelude_rc {
-    pub mod driver {
-        use crate::{driver, ptr::RcK as P};
-
-        pub type Device = driver::Device<P>;
-        pub type Image = driver::Image<P>;
-    }
-
     pub use super::{
         prelude_all::{self as all, *},
         ptr::RcK as P,
     };
 
+    pub type Buffer = all::Buffer<P>;
+    pub type BufferBinding = all::BufferBinding<P>;
     pub type BufferNode = all::BufferNode<P>;
     pub type Device = all::Device<P>;
     pub type EventLoop = all::EventLoop<P>;

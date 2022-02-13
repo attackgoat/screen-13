@@ -19,11 +19,11 @@ mod writer;
 pub use self::writer::Writer;
 
 use {
-    self::{asset::Asset, bitmap::Bitmap, blob::Blob},
+    self::{asset::Asset, bitmap::Bitmap, blob::Blob, model::Model},
     super::{
-        compression::Compression, AnimationBuf, AnimationHandle, BitmapBuf, BitmapFontBuf,
-        BitmapFontHandle, BitmapHandle, BlobHandle, MaterialHandle, MaterialInfo, ModelBuf,
-        ModelHandle, Pak, SceneBuf, SceneHandle,
+        compression::Compression, AnimationBuf, AnimationId, BitmapBuf, BitmapFontBuf,
+        BitmapFontId, BitmapId, BlobId, MaterialId, MaterialInfo, ModelBuf, ModelId, Pak, SceneBuf,
+        SceneId,
     },
     log::{error, trace, warn},
     serde::{de::DeserializeOwned, Deserialize, Serialize},
@@ -140,7 +140,6 @@ fn parse_hex_scalar(val: &str) -> Option<u8> {
     }
 }
 
-#[allow(unused)]
 fn re_run_if_changed(p: impl AsRef<Path>) {
     if var("CARGO").is_ok() {
         println!("cargo:rerun-if-changed={}", p.as_ref().display());
@@ -211,7 +210,7 @@ trait Canonicalize {
 #[derive(Debug, Default, Deserialize, Serialize)]
 struct Data {
     // These fields are handled by bincode serialization as-is
-    handles: HashMap<String, Handle>,
+    ids: HashMap<String, Id>,
     materials: Vec<MaterialInfo>,
 
     // These fields are loaded on demand
@@ -302,21 +301,21 @@ impl<T> Debug for DataRef<T> {
     }
 }
 
-macro_rules! handle_enum {
+macro_rules! id_enum {
     ($($variant:ident),*) => {
         paste::paste! {
             #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-            enum Handle {
+            enum Id {
                 $(
-                    $variant([<$variant Handle>]),
+                    $variant([<$variant Id>]),
                 )*
             }
 
-            impl Handle {
+            impl Id {
                 $(
-                    fn [<as_ $variant:snake>](&self) -> Option<[<$variant Handle>]> {
+                    fn [<as_ $variant:snake>](&self) -> Option<[<$variant Id>]> {
                         match self {
-                            Self::$variant(handle) => Some(*handle),
+                            Self::$variant(id) => Some(*id),
                             _ => None,
                         }
                     }
@@ -324,9 +323,9 @@ macro_rules! handle_enum {
             }
 
             $(
-                impl From<[<$variant Handle>]> for Handle {
-                    fn from(handle: [<$variant Handle>]) -> Self {
-                        Self::$variant(handle)
+                impl From<[<$variant Id>]> for Id {
+                    fn from(id: [<$variant Id>]) -> Self {
+                        Self::$variant(id)
                     }
                 }
             )*
@@ -334,7 +333,7 @@ macro_rules! handle_enum {
     };
 }
 
-handle_enum!(Animation, Bitmap, BitmapFont, Blob, Material, Model, Scene);
+id_enum!(Animation, Bitmap, BitmapFont, Blob, Material, Model, Scene);
 
 /// Main serialization container for the `.pak` file format.
 #[derive(Debug)]
@@ -378,53 +377,52 @@ impl PakBuf {
                     .to_lowercase()
                     .as_str()
                 {
-                    // "glb" | "gltf" => {
-                    //     // Note that direct references like this build a model, not an animation
-                    //     // To build an animation you must specify a .toml file
-                    //     let mut model = Model::new(&src);
-                    //     model.canonicalize(src_dir, src_dir);
-                    //     bake_model(&mut context, &mut pak, src_dir, Some(src), &model);
-                    // }
+                    "glb" | "gltf" => {
+                        // Note that direct references like this build a model, not an animation
+                        // To build an animation you must specify a .toml file
+                        Model::new(&asset_path).bake(&mut writer, &src_dir, Some(&asset_path))?;
+                    }
                     "jpg" | "jpeg" | "png" | "bmp" | "tga" | "dds" | "webp" | "gif" | "ico"
                     | "tiff" => {
                         Bitmap::new(&asset_path).bake(&mut writer, &src_dir, Some(&asset_path))?;
                     }
-                    // "toml" => match Asset::read(&src) {
-                    //     Asset::Animation(anim) => {
-                    //         // bake_animation(&mut context, &src_dir, asset_filename, anim, &mut pak);
-                    //         todo!();
-                    //     }
-                    //     // Asset::Atlas(ref atlas) => {
-                    //     //     bake_atlas(&src_dir, &asset_filename, atlas, &mut pak);
-                    //     // }
-                    //     Asset::Bitmap(mut bitmap) => {
-                    //         bitmap.canonicalize(&src_dir, &src_dir);
-                    //         bake_bitmap(&mut context, &mut pak, &src_dir, Some(src), &bitmap);
-                    //     }
-                    //     Asset::BitmapFont(mut bitmap_font) => {
-                    //         bitmap_font.canonicalize(&src_dir, &src_dir);
-                    //         bake_bitmap_font(&mut context, &mut pak, src_dir, src, bitmap_font);
-                    //     }
-                    //     Asset::Color(_) => unreachable!(),
-                    //     Asset::Content(_) => {
-                    //         // Nested content files are not yet supported
-                    //         panic!("Unexpected content file {}", src.display());
-                    //     }
-                    //     // Asset::Language(ref lang) => {
-                    //     //     bake_lang(&src_dir, &asset_filename, lang, &mut pak, &mut log)
-                    //     // }
-                    //     Asset::Material(mut material) => {
-                    //         material.canonicalize(&src_dir, &src_dir);
-                    //         bake_material(&mut context, &mut pak, src_dir, Some(src), &material);
-                    //     }
-                    //     Asset::Model(mut model) => {
-                    //         model.canonicalize(&src_dir, &src_dir);
-                    //         bake_model(&mut context, &mut pak, src_dir, Some(src), &model);
-                    //     }
-                    //     Asset::Scene(scene) => {
-                    //         bake_scene(&mut context, &mut pak, &src_dir, src, &scene);
-                    //     }
-                    // },
+                    "toml" => match Asset::read(&src)? {
+                        //     Asset::Animation(anim) => {
+                        //         // bake_animation(&mut context, &src_dir, asset_filename, anim, &mut pak);
+                        //         todo!();
+                        //     }
+                        //     // Asset::Atlas(ref atlas) => {
+                        //     //     bake_atlas(&src_dir, &asset_filename, atlas, &mut pak);
+                        //     // }
+                        //     Asset::Bitmap(mut bitmap) => {
+                        //         bitmap.canonicalize(&src_dir, &src_dir);
+                        //         bake_bitmap(&mut context, &mut pak, &src_dir, Some(src), &bitmap);
+                        //     }
+                        //     Asset::BitmapFont(mut bitmap_font) => {
+                        //         bitmap_font.canonicalize(&src_dir, &src_dir);
+                        //         bake_bitmap_font(&mut context, &mut pak, src_dir, src, bitmap_font);
+                        //     }
+                        //     Asset::Color(_) => unreachable!(),
+                        //     Asset::Content(_) => {
+                        //         // Nested content files are not yet supported
+                        //         panic!("Unexpected content file {}", src.display());
+                        //     }
+                        //     // Asset::Language(ref lang) => {
+                        //     //     bake_lang(&src_dir, &asset_filename, lang, &mut pak, &mut log)
+                        //     // }
+                        //     Asset::Material(mut material) => {
+                        //         material.canonicalize(&src_dir, &src_dir);
+                        //         bake_material(&mut context, &mut pak, src_dir, Some(src), &material);
+                        //     }
+                        //     Asset::Model(mut model) => {
+                        //         model.canonicalize(&src_dir, &src_dir);
+                        //         bake_model(&mut context, &mut pak, src_dir, Some(src), &model);
+                        //     }
+                        //     Asset::Scene(scene) => {
+                        //         bake_scene(&mut context, &mut pak, &src_dir, src, &scene);
+                        //     }
+                        _ => unimplemented!(),
+                    },
                     _ => Blob::bake(&mut writer, src_dir, &asset_path),
                 }
             }
@@ -464,7 +462,7 @@ impl PakBuf {
         Ok(Self {
             compression: self.compression,
             data: Data {
-                handles: self.data.handles.clone(),
+                ids: self.data.ids.clone(),
                 materials: self.data.materials.clone(),
                 anims: Data::clone_void(&self.data.anims),
                 bitmap_fonts: Data::clone_void(&self.data.bitmap_fonts),
@@ -502,7 +500,7 @@ impl PakBuf {
         trace!(
             "Read header: {} bytes ({} keys)",
             stream.stream_position()? - skip as u64,
-            data.handles.len()
+            data.ids.len()
         );
 
         Ok(Self {
@@ -514,7 +512,7 @@ impl PakBuf {
 
     pub fn is_key_loaded(&mut self, key: impl AsRef<str>) -> bool {
         self.data
-            .handles
+            .ids
             .get(key.as_ref())
             .map(|h| {
                 if let Some(h) = h.as_animation() {
@@ -537,13 +535,13 @@ impl PakBuf {
     }
 
     pub fn keys(&self) -> impl Iterator<Item = &str> {
-        self.data.handles.keys().map(|key| key.as_str())
+        self.data.ids.keys().map(|key| key.as_str())
     }
 
     pub fn load(&mut self, key: impl AsRef<str>) -> Result<(), Error> {
         let h = self
             .data
-            .handles
+            .ids
             .get(key.as_ref())
             .ok_or_else(|| Error::from(ErrorKind::Unsupported))?;
 
@@ -587,117 +585,117 @@ impl PakBuf {
 }
 
 impl Pak for PakBuf {
-    /// Gets the pak-unique `AnimationHandle` corresponding to the given key, if one exsits.
-    fn animation_handle(&self, key: impl AsRef<str>) -> Option<AnimationHandle> {
+    /// Gets the pak-unique `AnimationId` corresponding to the given key, if one exsits.
+    fn animation_id(&self, key: impl AsRef<str>) -> Option<AnimationId> {
         self.data
-            .handles
+            .ids
             .get(key.as_ref())
-            .map(|handle| handle.as_animation())
+            .map(|id| id.as_animation())
             .flatten()
     }
 
-    /// Gets the pak-unique `BitmapHandle` corresponding to the given key, if one exsits.
-    fn bitmap_font_handle(&self, key: impl AsRef<str>) -> Option<BitmapFontHandle> {
+    /// Gets the pak-unique `BitmapFontId` corresponding to the given key, if one exsits.
+    fn bitmap_font_id(&self, key: impl AsRef<str>) -> Option<BitmapFontId> {
         self.data
-            .handles
+            .ids
             .get(key.as_ref())
-            .map(|handle| handle.as_bitmap_font())
+            .map(|id| id.as_bitmap_font())
             .flatten()
     }
 
-    /// Gets the pak-unique `BitmapHandle` corresponding to the given key, if one exsits.
-    fn bitmap_handle(&self, key: impl AsRef<str>) -> Option<BitmapHandle> {
+    /// Gets the pak-unique `BitmapId` corresponding to the given key, if one exsits.
+    fn bitmap_id(&self, key: impl AsRef<str>) -> Option<BitmapId> {
         self.data
-            .handles
+            .ids
             .get(key.as_ref())
-            .map(|handle| handle.as_bitmap())
+            .map(|id| id.as_bitmap())
             .flatten()
     }
 
-    /// Gets the pak-unique `BlobHandle` corresponding to the given key, if one exsits.
-    fn blob_handle(&self, key: impl AsRef<str>) -> Option<BlobHandle> {
+    /// Gets the pak-unique `BlobId` corresponding to the given key, if one exsits.
+    fn blob_id(&self, key: impl AsRef<str>) -> Option<BlobId> {
         self.data
-            .handles
+            .ids
             .get(key.as_ref())
-            .map(|handle| handle.as_blob())
+            .map(|id| id.as_blob())
             .flatten()
     }
 
-    /// Gets the pak-unique `MaterialHandle` corresponding to the given key, if one exsits.
-    fn material_handle(&self, key: impl AsRef<str>) -> Option<MaterialHandle> {
+    /// Gets the pak-unique `MaterialId` corresponding to the given key, if one exsits.
+    fn material_id(&self, key: impl AsRef<str>) -> Option<MaterialId> {
         self.data
-            .handles
+            .ids
             .get(key.as_ref())
-            .map(|handle| handle.as_material())
+            .map(|id| id.as_material())
             .flatten()
     }
 
-    /// Gets the material for the given handle.
-    fn material(&self, handle: MaterialHandle) -> Option<MaterialInfo> {
-        self.data.materials.get(handle.0).copied()
+    /// Gets the material for the given ID.
+    fn material(&self, id: MaterialId) -> Option<MaterialInfo> {
+        self.data.materials.get(id.0).copied()
     }
 
-    /// Gets the pak-unique `ModelHandle` corresponding to the given key, if one exsits.
-    fn model_handle(&self, key: impl AsRef<str>) -> Option<ModelHandle> {
+    /// Gets the pak-unique `ModelId` corresponding to the given key, if one exsits.
+    fn model_id(&self, key: impl AsRef<str>) -> Option<ModelId> {
         self.data
-            .handles
+            .ids
             .get(key.as_ref())
-            .map(|handle| handle.as_model())
+            .map(|id| id.as_model())
             .flatten()
     }
 
-    /// Gets the pak-unique `SceneHandle` corresponding to the given key, if one exsits.
-    fn scene_handle(&mut self, key: impl AsRef<str>) -> Option<SceneHandle> {
+    /// Gets the pak-unique `SceneId` corresponding to the given key, if one exsits.
+    fn scene_id(&mut self, key: impl AsRef<str>) -> Option<SceneId> {
         self.data
-            .handles
+            .ids
             .get(key.as_ref())
-            .map(|handle| handle.as_scene())
+            .map(|id| id.as_scene())
             .flatten()
     }
 
-    /// Gets the corresponding animation for the given handle.
-    fn read_animation(&mut self, handle: AnimationHandle) -> Result<AnimationBuf, Error> {
-        let (pos, len) = self.data.anims[handle.0]
+    /// Gets the corresponding animation for the given ID.
+    fn read_animation(&mut self, id: AnimationId) -> Result<AnimationBuf, Error> {
+        let (pos, len) = self.data.anims[id.0]
             .pos_len()
             .ok_or_else(|| Error::from(ErrorKind::InvalidInput))?;
         self.deserialize(pos, len)
     }
 
-    /// Reads the corresponding bitmap for the given handle.
-    fn read_bitmap_font(&mut self, handle: BitmapFontHandle) -> Result<BitmapFontBuf, Error> {
-        let (pos, len) = self.data.bitmap_fonts[handle.0]
+    /// Reads the corresponding bitmap for the given ID.
+    fn read_bitmap_font(&mut self, id: BitmapFontId) -> Result<BitmapFontBuf, Error> {
+        let (pos, len) = self.data.bitmap_fonts[id.0]
             .pos_len()
             .ok_or_else(|| Error::from(ErrorKind::InvalidInput))?;
         self.deserialize(pos, len)
     }
 
-    /// Reads the corresponding bitmap for the given handle.
-    fn read_bitmap(&mut self, handle: BitmapHandle) -> Result<BitmapBuf, Error> {
-        let (pos, len) = self.data.bitmaps[handle.0]
+    /// Reads the corresponding bitmap for the given ID.
+    fn read_bitmap(&mut self, id: BitmapId) -> Result<BitmapBuf, Error> {
+        let (pos, len) = self.data.bitmaps[id.0]
             .pos_len()
             .ok_or_else(|| Error::from(ErrorKind::InvalidInput))?;
         self.deserialize(pos, len)
     }
 
-    /// Gets the corresponding blob for the given handle.
-    fn read_blob(&mut self, handle: BlobHandle) -> Result<Vec<u8>, Error> {
-        let (pos, len) = self.data.blobs[handle.0]
+    /// Gets the corresponding blob for the given ID.
+    fn read_blob(&mut self, id: BlobId) -> Result<Vec<u8>, Error> {
+        let (pos, len) = self.data.blobs[id.0]
             .pos_len()
             .ok_or_else(|| Error::from(ErrorKind::InvalidInput))?;
         self.deserialize(pos, len)
     }
 
-    /// Gets the corresponding animation for the given handle.
-    fn read_model(&mut self, handle: ModelHandle) -> Result<ModelBuf, Error> {
-        let (pos, len) = self.data.models[handle.0]
+    /// Gets the corresponding animation for the given ID.
+    fn read_model(&mut self, id: ModelId) -> Result<ModelBuf, Error> {
+        let (pos, len) = self.data.models[id.0]
             .pos_len()
             .ok_or_else(|| Error::from(ErrorKind::InvalidInput))?;
         self.deserialize(pos, len)
     }
 
-    /// Gets the corresponding animation for the given handle.
-    fn read_scene(&mut self, handle: SceneHandle) -> Result<SceneBuf, Error> {
-        let (pos, len) = self.data.scenes[handle.0]
+    /// Gets the corresponding animation for the given ID.
+    fn read_scene(&mut self, id: SceneId) -> Result<SceneBuf, Error> {
+        let (pos, len) = self.data.scenes[id.0]
             .pos_len()
             .ok_or_else(|| Error::from(ErrorKind::InvalidInput))?;
         self.deserialize(pos, len)
@@ -717,7 +715,7 @@ impl From<&'static [u8]> for PakBuf {
     }
 }
 
-pub trait Stream: Debug + Read + Seek {
+pub trait Stream: Debug + Read + Seek + Send {
     fn reopen(&self) -> Result<Box<dyn Stream>, Error>;
 }
 

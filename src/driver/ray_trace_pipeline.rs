@@ -175,36 +175,33 @@ where
         info: &RayTraceBottomAccelerationDesc,
         _scratch_buf: &RayTraceAccelerationScratchBuffer<P>,
     ) -> Result<RayTraceAcceleration<P>, DriverError> {
-        let geometries: Result<Vec<vk::AccelerationStructureGeometryKHR>, DriverError> = info
+        let geometries: Vec<vk::AccelerationStructureGeometryKHR> = info
             .geometries
             .iter()
-            .map(
-                |desc| -> Result<vk::AccelerationStructureGeometryKHR, DriverError> {
-                    let part: RayTraceGeometryPart = desc.parts[0];
-                    let geometry = vk::AccelerationStructureGeometryKHR::builder()
-                        .geometry_type(vk::GeometryTypeKHR::TRIANGLES)
-                        .geometry(vk::AccelerationStructureGeometryDataKHR {
-                            triangles: vk::AccelerationStructureGeometryTrianglesDataKHR::builder()
-                                .vertex_data(vk::DeviceOrHostAddressConstKHR {
-                                    device_address: desc.vertex_buf,
-                                })
-                                .vertex_stride(desc.vertex_stride as _)
-                                .max_vertex(part.max_vertex)
-                                .vertex_format(desc.vertex_fmt)
-                                .index_data(vk::DeviceOrHostAddressConstKHR {
-                                    device_address: desc.idx_buf,
-                                })
-                                .index_type(vk::IndexType::UINT32) // TODO: Make parameter?
-                                .build(),
-                        })
-                        .flags(vk::GeometryFlagsKHR::OPAQUE)
-                        .build();
+            .map(|desc| -> vk::AccelerationStructureGeometryKHR {
+                let part: RayTraceGeometryPart = desc.parts[0];
+                let geometry = vk::AccelerationStructureGeometryKHR::builder()
+                    .geometry_type(vk::GeometryTypeKHR::TRIANGLES)
+                    .geometry(vk::AccelerationStructureGeometryDataKHR {
+                        triangles: vk::AccelerationStructureGeometryTrianglesDataKHR::builder()
+                            .vertex_data(vk::DeviceOrHostAddressConstKHR {
+                                device_address: desc.vertex_buf,
+                            })
+                            .vertex_stride(desc.vertex_stride as _)
+                            .max_vertex(part.max_vertex)
+                            .vertex_format(desc.vertex_fmt)
+                            .index_data(vk::DeviceOrHostAddressConstKHR {
+                                device_address: desc.idx_buf,
+                            })
+                            .index_type(vk::IndexType::UINT32) // TODO: Make parameter?
+                            .build(),
+                    })
+                    .flags(vk::GeometryFlagsKHR::OPAQUE)
+                    .build();
 
-                    Ok(geometry)
-                },
-            )
+                geometry
+            })
             .collect();
-        let geometries = geometries?;
         let build_range_infos: Vec<vk::AccelerationStructureBuildRangeInfoKHR> = info
             .geometries
             .iter()

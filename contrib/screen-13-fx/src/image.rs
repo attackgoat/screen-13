@@ -4,12 +4,13 @@ use {
     screen_13::prelude_all::*,
 };
 
+#[derive(Debug)]
 pub struct ImageLoader<P>
 where
     P: SharedPointerKind,
 {
-    decode_r_rg: ComputePipeline<P>,
-    decode_rgb_rgba: ComputePipeline<P>,
+    decode_bitmap_r_rg: ComputePipeline<P>,
+    decode_bitmap_rgb_rgba: ComputePipeline<P>,
     device: Shared<Device<P>, P>,
     pool: HashPool<P>,
 }
@@ -20,13 +21,13 @@ where
 {
     pub fn new(device: &Shared<Device<P>, P>) -> Result<Self, DriverError> {
         Ok(Self {
-            decode_r_rg: ComputePipeline::create(
+            decode_bitmap_r_rg: ComputePipeline::create(
                 device,
-                ComputePipelineInfo::new(crate::res::shader::COMPUTE_DECODE_R_RG_COMP),
+                ComputePipelineInfo::new(crate::res::shader::COMPUTE_DECODE_BITMAP_R_RG_COMP),
             )?,
-            decode_rgb_rgba: ComputePipeline::create(
+            decode_bitmap_rgb_rgba: ComputePipeline::create(
                 device,
-                ComputePipelineInfo::new(crate::res::shader::COMPUTE_DECODE_RGB_RGBA_COMP),
+                ComputePipelineInfo::new(crate::res::shader::COMPUTE_DECODE_BITMAP_RGB_RGBA_COMP),
             )?,
             device: Shared::clone(device),
             pool: HashPool::new(device),
@@ -91,18 +92,13 @@ where
     where
         P: SharedPointerKind + 'static,
     {
-        use std::slice::from_ref;
-
-        trace!(
+        info!(
             "Decoding {}x{} {:?} bitmap ({} K)",
             bitmap.width(),
             bitmap.height(),
             bitmap.format(),
             bitmap.pixels().len() / 1024
         );
-
-        // (64k blocks for cache coherence)
-        //let buf_len: u64 = align_up_u64(bitmap.pixels().len() as u64, 1 << 16);
 
         let cmd_buf = self.pool.lease(self.device.queue.family)?;
         let mut image_binding = self.create_image(&bitmap, is_srgb, false)?;
@@ -170,7 +166,7 @@ where
                 let cmd_chain = Self::dispatch_compute_pipeline(
                     cmd_buf,
                     &mut self.pool,
-                    &self.decode_rgb_rgba,
+                    &self.decode_bitmap_rgb_rgba,
                     pixel_buf_binding,
                     &mut temp_image_binding,
                     (bitmap_width >> 2) + (bitmap_width % 3),
