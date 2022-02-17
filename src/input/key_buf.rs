@@ -43,16 +43,22 @@ impl KeyBuf {
                     let key = input.virtual_keycode.unwrap();
                     match input.state {
                         ElementState::Pressed => {
-                            self.pressed
-                                .insert(self.pressed.binary_search(&key).err().unwrap(), key);
-                            self.held
-                                .insert(self.held.binary_search(&key).ok().unwrap(), key);
+                            if let Err(idx) = self.pressed.binary_search(&key) {
+                                self.pressed.insert(idx, key);
+                            }
+
+                            if let Err(idx) = self.held.binary_search(&key) {
+                                self.held.insert(idx, key);
+                            }
                         }
                         ElementState::Released => {
-                            self.held
-                                .remove(self.held.binary_search(&key).ok().unwrap());
-                            self.released
-                                .insert(self.released.binary_search(&key).err().unwrap(), key);
+                            if let Ok(idx) = self.held.binary_search(&key) {
+                                self.held.remove(idx);
+                            }
+
+                            if let Err(idx) = self.released.binary_search(&key) {
+                                self.released.insert(idx, key);
+                            }
                         }
                     }
 

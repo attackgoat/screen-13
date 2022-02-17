@@ -210,18 +210,16 @@ impl Model {
                 })
                 .max()
                 .unwrap_or_default();
-            let indices_ty = if max_idx <= u16::MAX as _ {
-                IndexType::U16 // HACK: VK_EXT_index_type_uint8 not yet supported
+            let index_ty = if max_idx <= u16::MAX as _ {
+                IndexType::U16
             } else {
                 IndexType::U32
             };
 
             let skin = node.skin();
             let transform = Self::get_transform(&node);
-            let mut all_positions = vec![];
-            let mut idx_count = 0;
+            let mut index_count = 0;
             let mut vertex_count = 0;
-            let vertex_offset = vertex_buf.len() as u32;
 
             for primitive in primitives {
                 let data = primitive.reader(|buf| bufs.get(buf.index()).map(|data| &*data.0));
@@ -273,11 +271,10 @@ impl Model {
                     indices.swap(a_idx, c_idx);
                 }
 
-                all_positions.extend_from_slice(&positions);
-                idx_count += indices.len() as u32;
+                index_count += indices.len();
                 vertex_count += positions.len();
 
-                match indices_ty {
+                match index_ty {
                     IndexType::U16 => indices
                         .iter()
                         .for_each(|idx| idx_buf.extend_from_slice(&(*idx as u16).to_ne_bytes())),
@@ -288,13 +285,15 @@ impl Model {
 
                 // trace!("{} vertices", positions.len());
 
-                // NOTE: Vertex data storage details:
-                // https://developer.arm.com/documentation/102537/0100/Attribute-Buffer-Encoding
-
-                // Position data
                 for idx in 0..positions.len() {
                     for dim_idx in 0..3 {
                         vertex_buf.extend_from_slice(&positions[idx][dim_idx].to_ne_bytes());
+                    }
+
+                    vertex_buf.push(material_idx);
+
+                    for dim_idx in 0..2 {
+                        vertex_buf.extend_from_slice(&tex_coords[idx][dim_idx].to_ne_bytes());
                     }
 
                     if has_skin {
@@ -302,15 +301,6 @@ impl Model {
                             vertex_buf.extend_from_slice(&joints[idx][bone_idx].to_ne_bytes());
                             vertex_buf.extend_from_slice(&weights[idx][bone_idx].to_ne_bytes());
                         }
-                    }
-                }
-
-                // Varying data
-                for idx in 0..positions.len() {
-                    vertex_buf.push(material_idx);
-
-                    for dim_idx in 0..2 {
-                        vertex_buf.extend_from_slice(&tex_coords[idx][dim_idx].to_ne_bytes());
                     }
                 }
             }
@@ -327,16 +317,13 @@ impl Model {
             });
 
             meshes.push(Mesh {
-                base_vertex: 0,
-                indices: base_idx..idx_count,
-                indices_ty,
+                index_count: index_count as _,
+                index_ty,
                 name: dst_name,
                 skin_inv_binds,
                 transform,
                 vertex_count: vertex_count as _,
-                vertex_offset,
             });
-            base_idx += idx_count;
         }
 
         ModelBuf::new(meshes, idx_buf, vertex_buf)

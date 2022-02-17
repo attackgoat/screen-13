@@ -1,0 +1,20 @@
+#version 450
+
+#include "decode_model_decl.glsl"
+
+// Reads a 16 bit index out of the 32 bit index buffer
+uint read_idx(uint idx) {
+    uint data = idx_buf[idx >> 1];
+    uint lo = data & 0xffff;
+    uint hi = data >> 16;
+    uint odd = idx & 1;
+    uint even = 1 - odd;
+
+    return even * lo + odd * hi;
+}
+
+#include "decode_model_fns.glsl"
+
+void main() {
+    decode_model();
+}

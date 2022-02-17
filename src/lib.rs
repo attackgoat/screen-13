@@ -79,7 +79,7 @@ pub mod prelude_all {
         compression::{BrotliParams, Compression},
         AnimationBuf, AnimationId, BitmapBuf, BitmapColor, BitmapFontBuf, BitmapFontId,
         BitmapFormat, BitmapId, BlobId, MaterialId, MaterialInfo, Mesh, ModelBuf, ModelId, Pak,
-        SceneBuf, SceneId,
+        SceneBuf, SceneId,IndexType,
     };
 
     #[cfg(feature = "bake")]

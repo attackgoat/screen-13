@@ -4,16 +4,6 @@ use {
     std::ops::Range,
 };
 
-unsafe fn copy_buffer(
-    device: &ash::Device,
-    cmd_buf: vk::CommandBuffer,
-    src_buf: vk::Buffer,
-    dst_buf: vk::Buffer,
-    regions: &[vk::BufferCopy],
-) {
-    device.cmd_copy_buffer(cmd_buf, src_buf, dst_buf, regions);
-}
-
 pub fn copy_buffer_binding<'a, Ch, Cb, P>(
     cmd_chain: Ch,
     src_binding: impl Into<AnyBufferBinding<'a, P>>,
@@ -80,8 +70,6 @@ where
     let src = **src;
     let dst = **dst;
 
-
-
     // TODO: Maybe calculate subresource usage based on regions, it could add efficiency?
     let regions = regions.to_vec();
 
@@ -104,7 +92,7 @@ where
                 dst,
                 None,
             );
-            copy_buffer(device, **cmd_buf, src, dst, &regions);
+            device.cmd_copy_buffer(**cmd_buf, src, dst, &regions);
         })
 }
 

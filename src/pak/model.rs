@@ -18,19 +18,12 @@ pub enum IndexType {
 
 #[derive(Clone, Deserialize, PartialEq, Serialize)]
 pub struct Mesh {
-    // The number of (same sized) vertices that appear before this one in the vertex buffer, by simple
-    // division of the position and stride of the vertices of this mesh.
-    pub base_vertex: u32,
-
-    pub(crate) indices: Range<u32>,
-    pub indices_ty: IndexType,
+    pub index_count: u32,
+    pub index_ty: IndexType,
     pub name: Option<String>,
     pub skin_inv_binds: Option<HashMap<String, Mat4>>,
     pub transform: Option<Mat4>,
     pub vertex_count: u32,
-
-    /// Offset in the vertex buffer, in bytes, where our first vertex begins
-    pub vertex_offset: u32,
 }
 
 impl Mesh {

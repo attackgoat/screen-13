@@ -228,11 +228,11 @@ impl Data {
     fn clone_void<T>(data: &Vec<DataRef<T>>) -> Vec<DataRef<T>> {
         let mut res = Vec::with_capacity(data.len());
         for idx in 0..data.len() {
-            res[idx] = if let DataRef::Ref(range) = &data[idx] {
+            res.push(if let DataRef::Ref(range) = &data[idx] {
                 DataRef::Ref(range.clone())
             } else {
                 DataRef::Void
-            };
+            });
         }
 
         res
