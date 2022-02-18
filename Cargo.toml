@@ -14,9 +14,7 @@ description = "An easy-to-use 2D/3D rendering engine in the spirit of QBasic."
 
 # 🦀📦: Feature Set: https://github.com/attackgoat/screen-13#optional-features
 [features]
-default = [
-    "pak",
-]
+default = ["pak"]
 bake = ["glob", "pak"]
 pak = []
 
@@ -31,35 +29,35 @@ bmfont = "0.3"
 brotli = "3.3"
 byteorder = "1.4"
 derive_builder = "0.10"
-glam = { version="0.20", features=["serde"] }
-glob = { version="0.3.0", optional=true }
+glam = { version = "0.20", features = ["serde"] }
+glob = { version = "0.3.0", optional = true }
 gltf = "1.0"
 gpu-allocator = "0.16"
 image = "0.24"
-imgui = { version = "0.8", optional = true }
 itertools = "0.10"
 log = "0.4"
 num-format = "0.4.0"
 num-traits = "0.2"
-ordered-float = { version = "2.0", features=["serde"] }
+ordered-float = { version = "2.0", features = ["serde"] }
 parking_lot = "0.12"
 paste = "1.0"
 puffin = "0.12"
 raw-window-handle = "0.4"
-serde = { version="1.0", features=["derive"] }
+serde = { version = "1.0", features = ["derive"] }
 serde_bytes = "0.11"
 snap = "1.0"
 spirv-reflect = "0.2"
 toml = "0.5"
 typenum = "1.12"
-vk-sync = { version = "0.3.0", package="vk-sync-fork" } # // HACK: https://github.com/gwihlidal/vk-sync-rs/pull/4 -> https://github.com/expenses/vk-sync-rs
-winit = { version="0.26" }
+vk-sync = { version = "0.3.0", package = "vk-sync-fork" }  # // HACK: https://github.com/gwihlidal/vk-sync-rs/pull/4 -> https://github.com/expenses/vk-sync-rs
+winit = { version = "0.26" }
 
 [dev-dependencies]
 anyhow = "1.0"
 log = "0.4"
 pretty_env_logger = "0.4"
 screen-13-fx = { path = "contrib/screen-13-fx" }
+screen-13-imgui = { path = "contrib/screen-13-imgui" }
 
 # Always compile the `gltf` dependency in release mode; it is slow with debug assertions turned on
 [profile.dev.package.gltf]
