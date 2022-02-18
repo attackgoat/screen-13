@@ -27,8 +27,8 @@ pub use {
         descriptor_set_layout::DescriptorSetLayout,
         device::{Device, FeatureFlags},
         graphic_pipeline::{
-            DepthStencilMode, GraphicPipeline, GraphicPipelineInfo, GraphicPipelineInfoBuilder,
-            StencilMode,
+            BlendMode, DepthStencilMode, GraphicPipeline, GraphicPipelineInfo,
+            GraphicPipelineInfoBuilder, StencilMode, VertexInputMode,
         },
         image::{
             Image, ImageInfo, ImageInfoBuilder, ImageSubresource, ImageType, ImageView,
@@ -233,6 +233,7 @@ where
 
         info!("Surface formats: {:#?}", surface_formats);
 
+        // TODO: Explicitly fallback to BGRA_UNORM
         let format = surface_formats
             .into_iter()
             .find(|format| Self::select_swapchain_format(*format))
@@ -254,7 +255,7 @@ where
     }
 
     fn select_swapchain_format(format: vk::SurfaceFormatKHR) -> bool {
-        format.format == vk::Format::B8G8R8A8_UNORM
+        format.format == vk::Format::B8G8R8A8_SRGB
             && format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
     }
 

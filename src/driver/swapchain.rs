@@ -118,7 +118,7 @@ where
                     | vk::ImageUsageFlags::STORAGE,
             )
             .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
-            //.pre_transform(pre_transform)
+            .pre_transform(pre_transform)
             .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
             .present_mode(present_mode)
             .clipped(true)

@@ -88,10 +88,10 @@ impl Bitmap {
             }
         }
 
-        Ok(writer.push_bitmap(self.to_bitmap_buf()?, key))
+        Ok(writer.push_bitmap(self.into_bitmap_buf()?, key))
     }
 
-    fn to_bitmap_buf(mut self) -> Result<BitmapBuf, Error> {
+    fn into_bitmap_buf(mut self) -> Result<BitmapBuf, Error> {
         let (width, pixels) = Self::read_pixels(self.src(), self.format())?;
 
         Ok(BitmapBuf::new(self.color(), self.format(), width, pixels))

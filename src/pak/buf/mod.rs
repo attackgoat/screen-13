@@ -227,8 +227,8 @@ impl Data {
     #[allow(clippy::ptr_arg)]
     fn clone_void<T>(data: &Vec<DataRef<T>>) -> Vec<DataRef<T>> {
         let mut res = Vec::with_capacity(data.len());
-        for idx in 0..data.len() {
-            res.push(if let DataRef::Ref(range) = &data[idx] {
+        for data in data {
+            res.push(if let DataRef::Ref(range) = data {
                 DataRef::Ref(range.clone())
             } else {
                 DataRef::Void

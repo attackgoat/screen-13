@@ -20,38 +20,36 @@ fn guess_immutable_sampler(
     device: &Device<impl SharedPointerKind>,
     binding_name: &str,
 ) -> Option<vk::Sampler> {
-    let (texel_filter, mipmap_mode, address_modes) =
-        if let Some(mut spec) = binding_name.strip_prefix("sampler_") {
-            let texel_filter = match &spec[..1] {
-                "n" => vk::Filter::NEAREST,
-                "l" => vk::Filter::LINEAR,
-                _ => panic!("{}", &spec[..1]),
-            };
-            spec = &spec[1..];
-
-            let mipmap_mode = match &spec[..1] {
-                "n" => vk::SamplerMipmapMode::NEAREST,
-                "l" => vk::SamplerMipmapMode::LINEAR,
-                _ => panic!("{}", &spec[..1]),
-            };
-            spec = &spec[1..];
-
-            let address_modes = match spec {
-                "r" => vk::SamplerAddressMode::REPEAT,
-                "mr" => vk::SamplerAddressMode::MIRRORED_REPEAT,
-                "c" => vk::SamplerAddressMode::CLAMP_TO_EDGE,
-                "cb" => vk::SamplerAddressMode::CLAMP_TO_BORDER,
-                _ => panic!("{}", spec),
-            };
-
-            (texel_filter, mipmap_mode, address_modes)
-        } else {
-            (
-                vk::Filter::LINEAR,
-                vk::SamplerMipmapMode::LINEAR,
-                vk::SamplerAddressMode::REPEAT,
-            )
+    let (texel_filter, mipmap_mode, address_modes) = if binding_name.contains("_sampler_") {
+        let spec = &binding_name[binding_name.len() - 3..];
+        let texel_filter = match &spec[0..1] {
+            "n" => vk::Filter::NEAREST,
+            "l" => vk::Filter::LINEAR,
+            _ => panic!("{}", &spec[0..1]),
         };
+
+        let mipmap_mode = match &spec[1..2] {
+            "n" => vk::SamplerMipmapMode::NEAREST,
+            "l" => vk::SamplerMipmapMode::LINEAR,
+            _ => panic!("{}", &spec[1..2]),
+        };
+
+        let address_modes = match &spec[2..3] {
+            "b" => vk::SamplerAddressMode::CLAMP_TO_BORDER,
+            "e" => vk::SamplerAddressMode::CLAMP_TO_EDGE,
+            "m" => vk::SamplerAddressMode::MIRRORED_REPEAT,
+            "r" => vk::SamplerAddressMode::REPEAT,
+            _ => panic!("{}", &spec[2..3]),
+        };
+
+        (texel_filter, mipmap_mode, address_modes)
+    } else {
+        (
+            vk::Filter::LINEAR,
+            vk::SamplerMipmapMode::LINEAR,
+            vk::SamplerAddressMode::REPEAT,
+        )
+    };
 
     Device::immutable_sampler(
         device,

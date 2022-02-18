@@ -9,26 +9,30 @@ layout(set = 0, binding = 0) uniform sampler2D src_images_sampler_llr[2];
 
 layout(set = 0, binding = 1, rgba8) restrict writeonly uniform image2D dst_image;
 
+vec4 sample_src_image(uint idx)
+{
+    // Figure out the input/output image sizes
+    uvec2 src_size = textureSize(src_images_sampler_llr[idx], 0);
+    uvec2 dst_size = imageSize(dst_image);
+
+    // Map dst-coord to src-uv (dst coord is the invocation id...)
+    vec2 src_uv = content_fill(src_size, dst_size, gl_GlobalInvocationID.xy);
+
+    // Sample with a fancy filter and store
+    return sample_catmull_rom(src_images_sampler_llr[idx], src_uv);
+}
+
 void main()
 {
-    vec3 dst_color = vec3(0);
-    for (uint idx = 0; idx < src_images_sampler_llr.length(); ++idx) {
-        // Figure out the input/output image sizes
-        uvec2 src_size = textureSize(src_images_sampler_llr[idx], 0);
-        uvec2 dst_size = imageSize(dst_image);
+    vec4 blend = sample_src_image(0);
+    vec4 base = sample_src_image(1);
+    float inv_a = 1.0 - blend.a;
 
-        // Map dst-coord to src-uv (dst coord is the invocation id...)
-        vec2 src_uv = content_fill(src_size, dst_size, gl_GlobalInvocationID.xy);
-
-        // Sample with a fancy filter and store
-        dst_color += sample_catmull_rom(src_images_sampler_llr[idx], src_uv).rgb;
-    }
-
-    dst_color /= src_images_sampler_llr.length();
+    vec3 color = blend.rgb + base.rgb * inv_a;
 
     imageStore(
         dst_image,
         ivec2(gl_GlobalInvocationID.xy),
-        vec4(dst_color, 1.0)
+        vec4(color, 1.0)
     );
 }

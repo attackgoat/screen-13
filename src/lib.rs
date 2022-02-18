@@ -42,6 +42,7 @@ pub mod prelude {
             input::{
                 update_input, update_keyboard, update_mouse, KeyBuf, KeyMap, MouseBuf, MouseButton,
             },
+            into_u8_slice,
             ptr::{ArcK, RcK, Shared, SharedPointerKind},
             CommandChain, ExecutionError,
         },
@@ -65,9 +66,9 @@ pub mod prelude_all {
         driver::*,
         graph::{
             AccessType, AnyBufferBinding, AnyImageBinding, AnyImageNode, BufferBinding,
-            BufferLeaseBinding, BufferNode, ImageBinding, ImageLayout, ImageLeaseBinding,
-            ImageNode, PassRef, RayTraceAccelerationBinding, RayTraceAccelerationNode, RenderGraph,
-            SwapchainImageNode,
+            BufferLeaseBinding, BufferLeaseNode, BufferNode, ImageBinding, ImageLayout,
+            ImageLeaseBinding, ImageLeaseNode, ImageNode, PassRef, RayTraceAccelerationBinding,
+            RayTraceAccelerationNode, RenderGraph, SwapchainImageNode,
         },
         prelude::*,
         Display, DisplayError, EventLoopBuilder, HashPool, Lease,
@@ -78,8 +79,8 @@ pub mod prelude_all {
         buf::PakBuf,
         compression::{BrotliParams, Compression},
         AnimationBuf, AnimationId, BitmapBuf, BitmapColor, BitmapFontBuf, BitmapFontId,
-        BitmapFormat, BitmapId, BlobId, MaterialId, MaterialInfo, Mesh, ModelBuf, ModelId, Pak,
-        SceneBuf, SceneId,IndexType,
+        BitmapFormat, BitmapId, BlobId, IndexType, MaterialId, MaterialInfo, Mesh, ModelBuf,
+        ModelId, Pak, SceneBuf, SceneId,
     };
 
     #[cfg(feature = "bake")]
@@ -264,6 +265,15 @@ where
     use std::{mem::size_of, slice::from_raw_parts};
 
     unsafe { from_raw_parts(t as *const T as *const _, size_of::<T>()) }
+}
+
+pub fn into_u8_slice<T>(t: &[T]) -> &[u8]
+where
+    T: Copy + Sized,
+{
+    use std::{mem::size_of, slice::from_raw_parts};
+
+    unsafe { from_raw_parts(t.as_ptr() as *const _, t.len() * size_of::<T>()) }
 }
 
 // Must be aligned.

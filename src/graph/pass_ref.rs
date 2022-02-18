@@ -1,9 +1,10 @@
 use {
     super::{
-        AnyImageNode, Attachment, AttachmentIndex, Bind, Binding, BufferNode, Descriptor, Edge,
-        Execution, ExecutionFunction, ExecutionPipeline, ImageNode, Information, Node, NodeAccess,
-        NodeIndex, Pass, PushConstantRange, RayTraceAccelerationNode, Rect, RenderGraph,
-        SampleCount, Subresource, SwapchainImageNode, View, ViewType,
+        AnyBufferNode, AnyImageNode, Attachment, AttachmentIndex, Bind, Binding, BufferLeaseNode,
+        BufferNode, Descriptor, Edge, Execution, ExecutionFunction, ExecutionPipeline,
+        ImageLeaseNode, ImageNode, Information, Node, NodeAccess, NodeIndex, Pass,
+        PushConstantRange, RayTraceAccelerationNode, Rect, RenderGraph, SampleCount, Subresource,
+        SwapchainImageNode, View, ViewType,
     },
     crate::{
         as_u8_slice,
@@ -176,11 +177,12 @@ macro_rules! index {
 // Allow indexing the Bindings data during command execution:
 // (This gets you access to the driver images or other resources)
 index!(Buffer, Buffer);
+index!(BufferLease, Buffer);
 index!(Image, Image);
+index!(ImageLease, Image);
 index!(RayTraceAcceleration, RayTraceAcceleration);
 index!(SwapchainImage, Image);
 
-// Also allow indexing Bindings using AnyImageNode
 impl<'a, P> Index<AnyImageNode<P>> for Bindings<'a, P>
 where
     P: SharedPointerKind,
@@ -199,6 +201,26 @@ where
             AnyImageNode::Image(_) => &binding.as_image().item,
             AnyImageNode::ImageLease(_) => &binding.as_image_lease().item,
             AnyImageNode::SwapchainImage(_) => &binding.as_swapchain_image().item,
+        }
+    }
+}
+
+impl<'a, P> Index<AnyBufferNode<P>> for Bindings<'a, P>
+where
+    P: SharedPointerKind,
+{
+    type Output = Buffer<P>;
+
+    fn index(&self, node: AnyBufferNode<P>) -> &Self::Output {
+        let node_idx = match node {
+            AnyBufferNode::Buffer(node) => node.idx,
+            AnyBufferNode::BufferLease(node) => node.idx,
+        };
+        let binding = self.binding_ref(node_idx);
+
+        match node {
+            AnyBufferNode::Buffer(_) => &binding.as_buffer().item,
+            AnyBufferNode::BufferLease(_) => &binding.as_buffer_lease().item,
         }
     }
 }

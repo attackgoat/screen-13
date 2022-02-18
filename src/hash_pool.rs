@@ -34,7 +34,7 @@ where
     buffer_binding_cache: HashMap<BufferInfo, Cache<BufferBinding<P>, P>>,
     command_buffer_cache: HashMap<QueueFamily, Cache<CommandBuffer<P>, P>>,
     descriptor_pool_cache: HashMap<DescriptorPoolInfo, Cache<Shared<DescriptorPool<P>, P>, P>>,
-    device: Shared<Device<P>, P>,
+    pub device: Shared<Device<P>, P>,
     image_binding_cache: HashMap<ImageInfo, Cache<ImageBinding<P>, P>>,
     render_pass_cache: HashMap<RenderPassInfo, Cache<RenderPass<P>, P>>,
 }

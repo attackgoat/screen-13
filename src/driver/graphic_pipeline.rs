@@ -14,6 +14,51 @@ use {
     std::{collections::BTreeMap, ffi::CString, thread::panicking},
 };
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum BlendMode {
+    Alpha,
+    Replace,
+}
+
+impl BlendMode {
+    pub fn into_vk(&self) -> vk::PipelineColorBlendAttachmentState {
+        match self {
+            Self::Alpha => vk::PipelineColorBlendAttachmentState {
+                blend_enable: 1,
+                src_color_blend_factor: vk::BlendFactor::SRC_ALPHA,
+                dst_color_blend_factor: vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
+                color_blend_op: vk::BlendOp::ADD,
+                src_alpha_blend_factor: vk::BlendFactor::SRC_ALPHA,
+                dst_alpha_blend_factor: vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
+                alpha_blend_op: vk::BlendOp::ADD,
+                color_write_mask: vk::ColorComponentFlags::R
+                    | vk::ColorComponentFlags::G
+                    | vk::ColorComponentFlags::B
+                    | vk::ColorComponentFlags::A,
+            },
+            Self::Replace => vk::PipelineColorBlendAttachmentState {
+                blend_enable: 0,
+                src_color_blend_factor: vk::BlendFactor::SRC_COLOR,
+                dst_color_blend_factor: vk::BlendFactor::ONE_MINUS_DST_COLOR,
+                color_blend_op: vk::BlendOp::ADD,
+                src_alpha_blend_factor: vk::BlendFactor::ZERO,
+                dst_alpha_blend_factor: vk::BlendFactor::ZERO,
+                alpha_blend_op: vk::BlendOp::ADD,
+                color_write_mask: vk::ColorComponentFlags::R
+                    | vk::ColorComponentFlags::G
+                    | vk::ColorComponentFlags::B
+                    | vk::ColorComponentFlags::A,
+            },
+        }
+    }
+}
+
+impl Default for BlendMode {
+    fn default() -> Self {
+        Self::Replace
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct DepthStencilMode {
     pub back: StencilMode,
@@ -161,26 +206,66 @@ where
                 });
 
             let vertex_input_state = VertexInputState {
-                vertex_attribute_descriptions: vec![],
-                vertex_binding_descriptions: vec![],
+                vertex_attribute_descriptions: match info.vertex_input {
+                    VertexInputMode::ImGui => vec![
+                        vk::VertexInputAttributeDescription {
+                            location: 0,
+                            binding: 0,
+                            format: vk::Format::R32G32_SFLOAT,
+                            offset: 0,
+                        },
+                        vk::VertexInputAttributeDescription {
+                            location: 1,
+                            binding: 0,
+                            format: vk::Format::R32G32_SFLOAT,
+                            offset: 8,
+                        },
+                        vk::VertexInputAttributeDescription {
+                            location: 2,
+                            binding: 0,
+                            format: vk::Format::R8G8B8A8_UNORM,
+                            offset: 16,
+                        },
+                    ],
+                    VertexInputMode::StaticMesh => vec![],
+                },
+                vertex_binding_descriptions: match info.vertex_input {
+                    VertexInputMode::ImGui => vec![vk::VertexInputBindingDescription {
+                        binding: 0,
+                        stride: 20,
+                        input_rate: vk::VertexInputRate::VERTEX,
+                    }],
+                    VertexInputMode::StaticMesh => vec![],
+                },
             };
             let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfo {
                 topology: vk::PrimitiveTopology::TRIANGLE_LIST,
                 ..Default::default()
             };
             let rasterization_state = vk::PipelineRasterizationStateCreateInfo {
-                front_face: vk::FrontFace::COUNTER_CLOCKWISE,
+                front_face: match info.vertex_input {
+                    VertexInputMode::ImGui => vk::FrontFace::COUNTER_CLOCKWISE,
+                    VertexInputMode::StaticMesh => vk::FrontFace::COUNTER_CLOCKWISE,
+                },
                 line_width: 1.0,
                 polygon_mode: vk::PolygonMode::FILL,
-                cull_mode: if info.two_sided {
-                    ash::vk::CullModeFlags::NONE
-                } else {
-                    ash::vk::CullModeFlags::BACK
+                cull_mode: match info.vertex_input {
+                    VertexInputMode::ImGui => ash::vk::CullModeFlags::NONE,
+                    VertexInputMode::StaticMesh => {
+                        if info.two_sided {
+                            ash::vk::CullModeFlags::NONE
+                        } else {
+                            ash::vk::CullModeFlags::BACK
+                        }
+                    }
                 },
                 ..Default::default()
             };
             let multisample_state = MultisampleState {
-                rasterization_samples: info.samples,
+                rasterization_samples: match info.vertex_input {
+                    VertexInputMode::ImGui => SampleCount::X1,
+                    VertexInputMode::StaticMesh => info.samples,
+                },
                 ..Default::default()
             };
 
@@ -230,11 +315,15 @@ where
 #[builder(pattern = "owned")]
 pub struct GraphicPipelineInfo {
     #[builder(default)]
+    pub blend: BlendMode,
+    #[builder(default)]
     pub depth_stencil: Option<DepthStencilMode>,
     #[builder(default = "SampleCount::X1")]
     pub samples: SampleCount,
     #[builder(default)]
     pub two_sided: bool,
+    #[builder(default)]
+    pub vertex_input: VertexInputMode,
 }
 
 impl GraphicPipelineInfo {
@@ -300,6 +389,19 @@ impl StencilMode {
 impl Default for StencilMode {
     fn default() -> Self {
         Self::Noop
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum VertexInputMode {
+    // AnimatedMesh,
+    ImGui,
+    StaticMesh,
+}
+
+impl Default for VertexInputMode {
+    fn default() -> Self {
+        Self::StaticMesh
     }
 }
 

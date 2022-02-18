@@ -51,7 +51,7 @@ fn main() -> anyhow::Result<()> {
     let mut data = pak::open().context("Pak")?;
     let mut flowers_image_binding = Some(
         image_loader
-            .decode_srgb(
+            .decode_linear(
                 data.read_bitmap_key(pak::IMAGE_FLOWERS_JPG)
                     .context("Unable to read flowers bitmap")?,
             )

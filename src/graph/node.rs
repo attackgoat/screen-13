@@ -5,7 +5,10 @@ use {
         Resolver, Subresource, SwapchainImageBinding,
     },
     crate::{
-        driver::{BufferSubresource, ImageInfo, ImageSubresource, ImageViewInfo, SwapchainImage},
+        driver::{
+            BufferInfo, BufferSubresource, ImageInfo, ImageSubresource, ImageViewInfo,
+            SwapchainImage,
+        },
         ptr::Shared,
     },
     archery::SharedPointerKind,
@@ -13,6 +16,52 @@ use {
     std::{marker::PhantomData, ops::Range},
     vk_sync::AccessType,
 };
+
+#[derive(Debug)]
+pub enum AnyBufferNode<P> {
+    Buffer(BufferNode<P>),
+    BufferLease(BufferLeaseNode<P>),
+}
+
+impl<P> Clone for AnyBufferNode<P> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<P> Copy for AnyBufferNode<P> {}
+
+impl<P> Information for AnyBufferNode<P> {
+    type Info = BufferInfo;
+
+    fn get(self, graph: &RenderGraph<impl SharedPointerKind>) -> Self::Info {
+        match self {
+            Self::Buffer(node) => node.get(graph),
+            Self::BufferLease(node) => node.get(graph),
+        }
+    }
+}
+
+impl<P> From<BufferNode<P>> for AnyBufferNode<P> {
+    fn from(node: BufferNode<P>) -> Self {
+        Self::Buffer(node)
+    }
+}
+
+impl<P> From<BufferLeaseNode<P>> for AnyBufferNode<P> {
+    fn from(node: BufferLeaseNode<P>) -> Self {
+        Self::BufferLease(node)
+    }
+}
+
+impl<P> Node<P> for AnyBufferNode<P> {
+    fn index(self) -> NodeIndex {
+        match self {
+            Self::Buffer(node) => node.index(),
+            Self::BufferLease(node) => node.index(),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum AnyImageNode<P> {

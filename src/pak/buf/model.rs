@@ -150,7 +150,7 @@ impl Model {
                     mesh.primitives()
                         .filter(|primitive| {
                             // TODO: Support the other modes; for now export triangulated gltfs
-                            matches!(TriangleMode::classify(&primitive), Some(TriangleMode::List))
+                            matches!(TriangleMode::classify(primitive), Some(TriangleMode::List))
                         })
                         .collect::<Vec<_>>(),
                     mesh,

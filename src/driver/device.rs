@@ -277,8 +277,10 @@ where
             vk::SamplerMipmapMode::LINEAR,
         ];
         let address_modes = [
-            vk::SamplerAddressMode::REPEAT,
+            vk::SamplerAddressMode::CLAMP_TO_BORDER,
             vk::SamplerAddressMode::CLAMP_TO_EDGE,
+            vk::SamplerAddressMode::MIRRORED_REPEAT,
+            vk::SamplerAddressMode::REPEAT,
         ];
 
         let mut res = HashMap::new();

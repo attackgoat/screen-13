@@ -17,7 +17,7 @@ pub use self::{
         RayTraceAccelerationLeaseBinding, RenderPassBinding,
     },
     node::{
-        AnyImageNode, BufferLeaseNode, BufferNode, ImageLeaseNode, ImageNode,
+        AnyBufferNode, AnyImageNode, BufferLeaseNode, BufferNode, ImageLeaseNode, ImageNode,
         RayTraceAccelerationLeaseNode, RayTraceAccelerationNode, SwapchainImageNode, Unbind, View,
         ViewType,
     },

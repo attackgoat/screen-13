@@ -30,7 +30,7 @@ unsafe extern "system" fn vulkan_debug_callback(
         warn!("{}\n", message);
     } else {
         error!("{}\n", message);
-        panic!();
+        panic!("{}\n", message);
     }
 
     vk::FALSE
