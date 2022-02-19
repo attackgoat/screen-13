@@ -75,27 +75,31 @@ where
 
     pub fn draw(
         &mut self,
-        frame: &mut FrameContext<'_, P>,
+        dt: f32,
+        events: &[Event<'_, ()>],
+        window: &Window,
+        render_graph: &mut RenderGraph<P>,
+        resolution: UVec2,
         ui_func: impl FnOnce(&mut Ui),
     ) -> ImageLeaseNode<P> {
         let hidpi = self.platform.hidpi_factor();
 
         self.platform
-            .attach_window(self.context.io_mut(), frame.window, HiDpiMode::Default);
+            .attach_window(self.context.io_mut(), window, HiDpiMode::Default);
 
         if self.font_atlas_image.is_none() || self.platform.hidpi_factor() != hidpi {
             self.lease_font_atlas_image();
         }
 
         let io = self.context.io_mut();
-        io.update_delta_time(Duration::from_secs_f32(frame.dt));
+        io.update_delta_time(Duration::from_secs_f32(dt));
 
-        for event in frame.events {
-            self.platform.handle_event(io, frame.window, event);
+        for event in events {
+            self.platform.handle_event(io, window, event);
         }
 
         self.platform
-            .prepare_frame(io, frame.window)
+            .prepare_frame(io, window)
             .expect("Unable to prepare ImGui frame");
 
         // Let the caller draw the GUI
@@ -103,21 +107,19 @@ where
 
         ui_func(&mut ui);
 
-        self.platform.prepare_render(&ui, frame.window);
+        self.platform.prepare_render(&ui, window);
         let draw_data = self.context.render();
 
-        let image = frame.render_graph.bind_node(
+        let image = render_graph.bind_node(
             self.pool
                 .lease(
-                    ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, frame.resolution).usage(
+                    ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, resolution).usage(
                         vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED,
                     ),
                 )
                 .unwrap(),
         );
-        let font_atlas_image = frame
-            .render_graph
-            .bind_node(self.font_atlas_image.take().unwrap());
+        let font_atlas_image = render_graph.bind_node(self.font_atlas_image.take().unwrap());
         let display_pos = draw_data.display_pos;
         let framebuffer_scale = draw_data.framebuffer_scale;
 
@@ -138,7 +140,7 @@ where
                     .copy_from_slice(indices);
             }
 
-            let idx_buf = frame.render_graph.bind_node(idx_buf);
+            let idx_buf = render_graph.bind_node(idx_buf);
 
             let vertices_slice = draw_list.vtx_buffer();
             let vertices = into_u8_slice(vertices_slice);
@@ -157,7 +159,7 @@ where
                     .copy_from_slice(vertices);
             }
 
-            let vertex_buf = frame.render_graph.bind_node(vertex_buf);
+            let vertex_buf = render_graph.bind_node(vertex_buf);
 
             let draw_cmds = draw_list
                 .commands()
@@ -176,8 +178,7 @@ where
                 })
                 .collect::<Vec<_>>();
 
-            frame
-                .render_graph
+            render_graph
                 .record_pass("imgui")
                 .access_node(idx_buf, AccessType::IndexBuffer)
                 .access_node(vertex_buf, AccessType::VertexBuffer)
@@ -186,8 +187,8 @@ where
                 .clear_color(0)
                 .store_color(0, image)
                 .push_constants([
-                    self.platform.hidpi_factor() as f32 / frame.resolution.x as f32,
-                    self.platform.hidpi_factor() as f32 / frame.resolution.y as f32,
+                    self.platform.hidpi_factor() as f32 / resolution.x as f32,
+                    self.platform.hidpi_factor() as f32 / resolution.y as f32,
                     f32::NAN, // Required padding
                     f32::NAN, // Required padding
                 ])
@@ -238,9 +239,24 @@ where
                 });
         }
 
-        self.font_atlas_image = Some(frame.render_graph.unbind_node(font_atlas_image));
+        self.font_atlas_image = Some(render_graph.unbind_node(font_atlas_image));
 
         image
+    }
+
+    pub fn draw_frame(
+        &mut self,
+        frame: &mut FrameContext<'_, P>,
+        ui_func: impl FnOnce(&mut Ui),
+    ) -> ImageLeaseNode<P> {
+        self.draw(
+            frame.dt,
+            frame.events,
+            frame.window,
+            frame.render_graph,
+            frame.resolution,
+            ui_func,
+        )
     }
 
     fn lease_font_atlas_image(&mut self) {

@@ -30,7 +30,7 @@ fn main() -> Result<(), DisplayError> {
         clear_color_node(frame.render_graph, app_image, 0.2, 0.22, 0.2, 1.0);
 
         // Use the draw function callback to do some fun meant-for-debug-mode GUI stuff
-        let gui_image = imgui.draw(&mut frame, |ui| {
+        let gui_image = imgui.draw_frame(&mut frame, |ui| {
             ui.window("Hello world")
                 .position([10.0, 10.0], Condition::FirstUseEver)
                 .size([340.0, 250.0], Condition::FirstUseEver)
