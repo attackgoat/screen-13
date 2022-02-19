@@ -51,7 +51,7 @@ pub use {
         },
         surface::Surface,
         swapchain::{
-            Swapchain, SwapchainImage, SwapchainImageError, SwapchainInfo, SwapchainInfoBuilder,
+            Swapchain, SwapchainError, SwapchainImage, SwapchainInfo, SwapchainInfoBuilder,
         },
     },
     ash::{self, vk},

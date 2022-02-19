@@ -1,8 +1,6 @@
 use {
     super::{
-        driver::{
-            CommandBuffer, Device, DriverError, ImageSubresource, Swapchain, SwapchainImageError,
-        },
+        driver::{CommandBuffer, Device, DriverError, ImageSubresource, Swapchain, SwapchainError},
         graph::{RenderGraph, Resolver, SwapchainImageNode},
         ptr::Shared,
         HashPool,
@@ -50,13 +48,13 @@ where
 
     pub fn acquire_next_image(
         &mut self,
-    ) -> Result<(SwapchainImageNode<P>, RenderGraph<P>), DisplayError>
+    ) -> Result<(SwapchainImageNode<P>, RenderGraph<P>), SwapchainError>
     where
         P: 'static,
     {
         trace!("acquire_next_image");
 
-        let swapchain_image = self.swapchain.acquire_next_image()?; // TODO: Rebuild swapchain and device wait_idle until it's fixed!
+        let swapchain_image = self.swapchain.acquire_next_image()?;
         let mut render_graph = RenderGraph::new();
         let swapchain = render_graph.bind_node(swapchain_image);
 
@@ -239,8 +237,8 @@ impl From<DriverError> for DisplayError {
     }
 }
 
-impl From<SwapchainImageError> for DisplayError {
-    fn from(err: SwapchainImageError) -> Self {
+impl From<SwapchainError> for DisplayError {
+    fn from(err: SwapchainError) -> Self {
         Self::DeviceLost
     }
 }
