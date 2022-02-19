@@ -9,15 +9,27 @@ use {
     winit::{dpi::PhysicalPosition, event::Event, window::Window},
 };
 
+pub fn center_cursor(window: &Window) {
+    let window_size = window.inner_size();
+    let position = uvec2(window_size.width, window_size.height) / 2;
+    move_cursor(window, &position);
+}
+
+pub fn move_cursor(window: &Window, position: &UVec2) {
+    let position = position.as_ivec2();
+    let position = PhysicalPosition::new(position.x, position.y);
+    window.set_cursor_position(position).unwrap_or_default();
+}
+
 pub struct FrameContext<'a, P>
 where
     P: SharedPointerKind,
 {
     pub device: &'a Shared<Device<P>, P>,
     pub dt: f32,
+    pub events: &'a [Event<'a, ()>],
     pub render_graph: &'a mut RenderGraph<P>,
     pub resolution: UVec2,
-    pub events: &'a [Event<'a, ()>],
     pub swapchain: SwapchainImageNode<P>,
     pub will_exit: &'a mut bool,
     pub window: &'a Window,
@@ -33,16 +45,10 @@ where
     }
 
     pub fn center_cursor(&self) {
-        let window_size = self.window.inner_size();
-        let position = uvec2(window_size.width, window_size.height) / 2;
-        self.move_cursor(&position);
+        center_cursor(&self.window);
     }
 
     pub fn move_cursor(&self, position: &UVec2) {
-        let position = position.as_ivec2();
-        let position = PhysicalPosition::new(position.x, position.y);
-        self.window
-            .set_cursor_position(position)
-            .unwrap_or_default();
+        move_cursor(&self.window, position);
     }
 }

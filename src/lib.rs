@@ -37,7 +37,7 @@ pub mod prelude {
             align_up_u32, align_up_u64, as_u8_slice,
             event_loop::{EventLoop, FullscreenMode},
             execute,
-            frame::FrameContext,
+            frame::{center_cursor, move_cursor, FrameContext},
             graph::RenderGraph,
             input::{
                 update_input, update_keyboard, update_mouse, KeyBuf, KeyMap, MouseBuf, MouseButton,
