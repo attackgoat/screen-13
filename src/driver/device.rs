@@ -160,7 +160,7 @@ where
             assert!(descriptor_indexing.shader_storage_texel_buffer_array_dynamic_indexing != 0);
             //assert!(descriptor_indexing.shader_uniform_buffer_array_non_uniform_indexing != 0);
             assert!(descriptor_indexing.shader_sampled_image_array_non_uniform_indexing != 0);
-            assert!(descriptor_indexing.shader_storage_buffer_array_non_uniform_indexing != 0);
+            //assert!(descriptor_indexing.shader_storage_buffer_array_non_uniform_indexing != 0);
             //assert!(descriptor_indexing.shader_storage_image_array_non_uniform_indexing != 0);
             assert!(
                 descriptor_indexing.shader_uniform_texel_buffer_array_non_uniform_indexing != 0
@@ -178,7 +178,7 @@ where
 
             assert!(shader_float16_int8.shader_int8 != 0);
 
-            assert!(vulkan_memory_model.vulkan_memory_model != 0);
+            //assert!(vulkan_memory_model.vulkan_memory_model != 0);
 
             if features.contains(FeatureFlags::RAY_TRACING) {
                 assert!(
@@ -212,7 +212,7 @@ where
                 );
             }
 
-            assert!(get_buffer_device_address_features.buffer_device_address != 0);
+            //assert!(get_buffer_device_address_features.buffer_device_address != 0);
 
             let device_create_info = vk::DeviceCreateInfo::builder()
                 .queue_create_infos(&queue_info)

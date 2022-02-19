@@ -45,10 +45,10 @@ where
     }
 
     pub fn center_cursor(&self) {
-        center_cursor(&self.window);
+        center_cursor(self.window);
     }
 
     pub fn move_cursor(&self, position: &UVec2) {
-        move_cursor(&self.window, position);
+        move_cursor(self.window, position);
     }
 }

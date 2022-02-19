@@ -9,7 +9,7 @@ _[QBasic](https://en.wikipedia.org/wiki/QBasic)_.
 
 ## Overview
 
-_Screen 13_ provides a thin [Vulkan 1.2](https://www.vulkan.org/) driver using smart pointers.
+_Screen 13_ provides a thin [Vulkan 1.1](https://www.vulkan.org/) driver using smart pointers.
 
 Features of the Vulkan driver:
 

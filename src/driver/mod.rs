@@ -189,7 +189,6 @@ where
         let physical_devices = Instance::physical_devices(&instance)?
             .filter(|physical_device| {
                 // Filters this list down to only supported devices
-                #[allow(clippy::if_same_then_else)]
                 if cfg.presentation
                     && !PhysicalDevice::has_presentation_support(
                         physical_device,
@@ -197,10 +196,18 @@ where
                         &surface,
                     )
                 {
+                    info!("{:?} lacks presentation support", unsafe {
+                        CStr::from_ptr(physical_device.props.device_name.as_ptr() as *const c_char)
+                    });
+
                     return false;
                 } else if cfg.ray_tracing
                     && !PhysicalDevice::has_ray_tracing_support(physical_device)
                 {
+                    info!("{:?} lacks ray tracing support", unsafe {
+                        CStr::from_ptr(physical_device.props.device_name.as_ptr() as *const c_char)
+                    });
+
                     return false;
                 }
 

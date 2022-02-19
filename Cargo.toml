@@ -52,6 +52,9 @@ typenum = "1.12"
 vk-sync = { version = "0.3.0", package = "vk-sync-fork" }  # // HACK: https://github.com/gwihlidal/vk-sync-rs/pull/4 -> https://github.com/expenses/vk-sync-rs
 winit = { version = "0.26" }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+ash-molten = "0.12"
+
 [dev-dependencies]
 anyhow = "1.0"
 log = "0.4"
