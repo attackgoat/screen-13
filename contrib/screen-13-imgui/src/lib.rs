@@ -1,3 +1,19 @@
+pub mod prelude_arc {
+    pub use super::*;
+
+    use screen_13::ptr::ArcK;
+
+    pub type ImGui = super::ImGui<ArcK>;
+}
+
+pub mod prelude_rc {
+    pub use super::*;
+
+    use screen_13::ptr::RcK;
+
+    pub type ImGui = super::ImGui<RcK>;
+}
+
 pub use imgui::{Condition, Ui};
 
 use {
