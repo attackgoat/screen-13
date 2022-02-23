@@ -25,7 +25,7 @@ use {
 use super::Writer;
 
 /// A reference to a model asset or model source file.
-#[derive(Clone, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum AssetRef<T> {
     /// A `Model` asset specified inline.
     Asset(T),
@@ -98,7 +98,7 @@ where
 }
 
 /// Holds a description of position/orientation/scale and tagged data specific to each program.
-#[derive(Clone, Deserialize, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq)]
 pub struct Scene {
     #[serde(rename = "ref")]
     refs: Vec<SceneRef>,
@@ -157,7 +157,11 @@ impl Scene {
                         }
                     }
                 })
-                .map(|(src, material)| material.bake(writer, &project_dir, src).expect("material"));
+                .map(|(src, mut material)| {
+                    material
+                        .bake(writer, &project_dir, &src_dir, src)
+                        .expect("material")
+                });
 
             let model = scene_ref
                 .model()
@@ -217,7 +221,7 @@ impl Canonicalize for Scene {
 }
 
 /// Holds a description of one scene reference.
-#[derive(Clone, Deserialize, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq)]
 pub struct SceneRef {
     id: Option<String>,
 

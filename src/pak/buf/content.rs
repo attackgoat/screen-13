@@ -2,7 +2,7 @@ use serde::Deserialize;
 
 /// Holds a description of top-level content files which simply group other asset files for ease of
 /// use.
-#[derive(Clone, Deserialize, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq)]
 pub struct Content {
     compression: Option<CompressionType>,
 
@@ -40,7 +40,7 @@ impl Content {
     // }
 }
 
-#[derive(Clone, Copy, Deserialize, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq)]
 pub enum CompressionType {
     /// Higher compression ratio but slower to decode and encode.
     #[serde(rename = "brotli")]
@@ -51,7 +51,7 @@ pub enum CompressionType {
 }
 
 /// Holds a description of asset files.
-#[derive(Clone, Deserialize, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq)]
 pub struct Group {
     assets: Vec<String>,
     enabled: Option<bool>,

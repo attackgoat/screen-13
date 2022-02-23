@@ -10,7 +10,6 @@ mod content;
 mod material;
 mod model;
 mod scene;
-mod schema;
 
 #[cfg(feature = "bake")]
 mod writer;
@@ -25,7 +24,7 @@ use {
         BitmapFontId, BitmapId, BlobId, MaterialId, MaterialInfo, ModelBuf, ModelId, Pak, SceneBuf,
         SceneId,
     },
-    log::{error, trace, warn},
+    log::{error, info, trace, warn},
     serde::{de::DeserializeOwned, Deserialize, Serialize},
     std::{
         collections::HashMap,
@@ -98,7 +97,6 @@ fn is_toml(path: impl AsRef<Path>) -> bool {
 
 /// Returns either the parent directory of the given path or the project root if the path has no
 /// parent.
-#[allow(unused)]
 fn parent(path: impl AsRef<Path>) -> PathBuf {
     path.as_ref()
         .parent()
@@ -345,7 +343,7 @@ pub struct PakBuf {
 
 impl PakBuf {
     #[cfg(feature = "bake")]
-    pub fn bake(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> Result<(), Error> {
+    pub fn bake(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> anyhow::Result<()> {
         re_run_if_changed(&src);
 
         // Process each file we find
@@ -384,51 +382,69 @@ impl PakBuf {
                     }
                     "jpg" | "jpeg" | "png" | "bmp" | "tga" | "dds" | "webp" | "gif" | "ico"
                     | "tiff" => {
-                        Bitmap::new(&asset_path).bake(&mut writer, &src_dir, Some(&asset_path))?;
+                        Bitmap::new(&asset_path).bake_from_source(
+                            &mut writer,
+                            &src_dir,
+                            Some(&asset_path),
+                        )?;
                     }
-                    "toml" => match Asset::read(&src)? {
-                        //     Asset::Animation(anim) => {
-                        //         // bake_animation(&mut context, &src_dir, asset_filename, anim, &mut pak);
-                        //         todo!();
-                        //     }
-                        //     // Asset::Atlas(ref atlas) => {
-                        //     //     bake_atlas(&src_dir, &asset_filename, atlas, &mut pak);
-                        //     // }
-                        //     Asset::Bitmap(mut bitmap) => {
-                        //         bitmap.canonicalize(&src_dir, &src_dir);
-                        //         bake_bitmap(&mut context, &mut pak, &src_dir, Some(src), &bitmap);
-                        //     }
-                        //     Asset::BitmapFont(mut bitmap_font) => {
-                        //         bitmap_font.canonicalize(&src_dir, &src_dir);
-                        //         bake_bitmap_font(&mut context, &mut pak, src_dir, src, bitmap_font);
-                        //     }
-                        //     Asset::Color(_) => unreachable!(),
-                        //     Asset::Content(_) => {
-                        //         // Nested content files are not yet supported
-                        //         panic!("Unexpected content file {}", src.display());
-                        //     }
-                        //     // Asset::Language(ref lang) => {
-                        //     //     bake_lang(&src_dir, &asset_filename, lang, &mut pak, &mut log)
-                        //     // }
-                        //     Asset::Material(mut material) => {
-                        //         material.canonicalize(&src_dir, &src_dir);
-                        //         bake_material(&mut context, &mut pak, src_dir, Some(src), &material);
-                        //     }
-                        //     Asset::Model(mut model) => {
-                        //         model.canonicalize(&src_dir, &src_dir);
-                        //         bake_model(&mut context, &mut pak, src_dir, Some(src), &model);
-                        //     }
-                        //     Asset::Scene(scene) => {
-                        //         bake_scene(&mut context, &mut pak, &src_dir, src, &scene);
-                        //     }
-                        _ => unimplemented!(),
-                    },
+                    "toml" => {
+                        let asset = Asset::read(&asset_path)?;
+                        let asset_parent = parent(&asset_path);
+
+                        info!("{:?}", &asset);
+
+                        match asset {
+                            //     Asset::Animation(anim) => {
+                            //         // bake_animation(&mut context, &src_dir, asset_filename, anim, &mut pak);
+                            //         todo!();
+                            //     }
+                            //     // Asset::Atlas(ref atlas) => {
+                            //     //     bake_atlas(&src_dir, &asset_filename, atlas, &mut pak);
+                            //     // }
+                            //     Asset::Bitmap(mut bitmap) => {
+                            //         bitmap.canonicalize(&src_dir, &src_dir);
+                            //         bake_bitmap(&mut context, &mut pak, &src_dir, Some(src), &bitmap);
+                            //     }
+                            //     Asset::BitmapFont(mut bitmap_font) => {
+                            //         bitmap_font.canonicalize(&src_dir, &src_dir);
+                            //         bake_bitmap_font(&mut context, &mut pak, src_dir, src, bitmap_font);
+                            //     }
+                            //     Asset::Color(_) => unreachable!(),
+                            //     Asset::Content(_) => {
+                            //         // Nested content files are not yet supported
+                            //         panic!("Unexpected content file {}", src.display());
+                            //     }
+                            //     // Asset::Language(ref lang) => {
+                            //     //     bake_lang(&src_dir, &asset_filename, lang, &mut pak, &mut log)
+                            //     // }
+                            Asset::Material(mut material) => {
+                                material.canonicalize(&src_dir, &asset_parent);
+                                material.bake(
+                                    &mut writer,
+                                    &src_dir,
+                                    &asset_parent,
+                                    Some(&asset_path),
+                                )?;
+                            }
+                            //     Asset::Model(mut model) => {
+                            //         model.canonicalize(&src_dir, &src_dir);
+                            //         bake_model(&mut context, &mut pak, src_dir, Some(src), &model);
+                            //     }
+                            //     Asset::Scene(scene) => {
+                            //         bake_scene(&mut context, &mut pak, &src_dir, src, &scene);
+                            //     }
+                            _ => unimplemented!(),
+                        }
+                    }
                     _ => Blob::bake(&mut writer, src_dir, &asset_path),
                 }
             }
         }
 
-        writer.write(dst)
+        writer.write(dst)?;
+
+        Ok(())
     }
 
     fn deserialize<T>(&mut self, pos: u64, len: usize) -> Result<T, Error>

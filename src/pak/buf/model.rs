@@ -40,7 +40,7 @@ impl TriangleMode {
 }
 
 /// Holds a description of individual meshes within a `.glb` or `.gltf` 3D model.
-#[derive(Clone, Deserialize, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq)]
 pub struct MeshRef {
     name: String,
     rename: Option<String>,
@@ -64,7 +64,7 @@ impl MeshRef {
 }
 
 /// Holds a description of `.glb` or `.gltf` 3D models.
-#[derive(Clone, Deserialize, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq)]
 pub struct Model {
     offset: Option<[OrderedFloat<f32>; 3]>,
     scale: Option<[OrderedFloat<f32>; 3]>,

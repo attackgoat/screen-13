@@ -1,8 +1,11 @@
 use {
     super::{
-        bitmap::Bitmap, file_key, parse_hex_color, parse_hex_scalar, Asset, Canonicalize, Id,
-        MaterialId, MaterialInfo,
+        bitmap::Bitmap, file_key, is_toml, parent, parse_hex_color, parse_hex_scalar, Asset,
+        Canonicalize, Id, MaterialId, MaterialInfo,
     },
+    crate::pak::{BitmapBuf, BitmapColor, BitmapFormat},
+    anyhow::Context as _,
+    image::{imageops::FilterType, DynamicImage, GenericImageView, GrayImage},
     log::info,
     serde::{
         de::{
@@ -14,7 +17,6 @@ use {
     std::{
         collections::HashMap,
         fmt::Formatter,
-        io::Error,
         num::FpCategory,
         path::{Path, PathBuf},
     },
@@ -25,7 +27,7 @@ use super::Writer;
 
 /// A reference to a `Bitmap` asset, `Bitmap` asset file, three or four channel image source file,
 /// or single four channel color.
-#[derive(Clone, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum ColorRef {
     /// A `Bitmap` asset specified inline.
     Asset(Bitmap),
@@ -140,24 +142,32 @@ impl Default for ColorRef {
 }
 
 /// Holds a description of data used for model rendering.
-#[derive(Clone, Deserialize, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq)]
 pub struct Material {
+    /// A `Bitmap` asset, `Bitmap` asset file, three or four channel image source file, or single
+    /// four channel color.
     #[serde(default, deserialize_with = "ColorRef::de")]
-    color: ColorRef,
+    pub color: ColorRef,
 
     #[serde(default, deserialize_with = "ScalarRef::de")]
-    displacement: Option<ScalarRef>,
+    pub displacement: Option<ScalarRef>,
 
-    double_sided: Option<bool>,
+    /// Whether or not the model will be rendered with back faces also enabled.
+    pub double_sided: Option<bool>,
 
+    /// A `Bitmap` asset, `Bitmap` asset file, single channel image source file, or a single
+    /// normalized value.
     #[serde(default, deserialize_with = "ScalarRef::de")]
-    metal: Option<ScalarRef>,
+    pub metal: Option<ScalarRef>,
 
+    /// A bitmap asset, bitmap asset file, or a three channel image.
     #[serde(default, deserialize_with = "NormalRef::de")]
-    normal: Option<NormalRef>,
+    pub normal: Option<NormalRef>,
 
+    /// A `Bitmap` asset, `Bitmap` asset file, single channel image source file, or a single
+    /// normalized value.
     #[serde(default, deserialize_with = "ScalarRef::de")]
-    rough: Option<ScalarRef>,
+    pub rough: Option<ScalarRef>,
 }
 
 impl Material {
@@ -176,14 +186,14 @@ impl Material {
     }
 
     /// Reads and processes 3D model material source files into an existing `.pak` file buffer.
-    #[allow(unused)]
     #[cfg(feature = "bake")]
     pub(super) fn bake(
-        &self,
+        &mut self,
         writer: &mut Writer,
         project_dir: impl AsRef<Path>,
+        src_dir: impl AsRef<Path>,
         src: Option<impl AsRef<Path>>,
-    ) -> Result<MaterialId, Error> {
+    ) -> anyhow::Result<MaterialId> {
         // Early-out if we have already baked this material
         if let Some(h) = writer.ctx.get(&self.clone().into()) {
             return Ok(h.as_material().unwrap());
@@ -200,206 +210,198 @@ impl Material {
             info!("Baking material: (inline)");
         }
 
-        let material_info = self.to_material_info(writer, project_dir)?;
+        let material_info = self.to_material_info(writer, project_dir, src_dir)?;
 
         Ok(writer.push_material(material_info, key))
     }
 
     #[cfg(feature = "bake")]
     fn to_material_info(
-        &self,
-        _writer: &mut Writer,
-        _project_dir: impl AsRef<Path>,
-    ) -> Result<MaterialInfo, Error> {
-        //     let color: Asset = match self.color() {
-        //         ColorRef::Asset(bitmap) => bitmap.clone().into(),
-        //         ColorRef::Path(src) => if is_toml(&src) {
-        //             let mut bitmap = Asset::read(src)?.into_bitmap().unwrap();
-        //             let src_dir = parent(&project_dir, src);
-        //             bitmap.canonicalize(project_dir, src_dir);
-        //             bitmap
-        //         } else {
-        //             Bitmap::new(src)
-        //         }
-        //         .into(),
-        //         ColorRef::Value(val) => (*val).into(),
-        //     };
+        &mut self,
+        writer: &mut Writer,
+        project_dir: impl AsRef<Path>,
+        src_dir: impl AsRef<Path>,
+    ) -> anyhow::Result<MaterialInfo> {
+        let color = match &mut self.color {
+            ColorRef::Asset(bitmap) => bitmap
+                .bake(writer, &project_dir)
+                .context("Unable to bake color asset bitmap")?,
+            ColorRef::Path(src) => {
+                info!("src_dir = {}", src_dir.as_ref().display());
+                info!("src = {}", src.display());
 
-        // // Gets the bitmap ID of either the source file or a new bitmap of just one color
-        // let color = if let Some(src) = self.color_src() {
-        //     let color_filename = get_path(dir, src, &project_dir);
-        //     if let Some("toml") = color_filename.extension()
-        //     .map(|ext| ext.to_str())
-        //     .flatten()
-        //     .map(|ext| ext.to_lowercase())
-        //     .as_deref() {
-        //         let color = Asset::read(&color_filename).into_bitmap().unwrap();
-        //         bake_bitmap(&project_dir, color_filename, &color, &mut pak)
-        //     } else {
+                let src = src_dir
+                    .as_ref()
+                    .join(&src)
+                    .canonicalize()
+                    .context("Unable to canonicalize source path")?;
+                let mut bitmap = if is_toml(&src) {
+                    let mut bitmap = Asset::read(&src)
+                        .context("Unable to read color bitmap asset")?
+                        .into_bitmap()
+                        .expect("Source file should be a bitmap asset");
+                    bitmap.canonicalize(&project_dir, &src_dir);
+                    bitmap
+                } else {
+                    Bitmap::new(&src)
+                };
+                bitmap
+                    .bake_from_source(writer, &project_dir, Some(src))
+                    .context("Unable to bake color asset bitmap from path")?
+            }
+            ColorRef::Value(val) => {
+                let bitmap =
+                    BitmapBuf::new(BitmapColor::Linear, BitmapFormat::Rgba, 1, val.to_vec());
+                writer.push_bitmap(bitmap, None)
+            }
+        };
 
-        //     }
-        // } else {
-        //     let val = self.color_val().unwrap_or_else(|| {
-        //         let color: AlphaColor = MAGENTA.into();
-        //         color.into()
-        //     });
-        //     let color_key = format!(
-        //         ".materal-color-val:{:?}",
-        //         val,
-        //     );
-        //     if let Some(id) = pak.id(&color_key) {
-        //         id.as_bitmap().unwrap()
-        //     } else {
-        //         let pixels = create_bitmap(&val, 16, 16);
-        //         let bitmap = BitmapBuf::new(BitmapFormat::Rgba, 16, pixels);
-        //         pak.push_bitmap(key, bitmap)
-        //     }
-        // };
+        let normal = match &mut self.normal {
+            Some(NormalRef::Asset(bitmap)) => bitmap
+                .bake(writer, &project_dir)
+                .context("Unable to bake normal asset bitmap")?,
+            Some(NormalRef::Path(src)) => {
+                let src = src_dir
+                    .as_ref()
+                    .join(&src)
+                    .canonicalize()
+                    .context("Unable to canonicalize source path")?;
+                let mut bitmap = if is_toml(&src) {
+                    let mut bitmap = Asset::read(&src)
+                        .context("Unable to read normal bitmap asset")?
+                        .into_bitmap()
+                        .expect("Source file should be a bitmap asset");
+                    bitmap.canonicalize(&project_dir, &src_dir);
+                    bitmap
+                } else {
+                    Bitmap::new(&src)
+                };
+                bitmap
+                    .bake_from_source(writer, &project_dir, Some(src))
+                    .context("Unable to bake normal asset bitmap from path")?
+            }
+            None => {
+                let bitmap =
+                    BitmapBuf::new(BitmapColor::Linear, BitmapFormat::Rgb, 1, [128, 128, 255]);
+                writer.push_bitmap(bitmap, None)
+            }
+        };
 
-        // // Gets the bitmap ID of either the source file or a new bitmap of just one color
-        // let normal = if let Some(src) = self.normal() {
-        //     let normal_filename = get_path(dir, src, &project_dir);
-        //     let normal = Asset::read(&normal_filename).into_bitmap().unwrap();
-        //     bake_bitmap(&project_dir, normal_filename, &normal, &mut pak)
-        // } else {
-        //     // TODO: Correct normal map color!
-        //     let val: [f32; 3] = [0.0, 0.0, 0.0];
-        //     let normal_key = format!(
-        //         ".materal-normal-val:{:?}",
-        //         val,
-        //     );
-        //     if let Some(id) = pak.id(&normal_key) {
-        //         id.as_bitmap().unwrap()
-        //     } else {
-        //         let pixels = create_bitmap(&val, 16, 16);
-        //         let bitmap = BitmapBuf::new(BitmapFormat::Rgb, 16, pixels);
-        //         pak.push_bitmap(key, bitmap)
-        //     }
-        // };
+        let mut metal = DynamicImage::ImageLuma8(
+            Self::scalar_buf_into_gray_image(&mut self.metal, &project_dir, &src_dir)
+                .context("Unable to create metal bitmap buf")?,
+        );
+        let mut rough = DynamicImage::ImageLuma8(
+            Self::scalar_buf_into_gray_image(&mut self.rough, &project_dir, &src_dir)
+                .context("Unable to create rough bitmap buf")?,
+        );
+        let mut displacement = DynamicImage::ImageLuma8(
+            Self::scalar_buf_into_gray_image(&mut self.displacement, &project_dir, &src_dir)
+                .context("Unable to create displacement bitmap buf")?,
+        );
 
-        // let metal_key = if let Some(src) = self.metal_src() {
-        //     format!("file:{}", src.display())
-        // } else {
-        //     format!("scalar:{}", self.metal_val().unwrap_or(DEFAULT_METALNESS))
-        // };
-        // let rough_key = if let Some(src) = self.metal_src() {
-        //     format!("file:{}", src.display())
-        // } else {
-        //     format!("scalar:{}", self.metal_val().unwrap_or(DEFAULT_METALNESS))
-        // };
-        // let metal_rough_key = format!(
-        //     ".materal-metal-rough:{} {}",
-        //     &metal_key,
-        //     &rough_key
-        // );
-        // if let Some(id) = pak.id(&normal_key) {
-        //     id.self().unwrap()
-        // } else {
-        //     let metal = if let Some(src) = self.metal_src() {
-        //         let metal_filename = get_path(dir, src, &project_dir);
-        //         let metal = Asset::read(&normal_filename).into_bitmap().unwrap();
-        //         bake_bitmap(&project_dir, normal_filename, &normal, &mut pak)
-        //     } else {
-        //         // TODO: Correct normal map color!
-        //         let val: [f32; 3] = [0.0, 0.0, 0.0];
-        //         let normal_key = format!(
-        //             ".materal-normal:{:?}",
-        //             val,
-        //         );
-        //         if let Some(id) = pak.id(&normal_key) {
-        //             id.as_bitmap().unwrap()
-        //         } else {
-        //             let pixels = create_bitmap(&val, 16, 16);
-        //             let bitmap = BitmapBuf::new(BitmapFormat::Rgb, 16, pixels);
-        //             pak.push_bitmap(key, bitmap)
-        //         }
-        //     };
+        let width = metal.width().max(rough.width().max(displacement.width()));
+        let height = metal
+            .height()
+            .max(rough.height().max(displacement.height()));
 
-        // let metal_filename = get_path(dir, self.metal_src(), &project_dir);
-        // let rough_filename = get_path(dir, self.rough_src(), &project_dir);
+        if metal.width() != width || metal.height() != height {
+            metal = metal.resize_to_fill(width, height, FilterType::CatmullRom);
+        }
 
-        // // TODO: "Entertaining" key format which is temporary because it starts with a period
+        if rough.width() != width || rough.height() != height {
+            rough = rough.resize_to_fill(width, height, FilterType::CatmullRom);
+        }
 
-        // let metal_rough = if let Some(id) = pak.id(&metal_rough_key) {
-        //     id.as_bitmap().unwrap()
-        // } else {
-        //     let (metal_width, metal_pixels) = pixels(metal_filename, BitmapFormat::R);
-        //     let (rough_width, rough_pixels) = pixels(rough_filename, BitmapFormat::R);
+        if displacement.width() != width || displacement.height() != height {
+            displacement = displacement.resize_to_fill(width, height, FilterType::CatmullRom);
+        }
 
-        //     // The metalness/roughness map source art must be of equal size
-        //     assert_eq!(metal_width, rough_width);
-        //     assert_eq!(metal_pixels.len(), rough_pixels.len());
+        let mut params = Vec::with_capacity(
+            (2 * width * height) as usize
+                + self
+                    .displacement
+                    .as_ref()
+                    .map(|_| width * height)
+                    .unwrap_or_default() as usize,
+        );
 
-        //     let mut metal_rough_pixels = Vec::with_capacity(metal_pixels.len() * 2);
+        for y in 0..height {
+            for x in 0..width {
+                params.push(metal.get_pixel(x, y).0[0]);
+                params.push(rough.get_pixel(x, y).0[0]);
 
-        //     unsafe {
-        //         metal_rough_pixels.set_len(metal_pixels.len() * 2);
-        //     }
+                if self.displacement.is_some() {
+                    params.push(displacement.get_pixel(x, y).0[0]);
+                }
+            }
+        }
 
-        //     for idx in 0..metal_pixels.len() {
-        //         metal_rough_pixels[idx * 2] = metal_pixels[idx];
-        //         metal_rough_pixels[idx * 2 + 1] = rough_pixels[idx];
-        //     }
+        let params = BitmapBuf::new(
+            BitmapColor::Linear,
+            if self.displacement.is_none() {
+                BitmapFormat::Rg
+            } else {
+                BitmapFormat::Rgb
+            },
+            width,
+            params,
+        );
+        let params = writer.push_bitmap(params, None);
 
-        //     // Pak this asset
-        //     let metal_rough = BitmapBuf::new(BitmapFormat::Rg, metal_width as u16, metal_rough_pixels);
-        //     pak.push_bitmap(metal_rough_key, metal_rough)
-        // };
-
-        //     MaterialDesc {
-        //         color,
-        //         metal_rough,
-        //         normal,
-        //     },
-
-        todo!()
+        Ok(MaterialInfo {
+            color,
+            normal,
+            params,
+        })
     }
 
-    /// A `Bitmap` asset, `Bitmap` asset file, three or four channel image source file, or single
-    /// four channel color.
-    #[allow(unused)]
-    pub fn color(&self) -> &ColorRef {
-        &self.color
-    }
+    fn scalar_buf_into_gray_image(
+        scalar: &mut Option<ScalarRef>,
+        project_dir: impl AsRef<Path>,
+        src_dir: impl AsRef<Path>,
+    ) -> anyhow::Result<GrayImage> {
+        let bitmap = match scalar {
+            Some(ScalarRef::Asset(bitmap)) => bitmap
+                .into_bitmap_buf()
+                .context("Unable to create bitmap buf from scalar bitmap asset")?,
+            Some(ScalarRef::Path(src)) => {
+                let src = src_dir
+                    .as_ref()
+                    .join(&src)
+                    .canonicalize()
+                    .context("Unable to canonicalize source path")?;
+                if is_toml(&src) {
+                    let mut bitmap = Asset::read(&src)?
+                        .into_bitmap()
+                        .expect("Source file should be a bitmap asset");
+                    bitmap.canonicalize(&project_dir, src_dir);
+                    bitmap
+                } else {
+                    Bitmap::new(&src)
+                }
+            }
+            .into_bitmap_buf()
+            .context("Unable to create bitmap buf")?,
+            Some(ScalarRef::Value(val)) => {
+                BitmapBuf::new(BitmapColor::Linear, BitmapFormat::R, 1, [*val])
+            }
+            None => BitmapBuf::new(BitmapColor::Linear, BitmapFormat::R, 1, [128]),
+        };
+        let image =
+            GrayImage::from_raw(bitmap.width, bitmap.height(), bitmap.pixels().to_vec()).unwrap();
 
-    #[allow(unused)]
-    fn create_bitmap(val: &[f32], height: usize, width: usize) -> Vec<u8> {
-        val.repeat(width * height)
-            .iter()
-            .map(|val| (*val * u8::MAX as f32) as u8)
-            .collect()
-    }
-
-    /// Whether or not the model will be rendered with back faces also enabled.
-    #[allow(unused)]
-    pub fn double_sided(&self) -> bool {
-        self.double_sided.unwrap_or_default()
-    }
-
-    /// A `Bitmap` asset, `Bitmap` asset file, single channel image source file, or a single
-    /// normalized value.
-    #[allow(unused)]
-    pub fn metal(&self) -> Option<&ScalarRef> {
-        self.metal.as_ref()
-    }
-
-    /// A bitmap asset, bitmap asset file, or a three channel image.
-    #[allow(unused)]
-    pub fn normal(&self) -> Option<&NormalRef> {
-        self.normal.as_ref()
-    }
-
-    /// A `Bitmap` asset, `Bitmap` asset file, single channel image source file, or a single
-    /// normalized value.
-    #[allow(unused)]
-    pub fn rough(&self) -> Option<&ScalarRef> {
-        self.rough.as_ref()
+        Ok(image)
     }
 }
 
 impl Canonicalize for Material {
     fn canonicalize(&mut self, project_dir: impl AsRef<Path>, src_dir: impl AsRef<Path>) {
         self.color.canonicalize(&project_dir, &src_dir);
+
+        if let Some(displacement) = self.displacement.as_mut() {
+            displacement.canonicalize(&project_dir, &src_dir);
+        }
 
         if let Some(metal) = self.metal.as_mut() {
             metal.canonicalize(&project_dir, &src_dir);
@@ -429,7 +431,7 @@ impl Default for Material {
 }
 
 /// A reference to a bitmap asset, bitmap asset file, or three channel image source file.
-#[derive(Clone, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum NormalRef {
     /// A `Bitmap` asset specified inline.
     Asset(Bitmap),
@@ -494,7 +496,7 @@ impl Canonicalize for NormalRef {
 
 /// Reference to a `Bitmap` asset, `Bitmap` asset file, single channel image source file, or a
 /// single value.
-#[derive(Clone, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum ScalarRef {
     /// A `Bitmap` asset specified inline.
     Asset(Bitmap),

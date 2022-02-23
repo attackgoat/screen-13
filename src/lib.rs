@@ -97,6 +97,8 @@ pub mod prelude_arc {
         ptr::ArcK as P,
     };
 
+    pub type AnyBufferBinding<'a> = all::AnyBufferBinding<'a, P>;
+    pub type AnyImageBinding<'a> = all::AnyImageBinding<'a, P>;
     pub type Buffer = all::Buffer<P>;
     pub type BufferBinding = all::BufferBinding<P>;
     pub type BufferNode = all::BufferNode<P>;
@@ -125,6 +127,8 @@ pub mod prelude_rc {
         ptr::RcK as P,
     };
 
+    pub type AnyBufferBinding<'a> = all::AnyBufferBinding<'a, P>;
+    pub type AnyImageBinding<'a> = all::AnyImageBinding<'a, P>;
     pub type Buffer = all::Buffer<P>;
     pub type BufferBinding = all::BufferBinding<P>;
     pub type BufferNode = all::BufferNode<P>;

@@ -19,6 +19,7 @@ bake = ["glob", "pak"]
 pak = []
 
 [dependencies]
+anyhow = "1.0"
 archery = { version = "0.4.3", package = "a_r_c_h_e_r_y" } # HACK: Waiting on main pkg to release
 arrayvec = "0.7"
 ash = "0.35"

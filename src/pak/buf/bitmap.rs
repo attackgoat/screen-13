@@ -1,7 +1,8 @@
 use {
     super::{file_key, BitmapBuf, BitmapId, Canonicalize},
     crate::pak::{BitmapColor, BitmapFormat},
-    image::{buffer::ConvertBuffer, open, DynamicImage, RgbaImage},
+    anyhow::Context,
+    image::{buffer::ConvertBuffer, imageops::FilterType, open, DynamicImage, RgbaImage},
     serde::Deserialize,
     std::{
         io::{Error, ErrorKind},
@@ -13,10 +14,11 @@ use {
 use {super::Writer, log::info};
 
 /// Holds a description of `.jpeg` and other regular images.
-#[derive(Clone, Deserialize, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq)]
 pub struct Bitmap {
     color: Option<BitmapColor>,
     format: Option<BitmapFormat>,
+    resize: Option<u32>,
     src: PathBuf,
 }
 
@@ -29,6 +31,7 @@ impl Bitmap {
         Self {
             color: None,
             format: None,
+            resize: None,
             src: src.as_ref().to_path_buf(),
         }
     }
@@ -46,11 +49,21 @@ impl Bitmap {
     #[cfg(feature = "bake")]
     /// Reads and processes image source files into an existing `.pak` file buffer.
     pub fn bake(
-        mut self,
+        &mut self,
+        writer: &mut Writer,
+        project_dir: impl AsRef<Path>,
+    ) -> anyhow::Result<BitmapId> {
+        self.bake_from_source(writer, project_dir, None as Option<&'static str>)
+    }
+
+    #[cfg(feature = "bake")]
+    /// Reads and processes image source files into an existing `.pak` file buffer.
+    pub fn bake_from_source(
+        &mut self,
         writer: &mut Writer,
         project_dir: impl AsRef<Path>,
         src: Option<impl AsRef<Path>>,
-    ) -> Result<BitmapId, Error> {
+    ) -> anyhow::Result<BitmapId> {
         // Early-out if we have already baked this bitmap
         if let Some(h) = writer.ctx.get(&self.clone().into()) {
             return Ok(h.as_bitmap().unwrap());
@@ -72,7 +85,7 @@ impl Bitmap {
         // is just format represented in the .pak file and what you can retrieve it as)
         if self.format.is_none() {
             if let Some(src) = &src {
-                self.format = match open(src).map_err(|_| Error::from(ErrorKind::InvalidData))? {
+                self.format = match open(src).context("Unable to open bitmap file")? {
                     DynamicImage::ImageLuma8(_) => Some(BitmapFormat::R),
                     DynamicImage::ImageRgb8(_) => Some(BitmapFormat::Rgb),
                     DynamicImage::ImageRgba8(img) => {
@@ -88,11 +101,18 @@ impl Bitmap {
             }
         }
 
-        Ok(writer.push_bitmap(self.into_bitmap_buf()?, key))
+        let id = writer.push_bitmap(
+            self.into_bitmap_buf()
+                .context("Unable to create bitmap buf")?,
+            key,
+        );
+
+        Ok(id)
     }
 
-    fn into_bitmap_buf(mut self) -> Result<BitmapBuf, Error> {
-        let (width, pixels) = Self::read_pixels(self.src(), self.format())?;
+    pub fn into_bitmap_buf(&self) -> anyhow::Result<BitmapBuf> {
+        let (width, pixels) = Self::read_pixels(self.src(), self.format(), self.resize)
+            .context("Unable to read pixels")?;
 
         Ok(BitmapBuf::new(self.color(), self.format(), width, pixels))
     }
@@ -107,10 +127,33 @@ impl Bitmap {
     }
 
     /// Reads raw pixel data from an image source file and returns them in the given format.
-    pub fn read_pixels(path: impl AsRef<Path>, fmt: BitmapFormat) -> Result<(u32, Vec<u8>), Error> {
-        let image = match open(path).map_err(|_| Error::from(ErrorKind::InvalidData))? {
+    pub fn read_pixels(
+        path: impl AsRef<Path>,
+        fmt: BitmapFormat,
+        resize: Option<u32>,
+    ) -> anyhow::Result<(u32, Vec<u8>)> {
+        let mut image = open(path).context("Unable to open image file")?;
+
+        if let Some(resize) = resize {
+            let (width, height) = if image.width() > image.height() {
+                (resize, resize * image.height() / image.width())
+            } else {
+                (resize * image.width() / image.height(), resize)
+            };
+            image = image.resize_to_fill(width, height, FilterType::CatmullRom);
+        }
+
+        let image = match image {
+            DynamicImage::ImageLuma8(image) => image.convert(),
+            DynamicImage::ImageLumaA8(image) => image.convert(),
             DynamicImage::ImageRgb8(image) => image.convert(),
             DynamicImage::ImageRgba8(image) => image,
+            DynamicImage::ImageLuma16(image) => image.convert(),
+            DynamicImage::ImageLumaA16(image) => image.convert(),
+            DynamicImage::ImageRgb16(image) => image.convert(),
+            DynamicImage::ImageRgba16(image) => image.convert(),
+            DynamicImage::ImageRgb32F(image) => image.convert(),
+            DynamicImage::ImageRgba32F(image) => image.convert(),
             _ => unimplemented!(),
         };
         let width = image.width();

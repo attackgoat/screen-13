@@ -1,10 +1,12 @@
-use {screen_13::prelude_all::*, std::io::Error};
+use screen_13::prelude_all::*;
 
-fn main() -> Result<(), Error> {
+fn main() -> anyhow::Result<()> {
     // Set RUST_LOG=trace in your environment variables to see log output
     pretty_env_logger::init();
 
-    PakBuf::bake("examples/shader-toy/res/pak.toml", "target/dont_care.pak")
+    PakBuf::bake("examples/shader-toy/res/pak.toml", "target/dont_care.pak")?;
+
+    Ok(())
 
     /*
     Expected console output:

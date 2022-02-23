@@ -38,9 +38,9 @@ where
         &mut self,
         model: &ModelBuf,
         idx_buf_binding: &mut BufferBinding<P>,
-        idx_offset: u64,
+        idx_offset: &mut u64,
         vertex_buf_binding: &mut BufferBinding<P>,
-        vertex_offset: u64,
+        vertex_offset: &mut u64,
     ) -> anyhow::Result<()>
     where
         P: SharedPointerKind + 'static,
@@ -146,7 +146,7 @@ where
                             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
                             .buffer_info(from_ref(&vk::DescriptorBufferInfo {
                                 buffer: vertex_buf,
-                                offset: vertex_offset,
+                                offset: *vertex_offset,
                                 range: vertex_write_len,
                             }))
                             .build(),
@@ -155,60 +155,71 @@ where
                 )
             }
 
-            cmd_chain = cmd_chain.push_shared_ref(descriptor_set_ref).push_execute(
-                move |device, cmd_buf| unsafe {
-                    CommandBuffer::buffer_barrier(
-                        cmd_buf,
-                        previous_src_buf_access,
-                        AccessType::ComputeShaderReadOther,
-                        src_buf,
-                        Some(0..src_buf_len as _),
-                    );
-                    CommandBuffer::buffer_barrier(
-                        cmd_buf,
-                        previous_vertex_buf_access,
-                        AccessType::ComputeShaderReadOther,
-                        vertex_buf,
-                        Some(vertex_offset..vertex_offset + vertex_write_len),
-                    );
+            {
+                let idx_offset = *idx_offset;
+                let vertex_offset = *vertex_offset;
+                cmd_chain = cmd_chain.push_shared_ref(descriptor_set_ref).push_execute(
+                    move |device, cmd_buf| unsafe {
+                        CommandBuffer::buffer_barrier(
+                            cmd_buf,
+                            previous_src_buf_access,
+                            AccessType::ComputeShaderReadOther,
+                            src_buf,
+                            Some(0..src_buf_len as _),
+                        );
+                        CommandBuffer::buffer_barrier(
+                            cmd_buf,
+                            previous_vertex_buf_access,
+                            AccessType::ComputeShaderReadOther,
+                            vertex_buf,
+                            Some(vertex_offset..vertex_offset + vertex_write_len),
+                        );
 
-                    device.cmd_bind_pipeline(**cmd_buf, vk::PipelineBindPoint::COMPUTE, pipeline);
-                    device.cmd_bind_descriptor_sets(
-                        **cmd_buf,
-                        vk::PipelineBindPoint::COMPUTE,
-                        pipeline_layout,
-                        0,
-                        from_ref(&descriptor_set),
-                        &[],
-                    );
-                    device.cmd_dispatch(**cmd_buf, tri_count, 1, 1);
+                        device.cmd_bind_pipeline(
+                            **cmd_buf,
+                            vk::PipelineBindPoint::COMPUTE,
+                            pipeline,
+                        );
+                        device.cmd_bind_descriptor_sets(
+                            **cmd_buf,
+                            vk::PipelineBindPoint::COMPUTE,
+                            pipeline_layout,
+                            0,
+                            from_ref(&descriptor_set),
+                            &[],
+                        );
+                        device.cmd_dispatch(**cmd_buf, tri_count, 1, 1);
 
-                    CommandBuffer::buffer_barrier(
-                        cmd_buf,
-                        AccessType::ComputeShaderReadOther,
-                        AccessType::TransferRead,
-                        src_buf,
-                        Some(0..indices_len as _),
-                    );
-                    CommandBuffer::buffer_barrier(
-                        cmd_buf,
-                        previous_idx_buf_access,
-                        AccessType::TransferWrite,
-                        src_buf,
-                        Some(idx_offset..indices_len as _),
-                    );
-                    device.cmd_copy_buffer(
-                        **cmd_buf,
-                        src_buf,
-                        idx_buf,
-                        from_ref(&vk::BufferCopy {
-                            src_offset: 0,
-                            dst_offset: 0,
-                            size: 0,
-                        }),
-                    );
-                },
-            );
+                        CommandBuffer::buffer_barrier(
+                            cmd_buf,
+                            AccessType::ComputeShaderReadOther,
+                            AccessType::TransferRead,
+                            src_buf,
+                            Some(0..indices_len as _),
+                        );
+                        CommandBuffer::buffer_barrier(
+                            cmd_buf,
+                            previous_idx_buf_access,
+                            AccessType::TransferWrite,
+                            src_buf,
+                            Some(idx_offset..indices_len as _),
+                        );
+                        device.cmd_copy_buffer(
+                            **cmd_buf,
+                            src_buf,
+                            idx_buf,
+                            from_ref(&vk::BufferCopy {
+                                src_offset: 0,
+                                dst_offset: 0,
+                                size: 0,
+                            }),
+                        );
+                    },
+                );
+            }
+
+            *idx_offset += indices_len as u64;
+            *vertex_offset += vertex_write_len;
         }
 
         cmd_chain

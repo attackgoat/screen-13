@@ -12,7 +12,7 @@ use {
 };
 
 /// A collection type containing all supported asset file types.
-#[derive(Clone, Deserialize, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq)]
 pub enum Asset {
     /// `.glb` or `.gltf` model animations.
     Animation(Animation),

@@ -73,7 +73,7 @@ where
                             }
                         }
                     },
-                    extent: uvec3(bitmap.width(), bitmap.height(), 1),
+                    extent: uvec3(bitmap.width, bitmap.height(), 1),
                     tiling: vk::ImageTiling::OPTIMAL,
                     mip_level_count: 1,
                     array_elements: 1,
@@ -94,7 +94,7 @@ where
     {
         info!(
             "Decoding {}x{} {:?} bitmap ({} K)",
-            bitmap.width(),
+            bitmap.width,
             bitmap.height(),
             bitmap.format(),
             bitmap.pixels().len() / 1024
@@ -114,7 +114,7 @@ where
                 // This format requires a conversion
                 info!("Converting RGB to RGBA");
 
-                let bitmap_width = bitmap.width();
+                let bitmap_width = bitmap.width;
                 let bitmap_height = bitmap.height();
                 let bitmap_stride = bitmap.stride();
 

@@ -19,7 +19,7 @@ use {
 use super::Writer;
 
 /// Holds a description of any generic file.
-#[derive(Clone, Deserialize, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq)]
 pub struct Blob {
     src: PathBuf,
 }
@@ -61,7 +61,7 @@ impl Blob {
                 let path = def_parent.join(page);
 
                 // Bake the pixels
-                Bitmap::read_pixels(path, BitmapFormat::Rgb)
+                Bitmap::read_pixels(path, BitmapFormat::Rgb, None)
             })
             .filter(|res| res.is_ok()) // TODO: Horrible!
             .map(|res| res.unwrap())

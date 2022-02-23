@@ -12,12 +12,19 @@ pub struct BitmapBuf {
     #[serde(with = "serde_bytes")]
     pixels: Vec<u8>,
 
-    width: u32,
+    pub width: u32,
 }
 
 impl BitmapBuf {
     /// Pixel data must be tightly packed (no additional stride)
-    pub fn new(color: BitmapColor, fmt: BitmapFormat, width: u32, pixels: Vec<u8>) -> Self {
+    pub fn new(
+        color: BitmapColor,
+        fmt: BitmapFormat,
+        width: u32,
+        pixels: impl Into<Vec<u8>>,
+    ) -> Self {
+        let pixels = pixels.into();
+
         Self {
             color,
             fmt,
@@ -43,8 +50,7 @@ impl BitmapBuf {
 
     pub fn height(&self) -> u32 {
         let len = self.pixels.len() as u32;
-        let width = self.width();
-        let byte_height = len / width;
+        let byte_height = len / self.width;
 
         match self.fmt {
             BitmapFormat::R => byte_height,
@@ -77,11 +83,7 @@ impl BitmapBuf {
 
     /// Bytes per row of pixels (there is no padding)
     pub fn stride(&self) -> usize {
-        self.width() as usize * self.fmt.byte_len()
-    }
-
-    pub fn width(&self) -> u32 {
-        self.width
+        self.width as usize * self.fmt.byte_len()
     }
 }
 
