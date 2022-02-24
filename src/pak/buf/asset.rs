@@ -1,7 +1,12 @@
 use {
     super::{
-        anim::Animation, bitmap::Bitmap, blob::Blob, content::Content, material::Material,
-        model::Model, scene::Scene,
+        anim::Animation,
+        bitmap::Bitmap,
+        blob::Blob,
+        content::Content,
+        material::{Material, MaterialParams},
+        model::Model,
+        scene::Scene,
     },
     serde::Deserialize,
     std::{
@@ -20,12 +25,16 @@ pub enum Asset {
     Bitmap(Bitmap),
     /// `.fnt` bitmapped fonts.
     BitmapFont(Blob),
+    /// Solid color.
+    ColorRgb([u8; 3]),
     /// Solid color with alpha channel.
-    Color([u8; 4]),
+    ColorRgba([u8; 4]),
     /// Top-level content files which simply group other asset files for ease of use.
     Content(Content),
     /// Used for 3D model rendering.
     Material(Material),
+    /// Used to cache the params texture during material baking.
+    MaterialParams(MaterialParams),
     /// `.glb` or `.gltf` 3D models.
     Model(Model),
     /// Describes position/orientation/scale and tagged data specific to each program.
@@ -105,9 +114,15 @@ impl From<Bitmap> for Asset {
     }
 }
 
+impl From<[u8; 3]> for Asset {
+    fn from(val: [u8; 3]) -> Self {
+        Self::ColorRgb(val)
+    }
+}
+
 impl From<[u8; 4]> for Asset {
     fn from(val: [u8; 4]) -> Self {
-        Self::Color(val)
+        Self::ColorRgba(val)
     }
 }
 

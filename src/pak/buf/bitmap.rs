@@ -65,8 +65,8 @@ impl Bitmap {
         src: Option<impl AsRef<Path>>,
     ) -> anyhow::Result<BitmapId> {
         // Early-out if we have already baked this bitmap
-        if let Some(h) = writer.ctx.get(&self.clone().into()) {
-            return Ok(h.as_bitmap().unwrap());
+        if let Some(id) = writer.ctx.get(&self.clone().into()) {
+            return Ok(id.as_bitmap().unwrap());
         }
 
         let key = src.as_ref().map(|src| file_key(&project_dir, src));
