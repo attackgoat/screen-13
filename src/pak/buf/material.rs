@@ -363,7 +363,7 @@ impl Material {
     ) -> anyhow::Result<GrayImage> {
         let bitmap = match scalar {
             Some(ScalarRef::Asset(bitmap)) => bitmap
-                .into_bitmap_buf()
+                .as_bitmap_buf()
                 .context("Unable to create bitmap buf from scalar bitmap asset")?,
             Some(ScalarRef::Path(src)) => {
                 let src = src_dir
@@ -381,7 +381,7 @@ impl Material {
                     Bitmap::new(&src)
                 }
             }
-            .into_bitmap_buf()
+            .as_bitmap_buf()
             .context("Unable to create bitmap buf")?,
             Some(ScalarRef::Value(val)) => {
                 BitmapBuf::new(BitmapColor::Linear, BitmapFormat::R, 1, [*val])

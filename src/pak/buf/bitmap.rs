@@ -102,7 +102,7 @@ impl Bitmap {
         }
 
         let id = writer.push_bitmap(
-            self.into_bitmap_buf()
+            self.as_bitmap_buf()
                 .context("Unable to create bitmap buf")?,
             key,
         );
@@ -110,7 +110,7 @@ impl Bitmap {
         Ok(id)
     }
 
-    pub fn into_bitmap_buf(&self) -> anyhow::Result<BitmapBuf> {
+    pub fn as_bitmap_buf(&self) -> anyhow::Result<BitmapBuf> {
         let (width, pixels) = Self::read_pixels(self.src(), self.format(), self.resize)
             .context("Unable to read pixels")?;
 
