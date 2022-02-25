@@ -92,8 +92,7 @@ fn is_cargo_build() -> bool {
 fn is_toml(path: impl AsRef<Path>) -> bool {
     path.as_ref()
         .extension()
-        .map(|ext| ext.to_str())
-        .flatten()
+        .and_then(|ext| ext.to_str())
         .filter(|ext| *ext == "toml")
         .is_some()
 }
@@ -642,8 +641,7 @@ impl Pak for PakBuf {
         self.data
             .ids
             .get(key.as_ref())
-            .map(|id| id.as_animation())
-            .flatten()
+            .and_then(|id| id.as_animation())
     }
 
     /// Gets the pak-unique `BitmapFontId` corresponding to the given key, if one exsits.
@@ -651,8 +649,7 @@ impl Pak for PakBuf {
         self.data
             .ids
             .get(key.as_ref())
-            .map(|id| id.as_bitmap_font())
-            .flatten()
+            .and_then(|id| id.as_bitmap_font())
     }
 
     /// Gets the pak-unique `BitmapId` corresponding to the given key, if one exsits.
@@ -660,17 +657,12 @@ impl Pak for PakBuf {
         self.data
             .ids
             .get(key.as_ref())
-            .map(|id| id.as_bitmap())
-            .flatten()
+            .and_then(|id| id.as_bitmap())
     }
 
     /// Gets the pak-unique `BlobId` corresponding to the given key, if one exsits.
     fn blob_id(&self, key: impl AsRef<str>) -> Option<BlobId> {
-        self.data
-            .ids
-            .get(key.as_ref())
-            .map(|id| id.as_blob())
-            .flatten()
+        self.data.ids.get(key.as_ref()).and_then(|id| id.as_blob())
     }
 
     /// Gets the pak-unique `MaterialId` corresponding to the given key, if one exsits.
@@ -678,8 +670,7 @@ impl Pak for PakBuf {
         self.data
             .ids
             .get(key.as_ref())
-            .map(|id| id.as_material())
-            .flatten()
+            .and_then(|id| id.as_material())
     }
 
     /// Gets the material for the given ID.
@@ -689,20 +680,12 @@ impl Pak for PakBuf {
 
     /// Gets the pak-unique `ModelId` corresponding to the given key, if one exsits.
     fn model_id(&self, key: impl AsRef<str>) -> Option<ModelId> {
-        self.data
-            .ids
-            .get(key.as_ref())
-            .map(|id| id.as_model())
-            .flatten()
+        self.data.ids.get(key.as_ref()).and_then(|id| id.as_model())
     }
 
     /// Gets the pak-unique `SceneId` corresponding to the given key, if one exsits.
     fn scene_id(&mut self, key: impl AsRef<str>) -> Option<SceneId> {
-        self.data
-            .ids
-            .get(key.as_ref())
-            .map(|id| id.as_scene())
-            .flatten()
+        self.data.ids.get(key.as_ref()).and_then(|id| id.as_scene())
     }
 
     /// Gets the corresponding animation for the given ID.

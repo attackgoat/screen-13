@@ -364,8 +364,7 @@ where
         let mut already_seen = BTreeSet::new();
         already_seen.insert(pass_idx);
         self.dependent_nodes(pass_idx)
-            .map(move |node_idx| self.dependent_passes(node_idx, max_pass_idx))
-            .flatten()
+            .flat_map(move |node_idx| self.dependent_passes(node_idx, max_pass_idx))
             .filter(move |pass_idx| already_seen.insert(*pass_idx))
     }
 

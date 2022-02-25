@@ -213,8 +213,7 @@ impl<P> EventLoopBuilder<P> {
                 if let Some(video_mode) = self
                     .event_loop
                     .primary_monitor()
-                    .map(|monitor| monitor.video_modes().next())
-                    .flatten()
+                    .and_then(|monitor| monitor.video_modes().next())
                 {
                     Fullscreen::Exclusive(video_mode)
                 } else {

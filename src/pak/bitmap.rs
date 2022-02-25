@@ -73,12 +73,11 @@ impl BitmapBuf {
         let stride = self.fmt.byte_len().min(dst_fmt.byte_len());
         self.pixels
             .chunks(self.fmt.byte_len())
-            .map(move |src| {
+            .flat_map(move |src| {
                 let mut dst = [0; 4];
                 dst[0..stride].copy_from_slice(&src[0..stride]);
                 dst.into_iter()
             })
-            .flatten()
     }
 
     /// Bytes per row of pixels (there is no padding)
