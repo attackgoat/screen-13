@@ -23,7 +23,7 @@ use {
 };
 
 #[cfg(feature = "bake")]
-use super::Writer;
+use {super::Writer, parking_lot::Mutex, std::sync::Arc, tokio::runtime::Runtime};
 
 /// A reference to a `Bitmap` asset, `Bitmap` asset file, three or four channel image source file,
 /// or single four channel color.
@@ -189,13 +189,15 @@ impl Material {
     #[cfg(feature = "bake")]
     pub(super) fn bake(
         &mut self,
-        writer: &mut Writer,
+        rt: &Runtime,
+        writer: &Arc<Mutex<Writer>>,
         project_dir: impl AsRef<Path>,
         src_dir: impl AsRef<Path>,
         src: Option<impl AsRef<Path>>,
     ) -> anyhow::Result<MaterialId> {
         // Early-out if we have already baked this material
-        if let Some(id) = writer.ctx.get(&self.clone().into()) {
+        let asset = self.clone().into();
+        if let Some(id) = writer.lock().ctx.get(&asset) {
             return Ok(id.as_material().unwrap());
         }
 
@@ -210,7 +212,12 @@ impl Material {
             info!("Baking material: (inline)");
         }
 
-        let material_info = self.as_material_info(writer, project_dir, src_dir)?;
+        let material_info = self.as_material_info(rt, writer, project_dir, src_dir)?;
+
+        let mut writer = writer.lock();
+        if let Some(id) = writer.ctx.get(&asset) {
+            return Ok(id.as_material().unwrap());
+        }
 
         Ok(writer.push_material(material_info, key))
     }
@@ -218,14 +225,24 @@ impl Material {
     #[cfg(feature = "bake")]
     fn as_material_info(
         &mut self,
-        writer: &mut Writer,
+        rt: &Runtime,
+        writer: &Arc<Mutex<Writer>>,
         project_dir: impl AsRef<Path>,
         src_dir: impl AsRef<Path>,
     ) -> anyhow::Result<MaterialInfo> {
         let color = match &mut self.color {
-            ColorRef::Asset(bitmap) => bitmap
-                .bake(writer, &project_dir)
-                .context("Unable to bake color asset bitmap")?,
+            ColorRef::Asset(bitmap) => {
+                let writer = writer.clone();
+                let project_dir = project_dir.as_ref().to_path_buf();
+                let mut bitmap = bitmap.clone();
+
+                rt.spawn_blocking(move || {
+                    bitmap
+                        .bake(&writer, &project_dir)
+                        .context("Unable to bake color asset bitmap")
+                        .unwrap()
+                })
+            }
             ColorRef::Path(src) => {
                 let src = src_dir
                     .as_ref()
@@ -242,25 +259,50 @@ impl Material {
                 } else {
                     Bitmap::new(&src)
                 };
-                bitmap
-                    .bake_from_source(writer, &project_dir, Some(src))
-                    .context("Unable to bake color asset bitmap from path")?
+                let writer = writer.clone();
+                let project_dir = project_dir.as_ref().to_path_buf();
+
+                rt.spawn_blocking(move || {
+                    bitmap
+                        .bake_from_source(&writer, &project_dir, Some(src))
+                        .context("Unable to bake color asset bitmap from path")
+                        .unwrap()
+                })
             }
             ColorRef::Value(val) => {
-                if let Some(id) = writer.ctx.get(&Asset::ColorRgba(*val)) {
-                    id.as_bitmap().unwrap()
-                } else {
-                    let bitmap =
-                        BitmapBuf::new(BitmapColor::Linear, BitmapFormat::Rgba, 1, val.to_vec());
-                    writer.push_bitmap(bitmap, None)
-                }
+                let writer = writer.clone();
+                let val = *val;
+
+                rt.spawn_blocking(move || {
+                    let mut writer = writer.lock();
+                    if let Some(id) = writer.ctx.get(&Asset::ColorRgba(val)) {
+                        id.as_bitmap().unwrap()
+                    } else {
+                        let bitmap = BitmapBuf::new(
+                            BitmapColor::Linear,
+                            BitmapFormat::Rgba,
+                            1,
+                            val.to_vec(),
+                        );
+                        writer.push_bitmap(bitmap, None)
+                    }
+                })
             }
         };
 
         let normal = match &mut self.normal {
-            Some(NormalRef::Asset(bitmap)) => bitmap
-                .bake(writer, &project_dir)
-                .context("Unable to bake normal asset bitmap")?,
+            Some(NormalRef::Asset(bitmap)) => {
+                let writer = writer.clone();
+                let project_dir = project_dir.as_ref().to_path_buf();
+                let mut bitmap = bitmap.clone();
+
+                rt.spawn_blocking(move || {
+                    bitmap
+                        .bake(&writer, &project_dir)
+                        .context("Unable to bake normal asset bitmap")
+                        .unwrap()
+                })
+            }
             Some(NormalRef::Path(src)) => {
                 let src = src_dir
                     .as_ref()
@@ -277,91 +319,158 @@ impl Material {
                 } else {
                     Bitmap::new(&src)
                 };
-                bitmap
-                    .bake_from_source(writer, &project_dir, Some(src))
-                    .context("Unable to bake normal asset bitmap from path")?
+                let writer = writer.clone();
+                let project_dir = project_dir.as_ref().to_path_buf();
+
+                rt.spawn_blocking(move || {
+                    bitmap
+                        .bake_from_source(&writer, &project_dir, Some(src))
+                        .context("Unable to bake normal asset bitmap from path")
+                        .unwrap()
+                })
             }
             None => {
-                let normal_val = [128, 128, 255];
-                if let Some(id) = writer.ctx.get(&Asset::ColorRgb(normal_val)) {
-                    id.as_bitmap().unwrap()
-                } else {
-                    let bitmap =
-                        BitmapBuf::new(BitmapColor::Linear, BitmapFormat::Rgb, 1, normal_val);
-                    writer.push_bitmap(bitmap, None)
-                }
+                let writer = writer.clone();
+
+                rt.spawn_blocking(move || {
+                    let normal_val = [128, 128, 255];
+                    let mut writer = writer.lock();
+                    if let Some(id) = writer.ctx.get(&Asset::ColorRgb(normal_val)) {
+                        id.as_bitmap().unwrap()
+                    } else {
+                        let bitmap =
+                            BitmapBuf::new(BitmapColor::Linear, BitmapFormat::Rgb, 1, normal_val);
+                        writer.push_bitmap(bitmap, None)
+                    }
+                })
             }
         };
 
-        let params = if let Some(id) = writer.ctx.get(&Asset::MaterialParams(MaterialParams {
-            displacement: self.displacement.clone(),
-            metal: self.metal.clone(),
-            rough: self.rough.clone(),
-        })) {
-            id.as_bitmap().unwrap()
-        } else {
-            let mut metal = DynamicImage::ImageLuma8(
-                Self::scalar_buf_into_gray_image(&mut self.metal, &project_dir, &src_dir)
-                    .context("Unable to create metal bitmap buf")?,
-            );
-            let mut rough = DynamicImage::ImageLuma8(
-                Self::scalar_buf_into_gray_image(&mut self.rough, &project_dir, &src_dir)
-                    .context("Unable to create rough bitmap buf")?,
-            );
-            let mut displacement = DynamicImage::ImageLuma8(
-                Self::scalar_buf_into_gray_image(&mut self.displacement, &project_dir, &src_dir)
-                    .context("Unable to create displacement bitmap buf")?,
-            );
+        let displacement = self.displacement.clone();
+        let metal = self.metal.clone();
+        let rough = self.rough.clone();
+        let params_asset = Asset::MaterialParams(MaterialParams {
+            displacement,
+            metal,
+            rough,
+        });
+        let params = {
+            let project_dir = project_dir.as_ref().to_path_buf();
+            let src_dir = src_dir.as_ref().to_path_buf();
+            let writer = writer.clone();
+            let displacement = self.displacement.clone();
+            let metal = self.metal.clone();
+            let rough = self.rough.clone();
 
-            let width = metal.width().max(rough.width().max(displacement.width()));
-            let height = metal
-                .height()
-                .max(rough.height().max(displacement.height()));
+            rt.spawn_blocking(move || {
+                if let Some(id) = writer.lock().ctx.get(&params_asset) {
+                    return id.as_bitmap().unwrap();
+                }
 
-            if metal.width() != width || metal.height() != height {
-                metal = metal.resize_to_fill(width, height, FilterType::CatmullRom);
-            }
+                let mut metal_image = DynamicImage::ImageLuma8(
+                    Self::scalar_buf_into_gray_image(&metal, &project_dir, &src_dir)
+                        .context("Unable to create metal bitmap buf")
+                        .unwrap(),
+                );
+                let mut rough_image = DynamicImage::ImageLuma8(
+                    Self::scalar_buf_into_gray_image(&rough, &project_dir, &src_dir)
+                        .context("Unable to create rough bitmap buf")
+                        .unwrap(),
+                );
+                let mut displacement_image = DynamicImage::ImageLuma8(
+                    Self::scalar_buf_into_gray_image(&displacement, &project_dir, &src_dir)
+                        .context("Unable to create displacement bitmap buf")
+                        .unwrap(),
+                );
 
-            if rough.width() != width || rough.height() != height {
-                rough = rough.resize_to_fill(width, height, FilterType::CatmullRom);
-            }
+                let width = metal_image
+                    .width()
+                    .max(rough_image.width())
+                    .max(displacement_image.width());
+                let height = metal_image
+                    .height()
+                    .max(rough_image.height())
+                    .max(displacement_image.height());
 
-            if displacement.width() != width || displacement.height() != height {
-                displacement = displacement.resize_to_fill(width, height, FilterType::CatmullRom);
-            }
+                if metal_image.width() != width || metal_image.height() != height {
+                    let filter_ty = if metal_image.width() == 1 && metal_image.height() == 1 {
+                        FilterType::Nearest
+                    } else {
+                        FilterType::CatmullRom
+                    };
 
-            let mut params = Vec::with_capacity(
-                (2 * width * height) as usize
-                    + self
-                        .displacement
-                        .as_ref()
-                        .map(|_| width * height)
-                        .unwrap_or_default() as usize,
-            );
+                    metal_image = metal_image.resize_to_fill(width, height, filter_ty);
+                }
 
-            for y in 0..height {
-                for x in 0..width {
-                    params.push(metal.get_pixel(x, y).0[0]);
-                    params.push(rough.get_pixel(x, y).0[0]);
+                if rough_image.width() != width || rough_image.height() != height {
+                    let filter_ty = if rough_image.width() == 1 && rough_image.height() == 1 {
+                        FilterType::Nearest
+                    } else {
+                        FilterType::CatmullRom
+                    };
 
-                    if self.displacement.is_some() {
-                        params.push(displacement.get_pixel(x, y).0[0]);
+                    rough_image = rough_image.resize_to_fill(width, height, filter_ty);
+                }
+
+                if displacement_image.width() != width || displacement_image.height() != height {
+                    let filter_ty =
+                        if displacement_image.width() == 1 && displacement_image.height() == 1 {
+                            FilterType::Nearest
+                        } else {
+                            FilterType::CatmullRom
+                        };
+
+                    displacement_image =
+                        displacement_image.resize_to_fill(width, height, filter_ty);
+                }
+
+                let mut params = Vec::with_capacity(
+                    (2 * width * height) as usize
+                        + displacement
+                            .as_ref()
+                            .map(|_| width * height)
+                            .unwrap_or_default() as usize,
+                );
+
+                for y in 0..height {
+                    for x in 0..width {
+                        params.push(metal_image.get_pixel(x, y).0[0]);
+                        params.push(rough_image.get_pixel(x, y).0[0]);
+
+                        if displacement.is_some() {
+                            params.push(displacement_image.get_pixel(x, y).0[0]);
+                        }
                     }
                 }
-            }
 
-            let params = BitmapBuf::new(
-                BitmapColor::Linear,
-                if self.displacement.is_none() {
-                    BitmapFormat::Rg
+                let mut writer = writer.lock();
+                let res = if let Some(id) = writer.ctx.get(&params_asset) {
+                    id.as_bitmap().unwrap()
                 } else {
-                    BitmapFormat::Rgb
-                },
-                width,
-                params,
-            );
-            writer.push_bitmap(params, None)
+                    let params = BitmapBuf::new(
+                        BitmapColor::Linear,
+                        if displacement.is_none() {
+                            BitmapFormat::Rg
+                        } else {
+                            BitmapFormat::Rgb
+                        },
+                        width,
+                        params,
+                    );
+                    writer.push_bitmap(params, None)
+                };
+
+                res
+            })
         };
+
+        let (color, normal, params) = rt.block_on(async move {
+            let color = color.await.unwrap();
+            let normal = normal.await.unwrap();
+            let params = params.await.unwrap();
+
+            (color, normal, params)
+        });
 
         Ok(MaterialInfo {
             color,
@@ -371,7 +480,7 @@ impl Material {
     }
 
     fn scalar_buf_into_gray_image(
-        scalar: &mut Option<ScalarRef>,
+        scalar: &Option<ScalarRef>,
         project_dir: impl AsRef<Path>,
         src_dir: impl AsRef<Path>,
     ) -> anyhow::Result<GrayImage> {

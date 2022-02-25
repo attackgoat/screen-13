@@ -22,7 +22,7 @@ use {
 };
 
 #[cfg(feature = "bake")]
-use super::Writer;
+use {super::Writer, parking_lot::Mutex, std::sync::Arc, tokio::runtime::Runtime};
 
 /// A reference to a model asset or model source file.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -109,12 +109,14 @@ impl Scene {
     #[cfg(feature = "bake")]
     pub fn bake(
         &self,
-        mut writer: &mut Writer,
+        rt: &Runtime,
+        writer: &Arc<Mutex<Writer>>,
         project_dir: impl AsRef<Path>,
         src: impl AsRef<Path>,
     ) -> Result<SceneId, Error> {
         // Early-out if we have already baked this scene
-        if let Some(h) = writer.ctx.get(&self.clone().into()) {
+        let asset = self.clone().into();
+        if let Some(h) = writer.lock().ctx.get(&asset) {
             return Ok(h.as_scene().unwrap());
         }
 
@@ -159,7 +161,7 @@ impl Scene {
                 })
                 .map(|(src, mut material)| {
                     material
-                        .bake(writer, &project_dir, &src_dir, src)
+                        .bake(&rt, writer, &project_dir, &src_dir, src)
                         .expect("material")
                 });
 
@@ -185,11 +187,7 @@ impl Scene {
                         }
                     }
                 })
-                .map(|(src, model)| {
-                    model
-                        .bake(&mut writer, &project_dir, src)
-                        .expect("bake model")
-                });
+                .map(|(src, model)| model.bake(&writer, &project_dir, src).expect("bake model"));
 
             refs.push(SceneRefData {
                 id: scene_ref.id().map(|id| id.to_owned()),
@@ -201,8 +199,14 @@ impl Scene {
             });
         }
 
-        // Pak this asset
-        Ok(writer.push_scene(SceneBuf::new(refs.into_iter()), key))
+        let scene = SceneBuf::new(refs.into_iter());
+
+        let mut writer = writer.lock();
+        if let Some(h) = writer.ctx.get(&asset) {
+            return Ok(h.as_scene().unwrap());
+        }
+
+        Ok(writer.push_scene(scene, key))
     }
 
     /// Individual references within a scene.

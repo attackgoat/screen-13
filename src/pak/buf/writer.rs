@@ -125,11 +125,11 @@ impl Writer {
         self
     }
 
-    pub fn write(self, path: impl AsRef<Path>) -> Result<(), Error> {
+    pub fn write(&mut self, path: impl AsRef<Path>) -> Result<(), Error> {
         self.write_data(&mut BufWriter::new(File::create(path)?))
     }
 
-    fn write_data(mut self, mut writer: impl Write + Seek) -> Result<(), Error> {
+    fn write_data(&mut self, mut writer: impl Write + Seek) -> Result<(), Error> {
         // Write a blank spot that we'll use for the skip header later
         writer.write_all(&0u32.to_ne_bytes())?;
 

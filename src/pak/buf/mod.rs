@@ -39,7 +39,7 @@ use {
 };
 
 #[cfg(feature = "bake")]
-use glob::glob;
+use {anyhow::Context, glob::glob, parking_lot::Mutex, std::sync::Arc, tokio::runtime::Runtime};
 
 /// Given some parent directory and a filename, returns just the portion after the directory.
 #[allow(unused)]
@@ -84,8 +84,11 @@ fn file_key(dir: impl AsRef<Path>, path: impl AsRef<Path>) -> String {
     key.to_str().unwrap().to_owned()
 }
 
+fn is_cargo_build() -> bool {
+    var("CARGO").is_ok()
+}
+
 /// Returns `true` when a given path has the `.toml` file extension.
-#[allow(unused)]
 fn is_toml(path: impl AsRef<Path>) -> bool {
     path.as_ref()
         .extension()
@@ -139,7 +142,7 @@ fn parse_hex_scalar(val: &str) -> Option<u8> {
 }
 
 fn re_run_if_changed(p: impl AsRef<Path>) {
-    if var("CARGO").is_ok() {
+    if is_cargo_build() {
         println!("cargo:rerun-if-changed={}", p.as_ref().display());
     }
 }
@@ -346,15 +349,17 @@ impl PakBuf {
     pub fn bake(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> anyhow::Result<()> {
         re_run_if_changed(&src);
 
-        // Process each file we find
+        let rt = Arc::new(Runtime::new()?);
+        let mut tasks = vec![];
+        let mut writer = Arc::new(Mutex::new(Default::default()));
+
+        // Load the source file into an Asset::Content instance
+        let src_dir = parent(&src);
         let content = Asset::read(&src)?
             .into_content()
-            .ok_or_else(|| Error::from(ErrorKind::InvalidData))?;
-        let src_dir = src
-            .as_ref()
-            .parent()
-            .ok_or_else(|| Error::from(ErrorKind::InvalidInput))?;
-        let mut writer = Default::default();
+            .context("Unable to read asset file")?;
+
+        // Process each file we find as a separate runtime task
         for asset_glob in content
             .groups()
             .into_iter()
@@ -362,9 +367,9 @@ impl PakBuf {
             .flat_map(|group| group.asset_globs())
         {
             let asset_paths = glob(src_dir.join(asset_glob).to_string_lossy().as_ref())
-                .map_err(|_| Error::from(ErrorKind::Unsupported))?;
+                .context("Unable to glob source directory")?;
             for asset_path in asset_paths {
-                let asset_path = asset_path.map_err(|_| Error::from(ErrorKind::Unsupported))?;
+                let asset_path = asset_path.context("Unable to get asset path")?;
 
                 re_run_if_changed(&asset_path);
 
@@ -378,21 +383,29 @@ impl PakBuf {
                     "glb" | "gltf" => {
                         // Note that direct references like this build a model, not an animation
                         // To build an animation you must specify a .toml file
-                        Model::new(&asset_path).bake(&mut writer, &src_dir, Some(&asset_path))?;
+                        let writer = Arc::clone(&writer);
+                        let src_dir = src_dir.clone();
+                        let asset_path = asset_path.clone();
+                        tasks.push(rt.spawn_blocking(move || {
+                            Model::new(&asset_path)
+                                .bake(&writer, &src_dir, Some(&asset_path))
+                                .unwrap();
+                        }));
                     }
                     "jpg" | "jpeg" | "png" | "bmp" | "tga" | "dds" | "webp" | "gif" | "ico"
                     | "tiff" => {
-                        Bitmap::new(&asset_path).bake_from_source(
-                            &mut writer,
-                            &src_dir,
-                            Some(&asset_path),
-                        )?;
+                        let writer = Arc::clone(&writer);
+                        let src_dir = src_dir.clone();
+                        let asset_path = asset_path.clone();
+                        tasks.push(rt.spawn_blocking(move || {
+                            Bitmap::new(&asset_path)
+                                .bake_from_source(&writer, &src_dir, Some(&asset_path))
+                                .unwrap();
+                        }));
                     }
                     "toml" => {
                         let asset = Asset::read(&asset_path)?;
                         let asset_parent = parent(&asset_path);
-
-                        info!("{:?}", &asset);
 
                         match asset {
                             //     Asset::Animation(anim) => {
@@ -402,10 +415,10 @@ impl PakBuf {
                             //     // Asset::Atlas(ref atlas) => {
                             //     //     bake_atlas(&src_dir, &asset_filename, atlas, &mut pak);
                             //     // }
-                            //     Asset::Bitmap(mut bitmap) => {
-                            //         bitmap.canonicalize(&src_dir, &src_dir);
-                            //         bake_bitmap(&mut context, &mut pak, &src_dir, Some(src), &bitmap);
-                            //     }
+                            // Asset::Bitmap(mut bitmap) => {
+                            //     bitmap.canonicalize(&src_dir, &src_dir);
+                            //     bake_bitmap(&mut context, &mut pak, &src_dir, Some(src), &bitmap);
+                            // }
                             //     Asset::BitmapFont(mut bitmap_font) => {
                             //         bitmap_font.canonicalize(&src_dir, &src_dir);
                             //         bake_bitmap_font(&mut context, &mut pak, src_dir, src, bitmap_font);
@@ -419,13 +432,23 @@ impl PakBuf {
                             //     //     bake_lang(&src_dir, &asset_filename, lang, &mut pak, &mut log)
                             //     // }
                             Asset::Material(mut material) => {
-                                material.canonicalize(&src_dir, &asset_parent);
-                                material.bake(
-                                    &mut writer,
-                                    &src_dir,
-                                    &asset_parent,
-                                    Some(&asset_path),
-                                )?;
+                                let writer = Arc::clone(&writer);
+                                let src_dir = src_dir.clone();
+                                let asset_path = asset_path.clone();
+                                let asset_parent = asset_parent.clone();
+                                let rt2 = rt.clone();
+                                tasks.push(rt.spawn_blocking(move || {
+                                    material.canonicalize(&src_dir, &asset_parent);
+                                    material
+                                        .bake(
+                                            &rt2,
+                                            &writer,
+                                            &src_dir,
+                                            &asset_parent,
+                                            Some(&asset_path),
+                                        )
+                                        .unwrap();
+                                }));
                             }
                             //     Asset::Model(mut model) => {
                             //         model.canonicalize(&src_dir, &src_dir);
@@ -437,12 +460,25 @@ impl PakBuf {
                             _ => unimplemented!(),
                         }
                     }
-                    _ => Blob::bake(&mut writer, src_dir, &asset_path),
+                    _ => {
+                        let writer = Arc::clone(&writer);
+                        let src_dir = src_dir.clone();
+                        let asset_path = asset_path.clone();
+                        tasks.push(
+                            rt.spawn_blocking(move || Blob::bake(&writer, &src_dir, &asset_path)),
+                        );
+                    }
                 }
             }
         }
 
-        writer.write(dst)?;
+        rt.block_on(async move {
+            for task in tasks.into_iter() {
+                task.await.unwrap();
+            }
+
+            writer.lock().write(dst).unwrap();
+        });
 
         Ok(())
     }

@@ -15,7 +15,7 @@ use {
 };
 
 #[cfg(feature = "bake")]
-use super::Writer;
+use {super::Writer, parking_lot::Mutex, std::sync::Arc};
 
 #[derive(PartialEq)]
 enum TriangleMode {
@@ -88,13 +88,14 @@ impl Model {
     #[cfg(feature = "bake")]
     pub fn bake(
         &self,
-        writer: &mut Writer,
+        writer: &Arc<Mutex<Writer>>,
         project_dir: impl AsRef<Path>,
         src: Option<impl AsRef<Path>>,
     ) -> Result<ModelId, Error> {
         // Early-out if we have already baked this model
-        if let Some(h) = writer.ctx.get(&self.clone().into()) {
-            return Ok(h.as_model().unwrap());
+        let asset = self.clone().into();
+        if let Some(id) = writer.lock().ctx.get(&asset) {
+            return Ok(id.as_model().unwrap());
         }
 
         // If a source is given it will be available as a key inside the .pak (sources are not
@@ -111,7 +112,15 @@ impl Model {
             );
         }
 
-        Ok(writer.push_model(self.to_model_buf(), key))
+        let model = self.to_model_buf();
+
+        // Check again to see if we are the first one to finish this
+        let mut writer = writer.lock();
+        if let Some(id) = writer.ctx.get(&asset) {
+            return Ok(id.as_model().unwrap());
+        }
+
+        Ok(writer.push_model(model, key))
     }
 
     pub fn to_model_buf(&self) -> ModelBuf {

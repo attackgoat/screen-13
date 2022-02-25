@@ -11,7 +11,7 @@ use {
 };
 
 #[cfg(feature = "bake")]
-use {super::Writer, log::info};
+use {super::Writer, log::info, parking_lot::Mutex, std::sync::Arc};
 
 /// Holds a description of `.jpeg` and other regular images.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq)]
@@ -50,7 +50,7 @@ impl Bitmap {
     /// Reads and processes image source files into an existing `.pak` file buffer.
     pub fn bake(
         &mut self,
-        writer: &mut Writer,
+        writer: &Arc<Mutex<Writer>>,
         project_dir: impl AsRef<Path>,
     ) -> anyhow::Result<BitmapId> {
         self.bake_from_source(writer, project_dir, None as Option<&'static str>)
@@ -60,12 +60,13 @@ impl Bitmap {
     /// Reads and processes image source files into an existing `.pak` file buffer.
     pub fn bake_from_source(
         &mut self,
-        writer: &mut Writer,
+        writer: &Arc<Mutex<Writer>>,
         project_dir: impl AsRef<Path>,
         src: Option<impl AsRef<Path>>,
     ) -> anyhow::Result<BitmapId> {
         // Early-out if we have already baked this bitmap
-        if let Some(id) = writer.ctx.get(&self.clone().into()) {
+        let asset = self.clone().into();
+        if let Some(id) = writer.lock().ctx.get(&asset) {
             return Ok(id.as_bitmap().unwrap());
         }
 
@@ -101,13 +102,16 @@ impl Bitmap {
             }
         }
 
-        let id = writer.push_bitmap(
-            self.as_bitmap_buf()
-                .context("Unable to create bitmap buf")?,
-            key,
-        );
+        let bitmap = self
+            .as_bitmap_buf()
+            .context("Unable to create bitmap buf")?;
 
-        Ok(id)
+        let mut writer = writer.lock();
+        if let Some(id) = writer.ctx.get(&asset) {
+            return Ok(id.as_bitmap().unwrap());
+        }
+
+        Ok(writer.push_bitmap(bitmap, key))
     }
 
     pub fn as_bitmap_buf(&self) -> anyhow::Result<BitmapBuf> {
@@ -132,7 +136,29 @@ impl Bitmap {
         fmt: BitmapFormat,
         resize: Option<u32>,
     ) -> anyhow::Result<(u32, Vec<u8>)> {
-        let mut image = open(path).context("Unable to open image file")?;
+        //let started = std::time::Instant::now();
+
+        /*
+            If this section ends up being very slow, it is usually because image was built in debug
+            mode. You can use this for a regular build:
+
+            [profile.dev.package.image]
+            opt-level = 3
+
+            But for a build.rs script you will need something a bit more invasive:
+
+            [profile.dev.build-override]
+            opt-level = 3 # Makes image 10x faster
+            codegen-units = 1 # Makes image 2x faster (stacks with the above!)
+
+            Obviously this will trade build time for runtime performance. PR this if you have better
+            methods of handling this!!
+        */
+
+        let mut image = open(&path).context("Unable to open image file")?;
+
+        //let elapsed = std::time::Instant::now() - started;
+        //info!("Image open took {} ms for {}x{}", elapsed.as_millis(), image.width(), image.height());
 
         if let Some(resize) = resize {
             let (width, height) = if image.width() > image.height() {
@@ -140,7 +166,13 @@ impl Bitmap {
             } else {
                 (resize * image.width() / image.height(), resize)
             };
-            image = image.resize_to_fill(width, height, FilterType::CatmullRom);
+            let filter_ty = if image.width() == 1 && image.height() == 1 {
+                FilterType::Nearest
+            } else {
+                FilterType::CatmullRom
+            };
+
+            image = image.resize_to_fill(width, height, filter_ty);
         }
 
         let image = match image {

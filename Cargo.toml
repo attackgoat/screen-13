@@ -15,7 +15,7 @@ description = "An easy-to-use 2D/3D rendering engine in the spirit of QBasic."
 # 🦀📦: Feature Set: https://github.com/attackgoat/screen-13#optional-features
 [features]
 default = ["pak"]
-bake = ["glob", "pak"]
+bake = ["glob", "pak", "tokio"]
 pak = []
 
 [dependencies]
@@ -48,6 +48,9 @@ serde = { version = "1.0", features = ["derive"] }
 serde_bytes = "0.11"
 snap = "1.0"
 spirv-reflect = "0.2"
+tokio = { version = "1.15", default-features = false, features = [
+    "rt-multi-thread",
+], optional = true }
 toml = "0.5"
 typenum = "1.12"
 vk-sync = { version = "0.3.0", package = "vk-sync-fork" }  # // HACK: https://github.com/gwihlidal/vk-sync-rs/pull/4 -> https://github.com/expenses/vk-sync-rs
@@ -62,14 +65,6 @@ log = "0.4"
 pretty_env_logger = "0.4"
 screen-13-fx = { path = "contrib/screen-13-fx" }
 screen-13-imgui = { path = "contrib/screen-13-imgui" }
-
-# Always compile the `gltf` dependency in release mode; it is slow with debug assertions turned on
-[profile.dev.package.gltf]
-opt-level = 3
-
-# Always compile the `image` dependency in release mode; it is slow with debug assertions turned on
-[profile.dev.package.image]
-opt-level = 3
 
 [package.metadata.docs.rs]
 all-features = true
