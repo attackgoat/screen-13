@@ -220,11 +220,13 @@ where
     }
 }
 
-#[derive(Builder, Clone, Eq, Hash, PartialEq)]
+#[derive(Builder, Clone)]
 #[builder(pattern = "owned")]
 pub struct Shader {
     #[builder(default = "\"main\".to_owned()")]
     pub entry_name: String,
+    #[builder(default)]
+    pub specialization_info: Option<vk::SpecializationInfo>,
     pub spirv: Vec<u8>,
     pub stage: vk::ShaderStageFlags,
 }

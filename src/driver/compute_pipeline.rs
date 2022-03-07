@@ -120,11 +120,13 @@ where
     }
 }
 
-#[derive(Builder, Clone, Debug, PartialEq)]
+#[derive(Builder, Clone, Debug)]
 #[builder(pattern = "owned")]
 pub struct ComputePipelineInfo {
     #[builder(setter(strip_option), default = "String::from(\"main\")")]
     pub entry_name: String,
+    #[builder(default)]
+    pub specialization_info: Option<vk::SpecializationInfo>,
     pub spirv: Vec<u8>,
 }
 
@@ -135,10 +137,14 @@ impl ComputePipelineInfo {
     }
 
     pub fn into_shader(self) -> Shader {
-        Shader::new(vk::ShaderStageFlags::COMPUTE, self.spirv)
-            .entry_name(self.entry_name)
-            .build()
-            .unwrap()
+        let mut shader =
+            Shader::new(vk::ShaderStageFlags::COMPUTE, self.spirv).entry_name(self.entry_name);
+
+        if let Some(specialization_info) = self.specialization_info {
+            shader = shader.specialization_info(self.specialization_info);
+        }
+
+        shader.build().unwrap()
     }
 }
 

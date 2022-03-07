@@ -347,11 +347,16 @@ where
             .stages
             .iter()
             .map(|stage| {
-                vk::PipelineShaderStageCreateInfo::builder()
+                let mut info = vk::PipelineShaderStageCreateInfo::builder()
                     .module(stage.module)
                     .name(&stage.name)
-                    .stage(stage.flags)
-                    .build()
+                    .stage(stage.flags);
+
+                if let Some(specialization_info) = &stage.specialization_info {
+                    info = info.specialization_info(specialization_info);
+                }
+
+                info.build()
             })
             .collect::<Box<[_]>>();
         let vertex_input_state = vk::PipelineVertexInputStateCreateInfo::builder()

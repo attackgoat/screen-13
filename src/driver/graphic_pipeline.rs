@@ -191,6 +191,7 @@ where
                         flags: shader.stage,
                         module: shader_module,
                         name: CString::new(shader.entry_name.as_str()).unwrap(),
+                        specialization_info: shader.specialization_info,
                     };
 
                     Result::<_, DriverError>::Ok((shader_module, shader_stage))
@@ -365,6 +366,7 @@ pub struct Stage {
     pub flags: vk::ShaderStageFlags,
     pub module: vk::ShaderModule,
     pub name: CString,
+    pub specialization_info: Option<vk::SpecializationInfo>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
