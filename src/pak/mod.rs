@@ -55,14 +55,6 @@ pub struct MaterialInfo {
 }
 
 pub trait Pak {
-    // --- Material functions (the desc is Copy and expected to be in memory)
-
-    /// Gets the pak-unique `MaterialId` corresponding to the given key, if one exsits.
-    fn material_id(&self, key: impl AsRef<str>) -> Option<MaterialId>;
-
-    /// Gets the material for the given handle.
-    fn material(&self, id: MaterialId) -> Option<MaterialInfo>;
-
     // --- "Get by id" functions
 
     /// Gets the pak-unique `AnimationId` corresponding to the given key, if one exsits.
@@ -76,6 +68,9 @@ pub trait Pak {
 
     /// Gets the pak-unique `BlobId` corresponding to the given key, if one exsits.
     fn blob_id(&self, key: impl AsRef<str>) -> Option<BlobId>;
+
+    /// Gets the pak-unique `MaterialId` corresponding to the given key, if one exsits.
+    fn material_id(&self, key: impl AsRef<str>) -> Option<MaterialId>;
 
     /// Gets the pak-unique `ModelId` corresponding to the given key, if one exsits.
     fn model_id(&self, key: impl AsRef<str>) -> Option<ModelId>;
@@ -97,6 +92,9 @@ pub trait Pak {
     /// Gets the corresponding blob for the given ID.
     fn read_blob(&mut self, id: BlobId) -> Result<Vec<u8>, Error>;
 
+    /// Gets the material for the given handle, if one exsits.
+    fn read_material(&self, id: MaterialId) -> Option<MaterialInfo>;
+
     /// Gets the corresponding animation for the given ID.
     fn read_model(&mut self, id: ModelId) -> Result<ModelBuf, Error>;
 
@@ -104,6 +102,15 @@ pub trait Pak {
     fn read_scene(&mut self, id: SceneId) -> Result<SceneBuf, Error>;
 
     // --- Convenience functions
+
+    /// Gets the material corresponding to the given key, if one exsits.
+    fn read_material_key(&self, key: impl AsRef<str>) -> Option<MaterialInfo> {
+        if let Some(id) = self.material_id(key) {
+            self.read_material(id)
+        } else {
+            None
+        }
+    }
 
     fn read_animation_key(&mut self, key: impl AsRef<str>) -> Result<AnimationBuf, Error> {
         if let Some(h) = self.animation_id(key) {

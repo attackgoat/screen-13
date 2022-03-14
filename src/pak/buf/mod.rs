@@ -223,33 +223,26 @@ struct Data {
 }
 
 impl Data {
-    // TODO: Maybe better design!
     #[allow(clippy::ptr_arg)]
-    fn clone_void<T>(data: &Vec<DataRef<T>>) -> Vec<DataRef<T>> {
+    fn clone_refs<T>(data: &Vec<DataRef<T>>) -> Vec<DataRef<T>> {
         let mut res = Vec::with_capacity(data.len());
         for data in data {
             res.push(if let DataRef::Ref(range) = data {
                 DataRef::Ref(range.clone())
             } else {
-                DataRef::Void
+                // The api doesn't allow this
+                unreachable!();
             });
         }
 
         res
-    }
-
-    // TODO: Maybe better design!
-    #[allow(clippy::ptr_arg)]
-    fn merge<T>(_other: &Vec<DataRef<T>>, _data: &mut Vec<DataRef<T>>) {
-        todo!()
     }
 }
 
 #[derive(Deserialize, PartialEq, Serialize)]
 enum DataRef<T> {
     Data(T),
-    Ref(Range<u32>), // TODO: I think make this just Position
-    Void,
+    Ref(Range<u32>),
 }
 
 impl<T> DataRef<T> {
@@ -257,7 +250,6 @@ impl<T> DataRef<T> {
         match self {
             Self::Data(ref t) => Some(t),
             _ => {
-                #[cfg(debug_assertions)]
                 warn!("Expected data but found position and length");
 
                 None
@@ -265,11 +257,14 @@ impl<T> DataRef<T> {
         }
     }
 
+    fn is_data(&self) -> bool {
+        matches!(self, Self::Data(_))
+    }
+
     fn pos_len(&self) -> Option<(u64, usize)> {
         match self {
             Self::Ref(range) => Some((range.start as _, (range.end - range.start) as _)),
             _ => {
-                #[cfg(debug_assertions)]
                 warn!("Expected position and length but found data");
 
                 None
@@ -296,7 +291,6 @@ impl<T> Debug for DataRef<T> {
         f.write_str(match self {
             Self::Data(_) => "Data",
             Self::Ref(_) => "DataRef",
-            Self::Void => "Void",
         })
     }
 }
@@ -509,20 +503,20 @@ impl PakBuf {
     //
     // This can be created quickly and passed to another thread. Merge the clone in later after
     // filling it up. Yay.
-    pub fn clone_void(&self) -> Result<Self, Error> {
+    pub fn clone(&self) -> Result<Self, Error> {
         Ok(Self {
             compression: self.compression,
             data: Data {
                 ids: self.data.ids.clone(),
                 materials: self.data.materials.clone(),
-                anims: Data::clone_void(&self.data.anims),
-                bitmap_fonts: Data::clone_void(&self.data.bitmap_fonts),
-                bitmaps: Data::clone_void(&self.data.bitmaps),
-                blobs: Data::clone_void(&self.data.blobs),
-                models: Data::clone_void(&self.data.models),
-                scenes: Data::clone_void(&self.data.scenes),
+                anims: Data::clone_refs(&self.data.anims),
+                bitmap_fonts: Data::clone_refs(&self.data.bitmap_fonts),
+                bitmaps: Data::clone_refs(&self.data.bitmaps),
+                blobs: Data::clone_refs(&self.data.blobs),
+                models: Data::clone_refs(&self.data.models),
+                scenes: Data::clone_refs(&self.data.scenes),
             },
-            reader: self.reader.reopen()?,
+            reader: self.reader.open()?,
         })
     }
 
@@ -561,68 +555,8 @@ impl PakBuf {
         })
     }
 
-    pub fn is_key_loaded(&mut self, key: impl AsRef<str>) -> bool {
-        self.data
-            .ids
-            .get(key.as_ref())
-            .map(|h| {
-                if let Some(h) = h.as_animation() {
-                    self.data.anims[h.0].as_data().is_some()
-                } else if let Some(h) = h.as_bitmap_font() {
-                    self.data.bitmap_fonts[h.0].as_data().is_some()
-                } else if let Some(h) = h.as_bitmap() {
-                    self.data.bitmaps[h.0].as_data().is_some()
-                } else if let Some(h) = h.as_blob() {
-                    self.data.blobs[h.0].as_data().is_some()
-                } else if let Some(h) = h.as_model() {
-                    self.data.models[h.0].as_data().is_some()
-                } else if let Some(h) = h.as_scene() {
-                    self.data.scenes[h.0].as_data().is_some()
-                } else {
-                    unreachable!();
-                }
-            })
-            .unwrap_or_default()
-    }
-
     pub fn keys(&self) -> impl Iterator<Item = &str> {
         self.data.ids.keys().map(|key| key.as_str())
-    }
-
-    pub fn load(&mut self, key: impl AsRef<str>) -> Result<(), Error> {
-        let h = self
-            .data
-            .ids
-            .get(key.as_ref())
-            .ok_or_else(|| Error::from(ErrorKind::Unsupported))?;
-
-        if let Some(h) = h.as_animation() {
-            self.read_animation(h)?;
-        } else if let Some(h) = h.as_bitmap_font() {
-            self.read_bitmap_font(h)?;
-        } else if let Some(h) = h.as_bitmap() {
-            self.read_bitmap(h)?;
-        } else if let Some(h) = h.as_blob() {
-            self.read_blob(h)?;
-        } else if let Some(h) = h.as_model() {
-            self.read_model(h)?;
-        } else if let Some(h) = h.as_scene() {
-            self.read_scene(h)?;
-        } else {
-            unreachable!();
-        }
-
-        Ok(())
-    }
-
-    // Replaces any data refs in this pak with data from the other, if it is present.
-    pub fn merge(&mut self, other: Self) {
-        Data::merge(&other.data.anims, &mut self.data.anims);
-        Data::merge(&other.data.bitmap_fonts, &mut self.data.bitmap_fonts);
-        Data::merge(&other.data.bitmaps, &mut self.data.bitmaps);
-        Data::merge(&other.data.blobs, &mut self.data.blobs);
-        Data::merge(&other.data.models, &mut self.data.models);
-        Data::merge(&other.data.scenes, &mut self.data.scenes);
     }
 
     /// Opens the given path and decodes a `Pak`.
@@ -673,11 +607,6 @@ impl Pak for PakBuf {
             .and_then(|id| id.as_material())
     }
 
-    /// Gets the material for the given ID.
-    fn material(&self, id: MaterialId) -> Option<MaterialInfo> {
-        self.data.materials.get(id.0).copied()
-    }
-
     /// Gets the pak-unique `ModelId` corresponding to the given key, if one exsits.
     fn model_id(&self, key: impl AsRef<str>) -> Option<ModelId> {
         self.data.ids.get(key.as_ref()).and_then(|id| id.as_model())
@@ -720,6 +649,11 @@ impl Pak for PakBuf {
         self.deserialize(pos, len)
     }
 
+    /// Gets the material for the given ID.
+    fn read_material(&self, id: MaterialId) -> Option<MaterialInfo> {
+        self.data.materials.get(id.0).copied()
+    }
+
     /// Gets the corresponding animation for the given ID.
     fn read_model(&mut self, id: ModelId) -> Result<ModelBuf, Error> {
         let (pos, len) = self.data.models[id.0]
@@ -751,11 +685,11 @@ impl From<&'static [u8]> for PakBuf {
 }
 
 pub trait Stream: Debug + Read + Seek + Send {
-    fn reopen(&self) -> Result<Box<dyn Stream>, Error>;
+    fn open(&self) -> Result<Box<dyn Stream>, Error>;
 }
 
 impl Stream for PakFile {
-    fn reopen(&self) -> Result<Box<dyn Stream>, Error> {
+    fn open(&self) -> Result<Box<dyn Stream>, Error> {
         let file = File::open(&self.path)?;
         let buf = BufReader::new(file);
 
@@ -779,7 +713,7 @@ impl Seek for PakFile {
 }
 
 impl Stream for Cursor<&'static [u8]> {
-    fn reopen(&self) -> Result<Box<dyn Stream>, Error> {
+    fn open(&self) -> Result<Box<dyn Stream>, Error> {
         Ok(Box::new(Cursor::new(*self.get_ref())))
     }
 }

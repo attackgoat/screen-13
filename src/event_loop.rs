@@ -7,7 +7,7 @@ use {
     },
     archery::SharedPointerKind,
     glam::{uvec2, UVec2},
-    log::info,
+    log::{debug, info},
     std::{
         io::{Error, ErrorKind},
         marker::PhantomData,
@@ -110,7 +110,7 @@ where
             });
 
             if !events.is_empty() {
-                info!("Received {} events", events.len(),);
+                debug!("Received {} events", events.len(),);
             }
 
             let now = Instant::now();
@@ -145,7 +145,7 @@ where
 
             let elapsed = Instant::now() - now;
 
-            info!(
+            debug!(
                 "Frame complete ({}% load, {} μs)",
                 ((elapsed.as_secs_f32() / refresh_rate) * 100.0) as usize,
                 elapsed.as_micros()
