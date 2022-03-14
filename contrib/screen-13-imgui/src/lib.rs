@@ -14,7 +14,7 @@ pub mod prelude_rc {
     pub type ImGui = super::ImGui<RcK>;
 }
 
-pub use imgui::{Condition, Ui};
+pub use imgui::{Condition, Ui, self};
 
 use {
     imgui::{Context, DrawCmd, DrawCmdParams},
@@ -108,7 +108,7 @@ where
         ui_func(&mut ui);
 
         self.platform.prepare_render(&ui, window);
-        let draw_data = self.context.render();
+        let draw_data = ui.render();
 
         let image = render_graph.bind_node(
             self.pool
@@ -266,7 +266,7 @@ where
         self.context.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
 
         let font_size = (14.0 * hidpi_factor) as f32;
-        let fonts = self.context.fonts();
+        let mut fonts = self.context.fonts();
         fonts.clear_fonts();
         fonts.add_font(&[
             FontSource::TtfData {

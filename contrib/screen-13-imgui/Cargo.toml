@@ -7,8 +7,8 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 
 [dependencies]
-imgui = { git = "https://github.com/imgui-rs/imgui-rs", rev = "32cf2b9e6c174539a640d455ca9b32e47c5baec8" }
-imgui-winit-support = { git = "https://github.com/imgui-rs/imgui-rs", rev = "32cf2b9e6c174539a640d455ca9b32e47c5baec8", default-features = false, features = ["winit-26"] }
+imgui = "0.8"
+imgui-winit-support = { version = "0.8", default-features = false, features = ["winit-26"] }
 screen-13 = { path = "../.." }
 screen-13-fx = { path = "../screen-13-fx" }
 

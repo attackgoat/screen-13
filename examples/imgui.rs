@@ -1,7 +1,7 @@
 use {
     screen_13::prelude_arc::*,
     screen_13_fx::*,
-    screen_13_imgui::{Condition, ImGui},
+    screen_13_imgui::{imgui, Condition, ImGui},
 };
 
 fn main() -> Result<(), DisplayError> {
@@ -31,10 +31,10 @@ fn main() -> Result<(), DisplayError> {
 
         // Use the draw function callback to do some fun meant-for-debug-mode GUI stuff
         let gui_image = imgui.draw_frame(&mut frame, |ui| {
-            ui.window("Hello world")
+            imgui::Window::new("Hello world")
                 .position([10.0, 10.0], Condition::FirstUseEver)
                 .size([340.0, 250.0], Condition::FirstUseEver)
-                .build(|| {
+                .build(ui, || {
                     ui.text_wrapped("Hello world!");
                     ui.text_wrapped("こんにちは世界！");
                     if ui.button(choices[value]) {
