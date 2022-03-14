@@ -92,7 +92,7 @@ where
         info!("First frame dt: {}", dt_filtered);
 
         while !will_exit {
-            puffin::profile_scope!("Frame");
+            puffin::GlobalProfiler::lock().new_frame();
 
             self.event_loop.run_return(|event, _, control_flow| {
                 match event {

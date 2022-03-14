@@ -42,7 +42,7 @@ num-traits = "0.2"
 ordered-float = { version = "2.0", features = ["serde"] }
 parking_lot = "0.12"
 paste = "1.0"
-puffin = "0.12"
+puffin = "0.13"
 raw-window-handle = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_bytes = "0.11"
