@@ -45,11 +45,3 @@ pub use self::{
     model::ModelLoader,
     present::{ComputePresenter, GraphicPresenter},
 };
-
-use {
-    screen_13::prelude_all::*,
-    std::{
-        error::Error,
-        fmt::{Display, Formatter},
-    },
-};

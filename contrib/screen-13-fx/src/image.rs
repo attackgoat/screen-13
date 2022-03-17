@@ -9,7 +9,7 @@ pub struct ImageLoader<P>
 where
     P: SharedPointerKind,
 {
-    decode_bitmap_r_rg: ComputePipeline<P>,
+    _decode_bitmap_r_rg: ComputePipeline<P>,
     decode_bitmap_rgb_rgba: ComputePipeline<P>,
     device: Shared<Device<P>, P>,
     pool: HashPool<P>,
@@ -21,7 +21,7 @@ where
 {
     pub fn new(device: &Shared<Device<P>, P>) -> Result<Self, DriverError> {
         Ok(Self {
-            decode_bitmap_r_rg: ComputePipeline::create(
+            _decode_bitmap_r_rg: ComputePipeline::create(
                 device,
                 ComputePipelineInfo::new(crate::res::shader::COMPUTE_DECODE_BITMAP_R_RG_COMP),
             )?,
@@ -86,7 +86,7 @@ where
 
     pub fn decode_bitmap(
         &mut self,
-        bitmap: BitmapBuf,
+        bitmap: &BitmapBuf,
         is_srgb: bool,
     ) -> anyhow::Result<ImageBinding<P>>
     where
@@ -101,7 +101,7 @@ where
         );
 
         let cmd_buf = self.pool.lease(self.device.queue.family)?;
-        let mut image_binding = self.create_image(&bitmap, is_srgb, false)?;
+        let mut image_binding = self.create_image(bitmap, is_srgb, false)?;
 
         // Fill the image from the temporary buffer
         match bitmap.format() {
@@ -197,14 +197,14 @@ where
         Ok(image_binding)
     }
 
-    pub fn decode_linear(&mut self, bitmap: BitmapBuf) -> anyhow::Result<ImageBinding<P>>
+    pub fn decode_linear(&mut self, bitmap: &BitmapBuf) -> anyhow::Result<ImageBinding<P>>
     where
         P: SharedPointerKind + 'static,
     {
         self.decode_bitmap(bitmap, false)
     }
 
-    pub fn decode_srgb(&mut self, bitmap: BitmapBuf) -> anyhow::Result<ImageBinding<P>>
+    pub fn decode_srgb(&mut self, bitmap: &BitmapBuf) -> anyhow::Result<ImageBinding<P>>
     where
         P: SharedPointerKind + 'static,
     {

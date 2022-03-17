@@ -1,8 +1,4 @@
-use {
-    super::{copy_buffer_binding_to_image, copy_image_binding},
-    anyhow::Context,
-    screen_13::prelude_all::*,
-};
+use screen_13::prelude_all::*;
 
 #[derive(Debug)]
 pub struct ModelLoader<P>

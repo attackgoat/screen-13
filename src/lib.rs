@@ -251,6 +251,8 @@ pub mod ptr {
             Self::ptr_eq(self, other)
         }
     }
+
+    unsafe impl<T> Send for Shared<T, ArcK> {}
 }
 
 pub fn align_up_u32(val: u32, atom: u32) -> u32 {

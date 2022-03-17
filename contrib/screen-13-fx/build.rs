@@ -1,6 +1,5 @@
 use {
     lazy_static::lazy_static,
-    screen_13::prelude_all::*,
     shaderc::{Compiler, ShaderKind},
     std::{
         env::var,

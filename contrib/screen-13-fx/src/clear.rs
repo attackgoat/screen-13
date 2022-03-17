@@ -1,7 +1,4 @@
-use {
-    super::{execute, ExecutionError},
-    screen_13::prelude_all::*,
-};
+use screen_13::prelude_all::*;
 
 /// Clears a color image without any render graph
 pub fn clear_color_binding<'a, Ch, Cb, P>(
