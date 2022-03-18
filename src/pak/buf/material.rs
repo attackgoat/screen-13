@@ -5,7 +5,7 @@ use {
     },
     crate::pak::{BitmapBuf, BitmapColor, BitmapFormat},
     anyhow::Context as _,
-    image::{imageops::FilterType, DynamicImage, GenericImageView, GrayImage},
+    image::{imageops::FilterType, DynamicImage, GenericImageView, GrayImage, RgbImage},
     log::info,
     serde::{
         de::{
@@ -141,6 +141,120 @@ impl Default for ColorRef {
     }
 }
 
+/// A reference to a `Bitmap` asset, `Bitmap` asset file, three channel image source file,
+/// or single three channel color.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum EmissiveRef {
+    /// A `Bitmap` asset specified inline.
+    Asset(Bitmap),
+
+    /// A `Bitmap` asset file or image source file.
+    Path(PathBuf),
+
+    /// A single three channel color.
+    Value([u8; 3]),
+}
+
+impl EmissiveRef {
+    pub const WHITE: Self = Self::Value([u8::MAX; 3]);
+
+    /// Deserialize from any of:
+    ///
+    /// val of [0.666, 0.733, 0.8]:
+    /// .. = "#abc"
+    /// .. = "#aabbcc"
+    /// .. = [0.666, 0.733, 0.8]
+    ///
+    /// src of file.png:
+    /// .. = "file.png"
+    ///
+    /// src of file.toml which must be a `Bitmap` asset:
+    /// .. = "file.toml"
+    ///
+    /// src of a `Bitmap` asset:
+    /// .. = { src = "file.png", format = "rgb" }
+    fn de<'de, D>(deserializer: D) -> Result<Option<Self>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct EmissiveRefVisitor;
+
+        impl<'de> Visitor<'de> for EmissiveRefVisitor {
+            type Value = Option<EmissiveRef>;
+
+            fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
+                formatter.write_str("hex string, path string, bitmap asset, or seqeunce")
+            }
+
+            fn visit_map<M>(self, map: M) -> Result<Self::Value, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                let asset = Deserialize::deserialize(MapAccessDeserializer::new(map))?;
+
+                Ok(Some(EmissiveRef::Asset(asset)))
+            }
+
+            fn visit_seq<A>(self, seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let mut val: Vec<f32> = Deserialize::deserialize(SeqAccessDeserializer::new(seq))?;
+                for val in &val {
+                    match val.classify() {
+                        FpCategory::Zero | FpCategory::Normal if *val <= 1.0 => (),
+                        _ => panic!("Unexpected color value"),
+                    }
+                }
+
+                match val.len() {
+                    3 => val.push(1.0),
+                    _ => panic!("Unexpected color length"),
+                }
+
+                Ok(Some(EmissiveRef::Value([
+                    (val[0] * u8::MAX as f32) as u8,
+                    (val[1] * u8::MAX as f32) as u8,
+                    (val[2] * u8::MAX as f32) as u8,
+                ])))
+            }
+
+            fn visit_str<E>(self, str: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                if str.starts_with('#') {
+                    if let Some(val) = parse_hex_color(str) {
+                        assert_eq!(val[3], u8::MAX);
+
+                        return Ok(Some(EmissiveRef::Value([val[0], val[1], val[2]])));
+                    }
+                }
+
+                Ok(Some(EmissiveRef::Path(PathBuf::from(str))))
+            }
+        }
+
+        deserializer.deserialize_any(EmissiveRefVisitor)
+    }
+}
+
+impl Canonicalize for EmissiveRef {
+    fn canonicalize(&mut self, project_dir: impl AsRef<Path>, src_dir: impl AsRef<Path>) {
+        match self {
+            Self::Asset(bitmap) => bitmap.canonicalize(project_dir, src_dir),
+            Self::Path(src) => *src = Self::canonicalize_project_path(project_dir, src_dir, &src),
+            _ => (),
+        }
+    }
+}
+
+impl Default for EmissiveRef {
+    fn default() -> Self {
+        Self::WHITE
+    }
+}
+
 /// Holds a description of data used for model rendering.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq)]
 pub struct Material {
@@ -154,6 +268,11 @@ pub struct Material {
 
     /// Whether or not the model will be rendered with back faces also enabled.
     pub double_sided: Option<bool>,
+
+    /// A `Bitmap` asset, `Bitmap` asset file, three channel image source file, or a single
+    /// three channel color.
+    #[serde(default, deserialize_with = "EmissiveRef::de")]
+    pub emissive: Option<EmissiveRef>,
 
     /// A `Bitmap` asset, `Bitmap` asset file, single channel image source file, or a single
     /// normalized value.
@@ -278,12 +397,8 @@ impl Material {
                     if let Some(id) = writer.ctx.get(&Asset::ColorRgba(val)) {
                         id.as_bitmap().unwrap()
                     } else {
-                        let bitmap = BitmapBuf::new(
-                            BitmapColor::Linear,
-                            BitmapFormat::Rgba,
-                            1,
-                            val.to_vec(),
-                        );
+                        let bitmap =
+                            BitmapBuf::new(BitmapColor::Linear, BitmapFormat::Rgba, 1, val);
                         writer.push_bitmap(bitmap, None)
                     }
                 })
@@ -347,6 +462,67 @@ impl Material {
             }
         };
 
+        let emissive = match &mut self.emissive {
+            Some(EmissiveRef::Asset(bitmap)) => {
+                let writer = writer.clone();
+                let project_dir = project_dir.as_ref().to_path_buf();
+                let mut bitmap = bitmap.clone().with_format(BitmapFormat::Rgb);
+
+                rt.spawn_blocking(move || {
+                    Some(
+                        bitmap
+                            .bake(&writer, &project_dir)
+                            .context("Unable to bake emissive asset bitmap")
+                            .unwrap(),
+                    )
+                })
+            }
+            Some(EmissiveRef::Path(src)) => {
+                let src = src_dir
+                    .as_ref()
+                    .join(&src)
+                    .canonicalize()
+                    .context("Unable to canonicalize source path")?;
+                let mut bitmap = if is_toml(&src) {
+                    let mut bitmap = Asset::read(&src)
+                        .context("Unable to read emissive bitmap asset")?
+                        .into_bitmap()
+                        .expect("Source file should be a bitmap asset");
+                    bitmap.canonicalize(&project_dir, &src_dir);
+                    bitmap
+                } else {
+                    Bitmap::new(&src)
+                };
+                let writer = writer.clone();
+                let project_dir = project_dir.as_ref().to_path_buf();
+
+                rt.spawn_blocking(move || {
+                    Some(
+                        bitmap
+                            .with_format(BitmapFormat::Rgb)
+                            .bake_from_source(&writer, &project_dir, Some(src))
+                            .context("Unable to bake emissive asset bitmap from path")
+                            .unwrap(),
+                    )
+                })
+            }
+            Some(EmissiveRef::Value(val)) => {
+                let writer = writer.clone();
+                let val = *val;
+
+                rt.spawn_blocking(move || {
+                    let mut writer = writer.lock();
+                    Some(if let Some(id) = writer.ctx.get(&Asset::ColorRgb(val)) {
+                        id.as_bitmap().unwrap()
+                    } else {
+                        let bitmap = BitmapBuf::new(BitmapColor::Linear, BitmapFormat::Rgb, 1, val);
+                        writer.push_bitmap(bitmap, None)
+                    })
+                })
+            }
+            None => rt.spawn_blocking(|| None),
+        };
+
         let displacement = self.displacement.clone();
         let metal = self.metal.clone();
         let rough = self.rough.clone();
@@ -369,17 +545,17 @@ impl Material {
                 }
 
                 let mut metal_image = DynamicImage::ImageLuma8(
-                    Self::scalar_buf_into_gray_image(&metal, &project_dir, &src_dir)
+                    Self::scalar_ref_into_gray_image(&metal, &project_dir, &src_dir)
                         .context("Unable to create metal bitmap buf")
                         .unwrap(),
                 );
                 let mut rough_image = DynamicImage::ImageLuma8(
-                    Self::scalar_buf_into_gray_image(&rough, &project_dir, &src_dir)
+                    Self::scalar_ref_into_gray_image(&rough, &project_dir, &src_dir)
                         .context("Unable to create rough bitmap buf")
                         .unwrap(),
                 );
                 let mut displacement_image = DynamicImage::ImageLuma8(
-                    Self::scalar_buf_into_gray_image(&displacement, &project_dir, &src_dir)
+                    Self::scalar_ref_into_gray_image(&displacement, &project_dir, &src_dir)
                         .context("Unable to create displacement bitmap buf")
                         .unwrap(),
                 );
@@ -465,22 +641,24 @@ impl Material {
             })
         };
 
-        let (color, normal, params) = rt.block_on(async move {
+        let (color, emissive, normal, params) = rt.block_on(async move {
             let color = color.await.unwrap();
+            let emissive = emissive.await.unwrap();
             let normal = normal.await.unwrap();
             let params = params.await.unwrap();
 
-            (color, normal, params)
+            (color, emissive, normal, params)
         });
 
         Ok(MaterialInfo {
             color,
+            emissive,
             normal,
             params,
         })
     }
 
-    fn scalar_buf_into_gray_image(
+    fn scalar_ref_into_gray_image(
         scalar: &Option<ScalarRef>,
         project_dir: impl AsRef<Path>,
         src_dir: impl AsRef<Path>,
@@ -527,6 +705,10 @@ impl Canonicalize for Material {
             displacement.canonicalize(&project_dir, &src_dir);
         }
 
+        if let Some(emissive) = self.emissive.as_mut() {
+            emissive.canonicalize(&project_dir, &src_dir);
+        }
+
         if let Some(metal) = self.metal.as_mut() {
             metal.canonicalize(&project_dir, &src_dir);
         }
@@ -547,6 +729,7 @@ impl Default for Material {
             color: ColorRef::WHITE,
             displacement: None,
             double_sided: None,
+            emissive: None,
             metal: None,
             normal: None,
             rough: None,

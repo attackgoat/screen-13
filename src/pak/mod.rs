@@ -45,6 +45,9 @@ pub struct MaterialInfo {
     /// Three or four channel base color, aka albedo or diffuse, of the material.
     pub color: BitmapId,
 
+    /// A standard three channel emissive color map.
+    pub emissive: Option<BitmapId>,
+
     /// A standard three channel normal map.
     pub normal: BitmapId,
 

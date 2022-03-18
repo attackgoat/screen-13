@@ -155,7 +155,8 @@ impl Bitmap {
             methods of handling this!!
         */
 
-        let mut image = open(&path).context("Unable to open image file")?;
+        let mut image = open(&path)
+            .with_context(|| format!("Unable to open image file: {}", path.as_ref().display()))?;
 
         //let elapsed = std::time::Instant::now() - started;
         //info!("Image open took {} ms for {}x{}", elapsed.as_millis(), image.width(), image.height());

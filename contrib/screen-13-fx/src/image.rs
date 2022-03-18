@@ -112,7 +112,7 @@ where
             }
             BitmapFormat::Rgb => {
                 // This format requires a conversion
-                info!("Converting RGB to RGBA");
+                //info!("Converting RGB to RGBA");
 
                 let bitmap_width = bitmap.width;
                 let bitmap_height = bitmap.height();
