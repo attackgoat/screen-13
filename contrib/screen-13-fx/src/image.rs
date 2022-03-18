@@ -190,6 +190,7 @@ where
 
                 // These formats match the output image so just copy the bytes straight over
                 copy_buffer_binding_to_image(cmd_buf, &mut pixel_buf_binding, &mut image_binding)
+                    .push_shared_ref(pixel_buf_binding)
             }
         }
         .submit()?;
