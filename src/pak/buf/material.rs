@@ -294,7 +294,7 @@ impl Material {
             Some(NormalRef::Asset(bitmap)) => {
                 let writer = writer.clone();
                 let project_dir = project_dir.as_ref().to_path_buf();
-                let mut bitmap = bitmap.clone();
+                let mut bitmap = bitmap.clone().with_format(BitmapFormat::Rgb);
 
                 rt.spawn_blocking(move || {
                     bitmap
@@ -324,6 +324,7 @@ impl Material {
 
                 rt.spawn_blocking(move || {
                     bitmap
+                        .with_format(BitmapFormat::Rgb)
                         .bake_from_source(&writer, &project_dir, Some(src))
                         .context("Unable to bake normal asset bitmap from path")
                         .unwrap()
