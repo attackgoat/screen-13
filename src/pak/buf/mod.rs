@@ -222,23 +222,6 @@ struct Data {
     scenes: Vec<DataRef<SceneBuf>>,
 }
 
-impl Data {
-    #[allow(clippy::ptr_arg)]
-    fn clone_refs<T>(data: &Vec<DataRef<T>>) -> Vec<DataRef<T>> {
-        let mut res = Vec::with_capacity(data.len());
-        for data in data {
-            res.push(if let DataRef::Ref(range) = data {
-                DataRef::Ref(range.clone())
-            } else {
-                // The api doesn't allow this
-                unreachable!();
-            });
-        }
-
-        res
-    }
-}
-
 #[derive(Deserialize, PartialEq, Serialize)]
 enum DataRef<T> {
     Data(T),
@@ -497,27 +480,6 @@ impl PakBuf {
             bincode::deserialize_from(data)
         }
         .map_err(|err| Error::from(ErrorKind::InvalidData))
-    }
-
-    // Produces clone of this pak but all data is missing and only references and voids are left.
-    //
-    // This can be created quickly and passed to another thread. Merge the clone in later after
-    // filling it up. Yay.
-    pub fn clone(&self) -> Result<Self, Error> {
-        Ok(Self {
-            compression: self.compression,
-            data: Data {
-                ids: self.data.ids.clone(),
-                materials: self.data.materials.clone(),
-                anims: Data::clone_refs(&self.data.anims),
-                bitmap_fonts: Data::clone_refs(&self.data.bitmap_fonts),
-                bitmaps: Data::clone_refs(&self.data.bitmaps),
-                blobs: Data::clone_refs(&self.data.blobs),
-                models: Data::clone_refs(&self.data.models),
-                scenes: Data::clone_refs(&self.data.scenes),
-            },
-            reader: self.reader.open()?,
-        })
     }
 
     pub fn from_stream(mut stream: impl Stream + 'static) -> Result<Self, Error> {
