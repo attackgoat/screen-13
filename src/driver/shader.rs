@@ -253,8 +253,8 @@ impl Shader {
         &self,
         device: &Device<impl SharedPointerKind>,
     ) -> Result<DescriptorBindingMap, DriverError> {
-        let mut module = ShaderModule::load_u8_data(self.spirv.as_slice()).map_err(|_| {
-            warn!("Unable to load shader module");
+        let mut module = ShaderModule::load_u8_data(self.spirv.as_slice()).map_err(|e| {
+            warn!("Unable to load shader module ({} bytes): {e}", self.spirv.len());
 
             DriverError::InvalidData
         })?;
