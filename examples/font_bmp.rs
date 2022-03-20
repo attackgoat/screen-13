@@ -1,37 +1,51 @@
-use {screen_13::prelude_arc::*, screen_13_fx::*};
+use {screen_13::prelude_arc::*, screen_13_fx::prelude_arc::*, std::env::current_exe};
 
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
+    // Standard Screen-13 stuff
     let event_loop = EventLoop::new().build()?;
     let display = ComputePresenter::new(&event_loop.device)?;
+    let mut image_loader = ImageLoader::new(&event_loop.device)?;
+    let mut pak = open_fonts_pak()?;
+    let mut pool = HashPool::new(&event_loop.device);
 
-    // Create a single owned image (we could instead lease one; see the shader-toy example)
-    let mut image_binding = Some(
-        event_loop.device.new_image(
-            ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, uvec2(10, 10))
-                .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST),
-        ),
-    );
+    // Load a bitmapped font from the pre-packed data file (must run the "bake_pak" example first)
+    let small_10px_font = BitmapFont::load(
+        pak.read_bitmap_font_key("font/small/small_10px")?,
+        &mut image_loader,
+    )?;
+
+    // Create a renderer we can use to draw this font onto some image
+    let text = BitmapFontRenderer::new(&event_loop.device)?;
 
     event_loop.run(|frame| {
-        // Take our image from the main() function and make it part of the render graph
-        let image_node = frame.render_graph.bind_node(image_binding.take().unwrap());
-
-        // The image is now a node which is just a usize and can be used in all parts of a graph
-        clear_color_node(
+        let image_node = frame.render_graph.bind_node(
+            pool.lease(
+                ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, frame.resolution)
+                    .usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED),
+            )
+            .unwrap(),
+        );
+        clear_color_node(frame.render_graph, image_node, 0.0, 0.0, 0.0, 1.0);
+        text.render(
             frame.render_graph,
             image_node,
-            100.0 / 255.0,
-            149.0 / 255.0,
-            237.0 / 255.0,
-            1.0,
+            &small_10px_font,
+            IVec2::ZERO,
+            "Hello, world!",
         );
-
-        // Run a vertex+pixel shader over image and stores into the swapchain image
         display.present_image(frame.render_graph, image_node, frame.swapchain);
+    })?;
 
-        // Take the image from the graph and give it back to main() so we have it for the next loop
-        image_binding = Some(frame.render_graph.unbind_node(image_node));
-    })
+    Ok(())
+}
+
+fn open_fonts_pak() -> anyhow::Result<PakBuf> {
+    let mut pak = current_exe()?;
+    pak.set_file_name("fonts.pak");
+
+    let pak = PakBuf::open(pak)?;
+
+    Ok(pak)
 }

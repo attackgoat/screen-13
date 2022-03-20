@@ -25,6 +25,7 @@ mask-modes = []
 matte-modes = []
 
 [dependencies]
+bmfont = { version = "0.3", default-features = false }
 lazy_static = "1.4"
 parking_lot = "0.12"
 screen-13 = { path = "../..", features = ["bake"] }

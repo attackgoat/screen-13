@@ -1,4 +1,4 @@
 #[derive(Debug)]
-pub struct VectorRenderer {
+pub struct VectorFontRenderer {
 
 }
