@@ -16,8 +16,9 @@ lazy_static! {
 fn main() -> anyhow::Result<()> {
     let shader_dir = CARGO_MANIFEST_DIR.join("res/shader");
     let mut shaders = vec![];
-    let glsl_shaders = glob(shader_dir.join("compute/*.comp"))?
+    let glsl_shaders = []
         .into_iter()
+        .chain(glob(shader_dir.join("compute/*.comp"))?.into_iter())
         .chain(glob(shader_dir.join("graphic/*.vert"))?.into_iter())
         .chain(glob(shader_dir.join("graphic/*.frag"))?.into_iter())
         .map(|source_path| {

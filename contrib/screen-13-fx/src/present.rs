@@ -118,8 +118,6 @@ where
             .push_constants(transform)
             .draw(|device, cmd_buf, _bindings| unsafe {
                 // Draw a quad with implicit vertices (no buffer)
-                // TODO: Reduce vertex count
-                // https://www.saschawillems.de/blog/2016/08/13/vulkan-tutorial-on-rendering-a-fullscreen-quad-without-buffers/
                 device.cmd_draw(cmd_buf, 6, 1, 0, 0);
             });
     }

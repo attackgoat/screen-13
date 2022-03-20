@@ -342,6 +342,7 @@ where
             )
             .sample_shading_enable(pipeline.state.multisample_state.sample_shading_enable)
             .sample_mask(&pipeline.state.multisample_state.sample_mask);
+        let mut specializations = vec![];
         let stages = pipeline
             .state
             .stages
@@ -353,7 +354,14 @@ where
                     .stage(stage.flags);
 
                 if let Some(specialization_info) = &stage.specialization_info {
-                    info = info.specialization_info(specialization_info);
+                    specializations.push(
+                        vk::SpecializationInfo::builder()
+                            .map_entries(&specialization_info.map_entries)
+                            .data(&specialization_info.data)
+                            .build(),
+                    );
+
+                    info = info.specialization_info(specializations.last().unwrap());
                 }
 
                 info.build()

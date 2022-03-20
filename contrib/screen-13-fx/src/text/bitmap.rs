@@ -1,10 +1,13 @@
 use {
-    super::glyph::BitmapGlyph,
+    super::glyph::Glyph,
     crate::ImageLoader,
+    anyhow::Context,
     bmfont::{BMFont, OrdinateOrientation},
     screen_13::prelude_all::*,
-    std::io::Cursor,
+    std::{cell::RefCell, io::Cursor},
 };
+
+type Color = [u8; 4];
 
 /// Holds a decoded bitmap Font.
 #[derive(Debug)]
@@ -13,7 +16,9 @@ where
     P: SharedPointerKind,
 {
     font: BMFont,
-    pages: Vec<ImageBinding<P>>,
+    pages: RefCell<Vec<ImageBinding<P>>>,
+    pipeline: Shared<GraphicPipeline<P>, P>,
+    pool: RefCell<HashPool<P>>,
 }
 
 impl<P> BitmapFont<P>
@@ -31,12 +36,40 @@ where
             Cursor::new(bitmap_font.def()),
             OrdinateOrientation::TopToBottom,
         )?;
-        let pages = bitmap_font
-            .pages()
-            .map(|page_buf| image_loader.decode_linear(page_buf))
-            .collect::<Result<_, _>>()?;
+        let pages = RefCell::new(
+            bitmap_font
+                .pages()
+                .map(|page_buf| image_loader.decode_linear(page_buf))
+                .collect::<Result<_, _>>()?,
+        );
+        let num_pages = bitmap_font.pages().len() as i32;
+        let pipeline = Shared::new(
+            GraphicPipeline::create(
+                &image_loader.device,
+                GraphicPipelineInfo::new().vertex_input(VertexInputMode::BitmapFont),
+                [
+                    Shader::new_vertex(crate::res::shader::GRAPHIC_FONT_VERT),
+                    Shader::new_fragment(crate::res::shader::GRAPHIC_FONT_BITMAP_FRAG)
+                        .specialization_info(SpecializationInfo::new(
+                            [vk::SpecializationMapEntry {
+                                constant_id: 0,
+                                offset: 0,
+                                size: 4,
+                            }],
+                            num_pages.to_ne_bytes(),
+                        )),
+                ],
+            )
+            .context("Unable to create bitmap font pipeline")?,
+        );
+        let pool = RefCell::new(HashPool::new(&image_loader.device));
 
-        Ok(Self { font, pages })
+        Ok(Self {
+            font,
+            pages,
+            pipeline,
+            pool,
+        })
     }
 
     // TODO: Add description and example showing layout area, top/bottom explanation, etc
@@ -78,46 +111,142 @@ where
         (position, size)
     }
 
-    pub(super) fn page(&self, idx: usize) -> &ImageBinding<P> {
-        &self.pages[idx]
-    }
-
-    // pub(super) fn pages(&self) -> impl ExactSizeIterator<Item = &Image<P>> {
-    //     self.pages.iter().map(|page| page.as_ref())
-    // }
-
-    pub(super) fn parse<'a>(&'a self, text: &'a str) -> impl Iterator<Item = BitmapGlyph> + 'a {
-        self.font.parse(text)
-    }
-}
-
-#[derive(Debug)]
-pub struct BitmapFontRenderer<P>
-where
-    P: SharedPointerKind,
-{
-    device: Shared<Device<P>, P>,
-}
-
-impl<P> BitmapFontRenderer<P>
-where
-    P: SharedPointerKind,
-{
-    pub fn new(device: &Shared<Device<P>, P>) -> Result<Self, DriverError> {
-        Ok(Self {
-            device: Shared::clone(device),
-        })
-    }
-
-    pub fn render(
+    pub fn print(
         &self,
         graph: &mut RenderGraph<P>,
         image: impl Into<AnyImageNode<P>>,
-        font: &BitmapFont<P>,
-        position: IVec2,
+        position: Vec2,
+        color: impl Into<BitmapGlyphColor>,
         text: impl AsRef<str>,
     ) where
         P: 'static,
     {
+        let color = color.into();
+        let image = image.into();
+        let text = text.as_ref();
+        let image_info = graph.node_info(image);
+        let transform = Mat4::from_translation(vec3(-1.0, -1.0, 0.0))
+            * Mat4::from_scale(vec3(2.0, 2.0, 1.0))
+            * Mat4::from_translation(vec3(
+                position.x / image_info.extent.x as f32,
+                position.y / image_info.extent.y as f32,
+                0.0,
+            ));
+
+        let vertex_buf_len = text.chars().count() as _;
+        let mut vertex_buf_binding = self
+            .pool
+            .borrow_mut()
+            .lease(BufferInfo {
+                size: vertex_buf_len,
+                usage: vk::BufferUsageFlags::VERTEX_BUFFER,
+                can_map: true,
+            })
+            .unwrap();
+        let vertex_buf = &mut Buffer::mapped_slice_mut(vertex_buf_binding.get_mut().unwrap())
+            [0..vertex_buf_len as usize];
+
+        let mut offset = 0;
+        for (data, char) in self.font.parse(text).map(|char| (char.tessellate(), char)) {
+            vertex_buf[offset..offset + 96].copy_from_slice(&data);
+
+            let page_idx = char.page_index as i32;
+            vertex_buf[offset + 96..offset + 100].copy_from_slice(&page_idx.to_ne_bytes());
+            offset += 100;
+        }
+
+        let vertex_buf_node = graph.bind_node(vertex_buf_binding);
+
+        let mut pages = self.pages.borrow_mut();
+        let mut page_nodes: Vec<ImageNode<P>> = Vec::with_capacity(pages.len());
+        for page in pages.drain(..) {
+            page_nodes.push(graph.bind_node(page));
+        }
+
+        let mut pass = graph
+            .record_pass("text")
+            .access_node(vertex_buf_node, AccessType::VertexBuffer)
+            .bind_pipeline(&self.pipeline);
+
+        for (idx, page_node) in page_nodes.iter().enumerate() {
+            pass = pass.read_descriptor((0, [idx as _]), *page_node);
+        }
+
+        pass.push_constants((transform, color.solid(), color.outline()))
+            .draw(move |device, cmd_buf, bindings| unsafe {
+                use std::slice::from_ref;
+
+                device.cmd_bind_vertex_buffers(
+                    cmd_buf,
+                    0,
+                    from_ref(&bindings[vertex_buf_node]),
+                    from_ref(&0),
+                );
+                device.cmd_draw(cmd_buf, (offset / 96) as u32, 1, 0, 0);
+            });
+
+        for page_node in page_nodes {
+            let page_binding = graph.unbind_node(page_node);
+            pages.push(page_binding);
+        }
+    }
+}
+
+pub enum BitmapGlyphColor {
+    Outline(Color),
+    Solid(Color),
+    SolidOutline(Color, Color),
+}
+
+impl BitmapGlyphColor {
+    const TRANSARENT: Color = [0, 0, 0, u8::MAX];
+
+    fn outline(&self) -> Color {
+        match self {
+            Self::Outline(color) => *color,
+            _ => Self::TRANSARENT,
+        }
+    }
+
+    fn solid(&self) -> Color {
+        match self {
+            Self::Outline(_) => Self::TRANSARENT,
+            Self::Solid(color) => *color,
+            Self::SolidOutline(color, _) => *color,
+        }
+    }
+}
+
+impl From<[f32; 3]> for BitmapGlyphColor {
+    fn from(color: [f32; 3]) -> Self {
+        Self::Solid([
+            (color[0].clamp(0.0, 1.0) * u8::MAX as f32) as _,
+            (color[1].clamp(0.0, 1.0) * u8::MAX as f32) as _,
+            (color[2].clamp(0.0, 1.0) * u8::MAX as f32) as _,
+            u8::MAX,
+        ])
+    }
+}
+
+impl From<[f32; 4]> for BitmapGlyphColor {
+    fn from(color: [f32; 4]) -> Self {
+        Self::Solid([
+            (color[0].clamp(0.0, 1.0) * u8::MAX as f32) as _,
+            (color[1].clamp(0.0, 1.0) * u8::MAX as f32) as _,
+            (color[2].clamp(0.0, 1.0) * u8::MAX as f32) as _,
+            (color[3].clamp(0.0, 1.0) * u8::MAX as f32) as _,
+        ])
+    }
+}
+
+impl From<[u8; 3]> for BitmapGlyphColor {
+    fn from(color: [u8; 3]) -> Self {
+        Self::Solid([color[0], color[1], color[2], u8::MAX])
+    }
+}
+
+impl From<[u8; 4]> for BitmapGlyphColor {
+    fn from(color: [u8; 4]) -> Self {
+        Self::Solid(color)
     }
 }

@@ -47,7 +47,7 @@ pub use {
         },
         shader::{
             DescriptorBinding, DescriptorBindingMap, DescriptorInfo, PipelineDescriptorInfo,
-            Shader, ShaderBuilder,
+            Shader, ShaderBuilder, SpecializationInfo,
         },
         surface::Surface,
         swapchain::{

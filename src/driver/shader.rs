@@ -4,7 +4,7 @@ use {
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
-    log::trace,
+    log::{trace, warn},
     spirv_reflect::{create_shader_module, types::ReflectDescriptorType, ShaderModule},
     std::{
         collections::btree_map::BTreeMap,
@@ -225,8 +225,8 @@ where
 pub struct Shader {
     #[builder(default = "\"main\".to_owned()")]
     pub entry_name: String,
-    #[builder(default)]
-    pub specialization_info: Option<vk::SpecializationInfo>,
+    #[builder(default, setter(strip_option))]
+    pub specialization_info: Option<SpecializationInfo>,
     pub spirv: Vec<u8>,
     pub stage: vk::ShaderStageFlags,
 }
@@ -253,11 +253,18 @@ impl Shader {
         &self,
         device: &Device<impl SharedPointerKind>,
     ) -> Result<DescriptorBindingMap, DriverError> {
-        let mut module = ShaderModule::load_u8_data(self.spirv.as_slice())
-            .map_err(|_| DriverError::InvalidData)?;
+        let mut module = ShaderModule::load_u8_data(self.spirv.as_slice()).map_err(|_| {
+            warn!("Unable to load shader module");
+
+            DriverError::InvalidData
+        })?;
         let descriptor_bindings = module
             .enumerate_descriptor_bindings(Some(&self.entry_name))
-            .map_err(|_| DriverError::InvalidData)?;
+            .map_err(|_| {
+                warn!("Unable to enumerate shader descriptor bindings");
+
+                DriverError::InvalidData
+            })?;
         let mut res = DescriptorBindingMap::default();
 
         for binding in descriptor_bindings {
@@ -367,5 +374,23 @@ impl Debug for Shader {
 impl From<ShaderBuilder> for Shader {
     fn from(shader: ShaderBuilder) -> Self {
         shader.build().unwrap()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SpecializationInfo {
+    pub data: Vec<u8>,
+    pub map_entries: Vec<vk::SpecializationMapEntry>,
+}
+
+impl SpecializationInfo {
+    pub fn new(
+        map_entries: impl Into<Vec<vk::SpecializationMapEntry>>,
+        data: impl Into<Vec<u8>>,
+    ) -> Self {
+        Self {
+            data: data.into(),
+            map_entries: map_entries.into(),
+        }
     }
 }

@@ -11,7 +11,7 @@ where
 {
     _decode_bitmap_r_rg: ComputePipeline<P>,
     decode_bitmap_rgb_rgba: ComputePipeline<P>,
-    device: Shared<Device<P>, P>,
+    pub device: Shared<Device<P>, P>,
     pool: HashPool<P>,
 }
 

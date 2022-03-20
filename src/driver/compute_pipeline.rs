@@ -1,7 +1,7 @@
 use {
     super::{
         DescriptorBindingMap, DescriptorSetLayout, Device, DriverError, PipelineDescriptorInfo,
-        Shader,
+        Shader, SpecializationInfo,
     },
     crate::{as_u32_slice, ptr::Shared},
     archery::SharedPointerKind,
@@ -126,7 +126,7 @@ pub struct ComputePipelineInfo {
     #[builder(setter(strip_option), default = "String::from(\"main\")")]
     pub entry_name: String,
     #[builder(default)]
-    pub specialization_info: Option<vk::SpecializationInfo>,
+    pub specialization_info: Option<SpecializationInfo>,
     pub spirv: Vec<u8>,
 }
 
@@ -141,7 +141,7 @@ impl ComputePipelineInfo {
             Shader::new(vk::ShaderStageFlags::COMPUTE, self.spirv).entry_name(self.entry_name);
 
         if let Some(specialization_info) = self.specialization_info {
-            shader = shader.specialization_info(self.specialization_info);
+            shader = shader.specialization_info(specialization_info);
         }
 
         shader.build().unwrap()

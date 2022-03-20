@@ -4,7 +4,7 @@ fn main() -> anyhow::Result<()> {
     // Set RUST_LOG=trace in your environment variables to see log output
     pretty_env_logger::init();
 
-    PakBuf::bake("examples/res/fonts.toml", "target/debug/example/fonts.pak")?;
+    PakBuf::bake("examples/res/fonts.toml", "target/debug/examples/fonts.pak")?;
 
     Ok(())
 

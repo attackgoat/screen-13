@@ -1,11 +1,10 @@
-use ash::vk::PushConstantRange;
-
 use {
     super::{
         DescriptorBindingMap, DescriptorSetLayout, Device, DriverError, PipelineDescriptorInfo,
-        SampleCount, Shader,
+        SampleCount, Shader, SpecializationInfo,
     },
     crate::{as_u32_slice, ptr::Shared},
+    anyhow::Context,
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
@@ -115,7 +114,7 @@ where
     device: Shared<Device<P>, P>,
     pub info: GraphicPipelineInfo,
     pub layout: vk::PipelineLayout,
-    pub push_constant_ranges: Vec<PushConstantRange>,
+    pub push_constant_ranges: Vec<vk::PushConstantRange>,
     shader_modules: Vec<vk::ShaderModule>,
     pub state: GraphicPipelineState,
 }
@@ -177,7 +176,7 @@ where
                 )
                 .map_err(|_| DriverError::Unsupported)?;
             let shader_info = shaders
-                .iter()
+                .into_iter()
                 .map(|shader| {
                     let shader_module_create_info = vk::ShaderModuleCreateInfo {
                         code_size: shader.spirv.len(),
@@ -208,6 +207,26 @@ where
 
             let vertex_input_state = VertexInputState {
                 vertex_attribute_descriptions: match info.vertex_input {
+                    VertexInputMode::BitmapFont => vec![
+                        vk::VertexInputAttributeDescription {
+                            location: 0,
+                            binding: 0,
+                            format: vk::Format::R32G32_SFLOAT,
+                            offset: 0,
+                        },
+                        vk::VertexInputAttributeDescription {
+                            location: 1,
+                            binding: 0,
+                            format: vk::Format::R32G32_SFLOAT,
+                            offset: 8,
+                        },
+                        vk::VertexInputAttributeDescription {
+                            location: 2,
+                            binding: 0,
+                            format: vk::Format::R8_SINT,
+                            offset: 16,
+                        },
+                    ],
                     VertexInputMode::ImGui => vec![
                         vk::VertexInputAttributeDescription {
                             location: 0,
@@ -231,6 +250,11 @@ where
                     VertexInputMode::StaticMesh => vec![],
                 },
                 vertex_binding_descriptions: match info.vertex_input {
+                    VertexInputMode::BitmapFont => vec![vk::VertexInputBindingDescription {
+                        binding: 0,
+                        stride: 20,
+                        input_rate: vk::VertexInputRate::VERTEX,
+                    }],
                     VertexInputMode::ImGui => vec![vk::VertexInputBindingDescription {
                         binding: 0,
                         stride: 20,
@@ -245,12 +269,15 @@ where
             };
             let rasterization_state = vk::PipelineRasterizationStateCreateInfo {
                 front_face: match info.vertex_input {
+                    VertexInputMode::BitmapFont | VertexInputMode::StaticMesh => {
+                        vk::FrontFace::COUNTER_CLOCKWISE
+                    }
                     VertexInputMode::ImGui => vk::FrontFace::COUNTER_CLOCKWISE,
-                    VertexInputMode::StaticMesh => vk::FrontFace::COUNTER_CLOCKWISE,
                 },
                 line_width: 1.0,
                 polygon_mode: vk::PolygonMode::FILL,
                 cull_mode: match info.vertex_input {
+                    VertexInputMode::BitmapFont => ash::vk::CullModeFlags::BACK,
                     VertexInputMode::ImGui => ash::vk::CullModeFlags::NONE,
                     VertexInputMode::StaticMesh => {
                         if info.two_sided {
@@ -264,7 +291,7 @@ where
             };
             let multisample_state = MultisampleState {
                 rasterization_samples: match info.vertex_input {
-                    VertexInputMode::ImGui => SampleCount::X1,
+                    VertexInputMode::BitmapFont | VertexInputMode::ImGui => SampleCount::X1,
                     VertexInputMode::StaticMesh => info.samples,
                 },
                 ..Default::default()
@@ -366,7 +393,7 @@ pub struct Stage {
     pub flags: vk::ShaderStageFlags,
     pub module: vk::ShaderModule,
     pub name: CString,
-    pub specialization_info: Option<vk::SpecializationInfo>,
+    pub specialization_info: Option<SpecializationInfo>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -397,6 +424,7 @@ impl Default for StencilMode {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum VertexInputMode {
     // AnimatedMesh,
+    BitmapFont,
     ImGui,
     StaticMesh,
 }
