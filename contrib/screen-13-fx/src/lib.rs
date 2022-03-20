@@ -20,6 +20,8 @@ pub mod prelude_rc {
     pub type ModelLoader = super::ModelLoader<P>;
 }
 
+pub mod text;
+
 mod res {
     pub mod shader {
         include!(concat!(env!("OUT_DIR"), "/shader_bindings.rs"));

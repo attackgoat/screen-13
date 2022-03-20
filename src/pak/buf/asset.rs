@@ -25,6 +25,8 @@ pub enum Asset {
     Bitmap(Bitmap),
     /// `.fnt` bitmapped fonts.
     BitmapFont(Blob),
+    /// Raw byte blobs.
+    Blob(Blob),
     /// Solid color.
     ColorRgb([u8; 3]),
     /// Solid color with alpha channel.

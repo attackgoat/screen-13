@@ -30,7 +30,7 @@ use {
         collections::HashMap,
         env::var,
         fmt::{Debug, Formatter},
-        fs::File,
+        fs::{create_dir_all, File},
         io::{BufReader, Cursor, Error, ErrorKind, Read, Seek, SeekFrom},
         ops::Range,
         path::{Path, PathBuf},
@@ -375,7 +375,7 @@ impl PakBuf {
                         let asset_path = asset_path.clone();
                         tasks.push(rt.spawn_blocking(move || {
                             Bitmap::new(&asset_path)
-                                .bake_from_source(&writer, &src_dir, Some(&asset_path))
+                                .bake_from_source(&writer, src_dir, Some(asset_path))
                                 .unwrap();
                         }));
                     }
@@ -395,10 +395,16 @@ impl PakBuf {
                             //     bitmap.canonicalize(&src_dir, &src_dir);
                             //     bake_bitmap(&mut context, &mut pak, &src_dir, Some(src), &bitmap);
                             // }
-                            //     Asset::BitmapFont(mut bitmap_font) => {
-                            //         bitmap_font.canonicalize(&src_dir, &src_dir);
-                            //         bake_bitmap_font(&mut context, &mut pak, src_dir, src, bitmap_font);
-                            //     }
+                            Asset::BitmapFont(mut blob) => {
+                                let writer = Arc::clone(&writer);
+                                let src_dir = src_dir.clone();
+                                let asset_path = asset_path.clone();
+                                let asset_parent = asset_parent.clone();
+                                tasks.push(rt.spawn_blocking(move || {
+                                    blob.canonicalize(&src_dir, &asset_parent);
+                                    blob.bake_bitmap_font(&writer, src_dir, asset_path).unwrap();
+                                }));
+                            }
                             //     Asset::Color(_) => unreachable!(),
                             //     Asset::Content(_) => {
                             //         // Nested content files are not yet supported
@@ -419,9 +425,9 @@ impl PakBuf {
                                         .bake(
                                             &rt2,
                                             &writer,
-                                            &src_dir,
-                                            &asset_parent,
-                                            Some(&asset_path),
+                                            src_dir,
+                                            asset_parent,
+                                            Some(asset_path),
                                         )
                                         .unwrap();
                                 }));
@@ -440,9 +446,10 @@ impl PakBuf {
                         let writer = Arc::clone(&writer);
                         let src_dir = src_dir.clone();
                         let asset_path = asset_path.clone();
-                        tasks.push(
-                            rt.spawn_blocking(move || Blob::bake(&writer, &src_dir, &asset_path)),
-                        );
+                        tasks.push(rt.spawn_blocking(move || {
+                            let blob = Blob { src: asset_path };
+                            blob.bake(&writer, &src_dir).unwrap();
+                        }));
                     }
                 }
             }
@@ -453,7 +460,16 @@ impl PakBuf {
                 task.await.unwrap();
             }
 
-            writer.lock().write(dst).unwrap();
+            let dst = dst.as_ref().to_path_buf();
+            if let Some(parent) = dst.parent() {
+                create_dir_all(parent)
+                    .unwrap_or_else(|_| panic!("Unable to create directory {}", parent.display()));
+            }
+
+            writer
+                .lock()
+                .write(&dst)
+                .unwrap_or_else(|_| panic!("Unable to write pak file {}", dst.display()));
         });
 
         Ok(())
