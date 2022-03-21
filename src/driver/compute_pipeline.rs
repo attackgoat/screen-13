@@ -38,7 +38,16 @@ where
         let device = Shared::clone(device);
         let info: ComputePipelineInfo = info.into();
         let shader = info.clone().into_shader();
-        let descriptor_bindings = shader.descriptor_bindings(&device)?;
+
+        // Use SPIR-V reflection to get the types and counts of all descriptors
+        let mut descriptor_bindings = vec![shader.descriptor_bindings(&device)?];
+
+        // We allow extra descriptors because specialization constants aren't specified yet
+        if let Some(extra_descriptors) = &info.extra_descriptors {
+            descriptor_bindings.push(extra_descriptors.clone());
+        }
+
+        let descriptor_bindings = Shader::merge_descriptor_bindings(descriptor_bindings);
         let descriptor_info =
             PipelineDescriptorInfo::create(&device, &descriptor_bindings, shader.stage)?;
         let descriptor_set_layouts = descriptor_info
@@ -61,13 +70,16 @@ where
                 .module(shader_module)
                 .stage(shader.stage)
                 .name(&entry_name);
+            let mut layout_info =
+                vk::PipelineLayoutCreateInfo::builder().set_layouts(&descriptor_set_layouts);
+
+            let push_const = shader.push_constant_range()?;
+            if let Some(push_const) = &push_const {
+                layout_info = layout_info.push_constant_ranges(from_ref(push_const));
+            }
+
             let layout = device
-                .create_pipeline_layout(
-                    &vk::PipelineLayoutCreateInfo::builder()
-                        .set_layouts(&descriptor_set_layouts)
-                        .push_constant_ranges(shader.push_constant_ranges()?.as_slice()),
-                    None,
-                )
+                .create_pipeline_layout(&layout_info, None)
                 .map_err(|_| DriverError::Unsupported)?;
             let pipeline_info = vk::ComputePipelineCreateInfo::builder()
                 .stage(stage_create_info.build())
@@ -123,10 +135,19 @@ where
 #[derive(Builder, Clone, Debug)]
 #[builder(pattern = "owned")]
 pub struct ComputePipelineInfo {
+    /// The GLSL or HLSL shader entry point name, or `main` by default.
     #[builder(setter(strip_option), default = "String::from(\"main\")")]
     pub entry_name: String,
+    /// A map of extra descriptors not directly specified in the shader SPIR-V code.
+    ///
+    /// Use this for specialization constants, as they will not appear in the automatic descriptor
+    /// binding map.
+    #[builder(default, setter(strip_option))]
+    pub extra_descriptors: Option<DescriptorBindingMap>,
+    /// Data about Vulkan specialization constants.
     #[builder(default)]
     pub specialization_info: Option<SpecializationInfo>,
+    /// Shader code.
     pub spirv: Vec<u8>,
 }
 

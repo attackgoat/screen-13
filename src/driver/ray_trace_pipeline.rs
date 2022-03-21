@@ -576,12 +576,16 @@ where
             .into_iter()
             .map(|shader| shader.into())
             .collect::<Vec<Shader>>();
+
+        // Use SPIR-V reflection to get the types and counts of all descriptors
         let descriptor_bindings = Shader::merge_descriptor_bindings(
             shaders
                 .iter()
                 .map(|shader| shader.descriptor_bindings(&device))
                 .collect::<Result<Vec<_>, _>>()?,
         );
+
+
         let stages = shaders
             .iter()
             .map(|shader| shader.stage)

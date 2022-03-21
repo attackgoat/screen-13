@@ -268,6 +268,8 @@ where
             surface_capabilities.current_transform
         };
 
+        // info!("supported_usage_flags {:#?}", &surface_capabilities.supported_usage_flags);
+
         let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
             .surface(*self.surface)
             .min_image_count(desired_image_count)
@@ -278,9 +280,7 @@ where
                 height: surface_resolution.y,
             })
             .image_usage(
-                vk::ImageUsageFlags::COLOR_ATTACHMENT
-                    | vk::ImageUsageFlags::SAMPLED
-                    | vk::ImageUsageFlags::STORAGE,
+                surface_capabilities.supported_usage_flags & !vk::ImageUsageFlags::STORAGE,
             )
             .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
             .pre_transform(pre_transform)
@@ -308,7 +308,9 @@ where
                         ty: ImageType::Texture2D,
                         usage: vk::ImageUsageFlags::COLOR_ATTACHMENT
                             | vk::ImageUsageFlags::SAMPLED
-                            | vk::ImageUsageFlags::STORAGE,
+                            // | vk::ImageUsageFlags::STORAGE // TODO: Conditionally enable!
+                            | vk::ImageUsageFlags::TRANSFER_DST
+                            | vk::ImageUsageFlags::TRANSFER_SRC,
                         flags: vk::ImageCreateFlags::empty(), // MUTABLE_FORMAT | SPARSE_ALIASED | CUBE_COMPATIBLE
                         fmt: vk::Format::B8G8R8A8_SRGB,
                         extent: uvec3(self.info.extent.x, self.info.extent.y, 0),

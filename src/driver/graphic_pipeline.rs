@@ -139,12 +139,19 @@ where
             .into_iter()
             .map(|shader| shader.into())
             .collect::<Vec<Shader>>();
-        let descriptor_bindings = Shader::merge_descriptor_bindings(
-            shaders
-                .iter()
-                .map(|shader| shader.descriptor_bindings(&device))
-                .collect::<Result<Vec<_>, _>>()?,
-        );
+
+        // Use SPIR-V reflection to get the types and counts of all descriptors
+        let mut descriptor_bindings = shaders
+            .iter()
+            .map(|shader| shader.descriptor_bindings(&device))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // We allow extra descriptors because specialization constants aren't specified yet
+        if let Some(extra_descriptors) = &info.extra_descriptors {
+            descriptor_bindings.push(extra_descriptors.clone());
+        }
+
+        let descriptor_bindings = Shader::merge_descriptor_bindings(descriptor_bindings);
         let stages = shaders
             .iter()
             .map(|shader| shader.stage)
@@ -160,11 +167,15 @@ where
 
         let push_constant_ranges = shaders
             .iter()
-            .map(|shader| shader.push_constant_ranges())
+            .map(|shader| shader.push_constant_range())
             .collect::<Result<Vec<_>, _>>()?
             .into_iter()
-            .flatten()
+            .filter_map(|mut push_const| push_const.take())
             .collect::<Vec<_>>();
+
+        // for pcr in &push_constant_ranges {
+        //     trace!("Graphic push constant {:?} {}..{}", pcr.stage_flags, pcr.offset, pcr.offset + pcr.size);
+        // }
 
         unsafe {
             let layout = device
@@ -346,6 +357,12 @@ pub struct GraphicPipelineInfo {
     pub blend: BlendMode,
     #[builder(default)]
     pub depth_stencil: Option<DepthStencilMode>,
+    /// A map of extra descriptors not directly specified in the shader SPIR-V code.
+    ///
+    /// Use this for specialization constants, as they will not appear in the automatic descriptor
+    /// binding map.
+    #[builder(default, setter(strip_option))]
+    pub extra_descriptors: Option<DescriptorBindingMap>,
     #[builder(default = "SampleCount::X1")]
     pub samples: SampleCount,
     #[builder(default)]

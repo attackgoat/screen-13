@@ -141,12 +141,18 @@ where
                     .push_next(ray_tracing_pipeline_features.as_mut().unwrap());
             }
 
-            let mut features2 = features2.build();
+            let mut features2 = features2
+                .features(vk::PhysicalDeviceFeatures {
+                    sampler_anisotropy: vk::TRUE,
+                    ..Default::default()
+                })
+                .build();
 
             instance
                 .fp_v1_1()
                 .get_physical_device_features2(*physical_device, &mut features2);
 
+            debug!("{:#?}", &features2.features);
             debug!("{:#?}", &scalar_block);
             debug!("{:#?}", &descriptor_indexing);
             debug!("{:#?}", &imageless_framebuffer);
@@ -213,12 +219,10 @@ where
             }
 
             //assert!(get_buffer_device_address_features.buffer_device_address != 0);
-
             let device_create_info = vk::DeviceCreateInfo::builder()
                 .queue_create_infos(&queue_info)
                 .enabled_extension_names(&device_extension_names)
-                .push_next(&mut features2)
-                .build();
+                .push_next(&mut features2);
             let device = instance
                 .create_device(*physical_device, &device_create_info, None)
                 .map_err(|_| DriverError::Unsupported)?;
@@ -297,20 +301,21 @@ where
                             address_modes,
                         },
                         unsafe {
-                            device.create_sampler(
-                                &vk::SamplerCreateInfo::builder()
-                                    .mag_filter(texel_filter)
-                                    .min_filter(texel_filter)
-                                    .mipmap_mode(mipmap_mode)
-                                    .address_mode_u(address_modes)
-                                    .address_mode_v(address_modes)
-                                    .address_mode_w(address_modes)
-                                    .max_lod(vk::LOD_CLAMP_NONE)
-                                    .max_anisotropy(16.0)
-                                    .anisotropy_enable(anisotropy_enable)
-                                    .build(),
-                                None,
-                            )
+                            let mut info = vk::SamplerCreateInfo::builder()
+                                .mag_filter(texel_filter)
+                                .min_filter(texel_filter)
+                                .mipmap_mode(mipmap_mode)
+                                .address_mode_u(address_modes)
+                                .address_mode_v(address_modes)
+                                .address_mode_w(address_modes)
+                                .max_lod(vk::LOD_CLAMP_NONE)
+                                .anisotropy_enable(anisotropy_enable);
+
+                            if anisotropy_enable {
+                                info = info.max_anisotropy(16.0);
+                            }
+
+                            device.create_sampler(&info, None)
                         }
                         .map_err(|_| DriverError::Unsupported)?,
                     );
@@ -321,7 +326,7 @@ where
         Ok(res)
     }
 
-    pub(crate) fn immutable_sampler(this: &Self, info: SamplerDesc) -> Option<vk::Sampler> {
+    pub fn immutable_sampler(this: &Self, info: SamplerDesc) -> Option<vk::Sampler> {
         this.immutable_samplers.get(&info).copied()
     }
 
@@ -442,8 +447,8 @@ bitflags! {
 impl FeatureFlags {
     pub fn extension_names(&self) -> Vec<*const i8> {
         let mut device_extension_names_raw = vec![
-            // This particular ext is part of 1.2 now, but add new ones here:
-            // vk::KhrVulkanMemoryModelFn::name().as_ptr(),
+            vk::KhrImagelessFramebufferFn::name().as_ptr(),
+            vk::KhrImageFormatListFn::name().as_ptr(),
         ];
 
         if self.contains(FeatureFlags::DLSS) {

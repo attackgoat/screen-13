@@ -51,29 +51,32 @@ impl PhysicalDevice {
     where
         P: SharedPointerKind,
     {
-        if let Ok(device) = Device::create(
-            instance,
-            this.clone(),
-            DriverConfig::new().presentation(true).build().unwrap(),
-        ) {
-            this.queue_families
-                .iter()
-                .enumerate()
-                .any(|(queue_idx, info)| unsafe {
-                    info.props.queue_flags.contains(vk::QueueFlags::GRAPHICS)
-                        && device
-                            .surface_ext
-                            .get_physical_device_surface_support(
-                                this.physical_device,
-                                queue_idx as _,
-                                **surface,
-                            )
-                            .ok()
-                            .unwrap_or_default()
-                })
-        } else {
-            false
-        }
+        // if let Ok(device) = Device::create(
+        //     instance,
+        //     this.clone(),
+        //     DriverConfig::new().presentation(true).build().unwrap(),
+        // ) {
+        //     this.queue_families
+        //         .iter()
+        //         .enumerate()
+        //         .any(|(queue_idx, info)| unsafe {
+        //             info.props.queue_flags.contains(vk::QueueFlags::GRAPHICS)
+        //                 && device
+        //                     .surface_ext
+        //                     .get_physical_device_surface_support(
+        //                         this.physical_device,
+        //                         queue_idx as _,
+        //                         **surface,
+        //                     )
+        //                     .ok()
+        //                     .unwrap_or_default()
+        //         })
+        // } else {
+        //     false
+        // }
+
+        // TODO!
+        true
     }
 
     pub fn has_ray_tracing_support(_this: &Self) -> bool {

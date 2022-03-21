@@ -246,6 +246,8 @@ where
     }
 
     pub fn framebuffer_ref(&self, info: FramebufferKey) -> Result<vk::Framebuffer, DriverError> {
+        debug_assert!(!info.attachments.is_empty());
+
         let mut cache = self.framebuffer_cache.lock();
         let entry = cache.entry(info);
         if let Entry::Occupied(entry) = entry {

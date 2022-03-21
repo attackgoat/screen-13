@@ -6,8 +6,8 @@ fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
     // Standard Screen-13 stuff
-    let event_loop = EventLoop::new().build()?;
-    let display = ComputePresenter::new(&event_loop.device)?;
+    let event_loop = EventLoop::new().debug(true).build()?;
+    let display = GraphicPresenter::new(&event_loop.device)?;
     let mut image_loader = ImageLoader::new(&event_loop.device)?;
     let mut pool = HashPool::new(&event_loop.device);
 
@@ -24,7 +24,7 @@ fn main() -> anyhow::Result<()> {
         let image_node = frame.render_graph.bind_node(
             pool.lease(
                 ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, frame.resolution)
-                    .usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED),
+                    .usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED| vk::ImageUsageFlags::TRANSFER_DST),
             )
             .unwrap(),
         );

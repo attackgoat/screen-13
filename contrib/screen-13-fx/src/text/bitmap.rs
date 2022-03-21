@@ -43,10 +43,28 @@ where
                 .collect::<Result<_, _>>()?,
         );
         let num_pages = bitmap_font.pages().len() as i32;
+        let llr_sampler = Device::immutable_sampler(
+            &image_loader.device,
+            SamplerDesc {
+                address_modes: vk::SamplerAddressMode::REPEAT,
+                mipmap_mode: vk::SamplerMipmapMode::LINEAR,
+                texel_filter: vk::Filter::LINEAR,
+            },
+        )
+        .unwrap();
         let pipeline = Shared::new(
             GraphicPipeline::create(
                 &image_loader.device,
-                GraphicPipelineInfo::new().vertex_input(VertexInputMode::BitmapFont),
+                GraphicPipelineInfo::new()
+                    .extra_descriptors(
+                        [(
+                            DescriptorBinding(0, 0),
+                            DescriptorInfo::CombinedImageSampler(num_pages as u32, llr_sampler),
+                        )]
+                        .into_iter()
+                        .collect(),
+                    )
+                    .vertex_input(VertexInputMode::BitmapFont),
                 [
                     Shader::new_vertex(crate::res::shader::GRAPHIC_FONT_VERT),
                     Shader::new_fragment(crate::res::shader::GRAPHIC_FONT_BITMAP_FRAG)
@@ -133,7 +151,7 @@ where
                 0.0,
             ));
 
-        let vertex_buf_len = text.chars().count() as _;
+        let vertex_buf_len = text.chars().count() as u64 * 100;
         let mut vertex_buf_binding = self
             .pool
             .borrow_mut()
@@ -166,7 +184,9 @@ where
         let mut pass = graph
             .record_pass("text")
             .access_node(vertex_buf_node, AccessType::VertexBuffer)
-            .bind_pipeline(&self.pipeline);
+            .bind_pipeline(&self.pipeline)
+            .load_color(0, image)
+            .store_color(0, image);
 
         for (idx, page_node) in page_nodes.iter().enumerate() {
             pass = pass.read_descriptor((0, [idx as _]), *page_node);
@@ -182,12 +202,11 @@ where
                     from_ref(&bindings[vertex_buf_node]),
                     from_ref(&0),
                 );
-                device.cmd_draw(cmd_buf, (offset / 96) as u32, 1, 0, 0);
+                device.cmd_draw(cmd_buf, (offset / 100) as u32, 1, 0, 0);
             });
 
         for page_node in page_nodes {
-            let page_binding = graph.unbind_node(page_node);
-            pages.push(page_binding);
+            pages.push(graph.unbind_node(page_node));
         }
     }
 }

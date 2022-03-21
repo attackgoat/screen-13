@@ -264,10 +264,19 @@ impl Shader {
                     desc_ty,
                     nbind,
                     ..
-                } => Some((name, desc_bind, desc_ty, nbind)),
+                } if *nbind > 0 => Some((name, desc_bind, desc_ty, nbind)),
                 _ => None,
             })
         {
+            // trace!(
+            //     "Binding {}: {}.{} = {:?}[{}]",
+            //     name.as_deref().unwrap_or_default(),
+            //     binding.set(),
+            //     binding.bind(),
+            //     *desc_ty,
+            //     *binding_count
+            // );
+
             res.insert(
                 DescriptorBinding(binding.set(), binding.bind()),
                 match desc_ty {
@@ -284,21 +293,13 @@ impl Shader {
                     }
                     DescriptorType::SampledImage() => DescriptorInfo::SampledImage(*binding_count),
                     DescriptorType::Sampler() => DescriptorInfo::Sampler(*binding_count),
-                    DescriptorType::StorageBuffer(access_ty) => {
-                        if *access_ty == AccessType::ReadOnly {
-                            DescriptorInfo::StorageBuffer(*binding_count)
-                        } else {
-                            DescriptorInfo::StorageBufferDynamic(*binding_count)
-                        }
+                    DescriptorType::StorageBuffer(_access_ty) => {
+                        DescriptorInfo::StorageBuffer(*binding_count)
                     }
-                    DescriptorType::StorageImage(access_ty) => {
-                        if *access_ty == AccessType::ReadOnly {
-                            DescriptorInfo::StorageImage(*binding_count)
-                        } else {
-                            DescriptorInfo::StorageImage(*binding_count)
-                        }
+                    DescriptorType::StorageImage(_access_ty) => {
+                        DescriptorInfo::StorageImage(*binding_count)
                     }
-                    DescriptorType::StorageTexelBuffer(_) => {
+                    DescriptorType::StorageTexelBuffer(_access_ty) => {
                         DescriptorInfo::StorageTexelBuffer(*binding_count)
                     }
                     DescriptorType::UniformBuffer() => {
@@ -338,11 +339,9 @@ impl Shader {
         res
     }
 
-    pub fn push_constant_ranges(&self) -> Result<Vec<vk::PushConstantRange>, DriverError> {
-        let entry_point = self.reflect_entry_point()?;
-        let mut res = vec![];
-
-        for push_const_member in entry_point
+    pub fn push_constant_range(&self) -> Result<Option<vk::PushConstantRange>, DriverError> {
+        let res = self
+            .reflect_entry_point()?
             .vars
             .iter()
             .filter_map(|var| match var {
@@ -353,15 +352,17 @@ impl Shader {
                 _ => None,
             })
             .flatten()
-        {
-            res.push(
+            .map(|push_const| {
+                push_const.offset..push_const.offset + push_const.ty.nbyte().unwrap_or_default()
+            })
+            .reduce(|a, b| a.start.min(b.start)..a.end.max(b.end))
+            .map(|push_const| {
                 vk::PushConstantRange::builder()
                     .stage_flags(self.stage)
-                    .size(push_const_member.ty.nbyte().unwrap() as _)
-                    .offset(push_const_member.offset as _)
-                    .build(),
-            );
-        }
+                    .size((push_const.end - push_const.start) as _)
+                    .offset(push_const.start as _)
+                    .build()
+            });
 
         Ok(res)
     }

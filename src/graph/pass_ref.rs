@@ -937,33 +937,28 @@ where
 
         if stage & whole_stage != stage {
             warn!("Extra stage flags specified");
+
+            stage &= whole_stage;
         }
 
-        stage &= whole_stage;
-
-        let data = as_u8_slice(&data).to_vec();
+        let data = as_u8_slice(&data);
         let mut push_consts = vec![];
         for range in &pipeline.push_constant_ranges {
-            let range_stage = range.stage_flags & stage;
-            if !range_stage.is_empty()
+            let stage = range.stage_flags & stage;
+            if !stage.is_empty()
                 && offset <= range.offset
                 && offset as usize + data.len() > range.offset as usize
             {
                 let start = (range.offset - offset) as usize;
-                let end = data.len() - start;
+                let end = range.offset as usize + (data.len() - start).min(range.size as usize);
                 let data = data[start..end].to_vec();
 
-                // trace!(
-                //     "PCR: {:?} offset {} data {:?}",
-                //     range_stage,
-                //     range.offset,
-                //     &data
-                // );
+                // trace!("Push constant {:?} {}..{}", stage, start, end);
 
                 push_consts.push(PushConstantRange {
                     data,
                     offset: range.offset,
-                    stage: range.stage_flags,
+                    stage,
                 });
             }
         }

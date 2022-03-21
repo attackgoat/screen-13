@@ -201,7 +201,9 @@ where
                     });
 
                     return false;
-                } else if cfg.ray_tracing
+                }
+                
+                if cfg.ray_tracing
                     && !PhysicalDevice::has_ray_tracing_support(physical_device)
                 {
                     info!("{:?} lacks ray tracing support", unsafe {
@@ -210,6 +212,8 @@ where
 
                     return false;
                 }
+
+                // TODO: Check vkGetPhysicalDeviceFeatures for samplerAnisotropy (it should exist, but to be sure)
 
                 true
             })
@@ -334,7 +338,7 @@ impl Error for DriverError {}
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct SamplerDesc {
-    pub texel_filter: vk::Filter,
-    pub mipmap_mode: vk::SamplerMipmapMode,
     pub address_modes: vk::SamplerAddressMode,
+    pub mipmap_mode: vk::SamplerMipmapMode,
+    pub texel_filter: vk::Filter,
 }
