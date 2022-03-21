@@ -4,8 +4,8 @@ use {
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
-    log::{trace, warn},
-    spirv_reflect::{create_shader_module, types::ReflectDescriptorType, ShaderModule},
+    log::{error, trace, warn},
+    spirq::{ty::Type, AccessType, DescriptorType, EntryPoint, ReflectConfig, Variable},
     std::{
         collections::btree_map::BTreeMap,
         fmt::{Debug, Formatter},
@@ -68,7 +68,7 @@ pub struct DescriptorBinding(pub u32, pub u32);
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum DescriptorInfo {
-    AccelerationStructureNV(u32),
+    AccelerationStructure(u32),
     CombinedImageSampler(u32, vk::Sampler),
     InputAttachment(u32, u32), //count, input index,
     SampledImage(u32),
@@ -85,7 +85,7 @@ pub enum DescriptorInfo {
 impl DescriptorInfo {
     fn binding_count(self) -> u32 {
         match self {
-            Self::AccelerationStructureNV(binding_count) => binding_count,
+            Self::AccelerationStructure(binding_count) => binding_count,
             Self::CombinedImageSampler(binding_count, _) => binding_count,
             Self::InputAttachment(binding_count, _) => binding_count,
             Self::SampledImage(binding_count) => binding_count,
@@ -111,7 +111,7 @@ impl DescriptorInfo {
 impl From<DescriptorInfo> for vk::DescriptorType {
     fn from(descriptor_info: DescriptorInfo) -> Self {
         match descriptor_info {
-            DescriptorInfo::AccelerationStructureNV(_) => Self::ACCELERATION_STRUCTURE_NV,
+            DescriptorInfo::AccelerationStructure(_) => Self::ACCELERATION_STRUCTURE_KHR,
             DescriptorInfo::CombinedImageSampler(..) => Self::COMBINED_IMAGE_SAMPLER,
             DescriptorInfo::InputAttachment(..) => Self::INPUT_ATTACHMENT,
             DescriptorInfo::SampledImage(_) => Self::SAMPLED_IMAGE,
@@ -253,63 +253,60 @@ impl Shader {
         &self,
         device: &Device<impl SharedPointerKind>,
     ) -> Result<DescriptorBindingMap, DriverError> {
-        let mut module = ShaderModule::load_u8_data(self.spirv.as_slice()).map_err(|e| {
-            warn!("Unable to load shader module ({} bytes): {e}", self.spirv.len());
-
-            DriverError::InvalidData
-        })?;
-        let descriptor_bindings = module
-            .enumerate_descriptor_bindings(Some(&self.entry_name))
-            .map_err(|_| {
-                warn!("Unable to enumerate shader descriptor bindings");
-
-                DriverError::InvalidData
-            })?;
+        let entry_point = self.reflect_entry_point()?;
         let mut res = DescriptorBindingMap::default();
 
-        for binding in descriptor_bindings {
+        for (name, binding, desc_ty, binding_count) in
+            entry_point.vars.iter().filter_map(|var| match var {
+                Variable::Descriptor {
+                    name,
+                    desc_bind,
+                    desc_ty,
+                    nbind,
+                    ..
+                } => Some((name, desc_bind, desc_ty, nbind)),
+                _ => None,
+            })
+        {
             res.insert(
-                DescriptorBinding(binding.set, binding.binding),
-                match binding.descriptor_type {
-                    ReflectDescriptorType::AccelerationStructureNV => {
-                        DescriptorInfo::AccelerationStructureNV(binding.count)
+                DescriptorBinding(binding.set(), binding.bind()),
+                match desc_ty {
+                    DescriptorType::AccelStruct() => {
+                        DescriptorInfo::AccelerationStructure(*binding_count)
                     }
-                    ReflectDescriptorType::CombinedImageSampler => {
-                        DescriptorInfo::CombinedImageSampler(
-                            binding.count,
-                            guess_immutable_sampler(device, &binding.name).unwrap(),
-                        )
-                    }
-                    ReflectDescriptorType::InputAttachment => DescriptorInfo::InputAttachment(
-                        binding.count,
-                        binding.input_attachment_index,
+                    DescriptorType::CombinedImageSampler() => DescriptorInfo::CombinedImageSampler(
+                        *binding_count,
+                        guess_immutable_sampler(device, name.as_deref().unwrap_or_default())
+                            .expect("Unable to guess immutable sampler type"),
                     ),
-                    ReflectDescriptorType::SampledImage => {
-                        DescriptorInfo::SampledImage(binding.count)
+                    DescriptorType::InputAttachment(input_attachment_index) => {
+                        DescriptorInfo::InputAttachment(*binding_count, *input_attachment_index)
                     }
-                    ReflectDescriptorType::Sampler => DescriptorInfo::Sampler(binding.count),
-                    ReflectDescriptorType::StorageBuffer => {
-                        DescriptorInfo::StorageBuffer(binding.count)
+                    DescriptorType::SampledImage() => DescriptorInfo::SampledImage(*binding_count),
+                    DescriptorType::Sampler() => DescriptorInfo::Sampler(*binding_count),
+                    DescriptorType::StorageBuffer(access_ty) => {
+                        if *access_ty == AccessType::ReadOnly {
+                            DescriptorInfo::StorageBuffer(*binding_count)
+                        } else {
+                            DescriptorInfo::StorageBufferDynamic(*binding_count)
+                        }
                     }
-                    ReflectDescriptorType::StorageBufferDynamic => {
-                        DescriptorInfo::StorageBufferDynamic(binding.count)
+                    DescriptorType::StorageImage(access_ty) => {
+                        if *access_ty == AccessType::ReadOnly {
+                            DescriptorInfo::StorageImage(*binding_count)
+                        } else {
+                            DescriptorInfo::StorageImage(*binding_count)
+                        }
                     }
-                    ReflectDescriptorType::StorageImage => {
-                        DescriptorInfo::StorageImage(binding.count)
+                    DescriptorType::StorageTexelBuffer(_) => {
+                        DescriptorInfo::StorageTexelBuffer(*binding_count)
                     }
-                    ReflectDescriptorType::StorageTexelBuffer => {
-                        DescriptorInfo::StorageTexelBuffer(binding.count)
+                    DescriptorType::UniformBuffer() => {
+                        DescriptorInfo::UniformBufferDynamic(*binding_count)
                     }
-                    ReflectDescriptorType::UniformBuffer => {
-                        DescriptorInfo::UniformBuffer(binding.count)
+                    DescriptorType::UniformTexelBuffer() => {
+                        DescriptorInfo::UniformTexelBuffer(*binding_count)
                     }
-                    ReflectDescriptorType::UniformBufferDynamic => {
-                        DescriptorInfo::UniformBufferDynamic(binding.count)
-                    }
-                    ReflectDescriptorType::UniformTexelBuffer => {
-                        DescriptorInfo::UniformTexelBuffer(binding.count)
-                    }
-                    _ => unimplemented!(),
                 },
             );
         }
@@ -342,24 +339,52 @@ impl Shader {
     }
 
     pub fn push_constant_ranges(&self) -> Result<Vec<vk::PushConstantRange>, DriverError> {
-        let mut module = ShaderModule::load_u8_data(self.spirv.as_slice())
-            .map_err(|_| DriverError::InvalidData)?;
-        let block_vars = module
-            .enumerate_push_constant_blocks(Some(&self.entry_name))
-            .map_err(|_| DriverError::InvalidData)?;
+        let entry_point = self.reflect_entry_point()?;
         let mut res = vec![];
 
-        for block_var in &block_vars {
+        for push_const_member in entry_point
+            .vars
+            .iter()
+            .filter_map(|var| match var {
+                Variable::PushConstant { ty, .. } => match ty {
+                    Type::Struct(ty) => Some(ty.members.clone()),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .flatten()
+        {
             res.push(
                 vk::PushConstantRange::builder()
                     .stage_flags(self.stage)
-                    .size(block_var.size)
-                    .offset(block_var.offset)
+                    .size(push_const_member.ty.nbyte().unwrap() as _)
+                    .offset(push_const_member.offset as _)
                     .build(),
             );
         }
 
         Ok(res)
+    }
+
+    fn reflect_entry_point(&self) -> Result<EntryPoint, DriverError> {
+        let entry_points = ReflectConfig::new()
+            .spv(self.spirv.as_slice())
+            .reflect()
+            .map_err(|_| {
+                error!("Unable to reflect spirv");
+
+                DriverError::InvalidData
+            })?;
+        let entry_point = entry_points
+            .into_iter()
+            .find(|entry_point| entry_point.name == self.entry_name)
+            .ok_or_else(|| {
+                error!("Entry point not found");
+
+                DriverError::InvalidData
+            })?;
+
+        Ok(entry_point)
     }
 }
 
