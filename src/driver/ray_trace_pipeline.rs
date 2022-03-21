@@ -585,7 +585,6 @@ where
                 .collect::<Result<Vec<_>, _>>()?,
         );
 
-
         let stages = shaders
             .iter()
             .map(|shader| shader.stage)

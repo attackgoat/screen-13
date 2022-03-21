@@ -279,9 +279,7 @@ where
                 width: surface_resolution.x,
                 height: surface_resolution.y,
             })
-            .image_usage(
-                surface_capabilities.supported_usage_flags & !vk::ImageUsageFlags::STORAGE,
-            )
+            .image_usage(surface_capabilities.supported_usage_flags & !vk::ImageUsageFlags::STORAGE)
             .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
             .pre_transform(pre_transform)
             .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)

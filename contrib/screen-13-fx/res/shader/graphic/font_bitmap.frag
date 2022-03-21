@@ -1,4 +1,4 @@
-#version 460
+#version 460 core
 
 layout(constant_id = 0) const int NUM_PAGES = 1;
 

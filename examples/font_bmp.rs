@@ -23,12 +23,15 @@ fn main() -> anyhow::Result<()> {
     event_loop.run(|frame| {
         let image_node = frame.render_graph.bind_node(
             pool.lease(
-                ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, frame.resolution)
-                    .usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED| vk::ImageUsageFlags::TRANSFER_DST),
+                ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, frame.resolution).usage(
+                    vk::ImageUsageFlags::COLOR_ATTACHMENT
+                        | vk::ImageUsageFlags::SAMPLED
+                        | vk::ImageUsageFlags::TRANSFER_DST,
+                ),
             )
             .unwrap(),
         );
-        clear_color_node(frame.render_graph, image_node, 0.0, 0.0, 0.0, 1.0);
+        clear_color_node(frame.render_graph, image_node, 0.0, 0.0, 1.0, 1.0);
         small_10px_font.print(
             frame.render_graph,
             image_node,

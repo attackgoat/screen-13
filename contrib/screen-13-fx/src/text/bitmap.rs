@@ -9,6 +9,15 @@ use {
 
 type Color = [u8; 4];
 
+fn color_to_unorm(color: Color) -> [f32; 4] {
+    [
+        color[0] as f32 / u8::MAX as f32,
+        color[1] as f32 / u8::MAX as f32,
+        color[2] as f32 / u8::MAX as f32,
+        color[3] as f32 / u8::MAX as f32,
+    ]
+}
+
 /// Holds a decoded bitmap Font.
 #[derive(Debug)]
 pub struct BitmapFont<P>
@@ -192,18 +201,25 @@ where
             pass = pass.read_descriptor((0, [idx as _]), *page_node);
         }
 
-        pass.push_constants((transform, color.solid(), color.outline()))
-            .draw(move |device, cmd_buf, bindings| unsafe {
-                use std::slice::from_ref;
+        pass.push_constants((
+            transform,
+            image_info.extent.xy().as_vec2(),
+            f32::NAN,
+            f32::NAN,
+            color_to_unorm(color.solid()),
+            color_to_unorm(color.outline()),
+        ))
+        .draw(move |device, cmd_buf, bindings| unsafe {
+            use std::slice::from_ref;
 
-                device.cmd_bind_vertex_buffers(
-                    cmd_buf,
-                    0,
-                    from_ref(&bindings[vertex_buf_node]),
-                    from_ref(&0),
-                );
-                device.cmd_draw(cmd_buf, (offset / 100) as u32, 1, 0, 0);
-            });
+            device.cmd_bind_vertex_buffers(
+                cmd_buf,
+                0,
+                from_ref(&bindings[vertex_buf_node]),
+                from_ref(&0),
+            );
+            device.cmd_draw(cmd_buf, (offset / 100) as u32, 1, 0, 0);
+        });
 
         for page_node in page_nodes {
             pages.push(graph.unbind_node(page_node));

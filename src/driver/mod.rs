@@ -202,10 +202,8 @@ where
 
                     return false;
                 }
-                
-                if cfg.ray_tracing
-                    && !PhysicalDevice::has_ray_tracing_support(physical_device)
-                {
+
+                if cfg.ray_tracing && !PhysicalDevice::has_ray_tracing_support(physical_device) {
                     info!("{:?} lacks ray tracing support", unsafe {
                         CStr::from_ptr(physical_device.props.device_name.as_ptr() as *const c_char)
                     });
