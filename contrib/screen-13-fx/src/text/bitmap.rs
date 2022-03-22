@@ -160,7 +160,7 @@ where
                 0.0,
             ));
 
-        let vertex_buf_len = text.chars().count() as u64 * 100;
+        let vertex_buf_len = text.chars().count() as u64 * 120;
         let mut vertex_buf_binding = self
             .pool
             .borrow_mut()
@@ -173,13 +173,27 @@ where
         let vertex_buf = &mut Buffer::mapped_slice_mut(vertex_buf_binding.get_mut().unwrap())
             [0..vertex_buf_len as usize];
 
+        let mut vertex_count = 0;
         let mut offset = 0;
         for (data, char) in self.font.parse(text).map(|char| (char.tessellate(), char)) {
-            vertex_buf[offset..offset + 96].copy_from_slice(&data);
+            vertex_buf[offset..offset + 16].copy_from_slice(&data[0]);
+            vertex_buf[offset + 20..offset + 36].copy_from_slice(&data[1]);
+            vertex_buf[offset + 40..offset + 56].copy_from_slice(&data[2]);
+            vertex_buf[offset + 60..offset + 76].copy_from_slice(&data[3]);
+            vertex_buf[offset + 80..offset + 96].copy_from_slice(&data[4]);
+            vertex_buf[offset + 100..offset + 116].copy_from_slice(&data[5]);
 
             let page_idx = char.page_index as i32;
-            vertex_buf[offset + 96..offset + 100].copy_from_slice(&page_idx.to_ne_bytes());
-            offset += 100;
+            let page_idx = page_idx.to_ne_bytes();
+            vertex_buf[offset + 16..offset + 20].copy_from_slice(&page_idx);
+            vertex_buf[offset + 36..offset + 40].copy_from_slice(&page_idx);
+            vertex_buf[offset + 56..offset + 60].copy_from_slice(&page_idx);
+            vertex_buf[offset + 76..offset + 80].copy_from_slice(&page_idx);
+            vertex_buf[offset + 96..offset + 100].copy_from_slice(&page_idx);
+            vertex_buf[offset + 116..offset + 120].copy_from_slice(&page_idx);
+            
+            vertex_count += 6;
+            offset += 120;
         }
 
         let vertex_buf_node = graph.bind_node(vertex_buf_binding);
@@ -203,9 +217,9 @@ where
 
         pass.push_constants((
             transform,
-            image_info.extent.xy().as_vec2(),
-            f32::NAN,
-            f32::NAN,
+            1.0 / image_info.extent.xy().as_vec2(),
+            0u32, // Padding
+            0u32, // Padding
             color_to_unorm(color.solid()),
             color_to_unorm(color.outline()),
         ))
@@ -218,7 +232,7 @@ where
                 from_ref(&bindings[vertex_buf_node]),
                 from_ref(&0),
             );
-            device.cmd_draw(cmd_buf, (offset / 100) as u32, 1, 0, 0);
+            device.cmd_draw(cmd_buf, vertex_count, 1, 0, 0);
         });
 
         for page_node in page_nodes {

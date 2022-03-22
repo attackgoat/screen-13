@@ -4,7 +4,7 @@ layout(constant_id = 0) const int NUM_PAGES = 1;
 
 layout(push_constant) uniform PushConstants {
     layout(offset = 0) mat4 view_proj;
-    layout(offset = 64) vec2 dims;
+    layout(offset = 64) vec2 framebuffer_extent_inverse;
 } push_constants;
 
 layout(set = 0, binding = 0) uniform sampler2D pages_llr[NUM_PAGES];
@@ -21,5 +21,5 @@ void main() {
     page_out = page_in;
 
     gl_Position = push_constants.view_proj
-        * vec4(position_in / push_constants.dims, 0, 1);
+        * vec4(position_in * push_constants.framebuffer_extent_inverse, 0, 1);
 }

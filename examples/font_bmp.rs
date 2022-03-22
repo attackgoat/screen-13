@@ -6,7 +6,7 @@ fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
     // Standard Screen-13 stuff
-    let event_loop = EventLoop::new().debug(true).build()?;
+    let event_loop = EventLoop::new().debug(false).build()?;
     let display = GraphicPresenter::new(&event_loop.device)?;
     let mut image_loader = ImageLoader::new(&event_loop.device)?;
     let mut pool = HashPool::new(&event_loop.device);
@@ -46,10 +46,10 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn open_fonts_pak() -> anyhow::Result<PakBuf> {
-    let mut pak = current_exe()?;
-    pak.set_file_name("fonts.pak");
+    let mut pak_path = current_exe()?;
+    pak_path.set_file_name("fonts.pak");
 
-    let pak = PakBuf::open(pak)?;
+    let pak = PakBuf::open(pak_path)?;
 
     Ok(pak)
 }

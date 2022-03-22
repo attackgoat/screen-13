@@ -234,7 +234,7 @@ where
                         vk::VertexInputAttributeDescription {
                             location: 2,
                             binding: 0,
-                            format: vk::Format::R8_SINT,
+                            format: vk::Format::R32_SINT,
                             offset: 16,
                         },
                     ],

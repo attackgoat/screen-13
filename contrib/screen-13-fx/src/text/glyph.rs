@@ -12,7 +12,7 @@ pub trait Glyph {
     fn screen_x(&self) -> f32;
     fn screen_y(&self) -> f32;
 
-    fn tessellate(&self) -> [u8; 96] {
+    fn tessellate(&self) -> [[u8; 16]; 6] {
         let x1 = self.screen_x();
         let y1 = self.screen_y();
         let x2 = self.screen_x() + self.screen_width();
@@ -32,45 +32,41 @@ pub trait Glyph {
         let v1 = v1.to_ne_bytes();
         let v2 = v2.to_ne_bytes();
 
-        let mut res: [u8; 96] = [0; 96];
+        let mut top_left = [0u8; 16];
+        top_left[0..4].copy_from_slice(&x1);
+        top_left[4..8].copy_from_slice(&y1);
+        top_left[8..12].copy_from_slice(&u1);
+        top_left[12..16].copy_from_slice(&v1);
 
-        // Top left (first triangle)
-        res[0..4].copy_from_slice(&x1);
-        res[4..8].copy_from_slice(&y1);
-        res[8..12].copy_from_slice(&u1);
-        res[12..16].copy_from_slice(&v1);
+        let mut bottom_right = [0u8; 16];
+        bottom_right[0..4].copy_from_slice(&x2);
+        bottom_right[4..8].copy_from_slice(&y2);
+        bottom_right[8..12].copy_from_slice(&u2);
+        bottom_right[12..16].copy_from_slice(&v2);
 
-        // Bottom right
-        res[16..20].copy_from_slice(&x2);
-        res[20..24].copy_from_slice(&y2);
-        res[24..28].copy_from_slice(&u2);
-        res[28..32].copy_from_slice(&v2);
+        let mut top_right = [0u8; 16];
+        top_right[0..4].copy_from_slice(&x2);
+        top_right[4..8].copy_from_slice(&y1);
+        top_right[8..12].copy_from_slice(&u2);
+        top_right[12..16].copy_from_slice(&v1);
 
-        // Top right
-        res[32..36].copy_from_slice(&x2);
-        res[36..40].copy_from_slice(&y1);
-        res[40..44].copy_from_slice(&u2);
-        res[44..48].copy_from_slice(&v1);
+        let mut bottom_left = [0u8; 16];
+        bottom_left[0..4].copy_from_slice(&x1);
+        bottom_left[4..8].copy_from_slice(&y2);
+        bottom_left[8..12].copy_from_slice(&u1);
+        bottom_left[12..16].copy_from_slice(&v2);
 
-        // Top left (second triangle)
-        res[48..52].copy_from_slice(&x1);
-        res[52..56].copy_from_slice(&y1);
-        res[56..60].copy_from_slice(&u1);
-        res[60..64].copy_from_slice(&v1);
+        [
+            // First triangle
+            top_left,
+            bottom_right,
+            top_right,
 
-        // Bottom left
-        res[64..68].copy_from_slice(&x1);
-        res[68..72].copy_from_slice(&y2);
-        res[72..76].copy_from_slice(&u1);
-        res[76..80].copy_from_slice(&v2);
-
-        // Bottom right
-        res[80..84].copy_from_slice(&x2);
-        res[84..88].copy_from_slice(&y2);
-        res[88..92].copy_from_slice(&u2);
-        res[92..96].copy_from_slice(&v2);
-
-        res
+            // Second triangle
+            top_left,
+            bottom_left,
+            bottom_right,
+        ]
     }
 }
 
