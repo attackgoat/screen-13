@@ -52,15 +52,6 @@ where
                 .collect::<Result<_, _>>()?,
         );
         let num_pages = bitmap_font.pages().len() as i32;
-        let llr_sampler = Device::immutable_sampler(
-            &image_loader.device,
-            SamplerDesc {
-                address_modes: vk::SamplerAddressMode::REPEAT,
-                mipmap_mode: vk::SamplerMipmapMode::LINEAR,
-                texel_filter: vk::Filter::LINEAR,
-            },
-        )
-        .unwrap();
         let pipeline = Shared::new(
             GraphicPipeline::create(
                 &image_loader.device,
@@ -69,7 +60,7 @@ where
                     .extra_descriptors(
                         [(
                             DescriptorBinding(0, 0),
-                            DescriptorInfo::CombinedImageSampler(num_pages as u32, llr_sampler),
+                            DescriptorInfo::CombinedImageSampler(num_pages as u32, vk::Sampler::null()),
                         )]
                         .into_iter()
                         .collect(),
@@ -149,12 +140,26 @@ where
     ) where
         P: 'static,
     {
+        self.print_scale(graph, image, position, color, text, 1.0);
+    }
+
+    pub fn print_scale(
+        &self,
+        graph: &mut RenderGraph<P>,
+        image: impl Into<AnyImageNode<P>>,
+        position: Vec2,
+        color: impl Into<BitmapGlyphColor>,
+        text: impl AsRef<str>,
+        scale: f32,
+    ) where
+        P: 'static,
+    {
         let color = color.into();
         let image = image.into();
         let text = text.as_ref();
         let image_info = graph.node_info(image);
         let transform = Mat4::from_translation(vec3(-1.0, -1.0, 0.0))
-            * Mat4::from_scale(vec3(2.0, 2.0, 1.0))
+            * Mat4::from_scale(vec3(2.0 * scale, 2.0 * scale, 1.0))
             * Mat4::from_translation(vec3(
                 position.x / image_info.extent.x as f32,
                 position.y / image_info.extent.y as f32,
@@ -208,6 +213,7 @@ where
         let mut pass = graph
             .record_pass("text")
             .access_node(vertex_buf_node, AccessType::VertexBuffer)
+            .access_node(image, AccessType::ColorAttachmentRead)
             .bind_pipeline(&self.pipeline)
             .load_color(0, image)
             .store_color(0, image);

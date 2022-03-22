@@ -276,10 +276,10 @@ where
     fn create_immutable_samplers(
         device: &ash::Device,
     ) -> Result<HashMap<SamplerDesc, vk::Sampler>, DriverError> {
-        let texel_filters = [vk::Filter::NEAREST, vk::Filter::LINEAR];
+        let texel_filters = [vk::Filter::LINEAR, vk::Filter::NEAREST];
         let mipmap_modes = [
-            vk::SamplerMipmapMode::NEAREST,
             vk::SamplerMipmapMode::LINEAR,
+            vk::SamplerMipmapMode::NEAREST,
         ];
         let address_modes = [
             vk::SamplerAddressMode::CLAMP_TO_BORDER,
@@ -290,9 +290,9 @@ where
 
         let mut res = HashMap::new();
 
-        for &texel_filter in &texel_filters {
-            for &mipmap_mode in &mipmap_modes {
-                for &address_modes in &address_modes {
+        for texel_filter in texel_filters {
+            for mipmap_mode in mipmap_modes {
+                for address_modes in address_modes {
                     let anisotropy_enable = texel_filter == vk::Filter::LINEAR;
 
                     res.insert(
@@ -327,8 +327,11 @@ where
         Ok(res)
     }
 
-    pub fn immutable_sampler(this: &Self, info: SamplerDesc) -> Option<vk::Sampler> {
-        this.immutable_samplers.get(&info).copied()
+    pub fn immutable_sampler(this: &Self, info: SamplerDesc) -> vk::Sampler {
+        this.immutable_samplers
+            .get(&info)
+            .copied()
+            .unwrap_or_else(|| unimplemented!("{:?}", info))
     }
 
     pub fn surface_formats(

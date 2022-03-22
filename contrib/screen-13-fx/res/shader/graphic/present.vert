@@ -10,5 +10,5 @@ layout(push_constant) uniform PushConstants {
 
 void main() {
     texcoord_out = vertex_tex();
-    gl_Position = push_constants.vertex_transform * vec4((vertex_pos() - vec2(0.5)) * vec2(2.0), 0, 1);
+    gl_Position = push_constants.vertex_transform * vec4(vertex_pos(), 0, 1);
 }

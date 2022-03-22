@@ -1555,7 +1555,7 @@ where
                             image_view_info.aspect_mask = format_aspect_mask(image.info.fmt);
                         }
 
-                        let sampler = descriptor_info.sampler().unwrap_or_else(vk::Sampler::null);
+                        let sampler = descriptor_info.sampler().unwrap();
                         let image_view = Image::view_ref(image, image_view_info)?;
                         let image_layout = match descriptor_ty {
                             vk::DescriptorType::COMBINED_IMAGE_SAMPLER => {

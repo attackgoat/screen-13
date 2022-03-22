@@ -829,8 +829,6 @@ where
                 .unwrap_or(true));
         }
 
-        self.pass
-            .push_node_access(image, AccessType::ColorAttachmentRead, None);
         self
     }
 
@@ -893,8 +891,6 @@ where
                 .unwrap_or(true));
         }
 
-        self.pass
-            .push_node_access(image, AccessType::DepthStencilAttachmentRead, None);
         self
     }
 
@@ -1031,8 +1027,6 @@ where
                 .is_none());
         }
 
-        self.pass
-            .push_node_access(image, AccessType::ColorAttachmentWrite, None);
         self
     }
 
@@ -1086,8 +1080,6 @@ where
             assert!(self.pass.as_ref().store_attachments.depth_stencil.is_none());
         }
 
-        self.pass
-            .push_node_access(image, AccessType::ColorAttachmentWrite, None);
         self
     }
 
@@ -1196,8 +1188,6 @@ where
                 .is_none());
         }
 
-        self.pass
-            .push_node_access(image, AccessType::ColorAttachmentWrite, None);
         self
     }
 
@@ -1256,8 +1246,6 @@ where
                 .is_none());
         }
 
-        self.pass
-            .push_node_access(image, AccessType::DepthStencilAttachmentWrite, None);
         self
     }
 }

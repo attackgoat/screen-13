@@ -19,19 +19,23 @@ pub type DescriptorBindingMap = BTreeMap<DescriptorBinding, DescriptorInfo>;
 fn guess_immutable_sampler(
     device: &Device<impl SharedPointerKind>,
     binding_name: &str,
-) -> Option<vk::Sampler> {
+) -> vk::Sampler {
+    // trace!("Guessing sampler: {binding_name}");
+
+    const INVALID_ERR: &str = "Invalid sampler specification";
+
     let (texel_filter, mipmap_mode, address_modes) = if binding_name.contains("_sampler_") {
         let spec = &binding_name[binding_name.len() - 3..];
         let texel_filter = match &spec[0..1] {
             "n" => vk::Filter::NEAREST,
             "l" => vk::Filter::LINEAR,
-            _ => panic!("{}", &spec[0..1]),
+            _ => panic!("{INVALID_ERR}: {}", &spec[0..1]),
         };
 
         let mipmap_mode = match &spec[1..2] {
             "n" => vk::SamplerMipmapMode::NEAREST,
             "l" => vk::SamplerMipmapMode::LINEAR,
-            _ => panic!("{}", &spec[1..2]),
+            _ => panic!("{INVALID_ERR}: {}", &spec[1..2]),
         };
 
         let address_modes = match &spec[2..3] {
@@ -39,16 +43,12 @@ fn guess_immutable_sampler(
             "e" => vk::SamplerAddressMode::CLAMP_TO_EDGE,
             "m" => vk::SamplerAddressMode::MIRRORED_REPEAT,
             "r" => vk::SamplerAddressMode::REPEAT,
-            _ => panic!("{}", &spec[2..3]),
+            _ => panic!("{INVALID_ERR}: {}", &spec[2..3]),
         };
 
         (texel_filter, mipmap_mode, address_modes)
     } else {
-        (
-            vk::Filter::LINEAR,
-            vk::SamplerMipmapMode::LINEAR,
-            vk::SamplerAddressMode::REPEAT,
-        )
+        panic!("{INVALID_ERR}");
     };
 
     Device::immutable_sampler(
@@ -264,7 +264,7 @@ impl Shader {
                     desc_ty,
                     nbind,
                     ..
-                } if *nbind > 0 => Some((name, desc_bind, desc_ty, nbind)),
+                } => Some((name, desc_bind, desc_ty, nbind)),
                 _ => None,
             })
         {
@@ -285,8 +285,7 @@ impl Shader {
                     }
                     DescriptorType::CombinedImageSampler() => DescriptorInfo::CombinedImageSampler(
                         *binding_count,
-                        guess_immutable_sampler(device, name.as_deref().unwrap_or_default())
-                            .expect("Unable to guess immutable sampler type"),
+                        guess_immutable_sampler(device, name.as_deref().expect("Invalid binding")),
                     ),
                     DescriptorType::InputAttachment(input_attachment_index) => {
                         DescriptorInfo::InputAttachment(*binding_count, *input_attachment_index)
@@ -318,12 +317,110 @@ impl Shader {
     pub fn merge_descriptor_bindings(
         descriptor_bindings: impl IntoIterator<Item = DescriptorBindingMap>,
     ) -> DescriptorBindingMap {
+        fn merge_info(lhs: &mut DescriptorInfo, rhs: DescriptorInfo) {
+            const INVALID_ERR: &str = "Invalid merge pair";
+
+            match lhs {
+                DescriptorInfo::AccelerationStructure(lhs) => {
+                    if let DescriptorInfo::AccelerationStructure(rhs) = rhs {
+                        *lhs += rhs;
+                    } else {
+                        panic!("{INVALID_ERR}");
+                    }
+                }
+                DescriptorInfo::CombinedImageSampler(lhs, lhs_sampler) => {
+                    if let DescriptorInfo::CombinedImageSampler(rhs, rhs_sampler) = rhs {
+                        // Allow one of the samplers to be null (only one!)
+                        if *lhs_sampler == vk::Sampler::null() {
+                            *lhs_sampler = rhs_sampler;
+                        }
+
+                        debug_assert_ne!(*lhs_sampler, vk::Sampler::null());
+
+                        *lhs += rhs;
+                    } else {
+                        panic!("{INVALID_ERR}");
+                    }
+                }
+                DescriptorInfo::InputAttachment(lhs, lhs_idx) => {
+                    if let DescriptorInfo::InputAttachment(rhs, rhs_idx) = rhs {
+                        debug_assert_eq!(*lhs_idx, rhs_idx);
+
+                        *lhs += rhs;
+                    } else {
+                        panic!("{INVALID_ERR}");
+                    }
+                }
+                DescriptorInfo::SampledImage(lhs) => {
+                    if let DescriptorInfo::SampledImage(rhs) = rhs {
+                        *lhs += rhs;
+                    } else {
+                        panic!("{INVALID_ERR}");
+                    }
+                }
+                DescriptorInfo::Sampler(lhs) => {
+                    if let DescriptorInfo::Sampler(rhs) = rhs {
+                        *lhs += rhs;
+                    } else {
+                        panic!("{INVALID_ERR}");
+                    }
+                }
+                DescriptorInfo::StorageBuffer(lhs) => {
+                    if let DescriptorInfo::StorageBuffer(rhs) = rhs {
+                        *lhs += rhs;
+                    } else {
+                        panic!("{INVALID_ERR}");
+                    }
+                }
+                DescriptorInfo::StorageBufferDynamic(lhs) => {
+                    if let DescriptorInfo::StorageBufferDynamic(rhs) = rhs {
+                        *lhs += rhs;
+                    } else {
+                        panic!("{INVALID_ERR}");
+                    }
+                }
+                DescriptorInfo::StorageImage(lhs) => {
+                    if let DescriptorInfo::StorageImage(rhs) = rhs {
+                        *lhs += rhs;
+                    } else {
+                        panic!("{INVALID_ERR}");
+                    }
+                }
+                DescriptorInfo::StorageTexelBuffer(lhs) => {
+                    if let DescriptorInfo::StorageTexelBuffer(rhs) = rhs {
+                        *lhs += rhs;
+                    } else {
+                        panic!("{INVALID_ERR}");
+                    }
+                }
+                DescriptorInfo::UniformBuffer(lhs) => {
+                    if let DescriptorInfo::UniformBuffer(rhs) = rhs {
+                        *lhs += rhs;
+                    } else {
+                        panic!("{INVALID_ERR}");
+                    }
+                }
+                DescriptorInfo::UniformBufferDynamic(lhs) => {
+                    if let DescriptorInfo::UniformBufferDynamic(rhs) = rhs {
+                        *lhs += rhs;
+                    } else {
+                        panic!("{INVALID_ERR}");
+                    }
+                }
+                DescriptorInfo::UniformTexelBuffer(lhs) => {
+                    if let DescriptorInfo::UniformTexelBuffer(rhs) = rhs {
+                        *lhs += rhs;
+                    } else {
+                        panic!("{INVALID_ERR}");
+                    }
+                }
+            }
+        }
+
         fn merge_pair(src: DescriptorBindingMap, dst: &mut DescriptorBindingMap) {
             for (descriptor_binding, descriptor_info) in src.into_iter() {
                 if let Some(existing) = dst.get_mut(&descriptor_binding) {
-                    assert_eq!(*existing, descriptor_info);
-
-                    *existing = descriptor_info;
+                    merge_info(existing, descriptor_info);
                 } else {
                     dst.insert(descriptor_binding, descriptor_info);
                 }

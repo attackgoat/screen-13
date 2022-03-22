@@ -20,6 +20,14 @@ fn main() -> anyhow::Result<()> {
         &mut image_loader,
     )?;
 
+    let text = "Hello, world!";
+    let (_offset, extent) = small_10px_font.measure(text);
+    let position = vec2(
+        320.0 / 2.0 - extent.x as f32 / 2.0,
+        200.0 / 2.0 - extent.y as f32 / 2.0,
+    );
+    let color = [1.0, 1.0, 1.0];
+
     event_loop.run(|frame| {
         let image_node = frame.render_graph.bind_node(
             pool.lease(
@@ -32,13 +40,7 @@ fn main() -> anyhow::Result<()> {
             .unwrap(),
         );
         clear_color_node(frame.render_graph, image_node, 0.0, 0.0, 1.0, 1.0);
-        small_10px_font.print(
-            frame.render_graph,
-            image_node,
-            Vec2::ZERO,
-            [1.0, 1.0, 1.0],
-            "Hello, world!",
-        );
+        small_10px_font.print_scale(frame.render_graph, image_node, position, color, text, 1.0);
         display.present_image(frame.render_graph, image_node, frame.swapchain);
     })?;
 

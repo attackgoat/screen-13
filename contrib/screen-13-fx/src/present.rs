@@ -70,23 +70,28 @@ where
     }
 }
 
-pub struct GraphicPresenter<P>(Shared<GraphicPipeline<P>, P>)
+pub struct GraphicPresenter<P>
 where
-    P: SharedPointerKind;
+    P: SharedPointerKind,
+{
+    pipeline: Shared<GraphicPipeline<P>, P>,
+}
 
 impl<P> GraphicPresenter<P>
 where
     P: SharedPointerKind,
 {
     pub fn new(device: &Shared<Device<P>, P>) -> Result<Self, DriverError> {
-        Ok(Self(Shared::new(GraphicPipeline::create(
-            device,
-            GraphicPipelineInfo::new(),
-            [
-                Shader::new_vertex(crate::res::shader::GRAPHIC_PRESENT_VERT),
-                Shader::new_fragment(crate::res::shader::GRAPHIC_PRESENT_FRAG),
-            ],
-        )?)))
+        Ok(Self {
+            pipeline: Shared::new(GraphicPipeline::create(
+                device,
+                GraphicPipelineInfo::new(),
+                [
+                    Shader::new_vertex(crate::res::shader::GRAPHIC_PRESENT_VERT),
+                    Shader::new_fragment(crate::res::shader::GRAPHIC_PRESENT_FRAG),
+                ],
+            )?),
+        })
     }
 
     pub fn present_image(
@@ -112,7 +117,8 @@ where
 
         graph
             .record_pass("present (from graphic)")
-            .bind_pipeline(&self.0)
+            .access_node(swapchain, AccessType::ColorAttachmentWrite)
+            .bind_pipeline(&self.pipeline)
             .read_descriptor(0, image)
             .store_color(0, swapchain)
             .push_constants(transform)
