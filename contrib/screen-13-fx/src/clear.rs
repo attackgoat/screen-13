@@ -45,6 +45,7 @@ where
         })
 }
 
+#[allow(clippy::too_many_arguments)]
 unsafe fn clear_color_image(
     device: &ash::Device,
     cmd_buf: vk::CommandBuffer,

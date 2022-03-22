@@ -61,7 +61,6 @@ pub trait Glyph {
             top_left,
             bottom_right,
             top_right,
-
             // Second triangle
             top_left,
             bottom_left,

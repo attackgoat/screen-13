@@ -158,7 +158,7 @@ where
 
                 // We create a temporary storage image because SRGB support isn't wide enough to
                 // have SRGB storage images directly
-                let mut temp_image_binding = self.create_image(&bitmap, false, true)?;
+                let mut temp_image_binding = self.create_image(bitmap, false, true)?;
 
                 // Copy host-local data in the buffer to the temporary buffer on the GPU and then
                 // use a compute shader to decode it before copying it over the output image
@@ -212,6 +212,7 @@ where
         self.decode_bitmap(bitmap, true)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn dispatch_compute_pipeline<Ch, Cb>(
         cmd_chain: Ch,
         pool: &mut HashPool<P>,

@@ -442,10 +442,10 @@ impl Shader {
             .vars
             .iter()
             .filter_map(|var| match var {
-                Variable::PushConstant { ty, .. } => match ty {
-                    Type::Struct(ty) => Some(ty.members.clone()),
-                    _ => None,
-                },
+                Variable::PushConstant {
+                    ty: Type::Struct(ty),
+                    ..
+                } => Some(ty.members.clone()),
                 _ => None,
             })
             .flatten()

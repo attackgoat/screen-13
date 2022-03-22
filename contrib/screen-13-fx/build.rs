@@ -131,7 +131,7 @@ fn compile_hlsl(path: impl AsRef<Path>) -> anyhow::Result<(String, Vec<u8>)> {
         &[],
     )?;
 
-    Ok((source, spirv.into()))
+    Ok((source, spirv))
 }
 
 fn create_shader_bindings(
@@ -152,7 +152,7 @@ fn create_shader_bindings(
                 .replace('!', "_")
                 .as_str(),
         );
-        bindings.push_str(": &'static [u8] = include_bytes!(concat!(env!(\"OUT_DIR\"), \"/");
+        bindings.push_str(": &[u8] = include_bytes!(concat!(env!(\"OUT_DIR\"), \"/");
         bindings.push_str(
             join_strings(remove_common_path(&*OUT_DIR, &shader.1), "/")
                 .replace('\\', "/")

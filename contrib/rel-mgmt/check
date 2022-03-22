@@ -14,11 +14,16 @@ diff() {
 diff || fail "Uncommitted changes"
 
 cargo fmt && diff || fail "Unformatted rust code"
+cargo fmt --manifest-path contrib/screen-13-fx/Cargo.toml && diff || fail "Unformatted rust code (screen-13-fx)"
+cargo fmt --manifest-path contrib/screen-13-imgui/Cargo.toml && diff || fail "Unformatted rust code (screen-13-imgui)"
+cargo fmt --manifest-path examples/shader_toy/Cargo.toml && diff || fail "Unformatted rust code (shader_toy)"
 
 cargo check --all-targets --all-features
 # cargo check --features "debug-names"
 cargo test
 
+cargo check --manifest-path contrib/screen-13-fx/Cargo.toml --all-targets --all-features
+cargo check --manifest-path contrib/screen-13-imgui/Cargo.toml --all-targets --all-features
 cargo check --manifest-path examples/shader_toy/Cargo.toml --all-targets --all-features
 
 echo "OK"

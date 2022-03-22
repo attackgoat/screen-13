@@ -60,7 +60,10 @@ where
                     .extra_descriptors(
                         [(
                             DescriptorBinding(0, 0),
-                            DescriptorInfo::CombinedImageSampler(num_pages as u32, vk::Sampler::null()),
+                            DescriptorInfo::CombinedImageSampler(
+                                num_pages as u32,
+                                vk::Sampler::null(),
+                            ),
                         )]
                         .into_iter()
                         .collect(),
@@ -197,7 +200,7 @@ where
             vertex_buf[offset + 76..offset + 80].copy_from_slice(&page_idx);
             vertex_buf[offset + 96..offset + 100].copy_from_slice(&page_idx);
             vertex_buf[offset + 116..offset + 120].copy_from_slice(&page_idx);
-            
+
             vertex_count += 6;
             offset += 120;
         }
