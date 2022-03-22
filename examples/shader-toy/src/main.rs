@@ -52,7 +52,8 @@ fn main() -> anyhow::Result<()> {
     let mut flowers_image_binding = Some(
         image_loader
             .decode_linear(
-                &data.read_bitmap_key(pak::IMAGE_FLOWERS_JPG)
+                &data
+                    .read_bitmap_key(pak::IMAGE_FLOWERS_JPG)
                     .context("Unable to read flowers bitmap")?,
             )
             .context("Unable to decode flowers bitmap")?,
@@ -60,7 +61,8 @@ fn main() -> anyhow::Result<()> {
     let mut noise_image_binding = Some(
         image_loader
             .decode_linear(
-                &data.read_bitmap_key(pak::IMAGE_RGBA_NOISE_PNG)
+                &data
+                    .read_bitmap_key(pak::IMAGE_RGBA_NOISE_PNG)
                     .context("Unable to read noise bitmap")?,
             )
             .context("Unable to decode noise bitmap")?,
