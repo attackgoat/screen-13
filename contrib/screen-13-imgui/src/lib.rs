@@ -14,7 +14,7 @@ pub mod prelude_rc {
     pub type ImGui = super::ImGui<RcK>;
 }
 
-pub use imgui::{Condition, Ui, self};
+pub use imgui::{self, Condition, Ui};
 
 use {
     imgui::{Context, DrawCmd, DrawCmdParams},
