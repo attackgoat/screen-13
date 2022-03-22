@@ -105,41 +105,41 @@ where
             .queue_priorities(&priorities)
             .build()];
 
-        let mut scalar_block = vk::PhysicalDeviceScalarBlockLayoutFeaturesEXT::default();
-        let mut descriptor_indexing = vk::PhysicalDeviceDescriptorIndexingFeaturesEXT::default();
+        // let mut scalar_block = vk::PhysicalDeviceScalarBlockLayoutFeaturesEXT::default();
+        // let mut descriptor_indexing = vk::PhysicalDeviceDescriptorIndexingFeaturesEXT::default();
         let mut imageless_framebuffer =
-            vk::PhysicalDeviceImagelessFramebufferFeaturesKHR::default();
-        let mut shader_float16_int8 = vk::PhysicalDeviceShaderFloat16Int8Features::default();
-        let mut vulkan_memory_model = vk::PhysicalDeviceVulkanMemoryModelFeaturesKHR::default();
+            vk::PhysicalDeviceImagelessFramebufferFeatures::builder().imageless_framebuffer(true);
+        // let mut shader_float16_int8 = vk::PhysicalDeviceShaderFloat16Int8Features::default();
+        // let mut vulkan_memory_model = vk::PhysicalDeviceVulkanMemoryModelFeaturesKHR::default();
         let mut get_buffer_device_address_features =
-            ash::vk::PhysicalDeviceBufferDeviceAddressFeatures::default();
+            vk::PhysicalDeviceBufferDeviceAddressFeatures::builder().buffer_device_address(true);
 
-        let mut acceleration_struct_features = if features.contains(FeatureFlags::RAY_TRACING) {
-            Some(ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default())
-        } else {
-            None
-        };
+        // let mut acceleration_struct_features = if features.contains(FeatureFlags::RAY_TRACING) {
+        //     Some(ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default())
+        // } else {
+        //     None
+        // };
 
-        let mut ray_tracing_pipeline_features = if features.contains(FeatureFlags::RAY_TRACING) {
-            Some(ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default())
-        } else {
-            None
-        };
+        // let mut ray_tracing_pipeline_features = if features.contains(FeatureFlags::RAY_TRACING) {
+        //     Some(ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default())
+        // } else {
+        //     None
+        // };
 
         unsafe {
             let mut features2 = vk::PhysicalDeviceFeatures2::builder()
-                .push_next(&mut scalar_block)
-                .push_next(&mut descriptor_indexing)
+                // .push_next(&mut scalar_block)
+                // .push_next(&mut descriptor_indexing)
                 .push_next(&mut imageless_framebuffer)
-                .push_next(&mut shader_float16_int8)
-                .push_next(&mut vulkan_memory_model)
+                // .push_next(&mut shader_float16_int8)
+                // .push_next(&mut vulkan_memory_model)
                 .push_next(&mut get_buffer_device_address_features);
 
-            if features.contains(FeatureFlags::RAY_TRACING) {
-                features2 = features2
-                    .push_next(acceleration_struct_features.as_mut().unwrap())
-                    .push_next(ray_tracing_pipeline_features.as_mut().unwrap());
-            }
+            // if features.contains(FeatureFlags::RAY_TRACING) {
+            //     features2 = features2
+            //         .push_next(acceleration_struct_features.as_mut().unwrap())
+            //         .push_next(ray_tracing_pipeline_features.as_mut().unwrap());
+            // }
 
             let mut features2 = features2
                 .features(vk::PhysicalDeviceFeatures {
@@ -148,19 +148,20 @@ where
                 })
                 .build();
 
-            instance
-                .fp_v1_1()
-                .get_physical_device_features2(*physical_device, &mut features2);
+            // instance
+            //     .fp_v1_2()
+            //     .get_p
+            //     .get_physical_device_features2(*physical_device, &mut features2);
 
-            debug!("{:#?}", &features2.features);
-            debug!("{:#?}", &scalar_block);
-            debug!("{:#?}", &descriptor_indexing);
-            debug!("{:#?}", &imageless_framebuffer);
-            debug!("{:#?}", &shader_float16_int8);
-            debug!("{:#?}", &vulkan_memory_model);
-            debug!("{:#?}", &get_buffer_device_address_features);
+            // debug!("{:#?}", &features2.features);
+            // debug!("{:#?}", &scalar_block);
+            // debug!("{:#?}", &descriptor_indexing);
+            // debug!("{:#?}", &imageless_framebuffer);
+            // debug!("{:#?}", &shader_float16_int8);
+            // debug!("{:#?}", &vulkan_memory_model);
+            // debug!("{:#?}", &get_buffer_device_address_features);
 
-            assert!(scalar_block.scalar_block_layout != 0);
+            // assert!(scalar_block.scalar_block_layout != 0);
 
             //assert!(descriptor_indexing.shader_uniform_texel_buffer_array_dynamic_indexing != 0);
             //assert!(descriptor_indexing.shader_storage_texel_buffer_array_dynamic_indexing != 0);
@@ -180,43 +181,43 @@ where
             // assert!(descriptor_indexing.descriptor_binding_variable_descriptor_count != 0);
             // assert!(descriptor_indexing.runtime_descriptor_array != 0);
 
-            assert!(imageless_framebuffer.imageless_framebuffer != 0);
+            // assert!(imageless_framebuffer.imageless_framebuffer != 0);
 
             // assert!(shader_float16_int8.shader_int8 != 0);
 
             //assert!(vulkan_memory_model.vulkan_memory_model != 0);
 
-            if features.contains(FeatureFlags::RAY_TRACING) {
-                assert!(
-                    acceleration_struct_features
-                        .as_ref()
-                        .unwrap()
-                        .acceleration_structure
-                        != 0
-                );
-                assert!(
-                    acceleration_struct_features
-                        .as_ref()
-                        .unwrap()
-                        .descriptor_binding_acceleration_structure_update_after_bind
-                        != 0
-                );
+            // if features.contains(FeatureFlags::RAY_TRACING) {
+            //     assert!(
+            //         acceleration_struct_features
+            //             .as_ref()
+            //             .unwrap()
+            //             .acceleration_structure
+            //             != 0
+            //     );
+            //     assert!(
+            //         acceleration_struct_features
+            //             .as_ref()
+            //             .unwrap()
+            //             .descriptor_binding_acceleration_structure_update_after_bind
+            //             != 0
+            //     );
 
-                assert!(
-                    ray_tracing_pipeline_features
-                        .as_ref()
-                        .unwrap()
-                        .ray_tracing_pipeline
-                        != 0
-                );
-                assert!(
-                    ray_tracing_pipeline_features
-                        .as_ref()
-                        .unwrap()
-                        .ray_tracing_pipeline_trace_rays_indirect
-                        != 0
-                );
-            }
+            //     assert!(
+            //         ray_tracing_pipeline_features
+            //             .as_ref()
+            //             .unwrap()
+            //             .ray_tracing_pipeline
+            //             != 0
+            //     );
+            //     assert!(
+            //         ray_tracing_pipeline_features
+            //             .as_ref()
+            //             .unwrap()
+            //             .ray_tracing_pipeline_trace_rays_indirect
+            //             != 0
+            //     );
+            // }
 
             //assert!(get_buffer_device_address_features.buffer_device_address != 0);
             let device_create_info = vk::DeviceCreateInfo::builder()

@@ -169,7 +169,7 @@ where
                     &self.decode_bitmap_rgb_rgba,
                     pixel_buf_binding,
                     &mut temp_image_binding,
-                    (bitmap_width >> 2) + (bitmap_width % 3),
+                    (bitmap_width >> 2) - 1 + (bitmap_width % 3), // HACK: -1 FOR NOW but do fix
                     bitmap_height,
                     Some(pixel_buf_stride >> 2),
                 )?;

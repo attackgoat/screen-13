@@ -65,6 +65,7 @@ where
             GraphicPipeline::create(
                 &image_loader.device,
                 GraphicPipelineInfo::new()
+                    .blend(BlendMode::Alpha)
                     .extra_descriptors(
                         [(
                             DescriptorBinding(0, 0),

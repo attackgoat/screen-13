@@ -6,7 +6,7 @@ fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
     // Standard Screen-13 stuff
-    let event_loop = EventLoop::new().debug(false).build()?;
+    let event_loop = EventLoop::new().debug(true).build()?;
     let display = GraphicPresenter::new(&event_loop.device)?;
     let mut image_loader = ImageLoader::new(&event_loop.device)?;
     let mut pool = HashPool::new(&event_loop.device);
