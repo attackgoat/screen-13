@@ -208,15 +208,16 @@ impl AttachmentMap {
     // }
 }
 
-// TODO: Now maybe don't need this with spirq's DescriptorBinding?
-/// Describes the SPIRV binding index, and optionally a specific descriptor set
+/// Describes the SPIR-V binding index, and optionally a specific descriptor set
 /// and array index.
 ///
 /// Generally you might pass a function a descriptor using a simple integer:
 ///
 /// ```rust
+/// # fn my_func(_: usize, _: ()) {}
+/// # let image = ();
 /// let descriptor = 42;
-/// my_function(descriptor, image);
+/// my_func(descriptor, image);
 /// ```
 ///
 /// But also:

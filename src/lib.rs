@@ -60,7 +60,7 @@ pub mod prelude {
 /// Like [`prelude`], but contains all public exports.
 ///
 /// Use this module for access to all _Screen 13_ resources from either [`std::sync::Arc`] or
-/// [`std::rc::Rc`]-backed [`Gpu`] instances.
+/// [`std::rc::Rc`]-backed instances.
 pub mod prelude_all {
     pub use super::{
         driver::*,
@@ -87,7 +87,7 @@ pub mod prelude_all {
     pub use super::pak::buf::Writer;
 }
 
-/// Like [`prelude_all`], but specialized for [`std::sync::Arc`]-backed [`Gpu`] instances.
+/// Like [`prelude_all`], but specialized for [`std::sync::Arc`]-backed use cases.
 ///
 /// Use this module if rendering will be done from multiple threads. See the main documentation for
 /// each alias for more information.
@@ -117,7 +117,7 @@ pub mod prelude_arc {
     pub type Shared<T> = all::Shared<T, P>;
 }
 
-/// Like [`prelude_all`], but specialized for [`std::rc::Rc`]-backed [`Gpu`] instances.
+/// Like [`prelude_all`], but specialized for [`std::rc::Rc`]-backed use cases.
 ///
 /// Use this module if rendering will be done from one thread only. See the main documentation for
 /// each alias for more information.

@@ -41,8 +41,8 @@ where
 
 /// A structure which can read and execute render graphs. This pattern was derived from:
 ///
-/// http://themaister.net/blog/2017/08/15/render-graphs-and-vulkan-a-deep-dive/
-/// https://github.com/EmbarkStudios/kajiya
+/// <http://themaister.net/blog/2017/08/15/render-graphs-and-vulkan-a-deep-dive/>
+/// <https://github.com/EmbarkStudios/kajiya>
 #[derive(Debug)]
 pub struct Resolver<P>
 where

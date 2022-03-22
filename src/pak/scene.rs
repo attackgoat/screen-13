@@ -7,7 +7,7 @@ use {
 
 type Idx = u16;
 
-/// A container for [`Ref`] references.
+/// A container for scene references.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct SceneBuf {
     refs: Vec<SceneRef>,
