@@ -447,6 +447,7 @@ bitflags! {
 impl FeatureFlags {
     pub fn extension_names(&self) -> Vec<*const i8> {
         let mut device_extension_names_raw = vec![
+            vk::KhrBufferDeviceAddressFn::name().as_ptr(),
             vk::KhrImagelessFramebufferFn::name().as_ptr(),
             vk::KhrImageFormatListFn::name().as_ptr(),
         ];

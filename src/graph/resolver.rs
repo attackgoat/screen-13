@@ -834,28 +834,24 @@ where
 
         // Add dependencies (TODO!)
         {
-            for _ in 0..pass.subpasses.len().min(1) - 1 {
-                dependencies.push(SubpassDependency {
-                    src_subpass: vk::SUBPASS_EXTERNAL,
-                    dst_subpass: 0,
-                    src_stage_mask: vk::PipelineStageFlags::ALL_COMMANDS,
-                    dst_stage_mask: vk::PipelineStageFlags::ALL_COMMANDS,
-                    src_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
-                    dst_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
-                    dependency_flags: vk::DependencyFlags::empty(),
-                });
-            }
-            for idx in 1..pass.subpasses.len().max(1) - 1 {
-                dependencies.push(SubpassDependency {
-                    src_subpass: idx as u32 - 1,
-                    dst_subpass: idx as u32,
-                    src_stage_mask: vk::PipelineStageFlags::ALL_COMMANDS,
-                    dst_stage_mask: vk::PipelineStageFlags::ALL_COMMANDS,
-                    src_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
-                    dst_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
-                    dependency_flags: vk::DependencyFlags::empty(),
-                });
-            }
+            dependencies.push(SubpassDependency {
+                src_subpass: vk::SUBPASS_EXTERNAL,
+                dst_subpass: 0,
+                src_stage_mask: vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+                dst_stage_mask: vk::PipelineStageFlags::TOP_OF_PIPE,
+                src_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
+                dst_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
+                dependency_flags: vk::DependencyFlags::empty(),
+            });
+            dependencies.push(SubpassDependency {
+                src_subpass: pass.subpasses.len() as u32 - 1,
+                dst_subpass: vk::SUBPASS_EXTERNAL,
+                src_stage_mask: vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+                dst_stage_mask: vk::PipelineStageFlags::TOP_OF_PIPE,
+                src_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
+                dst_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
+                dependency_flags: vk::DependencyFlags::empty(),
+            });
         }
 
         cache.lease(
