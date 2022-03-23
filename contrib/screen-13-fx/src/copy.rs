@@ -74,13 +74,7 @@ where
         .push_shared_ref(src_binding.shared_ref())
         .push_shared_ref(dst_binding.shared_ref())
         .push_execute(move |device, cmd_buf| unsafe {
-            CommandBuffer::buffer_barrier(
-                cmd_buf,
-                src_access,
-                AccessType::TransferRead,
-                src,
-                None,
-            );
+            CommandBuffer::buffer_barrier(cmd_buf, src_access, AccessType::TransferRead, src, None);
             CommandBuffer::buffer_barrier(
                 cmd_buf,
                 dst_access,
@@ -178,20 +172,8 @@ where
         .push_shared_ref(src_binding.shared_ref())
         .push_shared_ref(dst_binding.shared_ref())
         .push_execute(move |device, cmd_buf| unsafe {
-            CommandBuffer::buffer_barrier(
-                cmd_buf,
-                src_access,
-                AccessType::TransferRead,
-                src,
-                None,
-            );
-            CommandBuffer::image_barrier(
-                cmd_buf,
-                dst_access,
-                AccessType::TransferWrite,
-                dst,
-                None,
-            );
+            CommandBuffer::buffer_barrier(cmd_buf, src_access, AccessType::TransferRead, src, None);
+            CommandBuffer::image_barrier(cmd_buf, dst_access, AccessType::TransferWrite, dst, None);
             copy_buffer_to_image(device, **cmd_buf, src, dst, &regions);
         })
 }
@@ -305,20 +287,8 @@ where
         .push_shared_ref(src_binding.shared_ref())
         .push_shared_ref(dst_binding.shared_ref())
         .push_execute(move |device, cmd_buf| unsafe {
-            CommandBuffer::image_barrier(
-                cmd_buf,
-                src_access,
-                AccessType::TransferRead,
-                src,
-                None,
-            );
-            CommandBuffer::image_barrier(
-                cmd_buf,
-                dst_access,
-                AccessType::TransferWrite,
-                dst,
-                None,
-            );
+            CommandBuffer::image_barrier(cmd_buf, src_access, AccessType::TransferRead, src, None);
+            CommandBuffer::image_barrier(cmd_buf, dst_access, AccessType::TransferWrite, dst, None);
             copy_image(device, **cmd_buf, src, dst, &regions);
         })
 }

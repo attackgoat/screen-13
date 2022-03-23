@@ -241,8 +241,7 @@ where
         let pixel_buf = **pixel_buf;
 
         // Raw vulkan image/view handles
-        let (image, image_access) =
-            image_binding.access(AccessType::ComputeShaderWrite);
+        let (image, image_access) = image_binding.access(AccessType::ComputeShaderWrite);
         let image_view_info = image.info.into();
         let image_view = Image::view_ref(image, image_view_info)?;
         let image = **image;
