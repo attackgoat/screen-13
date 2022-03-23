@@ -1,7 +1,7 @@
 use {
     super::{
         AttachmentIndex, AttachmentMap, Binding, Bindings, Edge, Execution, ExecutionPipeline,
-        Node, NodeAccess, Pass, PassRef, Rect, RenderGraph, Subpass, Unbind,
+        Node, SubresourceAccess, Pass, PassRef, Rect, RenderGraph, Subpass, Unbind,
     },
     crate::{
         align_up_u32,
@@ -343,7 +343,7 @@ where
             .iter()
             .flat_map(|exec| exec.accesses.iter())
             .filter_map(move |(node_idx, access)| {
-                if is_read_access(access.ty) && already_seen.insert(*node_idx) {
+                if is_read_access(access.access) && already_seen.insert(*node_idx) {
                     Some(*node_idx)
                 } else {
                     None
@@ -1078,24 +1078,13 @@ where
         // TODO: into_iter and avoid a bunch of cloning below? Do we use accesses later?
         let mut accesses = pass.execs[exec_idx].accesses.iter();
 
-        //trace!("record_execution_barriers: {:#?}", accesses);
+        // trace!("record_execution_barriers: {:#?}", accesses);
 
         for (node_idx, access) in accesses {
-            let next_access = access.ty;
+            let next_access = access.access;
             let next_subresource_range = access.subresource.as_ref();
             let binding = &mut bindings[*node_idx];
-            let previous_access = binding.next_access(NodeAccess {
-                ty: next_access,
-                subresource: next_subresource_range.cloned(),
-            });
-
-            // Actually I think we need to skip this in case the access was the same type? Something
-            // about queue forward submission I need to re-read
-            // if previous_access == next_access
-            //     && previous_subresource_range.as_ref() == next_subresource_range
-            // {
-            //     continue;
-            // }
+            let previous_access = binding.access(next_access);
 
             // trace!(
             //     "barrier for {} {:?}->{:?}",
@@ -1109,7 +1098,7 @@ where
                 Binding::Image(image, _) => {
                     CommandBuffer::image_barrier(
                         cmd_buf,
-                        previous_access.ty,
+                        previous_access,
                         next_access,
                         **image.item,
                         next_subresource_range
@@ -1119,7 +1108,7 @@ where
                 Binding::ImageLease(image, _) => {
                     CommandBuffer::image_barrier(
                         cmd_buf,
-                        previous_access.ty,
+                        previous_access,
                         next_access,
                         **image.item,
                         next_subresource_range
@@ -1129,7 +1118,7 @@ where
                 Binding::Buffer(buf, _) => {
                     CommandBuffer::buffer_barrier(
                         cmd_buf,
-                        previous_access.ty,
+                        previous_access,
                         next_access,
                         **buf.item,
                         next_subresource_range
@@ -1139,7 +1128,7 @@ where
                 Binding::BufferLease(buf, _) => {
                     CommandBuffer::buffer_barrier(
                         cmd_buf,
-                        previous_access.ty,
+                        previous_access,
                         next_access,
                         **buf.item,
                         next_subresource_range
@@ -1147,12 +1136,12 @@ where
                     );
                 }
                 Binding::RayTraceAcceleration(..) | Binding::RayTraceAccelerationLease(..) => {
-                    CommandBuffer::global_barrier(cmd_buf, previous_access.ty, next_access);
+                    CommandBuffer::global_barrier(cmd_buf, previous_access, next_access);
                 }
                 Binding::SwapchainImage(swapchain_image, _) => {
                     CommandBuffer::image_barrier(
                         cmd_buf,
-                        previous_access.ty,
+                        previous_access,
                         next_access,
                         **swapchain_image.item,
                         next_subresource_range

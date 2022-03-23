@@ -56,8 +56,8 @@ where
     let mut dst_binding = dst_binding.into();
 
     // Get the driver buffers and most recent access types
-    let (src, src_access) = src_binding.access_inner(AccessType::TransferRead);
-    let (dst, dst_access) = dst_binding.access_inner(AccessType::TransferWrite);
+    let (src, src_access) = src_binding.access(AccessType::TransferRead);
+    let (dst, dst_access) = dst_binding.access(AccessType::TransferWrite);
 
     assert!(src.info.usage.contains(vk::BufferUsageFlags::TRANSFER_SRC));
     assert!(dst.info.usage.contains(vk::BufferUsageFlags::TRANSFER_DST));
@@ -76,14 +76,14 @@ where
         .push_execute(move |device, cmd_buf| unsafe {
             CommandBuffer::buffer_barrier(
                 cmd_buf,
-                src_access.ty,
+                src_access,
                 AccessType::TransferRead,
                 src,
                 None,
             );
             CommandBuffer::buffer_barrier(
                 cmd_buf,
-                dst_access.ty,
+                dst_access,
                 AccessType::TransferWrite,
                 dst,
                 None,
@@ -160,8 +160,8 @@ where
     let mut dst_binding = dst_binding.into();
 
     // Get the driver buffer/image and most recent access types
-    let (src, src_access) = src_binding.access_inner(AccessType::TransferRead);
-    let (dst, dst_access) = dst_binding.access_inner(AccessType::TransferWrite);
+    let (src, src_access) = src_binding.access(AccessType::TransferRead);
+    let (dst, dst_access) = dst_binding.access(AccessType::TransferWrite);
 
     assert!(src.info.usage.contains(vk::BufferUsageFlags::TRANSFER_SRC));
     assert!(dst.info.usage.contains(vk::ImageUsageFlags::TRANSFER_DST));
@@ -180,14 +180,14 @@ where
         .push_execute(move |device, cmd_buf| unsafe {
             CommandBuffer::buffer_barrier(
                 cmd_buf,
-                src_access.ty,
+                src_access,
                 AccessType::TransferRead,
                 src,
                 None,
             );
             CommandBuffer::image_barrier(
                 cmd_buf,
-                dst_access.ty,
+                dst_access,
                 AccessType::TransferWrite,
                 dst,
                 None,
@@ -287,8 +287,8 @@ where
     let mut dst_binding = dst_binding.into();
 
     // Get the driver images and most recent access types
-    let (src, src_access) = src_binding.access_inner(AccessType::TransferRead);
-    let (dst, dst_access) = dst_binding.access_inner(AccessType::TransferWrite);
+    let (src, src_access) = src_binding.access(AccessType::TransferRead);
+    let (dst, dst_access) = dst_binding.access(AccessType::TransferWrite);
 
     assert!(src.info.usage.contains(vk::ImageUsageFlags::TRANSFER_SRC));
     assert!(dst.info.usage.contains(vk::ImageUsageFlags::TRANSFER_DST));
@@ -307,14 +307,14 @@ where
         .push_execute(move |device, cmd_buf| unsafe {
             CommandBuffer::image_barrier(
                 cmd_buf,
-                src_access.ty,
+                src_access,
                 AccessType::TransferRead,
                 src,
                 None,
             );
             CommandBuffer::image_barrier(
                 cmd_buf,
-                dst_access.ty,
+                dst_access,
                 AccessType::TransferWrite,
                 dst,
                 None,

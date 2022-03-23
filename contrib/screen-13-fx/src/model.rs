@@ -96,17 +96,17 @@ where
 
             // Raw vulkan buffer handle
             let (src_buf, previous_src_buf_access) =
-                src_buf_binding.access_inner(AccessType::TransferRead);
+                src_buf_binding.access(AccessType::TransferRead);
             let src_buf = **src_buf;
 
             // Raw vulkan image/view handles
             let (idx_buf, previous_idx_buf_access) =
-                idx_buf_binding.access_inner(AccessType::TransferWrite);
+                idx_buf_binding.access(AccessType::TransferWrite);
             let idx_buf = **idx_buf;
 
             // Raw vulkan image/view handles
             let (vertex_buf, previous_vertex_buf_access) =
-                vertex_buf_binding.access_inner(AccessType::ComputeShaderWrite);
+                vertex_buf_binding.access(AccessType::ComputeShaderWrite);
             let vertex_buf = **vertex_buf;
 
             let descriptor_set_ref =
@@ -158,14 +158,14 @@ where
                     move |device, cmd_buf| unsafe {
                         CommandBuffer::buffer_barrier(
                             cmd_buf,
-                            previous_src_buf_access.ty,
+                            previous_src_buf_access,
                             AccessType::ComputeShaderReadOther,
                             src_buf,
                             Some(0..src_buf_len as _),
                         );
                         CommandBuffer::buffer_barrier(
                             cmd_buf,
-                            previous_vertex_buf_access.ty,
+                            previous_vertex_buf_access,
                             AccessType::ComputeShaderReadOther,
                             vertex_buf,
                             Some(vertex_offset..vertex_offset + vertex_write_len),
@@ -195,7 +195,7 @@ where
                         );
                         CommandBuffer::buffer_barrier(
                             cmd_buf,
-                            previous_idx_buf_access.ty,
+                            previous_idx_buf_access,
                             AccessType::TransferWrite,
                             src_buf,
                             Some(idx_offset..indices_len as _),

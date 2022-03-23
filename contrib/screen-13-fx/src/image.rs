@@ -237,12 +237,12 @@ where
 
         // Raw vulkan buffer handle
         let (pixel_buf, pixel_buf_access) =
-            pixel_buf_binding.access_inner(AccessType::ComputeShaderReadOther);
+            pixel_buf_binding.access(AccessType::ComputeShaderReadOther);
         let pixel_buf = **pixel_buf;
 
         // Raw vulkan image/view handles
         let (image, image_access) =
-            image_binding.access_inner(AccessType::ComputeShaderWrite);
+            image_binding.access(AccessType::ComputeShaderWrite);
         let image_view_info = image.info.into();
         let image_view = Image::view_ref(image, image_view_info)?;
         let image = **image;
@@ -300,14 +300,14 @@ where
             .push_execute(move |device, cmd_buf| unsafe {
                 CommandBuffer::buffer_barrier(
                     cmd_buf,
-                    pixel_buf_access.ty,
+                    pixel_buf_access,
                     AccessType::ComputeShaderReadOther,
                     pixel_buf,
                     None,
                 );
                 CommandBuffer::image_barrier(
                     cmd_buf,
-                    image_access.ty,
+                    image_access,
                     AccessType::ComputeShaderWrite,
                     image,
                     None,

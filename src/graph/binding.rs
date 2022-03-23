@@ -1,6 +1,6 @@
 use {
     super::{
-        BufferLeaseNode, BufferNode, ImageLeaseNode, ImageNode, NodeAccess,
+        BufferLeaseNode, BufferNode, ImageLeaseNode, ImageNode, SubresourceAccess,
         RayTraceAccelerationLeaseNode, RayTraceAccelerationNode, RenderGraph, Subresource,
         SwapchainImageBinding, SwapchainImageNode,
     },
@@ -37,23 +37,11 @@ impl<'a, P> AnyBufferBinding<'a, P>
 where
     P: SharedPointerKind,
 {
-    pub fn access_inner(&mut self, access: AccessType) -> (&Buffer<P>, NodeAccess) {
-        self.access_inner_subresource(access, None)
-    }
-
-    pub fn access_inner_subresource(
-        &mut self,
-        access: AccessType,
-        subresource: impl Into<Option<Subresource>>,
-    ) -> (&Buffer<P>, NodeAccess) {
+    pub fn access(&mut self, access: AccessType) -> (&Buffer<P>, AccessType) {
         match self {
-            Self::Buffer(binding) => binding.access_inner_subresource(access, subresource),
-            Self::BufferLeaseBound(binding) => {
-                binding.access_inner_subresource(access, subresource)
-            }
-            Self::BufferLeaseUnbound(binding) => {
-                binding.access_inner_subresource(access, subresource)
-            }
+            Self::Buffer(binding) => binding.access(access),
+            Self::BufferLeaseBound(binding) => binding.access(access),
+            Self::BufferLeaseUnbound(binding) => binding.access(access),
         }
     }
 
@@ -124,22 +112,12 @@ impl<'a, P> AnyImageBinding<'a, P>
 where
     P: SharedPointerKind,
 {
-    pub fn access_inner(&mut self, access: AccessType) -> (&Image<P>, NodeAccess) {
-        self.access_inner_subresource(access, None)
-    }
-
-    pub fn access_inner_subresource(
-        &mut self,
-        access: AccessType,
-        subresource: impl Into<Option<Subresource>>,
-    ) -> (&Image<P>, NodeAccess) {
+    pub fn access(&mut self, access: AccessType) -> (&Image<P>, AccessType) {
         match self {
-            Self::Image(binding) => binding.access_inner_subresource(access, subresource),
-            Self::ImageLeaseBound(binding) => binding.access_inner_subresource(access, subresource),
-            Self::ImageLeaseUnbound(binding) => {
-                binding.access_inner_subresource(access, subresource)
-            }
-            Self::SwapchainImage(binding) => binding.access_inner_subresource(access, subresource),
+            Self::Image(binding) => binding.access(access),
+            Self::ImageLeaseBound(binding) => binding.access(access),
+            Self::ImageLeaseUnbound(binding) => binding.access(access),
+            Self::SwapchainImage(binding) => binding.access(access),
         }
     }
 
@@ -230,6 +208,18 @@ impl<P> Binding<P>
 where
     P: SharedPointerKind,
 {
+    pub(super) fn access(&mut self, access: AccessType) -> AccessType {
+        match self {
+            Self::Buffer(binding, _) => binding.access(access).1,
+            Self::BufferLease(binding, _) => binding.access(access).1,
+            Self::Image(binding, _) => binding.access(access).1,
+            Self::ImageLease(binding, _) => binding.access(access).1,
+            Self::RayTraceAcceleration(binding, _) => binding.access(access).1,
+            Self::RayTraceAccelerationLease(binding, _) => binding.access(access).1,
+            Self::SwapchainImage(binding, _) => binding.access(access).1,
+        }
+    }
+
     pub(super) fn as_extent_2d(&self) -> Option<UVec2> {
         Some(match self {
             Self::Image(image, _) => image.item.info.extent_2d(),
@@ -269,18 +259,6 @@ where
         }
     }
 
-    pub(super) fn next_access(&mut self, access: NodeAccess) -> NodeAccess {
-        match self {
-            Self::Buffer(binding, _) => binding.next_access(access),
-            Self::BufferLease(binding, _) => binding.next_access(access),
-            Self::Image(binding, _) => binding.next_access(access),
-            Self::ImageLease(binding, _) => binding.next_access(access),
-            Self::RayTraceAcceleration(binding, _) => binding.next_access(access),
-            Self::RayTraceAccelerationLease(binding, _) => binding.next_access(access),
-            Self::SwapchainImage(binding, _) => binding.next_access(access),
-        }
-    }
-
     pub(super) fn unbind(&mut self) {
         *match self {
             Self::Buffer(_, is_bound) => is_bound,
@@ -303,7 +281,7 @@ macro_rules! bind {
                 P: SharedPointerKind,
             {
                 pub(super) item: Shared<$name<P>, P>,
-                pub(super) access: NodeAccess,
+                pub(super) access: AccessType,
             }
 
             impl<P> [<$name Binding>]<P>
@@ -312,10 +290,10 @@ macro_rules! bind {
                 pub fn new(item: $name<P>) -> Self {
                     let item = Shared::new(item);
 
-                    Self::new_unbind(item, NodeAccess::NOTHING)
+                    Self::new_unbind(item, AccessType::Nothing)
                 }
 
-                pub(super) fn new_unbind(item: Shared<$name<P>, P>, access: NodeAccess) -> Self {
+                pub(super) fn new_unbind(item: Shared<$name<P>, P>, access: AccessType) -> Self {
                     Self {
                         item,
                         access,
@@ -325,43 +303,21 @@ macro_rules! bind {
                 /// Allows for direct access to the item inside this binding, without the Shared
                 /// wrapper. Returns the previous access type and subresource access which you
                 /// should use to create a barrier for whatever access is actually being done.
-                pub fn access_inner(&mut self, access: AccessType) -> (&$name<P>, NodeAccess) {
-                    self.access_inner_subresource(access, None)
-                }
-
-                /// Allows for direct access to the item inside this binding, without the Shared
-                /// wrapper. Returns the previous access type and subresource access which you
-                /// should use to create a barrier for whatever access is actually being done.
-                pub fn access_inner_mut(&mut self, access: AccessType) -> (&mut $name<P>, NodeAccess) {
-                    self.access_inner_subresource_mut(access, None)
-                }
-
-                /// Allows for direct access to the item inside this binding, without the Shared
-                /// wrapper. Returns the previous access type and subresource access which you
-                /// should use to create a barrier for whatever access is actually being done.
-                pub fn access_inner_subresource(&mut self,
+                pub fn access(&mut self,
                     access: AccessType,
-                    subresource: impl Into<Option<Subresource>>
-                ) -> (&$name<P>, NodeAccess) {
-                    let subresource = subresource.into();
-                    let previous_access = self.next_access(NodeAccess {ty: access, subresource, });
+                ) -> (&$name<P>, AccessType) {
+                    let previous_access = replace(&mut self.access, access);
 
                     (&self.item, previous_access)
                 }
 
-                // TODO: parameter type should be impl Into<NodeAccess>
                 /// Allows for direct access to the item inside this binding, without the Shared
                 /// wrapper. Returns the previous access type and subresource access which you
                 /// should use to create a barrier for whatever access is actually being done.
-                pub fn access_inner_subresource_mut(&mut self,
+                pub fn access_mut(&mut self,
                     access: AccessType,
-                    subresource: impl Into<Option<Subresource>>
-                ) -> (&mut $name<P>, NodeAccess) {
-                    let subresource = subresource.into();
-                    let previous_access = self.next_access(NodeAccess {
-                        ty: access,
-                        subresource,
-                    });
+                ) -> (&mut $name<P>, AccessType) {
+                    let previous_access = replace(&mut self.access, access);
 
                     (Shared::get_mut(&mut self.item).unwrap(), previous_access)
                 }
@@ -369,10 +325,6 @@ macro_rules! bind {
                 /// Returns a mutable borrow only if no other clones of this shared item exist.
                 pub fn get_mut(&mut self) -> Option<&mut $name<P>> {
                     Shared::get_mut(&mut self.item)
-                }
-
-                pub(super) fn next_access(&mut self, access: NodeAccess) -> NodeAccess {
-                    replace(&mut self.access, access)
                 }
 
                 /// Creates a new staticlly shared reference to our binding item. You can't do

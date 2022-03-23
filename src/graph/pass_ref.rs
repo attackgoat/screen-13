@@ -2,7 +2,7 @@ use {
     super::{
         AnyBufferNode, AnyImageNode, Attachment, AttachmentIndex, Bind, Binding, BufferLeaseNode,
         BufferNode, Descriptor, Edge, Execution, ExecutionFunction, ExecutionPipeline,
-        ImageLeaseNode, ImageNode, Information, Node, NodeAccess, NodeIndex, Pass,
+        ImageLeaseNode, ImageNode, Information, Node, SubresourceAccess, NodeIndex, Pass,
         PushConstantRange, RayTraceAccelerationNode, Rect, RenderGraph, SampleCount, Subresource,
         SwapchainImageNode, View, ViewType,
     },
@@ -316,8 +316,8 @@ where
 
         if let Some(existing_access) = self.as_mut().execs.last_mut().unwrap().accesses.insert(
             node_idx,
-            NodeAccess {
-                ty: access,
+            SubresourceAccess {
+                access,
                 subresource,
             },
         ) {

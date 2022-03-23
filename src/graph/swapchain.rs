@@ -1,6 +1,6 @@
 use {
     super::{
-        Bind, Binding, NodeAccess, RenderGraph, Resolver, Subresource, SwapchainImageNode, Unbind,
+        Bind, Binding, SubresourceAccess, RenderGraph, Resolver, Subresource, SwapchainImageNode, Unbind,
     },
     crate::{
         driver::{Image, SwapchainImage},
@@ -17,7 +17,7 @@ where
     P: SharedPointerKind,
 {
     pub(super) item: SwapchainImage<P>,
-    pub(super) access: NodeAccess,
+    pub(super) access: AccessType,
 }
 
 impl<P> SwapchainImageBinding<P>
@@ -25,38 +25,18 @@ where
     P: SharedPointerKind,
 {
     pub(super) fn new(item: SwapchainImage<P>) -> Self {
-        Self::new_unbind(item, NodeAccess::NOTHING)
+        Self::new_unbind(item, AccessType::Nothing)
     }
 
-    pub(super) fn new_unbind(item: SwapchainImage<P>, access: NodeAccess) -> Self {
+    pub(super) fn new_unbind(item: SwapchainImage<P>, access: AccessType) -> Self {
         Self { item, access }
     }
 
-    pub(super) fn next_access(&mut self, access: NodeAccess) -> NodeAccess {
-        replace(&mut self.access, access)
-    }
-
     /// Allows for direct access to the item inside this binding, without the Shared
     /// wrapper. Returns the previous access type and subresource access which you
     /// should use to create a barrier for whatever access is actually being done.
-    pub fn access_inner(&mut self, access: AccessType) -> (&Image<P>, NodeAccess) {
-        self.access_inner_subresource(access, None)
-    }
-
-    // TODO: Impl should be for all of NodeAccess
-    /// Allows for direct access to the item inside this binding, without the Shared
-    /// wrapper. Returns the previous access type and subresource access which you
-    /// should use to create a barrier for whatever access is actually being done.
-    pub fn access_inner_subresource(
-        &mut self,
-        access: AccessType,
-        subresource: impl Into<Option<Subresource>>,
-    ) -> (&Image<P>, NodeAccess) {
-        let subresource = subresource.into();
-        let previous_access = self.next_access(NodeAccess {
-            ty: access,
-            subresource,
-        });
+    pub fn access(&mut self, access: AccessType) -> (&Image<P>, AccessType) {
+        let previous_access = replace(&mut self.access, access);
 
         (&self.item, previous_access)
     }

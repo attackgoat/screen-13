@@ -1,7 +1,7 @@
 use {
     super::{
         Binding, BufferBinding, BufferLeaseBinding, ImageBinding, ImageLeaseBinding, Information,
-        NodeAccess, NodeIndex, RayTraceAccelerationBinding, RayTraceAccelerationLeaseBinding,
+        SubresourceAccess, NodeIndex, RayTraceAccelerationBinding, RayTraceAccelerationLeaseBinding,
         RenderGraph, Resolver, Subresource, SwapchainImageBinding,
     },
     crate::{
@@ -183,7 +183,7 @@ macro_rules! node_unbind {
                         // the graph is resolved. Resolve it and then use said binding on a
                         // different graph.)
                         let previous_access = graph.last_access(self)
-                            .unwrap_or(&binding.access).clone();
+                            .unwrap_or(binding.access).clone();
                         [<$name Binding>]::new_unbind(item, previous_access)
                     };
                     graph.bindings[self.idx].unbind();
@@ -208,7 +208,7 @@ macro_rules! node_unbind_lease {
             {
                 fn unbind(self, graph: &mut RenderGraph<P>) -> [<$name LeaseBinding>]<P> {
                     let binding = {
-                        let last_access = graph.last_access(self).cloned();
+                        let last_access = graph.last_access(self);
                         let binding = graph.bindings[self.idx].[<as_ $name:snake _lease_mut>]();
                         let item = binding.item.clone();
 
@@ -217,8 +217,7 @@ macro_rules! node_unbind_lease {
                         // the graph is resolved and you should not use an unbound binding before
                         // the graph is resolved. Resolve it and then use said binding on a
                         // different graph.)
-                        let previous_access = last_access
-                            .unwrap_or_else(|| binding.access.clone());
+                        let previous_access = last_access.unwrap_or(binding.access);
                         let item_binding = [<$name Binding>]::new_unbind(
                             item,
                             previous_access,

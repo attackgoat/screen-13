@@ -271,25 +271,11 @@ impl From<(DescriptorSetIndex, BindingIndex, [BindingOffset; 1])> for Descriptor
     }
 }
 
-// TODO: Rename to SubresourceAccessType and access field
-#[derive(Clone, Debug)]
-pub struct NodeAccess {
-    pub ty: AccessType,
-    pub subresource: Option<Subresource>,
-}
-
-impl NodeAccess {
-    const NOTHING: Self = Self {
-        ty: AccessType::Nothing,
-        subresource: None,
-    };
-}
-
 struct Execution<P>
 where
     P: SharedPointerKind,
 {
-    accesses: BTreeMap<NodeIndex, NodeAccess>,
+    accesses: BTreeMap<NodeIndex, SubresourceAccess>,
     bindings: BTreeMap<Descriptor, (NodeIndex, Option<ViewType>)>,
     clears: BTreeMap<AttachmentIndex, vk::ClearValue>,
     func: Option<ExecutionFunction<P>>,
@@ -459,14 +445,14 @@ where
         self.node_access_pass_index(node, self.passes.iter())
     }
 
-    pub(super) fn last_access(&self, node: impl Node<P>) -> Option<&NodeAccess> {
+    pub(super) fn last_access(&self, node: impl Node<P>) -> Option<AccessType> {
         let node_idx = node.index();
 
         self.passes
             .iter()
             .rev()
             .flat_map(|pass| pass.execs.iter().rev())
-            .find_map(|exec| exec.accesses.get(&node_idx))
+            .find_map(|exec| exec.accesses.get(&node_idx).map(|access| access.access))
     }
 
     /// Returns the index of the last pass which accesses a given node
@@ -577,4 +563,10 @@ impl From<BufferSubresource> for Subresource {
     fn from(subresource: BufferSubresource) -> Self {
         Self::Buffer(subresource)
     }
+}
+
+#[derive(Debug)]
+struct SubresourceAccess {
+    access: AccessType,
+    subresource: Option<Subresource>,
 }
