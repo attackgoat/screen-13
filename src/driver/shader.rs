@@ -48,7 +48,11 @@ fn guess_immutable_sampler(
 
         (texel_filter, mipmap_mode, address_modes)
     } else {
-        panic!("{INVALID_ERR}");
+        (
+            vk::Filter::LINEAR,
+            vk::SamplerMipmapMode::LINEAR,
+            vk::SamplerAddressMode::REPEAT,
+        )
     };
 
     Device::immutable_sampler(

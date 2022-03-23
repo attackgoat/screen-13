@@ -40,7 +40,7 @@ fn main() -> anyhow::Result<()> {
     let event_loop = EventLoop::new()
         .debug(false)
         .desired_swapchain_image_count(3)
-        .window(|builder| builder.with_inner_size(LogicalSize::new(1280.0f64, 720.0f64)))
+        .window(|builder| builder.with_inner_size(LogicalSize::new(700.0f64, 300.0f64)))
         .build()
         .context("Event loop")?;
     let display = ComputePresenter::new(&event_loop.device).context("Presenter")?;
@@ -251,12 +251,12 @@ fn main() -> anyhow::Result<()> {
             frame
                 .render_graph
                 .record_pass("Buffer A")
+                .access_node(output, AccessType::ColorAttachmentWrite)
                 .bind_pipeline(&buf_pipeline)
                 .read_descriptor(0, input)
                 .read_descriptor(1, noise_image)
                 .read_descriptor(2, flowers_image)
                 .read_descriptor(3, blank_image)
-                .clear_color(0)
                 .store_color(0, output)
                 .push_constants(push_consts)
                 .draw(move |device, cmd_buf, _| unsafe {
@@ -267,6 +267,7 @@ fn main() -> anyhow::Result<()> {
             frame
                 .render_graph
                 .record_pass("Image")
+                .access_node(input, AccessType::ColorAttachmentWrite)
                 .bind_pipeline(&img_pipeline)
                 .read_descriptor(0, output)
                 .store_color(0, input)
