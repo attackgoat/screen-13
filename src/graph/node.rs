@@ -1,8 +1,8 @@
 use {
     super::{
         Binding, BufferBinding, BufferLeaseBinding, ImageBinding, ImageLeaseBinding, Information,
-        NodeIndex, RayTraceAccelerationBinding, RayTraceAccelerationLeaseBinding, RenderGraph,
-        Resolver, Subresource, SwapchainImageBinding,
+        NodeAccess, NodeIndex, RayTraceAccelerationBinding, RayTraceAccelerationLeaseBinding,
+        RenderGraph, Resolver, Subresource, SwapchainImageBinding,
     },
     crate::{
         driver::{
@@ -182,11 +182,9 @@ macro_rules! node_unbind {
                         // the graph is resolved and you should not use an unbound binding before
                         // the graph is resolved. Resolve it and then use said binding on a
                         // different graph.)
-                        let (previous_access, previous_subresource) = graph.last_access(self)
-                            .unwrap_or_else(|| {
-                                (binding.previous_access, binding.previous_subresource.clone())
-                            });
-                        [<$name Binding>]::new_unbind(item, previous_access, previous_subresource)
+                        let previous_access = graph.last_access(self)
+                            .unwrap_or(&binding.access).clone();
+                        [<$name Binding>]::new_unbind(item, previous_access)
                     };
                     graph.bindings[self.idx].unbind();
 
@@ -210,7 +208,7 @@ macro_rules! node_unbind_lease {
             {
                 fn unbind(self, graph: &mut RenderGraph<P>) -> [<$name LeaseBinding>]<P> {
                     let binding = {
-                        let last_access = graph.last_access(self);
+                        let last_access = graph.last_access(self).cloned();
                         let binding = graph.bindings[self.idx].[<as_ $name:snake _lease_mut>]();
                         let item = binding.item.clone();
 
@@ -219,14 +217,11 @@ macro_rules! node_unbind_lease {
                         // the graph is resolved and you should not use an unbound binding before
                         // the graph is resolved. Resolve it and then use said binding on a
                         // different graph.)
-                        let (previous_access, previous_subresource) = last_access
-                            .unwrap_or_else(|| {
-                                (binding.previous_access, binding.previous_subresource.clone())
-                            });
+                        let previous_access = last_access
+                            .unwrap_or_else(|| binding.access.clone());
                         let item_binding = [<$name Binding>]::new_unbind(
                             item,
                             previous_access,
-                            previous_subresource,
                         );
 
                         // Move the return-to-pool-on-drop behavior to a new lease

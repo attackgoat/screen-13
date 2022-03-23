@@ -16,7 +16,7 @@ where
 {
     // Get the raw vk image, info, and most recent access type -> we set a new most recent access
     let mut image_binding = image_binding.into();
-    let (image, previous_image_access, _) = image_binding.access_inner(AccessType::TransferWrite);
+    let (image, image_access) = image_binding.access_inner(AccessType::TransferWrite);
     let image_info = image.info;
     let image = **image;
 
@@ -26,7 +26,7 @@ where
         .push_execute(move |device, cmd_buf| unsafe {
             CommandBuffer::image_barrier(
                 cmd_buf,
-                previous_image_access,
+                image_access.ty,
                 AccessType::TransferWrite,
                 image,
                 None,

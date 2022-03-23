@@ -327,8 +327,7 @@ where
             .filter(move |(_, pass)| {
                 pass.execs
                     .iter()
-                    .flat_map(|exec| exec.accesses.iter())
-                    .any(|access| access.node_idx == node_idx)
+                    .any(|exec| exec.accesses.contains_key(&node_idx))
             })
             .map(|(pass_idx, _)| pass_idx)
     }
@@ -343,8 +342,13 @@ where
             .execs
             .iter()
             .flat_map(|exec| exec.accesses.iter())
-            .filter(move |access| is_read_access(access.ty) && already_seen.insert(access.node_idx))
-            .map(|access| access.node_idx)
+            .filter_map(move |(node_idx, access)| {
+                if is_read_access(access.ty) && already_seen.insert(*node_idx) {
+                    Some(*node_idx)
+                } else {
+                    None
+                }
+            })
     }
 
     fn end_render_pass(&mut self, cmd_buf: &CommandBuffer<P>) {
@@ -1041,19 +1045,17 @@ where
 
         'pass: for pass in self.graph.passes.iter() {
             for exec in pass.execs.iter() {
-                for access in exec.accesses.iter() {
-                    if access.node_idx == node_idx {
-                        res |= pass
-                            .execs
-                            .iter()
-                            .filter_map(|exec| exec.pipeline.as_ref())
-                            .map(|pipeline| pipeline.stage())
-                            .reduce(|j, k| j | k)
-                            .unwrap_or(vk::PipelineStageFlags::TRANSFER);
+                if exec.accesses.contains_key(&node_idx) {
+                    res |= pass
+                        .execs
+                        .iter()
+                        .filter_map(|exec| exec.pipeline.as_ref())
+                        .map(|pipeline| pipeline.stage())
+                        .reduce(|j, k| j | k)
+                        .unwrap_or(vk::PipelineStageFlags::TRANSFER);
 
-                        // The execution pipelines of a pass are always the same type
-                        continue 'pass;
-                    }
+                    // The execution pipelines of a pass are always the same type
+                    continue 'pass;
                 }
             }
         }
@@ -1073,16 +1075,19 @@ where
         pass: &mut Pass<P>,
         exec_idx: usize,
     ) {
+        // TODO: into_iter and avoid a bunch of cloning below? Do we use accesses later?
         let mut accesses = pass.execs[exec_idx].accesses.iter();
 
         //trace!("record_execution_barriers: {:#?}", accesses);
 
-        for access in accesses {
+        for (node_idx, access) in accesses {
             let next_access = access.ty;
             let next_subresource_range = access.subresource.as_ref();
-            let binding = &mut bindings[access.node_idx];
-            let (previous_access, previous_subresource_range) =
-                binding.next_access(next_access, next_subresource_range.cloned());
+            let binding = &mut bindings[*node_idx];
+            let previous_access = binding.next_access(NodeAccess {
+                ty: next_access,
+                subresource: next_subresource_range.cloned(),
+            });
 
             // Actually I think we need to skip this in case the access was the same type? Something
             // about queue forward submission I need to re-read
@@ -1104,7 +1109,7 @@ where
                 Binding::Image(image, _) => {
                     CommandBuffer::image_barrier(
                         cmd_buf,
-                        previous_access,
+                        previous_access.ty,
                         next_access,
                         **image.item,
                         next_subresource_range
@@ -1114,7 +1119,7 @@ where
                 Binding::ImageLease(image, _) => {
                     CommandBuffer::image_barrier(
                         cmd_buf,
-                        previous_access,
+                        previous_access.ty,
                         next_access,
                         **image.item,
                         next_subresource_range
@@ -1124,7 +1129,7 @@ where
                 Binding::Buffer(buf, _) => {
                     CommandBuffer::buffer_barrier(
                         cmd_buf,
-                        previous_access,
+                        previous_access.ty,
                         next_access,
                         **buf.item,
                         next_subresource_range
@@ -1134,7 +1139,7 @@ where
                 Binding::BufferLease(buf, _) => {
                     CommandBuffer::buffer_barrier(
                         cmd_buf,
-                        previous_access,
+                        previous_access.ty,
                         next_access,
                         **buf.item,
                         next_subresource_range
@@ -1142,12 +1147,12 @@ where
                     );
                 }
                 Binding::RayTraceAcceleration(..) | Binding::RayTraceAccelerationLease(..) => {
-                    CommandBuffer::global_barrier(cmd_buf, previous_access, next_access);
+                    CommandBuffer::global_barrier(cmd_buf, previous_access.ty, next_access);
                 }
                 Binding::SwapchainImage(swapchain_image, _) => {
                     CommandBuffer::image_barrier(
                         cmd_buf,
-                        previous_access,
+                        previous_access.ty,
                         next_access,
                         **swapchain_image.item,
                         next_subresource_range

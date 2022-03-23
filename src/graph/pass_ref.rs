@@ -147,11 +147,10 @@ where
     fn binding_ref(&self, node_idx: usize) -> &Binding<P> {
         // You must have called read or write for this node on this execution before indexing
         // into the bindings data!
-        assert!(self
-            .exec
-            .accesses
-            .iter()
-            .any(|access| access.node_idx == node_idx));
+        debug_assert!(
+            self.exec.accesses.contains_key(&node_idx),
+            "Expected call to read or write before indexing the bindings"
+        );
 
         &self.graph.bindings[node_idx]
     }
@@ -314,16 +313,16 @@ where
     ) {
         let node_idx = node.index();
         self.assert_bound_graph_node(node);
-        self.as_mut()
-            .execs
-            .last_mut()
-            .unwrap()
-            .accesses
-            .push(NodeAccess {
-                node_idx,
+
+        if let Some(existing_access) = self.as_mut().execs.last_mut().unwrap().accesses.insert(
+            node_idx,
+            NodeAccess {
                 ty: access,
                 subresource,
-            });
+            },
+        ) {
+            // TODO: Merge accesses
+        }
     }
 
     pub fn read_node(mut self, node: impl Node<P>) -> Self {

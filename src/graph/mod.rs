@@ -271,18 +271,25 @@ impl From<(DescriptorSetIndex, BindingIndex, [BindingOffset; 1])> for Descriptor
     }
 }
 
-#[derive(Debug)]
-struct NodeAccess {
-    node_idx: NodeIndex,
-    ty: AccessType,
-    subresource: Option<Subresource>,
+// TODO: Rename to SubresourceAccessType and access field
+#[derive(Clone, Debug)]
+pub struct NodeAccess {
+    pub ty: AccessType,
+    pub subresource: Option<Subresource>,
+}
+
+impl NodeAccess {
+    const NOTHING: Self = Self {
+        ty: AccessType::Nothing,
+        subresource: None,
+    };
 }
 
 struct Execution<P>
 where
     P: SharedPointerKind,
 {
-    accesses: Vec<NodeAccess>,
+    accesses: BTreeMap<NodeIndex, NodeAccess>,
     bindings: BTreeMap<Descriptor, (NodeIndex, Option<ViewType>)>,
     clears: BTreeMap<AttachmentIndex, vk::ClearValue>,
     func: Option<ExecutionFunction<P>>,
@@ -304,7 +311,7 @@ where
 {
     fn default() -> Self {
         Self {
-            accesses: vec![],
+            accesses: Default::default(),
             bindings: Default::default(),
             clears: Default::default(),
             func: None,
@@ -452,19 +459,14 @@ where
         self.node_access_pass_index(node, self.passes.iter())
     }
 
-    pub(super) fn last_access(
-        &self,
-        node: impl Node<P>,
-    ) -> Option<(AccessType, Option<Subresource>)> {
+    pub(super) fn last_access(&self, node: impl Node<P>) -> Option<&NodeAccess> {
         let node_idx = node.index();
 
         self.passes
             .iter()
             .rev()
             .flat_map(|pass| pass.execs.iter().rev())
-            .flat_map(|exec| exec.accesses.iter())
-            .find(|access| access.node_idx == node_idx)
-            .map(|access| (access.ty, access.subresource.clone()))
+            .find_map(|exec| exec.accesses.get(&node_idx))
     }
 
     /// Returns the index of the last pass which accesses a given node
@@ -482,10 +484,8 @@ where
 
         for (pass_idx, pass) in passes.enumerate() {
             for exec in pass.execs.iter() {
-                for access in exec.accesses.iter() {
-                    if access.node_idx == node_idx {
-                        return Some(pass_idx);
-                    }
+                if exec.accesses.contains_key(&node_idx) {
+                    return Some(pass_idx);
                 }
             }
         }
