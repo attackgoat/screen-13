@@ -40,7 +40,7 @@ fn main() -> anyhow::Result<()> {
     let event_loop = EventLoop::new()
         .debug(false)
         .desired_swapchain_image_count(3)
-        .window(|builder| builder.with_inner_size(LogicalSize::new(700.0f64, 300.0f64)))
+        .window(|builder| builder.with_inner_size(LogicalSize::new(1280.0f64, 720.0f64)))
         .build()
         .context("Event loop")?;
     let display = ComputePresenter::new(&event_loop.device).context("Presenter")?;
