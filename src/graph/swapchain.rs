@@ -1,6 +1,7 @@
 use {
     super::{
-        Bind, Binding, SubresourceAccess, RenderGraph, Resolver, Subresource, SwapchainImageNode, Unbind,
+        Bind, Binding, RenderGraph, Resolver, Subresource, SubresourceAccess, SwapchainImageNode,
+        Unbind,
     },
     crate::{
         driver::{Image, SwapchainImage},

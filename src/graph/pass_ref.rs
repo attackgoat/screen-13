@@ -2,8 +2,8 @@ use {
     super::{
         AnyBufferNode, AnyImageNode, Attachment, AttachmentIndex, Bind, Binding, BufferLeaseNode,
         BufferNode, Descriptor, Edge, Execution, ExecutionFunction, ExecutionPipeline,
-        ImageLeaseNode, ImageNode, Information, Node, SubresourceAccess, NodeIndex, Pass,
-        PushConstantRange, RayTraceAccelerationNode, Rect, RenderGraph, SampleCount, Subresource,
+        ImageLeaseNode, ImageNode, Information, Node, NodeIndex, Pass, PushConstantRange,
+        RayTraceAccelerationNode, Rect, RenderGraph, SampleCount, Subresource, SubresourceAccess,
         SwapchainImageNode, View, ViewType,
     },
     crate::{

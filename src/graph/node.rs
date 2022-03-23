@@ -1,8 +1,8 @@
 use {
     super::{
         Binding, BufferBinding, BufferLeaseBinding, ImageBinding, ImageLeaseBinding, Information,
-        SubresourceAccess, NodeIndex, RayTraceAccelerationBinding, RayTraceAccelerationLeaseBinding,
-        RenderGraph, Resolver, Subresource, SwapchainImageBinding,
+        NodeIndex, RayTraceAccelerationBinding, RayTraceAccelerationLeaseBinding, RenderGraph,
+        Resolver, Subresource, SubresourceAccess, SwapchainImageBinding,
     },
     crate::{
         driver::{

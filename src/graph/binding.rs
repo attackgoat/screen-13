@@ -1,7 +1,7 @@
 use {
     super::{
-        BufferLeaseNode, BufferNode, ImageLeaseNode, ImageNode, SubresourceAccess,
-        RayTraceAccelerationLeaseNode, RayTraceAccelerationNode, RenderGraph, Subresource,
+        BufferLeaseNode, BufferNode, ImageLeaseNode, ImageNode, RayTraceAccelerationLeaseNode,
+        RayTraceAccelerationNode, RenderGraph, Subresource, SubresourceAccess,
         SwapchainImageBinding, SwapchainImageNode,
     },
     crate::{

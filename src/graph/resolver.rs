@@ -1,7 +1,7 @@
 use {
     super::{
         AttachmentIndex, AttachmentMap, Binding, Bindings, Edge, Execution, ExecutionPipeline,
-        Node, SubresourceAccess, Pass, PassRef, Rect, RenderGraph, Subpass, Unbind,
+        Node, Pass, PassRef, Rect, RenderGraph, Subpass, SubresourceAccess, Unbind,
     },
     crate::{
         align_up_u32,
