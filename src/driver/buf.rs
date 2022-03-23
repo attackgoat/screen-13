@@ -168,29 +168,38 @@ impl From<BufferInfoBuilder> for BufferInfo {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BufferSubresource {
-    pub range: Range<u64>,
+    pub range_start: u64,
+    pub range_end: u64,
 }
 
 impl From<BufferInfo> for BufferSubresource {
     fn from(info: BufferInfo) -> Self {
         Self {
-            range: 0..info.size as u64,
+            range_start: 0,
+            range_end: info.size as u64,
         }
     }
 }
 
 impl From<Range<u64>> for BufferSubresource {
     fn from(range: Range<u64>) -> Self {
-        Self { range }
+        Self {
+            range_start: range.start,
+            range_end: range.end,
+        }
     }
 }
 
 impl From<Option<Range<u64>>> for BufferSubresource {
     fn from(range: Option<Range<u64>>) -> Self {
-        Self {
-            range: range.unwrap_or(0..vk::WHOLE_SIZE),
-        }
+        range.unwrap_or(0..vk::WHOLE_SIZE).into()
+    }
+}
+
+impl From<BufferSubresource> for Range<u64> {
+    fn from(subresource: BufferSubresource) -> Self {
+        subresource.range_start..subresource.range_end
     }
 }

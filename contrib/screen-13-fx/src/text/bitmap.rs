@@ -216,7 +216,6 @@ where
         let mut pass = graph
             .record_pass("text")
             .access_node(vertex_buf_node, AccessType::VertexBuffer)
-            .access_node(image, AccessType::ColorAttachmentRead)
             .bind_pipeline(&self.pipeline)
             .load_color(0, image)
             .store_color(0, image);

@@ -275,7 +275,7 @@ struct Execution<P>
 where
     P: SharedPointerKind,
 {
-    accesses: BTreeMap<NodeIndex, SubresourceAccess>,
+    accesses: BTreeMap<NodeIndex, [SubresourceAccess; 2]>,
     bindings: BTreeMap<Descriptor, (NodeIndex, Option<ViewType>)>,
     clears: BTreeMap<AttachmentIndex, vk::ClearValue>,
     func: Option<ExecutionFunction<P>>,
@@ -452,7 +452,11 @@ where
             .iter()
             .rev()
             .flat_map(|pass| pass.execs.iter().rev())
-            .find_map(|exec| exec.accesses.get(&node_idx).map(|access| access.access))
+            .find_map(|exec| {
+                exec.accesses
+                    .get(&node_idx)
+                    .map(|accesses| accesses[1].access)
+            })
     }
 
     /// Returns the index of the last pass which accesses a given node
@@ -529,7 +533,7 @@ impl Subpass {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Subresource {
     Image(ImageSubresource),
     Buffer(BufferSubresource),
@@ -565,7 +569,7 @@ impl From<BufferSubresource> for Subresource {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 struct SubresourceAccess {
     access: AccessType,
     subresource: Option<Subresource>,

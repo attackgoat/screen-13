@@ -251,7 +251,6 @@ fn main() -> anyhow::Result<()> {
             frame
                 .render_graph
                 .record_pass("Buffer A")
-                .access_node(output, AccessType::ColorAttachmentWrite)
                 .bind_pipeline(&buf_pipeline)
                 .read_descriptor(0, input)
                 .read_descriptor(1, noise_image)
@@ -267,7 +266,6 @@ fn main() -> anyhow::Result<()> {
             frame
                 .render_graph
                 .record_pass("Image")
-                .access_node(input, AccessType::ColorAttachmentWrite)
                 .bind_pipeline(&img_pipeline)
                 .read_descriptor(0, output)
                 .store_color(0, input)

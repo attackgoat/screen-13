@@ -117,7 +117,6 @@ where
 
         graph
             .record_pass("present (from graphic)")
-            .access_node(swapchain, AccessType::ColorAttachmentWrite)
             .bind_pipeline(&self.pipeline)
             .read_descriptor(0, image)
             .store_color(0, swapchain)

@@ -314,15 +314,18 @@ where
         let node_idx = node.index();
         self.assert_bound_graph_node(node);
 
-        if let Some(existing_access) = self.as_mut().execs.last_mut().unwrap().accesses.insert(
-            node_idx,
-            SubresourceAccess {
-                access,
-                subresource,
-            },
-        ) {
-            // TODO: Merge accesses
-        }
+        let access = SubresourceAccess {
+            access,
+            subresource,
+        };
+        self.as_mut()
+            .execs
+            .last_mut()
+            .unwrap()
+            .accesses
+            .entry(node_idx)
+            .and_modify(|accesses| accesses[1] = access)
+            .or_insert([access, access]);
     }
 
     pub fn read_node(mut self, node: impl Node<P>) -> Self {
@@ -603,8 +606,8 @@ where
     ) -> Self {
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
-        let view_info: ImageViewInfo = image_info.into();
-        self.attach_color_as(attachment, image, view_info)
+        let image_view_info: ImageViewInfo = image_info.into();
+        self.attach_color_as(attachment, image, image_view_info)
     }
 
     pub fn attach_color_as(
@@ -614,9 +617,9 @@ where
         view_info: impl Into<ImageViewInfo>,
     ) -> Self {
         let image = image.into();
-        let view_info = view_info.into();
-        self.load_color_as(attachment, image, view_info)
-            .store_color_as(attachment, image, view_info)
+        let image_view_info = view_info.into();
+        self.load_color_as(attachment, image, image_view_info)
+            .store_color_as(attachment, image, image_view_info)
     }
 
     pub fn attach_depth_stencil(
@@ -626,20 +629,20 @@ where
     ) -> Self {
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
-        let view_info: ImageViewInfo = image_info.into();
-        self.attach_depth_stencil_as(attachment, image, view_info)
+        let image_view_info: ImageViewInfo = image_info.into();
+        self.attach_depth_stencil_as(attachment, image, image_view_info)
     }
 
     pub fn attach_depth_stencil_as(
         self,
         attachment: AttachmentIndex,
         image: impl Into<AnyImageNode<P>>,
-        view_info: impl Into<ImageViewInfo>,
+        image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
         let image = image.into();
-        let view_info = view_info.into();
-        self.load_depth_stencil_as(attachment, image, view_info)
-            .store_depth_stencil_as(attachment, image, view_info)
+        let image_view_info = image_view_info.into();
+        self.load_depth_stencil_as(attachment, image, image_view_info)
+            .store_depth_stencil_as(attachment, image, image_view_info)
     }
 
     pub fn clear_color(self, attachment: AttachmentIndex) -> Self {
@@ -771,28 +774,28 @@ where
     ) -> Self {
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
-        let view_info: ImageViewInfo = image_info.into();
-        self.attach_color_as(attachment, image, view_info)
+        let image_view_info: ImageViewInfo = image_info.into();
+        self.attach_color_as(attachment, image, image_view_info)
     }
 
     pub fn load_color_as(
         mut self,
         attachment: AttachmentIndex,
         image: impl Into<AnyImageNode<P>>,
-        view_info: impl Into<ImageViewInfo>,
+        image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
         let image = image.into();
+        let image_view_info = image_view_info.into();
         let node_idx = image.index();
         let (image_fmt, sample_count) = self.image_info(node_idx);
-        let view_info = view_info.into();
 
         {
             let pass = self.pass.as_mut();
 
             assert!(pass.load_attachments.insert_color(
                 attachment,
-                view_info.aspect_mask,
-                view_info.fmt,
+                image_view_info.aspect_mask,
+                image_view_info.fmt,
                 sample_count,
                 node_idx,
             ));
@@ -828,6 +831,9 @@ where
                 .unwrap_or(true));
         }
 
+        self.pass
+            .push_node_access(image, AccessType::ColorAttachmentRead, None);
+
         self
     }
 
@@ -838,20 +844,20 @@ where
     ) -> Self {
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
-        let view_info: ImageViewInfo = image_info.into();
-        self.load_depth_stencil_as(attachment, image, view_info)
+        let image_view_info: ImageViewInfo = image_info.into();
+        self.load_depth_stencil_as(attachment, image, image_view_info)
     }
 
     pub fn load_depth_stencil_as(
         mut self,
         attachment: AttachmentIndex,
         image: impl Into<AnyImageNode<P>>,
-        view_info: impl Into<ImageViewInfo>,
+        image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
         let image = image.into();
+        let image_view_info = image_view_info.into();
         let node_idx = image.index();
         let (image_fmt, sample_count) = self.image_info(node_idx);
-        let view_info = view_info.into();
 
         assert!(self.pass.as_ref().depth_stencil.is_some());
 
@@ -860,8 +866,8 @@ where
 
             assert!(pass.load_attachments.set_depth_stencil(
                 attachment,
-                view_info.aspect_mask,
-                view_info.fmt,
+                image_view_info.aspect_mask,
+                image_view_info.fmt,
                 sample_count,
                 node_idx,
             ));
@@ -889,6 +895,9 @@ where
                 )
                 .unwrap_or(true));
         }
+
+        self.pass
+            .push_node_access(image, AccessType::DepthStencilAttachmentRead, None);
 
         self
     }
@@ -973,28 +982,28 @@ where
     ) -> Self {
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
-        let view_info: ImageViewInfo = image_info.into();
-        self.resolve_color_as(attachment, image, view_info)
+        let image_view_info: ImageViewInfo = image_info.into();
+        self.resolve_color_as(attachment, image, image_view_info)
     }
 
     pub fn resolve_color_as(
         mut self,
         attachment: AttachmentIndex,
         image: impl Into<AnyImageNode<P>>,
-        view_info: impl Into<ImageViewInfo>,
+        image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
         let image = image.into();
+        let image_view_info = image_view_info.into();
         let node_idx = image.index();
         let (image_fmt, sample_count) = self.image_info(node_idx);
-        let view_info = view_info.into();
 
         {
             let pass = self.pass.as_mut();
 
             assert!(pass.resolve_attachments.insert_color(
                 attachment,
-                view_info.aspect_mask,
-                view_info.fmt,
+                image_view_info.aspect_mask,
+                image_view_info.fmt,
                 sample_count,
                 node_idx,
             ));
@@ -1026,6 +1035,9 @@ where
                 .is_none());
         }
 
+        self.pass
+            .push_node_access(image, AccessType::ColorAttachmentWrite, None);
+
         self
     }
 
@@ -1036,20 +1048,20 @@ where
     ) -> Self {
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
-        let view_info: ImageViewInfo = image_info.into();
-        self.resolve_depth_stencil_as(attachment, image, view_info)
+        let image_view_info: ImageViewInfo = image_info.into();
+        self.resolve_depth_stencil_as(attachment, image, image_view_info)
     }
 
     pub fn resolve_depth_stencil_as(
         mut self,
         attachment: AttachmentIndex,
         image: impl Into<AnyImageNode<P>>,
-        view_info: impl Into<ImageViewInfo>,
+        image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
         let image = image.into();
+        let image_view_info = image_view_info.into();
         let node_idx = image.index();
         let (image_fmt, sample_count) = self.image_info(node_idx);
-        let view_info = view_info.into();
 
         assert!(self.pass.as_ref().depth_stencil.is_some());
 
@@ -1058,8 +1070,8 @@ where
 
             assert!(pass.resolve_attachments.set_depth_stencil(
                 attachment,
-                view_info.aspect_mask,
-                view_info.fmt,
+                image_view_info.aspect_mask,
+                image_view_info.fmt,
                 sample_count,
                 node_idx,
             ));
@@ -1078,6 +1090,19 @@ where
                 .unwrap_or(true));
             assert!(self.pass.as_ref().store_attachments.depth_stencil.is_none());
         }
+
+        self.pass.push_node_access(
+            image,
+            if image_view_info
+                .aspect_mask
+                .contains(vk::ImageAspectFlags::STENCIL)
+            {
+                AccessType::DepthStencilAttachmentWrite
+            } else {
+                AccessType::DepthAttachmentWriteStencilReadOnly
+            },
+            None,
+        );
 
         self
     }
@@ -1134,28 +1159,28 @@ where
     ) -> Self {
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
-        let view_info: ImageViewInfo = image_info.into();
-        self.store_color_as(attachment, image, view_info)
+        let image_view_info: ImageViewInfo = image_info.into();
+        self.store_color_as(attachment, image, image_view_info)
     }
 
     pub fn store_color_as(
         mut self,
         attachment: AttachmentIndex,
         image: impl Into<AnyImageNode<P>>,
-        view_info: impl Into<ImageViewInfo>,
+        image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
         let image = image.into();
+        let image_view_info = image_view_info.into();
         let node_idx = image.index();
         let (image_fmt, sample_count) = self.image_info(node_idx);
-        let view_info = view_info.into();
 
         {
             let pass = self.pass.as_mut();
 
             assert!(pass.store_attachments.insert_color(
                 attachment,
-                view_info.aspect_mask,
-                view_info.fmt,
+                image_view_info.aspect_mask,
+                image_view_info.fmt,
                 sample_count,
                 node_idx,
             ));
@@ -1187,6 +1212,9 @@ where
                 .is_none());
         }
 
+        self.pass
+            .push_node_access(image, AccessType::ColorAttachmentWrite, None);
+
         self
     }
 
@@ -1197,20 +1225,20 @@ where
     ) -> Self {
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
-        let view_info: ImageViewInfo = image_info.into();
-        self.store_depth_stencil_as(attachment, image, view_info)
+        let image_view_info: ImageViewInfo = image_info.into();
+        self.store_depth_stencil_as(attachment, image, image_view_info)
     }
 
     pub fn store_depth_stencil_as(
         mut self,
         attachment: AttachmentIndex,
         image: impl Into<AnyImageNode<P>>,
-        view_info: impl Into<ImageViewInfo>,
+        image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
         let image = image.into();
+        let image_view_info = image_view_info.into();
         let node_idx = image.index();
         let (_, sample_count) = self.image_info(node_idx);
-        let view_info = view_info.into();
 
         assert!(self.pass.as_ref().depth_stencil.is_some());
 
@@ -1219,8 +1247,8 @@ where
 
             assert!(pass.store_attachments.set_depth_stencil(
                 attachment,
-                view_info.aspect_mask,
-                view_info.fmt,
+                image_view_info.aspect_mask,
+                image_view_info.fmt,
                 sample_count,
                 node_idx,
             ));
@@ -1244,6 +1272,19 @@ where
                 .depth_stencil
                 .is_none());
         }
+
+        self.pass.push_node_access(
+            image,
+            if image_view_info
+                .aspect_mask
+                .contains(vk::ImageAspectFlags::STENCIL)
+            {
+                AccessType::DepthStencilAttachmentWrite
+            } else {
+                AccessType::DepthAttachmentWriteStencilReadOnly
+            },
+            None,
+        );
 
         self
     }

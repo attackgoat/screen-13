@@ -342,8 +342,8 @@ where
             .execs
             .iter()
             .flat_map(|exec| exec.accesses.iter())
-            .filter_map(move |(node_idx, access)| {
-                if is_read_access(access.access) && already_seen.insert(*node_idx) {
+            .filter_map(move |(node_idx, accesses)| {
+                if is_read_access(accesses[0].access) && already_seen.insert(*node_idx) {
                     Some(*node_idx)
                 } else {
                     None
@@ -1080,11 +1080,11 @@ where
 
         // trace!("record_execution_barriers: {:#?}", accesses);
 
-        for (node_idx, access) in accesses {
-            let next_access = access.access;
-            let next_subresource_range = access.subresource.as_ref();
+        for (node_idx, accesses) in accesses {
+            let next_access = accesses[0].access;
+            let next_subresource_range = accesses[0].subresource.as_ref();
             let binding = &mut bindings[*node_idx];
-            let previous_access = binding.access(next_access);
+            let previous_access = binding.access(accesses[1].access);
 
             // trace!(
             //     "barrier for {} {:?}->{:?}",
@@ -1101,8 +1101,7 @@ where
                         previous_access,
                         next_access,
                         **image.item,
-                        next_subresource_range
-                            .map(|subresource| subresource.clone().unwrap_image()),
+                        next_subresource_range.map(|subresource| subresource.unwrap_image()),
                     );
                 }
                 Binding::ImageLease(image, _) => {
@@ -1111,8 +1110,7 @@ where
                         previous_access,
                         next_access,
                         **image.item,
-                        next_subresource_range
-                            .map(|subresource| subresource.clone().unwrap_image()),
+                        next_subresource_range.map(|subresource| subresource.unwrap_image()),
                     );
                 }
                 Binding::Buffer(buf, _) => {
@@ -1122,7 +1120,7 @@ where
                         next_access,
                         **buf.item,
                         next_subresource_range
-                            .map(|subresource| subresource.clone().unwrap_buffer().range),
+                            .map(|subresource| subresource.unwrap_buffer().into()),
                     );
                 }
                 Binding::BufferLease(buf, _) => {
@@ -1132,7 +1130,7 @@ where
                         next_access,
                         **buf.item,
                         next_subresource_range
-                            .map(|subresource| subresource.clone().unwrap_buffer().range),
+                            .map(|subresource| subresource.unwrap_buffer().into()),
                     );
                 }
                 Binding::RayTraceAcceleration(..) | Binding::RayTraceAccelerationLease(..) => {
@@ -1144,8 +1142,7 @@ where
                         previous_access,
                         next_access,
                         **swapchain_image.item,
-                        next_subresource_range
-                            .map(|subresource| subresource.clone().unwrap_image()),
+                        next_subresource_range.map(|subresource| subresource.unwrap_image()),
                     );
                 }
             }
@@ -1549,9 +1546,7 @@ where
                             image_view_info.aspect_mask = format_aspect_mask(image.info.fmt);
                         }
 
-                        let sampler = descriptor_info
-                            .sampler()
-                            .unwrap_or_else(|| vk::Sampler::null());
+                        let sampler = descriptor_info.sampler().unwrap_or_else(vk::Sampler::null);
                         let image_view = Image::view_ref(image, image_view_info)?;
                         let image_layout = match descriptor_ty {
                             vk::DescriptorType::COMBINED_IMAGE_SAMPLER => {
