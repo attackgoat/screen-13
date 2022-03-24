@@ -37,6 +37,7 @@ gpu-allocator = "0.17.0"
 image = "0.24"
 itertools = "0.10"
 log = "0.4"
+meshopt = "0.1.9"
 num-format = "0.4.0"
 num-traits = "0.2"
 ordered-float = { version = "2.0", features = ["serde"] }

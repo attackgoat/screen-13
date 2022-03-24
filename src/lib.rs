@@ -34,7 +34,7 @@ pub use self::{
 pub mod prelude {
     pub use {
         super::{
-            align_up_u32, align_up_u64, as_u8_slice,
+            align_up_u32, align_up_u64,
             event_loop::{EventLoop, FullscreenMode},
             execute,
             frame::{center_cursor, move_cursor, FrameContext},
@@ -48,6 +48,7 @@ pub mod prelude {
         },
         glam::*,
         log::{debug, error, info, trace, warn}, // Everyone wants a log
+        meshopt::any_as_u8_slice,
         winit::{
             dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize},
             event::{Event, VirtualKeyCode},
@@ -264,24 +265,6 @@ pub fn align_up_u64(val: u64, atom: u64) -> u64 {
     (val + atom - 1) & !(atom - 1)
 }
 
-pub fn as_u8_slice<T>(t: &T) -> &[u8]
-where
-    T: Copy + Sized,
-{
-    use std::{mem::size_of, slice::from_raw_parts};
-
-    unsafe { from_raw_parts(t as *const T as *const _, size_of::<T>()) }
-}
-
-pub fn into_u8_slice<T>(t: &[T]) -> &[u8]
-where
-    T: Copy + Sized,
-{
-    use std::{mem::size_of, slice::from_raw_parts};
-
-    unsafe { from_raw_parts(t.as_ptr() as *const _, t.len() * size_of::<T>()) }
-}
-
 // Must be aligned.
 pub fn as_u32_slice<T>(t: &[T]) -> &[u32]
 where
@@ -294,4 +277,13 @@ where
     assert!(len % size_of::<u32>() == 0);
 
     unsafe { from_raw_parts(&t[0] as *const T as *const _, len) }
+}
+
+pub fn into_u8_slice<T>(t: &[T]) -> &[u8]
+where
+    T: Sized,
+{
+    use std::{mem::size_of, slice::from_raw_parts};
+
+    unsafe { from_raw_parts(t.as_ptr() as *const _, t.len() * size_of::<T>()) }
 }

@@ -7,7 +7,6 @@ use {
         SwapchainImageNode, View, ViewType,
     },
     crate::{
-        as_u8_slice,
         driver::{
             Buffer, ComputePipeline, DepthStencilMode, GraphicPipeline, Image, ImageViewInfo,
             RayTraceAcceleration, RayTracePipeline,
@@ -18,6 +17,7 @@ use {
     ash::vk,
     glam::{ivec2, uvec2, vec2, UVec3},
     log::{trace, warn},
+    meshopt::any_as_u8_slice,
     std::{
         marker::PhantomData,
         mem::take,
@@ -579,12 +579,12 @@ where
         self
     }
 
-    pub fn push_constants(self, data: impl Copy + Sized) -> Self {
+    pub fn push_constants(self, data: impl Sized) -> Self {
         self.push_constants_offset(0, data)
     }
 
-    pub fn push_constants_offset(mut self, offset: u32, data: impl Copy + Sized) -> Self {
-        let data = as_u8_slice(&data).to_vec();
+    pub fn push_constants_offset(mut self, offset: u32, data: impl Sized) -> Self {
+        let data = any_as_u8_slice(&data).to_vec();
         self.pass.as_mut().push_consts.push(PushConstantRange {
             data,
             offset,
@@ -924,7 +924,7 @@ where
             .unwrap_or_default()
     }
 
-    pub fn push_constants(mut self, data: impl Copy + Sized) -> Self {
+    pub fn push_constants(mut self, data: impl Sized) -> Self {
         let pipeline = self.pipeline();
         let whole_stage = Self::pipeline_stages(pipeline);
         self.push_stage_constants(0, whole_stage, data)
@@ -934,7 +934,7 @@ where
         mut self,
         offset: u32,
         mut stage: vk::ShaderStageFlags,
-        data: impl Copy + Sized,
+        data: impl Sized,
     ) -> Self {
         let pipeline = self.pipeline();
         let whole_stage = Self::pipeline_stages(pipeline);
@@ -945,7 +945,7 @@ where
             stage &= whole_stage;
         }
 
-        let data = as_u8_slice(&data);
+        let data = any_as_u8_slice(&data);
         let mut push_consts = vec![];
         for range in &pipeline.push_constant_ranges {
             let stage = range.stage_flags & stage;
@@ -1294,7 +1294,7 @@ impl<'a, P> PipelinePassRef<'a, RayTracePipeline<P>, P>
 where
     P: SharedPointerKind + 'static,
 {
-    pub fn push_constants(self, data: impl Copy + Sized) -> Self {
+    pub fn push_constants(self, data: impl Sized) -> Self {
         // TODO: Flags need limiting
         self.push_stage_constants(0, vk::ShaderStageFlags::ALL, data)
     }
@@ -1303,9 +1303,9 @@ where
         mut self,
         offset: u32,
         stage: vk::ShaderStageFlags,
-        data: impl Copy + Sized,
+        data: impl Sized,
     ) -> Self {
-        let data = as_u8_slice(&data).to_vec();
+        let data = any_as_u8_slice(&data).to_vec();
         self.pass.as_mut().push_consts.push(PushConstantRange {
             data,
             offset,

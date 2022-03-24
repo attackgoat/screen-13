@@ -328,7 +328,7 @@ where
                         pipeline_layout,
                         vk::ShaderStageFlags::COMPUTE,
                         0,
-                        as_u8_slice(&data),
+                        any_as_u8_slice(&data),
                     );
                 }
 
