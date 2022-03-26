@@ -17,8 +17,7 @@ pub enum IndexType {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct LevelOfDetail {
-    pub index_count: u32,
+pub struct Detail {
     pub index_ty: IndexType,
     pub meshlets: Vec<Meshlet>,
     pub vertex_count: u32,
@@ -26,14 +25,16 @@ pub struct LevelOfDetail {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Mesh {
-    pub lods: Vec<LevelOfDetail>,
+    pub bones: HashMap<String, Mat4>,
     pub name: Option<String>,
-    pub skin_inv_binds: HashMap<String, Mat4>,
-    pub transform: Option<Mat4>,
+    pub primitives: Vec<Primitive>,
+    pub transform: Mat4,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct Meshlet {}
+pub struct Meshlet {
+    pub triangle_count: u32,
+}
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct ModelBuf {
@@ -83,4 +84,11 @@ impl Debug for ModelBuf {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.write_str("ModelBuf")
     }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct Primitive {
+    pub levels: Vec<Detail>,
+    pub material: u8,
+    pub shadows: Vec<Detail>,
 }

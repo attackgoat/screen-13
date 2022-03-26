@@ -86,7 +86,7 @@ where
         //     } else {
         //         (&self.decode_model_u32, indices.len() >> 2)
         //     };
-        //     let tri_count = idx_count as u32 / 3;
+        //     let triangle_count = idx_count as u32 / 3;
         //     let vertex_write_len = idx_count as u64 * 52;
 
         //     // Raw vulkan pipeline handles
@@ -184,7 +184,7 @@ where
         //                     from_ref(&descriptor_set),
         //                     &[],
         //                 );
-        //                 device.cmd_dispatch(**cmd_buf, tri_count, 1, 1);
+        //                 device.cmd_dispatch(**cmd_buf, triangle_count, 1, 1);
 
         //                 CommandBuffer::buffer_barrier(
         //                     cmd_buf,

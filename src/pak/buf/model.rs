@@ -2,20 +2,20 @@ use {
     super::{file_key, Asset, Canonicalize, Id},
     crate::{
         into_u8_slice,
-        pak::{IndexType, Mesh, ModelBuf, ModelId},
+        pak::{Detail, IndexType, Mesh, Meshlet, ModelBuf, ModelId, Primitive},
     },
     glam::{quat, vec3, vec4, Mat4, Quat, Vec3},
     gltf::{
         buffer::Data,
         import,
         mesh::{util::ReadIndices, Mode, Reader},
-        Buffer, Node, Primitive,
+        Buffer, Node,
     },
     log::{info, trace, warn},
     meshopt::{
-        build_meshlets, ffi::meshopt_Meshlet, generate_vertex_remap, optimize_overdraw_in_place,
+        build_meshlets, generate_vertex_remap, optimize_overdraw_in_place,
         optimize_vertex_cache_in_place, optimize_vertex_fetch_in_place, quantize_unorm,
-        remap_index_buffer, remap_vertex_buffer, simplify, unstripify, Meshlet, VertexDataAdapter,
+        remap_index_buffer, remap_vertex_buffer, simplify, unstripify, VertexDataAdapter,
     },
     ordered_float::OrderedFloat,
     serde::Deserialize,
@@ -48,7 +48,7 @@ enum TriangleMode {
 
 impl TriangleMode {
     #[allow(unused)]
-    fn classify(primitive: &Primitive) -> Option<TriangleMode> {
+    fn classify(primitive: &gltf::Primitive) -> Option<TriangleMode> {
         match primitive.mode() {
             Mode::TriangleFan => Some(TriangleMode::Fan),
             Mode::Triangles => Some(TriangleMode::List),
@@ -140,12 +140,9 @@ impl Model {
         index_ty
     }
 
-    fn append_meshlets(index_buf: &mut Vec<u8>, vertex_buf: &mut Vec<u8>, meshlets: Vec<Meshlet>) {
-        for x in meshlets {
-            let _ = x.vertices;
-            let _ = x.vertex_count;
-            let _ = x.triangle_count;
-            let _ = x.indices;
+    fn append_meshlets(index_buf: &mut Vec<u8>, meshlets: &[([[u8; 3]; 126], u32)]) {
+        for (indices, _) in meshlets {
+            index_buf.extend_from_slice(into_u8_slice(indices))
         }
     }
 
@@ -188,9 +185,12 @@ impl Model {
         Ok(writer.push_model(model, key))
     }
 
-    fn build_meshlets(&self, indices: &[u32], vertex_count: usize) -> Vec<meshopt_Meshlet> {
+    fn build_meshlets(&self, indices: &[u32], vertex_count: usize) -> Vec<([[u8; 3]; 126], u32)> {
         if !self.meshlets.unwrap_or_default() {
-            return vec![];
+            let triangle_count = indices.len() as u32 / 3;
+            let indices = [[0; 3]; 126];
+
+            return vec![(indices, triangle_count)];
         }
 
         let max_vertices = self.meshlet_max_vertices.unwrap_or(64);
@@ -199,7 +199,9 @@ impl Model {
 
         assert!(!res.is_empty(), "Invalid meshlets");
 
-        res
+        res.iter()
+            .map(|meshlet| (meshlet.indices, meshlet.triangle_count as _))
+            .collect()
     }
 
     fn calculate_lods(
@@ -275,7 +277,7 @@ impl Model {
         positions: &[Position],
         tex_coords: Option<&Vec<TextureCoord>>,
         skin: &Option<(Vec<Joint>, Vec<Weight>)>,
-    ) -> (Vec<Index>, Vec<u8>, usize) {
+    ) -> (Vec<Index>, Vec<u8>, usize, usize) {
         if let Some(tex_coords) = tex_coords {
             let vertices = positions.iter().copied().enumerate();
             if let Some((joints, weights)) = skin {
@@ -316,7 +318,7 @@ impl Model {
         &self,
         index_buf: &[u32],
         vertex_buf: &[T],
-    ) -> (Vec<u32>, Vec<u8>, usize)
+    ) -> (Vec<u32>, Vec<u8>, usize, usize)
     where
         T: Clone + Default,
     {
@@ -341,7 +343,7 @@ impl Model {
         // Return the vertices as opaque bytes
         let vertex_buf = into_u8_slice(&vertex_buf).to_vec();
 
-        (index_buf, vertex_buf, vertex_stride)
+        (index_buf, vertex_buf, vertex_count, vertex_stride)
     }
 
     /// Determines how much the optimization algorithm can compromise the vertex cache hit ratio.
@@ -352,22 +354,24 @@ impl Model {
         self.overdraw_threshold.unwrap_or(OrderedFloat(1.05)).0
     }
 
-    fn read_bones(node: &Node, bufs: &[Data]) -> Option<Vec<(String, Mat4)>> {
-        node.skin().map(|skin| {
-            let joints = skin
-                .joints()
-                .map(|node| node.name().unwrap_or_default().to_owned());
-            let inv_binds = skin
-                .reader(|buf| bufs.get(buf.index()).map(|data| data.0.as_slice()))
-                .read_inverse_bind_matrices()
-                .map(|ibp| {
-                    ibp.map(|ibp| Mat4::from_cols_array_2d(&ibp))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
+    fn read_bones(node: &Node, bufs: &[Data]) -> HashMap<String, Mat4> {
+        node.skin()
+            .map(|skin| {
+                let joints = skin
+                    .joints()
+                    .map(|node| node.name().unwrap_or_default().to_owned());
+                let inv_binds = skin
+                    .reader(|buf| bufs.get(buf.index()).map(|data| data.0.as_slice()))
+                    .read_inverse_bind_matrices()
+                    .map(|ibp| {
+                        ibp.map(|ibp| Mat4::from_cols_array_2d(&ibp))
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
 
-            joints.zip(inv_binds).into_iter().collect::<Vec<_>>()
-        })
+                joints.zip(inv_binds).into_iter().collect()
+            })
+            .unwrap_or_default()
     }
 
     #[allow(clippy::type_complexity)]
@@ -461,6 +465,8 @@ impl Model {
     }
 
     fn to_model_buf(&self) -> ModelBuf {
+        let build_meshlets = self.meshlets.unwrap_or_default();
+
         let mut mesh_names = HashMap::<_, _>::default();
         if let Some(meshes) = &self.meshes {
             for mesh in meshes {
@@ -489,7 +495,7 @@ impl Model {
                         (
                             mesh.primitives()
                                 .filter_map(|primitive| {
-                                    TriangleMode::classify(&primitive).map(|tri_mode| {
+                                    TriangleMode::classify(&primitive).map(|triangle_mode| {
                                         // Read material and vertex data
                                         let material =
                                             primitive.material().index().unwrap_or_default();
@@ -504,7 +510,7 @@ impl Model {
                                         }));
 
                                         // Convert unsupported modes (meshopt requires triangle lists)
-                                        match tri_mode {
+                                        match triangle_mode {
                                             TriangleMode::Fan => {
                                                 Self::convert_triangle_fan_to_list(&mut indices)
                                             }
@@ -547,7 +553,7 @@ impl Model {
         let mut meshes = vec![];
         let mut index_buf = vec![];
         let mut vertex_buf = vec![];
-        for (primitives, mesh, node) in doc_meshes {
+        for (mesh_primitives, mesh, node) in doc_meshes {
             let name = mesh_names
                 .get(mesh.name().unwrap_or_default())
                 .map(|name| name.map(|name| name.to_owned()))
@@ -555,80 +561,163 @@ impl Model {
             let bones = Self::read_bones(&node, &bufs);
             let transform = self.transform(&node);
 
-            for (material, indices, positions, tex_coords, skin) in primitives {
+            let mut primitives = vec![];
+            for (material, indices, positions, tex_coords, skin) in mesh_primitives {
+                let mut levels = vec![];
+                let mut shadows = vec![];
                 let material = materials[&material];
 
                 // Optimize and append the main mesh
-                let (indices, vertices, vertex_stride) =
+                let (indices, vertices, vertex_count, vertex_stride) =
                     self.optimize_mesh(&indices, &positions, Some(&tex_coords), &skin);
 
                 // Store optional shadow mesh (vertices are just positions)
                 if shadow {
-                    let (indices_shadow, vertices_shadow, _) =
+                    let (indices_shadow, vertices_shadow, vertex_count_shadow, _) =
                         self.optimize_mesh(&indices, &positions, None, &skin);
-                    Self::append_mesh(
-                        &mut index_buf,
-                        &mut vertex_buf,
-                        &indices_shadow,
-                        vertices_shadow,
-                    );
+
+                    // Either store the shadow mesh as-is OR store meshlets of it
+                    let meshlets = self.build_meshlets(&indices_shadow, vertex_count_shadow);
+                    let index_ty = if build_meshlets {
+                        Self::append_meshlets(&mut index_buf, &meshlets);
+                        Self::append_mesh(&mut index_buf, &mut vertex_buf, &[], vertices_shadow)
+                    } else {
+                        Self::append_mesh(
+                            &mut index_buf,
+                            &mut vertex_buf,
+                            &indices_shadow,
+                            vertices_shadow,
+                        )
+                    };
+
+                    shadows.push(Detail {
+                        index_ty,
+                        meshlets: if build_meshlets {
+                            meshlets
+                                .iter()
+                                .map(|(_, triangle_count)| Meshlet {
+                                    triangle_count: *triangle_count,
+                                })
+                                .collect()
+                        } else {
+                            vec![Meshlet {
+                                triangle_count: indices_shadow.len() as u32 / 3,
+                            }]
+                        },
+                        vertex_count: vertex_count_shadow as _,
+                    });
                 }
 
                 // Optionally calculate levels of detail: when disabled this returns empty
                 let lods = self.calculate_lods(&indices, &vertices, vertex_stride);
 
                 // Either store the mesh as-is OR store meshlets of the mesh
-                let meshlets = self.build_meshlets(&indices, vertices.len());
-                if meshlets.is_empty() {
-                    Self::append_mesh(&mut index_buf, &mut vertex_buf, &indices, vertices);
+                let meshlets = self.build_meshlets(&indices, vertex_count);
+                let index_ty = if build_meshlets {
+                    Self::append_meshlets(&mut index_buf, &meshlets);
+                    Self::append_mesh(&mut index_buf, &mut vertex_buf, &[], vertices)
                 } else {
-                    Self::append_mesh(&mut index_buf, &mut vertex_buf, &[], vertices);
-                    Self::append_meshlets(&mut index_buf, &mut vertex_buf, meshlets);
-                }
+                    Self::append_mesh(&mut index_buf, &mut vertex_buf, &indices, vertices)
+                };
+
+                levels.push(Detail {
+                    index_ty,
+                    meshlets: if build_meshlets {
+                        meshlets
+                            .iter()
+                            .map(|(_, triangle_count)| Meshlet {
+                                triangle_count: *triangle_count,
+                            })
+                            .collect()
+                    } else {
+                        vec![Meshlet {
+                            triangle_count: indices.len() as u32 / 3,
+                        }]
+                    },
+                    vertex_count: positions.len() as _,
+                });
 
                 // Optimize and append the levels of detail
                 for indices in lods {
-                    let (indices, vertices, _) =
+                    let (indices, vertices, vertex_count, _) =
                         self.optimize_mesh(&indices, &positions, Some(&tex_coords), &skin);
 
                     // Store optional shadow mesh (vertices are just positions)
                     if shadow {
-                        let (indices_shadow, vertices_shadow, _) =
+                        let (indices_shadow, vertices_shadow, vertex_count_shadow, _) =
                             self.optimize_mesh(&indices, &positions, None, &skin);
-                        Self::append_mesh(
-                            &mut index_buf,
-                            &mut vertex_buf,
-                            &indices_shadow,
-                            vertices_shadow,
-                        );
+
+                        // Either store the shadow mesh as-is OR store meshlets of it
+                        let meshlets = self.build_meshlets(&indices_shadow, vertex_count_shadow);
+                        let index_ty = if build_meshlets {
+                            Self::append_meshlets(&mut index_buf, &meshlets);
+                            Self::append_mesh(&mut index_buf, &mut vertex_buf, &[], vertices_shadow)
+                        } else {
+                            Self::append_mesh(
+                                &mut index_buf,
+                                &mut vertex_buf,
+                                &indices_shadow,
+                                vertices_shadow,
+                            )
+                        };
+
+                        shadows.push(Detail {
+                            index_ty,
+                            meshlets: if build_meshlets {
+                                meshlets
+                                    .iter()
+                                    .map(|(_, triangle_count)| Meshlet {
+                                        triangle_count: *triangle_count,
+                                    })
+                                    .collect()
+                            } else {
+                                vec![Meshlet {
+                                    triangle_count: indices_shadow.len() as u32 / 3,
+                                }]
+                            },
+                            vertex_count: vertex_count_shadow as _,
+                        });
                     }
 
                     // Either store the mesh as-is OR store meshlets of the mesh
-                    let meshlets = self.build_meshlets(&indices, vertices.len());
-                    if meshlets.is_empty() {
-                        Self::append_mesh(&mut index_buf, &mut vertex_buf, &indices, vertices);
+                    let meshlets = self.build_meshlets(&indices, vertex_count);
+                    let index_ty = if build_meshlets {
+                        Self::append_meshlets(&mut index_buf, &meshlets);
+                        Self::append_mesh(&mut index_buf, &mut vertex_buf, &[], vertices)
                     } else {
-                        Self::append_mesh(&mut index_buf, &mut vertex_buf, &[], vertices);
-                        Self::append_meshlets(&mut index_buf, &mut vertex_buf, meshlets);
-                    }
-                }
-            }
-            // meshes.push(Mesh {
-            //     index_count: indices.len() as _,
-            //     index_ty,
-            //     name: dst_name.clone(),
-            //     skin_inv_binds: skin_inv_binds.clone(),
-            //     transform,
-            //     vertex_count: vertices.len() as _,
-            // });
-        }
+                        Self::append_mesh(&mut index_buf, &mut vertex_buf, &indices, vertices)
+                    };
 
-        #[cfg(debug_assertions)]
-        {
-            println!(
-                "TOTAL: {} KB",
-                index_buf.len() / 1024 + vertex_buf.len() / 1024
-            );
+                    levels.push(Detail {
+                        index_ty,
+                        meshlets: if build_meshlets {
+                            meshlets
+                                .iter()
+                                .map(|(_, triangle_count)| Meshlet {
+                                    triangle_count: *triangle_count,
+                                })
+                                .collect()
+                        } else {
+                            vec![Meshlet {
+                                triangle_count: indices.len() as u32 / 3,
+                            }]
+                        },
+                        vertex_count: positions.len() as _,
+                    });
+                }
+
+                primitives.push(Primitive {
+                    material,
+                    levels,
+                    shadows,
+                });
+            }
+            meshes.push(Mesh {
+                bones,
+                name,
+                primitives,
+                transform,
+            });
         }
 
         ModelBuf::new(meshes, index_buf, vertex_buf)

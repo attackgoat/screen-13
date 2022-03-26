@@ -11,7 +11,7 @@ pub use self::{
     anim::{AnimationBuf, Channel},
     bitmap::{BitmapBuf, BitmapColor, BitmapFormat},
     bitmap_font::BitmapFontBuf,
-    model::{IndexType, Mesh, ModelBuf},
+    model::{Detail, IndexType, Mesh, Meshlet, ModelBuf, Primitive},
     scene::{SceneBuf, SceneBufRef, SceneRefData},
 };
 
