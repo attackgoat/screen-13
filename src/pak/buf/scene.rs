@@ -161,7 +161,7 @@ impl Scene {
                 })
                 .map(|(src, mut material)| {
                     material
-                        .bake(&rt, writer, &project_dir, &src_dir, src)
+                        .bake(rt, writer, &project_dir, &src_dir, src)
                         .expect("material")
                 });
 
@@ -187,7 +187,7 @@ impl Scene {
                         }
                     }
                 })
-                .map(|(src, model)| model.bake(&writer, &project_dir, src).expect("bake model"));
+                .map(|(src, model)| model.bake(writer, &project_dir, src).expect("bake model"));
 
             refs.push(SceneRefData {
                 id: scene_ref.id().map(|id| id.to_owned()),

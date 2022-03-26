@@ -16,27 +16,24 @@ pub enum IndexType {
     U32,
 }
 
-#[derive(Clone, Deserialize, PartialEq, Serialize)]
-pub struct Mesh {
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct LevelOfDetail {
     pub index_count: u32,
     pub index_ty: IndexType,
-    pub name: Option<String>,
-    pub skin_inv_binds: Option<HashMap<String, Mat4>>,
-    pub transform: Option<Mat4>,
+    pub meshlets: Vec<Meshlet>,
     pub vertex_count: u32,
 }
 
-impl Mesh {
-    pub fn is_animated(&self) -> bool {
-        self.skin_inv_binds.is_some()
-    }
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct Mesh {
+    pub lods: Vec<LevelOfDetail>,
+    pub name: Option<String>,
+    pub skin_inv_binds: HashMap<String, Mat4>,
+    pub transform: Option<Mat4>,
 }
 
-impl Debug for Mesh {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        f.write_str("ModelBufMesh")
-    }
-}
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct Meshlet {}
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct ModelBuf {
