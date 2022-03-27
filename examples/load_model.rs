@@ -30,10 +30,10 @@ fn main() -> anyhow::Result<()> {
     let mut pak = PakBuf::open(pak_path)?;
 
     // Reads the "default.toml" model which physically reads 155 K of index/vertex data
-    let default_model = pak.read_model_key("model/lantern/default")?;
+    let default_model = pak.read_model("model/lantern/default")?;
 
     // Also read "meshlets.toml" which is the same model but baked into meshopt "meshlets" (172 K)
-    let meshlets_model = pak.read_model_key("model/lantern/meshlets")?;
+    let meshlets_model = pak.read_model("model/lantern/meshlets")?;
 
     // Each model contains multiple artist-named meshes, here we are only looking at one mesh
     // from each model file. Notice how this file bakes each detail level into a single meshlet

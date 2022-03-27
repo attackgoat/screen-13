@@ -16,7 +16,7 @@ fn main() -> anyhow::Result<()> {
 
     // Load a bitmapped font from the pre-packed data file
     let small_10px_font = BitmapFont::load(
-        pak.read_bitmap_font_key("font/small/small_10px")?,
+        pak.read_bitmap_font("font/small/small_10px")?,
         &mut image_loader,
     )?;
 

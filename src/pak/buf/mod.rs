@@ -598,7 +598,7 @@ impl Pak for PakBuf {
     }
 
     /// Gets the corresponding animation for the given ID.
-    fn read_animation(&mut self, id: AnimationId) -> Result<AnimationBuf, Error> {
+    fn read_animation_id(&mut self, id: AnimationId) -> Result<AnimationBuf, Error> {
         let (pos, len) = self.data.anims[id.0]
             .pos_len()
             .ok_or_else(|| Error::from(ErrorKind::InvalidInput))?;
@@ -606,7 +606,7 @@ impl Pak for PakBuf {
     }
 
     /// Reads the corresponding bitmap for the given ID.
-    fn read_bitmap_font(&mut self, id: BitmapFontId) -> Result<BitmapFontBuf, Error> {
+    fn read_bitmap_font_id(&mut self, id: BitmapFontId) -> Result<BitmapFontBuf, Error> {
         let (pos, len) = self.data.bitmap_fonts[id.0]
             .pos_len()
             .ok_or_else(|| Error::from(ErrorKind::InvalidInput))?;
@@ -614,7 +614,7 @@ impl Pak for PakBuf {
     }
 
     /// Reads the corresponding bitmap for the given ID.
-    fn read_bitmap(&mut self, id: BitmapId) -> Result<BitmapBuf, Error> {
+    fn read_bitmap_id(&mut self, id: BitmapId) -> Result<BitmapBuf, Error> {
         let (pos, len) = self.data.bitmaps[id.0]
             .pos_len()
             .ok_or_else(|| Error::from(ErrorKind::InvalidInput))?;
@@ -622,7 +622,7 @@ impl Pak for PakBuf {
     }
 
     /// Gets the corresponding blob for the given ID.
-    fn read_blob(&mut self, id: BlobId) -> Result<Vec<u8>, Error> {
+    fn read_blob_id(&mut self, id: BlobId) -> Result<Vec<u8>, Error> {
         let (pos, len) = self.data.blobs[id.0]
             .pos_len()
             .ok_or_else(|| Error::from(ErrorKind::InvalidInput))?;
@@ -630,12 +630,12 @@ impl Pak for PakBuf {
     }
 
     /// Gets the material for the given ID.
-    fn read_material(&self, id: MaterialId) -> Option<MaterialInfo> {
+    fn read_material_id(&self, id: MaterialId) -> Option<MaterialInfo> {
         self.data.materials.get(id.0).copied()
     }
 
     /// Gets the corresponding animation for the given ID.
-    fn read_model(&mut self, id: ModelId) -> Result<ModelBuf, Error> {
+    fn read_model_id(&mut self, id: ModelId) -> Result<ModelBuf, Error> {
         let (pos, len) = self.data.models[id.0]
             .pos_len()
             .ok_or_else(|| Error::from(ErrorKind::InvalidInput))?;
@@ -643,7 +643,7 @@ impl Pak for PakBuf {
     }
 
     /// Gets the corresponding animation for the given ID.
-    fn read_scene(&mut self, id: SceneId) -> Result<SceneBuf, Error> {
+    fn read_scene_id(&mut self, id: SceneId) -> Result<SceneBuf, Error> {
         let (pos, len) = self.data.scenes[id.0]
             .pos_len()
             .ok_or_else(|| Error::from(ErrorKind::InvalidInput))?;

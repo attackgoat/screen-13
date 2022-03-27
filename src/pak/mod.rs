@@ -84,80 +84,80 @@ pub trait Pak {
     // --- "Read" functions
 
     /// Gets the corresponding animation for the given ID.
-    fn read_animation(&mut self, id: AnimationId) -> Result<AnimationBuf, Error>;
+    fn read_animation_id(&mut self, id: AnimationId) -> Result<AnimationBuf, Error>;
 
     /// Reads the corresponding bitmap for the given ID.
-    fn read_bitmap_font(&mut self, id: BitmapFontId) -> Result<BitmapFontBuf, Error>;
+    fn read_bitmap_font_id(&mut self, id: BitmapFontId) -> Result<BitmapFontBuf, Error>;
 
     /// Reads the corresponding bitmap for the given ID.
-    fn read_bitmap(&mut self, id: BitmapId) -> Result<BitmapBuf, Error>;
+    fn read_bitmap_id(&mut self, id: BitmapId) -> Result<BitmapBuf, Error>;
 
     /// Gets the corresponding blob for the given ID.
-    fn read_blob(&mut self, id: BlobId) -> Result<Vec<u8>, Error>;
+    fn read_blob_id(&mut self, id: BlobId) -> Result<Vec<u8>, Error>;
 
     /// Gets the material for the given handle, if one exsits.
-    fn read_material(&self, id: MaterialId) -> Option<MaterialInfo>;
+    fn read_material_id(&self, id: MaterialId) -> Option<MaterialInfo>;
 
     /// Gets the corresponding animation for the given ID.
-    fn read_model(&mut self, id: ModelId) -> Result<ModelBuf, Error>;
+    fn read_model_id(&mut self, id: ModelId) -> Result<ModelBuf, Error>;
 
     /// Gets the corresponding animation for the given ID.
-    fn read_scene(&mut self, id: SceneId) -> Result<SceneBuf, Error>;
+    fn read_scene_id(&mut self, id: SceneId) -> Result<SceneBuf, Error>;
 
     // --- Convenience functions
 
     /// Gets the material corresponding to the given key, if one exsits.
-    fn read_material_key(&self, key: impl AsRef<str>) -> Option<MaterialInfo> {
+    fn read_material(&self, key: impl AsRef<str>) -> Option<MaterialInfo> {
         if let Some(id) = self.material_id(key) {
-            self.read_material(id)
+            self.read_material_id(id)
         } else {
             None
         }
     }
 
-    fn read_animation_key(&mut self, key: impl AsRef<str>) -> Result<AnimationBuf, Error> {
+    fn read_animation(&mut self, key: impl AsRef<str>) -> Result<AnimationBuf, Error> {
         if let Some(h) = self.animation_id(key) {
-            self.read_animation(h)
+            self.read_animation_id(h)
         } else {
             Err(Error::from(ErrorKind::InvalidInput))
         }
     }
 
-    fn read_bitmap_font_key(&mut self, key: impl AsRef<str>) -> Result<BitmapFontBuf, Error> {
+    fn read_bitmap_font(&mut self, key: impl AsRef<str>) -> Result<BitmapFontBuf, Error> {
         if let Some(h) = self.bitmap_font_id(key) {
-            self.read_bitmap_font(h)
+            self.read_bitmap_font_id(h)
         } else {
             Err(Error::from(ErrorKind::InvalidInput))
         }
     }
 
-    fn read_bitmap_key(&mut self, key: impl AsRef<str>) -> Result<BitmapBuf, Error> {
+    fn read_bitmap(&mut self, key: impl AsRef<str>) -> Result<BitmapBuf, Error> {
         if let Some(h) = self.bitmap_id(key) {
-            self.read_bitmap(h)
+            self.read_bitmap_id(h)
         } else {
             Err(Error::from(ErrorKind::InvalidInput))
         }
     }
 
-    fn read_blob_key(&mut self, key: impl AsRef<str>) -> Result<Vec<u8>, Error> {
+    fn read_blob(&mut self, key: impl AsRef<str>) -> Result<Vec<u8>, Error> {
         if let Some(h) = self.blob_id(key) {
-            self.read_blob(h)
+            self.read_blob_id(h)
         } else {
             Err(Error::from(ErrorKind::InvalidInput))
         }
     }
 
-    fn read_model_key(&mut self, key: impl AsRef<str>) -> Result<ModelBuf, Error> {
+    fn read_model(&mut self, key: impl AsRef<str>) -> Result<ModelBuf, Error> {
         if let Some(h) = self.model_id(key) {
-            self.read_model(h)
+            self.read_model_id(h)
         } else {
             Err(Error::from(ErrorKind::InvalidInput))
         }
     }
 
-    fn read_scene_key(&mut self, key: impl AsRef<str>) -> Result<SceneBuf, Error> {
+    fn read_scene(&mut self, key: impl AsRef<str>) -> Result<SceneBuf, Error> {
         if let Some(h) = self.scene_id(key) {
-            self.read_scene(h)
+            self.read_scene_id(h)
         } else {
             Err(Error::from(ErrorKind::InvalidInput))
         }
