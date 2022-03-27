@@ -384,17 +384,21 @@ impl PakBuf {
                         let asset_parent = parent(&asset_path);
 
                         match asset {
-                            //     Asset::Animation(anim) => {
-                            //         // bake_animation(&mut context, &src_dir, asset_filename, anim, &mut pak);
-                            //         todo!();
-                            //     }
-                            //     // Asset::Atlas(ref atlas) => {
-                            //     //     bake_atlas(&src_dir, &asset_filename, atlas, &mut pak);
-                            //     // }
-                            // Asset::Bitmap(mut bitmap) => {
-                            //     bitmap.canonicalize(&src_dir, &src_dir);
-                            //     bake_bitmap(&mut context, &mut pak, &src_dir, Some(src), &bitmap);
-                            // }
+                            Asset::Animation(_anim) => {
+                                todo!();
+                            }
+                            Asset::Bitmap(mut bitmap) => {
+                                let writer = Arc::clone(&writer);
+                                let src_dir = src_dir.clone();
+                                let asset_path = asset_path.clone();
+                                let asset_parent = asset_parent.clone();
+                                tasks.push(rt.spawn_blocking(move || {
+                                    bitmap.canonicalize(&src_dir, &asset_parent);
+                                    bitmap
+                                        .bake_from_source(&writer, src_dir, Some(asset_path))
+                                        .unwrap();
+                                }));
+                            }
                             Asset::BitmapFont(mut blob) => {
                                 let writer = Arc::clone(&writer);
                                 let src_dir = src_dir.clone();
@@ -405,14 +409,6 @@ impl PakBuf {
                                     blob.bake_bitmap_font(&writer, src_dir, asset_path).unwrap();
                                 }));
                             }
-                            //     Asset::Color(_) => unreachable!(),
-                            //     Asset::Content(_) => {
-                            //         // Nested content files are not yet supported
-                            //         panic!("Unexpected content file {}", src.display());
-                            //     }
-                            //     // Asset::Language(ref lang) => {
-                            //     //     bake_lang(&src_dir, &asset_filename, lang, &mut pak, &mut log)
-                            //     // }
                             Asset::Material(mut material) => {
                                 let writer = Arc::clone(&writer);
                                 let src_dir = src_dir.clone();
@@ -442,9 +438,9 @@ impl PakBuf {
                                     model.bake(&writer, &src_dir, Some(&asset_path)).unwrap();
                                 }));
                             }
-                            //     Asset::Scene(scene) => {
-                            //         bake_scene(&mut context, &mut pak, &src_dir, src, &scene);
-                            //     }
+                            Asset::Scene(_scene) => {
+                                todo!();
+                            }
                             _ => unimplemented!(),
                         }
                     }
