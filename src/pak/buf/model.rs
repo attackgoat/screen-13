@@ -33,31 +33,14 @@ use {
 use {super::Writer, parking_lot::Mutex, std::sync::Arc};
 
 type Bone = (String, Mat4);
-type Material = u8;
 type Index = u32;
-type Position = [f32; 3];
-type TextureCoord = [f32; 2];
 type Joint = u32;
+type Material = u8;
+type Normal = [f32; 3];
+type Position = [f32; 3];
+type Tangent = [f32; 4];
+type TextureCoord = [f32; 2];
 type Weight = u32;
-
-#[derive(PartialEq)]
-enum TriangleMode {
-    Fan,
-    List,
-    Strip,
-}
-
-impl TriangleMode {
-    #[allow(unused)]
-    fn classify(primitive: &gltf::Primitive) -> Option<TriangleMode> {
-        match primitive.mode() {
-            Mode::TriangleFan => Some(TriangleMode::Fan),
-            Mode::Triangles => Some(TriangleMode::List),
-            Mode::TriangleStrip => Some(TriangleMode::Strip),
-            _ => None,
-        }
-    }
-}
 
 /// Holds a description of individual meshes within a `.glb` or `.gltf` 3D model.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq)]
@@ -274,34 +257,47 @@ impl Model {
 
     fn optimize_mesh(
         &self,
-        indices: &[Index],
-        positions: &[Position],
-        tex_coords: Option<&Vec<TextureCoord>>,
-        skin: &Option<(Vec<Joint>, Vec<Weight>)>,
+        vertices: &VertexData,
+        shadow: bool,
     ) -> (Vec<Index>, Vec<u8>, usize, usize) {
-        if let Some(tex_coords) = tex_coords {
-            let vertices = positions.iter().copied().enumerate();
-            if let Some((joints, weights)) = skin {
+        if !shadow {
+            let positions = vertices.positions.iter().copied().enumerate();
+            if let Some((joints, weights)) = &vertices.skin {
                 self.optimize_vertices(
-                    indices,
-                    &vertices
+                    &vertices.indices,
+                    &positions
                         .map(|(idx, position)| {
-                            (position, tex_coords[idx], joints[idx], weights[idx])
+                            (
+                                position,
+                                vertices.tex_coords[idx],
+                                vertices.normals[idx],
+                                vertices.tangents[idx],
+                                joints[idx],
+                                weights[idx],
+                            )
                         })
                         .collect::<Vec<_>>(),
                 )
             } else {
                 self.optimize_vertices(
-                    indices,
-                    &vertices
-                        .map(|(idx, position)| (position, tex_coords[idx]))
+                    &vertices.indices,
+                    &positions
+                        .map(|(idx, position)| {
+                            (
+                                position,
+                                vertices.tex_coords[idx],
+                                vertices.normals[idx],
+                                vertices.tangents[idx],
+                            )
+                        })
                         .collect::<Vec<_>>(),
                 )
             }
-        } else if let Some((joints, weights)) = skin {
+        } else if let Some((joints, weights)) = &vertices.skin {
             self.optimize_vertices(
-                indices,
-                &positions
+                &vertices.indices,
+                &vertices
+                    .positions
                     .iter()
                     .copied()
                     .enumerate()
@@ -309,7 +305,7 @@ impl Model {
                     .collect::<Vec<_>>(),
             )
         } else {
-            self.optimize_vertices(indices, positions)
+            self.optimize_vertices(&vertices.indices, &vertices.positions)
         }
     }
 
@@ -375,16 +371,7 @@ impl Model {
             .unwrap_or_default()
     }
 
-    #[allow(clippy::type_complexity)]
-    fn read_vertices<'a, 's, F>(
-        data: Reader<'a, 's, F>,
-    ) -> (
-        u32,
-        Vec<Index>,
-        Vec<Position>,
-        Vec<TextureCoord>,
-        Option<(Vec<Joint>, Vec<Weight>)>,
-    )
+    fn read_vertices<'a, 's, F>(data: Reader<'a, 's, F>) -> (u32, VertexData)
     where
         F: Clone + Fn(Buffer<'a>) -> Option<&'s [u8]>,
     {
@@ -392,6 +379,7 @@ impl Model {
             .read_positions()
             .map(|positions| positions.collect::<Vec<_>>())
             .unwrap_or_default();
+
         let (restart_index, indices) = data
             .read_indices()
             .map(|indices| {
@@ -405,12 +393,27 @@ impl Model {
                 )
             })
             .unwrap_or_else(|| (u32::MAX, (0..positions.len() as u32).collect()));
+
         let mut tex_coords = data
             .read_tex_coords(0)
             .map(|data| data.into_f32())
             .map(|tex_coords| tex_coords.collect::<Vec<_>>())
             .unwrap_or_default();
-        tex_coords.resize(positions.len(), [0.0, 0.0]);
+        tex_coords.resize(positions.len(), Default::default());
+
+        let mut normals = data
+            .read_normals()
+            .map(|normals| normals.collect::<Vec<_>>())
+            .unwrap_or_default();
+        normals.resize(positions.len(), Default::default());
+
+        let mut tangents = data
+            .read_tangents()
+            .map(|tangents| tangents.collect::<Vec<_>>())
+            .unwrap_or_default();
+        tangents.resize(positions.len(), Default::default());
+        let tangents = tangents.into_iter().collect();
+
         let joints = data
             .read_joints(0)
             .map(|joints| {
@@ -450,7 +453,17 @@ impl Model {
             None
         };
 
-        (restart_index, indices, positions, tex_coords, skin)
+        (
+            restart_index,
+            VertexData {
+                indices,
+                normals,
+                positions,
+                skin,
+                tangents,
+                tex_coords,
+            },
+        )
     }
 
     /// Scaling of the model.
@@ -506,37 +519,35 @@ impl Model {
                     .map(|mesh| {
                         (
                             mesh.primitives()
-                                .filter_map(|primitive| {
-                                    TriangleMode::classify(&primitive).map(|triangle_mode| {
+                                .filter_map(|primitive| match primitive.mode() {
+                                    Mode::TriangleFan | Mode::TriangleStrip | Mode::Triangles => {
                                         // Read material and vertex data
                                         let material =
                                             primitive.material().index().unwrap_or_default();
-                                        let (
-                                            restart_index,
-                                            mut indices,
-                                            positions,
-                                            tex_coords,
-                                            skin,
-                                        ) = Self::read_vertices(primitive.reader(|buf| {
-                                            bufs.get(buf.index()).map(|data| data.0.as_slice())
-                                        }));
+                                        let (restart_index, mut vertices) =
+                                            Self::read_vertices(primitive.reader(|buf| {
+                                                bufs.get(buf.index()).map(|data| data.0.as_slice())
+                                            }));
 
                                         // Convert unsupported modes (meshopt requires triangle lists)
-                                        match triangle_mode {
-                                            TriangleMode::Fan => {
-                                                Self::convert_triangle_fan_to_list(&mut indices)
+                                        match primitive.mode() {
+                                            Mode::TriangleFan => {
+                                                Self::convert_triangle_fan_to_list(
+                                                    &mut vertices.indices,
+                                                )
                                             }
-                                            TriangleMode::Strip => {
+                                            Mode::TriangleStrip => {
                                                 Self::convert_triangle_strip_to_list(
-                                                    &mut indices,
+                                                    &mut vertices.indices,
                                                     restart_index,
                                                 )
                                             }
                                             _ => (),
                                         }
 
-                                        (material, indices, positions, tex_coords, skin)
-                                    })
+                                        Some((material, vertices))
+                                    }
+                                    _ => None,
                                 })
                                 .collect::<Vec<_>>(),
                             mesh,
@@ -574,19 +585,19 @@ impl Model {
             let transform = self.transform(&node);
 
             let mut primitives = vec![];
-            for (material, indices, positions, tex_coords, skin) in mesh_primitives {
+            for (material, vertices) in mesh_primitives {
                 let mut levels = vec![];
                 let mut shadows = vec![];
                 let material = materials[&material];
 
                 // Optimize and append the main mesh
-                let (indices, vertices, vertex_count, vertex_stride) =
-                    self.optimize_mesh(&indices, &positions, Some(&tex_coords), &skin);
+                let (indices, vertices_optimal, vertex_count, vertex_stride) =
+                    self.optimize_mesh(&vertices, false);
 
                 // Store optional shadow mesh (vertices are just positions)
                 if shadow {
                     let (indices_shadow, vertices_shadow, vertex_count_shadow, _) =
-                        self.optimize_mesh(&indices, &positions, None, &skin);
+                        self.optimize_mesh(&vertices, true);
 
                     // Either store the shadow mesh as-is OR store meshlets of it
                     let meshlets = self.build_meshlets(&indices_shadow, vertex_count_shadow);
@@ -621,15 +632,15 @@ impl Model {
                 }
 
                 // Optionally calculate levels of detail: when disabled this returns empty
-                let lods = self.calculate_lods(&indices, &vertices, vertex_stride);
+                let lods = self.calculate_lods(&indices, &vertices_optimal, vertex_stride);
 
                 // Either store the mesh as-is OR store meshlets of the mesh
                 let meshlets = self.build_meshlets(&indices, vertex_count);
                 let index_ty = if build_meshlets {
                     Self::append_meshlets(&mut index_buf, &meshlets);
-                    Self::append_mesh(&mut index_buf, &mut vertex_buf, &[], vertices)
+                    Self::append_mesh(&mut index_buf, &mut vertex_buf, &[], vertices_optimal)
                 } else {
-                    Self::append_mesh(&mut index_buf, &mut vertex_buf, &indices, vertices)
+                    Self::append_mesh(&mut index_buf, &mut vertex_buf, &indices, vertices_optimal)
                 };
 
                 levels.push(Detail {
@@ -646,18 +657,18 @@ impl Model {
                             triangle_count: indices.len() as u32 / 3,
                         }]
                     },
-                    vertex_count: positions.len() as _,
+                    vertex_count: vertices.positions.len() as _,
                 });
 
                 // Optimize and append the levels of detail
                 for indices in lods {
-                    let (indices, vertices, vertex_count, _) =
-                        self.optimize_mesh(&indices, &positions, Some(&tex_coords), &skin);
+                    let (indices, vertices_optimal, vertex_count, _) =
+                        self.optimize_mesh(&vertices, false);
 
                     // Store optional shadow mesh (vertices are just positions)
                     if shadow {
                         let (indices_shadow, vertices_shadow, vertex_count_shadow, _) =
-                            self.optimize_mesh(&indices, &positions, None, &skin);
+                            self.optimize_mesh(&vertices, true);
 
                         // Either store the shadow mesh as-is OR store meshlets of it
                         let meshlets = self.build_meshlets(&indices_shadow, vertex_count_shadow);
@@ -695,9 +706,14 @@ impl Model {
                     let meshlets = self.build_meshlets(&indices, vertex_count);
                     let index_ty = if build_meshlets {
                         Self::append_meshlets(&mut index_buf, &meshlets);
-                        Self::append_mesh(&mut index_buf, &mut vertex_buf, &[], vertices)
+                        Self::append_mesh(&mut index_buf, &mut vertex_buf, &[], vertices_optimal)
                     } else {
-                        Self::append_mesh(&mut index_buf, &mut vertex_buf, &indices, vertices)
+                        Self::append_mesh(
+                            &mut index_buf,
+                            &mut vertex_buf,
+                            &indices,
+                            vertices_optimal,
+                        )
                     };
 
                     levels.push(Detail {
@@ -714,7 +730,7 @@ impl Model {
                                 triangle_count: indices.len() as u32 / 3,
                             }]
                         },
-                        vertex_count: positions.len() as _,
+                        vertex_count: vertices.positions.len() as _,
                     });
                 }
 
@@ -753,4 +769,13 @@ impl Canonicalize for Model {
     fn canonicalize(&mut self, project_dir: impl AsRef<Path>, src_dir: impl AsRef<Path>) {
         self.src = Self::canonicalize_project_path(project_dir, src_dir, &self.src);
     }
+}
+
+struct VertexData {
+    indices: Vec<Index>,
+    normals: Vec<Normal>,
+    positions: Vec<Position>,
+    skin: Option<(Vec<Joint>, Vec<Weight>)>,
+    tangents: Vec<Tangent>,
+    tex_coords: Vec<TextureCoord>,
 }
