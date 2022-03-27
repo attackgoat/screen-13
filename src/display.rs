@@ -191,8 +191,7 @@ where
 
         // Store the resolved graph because it contains bindings, leases, and other shared resources
         // that need to be kept alive until the fence is waited upon.
-        let frame = &mut self.frames[swapchain_image_idx];
-        frame.resolved_render_graph = Some(resolver);
+        self.frames[swapchain_image_idx].resolved_render_graph = Some(resolver);
 
         Ok(())
     }
