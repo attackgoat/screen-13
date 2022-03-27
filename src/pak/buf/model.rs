@@ -1,5 +1,5 @@
 use {
-    super::{file_key, Asset, Canonicalize, Id},
+    super::{file_key, re_run_if_changed, Asset, Canonicalize, Id},
     crate::{
         into_u8_slice,
         pak::{Detail, IndexType, Mesh, Meshlet, ModelBuf, ModelId, Primitive},
@@ -9,7 +9,7 @@ use {
         buffer::Data,
         import,
         mesh::{util::ReadIndices, Mode, Reader},
-        Buffer, Node,
+        Buffer, Gltf, Node,
     },
     log::{info, trace, warn},
     meshopt::{
@@ -21,6 +21,7 @@ use {
     serde::Deserialize,
     std::{
         collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+        env::{current_dir, set_current_dir},
         io::Error,
         mem::size_of,
         path::{Path, PathBuf},
@@ -467,6 +468,7 @@ impl Model {
     fn to_model_buf(&self) -> ModelBuf {
         let build_meshlets = self.meshlets.unwrap_or_default();
 
+        // Gather a map of the importable mesh names and the renamed name they should get
         let mut mesh_names = HashMap::<_, _>::default();
         if let Some(meshes) = &self.meshes {
             for mesh in meshes {
@@ -477,6 +479,16 @@ impl Model {
             }
         }
 
+        // Watch the GLTF file for changes, only if we're in a cargo build
+        let src = self.src();
+        re_run_if_changed(&src);
+
+        // Just in case there is a GLTF bin file; also watch it for changes
+        let mut src_bin = src.to_path_buf();
+        src_bin.set_extension("bin");
+        re_run_if_changed(src_bin);
+
+        // Load the mesh nodes from this GLTF file
         let (doc, bufs, _) = import(self.src()).unwrap();
         let doc_meshes = doc
             .nodes()

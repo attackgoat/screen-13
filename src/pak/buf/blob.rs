@@ -1,7 +1,7 @@
 use {
     super::{
-        bitmap::Bitmap, file_key, Asset, BitmapBuf, BitmapFontBuf, BitmapFontId, BlobId,
-        Canonicalize, Id,
+        bitmap::Bitmap, file_key, re_run_if_changed, Asset, BitmapBuf, BitmapFontBuf, BitmapFontId,
+        BlobId, Canonicalize, Id,
     },
     crate::pak::BitmapFormat,
     log::info,
@@ -48,6 +48,8 @@ impl Blob {
 
         info!("Baking blob: {}", key);
 
+        re_run_if_changed(&self.src);
+
         let mut file = File::open(&self.src).unwrap();
         let mut value = vec![];
         file.read_to_end(&mut value).unwrap();
@@ -71,6 +73,8 @@ impl Blob {
         let key = file_key(&project_dir, &src);
 
         info!("Baking bitmap font: {}", key);
+
+        re_run_if_changed(&self.src);
 
         // Get the fs objects for this asset
         let def_parent = self.src.parent().unwrap();

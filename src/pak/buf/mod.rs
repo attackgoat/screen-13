@@ -432,10 +432,16 @@ impl PakBuf {
                                         .unwrap();
                                 }));
                             }
-                            //     Asset::Model(mut model) => {
-                            //         model.canonicalize(&src_dir, &src_dir);
-                            //         bake_model(&mut context, &mut pak, src_dir, Some(src), &model);
-                            //     }
+                            Asset::Model(mut model) => {
+                                let writer = Arc::clone(&writer);
+                                let src_dir = src_dir.clone();
+                                let asset_path = asset_path.clone();
+                                let asset_parent = asset_parent.clone();
+                                tasks.push(rt.spawn_blocking(move || {
+                                    model.canonicalize(&src_dir, &asset_parent);
+                                    model.bake(&writer, &src_dir, Some(&asset_path)).unwrap();
+                                }));
+                            }
                             //     Asset::Scene(scene) => {
                             //         bake_scene(&mut context, &mut pak, &src_dir, src, &scene);
                             //     }

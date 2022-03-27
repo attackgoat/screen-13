@@ -5,9 +5,6 @@ fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
     PakBuf::bake("examples/res/fonts.toml", "target/debug/examples/fonts.pak")?;
-
-    Ok(())
-
     /*
     Expected console output:
 
@@ -28,4 +25,11 @@ fn main() -> anyhow::Result<()> {
     TRACE screen_13::pak::buf::writer > Writing models
     TRACE screen_13::pak::buf::writer > Writing scenes
     */
+
+    PakBuf::bake(
+        "examples/res/models.toml",
+        "target/debug/examples/models.pak",
+    )?;
+
+    Ok(())
 }

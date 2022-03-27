@@ -7,7 +7,6 @@ pub mod prelude_arc {
     pub type ComputePresenter = super::ComputePresenter<P>;
     pub type GraphicPresenter = super::GraphicPresenter<P>;
     pub type ImageLoader = super::ImageLoader<P>;
-    pub type ModelLoader = super::ModelLoader<P>;
 }
 
 pub mod prelude_rc {
@@ -19,7 +18,6 @@ pub mod prelude_rc {
     pub type ComputePresenter = super::ComputePresenter<P>;
     pub type GraphicPresenter = super::GraphicPresenter<P>;
     pub type ImageLoader = super::ImageLoader<P>;
-    pub type ModelLoader = super::ModelLoader<P>;
 }
 
 mod res {
@@ -31,7 +29,6 @@ mod res {
 mod clear;
 mod copy;
 mod image;
-mod model;
 mod present;
 mod text;
 
@@ -45,6 +42,5 @@ pub use self::{
         copy_image_node_regions,
     },
     image::ImageLoader,
-    model::ModelLoader,
     present::{ComputePresenter, GraphicPresenter},
 };

@@ -1,5 +1,5 @@
 use {
-    super::{file_key, BitmapBuf, BitmapId, Canonicalize},
+    super::{file_key, re_run_if_changed, BitmapBuf, BitmapId, Canonicalize},
     crate::pak::{BitmapColor, BitmapFormat},
     anyhow::Context,
     image::{buffer::ConvertBuffer, imageops::FilterType, open, DynamicImage, RgbaImage},
@@ -136,6 +136,8 @@ impl Bitmap {
         fmt: BitmapFormat,
         resize: Option<u32>,
     ) -> anyhow::Result<(u32, Vec<u8>)> {
+        re_run_if_changed(&path);
+
         //let started = std::time::Instant::now();
 
         /*

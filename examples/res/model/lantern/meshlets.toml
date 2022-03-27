@@ -1,0 +1,4 @@
+[model]
+meshlets = true
+shadow = true
+src = "lantern.gltf"

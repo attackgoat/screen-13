@@ -1,0 +1,7 @@
+[content]
+compression = "snap"
+
+[[content.group]]
+assets = [
+    "model/**/*.toml"
+]
