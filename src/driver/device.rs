@@ -16,6 +16,7 @@ use {
         collections::{HashMap, HashSet},
         ffi::CStr,
         fmt::{Debug, Formatter},
+        iter::empty,
         mem::forget,
         ops::Deref,
         os::raw::c_char,
@@ -47,6 +48,49 @@ impl<P> Device<P>
 where
     P: SharedPointerKind,
 {
+    pub fn new(cfg: DriverConfig) -> Result<Self, DriverError> {
+        trace!("new {:?}", cfg);
+
+        let instance = Shared::new(Instance::new(cfg.debug, empty())?);
+        let physical_devices = Instance::physical_devices(&instance)?
+            .filter(|physical_device| {
+                if cfg.ray_tracing && !PhysicalDevice::has_ray_tracing_support(physical_device) {
+                    info!("{:?} lacks ray tracing support", unsafe {
+                        CStr::from_ptr(physical_device.props.device_name.as_ptr() as *const c_char)
+                    });
+
+                    return false;
+                }
+
+                // TODO: Check vkGetPhysicalDeviceFeatures for samplerAnisotropy (it should exist, but to be sure)
+
+                true
+            })
+            .collect::<Vec<_>>();
+
+        info!(
+            "Supported GPUs: {:#?}",
+            physical_devices
+                .iter()
+                .map(|physical_device| unsafe {
+                    CStr::from_ptr(physical_device.props.device_name.as_ptr() as *const c_char)
+                })
+                .collect::<Vec<_>>()
+        );
+
+        let physical_device = physical_devices
+            .into_iter()
+            // If there are multiple devices with the same score, `max_by_key` would choose the last,
+            // and we want to preserve the order of devices from `enumerate_physical_devices`.
+            .rev()
+            .max_by_key(|physical_device| PhysicalDevice::score_device_type(physical_device))
+            .ok_or(DriverError::Unsupported)?;
+
+        info!("Selected GPU: {:#?}", physical_device);
+
+        Device::create(&instance, physical_device, cfg)
+    }
+
     pub fn create(
         instance: &Shared<Instance, P>,
         physical_device: PhysicalDevice,
@@ -442,7 +486,7 @@ where
 
 bitflags! {
     pub struct FeatureFlags: u32 {
-        const DLSS = 1 << 0;
+        // const DLSS = 1 << 0;
         const PRESENTATION = 1 << 1;
         const RAY_TRACING = 1 << 2;
     }
@@ -456,16 +500,16 @@ impl FeatureFlags {
             vk::KhrImageFormatListFn::name().as_ptr(),
         ];
 
-        if self.contains(FeatureFlags::DLSS) {
-            device_extension_names_raw.extend(
-                [
-                    b"VK_NVX_binary_import\0".as_ptr() as *const i8,
-                    b"VK_KHR_push_descriptor\0".as_ptr() as *const i8,
-                    vk::NvxImageViewHandleFn::name().as_ptr(),
-                ]
-                .iter(),
-            );
-        }
+        // if self.contains(FeatureFlags::DLSS) {
+        //     device_extension_names_raw.extend(
+        //         [
+        //             b"VK_NVX_binary_import\0".as_ptr() as *const i8,
+        //             b"VK_KHR_push_descriptor\0".as_ptr() as *const i8,
+        //             vk::NvxImageViewHandleFn::name().as_ptr(),
+        //         ]
+        //         .iter(),
+        //     );
+        // }
 
         if self.contains(FeatureFlags::PRESENTATION) {
             device_extension_names_raw.push(khr::Swapchain::name().as_ptr());

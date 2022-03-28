@@ -3,7 +3,7 @@ use {anyhow::Context, screen_13::prelude_arc::*, screen_13_fx::prelude_arc::*};
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
-    // Standard Screen-13 stuff
+    // Standard Screen 13 stuff
     let event_loop = EventLoop::new().debug(true).build()?;
     let display = GraphicPresenter::new(&event_loop.device)?;
     let mut image_loader = ImageLoader::new(&event_loop.device)?;

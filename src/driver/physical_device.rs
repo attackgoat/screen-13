@@ -87,6 +87,15 @@ impl PhysicalDevice {
     pub fn queue_families(this: &Self) -> impl Iterator<Item = QueueFamily> + '_ {
         this.queue_families.iter().copied()
     }
+
+    pub(super) fn score_device_type(this: &Self) -> usize {
+        match this.props.device_type {
+            vk::PhysicalDeviceType::DISCRETE_GPU => 1000,
+            vk::PhysicalDeviceType::INTEGRATED_GPU => 200,
+            vk::PhysicalDeviceType::VIRTUAL_GPU => 1,
+            _ => 0,
+        }
+    }
 }
 
 impl Debug for PhysicalDevice {

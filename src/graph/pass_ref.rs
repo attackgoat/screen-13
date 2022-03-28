@@ -1108,12 +1108,12 @@ where
     }
 
     // This can only be called once per pass.
-    pub fn set_depth_stencil(mut self, sample_count: DepthStencilMode) -> Self {
+    pub fn set_depth_stencil(mut self, depth_stencil: DepthStencilMode) -> Self {
         let pass = self.pass.as_mut();
 
         assert!(pass.depth_stencil.is_none());
 
-        pass.depth_stencil = Some(sample_count);
+        pass.depth_stencil = Some(depth_stencil);
         self
     }
 

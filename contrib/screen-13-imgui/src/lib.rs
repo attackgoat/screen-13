@@ -112,7 +112,7 @@ where
         let image = render_graph.bind_node(
             self.pool
                 .lease(
-                    ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, resolution).usage(
+                    ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, resolution.x, resolution.y).usage(
                         vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED,
                     ),
                 )
@@ -311,11 +311,8 @@ where
         let image = render_graph.bind_node(
             self.pool
                 .lease(
-                    ImageInfo::new_2d(
-                        vk::Format::R8G8B8A8_UNORM,
-                        uvec2(texture.width, texture.height),
-                    )
-                    .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST),
+                    ImageInfo::new_2d(vk::Format::R8G8B8A8_UNORM, texture.width, texture.height)
+                        .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST),
                 )
                 .unwrap(),
         );

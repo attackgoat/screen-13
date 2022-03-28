@@ -8,7 +8,7 @@ fn main() -> Result<(), DisplayError> {
     // Set RUST_LOG=trace in your environment variables to see log output
     pretty_env_logger::init();
 
-    // Screen-13 things we need for this demo
+    // Screen 13 things we need for this demo
     let event_loop = EventLoop::new().build()?;
     let display = ComputePresenter::new(&event_loop.device)?;
     let mut imgui = ImGui::new(&event_loop.device);

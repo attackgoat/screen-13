@@ -232,7 +232,7 @@ where
             // If there are multiple devices with the same score, `max_by_key` would choose the last,
             // and we want to preserve the order of devices from `enumerate_physical_devices`.
             .rev()
-            .max_by_key(|physical_device| Self::score_device_type(physical_device))
+            .max_by_key(|physical_device| PhysicalDevice::score_device_type(physical_device))
             .ok_or(DriverError::Unsupported)?;
 
         info!("Selected GPU: {:#?}", physical_device);
@@ -267,15 +267,6 @@ where
         format.format == vk::Format::B8G8R8A8_SRGB
             && format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
     }
-
-    fn score_device_type(physical_device: &PhysicalDevice) -> usize {
-        match physical_device.props.device_type {
-            vk::PhysicalDeviceType::DISCRETE_GPU => 1000,
-            vk::PhysicalDeviceType::INTEGRATED_GPU => 200,
-            vk::PhysicalDeviceType::VIRTUAL_GPU => 1,
-            _ => 0,
-        }
-    }
 }
 
 /// A list of required features. Features that are supported but not required will not be
@@ -289,8 +280,8 @@ pub struct DriverConfig {
     pub desired_swapchain_image_count: u32,
     #[builder(default = "true")]
     pub sync_display: bool,
-    #[builder(default)]
-    pub dlss: bool,
+    // #[builder(default)]
+    // pub dlss: bool,
     #[builder(default = "true")]
     pub presentation: bool,
     #[builder(default)]
@@ -306,9 +297,9 @@ impl DriverConfig {
     fn features(self) -> FeatureFlags {
         let mut res = FeatureFlags::PRESENTATION;
 
-        if self.dlss {
-            res |= FeatureFlags::DLSS;
-        }
+        // if self.dlss {
+        //     res |= FeatureFlags::DLSS;
+        // }
 
         if self.ray_tracing {
             res |= FeatureFlags::RAY_TRACING;
