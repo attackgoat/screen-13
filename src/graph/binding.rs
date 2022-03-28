@@ -33,43 +33,6 @@ where
     BufferLeaseUnbound(&'a mut Lease<BufferBinding<P>, P>),
 }
 
-impl<'a, P> AnyBufferBinding<'a, P>
-where
-    P: SharedPointerKind,
-{
-    pub fn access(&mut self, access: AccessType) -> (&Buffer<P>, AccessType) {
-        match self {
-            Self::Buffer(binding) => binding.access(access),
-            Self::BufferLeaseBound(binding) => binding.access(access),
-            Self::BufferLeaseUnbound(binding) => binding.access(access),
-        }
-    }
-
-    pub fn shared_ref(self) -> impl Debug + 'static
-    where
-        P: 'static,
-    {
-        match self {
-            Self::Buffer(binding) => Some(binding.shared_ref()),
-            Self::BufferLeaseBound(binding) => Some(binding.shared_ref()),
-            Self::BufferLeaseUnbound(binding) => Some(binding.shared_ref()),
-        }
-    }
-}
-
-impl<'a, P> AsRef<Buffer<P>> for AnyBufferBinding<'a, P>
-where
-    P: SharedPointerKind,
-{
-    fn as_ref(&self) -> &Buffer<P> {
-        match self {
-            Self::Buffer(binding) => &binding.item,
-            Self::BufferLeaseBound(binding) => &binding.item,
-            Self::BufferLeaseUnbound(binding) => &binding.item,
-        }
-    }
-}
-
 impl<'a, P> From<&'a mut BufferBinding<P>> for AnyBufferBinding<'a, P>
 where
     P: SharedPointerKind,
@@ -106,46 +69,6 @@ where
     ImageLeaseBound(&'a mut ImageLeaseBinding<P>),
     ImageLeaseUnbound(&'a mut Lease<ImageBinding<P>, P>),
     SwapchainImage(&'a mut SwapchainImageBinding<P>),
-}
-
-impl<'a, P> AnyImageBinding<'a, P>
-where
-    P: SharedPointerKind,
-{
-    pub fn access(&mut self, access: AccessType) -> (&Image<P>, AccessType) {
-        match self {
-            Self::Image(binding) => binding.access(access),
-            Self::ImageLeaseBound(binding) => binding.access(access),
-            Self::ImageLeaseUnbound(binding) => binding.access(access),
-            Self::SwapchainImage(binding) => binding.access(access),
-        }
-    }
-
-    pub fn shared_ref(self) -> impl Debug + 'static
-    where
-        P: 'static,
-    {
-        match self {
-            Self::Image(binding) => Some(binding.shared_ref()),
-            Self::ImageLeaseBound(binding) => Some(binding.shared_ref()),
-            Self::ImageLeaseUnbound(binding) => Some(binding.shared_ref()),
-            Self::SwapchainImage(binding) => None, // Not required
-        }
-    }
-}
-
-impl<'a, P> AsRef<Image<P>> for AnyImageBinding<'a, P>
-where
-    P: SharedPointerKind,
-{
-    fn as_ref(&self) -> &Image<P> {
-        match self {
-            Self::Image(binding) => &binding.item,
-            Self::ImageLeaseBound(binding) => &binding.item,
-            Self::ImageLeaseUnbound(binding) => &binding.item,
-            Self::SwapchainImage(binding) => &binding.item,
-        }
-    }
 }
 
 impl<'a, P> From<&'a mut ImageBinding<P>> for AnyImageBinding<'a, P>
@@ -311,7 +234,7 @@ macro_rules! bind {
                 /// Allows for direct access to the item inside this binding, without the Shared
                 /// wrapper. Returns the previous access type and subresource access which you
                 /// should use to create a barrier for whatever access is actually being done.
-                pub fn access(&mut self,
+                pub(super) fn access(&mut self,
                     access: AccessType,
                 ) -> (&$name<P>, AccessType) {
                     let previous_access = replace(&mut self.access, access);
@@ -322,7 +245,7 @@ macro_rules! bind {
                 /// Allows for direct access to the item inside this binding, without the Shared
                 /// wrapper. Returns the previous access type and subresource access which you
                 /// should use to create a barrier for whatever access is actually being done.
-                pub fn access_mut(&mut self,
+                pub(super) fn access_mut(&mut self,
                     access: AccessType,
                 ) -> (&mut $name<P>, AccessType) {
                     let previous_access = replace(&mut self.access, access);
@@ -333,21 +256,6 @@ macro_rules! bind {
                 /// Returns a mutable borrow only if no other clones of this shared item exist.
                 pub fn get_mut(&mut self) -> Option<&mut $name<P>> {
                     Shared::get_mut(&mut self.item)
-                }
-
-                /// Creates a new staticlly shared reference to our binding item. You can't do
-                /// anything with this shared reference, but you can hold onto it as long as you
-                /// like. While the reference is held this binding will stay alive. This is useful
-                /// for tying the lifetime of this binding to something else, such as a command
-                /// buffer.
-                pub fn shared_ref(&self) -> impl Debug + 'static where P: 'static {
-                    Shared::clone(&self.item)
-                }
-            }
-
-            impl<P> AsRef<$name<P>> for [<$name Binding>]<P> where P: SharedPointerKind {
-                fn as_ref(&self) -> &$name<P> {
-                    &self.item
                 }
             }
 
@@ -526,45 +434,3 @@ where
         self.item.idx as usize
     }
 }
-
-macro_rules! transparent_binding {
-    ($item:ident) => {
-        paste::paste! {
-            #[derive(Debug)]
-            pub struct [<$item Binding>]<P>
-            where
-                P: SharedPointerKind,
-            {
-                item: $item<P>,
-            }
-
-            impl<P> [<$item Binding>]<P>
-            where
-                P: SharedPointerKind,
-            {
-                pub fn new(item: $item<P>) -> Self {
-                    Self { item }
-                }
-            }
-
-            impl<P> Deref for [<$item Binding>]<P>
-            where
-                P: SharedPointerKind,
-            {
-                type Target = $item<P>;
-
-                fn deref(&self) -> &Self::Target {
-                    &self.item
-                }
-            }
-        }
-    };
-}
-
-// We need "binding-like" data for these items because the pool retrieves bindings but also
-// some lower-level items too. They don't require hand-holding so they allow direct access
-// to the underlying stuffs via deref. These smart pointers are required because the pool
-// needs something to attach a lease to, and it uses inheritance by composition so we have a
-// POD type here now.
-transparent_binding!(DescriptorPool);
-transparent_binding!(RenderPass);

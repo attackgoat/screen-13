@@ -62,10 +62,10 @@ pub mod prelude_all {
     pub use super::{
         driver::*,
         graph::{
-            AccessType, AnyBufferBinding, AnyImageBinding, AnyImageNode, BufferBinding,
-            BufferLeaseBinding, BufferLeaseNode, BufferNode, ImageBinding, ImageLayout,
-            ImageLeaseBinding, ImageLeaseNode, ImageNode, PassRef, RayTraceAccelerationBinding,
-            RayTraceAccelerationNode, RenderGraph, SwapchainImageNode,
+            AnyBufferBinding, AnyImageBinding, AnyImageNode, BufferBinding, BufferLeaseBinding,
+            BufferLeaseNode, BufferNode, ImageBinding, ImageLeaseBinding, ImageLeaseNode,
+            ImageNode, PassRef, RayTraceAccelerationBinding, RayTraceAccelerationNode, RenderGraph,
+            SwapchainImageNode,
         },
         prelude::*,
         Display, DisplayError, EventLoopBuilder, HashPool, Lease,

@@ -7,23 +7,23 @@ mod resolver;
 mod swapchain;
 mod validator;
 
-// Re-imports
-pub use vk_sync::{AccessType, ImageLayout};
-
-pub use self::{
-    binding::{
-        AnyBufferBinding, AnyImageBinding, Bind, BufferBinding, BufferLeaseBinding,
-        DescriptorPoolBinding, ImageBinding, ImageLeaseBinding, RayTraceAccelerationBinding,
-        RayTraceAccelerationLeaseBinding, RenderPassBinding,
+pub use {
+    self::{
+        binding::{
+            AnyBufferBinding, AnyImageBinding, Bind, BufferBinding, BufferLeaseBinding,
+            ImageBinding, ImageLeaseBinding, RayTraceAccelerationBinding,
+            RayTraceAccelerationLeaseBinding,
+        },
+        node::{
+            AnyBufferNode, AnyImageNode, BufferLeaseNode, BufferNode, ImageLeaseNode, ImageNode,
+            RayTraceAccelerationLeaseNode, RayTraceAccelerationNode, SwapchainImageNode, Unbind,
+            View, ViewType,
+        },
+        pass_ref::{Bindings, PassRef, PipelinePassRef},
+        resolver::Resolver,
+        swapchain::SwapchainImageBinding,
     },
-    node::{
-        AnyBufferNode, AnyImageNode, BufferLeaseNode, BufferNode, ImageLeaseNode, ImageNode,
-        RayTraceAccelerationLeaseNode, RayTraceAccelerationNode, SwapchainImageNode, Unbind, View,
-        ViewType,
-    },
-    pass_ref::{Bindings, PassRef, PipelinePassRef},
-    resolver::Resolver,
-    swapchain::SwapchainImageBinding,
+    vk_sync::AccessType,
 };
 
 use {
@@ -46,6 +46,7 @@ use {
         fmt::{Debug, Formatter},
         ops::Range,
     },
+    vk_sync::ImageLayout,
 };
 
 // Aliases for clarity

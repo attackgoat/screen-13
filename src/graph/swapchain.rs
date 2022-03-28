@@ -36,7 +36,7 @@ where
     /// Allows for direct access to the item inside this binding, without the Shared
     /// wrapper. Returns the previous access type and subresource access which you
     /// should use to create a barrier for whatever access is actually being done.
-    pub fn access(&mut self, access: AccessType) -> (&Image<P>, AccessType) {
+    pub(super) fn access(&mut self, access: AccessType) -> (&Image<P>, AccessType) {
         let previous_access = replace(&mut self.access, access);
 
         (&self.item, previous_access)
