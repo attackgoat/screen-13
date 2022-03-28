@@ -1,4 +1,4 @@
-use {screen_13::prelude_arc::*, std::env::current_exe};
+use screen_13::prelude_arc::*;
 
 // A .pak file "ModelBuf" has the following basic structure:
 //   Model -> Mesh[] -> Primitive[] -> LevelOfDetail[] -> Meshlet[]
@@ -21,19 +21,16 @@ use {screen_13::prelude_arc::*, std::env::current_exe};
 // ...and more! See the getting started docs at:
 // https://github.com/attackgoat/screen-13/blob/master/examples/getting-started.md
 
-fn main() -> anyhow::Result<()> {
-    // The models are inside the .pak file which is located in the same directory as this example
-    let mut pak_path = current_exe()?;
-    pak_path.set_file_name("models.pak");
-
+fn main() {
     // Opening the .pak reads a small header only
-    let mut pak = PakBuf::open(pak_path)?;
+    let mut pak =
+        PakBuf::open("models.pak").expect("Unable to open pak file - run bake_pak example first");
 
     // Reads the "default.toml" model which physically reads 155 K of index/vertex data
-    let default_model = pak.read_model("model/lantern/default")?;
+    let default_model = pak.read_model("model/lantern/default").unwrap();
 
     // Also read "meshlets.toml" which is the same model but baked into meshopt "meshlets" (172 K)
-    let meshlets_model = pak.read_model("model/lantern/meshlets")?;
+    let meshlets_model = pak.read_model("model/lantern/meshlets").unwrap();
 
     // Each model contains multiple artist-named meshes, here we are only looking at one mesh
     // from each model file. Notice how this file bakes each detail level into a single meshlet
@@ -47,6 +44,4 @@ fn main() -> anyhow::Result<()> {
         "Meshlet model also w/ shadows:\n{:#?}\n",
         meshlets_model.meshes[0]
     );
-
-    Ok(())
 }

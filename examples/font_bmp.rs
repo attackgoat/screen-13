@@ -1,6 +1,4 @@
-use {
-    anyhow::Context, screen_13::prelude_arc::*, screen_13_fx::prelude_arc::*, std::env::current_exe,
-};
+use {anyhow::Context, screen_13::prelude_arc::*, screen_13_fx::prelude_arc::*};
 
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
@@ -12,7 +10,8 @@ fn main() -> anyhow::Result<()> {
     let mut pool = HashPool::new(&event_loop.device);
 
     // This example requires the "bake_pak" example to be run first
-    let mut pak = open_fonts_pak().context("Pak file missing - run the bake_pak example first")?;
+    let mut pak =
+        PakBuf::open("fonts.pak").context("Pak file missing - run the bake_pak example first")?;
 
     // Load a bitmapped font from the pre-packed data file
     let small_10px_font = BitmapFont::load(
@@ -31,7 +30,9 @@ fn main() -> anyhow::Result<()> {
             )
             .unwrap(),
         );
-        clear_color_node(frame.render_graph, image_node, 0.0, 0.0, 1.0, 1.0);
+        frame
+            .render_graph
+            .clear_color_image(image_node, 0.0, 0.0, 1.0, 1.0);
 
         let text = "Hello, world!";
         let (_offset, extent) = small_10px_font.measure(text);
@@ -48,13 +49,4 @@ fn main() -> anyhow::Result<()> {
     })?;
 
     Ok(())
-}
-
-fn open_fonts_pak() -> anyhow::Result<PakBuf> {
-    let mut pak_path = current_exe()?;
-    pak_path.set_file_name("fonts.pak");
-
-    let pak = PakBuf::open(pak_path)?;
-
-    Ok(pak)
 }

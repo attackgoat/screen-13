@@ -4,7 +4,7 @@ fn main() -> anyhow::Result<()> {
     // Set RUST_LOG=trace in your environment variables to see log output
     pretty_env_logger::init();
 
-    PakBuf::bake("examples/res/fonts.toml", "target/debug/examples/fonts.pak")?;
+    PakBuf::bake("examples/res/fonts.toml", "fonts.pak")?;
     /*
     Expected console output:
 
@@ -26,10 +26,7 @@ fn main() -> anyhow::Result<()> {
     TRACE screen_13::pak::buf::writer > Writing scenes
     */
 
-    PakBuf::bake(
-        "examples/res/models.toml",
-        "target/debug/examples/models.pak",
-    )?;
+    PakBuf::bake("examples/res/models.toml", "models.pak")?;
 
     Ok(())
 }

@@ -96,7 +96,7 @@ fn main() -> anyhow::Result<()> {
     );
 
     let mut render_graph = RenderGraph::new();
-    let mut blank_image = render_graph.bind_node(
+    let blank_image = render_graph.bind_node(
         cache
             .lease(
                 ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, uvec2(8, 8))
@@ -106,7 +106,7 @@ fn main() -> anyhow::Result<()> {
     );
 
     let resolution = event_loop.resolution();
-    let mut framebuffer_image = render_graph.bind_node(
+    let framebuffer_image = render_graph.bind_node(
         cache
             .lease(
                 ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, resolution).usage(
@@ -118,7 +118,7 @@ fn main() -> anyhow::Result<()> {
             )
             .context("Framebuffer image")?,
     );
-    let mut temp_image = render_graph.bind_node(
+    let temp_image = render_graph.bind_node(
         cache
             .lease(
                 ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, resolution).usage(
