@@ -1573,6 +1573,7 @@ where
 
         let physical_pass = &self.physical_passes[physical_pass_idx];
         let mut descriptor_writes = vec![];
+        let mut buffer_infos = vec![];
         let mut image_infos = vec![];
         for (descriptor_set_idx, (exec, pipeline)) in pass
             .execs
@@ -1660,14 +1661,19 @@ where
                 } else if let Some(buffer) = bound_node.as_driver_buffer() {
                     if let Some(view_info) = view_info {
                         let mut buffer_view_info = view_info.as_buffer().unwrap();
+
+                        trace!("BVI: {}..{}", buffer_view_info.start, buffer_view_info.end);
+
+                        buffer_infos.push(vk::DescriptorBufferInfo {
+                            buffer: **buffer,
+                            offset: buffer_view_info.start,
+                            range: buffer_view_info.end - buffer_view_info.start,
+                        });
+
                         descriptor_writes.push(
                             write_descriptor_set
                                 .descriptor_type(descriptor_ty)
-                                .buffer_info(from_ref(&vk::DescriptorBufferInfo {
-                                    buffer: **buffer,
-                                    offset: buffer_view_info.start,
-                                    range: buffer_view_info.end - buffer_view_info.start,
-                                }))
+                                .buffer_info(from_ref(buffer_infos.last().unwrap()))
                                 .build(),
                         );
                     } else {
