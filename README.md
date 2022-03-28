@@ -16,7 +16,6 @@ Features of the Vulkan driver:
  - Lifetime management calls `free` for you
  - Resource information comes with each smart pointer
  - Easy-to-use hashable/orderable types (no raw pointers)
- - `CommandChain` abstraction for executions outside of render passes
 
 Example usage:
 

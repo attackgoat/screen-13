@@ -20,7 +20,6 @@ use {
     imgui::{Context, DrawCmd, DrawCmdParams},
     imgui_winit_support::{HiDpiMode, WinitPlatform},
     screen_13::prelude_all::*,
-    screen_13_fx::copy_buffer_binding_to_image,
     std::time::Duration,
 };
 
@@ -88,7 +87,7 @@ where
             .attach_window(self.context.io_mut(), window, HiDpiMode::Default);
 
         if self.font_atlas_image.is_none() || self.platform.hidpi_factor() != hidpi {
-            self.lease_font_atlas_image();
+            self.lease_font_atlas_image(render_graph);
         }
 
         let io = self.context.io_mut();
@@ -259,7 +258,7 @@ where
         )
     }
 
-    fn lease_font_atlas_image(&mut self) {
+    fn lease_font_atlas_image(&mut self, render_graph: &mut RenderGraph<P>) {
         use imgui::{FontConfig, FontGlyphRanges, FontSource};
 
         let hidpi_factor = self.platform.hidpi_factor();
@@ -302,28 +301,27 @@ where
             })
             .unwrap();
 
-        Buffer::mapped_slice_mut(temp_buf.get_mut().unwrap())[0..temp_buf_len]
-            .copy_from_slice(texture.data);
+        {
+            let temp_buf = temp_buf.get_mut().unwrap();
+            let temp_buf = Buffer::mapped_slice_mut(temp_buf);
+            temp_buf[0..temp_buf_len].copy_from_slice(texture.data);
+        }
 
-        let mut image = self
-            .pool
-            .lease(
-                ImageInfo::new_2d(
-                    vk::Format::R8G8B8A8_UNORM,
-                    uvec2(texture.width, texture.height),
+        let temp_buf = render_graph.bind_node(temp_buf);
+        let image = render_graph.bind_node(
+            self.pool
+                .lease(
+                    ImageInfo::new_2d(
+                        vk::Format::R8G8B8A8_UNORM,
+                        uvec2(texture.width, texture.height),
+                    )
+                    .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST),
                 )
-                .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST),
-            )
-            .unwrap();
+                .unwrap(),
+        );
 
-        copy_buffer_binding_to_image(
-            self.pool.lease(self.pool.device.queue.family).unwrap(),
-            &mut temp_buf,
-            &mut image,
-        )
-        .submit()
-        .unwrap();
+        render_graph.copy_buffer_to_image(temp_buf, image);
 
-        self.font_atlas_image = Some(ImageLeaseBinding(image));
+        self.font_atlas_image = Some(render_graph.unbind_node(image));
     }
 }

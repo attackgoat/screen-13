@@ -8,9 +8,9 @@ use {
         driver::{
             format_aspect_mask, is_read_access, AttachmentInfo, AttachmentRef, CommandBuffer,
             DepthStencilMode, DescriptorBinding, DescriptorInfo, DescriptorPool,
-            DescriptorPoolInfo, DescriptorPoolSize, DescriptorSet, DriverError, FramebufferKey,
-            FramebufferKeyAttachment, Image, ImageViewInfo, RenderPass, RenderPassInfo,
-            SampleCount, SubpassDependency, SubpassInfo,
+            DescriptorPoolInfo, DescriptorPoolSize, DescriptorSet, Device, DriverError,
+            FramebufferKey, FramebufferKeyAttachment, Image, ImageViewInfo, RenderPass,
+            RenderPassInfo, SampleCount, SubpassDependency, SubpassInfo,
         },
         ptr::Shared,
         HashPool, Lease,
@@ -1496,6 +1496,65 @@ where
         }
     }
 
+    pub fn submit(mut self, cache: &mut HashPool<P>) -> Result<(), DriverError>
+    where
+        P: 'static,
+    {
+        use std::slice::from_ref;
+
+        trace!("submit");
+
+        let cmd_buf = cache.lease(cache.device.queue.family)?;
+
+        unsafe {
+            Device::wait_for_fence(&cache.device, &cmd_buf.fence)
+                .map_err(|_| DriverError::OutOfMemory)?;
+
+            cache
+                .device
+                .reset_command_pool(cmd_buf.pool, vk::CommandPoolResetFlags::RELEASE_RESOURCES)
+                .map_err(|_| DriverError::OutOfMemory)?;
+            cache
+                .device
+                .begin_command_buffer(
+                    **cmd_buf,
+                    &vk::CommandBufferBeginInfo::builder()
+                        .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
+                )
+                .map_err(|_| DriverError::OutOfMemory)?;
+        }
+
+        self.record_unscheduled_passes(cache, &cmd_buf)?;
+
+        unsafe {
+            cache
+                .device
+                .end_command_buffer(**cmd_buf)
+                .map_err(|_| DriverError::OutOfMemory)?;
+            cache
+                .device
+                .reset_fences(from_ref(&cmd_buf.fence))
+                .map_err(|_| DriverError::OutOfMemory)?;
+            cache
+                .device
+                .queue_submit(
+                    *cache.device.queue,
+                    from_ref(&vk::SubmitInfo::builder().command_buffers(from_ref(&cmd_buf))),
+                    cmd_buf.fence,
+                )
+                .map_err(|_| DriverError::OutOfMemory)?;
+        }
+
+        // This graph contains references to buffers, images, and other resources which must be kept
+        // alive until this graph execution completes on the GPU. Once those references are dropped
+        // they will return to the pool for other things to use. The drop will happen the next time
+        // someone tries to lease a command buffer and we notice this one has returned and the fence
+        // has been signalled.
+        CommandBuffer::push_fenced_drop(&cmd_buf, self);
+
+        Ok(())
+    }
+
     pub fn unbind_node<N>(&mut self, node: N) -> <N as Edge<Self>>::Result
     where
         N: Edge<Self>,
@@ -1592,6 +1651,23 @@ where
                             write_descriptor_set
                                 .descriptor_type(descriptor_ty)
                                 .image_info(from_ref(image_infos.last().unwrap()))
+                                .build(),
+                        );
+                    } else {
+                        // Coming very soon!
+                        unimplemented!();
+                    }
+                } else if let Some(buffer) = bound_node.as_driver_buffer() {
+                    if let Some(view_info) = view_info {
+                        let mut buffer_view_info = view_info.as_buffer().unwrap();
+                        descriptor_writes.push(
+                            write_descriptor_set
+                                .descriptor_type(descriptor_ty)
+                                .buffer_info(from_ref(&vk::DescriptorBufferInfo {
+                                    buffer: **buffer,
+                                    offset: buffer_view_info.start,
+                                    range: buffer_view_info.end - buffer_view_info.start,
+                                }))
                                 .build(),
                         );
                     } else {

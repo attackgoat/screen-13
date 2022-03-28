@@ -12,9 +12,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Dear ImGui library and example
 - Bitmapped text rendering
 
-###
+### Changed
 
 - Pak file baking is now multi-threaded; assets still only get packed exactly once
+
+### Removed
+
+- `CommandChain` structure functionality is now found on the `RenderGraph` structure
 
 ## [0.2.0] - 2022-02-08
 

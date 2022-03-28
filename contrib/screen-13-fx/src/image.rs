@@ -1,18 +1,14 @@
-use {
-    super::{copy_buffer_binding_to_image, copy_image_binding},
-    anyhow::Context,
-    screen_13::prelude_all::*,
-};
+use {anyhow::Context, screen_13::prelude_all::*};
 
 #[derive(Debug)]
 pub struct ImageLoader<P>
 where
     P: SharedPointerKind,
 {
-    _decode_bitmap_r_rg: ComputePipeline<P>,
-    decode_bitmap_rgb_rgba: ComputePipeline<P>,
+    cache: HashPool<P>,
+    _decode_r_rg: Shared<ComputePipeline<P>, P>,
+    decode_rgb_rgba: Shared<ComputePipeline<P>, P>,
     pub device: Shared<Device<P>, P>,
-    pool: HashPool<P>,
 }
 
 impl<P> ImageLoader<P>
@@ -21,16 +17,16 @@ where
 {
     pub fn new(device: &Shared<Device<P>, P>) -> Result<Self, DriverError> {
         Ok(Self {
-            _decode_bitmap_r_rg: ComputePipeline::create(
+            cache: HashPool::new(device),
+            _decode_r_rg: Shared::new(ComputePipeline::create(
                 device,
                 ComputePipelineInfo::new(crate::res::shader::COMPUTE_DECODE_BITMAP_R_RG_COMP),
-            )?,
-            decode_bitmap_rgb_rgba: ComputePipeline::create(
+            )?),
+            decode_rgb_rgba: Shared::new(ComputePipeline::create(
                 device,
                 ComputePipelineInfo::new(crate::res::shader::COMPUTE_DECODE_BITMAP_RGB_RGBA_COMP),
-            )?,
+            )?),
             device: Shared::clone(device),
-            pool: HashPool::new(device),
         })
     }
 
@@ -100,8 +96,8 @@ where
             bitmap.pixels().len() / 1024
         );
 
-        let cmd_buf = self.pool.lease(self.device.queue.family)?;
-        let mut image_binding = self.create_image(bitmap, is_srgb, false)?;
+        let mut render_graph = RenderGraph::new();
+        let image = render_graph.bind_node(self.create_image(bitmap, is_srgb, false)?);
 
         // Fill the image from the temporary buffer
         match bitmap.format() {
@@ -130,17 +126,17 @@ where
 
                 //trace!("pixel_buf_len={pixel_buf_len} pixel_buf_stride={pixel_buf_stride}");
 
-                // Lease a temporary buffer from the pool
-                let mut pixel_buf_binding = self.pool.lease(BufferInfo {
+                // Lease a temporary buffer from the cache pool
+                let mut pixel_buf = self.cache.lease(BufferInfo {
                     size: pixel_buf_len,
                     usage: vk::BufferUsageFlags::STORAGE_BUFFER,
                     can_map: true,
                 })?;
 
                 {
+                    let pixel_buf = pixel_buf.get_mut().unwrap();
                     let pixel_buf =
-                        &mut Buffer::mapped_slice_mut(pixel_buf_binding.get_mut().unwrap())
-                            [0..pixel_buf_len as usize];
+                        &mut Buffer::mapped_slice_mut(pixel_buf)[0..pixel_buf_len as usize];
                     let pixels = bitmap.pixels();
 
                     // Fill the temporary buffer with the bitmap pixels - it has a different stride
@@ -156,46 +152,53 @@ where
                     }
                 }
 
+                let pixel_buf = render_graph.bind_node(pixel_buf);
+
                 // We create a temporary storage image because SRGB support isn't wide enough to
                 // have SRGB storage images directly
-                let mut temp_image_binding = self.create_image(bitmap, false, true)?;
+                let temp_image = render_graph.bind_node(self.create_image(bitmap, false, true)?);
 
                 // Copy host-local data in the buffer to the temporary buffer on the GPU and then
                 // use a compute shader to decode it before copying it over the output image
 
-                let cmd_chain = Self::dispatch_compute_pipeline(
-                    cmd_buf,
-                    &mut self.pool,
-                    &self.decode_bitmap_rgb_rgba,
-                    pixel_buf_binding,
-                    &mut temp_image_binding,
-                    (bitmap_width >> 2) - 1 + (bitmap_width % 3), // HACK: -1 FOR NOW but do fix
-                    bitmap_height,
-                    Some(pixel_buf_stride >> 2),
-                )?;
-                copy_image_binding(cmd_chain, &mut temp_image_binding, &mut image_binding)
+                let dispatch_x = (bitmap_width >> 2) - 1 + (bitmap_width % 3); // HACK: -1 FOR NOW but do fix
+                let dispatch_y = bitmap_height;
+                render_graph
+                    .record_pass("Decode RGB image")
+                    .bind_pipeline(&self.decode_rgb_rgba)
+                    .read_descriptor(0, pixel_buf)
+                    .write_descriptor(1, temp_image)
+                    .push_constants(pixel_buf_stride >> 2)
+                    .dispatch(dispatch_x, dispatch_y, 1)
+                    .submit_pass()
+                    .copy_image(temp_image, image);
             }
             BitmapFormat::Rg | BitmapFormat::Rgba => {
                 // Lease a temporary buffer from the pool
-                let mut pixel_buf_binding = self.pool.lease(BufferInfo {
+                let mut pixel_buf = self.cache.lease(BufferInfo {
                     size: bitmap.pixels().len() as _,
                     usage: vk::BufferUsageFlags::TRANSFER_SRC,
                     can_map: true,
                 })?;
 
-                // Fill the temporary buffer with the bitmap pixels
-                Buffer::mapped_slice_mut(pixel_buf_binding.get_mut().unwrap())
-                    [0..bitmap.pixels().len()]
-                    .copy_from_slice(bitmap.pixels());
+                {
+                    // Fill the temporary buffer with the bitmap pixels
+                    let pixel_buf = pixel_buf.get_mut().unwrap();
+                    let pixel_buf =
+                        &mut Buffer::mapped_slice_mut(pixel_buf)[0..bitmap.pixels().len()];
+                    pixel_buf.copy_from_slice(bitmap.pixels());
+                }
 
-                // These formats match the output image so just copy the bytes straight over
-                copy_buffer_binding_to_image(cmd_buf, &mut pixel_buf_binding, &mut image_binding)
-                    .push_shared_ref(pixel_buf_binding)
+                let pixel_buf = render_graph.bind_node(pixel_buf);
+                render_graph.copy_buffer_to_image(pixel_buf, image);
             }
         }
-        .submit()?;
 
-        Ok(image_binding)
+        let image = render_graph.unbind_node(image);
+
+        render_graph.resolve().submit(&mut self.cache)?;
+
+        Ok(image)
     }
 
     pub fn decode_linear(&mut self, bitmap: &BitmapBuf) -> anyhow::Result<ImageBinding<P>>
@@ -210,129 +213,5 @@ where
         P: SharedPointerKind + 'static,
     {
         self.decode_bitmap(bitmap, true)
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn dispatch_compute_pipeline<Ch, Cb>(
-        cmd_chain: Ch,
-        pool: &mut HashPool<P>,
-        pipeline: &ComputePipeline<P>,
-        mut pixel_buf_binding: Lease<BufferBinding<P>, P>,
-        image_binding: &mut ImageBinding<P>,
-        group_count_x: u32,
-        group_count_y: u32,
-        push_constants: Option<u32>,
-    ) -> Result<CommandChain<Cb, P>, anyhow::Error>
-    where
-        Ch: Into<CommandChain<Cb, P>>,
-        Cb: AsRef<CommandBuffer<P>>,
-        P: 'static,
-    {
-        use std::slice::from_ref;
-
-        // Raw vulkan pipeline handles
-        let descriptor_set_layout = &pipeline.descriptor_info.layouts[&0];
-        let pipeline_layout = pipeline.layout;
-        let pipeline = **pipeline;
-
-        // Raw vulkan buffer handle
-        let (pixel_buf, pixel_buf_access) =
-            pixel_buf_binding.access(AccessType::ComputeShaderReadOther);
-        let pixel_buf = **pixel_buf;
-
-        // Raw vulkan image/view handles
-        let (image, image_access) = image_binding.access(AccessType::ComputeShaderWrite);
-        let image_view_info = image.info.into();
-        let image_view = Image::view_ref(image, image_view_info)?;
-        let image = **image;
-
-        // Allocate a single descriptor set from the pool (This set is exclusive for this dispatch)
-        let descriptor_pool = pool.lease(DescriptorPoolInfo::new(1).pool_sizes(vec![
-            DescriptorPoolSize {
-                ty: vk::DescriptorType::STORAGE_BUFFER,
-                descriptor_count: 1,
-            },
-            DescriptorPoolSize {
-                ty: vk::DescriptorType::STORAGE_IMAGE,
-                descriptor_count: 1,
-            },
-        ]))?;
-        let descriptor_set_ref =
-            DescriptorPool::allocate_descriptor_set(&descriptor_pool, descriptor_set_layout)?;
-        let descriptor_set = *descriptor_set_ref;
-
-        // Write the descriptors for our pixel buffer source and image destination
-        unsafe {
-            descriptor_pool.device.update_descriptor_sets(
-                &[
-                    vk::WriteDescriptorSet::builder()
-                        .dst_set(descriptor_set)
-                        .dst_binding(0)
-                        .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                        .buffer_info(from_ref(&vk::DescriptorBufferInfo {
-                            buffer: pixel_buf,
-                            offset: 0,
-                            range: vk::WHOLE_SIZE,
-                        }))
-                        .build(),
-                    vk::WriteDescriptorSet::builder()
-                        .dst_set(descriptor_set)
-                        .dst_binding(1)
-                        .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
-                        .image_info(from_ref(&vk::DescriptorImageInfo {
-                            sampler: vk::Sampler::null(),
-                            image_view,
-                            image_layout: vk::ImageLayout::GENERAL,
-                        }))
-                        .build(),
-                ],
-                &[],
-            )
-        }
-
-        Ok(cmd_chain
-            .into()
-            .push_shared_ref(descriptor_pool)
-            .push_shared_ref(descriptor_set_ref)
-            .push_shared_ref(pixel_buf_binding)
-            .push_shared_ref(image_binding.shared_ref())
-            .push_execute(move |device, cmd_buf| unsafe {
-                CommandBuffer::buffer_barrier(
-                    cmd_buf,
-                    pixel_buf_access,
-                    AccessType::ComputeShaderReadOther,
-                    pixel_buf,
-                    None,
-                );
-                CommandBuffer::image_barrier(
-                    cmd_buf,
-                    image_access,
-                    AccessType::ComputeShaderWrite,
-                    image,
-                    None,
-                );
-
-                device.cmd_bind_pipeline(**cmd_buf, vk::PipelineBindPoint::COMPUTE, pipeline);
-                device.cmd_bind_descriptor_sets(
-                    **cmd_buf,
-                    vk::PipelineBindPoint::COMPUTE,
-                    pipeline_layout,
-                    0,
-                    from_ref(&descriptor_set),
-                    &[],
-                );
-
-                if let Some(data) = push_constants {
-                    device.cmd_push_constants(
-                        **cmd_buf,
-                        pipeline_layout,
-                        vk::ShaderStageFlags::COMPUTE,
-                        0,
-                        any_as_u8_slice(&data),
-                    );
-                }
-
-                device.cmd_dispatch(**cmd_buf, group_count_x, group_count_y, 1);
-            }))
     }
 }

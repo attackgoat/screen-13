@@ -44,7 +44,7 @@ fn main() -> anyhow::Result<()> {
         .build()
         .context("Event loop")?;
     let display = ComputePresenter::new(&event_loop.device).context("Presenter")?;
-    let mut pool = HashPool::new(&event_loop.device);
+    let mut cache = HashPool::new(&event_loop.device);
     let mut image_loader = ImageLoader::new(&event_loop.device).context("Loader")?;
 
     // Load source images: PakBuf -> BitmapBuf -> ImageBinding (here) -> ImageNode (during loop)
@@ -53,7 +53,7 @@ fn main() -> anyhow::Result<()> {
         image_loader
             .decode_linear(
                 &data
-                    .read_bitmap_key(pak::IMAGE_FLOWERS_JPG)
+                    .read_bitmap(pak::IMAGE_FLOWERS_JPG)
                     .context("Unable to read flowers bitmap")?,
             )
             .context("Unable to decode flowers bitmap")?,
@@ -62,7 +62,7 @@ fn main() -> anyhow::Result<()> {
         image_loader
             .decode_linear(
                 &data
-                    .read_bitmap_key(pak::IMAGE_RGBA_NOISE_PNG)
+                    .read_bitmap(pak::IMAGE_RGBA_NOISE_PNG)
                     .context("Unable to read noise bitmap")?,
             )
             .context("Unable to decode noise bitmap")?,
@@ -95,64 +95,52 @@ fn main() -> anyhow::Result<()> {
         .context("FLOCKAROO_IMG_FRAG")?,
     );
 
-    let mut blank_image_binding = Some(ImageLeaseBinding(
-        pool.lease(
-            ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, uvec2(8, 8))
-                .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST),
-        )
-        .context("Blank image")?,
-    ));
+    let mut render_graph = RenderGraph::new();
+    let mut blank_image = render_graph.bind_node(
+        cache
+            .lease(
+                ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, uvec2(8, 8))
+                    .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST),
+            )
+            .context("Blank image")?,
+    );
 
     let resolution = event_loop.resolution();
-    let mut framebuffer_image_binding = Some(ImageLeaseBinding(
-        pool.lease(
-            ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, resolution).usage(
-                vk::ImageUsageFlags::COLOR_ATTACHMENT
-                    | vk::ImageUsageFlags::SAMPLED
-                    | vk::ImageUsageFlags::TRANSFER_DST
-                    | vk::ImageUsageFlags::TRANSFER_SRC,
-            ),
-        )
-        .context("Framebuffer image")?,
-    ));
-    let mut temp_image_binding = Some(ImageLeaseBinding(
-        pool.lease(
-            ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, resolution).usage(
-                vk::ImageUsageFlags::COLOR_ATTACHMENT
-                    | vk::ImageUsageFlags::SAMPLED
-                    | vk::ImageUsageFlags::TRANSFER_DST
-                    | vk::ImageUsageFlags::TRANSFER_SRC,
-            ),
-        )
-        .context("Temp image")?,
-    ));
+    let mut framebuffer_image = render_graph.bind_node(
+        cache
+            .lease(
+                ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, resolution).usage(
+                    vk::ImageUsageFlags::COLOR_ATTACHMENT
+                        | vk::ImageUsageFlags::SAMPLED
+                        | vk::ImageUsageFlags::TRANSFER_DST
+                        | vk::ImageUsageFlags::TRANSFER_SRC,
+                ),
+            )
+            .context("Framebuffer image")?,
+    );
+    let mut temp_image = render_graph.bind_node(
+        cache
+            .lease(
+                ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, resolution).usage(
+                    vk::ImageUsageFlags::COLOR_ATTACHMENT
+                        | vk::ImageUsageFlags::SAMPLED
+                        | vk::ImageUsageFlags::TRANSFER_DST
+                        | vk::ImageUsageFlags::TRANSFER_SRC,
+                ),
+            )
+            .context("Temp image")?,
+    );
 
-    let cmd_buf = pool.lease(event_loop.device.queue.family)?;
-    let mut cmd_chain = clear_color_binding(
-        cmd_buf,
-        framebuffer_image_binding.as_mut().unwrap(),
-        1.0,
-        1.0,
-        0.0,
-        1.0,
-    );
-    cmd_chain = clear_color_binding(
-        cmd_chain,
-        blank_image_binding.as_mut().unwrap(),
-        0.0,
-        0.0,
-        0.0,
-        1.0,
-    );
-    clear_color_binding(
-        cmd_chain,
-        temp_image_binding.as_mut().unwrap(),
-        0.0,
-        1.0,
-        0.0,
-        1.0,
-    )
-    .submit()?;
+    render_graph
+        .clear_color_image(framebuffer_image, 1.0, 1.0, 0.0, 1.0)
+        .clear_color_image(blank_image, 0.0, 0.0, 0.0, 1.0)
+        .clear_color_image(temp_image, 0.0, 1.0, 0.0, 1.0);
+
+    let mut framebuffer_image_binding = Some(render_graph.unbind_node(framebuffer_image));
+    let mut blank_image_binding = Some(render_graph.unbind_node(blank_image));
+    let mut temp_image_binding = Some(render_graph.unbind_node(temp_image));
+
+    render_graph.resolve().submit(&mut cache)?;
 
     let started_at = Instant::now();
     let mut mouse_buf = MouseBuf::default();

@@ -290,11 +290,24 @@ pub enum ViewType {
 }
 
 impl ViewType {
+    pub(super) fn as_buffer(&self) -> Option<&Range<u64>> {
+        match self {
+            Self::Buffer(view_info) => Some(view_info),
+            _ => None,
+        }
+    }
+
     pub(super) fn as_image(&self) -> Option<&ImageViewInfo> {
         match self {
             Self::Image(view_info) => Some(view_info),
             _ => None,
         }
+    }
+}
+
+impl From<BufferSubresource> for ViewType {
+    fn from(subresource: BufferSubresource) -> Self {
+        Self::Buffer(subresource.start..subresource.end)
     }
 }
 

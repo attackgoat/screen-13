@@ -238,6 +238,14 @@ where
         })
     }
 
+    pub(super) fn as_driver_buffer(&self) -> Option<&Buffer<P>> {
+        Some(match self {
+            Self::Buffer(binding, _) => &binding.item,
+            Self::BufferLease(binding, _) => &binding.item,
+            _ => return None,
+        })
+    }
+
     pub(super) fn as_driver_image(&self) -> Option<&Image<P>> {
         Some(match self {
             Self::Image(binding, _) => &binding.item,
@@ -408,7 +416,8 @@ macro_rules! bind_lease {
                     let res = [<$name LeaseNode>]::new(graph.bindings.len());
 
                     // We are binding an existing lease binding (ImageLeaseBinding or BufferLeaseBinding or etc)
-                    graph.bindings.push(Binding::[<$name Lease>](self, true));
+                    let binding = Binding::[<$name Lease>](self, true);
+                    graph.bindings.push(binding);
 
                     res
                 }

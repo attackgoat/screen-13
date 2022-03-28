@@ -15,7 +15,6 @@ pub mod graph;
 #[cfg(feature = "pak")]
 pub mod pak;
 
-mod cmd_chain;
 mod display;
 mod event_loop;
 mod frame;
@@ -23,7 +22,6 @@ mod hash_pool;
 mod input;
 
 pub use self::{
-    cmd_chain::{execute, CommandChain, ExecutionError},
     display::{Display, DisplayError},
     event_loop::{EventLoop, EventLoopBuilder, FullscreenMode},
     frame::FrameContext,
@@ -36,7 +34,6 @@ pub mod prelude {
         super::{
             align_up_u32, align_up_u64,
             event_loop::{EventLoop, FullscreenMode},
-            execute,
             frame::{center_cursor, move_cursor, FrameContext},
             graph::RenderGraph,
             input::{
@@ -44,7 +41,6 @@ pub mod prelude {
             },
             into_u8_slice,
             ptr::{ArcK, RcK, Shared, SharedPointerKind},
-            CommandChain, ExecutionError,
         },
         glam::*,
         log::{debug, error, info, trace, warn}, // Everyone wants a log

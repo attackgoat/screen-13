@@ -287,12 +287,12 @@ where
         binding.bind(self)
     }
 
-    pub fn execute_pass(
+    pub fn execute(
         mut self,
         func: impl FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>) + 'static,
-    ) -> &'a mut RenderGraph<P> {
+    ) -> Self {
         self.push_execute(func);
-        self.graph
+        self
     }
 
     fn push_execute(

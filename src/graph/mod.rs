@@ -30,9 +30,10 @@ use {
     self::{binding::Binding, edge::Edge, info::Information, node::Node},
     crate::{
         driver::{
-            BufferSubresource, ComputePipeline, DepthStencilMode, DescriptorBindingMap,
-            DescriptorInfo, DescriptorSetLayout, GraphicPipeline, ImageSubresource,
-            PipelineDescriptorInfo, RayTracePipeline, SampleCount,
+            format_aspect_mask, BufferSubresource, CommandBuffer, ComputePipeline,
+            DepthStencilMode, DescriptorBindingMap, DescriptorInfo, DescriptorSetLayout,
+            GraphicPipeline, ImageSubresource, PipelineDescriptorInfo, RayTracePipeline,
+            SampleCount,
         },
         ptr::Shared,
     },
@@ -438,6 +439,185 @@ where
         P: 'static,
     {
         binding.bind(self)
+    }
+
+    /// Clears a color image as part of a render graph but outside of any graphic render pass
+    pub fn clear_color_image(
+        &mut self,
+        image_node: impl Into<AnyImageNode<P>>,
+        r: f32,
+        g: f32,
+        b: f32,
+        a: f32,
+    ) -> &mut Self
+    where
+        P: SharedPointerKind + 'static,
+    {
+        let image_node = image_node.into();
+        let image_info = self.node_info(image_node);
+
+        self.record_pass("clear color")
+            .access_node(image_node, AccessType::TransferWrite)
+            .execute(move |device, cmd_buf, bindings| unsafe {
+                device.cmd_clear_color_image(
+                    cmd_buf,
+                    *bindings[image_node],
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    &vk::ClearColorValue {
+                        float32: [r, g, b, a],
+                    },
+                    &[vk::ImageSubresourceRange {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        level_count: image_info.mip_level_count,
+                        layer_count: image_info.array_elements,
+                        ..Default::default()
+                    }],
+                );
+            })
+            .submit_pass()
+    }
+
+    pub fn copy_buffer_to_image(
+        &mut self,
+        src_node: impl Into<AnyBufferNode<P>>,
+        dst_node: impl Into<AnyImageNode<P>>,
+    ) -> &mut Self {
+        let dst_node = dst_node.into();
+
+        let dst_info = self.node_info(dst_node);
+
+        self.copy_buffer_to_image_region(
+            src_node,
+            dst_node,
+            &vk::BufferImageCopy {
+                buffer_offset: 0,
+                buffer_row_length: dst_info.extent.x,
+                buffer_image_height: dst_info.extent.y,
+                image_subresource: vk::ImageSubresourceLayers {
+                    aspect_mask: format_aspect_mask(dst_info.fmt),
+                    mip_level: 0,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                },
+                image_offset: Default::default(),
+                image_extent: vk::Extent3D {
+                    depth: dst_info.extent.z,
+                    height: dst_info.extent.y,
+                    width: dst_info.extent.x,
+                },
+            },
+        )
+    }
+
+    pub fn copy_buffer_to_image_region(
+        &mut self,
+        src_node: impl Into<AnyBufferNode<P>>,
+        dst_node: impl Into<AnyImageNode<P>>,
+        region: &vk::BufferImageCopy,
+    ) -> &mut Self {
+        use std::slice::from_ref;
+
+        self.copy_buffer_to_image_regions(src_node, dst_node, from_ref(region))
+    }
+
+    pub fn copy_buffer_to_image_regions(
+        &mut self,
+        src_node: impl Into<AnyBufferNode<P>>,
+        dst_node: impl Into<AnyImageNode<P>>,
+        regions: &[vk::BufferImageCopy],
+    ) -> &mut Self {
+        let src_node = src_node.into();
+        let dst_node = dst_node.into();
+        let regions = regions.to_vec();
+
+        self.record_pass("copy image")
+            .access_node(src_node, AccessType::TransferRead)
+            .access_node(dst_node, AccessType::TransferWrite)
+            .execute(move |device, cmd_buf, bindings| unsafe {
+                device.cmd_copy_buffer_to_image(
+                    cmd_buf,
+                    *bindings[src_node],
+                    *bindings[dst_node],
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    &regions,
+                );
+            })
+            .submit_pass()
+    }
+
+    pub fn copy_image(
+        &mut self,
+        src_node: impl Into<AnyImageNode<P>>,
+        dst_node: impl Into<AnyImageNode<P>>,
+    ) -> &mut Self {
+        let src_node = src_node.into();
+        let dst_node = dst_node.into();
+
+        let src_info = self.node_info(src_node);
+        let dst_info = self.node_info(dst_node);
+
+        self.copy_image_region(
+            src_node,
+            dst_node,
+            &vk::ImageCopy {
+                src_subresource: vk::ImageSubresourceLayers {
+                    aspect_mask: format_aspect_mask(src_info.fmt),
+                    mip_level: 0,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                },
+                src_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
+                dst_subresource: vk::ImageSubresourceLayers {
+                    aspect_mask: format_aspect_mask(dst_info.fmt),
+                    mip_level: 0,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                },
+                dst_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
+                extent: vk::Extent3D {
+                    depth: src_info.extent.z.min(dst_info.extent.z),
+                    height: src_info.extent.y.min(dst_info.extent.y),
+                    width: src_info.extent.x.min(dst_info.extent.x),
+                },
+            },
+        )
+    }
+
+    pub fn copy_image_region(
+        &mut self,
+        src_node: impl Into<AnyImageNode<P>>,
+        dst_node: impl Into<AnyImageNode<P>>,
+        region: &vk::ImageCopy,
+    ) -> &mut Self {
+        use std::slice::from_ref;
+
+        self.copy_image_regions(src_node, dst_node, from_ref(region))
+    }
+
+    pub fn copy_image_regions(
+        &mut self,
+        src_node: impl Into<AnyImageNode<P>>,
+        dst_node: impl Into<AnyImageNode<P>>,
+        regions: &[vk::ImageCopy],
+    ) -> &mut Self {
+        let src_node = src_node.into();
+        let dst_node = dst_node.into();
+        let regions = regions.to_vec();
+
+        self.record_pass("copy image")
+            .access_node(src_node, AccessType::TransferRead)
+            .access_node(dst_node, AccessType::TransferWrite)
+            .execute(move |device, cmd_buf, bindings| unsafe {
+                device.cmd_copy_image(
+                    cmd_buf,
+                    *bindings[src_node],
+                    vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                    *bindings[dst_node],
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    &regions,
+                );
+            })
+            .submit_pass()
     }
 
     /// Returns the index of the first pass which accesses a given node
