@@ -83,7 +83,7 @@ where
             // If there are multiple devices with the same score, `max_by_key` would choose the last,
             // and we want to preserve the order of devices from `enumerate_physical_devices`.
             .rev()
-            .max_by_key(|physical_device| PhysicalDevice::score_device_type(physical_device))
+            .max_by_key(PhysicalDevice::score_device_type)
             .ok_or(DriverError::Unsupported)?;
 
         info!("Selected GPU: {:#?}", physical_device);

@@ -99,7 +99,7 @@ fn main() -> anyhow::Result<()> {
     let blank_image = render_graph.bind_node(
         cache
             .lease(
-                ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, uvec2(8, 8))
+                ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, 8, 8)
                     .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST),
             )
             .context("Blank image")?,
@@ -109,7 +109,7 @@ fn main() -> anyhow::Result<()> {
     let framebuffer_image = render_graph.bind_node(
         cache
             .lease(
-                ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, resolution).usage(
+                ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, resolution.x, resolution.y).usage(
                     vk::ImageUsageFlags::COLOR_ATTACHMENT
                         | vk::ImageUsageFlags::SAMPLED
                         | vk::ImageUsageFlags::TRANSFER_DST
@@ -121,7 +121,7 @@ fn main() -> anyhow::Result<()> {
     let temp_image = render_graph.bind_node(
         cache
             .lease(
-                ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, resolution).usage(
+                ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, resolution.x, resolution.y).usage(
                     vk::ImageUsageFlags::COLOR_ATTACHMENT
                         | vk::ImageUsageFlags::SAMPLED
                         | vk::ImageUsageFlags::TRANSFER_DST

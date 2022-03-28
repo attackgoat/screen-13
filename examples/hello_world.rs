@@ -11,7 +11,7 @@ fn main() -> Result<(), DisplayError> {
     // Create a single owned image (we could instead lease one; see the shader-toy example)
     let mut image_binding = Some(
         event_loop.device.new_image(
-            ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, uvec2(10, 10))
+            ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, 10, 10)
                 .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST),
         ),
     );

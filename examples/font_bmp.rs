@@ -22,7 +22,12 @@ fn main() -> anyhow::Result<()> {
     event_loop.run(|frame| {
         let image_node = frame.render_graph.bind_node(
             pool.lease(
-                ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, frame.resolution).usage(
+                ImageInfo::new_2d(
+                    vk::Format::R8G8B8A8_SRGB,
+                    frame.resolution.x,
+                    frame.resolution.y,
+                )
+                .usage(
                     vk::ImageUsageFlags::COLOR_ATTACHMENT
                         | vk::ImageUsageFlags::SAMPLED
                         | vk::ImageUsageFlags::TRANSFER_DST,
