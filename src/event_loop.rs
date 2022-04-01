@@ -277,16 +277,19 @@ where
             .window
             .build(&self.event_loop)
             .map_err(|_| DriverError::Unsupported)?;
-        let display_resolution = uvec2(window.inner_size().width, window.inner_size().height);
+        let (width, height) = {
+            let inner_size = window.inner_size();
+            (inner_size.width, inner_size.height)
+        };
 
         // Load the GPU driver (thin Vulkan device and swapchain smart pointers) and swapchain presenter/displayer
-        let driver = Driver::new(&window, cfg, display_resolution)?;
+        let driver = Driver::new(&window, cfg, width, height)?;
         let display = Display::new(&driver.device, driver.swapchain);
 
         info!(
             "Display resolution: {}x{} ({}x scale)",
-            display_resolution.x,
-            display_resolution.y,
+            width,
+            height,
             window.scale_factor() as f32,
         );
 

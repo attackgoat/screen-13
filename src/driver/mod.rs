@@ -62,7 +62,7 @@ use {
     crate::ptr::Shared,
     archery::SharedPointerKind,
     derive_builder::Builder,
-    glam::UVec2,
+    glam::uvec2,
     log::{info, trace},
     raw_window_handle::HasRawWindowHandle,
     std::{
@@ -178,7 +178,8 @@ where
     pub fn new(
         window: &impl HasRawWindowHandle,
         cfg: DriverConfig,
-        desired_resolution: UVec2,
+        width: u32,
+        height: u32,
     ) -> Result<Self, DriverError> {
         trace!("new {:?}", cfg);
 
@@ -253,7 +254,7 @@ where
             SwapchainInfo {
                 desired_image_count: cfg.desired_swapchain_image_count,
                 format,
-                extent: desired_resolution,
+                extent: uvec2(width, height),
                 sync_display: cfg.sync_display,
             },
         )?;

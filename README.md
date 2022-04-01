@@ -22,12 +22,12 @@ Example usage:
 ```rust
 let window = ...your winit window...
 let cfg = Default::default();
-let desired_resolution = uvec2(320, 200);
-let driver = Driver::new(&window, cfg, desired_resolution)?;
+let (width, height) = (320, 200);
+let driver = Driver::new(&window, cfg, width, height)?;
 
 unsafe {
-    // Let's start using the ash::Device driver provides
-    driver.device.create_fence(....);
+    // Let's do low-level stuff using the provided ash::Device
+    driver.device.create_fence(...);
 }
 ```
 
@@ -86,6 +86,13 @@ Programs made using _Screen 13_ are built as regular executables using an _optio
 asset baking process. _Screen 13_ provides all asset-baking logic and aims to provide wide support
 for texture formats, vertex formats, and other associated data. Baked assets are stored in `.pak`
 files.
+
+Features of the `.pak` file format:
+
+- Individually compressed assets
+- Baking process is multi-threaded and heavily cached
+- Supports `.gltf`/`.glb` with LOD, meshlets, cache/fetch optimizations, and more
+- Material system (including baking of PBR data)
 
 ## Goals
 
