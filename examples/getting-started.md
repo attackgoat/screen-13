@@ -216,9 +216,11 @@ the image that `buf` contains would be written to `img` starting at the top left
 
 The basic operations are:
 
-- `clear_color_image(image_node, r, g, b, a)`
-- `copy_buffer_to_image(buffer_node, image_node)`
-- `copy_image(src_image_node, dst_image_node)`
+- `copy_buffer(src_buf_node, dst_buf_node)`
+- `copy_buffer_to_image(buf_node, img_node)`
+- `copy_image(src_img_node, dst_img_node)`
+- `clear_color_image(img_node, r, g, b, a)`
+- `fill_buffer(buf_node, data)`
 - others todo!
 
 Each of these operations offers function overloads similar to:

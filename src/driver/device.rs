@@ -149,15 +149,11 @@ where
             .queue_priorities(&priorities)
             .build()];
 
-        // let mut scalar_block = vk::PhysicalDeviceScalarBlockLayoutFeaturesEXT::default();
-        // let mut descriptor_indexing = vk::PhysicalDeviceDescriptorIndexingFeaturesEXT::default();
-        let mut imageless_framebuffer =
+        let mut imageless_framebuffer_features =
             vk::PhysicalDeviceImagelessFramebufferFeatures::builder().imageless_framebuffer(true);
-        // let mut shader_float16_int8 = vk::PhysicalDeviceShaderFloat16Int8Features::default();
-        // let mut vulkan_memory_model = vk::PhysicalDeviceVulkanMemoryModelFeaturesKHR::default();
-        let mut get_buffer_device_address_features =
+        let mut buffer_device_address_features =
             vk::PhysicalDeviceBufferDeviceAddressFeatures::builder().buffer_device_address(true);
-
+        let mut multi_draw_props = vk::PhysicalDeviceMultiDrawPropertiesEXT::builder();
         // let mut acceleration_struct_features = if features.contains(FeatureFlags::RAY_TRACING) {
         //     Some(ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default())
         // } else {
@@ -172,12 +168,8 @@ where
 
         unsafe {
             let mut features2 = vk::PhysicalDeviceFeatures2::builder()
-                // .push_next(&mut scalar_block)
-                // .push_next(&mut descriptor_indexing)
-                .push_next(&mut imageless_framebuffer)
-                // .push_next(&mut shader_float16_int8)
-                // .push_next(&mut vulkan_memory_model)
-                .push_next(&mut get_buffer_device_address_features);
+                .push_next(&mut buffer_device_address_features)
+                .push_next(&mut imageless_framebuffer_features);
 
             // if features.contains(FeatureFlags::RAY_TRACING) {
             //     features2 = features2
@@ -185,17 +177,14 @@ where
             //         .push_next(ray_tracing_pipeline_features.as_mut().unwrap());
             // }
 
-            let mut features2 = features2
-                .features(vk::PhysicalDeviceFeatures {
-                    sampler_anisotropy: vk::TRUE,
-                    ..Default::default()
-                })
-                .build();
+            let mut features2 = features2.build();
 
-            // instance
-            //     .fp_v1_2()
-            //     .get_p
-            //     .get_physical_device_features2(*physical_device, &mut features2);
+            instance
+                .fp_v1_1()
+                .get_physical_device_features2(*physical_device, &mut features2);
+
+            assert_eq!(features2.features.multi_draw_indirect, vk::TRUE);
+            assert_eq!(features2.features.sampler_anisotropy, vk::TRUE);
 
             // debug!("{:#?}", &features2.features);
             // debug!("{:#?}", &scalar_block);

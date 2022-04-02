@@ -478,6 +478,58 @@ where
             .submit_pass()
     }
 
+    pub fn copy_buffer(
+        &mut self,
+        src_node: impl Into<AnyBufferNode<P>>,
+        dst_node: impl Into<AnyBufferNode<P>>,
+    ) -> &mut Self {
+        let src_node = src_node.into();
+        let dst_node = dst_node.into();
+
+        let src_info = self.node_info(src_node);
+        let dst_info = self.node_info(dst_node);
+
+        self.copy_buffer_region(
+            src_node,
+            dst_node,
+            &vk::BufferCopy {
+                src_offset: 0,
+                dst_offset: 0,
+                size: src_info.size.min(dst_info.size),
+            },
+        )
+    }
+
+    pub fn copy_buffer_region(
+        &mut self,
+        src_node: impl Into<AnyBufferNode<P>>,
+        dst_node: impl Into<AnyBufferNode<P>>,
+        region: &vk::BufferCopy,
+    ) -> &mut Self {
+        use std::slice::from_ref;
+
+        self.copy_buffer_regions(src_node, dst_node, from_ref(region))
+    }
+
+    pub fn copy_buffer_regions(
+        &mut self,
+        src_node: impl Into<AnyBufferNode<P>>,
+        dst_node: impl Into<AnyBufferNode<P>>,
+        regions: impl Into<Box<[vk::BufferCopy]>>,
+    ) -> &mut Self {
+        let src_node = src_node.into();
+        let dst_node = dst_node.into();
+        let regions = regions.into();
+
+        self.record_pass("copy buffer")
+            .access_node(src_node, AccessType::TransferRead)
+            .access_node(dst_node, AccessType::TransferWrite)
+            .execute(move |device, cmd_buf, bindings| unsafe {
+                device.cmd_copy_buffer(cmd_buf, *bindings[src_node], *bindings[dst_node], &regions);
+            })
+            .submit_pass()
+    }
+
     pub fn copy_buffer_to_image(
         &mut self,
         src_node: impl Into<AnyBufferNode<P>>,
@@ -525,11 +577,11 @@ where
         &mut self,
         src_node: impl Into<AnyBufferNode<P>>,
         dst_node: impl Into<AnyImageNode<P>>,
-        regions: &[vk::BufferImageCopy],
+        regions: impl Into<Box<[vk::BufferImageCopy]>>,
     ) -> &mut Self {
         let src_node = src_node.into();
         let dst_node = dst_node.into();
-        let regions = regions.to_vec();
+        let regions = regions.into();
 
         self.record_pass("copy image")
             .access_node(src_node, AccessType::TransferRead)
@@ -599,11 +651,11 @@ where
         &mut self,
         src_node: impl Into<AnyImageNode<P>>,
         dst_node: impl Into<AnyImageNode<P>>,
-        regions: &[vk::ImageCopy],
+        regions: impl Into<Box<[vk::ImageCopy]>>,
     ) -> &mut Self {
         let src_node = src_node.into();
         let dst_node = dst_node.into();
-        let regions = regions.to_vec();
+        let regions = regions.into();
 
         self.record_pass("copy image")
             .access_node(src_node, AccessType::TransferRead)
@@ -616,6 +668,36 @@ where
                     *bindings[dst_node],
                     vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                     &regions,
+                );
+            })
+            .submit_pass()
+    }
+
+    pub fn fill_buffer(&mut self, buf_node: impl Into<AnyBufferNode<P>>, data: u32) -> &mut Self {
+        let buf_node = buf_node.into();
+
+        let buf_info = self.node_info(buf_node);
+
+        self.fill_buffer_region(buf_node, data, 0..buf_info.size)
+    }
+
+    pub fn fill_buffer_region(
+        &mut self,
+        buf_node: impl Into<AnyBufferNode<P>>,
+        data: u32,
+        region: Range<u64>,
+    ) -> &mut Self {
+        let buf_node = buf_node.into();
+
+        self.record_pass("fill buffer")
+            .access_node(buf_node, AccessType::TransferWrite)
+            .execute(move |device, cmd_buf, bindings| unsafe {
+                device.cmd_fill_buffer(
+                    cmd_buf,
+                    *bindings[buf_node],
+                    region.start,
+                    region.end - region.start,
+                    data,
                 );
             })
             .submit_pass()
