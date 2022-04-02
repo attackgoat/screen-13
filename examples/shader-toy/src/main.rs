@@ -43,7 +43,7 @@ fn main() -> anyhow::Result<()> {
         .window(|builder| builder.with_inner_size(LogicalSize::new(1280.0f64, 720.0f64)))
         .build()
         .context("Event loop")?;
-    let display = ComputePresenter::new(&event_loop.device).context("Presenter")?;
+    let display = GraphicPresenter::new(&event_loop.device).context("Presenter")?;
     let mut cache = HashPool::new(&event_loop.device);
     let mut image_loader = ImageLoader::new(&event_loop.device).context("Loader")?;
 
