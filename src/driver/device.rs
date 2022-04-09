@@ -179,9 +179,7 @@ where
 
             let mut features2 = features2.build();
 
-            instance
-                .fp_v1_1()
-                .get_physical_device_features2(*physical_device, &mut features2);
+            (instance.fp_v1_1().get_physical_device_features2)(*physical_device, &mut features2);
 
             assert_eq!(features2.features.multi_draw_indirect, vk::TRUE);
             assert_eq!(features2.features.sampler_anisotropy, vk::TRUE);

@@ -184,8 +184,10 @@ where
         trace!("new {:?}", cfg);
 
         let required_extensions = ash_window::enumerate_required_extensions(window)
-            .map_err(|_| DriverError::Unsupported)?;
-        let instance = Shared::new(Instance::new(cfg.debug, required_extensions.into_iter())?);
+            .map_err(|_| DriverError::Unsupported)?
+            .iter()
+            .map(|ext| unsafe { CStr::from_ptr(*ext as *const _) });
+        let instance = Shared::new(Instance::new(cfg.debug, required_extensions)?);
         let surface = Surface::new(&instance, window)?;
         let physical_devices = Instance::physical_devices(&instance)?
             .filter(|physical_device| {

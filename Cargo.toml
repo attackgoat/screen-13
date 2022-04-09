@@ -22,8 +22,8 @@ pak = []
 anyhow = "1.0"
 archery = { version = "0.4.3", package = "a_r_c_h_e_r_y" } # HACK: Waiting on main pkg to release
 arrayvec = "0.7"
-ash = "0.36"
-ash-window = "0.9"
+ash = "0.37"
+ash-window = "0.10"
 bincode = "1.3"
 bitflags = "1.3"
 bmfont = { version = "0.3", default-features = false, optional = true }
@@ -33,7 +33,7 @@ derive_builder = "0.11"
 glam = { version = "0.20", features = ["serde"] }
 glob = { version = "0.3.0", optional = true }
 gltf = "1.0"
-gpu-allocator = "0.17.0"
+gpu-allocator = { git = "https://github.com/attackgoat/gpu-allocator.git", rev = "1d830054437a3dde85a7f6cfb765fb0a60d7f29e" }  #{ git = "https://github.com/Traverse-Research/gpu-allocator.git", branch = "ash-0.37" } # https://github.com/Traverse-Research/gpu-allocator/pull/104
 image = "0.24"
 itertools = "0.10"
 log = "0.4"
@@ -54,7 +54,7 @@ tokio = { version = "1.15", default-features = false, features = [
 ], optional = true }
 toml = "0.5"
 typenum = "1.12"
-vk-sync = { path = "../vk-sync-rs", package = "vk-sync-fork" } #{ version = "0.3.0", package = "vk-sync-fork" }  # // HACK: https://github.com/gwihlidal/vk-sync-rs/pull/4 -> https://github.com/expenses/vk-sync-rs
+vk-sync = { version = "0.4.0", package = "vk-sync-fork" }  # // HACK: https://github.com/gwihlidal/vk-sync-rs/pull/4 -> https://github.com/expenses/vk-sync-rs
 winit = { version = "0.26" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
