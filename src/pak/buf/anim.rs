@@ -1,6 +1,6 @@
 use {
     super::{file_key, Asset, Canonicalize},
-    crate::pak::{AnimationBuf, AnimationHandle, Channel},
+    crate::pak::{AnimationBuf, AnimationId, Channel},
     glam::{quat, Quat, Vec3},
     gltf::{
         animation::{
@@ -13,7 +13,6 @@ use {
     serde::Deserialize,
     std::{
         collections::{hash_map::RandomState, HashSet},
-        io::Error,
         path::{Path, PathBuf},
     },
 };
@@ -22,7 +21,7 @@ use {
 use super::Writer;
 
 /// Holds a description of `.glb` or `.gltf` model animations.
-#[derive(Clone, Deserialize, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq)]
 pub struct Animation {
     exclude: Option<Vec<String>>,
     name: Option<String>,
@@ -38,7 +37,7 @@ impl Animation {
         writer: &mut Writer,
         project_dir: impl AsRef<Path>,
         src: impl AsRef<Path>,
-    ) -> Result<AnimationHandle, Error> {
+    ) -> anyhow::Result<AnimationId> {
         if let Some(h) = writer.ctx.get(&self.clone().into()) {
             return Ok(h.as_animation().unwrap());
         }

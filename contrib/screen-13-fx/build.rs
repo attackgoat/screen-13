@@ -1,6 +1,5 @@
 use {
     lazy_static::lazy_static,
-    screen_13::prelude_all::*,
     shaderc::{Compiler, ShaderKind},
     std::{
         env::var,
@@ -17,8 +16,9 @@ lazy_static! {
 fn main() -> anyhow::Result<()> {
     let shader_dir = CARGO_MANIFEST_DIR.join("res/shader");
     let mut shaders = vec![];
-    let glsl_shaders = glob(shader_dir.join("compute/*.comp"))?
+    let glsl_shaders = []
         .into_iter()
+        .chain(glob(shader_dir.join("compute/*.comp"))?.into_iter())
         .chain(glob(shader_dir.join("graphic/*.vert"))?.into_iter())
         .chain(glob(shader_dir.join("graphic/*.frag"))?.into_iter())
         .map(|source_path| {
@@ -131,7 +131,7 @@ fn compile_hlsl(path: impl AsRef<Path>) -> anyhow::Result<(String, Vec<u8>)> {
         &[],
     )?;
 
-    Ok((source, spirv.into()))
+    Ok((source, spirv))
 }
 
 fn create_shader_bindings(
@@ -152,7 +152,7 @@ fn create_shader_bindings(
                 .replace('!', "_")
                 .as_str(),
         );
-        bindings.push_str(": &'static [u8] = include_bytes!(concat!(env!(\"OUT_DIR\"), \"/");
+        bindings.push_str(": &[u8] = include_bytes!(concat!(env!(\"OUT_DIR\"), \"/");
         bindings.push_str(
             join_strings(remove_common_path(&*OUT_DIR, &shader.1), "/")
                 .replace('\\', "/")

@@ -246,6 +246,8 @@ where
     }
 
     pub fn framebuffer_ref(&self, info: FramebufferKey) -> Result<vk::Framebuffer, DriverError> {
+        debug_assert!(!info.attachments.is_empty());
+
         let mut cache = self.framebuffer_cache.lock();
         let entry = cache.entry(info);
         if let Entry::Occupied(entry) = entry {
@@ -321,19 +323,7 @@ where
             .info
             .attachments
             .iter()
-            .map(|_| vk::PipelineColorBlendAttachmentState {
-                blend_enable: 0,
-                src_color_blend_factor: vk::BlendFactor::SRC_COLOR,
-                dst_color_blend_factor: vk::BlendFactor::ONE_MINUS_DST_COLOR,
-                color_blend_op: vk::BlendOp::ADD,
-                src_alpha_blend_factor: vk::BlendFactor::ZERO,
-                dst_alpha_blend_factor: vk::BlendFactor::ZERO,
-                alpha_blend_op: vk::BlendOp::ADD,
-                color_write_mask: vk::ColorComponentFlags::R
-                    | vk::ColorComponentFlags::G
-                    | vk::ColorComponentFlags::B
-                    | vk::ColorComponentFlags::A,
-            })
+            .map(|_| pipeline.info.blend.into_vk())
             .collect::<Box<[_]>>();
         let color_blend_state = vk::PipelineColorBlendStateCreateInfo::builder()
             .attachments(&color_blend_attachment_states);
@@ -354,16 +344,29 @@ where
             )
             .sample_shading_enable(pipeline.state.multisample_state.sample_shading_enable)
             .sample_mask(&pipeline.state.multisample_state.sample_mask);
+        let mut specializations = vec![];
         let stages = pipeline
             .state
             .stages
             .iter()
             .map(|stage| {
-                vk::PipelineShaderStageCreateInfo::builder()
+                let mut info = vk::PipelineShaderStageCreateInfo::builder()
                     .module(stage.module)
                     .name(&stage.name)
-                    .stage(stage.flags)
-                    .build()
+                    .stage(stage.flags);
+
+                if let Some(specialization_info) = &stage.specialization_info {
+                    specializations.push(
+                        vk::SpecializationInfo::builder()
+                            .map_entries(&specialization_info.map_entries)
+                            .data(&specialization_info.data)
+                            .build(),
+                    );
+
+                    info = info.specialization_info(specializations.last().unwrap());
+                }
+
+                info.build()
             })
             .collect::<Box<[_]>>();
         let vertex_input_state = vk::PipelineVertexInputStateCreateInfo::builder()

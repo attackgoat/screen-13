@@ -1,9 +1,9 @@
 use {
     super::{
-        file_key, is_toml, material::Material, model::Model, parent, Asset, Canonicalize, Handle,
-        SceneBuf, SceneHandle,
+        file_key, is_toml, material::Material, model::Model, parent, Asset, Canonicalize, Id,
+        SceneBuf, SceneId,
     },
-    crate::pak::Instance,
+    crate::pak::SceneRefData,
     glam::{vec3, EulerRot, Quat, Vec3},
     log::info,
     ordered_float::OrderedFloat,
@@ -15,16 +15,17 @@ use {
         collections::HashMap,
         f32::consts::PI,
         fmt::Formatter,
+        io::Error,
         marker::PhantomData,
         path::{Path, PathBuf},
     },
 };
 
 #[cfg(feature = "bake")]
-use super::Writer;
+use {super::Writer, parking_lot::Mutex, std::sync::Arc, tokio::runtime::Runtime};
 
 /// A reference to a model asset or model source file.
-#[derive(Clone, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum AssetRef<T> {
     /// A `Model` asset specified inline.
     Asset(T),
@@ -97,7 +98,7 @@ where
 }
 
 /// Holds a description of position/orientation/scale and tagged data specific to each program.
-#[derive(Clone, Deserialize, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq)]
 pub struct Scene {
     #[serde(rename = "ref")]
     refs: Vec<SceneRef>,
@@ -105,19 +106,21 @@ pub struct Scene {
 
 impl Scene {
     /// Reads and processes scene source files into an existing `.pak` file buffer.
-    #[allow(unused)]
     #[cfg(feature = "bake")]
-    pub(super) fn bake(
+    pub fn bake(
         &self,
-        context: &mut HashMap<Asset, Handle>,
-        mut writer: &mut Writer,
+        rt: &Runtime,
+        writer: &Arc<Mutex<Writer>>,
         project_dir: impl AsRef<Path>,
         src: impl AsRef<Path>,
-    ) -> SceneHandle {
-        let key = file_key(&project_dir, &src);
-        if let Some(id) = context.get(&self.clone().into()) {
-            return id.as_scene().unwrap();
+    ) -> Result<SceneId, Error> {
+        // Early-out if we have already baked this scene
+        let asset = self.clone().into();
+        if let Some(h) = writer.lock().ctx.get(&asset) {
+            return Ok(h.as_scene().unwrap());
         }
+
+        let key = file_key(&project_dir, &src);
 
         info!("Baking scene: {}", key);
 
@@ -156,7 +159,11 @@ impl Scene {
                         }
                     }
                 })
-                .map(|(src, material)| material.bake(context, writer, &project_dir, src).unwrap()); // TODO: UNWRAP!
+                .map(|(src, mut material)| {
+                    material
+                        .bake(rt, writer, &project_dir, &src_dir, src)
+                        .expect("material")
+                });
 
             let model = scene_ref
                 .model()
@@ -171,7 +178,7 @@ impl Scene {
                         let src = Model::canonicalize_project_path(&project_dir, &src_dir, src);
                         if is_toml(&src) {
                             // Asset file reference
-                            let mut model = Asset::read(&src).unwrap().into_model().unwrap(); // TODO: UNWRAP!
+                            let mut model = Asset::read(&src).unwrap().into_model().expect("model");
                             model.canonicalize(&project_dir, &src_dir);
                             (Some(src), model)
                         } else {
@@ -180,9 +187,9 @@ impl Scene {
                         }
                     }
                 })
-                .map(|(src, model)| model.bake(context, &mut writer, &project_dir, src));
+                .map(|(src, model)| model.bake(writer, &project_dir, src).expect("bake model"));
 
-            refs.push(Instance {
+            refs.push(SceneRefData {
                 id: scene_ref.id().map(|id| id.to_owned()),
                 material,
                 model,
@@ -192,8 +199,14 @@ impl Scene {
             });
         }
 
-        // Pak this asset
-        writer.push_scene(SceneBuf::new(refs.drain(..)), key)
+        let scene = SceneBuf::new(refs.into_iter());
+
+        let mut writer = writer.lock();
+        if let Some(h) = writer.ctx.get(&asset) {
+            return Ok(h.as_scene().unwrap());
+        }
+
+        Ok(writer.push_scene(scene, key))
     }
 
     /// Individual references within a scene.
@@ -212,7 +225,7 @@ impl Canonicalize for Scene {
 }
 
 /// Holds a description of one scene reference.
-#[derive(Clone, Deserialize, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq)]
 pub struct SceneRef {
     id: Option<String>,
 

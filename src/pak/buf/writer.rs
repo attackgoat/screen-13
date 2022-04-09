@@ -1,8 +1,7 @@
 use {
     super::{
-        AnimationBuf, AnimationHandle, Asset, BitmapBuf, BitmapFontBuf, BitmapFontHandle,
-        BitmapHandle, BlobHandle, Data, DataRef, Handle, MaterialHandle, MaterialInfo, ModelBuf,
-        ModelHandle, SceneBuf, SceneHandle,
+        AnimationBuf, AnimationId, Asset, BitmapBuf, BitmapFontBuf, BitmapFontId, BitmapId, BlobId,
+        Data, DataRef, Id, MaterialId, MaterialInfo, ModelBuf, ModelId, SceneBuf, SceneId,
     },
     crate::pak::compression::Compression,
     log::trace,
@@ -23,101 +22,97 @@ fn current_pos(stream: &mut impl Seek) -> Result<u32, Error> {
 #[derive(Default)]
 pub struct Writer {
     compression: Option<Compression>,
-    pub(super) ctx: HashMap<Asset, Handle>,
+    pub(super) ctx: HashMap<Asset, Id>,
     data: Data,
 }
 
 impl Writer {
-    pub fn push_animation(&mut self, buf: AnimationBuf, key: Option<String>) -> AnimationHandle {
-        let handle = AnimationHandle(self.data.anims.len());
+    pub fn push_animation(&mut self, buf: AnimationBuf, key: Option<String>) -> AnimationId {
+        let id = AnimationId(self.data.anims.len());
         self.data.anims.push(DataRef::Data(buf));
 
         if let Some(key) = key {
-            assert!(self.data.handles.get(&key).is_none());
-            self.data.handles.insert(key, handle.into());
+            assert!(self.data.ids.get(&key).is_none());
+            self.data.ids.insert(key, id.into());
         }
 
-        handle
+        id
     }
 
-    pub fn push_bitmap_font(
-        &mut self,
-        buf: BitmapFontBuf,
-        key: Option<String>,
-    ) -> BitmapFontHandle {
-        let handle = BitmapFontHandle(self.data.bitmap_fonts.len());
+    pub fn push_bitmap_font(&mut self, buf: BitmapFontBuf, key: Option<String>) -> BitmapFontId {
+        let id = BitmapFontId(self.data.bitmap_fonts.len());
         self.data.bitmap_fonts.push(DataRef::Data(buf));
 
         if let Some(key) = key {
-            assert!(self.data.handles.get(&key).is_none());
+            assert!(self.data.ids.get(&key).is_none());
 
-            self.data.handles.insert(key, handle.into());
+            self.data.ids.insert(key, id.into());
         }
 
-        handle
+        id
     }
 
-    pub fn push_bitmap(&mut self, buf: BitmapBuf, key: Option<String>) -> BitmapHandle {
-        let handle = BitmapHandle(self.data.bitmaps.len());
+    pub fn push_bitmap(&mut self, buf: BitmapBuf, key: Option<String>) -> BitmapId {
+        let id = BitmapId(self.data.bitmaps.len());
         self.data.bitmaps.push(DataRef::Data(buf));
 
         if let Some(key) = key {
-            assert!(self.data.handles.get(&key).is_none());
+            assert!(self.data.ids.get(&key).is_none());
 
-            self.data.handles.insert(key, handle.into());
+            self.data.ids.insert(key, id.into());
         }
 
-        handle
+        id
     }
 
-    pub fn push_blob(&mut self, buf: Vec<u8>, key: Option<String>) -> BlobHandle {
-        let handle = BlobHandle(self.data.blobs.len());
+    pub fn push_blob(&mut self, buf: Vec<u8>, key: Option<String>) -> BlobId {
+        let id = BlobId(self.data.blobs.len());
         self.data.blobs.push(DataRef::Data(buf));
 
         if let Some(key) = key {
-            assert!(self.data.handles.get(&key).is_none());
+            assert!(self.data.ids.get(&key).is_none());
 
-            self.data.handles.insert(key, handle.into());
+            self.data.ids.insert(key, id.into());
         }
 
-        handle
+        id
     }
 
-    pub fn push_material(&mut self, info: MaterialInfo, key: Option<String>) -> MaterialHandle {
-        let handle = MaterialHandle(self.data.materials.len());
+    pub fn push_material(&mut self, info: MaterialInfo, key: Option<String>) -> MaterialId {
+        let id = MaterialId(self.data.materials.len());
         self.data.materials.push(info);
 
         if let Some(key) = key {
-            assert!(self.data.handles.get(&key).is_none());
+            assert!(self.data.ids.get(&key).is_none());
 
-            self.data.handles.insert(key, handle.into());
+            self.data.ids.insert(key, id.into());
         }
 
-        handle
+        id
     }
 
-    pub fn push_model(&mut self, buf: ModelBuf, key: Option<String>) -> ModelHandle {
-        let handle = ModelHandle(self.data.models.len());
+    pub fn push_model(&mut self, buf: ModelBuf, key: Option<String>) -> ModelId {
+        let id = ModelId(self.data.models.len());
         self.data.models.push(DataRef::Data(buf));
 
         if let Some(key) = key {
-            assert!(self.data.handles.get(&key).is_none());
+            assert!(self.data.ids.get(&key).is_none());
 
-            self.data.handles.insert(key, handle.into());
+            self.data.ids.insert(key, id.into());
         }
 
-        handle
+        id
     }
 
-    pub fn push_scene(&mut self, buf: SceneBuf, key: String) -> SceneHandle {
-        let handle = SceneHandle(self.data.scenes.len());
+    pub fn push_scene(&mut self, buf: SceneBuf, key: String) -> SceneId {
+        let id = SceneId(self.data.scenes.len());
         self.data.scenes.push(DataRef::Data(buf));
 
-        assert!(self.data.handles.get(&key).is_none());
+        assert!(self.data.ids.get(&key).is_none());
 
-        self.data.handles.insert(key, handle.into());
+        self.data.ids.insert(key, id.into());
 
-        handle
+        id
     }
 
     pub fn with_compression(&mut self, compression: Compression) -> &mut Self {
@@ -130,11 +125,11 @@ impl Writer {
         self
     }
 
-    pub fn write(self, path: impl AsRef<Path>) -> Result<(), Error> {
+    pub fn write(&mut self, path: impl AsRef<Path>) -> Result<(), Error> {
         self.write_data(&mut BufWriter::new(File::create(path)?))
     }
 
-    fn write_data(mut self, mut writer: impl Write + Seek) -> Result<(), Error> {
+    fn write_data(&mut self, mut writer: impl Write + Seek) -> Result<(), Error> {
         // Write a blank spot that we'll use for the skip header later
         writer.write_all(&0u32.to_ne_bytes())?;
 

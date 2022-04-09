@@ -1,16 +1,16 @@
 use {
     super::{
         AttachmentIndex, AttachmentMap, Binding, Bindings, Edge, Execution, ExecutionPipeline,
-        Node, NodeAccess, Pass, PassRef, Rect, RenderGraph, Subpass, Unbind,
+        Node, Pass, PassRef, Rect, RenderGraph, Subpass, SubresourceAccess, Unbind,
     },
     crate::{
         align_up_u32,
         driver::{
             format_aspect_mask, is_read_access, AttachmentInfo, AttachmentRef, CommandBuffer,
             DepthStencilMode, DescriptorBinding, DescriptorInfo, DescriptorPool,
-            DescriptorPoolInfo, DescriptorPoolSize, DescriptorSet, DriverError, FramebufferKey,
-            FramebufferKeyAttachment, Image, ImageViewInfo, RenderPass, RenderPassInfo,
-            SampleCount, SubpassDependency, SubpassInfo,
+            DescriptorPoolInfo, DescriptorPoolSize, DescriptorSet, Device, DriverError,
+            FramebufferKey, FramebufferKeyAttachment, Image, ImageViewInfo, RenderPass,
+            RenderPassInfo, SampleCount, SubpassDependency, SubpassInfo,
         },
         ptr::Shared,
         HashPool, Lease,
@@ -41,8 +41,8 @@ where
 
 /// A structure which can read and execute render graphs. This pattern was derived from:
 ///
-/// http://themaister.net/blog/2017/08/15/render-graphs-and-vulkan-a-deep-dive/
-/// https://github.com/EmbarkStudios/kajiya
+/// <http://themaister.net/blog/2017/08/15/render-graphs-and-vulkan-a-deep-dive/>
+/// <https://github.com/EmbarkStudios/kajiya>
 #[derive(Debug)]
 pub struct Resolver<P>
 where
@@ -327,8 +327,7 @@ where
             .filter(move |(_, pass)| {
                 pass.execs
                     .iter()
-                    .flat_map(|exec| exec.accesses.iter())
-                    .any(|access| access.node_idx == node_idx)
+                    .any(|exec| exec.accesses.contains_key(&node_idx))
             })
             .map(|(pass_idx, _)| pass_idx)
     }
@@ -343,8 +342,13 @@ where
             .execs
             .iter()
             .flat_map(|exec| exec.accesses.iter())
-            .filter(move |access| is_read_access(access.ty) && already_seen.insert(access.node_idx))
-            .map(|access| access.node_idx)
+            .filter_map(move |(node_idx, accesses)| {
+                if is_read_access(accesses[0].access) && already_seen.insert(*node_idx) {
+                    Some(*node_idx)
+                } else {
+                    None
+                }
+            })
     }
 
     fn end_render_pass(&mut self, cmd_buf: &CommandBuffer<P>) {
@@ -364,8 +368,7 @@ where
         let mut already_seen = BTreeSet::new();
         already_seen.insert(pass_idx);
         self.dependent_nodes(pass_idx)
-            .map(move |node_idx| self.dependent_passes(node_idx, max_pass_idx))
-            .flatten()
+            .flat_map(move |node_idx| self.dependent_passes(node_idx, max_pass_idx))
             .filter(move |pass_idx| already_seen.insert(*pass_idx))
     }
 
@@ -835,28 +838,24 @@ where
 
         // Add dependencies (TODO!)
         {
-            for _ in 0..pass.subpasses.len().min(1) - 1 {
-                dependencies.push(SubpassDependency {
-                    src_subpass: vk::SUBPASS_EXTERNAL,
-                    dst_subpass: 0,
-                    src_stage_mask: vk::PipelineStageFlags::ALL_COMMANDS,
-                    dst_stage_mask: vk::PipelineStageFlags::ALL_COMMANDS,
-                    src_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
-                    dst_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
-                    dependency_flags: vk::DependencyFlags::empty(),
-                });
-            }
-            for idx in 1..pass.subpasses.len().max(1) - 1 {
-                dependencies.push(SubpassDependency {
-                    src_subpass: idx as u32 - 1,
-                    dst_subpass: idx as u32,
-                    src_stage_mask: vk::PipelineStageFlags::ALL_COMMANDS,
-                    dst_stage_mask: vk::PipelineStageFlags::ALL_COMMANDS,
-                    src_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
-                    dst_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
-                    dependency_flags: vk::DependencyFlags::empty(),
-                });
-            }
+            dependencies.push(SubpassDependency {
+                src_subpass: vk::SUBPASS_EXTERNAL,
+                dst_subpass: 0,
+                src_stage_mask: vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+                dst_stage_mask: vk::PipelineStageFlags::TOP_OF_PIPE,
+                src_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
+                dst_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
+                dependency_flags: vk::DependencyFlags::empty(),
+            });
+            dependencies.push(SubpassDependency {
+                src_subpass: pass.subpasses.len() as u32 - 1,
+                dst_subpass: vk::SUBPASS_EXTERNAL,
+                src_stage_mask: vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+                dst_stage_mask: vk::PipelineStageFlags::TOP_OF_PIPE,
+                src_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
+                dst_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
+                dependency_flags: vk::DependencyFlags::empty(),
+            });
         }
 
         cache.lease(
@@ -1046,24 +1045,26 @@ where
 
         'pass: for pass in self.graph.passes.iter() {
             for exec in pass.execs.iter() {
-                for access in exec.accesses.iter() {
-                    if access.node_idx == node_idx {
-                        res |= pass
-                            .execs
-                            .iter()
-                            .filter_map(|exec| exec.pipeline.as_ref())
-                            .map(|pipeline| pipeline.stage())
-                            .reduce(|j, k| j | k)
-                            .unwrap_or_default();
+                if exec.accesses.contains_key(&node_idx) {
+                    res |= pass
+                        .execs
+                        .iter()
+                        .filter_map(|exec| exec.pipeline.as_ref())
+                        .map(|pipeline| pipeline.stage())
+                        .reduce(|j, k| j | k)
+                        .unwrap_or(vk::PipelineStageFlags::TRANSFER);
 
-                        // The execution pipelines of a pass are always the same type
-                        continue 'pass;
-                    }
+                    // The execution pipelines of a pass are always the same type
+                    continue 'pass;
                 }
             }
         }
 
-        assert_ne!(res, Default::default());
+        assert_ne!(
+            res,
+            Default::default(),
+            "The given node was not accessed in this graph"
+        );
 
         res
     }
@@ -1074,24 +1075,16 @@ where
         pass: &mut Pass<P>,
         exec_idx: usize,
     ) {
+        // TODO: into_iter and avoid a bunch of cloning below? Do we use accesses later?
         let mut accesses = pass.execs[exec_idx].accesses.iter();
 
-        //trace!("record_execution_barriers: {:#?}", accesses);
+        // trace!("record_execution_barriers: {:#?}", accesses);
 
-        for access in accesses {
-            let next_access = access.ty;
-            let next_subresource_range = access.subresource.as_ref();
-            let binding = &mut bindings[access.node_idx];
-            let (previous_access, previous_subresource_range) =
-                binding.next_access(next_access, next_subresource_range.cloned());
-
-            // Actually I think we need to skip this in case the access was the same type? Something
-            // about queue forward submission I need to re-read
-            // if previous_access == next_access
-            //     && previous_subresource_range.as_ref() == next_subresource_range
-            // {
-            //     continue;
-            // }
+        for (node_idx, accesses) in accesses {
+            let next_access = accesses[0].access;
+            let next_subresource_range = accesses[0].subresource.as_ref();
+            let binding = &mut bindings[*node_idx];
+            let previous_access = binding.access(accesses[1].access);
 
             // trace!(
             //     "barrier for {} {:?}->{:?}",
@@ -1108,8 +1101,7 @@ where
                         previous_access,
                         next_access,
                         **image.item,
-                        next_subresource_range
-                            .map(|subresource| subresource.clone().unwrap_image()),
+                        next_subresource_range.map(|subresource| subresource.unwrap_image()),
                     );
                 }
                 Binding::ImageLease(image, _) => {
@@ -1118,8 +1110,7 @@ where
                         previous_access,
                         next_access,
                         **image.item,
-                        next_subresource_range
-                            .map(|subresource| subresource.clone().unwrap_image()),
+                        next_subresource_range.map(|subresource| subresource.unwrap_image()),
                     );
                 }
                 Binding::Buffer(buf, _) => {
@@ -1129,7 +1120,7 @@ where
                         next_access,
                         **buf.item,
                         next_subresource_range
-                            .map(|subresource| subresource.clone().unwrap_buffer().range),
+                            .map(|subresource| subresource.unwrap_buffer().into()),
                     );
                 }
                 Binding::BufferLease(buf, _) => {
@@ -1139,7 +1130,7 @@ where
                         next_access,
                         **buf.item,
                         next_subresource_range
-                            .map(|subresource| subresource.clone().unwrap_buffer().range),
+                            .map(|subresource| subresource.unwrap_buffer().into()),
                     );
                 }
                 Binding::RayTraceAcceleration(..) | Binding::RayTraceAccelerationLease(..) => {
@@ -1151,8 +1142,7 @@ where
                         previous_access,
                         next_access,
                         **swapchain_image.item,
-                        next_subresource_range
-                            .map(|subresource| subresource.clone().unwrap_image()),
+                        next_subresource_range.map(|subresource| subresource.unwrap_image()),
                     );
                 }
             }
@@ -1506,6 +1496,65 @@ where
         }
     }
 
+    pub fn submit(mut self, cache: &mut HashPool<P>) -> Result<(), DriverError>
+    where
+        P: 'static,
+    {
+        use std::slice::from_ref;
+
+        trace!("submit");
+
+        let cmd_buf = cache.lease(cache.device.queue.family)?;
+
+        unsafe {
+            Device::wait_for_fence(&cache.device, &cmd_buf.fence)
+                .map_err(|_| DriverError::OutOfMemory)?;
+
+            cache
+                .device
+                .reset_command_pool(cmd_buf.pool, vk::CommandPoolResetFlags::RELEASE_RESOURCES)
+                .map_err(|_| DriverError::OutOfMemory)?;
+            cache
+                .device
+                .begin_command_buffer(
+                    **cmd_buf,
+                    &vk::CommandBufferBeginInfo::builder()
+                        .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
+                )
+                .map_err(|_| DriverError::OutOfMemory)?;
+        }
+
+        self.record_unscheduled_passes(cache, &cmd_buf)?;
+
+        unsafe {
+            cache
+                .device
+                .end_command_buffer(**cmd_buf)
+                .map_err(|_| DriverError::OutOfMemory)?;
+            cache
+                .device
+                .reset_fences(from_ref(&cmd_buf.fence))
+                .map_err(|_| DriverError::OutOfMemory)?;
+            cache
+                .device
+                .queue_submit(
+                    *cache.device.queue,
+                    from_ref(&vk::SubmitInfo::builder().command_buffers(from_ref(&cmd_buf))),
+                    cmd_buf.fence,
+                )
+                .map_err(|_| DriverError::OutOfMemory)?;
+        }
+
+        // This graph contains references to buffers, images, and other resources which must be kept
+        // alive until this graph execution completes on the GPU. Once those references are dropped
+        // they will return to the pool for other things to use. The drop will happen the next time
+        // someone tries to lease a command buffer and we notice this one has returned and the fence
+        // has been signalled.
+        CommandBuffer::push_fenced_drop(&cmd_buf, self);
+
+        Ok(())
+    }
+
     pub fn unbind_node<N>(&mut self, node: N) -> <N as Edge<Self>>::Result
     where
         N: Edge<Self>,
@@ -1524,6 +1573,7 @@ where
 
         let physical_pass = &self.physical_passes[physical_pass_idx];
         let mut descriptor_writes = vec![];
+        let mut buffer_infos = vec![];
         let mut image_infos = vec![];
         for (descriptor_set_idx, (exec, pipeline)) in pass
             .execs
@@ -1602,6 +1652,28 @@ where
                             write_descriptor_set
                                 .descriptor_type(descriptor_ty)
                                 .image_info(from_ref(image_infos.last().unwrap()))
+                                .build(),
+                        );
+                    } else {
+                        // Coming very soon!
+                        unimplemented!();
+                    }
+                } else if let Some(buffer) = bound_node.as_driver_buffer() {
+                    if let Some(view_info) = view_info {
+                        let mut buffer_view_info = view_info.as_buffer().unwrap();
+
+                        trace!("BVI: {}..{}", buffer_view_info.start, buffer_view_info.end);
+
+                        buffer_infos.push(vk::DescriptorBufferInfo {
+                            buffer: **buffer,
+                            offset: buffer_view_info.start,
+                            range: buffer_view_info.end - buffer_view_info.start,
+                        });
+
+                        descriptor_writes.push(
+                            write_descriptor_set
+                                .descriptor_type(descriptor_ty)
+                                .buffer_info(from_ref(buffer_infos.last().unwrap()))
                                 .build(),
                         );
                     } else {

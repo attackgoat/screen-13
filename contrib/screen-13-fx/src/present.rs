@@ -30,13 +30,15 @@ where
         P: 'static,
     {
         let image = image.into();
-        let image_info = graph.node_info(image);
+        // let image_info = graph.node_info(image);
         let swapchain_info = graph.node_info(swapchain);
+
+        // TODO: Notice non-sRGB images and run a different pipeline
 
         graph
             .record_pass("present (from compute)")
             .bind_pipeline(&self.0[0])
-            .read_descriptor_as(0, image, image_info.fmt(vk::Format::R8G8B8A8_UNORM))
+            .read_descriptor(0, image)
             .write_descriptor(1, swapchain)
             .dispatch(swapchain_info.extent.x, swapchain_info.extent.y, 1);
     }
@@ -52,45 +54,44 @@ where
     {
         let top_image = top_image.into();
         let bottom_image = bottom_image.into();
-        let top_image_info = graph.node_info(top_image);
-        let bottom_image_info = graph.node_info(bottom_image);
+        // let top_image_info = graph.node_info(top_image);
+        // let bottom_image_info = graph.node_info(bottom_image);
         let swapchain_info = graph.node_info(swapchain);
+
+        // TODO: Notice non-sRGB images and run a different pipeline
 
         graph
             .record_pass("present (from compute)")
             .bind_pipeline(&self.0[1])
-            .read_descriptor_as(
-                (0, [0]),
-                top_image,
-                top_image_info.fmt(vk::Format::R8G8B8A8_UNORM),
-            )
-            .read_descriptor_as(
-                (0, [1]),
-                bottom_image,
-                bottom_image_info.fmt(vk::Format::R8G8B8A8_UNORM),
-            )
+            .read_descriptor((0, [0]), top_image)
+            .read_descriptor((0, [1]), bottom_image)
             .write_descriptor(1, swapchain)
             .dispatch(swapchain_info.extent.x, swapchain_info.extent.y, 1);
     }
 }
 
-pub struct GraphicPresenter<P>(Shared<GraphicPipeline<P>, P>)
+pub struct GraphicPresenter<P>
 where
-    P: SharedPointerKind;
+    P: SharedPointerKind,
+{
+    pipeline: Shared<GraphicPipeline<P>, P>,
+}
 
 impl<P> GraphicPresenter<P>
 where
     P: SharedPointerKind,
 {
     pub fn new(device: &Shared<Device<P>, P>) -> Result<Self, DriverError> {
-        Ok(Self(Shared::new(GraphicPipeline::create(
-            device,
-            GraphicPipelineInfo::new(),
-            [
-                Shader::new_vertex(crate::res::shader::GRAPHIC_PRESENT_VERT),
-                Shader::new_fragment(crate::res::shader::GRAPHIC_PRESENT_FRAG),
-            ],
-        )?)))
+        Ok(Self {
+            pipeline: Shared::new(GraphicPipeline::create(
+                device,
+                GraphicPipelineInfo::new(),
+                [
+                    Shader::new_vertex(crate::res::shader::GRAPHIC_PRESENT_VERT),
+                    Shader::new_fragment(crate::res::shader::GRAPHIC_PRESENT_FRAG),
+                ],
+            )?),
+        })
     }
 
     pub fn present_image(
@@ -116,14 +117,12 @@ where
 
         graph
             .record_pass("present (from graphic)")
-            .bind_pipeline(&self.0)
-            .read_descriptor_as(0, image, image_info.fmt(vk::Format::R8G8B8A8_SRGB))
+            .bind_pipeline(&self.pipeline)
+            .read_descriptor(0, image)
             .store_color(0, swapchain)
             .push_constants(transform)
             .draw(|device, cmd_buf, _bindings| unsafe {
                 // Draw a quad with implicit vertices (no buffer)
-                // TODO: Reduce vertex count
-                // https://www.saschawillems.de/blog/2016/08/13/vulkan-tutorial-on-rendering-a-fullscreen-quad-without-buffers/
                 device.cmd_draw(cmd_buf, 6, 1, 0, 0);
             });
     }

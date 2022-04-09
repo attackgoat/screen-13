@@ -1,6 +1,6 @@
 [package]
 name = "screen-13"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["John Wells <john@attackgoat.com>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
@@ -14,56 +14,58 @@ description = "An easy-to-use 2D/3D rendering engine in the spirit of QBasic."
 
 # 🦀📦: Feature Set: https://github.com/attackgoat/screen-13#optional-features
 [features]
-default = [
-    "pak",
-]
-bake = ["glob", "pak"]
+default = ["pak"]
+bake = ["bmfont", "glob", "pak", "tokio"]
 pak = []
 
 [dependencies]
+anyhow = "1.0"
 archery = { version = "0.4.3", package = "a_r_c_h_e_r_y" } # HACK: Waiting on main pkg to release
 arrayvec = "0.7"
-ash = "0.35"
-ash-window = "0.9"
+ash = "0.37"
+ash-window = "0.10"
 bincode = "1.3"
 bitflags = "1.3"
-bmfont = "0.3"
+bmfont = { version = "0.3", default-features = false, optional = true }
 brotli = "3.3"
 byteorder = "1.4"
-derive_builder = "0.10"
-glam = { version="0.20", features=["serde"] }
-glob = { version="0.3.0", optional=true }
+derive_builder = "0.11"
+glam = { version = "0.20", features = ["serde"] }
+glob = { version = "0.3.0", optional = true }
 gltf = "1.0"
-gpu-allocator = "0.16"
+gpu-allocator = { git = "https://github.com/attackgoat/gpu-allocator.git", rev = "1d830054437a3dde85a7f6cfb765fb0a60d7f29e" }  #{ git = "https://github.com/Traverse-Research/gpu-allocator.git", branch = "ash-0.37" } # https://github.com/Traverse-Research/gpu-allocator/pull/104
 image = "0.24"
-imgui = { version = "0.8", optional = true }
 itertools = "0.10"
 log = "0.4"
+meshopt = "0.1.9"
 num-format = "0.4.0"
 num-traits = "0.2"
-ordered-float = { version = "2.0", features=["serde"] }
+ordered-float = { version = "2.0", features = ["serde"] }
 parking_lot = "0.12"
 paste = "1.0"
-puffin = "0.12"
+puffin = "0.13"
 raw-window-handle = "0.4"
-serde = { version="1.0", features=["derive"] }
+serde = { version = "1.0", features = ["derive"] }
 serde_bytes = "0.11"
 snap = "1.0"
-spirv-reflect = "0.2"
+spirq = "0.5"
+tokio = { version = "1.15", default-features = false, features = [
+    "rt-multi-thread",
+], optional = true }
 toml = "0.5"
 typenum = "1.12"
-vk-sync = { version = "0.3.0", package="vk-sync-fork" } # // HACK: https://github.com/gwihlidal/vk-sync-rs/pull/4 -> https://github.com/expenses/vk-sync-rs
-winit = { version="0.26" }
+vk-sync = { version = "0.4.0", package = "vk-sync-fork" }  # // HACK: https://github.com/gwihlidal/vk-sync-rs/pull/4 -> https://github.com/expenses/vk-sync-rs
+winit = { version = "0.26" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+ash-molten = "0.12"
 
 [dev-dependencies]
 anyhow = "1.0"
 log = "0.4"
 pretty_env_logger = "0.4"
 screen-13-fx = { path = "contrib/screen-13-fx" }
-
-# Always compile the `image` dependency in release mode; it is slow with debug assertions turned on
-[profile.dev.package.image]
-opt-level = 3
+screen-13-imgui = { path = "contrib/screen-13-imgui" }
 
 [package.metadata.docs.rs]
 all-features = true

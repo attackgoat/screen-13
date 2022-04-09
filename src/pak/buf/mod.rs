@@ -10,7 +10,6 @@ mod content;
 mod material;
 mod model;
 mod scene;
-mod schema;
 
 #[cfg(feature = "bake")]
 mod writer;
@@ -19,19 +18,19 @@ mod writer;
 pub use self::writer::Writer;
 
 use {
-    self::{asset::Asset, bitmap::Bitmap, blob::Blob},
+    self::{asset::Asset, bitmap::Bitmap, blob::Blob, model::Model},
     super::{
-        compression::Compression, AnimationBuf, AnimationHandle, BitmapBuf, BitmapFontBuf,
-        BitmapFontHandle, BitmapHandle, BlobHandle, MaterialHandle, MaterialInfo, ModelBuf,
-        ModelHandle, Pak, SceneBuf, SceneHandle,
+        compression::Compression, AnimationBuf, AnimationId, BitmapBuf, BitmapFontBuf,
+        BitmapFontId, BitmapId, BlobId, MaterialId, MaterialInfo, ModelBuf, ModelId, Pak, SceneBuf,
+        SceneId,
     },
-    log::{error, trace, warn},
+    log::{error, info, trace, warn},
     serde::{de::DeserializeOwned, Deserialize, Serialize},
     std::{
         collections::HashMap,
         env::var,
         fmt::{Debug, Formatter},
-        fs::File,
+        fs::{create_dir_all, File},
         io::{BufReader, Cursor, Error, ErrorKind, Read, Seek, SeekFrom},
         ops::Range,
         path::{Path, PathBuf},
@@ -40,7 +39,7 @@ use {
 };
 
 #[cfg(feature = "bake")]
-use glob::glob;
+use {anyhow::Context, glob::glob, parking_lot::Mutex, std::sync::Arc, tokio::runtime::Runtime};
 
 /// Given some parent directory and a filename, returns just the portion after the directory.
 #[allow(unused)]
@@ -85,20 +84,21 @@ fn file_key(dir: impl AsRef<Path>, path: impl AsRef<Path>) -> String {
     key.to_str().unwrap().to_owned()
 }
 
+fn is_cargo_build() -> bool {
+    var("CARGO").is_ok()
+}
+
 /// Returns `true` when a given path has the `.toml` file extension.
-#[allow(unused)]
 fn is_toml(path: impl AsRef<Path>) -> bool {
     path.as_ref()
         .extension()
-        .map(|ext| ext.to_str())
-        .flatten()
+        .and_then(|ext| ext.to_str())
         .filter(|ext| *ext == "toml")
         .is_some()
 }
 
 /// Returns either the parent directory of the given path or the project root if the path has no
 /// parent.
-#[allow(unused)]
 fn parent(path: impl AsRef<Path>) -> PathBuf {
     path.as_ref()
         .parent()
@@ -140,9 +140,8 @@ fn parse_hex_scalar(val: &str) -> Option<u8> {
     }
 }
 
-#[allow(unused)]
 fn re_run_if_changed(p: impl AsRef<Path>) {
-    if var("CARGO").is_ok() {
+    if is_cargo_build() {
         println!("cargo:rerun-if-changed={}", p.as_ref().display());
     }
 }
@@ -211,7 +210,7 @@ trait Canonicalize {
 #[derive(Debug, Default, Deserialize, Serialize)]
 struct Data {
     // These fields are handled by bincode serialization as-is
-    handles: HashMap<String, Handle>,
+    ids: HashMap<String, Id>,
     materials: Vec<MaterialInfo>,
 
     // These fields are loaded on demand
@@ -223,34 +222,10 @@ struct Data {
     scenes: Vec<DataRef<SceneBuf>>,
 }
 
-impl Data {
-    // TODO: Maybe better design!
-    #[allow(clippy::ptr_arg)]
-    fn clone_void<T>(data: &Vec<DataRef<T>>) -> Vec<DataRef<T>> {
-        let mut res = Vec::with_capacity(data.len());
-        for idx in 0..data.len() {
-            res[idx] = if let DataRef::Ref(range) = &data[idx] {
-                DataRef::Ref(range.clone())
-            } else {
-                DataRef::Void
-            };
-        }
-
-        res
-    }
-
-    // TODO: Maybe better design!
-    #[allow(clippy::ptr_arg)]
-    fn merge<T>(_other: &Vec<DataRef<T>>, _data: &mut Vec<DataRef<T>>) {
-        todo!()
-    }
-}
-
 #[derive(Deserialize, PartialEq, Serialize)]
 enum DataRef<T> {
     Data(T),
-    Ref(Range<u32>), // TODO: I think make this just Position
-    Void,
+    Ref(Range<u32>),
 }
 
 impl<T> DataRef<T> {
@@ -258,7 +233,6 @@ impl<T> DataRef<T> {
         match self {
             Self::Data(ref t) => Some(t),
             _ => {
-                #[cfg(debug_assertions)]
                 warn!("Expected data but found position and length");
 
                 None
@@ -266,11 +240,14 @@ impl<T> DataRef<T> {
         }
     }
 
+    fn is_data(&self) -> bool {
+        matches!(self, Self::Data(_))
+    }
+
     fn pos_len(&self) -> Option<(u64, usize)> {
         match self {
             Self::Ref(range) => Some((range.start as _, (range.end - range.start) as _)),
             _ => {
-                #[cfg(debug_assertions)]
                 warn!("Expected position and length but found data");
 
                 None
@@ -297,26 +274,25 @@ impl<T> Debug for DataRef<T> {
         f.write_str(match self {
             Self::Data(_) => "Data",
             Self::Ref(_) => "DataRef",
-            Self::Void => "Void",
         })
     }
 }
 
-macro_rules! handle_enum {
+macro_rules! id_enum {
     ($($variant:ident),*) => {
         paste::paste! {
             #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-            enum Handle {
+            enum Id {
                 $(
-                    $variant([<$variant Handle>]),
+                    $variant([<$variant Id>]),
                 )*
             }
 
-            impl Handle {
+            impl Id {
                 $(
-                    fn [<as_ $variant:snake>](&self) -> Option<[<$variant Handle>]> {
+                    fn [<as_ $variant:snake>](&self) -> Option<[<$variant Id>]> {
                         match self {
-                            Self::$variant(handle) => Some(*handle),
+                            Self::$variant(id) => Some(*id),
                             _ => None,
                         }
                     }
@@ -324,9 +300,9 @@ macro_rules! handle_enum {
             }
 
             $(
-                impl From<[<$variant Handle>]> for Handle {
-                    fn from(handle: [<$variant Handle>]) -> Self {
-                        Self::$variant(handle)
+                impl From<[<$variant Id>]> for Id {
+                    fn from(id: [<$variant Id>]) -> Self {
+                        Self::$variant(id)
                     }
                 }
             )*
@@ -334,7 +310,7 @@ macro_rules! handle_enum {
     };
 }
 
-handle_enum!(Animation, Bitmap, BitmapFont, Blob, Material, Model, Scene);
+id_enum!(Animation, Bitmap, BitmapFont, Blob, Material, Model, Scene);
 
 /// Main serialization container for the `.pak` file format.
 #[derive(Debug)]
@@ -346,18 +322,20 @@ pub struct PakBuf {
 
 impl PakBuf {
     #[cfg(feature = "bake")]
-    pub fn bake(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> Result<(), Error> {
+    pub fn bake(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> anyhow::Result<()> {
         re_run_if_changed(&src);
 
-        // Process each file we find
+        let rt = Arc::new(Runtime::new()?);
+        let mut tasks = vec![];
+        let mut writer = Arc::new(Mutex::new(Default::default()));
+
+        // Load the source file into an Asset::Content instance
+        let src_dir = parent(&src);
         let content = Asset::read(&src)?
             .into_content()
-            .ok_or_else(|| Error::from(ErrorKind::InvalidData))?;
-        let src_dir = src
-            .as_ref()
-            .parent()
-            .ok_or_else(|| Error::from(ErrorKind::InvalidInput))?;
-        let mut writer = Default::default();
+            .context("Unable to read asset file")?;
+
+        // Process each file we find as a separate runtime task
         for asset_glob in content
             .groups()
             .into_iter()
@@ -365,9 +343,9 @@ impl PakBuf {
             .flat_map(|group| group.asset_globs())
         {
             let asset_paths = glob(src_dir.join(asset_glob).to_string_lossy().as_ref())
-                .map_err(|_| Error::from(ErrorKind::Unsupported))?;
+                .context("Unable to glob source directory")?;
             for asset_path in asset_paths {
-                let asset_path = asset_path.map_err(|_| Error::from(ErrorKind::Unsupported))?;
+                let asset_path = asset_path.context("Unable to get asset path")?;
 
                 re_run_if_changed(&asset_path);
 
@@ -378,59 +356,125 @@ impl PakBuf {
                     .to_lowercase()
                     .as_str()
                 {
-                    // "glb" | "gltf" => {
-                    //     // Note that direct references like this build a model, not an animation
-                    //     // To build an animation you must specify a .toml file
-                    //     let mut model = Model::new(&src);
-                    //     model.canonicalize(src_dir, src_dir);
-                    //     bake_model(&mut context, &mut pak, src_dir, Some(src), &model);
-                    // }
+                    "glb" | "gltf" => {
+                        // Note that direct references like this build a model, not an animation
+                        // To build an animation you must specify a .toml file
+                        let writer = Arc::clone(&writer);
+                        let src_dir = src_dir.clone();
+                        let asset_path = asset_path.clone();
+                        tasks.push(rt.spawn_blocking(move || {
+                            Model::new(&asset_path)
+                                .bake(&writer, &src_dir, Some(&asset_path))
+                                .unwrap();
+                        }));
+                    }
                     "jpg" | "jpeg" | "png" | "bmp" | "tga" | "dds" | "webp" | "gif" | "ico"
                     | "tiff" => {
-                        Bitmap::new(&asset_path).bake(&mut writer, &src_dir, Some(&asset_path))?;
+                        let writer = Arc::clone(&writer);
+                        let src_dir = src_dir.clone();
+                        let asset_path = asset_path.clone();
+                        tasks.push(rt.spawn_blocking(move || {
+                            Bitmap::new(&asset_path)
+                                .bake_from_source(&writer, src_dir, Some(asset_path))
+                                .unwrap();
+                        }));
                     }
-                    // "toml" => match Asset::read(&src) {
-                    //     Asset::Animation(anim) => {
-                    //         // bake_animation(&mut context, &src_dir, asset_filename, anim, &mut pak);
-                    //         todo!();
-                    //     }
-                    //     // Asset::Atlas(ref atlas) => {
-                    //     //     bake_atlas(&src_dir, &asset_filename, atlas, &mut pak);
-                    //     // }
-                    //     Asset::Bitmap(mut bitmap) => {
-                    //         bitmap.canonicalize(&src_dir, &src_dir);
-                    //         bake_bitmap(&mut context, &mut pak, &src_dir, Some(src), &bitmap);
-                    //     }
-                    //     Asset::BitmapFont(mut bitmap_font) => {
-                    //         bitmap_font.canonicalize(&src_dir, &src_dir);
-                    //         bake_bitmap_font(&mut context, &mut pak, src_dir, src, bitmap_font);
-                    //     }
-                    //     Asset::Color(_) => unreachable!(),
-                    //     Asset::Content(_) => {
-                    //         // Nested content files are not yet supported
-                    //         panic!("Unexpected content file {}", src.display());
-                    //     }
-                    //     // Asset::Language(ref lang) => {
-                    //     //     bake_lang(&src_dir, &asset_filename, lang, &mut pak, &mut log)
-                    //     // }
-                    //     Asset::Material(mut material) => {
-                    //         material.canonicalize(&src_dir, &src_dir);
-                    //         bake_material(&mut context, &mut pak, src_dir, Some(src), &material);
-                    //     }
-                    //     Asset::Model(mut model) => {
-                    //         model.canonicalize(&src_dir, &src_dir);
-                    //         bake_model(&mut context, &mut pak, src_dir, Some(src), &model);
-                    //     }
-                    //     Asset::Scene(scene) => {
-                    //         bake_scene(&mut context, &mut pak, &src_dir, src, &scene);
-                    //     }
-                    // },
-                    _ => Blob::bake(&mut writer, src_dir, &asset_path),
+                    "toml" => {
+                        let asset = Asset::read(&asset_path)?;
+                        let asset_parent = parent(&asset_path);
+
+                        match asset {
+                            Asset::Animation(_anim) => {
+                                todo!();
+                            }
+                            Asset::Bitmap(mut bitmap) => {
+                                let writer = Arc::clone(&writer);
+                                let src_dir = src_dir.clone();
+                                let asset_path = asset_path.clone();
+                                let asset_parent = asset_parent.clone();
+                                tasks.push(rt.spawn_blocking(move || {
+                                    bitmap.canonicalize(&src_dir, &asset_parent);
+                                    bitmap
+                                        .bake_from_source(&writer, src_dir, Some(asset_path))
+                                        .unwrap();
+                                }));
+                            }
+                            Asset::BitmapFont(mut blob) => {
+                                let writer = Arc::clone(&writer);
+                                let src_dir = src_dir.clone();
+                                let asset_path = asset_path.clone();
+                                let asset_parent = asset_parent.clone();
+                                tasks.push(rt.spawn_blocking(move || {
+                                    blob.canonicalize(&src_dir, &asset_parent);
+                                    blob.bake_bitmap_font(&writer, src_dir, asset_path).unwrap();
+                                }));
+                            }
+                            Asset::Material(mut material) => {
+                                let writer = Arc::clone(&writer);
+                                let src_dir = src_dir.clone();
+                                let asset_path = asset_path.clone();
+                                let asset_parent = asset_parent.clone();
+                                let rt2 = rt.clone();
+                                tasks.push(rt.spawn_blocking(move || {
+                                    material.canonicalize(&src_dir, &asset_parent);
+                                    material
+                                        .bake(
+                                            &rt2,
+                                            &writer,
+                                            src_dir,
+                                            asset_parent,
+                                            Some(asset_path),
+                                        )
+                                        .unwrap();
+                                }));
+                            }
+                            Asset::Model(mut model) => {
+                                let writer = Arc::clone(&writer);
+                                let src_dir = src_dir.clone();
+                                let asset_path = asset_path.clone();
+                                let asset_parent = asset_parent.clone();
+                                tasks.push(rt.spawn_blocking(move || {
+                                    model.canonicalize(&src_dir, &asset_parent);
+                                    model.bake(&writer, &src_dir, Some(&asset_path)).unwrap();
+                                }));
+                            }
+                            Asset::Scene(_scene) => {
+                                todo!();
+                            }
+                            _ => unimplemented!(),
+                        }
+                    }
+                    _ => {
+                        let writer = Arc::clone(&writer);
+                        let src_dir = src_dir.clone();
+                        let asset_path = asset_path.clone();
+                        tasks.push(rt.spawn_blocking(move || {
+                            let blob = Blob { src: asset_path };
+                            blob.bake(&writer, &src_dir).unwrap();
+                        }));
+                    }
                 }
             }
         }
 
-        writer.write(dst)
+        rt.block_on(async move {
+            for task in tasks.into_iter() {
+                task.await.unwrap();
+            }
+
+            let dst = dst.as_ref().to_path_buf();
+            if let Some(parent) = dst.parent() {
+                create_dir_all(parent)
+                    .unwrap_or_else(|_| panic!("Unable to create directory {}", parent.display()));
+            }
+
+            writer
+                .lock()
+                .write(&dst)
+                .unwrap_or_else(|_| panic!("Unable to write pak file {}", dst.display()));
+        });
+
+        Ok(())
     }
 
     fn deserialize<T>(&mut self, pos: u64, len: usize) -> Result<T, Error>
@@ -454,27 +498,6 @@ impl PakBuf {
             bincode::deserialize_from(data)
         }
         .map_err(|err| Error::from(ErrorKind::InvalidData))
-    }
-
-    // Produces clone of this pak but all data is missing and only references and voids are left.
-    //
-    // This can be created quickly and passed to another thread. Merge the clone in later after
-    // filling it up. Yay.
-    pub fn clone_void(&self) -> Result<Self, Error> {
-        Ok(Self {
-            compression: self.compression,
-            data: Data {
-                handles: self.data.handles.clone(),
-                materials: self.data.materials.clone(),
-                anims: Data::clone_void(&self.data.anims),
-                bitmap_fonts: Data::clone_void(&self.data.bitmap_fonts),
-                bitmaps: Data::clone_void(&self.data.bitmaps),
-                blobs: Data::clone_void(&self.data.blobs),
-                models: Data::clone_void(&self.data.models),
-                scenes: Data::clone_void(&self.data.scenes),
-            },
-            reader: self.reader.reopen()?,
-        })
     }
 
     pub fn from_stream(mut stream: impl Stream + 'static) -> Result<Self, Error> {
@@ -502,7 +525,7 @@ impl PakBuf {
         trace!(
             "Read header: {} bytes ({} keys)",
             stream.stream_position()? - skip as u64,
-            data.handles.len()
+            data.ids.len()
         );
 
         Ok(Self {
@@ -512,68 +535,8 @@ impl PakBuf {
         })
     }
 
-    pub fn is_key_loaded(&mut self, key: impl AsRef<str>) -> bool {
-        self.data
-            .handles
-            .get(key.as_ref())
-            .map(|h| {
-                if let Some(h) = h.as_animation() {
-                    self.data.anims[h.0].as_data().is_some()
-                } else if let Some(h) = h.as_bitmap_font() {
-                    self.data.bitmap_fonts[h.0].as_data().is_some()
-                } else if let Some(h) = h.as_bitmap() {
-                    self.data.bitmaps[h.0].as_data().is_some()
-                } else if let Some(h) = h.as_blob() {
-                    self.data.blobs[h.0].as_data().is_some()
-                } else if let Some(h) = h.as_model() {
-                    self.data.models[h.0].as_data().is_some()
-                } else if let Some(h) = h.as_scene() {
-                    self.data.scenes[h.0].as_data().is_some()
-                } else {
-                    unreachable!();
-                }
-            })
-            .unwrap_or_default()
-    }
-
     pub fn keys(&self) -> impl Iterator<Item = &str> {
-        self.data.handles.keys().map(|key| key.as_str())
-    }
-
-    pub fn load(&mut self, key: impl AsRef<str>) -> Result<(), Error> {
-        let h = self
-            .data
-            .handles
-            .get(key.as_ref())
-            .ok_or_else(|| Error::from(ErrorKind::Unsupported))?;
-
-        if let Some(h) = h.as_animation() {
-            self.read_animation(h)?;
-        } else if let Some(h) = h.as_bitmap_font() {
-            self.read_bitmap_font(h)?;
-        } else if let Some(h) = h.as_bitmap() {
-            self.read_bitmap(h)?;
-        } else if let Some(h) = h.as_blob() {
-            self.read_blob(h)?;
-        } else if let Some(h) = h.as_model() {
-            self.read_model(h)?;
-        } else if let Some(h) = h.as_scene() {
-            self.read_scene(h)?;
-        } else {
-            unreachable!();
-        }
-
-        Ok(())
-    }
-
-    // Replaces any data refs in this pak with data from the other, if it is present.
-    pub fn merge(&mut self, other: Self) {
-        Data::merge(&other.data.anims, &mut self.data.anims);
-        Data::merge(&other.data.bitmap_fonts, &mut self.data.bitmap_fonts);
-        Data::merge(&other.data.bitmaps, &mut self.data.bitmaps);
-        Data::merge(&other.data.blobs, &mut self.data.blobs);
-        Data::merge(&other.data.models, &mut self.data.models);
-        Data::merge(&other.data.scenes, &mut self.data.scenes);
+        self.data.ids.keys().map(|key| key.as_str())
     }
 
     /// Opens the given path and decodes a `Pak`.
@@ -587,117 +550,101 @@ impl PakBuf {
 }
 
 impl Pak for PakBuf {
-    /// Gets the pak-unique `AnimationHandle` corresponding to the given key, if one exsits.
-    fn animation_handle(&self, key: impl AsRef<str>) -> Option<AnimationHandle> {
+    /// Gets the pak-unique `AnimationId` corresponding to the given key, if one exsits.
+    fn animation_id(&self, key: impl AsRef<str>) -> Option<AnimationId> {
         self.data
-            .handles
+            .ids
             .get(key.as_ref())
-            .map(|handle| handle.as_animation())
-            .flatten()
+            .and_then(|id| id.as_animation())
     }
 
-    /// Gets the pak-unique `BitmapHandle` corresponding to the given key, if one exsits.
-    fn bitmap_font_handle(&self, key: impl AsRef<str>) -> Option<BitmapFontHandle> {
+    /// Gets the pak-unique `BitmapFontId` corresponding to the given key, if one exsits.
+    fn bitmap_font_id(&self, key: impl AsRef<str>) -> Option<BitmapFontId> {
         self.data
-            .handles
+            .ids
             .get(key.as_ref())
-            .map(|handle| handle.as_bitmap_font())
-            .flatten()
+            .and_then(|id| id.as_bitmap_font())
     }
 
-    /// Gets the pak-unique `BitmapHandle` corresponding to the given key, if one exsits.
-    fn bitmap_handle(&self, key: impl AsRef<str>) -> Option<BitmapHandle> {
+    /// Gets the pak-unique `BitmapId` corresponding to the given key, if one exsits.
+    fn bitmap_id(&self, key: impl AsRef<str>) -> Option<BitmapId> {
         self.data
-            .handles
+            .ids
             .get(key.as_ref())
-            .map(|handle| handle.as_bitmap())
-            .flatten()
+            .and_then(|id| id.as_bitmap())
     }
 
-    /// Gets the pak-unique `BlobHandle` corresponding to the given key, if one exsits.
-    fn blob_handle(&self, key: impl AsRef<str>) -> Option<BlobHandle> {
+    /// Gets the pak-unique `BlobId` corresponding to the given key, if one exsits.
+    fn blob_id(&self, key: impl AsRef<str>) -> Option<BlobId> {
+        self.data.ids.get(key.as_ref()).and_then(|id| id.as_blob())
+    }
+
+    /// Gets the pak-unique `MaterialId` corresponding to the given key, if one exsits.
+    fn material_id(&self, key: impl AsRef<str>) -> Option<MaterialId> {
         self.data
-            .handles
+            .ids
             .get(key.as_ref())
-            .map(|handle| handle.as_blob())
-            .flatten()
+            .and_then(|id| id.as_material())
     }
 
-    /// Gets the pak-unique `MaterialHandle` corresponding to the given key, if one exsits.
-    fn material_handle(&self, key: impl AsRef<str>) -> Option<MaterialHandle> {
-        self.data
-            .handles
-            .get(key.as_ref())
-            .map(|handle| handle.as_material())
-            .flatten()
+    /// Gets the pak-unique `ModelId` corresponding to the given key, if one exsits.
+    fn model_id(&self, key: impl AsRef<str>) -> Option<ModelId> {
+        self.data.ids.get(key.as_ref()).and_then(|id| id.as_model())
     }
 
-    /// Gets the material for the given handle.
-    fn material(&self, handle: MaterialHandle) -> Option<MaterialInfo> {
-        self.data.materials.get(handle.0).copied()
+    /// Gets the pak-unique `SceneId` corresponding to the given key, if one exsits.
+    fn scene_id(&mut self, key: impl AsRef<str>) -> Option<SceneId> {
+        self.data.ids.get(key.as_ref()).and_then(|id| id.as_scene())
     }
 
-    /// Gets the pak-unique `ModelHandle` corresponding to the given key, if one exsits.
-    fn model_handle(&self, key: impl AsRef<str>) -> Option<ModelHandle> {
-        self.data
-            .handles
-            .get(key.as_ref())
-            .map(|handle| handle.as_model())
-            .flatten()
-    }
-
-    /// Gets the pak-unique `SceneHandle` corresponding to the given key, if one exsits.
-    fn scene_handle(&mut self, key: impl AsRef<str>) -> Option<SceneHandle> {
-        self.data
-            .handles
-            .get(key.as_ref())
-            .map(|handle| handle.as_scene())
-            .flatten()
-    }
-
-    /// Gets the corresponding animation for the given handle.
-    fn read_animation(&mut self, handle: AnimationHandle) -> Result<AnimationBuf, Error> {
-        let (pos, len) = self.data.anims[handle.0]
+    /// Gets the corresponding animation for the given ID.
+    fn read_animation_id(&mut self, id: AnimationId) -> Result<AnimationBuf, Error> {
+        let (pos, len) = self.data.anims[id.0]
             .pos_len()
             .ok_or_else(|| Error::from(ErrorKind::InvalidInput))?;
         self.deserialize(pos, len)
     }
 
-    /// Reads the corresponding bitmap for the given handle.
-    fn read_bitmap_font(&mut self, handle: BitmapFontHandle) -> Result<BitmapFontBuf, Error> {
-        let (pos, len) = self.data.bitmap_fonts[handle.0]
+    /// Reads the corresponding bitmap for the given ID.
+    fn read_bitmap_font_id(&mut self, id: BitmapFontId) -> Result<BitmapFontBuf, Error> {
+        let (pos, len) = self.data.bitmap_fonts[id.0]
             .pos_len()
             .ok_or_else(|| Error::from(ErrorKind::InvalidInput))?;
         self.deserialize(pos, len)
     }
 
-    /// Reads the corresponding bitmap for the given handle.
-    fn read_bitmap(&mut self, handle: BitmapHandle) -> Result<BitmapBuf, Error> {
-        let (pos, len) = self.data.bitmaps[handle.0]
+    /// Reads the corresponding bitmap for the given ID.
+    fn read_bitmap_id(&mut self, id: BitmapId) -> Result<BitmapBuf, Error> {
+        let (pos, len) = self.data.bitmaps[id.0]
             .pos_len()
             .ok_or_else(|| Error::from(ErrorKind::InvalidInput))?;
         self.deserialize(pos, len)
     }
 
-    /// Gets the corresponding blob for the given handle.
-    fn read_blob(&mut self, handle: BlobHandle) -> Result<Vec<u8>, Error> {
-        let (pos, len) = self.data.blobs[handle.0]
+    /// Gets the corresponding blob for the given ID.
+    fn read_blob_id(&mut self, id: BlobId) -> Result<Vec<u8>, Error> {
+        let (pos, len) = self.data.blobs[id.0]
             .pos_len()
             .ok_or_else(|| Error::from(ErrorKind::InvalidInput))?;
         self.deserialize(pos, len)
     }
 
-    /// Gets the corresponding animation for the given handle.
-    fn read_model(&mut self, handle: ModelHandle) -> Result<ModelBuf, Error> {
-        let (pos, len) = self.data.models[handle.0]
+    /// Gets the material for the given ID.
+    fn read_material_id(&self, id: MaterialId) -> Option<MaterialInfo> {
+        self.data.materials.get(id.0).copied()
+    }
+
+    /// Gets the corresponding animation for the given ID.
+    fn read_model_id(&mut self, id: ModelId) -> Result<ModelBuf, Error> {
+        let (pos, len) = self.data.models[id.0]
             .pos_len()
             .ok_or_else(|| Error::from(ErrorKind::InvalidInput))?;
         self.deserialize(pos, len)
     }
 
-    /// Gets the corresponding animation for the given handle.
-    fn read_scene(&mut self, handle: SceneHandle) -> Result<SceneBuf, Error> {
-        let (pos, len) = self.data.scenes[handle.0]
+    /// Gets the corresponding animation for the given ID.
+    fn read_scene_id(&mut self, id: SceneId) -> Result<SceneBuf, Error> {
+        let (pos, len) = self.data.scenes[id.0]
             .pos_len()
             .ok_or_else(|| Error::from(ErrorKind::InvalidInput))?;
         self.deserialize(pos, len)
@@ -717,12 +664,12 @@ impl From<&'static [u8]> for PakBuf {
     }
 }
 
-pub trait Stream: Debug + Read + Seek {
-    fn reopen(&self) -> Result<Box<dyn Stream>, Error>;
+pub trait Stream: Debug + Read + Seek + Send {
+    fn open(&self) -> Result<Box<dyn Stream>, Error>;
 }
 
 impl Stream for PakFile {
-    fn reopen(&self) -> Result<Box<dyn Stream>, Error> {
+    fn open(&self) -> Result<Box<dyn Stream>, Error> {
         let file = File::open(&self.path)?;
         let buf = BufReader::new(file);
 
@@ -746,7 +693,7 @@ impl Seek for PakFile {
 }
 
 impl Stream for Cursor<&'static [u8]> {
-    fn reopen(&self) -> Result<Box<dyn Stream>, Error> {
+    fn open(&self) -> Result<Box<dyn Stream>, Error> {
         Ok(Box::new(Cursor::new(*self.get_ref())))
     }
 }

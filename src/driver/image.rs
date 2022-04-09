@@ -269,16 +269,16 @@ impl ImageInfo {
         }
     }
 
-    pub fn new_1d(fmt: vk::Format, extent: u32) -> ImageInfoBuilder {
-        Self::new(fmt, ImageType::Texture1D, uvec3(extent, 1, 1))
+    pub fn new_1d(fmt: vk::Format, len: u32) -> ImageInfoBuilder {
+        Self::new(fmt, ImageType::Texture1D, uvec3(len, 1, 1))
     }
 
-    pub fn new_2d(fmt: vk::Format, extent: UVec2) -> ImageInfoBuilder {
-        Self::new(fmt, ImageType::Texture2D, uvec3(extent.x, extent.y, 1))
+    pub fn new_2d(fmt: vk::Format, x: u32, y: u32) -> ImageInfoBuilder {
+        Self::new(fmt, ImageType::Texture2D, uvec3(x, y, 1))
     }
 
-    pub fn new_3d(fmt: vk::Format, extent: UVec3) -> ImageInfoBuilder {
-        Self::new(fmt, ImageType::Texture3D, extent)
+    pub fn new_3d(fmt: vk::Format, x: u32, y: u32, z: u32) -> ImageInfoBuilder {
+        Self::new(fmt, ImageType::Texture3D, uvec3(x, y, z))
     }
 
     pub fn new_cube(fmt: vk::Format, width: u32) -> ImageInfoBuilder {

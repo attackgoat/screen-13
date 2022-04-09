@@ -2,10 +2,13 @@ use {
     super::{
         Binding, BufferBinding, BufferLeaseBinding, ImageBinding, ImageLeaseBinding, Information,
         NodeIndex, RayTraceAccelerationBinding, RayTraceAccelerationLeaseBinding, RenderGraph,
-        Resolver, Subresource, SwapchainImageBinding,
+        Resolver, Subresource, SubresourceAccess, SwapchainImageBinding,
     },
     crate::{
-        driver::{BufferSubresource, ImageInfo, ImageSubresource, ImageViewInfo, SwapchainImage},
+        driver::{
+            BufferInfo, BufferSubresource, ImageInfo, ImageSubresource, ImageViewInfo,
+            SwapchainImage,
+        },
         ptr::Shared,
     },
     archery::SharedPointerKind,
@@ -13,6 +16,52 @@ use {
     std::{marker::PhantomData, ops::Range},
     vk_sync::AccessType,
 };
+
+#[derive(Debug)]
+pub enum AnyBufferNode<P> {
+    Buffer(BufferNode<P>),
+    BufferLease(BufferLeaseNode<P>),
+}
+
+impl<P> Clone for AnyBufferNode<P> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<P> Copy for AnyBufferNode<P> {}
+
+impl<P> Information for AnyBufferNode<P> {
+    type Info = BufferInfo;
+
+    fn get(self, graph: &RenderGraph<impl SharedPointerKind>) -> Self::Info {
+        match self {
+            Self::Buffer(node) => node.get(graph),
+            Self::BufferLease(node) => node.get(graph),
+        }
+    }
+}
+
+impl<P> From<BufferNode<P>> for AnyBufferNode<P> {
+    fn from(node: BufferNode<P>) -> Self {
+        Self::Buffer(node)
+    }
+}
+
+impl<P> From<BufferLeaseNode<P>> for AnyBufferNode<P> {
+    fn from(node: BufferLeaseNode<P>) -> Self {
+        Self::BufferLease(node)
+    }
+}
+
+impl<P> Node<P> for AnyBufferNode<P> {
+    fn index(self) -> NodeIndex {
+        match self {
+            Self::Buffer(node) => node.index(),
+            Self::BufferLease(node) => node.index(),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum AnyImageNode<P> {
@@ -133,11 +182,9 @@ macro_rules! node_unbind {
                         // the graph is resolved and you should not use an unbound binding before
                         // the graph is resolved. Resolve it and then use said binding on a
                         // different graph.)
-                        let (previous_access, previous_subresource) = graph.last_access(self)
-                            .unwrap_or_else(|| {
-                                (binding.previous_access, binding.previous_subresource.clone())
-                            });
-                        [<$name Binding>]::new_unbind(item, previous_access, previous_subresource)
+                        let previous_access = graph.last_access(self)
+                            .unwrap_or(binding.access).clone();
+                        [<$name Binding>]::new_unbind(item, previous_access)
                     };
                     graph.bindings[self.idx].unbind();
 
@@ -170,14 +217,10 @@ macro_rules! node_unbind_lease {
                         // the graph is resolved and you should not use an unbound binding before
                         // the graph is resolved. Resolve it and then use said binding on a
                         // different graph.)
-                        let (previous_access, previous_subresource) = last_access
-                            .unwrap_or_else(|| {
-                                (binding.previous_access, binding.previous_subresource.clone())
-                            });
+                        let previous_access = last_access.unwrap_or(binding.access);
                         let item_binding = [<$name Binding>]::new_unbind(
                             item,
                             previous_access,
-                            previous_subresource,
                         );
 
                         // Move the return-to-pool-on-drop behavior to a new lease
@@ -247,11 +290,24 @@ pub enum ViewType {
 }
 
 impl ViewType {
+    pub(super) fn as_buffer(&self) -> Option<&Range<u64>> {
+        match self {
+            Self::Buffer(view_info) => Some(view_info),
+            _ => None,
+        }
+    }
+
     pub(super) fn as_image(&self) -> Option<&ImageViewInfo> {
         match self {
             Self::Image(view_info) => Some(view_info),
             _ => None,
         }
+    }
+}
+
+impl From<BufferSubresource> for ViewType {
+    fn from(subresource: BufferSubresource) -> Self {
+        Self::Buffer(subresource.start..subresource.end)
     }
 }
 

@@ -92,7 +92,7 @@ fn create_pak_bindings(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> anyhow::
                 .replace('!', "_")
                 .as_str(),
         );
-        bindings.push_str(": &'static str = r#\"");
+        bindings.push_str(": &str = r#\"");
         bindings.push_str(key);
         bindings.push_str("\"#;\n");
     }
@@ -120,7 +120,7 @@ fn create_shader_bindings(
                 .replace('!', "_")
                 .as_str(),
         );
-        bindings.push_str(": &'static [u8] = include_bytes!(concat!(env!(\"OUT_DIR\"), \"/");
+        bindings.push_str(": &[u8] = include_bytes!(concat!(env!(\"OUT_DIR\"), \"/");
         bindings.push_str(
             join_strings(remove_common_path(&*OUT_DIR, &shader.1), "/")
                 .replace('\\', "/")

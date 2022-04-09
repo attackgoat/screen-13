@@ -15,7 +15,6 @@ pub mod graph;
 #[cfg(feature = "pak")]
 pub mod pak;
 
-mod cmd_chain;
 mod display;
 mod event_loop;
 mod frame;
@@ -23,7 +22,6 @@ mod hash_pool;
 mod input;
 
 pub use self::{
-    cmd_chain::{execute, CommandChain, ExecutionError},
     display::{Display, DisplayError},
     event_loop::{EventLoop, EventLoopBuilder, FullscreenMode},
     frame::FrameContext,
@@ -34,19 +32,19 @@ pub use self::{
 pub mod prelude {
     pub use {
         super::{
-            align_up_u32, align_up_u64, as_u8_slice,
+            align_up_u32, align_up_u64,
             event_loop::{EventLoop, FullscreenMode},
-            execute,
-            frame::FrameContext,
+            frame::{center_cursor, move_cursor, FrameContext},
             graph::RenderGraph,
             input::{
                 update_input, update_keyboard, update_mouse, KeyBuf, KeyMap, MouseBuf, MouseButton,
             },
+            into_u8_slice,
             ptr::{ArcK, RcK, Shared, SharedPointerKind},
-            CommandChain, ExecutionError,
         },
         glam::*,
         log::{debug, error, info, trace, warn}, // Everyone wants a log
+        meshopt::any_as_u8_slice,
         winit::{
             dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize},
             event::{Event, VirtualKeyCode},
@@ -59,13 +57,13 @@ pub mod prelude {
 /// Like [`prelude`], but contains all public exports.
 ///
 /// Use this module for access to all _Screen 13_ resources from either [`std::sync::Arc`] or
-/// [`std::rc::Rc`]-backed [`Gpu`] instances.
+/// [`std::rc::Rc`]-backed instances.
 pub mod prelude_all {
     pub use super::{
         driver::*,
         graph::{
-            AccessType, AnyBufferBinding, AnyImageBinding, AnyImageNode, BufferBinding,
-            BufferLeaseBinding, BufferNode, ImageBinding, ImageLayout, ImageLeaseBinding,
+            AnyBufferBinding, AnyImageBinding, AnyImageNode, BufferBinding, BufferLeaseBinding,
+            BufferLeaseNode, BufferNode, ImageBinding, ImageLeaseBinding, ImageLeaseNode,
             ImageNode, PassRef, RayTraceAccelerationBinding, RayTraceAccelerationNode, RenderGraph,
             SwapchainImageNode,
         },
@@ -77,32 +75,29 @@ pub mod prelude_all {
     pub use super::pak::{
         buf::PakBuf,
         compression::{BrotliParams, Compression},
-        AnimationBuf, AnimationHandle, BitmapBuf, BitmapColor, BitmapFontBuf, BitmapFontHandle,
-        BitmapFormat, BitmapHandle, BlobHandle, MaterialHandle, MaterialInfo, ModelBuf,
-        ModelHandle, Pak, SceneBuf, SceneHandle,
+        AnimationBuf, AnimationId, BitmapBuf, BitmapColor, BitmapFontBuf, BitmapFontId,
+        BitmapFormat, BitmapId, BlobId, IndexType, MaterialId, MaterialInfo, Mesh, ModelBuf,
+        ModelId, Pak, SceneBuf, SceneId,
     };
 
     #[cfg(feature = "bake")]
     pub use super::pak::buf::Writer;
 }
 
-/// Like [`prelude_all`], but specialized for [`std::sync::Arc`]-backed [`Gpu`] instances.
+/// Like [`prelude_all`], but specialized for [`std::sync::Arc`]-backed use cases.
 ///
 /// Use this module if rendering will be done from multiple threads. See the main documentation for
 /// each alias for more information.
 pub mod prelude_arc {
-    pub mod driver {
-        use crate::{driver, ptr::ArcK as P};
-
-        pub type Device = driver::Device<P>;
-        pub type Image = driver::Image<P>;
-    }
-
     pub use super::{
         prelude_all::{self as all, *},
         ptr::ArcK as P,
     };
 
+    pub type AnyBufferBinding<'a> = all::AnyBufferBinding<'a, P>;
+    pub type AnyImageBinding<'a> = all::AnyImageBinding<'a, P>;
+    pub type Buffer = all::Buffer<P>;
+    pub type BufferBinding = all::BufferBinding<P>;
     pub type BufferNode = all::BufferNode<P>;
     pub type Device = all::Device<P>;
     pub type EventLoop = all::EventLoop<P>;
@@ -119,23 +114,20 @@ pub mod prelude_arc {
     pub type Shared<T> = all::Shared<T, P>;
 }
 
-/// Like [`prelude_all`], but specialized for [`std::rc::Rc`]-backed [`Gpu`] instances.
+/// Like [`prelude_all`], but specialized for [`std::rc::Rc`]-backed use cases.
 ///
 /// Use this module if rendering will be done from one thread only. See the main documentation for
 /// each alias for more information.
 pub mod prelude_rc {
-    pub mod driver {
-        use crate::{driver, ptr::RcK as P};
-
-        pub type Device = driver::Device<P>;
-        pub type Image = driver::Image<P>;
-    }
-
     pub use super::{
         prelude_all::{self as all, *},
         ptr::RcK as P,
     };
 
+    pub type AnyBufferBinding<'a> = all::AnyBufferBinding<'a, P>;
+    pub type AnyImageBinding<'a> = all::AnyImageBinding<'a, P>;
+    pub type Buffer = all::Buffer<P>;
+    pub type BufferBinding = all::BufferBinding<P>;
     pub type BufferNode = all::BufferNode<P>;
     pub type Device = all::Device<P>;
     pub type EventLoop = all::EventLoop<P>;
@@ -267,15 +259,6 @@ pub fn align_up_u64(val: u64, atom: u64) -> u64 {
     (val + atom - 1) & !(atom - 1)
 }
 
-pub fn as_u8_slice<T>(t: &T) -> &[u8]
-where
-    T: Copy + Sized,
-{
-    use std::{mem::size_of, slice::from_raw_parts};
-
-    unsafe { from_raw_parts(t as *const T as *const _, size_of::<T>()) }
-}
-
 // Must be aligned.
 pub fn as_u32_slice<T>(t: &[T]) -> &[u32]
 where
@@ -288,4 +271,13 @@ where
     assert!(len % size_of::<u32>() == 0);
 
     unsafe { from_raw_parts(&t[0] as *const T as *const _, len) }
+}
+
+pub fn into_u8_slice<T>(t: &[T]) -> &[u8]
+where
+    T: Sized,
+{
+    use std::{mem::size_of, slice::from_raw_parts};
+
+    unsafe { from_raw_parts(t.as_ptr() as *const _, t.len() * size_of::<T>()) }
 }

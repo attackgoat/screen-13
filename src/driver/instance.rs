@@ -30,7 +30,7 @@ unsafe extern "system" fn vulkan_debug_callback(
         warn!("{}\n", message);
     } else {
         error!("{}\n", message);
-        panic!();
+        panic!("{}\n", message);
     }
 
     vk::FALSE
@@ -51,12 +51,18 @@ impl Instance {
         required_extensions: impl Iterator<Item = &'a CStr>,
     ) -> Result<Self, DriverError> {
         let entry = unsafe {
-            Entry::load().map_err(|_| {
+            #[cfg(not(target_os = "macos"))]
+            let entry = Entry::load().map_err(|_| {
                 error!("Vulkan driver not found");
 
                 DriverError::Unsupported
-            })
-        }?;
+            })?;
+
+            #[cfg(target_os = "macos")]
+            let entry = ash_molten::load();
+
+            entry
+        };
         let required_extensions = required_extensions.collect::<Vec<_>>();
         let instance_extensions = required_extensions
             .iter()
@@ -68,7 +74,7 @@ impl Instance {
             .iter()
             .map(|raw_name| raw_name.as_ptr())
             .collect();
-        let app_desc = vk::ApplicationInfo::builder().api_version(vk::API_VERSION_1_2);
+        let app_desc = vk::ApplicationInfo::builder().api_version(vk::API_VERSION_1_1);
         let instance_desc = vk::InstanceCreateInfo::builder()
             .application_info(&app_desc)
             .enabled_layer_names(&layer_names)
@@ -191,7 +197,7 @@ impl Instance {
                     let major = vk::api_version_major(physical_device.props.api_version);
                     let minor = vk::api_version_minor(physical_device.props.api_version);
 
-                    major == 1 && minor >= 2 || major > 1
+                    major == 1 && minor >= 1 || major > 1
                 }))
         }
     }

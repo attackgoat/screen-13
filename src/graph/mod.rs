@@ -7,32 +7,33 @@ mod resolver;
 mod swapchain;
 mod validator;
 
-// Re-imports
-pub use vk_sync::{AccessType, ImageLayout};
-
-pub use self::{
-    binding::{
-        AnyBufferBinding, AnyImageBinding, Bind, BufferBinding, BufferLeaseBinding,
-        DescriptorPoolBinding, ImageBinding, ImageLeaseBinding, RayTraceAccelerationBinding,
-        RayTraceAccelerationLeaseBinding, RenderPassBinding,
+pub use {
+    self::{
+        binding::{
+            AnyBufferBinding, AnyImageBinding, Bind, BufferBinding, BufferLeaseBinding,
+            ImageBinding, ImageLeaseBinding, RayTraceAccelerationBinding,
+            RayTraceAccelerationLeaseBinding,
+        },
+        node::{
+            AnyBufferNode, AnyImageNode, BufferLeaseNode, BufferNode, ImageLeaseNode, ImageNode,
+            RayTraceAccelerationLeaseNode, RayTraceAccelerationNode, SwapchainImageNode, Unbind,
+            View, ViewType,
+        },
+        pass_ref::{Bindings, PassRef, PipelinePassRef},
+        resolver::Resolver,
+        swapchain::SwapchainImageBinding,
     },
-    node::{
-        AnyImageNode, BufferLeaseNode, BufferNode, ImageLeaseNode, ImageNode,
-        RayTraceAccelerationLeaseNode, RayTraceAccelerationNode, SwapchainImageNode, Unbind, View,
-        ViewType,
-    },
-    pass_ref::{Bindings, PassRef, PipelinePassRef},
-    resolver::Resolver,
-    swapchain::SwapchainImageBinding,
+    vk_sync::AccessType,
 };
 
 use {
     self::{binding::Binding, edge::Edge, info::Information, node::Node},
     crate::{
         driver::{
-            BufferSubresource, ComputePipeline, DepthStencilMode, DescriptorBindingMap,
-            DescriptorInfo, DescriptorSetLayout, GraphicPipeline, ImageSubresource,
-            PipelineDescriptorInfo, RayTracePipeline, SampleCount,
+            format_aspect_mask, BufferSubresource, CommandBuffer, ComputePipeline,
+            DepthStencilMode, DescriptorBindingMap, DescriptorInfo, DescriptorSetLayout,
+            GraphicPipeline, ImageSubresource, PipelineDescriptorInfo, RayTracePipeline,
+            SampleCount,
         },
         ptr::Shared,
     },
@@ -45,6 +46,7 @@ use {
         fmt::{Debug, Formatter},
         ops::Range,
     },
+    vk_sync::ImageLayout,
 };
 
 // Aliases for clarity
@@ -208,15 +210,16 @@ impl AttachmentMap {
     // }
 }
 
-// TODO: Now maybe don't need this with spirq's DescriptorBinding?
-/// Describes the SPIRV binding index, and optionally a specific descriptor set
+/// Describes the SPIR-V binding index, and optionally a specific descriptor set
 /// and array index.
 ///
 /// Generally you might pass a function a descriptor using a simple integer:
 ///
 /// ```rust
+/// # fn my_func(_: usize, _: ()) {}
+/// # let image = ();
 /// let descriptor = 42;
-/// my_function(descriptor, image);
+/// my_func(descriptor, image);
 /// ```
 ///
 /// But also:
@@ -270,18 +273,11 @@ impl From<(DescriptorSetIndex, BindingIndex, [BindingOffset; 1])> for Descriptor
     }
 }
 
-#[derive(Debug)]
-struct NodeAccess {
-    node_idx: NodeIndex,
-    ty: AccessType,
-    subresource: Option<Subresource>,
-}
-
 struct Execution<P>
 where
     P: SharedPointerKind,
 {
-    accesses: Vec<NodeAccess>,
+    accesses: BTreeMap<NodeIndex, [SubresourceAccess; 2]>,
     bindings: BTreeMap<Descriptor, (NodeIndex, Option<ViewType>)>,
     clears: BTreeMap<AttachmentIndex, vk::ClearValue>,
     func: Option<ExecutionFunction<P>>,
@@ -303,7 +299,7 @@ where
 {
     fn default() -> Self {
         Self {
-            accesses: vec![],
+            accesses: Default::default(),
             bindings: Default::default(),
             clears: Default::default(),
             func: None,
@@ -446,24 +442,284 @@ where
         binding.bind(self)
     }
 
+    /// Clears a color image as part of a render graph but outside of any graphic render pass
+    pub fn clear_color_image(
+        &mut self,
+        image_node: impl Into<AnyImageNode<P>>,
+        r: f32,
+        g: f32,
+        b: f32,
+        a: f32,
+    ) -> &mut Self
+    where
+        P: SharedPointerKind + 'static,
+    {
+        let image_node = image_node.into();
+        let image_info = self.node_info(image_node);
+
+        self.record_pass("clear color")
+            .access_node(image_node, AccessType::TransferWrite)
+            .execute(move |device, cmd_buf, bindings| unsafe {
+                device.cmd_clear_color_image(
+                    cmd_buf,
+                    *bindings[image_node],
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    &vk::ClearColorValue {
+                        float32: [r, g, b, a],
+                    },
+                    &[vk::ImageSubresourceRange {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        level_count: image_info.mip_level_count,
+                        layer_count: image_info.array_elements,
+                        ..Default::default()
+                    }],
+                );
+            })
+            .submit_pass()
+    }
+
+    pub fn copy_buffer(
+        &mut self,
+        src_node: impl Into<AnyBufferNode<P>>,
+        dst_node: impl Into<AnyBufferNode<P>>,
+    ) -> &mut Self {
+        let src_node = src_node.into();
+        let dst_node = dst_node.into();
+
+        let src_info = self.node_info(src_node);
+        let dst_info = self.node_info(dst_node);
+
+        self.copy_buffer_region(
+            src_node,
+            dst_node,
+            &vk::BufferCopy {
+                src_offset: 0,
+                dst_offset: 0,
+                size: src_info.size.min(dst_info.size),
+            },
+        )
+    }
+
+    pub fn copy_buffer_region(
+        &mut self,
+        src_node: impl Into<AnyBufferNode<P>>,
+        dst_node: impl Into<AnyBufferNode<P>>,
+        region: &vk::BufferCopy,
+    ) -> &mut Self {
+        use std::slice::from_ref;
+
+        self.copy_buffer_regions(src_node, dst_node, from_ref(region))
+    }
+
+    pub fn copy_buffer_regions(
+        &mut self,
+        src_node: impl Into<AnyBufferNode<P>>,
+        dst_node: impl Into<AnyBufferNode<P>>,
+        regions: impl Into<Box<[vk::BufferCopy]>>,
+    ) -> &mut Self {
+        let src_node = src_node.into();
+        let dst_node = dst_node.into();
+        let regions = regions.into();
+
+        self.record_pass("copy buffer")
+            .access_node(src_node, AccessType::TransferRead)
+            .access_node(dst_node, AccessType::TransferWrite)
+            .execute(move |device, cmd_buf, bindings| unsafe {
+                device.cmd_copy_buffer(cmd_buf, *bindings[src_node], *bindings[dst_node], &regions);
+            })
+            .submit_pass()
+    }
+
+    pub fn copy_buffer_to_image(
+        &mut self,
+        src_node: impl Into<AnyBufferNode<P>>,
+        dst_node: impl Into<AnyImageNode<P>>,
+    ) -> &mut Self {
+        let dst_node = dst_node.into();
+
+        let dst_info = self.node_info(dst_node);
+
+        self.copy_buffer_to_image_region(
+            src_node,
+            dst_node,
+            &vk::BufferImageCopy {
+                buffer_offset: 0,
+                buffer_row_length: dst_info.extent.x,
+                buffer_image_height: dst_info.extent.y,
+                image_subresource: vk::ImageSubresourceLayers {
+                    aspect_mask: format_aspect_mask(dst_info.fmt),
+                    mip_level: 0,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                },
+                image_offset: Default::default(),
+                image_extent: vk::Extent3D {
+                    depth: dst_info.extent.z,
+                    height: dst_info.extent.y,
+                    width: dst_info.extent.x,
+                },
+            },
+        )
+    }
+
+    pub fn copy_buffer_to_image_region(
+        &mut self,
+        src_node: impl Into<AnyBufferNode<P>>,
+        dst_node: impl Into<AnyImageNode<P>>,
+        region: &vk::BufferImageCopy,
+    ) -> &mut Self {
+        use std::slice::from_ref;
+
+        self.copy_buffer_to_image_regions(src_node, dst_node, from_ref(region))
+    }
+
+    pub fn copy_buffer_to_image_regions(
+        &mut self,
+        src_node: impl Into<AnyBufferNode<P>>,
+        dst_node: impl Into<AnyImageNode<P>>,
+        regions: impl Into<Box<[vk::BufferImageCopy]>>,
+    ) -> &mut Self {
+        let src_node = src_node.into();
+        let dst_node = dst_node.into();
+        let regions = regions.into();
+
+        self.record_pass("copy image")
+            .access_node(src_node, AccessType::TransferRead)
+            .access_node(dst_node, AccessType::TransferWrite)
+            .execute(move |device, cmd_buf, bindings| unsafe {
+                device.cmd_copy_buffer_to_image(
+                    cmd_buf,
+                    *bindings[src_node],
+                    *bindings[dst_node],
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    &regions,
+                );
+            })
+            .submit_pass()
+    }
+
+    pub fn copy_image(
+        &mut self,
+        src_node: impl Into<AnyImageNode<P>>,
+        dst_node: impl Into<AnyImageNode<P>>,
+    ) -> &mut Self {
+        let src_node = src_node.into();
+        let dst_node = dst_node.into();
+
+        let src_info = self.node_info(src_node);
+        let dst_info = self.node_info(dst_node);
+
+        self.copy_image_region(
+            src_node,
+            dst_node,
+            &vk::ImageCopy {
+                src_subresource: vk::ImageSubresourceLayers {
+                    aspect_mask: format_aspect_mask(src_info.fmt),
+                    mip_level: 0,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                },
+                src_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
+                dst_subresource: vk::ImageSubresourceLayers {
+                    aspect_mask: format_aspect_mask(dst_info.fmt),
+                    mip_level: 0,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                },
+                dst_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
+                extent: vk::Extent3D {
+                    depth: src_info.extent.z.min(dst_info.extent.z),
+                    height: src_info.extent.y.min(dst_info.extent.y),
+                    width: src_info.extent.x.min(dst_info.extent.x),
+                },
+            },
+        )
+    }
+
+    pub fn copy_image_region(
+        &mut self,
+        src_node: impl Into<AnyImageNode<P>>,
+        dst_node: impl Into<AnyImageNode<P>>,
+        region: &vk::ImageCopy,
+    ) -> &mut Self {
+        use std::slice::from_ref;
+
+        self.copy_image_regions(src_node, dst_node, from_ref(region))
+    }
+
+    pub fn copy_image_regions(
+        &mut self,
+        src_node: impl Into<AnyImageNode<P>>,
+        dst_node: impl Into<AnyImageNode<P>>,
+        regions: impl Into<Box<[vk::ImageCopy]>>,
+    ) -> &mut Self {
+        let src_node = src_node.into();
+        let dst_node = dst_node.into();
+        let regions = regions.into();
+
+        self.record_pass("copy image")
+            .access_node(src_node, AccessType::TransferRead)
+            .access_node(dst_node, AccessType::TransferWrite)
+            .execute(move |device, cmd_buf, bindings| unsafe {
+                device.cmd_copy_image(
+                    cmd_buf,
+                    *bindings[src_node],
+                    vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                    *bindings[dst_node],
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    &regions,
+                );
+            })
+            .submit_pass()
+    }
+
+    pub fn fill_buffer(&mut self, buf_node: impl Into<AnyBufferNode<P>>, data: u32) -> &mut Self {
+        let buf_node = buf_node.into();
+
+        let buf_info = self.node_info(buf_node);
+
+        self.fill_buffer_region(buf_node, data, 0..buf_info.size)
+    }
+
+    pub fn fill_buffer_region(
+        &mut self,
+        buf_node: impl Into<AnyBufferNode<P>>,
+        data: u32,
+        region: Range<u64>,
+    ) -> &mut Self {
+        let buf_node = buf_node.into();
+
+        self.record_pass("fill buffer")
+            .access_node(buf_node, AccessType::TransferWrite)
+            .execute(move |device, cmd_buf, bindings| unsafe {
+                device.cmd_fill_buffer(
+                    cmd_buf,
+                    *bindings[buf_node],
+                    region.start,
+                    region.end - region.start,
+                    data,
+                );
+            })
+            .submit_pass()
+    }
+
     /// Returns the index of the first pass which accesses a given node
     fn first_node_access_pass_index(&self, node: impl Node<P>) -> Option<usize> {
         self.node_access_pass_index(node, self.passes.iter())
     }
 
-    pub(super) fn last_access(
-        &self,
-        node: impl Node<P>,
-    ) -> Option<(AccessType, Option<Subresource>)> {
+    pub(super) fn last_access(&self, node: impl Node<P>) -> Option<AccessType> {
         let node_idx = node.index();
 
         self.passes
             .iter()
             .rev()
             .flat_map(|pass| pass.execs.iter().rev())
-            .flat_map(|exec| exec.accesses.iter())
-            .find(|access| access.node_idx == node_idx)
-            .map(|access| (access.ty, access.subresource.clone()))
+            .find_map(|exec| {
+                exec.accesses
+                    .get(&node_idx)
+                    .map(|accesses| accesses[1].access)
+            })
     }
 
     /// Returns the index of the last pass which accesses a given node
@@ -481,10 +737,8 @@ where
 
         for (pass_idx, pass) in passes.enumerate() {
             for exec in pass.execs.iter() {
-                for access in exec.accesses.iter() {
-                    if access.node_idx == node_idx {
-                        return Some(pass_idx);
-                    }
+                if exec.accesses.contains_key(&node_idx) {
+                    return Some(pass_idx);
                 }
             }
         }
@@ -542,7 +796,7 @@ impl Subpass {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Subresource {
     Image(ImageSubresource),
     Buffer(BufferSubresource),
@@ -576,4 +830,10 @@ impl From<BufferSubresource> for Subresource {
     fn from(subresource: BufferSubresource) -> Self {
         Self::Buffer(subresource)
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct SubresourceAccess {
+    access: AccessType,
+    subresource: Option<Subresource>,
 }

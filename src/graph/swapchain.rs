@@ -1,5 +1,8 @@
 use {
-    super::{Bind, Binding, RenderGraph, Resolver, Subresource, SwapchainImageNode, Unbind},
+    super::{
+        Bind, Binding, RenderGraph, Resolver, Subresource, SubresourceAccess, SwapchainImageNode,
+        Unbind,
+    },
     crate::{
         driver::{Image, SwapchainImage},
         ptr::Shared,
@@ -15,8 +18,7 @@ where
     P: SharedPointerKind,
 {
     pub(super) item: SwapchainImage<P>,
-    pub(super) previous_access: AccessType,
-    pub(super) previous_subresource: Option<Subresource>,
+    pub(super) access: AccessType,
 }
 
 impl<P> SwapchainImageBinding<P>
@@ -24,54 +26,20 @@ where
     P: SharedPointerKind,
 {
     pub(super) fn new(item: SwapchainImage<P>) -> Self {
-        Self::new_unbind(item, AccessType::Nothing, None)
+        Self::new_unbind(item, AccessType::Nothing)
     }
 
-    pub(super) fn new_unbind(
-        item: SwapchainImage<P>,
-        previous_access: AccessType,
-        previous_subresource: Option<Subresource>,
-    ) -> Self {
-        Self {
-            item,
-            previous_access,
-            previous_subresource,
-        }
-    }
-
-    pub(super) fn next_access(
-        &mut self,
-        access: AccessType,
-        subresource: Option<Subresource>,
-    ) -> (AccessType, Option<Subresource>) {
-        (
-            replace(&mut self.previous_access, access),
-            replace(&mut self.previous_subresource, subresource),
-        )
+    pub(super) fn new_unbind(item: SwapchainImage<P>, access: AccessType) -> Self {
+        Self { item, access }
     }
 
     /// Allows for direct access to the item inside this binding, without the Shared
     /// wrapper. Returns the previous access type and subresource access which you
     /// should use to create a barrier for whatever access is actually being done.
-    pub fn access_inner(
-        &mut self,
-        access: AccessType,
-    ) -> (&Image<P>, AccessType, Option<Subresource>) {
-        self.access_inner_subresource(access, None)
-    }
+    pub(super) fn access(&mut self, access: AccessType) -> (&Image<P>, AccessType) {
+        let previous_access = replace(&mut self.access, access);
 
-    /// Allows for direct access to the item inside this binding, without the Shared
-    /// wrapper. Returns the previous access type and subresource access which you
-    /// should use to create a barrier for whatever access is actually being done.
-    pub fn access_inner_subresource(
-        &mut self,
-        access: AccessType,
-        subresource: impl Into<Option<Subresource>>,
-    ) -> (&Image<P>, AccessType, Option<Subresource>) {
-        let subresource = subresource.into();
-        let (previous_access, previous_subresource) = self.next_access(access, subresource);
-
-        (&self.item, previous_access, previous_subresource)
+        (&self.item, previous_access)
     }
 }
 

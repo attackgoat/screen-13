@@ -11,7 +11,7 @@ fn main() -> Result<(), DisplayError> {
     // Create a single owned image (we could instead lease one; see the shader-toy example)
     let mut image_binding = Some(
         event_loop.device.new_image(
-            ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, uvec2(10, 10))
+            ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, 10, 10)
                 .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST),
         ),
     );
@@ -21,8 +21,7 @@ fn main() -> Result<(), DisplayError> {
         let image_node = frame.render_graph.bind_node(image_binding.take().unwrap());
 
         // The image is now a node which is just a usize and can be used in all parts of a graph
-        clear_color_node(
-            frame.render_graph,
+        frame.render_graph.clear_color_image(
             image_node,
             100.0 / 255.0,
             149.0 / 255.0,

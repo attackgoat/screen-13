@@ -1,0 +1,9 @@
+[content]
+compression = "snap"
+
+[[content.group]]
+assets = [
+    "font/cedarville_cursive/cedarville_cursive_regular.ttf",
+    "font/rye/rye_regular.ttf",
+    "font/small/small_10px.toml",
+]

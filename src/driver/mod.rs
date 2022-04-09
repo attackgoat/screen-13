@@ -27,8 +27,8 @@ pub use {
         descriptor_set_layout::DescriptorSetLayout,
         device::{Device, FeatureFlags},
         graphic_pipeline::{
-            DepthStencilMode, GraphicPipeline, GraphicPipelineInfo, GraphicPipelineInfoBuilder,
-            StencilMode,
+            BlendMode, DepthStencilMode, GraphicPipeline, GraphicPipelineInfo,
+            GraphicPipelineInfoBuilder, StencilMode, VertexInputMode,
         },
         image::{
             Image, ImageInfo, ImageInfoBuilder, ImageSubresource, ImageType, ImageView,
@@ -47,11 +47,11 @@ pub use {
         },
         shader::{
             DescriptorBinding, DescriptorBindingMap, DescriptorInfo, PipelineDescriptorInfo,
-            Shader, ShaderBuilder,
+            Shader, ShaderBuilder, SpecializationInfo,
         },
         surface::Surface,
         swapchain::{
-            Swapchain, SwapchainImage, SwapchainImageError, SwapchainInfo, SwapchainInfoBuilder,
+            Swapchain, SwapchainError, SwapchainImage, SwapchainInfo, SwapchainInfoBuilder,
         },
     },
     ash::{self, vk},
@@ -62,7 +62,7 @@ use {
     crate::ptr::Shared,
     archery::SharedPointerKind,
     derive_builder::Builder,
-    glam::UVec2,
+    glam::uvec2,
     log::{info, trace},
     raw_window_handle::HasRawWindowHandle,
     std::{
@@ -178,18 +178,20 @@ where
     pub fn new(
         window: &impl HasRawWindowHandle,
         cfg: DriverConfig,
-        desired_resolution: UVec2,
+        width: u32,
+        height: u32,
     ) -> Result<Self, DriverError> {
         trace!("new {:?}", cfg);
 
         let required_extensions = ash_window::enumerate_required_extensions(window)
-            .map_err(|_| DriverError::Unsupported)?;
-        let instance = Shared::new(Instance::new(cfg.debug, required_extensions.into_iter())?);
+            .map_err(|_| DriverError::Unsupported)?
+            .iter()
+            .map(|ext| unsafe { CStr::from_ptr(*ext as *const _) });
+        let instance = Shared::new(Instance::new(cfg.debug, required_extensions)?);
         let surface = Surface::new(&instance, window)?;
         let physical_devices = Instance::physical_devices(&instance)?
             .filter(|physical_device| {
                 // Filters this list down to only supported devices
-                #[allow(clippy::if_same_then_else)]
                 if cfg.presentation
                     && !PhysicalDevice::has_presentation_support(
                         physical_device,
@@ -197,12 +199,22 @@ where
                         &surface,
                     )
                 {
-                    return false;
-                } else if cfg.ray_tracing
-                    && !PhysicalDevice::has_ray_tracing_support(physical_device)
-                {
+                    info!("{:?} lacks presentation support", unsafe {
+                        CStr::from_ptr(physical_device.props.device_name.as_ptr() as *const c_char)
+                    });
+
                     return false;
                 }
+
+                if cfg.ray_tracing && !PhysicalDevice::has_ray_tracing_support(physical_device) {
+                    info!("{:?} lacks ray tracing support", unsafe {
+                        CStr::from_ptr(physical_device.props.device_name.as_ptr() as *const c_char)
+                    });
+
+                    return false;
+                }
+
+                // TODO: Check vkGetPhysicalDeviceFeatures for samplerAnisotropy (it should exist, but to be sure)
 
                 true
             })
@@ -223,7 +235,7 @@ where
             // If there are multiple devices with the same score, `max_by_key` would choose the last,
             // and we want to preserve the order of devices from `enumerate_physical_devices`.
             .rev()
-            .max_by_key(|physical_device| Self::score_device_type(physical_device))
+            .max_by_key(PhysicalDevice::score_device_type)
             .ok_or(DriverError::Unsupported)?;
 
         info!("Selected GPU: {:#?}", physical_device);
@@ -233,6 +245,7 @@ where
 
         info!("Surface formats: {:#?}", surface_formats);
 
+        // TODO: Explicitly fallback to BGRA_UNORM
         let format = surface_formats
             .into_iter()
             .find(|format| Self::select_swapchain_format(*format))
@@ -243,7 +256,7 @@ where
             SwapchainInfo {
                 desired_image_count: cfg.desired_swapchain_image_count,
                 format,
-                extent: desired_resolution,
+                extent: uvec2(width, height),
                 sync_display: cfg.sync_display,
             },
         )?;
@@ -254,17 +267,8 @@ where
     }
 
     fn select_swapchain_format(format: vk::SurfaceFormatKHR) -> bool {
-        format.format == vk::Format::B8G8R8A8_UNORM
+        format.format == vk::Format::B8G8R8A8_SRGB
             && format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
-    }
-
-    fn score_device_type(physical_device: &PhysicalDevice) -> usize {
-        match physical_device.props.device_type {
-            vk::PhysicalDeviceType::DISCRETE_GPU => 1000,
-            vk::PhysicalDeviceType::INTEGRATED_GPU => 200,
-            vk::PhysicalDeviceType::VIRTUAL_GPU => 1,
-            _ => 0,
-        }
     }
 }
 
@@ -279,8 +283,8 @@ pub struct DriverConfig {
     pub desired_swapchain_image_count: u32,
     #[builder(default = "true")]
     pub sync_display: bool,
-    #[builder(default)]
-    pub dlss: bool,
+    // #[builder(default)]
+    // pub dlss: bool,
     #[builder(default = "true")]
     pub presentation: bool,
     #[builder(default)]
@@ -296,9 +300,9 @@ impl DriverConfig {
     fn features(self) -> FeatureFlags {
         let mut res = FeatureFlags::PRESENTATION;
 
-        if self.dlss {
-            res |= FeatureFlags::DLSS;
-        }
+        // if self.dlss {
+        //     res |= FeatureFlags::DLSS;
+        // }
 
         if self.ray_tracing {
             res |= FeatureFlags::RAY_TRACING;
@@ -326,7 +330,7 @@ impl Error for DriverError {}
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct SamplerDesc {
-    pub texel_filter: vk::Filter,
-    pub mipmap_mode: vk::SamplerMipmapMode,
     pub address_modes: vk::SamplerAddressMode,
+    pub mipmap_mode: vk::SamplerMipmapMode,
+    pub texel_filter: vk::Filter,
 }

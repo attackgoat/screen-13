@@ -7,7 +7,7 @@ use {
     },
     archery::SharedPointerKind,
     glam::{uvec2, UVec2},
-    log::info,
+    log::{debug, info},
     std::{
         io::{Error, ErrorKind},
         marker::PhantomData,
@@ -92,7 +92,7 @@ where
         info!("First frame dt: {}", dt_filtered);
 
         while !will_exit {
-            puffin::profile_scope!("Frame");
+            puffin::GlobalProfiler::lock().new_frame();
 
             self.event_loop.run_return(|event, _, control_flow| {
                 match event {
@@ -110,7 +110,7 @@ where
             });
 
             if !events.is_empty() {
-                info!("Received {} events", events.len(),);
+                debug!("Received {} events", events.len(),);
             }
 
             let now = Instant::now();
@@ -145,7 +145,7 @@ where
 
             let elapsed = Instant::now() - now;
 
-            info!(
+            debug!(
                 "Frame complete ({}% load, {} μs)",
                 ((elapsed.as_secs_f32() / refresh_rate) * 100.0) as usize,
                 elapsed.as_micros()
@@ -192,7 +192,8 @@ impl<P> EventLoopBuilder<P> {
     }
 
     pub fn desired_swapchain_image_count(mut self, desired_swapchain_image_count: u32) -> Self {
-        self.driver_cfg = self.driver_cfg
+        self.driver_cfg = self
+            .driver_cfg
             .desired_swapchain_image_count(desired_swapchain_image_count);
         self
     }
@@ -212,8 +213,7 @@ impl<P> EventLoopBuilder<P> {
                 if let Some(video_mode) = self
                     .event_loop
                     .primary_monitor()
-                    .map(|monitor| monitor.video_modes().next())
-                    .flatten()
+                    .and_then(|monitor| monitor.video_modes().next())
                 {
                     Fullscreen::Exclusive(video_mode)
                 } else {
@@ -277,16 +277,19 @@ where
             .window
             .build(&self.event_loop)
             .map_err(|_| DriverError::Unsupported)?;
-        let display_resolution = uvec2(window.inner_size().width, window.inner_size().height);
+        let (width, height) = {
+            let inner_size = window.inner_size();
+            (inner_size.width, inner_size.height)
+        };
 
         // Load the GPU driver (thin Vulkan device and swapchain smart pointers) and swapchain presenter/displayer
-        let driver = Driver::new(&window, cfg, display_resolution)?;
+        let driver = Driver::new(&window, cfg, width, height)?;
         let display = Display::new(&driver.device, driver.swapchain);
 
         info!(
             "Display resolution: {}x{} ({}x scale)",
-            display_resolution.x,
-            display_resolution.y,
+            width,
+            height,
             window.scale_factor() as f32,
         );
 

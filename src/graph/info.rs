@@ -29,7 +29,7 @@ macro_rules! information {
 }
 
 information!(buffer: BufferNode -> BufferInfo);
-information!(buffer: BufferLeaseNode -> BufferInfo);
+information!(buffer_lease: BufferLeaseNode -> BufferInfo);
 information!(image: ImageNode -> ImageInfo);
 information!(image_lease: ImageLeaseNode -> ImageInfo);
 information!(swapchain_image: SwapchainImageNode -> ImageInfo);

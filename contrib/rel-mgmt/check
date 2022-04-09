@@ -11,14 +11,28 @@ diff() {
     git diff --no-ext-diff --quiet
 }
 
+# Uncommitted changes
 diff || fail "Uncommitted changes"
 
+# Unformatted rust code
 cargo fmt && diff || fail "Unformatted rust code"
+cargo fmt --manifest-path contrib/screen-13-fx/Cargo.toml && diff || fail "Unformatted rust code (screen-13-fx)"
+cargo fmt --manifest-path contrib/screen-13-imgui/Cargo.toml && diff || fail "Unformatted rust code (screen-13-imgui)"
+cargo fmt --manifest-path examples/shader-toy/Cargo.toml && diff || fail "Unformatted rust code (shader-toy)"
 
+# Rust code errors
 cargo check --all-targets --all-features
-# cargo check --features "debug-names"
-cargo test
+cargo check --manifest-path contrib/screen-13-fx/Cargo.toml --all-targets --all-features
+cargo check --manifest-path contrib/screen-13-imgui/Cargo.toml --all-targets --all-features
+cargo check --manifest-path examples/shader-toy/Cargo.toml --all-targets --all-features
 
-cargo check --manifest-path examples/shader_toy/Cargo.toml --all-targets --all-features
+# Rust code lints
+cargo clippy --all-targets --all-features
+cargo clippy --manifest-path contrib/screen-13-fx/Cargo.toml --all-targets --all-features
+cargo clippy --manifest-path contrib/screen-13-imgui/Cargo.toml --all-targets --all-features
+cargo clippy --manifest-path examples/shader-toy/Cargo.toml --all-targets --all-features
+
+# Rust code tests
+cargo test
 
 echo "OK"

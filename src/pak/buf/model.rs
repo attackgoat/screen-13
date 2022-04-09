@@ -1,61 +1,64 @@
 use {
-    super::{file_key, Asset, Canonicalize, Handle, ModelBuf, ModelHandle},
-    glam::{quat, vec3, Mat4, Quat, Vec3},
-    gltf::{import, mesh::Mode, Node, Primitive},
-    log::{info, warn},
+    super::{file_key, re_run_if_changed, Asset, Canonicalize, Id},
+    crate::{
+        into_u8_slice,
+        pak::{Detail, IndexType, Mesh, Meshlet, ModelBuf, ModelId, Primitive},
+    },
+    glam::{quat, vec3, vec4, Mat4, Quat, Vec3},
+    gltf::{
+        buffer::Data,
+        import,
+        mesh::{util::ReadIndices, Mode, Reader},
+        Buffer, Gltf, Node,
+    },
+    log::{info, trace, warn},
+    meshopt::{
+        build_meshlets, generate_vertex_remap, optimize_overdraw_in_place,
+        optimize_vertex_cache_in_place, optimize_vertex_fetch_in_place, quantize_unorm,
+        remap_index_buffer, remap_vertex_buffer, simplify, unstripify, VertexDataAdapter,
+    },
     ordered_float::OrderedFloat,
     serde::Deserialize,
     std::{
-        collections::{HashMap, HashSet},
+        collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+        env::{current_dir, set_current_dir},
+        io::Error,
+        mem::size_of,
         path::{Path, PathBuf},
         u16,
     },
 };
 
 #[cfg(feature = "bake")]
-use super::Writer;
+use {super::Writer, parking_lot::Mutex, std::sync::Arc};
 
-#[derive(PartialEq)]
-enum TriangleMode {
-    #[allow(unused)]
-    Fan,
-    #[allow(unused)]
-    List,
-    #[allow(unused)]
-    Strip,
-}
-
-impl TriangleMode {
-    #[allow(unused)]
-    fn classify(primitive: &Primitive) -> Option<TriangleMode> {
-        match primitive.mode() {
-            Mode::TriangleFan => Some(TriangleMode::Fan),
-            Mode::Triangles => Some(TriangleMode::List),
-            Mode::TriangleStrip => Some(TriangleMode::Strip),
-            _ => None,
-        }
-    }
-}
+type Bone = (String, Mat4);
+type Index = u32;
+type Joint = u32;
+type Material = u8;
+type Normal = [f32; 3];
+type Position = [f32; 3];
+type Tangent = [f32; 4];
+type TextureCoord = [f32; 2];
+type Weight = u32;
 
 /// Holds a description of individual meshes within a `.glb` or `.gltf` 3D model.
-#[derive(Clone, Deserialize, Eq, Hash, PartialEq)]
-pub struct Mesh {
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq)]
+pub struct MeshRef {
     name: String,
     rename: Option<String>,
 }
 
-impl Mesh {
+impl MeshRef {
     /// The artist-provided name of a mesh within the model.
-    #[allow(unused)]
     pub fn name(&self) -> &str {
         &self.name
     }
 
     /// Allows the artist-provided name to be different when referenced by a program.
-    #[allow(unused)]
     pub fn rename(&self) -> Option<&str> {
         let rename = self.rename.as_deref();
-        if let Some("") = rename {
+        if matches!(rename, Some(rename) if rename.trim().is_empty()) {
             None
         } else {
             rename
@@ -64,44 +67,81 @@ impl Mesh {
 }
 
 /// Holds a description of `.glb` or `.gltf` 3D models.
-#[derive(Clone, Deserialize, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq)]
 pub struct Model {
-    offset: Option<[OrderedFloat<f32>; 3]>,
-    scale: Option<[OrderedFloat<f32>; 3]>,
-    src: PathBuf,
-
+    lod: Option<bool>,
+    lod_min: Option<usize>,
+    lod_target_error: Option<OrderedFloat<f32>>,
     #[serde(rename = "mesh")]
-    meshes: Option<Vec<Mesh>>,
+    meshes: Option<Vec<MeshRef>>,
+    meshlet_max_triangles: Option<usize>,
+    meshlet_max_vertices: Option<usize>,
+    meshlets: Option<bool>,
+    offset: Option<[OrderedFloat<f32>; 3]>,
+    optimize: Option<bool>,
+    overdraw_threshold: Option<OrderedFloat<f32>>,
+    scale: Option<[OrderedFloat<f32>; 3]>,
+    shadow: Option<bool>,
+    src: PathBuf,
 }
 
 impl Model {
-    #[allow(unused)]
-    pub(crate) fn new<P>(src: P) -> Self
-    where
-        P: AsRef<Path>,
-    {
+    pub fn new(src: impl AsRef<Path>) -> Self {
         Self {
+            lod: None,
+            lod_target_error: None,
+            lod_min: None,
             meshes: None,
+            meshlet_max_triangles: None,
+            meshlet_max_vertices: None,
+            meshlets: None,
             offset: None,
+            optimize: None,
+            overdraw_threshold: None,
             scale: None,
-            src: src.as_ref().to_owned(),
+            shadow: None,
+            src: src.as_ref().to_path_buf(),
+        }
+    }
+
+    fn append_mesh(
+        index_buf: &mut Vec<u8>,
+        vertex_buf: &mut Vec<u8>,
+        indices: &[u32],
+        mut vertices: Vec<u8>,
+    ) -> IndexType {
+        let (index_ty, mut indices) = if vertices.len() <= u16::MAX as usize {
+            (
+                IndexType::U16,
+                into_u8_slice(&indices.iter().map(|idx| *idx as u16).collect::<Vec<_>>()).to_vec(),
+            )
+        } else {
+            (IndexType::U32, into_u8_slice(indices).to_vec())
+        };
+        index_buf.append(&mut indices);
+        vertex_buf.append(&mut vertices);
+
+        index_ty
+    }
+
+    fn append_meshlets(index_buf: &mut Vec<u8>, meshlets: &[([[u8; 3]; 126], u32)]) {
+        for (indices, _) in meshlets {
+            index_buf.extend_from_slice(into_u8_slice(indices))
         }
     }
 
     /// Reads and processes 3D model source files into an existing `.pak` file buffer.
-    #[allow(unused)]
     #[cfg(feature = "bake")]
-    pub(super) fn bake(
+    pub fn bake(
         &self,
-        context: &mut HashMap<Asset, Handle>,
-        pak: &mut Writer,
+        writer: &Arc<Mutex<Writer>>,
         project_dir: impl AsRef<Path>,
         src: Option<impl AsRef<Path>>,
-    ) -> ModelHandle {
-        // Early-out if we have this asset in our context
-        let context_key = self.clone().into();
-        if let Some(id) = context.get(&context_key) {
-            return id.as_model().unwrap();
+    ) -> Result<ModelId, Error> {
+        // Early-out if we have already baked this model
+        let asset = self.clone().into();
+        if let Some(id) = writer.lock().ctx.get(&asset) {
+            return Ok(id.as_model().unwrap());
         }
 
         // If a source is given it will be available as a key inside the .pak (sources are not
@@ -111,317 +151,322 @@ impl Model {
             // This model will be accessible using this key
             info!("Baking model: {}", key);
         } else {
-            // This model will only be accessible using the ID
+            // This model will only be accessible using the handle
             info!(
                 "Baking model: {} (inline)",
                 file_key(&project_dir, self.src())
             );
         }
 
-        // Pak this asset and add it to the context
-        let buf = self.bake2();
-        let id = pak.push_model(buf, key);
-        context.insert(context_key, id.into());
-        id
-    }
+        let model = self.to_model_buf();
 
-    #[allow(unused)]
-    fn bake2(&self) -> ModelBuf {
-        let mut mesh_names: HashMap<&str, Option<&str>> = Default::default();
-        for mesh in self.meshes() {
-            mesh_names
-                .entry(mesh.name())
-                .or_insert_with(|| mesh.rename());
+        // Check again to see if we are the first one to finish this
+        let mut writer = writer.lock();
+        if let Some(id) = writer.ctx.get(&asset) {
+            return Ok(id.as_model().unwrap());
         }
 
-        let (doc, bufs, _) = import(self.src()).unwrap();
-        let nodes = doc
-            .nodes()
-            .filter(|node| node.mesh().is_some())
-            .map(|node| (node.mesh().unwrap(), node))
-            .filter(|(mesh, _)| {
-                // If the model asset contains no mesh array then we bake all meshes
-                if mesh_names.is_empty() {
-                    return true;
-                }
+        Ok(writer.push_model(model, key))
+    }
 
-                // If the model asset does contain a mesh array then we only bake what is specified
-                if let Some(name) = mesh.name() {
-                    return mesh_names.contains_key(name);
-                }
+    fn build_meshlets(&self, indices: &[u32], vertex_count: usize) -> Vec<([[u8; 3]; 126], u32)> {
+        if !self.meshlets.unwrap_or_default() {
+            let triangle_count = indices.len() as u32 / 3;
+            let indices = [[0; 3]; 126];
 
-                false
-            })
-            .collect::<Vec<_>>();
+            return vec![(indices, triangle_count)];
+        }
 
-        // Uncomment to see what meshes this model contains
-        // trace!(
-        //     "Found {}",
-        //     doc.nodes()
-        //         .filter(|node| node.mesh().is_some())
-        //         .map(|node| node.mesh().unwrap().name().unwrap_or("UNNAMED"))
-        //         .collect::<Vec<_>>()
-        //         .join(", ")
-        // );
+        let max_vertices = self.meshlet_max_vertices.unwrap_or(64);
+        let max_triangles = self.meshlet_max_triangles.unwrap_or(126);
+        let res = build_meshlets(indices, vertex_count, max_vertices, max_triangles);
 
-        let mut idx_buf = vec![];
-        let mut idx_write = vec![];
-        let mut vertex_buf = vec![];
-        let meshes = vec![];
+        assert!(!res.is_empty(), "Invalid meshlets");
 
-        // The whole model will use either 16 or 32 bit indices
-        let tiny_idx = nodes.iter().all(|(mesh, _)| {
-            let max_idx = mesh
-                .primitives()
-                .map(|primitive| {
-                    // We need to find out how many positions there are for this primitive
-                    let data = primitive.reader(|buf| bufs.get(buf.index()).map(|data| &*data.0));
-                    data.read_indices()
-                        .map(|indices| indices.into_u32().max())
-                        .unwrap_or_default()
-                })
-                .max()
-                .flatten()
-                .unwrap_or_default();
-            max_idx <= u16::MAX as _
-        });
-        let idx_ty = tiny_idx;
+        res.iter()
+            .map(|meshlet| (meshlet.indices, meshlet.triangle_count as _))
+            .collect()
+    }
 
-        let _base_idx = 0;
-        for (mesh, node) in nodes {
-            if meshes.len() == u16::MAX as usize {
-                warn!(
-                    "Maximum number of meshes supported per model have been loaded, others have been \
-                skipped"
+    fn calculate_lods(
+        &self,
+        indices: &[u32],
+        vertices: &[u8],
+        vertex_stride: usize,
+    ) -> Vec<Vec<u32>> {
+        let lod_target_error = self.lod_target_error.unwrap_or(OrderedFloat(0.05)).0;
+        let lod_threshold = 1.0 + lod_target_error;
+        let lod_min = self.lod_min.unwrap_or(64);
+        let mut lods = vec![];
+        let mut triangle_count = indices.len() / 3;
+        if self.lod.unwrap_or_default() {
+            while triangle_count > lod_min {
+                let target_count = triangle_count >> 1;
+                let lod_indices = simplify(
+                    indices,
+                    &Self::vertex_data_adapter(vertices, vertex_stride),
+                    target_count,
+                    lod_target_error,
                 );
-                break;
+
+                let lod_triangle_count = lod_indices.len() / 3;
+                if lod_triangle_count >= triangle_count
+                    || lod_triangle_count as f32 / target_count as f32 > lod_threshold
+                {
+                    break;
+                }
+
+                lods.push(lod_indices);
+                triangle_count = lod_triangle_count;
             }
-
-            let _dst_name = mesh_names
-                .get(mesh.name().unwrap_or_default())
-                .map(|name| name.map(|name| name.to_owned()))
-                .unwrap_or(None);
-
-            // trace!(
-            //     "Baking mesh: {} (as {})",
-            //     mesh.name().unwrap_or("UNNAMED"),
-            //     dst_name.as_deref().unwrap_or("UNNAMED")
-            // );
-
-            let _skin = node.skin();
-            let _transform = Self::get_transform(&node);
-            let mut all_positions = vec![];
-            let mut _idx_count = 0;
-            let mut _vertex_count = 0;
-            let _vertex_offset = vertex_buf.len() as u32;
-
-            for primitive in mesh.primitives() {
-                match TriangleMode::classify(&primitive) {
-                    Some(TriangleMode::List) => (),
-                    _ => continue,
-                }
-
-                let data = primitive.reader(|buf| bufs.get(buf.index()).map(|data| &*data.0));
-
-                // Read indices (must have sets of three positions)
-                let mut indices = data
-                    .read_indices()
-                    .map(|indices| indices.into_u32().collect::<Vec<_>>())
-                    .unwrap_or_default();
-                if indices.is_empty() || indices.len() % 3 != 0 {
-                    continue;
-                }
-
-                // Read positions (must have data)
-                let positions = data.read_positions();
-                if positions.is_none() {
-                    continue;
-                }
-                let positions = positions.unwrap().collect::<Vec<_>>();
-
-                // Read texture coordinates (must have same length as positions)
-                let mut tex_coords = data
-                    .read_tex_coords(0)
-                    .map(|data| data.into_f32())
-                    .map(|tex_coords| tex_coords.collect::<Vec<_>>())
-                    .unwrap_or_default();
-                tex_coords.resize(positions.len(), [0.0, 0.0]);
-
-                // Read (optional) skin
-                let joints = data
-                    .read_joints(0)
-                    .map(|joints| joints.into_u16().collect::<Vec<_>>())
-                    .unwrap_or_default();
-                let weights = data
-                    .read_weights(0)
-                    .map(|weights| weights.into_f32().collect::<Vec<_>>())
-                    .unwrap_or_default();
-                let has_skin = joints.len() == positions.len() && weights.len() == joints.len();
-
-                // Flip triangle front faces from CW to CCW
-                for tri_idx in 0..indices.len() / 3 {
-                    let a_idx = tri_idx * 3;
-                    let c_idx = a_idx + 2;
-                    indices.swap(a_idx, c_idx);
-                }
-
-                all_positions.extend_from_slice(&positions);
-                _idx_count += indices.len() as u32;
-                _vertex_count += positions.len();
-
-                // For each index, store a true if it has not yet appeared in the list
-                let mut seen = HashSet::new();
-                for idx in &indices {
-                    idx_write.push(!seen.contains(&idx));
-                    seen.insert(idx);
-                }
-
-                match idx_ty {
-                    true => indices
-                        .iter()
-                        .for_each(|idx| idx_buf.extend_from_slice(&(*idx as u16).to_ne_bytes())),
-                    false => indices
-                        .iter()
-                        .for_each(|idx| idx_buf.extend_from_slice(&idx.to_ne_bytes())),
-                }
-
-                for idx in 0..positions.len() {
-                    vertex_buf.extend_from_slice(&positions[idx][0].to_ne_bytes());
-                    vertex_buf.extend_from_slice(&positions[idx][1].to_ne_bytes());
-                    vertex_buf.extend_from_slice(&positions[idx][2].to_ne_bytes());
-
-                    vertex_buf.extend_from_slice(&tex_coords[idx][0].to_ne_bytes());
-                    vertex_buf.extend_from_slice(&tex_coords[idx][1].to_ne_bytes());
-
-                    if has_skin {
-                        vertex_buf.extend_from_slice(&joints[idx][0].to_ne_bytes());
-                        vertex_buf.extend_from_slice(&joints[idx][1].to_ne_bytes());
-                        vertex_buf.extend_from_slice(&joints[idx][2].to_ne_bytes());
-                        vertex_buf.extend_from_slice(&joints[idx][3].to_ne_bytes());
-                        vertex_buf.extend_from_slice(&weights[idx][0].to_ne_bytes());
-                        vertex_buf.extend_from_slice(&weights[idx][1].to_ne_bytes());
-                        vertex_buf.extend_from_slice(&weights[idx][2].to_ne_bytes());
-                        vertex_buf.extend_from_slice(&weights[idx][3].to_ne_bytes());
-                    }
-                }
-            }
-
-            todo!();
-            // meshes.push(Mesh::new(
-            //     dst_name,
-            //     base_idx..idx_count,
-            //     vertex_count as _,
-            //     vertex_offset,
-            //     Sphere::from_point_cloud(all_positions.iter().map(|position| (*position).into())),
-            //     transform,
-            //     skin.map(|s| {
-            //         let joints = s.joints().map(|node| node.name().unwrap().to_owned());
-            //         let inv_binds = s
-            //             .reader(|buf| bufs.get(buf.index()).map(|data| &*data.0))
-            //             .read_inverse_bind_matrices()
-            //             .unwrap()
-            //             .map(|ibp| Mat4::from_cols_array_2d(&ibp));
-
-            //         joints.zip(inv_binds).into_iter().collect()
-            //     }),
-            // ));
-            //base_idx += idx_count;
         }
 
-        // The write mask is a compression structure. It is used to allow the compute shaders which
-        // calculate extra vertex attributes (normal and tangent) to run in a lock-free manner. This
-        // *could* be done at runtime but the model loading code would have to iterate through the
-        // indices - this extra storage space (basically 1/32 index count in uncompressed bytes)
-        // prevents that.
-        let mask_len = (idx_write.len() + 31) >> 5;
-
-        // The index-write vector requires padding space because of each stride of the loop below
-        idx_write.resize(mask_len << 5, false);
-
-        // Turn the vec of bools into a vec of u32s where each bit is one of the bools
-        let mut write_mask = vec![];
-        for idx in 0..mask_len {
-            let idx = idx << 5;
-            let mask = idx_write[idx] as u32
-                | (idx_write[idx + 1] as u32) << 1
-                | (idx_write[idx + 2] as u32) << 2
-                | (idx_write[idx + 3] as u32) << 3
-                | (idx_write[idx + 4] as u32) << 4
-                | (idx_write[idx + 5] as u32) << 5
-                | (idx_write[idx + 6] as u32) << 6
-                | (idx_write[idx + 7] as u32) << 7
-                | (idx_write[idx + 8] as u32) << 8
-                | (idx_write[idx + 9] as u32) << 9
-                | (idx_write[idx + 10] as u32) << 10
-                | (idx_write[idx + 11] as u32) << 11
-                | (idx_write[idx + 12] as u32) << 12
-                | (idx_write[idx + 13] as u32) << 13
-                | (idx_write[idx + 14] as u32) << 14
-                | (idx_write[idx + 15] as u32) << 15
-                | (idx_write[idx + 16] as u32) << 16
-                | (idx_write[idx + 17] as u32) << 17
-                | (idx_write[idx + 18] as u32) << 18
-                | (idx_write[idx + 19] as u32) << 19
-                | (idx_write[idx + 20] as u32) << 20
-                | (idx_write[idx + 21] as u32) << 21
-                | (idx_write[idx + 22] as u32) << 22
-                | (idx_write[idx + 23] as u32) << 23
-                | (idx_write[idx + 24] as u32) << 24
-                | (idx_write[idx + 25] as u32) << 25
-                | (idx_write[idx + 26] as u32) << 26
-                | (idx_write[idx + 27] as u32) << 27
-                | (idx_write[idx + 28] as u32) << 28
-                | (idx_write[idx + 29] as u32) << 29
-                | (idx_write[idx + 30] as u32) << 30
-                | (idx_write[idx + 31] as u32) << 31;
-            write_mask.extend_from_slice(&mask.to_ne_bytes());
-        }
-
-        ModelBuf::new(meshes, idx_ty, idx_buf, vertex_buf, write_mask)
+        lods
     }
 
-    #[allow(unused)]
-    fn get_transform(node: &Node) -> Option<Mat4> {
-        let (translation, rotation, scale) = node.transform().decomposed();
-        let rotation = quat(rotation[0], rotation[1], rotation[2], rotation[3]);
-        let scale = vec3(scale[0], scale[1], scale[2]);
-        let translation = vec3(translation[0], translation[1], translation[2]);
-        if scale != Vec3::ONE || rotation != Quat::IDENTITY || translation != Vec3::ZERO {
-            Some(Mat4::from_scale_rotation_translation(
-                scale,
-                rotation,
-                translation,
-            ))
-        } else {
-            None
+    fn convert_triangle_fan_to_list(indices: &mut Vec<Index>) {
+        if indices.is_empty() {
+            return;
+        }
+
+        indices.reserve_exact((indices.len() - 1) >> 1);
+        let mut idx = 3;
+        while idx < indices.len() {
+            indices.insert(idx, 0);
+            idx += 3;
         }
     }
 
-    /// The list of meshes within a model.
-    #[allow(unused)]
-    pub fn meshes(&self) -> impl Iterator<Item = &Mesh> {
-        self.meshes.iter().flatten()
-    }
-
-    #[allow(unused)]
-    fn node_stride(node: &Node) -> usize {
-        if node.skin().is_some() {
-            88
-        } else {
-            64
-        }
+    fn convert_triangle_strip_to_list(indices: &mut Vec<Index>, restart_index: u32) {
+        *indices = unstripify(indices, restart_index).expect("Unable to unstripify index buffer");
     }
 
     /// Translation of the model origin.
-    #[allow(unused)]
     pub fn offset(&self) -> Vec3 {
         self.offset
             .map(|offset| vec3(offset[0].0, offset[1].0, offset[2].0))
             .unwrap_or(Vec3::ZERO)
     }
 
+    /// When `true` this model will be optmizied using the meshopt library.
+    ///
+    /// Optimization includes vertex cache, overdraw, and fetch support.
+    pub fn optimize(&self) -> bool {
+        self.optimize.unwrap_or(true)
+    }
+
+    fn optimize_mesh(
+        &self,
+        vertices: &VertexData,
+        shadow: bool,
+    ) -> (Vec<Index>, Vec<u8>, usize, usize) {
+        if !shadow {
+            let positions = vertices.positions.iter().copied().enumerate();
+            if let Some((joints, weights)) = &vertices.skin {
+                self.optimize_vertices(
+                    &vertices.indices,
+                    &positions
+                        .map(|(idx, position)| {
+                            (
+                                position,
+                                vertices.tex_coords[idx],
+                                vertices.normals[idx],
+                                vertices.tangents[idx],
+                                joints[idx],
+                                weights[idx],
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                )
+            } else {
+                self.optimize_vertices(
+                    &vertices.indices,
+                    &positions
+                        .map(|(idx, position)| {
+                            (
+                                position,
+                                vertices.tex_coords[idx],
+                                vertices.normals[idx],
+                                vertices.tangents[idx],
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                )
+            }
+        } else if let Some((joints, weights)) = &vertices.skin {
+            self.optimize_vertices(
+                &vertices.indices,
+                &vertices
+                    .positions
+                    .iter()
+                    .copied()
+                    .enumerate()
+                    .map(|(idx, position)| (position, joints[idx], weights[idx]))
+                    .collect::<Vec<_>>(),
+            )
+        } else {
+            self.optimize_vertices(&vertices.indices, &vertices.positions)
+        }
+    }
+
+    /// At the very least this function will re-index the vertices, and optionally may
+    /// perform full meshopt optimization.
+    fn optimize_vertices<T>(
+        &self,
+        index_buf: &[u32],
+        vertex_buf: &[T],
+    ) -> (Vec<u32>, Vec<u8>, usize, usize)
+    where
+        T: Clone + Default,
+    {
+        let vertex_stride = size_of::<T>();
+
+        // Generate an index buffer from a naively indexed vertex buffer or reindex an existing one
+        let (vertex_count, vertex_remap) = generate_vertex_remap(vertex_buf, Some(index_buf));
+        let mut index_buf = remap_index_buffer(Some(index_buf), vertex_count, &vertex_remap);
+        let mut vertex_buf = remap_vertex_buffer(vertex_buf, vertex_count, &vertex_remap);
+
+        // Run the suggested routines from meshopt: https://github.com/gwihlidal/meshopt-rs#pipeline
+        if self.optimize() {
+            optimize_vertex_cache_in_place(&index_buf, vertex_count);
+            optimize_overdraw_in_place(
+                &index_buf,
+                &Self::vertex_data_adapter(&vertex_buf, vertex_stride),
+                1.05,
+            );
+            optimize_vertex_fetch_in_place(&mut index_buf, &mut vertex_buf);
+        }
+
+        // Return the vertices as opaque bytes
+        let vertex_buf = into_u8_slice(&vertex_buf).to_vec();
+
+        (index_buf, vertex_buf, vertex_count, vertex_stride)
+    }
+
+    /// Determines how much the optimization algorithm can compromise the vertex cache hit ratio.
+    ///
+    /// A value of 1.05 means that the resulting ratio should be at most 5% worse than before the
+    /// optimization.
+    pub fn overdraw_threshold(&self) -> f32 {
+        self.overdraw_threshold.unwrap_or(OrderedFloat(1.05)).0
+    }
+
+    fn read_bones(node: &Node, bufs: &[Data]) -> HashMap<String, Mat4> {
+        node.skin()
+            .map(|skin| {
+                let joints = skin
+                    .joints()
+                    .map(|node| node.name().unwrap_or_default().to_owned());
+                let inv_binds = skin
+                    .reader(|buf| bufs.get(buf.index()).map(|data| data.0.as_slice()))
+                    .read_inverse_bind_matrices()
+                    .map(|ibp| {
+                        ibp.map(|ibp| Mat4::from_cols_array_2d(&ibp))
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+
+                joints.zip(inv_binds).into_iter().collect()
+            })
+            .unwrap_or_default()
+    }
+
+    fn read_vertices<'a, 's, F>(data: Reader<'a, 's, F>) -> (u32, VertexData)
+    where
+        F: Clone + Fn(Buffer<'a>) -> Option<&'s [u8]>,
+    {
+        let positions = data
+            .read_positions()
+            .map(|positions| positions.collect::<Vec<_>>())
+            .unwrap_or_default();
+
+        let (restart_index, indices) = data
+            .read_indices()
+            .map(|indices| {
+                (
+                    match indices {
+                        ReadIndices::U8(_) => u8::MAX as u32,
+                        ReadIndices::U16(_) => u16::MAX as u32,
+                        ReadIndices::U32(_) => u32::MAX,
+                    },
+                    indices.into_u32().collect::<Vec<_>>(),
+                )
+            })
+            .unwrap_or_else(|| (u32::MAX, (0..positions.len() as u32).collect()));
+
+        let mut tex_coords = data
+            .read_tex_coords(0)
+            .map(|data| data.into_f32())
+            .map(|tex_coords| tex_coords.collect::<Vec<_>>())
+            .unwrap_or_default();
+        tex_coords.resize(positions.len(), Default::default());
+
+        let mut normals = data
+            .read_normals()
+            .map(|normals| normals.collect::<Vec<_>>())
+            .unwrap_or_default();
+        normals.resize(positions.len(), Default::default());
+
+        let mut tangents = data
+            .read_tangents()
+            .map(|tangents| tangents.collect::<Vec<_>>())
+            .unwrap_or_default();
+        tangents.resize(positions.len(), Default::default());
+        let tangents = tangents.into_iter().collect();
+
+        let joints = data
+            .read_joints(0)
+            .map(|joints| {
+                let mut res = joints
+                    .into_u16()
+                    .map(|joints| {
+                        joints[0] as u32
+                            | (joints[1] as u32) << 8
+                            | (joints[2] as u32) << 16
+                            | (joints[3] as u32) << 24
+                    })
+                    .collect::<Vec<_>>();
+                res.resize(positions.len(), 0);
+                res
+            })
+            .unwrap_or_default();
+        let weights = data
+            .read_weights(0)
+            .map(|weights| {
+                let mut res = weights
+                    .into_f32()
+                    .map(|weights| {
+                        (quantize_unorm(weights[0], 8)
+                            | (quantize_unorm(weights[1], 8) << 8)
+                            | (quantize_unorm(weights[2], 8) << 16)
+                            | (quantize_unorm(weights[3], 8) << 24)) as u32
+                    })
+                    .collect::<Vec<_>>();
+                res.resize(positions.len(), 0);
+                res
+            })
+            .unwrap_or_default();
+        let has_skin = joints.len() == positions.len() && weights.len() == positions.len();
+        let skin = if has_skin {
+            Some((joints, weights))
+        } else {
+            None
+        };
+
+        (
+            restart_index,
+            VertexData {
+                indices,
+                normals,
+                positions,
+                skin,
+                tangents,
+                tex_coords,
+            },
+        )
+    }
+
     /// Scaling of the model.
-    #[allow(unused)]
     pub fn scale(&self) -> Vec3 {
         self.scale
             .map(|scale| vec3(scale[0].0, scale[1].0, scale[2].0))
@@ -429,9 +474,294 @@ impl Model {
     }
 
     /// The model file source.
-    #[allow(unused)]
     pub fn src(&self) -> &Path {
         self.src.as_path()
+    }
+
+    fn to_model_buf(&self) -> ModelBuf {
+        let build_meshlets = self.meshlets.unwrap_or_default();
+
+        // Gather a map of the importable mesh names and the renamed name they should get
+        let mut mesh_names = HashMap::<_, _>::default();
+        if let Some(meshes) = &self.meshes {
+            for mesh in meshes {
+                mesh_names
+                    .entry(mesh.name())
+                    .and_modify(|_| warn!("Duplicate mesh name: {}", mesh.name()))
+                    .or_insert_with(|| mesh.rename());
+            }
+        }
+
+        // Watch the GLTF file for changes, only if we're in a cargo build
+        let src = self.src();
+        re_run_if_changed(&src);
+
+        // Just in case there is a GLTF bin file; also watch it for changes
+        let mut src_bin = src.to_path_buf();
+        src_bin.set_extension("bin");
+        re_run_if_changed(src_bin);
+
+        // Load the mesh nodes from this GLTF file
+        let (doc, bufs, _) = import(self.src()).unwrap();
+        let doc_meshes = doc
+            .nodes()
+            .filter_map(|node| {
+                node.mesh()
+                    .filter(|mesh| {
+                        // If the model asset contains no mesh array then we bake all meshes
+                        // If the model asset does contain a mesh array then we only bake what is specified
+                        mesh_names.is_empty()
+                            || mesh
+                                .name()
+                                .map(|name| mesh_names.contains_key(name))
+                                .unwrap_or_default()
+                    })
+                    .map(|mesh| {
+                        (
+                            mesh.primitives()
+                                .filter_map(|primitive| match primitive.mode() {
+                                    Mode::TriangleFan | Mode::TriangleStrip | Mode::Triangles => {
+                                        // Read material and vertex data
+                                        let material =
+                                            primitive.material().index().unwrap_or_default();
+                                        let (restart_index, mut vertices) =
+                                            Self::read_vertices(primitive.reader(|buf| {
+                                                bufs.get(buf.index()).map(|data| data.0.as_slice())
+                                            }));
+
+                                        // Convert unsupported modes (meshopt requires triangle lists)
+                                        match primitive.mode() {
+                                            Mode::TriangleFan => {
+                                                Self::convert_triangle_fan_to_list(
+                                                    &mut vertices.indices,
+                                                )
+                                            }
+                                            Mode::TriangleStrip => {
+                                                Self::convert_triangle_strip_to_list(
+                                                    &mut vertices.indices,
+                                                    restart_index,
+                                                )
+                                            }
+                                            _ => (),
+                                        }
+
+                                        Some((material, vertices))
+                                    }
+                                    _ => None,
+                                })
+                                .collect::<Vec<_>>(),
+                            mesh,
+                            node,
+                        )
+                    })
+                    .filter(|(primitives, ..)| !primitives.is_empty())
+            })
+            .collect::<Vec<_>>();
+
+        // Figure out which unique materials are used on these target mesh primitives and convert
+        // those to a map of "Mesh Local" material index from "Gltf File" material index
+        // This makes the final materials used index as 0, 1, 2, etc
+        let materials = doc_meshes
+            .iter()
+            .flat_map(|(primitives, ..)| primitives)
+            .map(|(material, ..)| *material)
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .enumerate()
+            .map(|(idx, material)| (material, idx as Material))
+            .collect::<HashMap<_, _>>();
+
+        // Build the list of meshes from this document into index and vertex buffers, and mesh structs
+        let shadow = self.shadow.unwrap_or_default();
+        let mut meshes = vec![];
+        let mut index_buf = vec![];
+        let mut vertex_buf = vec![];
+        for (mesh_primitives, mesh, node) in doc_meshes {
+            let name = mesh_names
+                .get(mesh.name().unwrap_or_default())
+                .map(|name| name.map(|name| name.to_owned()))
+                .unwrap_or(None);
+            let bones = Self::read_bones(&node, &bufs);
+            let transform = self.transform(&node);
+
+            let mut primitives = vec![];
+            for (material, vertices) in mesh_primitives {
+                let mut levels = vec![];
+                let mut shadows = vec![];
+                let material = materials[&material];
+
+                // Optimize and append the main mesh
+                let (indices, vertices_optimal, vertex_count, vertex_stride) =
+                    self.optimize_mesh(&vertices, false);
+
+                // Store optional shadow mesh (vertices are just positions)
+                if shadow {
+                    let (indices_shadow, vertices_shadow, vertex_count_shadow, _) =
+                        self.optimize_mesh(&vertices, true);
+
+                    // Either store the shadow mesh as-is OR store meshlets of it
+                    let meshlets = self.build_meshlets(&indices_shadow, vertex_count_shadow);
+                    let index_ty = if build_meshlets {
+                        Self::append_meshlets(&mut index_buf, &meshlets);
+                        Self::append_mesh(&mut index_buf, &mut vertex_buf, &[], vertices_shadow)
+                    } else {
+                        Self::append_mesh(
+                            &mut index_buf,
+                            &mut vertex_buf,
+                            &indices_shadow,
+                            vertices_shadow,
+                        )
+                    };
+
+                    shadows.push(Detail {
+                        index_ty,
+                        meshlets: if build_meshlets {
+                            meshlets
+                                .iter()
+                                .map(|(_, triangle_count)| Meshlet {
+                                    triangle_count: *triangle_count,
+                                })
+                                .collect()
+                        } else {
+                            vec![Meshlet {
+                                triangle_count: indices_shadow.len() as u32 / 3,
+                            }]
+                        },
+                        vertex_count: vertex_count_shadow as _,
+                    });
+                }
+
+                // Optionally calculate levels of detail: when disabled this returns empty
+                let lods = self.calculate_lods(&indices, &vertices_optimal, vertex_stride);
+
+                // Either store the mesh as-is OR store meshlets of the mesh
+                let meshlets = self.build_meshlets(&indices, vertex_count);
+                let index_ty = if build_meshlets {
+                    Self::append_meshlets(&mut index_buf, &meshlets);
+                    Self::append_mesh(&mut index_buf, &mut vertex_buf, &[], vertices_optimal)
+                } else {
+                    Self::append_mesh(&mut index_buf, &mut vertex_buf, &indices, vertices_optimal)
+                };
+
+                levels.push(Detail {
+                    index_ty,
+                    meshlets: if build_meshlets {
+                        meshlets
+                            .iter()
+                            .map(|(_, triangle_count)| Meshlet {
+                                triangle_count: *triangle_count,
+                            })
+                            .collect()
+                    } else {
+                        vec![Meshlet {
+                            triangle_count: indices.len() as u32 / 3,
+                        }]
+                    },
+                    vertex_count: vertices.positions.len() as _,
+                });
+
+                // Optimize and append the levels of detail
+                for indices in lods {
+                    let (indices, vertices_optimal, vertex_count, _) =
+                        self.optimize_mesh(&vertices, false);
+
+                    // Store optional shadow mesh (vertices are just positions)
+                    if shadow {
+                        let (indices_shadow, vertices_shadow, vertex_count_shadow, _) =
+                            self.optimize_mesh(&vertices, true);
+
+                        // Either store the shadow mesh as-is OR store meshlets of it
+                        let meshlets = self.build_meshlets(&indices_shadow, vertex_count_shadow);
+                        let index_ty = if build_meshlets {
+                            Self::append_meshlets(&mut index_buf, &meshlets);
+                            Self::append_mesh(&mut index_buf, &mut vertex_buf, &[], vertices_shadow)
+                        } else {
+                            Self::append_mesh(
+                                &mut index_buf,
+                                &mut vertex_buf,
+                                &indices_shadow,
+                                vertices_shadow,
+                            )
+                        };
+
+                        shadows.push(Detail {
+                            index_ty,
+                            meshlets: if build_meshlets {
+                                meshlets
+                                    .iter()
+                                    .map(|(_, triangle_count)| Meshlet {
+                                        triangle_count: *triangle_count,
+                                    })
+                                    .collect()
+                            } else {
+                                vec![Meshlet {
+                                    triangle_count: indices_shadow.len() as u32 / 3,
+                                }]
+                            },
+                            vertex_count: vertex_count_shadow as _,
+                        });
+                    }
+
+                    // Either store the mesh as-is OR store meshlets of the mesh
+                    let meshlets = self.build_meshlets(&indices, vertex_count);
+                    let index_ty = if build_meshlets {
+                        Self::append_meshlets(&mut index_buf, &meshlets);
+                        Self::append_mesh(&mut index_buf, &mut vertex_buf, &[], vertices_optimal)
+                    } else {
+                        Self::append_mesh(
+                            &mut index_buf,
+                            &mut vertex_buf,
+                            &indices,
+                            vertices_optimal,
+                        )
+                    };
+
+                    levels.push(Detail {
+                        index_ty,
+                        meshlets: if build_meshlets {
+                            meshlets
+                                .iter()
+                                .map(|(_, triangle_count)| Meshlet {
+                                    triangle_count: *triangle_count,
+                                })
+                                .collect()
+                        } else {
+                            vec![Meshlet {
+                                triangle_count: indices.len() as u32 / 3,
+                            }]
+                        },
+                        vertex_count: vertices.positions.len() as _,
+                    });
+                }
+
+                primitives.push(Primitive {
+                    material,
+                    levels,
+                    shadows,
+                });
+            }
+            meshes.push(Mesh {
+                bones,
+                name,
+                primitives,
+                transform,
+            });
+        }
+
+        ModelBuf::new(meshes, index_buf, vertex_buf)
+    }
+
+    fn transform(&self, node: &Node) -> Mat4 {
+        let (translation, rotation, scale) = node.transform().decomposed();
+        let rotation = quat(rotation[0], rotation[1], rotation[2], rotation[3]);
+        let scale = vec3(scale[0], scale[1], scale[2]) * self.scale();
+        let translation = vec3(translation[0], translation[1], translation[2]) + self.offset();
+
+        Mat4::from_scale_rotation_translation(scale, rotation, translation)
+    }
+
+    fn vertex_data_adapter<T>(vertex_buf: &[T], vertex_stride: usize) -> VertexDataAdapter {
+        VertexDataAdapter::new(into_u8_slice(vertex_buf), vertex_stride, 0).unwrap()
     }
 }
 
@@ -439,4 +769,13 @@ impl Canonicalize for Model {
     fn canonicalize(&mut self, project_dir: impl AsRef<Path>, src_dir: impl AsRef<Path>) {
         self.src = Self::canonicalize_project_path(project_dir, src_dir, &self.src);
     }
+}
+
+struct VertexData {
+    indices: Vec<Index>,
+    normals: Vec<Normal>,
+    positions: Vec<Position>,
+    skin: Option<(Vec<Joint>, Vec<Weight>)>,
+    tangents: Vec<Tangent>,
+    tex_coords: Vec<TextureCoord>,
 }

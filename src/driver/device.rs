@@ -10,17 +10,18 @@ use {
         vulkan::{Allocator, AllocatorCreateDesc},
         AllocatorDebugSettings,
     },
-    log::{debug,info, trace, warn},
+    log::{debug, info, trace, warn},
     parking_lot::Mutex,
     std::{
         collections::{HashMap, HashSet},
         ffi::CStr,
         fmt::{Debug, Formatter},
+        iter::empty,
         mem::forget,
-        time::Instant,
         ops::Deref,
         os::raw::c_char,
         thread::panicking,
+        time::Instant,
     },
 };
 
@@ -47,6 +48,49 @@ impl<P> Device<P>
 where
     P: SharedPointerKind,
 {
+    pub fn new(cfg: DriverConfig) -> Result<Self, DriverError> {
+        trace!("new {:?}", cfg);
+
+        let instance = Shared::new(Instance::new(cfg.debug, empty())?);
+        let physical_devices = Instance::physical_devices(&instance)?
+            .filter(|physical_device| {
+                if cfg.ray_tracing && !PhysicalDevice::has_ray_tracing_support(physical_device) {
+                    info!("{:?} lacks ray tracing support", unsafe {
+                        CStr::from_ptr(physical_device.props.device_name.as_ptr() as *const c_char)
+                    });
+
+                    return false;
+                }
+
+                // TODO: Check vkGetPhysicalDeviceFeatures for samplerAnisotropy (it should exist, but to be sure)
+
+                true
+            })
+            .collect::<Vec<_>>();
+
+        info!(
+            "Supported GPUs: {:#?}",
+            physical_devices
+                .iter()
+                .map(|physical_device| unsafe {
+                    CStr::from_ptr(physical_device.props.device_name.as_ptr() as *const c_char)
+                })
+                .collect::<Vec<_>>()
+        );
+
+        let physical_device = physical_devices
+            .into_iter()
+            // If there are multiple devices with the same score, `max_by_key` would choose the last,
+            // and we want to preserve the order of devices from `enumerate_physical_devices`.
+            .rev()
+            .max_by_key(PhysicalDevice::score_device_type)
+            .ok_or(DriverError::Unsupported)?;
+
+        info!("Selected GPU: {:#?}", physical_device);
+
+        Device::create(&instance, physical_device, cfg)
+    }
+
     pub fn create(
         instance: &Shared<Instance, P>,
         physical_device: PhysicalDevice,
@@ -105,120 +149,112 @@ where
             .queue_priorities(&priorities)
             .build()];
 
-        let mut scalar_block = vk::PhysicalDeviceScalarBlockLayoutFeaturesEXT::default();
-        let mut descriptor_indexing = vk::PhysicalDeviceDescriptorIndexingFeaturesEXT::default();
-        let mut imageless_framebuffer =
-            vk::PhysicalDeviceImagelessFramebufferFeaturesKHR::default();
-        let mut shader_float16_int8 = vk::PhysicalDeviceShaderFloat16Int8Features::default();
-        let mut vulkan_memory_model = vk::PhysicalDeviceVulkanMemoryModelFeaturesKHR::default();
-        let mut get_buffer_device_address_features =
-            ash::vk::PhysicalDeviceBufferDeviceAddressFeatures::default();
+        let mut imageless_framebuffer_features =
+            vk::PhysicalDeviceImagelessFramebufferFeatures::builder().imageless_framebuffer(true);
+        let mut buffer_device_address_features =
+            vk::PhysicalDeviceBufferDeviceAddressFeatures::builder().buffer_device_address(true);
+        let mut multi_draw_props = vk::PhysicalDeviceMultiDrawPropertiesEXT::builder();
+        // let mut acceleration_struct_features = if features.contains(FeatureFlags::RAY_TRACING) {
+        //     Some(ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default())
+        // } else {
+        //     None
+        // };
 
-        let mut acceleration_struct_features = if features.contains(FeatureFlags::RAY_TRACING) {
-            Some(ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default())
-        } else {
-            None
-        };
-
-        let mut ray_tracing_pipeline_features = if features.contains(FeatureFlags::RAY_TRACING) {
-            Some(ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default())
-        } else {
-            None
-        };
+        // let mut ray_tracing_pipeline_features = if features.contains(FeatureFlags::RAY_TRACING) {
+        //     Some(ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default())
+        // } else {
+        //     None
+        // };
 
         unsafe {
             let mut features2 = vk::PhysicalDeviceFeatures2::builder()
-                .push_next(&mut scalar_block)
-                .push_next(&mut descriptor_indexing)
-                .push_next(&mut imageless_framebuffer)
-                .push_next(&mut shader_float16_int8)
-                .push_next(&mut vulkan_memory_model)
-                .push_next(&mut get_buffer_device_address_features);
+                .push_next(&mut buffer_device_address_features)
+                .push_next(&mut imageless_framebuffer_features);
 
-            if features.contains(FeatureFlags::RAY_TRACING) {
-                features2 = features2
-                    .push_next(acceleration_struct_features.as_mut().unwrap())
-                    .push_next(ray_tracing_pipeline_features.as_mut().unwrap());
-            }
+            // if features.contains(FeatureFlags::RAY_TRACING) {
+            //     features2 = features2
+            //         .push_next(acceleration_struct_features.as_mut().unwrap())
+            //         .push_next(ray_tracing_pipeline_features.as_mut().unwrap());
+            // }
 
             let mut features2 = features2.build();
 
-            instance
-                .fp_v1_1()
-                .get_physical_device_features2(*physical_device, &mut features2);
+            (instance.fp_v1_1().get_physical_device_features2)(*physical_device, &mut features2);
 
-            debug!("{:#?}", &scalar_block);
-            debug!("{:#?}", &descriptor_indexing);
-            debug!("{:#?}", &imageless_framebuffer);
-            debug!("{:#?}", &shader_float16_int8);
-            debug!("{:#?}", &vulkan_memory_model);
-            debug!("{:#?}", &get_buffer_device_address_features);
+            assert_eq!(features2.features.multi_draw_indirect, vk::TRUE);
+            assert_eq!(features2.features.sampler_anisotropy, vk::TRUE);
 
-            assert!(scalar_block.scalar_block_layout != 0);
+            // debug!("{:#?}", &features2.features);
+            // debug!("{:#?}", &scalar_block);
+            // debug!("{:#?}", &descriptor_indexing);
+            // debug!("{:#?}", &imageless_framebuffer);
+            // debug!("{:#?}", &shader_float16_int8);
+            // debug!("{:#?}", &vulkan_memory_model);
+            // debug!("{:#?}", &get_buffer_device_address_features);
 
-            assert!(descriptor_indexing.shader_uniform_texel_buffer_array_dynamic_indexing != 0);
-            assert!(descriptor_indexing.shader_storage_texel_buffer_array_dynamic_indexing != 0);
-            assert!(descriptor_indexing.shader_uniform_buffer_array_non_uniform_indexing != 0);
-            assert!(descriptor_indexing.shader_sampled_image_array_non_uniform_indexing != 0);
-            assert!(descriptor_indexing.shader_storage_buffer_array_non_uniform_indexing != 0);
-            assert!(descriptor_indexing.shader_storage_image_array_non_uniform_indexing != 0);
-            assert!(
-                descriptor_indexing.shader_uniform_texel_buffer_array_non_uniform_indexing != 0
-            );
-            assert!(
-                descriptor_indexing.shader_storage_texel_buffer_array_non_uniform_indexing != 0
-            );
-            assert!(descriptor_indexing.descriptor_binding_sampled_image_update_after_bind != 0);
-            assert!(descriptor_indexing.descriptor_binding_update_unused_while_pending != 0);
-            assert!(descriptor_indexing.descriptor_binding_partially_bound != 0);
-            assert!(descriptor_indexing.descriptor_binding_variable_descriptor_count != 0);
-            assert!(descriptor_indexing.runtime_descriptor_array != 0);
+            // assert!(scalar_block.scalar_block_layout != 0);
 
-            assert!(imageless_framebuffer.imageless_framebuffer != 0);
+            //assert!(descriptor_indexing.shader_uniform_texel_buffer_array_dynamic_indexing != 0);
+            //assert!(descriptor_indexing.shader_storage_texel_buffer_array_dynamic_indexing != 0);
+            //assert!(descriptor_indexing.shader_uniform_buffer_array_non_uniform_indexing != 0);
+            //assert!(descriptor_indexing.shader_sampled_image_array_non_uniform_indexing != 0);
+            //assert!(descriptor_indexing.shader_storage_buffer_array_non_uniform_indexing != 0);
+            //assert!(descriptor_indexing.shader_storage_image_array_non_uniform_indexing != 0);
+            // assert!(
+            //     descriptor_indexing.shader_uniform_texel_buffer_array_non_uniform_indexing != 0
+            // );
+            // assert!(
+            //     descriptor_indexing.shader_storage_texel_buffer_array_non_uniform_indexing != 0
+            // );
+            // assert!(descriptor_indexing.descriptor_binding_sampled_image_update_after_bind != 0);
+            // assert!(descriptor_indexing.descriptor_binding_update_unused_while_pending != 0);
+            // assert!(descriptor_indexing.descriptor_binding_partially_bound != 0);
+            // assert!(descriptor_indexing.descriptor_binding_variable_descriptor_count != 0);
+            // assert!(descriptor_indexing.runtime_descriptor_array != 0);
 
-            assert!(shader_float16_int8.shader_int8 != 0);
+            // assert!(imageless_framebuffer.imageless_framebuffer != 0);
 
-            assert!(vulkan_memory_model.vulkan_memory_model != 0);
+            // assert!(shader_float16_int8.shader_int8 != 0);
 
-            if features.contains(FeatureFlags::RAY_TRACING) {
-                assert!(
-                    acceleration_struct_features
-                        .as_ref()
-                        .unwrap()
-                        .acceleration_structure
-                        != 0
-                );
-                assert!(
-                    acceleration_struct_features
-                        .as_ref()
-                        .unwrap()
-                        .descriptor_binding_acceleration_structure_update_after_bind
-                        != 0
-                );
+            //assert!(vulkan_memory_model.vulkan_memory_model != 0);
 
-                assert!(
-                    ray_tracing_pipeline_features
-                        .as_ref()
-                        .unwrap()
-                        .ray_tracing_pipeline
-                        != 0
-                );
-                assert!(
-                    ray_tracing_pipeline_features
-                        .as_ref()
-                        .unwrap()
-                        .ray_tracing_pipeline_trace_rays_indirect
-                        != 0
-                );
-            }
+            // if features.contains(FeatureFlags::RAY_TRACING) {
+            //     assert!(
+            //         acceleration_struct_features
+            //             .as_ref()
+            //             .unwrap()
+            //             .acceleration_structure
+            //             != 0
+            //     );
+            //     assert!(
+            //         acceleration_struct_features
+            //             .as_ref()
+            //             .unwrap()
+            //             .descriptor_binding_acceleration_structure_update_after_bind
+            //             != 0
+            //     );
 
-            assert!(get_buffer_device_address_features.buffer_device_address != 0);
+            //     assert!(
+            //         ray_tracing_pipeline_features
+            //             .as_ref()
+            //             .unwrap()
+            //             .ray_tracing_pipeline
+            //             != 0
+            //     );
+            //     assert!(
+            //         ray_tracing_pipeline_features
+            //             .as_ref()
+            //             .unwrap()
+            //             .ray_tracing_pipeline_trace_rays_indirect
+            //             != 0
+            //     );
+            // }
 
+            //assert!(get_buffer_device_address_features.buffer_device_address != 0);
             let device_create_info = vk::DeviceCreateInfo::builder()
                 .queue_create_infos(&queue_info)
                 .enabled_extension_names(&device_extension_names)
-                .push_next(&mut features2)
-                .build();
+                .push_next(&mut features2);
             let device = instance
                 .create_device(*physical_device, &device_create_info, None)
                 .map_err(|_| DriverError::Unsupported)?;
@@ -271,21 +307,23 @@ where
     fn create_immutable_samplers(
         device: &ash::Device,
     ) -> Result<HashMap<SamplerDesc, vk::Sampler>, DriverError> {
-        let texel_filters = [vk::Filter::NEAREST, vk::Filter::LINEAR];
+        let texel_filters = [vk::Filter::LINEAR, vk::Filter::NEAREST];
         let mipmap_modes = [
-            vk::SamplerMipmapMode::NEAREST,
             vk::SamplerMipmapMode::LINEAR,
+            vk::SamplerMipmapMode::NEAREST,
         ];
         let address_modes = [
-            vk::SamplerAddressMode::REPEAT,
+            vk::SamplerAddressMode::CLAMP_TO_BORDER,
             vk::SamplerAddressMode::CLAMP_TO_EDGE,
+            vk::SamplerAddressMode::MIRRORED_REPEAT,
+            vk::SamplerAddressMode::REPEAT,
         ];
 
         let mut res = HashMap::new();
 
-        for &texel_filter in &texel_filters {
-            for &mipmap_mode in &mipmap_modes {
-                for &address_modes in &address_modes {
+        for texel_filter in texel_filters {
+            for mipmap_mode in mipmap_modes {
+                for address_modes in address_modes {
                     let anisotropy_enable = texel_filter == vk::Filter::LINEAR;
 
                     res.insert(
@@ -295,20 +333,21 @@ where
                             address_modes,
                         },
                         unsafe {
-                            device.create_sampler(
-                                &vk::SamplerCreateInfo::builder()
-                                    .mag_filter(texel_filter)
-                                    .min_filter(texel_filter)
-                                    .mipmap_mode(mipmap_mode)
-                                    .address_mode_u(address_modes)
-                                    .address_mode_v(address_modes)
-                                    .address_mode_w(address_modes)
-                                    .max_lod(vk::LOD_CLAMP_NONE)
-                                    .max_anisotropy(16.0)
-                                    .anisotropy_enable(anisotropy_enable)
-                                    .build(),
-                                None,
-                            )
+                            let mut info = vk::SamplerCreateInfo::builder()
+                                .mag_filter(texel_filter)
+                                .min_filter(texel_filter)
+                                .mipmap_mode(mipmap_mode)
+                                .address_mode_u(address_modes)
+                                .address_mode_v(address_modes)
+                                .address_mode_w(address_modes)
+                                .max_lod(vk::LOD_CLAMP_NONE)
+                                .anisotropy_enable(anisotropy_enable);
+
+                            if anisotropy_enable {
+                                info = info.max_anisotropy(16.0);
+                            }
+
+                            device.create_sampler(&info, None)
                         }
                         .map_err(|_| DriverError::Unsupported)?,
                     );
@@ -319,8 +358,11 @@ where
         Ok(res)
     }
 
-    pub(crate) fn immutable_sampler(this: &Self, info: SamplerDesc) -> Option<vk::Sampler> {
-        this.immutable_samplers.get(&info).copied()
+    pub fn immutable_sampler(this: &Self, info: SamplerDesc) -> vk::Sampler {
+        this.immutable_samplers
+            .get(&info)
+            .copied()
+            .unwrap_or_else(|| unimplemented!("{:?}", info))
     }
 
     pub fn surface_formats(
@@ -431,7 +473,7 @@ where
 
 bitflags! {
     pub struct FeatureFlags: u32 {
-        const DLSS = 1 << 0;
+        // const DLSS = 1 << 0;
         const PRESENTATION = 1 << 1;
         const RAY_TRACING = 1 << 2;
     }
@@ -440,20 +482,21 @@ bitflags! {
 impl FeatureFlags {
     pub fn extension_names(&self) -> Vec<*const i8> {
         let mut device_extension_names_raw = vec![
-            // This particular ext is part of 1.2 now, but add new ones here:
-            // vk::KhrVulkanMemoryModelFn::name().as_ptr(),
+            vk::KhrBufferDeviceAddressFn::name().as_ptr(),
+            vk::KhrImagelessFramebufferFn::name().as_ptr(),
+            vk::KhrImageFormatListFn::name().as_ptr(),
         ];
 
-        if self.contains(FeatureFlags::DLSS) {
-            device_extension_names_raw.extend(
-                [
-                    b"VK_NVX_binary_import\0".as_ptr() as *const i8,
-                    b"VK_KHR_push_descriptor\0".as_ptr() as *const i8,
-                    vk::NvxImageViewHandleFn::name().as_ptr(),
-                ]
-                .iter(),
-            );
-        }
+        // if self.contains(FeatureFlags::DLSS) {
+        //     device_extension_names_raw.extend(
+        //         [
+        //             b"VK_NVX_binary_import\0".as_ptr() as *const i8,
+        //             b"VK_KHR_push_descriptor\0".as_ptr() as *const i8,
+        //             vk::NvxImageViewHandleFn::name().as_ptr(),
+        //         ]
+        //         .iter(),
+        //     );
+        // }
 
         if self.contains(FeatureFlags::PRESENTATION) {
             device_extension_names_raw.push(khr::Swapchain::name().as_ptr());

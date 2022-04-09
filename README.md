@@ -9,26 +9,25 @@ _[QBasic](https://en.wikipedia.org/wiki/QBasic)_.
 
 ## Overview
 
-_Screen 13_ provides a thin [Vulkan 1.2](https://www.vulkan.org/) driver using smart pointers.
+_Screen 13_ provides a thin [Vulkan 1.1](https://www.vulkan.org/) driver using smart pointers.
 
 Features of the Vulkan driver:
 
  - Lifetime management calls `free` for you
  - Resource information comes with each smart pointer
  - Easy-to-use hashable/orderable types (no raw pointers)
- - `CommandChain` abstraction for executions outside of render passes
 
 Example usage:
 
 ```rust
 let window = ...your winit window...
 let cfg = Default::default();
-let desired_resolution = uvec2(320, 200);
-let driver = Driver::new(&window, cfg, desired_resolution)?;
+let (width, height) = (320, 200);
+let driver = Driver::new(&window, cfg, width, height)?;
 
 unsafe {
-    // Let's start using the ash::Device driver provides
-    driver.device.create_fence(....);
+    // Let's do low-level stuff using the provided ash::Device
+    driver.device.create_fence(...);
 }
 ```
 
@@ -88,6 +87,13 @@ asset baking process. _Screen 13_ provides all asset-baking logic and aims to pr
 for texture formats, vertex formats, and other associated data. Baked assets are stored in `.pak`
 files.
 
+Features of the `.pak` file format:
+
+- Individually compressed assets
+- Baking process is multi-threaded and heavily cached
+- Supports `.gltf`/`.glb` with LOD, meshlets, cache/fetch optimizations, and more
+- Material system (including baking of PBR data)
+
 ## Goals
 
 _Screen 13_ aims to provide a simple to use, although opinionated, ecosystem of tools and code that
@@ -141,7 +147,7 @@ ability to get things done quickly while using modern tools.
 
 ### Insipirations
 
-_`Screen-13`_ was built from the learnings and lessons shared by others throughout our community. In
+_`Screen 13`_ was built from the learnings and lessons shared by others throughout our community. In
 particular, here are some of the repositories I found useful:
 
  - [Bevy](https://bevyengine.org/): A refreshingly simple data-driven game engine built in Rust

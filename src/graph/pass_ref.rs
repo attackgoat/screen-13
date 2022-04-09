@@ -1,12 +1,12 @@
 use {
     super::{
-        AnyImageNode, Attachment, AttachmentIndex, Bind, Binding, BufferNode, Descriptor, Edge,
-        Execution, ExecutionFunction, ExecutionPipeline, ImageNode, Information, Node, NodeAccess,
-        NodeIndex, Pass, PushConstantRange, RayTraceAccelerationNode, Rect, RenderGraph,
-        SampleCount, Subresource, SwapchainImageNode, View, ViewType,
+        AnyBufferNode, AnyImageNode, Attachment, AttachmentIndex, Bind, Binding, BufferLeaseNode,
+        BufferNode, Descriptor, Edge, Execution, ExecutionFunction, ExecutionPipeline,
+        ImageLeaseNode, ImageNode, Information, Node, NodeIndex, Pass, PushConstantRange,
+        RayTraceAccelerationNode, Rect, RenderGraph, SampleCount, Subresource, SubresourceAccess,
+        SwapchainImageNode, View, ViewType,
     },
     crate::{
-        as_u8_slice,
         driver::{
             Buffer, ComputePipeline, DepthStencilMode, GraphicPipeline, Image, ImageViewInfo,
             RayTraceAcceleration, RayTracePipeline,
@@ -17,6 +17,7 @@ use {
     ash::vk,
     glam::{ivec2, uvec2, vec2, UVec3},
     log::{trace, warn},
+    meshopt::any_as_u8_slice,
     std::{
         marker::PhantomData,
         mem::take,
@@ -146,11 +147,10 @@ where
     fn binding_ref(&self, node_idx: usize) -> &Binding<P> {
         // You must have called read or write for this node on this execution before indexing
         // into the bindings data!
-        assert!(self
-            .exec
-            .accesses
-            .iter()
-            .any(|access| access.node_idx == node_idx));
+        debug_assert!(
+            self.exec.accesses.contains_key(&node_idx),
+            "Expected call to read or write before indexing the bindings"
+        );
 
         &self.graph.bindings[node_idx]
     }
@@ -176,11 +176,12 @@ macro_rules! index {
 // Allow indexing the Bindings data during command execution:
 // (This gets you access to the driver images or other resources)
 index!(Buffer, Buffer);
+index!(BufferLease, Buffer);
 index!(Image, Image);
+index!(ImageLease, Image);
 index!(RayTraceAcceleration, RayTraceAcceleration);
 index!(SwapchainImage, Image);
 
-// Also allow indexing Bindings using AnyImageNode
 impl<'a, P> Index<AnyImageNode<P>> for Bindings<'a, P>
 where
     P: SharedPointerKind,
@@ -199,6 +200,26 @@ where
             AnyImageNode::Image(_) => &binding.as_image().item,
             AnyImageNode::ImageLease(_) => &binding.as_image_lease().item,
             AnyImageNode::SwapchainImage(_) => &binding.as_swapchain_image().item,
+        }
+    }
+}
+
+impl<'a, P> Index<AnyBufferNode<P>> for Bindings<'a, P>
+where
+    P: SharedPointerKind,
+{
+    type Output = Buffer<P>;
+
+    fn index(&self, node: AnyBufferNode<P>) -> &Self::Output {
+        let node_idx = match node {
+            AnyBufferNode::Buffer(node) => node.idx,
+            AnyBufferNode::BufferLease(node) => node.idx,
+        };
+        let binding = self.binding_ref(node_idx);
+
+        match node {
+            AnyBufferNode::Buffer(_) => &binding.as_buffer().item,
+            AnyBufferNode::BufferLease(_) => &binding.as_buffer_lease().item,
         }
     }
 }
@@ -266,12 +287,12 @@ where
         binding.bind(self)
     }
 
-    pub fn execute_pass(
+    pub fn execute(
         mut self,
         func: impl FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>) + 'static,
-    ) -> &'a mut RenderGraph<P> {
+    ) -> Self {
         self.push_execute(func);
-        self.graph
+        self
     }
 
     fn push_execute(
@@ -292,16 +313,19 @@ where
     ) {
         let node_idx = node.index();
         self.assert_bound_graph_node(node);
+
+        let access = SubresourceAccess {
+            access,
+            subresource,
+        };
         self.as_mut()
             .execs
             .last_mut()
             .unwrap()
             .accesses
-            .push(NodeAccess {
-                node_idx,
-                ty: access,
-                subresource,
-            });
+            .entry(node_idx)
+            .and_modify(|accesses| accesses[1] = access)
+            .or_insert([access, access]);
     }
 
     pub fn read_node(mut self, node: impl Node<P>) -> Self {
@@ -555,12 +579,12 @@ where
         self
     }
 
-    pub fn push_constants(self, data: impl Copy + Sized) -> Self {
+    pub fn push_constants(self, data: impl Sized) -> Self {
         self.push_constants_offset(0, data)
     }
 
-    pub fn push_constants_offset(mut self, offset: u32, data: impl Copy + Sized) -> Self {
-        let data = as_u8_slice(&data).to_vec();
+    pub fn push_constants_offset(mut self, offset: u32, data: impl Sized) -> Self {
+        let data = any_as_u8_slice(&data).to_vec();
         self.pass.as_mut().push_consts.push(PushConstantRange {
             data,
             offset,
@@ -582,8 +606,8 @@ where
     ) -> Self {
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
-        let view_info: ImageViewInfo = image_info.into();
-        self.attach_color_as(attachment, image, view_info)
+        let image_view_info: ImageViewInfo = image_info.into();
+        self.attach_color_as(attachment, image, image_view_info)
     }
 
     pub fn attach_color_as(
@@ -593,9 +617,9 @@ where
         view_info: impl Into<ImageViewInfo>,
     ) -> Self {
         let image = image.into();
-        let view_info = view_info.into();
-        self.load_color_as(attachment, image, view_info)
-            .store_color_as(attachment, image, view_info)
+        let image_view_info = view_info.into();
+        self.load_color_as(attachment, image, image_view_info)
+            .store_color_as(attachment, image, image_view_info)
     }
 
     pub fn attach_depth_stencil(
@@ -605,20 +629,20 @@ where
     ) -> Self {
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
-        let view_info: ImageViewInfo = image_info.into();
-        self.attach_depth_stencil_as(attachment, image, view_info)
+        let image_view_info: ImageViewInfo = image_info.into();
+        self.attach_depth_stencil_as(attachment, image, image_view_info)
     }
 
     pub fn attach_depth_stencil_as(
         self,
         attachment: AttachmentIndex,
         image: impl Into<AnyImageNode<P>>,
-        view_info: impl Into<ImageViewInfo>,
+        image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
         let image = image.into();
-        let view_info = view_info.into();
-        self.load_depth_stencil_as(attachment, image, view_info)
-            .store_depth_stencil_as(attachment, image, view_info)
+        let image_view_info = image_view_info.into();
+        self.load_depth_stencil_as(attachment, image, image_view_info)
+            .store_depth_stencil_as(attachment, image, image_view_info)
     }
 
     pub fn clear_color(self, attachment: AttachmentIndex) -> Self {
@@ -750,28 +774,28 @@ where
     ) -> Self {
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
-        let view_info: ImageViewInfo = image_info.into();
-        self.attach_color_as(attachment, image, view_info)
+        let image_view_info: ImageViewInfo = image_info.into();
+        self.attach_color_as(attachment, image, image_view_info)
     }
 
     pub fn load_color_as(
         mut self,
         attachment: AttachmentIndex,
         image: impl Into<AnyImageNode<P>>,
-        view_info: impl Into<ImageViewInfo>,
+        image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
         let image = image.into();
+        let image_view_info = image_view_info.into();
         let node_idx = image.index();
         let (image_fmt, sample_count) = self.image_info(node_idx);
-        let view_info = view_info.into();
 
         {
             let pass = self.pass.as_mut();
 
             assert!(pass.load_attachments.insert_color(
                 attachment,
-                view_info.aspect_mask,
-                view_info.fmt,
+                image_view_info.aspect_mask,
+                image_view_info.fmt,
                 sample_count,
                 node_idx,
             ));
@@ -809,6 +833,7 @@ where
 
         self.pass
             .push_node_access(image, AccessType::ColorAttachmentRead, None);
+
         self
     }
 
@@ -819,20 +844,20 @@ where
     ) -> Self {
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
-        let view_info: ImageViewInfo = image_info.into();
-        self.load_depth_stencil_as(attachment, image, view_info)
+        let image_view_info: ImageViewInfo = image_info.into();
+        self.load_depth_stencil_as(attachment, image, image_view_info)
     }
 
     pub fn load_depth_stencil_as(
         mut self,
         attachment: AttachmentIndex,
         image: impl Into<AnyImageNode<P>>,
-        view_info: impl Into<ImageViewInfo>,
+        image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
         let image = image.into();
+        let image_view_info = image_view_info.into();
         let node_idx = image.index();
         let (image_fmt, sample_count) = self.image_info(node_idx);
-        let view_info = view_info.into();
 
         assert!(self.pass.as_ref().depth_stencil.is_some());
 
@@ -841,8 +866,8 @@ where
 
             assert!(pass.load_attachments.set_depth_stencil(
                 attachment,
-                view_info.aspect_mask,
-                view_info.fmt,
+                image_view_info.aspect_mask,
+                image_view_info.fmt,
                 sample_count,
                 node_idx,
             ));
@@ -873,6 +898,7 @@ where
 
         self.pass
             .push_node_access(image, AccessType::DepthStencilAttachmentRead, None);
+
         self
     }
 
@@ -898,7 +924,7 @@ where
             .unwrap_or_default()
     }
 
-    pub fn push_constants(mut self, data: impl Copy + Sized) -> Self {
+    pub fn push_constants(mut self, data: impl Sized) -> Self {
         let pipeline = self.pipeline();
         let whole_stage = Self::pipeline_stages(pipeline);
         self.push_stage_constants(0, whole_stage, data)
@@ -908,40 +934,35 @@ where
         mut self,
         offset: u32,
         mut stage: vk::ShaderStageFlags,
-        data: impl Copy + Sized,
+        data: impl Sized,
     ) -> Self {
         let pipeline = self.pipeline();
         let whole_stage = Self::pipeline_stages(pipeline);
 
         if stage & whole_stage != stage {
             warn!("Extra stage flags specified");
+
+            stage &= whole_stage;
         }
 
-        stage &= whole_stage;
-
-        let data = as_u8_slice(&data).to_vec();
+        let data = any_as_u8_slice(&data);
         let mut push_consts = vec![];
         for range in &pipeline.push_constant_ranges {
-            let range_stage = range.stage_flags & stage;
-            if !range_stage.is_empty()
+            let stage = range.stage_flags & stage;
+            if !stage.is_empty()
                 && offset <= range.offset
                 && offset as usize + data.len() > range.offset as usize
             {
                 let start = (range.offset - offset) as usize;
-                let end = data.len() - start;
+                let end = range.offset as usize + (data.len() - start).min(range.size as usize);
                 let data = data[start..end].to_vec();
 
-                // trace!(
-                //     "PCR: {:?} offset {} data {:?}",
-                //     range_stage,
-                //     range.offset,
-                //     &data
-                // );
+                // trace!("Push constant {:?} {}..{}", stage, start, end);
 
                 push_consts.push(PushConstantRange {
                     data,
                     offset: range.offset,
-                    stage: range.stage_flags,
+                    stage,
                 });
             }
         }
@@ -961,28 +982,28 @@ where
     ) -> Self {
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
-        let view_info: ImageViewInfo = image_info.into();
-        self.resolve_color_as(attachment, image, view_info)
+        let image_view_info: ImageViewInfo = image_info.into();
+        self.resolve_color_as(attachment, image, image_view_info)
     }
 
     pub fn resolve_color_as(
         mut self,
         attachment: AttachmentIndex,
         image: impl Into<AnyImageNode<P>>,
-        view_info: impl Into<ImageViewInfo>,
+        image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
         let image = image.into();
+        let image_view_info = image_view_info.into();
         let node_idx = image.index();
         let (image_fmt, sample_count) = self.image_info(node_idx);
-        let view_info = view_info.into();
 
         {
             let pass = self.pass.as_mut();
 
             assert!(pass.resolve_attachments.insert_color(
                 attachment,
-                view_info.aspect_mask,
-                view_info.fmt,
+                image_view_info.aspect_mask,
+                image_view_info.fmt,
                 sample_count,
                 node_idx,
             ));
@@ -1016,6 +1037,7 @@ where
 
         self.pass
             .push_node_access(image, AccessType::ColorAttachmentWrite, None);
+
         self
     }
 
@@ -1026,20 +1048,20 @@ where
     ) -> Self {
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
-        let view_info: ImageViewInfo = image_info.into();
-        self.resolve_depth_stencil_as(attachment, image, view_info)
+        let image_view_info: ImageViewInfo = image_info.into();
+        self.resolve_depth_stencil_as(attachment, image, image_view_info)
     }
 
     pub fn resolve_depth_stencil_as(
         mut self,
         attachment: AttachmentIndex,
         image: impl Into<AnyImageNode<P>>,
-        view_info: impl Into<ImageViewInfo>,
+        image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
         let image = image.into();
+        let image_view_info = image_view_info.into();
         let node_idx = image.index();
         let (image_fmt, sample_count) = self.image_info(node_idx);
-        let view_info = view_info.into();
 
         assert!(self.pass.as_ref().depth_stencil.is_some());
 
@@ -1048,8 +1070,8 @@ where
 
             assert!(pass.resolve_attachments.set_depth_stencil(
                 attachment,
-                view_info.aspect_mask,
-                view_info.fmt,
+                image_view_info.aspect_mask,
+                image_view_info.fmt,
                 sample_count,
                 node_idx,
             ));
@@ -1069,18 +1091,29 @@ where
             assert!(self.pass.as_ref().store_attachments.depth_stencil.is_none());
         }
 
-        self.pass
-            .push_node_access(image, AccessType::ColorAttachmentWrite, None);
+        self.pass.push_node_access(
+            image,
+            if image_view_info
+                .aspect_mask
+                .contains(vk::ImageAspectFlags::STENCIL)
+            {
+                AccessType::DepthStencilAttachmentWrite
+            } else {
+                AccessType::DepthAttachmentWriteStencilReadOnly
+            },
+            None,
+        );
+
         self
     }
 
     // This can only be called once per pass.
-    pub fn set_depth_stencil(mut self, sample_count: DepthStencilMode) -> Self {
+    pub fn set_depth_stencil(mut self, depth_stencil: DepthStencilMode) -> Self {
         let pass = self.pass.as_mut();
 
         assert!(pass.depth_stencil.is_none());
 
-        pass.depth_stencil = Some(sample_count);
+        pass.depth_stencil = Some(depth_stencil);
         self
     }
 
@@ -1126,28 +1159,28 @@ where
     ) -> Self {
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
-        let view_info: ImageViewInfo = image_info.into();
-        self.store_color_as(attachment, image, view_info)
+        let image_view_info: ImageViewInfo = image_info.into();
+        self.store_color_as(attachment, image, image_view_info)
     }
 
     pub fn store_color_as(
         mut self,
         attachment: AttachmentIndex,
         image: impl Into<AnyImageNode<P>>,
-        view_info: impl Into<ImageViewInfo>,
+        image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
         let image = image.into();
+        let image_view_info = image_view_info.into();
         let node_idx = image.index();
         let (image_fmt, sample_count) = self.image_info(node_idx);
-        let view_info = view_info.into();
 
         {
             let pass = self.pass.as_mut();
 
             assert!(pass.store_attachments.insert_color(
                 attachment,
-                view_info.aspect_mask,
-                view_info.fmt,
+                image_view_info.aspect_mask,
+                image_view_info.fmt,
                 sample_count,
                 node_idx,
             ));
@@ -1181,6 +1214,7 @@ where
 
         self.pass
             .push_node_access(image, AccessType::ColorAttachmentWrite, None);
+
         self
     }
 
@@ -1191,20 +1225,20 @@ where
     ) -> Self {
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
-        let view_info: ImageViewInfo = image_info.into();
-        self.store_depth_stencil_as(attachment, image, view_info)
+        let image_view_info: ImageViewInfo = image_info.into();
+        self.store_depth_stencil_as(attachment, image, image_view_info)
     }
 
     pub fn store_depth_stencil_as(
         mut self,
         attachment: AttachmentIndex,
         image: impl Into<AnyImageNode<P>>,
-        view_info: impl Into<ImageViewInfo>,
+        image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
         let image = image.into();
+        let image_view_info = image_view_info.into();
         let node_idx = image.index();
         let (_, sample_count) = self.image_info(node_idx);
-        let view_info = view_info.into();
 
         assert!(self.pass.as_ref().depth_stencil.is_some());
 
@@ -1213,8 +1247,8 @@ where
 
             assert!(pass.store_attachments.set_depth_stencil(
                 attachment,
-                view_info.aspect_mask,
-                view_info.fmt,
+                image_view_info.aspect_mask,
+                image_view_info.fmt,
                 sample_count,
                 node_idx,
             ));
@@ -1239,8 +1273,19 @@ where
                 .is_none());
         }
 
-        self.pass
-            .push_node_access(image, AccessType::DepthStencilAttachmentWrite, None);
+        self.pass.push_node_access(
+            image,
+            if image_view_info
+                .aspect_mask
+                .contains(vk::ImageAspectFlags::STENCIL)
+            {
+                AccessType::DepthStencilAttachmentWrite
+            } else {
+                AccessType::DepthAttachmentWriteStencilReadOnly
+            },
+            None,
+        );
+
         self
     }
 }
@@ -1249,7 +1294,7 @@ impl<'a, P> PipelinePassRef<'a, RayTracePipeline<P>, P>
 where
     P: SharedPointerKind + 'static,
 {
-    pub fn push_constants(self, data: impl Copy + Sized) -> Self {
+    pub fn push_constants(self, data: impl Sized) -> Self {
         // TODO: Flags need limiting
         self.push_stage_constants(0, vk::ShaderStageFlags::ALL, data)
     }
@@ -1258,9 +1303,9 @@ where
         mut self,
         offset: u32,
         stage: vk::ShaderStageFlags,
-        data: impl Copy + Sized,
+        data: impl Sized,
     ) -> Self {
-        let data = as_u8_slice(&data).to_vec();
+        let data = any_as_u8_slice(&data).to_vec();
         self.pass.as_mut().push_consts.push(PushConstantRange {
             data,
             offset,

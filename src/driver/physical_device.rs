@@ -51,29 +51,32 @@ impl PhysicalDevice {
     where
         P: SharedPointerKind,
     {
-        if let Ok(device) = Device::create(
-            instance,
-            this.clone(),
-            DriverConfig::new().presentation(true).build().unwrap(),
-        ) {
-            this.queue_families
-                .iter()
-                .enumerate()
-                .any(|(queue_idx, info)| unsafe {
-                    info.props.queue_flags.contains(vk::QueueFlags::GRAPHICS)
-                        && device
-                            .surface_ext
-                            .get_physical_device_surface_support(
-                                this.physical_device,
-                                queue_idx as _,
-                                **surface,
-                            )
-                            .ok()
-                            .unwrap_or_default()
-                })
-        } else {
-            false
-        }
+        // if let Ok(device) = Device::create(
+        //     instance,
+        //     this.clone(),
+        //     DriverConfig::new().presentation(true).build().unwrap(),
+        // ) {
+        //     this.queue_families
+        //         .iter()
+        //         .enumerate()
+        //         .any(|(queue_idx, info)| unsafe {
+        //             info.props.queue_flags.contains(vk::QueueFlags::GRAPHICS)
+        //                 && device
+        //                     .surface_ext
+        //                     .get_physical_device_surface_support(
+        //                         this.physical_device,
+        //                         queue_idx as _,
+        //                         **surface,
+        //                     )
+        //                     .ok()
+        //                     .unwrap_or_default()
+        //         })
+        // } else {
+        //     false
+        // }
+
+        // TODO!
+        true
     }
 
     pub fn has_ray_tracing_support(_this: &Self) -> bool {
@@ -83,6 +86,15 @@ impl PhysicalDevice {
 
     pub fn queue_families(this: &Self) -> impl Iterator<Item = QueueFamily> + '_ {
         this.queue_families.iter().copied()
+    }
+
+    pub(super) fn score_device_type(this: &Self) -> usize {
+        match this.props.device_type {
+            vk::PhysicalDeviceType::DISCRETE_GPU => 1000,
+            vk::PhysicalDeviceType::INTEGRATED_GPU => 200,
+            vk::PhysicalDeviceType::VIRTUAL_GPU => 1,
+            _ => 0,
+        }
     }
 }
 

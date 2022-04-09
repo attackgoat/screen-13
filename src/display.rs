@@ -1,8 +1,6 @@
 use {
     super::{
-        driver::{
-            CommandBuffer, Device, DriverError, ImageSubresource, Swapchain, SwapchainImageError,
-        },
+        driver::{CommandBuffer, Device, DriverError, ImageSubresource, Swapchain, SwapchainError},
         graph::{RenderGraph, Resolver, SwapchainImageNode},
         ptr::Shared,
         HashPool,
@@ -50,13 +48,13 @@ where
 
     pub fn acquire_next_image(
         &mut self,
-    ) -> Result<(SwapchainImageNode<P>, RenderGraph<P>), DisplayError>
+    ) -> Result<(SwapchainImageNode<P>, RenderGraph<P>), SwapchainError>
     where
         P: 'static,
     {
         trace!("acquire_next_image");
 
-        let swapchain_image = self.swapchain.acquire_next_image()?; // TODO: Rebuild swapchain and device wait_idle until it's fixed!
+        let swapchain_image = self.swapchain.acquire_next_image()?;
         let mut render_graph = RenderGraph::new();
         let swapchain = render_graph.bind_node(swapchain_image);
 
@@ -89,7 +87,10 @@ where
 
         trace!("present_image");
 
-        let (last_swapchain_access, _) = render_graph.last_access(swapchain_image).unwrap();
+        // The swapchain should have been written to, otherwise it would be noise and that's a panic
+        let last_swapchain_access = render_graph
+            .last_access(swapchain_image)
+            .expect("Unable to find last swapchain access");
         let mut resolver = render_graph.resolve();
         let wait_dst_stage_mask = resolver.node_stage_mask(swapchain_image);
         let swapchain_node = swapchain_image;
@@ -190,8 +191,7 @@ where
 
         // Store the resolved graph because it contains bindings, leases, and other shared resources
         // that need to be kept alive until the fence is waited upon.
-        let frame = &mut self.frames[swapchain_image_idx];
-        frame.resolved_render_graph = Some(resolver);
+        self.frames[swapchain_image_idx].resolved_render_graph = Some(resolver);
 
         Ok(())
     }
@@ -236,8 +236,8 @@ impl From<DriverError> for DisplayError {
     }
 }
 
-impl From<SwapchainImageError> for DisplayError {
-    fn from(err: SwapchainImageError) -> Self {
+impl From<SwapchainError> for DisplayError {
+    fn from(err: SwapchainError) -> Self {
         Self::DeviceLost
     }
 }
