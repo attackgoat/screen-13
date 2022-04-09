@@ -1,5 +1,5 @@
 use {
-    super::{DepthStencilMode, Device, DriverError, GraphicPipeline, SampleCount},
+    super::{DepthStencilMode, Device, DriverError, GraphicPipeline, SampleCount, VertexInputMode},
     crate::ptr::Shared,
     archery::SharedPointerKind,
     ash::vk,
@@ -331,19 +331,13 @@ where
         let dynamic_state =
             vk::PipelineDynamicStateCreateInfo::builder().dynamic_states(&dynamic_states);
         let multisample_state = vk::PipelineMultisampleStateCreateInfo::builder()
-            .alpha_to_coverage_enable(pipeline.state.multisample_state.alpha_to_coverage_enable)
-            .alpha_to_one_enable(pipeline.state.multisample_state.alpha_to_one_enable)
-            .flags(pipeline.state.multisample_state.flags)
-            .min_sample_shading(pipeline.state.multisample_state.min_sample_shading)
-            .rasterization_samples(
-                pipeline
-                    .state
-                    .multisample_state
-                    .rasterization_samples
-                    .into_vk(),
-            )
-            .sample_shading_enable(pipeline.state.multisample_state.sample_shading_enable)
-            .sample_mask(&pipeline.state.multisample_state.sample_mask);
+            .alpha_to_coverage_enable(pipeline.state.multisample.alpha_to_coverage_enable)
+            .alpha_to_one_enable(pipeline.state.multisample.alpha_to_one_enable)
+            .flags(pipeline.state.multisample.flags)
+            .min_sample_shading(pipeline.state.multisample.min_sample_shading)
+            .rasterization_samples(pipeline.state.multisample.rasterization_samples.into_vk())
+            .sample_shading_enable(pipeline.state.multisample.sample_shading_enable)
+            .sample_mask(&pipeline.state.multisample.sample_mask);
         let mut specializations = vec![];
         let stages = pipeline
             .state
@@ -371,28 +365,46 @@ where
             .collect::<Box<[_]>>();
         let vertex_input_state = vk::PipelineVertexInputStateCreateInfo::builder()
             .vertex_attribute_descriptions(
-                &pipeline
-                    .state
-                    .vertex_input_state
-                    .vertex_attribute_descriptions,
+                &pipeline.state.vertex_input.vertex_attribute_descriptions,
             )
-            .vertex_binding_descriptions(
-                &pipeline
-                    .state
-                    .vertex_input_state
-                    .vertex_binding_descriptions,
-            );
+            .vertex_binding_descriptions(&pipeline.state.vertex_input.vertex_binding_descriptions);
         let viewport_state = vk::PipelineViewportStateCreateInfo::builder()
             .viewport_count(1)
             .scissor_count(1)
             .build();
+        let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfo {
+            topology: vk::PrimitiveTopology::TRIANGLE_LIST,
+            ..Default::default()
+        };
+        let rasterization_state = vk::PipelineRasterizationStateCreateInfo {
+            front_face: match pipeline.state.rasterization.vertex_input {
+                VertexInputMode::BitmapFont | VertexInputMode::StaticMesh => {
+                    vk::FrontFace::COUNTER_CLOCKWISE
+                }
+                VertexInputMode::ImGui => vk::FrontFace::COUNTER_CLOCKWISE,
+            },
+            line_width: 1.0,
+            polygon_mode: vk::PolygonMode::FILL,
+            cull_mode: match pipeline.state.rasterization.vertex_input {
+                VertexInputMode::BitmapFont => ash::vk::CullModeFlags::BACK,
+                VertexInputMode::ImGui => ash::vk::CullModeFlags::NONE,
+                VertexInputMode::StaticMesh => {
+                    if pipeline.state.rasterization.two_sided {
+                        ash::vk::CullModeFlags::NONE
+                    } else {
+                        ash::vk::CullModeFlags::BACK
+                    }
+                }
+            },
+            ..Default::default()
+        };
         let graphic_pipeline_info = vk::GraphicsPipelineCreateInfo::builder()
             .color_blend_state(&color_blend_state)
             .stages(&stages)
             .vertex_input_state(&vertex_input_state)
-            .input_assembly_state(&pipeline.state.input_assembly_state)
+            .input_assembly_state(&input_assembly_state)
             .viewport_state(&viewport_state)
-            .rasterization_state(&pipeline.state.rasterization_state)
+            .rasterization_state(&rasterization_state)
             .multisample_state(&multisample_state)
             .dynamic_state(&dynamic_state)
             .layout(pipeline.state.layout)

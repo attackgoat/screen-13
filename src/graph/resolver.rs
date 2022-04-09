@@ -46,7 +46,7 @@ where
 #[derive(Debug)]
 pub struct Resolver<P>
 where
-    P: SharedPointerKind,
+    P: SharedPointerKind + Send,
 {
     pub(super) graph: RenderGraph<P>,
     physical_passes: Vec<PhysicalPass<P>>,
@@ -55,7 +55,7 @@ where
 
 impl<P> Resolver<P>
 where
-    P: SharedPointerKind,
+    P: SharedPointerKind + Send,
 {
     pub(super) fn new(graph: RenderGraph<P>) -> Self {
         #[cfg(debug_assertions)]

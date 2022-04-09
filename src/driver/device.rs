@@ -35,13 +35,6 @@ where
     pub instance: Shared<Instance, P>, // TODO: Need shared?
     pub physical_device: PhysicalDevice,
     pub queue: Queue,
-
-    // Vulkan extensions
-    pub accel_struct_ext: khr::AccelerationStructure,
-    pub ray_trace_pipeline_ext: khr::RayTracingPipeline,
-    pub ray_trace_pipeline_properties: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR,
-    pub surface_ext: khr::Surface,
-    pub swapchain_ext: khr::Swapchain,
 }
 
 impl<P> Device<P>
@@ -278,14 +271,6 @@ where
 
             let immutable_samplers = Self::create_immutable_samplers(&device)?;
 
-            // Get extensions
-            let accel_struct_ext = khr::AccelerationStructure::new(&instance, &device);
-            let ray_trace_pipeline_ext = khr::RayTracingPipeline::new(&instance, &device);
-            let ray_trace_pipeline_properties =
-                khr::RayTracingPipeline::get_properties(&instance, *physical_device);
-            let surface_ext = khr::Surface::new(&instance.entry, &instance);
-            let swapchain_ext = khr::Swapchain::new(&instance, &device);
-
             Ok(Self {
                 allocator: Some(Mutex::new(allocator)),
                 device,
@@ -293,15 +278,12 @@ where
                 instance,
                 physical_device,
                 queue,
-
-                // Vulkan extensions
-                accel_struct_ext,
-                ray_trace_pipeline_ext,
-                ray_trace_pipeline_properties,
-                surface_ext,
-                swapchain_ext,
             })
         }
+    }
+
+    pub fn accel_struct(this: &Self) -> khr::AccelerationStructure {
+        khr::AccelerationStructure::new(&this.instance, &this.device)
     }
 
     fn create_immutable_samplers(
@@ -365,15 +347,27 @@ where
             .unwrap_or_else(|| unimplemented!("{:?}", info))
     }
 
+    pub fn ray_trace_pipeline(this: &Self) -> khr::RayTracingPipeline {
+        khr::RayTracingPipeline::new(&this.instance, &this.device)
+    }
+
+    pub fn surface(this: &Self) -> khr::Surface {
+        khr::Surface::new(&this.instance.entry, &this.instance)
+    }
+
     pub fn surface_formats(
         this: &Self,
         surface: &Surface<impl SharedPointerKind>,
     ) -> Result<Vec<vk::SurfaceFormatKHR>, DriverError> {
         unsafe {
-            this.surface_ext
+            Device::surface(this)
                 .get_physical_device_surface_formats(*this.physical_device, **surface)
                 .map_err(|_| DriverError::Unsupported)
         }
+    }
+
+    pub fn swapchain(this: &Self) -> khr::Swapchain {
+        khr::Swapchain::new(&this.instance, &this.device)
     }
 
     pub fn wait_for_fence(this: &Self, fence: &vk::Fence) -> Result<(), DriverError> {

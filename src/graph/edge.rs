@@ -94,7 +94,7 @@ macro_rules! resolver_edge {
     ($src:ident -> $dst:ident) => {
         impl<P> Edge<Resolver<P>> for $src<P>
         where
-            P: SharedPointerKind,
+            P: SharedPointerKind + Send,
         {
             type Result = $dst<P>;
         }

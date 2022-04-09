@@ -37,7 +37,7 @@ where
 
 impl<P> ImGui<P>
 where
-    P: SharedPointerKind + 'static,
+    P: SharedPointerKind + Send + 'static,
 {
     pub fn new(device: &Shared<Device<P>, P>) -> Self {
         let mut context = Context::create();

@@ -289,7 +289,7 @@ where
 
     pub fn execute(
         mut self,
-        func: impl FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>) + 'static,
+        func: impl FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>) + Send + 'static,
     ) -> Self {
         self.push_execute(func);
         self
@@ -297,7 +297,7 @@ where
 
     fn push_execute(
         &mut self,
-        func: impl FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>) + 'static,
+        func: impl FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>) + Send + 'static,
     ) {
         let pass = self.as_mut();
         pass.execs.last_mut().unwrap().func = Some(ExecutionFunction(Box::new(func)));
@@ -532,7 +532,7 @@ where
 
 impl<'a, P> PipelinePassRef<'a, ComputePipeline<P>, P>
 where
-    P: SharedPointerKind + 'static,
+    P: SharedPointerKind + Send + 'static,
 {
     pub fn dispatch(mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) -> Self {
         let pass = self.pass.as_mut();
@@ -702,7 +702,7 @@ where
 
     pub fn draw(
         mut self,
-        func: impl FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>) + 'static,
+        func: impl FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>) + Send + 'static,
     ) -> Self {
         use std::slice::from_ref;
 

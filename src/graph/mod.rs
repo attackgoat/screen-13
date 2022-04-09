@@ -55,7 +55,7 @@ pub type BindingIndex = u32;
 pub type BindingOffset = u32;
 pub type DescriptorSetIndex = u32;
 
-type ExecFn<P> = Box<dyn FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>)>;
+type ExecFn<P> = Box<dyn FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>) + Send>;
 type NodeIndex = usize;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -423,7 +423,7 @@ where
 
 impl<P> RenderGraph<P>
 where
-    P: SharedPointerKind + 'static,
+    P: SharedPointerKind + Send + 'static,
 {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {

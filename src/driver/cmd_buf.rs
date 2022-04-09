@@ -23,7 +23,7 @@ where
 {
     cmd_buf: vk::CommandBuffer,
     pub(crate) device: Shared<Device<P>, P>,
-    droppables: RefCell<Vec<Box<dyn Debug + 'static>>>,
+    droppables: RefCell<Vec<Box<dyn Debug + Send + 'static>>>,
     pub fence: vk::Fence, // Keeps state because everyone wants this
     pub pool: vk::CommandPool,
 }
@@ -187,7 +187,7 @@ where
     }
 
     /// Drops an item after execution has been completed
-    pub(crate) fn push_fenced_drop(this: &Self, thing_to_drop: impl Debug + 'static) {
+    pub(crate) fn push_fenced_drop(this: &Self, thing_to_drop: impl Debug + Send + 'static) {
         this.droppables.borrow_mut().push(Box::new(thing_to_drop));
     }
 

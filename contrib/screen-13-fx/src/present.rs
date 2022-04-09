@@ -6,7 +6,7 @@ where
 
 impl<P> ComputePresenter<P>
 where
-    P: SharedPointerKind,
+    P: SharedPointerKind + Send + 'static,
 {
     pub fn new(device: &Shared<Device<P>, P>) -> Result<Self, DriverError> {
         let pipeline1 = Shared::new(ComputePipeline::create(
@@ -26,9 +26,7 @@ where
         graph: &mut RenderGraph<P>,
         image: impl Into<AnyImageNode<P>>,
         swapchain: SwapchainImageNode<P>,
-    ) where
-        P: 'static,
-    {
+    ) {
         let image = image.into();
         // let image_info = graph.node_info(image);
         let swapchain_info = graph.node_info(swapchain);
@@ -79,7 +77,7 @@ where
 
 impl<P> GraphicPresenter<P>
 where
-    P: SharedPointerKind,
+    P: SharedPointerKind + Send + 'static,
 {
     pub fn new(device: &Shared<Device<P>, P>) -> Result<Self, DriverError> {
         Ok(Self {
@@ -99,9 +97,7 @@ where
         graph: &mut RenderGraph<P>,
         image: impl Into<AnyImageNode<P>>,
         swapchain: SwapchainImageNode<P>,
-    ) where
-        P: 'static,
-    {
+    ) {
         let image = image.into();
         let image_info = graph.node_info(image);
         let swapchain_info = graph.node_info(swapchain);

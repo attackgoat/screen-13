@@ -32,15 +32,12 @@ where
 
 impl<P> BitmapFont<P>
 where
-    P: SharedPointerKind,
+    P: SharedPointerKind + Send + 'static,
 {
     pub fn load(
         bitmap_font: BitmapFontBuf,
         image_loader: &mut ImageLoader<P>,
-    ) -> anyhow::Result<Self>
-    where
-        P: 'static,
-    {
+    ) -> anyhow::Result<Self> {
         let font = BMFont::new(
             Cursor::new(bitmap_font.def()),
             OrdinateOrientation::TopToBottom,
@@ -140,9 +137,7 @@ where
         position: Vec2,
         color: impl Into<BitmapGlyphColor>,
         text: impl AsRef<str>,
-    ) where
-        P: 'static,
-    {
+    ) {
         self.print_scale(graph, image, position, color, text, 1.0);
     }
 
@@ -154,9 +149,7 @@ where
         color: impl Into<BitmapGlyphColor>,
         text: impl AsRef<str>,
         scale: f32,
-    ) where
-        P: 'static,
-    {
+    ) {
         let color = color.into();
         let image = image.into();
         let text = text.as_ref();

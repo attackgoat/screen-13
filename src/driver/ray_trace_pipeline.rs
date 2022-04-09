@@ -43,8 +43,7 @@ where
         }
 
         unsafe {
-            self.device
-                .accel_struct_ext
+            Device::accel_struct(&self.device)
                 .destroy_acceleration_structure(self.accel_struct, None);
         }
     }
@@ -241,13 +240,11 @@ where
         preallocate_bytes: u64,
     ) -> Result<RayTraceAcceleration<P>, DriverError> {
         let mem_requirements = unsafe {
-            self.device
-                .accel_struct_ext
-                .get_acceleration_structure_build_sizes(
-                    vk::AccelerationStructureBuildTypeKHR::DEVICE,
-                    &geometry_info,
-                    max_primitive_counts,
-                )
+            Device::accel_struct(&self.device).get_acceleration_structure_build_sizes(
+                vk::AccelerationStructureBuildTypeKHR::DEVICE,
+                &geometry_info,
+                max_primitive_counts,
+            )
         };
 
         info!(
@@ -273,9 +270,7 @@ where
             .build();
 
         unsafe {
-            let accel_struct = self
-                .device
-                .accel_struct_ext
+            let accel_struct = Device::accel_struct(&self.device)
                 .create_acceleration_structure(&accel_info, None)
                 .map_err(|_| DriverError::Unsupported)?;
             let scratch_buf = self.buf.lock();
@@ -335,13 +330,11 @@ where
     ) -> impl Iterator<Item = RayTraceInstance> + 'a {
         instances.map(|desc| {
             let blas_address = unsafe {
-                self.device
-                    .accel_struct_ext
-                    .get_acceleration_structure_device_address(
-                        &vk::AccelerationStructureDeviceAddressInfoKHR::builder()
-                            .acceleration_structure(desc.blas.accel_struct)
-                            .build(),
-                    )
+                Device::accel_struct(&self.device).get_acceleration_structure_device_address(
+                    &vk::AccelerationStructureDeviceAddressInfoKHR::builder()
+                        .acceleration_structure(desc.blas.accel_struct)
+                        .build(),
+                )
             };
             let transform: [f32; 12] = [
                 desc.rotation.x_axis.x,
@@ -399,13 +392,11 @@ where
             .build();
 
         let mem_requirements = unsafe {
-            self.device
-                .accel_struct_ext
-                .get_acceleration_structure_build_sizes(
-                    vk::AccelerationStructureBuildTypeKHR::DEVICE,
-                    &geometry_info,
-                    from_ref(&(instance_count as u32)),
-                )
+            Device::accel_struct(&self.device).get_acceleration_structure_build_sizes(
+                vk::AccelerationStructureBuildTypeKHR::DEVICE,
+                &geometry_info,
+                from_ref(&(instance_count as u32)),
+            )
         };
         let scratch_buf = self.buf.lock();
 
@@ -424,13 +415,11 @@ where
                 device_address: Buffer::device_address(&scratch_buf),
             };
 
-            self.device
-                .accel_struct_ext
-                .cmd_build_acceleration_structures(
-                    cb,
-                    from_ref(&geometry_info),
-                    from_ref(&build_range_infos.as_slice()),
-                );
+            Device::accel_struct(&self.device).cmd_build_acceleration_structures(
+                cb,
+                from_ref(&geometry_info),
+                from_ref(&build_range_infos.as_slice()),
+            );
             self.device.cmd_pipeline_barrier(
                 cb,
                 vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
@@ -721,8 +710,7 @@ where
             assert!(raygen_entry_count > 0);
             assert!(miss_entry_count > 0);
 
-            let pipeline = device
-                .ray_trace_pipeline_ext
+            let pipeline = Device::ray_trace_pipeline(&device)
                 .create_ray_tracing_pipelines(
                     vk::DeferredOperationKHR::null(),
                     vk::PipelineCache::null(),

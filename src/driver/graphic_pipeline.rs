@@ -216,7 +216,7 @@ where
                     stages.push(shader_stage);
                 });
 
-            let vertex_input_state = VertexInputState {
+            let vertex_input = VertexInputState {
                 vertex_attribute_descriptions: match info.vertex_input {
                     VertexInputMode::BitmapFont => vec![
                         vk::VertexInputAttributeDescription {
@@ -274,33 +274,11 @@ where
                     VertexInputMode::StaticMesh => vec![],
                 },
             };
-            let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfo {
-                topology: vk::PrimitiveTopology::TRIANGLE_LIST,
-                ..Default::default()
+            let rasterization = RasterizationState {
+                vertex_input: info.vertex_input,
+                two_sided: info.two_sided,
             };
-            let rasterization_state = vk::PipelineRasterizationStateCreateInfo {
-                front_face: match info.vertex_input {
-                    VertexInputMode::BitmapFont | VertexInputMode::StaticMesh => {
-                        vk::FrontFace::COUNTER_CLOCKWISE
-                    }
-                    VertexInputMode::ImGui => vk::FrontFace::COUNTER_CLOCKWISE,
-                },
-                line_width: 1.0,
-                polygon_mode: vk::PolygonMode::FILL,
-                cull_mode: match info.vertex_input {
-                    VertexInputMode::BitmapFont => ash::vk::CullModeFlags::BACK,
-                    VertexInputMode::ImGui => ash::vk::CullModeFlags::NONE,
-                    VertexInputMode::StaticMesh => {
-                        if info.two_sided {
-                            ash::vk::CullModeFlags::NONE
-                        } else {
-                            ash::vk::CullModeFlags::BACK
-                        }
-                    }
-                },
-                ..Default::default()
-            };
-            let multisample_state = MultisampleState {
+            let multisample = MultisampleState {
                 rasterization_samples: match info.vertex_input {
                     VertexInputMode::BitmapFont | VertexInputMode::ImGui => SampleCount::X1,
                     VertexInputMode::StaticMesh => info.samples,
@@ -317,12 +295,11 @@ where
                 push_constant_ranges,
                 shader_modules,
                 state: GraphicPipelineState {
-                    input_assembly_state,
                     layout,
-                    multisample_state,
-                    rasterization_state,
+                    multisample,
+                    rasterization,
                     stages,
-                    vertex_input_state,
+                    vertex_input,
                 },
             })
         }
@@ -386,12 +363,11 @@ impl From<GraphicPipelineInfoBuilder> for GraphicPipelineInfo {
 
 #[derive(Debug)]
 pub struct GraphicPipelineState {
-    pub input_assembly_state: vk::PipelineInputAssemblyStateCreateInfo,
     pub layout: vk::PipelineLayout,
-    pub multisample_state: MultisampleState,
-    pub rasterization_state: vk::PipelineRasterizationStateCreateInfo,
+    pub multisample: MultisampleState,
+    pub rasterization: RasterizationState,
     pub stages: Vec<Stage>,
-    pub vertex_input_state: VertexInputState,
+    pub vertex_input: VertexInputState,
 }
 
 #[derive(Debug, Default)]
@@ -403,6 +379,12 @@ pub struct MultisampleState {
     pub rasterization_samples: SampleCount,
     pub sample_mask: Vec<u32>,
     pub sample_shading_enable: bool,
+}
+
+#[derive(Debug, Default)]
+pub struct RasterizationState {
+    pub vertex_input: VertexInputMode,
+    pub two_sided: bool,
 }
 
 #[derive(Debug)]

@@ -86,7 +86,7 @@ where
         is_srgb: bool,
     ) -> anyhow::Result<ImageBinding<P>>
     where
-        P: SharedPointerKind + 'static,
+        P: SharedPointerKind + Send + 'static,
     {
         info!(
             "Decoding {}x{} {:?} bitmap ({} K)",
@@ -203,14 +203,14 @@ where
 
     pub fn decode_linear(&mut self, bitmap: &BitmapBuf) -> anyhow::Result<ImageBinding<P>>
     where
-        P: SharedPointerKind + 'static,
+        P: SharedPointerKind + Send + 'static,
     {
         self.decode_bitmap(bitmap, false)
     }
 
     pub fn decode_srgb(&mut self, bitmap: &BitmapBuf) -> anyhow::Result<ImageBinding<P>>
     where
-        P: SharedPointerKind + 'static,
+        P: SharedPointerKind + Send + 'static,
     {
         self.decode_bitmap(bitmap, true)
     }

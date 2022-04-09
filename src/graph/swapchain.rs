@@ -96,7 +96,7 @@ where
 
 impl<P> Unbind<Resolver<P>, SwapchainImage<P>> for SwapchainImageNode<P>
 where
-    P: SharedPointerKind,
+    P: SharedPointerKind + Send,
 {
     // We allow the resolver to unbind a swapchain node directly into a shared image
     fn unbind(self, graph: &mut Resolver<P>) -> SwapchainImage<P> {

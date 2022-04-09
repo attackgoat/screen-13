@@ -21,7 +21,7 @@ use {
 #[derive(Debug)]
 pub struct Display<P>
 where
-    P: SharedPointerKind,
+    P: SharedPointerKind + Send,
 {
     cache: HashPool<P>,
     device: Shared<Device<P>, P>,
@@ -32,7 +32,7 @@ where
 
 impl<P> Display<P>
 where
-    P: SharedPointerKind + 'static,
+    P: SharedPointerKind + Send + 'static,
 {
     pub fn new(device: &Shared<Device<P>, P>, swapchain: Swapchain<P>) -> Self {
         let device = Shared::clone(device);
@@ -251,7 +251,7 @@ impl std::fmt::Display for DisplayError {
 #[derive(Debug)]
 struct Frame<P>
 where
-    P: SharedPointerKind,
+    P: SharedPointerKind + Send,
 {
     cmd_bufs: [CommandBuffer<P>; 3],
     resolved_render_graph: Option<Resolver<P>>, // TODO: Only want the physical passes; could drop rest

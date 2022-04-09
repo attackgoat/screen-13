@@ -36,7 +36,7 @@ pub enum FullscreenMode {
 #[derive(Debug)]
 pub struct EventLoop<P>
 where
-    P: SharedPointerKind,
+    P: SharedPointerKind + Send,
 {
     pub device: Shared<Device<P>, P>,
     display: Display<P>,
@@ -46,7 +46,7 @@ where
 
 impl<P> EventLoop<P>
 where
-    P: SharedPointerKind,
+    P: SharedPointerKind + Send,
 {
     #[allow(clippy::new_ret_no_self)]
     pub fn new() -> EventLoopBuilder<P> {
@@ -264,7 +264,7 @@ impl<P> EventLoopBuilder<P> {
 
 impl<P> EventLoopBuilder<P>
 where
-    P: SharedPointerKind + 'static,
+    P: SharedPointerKind + Send + 'static,
 {
     pub fn build(self) -> Result<EventLoop<P>, DriverError> {
         let cfg = self

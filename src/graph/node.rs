@@ -170,7 +170,7 @@ macro_rules! node_unbind {
         paste::paste! {
             impl<P> Unbind<RenderGraph<P>, [<$name Binding>]<P>> for [<$name Node>]<P>
             where
-                P: SharedPointerKind + 'static,
+                P: SharedPointerKind + Send + 'static,
             {
                 fn unbind(self, graph: &mut RenderGraph<P>) -> [<$name Binding>]<P> {
                     let binding = {
@@ -204,7 +204,7 @@ macro_rules! node_unbind_lease {
         paste::paste! {
             impl<P> Unbind<RenderGraph<P>, [<$name LeaseBinding>]<P>> for [<$name LeaseNode>]<P>
             where
-                P: SharedPointerKind + 'static,
+                P: SharedPointerKind + Send + 'static,
             {
                 fn unbind(self, graph: &mut RenderGraph<P>) -> [<$name LeaseBinding>]<P> {
                     let binding = {
