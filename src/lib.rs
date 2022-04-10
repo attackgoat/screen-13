@@ -99,9 +99,11 @@ pub mod prelude_arc {
     pub type Buffer = all::Buffer<P>;
     pub type BufferBinding = all::BufferBinding<P>;
     pub type BufferNode = all::BufferNode<P>;
+    pub type ComputePipeline = all::ComputePipeline<P>;
     pub type Device = all::Device<P>;
     pub type EventLoop = all::EventLoop<P>;
     pub type FrameContext<'a> = all::FrameContext<'a, P>;
+    pub type GraphicPipeline = all::GraphicPipeline<P>;
     pub type HashPool = all::HashPool<P>;
     pub type Image = all::Image<P>;
     pub type ImageBinding = all::ImageBinding<P>;
@@ -129,9 +131,11 @@ pub mod prelude_rc {
     pub type Buffer = all::Buffer<P>;
     pub type BufferBinding = all::BufferBinding<P>;
     pub type BufferNode = all::BufferNode<P>;
+    pub type ComputePipeline = all::ComputePipeline<P>;
     pub type Device = all::Device<P>;
     pub type EventLoop = all::EventLoop<P>;
     pub type FrameContext<'a> = all::FrameContext<'a, P>;
+    pub type GraphicPipeline = all::GraphicPipeline<P>;
     pub type HashPool = all::HashPool<P>;
     pub type Image = all::Image<P>;
     pub type ImageBinding = all::ImageBinding<P>;

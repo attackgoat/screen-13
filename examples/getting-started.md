@@ -108,7 +108,7 @@ is an optional map of bindings that is only used in conjuction with texture arra
 constants to specify length.
 
 ```rust
-let info = Default::default();
+let info = GraphicPipelineInfo::default();
 let vertex = Shader::new_vertex(include_bytes!("vertex.spv"));
 let fragment = Shader::new_fragment(include_bytes!("fragment.spv"));
 let pipeline = GraphicPipeline::create(&device, info, [vertex, fragment]).unwrap();

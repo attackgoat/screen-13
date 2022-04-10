@@ -265,8 +265,8 @@ impl<P> View<P> for BufferLeaseNode<P> {
 }
 
 impl<P> View<P> for BufferNode<P> {
-    type Information = ImageViewInfo;
-    type Subresource = ImageSubresource;
+    type Information = BufferSubresource;
+    type Subresource = BufferSubresource;
 }
 
 impl<P> View<P> for ImageLeaseNode<P> {
