@@ -1,7 +1,7 @@
 use {
     super::{DriverError, PhysicalDevice, QueueFamily, QueueFamilyProperties},
     ash::{extensions::ext, vk, Entry},
-    log::{error, info, warn},
+    log::{debug, error, info, trace, warn},
     std::{
         ffi::{c_void, CStr, CString},
         fmt::{Debug, Formatter},
@@ -89,18 +89,18 @@ impl Instance {
                 error!("Vulkan driver does not support API v1.2");
 
                 for layer_name in Self::layer_names(debug) {
-                    info!("  Layer: {:?}", layer_name);
+                    debug!("Layer: {:?}", layer_name);
                 }
 
                 for extension_name in required_extensions {
-                    info!("  Extension: {:?}", extension_name);
+                    debug!("Extension: {:?}", extension_name);
                 }
 
                 DriverError::Unsupported
             })?
         };
 
-        info!("Created a Vulkan instance");
+        trace!("Created a Vulkan instance");
 
         let (debug_loader, debug_callback, debug_utils) = if debug {
             let debug_info = vk::DebugReportCallbackCreateInfoEXT {

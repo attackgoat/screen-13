@@ -330,8 +330,7 @@ where
 
     pub fn read_node(mut self, node: impl Node<P>) -> Self {
         let access = AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer;
-        self.push_node_access(node, access, None);
-        self
+        self.access_node(node, access)
     }
 
     pub fn submit_pass(self) -> &'a mut RenderGraph<P> {
@@ -413,6 +412,11 @@ where
         self
     }
 
+    pub fn access_node(mut self, node: impl Node<P>, access: AccessType) -> Self {
+        self.pass.push_node_access(node, access, None);
+        self
+    }
+
     fn push_node_view_bind(
         &mut self,
         node: impl Node<P>,
@@ -480,6 +484,11 @@ where
         self.access_descriptor_subrange(descriptor, node, access, view_info, subresource_range)
     }
 
+    pub fn read_node(mut self, node: impl Node<P>) -> Self {
+        let access = <T as Access>::DEFAULT_READ;
+        self.access_node(node, access)
+    }
+
     pub fn submit_pass(self) -> &'a mut RenderGraph<P> {
         self.pass.submit_pass()
     }
@@ -527,6 +536,11 @@ where
     {
         let access = <T as Access>::DEFAULT_WRITE;
         self.access_descriptor_subrange(descriptor, node, access, view_info, subresource_range)
+    }
+
+    pub fn write_node(self, node: impl Node<P>) -> Self {
+        let access = <T as Access>::DEFAULT_WRITE;
+        self.access_node(node, access)
     }
 }
 

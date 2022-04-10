@@ -1313,7 +1313,7 @@ where
                 }
 
                 {
-                    debug!("execute");
+                    // debug!("execute");
 
                     let exec = &mut pass.execs[exec_idx];
                     let exec_func = exec.func.take().unwrap().0;

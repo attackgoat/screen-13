@@ -62,10 +62,10 @@ pub mod prelude_all {
     pub use super::{
         driver::*,
         graph::{
-            AnyBufferBinding, AnyImageBinding, AnyImageNode, BufferBinding, BufferLeaseBinding,
-            BufferLeaseNode, BufferNode, ImageBinding, ImageLeaseBinding, ImageLeaseNode,
-            ImageNode, PassRef, RayTraceAccelerationBinding, RayTraceAccelerationNode, RenderGraph,
-            SwapchainImageNode,
+            AnyBufferBinding, AnyBufferNode, AnyImageBinding, AnyImageNode, BufferBinding,
+            BufferLeaseBinding, BufferLeaseNode, BufferNode, ImageBinding, ImageLeaseBinding,
+            ImageLeaseNode, ImageNode, PassRef, RayTraceAccelerationBinding,
+            RayTraceAccelerationNode, RenderGraph, SwapchainImageNode,
         },
         prelude::*,
         Display, DisplayError, EventLoopBuilder, HashPool, Lease,
@@ -95,7 +95,9 @@ pub mod prelude_arc {
     };
 
     pub type AnyBufferBinding<'a> = all::AnyBufferBinding<'a, P>;
+    pub type AnyBufferNode = all::AnyBufferNode<P>;
     pub type AnyImageBinding<'a> = all::AnyImageBinding<'a, P>;
+    pub type AnyImageNode = all::AnyImageNode<P>;
     pub type Buffer = all::Buffer<P>;
     pub type BufferBinding = all::BufferBinding<P>;
     pub type BufferNode = all::BufferNode<P>;
@@ -127,7 +129,9 @@ pub mod prelude_rc {
     };
 
     pub type AnyBufferBinding<'a> = all::AnyBufferBinding<'a, P>;
+    pub type AnyBufferNode = all::AnyBufferNode<P>;
     pub type AnyImageBinding<'a> = all::AnyImageBinding<'a, P>;
+    pub type AnyImageNode = all::AnyImageNode<P>;
     pub type Buffer = all::Buffer<P>;
     pub type BufferBinding = all::BufferBinding<P>;
     pub type BufferNode = all::BufferNode<P>;

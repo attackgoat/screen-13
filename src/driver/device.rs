@@ -45,7 +45,7 @@ where
         trace!("new {:?}", cfg);
 
         let instance = Shared::new(Instance::new(cfg.debug, empty())?);
-        let physical_devices = Instance::physical_devices(&instance)?
+        let physical_device = Instance::physical_devices(&instance)?
             .filter(|physical_device| {
                 if cfg.ray_tracing && !PhysicalDevice::has_ray_tracing_support(physical_device) {
                     info!("{:?} lacks ray tracing support", unsafe {
@@ -59,27 +59,13 @@ where
 
                 true
             })
-            .collect::<Vec<_>>();
-
-        info!(
-            "Supported GPUs: {:#?}",
-            physical_devices
-                .iter()
-                .map(|physical_device| unsafe {
-                    CStr::from_ptr(physical_device.props.device_name.as_ptr() as *const c_char)
-                })
-                .collect::<Vec<_>>()
-        );
-
-        let physical_device = physical_devices
+            .collect::<Vec<_>>()
             .into_iter()
             // If there are multiple devices with the same score, `max_by_key` would choose the last,
             // and we want to preserve the order of devices from `enumerate_physical_devices`.
             .rev()
             .max_by_key(PhysicalDevice::score_device_type)
             .ok_or(DriverError::Unsupported)?;
-
-        info!("Selected GPU: {:#?}", physical_device);
 
         Device::create(&instance, physical_device, cfg)
     }

@@ -35,9 +35,10 @@ where
         device: &Shared<Device<P>, P>,
         info: impl Into<BufferInfo>,
     ) -> Result<Self, DriverError> {
-        trace!("create");
-
         let info = info.into();
+
+        trace!("create: {:?}", info);
+
         let device = Shared::clone(device);
         let buffer_info = vk::BufferCreateInfo {
             size: info.size as u64,
@@ -52,7 +53,6 @@ where
         };
         let mut requirements = unsafe { device.get_buffer_memory_requirements(buffer) };
 
-        // TODO: why does `get_buffer_memory_requirements` fail to get the correct alignment on AMD?
         if info
             .usage
             .contains(vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR)

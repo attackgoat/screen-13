@@ -5,7 +5,7 @@ use {
     ash::vk,
     derive_builder::Builder,
     glam::{uvec3, UVec2},
-    log::{info, warn},
+    log::{debug, info, warn},
     std::{ops::Deref, slice, thread::panicking, time::Duration},
 };
 
@@ -204,7 +204,7 @@ where
             desired_image_count = desired_image_count.min(surface_capabilities.max_image_count);
         }
 
-        info!("Swapchain image count: {}", desired_image_count);
+        debug!("Swapchain image count: {}", desired_image_count);
 
         let surface_resolution = match surface_capabilities.current_extent.width {
             std::u32::MAX => UVec2::new(
@@ -247,7 +247,7 @@ where
             .find(|mode| present_modes.contains(mode))
             .unwrap_or(vk::PresentModeKHR::FIFO);
 
-        info!("Presentation mode: {:?}", present_mode);
+        debug!("Presentation mode: {:?}", present_mode);
 
         let pre_transform = if surface_capabilities
             .supported_transforms

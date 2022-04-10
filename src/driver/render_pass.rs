@@ -1,5 +1,5 @@
 use {
-    super::{DepthStencilMode, Device, DriverError, GraphicPipeline, SampleCount, VertexInputMode},
+    super::{DepthStencilMode, Device, DriverError, GraphicPipeline, SampleCount},
     crate::ptr::Shared,
     archery::SharedPointerKind,
     ash::vk,
@@ -370,32 +370,16 @@ where
             .vertex_binding_descriptions(&pipeline.state.vertex_input.vertex_binding_descriptions);
         let viewport_state = vk::PipelineViewportStateCreateInfo::builder()
             .viewport_count(1)
-            .scissor_count(1)
-            .build();
+            .scissor_count(1);
         let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfo {
             topology: vk::PrimitiveTopology::TRIANGLE_LIST,
             ..Default::default()
         };
         let rasterization_state = vk::PipelineRasterizationStateCreateInfo {
-            front_face: match pipeline.state.rasterization.vertex_input {
-                VertexInputMode::BitmapFont | VertexInputMode::StaticMesh => {
-                    vk::FrontFace::COUNTER_CLOCKWISE
-                }
-                VertexInputMode::ImGui => vk::FrontFace::COUNTER_CLOCKWISE,
-            },
+            front_face: pipeline.info.front_face,
             line_width: 1.0,
-            polygon_mode: vk::PolygonMode::FILL,
-            cull_mode: match pipeline.state.rasterization.vertex_input {
-                VertexInputMode::BitmapFont => ash::vk::CullModeFlags::BACK,
-                VertexInputMode::ImGui => ash::vk::CullModeFlags::NONE,
-                VertexInputMode::StaticMesh => {
-                    if pipeline.state.rasterization.two_sided {
-                        ash::vk::CullModeFlags::NONE
-                    } else {
-                        ash::vk::CullModeFlags::BACK
-                    }
-                }
-            },
+            polygon_mode: pipeline.info.polygon_mode,
+            cull_mode: pipeline.info.cull_mode,
             ..Default::default()
         };
         let graphic_pipeline_info = vk::GraphicsPipelineCreateInfo::builder()

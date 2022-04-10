@@ -8,7 +8,7 @@ use {
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
-    log::trace,
+    log::{debug, trace, warn},
     ordered_float::OrderedFloat,
     std::{collections::BTreeMap, ffi::CString, thread::panicking},
 };
@@ -140,11 +140,28 @@ where
             .map(|shader| shader.into())
             .collect::<Vec<Shader>>();
 
-        // Use SPIR-V reflection to get the types and counts of all descriptors
         let mut descriptor_bindings = shaders
             .iter()
             .map(|shader| shader.descriptor_bindings(&device))
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Vec<_>>();
+        if let Some(err) = descriptor_bindings.iter().find(|item| item.is_err()) {
+            warn!("Unable to inspect shader descriptor bindings: {:?}", err);
+
+            return Err(DriverError::Unsupported);
+        }
+
+        let mut descriptor_bindings = descriptor_bindings
+            .into_iter()
+            .map(|item| item.unwrap())
+            .collect::<Vec<_>>();
+
+        let vertex_input = shaders
+            .iter()
+            .find(|shader| shader.stage == vk::ShaderStageFlags::VERTEX)
+            .expect("Unable to find vertex shader")
+            .vertex_input()?;
+
+        // debug!("Vertex reflection found: {:#?}", vertex_input);
 
         // We allow extra descriptors because specialization constants aren't specified yet
         if let Some(extra_descriptors) = &info.extra_descriptors {
@@ -216,73 +233,11 @@ where
                     stages.push(shader_stage);
                 });
 
-            let vertex_input = VertexInputState {
-                vertex_attribute_descriptions: match info.vertex_input {
-                    VertexInputMode::BitmapFont => vec![
-                        vk::VertexInputAttributeDescription {
-                            location: 0,
-                            binding: 0,
-                            format: vk::Format::R32G32_SFLOAT,
-                            offset: 0,
-                        },
-                        vk::VertexInputAttributeDescription {
-                            location: 1,
-                            binding: 0,
-                            format: vk::Format::R32G32_SFLOAT,
-                            offset: 8,
-                        },
-                        vk::VertexInputAttributeDescription {
-                            location: 2,
-                            binding: 0,
-                            format: vk::Format::R32_SINT,
-                            offset: 16,
-                        },
-                    ],
-                    VertexInputMode::ImGui => vec![
-                        vk::VertexInputAttributeDescription {
-                            location: 0,
-                            binding: 0,
-                            format: vk::Format::R32G32_SFLOAT,
-                            offset: 0,
-                        },
-                        vk::VertexInputAttributeDescription {
-                            location: 1,
-                            binding: 0,
-                            format: vk::Format::R32G32_SFLOAT,
-                            offset: 8,
-                        },
-                        vk::VertexInputAttributeDescription {
-                            location: 2,
-                            binding: 0,
-                            format: vk::Format::R8G8B8A8_UNORM,
-                            offset: 16,
-                        },
-                    ],
-                    VertexInputMode::StaticMesh => vec![],
-                },
-                vertex_binding_descriptions: match info.vertex_input {
-                    VertexInputMode::BitmapFont => vec![vk::VertexInputBindingDescription {
-                        binding: 0,
-                        stride: 20,
-                        input_rate: vk::VertexInputRate::VERTEX,
-                    }],
-                    VertexInputMode::ImGui => vec![vk::VertexInputBindingDescription {
-                        binding: 0,
-                        stride: 20,
-                        input_rate: vk::VertexInputRate::VERTEX,
-                    }],
-                    VertexInputMode::StaticMesh => vec![],
-                },
-            };
             let rasterization = RasterizationState {
-                vertex_input: info.vertex_input,
                 two_sided: info.two_sided,
             };
             let multisample = MultisampleState {
-                rasterization_samples: match info.vertex_input {
-                    VertexInputMode::BitmapFont | VertexInputMode::ImGui => SampleCount::X1,
-                    VertexInputMode::StaticMesh => info.samples,
-                },
+                rasterization_samples: info.samples,
                 ..Default::default()
             };
 
@@ -332,7 +287,9 @@ where
 pub struct GraphicPipelineInfo {
     #[builder(default)]
     pub blend: BlendMode,
-    #[builder(default)]
+    #[builder(default = "vk::CullModeFlags::BACK")]
+    pub cull_mode: vk::CullModeFlags,
+    #[builder(default, setter(strip_option))]
     pub depth_stencil: Option<DepthStencilMode>,
     /// A map of extra descriptors not directly specified in the shader SPIR-V code.
     ///
@@ -340,12 +297,14 @@ pub struct GraphicPipelineInfo {
     /// binding map.
     #[builder(default, setter(strip_option))]
     pub extra_descriptors: Option<DescriptorBindingMap>,
+    #[builder(default = "vk::FrontFace::COUNTER_CLOCKWISE")]
+    pub front_face: vk::FrontFace,
+    #[builder(default = "vk::PolygonMode::FILL")]
+    pub polygon_mode: vk::PolygonMode,
     #[builder(default = "SampleCount::X1")]
     pub samples: SampleCount,
     #[builder(default)]
     pub two_sided: bool,
-    #[builder(default)]
-    pub vertex_input: VertexInputMode,
 }
 
 impl GraphicPipelineInfo {
@@ -383,7 +342,6 @@ pub struct MultisampleState {
 
 #[derive(Debug, Default)]
 pub struct RasterizationState {
-    pub vertex_input: VertexInputMode,
     pub two_sided: bool,
 }
 
@@ -420,21 +378,7 @@ impl Default for StencilMode {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum VertexInputMode {
-    // AnimatedMesh,
-    BitmapFont,
-    ImGui,
-    StaticMesh,
-}
-
-impl Default for VertexInputMode {
-    fn default() -> Self {
-        Self::StaticMesh
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct VertexInputState {
     pub vertex_binding_descriptions: Vec<vk::VertexInputBindingDescription>,
     pub vertex_attribute_descriptions: Vec<vk::VertexInputAttributeDescription>,

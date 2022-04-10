@@ -64,8 +64,7 @@ where
                         )]
                         .into_iter()
                         .collect(),
-                    )
-                    .vertex_input(VertexInputMode::BitmapFont),
+                    ),
                 [
                     Shader::new_vertex(crate::res::shader::GRAPHIC_FONT_VERT),
                     Shader::new_fragment(crate::res::shader::GRAPHIC_FONT_BITMAP_FRAG)

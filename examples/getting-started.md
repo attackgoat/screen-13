@@ -96,16 +96,15 @@ GPU configuration:
 pub struct GraphicPipelineInfo {
     pub blend: BlendMode,
     pub depth_stencil: Option<DepthStencilMode>,
-    pub extra_descriptors: Option<DescriptorBindingMap>,
     pub samples: SampleCount,
     pub two_sided: bool,
-    pub vertex_input: VertexInputMode,
+    ... etc ..
 }
 ```
 
-All of the above parameters implement `Copy` and are simple enums except for `extra_descriptors`, which
+All of the parameters implement `Copy` and are simple enums. There is one oddity, `extra_descriptors`, which
 is an optional map of bindings that is only used in conjuction with texture arrays that use dynamic specialization
-constants to specify length.
+constants to specify length. If you want them, they're there.
 
 ```rust
 let info = GraphicPipelineInfo::default();
@@ -377,6 +376,35 @@ Auxiallary functions:
 - `set_depth_stencil(mode)` - Modify the depth/stencil state of this pass from the next execution forward
 - `set_render_area(x, y, width, height)` - Set framebuffer render area for image attachments of this pass
 - `set_viewport(x, y, width, height, depth_range)` / `set_scissor(x, y, width, height)` - Modify rendering viewport/scissor from the next execution forward
+
+Image samplers:
+
+By default, `Screen 13` will use "linear repeat-mode" samplers unless a special suffix appears as part of the
+name within GLSL or HLSL shader code. The `_sampler_123` suffix should be used where `1`, `2`, and `2` are replaced with:
+
+1. `l` for `LINEAR` texel filtering (default) or `n` for `NEAREST`
+2. `l` (default) or `n`, as above, but for mipmap filtering
+3. Addressing mode where:
+  - `b` is `CLAMP_TO_BORDER`
+  - `e` is `CLAMP_TO_EDGE`
+  - `m` is `MIRRORED_REPEAT`
+  - `r` is `REPEAT`
+
+For example, the following sampler named `pages_sampler_nnr` specifies nearest texel/mipmap modes and repeat addressing:
+
+```glsl
+layout(set = 0, binding = 0) uniform sampler2D pages_sampler_nnr[NUM_PAGES];
+```
+
+Vertex input:
+
+Optional name suffixes are used in the same way with vertex input as with image samplers. The additional
+attribution of your shader code is again optional but may help in a few scenarios:
+
+- Per-instance vertex rate data
+- Multiple vertex buffer binding indexes
+
+The data for vertex input is assumed to be per-vertex and bound to vertex buffer binding index zero. Add `_ibindX` for per-instance data, or the matching `_vbindX` for per-vertex data where `X` is replaced with the vertex buffer binding index in each case.
 
 #### Ray Tracing
 

@@ -28,7 +28,7 @@ pub use {
         device::{Device, FeatureFlags},
         graphic_pipeline::{
             BlendMode, DepthStencilMode, GraphicPipeline, GraphicPipelineInfo,
-            GraphicPipelineInfoBuilder, StencilMode, VertexInputMode,
+            GraphicPipelineInfoBuilder, StencilMode, VertexInputState,
         },
         image::{
             Image, ImageInfo, ImageInfoBuilder, ImageSubresource, ImageType, ImageView,
@@ -63,7 +63,7 @@ use {
     archery::SharedPointerKind,
     derive_builder::Builder,
     glam::uvec2,
-    log::{info, trace},
+    log::{debug, info, trace},
     raw_window_handle::HasRawWindowHandle,
     std::{
         error::Error,
@@ -220,7 +220,7 @@ where
             })
             .collect::<Vec<_>>();
 
-        info!(
+        debug!(
             "Supported GPUs: {:#?}",
             physical_devices
                 .iter()
@@ -238,12 +238,12 @@ where
             .max_by_key(PhysicalDevice::score_device_type)
             .ok_or(DriverError::Unsupported)?;
 
-        info!("Selected GPU: {:#?}", physical_device);
+        debug!("Selected GPU: {:#?}", physical_device);
 
         let device = Shared::new(Device::create(&instance, physical_device, cfg)?);
         let surface_formats = Device::surface_formats(&device, &surface)?;
 
-        info!("Surface formats: {:#?}", surface_formats);
+        debug!("Surface formats: {:#?}", surface_formats);
 
         // TODO: Explicitly fallback to BGRA_UNORM
         let format = surface_formats

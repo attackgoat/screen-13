@@ -1,13 +1,16 @@
 use {
-    super::{DescriptorSetLayout, Device, DriverError, SamplerDesc},
+    super::{DescriptorSetLayout, Device, DriverError, SamplerDesc, VertexInputState},
     crate::{as_u32_slice, ptr::Shared},
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
     log::{error, trace, warn},
-    spirq::{ty::Type, AccessType, DescriptorType, EntryPoint, ReflectConfig, Variable},
+    spirq::{
+        ty::{ScalarType, Type, VectorType},
+        AccessType, DescriptorType, EntryPoint, ReflectConfig, Variable,
+    },
     std::{
-        collections::btree_map::BTreeMap,
+        collections::{btree_map::BTreeMap, HashMap},
         fmt::{Debug, Formatter},
         iter::repeat,
         ops::Deref,
@@ -487,6 +490,134 @@ impl Shader {
             })?;
 
         Ok(entry_point)
+    }
+
+    pub fn vertex_input(&self) -> Result<VertexInputState, DriverError> {
+        let entry_point = self.reflect_entry_point()?;
+        let mut res = DescriptorBindingMap::default();
+
+        fn scalar_format(ty: &ScalarType) -> vk::Format {
+            match ty {
+                ScalarType::Float(n) => match n {
+                    2 => vk::Format::R32_SFLOAT,
+                    4 => vk::Format::R32G32_SFLOAT,
+                    8 => vk::Format::R32G32B32_SFLOAT,
+                    16 => vk::Format::R32G32B32A32_SFLOAT,
+                    _ => unreachable!(),
+                },
+                ScalarType::Signed(n) => match n {
+                    4 => vk::Format::R32_SINT,
+                    16 => vk::Format::R32G32_SINT,
+                    32 => vk::Format::R32G32B32_SINT,
+                    64 => vk::Format::R32G32B32A32_SINT,
+                    _ => unreachable!(),
+                },
+                ScalarType::Unsigned(n) => match n {
+                    4 => vk::Format::R32_UINT,
+                    16 => vk::Format::R32G32_UINT,
+                    32 => vk::Format::R32G32B32_UINT,
+                    64 => vk::Format::R32G32B32A32_UINT,
+                    _ => unreachable!(),
+                },
+                _ => unimplemented!("{:?}", ty),
+            }
+        }
+
+        let mut input_rates_strides = HashMap::new();
+        let mut binding_locations = BTreeMap::new();
+        let mut vertex_attribute_descriptions = vec![];
+
+        for (name, location, ty) in entry_point.vars.iter().filter_map(|var| match var {
+            Variable::Input { name, location, ty } => Some((name, location, ty)),
+            _ => None,
+        }) {
+            let (binding, guessed_rate) = name
+                .as_ref()
+                .filter(|name| name.contains("_ibind") || name.contains("_vbind"))
+                .map(|name| {
+                    let binding = name[name.rfind("bind").unwrap()..]
+                        .parse()
+                        .unwrap_or_default();
+                    let rate = if name.contains("_ibind") {
+                        vk::VertexInputRate::INSTANCE
+                    } else {
+                        vk::VertexInputRate::VERTEX
+                    };
+
+                    (binding, rate)
+                })
+                .unwrap_or_default();
+            let (location, component) = location.into_inner();
+
+            // log::info!(
+            //     "layout(binding = {binding}, location = {location}) {:?} {:?}",
+            //     ty,
+            //     name
+            // );
+
+            if let Some((input_rate, _)) = input_rates_strides.get(&binding) {
+                assert_eq!(*input_rate, guessed_rate);
+            }
+
+            let byte_stride = ty.nbyte().unwrap_or_default() as u32;
+            let (input_rate, stride) = input_rates_strides.entry(binding).or_default();
+            *input_rate = guessed_rate;
+            *stride += byte_stride;
+
+            binding_locations
+                .entry(binding)
+                .or_insert_with(BTreeMap::new)
+                .entry(location)
+                .or_insert_with(Vec::new)
+                .push((component, byte_stride));
+
+            vertex_attribute_descriptions.push(vk::VertexInputAttributeDescription {
+                location,
+                binding,
+                format: match ty {
+                    Type::Scalar(ty) => scalar_format(ty),
+                    Type::Vector(ty) => scalar_format(&ty.scalar_ty),
+                    _ => unimplemented!("{:?}", ty),
+                },
+                offset: 0,
+            });
+        }
+
+        for vertex_attribute_description in &mut vertex_attribute_descriptions {
+            for (location, component_strides) in binding_locations
+                .get(&vertex_attribute_description.binding)
+                .unwrap()
+            {
+                if *location < vertex_attribute_description.location {
+                    for (_, stride) in component_strides {
+                        vertex_attribute_description.offset += *stride;
+                    }
+                }
+            }
+        }
+
+        vertex_attribute_descriptions.sort_by(|lhs, rhs| {
+            let binding = lhs.binding.cmp(&rhs.binding);
+            if binding.is_lt() {
+                return binding;
+            }
+
+            lhs.location.cmp(&rhs.location)
+        });
+
+        let mut vertex_binding_descriptions = vec![];
+        for (binding, (input_rate, stride)) in input_rates_strides.into_iter() {
+            vertex_binding_descriptions.push(vk::VertexInputBindingDescription {
+                binding,
+                input_rate,
+                stride,
+            });
+        }
+
+        Ok(VertexInputState {
+            vertex_attribute_descriptions,
+            vertex_binding_descriptions,
+        })
     }
 }
 

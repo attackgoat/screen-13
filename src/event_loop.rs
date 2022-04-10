@@ -7,7 +7,7 @@ use {
     },
     archery::SharedPointerKind,
     glam::{uvec2, UVec2},
-    log::{debug, info},
+    log::{debug, info, trace},
     std::{
         io::{Error, ErrorKind},
         marker::PhantomData,
@@ -89,7 +89,7 @@ where
         let mut dt_filtered = 1.0 / refresh_rate;
         last_frame -= Duration::from_secs_f32(dt_filtered);
 
-        info!("First frame dt: {}", dt_filtered);
+        debug!("First frame dt: {}", dt_filtered);
 
         while !will_exit {
             puffin::GlobalProfiler::lock().new_frame();
@@ -110,7 +110,7 @@ where
             });
 
             if !events.is_empty() {
-                debug!("Received {} events", events.len(),);
+                trace!("Received {} events", events.len(),);
             }
 
             let now = Instant::now();
@@ -145,7 +145,7 @@ where
 
             let elapsed = Instant::now() - now;
 
-            debug!(
+            trace!(
                 "Frame complete ({}% load, {} μs)",
                 ((elapsed.as_secs_f32() / refresh_rate) * 100.0) as usize,
                 elapsed.as_micros()

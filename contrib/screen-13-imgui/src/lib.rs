@@ -48,7 +48,7 @@ where
                 device,
                 GraphicPipelineInfo::new()
                     .blend(BlendMode::Alpha)
-                    .vertex_input(VertexInputMode::ImGui),
+                    .cull_mode(vk::CullModeFlags::NONE),
                 [
                     Shader::new_vertex(*include_bytes!(concat!(
                         env!("OUT_DIR"),
