@@ -1,17 +1,17 @@
 use {
-    super::{file_key, re_run_if_changed,  Canonicalize},
+    super::{file_key, re_run_if_changed, Canonicalize},
     crate::{
         into_u8_slice,
         pak::{Detail, IndexType, Mesh, Meshlet, ModelBuf, ModelId, Primitive},
     },
-    glam::{quat, vec3,  Mat4,  Vec3},
+    glam::{quat, vec3, Mat4, Vec3},
     gltf::{
         buffer::Data,
         import,
         mesh::{util::ReadIndices, Mode, Reader},
-        Buffer,  Node,
+        Buffer, Node,
     },
-    log::{info,  warn},
+    log::{info, warn},
     meshopt::{
         build_meshlets, generate_vertex_remap, optimize_overdraw_in_place,
         optimize_vertex_cache_in_place, optimize_vertex_fetch_in_place, quantize_unorm,
@@ -20,7 +20,7 @@ use {
     ordered_float::OrderedFloat,
     serde::Deserialize,
     std::{
-        collections::{ HashMap, HashSet},
+        collections::{HashMap, HashSet},
         io::Error,
         mem::size_of,
         path::{Path, PathBuf},

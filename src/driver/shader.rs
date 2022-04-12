@@ -1,13 +1,13 @@
 use {
     super::{DescriptorSetLayout, Device, DriverError, SamplerDesc, VertexInputState},
-    crate::{ptr::Shared},
+    crate::ptr::Shared,
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
-    log::{error},
+    log::error,
     spirq::{
         ty::{ScalarType, Type},
-         DescriptorType, EntryPoint, ReflectConfig, Variable,
+        DescriptorType, EntryPoint, ReflectConfig, Variable,
     },
     std::{
         collections::{btree_map::BTreeMap, HashMap},

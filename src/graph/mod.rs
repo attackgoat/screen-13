@@ -31,9 +31,8 @@ use {
     crate::{
         driver::{
             buffer_access_ranges, buffer_read_access_range, format_aspect_mask, BufferSubresource,
-             ComputePipeline, DepthStencilMode, DescriptorBindingMap, 
-             GraphicPipeline, ImageSubresource, PipelineDescriptorInfo,
-            RayTracePipeline, SampleCount,
+            ComputePipeline, DepthStencilMode, DescriptorBindingMap, GraphicPipeline,
+            ImageSubresource, PipelineDescriptorInfo, RayTracePipeline, SampleCount,
         },
         ptr::Shared,
     },

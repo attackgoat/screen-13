@@ -1,17 +1,10 @@
 use {
-    super::{
-        Device, DriverError,
-        QueueFamily,
-    },
+    super::{Device, DriverError, QueueFamily},
     crate::ptr::Shared,
     archery::SharedPointerKind,
     ash::vk,
     log::trace,
-    std::{
-        fmt::Debug,
-        ops::{Deref},
-        thread::panicking,
-    },
+    std::{fmt::Debug, ops::Deref, thread::panicking},
 };
 
 #[derive(Debug)]

@@ -1,13 +1,10 @@
 use {
     super::{
-         BufferBinding, BufferLeaseBinding, ImageBinding, ImageLeaseBinding, Information,
-        NodeIndex, RayTraceAccelerationBinding, RayTraceAccelerationLeaseBinding, RenderGraph,
-         Subresource
+        BufferBinding, BufferLeaseBinding, ImageBinding, ImageLeaseBinding, Information, NodeIndex,
+        RayTraceAccelerationBinding, RayTraceAccelerationLeaseBinding, RenderGraph, Subresource,
     },
     crate::{
-        driver::{
-            BufferInfo, BufferSubresource, ImageInfo, ImageSubresource, ImageViewInfo,
-        },
+        driver::{BufferInfo, BufferSubresource, ImageInfo, ImageSubresource, ImageViewInfo},
         ptr::Shared,
     },
     archery::SharedPointerKind,

@@ -16,7 +16,7 @@ use {
     archery::SharedPointerKind,
     ash::vk,
     glam::{ivec2, uvec2, vec2, UVec3},
-    log::{ warn},
+    log::warn,
     meshopt::any_as_u8_slice,
     std::{
         marker::PhantomData,

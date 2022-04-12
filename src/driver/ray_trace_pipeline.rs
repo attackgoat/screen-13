@@ -1,9 +1,9 @@
 use {
     super::{
-        Buffer, BufferInfo, DescriptorBindingMap,  Device, DriverError,
-        PipelineDescriptorInfo, Shader,
+        Buffer, BufferInfo, DescriptorBindingMap, Device, DriverError, PipelineDescriptorInfo,
+        Shader,
     },
-    crate::{ ptr::Shared},
+    crate::ptr::Shared,
     archery::SharedPointerKind,
     ash::vk,
     glam::{Mat3, Vec3},

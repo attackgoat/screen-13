@@ -5,7 +5,7 @@ use {
     ash::vk,
     derive_builder::Builder,
     glam::{uvec3, UVec2},
-    log::{debug,  warn},
+    log::{debug, warn},
     std::{ops::Deref, slice, thread::panicking, time::Duration},
 };
 

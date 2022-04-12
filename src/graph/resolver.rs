@@ -1,7 +1,7 @@
 use {
     super::{
-        AttachmentIndex, AttachmentMap, Binding, Bindings, Edge,  ExecutionPipeline,
-        Node, Pass,  Rect, RenderGraph, Subpass,  Unbind,
+        AttachmentIndex, AttachmentMap, Binding, Bindings, Edge, ExecutionPipeline, Node, Pass,
+        Rect, RenderGraph, Subpass, Unbind,
     },
     crate::{
         align_up_u32,
@@ -26,9 +26,7 @@ use {
         mem::take,
         ops::Range,
     },
-    vk_sync::{
-        cmd::pipeline_barrier, AccessType, BufferBarrier, GlobalBarrier, ImageBarrier, 
-    },
+    vk_sync::{cmd::pipeline_barrier, AccessType, BufferBarrier, GlobalBarrier, ImageBarrier},
 };
 
 #[derive(Debug)]

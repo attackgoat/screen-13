@@ -24,7 +24,7 @@ use {
         BitmapFontId, BitmapId, BlobId, MaterialId, MaterialInfo, ModelBuf, ModelId, Pak, SceneBuf,
         SceneId,
     },
-    log::{error,  trace, warn},
+    log::{error, trace, warn},
     serde::{de::DeserializeOwned, Deserialize, Serialize},
     std::{
         collections::HashMap,

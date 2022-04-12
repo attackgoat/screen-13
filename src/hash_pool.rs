@@ -3,8 +3,7 @@ use {
         driver::{
             Buffer, BufferInfo, BufferInfoBuilder, CommandBuffer, DescriptorPool,
             DescriptorPoolInfo, DescriptorPoolInfoBuilder, Device, DriverError, Image, ImageInfo,
-            ImageInfoBuilder, QueueFamily,  RenderPass, RenderPassInfo,
-            RenderPassInfoBuilder,
+            ImageInfoBuilder, QueueFamily, RenderPass, RenderPassInfo, RenderPassInfoBuilder,
         },
         graph::{BufferBinding, ImageBinding},
         ptr::Shared,

@@ -1,16 +1,15 @@
 use {
     super::{
-        DescriptorBindingMap,  Device, DriverError, PipelineDescriptorInfo,
-        SampleCount, Shader, SpecializationInfo,
+        DescriptorBindingMap, Device, DriverError, PipelineDescriptorInfo, SampleCount, Shader,
+        SpecializationInfo,
     },
-    crate::{ ptr::Shared},
-    
+    crate::ptr::Shared,
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
-    log::{ trace, warn},
+    log::{trace, warn},
     ordered_float::OrderedFloat,
-    std::{ ffi::CString, thread::panicking},
+    std::{ffi::CString, thread::panicking},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]

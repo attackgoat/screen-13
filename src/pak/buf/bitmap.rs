@@ -4,9 +4,7 @@ use {
     anyhow::Context,
     image::{buffer::ConvertBuffer, imageops::FilterType, open, DynamicImage, RgbaImage},
     serde::Deserialize,
-    std::{
-        path::{Path, PathBuf},
-    },
+    std::path::{Path, PathBuf},
 };
 
 #[cfg(feature = "bake")]

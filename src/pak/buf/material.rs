@@ -1,7 +1,7 @@
 use {
     super::{
-        bitmap::Bitmap, file_key, is_toml,  parse_hex_color, parse_hex_scalar, Asset,
-        Canonicalize, MaterialId, MaterialInfo,
+        bitmap::Bitmap, file_key, is_toml, parse_hex_color, parse_hex_scalar, Asset, Canonicalize,
+        MaterialId, MaterialInfo,
     },
     crate::pak::{BitmapBuf, BitmapColor, BitmapFormat},
     anyhow::Context as _,

@@ -1,13 +1,13 @@
 use {
     super::{DriverError, PhysicalDevice, QueueFamily, QueueFamilyProperties},
     ash::{extensions::ext, vk, Entry},
-    log::{debug, error,  trace, warn},
+    log::{debug, error, trace, warn},
     std::{
         ffi::{c_void, CStr, CString},
         fmt::{Debug, Formatter},
         ops::Deref,
         os::raw::c_char,
-        thread::{panicking},
+        thread::panicking,
     },
 };
 

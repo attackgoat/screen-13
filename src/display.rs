@@ -1,8 +1,7 @@
 use {
     super::{
         driver::{
-            image_access_layout, CommandBuffer, Device, DriverError,  Swapchain,
-            SwapchainError,
+            image_access_layout, CommandBuffer, Device, DriverError, Swapchain, SwapchainError,
         },
         graph::{RenderGraph, SwapchainImageNode},
         ptr::Shared,
@@ -11,12 +10,8 @@ use {
     archery::SharedPointerKind,
     ash::vk,
     log::trace,
-    std::{
-        error::Error,
-        fmt::Formatter,
-        time::{ Instant},
-    },
-    vk_sync::{cmd::pipeline_barrier, AccessType,  ImageBarrier, ImageLayout},
+    std::{error::Error, fmt::Formatter, time::Instant},
+    vk_sync::{cmd::pipeline_barrier, AccessType, ImageBarrier, ImageLayout},
 };
 
 #[derive(Debug)]

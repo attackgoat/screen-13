@@ -1,7 +1,7 @@
 use {
     super::{
-        file_key, is_toml, material::Material, model::Model, parent, Asset, Canonicalize,
-        SceneBuf, SceneId,
+        file_key, is_toml, material::Material, model::Model, parent, Asset, Canonicalize, SceneBuf,
+        SceneId,
     },
     crate::pak::SceneRefData,
     glam::{vec3, EulerRot, Quat, Vec3},

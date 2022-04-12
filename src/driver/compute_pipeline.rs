@@ -1,14 +1,14 @@
 use {
     super::{
-        DescriptorBindingMap,  Device, DriverError, PipelineDescriptorInfo,
-        Shader, SpecializationInfo,
+        DescriptorBindingMap, Device, DriverError, PipelineDescriptorInfo, Shader,
+        SpecializationInfo,
     },
-    crate::{ ptr::Shared},
+    crate::ptr::Shared,
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
     log::trace,
-    std::{ ffi::CString, ops::Deref, thread::panicking},
+    std::{ffi::CString, ops::Deref, thread::panicking},
 };
 
 #[derive(Debug)]

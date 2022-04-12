@@ -1,14 +1,10 @@
 use {
     super::{
         BufferLeaseNode, BufferNode, ImageLeaseNode, ImageNode, RayTraceAccelerationLeaseNode,
-        RayTraceAccelerationNode, RenderGraph,
-        SwapchainImageBinding, 
+        RayTraceAccelerationNode, RenderGraph, SwapchainImageBinding,
     },
     crate::{
-        driver::{
-            Buffer, BufferInfo,  Image, ImageInfo, RayTraceAcceleration, 
-            
-        },
+        driver::{Buffer, BufferInfo, Image, ImageInfo, RayTraceAcceleration},
         ptr::Shared,
         Lease,
     },
