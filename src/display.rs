@@ -1,10 +1,10 @@
 use {
     super::{
         driver::{
-            image_access_layout, CommandBuffer, Device, DriverError, ImageSubresource, Swapchain,
+            image_access_layout, CommandBuffer, Device, DriverError,  Swapchain,
             SwapchainError,
         },
-        graph::{RenderGraph, Resolver, SwapchainImageNode},
+        graph::{RenderGraph, SwapchainImageNode},
         ptr::Shared,
         HashPool,
     },
@@ -12,12 +12,11 @@ use {
     ash::vk,
     log::trace,
     std::{
-        collections::VecDeque,
         error::Error,
         fmt::Formatter,
-        time::{Duration, Instant},
+        time::{ Instant},
     },
-    vk_sync::{cmd::pipeline_barrier, AccessType, GlobalBarrier, ImageBarrier, ImageLayout},
+    vk_sync::{cmd::pipeline_barrier, AccessType,  ImageBarrier, ImageLayout},
 };
 
 #[derive(Debug)]
@@ -28,7 +27,6 @@ where
     cache: HashPool<P>,
     cmd_bufs: Vec<[CommandBuffer<P>; 3]>,
     device: Shared<Device<P>, P>,
-    resolved: VecDeque<Resolver<P>>,
     swapchain: Swapchain<P>,
 }
 
@@ -43,7 +41,6 @@ where
             cache: HashPool::new(&device),
             cmd_bufs: Default::default(),
             device,
-            resolved: Default::default(),
             swapchain,
         }
     }
@@ -64,8 +61,6 @@ where
     }
 
     unsafe fn begin(cmd_buf: &mut CommandBuffer<P>) -> Result<(), ()> {
-        use std::slice::from_ref;
-
         Device::wait_for_fence(&cmd_buf.device, &cmd_buf.fence).map_err(|_| ())?;
         CommandBuffer::drop_fenced(cmd_buf);
 
@@ -259,7 +254,7 @@ impl From<DriverError> for DisplayError {
 }
 
 impl From<SwapchainError> for DisplayError {
-    fn from(err: SwapchainError) -> Self {
+    fn from(_: SwapchainError) -> Self {
         Self::DeviceLost
     }
 }

@@ -7,10 +7,8 @@ use {
     log::{error, trace},
     parking_lot::Mutex,
     std::{
-        cell::RefCell,
         collections::{btree_map::Entry, BTreeMap},
         ops::Deref,
-        ptr::null,
         thread::panicking,
     },
 };

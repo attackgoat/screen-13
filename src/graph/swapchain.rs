@@ -1,11 +1,10 @@
 use {
     super::{
-        Bind, Binding, RenderGraph, Resolver, Subresource, SubresourceAccess, SwapchainImageNode,
+        Bind, Binding, RenderGraph, Resolver, SwapchainImageNode,
         Unbind,
     },
     crate::{
         driver::{Image, SwapchainImage},
-        ptr::Shared,
     },
     archery::SharedPointerKind,
     std::{fmt::Debug, mem::replace},

@@ -1,20 +1,17 @@
 use {
     super::{
-        Binding, BufferBinding, BufferLeaseBinding, ImageBinding, ImageLeaseBinding, Information,
+         BufferBinding, BufferLeaseBinding, ImageBinding, ImageLeaseBinding, Information,
         NodeIndex, RayTraceAccelerationBinding, RayTraceAccelerationLeaseBinding, RenderGraph,
-        Resolver, Subresource, SubresourceAccess, SwapchainImageBinding,
+         Subresource
     },
     crate::{
         driver::{
             BufferInfo, BufferSubresource, ImageInfo, ImageSubresource, ImageViewInfo,
-            SwapchainImage,
         },
         ptr::Shared,
     },
     archery::SharedPointerKind,
-    log::warn,
     std::{marker::PhantomData, ops::Range},
-    vk_sync::AccessType,
 };
 
 #[derive(Debug)]

@@ -1,13 +1,12 @@
 use {
     super::{
         bitmap::Bitmap, file_key, re_run_if_changed, Asset, BitmapBuf, BitmapFontBuf, BitmapFontId,
-        BlobId, Canonicalize, Id,
+        BlobId, Canonicalize,
     },
     crate::pak::BitmapFormat,
     log::info,
     serde::Deserialize,
     std::{
-        collections::HashMap,
         fs::read_to_string,
         fs::File,
         io::{Cursor, Error, Read},

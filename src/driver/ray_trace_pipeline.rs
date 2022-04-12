@@ -1,15 +1,15 @@
 use {
     super::{
-        Buffer, BufferInfo, DescriptorBindingMap, DescriptorSetLayout, Device, DriverError,
+        Buffer, BufferInfo, DescriptorBindingMap,  Device, DriverError,
         PipelineDescriptorInfo, Shader,
     },
-    crate::{as_u32_slice, ptr::Shared},
+    crate::{ ptr::Shared},
     archery::SharedPointerKind,
     ash::vk,
     glam::{Mat3, Vec3},
     log::{info, trace},
     parking_lot::Mutex,
-    std::{collections::BTreeMap, ffi::CString, ops::Deref, thread::panicking},
+    std::{ffi::CString, ops::Deref, thread::panicking},
 };
 
 #[derive(Debug)]

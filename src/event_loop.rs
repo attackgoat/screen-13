@@ -1,6 +1,6 @@
 use {
     super::{
-        driver::{Device, Driver, DriverConfig, DriverConfigBuilder, DriverError},
+        driver::{Device, Driver, DriverConfigBuilder, DriverError},
         frame::FrameContext,
         ptr::Shared,
         Display, DisplayError,
@@ -9,13 +9,11 @@ use {
     glam::{uvec2, UVec2},
     log::{debug, info, trace},
     std::{
-        io::{Error, ErrorKind},
         marker::PhantomData,
         mem::take,
         time::{Duration, Instant},
     },
     winit::{
-        dpi::LogicalSize,
         event::{Event, WindowEvent},
         event_loop::ControlFlow,
         monitor::MonitorHandle,

@@ -1,7 +1,7 @@
 use {
     super::{
-        AttachmentIndex, AttachmentMap, Binding, Bindings, Edge, Execution, ExecutionPipeline,
-        Node, Pass, PassRef, Rect, RenderGraph, Subpass, Subresource, SubresourceAccess, Unbind,
+        AttachmentIndex, AttachmentMap, Binding, Bindings, Edge,  ExecutionPipeline,
+        Node, Pass,  Rect, RenderGraph, Subpass,  Unbind,
     },
     crate::{
         align_up_u32,
@@ -19,16 +19,15 @@ use {
     ash::vk,
     glam::{IVec2, UVec2},
     itertools::Itertools,
-    log::{debug, info, trace},
+    log::{debug, trace},
     std::{
         collections::{BTreeMap, BTreeSet, VecDeque},
         iter::repeat,
         mem::take,
         ops::Range,
-        ptr::null,
     },
     vk_sync::{
-        cmd::pipeline_barrier, AccessType, BufferBarrier, GlobalBarrier, ImageBarrier, ImageLayout,
+        cmd::pipeline_barrier, AccessType, BufferBarrier, GlobalBarrier, ImageBarrier, 
     },
 };
 
@@ -339,7 +338,7 @@ where
             .rev()
             .filter(move |(_, pass)| {
                 pass.execs
-                    .iter()
+                    .iter() // <- This is the horrible part BENCHES!
                     .any(|exec| exec.accesses.contains_key(&node_idx))
             })
             .map(|(pass_idx, _)| pass_idx)
@@ -833,7 +832,7 @@ where
             }
 
             // Set any resolve attachments now
-            for (attachment_idx, attachment) in subpass
+            for (attachment_idx, _attachment) in subpass
                 .resolve_attachments
                 .attached
                 .iter()
@@ -1087,8 +1086,7 @@ where
     ) {
         use std::slice::from_ref;
 
-        // TODO: into_iter and avoid a bunch of cloning below? Do we use accesses later?
-        let mut accesses = pass.execs[exec_idx].accesses.iter();
+        let accesses = pass.execs[exec_idx].accesses.iter();
 
         // trace!("record_execution_barriers: {:#?}", accesses);
 
@@ -1708,9 +1706,9 @@ where
                     }
                 } else if let Some(buffer) = bound_node.as_driver_buffer() {
                     if let Some(view_info) = view_info {
-                        let mut buffer_view_info = view_info.as_buffer().unwrap();
+                        let buffer_view_info = view_info.as_buffer().unwrap();
 
-                        trace!("BVI: {}..{}", buffer_view_info.start, buffer_view_info.end);
+                        // trace!("BVI: {}..{}", buffer_view_info.start, buffer_view_info.end);
 
                         buffer_infos.push(vk::DescriptorBufferInfo {
                             buffer: **buffer,

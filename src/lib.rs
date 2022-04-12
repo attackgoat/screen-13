@@ -1,14 +1,3 @@
-// REMOVE BEFORE FLIGHT:
-#![allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unreachable_code,
-    unused_mut,
-    unused_unsafe,
-    unused_assignments
-)]
-
 pub mod driver;
 pub mod graph;
 

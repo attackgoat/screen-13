@@ -1,16 +1,16 @@
 use {
     super::{
-        DescriptorBindingMap, DescriptorSetLayout, Device, DriverError, PipelineDescriptorInfo,
+        DescriptorBindingMap,  Device, DriverError, PipelineDescriptorInfo,
         SampleCount, Shader, SpecializationInfo,
     },
-    crate::{as_u32_slice, ptr::Shared},
-    anyhow::Context,
+    crate::{ ptr::Shared},
+    
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
-    log::{debug, trace, warn},
+    log::{ trace, warn},
     ordered_float::OrderedFloat,
-    std::{collections::BTreeMap, ffi::CString, thread::panicking},
+    std::{ ffi::CString, thread::panicking},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -140,7 +140,7 @@ where
             .map(|shader| shader.into())
             .collect::<Vec<Shader>>();
 
-        let mut descriptor_bindings = shaders
+        let descriptor_bindings = shaders
             .iter()
             .map(|shader| shader.descriptor_bindings(&device))
             .collect::<Vec<_>>();

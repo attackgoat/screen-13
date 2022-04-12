@@ -5,7 +5,6 @@ use {
     image::{buffer::ConvertBuffer, imageops::FilterType, open, DynamicImage, RgbaImage},
     serde::Deserialize,
     std::{
-        io::{Error, ErrorKind},
         path::{Path, PathBuf},
     },
 };
@@ -36,6 +35,7 @@ impl Bitmap {
         }
     }
 
+    #[allow(dead_code)]
     pub fn with_color(mut self, color: BitmapColor) -> Self {
         self.color = Some(color);
         self

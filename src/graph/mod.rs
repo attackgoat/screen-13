@@ -31,8 +31,8 @@ use {
     crate::{
         driver::{
             buffer_access_ranges, buffer_read_access_range, format_aspect_mask, BufferSubresource,
-            CommandBuffer, ComputePipeline, DepthStencilMode, DescriptorBindingMap, DescriptorInfo,
-            DescriptorSetLayout, GraphicPipeline, ImageSubresource, PipelineDescriptorInfo,
+             ComputePipeline, DepthStencilMode, DescriptorBindingMap, 
+             GraphicPipeline, ImageSubresource, PipelineDescriptorInfo,
             RayTracePipeline, SampleCount,
         },
         ptr::Shared,
@@ -46,7 +46,6 @@ use {
         fmt::{Debug, Formatter},
         ops::Range,
     },
-    vk_sync::ImageLayout,
 };
 
 // Aliases for clarity
@@ -360,9 +359,9 @@ where
 
     fn stage(&self) -> vk::PipelineStageFlags {
         match self {
-            ExecutionPipeline::Compute(pipeline) => vk::PipelineStageFlags::COMPUTE_SHADER,
-            ExecutionPipeline::Graphic(pipeline) => vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-            ExecutionPipeline::RayTrace(pipeline) => vk::PipelineStageFlags::RAY_TRACING_SHADER_KHR,
+            ExecutionPipeline::Compute(_) => vk::PipelineStageFlags::COMPUTE_SHADER,
+            ExecutionPipeline::Graphic(_) => vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+            ExecutionPipeline::RayTrace(_) => vk::PipelineStageFlags::RAY_TRACING_SHADER_KHR,
         }
     }
 }
@@ -727,11 +726,6 @@ where
                     .get(&node_idx)
                     .map(|accesses| accesses[1].access)
             })
-    }
-
-    /// Returns the index of the last pass which accesses a given node
-    fn last_node_access_pass_index(&self, node: impl Node<P>) -> Option<usize> {
-        self.node_access_pass_index(node, self.passes.iter().rev())
     }
 
     /// Returns the index of the first pass in a list of passes which accesses a given node

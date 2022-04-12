@@ -16,7 +16,7 @@ use {
     archery::SharedPointerKind,
     ash::vk,
     glam::{ivec2, uvec2, vec2, UVec3},
-    log::{trace, warn},
+    log::{ warn},
     meshopt::any_as_u8_slice,
     std::{
         marker::PhantomData,
@@ -364,7 +364,7 @@ where
             .or_insert([access, access]);
     }
 
-    pub fn read_node(mut self, node: impl Node<P> + Information) -> Self {
+    pub fn read_node(self, node: impl Node<P> + Information) -> Self {
         let access = AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer;
         self.access_node(node, access)
     }
@@ -506,7 +506,7 @@ where
     }
 
     pub fn read_descriptor_subrange<N>(
-        mut self,
+        self,
         descriptor: impl Into<Descriptor>,
         node: N,
         view_info: impl Into<N::Information>,
@@ -520,7 +520,7 @@ where
         self.access_descriptor_subrange(descriptor, node, access, view_info, subresource)
     }
 
-    pub fn read_node(mut self, node: impl Node<P>) -> Self {
+    pub fn read_node(self, node: impl Node<P>) -> Self {
         let access = <T as Access>::DEFAULT_READ;
         self.access_node(node, access)
     }
@@ -560,7 +560,7 @@ where
     }
 
     pub fn write_descriptor_subrange<N>(
-        mut self,
+        self,
         descriptor: impl Into<Descriptor>,
         node: N,
         view_info: impl Into<N::Information>,
@@ -836,7 +836,7 @@ where
         let image = image.into();
         let image_view_info = image_view_info.into();
         let node_idx = image.index();
-        let (image_fmt, sample_count) = self.image_info(node_idx);
+        let (_, sample_count) = self.image_info(node_idx);
 
         {
             let pass = self.pass.as_mut();
@@ -909,7 +909,7 @@ where
         let image = image.into();
         let image_view_info = image_view_info.into();
         let node_idx = image.index();
-        let (image_fmt, sample_count) = self.image_info(node_idx);
+        let (_, sample_count) = self.image_info(node_idx);
 
         {
             let pass = self.pass.as_mut();
@@ -977,7 +977,7 @@ where
             .unwrap_or_default()
     }
 
-    pub fn push_constants(mut self, data: impl Sized) -> Self {
+    pub fn push_constants(self, data: impl Sized) -> Self {
         let pipeline = self.pipeline();
         let whole_stage = Self::pipeline_stages(pipeline);
         self.push_stage_constants(0, whole_stage, data)
@@ -1048,7 +1048,7 @@ where
         let image = image.into();
         let image_view_info = image_view_info.into();
         let node_idx = image.index();
-        let (image_fmt, sample_count) = self.image_info(node_idx);
+        let (_, sample_count) = self.image_info(node_idx);
 
         {
             let pass = self.pass.as_mut();
@@ -1117,7 +1117,7 @@ where
         let image = image.into();
         let image_view_info = image_view_info.into();
         let node_idx = image.index();
-        let (image_fmt, sample_count) = self.image_info(node_idx);
+        let (_, sample_count) = self.image_info(node_idx);
 
         {
             let pass = self.pass.as_mut();
@@ -1226,7 +1226,7 @@ where
         let image = image.into();
         let image_view_info = image_view_info.into();
         let node_idx = image.index();
-        let (image_fmt, sample_count) = self.image_info(node_idx);
+        let (_, sample_count) = self.image_info(node_idx);
 
         {
             let pass = self.pass.as_mut();

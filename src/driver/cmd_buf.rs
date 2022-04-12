@@ -1,6 +1,6 @@
 use {
     super::{
-        is_write_access, Buffer, BufferSubresource, Device, DriverError, Image, ImageSubresource,
+        Device, DriverError,
         QueueFamily,
     },
     crate::ptr::Shared,
@@ -9,7 +9,7 @@ use {
     log::trace,
     std::{
         fmt::Debug,
-        ops::{Deref, Range},
+        ops::{Deref},
         thread::panicking,
     },
 };

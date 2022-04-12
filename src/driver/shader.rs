@@ -1,19 +1,18 @@
 use {
     super::{DescriptorSetLayout, Device, DriverError, SamplerDesc, VertexInputState},
-    crate::{as_u32_slice, ptr::Shared},
+    crate::{ptr::Shared},
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
-    log::{error, trace, warn},
+    log::{error},
     spirq::{
-        ty::{ScalarType, Type, VectorType},
-        AccessType, DescriptorType, EntryPoint, ReflectConfig, Variable,
+        ty::{ScalarType, Type},
+         DescriptorType, EntryPoint, ReflectConfig, Variable,
     },
     std::{
         collections::{btree_map::BTreeMap, HashMap},
         fmt::{Debug, Formatter},
         iter::repeat,
-        ops::Deref,
     },
 };
 
@@ -155,8 +154,6 @@ where
     where
         P: SharedPointerKind,
     {
-        use std::slice::from_ref;
-
         let descriptor_set_count = descriptor_bindings
             .keys()
             .max()
@@ -494,7 +491,6 @@ impl Shader {
 
     pub fn vertex_input(&self) -> Result<VertexInputState, DriverError> {
         let entry_point = self.reflect_entry_point()?;
-        let mut res = DescriptorBindingMap::default();
 
         fn scalar_format(ty: &ScalarType) -> vk::Format {
             match ty {

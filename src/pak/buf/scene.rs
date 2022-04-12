@@ -1,6 +1,6 @@
 use {
     super::{
-        file_key, is_toml, material::Material, model::Model, parent, Asset, Canonicalize, Id,
+        file_key, is_toml, material::Material, model::Model, parent, Asset, Canonicalize,
         SceneBuf, SceneId,
     },
     crate::pak::SceneRefData,
@@ -12,7 +12,6 @@ use {
         Deserialize, Deserializer,
     },
     std::{
-        collections::HashMap,
         f32::consts::PI,
         fmt::Formatter,
         io::Error,

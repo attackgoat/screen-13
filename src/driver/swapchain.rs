@@ -5,7 +5,7 @@ use {
     ash::vk,
     derive_builder::Builder,
     glam::{uvec3, UVec2},
-    log::{debug, info, warn},
+    log::{debug,  warn},
     std::{ops::Deref, slice, thread::panicking, time::Duration},
 };
 
@@ -124,7 +124,7 @@ where
 
                 Err(SwapchainError::SurfaceLost)
             }
-            err => {
+            _ => {
                 // Probably:
                 // VK_ERROR_OUT_OF_HOST_MEMORY
                 // VK_ERROR_OUT_OF_DEVICE_MEMORY

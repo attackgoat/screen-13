@@ -132,7 +132,7 @@ where
             vk::PhysicalDeviceImagelessFramebufferFeatures::builder();
         let mut buffer_device_address_features =
             vk::PhysicalDeviceBufferDeviceAddressFeatures::builder();
-        let mut multi_draw_props = vk::PhysicalDeviceMultiDrawPropertiesEXT::builder();
+        // let mut multi_draw_props = vk::PhysicalDeviceMultiDrawPropertiesEXT::builder();
 
         #[cfg(not(target_os = "macos"))]
         let mut separate_depth_stencil_layouts_features =

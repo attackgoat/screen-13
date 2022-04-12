@@ -4,8 +4,6 @@ use {
     std::{
         collections::HashMap,
         fmt::{Debug, Error, Formatter},
-        iter::FromIterator,
-        ops::Range,
     },
 };
 

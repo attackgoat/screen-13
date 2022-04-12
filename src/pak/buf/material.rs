@@ -1,11 +1,11 @@
 use {
     super::{
-        bitmap::Bitmap, file_key, is_toml, parent, parse_hex_color, parse_hex_scalar, Asset,
-        Canonicalize, Id, MaterialId, MaterialInfo,
+        bitmap::Bitmap, file_key, is_toml,  parse_hex_color, parse_hex_scalar, Asset,
+        Canonicalize, MaterialId, MaterialInfo,
     },
     crate::pak::{BitmapBuf, BitmapColor, BitmapFormat},
     anyhow::Context as _,
-    image::{imageops::FilterType, DynamicImage, GenericImageView, GrayImage, RgbImage},
+    image::{imageops::FilterType, DynamicImage, GenericImageView, GrayImage},
     log::info,
     serde::{
         de::{
@@ -15,7 +15,6 @@ use {
         Deserialize, Deserializer,
     },
     std::{
-        collections::HashMap,
         fmt::Formatter,
         num::FpCategory,
         path::{Path, PathBuf},
@@ -424,7 +423,7 @@ impl Material {
                     .join(&src)
                     .canonicalize()
                     .context("Unable to canonicalize source path")?;
-                let mut bitmap = if is_toml(&src) {
+                let bitmap = if is_toml(&src) {
                     let mut bitmap = Asset::read(&src)
                         .context("Unable to read normal bitmap asset")?
                         .into_bitmap()
@@ -483,7 +482,7 @@ impl Material {
                     .join(&src)
                     .canonicalize()
                     .context("Unable to canonicalize source path")?;
-                let mut bitmap = if is_toml(&src) {
+                let bitmap = if is_toml(&src) {
                     let mut bitmap = Asset::read(&src)
                         .context("Unable to read emissive bitmap asset")?
                         .into_bitmap()

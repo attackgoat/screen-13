@@ -24,7 +24,7 @@ use {
         BitmapFontId, BitmapId, BlobId, MaterialId, MaterialInfo, ModelBuf, ModelId, Pak, SceneBuf,
         SceneId,
     },
-    log::{error, info, trace, warn},
+    log::{error,  trace, warn},
     serde::{de::DeserializeOwned, Deserialize, Serialize},
     std::{
         collections::HashMap,
@@ -240,10 +240,6 @@ impl<T> DataRef<T> {
         }
     }
 
-    fn is_data(&self) -> bool {
-        matches!(self, Self::Data(_))
-    }
-
     fn pos_len(&self) -> Option<(u64, usize)> {
         match self {
             Self::Ref(range) => Some((range.start as _, (range.end - range.start) as _)),
@@ -327,7 +323,7 @@ impl PakBuf {
 
         let rt = Arc::new(Runtime::new()?);
         let mut tasks = vec![];
-        let mut writer = Arc::new(Mutex::new(Default::default()));
+        let writer = Arc::new(Mutex::new(Default::default()));
 
         // Load the source file into an Asset::Content instance
         let src_dir = parent(&src);
@@ -438,8 +434,16 @@ impl PakBuf {
                                     model.bake(&writer, &src_dir, Some(&asset_path)).unwrap();
                                 }));
                             }
-                            Asset::Scene(_scene) => {
-                                todo!();
+                            Asset::Scene(mut scene) => {
+                                let writer = Arc::clone(&writer);
+                                let src_dir = src_dir.clone();
+                                let asset_path = asset_path.clone();
+                                let asset_parent = asset_parent.clone();
+                                let rt2 = rt.clone();
+                                tasks.push(rt.spawn_blocking(move || {
+                                    scene.canonicalize(&src_dir, &asset_parent);
+                                    scene.bake(&rt2, &writer, &src_dir, &asset_path).unwrap();
+                                }));
                             }
                             _ => unimplemented!(),
                         }
@@ -497,7 +501,7 @@ impl PakBuf {
         } else {
             bincode::deserialize_from(data)
         }
-        .map_err(|err| Error::from(ErrorKind::InvalidData))
+        .map_err(|_| Error::from(ErrorKind::InvalidData))
     }
 
     pub fn from_stream(mut stream: impl Stream + 'static) -> Result<Self, Error> {

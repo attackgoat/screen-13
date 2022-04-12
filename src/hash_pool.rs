@@ -3,14 +3,13 @@ use {
         driver::{
             Buffer, BufferInfo, BufferInfoBuilder, CommandBuffer, DescriptorPool,
             DescriptorPoolInfo, DescriptorPoolInfoBuilder, Device, DriverError, Image, ImageInfo,
-            ImageInfoBuilder, QueueFamily, QueueFamilyBuilder, RenderPass, RenderPassInfo,
+            ImageInfoBuilder, QueueFamily,  RenderPass, RenderPassInfo,
             RenderPassInfoBuilder,
         },
         graph::{BufferBinding, ImageBinding},
         ptr::Shared,
     },
     archery::SharedPointerKind,
-    log::trace,
     parking_lot::Mutex,
     std::{
         collections::{HashMap, VecDeque},

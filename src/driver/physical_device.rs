@@ -1,5 +1,5 @@
 use {
-    super::{Device, DriverConfig, Instance, Surface},
+    super::{Instance, Surface},
     crate::ptr::Shared,
     archery::SharedPointerKind,
     ash::vk,
@@ -44,9 +44,9 @@ impl PhysicalDevice {
     }
 
     pub fn has_presentation_support<P>(
-        this: &Self,
-        instance: &Shared<Instance, P>,
-        surface: &Surface<P>,
+        _this: &Self,
+        _instance: &Shared<Instance, P>,
+        _surface: &Surface<P>,
     ) -> bool
     where
         P: SharedPointerKind,

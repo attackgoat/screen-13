@@ -1,17 +1,17 @@
 use {
-    super::{file_key, re_run_if_changed, Asset, Canonicalize, Id},
+    super::{file_key, re_run_if_changed,  Canonicalize},
     crate::{
         into_u8_slice,
         pak::{Detail, IndexType, Mesh, Meshlet, ModelBuf, ModelId, Primitive},
     },
-    glam::{quat, vec3, vec4, Mat4, Quat, Vec3},
+    glam::{quat, vec3,  Mat4,  Vec3},
     gltf::{
         buffer::Data,
         import,
         mesh::{util::ReadIndices, Mode, Reader},
-        Buffer, Gltf, Node,
+        Buffer,  Node,
     },
-    log::{info, trace, warn},
+    log::{info,  warn},
     meshopt::{
         build_meshlets, generate_vertex_remap, optimize_overdraw_in_place,
         optimize_vertex_cache_in_place, optimize_vertex_fetch_in_place, quantize_unorm,
@@ -20,8 +20,7 @@ use {
     ordered_float::OrderedFloat,
     serde::Deserialize,
     std::{
-        collections::{BTreeMap, BTreeSet, HashMap, HashSet},
-        env::{current_dir, set_current_dir},
+        collections::{ HashMap, HashSet},
         io::Error,
         mem::size_of,
         path::{Path, PathBuf},
@@ -32,6 +31,7 @@ use {
 #[cfg(feature = "bake")]
 use {super::Writer, parking_lot::Mutex, std::sync::Arc};
 
+#[allow(dead_code)]
 type Bone = (String, Mat4);
 type Index = u32;
 type Joint = u32;
@@ -332,7 +332,7 @@ impl Model {
             optimize_overdraw_in_place(
                 &index_buf,
                 &Self::vertex_data_adapter(&vertex_buf, vertex_stride),
-                1.05,
+                self.overdraw_threshold(),
             );
             optimize_vertex_fetch_in_place(&mut index_buf, &mut vertex_buf);
         }
@@ -661,7 +661,7 @@ impl Model {
                 });
 
                 // Optimize and append the levels of detail
-                for indices in lods {
+                for _i_think_this_is_broken_indices in lods {
                     let (indices, vertices_optimal, vertex_count, _) =
                         self.optimize_mesh(&vertices, false);
 

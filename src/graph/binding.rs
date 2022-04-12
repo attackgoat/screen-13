@@ -1,20 +1,19 @@
 use {
     super::{
         BufferLeaseNode, BufferNode, ImageLeaseNode, ImageNode, RayTraceAccelerationLeaseNode,
-        RayTraceAccelerationNode, RenderGraph, Subresource, SubresourceAccess,
-        SwapchainImageBinding, SwapchainImageNode,
+        RayTraceAccelerationNode, RenderGraph,
+        SwapchainImageBinding, 
     },
     crate::{
         driver::{
-            Buffer, BufferInfo, DescriptorPool, Image, ImageInfo, RayTraceAcceleration, RenderPass,
-            SwapchainImage,
+            Buffer, BufferInfo,  Image, ImageInfo, RayTraceAcceleration, 
+            
         },
         ptr::Shared,
         Lease,
     },
     archery::SharedPointerKind,
     glam::UVec2,
-    log::trace,
     std::{
         fmt::Debug,
         mem::replace,
@@ -242,17 +241,6 @@ macro_rules! bind {
                     (&self.item, previous_access)
                 }
 
-                /// Allows for direct access to the item inside this binding, without the Shared
-                /// wrapper. Returns the previous access type and subresource access which you
-                /// should use to create a barrier for whatever access is actually being done.
-                pub(super) fn access_mut(&mut self,
-                    access: AccessType,
-                ) -> (&mut $name<P>, AccessType) {
-                    let previous_access = replace(&mut self.access, access);
-
-                    (Shared::get_mut(&mut self.item).unwrap(), previous_access)
-                }
-
                 /// Returns a mutable borrow only if no other clones of this shared item exist.
                 pub fn get_mut(&mut self) -> Option<&mut $name<P>> {
                     Shared::get_mut(&mut self.item)
@@ -371,6 +359,8 @@ macro_rules! bind_lease {
             where
                 P: SharedPointerKind,
             {
+                // TODO: Remove after ray tracing baked in
+                #[allow(dead_code)]
                 pub(super) fn [<as_ $name:snake _lease>](&self) -> &Lease<[<$name Binding>]<P>, P> {
                     if let Self::[<$name Lease>](binding, _) = self {
                         &binding.0

@@ -14,6 +14,7 @@ const fn mouse_button_idx(button: MouseButton) -> u16 {
     }
 }
 
+#[allow(dead_code)]
 const fn idx_mouse_button(button: u16) -> MouseButton {
     match button {
         0 => MouseButton::Left,
