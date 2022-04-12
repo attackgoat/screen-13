@@ -176,7 +176,7 @@ macro_rules! lease {
                     let cache_ref = Shared::clone(cache);
                     let mut cache = cache.lock();
 
-                    if cache.is_empty() || ![<can_lease_ $dst:snake>](cache.front().unwrap()) {
+                    if cache.is_empty() || ![<can_lease_ $dst:snake>](cache.front_mut().unwrap()) {
                         // Calls the function defined in the other macros
                         let item = [<create_ $dst:snake>](&pool.device, self)?;
 
@@ -217,7 +217,7 @@ macro_rules! lease_info {
 lease_info!(QueueFamily -> CommandBuffer);
 
 // Used by macro invocation, above
-fn can_lease_command_buffer(cmd_buf: &CommandBuffer<impl SharedPointerKind>) -> bool {
+fn can_lease_command_buffer(cmd_buf: &mut CommandBuffer<impl SharedPointerKind>) -> bool {
     let can_lease = unsafe {
         // Don't lease this command buffer if it is unsignalled; we'll create a new one
         // and wait for this, and those behind it, to signal.
@@ -284,7 +284,7 @@ macro_rules! lease_info_binding {
             }
 
             // Called by the lease macro
-            const fn [<can_lease_ $dst:snake _binding>]<T>(_: &T) -> bool {
+            fn [<can_lease_ $dst:snake _binding>]<T>(_: &mut T) -> bool {
                 true
             }
 

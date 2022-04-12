@@ -129,10 +129,14 @@ where
             .build()];
 
         let mut imageless_framebuffer_features =
-            vk::PhysicalDeviceImagelessFramebufferFeatures::builder().imageless_framebuffer(true);
+            vk::PhysicalDeviceImagelessFramebufferFeatures::builder();
         let mut buffer_device_address_features =
-            vk::PhysicalDeviceBufferDeviceAddressFeatures::builder().buffer_device_address(true);
+            vk::PhysicalDeviceBufferDeviceAddressFeatures::builder();
         let mut multi_draw_props = vk::PhysicalDeviceMultiDrawPropertiesEXT::builder();
+
+        #[cfg(not(target_os = "macos"))]
+        let mut separate_depth_stencil_layouts_features =
+            vk::PhysicalDeviceSeparateDepthStencilLayoutsFeatures::builder();
         // let mut acceleration_struct_features = if features.contains(FeatureFlags::RAY_TRACING) {
         //     Some(ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default())
         // } else {
@@ -150,6 +154,11 @@ where
                 .push_next(&mut buffer_device_address_features)
                 .push_next(&mut imageless_framebuffer_features);
 
+            #[cfg(not(target_os = "macos"))]
+            {
+                features2 = features2.push_next(&mut separate_depth_stencil_layouts_features);
+            }
+
             // if features.contains(FeatureFlags::RAY_TRACING) {
             //     features2 = features2
             //         .push_next(acceleration_struct_features.as_mut().unwrap())
@@ -162,6 +171,21 @@ where
 
             assert_eq!(features2.features.multi_draw_indirect, vk::TRUE);
             assert_eq!(features2.features.sampler_anisotropy, vk::TRUE);
+
+            assert_eq!(
+                imageless_framebuffer_features.imageless_framebuffer,
+                vk::TRUE
+            );
+            assert_eq!(
+                buffer_device_address_features.buffer_device_address,
+                vk::TRUE
+            );
+
+            #[cfg(not(target_os = "macos"))]
+            assert_eq!(
+                separate_depth_stencil_layouts_features.separate_depth_stencil_layouts,
+                vk::TRUE
+            );
 
             // debug!("{:#?}", &features2.features);
             // debug!("{:#?}", &scalar_block);
@@ -190,8 +214,6 @@ where
             // assert!(descriptor_indexing.descriptor_binding_partially_bound != 0);
             // assert!(descriptor_indexing.descriptor_binding_variable_descriptor_count != 0);
             // assert!(descriptor_indexing.runtime_descriptor_array != 0);
-
-            // assert!(imageless_framebuffer.imageless_framebuffer != 0);
 
             // assert!(shader_float16_int8.shader_int8 != 0);
 
@@ -229,7 +251,6 @@ where
             //     );
             // }
 
-            //assert!(get_buffer_device_address_features.buffer_device_address != 0);
             let device_create_info = vk::DeviceCreateInfo::builder()
                 .queue_create_infos(&queue_info)
                 .enabled_extension_names(&device_extension_names)
@@ -461,42 +482,49 @@ bitflags! {
 
 impl FeatureFlags {
     pub fn extension_names(&self) -> Vec<*const i8> {
-        let mut device_extension_names_raw = vec![
-            vk::KhrBufferDeviceAddressFn::name().as_ptr(),
-            vk::KhrImagelessFramebufferFn::name().as_ptr(),
-            vk::KhrImageFormatListFn::name().as_ptr(),
-        ];
+        let mut res = vec![];
+
+        #[cfg(target_os = "macos")]
+        {
+            res.extend([
+                vk::KhrBufferDeviceAddressFn::name(),
+                vk::KhrCreateRenderpass2Fn::name(),
+                vk::KhrImagelessFramebufferFn::name(),
+                vk::KhrImageFormatListFn::name(),
+                vk::KhrSeparateDepthStencilLayoutsFn::name(),
+            ]);
+        }
 
         // if self.contains(FeatureFlags::DLSS) {
         //     device_extension_names_raw.extend(
         //         [
-        //             b"VK_NVX_binary_import\0".as_ptr() as *const i8,
-        //             b"VK_KHR_push_descriptor\0".as_ptr() as *const i8,
-        //             vk::NvxImageViewHandleFn::name().as_ptr(),
+        //             b"VK_NVX_binary_import\0" as *const i8,
+        //             b"VK_KHR_push_descriptor\0" as *const i8,
+        //             vk::NvxImageViewHandleFn::name(),
         //         ]
         //         .iter(),
         //     );
         // }
 
         if self.contains(FeatureFlags::PRESENTATION) {
-            device_extension_names_raw.push(khr::Swapchain::name().as_ptr());
+            res.push(khr::Swapchain::name());
         }
 
         if self.contains(FeatureFlags::RAY_TRACING) {
-            device_extension_names_raw.extend(
+            res.extend(
                 [
-                    vk::KhrPipelineLibraryFn::name().as_ptr(),        // rt dep
-                    vk::KhrDeferredHostOperationsFn::name().as_ptr(), // rt dep
-                    vk::KhrBufferDeviceAddressFn::name().as_ptr(),    // rt dep
-                    vk::KhrAccelerationStructureFn::name().as_ptr(),
-                    vk::KhrRayTracingPipelineFn::name().as_ptr(),
-                    //vk::KhrRayQueryFn::name().as_ptr(),
+                    vk::KhrPipelineLibraryFn::name(),        // rt dep
+                    vk::KhrDeferredHostOperationsFn::name(), // rt dep
+                    vk::KhrBufferDeviceAddressFn::name(),    // rt dep
+                    vk::KhrAccelerationStructureFn::name(),
+                    vk::KhrRayTracingPipelineFn::name(),
+                    //vk::KhrRayQueryFn::name(),
                 ]
                 .iter(),
             );
         }
 
-        device_extension_names_raw
+        res.iter().map(|name| name.as_ptr()).collect()
     }
 }
 

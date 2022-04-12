@@ -55,7 +55,7 @@ pub use {
         },
     },
     ash::{self, vk},
-    vk_sync::AccessType,
+    vk_sync::{AccessType, ImageLayout},
 };
 
 use {
@@ -69,11 +69,47 @@ use {
         error::Error,
         ffi::CStr,
         fmt::{Display, Formatter},
+        ops::Range,
         os::raw::c_char,
     },
 };
 
 pub type QueueFamilyBuilder = QueueFamily;
+
+#[allow(clippy::reversed_empty_ranges)]
+pub fn buffer_access_ranges(regions: &[vk::BufferCopy]) -> (Range<u64>, Range<u64>) {
+    let mut src = u64::MAX..u64::MIN;
+    let mut dst = u64::MAX..u64::MIN;
+    for region in regions.iter() {
+        src.start = src.start.min(region.src_offset);
+        src.end = src.end.max(region.src_offset + region.size);
+
+        dst.start = dst.start.min(region.dst_offset);
+        dst.end = dst.end.max(region.dst_offset + region.size);
+    }
+
+    debug_assert!(src.end > src.start);
+    debug_assert!(dst.end > dst.start);
+
+    (src, dst)
+}
+
+#[allow(clippy::reversed_empty_ranges)]
+pub fn buffer_read_access_range(regions: &[vk::BufferImageCopy]) -> Range<u64> {
+    debug_assert!(!regions.is_empty());
+
+    let mut res = u64::MAX..u64::MIN;
+    for region in regions.iter() {
+        res.start = res.start.min(region.buffer_offset);
+        res.end = res.end.max(
+            region.buffer_offset + (region.buffer_row_length + region.buffer_image_height) as u64,
+        );
+    }
+
+    debug_assert!(res.end > res.start);
+
+    res
+}
 
 pub const fn format_aspect_mask(fmt: vk::Format) -> vk::ImageAspectFlags {
     match fmt {
@@ -91,6 +127,14 @@ pub const fn format_aspect_mask(fmt: vk::Format) -> vk::ImageAspectFlags {
             vk::ImageAspectFlags::DEPTH.as_raw() | vk::ImageAspectFlags::STENCIL.as_raw(),
         ),
         _ => vk::ImageAspectFlags::COLOR,
+    }
+}
+
+pub const fn image_access_layout(access: AccessType) -> ImageLayout {
+    if matches!(access, AccessType::Present | AccessType::ComputeShaderWrite) {
+        ImageLayout::General
+    } else {
+        ImageLayout::Optimal
     }
 }
 

@@ -78,7 +78,7 @@ macro_rules! bind {
         paste::paste! {
             impl<'a, P> Bind<PassRef<'a, P>, PipelinePassRef<'a, [<$name Pipeline>]<P>, P>, P> for &'a Shared<[<$name Pipeline>]<P>, P>
             where
-                P: SharedPointerKind + 'static,
+                P: SharedPointerKind + Send + 'static,
             {
                 // TODO: Allow binding as explicit secondary command buffers? like with compute/raytrace stuff
                 fn bind(self, mut pass: PassRef<'a, P>) -> PipelinePassRef<'_, [<$name Pipeline>]<P>, P> {
@@ -226,7 +226,7 @@ where
 
 pub struct PassRef<'a, P>
 where
-    P: SharedPointerKind,
+    P: SharedPointerKind + Send,
 {
     pub(super) exec_idx: usize,
     pub(super) graph: &'a mut RenderGraph<P>,
@@ -235,7 +235,7 @@ where
 
 impl<'a, P> PassRef<'a, P>
 where
-    P: SharedPointerKind + 'static,
+    P: SharedPointerKind + Send + 'static,
 {
     pub(super) fn new(graph: &'a mut RenderGraph<P>, name: String) -> PassRef<'a, P> {
         let pass_idx = graph.passes.len();
@@ -260,8 +260,44 @@ where
         }
     }
 
-    pub fn access_node(mut self, node: impl Node<P>, access: AccessType) -> Self {
-        self.push_node_access(node, access, None);
+    /// Instruct the graph to provide vulkan barriers around access to the given node.
+    ///
+    /// The resolver will insert an execution barrier into the command buffer as required using
+    /// the provided access type. This allows you to do whatever was declared here inside an
+    /// excution callback registered after this call.
+    pub fn access_node(mut self, node: impl Node<P> + Information, access: AccessType) -> Self {
+        self.assert_bound_graph_node(node);
+
+        let idx = node.index();
+        let binding = &self.graph.bindings[idx];
+
+        let mut node_access_range = None;
+        if let Some(buf) = binding.as_driver_buffer() {
+            node_access_range = Some(Subresource::Buffer((0..buf.info.size).into()));
+        } else if let Some(image) = binding.as_driver_image() {
+            node_access_range = Some(Subresource::Image(image.info.default_view_info().into()))
+        }
+
+        self.push_node_access(node, access, node_access_range);
+        self
+    }
+
+    /// Instruct the graph to provide vulkan barriers around access to the given node with
+    /// specific information about the subresource being accessed.
+    ///
+    /// The resolver will insert an execution barrier into the command buffer as required using
+    /// the provided access type. This allows you to do whatever was declared here inside an
+    /// excution callback registered after this call.
+    pub fn access_node_subrange<N>(
+        mut self,
+        node: N,
+        access: AccessType,
+        subresource: impl Into<N::Subresource>,
+    ) -> Self
+    where
+        N: View<P>,
+    {
+        self.push_node_access(node, access, Some(subresource.into().into()));
         self
     }
 
@@ -328,7 +364,7 @@ where
             .or_insert([access, access]);
     }
 
-    pub fn read_node(mut self, node: impl Node<P>) -> Self {
+    pub fn read_node(mut self, node: impl Node<P> + Information) -> Self {
         let access = AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer;
         self.access_node(node, access)
     }
@@ -337,7 +373,7 @@ where
         self.graph
     }
 
-    pub fn write_node(self, node: impl Node<P>) -> Self {
+    pub fn write_node(self, node: impl Node<P> + Information) -> Self {
         let access = AccessType::AnyShaderWrite;
         self.access_node(node, access)
     }
@@ -346,7 +382,7 @@ where
 pub struct PipelinePassRef<'a, T, P>
 where
     T: Access,
-    P: SharedPointerKind,
+    P: SharedPointerKind + Send,
 {
     __: PhantomData<T>,
     pass: PassRef<'a, P>,
@@ -355,7 +391,7 @@ where
 impl<'a, T, P> PipelinePassRef<'a, T, P>
 where
     T: Access,
-    P: SharedPointerKind + 'static,
+    P: SharedPointerKind + Send + 'static,
 {
     pub fn access_descriptor<N>(
         self,
@@ -387,10 +423,10 @@ where
         <N as View<P>>::Subresource: From<<N as View<P>>::Information>,
     {
         let view_info = view_info.into();
-        let subresource_range =
+        let subresource =
             <N as View<P>>::Subresource::from(<N as View<P>>::Information::clone(&view_info));
 
-        self.access_descriptor_subrange(descriptor, node, access, view_info, subresource_range)
+        self.access_descriptor_subrange(descriptor, node, access, view_info, subresource)
     }
 
     pub fn access_descriptor_subrange<N>(
@@ -399,14 +435,14 @@ where
         node: N,
         access: AccessType,
         view_info: impl Into<N::Information>,
-        subresource_range: impl Into<N::Subresource>,
+        subresource: impl Into<N::Subresource>,
     ) -> Self
     where
         N: View<P>,
         <N as View<P>>::Information: Into<ViewType>,
     {
         self.pass
-            .push_node_access(node, access, Some(subresource_range.into().into()));
+            .push_node_access(node, access, Some(subresource.into().into()));
         self.push_node_view_bind(node, view_info.into(), descriptor.into());
 
         self
@@ -463,10 +499,10 @@ where
         <N as View<P>>::Subresource: From<<N as View<P>>::Information>,
     {
         let view_info = view_info.into();
-        let subresource_range =
+        let subresource =
             <N as View<P>>::Subresource::from(<N as View<P>>::Information::clone(&view_info));
 
-        self.read_descriptor_subrange(descriptor, node, view_info, subresource_range)
+        self.read_descriptor_subrange(descriptor, node, view_info, subresource)
     }
 
     pub fn read_descriptor_subrange<N>(
@@ -474,14 +510,14 @@ where
         descriptor: impl Into<Descriptor>,
         node: N,
         view_info: impl Into<N::Information>,
-        subresource_range: impl Into<N::Subresource>,
+        subresource: impl Into<N::Subresource>,
     ) -> Self
     where
         N: View<P>,
         <N as View<P>>::Information: Into<ViewType>,
     {
         let access = <T as Access>::DEFAULT_READ;
-        self.access_descriptor_subrange(descriptor, node, access, view_info, subresource_range)
+        self.access_descriptor_subrange(descriptor, node, access, view_info, subresource)
     }
 
     pub fn read_node(mut self, node: impl Node<P>) -> Self {
@@ -517,10 +553,10 @@ where
         <N as View<P>>::Subresource: From<<N as View<P>>::Information>,
     {
         let view_info = view_info.into();
-        let subresource_range =
+        let subresource =
             <N as View<P>>::Subresource::from(<N as View<P>>::Information::clone(&view_info));
 
-        self.write_descriptor_subrange(descriptor, node, view_info, subresource_range)
+        self.write_descriptor_subrange(descriptor, node, view_info, subresource)
     }
 
     pub fn write_descriptor_subrange<N>(
@@ -528,14 +564,14 @@ where
         descriptor: impl Into<Descriptor>,
         node: N,
         view_info: impl Into<N::Information>,
-        subresource_range: impl Into<N::Subresource>,
+        subresource: impl Into<N::Subresource>,
     ) -> Self
     where
         N: View<P>,
         <N as View<P>>::Information: Into<ViewType>,
     {
         let access = <T as Access>::DEFAULT_WRITE;
-        self.access_descriptor_subrange(descriptor, node, access, view_info, subresource_range)
+        self.access_descriptor_subrange(descriptor, node, access, view_info, subresource)
     }
 
     pub fn write_node(self, node: impl Node<P>) -> Self {
@@ -611,7 +647,7 @@ where
 
 impl<'a, P> PipelinePassRef<'a, GraphicPipeline<P>, P>
 where
-    P: SharedPointerKind + 'static,
+    P: SharedPointerKind + Send + 'static,
 {
     pub fn attach_color(
         self,
@@ -698,7 +734,6 @@ where
         let pass = self.pass.as_mut();
 
         assert!(pass.load_attachments.depth_stencil.is_none());
-        assert!(pass.depth_stencil.is_some());
         assert!(pass
             .load_attachments
             .attached
@@ -845,8 +880,11 @@ where
                 .unwrap_or(true));
         }
 
-        self.pass
-            .push_node_access(image, AccessType::ColorAttachmentRead, None);
+        self.pass.push_node_access(
+            image,
+            AccessType::ColorAttachmentRead,
+            Some(Subresource::Image(image_view_info.into())),
+        );
 
         self
     }
@@ -872,8 +910,6 @@ where
         let image_view_info = image_view_info.into();
         let node_idx = image.index();
         let (image_fmt, sample_count) = self.image_info(node_idx);
-
-        assert!(self.pass.as_ref().depth_stencil.is_some());
 
         {
             let pass = self.pass.as_mut();
@@ -910,8 +946,11 @@ where
                 .unwrap_or(true));
         }
 
-        self.pass
-            .push_node_access(image, AccessType::DepthStencilAttachmentRead, None);
+        self.pass.push_node_access(
+            image,
+            AccessType::DepthStencilAttachmentRead,
+            Some(Subresource::Image(image_view_info.into())),
+        );
 
         self
     }
@@ -1049,8 +1088,11 @@ where
                 .is_none());
         }
 
-        self.pass
-            .push_node_access(image, AccessType::ColorAttachmentWrite, None);
+        self.pass.push_node_access(
+            image,
+            AccessType::ColorAttachmentWrite,
+            Some(Subresource::Image(image_view_info.into())),
+        );
 
         self
     }
@@ -1076,8 +1118,6 @@ where
         let image_view_info = image_view_info.into();
         let node_idx = image.index();
         let (image_fmt, sample_count) = self.image_info(node_idx);
-
-        assert!(self.pass.as_ref().depth_stencil.is_some());
 
         {
             let pass = self.pass.as_mut();
@@ -1115,7 +1155,7 @@ where
             } else {
                 AccessType::DepthAttachmentWriteStencilReadOnly
             },
-            None,
+            Some(Subresource::Image(image_view_info.into())),
         );
 
         self
@@ -1226,8 +1266,11 @@ where
                 .is_none());
         }
 
-        self.pass
-            .push_node_access(image, AccessType::ColorAttachmentWrite, None);
+        self.pass.push_node_access(
+            image,
+            AccessType::ColorAttachmentWrite,
+            Some(Subresource::Image(image_view_info.into())),
+        );
 
         self
     }
@@ -1253,8 +1296,6 @@ where
         let image_view_info = image_view_info.into();
         let node_idx = image.index();
         let (_, sample_count) = self.image_info(node_idx);
-
-        assert!(self.pass.as_ref().depth_stencil.is_some());
 
         {
             let pass = self.pass.as_mut();
@@ -1297,7 +1338,7 @@ where
             } else {
                 AccessType::DepthAttachmentWriteStencilReadOnly
             },
-            None,
+            Some(Subresource::Image(image_view_info.into())),
         );
 
         self
@@ -1306,7 +1347,7 @@ where
 
 impl<'a, P> PipelinePassRef<'a, RayTracePipeline<P>, P>
 where
-    P: SharedPointerKind + 'static,
+    P: SharedPointerKind + Send + 'static,
 {
     pub fn push_constants(self, data: impl Sized) -> Self {
         // TODO: Flags need limiting

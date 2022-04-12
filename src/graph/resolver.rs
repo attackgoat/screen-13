@@ -1,16 +1,16 @@
 use {
     super::{
         AttachmentIndex, AttachmentMap, Binding, Bindings, Edge, Execution, ExecutionPipeline,
-        Node, Pass, PassRef, Rect, RenderGraph, Subpass, SubresourceAccess, Unbind,
+        Node, Pass, PassRef, Rect, RenderGraph, Subpass, Subresource, SubresourceAccess, Unbind,
     },
     crate::{
         align_up_u32,
         driver::{
-            format_aspect_mask, is_read_access, AttachmentInfo, AttachmentRef, CommandBuffer,
-            DepthStencilMode, DescriptorBinding, DescriptorInfo, DescriptorPool,
-            DescriptorPoolInfo, DescriptorPoolSize, DescriptorSet, Device, DriverError,
-            FramebufferKey, FramebufferKeyAttachment, Image, ImageViewInfo, RenderPass,
-            RenderPassInfo, SampleCount, SubpassDependency, SubpassInfo,
+            format_aspect_mask, image_access_layout, is_read_access, is_write_access,
+            AttachmentInfo, AttachmentRef, CommandBuffer, DepthStencilMode, DescriptorBinding,
+            DescriptorInfo, DescriptorPool, DescriptorPoolInfo, DescriptorPoolSize, DescriptorSet,
+            Device, DriverError, FramebufferKey, FramebufferKeyAttachment, Image, ImageViewInfo,
+            RenderPass, RenderPassInfo, SampleCount, SubpassDependency, SubpassInfo,
         },
         ptr::Shared,
         HashPool, Lease,
@@ -26,6 +26,9 @@ use {
         mem::take,
         ops::Range,
         ptr::null,
+    },
+    vk_sync::{
+        cmd::pipeline_barrier, AccessType, BufferBarrier, GlobalBarrier, ImageBarrier, ImageLayout,
     },
 };
 
@@ -50,21 +53,21 @@ where
 {
     pub(super) graph: RenderGraph<P>,
     physical_passes: Vec<PhysicalPass<P>>,
-    resolved_passes: Vec<Pass<P>>,
 }
 
 impl<P> Resolver<P>
 where
-    P: SharedPointerKind + Send,
+    P: SharedPointerKind + Send + 'static,
 {
     pub(super) fn new(graph: RenderGraph<P>) -> Self {
         #[cfg(debug_assertions)]
         super::validator::assert_valid(&graph);
 
+        let physical_passes = Vec::with_capacity(graph.passes.len());
+
         Self {
             graph,
-            physical_passes: vec![],
-            resolved_passes: vec![],
+            physical_passes,
         }
     }
 
@@ -280,7 +283,7 @@ where
 
     fn bind_pipeline(
         &self,
-        cmd_buf: &CommandBuffer<P>,
+        cmd_buf: &mut CommandBuffer<P>,
         physical_pass_idx: usize,
         subpass_idx: u32,
         pipeline: &mut ExecutionPipeline<P>,
@@ -288,16 +291,26 @@ where
     ) -> Result<(), DriverError> {
         trace!("bind_pipeline");
 
+        // We store a shared reference to this pipeline inside the command buffer!
         let physical_pass = &self.physical_passes[physical_pass_idx];
         let pipeline_bind_point = pipeline.bind_point();
         let pipeline = match pipeline {
-            ExecutionPipeline::Compute(pipline) => ***pipline,
-            ExecutionPipeline::Graphic(pipeline) => physical_pass
-                .render_pass
-                .as_ref()
-                .unwrap()
-                .graphic_pipeline_ref(pipeline, depth_stencil, subpass_idx)?,
-            ExecutionPipeline::RayTrace(pipline) => ***pipline,
+            ExecutionPipeline::Compute(pipeline) => {
+                CommandBuffer::push_fenced_drop(cmd_buf, Shared::clone(pipeline));
+                ***pipeline
+            }
+            ExecutionPipeline::Graphic(pipeline) => {
+                CommandBuffer::push_fenced_drop(cmd_buf, Shared::clone(pipeline));
+                physical_pass
+                    .render_pass
+                    .as_ref()
+                    .unwrap()
+                    .graphic_pipeline_ref(pipeline, depth_stencil, subpass_idx)?
+            }
+            ExecutionPipeline::RayTrace(pipeline) => {
+                CommandBuffer::push_fenced_drop(cmd_buf, Shared::clone(pipeline));
+                ***pipeline
+            }
         };
 
         unsafe {
@@ -871,7 +884,7 @@ where
         cache: &mut HashPool<P>,
         schedule: &[usize],
     ) -> Result<(), DriverError> {
-        for (idx, pass_idx) in schedule.iter().copied().enumerate() {
+        for pass_idx in schedule.iter().copied() {
             // At the time this function runs the pass will already have been optimized into a
             // larger pass made out of anything that might have been merged into it - so we
             // only care about one pass at a time here
@@ -939,14 +952,11 @@ where
                 None
             };
 
-            self.physical_passes.insert(
-                idx,
-                PhysicalPass {
-                    _descriptor_pool: descriptor_pool, // Used above; but we must keep until done
-                    descriptor_sets,
-                    render_pass,
-                },
-            );
+            self.physical_passes.push(PhysicalPass {
+                _descriptor_pool: descriptor_pool, // Used above; but we must keep until done
+                descriptor_sets,
+                render_pass,
+            });
         }
 
         Ok(())
@@ -1075,6 +1085,8 @@ where
         pass: &mut Pass<P>,
         exec_idx: usize,
     ) {
+        use std::slice::from_ref;
+
         // TODO: into_iter and avoid a bunch of cloning below? Do we use accesses later?
         let mut accesses = pass.execs[exec_idx].accesses.iter();
 
@@ -1082,70 +1094,73 @@ where
 
         for (node_idx, accesses) in accesses {
             let next_access = accesses[0].access;
-            let next_subresource_range = accesses[0].subresource.as_ref();
+            let next_subresource = &accesses[0].subresource;
             let binding = &mut bindings[*node_idx];
             let previous_access = binding.access(accesses[1].access);
 
-            // trace!(
-            //     "barrier for {} {:?}->{:?}",
-            //     access.node_idx,
-            //     previous_access,
-            //     next_access
-            // );
+            let mut global_barrier = None;
+            let mut buf_barrier = None;
+            let mut image_barrier = None;
 
-            // Resolve access to this binding using a vk_sync barrier
-            match binding {
-                Binding::Image(image, _) => {
-                    CommandBuffer::image_barrier(
-                        cmd_buf,
-                        previous_access,
-                        next_access,
-                        **image.item,
-                        next_subresource_range.map(|subresource| subresource.unwrap_image()),
-                    );
-                }
-                Binding::ImageLease(image, _) => {
-                    CommandBuffer::image_barrier(
-                        cmd_buf,
-                        previous_access,
-                        next_access,
-                        **image.item,
-                        next_subresource_range.map(|subresource| subresource.unwrap_image()),
-                    );
-                }
-                Binding::Buffer(buf, _) => {
-                    CommandBuffer::buffer_barrier(
-                        cmd_buf,
-                        previous_access,
-                        next_access,
-                        **buf.item,
-                        next_subresource_range
-                            .map(|subresource| subresource.unwrap_buffer().into()),
-                    );
-                }
-                Binding::BufferLease(buf, _) => {
-                    CommandBuffer::buffer_barrier(
-                        cmd_buf,
-                        previous_access,
-                        next_access,
-                        **buf.item,
-                        next_subresource_range
-                            .map(|subresource| subresource.unwrap_buffer().into()),
-                    );
-                }
-                Binding::RayTraceAcceleration(..) | Binding::RayTraceAccelerationLease(..) => {
-                    CommandBuffer::global_barrier(cmd_buf, previous_access, next_access);
-                }
-                Binding::SwapchainImage(swapchain_image, _) => {
-                    CommandBuffer::image_barrier(
-                        cmd_buf,
-                        previous_access,
-                        next_access,
-                        **swapchain_image.item,
-                        next_subresource_range.map(|subresource| subresource.unwrap_image()),
-                    );
+            if let Some(subresource) = &next_subresource {
+                if let Some(buf) = binding.as_driver_buffer() {
+                    let subresource = subresource.unwrap_buffer();
+                    buf_barrier = Some(BufferBarrier {
+                        previous_accesses: from_ref(&previous_access),
+                        next_accesses: from_ref(&next_access),
+                        src_queue_family_index: cmd_buf.device.queue.family.idx,
+                        dst_queue_family_index: cmd_buf.device.queue.family.idx,
+                        buffer: **buf,
+                        offset: subresource.start as _,
+                        size: (subresource.end - subresource.start) as _,
+                    });
+                } else if let Some(image) = binding.as_driver_image() {
+                    image_barrier = Some(ImageBarrier {
+                        previous_accesses: from_ref(&previous_access),
+                        next_accesses: from_ref(&next_access),
+                        previous_layout: image_access_layout(previous_access),
+                        next_layout: image_access_layout(next_access),
+                        discard_contents: previous_access == AccessType::Nothing
+                            || is_write_access(next_access),
+                        src_queue_family_index: cmd_buf.device.queue.family.idx,
+                        dst_queue_family_index: cmd_buf.device.queue.family.idx,
+                        image: **image,
+                        range: subresource.unwrap_image().into_vk(),
+                    });
                 }
             }
+
+            if let Some(barrier) = &buf_barrier {
+                trace!(
+                    "buffer barrier {:?} {}..{}",
+                    barrier.buffer,
+                    barrier.offset,
+                    barrier.offset + barrier.size
+                );
+            } else if let Some(barrier) = &image_barrier {
+                trace!(
+                    "image barrier {:?} {:?} -> {:?} (layout {:?} -> {:?})",
+                    barrier.image,
+                    barrier.previous_accesses[0],
+                    barrier.next_accesses[0],
+                    barrier.previous_layout,
+                    barrier.next_layout,
+                );
+            } else {
+                trace!("global barrier {:?} -> {:?}", previous_access, next_access);
+                global_barrier = Some(GlobalBarrier {
+                    previous_accesses: from_ref(&previous_access),
+                    next_accesses: from_ref(&next_access),
+                });
+            }
+
+            pipeline_barrier(
+                &cmd_buf.device,
+                **cmd_buf,
+                global_barrier,
+                buf_barrier.as_ref().map(from_ref).unwrap_or_default(),
+                image_barrier.as_ref().map(from_ref).unwrap_or_default(),
+            );
         }
     }
 
@@ -1158,7 +1173,7 @@ where
     pub fn record_node_dependencies(
         &mut self,
         cache: &mut HashPool<P>,
-        cmd_buf: &CommandBuffer<P>,
+        cmd_buf: &mut CommandBuffer<P>,
         node: impl Node<P>,
     ) -> Result<(), DriverError>
     where
@@ -1182,7 +1197,7 @@ where
     pub fn record_node(
         &mut self,
         cache: &mut HashPool<P>,
-        cmd_buf: &CommandBuffer<P>,
+        cmd_buf: &mut CommandBuffer<P>,
         node: impl Node<P>,
     ) -> Result<(), DriverError>
     where
@@ -1198,7 +1213,7 @@ where
     fn record_node_passes(
         &mut self,
         cache: &mut HashPool<P>,
-        cmd_buf: &CommandBuffer<P>,
+        cmd_buf: &mut CommandBuffer<P>,
         node_idx: usize,
         end_pass_idx: usize,
     ) -> Result<(), DriverError> {
@@ -1213,8 +1228,8 @@ where
     fn record_scheduled_passes(
         &mut self,
         cache: &mut HashPool<P>,
-        cmd_buf: &CommandBuffer<P>,
-        schedule: &mut [usize],
+        cmd_buf: &mut CommandBuffer<P>,
+        mut schedule: &mut [usize],
         end_pass_idx: usize,
     ) -> Result<(), DriverError> {
         // Optimize the schedule; leasing the required stuff it needs
@@ -1331,13 +1346,34 @@ where
         }
 
         // We have to keep the bindings and pipelines alive until the gpu is done
-        let sorted_schedule = BTreeSet::from_iter(schedule.iter().copied());
-        for pass_idx in sorted_schedule.into_iter().rev() {
-            self.resolved_passes.push(passes.remove(pass_idx));
+        schedule.sort_unstable();
+        while let Some(schedule_idx) = schedule.last().copied() {
+            if passes.is_empty() {
+                break;
+            }
+
+            while let (Some(pass), pass_idx) = (passes.pop(), passes.len()) {
+                if pass_idx == schedule_idx {
+                    // This was a scheduled pass - store it!
+                    CommandBuffer::push_fenced_drop(cmd_buf, pass);
+                    CommandBuffer::push_fenced_drop(cmd_buf, self.physical_passes.pop().unwrap());
+                    let end = schedule.len() - 1;
+                    schedule = &mut schedule[0..end];
+                    break;
+                } else {
+                    debug_assert!(pass_idx > schedule_idx);
+
+                    self.graph.passes.push(pass);
+                }
+            }
         }
 
+        debug_assert!(self.physical_passes.is_empty());
+
         // Put the other passes back for future resolves
+        passes.reverse();
         self.graph.passes.extend(passes);
+        self.graph.passes.reverse();
 
         Ok(())
     }
@@ -1346,7 +1382,7 @@ where
     pub fn record_unscheduled_passes(
         &mut self,
         cache: &mut HashPool<P>,
-        cmd_buf: &CommandBuffer<P>,
+        cmd_buf: &mut CommandBuffer<P>,
     ) -> Result<(), DriverError>
     where
         P: 'static,
@@ -1454,9 +1490,21 @@ where
 
         schedule.reverse();
 
+        debug!(
+            "Schedule: {}",
+            schedule
+                .iter()
+                .copied()
+                .map(|idx| format!("{} {}", idx, self.graph.passes[idx].name))
+                .join(", ")
+        );
         trace!(
-            "schedule_node_passes: result = [{}]",
-            schedule.iter().join(", ")
+            "Skipping: {}",
+            unscheduled
+                .iter()
+                .copied()
+                .map(|idx| format!("{} {}", idx, self.graph.passes[idx].name))
+                .join(", ")
         );
 
         schedule
@@ -1504,7 +1552,7 @@ where
 
         trace!("submit");
 
-        let cmd_buf = cache.lease(cache.device.queue.family)?;
+        let mut cmd_buf = cache.lease(cache.device.queue.family)?;
 
         unsafe {
             Device::wait_for_fence(&cache.device, &cmd_buf.fence)
@@ -1524,7 +1572,7 @@ where
                 .map_err(|_| DriverError::OutOfMemory)?;
         }
 
-        self.record_unscheduled_passes(cache, &cmd_buf)?;
+        self.record_unscheduled_passes(cache, &mut cmd_buf)?;
 
         unsafe {
             cache
@@ -1550,7 +1598,7 @@ where
         // they will return to the pool for other things to use. The drop will happen the next time
         // someone tries to lease a command buffer and we notice this one has returned and the fence
         // has been signalled.
-        CommandBuffer::push_fenced_drop(&cmd_buf, self);
+        CommandBuffer::push_fenced_drop(&mut cmd_buf, self);
 
         Ok(())
     }

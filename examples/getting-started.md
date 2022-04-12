@@ -313,8 +313,15 @@ functions:
 
 - `access_descriptor(descriptor, node, vk_sync::AccessType)`
 - `access_descriptor_as(descriptor, node, vk_sync::AccessType, view_info)`
-- `access_descriptor_as_subrange(descriptor, node, vk_sync::AccessType, view_info, subresource_range)`
+- `access_descriptor_as_subrange(descriptor, node, vk_sync::AccessType, view_info, subresource)`
 - `read_descriptor` and `write_descriptor` with `_as` and `_as_subrange` functions
+
+Where:
+
+- `node` is any type of buffer or image node
+- `view_info` is an `ImageViewInfo { .. }` for images or `Range<u64>` for buffers
+- `subresource` is an `ImageSubresource { .. }` for images or `Range<u64>` for buffers
+- `descriptor` is a GLSL or HLSL shader binding point, as described below
 
 These functions work like the `access`, `read`, and `write` functions on `PassRef` however they
 use shader descriptor bindings instead. You may specify the descriptor parameter as either:

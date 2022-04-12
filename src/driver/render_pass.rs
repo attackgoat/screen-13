@@ -4,7 +4,7 @@ use {
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
-    log::trace,
+    log::{error, trace},
     parking_lot::Mutex,
     std::{
         cell::RefCell,
@@ -45,18 +45,18 @@ impl AttachmentInfo {
         }
     }
 
-    pub fn into_vk(self) -> vk::AttachmentDescription {
-        vk::AttachmentDescription {
-            flags: self.flags,
-            format: self.fmt,
-            samples: self.sample_count.into_vk(),
-            load_op: self.load_op,
-            store_op: self.store_op,
-            stencil_load_op: self.stencil_load_op,
-            stencil_store_op: self.stencil_store_op,
-            initial_layout: self.initial_layout,
-            final_layout: self.final_layout,
-        }
+    pub fn into_vk(self) -> vk::AttachmentDescription2 {
+        vk::AttachmentDescription2::builder()
+            .flags(self.flags)
+            .format(self.fmt)
+            .samples(self.sample_count.into_vk())
+            .load_op(self.load_op)
+            .store_op(self.store_op)
+            .stencil_load_op(self.stencil_load_op)
+            .stencil_store_op(self.stencil_store_op)
+            .initial_layout(self.initial_layout)
+            .final_layout(self.final_layout)
+            .build()
     }
 }
 
@@ -71,11 +71,10 @@ impl AttachmentRef {
         Self { attachment, layout }
     }
 
-    fn into_vk(self) -> vk::AttachmentReference {
-        vk::AttachmentReference {
-            attachment: self.attachment,
-            layout: self.layout,
-        }
+    fn into_vk(self) -> vk::AttachmentReference2Builder<'static> {
+        vk::AttachmentReference2::builder()
+            .attachment(self.attachment)
+            .layout(self.layout)
     }
 }
 
@@ -139,12 +138,6 @@ where
     {
         trace!("create");
 
-        // HACK:
-        // This ends up needing a temporary list because the attachment references need to be
-        // hashable for lookup, but the ash ones are not. We could transmute them or something....
-        let attachments_ref = Shared::<_, P>::new(RefCell::new(vec![]));
-        let attachments_ref_clone = Shared::clone(&attachments_ref);
-
         let device = Shared::clone(device);
         let attachments = info
             .attachments
@@ -156,74 +149,90 @@ where
             .iter()
             .map(|dependency| dependency.into_vk())
             .collect::<Box<[_]>>();
-        let subpasses = info
-            .subpasses
-            .iter()
-            .map(move |subpass| {
-                let mut desc = vk::SubpassDescription {
-                    flags: vk::SubpassDescriptionFlags::empty(),
-                    pipeline_bind_point: vk::PipelineBindPoint::GRAPHICS,
-                    input_attachment_count: subpass.input_attachments.len() as _,
-                    p_input_attachments: null(),
-                    color_attachment_count: subpass.color_attachments.len() as _,
-                    p_color_attachments: null(),
-                    p_resolve_attachments: null(),
-                    p_depth_stencil_attachment: null(),
-                    preserve_attachment_count: subpass.preserve_attachments.len() as _,
-                    p_preserve_attachments: null(),
-                };
 
-                let mut attachments_ref = attachments_ref_clone.borrow_mut();
+        // This vec must stay alive until the create function completes; it holds the attachments that
+        // create info points to (ash builder lifetime)
+        let mut subpass_attachments_ref = vec![];
 
-                if !subpass.color_attachments.is_empty() {
-                    let idx = attachments_ref.len();
-                    attachments_ref.extend(
-                        subpass
-                            .color_attachments
-                            .iter()
-                            .copied()
-                            .map(|attachment| attachment.into_vk()),
-                    );
-                    desc.p_color_attachments = attachments_ref[idx..].as_ptr();
-                }
+        let mut subpasses = Vec::with_capacity(info.subpasses.len());
+        for (subpass, subpass_attachments) in info.subpasses.iter().map(move |subpass| {
+            let mut attachments = vec![];
 
-                if !subpass.input_attachments.is_empty() {
-                    let idx = attachments_ref.len();
-                    attachments_ref.extend(
-                        subpass
-                            .input_attachments
-                            .iter()
-                            .copied()
-                            .map(|attachment| attachment.into_vk()),
-                    );
-                    desc.p_input_attachments = attachments_ref[idx..].as_ptr();
-                }
+            let mut color_attachments = None;
+            if !subpass.color_attachments.is_empty() {
+                color_attachments =
+                    Some(attachments.len()..attachments.len() + subpass.color_attachments.len());
+                attachments.extend(
+                    subpass
+                        .color_attachments
+                        .iter()
+                        .copied()
+                        .map(|attachment| attachment.into_vk().build()),
+                );
+            }
 
-                if !subpass.resolve_attachments.is_empty() {
-                    let idx = attachments_ref.len();
-                    attachments_ref.extend(
-                        subpass
-                            .resolve_attachments
-                            .iter()
-                            .copied()
-                            .map(|attachment| attachment.into_vk()),
-                    );
-                    desc.p_resolve_attachments = attachments_ref[idx..].as_ptr();
-                }
+            let mut input_attachments = None;
+            if !subpass.input_attachments.is_empty() {
+                input_attachments =
+                    Some(attachments.len()..attachments.len() + subpass.input_attachments.len());
+                attachments.extend(
+                    subpass
+                        .input_attachments
+                        .iter()
+                        .copied()
+                        .map(|attachment| attachment.into_vk().build()),
+                );
+            }
 
-                if !subpass.preserve_attachments.is_empty() {
-                    desc.p_preserve_attachments = subpass.preserve_attachments.as_ptr();
-                }
+            let mut resolve_attachments = None;
+            if !subpass.resolve_attachments.is_empty() {
+                resolve_attachments =
+                    Some(attachments.len()..attachments.len() + subpass.resolve_attachments.len());
+                attachments.extend(
+                    subpass
+                        .resolve_attachments
+                        .iter()
+                        .copied()
+                        .map(|attachment| attachment.into_vk().build()),
+                );
+            }
 
-                if let Some(depth_stencil_attachment) = subpass.depth_stencil_attachment {
-                    let idx = attachments_ref.len();
-                    attachments_ref.push(depth_stencil_attachment.into_vk());
-                    desc.p_depth_stencil_attachment = attachments_ref[idx..].as_ptr();
-                }
+            let mut subpass_desc = vk::SubpassDescription2::builder()
+                .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS);
 
-                desc
-            })
-            .collect::<Box<[_]>>();
+            if let Some(depth_stencil_attachment) = subpass.depth_stencil_attachment {
+                let idx = attachments.len();
+                attachments.push(depth_stencil_attachment.into_vk().build());
+                subpass_desc = subpass_desc.depth_stencil_attachment(&attachments[idx]);
+            }
+
+            let subpass = subpass_desc
+                .color_attachments(&attachments[color_attachments.unwrap_or_default()])
+                .input_attachments(&attachments[input_attachments.unwrap_or_default()])
+                .resolve_attachments(&attachments[resolve_attachments.unwrap_or_default()])
+                .preserve_attachments(&subpass.preserve_attachments)
+                .build();
+
+            (subpass, attachments)
+        }) {
+            subpasses.push(subpass);
+            subpass_attachments_ref.push(subpass_attachments);
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        let render_pass = unsafe {
+            device.create_render_pass2(
+                &vk::RenderPassCreateInfo2::builder()
+                    .flags(vk::RenderPassCreateFlags::empty())
+                    .attachments(&attachments)
+                    .dependencies(&dependencies)
+                    .subpasses(&subpasses),
+                None,
+            )
+        };
+
+        // TODO: This needs some help, above, to get the correct types - also needs fixes in resolver!!!
+        #[cfg(target_os = "macos")]
         let render_pass = unsafe {
             device.create_render_pass(
                 &vk::RenderPassCreateInfo::builder()
@@ -233,8 +242,13 @@ where
                     .subpasses(&subpasses),
                 None,
             )
-        }
-        .map_err(|_| DriverError::InvalidData)?;
+        };
+
+        // Needs contributors (or hardware!) MoltenVK is about to goto 1.2 which makes this better
+        #[cfg(target_os = "macos")]
+        todo!("There is a description of this issue in the source code that caused this panic");
+
+        let render_pass = render_pass.map_err(|_| DriverError::InvalidData)?;
 
         Ok(Self {
             info,
@@ -375,6 +389,9 @@ where
             topology: vk::PrimitiveTopology::TRIANGLE_LIST,
             ..Default::default()
         };
+        let depth_stencil = depth_stencil
+            .map(|depth_stencil| depth_stencil.into_vk())
+            .unwrap_or_default();
         let rasterization_state = vk::PipelineRasterizationStateCreateInfo {
             front_face: pipeline.info.front_face,
             line_width: 1.0,
@@ -384,37 +401,33 @@ where
         };
         let graphic_pipeline_info = vk::GraphicsPipelineCreateInfo::builder()
             .color_blend_state(&color_blend_state)
-            .stages(&stages)
-            .vertex_input_state(&vertex_input_state)
-            .input_assembly_state(&input_assembly_state)
-            .viewport_state(&viewport_state)
-            .rasterization_state(&rasterization_state)
-            .multisample_state(&multisample_state)
+            .depth_stencil_state(&depth_stencil)
             .dynamic_state(&dynamic_state)
+            .input_assembly_state(&input_assembly_state)
             .layout(pipeline.state.layout)
+            .multisample_state(&multisample_state)
+            .rasterization_state(&rasterization_state)
             .render_pass(self.render_pass)
-            .subpass(subpass_idx);
+            .stages(&stages)
+            .subpass(subpass_idx)
+            .vertex_input_state(&vertex_input_state)
+            .viewport_state(&viewport_state);
 
         let pipeline = unsafe {
-            if let Some(depth_stencil) = depth_stencil {
-                self.device.create_graphics_pipelines(
-                    vk::PipelineCache::null(),
-                    from_ref(
-                        &graphic_pipeline_info
-                            .depth_stencil_state(&depth_stencil.into_vk())
-                            .build(),
-                    ),
-                    None,
-                )
-            } else {
-                self.device.create_graphics_pipelines(
-                    vk::PipelineCache::null(),
-                    from_ref(&graphic_pipeline_info.build()),
-                    None,
-                )
-            }
+            self.device.create_graphics_pipelines(
+                vk::PipelineCache::null(),
+                from_ref(&graphic_pipeline_info),
+                None,
+            )
         }
-        .map_err(|_| DriverError::Unsupported)?[0];
+        .map_err(|(_, err)| {
+            error!(
+                "create_graphics_pipelines: {err}\n{:#?}",
+                graphic_pipeline_info.build()
+            );
+
+            DriverError::Unsupported
+        })?[0];
 
         entry.insert(pipeline);
 
@@ -469,16 +482,16 @@ pub struct SubpassDependency {
 }
 
 impl SubpassDependency {
-    pub fn into_vk(self) -> vk::SubpassDependency {
-        vk::SubpassDependency {
-            src_subpass: self.src_subpass,
-            dst_subpass: self.dst_subpass,
-            src_stage_mask: self.src_stage_mask,
-            dst_stage_mask: self.dst_stage_mask,
-            src_access_mask: self.src_access_mask,
-            dst_access_mask: self.dst_access_mask,
-            dependency_flags: self.dependency_flags,
-        }
+    pub fn into_vk(self) -> vk::SubpassDependency2 {
+        vk::SubpassDependency2::builder()
+            .src_subpass(self.src_subpass)
+            .dst_subpass(self.dst_subpass)
+            .src_stage_mask(self.src_stage_mask)
+            .dst_stage_mask(self.dst_stage_mask)
+            .src_access_mask(self.src_access_mask)
+            .dst_access_mask(self.dst_access_mask)
+            .dependency_flags(self.dependency_flags)
+            .build()
     }
 }
 

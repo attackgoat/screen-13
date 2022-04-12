@@ -1,6 +1,9 @@
 use {
     super::{
-        driver::{CommandBuffer, Device, DriverError, ImageSubresource, Swapchain, SwapchainError},
+        driver::{
+            image_access_layout, CommandBuffer, Device, DriverError, ImageSubresource, Swapchain,
+            SwapchainError,
+        },
         graph::{RenderGraph, Resolver, SwapchainImageNode},
         ptr::Shared,
         HashPool,
@@ -12,10 +15,9 @@ use {
         collections::VecDeque,
         error::Error,
         fmt::Formatter,
-        iter::repeat,
         time::{Duration, Instant},
     },
-    vk_sync::AccessType,
+    vk_sync::{cmd::pipeline_barrier, AccessType, GlobalBarrier, ImageBarrier, ImageLayout},
 };
 
 #[derive(Debug)]
@@ -24,8 +26,8 @@ where
     P: SharedPointerKind + Send,
 {
     cache: HashPool<P>,
+    cmd_bufs: Vec<[CommandBuffer<P>; 3]>,
     device: Shared<Device<P>, P>,
-    frames: Vec<Frame<P>>,
     resolved: VecDeque<Resolver<P>>,
     swapchain: Swapchain<P>,
 }
@@ -39,8 +41,8 @@ where
 
         Self {
             cache: HashPool::new(&device),
+            cmd_bufs: Default::default(),
             device,
-            frames: Default::default(),
             resolved: Default::default(),
             swapchain,
         }
@@ -61,15 +63,18 @@ where
         Ok((swapchain, render_graph))
     }
 
-    unsafe fn begin(&self, cmd_buf: &CommandBuffer<P>) -> Result<(), ()> {
+    unsafe fn begin(cmd_buf: &mut CommandBuffer<P>) -> Result<(), ()> {
         use std::slice::from_ref;
 
-        Device::wait_for_fence(&self.device, &cmd_buf.fence).map_err(|_| ())?;
+        Device::wait_for_fence(&cmd_buf.device, &cmd_buf.fence).map_err(|_| ())?;
+        CommandBuffer::drop_fenced(cmd_buf);
 
-        self.device
+        cmd_buf
+            .device
             .reset_command_pool(cmd_buf.pool, vk::CommandPoolResetFlags::RELEASE_RESOURCES)
             .map_err(|_| ())?;
-        self.device
+        cmd_buf
+            .device
             .begin_command_buffer(
                 **cmd_buf,
                 &vk::CommandBufferBeginInfo::builder()
@@ -97,34 +102,31 @@ where
         let swapchain_image = resolver.unbind_node(swapchain_node);
         let swapchain_image_idx = swapchain_image.idx as usize;
 
-        while self.frames.len() <= swapchain_image_idx {
-            self.frames.push(Frame {
-                cmd_bufs: [
-                    CommandBuffer::create(&self.device, self.device.queue.family)?,
-                    CommandBuffer::create(&self.device, self.device.queue.family)?,
-                    CommandBuffer::create(&self.device, self.device.queue.family)?,
-                ],
-                resolved_render_graph: None,
-            });
+        while self.cmd_bufs.len() <= swapchain_image_idx {
+            self.cmd_bufs.push([
+                CommandBuffer::create(&self.device, self.device.queue.family)?,
+                CommandBuffer::create(&self.device, self.device.queue.family)?,
+                CommandBuffer::create(&self.device, self.device.queue.family)?,
+            ]);
         }
 
-        let frame = &self.frames[swapchain_image_idx];
         let started = Instant::now();
+        let cmd_bufs = &mut self.cmd_bufs[swapchain_image_idx];
+        let cmd_buf = &mut cmd_bufs[0];
 
-        // Record up to but not including the swapchain work
-        {
-            let cmd_buf = &frame.cmd_bufs[0];
+        unsafe {
+            // Begin the command buffer which may stall until the previous submission has finished
+            Self::begin(cmd_buf)?;
+        }
 
-            unsafe { self.begin(cmd_buf) }?;
+        resolver.record_node_dependencies(&mut self.cache, cmd_buf, swapchain_node)?;
 
-            resolver.record_node_dependencies(&mut self.cache, cmd_buf, swapchain_node)?;
-
-            unsafe {
-                self.submit(
-                    cmd_buf,
-                    vk::SubmitInfo::builder().command_buffers(from_ref(cmd_buf)),
-                )
-            }?;
+        unsafe {
+            // Record up to but not including the swapchain work
+            Self::submit(
+                cmd_buf,
+                vk::SubmitInfo::builder().command_buffers(from_ref(cmd_buf)),
+            )?;
         }
 
         let elapsed = Instant::now() - started;
@@ -132,37 +134,47 @@ where
 
         // Switch commnd buffers because we're going to be submitting with a wait semaphore on the
         // swapchain image before we get access to record commands that use it
-        {
-            let cmd_buf = &frame.cmd_bufs[1];
+        let cmd_buf = &mut cmd_bufs[1];
 
-            unsafe { self.begin(cmd_buf) }?;
+        unsafe {
+            Self::begin(cmd_buf)?;
+        }
 
-            resolver.record_node(&mut self.cache, cmd_buf, swapchain_node)?;
+        resolver.record_node(&mut self.cache, cmd_buf, swapchain_node)?;
 
-            CommandBuffer::image_barrier(
-                cmd_buf,
-                last_swapchain_access,
-                AccessType::Present,
-                **swapchain_image,
-                Some(ImageSubresource {
-                    array_layer_count: None,
+        pipeline_barrier(
+            &cmd_buf.device,
+            **cmd_buf,
+            None,
+            &[],
+            from_ref(&ImageBarrier {
+                previous_accesses: from_ref(&last_swapchain_access),
+                next_accesses: from_ref(&AccessType::Present),
+                previous_layout: image_access_layout(last_swapchain_access),
+                next_layout: ImageLayout::General,
+                discard_contents: false,
+                src_queue_family_index: cmd_buf.device.queue.family.idx,
+                dst_queue_family_index: cmd_buf.device.queue.family.idx,
+                image: **swapchain_image,
+                range: vk::ImageSubresourceRange {
+                    layer_count: 1,
                     aspect_mask: vk::ImageAspectFlags::COLOR,
                     base_array_layer: 0,
                     base_mip_level: 0,
-                    mip_level_count: None,
-                }),
-            );
+                    level_count: 1,
+                },
+            }),
+        );
 
-            unsafe {
-                self.submit(
-                    cmd_buf,
-                    vk::SubmitInfo::builder()
-                        .command_buffers(from_ref(cmd_buf))
-                        .signal_semaphores(from_ref(&swapchain_image.rendered))
-                        .wait_semaphores(from_ref(&swapchain_image.acquired))
-                        .wait_dst_stage_mask(from_ref(&wait_dst_stage_mask)),
-                )
-            }?;
+        unsafe {
+            Self::submit(
+                cmd_buf,
+                vk::SubmitInfo::builder()
+                    .command_buffers(from_ref(cmd_buf))
+                    .signal_semaphores(from_ref(&swapchain_image.rendered))
+                    .wait_semaphores(from_ref(&swapchain_image.acquired))
+                    .wait_dst_stage_mask(from_ref(&wait_dst_stage_mask)),
+            )?;
         }
 
         // We may have unresolved nodes; things like copies that happen after present or operations
@@ -170,14 +182,16 @@ where
         // These operations are still important, but they don't need to wait for any of the above
         // things so we do them last
         if !resolver.is_resolved() {
-            let cmd_buf = &frame.cmd_bufs[2];
+            let cmd_buf = &mut cmd_bufs[2];
 
-            unsafe { self.begin(cmd_buf) }?;
+            unsafe {
+                Self::begin(cmd_buf)?;
+            }
 
             resolver.record_unscheduled_passes(&mut self.cache, cmd_buf)?;
 
             unsafe {
-                self.submit(
+                Self::submit(
                     cmd_buf,
                     vk::SubmitInfo::builder().command_buffers(from_ref(cmd_buf)),
                 )
@@ -191,24 +205,32 @@ where
 
         // Store the resolved graph because it contains bindings, leases, and other shared resources
         // that need to be kept alive until the fence is waited upon.
-        self.frames[swapchain_image_idx].resolved_render_graph = Some(resolver);
+        CommandBuffer::push_fenced_drop(&mut self.cmd_bufs[swapchain_image_idx][2], resolver);
 
         Ok(())
     }
 
     unsafe fn submit(
-        &self,
         cmd_buf: &CommandBuffer<P>,
         submit_info: vk::SubmitInfoBuilder<'_>,
     ) -> Result<(), ()> {
         use std::slice::from_ref;
 
-        self.device.end_command_buffer(**cmd_buf).map_err(|_| ())?;
-        self.device
+        cmd_buf
+            .device
+            .end_command_buffer(**cmd_buf)
+            .map_err(|_| ())?;
+        cmd_buf
+            .device
             .reset_fences(from_ref(&cmd_buf.fence))
             .map_err(|_| ())?;
-        self.device
-            .queue_submit(*self.device.queue, from_ref(&*submit_info), cmd_buf.fence)
+        cmd_buf
+            .device
+            .queue_submit(
+                *cmd_buf.device.queue,
+                from_ref(&*submit_info),
+                cmd_buf.fence,
+            )
             .map_err(|_| ())
     }
 }
@@ -246,13 +268,4 @@ impl std::fmt::Display for DisplayError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self)
     }
-}
-
-#[derive(Debug)]
-struct Frame<P>
-where
-    P: SharedPointerKind + Send,
-{
-    cmd_bufs: [CommandBuffer<P>; 3],
-    resolved_render_graph: Option<Resolver<P>>, // TODO: Only want the physical passes; could drop rest
 }

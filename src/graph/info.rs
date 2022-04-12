@@ -9,7 +9,7 @@ use {
 pub trait Information {
     type Info;
 
-    fn get(self, graph: &RenderGraph<impl SharedPointerKind>) -> Self::Info;
+    fn get(self, graph: &RenderGraph<impl SharedPointerKind + Send>) -> Self::Info;
 }
 
 macro_rules! information {

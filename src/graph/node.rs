@@ -34,7 +34,7 @@ impl<P> Copy for AnyBufferNode<P> {}
 impl<P> Information for AnyBufferNode<P> {
     type Info = BufferInfo;
 
-    fn get(self, graph: &RenderGraph<impl SharedPointerKind>) -> Self::Info {
+    fn get(self, graph: &RenderGraph<impl SharedPointerKind + Send>) -> Self::Info {
         match self {
             Self::Buffer(node) => node.get(graph),
             Self::BufferLease(node) => node.get(graph),
@@ -81,7 +81,7 @@ impl<P> Copy for AnyImageNode<P> {}
 impl<P> Information for AnyImageNode<P> {
     type Info = ImageInfo;
 
-    fn get(self, graph: &RenderGraph<impl SharedPointerKind>) -> Self::Info {
+    fn get(self, graph: &RenderGraph<impl SharedPointerKind + Send>) -> Self::Info {
         match self {
             Self::Image(node) => node.get(graph),
             Self::ImageLease(node) => node.get(graph),
@@ -252,6 +252,11 @@ where
 {
     type Information;
     type Subresource;
+}
+
+impl<P> View<P> for AnyBufferNode<P> {
+    type Information = BufferSubresource;
+    type Subresource = BufferSubresource;
 }
 
 impl<P> View<P> for AnyImageNode<P> {

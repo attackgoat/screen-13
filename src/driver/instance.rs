@@ -50,6 +50,13 @@ impl Instance {
         debug: bool,
         required_extensions: impl Iterator<Item = &'a CStr>,
     ) -> Result<Self, DriverError> {
+        #[cfg(not(target_os = "macos"))]
+        let vulkan_api_version = vk::API_VERSION_1_2;
+
+        #[cfg(target_os = "macos")]
+        // See https://github.com/KhronosGroup/MoltenVK/issues/1567
+        let vulkan_api_version = vk::API_VERSION_1_1;
+
         let entry = unsafe {
             #[cfg(not(target_os = "macos"))]
             let entry = Entry::load().map_err(|_| {
@@ -74,7 +81,7 @@ impl Instance {
             .iter()
             .map(|raw_name| raw_name.as_ptr())
             .collect();
-        let app_desc = vk::ApplicationInfo::builder().api_version(vk::API_VERSION_1_1);
+        let app_desc = vk::ApplicationInfo::builder().api_version(vulkan_api_version);
         let instance_desc = vk::InstanceCreateInfo::builder()
             .application_info(&app_desc)
             .enabled_layer_names(&layer_names)

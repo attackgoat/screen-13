@@ -290,6 +290,10 @@ impl ImageInfo {
             .flags(vk::ImageCreateFlags::CUBE_COMPATIBLE)
     }
 
+    pub fn default_view_info(self) -> ImageViewInfo {
+        self.into()
+    }
+
     fn image_create_info(self) -> vk::ImageCreateInfo {
         let (ty, extent, array_layers) = match self.ty {
             ImageType::Texture1D => (
@@ -460,27 +464,6 @@ impl ImageSubresource {
             base_array_layer: self.base_array_layer,
             layer_count: self.array_layer_count.unwrap_or(vk::REMAINING_ARRAY_LAYERS),
             level_count: self.mip_level_count.unwrap_or(vk::REMAINING_MIP_LEVELS),
-        }
-    }
-}
-
-impl Default for ImageSubresource {
-    fn default() -> Self {
-        Self {
-            aspect_mask: vk::ImageAspectFlags::COLOR,
-            base_mip_level: 0,
-            base_array_layer: 0,
-            array_layer_count: None,
-            mip_level_count: None,
-        }
-    }
-}
-
-impl From<ImageInfo> for ImageSubresource {
-    fn from(info: ImageInfo) -> Self {
-        Self {
-            aspect_mask: format_aspect_mask(info.fmt),
-            ..Default::default()
         }
     }
 }

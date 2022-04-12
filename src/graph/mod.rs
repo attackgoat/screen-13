@@ -30,10 +30,10 @@ use {
     self::{binding::Binding, edge::Edge, info::Information, node::Node},
     crate::{
         driver::{
-            format_aspect_mask, BufferSubresource, CommandBuffer, ComputePipeline,
-            DepthStencilMode, DescriptorBindingMap, DescriptorInfo, DescriptorSetLayout,
-            GraphicPipeline, ImageSubresource, PipelineDescriptorInfo, RayTracePipeline,
-            SampleCount,
+            buffer_access_ranges, buffer_read_access_range, format_aspect_mask, BufferSubresource,
+            CommandBuffer, ComputePipeline, DepthStencilMode, DescriptorBindingMap, DescriptorInfo,
+            DescriptorSetLayout, GraphicPipeline, ImageSubresource, PipelineDescriptorInfo,
+            RayTracePipeline, SampleCount,
         },
         ptr::Shared,
     },
@@ -456,9 +456,10 @@ where
     {
         let image_node = image_node.into();
         let image_info = self.node_info(image_node);
+        let image_access_range = image_info.default_view_info();
 
         self.record_pass("clear color")
-            .access_node(image_node, AccessType::TransferWrite)
+            .access_node_subrange(image_node, AccessType::TransferWrite, image_access_range)
             .execute(move |device, cmd_buf, bindings| unsafe {
                 device.cmd_clear_color_image(
                     cmd_buf,
@@ -485,7 +486,6 @@ where
     ) -> &mut Self {
         let src_node = src_node.into();
         let dst_node = dst_node.into();
-
         let src_info = self.node_info(src_node);
         let dst_info = self.node_info(dst_node);
 
@@ -519,11 +519,12 @@ where
     ) -> &mut Self {
         let src_node = src_node.into();
         let dst_node = dst_node.into();
-        let regions = regions.into();
+        let regions: Box<[_]> = regions.into();
+        let (src_access_range, dst_access_range) = buffer_access_ranges(&regions);
 
         self.record_pass("copy buffer")
-            .access_node(src_node, AccessType::TransferRead)
-            .access_node(dst_node, AccessType::TransferWrite)
+            .access_node_subrange(src_node, AccessType::TransferRead, src_access_range)
+            .access_node_subrange(dst_node, AccessType::TransferWrite, dst_access_range)
             .execute(move |device, cmd_buf, bindings| unsafe {
                 device.cmd_copy_buffer(cmd_buf, *bindings[src_node], *bindings[dst_node], &regions);
             })
@@ -536,7 +537,6 @@ where
         dst_node: impl Into<AnyImageNode<P>>,
     ) -> &mut Self {
         let dst_node = dst_node.into();
-
         let dst_info = self.node_info(dst_node);
 
         self.copy_buffer_to_image_region(
@@ -581,11 +581,14 @@ where
     ) -> &mut Self {
         let src_node = src_node.into();
         let dst_node = dst_node.into();
+        let dst_image_info = self.node_info(dst_node);
+        let dst_access_range = dst_image_info.default_view_info();
         let regions = regions.into();
+        let src_access_range = buffer_read_access_range(&regions);
 
         self.record_pass("copy image")
-            .access_node(src_node, AccessType::TransferRead)
-            .access_node(dst_node, AccessType::TransferWrite)
+            .access_node_subrange(src_node, AccessType::TransferRead, src_access_range)
+            .access_node_subrange(dst_node, AccessType::TransferWrite, dst_access_range)
             .execute(move |device, cmd_buf, bindings| unsafe {
                 device.cmd_copy_buffer_to_image(
                     cmd_buf,
@@ -655,11 +658,13 @@ where
     ) -> &mut Self {
         let src_node = src_node.into();
         let dst_node = dst_node.into();
+        let src_access_range = self.node_info(src_node).default_view_info();
+        let dst_access_range = self.node_info(dst_node).default_view_info();
         let regions = regions.into();
 
         self.record_pass("copy image")
-            .access_node(src_node, AccessType::TransferRead)
-            .access_node(dst_node, AccessType::TransferWrite)
+            .access_node_subrange(src_node, AccessType::TransferRead, src_access_range)
+            .access_node_subrange(dst_node, AccessType::TransferWrite, dst_access_range)
             .execute(move |device, cmd_buf, bindings| unsafe {
                 device.cmd_copy_image(
                     cmd_buf,
@@ -688,9 +693,11 @@ where
         region: Range<u64>,
     ) -> &mut Self {
         let buf_node = buf_node.into();
+        let buf_info = self.node_info(buf_node);
+        let buf_access_range = 0..buf_info.size;
 
         self.record_pass("fill buffer")
-            .access_node(buf_node, AccessType::TransferWrite)
+            .access_node_subrange(buf_node, AccessType::TransferWrite, buf_access_range)
             .execute(move |device, cmd_buf, bindings| unsafe {
                 device.cmd_fill_buffer(
                     cmd_buf,

@@ -78,7 +78,7 @@ macro_rules! pipeline_edge {
         paste::paste! {
             impl<'a, P> Edge<PassRef<'a, P>> for &'a Shared<[<$name Pipeline>]<P>, P>
             where
-                P: SharedPointerKind,
+                P: SharedPointerKind + Send,
             {
                 type Result = PipelinePassRef<'a, [<$name Pipeline>]<P>, P>;
             }
