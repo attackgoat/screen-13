@@ -5,7 +5,6 @@ mod node;
 mod pass_ref;
 mod resolver;
 mod swapchain;
-mod validator;
 
 pub use {
     self::{

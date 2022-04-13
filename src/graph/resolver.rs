@@ -57,9 +57,6 @@ where
     P: SharedPointerKind + Send + 'static,
 {
     pub(super) fn new(graph: RenderGraph<P>) -> Self {
-        #[cfg(debug_assertions)]
-        super::validator::assert_valid(&graph);
-
         let physical_passes = Vec::with_capacity(graph.passes.len());
 
         Self {
