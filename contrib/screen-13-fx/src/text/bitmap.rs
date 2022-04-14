@@ -149,6 +149,19 @@ where
         text: impl AsRef<str>,
         scale: f32,
     ) {
+        self.print_scale_scissor(graph, image, position, color, text, scale, None);
+    }
+
+    pub fn print_scale_scissor(
+        &self,
+        graph: &mut RenderGraph<P>,
+        image: impl Into<AnyImageNode<P>>,
+        position: Vec2,
+        color: impl Into<BitmapGlyphColor>,
+        text: impl AsRef<str>,
+        scale: f32,
+        scissor: Option<(i32, i32, u32, u32)>,
+    ) {
         let color = color.into();
         let image = image.into();
         let text = text.as_ref();
@@ -214,6 +227,10 @@ where
 
         for (idx, page_node) in page_nodes.iter().enumerate() {
             pass = pass.read_descriptor((0, [idx as _]), *page_node);
+        }
+
+        if let Some((x, y, width, height)) = scissor {
+            pass = pass.set_scissor(x, y, width, height);
         }
 
         pass.push_constants((

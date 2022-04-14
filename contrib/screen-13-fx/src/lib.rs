@@ -31,6 +31,7 @@ mod present;
 mod text;
 
 pub use self::{
+    text::BitmapGlyphColor,
     image::ImageLoader,
     present::{ComputePresenter, GraphicPresenter},
 };

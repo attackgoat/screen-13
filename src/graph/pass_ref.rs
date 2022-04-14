@@ -397,6 +397,11 @@ where
     }
 
     pub fn submit_pass(self) -> &'a mut RenderGraph<P> {
+        // If nothing was done in this pass we can just ignore it
+        if self.exec_idx == 0 {
+            self.graph.passes.pop();
+        }
+
         self.graph
     }
 

@@ -89,6 +89,7 @@ pub mod prelude_arc {
     pub type AnyImageNode = all::AnyImageNode<P>;
     pub type Buffer = all::Buffer<P>;
     pub type BufferBinding = all::BufferBinding<P>;
+    pub type BufferLeaseNode = all::BufferLeaseNode<P>;
     pub type BufferNode = all::BufferNode<P>;
     pub type ComputePipeline = all::ComputePipeline<P>;
     pub type Device = all::Device<P>;
@@ -124,6 +125,7 @@ pub mod prelude_rc {
     pub type AnyImageNode = all::AnyImageNode<P>;
     pub type Buffer = all::Buffer<P>;
     pub type BufferBinding = all::BufferBinding<P>;
+    pub type BufferLeaseNode = all::BufferLeaseNode<P>;
     pub type BufferNode = all::BufferNode<P>;
     pub type ComputePipeline = all::ComputePipeline<P>;
     pub type Device = all::Device<P>;

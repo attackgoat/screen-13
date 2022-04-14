@@ -1,4 +1,4 @@
 mod bitmap;
 mod glyph;
 
-pub use self::bitmap::BitmapFont;
+pub use self::bitmap::{BitmapFont, BitmapGlyphColor};

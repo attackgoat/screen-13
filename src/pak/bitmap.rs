@@ -1,7 +1,4 @@
-use {
-    glam::UVec2,
-    serde::{Deserialize, Serialize},
-};
+use serde::{Deserialize, Serialize};
 
 /// Holds a `Bitmap` in a `.pak` file. For data transport only.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -12,7 +9,7 @@ pub struct BitmapBuf {
     #[serde(with = "serde_bytes")]
     pixels: Vec<u8>,
 
-    pub width: u32,
+    width: u32,
 }
 
 impl BitmapBuf {
@@ -38,8 +35,8 @@ impl BitmapBuf {
     }
 
     /// Gets the dimensions, in pixels, of this `Bitmap`.
-    pub fn dims(&self) -> UVec2 {
-        UVec2::new(self.width, self.height())
+    pub fn extent(&self) -> (u32, u32) {
+        (self.width(), self.height())
     }
 
     // TODO: Maybe better naming.. Channels?
@@ -83,6 +80,10 @@ impl BitmapBuf {
     /// Bytes per row of pixels (there is no padding)
     pub fn stride(&self) -> usize {
         self.width as usize * self.fmt.byte_len()
+    }
+
+    pub fn width(&self) -> u32 {
+        self.width
     }
 }
 
