@@ -53,7 +53,7 @@ pub mod prelude_all {
         graph::{
             AnyBufferBinding, AnyBufferNode, AnyImageBinding, AnyImageNode, BufferBinding,
             BufferLeaseBinding, BufferLeaseNode, BufferNode, ImageBinding, ImageLeaseBinding,
-            ImageLeaseNode, ImageNode, PassRef, RayTraceAccelerationBinding,
+            ImageLeaseNode, ImageNode, PassRef, PipelinePassRef, RayTraceAccelerationBinding,
             RayTraceAccelerationNode, RenderGraph, SwapchainImageNode,
         },
         prelude::*,
@@ -99,6 +99,7 @@ pub mod prelude_arc {
     pub type Image = all::Image<P>;
     pub type ImageBinding = all::ImageBinding<P>;
     pub type ImageNode = all::ImageNode<P>;
+    pub type PipelinePassRef<'a, T> = all::PipelinePassRef<'a, T, P>;
     pub type RayTraceAccelerationNode = all::RayTraceAccelerationNode<P>;
     pub type RenderGraph = all::RenderGraph<P>;
     pub type SwapchainImage = all::SwapchainImage<P>;
@@ -133,6 +134,7 @@ pub mod prelude_rc {
     pub type Image = all::Image<P>;
     pub type ImageBinding = all::ImageBinding<P>;
     pub type ImageNode = all::ImageNode<P>;
+    pub type PipelinePassRef<'a, T> = all::PipelinePassRef<'a, T, P>;
     pub type RayTraceAccelerationNode = all::RayTraceAccelerationNode<P>;
     pub type RenderGraph = all::RenderGraph<P>;
     pub type SwapchainImage = all::SwapchainImage<P>;

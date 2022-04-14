@@ -101,14 +101,6 @@ macro_rules! bind {
             where
                 P: SharedPointerKind,
             {
-                // pub(super) fn [<as_ $name:snake>](&self) -> Option<&[<$name Pipeline>]<P>> {
-                //     if let Self::$name(binding) = self {
-                //         Some(&binding)
-                //     } else {
-                //         panic!();
-                //     }
-                // }
-
                 #[allow(unused)]
                 pub(super) fn [<is_ $name:snake>](&self) -> bool {
                     matches!(self, Self::$name(_))
@@ -266,6 +258,15 @@ where
     /// the provided access type. This allows you to do whatever was declared here inside an
     /// excution callback registered after this call.
     pub fn access_node(mut self, node: impl Node<P> + Information, access: AccessType) -> Self {
+        self.access_node_mut(node, access);
+        self
+    }
+
+    pub fn access_node_mut(
+        &mut self,
+        node: impl Node<P> + Information,
+        access: AccessType,
+    ) -> &mut Self {
         self.assert_bound_graph_node(node);
 
         let idx = node.index();
@@ -294,6 +295,19 @@ where
         access: AccessType,
         subresource: impl Into<N::Subresource>,
     ) -> Self
+    where
+        N: View<P>,
+    {
+        self.access_node_subrange_mut(node, access, subresource);
+        self
+    }
+
+    pub fn access_node_subrange_mut<N>(
+        &mut self,
+        node: N,
+        access: AccessType,
+        subresource: impl Into<N::Subresource>,
+    ) -> &mut Self
     where
         N: View<P>,
     {
@@ -327,6 +341,14 @@ where
         mut self,
         func: impl FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>) + Send + 'static,
     ) -> Self {
+        self.execute_mut(func);
+        self
+    }
+
+    pub fn execute_mut(
+        &mut self,
+        func: impl FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>) + Send + 'static,
+    ) -> &mut Self {
         self.push_execute(func);
         self
     }
@@ -364,18 +386,28 @@ where
             .or_insert([access, access]);
     }
 
-    pub fn read_node(self, node: impl Node<P> + Information) -> Self {
+    pub fn read_node(mut self, node: impl Node<P> + Information) -> Self {
+        self.read_node_mut(node);
+        self
+    }
+
+    pub fn read_node_mut(&mut self, node: impl Node<P> + Information) -> &mut Self {
         let access = AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer;
-        self.access_node(node, access)
+        self.access_node_mut(node, access)
     }
 
     pub fn submit_pass(self) -> &'a mut RenderGraph<P> {
         self.graph
     }
 
-    pub fn write_node(self, node: impl Node<P> + Information) -> Self {
+    pub fn write_node(mut self, node: impl Node<P> + Information) -> Self {
+        self.write_node_mut(node);
+        self
+    }
+
+    pub fn write_node_mut(&mut self, node: impl Node<P> + Information) -> &mut Self {
         let access = AccessType::AnyShaderWrite;
-        self.access_node(node, access)
+        self.access_node_mut(node, access)
     }
 }
 
@@ -394,7 +426,7 @@ where
     P: SharedPointerKind + Send + 'static,
 {
     pub fn access_descriptor<N>(
-        self,
+        mut self,
         descriptor: impl Into<Descriptor>,
         node: N,
         access: AccessType,
@@ -406,12 +438,29 @@ where
         <N as View<P>>::Information: From<<N as Information>::Info>,
         <N as View<P>>::Subresource: From<<N as View<P>>::Information>,
     {
+        self.access_descriptor_mut(descriptor, node, access);
+        self
+    }
+
+    pub fn access_descriptor_mut<N>(
+        &mut self,
+        descriptor: impl Into<Descriptor>,
+        node: N,
+        access: AccessType,
+    ) -> &mut Self
+    where
+        N: Information,
+        N: View<P>,
+        ViewType: From<<N as View<P>>::Information>,
+        <N as View<P>>::Information: From<<N as Information>::Info>,
+        <N as View<P>>::Subresource: From<<N as View<P>>::Information>,
+    {
         let view_info = node.get(self.pass.graph);
-        self.access_descriptor_as(descriptor, node, access, view_info)
+        self.access_descriptor_as_mut(descriptor, node, access, view_info)
     }
 
     pub fn access_descriptor_as<N>(
-        self,
+        mut self,
         descriptor: impl Into<Descriptor>,
         node: N,
         access: AccessType,
@@ -422,11 +471,27 @@ where
         <N as View<P>>::Information: Into<ViewType>,
         <N as View<P>>::Subresource: From<<N as View<P>>::Information>,
     {
+        self.access_descriptor_as_mut(descriptor, node, access, view_info);
+        self
+    }
+
+    pub fn access_descriptor_as_mut<N>(
+        &mut self,
+        descriptor: impl Into<Descriptor>,
+        node: N,
+        access: AccessType,
+        view_info: impl Into<N::Information>,
+    ) -> &mut Self
+    where
+        N: View<P>,
+        <N as View<P>>::Information: Into<ViewType>,
+        <N as View<P>>::Subresource: From<<N as View<P>>::Information>,
+    {
         let view_info = view_info.into();
         let subresource =
             <N as View<P>>::Subresource::from(<N as View<P>>::Information::clone(&view_info));
 
-        self.access_descriptor_subrange(descriptor, node, access, view_info, subresource)
+        self.access_descriptor_subrange_mut(descriptor, node, access, view_info, subresource)
     }
 
     pub fn access_descriptor_subrange<N>(
@@ -441,6 +506,22 @@ where
         N: View<P>,
         <N as View<P>>::Information: Into<ViewType>,
     {
+        self.access_descriptor_subrange_mut(descriptor, node, access, view_info, subresource);
+        self
+    }
+
+    pub fn access_descriptor_subrange_mut<N>(
+        &mut self,
+        descriptor: impl Into<Descriptor>,
+        node: N,
+        access: AccessType,
+        view_info: impl Into<N::Information>,
+        subresource: impl Into<N::Subresource>,
+    ) -> &mut Self
+    where
+        N: View<P>,
+        <N as View<P>>::Information: Into<ViewType>,
+    {
         self.pass
             .push_node_access(node, access, Some(subresource.into().into()));
         self.push_node_view_bind(node, view_info.into(), descriptor.into());
@@ -449,6 +530,11 @@ where
     }
 
     pub fn access_node(mut self, node: impl Node<P>, access: AccessType) -> Self {
+        self.access_node_mut(node, access);
+        self
+    }
+
+    pub fn access_node_mut(&mut self, node: impl Node<P>, access: AccessType) -> &mut Self {
         self.pass.push_node_access(node, access, None);
         self
     }
@@ -475,7 +561,23 @@ where
         );
     }
 
-    pub fn read_descriptor<N>(self, descriptor: impl Into<Descriptor>, node: N) -> Self
+    pub fn read_descriptor<N>(mut self, descriptor: impl Into<Descriptor>, node: N) -> Self
+    where
+        N: Information,
+        N: View<P>,
+        ViewType: From<<N as View<P>>::Information>,
+        <N as View<P>>::Information: From<<N as Information>::Info>,
+        <N as View<P>>::Subresource: From<<N as View<P>>::Information>,
+    {
+        self.read_descriptor_mut(descriptor, node);
+        self
+    }
+
+    pub fn read_descriptor_mut<N>(
+        &mut self,
+        descriptor: impl Into<Descriptor>,
+        node: N,
+    ) -> &mut Self
     where
         N: Information,
         N: View<P>,
@@ -484,11 +586,11 @@ where
         <N as View<P>>::Subresource: From<<N as View<P>>::Information>,
     {
         let view_info = node.get(self.pass.graph);
-        self.read_descriptor_as(descriptor, node, view_info)
+        self.read_descriptor_as_mut(descriptor, node, view_info)
     }
 
     pub fn read_descriptor_as<N>(
-        self,
+        mut self,
         descriptor: impl Into<Descriptor>,
         node: N,
         view_info: impl Into<N::Information>,
@@ -498,15 +600,30 @@ where
         <N as View<P>>::Information: Into<ViewType>,
         <N as View<P>>::Subresource: From<<N as View<P>>::Information>,
     {
+        self.read_descriptor_as_mut(descriptor, node, view_info);
+        self
+    }
+
+    pub fn read_descriptor_as_mut<N>(
+        &mut self,
+        descriptor: impl Into<Descriptor>,
+        node: N,
+        view_info: impl Into<N::Information>,
+    ) -> &mut Self
+    where
+        N: View<P>,
+        <N as View<P>>::Information: Into<ViewType>,
+        <N as View<P>>::Subresource: From<<N as View<P>>::Information>,
+    {
         let view_info = view_info.into();
         let subresource =
             <N as View<P>>::Subresource::from(<N as View<P>>::Information::clone(&view_info));
 
-        self.read_descriptor_subrange(descriptor, node, view_info, subresource)
+        self.read_descriptor_subrange_mut(descriptor, node, view_info, subresource)
     }
 
     pub fn read_descriptor_subrange<N>(
-        self,
+        mut self,
         descriptor: impl Into<Descriptor>,
         node: N,
         view_info: impl Into<N::Information>,
@@ -516,20 +633,56 @@ where
         N: View<P>,
         <N as View<P>>::Information: Into<ViewType>,
     {
-        let access = <T as Access>::DEFAULT_READ;
-        self.access_descriptor_subrange(descriptor, node, access, view_info, subresource)
+        self.read_descriptor_subrange_mut(descriptor, node, view_info, subresource);
+        self
     }
 
-    pub fn read_node(self, node: impl Node<P>) -> Self {
+    pub fn read_descriptor_subrange_mut<N>(
+        &mut self,
+        descriptor: impl Into<Descriptor>,
+        node: N,
+        view_info: impl Into<N::Information>,
+        subresource: impl Into<N::Subresource>,
+    ) -> &mut Self
+    where
+        N: View<P>,
+        <N as View<P>>::Information: Into<ViewType>,
+    {
         let access = <T as Access>::DEFAULT_READ;
-        self.access_node(node, access)
+        self.access_descriptor_subrange_mut(descriptor, node, access, view_info, subresource)
+    }
+
+    pub fn read_node(mut self, node: impl Node<P>) -> Self {
+        self.read_node_mut(node);
+        self
+    }
+
+    pub fn read_node_mut(&mut self, node: impl Node<P>) -> &mut Self {
+        let access = <T as Access>::DEFAULT_READ;
+        self.access_node_mut(node, access)
     }
 
     pub fn submit_pass(self) -> &'a mut RenderGraph<P> {
         self.pass.submit_pass()
     }
 
-    pub fn write_descriptor<N>(self, descriptor: impl Into<Descriptor>, node: N) -> Self
+    pub fn write_descriptor<N>(mut self, descriptor: impl Into<Descriptor>, node: N) -> Self
+    where
+        N: Information,
+        N: View<P>,
+        <N as View<P>>::Information: Into<ViewType>,
+        <N as View<P>>::Information: From<<N as Information>::Info>,
+        <N as View<P>>::Subresource: From<<N as View<P>>::Information>,
+    {
+        self.write_descriptor_mut(descriptor, node);
+        self
+    }
+
+    pub fn write_descriptor_mut<N>(
+        &mut self,
+        descriptor: impl Into<Descriptor>,
+        node: N,
+    ) -> &mut Self
     where
         N: Information,
         N: View<P>,
@@ -538,11 +691,11 @@ where
         <N as View<P>>::Subresource: From<<N as View<P>>::Information>,
     {
         let view_info = node.get(self.pass.graph);
-        self.write_descriptor_as(descriptor, node, view_info)
+        self.write_descriptor_as_mut(descriptor, node, view_info)
     }
 
     pub fn write_descriptor_as<N>(
-        self,
+        mut self,
         descriptor: impl Into<Descriptor>,
         node: N,
         view_info: impl Into<N::Information>,
@@ -552,15 +705,30 @@ where
         <N as View<P>>::Information: Into<ViewType>,
         <N as View<P>>::Subresource: From<<N as View<P>>::Information>,
     {
+        self.write_descriptor_as_mut(descriptor, node, view_info);
+        self
+    }
+
+    pub fn write_descriptor_as_mut<N>(
+        &mut self,
+        descriptor: impl Into<Descriptor>,
+        node: N,
+        view_info: impl Into<N::Information>,
+    ) -> &mut Self
+    where
+        N: View<P>,
+        <N as View<P>>::Information: Into<ViewType>,
+        <N as View<P>>::Subresource: From<<N as View<P>>::Information>,
+    {
         let view_info = view_info.into();
         let subresource =
             <N as View<P>>::Subresource::from(<N as View<P>>::Information::clone(&view_info));
 
-        self.write_descriptor_subrange(descriptor, node, view_info, subresource)
+        self.write_descriptor_subrange_mut(descriptor, node, view_info, subresource)
     }
 
     pub fn write_descriptor_subrange<N>(
-        self,
+        mut self,
         descriptor: impl Into<Descriptor>,
         node: N,
         view_info: impl Into<N::Information>,
@@ -570,13 +738,33 @@ where
         N: View<P>,
         <N as View<P>>::Information: Into<ViewType>,
     {
-        let access = <T as Access>::DEFAULT_WRITE;
-        self.access_descriptor_subrange(descriptor, node, access, view_info, subresource)
+        self.write_descriptor_subrange_mut(descriptor, node, view_info, subresource);
+        self
     }
 
-    pub fn write_node(self, node: impl Node<P>) -> Self {
+    pub fn write_descriptor_subrange_mut<N>(
+        &mut self,
+        descriptor: impl Into<Descriptor>,
+        node: N,
+        view_info: impl Into<N::Information>,
+        subresource: impl Into<N::Subresource>,
+    ) -> &mut Self
+    where
+        N: View<P>,
+        <N as View<P>>::Information: Into<ViewType>,
+    {
         let access = <T as Access>::DEFAULT_WRITE;
-        self.access_node(node, access)
+        self.access_descriptor_subrange_mut(descriptor, node, access, view_info, subresource)
+    }
+
+    pub fn write_node(mut self, node: impl Node<P>) -> Self {
+        self.write_node_mut(node);
+        self
+    }
+
+    pub fn write_node_mut(&mut self, node: impl Node<P>) -> &mut Self {
+        let access = <T as Access>::DEFAULT_WRITE;
+        self.access_node_mut(node, access)
     }
 }
 
@@ -585,6 +773,16 @@ where
     P: SharedPointerKind + Send + 'static,
 {
     pub fn dispatch(mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) -> Self {
+        self.dispatch_mut(group_count_x, group_count_y, group_count_z);
+        self
+    }
+
+    pub fn dispatch_mut(
+        &mut self,
+        group_count_x: u32,
+        group_count_y: u32,
+        group_count_z: u32,
+    ) -> &mut Self {
         let pass = self.pass.as_mut();
         let push_consts = take(&mut pass.push_consts);
         let pipeline = pass
@@ -607,6 +805,15 @@ where
     }
 
     pub fn dispatch_indirect(mut self, args_buf: BufferNode<P>, args_buf_offset: u64) -> Self {
+        self.dispatch_indirect_mut(args_buf, args_buf_offset);
+        self
+    }
+
+    pub fn dispatch_indirect_mut(
+        &mut self,
+        args_buf: BufferNode<P>,
+        args_buf_offset: u64,
+    ) -> &mut Self {
         let pass = self.pass.as_mut();
         let push_consts = take(&mut pass.push_consts);
         let pipeline = pass
@@ -629,11 +836,21 @@ where
         self
     }
 
-    pub fn push_constants(self, data: impl Sized) -> Self {
-        self.push_constants_offset(0, data)
+    pub fn push_constants(mut self, data: impl Sized) -> Self {
+        self.push_constants_mut(data);
+        self
+    }
+
+    pub fn push_constants_mut(&mut self, data: impl Sized) -> &mut Self {
+        self.push_constants_offset_mut(0, data)
     }
 
     pub fn push_constants_offset(mut self, offset: u32, data: impl Sized) -> Self {
+        self.push_constants_offset_mut(offset, data);
+        self
+    }
+
+    pub fn push_constants_offset_mut(&mut self, offset: u32, data: impl Sized) -> &mut Self {
         let data = any_as_u8_slice(&data).to_vec();
         self.pass.as_mut().push_consts.push(PushConstantRange {
             data,
@@ -650,53 +867,96 @@ where
     P: SharedPointerKind + Send + 'static,
 {
     pub fn attach_color(
-        self,
+        mut self,
         attachment: AttachmentIndex,
         image: impl Into<AnyImageNode<P>>,
     ) -> Self {
+        self.attach_color_mut(attachment, image);
+        self
+    }
+
+    pub fn attach_color_mut(
+        &mut self,
+        attachment: AttachmentIndex,
+        image: impl Into<AnyImageNode<P>>,
+    ) -> &mut Self {
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
-        self.attach_color_as(attachment, image, image_view_info)
+        self.attach_color_as_mut(attachment, image, image_view_info)
     }
 
     pub fn attach_color_as(
-        self,
+        mut self,
         attachment: AttachmentIndex,
         image: impl Into<AnyImageNode<P>>,
         view_info: impl Into<ImageViewInfo>,
     ) -> Self {
+        self.attach_color_as_mut(attachment, image, view_info);
+        self
+    }
+
+    pub fn attach_color_as_mut(
+        &mut self,
+        attachment: AttachmentIndex,
+        image: impl Into<AnyImageNode<P>>,
+        view_info: impl Into<ImageViewInfo>,
+    ) -> &mut Self {
         let image = image.into();
         let image_view_info = view_info.into();
-        self.load_color_as(attachment, image, image_view_info)
-            .store_color_as(attachment, image, image_view_info)
+        self.load_color_as_mut(attachment, image, image_view_info)
+            .store_color_as_mut(attachment, image, image_view_info)
     }
 
     pub fn attach_depth_stencil(
-        self,
+        mut self,
         attachment: AttachmentIndex,
         image: impl Into<AnyImageNode<P>>,
     ) -> Self {
+        self.attach_depth_stencil_mut(attachment, image);
+        self
+    }
+
+    pub fn attach_depth_stencil_mut(
+        &mut self,
+        attachment: AttachmentIndex,
+        image: impl Into<AnyImageNode<P>>,
+    ) -> &mut Self {
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
-        self.attach_depth_stencil_as(attachment, image, image_view_info)
+        self.attach_depth_stencil_as_mut(attachment, image, image_view_info)
     }
 
     pub fn attach_depth_stencil_as(
-        self,
+        mut self,
         attachment: AttachmentIndex,
         image: impl Into<AnyImageNode<P>>,
         image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
-        let image = image.into();
-        let image_view_info = image_view_info.into();
-        self.load_depth_stencil_as(attachment, image, image_view_info)
-            .store_depth_stencil_as(attachment, image, image_view_info)
+        self.attach_depth_stencil_as_mut(attachment, image, image_view_info);
+        self
     }
 
-    pub fn clear_color(self, attachment: AttachmentIndex) -> Self {
-        self.clear_color_value(attachment, Default::default())
+    pub fn attach_depth_stencil_as_mut(
+        &mut self,
+        attachment: AttachmentIndex,
+        image: impl Into<AnyImageNode<P>>,
+        image_view_info: impl Into<ImageViewInfo>,
+    ) -> &mut Self {
+        let image = image.into();
+        let image_view_info = image_view_info.into();
+        self.load_depth_stencil_as_mut(attachment, image, image_view_info)
+            .store_depth_stencil_as_mut(attachment, image, image_view_info)
+    }
+
+    pub fn clear_color(mut self, attachment: AttachmentIndex) -> Self {
+        self.clear_color_mut(attachment);
+        self
+    }
+
+    pub fn clear_color_mut(&mut self, attachment: AttachmentIndex) -> &mut Self {
+        self.clear_color_value_mut(attachment, Default::default())
     }
 
     pub fn clear_color_value(
@@ -704,6 +964,15 @@ where
         attachment: AttachmentIndex,
         color_value: vk::ClearColorValue,
     ) -> Self {
+        self.clear_color_value_mut(attachment, color_value);
+        self
+    }
+
+    pub fn clear_color_value_mut(
+        &mut self,
+        attachment: AttachmentIndex,
+        color_value: vk::ClearColorValue,
+    ) -> &mut Self {
         assert!(self
             .pass
             .as_ref()
@@ -722,8 +991,13 @@ where
         self
     }
 
-    pub fn clear_depth_stencil(self, attachment: AttachmentIndex) -> Self {
-        self.clear_depth_stencil_value(attachment, Default::default())
+    pub fn clear_depth_stencil(mut self, attachment: AttachmentIndex) -> Self {
+        self.clear_depth_stencil_mut(attachment);
+        self
+    }
+
+    pub fn clear_depth_stencil_mut(&mut self, attachment: AttachmentIndex) -> &mut Self {
+        self.clear_depth_stencil_value_mut(attachment, Default::default())
     }
 
     pub fn clear_depth_stencil_value(
@@ -731,6 +1005,15 @@ where
         attachment: AttachmentIndex,
         depth_stencil_value: vk::ClearDepthStencilValue,
     ) -> Self {
+        self.clear_depth_stencil_value_mut(attachment, depth_stencil_value);
+        self
+    }
+
+    pub fn clear_depth_stencil_value_mut(
+        &mut self,
+        attachment: AttachmentIndex,
+        depth_stencil_value: vk::ClearDepthStencilValue,
+    ) -> &mut Self {
         let pass = self.pass.as_mut();
 
         assert!(pass.load_attachments.depth_stencil.is_none());
@@ -749,10 +1032,28 @@ where
         self
     }
 
+    pub fn clear_scissor(mut self) -> Self {
+        self.clear_scissor_mut();
+        self
+    }
+
+    pub fn clear_scissor_mut(&mut self) -> &mut Self {
+        self.pass.as_mut().scissor = None;
+        self
+    }
+
     pub fn draw(
         mut self,
         func: impl FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>) + Send + 'static,
     ) -> Self {
+        self.draw_mut(func);
+        self
+    }
+
+    pub fn draw_mut(
+        &mut self,
+        func: impl FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>) + Send + 'static,
+    ) -> &mut Self {
         use std::slice::from_ref;
 
         let pass = self.pass.as_mut();
@@ -817,14 +1118,23 @@ where
     }
 
     pub fn load_color(
-        self,
+        mut self,
         attachment: AttachmentIndex,
         image: impl Into<AnyImageNode<P>>,
     ) -> Self {
+        self.load_color_mut(attachment, image);
+        self
+    }
+
+    pub fn load_color_mut(
+        &mut self,
+        attachment: AttachmentIndex,
+        image: impl Into<AnyImageNode<P>>,
+    ) -> &mut Self {
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
-        self.attach_color_as(attachment, image, image_view_info)
+        self.attach_color_as_mut(attachment, image, image_view_info)
     }
 
     pub fn load_color_as(
@@ -833,6 +1143,16 @@ where
         image: impl Into<AnyImageNode<P>>,
         image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
+        self.load_color_as_mut(attachment, image, image_view_info);
+        self
+    }
+
+    pub fn load_color_as_mut(
+        &mut self,
+        attachment: AttachmentIndex,
+        image: impl Into<AnyImageNode<P>>,
+        image_view_info: impl Into<ImageViewInfo>,
+    ) -> &mut Self {
         let image = image.into();
         let image_view_info = image_view_info.into();
         let node_idx = image.index();
@@ -885,19 +1205,27 @@ where
             AccessType::ColorAttachmentRead,
             Some(Subresource::Image(image_view_info.into())),
         );
-
         self
     }
 
     pub fn load_depth_stencil(
-        self,
+        mut self,
         attachment: AttachmentIndex,
         image: impl Into<AnyImageNode<P>>,
     ) -> Self {
+        self.load_depth_stencil_mut(attachment, image);
+        self
+    }
+
+    pub fn load_depth_stencil_mut(
+        &mut self,
+        attachment: AttachmentIndex,
+        image: impl Into<AnyImageNode<P>>,
+    ) -> &mut Self {
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
-        self.load_depth_stencil_as(attachment, image, image_view_info)
+        self.load_depth_stencil_as_mut(attachment, image, image_view_info)
     }
 
     pub fn load_depth_stencil_as(
@@ -906,6 +1234,16 @@ where
         image: impl Into<AnyImageNode<P>>,
         image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
+        self.load_depth_stencil_as_mut(attachment, image, image_view_info);
+        self
+    }
+
+    pub fn load_depth_stencil_as_mut(
+        &mut self,
+        attachment: AttachmentIndex,
+        image: impl Into<AnyImageNode<P>>,
+        image_view_info: impl Into<ImageViewInfo>,
+    ) -> &mut Self {
         let image = image.into();
         let image_view_info = image_view_info.into();
         let node_idx = image.index();
@@ -951,7 +1289,6 @@ where
             AccessType::DepthStencilAttachmentRead,
             Some(Subresource::Image(image_view_info.into())),
         );
-
         self
     }
 
@@ -977,18 +1314,33 @@ where
             .unwrap_or_default()
     }
 
-    pub fn push_constants(self, data: impl Sized) -> Self {
+    pub fn push_constants(mut self, data: impl Sized) -> Self {
+        self.push_constants_mut(data);
+        self
+    }
+
+    pub fn push_constants_mut(&mut self, data: impl Sized) -> &mut Self {
         let pipeline = self.pipeline();
         let whole_stage = Self::pipeline_stages(pipeline);
-        self.push_stage_constants(0, whole_stage, data)
+        self.push_stage_constants_mut(0, whole_stage, data)
     }
 
     pub fn push_stage_constants(
         mut self,
         offset: u32,
-        mut stage: vk::ShaderStageFlags,
+        stage: vk::ShaderStageFlags,
         data: impl Sized,
     ) -> Self {
+        self.push_stage_constants_mut(offset, stage, data);
+        self
+    }
+
+    pub fn push_stage_constants_mut(
+        &mut self,
+        offset: u32,
+        mut stage: vk::ShaderStageFlags,
+        data: impl Sized,
+    ) -> &mut Self {
         let pipeline = self.pipeline();
         let whole_stage = Self::pipeline_stages(pipeline);
 
@@ -1029,14 +1381,23 @@ where
     }
 
     pub fn resolve_color(
-        self,
+        mut self,
         attachment: AttachmentIndex,
         image: impl Into<AnyImageNode<P>>,
     ) -> Self {
+        self.resolve_color_mut(attachment, image);
+        self
+    }
+
+    pub fn resolve_color_mut(
+        &mut self,
+        attachment: AttachmentIndex,
+        image: impl Into<AnyImageNode<P>>,
+    ) -> &mut Self {
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
-        self.resolve_color_as(attachment, image, image_view_info)
+        self.resolve_color_as_mut(attachment, image, image_view_info)
     }
 
     pub fn resolve_color_as(
@@ -1045,6 +1406,16 @@ where
         image: impl Into<AnyImageNode<P>>,
         image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
+        self.resolve_color_as_mut(attachment, image, image_view_info);
+        self
+    }
+
+    pub fn resolve_color_as_mut(
+        &mut self,
+        attachment: AttachmentIndex,
+        image: impl Into<AnyImageNode<P>>,
+        image_view_info: impl Into<ImageViewInfo>,
+    ) -> &mut Self {
         let image = image.into();
         let image_view_info = image_view_info.into();
         let node_idx = image.index();
@@ -1093,19 +1464,27 @@ where
             AccessType::ColorAttachmentWrite,
             Some(Subresource::Image(image_view_info.into())),
         );
-
         self
     }
 
     pub fn resolve_depth_stencil(
-        self,
+        mut self,
         attachment: AttachmentIndex,
         image: impl Into<AnyImageNode<P>>,
     ) -> Self {
+        self.resolve_depth_stencil_mut(attachment, image);
+        self
+    }
+
+    pub fn resolve_depth_stencil_mut(
+        &mut self,
+        attachment: AttachmentIndex,
+        image: impl Into<AnyImageNode<P>>,
+    ) -> &mut Self {
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
-        self.resolve_depth_stencil_as(attachment, image, image_view_info)
+        self.resolve_depth_stencil_as_mut(attachment, image, image_view_info)
     }
 
     pub fn resolve_depth_stencil_as(
@@ -1114,6 +1493,16 @@ where
         image: impl Into<AnyImageNode<P>>,
         image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
+        self.resolve_depth_stencil_as_mut(attachment, image, image_view_info);
+        self
+    }
+
+    pub fn resolve_depth_stencil_as_mut(
+        &mut self,
+        attachment: AttachmentIndex,
+        image: impl Into<AnyImageNode<P>>,
+        image_view_info: impl Into<ImageViewInfo>,
+    ) -> &mut Self {
         let image = image.into();
         let image_view_info = image_view_info.into();
         let node_idx = image.index();
@@ -1163,6 +1552,12 @@ where
 
     // This can only be called once per pass.
     pub fn set_depth_stencil(mut self, depth_stencil: DepthStencilMode) -> Self {
+        self.set_depth_stencil_mut(depth_stencil);
+        self
+    }
+
+    // This can only be called once per pass.
+    pub fn set_depth_stencil_mut(&mut self, depth_stencil: DepthStencilMode) -> &mut Self {
         let pass = self.pass.as_mut();
 
         assert!(pass.depth_stencil.is_none());
@@ -1173,6 +1568,12 @@ where
 
     // This can only be called once per pass! last value wins
     pub fn set_render_area(mut self, x: i32, y: i32, width: u32, height: u32) -> Self {
+        self.set_render_area_mut(x, y, width, height);
+        self
+    }
+
+    // This can only be called once per pass! last value wins
+    pub fn set_render_area_mut(&mut self, x: i32, y: i32, width: u32, height: u32) -> &mut Self {
         self.pass.as_mut().render_area = Some(Rect {
             extent: uvec2(width, height),
             offset: ivec2(x, y),
@@ -1181,6 +1582,11 @@ where
     }
 
     pub fn set_scissor(mut self, x: i32, y: i32, width: u32, height: u32) -> Self {
+        self.set_scissor_mut(x, y, width, height);
+        self
+    }
+
+    pub fn set_scissor_mut(&mut self, x: i32, y: i32, width: u32, height: u32) -> &mut Self {
         self.pass.as_mut().scissor = Some(Rect {
             extent: uvec2(width, height),
             offset: ivec2(x, y),
@@ -1196,6 +1602,18 @@ where
         height: f32,
         depth: Range<f32>,
     ) -> Self {
+        self.set_viewport_mut(x, y, width, height, depth);
+        self
+    }
+
+    pub fn set_viewport_mut(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        depth: Range<f32>,
+    ) -> &mut Self {
         self.pass.as_mut().viewport = Some((
             Rect {
                 extent: vec2(width, height),
@@ -1207,14 +1625,23 @@ where
     }
 
     pub fn store_color(
-        self,
+        mut self,
         attachment: AttachmentIndex,
         image: impl Into<AnyImageNode<P>>,
     ) -> Self {
+        self.store_color_mut(attachment, image);
+        self
+    }
+
+    pub fn store_color_mut(
+        &mut self,
+        attachment: AttachmentIndex,
+        image: impl Into<AnyImageNode<P>>,
+    ) -> &mut Self {
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
-        self.store_color_as(attachment, image, image_view_info)
+        self.store_color_as_mut(attachment, image, image_view_info)
     }
 
     pub fn store_color_as(
@@ -1223,6 +1650,16 @@ where
         image: impl Into<AnyImageNode<P>>,
         image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
+        self.store_color_as_mut(attachment, image, image_view_info);
+        self
+    }
+
+    pub fn store_color_as_mut(
+        &mut self,
+        attachment: AttachmentIndex,
+        image: impl Into<AnyImageNode<P>>,
+        image_view_info: impl Into<ImageViewInfo>,
+    ) -> &mut Self {
         let image = image.into();
         let image_view_info = image_view_info.into();
         let node_idx = image.index();
@@ -1276,14 +1713,23 @@ where
     }
 
     pub fn store_depth_stencil(
-        self,
+        mut self,
         attachment: AttachmentIndex,
         image: impl Into<AnyImageNode<P>>,
     ) -> Self {
+        self.store_depth_stencil_mut(attachment, image);
+        self
+    }
+
+    pub fn store_depth_stencil_mut(
+        &mut self,
+        attachment: AttachmentIndex,
+        image: impl Into<AnyImageNode<P>>,
+    ) -> &mut Self {
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
-        self.store_depth_stencil_as(attachment, image, image_view_info)
+        self.store_depth_stencil_as_mut(attachment, image, image_view_info)
     }
 
     pub fn store_depth_stencil_as(
@@ -1292,6 +1738,16 @@ where
         image: impl Into<AnyImageNode<P>>,
         image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
+        self.store_depth_stencil_as_mut(attachment, image, image_view_info);
+        self
+    }
+
+    pub fn store_depth_stencil_as_mut(
+        &mut self,
+        attachment: AttachmentIndex,
+        image: impl Into<AnyImageNode<P>>,
+        image_view_info: impl Into<ImageViewInfo>,
+    ) -> &mut Self {
         let image = image.into();
         let image_view_info = image_view_info.into();
         let node_idx = image.index();
