@@ -28,8 +28,8 @@ unsafe extern "system" fn vulkan_debug_callback(
         // vk_sync uses vk::PipelineStageFlags::ALL_COMMANDS with AccessType::NOTHING and others
         warn!("{}\n", message);
     } else {
-        error!("{}\n", message);
-        panic!("{}\n", message);
+        error!("\n\n\n{}\n\n", message);
+        panic!();
     }
 
     vk::FALSE

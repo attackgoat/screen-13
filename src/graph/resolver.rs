@@ -7,10 +7,11 @@ use {
         align_up_u32,
         driver::{
             format_aspect_mask, image_access_layout, is_read_access, is_write_access,
-            AttachmentInfo, AttachmentRef, CommandBuffer, DepthStencilMode, DescriptorBinding,
-            DescriptorInfo, DescriptorPool, DescriptorPoolInfo, DescriptorPoolSize, DescriptorSet,
-            Device, DriverError, FramebufferKey, FramebufferKeyAttachment, Image, ImageViewInfo,
-            RenderPass, RenderPassInfo, SampleCount, SubpassDependency, SubpassInfo,
+            pipeline_stage_access_flags, AttachmentInfo, AttachmentRef, CommandBuffer,
+            DepthStencilMode, DescriptorBinding, DescriptorInfo, DescriptorPool,
+            DescriptorPoolInfo, DescriptorPoolSize, DescriptorSet, Device, DriverError,
+            FramebufferKey, FramebufferKeyAttachment, Image, ImageViewInfo, RenderPass,
+            RenderPassInfo, SampleCount, SubpassDependency, SubpassInfo,
         },
         ptr::Shared,
         HashPool, Lease,
@@ -274,16 +275,21 @@ where
     ) {
         trace!("bind_descriptor_sets");
 
+        let descriptor_sets = physical_pass.exec_descriptor_sets[&exec_idx]
+            .iter()
+            .map(|descriptor_set| **descriptor_set)
+            .collect::<Box<[_]>>();
+        if descriptor_sets.is_empty() {
+            return;
+        }
+
         unsafe {
             cmd_buf.device.cmd_bind_descriptor_sets(
                 **cmd_buf,
                 pipeline.bind_point(),
                 pipeline.layout(),
                 0,
-                &physical_pass.exec_descriptor_sets[&exec_idx]
-                    .iter()
-                    .map(|descriptor_set| **descriptor_set)
-                    .collect::<Box<[_]>>(),
+                &descriptor_sets,
                 &[],
             );
         }
@@ -860,26 +866,87 @@ where
             subpasses.push(subpass_info);
         }
 
-        // Add dependencies (TODO!)
+        // Add dependencies
         {
-            dependencies.push(SubpassDependency {
-                src_subpass: vk::SUBPASS_EXTERNAL,
-                dst_subpass: 0,
-                src_stage_mask: vk::PipelineStageFlags::BOTTOM_OF_PIPE,
-                dst_stage_mask: vk::PipelineStageFlags::TOP_OF_PIPE,
-                src_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
-                dst_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
-                dependency_flags: vk::DependencyFlags::empty(),
-            });
-            dependencies.push(SubpassDependency {
-                src_subpass: pass.subpasses.len() as u32 - 1,
-                dst_subpass: vk::SUBPASS_EXTERNAL,
-                src_stage_mask: vk::PipelineStageFlags::BOTTOM_OF_PIPE,
-                dst_stage_mask: vk::PipelineStageFlags::TOP_OF_PIPE,
-                src_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
-                dst_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
-                dependency_flags: vk::DependencyFlags::empty(),
-            });
+            if pass.subpasses.len() > 1 {
+                for subpass_idx in 1..pass.subpasses.len() as u32 {
+                    dependencies.push(SubpassDependency {
+                        src_subpass: subpass_idx - 1,
+                        dst_subpass: subpass_idx,
+                        src_stage_mask: vk::PipelineStageFlags::ALL_GRAPHICS,
+                        dst_stage_mask: vk::PipelineStageFlags::ALL_GRAPHICS,
+                        src_access_mask: vk::AccessFlags::MEMORY_READ
+                            | vk::AccessFlags::MEMORY_WRITE,
+                        dst_access_mask: vk::AccessFlags::MEMORY_READ
+                            | vk::AccessFlags::MEMORY_WRITE,
+                        dependency_flags: vk::DependencyFlags::empty(),
+                    });
+                }
+
+                for (subpass_idx, subpass) in pass.subpasses.iter().enumerate() {
+                    let exec = &pass.execs[subpass.exec_idx];
+                    let mut dependency = SubpassDependency {
+                        src_subpass: subpass_idx as _,
+                        dst_subpass: subpass_idx as _,
+                        src_stage_mask: vk::PipelineStageFlags::empty(),
+                        dst_stage_mask: vk::PipelineStageFlags::empty(),
+                        src_access_mask: vk::AccessFlags::empty(),
+                        dst_access_mask: vk::AccessFlags::empty(),
+                        dependency_flags: vk::DependencyFlags::BY_REGION,
+                    };
+
+                    for (node_idx, [early, late]) in &exec.accesses {
+                        let (early_stage, early_access) = pipeline_stage_access_flags(early.access);
+                        let (late_stage, late_access) = pipeline_stage_access_flags(late.access);
+
+                        dependency.src_stage_mask |=
+                            early_stage & vk::PipelineStageFlags::ALL_GRAPHICS;
+                        dependency.dst_stage_mask |=
+                            late_stage & vk::PipelineStageFlags::ALL_GRAPHICS;
+
+                        dependency.src_access_mask |= early_access;
+                        dependency.dst_access_mask |= late_access;
+                    }
+
+                    if !dependency.src_stage_mask.is_empty() {
+                        dependencies.push(dependency);
+                    }
+                }
+            }
+
+            // dependencies.push(SubpassDependency {
+            //     src_subpass: vk::SUBPASS_EXTERNAL,
+            //     dst_subpass: 0,
+            //     src_stage_mask: vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+            //     dst_stage_mask: vk::PipelineStageFlags::TOP_OF_PIPE,
+            //     src_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
+            //     dst_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
+            //     dependency_flags: vk::DependencyFlags::empty(),
+            // });
+
+            // if pass.subpasses.len() > 2 {
+            //     for idx in 1..pass.subpasses.len() as u32 - 1 {
+            //         dependencies.push(SubpassDependency {
+            //             src_subpass: idx - 1,
+            //             dst_subpass: idx,
+            //             src_stage_mask: vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+            //             dst_stage_mask: vk::PipelineStageFlags::TOP_OF_PIPE,
+            //             src_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
+            //             dst_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
+            //             dependency_flags: vk::DependencyFlags::empty(),
+            //         });
+            //     }
+            // }
+
+            // dependencies.push(SubpassDependency {
+            //     src_subpass: pass.subpasses.len() as u32 - 1,
+            //     dst_subpass: vk::SUBPASS_EXTERNAL,
+            //     src_stage_mask: vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+            //     dst_stage_mask: vk::PipelineStageFlags::TOP_OF_PIPE,
+            //     src_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
+            //     dst_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
+            //     dependency_flags: vk::DependencyFlags::empty(),
+            // });
         }
 
         cache.lease(
@@ -1132,10 +1199,14 @@ where
         // trace!("record_execution_barriers: {:#?}", accesses);
 
         for (node_idx, accesses) in accesses {
+            // Advance the binding access state to get the previous acces
+            let binding = &mut bindings[*node_idx];
+            let previous_access = binding.access_mut(accesses[1].access);
+
+            //if
+
             let next_access = accesses[0].access;
             let next_subresource = &accesses[0].subresource;
-            let binding = &mut bindings[*node_idx];
-            let previous_access = binding.access(accesses[1].access);
 
             let mut global_barrier = None;
             let mut buf_barrier = None;

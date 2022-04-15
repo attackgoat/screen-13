@@ -78,7 +78,6 @@ where
         events: &[Event<'_, ()>],
         window: &Window,
         render_graph: &mut RenderGraph<P>,
-        resolution: UVec2,
         ui_func: impl FnOnce(&mut Ui),
     ) -> ImageLeaseNode<P> {
         let hidpi = self.platform.hidpi_factor();
@@ -112,7 +111,7 @@ where
         let image = render_graph.bind_node(
             self.pool
                 .lease(
-                    ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, resolution.x, resolution.y).usage(
+                    ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, window.inner_size().width, window.inner_size().height).usage(
                         vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED,
                     ),
                 )
@@ -186,8 +185,8 @@ where
                 .clear_color(0)
                 .store_color(0, image)
                 .push_constants([
-                    self.platform.hidpi_factor() as f32 / resolution.x as f32,
-                    self.platform.hidpi_factor() as f32 / resolution.y as f32,
+                    self.platform.hidpi_factor() as f32 / window.inner_size().width as f32,
+                    self.platform.hidpi_factor() as f32 / window.inner_size().height as f32,
                     f32::NAN, // Required padding
                     f32::NAN, // Required padding
                 ])
@@ -253,7 +252,6 @@ where
             frame.events,
             frame.window,
             frame.render_graph,
-            frame.resolution,
             ui_func,
         )
     }

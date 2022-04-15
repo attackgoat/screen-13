@@ -51,11 +51,8 @@ where
         Default::default()
     }
 
-    pub fn resolution(&self) -> UVec2 {
-        uvec2(
-            self.window.inner_size().width,
-            self.window.inner_size().height,
-        )
+    pub fn height(&self) -> u32 {
+        self.window.inner_size().height
     }
 
     pub fn run<FrameFn>(mut self, mut frame_fn: FrameFn) -> Result<(), DisplayError>
@@ -133,10 +130,11 @@ where
             frame_fn(FrameContext {
                 device: &self.device,
                 dt: dt_filtered,
+                height: self.height(),
                 render_graph: &mut render_graph,
-                resolution: self.resolution(),
                 events: take(&mut events).as_slice(),
                 swapchain,
+                width: self.width(),
                 window: &self.window,
                 will_exit: &mut will_exit,
             });
@@ -153,6 +151,14 @@ where
         }
 
         Ok(())
+    }
+
+    pub fn width(&self) -> u32 {
+        self.window.inner_size().width
+    }
+
+    pub fn window(&self) -> &Window {
+        &self.window
     }
 }
 

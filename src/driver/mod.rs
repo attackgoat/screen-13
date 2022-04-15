@@ -206,6 +206,180 @@ pub const fn is_write_access(ty: AccessType) -> bool {
     }
 }
 
+pub const fn pipeline_stage_access_flags(
+    access_type: AccessType,
+) -> (vk::PipelineStageFlags, vk::AccessFlags) {
+    use {
+        vk::{AccessFlags as access, PipelineStageFlags as stage},
+        AccessType as ty,
+    };
+
+    match access_type {
+        ty::Nothing => (stage::empty(), access::empty()),
+        ty::CommandBufferReadNVX => (
+            stage::COMMAND_PREPROCESS_NV,
+            access::COMMAND_PREPROCESS_READ_NV,
+        ),
+        ty::IndirectBuffer => (stage::DRAW_INDIRECT, access::INDIRECT_COMMAND_READ),
+        ty::IndexBuffer => (stage::VERTEX_INPUT, access::INDEX_READ),
+        ty::VertexBuffer => (stage::VERTEX_INPUT, access::VERTEX_ATTRIBUTE_READ),
+        ty::VertexShaderReadUniformBuffer => (stage::VERTEX_SHADER, access::SHADER_READ),
+        ty::VertexShaderReadSampledImageOrUniformTexelBuffer => {
+            (stage::VERTEX_SHADER, access::SHADER_READ)
+        }
+        ty::VertexShaderReadOther => (stage::VERTEX_SHADER, access::SHADER_READ),
+        ty::TessellationControlShaderReadUniformBuffer => {
+            (stage::TESSELLATION_CONTROL_SHADER, access::UNIFORM_READ)
+        }
+        ty::TessellationControlShaderReadSampledImageOrUniformTexelBuffer => {
+            (stage::TESSELLATION_CONTROL_SHADER, access::SHADER_READ)
+        }
+        ty::TessellationControlShaderReadOther => {
+            (stage::TESSELLATION_CONTROL_SHADER, access::SHADER_READ)
+        }
+        ty::TessellationEvaluationShaderReadUniformBuffer => {
+            (stage::TESSELLATION_EVALUATION_SHADER, access::UNIFORM_READ)
+        }
+        ty::TessellationEvaluationShaderReadSampledImageOrUniformTexelBuffer => {
+            (stage::TESSELLATION_EVALUATION_SHADER, access::SHADER_READ)
+        }
+        ty::TessellationEvaluationShaderReadOther => {
+            (stage::TESSELLATION_EVALUATION_SHADER, access::SHADER_READ)
+        }
+        ty::GeometryShaderReadUniformBuffer => (stage::GEOMETRY_SHADER, access::UNIFORM_READ),
+        ty::GeometryShaderReadSampledImageOrUniformTexelBuffer => {
+            (stage::GEOMETRY_SHADER, access::SHADER_READ)
+        }
+        ty::GeometryShaderReadOther => (stage::GEOMETRY_SHADER, access::SHADER_READ),
+        ty::FragmentShaderReadUniformBuffer => (stage::FRAGMENT_SHADER, access::UNIFORM_READ),
+        ty::FragmentShaderReadSampledImageOrUniformTexelBuffer => {
+            (stage::FRAGMENT_SHADER, access::SHADER_READ)
+        }
+        ty::FragmentShaderReadColorInputAttachment => {
+            (stage::FRAGMENT_SHADER, access::INPUT_ATTACHMENT_READ)
+        }
+        ty::FragmentShaderReadDepthStencilInputAttachment => {
+            (stage::FRAGMENT_SHADER, access::INPUT_ATTACHMENT_READ)
+        }
+        ty::FragmentShaderReadOther => (stage::FRAGMENT_SHADER, access::SHADER_READ),
+        ty::ColorAttachmentRead => (
+            stage::COLOR_ATTACHMENT_OUTPUT,
+            access::COLOR_ATTACHMENT_READ,
+        ),
+        ty::DepthStencilAttachmentRead => (
+            stage::from_raw(
+                stage::EARLY_FRAGMENT_TESTS.as_raw()
+                    | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS.as_raw(),
+            ),
+            access::DEPTH_STENCIL_ATTACHMENT_READ,
+        ),
+        ty::ComputeShaderReadUniformBuffer => (stage::COMPUTE_SHADER, access::UNIFORM_READ),
+        ty::ComputeShaderReadSampledImageOrUniformTexelBuffer => {
+            (stage::COMPUTE_SHADER, access::SHADER_READ)
+        }
+        ty::ComputeShaderReadOther => (stage::COMPUTE_SHADER, access::SHADER_READ),
+        ty::AnyShaderReadUniformBuffer => (stage::ALL_COMMANDS, access::UNIFORM_READ),
+        ty::AnyShaderReadUniformBufferOrVertexBuffer => (
+            stage::ALL_COMMANDS,
+            access::from_raw(
+                access::UNIFORM_READ.as_raw() | vk::AccessFlags::VERTEX_ATTRIBUTE_READ.as_raw(),
+            ),
+        ),
+        ty::AnyShaderReadSampledImageOrUniformTexelBuffer => {
+            (stage::ALL_COMMANDS, access::SHADER_READ)
+        }
+        ty::AnyShaderReadOther => (stage::ALL_COMMANDS, access::SHADER_READ),
+        ty::TransferRead => (stage::TRANSFER, access::TRANSFER_READ),
+        ty::HostRead => (stage::HOST, access::HOST_READ),
+        ty::Present => (stage::empty(), access::empty()),
+        ty::CommandBufferWriteNVX => (
+            stage::COMMAND_PREPROCESS_NV,
+            access::COMMAND_PREPROCESS_WRITE_NV,
+        ),
+        ty::VertexShaderWrite => (stage::VERTEX_SHADER, access::SHADER_WRITE),
+        ty::TessellationControlShaderWrite => {
+            (stage::TESSELLATION_CONTROL_SHADER, access::SHADER_WRITE)
+        }
+        ty::TessellationEvaluationShaderWrite => {
+            (stage::TESSELLATION_EVALUATION_SHADER, access::SHADER_WRITE)
+        }
+        ty::GeometryShaderWrite => (stage::GEOMETRY_SHADER, access::SHADER_WRITE),
+        ty::FragmentShaderWrite => (stage::FRAGMENT_SHADER, access::SHADER_WRITE),
+        ty::ColorAttachmentWrite => (
+            stage::COLOR_ATTACHMENT_OUTPUT,
+            access::COLOR_ATTACHMENT_WRITE,
+        ),
+        ty::DepthStencilAttachmentWrite => (
+            stage::from_raw(
+                stage::EARLY_FRAGMENT_TESTS.as_raw()
+                    | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS.as_raw(),
+            ),
+            access::DEPTH_STENCIL_ATTACHMENT_WRITE,
+        ),
+        ty::DepthAttachmentWriteStencilReadOnly => (
+            stage::from_raw(
+                stage::EARLY_FRAGMENT_TESTS.as_raw()
+                    | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS.as_raw(),
+            ),
+            access::from_raw(
+                access::DEPTH_STENCIL_ATTACHMENT_WRITE.as_raw()
+                    | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ.as_raw(),
+            ),
+        ),
+        ty::StencilAttachmentWriteDepthReadOnly => (
+            stage::from_raw(
+                stage::EARLY_FRAGMENT_TESTS.as_raw()
+                    | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS.as_raw(),
+            ),
+            access::from_raw(
+                access::DEPTH_STENCIL_ATTACHMENT_WRITE.as_raw()
+                    | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ.as_raw(),
+            ),
+        ),
+        ty::ComputeShaderWrite => (stage::COMPUTE_SHADER, access::SHADER_WRITE),
+        ty::AnyShaderWrite => (stage::ALL_COMMANDS, access::SHADER_WRITE),
+        ty::TransferWrite => (stage::TRANSFER, access::TRANSFER_WRITE),
+        ty::HostWrite => (stage::HOST, access::HOST_WRITE),
+        ty::ColorAttachmentReadWrite => (
+            stage::COLOR_ATTACHMENT_OUTPUT,
+            access::from_raw(
+                access::COLOR_ATTACHMENT_READ.as_raw()
+                    | vk::AccessFlags::COLOR_ATTACHMENT_WRITE.as_raw(),
+            ),
+        ),
+        ty::General => (
+            stage::ALL_COMMANDS,
+            access::from_raw(access::MEMORY_READ.as_raw() | vk::AccessFlags::MEMORY_WRITE.as_raw()),
+        ),
+        ty::RayTracingShaderReadSampledImageOrUniformTexelBuffer => {
+            (stage::RAY_TRACING_SHADER_KHR, access::SHADER_READ)
+        }
+        ty::RayTracingShaderReadColorInputAttachment => {
+            (stage::RAY_TRACING_SHADER_KHR, access::INPUT_ATTACHMENT_READ)
+        }
+        ty::RayTracingShaderReadDepthStencilInputAttachment => {
+            (stage::RAY_TRACING_SHADER_KHR, access::INPUT_ATTACHMENT_READ)
+        }
+        ty::RayTracingShaderReadAccelerationStructure => (
+            stage::RAY_TRACING_SHADER_KHR,
+            access::ACCELERATION_STRUCTURE_READ_KHR,
+        ),
+        ty::RayTracingShaderReadOther => (stage::RAY_TRACING_SHADER_KHR, access::SHADER_READ),
+        ty::AccelerationStructureBuildWrite => (
+            stage::ACCELERATION_STRUCTURE_BUILD_KHR,
+            access::ACCELERATION_STRUCTURE_WRITE_KHR,
+        ),
+        ty::AccelerationStructureBuildRead => (
+            stage::ACCELERATION_STRUCTURE_BUILD_KHR,
+            access::ACCELERATION_STRUCTURE_READ_KHR,
+        ),
+        ty::AccelerationStructureBufferWrite => (
+            stage::ACCELERATION_STRUCTURE_BUILD_KHR,
+            access::TRANSFER_WRITE,
+        ),
+    }
+}
+
 #[derive(Debug)]
 pub struct Driver<P>
 where

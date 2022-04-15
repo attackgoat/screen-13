@@ -126,15 +126,15 @@ impl<P> Binding<P>
 where
     P: SharedPointerKind,
 {
-    pub(super) fn access(&mut self, access: AccessType) -> AccessType {
+    pub(super) fn access_mut(&mut self, access: AccessType) -> AccessType {
         match self {
-            Self::Buffer(binding, _) => binding.access(access).1,
-            Self::BufferLease(binding, _) => binding.access(access).1,
-            Self::Image(binding, _) => binding.access(access).1,
-            Self::ImageLease(binding, _) => binding.access(access).1,
-            Self::RayTraceAcceleration(binding, _) => binding.access(access).1,
-            Self::RayTraceAccelerationLease(binding, _) => binding.access(access).1,
-            Self::SwapchainImage(binding, _) => binding.access(access).1,
+            Self::Buffer(binding, _) => binding.access_mut(access),
+            Self::BufferLease(binding, _) => binding.access_mut(access),
+            Self::Image(binding, _) => binding.access_mut(access),
+            Self::ImageLease(binding, _) => binding.access_mut(access),
+            Self::RayTraceAcceleration(binding, _) => binding.access_mut(access),
+            Self::RayTraceAccelerationLease(binding, _) => binding.access_mut(access),
+            Self::SwapchainImage(binding, _) => binding.access_mut(access),
         }
     }
 
@@ -226,15 +226,12 @@ macro_rules! bind {
                     }
                 }
 
-                /// Allows for direct access to the item inside this binding, without the Shared
-                /// wrapper. Returns the previous access type and subresource access which you
-                /// should use to create a barrier for whatever access is actually being done.
-                pub(super) fn access(&mut self,
+                /// Returns the previous access type and subresource access which you should use to
+                /// create a barrier for whatever access is actually being done.
+                pub(super) fn access_mut(&mut self,
                     access: AccessType,
-                ) -> (&$name<P>, AccessType) {
-                    let previous_access = replace(&mut self.access, access);
-
-                    (&self.item, previous_access)
+                ) -> AccessType {
+                    replace(&mut self.access, access)
                 }
 
                 /// Returns a mutable borrow only if no other clones of this shared item exist.
