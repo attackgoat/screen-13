@@ -4,7 +4,7 @@ use {
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
-    log::{error, trace},
+    log::{trace, warn},
     parking_lot::Mutex,
     std::{
         collections::{btree_map::Entry, BTreeMap},
@@ -300,7 +300,11 @@ where
         let framebuffer = unsafe {
             self.device
                 .create_framebuffer(&create_info, None)
-                .map_err(|_| DriverError::Unsupported)?
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?
         };
 
         entry.insert(framebuffer);
@@ -419,7 +423,7 @@ where
             )
         }
         .map_err(|(_, err)| {
-            error!(
+            warn!(
                 "create_graphics_pipelines: {err}\n{:#?}",
                 graphic_pipeline_info.build()
             );

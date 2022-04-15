@@ -47,9 +47,11 @@ where
             ..Default::default()
         };
         let buffer = unsafe {
-            device
-                .create_buffer(&buffer_info, None)
-                .map_err(|_| DriverError::Unsupported)?
+            device.create_buffer(&buffer_info, None).map_err(|err| {
+                warn!("{err}");
+
+                DriverError::Unsupported
+            })?
         };
         let mut requirements = unsafe { device.get_buffer_memory_requirements(buffer) };
 
@@ -77,13 +79,21 @@ where
                 location: memory_location,
                 linear: true, // Buffers are always linear
             })
-            .map_err(|_| DriverError::Unsupported)?;
+            .map_err(|err| {
+                warn!("{err}");
+
+                DriverError::Unsupported
+            })?;
 
         // Bind memory to the buffer
         unsafe {
             device
                 .bind_buffer_memory(buffer, allocation.memory(), allocation.offset())
-                .map_err(|_| DriverError::Unsupported)?
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?
         };
 
         Ok(Self {

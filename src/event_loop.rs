@@ -7,7 +7,7 @@ use {
     },
     archery::SharedPointerKind,
     glam::{uvec2, UVec2},
-    log::{debug, info, trace},
+    log::{debug, info, trace, warn},
     std::{
         marker::PhantomData,
         mem::take,
@@ -271,10 +271,11 @@ where
             .map_err(|_| DriverError::InvalidData)?; // TODO: More like invalid input
 
         // Create an operating system window via Winit
-        let window = self
-            .window
-            .build(&self.event_loop)
-            .map_err(|_| DriverError::Unsupported)?;
+        let window = self.window.build(&self.event_loop).map_err(|err| {
+            warn!("{err}");
+
+            DriverError::Unsupported
+        })?;
         let (width, height) = {
             let inner_size = window.inner_size();
             (inner_size.width, inner_size.height)

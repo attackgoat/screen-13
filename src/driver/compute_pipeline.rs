@@ -7,7 +7,7 @@ use {
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
-    log::trace,
+    log::{trace, warn},
     std::{ffi::CString, ops::Deref, thread::panicking},
 };
 
@@ -64,7 +64,11 @@ where
             };
             let shader_module = device
                 .create_shader_module(&shader_module_create_info, None)
-                .map_err(|_| DriverError::Unsupported)?;
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?;
             let entry_name = CString::new(info.entry_name.as_bytes()).unwrap();
             let stage_create_info = vk::PipelineShaderStageCreateInfo::builder()
                 .module(shader_module)
@@ -80,7 +84,11 @@ where
 
             let layout = device
                 .create_pipeline_layout(&layout_info, None)
-                .map_err(|_| DriverError::Unsupported)?;
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?;
             let pipeline_info = vk::ComputePipelineCreateInfo::builder()
                 .stage(stage_create_info.build())
                 .layout(layout);
@@ -90,7 +98,11 @@ where
                     from_ref(&pipeline_info.build()),
                     None,
                 )
-                .map_err(|_| DriverError::Unsupported)?[0];
+                .map_err(|(_, err)| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?[0];
 
             device.destroy_shader_module(shader_module, None);
 

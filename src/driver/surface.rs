@@ -3,6 +3,7 @@ use {
     crate::ptr::Shared,
     archery::SharedPointerKind,
     ash::{extensions::khr, vk},
+    log::warn,
     raw_window_handle::HasRawWindowHandle,
     std::{
         fmt::{Debug, Formatter},
@@ -32,7 +33,11 @@ where
         let surface_ext = khr::Surface::new(&instance.entry, &instance);
         let surface =
             unsafe { ash_window::create_surface(&instance.entry, &instance, window, None) }
-                .map_err(|_| DriverError::Unsupported)?;
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?;
 
         Ok(Self {
             _instance: instance,

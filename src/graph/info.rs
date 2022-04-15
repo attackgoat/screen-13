@@ -19,7 +19,7 @@ macro_rules! information {
                 type Info = $dst;
 
                 fn get(self, graph: &RenderGraph<impl SharedPointerKind>) -> $dst {
-                    graph.bindings[self.idx].[<as_ $name>]().info().clone()
+                    graph.bindings[self.idx].[<as_ $name>]().unwrap().info().clone()
                 }
             }
         }

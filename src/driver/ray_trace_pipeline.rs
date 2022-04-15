@@ -7,7 +7,7 @@ use {
     archery::SharedPointerKind,
     ash::vk,
     glam::{Mat3, Vec3},
-    log::{info, trace},
+    log::{info, trace, warn},
     parking_lot::Mutex,
     std::{ffi::CString, ops::Deref, thread::panicking},
 };
@@ -75,7 +75,11 @@ where
                 vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             )
             .build()
-            .map_err(|_| DriverError::Unsupported)?,
+            .map_err(|err| {
+                warn!("{err}");
+
+                DriverError::Unsupported
+            })?,
         )?));
 
         Ok(Self { device, buf })
@@ -272,7 +276,11 @@ where
         unsafe {
             let accel_struct = Device::accel_struct(&self.device)
                 .create_acceleration_structure(&accel_info, None)
-                .map_err(|_| DriverError::Unsupported)?;
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?;
             let scratch_buf = self.buf.lock();
 
             // See `RT_SCRATCH_BUFFER_SIZE`
@@ -594,7 +602,11 @@ where
                         .set_layouts(&descriptor_set_layout_handles),
                     None,
                 )
-                .map_err(|_| DriverError::Unsupported)?;
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?;
             let mut entry_points: Vec<CString> = Vec::new(); // Keep entry point names alive, since build() forgets references.
             let mut prev_stage: Option<vk::ShaderStageFlags> = None;
             let mut shader_groups: Vec<vk::RayTracingShaderGroupCreateInfoKHR> = vec![];
@@ -611,7 +623,11 @@ where
                     };
                     let shader_module = device
                         .create_shader_module(&shader_module_create_info, None)
-                        .map_err(|_| DriverError::Unsupported)?;
+                        .map_err(|err| {
+                            warn!("{err}");
+
+                            DriverError::Unsupported
+                        })?;
 
                     Ok((shader_module, info.entry_name.clone()))
                 };
@@ -722,7 +738,11 @@ where
                         .build()],
                     None,
                 )
-                .map_err(|_| DriverError::Unsupported)?[0];
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?[0];
             let shader_bindings = RayTraceShaderBindings::create(
                 &device,
                 &RayTraceShaderBindingsDesc {
@@ -841,7 +861,7 @@ where
         //     device
         //         .ray_trace_pipeline_ext
         //         .get_ray_tracing_shader_group_handles(pipeline, 0, group_count, group_handles_size)
-        //         .map_err(|_| DriverError::Unsupported)?
+        //         .map_err(|err| {warn!("{err}");DriverError::Unsupported})?
         // };
         // let prog_size = shader_group_handle_size;
         // let create_binding_table =

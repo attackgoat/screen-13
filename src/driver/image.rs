@@ -100,9 +100,11 @@ where
         let device = Shared::clone(device);
         let create_info = info.image_create_info();
         let image = unsafe {
-            device
-                .create_image(&create_info, None)
-                .map_err(|_| DriverError::Unsupported)?
+            device.create_image(&create_info, None).map_err(|err| {
+                warn!("{err}");
+
+                DriverError::Unsupported
+            })?
         };
         let requirements = unsafe { device.get_image_memory_requirements(image) };
         let allocation = device
@@ -116,12 +118,20 @@ where
                 location: MemoryLocation::GpuOnly,
                 linear: false,
             })
-            .map_err(|_| DriverError::Unsupported)?;
+            .map_err(|err| {
+                warn!("{err}");
+
+                DriverError::Unsupported
+            })?;
 
         unsafe {
             device
                 .bind_image_memory(image, allocation.memory(), allocation.offset())
-                .map_err(|_| DriverError::Unsupported)?;
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?;
         }
 
         Ok(Self {
@@ -527,8 +537,12 @@ where
             },
         };
 
-        let image_view = unsafe { device.create_image_view(&create_info, None) }
-            .map_err(|_| DriverError::Unsupported)?;
+        let image_view =
+            unsafe { device.create_image_view(&create_info, None) }.map_err(|err| {
+                warn!("{err}");
+
+                DriverError::Unsupported
+            })?;
 
         Ok(Self {
             device,

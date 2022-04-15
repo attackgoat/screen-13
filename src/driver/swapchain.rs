@@ -192,7 +192,11 @@ where
                 *self.surface,
             )
         }
-        .map_err(|_| DriverError::Unsupported)?;
+        .map_err(|err| {
+            warn!("{err}");
+
+            DriverError::Unsupported
+        })?;
 
         // Triple-buffer so that acquiring an image doesn't stall for >16.6ms at 60Hz on AMD
         // when frames take >16.6ms to render. Also allows MAILBOX to work.
@@ -240,7 +244,11 @@ where
                 *self.surface,
             )
         }
-        .map_err(|_| DriverError::Unsupported)?;
+        .map_err(|err| {
+            warn!("{err}");
+
+            DriverError::Unsupported
+        })?;
 
         let present_mode = present_mode_preference
             .into_iter()

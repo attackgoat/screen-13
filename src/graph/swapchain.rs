@@ -74,16 +74,16 @@ impl<P> Binding<P>
 where
     P: SharedPointerKind,
 {
-    pub(super) fn as_swapchain_image(&self) -> &SwapchainImageBinding<P> {
+    pub(super) fn as_swapchain_image(&self) -> Option<&SwapchainImageBinding<P>> {
         if let Self::SwapchainImage(binding, true) = self {
-            binding
+            Some(binding)
         } else if let Self::SwapchainImage(_, false) = self {
             // User code might try this - but it is a programmer error
             // to access a binding after it has been unbound so dont
-            panic!();
+            None
         } else {
             // The private code in this module should prevent this branch
-            unreachable!("boom");
+            unreachable!();
         }
     }
 }
@@ -96,6 +96,7 @@ where
     fn unbind(self, graph: &mut Resolver<P>) -> SwapchainImage<P> {
         graph.graph.bindings[self.idx]
             .as_swapchain_image()
+            .unwrap()
             .item
             .clone()
     }

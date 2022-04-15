@@ -173,7 +173,11 @@ impl Instance {
         unsafe {
             Ok(this
                 .enumerate_physical_devices()
-                .map_err(|_| DriverError::Unsupported)?
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?
                 .into_iter()
                 .map(|physical_device| {
                     let props = this.get_physical_device_properties(physical_device);

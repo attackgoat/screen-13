@@ -22,7 +22,7 @@ use {
     log::{debug, trace},
     std::{
         collections::{BTreeMap, BTreeSet, VecDeque},
-        iter::repeat,
+        iter::{once, repeat},
         mem::take,
         ops::Range,
     },
@@ -68,6 +68,8 @@ where
     fn allow_merge_passes(lhs: &Pass<P>, rhs: &Pass<P>) -> bool {
         // Don't attempt merge on secondary resolves (it is unlikely to succeed)
         if !rhs.subpasses.is_empty() {
+            trace!("{} has already been merged", rhs.name);
+
             return false;
         }
 
@@ -86,19 +88,24 @@ where
 
         // Both must have graphic pipelines
         if lhs_pipeline.is_none() || rhs_pipeline.is_none() {
+            if lhs_pipeline.is_none() {
+                trace!("{} is not graphic", lhs.name);
+            }
+
+            if rhs_pipeline.is_none() {
+                trace!("{} is not graphic", rhs.name);
+            }
+
             return false;
         }
 
         let lhs_pipeline = lhs_pipeline.unwrap().unwrap_graphic();
         let rhs_pipeline = rhs_pipeline.unwrap().unwrap_graphic();
 
-        // Don't merge passes that have external accesses; because they require pipeline barriers
-        if !rhs.execs[0].accesses.is_empty() {
-            return false;
-        }
-
         // Must be same general rasterization modes
         if lhs_pipeline.info != rhs_pipeline.info {
+            trace!("Different rasterization modes",);
+
             return false;
         }
 
@@ -106,12 +113,16 @@ where
         for (lhs_attachments_resolved, lhs_attachments_stored) in lhs
             .subpasses
             .iter()
+            .rev()
             .map(|subpass| (&subpass.resolve_attachments, &subpass.store_attachments))
+            .chain(once((&lhs.resolve_attachments, &lhs.store_attachments)))
         {
             // Compare individual color/depth+stencil attachments for compatibility
             if !AttachmentMap::are_compatible(lhs_attachments_resolved, &rhs.load_attachments)
                 || !AttachmentMap::are_compatible(lhs_attachments_stored, &rhs.load_attachments)
             {
+                trace!("Incompatible attachments");
+
                 return false;
             }
 
@@ -120,6 +131,8 @@ where
                 if lhs_attachments_resolved.contains_image(node_idx)
                     || lhs_attachments_stored.contains_image(node_idx)
                 {
+                    trace!("Merging due to common image");
+
                     return true;
                 }
             }
@@ -134,6 +147,8 @@ where
             .next()
             .is_some()
         {
+            trace!("Merging due to input");
+
             return true;
         }
 
@@ -961,19 +976,32 @@ where
     fn merge_scheduled_passes(&mut self, mut schedule: &mut [usize]) {
         // There must be company
         if schedule.len() < 2 {
+            trace!("Cannot merge");
+
             return;
         }
 
         let mut passes = self.graph.passes.drain(..).map(Some).collect::<Vec<_>>();
         let mut idx = 0;
 
+        debug!(
+            "Attempting to merge {} of {} passes",
+            schedule.len(),
+            passes.len()
+        );
+
         while idx < schedule.len() {
             // Find candidates
             let mut pass = passes[schedule[idx]].take().unwrap();
+
             let start = idx + 1;
             let mut end = start;
             while end < schedule.len() {
                 let other = passes[schedule[end]].as_ref().unwrap();
+                debug!(
+                    "Attempting to merge [{idx}: {}] with [{end}: {}]",
+                    pass.name, other.name
+                );
                 if Self::allow_merge_passes(&pass, other) {
                     end += 1;
                 } else {
@@ -981,12 +1009,18 @@ where
                 }
             }
 
+            if start == end {
+                debug!("Unable to merge [{idx}: {}]", pass.name);
+            } else {
+                trace!("Merging {} passes into [{idx}: {}]", end - start, pass.name);
+            }
+
             // Grow the merged pass once, not per merge
             {
                 let mut name_additional = 0;
                 let mut execs_additional = 0;
-                for merge_idx in start..end {
-                    let other = passes[schedule[merge_idx]].as_ref().unwrap();
+                for idx in start..end {
+                    let other = passes[schedule[idx]].as_ref().unwrap();
                     name_additional += other.name.len();
                     execs_additional += other.execs.len();
                 }
@@ -995,15 +1029,13 @@ where
                 pass.execs.reserve(execs_additional);
             }
 
-            for merge_idx in start..end {
-                let other = passes[schedule[merge_idx]].take().unwrap();
+            for idx in start..end {
+                let mut other = passes[schedule[idx]].take().unwrap();
                 pass.name.push_str(" + ");
                 pass.name.push_str(other.name.as_str());
 
                 let first_exec_idx = pass.execs.len();
-                for exec in other.execs.into_iter() {
-                    pass.execs.push(exec);
-                }
+                pass.execs.append(&mut other.execs);
 
                 pass.subpasses.push(Subpass {
                     load_attachments: other.load_attachments,
@@ -1014,7 +1046,7 @@ where
             }
 
             self.graph.passes.push(pass);
-            idx += 1;
+            idx += 1 + end - start;
         }
 
         // Reschedule passes
@@ -1225,6 +1257,12 @@ where
         mut schedule: &mut [usize],
         end_pass_idx: usize,
     ) -> Result<(), DriverError> {
+        // Print some handy details or hit a breakpoint if you set the flag
+        #[cfg(debug_assertions)]
+        if self.graph.debug {
+            log::info!("Input {:#?}", self.graph);
+        }
+
         // Optimize the schedule; leasing the required stuff it needs
         self.reorder_scheduled_passes(schedule, end_pass_idx);
         self.merge_scheduled_passes(schedule);

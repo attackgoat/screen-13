@@ -198,13 +198,6 @@ impl AttachmentMap {
             },
         )
     }
-
-    // fn with_capacity(capacity: usize) -> Self {
-    //     Self {
-    //         attached: Vec::with_capacity(capacity),
-    //         ..Default::default()
-    //     }
-    // }
 }
 
 /// Describes the SPIR-V binding index, and optionally a specific descriptor set
@@ -416,6 +409,10 @@ where
 {
     bindings: Vec<Binding<P>>,
     passes: Vec<Pass<P>>,
+
+    /// Set to true (when in debug mode) in order to get a breakpoint hit where you want.
+    #[cfg(debug_assertions)]
+    pub debug: bool,
 }
 
 impl<P> RenderGraph<P>
@@ -424,9 +421,17 @@ where
 {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
+        let bindings = vec![];
+        let passes = vec![];
+
+        #[cfg(debug_assertions)]
+        let debug = false;
+
         Self {
-            bindings: vec![],
-            passes: vec![],
+            bindings,
+            passes,
+            #[cfg(debug_assertions)]
+            debug,
         }
     }
 

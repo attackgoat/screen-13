@@ -248,6 +248,8 @@ macro_rules! bind {
                 P: SharedPointerKind,
             {
                 fn bind(self, graph: &mut RenderGraph<P>) -> [<$name Node>]<P> {
+                    // In this function we are binding a new item (Image or Buffer or etc)
+
                     // We will return a new node
                     let res = [<$name Node>]::new(graph.bindings.len());
                     let binding = Binding::$name([<$name Binding>]::new(self), true);
@@ -262,10 +264,25 @@ macro_rules! bind {
                 P: SharedPointerKind,
             {
                 fn bind(self, graph: &mut RenderGraph<P>) -> [<$name Node>]<P> {
-                    // We will return a new node
-                    // TODO: Maybe return the old node? Tiny bit more efficient in this case
+                    // In this function we are binding an existing binding (ImageBinding or
+                    // BufferBinding or etc)
+
+                    // We will return an existing node, if possible
+                    // TODO: Could store a sorted list of these shared pointers to avoid the O(N)
+                    for (idx, existing_binding) in graph.bindings.iter_mut().enumerate() {
+                        if let Some((existing_binding, is_bound)) = existing_binding.[<as_ $name:snake _mut>]() {
+                            if existing_binding.item == self.item {
+                                *is_bound = true;
+
+                                return [<$name Node>]::new(idx);
+                            }
+                        }
+                    }
+
+                    // Return a new node
                     let res = [<$name Node>]::new(graph.bindings.len());
-                    graph.bindings.push(Binding::$name(self, true));
+                    let binding = Binding::$name(self, true);
+                    graph.bindings.push(binding);
 
                     res
                 }
@@ -275,11 +292,19 @@ macro_rules! bind {
             where
                 P: SharedPointerKind,
             {
-                pub(super) fn [<as_ $name:snake>](&self) -> &[<$name Binding>]<P> {
+                pub(super) fn [<as_ $name:snake>](&self) -> Option<&[<$name Binding>]<P>> {
                     if let Self::$name(binding, _) = self {
-                        &binding
+                        Some(&binding)
                     } else {
-                        panic!("Expected: {} binding", stringify!($name));
+                        None
+                    }
+                }
+
+                pub(super) fn [<as_ $name:snake _mut>](&mut self) -> Option<(&mut [<$name Binding>]<P>, &mut bool)> {
+                    if let Self::$name(ref mut binding, ref mut is_bound) = self {
+                        Some((binding, is_bound))
+                    } else {
+                        None
                     }
                 }
             }
@@ -304,10 +329,23 @@ macro_rules! bind_lease {
                 P: SharedPointerKind,
             {
                 fn bind(self, graph: &mut RenderGraph<P>) -> [<$name LeaseNode>]<P> {
+                    // In this function we are binding an existing lease binding
+                    // (ImageLeaseBinding or BufferLeaseBinding or etc)
+
+                    // We will return an existing node, if possible
+                    // TODO: Could store a sorted list of these shared pointers to avoid the O(N)
+                    for (idx, existing_binding) in graph.bindings.iter_mut().enumerate() {
+                        if let Some((existing_binding, is_bound)) = existing_binding.[<as_ $name:snake _mut>]() {
+                            if existing_binding.item == self.item {
+                                *is_bound = true;
+
+                                return [<$name LeaseNode>]::new(idx);
+                            }
+                        }
+                    }
+
                     // We will return a new node
                     let res = [<$name LeaseNode>]::new(graph.bindings.len());
-
-                    // We are binding an existing lease binding (ImageLeaseBinding or BufferLeaseBinding or etc)
                     let binding = Binding::[<$name Lease>](self, true);
                     graph.bindings.push(binding);
 
@@ -320,10 +358,10 @@ macro_rules! bind_lease {
                 P: SharedPointerKind,
             {
                 fn bind(self, graph: &mut RenderGraph<P>) -> [<$name LeaseNode>]<P> {
+                    // In this function we are binding a new lease (Lease<ImageBinding> or etc)
+
                     // We will return a new node
                     let res = [<$name LeaseNode>]::new(graph.bindings.len());
-
-                    // We are binding a new lease (Lease<ImageBinding> or etc)
                     let binding = Binding::[<$name Lease>]([<$name LeaseBinding>](self), true);
                     graph.bindings.push(binding);
 
@@ -355,21 +393,23 @@ macro_rules! bind_lease {
             where
                 P: SharedPointerKind,
             {
-                // TODO: Remove after ray tracing baked in
+                // TODO: Remove lint after ray tracing baked in
                 #[allow(dead_code)]
-                pub(super) fn [<as_ $name:snake _lease>](&self) -> &Lease<[<$name Binding>]<P>, P> {
+                pub(super) fn [<as_ $name:snake _lease>](&self) -> Option<&Lease<[<$name Binding>]<P>, P>> {
                     if let Self::[<$name Lease>](binding, _) = self {
-                        &binding.0
+                        Some(&binding.0)
                     } else {
-                        panic!("Expected: {} lease binding", stringify!($name));
+                        None
                     }
                 }
 
-                pub(super) fn [<as_ $name:snake _lease_mut>](&mut self) -> &mut Lease<[<$name Binding>]<P>, P> {
-                    if let Self::[<$name Lease>](binding, _) = self {
-                        &mut binding.0
+                // TODO: Remove lint after ray tracing baked in
+                #[allow(dead_code)]
+                pub(super) fn [<as_ $name:snake _lease_mut>](&mut self) -> Option<(&mut Lease<[<$name Binding>]<P>, P>, &mut bool)> {
+                    if let Self::[<$name Lease>](ref mut binding, ref mut is_bound) = self {
+                        Some((&mut binding.0, is_bound))
                     } else {
-                        panic!("Expected: {} lease binding", stringify!($name));
+                        None
                     }
                 }
             }

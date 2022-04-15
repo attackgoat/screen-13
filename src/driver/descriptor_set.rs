@@ -46,7 +46,11 @@ where
                 None,
             )
         }
-        .map_err(|_| DriverError::Unsupported)?;
+        .map_err(|err| {
+            warn!("{err}");
+
+            DriverError::Unsupported
+        })?;
 
         Ok(Self {
             descriptor_pool,
@@ -58,15 +62,23 @@ where
     pub fn allocate_descriptor_set(
         this: &Shared<Self, P>,
         layout: &DescriptorSetLayout<P>,
-    ) -> Result<DescriptorSet<P>, DriverError> {
-        Ok(Self::allocate_descriptor_sets(this, layout, 1)?.remove(0))
+    ) -> Result<DescriptorSet<P>, DriverError>
+    where
+        P: 'static,
+    {
+        Ok(Self::allocate_descriptor_sets(this, layout, 1)?
+            .next()
+            .unwrap())
     }
 
     pub fn allocate_descriptor_sets(
         this: &Shared<Self, P>,
         layout: &DescriptorSetLayout<P>,
         count: u32,
-    ) -> Result<Vec<DescriptorSet<P>>, DriverError> {
+    ) -> Result<impl Iterator<Item = DescriptorSet<P>>, DriverError>
+    where
+        P: 'static,
+    {
         use std::slice::from_ref;
 
         let descriptor_pool = Shared::clone(this);
@@ -81,13 +93,24 @@ where
         Ok(unsafe {
             this.device
                 .allocate_descriptor_sets(&create_info)
-                .map_err(|_| DriverError::Unsupported)?
-                .iter()
-                .map(|descriptor_set| DescriptorSet {
+                .map_err(|err| {
+                    use {vk::Result as vk, DriverError::*};
+
+                    warn!("{err}");
+
+                    match err {
+                        e if e == vk::ERROR_FRAGMENTED_POOL => InvalidData,
+                        e if e == vk::ERROR_OUT_OF_DEVICE_MEMORY => OutOfMemory,
+                        e if e == vk::ERROR_OUT_OF_HOST_MEMORY => OutOfMemory,
+                        e if e == vk::ERROR_OUT_OF_POOL_MEMORY => OutOfMemory,
+                        _ => Unsupported,
+                    }
+                })?
+                .into_iter()
+                .map(move |descriptor_set| DescriptorSet {
                     descriptor_pool: Shared::clone(&descriptor_pool),
-                    descriptor_set: *descriptor_set,
+                    descriptor_set,
                 })
-                .collect()
         })
     }
 }

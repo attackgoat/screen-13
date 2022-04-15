@@ -158,7 +158,7 @@ macro_rules! index {
                 type Output = $handle<P>;
 
                 fn index(&self, node: [<$name Node>]<P>) -> &Self::Output {
-                    &*self.binding_ref(node.idx).[<as_ $name:snake>]().item
+                    &*self.binding_ref(node.idx).[<as_ $name:snake>]().unwrap().item
                 }
             }
         }
@@ -189,9 +189,9 @@ where
         let binding = self.binding_ref(node_idx);
 
         match node {
-            AnyImageNode::Image(_) => &binding.as_image().item,
-            AnyImageNode::ImageLease(_) => &binding.as_image_lease().item,
-            AnyImageNode::SwapchainImage(_) => &binding.as_swapchain_image().item,
+            AnyImageNode::Image(_) => &binding.as_image().unwrap().item,
+            AnyImageNode::ImageLease(_) => &binding.as_image_lease().unwrap().item,
+            AnyImageNode::SwapchainImage(_) => &binding.as_swapchain_image().unwrap().item,
         }
     }
 }
@@ -210,8 +210,8 @@ where
         let binding = self.binding_ref(node_idx);
 
         match node {
-            AnyBufferNode::Buffer(_) => &binding.as_buffer().item,
-            AnyBufferNode::BufferLease(_) => &binding.as_buffer_lease().item,
+            AnyBufferNode::Buffer(_) => &binding.as_buffer().unwrap().item,
+            AnyBufferNode::BufferLease(_) => &binding.as_buffer_lease().unwrap().item,
         }
     }
 }

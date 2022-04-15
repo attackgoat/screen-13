@@ -201,7 +201,11 @@ where
                         .push_constant_ranges(&push_constant_ranges),
                     None,
                 )
-                .map_err(|_| DriverError::Unsupported)?;
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?;
             let shader_info = shaders
                 .into_iter()
                 .map(|shader| {
@@ -212,7 +216,11 @@ where
                     };
                     let shader_module = device
                         .create_shader_module(&shader_module_create_info, None)
-                        .map_err(|_| DriverError::Unsupported)?;
+                        .map_err(|err| {
+                            warn!("{err}");
+
+                            DriverError::Unsupported
+                        })?;
                     let shader_stage = Stage {
                         flags: shader.stage,
                         module: shader_module,

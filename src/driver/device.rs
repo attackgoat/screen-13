@@ -82,7 +82,11 @@ where
         unsafe {
             let extension_properties = instance
                 .enumerate_device_extension_properties(*physical_device)
-                .map_err(|_| DriverError::Unsupported)?;
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?;
 
             #[cfg(debug_assertions)]
             debug!("Extension properties:\n{:#?}", &extension_properties);
@@ -257,7 +261,11 @@ where
                 .push_next(&mut features2);
             let device = instance
                 .create_device(*physical_device, &device_create_info, None)
-                .map_err(|_| DriverError::Unsupported)?;
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?;
             let allocator = Allocator::new(&AllocatorCreateDesc {
                 instance: (**instance).clone(),
                 device: device.clone(),
@@ -270,7 +278,11 @@ where
                 },
                 buffer_device_address: true,
             })
-            .map_err(|_| DriverError::Unsupported)?;
+            .map_err(|err| {
+                warn!("{err}");
+
+                DriverError::Unsupported
+            })?;
             let queue = Queue {
                 queue: device.get_device_queue(queue.idx, 0),
                 family: queue,
@@ -338,7 +350,11 @@ where
 
                             device.create_sampler(&info, None)
                         }
-                        .map_err(|_| DriverError::Unsupported)?,
+                        .map_err(|err| {
+                            warn!("{err}");
+
+                            DriverError::Unsupported
+                        })?,
                     );
                 }
             }
@@ -369,7 +385,11 @@ where
         unsafe {
             Device::surface(this)
                 .get_physical_device_surface_formats(*this.physical_device, **surface)
-                .map_err(|_| DriverError::Unsupported)
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })
         }
     }
 

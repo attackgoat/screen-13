@@ -63,7 +63,7 @@ use {
     archery::SharedPointerKind,
     derive_builder::Builder,
     glam::uvec2,
-    log::{debug, info, trace},
+    log::{debug, info, trace, warn},
     raw_window_handle::HasRawWindowHandle,
     std::{
         error::Error,
@@ -228,7 +228,11 @@ where
         trace!("new {:?}", cfg);
 
         let required_extensions = ash_window::enumerate_required_extensions(window)
-            .map_err(|_| DriverError::Unsupported)?
+            .map_err(|err| {
+                warn!("{err}");
+
+                DriverError::Unsupported
+            })?
             .iter()
             .map(|ext| unsafe { CStr::from_ptr(*ext as *const _) });
         let instance = Shared::new(Instance::new(cfg.debug, required_extensions)?);
