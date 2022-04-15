@@ -21,7 +21,7 @@ use {
     itertools::Itertools,
     log::{debug, trace},
     std::{
-        collections::{BTreeMap, BTreeSet, VecDeque},
+        collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
         iter::{once, repeat},
         mem::take,
         ops::Range,
@@ -35,7 +35,7 @@ where
     P: SharedPointerKind,
 {
     _descriptor_pool: Option<Lease<Shared<DescriptorPool<P>, P>, P>>,
-    descriptor_sets: Vec<DescriptorSet<P>>,
+    exec_descriptor_sets: HashMap<usize, Vec<DescriptorSet<P>>>,
     render_pass: Option<Lease<RenderPass<P>, P>>,
 }
 
@@ -270,6 +270,7 @@ where
         cmd_buf: &CommandBuffer<P>,
         pipeline: &ExecutionPipeline<P>,
         physical_pass: &PhysicalPass<P>,
+        exec_idx: usize,
     ) {
         trace!("bind_descriptor_sets");
 
@@ -279,12 +280,10 @@ where
                 pipeline.bind_point(),
                 pipeline.layout(),
                 0,
-                physical_pass
-                    .descriptor_sets
+                &physical_pass.exec_descriptor_sets[&exec_idx]
                     .iter()
                     .map(|descriptor_set| **descriptor_set)
-                    .collect::<Vec<_>>()
-                    .as_slice(),
+                    .collect::<Box<[_]>>(),
                 &[],
             );
         }
@@ -434,16 +433,19 @@ where
         }
 
         // Notice how all sets are big enough for any other set; TODO: efficiently dont
-        let info = DescriptorPoolInfo::new(max_descriptor_set_idx + 1).pool_sizes(
-            max_pool_sizes
-                .into_iter()
-                .map(|(descriptor_ty, descriptor_count)| DescriptorPoolSize {
-                    ty: descriptor_ty,
-                    // Trivially round up the descriptor counts to increase cache coherence
-                    descriptor_count: align_up_u32(descriptor_count, 1 << 5),
-                })
-                .collect(),
-        );
+        let info = DescriptorPoolInfo::new(pass.execs.len() as u32 * (max_descriptor_set_idx + 1))
+            .pool_sizes(
+                max_pool_sizes
+                    .into_iter()
+                    .map(|(descriptor_ty, descriptor_count)| DescriptorPoolSize {
+                        ty: descriptor_ty,
+                        // Trivially round up the descriptor counts to increase cache coherence
+                        descriptor_count: align_up_u32(descriptor_count, 1 << 5),
+                    })
+                    .collect(),
+            );
+
+        // debug!("{:#?}", info);
 
         let pool = cache.lease(info)?;
 
@@ -911,20 +913,30 @@ where
             );
 
             let descriptor_pool = Self::lease_descriptor_pool(cache, pass)?;
-            let mut descriptor_sets = Vec::with_capacity(
+            let mut exec_descriptor_sets = HashMap::with_capacity(
                 descriptor_pool
                     .as_ref()
                     .map(|descriptor_pool| descriptor_pool.info.max_sets as usize)
                     .unwrap_or_default(),
             );
             if let Some(descriptor_pool) = descriptor_pool.as_ref() {
-                for pipeline in pass.execs.iter().filter_map(|exec| exec.pipeline.as_ref()) {
-                    for descriptor_set_layout in pipeline.descriptor_info().layouts.values() {
+                for (exec_idx, pipeline) in
+                    pass.execs
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(exec_idx, exec)| {
+                            exec.pipeline.as_ref().map(|pipeline| (exec_idx, pipeline))
+                        })
+                {
+                    let layouts = pipeline.descriptor_info().layouts.values();
+                    let mut descriptor_sets = Vec::with_capacity(layouts.len());
+                    for descriptor_set_layout in layouts {
                         descriptor_sets.push(DescriptorPool::allocate_descriptor_set(
                             descriptor_pool,
                             descriptor_set_layout,
                         )?);
                     }
+                    exec_descriptor_sets.insert(exec_idx, descriptor_sets);
                 }
             }
 
@@ -963,7 +975,7 @@ where
 
             self.physical_passes.push(PhysicalPass {
                 _descriptor_pool: descriptor_pool, // Used above; but we must keep until done
-                descriptor_sets,
+                exec_descriptor_sets,
                 render_pass,
             });
         }
@@ -973,12 +985,12 @@ where
 
     // Merges passes which are graphic with common-ish attachments - note that scheduled pass order
     // is final during this function and so we must merge contiguous groups of passes
-    fn merge_scheduled_passes(&mut self, mut schedule: &mut [usize]) {
+    fn merge_scheduled_passes<'s>(&mut self, mut schedule: &'s mut [usize]) -> &'s mut [usize] {
         // There must be company
         if schedule.len() < 2 {
             trace!("Cannot merge");
 
-            return;
+            return schedule;
         }
 
         let mut passes = self.graph.passes.drain(..).map(Some).collect::<Vec<_>>();
@@ -1059,6 +1071,8 @@ where
         for pass in passes.into_iter().flatten() {
             self.graph.passes.push(pass);
         }
+
+        schedule
     }
 
     fn next_subpass(cmd_buf: &CommandBuffer<P>) {
@@ -1265,7 +1279,7 @@ where
 
         // Optimize the schedule; leasing the required stuff it needs
         self.reorder_scheduled_passes(schedule, end_pass_idx);
-        self.merge_scheduled_passes(schedule);
+        schedule = self.merge_scheduled_passes(schedule);
         self.lease_scheduled_resources(cache, schedule)?;
 
         let mut passes = take(&mut self.graph.passes);
@@ -1278,7 +1292,7 @@ where
             trace!("record_passes: begin \"{}\"", &pass.name);
 
             if !self.physical_passes[physical_pass_idx]
-                .descriptor_sets
+                .exec_descriptor_sets
                 .is_empty()
             {
                 self.write_descriptor_sets(cmd_buf, pass, physical_pass_idx)?;
@@ -1345,6 +1359,7 @@ where
                             cmd_buf,
                             pipeline,
                             &self.physical_passes[physical_pass_idx],
+                            exec_idx,
                         );
                     }
                 };
@@ -1654,13 +1669,17 @@ where
         let mut descriptor_writes = vec![];
         let mut buffer_infos = vec![];
         let mut image_infos = vec![];
-        for (descriptor_set_idx, (exec, pipeline)) in pass
+        for (exec_idx, exec, pipeline) in pass
             .execs
             .iter()
-            .filter_map(|exec| exec.pipeline.as_ref().map(|pipeline| (exec, pipeline)))
             .enumerate()
+            .filter_map(|(exec_idx, exec)| {
+                exec.pipeline
+                    .as_ref()
+                    .map(|pipeline| (exec_idx, exec, pipeline))
+            })
+            .filter(|(.., pipeline)| !pipeline.descriptor_info().layouts.is_empty())
         {
-            let descriptor_set = &physical_pass.descriptor_sets[descriptor_set_idx];
             for (descriptor, (node_idx, view_info)) in exec.bindings.iter() {
                 let (descriptor_set_idx, binding_idx, binding_offset) = descriptor.into_tuple();
                 let descriptor_info = *pipeline
@@ -1672,7 +1691,9 @@ where
                 //trace!("write_descriptor_sets {descriptor_set_idx}.{binding_idx}[{binding_offset}] = {:?}", descriptor_info);
 
                 let write_descriptor_set = vk::WriteDescriptorSet::builder()
-                    .dst_set(**descriptor_set)
+                    .dst_set(
+                        *physical_pass.exec_descriptor_sets[&exec_idx][descriptor_set_idx as usize],
+                    )
                     .dst_binding(binding_idx)
                     .dst_array_element(binding_offset);
                 let bound_node = &self.graph.bindings[*node_idx];
