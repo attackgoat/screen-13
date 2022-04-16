@@ -139,6 +139,12 @@ where
             .map(|shader| shader.into())
             .collect::<Vec<Shader>>();
 
+        let vertex_input = shaders
+            .iter()
+            .find(|shader| shader.stage == vk::ShaderStageFlags::VERTEX)
+            .expect("Unable to find vertex shader")
+            .vertex_input()?;
+
         let descriptor_bindings = shaders
             .iter()
             .map(|shader| shader.descriptor_bindings(&device))
@@ -149,25 +155,9 @@ where
             return Err(DriverError::Unsupported);
         }
 
-        let mut descriptor_bindings = descriptor_bindings
-            .into_iter()
-            .map(|item| item.unwrap())
-            .collect::<Vec<_>>();
-
-        let vertex_input = shaders
-            .iter()
-            .find(|shader| shader.stage == vk::ShaderStageFlags::VERTEX)
-            .expect("Unable to find vertex shader")
-            .vertex_input()?;
-
-        // debug!("Vertex reflection found: {:#?}", vertex_input);
-
-        // We allow extra descriptors because specialization constants aren't specified yet
-        if let Some(extra_descriptors) = &info.extra_descriptors {
-            descriptor_bindings.push(extra_descriptors.clone());
-        }
-
-        let descriptor_bindings = Shader::merge_descriptor_bindings(descriptor_bindings);
+        let descriptor_bindings = Shader::merge_descriptor_bindings(
+            descriptor_bindings.into_iter().map(|item| item.unwrap()),
+        );
         let stages = shaders
             .iter()
             .map(|shader| shader.stage)
@@ -190,7 +180,12 @@ where
             .collect::<Vec<_>>();
 
         // for pcr in &push_constant_ranges {
-        //     trace!("Graphic push constant {:?} {}..{}", pcr.stage_flags, pcr.offset, pcr.offset + pcr.size);
+        //     trace!(
+        //         "{:?} {}..{}",
+        //         pcr.stage_flags,
+        //         pcr.offset,
+        //         pcr.offset + pcr.size
+        //     );
         // }
 
         unsafe {
@@ -298,12 +293,6 @@ pub struct GraphicPipelineInfo {
     pub cull_mode: vk::CullModeFlags,
     #[builder(default, setter(strip_option))]
     pub depth_stencil: Option<DepthStencilMode>,
-    /// A map of extra descriptors not directly specified in the shader SPIR-V code.
-    ///
-    /// Use this for specialization constants, as they will not appear in the automatic descriptor
-    /// binding map.
-    #[builder(default, setter(strip_option))]
-    pub extra_descriptors: Option<DescriptorBindingMap>,
     #[builder(default = "vk::FrontFace::COUNTER_CLOCKWISE")]
     pub front_face: vk::FrontFace,
     #[builder(default = "vk::PolygonMode::FILL")]

@@ -52,19 +52,7 @@ where
         let pipeline = Shared::new(
             GraphicPipeline::create(
                 &image_loader.device,
-                GraphicPipelineInfo::new()
-                    .blend(BlendMode::Alpha)
-                    .extra_descriptors(
-                        [(
-                            DescriptorBinding(0, 0),
-                            DescriptorInfo::CombinedImageSampler(
-                                num_pages as u32,
-                                vk::Sampler::null(),
-                            ),
-                        )]
-                        .into_iter()
-                        .collect(),
-                    ),
+                GraphicPipelineInfo::new().blend(BlendMode::Alpha),
                 [
                     Shader::new_vertex(crate::res::shader::GRAPHIC_FONT_VERT),
                     Shader::new_fragment(crate::res::shader::GRAPHIC_FONT_BITMAP_FRAG)

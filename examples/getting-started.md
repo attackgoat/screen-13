@@ -102,9 +102,7 @@ pub struct GraphicPipelineInfo {
 }
 ```
 
-All of the parameters implement `Copy` and are simple enums. There is one oddity, `extra_descriptors`, which
-is an optional map of bindings that is only used in conjuction with texture arrays that use dynamic specialization
-constants to specify length. If you want them, they're there.
+All of the parameters implement `Copy` and are simple enums and structs.
 
 ```rust
 let info = GraphicPipelineInfo::default();

@@ -4,9 +4,9 @@ use {
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
-    log::error,
+    log::{error, trace, warn},
     spirq::{
-        ty::{ScalarType, Type},
+        ty::{ArrayBound, ScalarType, Type},
         DescriptorType, EntryPoint, ReflectConfig, Variable,
     },
     std::{
@@ -268,54 +268,97 @@ impl Shader {
                     desc_ty,
                     nbind,
                     ..
-                } => Some((name, desc_bind, desc_ty, nbind)),
+                } => Some((name, desc_bind, desc_ty, *nbind)),
                 _ => None,
             })
         {
-            // trace!(
-            //     "Binding {}: {}.{} = {:?}[{}]",
-            //     name.as_deref().unwrap_or_default(),
-            //     binding.set(),
-            //     binding.bind(),
-            //     *desc_ty,
-            //     *binding_count
-            // );
+            let binding_count = match binding_count {
+                ArrayBound::Sized(binding_count) => binding_count,
+                ArrayBound::Specialized(spec_const_id) => {
+                    self.specialization_value_u32(spec_const_id)?
+                }
+                ArrayBound::SpecializedDefault(spec_const_id, spec_const_default) => self
+                    .specialization_value_u32(spec_const_id)
+                    .unwrap_or(spec_const_default),
+                ArrayBound::Unsized => {
+                    warn!("Unsupported unsized descriptor binding");
+                    return Err(DriverError::Unsupported);
+                }
+            };
+
+            trace!(
+                "Binding {}: {}.{} = {:?}[{}]",
+                name.as_deref().unwrap_or_default(),
+                binding.set(),
+                binding.bind(),
+                *desc_ty,
+                binding_count
+            );
 
             res.insert(
                 DescriptorBinding(binding.set(), binding.bind()),
                 match desc_ty {
                     DescriptorType::AccelStruct() => {
-                        DescriptorInfo::AccelerationStructure(*binding_count)
+                        DescriptorInfo::AccelerationStructure(binding_count)
                     }
                     DescriptorType::CombinedImageSampler() => DescriptorInfo::CombinedImageSampler(
-                        *binding_count,
+                        binding_count,
                         guess_immutable_sampler(device, name.as_deref().expect("Invalid binding")),
                     ),
                     DescriptorType::InputAttachment(input_attachment_index) => {
-                        DescriptorInfo::InputAttachment(*binding_count, *input_attachment_index)
+                        DescriptorInfo::InputAttachment(binding_count, *input_attachment_index)
                     }
-                    DescriptorType::SampledImage() => DescriptorInfo::SampledImage(*binding_count),
-                    DescriptorType::Sampler() => DescriptorInfo::Sampler(*binding_count),
+                    DescriptorType::SampledImage() => DescriptorInfo::SampledImage(binding_count),
+                    DescriptorType::Sampler() => DescriptorInfo::Sampler(binding_count),
                     DescriptorType::StorageBuffer(_access_ty) => {
-                        DescriptorInfo::StorageBuffer(*binding_count)
+                        DescriptorInfo::StorageBuffer(binding_count)
                     }
                     DescriptorType::StorageImage(_access_ty) => {
-                        DescriptorInfo::StorageImage(*binding_count)
+                        DescriptorInfo::StorageImage(binding_count)
                     }
                     DescriptorType::StorageTexelBuffer(_access_ty) => {
-                        DescriptorInfo::StorageTexelBuffer(*binding_count)
+                        DescriptorInfo::StorageTexelBuffer(binding_count)
                     }
                     DescriptorType::UniformBuffer() => {
-                        DescriptorInfo::UniformBufferDynamic(*binding_count)
+                        DescriptorInfo::UniformBufferDynamic(binding_count)
                     }
                     DescriptorType::UniformTexelBuffer() => {
-                        DescriptorInfo::UniformTexelBuffer(*binding_count)
+                        DescriptorInfo::UniformTexelBuffer(binding_count)
                     }
                 },
             );
         }
 
         Ok(res)
+    }
+
+    fn specialization_value_u32(&self, spec_const_id: u32) -> Result<u32, DriverError> {
+        if self.specialization_info.is_none() {
+            warn!("Specialization descriptor binding not specified");
+            return Err(DriverError::Unsupported);
+        }
+
+        let spec_info = self.specialization_info.as_ref().unwrap();
+        let spec_const = spec_info
+            .map_entries
+            .iter()
+            .find(|spec_const| spec_const.constant_id == spec_const_id);
+        if spec_const.is_none() {
+            warn!("Specialization descriptor binding entries do not contain constant_id {spec_const_id}");
+            return Err(DriverError::Unsupported);
+        }
+
+        let spec_const = spec_const.unwrap();
+        let start = spec_const.offset as usize;
+        let end = start + 4;
+        if end > spec_info.data.len() {
+            warn!("Invalid specialization constant data for constant_id {spec_const_id}");
+            return Err(DriverError::Unsupported);
+        }
+
+        let mut bytes = [0u8; 4];
+        bytes.copy_from_slice(&spec_info.data[start..end]);
+        Ok(u32::from_ne_bytes(bytes))
     }
 
     pub fn merge_descriptor_bindings(

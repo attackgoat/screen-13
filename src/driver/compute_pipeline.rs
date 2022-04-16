@@ -40,14 +40,7 @@ where
         let shader = info.clone().into_shader();
 
         // Use SPIR-V reflection to get the types and counts of all descriptors
-        let mut descriptor_bindings = vec![shader.descriptor_bindings(&device)?];
-
-        // We allow extra descriptors because specialization constants aren't specified yet
-        if let Some(extra_descriptors) = &info.extra_descriptors {
-            descriptor_bindings.push(extra_descriptors.clone());
-        }
-
-        let descriptor_bindings = Shader::merge_descriptor_bindings(descriptor_bindings);
+        let descriptor_bindings = shader.descriptor_bindings(&device)?;
         let descriptor_info =
             PipelineDescriptorInfo::create(&device, &descriptor_bindings, shader.stage)?;
         let descriptor_set_layouts = descriptor_info
@@ -150,12 +143,6 @@ pub struct ComputePipelineInfo {
     /// The GLSL or HLSL shader entry point name, or `main` by default.
     #[builder(setter(strip_option), default = "String::from(\"main\")")]
     pub entry_name: String,
-    /// A map of extra descriptors not directly specified in the shader SPIR-V code.
-    ///
-    /// Use this for specialization constants, as they will not appear in the automatic descriptor
-    /// binding map.
-    #[builder(default, setter(strip_option))]
-    pub extra_descriptors: Option<DescriptorBindingMap>,
     /// Data about Vulkan specialization constants.
     #[builder(default)]
     pub specialization_info: Option<SpecializationInfo>,
