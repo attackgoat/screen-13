@@ -309,7 +309,7 @@ where
                         fmt: vk::Format::B8G8R8A8_SRGB,
                         extent: uvec3(self.info.extent.x, self.info.extent.y, 0),
                         sample_count: SampleCount::X1,
-                        tiling: vk::ImageTiling::OPTIMAL,
+                        linear_tiling: false,
                         mip_level_count: 1,
                         array_elements: 1,
                     },

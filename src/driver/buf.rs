@@ -11,12 +11,12 @@ use {
     log::trace,
     log::warn,
     std::{
+        fmt::{Debug, Formatter},
         ops::{Deref, Range},
         thread::panicking,
     },
 };
 
-#[derive(Debug)]
 pub struct Buffer<P>
 where
     P: SharedPointerKind,
@@ -25,6 +25,7 @@ where
     buffer: vk::Buffer,
     device: Shared<Device<P>, P>,
     pub info: BufferInfo,
+    pub name: Option<String>,
 }
 
 impl<P> Buffer<P>
@@ -101,6 +102,7 @@ where
             buffer,
             device,
             info,
+            name: None,
         })
     }
 
@@ -119,6 +121,19 @@ where
             .unwrap()
             .mapped_slice_mut()
             .unwrap()[0..this.info.size as usize]
+    }
+}
+
+impl<P> Debug for Buffer<P>
+where
+    P: SharedPointerKind,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if let Some(name) = &self.name {
+            write!(f, "{} ({:?})", name, self.buffer)
+        } else {
+            write!(f, "{:?}", self.buffer)
+        }
     }
 }
 

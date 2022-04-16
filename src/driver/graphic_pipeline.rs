@@ -145,6 +145,37 @@ where
             .expect("Unable to find vertex shader")
             .vertex_input()?;
 
+        // Check for proper stages because vulkan may not complain but this is bad
+        let has_fragment_stage = shaders
+            .iter()
+            .find(|shader| shader.stage.contains(vk::ShaderStageFlags::FRAGMENT))
+            .is_some();
+        let has_tesselation_stage = shaders
+            .iter()
+            .find(|shader| {
+                shader
+                    .stage
+                    .contains(vk::ShaderStageFlags::TESSELLATION_CONTROL)
+            })
+            .is_some()
+            && shaders
+                .iter()
+                .find(|shader| {
+                    shader
+                        .stage
+                        .contains(vk::ShaderStageFlags::TESSELLATION_EVALUATION)
+                })
+                .is_some();
+        let has_geometry_stage = shaders
+            .iter()
+            .find(|shader| shader.stage.contains(vk::ShaderStageFlags::GEOMETRY))
+            .is_some();
+
+        debug_assert!(
+            has_fragment_stage || has_tesselation_stage || has_geometry_stage,
+            "invalid shader stage combination"
+        );
+
         let descriptor_bindings = shaders
             .iter()
             .map(|shader| shader.descriptor_bindings(&device))
@@ -179,14 +210,14 @@ where
             .filter_map(|mut push_const| push_const.take())
             .collect::<Vec<_>>();
 
-        // for pcr in &push_constant_ranges {
-        //     trace!(
-        //         "{:?} {}..{}",
-        //         pcr.stage_flags,
-        //         pcr.offset,
-        //         pcr.offset + pcr.size
-        //     );
-        // }
+        for pcr in &push_constant_ranges {
+            trace!(
+                "detected push constants: {:?} {}..{}",
+                pcr.stage_flags,
+                pcr.offset,
+                pcr.offset + pcr.size
+            );
+        }
 
         unsafe {
             let layout = device

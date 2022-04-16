@@ -70,7 +70,7 @@ where
                         }
                     },
                     extent: uvec3(bitmap.width(), bitmap.height(), 1),
-                    tiling: vk::ImageTiling::OPTIMAL,
+                    linear_tiling: false,
                     mip_level_count: 1,
                     array_elements: 1,
                     sample_count: SampleCount::X1,

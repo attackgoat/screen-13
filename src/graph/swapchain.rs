@@ -1,6 +1,6 @@
 use {
     super::{Bind, Binding, RenderGraph, Resolver, SwapchainImageNode, Unbind},
-    crate::driver::{Image, SwapchainImage},
+    crate::driver::SwapchainImage,
     archery::SharedPointerKind,
     std::{fmt::Debug, mem::replace},
     vk_sync::AccessType,

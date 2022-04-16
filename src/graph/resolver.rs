@@ -20,7 +20,7 @@ use {
     ash::vk,
     glam::{IVec2, UVec2},
     itertools::Itertools,
-    log::{debug, trace},
+    log::{debug, trace, warn},
     std::{
         collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
         iter::{once, repeat},
@@ -273,13 +273,19 @@ where
         physical_pass: &PhysicalPass<P>,
         exec_idx: usize,
     ) {
-        trace!("bind_descriptor_sets");
+        trace!("bind_descriptor_sets exec[{exec_idx}]");
 
-        let descriptor_sets = physical_pass.exec_descriptor_sets[&exec_idx]
-            .iter()
-            .map(|descriptor_set| **descriptor_set)
-            .collect::<Box<[_]>>();
-        if descriptor_sets.is_empty() {
+        let descriptor_sets =
+            physical_pass
+                .exec_descriptor_sets
+                .get(&exec_idx)
+                .map(|exec_descriptor_sets| {
+                    exec_descriptor_sets
+                        .iter()
+                        .map(|descriptor_set| **descriptor_set)
+                        .collect::<Box<[_]>>()
+                });
+        if descriptor_sets.is_none() {
             return;
         }
 
@@ -289,7 +295,7 @@ where
                 pipeline.bind_point(),
                 pipeline.layout(),
                 0,
-                &descriptor_sets,
+                descriptor_sets.as_ref().unwrap(),
                 &[],
             );
         }
@@ -1063,11 +1069,7 @@ where
         let mut passes = self.graph.passes.drain(..).map(Some).collect::<Vec<_>>();
         let mut idx = 0;
 
-        debug!(
-            "Attempting to merge {} of {} passes",
-            schedule.len(),
-            passes.len()
-        );
+        debug!("Attempting to merge {} passes", schedule.len(),);
 
         while idx < schedule.len() {
             // Find candidates
@@ -1089,7 +1091,9 @@ where
             }
 
             if start == end {
-                debug!("Unable to merge [{idx}: {}]", pass.name);
+                if start != schedule.len() {
+                    debug!("Unable to merge [{idx}: {}]", pass.name);
+                }
             } else {
                 trace!("Merging {} passes into [{idx}: {}]", end - start, pass.name);
             }
@@ -1243,17 +1247,17 @@ where
             if let Some(barrier) = &buf_barrier {
                 trace!(
                     "buffer barrier {:?} {}..{}",
-                    barrier.buffer,
+                    binding.as_driver_buffer().unwrap(),
                     barrier.offset,
                     barrier.offset + barrier.size
                 );
             } else if let Some(barrier) = &image_barrier {
                 trace!(
-                    "image barrier {:?} {:?} -> {:?} (layout {:?} -> {:?})",
-                    barrier.image,
+                    "image barrier {:?} {:?}-{:?} -> {:?}-{:?}",
+                    binding.as_driver_image().unwrap(),
                     barrier.previous_accesses[0],
-                    barrier.next_accesses[0],
                     barrier.previous_layout,
+                    barrier.next_accesses[0],
                     barrier.next_layout,
                 );
             } else {
@@ -1360,7 +1364,7 @@ where
                 .render_pass
                 .is_some();
 
-            trace!("record_passes: begin \"{}\"", &pass.name);
+            trace!("recording pass[{}: {}]", pass_idx, pass.name);
 
             if !self.physical_passes[physical_pass_idx]
                 .exec_descriptor_sets
@@ -1381,6 +1385,8 @@ where
 
             for subpass_idx in 0..pass.subpasses.len() {
                 let exec_idx = pass.subpasses[subpass_idx].exec_idx;
+
+                trace!("exec[{exec_idx}]");
 
                 if is_graphic && subpass_idx > 0 {
                     Self::next_subpass(cmd_buf);
@@ -1491,6 +1497,8 @@ where
         passes.reverse();
         self.graph.passes.extend(passes);
         self.graph.passes.reverse();
+
+        trace!("OK");
 
         Ok(())
     }
@@ -1607,22 +1615,48 @@ where
 
         schedule.reverse();
 
-        debug!(
-            "Schedule: {}",
-            schedule
-                .iter()
-                .copied()
-                .map(|idx| format!("{} {}", idx, self.graph.passes[idx].name))
-                .join(", ")
-        );
-        trace!(
-            "Skipping: {}",
-            unscheduled
-                .iter()
-                .copied()
-                .map(|idx| format!("{} {}", idx, self.graph.passes[idx].name))
-                .join(", ")
-        );
+        if !schedule.is_empty() {
+            // These are the indexes of the passes this thread is about to resolve
+            debug!(
+                "Schedule: {}",
+                schedule
+                    .iter()
+                    .copied()
+                    .map(|idx| format!("[{}: {}]", idx, self.graph.passes[idx].name))
+                    .join(", ")
+            );
+        }
+
+        if !unscheduled.is_empty() {
+            // These passes are within the range of passes we thought we had to do
+            // right now, but it turns out that nothing in "schedule" relies on them
+            trace!(
+                "Skipping: {}",
+                unscheduled
+                    .iter()
+                    .copied()
+                    .map(|idx| format!("[{}: {}]", idx, self.graph.passes[idx].name))
+                    .join(", ")
+            );
+        }
+
+        if end_pass_idx < self.graph.passes.len() {
+            // These passes existing on the graph but are not being considered right
+            // now because we've been told to stop work at the "end_pass_idx" point
+            trace!(
+                "Ignoring: {}",
+                self.graph.passes[end_pass_idx..]
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, pass)| format!("[{}: {}]", idx + end_pass_idx, pass.name))
+                    .join(", ")
+            );
+        }
+
+        if schedule.is_empty() && unscheduled.is_empty() && end_pass_idx < self.graph.passes.len() {
+            // This may be totally normal in some situations, not sure if this will stay
+            warn!("Unable to schedule any render passes");
+        }
 
         schedule
     }

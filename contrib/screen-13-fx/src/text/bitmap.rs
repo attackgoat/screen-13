@@ -48,7 +48,7 @@ where
                 .map(|page_buf| image_loader.decode_linear(page_buf))
                 .collect::<Result<_, _>>()?,
         );
-        let num_pages = bitmap_font.pages().len() as i32;
+        let num_pages = bitmap_font.pages().len() as u32;
         let pipeline = Shared::new(
             GraphicPipeline::create(
                 &image_loader.device,

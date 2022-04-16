@@ -88,8 +88,13 @@ where
                     DriverError::Unsupported
                 })?;
 
-            #[cfg(debug_assertions)]
-            debug!("Extension properties:\n{:#?}", &extension_properties);
+            for ext in &extension_properties {
+                debug!(
+                    "extension {:?} v{}",
+                    CStr::from_ptr(ext.extension_name.as_ptr()),
+                    ext.spec_version
+                );
+            }
 
             let supported_extensions: HashSet<String> = extension_properties
                 .iter()
@@ -104,8 +109,7 @@ where
             for &ext in &device_extension_names {
                 let ext = CStr::from_ptr(ext).to_string_lossy();
                 if !supported_extensions.contains(ext.as_ref()) {
-                    #[cfg(debug_assertions)]
-                    warn!("Unsupported: {}", ext);
+                    warn!("unsupported: {}", ext);
 
                     return Err(DriverError::Unsupported);
                 }
@@ -122,7 +126,7 @@ where
         let queue = if let Some(queue) = queue {
             queue
         } else {
-            warn!("No suitable presentation queue found");
+            warn!("no suitable presentation queue found");
 
             return Err(DriverError::Unsupported);
         };

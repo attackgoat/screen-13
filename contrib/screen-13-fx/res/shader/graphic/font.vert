@@ -1,6 +1,6 @@
 #version 460 core
 
-layout(constant_id = 0) const int NUM_PAGES = 1;
+layout(constant_id = 0) const uint NUM_PAGES = 1;
 
 layout(push_constant) uniform PushConstants {
     layout(offset = 0) mat4 view_proj;

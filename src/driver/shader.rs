@@ -249,6 +249,18 @@ impl Shader {
         Self::new(vk::ShaderStageFlags::FRAGMENT, spirv)
     }
 
+    pub fn new_geometry(spirv: impl Into<Vec<u8>>) -> ShaderBuilder {
+        Self::new(vk::ShaderStageFlags::GEOMETRY, spirv)
+    }
+
+    pub fn new_tesselation_ctrl(spirv: impl Into<Vec<u8>>) -> ShaderBuilder {
+        Self::new(vk::ShaderStageFlags::TESSELLATION_CONTROL, spirv)
+    }
+
+    pub fn new_tesselation_eval(spirv: impl Into<Vec<u8>>) -> ShaderBuilder {
+        Self::new(vk::ShaderStageFlags::TESSELLATION_EVALUATION, spirv)
+    }
+
     pub fn new_vertex(spirv: impl Into<Vec<u8>>) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::VERTEX, spirv)
     }

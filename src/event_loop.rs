@@ -6,7 +6,6 @@ use {
         Display, DisplayError,
     },
     archery::SharedPointerKind,
-    glam::{uvec2, UVec2},
     log::{debug, info, trace, warn},
     std::{
         marker::PhantomData,

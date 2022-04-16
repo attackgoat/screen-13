@@ -111,9 +111,12 @@ where
         let image = render_graph.bind_node(
             self.pool
                 .lease(
-                    ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, window.inner_size().width, window.inner_size().height).usage(
-                        vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED,
-                    ),
+                    ImageInfo::new_2d(
+                        vk::Format::R8G8B8A8_SRGB,
+                        window.inner_size().width,
+                        window.inner_size().height,
+                    )
+                    .usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED),
                 )
                 .unwrap(),
         );

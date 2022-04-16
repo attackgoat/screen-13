@@ -105,11 +105,11 @@ fn main() -> anyhow::Result<()> {
             .context("Blank image")?,
     );
 
-    let resolution = event_loop.resolution();
+    let (width, height) = (event_loop.width(), event_loop.height());
     let framebuffer_image = render_graph.bind_node(
         cache
             .lease(
-                ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, resolution.x, resolution.y).usage(
+                ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, width, height).usage(
                     vk::ImageUsageFlags::COLOR_ATTACHMENT
                         | vk::ImageUsageFlags::SAMPLED
                         | vk::ImageUsageFlags::TRANSFER_DST
@@ -121,7 +121,7 @@ fn main() -> anyhow::Result<()> {
     let temp_image = render_graph.bind_node(
         cache
             .lease(
-                ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, resolution.x, resolution.y).usage(
+                ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, width, height).usage(
                     vk::ImageUsageFlags::COLOR_ATTACHMENT
                         | vk::ImageUsageFlags::SAMPLED
                         | vk::ImageUsageFlags::TRANSFER_DST
@@ -194,7 +194,7 @@ fn main() -> anyhow::Result<()> {
 
             // Each pipeline gets the same constant data
             let push_consts = PushConstants {
-                resolution: frame.resolution.as_vec2().extend(1.0),
+                resolution: vec3(frame.width as _, frame.height as _, 1.0),
                 _pad_1: Default::default(),
                 date: vec4(1970.0, 1.0, 1.0, elapsed.as_secs_f32()),
                 mouse: vec4(

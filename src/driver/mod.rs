@@ -442,15 +442,9 @@ where
             })
             .collect::<Vec<_>>();
 
-        debug!(
-            "Supported GPUs: {:#?}",
-            physical_devices
-                .iter()
-                .map(|physical_device| unsafe {
-                    CStr::from_ptr(physical_device.props.device_name.as_ptr() as *const c_char)
-                })
-                .collect::<Vec<_>>()
-        );
+        for physical_device in &physical_devices {
+            debug!("supported: {:?}", physical_device);
+        }
 
         let physical_device = physical_devices
             .into_iter()
@@ -460,12 +454,14 @@ where
             .max_by_key(PhysicalDevice::score_device_type)
             .ok_or(DriverError::Unsupported)?;
 
-        debug!("Selected GPU: {:#?}", physical_device);
+        debug!("selected: {:?}", physical_device);
 
         let device = Shared::new(Device::create(&instance, physical_device, cfg)?);
         let surface_formats = Device::surface_formats(&device, &surface)?;
 
-        debug!("Surface formats: {:#?}", surface_formats);
+        for fmt in &surface_formats {
+            debug!("surface: {:#?} ({:#?})", fmt.format, fmt.color_space);
+        }
 
         // TODO: Explicitly fallback to BGRA_UNORM
         let format = surface_formats

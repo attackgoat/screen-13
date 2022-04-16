@@ -13,13 +13,13 @@ use {
     parking_lot::Mutex,
     std::{
         collections::{hash_map::Entry, HashMap},
+        fmt::{Debug, Formatter},
         ops::Deref,
         ptr::null,
         thread::panicking,
     },
 };
 
-#[derive(Debug)]
 pub struct Image<P>
 where
     P: SharedPointerKind,
@@ -30,6 +30,7 @@ where
     #[allow(clippy::type_complexity)]
     image_view_cache: Shared<Mutex<HashMap<ImageViewInfo, ImageView<P>>>, P>,
     pub info: ImageInfo,
+    pub name: Option<String>,
 }
 
 impl<P> Image<P>
@@ -140,6 +141,7 @@ where
             image,
             image_view_cache: Shared::new(Mutex::new(Default::default())),
             info,
+            name: None,
         })
     }
 
@@ -151,6 +153,7 @@ where
             image: this.image,
             image_view_cache: Shared::new(Mutex::new(Default::default())),
             info: this.info,
+            name: this.name.clone(),
         }
     }
 
@@ -167,6 +170,7 @@ where
             image,
             image_view_cache: Shared::new(Mutex::new(Default::default())),
             info,
+            name: None,
         }
     }
 
@@ -177,6 +181,19 @@ where
             Entry::Occupied(entry) => **entry.get(),
             Entry::Vacant(entry) => **entry.insert(Self::create_view(this, info)?),
         })
+    }
+}
+
+impl<P> Debug for Image<P>
+where
+    P: SharedPointerKind,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if let Some(name) = &self.name {
+            write!(f, "{} ({:?})", name, self.image)
+        } else {
+            write!(f, "{:?}", self.image)
+        }
     }
 }
 
@@ -258,8 +275,8 @@ pub struct ImageInfo {
     pub fmt: vk::Format,
     #[builder(setter(strip_option))]
     pub extent: UVec3,
-    #[builder(default = "vk::ImageTiling::OPTIMAL", setter(strip_option))]
-    pub tiling: vk::ImageTiling,
+    #[builder(default, setter(strip_option))]
+    pub linear_tiling: bool,
     #[builder(default = "1", setter(strip_option))]
     pub mip_level_count: u32,
     #[builder(default = "1", setter(strip_option))]
@@ -270,12 +287,17 @@ pub struct ImageInfo {
 
 impl ImageInfo {
     #[allow(clippy::new_ret_no_self)]
-    fn new(fmt: vk::Format, ty: ImageType, extent: UVec3) -> ImageInfoBuilder {
+    const fn new(fmt: vk::Format, ty: ImageType, extent: UVec3) -> ImageInfoBuilder {
         ImageInfoBuilder {
             ty: Some(ty),
             fmt: Some(fmt),
             extent: Some(extent),
-            ..Default::default()
+            usage: None,
+            flags: None,
+            linear_tiling: None,
+            mip_level_count: None,
+            array_elements: None,
+            sample_count: None,
         }
     }
 
@@ -379,7 +401,11 @@ impl ImageInfo {
             mip_levels: self.mip_level_count,
             array_layers,
             samples: self.sample_count.into_vk(),
-            tiling: self.tiling,
+            tiling: if self.linear_tiling {
+                vk::ImageTiling::LINEAR
+            } else {
+                vk::ImageTiling::OPTIMAL
+            },
             usage: self.usage,
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             initial_layout: vk::ImageLayout::UNDEFINED,
@@ -409,7 +435,7 @@ impl ImageInfo {
             fmt: Some(self.fmt),
             mip_level_count: Some(self.mip_level_count),
             sample_count: None,
-            tiling: Some(self.tiling),
+            linear_tiling: Some(self.linear_tiling),
             ty: Some(self.ty),
             usage: Some(self.usage),
         }

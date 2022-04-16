@@ -357,6 +357,19 @@ where
     }
 }
 
+impl<P> Clone for ExecutionPipeline<P>
+where
+    P: SharedPointerKind,
+{
+    fn clone(&self) -> Self {
+        match self {
+            Self::Compute(pipeline) => Self::Compute(Shared::clone(pipeline)),
+            Self::Graphic(pipeline) => Self::Graphic(Shared::clone(pipeline)),
+            Self::RayTrace(pipeline) => Self::RayTrace(Shared::clone(pipeline)),
+        }
+    }
+}
+
 #[derive(Debug)]
 struct Pass<P>
 where

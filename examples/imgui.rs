@@ -22,12 +22,8 @@ fn main() -> Result<(), DisplayError> {
         // Lease and clear an image as a stand-in for some real game or program output
         let app_image = frame.render_graph.bind_node(
             pool.lease(
-                ImageInfo::new_2d(
-                    vk::Format::R8G8B8A8_SRGB,
-                    frame.resolution.x,
-                    frame.resolution.y,
-                )
-                .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST),
+                ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, frame.width, frame.height)
+                    .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST),
             )
             .unwrap(),
         );
