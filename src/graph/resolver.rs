@@ -27,7 +27,9 @@ use {
         mem::take,
         ops::Range,
     },
-    vk_sync::{cmd::pipeline_barrier, AccessType, BufferBarrier, GlobalBarrier, ImageBarrier},
+    vk_sync::{
+        cmd::pipeline_barrier, AccessType, BufferBarrier, GlobalBarrier, ImageBarrier, ImageLayout,
+    },
 };
 
 #[derive(Debug)]
@@ -1196,86 +1198,207 @@ where
         pass: &mut Pass<P>,
         exec_idx: usize,
     ) {
-        use std::slice::from_ref;
+        use std::{cell::RefCell, slice::from_ref};
 
-        let accesses = pass.execs[exec_idx].accesses.iter();
+        // We store a Barriers in TLS to save an alloc; contents are POD
+        thread_local! {
+            static BARRIERS: RefCell<Barriers> = Default::default();
+        }
 
-        // trace!("record_execution_barriers: {:#?}", accesses);
+        struct Barrier<T> {
+            next_access: AccessType,
+            prev_access: AccessType,
+            resource: T,
+        }
 
-        for (node_idx, accesses) in accesses {
-            // Advance the binding access state to get the previous acces
-            let binding = &mut bindings[*node_idx];
-            let previous_access = binding.access_mut(accesses[1].access);
+        #[derive(Default)]
+        struct Barriers {
+            buffers: Vec<Barrier<BufferResource>>,
+            images: Vec<Barrier<ImageResource>>,
+            next_accesses: Vec<AccessType>,
+            prev_accesses: Vec<AccessType>,
+        }
 
-            //if
+        struct BufferResource {
+            buffer: vk::Buffer,
+            offset: usize,
+            size: usize,
+        }
 
-            let next_access = accesses[0].access;
-            let next_subresource = &accesses[0].subresource;
+        struct ImageResource {
+            image: vk::Image,
+            range: vk::ImageSubresourceRange,
+        }
 
-            let mut global_barrier = None;
-            let mut buf_barrier = None;
-            let mut image_barrier = None;
+        enum Resource {
+            Buffer(BufferResource),
+            Image(ImageResource),
+        }
 
-            if let Some(subresource) = &next_subresource {
-                if let Some(buf) = binding.as_driver_buffer() {
-                    let subresource = subresource.unwrap_buffer();
-                    buf_barrier = Some(BufferBarrier {
-                        previous_accesses: from_ref(&previous_access),
-                        next_accesses: from_ref(&next_access),
-                        src_queue_family_index: cmd_buf.device.queue.family.idx,
-                        dst_queue_family_index: cmd_buf.device.queue.family.idx,
-                        buffer: **buf,
-                        offset: subresource.start as _,
-                        size: (subresource.end - subresource.start) as _,
-                    });
-                } else if let Some(image) = binding.as_driver_image() {
-                    image_barrier = Some(ImageBarrier {
-                        previous_accesses: from_ref(&previous_access),
-                        next_accesses: from_ref(&next_access),
-                        previous_layout: image_access_layout(previous_access),
-                        next_layout: image_access_layout(next_access),
-                        discard_contents: previous_access == AccessType::Nothing
-                            || is_write_access(next_access),
-                        src_queue_family_index: cmd_buf.device.queue.family.idx,
-                        dst_queue_family_index: cmd_buf.device.queue.family.idx,
-                        image: **image,
-                        range: subresource.unwrap_image().into_vk(),
-                    });
-                }
-            }
+        BARRIERS.with(|barriers| {
+            // Initialize TLS from a previous call
+            let mut barriers = barriers.borrow_mut();
+            barriers.buffers.clear();
+            barriers.images.clear();
+            barriers.next_accesses.clear();
+            barriers.prev_accesses.clear();
 
-            if let Some(barrier) = &buf_barrier {
-                trace!(
-                    "buffer barrier {:?} {}..{}",
-                    binding.as_driver_buffer().unwrap(),
-                    barrier.offset,
-                    barrier.offset + barrier.size
-                );
-            } else if let Some(barrier) = &image_barrier {
-                trace!(
-                    "image barrier {:?} {:?}-{:?} -> {:?}-{:?}",
-                    binding.as_driver_image().unwrap(),
-                    barrier.previous_accesses[0],
-                    barrier.previous_layout,
-                    barrier.next_accesses[0],
-                    barrier.next_layout,
-                );
-            } else {
-                trace!("global barrier {:?} -> {:?}", previous_access, next_access);
-                global_barrier = Some(GlobalBarrier {
-                    previous_accesses: from_ref(&previous_access),
-                    next_accesses: from_ref(&next_access),
+            // Map remaining accesses into vk_sync barriers (some accesses may have been removed by the
+            // render pass leasing function)
+            let barriers = pass.execs[exec_idx]
+                .accesses
+                .iter()
+                .map(|(node_idx, [early, late])| {
+                    let binding = &mut bindings[*node_idx];
+                    let next_access = early.access;
+                    let prev_access = binding.access_mut(late.access);
+
+                    // If we find a subresource then it must have a resource attached
+                    if let Some(subresource) = early.subresource {
+                        if let Some(buf) = binding.as_driver_buffer() {
+                            let range = subresource.unwrap_buffer();
+
+                            trace!(
+                                "buffer barrier {:?} {}..{} {:?} -> {:?}",
+                                binding.as_driver_buffer().unwrap(),
+                                range.start,
+                                range.end,
+                                next_access,
+                                prev_access,
+                            );
+
+                            return Barrier {
+                                next_access,
+                                prev_access,
+                                resource: Some(Resource::Buffer(BufferResource {
+                                    buffer: **buf,
+                                    offset: range.start as _,
+                                    size: (range.end - range.start) as _,
+                                })),
+                            };
+                        } else if let Some(image) = binding.as_driver_image() {
+                            let range = subresource.unwrap_image().into_vk();
+
+                            trace!(
+                                "image barrier {:?} {:?}-{:?} -> {:?}-{:?}",
+                                binding.as_driver_image().unwrap(),
+                                prev_access,
+                                image_access_layout(prev_access),
+                                next_access,
+                                image_access_layout(next_access),
+                            );
+
+                            return Barrier {
+                                next_access,
+                                prev_access,
+                                resource: Some(Resource::Image(ImageResource {
+                                    image: **image,
+                                    range,
+                                })),
+                            };
+                        }
+
+                        // Ray tracing!
+                        todo!();
+                    }
+
+                    // No resource attached - we use a global barrier for these
+                    trace!("global barrier {:?} -> {:?}", prev_access, next_access);
+
+                    Barrier {
+                        next_access,
+                        prev_access,
+                        resource: None,
+                    }
+                })
+                .fold(barriers, |mut barriers, barrier| {
+                    let Barrier {
+                        next_access,
+                        prev_access,
+                        resource,
+                    } = barrier;
+                    match resource {
+                        Some(Resource::Buffer(resource)) => {
+                            barriers.buffers.push(Barrier {
+                                next_access,
+                                prev_access,
+                                resource,
+                            });
+                        }
+                        Some(Resource::Image(resource)) => {
+                            barriers.images.push(Barrier {
+                                next_access,
+                                prev_access,
+                                resource,
+                            });
+                        }
+                        None => {
+                            barriers.next_accesses.push(next_access);
+                            barriers.prev_accesses.push(prev_access);
+                        }
+                    }
+                    barriers
                 });
-            }
+            let global_barrier = if !barriers.next_accesses.is_empty() {
+                Some(GlobalBarrier {
+                    next_accesses: barriers.next_accesses.as_slice(),
+                    previous_accesses: barriers.prev_accesses.as_slice(),
+                })
+            } else {
+                None
+            };
+            let buffer_barriers = barriers.buffers.iter().map(
+                |Barrier {
+                     next_access,
+                     prev_access,
+                     resource,
+                 }| {
+                    let BufferResource {
+                        buffer,
+                        offset,
+                        size,
+                    } = *resource;
+                    BufferBarrier {
+                        next_accesses: from_ref(next_access),
+                        previous_accesses: from_ref(prev_access),
+                        src_queue_family_index: cmd_buf.device.queue.family.idx,
+                        dst_queue_family_index: cmd_buf.device.queue.family.idx,
+                        buffer,
+                        offset,
+                        size,
+                    }
+                },
+            );
+            let image_barriers = barriers.images.iter().map(
+                |Barrier {
+                     next_access,
+                     prev_access,
+                     resource,
+                 }| {
+                    let ImageResource { image, range } = *resource;
+                    ImageBarrier {
+                        next_accesses: from_ref(next_access),
+                        next_layout: image_access_layout(*next_access),
+                        previous_accesses: from_ref(prev_access),
+                        previous_layout: image_access_layout(*prev_access),
+                        discard_contents: *prev_access == AccessType::Nothing
+                            || is_write_access(*next_access),
+                        src_queue_family_index: cmd_buf.device.queue.family.idx,
+                        dst_queue_family_index: cmd_buf.device.queue.family.idx,
+                        image,
+                        range,
+                    }
+                },
+            );
 
             pipeline_barrier(
                 &cmd_buf.device,
                 **cmd_buf,
                 global_barrier,
-                buf_barrier.as_ref().map(from_ref).unwrap_or_default(),
-                image_barrier.as_ref().map(from_ref).unwrap_or_default(),
+                &buffer_barriers.collect::<Box<[_]>>(),
+                &image_barriers.collect::<Box<[_]>>(),
             );
-        }
+        });
     }
 
     /// Records any pending render graph passes that are required by the given node, but does not
