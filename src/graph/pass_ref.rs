@@ -757,14 +757,6 @@ where
         binding.bind(self)
     }
 
-    pub fn execute(
-        mut self,
-        func: impl FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>) + Send + 'static,
-    ) -> Self {
-        self.push_execute(func);
-        self
-    }
-
     fn push_execute(
         &mut self,
         func: impl FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>) + Send + 'static,
@@ -809,6 +801,14 @@ where
     pub fn read_node(self, node: impl Node<P> + Information) -> Self {
         let access = AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer;
         self.access_node(node, access)
+    }
+
+    pub fn record_cmd_buf(
+        mut self,
+        func: impl FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>) + Send + 'static,
+    ) -> Self {
+        self.push_execute(func);
+        self
     }
 
     pub fn submit_pass(self) -> &'a mut RenderGraph<P> {
@@ -1701,6 +1701,49 @@ where
 impl<'a, P> PipelinePassRef<'a, RayTracePipeline<P>, P>
 where
     P: SharedPointerKind + Send + 'static,
+{
+    pub fn record_ray_trace(
+        mut self,
+        func: impl FnOnce(&mut RayTrace<'_, P>) + Send + 'static,
+    ) -> Self {
+        let pipeline = Shared::clone(
+            self.pass
+                .as_ref()
+                .execs
+                .last()
+                .unwrap()
+                .pipeline
+                .as_ref()
+                .unwrap()
+                .unwrap_ray_trace(),
+        );
+
+        self.pass.push_execute(move |device, cmd_buf, bindings| {
+            func(&mut RayTrace {
+                bindings,
+                cmd_buf,
+                device,
+                pipeline,
+            });
+        });
+
+        self
+    }
+}
+
+pub struct RayTrace<'a, P>
+where
+    P: SharedPointerKind,
+{
+    bindings: Bindings<'a, P>,
+    cmd_buf: vk::CommandBuffer,
+    device: &'a ash::Device,
+    pipeline: Shared<RayTracePipeline<P>, P>,
+}
+
+impl<'a, P> RayTrace<'a, P>
+where
+    P: SharedPointerKind,
 {
     pub fn trace_rays(self, _tlas: RayTraceAccelerationNode<P>, _extent: UVec3) -> Self {
         // let mut pass = self.pass.as_mut();

@@ -488,7 +488,8 @@ where
     }
 
     fn select_swapchain_format(format: vk::SurfaceFormatKHR) -> bool {
-        format.format == vk::Format::B8G8R8A8_SRGB
+        // TODO: Properly handle the request for SRGB and swapchain image usage flags: The device may not support SRGB and only in that case do we fall back to UNORM
+        format.format == vk::Format::B8G8R8A8_UNORM
             && format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
     }
 }

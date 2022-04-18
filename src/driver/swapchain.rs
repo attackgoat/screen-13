@@ -277,7 +277,7 @@ where
                 width: surface_resolution.x,
                 height: surface_resolution.y,
             })
-            .image_usage(surface_capabilities.supported_usage_flags & !vk::ImageUsageFlags::STORAGE)
+            .image_usage(surface_capabilities.supported_usage_flags)
             .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
             .pre_transform(pre_transform)
             .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
@@ -302,11 +302,11 @@ where
                         ty: ImageType::Texture2D,
                         usage: vk::ImageUsageFlags::COLOR_ATTACHMENT
                             | vk::ImageUsageFlags::SAMPLED
-                            // | vk::ImageUsageFlags::STORAGE // TODO: Conditionally enable!
+                            | vk::ImageUsageFlags::STORAGE // TODO: Conditionally enable! When SRGB is supported for it!
                             | vk::ImageUsageFlags::TRANSFER_DST
                             | vk::ImageUsageFlags::TRANSFER_SRC,
                         flags: vk::ImageCreateFlags::empty(), // MUTABLE_FORMAT | SPARSE_ALIASED | CUBE_COMPATIBLE
-                        fmt: vk::Format::B8G8R8A8_SRGB,
+                        fmt: vk::Format::B8G8R8A8_UNORM,      // TODO: Allow configuration!
                         extent: uvec3(self.info.extent.x, self.info.extent.y, 0),
                         sample_count: SampleCount::X1,
                         linear_tiling: false,

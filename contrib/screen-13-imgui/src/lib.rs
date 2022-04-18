@@ -72,6 +72,7 @@ where
         }
     }
 
+    // TODO: This produces an image which is RGBA8 UNORM and has STORAGE set. *We* don't need storage here and should instead ask the user what settings to give the output image.....
     pub fn draw(
         &mut self,
         dt: f32,
@@ -112,11 +113,15 @@ where
             self.pool
                 .lease(
                     ImageInfo::new_2d(
-                        vk::Format::R8G8B8A8_SRGB,
+                        vk::Format::R8G8B8A8_UNORM,
                         window.inner_size().width,
                         window.inner_size().height,
                     )
-                    .usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED),
+                    .usage(
+                        vk::ImageUsageFlags::COLOR_ATTACHMENT
+                            | vk::ImageUsageFlags::SAMPLED
+                            | vk::ImageUsageFlags::STORAGE,
+                    ),
                 )
                 .unwrap(),
         );
@@ -299,7 +304,11 @@ where
             self.pool
                 .lease(
                     ImageInfo::new_2d(vk::Format::R8G8B8A8_UNORM, texture.width, texture.height)
-                        .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST),
+                        .usage(
+                            vk::ImageUsageFlags::SAMPLED
+                                | vk::ImageUsageFlags::STORAGE
+                                | vk::ImageUsageFlags::TRANSFER_DST,
+                        ),
                 )
                 .unwrap(),
         );

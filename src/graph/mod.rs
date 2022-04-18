@@ -18,7 +18,7 @@ pub use {
             RayTraceAccelerationLeaseNode, RayTraceAccelerationNode, SwapchainImageNode, Unbind,
             View, ViewType,
         },
-        pass_ref::{Bindings, PassRef, PipelinePassRef},
+        pass_ref::{Bindings, Compute, Draw, PassRef, PipelinePassRef, RayTrace},
         resolver::Resolver,
         swapchain::SwapchainImageBinding,
     },
@@ -526,7 +526,7 @@ where
         self.begin_pass("blit image")
             .access_node_subrange(src_node, AccessType::TransferRead, src_access_range)
             .access_node_subrange(dst_node, AccessType::TransferWrite, dst_access_range)
-            .execute(move |device, cmd_buf, bindings| unsafe {
+            .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
                 device.cmd_blit_image(
                     cmd_buf,
                     *bindings[src_node],
@@ -587,7 +587,7 @@ where
 
         self.begin_pass("clear color")
             .access_node_subrange(image_node, AccessType::TransferWrite, image_access_range)
-            .execute(move |device, cmd_buf, bindings| unsafe {
+            .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
                 device.cmd_clear_color_image(
                     cmd_buf,
                     *bindings[image_node],
@@ -595,6 +595,60 @@ where
                     &color,
                     &[vk::ImageSubresourceRange {
                         aspect_mask: vk::ImageAspectFlags::COLOR,
+                        level_count: image_info.mip_level_count,
+                        layer_count: image_info.array_elements,
+                        ..Default::default()
+                    }],
+                );
+            })
+            .submit_pass()
+    }
+
+    /// Clears a depth/stencil image as part of a render graph but outside of any graphic render pass
+    pub fn clear_depth_stencil_image(&mut self, image_node: impl Into<AnyImageNode<P>>) -> &mut Self
+    where
+        P: SharedPointerKind + 'static,
+    {
+        self.clear_depth_stencil_image_scalar(image_node, 0.0, 0)
+    }
+
+    pub fn clear_depth_stencil_image_scalar(
+        &mut self,
+        image_node: impl Into<AnyImageNode<P>>,
+        depth: f32,
+        stencil: u32,
+    ) -> &mut Self
+    where
+        P: SharedPointerKind + 'static,
+    {
+        self.clear_depth_stencil_image_value(
+            image_node,
+            vk::ClearDepthStencilValue { depth, stencil },
+        )
+    }
+
+    pub fn clear_depth_stencil_image_value(
+        &mut self,
+        image_node: impl Into<AnyImageNode<P>>,
+        depth_stencil: vk::ClearDepthStencilValue,
+    ) -> &mut Self
+    where
+        P: SharedPointerKind + 'static,
+    {
+        let image_node = image_node.into();
+        let image_info = self.node_info(image_node);
+        let image_access_range = image_info.default_view_info();
+
+        self.begin_pass("clear depth/stencil")
+            .access_node_subrange(image_node, AccessType::TransferWrite, image_access_range)
+            .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
+                device.cmd_clear_depth_stencil_image(
+                    cmd_buf,
+                    *bindings[image_node],
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    &depth_stencil,
+                    &[vk::ImageSubresourceRange {
+                        aspect_mask: format_aspect_mask(image_info.fmt),
                         level_count: image_info.mip_level_count,
                         layer_count: image_info.array_elements,
                         ..Default::default()
@@ -650,7 +704,7 @@ where
         self.begin_pass("copy buffer")
             .access_node_subrange(src_node, AccessType::TransferRead, src_access_range)
             .access_node_subrange(dst_node, AccessType::TransferWrite, dst_access_range)
-            .execute(move |device, cmd_buf, bindings| unsafe {
+            .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
                 device.cmd_copy_buffer(cmd_buf, *bindings[src_node], *bindings[dst_node], &regions);
             })
             .submit_pass()
@@ -713,7 +767,7 @@ where
         self.begin_pass("copy image")
             .access_node_subrange(src_node, AccessType::TransferRead, src_access_range)
             .access_node_subrange(dst_node, AccessType::TransferWrite, dst_access_range)
-            .execute(move |device, cmd_buf, bindings| unsafe {
+            .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
                 device.cmd_copy_buffer_to_image(
                     cmd_buf,
                     *bindings[src_node],
@@ -789,7 +843,7 @@ where
         self.begin_pass("copy image")
             .access_node_subrange(src_node, AccessType::TransferRead, src_access_range)
             .access_node_subrange(dst_node, AccessType::TransferWrite, dst_access_range)
-            .execute(move |device, cmd_buf, bindings| unsafe {
+            .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
                 device.cmd_copy_image(
                     cmd_buf,
                     *bindings[src_node],
@@ -861,7 +915,7 @@ where
         self.begin_pass("copy image to buffer")
             .access_node_subrange(src_node, AccessType::TransferRead, src_subresource)
             .access_node_subrange(dst_node, AccessType::TransferWrite, dst_subresource)
-            .execute(move |device, cmd_buf, bindings| unsafe {
+            .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
                 device.cmd_copy_image_to_buffer(
                     cmd_buf,
                     *bindings[src_node],
@@ -897,7 +951,7 @@ where
 
         self.begin_pass("fill buffer")
             .access_node_subrange(buffer_node, AccessType::TransferWrite, buffer_access_range)
-            .execute(move |device, cmd_buf, bindings| unsafe {
+            .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
                 device.cmd_fill_buffer(
                     cmd_buf,
                     *bindings[buffer_node],
@@ -975,7 +1029,6 @@ where
         &mut self,
         buffer_node: impl Into<AnyBufferNode<P>>,
         data: &'static [u8],
-        offset: vk::DeviceSize,
     ) -> &mut Self {
         self.update_buffer_offset(buffer_node, data, 0)
     }
@@ -993,7 +1046,7 @@ where
 
         self.begin_pass("update buffer")
             .access_node_subrange(buffer_node, AccessType::TransferWrite, buffer_access_range)
-            .execute(move |device, cmd_buf, bindings| unsafe {
+            .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
                 device.cmd_update_buffer(cmd_buf, *bindings[buffer_node], offset, data);
             })
             .submit_pass()

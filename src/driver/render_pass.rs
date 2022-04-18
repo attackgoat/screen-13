@@ -516,4 +516,23 @@ impl SubpassInfo {
             resolve_attachments: Vec::with_capacity(capacity),
         }
     }
+
+    pub fn has_multiple_attachments(&self) -> bool {
+        let mut attachment = None;
+        for attachment_ref in self
+            .color_attachments
+            .iter()
+            .chain(self.input_attachments.iter())
+            .chain(self.resolve_attachments.iter())
+            .chain(self.depth_stencil_attachment.iter())
+        {
+            match attachment {
+                Some(attachment) if attachment == attachment_ref.attachment => continue,
+                None => attachment = Some(attachment_ref.attachment),
+                _ => return true,
+            }
+        }
+
+        false
+    }
 }

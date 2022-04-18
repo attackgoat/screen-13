@@ -254,12 +254,12 @@ let buffer_node = graph.bind_node(buffer_binding);
 let image_node = graph.bind_node(image_binding);
 graph
     .begin_pass("Do some Vulkan")
-    .execute(move |device, cmd_buf, bindings| unsafe {
+    .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
         // I always run first!
     })
     .read_node(buffer_node)
     .write_node(image_node)
-    .execute(move |device, cmd_buf, bindings| unsafe {
+    .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
         // device is &ash::Device
         // cmd_buf is vk::CommandBuffer
         // bindings is a magical object you can index with a node and get the Vulkan resource out!

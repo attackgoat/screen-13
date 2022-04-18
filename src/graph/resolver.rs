@@ -26,9 +26,7 @@ use {
         mem::take,
         ops::Range,
     },
-    vk_sync::{
-        cmd::pipeline_barrier, AccessType, BufferBarrier, GlobalBarrier, ImageBarrier, ImageLayout,
-    },
+    vk_sync::{cmd::pipeline_barrier, AccessType, BufferBarrier, GlobalBarrier, ImageBarrier},
 };
 
 #[derive(Debug)]
@@ -466,13 +464,15 @@ where
     }
 
     fn lease_render_pass(
+        &self,
         cache: &mut HashPool<P>,
-        pass: &mut Pass<P>,
+        pass_idx: usize,
     ) -> Result<Lease<RenderPass<P>, P>, DriverError> {
         // TODO: We're building a RenderPassInfo here (the 3x Vec<_>s), but we could use TLS if:
         // - leasing used impl Into instead of an instance
         // - RenderPass didn't require an Info instance: who cares it's OURS for like five seconds and then poof
 
+        let pass = &self.graph.passes[pass_idx];
         let attachment_count = pass
             .subpasses
             .iter()
@@ -861,7 +861,7 @@ where
             }
 
             // Set any resolve attachments now
-            for (attachment_idx, _attachment) in subpass
+            for (attachment_idx, _) in subpass
                 .resolve_attachments
                 .attached
                 .iter()
@@ -871,7 +871,6 @@ where
                 })
             {
                 subpass_info.resolve_attachments[attachment_idx].attachment = attachment_idx as _;
-                // TODO ?
             }
 
             subpasses.push(subpass_info);
@@ -879,91 +878,148 @@ where
 
         // Add dependencies
         {
+            //let mut prev_passes = Vec::with_capacity(pass.subpasses.len());
+            let mut prev_dependencies = HashMap::new();
             for (subpass_idx, subpass) in pass.subpasses.iter().enumerate() {
-                for (node_idx, [early, late]) in pass.execs[subpass.exec_idx].accesses.iter() {
-                    //
+                let mut ext_dependency = SubpassDependency {
+                    src_subpass: vk::SUBPASS_EXTERNAL,
+                    dst_subpass: subpass_idx as _,
+                    src_stage_mask: vk::PipelineStageFlags::empty(),
+                    dst_stage_mask: vk::PipelineStageFlags::empty(),
+                    src_access_mask: vk::AccessFlags::empty(),
+                    dst_access_mask: vk::AccessFlags::empty(),
+                    dependency_flags: vk::DependencyFlags::empty(),
+                };
+
+                'accesses: for (node_idx, [early, _]) in
+                    pass.execs[subpass.exec_idx].accesses.iter()
+                {
+                    let (mut curr_stages, mut curr_access) =
+                        pipeline_stage_access_flags(early.access);
+
+                    // First look for accesses in earlier subpasses of this render pass (in
+                    // reverse order)
+                    for (prev_subpass_idx, prev_subpass) in
+                        pass.execs[0..subpass_idx].iter().enumerate().rev()
+                    {
+                        if let Some([_, late]) = prev_subpass.accesses.get(node_idx) {
+                            // Is this previous subpass access dependent on anything the current
+                            // subpass access is dependent upon?
+                            let (prev_stages, prev_access) =
+                                pipeline_stage_access_flags(late.access);
+                            let common_stages = curr_stages & prev_stages;
+                            if common_stages.is_empty() {
+                                // No common dependencies
+                                continue;
+                            }
+
+                            let prev_dependency = prev_dependencies
+                                .entry((prev_subpass_idx, subpass_idx))
+                                .or_insert_with(|| SubpassDependency {
+                                    src_subpass: prev_subpass_idx as _,
+                                    dst_subpass: subpass_idx as _,
+                                    src_stage_mask: vk::PipelineStageFlags::empty(),
+                                    dst_stage_mask: vk::PipelineStageFlags::empty(),
+                                    src_access_mask: vk::AccessFlags::empty(),
+                                    dst_access_mask: vk::AccessFlags::empty(),
+                                    dependency_flags: vk::DependencyFlags::empty(),
+                                });
+                            prev_dependency.src_stage_mask |= common_stages;
+                            prev_dependency.dst_stage_mask |= curr_stages;
+                            prev_dependency.src_access_mask |= prev_access;
+                            prev_dependency.dst_access_mask |= curr_access;
+
+                            // Do the source and destination stage masks both include
+                            // framebuffer-space stages?
+                            if (prev_stages | curr_stages).intersects(
+                                vk::PipelineStageFlags::FRAGMENT_SHADER
+                                    | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
+                                    | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS
+                                    | vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                            ) {
+                                prev_dependency.dependency_flags |= vk::DependencyFlags::BY_REGION;
+                            }
+
+                            // Does the subpass have more than one view?
+                            if !prev_dependency
+                                .dependency_flags
+                                .contains(vk::DependencyFlags::VIEW_LOCAL)
+                                && subpasses[subpass_idx].has_multiple_attachments()
+                            {
+                                prev_dependency.dependency_flags |= vk::DependencyFlags::VIEW_LOCAL;
+                            }
+
+                            curr_stages &= !common_stages;
+                            curr_access &= !prev_access;
+
+                            // Have we found all dependencies for this stage? If so no need to
+                            // check external passes
+                            if curr_stages.is_empty() {
+                                continue 'accesses;
+                            }
+                        }
+                    }
+
+                    // Second look in previous passes of the entire render graph
+                    for pass_idx in self.dependent_passes(*node_idx, subpass_idx) {
+                        for prev_subpass in self.graph.passes[pass_idx].execs.iter().rev() {
+                            if let Some([_, late]) = prev_subpass.accesses.get(node_idx) {
+                                // Is this previous subpass access dependent on anything the current
+                                // subpass access is dependent upon?
+                                let (prev_stages, prev_access) =
+                                    pipeline_stage_access_flags(late.access);
+                                let common_stages = curr_stages & prev_stages;
+                                if common_stages.is_empty() {
+                                    // No common dependencies
+                                    continue;
+                                }
+
+                                ext_dependency.src_stage_mask |= common_stages;
+                                ext_dependency.dst_stage_mask |= curr_stages;
+                                ext_dependency.src_access_mask |= prev_access;
+                                ext_dependency.dst_access_mask |= curr_access;
+
+                                // Do the source and destination stage masks both include
+                                // framebuffer-space stages?
+                                if (prev_stages | curr_stages).intersects(
+                                    vk::PipelineStageFlags::FRAGMENT_SHADER
+                                        | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
+                                        | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS
+                                        | vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                                ) {
+                                    ext_dependency.dependency_flags |=
+                                        vk::DependencyFlags::BY_REGION;
+                                }
+
+                                // Does the subpass have more than one view?
+                                if !ext_dependency
+                                    .dependency_flags
+                                    .contains(vk::DependencyFlags::VIEW_LOCAL)
+                                    && subpasses[subpass_idx].has_multiple_attachments()
+                                {
+                                    ext_dependency.dependency_flags |=
+                                        vk::DependencyFlags::VIEW_LOCAL;
+                                }
+
+                                curr_stages &= !common_stages;
+                                curr_access &= !prev_access;
+
+                                // Have we found all dependencies for this stage? If so no need to
+                                // check external passes
+                                if curr_stages.is_empty() {
+                                    continue 'accesses;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if !ext_dependency.src_access_mask.is_empty() {
+                    dependencies.push(ext_dependency);
                 }
             }
 
-            if pass.subpasses.len() > 1 {
-                for subpass_idx in 1..pass.subpasses.len() as u32 {
-                    dependencies.push(SubpassDependency {
-                        src_subpass: subpass_idx - 1,
-                        dst_subpass: subpass_idx,
-                        src_stage_mask: vk::PipelineStageFlags::ALL_GRAPHICS,
-                        dst_stage_mask: vk::PipelineStageFlags::ALL_GRAPHICS,
-                        src_access_mask: vk::AccessFlags::MEMORY_READ
-                            | vk::AccessFlags::MEMORY_WRITE,
-                        dst_access_mask: vk::AccessFlags::MEMORY_READ
-                            | vk::AccessFlags::MEMORY_WRITE,
-                        dependency_flags: vk::DependencyFlags::empty(),
-                    });
-                }
-
-                for (subpass_idx, subpass) in pass.subpasses.iter().enumerate() {
-                    let exec = &pass.execs[subpass.exec_idx];
-                    let mut dependency = SubpassDependency {
-                        src_subpass: subpass_idx as _,
-                        dst_subpass: subpass_idx as _,
-                        src_stage_mask: vk::PipelineStageFlags::empty(),
-                        dst_stage_mask: vk::PipelineStageFlags::empty(),
-                        src_access_mask: vk::AccessFlags::empty(),
-                        dst_access_mask: vk::AccessFlags::empty(),
-                        dependency_flags: vk::DependencyFlags::BY_REGION,
-                    };
-
-                    for (node_idx, [early, late]) in &exec.accesses {
-                        let (early_stage, early_access) = pipeline_stage_access_flags(early.access);
-                        let (late_stage, late_access) = pipeline_stage_access_flags(late.access);
-
-                        dependency.src_stage_mask |=
-                            early_stage & vk::PipelineStageFlags::ALL_GRAPHICS;
-                        dependency.dst_stage_mask |=
-                            late_stage & vk::PipelineStageFlags::ALL_GRAPHICS;
-
-                        dependency.src_access_mask |= early_access;
-                        dependency.dst_access_mask |= late_access;
-                    }
-
-                    if !dependency.src_stage_mask.is_empty() {
-                        dependencies.push(dependency);
-                    }
-                }
-            }
-
-            // dependencies.push(SubpassDependency {
-            //     src_subpass: vk::SUBPASS_EXTERNAL,
-            //     dst_subpass: 0,
-            //     src_stage_mask: vk::PipelineStageFlags::BOTTOM_OF_PIPE,
-            //     dst_stage_mask: vk::PipelineStageFlags::TOP_OF_PIPE,
-            //     src_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
-            //     dst_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
-            //     dependency_flags: vk::DependencyFlags::empty(),
-            // });
-
-            // if pass.subpasses.len() > 2 {
-            //     for idx in 1..pass.subpasses.len() as u32 - 1 {
-            //         dependencies.push(SubpassDependency {
-            //             src_subpass: idx - 1,
-            //             dst_subpass: idx,
-            //             src_stage_mask: vk::PipelineStageFlags::BOTTOM_OF_PIPE,
-            //             dst_stage_mask: vk::PipelineStageFlags::TOP_OF_PIPE,
-            //             src_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
-            //             dst_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
-            //             dependency_flags: vk::DependencyFlags::empty(),
-            //         });
-            //     }
-            // }
-
-            // dependencies.push(SubpassDependency {
-            //     src_subpass: pass.subpasses.len() as u32 - 1,
-            //     dst_subpass: vk::SUBPASS_EXTERNAL,
-            //     src_stage_mask: vk::PipelineStageFlags::BOTTOM_OF_PIPE,
-            //     dst_stage_mask: vk::PipelineStageFlags::TOP_OF_PIPE,
-            //     src_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
-            //     dst_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
-            //     dependency_flags: vk::DependencyFlags::empty(),
-            // });
+            dependencies.extend(prev_dependencies.into_values());
         }
 
         cache.lease(
@@ -1052,7 +1108,7 @@ where
                 .map(|pipeline| pipeline.is_graphic())
                 .unwrap_or_default()
             {
-                Some(Self::lease_render_pass(cache, pass)?)
+                Some(self.lease_render_pass(cache, pass_idx)?)
             } else {
                 None
             };
@@ -1557,7 +1613,7 @@ where
                     );
                 }
 
-                if exec_idx > 0 {
+                if exec_idx > 0 && !is_graphic {
                     Self::record_execution_barriers(
                         cmd_buf,
                         &mut self.graph.bindings,
