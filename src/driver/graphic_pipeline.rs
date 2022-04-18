@@ -113,8 +113,9 @@ where
     device: Shared<Device<P>, P>,
     pub info: GraphicPipelineInfo,
     pub layout: vk::PipelineLayout,
-    pub push_constant_ranges: Vec<vk::PushConstantRange>,
+    pub push_constants: Vec<vk::PushConstantRange>,
     shader_modules: Vec<vk::ShaderModule>,
+    stage_flags: vk::ShaderStageFlags,
     pub state: GraphicPipelineState,
 }
 
@@ -202,7 +203,7 @@ where
             .map(|(_, descriptor_set_layout)| **descriptor_set_layout)
             .collect::<Box<[_]>>();
 
-        let push_constant_ranges = shaders
+        let push_constants = shaders
             .iter()
             .map(|shader| shader.push_constant_range())
             .collect::<Result<Vec<_>, _>>()?
@@ -210,7 +211,7 @@ where
             .filter_map(|mut push_const| push_const.take())
             .collect::<Vec<_>>();
 
-        for pcr in &push_constant_ranges {
+        for pcr in &push_constants {
             trace!(
                 "detected push constants: {:?} {}..{}",
                 pcr.stage_flags,
@@ -224,7 +225,7 @@ where
                 .create_pipeline_layout(
                     &vk::PipelineLayoutCreateInfo::builder()
                         .set_layouts(&descriptor_sets_layouts)
-                        .push_constant_ranges(&push_constant_ranges),
+                        .push_constant_ranges(&push_constants),
                     None,
                 )
                 .map_err(|err| {
@@ -274,14 +275,21 @@ where
                 ..Default::default()
             };
 
+            let stage_flags = stages
+                .iter()
+                .map(|stage| stage.flags)
+                .reduce(|j, k| j | k)
+                .unwrap_or_default();
+
             Ok(Self {
                 descriptor_bindings,
                 descriptor_info,
                 device,
                 info,
                 layout,
-                push_constant_ranges,
+                push_constants,
                 shader_modules,
+                stage_flags,
                 state: GraphicPipelineState {
                     layout,
                     multisample,
@@ -291,6 +299,10 @@ where
                 },
             })
         }
+    }
+
+    pub fn stages(&self) -> vk::ShaderStageFlags {
+        self.stage_flags
     }
 }
 

@@ -35,9 +35,9 @@ fn main() -> Result<(), DisplayError> {
     let vertex_buf_info = vertex_buffer_info(vertices.len() as u64);
 
     // Some colors for readability
-    let red = vec4(1.0, 0.0, 0.0, 1.0);
-    let green = vec4(0.0, 1.0, 0.0, 1.0);
-    let blue = vec4(0.0, 0.0, 1.0, 1.0);
+    let red = [1.0, 0.0, 0.0, 1.0];
+    let green = [0.0, 1.0, 0.0, 1.0];
+    let blue = [0.0, 0.0, 1.0, 1.0];
 
     // Event loop runs the frame callback on the current thread
     event_loop.run(|frame| {
@@ -96,25 +96,19 @@ fn main() -> Result<(), DisplayError> {
         // bother resetting the "clear" state as you can see image2 will be cleared with
         // green also.
         graph
-            .record_pass("gradients")
+            .begin_pass("gradients")
             .bind_pipeline(&fill_quad_linear_gradient)
-            .push_constants((red, blue))
-            .clear_color_value(
-                0,
-                vk::ClearColorValue {
-                    float32: green.to_array(),
-                },
-            )
+            .clear_color_array(0, green)
             .store_color(0, image1)
-            .draw(move |device, cmd_buf, _| unsafe {
-                // When this executes the pipeline is fully setup as stated above (constants, clear/store state, view/scissor, etc)
-                device.cmd_draw(cmd_buf, 6, 1, 0, 0);
+            .record_subpass(move |subpass| {
+                subpass.push_constants((red, blue));
+                subpass.draw(6, 1, 0, 0);
             })
-            .push_constants((green, blue))
             .store_color(0, image2)
-            .draw(move |device, cmd_buf, _| unsafe {
+            .record_subpass(move |subpass| {
                 // We updated the constants and which attachment is getting stored, but otherwise same pipeline config here
-                device.cmd_draw(cmd_buf, 6, 1, 0, 0);
+                subpass.push_constants((green, blue));
+                subpass.draw(6, 1, 0, 0);
             });
 
         // The above is "one pass" which logically happens first but physically may happen later
@@ -125,39 +119,25 @@ fn main() -> Result<(), DisplayError> {
 
         // Alternatively to the above, you might just record two passes, bind two pipelines, etc. As long as they're setup
         // the same they will be trivially merged together or moved apart - whatever ends up being best. In the above case
-        // because we didn't start a second "record_pass" call, we are not allowing the GPU to break up this unit of work.
+        // because we didn't start a second "begin_pass" call, we are not allowing the GPU to break up this unit of work.
         // Maybe in general it's a good idea to record lots of short passes so the resolver code has more to work with.
 
         // Let's do some more work... This draws the funky shape into image3 stored as a deferred gbuffer ()
         graph
-            .record_pass("This text shows up in debuggers like RenderDoc")
+            .begin_pass("This text shows up in debuggers like RenderDoc")
             .bind_pipeline(&draw_funky_shape_deferred)
             .access_node(index_buf, AccessType::IndexBuffer) // We must call access on the buffers
-            .access_node(vertex_buf, AccessType::VertexBuffer) // because we use them in "draw"!
-            .push_constants((Mat4::IDENTITY, Vec4::ONE))
+            .access_node(vertex_buf, AccessType::VertexBuffer) // because we use them in a subpass
             .clear_color(0)
             .read_descriptor((0, [0]), image1) // We are declaring the read on image1 here
             .read_descriptor((0, [1]), image2) // and the second array item will be image2
             .store_color(0, image3) // and we declare we're writing the results to image3
-            .draw(move |device, cmd_buf, bindings| unsafe {
-                // The graph systems won't know about our interior usage of "index_buf" here because we're allowed to call any Vulkan API with
-                // the raw buffer handles - do whatever you want! Just pick an appropriate vk_sync::AccessType that describes what you're
-                // doing (see we used AccessType::IndexBuffer here to account for the following cmd_bind_index_buffer call). Alternatively
-                // call .read_node(index_buf) instead of .access_node().
-                device.cmd_bind_index_buffer(
-                    cmd_buf,
-                    *bindings[index_buf],
-                    0,
-                    vk::IndexType::UINT32,
-                );
-                device.cmd_bind_vertex_buffers(
-                    cmd_buf,
-                    0,
-                    std::slice::from_ref(&bindings[vertex_buf]),
-                    std::slice::from_ref(&0),
-                );
-
-                device.cmd_draw_indexed(cmd_buf, index_count, 1, 0, 0, 0);
+            .record_subpass(move |subpass| {
+                subpass
+                    .push_constants((Mat4::IDENTITY, Vec4::ONE))
+                    .bind_index_buffer(index_buf, vk::IndexType::UINT32)
+                    .bind_vertex_buffer(vertex_buf)
+                    .draw(index_count, 1, 0, 0);
             });
 
         // This will suffice as a way to get image3 presented - although you might want to check out the
@@ -171,7 +151,7 @@ fn main() -> Result<(), DisplayError> {
     })
 }
 
-const fn index_buffer_info(size: u64) -> BufferInfo {
+const fn index_buffer_info(size: vk::DeviceSize) -> BufferInfo {
     BufferInfo {
         size,
         usage: vk::BufferUsageFlags::INDEX_BUFFER,
@@ -179,7 +159,7 @@ const fn index_buffer_info(size: u64) -> BufferInfo {
     }
 }
 
-const fn vertex_buffer_info(size: u64) -> BufferInfo {
+const fn vertex_buffer_info(size: vk::DeviceSize) -> BufferInfo {
     BufferInfo {
         size,
         usage: vk::BufferUsageFlags::VERTEX_BUFFER,

@@ -62,7 +62,7 @@ impl<P> RayTraceAccelerationScratchBuffer<P>
 where
     P: SharedPointerKind,
 {
-    pub const RT_SCRATCH_BUFFER_SIZE: u64 = 1024 * 1024 * 1440;
+    pub const RT_SCRATCH_BUFFER_SIZE: vk::DeviceSize = 1024 * 1024 * 1440;
 
     pub fn create(device: &Shared<Device<P>, P>) -> Result<Self, DriverError> {
         trace!("create");
@@ -131,7 +131,7 @@ where
         // let instance_buf = Buffer::create_with_data(
         //     &self.device,
         //     BufferDesc::new(
-        //         instance_buf_len as u64,
+        //         instance_buf_len ,
         //         vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
         //             | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
         //     )
@@ -241,7 +241,7 @@ where
         mut geometry_info: vk::AccelerationStructureBuildGeometryInfoKHR,
         _build_range_infos: &[vk::AccelerationStructureBuildRangeInfoKHR],
         max_primitive_counts: &[u32],
-        preallocate_bytes: u64,
+        preallocate_bytes: vk::DeviceSize,
     ) -> Result<RayTraceAcceleration<P>, DriverError> {
         let mem_requirements = unsafe {
             Device::accel_struct(&self.device).get_acceleration_structure_build_sizes(
@@ -256,11 +256,11 @@ where
             mem_requirements.acceleration_structure_size, mem_requirements.build_scratch_size
         );
 
-        let buf_len = preallocate_bytes.max(mem_requirements.acceleration_structure_size);
+        let buffer_len = preallocate_bytes.max(mem_requirements.acceleration_structure_size);
         let buf = Buffer::create(
             &self.device,
             BufferInfo::new(
-                buf_len,
+                buffer_len,
                 vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             )
@@ -270,7 +270,7 @@ where
         let accel_info = vk::AccelerationStructureCreateInfoKHR::builder()
             .ty(ty)
             .buffer(*buf)
-            .size(buf_len as u64)
+            .size(buffer_len)
             .build();
 
         unsafe {
@@ -822,7 +822,7 @@ where
     P: SharedPointerKind,
 {
     pub instances: Vec<RayTraceInstanceInfo<P>>,
-    pub preallocate_bytes: u64,
+    pub preallocate_bytes: vk::DeviceSize,
 }
 
 #[derive(Debug)]
@@ -884,7 +884,7 @@ where
         //         Ok(Some(Buffer::create_with_data(
         //             &device,
         //             BufferDesc::new(
-        //                 sbt_data.len() as u64,
+        //                 sbt_data.len() ,
         //                 vk::BufferUsageFlags::TRANSFER_SRC
         //                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
         //                     | vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR,
@@ -905,8 +905,8 @@ where
         //             .as_ref()
         //             .map(|b| Buffer::device_address(b))
         //             .unwrap_or(0),
-        //         stride: prog_size as u64,
-        //         size: (prog_size * desc.raygen_count as usize) as u64,
+        //         stride: prog_size ,
+        //         size: (prog_size * desc.raygen_count as usize) ,
         //     },
         //     raygen_buf: raygen,
         //     miss: vk::StridedDeviceAddressRegionKHR {
@@ -914,14 +914,14 @@ where
         //             .as_ref()
         //             .map(|b| Buffer::device_address(b))
         //             .unwrap_or(0),
-        //         stride: prog_size as u64,
-        //         size: (prog_size * desc.miss_count as usize) as u64,
+        //         stride: prog_size,
+        //         size: (prog_size * desc.miss_count as usize) ,
         //     },
         //     miss_buf: miss,
         //     hit: vk::StridedDeviceAddressRegionKHR {
         //         device_address: hit.as_ref().map(|b| Buffer::device_address(b)).unwrap_or(0),
-        //         stride: prog_size as u64,
-        //         size: (prog_size * desc.hit_count as usize) as u64,
+        //         stride: prog_size ,
+        //         size: (prog_size * desc.hit_count as usize) ,
         //     },
         //     hit_buf: hit,
         //     callable_buf: None,

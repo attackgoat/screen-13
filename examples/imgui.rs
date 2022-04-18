@@ -29,7 +29,7 @@ fn main() -> Result<(), DisplayError> {
         );
         frame
             .render_graph
-            .clear_color_image(app_image, 0.2, 0.22, 0.2, 1.0);
+            .clear_color_image_scalar(app_image, 0.2, 0.22, 0.2, 1.0);
 
         // Use the draw function callback to do some fun meant-for-debug-mode GUI stuff
         let gui_image = imgui.draw_frame(&mut frame, |ui| {

@@ -21,6 +21,7 @@ where
     pub device: Shared<Device<P>, P>,
     pub layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
+    pub push_constants: Option<vk::PushConstantRange>,
 }
 
 impl<P> ComputePipeline<P>
@@ -70,9 +71,9 @@ where
             let mut layout_info =
                 vk::PipelineLayoutCreateInfo::builder().set_layouts(&descriptor_set_layouts);
 
-            let push_const = shader.push_constant_range()?;
-            if let Some(push_const) = &push_const {
-                layout_info = layout_info.push_constant_ranges(from_ref(push_const));
+            let push_constants = shader.push_constant_range()?;
+            if let Some(push_constants) = &push_constants {
+                layout_info = layout_info.push_constant_ranges(from_ref(push_constants));
             }
 
             let layout = device
@@ -105,6 +106,7 @@ where
                 device,
                 layout,
                 pipeline,
+                push_constants,
             })
         }
     }

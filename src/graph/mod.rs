@@ -29,15 +29,15 @@ use {
     self::{binding::Binding, edge::Edge, info::Information, node::Node},
     crate::{
         driver::{
-            buffer_access_ranges, buffer_read_access_range, format_aspect_mask, BufferSubresource,
-            ComputePipeline, DepthStencilMode, DescriptorBindingMap, GraphicPipeline,
-            ImageSubresource, PipelineDescriptorInfo, RayTracePipeline, SampleCount,
+            buffer_copy_subresources, buffer_image_copy_subresource, format_aspect_mask,
+            BufferSubresource, ComputePipeline, DepthStencilMode, DescriptorBindingMap,
+            GraphicPipeline, ImageSubresource, PipelineDescriptorInfo, RayTracePipeline,
+            SampleCount,
         },
         ptr::Shared,
     },
     archery::SharedPointerKind,
     ash::vk,
-    glam::{IVec2, UVec2, Vec2},
     std::{
         cmp::Ord,
         collections::{BTreeMap, BTreeSet},
@@ -54,6 +54,14 @@ pub type DescriptorSetIndex = u32;
 
 type ExecFn<P> = Box<dyn FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>) + Send>;
 type NodeIndex = usize;
+
+#[derive(Clone, Copy, Debug)]
+struct Area {
+    height: u32,
+    width: u32,
+    x: i32,
+    y: i32,
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct Attachment {
@@ -381,11 +389,8 @@ where
     depth_stencil: Option<DepthStencilMode>,
     execs: Vec<Execution<P>>,
     name: String,
-    push_consts: Vec<PushConstantRange>,
-    render_area: Option<Rect<UVec2, IVec2>>,
-    scissor: Option<Rect<UVec2, IVec2>>,
+    render_area: Option<Area>,
     subpasses: Vec<Subpass>,
-    viewport: Option<(Rect<Vec2, Vec2>, Range<f32>)>,
 }
 
 impl<P> Pass<P>
@@ -400,19 +405,6 @@ where
             .flat_map(|exec| exec.pipeline.as_ref())
             .map(|pipeline| &pipeline.descriptor_info().pool_sizes)
     }
-}
-
-#[derive(Debug)]
-struct PushConstantRange {
-    data: Vec<u8>,
-    offset: u32,
-    stage: vk::ShaderStageFlags,
-}
-
-#[derive(Clone, Copy, Debug)]
-struct Rect<E, O> {
-    extent: E,
-    offset: O,
 }
 
 #[derive(Debug)]
@@ -457,8 +449,117 @@ where
         binding.bind(self)
     }
 
+    pub fn blit_image(
+        &mut self,
+        src_node: impl Into<AnyImageNode<P>>,
+        dst_node: impl Into<AnyImageNode<P>>,
+        filter: vk::Filter,
+    ) -> &mut Self {
+        let src_node = src_node.into();
+        let dst_node = dst_node.into();
+
+        let src_info = self.node_info(src_node);
+        let dst_info = self.node_info(dst_node);
+
+        self.blit_image_region(
+            src_node,
+            dst_node,
+            &vk::ImageBlit {
+                src_subresource: vk::ImageSubresourceLayers {
+                    aspect_mask: format_aspect_mask(src_info.fmt),
+                    mip_level: 0,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                },
+                src_offsets: [
+                    vk::Offset3D {
+                        x: src_info.extent.x as _,
+                        y: src_info.extent.y as _,
+                        z: src_info.extent.z as _,
+                    },
+                    vk::Offset3D { x: 0, y: 0, z: 0 },
+                ],
+                dst_subresource: vk::ImageSubresourceLayers {
+                    aspect_mask: format_aspect_mask(dst_info.fmt),
+                    mip_level: 0,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                },
+                dst_offsets: [
+                    vk::Offset3D {
+                        x: dst_info.extent.x as _,
+                        y: dst_info.extent.y as _,
+                        z: dst_info.extent.z as _,
+                    },
+                    vk::Offset3D { x: 0, y: 0, z: 0 },
+                ],
+            },
+            filter,
+        )
+    }
+
+    pub fn blit_image_region(
+        &mut self,
+        src_node: impl Into<AnyImageNode<P>>,
+        dst_node: impl Into<AnyImageNode<P>>,
+        region: &vk::ImageBlit,
+        filter: vk::Filter,
+    ) -> &mut Self {
+        use std::slice::from_ref;
+
+        self.blit_image_regions(src_node, dst_node, from_ref(region), filter)
+    }
+
+    pub fn blit_image_regions(
+        &mut self,
+        src_node: impl Into<AnyImageNode<P>>,
+        dst_node: impl Into<AnyImageNode<P>>,
+        regions: impl Into<Box<[vk::ImageBlit]>>,
+        filter: vk::Filter,
+    ) -> &mut Self {
+        let src_node = src_node.into();
+        let dst_node = dst_node.into();
+        let regions = regions.into();
+        let src_access_range = self.node_info(src_node).default_view_info();
+        let dst_access_range = self.node_info(dst_node).default_view_info();
+
+        self.begin_pass("blit image")
+            .access_node_subrange(src_node, AccessType::TransferRead, src_access_range)
+            .access_node_subrange(dst_node, AccessType::TransferWrite, dst_access_range)
+            .execute(move |device, cmd_buf, bindings| unsafe {
+                device.cmd_blit_image(
+                    cmd_buf,
+                    *bindings[src_node],
+                    vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                    *bindings[dst_node],
+                    vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                    &regions,
+                    filter,
+                );
+            })
+            .submit_pass()
+    }
+
     /// Clears a color image as part of a render graph but outside of any graphic render pass
-    pub fn clear_color_image(
+    pub fn clear_color_image(&mut self, image_node: impl Into<AnyImageNode<P>>) -> &mut Self
+    where
+        P: SharedPointerKind + 'static,
+    {
+        self.clear_color_image_scalar(image_node, 0.0, 0.0, 0.0, 0.0)
+    }
+
+    pub fn clear_color_image_array(
+        &mut self,
+        image_node: impl Into<AnyImageNode<P>>,
+        color: [f32; 4],
+    ) -> &mut Self
+    where
+        P: SharedPointerKind + 'static,
+    {
+        self.clear_color_image_value(image_node, vk::ClearColorValue { float32: color })
+    }
+
+    pub fn clear_color_image_scalar(
         &mut self,
         image_node: impl Into<AnyImageNode<P>>,
         r: f32,
@@ -469,20 +570,29 @@ where
     where
         P: SharedPointerKind + 'static,
     {
+        self.clear_color_image_array(image_node, [r, g, b, a])
+    }
+
+    pub fn clear_color_image_value(
+        &mut self,
+        image_node: impl Into<AnyImageNode<P>>,
+        color: vk::ClearColorValue,
+    ) -> &mut Self
+    where
+        P: SharedPointerKind + 'static,
+    {
         let image_node = image_node.into();
         let image_info = self.node_info(image_node);
         let image_access_range = image_info.default_view_info();
 
-        self.record_pass("clear color")
+        self.begin_pass("clear color")
             .access_node_subrange(image_node, AccessType::TransferWrite, image_access_range)
             .execute(move |device, cmd_buf, bindings| unsafe {
                 device.cmd_clear_color_image(
                     cmd_buf,
                     *bindings[image_node],
                     vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                    &vk::ClearColorValue {
-                        float32: [r, g, b, a],
-                    },
+                    &color,
                     &[vk::ImageSubresourceRange {
                         aspect_mask: vk::ImageAspectFlags::COLOR,
                         level_count: image_info.mip_level_count,
@@ -535,9 +645,9 @@ where
         let src_node = src_node.into();
         let dst_node = dst_node.into();
         let regions: Box<[_]> = regions.into();
-        let (src_access_range, dst_access_range) = buffer_access_ranges(&regions);
+        let (src_access_range, dst_access_range) = buffer_copy_subresources(&regions);
 
-        self.record_pass("copy buffer")
+        self.begin_pass("copy buffer")
             .access_node_subrange(src_node, AccessType::TransferRead, src_access_range)
             .access_node_subrange(dst_node, AccessType::TransferWrite, dst_access_range)
             .execute(move |device, cmd_buf, bindings| unsafe {
@@ -596,12 +706,11 @@ where
     ) -> &mut Self {
         let src_node = src_node.into();
         let dst_node = dst_node.into();
-        let dst_image_info = self.node_info(dst_node);
-        let dst_access_range = dst_image_info.default_view_info();
+        let dst_access_range = self.node_info(dst_node).default_view_info();
         let regions = regions.into();
-        let src_access_range = buffer_read_access_range(&regions);
+        let src_access_range = buffer_image_copy_subresource(&regions);
 
-        self.record_pass("copy image")
+        self.begin_pass("copy image")
             .access_node_subrange(src_node, AccessType::TransferRead, src_access_range)
             .access_node_subrange(dst_node, AccessType::TransferWrite, dst_access_range)
             .execute(move |device, cmd_buf, bindings| unsafe {
@@ -677,7 +786,7 @@ where
         let dst_access_range = self.node_info(dst_node).default_view_info();
         let regions = regions.into();
 
-        self.record_pass("copy image")
+        self.begin_pass("copy image")
             .access_node_subrange(src_node, AccessType::TransferRead, src_access_range)
             .access_node_subrange(dst_node, AccessType::TransferWrite, dst_access_range)
             .execute(move |device, cmd_buf, bindings| unsafe {
@@ -693,30 +802,105 @@ where
             .submit_pass()
     }
 
-    pub fn fill_buffer(&mut self, buf_node: impl Into<AnyBufferNode<P>>, data: u32) -> &mut Self {
-        let buf_node = buf_node.into();
+    pub fn copy_image_to_buffer(
+        &mut self,
+        src_node: impl Into<AnyImageNode<P>>,
+        dst_node: impl Into<AnyBufferNode<P>>,
+    ) -> &mut Self {
+        let src_node = src_node.into();
+        let dst_node = dst_node.into();
 
-        let buf_info = self.node_info(buf_node);
+        let src_info = self.node_info(src_node);
 
-        self.fill_buffer_region(buf_node, data, 0..buf_info.size)
+        self.copy_image_to_buffer_region(
+            src_node,
+            dst_node,
+            &vk::BufferImageCopy {
+                buffer_offset: 0,
+                buffer_row_length: src_info.extent.x,
+                buffer_image_height: src_info.extent.y,
+                image_subresource: vk::ImageSubresourceLayers {
+                    aspect_mask: format_aspect_mask(src_info.fmt),
+                    mip_level: 0,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                },
+                image_offset: Default::default(),
+                image_extent: vk::Extent3D {
+                    depth: src_info.extent.z,
+                    height: src_info.extent.y,
+                    width: src_info.extent.x,
+                },
+            },
+        )
+    }
+
+    pub fn copy_image_to_buffer_region(
+        &mut self,
+        src_node: impl Into<AnyImageNode<P>>,
+        dst_node: impl Into<AnyBufferNode<P>>,
+        region: &vk::BufferImageCopy,
+    ) -> &mut Self {
+        use std::slice::from_ref;
+
+        self.copy_image_to_buffer_regions(src_node, dst_node, from_ref(region))
+    }
+
+    pub fn copy_image_to_buffer_regions(
+        &mut self,
+        src_node: impl Into<AnyImageNode<P>>,
+        dst_node: impl Into<AnyBufferNode<P>>,
+        regions: impl Into<Box<[vk::BufferImageCopy]>>,
+    ) -> &mut Self {
+        let src_node = src_node.into();
+        let dst_node = dst_node.into();
+        let regions = regions.into();
+        let src_subresource = self.node_info(src_node).default_view_info();
+        let dst_subresource = buffer_image_copy_subresource(&regions);
+
+        self.begin_pass("copy image to buffer")
+            .access_node_subrange(src_node, AccessType::TransferRead, src_subresource)
+            .access_node_subrange(dst_node, AccessType::TransferWrite, dst_subresource)
+            .execute(move |device, cmd_buf, bindings| unsafe {
+                device.cmd_copy_image_to_buffer(
+                    cmd_buf,
+                    *bindings[src_node],
+                    vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                    *bindings[dst_node],
+                    &regions,
+                );
+            })
+            .submit_pass()
+    }
+
+    pub fn fill_buffer(
+        &mut self,
+        buffer_node: impl Into<AnyBufferNode<P>>,
+        data: u32,
+    ) -> &mut Self {
+        let buffer_node = buffer_node.into();
+
+        let buffer_info = self.node_info(buffer_node);
+
+        self.fill_buffer_region(buffer_node, data, 0..buffer_info.size)
     }
 
     pub fn fill_buffer_region(
         &mut self,
-        buf_node: impl Into<AnyBufferNode<P>>,
+        buffer_node: impl Into<AnyBufferNode<P>>,
         data: u32,
-        region: Range<u64>,
+        region: Range<vk::DeviceSize>,
     ) -> &mut Self {
-        let buf_node = buf_node.into();
-        let buf_info = self.node_info(buf_node);
-        let buf_access_range = 0..buf_info.size;
+        let buffer_node = buffer_node.into();
+        let buffer_info = self.node_info(buffer_node);
+        let buffer_access_range = 0..buffer_info.size;
 
-        self.record_pass("fill buffer")
-            .access_node_subrange(buf_node, AccessType::TransferWrite, buf_access_range)
+        self.begin_pass("fill buffer")
+            .access_node_subrange(buffer_node, AccessType::TransferWrite, buffer_access_range)
             .execute(move |device, cmd_buf, bindings| unsafe {
                 device.cmd_fill_buffer(
                     cmd_buf,
-                    *bindings[buf_node],
+                    *bindings[buffer_node],
                     region.start,
                     region.end - region.start,
                     data,
@@ -770,7 +954,7 @@ where
         node.get(self)
     }
 
-    pub fn record_pass(&mut self, name: impl AsRef<str>) -> PassRef<'_, P> {
+    pub fn begin_pass(&mut self, name: impl AsRef<str>) -> PassRef<'_, P> {
         PassRef::new(self, name.as_ref().to_string())
     }
 
@@ -784,6 +968,35 @@ where
         N: Unbind<Self, <N as Edge<Self>>::Result>,
     {
         node.unbind(self)
+    }
+
+    /// Note: `data` must not exceed 65536 bytes.
+    pub fn update_buffer(
+        &mut self,
+        buffer_node: impl Into<AnyBufferNode<P>>,
+        data: &'static [u8],
+        offset: vk::DeviceSize,
+    ) -> &mut Self {
+        self.update_buffer_offset(buffer_node, data, 0)
+    }
+
+    /// Note: `data` must not exceed 65536 bytes.
+    pub fn update_buffer_offset(
+        &mut self,
+        buffer_node: impl Into<AnyBufferNode<P>>,
+        data: &'static [u8],
+        offset: vk::DeviceSize,
+    ) -> &mut Self {
+        let buffer_node = buffer_node.into();
+        let buffer_info = self.node_info(buffer_node);
+        let buffer_access_range = 0..buffer_info.size;
+
+        self.begin_pass("update buffer")
+            .access_node_subrange(buffer_node, AccessType::TransferWrite, buffer_access_range)
+            .execute(move |device, cmd_buf, bindings| unsafe {
+                device.cmd_update_buffer(cmd_buf, *bindings[buffer_node], offset, data);
+            })
+            .submit_pass()
     }
 }
 

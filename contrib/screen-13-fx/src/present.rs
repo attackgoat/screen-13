@@ -34,11 +34,13 @@ where
         // TODO: Notice non-sRGB images and run a different pipeline
 
         graph
-            .record_pass("present (from compute)")
+            .begin_pass("present (from compute)")
             .bind_pipeline(&self.0[0])
             .read_descriptor(0, image)
             .write_descriptor(1, swapchain)
-            .dispatch(swapchain_info.extent.x, swapchain_info.extent.y, 1);
+            .record_compute(move |compute| {
+                compute.dispatch(swapchain_info.extent.x, swapchain_info.extent.y, 1);
+            });
     }
 
     pub fn present_images(
@@ -59,12 +61,14 @@ where
         // TODO: Notice non-sRGB images and run a different pipeline
 
         graph
-            .record_pass("present (from compute)")
+            .begin_pass("present (from compute)")
             .bind_pipeline(&self.0[1])
             .read_descriptor((0, [0]), top_image)
             .read_descriptor((0, [1]), bottom_image)
             .write_descriptor(1, swapchain)
-            .dispatch(swapchain_info.extent.x, swapchain_info.extent.y, 1);
+            .record_compute(move |compute| {
+                compute.dispatch(swapchain_info.extent.x, swapchain_info.extent.y, 1);
+            });
     }
 }
 
@@ -112,14 +116,14 @@ where
         ));
 
         graph
-            .record_pass("present (from graphic)")
+            .begin_pass("present (from graphic)")
             .bind_pipeline(&self.pipeline)
             .read_descriptor(0, image)
             .store_color(0, swapchain)
-            .push_constants(transform)
-            .draw(|device, cmd_buf, _bindings| unsafe {
+            .record_subpass(move |subpass| {
                 // Draw a quad with implicit vertices (no buffer)
-                device.cmd_draw(cmd_buf, 6, 1, 0, 0);
+                subpass.push_constants(transform);
+                subpass.draw(6, 1, 0, 0);
             });
     }
 }

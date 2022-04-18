@@ -57,15 +57,15 @@ but most of it is further handled "for you" by the render graph module. Most use
 
 ```rust
 // To create
-let mut buf = Buffer::create(&device, BufferInfo {
+let mut buffer = Buffer::create(&device, BufferInfo {
     size: 1024,
     usage: vk::BufferUsageFlags::TRANSFER_SRC,
     can_map: true,
 }).unwrap();
-assert_ne!(*buf, vk::Buffer::null());
+assert_ne!(*buffer, vk::Buffer::null());
 
 // To fill with data (example)
-let mapped_slice: &mut [u8] = Buffer::mapped_slice_mut(&mut buf);
+let mapped_slice: &mut [u8] = Buffer::mapped_slice_mut(&mut buffer);
 mapped_slice[0] = 0xff;
 mapped_slice[1] = 0xfe;
 mapped_slice[2] = 0xff;
@@ -82,8 +82,8 @@ let (width, height) = (320, 200);
 let format = vk::Format::R8G8B8A8_UNORM;
 let usage = vk::ImageUsageFlags::COLOR_ATTACHMENT;
 let info = ImageInfo::new_2d(format, width, height).usage(usage);
-let img = Image::create(&device, info).unwrap();
-assert_ne!(*img, vk::Image::null());
+let image = Image::create(&device, info).unwrap();
+assert_ne!(*image, vk::Image::null());
 ```
 
 ### `GraphicPipeline` and `Shader`
@@ -147,8 +147,8 @@ structs we created need an `Arc<>` and extra `usize` in order to track this stat
 those.
 
 ```rust
-let buf = BufferBinding::new(buf);
-let img = ImageBinding::new(img);
+let buffer = BufferBinding::new(buffer);
+let image = ImageBinding::new(image);
 ```
 
 _Note:_ You cannot clone a binding, and the enclosed resource cannot be taken out. You may access
@@ -162,24 +162,24 @@ may only be used with the graphs they were bound to. Nodes implement `Copy` to m
 easier.
 
 ```rust
-println!("{:?}", buf); // BufferBinding
-println!("{:?}", img); // ImageBinding
+println!("{:?}", buffer); // BufferBinding
+println!("{:?}", image); // ImageBinding
 
 // Bind our resources into opaque "usize" nodes
-let buf = graph.bind_node(buf);
-let img = graph.bind_node(img);
+let buffer = graph.bind_node(buffer);
+let image = graph.bind_node(image);
 
 // The results have unique types!
-println!("{:?}", buf); // BufferNode
-println!("{:?}", img); // ImageNode
+println!("{:?}", buffer); // BufferNode
+println!("{:?}", image); // ImageNode
 
 // Unbind "node" back into the "binding" so we can use it again
-let buf = graph.unbind_node(buf);
-let img = graph.unbind_node(img);
+let buffer = graph.unbind_node(buffer);
+let image = graph.unbind_node(image);
 
 // Magically, they return to the correct types!
-println!("{:?}", buf); // BufferBinding
-println!("{:?}", img); // ImageBinding
+println!("{:?}", buffer); // BufferBinding
+println!("{:?}", image); // ImageBinding
 ```
 
 _Note:_ Once unbound, a binding may be used immediately on other graphs or discarded. Later we will
@@ -213,12 +213,12 @@ the image that `buf` contains would be written to `img` starting at the top left
 
 The basic operations are:
 
-- `copy_buffer(src_buf_node, dst_buf_node)`
-- `copy_buffer_to_image(buf_node, img_node)`
-- `copy_image(src_img_node, dst_img_node)`
-- `clear_color_image(img_node, r, g, b, a)`
-- `fill_buffer(buf_node, data)`
-- others todo!
+- `copy_buffer(src_buffer_node, dst_buffer_node)`
+- `copy_buffer_to_image(buf_node, image_node)`
+- `copy_image(src_image_node, dst_image_node)`
+- `clear_color_image(image_node, r, g, b, a)`
+- `fill_buffer(buffer_node, data)`
+- etc
 
 Each of these operations offers function overloads similar to:
 
@@ -250,21 +250,21 @@ Example:
 
 ```rust
 let mut graph = RenderGraph::new();
-let buf_node = graph.bind_node(buf_binding);
-let img_node = graph.bind_node(img_binding);
+let buffer_node = graph.bind_node(buffer_binding);
+let image_node = graph.bind_node(image_binding);
 graph
-    .record_pass("Do some Vulkan")
+    .begin_pass("Do some Vulkan")
     .execute(move |device, cmd_buf, bindings| unsafe {
         // I always run first!
     })
-    .read_node(buf_node)
-    .write_node(img_node)
+    .read_node(buffer_node)
+    .write_node(image_node)
     .execute(move |device, cmd_buf, bindings| unsafe {
         // device is &ash::Device
         // cmd_buf is vk::CommandBuffer
         // bindings is a magical object you can index with a node and get the Vulkan resource out!
-        let vk_buf: vk::Buffer = *bindings[buf_node];
-        let vk_img: vk::Image = *bindings[img_node];
+        let vk_buffer: vk::Buffer = *bindings[buffer_node];
+        let vk_image: vk::Image = *bindings[image_node];
         ...
     });
 ```
@@ -286,10 +286,14 @@ let shader = ComputePipelineInfo::new(spirv_code);
 let pipeline = Shared::new(ComputePipeline::create(&device, shader).unwrap());
 
 RenderGraph::new()
-    .record_pass("My compute pass")
+    .begin_pass("My compute pass")
     .bind_pipeline(&pipeline)
-    .push_constants(42u32)
-    .dispatch(128, 1, 1) // This point is where the commands are logically executed
+    .record_compute(|compute| {
+        // This FnOnce is where the commands are executed
+        compute.push_constants(42u32)
+               .dispatch(1, 128, 1);
+        ...
+    })
 ```
 
 Let's exaimine that a bit:
@@ -301,8 +305,12 @@ let pass: PipelinePassRef = graph
     .bind_pipeline(&pipeline);
 
 pass
-    .push_constants(42u32)
-    .dispatch(128, 1, 1)
+    .record_compute(|compute| {
+        // Mutable builder pattern or so this works too
+        compute.push_constants(42u32);
+        compute.dispatch(128, 1, 1);
+        ...
+    })
 ```
 
 It's still not all that useful, but we're seeing the types at least now. What we need to do is add
@@ -349,12 +357,12 @@ let mut cache = HashPool::new(&device);
 let output = graph.bind_node(cache.lease(ImageInfo { ... }));
 
 graph
-    .record_pass("Simple quad (no vertex buffer)")
+    .begin_pass("Simple quad (no vertex buffer)")
     .bind_pipeline(&pipeline)
     .clear_color(0)
     .store_color(0, output)
-    .draw(|device, cmd_buf, bindings| unsafe {
-        device.cmd_draw(cmd_buf, 6, 1, 0, 0);
+    .record_subpass(move |subpass| {
+        subpass.draw(6, 1, 0, 0);
     })
 ```
 
@@ -475,7 +483,7 @@ event_loop.run(|frame| {
 
     // Record passes and do stuff to "img_node"
     frame.render_graph
-        .record_pass("Do something with img_node")
+        .begin_pass("Do something with img_node")
         .bind_pipeline(&pipeline)
         ...
 

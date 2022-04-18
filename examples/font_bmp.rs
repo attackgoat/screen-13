@@ -32,7 +32,7 @@ fn main() -> anyhow::Result<()> {
         );
         frame
             .render_graph
-            .clear_color_image(image_node, 0.0, 0.0, 1.0, 1.0);
+            .clear_color_image_scalar(image_node, 0.0, 0.0, 1.0, 1.0);
 
         let text = "Hello, world!";
         let (_offset, extent) = small_10px_font.measure(text);

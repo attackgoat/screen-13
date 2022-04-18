@@ -77,9 +77,11 @@ use {
 pub type QueueFamilyBuilder = QueueFamily;
 
 #[allow(clippy::reversed_empty_ranges)]
-pub fn buffer_access_ranges(regions: &[vk::BufferCopy]) -> (Range<u64>, Range<u64>) {
-    let mut src = u64::MAX..u64::MIN;
-    let mut dst = u64::MAX..u64::MIN;
+pub fn buffer_copy_subresources(
+    regions: &[vk::BufferCopy],
+) -> (Range<vk::DeviceSize>, Range<vk::DeviceSize>) {
+    let mut src = vk::DeviceSize::MAX..vk::DeviceSize::MIN;
+    let mut dst = vk::DeviceSize::MAX..vk::DeviceSize::MIN;
     for region in regions.iter() {
         src.start = src.start.min(region.src_offset);
         src.end = src.end.max(region.src_offset + region.size);
@@ -95,14 +97,15 @@ pub fn buffer_access_ranges(regions: &[vk::BufferCopy]) -> (Range<u64>, Range<u6
 }
 
 #[allow(clippy::reversed_empty_ranges)]
-pub fn buffer_read_access_range(regions: &[vk::BufferImageCopy]) -> Range<u64> {
+pub fn buffer_image_copy_subresource(regions: &[vk::BufferImageCopy]) -> Range<vk::DeviceSize> {
     debug_assert!(!regions.is_empty());
 
-    let mut res = u64::MAX..u64::MIN;
+    let mut res = vk::DeviceSize::MAX..vk::DeviceSize::MIN;
     for region in regions.iter() {
         res.start = res.start.min(region.buffer_offset);
         res.end = res.end.max(
-            region.buffer_offset + (region.buffer_row_length + region.buffer_image_height) as u64,
+            region.buffer_offset
+                + (region.buffer_row_length * region.buffer_image_height) as vk::DeviceSize,
         );
     }
 

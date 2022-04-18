@@ -42,7 +42,7 @@ where
 
         let device = Shared::clone(device);
         let buffer_info = vk::BufferCreateInfo {
-            size: info.size as u64,
+            size: info.size,
             usage: info.usage,
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             ..Default::default()
@@ -106,7 +106,7 @@ where
         })
     }
 
-    pub fn device_address(this: &Self) -> u64 {
+    pub fn device_address(this: &Self) -> vk::DeviceAddress {
         unsafe {
             this.device.get_buffer_device_address(
                 &ash::vk::BufferDeviceAddressInfo::builder().buffer(this.buffer),
@@ -174,7 +174,7 @@ where
 #[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[builder(pattern = "owned")]
 pub struct BufferInfo {
-    pub size: u64,
+    pub size: vk::DeviceSize,
     pub usage: vk::BufferUsageFlags,
     #[builder(default)]
     pub can_map: bool,
@@ -182,7 +182,7 @@ pub struct BufferInfo {
 
 impl BufferInfo {
     #[allow(clippy::new_ret_no_self)]
-    pub fn new(size: u64, usage: vk::BufferUsageFlags) -> BufferInfoBuilder {
+    pub fn new(size: vk::DeviceSize, usage: vk::BufferUsageFlags) -> BufferInfoBuilder {
         BufferInfoBuilder::default().size(size).usage(usage)
     }
 }
@@ -195,21 +195,21 @@ impl From<BufferInfoBuilder> for BufferInfo {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BufferSubresource {
-    pub start: u64,
-    pub end: u64,
+    pub start: vk::DeviceSize,
+    pub end: vk::DeviceSize,
 }
 
 impl From<BufferInfo> for BufferSubresource {
     fn from(info: BufferInfo) -> Self {
         Self {
             start: 0,
-            end: info.size as u64,
+            end: info.size,
         }
     }
 }
 
-impl From<Range<u64>> for BufferSubresource {
-    fn from(range: Range<u64>) -> Self {
+impl From<Range<vk::DeviceSize>> for BufferSubresource {
+    fn from(range: Range<vk::DeviceSize>) -> Self {
         Self {
             start: range.start,
             end: range.end,
@@ -217,13 +217,13 @@ impl From<Range<u64>> for BufferSubresource {
     }
 }
 
-impl From<Option<Range<u64>>> for BufferSubresource {
-    fn from(range: Option<Range<u64>>) -> Self {
+impl From<Option<Range<vk::DeviceSize>>> for BufferSubresource {
+    fn from(range: Option<Range<vk::DeviceSize>>) -> Self {
         range.unwrap_or(0..vk::WHOLE_SIZE).into()
     }
 }
 
-impl From<BufferSubresource> for Range<u64> {
+impl From<BufferSubresource> for Range<vk::DeviceSize> {
     fn from(subresource: BufferSubresource) -> Self {
         subresource.start..subresource.end
     }

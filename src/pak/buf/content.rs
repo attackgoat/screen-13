@@ -7,7 +7,7 @@ pub struct Content {
     compression: Option<CompressionType>,
 
     // Brotli-specific compression parameters
-    buf_size: Option<usize>,
+    buffer_size: Option<usize>,
     quality: Option<u32>,
     window_size: Option<u32>,
 
@@ -25,7 +25,7 @@ impl Content {
     // pub(crate) fn compression(&self) -> Option<Compression> {
     //     self.compression.map(|compression| match compression {
     //         CompressionType::Brotli => Compression::Brotli(BrotliParams {
-    //             buf_size: self
+    //             buffer_size: self
     //                 .buf_size
     //                 .unwrap_or_else(|| BrotliParams::default().buf_size),
     //             quality: self

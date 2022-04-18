@@ -99,7 +99,7 @@ struct GraphicPipelineKey {
     depth_stencil: Option<DepthStencilMode>,
 }
 
-#[derive(Builder, Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Builder, Clone, Debug, Default, Eq, Hash, PartialEq)]
 #[builder(pattern = "owned", derive(Debug))]
 pub struct RenderPassInfo {
     pub attachments: Vec<AttachmentInfo>,

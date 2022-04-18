@@ -9,7 +9,7 @@ use {
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub struct BrotliParams {
     /// Buffer size.
-    pub buf_size: usize,
+    pub buffer_size: usize,
     /// Compression quality.
     pub quality: u32,
     /// Window size.
@@ -19,7 +19,7 @@ pub struct BrotliParams {
 impl Default for BrotliParams {
     fn default() -> Self {
         Self {
-            buf_size: 4096,
+            buffer_size: 4096,
             quality: 8,
             window_size: 22,
         }
@@ -37,7 +37,7 @@ impl Compression {
         match self {
             Compression::Brotli(b) => Box::new(CompressorReader::new(
                 reader,
-                b.buf_size,
+                b.buffer_size,
                 b.quality,
                 b.window_size,
             )),
@@ -49,7 +49,7 @@ impl Compression {
         match self {
             Compression::Brotli(b) => Box::new(CompressorWriter::new(
                 writer,
-                b.buf_size,
+                b.buffer_size,
                 b.quality,
                 b.window_size,
             )),

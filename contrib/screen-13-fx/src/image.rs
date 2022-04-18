@@ -163,12 +163,15 @@ where
                 let dispatch_x = (bitmap_width >> 2) - 1 + (bitmap_width % 3); // HACK: -1 FOR NOW but do fix
                 let dispatch_y = bitmap_height;
                 render_graph
-                    .record_pass("Decode RGB image")
+                    .begin_pass("Decode RGB image")
                     .bind_pipeline(&self.decode_rgb_rgba)
                     .read_descriptor(0, pixel_buf)
                     .write_descriptor(1, temp_image)
-                    .push_constants(pixel_buf_stride >> 2)
-                    .dispatch(dispatch_x, dispatch_y, 1)
+                    .record_compute(move |compute| {
+                        compute
+                            .push_constants(pixel_buf_stride >> 2)
+                            .dispatch(dispatch_x, dispatch_y, 1);
+                    })
                     .submit_pass()
                     .copy_image(temp_image, image);
             }

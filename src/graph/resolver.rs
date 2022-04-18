@@ -1,7 +1,7 @@
 use {
     super::{
-        AttachmentIndex, AttachmentMap, Binding, Bindings, Edge, ExecutionPipeline, Node, Pass,
-        Rect, RenderGraph, Subpass, Unbind,
+        Area, AttachmentIndex, AttachmentMap, Binding, Bindings, Edge, ExecutionPipeline, Node,
+        Pass, RenderGraph, Subpass, Unbind,
     },
     crate::{
         align_up_u32,
@@ -18,7 +18,6 @@ use {
     },
     archery::SharedPointerKind,
     ash::vk,
-    glam::{IVec2, UVec2},
     itertools::Itertools,
     log::{debug, trace, warn},
     std::{
@@ -164,7 +163,7 @@ where
         cmd_buf: &CommandBuffer<P>,
         pass: &Pass<P>,
         physical_pass_idx: usize,
-        render_area: Rect<UVec2, IVec2>,
+        render_area: Area,
     ) -> Result<(), DriverError> {
         trace!("begin_render_pass");
 
@@ -221,8 +220,8 @@ where
                         .collect(),
                 })
                 .collect(),
-            extent_x: render_area.extent.x,
-            extent_y: render_area.extent.y,
+            extent_x: render_area.width,
+            extent_y: render_area.height,
         })?;
 
         unsafe {
@@ -233,12 +232,12 @@ where
                     .framebuffer(framebuffer)
                     .render_area(vk::Rect2D {
                         offset: vk::Offset2D {
-                            x: render_area.offset.x,
-                            y: render_area.offset.y,
+                            x: render_area.x,
+                            y: render_area.y,
                         },
                         extent: vk::Extent2D {
-                            width: render_area.extent.x,
-                            height: render_area.extent.y,
+                            width: render_area.width,
+                            height: render_area.height,
                         },
                     })
                     .clear_values(
@@ -275,8 +274,6 @@ where
         physical_pass: &PhysicalPass<P>,
         exec_idx: usize,
     ) {
-        trace!("bind_descriptor_sets exec[{exec_idx}]");
-
         let descriptor_sets =
             physical_pass
                 .exec_descriptor_sets
@@ -290,6 +287,8 @@ where
         if descriptor_sets.is_none() {
             return;
         }
+
+        trace!("bind_descriptor_sets exec[{exec_idx}]");
 
         unsafe {
             cmd_buf.device.cmd_bind_descriptor_sets(
@@ -377,8 +376,8 @@ where
             .execs
             .iter()
             .flat_map(|exec| exec.accesses.iter())
-            .filter_map(move |(node_idx, accesses)| {
-                if is_read_access(accesses[0].access) && already_seen.insert(*node_idx) {
+            .filter_map(move |(node_idx, [early, _])| {
+                if is_read_access(early.access) && already_seen.insert(*node_idx) {
                     Some(*node_idx)
                 } else {
                     None
@@ -470,6 +469,10 @@ where
         cache: &mut HashPool<P>,
         pass: &mut Pass<P>,
     ) -> Result<Lease<RenderPass<P>, P>, DriverError> {
+        // TODO: We're building a RenderPassInfo here (the 3x Vec<_>s), but we could use TLS if:
+        // - leasing used impl Into instead of an instance
+        // - RenderPass didn't require an Info instance: who cares it's OURS for like five seconds and then poof
+
         let attachment_count = pass
             .subpasses
             .iter()
@@ -876,6 +879,12 @@ where
 
         // Add dependencies
         {
+            for (subpass_idx, subpass) in pass.subpasses.iter().enumerate() {
+                for (node_idx, [early, late]) in pass.execs[subpass.exec_idx].accesses.iter() {
+                    //
+                }
+            }
+
             if pass.subpasses.len() > 1 {
                 for subpass_idx in 1..pass.subpasses.len() as u32 {
                     dependencies.push(SubpassDependency {
@@ -1454,8 +1463,6 @@ where
         node_idx: usize,
         end_pass_idx: usize,
     ) -> Result<(), DriverError> {
-        //trace!("record_passes: end_pass_idx = {}", end_pass_idx);
-
         // Build a schedule for this node
         let mut schedule = self.schedule_node_passes(node_idx, end_pass_idx);
 
@@ -1515,54 +1522,40 @@ where
                     Self::next_subpass(cmd_buf);
                 }
 
-                {
-                    let exec = &mut pass.execs[exec_idx];
-                    if let Some(pipeline) = exec.pipeline.as_mut() {
-                        self.bind_pipeline(
+                if let Some(pipeline) = &mut pass.execs[exec_idx].pipeline.as_mut() {
+                    self.bind_pipeline(
+                        cmd_buf,
+                        physical_pass_idx,
+                        subpass_idx as u32,
+                        pipeline,
+                        pass.depth_stencil,
+                    )?;
+
+                    if is_graphic && pass.render_area.is_none() {
+                        let render_area = render_area.unwrap();
+                        // In this case we set the viewport and scissor for the user
+                        Self::set_viewport(
                             cmd_buf,
-                            physical_pass_idx,
-                            subpass_idx as u32,
-                            pipeline,
-                            pass.depth_stencil,
-                        )?;
-
-                        if is_graphic {
-                            if pass.viewport.is_none() {
-                                // Viewport was not set by user
-                                let render_area_extent = render_area.unwrap().extent.as_vec2();
-                                Self::set_viewport(
-                                    cmd_buf,
-                                    render_area_extent.x,
-                                    render_area_extent.y,
-                                    pass.depth_stencil
-                                        .map(|depth_stencil| {
-                                            let min = depth_stencil.min.0;
-                                            let max = depth_stencil.max.0;
-                                            min..max
-                                        })
-                                        .unwrap_or(0.0..1.0),
-                                );
-                            }
-
-                            if pass.scissor.is_none() {
-                                // Scissor region was not set by user
-                                let render_area = render_area.unwrap();
-                                Self::set_scissor(
-                                    cmd_buf,
-                                    render_area.extent.x,
-                                    render_area.extent.y,
-                                )
-                            }
-                        }
-
-                        self.bind_descriptor_sets(
-                            cmd_buf,
-                            pipeline,
-                            &self.physical_passes[physical_pass_idx],
-                            exec_idx,
+                            render_area.width as _,
+                            render_area.height as _,
+                            pass.depth_stencil
+                                .map(|depth_stencil| {
+                                    let min = depth_stencil.min.0;
+                                    let max = depth_stencil.max.0;
+                                    min..max
+                                })
+                                .unwrap_or(0.0..1.0),
                         );
+                        Self::set_scissor(cmd_buf, render_area.width, render_area.height);
                     }
-                };
+
+                    self.bind_descriptor_sets(
+                        cmd_buf,
+                        pipeline,
+                        &self.physical_passes[physical_pass_idx],
+                        exec_idx,
+                    );
+                }
 
                 if exec_idx > 0 {
                     Self::record_execution_barriers(
@@ -1573,17 +1566,16 @@ where
                     );
                 }
 
-                {
-                    // debug!("execute");
-
-                    let exec = &mut pass.execs[exec_idx];
-                    let exec_func = exec.func.take().unwrap().0;
-                    let bindings = Bindings {
+                let exec = &mut pass.execs[exec_idx];
+                let exec_func = exec.func.take().unwrap().0;
+                exec_func(
+                    &cmd_buf.device,
+                    **cmd_buf,
+                    Bindings {
                         exec,
                         graph: &self.graph,
-                    };
-                    exec_func(&cmd_buf.device, **cmd_buf, bindings);
-                }
+                    },
+                );
             }
 
             if is_graphic {
@@ -1640,7 +1632,7 @@ where
         self.record_scheduled_passes(cache, cmd_buf, &mut schedule, self.graph.passes.len())
     }
 
-    fn render_area(&self, pass: &Pass<P>) -> Rect<UVec2, IVec2> {
+    fn render_area(&self, pass: &Pass<P>) -> Area {
         pass.render_area.unwrap_or_else(|| {
             // set_render_area was not specified so we're going to guess using the extent
             // of the first attachment we find, by lowest attachment index order
@@ -1655,9 +1647,11 @@ where
                 .find_map(|attachment| self.graph.bindings[attachment.target].as_extent_2d())
                 .unwrap();
 
-            Rect {
-                extent,
-                offset: IVec2::ZERO,
+            Area {
+                height: extent.y,
+                width: extent.x,
+                x: 0,
+                y: 0,
             }
         })
     }

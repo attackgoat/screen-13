@@ -72,7 +72,7 @@ fn main() -> anyhow::Result<()> {
     // no depth/stencil
     // 1x sample count
     // one-sided
-    let buf_pipeline = Shared::new(
+    let buffer_pipeline = Shared::new(
         GraphicPipeline::create(
             &event_loop.device,
             GraphicPipelineInfo::default(),
@@ -83,7 +83,7 @@ fn main() -> anyhow::Result<()> {
         )
         .context("FLOCKAROO_BUF_FRAG")?,
     );
-    let img_pipeline = Shared::new(
+    let image_pipeline = Shared::new(
         GraphicPipeline::create(
             &event_loop.device,
             GraphicPipelineInfo::default(),
@@ -132,9 +132,9 @@ fn main() -> anyhow::Result<()> {
     );
 
     render_graph
-        .clear_color_image(framebuffer_image, 1.0, 1.0, 0.0, 1.0)
-        .clear_color_image(blank_image, 0.0, 0.0, 0.0, 1.0)
-        .clear_color_image(temp_image, 0.0, 1.0, 0.0, 1.0);
+        .clear_color_image_scalar(framebuffer_image, 1.0, 1.0, 0.0, 1.0)
+        .clear_color_image_scalar(blank_image, 0.0, 0.0, 0.0, 1.0)
+        .clear_color_image_scalar(temp_image, 0.0, 1.0, 0.0, 1.0);
 
     let mut framebuffer_image_binding = Some(render_graph.unbind_node(framebuffer_image));
     let mut blank_image_binding = Some(render_graph.unbind_node(blank_image));
@@ -238,28 +238,28 @@ fn main() -> anyhow::Result<()> {
             // Fill a buffer using a single-pass CFD pipeline where previous output feeds next input
             frame
                 .render_graph
-                .record_pass("Buffer A")
-                .bind_pipeline(&buf_pipeline)
+                .begin_pass("Buffer A")
+                .bind_pipeline(&buffer_pipeline)
                 .read_descriptor(0, input)
                 .read_descriptor(1, noise_image)
                 .read_descriptor(2, flowers_image)
                 .read_descriptor(3, blank_image)
                 .store_color(0, output)
-                .push_constants(push_consts)
-                .draw(move |device, cmd_buf, _| unsafe {
-                    device.cmd_draw(cmd_buf, 6, 1, 0, 0);
+                .record_subpass(move |subpass| {
+                    subpass.push_constants(push_consts);
+                    subpass.draw(6, 1, 0, 0);
                 });
 
             // Make the CFD look more like paint with a second pass
             frame
                 .render_graph
-                .record_pass("Image")
-                .bind_pipeline(&img_pipeline)
+                .begin_pass("Image")
+                .bind_pipeline(&image_pipeline)
                 .read_descriptor(0, output)
                 .store_color(0, input)
-                .push_constants(push_consts)
-                .draw(move |device, cmd_buf, _| unsafe {
-                    device.cmd_draw(cmd_buf, 6, 1, 0, 0);
+                .record_subpass(move |subpass| {
+                    subpass.push_constants(push_consts);
+                    subpass.draw(6, 1, 0, 0);
                 });
 
             // Done!

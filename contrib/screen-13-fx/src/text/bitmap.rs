@@ -163,7 +163,7 @@ where
             ));
 
         let vertex_buf_len = text.chars().count() as u64 * 120;
-        let mut vertex_buf_binding = self
+        let mut vertex_buf = self
             .pool
             .borrow_mut()
             .lease(BufferInfo {
@@ -172,33 +172,37 @@ where
                 can_map: true,
             })
             .unwrap();
-        let vertex_buf = &mut Buffer::mapped_slice_mut(vertex_buf_binding.get_mut().unwrap())
-            [0..vertex_buf_len as usize];
 
         let mut vertex_count = 0;
-        let mut offset = 0;
-        for (data, char) in self.font.parse(text).map(|char| (char.tessellate(), char)) {
-            vertex_buf[offset..offset + 16].copy_from_slice(&data[0]);
-            vertex_buf[offset + 20..offset + 36].copy_from_slice(&data[1]);
-            vertex_buf[offset + 40..offset + 56].copy_from_slice(&data[2]);
-            vertex_buf[offset + 60..offset + 76].copy_from_slice(&data[3]);
-            vertex_buf[offset + 80..offset + 96].copy_from_slice(&data[4]);
-            vertex_buf[offset + 100..offset + 116].copy_from_slice(&data[5]);
 
-            let page_idx = char.page_index as i32;
-            let page_idx = page_idx.to_ne_bytes();
-            vertex_buf[offset + 16..offset + 20].copy_from_slice(&page_idx);
-            vertex_buf[offset + 36..offset + 40].copy_from_slice(&page_idx);
-            vertex_buf[offset + 56..offset + 60].copy_from_slice(&page_idx);
-            vertex_buf[offset + 76..offset + 80].copy_from_slice(&page_idx);
-            vertex_buf[offset + 96..offset + 100].copy_from_slice(&page_idx);
-            vertex_buf[offset + 116..offset + 120].copy_from_slice(&page_idx);
+        {
+            let vertex_buf = &mut Buffer::mapped_slice_mut(vertex_buf.get_mut().unwrap())
+                [0..vertex_buf_len as usize];
 
-            vertex_count += 6;
-            offset += 120;
+            let mut offset = 0;
+            for (data, char) in self.font.parse(text).map(|char| (char.tessellate(), char)) {
+                vertex_buf[offset..offset + 16].copy_from_slice(&data[0]);
+                vertex_buf[offset + 20..offset + 36].copy_from_slice(&data[1]);
+                vertex_buf[offset + 40..offset + 56].copy_from_slice(&data[2]);
+                vertex_buf[offset + 60..offset + 76].copy_from_slice(&data[3]);
+                vertex_buf[offset + 80..offset + 96].copy_from_slice(&data[4]);
+                vertex_buf[offset + 100..offset + 116].copy_from_slice(&data[5]);
+
+                let page_idx = char.page_index as i32;
+                let page_idx = page_idx.to_ne_bytes();
+                vertex_buf[offset + 16..offset + 20].copy_from_slice(&page_idx);
+                vertex_buf[offset + 36..offset + 40].copy_from_slice(&page_idx);
+                vertex_buf[offset + 56..offset + 60].copy_from_slice(&page_idx);
+                vertex_buf[offset + 76..offset + 80].copy_from_slice(&page_idx);
+                vertex_buf[offset + 96..offset + 100].copy_from_slice(&page_idx);
+                vertex_buf[offset + 116..offset + 120].copy_from_slice(&page_idx);
+
+                vertex_count += 6;
+                offset += 120;
+            }
         }
 
-        let vertex_buf_node = graph.bind_node(vertex_buf_binding);
+        let vertex_buf = graph.bind_node(vertex_buf);
 
         let mut pages = self.pages.borrow_mut();
         let mut page_nodes: Vec<ImageNode<P>> = Vec::with_capacity(pages.len());
@@ -207,9 +211,9 @@ where
         }
 
         let mut pass = graph
-            .record_pass("text")
-            .access_node(vertex_buf_node, AccessType::VertexBuffer)
+            .begin_pass("text")
             .bind_pipeline(&self.pipeline)
+            .access_node(vertex_buf, AccessType::IndexBuffer)
             .load_color(0, image)
             .store_color(0, image);
 
@@ -217,28 +221,22 @@ where
             pass = pass.read_descriptor((0, [idx as _]), *page_node);
         }
 
-        if let Some((x, y, width, height)) = scissor {
-            pass = pass.set_scissor(x, y, width, height);
-        }
+        pass.record_subpass(move |subpass| {
+            if let Some((x, y, width, height)) = scissor {
+                subpass.set_scissor(x, y, width, height);
+            }
 
-        pass.push_constants((
-            transform,
-            1.0 / image_info.extent.xy().as_vec2(),
-            0u32, // Padding
-            0u32, // Padding
-            color_to_unorm(color.solid()),
-            color_to_unorm(color.outline()),
-        ))
-        .draw(move |device, cmd_buf, bindings| unsafe {
-            use std::slice::from_ref;
-
-            device.cmd_bind_vertex_buffers(
-                cmd_buf,
-                0,
-                from_ref(&bindings[vertex_buf_node]),
-                from_ref(&0),
-            );
-            device.cmd_draw(cmd_buf, vertex_count, 1, 0, 0);
+            subpass
+                .push_constants((
+                    transform,
+                    1.0 / image_info.extent.xy().as_vec2(),
+                    0u32, // Padding
+                    0u32, // Padding
+                    color_to_unorm(color.solid()),
+                    color_to_unorm(color.outline()),
+                ))
+                .bind_vertex_buffer(vertex_buf)
+                .draw(vertex_count, 1, 0, 0);
         });
 
         for page_node in page_nodes {
