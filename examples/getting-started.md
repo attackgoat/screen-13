@@ -126,11 +126,25 @@ and [`render_graph.cpp`](https://github.com/Themaister/Granite/blob/master/rende
 pleasant API. It does use generics quite a bit, which is great for performance and compile-time
 checks but hard to document sometimes. The generated documentation is complete, albiet somewhat opaque.
 
-`RenderGraph` instances are cheap and easy to use and are intended for one-time use. There are
-some gotchas to be aware of:
+`RenderGraph` instances are cheap and easy to use and are intended for one-time use. The design
+principles are:
 
+- Safe API abstraction for `vk::CommandBuffer`
+- Compilation implies valid and optimal Vulkan usage
+- Optimized for performance (_not code size_)
+
+There are some caveats - Vulkan is full of parameters of various types and _Screen 13_ cannot prevent
+these cases:
+
+- SPIR-V code, `u32`'s, `&[u8]`'s, or other arguments go unchecked: _use validation layers!_
+- Runtime panic if you declare illogical shader operations: _easy: follow `debug_assert!` advice_
+- Runtime panic if you forget to declare access to nodes: _easy: explained further down_
+
+Other notes:
+
+- There is no "manager" type: a graph is just data your program decides things like thread model
 - Shared references (buffers, images, etc.) will be 'kept alive' until `RenderGraph` is dropped
-- Dropping a `RenderGraph` is harmless at all times
+- Dropping a `RenderGraph` is harmless at all times (_except for a potential stall: see below_)
 
 Let's start simple and create a `RenderGraph`:
 
@@ -138,6 +152,28 @@ Let's start simple and create a `RenderGraph`:
 // Calling new() simply allocates two Vec's - this is basically free
 let mut graph = RenderGraph::new();
 ```
+
+This graph may now have basic operations (like copy or clear without any shader code) and shader
+passes recorded into it. After an entire frame worth of rendering operations have been recorded
+the entire batch will processed, in efficient chunks as needed, in order to present to the display.
+
+The entire process of construction and resolution of a render graph happens at the discretion of
+your program and uses only as much memory and CPU time as required for each function call offered.
+
+Each graph may use a given buffer or image multiple times, some as inputs and some as outputs. In
+each case an optimal command submission order will be produced which executes the correct shaders
+using minimal pipeline barriers.
+
+Some notes about the awesome render pass optimization which was _totally stolen_ from [Granite](https://github.com/Themaister/Granite):
+
+- Scheduling: passes are submitted to the Vulkan API using batches designed for low-latency
+- Re-ordering: passes are shuffled using a hueristic which gives the GPU more time to complete work
+- Merging: compatible passes are merged into dynamic subpasses when it is more efficient (_on-tile rendering_)
+- Aliasing: resources and pipelines are optimized to emit minimal barriers per unit of work (_max one, typically zero_)
+
+`RenderGraph` provides all of this with the expectation that construction and submission of each
+graph should complete within ~250 μs. This is currently true for known-size graphs and I'm thinking
+about how to bench this in the future.
 
 ### Bindings
 
@@ -198,18 +234,18 @@ when you might want to quickly clear an image, for instance:
 
 ```rust
 let mut graph = RenderGraph::new();
-let buf = graph.bind_node(some_buf_binding);
-let img = graph.bind_node(some_image_binding);
+let buffer = graph.bind_node(some_buffer_binding);
+let image = graph.bind_node(some_image_binding);
 let (r, g, b, a) = (1.0, 0.0, 1.0, 1.0);
 graph
     .clear_color_image(img, r, g, b, a)
-    .copy_buffer_to_image(buf, img);
+    .copy_buffer_to_image(buffer, image);
 ```
 
 Notice how the graph uses builder pattern functions allow additional uses of the graph after
 submitting one command to it. This operates like pushing onto a vec, where all commands
-are logically executed in order. In the above case `img` would be cleared to magenta and then
-the image that `buf` contains would be written to `img` starting at the top left corner.
+are logically executed in order. In the above case `image` would be cleared to magenta and then
+the image that `buffer` contains would be written to `image` starting at the top left corner.
 
 The basic operations are:
 
@@ -230,20 +266,24 @@ Each of these operations offers function overloads similar to:
 
 For any operations not already defined as functions on `RenderGraph`, you will need to "record
 a pass" to the graph which handles them. This is analogous to a single database transaction
-and will be treated as one contiguous unit of work by the graph systems.
+and will be treated as one contiguous unit of work by the graph resolver.
 
 Adding a pass to a graph will return a structure which provides a number of useful functions.
-For the "access functions", it's up to you to pick a specific access or accept the (workable)
-default:
+The primary set of functions handle vulkan synchronization and use prefixes of `access_`,
+`read_`, or `write_`. For each resource used in a compute, subpass, ray trace, or general
+command buffer you must call an access function. Generally choose a `read` or `write` function
+unless you want to be most efficient.
 
 - `access_node(node, vk_sync::AccessType)` - Tells the graph you will be doing something specific
   to this node in the next execution
 - `read_node(node)` - Tells the graph you will be generally reading a node in the next execution
 - `write_node(node)` - Tells the graph you will be generally writing a node in the next execution
 
+_INFO:_ If you forget to declare access you will hit a very helpful `debug_assert!`.
+
 Main functions:
 
-- `execute(fn)` - Chain a first or additional Vulkan command sequence onto this pass
+- `record_cmd_buf(fn)` - Chain a first or additional Vulkan command sequence onto this pass
 - `submit_pass()` - Return to the `RenderPass` borrow for additional commands and passes (optional)
 
 Example:
@@ -257,8 +297,8 @@ graph
     .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
         // I always run first!
     })
-    .read_node(buffer_node)
-    .write_node(image_node)
+    .read_node(buffer_node) // <-- These two functions, read_node/write_node, completely
+    .write_node(image_node) //     handle vulkan synchronization. You are free to READ/WRITE below!
     .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
         // device is &ash::Device
         // cmd_buf is vk::CommandBuffer
@@ -290,6 +330,7 @@ RenderGraph::new()
     .bind_pipeline(&pipeline)
     .record_compute(|compute| {
         // This FnOnce is where the commands are executed
+        // (Make this a move-closure and Send it 'static things if you want!)
         compute.push_constants(42u32)
                .dispatch(1, 128, 1);
         ...
@@ -300,17 +341,14 @@ Let's exaimine that a bit:
 
 ```rust
 let mut graph: RenderGraph = RenderGraph::new();
-let pass: PipelinePassRef = graph
-    .record("My compute pass")
-    .bind_pipeline(&pipeline);
-
-pass
-    .record_compute(|compute| {
-        // Mutable builder pattern or so this works too
-        compute.push_constants(42u32);
-        compute.dispatch(128, 1, 1);
-        ...
-    })
+let pass: PassRef = graph.record("My compute pass");
+let pass: PipelinePassRef = pass.bind_pipeline(&pipeline);
+pass.record_compute(|compute| {
+    // Mutable builder pattern or so this works too
+    compute.push_constants(42u32);
+    compute.dispatch(128, 1, 1);
+    ...
+})
 ```
 
 It's still not all that useful, but we're seeing the types at least now. What we need to do is add
@@ -329,8 +367,8 @@ Where:
 - `subresource` is an `ImageSubresource { .. }` for images or `Range<u64>` for buffers
 - `descriptor` is a GLSL or HLSL shader binding point, as described below
 
-These functions work like the `access`, `read`, and `write` functions on `PassRef` however they
-use shader descriptor bindings instead. You may specify the descriptor parameter as either:
+These functions work like the `access`, `read`, and `write` functions on `PassRef`/`PipelinePassRef`
+however they use shader descriptor bindings instead. You may specify the descriptor parameter as either:
 
 - `2` - Means "use binding index 2"
 - `(1, 2)` - Means "use descriptor set 1, binding index 2"
@@ -338,7 +376,7 @@ use shader descriptor bindings instead. You may specify the descriptor parameter
 - In case you don't care about descriptor set indexes (you use one) then just don't specify it ie `(2, [42])`
 
 As for push constants, you can stick whatever you like in there and it will be sent to the correct
-stages of the pipeline. Data must be `Copy`.
+stages of the pipeline. Data must be `Copy`. Beware of device limits!
 
 #### Graphics
 
@@ -361,7 +399,7 @@ graph
     .bind_pipeline(&pipeline)
     .clear_color(0)
     .store_color(0, output)
-    .record_subpass(move |subpass| {
+    .record_subpass(|subpass| {
         subpass.draw(6, 1, 0, 0);
     })
 ```
@@ -371,6 +409,10 @@ You can see that color attachment index `0` is cleared and stored into a new con
 Leases are fantastic: lease things and use them and forget about them. They're harmless to drop and simply
 return to the cache lease pool. Leases may also be used transparently with other regular images in all
 graph APIs. They do have different physical types but you will see that if you try to hold onto one.
+
+_NOTE:_ The leasing API advanced from `screen-13` v0.1 to v0.2, but not quite as much as the driver/graph
+layers. Expect to see changes and features like different cache pool types/strategies - and please PR
+what you think might work!
 
 Attachment functions:
 
@@ -388,7 +430,7 @@ Auxiallary functions:
 
 - `set_depth_stencil(mode)` - Modify the depth/stencil state of this pass from the next execution forward
 - `set_render_area(x, y, width, height)` - Set framebuffer render area for image attachments of this pass
-- `set_viewport(x, y, width, height, depth_range)` / `set_scissor(x, y, width, height)` - Modify rendering viewport/scissor from the next execution forward
+- `record_subpass(fn)` - Allows you to do some graphic work; the callback has lots of functions for relevant vulkan APIs.
 
 Image samplers:
 
@@ -443,7 +485,7 @@ the command buffer is placed back into the cache, where it remains until all wor
 buffer may be reused in other leases.
 
 _Note:_ It is very important to note that if the `cache` instance we created above is dropped then the GPU will be forced to wait until
-the work has completed, which may cause a stall.
+the work has completed, which may cause the current thread to stall for a couple milliseconds.
 
 For more advanced use cases, you may resolve a graph up to but not including a specific node and then later resolve either more or all of
 the remaining work. For example:
@@ -488,6 +530,7 @@ event_loop.run(|frame| {
         ...
 
     // Record the swapchain presentation pass (draw "img_node" to screen!)
+    // (See the present pass recorded in ~20 lines: https://bit.ly/3L6cn8U!)
     display.present_image(frame.render_graph, img_node, frame.swapchain);
 
     // Unbind img from graph so we have it for the next frame
