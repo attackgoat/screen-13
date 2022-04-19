@@ -332,16 +332,26 @@ where
 pub struct GraphicPipelineInfo {
     #[builder(default)]
     pub blend: BlendMode,
+
     #[builder(default = "vk::CullModeFlags::BACK")]
     pub cull_mode: vk::CullModeFlags,
+
     #[builder(default, setter(strip_option))]
     pub depth_stencil: Option<DepthStencilMode>,
+
     #[builder(default = "vk::FrontFace::COUNTER_CLOCKWISE")]
     pub front_face: vk::FrontFace,
+
+    /// A descriptive name used in debugging messages.
+    #[builder(default, setter(strip_option))]
+    pub name: Option<String>,
+
     #[builder(default = "vk::PolygonMode::FILL")]
     pub polygon_mode: vk::PolygonMode,
+
     #[builder(default = "SampleCount::X1")]
     pub samples: SampleCount,
+
     #[builder(default)]
     pub two_sided: bool,
 }

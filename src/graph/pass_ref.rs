@@ -1,7 +1,7 @@
 use {
     super::{
         AnyBufferNode, AnyImageNode, Area, Attachment, AttachmentIndex, Bind, Binding,
-        BufferLeaseNode, BufferNode, Descriptor, Edge, Execution, ExecutionFunction,
+        BufferLeaseNode, BufferNode, Color, Descriptor, Edge, Execution, ExecutionFunction,
         ExecutionPipeline, ImageLeaseNode, ImageNode, Information, Node, NodeIndex, Pass,
         RayTraceAccelerationNode, RenderGraph, SampleCount, Subresource, SubresourceAccess,
         SwapchainImageNode, View, ViewType,
@@ -1111,29 +1111,16 @@ where
     }
 
     pub fn clear_color(self, attachment: AttachmentIndex) -> Self {
-        self.clear_color_value(attachment, Default::default())
-    }
-
-    pub fn clear_color_array(self, attachment: AttachmentIndex, color: [f32; 4]) -> Self {
-        self.clear_color_value(attachment, vk::ClearColorValue { float32: color })
-    }
-
-    pub fn clear_color_scalar(
-        self,
-        attachment: AttachmentIndex,
-        r: f32,
-        g: f32,
-        b: f32,
-        a: f32,
-    ) -> Self {
-        self.clear_color_array(attachment, [r, g, b, a])
+        self.clear_color_value(attachment, [0, 0, 0, 0])
     }
 
     pub fn clear_color_value(
         mut self,
         attachment: AttachmentIndex,
-        color: vk::ClearColorValue,
+        color: impl Into<Color>,
     ) -> Self {
+        let color = color.into();
+
         assert!(self
             .pass
             .as_ref()
@@ -1142,13 +1129,12 @@ where
             .get(attachment as usize)
             .is_none());
 
-        self.pass
-            .as_mut()
-            .execs
-            .last_mut()
-            .unwrap()
-            .clears
-            .insert(attachment, vk::ClearValue { color });
+        self.pass.as_mut().execs.last_mut().unwrap().clears.insert(
+            attachment,
+            vk::ClearValue {
+                color: vk::ClearColorValue { float32: color.0 },
+            },
+        );
         self
     }
 

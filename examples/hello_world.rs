@@ -21,13 +21,9 @@ fn main() -> Result<(), DisplayError> {
         let image_node = frame.render_graph.bind_node(image_binding.take().unwrap());
 
         // The image is now a node which is just a usize and can be used in all parts of a graph
-        frame.render_graph.clear_color_image_scalar(
-            image_node,
-            100.0 / 255.0,
-            149.0 / 255.0,
-            237.0 / 255.0,
-            1.0,
-        );
+        frame
+            .render_graph
+            .clear_color_image_value(image_node, [100u8, 149, 237, 255]);
 
         // Run a vertex+pixel shader over image and stores into the swapchain image
         display.present_image(frame.render_graph, image_node, frame.swapchain);

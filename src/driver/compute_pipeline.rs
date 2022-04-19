@@ -20,6 +20,7 @@ where
     pub descriptor_info: PipelineDescriptorInfo<P>,
     pub device: Shared<Device<P>, P>,
     pub layout: vk::PipelineLayout,
+    pub info: ComputePipelineInfo,
     pipeline: vk::Pipeline,
     pub push_constants: Option<vk::PushConstantRange>,
 }
@@ -104,6 +105,7 @@ where
                 descriptor_bindings,
                 descriptor_info,
                 device,
+                info,
                 layout,
                 pipeline,
                 push_constants,
@@ -145,9 +147,15 @@ pub struct ComputePipelineInfo {
     /// The GLSL or HLSL shader entry point name, or `main` by default.
     #[builder(setter(strip_option), default = "String::from(\"main\")")]
     pub entry_name: String,
+
+    /// A descriptive name used in debugging messages.
+    #[builder(default, setter(strip_option))]
+    pub name: Option<String>,
+
     /// Data about Vulkan specialization constants.
     #[builder(default)]
     pub specialization_info: Option<SpecializationInfo>,
+
     /// Shader code.
     pub spirv: Vec<u8>,
 }

@@ -31,7 +31,7 @@ use {
         driver::{
             buffer_copy_subresources, buffer_image_copy_subresource, format_aspect_mask,
             BufferSubresource, ComputePipeline, DepthStencilMode, DescriptorBindingMap,
-            GraphicPipeline, ImageSubresource, PipelineDescriptorInfo, RayTracePipeline,
+            GraphicPipeline, ImageSubresource, ImageType, PipelineDescriptorInfo, RayTracePipeline,
             SampleCount,
         },
         ptr::Shared,
@@ -205,6 +205,25 @@ impl AttachmentMap {
                 target,
             },
         )
+    }
+}
+
+pub struct Color(pub [f32; 4]);
+
+impl From<[f32; 4]> for Color {
+    fn from(color: [f32; 4]) -> Self {
+        Self(color)
+    }
+}
+
+impl From<[u8; 4]> for Color {
+    fn from(color: [u8; 4]) -> Self {
+        Self([
+            color[0] as f32 * u8::MAX as f32,
+            color[1] as f32 * u8::MAX as f32,
+            color[2] as f32 * u8::MAX as f32,
+            color[3] as f32 * u8::MAX as f32,
+        ])
     }
 }
 
@@ -545,42 +564,18 @@ where
     where
         P: SharedPointerKind + 'static,
     {
-        self.clear_color_image_scalar(image_node, 0.0, 0.0, 0.0, 0.0)
-    }
-
-    pub fn clear_color_image_array(
-        &mut self,
-        image_node: impl Into<AnyImageNode<P>>,
-        color: [f32; 4],
-    ) -> &mut Self
-    where
-        P: SharedPointerKind + 'static,
-    {
-        self.clear_color_image_value(image_node, vk::ClearColorValue { float32: color })
-    }
-
-    pub fn clear_color_image_scalar(
-        &mut self,
-        image_node: impl Into<AnyImageNode<P>>,
-        r: f32,
-        g: f32,
-        b: f32,
-        a: f32,
-    ) -> &mut Self
-    where
-        P: SharedPointerKind + 'static,
-    {
-        self.clear_color_image_array(image_node, [r, g, b, a])
+        self.clear_color_image_value(image_node, [0, 0, 0, 0])
     }
 
     pub fn clear_color_image_value(
         &mut self,
         image_node: impl Into<AnyImageNode<P>>,
-        color: vk::ClearColorValue,
+        color_value: impl Into<Color>,
     ) -> &mut Self
     where
         P: SharedPointerKind + 'static,
     {
+        let color_value = color_value.into();
         let image_node = image_node.into();
         let image_info = self.node_info(image_node);
         let image_access_range = image_info.default_view_info();
@@ -592,7 +587,9 @@ where
                     cmd_buf,
                     *bindings[image_node],
                     vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                    &color,
+                    &vk::ClearColorValue {
+                        float32: color_value.0,
+                    },
                     &[vk::ImageSubresourceRange {
                         aspect_mask: vk::ImageAspectFlags::COLOR,
                         level_count: image_info.mip_level_count,
@@ -609,28 +606,14 @@ where
     where
         P: SharedPointerKind + 'static,
     {
-        self.clear_depth_stencil_image_scalar(image_node, 0.0, 0)
-    }
-
-    pub fn clear_depth_stencil_image_scalar(
-        &mut self,
-        image_node: impl Into<AnyImageNode<P>>,
-        depth: f32,
-        stencil: u32,
-    ) -> &mut Self
-    where
-        P: SharedPointerKind + 'static,
-    {
-        self.clear_depth_stencil_image_value(
-            image_node,
-            vk::ClearDepthStencilValue { depth, stencil },
-        )
+        self.clear_depth_stencil_image_value(image_node, 0.0, 0)
     }
 
     pub fn clear_depth_stencil_image_value(
         &mut self,
         image_node: impl Into<AnyImageNode<P>>,
-        depth_stencil: vk::ClearDepthStencilValue,
+        depth: f32,
+        stencil: u32,
     ) -> &mut Self
     where
         P: SharedPointerKind + 'static,
@@ -646,7 +629,7 @@ where
                     cmd_buf,
                     *bindings[image_node],
                     vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                    &depth_stencil,
+                    &vk::ClearDepthStencilValue { depth, stencil },
                     &[vk::ImageSubresourceRange {
                         aspect_mask: format_aspect_mask(image_info.fmt),
                         level_count: image_info.mip_level_count,
@@ -798,19 +781,27 @@ where
                     aspect_mask: format_aspect_mask(src_info.fmt),
                     mip_level: 0,
                     base_array_layer: 0,
-                    layer_count: 1,
+                    layer_count: if matches!(src_info.ty, ImageType::Cube | ImageType::CubeArray) {
+                        6
+                    } else {
+                        1
+                    },
                 },
                 src_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
                 dst_subresource: vk::ImageSubresourceLayers {
                     aspect_mask: format_aspect_mask(dst_info.fmt),
                     mip_level: 0,
                     base_array_layer: 0,
-                    layer_count: 1,
+                    layer_count: if matches!(dst_info.ty, ImageType::Cube | ImageType::CubeArray) {
+                        6
+                    } else {
+                        1
+                    },
                 },
                 dst_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
                 extent: vk::Extent3D {
-                    depth: src_info.extent.z.min(dst_info.extent.z),
-                    height: src_info.extent.y.min(dst_info.extent.y),
+                    depth: src_info.extent.z.min(dst_info.extent.z).max(1),
+                    height: src_info.extent.y.min(dst_info.extent.y).max(1),
                     width: src_info.extent.x.min(dst_info.extent.x),
                 },
             },

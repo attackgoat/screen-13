@@ -35,9 +35,9 @@ fn main() -> Result<(), DisplayError> {
     let vertex_buf_info = vertex_buffer_info(vertices.len() as u64);
 
     // Some colors for readability
-    let red = [1.0, 0.0, 0.0, 1.0];
-    let green = [0.0, 1.0, 0.0, 1.0];
-    let blue = [0.0, 0.0, 1.0, 1.0];
+    let red = [1u8, 0, 0, 1];
+    let green = [0u8, 1, 0, 1];
+    let blue = [0u8, 0, 1, 1];
 
     // Event loop runs the frame callback on the current thread
     event_loop.run(|frame| {
@@ -56,12 +56,12 @@ fn main() -> Result<(), DisplayError> {
             .copy_from_slice(indices);
         let index_buf = graph.bind_node(index_buf);
 
-        // Lease + fill a buffer: maybe a more sane looking way of doing it
+        // Lease + fill + bind a buffer: maybe a more sane looking way of doing it
         let vertex_buf = graph.bind_node({
-            let mut vertex_buf = cache.lease(vertex_buf_info).unwrap();
-            let data = Buffer::mapped_slice_mut(vertex_buf.get_mut().unwrap());
+            let mut buf = cache.lease(vertex_buf_info).unwrap();
+            let data = Buffer::mapped_slice_mut(buf.get_mut().unwrap());
             data[0..vertices.len()].copy_from_slice(vertices);
-            vertex_buf
+            buf
         });
 
         // Lease a couple images (they may be blank or have pictures of cats in them but they are valid/ready)
@@ -98,7 +98,7 @@ fn main() -> Result<(), DisplayError> {
         graph
             .begin_pass("gradients")
             .bind_pipeline(&fill_quad_linear_gradient)
-            .clear_color_array(0, green)
+            .clear_color_value(0, green)
             .store_color(0, image1)
             .record_subpass(move |subpass| {
                 subpass.push_constants((red, blue));
@@ -174,7 +174,9 @@ fn image_info_2d(width: u32, height: u32) -> ImageInfo {
             vk::ImageUsageFlags::SAMPLED
                 | vk::ImageUsageFlags::STORAGE
                 | vk::ImageUsageFlags::COLOR_ATTACHMENT
-                | vk::ImageUsageFlags::INPUT_ATTACHMENT,
+                | vk::ImageUsageFlags::INPUT_ATTACHMENT
+                | vk::ImageUsageFlags::TRANSFER_DST
+                | vk::ImageUsageFlags::TRANSFER_SRC,
         )
         .build()
         .unwrap()
@@ -191,28 +193,16 @@ fn create_fill_quad_linear_gradient_pipeline(device: &Shared<Device>) -> Shared<
         r#"
         #version 460 core
 
-        const vec3 position[6] = vec3[6](
-            vec3(-1.0, 1.0, 0.0),
-            vec3(-1.0, 0.0, 0.0),
-            vec3(1.0, 0.0, 0.0),
-            vec3(-1.0, 1.0, 0.0),
-            vec3(1.0, 0.0, 0.0),
-            vec3(1.0, 1.0, 0.0)
-        );
-        const vec2 tex_coord[6] = vec2[6](
-            vec2(0.0, 0.0),
-            vec2(0.0, 1.0),
-            vec2(1.0, 1.0),
-            vec2(0.0, 0.0),
-            vec2(1.0, 1.0),
-            vec2(1.0, 0.0)
+        const vec2 POSITION[6] = vec2[6](
+            vec2(-1, -1), vec2(-1,  1), vec2( 1, -1),
+            vec2( 1,  1), vec2( 1, -1), vec2(-1,  1)
         );
 
         layout(location = 0) out vec2 vk_TexCoord;
 
         void main() {
-            gl_Position = vec4(position[gl_VertexIndex], 1);
-            vk_TexCoord = tex_coord[gl_VertexIndex];
+            gl_Position = vec4(POSITION[gl_VertexIndex], 0, 1);
+            vk_TexCoord = POSITION[gl_VertexIndex] * vec2(-0.5) + vec2(0.5);
         }
         "#,
         vert
@@ -221,8 +211,6 @@ fn create_fill_quad_linear_gradient_pipeline(device: &Shared<Device>) -> Shared<
     let fragment_shader = Shader::new_fragment(into_u8_slice(inline_spirv!(
         r#"
         #version 460 core
-
-        layout(constant_id = 0) const int NUM_SAMPLERS = 1;
 
         layout(push_constant) uniform PushConstants {
             layout(offset = 0) vec4 start_color;
@@ -234,8 +222,8 @@ fn create_fill_quad_linear_gradient_pipeline(device: &Shared<Device>) -> Shared<
         layout(location = 0) out vec4 vk_Color;
         
         void main() {
-            vk_Color = push_constants.start_color * vec4(tex_coord.x)
-                     + push_constants.end_color * vec4(tex_coord.y);
+            vk_Color = vec4(push_constants.start_color.wzy * tex_coord.xxx
+                          + push_constants.end_color.wzy * (vec3(1) - tex_coord.xxx), 1);
         }
         "#,
         frag
@@ -261,16 +249,13 @@ fn create_draw_funky_shape_deferred_pipeline(device: &Shared<Device>) -> Shared<
         } push_constants;
         
         layout(location = 0) in vec3 position;
-        layout(location = 1) in vec2 tex_coord;
-        layout(location = 2) in vec3 normal;
+        layout(location = 1) in vec3 normal;
         
         layout(location = 0) out vec3 vk_Normal;
-        layout(location = 1) out vec2 vk_TexCoord;
         
         void main() {
             gl_Position = push_constants.transform * vec4(position, 1);
             vk_Normal = normal;
-            vk_TexCoord = tex_coord;
         }
         "#,
         vert
@@ -280,57 +265,36 @@ fn create_draw_funky_shape_deferred_pipeline(device: &Shared<Device>) -> Shared<
         r#"
         #version 460 core
 
-        layout(constant_id = 0) const int NUM_SAMPLERS = 1;
-
         layout(push_constant) uniform PushConstants {
+            layout(offset = 0) mat4 transform;
             layout(offset = 64) vec4 coolness_factor;
         } push_constants;
         
-        layout(set = 0, binding = 0) uniform sampler2D sampler_llc[NUM_SAMPLERS];
-
         layout(location = 0) in vec3 normal;
-        layout(location = 1) in vec2 tex_coord;
 
         layout(location = 0) out vec4 vk_Color;
         
         void main() {
-            vk_Color = push_constants.coolness_factor;
-
-            for (int idx = 0; idx < NUM_SAMPLERS; idx++) {
-                vk_Color *= texture(sampler_llc[idx], tex_coord);
-            }
+            vk_Color = push_constants.coolness_factor * vec4(normal, 1);
         }
         "#,
         frag
-    )))
-    .specialization_info(SpecializationInfo::new(
-        [vk::SpecializationMapEntry {
-            constant_id: 0,
-            offset: 0,
-            size: 4,
-        }],
-        2u32.to_ne_bytes(), // <--- Specifies 2 for NUM_SAMPLERS
-    ));
-
-    // NOTE: The fragment shader above uses the `constant_id` layout on the `sampler_llc` sampler
-    // array length bound; and so shader reflection that gets performed won't know how many
-    // texture descriptors are really needed unless you tell the engine. For this type of case, we have
-    // specialization info, above, which declares the data. This pipeline will now be hardcoded to 2.
-    // If we do not set the specialization info like this then the shader would have 1 as the default
-    // which is specified here: .....onst int NUM_SAMPLERS = 1;  <--- This value
+    )));
 
     Shared::new(
         GraphicPipeline::create(
             device,
-            GraphicPipelineInfo::default(),
+            GraphicPipelineInfo::new()
+                .cull_mode(vk::CullModeFlags::NONE)
+                .two_sided(true),
             [vertex_shader, fragment_shader],
         )
         .unwrap(),
     )
 }
 
-/// Returns index buffer and position/tex-coord/normal buffer (polyhedron_ops you are 🥇🏆🥂💯)
-fn funky_shape_triangle_mesh_buffers() -> (Vec<u32>, Vec<(Vec3, Vec2, Vec3)>) {
+/// Returns index buffer and position/normal buffer (polyhedron_ops you are 🥇🏆🥂💯)
+fn funky_shape_triangle_mesh_buffers() -> (Vec<u32>, Vec<(Vec3, Vec3)>) {
     let (indices, positions, normals) = polyhedron_ops::Polyhedron::dodecahedron()
         .chamfer(None, true)
         .propeller(None, true)
@@ -344,10 +308,6 @@ fn funky_shape_triangle_mesh_buffers() -> (Vec<u32>, Vec<(Vec3, Vec2, Vec3)>) {
         .map(|(position, normal)| {
             (
                 vec3(position.x, position.y, position.z),
-                vec2(
-                    normal.x.atan2(normal.z) / std::f32::consts::FRAC_2_PI + 0.5,
-                    normal.y * 0.5 + 0.5,
-                ),
                 vec3(normal.x, normal.y, normal.z),
             )
         })

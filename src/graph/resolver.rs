@@ -163,7 +163,7 @@ where
         physical_pass_idx: usize,
         render_area: Area,
     ) -> Result<(), DriverError> {
-        trace!("begin_render_pass");
+        trace!("  begin render pass");
 
         let physical_pass = &self.physical_passes[physical_pass_idx];
         let render_pass = physical_pass.render_pass.as_ref().unwrap();
@@ -286,7 +286,9 @@ where
             return;
         }
 
-        trace!("bind_descriptor_sets exec[{exec_idx}]");
+        let descriptor_sets = descriptor_sets.as_ref().unwrap();
+
+        trace!("    bind descriptor sets {:?}", descriptor_sets);
 
         unsafe {
             cmd_buf.device.cmd_bind_descriptor_sets(
@@ -294,7 +296,7 @@ where
                 pipeline.bind_point(),
                 pipeline.layout(),
                 0,
-                descriptor_sets.as_ref().unwrap(),
+                descriptor_sets,
                 &[],
             );
         }
@@ -308,7 +310,28 @@ where
         pipeline: &mut ExecutionPipeline<P>,
         depth_stencil: Option<DepthStencilMode>,
     ) -> Result<(), DriverError> {
-        trace!("bind_pipeline");
+        let (ty, name, ptr) = match pipeline {
+            ExecutionPipeline::Compute(pipeline) => (
+                "compute",
+                pipeline.info.name.as_ref(),
+                Shared::as_ptr(pipeline) as *const (),
+            ),
+            ExecutionPipeline::Graphic(pipeline) => (
+                "graphic",
+                pipeline.info.name.as_ref(),
+                Shared::as_ptr(pipeline) as *const (),
+            ),
+            ExecutionPipeline::RayTrace(pipeline) => (
+                "ray trace",
+                pipeline.info.name.as_ref(),
+                Shared::as_ptr(pipeline) as *const (),
+            ),
+        };
+        if let Some(name) = name {
+            trace!("    bind {} pipeline {} ({:?})", ty, name, ptr);
+        } else {
+            trace!("    bind {} pipeline {:?}", ty, ptr);
+        }
 
         // We store a shared reference to this pipeline inside the command buffer!
         let physical_pass = &self.physical_passes[physical_pass_idx];
@@ -384,7 +407,7 @@ where
     }
 
     fn end_render_pass(&mut self, cmd_buf: &CommandBuffer<P>) {
-        trace!("end_render_pass");
+        trace!("  end render pass");
 
         unsafe {
             cmd_buf.device.cmd_end_render_pass(**cmd_buf);
@@ -1128,15 +1151,13 @@ where
     fn merge_scheduled_passes<'s>(&mut self, mut schedule: &'s mut [usize]) -> &'s mut [usize] {
         // There must be company
         if schedule.len() < 2 {
-            trace!("Cannot merge");
-
             return schedule;
         }
 
         let mut passes = self.graph.passes.drain(..).map(Some).collect::<Vec<_>>();
         let mut idx = 0;
 
-        debug!("Attempting to merge {} passes", schedule.len(),);
+        // debug!("attempting to merge {} passes", schedule.len(),);
 
         while idx < schedule.len() {
             // Find candidates
@@ -1147,7 +1168,7 @@ where
             while end < schedule.len() {
                 let other = passes[schedule[end]].as_ref().unwrap();
                 debug!(
-                    "Attempting to merge [{idx}: {}] with [{end}: {}]",
+                    "attempting to merge [{idx}: {}] with [{end}: {}]",
                     pass.name, other.name
                 );
                 if Self::allow_merge_passes(&pass, other) {
@@ -1159,10 +1180,10 @@ where
 
             if start == end {
                 if start != schedule.len() {
-                    debug!("Unable to merge [{idx}: {}]", pass.name);
+                    // log::debug!("Unable to merge [{idx}: {}]", pass.name);
                 }
             } else {
-                trace!("Merging {} passes into [{idx}: {}]", end - start, pass.name);
+                trace!("merging {} passes into [{idx}: {}]", end - start, pass.name);
             }
 
             // Grow the merged pass once, not per merge
@@ -1258,6 +1279,7 @@ where
     }
 
     fn record_execution_barriers(
+        trace_pad: &'static str,
         cmd_buf: &CommandBuffer<P>,
         bindings: &mut [Binding<P>],
         pass: &mut Pass<P>,
@@ -1324,7 +1346,7 @@ where
                             let range = subresource.unwrap_buffer();
 
                             trace!(
-                                "buffer barrier {:?} {}..{} {:?} -> {:?}",
+                                "{trace_pad}buffer barrier {:?} {}..{} {:?} -> {:?}",
                                 binding.as_driver_buffer().unwrap(),
                                 range.start,
                                 range.end,
@@ -1345,7 +1367,7 @@ where
                             let range = subresource.unwrap_image().into_vk();
 
                             trace!(
-                                "image barrier {:?} {:?}-{:?} -> {:?}-{:?}",
+                                "{trace_pad}image barrier {:?} {:?}-{:?} -> {:?}-{:?}",
                                 binding.as_driver_image().unwrap(),
                                 prev_access,
                                 image_access_layout(prev_access),
@@ -1368,7 +1390,11 @@ where
                     }
 
                     // No resource attached - we use a global barrier for these
-                    trace!("global barrier {:?} -> {:?}", prev_access, next_access);
+                    trace!(
+                        "{trace_pad}global barrier {:?} -> {:?}",
+                        prev_access,
+                        next_access
+                    );
 
                     Barrier {
                         next_access,
@@ -1550,7 +1576,7 @@ where
                 .render_pass
                 .is_some();
 
-            trace!("recording pass[{}: {}]", pass_idx, pass.name);
+            trace!("recording pass [{}: {}]", pass_idx, pass.name);
 
             if !self.physical_passes[physical_pass_idx]
                 .exec_descriptor_sets
@@ -1559,7 +1585,7 @@ where
                 self.write_descriptor_sets(cmd_buf, pass, physical_pass_idx)?;
             }
 
-            Self::record_execution_barriers(cmd_buf, &mut self.graph.bindings, pass, 0);
+            Self::record_execution_barriers("  ", cmd_buf, &mut self.graph.bindings, pass, 0);
 
             let render_area = if is_graphic {
                 let render_area = self.render_area(pass);
@@ -1571,8 +1597,6 @@ where
 
             for subpass_idx in 0..pass.subpasses.len() {
                 let exec_idx = pass.subpasses[subpass_idx].exec_idx;
-
-                trace!("exec[{exec_idx}]");
 
                 if is_graphic && subpass_idx > 0 {
                     Self::next_subpass(cmd_buf);
@@ -1615,12 +1639,15 @@ where
 
                 if exec_idx > 0 && !is_graphic {
                     Self::record_execution_barriers(
+                        "    ",
                         cmd_buf,
                         &mut self.graph.bindings,
                         pass,
                         exec_idx,
                     );
                 }
+
+                trace!("    > exec[{exec_idx}]");
 
                 let exec = &mut pass.execs[exec_idx];
                 let exec_func = exec.func.take().unwrap().0;
@@ -1669,7 +1696,7 @@ where
         self.graph.passes.extend(passes);
         self.graph.passes.reverse();
 
-        trace!("OK");
+        // log::trace!("OK");
 
         Ok(())
     }
@@ -1791,7 +1818,7 @@ where
         if !schedule.is_empty() {
             // These are the indexes of the passes this thread is about to resolve
             debug!(
-                "Schedule: {}",
+                "schedule: {}",
                 schedule
                     .iter()
                     .copied()
@@ -1804,7 +1831,7 @@ where
             // These passes are within the range of passes we thought we had to do
             // right now, but it turns out that nothing in "schedule" relies on them
             trace!(
-                "Skipping: {}",
+                "skipping: {}",
                 unscheduled
                     .iter()
                     .copied()
@@ -1817,7 +1844,7 @@ where
             // These passes existing on the graph but are not being considered right
             // now because we've been told to stop work at the "end_pass_idx" point
             trace!(
-                "Ignoring: {}",
+                "ignoring: {}",
                 self.graph.passes[end_pass_idx..]
                     .iter()
                     .enumerate()
@@ -1963,7 +1990,7 @@ where
                 let descriptor_info = *pipeline
                     .descriptor_bindings()
                     .get(&DescriptorBinding(descriptor_set_idx, binding_idx))
-                    .unwrap_or_else(|| panic!("Descriptor {descriptor_set_idx}.{binding_idx}[{binding_offset}] specified in recorded execution of pass \"{}\" was not discovered through shader reflection.", &pass.name));
+                    .unwrap_or_else(|| panic!("descriptor {descriptor_set_idx}.{binding_idx}[{binding_offset}] specified in recorded execution of pass \"{}\" was not discovered through shader reflection", &pass.name));
                 let descriptor_ty = descriptor_info.into();
 
                 //trace!("write_descriptor_sets {descriptor_set_idx}.{binding_idx}[{binding_offset}] = {:?}", descriptor_info);
@@ -2069,7 +2096,7 @@ where
             return Ok(());
         }
 
-        trace!("writing {:#?} descriptors ", descriptor_writes.len());
+        trace!("  writing {:#?} descriptors ", descriptor_writes.len());
 
         unsafe {
             cmd_buf

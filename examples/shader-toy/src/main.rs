@@ -132,9 +132,9 @@ fn main() -> anyhow::Result<()> {
     );
 
     render_graph
-        .clear_color_image_scalar(framebuffer_image, 1.0, 1.0, 0.0, 1.0)
-        .clear_color_image_scalar(blank_image, 0.0, 0.0, 0.0, 1.0)
-        .clear_color_image_scalar(temp_image, 0.0, 1.0, 0.0, 1.0);
+        .clear_color_image_value(framebuffer_image, [1.0, 1.0, 0.0, 1.0])
+        .clear_color_image_value(blank_image, [0.0, 0.0, 0.0, 1.0])
+        .clear_color_image_value(temp_image, [0.0, 1.0, 0.0, 1.0]);
 
     let mut framebuffer_image_binding = Some(render_graph.unbind_node(framebuffer_image));
     let mut blank_image_binding = Some(render_graph.unbind_node(blank_image));

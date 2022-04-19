@@ -79,7 +79,7 @@ where
 
     /// Signals that execution has completed and it is time to drop anything we collected.
     pub(crate) fn drop_fenced(this: &mut Self) {
-        trace!("Dropping {} shared references", this.droppables.len());
+        trace!("dropping {} shared references", this.droppables.len());
 
         this.droppables.clear();
     }

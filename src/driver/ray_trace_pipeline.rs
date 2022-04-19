@@ -6,6 +6,7 @@ use {
     crate::ptr::Shared,
     archery::SharedPointerKind,
     ash::vk,
+    derive_builder::Builder,
     glam::{Mat3, Vec3},
     log::{info, trace, warn},
     parking_lot::Mutex,
@@ -550,6 +551,7 @@ where
     pub descriptor_bindings: DescriptorBindingMap,
     pub descriptor_info: PipelineDescriptorInfo<P>,
     device: Shared<Device<P>, P>,
+    pub info: RayTracePipelineInfo,
     pub layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
     pub shader_bindings: RayTraceShaderBindings<P>,
@@ -757,6 +759,7 @@ where
                 descriptor_bindings,
                 descriptor_info,
                 device,
+                info,
                 layout,
                 pipeline,
                 shader_bindings,
@@ -792,17 +795,14 @@ where
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Builder, Clone, Debug)]
+#[builder(pattern = "owned")]
 pub struct RayTracePipelineInfo {
     pub max_pipeline_ray_recursion_depth: u32,
-}
 
-impl Default for RayTracePipelineInfo {
-    fn default() -> Self {
-        Self {
-            max_pipeline_ray_recursion_depth: 1,
-        }
-    }
+    /// A descriptive name used in debugging messages.
+    #[builder(default, setter(strip_option))]
+    pub name: Option<String>,
 }
 
 impl RayTracePipelineInfo {

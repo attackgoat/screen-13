@@ -100,14 +100,17 @@ where
             ]);
         }
 
-        let started = Instant::now();
         let cmd_bufs = &mut self.cmd_bufs[swapchain_image_idx];
         let cmd_buf = &mut cmd_bufs[0];
+
+        let started = Instant::now();
 
         unsafe {
             // Begin the command buffer which may stall until the previous submission has finished
             Self::begin(cmd_buf)?;
         }
+
+        let mut wait_elapsed = Instant::now() - started;
 
         resolver.record_node_dependencies(&mut self.cache, cmd_buf, swapchain_node)?;
 
@@ -119,16 +122,17 @@ where
             )?;
         }
 
-        let elapsed = Instant::now() - started;
-        trace!("Node dependencies took {} μs", elapsed.as_micros());
-
         // Switch commnd buffers because we're going to be submitting with a wait semaphore on the
         // swapchain image before we get access to record commands that use it
         let cmd_buf = &mut cmd_bufs[1];
 
+        let wait_started = Instant::now();
+
         unsafe {
             Self::begin(cmd_buf)?;
         }
+
+        wait_elapsed += Instant::now() - wait_started;
 
         resolver.record_node(&mut self.cache, cmd_buf, swapchain_node)?;
 
@@ -174,9 +178,13 @@ where
         if !resolver.is_resolved() {
             let cmd_buf = &mut cmd_bufs[2];
 
+            let wait_started = Instant::now();
+
             unsafe {
                 Self::begin(cmd_buf)?;
             }
+
+            wait_elapsed += Instant::now() - wait_started;
 
             resolver.record_unscheduled_passes(&mut self.cache, cmd_buf)?;
 
@@ -188,8 +196,12 @@ where
             }?;
         }
 
-        let elapsed = Instant::now() - started;
-        trace!("Command buffer recording total: {} μs", elapsed.as_micros());
+        let elapsed = Instant::now() - started - wait_elapsed;
+        trace!(
+            "command buffers: {} μs, delay: {} μs",
+            elapsed.as_micros(),
+            wait_elapsed.as_micros()
+        );
 
         self.swapchain.present_image(swapchain_image);
 

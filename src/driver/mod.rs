@@ -499,16 +499,31 @@ where
 #[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[builder(pattern = "owned", derive(Debug))]
 pub struct DriverConfig {
+    /// Enables Vulkan validation layers.
+    ///
+    /// This requires a Vulkan SDK installation and will cause validation errors to introduce
+    /// panics as they happen.
+    ///
+    /// _NOTE:_ Consider turning OFF debug if you discover an unknown issue. Often the validation
+    /// layers will throw an error before other layers can provide additional context such as the
+    /// API dump info or other messages. You might find the "actual" issue is detailed in those
+    /// subsequent details.
     #[builder(default)]
     pub debug: bool,
+
     #[builder(default = "3")]
     pub desired_swapchain_image_count: u32,
+
+    /// Determines if frames will be submitted to the display in a synchronous fashion or if they
+    /// should be displayed as fast as possible instead.
+    ///
+    /// Turn on to eliminate visual tearing at the expense of latency.
     #[builder(default = "true")]
     pub sync_display: bool,
-    // #[builder(default)]
-    // pub dlss: bool,
+
     #[builder(default = "true")]
     pub presentation: bool,
+
     #[builder(default)]
     pub ray_tracing: bool,
 }
