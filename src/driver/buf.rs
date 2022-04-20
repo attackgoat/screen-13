@@ -106,6 +106,11 @@ where
         })
     }
 
+    pub fn copy_from_slice(this: &mut Self, offset: vk::DeviceSize, slice: &[u8]) {
+        Self::mapped_slice_mut(this)[offset as _..offset as usize + slice.len()]
+            .copy_from_slice(slice);
+    }
+
     pub fn device_address(this: &Self) -> vk::DeviceAddress {
         unsafe {
             this.device.get_buffer_device_address(
@@ -172,10 +177,15 @@ where
 }
 
 #[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
-#[builder(pattern = "owned")]
+#[builder(
+    build_fn(private, name = "fallible_build"),
+    derive(Debug),
+    pattern = "owned"
+)]
 pub struct BufferInfo {
     pub size: vk::DeviceSize,
     pub usage: vk::BufferUsageFlags,
+
     #[builder(default)]
     pub can_map: bool,
 }
@@ -185,11 +195,32 @@ impl BufferInfo {
     pub fn new(size: vk::DeviceSize, usage: vk::BufferUsageFlags) -> BufferInfoBuilder {
         BufferInfoBuilder::default().size(size).usage(usage)
     }
+
+    // TODO: This function is an opinon, should it be?
+    pub fn new_mappable(size: vk::DeviceSize, usage: vk::BufferUsageFlags) -> BufferInfoBuilder {
+        Self::new(
+            size,
+            usage | vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::TRANSFER_SRC,
+        )
+        .can_map(true)
+    }
+}
+
+// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
+impl BufferInfoBuilder {
+    pub fn new(size: vk::DeviceSize, usage: vk::BufferUsageFlags) -> Self {
+        Self::default().size(size).usage(usage)
+    }
+
+    pub fn build(self) -> BufferInfo {
+        self.fallible_build()
+            .expect("All required fields set at initialization")
+    }
 }
 
 impl From<BufferInfoBuilder> for BufferInfo {
     fn from(info: BufferInfoBuilder) -> Self {
-        info.build().unwrap()
+        info.build()
     }
 }
 

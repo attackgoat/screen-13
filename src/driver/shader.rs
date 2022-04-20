@@ -225,12 +225,14 @@ where
 }
 
 #[derive(Builder, Clone)]
-#[builder(pattern = "owned")]
+#[builder(build_fn(private, name = "fallible_build"), pattern = "owned")]
 pub struct Shader {
     #[builder(default = "\"main\".to_owned()")]
     pub entry_name: String,
+
     #[builder(default, setter(strip_option))]
     pub specialization_info: Option<SpecializationInfo>,
+
     pub spirv: Vec<u8>,
     pub stage: vk::ShaderStageFlags,
 }
@@ -672,6 +674,18 @@ impl Shader {
     }
 }
 
+// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
+impl ShaderBuilder {
+    pub fn new(stage: vk::ShaderStageFlags, spirv: Vec<u8>) -> Self {
+        Self::default().stage(stage).spirv(spirv)
+    }
+
+    pub fn build(self) -> Shader {
+        self.fallible_build()
+            .expect("All required fields set at initialization")
+    }
+}
+
 impl Debug for Shader {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         // We don't want the default formatter bc vec u8
@@ -682,7 +696,7 @@ impl Debug for Shader {
 
 impl From<ShaderBuilder> for Shader {
     fn from(shader: ShaderBuilder) -> Self {
-        shader.build().unwrap()
+        shader.build()
     }
 }
 

@@ -75,12 +75,7 @@ where
                 Self::RT_SCRATCH_BUFFER_SIZE,
                 vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             )
-            .build()
-            .map_err(|err| {
-                warn!("{err}");
-
-                DriverError::Unsupported
-            })?,
+            .build(),
         )?));
 
         Ok(Self { device, buf })
@@ -265,8 +260,7 @@ where
                 vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             )
-            .build()
-            .unwrap(),
+            .build(),
         )?;
         let accel_info = vk::AccelerationStructureCreateInfoKHR::builder()
             .ty(ty)

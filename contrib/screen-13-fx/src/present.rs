@@ -39,7 +39,7 @@ where
             .read_descriptor(0, image)
             .write_descriptor(1, swapchain)
             .record_compute(move |compute| {
-                compute.dispatch(swapchain_info.extent.x, swapchain_info.extent.y, 1);
+                compute.dispatch(swapchain_info.width, swapchain_info.height, 1);
             });
     }
 
@@ -67,7 +67,7 @@ where
             .read_descriptor((0, [1]), bottom_image)
             .write_descriptor(1, swapchain)
             .record_compute(move |compute| {
-                compute.dispatch(swapchain_info.extent.x, swapchain_info.extent.y, 1);
+                compute.dispatch(swapchain_info.width, swapchain_info.height, 1);
             });
     }
 }
@@ -106,12 +106,14 @@ where
         let image_info = graph.node_info(image);
         let swapchain_info = graph.node_info(swapchain);
 
-        let image_extent = image_info.extent.xy().as_vec2();
-        let swapchain_extent = swapchain_info.extent.xy().as_vec2();
-        let scale = (swapchain_extent.x / image_extent.x).max(swapchain_extent.y / image_extent.y);
+        let (image_width, image_height) = (image_info.width as f32, image_info.height as f32);
+        let (swapchain_width, swapchain_height) =
+            (swapchain_info.width as f32, swapchain_info.height as f32);
+
+        let scale = (swapchain_width / image_width).max(swapchain_height / image_height);
         let transform = Mat4::from_scale(vec3(
-            scale * image_extent.x / swapchain_extent.x,
-            scale * image_extent.y / swapchain_extent.y,
+            scale * image_width / swapchain_width,
+            scale * image_height / swapchain_height,
             1.0,
         ));
 

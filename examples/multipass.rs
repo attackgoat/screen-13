@@ -12,7 +12,7 @@ fn main() -> Result<(), DisplayError> {
 
     // Create a bunch of "pipelines" (shader code setup to run on the GPU) - we keep these
     // around and just switch between which one we're using at any one point during a frame
-    let event_loop = EventLoop::new().build().unwrap();
+    let event_loop = EventLoop::new().debug(true).build().unwrap();
     let draw_funky_shape_deferred = create_draw_funky_shape_deferred_pipeline(&event_loop.device);
     let fill_quad_linear_gradient = create_fill_quad_linear_gradient_pipeline(&event_loop.device);
 
@@ -43,7 +43,7 @@ fn main() -> Result<(), DisplayError> {
     event_loop.run(|frame| {
         // We are now rendering a frame for the provided swapchain image node and render graph.
         let graph = frame.render_graph;
-        let swapchain_image = frame.swapchain;
+        let swapchain_image = frame.swapchain_image;
 
         // Part 1: Get and prepare some resources - you could have Binding instances that are
         // bound to, used on, and then later unbound from a graph and repeated like that each
@@ -169,17 +169,18 @@ const fn vertex_buffer_info(size: vk::DeviceSize) -> BufferInfo {
 
 fn image_info_2d(width: u32, height: u32) -> ImageInfo {
     // Currently this is bad API you MUST specify usage of the image, but it's not part of the ctor
-    ImageInfo::new_2d(vk::Format::R8G8B8A8_UNORM, width, height)
-        .usage(
-            vk::ImageUsageFlags::SAMPLED
-                | vk::ImageUsageFlags::STORAGE
-                | vk::ImageUsageFlags::COLOR_ATTACHMENT
-                | vk::ImageUsageFlags::INPUT_ATTACHMENT
-                | vk::ImageUsageFlags::TRANSFER_DST
-                | vk::ImageUsageFlags::TRANSFER_SRC,
-        )
-        .build()
-        .unwrap()
+    ImageInfo::new_2d(
+        vk::Format::R8G8B8A8_UNORM,
+        width,
+        height,
+        vk::ImageUsageFlags::SAMPLED
+            | vk::ImageUsageFlags::STORAGE
+            | vk::ImageUsageFlags::COLOR_ATTACHMENT
+            | vk::ImageUsageFlags::INPUT_ATTACHMENT
+            | vk::ImageUsageFlags::TRANSFER_DST
+            | vk::ImageUsageFlags::TRANSFER_SRC,
+    )
+    .build()
 
     // Additional builder functions that might be of interest:
     // .tiling(vk::ImageTiling::OPTIMAL)) <- Thinking about removing - LEAVE AT OPTIMAL ALWAYS

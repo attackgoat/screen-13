@@ -21,13 +21,14 @@ fn main() -> Result<(), DisplayError> {
     event_loop.run(|mut frame| {
         // Lease and clear an image as a stand-in for some real game or program output
         let app_image = frame.render_graph.bind_node(
-            pool.lease(
-                ImageInfo::new_2d(vk::Format::R8G8B8A8_UNORM, frame.width, frame.height).usage(
-                    vk::ImageUsageFlags::SAMPLED
-                        | vk::ImageUsageFlags::STORAGE
-                        | vk::ImageUsageFlags::TRANSFER_DST,
-                ),
-            )
+            pool.lease(ImageInfo::new_2d(
+                vk::Format::R8G8B8A8_UNORM,
+                frame.width,
+                frame.height,
+                vk::ImageUsageFlags::SAMPLED
+                    | vk::ImageUsageFlags::STORAGE
+                    | vk::ImageUsageFlags::TRANSFER_DST,
+            ))
             .unwrap(),
         );
         frame
@@ -58,6 +59,11 @@ fn main() -> Result<(), DisplayError> {
         });
 
         // Present "gui_image" on top of "app_image" onto "frame.swapchain"
-        display.present_images(frame.render_graph, gui_image, app_image, frame.swapchain);
+        display.present_images(
+            frame.render_graph,
+            gui_image,
+            app_image,
+            frame.swapchain_image,
+        );
     })
 }

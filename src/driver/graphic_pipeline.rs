@@ -57,7 +57,12 @@ impl Default for BlendMode {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Builder, Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[builder(
+    build_fn(private, name = "fallible_build"),
+    derive(Debug),
+    pattern = "owned"
+)]
 pub struct DepthStencilMode {
     pub back: StencilMode,
     pub bounds_test: bool,
@@ -71,6 +76,11 @@ pub struct DepthStencilMode {
 }
 
 impl DepthStencilMode {
+    #[allow(clippy::new_ret_no_self)]
+    pub fn new() -> DepthStencilModeBuilder {
+        DepthStencilModeBuilder::default()
+    }
+
     pub(super) fn into_vk(self) -> vk::PipelineDepthStencilStateCreateInfo {
         vk::PipelineDepthStencilStateCreateInfo {
             back: self.back.into_vk(),
@@ -87,19 +97,47 @@ impl DepthStencilMode {
     }
 }
 
-impl Default for DepthStencilMode {
-    fn default() -> Self {
-        Self {
-            back: StencilMode::Noop,
-            bounds_test: false,
-            compare_op: vk::CompareOp::GREATER_OR_EQUAL,
-            depth_test: true,
-            depth_write: true,
-            front: StencilMode::Noop,
-            min: OrderedFloat(0.0),
-            max: OrderedFloat(1.0),
-            stencil_test: false,
+// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
+impl DepthStencilModeBuilder {
+    pub fn build(mut self) -> DepthStencilMode {
+        if self.back.is_none() {
+            self.back = Some(Default::default());
         }
+
+        if self.bounds_test.is_none() {
+            self.bounds_test = Some(Default::default());
+        }
+
+        if self.compare_op.is_none() {
+            self.compare_op = Some(Default::default());
+        }
+
+        if self.depth_test.is_none() {
+            self.depth_test = Some(Default::default());
+        }
+
+        if self.depth_write.is_none() {
+            self.depth_write = Some(Default::default());
+        }
+
+        if self.front.is_none() {
+            self.front = Some(Default::default());
+        }
+
+        if self.min.is_none() {
+            self.min = Some(Default::default());
+        }
+
+        if self.max.is_none() {
+            self.max = Some(Default::default());
+        }
+
+        if self.stencil_test.is_none() {
+            self.stencil_test = Some(Default::default());
+        }
+
+        self.fallible_build()
+            .expect("All required fields set at initialization")
     }
 }
 

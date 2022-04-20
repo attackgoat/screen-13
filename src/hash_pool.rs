@@ -295,12 +295,7 @@ macro_rules! lease_info_binding {
 
             impl<P> Pooled<Lease<[<$dst Binding>]<P>, P>, P> for [<$src Builder>] where P: SharedPointerKind {
                 fn lease(self, pool: &mut HashPool<P>) -> Result<Lease<[<$dst Binding>]<P>, P>, DriverError> {
-                    let info = self.build();
-
-                    // We will unwrap the info builder - it may panic!
-                    assert!(info.is_ok(), "Invalid pool resource info: {:#?}", info);
-
-                    info.unwrap().lease(pool)
+                    self.build().lease(pool)
                 }
             }
         }

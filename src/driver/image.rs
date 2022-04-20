@@ -4,7 +4,7 @@ use {
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
-    glam::{uvec3, UVec2, UVec3, Vec4},
+    glam::{UVec2, Vec4},
     gpu_allocator::{
         vulkan::{Allocation, AllocationCreateDesc},
         MemoryLocation,
@@ -263,36 +263,63 @@ impl ImageType {
 }
 
 #[derive(Builder, Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[builder(pattern = "owned", derive(Debug))]
+#[builder(
+    build_fn(private, name = "fallible_build"),
+    derive(Debug),
+    pattern = "owned"
+)]
 pub struct ImageInfo {
-    #[builder(setter(strip_option))]
-    pub ty: ImageType,
-    #[builder(default, setter(strip_option))]
-    pub usage: vk::ImageUsageFlags,
-    #[builder(default, setter(strip_option))]
-    pub flags: vk::ImageCreateFlags,
-    #[builder(setter(strip_option))]
-    pub fmt: vk::Format,
-    #[builder(setter(strip_option))]
-    pub extent: UVec3,
-    #[builder(default, setter(strip_option))]
-    pub linear_tiling: bool,
-    #[builder(default = "1", setter(strip_option))]
-    pub mip_level_count: u32,
     #[builder(default = "1", setter(strip_option))]
     pub array_elements: u32,
+
+    #[builder(setter(strip_option))]
+    pub depth: u32,
+
+    #[builder(default, setter(strip_option))]
+    pub flags: vk::ImageCreateFlags,
+
+    #[builder(setter(strip_option))]
+    pub fmt: vk::Format,
+
+    #[builder(setter(strip_option))]
+    pub height: u32,
+
+    #[builder(default, setter(strip_option))]
+    pub linear_tiling: bool,
+
+    #[builder(default = "1", setter(strip_option))]
+    pub mip_level_count: u32,
+
     #[builder(default = "SampleCount::X1", setter(strip_option))]
     pub sample_count: SampleCount,
+
+    #[builder(setter(strip_option))]
+    pub ty: ImageType,
+
+    #[builder(default, setter(strip_option))]
+    pub usage: vk::ImageUsageFlags,
+
+    #[builder(setter(strip_option))]
+    pub width: u32,
 }
 
 impl ImageInfo {
     #[allow(clippy::new_ret_no_self)]
-    const fn new(fmt: vk::Format, ty: ImageType, extent: UVec3) -> ImageInfoBuilder {
+    const fn new(
+        fmt: vk::Format,
+        ty: ImageType,
+        width: u32,
+        height: u32,
+        depth: u32,
+        usage: vk::ImageUsageFlags,
+    ) -> ImageInfoBuilder {
         ImageInfoBuilder {
             ty: Some(ty),
             fmt: Some(fmt),
-            extent: Some(extent),
-            usage: None,
+            width: Some(width),
+            height: Some(height),
+            depth: Some(depth),
+            usage: Some(usage),
             flags: None,
             linear_tiling: None,
             mip_level_count: None,
@@ -301,23 +328,31 @@ impl ImageInfo {
         }
     }
 
-    pub fn new_1d(fmt: vk::Format, len: u32) -> ImageInfoBuilder {
-        Self::new(fmt, ImageType::Texture1D, uvec3(len, 1, 1))
+    pub fn new_1d(fmt: vk::Format, len: u32, usage: vk::ImageUsageFlags) -> ImageInfoBuilder {
+        Self::new(fmt, ImageType::Texture1D, len, 1, 1, usage)
     }
 
-    pub fn new_2d(fmt: vk::Format, x: u32, y: u32) -> ImageInfoBuilder {
-        Self::new(fmt, ImageType::Texture2D, uvec3(x, y, 1))
+    pub fn new_2d(
+        fmt: vk::Format,
+        width: u32,
+        height: u32,
+        usage: vk::ImageUsageFlags,
+    ) -> ImageInfoBuilder {
+        Self::new(fmt, ImageType::Texture2D, width, height, 1, usage)
     }
 
-    pub fn new_3d(fmt: vk::Format, x: u32, y: u32, z: u32) -> ImageInfoBuilder {
-        Self::new(fmt, ImageType::Texture3D, uvec3(x, y, z))
+    pub fn new_3d(
+        fmt: vk::Format,
+        width: u32,
+        height: u32,
+        depth: u32,
+        usage: vk::ImageUsageFlags,
+    ) -> ImageInfoBuilder {
+        Self::new(fmt, ImageType::Texture3D, width, height, depth, usage)
     }
 
-    pub fn new_cube(fmt: vk::Format, width: u32) -> ImageInfoBuilder {
-        ImageInfoBuilder::default()
-            .fmt(fmt)
-            .ty(ImageType::Cube)
-            .extent(uvec3(width, width, 1))
+    pub fn new_cube(fmt: vk::Format, width: u32, usage: vk::ImageUsageFlags) -> ImageInfoBuilder {
+        Self::new(fmt, ImageType::Cube, width, width, 1, usage)
             .array_elements(6)
             .flags(vk::ImageCreateFlags::CUBE_COMPATIBLE)
     }
@@ -331,7 +366,7 @@ impl ImageInfo {
             ImageType::Texture1D => (
                 vk::ImageType::TYPE_1D,
                 vk::Extent3D {
-                    width: self.extent.x,
+                    width: self.width,
                     height: 1,
                     depth: 1,
                 },
@@ -340,7 +375,7 @@ impl ImageInfo {
             ImageType::TextureArray1D => (
                 vk::ImageType::TYPE_1D,
                 vk::Extent3D {
-                    width: self.extent.x,
+                    width: self.width,
                     height: 1,
                     depth: 1,
                 },
@@ -349,8 +384,8 @@ impl ImageInfo {
             ImageType::Texture2D => (
                 vk::ImageType::TYPE_2D,
                 vk::Extent3D {
-                    width: self.extent.x,
-                    height: self.extent.y,
+                    width: self.width,
+                    height: self.height,
                     depth: 1,
                 },
                 1,
@@ -358,8 +393,8 @@ impl ImageInfo {
             ImageType::TextureArray2D => (
                 vk::ImageType::TYPE_2D,
                 vk::Extent3D {
-                    width: self.extent.x,
-                    height: self.extent.y,
+                    width: self.width,
+                    height: self.height,
                     depth: 1,
                 },
                 self.array_elements,
@@ -367,17 +402,17 @@ impl ImageInfo {
             ImageType::Texture3D => (
                 vk::ImageType::TYPE_3D,
                 vk::Extent3D {
-                    width: self.extent.x,
-                    height: self.extent.y,
-                    depth: self.extent.z,
+                    width: self.width,
+                    height: self.height,
+                    depth: self.depth,
                 },
                 1,
             ),
             ImageType::Cube => (
                 vk::ImageType::TYPE_2D,
                 vk::Extent3D {
-                    width: self.extent.x,
-                    height: self.extent.y,
+                    width: self.width,
+                    height: self.height,
                     depth: 1,
                 },
                 6,
@@ -385,8 +420,8 @@ impl ImageInfo {
             ImageType::CubeArray => (
                 vk::ImageType::TYPE_2D,
                 vk::Extent3D {
-                    width: self.extent.x,
-                    height: self.extent.y,
+                    width: self.width,
+                    height: self.height,
                     depth: 1,
                 },
                 6 * self.array_elements,
@@ -414,12 +449,16 @@ impl ImageInfo {
     }
 
     pub fn extent_inv_extent_2d(&self) -> Vec4 {
-        let extent = self.extent.as_vec3();
-        Vec4::new(extent.x, extent.y, 1.0 / extent.x, 1.0 / extent.y)
+        Vec4::new(
+            self.width as _,
+            self.height as _,
+            1.0 / self.width as f32,
+            1.0 / self.height as f32,
+        )
     }
 
     pub fn extent_2d(self) -> UVec2 {
-        self.extent.truncate()
+        UVec2::new(self.width, self.height)
     }
 
     pub fn fmt(mut self, fmt: vk::Format) -> Self {
@@ -430,7 +469,9 @@ impl ImageInfo {
     pub fn into_builder(self) -> ImageInfoBuilder {
         ImageInfoBuilder {
             array_elements: Some(self.array_elements),
-            extent: Some(self.extent),
+            depth: Some(self.depth),
+            height: Some(self.height),
+            width: Some(self.width),
             flags: Some(self.flags),
             fmt: Some(self.fmt),
             mip_level_count: Some(self.mip_level_count),
@@ -442,44 +483,52 @@ impl ImageInfo {
     }
 }
 
+// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
 impl ImageInfoBuilder {
-    pub fn all_mip_levels(self) -> Self {
-        assert!(self.extent.is_some());
-
-        let extent = self.extent.unwrap();
-
-        self.mip_level_count(
-            Self::mip_count_1d(extent.x)
-                .max(Self::mip_count_1d(extent.y).max(Self::mip_count_1d(extent.z))),
-        )
+    pub fn build(self) -> ImageInfo {
+        self.fallible_build()
+            .expect("All required fields set at initialization")
     }
+}
 
-    pub fn extent_div(mut self, denom: UVec3) -> Self {
-        assert!(self.extent.is_some());
+impl ImageInfoBuilder {
+    // pub fn all_mip_levels(self) -> Self {
+    //     assert!(self.extent.is_some());
 
-        self.extent = Some(self.extent.unwrap() / denom);
-        self
-    }
+    //     let extent = self.extent.unwrap();
 
-    pub fn extent_div_up(mut self, denom: UVec3) -> Self {
-        assert!(self.extent.is_some());
+    //     self.mip_level_count(
+    //         Self::mip_count_1d(width)
+    //             .max(Self::mip_count_1d(height).max(Self::mip_count_1d(extent.z))),
+    //     )
+    // }
 
-        self.extent = Some((self.extent.unwrap() + denom - UVec3::ONE) / denom);
-        self
-    }
+    // pub fn extent_div(mut self, denom: UVec3) -> Self {
+    //     assert!(self.extent.is_some());
 
-    pub fn half_res(self) -> Self {
-        self.extent_div_up(uvec3(2, 2, 2))
-    }
+    //     self.extent = Some(self.extent.unwrap() / denom);
+    //     self
+    // }
 
-    fn mip_count_1d(extent: u32) -> u32 {
-        32 - extent.leading_zeros()
-    }
+    // pub fn extent_div_up(mut self, denom: UVec3) -> Self {
+    //     assert!(self.extent.is_some());
+
+    //     self.extent = Some((self.extent.unwrap() + denom - UVec3::ONE) / denom);
+    //     self
+    // }
+
+    // pub fn half_res(self) -> Self {
+    //     self.extent_div_up(uvec3(2, 2, 2))
+    // }
+
+    // fn mip_count_1d(extent: u32) -> u32 {
+    //     32 - extent.leading_zeros()
+    // }
 }
 
 impl From<ImageInfoBuilder> for ImageInfo {
     fn from(info: ImageInfoBuilder) -> Self {
-        info.build().unwrap()
+        info.build()
     }
 }
 

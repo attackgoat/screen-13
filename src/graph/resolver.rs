@@ -206,8 +206,8 @@ where
                 .map(|(attachment_idx, (image, _))| FramebufferKeyAttachment {
                     flags: image.info.flags,
                     usage: image.info.usage,
-                    extent_x: image.info.extent.x,
-                    extent_y: image.info.extent.y,
+                    extent_x: image.info.width,
+                    extent_y: image.info.height,
                     layer_count: image.info.array_elements,
                     view_fmts: pass
                         .subpasses
@@ -1346,7 +1346,7 @@ where
                             let range = subresource.unwrap_buffer();
 
                             trace!(
-                                "{trace_pad}buffer barrier {:?} {}..{} {:?} -> {:?}",
+                                "{trace_pad}buffer {:?} {}..{} {:?} -> {:?}",
                                 binding.as_driver_buffer().unwrap(),
                                 range.start,
                                 range.end,
@@ -1367,7 +1367,7 @@ where
                             let range = subresource.unwrap_image().into_vk();
 
                             trace!(
-                                "{trace_pad}image barrier {:?} {:?}-{:?} -> {:?}-{:?}",
+                                "{trace_pad}image {:?} {:?}-{:?} -> {:?}-{:?}",
                                 binding.as_driver_image().unwrap(),
                                 prev_access,
                                 image_access_layout(prev_access),
@@ -1390,11 +1390,7 @@ where
                     }
 
                     // No resource attached - we use a global barrier for these
-                    trace!(
-                        "{trace_pad}global barrier {:?} -> {:?}",
-                        prev_access,
-                        next_access
-                    );
+                    trace!("{trace_pad}barrier {:?} -> {:?}", prev_access, next_access);
 
                     Barrier {
                         next_access,
@@ -1518,7 +1514,11 @@ where
             .unwrap_or_default()
             .min(self.graph.passes.len());
 
-        self.record_node_passes(cache, cmd_buf, node_idx, end_pass_idx)
+        if end_pass_idx > 0 {
+            self.record_node_passes(cache, cmd_buf, node_idx, end_pass_idx)?;
+        }
+
+        Ok(())
     }
 
     /// Records any pending render graph passes that the given node requires.
@@ -1535,7 +1535,12 @@ where
 
         assert!(self.graph.bindings.get(node_idx).is_some());
 
-        self.record_node_passes(cache, cmd_buf, node_idx, self.graph.passes.len())
+        let end_pass_idx = self.graph.passes.len();
+        if end_pass_idx > 0 {
+            self.record_node_passes(cache, cmd_buf, node_idx, end_pass_idx)?;
+        }
+
+        Ok(())
     }
 
     fn record_node_passes(
@@ -1710,6 +1715,10 @@ where
     where
         P: 'static,
     {
+        if self.graph.passes.is_empty() {
+            return Ok(());
+        }
+
         let mut schedule = (0..self.graph.passes.len()).collect::<Vec<_>>();
 
         self.record_scheduled_passes(cache, cmd_buf, &mut schedule, self.graph.passes.len())

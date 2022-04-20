@@ -274,11 +274,13 @@ where
     unsafe { from_raw_parts(&t[0] as *const T as *const _, len) }
 }
 
-pub fn into_u8_slice<T>(t: &[T]) -> &[u8]
+pub fn into_u8_slice<'t, T>(t: impl AsRef<[T]> + 't) -> &'t [u8]
 where
     T: Sized,
 {
     use std::{mem::size_of, slice::from_raw_parts};
+
+    let t = t.as_ref();
 
     unsafe { from_raw_parts(t.as_ptr() as *const _, t.len() * size_of::<T>()) }
 }

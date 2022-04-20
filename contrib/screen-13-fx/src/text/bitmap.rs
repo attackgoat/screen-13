@@ -157,8 +157,8 @@ where
         let transform = Mat4::from_translation(vec3(-1.0, -1.0, 0.0))
             * Mat4::from_scale(vec3(2.0 * scale, 2.0 * scale, 1.0))
             * Mat4::from_translation(vec3(
-                position.x / image_info.extent.x as f32,
-                position.y / image_info.extent.y as f32,
+                position.x / image_info.width as f32,
+                position.y / image_info.height as f32,
                 0.0,
             ));
 
@@ -229,7 +229,8 @@ where
             subpass
                 .push_constants((
                     transform,
-                    1.0 / image_info.extent.xy().as_vec2(),
+                    1.0 / image_info.width as f32,
+                    1.0 / image_info.height as f32,
                     0u32, // Padding
                     0u32, // Padding
                     color_to_unorm(color.solid()),

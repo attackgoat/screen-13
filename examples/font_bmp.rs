@@ -21,18 +21,19 @@ fn main() -> anyhow::Result<()> {
 
     event_loop.run(|frame| {
         let image_node = frame.render_graph.bind_node(
-            pool.lease(
-                ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, frame.width, frame.height).usage(
-                    vk::ImageUsageFlags::COLOR_ATTACHMENT
-                        | vk::ImageUsageFlags::SAMPLED
-                        | vk::ImageUsageFlags::TRANSFER_DST,
-                ),
-            )
+            pool.lease(ImageInfo::new_2d(
+                vk::Format::R8G8B8A8_SRGB,
+                frame.width,
+                frame.height,
+                vk::ImageUsageFlags::COLOR_ATTACHMENT
+                    | vk::ImageUsageFlags::SAMPLED
+                    | vk::ImageUsageFlags::TRANSFER_DST,
+            ))
             .unwrap(),
         );
         frame
             .render_graph
-            .clear_color_image_scalar(image_node, 0.0, 0.0, 1.0, 1.0);
+            .clear_color_image_value(image_node, [0, 0, 1, 1]);
 
         let text = "Hello, world!";
         let (_offset, extent) = small_10px_font.measure(text);
@@ -45,7 +46,7 @@ fn main() -> anyhow::Result<()> {
 
         small_10px_font.print_scale(frame.render_graph, image_node, position, color, text, scale);
 
-        display.present_image(frame.render_graph, image_node, frame.swapchain);
+        display.present_image(frame.render_graph, image_node, frame.swapchain_image);
     })?;
 
     Ok(())

@@ -132,7 +132,7 @@ where
                 height: self.height(),
                 render_graph: &mut render_graph,
                 events: take(&mut events).as_slice(),
-                swapchain,
+                swapchain_image: swapchain,
                 width: self.width(),
                 window: &self.window,
                 will_exit: &mut will_exit,

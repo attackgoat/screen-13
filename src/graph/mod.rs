@@ -30,9 +30,9 @@ use {
     crate::{
         driver::{
             buffer_copy_subresources, buffer_image_copy_subresource, format_aspect_mask,
-            BufferSubresource, ComputePipeline, DepthStencilMode, DescriptorBindingMap,
-            GraphicPipeline, ImageSubresource, ImageType, PipelineDescriptorInfo, RayTracePipeline,
-            SampleCount,
+            is_write_access, BufferSubresource, ComputePipeline, DepthStencilMode,
+            DescriptorBindingMap, GraphicPipeline, ImageSubresource, ImageType,
+            PipelineDescriptorInfo, RayTracePipeline, SampleCount,
         },
         ptr::Shared,
     },
@@ -492,9 +492,9 @@ where
                 },
                 src_offsets: [
                     vk::Offset3D {
-                        x: src_info.extent.x as _,
-                        y: src_info.extent.y as _,
-                        z: src_info.extent.z as _,
+                        x: src_info.width as _,
+                        y: src_info.height as _,
+                        z: src_info.depth as _,
                     },
                     vk::Offset3D { x: 0, y: 0, z: 0 },
                 ],
@@ -506,9 +506,9 @@ where
                 },
                 dst_offsets: [
                     vk::Offset3D {
-                        x: dst_info.extent.x as _,
-                        y: dst_info.extent.y as _,
-                        z: dst_info.extent.z as _,
+                        x: dst_info.width as _,
+                        y: dst_info.height as _,
+                        z: dst_info.depth as _,
                     },
                     vk::Offset3D { x: 0, y: 0, z: 0 },
                 ],
@@ -706,8 +706,8 @@ where
             dst_node,
             &vk::BufferImageCopy {
                 buffer_offset: 0,
-                buffer_row_length: dst_info.extent.x,
-                buffer_image_height: dst_info.extent.y,
+                buffer_row_length: dst_info.width,
+                buffer_image_height: dst_info.height,
                 image_subresource: vk::ImageSubresourceLayers {
                     aspect_mask: format_aspect_mask(dst_info.fmt),
                     mip_level: 0,
@@ -716,9 +716,9 @@ where
                 },
                 image_offset: Default::default(),
                 image_extent: vk::Extent3D {
-                    depth: dst_info.extent.z,
-                    height: dst_info.extent.y,
-                    width: dst_info.extent.x,
+                    depth: dst_info.depth,
+                    height: dst_info.height,
+                    width: dst_info.width,
                 },
             },
         )
@@ -800,9 +800,9 @@ where
                 },
                 dst_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
                 extent: vk::Extent3D {
-                    depth: src_info.extent.z.min(dst_info.extent.z).max(1),
-                    height: src_info.extent.y.min(dst_info.extent.y).max(1),
-                    width: src_info.extent.x.min(dst_info.extent.x),
+                    depth: src_info.depth.min(dst_info.depth).max(1),
+                    height: src_info.height.min(dst_info.height).max(1),
+                    width: src_info.width.min(dst_info.width),
                 },
             },
         )
@@ -862,8 +862,8 @@ where
             dst_node,
             &vk::BufferImageCopy {
                 buffer_offset: 0,
-                buffer_row_length: src_info.extent.x,
-                buffer_image_height: src_info.extent.y,
+                buffer_row_length: src_info.width,
+                buffer_image_height: src_info.height,
                 image_subresource: vk::ImageSubresourceLayers {
                     aspect_mask: format_aspect_mask(src_info.fmt),
                     mip_level: 0,
@@ -872,9 +872,9 @@ where
                 },
                 image_offset: Default::default(),
                 image_extent: vk::Extent3D {
-                    depth: src_info.extent.z,
-                    height: src_info.extent.y,
-                    width: src_info.extent.x,
+                    depth: src_info.depth,
+                    height: src_info.height,
+                    width: src_info.width,
                 },
             },
         )
@@ -969,7 +969,25 @@ where
             .find_map(|exec| {
                 exec.accesses
                     .get(&node_idx)
-                    .map(|accesses| accesses[1].access)
+                    .map(|[_early, late]| late.access)
+            })
+    }
+
+    pub(super) fn last_write(&self, node: impl Node<P>) -> Option<AccessType> {
+        let node_idx = node.index();
+
+        self.passes
+            .iter()
+            .rev()
+            .flat_map(|pass| pass.execs.iter().rev())
+            .find_map(|exec| {
+                exec.accesses.get(&node_idx).and_then(|[_early, late]| {
+                    if is_write_access(late.access) {
+                        Some(late.access)
+                    } else {
+                        None
+                    }
+                })
             })
     }
 

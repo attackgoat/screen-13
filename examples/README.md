@@ -9,6 +9,7 @@ types and functions.
 
 Example | Instructions | Preview
  --- | --- | :---:
+[debugger.rs](debugger.rs) | <pre>cargo run --example debugger</pre> | _See console output_
 [bake_pak.rs](bake_pak.rs) | <pre>cargo run --example bake_pak</pre> | _See console output_
 [hello_world.rs](hello_world.rs) | <pre>cargo run --example hello_world</pre> | <image alt="Preview" src="../.github/img/hello_world.png" height=149 width=176>
 [font_bmp.rs](font_bmp.rs) | <pre>cargo run --example font_bmp</pre> _(Run `bake_pak` first)_ | <image alt="Preview" src="../.github/img/font_bmp.png" height=149 width=176>

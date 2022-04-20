@@ -69,7 +69,9 @@ where
                             }
                         }
                     },
-                    extent: uvec3(bitmap.width(), bitmap.height(), 1),
+                    width: bitmap.width(),
+                    height: bitmap.height(),
+                    depth: 1,
                     linear_tiling: false,
                     mip_level_count: 1,
                     array_elements: 1,

@@ -174,7 +174,13 @@ impl ComputePipelineInfo {
             shader = shader.specialization_info(specialization_info);
         }
 
-        shader.build().unwrap()
+        shader.build()
+    }
+}
+
+impl<'a> From<&'a [u8]> for ComputePipelineInfo {
+    fn from(slice: &'a [u8]) -> Self {
+        Self::new(slice).build().unwrap()
     }
 }
 

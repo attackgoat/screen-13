@@ -1,13 +1,16 @@
 use {
     super::{DriverError, PhysicalDevice, QueueFamily, QueueFamilyProperties},
     ash::{extensions::ext, vk, Entry},
-    log::{debug, error, trace, warn},
+    log::{debug, error, info, logger, trace, warn, Level, Metadata},
     std::{
+        env::var,
         ffi::{c_void, CStr, CString},
         fmt::{Debug, Formatter},
         ops::Deref,
         os::raw::c_char,
-        thread::panicking,
+        process::id,
+        thread::{current, panicking, park, sleep},
+        time::Duration,
     },
 };
 
@@ -28,8 +31,36 @@ unsafe extern "system" fn vulkan_debug_callback(
         // vk_sync uses vk::PipelineStageFlags::ALL_COMMANDS with AccessType::NOTHING and others
         warn!("{}\n", message);
     } else {
-        error!("\n\n\n{}\n\n", message);
-        panic!();
+        warn!("");
+        warn!("");
+        warn!("");
+        warn!("");
+        error!("{}", message);
+        if !logger().enabled(&Metadata::builder().level(Level::Debug).build())
+            || var("RUST_LOG")
+                .map(|rust_log| rust_log.is_empty())
+                .unwrap_or(true)
+        {
+            panic!("run with `RUST_LOG=trace` environment variable to display more information - see https://github.com/rust-lang/log#in-executables");
+        }
+
+        if current().name() != Some("main") {
+            warn!("executing on a child thread!")
+        }
+
+        debug!(
+            "PARKING THREAD `{}` -> attach debugger to pid {}!",
+            current().name().as_deref().unwrap_or_default(),
+            id()
+        );
+
+        sleep(Duration::from_secs(10));
+
+        info!("");
+        info!("there is a detailed debugging guide available at:");
+        info!("https://github.com/attackgoat/screen-13/blob/master/examples/debugger.rs");
+
+        park();
     }
 
     vk::FALSE

@@ -4,7 +4,7 @@ use {
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
-    glam::{uvec3, UVec2},
+    glam::UVec2,
     log::{debug, warn},
     std::{ops::Deref, slice, thread::panicking, time::Duration},
 };
@@ -307,7 +307,9 @@ where
                             | vk::ImageUsageFlags::TRANSFER_SRC,
                         flags: vk::ImageCreateFlags::empty(), // MUTABLE_FORMAT | SPARSE_ALIASED | CUBE_COMPATIBLE
                         fmt: vk::Format::B8G8R8A8_UNORM,      // TODO: Allow configuration!
-                        extent: uvec3(self.info.extent.x, self.info.extent.y, 0),
+                        depth: 0,                             // TODO: 1?
+                        height: self.info.extent.y,
+                        width: self.info.extent.x,
                         sample_count: SampleCount::X1,
                         linear_tiling: false,
                         mip_level_count: 1,

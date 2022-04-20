@@ -9,12 +9,12 @@ fn main() -> Result<(), DisplayError> {
     let display = GraphicPresenter::new(&event_loop.device)?;
 
     // Create a single owned image (we could instead lease one; see the shader-toy example)
-    let mut image_binding = Some(
-        event_loop.device.new_image(
-            ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, 10, 10)
-                .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST),
-        ),
-    );
+    let mut image_binding = Some(event_loop.device.new_image(ImageInfo::new_2d(
+        vk::Format::R8G8B8A8_SRGB,
+        10,
+        10,
+        vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
+    )));
 
     event_loop.run(|frame| {
         // Take our image from the main() function and make it part of the render graph
@@ -26,7 +26,7 @@ fn main() -> Result<(), DisplayError> {
             .clear_color_image_value(image_node, [100u8, 149, 237, 255]);
 
         // Run a vertex+pixel shader over image and stores into the swapchain image
-        display.present_image(frame.render_graph, image_node, frame.swapchain);
+        display.present_image(frame.render_graph, image_node, frame.swapchain_image);
 
         // Take the image from the graph and give it back to main() so we have it for the next loop
         image_binding = Some(frame.render_graph.unbind_node(image_node));

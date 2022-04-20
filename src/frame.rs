@@ -30,7 +30,7 @@ where
     pub events: &'a [Event<'a, ()>],
     pub height: u32,
     pub render_graph: &'a mut RenderGraph<P>,
-    pub swapchain: SwapchainImageNode<P>,
+    pub swapchain_image: SwapchainImageNode<P>,
     pub will_exit: &'a mut bool,
     pub width: u32,
     pub window: &'a Window,

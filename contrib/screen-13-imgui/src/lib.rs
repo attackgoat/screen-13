@@ -111,18 +111,14 @@ where
 
         let image = render_graph.bind_node(
             self.pool
-                .lease(
-                    ImageInfo::new_2d(
-                        vk::Format::R8G8B8A8_UNORM,
-                        window.inner_size().width,
-                        window.inner_size().height,
-                    )
-                    .usage(
-                        vk::ImageUsageFlags::COLOR_ATTACHMENT
-                            | vk::ImageUsageFlags::SAMPLED
-                            | vk::ImageUsageFlags::STORAGE,
-                    ),
-                )
+                .lease(ImageInfo::new_2d(
+                    vk::Format::R8G8B8A8_UNORM,
+                    window.inner_size().width,
+                    window.inner_size().height,
+                    vk::ImageUsageFlags::COLOR_ATTACHMENT
+                        | vk::ImageUsageFlags::SAMPLED
+                        | vk::ImageUsageFlags::STORAGE,
+                ))
                 .unwrap(),
         );
         let font_atlas_image = render_graph.bind_node(self.font_atlas_image.take().unwrap());
@@ -302,14 +298,14 @@ where
         let temp_buf = render_graph.bind_node(temp_buf);
         let image = render_graph.bind_node(
             self.pool
-                .lease(
-                    ImageInfo::new_2d(vk::Format::R8G8B8A8_UNORM, texture.width, texture.height)
-                        .usage(
-                            vk::ImageUsageFlags::SAMPLED
-                                | vk::ImageUsageFlags::STORAGE
-                                | vk::ImageUsageFlags::TRANSFER_DST,
-                        ),
-                )
+                .lease(ImageInfo::new_2d(
+                    vk::Format::R8G8B8A8_UNORM,
+                    texture.width,
+                    texture.height,
+                    vk::ImageUsageFlags::SAMPLED
+                        | vk::ImageUsageFlags::STORAGE
+                        | vk::ImageUsageFlags::TRANSFER_DST,
+                ))
                 .unwrap(),
         );
 
