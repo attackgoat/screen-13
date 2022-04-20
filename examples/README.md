@@ -12,6 +12,7 @@ Example | Instructions | Preview
 [debugger.rs](debugger.rs) | <pre>cargo run --example debugger</pre> | _See console output_
 [bake_pak.rs](bake_pak.rs) | <pre>cargo run --example bake_pak</pre> | _See console output_
 [hello_world.rs](hello_world.rs) | <pre>cargo run --example hello_world</pre> | <image alt="Preview" src="../.github/img/hello_world.png" height=149 width=176>
+[triangle.rs](triangle.rs) | <pre>cargo run --example triangle</pre> | <image alt="Preview" src="../.github/img/triangle.png" height=149 width=176>
 [font_bmp.rs](font_bmp.rs) | <pre>cargo run --example font_bmp</pre> _(Run `bake_pak` first)_ | <image alt="Preview" src="../.github/img/font_bmp.png" height=149 width=176>
 [imgui.rs](imgui.rs) | <pre>cargo run --example imgui</pre> | <image alt="Preview" src="../.github/img/imgui.png" height=149 width=176>
 [multipass.rs](multipass.rs) | <pre>cargo run --example multipass</pre> | <image alt="Preview" src="../.github/img/XYZ.png" height=149 width=176>

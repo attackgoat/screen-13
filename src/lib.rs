@@ -274,7 +274,7 @@ where
     unsafe { from_raw_parts(&t[0] as *const T as *const _, len) }
 }
 
-pub fn into_u8_slice<'t, T>(t: impl AsRef<[T]> + 't) -> &'t [u8]
+pub fn into_u8_slice<T>(t: &[T]) -> &[u8]
 where
     T: Sized,
 {

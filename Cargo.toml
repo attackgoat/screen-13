@@ -48,7 +48,7 @@ raw-window-handle = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_bytes = "0.11"
 snap = "1.0"
-spirq = { git = "https://github.com/attackgoat/spirq-rs.git", branch = "spec-const-bounds" } # "0.5"
+spirq = { git = "https://github.com/attackgoat/spirq-rs.git", rev = "b1b610fc6b0cee93d3ed5f086cbfbea176c708b0" } # "0.5"
 tokio = { version = "1.15", default-features = false, features = [
     "rt-multi-thread",
 ], optional = true }

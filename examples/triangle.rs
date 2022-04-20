@@ -1,5 +1,6 @@
 use {inline_spirv::inline_spirv, screen_13::prelude_arc::*};
 
+// A Vulkan triangle using a graphic pipeline, vertex/fragment shaders, and index/vertex buffers.
 fn main() -> Result<(), DisplayError> {
     pretty_env_logger::init();
 
@@ -44,10 +45,10 @@ fn main() -> Result<(), DisplayError> {
 
     let mut index_buf = Some(BufferLeaseBinding({
         let mut buf = cache.lease(BufferInfo::new_mappable(
-            12,
+            6,
             vk::BufferUsageFlags::INDEX_BUFFER,
         ))?;
-        Buffer::copy_from_slice(buf.get_mut().unwrap(), 0, into_u8_slice([0u32, 1, 2]));
+        Buffer::copy_from_slice(buf.get_mut().unwrap(), 0, into_u8_slice(&[0u16, 1, 2]));
         buf
     }));
 
@@ -59,9 +60,13 @@ fn main() -> Result<(), DisplayError> {
         Buffer::copy_from_slice(
             buf.get_mut().unwrap(),
             0,
-            into_u8_slice([
-                1.0f32, 1.0, 0.0, 1.0, 0.0, 0.0, -1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0,
-                0.0, 0.0, 1.0,
+            into_u8_slice(&[
+                1.0f32, 1.0, 0.0, // v1
+                1.0, 0.0, 0.0, // red
+                -1.0, 1.0, 0.0, // v2
+                0.0, 1.0, 0.0, // green
+                0.0, -1.0, 0.0, // v3
+                0.0, 0.0, 1.0, // blue
             ]),
         );
         buf
@@ -75,12 +80,12 @@ fn main() -> Result<(), DisplayError> {
             .render_graph
             .begin_pass("Triangle Example")
             .bind_pipeline(&triangle_pipeline)
-            .read_node(index_node)
-            .read_node(vertex_node)
-            .clear_color_value(0, [1, 0, 1, 0])
+            .access_node(index_node, AccessType::IndexBuffer)
+            .access_node(vertex_node, AccessType::VertexBuffer)
+            .clear_color(0)
             .store_color(0, frame.swapchain_image)
             .record_subpass(move |subpass| {
-                subpass.bind_index_buffer(index_node, vk::IndexType::UINT32);
+                subpass.bind_index_buffer(index_node, vk::IndexType::UINT16);
                 subpass.bind_vertex_buffer(vertex_node);
                 subpass.draw_indexed(3, 1, 0, 0, 0);
             });

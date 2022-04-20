@@ -1287,6 +1287,9 @@ where
     ) {
         use std::{cell::RefCell, slice::from_ref};
 
+        // TODO: Notice the case where we have previously barriered on something which has not
+        // had any write access since the previous barrier
+
         // We store a Barriers in TLS to save an alloc; contents are POD
         thread_local! {
             static BARRIERS: RefCell<Barriers> = Default::default();
@@ -1389,9 +1392,6 @@ where
                         todo!();
                     }
 
-                    // No resource attached - we use a global barrier for these
-                    trace!("{trace_pad}barrier {:?} -> {:?}", prev_access, next_access);
-
                     Barrier {
                         next_access,
                         prev_access,
@@ -1420,13 +1420,26 @@ where
                             });
                         }
                         None => {
-                            barriers.next_accesses.push(next_access);
-                            barriers.prev_accesses.push(prev_access);
+                            // HACK: It would be nice if AccessType was PartialOrd..
+                            if !barriers.next_accesses.contains(&next_access) {
+                                barriers.next_accesses.push(next_access);
+                            }
+
+                            if !barriers.prev_accesses.contains(&prev_access) {
+                                barriers.prev_accesses.push(prev_access);
+                            }
                         }
                     }
                     barriers
                 });
             let global_barrier = if !barriers.next_accesses.is_empty() {
+                // No resource attached - we use a global barrier for these
+                trace!(
+                    "{trace_pad}barrier {:?} -> {:?}",
+                    barriers.next_accesses,
+                    barriers.prev_accesses
+                );
+
                 Some(GlobalBarrier {
                     next_accesses: barriers.next_accesses.as_slice(),
                     previous_accesses: barriers.prev_accesses.as_slice(),

@@ -4,7 +4,7 @@ use {
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
-    log::{error, trace, warn},
+    log::{debug, error, info, trace, warn},
     spirq::{
         ty::{ArrayBound, ScalarType, Type},
         DescriptorType, EntryPoint, ReflectConfig, Variable,
@@ -22,8 +22,6 @@ fn guess_immutable_sampler(
     device: &Device<impl SharedPointerKind>,
     binding_name: &str,
 ) -> vk::Sampler {
-    // trace!("Guessing sampler: {binding_name}");
-
     const INVALID_ERR: &str = "Invalid sampler specification";
 
     let (texel_filter, mipmap_mode, address_modes) = if binding_name.contains("_sampler_") {
@@ -50,6 +48,8 @@ fn guess_immutable_sampler(
 
         (texel_filter, mipmap_mode, address_modes)
     } else {
+        debug!("image binding {binding_name} using default sampler");
+
         (
             vk::Filter::LINEAR,
             vk::SamplerMipmapMode::LINEAR,
@@ -549,35 +549,34 @@ impl Shader {
     pub fn vertex_input(&self) -> Result<VertexInputState, DriverError> {
         let entry_point = self.reflect_entry_point()?;
 
-        fn scalar_format(ty: &ScalarType) -> vk::Format {
+        fn scalar_format(ty: &ScalarType, byte_len: u32) -> vk::Format {
             match ty {
-                ScalarType::Float(n) => match n {
-                    2 => vk::Format::R32_SFLOAT,
-                    4 => vk::Format::R32G32_SFLOAT,
-                    8 => vk::Format::R32G32B32_SFLOAT,
+                ScalarType::Float(_) => match byte_len {
+                    4 => vk::Format::R32_SFLOAT,
+                    8 => vk::Format::R32G32_SFLOAT,
+                    12 => vk::Format::R32G32B32_SFLOAT,
                     16 => vk::Format::R32G32B32A32_SFLOAT,
-                    _ => unreachable!(),
+                    _ => unimplemented!("byte_len {byte_len}"),
                 },
-                ScalarType::Signed(n) => match n {
+                ScalarType::Signed(_) => match byte_len {
                     4 => vk::Format::R32_SINT,
-                    16 => vk::Format::R32G32_SINT,
-                    32 => vk::Format::R32G32B32_SINT,
-                    64 => vk::Format::R32G32B32A32_SINT,
-                    _ => unreachable!(),
+                    8 => vk::Format::R32G32_SINT,
+                    12 => vk::Format::R32G32B32_SINT,
+                    16 => vk::Format::R32G32B32A32_SINT,
+                    _ => unimplemented!("byte_len {byte_len}"),
                 },
-                ScalarType::Unsigned(n) => match n {
+                ScalarType::Unsigned(_) => match byte_len {
                     4 => vk::Format::R32_UINT,
-                    16 => vk::Format::R32G32_UINT,
-                    32 => vk::Format::R32G32B32_UINT,
-                    64 => vk::Format::R32G32B32A32_UINT,
-                    _ => unreachable!(),
+                    8 => vk::Format::R32G32_UINT,
+                    12 => vk::Format::R32G32B32_UINT,
+                    16 => vk::Format::R32G32B32A32_UINT,
+                    _ => unimplemented!("byte_len {byte_len}"),
                 },
                 _ => unimplemented!("{:?}", ty),
             }
         }
 
         let mut input_rates_strides = HashMap::new();
-        let mut binding_locations = BTreeMap::new();
         let mut vertex_attribute_descriptions = vec![];
 
         for (name, location, ty) in entry_point.vars.iter().filter_map(|var| match var {
@@ -600,14 +599,7 @@ impl Shader {
                     (binding, rate)
                 })
                 .unwrap_or_default();
-            let (location, component) = location.into_inner();
-
-            // log::info!(
-            //     "layout(binding = {binding}, location = {location}) {:?} {:?}",
-            //     ty,
-            //     name
-            // );
-
+            let (location, _) = location.into_inner();
             if let Some((input_rate, _)) = input_rates_strides.get(&binding) {
                 assert_eq!(*input_rate, guessed_rate);
             }
@@ -617,39 +609,21 @@ impl Shader {
             *input_rate = guessed_rate;
             *stride += byte_stride;
 
-            binding_locations
-                .entry(binding)
-                .or_insert_with(BTreeMap::new)
-                .entry(location)
-                .or_insert_with(Vec::new)
-                .push((component, byte_stride));
+            trace!("{location} {:?} is {byte_stride} bytes", name);
 
             vertex_attribute_descriptions.push(vk::VertexInputAttributeDescription {
                 location,
                 binding,
                 format: match ty {
-                    Type::Scalar(ty) => scalar_format(ty),
-                    Type::Vector(ty) => scalar_format(&ty.scalar_ty),
+                    Type::Scalar(ty) => scalar_format(ty, ty.nbyte() as _),
+                    Type::Vector(ty) => scalar_format(&ty.scalar_ty, byte_stride),
                     _ => unimplemented!("{:?}", ty),
                 },
-                offset: 0,
+                offset: byte_stride, // Figured out below - this data is iter'd in an unknown order
             });
         }
 
-        for vertex_attribute_description in &mut vertex_attribute_descriptions {
-            for (location, component_strides) in binding_locations
-                .get(&vertex_attribute_description.binding)
-                .unwrap()
-            {
-                if *location < vertex_attribute_description.location {
-                    for (_, stride) in component_strides {
-                        vertex_attribute_description.offset += *stride;
-                    }
-                }
-            }
-        }
-
-        vertex_attribute_descriptions.sort_by(|lhs, rhs| {
+        vertex_attribute_descriptions.sort_unstable_by(|lhs, rhs| {
             let binding = lhs.binding.cmp(&rhs.binding);
             if binding.is_lt() {
                 return binding;
@@ -657,6 +631,28 @@ impl Shader {
 
             lhs.location.cmp(&rhs.location)
         });
+
+        let mut offset = 0;
+        let mut offset_binding = 0;
+
+        for vertex_attribute_description in &mut vertex_attribute_descriptions {
+            if vertex_attribute_description.binding != offset_binding {
+                offset_binding = vertex_attribute_description.binding;
+                offset = 0;
+            }
+
+            let stride = vertex_attribute_description.offset;
+            vertex_attribute_description.offset = offset;
+            offset += stride;
+
+            info!(
+                "vertex attribute {}.{}: {:?} (offset={})",
+                vertex_attribute_description.binding,
+                vertex_attribute_description.location,
+                vertex_attribute_description.format,
+                vertex_attribute_description.offset,
+            );
+        }
 
         let mut vertex_binding_descriptions = vec![];
         for (binding, (input_rate, stride)) in input_rates_strides.into_iter() {
