@@ -219,10 +219,10 @@ impl From<[f32; 4]> for Color {
 impl From<[u8; 4]> for Color {
     fn from(color: [u8; 4]) -> Self {
         Self([
-            color[0] as f32 * u8::MAX as f32,
-            color[1] as f32 * u8::MAX as f32,
-            color[2] as f32 * u8::MAX as f32,
-            color[3] as f32 * u8::MAX as f32,
+            color[0] as f32 / u8::MAX as f32,
+            color[1] as f32 / u8::MAX as f32,
+            color[2] as f32 / u8::MAX as f32,
+            color[3] as f32 / u8::MAX as f32,
         ])
     }
 }
