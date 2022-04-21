@@ -4,7 +4,7 @@ use {
         RayTraceAccelerationBinding, RayTraceAccelerationLeaseBinding, RenderGraph, Subresource,
     },
     crate::{
-        driver::{BufferInfo, BufferSubresource, ImageInfo, ImageSubresource, ImageViewInfo},
+        driver::{vk, BufferInfo, BufferSubresource, ImageInfo, ImageSubresource, ImageViewInfo},
         ptr::Shared,
     },
     archery::SharedPointerKind,
@@ -168,7 +168,7 @@ macro_rules! node_unbind {
             {
                 fn unbind(self, graph: &mut RenderGraph<P>) -> [<$name Binding>]<P> {
                     let binding = {
-                        let binding = graph.bindings[self.idx].[<as_ $name:snake>]();
+                        let binding = graph.bindings[self.idx].[<as_ $name:snake>]().unwrap();
                         let item = Shared::clone(&binding.item);
 
                         // When unbinding we return a binding that has the last access type set to
@@ -203,7 +203,7 @@ macro_rules! node_unbind_lease {
                 fn unbind(self, graph: &mut RenderGraph<P>) -> [<$name LeaseBinding>]<P> {
                     let binding = {
                         let last_access = graph.last_access(self);
-                        let binding = graph.bindings[self.idx].[<as_ $name:snake _lease_mut>]();
+                        let (binding, _) = graph.bindings[self.idx].[<as_ $name:snake _lease_mut>]().unwrap();
                         let item = binding.item.clone();
 
                         // When unbinding we return a binding that has the last access type set to
@@ -285,11 +285,11 @@ impl<P> View<P> for SwapchainImageNode<P> {
 
 pub enum ViewType {
     Image(ImageViewInfo),
-    Buffer(Range<u64>),
+    Buffer(Range<vk::DeviceSize>),
 }
 
 impl ViewType {
-    pub(super) fn as_buffer(&self) -> Option<&Range<u64>> {
+    pub(super) fn as_buffer(&self) -> Option<&Range<vk::DeviceSize>> {
         match self {
             Self::Buffer(view_info) => Some(view_info),
             _ => None,
@@ -316,8 +316,8 @@ impl From<ImageViewInfo> for ViewType {
     }
 }
 
-impl From<Range<u64>> for ViewType {
-    fn from(range: Range<u64>) -> Self {
+impl From<Range<vk::DeviceSize>> for ViewType {
+    fn from(range: Range<vk::DeviceSize>) -> Self {
         Self::Buffer(range)
     }
 }

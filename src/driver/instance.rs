@@ -1,13 +1,15 @@
 use {
     super::{DriverError, PhysicalDevice, QueueFamily, QueueFamilyProperties},
     ash::{extensions::ext, vk, Entry},
-    log::{debug, error, trace, warn},
+    log::{debug, error, info, logger, trace, warn, Level, Metadata},
     std::{
+        env::var,
         ffi::{c_void, CStr, CString},
         fmt::{Debug, Formatter},
         ops::Deref,
         os::raw::c_char,
-        thread::panicking,
+        process::id,
+        thread::{current, panicking, park},
     },
 };
 
@@ -26,10 +28,47 @@ unsafe extern "system" fn vulkan_debug_callback(
     if message.starts_with("Validation Warning: [ UNASSIGNED-BestPractices-pipeline-stage-flags ]")
     {
         // vk_sync uses vk::PipelineStageFlags::ALL_COMMANDS with AccessType::NOTHING and others
-        warn!("{}\n", message);
+        warn!("{}", message);
     } else {
-        error!("{}\n", message);
-        panic!("{}\n", message);
+        let prefix = "Validation Error: [ ";
+
+        let (vuid, message) = if message.starts_with(prefix) {
+            let (vuid, message) = message
+                .trim_start_matches(prefix)
+                .split_once(" ]")
+                .unwrap_or_default();
+            let message = message.split(" | ").skip(2).next().unwrap_or(message);
+
+            (Some(vuid.trim()), message)
+        } else {
+            (None, message)
+        };
+
+        if let Some(vuid) = vuid {
+            info!("{vuid}");
+        }
+
+        error!("🆘 {message}");
+
+        if !logger().enabled(&Metadata::builder().level(Level::Debug).build())
+            || var("RUST_LOG")
+                .map(|rust_log| rust_log.is_empty())
+                .unwrap_or(true)
+        {
+            panic!("run with `RUST_LOG=trace` environment variable to display more information - see https://github.com/rust-lang/log#in-executables");
+        }
+
+        if current().name() != Some("main") {
+            warn!("executing on a child thread!")
+        }
+
+        debug!(
+            "🛑 PARKING THREAD `{}` -> attach debugger to pid {}!",
+            current().name().as_deref().unwrap_or_default(),
+            id()
+        );
+
+        park();
     }
 
     vk::FALSE
@@ -173,7 +212,11 @@ impl Instance {
         unsafe {
             Ok(this
                 .enumerate_physical_devices()
-                .map_err(|_| DriverError::Unsupported)?
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?
                 .into_iter()
                 .map(|physical_device| {
                     let props = this.get_physical_device_properties(physical_device);

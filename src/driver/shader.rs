@@ -4,9 +4,9 @@ use {
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
-    log::error,
+    log::{debug, error, info, trace, warn},
     spirq::{
-        ty::{ScalarType, Type},
+        ty::{ArrayBound, ScalarType, Type},
         DescriptorType, EntryPoint, ReflectConfig, Variable,
     },
     std::{
@@ -22,8 +22,6 @@ fn guess_immutable_sampler(
     device: &Device<impl SharedPointerKind>,
     binding_name: &str,
 ) -> vk::Sampler {
-    // trace!("Guessing sampler: {binding_name}");
-
     const INVALID_ERR: &str = "Invalid sampler specification";
 
     let (texel_filter, mipmap_mode, address_modes) = if binding_name.contains("_sampler_") {
@@ -50,6 +48,8 @@ fn guess_immutable_sampler(
 
         (texel_filter, mipmap_mode, address_modes)
     } else {
+        debug!("image binding {binding_name} using default sampler");
+
         (
             vk::Filter::LINEAR,
             vk::SamplerMipmapMode::LINEAR,
@@ -225,12 +225,14 @@ where
 }
 
 #[derive(Builder, Clone)]
-#[builder(pattern = "owned")]
+#[builder(build_fn(private, name = "fallible_build"), pattern = "owned")]
 pub struct Shader {
     #[builder(default = "\"main\".to_owned()")]
     pub entry_name: String,
+
     #[builder(default, setter(strip_option))]
     pub specialization_info: Option<SpecializationInfo>,
+
     pub spirv: Vec<u8>,
     pub stage: vk::ShaderStageFlags,
 }
@@ -247,6 +249,18 @@ impl Shader {
 
     pub fn new_fragment(spirv: impl Into<Vec<u8>>) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::FRAGMENT, spirv)
+    }
+
+    pub fn new_geometry(spirv: impl Into<Vec<u8>>) -> ShaderBuilder {
+        Self::new(vk::ShaderStageFlags::GEOMETRY, spirv)
+    }
+
+    pub fn new_tesselation_ctrl(spirv: impl Into<Vec<u8>>) -> ShaderBuilder {
+        Self::new(vk::ShaderStageFlags::TESSELLATION_CONTROL, spirv)
+    }
+
+    pub fn new_tesselation_eval(spirv: impl Into<Vec<u8>>) -> ShaderBuilder {
+        Self::new(vk::ShaderStageFlags::TESSELLATION_EVALUATION, spirv)
     }
 
     pub fn new_vertex(spirv: impl Into<Vec<u8>>) -> ShaderBuilder {
@@ -268,54 +282,97 @@ impl Shader {
                     desc_ty,
                     nbind,
                     ..
-                } => Some((name, desc_bind, desc_ty, nbind)),
+                } => Some((name, desc_bind, desc_ty, *nbind)),
                 _ => None,
             })
         {
-            // trace!(
-            //     "Binding {}: {}.{} = {:?}[{}]",
-            //     name.as_deref().unwrap_or_default(),
-            //     binding.set(),
-            //     binding.bind(),
-            //     *desc_ty,
-            //     *binding_count
-            // );
+            let binding_count = match binding_count {
+                ArrayBound::Sized(binding_count) => binding_count,
+                ArrayBound::Specialized(spec_const_id) => {
+                    self.specialization_value_u32(spec_const_id)?
+                }
+                ArrayBound::SpecializedDefault(spec_const_id, spec_const_default) => self
+                    .specialization_value_u32(spec_const_id)
+                    .unwrap_or(spec_const_default),
+                ArrayBound::Unsized => {
+                    warn!("Unsupported unsized descriptor binding");
+                    return Err(DriverError::Unsupported);
+                }
+            };
+
+            trace!(
+                "Binding {}: {}.{} = {:?}[{}]",
+                name.as_deref().unwrap_or_default(),
+                binding.set(),
+                binding.bind(),
+                *desc_ty,
+                binding_count
+            );
 
             res.insert(
                 DescriptorBinding(binding.set(), binding.bind()),
                 match desc_ty {
                     DescriptorType::AccelStruct() => {
-                        DescriptorInfo::AccelerationStructure(*binding_count)
+                        DescriptorInfo::AccelerationStructure(binding_count)
                     }
                     DescriptorType::CombinedImageSampler() => DescriptorInfo::CombinedImageSampler(
-                        *binding_count,
+                        binding_count,
                         guess_immutable_sampler(device, name.as_deref().expect("Invalid binding")),
                     ),
                     DescriptorType::InputAttachment(input_attachment_index) => {
-                        DescriptorInfo::InputAttachment(*binding_count, *input_attachment_index)
+                        DescriptorInfo::InputAttachment(binding_count, *input_attachment_index)
                     }
-                    DescriptorType::SampledImage() => DescriptorInfo::SampledImage(*binding_count),
-                    DescriptorType::Sampler() => DescriptorInfo::Sampler(*binding_count),
+                    DescriptorType::SampledImage() => DescriptorInfo::SampledImage(binding_count),
+                    DescriptorType::Sampler() => DescriptorInfo::Sampler(binding_count),
                     DescriptorType::StorageBuffer(_access_ty) => {
-                        DescriptorInfo::StorageBuffer(*binding_count)
+                        DescriptorInfo::StorageBuffer(binding_count)
                     }
                     DescriptorType::StorageImage(_access_ty) => {
-                        DescriptorInfo::StorageImage(*binding_count)
+                        DescriptorInfo::StorageImage(binding_count)
                     }
                     DescriptorType::StorageTexelBuffer(_access_ty) => {
-                        DescriptorInfo::StorageTexelBuffer(*binding_count)
+                        DescriptorInfo::StorageTexelBuffer(binding_count)
                     }
                     DescriptorType::UniformBuffer() => {
-                        DescriptorInfo::UniformBufferDynamic(*binding_count)
+                        DescriptorInfo::UniformBufferDynamic(binding_count)
                     }
                     DescriptorType::UniformTexelBuffer() => {
-                        DescriptorInfo::UniformTexelBuffer(*binding_count)
+                        DescriptorInfo::UniformTexelBuffer(binding_count)
                     }
                 },
             );
         }
 
         Ok(res)
+    }
+
+    fn specialization_value_u32(&self, spec_const_id: u32) -> Result<u32, DriverError> {
+        if self.specialization_info.is_none() {
+            warn!("Specialization descriptor binding not specified");
+            return Err(DriverError::Unsupported);
+        }
+
+        let spec_info = self.specialization_info.as_ref().unwrap();
+        let spec_const = spec_info
+            .map_entries
+            .iter()
+            .find(|spec_const| spec_const.constant_id == spec_const_id);
+        if spec_const.is_none() {
+            warn!("Specialization descriptor binding entries do not contain constant_id {spec_const_id}");
+            return Err(DriverError::Unsupported);
+        }
+
+        let spec_const = spec_const.unwrap();
+        let start = spec_const.offset as usize;
+        let end = start + 4;
+        if end > spec_info.data.len() {
+            warn!("Invalid specialization constant data for constant_id {spec_const_id}");
+            return Err(DriverError::Unsupported);
+        }
+
+        let mut bytes = [0u8; 4];
+        bytes.copy_from_slice(&spec_info.data[start..end]);
+        Ok(u32::from_ne_bytes(bytes))
     }
 
     pub fn merge_descriptor_bindings(
@@ -457,12 +514,10 @@ impl Shader {
                 push_const.offset..push_const.offset + push_const.ty.nbyte().unwrap_or_default()
             })
             .reduce(|a, b| a.start.min(b.start)..a.end.max(b.end))
-            .map(|push_const| {
-                vk::PushConstantRange::builder()
-                    .stage_flags(self.stage)
-                    .size((push_const.end - push_const.start) as _)
-                    .offset(push_const.start as _)
-                    .build()
+            .map(|push_const| vk::PushConstantRange {
+                stage_flags: self.stage,
+                size: (push_const.end - push_const.start) as _,
+                offset: push_const.start as _,
             });
 
         Ok(res)
@@ -492,35 +547,34 @@ impl Shader {
     pub fn vertex_input(&self) -> Result<VertexInputState, DriverError> {
         let entry_point = self.reflect_entry_point()?;
 
-        fn scalar_format(ty: &ScalarType) -> vk::Format {
+        fn scalar_format(ty: &ScalarType, byte_len: u32) -> vk::Format {
             match ty {
-                ScalarType::Float(n) => match n {
-                    2 => vk::Format::R32_SFLOAT,
-                    4 => vk::Format::R32G32_SFLOAT,
-                    8 => vk::Format::R32G32B32_SFLOAT,
+                ScalarType::Float(_) => match byte_len {
+                    4 => vk::Format::R32_SFLOAT,
+                    8 => vk::Format::R32G32_SFLOAT,
+                    12 => vk::Format::R32G32B32_SFLOAT,
                     16 => vk::Format::R32G32B32A32_SFLOAT,
-                    _ => unreachable!(),
+                    _ => unimplemented!("byte_len {byte_len}"),
                 },
-                ScalarType::Signed(n) => match n {
+                ScalarType::Signed(_) => match byte_len {
                     4 => vk::Format::R32_SINT,
-                    16 => vk::Format::R32G32_SINT,
-                    32 => vk::Format::R32G32B32_SINT,
-                    64 => vk::Format::R32G32B32A32_SINT,
-                    _ => unreachable!(),
+                    8 => vk::Format::R32G32_SINT,
+                    12 => vk::Format::R32G32B32_SINT,
+                    16 => vk::Format::R32G32B32A32_SINT,
+                    _ => unimplemented!("byte_len {byte_len}"),
                 },
-                ScalarType::Unsigned(n) => match n {
+                ScalarType::Unsigned(_) => match byte_len {
                     4 => vk::Format::R32_UINT,
-                    16 => vk::Format::R32G32_UINT,
-                    32 => vk::Format::R32G32B32_UINT,
-                    64 => vk::Format::R32G32B32A32_UINT,
-                    _ => unreachable!(),
+                    8 => vk::Format::R32G32_UINT,
+                    12 => vk::Format::R32G32B32_UINT,
+                    16 => vk::Format::R32G32B32A32_UINT,
+                    _ => unimplemented!("byte_len {byte_len}"),
                 },
                 _ => unimplemented!("{:?}", ty),
             }
         }
 
         let mut input_rates_strides = HashMap::new();
-        let mut binding_locations = BTreeMap::new();
         let mut vertex_attribute_descriptions = vec![];
 
         for (name, location, ty) in entry_point.vars.iter().filter_map(|var| match var {
@@ -543,14 +597,7 @@ impl Shader {
                     (binding, rate)
                 })
                 .unwrap_or_default();
-            let (location, component) = location.into_inner();
-
-            // log::info!(
-            //     "layout(binding = {binding}, location = {location}) {:?} {:?}",
-            //     ty,
-            //     name
-            // );
-
+            let (location, _) = location.into_inner();
             if let Some((input_rate, _)) = input_rates_strides.get(&binding) {
                 assert_eq!(*input_rate, guessed_rate);
             }
@@ -560,39 +607,21 @@ impl Shader {
             *input_rate = guessed_rate;
             *stride += byte_stride;
 
-            binding_locations
-                .entry(binding)
-                .or_insert_with(BTreeMap::new)
-                .entry(location)
-                .or_insert_with(Vec::new)
-                .push((component, byte_stride));
+            //trace!("{location} {:?} is {byte_stride} bytes", name);
 
             vertex_attribute_descriptions.push(vk::VertexInputAttributeDescription {
                 location,
                 binding,
                 format: match ty {
-                    Type::Scalar(ty) => scalar_format(ty),
-                    Type::Vector(ty) => scalar_format(&ty.scalar_ty),
+                    Type::Scalar(ty) => scalar_format(ty, ty.nbyte() as _),
+                    Type::Vector(ty) => scalar_format(&ty.scalar_ty, byte_stride),
                     _ => unimplemented!("{:?}", ty),
                 },
-                offset: 0,
+                offset: byte_stride, // Figured out below - this data is iter'd in an unknown order
             });
         }
 
-        for vertex_attribute_description in &mut vertex_attribute_descriptions {
-            for (location, component_strides) in binding_locations
-                .get(&vertex_attribute_description.binding)
-                .unwrap()
-            {
-                if *location < vertex_attribute_description.location {
-                    for (_, stride) in component_strides {
-                        vertex_attribute_description.offset += *stride;
-                    }
-                }
-            }
-        }
-
-        vertex_attribute_descriptions.sort_by(|lhs, rhs| {
+        vertex_attribute_descriptions.sort_unstable_by(|lhs, rhs| {
             let binding = lhs.binding.cmp(&rhs.binding);
             if binding.is_lt() {
                 return binding;
@@ -600,6 +629,28 @@ impl Shader {
 
             lhs.location.cmp(&rhs.location)
         });
+
+        let mut offset = 0;
+        let mut offset_binding = 0;
+
+        for vertex_attribute_description in &mut vertex_attribute_descriptions {
+            if vertex_attribute_description.binding != offset_binding {
+                offset_binding = vertex_attribute_description.binding;
+                offset = 0;
+            }
+
+            let stride = vertex_attribute_description.offset;
+            vertex_attribute_description.offset = offset;
+            offset += stride;
+
+            info!(
+                "vertex attribute {}.{}: {:?} (offset={})",
+                vertex_attribute_description.binding,
+                vertex_attribute_description.location,
+                vertex_attribute_description.format,
+                vertex_attribute_description.offset,
+            );
+        }
 
         let mut vertex_binding_descriptions = vec![];
         for (binding, (input_rate, stride)) in input_rates_strides.into_iter() {
@@ -617,6 +668,18 @@ impl Shader {
     }
 }
 
+// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
+impl ShaderBuilder {
+    pub fn new(stage: vk::ShaderStageFlags, spirv: Vec<u8>) -> Self {
+        Self::default().stage(stage).spirv(spirv)
+    }
+
+    pub fn build(self) -> Shader {
+        self.fallible_build()
+            .expect("All required fields set at initialization")
+    }
+}
+
 impl Debug for Shader {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         // We don't want the default formatter bc vec u8
@@ -627,7 +690,7 @@ impl Debug for Shader {
 
 impl From<ShaderBuilder> for Shader {
     fn from(shader: ShaderBuilder) -> Self {
-        shader.build().unwrap()
+        shader.build()
     }
 }
 

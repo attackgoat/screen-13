@@ -6,8 +6,9 @@ use {
     crate::ptr::Shared,
     archery::SharedPointerKind,
     ash::vk,
+    derive_builder::Builder,
     glam::{Mat3, Vec3},
-    log::{info, trace},
+    log::{info, trace, warn},
     parking_lot::Mutex,
     std::{ffi::CString, ops::Deref, thread::panicking},
 };
@@ -62,7 +63,7 @@ impl<P> RayTraceAccelerationScratchBuffer<P>
 where
     P: SharedPointerKind,
 {
-    pub const RT_SCRATCH_BUFFER_SIZE: u64 = 1024 * 1024 * 1440;
+    pub const RT_SCRATCH_BUFFER_SIZE: vk::DeviceSize = 1024 * 1024 * 1440;
 
     pub fn create(device: &Shared<Device<P>, P>) -> Result<Self, DriverError> {
         trace!("create");
@@ -74,8 +75,7 @@ where
                 Self::RT_SCRATCH_BUFFER_SIZE,
                 vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             )
-            .build()
-            .map_err(|_| DriverError::Unsupported)?,
+            .build(),
         )?));
 
         Ok(Self { device, buf })
@@ -127,7 +127,7 @@ where
         // let instance_buf = Buffer::create_with_data(
         //     &self.device,
         //     BufferDesc::new(
-        //         instance_buf_len as u64,
+        //         instance_buf_len ,
         //         vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
         //             | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
         //     )
@@ -237,7 +237,7 @@ where
         mut geometry_info: vk::AccelerationStructureBuildGeometryInfoKHR,
         _build_range_infos: &[vk::AccelerationStructureBuildRangeInfoKHR],
         max_primitive_counts: &[u32],
-        preallocate_bytes: u64,
+        preallocate_bytes: vk::DeviceSize,
     ) -> Result<RayTraceAcceleration<P>, DriverError> {
         let mem_requirements = unsafe {
             Device::accel_struct(&self.device).get_acceleration_structure_build_sizes(
@@ -252,27 +252,30 @@ where
             mem_requirements.acceleration_structure_size, mem_requirements.build_scratch_size
         );
 
-        let buf_len = preallocate_bytes.max(mem_requirements.acceleration_structure_size);
+        let buffer_len = preallocate_bytes.max(mem_requirements.acceleration_structure_size);
         let buf = Buffer::create(
             &self.device,
             BufferInfo::new(
-                buf_len,
+                buffer_len,
                 vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             )
-            .build()
-            .unwrap(),
+            .build(),
         )?;
         let accel_info = vk::AccelerationStructureCreateInfoKHR::builder()
             .ty(ty)
             .buffer(*buf)
-            .size(buf_len as u64)
+            .size(buffer_len)
             .build();
 
         unsafe {
             let accel_struct = Device::accel_struct(&self.device)
                 .create_acceleration_structure(&accel_info, None)
-                .map_err(|_| DriverError::Unsupported)?;
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?;
             let scratch_buf = self.buf.lock();
 
             // See `RT_SCRATCH_BUFFER_SIZE`
@@ -542,6 +545,7 @@ where
     pub descriptor_bindings: DescriptorBindingMap,
     pub descriptor_info: PipelineDescriptorInfo<P>,
     device: Shared<Device<P>, P>,
+    pub info: RayTracePipelineInfo,
     pub layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
     pub shader_bindings: RayTraceShaderBindings<P>,
@@ -594,7 +598,11 @@ where
                         .set_layouts(&descriptor_set_layout_handles),
                     None,
                 )
-                .map_err(|_| DriverError::Unsupported)?;
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?;
             let mut entry_points: Vec<CString> = Vec::new(); // Keep entry point names alive, since build() forgets references.
             let mut prev_stage: Option<vk::ShaderStageFlags> = None;
             let mut shader_groups: Vec<vk::RayTracingShaderGroupCreateInfoKHR> = vec![];
@@ -611,7 +619,11 @@ where
                     };
                     let shader_module = device
                         .create_shader_module(&shader_module_create_info, None)
-                        .map_err(|_| DriverError::Unsupported)?;
+                        .map_err(|err| {
+                            warn!("{err}");
+
+                            DriverError::Unsupported
+                        })?;
 
                     Ok((shader_module, info.entry_name.clone()))
                 };
@@ -722,7 +734,11 @@ where
                         .build()],
                     None,
                 )
-                .map_err(|_| DriverError::Unsupported)?[0];
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?[0];
             let shader_bindings = RayTraceShaderBindings::create(
                 &device,
                 &RayTraceShaderBindingsDesc {
@@ -737,6 +753,7 @@ where
                 descriptor_bindings,
                 descriptor_info,
                 device,
+                info,
                 layout,
                 pipeline,
                 shader_bindings,
@@ -772,17 +789,14 @@ where
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Builder, Clone, Debug)]
+#[builder(pattern = "owned")]
 pub struct RayTracePipelineInfo {
     pub max_pipeline_ray_recursion_depth: u32,
-}
 
-impl Default for RayTracePipelineInfo {
-    fn default() -> Self {
-        Self {
-            max_pipeline_ray_recursion_depth: 1,
-        }
-    }
+    /// A descriptive name used in debugging messages.
+    #[builder(default, setter(strip_option))]
+    pub name: Option<String>,
 }
 
 impl RayTracePipelineInfo {
@@ -802,7 +816,7 @@ where
     P: SharedPointerKind,
 {
     pub instances: Vec<RayTraceInstanceInfo<P>>,
-    pub preallocate_bytes: u64,
+    pub preallocate_bytes: vk::DeviceSize,
 }
 
 #[derive(Debug)]
@@ -841,7 +855,7 @@ where
         //     device
         //         .ray_trace_pipeline_ext
         //         .get_ray_tracing_shader_group_handles(pipeline, 0, group_count, group_handles_size)
-        //         .map_err(|_| DriverError::Unsupported)?
+        //         .map_err(|err| {warn!("{err}");DriverError::Unsupported})?
         // };
         // let prog_size = shader_group_handle_size;
         // let create_binding_table =
@@ -864,7 +878,7 @@ where
         //         Ok(Some(Buffer::create_with_data(
         //             &device,
         //             BufferDesc::new(
-        //                 sbt_data.len() as u64,
+        //                 sbt_data.len() ,
         //                 vk::BufferUsageFlags::TRANSFER_SRC
         //                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
         //                     | vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR,
@@ -885,8 +899,8 @@ where
         //             .as_ref()
         //             .map(|b| Buffer::device_address(b))
         //             .unwrap_or(0),
-        //         stride: prog_size as u64,
-        //         size: (prog_size * desc.raygen_count as usize) as u64,
+        //         stride: prog_size ,
+        //         size: (prog_size * desc.raygen_count as usize) ,
         //     },
         //     raygen_buf: raygen,
         //     miss: vk::StridedDeviceAddressRegionKHR {
@@ -894,14 +908,14 @@ where
         //             .as_ref()
         //             .map(|b| Buffer::device_address(b))
         //             .unwrap_or(0),
-        //         stride: prog_size as u64,
-        //         size: (prog_size * desc.miss_count as usize) as u64,
+        //         stride: prog_size,
+        //         size: (prog_size * desc.miss_count as usize) ,
         //     },
         //     miss_buf: miss,
         //     hit: vk::StridedDeviceAddressRegionKHR {
         //         device_address: hit.as_ref().map(|b| Buffer::device_address(b)).unwrap_or(0),
-        //         stride: prog_size as u64,
-        //         size: (prog_size * desc.hit_count as usize) as u64,
+        //         stride: prog_size ,
+        //         size: (prog_size * desc.hit_count as usize) ,
         //     },
         //     hit_buf: hit,
         //     callable_buf: None,

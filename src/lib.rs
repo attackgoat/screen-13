@@ -53,7 +53,7 @@ pub mod prelude_all {
         graph::{
             AnyBufferBinding, AnyBufferNode, AnyImageBinding, AnyImageNode, BufferBinding,
             BufferLeaseBinding, BufferLeaseNode, BufferNode, ImageBinding, ImageLeaseBinding,
-            ImageLeaseNode, ImageNode, PassRef, RayTraceAccelerationBinding,
+            ImageLeaseNode, ImageNode, PassRef, PipelinePassRef, RayTraceAccelerationBinding,
             RayTraceAccelerationNode, RenderGraph, SwapchainImageNode,
         },
         prelude::*,
@@ -89,6 +89,7 @@ pub mod prelude_arc {
     pub type AnyImageNode = all::AnyImageNode<P>;
     pub type Buffer = all::Buffer<P>;
     pub type BufferBinding = all::BufferBinding<P>;
+    pub type BufferLeaseNode = all::BufferLeaseNode<P>;
     pub type BufferNode = all::BufferNode<P>;
     pub type ComputePipeline = all::ComputePipeline<P>;
     pub type Device = all::Device<P>;
@@ -99,6 +100,7 @@ pub mod prelude_arc {
     pub type Image = all::Image<P>;
     pub type ImageBinding = all::ImageBinding<P>;
     pub type ImageNode = all::ImageNode<P>;
+    pub type PipelinePassRef<'a, T> = all::PipelinePassRef<'a, T, P>;
     pub type RayTraceAccelerationNode = all::RayTraceAccelerationNode<P>;
     pub type RenderGraph = all::RenderGraph<P>;
     pub type SwapchainImage = all::SwapchainImage<P>;
@@ -123,6 +125,7 @@ pub mod prelude_rc {
     pub type AnyImageNode = all::AnyImageNode<P>;
     pub type Buffer = all::Buffer<P>;
     pub type BufferBinding = all::BufferBinding<P>;
+    pub type BufferLeaseNode = all::BufferLeaseNode<P>;
     pub type BufferNode = all::BufferNode<P>;
     pub type ComputePipeline = all::ComputePipeline<P>;
     pub type Device = all::Device<P>;
@@ -133,6 +136,7 @@ pub mod prelude_rc {
     pub type Image = all::Image<P>;
     pub type ImageBinding = all::ImageBinding<P>;
     pub type ImageNode = all::ImageNode<P>;
+    pub type PipelinePassRef<'a, T> = all::PipelinePassRef<'a, T, P>;
     pub type RayTraceAccelerationNode = all::RayTraceAccelerationNode<P>;
     pub type RenderGraph = all::RenderGraph<P>;
     pub type SwapchainImage = all::SwapchainImage<P>;
@@ -275,6 +279,8 @@ where
     T: Sized,
 {
     use std::{mem::size_of, slice::from_raw_parts};
+
+    let t = t.as_ref();
 
     unsafe { from_raw_parts(t.as_ptr() as *const _, t.len() * size_of::<T>()) }
 }

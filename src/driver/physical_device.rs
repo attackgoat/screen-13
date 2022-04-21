@@ -3,7 +3,11 @@ use {
     crate::ptr::Shared,
     archery::SharedPointerKind,
     ash::vk,
-    std::{fmt::Debug, ops::Deref},
+    std::{
+        ffi::CStr,
+        fmt::{Debug, Formatter},
+        ops::Deref,
+    },
 };
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
@@ -99,8 +103,15 @@ impl PhysicalDevice {
 }
 
 impl Debug for PhysicalDevice {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "PhysicalDevice {{ {:#?} }}", self.props)
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        unsafe {
+            write!(
+                f,
+                "{:?} ({:?})",
+                CStr::from_ptr(self.props.device_name.as_ptr()),
+                self.props.device_type
+            )
+        }
     }
 }
 

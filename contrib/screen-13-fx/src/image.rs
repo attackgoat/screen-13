@@ -69,8 +69,10 @@ where
                             }
                         }
                     },
-                    extent: uvec3(bitmap.width, bitmap.height(), 1),
-                    tiling: vk::ImageTiling::OPTIMAL,
+                    width: bitmap.width(),
+                    height: bitmap.height(),
+                    depth: 1,
+                    linear_tiling: false,
                     mip_level_count: 1,
                     array_elements: 1,
                     sample_count: SampleCount::X1,
@@ -90,7 +92,7 @@ where
     {
         info!(
             "Decoding {}x{} {:?} bitmap ({} K)",
-            bitmap.width,
+            bitmap.width(),
             bitmap.height(),
             bitmap.format(),
             bitmap.pixels().len() / 1024
@@ -110,8 +112,7 @@ where
                 // This format requires a conversion
                 //info!("Converting RGB to RGBA");
 
-                let bitmap_width = bitmap.width;
-                let bitmap_height = bitmap.height();
+                let (bitmap_width, bitmap_height) = bitmap.extent();
                 let bitmap_stride = bitmap.stride();
 
                 //trace!("{bitmap_width}x{bitmap_height} Stride={bitmap_stride}");
@@ -164,12 +165,15 @@ where
                 let dispatch_x = (bitmap_width >> 2) - 1 + (bitmap_width % 3); // HACK: -1 FOR NOW but do fix
                 let dispatch_y = bitmap_height;
                 render_graph
-                    .record_pass("Decode RGB image")
+                    .begin_pass("Decode RGB image")
                     .bind_pipeline(&self.decode_rgb_rgba)
                     .read_descriptor(0, pixel_buf)
                     .write_descriptor(1, temp_image)
-                    .push_constants(pixel_buf_stride >> 2)
-                    .dispatch(dispatch_x, dispatch_y, 1)
+                    .record_compute(move |compute| {
+                        compute
+                            .push_constants(pixel_buf_stride >> 2)
+                            .dispatch(dispatch_x, dispatch_y, 1);
+                    })
                     .submit_pass()
                     .copy_image(temp_image, image);
             }

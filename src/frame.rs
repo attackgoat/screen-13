@@ -28,10 +28,11 @@ where
     pub device: &'a Shared<Device<P>, P>,
     pub dt: f32,
     pub events: &'a [Event<'a, ()>],
+    pub height: u32,
     pub render_graph: &'a mut RenderGraph<P>,
-    pub resolution: UVec2,
-    pub swapchain: SwapchainImageNode<P>,
+    pub swapchain_image: SwapchainImageNode<P>,
     pub will_exit: &'a mut bool,
+    pub width: u32,
     pub window: &'a Window,
 }
 
@@ -40,8 +41,7 @@ where
     P: SharedPointerKind,
 {
     pub fn render_aspect_ratio(&self) -> f32 {
-        let render_extent = self.resolution.as_vec2();
-        render_extent.x / render_extent.y
+        self.width as f32 / self.height as f32
     }
 
     pub fn center_cursor(&self) {

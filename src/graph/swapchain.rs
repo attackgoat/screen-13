@@ -1,6 +1,6 @@
 use {
     super::{Bind, Binding, RenderGraph, Resolver, SwapchainImageNode, Unbind},
-    crate::driver::{Image, SwapchainImage},
+    crate::driver::SwapchainImage,
     archery::SharedPointerKind,
     std::{fmt::Debug, mem::replace},
     vk_sync::AccessType,
@@ -27,13 +27,10 @@ where
         Self { item, access }
     }
 
-    /// Allows for direct access to the item inside this binding, without the Shared
-    /// wrapper. Returns the previous access type and subresource access which you
-    /// should use to create a barrier for whatever access is actually being done.
-    pub(super) fn access(&mut self, access: AccessType) -> (&Image<P>, AccessType) {
-        let previous_access = replace(&mut self.access, access);
-
-        (&self.item, previous_access)
+    /// Returns the previous access type and subresource access which you should use to create a
+    /// barrier for whatever access is actually being done.
+    pub(super) fn access_mut(&mut self, access: AccessType) -> AccessType {
+        replace(&mut self.access, access)
     }
 }
 
@@ -74,16 +71,16 @@ impl<P> Binding<P>
 where
     P: SharedPointerKind,
 {
-    pub(super) fn as_swapchain_image(&self) -> &SwapchainImageBinding<P> {
+    pub(super) fn as_swapchain_image(&self) -> Option<&SwapchainImageBinding<P>> {
         if let Self::SwapchainImage(binding, true) = self {
-            binding
+            Some(binding)
         } else if let Self::SwapchainImage(_, false) = self {
             // User code might try this - but it is a programmer error
             // to access a binding after it has been unbound so dont
-            panic!();
+            None
         } else {
             // The private code in this module should prevent this branch
-            unreachable!("boom");
+            unreachable!();
         }
     }
 }
@@ -96,6 +93,7 @@ where
     fn unbind(self, graph: &mut Resolver<P>) -> SwapchainImage<P> {
         graph.graph.bindings[self.idx]
             .as_swapchain_image()
+            .unwrap()
             .item
             .clone()
     }

@@ -15,7 +15,6 @@ Features of the Vulkan driver:
 
  - Lifetime management calls `free` for you
  - Resource information comes with each smart pointer
- - Easy-to-use hashable/orderable types (no raw pointers)
 
 Example usage:
 
@@ -40,7 +39,7 @@ itself is not tied to swapchain access and may be used from a headless environme
 
 Features of the render graph:
 
- - Compute, Graphic, and Ray-trace pipelines
+ - Compute, Graphic, and Ray-trace (WIP) pipelines
  - You specify _code_ which runs on _input_ and creates _output_
  - Automatic Vulkan management (Render passes, subpasses, descriptors, pools, etc.)
  - Automatic render pass scheduling, re-ordering, merging, with resource aliasing
@@ -49,17 +48,17 @@ Example usage (_See [source](examples/shader-toy/src/main.rs) for variable value
 
 ```rust
 render_graph
-    .record_pass("Buffer A")
-    .bind_pipeline(&buf_pipeline)
+    .begin_pass("Buffer A")
+    .bind_pipeline(&buffer_pipeline)
     .read_descriptor(0, input)
     .read_descriptor(1, noise_image)
     .read_descriptor(2, flowers_image)
     .read_descriptor(3, blank_image)
     .clear_color(0)
     .store_color(0, output)
-    .push_constants(push_consts)
-    .draw(move |device, cmd_buf, _| unsafe {
-        device.cmd_draw(cmd_buf, 6, 1, 0, 0);
+    .record_subpass(move |subpass| {
+        subpass.push_constants(push_consts);
+        subpass.draw(6, 1, 0, 0);
     });
 ```
 

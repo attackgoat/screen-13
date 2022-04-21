@@ -33,4 +33,5 @@ mod text;
 pub use self::{
     image::ImageLoader,
     present::{ComputePresenter, GraphicPresenter},
+    text::BitmapGlyphColor,
 };

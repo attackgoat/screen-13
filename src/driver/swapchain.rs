@@ -4,7 +4,7 @@ use {
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
-    glam::{uvec3, UVec2},
+    glam::UVec2,
     log::{debug, warn},
     std::{ops::Deref, slice, thread::panicking, time::Duration},
 };
@@ -192,7 +192,11 @@ where
                 *self.surface,
             )
         }
-        .map_err(|_| DriverError::Unsupported)?;
+        .map_err(|err| {
+            warn!("{err}");
+
+            DriverError::Unsupported
+        })?;
 
         // Triple-buffer so that acquiring an image doesn't stall for >16.6ms at 60Hz on AMD
         // when frames take >16.6ms to render. Also allows MAILBOX to work.
@@ -240,7 +244,11 @@ where
                 *self.surface,
             )
         }
-        .map_err(|_| DriverError::Unsupported)?;
+        .map_err(|err| {
+            warn!("{err}");
+
+            DriverError::Unsupported
+        })?;
 
         let present_mode = present_mode_preference
             .into_iter()
@@ -269,7 +277,7 @@ where
                 width: surface_resolution.x,
                 height: surface_resolution.y,
             })
-            .image_usage(surface_capabilities.supported_usage_flags & !vk::ImageUsageFlags::STORAGE)
+            .image_usage(surface_capabilities.supported_usage_flags)
             .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
             .pre_transform(pre_transform)
             .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
@@ -294,14 +302,16 @@ where
                         ty: ImageType::Texture2D,
                         usage: vk::ImageUsageFlags::COLOR_ATTACHMENT
                             | vk::ImageUsageFlags::SAMPLED
-                            // | vk::ImageUsageFlags::STORAGE // TODO: Conditionally enable!
+                            | vk::ImageUsageFlags::STORAGE // TODO: Conditionally enable! When SRGB is supported for it!
                             | vk::ImageUsageFlags::TRANSFER_DST
                             | vk::ImageUsageFlags::TRANSFER_SRC,
                         flags: vk::ImageCreateFlags::empty(), // MUTABLE_FORMAT | SPARSE_ALIASED | CUBE_COMPATIBLE
-                        fmt: vk::Format::B8G8R8A8_SRGB,
-                        extent: uvec3(self.info.extent.x, self.info.extent.y, 0),
+                        fmt: vk::Format::B8G8R8A8_UNORM,      // TODO: Allow configuration!
+                        depth: 0,                             // TODO: 1?
+                        height: self.info.extent.y,
+                        width: self.info.extent.x,
                         sample_count: SampleCount::X1,
-                        tiling: vk::ImageTiling::OPTIMAL,
+                        linear_tiling: false,
                         mip_level_count: 1,
                         array_elements: 1,
                     },

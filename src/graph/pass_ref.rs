@@ -1,9 +1,9 @@
 use {
     super::{
-        AnyBufferNode, AnyImageNode, Attachment, AttachmentIndex, Bind, Binding, BufferLeaseNode,
-        BufferNode, Descriptor, Edge, Execution, ExecutionFunction, ExecutionPipeline,
-        ImageLeaseNode, ImageNode, Information, Node, NodeIndex, Pass, PushConstantRange,
-        RayTraceAccelerationNode, Rect, RenderGraph, SampleCount, Subresource, SubresourceAccess,
+        AnyBufferNode, AnyImageNode, Area, Attachment, AttachmentIndex, Bind, Binding,
+        BufferLeaseNode, BufferNode, Color, Descriptor, Edge, Execution, ExecutionFunction,
+        ExecutionPipeline, ImageLeaseNode, ImageNode, Information, Node, NodeIndex, Pass,
+        RayTraceAccelerationNode, RenderGraph, SampleCount, Subresource, SubresourceAccess,
         SwapchainImageNode, View, ViewType,
     },
     crate::{
@@ -15,33 +15,16 @@ use {
     },
     archery::SharedPointerKind,
     ash::vk,
-    glam::{ivec2, uvec2, vec2, UVec3},
-    log::warn,
+    glam::UVec3,
+    log::{trace, warn},
     meshopt::any_as_u8_slice,
     std::{
         marker::PhantomData,
-        mem::take,
+        mem::size_of_val,
         ops::{Index, Range},
     },
     vk_sync::AccessType,
 };
-
-unsafe fn push_constants(
-    device: &ash::Device,
-    cmd_buf: vk::CommandBuffer,
-    push_consts: impl IntoIterator<Item = PushConstantRange>,
-    layout: vk::PipelineLayout,
-) {
-    for push_const in push_consts.into_iter() {
-        device.cmd_push_constants(
-            cmd_buf,
-            layout,
-            push_const.stage,
-            push_const.offset,
-            push_const.data.as_slice(),
-        );
-    }
-}
 
 pub trait Access {
     const DEFAULT_READ: AccessType;
@@ -101,14 +84,6 @@ macro_rules! bind {
             where
                 P: SharedPointerKind,
             {
-                // pub(super) fn [<as_ $name:snake>](&self) -> Option<&[<$name Pipeline>]<P>> {
-                //     if let Self::$name(binding) = self {
-                //         Some(&binding)
-                //     } else {
-                //         panic!();
-                //     }
-                // }
-
                 #[allow(unused)]
                 pub(super) fn [<is_ $name:snake>](&self) -> bool {
                     matches!(self, Self::$name(_))
@@ -149,7 +124,7 @@ where
         // into the bindings data!
         debug_assert!(
             self.exec.accesses.contains_key(&node_idx),
-            "Expected call to read or write before indexing the bindings"
+            "unexpected node access: call access, read, or write first"
         );
 
         &self.graph.bindings[node_idx]
@@ -166,7 +141,7 @@ macro_rules! index {
                 type Output = $handle<P>;
 
                 fn index(&self, node: [<$name Node>]<P>) -> &Self::Output {
-                    &*self.binding_ref(node.idx).[<as_ $name:snake>]().item
+                    &*self.binding_ref(node.idx).[<as_ $name:snake>]().unwrap().item
                 }
             }
         }
@@ -197,9 +172,9 @@ where
         let binding = self.binding_ref(node_idx);
 
         match node {
-            AnyImageNode::Image(_) => &binding.as_image().item,
-            AnyImageNode::ImageLease(_) => &binding.as_image_lease().item,
-            AnyImageNode::SwapchainImage(_) => &binding.as_swapchain_image().item,
+            AnyImageNode::Image(_) => &binding.as_image().unwrap().item,
+            AnyImageNode::ImageLease(_) => &binding.as_image_lease().unwrap().item,
+            AnyImageNode::SwapchainImage(_) => &binding.as_swapchain_image().unwrap().item,
         }
     }
 }
@@ -218,9 +193,491 @@ where
         let binding = self.binding_ref(node_idx);
 
         match node {
-            AnyBufferNode::Buffer(_) => &binding.as_buffer().item,
-            AnyBufferNode::BufferLease(_) => &binding.as_buffer_lease().item,
+            AnyBufferNode::Buffer(_) => &binding.as_buffer().unwrap().item,
+            AnyBufferNode::BufferLease(_) => &binding.as_buffer_lease().unwrap().item,
         }
+    }
+}
+
+pub struct Compute<'a, P>
+where
+    P: SharedPointerKind,
+{
+    bindings: Bindings<'a, P>,
+    cmd_buf: vk::CommandBuffer,
+    device: &'a ash::Device,
+    pipeline: Shared<ComputePipeline<P>, P>,
+}
+
+impl<'a, P> Compute<'a, P>
+where
+    P: SharedPointerKind,
+{
+    pub fn dispatch(
+        &mut self,
+        group_count_x: u32,
+        group_count_y: u32,
+        group_count_z: u32,
+    ) -> &mut Self {
+        unsafe {
+            self.device
+                .cmd_dispatch(self.cmd_buf, group_count_x, group_count_y, group_count_z);
+        }
+
+        self
+    }
+
+    pub fn dispatch_base(
+        &mut self,
+        base_group_x: u32,
+        base_group_y: u32,
+        base_group_z: u32,
+        group_count_x: u32,
+        group_count_y: u32,
+        group_count_z: u32,
+    ) -> &mut Self {
+        unsafe {
+            self.device.cmd_dispatch_base(
+                self.cmd_buf,
+                base_group_x,
+                base_group_y,
+                base_group_z,
+                group_count_x,
+                group_count_y,
+                group_count_z,
+            );
+        }
+
+        self
+    }
+
+    pub fn dispatch_indirect(
+        &mut self,
+        args_buf: impl Into<AnyBufferNode<P>>,
+        args_offset: vk::DeviceSize,
+    ) -> &mut Self {
+        let args_buf = args_buf.into();
+
+        unsafe {
+            self.device
+                .cmd_dispatch_indirect(self.cmd_buf, *self.bindings[args_buf], args_offset);
+        }
+
+        self
+    }
+
+    pub fn push_constants(&mut self, data: impl Sized) -> &mut Self {
+        self.push_constants_offset(0, data)
+    }
+
+    pub fn push_constants_offset(&mut self, offset: u32, data: impl Sized) -> &mut Self {
+        let data = any_as_u8_slice(&data);
+        if let Some(push_const) = &self.pipeline.push_constants {
+            // Determine the range of the overall pipline push constants which overlap with `data`
+            let push_const_end = push_const.offset + push_const.size;
+            let data_end = offset + data.len() as u32;
+            let end = data_end.min(push_const_end);
+            let start = offset.max(push_const.offset);
+
+            if end > start {
+                trace!(
+                    "      push constants {:?} {}..{}",
+                    push_const.stage_flags,
+                    start,
+                    end
+                );
+
+                unsafe {
+                    self.device.cmd_push_constants(
+                        self.cmd_buf,
+                        self.pipeline.layout,
+                        vk::ShaderStageFlags::COMPUTE,
+                        push_const.offset,
+                        &data[(start - offset) as usize..(end - offset) as usize],
+                    );
+                }
+            }
+        }
+
+        self
+    }
+}
+
+pub struct Draw<'a, P>
+where
+    P: SharedPointerKind,
+{
+    bindings: Bindings<'a, P>,
+    buffers: &'a mut Vec<vk::Buffer>,
+    cmd_buf: vk::CommandBuffer,
+    device: &'a ash::Device,
+    offsets: &'a mut Vec<vk::DeviceSize>,
+    pipeline: Shared<GraphicPipeline<P>, P>,
+    rects: &'a mut Vec<vk::Rect2D>,
+    viewports: &'a mut Vec<vk::Viewport>,
+}
+
+impl<'a, P> Draw<'a, P>
+where
+    P: SharedPointerKind,
+{
+    pub fn bind_index_buffer(
+        &mut self,
+        buf: impl Into<AnyBufferNode<P>>,
+        index_ty: vk::IndexType,
+    ) -> &mut Self {
+        self.bind_index_buffer_offset(buf, index_ty, 0)
+    }
+
+    pub fn bind_index_buffer_offset(
+        &mut self,
+        buf: impl Into<AnyBufferNode<P>>,
+        index_ty: vk::IndexType,
+        offset: vk::DeviceSize,
+    ) -> &mut Self {
+        let buf = buf.into();
+
+        unsafe {
+            self.device
+                .cmd_bind_index_buffer(self.cmd_buf, *self.bindings[buf], offset, index_ty);
+        }
+
+        self
+    }
+
+    pub fn bind_vertex_buffer(&mut self, buffer: impl Into<AnyBufferNode<P>>) -> &mut Self {
+        self.bind_vertex_buffer_offset(buffer, 0)
+    }
+
+    pub fn bind_vertex_buffer_offset(
+        &mut self,
+        buffer: impl Into<AnyBufferNode<P>>,
+        offset: vk::DeviceSize,
+    ) -> &mut Self {
+        use std::slice::from_ref;
+
+        let buffer = buffer.into();
+
+        unsafe {
+            self.device.cmd_bind_vertex_buffers(
+                self.cmd_buf,
+                0,
+                from_ref(&self.bindings[buffer]),
+                from_ref(&offset),
+            );
+        }
+
+        self
+    }
+
+    pub fn bind_vertex_buffers<B>(
+        &mut self,
+        first_binding: u32,
+        buffers: impl IntoIterator<Item = (B, vk::DeviceSize)>,
+    ) -> &mut Self
+    where
+        B: Into<AnyBufferNode<P>>,
+    {
+        self.buffers.clear();
+        self.offsets.clear();
+
+        for (buffer, offset) in buffers {
+            let buffer = buffer.into();
+
+            self.buffers.push(*self.bindings[buffer]);
+            self.offsets.push(offset);
+        }
+
+        unsafe {
+            self.device.cmd_bind_vertex_buffers(
+                self.cmd_buf,
+                first_binding,
+                &self.buffers,
+                &self.offsets,
+            );
+        }
+
+        self
+    }
+
+    pub fn draw(
+        &mut self,
+        vertex_count: u32,
+        instance_count: u32,
+        first_vertex: u32,
+        first_instance: u32,
+    ) -> &mut Self {
+        unsafe {
+            self.device.cmd_draw(
+                self.cmd_buf,
+                vertex_count,
+                instance_count,
+                first_vertex,
+                first_instance,
+            );
+        }
+
+        self
+    }
+
+    pub fn draw_indexed(
+        &mut self,
+        index_count: u32,
+        instance_count: u32,
+        first_index: u32,
+        vertex_offset: i32,
+        first_instance: u32,
+    ) -> &mut Self {
+        unsafe {
+            self.device.cmd_draw_indexed(
+                self.cmd_buf,
+                index_count,
+                instance_count,
+                first_index,
+                vertex_offset,
+                first_instance,
+            );
+        }
+        self
+    }
+
+    pub fn draw_indexed_indirect(
+        &mut self,
+        buffer: impl Into<AnyBufferNode<P>>,
+        offset: vk::DeviceSize,
+        draw_count: u32,
+        stride: u32,
+    ) -> &mut Self {
+        let buffer = buffer.into();
+
+        unsafe {
+            self.device.cmd_draw_indexed_indirect(
+                self.cmd_buf,
+                *self.bindings[buffer],
+                offset,
+                draw_count,
+                stride,
+            );
+        }
+        self
+    }
+
+    pub fn draw_indexed_indirect_count(
+        &mut self,
+        buffer: impl Into<AnyBufferNode<P>>,
+        offset: vk::DeviceSize,
+        count_buf: impl Into<AnyBufferNode<P>>,
+        count_buf_offset: vk::DeviceSize,
+        max_draw_count: u32,
+        stride: u32,
+    ) -> &mut Self {
+        let buffer = buffer.into();
+        let count_buf = count_buf.into();
+
+        unsafe {
+            self.device.cmd_draw_indexed_indirect_count(
+                self.cmd_buf,
+                *self.bindings[buffer],
+                offset,
+                *self.bindings[count_buf],
+                count_buf_offset,
+                max_draw_count,
+                stride,
+            );
+        }
+        self
+    }
+
+    pub fn draw_indirect(
+        &mut self,
+        buffer: impl Into<AnyBufferNode<P>>,
+        offset: vk::DeviceSize,
+        draw_count: u32,
+        stride: u32,
+    ) -> &mut Self {
+        let buffer = buffer.into();
+
+        unsafe {
+            self.device.cmd_draw_indirect(
+                self.cmd_buf,
+                *self.bindings[buffer],
+                offset,
+                draw_count,
+                stride,
+            );
+        }
+        self
+    }
+
+    pub fn draw_indirect_count(
+        &mut self,
+        buffer: impl Into<AnyBufferNode<P>>,
+        offset: vk::DeviceSize,
+        count_buf: impl Into<AnyBufferNode<P>>,
+        count_buf_offset: vk::DeviceSize,
+        max_draw_count: u32,
+        stride: u32,
+    ) -> &mut Self {
+        let buffer = buffer.into();
+        let count_buf = count_buf.into();
+
+        unsafe {
+            self.device.cmd_draw_indirect_count(
+                self.cmd_buf,
+                *self.bindings[buffer],
+                offset,
+                *self.bindings[count_buf],
+                count_buf_offset,
+                max_draw_count,
+                stride,
+            );
+        }
+        self
+    }
+
+    pub fn push_constants(&mut self, data: impl Sized) -> &mut Self {
+        let data_size = size_of_val(&data);
+
+        // Specify each stage that has a push constant in this region
+        let mut stage_flags = vk::ShaderStageFlags::empty();
+        for push_const in &self.pipeline.push_constants {
+            if (push_const.offset as usize) < data_size {
+                stage_flags |= push_const.stage_flags;
+            }
+        }
+
+        self.push_constants_offset(stage_flags, 0, data)
+    }
+
+    pub fn push_constants_offset(
+        &mut self,
+        mut stage_flags: vk::ShaderStageFlags,
+        offset: u32,
+        data: impl Sized,
+    ) -> &mut Self {
+        // Check if the specified stages are a super-set of our actual stages
+        if stage_flags != stage_flags & self.pipeline.stages() {
+            // The user has manually specified too many stages
+            warn!("      unused shader stage flags");
+
+            // Remove extra stages
+            stage_flags &= self.pipeline.stages();
+        }
+
+        let data = any_as_u8_slice(&data);
+        for push_const in &self.pipeline.push_constants {
+            // Determine the range of the overall pipline push constants which overlap with `data`
+            let push_const_end = push_const.offset + push_const.size;
+            let data_end = offset + data.len() as u32;
+            let end = data_end.min(push_const_end);
+            let start = offset.max(push_const.offset);
+
+            if end > start {
+                trace!(
+                    "      push constants {:?} {}..{}",
+                    push_const.stage_flags,
+                    start,
+                    end
+                );
+
+                unsafe {
+                    self.device.cmd_push_constants(
+                        self.cmd_buf,
+                        self.pipeline.layout,
+                        push_const.stage_flags,
+                        start,
+                        &data[(start - offset) as usize..(end - offset) as usize],
+                    );
+                }
+            }
+        }
+
+        self
+    }
+
+    pub fn set_scissor(&mut self, x: i32, y: i32, width: u32, height: u32) -> &mut Self {
+        unsafe {
+            self.device.cmd_set_scissor(
+                self.cmd_buf,
+                0,
+                &[vk::Rect2D {
+                    extent: vk::Extent2D { width, height },
+                    offset: vk::Offset2D { x, y },
+                }],
+            );
+        }
+
+        self
+    }
+
+    pub fn set_scissors<S>(
+        &mut self,
+        first_scissor: u32,
+        scissors: impl IntoIterator<Item = S>,
+    ) -> &mut Self
+    where
+        S: Into<vk::Rect2D>,
+    {
+        self.rects.clear();
+
+        for scissor in scissors {
+            self.rects.push(scissor.into());
+        }
+
+        unsafe {
+            self.device
+                .cmd_set_scissor(self.cmd_buf, first_scissor, &self.rects);
+        }
+
+        self
+    }
+
+    pub fn set_viewport(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        depth: Range<f32>,
+    ) -> &mut Self {
+        unsafe {
+            self.device.cmd_set_viewport(
+                self.cmd_buf,
+                0,
+                &[vk::Viewport {
+                    x,
+                    y,
+                    width,
+                    height,
+                    min_depth: depth.start,
+                    max_depth: depth.end,
+                }],
+            );
+        }
+
+        self
+    }
+
+    pub fn set_viewports<V>(
+        &mut self,
+        first_viewport: u32,
+        viewports: impl IntoIterator<Item = V>,
+    ) -> &mut Self
+    where
+        V: Into<vk::Viewport>,
+    {
+        self.viewports.clear();
+
+        for viewport in viewports {
+            self.viewports.push(viewport.into());
+        }
+
+        unsafe {
+            self.device
+                .cmd_set_viewport(self.cmd_buf, first_viewport, &self.viewports);
+        }
+
+        self
     }
 }
 
@@ -240,17 +697,10 @@ where
     pub(super) fn new(graph: &'a mut RenderGraph<P>, name: String) -> PassRef<'a, P> {
         let pass_idx = graph.passes.len();
         graph.passes.push(Pass {
-            load_attachments: Default::default(),
-            resolve_attachments: Default::default(),
-            store_attachments: Default::default(),
             depth_stencil: None,
             execs: vec![Default::default()], // We start off with a default execution!
             name,
-            push_consts: vec![],
             render_area: None,
-            scissor: None,
-            subpasses: vec![],
-            viewport: None,
         });
 
         Self {
@@ -323,21 +773,24 @@ where
         binding.bind(self)
     }
 
-    pub fn execute(
-        mut self,
-        func: impl FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>) + Send + 'static,
-    ) -> Self {
-        self.push_execute(func);
-        self
-    }
-
     fn push_execute(
         &mut self,
         func: impl FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>) + Send + 'static,
     ) {
         let pass = self.as_mut();
-        pass.execs.last_mut().unwrap().func = Some(ExecutionFunction(Box::new(func)));
-        pass.execs.push(Default::default());
+        let exec = {
+            let last_exec = pass.execs.last_mut().unwrap();
+            last_exec.func = Some(ExecutionFunction(Box::new(func)));
+
+            let mut next_exec = Execution::default();
+            next_exec.pipeline = last_exec.pipeline.clone();
+            next_exec.loads = last_exec.loads.clone();
+            next_exec.resolves = last_exec.resolves.clone();
+            next_exec.stores = last_exec.stores.clone();
+            next_exec
+        };
+
+        pass.execs.push(exec);
         self.exec_idx += 1;
     }
 
@@ -369,7 +822,20 @@ where
         self.access_node(node, access)
     }
 
+    pub fn record_cmd_buf(
+        mut self,
+        func: impl FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>) + Send + 'static,
+    ) -> Self {
+        self.push_execute(func);
+        self
+    }
+
     pub fn submit_pass(self) -> &'a mut RenderGraph<P> {
+        // If nothing was done in this pass we can just ignore it
+        if self.exec_idx == 0 {
+            self.graph.passes.pop();
+        }
+
         self.graph
     }
 
@@ -584,61 +1050,29 @@ impl<'a, P> PipelinePassRef<'a, ComputePipeline<P>, P>
 where
     P: SharedPointerKind + Send + 'static,
 {
-    pub fn dispatch(mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) -> Self {
-        let pass = self.pass.as_mut();
-        let push_consts = take(&mut pass.push_consts);
-        let pipeline = pass
-            .execs
-            .last_mut()
-            .unwrap()
-            .pipeline
-            .as_ref()
-            .unwrap()
-            .unwrap_compute();
-        let layout = pipeline.layout;
+    pub fn record_compute(
+        mut self,
+        func: impl FnOnce(&mut Compute<'_, P>) + Send + 'static,
+    ) -> Self {
+        let pipeline = Shared::clone(
+            self.pass
+                .as_ref()
+                .execs
+                .last()
+                .unwrap()
+                .pipeline
+                .as_ref()
+                .unwrap()
+                .unwrap_compute(),
+        );
 
-        self.pass.push_execute(move |device, cmd_buf, _| unsafe {
-            push_constants(device, cmd_buf, push_consts, layout);
-
-            device.cmd_dispatch(cmd_buf, group_count_x, group_count_y, group_count_z);
-        });
-
-        self
-    }
-
-    pub fn dispatch_indirect(mut self, args_buf: BufferNode<P>, args_buf_offset: u64) -> Self {
-        let pass = self.pass.as_mut();
-        let push_consts = take(&mut pass.push_consts);
-        let pipeline = pass
-            .execs
-            .last_mut()
-            .unwrap()
-            .pipeline
-            .as_ref()
-            .unwrap()
-            .unwrap_compute();
-        let layout = pipeline.layout;
-
-        self.pass
-            .push_execute(move |device, cmd_buf, bindings| unsafe {
-                push_constants(device, cmd_buf, push_consts, layout);
-
-                device.cmd_dispatch_indirect(cmd_buf, *bindings[args_buf], args_buf_offset);
+        self.pass.push_execute(move |device, cmd_buf, bindings| {
+            func(&mut Compute {
+                bindings,
+                cmd_buf,
+                device,
+                pipeline,
             });
-
-        self
-    }
-
-    pub fn push_constants(self, data: impl Sized) -> Self {
-        self.push_constants_offset(0, data)
-    }
-
-    pub fn push_constants_offset(mut self, offset: u32, data: impl Sized) -> Self {
-        let data = any_as_u8_slice(&data).to_vec();
-        self.pass.as_mut().push_consts.push(PushConstantRange {
-            data,
-            offset,
-            stage: vk::ShaderStageFlags::COMPUTE,
         });
 
         self
@@ -649,6 +1083,10 @@ impl<'a, P> PipelinePassRef<'a, GraphicPipeline<P>, P>
 where
     P: SharedPointerKind + Send + 'static,
 {
+    /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` and `VK_ATTACHMENT_STORE_OP_STORE` for the render
+    /// pass attachment.
+    ///
+    /// The image is
     pub fn attach_color(
         self,
         attachment: AttachmentIndex,
@@ -657,9 +1095,12 @@ where
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
+
         self.attach_color_as(attachment, image, image_view_info)
     }
 
+    /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` and `VK_ATTACHMENT_STORE_OP_STORE` for the render
+    /// pass attachment.
     pub fn attach_color_as(
         self,
         attachment: AttachmentIndex,
@@ -668,10 +1109,13 @@ where
     ) -> Self {
         let image = image.into();
         let image_view_info = view_info.into();
+
         self.load_color_as(attachment, image, image_view_info)
             .store_color_as(attachment, image, image_view_info)
     }
 
+    /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` and `VK_ATTACHMENT_STORE_OP_STORE` for the render
+    /// pass attachment.
     pub fn attach_depth_stencil(
         self,
         attachment: AttachmentIndex,
@@ -680,9 +1124,12 @@ where
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
+
         self.attach_depth_stencil_as(attachment, image, image_view_info)
     }
 
+    /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` and `VK_ATTACHMENT_STORE_OP_STORE` for the render
+    /// pass attachment.
     pub fn attach_depth_stencil_as(
         self,
         attachment: AttachmentIndex,
@@ -691,122 +1138,66 @@ where
     ) -> Self {
         let image = image.into();
         let image_view_info = image_view_info.into();
+
         self.load_depth_stencil_as(attachment, image, image_view_info)
             .store_depth_stencil_as(attachment, image, image_view_info)
     }
 
+    /// Clears the render pass attachment of any existing data.
     pub fn clear_color(self, attachment: AttachmentIndex) -> Self {
-        self.clear_color_value(attachment, Default::default())
+        self.clear_color_value(attachment, [0, 0, 0, 0])
     }
 
+    /// Clears the render pass attachment of any existing data.
     pub fn clear_color_value(
         mut self,
         attachment: AttachmentIndex,
-        color_value: vk::ClearColorValue,
+        color: impl Into<Color>,
     ) -> Self {
-        assert!(self
-            .pass
-            .as_ref()
-            .load_attachments
-            .attached
-            .get(attachment as usize)
-            .is_none());
+        let color = color.into();
+        let pass = self.pass.as_mut();
+        let exec = pass.execs.last_mut().unwrap();
 
-        self.pass
-            .as_mut()
-            .execs
-            .last_mut()
-            .unwrap()
-            .clears
-            .insert(attachment, vk::ClearValue { color: color_value });
+        debug_assert!(exec.loads.attached.get(attachment as usize).is_none());
+
+        exec.clears.insert(
+            attachment,
+            vk::ClearValue {
+                color: vk::ClearColorValue { float32: color.0 },
+            },
+        );
+
         self
     }
 
+    /// Clears the render pass attachment of any existing data.
     pub fn clear_depth_stencil(self, attachment: AttachmentIndex) -> Self {
-        self.clear_depth_stencil_value(attachment, Default::default())
+        self.clear_depth_stencil_value(attachment, 0.0, 0)
     }
 
+    /// Clears the render pass attachment of any existing data.
     pub fn clear_depth_stencil_value(
         mut self,
         attachment: AttachmentIndex,
-        depth_stencil_value: vk::ClearDepthStencilValue,
+        depth_value: f32,
+        stencil_value: u32,
     ) -> Self {
         let pass = self.pass.as_mut();
+        let exec = pass.execs.last_mut().unwrap();
 
-        assert!(pass.load_attachments.depth_stencil.is_none());
-        assert!(pass
-            .load_attachments
-            .attached
-            .get(attachment as usize)
-            .is_none());
+        debug_assert!(exec.loads.depth_stencil.is_none());
+        debug_assert!(exec.loads.attached.get(attachment as usize).is_none());
 
-        self.pass.as_mut().execs.last_mut().unwrap().clears.insert(
+        exec.clears.insert(
             attachment,
             vk::ClearValue {
-                depth_stencil: depth_stencil_value,
+                depth_stencil: vk::ClearDepthStencilValue {
+                    depth: depth_value,
+                    stencil: stencil_value,
+                },
             },
         );
-        self
-    }
 
-    pub fn draw(
-        mut self,
-        func: impl FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>) + Send + 'static,
-    ) -> Self {
-        use std::slice::from_ref;
-
-        let pass = self.pass.as_mut();
-        let push_consts = take(&mut pass.push_consts);
-        let scissor = take(&mut pass.scissor);
-        let viewport = take(&mut pass.viewport);
-        let pipeline = pass
-            .execs
-            .last_mut()
-            .unwrap()
-            .pipeline
-            .as_ref()
-            .unwrap()
-            .unwrap_graphic();
-        let layout = pipeline.layout;
-
-        self.pass
-            .push_execute(move |device, cmd_buf, bindings| unsafe {
-                push_constants(device, cmd_buf, push_consts, layout);
-
-                if let Some((area, depth)) = viewport {
-                    device.cmd_set_viewport(
-                        cmd_buf,
-                        0,
-                        from_ref(&vk::Viewport {
-                            x: area.offset.x,
-                            y: area.offset.y,
-                            width: area.extent.x,
-                            height: area.extent.y,
-                            min_depth: depth.start,
-                            max_depth: depth.end,
-                        }),
-                    );
-                }
-
-                if let Some(area) = scissor {
-                    device.cmd_set_scissor(
-                        cmd_buf,
-                        0,
-                        from_ref(&vk::Rect2D {
-                            extent: vk::Extent2D {
-                                width: area.extent.x,
-                                height: area.extent.y,
-                            },
-                            offset: vk::Offset2D {
-                                x: area.offset.x,
-                                y: area.offset.y,
-                            },
-                        }),
-                    );
-                }
-
-                func(device, cmd_buf, bindings);
-            });
         self
     }
 
@@ -816,6 +1207,10 @@ where
         (image_info.fmt, image_info.sample_count)
     }
 
+    /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` for the render pass attachment, and loads an image
+    /// into the framebuffer.
+    ///
+    /// _NOTE:_ Order matters, call load before resolve or store.
     pub fn load_color(
         self,
         attachment: AttachmentIndex,
@@ -824,9 +1219,14 @@ where
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
+
         self.attach_color_as(attachment, image, image_view_info)
     }
 
+    /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` for the render pass attachment, and loads an image
+    /// into the framebuffer.
+    ///
+    /// _NOTE:_ Order matters, call load before resolve or store.
     pub fn load_color_as(
         mut self,
         attachment: AttachmentIndex,
@@ -840,8 +1240,9 @@ where
 
         {
             let pass = self.pass.as_mut();
+            let exec = pass.execs.last_mut().unwrap();
 
-            assert!(pass.load_attachments.insert_color(
+            assert!(exec.loads.insert_color(
                 attachment,
                 image_view_info.aspect_mask,
                 image_view_info.fmt,
@@ -849,35 +1250,36 @@ where
                 node_idx,
             ));
 
-            let color_attachment = pass
-                .load_attachments
-                .attached
-                .get(attachment as usize)
-                .unwrap()
-                .unwrap();
+            #[cfg(debug_assertions)]
+            {
+                // Unwrap the attachment we inserted above
+                let color_attachment = exec
+                    .loads
+                    .attached
+                    .get(attachment as usize)
+                    .copied()
+                    .flatten()
+                    .unwrap();
 
-            assert!(self
-                .pass
-                .as_ref()
-                .store_attachments
-                .attached
-                .get(attachment as usize)
-                .map(|stored_attachment| Attachment::are_compatible(
-                    *stored_attachment,
-                    Some(color_attachment)
-                ))
-                .unwrap_or(true));
-            assert!(self
-                .pass
-                .as_ref()
-                .resolve_attachments
-                .attached
-                .get(attachment as usize)
-                .map(|resolved_attachment| Attachment::are_compatible(
-                    *resolved_attachment,
-                    Some(color_attachment)
-                ))
-                .unwrap_or(true));
+                assert!(exec
+                    .stores
+                    .attached
+                    .get(attachment as usize)
+                    .map(|stored_attachment| Attachment::are_compatible(
+                        *stored_attachment,
+                        Some(color_attachment)
+                    ))
+                    .unwrap_or(true));
+                assert!(exec
+                    .resolves
+                    .attached
+                    .get(attachment as usize)
+                    .map(|resolved_attachment| Attachment::are_compatible(
+                        *resolved_attachment,
+                        Some(color_attachment)
+                    ))
+                    .unwrap_or(true));
+            }
         }
 
         self.pass.push_node_access(
@@ -889,6 +1291,10 @@ where
         self
     }
 
+    /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` for the render pass attachment, and loads an image
+    /// into the framebuffer.
+    ///
+    /// _NOTE:_ Order matters, call load before resolve or store.
     pub fn load_depth_stencil(
         self,
         attachment: AttachmentIndex,
@@ -897,9 +1303,14 @@ where
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
+
         self.load_depth_stencil_as(attachment, image, image_view_info)
     }
 
+    /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` for the render pass attachment, and loads an image
+    /// into the framebuffer.
+    ///
+    /// _NOTE:_ Order matters, call load before resolve or store.
     pub fn load_depth_stencil_as(
         mut self,
         attachment: AttachmentIndex,
@@ -913,8 +1324,9 @@ where
 
         {
             let pass = self.pass.as_mut();
+            let exec = pass.execs.last_mut().unwrap();
 
-            assert!(pass.load_attachments.set_depth_stencil(
+            assert!(exec.loads.set_depth_stencil(
                 attachment,
                 image_view_info.aspect_mask,
                 image_view_info.fmt,
@@ -922,28 +1334,28 @@ where
                 node_idx,
             ));
 
-            let (_, loaded_attachment) = pass.load_attachments.depth_stencil().unwrap();
+            #[cfg(debug_assertions)]
+            {
+                // Unwrap the attachment we inserted above
+                let (_, loaded_attachment) = exec.loads.depth_stencil().unwrap();
 
-            assert!(self
-                .pass
-                .as_ref()
-                .store_attachments
-                .depth_stencil()
-                .map(
-                    |(attachment_idx, stored_attachment)| attachment == attachment_idx
-                        && Attachment::are_identical(stored_attachment, loaded_attachment)
-                )
-                .unwrap_or(true));
-            assert!(self
-                .pass
-                .as_ref()
-                .resolve_attachments
-                .depth_stencil()
-                .map(
-                    |(attachment_idx, resolved_attachment)| attachment == attachment_idx
-                        && Attachment::are_identical(resolved_attachment, loaded_attachment)
-                )
-                .unwrap_or(true));
+                assert!(exec
+                    .stores
+                    .depth_stencil()
+                    .map(
+                        |(attachment_idx, stored_attachment)| attachment == attachment_idx
+                            && Attachment::are_identical(stored_attachment, loaded_attachment)
+                    )
+                    .unwrap_or(true));
+                assert!(exec
+                    .resolves
+                    .depth_stencil()
+                    .map(
+                        |(attachment_idx, resolved_attachment)| attachment == attachment_idx
+                            && Attachment::are_identical(resolved_attachment, loaded_attachment)
+                    )
+                    .unwrap_or(true));
+            }
         }
 
         self.pass.push_node_access(
@@ -955,79 +1367,63 @@ where
         self
     }
 
-    fn pipeline(&self) -> &GraphicPipeline<P> {
-        self.pass
-            .as_ref()
-            .execs
-            .last()
-            .unwrap()
-            .pipeline
-            .as_ref()
-            .unwrap()
-            .unwrap_graphic()
-    }
+    /// Append a graphic subpass onto the current pass of the parent render graph.
+    pub fn record_subpass(mut self, func: impl FnOnce(&mut Draw<'_, P>) + Send + 'static) -> Self {
+        let pipeline = Shared::clone(
+            self.pass
+                .as_ref()
+                .execs
+                .last()
+                .unwrap()
+                .pipeline
+                .as_ref()
+                .unwrap()
+                .unwrap_graphic(),
+        );
 
-    fn pipeline_stages(pipeline: &GraphicPipeline<P>) -> vk::ShaderStageFlags {
-        pipeline
-            .state
-            .stages
-            .iter()
-            .map(|stage| stage.flags)
-            .reduce(|j, k| j | k)
-            .unwrap_or_default()
-    }
+        self.pass.push_execute(move |device, cmd_buf, bindings| {
+            use std::cell::RefCell;
 
-    pub fn push_constants(self, data: impl Sized) -> Self {
-        let pipeline = self.pipeline();
-        let whole_stage = Self::pipeline_stages(pipeline);
-        self.push_stage_constants(0, whole_stage, data)
-    }
-
-    pub fn push_stage_constants(
-        mut self,
-        offset: u32,
-        mut stage: vk::ShaderStageFlags,
-        data: impl Sized,
-    ) -> Self {
-        let pipeline = self.pipeline();
-        let whole_stage = Self::pipeline_stages(pipeline);
-
-        if stage & whole_stage != stage {
-            warn!("Extra stage flags specified");
-
-            stage &= whole_stage;
-        }
-
-        let data = any_as_u8_slice(&data);
-        let mut push_consts = vec![];
-        for range in &pipeline.push_constant_ranges {
-            let stage = range.stage_flags & stage;
-            if !stage.is_empty()
-                && offset <= range.offset
-                && offset as usize + data.len() > range.offset as usize
-            {
-                let start = (range.offset - offset) as usize;
-                let end = range.offset as usize + (data.len() - start).min(range.size as usize);
-                let data = data[start..end].to_vec();
-
-                // trace!("Push constant {:?} {}..{}", stage, start, end);
-
-                push_consts.push(PushConstantRange {
-                    data,
-                    offset: range.offset,
-                    stage,
-                });
+            #[derive(Default)]
+            struct Tls {
+                buffers: Vec<vk::Buffer>,
+                offsets: Vec<vk::DeviceSize>,
+                rects: Vec<vk::Rect2D>,
+                viewports: Vec<vk::Viewport>,
             }
-        }
 
-        self.pass
-            .as_mut()
-            .push_consts
-            .extend(push_consts.into_iter());
+            thread_local! {
+                static TLS: RefCell<Tls> = Default::default();
+            }
+
+            TLS.with(|tls| {
+                let Tls {
+                    buffers,
+                    offsets,
+                    rects,
+                    viewports,
+                } = &mut *tls.borrow_mut();
+
+                func(&mut Draw {
+                    bindings,
+                    buffers,
+                    cmd_buf,
+                    device,
+                    offsets,
+                    pipeline,
+                    rects,
+                    viewports,
+                });
+            });
+        });
 
         self
     }
 
+    /// Resolves a multisample framebuffer to a non-multisample image for the render pass
+    /// attachment.
+    ///
+    /// _NOTE:_ Order matters, call resolve after load.
     pub fn resolve_color(
         self,
         attachment: AttachmentIndex,
@@ -1036,9 +1432,14 @@ where
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
+
         self.resolve_color_as(attachment, image, image_view_info)
     }
 
+    /// Resolves a multisample framebuffer to a non-multisample image for the render pass
+    /// attachment.
+    ///
+    /// _NOTE:_ Order matters, call resolve after load.
     pub fn resolve_color_as(
         mut self,
         attachment: AttachmentIndex,
@@ -1052,8 +1453,9 @@ where
 
         {
             let pass = self.pass.as_mut();
+            let exec = pass.execs.last_mut().unwrap();
 
-            assert!(pass.resolve_attachments.insert_color(
+            assert!(exec.resolves.insert_color(
                 attachment,
                 image_view_info.aspect_mask,
                 image_view_info.fmt,
@@ -1061,31 +1463,28 @@ where
                 node_idx,
             ));
 
-            let resolved_attachment = pass
-                .resolve_attachments
-                .attached
-                .get(attachment as usize)
-                .unwrap()
-                .unwrap();
+            #[cfg(debug_assertions)]
+            {
+                // Unwrap the attachment we inserted above
+                let resolved_attachment = exec
+                    .resolves
+                    .attached
+                    .get(attachment as usize)
+                    .copied()
+                    .flatten()
+                    .unwrap();
 
-            assert!(self
-                .pass
-                .as_ref()
-                .load_attachments
-                .attached
-                .get(attachment as usize)
-                .map(|loaded_attachment| Attachment::are_compatible(
-                    *loaded_attachment,
-                    Some(resolved_attachment)
-                ))
-                .unwrap_or(true));
-            assert!(self
-                .pass
-                .as_ref()
-                .store_attachments
-                .attached
-                .get(attachment as usize)
-                .is_none());
+                assert!(exec
+                    .loads
+                    .attached
+                    .get(attachment as usize)
+                    .map(|loaded_attachment| Attachment::are_compatible(
+                        *loaded_attachment,
+                        Some(resolved_attachment)
+                    ))
+                    .unwrap_or(true));
+                assert!(exec.stores.attached.get(attachment as usize).is_none());
+            }
         }
 
         self.pass.push_node_access(
@@ -1097,6 +1496,10 @@ where
         self
     }
 
+    /// Resolves a multisample framebuffer to a non-multisample image for the render pass
+    /// attachment.
+    ///
+    /// _NOTE:_ Order matters, call resolve after load.
     pub fn resolve_depth_stencil(
         self,
         attachment: AttachmentIndex,
@@ -1105,9 +1508,14 @@ where
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
+
         self.resolve_depth_stencil_as(attachment, image, image_view_info)
     }
 
+    /// Resolves a multisample framebuffer to a non-multisample image for the render pass
+    /// attachment.
+    ///
+    /// _NOTE:_ Order matters, call resolve after load.
     pub fn resolve_depth_stencil_as(
         mut self,
         attachment: AttachmentIndex,
@@ -1121,8 +1529,9 @@ where
 
         {
             let pass = self.pass.as_mut();
+            let exec = pass.execs.last_mut().unwrap();
 
-            assert!(pass.resolve_attachments.set_depth_stencil(
+            assert!(exec.resolves.set_depth_stencil(
                 attachment,
                 image_view_info.aspect_mask,
                 image_view_info.fmt,
@@ -1130,19 +1539,21 @@ where
                 node_idx,
             ));
 
-            let (_, resolved_attachment) = pass.resolve_attachments.depth_stencil().unwrap();
+            #[cfg(debug_assertions)]
+            {
+                // Unwrap the attachment we inserted above
+                let (_, resolved_attachment) = exec.resolves.depth_stencil().unwrap();
 
-            assert!(self
-                .pass
-                .as_ref()
-                .load_attachments
-                .depth_stencil()
-                .map(
-                    |(attachment_idx, loaded_attachment)| attachment == attachment_idx
-                        && Attachment::are_identical(loaded_attachment, resolved_attachment)
-                )
-                .unwrap_or(true));
-            assert!(self.pass.as_ref().store_attachments.depth_stencil.is_none());
+                assert!(exec
+                    .loads
+                    .depth_stencil()
+                    .map(
+                        |(attachment_idx, loaded_attachment)| attachment == attachment_idx
+                            && Attachment::are_identical(loaded_attachment, resolved_attachment)
+                    )
+                    .unwrap_or(true));
+                assert!(exec.stores.depth_stencil.is_none());
+            }
         }
 
         self.pass.push_node_access(
@@ -1161,51 +1572,61 @@ where
         self
     }
 
-    // This can only be called once per pass.
-    pub fn set_depth_stencil(mut self, depth_stencil: DepthStencilMode) -> Self {
+    /// Sets a particular depth/stencil mode.
+    ///
+    /// The default depth/stencil mode is:
+    ///
+    /// ```
+    /// # use ash::vk;
+    /// # use ordered_float::OrderedFloat;
+    /// # use screen_13::driver::{DepthStencilMode, StencilMode};
+    /// DepthStencilMode {
+    ///     back: StencilMode::Noop,
+    ///     front: StencilMode::Noop,
+    ///     bounds_test: false,
+    ///     depth_test: true,
+    ///     depth_write: true,
+    ///     stencil_test: false,
+    ///     compare_op: vk::CompareOp::GREATER_OR_EQUAL,
+    ///     min: OrderedFloat(0.0),
+    ///     max: OrderedFloat(1.0),
+    /// }
+    /// # ;()
+    /// ```
+    pub fn set_depth_stencil(&mut self, depth_stencil: DepthStencilMode) -> &mut Self {
         let pass = self.pass.as_mut();
 
         assert!(pass.depth_stencil.is_none());
 
         pass.depth_stencil = Some(depth_stencil);
+
         self
     }
 
-    // This can only be called once per pass! last value wins
-    pub fn set_render_area(mut self, x: i32, y: i32, width: u32, height: u32) -> Self {
-        self.pass.as_mut().render_area = Some(Rect {
-            extent: uvec2(width, height),
-            offset: ivec2(x, y),
+    /// Sets the `[renderArea](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkRenderPassBeginInfo.html#_c_specification)`
+    /// field when beginning a render pass.
+    ///
+    /// NOTE: Setting this value will cause the viewport and scissor to be unset, which is not the default
+    /// behavior. When this value is set you should call `set_viewport` and `set_scissor` on the subpass.
+    ///
+    /// If not set, this value defaults to the first loaded, resolved, or stored attachment dimensions and
+    /// sets the viewport and scissor to the same values, with a `0..1` depth if not specified by
+    /// `set_depth_stencil`.
+    pub fn set_render_area(&mut self, x: i32, y: i32, width: u32, height: u32) -> &mut Self {
+        self.pass.as_mut().render_area = Some(Area {
+            height,
+            width,
+            x,
+            y,
         });
+
         self
     }
 
-    pub fn set_scissor(mut self, x: i32, y: i32, width: u32, height: u32) -> Self {
-        self.pass.as_mut().scissor = Some(Rect {
-            extent: uvec2(width, height),
-            offset: ivec2(x, y),
-        });
-        self
-    }
-
-    pub fn set_viewport(
-        mut self,
-        x: f32,
-        y: f32,
-        width: f32,
-        height: f32,
-        depth: Range<f32>,
-    ) -> Self {
-        self.pass.as_mut().viewport = Some((
-            Rect {
-                extent: vec2(width, height),
-                offset: vec2(x, y),
-            },
-            depth,
-        ));
-        self
-    }
-
+    /// Specifies `VK_ATTACHMENT_STORE_OP_STORE` for the render pass attachment, and stores the
+    /// rendered pixels into an image.
+    ///
+    /// _NOTE:_ Order matters, call store after load.
     pub fn store_color(
         self,
         attachment: AttachmentIndex,
@@ -1214,9 +1635,14 @@ where
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
+
         self.store_color_as(attachment, image, image_view_info)
     }
 
+    /// Specifies `VK_ATTACHMENT_STORE_OP_STORE` for the render pass attachment, and stores the
+    /// rendered pixels into an image.
+    ///
+    /// _NOTE:_ Order matters, call store after load.
     pub fn store_color_as(
         mut self,
         attachment: AttachmentIndex,
@@ -1230,8 +1656,9 @@ where
 
         {
             let pass = self.pass.as_mut();
+            let exec = pass.execs.last_mut().unwrap();
 
-            assert!(pass.store_attachments.insert_color(
+            assert!(exec.stores.insert_color(
                 attachment,
                 image_view_info.aspect_mask,
                 image_view_info.fmt,
@@ -1239,31 +1666,28 @@ where
                 node_idx,
             ));
 
-            let stored_attachment = pass
-                .store_attachments
-                .attached
-                .get(attachment as usize)
-                .unwrap()
-                .unwrap();
+            #[cfg(debug_assertions)]
+            {
+                // Unwrap the attachment we inserted above
+                let stored_attachment = exec
+                    .stores
+                    .attached
+                    .get(attachment as usize)
+                    .copied()
+                    .flatten()
+                    .unwrap();
 
-            assert!(self
-                .pass
-                .as_ref()
-                .load_attachments
-                .attached
-                .get(attachment as usize)
-                .map(|loaded_attachment| Attachment::are_compatible(
-                    *loaded_attachment,
-                    Some(stored_attachment)
-                ))
-                .unwrap_or(true));
-            assert!(self
-                .pass
-                .as_ref()
-                .resolve_attachments
-                .attached
-                .get(attachment as usize)
-                .is_none());
+                assert!(exec
+                    .loads
+                    .attached
+                    .get(attachment as usize)
+                    .map(|loaded_attachment| Attachment::are_compatible(
+                        *loaded_attachment,
+                        Some(stored_attachment)
+                    ))
+                    .unwrap_or(true));
+                assert!(exec.resolves.attached.get(attachment as usize).is_none());
+            }
         }
 
         self.pass.push_node_access(
@@ -1275,6 +1699,10 @@ where
         self
     }
 
+    /// Specifies `VK_ATTACHMENT_STORE_OP_STORE` for the render pass attachment, and stores the
+    /// rendered pixels into an image.
+    ///
+    /// _NOTE:_ Order matters, call store after load.
     pub fn store_depth_stencil(
         self,
         attachment: AttachmentIndex,
@@ -1283,9 +1711,14 @@ where
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
+
         self.store_depth_stencil_as(attachment, image, image_view_info)
     }
 
+    /// Specifies `VK_ATTACHMENT_STORE_OP_STORE` for the render pass attachment, and stores the
+    /// rendered pixels into an image.
+    ///
+    /// _NOTE:_ Order matters, call store after load.
     pub fn store_depth_stencil_as(
         mut self,
         attachment: AttachmentIndex,
@@ -1299,8 +1732,9 @@ where
 
         {
             let pass = self.pass.as_mut();
+            let exec = pass.execs.last_mut().unwrap();
 
-            assert!(pass.store_attachments.set_depth_stencil(
+            assert!(exec.stores.set_depth_stencil(
                 attachment,
                 image_view_info.aspect_mask,
                 image_view_info.fmt,
@@ -1308,24 +1742,21 @@ where
                 node_idx,
             ));
 
-            let (_, stored_attachment) = pass.store_attachments.depth_stencil().unwrap();
+            #[cfg(debug_assertions)]
+            {
+                // Unwrap the attachment we inserted above
+                let (_, stored_attachment) = exec.stores.depth_stencil().unwrap();
 
-            assert!(self
-                .pass
-                .as_ref()
-                .load_attachments
-                .depth_stencil()
-                .map(
-                    |(attachment_idx, loaded_attachment)| attachment == attachment_idx
-                        && Attachment::are_identical(loaded_attachment, stored_attachment)
-                )
-                .unwrap_or(true));
-            assert!(self
-                .pass
-                .as_ref()
-                .resolve_attachments
-                .depth_stencil
-                .is_none());
+                assert!(exec
+                    .loads
+                    .depth_stencil()
+                    .map(
+                        |(attachment_idx, loaded_attachment)| attachment == attachment_idx
+                            && Attachment::are_identical(loaded_attachment, stored_attachment)
+                    )
+                    .unwrap_or(true));
+                assert!(exec.resolves.depth_stencil.is_none());
+            }
         }
 
         self.pass.push_node_access(
@@ -1349,26 +1780,49 @@ impl<'a, P> PipelinePassRef<'a, RayTracePipeline<P>, P>
 where
     P: SharedPointerKind + Send + 'static,
 {
-    pub fn push_constants(self, data: impl Sized) -> Self {
-        // TODO: Flags need limiting
-        self.push_stage_constants(0, vk::ShaderStageFlags::ALL, data)
-    }
-
-    pub fn push_stage_constants(
+    pub fn record_ray_trace(
         mut self,
-        offset: u32,
-        stage: vk::ShaderStageFlags,
-        data: impl Sized,
+        func: impl FnOnce(&mut RayTrace<'_, P>) + Send + 'static,
     ) -> Self {
-        let data = any_as_u8_slice(&data).to_vec();
-        self.pass.as_mut().push_consts.push(PushConstantRange {
-            data,
-            offset,
-            stage,
+        let pipeline = Shared::clone(
+            self.pass
+                .as_ref()
+                .execs
+                .last()
+                .unwrap()
+                .pipeline
+                .as_ref()
+                .unwrap()
+                .unwrap_ray_trace(),
+        );
+
+        self.pass.push_execute(move |device, cmd_buf, bindings| {
+            func(&mut RayTrace {
+                bindings,
+                cmd_buf,
+                device,
+                pipeline,
+            });
         });
+
         self
     }
+}
 
+pub struct RayTrace<'a, P>
+where
+    P: SharedPointerKind,
+{
+    bindings: Bindings<'a, P>,
+    cmd_buf: vk::CommandBuffer,
+    device: &'a ash::Device,
+    pipeline: Shared<RayTracePipeline<P>, P>,
+}
+
+impl<'a, P> RayTrace<'a, P>
+where
+    P: SharedPointerKind,
+{
     pub fn trace_rays(self, _tlas: RayTraceAccelerationNode<P>, _extent: UVec3) -> Self {
         // let mut pass = self.pass.as_mut();
         // let push_consts = take(&mut pass.push_consts);
@@ -1398,7 +1852,7 @@ where
         self,
         _tlas: RayTraceAccelerationNode<P>,
         _args_buf: BufferNode<P>,
-        _args_buf_offset: u64,
+        _args_buf_offset: vk::DeviceSize,
     ) -> Self {
         // let mut pass = self.pass.as_mut();
         // let push_consts = take(&mut pass.push_consts);

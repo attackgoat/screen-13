@@ -6,8 +6,7 @@ use {
         Display, DisplayError,
     },
     archery::SharedPointerKind,
-    glam::{uvec2, UVec2},
-    log::{debug, info, trace},
+    log::{debug, info, trace, warn},
     std::{
         marker::PhantomData,
         mem::take,
@@ -51,11 +50,8 @@ where
         Default::default()
     }
 
-    pub fn resolution(&self) -> UVec2 {
-        uvec2(
-            self.window.inner_size().width,
-            self.window.inner_size().height,
-        )
+    pub fn height(&self) -> u32 {
+        self.window.inner_size().height
     }
 
     pub fn run<FrameFn>(mut self, mut frame_fn: FrameFn) -> Result<(), DisplayError>
@@ -87,7 +83,7 @@ where
         let mut dt_filtered = 1.0 / refresh_rate;
         last_frame -= Duration::from_secs_f32(dt_filtered);
 
-        debug!("First frame dt: {}", dt_filtered);
+        debug!("first frame dt: {}", dt_filtered);
 
         while !will_exit {
             puffin::GlobalProfiler::lock().new_frame();
@@ -108,7 +104,7 @@ where
             });
 
             if !events.is_empty() {
-                trace!("Received {} events", events.len(),);
+                trace!("received {} events", events.len(),);
             }
 
             let now = Instant::now();
@@ -133,10 +129,11 @@ where
             frame_fn(FrameContext {
                 device: &self.device,
                 dt: dt_filtered,
+                height: self.height(),
                 render_graph: &mut render_graph,
-                resolution: self.resolution(),
                 events: take(&mut events).as_slice(),
-                swapchain,
+                swapchain_image: swapchain,
+                width: self.width(),
                 window: &self.window,
                 will_exit: &mut will_exit,
             });
@@ -144,7 +141,7 @@ where
             let elapsed = Instant::now() - now;
 
             trace!(
-                "Frame complete ({}% load, {} μs)",
+                "frame complete ({}% load, {} μs)",
                 ((elapsed.as_secs_f32() / refresh_rate) * 100.0) as usize,
                 elapsed.as_micros()
             );
@@ -153,6 +150,14 @@ where
         }
 
         Ok(())
+    }
+
+    pub fn width(&self) -> u32 {
+        self.window.inner_size().width
+    }
+
+    pub fn window(&self) -> &Window {
+        &self.window
     }
 }
 
@@ -271,10 +276,11 @@ where
             .map_err(|_| DriverError::InvalidData)?; // TODO: More like invalid input
 
         // Create an operating system window via Winit
-        let window = self
-            .window
-            .build(&self.event_loop)
-            .map_err(|_| DriverError::Unsupported)?;
+        let window = self.window.build(&self.event_loop).map_err(|err| {
+            warn!("{err}");
+
+            DriverError::Unsupported
+        })?;
         let (width, height) = {
             let inner_size = window.inner_size();
             (inner_size.width, inner_size.height)
@@ -285,7 +291,7 @@ where
         let display = Display::new(&driver.device, driver.swapchain);
 
         info!(
-            "Display resolution: {}x{} ({}x scale)",
+            "display resolution: {}x{} ({}x scale)",
             width,
             height,
             window.scale_factor() as f32,

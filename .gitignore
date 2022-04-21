@@ -4,3 +4,4 @@ Cargo.lock
 !contrib/.vscode/
 imgui.ini
 **/*.pak
+**/*.profraw

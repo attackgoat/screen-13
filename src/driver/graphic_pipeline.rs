@@ -57,7 +57,12 @@ impl Default for BlendMode {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Builder, Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[builder(
+    build_fn(private, name = "fallible_build"),
+    derive(Debug),
+    pattern = "owned"
+)]
 pub struct DepthStencilMode {
     pub back: StencilMode,
     pub bounds_test: bool,
@@ -71,6 +76,11 @@ pub struct DepthStencilMode {
 }
 
 impl DepthStencilMode {
+    #[allow(clippy::new_ret_no_self)]
+    pub fn new() -> DepthStencilModeBuilder {
+        DepthStencilModeBuilder::default()
+    }
+
     pub(super) fn into_vk(self) -> vk::PipelineDepthStencilStateCreateInfo {
         vk::PipelineDepthStencilStateCreateInfo {
             back: self.back.into_vk(),
@@ -87,19 +97,47 @@ impl DepthStencilMode {
     }
 }
 
-impl Default for DepthStencilMode {
-    fn default() -> Self {
-        Self {
-            back: StencilMode::Noop,
-            bounds_test: false,
-            compare_op: vk::CompareOp::GREATER_OR_EQUAL,
-            depth_test: true,
-            depth_write: true,
-            front: StencilMode::Noop,
-            min: OrderedFloat(0.0),
-            max: OrderedFloat(1.0),
-            stencil_test: false,
+// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
+impl DepthStencilModeBuilder {
+    pub fn build(mut self) -> DepthStencilMode {
+        if self.back.is_none() {
+            self.back = Some(Default::default());
         }
+
+        if self.bounds_test.is_none() {
+            self.bounds_test = Some(Default::default());
+        }
+
+        if self.compare_op.is_none() {
+            self.compare_op = Some(Default::default());
+        }
+
+        if self.depth_test.is_none() {
+            self.depth_test = Some(Default::default());
+        }
+
+        if self.depth_write.is_none() {
+            self.depth_write = Some(Default::default());
+        }
+
+        if self.front.is_none() {
+            self.front = Some(Default::default());
+        }
+
+        if self.min.is_none() {
+            self.min = Some(Default::default());
+        }
+
+        if self.max.is_none() {
+            self.max = Some(Default::default());
+        }
+
+        if self.stencil_test.is_none() {
+            self.stencil_test = Some(Default::default());
+        }
+
+        self.fallible_build()
+            .expect("All required fields set at initialization")
     }
 }
 
@@ -113,8 +151,9 @@ where
     device: Shared<Device<P>, P>,
     pub info: GraphicPipelineInfo,
     pub layout: vk::PipelineLayout,
-    pub push_constant_ranges: Vec<vk::PushConstantRange>,
+    pub push_constants: Vec<vk::PushConstantRange>,
     shader_modules: Vec<vk::ShaderModule>,
+    stage_flags: vk::ShaderStageFlags,
     pub state: GraphicPipelineState,
 }
 
@@ -139,35 +178,56 @@ where
             .map(|shader| shader.into())
             .collect::<Vec<Shader>>();
 
+        let vertex_input = shaders
+            .iter()
+            .find(|shader| shader.stage == vk::ShaderStageFlags::VERTEX)
+            .expect("vertex shader not found")
+            .vertex_input()?;
+
+        // Check for proper stages because vulkan may not complain but this is bad
+        let has_fragment_stage = shaders
+            .iter()
+            .find(|shader| shader.stage.contains(vk::ShaderStageFlags::FRAGMENT))
+            .is_some();
+        let has_tesselation_stage = shaders
+            .iter()
+            .find(|shader| {
+                shader
+                    .stage
+                    .contains(vk::ShaderStageFlags::TESSELLATION_CONTROL)
+            })
+            .is_some()
+            && shaders
+                .iter()
+                .find(|shader| {
+                    shader
+                        .stage
+                        .contains(vk::ShaderStageFlags::TESSELLATION_EVALUATION)
+                })
+                .is_some();
+        let has_geometry_stage = shaders
+            .iter()
+            .find(|shader| shader.stage.contains(vk::ShaderStageFlags::GEOMETRY))
+            .is_some();
+
+        debug_assert!(
+            has_fragment_stage || has_tesselation_stage || has_geometry_stage,
+            "invalid shader stage combination"
+        );
+
         let descriptor_bindings = shaders
             .iter()
             .map(|shader| shader.descriptor_bindings(&device))
             .collect::<Vec<_>>();
         if let Some(err) = descriptor_bindings.iter().find(|item| item.is_err()) {
-            warn!("Unable to inspect shader descriptor bindings: {:?}", err);
+            warn!("unable to inspect shader descriptor bindings: {:?}", err);
 
             return Err(DriverError::Unsupported);
         }
 
-        let mut descriptor_bindings = descriptor_bindings
-            .into_iter()
-            .map(|item| item.unwrap())
-            .collect::<Vec<_>>();
-
-        let vertex_input = shaders
-            .iter()
-            .find(|shader| shader.stage == vk::ShaderStageFlags::VERTEX)
-            .expect("Unable to find vertex shader")
-            .vertex_input()?;
-
-        // debug!("Vertex reflection found: {:#?}", vertex_input);
-
-        // We allow extra descriptors because specialization constants aren't specified yet
-        if let Some(extra_descriptors) = &info.extra_descriptors {
-            descriptor_bindings.push(extra_descriptors.clone());
-        }
-
-        let descriptor_bindings = Shader::merge_descriptor_bindings(descriptor_bindings);
+        let descriptor_bindings = Shader::merge_descriptor_bindings(
+            descriptor_bindings.into_iter().map(|item| item.unwrap()),
+        );
         let stages = shaders
             .iter()
             .map(|shader| shader.stage)
@@ -181,7 +241,7 @@ where
             .map(|(_, descriptor_set_layout)| **descriptor_set_layout)
             .collect::<Box<[_]>>();
 
-        let push_constant_ranges = shaders
+        let mut push_constants = shaders
             .iter()
             .map(|shader| shader.push_constant_range())
             .collect::<Result<Vec<_>, _>>()?
@@ -189,19 +249,19 @@ where
             .filter_map(|mut push_const| push_const.take())
             .collect::<Vec<_>>();
 
-        // for pcr in &push_constant_ranges {
-        //     trace!("Graphic push constant {:?} {}..{}", pcr.stage_flags, pcr.offset, pcr.offset + pcr.size);
-        // }
-
         unsafe {
             let layout = device
                 .create_pipeline_layout(
                     &vk::PipelineLayoutCreateInfo::builder()
                         .set_layouts(&descriptor_sets_layouts)
-                        .push_constant_ranges(&push_constant_ranges),
+                        .push_constant_ranges(&push_constants),
                     None,
                 )
-                .map_err(|_| DriverError::Unsupported)?;
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?;
             let shader_info = shaders
                 .into_iter()
                 .map(|shader| {
@@ -212,7 +272,11 @@ where
                     };
                     let shader_module = device
                         .create_shader_module(&shader_module_create_info, None)
-                        .map_err(|_| DriverError::Unsupported)?;
+                        .map_err(|err| {
+                            warn!("{err}");
+
+                            DriverError::Unsupported
+                        })?;
                     let shader_stage = Stage {
                         flags: shader.stage,
                         module: shader_module,
@@ -240,14 +304,79 @@ where
                 ..Default::default()
             };
 
+            let stage_flags = stages
+                .iter()
+                .map(|stage| stage.flags)
+                .reduce(|j, k| j | k)
+                .unwrap_or_default();
+
+            // Convert overlapping push constant regions such as this:
+            // VERTEX 0..64
+            // FRAGMENT 0..80
+            //
+            // To this:
+            // VERTEX | FRAGMENT 0..64
+            // FRAGMENT 64..80
+            //
+            // We do this now so that submission doesn't need to check for overlaps
+            // See https://github.com/KhronosGroup/Vulkan-Docs/issues/609
+            if push_constants.len() > 1 {
+                push_constants.sort_unstable_by(|lhs, rhs| {
+                    let res = lhs.offset.cmp(&rhs.offset);
+                    if res.is_lt() {
+                        res
+                    } else {
+                        lhs.size.cmp(&rhs.size)
+                    }
+                });
+
+                let mut idx = 0;
+                while idx + 1 < push_constants.len() {
+                    let curr = push_constants[idx];
+                    let next = push_constants[idx + 1];
+                    let curr_end = curr.offset + curr.size;
+
+                    // Check for overlapping push constant ranges; combine them and move the next
+                    // one so it no longer overlaps
+                    if curr_end > next.offset {
+                        push_constants[idx].stage_flags |= next.stage_flags;
+
+                        idx += 1;
+                        push_constants[idx].offset = curr_end;
+                        push_constants[idx].size -= curr_end - next.offset;
+                    }
+
+                    idx += 1;
+                }
+
+                for pcr in &push_constants {
+                    trace!(
+                        "effective push constants: {:?} {}..{}",
+                        pcr.stage_flags,
+                        pcr.offset,
+                        pcr.offset + pcr.size
+                    );
+                }
+            } else {
+                for pcr in &push_constants {
+                    trace!(
+                        "detected push constants: {:?} {}..{}",
+                        pcr.stage_flags,
+                        pcr.offset,
+                        pcr.offset + pcr.size
+                    );
+                }
+            }
+
             Ok(Self {
                 descriptor_bindings,
                 descriptor_info,
                 device,
                 info,
                 layout,
-                push_constant_ranges,
+                push_constants,
                 shader_modules,
+                stage_flags,
                 state: GraphicPipelineState {
                     layout,
                     multisample,
@@ -257,6 +386,10 @@ where
                 },
             })
         }
+    }
+
+    pub fn stages(&self) -> vk::ShaderStageFlags {
+        self.stage_flags
     }
 }
 
@@ -286,22 +419,26 @@ where
 pub struct GraphicPipelineInfo {
     #[builder(default)]
     pub blend: BlendMode,
+
     #[builder(default = "vk::CullModeFlags::BACK")]
     pub cull_mode: vk::CullModeFlags,
+
     #[builder(default, setter(strip_option))]
     pub depth_stencil: Option<DepthStencilMode>,
-    /// A map of extra descriptors not directly specified in the shader SPIR-V code.
-    ///
-    /// Use this for specialization constants, as they will not appear in the automatic descriptor
-    /// binding map.
-    #[builder(default, setter(strip_option))]
-    pub extra_descriptors: Option<DescriptorBindingMap>,
+
     #[builder(default = "vk::FrontFace::COUNTER_CLOCKWISE")]
     pub front_face: vk::FrontFace,
+
+    /// A descriptive name used in debugging messages.
+    #[builder(default, setter(strip_option))]
+    pub name: Option<String>,
+
     #[builder(default = "vk::PolygonMode::FILL")]
     pub polygon_mode: vk::PolygonMode,
+
     #[builder(default = "SampleCount::X1")]
     pub samples: SampleCount,
+
     #[builder(default)]
     pub two_sided: bool,
 }

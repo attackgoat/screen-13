@@ -690,7 +690,7 @@ impl Material {
             None => BitmapBuf::new(BitmapColor::Linear, BitmapFormat::R, 1, [128]),
         };
         let image =
-            GrayImage::from_raw(bitmap.width, bitmap.height(), bitmap.pixels().to_vec()).unwrap();
+            GrayImage::from_raw(bitmap.width(), bitmap.height(), bitmap.pixels().to_vec()).unwrap();
 
         Ok(image)
     }

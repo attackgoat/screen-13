@@ -7,7 +7,7 @@ use {
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
-    log::trace,
+    log::{trace, warn},
     std::{ffi::CString, ops::Deref, thread::panicking},
 };
 
@@ -20,7 +20,9 @@ where
     pub descriptor_info: PipelineDescriptorInfo<P>,
     pub device: Shared<Device<P>, P>,
     pub layout: vk::PipelineLayout,
+    pub info: ComputePipelineInfo,
     pipeline: vk::Pipeline,
+    pub push_constants: Option<vk::PushConstantRange>,
 }
 
 impl<P> ComputePipeline<P>
@@ -40,14 +42,7 @@ where
         let shader = info.clone().into_shader();
 
         // Use SPIR-V reflection to get the types and counts of all descriptors
-        let mut descriptor_bindings = vec![shader.descriptor_bindings(&device)?];
-
-        // We allow extra descriptors because specialization constants aren't specified yet
-        if let Some(extra_descriptors) = &info.extra_descriptors {
-            descriptor_bindings.push(extra_descriptors.clone());
-        }
-
-        let descriptor_bindings = Shader::merge_descriptor_bindings(descriptor_bindings);
+        let descriptor_bindings = shader.descriptor_bindings(&device)?;
         let descriptor_info =
             PipelineDescriptorInfo::create(&device, &descriptor_bindings, shader.stage)?;
         let descriptor_set_layouts = descriptor_info
@@ -64,7 +59,11 @@ where
             };
             let shader_module = device
                 .create_shader_module(&shader_module_create_info, None)
-                .map_err(|_| DriverError::Unsupported)?;
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?;
             let entry_name = CString::new(info.entry_name.as_bytes()).unwrap();
             let stage_create_info = vk::PipelineShaderStageCreateInfo::builder()
                 .module(shader_module)
@@ -73,14 +72,18 @@ where
             let mut layout_info =
                 vk::PipelineLayoutCreateInfo::builder().set_layouts(&descriptor_set_layouts);
 
-            let push_const = shader.push_constant_range()?;
-            if let Some(push_const) = &push_const {
-                layout_info = layout_info.push_constant_ranges(from_ref(push_const));
+            let push_constants = shader.push_constant_range()?;
+            if let Some(push_constants) = &push_constants {
+                layout_info = layout_info.push_constant_ranges(from_ref(push_constants));
             }
 
             let layout = device
                 .create_pipeline_layout(&layout_info, None)
-                .map_err(|_| DriverError::Unsupported)?;
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?;
             let pipeline_info = vk::ComputePipelineCreateInfo::builder()
                 .stage(stage_create_info.build())
                 .layout(layout);
@@ -90,7 +93,11 @@ where
                     from_ref(&pipeline_info.build()),
                     None,
                 )
-                .map_err(|_| DriverError::Unsupported)?[0];
+                .map_err(|(_, err)| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?[0];
 
             device.destroy_shader_module(shader_module, None);
 
@@ -98,8 +105,10 @@ where
                 descriptor_bindings,
                 descriptor_info,
                 device,
+                info,
                 layout,
                 pipeline,
+                push_constants,
             })
         }
     }
@@ -138,15 +147,15 @@ pub struct ComputePipelineInfo {
     /// The GLSL or HLSL shader entry point name, or `main` by default.
     #[builder(setter(strip_option), default = "String::from(\"main\")")]
     pub entry_name: String,
-    /// A map of extra descriptors not directly specified in the shader SPIR-V code.
-    ///
-    /// Use this for specialization constants, as they will not appear in the automatic descriptor
-    /// binding map.
+
+    /// A descriptive name used in debugging messages.
     #[builder(default, setter(strip_option))]
-    pub extra_descriptors: Option<DescriptorBindingMap>,
+    pub name: Option<String>,
+
     /// Data about Vulkan specialization constants.
     #[builder(default)]
     pub specialization_info: Option<SpecializationInfo>,
+
     /// Shader code.
     pub spirv: Vec<u8>,
 }
@@ -165,7 +174,13 @@ impl ComputePipelineInfo {
             shader = shader.specialization_info(specialization_info);
         }
 
-        shader.build().unwrap()
+        shader.build()
+    }
+}
+
+impl<'a> From<&'a [u8]> for ComputePipelineInfo {
+    fn from(slice: &'a [u8]) -> Self {
+        Self::new(slice).build().unwrap()
     }
 }
 

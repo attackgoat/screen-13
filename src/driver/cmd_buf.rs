@@ -3,7 +3,7 @@ use {
     crate::ptr::Shared,
     archery::SharedPointerKind,
     ash::vk,
-    log::trace,
+    log::{trace, warn},
     std::{fmt::Debug, ops::Deref, thread::panicking},
 };
 
@@ -34,7 +34,11 @@ where
         let cmd_pool = unsafe {
             device
                 .create_command_pool(&cmd_pool_info, None)
-                .map_err(|_| DriverError::Unsupported)?
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?
         };
         let cmd_buf_info = vk::CommandBufferAllocateInfo::builder()
             .command_buffer_count(1)
@@ -43,7 +47,11 @@ where
         let cmd_buf = unsafe {
             device
                 .allocate_command_buffers(&cmd_buf_info)
-                .map_err(|_| DriverError::Unsupported)?
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?
         }[0];
         let fence = unsafe {
             device
@@ -53,7 +61,11 @@ where
                         .build(),
                     None,
                 )
-                .map_err(|_| DriverError::Unsupported)?
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?
         };
 
         Ok(Self {
@@ -67,7 +79,7 @@ where
 
     /// Signals that execution has completed and it is time to drop anything we collected.
     pub(crate) fn drop_fenced(this: &mut Self) {
-        trace!("Dropping {} shared references", this.droppables.len());
+        trace!("dropping {} shared references", this.droppables.len());
 
         this.droppables.clear();
     }

@@ -72,13 +72,13 @@ where
         }
     }
 
+    // TODO: This produces an image which is RGBA8 UNORM and has STORAGE set. *We* don't need storage here and should instead ask the user what settings to give the output image.....
     pub fn draw(
         &mut self,
         dt: f32,
         events: &[Event<'_, ()>],
         window: &Window,
         render_graph: &mut RenderGraph<P>,
-        resolution: UVec2,
         ui_func: impl FnOnce(&mut Ui),
     ) -> ImageLeaseNode<P> {
         let hidpi = self.platform.hidpi_factor();
@@ -111,11 +111,14 @@ where
 
         let image = render_graph.bind_node(
             self.pool
-                .lease(
-                    ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, resolution.x, resolution.y).usage(
-                        vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED,
-                    ),
-                )
+                .lease(ImageInfo::new_2d(
+                    vk::Format::R8G8B8A8_UNORM,
+                    window.inner_size().width,
+                    window.inner_size().height,
+                    vk::ImageUsageFlags::COLOR_ATTACHMENT
+                        | vk::ImageUsageFlags::SAMPLED
+                        | vk::ImageUsageFlags::STORAGE,
+                ))
                 .unwrap(),
         );
         let font_atlas_image = render_graph.bind_node(self.font_atlas_image.take().unwrap());
@@ -125,7 +128,7 @@ where
         for draw_list in draw_data.draw_lists() {
             let indices_u16 = draw_list.idx_buffer();
             let indices = into_u8_slice(indices_u16);
-            let mut idx_buf = self
+            let mut index_buf = self
                 .pool
                 .lease(BufferInfo {
                     size: indices.len() as _,
@@ -135,11 +138,11 @@ where
                 .unwrap();
 
             {
-                Buffer::mapped_slice_mut(idx_buf.get_mut().unwrap())[0..indices.len()]
+                Buffer::mapped_slice_mut(index_buf.get_mut().unwrap())[0..indices.len()]
                     .copy_from_slice(indices);
             }
 
-            let idx_buf = render_graph.bind_node(idx_buf);
+            let index_buf = render_graph.bind_node(index_buf);
 
             let vertices_slice = draw_list.vtx_buffer();
             let vertices = into_u8_slice(vertices_slice);
@@ -177,61 +180,47 @@ where
                 })
                 .collect::<Vec<_>>();
 
+            let window_width =
+                self.platform.hidpi_factor() as f32 / window.inner_size().width as f32;
+            let window_height =
+                self.platform.hidpi_factor() as f32 / window.inner_size().height as f32;
+
             render_graph
-                .record_pass("imgui")
-                .access_node(idx_buf, AccessType::IndexBuffer)
-                .access_node(vertex_buf, AccessType::VertexBuffer)
+                .begin_pass("imgui")
                 .bind_pipeline(&self.pipeline)
+                .access_node(index_buf, AccessType::IndexBuffer)
+                .access_node(vertex_buf, AccessType::IndexBuffer)
                 .read_descriptor(0, font_atlas_image)
                 .clear_color(0)
                 .store_color(0, image)
-                .push_constants([
-                    self.platform.hidpi_factor() as f32 / resolution.x as f32,
-                    self.platform.hidpi_factor() as f32 / resolution.y as f32,
-                    f32::NAN, // Required padding
-                    f32::NAN, // Required padding
-                ])
-                .draw(move |device, cmd_buf, bindings| unsafe {
-                    use std::slice::from_ref;
+                .record_subpass(move |subpass| {
+                    subpass
+                        .push_constants([
+                            window_width,
+                            window_height,
+                            f32::NAN, // Required padding
+                            f32::NAN, // Required padding
+                        ])
+                        .bind_index_buffer(index_buf, vk::IndexType::UINT16)
+                        .bind_vertex_buffer(vertex_buf);
 
-                    device.cmd_bind_index_buffer(
-                        cmd_buf,
-                        *bindings[idx_buf],
-                        0,
-                        vk::IndexType::UINT16,
-                    );
-                    device.cmd_bind_vertex_buffers(
-                        cmd_buf,
-                        0,
-                        from_ref(&bindings[vertex_buf]),
-                        from_ref(&0),
-                    );
-
-                    for (count, clip_rect, idx_offset, vtx_offset) in draw_cmds {
+                    for (index_count, clip_rect, first_index, vertex_offset) in draw_cmds {
                         let clip_rect = [
                             (clip_rect[0] - display_pos[0]) * framebuffer_scale[0],
                             (clip_rect[1] - display_pos[1]) * framebuffer_scale[1],
                             (clip_rect[2] - display_pos[0]) * framebuffer_scale[0],
                             (clip_rect[3] - display_pos[1]) * framebuffer_scale[1],
                         ];
-                        let scissor = vk::Rect2D {
-                            offset: vk::Offset2D {
-                                x: clip_rect[0].floor() as i32,
-                                y: clip_rect[1].floor() as i32,
-                            },
-                            extent: vk::Extent2D {
-                                width: (clip_rect[2] - clip_rect[0]).ceil() as u32,
-                                height: (clip_rect[3] - clip_rect[1]).ceil() as u32,
-                            },
-                        };
-                        let count = count as u32;
-                        device.cmd_set_scissor(cmd_buf, 0, from_ref(&scissor));
-                        device.cmd_draw_indexed(
-                            cmd_buf,
-                            count,
+                        let x = clip_rect[0].floor() as i32;
+                        let y = clip_rect[1].floor() as i32;
+                        let width = (clip_rect[2] - clip_rect[0]).ceil() as u32;
+                        let height = (clip_rect[3] - clip_rect[1]).ceil() as u32;
+                        subpass.set_scissor(x, y, width, height);
+                        subpass.draw_indexed(
+                            index_count as _,
                             1,
-                            idx_offset as _,
-                            vtx_offset as _,
+                            first_index as _,
+                            vertex_offset as _,
                             0,
                         );
                     }
@@ -253,7 +242,6 @@ where
             frame.events,
             frame.window,
             frame.render_graph,
-            frame.resolution,
             ui_func,
         )
     }
@@ -310,10 +298,14 @@ where
         let temp_buf = render_graph.bind_node(temp_buf);
         let image = render_graph.bind_node(
             self.pool
-                .lease(
-                    ImageInfo::new_2d(vk::Format::R8G8B8A8_UNORM, texture.width, texture.height)
-                        .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST),
-                )
+                .lease(ImageInfo::new_2d(
+                    vk::Format::R8G8B8A8_UNORM,
+                    texture.width,
+                    texture.height,
+                    vk::ImageUsageFlags::SAMPLED
+                        | vk::ImageUsageFlags::STORAGE
+                        | vk::ImageUsageFlags::TRANSFER_DST,
+                ))
                 .unwrap(),
         );
 

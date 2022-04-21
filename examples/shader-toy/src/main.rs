@@ -72,7 +72,7 @@ fn main() -> anyhow::Result<()> {
     // no depth/stencil
     // 1x sample count
     // one-sided
-    let buf_pipeline = Shared::new(
+    let buffer_pipeline = Shared::new(
         GraphicPipeline::create(
             &event_loop.device,
             GraphicPipelineInfo::default(),
@@ -83,7 +83,7 @@ fn main() -> anyhow::Result<()> {
         )
         .context("FLOCKAROO_BUF_FRAG")?,
     );
-    let img_pipeline = Shared::new(
+    let image_pipeline = Shared::new(
         GraphicPipeline::create(
             &event_loop.device,
             GraphicPipelineInfo::default(),
@@ -98,43 +98,47 @@ fn main() -> anyhow::Result<()> {
     let mut render_graph = RenderGraph::new();
     let blank_image = render_graph.bind_node(
         cache
-            .lease(
-                ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, 8, 8)
-                    .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST),
-            )
+            .lease(ImageInfo::new_2d(
+                vk::Format::R8G8B8A8_SRGB,
+                8,
+                8,
+                vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
+            ))
             .context("Blank image")?,
     );
 
-    let resolution = event_loop.resolution();
+    let (width, height) = (event_loop.width(), event_loop.height());
     let framebuffer_image = render_graph.bind_node(
         cache
-            .lease(
-                ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, resolution.x, resolution.y).usage(
-                    vk::ImageUsageFlags::COLOR_ATTACHMENT
-                        | vk::ImageUsageFlags::SAMPLED
-                        | vk::ImageUsageFlags::TRANSFER_DST
-                        | vk::ImageUsageFlags::TRANSFER_SRC,
-                ),
-            )
+            .lease(ImageInfo::new_2d(
+                vk::Format::R8G8B8A8_SRGB,
+                width,
+                height,
+                vk::ImageUsageFlags::COLOR_ATTACHMENT
+                    | vk::ImageUsageFlags::SAMPLED
+                    | vk::ImageUsageFlags::TRANSFER_DST
+                    | vk::ImageUsageFlags::TRANSFER_SRC,
+            ))
             .context("Framebuffer image")?,
     );
     let temp_image = render_graph.bind_node(
         cache
-            .lease(
-                ImageInfo::new_2d(vk::Format::R8G8B8A8_SRGB, resolution.x, resolution.y).usage(
-                    vk::ImageUsageFlags::COLOR_ATTACHMENT
-                        | vk::ImageUsageFlags::SAMPLED
-                        | vk::ImageUsageFlags::TRANSFER_DST
-                        | vk::ImageUsageFlags::TRANSFER_SRC,
-                ),
-            )
+            .lease(ImageInfo::new_2d(
+                vk::Format::R8G8B8A8_SRGB,
+                width,
+                height,
+                vk::ImageUsageFlags::COLOR_ATTACHMENT
+                    | vk::ImageUsageFlags::SAMPLED
+                    | vk::ImageUsageFlags::TRANSFER_DST
+                    | vk::ImageUsageFlags::TRANSFER_SRC,
+            ))
             .context("Temp image")?,
     );
 
     render_graph
-        .clear_color_image(framebuffer_image, 1.0, 1.0, 0.0, 1.0)
-        .clear_color_image(blank_image, 0.0, 0.0, 0.0, 1.0)
-        .clear_color_image(temp_image, 0.0, 1.0, 0.0, 1.0);
+        .clear_color_image_value(framebuffer_image, [1.0, 1.0, 0.0, 1.0])
+        .clear_color_image_value(blank_image, [0.0, 0.0, 0.0, 1.0])
+        .clear_color_image_value(temp_image, [0.0, 1.0, 0.0, 1.0]);
 
     let mut framebuffer_image_binding = Some(render_graph.unbind_node(framebuffer_image));
     let mut blank_image_binding = Some(render_graph.unbind_node(blank_image));
@@ -180,24 +184,24 @@ fn main() -> anyhow::Result<()> {
             #[repr(C)]
             #[derive(Clone, Copy)]
             struct PushConstants {
-                resolution: Vec3,
+                resolution: [f32; 3],
                 _pad_1: u32,
-                date: Vec4,
-                mouse: Vec4,
+                date: [f32; 4],
+                mouse: [f32; 4],
                 time: f32,
                 time_delta: f32,
                 frame: i32,
                 sample_rate: f32,
                 channel_time: [f32; 4],
-                channel_resolution: [Vec4; 4],
+                channel_resolution: [f32; 16],
             }
 
             // Each pipeline gets the same constant data
             let push_consts = PushConstants {
-                resolution: frame.resolution.as_vec2().extend(1.0),
+                resolution: [frame.width as f32, frame.height as _, 1.0],
                 _pad_1: Default::default(),
-                date: vec4(1970.0, 1.0, 1.0, elapsed.as_secs_f32()),
-                mouse: vec4(
+                date: [1970.0, 1.0, 1.0, elapsed.as_secs_f32()],
+                mouse: [
                     if mouse_buf.any_held() {
                         mouse_buf.position().x
                     } else {
@@ -210,7 +214,7 @@ fn main() -> anyhow::Result<()> {
                     },
                     mouse_buf.is_held(MouseButton::Left) as usize as f32,
                     mouse_buf.is_held(MouseButton::Right) as usize as f32,
-                ),
+                ],
                 time: elapsed.as_secs_f32(),
                 time_delta: frame.dt,
                 frame: count,
@@ -222,10 +226,22 @@ fn main() -> anyhow::Result<()> {
                     elapsed.as_secs_f32(),
                 ],
                 channel_resolution: [
-                    framebuffer_info.extent.as_vec3().extend(1.0),
-                    noise_image_info.extent.as_vec3().extend(1.0),
-                    flowers_image_info.extent.as_vec3().extend(1.0),
-                    blank_image_info.extent.as_vec3().extend(1.0),
+                    framebuffer_info.width as f32,
+                    framebuffer_info.height as _,
+                    framebuffer_info.depth as _,
+                    1.0,
+                    noise_image_info.width as _,
+                    noise_image_info.height as _,
+                    noise_image_info.depth as _,
+                    1.0,
+                    flowers_image_info.width as _,
+                    flowers_image_info.height as _,
+                    flowers_image_info.depth as _,
+                    1.0,
+                    blank_image_info.width as _,
+                    blank_image_info.height as _,
+                    blank_image_info.depth as _,
+                    1.0,
                 ],
             };
 
@@ -238,32 +254,32 @@ fn main() -> anyhow::Result<()> {
             // Fill a buffer using a single-pass CFD pipeline where previous output feeds next input
             frame
                 .render_graph
-                .record_pass("Buffer A")
-                .bind_pipeline(&buf_pipeline)
+                .begin_pass("Buffer A")
+                .bind_pipeline(&buffer_pipeline)
                 .read_descriptor(0, input)
                 .read_descriptor(1, noise_image)
                 .read_descriptor(2, flowers_image)
                 .read_descriptor(3, blank_image)
                 .store_color(0, output)
-                .push_constants(push_consts)
-                .draw(move |device, cmd_buf, _| unsafe {
-                    device.cmd_draw(cmd_buf, 6, 1, 0, 0);
+                .record_subpass(move |subpass| {
+                    subpass.push_constants(push_consts);
+                    subpass.draw(6, 1, 0, 0);
                 });
 
             // Make the CFD look more like paint with a second pass
             frame
                 .render_graph
-                .record_pass("Image")
-                .bind_pipeline(&img_pipeline)
+                .begin_pass("Image")
+                .bind_pipeline(&image_pipeline)
                 .read_descriptor(0, output)
                 .store_color(0, input)
-                .push_constants(push_consts)
-                .draw(move |device, cmd_buf, _| unsafe {
-                    device.cmd_draw(cmd_buf, 6, 1, 0, 0);
+                .record_subpass(move |subpass| {
+                    subpass.push_constants(push_consts);
+                    subpass.draw(6, 1, 0, 0);
                 });
 
             // Done!
-            display.present_image(frame.render_graph, input, frame.swapchain);
+            display.present_image(frame.render_graph, input, frame.swapchain_image);
 
             // Unbind things from this graph (we want them back for the next frame!)
             flowers_image_binding = Some(frame.render_graph.unbind_node(flowers_image));

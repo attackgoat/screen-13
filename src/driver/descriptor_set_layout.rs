@@ -3,6 +3,7 @@ use {
     crate::ptr::Shared,
     archery::SharedPointerKind,
     ash::vk,
+    log::warn,
     std::{ops::Deref, thread::panicking},
 };
 
@@ -30,7 +31,11 @@ where
         let descriptor_set_layout = unsafe {
             device
                 .create_descriptor_set_layout(info, None)
-                .map_err(|_| DriverError::Unsupported)
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })
         }?;
 
         Ok(Self {

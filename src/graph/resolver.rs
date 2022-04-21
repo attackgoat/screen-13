@@ -1,27 +1,27 @@
 use {
     super::{
-        AttachmentIndex, AttachmentMap, Binding, Bindings, Edge, ExecutionPipeline, Node, Pass,
-        Rect, RenderGraph, Subpass, Unbind,
+        Area, AttachmentIndex, AttachmentMap, Binding, Bindings, Edge, ExecutionPipeline, Node,
+        Pass, RenderGraph, Unbind,
     },
     crate::{
         align_up_u32,
         driver::{
             format_aspect_mask, image_access_layout, is_read_access, is_write_access,
-            AttachmentInfo, AttachmentRef, CommandBuffer, DepthStencilMode, DescriptorBinding,
-            DescriptorInfo, DescriptorPool, DescriptorPoolInfo, DescriptorPoolSize, DescriptorSet,
-            Device, DriverError, FramebufferKey, FramebufferKeyAttachment, Image, ImageViewInfo,
-            RenderPass, RenderPassInfo, SampleCount, SubpassDependency, SubpassInfo,
+            pipeline_stage_access_flags, AttachmentInfo, AttachmentRef, CommandBuffer,
+            DepthStencilMode, DescriptorBinding, DescriptorInfo, DescriptorPool,
+            DescriptorPoolInfo, DescriptorPoolSize, DescriptorSet, Device, DriverError,
+            FramebufferKey, FramebufferKeyAttachment, Image, ImageViewInfo, RenderPass,
+            RenderPassInfo, SampleCount, SubpassDependency, SubpassInfo,
         },
         ptr::Shared,
         HashPool, Lease,
     },
     archery::SharedPointerKind,
     ash::vk,
-    glam::{IVec2, UVec2},
     itertools::Itertools,
-    log::{debug, trace},
+    log::{debug, trace, warn},
     std::{
-        collections::{BTreeMap, BTreeSet, VecDeque},
+        collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
         iter::repeat,
         mem::take,
         ops::Range,
@@ -35,7 +35,7 @@ where
     P: SharedPointerKind,
 {
     _descriptor_pool: Option<Lease<Shared<DescriptorPool<P>, P>, P>>,
-    descriptor_sets: Vec<DescriptorSet<P>>,
+    exec_descriptor_sets: HashMap<usize, Vec<DescriptorSet<P>>>,
     render_pass: Option<Lease<RenderPass<P>, P>>,
 }
 
@@ -66,11 +66,6 @@ where
     }
 
     fn allow_merge_passes(lhs: &Pass<P>, rhs: &Pass<P>) -> bool {
-        // Don't attempt merge on secondary resolves (it is unlikely to succeed)
-        if !rhs.subpasses.is_empty() {
-            return false;
-        }
-
         let lhs_pipeline = lhs
             .execs
             .get(0)
@@ -86,40 +81,50 @@ where
 
         // Both must have graphic pipelines
         if lhs_pipeline.is_none() || rhs_pipeline.is_none() {
+            if lhs_pipeline.is_none() {
+                trace!("  {} is not graphic", lhs.name);
+            }
+
+            if rhs_pipeline.is_none() {
+                trace!("  {} is not graphic", rhs.name);
+            }
+
             return false;
         }
 
         let lhs_pipeline = lhs_pipeline.unwrap().unwrap_graphic();
         let rhs_pipeline = rhs_pipeline.unwrap().unwrap_graphic();
 
-        // Don't merge passes that have external accesses; because they require pipeline barriers
-        if !rhs.execs[0].accesses.is_empty() {
-            return false;
-        }
-
         // Must be same general rasterization modes
         if lhs_pipeline.info != rhs_pipeline.info {
+            trace!("  different rasterization modes",);
+
             return false;
         }
 
+        let rhs_first_exec = rhs.execs.first().unwrap();
+
         // Now we need to know what the subpasses (we may have prior merges) wrote
-        for (lhs_attachments_resolved, lhs_attachments_stored) in lhs
-            .subpasses
+        for (lhs_resolves, lhs_stores) in lhs
+            .execs
             .iter()
-            .map(|subpass| (&subpass.resolve_attachments, &subpass.store_attachments))
+            .rev()
+            .map(|exec| (&exec.resolves, &exec.stores))
         {
             // Compare individual color/depth+stencil attachments for compatibility
-            if !AttachmentMap::are_compatible(lhs_attachments_resolved, &rhs.load_attachments)
-                || !AttachmentMap::are_compatible(lhs_attachments_stored, &rhs.load_attachments)
+            if !AttachmentMap::are_compatible(lhs_resolves, &rhs_first_exec.loads)
+                || !AttachmentMap::are_compatible(lhs_stores, &rhs_first_exec.loads)
             {
+                trace!("  incompatible attachments");
+
                 return false;
             }
 
             // Keep color and depth on tile.
-            for node_idx in rhs.load_attachments.images() {
-                if lhs_attachments_resolved.contains_image(node_idx)
-                    || lhs_attachments_stored.contains_image(node_idx)
-                {
+            for node_idx in rhs_first_exec.loads.images() {
+                if lhs_resolves.contains_image(node_idx) || lhs_stores.contains_image(node_idx) {
+                    trace!("  merging due to common image");
+
                     return true;
                 }
             }
@@ -134,6 +139,8 @@ where
             .next()
             .is_some()
         {
+            trace!("  merging due to input");
+
             return true;
         }
 
@@ -145,12 +152,12 @@ where
         &mut self,
         cmd_buf: &CommandBuffer<P>,
         pass: &Pass<P>,
-        physical_pass_idx: usize,
-        render_area: Rect<UVec2, IVec2>,
+        pass_idx: usize,
+        render_area: Area,
     ) -> Result<(), DriverError> {
-        trace!("begin_render_pass");
+        trace!("  begin render pass");
 
-        let physical_pass = &self.physical_passes[physical_pass_idx];
+        let physical_pass = &self.physical_passes[pass_idx];
         let render_pass = physical_pass.render_pass.as_ref().unwrap();
         let attached_images = {
             let mut attachment_queue =
@@ -158,8 +165,8 @@ where
             let mut res = Vec::with_capacity(attachment_queue.len());
             res.extend(repeat(None).take(attachment_queue.len()));
             while let Some(attachment_idx) = attachment_queue.pop_front() {
-                for subpass in pass.subpasses.iter() {
-                    if let Some(attachment) = subpass.attachment(attachment_idx as _) {
+                for exec in pass.execs.iter() {
+                    if let Some(attachment) = exec.attachment(attachment_idx as _) {
                         let image = self.graph.bindings[attachment.target]
                             .as_driver_image()
                             .unwrap();
@@ -191,20 +198,20 @@ where
                 .map(|(attachment_idx, (image, _))| FramebufferKeyAttachment {
                     flags: image.info.flags,
                     usage: image.info.usage,
-                    extent_x: image.info.extent.x,
-                    extent_y: image.info.extent.y,
+                    extent_x: image.info.width,
+                    extent_y: image.info.height,
                     layer_count: image.info.array_elements,
                     view_fmts: pass
-                        .subpasses
+                        .execs
                         .iter()
-                        .map(|subpass| subpass.attachment(attachment_idx as _).unwrap().fmt)
+                        .map(|exec| exec.attachment(attachment_idx as _).unwrap().fmt)
                         .collect::<BTreeSet<_>>()
                         .into_iter()
                         .collect(),
                 })
                 .collect(),
-            extent_x: render_area.extent.x,
-            extent_y: render_area.extent.y,
+            extent_x: render_area.width,
+            extent_y: render_area.height,
         })?;
 
         unsafe {
@@ -215,12 +222,12 @@ where
                     .framebuffer(framebuffer)
                     .render_area(vk::Rect2D {
                         offset: vk::Offset2D {
-                            x: render_area.offset.x,
-                            y: render_area.offset.y,
+                            x: render_area.x,
+                            y: render_area.y,
                         },
                         extent: vk::Extent2D {
-                            width: render_area.extent.x,
-                            height: render_area.extent.y,
+                            width: render_area.width,
+                            height: render_area.height,
                         },
                     })
                     .clear_values(
@@ -255,8 +262,25 @@ where
         cmd_buf: &CommandBuffer<P>,
         pipeline: &ExecutionPipeline<P>,
         physical_pass: &PhysicalPass<P>,
+        exec_idx: usize,
     ) {
-        trace!("bind_descriptor_sets");
+        let descriptor_sets =
+            physical_pass
+                .exec_descriptor_sets
+                .get(&exec_idx)
+                .map(|exec_descriptor_sets| {
+                    exec_descriptor_sets
+                        .iter()
+                        .map(|descriptor_set| **descriptor_set)
+                        .collect::<Box<[_]>>()
+                });
+        if descriptor_sets.is_none() {
+            return;
+        }
+
+        let descriptor_sets = descriptor_sets.as_ref().unwrap();
+
+        trace!("    bind descriptor sets {:?}", descriptor_sets);
 
         unsafe {
             cmd_buf.device.cmd_bind_descriptor_sets(
@@ -264,12 +288,7 @@ where
                 pipeline.bind_point(),
                 pipeline.layout(),
                 0,
-                physical_pass
-                    .descriptor_sets
-                    .iter()
-                    .map(|descriptor_set| **descriptor_set)
-                    .collect::<Vec<_>>()
-                    .as_slice(),
+                descriptor_sets,
                 &[],
             );
         }
@@ -278,15 +297,36 @@ where
     fn bind_pipeline(
         &self,
         cmd_buf: &mut CommandBuffer<P>,
-        physical_pass_idx: usize,
-        subpass_idx: u32,
+        pass_idx: usize,
+        exec_idx: usize,
         pipeline: &mut ExecutionPipeline<P>,
         depth_stencil: Option<DepthStencilMode>,
     ) -> Result<(), DriverError> {
-        trace!("bind_pipeline");
+        let (ty, name, ptr) = match pipeline {
+            ExecutionPipeline::Compute(pipeline) => (
+                "compute",
+                pipeline.info.name.as_ref(),
+                Shared::as_ptr(pipeline) as *const (),
+            ),
+            ExecutionPipeline::Graphic(pipeline) => (
+                "graphic",
+                pipeline.info.name.as_ref(),
+                Shared::as_ptr(pipeline) as *const (),
+            ),
+            ExecutionPipeline::RayTrace(pipeline) => (
+                "ray trace",
+                pipeline.info.name.as_ref(),
+                Shared::as_ptr(pipeline) as *const (),
+            ),
+        };
+        if let Some(name) = name {
+            trace!("    bind {} pipeline {} ({:?})", ty, name, ptr);
+        } else {
+            trace!("    bind {} pipeline {:?}", ty, ptr);
+        }
 
         // We store a shared reference to this pipeline inside the command buffer!
-        let physical_pass = &self.physical_passes[physical_pass_idx];
+        let physical_pass = &self.physical_passes[pass_idx];
         let pipeline_bind_point = pipeline.bind_point();
         let pipeline = match pipeline {
             ExecutionPipeline::Compute(pipeline) => {
@@ -299,7 +339,7 @@ where
                     .render_pass
                     .as_ref()
                     .unwrap()
-                    .graphic_pipeline_ref(pipeline, depth_stencil, subpass_idx)?
+                    .graphic_pipeline_ref(pipeline, depth_stencil, exec_idx as _)?
             }
             ExecutionPipeline::RayTrace(pipeline) => {
                 CommandBuffer::push_fenced_drop(cmd_buf, Shared::clone(pipeline));
@@ -349,8 +389,8 @@ where
             .execs
             .iter()
             .flat_map(|exec| exec.accesses.iter())
-            .filter_map(move |(node_idx, accesses)| {
-                if is_read_access(accesses[0].access) && already_seen.insert(*node_idx) {
+            .filter_map(move |(node_idx, [early, _])| {
+                if is_read_access(early.access) && already_seen.insert(*node_idx) {
                     Some(*node_idx)
                 } else {
                     None
@@ -359,7 +399,7 @@ where
     }
 
     fn end_render_pass(&mut self, cmd_buf: &CommandBuffer<P>) {
-        trace!("end_render_pass");
+        trace!("  end render pass");
 
         unsafe {
             cmd_buf.device.cmd_end_render_pass(**cmd_buf);
@@ -419,16 +459,19 @@ where
         }
 
         // Notice how all sets are big enough for any other set; TODO: efficiently dont
-        let info = DescriptorPoolInfo::new(max_descriptor_set_idx + 1).pool_sizes(
-            max_pool_sizes
-                .into_iter()
-                .map(|(descriptor_ty, descriptor_count)| DescriptorPoolSize {
-                    ty: descriptor_ty,
-                    // Trivially round up the descriptor counts to increase cache coherence
-                    descriptor_count: align_up_u32(descriptor_count, 1 << 5),
-                })
-                .collect(),
-        );
+        let info = DescriptorPoolInfo::new(pass.execs.len() as u32 * (max_descriptor_set_idx + 1))
+            .pool_sizes(
+                max_pool_sizes
+                    .into_iter()
+                    .map(|(descriptor_ty, descriptor_count)| DescriptorPoolSize {
+                        ty: descriptor_ty,
+                        // Trivially round up the descriptor counts to increase cache coherence
+                        descriptor_count: align_up_u32(descriptor_count, 1 << 5),
+                    })
+                    .collect(),
+            );
+
+        // debug!("{:#?}", info);
 
         let pool = cache.lease(info)?;
 
@@ -436,18 +479,24 @@ where
     }
 
     fn lease_render_pass(
+        &self,
         cache: &mut HashPool<P>,
-        pass: &mut Pass<P>,
+        pass_idx: usize,
     ) -> Result<Lease<RenderPass<P>, P>, DriverError> {
+        // TODO: We're building a RenderPassInfo here (the 3x Vec<_>s), but we could use TLS if:
+        // - leasing used impl Into instead of an instance
+        // - RenderPass didn't require an Info instance: who cares it's OURS for like five seconds
+        //   and then poof
+
+        let pass = &self.graph.passes[pass_idx];
         let attachment_count = pass
-            .subpasses
+            .execs
             .iter()
-            .map(|pass| pass.attachment_count())
+            .map(|exec| exec.attachment_count())
             .max()
             .unwrap_or_default();
         let mut attachments = Vec::with_capacity(attachment_count);
-        let mut dependencies = Vec::with_capacity(attachment_count);
-        let mut subpasses = Vec::with_capacity(pass.subpasses.len() + 1);
+        let mut subpasses = Vec::with_capacity(pass.execs.len());
 
         while attachments.len() < attachment_count {
             attachments.push(
@@ -457,15 +506,15 @@ where
             );
         }
 
-        // Add attachments: format, sample count, load op, and initial layout (using the 1st pass)
+        // Add attachments: format, sample count, load op, and initial layout (using the 1st
+        // execution)
         {
-            let first_pass = &pass.subpasses[0];
             let first_exec = &pass.execs[0];
-            let depth_stencil = first_pass
-                .load_attachments
+            let depth_stencil = first_exec
+                .loads
                 .depth_stencil()
-                .or_else(|| first_pass.resolve_attachments.depth_stencil())
-                .or_else(|| first_pass.store_attachments.depth_stencil())
+                .or_else(|| first_exec.resolves.depth_stencil())
+                .or_else(|| first_exec.stores.depth_stencil())
                 .map(|(attachment_idx, _)| attachment_idx);
 
             // Cleared attachments
@@ -488,14 +537,12 @@ where
             }
 
             // Loaded attachments
-            for (attachment_idx, loaded_attachment) in first_pass
-                .load_attachments
-                .attached
-                .iter()
-                .enumerate()
-                .filter_map(|(attachment_idx, attachment)| {
-                    attachment.map(|attachment| (attachment_idx as AttachmentIndex, attachment))
-                })
+            for (attachment_idx, loaded_attachment) in
+                first_exec.loads.attached.iter().enumerate().filter_map(
+                    |(attachment_idx, attachment)| {
+                        attachment.map(|attachment| (attachment_idx as AttachmentIndex, attachment))
+                    },
+                )
             {
                 let attachment = &mut attachments[attachment_idx as usize];
                 attachment.fmt = loaded_attachment.fmt;
@@ -504,12 +551,8 @@ where
                 if matches!(depth_stencil, Some(depth_stencil_attachment_idx) if depth_stencil_attachment_idx == attachment_idx)
                 {
                     // DEPTH/STENCIL
-                    let is_random_access = first_pass
-                        .store_attachments
-                        .contains_attachment(attachment_idx)
-                        || first_pass
-                            .resolve_attachments
-                            .contains_attachment(attachment_idx);
+                    let is_random_access = first_exec.stores.contains_attachment(attachment_idx)
+                        || first_exec.resolves.contains_attachment(attachment_idx);
                     attachment.initial_layout = if loaded_attachment
                         .aspect_mask
                         .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
@@ -542,14 +585,12 @@ where
             }
 
             // Resolved attachments
-            for (attachment_idx, resolved_attachment) in first_pass
-                .resolve_attachments
-                .attached
-                .iter()
-                .enumerate()
-                .filter_map(|(attachment_idx, attachment)| {
-                    attachment.map(|attachment| (attachment_idx as AttachmentIndex, attachment))
-                })
+            for (attachment_idx, resolved_attachment) in
+                first_exec.resolves.attached.iter().enumerate().filter_map(
+                    |(attachment_idx, attachment)| {
+                        attachment.map(|attachment| (attachment_idx as AttachmentIndex, attachment))
+                    },
+                )
             {
                 let attachment = &mut attachments[attachment_idx as usize];
                 attachment.fmt = resolved_attachment.fmt;
@@ -583,14 +624,12 @@ where
             }
 
             // Stored attachments
-            for (attachment_idx, stored_attachment) in first_pass
-                .store_attachments
-                .attached
-                .iter()
-                .enumerate()
-                .filter_map(|(attachment_idx, attachment)| {
-                    attachment.map(|attachment| (attachment_idx as AttachmentIndex, attachment))
-                })
+            for (attachment_idx, stored_attachment) in
+                first_exec.stores.attached.iter().enumerate().filter_map(
+                    |(attachment_idx, attachment)| {
+                        attachment.map(|attachment| (attachment_idx as AttachmentIndex, attachment))
+                    },
+                )
             {
                 let attachment = &mut attachments[attachment_idx as usize];
                 attachment.fmt = stored_attachment.fmt;
@@ -626,22 +665,20 @@ where
 
         // Add attachments: store op and final layout (using the last pass)
         {
-            let last_pass = pass.subpasses.last().unwrap();
-            let depth_stencil = last_pass
-                .load_attachments
+            let last_exec = pass.execs.last().unwrap();
+            let depth_stencil = last_exec
+                .loads
                 .depth_stencil()
-                .or_else(|| last_pass.resolve_attachments.depth_stencil())
-                .or_else(|| last_pass.store_attachments.depth_stencil());
+                .or_else(|| last_exec.resolves.depth_stencil())
+                .or_else(|| last_exec.stores.depth_stencil());
 
             // Resolved attachments
-            for (attachment_idx, resolved_attachment) in last_pass
-                .resolve_attachments
-                .attached
-                .iter()
-                .enumerate()
-                .filter_map(|(attachment_idx, attachment)| {
-                    attachment.map(|attachment| (attachment_idx as AttachmentIndex, attachment))
-                })
+            for (attachment_idx, resolved_attachment) in
+                last_exec.resolves.attached.iter().enumerate().filter_map(
+                    |(attachment_idx, attachment)| {
+                        attachment.map(|attachment| (attachment_idx as AttachmentIndex, attachment))
+                    },
+                )
             {
                 let attachment = &mut attachments[attachment_idx as usize];
 
@@ -668,14 +705,12 @@ where
             }
 
             // Stored attachments
-            for (attachment_idx, stored_attachment) in last_pass
-                .store_attachments
-                .attached
-                .iter()
-                .enumerate()
-                .filter_map(|(attachment_idx, attachment)| {
-                    attachment.map(|attachment| (attachment_idx as AttachmentIndex, attachment))
-                })
+            for (attachment_idx, stored_attachment) in
+                last_exec.stores.attached.iter().enumerate().filter_map(
+                    |(attachment_idx, attachment)| {
+                        attachment.map(|attachment| (attachment_idx as AttachmentIndex, attachment))
+                    },
+                )
             {
                 let attachment = &mut attachments[attachment_idx as usize];
 
@@ -706,13 +741,12 @@ where
         }
 
         // Add subpasses
-        for (subpass_idx, subpass) in pass.subpasses.iter().enumerate() {
-            let exec = &pass.execs[subpass.exec_idx];
-            let depth_stencil = subpass
-                .load_attachments
+        for (exec_idx, exec) in pass.execs.iter().enumerate() {
+            let depth_stencil = exec
+                .loads
                 .depth_stencil()
-                .or_else(|| subpass.resolve_attachments.depth_stencil())
-                .or_else(|| subpass.store_attachments.depth_stencil());
+                .or_else(|| exec.resolves.depth_stencil())
+                .or_else(|| exec.stores.depth_stencil());
             let mut subpass_info = SubpassInfo::with_capacity(attachment_count);
 
             // Color attachments prior to the depth attachment
@@ -752,28 +786,26 @@ where
 
             // Set depth/stencil attachment
             if let Some((depth_stencil_attachment_idx, _)) = depth_stencil {
-                let used_depth_stencil_attachment = subpass
-                    .load_attachments
+                let used_depth_stencil_attachment = exec
+                    .loads
                     .attached
                     .get(depth_stencil_attachment_idx as usize)
                     .or_else(|| {
-                        subpass
-                            .resolve_attachments
+                        exec.resolves
                             .attached
                             .get(depth_stencil_attachment_idx as usize)
                     })
                     .or_else(|| {
-                        subpass
-                            .store_attachments
+                        exec.stores
                             .attached
                             .get(depth_stencil_attachment_idx as usize)
                     });
                 if let Some(Some(used_depth_stencil_attachment)) = used_depth_stencil_attachment {
-                    let is_random_access = subpass
-                        .store_attachments
+                    let is_random_access = exec
+                        .stores
                         .contains_attachment(depth_stencil_attachment_idx)
-                        || subpass
-                            .resolve_attachments
+                        || exec
+                            .resolves
                             .contains_attachment(depth_stencil_attachment_idx);
                     subpass_info.depth_stencil_attachment = Some(AttachmentRef::new(
                         depth_stencil_attachment_idx as _,
@@ -820,50 +852,256 @@ where
                         // We should preserve the attachment in the previous subpass
                         // (We're asserting that any input renderpasses are actually
                         // real subpasses here with prior passes..)
-                        let t: &mut SubpassInfo = &mut subpasses[subpass_idx - 1];
+                        let t: &mut SubpassInfo = &mut subpasses[exec_idx - 1];
                         t.preserve_attachments.push(0);
                     }
                 }
             }
 
             // Set any resolve attachments now
-            for (attachment_idx, _attachment) in subpass
-                .resolve_attachments
-                .attached
-                .iter()
-                .enumerate()
-                .filter_map(|(attachment_idx, attachment)| {
+            for (attachment_idx, _) in exec.resolves.attached.iter().enumerate().filter_map(
+                |(attachment_idx, attachment)| {
                     attachment.map(|attachment| (attachment_idx, attachment))
-                })
-            {
+                },
+            ) {
                 subpass_info.resolve_attachments[attachment_idx].attachment = attachment_idx as _;
-                // TODO ?
             }
 
             subpasses.push(subpass_info);
         }
 
-        // Add dependencies (TODO!)
-        {
-            dependencies.push(SubpassDependency {
-                src_subpass: vk::SUBPASS_EXTERNAL,
-                dst_subpass: 0,
-                src_stage_mask: vk::PipelineStageFlags::BOTTOM_OF_PIPE,
-                dst_stage_mask: vk::PipelineStageFlags::TOP_OF_PIPE,
-                src_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
-                dst_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
-                dependency_flags: vk::DependencyFlags::empty(),
-            });
-            dependencies.push(SubpassDependency {
-                src_subpass: pass.subpasses.len() as u32 - 1,
-                dst_subpass: vk::SUBPASS_EXTERNAL,
-                src_stage_mask: vk::PipelineStageFlags::BOTTOM_OF_PIPE,
-                dst_stage_mask: vk::PipelineStageFlags::TOP_OF_PIPE,
-                src_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
-                dst_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
-                dependency_flags: vk::DependencyFlags::empty(),
-            });
-        }
+        // Add dependencies
+        let dependencies = {
+            fn subpass_dependency(prev_exec_idx: u32, exec_idx: usize) -> SubpassDependency {
+                SubpassDependency {
+                    src_subpass: prev_exec_idx,
+                    dst_subpass: exec_idx as _,
+                    src_stage_mask: vk::PipelineStageFlags::empty(),
+                    dst_stage_mask: vk::PipelineStageFlags::empty(),
+                    src_access_mask: vk::AccessFlags::empty(),
+                    dst_access_mask: vk::AccessFlags::empty(),
+                    dependency_flags: vk::DependencyFlags::empty(),
+                }
+            }
+
+            let mut dependencies = HashMap::with_capacity(attachment_count);
+            for (exec_idx, exec) in pass.execs.iter().enumerate() {
+                // Check accesses
+                'accesses: for (node_idx, [early, _]) in exec.accesses.iter() {
+                    let (mut curr_stages, mut curr_access) =
+                        pipeline_stage_access_flags(early.access);
+
+                    // First look for through earlier executions of this pass (in reverse order)
+                    for (prev_exec_idx, prev_exec) in
+                        pass.execs[0..exec_idx].iter().enumerate().rev()
+                    {
+                        if let Some([_, late]) = prev_exec.accesses.get(node_idx) {
+                            // Is this previous execution access dependent on anything the current
+                            // execution access is dependent upon?
+                            let (prev_stages, prev_access) =
+                                pipeline_stage_access_flags(late.access);
+                            let common_stages = curr_stages & prev_stages;
+                            if common_stages.is_empty() {
+                                // No common dependencies
+                                continue;
+                            }
+
+                            let dep = dependencies
+                                .entry((prev_exec_idx, exec_idx))
+                                .or_insert_with(|| {
+                                    subpass_dependency(prev_exec_idx as _, exec_idx)
+                                });
+
+                            // Wait for ...
+                            dep.src_stage_mask |= common_stages;
+                            dep.src_access_mask |= prev_access;
+
+                            // ... before we:
+                            dep.dst_stage_mask |= curr_stages;
+                            dep.dst_access_mask |= curr_access;
+
+                            // Do the source and destination stage masks both include
+                            // framebuffer-space stages?
+                            if (prev_stages | curr_stages).intersects(
+                                vk::PipelineStageFlags::FRAGMENT_SHADER
+                                    | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
+                                    | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS
+                                    | vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                            ) {
+                                dep.dependency_flags |= vk::DependencyFlags::BY_REGION;
+                            }
+
+                            // Does the execution have more than one view?
+                            if !dep
+                                .dependency_flags
+                                .contains(vk::DependencyFlags::VIEW_LOCAL)
+                                && subpasses[exec_idx].has_multiple_attachments()
+                            {
+                                dep.dependency_flags |= vk::DependencyFlags::VIEW_LOCAL;
+                            }
+
+                            curr_stages &= !common_stages;
+                            curr_access &= !prev_access;
+
+                            // Have we found all dependencies for this stage? If so no need to
+                            // check external passes
+                            if curr_stages.is_empty() {
+                                continue 'accesses;
+                            }
+                        }
+                    }
+
+                    // Second look in previous passes of the entire render graph
+                    for prev_subpass in self
+                        .dependent_passes(*node_idx, pass_idx)
+                        .flat_map(|pass_idx| self.graph.passes[pass_idx].execs.iter().rev())
+                    {
+                        if let Some([_, late]) = prev_subpass.accesses.get(node_idx) {
+                            // Is this previous subpass access dependent on anything the current
+                            // subpass access is dependent upon?
+                            let (prev_stages, prev_access) =
+                                pipeline_stage_access_flags(late.access);
+                            let common_stages = curr_stages & prev_stages;
+                            if common_stages.is_empty() {
+                                // No common dependencies
+                                continue;
+                            }
+
+                            let dep = dependencies
+                                .entry((vk::SUBPASS_EXTERNAL as _, exec_idx))
+                                .or_insert_with(|| {
+                                    subpass_dependency(vk::SUBPASS_EXTERNAL as _, exec_idx)
+                                });
+
+                            // Wait for ...
+                            dep.src_stage_mask |= common_stages;
+                            dep.src_access_mask |= prev_access;
+
+                            // ... before we:
+                            dep.dst_stage_mask |= curr_stages;
+                            dep.dst_access_mask |= curr_access;
+
+                            // If the source and destination stage masks both include
+                            // framebuffer-space stages then we need the BY_REGION flag
+                            if (prev_stages | curr_stages).intersects(
+                                vk::PipelineStageFlags::FRAGMENT_SHADER
+                                    | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
+                                    | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS
+                                    | vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                            ) {
+                                dep.dependency_flags |= vk::DependencyFlags::BY_REGION;
+                            }
+
+                            // If the subpass has more than one view we need the VIEW_LOCAL flag
+                            if !dep
+                                .dependency_flags
+                                .contains(vk::DependencyFlags::VIEW_LOCAL)
+                                && subpasses[exec_idx].has_multiple_attachments()
+                            {
+                                dep.dependency_flags |= vk::DependencyFlags::VIEW_LOCAL;
+                            }
+
+                            curr_stages &= !common_stages;
+                            curr_access &= !prev_access;
+
+                            // If we found all dependencies for this stage there is no need to check
+                            // external passes
+                            if curr_stages.is_empty() {
+                                continue 'accesses;
+                            }
+                        }
+                    }
+                }
+
+                // Look for attachments of this exec being read or written in other execs of the
+                // same pass
+                for (other_idx, other) in pass.execs[0..exec_idx].iter().enumerate() {
+                    if other_idx == exec_idx {
+                        continue;
+                    }
+
+                    // Look for attachments we're reading
+                    for attachment_idx in exec.loads.attached() {
+                        // Look for writes in the other exec
+                        if other.clears.contains_key(&attachment_idx)
+                            || other.stores.contains_attachment(attachment_idx)
+                            || other.resolves.contains_attachment(attachment_idx)
+                        {
+                            let dep = dependencies
+                                .entry((other_idx, exec_idx))
+                                .or_insert_with(|| subpass_dependency(other_idx as _, exec_idx));
+
+                            // Wait for ...
+                            dep.src_stage_mask |= vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT;
+                            dep.src_access_mask |= vk::AccessFlags::COLOR_ATTACHMENT_WRITE;
+
+                            // ... before we:
+                            dep.dst_stage_mask |= vk::PipelineStageFlags::FRAGMENT_SHADER;
+                            dep.dst_access_mask |= vk::AccessFlags::COLOR_ATTACHMENT_READ;
+                        }
+
+                        // look for reads in the other exec
+                        if other.loads.contains_attachment(attachment_idx) {
+                            let dep = dependencies
+                                .entry((other_idx, exec_idx))
+                                .or_insert_with(|| subpass_dependency(other_idx as _, exec_idx));
+
+                            // Wait for ...
+                            dep.src_stage_mask |= vk::PipelineStageFlags::LATE_FRAGMENT_TESTS;
+                            dep.src_access_mask |= vk::AccessFlags::COLOR_ATTACHMENT_READ;
+
+                            // ... before we:
+                            dep.dst_stage_mask |= vk::PipelineStageFlags::FRAGMENT_SHADER;
+                            dep.dst_access_mask |= vk::AccessFlags::COLOR_ATTACHMENT_READ;
+                        }
+                    }
+
+                    // Look for attachments we're writing
+                    for attachment_idx in exec
+                        .clears
+                        .keys()
+                        .copied()
+                        .chain(exec.resolves.attached())
+                        .chain(exec.stores.attached())
+                    {
+                        // Look for writes in the other exec
+                        if other.clears.contains_key(&attachment_idx)
+                            || other.stores.contains_attachment(attachment_idx)
+                            || other.resolves.contains_attachment(attachment_idx)
+                        {
+                            let dep = dependencies
+                                .entry((other_idx, exec_idx))
+                                .or_insert_with(|| subpass_dependency(other_idx as _, exec_idx));
+
+                            // Wait for ...
+                            dep.src_stage_mask |= vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT;
+                            dep.src_access_mask |= vk::AccessFlags::COLOR_ATTACHMENT_WRITE;
+
+                            // ... before we:
+                            dep.dst_stage_mask |= vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT;
+                            dep.dst_access_mask |= vk::AccessFlags::COLOR_ATTACHMENT_WRITE;
+                        }
+
+                        // look for reads in the other exec
+                        if other.loads.contains_attachment(attachment_idx) {
+                            let dep = dependencies
+                                .entry((other_idx, exec_idx))
+                                .or_insert_with(|| subpass_dependency(other_idx as _, exec_idx));
+
+                            // Wait for ...
+                            dep.src_stage_mask |= vk::PipelineStageFlags::LATE_FRAGMENT_TESTS;
+                            dep.src_access_mask |= vk::AccessFlags::COLOR_ATTACHMENT_READ;
+
+                            // ... before we:
+                            dep.dst_stage_mask |= vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT;
+                            dep.dst_access_mask |= vk::AccessFlags::COLOR_ATTACHMENT_WRITE;
+                        }
+                    }
+                }
+            }
+
+            dependencies.into_values().collect::<Vec<_>>()
+        };
 
         cache.lease(
             RenderPassInfo::new()
@@ -884,32 +1122,31 @@ where
             // only care about one pass at a time here
             let pass = &mut self.graph.passes[pass_idx];
 
-            // First, let's make this pass into a big bunch of subpasses
-            pass.subpasses.insert(
-                0,
-                Subpass {
-                    load_attachments: take(&mut pass.load_attachments),
-                    resolve_attachments: take(&mut pass.resolve_attachments),
-                    store_attachments: take(&mut pass.store_attachments),
-                    exec_idx: 0,
-                },
-            );
-
             let descriptor_pool = Self::lease_descriptor_pool(cache, pass)?;
-            let mut descriptor_sets = Vec::with_capacity(
+            let mut exec_descriptor_sets = HashMap::with_capacity(
                 descriptor_pool
                     .as_ref()
                     .map(|descriptor_pool| descriptor_pool.info.max_sets as usize)
                     .unwrap_or_default(),
             );
             if let Some(descriptor_pool) = descriptor_pool.as_ref() {
-                for pipeline in pass.execs.iter().filter_map(|exec| exec.pipeline.as_ref()) {
-                    for descriptor_set_layout in pipeline.descriptor_info().layouts.values() {
+                for (exec_idx, pipeline) in
+                    pass.execs
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(exec_idx, exec)| {
+                            exec.pipeline.as_ref().map(|pipeline| (exec_idx, pipeline))
+                        })
+                {
+                    let layouts = pipeline.descriptor_info().layouts.values();
+                    let mut descriptor_sets = Vec::with_capacity(layouts.len());
+                    for descriptor_set_layout in layouts {
                         descriptor_sets.push(DescriptorPool::allocate_descriptor_set(
                             descriptor_pool,
                             descriptor_set_layout,
                         )?);
                     }
+                    exec_descriptor_sets.insert(exec_idx, descriptor_sets);
                 }
             }
 
@@ -941,14 +1178,14 @@ where
                 .map(|pipeline| pipeline.is_graphic())
                 .unwrap_or_default()
             {
-                Some(Self::lease_render_pass(cache, pass)?)
+                Some(self.lease_render_pass(cache, pass_idx)?)
             } else {
                 None
             };
 
             self.physical_passes.push(PhysicalPass {
                 _descriptor_pool: descriptor_pool, // Used above; but we must keep until done
-                descriptor_sets,
+                exec_descriptor_sets,
                 render_pass,
             });
         }
@@ -958,22 +1195,24 @@ where
 
     // Merges passes which are graphic with common-ish attachments - note that scheduled pass order
     // is final during this function and so we must merge contiguous groups of passes
-    fn merge_scheduled_passes(&mut self, mut schedule: &mut [usize]) {
-        // There must be company
-        if schedule.len() < 2 {
-            return;
-        }
-
+    fn merge_scheduled_passes<'s>(&mut self, mut schedule: &'s mut [usize]) -> &'s mut [usize] {
         let mut passes = self.graph.passes.drain(..).map(Some).collect::<Vec<_>>();
         let mut idx = 0;
 
+        // debug!("attempting to merge {} passes", schedule.len(),);
+
         while idx < schedule.len() {
-            // Find candidates
             let mut pass = passes[schedule[idx]].take().unwrap();
+
+            // Find candidates
             let start = idx + 1;
             let mut end = start;
             while end < schedule.len() {
                 let other = passes[schedule[end]].as_ref().unwrap();
+                debug!(
+                    "attempting to merge [{idx}: {}] with [{end}: {}]",
+                    pass.name, other.name
+                );
                 if Self::allow_merge_passes(&pass, other) {
                     end += 1;
                 } else {
@@ -981,12 +1220,16 @@ where
                 }
             }
 
+            if start != end {
+                trace!("merging {} passes into [{idx}: {}]", end - start, pass.name);
+            }
+
             // Grow the merged pass once, not per merge
             {
                 let mut name_additional = 0;
                 let mut execs_additional = 0;
-                for merge_idx in start..end {
-                    let other = passes[schedule[merge_idx]].as_ref().unwrap();
+                for idx in start..end {
+                    let other = passes[schedule[idx]].as_ref().unwrap();
                     name_additional += other.name.len();
                     execs_additional += other.execs.len();
                 }
@@ -995,26 +1238,15 @@ where
                 pass.execs.reserve(execs_additional);
             }
 
-            for merge_idx in start..end {
-                let other = passes[schedule[merge_idx]].take().unwrap();
+            for idx in start..end {
+                let mut other = passes[schedule[idx]].take().unwrap();
                 pass.name.push_str(" + ");
                 pass.name.push_str(other.name.as_str());
-
-                let first_exec_idx = pass.execs.len();
-                for exec in other.execs.into_iter() {
-                    pass.execs.push(exec);
-                }
-
-                pass.subpasses.push(Subpass {
-                    load_attachments: other.load_attachments,
-                    resolve_attachments: other.resolve_attachments,
-                    store_attachments: other.store_attachments,
-                    exec_idx: first_exec_idx,
-                });
+                pass.execs.append(&mut other.execs);
             }
 
             self.graph.passes.push(pass);
-            idx += 1;
+            idx += 1 + end - start;
         }
 
         // Reschedule passes
@@ -1027,6 +1259,8 @@ where
         for pass in passes.into_iter().flatten() {
             self.graph.passes.push(pass);
         }
+
+        schedule
     }
 
     fn next_subpass(cmd_buf: &CommandBuffer<P>) {
@@ -1074,87 +1308,226 @@ where
     }
 
     fn record_execution_barriers(
+        trace_pad: &'static str,
         cmd_buf: &CommandBuffer<P>,
         bindings: &mut [Binding<P>],
         pass: &mut Pass<P>,
         exec_idx: usize,
     ) {
-        use std::slice::from_ref;
+        use std::{cell::RefCell, slice::from_ref};
 
-        let accesses = pass.execs[exec_idx].accesses.iter();
+        // TODO: Notice the case where we have previously barriered on something which has not
+        // had any write access since the previous barrier
 
-        // trace!("record_execution_barriers: {:#?}", accesses);
+        // We store a Barriers in TLS to save an alloc; contents are POD
+        thread_local! {
+            static BARRIERS: RefCell<Barriers> = Default::default();
+        }
 
-        for (node_idx, accesses) in accesses {
-            let next_access = accesses[0].access;
-            let next_subresource = &accesses[0].subresource;
-            let binding = &mut bindings[*node_idx];
-            let previous_access = binding.access(accesses[1].access);
+        struct Barrier<T> {
+            next_access: AccessType,
+            prev_access: AccessType,
+            resource: T,
+        }
 
-            let mut global_barrier = None;
-            let mut buf_barrier = None;
-            let mut image_barrier = None;
+        #[derive(Default)]
+        struct Barriers {
+            buffers: Vec<Barrier<BufferResource>>,
+            images: Vec<Barrier<ImageResource>>,
+            next_accesses: Vec<AccessType>,
+            prev_accesses: Vec<AccessType>,
+        }
 
-            if let Some(subresource) = &next_subresource {
-                if let Some(buf) = binding.as_driver_buffer() {
-                    let subresource = subresource.unwrap_buffer();
-                    buf_barrier = Some(BufferBarrier {
-                        previous_accesses: from_ref(&previous_access),
-                        next_accesses: from_ref(&next_access),
-                        src_queue_family_index: cmd_buf.device.queue.family.idx,
-                        dst_queue_family_index: cmd_buf.device.queue.family.idx,
-                        buffer: **buf,
-                        offset: subresource.start as _,
-                        size: (subresource.end - subresource.start) as _,
-                    });
-                } else if let Some(image) = binding.as_driver_image() {
-                    image_barrier = Some(ImageBarrier {
-                        previous_accesses: from_ref(&previous_access),
-                        next_accesses: from_ref(&next_access),
-                        previous_layout: image_access_layout(previous_access),
-                        next_layout: image_access_layout(next_access),
-                        discard_contents: previous_access == AccessType::Nothing
-                            || is_write_access(next_access),
-                        src_queue_family_index: cmd_buf.device.queue.family.idx,
-                        dst_queue_family_index: cmd_buf.device.queue.family.idx,
-                        image: **image,
-                        range: subresource.unwrap_image().into_vk(),
-                    });
-                }
-            }
+        struct BufferResource {
+            buffer: vk::Buffer,
+            offset: usize,
+            size: usize,
+        }
 
-            if let Some(barrier) = &buf_barrier {
-                trace!(
-                    "buffer barrier {:?} {}..{}",
-                    barrier.buffer,
-                    barrier.offset,
-                    barrier.offset + barrier.size
-                );
-            } else if let Some(barrier) = &image_barrier {
-                trace!(
-                    "image barrier {:?} {:?} -> {:?} (layout {:?} -> {:?})",
-                    barrier.image,
-                    barrier.previous_accesses[0],
-                    barrier.next_accesses[0],
-                    barrier.previous_layout,
-                    barrier.next_layout,
-                );
-            } else {
-                trace!("global barrier {:?} -> {:?}", previous_access, next_access);
-                global_barrier = Some(GlobalBarrier {
-                    previous_accesses: from_ref(&previous_access),
-                    next_accesses: from_ref(&next_access),
+        struct ImageResource {
+            image: vk::Image,
+            range: vk::ImageSubresourceRange,
+        }
+
+        enum Resource {
+            Buffer(BufferResource),
+            Image(ImageResource),
+        }
+
+        BARRIERS.with(|barriers| {
+            // Initialize TLS from a previous call
+            let mut barriers = barriers.borrow_mut();
+            barriers.buffers.clear();
+            barriers.images.clear();
+            barriers.next_accesses.clear();
+            barriers.prev_accesses.clear();
+
+            // Map remaining accesses into vk_sync barriers (some accesses may have been removed by the
+            // render pass leasing function)
+            let barriers = pass.execs[exec_idx]
+                .accesses
+                .iter()
+                .map(|(node_idx, [early, late])| {
+                    let binding = &mut bindings[*node_idx];
+                    let next_access = early.access;
+                    let prev_access = binding.access_mut(late.access);
+
+                    // If we find a subresource then it must have a resource attached
+                    if let Some(subresource) = early.subresource {
+                        if let Some(buf) = binding.as_driver_buffer() {
+                            let range = subresource.unwrap_buffer();
+
+                            trace!(
+                                "{trace_pad}buffer {:?} {}..{} {:?} -> {:?}",
+                                binding.as_driver_buffer().unwrap(),
+                                range.start,
+                                range.end,
+                                next_access,
+                                prev_access,
+                            );
+
+                            return Barrier {
+                                next_access,
+                                prev_access,
+                                resource: Some(Resource::Buffer(BufferResource {
+                                    buffer: **buf,
+                                    offset: range.start as _,
+                                    size: (range.end - range.start) as _,
+                                })),
+                            };
+                        } else if let Some(image) = binding.as_driver_image() {
+                            let range = subresource.unwrap_image().into_vk();
+
+                            trace!(
+                                "{trace_pad}image {:?} {:?}-{:?} -> {:?}-{:?}",
+                                binding.as_driver_image().unwrap(),
+                                prev_access,
+                                image_access_layout(prev_access),
+                                next_access,
+                                image_access_layout(next_access),
+                            );
+
+                            return Barrier {
+                                next_access,
+                                prev_access,
+                                resource: Some(Resource::Image(ImageResource {
+                                    image: **image,
+                                    range,
+                                })),
+                            };
+                        }
+
+                        // Ray tracing!
+                        todo!();
+                    }
+
+                    Barrier {
+                        next_access,
+                        prev_access,
+                        resource: None,
+                    }
+                })
+                .fold(barriers, |mut barriers, barrier| {
+                    let Barrier {
+                        next_access,
+                        prev_access,
+                        resource,
+                    } = barrier;
+                    match resource {
+                        Some(Resource::Buffer(resource)) => {
+                            barriers.buffers.push(Barrier {
+                                next_access,
+                                prev_access,
+                                resource,
+                            });
+                        }
+                        Some(Resource::Image(resource)) => {
+                            barriers.images.push(Barrier {
+                                next_access,
+                                prev_access,
+                                resource,
+                            });
+                        }
+                        None => {
+                            // HACK: It would be nice if AccessType was PartialOrd..
+                            if !barriers.next_accesses.contains(&next_access) {
+                                barriers.next_accesses.push(next_access);
+                            }
+
+                            if !barriers.prev_accesses.contains(&prev_access) {
+                                barriers.prev_accesses.push(prev_access);
+                            }
+                        }
+                    }
+                    barriers
                 });
-            }
+            let global_barrier = if !barriers.next_accesses.is_empty() {
+                // No resource attached - we use a global barrier for these
+                trace!(
+                    "{trace_pad}barrier {:?} -> {:?}",
+                    barriers.next_accesses,
+                    barriers.prev_accesses
+                );
+
+                Some(GlobalBarrier {
+                    next_accesses: barriers.next_accesses.as_slice(),
+                    previous_accesses: barriers.prev_accesses.as_slice(),
+                })
+            } else {
+                None
+            };
+            let buffer_barriers = barriers.buffers.iter().map(
+                |Barrier {
+                     next_access,
+                     prev_access,
+                     resource,
+                 }| {
+                    let BufferResource {
+                        buffer,
+                        offset,
+                        size,
+                    } = *resource;
+                    BufferBarrier {
+                        next_accesses: from_ref(next_access),
+                        previous_accesses: from_ref(prev_access),
+                        src_queue_family_index: cmd_buf.device.queue.family.idx,
+                        dst_queue_family_index: cmd_buf.device.queue.family.idx,
+                        buffer,
+                        offset,
+                        size,
+                    }
+                },
+            );
+            let image_barriers = barriers.images.iter().map(
+                |Barrier {
+                     next_access,
+                     prev_access,
+                     resource,
+                 }| {
+                    let ImageResource { image, range } = *resource;
+                    ImageBarrier {
+                        next_accesses: from_ref(next_access),
+                        next_layout: image_access_layout(*next_access),
+                        previous_accesses: from_ref(prev_access),
+                        previous_layout: image_access_layout(*prev_access),
+                        discard_contents: *prev_access == AccessType::Nothing
+                            || is_write_access(*next_access),
+                        src_queue_family_index: cmd_buf.device.queue.family.idx,
+                        dst_queue_family_index: cmd_buf.device.queue.family.idx,
+                        image,
+                        range,
+                    }
+                },
+            );
 
             pipeline_barrier(
                 &cmd_buf.device,
                 **cmd_buf,
                 global_barrier,
-                buf_barrier.as_ref().map(from_ref).unwrap_or_default(),
-                image_barrier.as_ref().map(from_ref).unwrap_or_default(),
+                &buffer_barriers.collect::<Box<[_]>>(),
+                &image_barriers.collect::<Box<[_]>>(),
             );
-        }
+        });
     }
 
     /// Records any pending render graph passes that are required by the given node, but does not
@@ -1183,7 +1556,11 @@ where
             .unwrap_or_default()
             .min(self.graph.passes.len());
 
-        self.record_node_passes(cache, cmd_buf, node_idx, end_pass_idx)
+        if end_pass_idx > 0 {
+            self.record_node_passes(cache, cmd_buf, node_idx, end_pass_idx)?;
+        }
+
+        Ok(())
     }
 
     /// Records any pending render graph passes that the given node requires.
@@ -1200,7 +1577,12 @@ where
 
         assert!(self.graph.bindings.get(node_idx).is_some());
 
-        self.record_node_passes(cache, cmd_buf, node_idx, self.graph.passes.len())
+        let end_pass_idx = self.graph.passes.len();
+        if end_pass_idx > 0 {
+            self.record_node_passes(cache, cmd_buf, node_idx, end_pass_idx)?;
+        }
+
+        Ok(())
     }
 
     fn record_node_passes(
@@ -1210,8 +1592,6 @@ where
         node_idx: usize,
         end_pass_idx: usize,
     ) -> Result<(), DriverError> {
-        //trace!("record_passes: end_pass_idx = {}", end_pass_idx);
-
         // Build a schedule for this node
         let mut schedule = self.schedule_node_passes(node_idx, end_pass_idx);
 
@@ -1225,94 +1605,78 @@ where
         mut schedule: &mut [usize],
         end_pass_idx: usize,
     ) -> Result<(), DriverError> {
+        // Print some handy details or hit a breakpoint if you set the flag
+        #[cfg(debug_assertions)]
+        if self.graph.debug {
+            log::info!("Input {:#?}", self.graph);
+        }
+
         // Optimize the schedule; leasing the required stuff it needs
         self.reorder_scheduled_passes(schedule, end_pass_idx);
-        self.merge_scheduled_passes(schedule);
+        schedule = self.merge_scheduled_passes(schedule);
         self.lease_scheduled_resources(cache, schedule)?;
 
         let mut passes = take(&mut self.graph.passes);
-        for (physical_pass_idx, pass_idx) in schedule.iter().copied().enumerate() {
+        for pass_idx in schedule.iter().copied() {
             let pass = &mut passes[pass_idx];
-            let is_graphic = self.physical_passes[physical_pass_idx]
-                .render_pass
-                .is_some();
+            let is_graphic = self.physical_passes[pass_idx].render_pass.is_some();
 
-            trace!("record_passes: begin \"{}\"", &pass.name);
+            trace!("recording pass [{}: {}]", pass_idx, pass.name);
 
-            if !self.physical_passes[physical_pass_idx]
-                .descriptor_sets
+            if !self.physical_passes[pass_idx]
+                .exec_descriptor_sets
                 .is_empty()
             {
-                self.write_descriptor_sets(cmd_buf, pass, physical_pass_idx)?;
+                self.write_descriptor_sets(cmd_buf, pass, pass_idx)?;
             }
 
-            Self::record_execution_barriers(cmd_buf, &mut self.graph.bindings, pass, 0);
+            Self::record_execution_barriers("  ", cmd_buf, &mut self.graph.bindings, pass, 0);
 
             let render_area = if is_graphic {
                 let render_area = self.render_area(pass);
-                self.begin_render_pass(cmd_buf, pass, physical_pass_idx, render_area)?;
+                self.begin_render_pass(cmd_buf, pass, pass_idx, render_area)?;
                 Some(render_area)
             } else {
                 None
             };
 
-            for subpass_idx in 0..pass.subpasses.len() {
-                let exec_idx = pass.subpasses[subpass_idx].exec_idx;
-
-                if is_graphic && subpass_idx > 0 {
+            for exec_idx in 0..pass.execs.len() {
+                if is_graphic && exec_idx > 0 {
                     Self::next_subpass(cmd_buf);
                 }
 
-                {
-                    let exec = &mut pass.execs[exec_idx];
-                    if let Some(pipeline) = exec.pipeline.as_mut() {
-                        self.bind_pipeline(
+                if let Some(pipeline) = &mut pass.execs[exec_idx].pipeline.as_mut() {
+                    self.bind_pipeline(cmd_buf, pass_idx, exec_idx, pipeline, pass.depth_stencil)?;
+
+                    if is_graphic && pass.render_area.is_none() {
+                        let render_area = render_area.unwrap();
+                        // In this case we set the viewport and scissor for the user
+                        Self::set_viewport(
                             cmd_buf,
-                            physical_pass_idx,
-                            subpass_idx as u32,
-                            pipeline,
-                            pass.depth_stencil,
-                        )?;
-
-                        if is_graphic {
-                            if pass.viewport.is_none() {
-                                // Viewport was not set by user
-                                let render_area_extent = render_area.unwrap().extent.as_vec2();
-                                Self::set_viewport(
-                                    cmd_buf,
-                                    render_area_extent.x,
-                                    render_area_extent.y,
-                                    pass.depth_stencil
-                                        .map(|depth_stencil| {
-                                            let min = depth_stencil.min.0;
-                                            let max = depth_stencil.max.0;
-                                            min..max
-                                        })
-                                        .unwrap_or(0.0..1.0),
-                                );
-                            }
-
-                            if pass.scissor.is_none() {
-                                // Scissor region was not set by user
-                                let render_area = render_area.unwrap();
-                                Self::set_scissor(
-                                    cmd_buf,
-                                    render_area.extent.x,
-                                    render_area.extent.y,
-                                )
-                            }
-                        }
-
-                        self.bind_descriptor_sets(
-                            cmd_buf,
-                            pipeline,
-                            &self.physical_passes[physical_pass_idx],
+                            render_area.width as _,
+                            render_area.height as _,
+                            pass.depth_stencil
+                                .map(|depth_stencil| {
+                                    let min = depth_stencil.min.0;
+                                    let max = depth_stencil.max.0;
+                                    min..max
+                                })
+                                .unwrap_or(0.0..1.0),
                         );
+                        Self::set_scissor(cmd_buf, render_area.width, render_area.height);
                     }
-                };
 
-                if exec_idx > 0 {
+                    self.bind_descriptor_sets(
+                        cmd_buf,
+                        pipeline,
+                        &self.physical_passes[pass_idx],
+                        exec_idx,
+                    );
+                }
+
+                if exec_idx > 0 && !is_graphic {
                     Self::record_execution_barriers(
+                        "    ",
                         cmd_buf,
                         &mut self.graph.bindings,
                         pass,
@@ -1320,17 +1684,18 @@ where
                     );
                 }
 
-                {
-                    // debug!("execute");
+                trace!("    > exec[{exec_idx}]");
 
-                    let exec = &mut pass.execs[exec_idx];
-                    let exec_func = exec.func.take().unwrap().0;
-                    let bindings = Bindings {
+                let exec = &mut pass.execs[exec_idx];
+                let exec_func = exec.func.take().unwrap().0;
+                exec_func(
+                    &cmd_buf.device,
+                    **cmd_buf,
+                    Bindings {
                         exec,
                         graph: &self.graph,
-                    };
-                    exec_func(&cmd_buf.device, **cmd_buf, bindings);
-                }
+                    },
+                );
             }
 
             if is_graphic {
@@ -1368,6 +1733,8 @@ where
         self.graph.passes.extend(passes);
         self.graph.passes.reverse();
 
+        // log::trace!("OK");
+
         Ok(())
     }
 
@@ -1380,29 +1747,35 @@ where
     where
         P: 'static,
     {
+        if self.graph.passes.is_empty() {
+            return Ok(());
+        }
+
         let mut schedule = (0..self.graph.passes.len()).collect::<Vec<_>>();
 
         self.record_scheduled_passes(cache, cmd_buf, &mut schedule, self.graph.passes.len())
     }
 
-    fn render_area(&self, pass: &Pass<P>) -> Rect<UVec2, IVec2> {
+    fn render_area(&self, pass: &Pass<P>) -> Area {
         pass.render_area.unwrap_or_else(|| {
             // set_render_area was not specified so we're going to guess using the extent
             // of the first attachment we find, by lowest attachment index order
-            let first_pass = &pass.subpasses[0];
-            let extent = first_pass
-                .load_attachments
+            let first_exec = pass.execs.first().unwrap();
+            let extent = first_exec
+                .loads
                 .attached
                 .iter()
-                .chain(first_pass.resolve_attachments.attached.iter())
-                .chain(first_pass.store_attachments.attached.iter())
+                .chain(first_exec.resolves.attached.iter())
+                .chain(first_exec.stores.attached.iter())
                 .filter_map(|attachment| attachment.as_ref())
                 .find_map(|attachment| self.graph.bindings[attachment.target].as_extent_2d())
                 .unwrap();
 
-            Rect {
-                extent,
-                offset: IVec2::ZERO,
+            Area {
+                height: extent.y,
+                width: extent.x,
+                x: 0,
+                y: 0,
             }
         })
     }
@@ -1483,22 +1856,48 @@ where
 
         schedule.reverse();
 
-        debug!(
-            "Schedule: {}",
-            schedule
-                .iter()
-                .copied()
-                .map(|idx| format!("{} {}", idx, self.graph.passes[idx].name))
-                .join(", ")
-        );
-        trace!(
-            "Skipping: {}",
-            unscheduled
-                .iter()
-                .copied()
-                .map(|idx| format!("{} {}", idx, self.graph.passes[idx].name))
-                .join(", ")
-        );
+        if !schedule.is_empty() {
+            // These are the indexes of the passes this thread is about to resolve
+            debug!(
+                "schedule: {}",
+                schedule
+                    .iter()
+                    .copied()
+                    .map(|idx| format!("[{}: {}]", idx, self.graph.passes[idx].name))
+                    .join(", ")
+            );
+        }
+
+        if !unscheduled.is_empty() {
+            // These passes are within the range of passes we thought we had to do
+            // right now, but it turns out that nothing in "schedule" relies on them
+            trace!(
+                "skipping: {}",
+                unscheduled
+                    .iter()
+                    .copied()
+                    .map(|idx| format!("[{}: {}]", idx, self.graph.passes[idx].name))
+                    .join(", ")
+            );
+        }
+
+        if end_pass_idx < self.graph.passes.len() {
+            // These passes existing on the graph but are not being considered right
+            // now because we've been told to stop work at the "end_pass_idx" point
+            trace!(
+                "ignoring: {}",
+                self.graph.passes[end_pass_idx..]
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, pass)| format!("[{}: {}]", idx + end_pass_idx, pass.name))
+                    .join(", ")
+            );
+        }
+
+        if schedule.is_empty() && unscheduled.is_empty() && end_pass_idx < self.graph.passes.len() {
+            // This may be totally normal in some situations, not sure if this will stay
+            warn!("Unable to schedule any render passes");
+        }
 
         schedule
     }
@@ -1608,33 +2007,39 @@ where
         &self,
         cmd_buf: &CommandBuffer<P>,
         pass: &Pass<P>,
-        physical_pass_idx: usize,
+        pass_idx: usize,
     ) -> Result<(), DriverError> {
         use std::slice::from_ref;
 
-        let physical_pass = &self.physical_passes[physical_pass_idx];
+        let physical_pass = &self.physical_passes[pass_idx];
         let mut descriptor_writes = vec![];
         let mut buffer_infos = vec![];
         let mut image_infos = vec![];
-        for (descriptor_set_idx, (exec, pipeline)) in pass
+        for (exec_idx, exec, pipeline) in pass
             .execs
             .iter()
-            .filter_map(|exec| exec.pipeline.as_ref().map(|pipeline| (exec, pipeline)))
             .enumerate()
+            .filter_map(|(exec_idx, exec)| {
+                exec.pipeline
+                    .as_ref()
+                    .map(|pipeline| (exec_idx, exec, pipeline))
+            })
+            .filter(|(.., pipeline)| !pipeline.descriptor_info().layouts.is_empty())
         {
-            let descriptor_set = &physical_pass.descriptor_sets[descriptor_set_idx];
             for (descriptor, (node_idx, view_info)) in exec.bindings.iter() {
                 let (descriptor_set_idx, binding_idx, binding_offset) = descriptor.into_tuple();
                 let descriptor_info = *pipeline
                     .descriptor_bindings()
                     .get(&DescriptorBinding(descriptor_set_idx, binding_idx))
-                    .unwrap_or_else(|| panic!("Descriptor {descriptor_set_idx}.{binding_idx}[{binding_offset}] specified in recorded execution of pass \"{}\" was not discovered through shader reflection.", &pass.name));
+                    .unwrap_or_else(|| panic!("descriptor {descriptor_set_idx}.{binding_idx}[{binding_offset}] specified in recorded execution of pass \"{}\" was not discovered through shader reflection", &pass.name));
                 let descriptor_ty = descriptor_info.into();
 
                 //trace!("write_descriptor_sets {descriptor_set_idx}.{binding_idx}[{binding_offset}] = {:?}", descriptor_info);
 
                 let write_descriptor_set = vk::WriteDescriptorSet::builder()
-                    .dst_set(**descriptor_set)
+                    .dst_set(
+                        *physical_pass.exec_descriptor_sets[&exec_idx][descriptor_set_idx as usize],
+                    )
                     .dst_binding(binding_idx)
                     .dst_array_element(binding_offset);
                 let bound_node = &self.graph.bindings[*node_idx];
@@ -1732,7 +2137,7 @@ where
             return Ok(());
         }
 
-        trace!("writing {:#?} descriptors ", descriptor_writes.len());
+        trace!("  writing {:#?} descriptors ", descriptor_writes.len());
 
         unsafe {
             cmd_buf

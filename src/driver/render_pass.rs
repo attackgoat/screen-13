@@ -4,7 +4,7 @@ use {
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
-    log::{error, trace},
+    log::{trace, warn},
     parking_lot::Mutex,
     std::{
         collections::{btree_map::Entry, BTreeMap},
@@ -97,9 +97,10 @@ pub struct FramebufferKeyAttachment {
 struct GraphicPipelineKey {
     pipeline: usize,
     depth_stencil: Option<DepthStencilMode>,
+    subpass_idx: u32,
 }
 
-#[derive(Builder, Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Builder, Clone, Debug, Default, Eq, Hash, PartialEq)]
 #[builder(pattern = "owned", derive(Debug))]
 pub struct RenderPassInfo {
     pub attachments: Vec<AttachmentInfo>,
@@ -300,7 +301,11 @@ where
         let framebuffer = unsafe {
             self.device
                 .create_framebuffer(&create_info, None)
-                .map_err(|_| DriverError::Unsupported)?
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?
         };
 
         entry.insert(framebuffer);
@@ -316,12 +321,12 @@ where
     ) -> Result<vk::Pipeline, DriverError> {
         use std::slice::from_ref;
 
-        let key = GraphicPipelineKey {
+        let mut cache = self.graphic_pipeline_cache.lock();
+        let entry = cache.entry(GraphicPipelineKey {
             depth_stencil,
             pipeline: Shared::as_ptr(pipeline) as _, // HACK: We're just storing a pointer!
-        };
-        let mut cache = self.graphic_pipeline_cache.lock();
-        let entry = cache.entry(key);
+            subpass_idx,
+        });
         if let Entry::Occupied(entry) = entry {
             return Ok(*entry.get());
         }
@@ -419,7 +424,7 @@ where
             )
         }
         .map_err(|(_, err)| {
-            error!(
+            warn!(
                 "create_graphics_pipelines: {err}\n{:#?}",
                 graphic_pipeline_info.build()
             );
@@ -511,5 +516,24 @@ impl SubpassInfo {
             preserve_attachments: Vec::with_capacity(capacity),
             resolve_attachments: Vec::with_capacity(capacity),
         }
+    }
+
+    pub fn has_multiple_attachments(&self) -> bool {
+        let mut attachment = None;
+        for attachment_ref in self
+            .color_attachments
+            .iter()
+            .chain(self.input_attachments.iter())
+            .chain(self.resolve_attachments.iter())
+            .chain(self.depth_stencil_attachment.iter())
+        {
+            match attachment {
+                Some(attachment) if attachment == attachment_ref.attachment => continue,
+                None => attachment = Some(attachment_ref.attachment),
+                _ => return true,
+            }
+        }
+
+        false
     }
 }

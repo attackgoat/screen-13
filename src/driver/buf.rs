@@ -11,12 +11,12 @@ use {
     log::trace,
     log::warn,
     std::{
+        fmt::{Debug, Formatter},
         ops::{Deref, Range},
         thread::panicking,
     },
 };
 
-#[derive(Debug)]
 pub struct Buffer<P>
 where
     P: SharedPointerKind,
@@ -25,6 +25,7 @@ where
     buffer: vk::Buffer,
     device: Shared<Device<P>, P>,
     pub info: BufferInfo,
+    pub name: Option<String>,
 }
 
 impl<P> Buffer<P>
@@ -41,15 +42,17 @@ where
 
         let device = Shared::clone(device);
         let buffer_info = vk::BufferCreateInfo {
-            size: info.size as u64,
+            size: info.size,
             usage: info.usage,
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             ..Default::default()
         };
         let buffer = unsafe {
-            device
-                .create_buffer(&buffer_info, None)
-                .map_err(|_| DriverError::Unsupported)?
+            device.create_buffer(&buffer_info, None).map_err(|err| {
+                warn!("{err}");
+
+                DriverError::Unsupported
+            })?
         };
         let mut requirements = unsafe { device.get_buffer_memory_requirements(buffer) };
 
@@ -77,13 +80,21 @@ where
                 location: memory_location,
                 linear: true, // Buffers are always linear
             })
-            .map_err(|_| DriverError::Unsupported)?;
+            .map_err(|err| {
+                warn!("{err}");
+
+                DriverError::Unsupported
+            })?;
 
         // Bind memory to the buffer
         unsafe {
             device
                 .bind_buffer_memory(buffer, allocation.memory(), allocation.offset())
-                .map_err(|_| DriverError::Unsupported)?
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?
         };
 
         Ok(Self {
@@ -91,10 +102,16 @@ where
             buffer,
             device,
             info,
+            name: None,
         })
     }
 
-    pub fn device_address(this: &Self) -> u64 {
+    pub fn copy_from_slice(this: &mut Self, offset: vk::DeviceSize, slice: &[u8]) {
+        Self::mapped_slice_mut(this)[offset as _..offset as usize + slice.len()]
+            .copy_from_slice(slice);
+    }
+
+    pub fn device_address(this: &Self) -> vk::DeviceAddress {
         unsafe {
             this.device.get_buffer_device_address(
                 &ash::vk::BufferDeviceAddressInfo::builder().buffer(this.buffer),
@@ -109,6 +126,19 @@ where
             .unwrap()
             .mapped_slice_mut()
             .unwrap()[0..this.info.size as usize]
+    }
+}
+
+impl<P> Debug for Buffer<P>
+where
+    P: SharedPointerKind,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if let Some(name) = &self.name {
+            write!(f, "{} ({:?})", name, self.buffer)
+        } else {
+            write!(f, "{:?}", self.buffer)
+        }
     }
 }
 
@@ -147,44 +177,70 @@ where
 }
 
 #[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
-#[builder(pattern = "owned")]
+#[builder(
+    build_fn(private, name = "fallible_build"),
+    derive(Debug),
+    pattern = "owned"
+)]
 pub struct BufferInfo {
-    pub size: u64,
+    pub size: vk::DeviceSize,
     pub usage: vk::BufferUsageFlags,
+
     #[builder(default)]
     pub can_map: bool,
 }
 
 impl BufferInfo {
     #[allow(clippy::new_ret_no_self)]
-    pub fn new(size: u64, usage: vk::BufferUsageFlags) -> BufferInfoBuilder {
+    pub fn new(size: vk::DeviceSize, usage: vk::BufferUsageFlags) -> BufferInfoBuilder {
         BufferInfoBuilder::default().size(size).usage(usage)
+    }
+
+    // TODO: This function is an opinon, should it be?
+    pub fn new_mappable(size: vk::DeviceSize, usage: vk::BufferUsageFlags) -> BufferInfoBuilder {
+        Self::new(
+            size,
+            usage | vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::TRANSFER_SRC,
+        )
+        .can_map(true)
+    }
+}
+
+// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
+impl BufferInfoBuilder {
+    pub fn new(size: vk::DeviceSize, usage: vk::BufferUsageFlags) -> Self {
+        Self::default().size(size).usage(usage)
+    }
+
+    pub fn build(self) -> BufferInfo {
+        self.fallible_build()
+            .expect("All required fields set at initialization")
     }
 }
 
 impl From<BufferInfoBuilder> for BufferInfo {
     fn from(info: BufferInfoBuilder) -> Self {
-        info.build().unwrap()
+        info.build()
     }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BufferSubresource {
-    pub start: u64,
-    pub end: u64,
+    pub start: vk::DeviceSize,
+    pub end: vk::DeviceSize,
 }
 
 impl From<BufferInfo> for BufferSubresource {
     fn from(info: BufferInfo) -> Self {
         Self {
             start: 0,
-            end: info.size as u64,
+            end: info.size,
         }
     }
 }
 
-impl From<Range<u64>> for BufferSubresource {
-    fn from(range: Range<u64>) -> Self {
+impl From<Range<vk::DeviceSize>> for BufferSubresource {
+    fn from(range: Range<vk::DeviceSize>) -> Self {
         Self {
             start: range.start,
             end: range.end,
@@ -192,13 +248,13 @@ impl From<Range<u64>> for BufferSubresource {
     }
 }
 
-impl From<Option<Range<u64>>> for BufferSubresource {
-    fn from(range: Option<Range<u64>>) -> Self {
+impl From<Option<Range<vk::DeviceSize>>> for BufferSubresource {
+    fn from(range: Option<Range<vk::DeviceSize>>) -> Self {
         range.unwrap_or(0..vk::WHOLE_SIZE).into()
     }
 }
 
-impl From<BufferSubresource> for Range<u64> {
+impl From<BufferSubresource> for Range<vk::DeviceSize> {
     fn from(subresource: BufferSubresource) -> Self {
         subresource.start..subresource.end
     }

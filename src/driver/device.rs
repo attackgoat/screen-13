@@ -82,10 +82,19 @@ where
         unsafe {
             let extension_properties = instance
                 .enumerate_device_extension_properties(*physical_device)
-                .map_err(|_| DriverError::Unsupported)?;
+                .map_err(|err| {
+                    warn!("{err}");
 
-            #[cfg(debug_assertions)]
-            debug!("Extension properties:\n{:#?}", &extension_properties);
+                    DriverError::Unsupported
+                })?;
+
+            for ext in &extension_properties {
+                debug!(
+                    "extension {:?} v{}",
+                    CStr::from_ptr(ext.extension_name.as_ptr()),
+                    ext.spec_version
+                );
+            }
 
             let supported_extensions: HashSet<String> = extension_properties
                 .iter()
@@ -100,8 +109,7 @@ where
             for &ext in &device_extension_names {
                 let ext = CStr::from_ptr(ext).to_string_lossy();
                 if !supported_extensions.contains(ext.as_ref()) {
-                    #[cfg(debug_assertions)]
-                    warn!("Unsupported: {}", ext);
+                    warn!("unsupported: {}", ext);
 
                     return Err(DriverError::Unsupported);
                 }
@@ -118,7 +126,7 @@ where
         let queue = if let Some(queue) = queue {
             queue
         } else {
-            warn!("No suitable presentation queue found");
+            warn!("no suitable presentation queue found");
 
             return Err(DriverError::Unsupported);
         };
@@ -257,7 +265,11 @@ where
                 .push_next(&mut features2);
             let device = instance
                 .create_device(*physical_device, &device_create_info, None)
-                .map_err(|_| DriverError::Unsupported)?;
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?;
             let allocator = Allocator::new(&AllocatorCreateDesc {
                 instance: (**instance).clone(),
                 device: device.clone(),
@@ -270,7 +282,11 @@ where
                 },
                 buffer_device_address: true,
             })
-            .map_err(|_| DriverError::Unsupported)?;
+            .map_err(|err| {
+                warn!("{err}");
+
+                DriverError::Unsupported
+            })?;
             let queue = Queue {
                 queue: device.get_device_queue(queue.idx, 0),
                 family: queue,
@@ -338,7 +354,11 @@ where
 
                             device.create_sampler(&info, None)
                         }
-                        .map_err(|_| DriverError::Unsupported)?,
+                        .map_err(|err| {
+                            warn!("{err}");
+
+                            DriverError::Unsupported
+                        })?,
                     );
                 }
             }
@@ -369,7 +389,11 @@ where
         unsafe {
             Device::surface(this)
                 .get_physical_device_surface_formats(*this.physical_device, **surface)
-                .map_err(|_| DriverError::Unsupported)
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })
         }
     }
 
