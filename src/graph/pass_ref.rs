@@ -697,14 +697,10 @@ where
     pub(super) fn new(graph: &'a mut RenderGraph<P>, name: String) -> PassRef<'a, P> {
         let pass_idx = graph.passes.len();
         graph.passes.push(Pass {
-            load_attachments: Default::default(),
-            resolve_attachments: Default::default(),
-            store_attachments: Default::default(),
             depth_stencil: None,
             execs: vec![Default::default()], // We start off with a default execution!
             name,
             render_area: None,
-            subpasses: vec![],
         });
 
         Self {
@@ -788,6 +784,9 @@ where
 
             let mut next_exec = Execution::default();
             next_exec.pipeline = last_exec.pipeline.clone();
+            next_exec.loads = last_exec.loads.clone();
+            next_exec.resolves = last_exec.resolves.clone();
+            next_exec.stores = last_exec.stores.clone();
             next_exec
         };
 
@@ -1096,6 +1095,7 @@ where
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
+
         self.attach_color_as(attachment, image, image_view_info)
     }
 
@@ -1109,6 +1109,7 @@ where
     ) -> Self {
         let image = image.into();
         let image_view_info = view_info.into();
+
         self.load_color_as(attachment, image, image_view_info)
             .store_color_as(attachment, image, image_view_info)
     }
@@ -1123,6 +1124,7 @@ where
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
+
         self.attach_depth_stencil_as(attachment, image, image_view_info)
     }
 
@@ -1136,6 +1138,7 @@ where
     ) -> Self {
         let image = image.into();
         let image_view_info = image_view_info.into();
+
         self.load_depth_stencil_as(attachment, image, image_view_info)
             .store_depth_stencil_as(attachment, image, image_view_info)
     }
@@ -1152,21 +1155,18 @@ where
         color: impl Into<Color>,
     ) -> Self {
         let color = color.into();
+        let pass = self.pass.as_mut();
+        let exec = pass.execs.last_mut().unwrap();
 
-        assert!(self
-            .pass
-            .as_ref()
-            .load_attachments
-            .attached
-            .get(attachment as usize)
-            .is_none());
+        debug_assert!(exec.loads.attached.get(attachment as usize).is_none());
 
-        self.pass.as_mut().execs.last_mut().unwrap().clears.insert(
+        exec.clears.insert(
             attachment,
             vk::ClearValue {
                 color: vk::ClearColorValue { float32: color.0 },
             },
         );
+
         self
     }
 
@@ -1183,15 +1183,12 @@ where
         stencil_value: u32,
     ) -> Self {
         let pass = self.pass.as_mut();
+        let exec = pass.execs.last_mut().unwrap();
 
-        assert!(pass.load_attachments.depth_stencil.is_none());
-        assert!(pass
-            .load_attachments
-            .attached
-            .get(attachment as usize)
-            .is_none());
+        debug_assert!(exec.loads.depth_stencil.is_none());
+        debug_assert!(exec.loads.attached.get(attachment as usize).is_none());
 
-        self.pass.as_mut().execs.last_mut().unwrap().clears.insert(
+        exec.clears.insert(
             attachment,
             vk::ClearValue {
                 depth_stencil: vk::ClearDepthStencilValue {
@@ -1200,6 +1197,7 @@ where
                 },
             },
         );
+
         self
     }
 
@@ -1221,6 +1219,7 @@ where
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
+
         self.attach_color_as(attachment, image, image_view_info)
     }
 
@@ -1241,8 +1240,9 @@ where
 
         {
             let pass = self.pass.as_mut();
+            let exec = pass.execs.last_mut().unwrap();
 
-            assert!(pass.load_attachments.insert_color(
+            assert!(exec.loads.insert_color(
                 attachment,
                 image_view_info.aspect_mask,
                 image_view_info.fmt,
@@ -1250,17 +1250,18 @@ where
                 node_idx,
             ));
 
-            let color_attachment = pass
-                .load_attachments
+            // Unwrap the attachment we inserted above
+            #[cfg(debug_assertions)]
+            let color_attachment = exec
+                .loads
                 .attached
                 .get(attachment as usize)
-                .unwrap()
+                .copied()
+                .flatten()
                 .unwrap();
 
-            assert!(self
-                .pass
-                .as_ref()
-                .store_attachments
+            debug_assert!(exec
+                .stores
                 .attached
                 .get(attachment as usize)
                 .map(|stored_attachment| Attachment::are_compatible(
@@ -1268,10 +1269,8 @@ where
                     Some(color_attachment)
                 ))
                 .unwrap_or(true));
-            assert!(self
-                .pass
-                .as_ref()
-                .resolve_attachments
+            debug_assert!(exec
+                .resolves
                 .attached
                 .get(attachment as usize)
                 .map(|resolved_attachment| Attachment::are_compatible(
@@ -1286,6 +1285,7 @@ where
             AccessType::ColorAttachmentRead,
             Some(Subresource::Image(image_view_info.into())),
         );
+
         self
     }
 
@@ -1301,6 +1301,7 @@ where
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
+
         self.load_depth_stencil_as(attachment, image, image_view_info)
     }
 
@@ -1321,8 +1322,9 @@ where
 
         {
             let pass = self.pass.as_mut();
+            let exec = pass.execs.last_mut().unwrap();
 
-            assert!(pass.load_attachments.set_depth_stencil(
+            assert!(exec.loads.set_depth_stencil(
                 attachment,
                 image_view_info.aspect_mask,
                 image_view_info.fmt,
@@ -1330,22 +1332,20 @@ where
                 node_idx,
             ));
 
-            let (_, loaded_attachment) = pass.load_attachments.depth_stencil().unwrap();
+            // Unwrap the attachment we inserted above
+            #[cfg(debug_assertions)]
+            let (_, loaded_attachment) = exec.loads.depth_stencil().unwrap();
 
-            assert!(self
-                .pass
-                .as_ref()
-                .store_attachments
+            debug_assert!(exec
+                .stores
                 .depth_stencil()
                 .map(
                     |(attachment_idx, stored_attachment)| attachment == attachment_idx
                         && Attachment::are_identical(stored_attachment, loaded_attachment)
                 )
                 .unwrap_or(true));
-            assert!(self
-                .pass
-                .as_ref()
-                .resolve_attachments
+            debug_assert!(exec
+                .resolves
                 .depth_stencil()
                 .map(
                     |(attachment_idx, resolved_attachment)| attachment == attachment_idx
@@ -1359,6 +1359,7 @@ where
             AccessType::DepthStencilAttachmentRead,
             Some(Subresource::Image(image_view_info.into())),
         );
+
         self
     }
 
@@ -1427,6 +1428,7 @@ where
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
+
         self.resolve_color_as(attachment, image, image_view_info)
     }
 
@@ -1447,8 +1449,9 @@ where
 
         {
             let pass = self.pass.as_mut();
+            let exec = pass.execs.last_mut().unwrap();
 
-            assert!(pass.resolve_attachments.insert_color(
+            assert!(exec.resolves.insert_color(
                 attachment,
                 image_view_info.aspect_mask,
                 image_view_info.fmt,
@@ -1456,17 +1459,18 @@ where
                 node_idx,
             ));
 
-            let resolved_attachment = pass
-                .resolve_attachments
+            // Unwrap the attachment we inserted above
+            #[cfg(debug_assertions)]
+            let resolved_attachment = exec
+                .resolves
                 .attached
                 .get(attachment as usize)
-                .unwrap()
+                .copied()
+                .flatten()
                 .unwrap();
 
-            assert!(self
-                .pass
-                .as_ref()
-                .load_attachments
+            debug_assert!(exec
+                .loads
                 .attached
                 .get(attachment as usize)
                 .map(|loaded_attachment| Attachment::are_compatible(
@@ -1474,13 +1478,7 @@ where
                     Some(resolved_attachment)
                 ))
                 .unwrap_or(true));
-            assert!(self
-                .pass
-                .as_ref()
-                .store_attachments
-                .attached
-                .get(attachment as usize)
-                .is_none());
+            debug_assert!(exec.stores.attached.get(attachment as usize).is_none());
         }
 
         self.pass.push_node_access(
@@ -1488,6 +1486,7 @@ where
             AccessType::ColorAttachmentWrite,
             Some(Subresource::Image(image_view_info.into())),
         );
+
         self
     }
 
@@ -1503,6 +1502,7 @@ where
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
+
         self.resolve_depth_stencil_as(attachment, image, image_view_info)
     }
 
@@ -1523,8 +1523,9 @@ where
 
         {
             let pass = self.pass.as_mut();
+            let exec = pass.execs.last_mut().unwrap();
 
-            assert!(pass.resolve_attachments.set_depth_stencil(
+            assert!(exec.resolves.set_depth_stencil(
                 attachment,
                 image_view_info.aspect_mask,
                 image_view_info.fmt,
@@ -1532,19 +1533,19 @@ where
                 node_idx,
             ));
 
-            let (_, resolved_attachment) = pass.resolve_attachments.depth_stencil().unwrap();
+            // Unwrap the attachment we inserted above
+            #[cfg(debug_assertions)]
+            let (_, resolved_attachment) = exec.resolves.depth_stencil().unwrap();
 
-            assert!(self
-                .pass
-                .as_ref()
-                .load_attachments
+            debug_assert!(exec
+                .loads
                 .depth_stencil()
                 .map(
                     |(attachment_idx, loaded_attachment)| attachment == attachment_idx
                         && Attachment::are_identical(loaded_attachment, resolved_attachment)
                 )
                 .unwrap_or(true));
-            assert!(self.pass.as_ref().store_attachments.depth_stencil.is_none());
+            debug_assert!(exec.stores.depth_stencil.is_none());
         }
 
         self.pass.push_node_access(
@@ -1590,6 +1591,7 @@ where
         assert!(pass.depth_stencil.is_none());
 
         pass.depth_stencil = Some(depth_stencil);
+
         self
     }
 
@@ -1609,6 +1611,7 @@ where
             x,
             y,
         });
+
         self
     }
 
@@ -1624,6 +1627,7 @@ where
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
+
         self.store_color_as(attachment, image, image_view_info)
     }
 
@@ -1644,8 +1648,9 @@ where
 
         {
             let pass = self.pass.as_mut();
+            let exec = pass.execs.last_mut().unwrap();
 
-            assert!(pass.store_attachments.insert_color(
+            assert!(exec.stores.insert_color(
                 attachment,
                 image_view_info.aspect_mask,
                 image_view_info.fmt,
@@ -1653,17 +1658,18 @@ where
                 node_idx,
             ));
 
-            let stored_attachment = pass
-                .store_attachments
+            // Unwrap the attachment we inserted above
+            #[cfg(debug_assertions)]
+            let stored_attachment = exec
+                .stores
                 .attached
                 .get(attachment as usize)
-                .unwrap()
+                .copied()
+                .flatten()
                 .unwrap();
 
-            assert!(self
-                .pass
-                .as_ref()
-                .load_attachments
+            debug_assert!(exec
+                .loads
                 .attached
                 .get(attachment as usize)
                 .map(|loaded_attachment| Attachment::are_compatible(
@@ -1671,13 +1677,7 @@ where
                     Some(stored_attachment)
                 ))
                 .unwrap_or(true));
-            assert!(self
-                .pass
-                .as_ref()
-                .resolve_attachments
-                .attached
-                .get(attachment as usize)
-                .is_none());
+            debug_assert!(exec.resolves.attached.get(attachment as usize).is_none());
         }
 
         self.pass.push_node_access(
@@ -1701,6 +1701,7 @@ where
         let image: AnyImageNode<P> = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
+
         self.store_depth_stencil_as(attachment, image, image_view_info)
     }
 
@@ -1721,8 +1722,9 @@ where
 
         {
             let pass = self.pass.as_mut();
+            let exec = pass.execs.last_mut().unwrap();
 
-            assert!(pass.store_attachments.set_depth_stencil(
+            assert!(exec.stores.set_depth_stencil(
                 attachment,
                 image_view_info.aspect_mask,
                 image_view_info.fmt,
@@ -1730,24 +1732,19 @@ where
                 node_idx,
             ));
 
-            let (_, stored_attachment) = pass.store_attachments.depth_stencil().unwrap();
+            // Unwrap the attachment we inserted above
+            #[cfg(debug_assertions)]
+            let (_, stored_attachment) = exec.stores.depth_stencil().unwrap();
 
-            assert!(self
-                .pass
-                .as_ref()
-                .load_attachments
+            debug_assert!(exec
+                .loads
                 .depth_stencil()
                 .map(
                     |(attachment_idx, loaded_attachment)| attachment == attachment_idx
                         && Attachment::are_identical(loaded_attachment, stored_attachment)
                 )
                 .unwrap_or(true));
-            assert!(self
-                .pass
-                .as_ref()
-                .resolve_attachments
-                .depth_stencil
-                .is_none());
+            debug_assert!(exec.resolves.depth_stencil.is_none());
         }
 
         self.pass.push_node_access(

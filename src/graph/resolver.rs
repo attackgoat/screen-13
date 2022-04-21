@@ -1,7 +1,7 @@
 use {
     super::{
         Area, AttachmentIndex, AttachmentMap, Binding, Bindings, Edge, ExecutionPipeline, Node,
-        Pass, RenderGraph, Subpass, Unbind,
+        Pass, RenderGraph, Unbind,
     },
     crate::{
         align_up_u32,
@@ -22,7 +22,7 @@ use {
     log::{debug, trace, warn},
     std::{
         collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
-        iter::{once, repeat},
+        iter::repeat,
         mem::take,
         ops::Range,
     },
@@ -66,13 +66,6 @@ where
     }
 
     fn allow_merge_passes(lhs: &Pass<P>, rhs: &Pass<P>) -> bool {
-        // Don't attempt merge on secondary resolves (it is unlikely to succeed)
-        if !rhs.subpasses.is_empty() {
-            trace!("  {} has already been merged", rhs.name);
-
-            return false;
-        }
-
         let lhs_pipeline = lhs
             .execs
             .get(0)
@@ -109,17 +102,18 @@ where
             return false;
         }
 
+        let rhs_first_exec = rhs.execs.first().unwrap();
+
         // Now we need to know what the subpasses (we may have prior merges) wrote
-        for (lhs_attachments_resolved, lhs_attachments_stored) in lhs
-            .subpasses
+        for (lhs_resolves, lhs_stores) in lhs
+            .execs
             .iter()
             .rev()
-            .map(|subpass| (&subpass.resolve_attachments, &subpass.store_attachments))
-            .chain(once((&lhs.resolve_attachments, &lhs.store_attachments)))
+            .map(|exec| (&exec.resolves, &exec.stores))
         {
             // Compare individual color/depth+stencil attachments for compatibility
-            if !AttachmentMap::are_compatible(lhs_attachments_resolved, &rhs.load_attachments)
-                || !AttachmentMap::are_compatible(lhs_attachments_stored, &rhs.load_attachments)
+            if !AttachmentMap::are_compatible(lhs_resolves, &rhs_first_exec.loads)
+                || !AttachmentMap::are_compatible(lhs_stores, &rhs_first_exec.loads)
             {
                 trace!("  incompatible attachments");
 
@@ -127,10 +121,8 @@ where
             }
 
             // Keep color and depth on tile.
-            for node_idx in rhs.load_attachments.images() {
-                if lhs_attachments_resolved.contains_image(node_idx)
-                    || lhs_attachments_stored.contains_image(node_idx)
-                {
+            for node_idx in rhs_first_exec.loads.images() {
+                if lhs_resolves.contains_image(node_idx) || lhs_stores.contains_image(node_idx) {
                     trace!("  merging due to common image");
 
                     return true;
@@ -173,8 +165,8 @@ where
             let mut res = Vec::with_capacity(attachment_queue.len());
             res.extend(repeat(None).take(attachment_queue.len()));
             while let Some(attachment_idx) = attachment_queue.pop_front() {
-                for subpass in pass.subpasses.iter() {
-                    if let Some(attachment) = subpass.attachment(attachment_idx as _) {
+                for exec in pass.execs.iter() {
+                    if let Some(attachment) = exec.attachment(attachment_idx as _) {
                         let image = self.graph.bindings[attachment.target]
                             .as_driver_image()
                             .unwrap();
@@ -210,9 +202,9 @@ where
                     extent_y: image.info.height,
                     layer_count: image.info.array_elements,
                     view_fmts: pass
-                        .subpasses
+                        .execs
                         .iter()
-                        .map(|subpass| subpass.attachment(attachment_idx as _).unwrap().fmt)
+                        .map(|exec| exec.attachment(attachment_idx as _).unwrap().fmt)
                         .collect::<BTreeSet<_>>()
                         .into_iter()
                         .collect(),
@@ -306,7 +298,7 @@ where
         &self,
         cmd_buf: &mut CommandBuffer<P>,
         physical_pass_idx: usize,
-        subpass_idx: u32,
+        exec_idx: usize,
         pipeline: &mut ExecutionPipeline<P>,
         depth_stencil: Option<DepthStencilMode>,
     ) -> Result<(), DriverError> {
@@ -347,7 +339,7 @@ where
                     .render_pass
                     .as_ref()
                     .unwrap()
-                    .graphic_pipeline_ref(pipeline, depth_stencil, subpass_idx)?
+                    .graphic_pipeline_ref(pipeline, depth_stencil, exec_idx as _)?
             }
             ExecutionPipeline::RayTrace(pipeline) => {
                 CommandBuffer::push_fenced_drop(cmd_buf, Shared::clone(pipeline));
@@ -493,18 +485,19 @@ where
     ) -> Result<Lease<RenderPass<P>, P>, DriverError> {
         // TODO: We're building a RenderPassInfo here (the 3x Vec<_>s), but we could use TLS if:
         // - leasing used impl Into instead of an instance
-        // - RenderPass didn't require an Info instance: who cares it's OURS for like five seconds and then poof
+        // - RenderPass didn't require an Info instance: who cares it's OURS for like five seconds
+        //   and then poof
 
         let pass = &self.graph.passes[pass_idx];
         let attachment_count = pass
-            .subpasses
+            .execs
             .iter()
-            .map(|pass| pass.attachment_count())
+            .map(|exec| exec.attachment_count())
             .max()
             .unwrap_or_default();
         let mut attachments = Vec::with_capacity(attachment_count);
         let mut dependencies = Vec::with_capacity(attachment_count);
-        let mut subpasses = Vec::with_capacity(pass.subpasses.len() + 1);
+        let mut subpasses = Vec::with_capacity(pass.execs.len());
 
         while attachments.len() < attachment_count {
             attachments.push(
@@ -514,15 +507,15 @@ where
             );
         }
 
-        // Add attachments: format, sample count, load op, and initial layout (using the 1st pass)
+        // Add attachments: format, sample count, load op, and initial layout (using the 1st
+        // execution)
         {
-            let first_pass = &pass.subpasses[0];
             let first_exec = &pass.execs[0];
-            let depth_stencil = first_pass
-                .load_attachments
+            let depth_stencil = first_exec
+                .loads
                 .depth_stencil()
-                .or_else(|| first_pass.resolve_attachments.depth_stencil())
-                .or_else(|| first_pass.store_attachments.depth_stencil())
+                .or_else(|| first_exec.resolves.depth_stencil())
+                .or_else(|| first_exec.stores.depth_stencil())
                 .map(|(attachment_idx, _)| attachment_idx);
 
             // Cleared attachments
@@ -545,14 +538,12 @@ where
             }
 
             // Loaded attachments
-            for (attachment_idx, loaded_attachment) in first_pass
-                .load_attachments
-                .attached
-                .iter()
-                .enumerate()
-                .filter_map(|(attachment_idx, attachment)| {
-                    attachment.map(|attachment| (attachment_idx as AttachmentIndex, attachment))
-                })
+            for (attachment_idx, loaded_attachment) in
+                first_exec.loads.attached.iter().enumerate().filter_map(
+                    |(attachment_idx, attachment)| {
+                        attachment.map(|attachment| (attachment_idx as AttachmentIndex, attachment))
+                    },
+                )
             {
                 let attachment = &mut attachments[attachment_idx as usize];
                 attachment.fmt = loaded_attachment.fmt;
@@ -561,12 +552,8 @@ where
                 if matches!(depth_stencil, Some(depth_stencil_attachment_idx) if depth_stencil_attachment_idx == attachment_idx)
                 {
                     // DEPTH/STENCIL
-                    let is_random_access = first_pass
-                        .store_attachments
-                        .contains_attachment(attachment_idx)
-                        || first_pass
-                            .resolve_attachments
-                            .contains_attachment(attachment_idx);
+                    let is_random_access = first_exec.stores.contains_attachment(attachment_idx)
+                        || first_exec.resolves.contains_attachment(attachment_idx);
                     attachment.initial_layout = if loaded_attachment
                         .aspect_mask
                         .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
@@ -599,14 +586,12 @@ where
             }
 
             // Resolved attachments
-            for (attachment_idx, resolved_attachment) in first_pass
-                .resolve_attachments
-                .attached
-                .iter()
-                .enumerate()
-                .filter_map(|(attachment_idx, attachment)| {
-                    attachment.map(|attachment| (attachment_idx as AttachmentIndex, attachment))
-                })
+            for (attachment_idx, resolved_attachment) in
+                first_exec.resolves.attached.iter().enumerate().filter_map(
+                    |(attachment_idx, attachment)| {
+                        attachment.map(|attachment| (attachment_idx as AttachmentIndex, attachment))
+                    },
+                )
             {
                 let attachment = &mut attachments[attachment_idx as usize];
                 attachment.fmt = resolved_attachment.fmt;
@@ -640,14 +625,12 @@ where
             }
 
             // Stored attachments
-            for (attachment_idx, stored_attachment) in first_pass
-                .store_attachments
-                .attached
-                .iter()
-                .enumerate()
-                .filter_map(|(attachment_idx, attachment)| {
-                    attachment.map(|attachment| (attachment_idx as AttachmentIndex, attachment))
-                })
+            for (attachment_idx, stored_attachment) in
+                first_exec.stores.attached.iter().enumerate().filter_map(
+                    |(attachment_idx, attachment)| {
+                        attachment.map(|attachment| (attachment_idx as AttachmentIndex, attachment))
+                    },
+                )
             {
                 let attachment = &mut attachments[attachment_idx as usize];
                 attachment.fmt = stored_attachment.fmt;
@@ -683,22 +666,20 @@ where
 
         // Add attachments: store op and final layout (using the last pass)
         {
-            let last_pass = pass.subpasses.last().unwrap();
-            let depth_stencil = last_pass
-                .load_attachments
+            let last_exec = pass.execs.last().unwrap();
+            let depth_stencil = last_exec
+                .loads
                 .depth_stencil()
-                .or_else(|| last_pass.resolve_attachments.depth_stencil())
-                .or_else(|| last_pass.store_attachments.depth_stencil());
+                .or_else(|| last_exec.resolves.depth_stencil())
+                .or_else(|| last_exec.stores.depth_stencil());
 
             // Resolved attachments
-            for (attachment_idx, resolved_attachment) in last_pass
-                .resolve_attachments
-                .attached
-                .iter()
-                .enumerate()
-                .filter_map(|(attachment_idx, attachment)| {
-                    attachment.map(|attachment| (attachment_idx as AttachmentIndex, attachment))
-                })
+            for (attachment_idx, resolved_attachment) in
+                last_exec.resolves.attached.iter().enumerate().filter_map(
+                    |(attachment_idx, attachment)| {
+                        attachment.map(|attachment| (attachment_idx as AttachmentIndex, attachment))
+                    },
+                )
             {
                 let attachment = &mut attachments[attachment_idx as usize];
 
@@ -725,14 +706,12 @@ where
             }
 
             // Stored attachments
-            for (attachment_idx, stored_attachment) in last_pass
-                .store_attachments
-                .attached
-                .iter()
-                .enumerate()
-                .filter_map(|(attachment_idx, attachment)| {
-                    attachment.map(|attachment| (attachment_idx as AttachmentIndex, attachment))
-                })
+            for (attachment_idx, stored_attachment) in
+                last_exec.stores.attached.iter().enumerate().filter_map(
+                    |(attachment_idx, attachment)| {
+                        attachment.map(|attachment| (attachment_idx as AttachmentIndex, attachment))
+                    },
+                )
             {
                 let attachment = &mut attachments[attachment_idx as usize];
 
@@ -763,13 +742,12 @@ where
         }
 
         // Add subpasses
-        for (subpass_idx, subpass) in pass.subpasses.iter().enumerate() {
-            let exec = &pass.execs[subpass.exec_idx];
-            let depth_stencil = subpass
-                .load_attachments
+        for (exec_idx, exec) in pass.execs.iter().enumerate() {
+            let depth_stencil = exec
+                .loads
                 .depth_stencil()
-                .or_else(|| subpass.resolve_attachments.depth_stencil())
-                .or_else(|| subpass.store_attachments.depth_stencil());
+                .or_else(|| exec.resolves.depth_stencil())
+                .or_else(|| exec.stores.depth_stencil());
             let mut subpass_info = SubpassInfo::with_capacity(attachment_count);
 
             // Color attachments prior to the depth attachment
@@ -809,28 +787,26 @@ where
 
             // Set depth/stencil attachment
             if let Some((depth_stencil_attachment_idx, _)) = depth_stencil {
-                let used_depth_stencil_attachment = subpass
-                    .load_attachments
+                let used_depth_stencil_attachment = exec
+                    .loads
                     .attached
                     .get(depth_stencil_attachment_idx as usize)
                     .or_else(|| {
-                        subpass
-                            .resolve_attachments
+                        exec.resolves
                             .attached
                             .get(depth_stencil_attachment_idx as usize)
                     })
                     .or_else(|| {
-                        subpass
-                            .store_attachments
+                        exec.stores
                             .attached
                             .get(depth_stencil_attachment_idx as usize)
                     });
                 if let Some(Some(used_depth_stencil_attachment)) = used_depth_stencil_attachment {
-                    let is_random_access = subpass
-                        .store_attachments
+                    let is_random_access = exec
+                        .stores
                         .contains_attachment(depth_stencil_attachment_idx)
-                        || subpass
-                            .resolve_attachments
+                        || exec
+                            .resolves
                             .contains_attachment(depth_stencil_attachment_idx);
                     subpass_info.depth_stencil_attachment = Some(AttachmentRef::new(
                         depth_stencil_attachment_idx as _,
@@ -877,22 +853,18 @@ where
                         // We should preserve the attachment in the previous subpass
                         // (We're asserting that any input renderpasses are actually
                         // real subpasses here with prior passes..)
-                        let t: &mut SubpassInfo = &mut subpasses[subpass_idx - 1];
+                        let t: &mut SubpassInfo = &mut subpasses[exec_idx - 1];
                         t.preserve_attachments.push(0);
                     }
                 }
             }
 
             // Set any resolve attachments now
-            for (attachment_idx, _) in subpass
-                .resolve_attachments
-                .attached
-                .iter()
-                .enumerate()
-                .filter_map(|(attachment_idx, attachment)| {
+            for (attachment_idx, _) in exec.resolves.attached.iter().enumerate().filter_map(
+                |(attachment_idx, attachment)| {
                     attachment.map(|attachment| (attachment_idx, attachment))
-                })
-            {
+                },
+            ) {
                 subpass_info.resolve_attachments[attachment_idx].attachment = attachment_idx as _;
             }
 
@@ -903,10 +875,10 @@ where
         {
             //let mut prev_passes = Vec::with_capacity(pass.subpasses.len());
             let mut prev_dependencies = HashMap::new();
-            for (subpass_idx, subpass) in pass.subpasses.iter().enumerate() {
+            for (exec_idx, exec) in pass.execs.iter().enumerate() {
                 let mut ext_dependency = SubpassDependency {
                     src_subpass: vk::SUBPASS_EXTERNAL,
-                    dst_subpass: subpass_idx as _,
+                    dst_subpass: exec_idx as _,
                     src_stage_mask: vk::PipelineStageFlags::empty(),
                     dst_stage_mask: vk::PipelineStageFlags::empty(),
                     src_access_mask: vk::AccessFlags::empty(),
@@ -914,20 +886,17 @@ where
                     dependency_flags: vk::DependencyFlags::empty(),
                 };
 
-                'accesses: for (node_idx, [early, _]) in
-                    pass.execs[subpass.exec_idx].accesses.iter()
-                {
+                'accesses: for (node_idx, [early, _]) in exec.accesses.iter() {
                     let (mut curr_stages, mut curr_access) =
                         pipeline_stage_access_flags(early.access);
 
-                    // First look for accesses in earlier subpasses of this render pass (in
-                    // reverse order)
-                    for (prev_subpass_idx, prev_subpass) in
-                        pass.execs[0..subpass_idx].iter().enumerate().rev()
+                    // First look for accesses in earlier executions of this pass (in reverse order)
+                    for (prev_exec_idx, prev_exec) in
+                        pass.execs[0..exec_idx].iter().enumerate().rev()
                     {
-                        if let Some([_, late]) = prev_subpass.accesses.get(node_idx) {
-                            // Is this previous subpass access dependent on anything the current
-                            // subpass access is dependent upon?
+                        if let Some([_, late]) = prev_exec.accesses.get(node_idx) {
+                            // Is this previous execution access dependent on anything the current
+                            // execution access is dependent upon?
                             let (prev_stages, prev_access) =
                                 pipeline_stage_access_flags(late.access);
                             let common_stages = curr_stages & prev_stages;
@@ -937,10 +906,10 @@ where
                             }
 
                             let prev_dependency = prev_dependencies
-                                .entry((prev_subpass_idx, subpass_idx))
+                                .entry((prev_exec_idx, exec_idx))
                                 .or_insert_with(|| SubpassDependency {
-                                    src_subpass: prev_subpass_idx as _,
-                                    dst_subpass: subpass_idx as _,
+                                    src_subpass: prev_exec_idx as _,
+                                    dst_subpass: exec_idx as _,
                                     src_stage_mask: vk::PipelineStageFlags::empty(),
                                     dst_stage_mask: vk::PipelineStageFlags::empty(),
                                     src_access_mask: vk::AccessFlags::empty(),
@@ -963,11 +932,11 @@ where
                                 prev_dependency.dependency_flags |= vk::DependencyFlags::BY_REGION;
                             }
 
-                            // Does the subpass have more than one view?
+                            // Does the execution have more than one view?
                             if !prev_dependency
                                 .dependency_flags
                                 .contains(vk::DependencyFlags::VIEW_LOCAL)
-                                && subpasses[subpass_idx].has_multiple_attachments()
+                                && subpasses[exec_idx].has_multiple_attachments()
                             {
                                 prev_dependency.dependency_flags |= vk::DependencyFlags::VIEW_LOCAL;
                             }
@@ -984,7 +953,7 @@ where
                     }
 
                     // Second look in previous passes of the entire render graph
-                    for pass_idx in self.dependent_passes(*node_idx, subpass_idx) {
+                    for pass_idx in self.dependent_passes(*node_idx, pass_idx) {
                         for prev_subpass in self.graph.passes[pass_idx].execs.iter().rev() {
                             if let Some([_, late]) = prev_subpass.accesses.get(node_idx) {
                                 // Is this previous subpass access dependent on anything the current
@@ -1018,7 +987,7 @@ where
                                 if !ext_dependency
                                     .dependency_flags
                                     .contains(vk::DependencyFlags::VIEW_LOCAL)
-                                    && subpasses[subpass_idx].has_multiple_attachments()
+                                    && subpasses[exec_idx].has_multiple_attachments()
                                 {
                                     ext_dependency.dependency_flags |=
                                         vk::DependencyFlags::VIEW_LOCAL;
@@ -1063,17 +1032,6 @@ where
             // larger pass made out of anything that might have been merged into it - so we
             // only care about one pass at a time here
             let pass = &mut self.graph.passes[pass_idx];
-
-            // First, let's make this pass into a big bunch of subpasses
-            pass.subpasses.insert(
-                0,
-                Subpass {
-                    load_attachments: take(&mut pass.load_attachments),
-                    resolve_attachments: take(&mut pass.resolve_attachments),
-                    store_attachments: take(&mut pass.store_attachments),
-                    exec_idx: 0,
-                },
-            );
 
             let descriptor_pool = Self::lease_descriptor_pool(cache, pass)?;
             let mut exec_descriptor_sets = HashMap::with_capacity(
@@ -1195,16 +1153,7 @@ where
                 let mut other = passes[schedule[idx]].take().unwrap();
                 pass.name.push_str(" + ");
                 pass.name.push_str(other.name.as_str());
-
-                let first_exec_idx = pass.execs.len();
                 pass.execs.append(&mut other.execs);
-
-                pass.subpasses.push(Subpass {
-                    load_attachments: other.load_attachments,
-                    resolve_attachments: other.resolve_attachments,
-                    store_attachments: other.store_attachments,
-                    exec_idx: first_exec_idx,
-                });
             }
 
             self.graph.passes.push(pass);
@@ -1604,10 +1553,8 @@ where
                 None
             };
 
-            for subpass_idx in 0..pass.subpasses.len() {
-                let exec_idx = pass.subpasses[subpass_idx].exec_idx;
-
-                if is_graphic && subpass_idx > 0 {
+            for exec_idx in 0..pass.execs.len() {
+                if is_graphic && exec_idx > 0 {
                     Self::next_subpass(cmd_buf);
                 }
 
@@ -1615,7 +1562,7 @@ where
                     self.bind_pipeline(
                         cmd_buf,
                         physical_pass_idx,
-                        subpass_idx as u32,
+                        exec_idx,
                         pipeline,
                         pass.depth_stencil,
                     )?;
@@ -1732,13 +1679,13 @@ where
         pass.render_area.unwrap_or_else(|| {
             // set_render_area was not specified so we're going to guess using the extent
             // of the first attachment we find, by lowest attachment index order
-            let first_pass = &pass.subpasses[0];
-            let extent = first_pass
-                .load_attachments
+            let first_exec = pass.execs.first().unwrap();
+            let extent = first_exec
+                .loads
                 .attached
                 .iter()
-                .chain(first_pass.resolve_attachments.attached.iter())
-                .chain(first_pass.store_attachments.attached.iter())
+                .chain(first_exec.resolves.attached.iter())
+                .chain(first_exec.stores.attached.iter())
                 .filter_map(|attachment| attachment.as_ref())
                 .find_map(|attachment| self.graph.bindings[attachment.target].as_extent_2d())
                 .unwrap();

@@ -88,7 +88,7 @@ impl Attachment {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 struct AttachmentMap {
     attached: Vec<Option<Attachment>>,
     attached_count: usize,
@@ -296,9 +296,35 @@ where
 {
     accesses: BTreeMap<NodeIndex, [SubresourceAccess; 2]>,
     bindings: BTreeMap<Descriptor, (NodeIndex, Option<ViewType>)>,
+
     clears: BTreeMap<AttachmentIndex, vk::ClearValue>,
+    loads: AttachmentMap,
+    resolves: AttachmentMap,
+    stores: AttachmentMap,
+
     func: Option<ExecutionFunction<P>>,
     pipeline: Option<ExecutionPipeline<P>>,
+}
+
+impl<P> Execution<P>
+where
+    P: SharedPointerKind,
+{
+    fn attachment(&self, attachment_idx: AttachmentIndex) -> Option<Attachment> {
+        self.loads.get(attachment_idx).or_else(|| {
+            self.resolves
+                .get(attachment_idx)
+                .or_else(|| self.stores.get(attachment_idx))
+        })
+    }
+
+    fn attachment_count(&self) -> usize {
+        self.loads
+            .attached
+            .len()
+            .max(self.resolves.attached.len())
+            .max(self.stores.attached.len())
+    }
 }
 
 impl<P> Debug for Execution<P>
@@ -318,7 +344,12 @@ where
         Self {
             accesses: Default::default(),
             bindings: Default::default(),
+
             clears: Default::default(),
+            loads: Default::default(),
+            resolves: Default::default(),
+            stores: Default::default(),
+
             func: None,
             pipeline: None,
         }
@@ -402,14 +433,10 @@ struct Pass<P>
 where
     P: SharedPointerKind,
 {
-    load_attachments: AttachmentMap,
-    resolve_attachments: AttachmentMap,
-    store_attachments: AttachmentMap,
     depth_stencil: Option<DepthStencilMode>,
     execs: Vec<Execution<P>>,
     name: String,
     render_area: Option<Area>,
-    subpasses: Vec<Subpass>,
 }
 
 impl<P> Pass<P>
@@ -1021,7 +1048,12 @@ where
         PassRef::new(self, name.as_ref().to_string())
     }
 
-    pub fn resolve(self) -> Resolver<P> {
+    pub fn resolve(mut self) -> Resolver<P> {
+        // The final execution of each pass has no function
+        for pass in &mut self.passes {
+            pass.execs.pop();
+        }
+
         Resolver::new(self)
     }
 
@@ -1059,32 +1091,6 @@ where
                 device.cmd_update_buffer(cmd_buf, *bindings[buffer_node], offset, data);
             })
             .submit_pass()
-    }
-}
-
-#[derive(Debug)]
-struct Subpass {
-    exec_idx: usize,
-    load_attachments: AttachmentMap,
-    resolve_attachments: AttachmentMap,
-    store_attachments: AttachmentMap,
-}
-
-impl Subpass {
-    fn attachment(&self, attachment_idx: AttachmentIndex) -> Option<Attachment> {
-        self.load_attachments.get(attachment_idx).or_else(|| {
-            self.resolve_attachments
-                .get(attachment_idx)
-                .or_else(|| self.store_attachments.get(attachment_idx))
-        })
-    }
-
-    fn attachment_count(&self) -> usize {
-        self.load_attachments
-            .attached
-            .len()
-            .max(self.resolve_attachments.attached.len())
-            .max(self.store_attachments.attached.len())
     }
 }
 
