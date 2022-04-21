@@ -6,7 +6,7 @@ use {
     derive_builder::Builder,
     log::{debug, error, info, trace, warn},
     spirq::{
-        ty::{ArrayBound, ScalarType, Type},
+        ty::{ScalarType, Type},
         DescriptorType, EntryPoint, ReflectConfig, Variable,
     },
     std::{
@@ -286,20 +286,6 @@ impl Shader {
                 _ => None,
             })
         {
-            let binding_count = match binding_count {
-                ArrayBound::Sized(binding_count) => binding_count,
-                ArrayBound::Specialized(spec_const_id) => {
-                    self.specialization_value_u32(spec_const_id)?
-                }
-                ArrayBound::SpecializedDefault(spec_const_id, spec_const_default) => self
-                    .specialization_value_u32(spec_const_id)
-                    .unwrap_or(spec_const_default),
-                ArrayBound::Unsized => {
-                    warn!("Unsupported unsized descriptor binding");
-                    return Err(DriverError::Unsupported);
-                }
-            };
-
             trace!(
                 "Binding {}: {}.{} = {:?}[{}]",
                 name.as_deref().unwrap_or_default(),
@@ -344,35 +330,6 @@ impl Shader {
         }
 
         Ok(res)
-    }
-
-    fn specialization_value_u32(&self, spec_const_id: u32) -> Result<u32, DriverError> {
-        if self.specialization_info.is_none() {
-            warn!("Specialization descriptor binding not specified");
-            return Err(DriverError::Unsupported);
-        }
-
-        let spec_info = self.specialization_info.as_ref().unwrap();
-        let spec_const = spec_info
-            .map_entries
-            .iter()
-            .find(|spec_const| spec_const.constant_id == spec_const_id);
-        if spec_const.is_none() {
-            warn!("Specialization descriptor binding entries do not contain constant_id {spec_const_id}");
-            return Err(DriverError::Unsupported);
-        }
-
-        let spec_const = spec_const.unwrap();
-        let start = spec_const.offset as usize;
-        let end = start + 4;
-        if end > spec_info.data.len() {
-            warn!("Invalid specialization constant data for constant_id {spec_const_id}");
-            return Err(DriverError::Unsupported);
-        }
-
-        let mut bytes = [0u8; 4];
-        bytes.copy_from_slice(&spec_info.data[start..end]);
-        Ok(u32::from_ne_bytes(bytes))
     }
 
     pub fn merge_descriptor_bindings(
@@ -524,14 +481,25 @@ impl Shader {
     }
 
     fn reflect_entry_point(&self) -> Result<EntryPoint, DriverError> {
-        let entry_points = ReflectConfig::new()
-            .spv(self.spirv.as_slice())
-            .reflect()
-            .map_err(|_| {
-                error!("Unable to reflect spirv");
+        let mut config = ReflectConfig::new();
+        config.spv(self.spirv.as_slice());
 
-                DriverError::InvalidData
-            })?;
+        if let Some(spec_info) = &self.specialization_info {
+            for spec in &spec_info.map_entries {
+                config.specialize(
+                    spec.constant_id,
+                    spec_info.data[spec.offset as usize..spec.offset as usize + spec.size]
+                        .try_into()
+                        .map_err(|_| DriverError::InvalidData)?,
+                );
+            }
+        }
+
+        let entry_points = config.reflect().map_err(|_| {
+            error!("Unable to reflect spirv");
+
+            DriverError::InvalidData
+        })?;
         let entry_point = entry_points
             .into_iter()
             .find(|entry_point| entry_point.name == self.entry_name)

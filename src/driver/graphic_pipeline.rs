@@ -9,7 +9,7 @@ use {
     derive_builder::Builder,
     log::{trace, warn},
     ordered_float::OrderedFloat,
-    std::{ffi::CString, thread::panicking},
+    std::{cmp::Ordering, ffi::CString, thread::panicking},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -321,13 +321,9 @@ where
             // We do this now so that submission doesn't need to check for overlaps
             // See https://github.com/KhronosGroup/Vulkan-Docs/issues/609
             if push_constants.len() > 1 {
-                push_constants.sort_unstable_by(|lhs, rhs| {
-                    let res = lhs.offset.cmp(&rhs.offset);
-                    if res.is_lt() {
-                        res
-                    } else {
-                        lhs.size.cmp(&rhs.size)
-                    }
+                push_constants.sort_unstable_by(|lhs, rhs| match lhs.offset.cmp(&rhs.offset) {
+                    Ordering::Equal => lhs.size.cmp(&rhs.size),
+                    res @ _ => res,
                 });
 
                 let mut idx = 0;
