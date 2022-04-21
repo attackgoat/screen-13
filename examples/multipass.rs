@@ -13,8 +13,8 @@ fn main() -> Result<(), DisplayError> {
     // Create a bunch of "pipelines" (shader code setup to run on the GPU) - we keep these
     // around and just switch between which one we're using at any one point during a frame
     let event_loop = EventLoop::new().debug(true).build().unwrap();
-    let draw_funky_shape_deferred = create_draw_funky_shape_deferred_pipeline(&event_loop.device);
     let fill_quad_linear_gradient = create_fill_quad_linear_gradient_pipeline(&event_loop.device);
+    let draw_funky_shape_deferred = create_draw_funky_shape_deferred_pipeline(&event_loop.device);
 
     // We also need a cache (this one is backed by a hashmap of resource info, fast but basic)
     // There will be more cache types later and traits exposed
@@ -35,9 +35,11 @@ fn main() -> Result<(), DisplayError> {
     let vertex_buf_info = vertex_buffer_info(vertices.len() as u64);
 
     // Some colors for readability
-    let red = [1u8, 0, 0, 1];
-    let green = [0u8, 1, 0, 1];
-    let blue = [0u8, 0, 1, 1];
+    let red = [0xffu8, 0x00, 0x00, 0xff];
+    let green = [0x00u8, 0xff, 0x00, 0xff];
+    let blue = [0x00u8, 0x00, 0xff, 0xff];
+    let magenta = [0xffu8, 0x00, 0xff, 0xff];
+    let white = [0xffu8, 0xff, 0xff, 0xff];
 
     // Event loop runs the frame callback on the current thread
     event_loop.run(|frame| {
@@ -64,12 +66,13 @@ fn main() -> Result<(), DisplayError> {
             buf
         });
 
-        // Lease a couple images (they may be blank or have pictures of cats in them but they are valid/ready)
-        let image1 = graph.bind_node(cache.lease(image_info).unwrap());
-        let image2 = graph.bind_node(cache.lease(image_info).unwrap());
-        let image3 = graph.bind_node(cache.lease(image_info).unwrap());
+        // Lease a couple images (they may be blank or have pictures of cats in them but they are
+        // valid/ready)
+        let _image1 = graph.bind_node(cache.lease(image_info).unwrap());
+        let _image2 = graph.bind_node(cache.lease(image_info).unwrap());
+        let _image3 = graph.bind_node(cache.lease(image_info).unwrap());
 
-        // You can also do this:
+        // You can instead do this:
         let image1 = graph.bind_node({
             let mut img = cache.lease(image_info).unwrap();
             img.get_mut().unwrap().name = Some("image1".to_owned());
@@ -92,13 +95,13 @@ fn main() -> Result<(), DisplayError> {
         // - Read descriptor bindings and load/store color values, have fun, yay!!
 
         // You can record two or more draws in a single pass; they inherit the draw state
-        // from above calls. In this cas we reset the "store" between draws but we do not
+        // from above calls. In this case we reset the "store" between draws but we do not
         // bother resetting the "clear" state as you can see image2 will be cleared with
-        // green also.
+        // white also.
         graph
             .begin_pass("gradients")
             .bind_pipeline(&fill_quad_linear_gradient)
-            .clear_color_value(0, green)
+            .clear_color_value(0, white)
             .store_color(0, image1)
             .record_subpass(move |subpass| {
                 subpass.push_constants((red, blue));
@@ -106,23 +109,27 @@ fn main() -> Result<(), DisplayError> {
             })
             .store_color(0, image2)
             .record_subpass(move |subpass| {
-                // We updated the constants and which attachment is getting stored, but otherwise same pipeline config here
-                subpass.push_constants((green, blue));
+                // We updated the constants and which attachment is getting stored, but otherwise
+                // same pipeline config here
+                subpass.push_constants((magenta, green));
                 subpass.draw(6, 1, 0, 0);
             });
 
         // The above is "one pass" which logically happens first but physically may happen later
         // once the hardware schedules it - but it can't do that until we hand the graph over
-        // at the bottom of the closure -> Screen 13 takes the graph and presents it to the swapchain
-        // so long as we do something (transfer/write/compute) to the swapchain the correct operations
-        // will be sent to the display. You just need to record some passes to the graph.
+        // at the bottom of the closure -> Screen 13 takes the graph and presents it to the
+        // swapchain so long as we do something (transfer/write/compute) to the swapchain the
+        // correct operations will be sent to the display. You just need to record some passes to
+        // the graph.
 
-        // Alternatively to the above, you might just record two passes, bind two pipelines, etc. As long as they're setup
-        // the same they will be trivially merged together or moved apart - whatever ends up being best. In the above case
-        // because we didn't start a second "begin_pass" call, we are not allowing the GPU to break up this unit of work.
-        // Maybe in general it's a good idea to record lots of short passes so the resolver code has more to work with.
+        // Alternatively to the above, you might just record two passes, bind two pipelines, etc. As
+        // long as they're setup the same they will be trivially merged together or moved apart -
+        // whatever ends up being best. In the above case because we didn't start a second
+        // "begin_pass" call, we are not allowing the GPU to break up this unit of work. Maybe in
+        // general it's a good idea to record lots of short passes so the resolver code has more to
+        // work with.
 
-        // Let's do some more work... This draws the funky shape into image3 stored as a deferred gbuffer ()
+        // Let's do some more work... This draws the funky shape into image3.
         graph
             .begin_pass("This text shows up in debuggers like RenderDoc")
             .bind_pipeline(&draw_funky_shape_deferred)
@@ -134,7 +141,9 @@ fn main() -> Result<(), DisplayError> {
             .store_color(0, image3) // and we declare we're writing the results to image3
             .record_subpass(move |subpass| {
                 subpass
-                    .push_constants((Mat4::IDENTITY, Vec4::ONE))
+                    // .push_constants_offset(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT, 0, Mat4::IDENTITY)
+                    // .push_constants_offset(vk::ShaderStageFlags::FRAGMENT, 64, Vec4::ONE)
+                    .push_constants((Mat4::IDENTITY, Vec4::ONE)) // <- These are equivalent ^^
                     .bind_index_buffer(index_buf, vk::IndexType::UINT32)
                     .bind_vertex_buffer(vertex_buf)
                     .draw(index_count, 1, 0, 0);
@@ -199,11 +208,11 @@ fn create_fill_quad_linear_gradient_pipeline(device: &Shared<Device>) -> Shared<
             vec2( 1,  1), vec2( 1, -1), vec2(-1,  1)
         );
 
-        layout(location = 0) out vec2 vk_TexCoord;
+        layout(location = 0) out float vk_Blend;
 
         void main() {
             gl_Position = vec4(POSITION[gl_VertexIndex], 0, 1);
-            vk_TexCoord = POSITION[gl_VertexIndex] * vec2(-0.5) + vec2(0.5);
+            vk_Blend = gl_Position.x * -0.5 + 0.5;
         }
         "#,
         vert
@@ -218,13 +227,12 @@ fn create_fill_quad_linear_gradient_pipeline(device: &Shared<Device>) -> Shared<
             layout(offset = 16) vec4 end_color;
         } push_constants;
         
-        layout(location = 0) in vec2 tex_coord;
+        layout(location = 0) in float blend;
 
         layout(location = 0) out vec4 vk_Color;
         
         void main() {
-            vk_Color = vec4(push_constants.start_color.wzy * tex_coord.xxx
-                          + push_constants.end_color.wzy * (vec3(1) - tex_coord.xxx), 1);
+            vk_Color = mix(push_constants.start_color, push_constants.end_color, blend);
         }
         "#,
         frag

@@ -1149,20 +1149,15 @@ where
     // Merges passes which are graphic with common-ish attachments - note that scheduled pass order
     // is final during this function and so we must merge contiguous groups of passes
     fn merge_scheduled_passes<'s>(&mut self, mut schedule: &'s mut [usize]) -> &'s mut [usize] {
-        // There must be company
-        if schedule.len() < 2 {
-            return schedule;
-        }
-
         let mut passes = self.graph.passes.drain(..).map(Some).collect::<Vec<_>>();
         let mut idx = 0;
 
         // debug!("attempting to merge {} passes", schedule.len(),);
 
         while idx < schedule.len() {
-            // Find candidates
             let mut pass = passes[schedule[idx]].take().unwrap();
 
+            // Find candidates
             let start = idx + 1;
             let mut end = start;
             while end < schedule.len() {
@@ -1178,11 +1173,7 @@ where
                 }
             }
 
-            if start == end {
-                if start != schedule.len() {
-                    // log::debug!("Unable to merge [{idx}: {}]", pass.name);
-                }
-            } else {
+            if start != end {
                 trace!("merging {} passes into [{idx}: {}]", end - start, pass.name);
             }
 

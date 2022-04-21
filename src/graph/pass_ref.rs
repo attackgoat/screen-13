@@ -1084,6 +1084,10 @@ impl<'a, P> PipelinePassRef<'a, GraphicPipeline<P>, P>
 where
     P: SharedPointerKind + Send + 'static,
 {
+    /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` and `VK_ATTACHMENT_STORE_OP_STORE` for the render
+    /// pass attachment.
+    ///
+    /// The image is
     pub fn attach_color(
         self,
         attachment: AttachmentIndex,
@@ -1095,6 +1099,8 @@ where
         self.attach_color_as(attachment, image, image_view_info)
     }
 
+    /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` and `VK_ATTACHMENT_STORE_OP_STORE` for the render
+    /// pass attachment.
     pub fn attach_color_as(
         self,
         attachment: AttachmentIndex,
@@ -1107,6 +1113,8 @@ where
             .store_color_as(attachment, image, image_view_info)
     }
 
+    /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` and `VK_ATTACHMENT_STORE_OP_STORE` for the render
+    /// pass attachment.
     pub fn attach_depth_stencil(
         self,
         attachment: AttachmentIndex,
@@ -1118,6 +1126,8 @@ where
         self.attach_depth_stencil_as(attachment, image, image_view_info)
     }
 
+    /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` and `VK_ATTACHMENT_STORE_OP_STORE` for the render
+    /// pass attachment.
     pub fn attach_depth_stencil_as(
         self,
         attachment: AttachmentIndex,
@@ -1130,10 +1140,12 @@ where
             .store_depth_stencil_as(attachment, image, image_view_info)
     }
 
+    /// Clears the render pass attachment of any existing data.
     pub fn clear_color(self, attachment: AttachmentIndex) -> Self {
         self.clear_color_value(attachment, [0, 0, 0, 0])
     }
 
+    /// Clears the render pass attachment of any existing data.
     pub fn clear_color_value(
         mut self,
         attachment: AttachmentIndex,
@@ -1158,10 +1170,12 @@ where
         self
     }
 
+    /// Clears the render pass attachment of any existing data.
     pub fn clear_depth_stencil(self, attachment: AttachmentIndex) -> Self {
         self.clear_depth_stencil_value(attachment, 0.0, 0)
     }
 
+    /// Clears the render pass attachment of any existing data.
     pub fn clear_depth_stencil_value(
         mut self,
         attachment: AttachmentIndex,
@@ -1195,6 +1209,10 @@ where
         (image_info.fmt, image_info.sample_count)
     }
 
+    /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` for the render pass attachment, and loads an image
+    /// into the framebuffer.
+    ///
+    /// _NOTE:_ Order matters, call load before resolve or store.
     pub fn load_color(
         self,
         attachment: AttachmentIndex,
@@ -1206,6 +1224,10 @@ where
         self.attach_color_as(attachment, image, image_view_info)
     }
 
+    /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` for the render pass attachment, and loads an image
+    /// into the framebuffer.
+    ///
+    /// _NOTE:_ Order matters, call load before resolve or store.
     pub fn load_color_as(
         mut self,
         attachment: AttachmentIndex,
@@ -1267,6 +1289,10 @@ where
         self
     }
 
+    /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` for the render pass attachment, and loads an image
+    /// into the framebuffer.
+    ///
+    /// _NOTE:_ Order matters, call load before resolve or store.
     pub fn load_depth_stencil(
         self,
         attachment: AttachmentIndex,
@@ -1278,6 +1304,10 @@ where
         self.load_depth_stencil_as(attachment, image, image_view_info)
     }
 
+    /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` for the render pass attachment, and loads an image
+    /// into the framebuffer.
+    ///
+    /// _NOTE:_ Order matters, call load before resolve or store.
     pub fn load_depth_stencil_as(
         mut self,
         attachment: AttachmentIndex,
@@ -1332,6 +1362,7 @@ where
         self
     }
 
+    /// Append a graphic subpass onto the current pass of the parent render graph.
     pub fn record_subpass(mut self, func: impl FnOnce(&mut Draw<'_, P>) + Send + 'static) -> Self {
         let pipeline = Shared::clone(
             self.pass
@@ -1384,6 +1415,10 @@ where
         self
     }
 
+    /// Resolves a multisample framebuffer to a non-multisample image for the render pass
+    /// attachment.
+    ///
+    /// _NOTE:_ Order matters, call resolve after load.
     pub fn resolve_color(
         self,
         attachment: AttachmentIndex,
@@ -1395,6 +1430,10 @@ where
         self.resolve_color_as(attachment, image, image_view_info)
     }
 
+    /// Resolves a multisample framebuffer to a non-multisample image for the render pass
+    /// attachment.
+    ///
+    /// _NOTE:_ Order matters, call resolve after load.
     pub fn resolve_color_as(
         mut self,
         attachment: AttachmentIndex,
@@ -1452,6 +1491,10 @@ where
         self
     }
 
+    /// Resolves a multisample framebuffer to a non-multisample image for the render pass
+    /// attachment.
+    ///
+    /// _NOTE:_ Order matters, call resolve after load.
     pub fn resolve_depth_stencil(
         self,
         attachment: AttachmentIndex,
@@ -1463,6 +1506,10 @@ where
         self.resolve_depth_stencil_as(attachment, image, image_view_info)
     }
 
+    /// Resolves a multisample framebuffer to a non-multisample image for the render pass
+    /// attachment.
+    ///
+    /// _NOTE:_ Order matters, call resolve after load.
     pub fn resolve_depth_stencil_as(
         mut self,
         attachment: AttachmentIndex,
@@ -1565,6 +1612,10 @@ where
         self
     }
 
+    /// Specifies `VK_ATTACHMENT_STORE_OP_STORE` for the render pass attachment, and stores the
+    /// rendered pixels into an image.
+    ///
+    /// _NOTE:_ Order matters, call store after load.
     pub fn store_color(
         self,
         attachment: AttachmentIndex,
@@ -1576,6 +1627,10 @@ where
         self.store_color_as(attachment, image, image_view_info)
     }
 
+    /// Specifies `VK_ATTACHMENT_STORE_OP_STORE` for the render pass attachment, and stores the
+    /// rendered pixels into an image.
+    ///
+    /// _NOTE:_ Order matters, call store after load.
     pub fn store_color_as(
         mut self,
         attachment: AttachmentIndex,
@@ -1634,6 +1689,10 @@ where
         self
     }
 
+    /// Specifies `VK_ATTACHMENT_STORE_OP_STORE` for the render pass attachment, and stores the
+    /// rendered pixels into an image.
+    ///
+    /// _NOTE:_ Order matters, call store after load.
     pub fn store_depth_stencil(
         self,
         attachment: AttachmentIndex,
@@ -1645,6 +1704,10 @@ where
         self.store_depth_stencil_as(attachment, image, image_view_info)
     }
 
+    /// Specifies `VK_ATTACHMENT_STORE_OP_STORE` for the render pass attachment, and stores the
+    /// rendered pixels into an image.
+    ///
+    /// _NOTE:_ Order matters, call store after load.
     pub fn store_depth_stencil_as(
         mut self,
         attachment: AttachmentIndex,
