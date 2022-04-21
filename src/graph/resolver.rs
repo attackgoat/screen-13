@@ -68,7 +68,7 @@ where
     fn allow_merge_passes(lhs: &Pass<P>, rhs: &Pass<P>) -> bool {
         // Don't attempt merge on secondary resolves (it is unlikely to succeed)
         if !rhs.subpasses.is_empty() {
-            trace!("{} has already been merged", rhs.name);
+            trace!("  {} has already been merged", rhs.name);
 
             return false;
         }
@@ -89,11 +89,11 @@ where
         // Both must have graphic pipelines
         if lhs_pipeline.is_none() || rhs_pipeline.is_none() {
             if lhs_pipeline.is_none() {
-                trace!("{} is not graphic", lhs.name);
+                trace!("  {} is not graphic", lhs.name);
             }
 
             if rhs_pipeline.is_none() {
-                trace!("{} is not graphic", rhs.name);
+                trace!("  {} is not graphic", rhs.name);
             }
 
             return false;
@@ -104,7 +104,7 @@ where
 
         // Must be same general rasterization modes
         if lhs_pipeline.info != rhs_pipeline.info {
-            trace!("Different rasterization modes",);
+            trace!("  different rasterization modes",);
 
             return false;
         }
@@ -121,7 +121,7 @@ where
             if !AttachmentMap::are_compatible(lhs_attachments_resolved, &rhs.load_attachments)
                 || !AttachmentMap::are_compatible(lhs_attachments_stored, &rhs.load_attachments)
             {
-                trace!("Incompatible attachments");
+                trace!("  incompatible attachments");
 
                 return false;
             }
@@ -131,7 +131,7 @@ where
                 if lhs_attachments_resolved.contains_image(node_idx)
                     || lhs_attachments_stored.contains_image(node_idx)
                 {
-                    trace!("Merging due to common image");
+                    trace!("  merging due to common image");
 
                     return true;
                 }
@@ -147,7 +147,7 @@ where
             .next()
             .is_some()
         {
-            trace!("Merging due to input");
+            trace!("  merging due to input");
 
             return true;
         }

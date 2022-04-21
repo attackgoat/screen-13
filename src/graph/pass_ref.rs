@@ -16,10 +16,11 @@ use {
     archery::SharedPointerKind,
     ash::vk,
     glam::UVec3,
-    log::warn,
+    log::{trace, warn},
     meshopt::any_as_u8_slice,
     std::{
         marker::PhantomData,
+        mem::size_of_val,
         ops::{Index, Range},
     },
     vk_sync::AccessType,
@@ -271,25 +272,28 @@ where
 
     pub fn push_constants_offset(&mut self, offset: u32, data: impl Sized) -> &mut Self {
         let data = any_as_u8_slice(&data);
-        for push_constants in &self.pipeline.push_constants {
-            let stage_flags = push_constants.stage_flags & vk::ShaderStageFlags::COMPUTE;
-            if !stage_flags.is_empty()
-                && offset <= push_constants.offset
-                && offset as usize + data.len() > push_constants.offset as usize
-            {
-                let start = (push_constants.offset - offset) as usize;
-                let end = push_constants.offset as usize
-                    + (data.len() - start).min(push_constants.size as usize);
+        if let Some(push_const) = &self.pipeline.push_constants {
+            // Determine the range of the overall pipline push constants which overlap with `data`
+            let push_const_end = push_const.offset + push_const.size;
+            let data_end = offset + data.len() as u32;
+            let end = data_end.min(push_const_end);
+            let start = offset.max(push_const.offset);
 
-                // trace!("Push constant {:?} {}..{}", stage, start, end);
+            if end > start {
+                trace!(
+                    "      push constants {:?} {}..{}",
+                    push_const.stage_flags,
+                    start,
+                    end
+                );
 
                 unsafe {
                     self.device.cmd_push_constants(
                         self.cmd_buf,
                         self.pipeline.layout,
-                        stage_flags,
-                        push_constants.offset,
-                        &data[start..end],
+                        vk::ShaderStageFlags::COMPUTE,
+                        push_const.offset,
+                        &data[(start - offset) as usize..(end - offset) as usize],
                     );
                 }
             }
@@ -532,7 +536,17 @@ where
     }
 
     pub fn push_constants(&mut self, data: impl Sized) -> &mut Self {
-        self.push_constants_offset(self.pipeline.stages(), 0, data)
+        let data_size = size_of_val(&data);
+
+        // Specify each stage that has a push constant in this region
+        let mut stage_flags = vk::ShaderStageFlags::empty();
+        for push_const in &self.pipeline.push_constants {
+            if (push_const.offset as usize) < data_size {
+                stage_flags |= push_const.stage_flags;
+            }
+        }
+
+        self.push_constants_offset(stage_flags, 0, data)
     }
 
     pub fn push_constants_offset(
@@ -541,32 +555,38 @@ where
         offset: u32,
         data: impl Sized,
     ) -> &mut Self {
+        // Check if the specified stages are a super-set of our actual stages
         if stage_flags != stage_flags & self.pipeline.stages() {
-            warn!("unused shader stage flags");
+            // The user has manually specified too many stages
+            warn!("      unused shader stage flags");
 
+            // Remove extra stages
             stage_flags &= self.pipeline.stages();
         }
 
         let data = any_as_u8_slice(&data);
-        for push_constants in &self.pipeline.push_constants {
-            let stage_flags = push_constants.stage_flags & stage_flags;
-            if !stage_flags.is_empty()
-                && offset <= push_constants.offset
-                && offset as usize + data.len() > push_constants.offset as usize
-            {
-                let start = (push_constants.offset - offset) as usize;
-                let end = push_constants.offset as usize
-                    + (data.len() - start).min(push_constants.size as usize);
+        for push_const in &self.pipeline.push_constants {
+            // Determine the range of the overall pipline push constants which overlap with `data`
+            let push_const_end = push_const.offset + push_const.size;
+            let data_end = offset + data.len() as u32;
+            let end = data_end.min(push_const_end);
+            let start = offset.max(push_const.offset);
 
-                // trace!("Push constant {:?} {}..{}", stage, start, end);
+            if end > start {
+                trace!(
+                    "      push constants {:?} {}..{}",
+                    push_const.stage_flags,
+                    start,
+                    end
+                );
 
                 unsafe {
                     self.device.cmd_push_constants(
                         self.cmd_buf,
                         self.pipeline.layout,
-                        stage_flags,
-                        push_constants.offset,
-                        &data[start..end],
+                        push_const.stage_flags,
+                        start,
+                        &data[(start - offset) as usize..(end - offset) as usize],
                     );
                 }
             }

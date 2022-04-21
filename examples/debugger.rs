@@ -14,7 +14,7 @@
         thread 'main' panicked at 'run with `RUST_LOG=trace` environment variable ...
 
     Note:
-        In your own program you'll need to init a compatible logger of some kind! Also note
+        In your own program you should init a compatible logger of some kind! Also note
         that in a release build a bunch of debug_assert! checks won't run and also the GPU
         is very likely to accept anything you give it and only just maybe crash or catch fire.
 
@@ -86,7 +86,7 @@ fn main() -> Result<(), screen_13::DisplayError> {
             - You are now parked on a syscall
             - Walk up about 12 stack frames by scrolling down and selecting:
                 `{closure#0} debugger.rs 110:21`
-            - It's 🕓 to de🐛!
+            - It's 🕓 to de-🐛!
         */
 
         /*
@@ -125,14 +125,14 @@ fn main() -> Result<(), screen_13::DisplayError> {
                 .device
                 .new_compute_pipeline(into_u8_slice(inline_spirv::inline_spirv!(
                     r#"
-                #version 460 core
+                    #version 460 core
 
-                layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+                    layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
-                layout(set = 0, binding = 42, rgba8) restrict readonly uniform image2D some_image;
+                    layout(set = 0, binding = 42, rgba8) restrict readonly uniform image2D an_image;
 
-                void main() {/* TODO: 📈...💰! */}
-                "#,
+                    void main() {/* TODO: 📈...💰! */}
+                    "#,
                     comp
                 )));
 

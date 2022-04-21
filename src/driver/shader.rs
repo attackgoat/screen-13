@@ -514,12 +514,10 @@ impl Shader {
                 push_const.offset..push_const.offset + push_const.ty.nbyte().unwrap_or_default()
             })
             .reduce(|a, b| a.start.min(b.start)..a.end.max(b.end))
-            .map(|push_const| {
-                vk::PushConstantRange::builder()
-                    .stage_flags(self.stage)
-                    .size((push_const.end - push_const.start) as _)
-                    .offset(push_const.start as _)
-                    .build()
+            .map(|push_const| vk::PushConstantRange {
+                stage_flags: self.stage,
+                size: (push_const.end - push_const.start) as _,
+                offset: push_const.start as _,
             });
 
         Ok(res)
@@ -609,7 +607,7 @@ impl Shader {
             *input_rate = guessed_rate;
             *stride += byte_stride;
 
-            trace!("{location} {:?} is {byte_stride} bytes", name);
+            //trace!("{location} {:?} is {byte_stride} bytes", name);
 
             vertex_attribute_descriptions.push(vk::VertexInputAttributeDescription {
                 location,

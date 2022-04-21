@@ -9,8 +9,7 @@ use {
         ops::Deref,
         os::raw::c_char,
         process::id,
-        thread::{current, panicking, park, sleep},
-        time::Duration,
+        thread::{current, panicking, park},
     },
 };
 
@@ -29,13 +28,28 @@ unsafe extern "system" fn vulkan_debug_callback(
     if message.starts_with("Validation Warning: [ UNASSIGNED-BestPractices-pipeline-stage-flags ]")
     {
         // vk_sync uses vk::PipelineStageFlags::ALL_COMMANDS with AccessType::NOTHING and others
-        warn!("{}\n", message);
+        warn!("{}", message);
     } else {
-        warn!("");
-        warn!("");
-        warn!("");
-        warn!("");
-        error!("{}", message);
+        let prefix = "Validation Error: [ ";
+
+        let (vuid, message) = if message.starts_with(prefix) {
+            let (vuid, message) = message
+                .trim_start_matches(prefix)
+                .split_once(" ]")
+                .unwrap_or_default();
+            let message = message.split(" | ").skip(2).next().unwrap_or(message);
+
+            (Some(vuid.trim()), message)
+        } else {
+            (None, message)
+        };
+
+        if let Some(vuid) = vuid {
+            info!("{vuid}");
+        }
+
+        error!("🆘 {message}");
+
         if !logger().enabled(&Metadata::builder().level(Level::Debug).build())
             || var("RUST_LOG")
                 .map(|rust_log| rust_log.is_empty())
@@ -49,16 +63,10 @@ unsafe extern "system" fn vulkan_debug_callback(
         }
 
         debug!(
-            "PARKING THREAD `{}` -> attach debugger to pid {}!",
+            "🛑 PARKING THREAD `{}` -> attach debugger to pid {}!",
             current().name().as_deref().unwrap_or_default(),
             id()
         );
-
-        sleep(Duration::from_secs(10));
-
-        info!("");
-        info!("there is a detailed debugging guide available at:");
-        info!("https://github.com/attackgoat/screen-13/blob/master/examples/debugger.rs");
 
         park();
     }

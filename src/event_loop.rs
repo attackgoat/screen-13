@@ -83,7 +83,7 @@ where
         let mut dt_filtered = 1.0 / refresh_rate;
         last_frame -= Duration::from_secs_f32(dt_filtered);
 
-        debug!("First frame dt: {}", dt_filtered);
+        debug!("first frame dt: {}", dt_filtered);
 
         while !will_exit {
             puffin::GlobalProfiler::lock().new_frame();
@@ -104,7 +104,7 @@ where
             });
 
             if !events.is_empty() {
-                trace!("Received {} events", events.len(),);
+                trace!("received {} events", events.len(),);
             }
 
             let now = Instant::now();
@@ -141,7 +141,7 @@ where
             let elapsed = Instant::now() - now;
 
             trace!(
-                "Frame complete ({}% load, {} μs)",
+                "frame complete ({}% load, {} μs)",
                 ((elapsed.as_secs_f32() / refresh_rate) * 100.0) as usize,
                 elapsed.as_micros()
             );
@@ -291,7 +291,7 @@ where
         let display = Display::new(&driver.device, driver.swapchain);
 
         info!(
-            "Display resolution: {}x{} ({}x scale)",
+            "display resolution: {}x{} ({}x scale)",
             width,
             height,
             window.scale_factor() as f32,
