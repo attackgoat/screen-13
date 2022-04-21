@@ -97,6 +97,7 @@ pub struct FramebufferKeyAttachment {
 struct GraphicPipelineKey {
     pipeline: usize,
     depth_stencil: Option<DepthStencilMode>,
+    subpass_idx: u32,
 }
 
 #[derive(Builder, Clone, Debug, Default, Eq, Hash, PartialEq)]
@@ -320,12 +321,12 @@ where
     ) -> Result<vk::Pipeline, DriverError> {
         use std::slice::from_ref;
 
-        let key = GraphicPipelineKey {
+        let mut cache = self.graphic_pipeline_cache.lock();
+        let entry = cache.entry(GraphicPipelineKey {
             depth_stencil,
             pipeline: Shared::as_ptr(pipeline) as _, // HACK: We're just storing a pointer!
-        };
-        let mut cache = self.graphic_pipeline_cache.lock();
-        let entry = cache.entry(key);
+            subpass_idx,
+        });
         if let Entry::Occupied(entry) = entry {
             return Ok(*entry.get());
         }

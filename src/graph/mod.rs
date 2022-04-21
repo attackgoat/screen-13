@@ -96,6 +96,13 @@ struct AttachmentMap {
 }
 
 impl AttachmentMap {
+    fn attached(&self) -> impl Iterator<Item = AttachmentIndex> + '_ {
+        self.attached
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, opt)| opt.map(|_| idx as AttachmentIndex))
+    }
+
     fn are_compatible(&self, other: &Self) -> bool {
         // Count of the color attachments may differ, the extras are VK_ATTACHMENT_UNUSED
         self.attached

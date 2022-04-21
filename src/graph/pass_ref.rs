@@ -1250,34 +1250,36 @@ where
                 node_idx,
             ));
 
-            // Unwrap the attachment we inserted above
             #[cfg(debug_assertions)]
-            let color_attachment = exec
-                .loads
-                .attached
-                .get(attachment as usize)
-                .copied()
-                .flatten()
-                .unwrap();
+            {
+                // Unwrap the attachment we inserted above
+                let color_attachment = exec
+                    .loads
+                    .attached
+                    .get(attachment as usize)
+                    .copied()
+                    .flatten()
+                    .unwrap();
 
-            debug_assert!(exec
-                .stores
-                .attached
-                .get(attachment as usize)
-                .map(|stored_attachment| Attachment::are_compatible(
-                    *stored_attachment,
-                    Some(color_attachment)
-                ))
-                .unwrap_or(true));
-            debug_assert!(exec
-                .resolves
-                .attached
-                .get(attachment as usize)
-                .map(|resolved_attachment| Attachment::are_compatible(
-                    *resolved_attachment,
-                    Some(color_attachment)
-                ))
-                .unwrap_or(true));
+                assert!(exec
+                    .stores
+                    .attached
+                    .get(attachment as usize)
+                    .map(|stored_attachment| Attachment::are_compatible(
+                        *stored_attachment,
+                        Some(color_attachment)
+                    ))
+                    .unwrap_or(true));
+                assert!(exec
+                    .resolves
+                    .attached
+                    .get(attachment as usize)
+                    .map(|resolved_attachment| Attachment::are_compatible(
+                        *resolved_attachment,
+                        Some(color_attachment)
+                    ))
+                    .unwrap_or(true));
+            }
         }
 
         self.pass.push_node_access(
@@ -1332,26 +1334,28 @@ where
                 node_idx,
             ));
 
-            // Unwrap the attachment we inserted above
             #[cfg(debug_assertions)]
-            let (_, loaded_attachment) = exec.loads.depth_stencil().unwrap();
+            {
+                // Unwrap the attachment we inserted above
+                let (_, loaded_attachment) = exec.loads.depth_stencil().unwrap();
 
-            debug_assert!(exec
-                .stores
-                .depth_stencil()
-                .map(
-                    |(attachment_idx, stored_attachment)| attachment == attachment_idx
-                        && Attachment::are_identical(stored_attachment, loaded_attachment)
-                )
-                .unwrap_or(true));
-            debug_assert!(exec
-                .resolves
-                .depth_stencil()
-                .map(
-                    |(attachment_idx, resolved_attachment)| attachment == attachment_idx
-                        && Attachment::are_identical(resolved_attachment, loaded_attachment)
-                )
-                .unwrap_or(true));
+                assert!(exec
+                    .stores
+                    .depth_stencil()
+                    .map(
+                        |(attachment_idx, stored_attachment)| attachment == attachment_idx
+                            && Attachment::are_identical(stored_attachment, loaded_attachment)
+                    )
+                    .unwrap_or(true));
+                assert!(exec
+                    .resolves
+                    .depth_stencil()
+                    .map(
+                        |(attachment_idx, resolved_attachment)| attachment == attachment_idx
+                            && Attachment::are_identical(resolved_attachment, loaded_attachment)
+                    )
+                    .unwrap_or(true));
+            }
         }
 
         self.pass.push_node_access(
@@ -1459,26 +1463,28 @@ where
                 node_idx,
             ));
 
-            // Unwrap the attachment we inserted above
             #[cfg(debug_assertions)]
-            let resolved_attachment = exec
-                .resolves
-                .attached
-                .get(attachment as usize)
-                .copied()
-                .flatten()
-                .unwrap();
+            {
+                // Unwrap the attachment we inserted above
+                let resolved_attachment = exec
+                    .resolves
+                    .attached
+                    .get(attachment as usize)
+                    .copied()
+                    .flatten()
+                    .unwrap();
 
-            debug_assert!(exec
-                .loads
-                .attached
-                .get(attachment as usize)
-                .map(|loaded_attachment| Attachment::are_compatible(
-                    *loaded_attachment,
-                    Some(resolved_attachment)
-                ))
-                .unwrap_or(true));
-            debug_assert!(exec.stores.attached.get(attachment as usize).is_none());
+                assert!(exec
+                    .loads
+                    .attached
+                    .get(attachment as usize)
+                    .map(|loaded_attachment| Attachment::are_compatible(
+                        *loaded_attachment,
+                        Some(resolved_attachment)
+                    ))
+                    .unwrap_or(true));
+                assert!(exec.stores.attached.get(attachment as usize).is_none());
+            }
         }
 
         self.pass.push_node_access(
@@ -1533,19 +1539,21 @@ where
                 node_idx,
             ));
 
-            // Unwrap the attachment we inserted above
             #[cfg(debug_assertions)]
-            let (_, resolved_attachment) = exec.resolves.depth_stencil().unwrap();
+            {
+                // Unwrap the attachment we inserted above
+                let (_, resolved_attachment) = exec.resolves.depth_stencil().unwrap();
 
-            debug_assert!(exec
-                .loads
-                .depth_stencil()
-                .map(
-                    |(attachment_idx, loaded_attachment)| attachment == attachment_idx
-                        && Attachment::are_identical(loaded_attachment, resolved_attachment)
-                )
-                .unwrap_or(true));
-            debug_assert!(exec.stores.depth_stencil.is_none());
+                assert!(exec
+                    .loads
+                    .depth_stencil()
+                    .map(
+                        |(attachment_idx, loaded_attachment)| attachment == attachment_idx
+                            && Attachment::are_identical(loaded_attachment, resolved_attachment)
+                    )
+                    .unwrap_or(true));
+                assert!(exec.stores.depth_stencil.is_none());
+            }
         }
 
         self.pass.push_node_access(
@@ -1658,26 +1666,28 @@ where
                 node_idx,
             ));
 
-            // Unwrap the attachment we inserted above
             #[cfg(debug_assertions)]
-            let stored_attachment = exec
-                .stores
-                .attached
-                .get(attachment as usize)
-                .copied()
-                .flatten()
-                .unwrap();
+            {
+                // Unwrap the attachment we inserted above
+                let stored_attachment = exec
+                    .stores
+                    .attached
+                    .get(attachment as usize)
+                    .copied()
+                    .flatten()
+                    .unwrap();
 
-            debug_assert!(exec
-                .loads
-                .attached
-                .get(attachment as usize)
-                .map(|loaded_attachment| Attachment::are_compatible(
-                    *loaded_attachment,
-                    Some(stored_attachment)
-                ))
-                .unwrap_or(true));
-            debug_assert!(exec.resolves.attached.get(attachment as usize).is_none());
+                assert!(exec
+                    .loads
+                    .attached
+                    .get(attachment as usize)
+                    .map(|loaded_attachment| Attachment::are_compatible(
+                        *loaded_attachment,
+                        Some(stored_attachment)
+                    ))
+                    .unwrap_or(true));
+                assert!(exec.resolves.attached.get(attachment as usize).is_none());
+            }
         }
 
         self.pass.push_node_access(
@@ -1732,19 +1742,21 @@ where
                 node_idx,
             ));
 
-            // Unwrap the attachment we inserted above
             #[cfg(debug_assertions)]
-            let (_, stored_attachment) = exec.stores.depth_stencil().unwrap();
+            {
+                // Unwrap the attachment we inserted above
+                let (_, stored_attachment) = exec.stores.depth_stencil().unwrap();
 
-            debug_assert!(exec
-                .loads
-                .depth_stencil()
-                .map(
-                    |(attachment_idx, loaded_attachment)| attachment == attachment_idx
-                        && Attachment::are_identical(loaded_attachment, stored_attachment)
-                )
-                .unwrap_or(true));
-            debug_assert!(exec.resolves.depth_stencil.is_none());
+                assert!(exec
+                    .loads
+                    .depth_stencil()
+                    .map(
+                        |(attachment_idx, loaded_attachment)| attachment == attachment_idx
+                            && Attachment::are_identical(loaded_attachment, stored_attachment)
+                    )
+                    .unwrap_or(true));
+                assert!(exec.resolves.depth_stencil.is_none());
+            }
         }
 
         self.pass.push_node_access(
