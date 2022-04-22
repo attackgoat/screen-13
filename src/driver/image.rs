@@ -4,7 +4,6 @@ use {
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
-    glam::{UVec2, Vec4},
     gpu_allocator::{
         vulkan::{Allocation, AllocationCreateDesc},
         MemoryLocation,
@@ -446,19 +445,6 @@ impl ImageInfo {
             initial_layout: vk::ImageLayout::UNDEFINED,
             ..Default::default()
         }
-    }
-
-    pub fn extent_inv_extent_2d(&self) -> Vec4 {
-        Vec4::new(
-            self.width as _,
-            self.height as _,
-            1.0 / self.width as f32,
-            1.0 / self.height as f32,
-        )
-    }
-
-    pub fn extent_2d(self) -> UVec2 {
-        UVec2::new(self.width, self.height)
     }
 
     pub fn fmt(mut self, fmt: vk::Format) -> Self {

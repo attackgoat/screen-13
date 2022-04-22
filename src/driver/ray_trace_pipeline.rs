@@ -7,7 +7,6 @@ use {
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
-    glam::{Mat3, Vec3},
     log::{info, trace, warn},
     parking_lot::Mutex,
     std::{ffi::CString, ops::Deref, thread::panicking},
@@ -340,18 +339,18 @@ where
                 )
             };
             let transform: [f32; 12] = [
-                desc.rotation.x_axis.x,
-                desc.rotation.y_axis.x,
-                desc.rotation.z_axis.x,
-                desc.position.x,
-                desc.rotation.x_axis.y,
-                desc.rotation.y_axis.y,
-                desc.rotation.z_axis.y,
-                desc.position.y,
-                desc.rotation.x_axis.z,
-                desc.rotation.y_axis.z,
-                desc.rotation.z_axis.z,
-                desc.position.z,
+                desc.rotation[0], //.x_axis.x,
+                desc.rotation[0], //.y_axis.x,
+                desc.rotation[0], //.z_axis.x,
+                desc.position[0], //.x,
+                desc.rotation[0], //.x_axis.y,
+                desc.rotation[0], //.y_axis.y,
+                desc.rotation[0], //.z_axis.y,
+                desc.position[0], //.y,
+                desc.rotation[0], //.x_axis.z,
+                desc.rotation[0], //.y_axis.z,
+                desc.rotation[0], //.z_axis.z,
+                desc.position[0], //.z,
             ];
 
             RayTraceInstance::new(
@@ -533,8 +532,8 @@ where
 {
     pub blas: Shared<RayTraceAcceleration<P>, P>,
     pub mesh_idx: u32,
-    pub position: Vec3,
-    pub rotation: Mat3,
+    pub position: [f32; 3],
+    pub rotation: [f32; 16],
 }
 
 #[derive(Debug)]

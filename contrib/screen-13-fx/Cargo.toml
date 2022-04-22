@@ -10,17 +10,15 @@ homepage = "https://github.com/attackgoat/screen-13/contrib/screen-13-fx"
 documentation = "https://docs.rs/screen-13"
 keywords = ["gamedev", "vulkan"]
 categories = ["game-development", "multimedia::images", "rendering::engine"]
-description = "An immediate mode ray tracing rendering engine, heavily based on Kajiya"
+description = "A bunch of pre-built utilities that are helpful when using Screen 13"
 
 [features]
 default = [
     "blend-modes",
-    "include-pak",
     "mask-modes",
     "matte-modes",
 ]
 blend-modes = []
-include-pak = []
 mask-modes = []
 matte-modes = []
 
@@ -28,14 +26,7 @@ matte-modes = []
 bmfont = { version = "0.3", default-features = false }
 lazy_static = "1.4"
 parking_lot = "0.12"
-screen-13 = { path = "../..", features = ["bake"] }
+inline-spirv = "0.1"
+screen-13 = { path = "../.."}
 anyhow = "1.0"
-
-[build-dependencies]
-anyhow = "1.0"
-glob = "0.3.0"
-hassle-rs = "0.7"
-lazy_static = "1.4"
-screen-13 = { path = "../..", features = ["bake"] }
-shader-prepper = "0.3.0-pre.1"  
-shaderc = "0.7"
+glam = "0.20"

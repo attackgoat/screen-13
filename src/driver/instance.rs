@@ -37,7 +37,7 @@ unsafe extern "system" fn vulkan_debug_callback(
                 .trim_start_matches(prefix)
                 .split_once(" ]")
                 .unwrap_or_default();
-            let message = message.split(" | ").skip(2).next().unwrap_or(message);
+            let message = message.split(" | ").nth(2).unwrap_or(message);
 
             (Some(vuid.trim()), message)
         } else {
@@ -64,7 +64,7 @@ unsafe extern "system" fn vulkan_debug_callback(
 
         debug!(
             "🛑 PARKING THREAD `{}` -> attach debugger to pid {}!",
-            current().name().as_deref().unwrap_or_default(),
+            current().name().unwrap_or_default(),
             id()
         );
 

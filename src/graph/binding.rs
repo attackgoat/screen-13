@@ -9,7 +9,6 @@ use {
         Lease,
     },
     archery::SharedPointerKind,
-    glam::UVec2,
     std::{
         fmt::Debug,
         mem::replace,
@@ -136,15 +135,6 @@ where
             Self::RayTraceAccelerationLease(binding, _) => binding.access_mut(access),
             Self::SwapchainImage(binding, _) => binding.access_mut(access),
         }
-    }
-
-    pub(super) fn as_extent_2d(&self) -> Option<UVec2> {
-        Some(match self {
-            Self::Image(image, _) => image.item.info.extent_2d(),
-            Self::ImageLease(image, _) => image.item.info.extent_2d(),
-            Self::SwapchainImage(image, _) => image.item.info.extent_2d(),
-            _ => return None,
-        })
     }
 
     pub(super) fn as_image_info(&self) -> Option<ImageInfo> {

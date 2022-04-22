@@ -11,13 +11,12 @@ use {
             Buffer, ComputePipeline, DepthStencilMode, GraphicPipeline, Image, ImageViewInfo,
             RayTraceAcceleration, RayTracePipeline,
         },
+        into_u8_slice,
         ptr::Shared,
     },
     archery::SharedPointerKind,
     ash::vk,
-    glam::UVec3,
     log::{trace, warn},
-    meshopt::any_as_u8_slice,
     std::{
         marker::PhantomData,
         mem::size_of_val,
@@ -271,7 +270,9 @@ where
     }
 
     pub fn push_constants_offset(&mut self, offset: u32, data: impl Sized) -> &mut Self {
-        let data = any_as_u8_slice(&data);
+        use std::slice::from_ref;
+
+        let data = into_u8_slice(from_ref(&data));
         if let Some(push_const) = &self.pipeline.push_constants {
             // Determine the range of the overall pipline push constants which overlap with `data`
             let push_const_end = push_const.offset + push_const.size;
@@ -392,8 +393,8 @@ where
             self.device.cmd_bind_vertex_buffers(
                 self.cmd_buf,
                 first_binding,
-                &self.buffers,
-                &self.offsets,
+                self.buffers,
+                self.offsets,
             );
         }
 
@@ -555,6 +556,8 @@ where
         offset: u32,
         data: impl Sized,
     ) -> &mut Self {
+        use std::slice::from_ref;
+
         // Check if the specified stages are a super-set of our actual stages
         if stage_flags != stage_flags & self.pipeline.stages() {
             // The user has manually specified too many stages
@@ -564,7 +567,7 @@ where
             stage_flags &= self.pipeline.stages();
         }
 
-        let data = any_as_u8_slice(&data);
+        let data = into_u8_slice(from_ref(&data));
         for push_const in &self.pipeline.push_constants {
             // Determine the range of the overall pipline push constants which overlap with `data`
             let push_const_end = push_const.offset + push_const.size;
@@ -626,7 +629,7 @@ where
 
         unsafe {
             self.device
-                .cmd_set_scissor(self.cmd_buf, first_scissor, &self.rects);
+                .cmd_set_scissor(self.cmd_buf, first_scissor, self.rects);
         }
 
         self
@@ -674,7 +677,7 @@ where
 
         unsafe {
             self.device
-                .cmd_set_viewport(self.cmd_buf, first_viewport, &self.viewports);
+                .cmd_set_viewport(self.cmd_buf, first_viewport, self.viewports);
         }
 
         self
@@ -782,12 +785,13 @@ where
             let last_exec = pass.execs.last_mut().unwrap();
             last_exec.func = Some(ExecutionFunction(Box::new(func)));
 
-            let mut next_exec = Execution::default();
-            next_exec.pipeline = last_exec.pipeline.clone();
-            next_exec.loads = last_exec.loads.clone();
-            next_exec.resolves = last_exec.resolves.clone();
-            next_exec.stores = last_exec.stores.clone();
-            next_exec
+            Execution {
+                pipeline: last_exec.pipeline.clone(),
+                loads: last_exec.loads.clone(),
+                resolves: last_exec.resolves.clone(),
+                stores: last_exec.stores.clone(),
+                ..Default::default()
+            }
         };
 
         pass.execs.push(exec);
@@ -1798,10 +1802,10 @@ where
 
         self.pass.push_execute(move |device, cmd_buf, bindings| {
             func(&mut RayTrace {
-                bindings,
-                cmd_buf,
-                device,
-                pipeline,
+                _bindings: bindings,
+                _cmd_buf: cmd_buf,
+                _device: device,
+                _pipeline: pipeline,
             });
         });
 
@@ -1813,17 +1817,17 @@ pub struct RayTrace<'a, P>
 where
     P: SharedPointerKind,
 {
-    bindings: Bindings<'a, P>,
-    cmd_buf: vk::CommandBuffer,
-    device: &'a ash::Device,
-    pipeline: Shared<RayTracePipeline<P>, P>,
+    _bindings: Bindings<'a, P>,
+    _cmd_buf: vk::CommandBuffer,
+    _device: &'a ash::Device,
+    _pipeline: Shared<RayTracePipeline<P>, P>,
 }
 
 impl<'a, P> RayTrace<'a, P>
 where
     P: SharedPointerKind,
 {
-    pub fn trace_rays(self, _tlas: RayTraceAccelerationNode<P>, _extent: UVec3) -> Self {
+    pub fn trace_rays(self, _tlas: RayTraceAccelerationNode<P>, _extent: ()) -> Self {
         // let mut pass = self.pass.as_mut();
         // let push_consts = take(&mut pass.push_consts);
         // let pipeline = Shared::clone(pass.pipelines.get(0).unwrap().unwrap_ray_trace());

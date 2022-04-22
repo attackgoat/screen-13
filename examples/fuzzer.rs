@@ -19,7 +19,7 @@ use screen_13::prelude_arc::*;
 
 fn main() -> Result<(), DisplayError> {
     let screen_13 = EventLoop::new().debug(true).build()?;
-    let mut cache = HashPool::new(&screen_13.device);
+    let _cache = HashPool::new(&screen_13.device);
 
     screen_13.run(|frame| {
         *frame.will_exit = true;
@@ -55,7 +55,10 @@ fn compute_pipeline(device: &Shared<Device>, source: &'static str) -> Shared<Com
 
     TLS.with(|tls| {
         Shared::clone(tls.borrow_mut().entry(source).or_insert_with(|| {
-            Shared::new(ComputePipeline::create(device, ComputePipelineInfo::new("")).unwrap())
+            Shared::new(
+                ComputePipeline::create(device, ComputePipelineInfo::new([0u8].as_slice()))
+                    .unwrap(),
+            )
         }))
     })
 }

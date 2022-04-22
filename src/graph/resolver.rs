@@ -18,7 +18,6 @@ use {
     },
     archery::SharedPointerKind,
     ash::vk,
-    itertools::Itertools,
     log::{debug, trace, warn},
     std::{
         collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
@@ -1761,19 +1760,23 @@ where
             // set_render_area was not specified so we're going to guess using the extent
             // of the first attachment we find, by lowest attachment index order
             let first_exec = pass.execs.first().unwrap();
-            let extent = first_exec
+            let (width, height) = first_exec
                 .loads
                 .attached
                 .iter()
                 .chain(first_exec.resolves.attached.iter())
                 .chain(first_exec.stores.attached.iter())
                 .filter_map(|attachment| attachment.as_ref())
-                .find_map(|attachment| self.graph.bindings[attachment.target].as_extent_2d())
+                .find_map(|attachment| {
+                    self.graph.bindings[attachment.target]
+                        .as_image_info()
+                        .map(|image_info| (image_info.width, image_info.height))
+                })
                 .unwrap();
 
             Area {
-                height: extent.y,
-                width: extent.x,
+                height,
+                width,
                 x: 0,
                 y: 0,
             }
@@ -1864,6 +1867,7 @@ where
                     .iter()
                     .copied()
                     .map(|idx| format!("[{}: {}]", idx, self.graph.passes[idx].name))
+                    .collect::<Vec<_>>()
                     .join(", ")
             );
         }
@@ -1877,6 +1881,7 @@ where
                     .iter()
                     .copied()
                     .map(|idx| format!("[{}: {}]", idx, self.graph.passes[idx].name))
+                    .collect::<Vec<_>>()
                     .join(", ")
             );
         }
@@ -1890,6 +1895,7 @@ where
                     .iter()
                     .enumerate()
                     .map(|(idx, pass)| format!("[{}: {}]", idx + end_pass_idx, pass.name))
+                    .collect::<Vec<_>>()
                     .join(", ")
             );
         }

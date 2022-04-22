@@ -1,4 +1,4 @@
-pub mod pak {
+pub mod data {
     use super::PakBuf;
 
     // The ".pak" file is a data transport type with compression and other useful features
@@ -32,7 +32,13 @@ mod res {
     }
 }
 
-use {anyhow::Context, screen_13::prelude_arc::*, screen_13_fx::*, std::time::Instant};
+use {
+    anyhow::Context,
+    pak::{buf::PakBuf, Pak},
+    screen_13::prelude_arc::*,
+    screen_13_fx::*,
+    std::time::Instant,
+};
 
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
@@ -48,25 +54,33 @@ fn main() -> anyhow::Result<()> {
     let mut image_loader = ImageLoader::new(&event_loop.device).context("Loader")?;
 
     // Load source images: PakBuf -> BitmapBuf -> ImageBinding (here) -> ImageNode (during loop)
-    let mut data = pak::open().context("Pak")?;
-    let mut flowers_image_binding = Some(
+    let mut data = data::open().context("Pak")?;
+    let mut flowers_image_binding = Some({
+        let data = data
+            .read_bitmap(data::IMAGE_FLOWERS_JPG)
+            .context("Unable to read flowers bitmap")?;
         image_loader
             .decode_linear(
-                &data
-                    .read_bitmap(pak::IMAGE_FLOWERS_JPG)
-                    .context("Unable to read flowers bitmap")?,
+                data.pixels(),
+                ImageFormat::R8G8B8,
+                data.width(),
+                data.height(),
             )
-            .context("Unable to decode flowers bitmap")?,
-    );
-    let mut noise_image_binding = Some(
+            .context("Unable to decode flowers bitmap")?
+    });
+    let mut noise_image_binding = Some({
+        let data = data
+            .read_bitmap(data::IMAGE_RGBA_NOISE_PNG)
+            .context("Unable to read noise bitmap")?;
         image_loader
             .decode_linear(
-                &data
-                    .read_bitmap(pak::IMAGE_RGBA_NOISE_PNG)
-                    .context("Unable to read noise bitmap")?,
+                data.pixels(),
+                ImageFormat::R8G8B8A8,
+                data.width(),
+                data.height(),
             )
-            .context("Unable to decode noise bitmap")?,
-    );
+            .context("Unable to decode noise bitmap")?
+    });
 
     // The shader toy example used two graphics pipelines with defaults:
     // no depth/stencil
@@ -203,12 +217,12 @@ fn main() -> anyhow::Result<()> {
                 date: [1970.0, 1.0, 1.0, elapsed.as_secs_f32()],
                 mouse: [
                     if mouse_buf.any_held() {
-                        mouse_buf.position().x
+                        mouse_buf.x
                     } else {
                         0.0
                     },
                     if mouse_buf.any_held() {
-                        mouse_buf.position().y
+                        mouse_buf.y
                     } else {
                         0.0
                     },

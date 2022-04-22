@@ -5,19 +5,18 @@ use {
         ptr::Shared,
     },
     archery::SharedPointerKind,
-    glam::{uvec2, UVec2},
     winit::{dpi::PhysicalPosition, event::Event, window::Window},
 };
 
 pub fn center_cursor(window: &Window) {
     let window_size = window.inner_size();
-    let position = uvec2(window_size.width, window_size.height) / 2;
-    move_cursor(window, &position);
+    let x = window_size.width / 2;
+    let y = window_size.height / 2;
+    set_cursor_position(window, x, y);
 }
 
-pub fn move_cursor(window: &Window, position: &UVec2) {
-    let position = position.as_ivec2();
-    let position = PhysicalPosition::new(position.x, position.y);
+pub fn set_cursor_position(window: &Window, x: u32, y: u32) {
+    let position = PhysicalPosition::new(x as i32, y as i32);
     window.set_cursor_position(position).unwrap_or_default();
 }
 
@@ -40,6 +39,10 @@ impl<P> FrameContext<'_, P>
 where
     P: SharedPointerKind,
 {
+    pub fn exit(&mut self) {
+        *self.will_exit = true;
+    }
+
     pub fn render_aspect_ratio(&self) -> f32 {
         self.width as f32 / self.height as f32
     }
@@ -48,7 +51,7 @@ where
         center_cursor(self.window);
     }
 
-    pub fn move_cursor(&self, position: &UVec2) {
-        move_cursor(self.window, position);
+    pub fn set_cursor_position(&self, x: u32, y: u32) {
+        set_cursor_position(self.window, x, y);
     }
 }

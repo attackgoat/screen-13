@@ -99,6 +99,7 @@ fn main() -> Result<(), screen_13::DisplayError> {
 
             It is left as an excerise to the reader to determine *what* might have gone wrong here.
         */
+        #[allow(unused_variables)]
         let image = frame
             .render_graph
             .bind_node(frame.device.new_image(ImageInfo::new_2d(

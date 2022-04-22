@@ -4,7 +4,6 @@ use {
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
-    glam::UVec2,
     log::{debug, warn},
     std::{ops::Deref, slice, thread::panicking, time::Duration},
 };
@@ -210,25 +209,25 @@ where
 
         debug!("Swapchain image count: {}", desired_image_count);
 
-        let surface_resolution = match surface_capabilities.current_extent.width {
-            std::u32::MAX => UVec2::new(
+        let (surface_width, surface_height) = match surface_capabilities.current_extent.width {
+            std::u32::MAX => (
                 // TODO: Maybe handle this case with aspect-correct clamping?
-                self.info.extent.x.clamp(
+                self.info.width.clamp(
                     surface_capabilities.min_image_extent.width,
                     surface_capabilities.max_image_extent.width,
                 ),
-                self.info.extent.y.clamp(
+                self.info.height.clamp(
                     surface_capabilities.min_image_extent.height,
                     surface_capabilities.max_image_extent.height,
                 ),
             ),
-            _ => UVec2::new(
+            _ => (
                 surface_capabilities.current_extent.width,
                 surface_capabilities.current_extent.height,
             ),
         };
 
-        if surface_resolution.x * surface_resolution.y == 0 {
+        if surface_width * surface_height == 0 {
             return Err(DriverError::Unsupported);
         }
 
@@ -274,8 +273,8 @@ where
             .image_color_space(self.info.format.color_space)
             .image_format(self.info.format.format)
             .image_extent(vk::Extent2D {
-                width: surface_resolution.x,
-                height: surface_resolution.y,
+                width: surface_width,
+                height: surface_height,
             })
             .image_usage(surface_capabilities.supported_usage_flags)
             .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
@@ -308,8 +307,8 @@ where
                         flags: vk::ImageCreateFlags::empty(), // MUTABLE_FORMAT | SPARSE_ALIASED | CUBE_COMPATIBLE
                         fmt: vk::Format::B8G8R8A8_UNORM,      // TODO: Allow configuration!
                         depth: 0,                             // TODO: 1?
-                        height: self.info.extent.y,
-                        width: self.info.extent.x,
+                        height: self.info.height,
+                        width: self.info.width,
                         sample_count: SampleCount::X1,
                         linear_tiling: false,
                         mip_level_count: 1,
@@ -403,8 +402,9 @@ pub enum SwapchainError {
 pub struct SwapchainInfo {
     pub desired_image_count: u32,
     pub format: vk::SurfaceFormatKHR,
-    pub extent: UVec2,
+    pub height: u32,
     pub sync_display: bool,
+    pub width: u32,
 }
 
 impl SwapchainInfo {

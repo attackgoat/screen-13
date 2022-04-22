@@ -62,7 +62,6 @@ use {
     crate::ptr::Shared,
     archery::SharedPointerKind,
     derive_builder::Builder,
-    glam::uvec2,
     log::{debug, info, trace, warn},
     raw_window_handle::HasRawWindowHandle,
     std::{
@@ -477,8 +476,9 @@ where
             SwapchainInfo {
                 desired_image_count: cfg.desired_swapchain_image_count,
                 format,
-                extent: uvec2(width, height),
+                height,
                 sync_display: cfg.sync_display,
+                width,
             },
         )?;
 

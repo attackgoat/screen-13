@@ -1,3 +1,7 @@
+use crate::into_u8_slice;
+
+use super::shader::ShaderCode;
+
 use {
     super::{
         DescriptorBindingMap, Device, DriverError, PipelineDescriptorInfo, Shader,
@@ -162,8 +166,8 @@ pub struct ComputePipelineInfo {
 
 impl ComputePipelineInfo {
     #[allow(clippy::new_ret_no_self)]
-    pub fn new(spirv: impl Into<Vec<u8>>) -> ComputePipelineInfoBuilder {
-        ComputePipelineInfoBuilder::default().spirv(spirv.into())
+    pub fn new(spirv: impl ShaderCode) -> ComputePipelineInfoBuilder {
+        ComputePipelineInfoBuilder::default().spirv(spirv.into_vec())
     }
 
     pub fn into_shader(self) -> Shader {
@@ -181,6 +185,12 @@ impl ComputePipelineInfo {
 impl<'a> From<&'a [u8]> for ComputePipelineInfo {
     fn from(slice: &'a [u8]) -> Self {
         Self::new(slice).build().unwrap()
+    }
+}
+
+impl<'a> From<&'a [u32]> for ComputePipelineInfo {
+    fn from(slice: &'a [u32]) -> Self {
+        Self::new(into_u8_slice(slice)).build().unwrap()
     }
 }
 

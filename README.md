@@ -4,127 +4,74 @@
 [![Docs.rs](https://docs.rs/screen-13/badge.svg)](https://docs.rs/screen-13)
 [![LoC](https://tokei.rs/b1/github/attackgoat/screen-13?category=code)](https://github.com/attackgoat/screen-13)
 
-_Screen 13_ is an easy-to-use 2D/3D rendering engine in the spirit of
+_Screen 13_ is an easy-to-use Vulkan rendering engine in the spirit of
 _[QBasic](https://en.wikipedia.org/wiki/QBasic)_.
+
+```toml
+[dependencies]
+screen-13 = "0.3"
+```
 
 ## Overview
 
-_Screen 13_ provides a thin [Vulkan](https://www.vulkan.org/) driver using smart pointers.
-
-Features of the Vulkan driver:
-
- - Lifetime management calls `free` for you
- - Resource information comes with each smart pointer
-
-Example usage:
+_Screen 13_ provides a high performance [Vulkan](https://www.vulkan.org/) driver using smart
+pointers. The driver may be created manually for headless rendering or automatically using the
+built-in event loop abstraction:
 
 ```rust
-let window = ...your winit window...
-let cfg = Default::default();
-let (width, height) = (320, 200);
-let driver = Driver::new(&window, cfg, width, height)?;
+// For multi-threaded programs
+use screen_13::prelude_arc::*;
 
-unsafe {
-    // Let's do low-level stuff using the provided ash::Device
-    driver.device.create_fence(...);
+fn main() -> Result<(), DisplayError> {
+    EventLoop::new().build()?.run(|frame| {
+        // It's time to do some graphics! 😲
+    })
 }
 ```
 
-### Render Graph
+## Usage
 
 _Screen 13_ provides a fully-generic render graph structure for simple and statically
 typed access to all the resources used while rendering. The `RenderGraph` structure allows Vulkan
 smart pointer resources to be bound as "nodes" which may be used anywhere in a graph. The graph
-itself is not tied to swapchain access and may be used from a headless environment too.
+itself is not tied to swapchain access and may be used to execute general command streams.
 
 Features of the render graph:
 
  - Compute, Graphic, and Ray-trace (WIP) pipelines
- - You specify _code_ which runs on _input_ and creates _output_
- - Automatic Vulkan management (Render passes, subpasses, descriptors, pools, etc.)
+ - Automatic Vulkan management (Render passes, subpasses, descriptors, pools, _etc._)
  - Automatic render pass scheduling, re-ordering, merging, with resource aliasing
-
-Example usage (_See [source](examples/shader-toy/src/main.rs) for variable values_):
+ - Interoperable with exsting Vulkan code
 
 ```rust
 render_graph
-    .begin_pass("Buffer A")
-    .bind_pipeline(&buffer_pipeline)
-    .read_descriptor(0, input)
-    .read_descriptor(1, noise_image)
-    .read_descriptor(2, flowers_image)
-    .read_descriptor(3, blank_image)
+    .begin_pass("Fancy new algorithm for shading a moving character who is actively on fire")
+    .bind_pipeline(&gfx_pipeline)
+    .read_descriptor(0, some_image)
+    .read_descriptor(1, another_image)
+    .read_descriptor(3, some_buf)
     .clear_color(0)
-    .store_color(0, output)
+    .store_color(0, also_an_image)
     .record_subpass(move |subpass| {
         subpass.push_constants(push_consts);
         subpass.draw(6, 1, 0, 0);
     });
 ```
 
-### Event Loop
-
-_Screen 13_ provides an event loop abstraction which helps you setup and display images easily. Also
-included are keyboard, mouse, and typing input helpers.
-
-Example usage:
-
-```rust
-fn main() -> Result<(), DisplayError> {
-    let event_loop = EventLoop::new().build()?;
-
-    event_loop.run(|frame| {
-        // Draw using frame.render_graph here!
-    })
-}
-```
-
-### Pak File Format
-
-Programs made using _Screen 13_ are built as regular executables using an _optional_ design-time
-asset baking process. _Screen 13_ provides all asset-baking logic and aims to provide wide support
-for texture formats, vertex formats, and other associated data. Baked assets are stored in `.pak`
-files.
-
-Features of the `.pak` file format:
-
-- Individually compressed assets
-- Baking process is multi-threaded and heavily cached
-- Supports `.gltf`/`.glb` with LOD, meshlets, cache/fetch optimizations, and more
-- Material system (including baking of PBR data)
-
-## Goals
-
-_Screen 13_ aims to provide a simple to use, although opinionated, ecosystem of tools and code that
-enable very high performance portable graphics programs for developers using the Rust programming
-language.
-
-_Just Enough:_ Only core 2D and 3D rendering features are included, along with window event handling
-and window-based input. Additional things, such as an entity component system, physics, sound, and
-gamepad input must be handled by your code.
-
 ## Quick Start
 
 Included are some examples you might find helpful:
 
 - [`hello_world.rs`](examples/hello_world.rs) — Displays a window on the screen. Please start here.
-- [`bake_pak.rs`](examples/bake_pak.rs) — Bakes a simple `.pak` file from a `.toml` definition.
+- [`triangle.rs`](examples/triange.rs) — Shaders and full setup of index/vertex buffers; < 100 LOC.
 - [`shader-toy/`](examples/shader-toy) — Recreation of a two-pass shader toy using the original
   shader code.
 
 See the example code for more information, including a helpful
-[getting started guide](examples/README.md).
+[getting started guide](examples/getting-started.md).
 
 **_NOTE:_** Required development packages and libraries are listed in the _getting started guide_.
 All new users should read and understand the guide.
-
-## Optional Features
-
-_Screen 13_ puts a lot of functionality behind optional features in order to optimize compile time
-for the most common use cases. The following features are available.
-
-- **`pak`** *(enabled by default)* — Ability read `.pak` files.
-- **`bake`** — Ability to write `.pak` files, enables `pak` feature.
 
 ## History
 

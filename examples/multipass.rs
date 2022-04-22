@@ -1,4 +1,8 @@
-use {inline_spirv::inline_spirv, screen_13::prelude_arc::*};
+use {
+    glam::{vec3, Mat4, Vec3, Vec4},
+    inline_spirv::inline_spirv,
+    screen_13::prelude_arc::*,
+};
 
 // NOTE: When this example runs, there will be a blank screen - that's OK!
 
@@ -248,6 +252,7 @@ fn create_fill_quad_linear_gradient_pipeline(device: &Shared<Device>) -> Shared<
     )
 }
 
+// Oh please somebody PR a really nice shader here
 fn create_draw_funky_shape_deferred_pipeline(device: &Shared<Device>) -> Shared<GraphicPipeline> {
     let vertex_shader = Shader::new_vertex(into_u8_slice(inline_spirv!(
         r#"

@@ -1,9 +1,6 @@
 pub use winit::event::MouseButton;
 
-use {
-    glam::{vec2, Vec2},
-    winit::event::{ElementState, Event, MouseScrollDelta, TouchPhase, WindowEvent},
-};
+use winit::event::{ElementState, Event, MouseScrollDelta, TouchPhase, WindowEvent};
 
 const fn mouse_button_idx(button: MouseButton) -> u16 {
     match button {
@@ -28,13 +25,15 @@ const fn idx_mouse_button(button: u16) -> MouseButton {
 #[derive(Clone, Debug, Default)]
 pub struct MouseBuf {
     /// Amount of mouse movement detected since the last update.
-    pub delta: Vec2,
+    pub delta: (f32, f32),
     held: u16,
-    position: Option<Vec2>,
+    position: Option<(f32, f32)>,
     pressed: u16,
     released: u16,
     /// Amount of wheel scroll detected since the last update.
-    pub wheel: Vec2,
+    pub wheel: (f32, f32),
+    pub x: f32,
+    pub y: f32,
 }
 
 impl MouseBuf {
@@ -55,10 +54,10 @@ impl MouseBuf {
     }
 
     pub fn update(&mut self) {
-        self.delta = Vec2::ZERO;
+        self.delta = (0.0, 0.0);
         self.pressed = 0;
         self.released = 0;
-        self.wheel = Vec2::ZERO;
+        self.wheel = (0.0, 0.0);
     }
 
     /// Handles a single event.
@@ -68,10 +67,13 @@ impl MouseBuf {
                 WindowEvent::CursorMoved { position, .. } => {
                     // TODO: Reckon with "it should not be used to implement non-cursor-like interactions such as 3D camera control"
                     let prev_position = self.position;
-                    self.position = Some(vec2(position.x as _, position.y as _));
+                    self.position = Some((position.x as _, position.y as _));
                     let position = self.position.unwrap_or_default();
                     let prev_position = prev_position.unwrap_or(position);
-                    self.delta += position - prev_position;
+                    self.delta.0 += position.0 - prev_position.0;
+                    self.delta.1 += position.1 - prev_position.1;
+                    self.x = position.0;
+                    self.y = position.1;
 
                     true
                 }
@@ -94,7 +96,8 @@ impl MouseBuf {
                         MouseScrollDelta::LineDelta(x, y) => (*x, *y),
                         MouseScrollDelta::PixelDelta(p) => (p.x as _, p.y as _),
                     };
-                    self.wheel += vec2(x, y);
+                    self.wheel.0 += x;
+                    self.wheel.1 += y;
 
                     true
                 }
@@ -119,7 +122,7 @@ impl MouseBuf {
     /// Centered around zero, so negative values are the bottom left of the screen.
     ///
     /// Units are unspecified and vary by device.
-    pub fn position(&self) -> Vec2 {
+    pub fn position(&self) -> (f32, f32) {
         self.position.unwrap_or_default()
     }
 }

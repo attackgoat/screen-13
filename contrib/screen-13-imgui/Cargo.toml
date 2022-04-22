@@ -9,11 +9,6 @@ readme = "README.md"
 [dependencies]
 imgui = "0.8"
 imgui-winit-support = { version = "0.8", default-features = false, features = ["winit-26"] }
+inline-spirv = "0.1"
 screen-13 = { path = "../.." }
 screen-13-fx = { path = "../screen-13-fx" }
-
-
-[build-dependencies]
-anyhow = "1.0"
-lazy_static = "1.4"
-shaderc = "0.7"

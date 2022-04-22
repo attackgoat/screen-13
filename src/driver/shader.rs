@@ -1,10 +1,12 @@
+use crate::into_u8_slice;
+
 use {
     super::{DescriptorSetLayout, Device, DriverError, SamplerDesc, VertexInputState},
     crate::ptr::Shared,
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
-    log::{debug, error, info, trace, warn},
+    log::{debug, error, info, trace},
     spirq::{
         ty::{ScalarType, Type},
         DescriptorType, EntryPoint, ReflectConfig, Variable,
@@ -239,31 +241,33 @@ pub struct Shader {
 
 impl Shader {
     #[allow(clippy::new_ret_no_self)]
-    pub fn new(stage: vk::ShaderStageFlags, spirv: impl Into<Vec<u8>>) -> ShaderBuilder {
-        ShaderBuilder::default().spirv(spirv.into()).stage(stage)
+    pub fn new(stage: vk::ShaderStageFlags, spirv: impl ShaderCode) -> ShaderBuilder {
+        ShaderBuilder::default()
+            .spirv(spirv.into_vec())
+            .stage(stage)
     }
 
-    pub fn new_compute(spirv: impl Into<Vec<u8>>) -> ShaderBuilder {
+    pub fn new_compute(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::COMPUTE, spirv)
     }
 
-    pub fn new_fragment(spirv: impl Into<Vec<u8>>) -> ShaderBuilder {
+    pub fn new_fragment(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::FRAGMENT, spirv)
     }
 
-    pub fn new_geometry(spirv: impl Into<Vec<u8>>) -> ShaderBuilder {
+    pub fn new_geometry(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::GEOMETRY, spirv)
     }
 
-    pub fn new_tesselation_ctrl(spirv: impl Into<Vec<u8>>) -> ShaderBuilder {
+    pub fn new_tesselation_ctrl(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::TESSELLATION_CONTROL, spirv)
     }
 
-    pub fn new_tesselation_eval(spirv: impl Into<Vec<u8>>) -> ShaderBuilder {
+    pub fn new_tesselation_eval(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::TESSELLATION_EVALUATION, spirv)
     }
 
-    pub fn new_vertex(spirv: impl Into<Vec<u8>>) -> ShaderBuilder {
+    pub fn new_vertex(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::VERTEX, spirv)
     }
 
@@ -659,6 +663,38 @@ impl Debug for Shader {
 impl From<ShaderBuilder> for Shader {
     fn from(shader: ShaderBuilder) -> Self {
         shader.build()
+    }
+}
+
+pub trait ShaderCode {
+    fn into_vec(self) -> Vec<u8>;
+}
+
+impl ShaderCode for &[u8] {
+    fn into_vec(self) -> Vec<u8> {
+        debug_assert_eq!(self.len() % 4, 0, "invalid spir-v code");
+
+        self.to_vec()
+    }
+}
+
+impl ShaderCode for &[u32] {
+    fn into_vec(self) -> Vec<u8> {
+        into_u8_slice(self).into_vec()
+    }
+}
+
+impl ShaderCode for Vec<u8> {
+    fn into_vec(self) -> Vec<u8> {
+        debug_assert_eq!(self.len() % 4, 0, "invalid spir-v code");
+
+        self
+    }
+}
+
+impl ShaderCode for Vec<u32> {
+    fn into_vec(self) -> Vec<u8> {
+        into_u8_slice(self.as_slice()).into_vec()
     }
 }
 

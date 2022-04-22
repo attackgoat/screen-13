@@ -187,28 +187,19 @@ where
         // Check for proper stages because vulkan may not complain but this is bad
         let has_fragment_stage = shaders
             .iter()
-            .find(|shader| shader.stage.contains(vk::ShaderStageFlags::FRAGMENT))
-            .is_some();
-        let has_tesselation_stage = shaders
-            .iter()
-            .find(|shader| {
-                shader
-                    .stage
-                    .contains(vk::ShaderStageFlags::TESSELLATION_CONTROL)
-            })
-            .is_some()
-            && shaders
-                .iter()
-                .find(|shader| {
-                    shader
-                        .stage
-                        .contains(vk::ShaderStageFlags::TESSELLATION_EVALUATION)
-                })
-                .is_some();
+            .any(|shader| shader.stage.contains(vk::ShaderStageFlags::FRAGMENT));
+        let has_tesselation_stage = shaders.iter().any(|shader| {
+            shader
+                .stage
+                .contains(vk::ShaderStageFlags::TESSELLATION_CONTROL)
+        }) && shaders.iter().any(|shader| {
+            shader
+                .stage
+                .contains(vk::ShaderStageFlags::TESSELLATION_EVALUATION)
+        });
         let has_geometry_stage = shaders
             .iter()
-            .find(|shader| shader.stage.contains(vk::ShaderStageFlags::GEOMETRY))
-            .is_some();
+            .any(|shader| shader.stage.contains(vk::ShaderStageFlags::GEOMETRY));
 
         debug_assert!(
             has_fragment_stage || has_tesselation_stage || has_geometry_stage,
@@ -323,7 +314,7 @@ where
             if push_constants.len() > 1 {
                 push_constants.sort_unstable_by(|lhs, rhs| match lhs.offset.cmp(&rhs.offset) {
                     Ordering::Equal => lhs.size.cmp(&rhs.size),
-                    res @ _ => res,
+                    res => res,
                 });
 
                 let mut idx = 0;

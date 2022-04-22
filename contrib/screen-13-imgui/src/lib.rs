@@ -19,6 +19,7 @@ pub use imgui::{self, Condition, Ui};
 use {
     imgui::{Context, DrawCmd, DrawCmdParams},
     imgui_winit_support::{HiDpiMode, WinitPlatform},
+    inline_spirv::include_spirv,
     screen_13::prelude_all::*,
     std::time::Duration,
 };
@@ -50,14 +51,8 @@ where
                     .blend(BlendMode::Alpha)
                     .cull_mode(vk::CullModeFlags::NONE),
                 [
-                    Shader::new_vertex(*include_bytes!(concat!(
-                        env!("OUT_DIR"),
-                        "/imgui.vert.spirv"
-                    ))),
-                    Shader::new_fragment(*include_bytes!(concat!(
-                        env!("OUT_DIR"),
-                        "/imgui.frag.spirv"
-                    ))),
+                    Shader::new_vertex(include_spirv!("res/shader/imgui.vert", vert).as_slice()),
+                    Shader::new_fragment(include_spirv!("res/shader/imgui.frag", frag).as_slice()),
                 ],
             )
             .unwrap(),

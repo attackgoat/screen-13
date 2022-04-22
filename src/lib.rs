@@ -1,9 +1,6 @@
 pub mod driver;
 pub mod graph;
 
-#[cfg(feature = "pak")]
-pub mod pak;
-
 mod display;
 mod event_loop;
 mod frame;
@@ -23,7 +20,7 @@ pub mod prelude {
         super::{
             align_up_u32, align_up_u64,
             event_loop::{EventLoop, FullscreenMode},
-            frame::{center_cursor, move_cursor, FrameContext},
+            frame::{center_cursor, set_cursor_position, FrameContext},
             graph::RenderGraph,
             input::{
                 update_input, update_keyboard, update_mouse, KeyBuf, KeyMap, MouseBuf, MouseButton,
@@ -31,9 +28,7 @@ pub mod prelude {
             into_u8_slice,
             ptr::{ArcK, RcK, Shared, SharedPointerKind},
         },
-        glam::*,
         log::{debug, error, info, trace, warn}, // Everyone wants a log
-        meshopt::any_as_u8_slice,
         winit::{
             dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize},
             event::{Event, VirtualKeyCode},
@@ -279,8 +274,6 @@ where
     T: Sized,
 {
     use std::{mem::size_of, slice::from_raw_parts};
-
-    let t = t.as_ref();
 
     unsafe { from_raw_parts(t.as_ptr() as *const _, t.len() * size_of::<T>()) }
 }

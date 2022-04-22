@@ -3,7 +3,7 @@ pub mod prelude_arc {
 
     use screen_13::ptr::ArcK as P;
 
-    pub type BitmapFont = super::text::BitmapFont<P>;
+    pub type BitmapFont = super::BitmapFont<P>;
     pub type ComputePresenter = super::ComputePresenter<P>;
     pub type GraphicPresenter = super::GraphicPresenter<P>;
     pub type ImageLoader = super::ImageLoader<P>;
@@ -14,24 +14,18 @@ pub mod prelude_rc {
 
     use screen_13::ptr::RcK as P;
 
-    pub type BitmapFont = super::text::BitmapFont<P>;
+    pub type BitmapFont = super::BitmapFont<P>;
     pub type ComputePresenter = super::ComputePresenter<P>;
     pub type GraphicPresenter = super::GraphicPresenter<P>;
     pub type ImageLoader = super::ImageLoader<P>;
 }
 
-mod res {
-    pub mod shader {
-        include!(concat!(env!("OUT_DIR"), "/shader_bindings.rs"));
-    }
-}
-
-mod image;
-mod present;
-mod text;
+mod bitmap_font;
+mod image_loader;
+mod presenter;
 
 pub use self::{
-    image::ImageLoader,
-    present::{ComputePresenter, GraphicPresenter},
-    text::BitmapGlyphColor,
+    bitmap_font::{BitmapFont, BitmapGlyphColor},
+    image_loader::{ImageFormat, ImageLoader},
+    presenter::{ComputePresenter, GraphicPresenter},
 };

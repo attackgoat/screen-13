@@ -42,79 +42,135 @@ let ffi_device: ash::Device = **device;
 ```
 
 If you plan on doing things with "driver-level" smart pointers you will have access to the [Ash](https://github.com/MaikKlein/ash) function
-pointers and such. In order to create smart pointers for Vulkan types you will need to use a _Screen 13_-provided `create`
-function, such as this one for a compute shader pipeline:
+pointers and such.
+
+### Creating `vk::Buffer` resources
+
+Creating and filling a buffer is easy:
 
 ```rust
-let spirv_code: &[u8] = ...
-let pipeline = ComputePipeline::create(&device, ComputePipelineInfo::new(spirv_code)).unwrap();
+let mut some_buf = Buffer::create(
+    &device,
+    BufferInfo {
+        size: 1024,
+        usage: vk::BufferUsageFlags::TRANSFER_SRC,
+        can_map: true,
+    },
+)?;
+
+let data = Buffer::mapped_slice_mut(&mut some_buf);
+data[0..4].copy_from_slice(&[0xff, 0xfe, 0xff, 0xfe]);
+
+debug_assert_ne!(*some_buf, vk::Buffer::null());
+debug_assert_eq!(some_buf.info.size, 1024);
 ```
 
-There is a bunch of stuff in the driver level which is used internally, and could be used to write other complex Vulkan programs,
-but most of it is further handled "for you" by the render graph module. Most users will need only these driver-level types:
+### Creating `vk::Image` Resources
 
-### `Buffer`
+The full set of image options is available using the `ImageInfo` builder-pattern functions. A
+typical image:
 
 ```rust
-// To create
-let mut buffer = Buffer::create(&device, BufferInfo {
-    size: 1024,
-    usage: vk::BufferUsageFlags::TRANSFER_SRC,
-    can_map: true,
-}).unwrap();
-assert_ne!(*buffer, vk::Buffer::null());
+let (width, height) = (4096, 2184);
+let some_image = Image::create(
+    &device,
+    ImageInfo::new_2d(
+        vk::Format::R8G8B8A8_UNORM,
+        width,
+        height,
+        vk::ImageUsageFlags::COLOR_ATTACHMENT
+            | vk::ImageUsageFlags::INPUT_ATTACHMENT
+            | vk::ImageUsageFlags::TRANSIENT,
+    ),
+);
 
-// To fill with data (example)
-let mapped_slice: &mut [u8] = Buffer::mapped_slice_mut(&mut buffer);
-mapped_slice[0] = 0xff;
-mapped_slice[1] = 0xfe;
-mapped_slice[2] = 0xff;
-mapped_slice[3] = 0xfe;
+debug_assert_ne!(*some_image, vk::Image::null());
+debug_assert!(some_image.info.usage.contains(vk::ImageUsageFlags::INPUT_ATTACHMENT));
 ```
 
-### `Image`
+### Creating compute `vk::Pipeline` resources
 
-`ImageInfo`, like all info structs in _Screen 13_, is a builder and has many options.
+All pipelines support additional builder-pattern functions and specialized constants:
 
 ```rust
-// To create
-let (width, height) = (320, 200);
-let format = vk::Format::R8G8B8A8_UNORM;
-let usage = vk::ImageUsageFlags::COLOR_ATTACHMENT;
-let info = ImageInfo::new_2d(format, width, height).usage(usage);
-let image = Image::create(&device, info).unwrap();
-assert_ne!(*image, vk::Image::null());
+use inline_spirv::inline_spirv; // Provide SPIR-V using your choice of compiler
+
+let comp_pipeline = ComputePipeline::create(
+    &device,
+    inline_spirv!(
+        r#"
+        #version 460 core
+    
+        layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+    
+        void main() {
+            // Incoming workgroup!! 🚚🚚🚚🚚🚚🚚!
+        }
+        "#,
+        comp
+    )
+    .as_slice(),
+)?;
 ```
 
-### `GraphicPipeline` and `Shader`
+### Creating graphic `vk::Pipeline` resources
 
-Creating a graphic pipelines requires a list of shaders and the following metadata about the
-GPU configuration:
+Here we specify the full `GraphicPipelineInfo`, but you may provide `Default::default()` instead:
 
 ```rust
-#[derive(Clone, Default)]
-pub struct GraphicPipelineInfo {
-    pub blend: BlendMode,
-    pub depth_stencil: Option<DepthStencilMode>,
-    pub samples: SampleCount,
-    pub two_sided: bool,
-    ... etc ..
-}
+let info = GraphicPipelineInfo {
+    blend: BlendMode::Replace,
+    cull_mode: vk::CullModeFlags::BACK,
+    depth_stencil: Some(DepthStencilMode {
+        back: StencilMode::Noop,
+        bounds_test: false,
+        compare_op: vk::CompareOp::NEVER,
+        depth_test: false,
+        depth_write: false,
+        front: StencilMode::Noop,
+        min: OrderedFloat(0.0f32),
+        max: OrderedFloat(1.0f32),
+        stencil_test: false,
+    }),
+    front_face: vk::FrontFace::CLOCKWISE,
+    name: Some("A name for debug purposes".to_owned()),
+    polygon_mode: vk::PolygonMode::FILL,
+    samples: SampleCount::X8,
+    two_sided: false,
+};
+
+let gfx_pipeline = GraphicPipeline::create(
+    &frame.device,
+    info,
+    [
+        Shader::new_vertex(
+            inline_spirv!(
+                r#"
+                #version 460 core
+
+                // Add descriptor bindings: buffers, images, inputs, etc.
+                // Code is reflected automatically to wire things up
+
+                void main() { /* 💎 */ }
+                "#,
+                comp
+            )
+            .as_slice(),
+        ),
+        Shader::new_fragment(
+            inline_spirv!(
+                r#"
+                #version 460 core
+
+                void main() { /* 🎨 */ }
+                "#,
+                comp
+            )
+            .as_slice(),
+        ),
+    ],
+);
 ```
-
-All of the parameters implement `Copy` and are simple enums and structs.
-
-```rust
-let info = GraphicPipelineInfo::default();
-let vertex = Shader::new_vertex(include_bytes!("vertex.spv"));
-let fragment = Shader::new_fragment(include_bytes!("fragment.spv"));
-let pipeline = GraphicPipeline::create(&device, info, [vertex, fragment]).unwrap();
-```
-
-### `RayTracePipeline`
-
-Work in progress, most of this was straight-copied from Kajiya and needs to be worked on/updated with the
-latest updates to ComputePipeline/GraphicPipeline/RenderGraph.
 
 ## Render Graph
 
