@@ -16,7 +16,7 @@ fn main() -> Result<(), DisplayError> {
 
     // Create a bunch of "pipelines" (shader code setup to run on the GPU) - we keep these
     // around and just switch between which one we're using at any one point during a frame
-    let event_loop = EventLoop::new().debug(true).build().unwrap();
+    let event_loop = EventLoop::new().build().unwrap();
     let fill_quad_linear_gradient = create_fill_quad_linear_gradient_pipeline(&event_loop.device);
     let draw_funky_shape_deferred = create_draw_funky_shape_deferred_pipeline(&event_loop.device);
 

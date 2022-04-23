@@ -140,7 +140,7 @@ let info = GraphicPipelineInfo {
 };
 
 let gfx_pipeline = GraphicPipeline::create(
-    &frame.device,
+    &device,
     info,
     [
         Shader::new_vertex(
@@ -214,7 +214,7 @@ passes recorded into it. After an entire frame worth of rendering operations hav
 the entire batch will processed, in efficient chunks as needed, in order to present to the display.
 
 The entire process of construction and resolution of a render graph happens at the discretion of
-your program and uses only as much memory and CPU time as required for each function call offered.
+your program and is highly optimized.
 
 Each graph may use a given buffer or image multiple times, some as inputs and some as outputs. In
 each case an optimal command submission order will be produced which executes the correct shaders
@@ -388,7 +388,7 @@ RenderGraph::new()
         // This FnOnce is where the commands are executed
         // (Make this a move-closure and Send it 'static things if you want!)
         compute.push_constants(42u32)
-               .dispatch(1, 128, 1);
+               .dispatch(128, 1, 1);
         ...
     })
 ```
@@ -400,7 +400,7 @@ let mut graph: RenderGraph = RenderGraph::new();
 let pass: PassRef = graph.record("My compute pass");
 let pass: PipelinePassRef = pass.bind_pipeline(&pipeline);
 pass.record_compute(|compute| {
-    // Mutable builder pattern or so this works too
+    // Mutable builder pattern so this works too
     compute.push_constants(42u32);
     compute.dispatch(128, 1, 1);
     ...

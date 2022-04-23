@@ -63,11 +63,11 @@ render_graph
 Included are some examples you might find helpful:
 
 - [`hello_world.rs`](examples/hello_world.rs) — Displays a window on the screen. Please start here.
-- [`triangle.rs`](examples/triange.rs) — Shaders and full setup of index/vertex buffers; < 100 LOC.
+- [`triangle.rs`](examples/triangle.rs) — Shaders and full setup of index/vertex buffers; < 100 LOC.
 - [`shader-toy/`](examples/shader-toy) — Recreation of a two-pass shader toy using the original
   shader code.
 
-See the example code for more information, including a helpful
+See the [example code](examples/README.md) for more information, including a helpful
 [getting started guide](examples/getting-started.md).
 
 **_NOTE:_** Required development packages and libraries are listed in the _getting started guide_.
