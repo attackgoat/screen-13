@@ -294,12 +294,12 @@ let buffer = graph.bind_node(some_buffer_binding);
 let image = graph.bind_node(some_image_binding);
 let (r, g, b, a) = (1.0, 0.0, 1.0, 1.0);
 graph
-    .clear_color_image(img, r, g, b, a)
+    .clear_color_image(image, r, g, b, a)
     .copy_buffer_to_image(buffer, image);
 ```
 
-Notice how the graph uses builder pattern functions allow additional uses of the graph after
-submitting one command to it. This operates like pushing onto a vec, where all commands
+Notice how the builder pattern functions allow additional uses of the graph after
+submitting the first command. This operates like pushing onto a vec, where all commands
 are logically executed in order. In the above case `image` would be cleared to magenta and then
 the image that `buffer` contains would be written to `image` starting at the top left corner.
 
@@ -310,7 +310,7 @@ The basic operations are:
 - `copy_image(src_image_node, dst_image_node)`
 - `clear_color_image(image_node, r, g, b, a)`
 - `fill_buffer(buffer_node, data)`
-- etc
+- _etc_
 
 Each of these operations offers function overloads similar to:
 
