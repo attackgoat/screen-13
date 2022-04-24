@@ -573,8 +573,7 @@ where
         let descriptor_bindings = Shader::merge_descriptor_bindings(
             shaders
                 .iter()
-                .map(|shader| shader.descriptor_bindings(&device))
-                .collect::<Result<Vec<_>, _>>()?,
+                .map(|shader| shader.descriptor_bindings(&device)),
         );
 
         let stages = shaders

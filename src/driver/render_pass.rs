@@ -485,6 +485,18 @@ pub struct SubpassDependency {
 }
 
 impl SubpassDependency {
+    pub fn new(src_subpass: u32, dst_subpass: u32) -> Self {
+        Self {
+            src_subpass,
+            dst_subpass,
+            src_stage_mask: vk::PipelineStageFlags::empty(),
+            dst_stage_mask: vk::PipelineStageFlags::empty(),
+            src_access_mask: vk::AccessFlags::empty(),
+            dst_access_mask: vk::AccessFlags::empty(),
+            dependency_flags: vk::DependencyFlags::empty(),
+        }
+    }
+
     pub fn into_vk(self) -> vk::SubpassDependency2 {
         vk::SubpassDependency2::builder()
             .src_subpass(self.src_subpass)
@@ -519,21 +531,8 @@ impl SubpassInfo {
     }
 
     pub fn has_multiple_attachments(&self) -> bool {
-        let mut attachment = None;
-        for attachment_ref in self
-            .color_attachments
-            .iter()
-            .chain(self.input_attachments.iter())
-            .chain(self.resolve_attachments.iter())
-            .chain(self.depth_stencil_attachment.iter())
-        {
-            match attachment {
-                Some(attachment) if attachment == attachment_ref.attachment => continue,
-                None => attachment = Some(attachment_ref.attachment),
-                _ => return true,
-            }
-        }
+        let count = self.depth_stencil_attachment.is_some() as usize + self.color_attachments.len();
 
-        false
+        count > 1
     }
 }

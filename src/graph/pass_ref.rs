@@ -1373,17 +1373,29 @@ where
 
     /// Append a graphic subpass onto the current pass of the parent render graph.
     pub fn record_subpass(mut self, func: impl FnOnce(&mut Draw<'_, P>) + Send + 'static) -> Self {
-        let pipeline = Shared::clone(
-            self.pass
-                .as_ref()
-                .execs
-                .last()
-                .unwrap()
-                .pipeline
-                .as_ref()
-                .unwrap()
-                .unwrap_graphic(),
-        );
+        let pipeline = {
+            let exec = self.pass.as_ref().execs.last().unwrap();
+            let pipeline = exec.pipeline.as_ref().unwrap().unwrap_graphic();
+
+            #[cfg(debug_assertions)]
+            {
+                for attachment in exec.loads.attached() {
+                    assert!(
+                        pipeline.read_attachments.contains(&attachment),
+                        "attachment {attachment} not read from shader code"
+                    );
+                }
+
+                for attachment in exec.attached_written() {
+                    assert!(
+                        pipeline.write_attachments.contains(&attachment),
+                        "attachment {attachment} not written from shader code"
+                    );
+                }
+            }
+
+            Shared::clone(pipeline)
+        };
 
         self.pass.push_execute(move |device, cmd_buf, bindings| {
             use std::cell::RefCell;

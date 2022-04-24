@@ -177,7 +177,9 @@ fn main() -> Result<(), screen_13::DisplayError> {
         *frame.will_exit = true;
     })?;
 
-    Ok(debug!("GAME OVER"))
+    debug!("GAME OVER");
+
+    Ok(())
 
     /*
         The game is over - OR IS IT?!

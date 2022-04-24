@@ -237,6 +237,8 @@ pub struct Shader {
 
     pub spirv: Vec<u8>,
     pub stage: vk::ShaderStageFlags,
+
+    entry_point: EntryPoint,
 }
 
 impl Shader {
@@ -247,39 +249,75 @@ impl Shader {
             .stage(stage)
     }
 
+    /// Creates a new compute shader.
+    ///
+    /// _NOTE:_ May panic if the shader code is invalid.
     pub fn new_compute(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::COMPUTE, spirv)
     }
 
+    /// Creates a new fragment shader.
+    ///
+    /// _NOTE:_ May panic if the shader code is invalid.
     pub fn new_fragment(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::FRAGMENT, spirv)
     }
 
+    /// Creates a new geometry shader.
+    ///
+    /// _NOTE:_ May panic if the shader code is invalid.
     pub fn new_geometry(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::GEOMETRY, spirv)
     }
 
+    /// Creates a new tesselation control shader.
+    ///
+    /// _NOTE:_ May panic if the shader code is invalid.
     pub fn new_tesselation_ctrl(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::TESSELLATION_CONTROL, spirv)
     }
 
+    /// Creates a new tesselation evaluation shader.
+    ///
+    /// _NOTE:_ May panic if the shader code is invalid.
     pub fn new_tesselation_eval(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::TESSELLATION_EVALUATION, spirv)
     }
 
+    /// Creates a new vertex shader.
+    ///
+    /// _NOTE:_ May panic if the shader code is invalid.
     pub fn new_vertex(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::VERTEX, spirv)
+    }
+
+    /// Returns the read and write attachments of a shader.
+    pub fn attachments(
+        &self,
+    ) -> (
+        impl Iterator<Item = u32> + '_,
+        impl Iterator<Item = u32> + '_,
+    ) {
+        (
+            self.entry_point.vars.iter().filter_map(|var| match var {
+                Variable::Input { location, .. } => Some(location.loc()),
+                _ => None,
+            }),
+            self.entry_point.vars.iter().filter_map(|var| match var {
+                Variable::Output { location, .. } => Some(location.loc()),
+                _ => None,
+            }),
+        )
     }
 
     pub fn descriptor_bindings(
         &self,
         device: &Device<impl SharedPointerKind>,
-    ) -> Result<DescriptorBindingMap, DriverError> {
-        let entry_point = self.reflect_entry_point()?;
+    ) -> DescriptorBindingMap {
         let mut res = DescriptorBindingMap::default();
 
         for (name, binding, desc_ty, binding_count) in
-            entry_point.vars.iter().filter_map(|var| match var {
+            self.entry_point.vars.iter().filter_map(|var| match var {
                 Variable::Descriptor {
                     name,
                     desc_bind,
@@ -333,7 +371,7 @@ impl Shader {
             );
         }
 
-        Ok(res)
+        res
     }
 
     pub fn merge_descriptor_bindings(
@@ -458,9 +496,8 @@ impl Shader {
         res
     }
 
-    pub fn push_constant_range(&self) -> Result<Option<vk::PushConstantRange>, DriverError> {
-        let res = self
-            .reflect_entry_point()?
+    pub fn push_constant_range(&self) -> Option<vk::PushConstantRange> {
+        self.entry_point
             .vars
             .iter()
             .filter_map(|var| match var {
@@ -479,16 +516,18 @@ impl Shader {
                 stage_flags: self.stage,
                 size: (push_const.end - push_const.start) as _,
                 offset: push_const.start as _,
-            });
-
-        Ok(res)
+            })
     }
 
-    fn reflect_entry_point(&self) -> Result<EntryPoint, DriverError> {
+    fn reflect_entry_point(
+        entry_name: &str,
+        spirv: &[u8],
+        specialization_info: Option<&SpecializationInfo>,
+    ) -> Result<EntryPoint, DriverError> {
         let mut config = ReflectConfig::new();
-        config.spv(self.spirv.as_slice());
+        config.ref_all_rscs(true).spv(spirv);
 
-        if let Some(spec_info) = &self.specialization_info {
+        if let Some(spec_info) = specialization_info {
             for spec in &spec_info.map_entries {
                 config.specialize(
                     spec.constant_id,
@@ -506,7 +545,7 @@ impl Shader {
         })?;
         let entry_point = entry_points
             .into_iter()
-            .find(|entry_point| entry_point.name == self.entry_name)
+            .find(|entry_point| entry_point.name == entry_name)
             .ok_or_else(|| {
                 error!("Entry point not found");
 
@@ -516,9 +555,7 @@ impl Shader {
         Ok(entry_point)
     }
 
-    pub fn vertex_input(&self) -> Result<VertexInputState, DriverError> {
-        let entry_point = self.reflect_entry_point()?;
-
+    pub fn vertex_input(&self) -> VertexInputState {
         fn scalar_format(ty: &ScalarType, byte_len: u32) -> vk::Format {
             match ty {
                 ScalarType::Float(_) => match byte_len {
@@ -549,7 +586,7 @@ impl Shader {
         let mut input_rates_strides = HashMap::new();
         let mut vertex_attribute_descriptions = vec![];
 
-        for (name, location, ty) in entry_point.vars.iter().filter_map(|var| match var {
+        for (name, location, ty) in self.entry_point.vars.iter().filter_map(|var| match var {
             Variable::Input { name, location, ty } => Some((name, location, ty)),
             _ => None,
         }) {
@@ -633,10 +670,10 @@ impl Shader {
             });
         }
 
-        Ok(VertexInputState {
+        VertexInputState {
             vertex_attribute_descriptions,
             vertex_binding_descriptions,
-        })
+        }
     }
 }
 
@@ -646,7 +683,19 @@ impl ShaderBuilder {
         Self::default().stage(stage).spirv(spirv)
     }
 
-    pub fn build(self) -> Shader {
+    pub fn build(mut self) -> Shader {
+        self.entry_point = Some(
+            Shader::reflect_entry_point(
+                self.entry_name.as_deref().unwrap_or("main"),
+                self.spirv.as_deref().unwrap(),
+                self.specialization_info
+                    .as_ref()
+                    .map(|opt| opt.as_ref())
+                    .unwrap_or_default(),
+            )
+            .expect("invalid shader code"),
+        );
+
         self.fallible_build()
             .expect("All required fields set at initialization")
     }

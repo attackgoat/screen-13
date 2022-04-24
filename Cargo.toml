@@ -41,6 +41,7 @@ inline-spirv = "0.1"
 log = "0.4"
 polyhedron-ops = "0.2"
 pretty_env_logger = "0.4"
+rand = "0.8"
 screen-13-fx = { path = "contrib/screen-13-fx" }
 screen-13-imgui = { path = "contrib/screen-13-imgui" }
 

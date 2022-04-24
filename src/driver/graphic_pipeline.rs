@@ -12,7 +12,10 @@ use {
     std::{cmp::Ordering, ffi::CString, thread::panicking},
 };
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg(debug_assertions)]
+use {crate::graph::AttachmentIndex, std::collections::HashSet};
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum BlendMode {
     Alpha,
     Replace,
@@ -57,7 +60,7 @@ impl Default for BlendMode {
     }
 }
 
-#[derive(Builder, Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Builder, Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[builder(
     build_fn(private, name = "fallible_build"),
     derive(Debug),
@@ -155,6 +158,13 @@ where
     shader_modules: Vec<vk::ShaderModule>,
     stage_flags: vk::ShaderStageFlags,
     pub state: GraphicPipelineState,
+
+    // Debug items:
+    #[cfg(debug_assertions)]
+    pub read_attachments: HashSet<AttachmentIndex>,
+
+    #[cfg(debug_assertions)]
+    pub write_attachments: HashSet<AttachmentIndex>,
 }
 
 impl<P> GraphicPipeline<P>
@@ -182,7 +192,7 @@ where
             .iter()
             .find(|shader| shader.stage == vk::ShaderStageFlags::VERTEX)
             .expect("vertex shader not found")
-            .vertex_input()?;
+            .vertex_input();
 
         // Check for proper stages because vulkan may not complain but this is bad
         let has_fragment_stage = shaders
@@ -210,15 +220,7 @@ where
             .iter()
             .map(|shader| shader.descriptor_bindings(&device))
             .collect::<Vec<_>>();
-        if let Some(err) = descriptor_bindings.iter().find(|item| item.is_err()) {
-            warn!("unable to inspect shader descriptor bindings: {:?}", err);
-
-            return Err(DriverError::Unsupported);
-        }
-
-        let descriptor_bindings = Shader::merge_descriptor_bindings(
-            descriptor_bindings.into_iter().map(|item| item.unwrap()),
-        );
+        let descriptor_bindings = Shader::merge_descriptor_bindings(descriptor_bindings);
         let stages = shaders
             .iter()
             .map(|shader| shader.stage)
@@ -235,10 +237,28 @@ where
         let mut push_constants = shaders
             .iter()
             .map(|shader| shader.push_constant_range())
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
             .filter_map(|mut push_const| push_const.take())
             .collect::<Vec<_>>();
+
+        #[cfg(debug_assertions)]
+        let (read_attachments, write_attachments) = {
+            let (read, write) = shaders
+                .iter()
+                .find(|shader| shader.stage == vk::ShaderStageFlags::FRAGMENT)
+                .expect("fragment shader not found")
+                .attachments();
+            let (read, write) = (read.collect(), write.collect());
+
+            for read in &read {
+                trace!("detected read attachment {read}");
+            }
+
+            for write in &write {
+                trace!("detected write attachment {write}");
+            }
+
+            (read, write)
+        };
 
         unsafe {
             let layout = device
@@ -371,6 +391,13 @@ where
                     stages,
                     vertex_input,
                 },
+
+                // Debug items:
+                #[cfg(debug_assertions)]
+                read_attachments,
+
+                #[cfg(debug_assertions)]
+                write_attachments,
             })
         }
     }
@@ -401,7 +428,7 @@ where
     }
 }
 
-#[derive(Builder, Clone, Debug, Default, PartialEq)]
+#[derive(Builder, Clone, Debug, Default, Eq, Hash, PartialEq)]
 #[builder(pattern = "owned")]
 pub struct GraphicPipelineInfo {
     #[builder(default)]
@@ -476,7 +503,7 @@ pub struct Stage {
     pub specialization_info: Option<SpecializationInfo>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum StencilMode {
     Noop, // TODO: Provide some sensible modes
 }

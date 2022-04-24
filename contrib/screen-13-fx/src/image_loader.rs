@@ -126,6 +126,12 @@ where
             pixels.len() / 1024
         );
 
+        debug_assert_eq!(
+            format.stride() * (width * height) as usize,
+            pixels.len(),
+            "insufficient data"
+        );
+
         let mut render_graph = RenderGraph::new();
         let image =
             render_graph.bind_node(self.create_image(format, width, height, is_srgb, false)?);

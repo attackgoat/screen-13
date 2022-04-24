@@ -46,7 +46,7 @@ where
         let shader = info.clone().into_shader();
 
         // Use SPIR-V reflection to get the types and counts of all descriptors
-        let descriptor_bindings = shader.descriptor_bindings(&device)?;
+        let descriptor_bindings = shader.descriptor_bindings(&device);
         let descriptor_info =
             PipelineDescriptorInfo::create(&device, &descriptor_bindings, shader.stage)?;
         let descriptor_set_layouts = descriptor_info
@@ -76,7 +76,7 @@ where
             let mut layout_info =
                 vk::PipelineLayoutCreateInfo::builder().set_layouts(&descriptor_set_layouts);
 
-            let push_constants = shader.push_constant_range()?;
+            let push_constants = shader.push_constant_range();
             if let Some(push_constants) = &push_constants {
                 layout_info = layout_info.push_constant_ranges(from_ref(push_constants));
             }

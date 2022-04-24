@@ -332,6 +332,15 @@ where
             .max(self.resolves.attached.len())
             .max(self.stores.attached.len())
     }
+
+    #[cfg(debug_assertions)]
+    fn attached_written(&self) -> impl Iterator<Item = AttachmentIndex> + '_ {
+        self.clears
+            .keys()
+            .copied()
+            .chain(self.resolves.attached())
+            .chain(self.stores.attached())
+    }
 }
 
 impl<P> Debug for Execution<P>
