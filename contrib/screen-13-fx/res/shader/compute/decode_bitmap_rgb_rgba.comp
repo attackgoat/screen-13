@@ -26,7 +26,7 @@ void main()
     pixels[2] = pixel_buf[++idx];
 
     int x = int(gl_GlobalInvocationID.x) << 2;
-    int y = imageSize(image).y - int(gl_GlobalInvocationID.y) - 1;
+    int y = int(gl_GlobalInvocationID.y);
 
     imageStore(image, ivec2(x, y), uvec4(
         shift(pixels[0], 0),

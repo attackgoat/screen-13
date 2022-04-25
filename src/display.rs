@@ -87,7 +87,7 @@ where
             .last_write(swapchain_image)
             .expect("uninitialized swapchain image: write something each frame!");
         let mut resolver = render_graph.resolve();
-        let wait_dst_stage_mask = resolver.node_stage_mask(swapchain_image);
+        let wait_dst_stage_mask = resolver.node_pipeline_stages(swapchain_image);
         let swapchain_node = swapchain_image;
         let swapchain_image = resolver.unbind_node(swapchain_node);
         let swapchain_image_idx = swapchain_image.idx as usize;

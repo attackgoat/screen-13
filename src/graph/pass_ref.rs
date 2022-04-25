@@ -1,10 +1,10 @@
 use {
     super::{
-        AnyBufferNode, AnyImageNode, Area, Attachment, AttachmentIndex, Bind, Binding,
-        BufferLeaseNode, BufferNode, Color, Descriptor, Edge, Execution, ExecutionFunction,
-        ExecutionPipeline, ImageLeaseNode, ImageNode, Information, Node, NodeIndex, Pass,
-        RayTraceAccelerationNode, RenderGraph, SampleCount, Subresource, SubresourceAccess,
-        SwapchainImageNode, View, ViewType,
+        AnyBufferNode, AnyImageNode, Area, AttachmentIndex, Bind, Binding, BufferLeaseNode,
+        BufferNode, Color, Descriptor, Edge, Execution, ExecutionFunction, ExecutionPipeline,
+        ImageLeaseNode, ImageNode, Information, Node, NodeIndex, Pass, RayTraceAccelerationNode,
+        RenderGraph, SampleCount, Subresource, SubresourceAccess, SwapchainImageNode, View,
+        ViewType,
     },
     crate::{
         driver::{
@@ -24,6 +24,9 @@ use {
     },
     vk_sync::AccessType,
 };
+
+#[cfg(debug_assertions)]
+use super::Attachment;
 
 pub trait Access {
     const DEFAULT_READ: AccessType;

@@ -1328,7 +1328,7 @@ where
     ///
     /// Note that this value must be retrieved before resolving a node as there will be no
     /// data left to inspect afterwards!
-    pub fn node_stage_mask(&self, node: impl Node<P>) -> vk::PipelineStageFlags {
+    pub fn node_pipeline_stages(&self, node: impl Node<P>) -> vk::PipelineStageFlags {
         let node_idx = node.index();
         let mut res = Default::default();
 
@@ -1367,8 +1367,8 @@ where
     ) {
         use std::{cell::RefCell, slice::from_ref};
 
-        // TODO: Notice the case where we have previously barriered on something which has not
-        // had any write access since the previous barrier
+        // TODO: Notice the very common case where we have previously barriered on something which
+        // has not had any access since the previous barrier
 
         // We store a Barriers in TLS to save an alloc; contents are POD
         thread_local! {

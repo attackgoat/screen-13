@@ -119,18 +119,22 @@ where
         P: SharedPointerKind + Send + 'static,
     {
         info!(
-            "Decoding {}x{} {:?} bitmap ({} K)",
+            "decoding {}x{} {:?} bitmap ({} K)",
             width,
             height,
             format,
             pixels.len() / 1024
         );
 
-        debug_assert_eq!(
-            format.stride() * (width * height) as usize,
-            pixels.len(),
+        debug_assert!(
+            pixels.len() >= format.stride() * (width * height) as usize,
             "insufficient data"
         );
+
+        #[cfg(debug_assertions)]
+        if pixels.len() >= format.stride() * (width * height) as usize {
+            warn!("unused data");
+        }
 
         let mut render_graph = RenderGraph::new();
         let image =
@@ -150,8 +154,6 @@ where
                 let stride = width * format.stride() as u32;
 
                 //trace!("{bitmap_width}x{bitmap_height} Stride={bitmap_stride}");
-
-                assert_eq!((height * stride) as usize, pixels.len());
 
                 let pixel_buf_stride = align_up_u32(stride as u32, 12);
                 let pixel_buf_len = (pixel_buf_stride * height) as u64;
@@ -268,7 +270,7 @@ where
         let pages = pages
             .into_iter()
             .map(|(pixels, width, height)| {
-                self.decode_linear(pixels, ImageFormat::R8G8B8A8, width, height)
+                self.decode_linear(pixels, ImageFormat::R8G8B8, width, height)
             })
             .collect::<Result<Vec<_>, _>>()?;
 

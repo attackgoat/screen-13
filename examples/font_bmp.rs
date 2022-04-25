@@ -30,7 +30,7 @@ fn main() -> anyhow::Result<()> {
             ))
             .with_guessed_format()?
             .decode()?
-            .into_rgba8()
+            .into_rgb8()
             .to_vec()
             .as_slice(),
             64,
@@ -123,7 +123,7 @@ fn main() -> anyhow::Result<()> {
             .render_graph
             .begin_pass("smoke")
             .bind_pipeline(&smoke_pipeline)
-            .read_descriptor(0, image_node)
+            .write_descriptor(0, image_node)
             .record_compute(move |compute| {
                 compute.push_constants(elapsed_time.as_secs_f32()).dispatch(
                     frame.width,

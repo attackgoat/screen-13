@@ -69,8 +69,10 @@ fn guess_immutable_sampler(
     )
 }
 
-/// Set index and binding index - this is a generic representation of the descriptor binding point
-/// within the shader and not a bound descriptor reference.
+/// Tuple of descriptor set index and binding index.
+///
+/// This is a generic representation of the descriptor binding point within the shader and not a
+/// bound descriptor reference.
 #[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
 pub struct DescriptorBinding(pub u32, pub u32);
 
@@ -378,12 +380,14 @@ impl Shader {
         descriptor_bindings: impl IntoIterator<Item = DescriptorBindingMap>,
     ) -> DescriptorBindingMap {
         fn merge_info(lhs: &mut DescriptorInfo, rhs: DescriptorInfo) {
-            const INVALID_ERR: &str = "Invalid merge pair";
+            // All references to a descriptor in a pipeline must be of the same type across all
+            // pipeline stages
+            const INVALID_ERR: &str = "invalid shader descriptor type";
 
             match lhs {
                 DescriptorInfo::AccelerationStructure(lhs) => {
                     if let DescriptorInfo::AccelerationStructure(rhs) = rhs {
-                        *lhs += rhs;
+                        *lhs = rhs.max(*lhs);
                     } else {
                         panic!("{INVALID_ERR}");
                     }
@@ -397,7 +401,7 @@ impl Shader {
 
                         debug_assert_ne!(*lhs_sampler, vk::Sampler::null());
 
-                        *lhs += rhs;
+                        *lhs = rhs.max(*lhs);
                     } else {
                         panic!("{INVALID_ERR}");
                     }
@@ -406,70 +410,70 @@ impl Shader {
                     if let DescriptorInfo::InputAttachment(rhs, rhs_idx) = rhs {
                         debug_assert_eq!(*lhs_idx, rhs_idx);
 
-                        *lhs += rhs;
+                        *lhs = rhs.max(*lhs);
                     } else {
                         panic!("{INVALID_ERR}");
                     }
                 }
                 DescriptorInfo::SampledImage(lhs) => {
                     if let DescriptorInfo::SampledImage(rhs) = rhs {
-                        *lhs += rhs;
+                        *lhs = rhs.max(*lhs);
                     } else {
                         panic!("{INVALID_ERR}");
                     }
                 }
                 DescriptorInfo::Sampler(lhs) => {
                     if let DescriptorInfo::Sampler(rhs) = rhs {
-                        *lhs += rhs;
+                        *lhs = rhs.max(*lhs);
                     } else {
                         panic!("{INVALID_ERR}");
                     }
                 }
                 DescriptorInfo::StorageBuffer(lhs) => {
                     if let DescriptorInfo::StorageBuffer(rhs) = rhs {
-                        *lhs += rhs;
+                        *lhs = rhs.max(*lhs);
                     } else {
                         panic!("{INVALID_ERR}");
                     }
                 }
                 DescriptorInfo::StorageBufferDynamic(lhs) => {
                     if let DescriptorInfo::StorageBufferDynamic(rhs) = rhs {
-                        *lhs += rhs;
+                        *lhs = rhs.max(*lhs);
                     } else {
                         panic!("{INVALID_ERR}");
                     }
                 }
                 DescriptorInfo::StorageImage(lhs) => {
                     if let DescriptorInfo::StorageImage(rhs) = rhs {
-                        *lhs += rhs;
+                        *lhs = rhs.max(*lhs);
                     } else {
                         panic!("{INVALID_ERR}");
                     }
                 }
                 DescriptorInfo::StorageTexelBuffer(lhs) => {
                     if let DescriptorInfo::StorageTexelBuffer(rhs) = rhs {
-                        *lhs += rhs;
+                        *lhs = rhs.max(*lhs);
                     } else {
                         panic!("{INVALID_ERR}");
                     }
                 }
                 DescriptorInfo::UniformBuffer(lhs) => {
                     if let DescriptorInfo::UniformBuffer(rhs) = rhs {
-                        *lhs += rhs;
+                        *lhs = rhs.max(*lhs);
                     } else {
                         panic!("{INVALID_ERR}");
                     }
                 }
                 DescriptorInfo::UniformBufferDynamic(lhs) => {
                     if let DescriptorInfo::UniformBufferDynamic(rhs) = rhs {
-                        *lhs += rhs;
+                        *lhs = rhs.max(*lhs);
                     } else {
                         panic!("{INVALID_ERR}");
                     }
                 }
                 DescriptorInfo::UniformTexelBuffer(lhs) => {
                     if let DescriptorInfo::UniformTexelBuffer(rhs) = rhs {
-                        *lhs += rhs;
+                        *lhs = rhs.max(*lhs);
                     } else {
                         panic!("{INVALID_ERR}");
                     }
