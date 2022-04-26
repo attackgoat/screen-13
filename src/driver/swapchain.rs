@@ -293,8 +293,9 @@ where
             unsafe { Device::swapchain(&self.device).get_swapchain_images(swapchain) }.unwrap();
         let images: Vec<Option<Image<_>>> = vk_images
             .into_iter()
-            .map(|vk_image| {
-                Some(Image::from_raw(
+            .enumerate()
+            .map(|(idx, vk_image)| {
+                let mut image = Image::from_raw(
                     &self.device,
                     vk_image,
                     ImageInfo {
@@ -314,7 +315,9 @@ where
                         mip_level_count: 1,
                         array_elements: 1,
                     },
-                ))
+                );
+                image.name = Some(format!("swapchain{idx}"));
+                Some(image)
             })
             .collect();
 

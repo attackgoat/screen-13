@@ -229,6 +229,8 @@ where
                             ty: image.info.ty,
                         };
 
+                        trace!("attachment {attachment_idx}: {image:?}");
+
                         res[attachment_idx] = Some((image, view_info));
                         break;
                     }
@@ -946,6 +948,20 @@ where
                                 // execution access is dependent upon?
                                 let (prev_stages, prev_access) =
                                     pipeline_stage_access_flags(late.access);
+
+                                // This happens if you specfiy too broard of a read/write access in
+                                // a secondary pass. Maybe that should not be possible. For now just
+                                // specify the actual stages used with AccessType::Fragement*, etc.
+                                // Optionally we could detect this and break the pass up - but no...
+                                debug_assert!(
+                                    !curr_stages.contains(vk::PipelineStageFlags::ALL_COMMANDS)
+                                        && !prev_stages
+                                            .contains(vk::PipelineStageFlags::ALL_COMMANDS),
+                                    "exec {prev_exec_idx} {:?} -> {exec_idx} {:?}",
+                                    late.access,
+                                    early.access
+                                );
+
                                 let common_stages = curr_stages & prev_stages;
                                 if common_stages.is_empty() {
                                     // No common dependencies
@@ -1095,6 +1111,7 @@ where
                                 dep.dst_stage_mask |= vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS;
                                 dep.dst_access_mask |= vk::AccessFlags::COLOR_ATTACHMENT_READ;
                             }
+
                             // look for reads in the other exec
                             if other.loads.contains_attachment(attachment_idx) {
                                 let dep = dependencies.entry((other_idx, exec_idx)).or_insert_with(
@@ -1229,6 +1246,8 @@ where
             // larger pass made out of anything that might have been merged into it - so we
             // only care about one pass at a time here
             let pass = &mut self.graph.passes[pass_idx];
+
+            trace!("leasing [{pass_idx}: {}]", pass.name);
 
             let descriptor_pool = Self::lease_descriptor_pool(cache, pass)?;
             let mut exec_descriptor_sets = HashMap::with_capacity(
