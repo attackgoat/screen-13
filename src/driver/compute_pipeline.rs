@@ -47,8 +47,7 @@ where
 
         // Use SPIR-V reflection to get the types and counts of all descriptors
         let descriptor_bindings = shader.descriptor_bindings(&device);
-        let descriptor_info =
-            PipelineDescriptorInfo::create(&device, &descriptor_bindings, shader.stage)?;
+        let descriptor_info = PipelineDescriptorInfo::create(&device, &descriptor_bindings)?;
         let descriptor_set_layouts = descriptor_info
             .layouts
             .iter()

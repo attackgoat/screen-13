@@ -14,7 +14,7 @@ use {
 };
 
 #[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
-#[builder(pattern = "owned")]
+#[builder(build_fn(private, name = "fallible_build"), pattern = "owned")]
 pub struct AttachmentInfo {
     pub flags: vk::AttachmentDescriptionFlags,
     pub fmt: vk::Format,
@@ -58,20 +58,26 @@ impl AttachmentInfo {
     }
 }
 
+// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
+impl AttachmentInfoBuilder {
+    pub fn build(self) -> AttachmentInfo {
+        self.fallible_build()
+            .expect("All required fields set at initialization")
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct AttachmentRef {
     pub attachment: u32,
+    pub aspect_mask: vk::ImageAspectFlags,
     pub layout: vk::ImageLayout,
 }
 
 impl AttachmentRef {
-    pub fn new(attachment: u32, layout: vk::ImageLayout) -> Self {
-        Self { attachment, layout }
-    }
-
     fn into_vk(self) -> vk::AttachmentReference2Builder<'static> {
         vk::AttachmentReference2::builder()
             .attachment(self.attachment)
+            .aspect_mask(self.aspect_mask)
             .layout(self.layout)
     }
 }

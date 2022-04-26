@@ -149,6 +149,54 @@ where
         false
     }
 
+    // See https://vulkan.lunarg.com/doc/view/1.3.204.1/linux/1.3-extensions/vkspec.html#attachment-type-imagelayout
+    fn attachment_layout(
+        aspect_mask: vk::ImageAspectFlags,
+        is_random_access: bool,
+        is_input: bool,
+    ) -> vk::ImageLayout {
+        if aspect_mask.contains(vk::ImageAspectFlags::COLOR) {
+            if is_input {
+                vk::ImageLayout::GENERAL
+            } else {
+                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
+            }
+        } else if aspect_mask.contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
+        {
+            if is_random_access {
+                if is_input {
+                    vk::ImageLayout::GENERAL
+                } else {
+                    vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                }
+            } else {
+                vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL
+            }
+        } else if aspect_mask.contains(vk::ImageAspectFlags::DEPTH) {
+            if is_random_access {
+                if is_input {
+                    vk::ImageLayout::GENERAL
+                } else {
+                    vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
+                }
+            } else {
+                vk::ImageLayout::DEPTH_READ_ONLY_OPTIMAL
+            }
+        } else if aspect_mask.contains(vk::ImageAspectFlags::STENCIL) {
+            if is_random_access {
+                if is_input {
+                    vk::ImageLayout::GENERAL
+                } else {
+                    vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
+                }
+            } else {
+                vk::ImageLayout::STENCIL_READ_ONLY_OPTIMAL
+            }
+        } else {
+            vk::ImageLayout::UNDEFINED
+        }
+    }
+
     fn begin_render_pass(
         &mut self,
         cmd_buf: &CommandBuffer<P>,
@@ -280,6 +328,9 @@ where
         }
 
         let descriptor_sets = descriptor_sets.as_ref().unwrap();
+        if descriptor_sets.is_empty() {
+            return;
+        }
 
         trace!("    bind descriptor sets {:?}", descriptor_sets);
 
@@ -496,14 +547,10 @@ where
             .max()
             .unwrap_or_default();
         let mut attachments = Vec::with_capacity(attachment_count);
-        let mut subpasses = Vec::with_capacity(pass.execs.len());
+        let mut subpasses = Vec::<SubpassInfo>::with_capacity(pass.execs.len());
 
         while attachments.len() < attachment_count {
-            attachments.push(
-                AttachmentInfo::new(vk::Format::UNDEFINED, SampleCount::X1)
-                    .build()
-                    .unwrap(),
-            );
+            attachments.push(AttachmentInfo::new(vk::Format::UNDEFINED, SampleCount::X1).build());
         }
 
         // Add attachments: format, sample count, load op, and initial layout (using the 1st
@@ -747,124 +794,134 @@ where
                 .depth_stencil()
                 .or_else(|| exec.resolves.depth_stencil())
                 .or_else(|| exec.stores.depth_stencil());
-            let mut subpass_info = SubpassInfo::with_capacity(attachment_count);
-
-            // Color attachments prior to the depth attachment
-            {
-                let depth_stencil_attachment_idx = depth_stencil
-                    .map(|(attachment_idx, _)| attachment_idx as usize)
-                    .unwrap_or_default();
-                for attachment_idx in 0..depth_stencil_attachment_idx {
-                    subpass_info.color_attachments.push(AttachmentRef::new(
-                        attachment_idx as _,
-                        vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                    ));
-                }
-            }
-
-            // Color attachments after the depth attachment
-            {
-                let after_depth_stencil_attachment_idx = depth_stencil
-                    .map(|(attachment_idx, _)| attachment_idx as usize + 1)
-                    .unwrap_or_default();
-                for attachment_idx in after_depth_stencil_attachment_idx..attachment_count {
-                    subpass_info.color_attachments.push(AttachmentRef::new(
-                        attachment_idx as _,
-                        vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                    ));
-                }
-            }
-
-            // Set resolves to defaults for now
-            subpass_info.resolve_attachments.extend(
-                repeat(AttachmentRef::new(
-                    vk::ATTACHMENT_UNUSED,
-                    vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                ))
-                .take(subpass_info.color_attachments.len()),
-            );
-
-            // Set depth/stencil attachment
-            if let Some((depth_stencil_attachment_idx, _)) = depth_stencil {
-                let used_depth_stencil_attachment = exec
-                    .loads
-                    .attached
-                    .get(depth_stencil_attachment_idx as usize)
-                    .or_else(|| {
-                        exec.resolves
-                            .attached
-                            .get(depth_stencil_attachment_idx as usize)
-                    })
-                    .or_else(|| {
-                        exec.stores
-                            .attached
-                            .get(depth_stencil_attachment_idx as usize)
-                    });
-                if let Some(Some(used_depth_stencil_attachment)) = used_depth_stencil_attachment {
-                    let is_random_access = exec
-                        .stores
-                        .contains_attachment(depth_stencil_attachment_idx)
-                        || exec
-                            .resolves
-                            .contains_attachment(depth_stencil_attachment_idx);
-                    subpass_info.depth_stencil_attachment = Some(AttachmentRef::new(
-                        depth_stencil_attachment_idx as _,
-                        if used_depth_stencil_attachment
-                            .aspect_mask
-                            .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
-                        {
-                            if is_random_access {
-                                vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                            } else {
-                                vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL
-                            }
-                        } else if used_depth_stencil_attachment
-                            .aspect_mask
-                            .contains(vk::ImageAspectFlags::DEPTH)
-                        {
-                            if is_random_access {
-                                vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
-                            } else {
-                                vk::ImageLayout::DEPTH_READ_ONLY_OPTIMAL
-                            }
-                        } else if is_random_access {
-                            vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
-                        } else {
-                            vk::ImageLayout::STENCIL_READ_ONLY_OPTIMAL
-                        },
-                    ));
-                }
-            }
-
-            // Look for any input attachments and handle those too
-            if let Some(pipeline) = exec
+            let pipeline = exec
                 .pipeline
                 .as_ref()
                 .map(|pipeline| pipeline.unwrap_graphic())
-            {
-                for (_, descriptor_info) in pipeline.descriptor_bindings.iter() {
-                    if let DescriptorInfo::InputAttachment(_, attachment_idx) = descriptor_info {
-                        subpass_info.input_attachments.push(AttachmentRef::new(
-                            *attachment_idx,
-                            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                        ));
+                .unwrap();
+            let mut subpass_info = SubpassInfo::with_capacity(attachment_count);
 
-                        // We should preserve the attachment in the previous subpass
-                        // (We're asserting that any input renderpasses are actually
-                        // real subpasses here with prior passes..)
-                        let t: &mut SubpassInfo = &mut subpasses[exec_idx - 1];
-                        t.preserve_attachments.push(0);
+            // TODO: TLS a sorted vec so we don't need to iter.find the input attachments later!
+            // Add input attachments
+            for (_, (descriptor_info, _)) in pipeline.descriptor_bindings.iter() {
+                if let &DescriptorInfo::InputAttachment(_, attachment) = descriptor_info {
+                    debug_assert!(
+                        !exec.clears.contains_key(&attachment),
+                        "input attachment cleared"
+                    );
+
+                    let exec_attachment = exec
+                        .attachment(attachment)
+                        .expect("input attachment not loaded, resolved, or stored");
+                    let is_random_access = exec.resolves.contains_attachment(attachment)
+                        || exec.stores.contains_attachment(attachment);
+                    subpass_info.input_attachments.push(AttachmentRef {
+                        attachment,
+                        aspect_mask: exec_attachment.aspect_mask,
+                        layout: Self::attachment_layout(
+                            exec_attachment.aspect_mask,
+                            is_random_access,
+                            true,
+                        ),
+                    });
+
+                    // We should preserve the attachment in the previous subpasses as needed
+                    // (We're asserting that any input renderpasses are actually real subpasses
+                    // here with prior passes..)
+                    for prev_exec_idx in (0..exec_idx - 1).rev() {
+                        let prev_exec = &pass.execs[prev_exec_idx];
+                        if prev_exec.resolves.contains_attachment(attachment)
+                            || prev_exec.stores.contains_attachment(attachment)
+                        {
+                            break;
+                        }
+
+                        let prev_subpass = &mut subpasses[prev_exec_idx];
+                        prev_subpass.preserve_attachments.push(attachment);
                     }
                 }
             }
 
-            // Set any resolve attachments now
-            for (attachment_idx, _) in exec.resolves.attached.iter().enumerate().filter_map(
-                |(attachment_idx, attachment)| {
-                    attachment.map(|attachment| (attachment_idx, attachment))
-                },
-            ) {
-                subpass_info.resolve_attachments[attachment_idx].attachment = attachment_idx as _;
+            // Color attachments prior to the depth attachment
+            for attachment in 0..depth_stencil
+                .map(|(attachment, _)| attachment)
+                .unwrap_or_default()
+            {
+                let is_input = subpass_info
+                    .input_attachments
+                    .iter()
+                    .any(|input| input.attachment == attachment);
+                subpass_info.color_attachments.push(AttachmentRef {
+                    attachment,
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    layout: Self::attachment_layout(vk::ImageAspectFlags::COLOR, true, is_input),
+                });
+            }
+
+            // Color attachments after the depth attachment
+            for attachment in depth_stencil
+                .map(|(attachment, _)| attachment + 1)
+                .unwrap_or_default()..attachment_count as u32
+            {
+                let is_input = subpass_info
+                    .input_attachments
+                    .iter()
+                    .any(|input| input.attachment == attachment);
+                subpass_info.color_attachments.push(AttachmentRef {
+                    attachment,
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    layout: Self::attachment_layout(vk::ImageAspectFlags::COLOR, true, is_input),
+                });
+            }
+
+            // Set depth/stencil attachment
+            if let Some((attachment, depth_stencil)) = depth_stencil {
+                let is_random_access = exec.stores.contains_attachment(attachment)
+                    || exec.resolves.contains_attachment(attachment);
+                let is_input = subpass_info
+                    .input_attachments
+                    .iter()
+                    .any(|input| input.attachment == attachment);
+                subpass_info.depth_stencil_attachment = Some(AttachmentRef {
+                    attachment,
+                    aspect_mask: depth_stencil.aspect_mask,
+                    layout: Self::attachment_layout(
+                        depth_stencil.aspect_mask,
+                        is_random_access,
+                        is_input,
+                    ),
+                });
+            }
+
+            // Set resolves to defaults
+            subpass_info.resolve_attachments.extend(
+                repeat(AttachmentRef {
+                    attachment: vk::ATTACHMENT_UNUSED,
+                    aspect_mask: vk::ImageAspectFlags::empty(),
+                    layout: vk::ImageLayout::UNDEFINED,
+                })
+                .take(subpass_info.color_attachments.len() + depth_stencil.is_some() as usize),
+            );
+
+            // Set any used resolve attachments now
+            for (attachment, resolve) in
+                exec.resolves
+                    .attached
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(idx, attachment)| {
+                        attachment.map(|attachment| (idx as u32, attachment))
+                    })
+            {
+                let is_input = subpass_info
+                    .input_attachments
+                    .iter()
+                    .any(|input| input.attachment == attachment);
+                subpass_info.resolve_attachments[attachment as usize] = AttachmentRef {
+                    attachment,
+                    aspect_mask: resolve.aspect_mask,
+                    layout: Self::attachment_layout(resolve.aspect_mask, true, is_input),
+                };
             }
 
             subpasses.push(subpass_info);
@@ -1824,7 +1881,7 @@ where
                 .filter_map(|attachment| attachment.as_ref())
                 .find_map(|attachment| {
                     self.graph.bindings[attachment.target]
-                        .as_image_info()
+                        .image_info()
                         .map(|image_info| (image_info.width, image_info.height))
                 })
                 .expect("invalid attachments");
@@ -2072,7 +2129,7 @@ where
     ) -> Result<(), DriverError> {
         use std::slice::from_ref;
 
-        let physical_pass = &self.physical_passes[pass_idx];
+        let descriptor_sets = &self.physical_passes[pass_idx].exec_descriptor_sets;
         let mut descriptor_writes = vec![];
         let mut buffer_infos = vec![];
         let mut image_infos = vec![];
@@ -2087,9 +2144,12 @@ where
             })
             .filter(|(.., pipeline)| !pipeline.descriptor_info().layouts.is_empty())
         {
+            let descriptor_sets = &descriptor_sets[&exec_idx];
+
+            // Write the manually bound things (access, read, and write functions)
             for (descriptor, (node_idx, view_info)) in exec.bindings.iter() {
                 let (descriptor_set_idx, binding_idx, binding_offset) = descriptor.into_tuple();
-                let descriptor_info = *pipeline
+                let (descriptor_info, _) = *pipeline
                     .descriptor_bindings()
                     .get(&DescriptorBinding(descriptor_set_idx, binding_idx))
                     .unwrap_or_else(|| panic!("descriptor {descriptor_set_idx}.{binding_idx}[{binding_offset}] specified in recorded execution of pass \"{}\" was not discovered through shader reflection", &pass.name));
@@ -2098,9 +2158,7 @@ where
                 //trace!("write_descriptor_sets {descriptor_set_idx}.{binding_idx}[{binding_offset}] = {:?}", descriptor_info);
 
                 let write_descriptor_set = vk::WriteDescriptorSet::builder()
-                    .dst_set(
-                        *physical_pass.exec_descriptor_sets[&exec_idx][descriptor_set_idx as usize],
-                    )
+                    .dst_set(*descriptor_sets[descriptor_set_idx as usize])
                     .dst_binding(binding_idx)
                     .dst_array_element(binding_offset);
                 let bound_node = &self.graph.bindings[*node_idx];
@@ -2190,6 +2248,74 @@ where
                 } else {
                     // Coming very soon!
                     unimplemented!();
+                }
+            }
+
+            // Write graphic render pass input attachments (they're automatic)
+            if exec_idx > 0 && pipeline.is_graphic() {
+                let pipeline = pipeline.unwrap_graphic();
+                for (&DescriptorBinding(descriptor_set_idx, binding_idx), (descriptor_info, _)) in
+                    &pipeline.descriptor_bindings
+                {
+                    if let &DescriptorInfo::InputAttachment(_, attachment) = descriptor_info {
+                        let is_random_access = exec.resolves.contains_attachment(attachment)
+                            || exec.stores.contains_attachment(attachment);
+                        let (attachment, write_exec) = pass.execs[0..exec_idx]
+                            .iter()
+                            .rev()
+                            .find_map(|exec| {
+                                exec.stores
+                                    .attached
+                                    .get(attachment as usize)
+                                    .and_then(|attachment| {
+                                        attachment.as_ref().map(|attachment| (attachment, exec))
+                                    })
+                                    .or_else(|| {
+                                        exec.resolves.attached.get(attachment as usize).and_then(
+                                            |attachment| {
+                                                attachment
+                                                    .as_ref()
+                                                    .map(|attachment| (attachment, exec))
+                                            },
+                                        )
+                                    })
+                            })
+                            .expect("input attachment not written");
+                        let [_, late] = &write_exec.accesses[&attachment.target];
+                        let image_subresource = late.subresource.as_ref().unwrap().unwrap_image();
+                        let image_binding = &self.graph.bindings[attachment.target];
+                        let image = image_binding.as_driver_image().unwrap();
+                        let image_view_info = ImageViewInfo {
+                            array_layer_count: image_subresource.array_layer_count,
+                            aspect_mask: attachment.aspect_mask,
+                            base_array_layer: image_subresource.base_array_layer,
+                            base_mip_level: image_subresource.base_mip_level,
+                            fmt: attachment.fmt,
+                            mip_level_count: image_subresource.mip_level_count,
+                            ty: image.info.ty,
+                        };
+                        let image_view = Image::view_ref(image, image_view_info)?;
+                        let sampler = descriptor_info.sampler().unwrap_or_else(vk::Sampler::null);
+
+                        image_infos.push(vk::DescriptorImageInfo {
+                            image_layout: Self::attachment_layout(
+                                attachment.aspect_mask,
+                                is_random_access,
+                                true,
+                            ),
+                            image_view,
+                            sampler,
+                        });
+
+                        descriptor_writes.push(
+                            vk::WriteDescriptorSet::builder()
+                                .dst_set(*descriptor_sets[descriptor_set_idx as usize])
+                                .dst_binding(binding_idx)
+                                .descriptor_type(vk::DescriptorType::INPUT_ATTACHMENT)
+                                .image_info(from_ref(image_infos.last().unwrap()))
+                                .build(),
+                        );
+                    }
                 }
             }
         }

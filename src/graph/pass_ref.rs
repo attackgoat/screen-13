@@ -921,8 +921,34 @@ where
         self
     }
 
-    pub fn access_node(mut self, node: impl Node<P>, access: AccessType) -> Self {
-        self.pass.push_node_access(node, access, None);
+    pub fn access_node(mut self, node: impl Node<P> + Information, access: AccessType) -> Self {
+        self.pass.assert_bound_graph_node(node);
+
+        let idx = node.index();
+        let binding = &self.pass.graph.bindings[idx];
+
+        let mut node_access_range = None;
+        if let Some(buf) = binding.as_driver_buffer() {
+            node_access_range = Some(Subresource::Buffer((0..buf.info.size).into()));
+        } else if let Some(image) = binding.as_driver_image() {
+            node_access_range = Some(Subresource::Image(image.info.default_view_info().into()))
+        }
+
+        self.pass.push_node_access(node, access, node_access_range);
+        self
+    }
+
+    pub fn access_node_subrange<N>(
+        mut self,
+        node: N,
+        access: AccessType,
+        subresource: impl Into<N::Subresource>,
+    ) -> Self
+    where
+        N: View<P>,
+    {
+        self.pass
+            .push_node_access(node, access, Some(subresource.into().into()));
         self
     }
 
@@ -944,7 +970,7 @@ where
                 .bindings
                 .insert(binding, (node_idx, Some(view_info.into())))
                 .is_none(),
-            "Descriptor {binding:?} has already been bound"
+            "descriptor {binding:?} has already been bound"
         );
     }
 
@@ -993,9 +1019,17 @@ where
         self.access_descriptor_subrange(descriptor, node, access, view_info, subresource)
     }
 
-    pub fn read_node(self, node: impl Node<P>) -> Self {
+    pub fn read_node(self, node: impl Node<P> + Information) -> Self {
         let access = <T as Access>::DEFAULT_READ;
         self.access_node(node, access)
+    }
+
+    pub fn read_node_subrange<N>(self, node: N, subresource: impl Into<N::Subresource>) -> Self
+    where
+        N: View<P>,
+    {
+        let access = <T as Access>::DEFAULT_READ;
+        self.access_node_subrange(node, access, subresource)
     }
 
     pub fn submit_pass(self) -> &'a mut RenderGraph<P> {
@@ -1047,9 +1081,17 @@ where
         self.access_descriptor_subrange(descriptor, node, access, view_info, subresource)
     }
 
-    pub fn write_node(self, node: impl Node<P>) -> Self {
+    pub fn write_node(self, node: impl Node<P> + Information) -> Self {
         let access = <T as Access>::DEFAULT_WRITE;
         self.access_node(node, access)
+    }
+
+    pub fn write_node_subrange<N>(self, node: N, subresource: impl Into<N::Subresource>) -> Self
+    where
+        N: View<P>,
+    {
+        let access = <T as Access>::DEFAULT_WRITE;
+        self.access_node_subrange(node, access, subresource)
     }
 }
 
@@ -1165,7 +1207,16 @@ where
         let pass = self.pass.as_mut();
         let exec = pass.execs.last_mut().unwrap();
 
-        debug_assert!(exec.loads.attached.get(attachment as usize).is_none());
+        debug_assert!(
+            !exec
+                .pipeline
+                .as_ref()
+                .unwrap()
+                .unwrap_graphic()
+                .input_attachments
+                .contains(&attachment),
+            "cleared attachment uses subpass input"
+        );
 
         exec.clears.insert(
             attachment,
@@ -1192,8 +1243,16 @@ where
         let pass = self.pass.as_mut();
         let exec = pass.execs.last_mut().unwrap();
 
-        debug_assert!(exec.loads.depth_stencil.is_none());
-        debug_assert!(exec.loads.attached.get(attachment as usize).is_none());
+        debug_assert!(
+            !exec
+                .pipeline
+                .as_ref()
+                .unwrap()
+                .unwrap_graphic()
+                .input_attachments
+                .contains(&attachment),
+            "cleared attachment uses subpass input"
+        );
 
         exec.clears.insert(
             attachment,
@@ -1209,7 +1268,7 @@ where
     }
 
     fn image_info(&self, node_idx: NodeIndex) -> (vk::Format, SampleCount) {
-        let image_info = &self.pass.graph.bindings[node_idx].as_image_info().unwrap();
+        let image_info = &self.pass.graph.bindings[node_idx].image_info().unwrap();
 
         (image_info.fmt, image_info.sample_count)
     }
@@ -1249,13 +1308,27 @@ where
             let pass = self.pass.as_mut();
             let exec = pass.execs.last_mut().unwrap();
 
-            assert!(exec.loads.insert_color(
-                attachment,
-                image_view_info.aspect_mask,
-                image_view_info.fmt,
-                sample_count,
-                node_idx,
-            ));
+            debug_assert!(
+                !exec
+                    .pipeline
+                    .as_ref()
+                    .unwrap()
+                    .unwrap_graphic()
+                    .input_attachments
+                    .contains(&attachment),
+                "attachment uses subpass input"
+            );
+
+            assert!(
+                exec.loads.insert_color(
+                    attachment,
+                    image_view_info.aspect_mask,
+                    image_view_info.fmt,
+                    sample_count,
+                    node_idx,
+                ),
+                "attachment incompatible with previous load"
+            );
 
             #[cfg(debug_assertions)]
             {
@@ -1268,24 +1341,28 @@ where
                     .flatten()
                     .unwrap();
 
-                assert!(exec
-                    .stores
-                    .attached
-                    .get(attachment as usize)
-                    .map(|stored_attachment| Attachment::are_compatible(
-                        *stored_attachment,
-                        Some(color_attachment)
-                    ))
-                    .unwrap_or(true));
-                assert!(exec
-                    .resolves
-                    .attached
-                    .get(attachment as usize)
-                    .map(|resolved_attachment| Attachment::are_compatible(
-                        *resolved_attachment,
-                        Some(color_attachment)
-                    ))
-                    .unwrap_or(true));
+                assert!(
+                    exec.stores
+                        .attached
+                        .get(attachment as usize)
+                        .map(|stored_attachment| Attachment::are_compatible(
+                            *stored_attachment,
+                            Some(color_attachment)
+                        ))
+                        .unwrap_or(true),
+                    "attachment incompatible with previous store"
+                );
+                assert!(
+                    exec.resolves
+                        .attached
+                        .get(attachment as usize)
+                        .map(|resolved_attachment| Attachment::are_compatible(
+                            *resolved_attachment,
+                            Some(color_attachment)
+                        ))
+                        .unwrap_or(true),
+                    "attachment incompatible with previous resolve"
+                );
             }
         }
 
@@ -1333,35 +1410,56 @@ where
             let pass = self.pass.as_mut();
             let exec = pass.execs.last_mut().unwrap();
 
-            assert!(exec.loads.set_depth_stencil(
-                attachment,
-                image_view_info.aspect_mask,
-                image_view_info.fmt,
-                sample_count,
-                node_idx,
-            ));
+            debug_assert!(
+                !exec
+                    .pipeline
+                    .as_ref()
+                    .unwrap()
+                    .unwrap_graphic()
+                    .input_attachments
+                    .contains(&attachment),
+                "attachment uses subpass input"
+            );
+
+            assert!(
+                exec.loads.set_depth_stencil(
+                    attachment,
+                    image_view_info.aspect_mask,
+                    image_view_info.fmt,
+                    sample_count,
+                    node_idx,
+                ),
+                "attachment incompatible with previous load"
+            );
 
             #[cfg(debug_assertions)]
             {
                 // Unwrap the attachment we inserted above
                 let (_, loaded_attachment) = exec.loads.depth_stencil().unwrap();
 
-                assert!(exec
-                    .stores
-                    .depth_stencil()
-                    .map(
-                        |(attachment_idx, stored_attachment)| attachment == attachment_idx
-                            && Attachment::are_identical(stored_attachment, loaded_attachment)
-                    )
-                    .unwrap_or(true));
-                assert!(exec
-                    .resolves
-                    .depth_stencil()
-                    .map(
-                        |(attachment_idx, resolved_attachment)| attachment == attachment_idx
-                            && Attachment::are_identical(resolved_attachment, loaded_attachment)
-                    )
-                    .unwrap_or(true));
+                assert!(
+                    exec.stores
+                        .depth_stencil()
+                        .map(
+                            |(attachment_idx, stored_attachment)| attachment == attachment_idx
+                                && Attachment::are_identical(stored_attachment, loaded_attachment)
+                        )
+                        .unwrap_or(true),
+                    "attachment incompatible with previous store"
+                );
+                assert!(
+                    exec.resolves
+                        .depth_stencil()
+                        .map(
+                            |(attachment_idx, resolved_attachment)| attachment == attachment_idx
+                                && Attachment::are_identical(
+                                    resolved_attachment,
+                                    loaded_attachment
+                                )
+                        )
+                        .unwrap_or(true),
+                    "attachment incompatible with previous resolve"
+                );
             }
         }
 
@@ -1381,20 +1479,11 @@ where
             let pipeline = exec.pipeline.as_ref().unwrap().unwrap_graphic();
 
             #[cfg(debug_assertions)]
-            {
-                for attachment in exec.loads.attached() {
-                    assert!(
-                        pipeline.read_attachments.contains(&attachment),
-                        "attachment {attachment} not read from shader code"
-                    );
-                }
-
-                for attachment in exec.attached_written() {
-                    assert!(
-                        pipeline.write_attachments.contains(&attachment),
-                        "attachment {attachment} not written from shader code"
-                    );
-                }
+            for attachment in exec.attached_written() {
+                assert!(
+                    pipeline.write_attachments.contains(&attachment),
+                    "attachment {attachment} not written by shader"
+                );
             }
 
             Shared::clone(pipeline)
@@ -1474,13 +1563,16 @@ where
             let pass = self.pass.as_mut();
             let exec = pass.execs.last_mut().unwrap();
 
-            assert!(exec.resolves.insert_color(
-                attachment,
-                image_view_info.aspect_mask,
-                image_view_info.fmt,
-                sample_count,
-                node_idx,
-            ));
+            assert!(
+                exec.resolves.insert_color(
+                    attachment,
+                    image_view_info.aspect_mask,
+                    image_view_info.fmt,
+                    sample_count,
+                    node_idx,
+                ),
+                "attachment incompatible with previous resolve"
+            );
 
             #[cfg(debug_assertions)]
             {
@@ -1493,16 +1585,37 @@ where
                     .flatten()
                     .unwrap();
 
-                assert!(exec
-                    .loads
-                    .attached
-                    .get(attachment as usize)
-                    .map(|loaded_attachment| Attachment::are_compatible(
-                        *loaded_attachment,
-                        Some(resolved_attachment)
-                    ))
-                    .unwrap_or(true));
-                assert!(exec.stores.attached.get(attachment as usize).is_none());
+                assert!(
+                    exec.clears.contains_key(&attachment)
+                        || exec
+                            .loads
+                            .attached
+                            .get(attachment as usize)
+                            .map(|loaded_attachment| Attachment::are_compatible(
+                                *loaded_attachment,
+                                Some(resolved_attachment)
+                            ))
+                            .unwrap_or(true)
+                        || exec
+                            .pipeline
+                            .as_ref()
+                            .unwrap()
+                            .unwrap_graphic()
+                            .input_attachments
+                            .contains(&attachment),
+                    "attachment resolved without clear, or compatible load, or subpass input"
+                );
+                assert!(
+                    exec.stores
+                        .attached
+                        .get(attachment as usize)
+                        .map(|&stored_attachment| Attachment::are_compatible(
+                            stored_attachment,
+                            Some(resolved_attachment)
+                        ))
+                        .unwrap_or(true),
+                    "attachment incompatible with previous store"
+                );
             }
         }
 
@@ -1550,28 +1663,55 @@ where
             let pass = self.pass.as_mut();
             let exec = pass.execs.last_mut().unwrap();
 
-            assert!(exec.resolves.set_depth_stencil(
-                attachment,
-                image_view_info.aspect_mask,
-                image_view_info.fmt,
-                sample_count,
-                node_idx,
-            ));
+            assert!(
+                exec.resolves.set_depth_stencil(
+                    attachment,
+                    image_view_info.aspect_mask,
+                    image_view_info.fmt,
+                    sample_count,
+                    node_idx,
+                ),
+                "attachment incompatible with previous store"
+            );
 
             #[cfg(debug_assertions)]
             {
                 // Unwrap the attachment we inserted above
                 let (_, resolved_attachment) = exec.resolves.depth_stencil().unwrap();
 
-                assert!(exec
-                    .loads
-                    .depth_stencil()
-                    .map(
-                        |(attachment_idx, loaded_attachment)| attachment == attachment_idx
-                            && Attachment::are_identical(loaded_attachment, resolved_attachment)
-                    )
-                    .unwrap_or(true));
-                assert!(exec.stores.depth_stencil.is_none());
+                assert!(
+                    exec.clears.contains_key(&attachment)
+                        || exec
+                            .loads
+                            .depth_stencil()
+                            .map(
+                                |(attachment_idx, loaded_attachment)| attachment == attachment_idx
+                                    && Attachment::are_identical(
+                                        loaded_attachment,
+                                        resolved_attachment
+                                    )
+                            )
+                            .unwrap_or(true)
+                        || exec
+                            .pipeline
+                            .as_ref()
+                            .unwrap()
+                            .unwrap_graphic()
+                            .input_attachments
+                            .contains(&attachment),
+                    "attachment resolved without clear, or compatible load, or subpass input"
+                );
+                assert!(
+                    exec.stores
+                        .attached
+                        .get(attachment as usize)
+                        .map(|&stored_attachment| Attachment::are_compatible(
+                            stored_attachment,
+                            Some(resolved_attachment)
+                        ))
+                        .unwrap_or(true),
+                    "attachment incompatible with previous store"
+                );
             }
         }
 
@@ -1677,13 +1817,16 @@ where
             let pass = self.pass.as_mut();
             let exec = pass.execs.last_mut().unwrap();
 
-            assert!(exec.stores.insert_color(
-                attachment,
-                image_view_info.aspect_mask,
-                image_view_info.fmt,
-                sample_count,
-                node_idx,
-            ));
+            assert!(
+                exec.stores.insert_color(
+                    attachment,
+                    image_view_info.aspect_mask,
+                    image_view_info.fmt,
+                    sample_count,
+                    node_idx,
+                ),
+                "attachment incompatible with previous store"
+            );
 
             #[cfg(debug_assertions)]
             {
@@ -1696,16 +1839,37 @@ where
                     .flatten()
                     .unwrap();
 
-                assert!(exec
-                    .loads
-                    .attached
-                    .get(attachment as usize)
-                    .map(|loaded_attachment| Attachment::are_compatible(
-                        *loaded_attachment,
-                        Some(stored_attachment)
-                    ))
-                    .unwrap_or(true));
-                assert!(exec.resolves.attached.get(attachment as usize).is_none());
+                assert!(
+                    exec.clears.contains_key(&attachment)
+                        || exec
+                            .loads
+                            .attached
+                            .get(attachment as usize)
+                            .map(|loaded_attachment| Attachment::are_compatible(
+                                *loaded_attachment,
+                                Some(stored_attachment)
+                            ))
+                            .unwrap_or(true)
+                        || exec
+                            .pipeline
+                            .as_ref()
+                            .unwrap()
+                            .unwrap_graphic()
+                            .input_attachments
+                            .contains(&attachment),
+                    "attachment stored without clear, compatible load, or subpass input"
+                );
+                assert!(
+                    exec.resolves
+                        .attached
+                        .get(attachment as usize)
+                        .map(|&resolved_attachment| Attachment::are_compatible(
+                            resolved_attachment,
+                            Some(stored_attachment)
+                        ))
+                        .unwrap_or(true),
+                    "attachment incompatible with previous resolve"
+                );
             }
         }
 
@@ -1753,28 +1917,55 @@ where
             let pass = self.pass.as_mut();
             let exec = pass.execs.last_mut().unwrap();
 
-            assert!(exec.stores.set_depth_stencil(
-                attachment,
-                image_view_info.aspect_mask,
-                image_view_info.fmt,
-                sample_count,
-                node_idx,
-            ));
+            assert!(
+                exec.stores.set_depth_stencil(
+                    attachment,
+                    image_view_info.aspect_mask,
+                    image_view_info.fmt,
+                    sample_count,
+                    node_idx,
+                ),
+                "attachment incompatible with previous store"
+            );
 
             #[cfg(debug_assertions)]
             {
                 // Unwrap the attachment we inserted above
                 let (_, stored_attachment) = exec.stores.depth_stencil().unwrap();
 
-                assert!(exec
-                    .loads
-                    .depth_stencil()
-                    .map(
-                        |(attachment_idx, loaded_attachment)| attachment == attachment_idx
-                            && Attachment::are_identical(loaded_attachment, stored_attachment)
-                    )
-                    .unwrap_or(true));
-                assert!(exec.resolves.depth_stencil.is_none());
+                assert!(
+                    exec.clears.contains_key(&attachment)
+                        || exec
+                            .loads
+                            .depth_stencil()
+                            .map(|(attachment_idx, loaded_attachment)| {
+                                attachment == attachment_idx
+                                    && Attachment::are_identical(
+                                        loaded_attachment,
+                                        stored_attachment,
+                                    )
+                            })
+                            .unwrap_or(true)
+                        || exec
+                            .pipeline
+                            .as_ref()
+                            .unwrap()
+                            .unwrap_graphic()
+                            .input_attachments
+                            .contains(&attachment),
+                    "attachment stored without clear, or comptaible load, or subpass input"
+                );
+                assert!(
+                    exec.resolves
+                        .attached
+                        .get(attachment as usize)
+                        .map(|&resolved_attachment| Attachment::are_compatible(
+                            resolved_attachment,
+                            Some(stored_attachment)
+                        ))
+                        .unwrap_or(true),
+                    "attachment incompatible with previous resolve"
+                );
             }
         }
 

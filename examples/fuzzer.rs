@@ -21,7 +21,7 @@ fn main() -> Result<(), DisplayError> {
     pretty_env_logger::init();
 
     let screen_13 = EventLoop::new().debug(true).build()?;
-    let _cache = HashPool::new(&screen_13.device);
+    let mut cache = HashPool::new(&screen_13.device);
 
     let mut frames_remaining = 100;
 
@@ -33,12 +33,14 @@ fn main() -> Result<(), DisplayError> {
         }
 
         // We fuzz a random amount of randomly selected operations per frame
-        let operations_per_frame: u8 = random();
+        let operations_per_frame = 16;
         let operation: u8 = random();
         for _ in 0..operations_per_frame {
-            match operation % 2 {
-                op if op == 0 => record_compute_no_op(&mut frame),
-                op if op == 1 => record_graphic_wont_merge(&mut frame),
+            match operation % 3 {
+                0 => record_compute_no_op(&mut frame),
+                1 => record_graphic_load_store(&mut frame),
+                2 => record_graphic_will_merge_subpass_input(&mut frame, &mut cache),
+                3 => record_graphic_wont_merge(&mut frame),
                 _ => unreachable!(),
             }
         }
@@ -75,6 +77,125 @@ fn record_compute_no_op(frame: &mut screen_13::FrameContext<ArcK>) {
         });
 }
 
+fn record_graphic_load_store(frame: &mut FrameContext) {
+    let pipeline = graphic_vert_frag_pipeline(
+        frame.device,
+        GraphicPipelineInfo::default(),
+        inline_spirv!(
+            r#"
+            #version 460 core
+    
+            void main() {
+            }
+            "#,
+            vert
+        )
+        .as_slice(),
+        inline_spirv!(
+            r#"
+            #version 460 core
+
+            layout(location = 0) out vec4 color_out;
+
+            void main() {
+                color_out = vec4(0);
+            }
+            "#,
+            frag
+        )
+        .as_slice(),
+    );
+
+    frame
+        .render_graph
+        .begin_pass("load-store")
+        .bind_pipeline(&pipeline)
+        .load_color(0, frame.swapchain_image)
+        .store_color(0, frame.swapchain_image)
+        .record_subpass(|subpass| {
+            subpass.draw(1, 1, 0, 0);
+        });
+}
+
+fn record_graphic_will_merge_subpass_input(frame: &mut FrameContext, cache: &mut HashPool) {
+    let vertex = inline_spirv!(
+        r#"
+        #version 460 core
+
+        void main() {
+        }
+        "#,
+        vert
+    )
+    .as_slice();
+    let pipeline_a = graphic_vert_frag_pipeline(
+        frame.device,
+        GraphicPipelineInfo::default(),
+        vertex,
+        inline_spirv!(
+            r#"
+            #version 460 core
+
+            layout(location = 0) out vec4 color_out;
+
+            void main() {
+                color_out = vec4(0);
+            }
+            "#,
+            frag
+        )
+        .as_slice(),
+    );
+    let pipeline_b = graphic_vert_frag_pipeline(
+        frame.device,
+        GraphicPipelineInfo::default(),
+        vertex,
+        inline_spirv!(
+            r#"
+            #version 460 core
+
+            layout(input_attachment_index = 0, binding = 0) uniform subpassInput color_in;
+            layout(location = 0) out vec4 color_out;
+
+            void main() {
+                color_out = subpassLoad(color_in);
+            }
+            "#,
+            frag
+        )
+        .as_slice(),
+    );
+    let image = frame.render_graph.bind_node(
+        cache
+            .lease(ImageInfo::new_2d(
+                vk::Format::R8G8B8A8_UNORM,
+                256,
+                256,
+                vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::INPUT_ATTACHMENT,
+            ))
+            .unwrap(),
+    );
+
+    // Pass "a" stores color 0 which "b" compatibly inputs "image"; so these two will get merged
+    frame
+        .render_graph
+        .begin_pass("a")
+        .bind_pipeline(&pipeline_a)
+        .clear_color(0)
+        .store_color(0, image)
+        .record_subpass(|subpass| {
+            subpass.draw(1, 1, 0, 0);
+        });
+    frame
+        .render_graph
+        .begin_pass("b")
+        .bind_pipeline(&pipeline_b)
+        .store_color(0, image)
+        .record_subpass(|subpass| {
+            subpass.draw(1, 1, 0, 0);
+        });
+}
+
 fn record_graphic_wont_merge(frame: &mut FrameContext) {
     let pipeline = graphic_vert_frag_pipeline(
         frame.device,
@@ -106,7 +227,7 @@ fn record_graphic_wont_merge(frame: &mut FrameContext) {
     // These two passes have common writes but are otherwise regular - they won't get merged
     frame
         .render_graph
-        .begin_pass("a")
+        .begin_pass("c")
         .bind_pipeline(&pipeline)
         .store_color(0, frame.swapchain_image)
         .record_subpass(|subpass| {
@@ -114,7 +235,7 @@ fn record_graphic_wont_merge(frame: &mut FrameContext) {
         });
     frame
         .render_graph
-        .begin_pass("b")
+        .begin_pass("d")
         .bind_pipeline(&pipeline)
         .store_color(0, frame.swapchain_image)
         .record_subpass(|subpass| {

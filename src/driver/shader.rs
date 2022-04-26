@@ -1,8 +1,6 @@
-use crate::into_u8_slice;
-
 use {
     super::{DescriptorSetLayout, Device, DriverError, SamplerDesc, VertexInputState},
-    crate::ptr::Shared,
+    crate::{into_u8_slice, ptr::Shared},
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
@@ -18,7 +16,7 @@ use {
     },
 };
 
-pub type DescriptorBindingMap = BTreeMap<DescriptorBinding, DescriptorInfo>;
+pub type DescriptorBindingMap = BTreeMap<DescriptorBinding, (DescriptorInfo, vk::ShaderStageFlags)>;
 
 fn guess_immutable_sampler(
     device: &Device<impl SharedPointerKind>,
@@ -153,7 +151,6 @@ where
     pub fn create(
         device: &Shared<Device<P>, P>,
         descriptor_bindings: &DescriptorBindingMap,
-        stage_flags: vk::ShaderStageFlags,
     ) -> Result<Self, DriverError>
     where
         P: SharedPointerKind,
@@ -175,7 +172,7 @@ where
             let mut binding_counts = BTreeMap::<vk::DescriptorType, u32>::new();
             let mut bindings = vec![];
 
-            for (descriptor_binding, &descriptor_info) in descriptor_bindings
+            for (descriptor_binding, &(descriptor_info, stage_flags)) in descriptor_bindings
                 .iter()
                 .filter(|(descriptor_binding, _)| descriptor_binding.0 == descriptor_set_idx)
             {
@@ -293,7 +290,7 @@ impl Shader {
         Self::new(vk::ShaderStageFlags::VERTEX, spirv)
     }
 
-    /// Returns the read and write attachments of a shader.
+    /// Returns the input and write attachments of a shader.
     pub fn attachments(
         &self,
     ) -> (
@@ -302,7 +299,10 @@ impl Shader {
     ) {
         (
             self.entry_point.vars.iter().filter_map(|var| match var {
-                Variable::Input { location, .. } => Some(location.loc()),
+                Variable::Descriptor {
+                    desc_ty: DescriptorType::InputAttachment(attachment),
+                    ..
+                } => Some(*attachment),
                 _ => None,
             }),
             self.entry_point.vars.iter().filter_map(|var| match var {
@@ -331,7 +331,7 @@ impl Shader {
             })
         {
             trace!(
-                "Binding {}: {}.{} = {:?}[{}]",
+                "binding {}: {}.{} = {:?}[{}]",
                 name.as_deref().unwrap_or_default(),
                 binding.set(),
                 binding.bind(),
@@ -339,37 +339,38 @@ impl Shader {
                 binding_count
             );
 
+            let descriptor_info = match desc_ty {
+                DescriptorType::AccelStruct() => {
+                    DescriptorInfo::AccelerationStructure(binding_count)
+                }
+                DescriptorType::CombinedImageSampler() => DescriptorInfo::CombinedImageSampler(
+                    binding_count,
+                    guess_immutable_sampler(device, name.as_deref().expect("invalid binding name")),
+                ),
+                DescriptorType::InputAttachment(attachment) => {
+                    DescriptorInfo::InputAttachment(binding_count, *attachment)
+                }
+                DescriptorType::SampledImage() => DescriptorInfo::SampledImage(binding_count),
+                DescriptorType::Sampler() => DescriptorInfo::Sampler(binding_count),
+                DescriptorType::StorageBuffer(_access_ty) => {
+                    DescriptorInfo::StorageBuffer(binding_count)
+                }
+                DescriptorType::StorageImage(_access_ty) => {
+                    DescriptorInfo::StorageImage(binding_count)
+                }
+                DescriptorType::StorageTexelBuffer(_access_ty) => {
+                    DescriptorInfo::StorageTexelBuffer(binding_count)
+                }
+                DescriptorType::UniformBuffer() => {
+                    DescriptorInfo::UniformBufferDynamic(binding_count)
+                }
+                DescriptorType::UniformTexelBuffer() => {
+                    DescriptorInfo::UniformTexelBuffer(binding_count)
+                }
+            };
             res.insert(
                 DescriptorBinding(binding.set(), binding.bind()),
-                match desc_ty {
-                    DescriptorType::AccelStruct() => {
-                        DescriptorInfo::AccelerationStructure(binding_count)
-                    }
-                    DescriptorType::CombinedImageSampler() => DescriptorInfo::CombinedImageSampler(
-                        binding_count,
-                        guess_immutable_sampler(device, name.as_deref().expect("Invalid binding")),
-                    ),
-                    DescriptorType::InputAttachment(input_attachment_index) => {
-                        DescriptorInfo::InputAttachment(binding_count, *input_attachment_index)
-                    }
-                    DescriptorType::SampledImage() => DescriptorInfo::SampledImage(binding_count),
-                    DescriptorType::Sampler() => DescriptorInfo::Sampler(binding_count),
-                    DescriptorType::StorageBuffer(_access_ty) => {
-                        DescriptorInfo::StorageBuffer(binding_count)
-                    }
-                    DescriptorType::StorageImage(_access_ty) => {
-                        DescriptorInfo::StorageImage(binding_count)
-                    }
-                    DescriptorType::StorageTexelBuffer(_access_ty) => {
-                        DescriptorInfo::StorageTexelBuffer(binding_count)
-                    }
-                    DescriptorType::UniformBuffer() => {
-                        DescriptorInfo::UniformBufferDynamic(binding_count)
-                    }
-                    DescriptorType::UniformTexelBuffer() => {
-                        DescriptorInfo::UniformTexelBuffer(binding_count)
-                    }
-                },
+                (descriptor_info, self.stage),
             );
         }
 
@@ -482,11 +483,12 @@ impl Shader {
         }
 
         fn merge_pair(src: DescriptorBindingMap, dst: &mut DescriptorBindingMap) {
-            for (descriptor_binding, descriptor_info) in src.into_iter() {
-                if let Some(existing) = dst.get_mut(&descriptor_binding) {
-                    merge_info(existing, descriptor_info);
+            for (descriptor_binding, (descriptor_info, descriptor_flags)) in src.into_iter() {
+                if let Some((existing_info, existing_flags)) = dst.get_mut(&descriptor_binding) {
+                    merge_info(existing_info, descriptor_info);
+                    *existing_flags |= descriptor_flags;
                 } else {
-                    dst.insert(descriptor_binding, descriptor_info);
+                    dst.insert(descriptor_binding, (descriptor_info, descriptor_flags));
                 }
             }
         }

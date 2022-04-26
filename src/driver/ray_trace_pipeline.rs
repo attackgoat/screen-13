@@ -576,13 +576,7 @@ where
                 .map(|shader| shader.descriptor_bindings(&device)),
         );
 
-        let stages = shaders
-            .iter()
-            .map(|shader| shader.stage)
-            .reduce(|j, k| j | k)
-            .unwrap_or_default();
-        let descriptor_info =
-            PipelineDescriptorInfo::create(&device, &descriptor_bindings, stages)?;
+        let descriptor_info = PipelineDescriptorInfo::create(&device, &descriptor_bindings)?;
         let descriptor_set_layout_handles = descriptor_info
             .layouts
             .iter()

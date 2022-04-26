@@ -3,17 +3,14 @@ use {
         DescriptorBindingMap, Device, DriverError, PipelineDescriptorInfo, SampleCount, Shader,
         SpecializationInfo,
     },
-    crate::ptr::Shared,
+    crate::{graph::AttachmentIndex, ptr::Shared},
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
     log::{trace, warn},
     ordered_float::OrderedFloat,
-    std::{cmp::Ordering, ffi::CString, thread::panicking},
+    std::{cmp::Ordering, collections::HashSet, ffi::CString, thread::panicking},
 };
-
-#[cfg(debug_assertions)]
-use {crate::graph::AttachmentIndex, std::collections::HashSet};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum BlendMode {
@@ -153,17 +150,12 @@ where
     pub descriptor_info: PipelineDescriptorInfo<P>,
     device: Shared<Device<P>, P>,
     pub info: GraphicPipelineInfo,
+    pub input_attachments: HashSet<AttachmentIndex>,
     pub layout: vk::PipelineLayout,
     pub push_constants: Vec<vk::PushConstantRange>,
     shader_modules: Vec<vk::ShaderModule>,
     stage_flags: vk::ShaderStageFlags,
     pub state: GraphicPipelineState,
-
-    // Debug items:
-    #[cfg(debug_assertions)]
-    pub read_attachments: HashSet<AttachmentIndex>,
-
-    #[cfg(debug_assertions)]
     pub write_attachments: HashSet<AttachmentIndex>,
 }
 
@@ -221,13 +213,7 @@ where
             .map(|shader| shader.descriptor_bindings(&device))
             .collect::<Vec<_>>();
         let descriptor_bindings = Shader::merge_descriptor_bindings(descriptor_bindings);
-        let stages = shaders
-            .iter()
-            .map(|shader| shader.stage)
-            .reduce(|j, k| j | k)
-            .unwrap_or_default();
-        let descriptor_info =
-            PipelineDescriptorInfo::create(&device, &descriptor_bindings, stages)?;
+        let descriptor_info = PipelineDescriptorInfo::create(&device, &descriptor_bindings)?;
         let descriptor_sets_layouts = descriptor_info
             .layouts
             .iter()
@@ -240,24 +226,23 @@ where
             .filter_map(|mut push_const| push_const.take())
             .collect::<Vec<_>>();
 
-        #[cfg(debug_assertions)]
-        let (read_attachments, write_attachments) = {
-            let (read, write) = shaders
+        let (input_attachments, write_attachments) = {
+            let (input, write) = shaders
                 .iter()
                 .find(|shader| shader.stage == vk::ShaderStageFlags::FRAGMENT)
                 .expect("fragment shader not found")
                 .attachments();
-            let (read, write) = (read.collect(), write.collect());
+            let (input, write) = (input.collect(), write.collect());
 
-            for read in &read {
-                trace!("detected read attachment {read}");
+            for input in &input {
+                trace!("detected input attachment {input}");
             }
 
             for write in &write {
                 trace!("detected write attachment {write}");
             }
 
-            (read, write)
+            (input, write)
         };
 
         unsafe {
@@ -380,6 +365,7 @@ where
                 descriptor_info,
                 device,
                 info,
+                input_attachments,
                 layout,
                 push_constants,
                 shader_modules,
@@ -391,12 +377,6 @@ where
                     stages,
                     vertex_input,
                 },
-
-                // Debug items:
-                #[cfg(debug_assertions)]
-                read_attachments,
-
-                #[cfg(debug_assertions)]
                 write_attachments,
             })
         }

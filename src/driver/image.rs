@@ -640,7 +640,7 @@ where
 }
 
 #[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
-#[builder(pattern = "owned")]
+#[builder(build_fn(private, name = "fallible_build"), pattern = "owned")]
 pub struct ImageViewInfo {
     pub array_layer_count: Option<u32>,
     pub aspect_mask: vk::ImageAspectFlags,
@@ -653,8 +653,20 @@ pub struct ImageViewInfo {
 
 impl ImageViewInfo {
     #[allow(clippy::new_ret_no_self)]
-    pub fn new() -> ImageViewInfoBuilder {
-        Default::default() // TODO: Maybe not default... need format?
+    pub fn new(format: vk::Format, ty: ImageType) -> ImageViewInfoBuilder {
+        ImageViewInfoBuilder::new(format, ty)
+    }
+}
+
+// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
+impl ImageViewInfoBuilder {
+    pub fn new(format: vk::Format, ty: ImageType) -> Self {
+        Self::default().fmt(format).ty(ty)
+    }
+
+    pub fn build(self) -> ImageViewInfo {
+        self.fallible_build()
+            .expect("All required fields set at initialization")
     }
 }
 
@@ -674,7 +686,7 @@ impl From<ImageInfo> for ImageViewInfo {
 
 impl From<ImageViewInfoBuilder> for ImageViewInfo {
     fn from(info: ImageViewInfoBuilder) -> Self {
-        info.build().unwrap()
+        info.build()
     }
 }
 

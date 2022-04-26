@@ -137,15 +137,6 @@ where
         }
     }
 
-    pub(super) fn as_image_info(&self) -> Option<ImageInfo> {
-        Some(match self {
-            Self::Image(binding, _) => binding.item.info,
-            Self::ImageLease(binding, _) => binding.item.info,
-            Self::SwapchainImage(binding, _) => binding.item.info,
-            _ => return None,
-        })
-    }
-
     pub(super) fn as_driver_buffer(&self) -> Option<&Buffer<P>> {
         Some(match self {
             Self::Buffer(binding, _) => &binding.item,
@@ -159,6 +150,15 @@ where
             Self::Image(binding, _) => &binding.item,
             Self::ImageLease(binding, _) => &binding.item,
             Self::SwapchainImage(binding, _) => &binding.item.image,
+            _ => return None,
+        })
+    }
+
+    pub(super) fn image_info(&self) -> Option<ImageInfo> {
+        Some(match self {
+            Self::Image(binding, _) => binding.item.info,
+            Self::ImageLease(binding, _) => binding.item.info,
+            Self::SwapchainImage(binding, _) => binding.item.info,
             _ => return None,
         })
     }
