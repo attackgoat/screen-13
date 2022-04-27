@@ -56,9 +56,6 @@ where
     }
 
     unsafe fn begin(cmd_buf: &mut CommandBuffer<P>) -> Result<(), ()> {
-        Device::wait_for_fence(&cmd_buf.device, &cmd_buf.fence).map_err(|_| ())?;
-        CommandBuffer::drop_fenced(cmd_buf);
-
         cmd_buf
             .device
             .reset_command_pool(cmd_buf.pool, vk::CommandPoolResetFlags::RELEASE_RESOURCES)
@@ -106,11 +103,14 @@ where
         let started = Instant::now();
 
         unsafe {
-            // Begin the command buffer which may stall until the previous submission has finished
-            Self::begin(cmd_buf)?;
+            Self::wait_for_fence(cmd_buf)?;
         }
 
         let mut wait_elapsed = Instant::now() - started;
+
+        unsafe {
+            Self::begin(cmd_buf)?;
+        }
 
         resolver.record_node_dependencies(&mut self.cache, cmd_buf, swapchain_node)?;
 
@@ -129,10 +129,14 @@ where
         let wait_started = Instant::now();
 
         unsafe {
-            Self::begin(cmd_buf)?;
+            Self::wait_for_fence(cmd_buf)?;
         }
 
         wait_elapsed += Instant::now() - wait_started;
+
+        unsafe {
+            Self::begin(cmd_buf)?;
+        }
 
         resolver.record_node(&mut self.cache, cmd_buf, swapchain_node)?;
 
@@ -171,20 +175,24 @@ where
             )?;
         }
 
+        let cmd_buf = &mut cmd_bufs[2];
+
+        let wait_started = Instant::now();
+
+        unsafe {
+            Self::wait_for_fence(cmd_buf)?;
+        }
+
+        wait_elapsed += Instant::now() - wait_started;
+
         // We may have unresolved nodes; things like copies that happen after present or operations
         // before present which use nodes that are unused in the remainder of the graph.
         // These operations are still important, but they don't need to wait for any of the above
         // things so we do them last
         if !resolver.is_resolved() {
-            let cmd_buf = &mut cmd_bufs[2];
-
-            let wait_started = Instant::now();
-
             unsafe {
                 Self::begin(cmd_buf)?;
             }
-
-            wait_elapsed += Instant::now() - wait_started;
 
             resolver.record_unscheduled_passes(&mut self.cache, cmd_buf)?;
 
@@ -234,6 +242,13 @@ where
                 cmd_buf.fence,
             )
             .map_err(|_| ())
+    }
+
+    unsafe fn wait_for_fence(cmd_buf: &mut CommandBuffer<P>) -> Result<(), ()> {
+        Device::wait_for_fence(&cmd_buf.device, &cmd_buf.fence).map_err(|_| ())?;
+        CommandBuffer::drop_fenced(cmd_buf);
+
+        Ok(())
     }
 }
 
