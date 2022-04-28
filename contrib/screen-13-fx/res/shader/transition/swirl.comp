@@ -1,0 +1,45 @@
+#version 460 core
+
+// Adapted from:
+// https://github.com/gl-transitions/gl-transitions/blob/master/transitions/
+// b62319705bc54ab2597c36a3694c2476f8f52495
+//
+// Author:Sergey Kosarevsky
+// License: MIT
+// ( http://www.linderdaum.com )
+// ported by gre from https://gist.github.com/corporateshark/cacfedb8cca0f5ce3f7c
+
+#include "_defs.glsl"
+
+layout(push_constant) uniform PushConstants {
+    layout(offset = 0) float progress;
+} push_const;
+
+vec4 transition(vec2 UV)
+{
+	float Radius = 1.0;
+
+	float T = push_const.progress;
+
+	UV -= vec2( 0.5, 0.5 );
+
+	float Dist = length(UV);
+
+	if ( Dist < Radius )
+	{
+		float Percent = (Radius - Dist) / Radius;
+		float A = ( T <= 0.5 ) ? mix( 0.0, 1.0, T/0.5 ) : mix( 1.0, 0.0, (T-0.5)/0.5 );
+		float Theta = Percent * Percent * A * 8.0 * 3.14159;
+		float S = sin( Theta );
+		float C = cos( Theta );
+		UV = vec2( dot(UV, vec2(C, -S)), dot(UV, vec2(S, C)) );
+	}
+	UV += vec2( 0.5, 0.5 );
+
+	vec4 C0 = getFromColor(UV);
+	vec4 C1 = getToColor(UV);
+
+	return mix( C0, C1, T );
+}
+
+#include "_main.glsl"

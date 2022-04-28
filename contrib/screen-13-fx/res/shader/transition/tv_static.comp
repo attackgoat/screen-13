@@ -1,0 +1,40 @@
+#version 460 core
+
+// Adapted from:
+// https://github.com/gl-transitions/gl-transitions/blob/master/transitions/
+// b62319705bc54ab2597c36a3694c2476f8f52495
+//
+// Author:Brandon Anzaldi
+// license: MIT
+
+#include "_defs.glsl"
+
+layout(push_constant) uniform PushConstants {
+    layout(offset = 0) float progress;
+    layout(offset = 4) float offset; // = 0.05
+} push_const;
+
+
+// Pseudo-random noise function
+// http://byteblacksmith.com/improvements-to-the-canonical-one-liner-glsl-rand-for-opengl-es-2-0/
+highp float noise(vec2 co)
+{
+    highp float a = 12.9898;
+    highp float b = 78.233;
+    highp float c = 43758.5453;
+    highp float dt= dot(co.xy * push_const.progress, vec2(a, b));
+    highp float sn= mod(dt,3.14);
+    return fract(sin(sn) * c);
+}
+
+vec4 transition(vec2 p) {
+  if (push_const.progress < push_const.offset) {
+    return getFromColor(p);
+  } else if (push_const.progress > (1.0 - push_const.offset)) {
+    return getToColor(p);
+  } else {
+    return vec4(vec3(noise(p)), 1.0);
+  }
+}
+
+#include "_main.glsl"

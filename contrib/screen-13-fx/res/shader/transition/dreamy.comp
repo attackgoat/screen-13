@@ -1,0 +1,25 @@
+#version 460 core
+
+// Adapted from:
+// https://github.com/gl-transitions/gl-transitions/blob/master/transitions/
+// b62319705bc54ab2597c36a3694c2476f8f52495
+//
+// Author:mikolalysenko
+// License: MIT
+
+#include "_defs.glsl"
+
+layout(push_constant) uniform PushConstants {
+    layout(offset = 0) float progress;
+} push_const;
+
+vec2 offset(float progress, float x, float theta) {
+  float phase = push_const.progress*push_const.progress + push_const.progress + theta;
+  float shifty = 0.03*push_const.progress*cos(10.0*(push_const.progress+x));
+  return vec2(0, shifty);
+}
+vec4 transition(vec2 p) {
+  return mix(getFromColor(p + offset(push_const.progress, p.x, 0.0)), getToColor(p + offset(1.0-push_const.progress, p.x, 3.14)), push_const.progress);
+}
+
+#include "_main.glsl"

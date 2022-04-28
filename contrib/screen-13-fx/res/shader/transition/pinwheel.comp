@@ -1,0 +1,29 @@
+#version 460 core
+
+// Adapted from:
+// https://github.com/gl-transitions/gl-transitions/blob/master/transitions/
+// b62319705bc54ab2597c36a3694c2476f8f52495
+//
+// Author:Mr Speaker
+// License: MIT
+
+#include "_defs.glsl"
+
+layout(push_constant) uniform PushConstants {
+    layout(offset = 0) float progress;
+    layout(offset = 4) float speed; // = 2.0;
+} push_const;
+
+vec4 transition(vec2 uv) {
+  
+  vec2 p = uv.xy / vec2(1.0).xy;
+  
+  float circPos = atan(p.y - 0.5, p.x - 0.5) + push_const.progress * push_const.speed;
+  float modPos = mod(circPos, 3.1415 / 4.);
+  float signed = sign(push_const.progress - modPos);
+  
+  return mix(getToColor(p), getFromColor(p), step(signed, 0.5));
+  
+}
+
+#include "_main.glsl"

@@ -1,0 +1,27 @@
+#version 460 core
+
+// Adapted from:
+// https://github.com/gl-transitions/gl-transitions/blob/master/transitions/
+// b62319705bc54ab2597c36a3694c2476f8f52495
+//
+// Author:gre
+// License: MIT
+
+#include "_defs.glsl"
+
+layout(push_constant) uniform PushConstants {
+    layout(offset = 0) float progress;
+    layout(offset = 16) vec4 fromStep; // = vec4(0.0, 0.2, 0.4, 0.0)
+    layout(offset = 32) vec4 toStep; // = vec4(0.6, 0.8, 1.0, 1.0)
+} push_const;
+
+// Usage: fromStep and toStep must be in [0.0, 1.0] range 
+// and all(fromStep) must be < all(toStep)
+
+vec4 transition (vec2 uv) {
+  vec4 a = getFromColor(uv);
+  vec4 b = getToColor(uv);
+  return mix(a, b, smoothstep(push_const.fromStep, push_const.toStep, vec4(push_const.progress)));
+}
+
+#include "_main.glsl"

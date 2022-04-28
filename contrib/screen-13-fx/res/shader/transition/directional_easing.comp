@@ -1,0 +1,28 @@
+#version 460 core
+
+// Adapted from:
+// https://github.com/gl-transitions/gl-transitions/blob/master/transitions/
+// b62319705bc54ab2597c36a3694c2476f8f52495
+//
+// Author:Max Plotnikov
+// License: MIT
+
+#include "_defs.glsl"
+
+layout(push_constant) uniform PushConstants {
+    layout(offset = 0) float progress;
+    layout(offset = 8) vec2 direction; // = vec2(0.0, 1.0)
+} push_const;
+
+vec4 transition (vec2 uv) {
+  float easing = sqrt((2.0 - push_const.progress) * push_const.progress);
+  vec2 p = uv + easing * sign(push_const.direction);
+  vec2 f = fract(p);
+  return mix(
+    getToColor(f),
+    getFromColor(f),
+    step(0.0, p.y) * step(p.y, 1.0) * step(0.0, p.x) * step(p.x, 1.0)
+  );
+}
+
+#include "_main.glsl"

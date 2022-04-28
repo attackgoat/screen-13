@@ -1,0 +1,43 @@
+#version 460 core
+
+// Adapted from:
+// https://github.com/gl-transitions/gl-transitions/blob/master/transitions/
+// b62319705bc54ab2597c36a3694c2476f8f52495
+//
+// Author:Adrian Purser
+// License: MIT
+
+#include "_defs.glsl"
+
+layout(push_constant) uniform PushConstants {
+    layout(offset = 0) float progress;
+    layout(offset = 4) float shadow_height;
+    layout(offset = 8) float bounces;
+    layout(offset = 16) vec4 shadow_colour;
+} push_const;
+
+const float PI = 3.14159265358;
+
+vec4 transition (vec2 uv) {
+  float time = push_const.progress;
+  float stime = sin(time * PI / 2.);
+  float phase = time * PI * push_const.bounces;
+  float y = (abs(cos(phase))) * (1.0 - stime);
+  float d = uv.y - y;
+  return mix(
+    mix(
+      getToColor(uv),
+      push_const.shadow_colour,
+      step(d, push_const.shadow_height) * (1. - mix(
+        ((d / push_const.shadow_height) * push_const.shadow_colour.a) + (1.0 - push_const.shadow_colour.a),
+        1.0,
+        smoothstep(0.95, 1., push_const.progress) // fade-out the shadow at the end
+      ))
+    ),
+    getFromColor(vec2(uv.x, uv.y + (1.0 - y))),
+    step(d, 0.0)
+  );
+}
+
+#include "_main.glsl"
+

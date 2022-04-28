@@ -1,0 +1,43 @@
+#version 460 core
+
+// Adapted from:
+// https://github.com/gl-transitions/gl-transitions/blob/master/transitions/
+// b62319705bc54ab2597c36a3694c2476f8f52495
+//
+// Author:mandubian
+// License: MIT
+
+#include "_defs.glsl"
+
+layout(push_constant) uniform PushConstants {
+    layout(offset = 0) float progress;
+    layout(offset = 4) float amplitude; // = 1.0
+    layout(offset = 8) float waves; // = 30.0
+    layout(offset = 12) float colorSeparation; // = 0.3
+} push_const;
+
+float PI = 3.14159265358979323846264;
+float compute(vec2 p, float progress, vec2 center) {
+vec2 o = p*sin(progress * push_const.amplitude)-center;
+// horizontal vector
+vec2 h = vec2(1., 0.);
+// butterfly polar function (don't ask me why this one :))
+float theta = acos(dot(o, h)) * push_const.waves;
+return (exp(cos(theta)) - 2.*cos(4.*theta) + pow(sin((2.*theta - PI) / 24.), 5.)) / 10.;
+}
+vec4 transition(vec2 uv) {
+  vec2 p = uv.xy / vec2(1.0).xy;
+  float inv = 1. - push_const.progress;
+  vec2 dir = p - vec2(.5);
+  float dist = length(dir);
+  float disp = compute(p, push_const.progress, vec2(0.5, 0.5)) ;
+  vec4 texTo = getToColor(p + inv*disp);
+  vec4 texFrom = vec4(
+  getFromColor(p + push_const.progress*disp*(1.0 - push_const.colorSeparation)).r,
+  getFromColor(p + push_const.progress*disp).g,
+  getFromColor(p + push_const.progress*disp*(1.0 + push_const.colorSeparation)).b,
+  1.0);
+  return texTo*push_const.progress + texFrom*inv;
+}
+
+#include "_main.glsl"

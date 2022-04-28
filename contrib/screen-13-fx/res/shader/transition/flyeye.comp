@@ -1,0 +1,32 @@
+#version 460 core
+
+// Adapted from:
+// https://github.com/gl-transitions/gl-transitions/blob/master/transitions/
+// b62319705bc54ab2597c36a3694c2476f8f52495
+//
+// Author:gre
+// License: MIT
+
+#include "_defs.glsl"
+
+layout(push_constant) uniform PushConstants {
+    layout(offset = 0) float progress;
+    layout(offset = 4) float size; // = 0.04
+    layout(offset = 8) float zoom; // = 50.0
+    layout(offset = 12) float colorSeparation; // = 0.3
+} push_const;
+
+
+vec4 transition(vec2 p) {
+  float inv = 1. - push_const.progress;
+  vec2 disp = push_const.size*vec2(cos(push_const.zoom*p.x), sin(push_const.zoom*p.y));
+  vec4 texTo = getToColor(p + inv*disp);
+  vec4 texFrom = vec4(
+    getFromColor(p + push_const.progress*disp*(1.0 - push_const.colorSeparation)).r,
+    getFromColor(p + push_const.progress*disp).g,
+    getFromColor(p + push_const.progress*disp*(1.0 + push_const.colorSeparation)).b,
+    1.0);
+  return texTo*push_const.progress + texFrom*inv;
+}
+
+#include "_main.glsl"

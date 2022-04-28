@@ -1,0 +1,56 @@
+#version 460 core
+
+// Adapted from:
+// https://github.com/gl-transitions/gl-transitions/blob/master/transitions/
+// b62319705bc54ab2597c36a3694c2476f8f52495
+//
+// Author:Xaychru
+// License: MIT
+// ported by gre from https://gist.github.com/Xaychru/130bb7b7affedbda9df5
+
+#include "_defs.glsl"
+
+layout(push_constant) uniform PushConstants {
+    layout(offset = 0) float progress;
+    layout(offset = 4) int endx; // = 2
+    layout(offset = 8) int endy; // = -1
+} push_const;
+
+#define PI 3.14159265358979323
+#define POW2(X) X*X
+#define POW3(X) X*X*X
+
+float Rand(vec2 v) {
+  return fract(sin(dot(v.xy ,vec2(12.9898,78.233))) * 43758.5453);
+}
+vec2 Rotate(vec2 v, float a) {
+  mat2 rm = mat2(cos(a), -sin(a),
+                 sin(a), cos(a));
+  return rm*v;
+}
+float CosInterpolation(float x) {
+  return -cos(x*PI)/2.+.5;
+}
+vec4 transition(vec2 uv) {
+  vec2 p = uv.xy / vec2(1.0).xy - .5;
+  vec2 rp = p;
+  float rpr = (push_const.progress*2.-1.);
+  float z = -(rpr*rpr*2.) + 3.;
+  float az = abs(z);
+  rp *= az;
+  rp += mix(vec2(.5, .5), vec2(float(push_const.endx) + .5, float(push_const.endy) + .5), POW2(CosInterpolation(push_const.progress)));
+  vec2 mrp = mod(rp, 1.);
+  vec2 crp = rp;
+  bool onEnd = int(floor(crp.x))==push_const.endx&&int(floor(crp.y))==push_const.endy;
+  if(!onEnd) {
+    float ang = float(int(Rand(floor(crp))*4.))*.5*PI;
+    mrp = vec2(.5) + Rotate(mrp-vec2(.5), ang);
+  }
+  if(onEnd || Rand(floor(crp))>.5) {
+    return getToColor(mrp);
+  } else {
+    return getFromColor(mrp);
+  }
+}
+
+#include "_main.glsl"

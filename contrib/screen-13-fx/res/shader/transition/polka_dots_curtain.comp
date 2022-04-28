@@ -1,0 +1,25 @@
+#version 460 core
+
+// Adapted from:
+// https://github.com/gl-transitions/gl-transitions/blob/master/transitions/
+// b62319705bc54ab2597c36a3694c2476f8f52495
+//
+// Author:bobylito
+// license: MIT
+
+#include "_defs.glsl"
+
+layout(push_constant) uniform PushConstants {
+    layout(offset = 0) float progress;
+    layout(offset = 4) float dots;// = 20.0;
+    layout(offset = 8) vec2 center;// = vec2(0, 0);
+} push_const;
+
+const float SQRT_2 = 1.414213562373;
+
+vec4 transition(vec2 uv) {
+  bool nextImage = distance(fract(uv * push_const.dots), vec2(0.5, 0.5)) < ( push_const.progress / distance(uv, push_const.center));
+  return nextImage ? getToColor(uv) : getFromColor(uv);
+}
+
+#include "_main.glsl"

@@ -1,0 +1,45 @@
+#version 460 core
+
+// Adapted from:
+// https://github.com/gl-transitions/gl-transitions/blob/master/transitions/
+// b62319705bc54ab2597c36a3694c2476f8f52495
+//
+// Author:Fernando Kuteken
+// License: MIT
+
+#include "_defs.glsl"
+
+layout(push_constant) uniform PushConstants {
+    layout(offset = 0) float progress;
+    layout(offset = 4) float rotations; // = 1;
+    layout(offset = 8) vec2 center; // = vec2(0.5, 0.5);
+    layout(offset = 16) vec4 backColor; // = vec4(0.15, 0.15, 0.15, 1.0);
+    layout(offset = 32) float scale; // = 8;
+} push_const;
+
+#define PI 3.14159265359
+
+vec4 transition (vec2 uv) {
+  
+  vec2 difference = uv - push_const.center;
+  vec2 dir = normalize(difference);
+  float dist = length(difference);
+  
+  float angle = 2.0 * PI * push_const.rotations * push_const.progress;
+  
+  float c = cos(angle);
+  float s = sin(angle);
+  
+  float currentScale = mix(push_const.scale, 1.0, 2.0 * abs(push_const.progress - 0.5));
+  
+  vec2 rotatedDir = vec2(dir.x  * c - dir.y * s, dir.x * s + dir.y * c);
+  vec2 rotatedUv = push_const.center + rotatedDir * dist / currentScale;
+  
+  if (rotatedUv.x < 0.0 || rotatedUv.x > 1.0 ||
+      rotatedUv.y < 0.0 || rotatedUv.y > 1.0)
+    return push_const.backColor;
+    
+  return mix(getFromColor(rotatedUv), getToColor(rotatedUv), push_const.progress);
+}
+
+#include "_main.glsl"

@@ -1,0 +1,30 @@
+#version 460 core
+
+// Adapted from:
+// https://github.com/gl-transitions/gl-transitions/blob/master/transitions/
+// b62319705bc54ab2597c36a3694c2476f8f52495
+//
+// Author:gre
+// License: MIT
+
+#include "_defs.glsl"
+
+layout(push_constant) uniform PushConstants {
+    layout(offset = 0) float progress;
+} push_const;
+
+float inHeart (vec2 p, vec2 center, float size) {
+  if (size==0.0) return 0.0;
+  vec2 o = (p-center)/(1.6*size);
+  float a = o.x*o.x+o.y*o.y-0.3;
+  return step(a*a*a, o.x*o.x*o.y*o.y*o.y);
+}
+vec4 transition (vec2 uv) {
+  return mix(
+    getFromColor(uv),
+    getToColor(uv),
+    inHeart(uv, vec2(0.5, 0.4), push_const.progress)
+  );
+}
+
+#include "_main.glsl"

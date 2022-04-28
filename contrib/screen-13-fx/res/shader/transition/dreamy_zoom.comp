@@ -1,0 +1,50 @@
+#version 460 core
+
+// Adapted from:
+// https://github.com/gl-transitions/gl-transitions/blob/master/transitions/
+// b62319705bc54ab2597c36a3694c2476f8f52495
+//
+// Author:Zeh Fernando
+// License: MIT
+
+#include "_defs.glsl"
+
+layout(push_constant) uniform PushConstants {
+    layout(offset = 0) float progress;
+
+    // In degrees
+    layout(offset = 4) float rotation; // = 6
+
+    // Multiplier
+    layout(offset = 8) float scale; // = 1.2
+} push_const;
+
+// Definitions --------
+#define DEG2RAD 0.03926990816987241548078304229099 // 1/180*PI
+
+// The code proper --------
+
+vec4 transition(vec2 uv) {
+  // Massage parameters
+  float phase = push_const.progress < 0.5 ? push_const.progress * 2.0 : (push_const.progress - 0.5) * 2.0;
+  float angleOffset = push_const.progress < 0.5 ? mix(0.0, push_const.rotation * DEG2RAD, phase) : mix(-push_const.rotation * DEG2RAD, 0.0, phase);
+  float newScale = push_const.progress < 0.5 ? mix(1.0, push_const.scale, phase) : mix(push_const.scale, 1.0, phase);
+  
+  vec2 center = vec2(0, 0);
+
+  // Calculate the source point
+  vec2 assumedCenter = vec2(0.5, 0.5);
+  vec2 p = (uv.xy - vec2(0.5, 0.5)) / newScale * vec2(1.0, 1.0);
+
+  // This can probably be optimized (with distance())
+  float angle = atan(p.y, p.x) + angleOffset;
+  float dist = distance(center, p);
+  p.x = cos(angle) * dist / 1.0 + 0.5;
+  p.y = sin(angle) * dist + 0.5;
+  vec4 c = push_const.progress < 0.5 ? getFromColor(p) : getToColor(p);
+
+  // Finally, apply the color
+  return c + (push_const.progress < 0.5 ? mix(0.0, 1.0, phase) : mix(1.0, 0.0, phase));
+}
+
+#include "_main.glsl"

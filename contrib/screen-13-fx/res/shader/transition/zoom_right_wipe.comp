@@ -1,0 +1,47 @@
+#version 460 core
+
+// Adapted from:
+// https://github.com/gl-transitions/gl-transitions/blob/master/transitions/
+// b62319705bc54ab2597c36a3694c2476f8f52495
+//
+// Author:Handk
+// License: MIT
+
+#include "_defs.glsl"
+
+layout(push_constant) uniform PushConstants {
+    layout(offset = 0) float progress;
+    layout(offset = 4) float zoom_quickness; // = 0.8
+} push_const;
+
+float nQuick = clamp(push_const.zoom_quickness,0.0,0.5);
+
+vec2 zoom(vec2 uv, float amount) {
+  if(amount<0.5)
+  return 0.5 + ((uv - 0.5) * (1.0-amount));
+  else
+  return 0.5 + ((uv - 0.5) * (amount));
+  
+}
+
+vec4 transition (vec2 uv) {
+  if(push_const.progress<0.5){
+    vec4 c= mix(
+      getFromColor(zoom(uv, smoothstep(0.0, nQuick, push_const.progress))),
+      getToColor(uv),
+     step(0.5, push_const.progress)
+    );
+    
+    return c;
+  }
+  else{
+    vec2 p=uv.xy/vec2(1.0).xy;
+    vec4 d=getFromColor(p);
+    vec4 e=getToColor(p);
+    vec4 f= mix(d, e, step(0.0+p.x,(push_const.progress-0.5)*2.0));
+    
+    return f;
+  }
+}
+
+#include "_main.glsl"

@@ -1,0 +1,29 @@
+#version 460 core
+
+// Adapted from:
+// https://github.com/gl-transitions/gl-transitions/blob/master/transitions/
+// b62319705bc54ab2597c36a3694c2476f8f52495
+//
+// Author:Gunnar Roth
+// based on work from natewave
+// license: MIT
+
+#include "_defs.glsl"
+
+layout(push_constant) uniform PushConstants {
+    layout(offset = 0) float progress;
+} push_const;
+
+vec4 transition(vec2 p) {
+  vec2 block = floor(p.xy / vec2(16));
+  vec2 uv_noise = block / vec2(64);
+  uv_noise += floor(vec2(push_const.progress) * vec2(1200.0, 3500.0)) / vec2(64);
+  vec2 dist = push_const.progress > 0.0 ? (fract(uv_noise) - 0.5) * 0.3 *(1.0 -push_const.progress) : vec2(0.0);
+  vec2 red = p + dist * 0.2;
+  vec2 green = p + dist * .3;
+  vec2 blue = p + dist * .5;
+
+  return vec4(mix(getFromColor(red), getToColor(red), push_const.progress).r,mix(getFromColor(green), getToColor(green), push_const.progress).g,mix(getFromColor(blue), getToColor(blue), push_const.progress).b,1.0);
+}
+
+#include "_main.glsl"

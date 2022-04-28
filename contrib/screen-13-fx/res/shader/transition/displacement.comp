@@ -1,0 +1,35 @@
+#version 460 core
+
+// Adapted from:
+// https://github.com/gl-transitions/gl-transitions/blob/master/transitions/
+// b62319705bc54ab2597c36a3694c2476f8f52495
+//
+// Author:Travis Fischer
+// License: MIT
+//
+// Adapted from a Codrops article by Robin Delaporte
+// https://tympanus.net/Development/DistortionHoverEffect
+
+#include "_defs.glsl"
+
+layout(push_constant) uniform PushConstants {
+    layout(offset = 0) float progress;
+    layout(offset = 4) float strength; // = 0.5
+} push_const;
+
+layout(set = 0, binding = 0) uniform sampler2D displacementMap_sampler_llr;
+
+vec4 transition (vec2 uv) {
+  float displacement = texture(displacementMap_sampler_llr, uv).r * push_const.strength;
+
+  vec2 uvFrom = vec2(uv.x + push_const.progress * displacement, uv.y);
+  vec2 uvTo = vec2(uv.x - (1.0 - push_const.progress) * displacement, uv.y);
+
+  return mix(
+    getFromColor(uvFrom),
+    getToColor(uvTo),
+    push_const.progress
+  );
+}
+
+#include "_main.glsl"

@@ -1,0 +1,29 @@
+#version 460 core
+
+// Adapted from:
+// https://github.com/gl-transitions/gl-transitions/blob/master/transitions/
+// b62319705bc54ab2597c36a3694c2476f8f52495
+//
+// Author:P-Seebauer
+// License: MIT
+// ported by gre from https://gist.github.com/P-Seebauer/2a5fa2f77c883dd661f9
+
+#include "_defs.glsl"
+
+layout(push_constant) uniform PushConstants {
+    layout(offset = 0) float progress;
+    layout(offset = 4) float power; // = 5.0
+} push_const;
+
+vec4 transition(vec2 p) {
+  vec4 fTex = getFromColor(p);
+  vec4 tTex = getToColor(p);
+  float m = step(distance(fTex, tTex), push_const.progress);
+  return mix(
+    mix(fTex, tTex, m),
+    tTex,
+    pow(push_const.progress, push_const.power)
+  );
+}
+
+#include "_main.glsl"

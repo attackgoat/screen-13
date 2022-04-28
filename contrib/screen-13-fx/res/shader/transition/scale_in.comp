@@ -1,0 +1,29 @@
+#version 460 core
+
+// Adapted from:
+// https://github.com/gl-transitions/gl-transitions/blob/master/transitions/
+// b62319705bc54ab2597c36a3694c2476f8f52495
+//
+// Author:haiyoucuv
+// License: MIT
+
+#include "_defs.glsl"
+
+layout(push_constant) uniform PushConstants {
+    layout(offset = 0) float progress;
+} push_const;
+
+vec4 scale(in vec2 uv){
+    uv = 0.5 + (uv - 0.5) * push_const.progress;
+    return getToColor(uv);
+}
+
+vec4 transition (vec2 uv) {
+  return mix(
+    getFromColor(uv),
+    scale(uv),
+    push_const.progress
+  );
+}
+
+#include "_main.glsl"

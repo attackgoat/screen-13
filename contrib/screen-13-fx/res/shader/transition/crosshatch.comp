@@ -1,0 +1,29 @@
+#version 460 core
+
+// Adapted from:
+// https://github.com/gl-transitions/gl-transitions/blob/master/transitions/
+// b62319705bc54ab2597c36a3694c2476f8f52495
+//
+// Author:pthrasher
+// License: MIT
+// adapted by gre from https://gist.github.com/pthrasher/04fd9a7de4012cbb03f6
+
+#include "_defs.glsl"
+
+layout(push_constant) uniform PushConstants {
+    layout(offset = 0) float progress;
+    layout(offset = 8) vec2 center; // = vec2(0.5)
+    layout(offset = 16) float threshold; // = 3.0
+    layout(offset = 20) float fadeEdge; // = 0.1
+} push_const;
+
+float rand(vec2 co) {
+  return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
+}
+vec4 transition(vec2 p) {
+  float dist = distance(push_const.center, p) / push_const.threshold;
+  float r = push_const.progress - min(rand(vec2(p.y, 0.0)), rand(vec2(0.0, p.x)));
+  return mix(getFromColor(p), getToColor(p), mix(0.0, mix(step(dist, r), 1.0, smoothstep(1.0-push_const.fadeEdge, 1.0, push_const.progress)), smoothstep(0.0, push_const.fadeEdge, push_const.progress)));    
+}
+
+#include "_main.glsl"

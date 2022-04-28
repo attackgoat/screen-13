@@ -1,0 +1,31 @@
+#version 460 core
+
+// Adapted from:
+// https://github.com/gl-transitions/gl-transitions/blob/master/transitions/
+// b62319705bc54ab2597c36a3694c2476f8f52495
+//
+// Author:gre
+// License: MIT
+
+#include "_defs.glsl"
+
+layout(push_constant) uniform PushConstants {
+    layout(offset = 0) float progress;
+    layout(offset = 4) float intensity; // = 0.3; // if 0.0, the image directly turn grayscale, if 0.9, the grayscale transition phase is very important
+} push_const;
+
+ 
+vec3 grayscale (vec3 color) {
+  return vec3(0.2126*color.r + 0.7152*color.g + 0.0722*color.b);
+}
+ 
+vec4 transition (vec2 uv) {
+  vec4 fc = getFromColor(uv);
+  vec4 tc = getToColor(uv);
+  return mix(
+    mix(vec4(grayscale(fc.rgb), 1.0), fc, smoothstep(1.0-push_const.intensity, 0.0, push_const.progress)),
+    mix(vec4(grayscale(tc.rgb), 1.0), tc, smoothstep(    push_const.intensity, 1.0, push_const.progress)),
+    push_const.progress);
+}
+
+#include "_main.glsl"
