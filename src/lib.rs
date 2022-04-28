@@ -25,10 +25,9 @@ pub mod prelude {
             input::{
                 update_input, update_keyboard, update_mouse, KeyBuf, KeyMap, MouseBuf, MouseButton,
             },
-            into_u8_slice,
             ptr::{ArcK, RcK, Shared, SharedPointerKind},
         },
-        log::{debug, error, info, trace, warn}, // Everyone wants a log
+        log::{debug, error, info, logger, trace, warn}, // Everyone wants a log
         winit::{
             dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize},
             event::{Event, VirtualKeyCode},
@@ -253,27 +252,4 @@ pub fn align_up_u32(val: u32, atom: u32) -> u32 {
 // TODO: I tried some num traits and it become quite unwieldy, but try again to genericize this
 pub fn align_up_u64(val: u64, atom: u64) -> u64 {
     (val + atom - 1) & !(atom - 1)
-}
-
-// Must be aligned.
-pub fn as_u32_slice<T>(t: &[T]) -> &[u32]
-where
-    T: Copy + Sized,
-{
-    use std::{mem::size_of, slice::from_raw_parts};
-
-    let len = t.len() * size_of::<T>();
-
-    assert!(len % size_of::<u32>() == 0);
-
-    unsafe { from_raw_parts(&t[0] as *const T as *const _, len) }
-}
-
-pub fn into_u8_slice<T>(t: &[T]) -> &[u8]
-where
-    T: Sized,
-{
-    use std::{mem::size_of, slice::from_raw_parts};
-
-    unsafe { from_raw_parts(t.as_ptr() as *const _, t.len() * size_of::<T>()) }
 }

@@ -1,6 +1,6 @@
 use {
     super::{DescriptorSetLayout, Device, DriverError, SamplerDesc, VertexInputState},
-    crate::{into_u8_slice, ptr::Shared},
+    crate::ptr::Shared,
     archery::SharedPointerKind,
     ash::vk,
     derive_builder::Builder,
@@ -735,6 +735,15 @@ impl ShaderCode for &[u8] {
 
 impl ShaderCode for &[u32] {
     fn into_vec(self) -> Vec<u8> {
+        pub fn into_u8_slice<T>(t: &[T]) -> &[u8]
+        where
+            T: Sized,
+        {
+            use std::{mem::size_of, slice::from_raw_parts};
+
+            unsafe { from_raw_parts(t.as_ptr() as *const _, t.len() * size_of::<T>()) }
+        }
+
         into_u8_slice(self).into_vec()
     }
 }
@@ -749,7 +758,7 @@ impl ShaderCode for Vec<u8> {
 
 impl ShaderCode for Vec<u32> {
     fn into_vec(self) -> Vec<u8> {
-        into_u8_slice(self.as_slice()).into_vec()
+        self.as_slice().into_vec()
     }
 }
 

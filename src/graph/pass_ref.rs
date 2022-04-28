@@ -11,15 +11,13 @@ use {
             Buffer, ComputePipeline, DepthStencilMode, GraphicPipeline, Image, ImageViewInfo,
             RayTraceAcceleration, RayTracePipeline,
         },
-        into_u8_slice,
         ptr::Shared,
     },
     archery::SharedPointerKind,
     ash::vk,
-    log::{trace, warn},
+    log::trace,
     std::{
         marker::PhantomData,
-        mem::size_of_val,
         ops::{Index, Range},
     },
     vk_sync::AccessType,
@@ -268,14 +266,11 @@ where
         self
     }
 
-    pub fn push_constants(&mut self, data: impl Sized) -> &mut Self {
+    pub fn push_constants(&mut self, data: &[u8]) -> &mut Self {
         self.push_constants_offset(0, data)
     }
 
-    pub fn push_constants_offset(&mut self, offset: u32, data: impl Sized) -> &mut Self {
-        use std::slice::from_ref;
-
-        let data = into_u8_slice(from_ref(&data));
+    pub fn push_constants_offset(&mut self, offset: u32, data: &[u8]) -> &mut Self {
         if let Some(push_const) = &self.pipeline.push_constants {
             // Determine the range of the overall pipline push constants which overlap with `data`
             let push_const_end = push_const.offset + push_const.size;
@@ -539,38 +534,11 @@ where
         self
     }
 
-    pub fn push_constants(&mut self, data: impl Sized) -> &mut Self {
-        let data_size = size_of_val(&data);
-
-        // Specify each stage that has a push constant in this region
-        let mut stage_flags = vk::ShaderStageFlags::empty();
-        for push_const in &self.pipeline.push_constants {
-            if (push_const.offset as usize) < data_size {
-                stage_flags |= push_const.stage_flags;
-            }
-        }
-
-        self.push_constants_offset(stage_flags, 0, data)
+    pub fn push_constants(&mut self, data: &[u8]) -> &mut Self {
+        self.push_constants_offset(0, data)
     }
 
-    pub fn push_constants_offset(
-        &mut self,
-        mut stage_flags: vk::ShaderStageFlags,
-        offset: u32,
-        data: impl Sized,
-    ) -> &mut Self {
-        use std::slice::from_ref;
-
-        // Check if the specified stages are a super-set of our actual stages
-        if stage_flags != stage_flags & self.pipeline.stages() {
-            // The user has manually specified too many stages
-            warn!("      unused shader stage flags");
-
-            // Remove extra stages
-            stage_flags &= self.pipeline.stages();
-        }
-
-        let data = into_u8_slice(from_ref(&data));
+    pub fn push_constants_offset(&mut self, offset: u32, data: &[u8]) -> &mut Self {
         for push_const in &self.pipeline.push_constants {
             // Determine the range of the overall pipline push constants which overlap with `data`
             let push_const_end = push_const.offset + push_const.size;

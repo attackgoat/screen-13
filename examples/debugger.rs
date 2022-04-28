@@ -121,21 +121,21 @@ fn main() -> Result<(), screen_13::DisplayError> {
         // set of APIs which panic instead of resulting in errors and is more for simpler use cases
         // like this. (Note that device.new_XX offers the normal functionality - minus only the
         // error results)
-        let compute_pipeline =
-            frame
-                .device
-                .new_compute_pipeline(into_u8_slice(inline_spirv::inline_spirv!(
-                    r#"
-                    #version 460 core
+        let compute_pipeline = frame.device.new_compute_pipeline(
+            inline_spirv::inline_spirv!(
+                r#"
+                #version 460 core
 
-                    layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+                layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
-                    layout(set = 0, binding = 42, rgba8) restrict readonly uniform image2D an_image;
+                layout(set = 0, binding = 42, rgba8) restrict readonly uniform image2D an_image;
 
-                    void main() {/* TODO: 📈...💰! */}
-                    "#,
-                    comp
-                )));
+                void main() {/* TODO: 📈...💰! */}
+                "#,
+                comp
+            )
+            .as_slice(),
+        );
 
         /*
             Case #2:

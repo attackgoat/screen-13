@@ -12,9 +12,11 @@ use {
     std::{cmp::Ordering, collections::HashSet, ffi::CString, thread::panicking},
 };
 
+// TODO: Finally make this into a full struct and offer full features....
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum BlendMode {
     Alpha,
+    PreMultipliedAlpha,
     Replace,
 }
 
@@ -28,6 +30,19 @@ impl BlendMode {
                 color_blend_op: vk::BlendOp::ADD,
                 src_alpha_blend_factor: vk::BlendFactor::SRC_ALPHA,
                 dst_alpha_blend_factor: vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
+                alpha_blend_op: vk::BlendOp::ADD,
+                color_write_mask: vk::ColorComponentFlags::R
+                    | vk::ColorComponentFlags::G
+                    | vk::ColorComponentFlags::B
+                    | vk::ColorComponentFlags::A,
+            },
+            Self::PreMultipliedAlpha => vk::PipelineColorBlendAttachmentState {
+                blend_enable: vk::TRUE,
+                src_color_blend_factor: vk::BlendFactor::SRC_ALPHA,
+                dst_color_blend_factor: vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
+                color_blend_op: vk::BlendOp::ADD,
+                src_alpha_blend_factor: vk::BlendFactor::ONE,
+                dst_alpha_blend_factor: vk::BlendFactor::ONE,
                 alpha_blend_op: vk::BlendOp::ADD,
                 color_write_mask: vk::ColorComponentFlags::R
                     | vk::ColorComponentFlags::G
@@ -408,8 +423,12 @@ where
     }
 }
 
-#[derive(Builder, Clone, Debug, Default, Eq, Hash, PartialEq)]
-#[builder(pattern = "owned")]
+#[derive(Builder, Clone, Debug, Eq, Hash, PartialEq)]
+#[builder(
+    build_fn(private, name = "fallible_build"),
+    derive(Clone, Debug),
+    pattern = "owned"
+)]
 pub struct GraphicPipelineInfo {
     #[builder(default)]
     pub blend: BlendMode,
@@ -444,9 +463,32 @@ impl GraphicPipelineInfo {
     }
 }
 
+// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
+impl GraphicPipelineInfoBuilder {
+    pub fn build(self) -> GraphicPipelineInfo {
+        self.fallible_build()
+            .expect("All required fields set at initialization")
+    }
+}
+
+impl Default for GraphicPipelineInfo {
+    fn default() -> Self {
+        Self {
+            blend: BlendMode::default(),
+            cull_mode: vk::CullModeFlags::BACK,
+            depth_stencil: None,
+            front_face: vk::FrontFace::COUNTER_CLOCKWISE,
+            name: None,
+            polygon_mode: vk::PolygonMode::FILL,
+            samples: SampleCount::X1,
+            two_sided: false,
+        }
+    }
+}
+
 impl From<GraphicPipelineInfoBuilder> for GraphicPipelineInfo {
     fn from(info: GraphicPipelineInfoBuilder) -> Self {
-        info.build().unwrap()
+        info.build()
     }
 }
 

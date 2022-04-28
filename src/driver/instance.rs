@@ -68,6 +68,8 @@ unsafe extern "system" fn vulkan_debug_callback(
             id()
         );
 
+        logger().flush();
+
         park();
     }
 

@@ -1,4 +1,5 @@
 use {
+    bytemuck::cast_slice,
     glam::{vec3, Mat4, Vec3, Vec4},
     inline_spirv::inline_spirv,
     screen_13::prelude_arc::*,
@@ -27,8 +28,8 @@ fn main() -> Result<(), DisplayError> {
     // Static index/vertex data courtesy of the polyhedron-ops library
     let (indices, vertices) = funky_shape_triangle_mesh_buffers();
     let index_count = indices.len() as u32;
-    let indices = into_u8_slice(&indices);
-    let vertices = into_u8_slice(&vertices);
+    let indices = cast_slice(&indices);
+    let vertices = cast_slice(&vertices);
 
     // Pre-define some basic information structs we'll repeatedly use to acquire leased resources
     // (Usually we would do this at the place of use, but for clarity its outside the loop here)
@@ -108,14 +109,16 @@ fn main() -> Result<(), DisplayError> {
             .clear_color_value(0, white)
             .store_color(0, image1)
             .record_subpass(move |subpass| {
-                subpass.push_constants((red, blue));
+                subpass.push_constants_offset(0, &red);
+                subpass.push_constants_offset(4, &blue);
                 subpass.draw(6, 1, 0, 0);
             })
             .store_color(0, image2)
             .record_subpass(move |subpass| {
                 // We updated the constants and which attachment is getting stored, but otherwise
                 // same pipeline config here
-                subpass.push_constants((magenta, green));
+                subpass.push_constants_offset(0, &magenta);
+                subpass.push_constants_offset(4, &green);
                 subpass.draw(6, 1, 0, 0);
             });
 
@@ -145,9 +148,8 @@ fn main() -> Result<(), DisplayError> {
             .store_color(0, image3) // and we declare we're writing the results to image3
             .record_subpass(move |subpass| {
                 subpass
-                    // .push_constants_offset(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT, 0, Mat4::IDENTITY)
-                    // .push_constants_offset(vk::ShaderStageFlags::FRAGMENT, 64, Vec4::ONE)
-                    .push_constants((Mat4::IDENTITY, Vec4::ONE)) // <- These are equivalent ^^
+                    .push_constants_offset(0, cast_slice(&Mat4::IDENTITY.to_cols_array()))
+                    .push_constants_offset(64, cast_slice(&Vec4::ONE.to_array()))
                     .bind_index_buffer(index_buf, vk::IndexType::UINT32)
                     .bind_vertex_buffer(vertex_buf)
                     .draw(index_count, 1, 0, 0);
@@ -203,44 +205,50 @@ fn image_info_2d(width: u32, height: u32) -> ImageInfo {
 }
 
 fn create_fill_quad_linear_gradient_pipeline(device: &Shared<Device>) -> Shared<GraphicPipeline> {
-    let vertex_shader = Shader::new_vertex(into_u8_slice(inline_spirv!(
-        r#"
-        #version 460 core
+    let vertex_shader = Shader::new_vertex(
+        inline_spirv!(
+            r#"
+            #version 460 core
 
-        const vec2 POSITION[6] = vec2[6](
-            vec2(-1, -1), vec2(-1,  1), vec2( 1, -1),
-            vec2( 1,  1), vec2( 1, -1), vec2(-1,  1)
-        );
+            const vec2 POSITION[6] = vec2[6](
+                vec2(-1, -1), vec2(-1,  1), vec2( 1, -1),
+                vec2( 1,  1), vec2( 1, -1), vec2(-1,  1)
+            );
 
-        layout(location = 0) out float vk_Blend;
+            layout(location = 0) out float vk_Blend;
 
-        void main() {
-            gl_Position = vec4(POSITION[gl_VertexIndex], 0, 1);
-            vk_Blend = gl_Position.x * -0.5 + 0.5;
-        }
-        "#,
-        vert
-    )));
+            void main() {
+                gl_Position = vec4(POSITION[gl_VertexIndex], 0, 1);
+                vk_Blend = gl_Position.x * -0.5 + 0.5;
+            }
+            "#,
+            vert
+        )
+        .as_slice(),
+    );
 
-    let fragment_shader = Shader::new_fragment(into_u8_slice(inline_spirv!(
-        r#"
-        #version 460 core
+    let fragment_shader = Shader::new_fragment(
+        inline_spirv!(
+            r#"
+            #version 460 core
 
-        layout(push_constant) uniform PushConstants {
-            layout(offset = 0) vec4 start_color;
-            layout(offset = 16) vec4 end_color;
-        } push_constants;
-        
-        layout(location = 0) in float blend;
+            layout(push_constant) uniform PushConstants {
+                layout(offset = 0) vec4 start_color;
+                layout(offset = 16) vec4 end_color;
+            } push_constants;
+            
+            layout(location = 0) in float blend;
 
-        layout(location = 0) out vec4 vk_Color;
-        
-        void main() {
-            vk_Color = mix(push_constants.start_color, push_constants.end_color, blend);
-        }
-        "#,
-        frag
-    )));
+            layout(location = 0) out vec4 vk_Color;
+            
+            void main() {
+                vk_Color = mix(push_constants.start_color, push_constants.end_color, blend);
+            }
+            "#,
+            frag
+        )
+        .as_slice(),
+    );
 
     Shared::new(
         GraphicPipeline::create(
@@ -254,46 +262,52 @@ fn create_fill_quad_linear_gradient_pipeline(device: &Shared<Device>) -> Shared<
 
 // Oh please somebody PR a really nice shader here
 fn create_draw_funky_shape_deferred_pipeline(device: &Shared<Device>) -> Shared<GraphicPipeline> {
-    let vertex_shader = Shader::new_vertex(into_u8_slice(inline_spirv!(
-        r#"
-        #version 460 core
-        
-        layout(push_constant) uniform PushConstants {
-            layout(offset = 0) mat4 transform;
-        } push_constants;
-        
-        layout(location = 0) in vec3 position;
-        layout(location = 1) in vec3 normal;
-        
-        layout(location = 0) out vec3 vk_Normal;
-        
-        void main() {
-            gl_Position = push_constants.transform * vec4(position, 1);
-            vk_Normal = normal;
-        }
-        "#,
-        vert
-    )));
+    let vertex_shader = Shader::new_vertex(
+        inline_spirv!(
+            r#"
+            #version 460 core
+            
+            layout(push_constant) uniform PushConstants {
+                layout(offset = 0) mat4 transform;
+            } push_constants;
+            
+            layout(location = 0) in vec3 position;
+            layout(location = 1) in vec3 normal;
+            
+            layout(location = 0) out vec3 vk_Normal;
+            
+            void main() {
+                gl_Position = push_constants.transform * vec4(position, 1);
+                vk_Normal = normal;
+            }
+            "#,
+            vert
+        )
+        .as_slice(),
+    );
 
-    let fragment_shader = Shader::new_fragment(into_u8_slice(inline_spirv!(
-        r#"
-        #version 460 core
+    let fragment_shader = Shader::new_fragment(
+        inline_spirv!(
+            r#"
+            #version 460 core
 
-        layout(push_constant) uniform PushConstants {
-            layout(offset = 0) mat4 transform;
-            layout(offset = 64) vec4 coolness_factor;
-        } push_constants;
-        
-        layout(location = 0) in vec3 normal;
+            layout(push_constant) uniform PushConstants {
+                layout(offset = 0) mat4 transform;
+                layout(offset = 64) vec4 coolness_factor;
+            } push_constants;
+            
+            layout(location = 0) in vec3 normal;
 
-        layout(location = 0) out vec4 vk_Color;
-        
-        void main() {
-            vk_Color = push_constants.coolness_factor * vec4(normal, 1);
-        }
-        "#,
-        frag
-    )));
+            layout(location = 0) out vec4 vk_Color;
+            
+            void main() {
+                vk_Color = push_constants.coolness_factor * vec4(normal, 1);
+            }
+            "#,
+            frag
+        )
+        .as_slice(),
+    );
 
     Shared::new(
         GraphicPipeline::create(
@@ -308,7 +322,7 @@ fn create_draw_funky_shape_deferred_pipeline(device: &Shared<Device>) -> Shared<
 }
 
 /// Returns index buffer and position/normal buffer (polyhedron_ops you are 🥇🏆🥂💯)
-fn funky_shape_triangle_mesh_buffers() -> (Vec<u32>, Vec<(Vec3, Vec3)>) {
+fn funky_shape_triangle_mesh_buffers() -> (Vec<u32>, Vec<[f32; 6]>) {
     let (indices, positions, normals) = polyhedron_ops::Polyhedron::dodecahedron()
         .chamfer(None, true)
         .propeller(None, true)
@@ -320,10 +334,9 @@ fn funky_shape_triangle_mesh_buffers() -> (Vec<u32>, Vec<(Vec3, Vec3)>) {
         .into_iter()
         .zip(normals.into_iter())
         .map(|(position, normal)| {
-            (
-                vec3(position.x, position.y, position.z),
-                vec3(normal.x, normal.y, normal.z),
-            )
+            [
+                position.x, position.y, position.z, normal.x, normal.y, normal.z,
+            ]
         })
         .collect();
 

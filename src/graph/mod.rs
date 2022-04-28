@@ -790,7 +790,7 @@ where
         let regions = regions.into();
         let src_access_range = buffer_image_copy_subresource(&regions);
 
-        self.begin_pass("copy image")
+        self.begin_pass("copy buffer to image")
             .access_node_subrange(src_node, AccessType::TransferRead, src_access_range)
             .access_node_subrange(dst_node, AccessType::TransferWrite, dst_access_range)
             .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {

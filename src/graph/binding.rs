@@ -256,9 +256,10 @@ macro_rules! bind {
 
                     // We will return an existing node, if possible
                     // TODO: Could store a sorted list of these shared pointers to avoid the O(N)
+                    let item = **self.item;
                     for (idx, existing_binding) in graph.bindings.iter_mut().enumerate() {
                         if let Some((existing_binding, is_bound)) = existing_binding.[<as_ $name:snake _mut>]() {
-                            if existing_binding.item == self.item {
+                            if **existing_binding.item == item {
                                 *is_bound = true;
 
                                 return [<$name Node>]::new(idx);
@@ -321,9 +322,10 @@ macro_rules! bind_lease {
 
                     // We will return an existing node, if possible
                     // TODO: Could store a sorted list of these shared pointers to avoid the O(N)
+                    let item = **self.item;
                     for (idx, existing_binding) in graph.bindings.iter_mut().enumerate() {
-                        if let Some((existing_binding, is_bound)) = existing_binding.[<as_ $name:snake _mut>]() {
-                            if existing_binding.item == self.item {
+                        if let Some((existing_binding, is_bound)) = existing_binding.[<as_ $name:snake _lease_mut>]() {
+                            if **existing_binding.item == item {
                                 *is_bound = true;
 
                                 return [<$name LeaseNode>]::new(idx);

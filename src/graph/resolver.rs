@@ -18,7 +18,7 @@ use {
     },
     archery::SharedPointerKind,
     ash::vk,
-    log::{debug, trace, warn},
+    log::{debug, trace},
     std::{
         collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
         iter::repeat,
@@ -418,10 +418,10 @@ where
     fn dependent_passes(
         &self,
         node_idx: usize,
-        max_pass_idx: usize,
+        end_pass_idx: usize,
     ) -> impl Iterator<Item = usize> + '_ {
         // TODO: We could store the nodes of a pass so we don't need to do these horrible things
-        self.graph.passes.as_slice()[0..max_pass_idx]
+        self.graph.passes.as_slice()[0..end_pass_idx]
             .iter()
             .enumerate()
             .rev()
@@ -464,12 +464,12 @@ where
     fn interdependent_passes(
         &self,
         pass_idx: usize,
-        max_pass_idx: usize,
+        end_pass_idx: usize,
     ) -> impl Iterator<Item = usize> + '_ {
         let mut already_seen = BTreeSet::new();
         already_seen.insert(pass_idx);
         self.dependent_nodes(pass_idx)
-            .flat_map(move |node_idx| self.dependent_passes(node_idx, max_pass_idx))
+            .flat_map(move |node_idx| self.dependent_passes(node_idx, end_pass_idx))
             .filter(move |pass_idx| already_seen.insert(*pass_idx))
     }
 
@@ -1682,10 +1682,7 @@ where
             .first_node_access_pass_index(node)
             .unwrap_or_default()
             .min(self.graph.passes.len());
-
-        if end_pass_idx > 0 {
-            self.record_node_passes(cache, cmd_buf, node_idx, end_pass_idx)?;
-        }
+        self.record_node_passes(cache, cmd_buf, node_idx, end_pass_idx)?;
 
         Ok(())
     }
@@ -1705,9 +1702,7 @@ where
         assert!(self.graph.bindings.get(node_idx).is_some());
 
         let end_pass_idx = self.graph.passes.len();
-        if end_pass_idx > 0 {
-            self.record_node_passes(cache, cmd_buf, node_idx, end_pass_idx)?;
-        }
+        self.record_node_passes(cache, cmd_buf, node_idx, end_pass_idx)?;
 
         Ok(())
     }
@@ -1732,10 +1727,14 @@ where
         mut schedule: &mut [usize],
         end_pass_idx: usize,
     ) -> Result<(), DriverError> {
+        if end_pass_idx == 0 {
+            return Ok(());
+        }
+
         // Print some handy details or hit a breakpoint if you set the flag
         #[cfg(debug_assertions)]
         if self.graph.debug {
-            log::info!("Input {:#?}", self.graph);
+            debug!("resolving the following graph:\n\n{:#?}\n\n", self.graph);
         }
 
         // Optimize the schedule; leasing the required stuff it needs
@@ -1964,24 +1963,39 @@ where
             .collect::<BTreeSet<_>>();
         let mut unresolved = VecDeque::new();
 
-        // Schedule the first set of passes for the node we're trying to resolve
-        for pass_idx in self.dependent_passes(node_idx, self.graph.passes.len()) {
-            if pass_idx < end_pass_idx {
-                schedule.push(pass_idx);
-            }
+        //trace!("scheduling node {node_idx}");
 
+        // Schedule the first set of passes for the node we're trying to resolve
+        for pass_idx in self.dependent_passes(node_idx, end_pass_idx) {
+            // trace!(
+            //     "  pass [{pass_idx}: {}] is dependent",
+            //     self.graph.passes[pass_idx].name
+            // );
+
+            schedule.push(pass_idx);
             unscheduled.remove(&pass_idx);
             for node_idx in self.dependent_nodes(pass_idx) {
+                // trace!("    node {node_idx} is dependent");
+
                 unresolved.push_back((node_idx, pass_idx));
             }
         }
 
+        //trace!("secondary passes below");
+
         // Now schedule all nodes that are required, going through the tree to find them
-        while let Some((node_idx, max_pass_idx)) = unresolved.pop_front() {
-            for pass_idx in self.dependent_passes(node_idx, max_pass_idx) {
+        while let Some((node_idx, end_pass_idx)) = unresolved.pop_front() {
+            for pass_idx in self.dependent_passes(node_idx, end_pass_idx) {
+                // trace!(
+                //     "  pass [{pass_idx}: {}] is dependent",
+                //     self.graph.passes[pass_idx].name
+                // );
+
                 if unscheduled.remove(&pass_idx) {
                     schedule.push(pass_idx);
                     for node_idx in self.dependent_nodes(pass_idx) {
+                        // trace!("    node {node_idx} is dependent");
+
                         unresolved.push_back((node_idx, pass_idx));
                     }
                 }
@@ -2031,10 +2045,10 @@ where
             }
         }
 
-        if schedule.is_empty() && unscheduled.is_empty() && end_pass_idx < self.graph.passes.len() {
-            // This may be totally normal in some situations, not sure if this will stay
-            warn!("Unable to schedule any render passes");
-        }
+        // if schedule.is_empty() && unscheduled.is_empty() && end_pass_idx < self.graph.passes.len() {
+        //     // This may be totally normal in some situations, not sure if this will stay
+        //     warn!("Unable to schedule any render passes");
+        // }
 
         schedule
     }

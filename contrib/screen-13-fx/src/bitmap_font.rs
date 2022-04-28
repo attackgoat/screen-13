@@ -1,6 +1,7 @@
 use {
     anyhow::Context,
     bmfont::BMFont,
+    bytemuck::{cast, cast_slice},
     glam::{vec3, Mat4},
     inline_spirv::include_spirv,
     screen_13::prelude_all::*,
@@ -8,13 +9,13 @@ use {
 
 type Color = [u8; 4];
 
-fn color_to_unorm(color: Color) -> [f32; 4] {
-    [
-        color[0] as f32 / u8::MAX as f32,
-        color[1] as f32 / u8::MAX as f32,
-        color[2] as f32 / u8::MAX as f32,
-        color[3] as f32 / u8::MAX as f32,
-    ]
+fn color_to_unorm(color: Color) -> [u8; 16] {
+    cast([
+        (color[0] as f32 / u8::MAX as f32).to_ne_bytes(),
+        (color[1] as f32 / u8::MAX as f32).to_ne_bytes(),
+        (color[2] as f32 / u8::MAX as f32).to_ne_bytes(),
+        (color[3] as f32 / u8::MAX as f32).to_ne_bytes(),
+    ])
 }
 
 /// Holds a decoded bitmap Font.
@@ -227,15 +228,11 @@ where
             }
 
             subpass
-                .push_constants((
-                    transform,
-                    1.0 / image_info.width as f32,
-                    1.0 / image_info.height as f32,
-                    0u32, // Padding
-                    0u32, // Padding
-                    color_to_unorm(color.solid()),
-                    color_to_unorm(color.outline()),
-                ))
+                .push_constants(cast_slice(&transform.to_cols_array()))
+                .push_constants_offset(64, &(1.0 / image_info.width as f32).to_ne_bytes())
+                .push_constants_offset(68, &(1.0 / image_info.height as f32).to_ne_bytes())
+                .push_constants_offset(80, &color_to_unorm(color.solid()))
+                .push_constants_offset(96, &color_to_unorm(color.outline()))
                 .bind_vertex_buffer(vertex_buf)
                 .draw(vertex_count, 1, 0, 0);
         });

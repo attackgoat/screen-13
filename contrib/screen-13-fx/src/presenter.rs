@@ -1,5 +1,6 @@
 use {
     glam::{vec3, Mat4},
+    bytemuck::cast_slice,
     inline_spirv::include_spirv,
     screen_13::prelude_all::*,
 };
@@ -132,7 +133,7 @@ where
             .store_color(0, swapchain)
             .record_subpass(move |subpass| {
                 // Draw a quad with implicit vertices (no buffer)
-                subpass.push_constants(transform);
+                subpass.push_constants(cast_slice(&transform.to_cols_array()));
                 subpass.draw(6, 1, 0, 0);
             });
     }

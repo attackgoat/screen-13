@@ -115,6 +115,8 @@ where
         resolver.record_node_dependencies(&mut self.cache, cmd_buf, swapchain_node)?;
 
         unsafe {
+            trace!("submitting swapchain dependencies");
+
             // Record up to but not including the swapchain work
             Self::submit(
                 cmd_buf,
@@ -165,6 +167,8 @@ where
         );
 
         unsafe {
+            trace!("submitting swapchain passes");
+
             Self::submit(
                 cmd_buf,
                 vk::SubmitInfo::builder()
@@ -197,6 +201,8 @@ where
             resolver.record_unscheduled_passes(&mut self.cache, cmd_buf)?;
 
             unsafe {
+                trace!("submitting unscheduled passes");
+
                 Self::submit(
                     cmd_buf,
                     vk::SubmitInfo::builder().command_buffers(from_ref(cmd_buf)),
@@ -206,7 +212,7 @@ where
 
         let elapsed = Instant::now() - started - wait_elapsed;
         trace!(
-            "command buffers: {} μs, delay: {} μs",
+            "🔜🔜🔜 vkQueueSubmit took {} μs (delay {} μs)",
             elapsed.as_micros(),
             wait_elapsed.as_micros()
         );

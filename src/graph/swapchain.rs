@@ -59,8 +59,6 @@ where
         // We will return a new node
         let res = SwapchainImageNode::new(graph.bindings.len());
 
-        //trace!("Node {}: {:?}", res.idx, &self);
-
         graph.bindings.push(Binding::SwapchainImage(self, true));
 
         res

@@ -72,6 +72,7 @@ where
                             | vk::ImageUsageFlags::TRANSFER_SRC
                     } else {
                         vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST
+                        | vk::ImageUsageFlags::TRANSFER_SRC
                     },
                     flags: vk::ImageCreateFlags::MUTABLE_FORMAT,
                     fmt: match format {
@@ -204,7 +205,7 @@ where
                     .write_descriptor(1, temp_image)
                     .record_compute(move |compute| {
                         compute
-                            .push_constants(pixel_buf_stride >> 2)
+                            .push_constants(&(pixel_buf_stride >> 2).to_ne_bytes())
                             .dispatch(dispatch_x, dispatch_y, 1);
                     })
                     .submit_pass()

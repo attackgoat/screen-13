@@ -88,6 +88,8 @@ where
         while !will_exit {
             puffin::GlobalProfiler::lock().new_frame();
 
+            trace!("🟥🟩🟦 Event::RedrawRequested");
+
             self.event_loop.run_return(|event, _, control_flow| {
                 match event {
                     Event::WindowEvent {
@@ -141,9 +143,9 @@ where
             let elapsed = Instant::now() - now;
 
             trace!(
-                "frame complete ({}% load, {} μs)",
+                "✅✅✅ render graph construction: {} μs ({}% load)",
+                elapsed.as_micros(),
                 ((elapsed.as_secs_f32() / refresh_rate) * 100.0) as usize,
-                elapsed.as_micros()
             );
 
             self.display.present_image(render_graph, swapchain)?;

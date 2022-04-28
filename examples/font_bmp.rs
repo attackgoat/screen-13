@@ -125,11 +125,9 @@ fn main() -> anyhow::Result<()> {
             .bind_pipeline(&smoke_pipeline)
             .write_descriptor(0, image_node)
             .record_compute(move |compute| {
-                compute.push_constants(elapsed_time.as_secs_f32()).dispatch(
-                    frame.width,
-                    frame.height,
-                    1,
-                );
+                compute
+                    .push_constants(&elapsed_time.as_secs_f32().to_ne_bytes())
+                    .dispatch(frame.width, frame.height, 1);
             });
 
         // Print some text onto the image

@@ -1,11 +1,7 @@
-use crate::into_u8_slice;
-
-use super::shader::ShaderCode;
-
 use {
     super::{
-        DescriptorBindingMap, Device, DriverError, PipelineDescriptorInfo, Shader,
-        SpecializationInfo,
+        shader::ShaderCode, DescriptorBindingMap, Device, DriverError, PipelineDescriptorInfo,
+        Shader, SpecializationInfo,
     },
     crate::ptr::Shared,
     archery::SharedPointerKind,
@@ -181,15 +177,12 @@ impl ComputePipelineInfo {
     }
 }
 
-impl<'a> From<&'a [u8]> for ComputePipelineInfo {
-    fn from(slice: &'a [u8]) -> Self {
-        Self::new(slice).build().unwrap()
-    }
-}
-
-impl<'a> From<&'a [u32]> for ComputePipelineInfo {
-    fn from(slice: &'a [u32]) -> Self {
-        Self::new(into_u8_slice(slice)).build().unwrap()
+impl<S> From<S> for ComputePipelineInfo
+where
+    S: ShaderCode,
+{
+    fn from(spirv: S) -> Self {
+        Self::new(spirv).build().unwrap()
     }
 }
 

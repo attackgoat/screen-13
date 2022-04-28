@@ -17,6 +17,7 @@ pub mod prelude_rc {
 pub use imgui::{self, Condition, Ui};
 
 use {
+    bytemuck::cast_slice,
     imgui::{Context, DrawCmd, DrawCmdParams},
     imgui_winit_support::{HiDpiMode, WinitPlatform},
     inline_spirv::include_spirv,
@@ -48,7 +49,7 @@ where
             GraphicPipeline::create(
                 device,
                 GraphicPipelineInfo::new()
-                    .blend(BlendMode::Alpha)
+                    .blend(BlendMode::PreMultipliedAlpha)
                     .cull_mode(vk::CullModeFlags::NONE),
                 [
                     Shader::new_vertex(include_spirv!("res/shader/imgui.vert", vert).as_slice()),
@@ -112,7 +113,8 @@ where
                     window.inner_size().height,
                     vk::ImageUsageFlags::COLOR_ATTACHMENT
                         | vk::ImageUsageFlags::SAMPLED
-                        | vk::ImageUsageFlags::STORAGE,
+                        | vk::ImageUsageFlags::STORAGE
+                        | vk::ImageUsageFlags::TRANSFER_SRC, // TODO: Make TRANSFER_SRC an "extra flags"
                 ))
                 .unwrap(),
         );
@@ -121,8 +123,7 @@ where
         let framebuffer_scale = draw_data.framebuffer_scale;
 
         for draw_list in draw_data.draw_lists() {
-            let indices_u16 = draw_list.idx_buffer();
-            let indices = into_u8_slice(indices_u16);
+            let indices = cast_slice(draw_list.idx_buffer());
             let mut index_buf = self
                 .pool
                 .lease(BufferInfo {
@@ -139,21 +140,25 @@ where
 
             let index_buf = render_graph.bind_node(index_buf);
 
-            let vertices_slice = draw_list.vtx_buffer();
-            let vertices = into_u8_slice(vertices_slice);
-
+            let vertices = draw_list.vtx_buffer();
+            let vertex_buf_len = vertices.len() * 20;
             let mut vertex_buf = self
                 .pool
                 .lease(BufferInfo {
-                    size: vertices.len() as _,
+                    size: vertex_buf_len as _,
                     usage: vk::BufferUsageFlags::VERTEX_BUFFER,
                     can_map: true,
                 })
                 .unwrap();
 
             {
-                Buffer::mapped_slice_mut(vertex_buf.get_mut().unwrap())[0..vertices.len()]
-                    .copy_from_slice(vertices);
+                let vertex_buf = Buffer::mapped_slice_mut(vertex_buf.get_mut().unwrap());
+                for (idx, vertex) in vertices.iter().enumerate() {
+                    let offset = idx * 20;
+                    vertex_buf[offset..offset + 8].copy_from_slice(cast_slice(&vertex.pos));
+                    vertex_buf[offset + 8..offset + 16].copy_from_slice(cast_slice(&vertex.uv));
+                    vertex_buf[offset + 16..offset + 20].copy_from_slice(&vertex.col);
+                }
             }
 
             let vertex_buf = render_graph.bind_node(vertex_buf);
@@ -190,12 +195,8 @@ where
                 .store_color(0, image)
                 .record_subpass(move |subpass| {
                     subpass
-                        .push_constants([
-                            window_width,
-                            window_height,
-                            f32::NAN, // Required padding
-                            f32::NAN, // Required padding
-                        ])
+                        .push_constants_offset(0, &window_width.to_ne_bytes())
+                        .push_constants_offset(4, &window_height.to_ne_bytes())
                         .bind_index_buffer(index_buf, vk::IndexType::UINT16)
                         .bind_vertex_buffer(vertex_buf);
 
