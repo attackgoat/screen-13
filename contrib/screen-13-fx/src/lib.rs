@@ -32,6 +32,6 @@ mod transition;
 pub use self::{
     bitmap_font::{BitmapFont, BitmapGlyphColor},
     image_loader::{ImageFormat, ImageLoader},
-    transition::{Transition, TransitionPipeline},
     presenter::{ComputePresenter, GraphicPresenter},
+    transition::{Transition, TransitionPipeline},
 };

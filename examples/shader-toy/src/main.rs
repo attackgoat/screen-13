@@ -34,6 +34,7 @@ mod res {
 
 use {
     anyhow::Context,
+    bytemuck::{bytes_of, Pod, Zeroable},
     pak::{buf::PakBuf, Pak},
     screen_13::prelude_arc::*,
     screen_13_fx::*,
@@ -210,6 +211,25 @@ fn main() -> anyhow::Result<()> {
                 channel_resolution: [f32; 16],
             }
 
+            unsafe impl Pod for PushConstants {}
+
+            unsafe impl Zeroable for PushConstants {
+                fn zeroed() -> Self {
+                    Self {
+                        resolution: [0f32; 3],
+                        _pad_1: 0u32,
+                        date: [0f32; 4],
+                        mouse: [0f32; 4],
+                        time: 0f32,
+                        time_delta: 0f32,
+                        frame: 0i32,
+                        sample_rate: 0f32,
+                        channel_time: [0f32; 4],
+                        channel_resolution: [0f32; 16],
+                    }
+                }
+            }
+
             // Each pipeline gets the same constant data
             let push_consts = PushConstants {
                 resolution: [frame.width as f32, frame.height as _, 1.0],
@@ -276,7 +296,7 @@ fn main() -> anyhow::Result<()> {
                 .read_descriptor(3, blank_image)
                 .store_color(0, output)
                 .record_subpass(move |subpass| {
-                    subpass.push_constants(push_consts);
+                    subpass.push_constants(bytes_of(&push_consts));
                     subpass.draw(6, 1, 0, 0);
                 });
 
@@ -288,7 +308,7 @@ fn main() -> anyhow::Result<()> {
                 .read_descriptor(0, output)
                 .store_color(0, input)
                 .record_subpass(move |subpass| {
-                    subpass.push_constants(push_consts);
+                    subpass.push_constants(bytes_of(&push_consts));
                     subpass.draw(6, 1, 0, 0);
                 });
 

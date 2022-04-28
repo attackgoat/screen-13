@@ -53,7 +53,7 @@ render_graph
     .clear_color(0)
     .store_color(0, also_an_image)
     .record_subpass(move |subpass| {
-        subpass.push_constants(push_consts);
+        subpass.push_constants(some_u8_slice);
         subpass.draw(6, 1, 0, 0);
     });
 ```

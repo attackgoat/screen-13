@@ -71,8 +71,9 @@ where
                             | vk::ImageUsageFlags::TRANSFER_DST
                             | vk::ImageUsageFlags::TRANSFER_SRC
                     } else {
-                        vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST
-                        | vk::ImageUsageFlags::TRANSFER_SRC
+                        vk::ImageUsageFlags::SAMPLED
+                            | vk::ImageUsageFlags::TRANSFER_DST
+                            | vk::ImageUsageFlags::TRANSFER_SRC
                     },
                     flags: vk::ImageCreateFlags::MUTABLE_FORMAT,
                     fmt: match format {

@@ -1,6 +1,6 @@
 use {
     bytemuck::cast_slice,
-    glam::{vec3, Mat4, Vec3, Vec4},
+    glam::{Mat4, Vec4},
     inline_spirv::inline_spirv,
     screen_13::prelude_arc::*,
 };
