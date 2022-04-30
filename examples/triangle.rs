@@ -4,7 +4,7 @@ use {bytemuck::cast_slice, inline_spirv::inline_spirv, screen_13::prelude_arc::*
 fn main() -> Result<(), DisplayError> {
     pretty_env_logger::init();
 
-    let screen_13 = EventLoop::new().debug(true).build()?;
+    let screen_13 = EventLoop::new().build()?;
     let mut cache = HashPool::new(&screen_13.device);
 
     let triangle_pipeline = screen_13.device.new_graphic_pipeline(

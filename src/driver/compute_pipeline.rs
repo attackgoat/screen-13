@@ -152,7 +152,7 @@ pub struct ComputePipelineInfo {
     pub name: Option<String>,
 
     /// Data about Vulkan specialization constants.
-    #[builder(default)]
+    #[builder(default, setter(strip_option))]
     pub specialization_info: Option<SpecializationInfo>,
 
     /// Shader code.
