@@ -18,7 +18,7 @@ use {
     },
     archery::SharedPointerKind,
     ash::vk,
-    log::{debug, info, trace, warn},
+    log::{debug, trace},
     std::{
         cell::RefCell,
         collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
@@ -2384,11 +2384,11 @@ where
             // NOTE: We assign the below pointers after the above insertions so they remain stable!
 
             descriptors.extend(buffer_writes.drain(..).map(|IndexWrite { idx, mut write }| unsafe {
-                write.p_buffer_info = buffer_infos.as_ptr().offset(idx as _);
+                write.p_buffer_info = buffer_infos.as_ptr().add(idx);
                 write
             }));
             descriptors.extend(image_writes.drain(..).map(|IndexWrite { idx, mut write }| unsafe {
-                write.p_image_info = image_infos.as_ptr().offset(idx as _);
+                write.p_image_info = image_infos.as_ptr().add(idx);
                 write
             }));
 

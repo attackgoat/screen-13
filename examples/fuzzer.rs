@@ -105,16 +105,16 @@ fn record_compute_array_bind(frame: &mut screen_13::FrameContext<ArcK>, cache: &
     let images = [
         frame
             .render_graph
-            .bind_node(cache.lease(image_info.clone()).unwrap()),
+            .bind_node(cache.lease(image_info).unwrap()),
         frame
             .render_graph
-            .bind_node(cache.lease(image_info.clone()).unwrap()),
+            .bind_node(cache.lease(image_info).unwrap()),
         frame
             .render_graph
-            .bind_node(cache.lease(image_info.clone()).unwrap()),
+            .bind_node(cache.lease(image_info).unwrap()),
         frame
             .render_graph
-            .bind_node(cache.lease(image_info.clone()).unwrap()),
+            .bind_node(cache.lease(image_info).unwrap()),
         frame
             .render_graph
             .bind_node(cache.lease(image_info).unwrap()),
