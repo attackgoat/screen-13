@@ -1754,7 +1754,7 @@ where
                 .exec_descriptor_sets
                 .is_empty()
             {
-                self.write_descriptor_sets(cmd_buf, pass, pass_idx);
+                self.write_descriptor_sets(cmd_buf, pass, pass_idx)?;
             }
 
             Self::record_execution_barriers("  ", cmd_buf, &mut self.graph.bindings, pass, 0);
