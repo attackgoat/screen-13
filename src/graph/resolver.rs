@@ -2165,19 +2165,34 @@ where
             static WRITES: RefCell<Writes> = Default::default();
         }
 
+        struct IndexWrite {
+            idx: usize,
+            write: vk::WriteDescriptorSet,
+        }
+
         #[derive(Default)]
         struct Writes {
-            buffers: Vec<vk::DescriptorBufferInfo>,
+            buffer_infos: Vec<vk::DescriptorBufferInfo>,
+            buffer_writes: Vec<IndexWrite>,
             descriptors: Vec<vk::WriteDescriptorSet>,
-            images: Vec<vk::DescriptorImageInfo>,
+            image_infos: Vec<vk::DescriptorImageInfo>,
+            image_writes: Vec<IndexWrite>,
         }
 
         WRITES.with(|writes| {
             // Initialize TLS from a previous call
-            let mut writes = writes.borrow_mut();
-            writes.buffers.clear();
-            writes.descriptors.clear();
-            writes.images.clear();
+            let Writes {
+                buffer_infos,
+                buffer_writes,
+                descriptors,
+                image_infos,
+                image_writes,
+            } = &mut *writes.borrow_mut();
+            buffer_infos.clear();
+            buffer_writes.clear();
+            descriptors.clear();
+            image_infos.clear();
+            image_writes.clear();
 
             let descriptor_sets = &self.physical_passes[pass_idx].exec_descriptor_sets;
             for (exec_idx, exec, pipeline) in pass
@@ -2195,13 +2210,13 @@ where
 
                 // Write the manually bound things (access, read, and write functions)
                 for (descriptor, (node_idx, view_info)) in exec.bindings.iter() {
-                    let (descriptor_set_idx, binding_idx, binding_offset) = descriptor.into_tuple();
+                    let (descriptor_set_idx, dst_binding, binding_offset) = descriptor.into_tuple();
                     let (descriptor_info, _) = *pipeline
                         .descriptor_bindings()
-                        .get(&DescriptorBinding(descriptor_set_idx, binding_idx))
-                        .unwrap_or_else(|| panic!("descriptor {descriptor_set_idx}.{binding_idx}[{binding_offset}] specified in recorded execution of pass \"{}\" was not discovered through shader reflection", &pass.name));
-                    let descriptor_ty = descriptor_info.into();
-                    let mut write = vk::WriteDescriptorSet::default();
+                        .get(&DescriptorBinding(descriptor_set_idx, dst_binding))
+                        .unwrap_or_else(|| panic!("descriptor {descriptor_set_idx}.{dst_binding}[{binding_offset}] specified in recorded execution of pass \"{}\" was not discovered through shader reflection", &pass.name));
+                    let descriptor_count = descriptor_info.binding_count();
+                    let descriptor_type = descriptor_info.into();
                     let bound_node = &self.graph.bindings[*node_idx];
                     if let Some(image) = bound_node.as_driver_image() {
                         if let Some(view_info) = view_info {
@@ -2214,7 +2229,7 @@ where
 
                             let sampler = descriptor_info.sampler().unwrap_or_default();
                             let image_view = Image::view_ref(image, image_view_info)?;
-                            let image_layout = match descriptor_ty {
+                            let image_layout = match descriptor_type {
                                 vk::DescriptorType::COMBINED_IMAGE_SAMPLER => {
                                     if image_view_info.aspect_mask.contains(
                                         vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL,
@@ -2238,28 +2253,25 @@ where
                                 _ => unimplemented!(),
                             };
 
-                            info!(
-                                  "{}.{}[{}] layout={:?} view={:?} sampler={:?}",
-                                descriptor_set_idx,
-                                binding_idx,
-                                binding_offset,
-                                image_layout,
-                                image_view,
-                                sampler
-                            );
+                            if binding_offset == 0 {
+                                image_writes.push(IndexWrite {
+                                    idx: image_infos.len(),
+                                    write: vk::WriteDescriptorSet {
+                                            dst_set: *descriptor_sets[descriptor_set_idx as usize],
+                                            dst_binding,
+                                            descriptor_type,
+                                            descriptor_count,
+                                            ..Default::default()
+                                        },
+                                    }
+                                );
+                            }
 
-                            let image_idx = writes.images.len();
-                            writes.images.push(vk::DescriptorImageInfo {
+                            image_infos.push(vk::DescriptorImageInfo {
                                 image_layout,
                                 image_view,
                                 sampler,
                             });
-
-                            if binding_offset > 0 {
-                                continue;
-                            }
-
-                            write.p_image_info = unsafe { writes.images.as_ptr().offset(image_idx as _) };
                         } else {
                             // Coming very soon!
                             unimplemented!();
@@ -2268,16 +2280,25 @@ where
                         if let Some(view_info) = view_info {
                             let buffer_view_info = view_info.as_buffer().unwrap();
 
-                            // trace!("BVI: {}..{}", buffer_view_info.start, buffer_view_info.end);
+                            if binding_offset == 0 {
+                                buffer_writes.push(IndexWrite {
+                                    idx: buffer_infos.len(),
+                                    write: vk::WriteDescriptorSet {
+                                            dst_set: *descriptor_sets[descriptor_set_idx as usize],
+                                            dst_binding,
+                                            descriptor_type,
+                                            descriptor_count,
+                                            ..Default::default()
+                                        },
+                                    }
+                                );
+                            }
 
-                            let buffer_idx = writes.buffers.len();
-                            writes.buffers.push(vk::DescriptorBufferInfo {
+                            buffer_infos.push(vk::DescriptorBufferInfo {
                                 buffer: **buffer,
                                 offset: buffer_view_info.start,
                                 range: buffer_view_info.end - buffer_view_info.start,
                             });
-
-                            write.p_buffer_info = unsafe { writes.buffers.as_ptr().offset(buffer_idx as _) };
                         } else {
                             // Coming very soon!
                             unimplemented!();
@@ -2286,23 +2307,12 @@ where
                         // Coming very soon!
                         unimplemented!();
                     }
-
-                    warn!("  write_descriptor_sets {descriptor_set_idx}.{binding_idx}[{binding_offset}] = {descriptor_ty:?}{}", descriptor_info.binding_count());
-
-                    write.dst_set = *descriptor_sets[descriptor_set_idx as usize];
-                    write.dst_binding = binding_idx;
-                    write.dst_array_element = binding_offset;
-                    write.descriptor_type = descriptor_ty;
-                    write.descriptor_count = descriptor_info.binding_count();
-                    writes.descriptors.push(
-                        write
-                    );
                 }
 
                 // Write graphic render pass input attachments (they're automatic)
                 if exec_idx > 0 && pipeline.is_graphic() {
                     let pipeline = pipeline.unwrap_graphic();
-                    for (&DescriptorBinding(descriptor_set_idx, binding_idx), (descriptor_info, _)) in
+                    for (&DescriptorBinding(descriptor_set_idx, dst_binding), (descriptor_info, _)) in
                         &pipeline.descriptor_bindings
                     {
                         if let &DescriptorInfo::InputAttachment(_, attachment) = descriptor_info {
@@ -2345,8 +2355,19 @@ where
                             let image_view = Image::view_ref(image, image_view_info)?;
                             let sampler = descriptor_info.sampler().unwrap_or_else(vk::Sampler::null);
 
-                            let image_idx = writes.images.len();
-                            writes.images.push(vk::DescriptorImageInfo {
+                            image_writes.push(IndexWrite {
+                                idx: image_infos.len(),
+                                write: vk::WriteDescriptorSet {
+                                        dst_set: *descriptor_sets[descriptor_set_idx as usize],
+                                        dst_binding,
+                                        descriptor_type: vk::DescriptorType::INPUT_ATTACHMENT,
+                                        descriptor_count: 1,
+                                        ..Default::default()
+                                    },
+                                }
+                            );
+
+                            image_infos.push(vk::DescriptorImageInfo {
                                 image_layout: Self::attachment_layout(
                                     attachment.aspect_mask,
                                     is_random_access,
@@ -2355,28 +2376,29 @@ where
                                 image_view,
                                 sampler,
                             });
-
-                            let mut write = vk::WriteDescriptorSet::default();
-                            write.dst_set = *descriptor_sets[descriptor_set_idx as usize];
-                            write.dst_binding = binding_idx;
-                            write.descriptor_type = vk::DescriptorType::INPUT_ATTACHMENT;
-                            write.descriptor_count = 1;
-                            write.p_image_info = unsafe { writes.images.as_ptr().offset(image_idx as _) };
-                            writes.descriptors.push(
-                                write
-                            );
                         }
                     }
                 }
             }
 
-            if !writes.descriptors.is_empty() {
-                trace!("  writing {} descriptors ({} buffers, {} images)", writes.descriptors.len(), writes.buffers.len(), writes.images.len());
+            // NOTE: We assign the below pointers after the above insertions so they remain stable!
+
+            descriptors.extend(buffer_writes.drain(..).map(|IndexWrite { idx, mut write }| unsafe {
+                write.p_buffer_info = buffer_infos.as_ptr().offset(idx as _);
+                write
+            }));
+            descriptors.extend(image_writes.drain(..).map(|IndexWrite { idx, mut write }| unsafe {
+                write.p_image_info = image_infos.as_ptr().offset(idx as _);
+                write
+            }));
+
+            if !descriptors.is_empty() {
+                trace!("  writing {} descriptors ({} buffers, {} images)", descriptors.len(), buffer_infos.len(), image_infos.len());
 
                 unsafe {
                     cmd_buf
                         .device
-                        .update_descriptor_sets(writes.descriptors.as_slice(), &[]);
+                        .update_descriptor_sets(descriptors.as_slice(), &[]);
                 }
             }
 

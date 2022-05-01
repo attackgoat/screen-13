@@ -14,6 +14,10 @@ Next:
     export LLVM_PROFILE_FILE="fuzzer-%p-%m.profraw"
     target/debug/examples/fuzzer
 
+
+Also helpful to run with valgrind:
+    cargo build --example fuzzer && valgrind target/debug/examples/fuzzer
+
 */
 use {inline_spirv::inline_spirv, rand::random, screen_13::prelude_arc::*};
 
@@ -23,20 +27,20 @@ fn main() -> Result<(), DisplayError> {
     let screen_13 = EventLoop::new().debug(true).build()?;
     let mut cache = HashPool::new(&screen_13.device);
 
-    let mut frames_remaining = 100;
+    let mut frame_count = 0;
 
     screen_13.run(|mut frame| {
-        // We stop fuzzing after 100 frames
-        frames_remaining -= 1;
-        if frames_remaining == 0 {
+        // We stop fuzzing after 10 frames
+        frame_count += 1;
+        if frame_count == 10 {
             *frame.will_exit = true;
         }
 
         // We fuzz a random amount of randomly selected operations per frame
         let operations_per_frame = 16;
-        let operation: u8 = 0; //random();
+        let operation: u8 = random();
         for _ in 0..operations_per_frame {
-            match operation % 3 {
+            match operation % 4 {
                 0 => record_compute_array_bind(&mut frame, &mut cache),
                 1 => record_compute_no_op(&mut frame),
                 2 => record_graphic_load_store(&mut frame),
