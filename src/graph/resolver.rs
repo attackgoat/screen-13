@@ -18,8 +18,9 @@ use {
     },
     archery::SharedPointerKind,
     ash::vk,
-    log::{debug, trace},
+    log::{debug, info, trace, warn},
     std::{
+        cell::RefCell,
         collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
         iter::repeat,
         mem::take,
@@ -1441,7 +1442,7 @@ where
         pass: &mut Pass<P>,
         exec_idx: usize,
     ) {
-        use std::{cell::RefCell, slice::from_ref};
+        use std::slice::from_ref;
 
         // TODO: Notice the very common case where we have previously barriered on something which
         // has not had any access since the previous barrier
@@ -1753,7 +1754,7 @@ where
                 .exec_descriptor_sets
                 .is_empty()
             {
-                self.write_descriptor_sets(cmd_buf, pass, pass_idx)?;
+                self.write_descriptor_sets(cmd_buf, pass, pass_idx);
             }
 
             Self::record_execution_barriers("  ", cmd_buf, &mut self.graph.bindings, pass, 0);
@@ -2160,211 +2161,226 @@ where
         pass: &Pass<P>,
         pass_idx: usize,
     ) -> Result<(), DriverError> {
-        use std::slice::from_ref;
+        thread_local! {
+            static WRITES: RefCell<Writes> = Default::default();
+        }
 
-        let descriptor_sets = &self.physical_passes[pass_idx].exec_descriptor_sets;
-        let mut descriptor_writes = vec![];
-        let mut buffer_infos = vec![];
-        let mut image_infos = vec![];
-        for (exec_idx, exec, pipeline) in pass
-            .execs
-            .iter()
-            .enumerate()
-            .filter_map(|(exec_idx, exec)| {
-                exec.pipeline
-                    .as_ref()
-                    .map(|pipeline| (exec_idx, exec, pipeline))
-            })
-            .filter(|(.., pipeline)| !pipeline.descriptor_info().layouts.is_empty())
-        {
-            let descriptor_sets = &descriptor_sets[&exec_idx];
+        #[derive(Default)]
+        struct Writes {
+            buffers: Vec<vk::DescriptorBufferInfo>,
+            descriptors: Vec<vk::WriteDescriptorSet>,
+            images: Vec<vk::DescriptorImageInfo>,
+        }
 
-            // Write the manually bound things (access, read, and write functions)
-            for (descriptor, (node_idx, view_info)) in exec.bindings.iter() {
-                let (descriptor_set_idx, binding_idx, binding_offset) = descriptor.into_tuple();
-                let (descriptor_info, _) = *pipeline
-                    .descriptor_bindings()
-                    .get(&DescriptorBinding(descriptor_set_idx, binding_idx))
-                    .unwrap_or_else(|| panic!("descriptor {descriptor_set_idx}.{binding_idx}[{binding_offset}] specified in recorded execution of pass \"{}\" was not discovered through shader reflection", &pass.name));
-                let descriptor_ty = descriptor_info.into();
+        WRITES.with(|writes| {
+            // Initialize TLS from a previous call
+            let mut writes = writes.borrow_mut();
+            writes.buffers.clear();
+            writes.descriptors.clear();
+            writes.images.clear();
 
-                //trace!("write_descriptor_sets {descriptor_set_idx}.{binding_idx}[{binding_offset}] = {:?}", descriptor_info);
+            let descriptor_sets = &self.physical_passes[pass_idx].exec_descriptor_sets;
+            for (exec_idx, exec, pipeline) in pass
+                .execs
+                .iter()
+                .enumerate()
+                .filter_map(|(exec_idx, exec)| {
+                    exec.pipeline
+                        .as_ref()
+                        .map(|pipeline| (exec_idx, exec, pipeline))
+                })
+                .filter(|(.., pipeline)| !pipeline.descriptor_info().layouts.is_empty())
+            {
+                let descriptor_sets = &descriptor_sets[&exec_idx];
 
-                let write_descriptor_set = vk::WriteDescriptorSet::builder()
-                    .dst_set(*descriptor_sets[descriptor_set_idx as usize])
-                    .dst_binding(binding_idx)
-                    .dst_array_element(binding_offset);
-                let bound_node = &self.graph.bindings[*node_idx];
-                if let Some(image) = bound_node.as_driver_image() {
-                    if let Some(view_info) = view_info {
-                        let mut image_view_info = *view_info.as_image().unwrap();
+                // Write the manually bound things (access, read, and write functions)
+                for (descriptor, (node_idx, view_info)) in exec.bindings.iter() {
+                    let (descriptor_set_idx, binding_idx, binding_offset) = descriptor.into_tuple();
+                    let (descriptor_info, _) = *pipeline
+                        .descriptor_bindings()
+                        .get(&DescriptorBinding(descriptor_set_idx, binding_idx))
+                        .unwrap_or_else(|| panic!("descriptor {descriptor_set_idx}.{binding_idx}[{binding_offset}] specified in recorded execution of pass \"{}\" was not discovered through shader reflection", &pass.name));
+                    let descriptor_ty = descriptor_info.into();
+                    let mut write = vk::WriteDescriptorSet::default();
+                    let bound_node = &self.graph.bindings[*node_idx];
+                    if let Some(image) = bound_node.as_driver_image() {
+                        if let Some(view_info) = view_info {
+                            let mut image_view_info = *view_info.as_image().unwrap();
 
-                        // Handle default views which did not specify a particaular aspect
-                        if image_view_info.aspect_mask.is_empty() {
-                            image_view_info.aspect_mask = format_aspect_mask(image.info.fmt);
-                        }
-
-                        let sampler = descriptor_info.sampler().unwrap_or_else(vk::Sampler::null);
-                        let image_view = Image::view_ref(image, image_view_info)?;
-                        let image_layout = match descriptor_ty {
-                            vk::DescriptorType::COMBINED_IMAGE_SAMPLER => {
-                                if image_view_info.aspect_mask.contains(
-                                    vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL,
-                                ) {
-                                    vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL
-                                } else if image_view_info
-                                    .aspect_mask
-                                    .contains(vk::ImageAspectFlags::DEPTH)
-                                {
-                                    vk::ImageLayout::DEPTH_READ_ONLY_OPTIMAL
-                                } else if image_view_info
-                                    .aspect_mask
-                                    .contains(vk::ImageAspectFlags::STENCIL)
-                                {
-                                    vk::ImageLayout::STENCIL_READ_ONLY_OPTIMAL
-                                } else {
-                                    vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
-                                }
+                            // Handle default views which did not specify a particaular aspect
+                            if image_view_info.aspect_mask.is_empty() {
+                                image_view_info.aspect_mask = format_aspect_mask(image.info.fmt);
                             }
-                            vk::DescriptorType::STORAGE_IMAGE => vk::ImageLayout::GENERAL,
-                            _ => unimplemented!(),
-                        };
 
-                        // trace!(
-                        //     "{}.{}[{}] layout={:?} view={:?} sampler={:?}",
-                        //     descriptor_set_idx,
-                        //     binding_idx,
-                        //     binding_offset,
-                        //     image_layout,
-                        //     image_view,
-                        //     sampler
-                        // );
+                            let sampler = descriptor_info.sampler().unwrap_or_default();
+                            let image_view = Image::view_ref(image, image_view_info)?;
+                            let image_layout = match descriptor_ty {
+                                vk::DescriptorType::COMBINED_IMAGE_SAMPLER => {
+                                    if image_view_info.aspect_mask.contains(
+                                        vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL,
+                                    ) {
+                                        vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL
+                                    } else if image_view_info
+                                        .aspect_mask
+                                        .contains(vk::ImageAspectFlags::DEPTH)
+                                    {
+                                        vk::ImageLayout::DEPTH_READ_ONLY_OPTIMAL
+                                    } else if image_view_info
+                                        .aspect_mask
+                                        .contains(vk::ImageAspectFlags::STENCIL)
+                                    {
+                                        vk::ImageLayout::STENCIL_READ_ONLY_OPTIMAL
+                                    } else {
+                                        vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+                                    }
+                                }
+                                vk::DescriptorType::STORAGE_IMAGE => vk::ImageLayout::GENERAL,
+                                _ => unimplemented!(),
+                            };
 
-                        image_infos.push(vk::DescriptorImageInfo {
-                            image_layout,
-                            image_view,
-                            sampler,
-                        });
+                            info!(
+                                  "{}.{}[{}] layout={:?} view={:?} sampler={:?}",
+                                descriptor_set_idx,
+                                binding_idx,
+                                binding_offset,
+                                image_layout,
+                                image_view,
+                                sampler
+                            );
 
-                        descriptor_writes.push(
-                            write_descriptor_set
-                                .descriptor_type(descriptor_ty)
-                                .image_info(from_ref(image_infos.last().unwrap()))
-                                .build(),
-                        );
+                            let image_idx = writes.images.len();
+                            writes.images.push(vk::DescriptorImageInfo {
+                                image_layout,
+                                image_view,
+                                sampler,
+                            });
+
+                            if binding_offset > 0 {
+                                continue;
+                            }
+
+                            write.p_image_info = unsafe { writes.images.as_ptr().offset(image_idx as _) };
+                        } else {
+                            // Coming very soon!
+                            unimplemented!();
+                        }
+                    } else if let Some(buffer) = bound_node.as_driver_buffer() {
+                        if let Some(view_info) = view_info {
+                            let buffer_view_info = view_info.as_buffer().unwrap();
+
+                            // trace!("BVI: {}..{}", buffer_view_info.start, buffer_view_info.end);
+
+                            let buffer_idx = writes.buffers.len();
+                            writes.buffers.push(vk::DescriptorBufferInfo {
+                                buffer: **buffer,
+                                offset: buffer_view_info.start,
+                                range: buffer_view_info.end - buffer_view_info.start,
+                            });
+
+                            write.p_buffer_info = unsafe { writes.buffers.as_ptr().offset(buffer_idx as _) };
+                        } else {
+                            // Coming very soon!
+                            unimplemented!();
+                        }
                     } else {
                         // Coming very soon!
                         unimplemented!();
                     }
-                } else if let Some(buffer) = bound_node.as_driver_buffer() {
-                    if let Some(view_info) = view_info {
-                        let buffer_view_info = view_info.as_buffer().unwrap();
 
-                        // trace!("BVI: {}..{}", buffer_view_info.start, buffer_view_info.end);
+                    warn!("  write_descriptor_sets {descriptor_set_idx}.{binding_idx}[{binding_offset}] = {descriptor_ty:?}{}", descriptor_info.binding_count());
 
-                        buffer_infos.push(vk::DescriptorBufferInfo {
-                            buffer: **buffer,
-                            offset: buffer_view_info.start,
-                            range: buffer_view_info.end - buffer_view_info.start,
-                        });
-
-                        descriptor_writes.push(
-                            write_descriptor_set
-                                .descriptor_type(descriptor_ty)
-                                .buffer_info(from_ref(buffer_infos.last().unwrap()))
-                                .build(),
-                        );
-                    } else {
-                        // Coming very soon!
-                        unimplemented!();
-                    }
-                } else {
-                    // Coming very soon!
-                    unimplemented!();
+                    write.dst_set = *descriptor_sets[descriptor_set_idx as usize];
+                    write.dst_binding = binding_idx;
+                    write.dst_array_element = binding_offset;
+                    write.descriptor_type = descriptor_ty;
+                    write.descriptor_count = descriptor_info.binding_count();
+                    writes.descriptors.push(
+                        write
+                    );
                 }
-            }
 
-            // Write graphic render pass input attachments (they're automatic)
-            if exec_idx > 0 && pipeline.is_graphic() {
-                let pipeline = pipeline.unwrap_graphic();
-                for (&DescriptorBinding(descriptor_set_idx, binding_idx), (descriptor_info, _)) in
-                    &pipeline.descriptor_bindings
-                {
-                    if let &DescriptorInfo::InputAttachment(_, attachment) = descriptor_info {
-                        let is_random_access = exec.resolves.contains_attachment(attachment)
-                            || exec.stores.contains_attachment(attachment);
-                        let (attachment, write_exec) = pass.execs[0..exec_idx]
-                            .iter()
-                            .rev()
-                            .find_map(|exec| {
-                                exec.stores
-                                    .attached
-                                    .get(attachment as usize)
-                                    .and_then(|attachment| {
-                                        attachment.as_ref().map(|attachment| (attachment, exec))
-                                    })
-                                    .or_else(|| {
-                                        exec.resolves.attached.get(attachment as usize).and_then(
-                                            |attachment| {
-                                                attachment
-                                                    .as_ref()
-                                                    .map(|attachment| (attachment, exec))
-                                            },
-                                        )
-                                    })
-                            })
-                            .expect("input attachment not written");
-                        let [_, late] = &write_exec.accesses[&attachment.target];
-                        let image_subresource = late.subresource.as_ref().unwrap().unwrap_image();
-                        let image_binding = &self.graph.bindings[attachment.target];
-                        let image = image_binding.as_driver_image().unwrap();
-                        let image_view_info = ImageViewInfo {
-                            array_layer_count: image_subresource.array_layer_count,
-                            aspect_mask: attachment.aspect_mask,
-                            base_array_layer: image_subresource.base_array_layer,
-                            base_mip_level: image_subresource.base_mip_level,
-                            fmt: attachment.fmt,
-                            mip_level_count: image_subresource.mip_level_count,
-                            ty: image.info.ty,
-                        };
-                        let image_view = Image::view_ref(image, image_view_info)?;
-                        let sampler = descriptor_info.sampler().unwrap_or_else(vk::Sampler::null);
+                // Write graphic render pass input attachments (they're automatic)
+                if exec_idx > 0 && pipeline.is_graphic() {
+                    let pipeline = pipeline.unwrap_graphic();
+                    for (&DescriptorBinding(descriptor_set_idx, binding_idx), (descriptor_info, _)) in
+                        &pipeline.descriptor_bindings
+                    {
+                        if let &DescriptorInfo::InputAttachment(_, attachment) = descriptor_info {
+                            let is_random_access = exec.resolves.contains_attachment(attachment)
+                                || exec.stores.contains_attachment(attachment);
+                            let (attachment, write_exec) = pass.execs[0..exec_idx]
+                                .iter()
+                                .rev()
+                                .find_map(|exec| {
+                                    exec.stores
+                                        .attached
+                                        .get(attachment as usize)
+                                        .and_then(|attachment| {
+                                            attachment.as_ref().map(|attachment| (attachment, exec))
+                                        })
+                                        .or_else(|| {
+                                            exec.resolves.attached.get(attachment as usize).and_then(
+                                                |attachment| {
+                                                    attachment
+                                                        .as_ref()
+                                                        .map(|attachment| (attachment, exec))
+                                                },
+                                            )
+                                        })
+                                })
+                                .expect("input attachment not written");
+                            let [_, late] = &write_exec.accesses[&attachment.target];
+                            let image_subresource = late.subresource.as_ref().unwrap().unwrap_image();
+                            let image_binding = &self.graph.bindings[attachment.target];
+                            let image = image_binding.as_driver_image().unwrap();
+                            let image_view_info = ImageViewInfo {
+                                array_layer_count: image_subresource.array_layer_count,
+                                aspect_mask: attachment.aspect_mask,
+                                base_array_layer: image_subresource.base_array_layer,
+                                base_mip_level: image_subresource.base_mip_level,
+                                fmt: attachment.fmt,
+                                mip_level_count: image_subresource.mip_level_count,
+                                ty: image.info.ty,
+                            };
+                            let image_view = Image::view_ref(image, image_view_info)?;
+                            let sampler = descriptor_info.sampler().unwrap_or_else(vk::Sampler::null);
 
-                        image_infos.push(vk::DescriptorImageInfo {
-                            image_layout: Self::attachment_layout(
-                                attachment.aspect_mask,
-                                is_random_access,
-                                true,
-                            ),
-                            image_view,
-                            sampler,
-                        });
+                            let image_idx = writes.images.len();
+                            writes.images.push(vk::DescriptorImageInfo {
+                                image_layout: Self::attachment_layout(
+                                    attachment.aspect_mask,
+                                    is_random_access,
+                                    true,
+                                ),
+                                image_view,
+                                sampler,
+                            });
 
-                        descriptor_writes.push(
-                            vk::WriteDescriptorSet::builder()
-                                .dst_set(*descriptor_sets[descriptor_set_idx as usize])
-                                .dst_binding(binding_idx)
-                                .descriptor_type(vk::DescriptorType::INPUT_ATTACHMENT)
-                                .image_info(from_ref(image_infos.last().unwrap()))
-                                .build(),
-                        );
+                            let mut write = vk::WriteDescriptorSet::default();
+                            write.dst_set = *descriptor_sets[descriptor_set_idx as usize];
+                            write.dst_binding = binding_idx;
+                            write.descriptor_type = vk::DescriptorType::INPUT_ATTACHMENT;
+                            write.descriptor_count = 1;
+                            write.p_image_info = unsafe { writes.images.as_ptr().offset(image_idx as _) };
+                            writes.descriptors.push(
+                                write
+                            );
+                        }
                     }
                 }
             }
-        }
 
-        if descriptor_writes.is_empty() {
-            return Ok(());
-        }
+            if !writes.descriptors.is_empty() {
+                trace!("  writing {} descriptors ({} buffers, {} images)", writes.descriptors.len(), writes.buffers.len(), writes.images.len());
 
-        trace!("  writing {:#?} descriptors ", descriptor_writes.len());
+                unsafe {
+                    cmd_buf
+                        .device
+                        .update_descriptor_sets(writes.descriptors.as_slice(), &[]);
+                }
+            }
 
-        unsafe {
-            cmd_buf
-                .device
-                .update_descriptor_sets(descriptor_writes.as_slice(), &[])
-        }
-
-        Ok(())
+            Ok(())
+        })
     }
 }

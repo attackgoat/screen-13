@@ -75,7 +75,7 @@ where
                             | vk::ImageUsageFlags::TRANSFER_DST
                             | vk::ImageUsageFlags::TRANSFER_SRC
                     },
-                    flags: vk::ImageCreateFlags::MUTABLE_FORMAT,
+                    flags: vk::ImageCreateFlags::empty(),
                     fmt: match format {
                         ImageFormat::R8 | ImageFormat::R8G8 => {
                             if is_temporary {

@@ -91,7 +91,7 @@ pub enum DescriptorInfo {
 }
 
 impl DescriptorInfo {
-    fn binding_count(self) -> u32 {
+    pub fn binding_count(self) -> u32 {
         match self {
             Self::AccelerationStructure(binding_count) => binding_count,
             Self::CombinedImageSampler(binding_count, _) => binding_count,

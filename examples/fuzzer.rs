@@ -34,13 +34,14 @@ fn main() -> Result<(), DisplayError> {
 
         // We fuzz a random amount of randomly selected operations per frame
         let operations_per_frame = 16;
-        let operation: u8 = random();
+        let operation: u8 = 0; //random();
         for _ in 0..operations_per_frame {
             match operation % 3 {
-                0 => record_compute_no_op(&mut frame),
-                1 => record_graphic_load_store(&mut frame),
-                2 => record_graphic_will_merge_subpass_input(&mut frame, &mut cache),
-                3 => record_graphic_wont_merge(&mut frame),
+                0 => record_compute_array_bind(&mut frame, &mut cache),
+                1 => record_compute_no_op(&mut frame),
+                2 => record_graphic_load_store(&mut frame),
+                3 => record_graphic_will_merge_subpass_input(&mut frame, &mut cache),
+                4 => record_graphic_wont_merge(&mut frame),
                 _ => unreachable!(),
             }
         }
@@ -54,8 +55,86 @@ fn main() -> Result<(), DisplayError> {
     Ok(())
 }
 
+fn record_compute_array_bind(frame: &mut screen_13::FrameContext<ArcK>, cache: &mut HashPool) {
+    let pipeline = compute_pipeline(
+        "array_bind",
+        frame.device,
+        ComputePipelineInfo::new(
+            inline_spirv!(
+                r#"
+                #version 460 core
+                
+                layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+                
+                layout(constant_id = 0) const uint LAYER_COUNT = 1;
+                
+                layout(push_constant) uniform PushConstants {
+                    layout(offset = 0) float offset;
+                } push_const;
+                
+                layout(set = 0, binding = 0) uniform sampler2D layer_images_sampler_llr[LAYER_COUNT];
+                
+                void main() {
+                }
+                "#,
+                comp
+            )
+            .as_slice(),
+        )
+        .specialization_info(SpecializationInfo::new(
+            vec![vk::SpecializationMapEntry {
+                constant_id: 0,
+                offset: 0,
+                size: 4,
+            }],
+            5u32.to_ne_bytes(),
+        )),
+    );
+
+    let image_info = ImageInfo::new_2d(
+        vk::Format::R8G8B8A8_UNORM,
+        64,
+        64,
+        vk::ImageUsageFlags::SAMPLED,
+    )
+    .build();
+    let images = [
+        frame
+            .render_graph
+            .bind_node(cache.lease(image_info.clone()).unwrap()),
+        frame
+            .render_graph
+            .bind_node(cache.lease(image_info.clone()).unwrap()),
+        frame
+            .render_graph
+            .bind_node(cache.lease(image_info.clone()).unwrap()),
+        frame
+            .render_graph
+            .bind_node(cache.lease(image_info.clone()).unwrap()),
+        frame
+            .render_graph
+            .bind_node(cache.lease(image_info).unwrap()),
+    ];
+
+    frame
+        .render_graph
+        .begin_pass("no-op")
+        .bind_pipeline(&pipeline)
+        .read_descriptor((0, [0]), images[0])
+        .read_descriptor((0, [1]), images[1])
+        .read_descriptor((0, [2]), images[2])
+        .read_descriptor((0, [3]), images[3])
+        .read_descriptor((0, [4]), images[4])
+        .record_compute(|compute| {
+            compute
+                .push_constants(&0f32.to_ne_bytes())
+                .dispatch(64, 64, 1);
+        });
+}
+
 fn record_compute_no_op(frame: &mut screen_13::FrameContext<ArcK>) {
     let pipeline = compute_pipeline(
+        "no_op",
         frame.device,
         inline_spirv!(
             r#"
@@ -245,17 +324,23 @@ fn record_graphic_wont_merge(frame: &mut FrameContext) {
 
 // Below are convenience functions used to create test data
 
-fn compute_pipeline(device: &Shared<Device>, source: &'static [u32]) -> Shared<ComputePipeline> {
+fn compute_pipeline(
+    key: &'static str,
+    device: &Shared<Device>,
+    info: impl Into<ComputePipelineInfo>,
+) -> Shared<ComputePipeline> {
     use std::{cell::RefCell, collections::HashMap};
 
     thread_local! {
-        static TLS: RefCell<HashMap<&'static [u32], Shared<ComputePipeline>>> = Default::default();
+        static TLS: RefCell<HashMap<&'static str, Shared<ComputePipeline>>> = Default::default();
     }
 
     TLS.with(|tls| {
-        Shared::clone(tls.borrow_mut().entry(source).or_insert_with(|| {
-            Shared::new(ComputePipeline::create(device, ComputePipelineInfo::new(source)).unwrap())
-        }))
+        Shared::clone(
+            tls.borrow_mut()
+                .entry(key)
+                .or_insert_with(|| Shared::new(ComputePipeline::create(device, info).unwrap())),
+        )
     })
 }
 
