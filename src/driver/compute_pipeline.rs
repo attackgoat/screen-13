@@ -64,10 +64,21 @@ where
                     DriverError::Unsupported
                 })?;
             let entry_name = CString::new(info.entry_name.as_bytes()).unwrap();
-            let stage_create_info = vk::PipelineShaderStageCreateInfo::builder()
+            let mut stage_create_info = vk::PipelineShaderStageCreateInfo::builder()
                 .module(shader_module)
                 .stage(shader.stage)
                 .name(&entry_name);
+            let specialization_info = info.specialization_info.as_ref().map(|info| {
+                vk::SpecializationInfo::builder()
+                    .map_entries(&info.map_entries)
+                    .data(&info.data)
+                    .build()
+            });
+
+            if let Some(specialization_info) = &specialization_info {
+                stage_create_info = stage_create_info.specialization_info(specialization_info);
+            }
+
             let mut layout_info =
                 vk::PipelineLayoutCreateInfo::builder().set_layouts(&descriptor_set_layouts);
 
