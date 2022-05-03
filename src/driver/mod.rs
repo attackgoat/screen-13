@@ -4,7 +4,6 @@ mod compute_pipeline;
 mod descriptor_set;
 mod descriptor_set_layout;
 mod device;
-mod device_api;
 mod graphic_pipeline;
 mod image;
 mod instance;
@@ -59,8 +58,7 @@ pub use {
 };
 
 use {
-    crate::ptr::Shared,
-    archery::SharedPointerKind,
+    archery::{SharedPointer, SharedPointerKind},
     derive_builder::Builder,
     log::{debug, info, trace, warn},
     raw_window_handle::HasRawWindowHandle,
@@ -387,7 +385,7 @@ pub struct Driver<P>
 where
     P: SharedPointerKind,
 {
-    pub device: Shared<Device<P>, P>,
+    pub device: SharedPointer<Device<P>, P>,
     pub swapchain: Swapchain<P>,
 }
 
@@ -411,7 +409,7 @@ where
             })?
             .iter()
             .map(|ext| unsafe { CStr::from_ptr(*ext as *const _) });
-        let instance = Shared::new(Instance::new(cfg.debug, required_extensions)?);
+        let instance = SharedPointer::new(Instance::new(cfg.debug, required_extensions)?);
         let surface = Surface::new(&instance, window)?;
         let physical_devices = Instance::physical_devices(&instance)?
             .filter(|physical_device| {
@@ -458,7 +456,7 @@ where
 
         debug!("selected: {:?}", physical_device);
 
-        let device = Shared::new(Device::create(&instance, physical_device, cfg)?);
+        let device = SharedPointer::new(Device::create(&instance, physical_device, cfg)?);
         let surface_formats = Device::surface_formats(&device, &surface)?;
 
         for fmt in &surface_formats {

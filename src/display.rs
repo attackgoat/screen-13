@@ -4,10 +4,9 @@ use {
             image_access_layout, CommandBuffer, Device, DriverError, Swapchain, SwapchainError,
         },
         graph::{RenderGraph, SwapchainImageNode},
-        ptr::Shared,
         HashPool,
     },
-    archery::SharedPointerKind,
+    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     log::trace,
     std::{error::Error, fmt::Formatter, time::Instant},
@@ -21,7 +20,7 @@ where
 {
     cache: HashPool<P>,
     cmd_bufs: Vec<[CommandBuffer<P>; 3]>,
-    device: Shared<Device<P>, P>,
+    device: SharedPointer<Device<P>, P>,
     swapchain: Swapchain<P>,
 }
 
@@ -29,8 +28,8 @@ impl<P> Display<P>
 where
     P: SharedPointerKind + Send + 'static,
 {
-    pub fn new(device: &Shared<Device<P>, P>, swapchain: Swapchain<P>) -> Self {
-        let device = Shared::clone(device);
+    pub fn new(device: &SharedPointer<Device<P>, P>, swapchain: Swapchain<P>) -> Self {
+        let device = SharedPointer::clone(device);
 
         Self {
             cache: HashPool::new(&device),

@@ -1,7 +1,6 @@
 use {
     super::{Instance, Surface},
-    crate::ptr::Shared,
-    archery::SharedPointerKind,
+    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     std::{
         ffi::CStr,
@@ -49,7 +48,7 @@ impl PhysicalDevice {
 
     pub fn has_presentation_support<P>(
         _this: &Self,
-        _instance: &Shared<Instance, P>,
+        _instance: &SharedPointer<Instance, P>,
         _surface: &Surface<P>,
     ) -> bool
     where

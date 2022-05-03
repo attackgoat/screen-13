@@ -6,14 +6,11 @@ use {
         RenderGraph, SampleCount, Subresource, SubresourceAccess, SwapchainImageNode, View,
         ViewType,
     },
-    crate::{
-        driver::{
-            Buffer, ComputePipeline, DepthStencilMode, GraphicPipeline, Image, ImageViewInfo,
-            RayTraceAcceleration, RayTracePipeline,
-        },
-        ptr::Shared,
+    crate::driver::{
+        Buffer, ComputePipeline, DepthStencilMode, GraphicPipeline, Image, ImageViewInfo,
+        RayTraceAcceleration, RayTracePipeline,
     },
-    archery::SharedPointerKind,
+    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     log::trace,
     std::{
@@ -59,7 +56,7 @@ where
 macro_rules! bind {
     ($name:ident) => {
         paste::paste! {
-            impl<'a, P> Bind<PassRef<'a, P>, PipelinePassRef<'a, [<$name Pipeline>]<P>, P>, P> for &'a Shared<[<$name Pipeline>]<P>, P>
+            impl<'a, P> Bind<PassRef<'a, P>, PipelinePassRef<'a, [<$name Pipeline>]<P>, P>, P> for &'a SharedPointer<[<$name Pipeline>]<P>, P>
             where
                 P: SharedPointerKind + Send + 'static,
             {
@@ -71,7 +68,7 @@ macro_rules! bind {
                         pass_ref.execs.push(Default::default());
                     }
 
-                    pass_ref.execs.last_mut().unwrap().pipeline = Some(ExecutionPipeline::$name(Shared::clone(self)));
+                    pass_ref.execs.last_mut().unwrap().pipeline = Some(ExecutionPipeline::$name(SharedPointer::clone(self)));
 
                     PipelinePassRef {
                         __: PhantomData,
@@ -90,7 +87,7 @@ macro_rules! bind {
                 }
 
                 #[allow(unused)]
-                pub(super) fn [<unwrap_ $name:snake>](&self) -> &Shared<[<$name Pipeline>]<P>, P> {
+                pub(super) fn [<unwrap_ $name:snake>](&self) -> &SharedPointer<[<$name Pipeline>]<P>, P> {
                     if let Self::$name(binding) = self {
                         &binding
                     } else {
@@ -206,7 +203,7 @@ where
     bindings: Bindings<'a, P>,
     cmd_buf: vk::CommandBuffer,
     device: &'a ash::Device,
-    pipeline: Shared<ComputePipeline<P>, P>,
+    pipeline: SharedPointer<ComputePipeline<P>, P>,
 }
 
 impl<'a, P> Compute<'a, P>
@@ -311,7 +308,7 @@ where
     cmd_buf: vk::CommandBuffer,
     device: &'a ash::Device,
     offsets: &'a mut Vec<vk::DeviceSize>,
-    pipeline: Shared<GraphicPipeline<P>, P>,
+    pipeline: SharedPointer<GraphicPipeline<P>, P>,
     rects: &'a mut Vec<vk::Rect2D>,
     viewports: &'a mut Vec<vk::Viewport>,
 }
@@ -1071,7 +1068,7 @@ where
         mut self,
         func: impl FnOnce(&mut Compute<'_, P>) + Send + 'static,
     ) -> Self {
-        let pipeline = Shared::clone(
+        let pipeline = SharedPointer::clone(
             self.pass
                 .as_ref()
                 .execs
@@ -1454,7 +1451,7 @@ where
                 );
             }
 
-            Shared::clone(pipeline)
+            SharedPointer::clone(pipeline)
         };
 
         self.pass.push_execute(move |device, cmd_buf, bindings| {
@@ -1962,7 +1959,7 @@ where
         mut self,
         func: impl FnOnce(&mut RayTrace<'_, P>) + Send + 'static,
     ) -> Self {
-        let pipeline = Shared::clone(
+        let pipeline = SharedPointer::clone(
             self.pass
                 .as_ref()
                 .execs
@@ -1994,7 +1991,7 @@ where
     _bindings: Bindings<'a, P>,
     _cmd_buf: vk::CommandBuffer,
     _device: &'a ash::Device,
-    _pipeline: Shared<RayTracePipeline<P>, P>,
+    _pipeline: SharedPointer<RayTracePipeline<P>, P>,
 }
 
 impl<'a, P> RayTrace<'a, P>

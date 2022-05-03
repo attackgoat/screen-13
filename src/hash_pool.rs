@@ -6,9 +6,8 @@ use {
             ImageInfoBuilder, QueueFamily, RenderPass, RenderPassInfo, RenderPassInfoBuilder,
         },
         graph::{BufferBinding, ImageBinding},
-        ptr::Shared,
     },
-    archery::SharedPointerKind,
+    archery::{SharedPointer, SharedPointerKind},
     log::warn,
     parking_lot::Mutex,
     std::{
@@ -19,7 +18,7 @@ use {
     },
 };
 
-type Cache<T, P> = Shared<Mutex<VecDeque<T>>, P>;
+type Cache<T, P> = SharedPointer<Mutex<VecDeque<T>>, P>;
 
 pub trait Contract<P> {
     type Term;
@@ -32,8 +31,9 @@ where
 {
     buffer_binding_cache: HashMap<BufferInfo, Cache<BufferBinding<P>, P>>,
     command_buffer_cache: HashMap<QueueFamily, Cache<CommandBuffer<P>, P>>,
-    descriptor_pool_cache: HashMap<DescriptorPoolInfo, Cache<Shared<DescriptorPool<P>, P>, P>>,
-    pub device: Shared<Device<P>, P>,
+    descriptor_pool_cache:
+        HashMap<DescriptorPoolInfo, Cache<SharedPointer<DescriptorPool<P>, P>, P>>,
+    pub device: SharedPointer<Device<P>, P>,
     image_binding_cache: HashMap<ImageInfo, Cache<ImageBinding<P>, P>>,
     render_pass_cache: HashMap<RenderPassInfo, Cache<RenderPass<P>, P>>,
 }
@@ -43,8 +43,8 @@ impl<P> HashPool<P>
 where
     P: SharedPointerKind,
 {
-    pub fn new(device: &Shared<Device<P>, P>) -> Self {
-        let device = Shared::clone(device);
+    pub fn new(device: &SharedPointer<Device<P>, P>) -> Self {
+        let device = SharedPointer::clone(device);
 
         Self {
             buffer_binding_cache: Default::default(),
@@ -174,9 +174,9 @@ macro_rules! lease {
                 fn lease(self, pool: &mut HashPool<P>) -> Result<Lease<$dst<P>, P>, DriverError> {
                     let cache = pool.[<$dst:snake _cache>].entry(self.clone())
                         .or_insert_with(|| {
-                            Shared::new(Mutex::new(VecDeque::new()))
+                            SharedPointer::new(Mutex::new(VecDeque::new()))
                         });
-                    let cache_ref = Shared::clone(cache);
+                    let cache_ref = SharedPointer::clone(cache);
                     let mut cache = cache.lock();
 
                     if cache.is_empty() || ![<can_lease_ $dst:snake>](cache.front_mut().unwrap()) {
@@ -206,7 +206,7 @@ macro_rules! lease_info {
 
         paste::paste! {
             // Called by the lease macro
-            fn [<create_ $dst:snake>]<P>(device: &Shared<Device<P>, P>, info: $src)
+            fn [<create_ $dst:snake>]<P>(device: &SharedPointer<Device<P>, P>, info: $src)
                 -> Result<$dst<P>, DriverError>
             where
                 P: SharedPointerKind
@@ -278,7 +278,7 @@ macro_rules! lease_info_binding {
             lease!($src -> [<$dst Binding>]);
 
             // Called by the lease macro
-            fn [<create_ $dst:snake _binding>]<P>(device: &Shared<Device<P>, P>, info: $src)
+            fn [<create_ $dst:snake _binding>]<P>(device: &SharedPointer<Device<P>, P>, info: $src)
                 -> Result<[<$dst Binding>]<P>, DriverError>
             where
                 P: SharedPointerKind
@@ -310,27 +310,27 @@ macro_rules! lease_info_binding {
 lease_info_binding!(BufferInfo -> Buffer);
 lease_info_binding!(ImageInfo -> Image);
 
-// Enable types of leases where the item is a Shared item (these can be dangerous!!)
+// Enable types of leases where the item is a shared item (these can be dangerous!!)
 macro_rules! shared_lease {
     ($src:ident -> $dst:ident) => {
         impl<P> Contract<P> for $src
         where
             P: SharedPointerKind,
         {
-            type Term = Shared<$dst<P>, P>;
+            type Term = SharedPointer<$dst<P>, P>;
         }
 
         paste::paste! {
-            impl<P> Pooled<Lease<Shared<$dst<P>, P>, P>, P> for $src
+            impl<P> Pooled<Lease<SharedPointer<$dst<P>, P>, P>, P> for $src
             where
                 P: SharedPointerKind,
             {
-                fn lease(self, pool: &mut HashPool<P>) -> Result<Lease<Shared<$dst<P>, P>, P>, DriverError> {
+                fn lease(self, pool: &mut HashPool<P>) -> Result<Lease<SharedPointer<$dst<P>, P>, P>, DriverError> {
                     let cache = pool.[<$dst:snake _cache>].entry(self.clone())
                         .or_insert_with(|| {
-                            Shared::new(Mutex::new(VecDeque::new()))
+                            SharedPointer::new(Mutex::new(VecDeque::new()))
                         });
-                    let cache_ref = Shared::clone(cache);
+                    let cache_ref = SharedPointer::clone(cache);
                     let mut cache = cache.lock();
 
                     Ok(if let item @ Some(_) = cache.pop_front() {
@@ -341,7 +341,7 @@ macro_rules! shared_lease {
                     } else {
                         Lease {
                             cache: Some(cache_ref),
-                            item: Some(Shared::new($dst::create(&pool.device, self)?)),
+                            item: Some(SharedPointer::new($dst::create(&pool.device, self)?)),
                         }
                     })
                 }
@@ -351,11 +351,11 @@ macro_rules! shared_lease {
             where
                 P: SharedPointerKind,
             {
-                type Term = Shared<$dst<P>, P>;
+                type Term = SharedPointer<$dst<P>, P>;
             }
 
-            impl<P> Pooled<Lease<Shared<$dst<P>, P>, P>, P> for [<$src Builder>] where P: SharedPointerKind {
-                fn lease(self, pool: &mut HashPool<P>) -> Result<Lease<Shared<$dst<P>, P>, P>, DriverError> {
+            impl<P> Pooled<Lease<SharedPointer<$dst<P>, P>, P>, P> for [<$src Builder>] where P: SharedPointerKind {
+                fn lease(self, pool: &mut HashPool<P>) -> Result<Lease<SharedPointer<$dst<P>, P>, P>, DriverError> {
                     let desc = self.build();
 
                     // We will unwrap the description builder - it may panic!

@@ -1,7 +1,6 @@
 use {
     super::{DescriptorSetLayout, Device, DriverError},
-    crate::ptr::Shared,
-    archery::SharedPointerKind,
+    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     derive_builder::Builder,
     log::{trace, warn},
@@ -15,7 +14,7 @@ where
 {
     pub info: DescriptorPoolInfo,
     descriptor_pool: vk::DescriptorPool,
-    pub device: Shared<Device<P>, P>,
+    pub device: SharedPointer<Device<P>, P>,
 }
 
 impl<P> DescriptorPool<P>
@@ -23,10 +22,10 @@ where
     P: SharedPointerKind,
 {
     pub fn create(
-        device: &Shared<Device<P>, P>,
+        device: &SharedPointer<Device<P>, P>,
         info: impl Into<DescriptorPoolInfo>,
     ) -> Result<Self, DriverError> {
-        let device = Shared::clone(device);
+        let device = SharedPointer::clone(device);
         let info = info.into();
         let descriptor_pool = unsafe {
             device.create_descriptor_pool(
@@ -60,7 +59,7 @@ where
     }
 
     pub fn allocate_descriptor_set(
-        this: &Shared<Self, P>,
+        this: &SharedPointer<Self, P>,
         layout: &DescriptorSetLayout<P>,
     ) -> Result<DescriptorSet<P>, DriverError>
     where
@@ -72,7 +71,7 @@ where
     }
 
     pub fn allocate_descriptor_sets(
-        this: &Shared<Self, P>,
+        this: &SharedPointer<Self, P>,
         layout: &DescriptorSetLayout<P>,
         count: u32,
     ) -> Result<impl Iterator<Item = DescriptorSet<P>>, DriverError>
@@ -81,7 +80,7 @@ where
     {
         use std::slice::from_ref;
 
-        let descriptor_pool = Shared::clone(this);
+        let descriptor_pool = SharedPointer::clone(this);
         let mut create_info = vk::DescriptorSetAllocateInfo::builder()
             .descriptor_pool(this.descriptor_pool)
             .set_layouts(from_ref(layout));
@@ -108,7 +107,7 @@ where
                 })?
                 .into_iter()
                 .map(move |descriptor_set| DescriptorSet {
-                    descriptor_pool: Shared::clone(&descriptor_pool),
+                    descriptor_pool: SharedPointer::clone(&descriptor_pool),
                     descriptor_set,
                 })
         })
@@ -174,7 +173,7 @@ pub struct DescriptorSet<P>
 where
     P: SharedPointerKind,
 {
-    descriptor_pool: Shared<DescriptorPool<P>, P>,
+    descriptor_pool: SharedPointer<DescriptorPool<P>, P>,
     descriptor_set: vk::DescriptorSet,
 }
 

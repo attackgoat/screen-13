@@ -1,7 +1,6 @@
 use {
     super::{format_aspect_mask, Device, DriverError},
-    crate::ptr::Shared,
-    archery::SharedPointerKind,
+    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     derive_builder::Builder,
     gpu_allocator::{
@@ -24,10 +23,10 @@ where
     P: SharedPointerKind,
 {
     pub allocation: Option<Allocation>, // None when we don't own the image (Swapchain images)
-    device: Shared<Device<P>, P>,
+    device: SharedPointer<Device<P>, P>,
     image: vk::Image,
     #[allow(clippy::type_complexity)]
-    image_view_cache: Shared<Mutex<HashMap<ImageViewInfo, ImageView<P>>>, P>,
+    image_view_cache: SharedPointer<Mutex<HashMap<ImageViewInfo, ImageView<P>>>, P>,
     pub info: ImageInfo,
     pub name: Option<String>,
 }
@@ -37,7 +36,7 @@ where
     P: SharedPointerKind,
 {
     pub fn create(
-        device: &Shared<Device<P>, P>,
+        device: &SharedPointer<Device<P>, P>,
         info: impl Into<ImageInfo>,
     ) -> Result<Self, DriverError> {
         let mut info: ImageInfo = info.into();
@@ -97,7 +96,7 @@ where
                 .unwrap();
         }
 
-        let device = Shared::clone(device);
+        let device = SharedPointer::clone(device);
         let create_info = info.image_create_info();
         let image = unsafe {
             device.create_image(&create_info, None).map_err(|err| {
@@ -138,7 +137,7 @@ where
             allocation: Some(allocation),
             device,
             image,
-            image_view_cache: Shared::new(Mutex::new(Default::default())),
+            image_view_cache: SharedPointer::new(Mutex::new(Default::default())),
             info,
             name: None,
         })
@@ -148,9 +147,9 @@ where
     pub(super) fn clone_raw(this: &Self) -> Self {
         Self {
             allocation: None,
-            device: Shared::clone(&this.device),
+            device: SharedPointer::clone(&this.device),
             image: this.image,
-            image_view_cache: Shared::new(Mutex::new(Default::default())),
+            image_view_cache: SharedPointer::new(Mutex::new(Default::default())),
             info: this.info,
             name: this.name.clone(),
         }
@@ -160,14 +159,18 @@ where
         ImageView::create(&this.device, info, this)
     }
 
-    pub fn from_raw(device: &Shared<Device<P>, P>, image: vk::Image, info: ImageInfo) -> Self {
-        let device = Shared::clone(device);
+    pub fn from_raw(
+        device: &SharedPointer<Device<P>, P>,
+        image: vk::Image,
+        info: ImageInfo,
+    ) -> Self {
+        let device = SharedPointer::clone(device);
 
         Self {
             allocation: None,
             device,
             image,
-            image_view_cache: Shared::new(Mutex::new(Default::default())),
+            image_view_cache: SharedPointer::new(Mutex::new(Default::default())),
             info,
             name: None,
         }
@@ -560,7 +563,7 @@ pub struct ImageView<P>
 where
     P: SharedPointerKind,
 {
-    device: Shared<Device<P>, P>,
+    device: SharedPointer<Device<P>, P>,
     image_view: vk::ImageView,
     pub info: ImageViewInfo,
 }
@@ -570,12 +573,12 @@ where
     P: SharedPointerKind,
 {
     pub fn create(
-        device: &Shared<Device<P>, P>,
+        device: &SharedPointer<Device<P>, P>,
         info: impl Into<ImageViewInfo>,
         image: &Image<P>,
     ) -> Result<Self, DriverError> {
         let info = info.into();
-        let device = Shared::clone(device);
+        let device = SharedPointer::clone(device);
         let create_info = vk::ImageViewCreateInfo {
             s_type: vk::StructureType::IMAGE_VIEW_CREATE_INFO,
             p_next: null(),

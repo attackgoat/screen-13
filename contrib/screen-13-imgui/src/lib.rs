@@ -1,7 +1,7 @@
 pub mod prelude_arc {
     pub use super::*;
 
-    use screen_13::ptr::ArcK;
+    use archery::ArcK;
 
     pub type ImGui = super::ImGui<ArcK>;
 }
@@ -9,7 +9,7 @@ pub mod prelude_arc {
 pub mod prelude_rc {
     pub use super::*;
 
-    use screen_13::ptr::RcK;
+    use archery::RcK;
 
     pub type ImGui = super::ImGui<RcK>;
 }
@@ -17,6 +17,7 @@ pub mod prelude_rc {
 pub use imgui::{self, Condition, Ui};
 
 use {
+    archery::{SharedPointer, SharedPointerKind},
     bytemuck::cast_slice,
     imgui::{Context, DrawCmd, DrawCmdParams},
     imgui_winit_support::{HiDpiMode, WinitPlatform},
@@ -32,7 +33,7 @@ where
 {
     context: Context,
     font_atlas_image: Option<ImageLeaseBinding<P>>,
-    pipeline: Shared<GraphicPipeline<P>, P>,
+    pipeline: SharedPointer<GraphicPipeline<P>, P>,
     platform: WinitPlatform,
     pool: HashPool<P>,
 }
@@ -41,11 +42,11 @@ impl<P> ImGui<P>
 where
     P: SharedPointerKind + Send + 'static,
 {
-    pub fn new(device: &Shared<Device<P>, P>) -> Self {
+    pub fn new(device: &SharedPointer<Device<P>, P>) -> Self {
         let mut context = Context::create();
         let platform = WinitPlatform::init(&mut context);
         let pool = HashPool::new(device);
-        let pipeline = Shared::new(
+        let pipeline = SharedPointer::new(
             GraphicPipeline::create(
                 device,
                 GraphicPipelineInfo::new()

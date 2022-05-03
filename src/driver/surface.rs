@@ -1,7 +1,6 @@
 use {
     super::{DriverError, Instance},
-    crate::ptr::Shared,
-    archery::SharedPointerKind,
+    archery::{SharedPointer, SharedPointerKind},
     ash::{extensions::khr, vk},
     log::warn,
     raw_window_handle::HasRawWindowHandle,
@@ -16,7 +15,7 @@ pub struct Surface<P>
 where
     P: SharedPointerKind,
 {
-    _instance: Shared<Instance, P>,
+    _instance: SharedPointer<Instance, P>,
     surface: vk::SurfaceKHR,
     surface_ext: khr::Surface,
 }
@@ -26,10 +25,10 @@ where
     P: SharedPointerKind,
 {
     pub fn new(
-        instance: &Shared<Instance, P>,
+        instance: &SharedPointer<Instance, P>,
         window: &impl HasRawWindowHandle,
     ) -> Result<Self, DriverError> {
-        let instance = Shared::clone(instance);
+        let instance = SharedPointer::clone(instance);
         let surface_ext = khr::Surface::new(&instance.entry, &instance);
         let surface =
             unsafe { ash_window::create_surface(&instance.entry, &instance, window, None) }

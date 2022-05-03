@@ -59,7 +59,7 @@ fn main() -> Result<(), DisplayError> {
     Ok(())
 }
 
-fn record_compute_array_bind(frame: &mut screen_13::FrameContext<ArcK>, cache: &mut HashPool) {
+fn record_compute_array_bind(frame: &mut FrameContext, cache: &mut HashPool) {
     let pipeline = compute_pipeline(
         "array_bind",
         frame.device,
@@ -136,7 +136,7 @@ fn record_compute_array_bind(frame: &mut screen_13::FrameContext<ArcK>, cache: &
         });
 }
 
-fn record_compute_no_op(frame: &mut screen_13::FrameContext<ArcK>) {
+fn record_compute_no_op(frame: &mut FrameContext) {
     let pipeline = compute_pipeline(
         "no_op",
         frame.device,
@@ -156,7 +156,7 @@ fn record_compute_no_op(frame: &mut screen_13::FrameContext<ArcK>) {
         .begin_pass("no-op")
         .bind_pipeline(&pipeline)
         .record_compute(|compute| {
-            compute.dispatch(0, 0, 0);
+            compute.dispatch(1, 1, 1);
         });
 }
 

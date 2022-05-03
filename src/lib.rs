@@ -1,6 +1,7 @@
 pub mod driver;
 pub mod graph;
 
+mod device_api;
 mod display;
 mod event_loop;
 mod frame;
@@ -9,7 +10,7 @@ mod input;
 
 pub use self::{
     display::{Display, DisplayError},
-    event_loop::{EventLoop, EventLoopBuilder, FullscreenMode},
+    event_loop::{run, EventLoop, EventLoopBuilder, FullscreenMode},
     frame::FrameContext,
     hash_pool::{HashPool, Lease},
 };
@@ -19,13 +20,12 @@ pub mod prelude {
     pub use {
         super::{
             align_up_u32, align_up_u64,
-            event_loop::{EventLoop, FullscreenMode},
+            event_loop::{run, EventLoop, EventLoopBuilder, FullscreenMode},
             frame::{center_cursor, set_cursor_position, FrameContext},
             graph::RenderGraph,
             input::{
                 update_input, update_keyboard, update_mouse, KeyBuf, KeyMap, MouseBuf, MouseButton,
             },
-            ptr::{ArcK, RcK, Shared, SharedPointerKind},
         },
         log::{debug, error, info, logger, trace, warn}, // Everyone wants a log
         winit::{
@@ -51,7 +51,7 @@ pub mod prelude_all {
             RayTraceAccelerationNode, RenderGraph, SwapchainImageNode,
         },
         prelude::*,
-        Display, DisplayError, EventLoopBuilder, HashPool, Lease,
+        Display, DisplayError, HashPool, Lease,
     }; // TODO: Expand!
 
     #[cfg(feature = "pak")]
@@ -72,10 +72,9 @@ pub mod prelude_all {
 /// Use this module if rendering will be done from multiple threads. See the main documentation for
 /// each alias for more information.
 pub mod prelude_arc {
-    pub use super::{
-        prelude_all::{self as all, *},
-        ptr::ArcK as P,
-    };
+    pub use super::prelude_all::{self as all, *};
+
+    use archery::ArcK as P;
 
     pub type AnyBufferBinding<'a> = all::AnyBufferBinding<'a, P>;
     pub type AnyBufferNode = all::AnyBufferNode<P>;
@@ -100,7 +99,7 @@ pub mod prelude_arc {
     pub type SwapchainImage = all::SwapchainImage<P>;
 
     pub type Lease<T> = all::Lease<T, P>;
-    pub type Shared<T> = all::Shared<T, P>;
+    pub type Shared<T> = archery::SharedPointer<T, P>;
 }
 
 /// Like [`prelude_all`], but specialized for [`std::rc::Rc`]-backed use cases.
@@ -108,10 +107,9 @@ pub mod prelude_arc {
 /// Use this module if rendering will be done from one thread only. See the main documentation for
 /// each alias for more information.
 pub mod prelude_rc {
-    pub use super::{
-        prelude_all::{self as all, *},
-        ptr::RcK as P,
-    };
+    pub use super::prelude_all::{self as all, *};
+
+    use archery::RcK as P;
 
     pub type AnyBufferBinding<'a> = all::AnyBufferBinding<'a, P>;
     pub type AnyBufferNode = all::AnyBufferNode<P>;
@@ -136,113 +134,7 @@ pub mod prelude_rc {
     pub type SwapchainImage = all::SwapchainImage<P>;
 
     pub type Lease<T> = all::Lease<T, P>;
-    pub type Shared<T> = all::Shared<T, P>;
-}
-
-/// Shared reference (`Arc` and `Rc`) implementation based on
-/// [_archery_](https://crates.io/crates/archery).
-pub mod ptr {
-    pub use archery::{ArcK, RcK, SharedPointerKind};
-
-    use {archery::SharedPointer, std::ops::Deref};
-
-    // TODO: Provide a handy-dandy Mutex stand-in for the 'rc' path (make it zero cost!) "Locked" ?
-
-    /// A shared reference wrapper type, based on either [`std::sync::Arc`] or [`std::rc::Rc`].
-    #[derive(Debug, Eq, Ord, PartialOrd)]
-    pub struct Shared<T, P>(SharedPointer<T, P>)
-    where
-        P: SharedPointerKind;
-
-    impl<T, P> Shared<T, P>
-    where
-        P: SharedPointerKind,
-    {
-        pub fn new(val: T) -> Self {
-            Self(SharedPointer::new(val))
-        }
-
-        /// Returns a constant pointer to the value.
-        pub fn as_ptr(shared: &Self) -> *const T {
-            SharedPointer::as_ptr(&shared.0)
-        }
-
-        /// Returns a copy of the value.
-        #[allow(clippy::should_implement_trait)]
-        pub fn clone(shared: &Self) -> Self {
-            shared.clone()
-        }
-
-        /// Returns a mutable reference into the given shared pointer, if there are no other
-        /// pointers to the same allocation.
-        ///
-        /// Returns None otherwise, because it is not safe to mutate a shared value.
-        pub fn get_mut(shared: &mut Self) -> Option<&mut T> {
-            SharedPointer::get_mut(&mut shared.0)
-        }
-
-        /// Returns `true` if two `Shared` instances point to the same underlying memory.
-        pub fn ptr_eq(lhs: &Self, rhs: &Self) -> bool {
-            SharedPointer::ptr_eq(&lhs.0, &rhs.0)
-        }
-    }
-
-    impl<T, P> Clone for Shared<T, P>
-    where
-        P: SharedPointerKind,
-    {
-        fn clone(&self) -> Self {
-            Self(self.0.clone())
-        }
-    }
-
-    impl<T, P> Default for Shared<T, P>
-    where
-        P: SharedPointerKind,
-        T: Default,
-    {
-        fn default() -> Self {
-            Self::new(Default::default())
-        }
-    }
-
-    impl<T, P> Deref for Shared<T, P>
-    where
-        P: SharedPointerKind,
-    {
-        type Target = T;
-
-        fn deref(&self) -> &Self::Target {
-            &self.0
-        }
-    }
-
-    impl<T, P> From<&Shared<T, P>> for Shared<T, P>
-    where
-        P: SharedPointerKind,
-    {
-        fn from(val: &Self) -> Self {
-            val.clone()
-        }
-    }
-
-    impl<T, P> From<T> for Shared<T, P>
-    where
-        P: SharedPointerKind,
-    {
-        fn from(val: T) -> Self {
-            Self::new(val)
-        }
-    }
-
-    impl<T, P> PartialEq for Shared<T, P>
-    where
-        P: SharedPointerKind,
-    {
-        fn eq(&self, other: &Self) -> bool {
-            Self::ptr_eq(self, other)
-        }
-    }
+    pub type Shared<T> = archery::SharedPointer<T, P>;
 }
 
 pub fn align_up_u32(val: u32, atom: u32) -> u32 {

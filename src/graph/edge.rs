@@ -10,10 +10,9 @@ use {
             Buffer, ComputePipeline, GraphicPipeline, Image, RayTraceAcceleration,
             RayTracePipeline, SwapchainImage,
         },
-        ptr::Shared,
         Lease,
     },
-    archery::SharedPointerKind,
+    archery::{SharedPointer, SharedPointerKind},
 };
 
 /// A marker trait that says some graph object can transition into a different
@@ -76,7 +75,7 @@ graph_lease_edge!(RayTraceAcceleration -> RayTraceAccelerationLeaseNode);
 macro_rules! pipeline_edge {
     ($name:ident) => {
         paste::paste! {
-            impl<'a, P> Edge<PassRef<'a, P>> for &'a Shared<[<$name Pipeline>]<P>, P>
+            impl<'a, P> Edge<PassRef<'a, P>> for &'a SharedPointer<[<$name Pipeline>]<P>, P>
             where
                 P: SharedPointerKind + Send,
             {

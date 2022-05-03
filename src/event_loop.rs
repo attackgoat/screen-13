@@ -2,10 +2,9 @@ use {
     super::{
         driver::{Device, Driver, DriverConfigBuilder, DriverError},
         frame::FrameContext,
-        ptr::Shared,
         Display, DisplayError,
     },
-    archery::SharedPointerKind,
+    archery::{ArcK, SharedPointer, SharedPointerKind},
     log::{debug, info, trace, warn},
     std::{
         marker::PhantomData,
@@ -21,6 +20,13 @@ use {
     },
 };
 
+pub fn run<FrameFn>(frame_fn: FrameFn) -> Result<(), DisplayError>
+where
+    FrameFn: FnMut(FrameContext<ArcK>),
+{
+    EventLoop::new().build()?.run(frame_fn)
+}
+
 pub enum FullscreenMode {
     Borderless,
 
@@ -35,7 +41,7 @@ pub struct EventLoop<P>
 where
     P: SharedPointerKind + Send,
 {
-    pub device: Shared<Device<P>, P>,
+    pub device: SharedPointer<Device<P>, P>,
     display: Display<P>,
     event_loop: winit::event_loop::EventLoop<()>,
     pub window: Window,
@@ -300,7 +306,7 @@ where
         );
 
         Ok(EventLoop {
-            device: Shared::clone(&driver.device),
+            device: SharedPointer::clone(&driver.device),
             display,
             event_loop: self.event_loop,
             window,

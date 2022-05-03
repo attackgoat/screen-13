@@ -3,8 +3,7 @@ use {
         Buffer, BufferInfo, DescriptorBindingMap, Device, DriverError, PipelineDescriptorInfo,
         Shader,
     },
-    crate::ptr::Shared,
-    archery::SharedPointerKind,
+    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     derive_builder::Builder,
     log::{info, trace, warn},
@@ -17,7 +16,7 @@ pub struct RayTraceAcceleration<P>
 where
     P: SharedPointerKind,
 {
-    device: Shared<Device<P>, P>,
+    device: SharedPointer<Device<P>, P>,
     accel_struct: vk::AccelerationStructureKHR,
     _buf: Buffer<P>,
 }
@@ -54,8 +53,8 @@ pub struct RayTraceAccelerationScratchBuffer<P>
 where
     P: SharedPointerKind,
 {
-    device: Shared<Device<P>, P>,
-    buf: Shared<Mutex<Buffer<P>>, P>,
+    device: SharedPointer<Device<P>, P>,
+    buf: SharedPointer<Mutex<Buffer<P>>, P>,
 }
 
 impl<P> RayTraceAccelerationScratchBuffer<P>
@@ -64,11 +63,11 @@ where
 {
     pub const RT_SCRATCH_BUFFER_SIZE: vk::DeviceSize = 1024 * 1024 * 1440;
 
-    pub fn create(device: &Shared<Device<P>, P>) -> Result<Self, DriverError> {
+    pub fn create(device: &SharedPointer<Device<P>, P>) -> Result<Self, DriverError> {
         trace!("create");
 
-        let device = Shared::clone(device);
-        let buf = Shared::new(Mutex::new(Buffer::create(
+        let device = SharedPointer::clone(device);
+        let buf = SharedPointer::new(Mutex::new(Buffer::create(
             &device,
             BufferInfo::new(
                 Self::RT_SCRATCH_BUFFER_SIZE,
@@ -316,7 +315,7 @@ where
             //     );
             // });
 
-            let device = Shared::clone(&self.device);
+            let device = SharedPointer::clone(&self.device);
 
             Ok(RayTraceAcceleration {
                 device,
@@ -530,7 +529,7 @@ pub struct RayTraceInstanceInfo<P>
 where
     P: SharedPointerKind,
 {
-    pub blas: Shared<RayTraceAcceleration<P>, P>,
+    pub blas: SharedPointer<RayTraceAcceleration<P>, P>,
     pub mesh_idx: u32,
     pub position: [f32; 3],
     pub rotation: [f32; 16],
@@ -543,7 +542,7 @@ where
 {
     pub descriptor_bindings: DescriptorBindingMap,
     pub descriptor_info: PipelineDescriptorInfo<P>,
-    device: Shared<Device<P>, P>,
+    device: SharedPointer<Device<P>, P>,
     pub info: RayTracePipelineInfo,
     pub layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
@@ -555,14 +554,14 @@ where
     P: SharedPointerKind,
 {
     pub fn create<S>(
-        device: &Shared<Device<P>, P>,
+        device: &SharedPointer<Device<P>, P>,
         info: impl Into<RayTracePipelineInfo>,
         shaders: impl IntoIterator<Item = S>,
     ) -> Result<Self, DriverError>
     where
         S: Into<Shader>,
     {
-        let device = Shared::clone(device);
+        let device = SharedPointer::clone(device);
         let info = info.into();
         let shaders = shaders
             .into_iter()
@@ -831,7 +830,7 @@ where
     P: SharedPointerKind,
 {
     fn create(
-        _device: &Shared<Device<P>, P>,
+        _device: &SharedPointer<Device<P>, P>,
         _info: &RayTraceShaderBindingsDesc,
         _pipeline: vk::Pipeline,
     ) -> Result<RayTraceShaderBindings<P>, DriverError> {

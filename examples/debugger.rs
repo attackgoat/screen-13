@@ -94,47 +94,56 @@ fn main() -> Result<(), screen_13::DisplayError> {
                 This will cause a validation error now (because this image is created here).
 
             You have followed the above directions and now have an active debug session looking at
-            line 110. You try to step forward in vain. Comment out the second `image` binding to
+            line 115. You try to step forward in vain. Comment out the second `image` binding to
             continue.
 
             It is left as an excerise to the reader to determine *what* might have gone wrong here.
         */
         #[allow(unused_variables)]
-        let image = frame
-            .render_graph
-            .bind_node(frame.device.new_image(ImageInfo::new_2d(
-                vk::Format::R8G8B8A8_UNORM,
-                1024,
-                1024,
-                vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::TRANSFER_SRC,
-            )));
-        let image = frame
-            .render_graph
-            .bind_node(frame.device.new_image(ImageInfo::new_2d(
-                vk::Format::UNDEFINED,
-                u32::MAX,
-                u32::MAX,
-                vk::ImageUsageFlags::RESERVED_22_EXT,
-            )));
-
-        // Note: This is just for example and should always work - this uses the `device.new_XX`
-        // set of APIs which panic instead of resulting in errors and is more for simpler use cases
-        // like this. (Note that device.new_XX offers the normal functionality - minus only the
-        // error results)
-        let compute_pipeline = frame.device.new_compute_pipeline(
-            inline_spirv::inline_spirv!(
-                r#"
-                #version 460 core
-
-                layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
-
-                layout(set = 0, binding = 42, rgba8) restrict readonly uniform image2D an_image;
-
-                void main() {/* TODO: 📈...💰! */}
-                "#,
-                comp
+        let image = frame.render_graph.bind_node(
+            Image::create(
+                frame.device,
+                ImageInfo::new_2d(
+                    vk::Format::R8G8B8A8_UNORM,
+                    1024,
+                    1024,
+                    vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::TRANSFER_SRC,
+                ),
             )
-            .as_slice(),
+            .unwrap(),
+        );
+        let image = frame.render_graph.bind_node(
+            Image::create(
+                frame.device,
+                ImageInfo::new_2d(
+                    vk::Format::UNDEFINED,
+                    u32::MAX,
+                    u32::MAX,
+                    vk::ImageUsageFlags::RESERVED_22_EXT,
+                ),
+            )
+            .unwrap(),
+        );
+
+        // Note: This is just for example
+        let compute_pipeline = Shared::new(
+            ComputePipeline::create(
+                frame.device,
+                inline_spirv::inline_spirv!(
+                    r#"
+                    #version 460 core
+
+                    layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+                    layout(set = 0, binding = 42, rgba8) restrict readonly uniform image2D an_image;
+
+                    void main() {/* TODO: 📈...💰! */}
+                    "#,
+                    comp
+                )
+                .as_slice(),
+            )
+            .unwrap(),
         );
 
         /*
@@ -150,7 +159,7 @@ fn main() -> Result<(), screen_13::DisplayError> {
             Because this error does not cause validation layer messages, it does not hit the debug
             "breakpoint" we setup on line 39. You have two choices:
               - Read how pass_ref.rs lays out data which resolver.rs submits; debug it (you die)
-              - Goto line 170 and fix the bug
+              - Goto line 180 and fix the bug
 
             This is a valid thing to panic over because we expect that all frames will render
             something to the swapchain image. The operating system is nicely asking that we repaint
@@ -161,7 +170,7 @@ fn main() -> Result<(), screen_13::DisplayError> {
             compute, copy, render, store, transfer or any number of other things and that will
             signal it's OK to proceed without panicking.
 
-            Here is a fixed line 170:
+            Here is a fixed line 180:
                 .write_descriptor(42, frame.swapchain_image)
         */
         frame

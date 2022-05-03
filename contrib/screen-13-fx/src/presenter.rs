@@ -1,11 +1,12 @@
 use {
+    archery::{SharedPointer, SharedPointerKind},
     bytemuck::cast_slice,
     glam::{vec3, Mat4},
     inline_spirv::include_spirv,
     screen_13::prelude_all::*,
 };
 
-pub struct ComputePresenter<P>([Shared<ComputePipeline<P>, P>; 2])
+pub struct ComputePresenter<P>([SharedPointer<ComputePipeline<P>, P>; 2])
 where
     P: SharedPointerKind;
 
@@ -13,12 +14,12 @@ impl<P> ComputePresenter<P>
 where
     P: SharedPointerKind + Send + 'static,
 {
-    pub fn new(device: &Shared<Device<P>, P>) -> Result<Self, DriverError> {
-        let pipeline1 = Shared::new(ComputePipeline::create(
+    pub fn new(device: &SharedPointer<Device<P>, P>) -> Result<Self, DriverError> {
+        let pipeline1 = SharedPointer::new(ComputePipeline::create(
             device,
             include_spirv!("res/shader/compute/present1.comp", comp).as_slice(),
         )?);
-        let pipeline2 = Shared::new(ComputePipeline::create(
+        let pipeline2 = SharedPointer::new(ComputePipeline::create(
             device,
             include_spirv!("res/shader/compute/present2.comp", comp).as_slice(),
         )?);
@@ -81,16 +82,16 @@ pub struct GraphicPresenter<P>
 where
     P: SharedPointerKind,
 {
-    pipeline: Shared<GraphicPipeline<P>, P>,
+    pipeline: SharedPointer<GraphicPipeline<P>, P>,
 }
 
 impl<P> GraphicPresenter<P>
 where
     P: SharedPointerKind + Send + 'static,
 {
-    pub fn new(device: &Shared<Device<P>, P>) -> Result<Self, DriverError> {
+    pub fn new(device: &SharedPointer<Device<P>, P>) -> Result<Self, DriverError> {
         Ok(Self {
-            pipeline: Shared::new(GraphicPipeline::create(
+            pipeline: SharedPointer::new(GraphicPipeline::create(
                 device,
                 GraphicPipelineInfo::new(),
                 [

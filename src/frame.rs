@@ -2,9 +2,8 @@ use {
     crate::{
         driver::Device,
         graph::{RenderGraph, SwapchainImageNode},
-        ptr::Shared,
     },
-    archery::SharedPointerKind,
+    archery::{SharedPointer, SharedPointerKind},
     winit::{dpi::PhysicalPosition, event::Event, window::Window},
 };
 
@@ -24,7 +23,7 @@ pub struct FrameContext<'a, P>
 where
     P: SharedPointerKind,
 {
-    pub device: &'a Shared<Device<P>, P>,
+    pub device: &'a SharedPointer<Device<P>, P>,
     pub dt: f32,
     pub events: &'a [Event<'a, ()>],
     pub height: u32,

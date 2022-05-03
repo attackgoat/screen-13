@@ -3,11 +3,10 @@ use {
         BufferBinding, BufferLeaseBinding, ImageBinding, ImageLeaseBinding, Information, NodeIndex,
         RayTraceAccelerationBinding, RayTraceAccelerationLeaseBinding, RenderGraph, Subresource,
     },
-    crate::{
-        driver::{vk, BufferInfo, BufferSubresource, ImageInfo, ImageSubresource, ImageViewInfo},
-        ptr::Shared,
+    crate::driver::{
+        vk, BufferInfo, BufferSubresource, ImageInfo, ImageSubresource, ImageViewInfo,
     },
-    archery::SharedPointerKind,
+    archery::{SharedPointer, SharedPointerKind},
     std::{marker::PhantomData, ops::Range},
 };
 
@@ -169,7 +168,7 @@ macro_rules! node_unbind {
                 fn unbind(self, graph: &mut RenderGraph<P>) -> [<$name Binding>]<P> {
                     let binding = {
                         let binding = graph.bindings[self.idx].[<as_ $name:snake>]().unwrap();
-                        let item = Shared::clone(&binding.item);
+                        let item = SharedPointer::clone(&binding.item);
 
                         // When unbinding we return a binding that has the last access type set to
                         // whatever the last acccess in the graph was (because it will be valid once

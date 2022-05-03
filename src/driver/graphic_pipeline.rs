@@ -3,8 +3,8 @@ use {
         DescriptorBindingMap, Device, DriverError, PipelineDescriptorInfo, SampleCount, Shader,
         SpecializationInfo,
     },
-    crate::{graph::AttachmentIndex, ptr::Shared},
-    archery::SharedPointerKind,
+    crate::graph::AttachmentIndex,
+    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     derive_builder::Builder,
     log::{trace, warn},
@@ -163,7 +163,7 @@ where
 {
     pub descriptor_bindings: DescriptorBindingMap,
     pub descriptor_info: PipelineDescriptorInfo<P>,
-    device: Shared<Device<P>, P>,
+    device: SharedPointer<Device<P>, P>,
     pub info: GraphicPipelineInfo,
     pub input_attachments: HashSet<AttachmentIndex>,
     pub layout: vk::PipelineLayout,
@@ -179,7 +179,7 @@ where
     P: SharedPointerKind,
 {
     pub fn create<S>(
-        device: &Shared<Device<P>, P>,
+        device: &SharedPointer<Device<P>, P>,
         info: impl Into<GraphicPipelineInfo>,
         shaders: impl IntoIterator<Item = S>,
     ) -> Result<Self, DriverError>
@@ -188,7 +188,7 @@ where
     {
         trace!("create");
 
-        let device = Shared::clone(device);
+        let device = SharedPointer::clone(device);
         let info = info.into();
         let shaders = shaders
             .into_iter()

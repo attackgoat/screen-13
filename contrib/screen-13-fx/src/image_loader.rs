@@ -1,5 +1,9 @@
 use {
-    super::BitmapFont, anyhow::Context, bmfont::BMFont, inline_spirv::include_spirv,
+    super::BitmapFont,
+    anyhow::Context,
+    archery::{SharedPointer, SharedPointerKind},
+    bmfont::BMFont,
+    inline_spirv::include_spirv,
     screen_13::prelude_all::*,
 };
 
@@ -29,27 +33,27 @@ where
     P: SharedPointerKind,
 {
     cache: HashPool<P>,
-    _decode_r_rg: Shared<ComputePipeline<P>, P>,
-    decode_rgb_rgba: Shared<ComputePipeline<P>, P>,
-    pub device: Shared<Device<P>, P>,
+    _decode_r_rg: SharedPointer<ComputePipeline<P>, P>,
+    decode_rgb_rgba: SharedPointer<ComputePipeline<P>, P>,
+    pub device: SharedPointer<Device<P>, P>,
 }
 
 impl<P> ImageLoader<P>
 where
     P: SharedPointerKind + Send + 'static,
 {
-    pub fn new(device: &Shared<Device<P>, P>) -> Result<Self, DriverError> {
+    pub fn new(device: &SharedPointer<Device<P>, P>) -> Result<Self, DriverError> {
         Ok(Self {
             cache: HashPool::new(device),
-            _decode_r_rg: Shared::new(ComputePipeline::create(
+            _decode_r_rg: SharedPointer::new(ComputePipeline::create(
                 device,
                 include_spirv!("res/shader/compute/decode_bitmap_r_rg.comp", comp).as_slice(),
             )?),
-            decode_rgb_rgba: Shared::new(ComputePipeline::create(
+            decode_rgb_rgba: SharedPointer::new(ComputePipeline::create(
                 device,
                 include_spirv!("res/shader/compute/decode_bitmap_rgb_rgba.comp", comp).as_slice(),
             )?),
-            device: Shared::clone(device),
+            device: SharedPointer::clone(device),
         })
     }
 

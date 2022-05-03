@@ -2,8 +2,7 @@ use {
     super::{
         DriverConfig, DriverError, Instance, PhysicalDevice, QueueFamily, SamplerDesc, Surface,
     },
-    crate::ptr::Shared,
-    archery::SharedPointerKind,
+    archery::{SharedPointer, SharedPointerKind},
     ash::{extensions::khr, vk},
     bitflags::bitflags,
     gpu_allocator::{
@@ -32,7 +31,7 @@ where
     pub(super) allocator: Option<Mutex<Allocator>>,
     device: ash::Device,
     immutable_samplers: HashMap<SamplerDesc, vk::Sampler>,
-    pub instance: Shared<Instance, P>, // TODO: Need shared?
+    pub instance: SharedPointer<Instance, P>, // TODO: Need shared?
     pub physical_device: PhysicalDevice,
     pub queue: Queue,
 }
@@ -44,7 +43,7 @@ where
     pub fn new(cfg: DriverConfig) -> Result<Self, DriverError> {
         trace!("new {:?}", cfg);
 
-        let instance = Shared::new(Instance::new(cfg.debug, empty())?);
+        let instance = SharedPointer::new(Instance::new(cfg.debug, empty())?);
         let physical_device = Instance::physical_devices(&instance)?
             .filter(|physical_device| {
                 if cfg.ray_tracing && !PhysicalDevice::has_ray_tracing_support(physical_device) {
@@ -71,11 +70,11 @@ where
     }
 
     pub fn create(
-        instance: &Shared<Instance, P>,
+        instance: &SharedPointer<Instance, P>,
         physical_device: PhysicalDevice,
         cfg: DriverConfig,
     ) -> Result<Self, DriverError> {
-        let instance = Shared::clone(instance);
+        let instance = SharedPointer::clone(instance);
         let features = cfg.features();
         let device_extension_names = features.extension_names();
 

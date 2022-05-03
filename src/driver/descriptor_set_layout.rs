@@ -1,7 +1,6 @@
 use {
     super::{Device, DriverError},
-    crate::ptr::Shared,
-    archery::SharedPointerKind,
+    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     log::warn,
     std::{ops::Deref, thread::panicking},
@@ -12,7 +11,7 @@ pub struct DescriptorSetLayout<P>
 where
     P: SharedPointerKind,
 {
-    device: Shared<Device<P>, P>,
+    device: SharedPointer<Device<P>, P>,
     descriptor_set_layout: vk::DescriptorSetLayout,
 }
 
@@ -21,13 +20,13 @@ where
     P: SharedPointerKind,
 {
     pub fn create(
-        device: &Shared<Device<P>, P>,
+        device: &SharedPointer<Device<P>, P>,
         info: &vk::DescriptorSetLayoutCreateInfo,
     ) -> Result<Self, DriverError>
     where
         P: SharedPointerKind,
     {
-        let device = Shared::clone(device);
+        let device = SharedPointer::clone(device);
         let descriptor_set_layout = unsafe {
             device
                 .create_descriptor_set_layout(info, None)

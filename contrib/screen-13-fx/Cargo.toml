@@ -23,6 +23,7 @@ mask-modes = []
 matte-modes = []
 
 [dependencies]
+archery = "0.4"
 bmfont = { version = "0.3", default-features = false }
 bytemuck = "1.9"
 lazy_static = "1.4"

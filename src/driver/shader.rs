@@ -1,7 +1,6 @@
 use {
     super::{DescriptorSetLayout, Device, DriverError, SamplerDesc, VertexInputState},
-    crate::ptr::Shared,
-    archery::SharedPointerKind,
+    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     derive_builder::Builder,
     log::{debug, error, info, trace},
@@ -149,7 +148,7 @@ where
     P: SharedPointerKind,
 {
     pub fn create(
-        device: &Shared<Device<P>, P>,
+        device: &SharedPointer<Device<P>, P>,
         descriptor_bindings: &DescriptorBindingMap,
     ) -> Result<Self, DriverError>
     where

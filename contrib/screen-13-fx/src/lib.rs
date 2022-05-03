@@ -1,7 +1,7 @@
 pub mod prelude_arc {
     pub use super::*;
 
-    use screen_13::ptr::ArcK as P;
+    use archery::ArcK as P;
 
     pub type BitmapFont = super::BitmapFont<P>;
     pub type ComputePresenter = super::ComputePresenter<P>;
@@ -14,7 +14,7 @@ pub mod prelude_arc {
 pub mod prelude_rc {
     pub use super::*;
 
-    use screen_13::ptr::RcK as P;
+    use archery::RcK as P;
 
     pub type BitmapFont = super::BitmapFont<P>;
     pub type ComputePresenter = super::ComputePresenter<P>;

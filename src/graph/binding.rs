@@ -5,10 +5,9 @@ use {
     },
     crate::{
         driver::{Buffer, BufferInfo, Image, ImageInfo, RayTraceAcceleration},
-        ptr::Shared,
         Lease,
     },
-    archery::SharedPointerKind,
+    archery::{SharedPointer, SharedPointerKind},
     std::{
         fmt::Debug,
         mem::replace,
@@ -196,7 +195,7 @@ macro_rules! bind {
             where
                 P: SharedPointerKind,
             {
-                pub(super) item: Shared<$name<P>, P>,
+                pub(super) item: SharedPointer<$name<P>, P>,
                 pub(super) access: AccessType,
             }
 
@@ -204,12 +203,12 @@ macro_rules! bind {
             where
                 P: SharedPointerKind {
                 pub fn new(item: $name<P>) -> Self {
-                    let item = Shared::new(item);
+                    let item = SharedPointer::new(item);
 
                     Self::new_unbind(item, AccessType::Nothing)
                 }
 
-                pub(super) fn new_unbind(item: Shared<$name<P>, P>, access: AccessType) -> Self {
+                pub(super) fn new_unbind(item: SharedPointer<$name<P>, P>, access: AccessType) -> Self {
                     Self {
                         item,
                         access,
@@ -226,7 +225,7 @@ macro_rules! bind {
 
                 /// Returns a mutable borrow only if no other clones of this shared item exist.
                 pub fn get_mut(&mut self) -> Option<&mut $name<P>> {
-                    Shared::get_mut(&mut self.item)
+                    SharedPointer::get_mut(&mut self.item)
                 }
             }
 

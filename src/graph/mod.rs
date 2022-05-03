@@ -27,16 +27,13 @@ pub use {
 
 use {
     self::{binding::Binding, edge::Edge, info::Information, node::Node},
-    crate::{
-        driver::{
-            buffer_copy_subresources, buffer_image_copy_subresource, format_aspect_mask,
-            is_write_access, BufferSubresource, ComputePipeline, DepthStencilMode,
-            DescriptorBindingMap, GraphicPipeline, ImageSubresource, ImageType,
-            PipelineDescriptorInfo, RayTracePipeline, SampleCount,
-        },
-        ptr::Shared,
+    crate::driver::{
+        buffer_copy_subresources, buffer_image_copy_subresource, format_aspect_mask,
+        is_write_access, BufferSubresource, ComputePipeline, DepthStencilMode,
+        DescriptorBindingMap, GraphicPipeline, ImageSubresource, ImageType, PipelineDescriptorInfo,
+        RayTracePipeline, SampleCount,
     },
-    archery::SharedPointerKind,
+    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     std::{
         cmp::Ord,
@@ -381,9 +378,9 @@ enum ExecutionPipeline<P>
 where
     P: SharedPointerKind,
 {
-    Compute(Shared<ComputePipeline<P>, P>),
-    Graphic(Shared<GraphicPipeline<P>, P>),
-    RayTrace(Shared<RayTracePipeline<P>, P>),
+    Compute(SharedPointer<ComputePipeline<P>, P>),
+    Graphic(SharedPointer<GraphicPipeline<P>, P>),
+    RayTrace(SharedPointer<RayTracePipeline<P>, P>),
 }
 
 impl<P> ExecutionPipeline<P>
@@ -437,9 +434,9 @@ where
 {
     fn clone(&self) -> Self {
         match self {
-            Self::Compute(pipeline) => Self::Compute(Shared::clone(pipeline)),
-            Self::Graphic(pipeline) => Self::Graphic(Shared::clone(pipeline)),
-            Self::RayTrace(pipeline) => Self::RayTrace(Shared::clone(pipeline)),
+            Self::Compute(pipeline) => Self::Compute(SharedPointer::clone(pipeline)),
+            Self::Graphic(pipeline) => Self::Graphic(SharedPointer::clone(pipeline)),
+            Self::RayTrace(pipeline) => Self::RayTrace(SharedPointer::clone(pipeline)),
         }
     }
 }

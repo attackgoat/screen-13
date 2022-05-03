@@ -40,7 +40,7 @@ fn main() -> anyhow::Result<()> {
 
     // A neato smoke effect just for fun
     let start_time = Instant::now();
-    let smoke_pipeline = event_loop.device.new_compute_pipeline(
+    let smoke_pipeline = event_loop.new_compute_pipeline(
         inline_spirv!(
             r#"
             // Derived from https://www.shadertoy.com/view/Xl2XWz

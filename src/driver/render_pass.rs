@@ -1,7 +1,6 @@
 use {
     super::{DepthStencilMode, Device, DriverError, GraphicPipeline, SampleCount},
-    crate::ptr::Shared,
-    archery::SharedPointerKind,
+    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     derive_builder::Builder,
     log::{trace, warn},
@@ -101,8 +100,8 @@ pub struct FramebufferKeyAttachment {
 
 #[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct GraphicPipelineKey {
-    pipeline: usize,
     depth_stencil: Option<DepthStencilMode>,
+    layout: vk::PipelineLayout,
     subpass_idx: u32,
 }
 
@@ -126,7 +125,7 @@ pub struct RenderPass<P>
 where
     P: SharedPointerKind,
 {
-    device: Shared<Device<P>, P>,
+    device: SharedPointer<Device<P>, P>,
     framebuffer_cache: Mutex<BTreeMap<FramebufferKey, vk::Framebuffer>>,
     graphic_pipeline_cache: Mutex<BTreeMap<GraphicPipelineKey, vk::Pipeline>>,
     pub info: RenderPassInfo,
@@ -137,13 +136,16 @@ impl<P> RenderPass<P>
 where
     P: SharedPointerKind,
 {
-    pub fn create(device: &Shared<Device<P>, P>, info: RenderPassInfo) -> Result<Self, DriverError>
+    pub fn create(
+        device: &SharedPointer<Device<P>, P>,
+        info: RenderPassInfo,
+    ) -> Result<Self, DriverError>
     where
         P: SharedPointerKind,
     {
         trace!("create");
 
-        let device = Shared::clone(device);
+        let device = SharedPointer::clone(device);
         let attachments = info
             .attachments
             .iter()
@@ -321,7 +323,7 @@ where
 
     pub fn graphic_pipeline_ref(
         &self,
-        pipeline: &Shared<GraphicPipeline<P>, P>,
+        pipeline: &SharedPointer<GraphicPipeline<P>, P>,
         depth_stencil: Option<DepthStencilMode>,
         subpass_idx: u32,
     ) -> Result<vk::Pipeline, DriverError> {
@@ -330,7 +332,7 @@ where
         let mut cache = self.graphic_pipeline_cache.lock();
         let entry = cache.entry(GraphicPipelineKey {
             depth_stencil,
-            pipeline: Shared::as_ptr(pipeline) as _, // HACK: We're just storing a pointer!
+            layout: pipeline.layout,
             subpass_idx,
         });
         if let Entry::Occupied(entry) = entry {

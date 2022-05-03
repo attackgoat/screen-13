@@ -3,8 +3,7 @@ use {
         shader::ShaderCode, DescriptorBindingMap, Device, DriverError, PipelineDescriptorInfo,
         Shader, SpecializationInfo,
     },
-    crate::ptr::Shared,
-    archery::SharedPointerKind,
+    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     derive_builder::Builder,
     log::{trace, warn},
@@ -18,7 +17,7 @@ where
 {
     pub descriptor_bindings: DescriptorBindingMap,
     pub descriptor_info: PipelineDescriptorInfo<P>,
-    pub device: Shared<Device<P>, P>,
+    pub device: SharedPointer<Device<P>, P>,
     pub layout: vk::PipelineLayout,
     pub info: ComputePipelineInfo,
     pipeline: vk::Pipeline,
@@ -30,14 +29,14 @@ where
     P: SharedPointerKind,
 {
     pub fn create(
-        device: &Shared<Device<P>, P>,
+        device: &SharedPointer<Device<P>, P>,
         info: impl Into<ComputePipelineInfo>,
     ) -> Result<Self, DriverError> {
         use std::slice::from_ref;
 
         trace!("create");
 
-        let device = Shared::clone(device);
+        let device = SharedPointer::clone(device);
         let info: ComputePipelineInfo = info.into();
         let shader = info.clone().into_shader();
 

@@ -1,7 +1,6 @@
 use {
     super::{Device, DriverError, QueueFamily},
-    crate::ptr::Shared,
-    archery::SharedPointerKind,
+    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     log::{trace, warn},
     std::{fmt::Debug, ops::Deref, thread::panicking},
@@ -13,7 +12,7 @@ where
     P: SharedPointerKind,
 {
     cmd_buf: vk::CommandBuffer,
-    pub(crate) device: Shared<Device<P>, P>,
+    pub(crate) device: SharedPointer<Device<P>, P>,
     droppables: Vec<Box<dyn Debug + Send + 'static>>,
     pub fence: vk::Fence, // Keeps state because everyone wants this
     pub pool: vk::CommandPool,
@@ -24,10 +23,10 @@ where
     P: SharedPointerKind,
 {
     pub fn create(
-        device: &Shared<Device<P>, P>,
+        device: &SharedPointer<Device<P>, P>,
         queue_family: QueueFamily,
     ) -> Result<Self, DriverError> {
-        let device = Shared::clone(device);
+        let device = SharedPointer::clone(device);
         let cmd_pool_info = vk::CommandPoolCreateInfo::builder()
             .flags(vk::CommandPoolCreateFlags::empty())
             .queue_family_index(queue_family.idx);

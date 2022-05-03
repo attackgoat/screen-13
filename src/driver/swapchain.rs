@@ -1,7 +1,6 @@
 use {
     super::{Device, DriverError, Image, ImageInfo, ImageType, SampleCount, Surface},
-    crate::ptr::Shared,
-    archery::SharedPointerKind,
+    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     derive_builder::Builder,
     log::{debug, warn},
@@ -13,7 +12,7 @@ pub struct Swapchain<P>
 where
     P: SharedPointerKind,
 {
-    device: Shared<Device<P>, P>,
+    device: SharedPointer<Device<P>, P>,
     images: Vec<Option<Image<P>>>,
     pub info: SwapchainInfo,
     next_semaphore: usize,
@@ -29,11 +28,11 @@ where
     P: SharedPointerKind,
 {
     pub fn new(
-        device: &Shared<Device<P>, P>,
+        device: &SharedPointer<Device<P>, P>,
         surface: Surface<P>,
         info: SwapchainInfo,
     ) -> Result<Self, DriverError> {
-        let device = Shared::clone(device);
+        let device = SharedPointer::clone(device);
         let acquired_semaphores = (0..info.desired_image_count)
             .map(|_| {
                 unsafe { device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None) }

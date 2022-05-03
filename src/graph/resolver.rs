@@ -13,10 +13,9 @@ use {
             FramebufferKey, FramebufferKeyAttachment, Image, ImageViewInfo, RenderPass,
             RenderPassInfo, SampleCount, SubpassDependency, SubpassInfo,
         },
-        ptr::Shared,
         HashPool, Lease,
     },
-    archery::SharedPointerKind,
+    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     log::{debug, trace},
     std::{
@@ -34,7 +33,7 @@ struct PhysicalPass<P>
 where
     P: SharedPointerKind,
 {
-    _descriptor_pool: Option<Lease<Shared<DescriptorPool<P>, P>, P>>,
+    _descriptor_pool: Option<Lease<SharedPointer<DescriptorPool<P>, P>, P>>,
     exec_descriptor_sets: HashMap<usize, Vec<DescriptorSet<P>>>,
     render_pass: Option<Lease<RenderPass<P>, P>>,
 }
@@ -357,27 +356,21 @@ where
         pipeline: &mut ExecutionPipeline<P>,
         depth_stencil: Option<DepthStencilMode>,
     ) -> Result<(), DriverError> {
-        let (ty, name, ptr) = match pipeline {
-            ExecutionPipeline::Compute(pipeline) => (
-                "compute",
-                pipeline.info.name.as_ref(),
-                Shared::as_ptr(pipeline) as *const (),
-            ),
-            ExecutionPipeline::Graphic(pipeline) => (
-                "graphic",
-                pipeline.info.name.as_ref(),
-                Shared::as_ptr(pipeline) as *const (),
-            ),
-            ExecutionPipeline::RayTrace(pipeline) => (
-                "ray trace",
-                pipeline.info.name.as_ref(),
-                Shared::as_ptr(pipeline) as *const (),
-            ),
+        let (ty, name, vk_pipeline) = match pipeline {
+            ExecutionPipeline::Compute(pipeline) => {
+                ("compute", pipeline.info.name.as_ref(), ***pipeline)
+            }
+            ExecutionPipeline::Graphic(pipeline) => {
+                ("graphic", pipeline.info.name.as_ref(), vk::Pipeline::null())
+            }
+            ExecutionPipeline::RayTrace(pipeline) => {
+                ("ray trace", pipeline.info.name.as_ref(), ***pipeline)
+            }
         };
         if let Some(name) = name {
-            trace!("    bind {} pipeline {} ({:?})", ty, name, ptr);
+            trace!("    bind {} pipeline {} ({:?})", ty, name, vk_pipeline);
         } else {
-            trace!("    bind {} pipeline {:?}", ty, ptr);
+            trace!("    bind {} pipeline {:?}", ty, vk_pipeline);
         }
 
         // We store a shared reference to this pipeline inside the command buffer!
@@ -385,11 +378,11 @@ where
         let pipeline_bind_point = pipeline.bind_point();
         let pipeline = match pipeline {
             ExecutionPipeline::Compute(pipeline) => {
-                CommandBuffer::push_fenced_drop(cmd_buf, Shared::clone(pipeline));
+                CommandBuffer::push_fenced_drop(cmd_buf, SharedPointer::clone(pipeline));
                 ***pipeline
             }
             ExecutionPipeline::Graphic(pipeline) => {
-                CommandBuffer::push_fenced_drop(cmd_buf, Shared::clone(pipeline));
+                CommandBuffer::push_fenced_drop(cmd_buf, SharedPointer::clone(pipeline));
                 physical_pass
                     .render_pass
                     .as_ref()
@@ -397,7 +390,7 @@ where
                     .graphic_pipeline_ref(pipeline, depth_stencil, exec_idx as _)?
             }
             ExecutionPipeline::RayTrace(pipeline) => {
-                CommandBuffer::push_fenced_drop(cmd_buf, Shared::clone(pipeline));
+                CommandBuffer::push_fenced_drop(cmd_buf, SharedPointer::clone(pipeline));
                 ***pipeline
             }
         };
@@ -487,7 +480,7 @@ where
     fn lease_descriptor_pool(
         cache: &mut HashPool<P>,
         pass: &Pass<P>,
-    ) -> Result<Option<Lease<Shared<DescriptorPool<P>, P>, P>>, DriverError> {
+    ) -> Result<Option<Lease<SharedPointer<DescriptorPool<P>, P>, P>>, DriverError> {
         let mut max_pool_sizes = BTreeMap::new();
         let max_descriptor_set_idx = pass
             .execs

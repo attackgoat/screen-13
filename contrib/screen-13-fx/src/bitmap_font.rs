@@ -1,5 +1,6 @@
 use {
     anyhow::Context,
+    archery::{SharedPointer, SharedPointerKind},
     bmfont::BMFont,
     bytemuck::{cast, cast_slice},
     glam::{vec3, Mat4},
@@ -27,7 +28,7 @@ where
     cache: HashPool<P>,
     font: BMFont,
     pages: Vec<ImageBinding<P>>,
-    pipeline: Shared<GraphicPipeline<P>, P>,
+    pipeline: SharedPointer<GraphicPipeline<P>, P>,
 }
 
 impl<P> BitmapFont<P>
@@ -35,14 +36,14 @@ where
     P: SharedPointerKind + Send + 'static,
 {
     pub fn new(
-        device: &Shared<Device<P>, P>,
+        device: &SharedPointer<Device<P>, P>,
         font: BMFont,
         pages: impl Into<Vec<ImageBinding<P>>>,
     ) -> anyhow::Result<Self> {
         let cache = HashPool::new(device);
         let pages = pages.into();
         let num_pages = pages.len() as u32;
-        let pipeline = Shared::new(
+        let pipeline = SharedPointer::new(
             GraphicPipeline::create(
                 device,
                 GraphicPipelineInfo::new().blend(BlendMode::Alpha),

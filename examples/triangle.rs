@@ -7,7 +7,7 @@ fn main() -> Result<(), DisplayError> {
     let screen_13 = EventLoop::new().build()?;
     let mut cache = HashPool::new(&screen_13.device);
 
-    let triangle_pipeline = screen_13.device.new_graphic_pipeline(
+    let triangle_pipeline = screen_13.new_graphic_pipeline(
         GraphicPipelineInfo::default(),
         [
             Shader::new_vertex(

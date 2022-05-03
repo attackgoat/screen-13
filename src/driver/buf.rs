@@ -1,7 +1,6 @@
 use {
     super::{Device, DriverError},
-    crate::ptr::Shared,
-    archery::SharedPointerKind,
+    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     derive_builder::Builder,
     gpu_allocator::{
@@ -23,7 +22,7 @@ where
 {
     allocation: Option<Allocation>,
     buffer: vk::Buffer,
-    device: Shared<Device<P>, P>,
+    device: SharedPointer<Device<P>, P>,
     pub info: BufferInfo,
     pub name: Option<String>,
 }
@@ -33,14 +32,14 @@ where
     P: SharedPointerKind,
 {
     pub fn create(
-        device: &Shared<Device<P>, P>,
+        device: &SharedPointer<Device<P>, P>,
         info: impl Into<BufferInfo>,
     ) -> Result<Self, DriverError> {
         let info = info.into();
 
         trace!("create: {:?}", info);
 
-        let device = Shared::clone(device);
+        let device = SharedPointer::clone(device);
         let buffer_info = vk::BufferCreateInfo {
             size: info.size,
             usage: info.usage,

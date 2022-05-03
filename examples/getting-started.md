@@ -153,7 +153,7 @@ let gfx_pipeline = GraphicPipeline::create(
 
                 void main() { /* 💎 */ }
                 "#,
-                comp
+                vert
             )
             .as_slice(),
         ),
@@ -164,7 +164,7 @@ let gfx_pipeline = GraphicPipeline::create(
 
                 void main() { /* 🎨 */ }
                 "#,
-                comp
+                frag
             )
             .as_slice(),
         ),
