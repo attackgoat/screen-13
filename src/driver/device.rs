@@ -139,22 +139,22 @@ where
             vk::PhysicalDeviceImagelessFramebufferFeatures::builder();
         let mut buffer_device_address_features =
             vk::PhysicalDeviceBufferDeviceAddressFeatures::builder();
-        // let mut multi_draw_props = vk::PhysicalDeviceMultiDrawPropertiesEXT::builder();
 
         #[cfg(not(target_os = "macos"))]
         let mut separate_depth_stencil_layouts_features =
             vk::PhysicalDeviceSeparateDepthStencilLayoutsFeatures::builder();
-        // let mut acceleration_struct_features = if features.contains(FeatureFlags::RAY_TRACING) {
-        //     Some(ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default())
-        // } else {
-        //     None
-        // };
 
-        // let mut ray_tracing_pipeline_features = if features.contains(FeatureFlags::RAY_TRACING) {
-        //     Some(ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default())
-        // } else {
-        //     None
-        // };
+        let mut acceleration_struct_features = if features.contains(FeatureFlags::RAY_TRACING) {
+            Some(ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default())
+        } else {
+            None
+        };
+
+        let mut ray_tracing_pipeline_features = if features.contains(FeatureFlags::RAY_TRACING) {
+            Some(ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default())
+        } else {
+            None
+        };
 
         unsafe {
             let mut features2 = vk::PhysicalDeviceFeatures2::builder()
@@ -166,33 +166,40 @@ where
                 features2 = features2.push_next(&mut separate_depth_stencil_layouts_features);
             }
 
-            // if features.contains(FeatureFlags::RAY_TRACING) {
-            //     features2 = features2
-            //         .push_next(acceleration_struct_features.as_mut().unwrap())
-            //         .push_next(ray_tracing_pipeline_features.as_mut().unwrap());
-            // }
+            if features.contains(FeatureFlags::RAY_TRACING) {
+                features2 = features2
+                    .push_next(acceleration_struct_features.as_mut().unwrap())
+                    .push_next(ray_tracing_pipeline_features.as_mut().unwrap());
+            }
 
             let mut features2 = features2.build();
 
             (instance.fp_v1_1().get_physical_device_features2)(*physical_device, &mut features2);
 
-            assert_eq!(features2.features.multi_draw_indirect, vk::TRUE);
-            assert_eq!(features2.features.sampler_anisotropy, vk::TRUE);
+            if features2.features.multi_draw_indirect != vk::TRUE {
+                warn!("device does not support multi draw indirect");
 
-            assert_eq!(
-                imageless_framebuffer_features.imageless_framebuffer,
-                vk::TRUE
-            );
-            assert_eq!(
-                buffer_device_address_features.buffer_device_address,
-                vk::TRUE
-            );
+                return Err(DriverError::Unsupported);
+            }
+
+            if features2.features.sampler_anisotropy != vk::TRUE {
+                warn!("device does not support sampler anisotropy");
+
+                return Err(DriverError::Unsupported);
+            }
+
+            if imageless_framebuffer_features.imageless_framebuffer != vk::TRUE {
+                warn!("device does not support imageless framebuffer");
+
+                return Err(DriverError::Unsupported);
+            }
 
             #[cfg(not(target_os = "macos"))]
-            assert_eq!(
-                separate_depth_stencil_layouts_features.separate_depth_stencil_layouts,
-                vk::TRUE
-            );
+            if separate_depth_stencil_layouts_features.separate_depth_stencil_layouts != vk::TRUE {
+                warn!("device does not support separate depth stencil layouts");
+
+                return Err(DriverError::Unsupported);
+            }
 
             // debug!("{:#?}", &features2.features);
             // debug!("{:#?}", &scalar_block);
@@ -226,37 +233,46 @@ where
 
             //assert!(vulkan_memory_model.vulkan_memory_model != 0);
 
-            // if features.contains(FeatureFlags::RAY_TRACING) {
-            //     assert!(
-            //         acceleration_struct_features
-            //             .as_ref()
-            //             .unwrap()
-            //             .acceleration_structure
-            //             != 0
-            //     );
-            //     assert!(
-            //         acceleration_struct_features
-            //             .as_ref()
-            //             .unwrap()
-            //             .descriptor_binding_acceleration_structure_update_after_bind
-            //             != 0
-            //     );
+            if features.contains(FeatureFlags::RAY_TRACING) {
+                if buffer_device_address_features.buffer_device_address != vk::TRUE {
+                    warn!("device does not support buffer device address");
 
-            //     assert!(
-            //         ray_tracing_pipeline_features
-            //             .as_ref()
-            //             .unwrap()
-            //             .ray_tracing_pipeline
-            //             != 0
-            //     );
-            //     assert!(
-            //         ray_tracing_pipeline_features
-            //             .as_ref()
-            //             .unwrap()
-            //             .ray_tracing_pipeline_trace_rays_indirect
-            //             != 0
-            //     );
-            // }
+                    return Err(DriverError::Unsupported);
+                }
+
+                let acceleration_struct_features = acceleration_struct_features.as_ref().unwrap();
+
+                if acceleration_struct_features.acceleration_structure != vk::TRUE {
+                    warn!("device does not support acceleration structure");
+
+                    return Err(DriverError::Unsupported);
+                }
+
+                if acceleration_struct_features
+                    .descriptor_binding_acceleration_structure_update_after_bind
+                    != vk::TRUE
+                {
+                    warn!("device does not support descriptor binding acceleration structure update after bind");
+
+                    return Err(DriverError::Unsupported);
+                }
+
+                let ray_tracing_pipeline_features = ray_tracing_pipeline_features.as_ref().unwrap();
+
+                if ray_tracing_pipeline_features.ray_tracing_pipeline != vk::TRUE {
+                    warn!("device does not support ray tracing pipeline");
+
+                    return Err(DriverError::Unsupported);
+                }
+
+                if ray_tracing_pipeline_features.ray_tracing_pipeline_trace_rays_indirect
+                    != vk::TRUE
+                {
+                    warn!("device does not support ray tracing pipeline trace rays indirect");
+
+                    return Err(DriverError::Unsupported);
+                }
+            }
 
             let device_create_info = vk::DeviceCreateInfo::builder()
                 .queue_create_infos(&queue_info)
@@ -518,17 +534,6 @@ impl FeatureFlags {
             ]);
         }
 
-        // if self.contains(FeatureFlags::DLSS) {
-        //     device_extension_names_raw.extend(
-        //         [
-        //             b"VK_NVX_binary_import\0" as *const i8,
-        //             b"VK_KHR_push_descriptor\0" as *const i8,
-        //             vk::NvxImageViewHandleFn::name(),
-        //         ]
-        //         .iter(),
-        //     );
-        // }
-
         if self.contains(FeatureFlags::PRESENTATION) {
             res.push(khr::Swapchain::name());
         }
@@ -536,12 +541,11 @@ impl FeatureFlags {
         if self.contains(FeatureFlags::RAY_TRACING) {
             res.extend(
                 [
-                    vk::KhrPipelineLibraryFn::name(),        // rt dep
-                    vk::KhrDeferredHostOperationsFn::name(), // rt dep
-                    vk::KhrBufferDeviceAddressFn::name(),    // rt dep
                     vk::KhrAccelerationStructureFn::name(),
+                    vk::KhrBufferDeviceAddressFn::name(),
+                    vk::KhrDeferredHostOperationsFn::name(),
+                    vk::ExtDescriptorIndexingFn::name(),
                     vk::KhrRayTracingPipelineFn::name(),
-                    //vk::KhrRayQueryFn::name(),
                 ]
                 .iter(),
             );
