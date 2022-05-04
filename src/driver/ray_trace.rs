@@ -42,7 +42,10 @@ where
         }
 
         unsafe {
-            Device::accel_struct(&self.device)
+            self.device
+                .accel_struct_ext
+                .as_ref()
+                .unwrap()
                 .destroy_acceleration_structure(self.accel_struct, None);
         }
     }
@@ -238,11 +241,15 @@ where
         preallocate_bytes: vk::DeviceSize,
     ) -> Result<RayTraceAcceleration<P>, DriverError> {
         let mem_requirements = unsafe {
-            Device::accel_struct(&self.device).get_acceleration_structure_build_sizes(
-                vk::AccelerationStructureBuildTypeKHR::DEVICE,
-                &geometry_info,
-                max_primitive_counts,
-            )
+            self.device
+                .accel_struct_ext
+                .as_ref()
+                .unwrap()
+                .get_acceleration_structure_build_sizes(
+                    vk::AccelerationStructureBuildTypeKHR::DEVICE,
+                    &geometry_info,
+                    max_primitive_counts,
+                )
         };
 
         info!(
@@ -267,7 +274,11 @@ where
             .build();
 
         unsafe {
-            let accel_struct = Device::accel_struct(&self.device)
+            let accel_struct = self
+                .device
+                .accel_struct_ext
+                .as_ref()
+                .unwrap()
                 .create_acceleration_structure(&accel_info, None)
                 .map_err(|err| {
                     warn!("{err}");
@@ -331,11 +342,15 @@ where
     ) -> impl Iterator<Item = RayTraceInstance> + 'a {
         instances.map(|desc| {
             let blas_address = unsafe {
-                Device::accel_struct(&self.device).get_acceleration_structure_device_address(
-                    &vk::AccelerationStructureDeviceAddressInfoKHR::builder()
-                        .acceleration_structure(desc.blas.accel_struct)
-                        .build(),
-                )
+                self.device
+                    .accel_struct_ext
+                    .as_ref()
+                    .unwrap()
+                    .get_acceleration_structure_device_address(
+                        &vk::AccelerationStructureDeviceAddressInfoKHR::builder()
+                            .acceleration_structure(desc.blas.accel_struct)
+                            .build(),
+                    )
             };
             let transform: [f32; 12] = [
                 desc.rotation[0], //.x_axis.x,
@@ -393,11 +408,15 @@ where
             .build();
 
         let mem_requirements = unsafe {
-            Device::accel_struct(&self.device).get_acceleration_structure_build_sizes(
-                vk::AccelerationStructureBuildTypeKHR::DEVICE,
-                &geometry_info,
-                from_ref(&(instance_count as u32)),
-            )
+            self.device
+                .accel_struct_ext
+                .as_ref()
+                .unwrap()
+                .get_acceleration_structure_build_sizes(
+                    vk::AccelerationStructureBuildTypeKHR::DEVICE,
+                    &geometry_info,
+                    from_ref(&(instance_count as u32)),
+                )
         };
         let scratch_buf = self.buf.lock();
 
@@ -416,11 +435,15 @@ where
                 device_address: Buffer::device_address(&scratch_buf),
             };
 
-            Device::accel_struct(&self.device).cmd_build_acceleration_structures(
-                cb,
-                from_ref(&geometry_info),
-                from_ref(&build_range_infos.as_slice()),
-            );
+            self.device
+                .accel_struct_ext
+                .as_ref()
+                .unwrap()
+                .cmd_build_acceleration_structures(
+                    cb,
+                    from_ref(&geometry_info),
+                    from_ref(&build_range_infos.as_slice()),
+                );
             self.device.cmd_pipeline_barrier(
                 cb,
                 vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
@@ -713,7 +736,10 @@ where
             assert!(raygen_entry_count > 0);
             assert!(miss_entry_count > 0);
 
-            let pipeline = Device::ray_trace_pipeline(&device)
+            let pipeline = device
+                .ray_tracing_pipeline_ext
+                .as_ref()
+                .unwrap()
                 .create_ray_tracing_pipelines(
                     vk::DeferredOperationKHR::null(),
                     vk::PipelineCache::null(),

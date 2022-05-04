@@ -1998,7 +1998,7 @@ impl<'a, P> RayTrace<'a, P>
 where
     P: SharedPointerKind,
 {
-    pub fn trace_rays(self, _tlas: RayTraceAccelerationNode<P>, _extent: ()) -> Self {
+    pub fn trace_rays(&self, _tlas: RayTraceAccelerationNode<P>, _extent: ()) -> &Self {
         unsafe {
             // self.device.ray_trace_pipeline_ext.cmd_trace_rays(
             //     **cmd_buf,
@@ -2016,11 +2016,11 @@ where
     }
 
     pub fn trace_rays_indirect(
-        self,
+        &self,
         _tlas: RayTraceAccelerationNode<P>,
         _args_buf: BufferNode<P>,
         _args_buf_offset: vk::DeviceSize,
-    ) -> Self {
+    ) -> &Self {
         // let mut pass = self.pass.as_mut();
         // let push_consts = take(&mut pass.push_consts);
         // let pipeline = Shared::clone(pass.pipelines.get(0).unwrap().unwrap_ray_trace());

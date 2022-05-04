@@ -70,12 +70,16 @@ where
         let acquired = self.acquired_semaphores[self.next_semaphore];
         let rendered = self.rendered_semaphores[self.next_semaphore];
         let image_idx = unsafe {
-            Device::swapchain(&self.device).acquire_next_image(
-                self.swapchain,
-                Duration::from_secs_f32(10.0).as_nanos() as u64,
-                acquired,
-                vk::Fence::null(),
-            )
+            self.device
+                .swapchain_ext
+                .as_ref()
+                .unwrap()
+                .acquire_next_image(
+                    self.swapchain,
+                    Duration::from_secs_f32(10.0).as_nanos() as u64,
+                    acquired,
+                    vk::Fence::null(),
+                )
         }
         .map(|(idx, suboptimal)| {
             if suboptimal {
@@ -135,7 +139,11 @@ where
     fn destroy(&self) {
         if self.swapchain != vk::SwapchainKHR::null() {
             unsafe {
-                Device::swapchain(&self.device).destroy_swapchain(self.swapchain, None);
+                self.device
+                    .swapchain_ext
+                    .as_ref()
+                    .unwrap()
+                    .destroy_swapchain(self.swapchain, None);
             }
         }
     }
@@ -147,7 +155,13 @@ where
             .image_indices(slice::from_ref(&image.idx));
 
         unsafe {
-            match Device::swapchain(&self.device).queue_present(*self.device.queue, &present_info) {
+            match self
+                .device
+                .swapchain_ext
+                .as_ref()
+                .unwrap()
+                .queue_present(*self.device.queue, &present_info)
+            {
                 Ok(_) => (),
                 Err(err)
                     if err == vk::Result::ERROR_DEVICE_LOST
@@ -181,10 +195,14 @@ where
         self.destroy();
 
         let surface_capabilities = unsafe {
-            Device::surface(&self.device).get_physical_device_surface_capabilities(
-                *self.device.physical_device,
-                *self.surface,
-            )
+            self.device
+                .surface_ext
+                .as_ref()
+                .unwrap()
+                .get_physical_device_surface_capabilities(
+                    *self.device.physical_device,
+                    *self.surface,
+                )
         }
         .map_err(|err| {
             warn!("{err}");
@@ -233,10 +251,14 @@ where
         };
 
         let present_modes = unsafe {
-            Device::surface(&self.device).get_physical_device_surface_present_modes(
-                *self.device.physical_device,
-                *self.surface,
-            )
+            self.device
+                .surface_ext
+                .as_ref()
+                .unwrap()
+                .get_physical_device_surface_present_modes(
+                    *self.device.physical_device,
+                    *self.surface,
+                )
         }
         .map_err(|err| {
             warn!("{err}");
@@ -280,12 +302,22 @@ where
             .image_array_layers(1)
             .build();
         let swapchain = unsafe {
-            Device::swapchain(&self.device).create_swapchain(&swapchain_create_info, None)
+            self.device
+                .swapchain_ext
+                .as_ref()
+                .unwrap()
+                .create_swapchain(&swapchain_create_info, None)
         }
         .unwrap();
 
-        let vk_images =
-            unsafe { Device::swapchain(&self.device).get_swapchain_images(swapchain) }.unwrap();
+        let vk_images = unsafe {
+            self.device
+                .swapchain_ext
+                .as_ref()
+                .unwrap()
+                .get_swapchain_images(swapchain)
+        }
+        .unwrap();
         let images: Vec<Option<Image<_>>> = vk_images
             .into_iter()
             .enumerate()
