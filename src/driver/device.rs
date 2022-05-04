@@ -4,7 +4,6 @@ use {
     },
     archery::{SharedPointer, SharedPointerKind},
     ash::{extensions::khr, vk},
-    bitflags::bitflags,
     gpu_allocator::{
         vulkan::{Allocator, AllocatorCreateDesc},
         AllocatorDebugSettings,
@@ -144,13 +143,13 @@ where
         let mut separate_depth_stencil_layouts_features =
             vk::PhysicalDeviceSeparateDepthStencilLayoutsFeatures::builder();
 
-        let mut acceleration_struct_features = if features.contains(FeatureFlags::RAY_TRACING) {
+        let mut acceleration_struct_features = if features.ray_tracing {
             Some(ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default())
         } else {
             None
         };
 
-        let mut ray_tracing_pipeline_features = if features.contains(FeatureFlags::RAY_TRACING) {
+        let mut ray_tracing_pipeline_features = if features.ray_tracing {
             Some(ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default())
         } else {
             None
@@ -166,7 +165,7 @@ where
                 features2 = features2.push_next(&mut separate_depth_stencil_layouts_features);
             }
 
-            if features.contains(FeatureFlags::RAY_TRACING) {
+            if features.ray_tracing {
                 features2 = features2
                     .push_next(acceleration_struct_features.as_mut().unwrap())
                     .push_next(ray_tracing_pipeline_features.as_mut().unwrap());
@@ -233,7 +232,7 @@ where
 
             //assert!(vulkan_memory_model.vulkan_memory_model != 0);
 
-            if features.contains(FeatureFlags::RAY_TRACING) {
+            if features.ray_tracing {
                 if buffer_device_address_features.buffer_device_address != vk::TRUE {
                     warn!("device does not support buffer device address");
 
@@ -511,12 +510,9 @@ where
     }
 }
 
-bitflags! {
-    pub struct FeatureFlags: u32 {
-        // const DLSS = 1 << 0;
-        const PRESENTATION = 1 << 1;
-        const RAY_TRACING = 1 << 2;
-    }
+pub struct FeatureFlags {
+    pub presentation: bool,
+    pub ray_tracing: bool,
 }
 
 impl FeatureFlags {
@@ -534,11 +530,11 @@ impl FeatureFlags {
             ]);
         }
 
-        if self.contains(FeatureFlags::PRESENTATION) {
+        if self.presentation {
             res.push(khr::Swapchain::name());
         }
 
-        if self.contains(FeatureFlags::RAY_TRACING) {
+        if self.ray_tracing {
             res.extend(
                 [
                     vk::KhrAccelerationStructureFn::name(),

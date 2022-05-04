@@ -1,14 +1,14 @@
-mod buf;
-mod cmd_buf;
-mod compute_pipeline;
+mod buffer;
+mod command_buf;
+mod compute;
 mod descriptor_set;
 mod descriptor_set_layout;
 mod device;
-mod graphic_pipeline;
+mod graphic;
 mod image;
 mod instance;
 mod physical_device;
-mod ray_trace_pipeline;
+mod ray_trace;
 mod render_pass;
 mod shader;
 mod surface;
@@ -16,16 +16,16 @@ mod swapchain;
 
 pub use {
     self::{
-        buf::{Buffer, BufferInfo, BufferInfoBuilder, BufferSubresource},
-        cmd_buf::CommandBuffer,
-        compute_pipeline::{ComputePipeline, ComputePipelineInfo, ComputePipelineInfoBuilder},
+        buffer::{Buffer, BufferInfo, BufferInfoBuilder, BufferSubresource},
+        command_buf::CommandBuffer,
+        compute::{ComputePipeline, ComputePipelineInfo, ComputePipelineInfoBuilder},
         descriptor_set::{
             DescriptorPool, DescriptorPoolInfo, DescriptorPoolInfoBuilder, DescriptorPoolSize,
             DescriptorSet,
         },
         descriptor_set_layout::DescriptorSetLayout,
         device::{Device, FeatureFlags},
-        graphic_pipeline::{
+        graphic::{
             BlendMode, DepthStencilMode, GraphicPipeline, GraphicPipelineInfo,
             GraphicPipelineInfoBuilder, StencilMode, VertexInputState,
         },
@@ -35,7 +35,7 @@ pub use {
         },
         instance::Instance,
         physical_device::{PhysicalDevice, QueueFamily, QueueFamilyProperties},
-        ray_trace_pipeline::{
+        ray_trace::{
             RayTraceAcceleration, RayTraceAccelerationScratchBuffer, RayTraceInstanceInfo,
             RayTracePipeline, RayTracePipelineInfo, RayTraceTopAccelerationInfo,
         },
@@ -533,17 +533,10 @@ impl DriverConfig {
     }
 
     fn features(self) -> FeatureFlags {
-        let mut res = FeatureFlags::PRESENTATION;
-
-        // if self.dlss {
-        //     res |= FeatureFlags::DLSS;
-        // }
-
-        if self.ray_tracing {
-            res |= FeatureFlags::RAY_TRACING;
+        FeatureFlags {
+            presentation: true,
+            ray_tracing: self.ray_tracing,
         }
-
-        res
     }
 }
 

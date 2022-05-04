@@ -61,8 +61,6 @@ where
     }
 
     pub fn acquire_next_image(&mut self) -> Result<SwapchainImage<P>, SwapchainError> {
-        puffin::profile_function!();
-
         if self.suboptimal {
             self.recreate_swapchain()
                 .map_err(|_| SwapchainError::SurfaceLost)?;
@@ -143,8 +141,6 @@ where
     }
 
     pub fn present_image(&mut self, image: SwapchainImage<P>) {
-        puffin::profile_function!();
-
         let present_info = vk::PresentInfoKHR::builder()
             .wait_semaphores(slice::from_ref(&image.rendered))
             .swapchains(slice::from_ref(&self.swapchain))

@@ -92,8 +92,6 @@ where
         debug!("first frame dt: {}", dt_filtered);
 
         while !will_exit {
-            puffin::GlobalProfiler::lock().new_frame();
-
             trace!("🟥🟩🟦 Event::RedrawRequested");
 
             self.event_loop.run_return(|event, _, control_flow| {
