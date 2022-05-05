@@ -31,7 +31,7 @@ use {
         buffer_copy_subresources, buffer_image_copy_subresource, format_aspect_mask,
         is_write_access, BufferSubresource, ComputePipeline, DepthStencilMode,
         DescriptorBindingMap, GraphicPipeline, ImageSubresource, ImageType, PipelineDescriptorInfo,
-        RayTracePipeline, SampleCount,
+        RayTracePipeline, SampleCount,Device,
     },
     archery::{SharedPointer, SharedPointerKind},
     ash::vk,
@@ -49,7 +49,7 @@ pub type BindingIndex = u32;
 pub type BindingOffset = u32;
 pub type DescriptorSetIndex = u32;
 
-type ExecFn<P> = Box<dyn FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>) + Send>;
+type ExecFn<P> = Box<dyn FnOnce(&Device<P>, vk::CommandBuffer, Bindings<'_, P>) + Send>;
 type NodeIndex = usize;
 
 #[derive(Clone, Copy, Debug)]

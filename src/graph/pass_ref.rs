@@ -7,7 +7,7 @@ use {
         ViewType,
     },
     crate::driver::{
-        Buffer, ComputePipeline, DepthStencilMode, GraphicPipeline, Image, ImageViewInfo,
+        Buffer, ComputePipeline, DepthStencilMode, Device, GraphicPipeline, Image, ImageViewInfo,
         RayTraceAcceleration, RayTracePipeline,
     },
     archery::{SharedPointer, SharedPointerKind},
@@ -203,7 +203,7 @@ where
 {
     bindings: Bindings<'a, P>,
     cmd_buf: vk::CommandBuffer,
-    device: &'a ash::Device,
+    device: &'a Device<P>,
     pipeline: SharedPointer<ComputePipeline<P>, P>,
 }
 
@@ -302,7 +302,7 @@ where
     bindings: Bindings<'a, P>,
     buffers: &'a RefCell<Vec<vk::Buffer>>,
     cmd_buf: vk::CommandBuffer,
-    device: &'a ash::Device,
+    device: &'a Device<P>,
     offsets: &'a RefCell<Vec<vk::DeviceSize>>,
     pipeline: SharedPointer<GraphicPipeline<P>, P>,
     rects: &'a RefCell<Vec<vk::Rect2D>>,
@@ -752,7 +752,7 @@ where
 
     fn push_execute(
         &mut self,
-        func: impl FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>) + Send + 'static,
+        func: impl FnOnce(&Device<P>, vk::CommandBuffer, Bindings<'_, P>) + Send + 'static,
     ) {
         let pass = self.as_mut();
         let exec = {
@@ -802,7 +802,7 @@ where
 
     pub fn record_cmd_buf(
         mut self,
-        func: impl FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>) + Send + 'static,
+        func: impl FnOnce(&Device<P>, vk::CommandBuffer, Bindings<'_, P>) + Send + 'static,
     ) -> Self {
         self.push_execute(func);
         self
@@ -1458,8 +1458,6 @@ where
         };
 
         self.pass.push_execute(move |device, cmd_buf, bindings| {
-            use std::cell::RefCell;
-
             #[derive(Default)]
             struct Tls {
                 buffers: RefCell<Vec<vk::Buffer>>,
@@ -1990,7 +1988,7 @@ where
 {
     bindings: Bindings<'a, P>,
     cmd_buf: vk::CommandBuffer,
-    device: &'a ash::Device,
+    device: &'a Device<P>,
     pipeline: SharedPointer<RayTracePipeline<P>, P>,
 }
 
@@ -1998,18 +1996,22 @@ impl<'a, P> RayTrace<'a, P>
 where
     P: SharedPointerKind,
 {
-    pub fn trace_rays(&self, _tlas: RayTraceAccelerationNode<P>, _extent: ()) -> &Self {
+    pub fn trace_rays(&self, width: u32, height: u32, depth: u32) -> &Self {
         unsafe {
-            // self.device.ray_trace_pipeline_ext.cmd_trace_rays(
-            //     **cmd_buf,
-            //     &pipeline.shader_bindings.raygen,
-            //     &pipeline.shader_bindings.miss,
-            //     &pipeline.shader_bindings.hit,
-            //     &pipeline.shader_bindings.callable,
-            //     extent.x,
-            //     extent.y,
-            //     extent.z,
-            // );
+            self.device
+                .ray_tracing_pipeline_ext
+                .as_ref()
+                .unwrap()
+                .cmd_trace_rays(
+                    self.cmd_buf,
+                    &self.pipeline.shader_bindings.raygen,
+                    &self.pipeline.shader_bindings.miss,
+                    &self.pipeline.shader_bindings.hit,
+                    &self.pipeline.shader_bindings.callable,
+                    width,
+                    height,
+                    depth,
+                );
         }
 
         self

@@ -584,7 +584,6 @@ where
     where
         S: Into<Shader>,
     {
-        let device = SharedPointer::clone(device);
         let info = info.into();
         let shaders = shaders
             .into_iter()
@@ -595,10 +594,10 @@ where
         let descriptor_bindings = Shader::merge_descriptor_bindings(
             shaders
                 .iter()
-                .map(|shader| shader.descriptor_bindings(&device)),
+                .map(|shader| shader.descriptor_bindings(device)),
         );
 
-        let descriptor_info = PipelineDescriptorInfo::create(&device, &descriptor_bindings)?;
+        let descriptor_info = PipelineDescriptorInfo::create(device, &descriptor_bindings)?;
         let descriptor_set_layout_handles = descriptor_info
             .layouts
             .iter()
@@ -617,10 +616,12 @@ where
 
                     DriverError::Unsupported
                 })?;
-            let mut entry_points: Vec<CString> = Vec::new(); // Keep entry point names alive, since build() forgets references.
+            let mut entry_points: Vec<CString> = Vec::with_capacity(shaders.len()); // Keep entry point names alive, since build() forgets references.
+            let mut shader_groups: Vec<vk::RayTracingShaderGroupCreateInfoKHR> =
+                Vec::with_capacity(shaders.len());
+            let mut shader_stages: Vec<vk::PipelineShaderStageCreateInfo> =
+                Vec::with_capacity(shaders.len());
             let mut prev_stage: Option<vk::ShaderStageFlags> = None;
-            let mut shader_groups: Vec<vk::RayTracingShaderGroupCreateInfoKHR> = vec![];
-            let mut shader_stages: Vec<vk::PipelineShaderStageCreateInfo> = vec![];
             let mut raygen_entry_count = 0;
             let mut miss_entry_count = 0;
             let mut hit_entry_count = 0;
@@ -642,10 +643,21 @@ where
                     Ok((shader_module, info.entry_name.clone()))
                 };
 
-            for desc in &shaders {
+            for shader in &shaders {
                 let group_idx = shader_stages.len();
 
-                match desc.stage {
+                let (module, entry_point) = create_shader_module(shader)?;
+                entry_points.push(CString::new(entry_point).unwrap());
+
+                let mut stage = vk::PipelineShaderStageCreateInfo::builder()
+                    .module(module)
+                    .name(entry_points.last().unwrap().as_ref());
+                let mut group = vk::RayTracingShaderGroupCreateInfoKHR::builder()
+                    .general_shader(vk::SHADER_UNUSED_KHR)
+                    .closest_hit_shader(vk::SHADER_UNUSED_KHR)
+                    .any_hit_shader(vk::SHADER_UNUSED_KHR)
+                    .intersection_shader(vk::SHADER_UNUSED_KHR);
+                match shader.stage {
                     vk::ShaderStageFlags::RAYGEN_KHR => {
                         assert!(
                             prev_stage == None
@@ -653,25 +665,10 @@ where
                         );
 
                         raygen_entry_count += 1;
-
-                        let (module, entry_point) = create_shader_module(desc)?;
-                        entry_points.push(CString::new(entry_point).unwrap());
-
-                        let entry_point = &**entry_points.last().unwrap();
-                        let stage = vk::PipelineShaderStageCreateInfo::builder()
-                            .stage(vk::ShaderStageFlags::RAYGEN_KHR)
-                            .module(module)
-                            .name(entry_point)
-                            .build();
-                        let group = vk::RayTracingShaderGroupCreateInfoKHR::builder()
+                        stage = stage.stage(vk::ShaderStageFlags::RAYGEN_KHR);
+                        group = group
                             .ty(vk::RayTracingShaderGroupTypeKHR::GENERAL)
-                            .general_shader(group_idx as _)
-                            .closest_hit_shader(vk::SHADER_UNUSED_KHR)
-                            .any_hit_shader(vk::SHADER_UNUSED_KHR)
-                            .intersection_shader(vk::SHADER_UNUSED_KHR)
-                            .build();
-                        shader_stages.push(stage);
-                        shader_groups.push(group);
+                            .general_shader(group_idx as _);
                     }
                     vk::ShaderStageFlags::MISS_KHR => {
                         assert!(
@@ -680,25 +677,10 @@ where
                         );
 
                         miss_entry_count += 1;
-
-                        let (module, entry_point) = create_shader_module(desc)?;
-                        entry_points.push(CString::new(entry_point).unwrap());
-
-                        let entry_point = &**entry_points.last().unwrap();
-                        let stage = vk::PipelineShaderStageCreateInfo::builder()
-                            .stage(vk::ShaderStageFlags::MISS_KHR)
-                            .module(module)
-                            .name(entry_point)
-                            .build();
-                        let group = vk::RayTracingShaderGroupCreateInfoKHR::builder()
+                        stage = stage.stage(vk::ShaderStageFlags::MISS_KHR);
+                        group = group
                             .ty(vk::RayTracingShaderGroupTypeKHR::GENERAL)
-                            .general_shader(group_idx as _)
-                            .closest_hit_shader(vk::SHADER_UNUSED_KHR)
-                            .any_hit_shader(vk::SHADER_UNUSED_KHR)
-                            .intersection_shader(vk::SHADER_UNUSED_KHR)
-                            .build();
-                        shader_stages.push(stage);
-                        shader_groups.push(group);
+                            .general_shader(group_idx as _);
                     }
                     vk::ShaderStageFlags::CLOSEST_HIT_KHR => {
                         assert!(
@@ -707,30 +689,18 @@ where
                         );
 
                         hit_entry_count += 1;
-
-                        let (module, entry_point) = create_shader_module(desc)?;
-                        entry_points.push(CString::new(entry_point).unwrap());
-
-                        let entry_point = &**entry_points.last().unwrap();
-                        let stage = vk::PipelineShaderStageCreateInfo::builder()
-                            .stage(vk::ShaderStageFlags::CLOSEST_HIT_KHR)
-                            .module(module)
-                            .name(entry_point)
-                            .build();
-                        let group = vk::RayTracingShaderGroupCreateInfoKHR::builder()
+                        stage = stage.stage(vk::ShaderStageFlags::CLOSEST_HIT_KHR);
+                        group = group
                             .ty(vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP)
-                            .general_shader(vk::SHADER_UNUSED_KHR)
-                            .closest_hit_shader(group_idx as _)
-                            .any_hit_shader(vk::SHADER_UNUSED_KHR)
-                            .intersection_shader(vk::SHADER_UNUSED_KHR)
-                            .build();
-                        shader_stages.push(stage);
-                        shader_groups.push(group);
+                            .general_shader(group_idx as _);
                     }
                     _ => unimplemented!(),
                 }
 
-                prev_stage = Some(desc.stage);
+                shader_stages.push(stage.build());
+                shader_groups.push(group.build());
+
+                prev_stage = Some(shader.stage);
             }
 
             assert!(raygen_entry_count > 0);
@@ -746,7 +716,7 @@ where
                     &[vk::RayTracingPipelineCreateInfoKHR::builder()
                         .stages(&shader_stages)
                         .groups(&shader_groups)
-                        .max_pipeline_ray_recursion_depth(info.max_pipeline_ray_recursion_depth) // TODO
+                        .max_pipeline_ray_recursion_depth(info.max_ray_recursion_depth) // TODO
                         .layout(layout)
                         .build()],
                     None,
@@ -757,14 +727,15 @@ where
                     DriverError::Unsupported
                 })?[0];
             let shader_bindings = RayTraceShaderBindings::create(
-                &device,
-                &RayTraceShaderBindingsDesc {
+                device,
+                RayTraceShaderBindingsInfo {
                     raygen_count: raygen_entry_count,
                     hit_count: hit_entry_count,
                     miss_count: miss_entry_count,
                 },
                 pipeline,
             )?;
+            let device = SharedPointer::clone(device);
 
             Ok(Self {
                 descriptor_bindings,
@@ -806,23 +777,32 @@ where
     }
 }
 
-#[derive(Builder, Clone, Debug)]
-#[builder(pattern = "owned")]
+#[derive(Builder, Clone, Debug, Eq, Hash, PartialEq)]
+#[builder(
+    build_fn(private, name = "fallible_build"),
+    derive(Clone, Debug),
+    pattern = "owned"
+)]
 pub struct RayTracePipelineInfo {
-    pub max_pipeline_ray_recursion_depth: u32,
+    #[builder(default = "16")]
+    pub max_ray_recursion_depth: u32,
 
     /// A descriptive name used in debugging messages.
     #[builder(default, setter(strip_option))]
     pub name: Option<String>,
 }
 
-impl RayTracePipelineInfo {
-    pub fn max_pipeline_ray_recursion_depth(
-        mut self,
-        max_pipeline_ray_recursion_depth: u32,
-    ) -> Self {
-        self.max_pipeline_ray_recursion_depth = max_pipeline_ray_recursion_depth;
-        self
+impl Default for RayTracePipelineInfo {
+    fn default() -> Self {
+        RayTracePipelineInfoBuilder::default().build()
+    }
+}
+
+// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
+impl RayTracePipelineInfoBuilder {
+    pub fn build(self) -> RayTracePipelineInfo {
+        self.fallible_build()
+            .expect("All required fields set at initialization")
     }
 }
 
@@ -856,98 +836,95 @@ where
     P: SharedPointerKind,
 {
     fn create(
-        _device: &SharedPointer<Device<P>, P>,
-        _info: &RayTraceShaderBindingsDesc,
-        _pipeline: vk::Pipeline,
+        device: &SharedPointer<Device<P>, P>,
+        info: RayTraceShaderBindingsInfo,
+        pipeline: vk::Pipeline,
     ) -> Result<RayTraceShaderBindings<P>, DriverError> {
-        // trace!("Creating ray tracing shader table: {:?}", desc);
+        let device = Shared::clone(device);
+        let shader_group_handle_size = device
+            .ray_trace_pipeline_properties
+            .shader_group_handle_size as usize;
+        let group_count = info.raygen_count + info.miss_count + info.hit_count;
+        let group_handles_size = shader_group_handle_size * group_count as usize;
+        let group_handles: Vec<u8> = unsafe {
+            device
+                .ray_trace_pipeline_ext
+                .get_ray_tracing_shader_group_handles(pipeline, 0, group_count, group_handles_size)
+                .map_err(|err| {warn!("{err}");DriverError::Unsupported})?
+        };
+        let prog_size = shader_group_handle_size;
+        let create_binding_table =
+            |entry_offset: u32, entry_count: u32| -> Result<Option<Buffer<P>>, Error> {
+                if entry_count == 0 {
+                    return Ok(None);
+                }
 
-        // let device = Shared::clone(device);
-        // let shader_group_handle_size = device
-        //     .ray_trace_pipeline_properties
-        //     .shader_group_handle_size as usize;
-        // let group_count = desc.raygen_count + desc.miss_count + desc.hit_count;
-        // let group_handles_size = shader_group_handle_size * group_count as usize;
-        // let group_handles: Vec<u8> = unsafe {
-        //     device
-        //         .ray_trace_pipeline_ext
-        //         .get_ray_tracing_shader_group_handles(pipeline, 0, group_count, group_handles_size)
-        //         .map_err(|err| {warn!("{err}");DriverError::Unsupported})?
-        // };
-        // let prog_size = shader_group_handle_size;
-        // let create_binding_table =
-        //     |entry_offset: u32, entry_count: u32| -> Result<Option<Buffer<P>>, Error> {
-        //         if entry_count == 0 {
-        //             return Ok(None);
-        //         }
+                let mut sbt_data = vec![0u8; entry_count as usize * prog_size];
 
-        //         let mut sbt_data = vec![0u8; entry_count as usize * prog_size];
+                for dst in 0..entry_count as usize {
+                    let src = dst + entry_offset as usize;
+                    sbt_data[dst * prog_size..dst * prog_size + shader_group_handle_size]
+                        .copy_from_slice(
+                            &group_handles[src * shader_group_handle_size
+                                ..src * shader_group_handle_size + shader_group_handle_size],
+                        );
+                }
 
-        //         for dst in 0..entry_count as usize {
-        //             let src = dst + entry_offset as usize;
-        //             sbt_data[dst * prog_size..dst * prog_size + shader_group_handle_size]
-        //                 .copy_from_slice(
-        //                     &group_handles[src * shader_group_handle_size
-        //                         ..src * shader_group_handle_size + shader_group_handle_size],
-        //                 );
-        //         }
+                Ok(Some(Buffer::create_with_data(
+                    &device,
+                    BufferDesc::new(
+                        sbt_data.len() ,
+                        vk::BufferUsageFlags::TRANSFER_SRC
+                            | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                            | vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR,
+                    )
+                    .build()
+                    .unwrap(),
+                    Some(&sbt_data),
+                )?))
+            };
 
-        //         Ok(Some(Buffer::create_with_data(
-        //             &device,
-        //             BufferDesc::new(
-        //                 sbt_data.len() ,
-        //                 vk::BufferUsageFlags::TRANSFER_SRC
-        //                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
-        //                     | vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR,
-        //             )
-        //             .build()
-        //             .unwrap(),
-        //             Some(&sbt_data),
-        //         )?))
-        //     };
+        let raygen = create_binding_table(0, desc.raygen_count)?;
+        let miss = create_binding_table(desc.raygen_count, desc.miss_count)?;
+        let hit = create_binding_table(desc.raygen_count + desc.miss_count, desc.hit_count)?;
 
-        // let raygen = create_binding_table(0, desc.raygen_count)?;
-        // let miss = create_binding_table(desc.raygen_count, desc.miss_count)?;
-        // let hit = create_binding_table(desc.raygen_count + desc.miss_count, desc.hit_count)?;
-
-        // Ok(Self {
-        //     raygen: vk::StridedDeviceAddressRegionKHR {
-        //         device_address: raygen
-        //             .as_ref()
-        //             .map(|b| Buffer::device_address(b))
-        //             .unwrap_or(0),
-        //         stride: prog_size ,
-        //         size: (prog_size * desc.raygen_count as usize) ,
-        //     },
-        //     raygen_buf: raygen,
-        //     miss: vk::StridedDeviceAddressRegionKHR {
-        //         device_address: miss
-        //             .as_ref()
-        //             .map(|b| Buffer::device_address(b))
-        //             .unwrap_or(0),
-        //         stride: prog_size,
-        //         size: (prog_size * desc.miss_count as usize) ,
-        //     },
-        //     miss_buf: miss,
-        //     hit: vk::StridedDeviceAddressRegionKHR {
-        //         device_address: hit.as_ref().map(|b| Buffer::device_address(b)).unwrap_or(0),
-        //         stride: prog_size ,
-        //         size: (prog_size * desc.hit_count as usize) ,
-        //     },
-        //     hit_buf: hit,
-        //     callable_buf: None,
-        //     callable: vk::StridedDeviceAddressRegionKHR {
-        //         device_address: Default::default(),
-        //         stride: 0,
-        //         size: 0,
-        //     },
-        // })
-        todo!()
+        Ok(Self {
+            raygen: vk::StridedDeviceAddressRegionKHR {
+                device_address: raygen
+                    .as_ref()
+                    .map(|b| Buffer::device_address(b))
+                    .unwrap_or(0),
+                stride: prog_size ,
+                size: (prog_size * desc.raygen_count as usize) ,
+            },
+            raygen_buf: raygen,
+            miss: vk::StridedDeviceAddressRegionKHR {
+                device_address: miss
+                    .as_ref()
+                    .map(|b| Buffer::device_address(b))
+                    .unwrap_or(0),
+                stride: prog_size,
+                size: (prog_size * desc.miss_count as usize) ,
+            },
+            miss_buf: miss,
+            hit: vk::StridedDeviceAddressRegionKHR {
+                device_address: hit.as_ref().map(|b| Buffer::device_address(b)).unwrap_or(0),
+                stride: prog_size ,
+                size: (prog_size * desc.hit_count as usize) ,
+            },
+            hit_buf: hit,
+            callable_buf: None,
+            callable: vk::StridedDeviceAddressRegionKHR {
+                device_address: Default::default(),
+                stride: 0,
+                size: 0,
+            },
+        })
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct RayTraceShaderBindingsDesc {
+pub struct RayTraceShaderBindingsInfo {
     pub raygen_count: u32,
     pub hit_count: u32,
     pub miss_count: u32,
