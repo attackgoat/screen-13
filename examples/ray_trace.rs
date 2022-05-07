@@ -1,11 +1,88 @@
 use {
+    bytemuck::bytes_of,
     inline_spirv::inline_spirv,
     screen_13::prelude_arc::*,
     std::io::BufReader,
-    tobj::{load_mtl_buf, load_obj_buf},
+    tobj::{load_mtl_buf, load_obj_buf, LoadOptions},
 };
 
-static SHADER_RAY_CLOSEST_HIT: &[u32; 6044] = inline_spirv!(
+static SHADER_RAY_GEN: &[u32] = inline_spirv!(
+    r#"
+    #version 460
+    #extension GL_EXT_ray_tracing : require
+
+    #define M_PI 3.1415926535897932384626433832795
+
+    layout(location = 0) rayPayloadEXT Payload {
+        vec3 rayOrigin;
+        vec3 rayDirection;
+        vec3 previousNormal;
+
+        vec3 directColor;
+        vec3 indirectColor;
+        int rayDepth;
+
+        int rayActive;
+    } payload;
+
+    layout(binding = 0, set = 0) uniform accelerationStructureEXT topLevelAS;
+    layout(binding = 1, set = 0) uniform Camera {
+        vec4 position;
+        vec4 right;
+        vec4 up;
+        vec4 forward;
+
+        uint frameCount;
+    } camera;
+
+    layout(binding = 4, set = 0, rgba32f) uniform image2D image;
+
+    float random(vec2 uv, float seed) {
+        return fract(sin(mod(dot(uv, vec2(12.9898, 78.233)) + 1113.1 * seed, M_PI)) *
+            43758.5453);
+    }
+
+    void main() {
+        vec2 uv = gl_LaunchIDEXT.xy
+                + vec2(random(gl_LaunchIDEXT.xy, 0), random(gl_LaunchIDEXT.xy, 1));
+        uv /= vec2(gl_LaunchSizeEXT.xy);
+        uv = (uv * 2.0f - 1.0f) * vec2(1.0f, -1.0f);
+
+        payload.rayOrigin = camera.position.xyz;
+        payload.rayDirection =
+            normalize(uv.x * camera.right + uv.y * camera.up + camera.forward).xyz;
+        payload.previousNormal = vec3(0.0, 0.0, 0.0);
+
+        payload.directColor = vec3(0.0, 0.0, 0.0);
+        payload.indirectColor = vec3(0.0, 0.0, 0.0);
+        payload.rayDepth = 0;
+
+        payload.rayActive = 1;
+
+        for (int x = 0; x < 16; x++) {
+            traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xFF, 0, 0, 0,
+                payload.rayOrigin, 0.001, payload.rayDirection, 10000.0, 0);
+        }
+
+        vec4 color = vec4(payload.directColor + payload.indirectColor, 1.0);
+
+        if (camera.frameCount > 0) {
+            vec4 previousColor = imageLoad(image, ivec2(gl_LaunchIDEXT.xy));
+            previousColor *= camera.frameCount;
+
+            color += previousColor;
+            color /= (camera.frameCount + 1);
+        }
+
+        imageStore(image, ivec2(gl_LaunchIDEXT.xy), color);
+    }
+    "#,
+    rgen,
+    vulkan1_2
+)
+.as_slice();
+
+static SHADER_CLOSEST_HIT: &[u32] = inline_spirv!(
     r#"
     #version 460
     #extension GL_EXT_ray_tracing : require
@@ -201,82 +278,10 @@ static SHADER_RAY_CLOSEST_HIT: &[u32; 6044] = inline_spirv!(
     "#,
     rchit,
     vulkan1_2
-);
-static SHADER_RAY_GEN: &[u32; 1868] = inline_spirv!(
-    r#"
-    #version 460
-    #extension GL_EXT_ray_tracing : require
+)
+.as_slice();
 
-    #define M_PI 3.1415926535897932384626433832795
-
-    layout(location = 0) rayPayloadEXT Payload {
-        vec3 rayOrigin;
-        vec3 rayDirection;
-        vec3 previousNormal;
-
-        vec3 directColor;
-        vec3 indirectColor;
-        int rayDepth;
-
-        int rayActive;
-    } payload;
-
-    layout(binding = 0, set = 0) uniform accelerationStructureEXT topLevelAS;
-    layout(binding = 1, set = 0) uniform Camera {
-        vec4 position;
-        vec4 right;
-        vec4 up;
-        vec4 forward;
-
-        uint frameCount;
-    } camera;
-
-    layout(binding = 4, set = 0, rgba32f) uniform image2D image;
-
-    float random(vec2 uv, float seed) {
-        return fract(sin(mod(dot(uv, vec2(12.9898, 78.233)) + 1113.1 * seed, M_PI)) *
-            43758.5453);
-    }
-
-    void main() {
-        vec2 uv = gl_LaunchIDEXT.xy
-                + vec2(random(gl_LaunchIDEXT.xy, 0), random(gl_LaunchIDEXT.xy, 1));
-        uv /= vec2(gl_LaunchSizeEXT.xy);
-        uv = (uv * 2.0f - 1.0f) * vec2(1.0f, -1.0f);
-
-        payload.rayOrigin = camera.position.xyz;
-        payload.rayDirection =
-            normalize(uv.x * camera.right + uv.y * camera.up + camera.forward).xyz;
-        payload.previousNormal = vec3(0.0, 0.0, 0.0);
-
-        payload.directColor = vec3(0.0, 0.0, 0.0);
-        payload.indirectColor = vec3(0.0, 0.0, 0.0);
-        payload.rayDepth = 0;
-
-        payload.rayActive = 1;
-
-        for (int x = 0; x < 16; x++) {
-            traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xFF, 0, 0, 0,
-                payload.rayOrigin, 0.001, payload.rayDirection, 10000.0, 0);
-        }
-
-        vec4 color = vec4(payload.directColor + payload.indirectColor, 1.0);
-
-        if (camera.frameCount > 0) {
-            vec4 previousColor = imageLoad(image, ivec2(gl_LaunchIDEXT.xy));
-            previousColor *= camera.frameCount;
-
-            color += previousColor;
-            color /= (camera.frameCount + 1);
-        }
-
-        imageStore(image, ivec2(gl_LaunchIDEXT.xy), color);
-    }
-    "#,
-    rgen,
-    vulkan1_2
-);
-static SHADER_RAY_MISS: &[u32; 311] = inline_spirv!(
+static SHADER_MISS: &[u32] = inline_spirv!(
     r#"
     #version 460
     #extension GL_EXT_ray_tracing : require
@@ -299,8 +304,10 @@ static SHADER_RAY_MISS: &[u32; 311] = inline_spirv!(
     "#,
     rmiss,
     vulkan1_2
-);
-static SHADER_SHADOW_RAY_MISS: &[u32; 179] = inline_spirv!(
+)
+.as_slice();
+
+static SHADER_SHADOW_MISS: &[u32] = inline_spirv!(
     r#"
     #version 460
     #extension GL_EXT_ray_tracing : require
@@ -313,7 +320,29 @@ static SHADER_SHADOW_RAY_MISS: &[u32; 179] = inline_spirv!(
     "#,
     rmiss,
     vulkan1_2
-);
+)
+.as_slice();
+
+fn create_ray_trace_pipeline(
+    device: &Shared<Device>,
+) -> Result<Shared<RayTracePipeline>, DriverError> {
+    Ok(Shared::new(RayTracePipeline::create(
+        device,
+        RayTracePipelineInfo::default(),
+        [
+            Shader::new_ray_gen(SHADER_RAY_GEN),
+            Shader::new_closest_hit(SHADER_CLOSEST_HIT),
+            Shader::new_miss(SHADER_MISS),
+            Shader::new_miss(SHADER_SHADOW_MISS),
+        ],
+        [
+            RayTraceShaderGroup::new_triangles(None, None, None, 0),
+            RayTraceShaderGroup::new_general(1, None, None, None),
+            RayTraceShaderGroup::new_general(2, None, None, None),
+            RayTraceShaderGroup::new_general(3, None, None, None),
+        ],
+    )?))
+}
 
 /// Copied from http://williamlewww.com/showcase_website/vk_khr_ray_tracing_tutorial/index.html
 fn main() -> anyhow::Result<()> {
@@ -322,35 +351,48 @@ fn main() -> anyhow::Result<()> {
     let event_loop = EventLoop::new().ray_tracing(true).build()?;
     let mut cache = HashPool::new(&event_loop.device);
 
-    let (models, ..) = load_obj_buf(
-        &mut BufReader::new(include_bytes!("res/cube_scene.obj").as_slice()),
-        &tobj::LoadOptions {
-            triangulate: true,
-            single_index: true,
-            ..Default::default()
-        },
-        |_| {
-            load_mtl_buf(&mut BufReader::new(
-                include_bytes!("res/cube_scene.mtl").as_slice(),
-            ))
-        },
-    )?;
-    let cube_scene = models.pop().unwrap();
+    let cube_scene = {
+        let (mut models, ..) = load_obj_buf(
+            &mut BufReader::new(include_bytes!("res/cube_scene.obj").as_slice()),
+            &LoadOptions {
+                triangulate: true,
+                single_index: true,
+                ..Default::default()
+            },
+            |_| {
+                load_mtl_buf(&mut BufReader::new(
+                    include_bytes!("res/cube_scene.mtl").as_slice(),
+                ))
+            },
+        )?;
 
-    let pipeline = Shared::new(RayTracePipeline::new(&event_loop.device, RayTracePipelineInfo::default(), [
-        Shader::new_compute(spirv)
-    ]))
+        models.pop().unwrap()
+    };
 
-    // struct UniformStructure {
-    //     float cameraPosition[4] = {0, 0, 0, 1};
-    //     float cameraRight[4] = {1, 0, 0, 1};
-    //     float cameraUp[4] = {0, 1, 0, 1};
-    //     float cameraForward[4] = {0, 0, 1, 1};
+    let index_buf = BufferBinding::new({
+        let mut buf = Buffer::create(
+            &event_loop.device,
+            BufferInfo::new_mappable(
+                123,
+                vk::BufferUsageFlags::INDEX_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+            ),
+        )?;
+        Buffer::copy_from_slice(&mut buf, 0, &[]);
+        buf
+    });
+    let vertex_buf = BufferBinding::new({
+        let mut buf = Buffer::create(
+            &event_loop.device,
+            BufferInfo::new_mappable(
+                123,
+                vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | vk::BufferUsageFlags::VERTEX_BUFFER,
+            ),
+        )?;
+        Buffer::copy_from_slice(&mut buf, 0, &[]);
+        buf
+    });
 
-    //     uint32_t frameCount = 0;
-    //   } uniformStructure;
-
-    //     // Material Index Buffer
+    let ray_trace_pipeline = create_ray_trace_pipeline(&event_loop.device)?;
 
     //   std::vector<uint32_t> materialIndexList;
     //   for (tinyobj::shape_t shape : shapes) {
@@ -408,8 +450,32 @@ fn main() -> anyhow::Result<()> {
                 ))
                 .unwrap(),
         );
+        let uniform_buf = frame.render_graph.bind_node({
+            let mut buf = cache
+                .lease(BufferInfo::new_mappable(
+                    70,
+                    vk::BufferUsageFlags::UNIFORM_BUFFER,
+                ))
+                .unwrap();
+            let data = Buffer::mapped_slice_mut(buf.get_mut().unwrap());
+            data[0..16].copy_from_slice(bytes_of(&[0f32, 0.0, 0.0, 1.0]));
+            data[16..32].copy_from_slice(bytes_of(&[1f32, 0.0, 0.0, 1.0]));
+            data[32..48].copy_from_slice(bytes_of(&[0f32, 1.0, 0.0, 1.0]));
+            data[48..64].copy_from_slice(bytes_of(&[0f32, 0.0, 1.0, 1.0]));
+            data[64..70].copy_from_slice(&0u32.to_ne_bytes());
+            buf
+        });
 
-        frame.render_graph.clear_color_image(frame.swapchain_image);
+        frame
+            .render_graph
+            .begin_pass("basic ray tracer")
+            .bind_pipeline(&ray_trace_pipeline)
+            .read_descriptor(0, uniform_buf)
+            .record_ray_trace(|ray_trace| {
+                //ray_trace.trace_rays(frame.width, frame.height, 1);
+            })
+            .submit_pass()
+            .copy_image(image, frame.swapchain_image);
     })?;
 
     Ok(())

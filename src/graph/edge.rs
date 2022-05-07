@@ -1,14 +1,12 @@
 use {
     super::{
         BufferBinding, BufferLeaseBinding, BufferLeaseNode, BufferNode, ImageBinding,
-        ImageLeaseBinding, ImageLeaseNode, ImageNode, PassRef, PipelinePassRef,
-        RayTraceAccelerationBinding, RayTraceAccelerationLeaseNode, RayTraceAccelerationNode,
-        RenderGraph, Resolver, SwapchainImageBinding, SwapchainImageNode,
+        ImageLeaseBinding, ImageLeaseNode, ImageNode, PassRef, PipelinePassRef, RenderGraph,
+        Resolver, SwapchainImageBinding, SwapchainImageNode,
     },
     crate::{
         driver::{
-            Buffer, ComputePipeline, GraphicPipeline, Image, RayTraceAcceleration,
-            RayTracePipeline, SwapchainImage,
+            Buffer, ComputePipeline, GraphicPipeline, Image, RayTracePipeline, SwapchainImage,
         },
         Lease,
     },
@@ -41,8 +39,8 @@ graph_edge!(ImageLeaseBinding -> ImageLeaseNode);
 graph_edge!(Buffer -> BufferNode);
 graph_edge!(BufferBinding -> BufferNode);
 graph_edge!(BufferLeaseBinding -> BufferLeaseNode);
-graph_edge!(RayTraceAcceleration -> RayTraceAccelerationNode);
-graph_edge!(RayTraceAccelerationBinding -> RayTraceAccelerationNode);
+// graph_edge!(RayTraceAcceleration -> RayTraceAccelerationNode);
+// graph_edge!(RayTraceAccelerationBinding -> RayTraceAccelerationNode);
 graph_edge!(SwapchainImage -> SwapchainImageNode);
 graph_edge!(SwapchainImageBinding -> SwapchainImageNode);
 
@@ -52,7 +50,7 @@ graph_edge!(BufferNode -> BufferBinding);
 graph_edge!(BufferLeaseNode -> BufferLeaseBinding);
 graph_edge!(ImageNode -> ImageBinding);
 graph_edge!(ImageLeaseNode -> ImageLeaseBinding);
-graph_edge!(RayTraceAccelerationNode -> RayTraceAccelerationBinding);
+// graph_edge!(RayTraceAccelerationNode -> RayTraceAccelerationBinding);
 graph_edge!(SwapchainImageNode -> SwapchainImageBinding);
 
 macro_rules! graph_lease_edge {
@@ -68,7 +66,7 @@ macro_rules! graph_lease_edge {
 
 graph_lease_edge!(ImageBinding -> ImageLeaseNode);
 graph_lease_edge!(BufferBinding -> BufferLeaseNode);
-graph_lease_edge!(RayTraceAcceleration -> RayTraceAccelerationLeaseNode);
+// graph_lease_edge!(RayTraceAcceleration -> RayTraceAccelerationLeaseNode);
 
 // Specialized edges for pipelines added to a pass:
 // Ex: PassRef::bind_pipeline(&mut self, pipeline: X) -> PipelinePassRef

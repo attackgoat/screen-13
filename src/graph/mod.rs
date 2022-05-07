@@ -10,13 +10,11 @@ pub use {
     self::{
         binding::{
             AnyBufferBinding, AnyImageBinding, Bind, BufferBinding, BufferLeaseBinding,
-            ImageBinding, ImageLeaseBinding, RayTraceAccelerationBinding,
-            RayTraceAccelerationLeaseBinding,
+            ImageBinding, ImageLeaseBinding,
         },
         node::{
             AnyBufferNode, AnyImageNode, BufferLeaseNode, BufferNode, ImageLeaseNode, ImageNode,
-            RayTraceAccelerationLeaseNode, RayTraceAccelerationNode, SwapchainImageNode, Unbind,
-            View, ViewType,
+            SwapchainImageNode, Unbind, View, ViewType,
         },
         pass_ref::{Bindings, Compute, Draw, PassRef, PipelinePassRef, RayTrace},
         resolver::Resolver,
@@ -30,8 +28,8 @@ use {
     crate::driver::{
         buffer_copy_subresources, buffer_image_copy_subresource, format_aspect_mask,
         is_write_access, BufferSubresource, ComputePipeline, DepthStencilMode,
-        DescriptorBindingMap, GraphicPipeline, ImageSubresource, ImageType, PipelineDescriptorInfo,
-        RayTracePipeline, SampleCount,Device,
+        DescriptorBindingMap, Device, GraphicPipeline, ImageSubresource, ImageType,
+        PipelineDescriptorInfo, RayTracePipeline, SampleCount,
     },
     archery::{SharedPointer, SharedPointerKind},
     ash::vk,

@@ -1,7 +1,7 @@
 use {
     super::{
         BufferBinding, BufferLeaseBinding, ImageBinding, ImageLeaseBinding, Information, NodeIndex,
-        RayTraceAccelerationBinding, RayTraceAccelerationLeaseBinding, RenderGraph, Subresource,
+        RenderGraph, Subresource,
     },
     crate::driver::{
         vk, BufferInfo, BufferSubresource, ImageInfo, ImageSubresource, ImageViewInfo,
@@ -154,8 +154,8 @@ node!(Buffer);
 node!(BufferLease);
 node!(Image);
 node!(ImageLease);
-node!(RayTraceAcceleration);
-node!(RayTraceAccelerationLease);
+// node!(RayTraceAcceleration);
+// node!(RayTraceAccelerationLease);
 node!(SwapchainImage);
 
 macro_rules! node_unbind {
@@ -190,7 +190,7 @@ macro_rules! node_unbind {
 
 node_unbind!(Buffer);
 node_unbind!(Image);
-node_unbind!(RayTraceAcceleration);
+// node_unbind!(RayTraceAcceleration);
 
 macro_rules! node_unbind_lease {
     ($name:ident) => {
@@ -232,7 +232,7 @@ macro_rules! node_unbind_lease {
 
 node_unbind_lease!(Buffer);
 node_unbind_lease!(Image);
-node_unbind_lease!(RayTraceAcceleration);
+// node_unbind_lease!(RayTraceAcceleration);
 
 pub trait Unbind<Graph, Binding> {
     fn unbind(self, graph: &mut Graph) -> Binding;

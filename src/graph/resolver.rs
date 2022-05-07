@@ -4,7 +4,6 @@ use {
         ExecutionPipeline, Node, Pass, RenderGraph, Unbind,
     },
     crate::{
-        align_up_u32,
         driver::{
             format_aspect_mask, image_access_layout, is_read_access, is_write_access,
             pipeline_stage_access_flags, AttachmentInfo, AttachmentRef, CommandBuffer,
@@ -27,6 +26,10 @@ use {
     },
     vk_sync::{cmd::pipeline_barrier, AccessType, BufferBarrier, GlobalBarrier, ImageBarrier},
 };
+
+fn align_up_u32(val: u32, atom: u32) -> u32 {
+    (val + atom - 1) & !(atom - 1)
+}
 
 #[derive(Debug)]
 struct PhysicalPass<P>

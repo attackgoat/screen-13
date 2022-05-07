@@ -2,13 +2,12 @@ use {
     super::{
         AnyBufferNode, AnyImageNode, Area, AttachmentIndex, Bind, Binding, BufferLeaseNode,
         BufferNode, Color, Descriptor, Edge, Execution, ExecutionFunction, ExecutionPipeline,
-        ImageLeaseNode, ImageNode, Information, Node, NodeIndex, Pass, RayTraceAccelerationNode,
-        RenderGraph, SampleCount, Subresource, SubresourceAccess, SwapchainImageNode, View,
-        ViewType,
+        ImageLeaseNode, ImageNode, Information, Node, NodeIndex, Pass, RenderGraph, SampleCount,
+        Subresource, SubresourceAccess, SwapchainImageNode, View, ViewType,
     },
     crate::driver::{
         Buffer, ComputePipeline, DepthStencilMode, Device, GraphicPipeline, Image, ImageViewInfo,
-        RayTraceAcceleration, RayTracePipeline,
+        RayTracePipeline,
     },
     archery::{SharedPointer, SharedPointerKind},
     ash::vk,
@@ -152,7 +151,7 @@ index!(Buffer, Buffer);
 index!(BufferLease, Buffer);
 index!(Image, Image);
 index!(ImageLease, Image);
-index!(RayTraceAcceleration, RayTraceAcceleration);
+// index!(RayTraceAcceleration, RayTraceAcceleration);
 index!(SwapchainImage, Image);
 
 impl<'a, P> Index<AnyImageNode<P>> for Bindings<'a, P>
@@ -315,23 +314,27 @@ where
 {
     pub fn bind_index_buffer(
         &self,
-        buf: impl Into<AnyBufferNode<P>>,
+        buffer: impl Into<AnyBufferNode<P>>,
         index_ty: vk::IndexType,
     ) -> &Self {
-        self.bind_index_buffer_offset(buf, index_ty, 0)
+        self.bind_index_buffer_offset(buffer, index_ty, 0)
     }
 
     pub fn bind_index_buffer_offset(
         &self,
-        buf: impl Into<AnyBufferNode<P>>,
+        buffer: impl Into<AnyBufferNode<P>>,
         index_ty: vk::IndexType,
         offset: vk::DeviceSize,
     ) -> &Self {
-        let buf = buf.into();
+        let buffer = buffer.into();
 
         unsafe {
-            self.device
-                .cmd_bind_index_buffer(self.cmd_buf, *self.bindings[buf], offset, index_ty);
+            self.device.cmd_bind_index_buffer(
+                self.cmd_buf,
+                *self.bindings[buffer],
+                offset,
+                index_ty,
+            );
         }
 
         self
@@ -1996,7 +1999,38 @@ impl<'a, P> RayTrace<'a, P>
 where
     P: SharedPointerKind,
 {
-    pub fn trace_rays(&self, width: u32, height: u32, depth: u32) -> &Self {
+    pub fn build_acceleration_structure(
+        &self,
+        infos: &vk::AccelerationStructureBuildGeometryInfoKHR,
+        build_range_infos: &[vk::AccelerationStructureBuildRangeInfoKHR],
+    ) {
+        use std::slice::from_ref;
+
+        unsafe {
+            self.device
+                .accel_struct_ext
+                .as_ref()
+                .unwrap()
+                .cmd_build_acceleration_structures(
+                    self.cmd_buf,
+                    from_ref(infos),
+                    from_ref(&build_range_infos),
+                )
+        };
+    }
+
+    // TODO: If the rayTraversalPrimitiveCulling or rayQuery features are enabled, the SkipTrianglesKHR and SkipAABBsKHR ray flags can be specified when tracing a ray. SkipTrianglesKHR and SkipAABBsKHR are mutually exclusive.
+
+    pub fn trace_rays(
+        &self,
+        raygen_shader_binding_tables: &vk::StridedDeviceAddressRegionKHR,
+        miss_shader_binding_tables: &vk::StridedDeviceAddressRegionKHR,
+        hit_shader_binding_tables: &vk::StridedDeviceAddressRegionKHR,
+        callable_shader_binding_tables: &vk::StridedDeviceAddressRegionKHR,
+        width: u32,
+        height: u32,
+        depth: u32,
+    ) -> &Self {
         unsafe {
             self.device
                 .ray_tracing_pipeline_ext
@@ -2004,10 +2038,10 @@ where
                 .unwrap()
                 .cmd_trace_rays(
                     self.cmd_buf,
-                    &self.pipeline.shader_bindings.raygen,
-                    &self.pipeline.shader_bindings.miss,
-                    &self.pipeline.shader_bindings.hit,
-                    &self.pipeline.shader_bindings.callable,
+                    raygen_shader_binding_tables,
+                    miss_shader_binding_tables,
+                    hit_shader_binding_tables,
+                    callable_shader_binding_tables,
                     width,
                     height,
                     depth,
@@ -2019,7 +2053,7 @@ where
 
     pub fn trace_rays_indirect(
         &self,
-        _tlas: RayTraceAccelerationNode<P>,
+        // _tlas: RayTraceAccelerationNode<P>,
         _args_buf: BufferNode<P>,
         _args_buf_offset: vk::DeviceSize,
     ) -> &Self {

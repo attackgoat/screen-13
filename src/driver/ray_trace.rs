@@ -1,562 +1,134 @@
 use {
-    super::{
-        Buffer, BufferInfo, DescriptorBindingMap, Device, DriverError, PipelineDescriptorInfo,
-        Shader,
-    },
+    super::{DescriptorBindingMap, Device, DriverError, PipelineDescriptorInfo, Shader},
     archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     derive_builder::Builder,
-    log::{info, trace, warn},
-    parking_lot::Mutex,
+    log::warn,
     std::{ffi::CString, ops::Deref, thread::panicking},
 };
 
-#[derive(Debug)]
-pub struct RayTraceAcceleration<P>
-where
-    P: SharedPointerKind,
-{
-    device: SharedPointer<Device<P>, P>,
-    accel_struct: vk::AccelerationStructureKHR,
-    _buf: Buffer<P>,
-}
+// #[derive(Debug)]
+// pub struct ShaderBinding<P>
+// where
+//     P: SharedPointerKind,
+// {
+//     pub buffer: Option<Buffer<P>>,
+//     pub region: vk::StridedDeviceAddressRegionKHR,
+// }
 
-impl<P> Deref for RayTraceAcceleration<P>
-where
-    P: SharedPointerKind,
-{
-    type Target = vk::AccelerationStructureKHR;
+// #[derive(Debug)]
+// pub struct ShaderBindingTable<P>
+// where
+//     P: SharedPointerKind,
+// {
+//     pub ray_gen_buf: Option<Buffer<P>>,
+//     pub ray_gen: vk::StridedDeviceAddressRegionKHR,
+//     pub miss_buf: Option<Buffer<P>>,
+//     pub miss: vk::StridedDeviceAddressRegionKHR,
+//     pub hit_buf: Option<Buffer<P>>,
+//     pub hit: vk::StridedDeviceAddressRegionKHR,
+//     pub callable_buf: Option<Buffer<P>>,
+//     pub callable: vk::StridedDeviceAddressRegionKHR,
+// }
 
-    fn deref(&self) -> &Self::Target {
-        &self.accel_struct
-    }
-}
+// impl<P> ShaderBindingTable<P>
+// where
+//     P: SharedPointerKind,
+// {
+//     fn create(
+//         device: &SharedPointer<Device<P>, P>,
+//         info: RayTraceShaderBindingsInfo,
+//         pipeline: vk::Pipeline,
+//     ) -> Result<ShaderBindingTable<P>, DriverError> {
+//         let device = SharedPointer::clone(device);
+//         let shader_group_handle_size = device
+//             .ray_trace_pipeline_properties
+//             .shader_group_handle_size as usize;
+//         let group_count = info.raygen_count + info.miss_count + info.hit_count;
+//         let group_handles_size = shader_group_handle_size * group_count as usize;
+//         let group_handles: Vec<u8> = unsafe {
+//             device
+//                 .ray_tracing_pipeline_ext.as_ref().unwrap()
+//                 .get_ray_tracing_shader_group_handles(pipeline, 0, group_count, group_handles_size)
+//                 .map_err(|err| {warn!("{err}");DriverError::Unsupported})?
+//         };
+//         let prog_size = shader_group_handle_size;
+//         let create_binding_table =
+//             |entry_offset: u32, entry_count: u32| -> Result<Option<Buffer<P>>, DriverError> {
+//                 if entry_count == 0 {
+//                     return Ok(None);
+//                 }
 
-impl<P> Drop for RayTraceAcceleration<P>
-where
-    P: SharedPointerKind,
-{
-    fn drop(&mut self) {
-        if panicking() {
-            return;
-        }
+//                 let mut sbt_data = vec![0u8; entry_count as usize * prog_size];
 
-        unsafe {
-            self.device
-                .accel_struct_ext
-                .as_ref()
-                .unwrap()
-                .destroy_acceleration_structure(self.accel_struct, None);
-        }
-    }
-}
+//                 for dst in 0..entry_count as usize {
+//                     let src = dst + entry_offset as usize;
+//                     sbt_data[dst * prog_size..dst * prog_size + shader_group_handle_size]
+//                         .copy_from_slice(
+//                             &group_handles[src * shader_group_handle_size
+//                                 ..src * shader_group_handle_size + shader_group_handle_size],
+//                         );
+//                 }
 
-#[derive(Clone, Debug)]
-pub struct RayTraceAccelerationScratchBuffer<P>
-where
-    P: SharedPointerKind,
-{
-    device: SharedPointer<Device<P>, P>,
-    buf: SharedPointer<Mutex<Buffer<P>>, P>,
-}
+//                 Ok(Some(Buffer::create_with_data(
+//                     &device,
+//                     BufferDesc::new(
+//                         sbt_data.len() ,
+//                         vk::BufferUsageFlags::TRANSFER_SRC
+//                             | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+//                             | vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR,
+//                     )
+//                     .build()
+//                     .unwrap(),
+//                     Some(&sbt_data),
+//                 )?))
+//             };
 
-impl<P> RayTraceAccelerationScratchBuffer<P>
-where
-    P: SharedPointerKind,
-{
-    pub const RT_SCRATCH_BUFFER_SIZE: vk::DeviceSize = 1024 * 1024 * 1440;
+//         let raygen = create_binding_table(0, info.raygen_count)?;
+//         let miss = create_binding_table(info.raygen_count, info.miss_count)?;
+//         let hit = create_binding_table(info.raygen_count + info.miss_count, info.hit_count)?;
 
-    pub fn create(device: &SharedPointer<Device<P>, P>) -> Result<Self, DriverError> {
-        trace!("create");
+//         Ok(Self {
+//             raygen: vk::StridedDeviceAddressRegionKHR {
+//                 device_address: raygen
+//                     .as_ref()
+//                     .map(|b| Buffer::device_address(b))
+//                     .unwrap_or(0),
+//                 stride: prog_size ,
+//                 size: (prog_size * info.raygen_count as usize) as vk::DeviceSize ,
+//             },
+//             raygen_buf: raygen,
+//             miss: vk::StridedDeviceAddressRegionKHR {
+//                 device_address: miss
+//                     .as_ref()
+//                     .map(|b| Buffer::device_address(b))
+//                     .unwrap_or(0),
+//                 stride: prog_size,
+//                 size: (prog_size * info.miss_count as usize) as vk::DeviceSize  ,
+//             },
+//             miss_buf: miss,
+//             hit: vk::StridedDeviceAddressRegionKHR {
+//                 device_address: hit.as_ref().map(|b| Buffer::device_address(b)).unwrap_or(0),
+//                 stride: prog_size ,
+//                 size: (prog_size * info.hit_count as usize) as vk::DeviceSize  ,
+//             },
+//             hit_buf: hit,
+//             callable_buf: None,
+//             callable: vk::StridedDeviceAddressRegionKHR {
+//                 device_address: Default::default(),
+//                 stride: 0,
+//                 size: 0,
+//             },
+//         })
+//     }
+// }
 
-        let device = SharedPointer::clone(device);
-        let buf = SharedPointer::new(Mutex::new(Buffer::create(
-            &device,
-            BufferInfo::new(
-                Self::RT_SCRATCH_BUFFER_SIZE,
-                vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-            )
-            .build(),
-        )?));
-
-        Ok(Self { device, buf })
-    }
-
-    pub fn create_tlas(
-        &self,
-        _info: RayTraceTopAccelerationInfo<P>,
-    ) -> Result<RayTraceAcceleration<P>, DriverError> {
-        // let instances: Vec<RayTraceInstance> = desc
-        //     .instances
-        //     .iter()
-        //     .map(|desc| {
-        //         let blas_address = unsafe {
-        //             self.device
-        //                 .accel_struct_ext
-        //                 .get_acceleration_structure_device_address(
-        //                     &vk::AccelerationStructureDeviceAddressInfoKHR::builder()
-        //                         .acceleration_structure(desc.blas.accel_struct)
-        //                         .build(),
-        //                 )
-        //         };
-        //         let transform: [f32; 12] = [
-        //             desc.rotation.x_axis.x,
-        //             desc.rotation.y_axis.x,
-        //             desc.rotation.z_axis.x,
-        //             desc.position.x,
-        //             desc.rotation.x_axis.y,
-        //             desc.rotation.y_axis.y,
-        //             desc.rotation.z_axis.y,
-        //             desc.position.y,
-        //             desc.rotation.x_axis.z,
-        //             desc.rotation.y_axis.z,
-        //             desc.rotation.z_axis.z,
-        //             desc.position.z,
-        //         ];
-
-        //         RayTraceInstance::new(
-        //             transform,
-        //             desc.mesh_idx,
-        //             u8::MAX,
-        //             0,
-        //             vk::GeometryInstanceFlagsKHR::FORCE_OPAQUE,
-        //             blas_address,
-        //         )
-        //     })
-        //     .collect();
-        // let instance_buf_len = size_of::<RayTraceInstance>() * instances.len().max(1);
-        // let instance_buf = Buffer::create_with_data(
-        //     &self.device,
-        //     BufferDesc::new(
-        //         instance_buf_len ,
-        //         vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
-        //             | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
-        //     )
-        //     .build()
-        //     .unwrap(),
-        //     unsafe {
-        //         (!instances.is_empty()).then(|| {
-        //             std::slice::from_raw_parts(instances.as_ptr() as *const u8, instance_buf_len)
-        //         })
-        //     },
-        // )?;
-        // let device_address = Buffer::device_address(&instance_buf);
-        // let geometry = vk::AccelerationStructureGeometryKHR::builder()
-        //     .geometry_type(vk::GeometryTypeKHR::INSTANCES)
-        //     .geometry(vk::AccelerationStructureGeometryDataKHR {
-        //         instances: vk::AccelerationStructureGeometryInstancesDataKHR::builder()
-        //             .data(vk::DeviceOrHostAddressConstKHR { device_address })
-        //             .build(),
-        //     })
-        //     .build();
-        // let build_range_info = vk::AccelerationStructureBuildRangeInfoKHR::builder()
-        //     .primitive_count(instances.len() as _)
-        //     .build();
-        // let geometry_info = vk::AccelerationStructureBuildGeometryInfoKHR::builder()
-        //     .ty(vk::AccelerationStructureTypeKHR::TOP_LEVEL)
-        //     .flags(vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
-        //     .geometries(from_ref(&geometry))
-        //     .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
-        //     .build();
-        // let max_primitive_count = instances.len() as _;
-
-        // self.create_acceleration_structure(
-        //     vk::AccelerationStructureTypeKHR::TOP_LEVEL,
-        //     geometry_info,
-        //     &[build_range_info],
-        //     &[max_primitive_count],
-        //     desc.preallocate_bytes,
-        // )
-        todo!();
-    }
-
-    pub fn create_blas(
-        &self,
-        info: &RayTraceBottomAccelerationDesc,
-        _scratch_buf: &RayTraceAccelerationScratchBuffer<P>,
-    ) -> Result<RayTraceAcceleration<P>, DriverError> {
-        let geometries: Vec<vk::AccelerationStructureGeometryKHR> = info
-            .geometries
-            .iter()
-            .map(|desc| -> vk::AccelerationStructureGeometryKHR {
-                let part: RayTraceGeometryPart = desc.parts[0];
-                let geometry = vk::AccelerationStructureGeometryKHR::builder()
-                    .geometry_type(vk::GeometryTypeKHR::TRIANGLES)
-                    .geometry(vk::AccelerationStructureGeometryDataKHR {
-                        triangles: vk::AccelerationStructureGeometryTrianglesDataKHR::builder()
-                            .vertex_data(vk::DeviceOrHostAddressConstKHR {
-                                device_address: desc.vertex_buf,
-                            })
-                            .vertex_stride(desc.vertex_stride as _)
-                            .max_vertex(part.max_vertex)
-                            .vertex_format(desc.vertex_fmt)
-                            .index_data(vk::DeviceOrHostAddressConstKHR {
-                                device_address: desc.idx_buf,
-                            })
-                            .index_type(vk::IndexType::UINT32) // TODO: Make parameter?
-                            .build(),
-                    })
-                    .flags(vk::GeometryFlagsKHR::OPAQUE)
-                    .build();
-
-                geometry
-            })
-            .collect();
-        let build_range_infos: Vec<vk::AccelerationStructureBuildRangeInfoKHR> = info
-            .geometries
-            .iter()
-            .map(|desc| {
-                vk::AccelerationStructureBuildRangeInfoKHR::builder()
-                    .primitive_count(desc.parts[0].idx_count as u32 / 3)
-                    .build()
-            })
-            .collect();
-        let geometry_info = vk::AccelerationStructureBuildGeometryInfoKHR::builder()
-            .ty(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)
-            .flags(vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
-            .geometries(geometries.as_slice())
-            .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
-            .build();
-        let max_primitive_counts: Box<[_]> = info
-            .geometries
-            .iter()
-            .map(|desc| desc.parts[0].idx_count as u32 / 3)
-            .collect();
-
-        self.create_acceleration_structure(
-            vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
-            geometry_info,
-            &build_range_infos,
-            &max_primitive_counts,
-            0,
-        )
-    }
-
-    fn create_acceleration_structure(
-        &self,
-        ty: vk::AccelerationStructureTypeKHR,
-        mut geometry_info: vk::AccelerationStructureBuildGeometryInfoKHR,
-        _build_range_infos: &[vk::AccelerationStructureBuildRangeInfoKHR],
-        max_primitive_counts: &[u32],
-        preallocate_bytes: vk::DeviceSize,
-    ) -> Result<RayTraceAcceleration<P>, DriverError> {
-        let mem_requirements = unsafe {
-            self.device
-                .accel_struct_ext
-                .as_ref()
-                .unwrap()
-                .get_acceleration_structure_build_sizes(
-                    vk::AccelerationStructureBuildTypeKHR::DEVICE,
-                    &geometry_info,
-                    max_primitive_counts,
-                )
-        };
-
-        info!(
-            "Acceleration structure size: {}, scratch size: {}",
-            mem_requirements.acceleration_structure_size, mem_requirements.build_scratch_size
-        );
-
-        let buffer_len = preallocate_bytes.max(mem_requirements.acceleration_structure_size);
-        let buf = Buffer::create(
-            &self.device,
-            BufferInfo::new(
-                buffer_len,
-                vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
-                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-            )
-            .build(),
-        )?;
-        let accel_info = vk::AccelerationStructureCreateInfoKHR::builder()
-            .ty(ty)
-            .buffer(*buf)
-            .size(buffer_len)
-            .build();
-
-        unsafe {
-            let accel_struct = self
-                .device
-                .accel_struct_ext
-                .as_ref()
-                .unwrap()
-                .create_acceleration_structure(&accel_info, None)
-                .map_err(|err| {
-                    warn!("{err}");
-
-                    DriverError::Unsupported
-                })?;
-            let scratch_buf = self.buf.lock();
-
-            // See `RT_SCRATCH_BUFFER_SIZE`
-            assert!(
-                mem_requirements.build_scratch_size <= scratch_buf.info.size,
-                "todo: resize scratch"
-            );
-
-            geometry_info.dst_acceleration_structure = accel_struct;
-            geometry_info.scratch_data = vk::DeviceOrHostAddressKHR {
-                device_address: Buffer::device_address(&scratch_buf),
-            };
-
-            // self.with_setup_cb(|cb| {
-            //     self.acceleration_structure_ext
-            //         .cmd_build_acceleration_structures(
-            //             cb,
-            //             from_ref(&geometry_info),
-            //             from_ref(&build_range_infos),
-            //         );
-
-            //     self.raw.cmd_pipeline_barrier(
-            //         cb,
-            //         vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
-            //         vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
-            //         vk::DependencyFlags::empty(),
-            //         &[vk::MemoryBarrier::builder()
-            //             .src_access_mask(
-            //                 vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR
-            //                     | vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR,
-            //             )
-            //             .dst_access_mask(
-            //                 vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR
-            //                     | vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR,
-            //             )
-            //             .build()],
-            //         &[],
-            //         &[],
-            //     );
-            // });
-
-            let device = SharedPointer::clone(&self.device);
-
-            Ok(RayTraceAcceleration {
-                device,
-                accel_struct,
-                _buf: buf,
-            })
-        }
-    }
-
-    pub fn map_instances<'a>(
-        &'a self,
-        instances: impl Iterator<Item = RayTraceInstanceInfo<P>> + 'a,
-    ) -> impl Iterator<Item = RayTraceInstance> + 'a {
-        instances.map(|desc| {
-            let blas_address = unsafe {
-                self.device
-                    .accel_struct_ext
-                    .as_ref()
-                    .unwrap()
-                    .get_acceleration_structure_device_address(
-                        &vk::AccelerationStructureDeviceAddressInfoKHR::builder()
-                            .acceleration_structure(desc.blas.accel_struct)
-                            .build(),
-                    )
-            };
-            let transform: [f32; 12] = [
-                desc.rotation[0], //.x_axis.x,
-                desc.rotation[0], //.y_axis.x,
-                desc.rotation[0], //.z_axis.x,
-                desc.position[0], //.x,
-                desc.rotation[0], //.x_axis.y,
-                desc.rotation[0], //.y_axis.y,
-                desc.rotation[0], //.z_axis.y,
-                desc.position[0], //.y,
-                desc.rotation[0], //.x_axis.z,
-                desc.rotation[0], //.y_axis.z,
-                desc.rotation[0], //.z_axis.z,
-                desc.position[0], //.z,
-            ];
-
-            RayTraceInstance::new(
-                transform,
-                desc.mesh_idx,
-                u8::MAX,
-                0,
-                vk::GeometryInstanceFlagsKHR::FORCE_OPAQUE,
-                blas_address,
-            )
-        })
-    }
-
-    pub fn rebuild_tlas(
-        &self,
-        cb: vk::CommandBuffer,
-        inst_buf_address: vk::DeviceAddress,
-        instance_count: usize,
-        tlas: &RayTraceAcceleration<P>,
-    ) {
-        use std::slice::from_ref;
-
-        let geometry = vk::AccelerationStructureGeometryKHR::builder()
-            .geometry_type(vk::GeometryTypeKHR::INSTANCES)
-            .geometry(vk::AccelerationStructureGeometryDataKHR {
-                instances: vk::AccelerationStructureGeometryInstancesDataKHR::builder()
-                    .data(vk::DeviceOrHostAddressConstKHR {
-                        device_address: inst_buf_address,
-                    })
-                    .build(),
-            })
-            .build();
-        let build_range_infos = vec![vk::AccelerationStructureBuildRangeInfoKHR::builder()
-            .primitive_count(instance_count as _)
-            .build()];
-        let mut geometry_info = vk::AccelerationStructureBuildGeometryInfoKHR::builder()
-            .ty(vk::AccelerationStructureTypeKHR::TOP_LEVEL)
-            .flags(vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
-            .geometries(from_ref(&geometry))
-            .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
-            .build();
-
-        let mem_requirements = unsafe {
-            self.device
-                .accel_struct_ext
-                .as_ref()
-                .unwrap()
-                .get_acceleration_structure_build_sizes(
-                    vk::AccelerationStructureBuildTypeKHR::DEVICE,
-                    &geometry_info,
-                    from_ref(&(instance_count as u32)),
-                )
-        };
-        let scratch_buf = self.buf.lock();
-
-        assert!(
-            mem_requirements.acceleration_structure_size <= scratch_buf.info.size,
-            "todo: backing"
-        );
-        assert!(
-            mem_requirements.build_scratch_size <= scratch_buf.info.size,
-            "todo: scratch"
-        );
-
-        unsafe {
-            geometry_info.dst_acceleration_structure = tlas.accel_struct;
-            geometry_info.scratch_data = vk::DeviceOrHostAddressKHR {
-                device_address: Buffer::device_address(&scratch_buf),
-            };
-
-            self.device
-                .accel_struct_ext
-                .as_ref()
-                .unwrap()
-                .cmd_build_acceleration_structures(
-                    cb,
-                    from_ref(&geometry_info),
-                    from_ref(&build_range_infos.as_slice()),
-                );
-            self.device.cmd_pipeline_barrier(
-                cb,
-                vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
-                vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
-                vk::DependencyFlags::empty(),
-                &[vk::MemoryBarrier::builder()
-                    .src_access_mask(
-                        vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR
-                            | vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR,
-                    )
-                    .dst_access_mask(
-                        vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR
-                            | vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR,
-                    )
-                    .build()],
-                &[],
-                &[],
-            );
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct RayTraceBottomAccelerationDesc {
-    pub geometries: Vec<RayTraceGeometryDesc>,
-}
-
-#[derive(Clone, Debug)]
-pub struct RayTraceGeometryDesc {
-    pub geometry_type: RayTraceGeometryType,
-    pub vertex_buf: vk::DeviceAddress,
-    pub idx_buf: vk::DeviceAddress,
-    pub vertex_fmt: vk::Format,
-    pub vertex_stride: usize,
-    pub parts: Vec<RayTraceGeometryPart>,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct RayTraceGeometryPart {
-    pub idx_count: usize,
-    pub idx_offset: usize, // offset into the index buffer in bytes
-    pub max_vertex: u32, // the highest index of a vertex that will be addressed by a build command using this structure
-}
-
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub enum RayTraceGeometryType {
-    Triangle = 0,
-    BoundingBox = 1,
-}
-
-#[repr(C)]
-#[derive(Clone, Debug, Copy)]
-pub struct RayTraceInstance {
-    transform: [f32; 12],
-    instance_id_and_mask: u32,
-    instance_shader_table_offset_and_flags: u32,
-    blas_address: vk::DeviceAddress,
-}
-
-impl RayTraceInstance {
-    fn new(
-        transform: [f32; 12],
-        id: u32,
-        mask: u8,
-        shader_table_offset: u32,
-        flags: vk::GeometryInstanceFlagsKHR,
-        blas_address: vk::DeviceAddress,
-    ) -> Self {
-        let mut res = Self {
-            transform,
-            instance_id_and_mask: 0,
-            instance_shader_table_offset_and_flags: 0,
-            blas_address,
-        };
-        res.set_id(id);
-        res.set_mask(mask);
-        res.set_shader_table_offset(shader_table_offset);
-        res.set_flags(flags);
-
-        res
-    }
-
-    fn set_id(&mut self, id: u32) {
-        let id = id & 0x00ffffff;
-        self.instance_id_and_mask |= id;
-    }
-
-    fn set_mask(&mut self, mask: u8) {
-        let mask = mask as u32;
-        self.instance_id_and_mask |= mask << 24;
-    }
-
-    fn set_shader_table_offset(&mut self, offset: u32) {
-        let offset = offset & 0x00ffffff;
-        self.instance_shader_table_offset_and_flags |= offset;
-    }
-
-    fn set_flags(&mut self, flags: vk::GeometryInstanceFlagsKHR) {
-        let flags = flags.as_raw() as u32;
-        self.instance_shader_table_offset_and_flags |= flags << 24;
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct RayTraceInstanceInfo<P>
-where
-    P: SharedPointerKind,
-{
-    pub blas: SharedPointer<RayTraceAcceleration<P>, P>,
-    pub mesh_idx: u32,
-    pub position: [f32; 3],
-    pub rotation: [f32; 16],
-}
+// #[derive(Clone, Debug)]
+// pub struct RayTraceShaderBindingsInfo {
+//     pub raygen_count: u32,
+//     pub hit_count: u32,
+//     pub miss_count: u32,
+// }
 
 #[derive(Debug)]
 pub struct RayTracePipeline<P>
@@ -569,7 +141,7 @@ where
     pub info: RayTracePipelineInfo,
     pub layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
-    pub shader_bindings: RayTraceShaderBindings<P>,
+    pub shader_bindings: (), //ShaderBindingTable<P>,
 }
 
 impl<P> RayTracePipeline<P>
@@ -580,11 +152,17 @@ where
         device: &SharedPointer<Device<P>, P>,
         info: impl Into<RayTracePipelineInfo>,
         shaders: impl IntoIterator<Item = S>,
+        shader_groups: impl IntoIterator<Item = RayTraceShaderGroup>,
     ) -> Result<Self, DriverError>
     where
         S: Into<Shader>,
     {
         let info = info.into();
+        let shader_groups = shader_groups
+            .into_iter()
+            .map(|shader_group| shader_group.into())
+            .collect::<Vec<_>>();
+
         let shaders = shaders
             .into_iter()
             .map(|shader| shader.into())
@@ -617,8 +195,6 @@ where
                     DriverError::Unsupported
                 })?;
             let mut entry_points: Vec<CString> = Vec::with_capacity(shaders.len()); // Keep entry point names alive, since build() forgets references.
-            let mut shader_groups: Vec<vk::RayTracingShaderGroupCreateInfoKHR> =
-                Vec::with_capacity(shaders.len());
             let mut shader_stages: Vec<vk::PipelineShaderStageCreateInfo> =
                 Vec::with_capacity(shaders.len());
             let mut prev_stage: Option<vk::ShaderStageFlags> = None;
@@ -652,11 +228,7 @@ where
                 let mut stage = vk::PipelineShaderStageCreateInfo::builder()
                     .module(module)
                     .name(entry_points.last().unwrap().as_ref());
-                let mut group = vk::RayTracingShaderGroupCreateInfoKHR::builder()
-                    .general_shader(vk::SHADER_UNUSED_KHR)
-                    .closest_hit_shader(vk::SHADER_UNUSED_KHR)
-                    .any_hit_shader(vk::SHADER_UNUSED_KHR)
-                    .intersection_shader(vk::SHADER_UNUSED_KHR);
+
                 match shader.stage {
                     vk::ShaderStageFlags::RAYGEN_KHR => {
                         assert!(
@@ -666,9 +238,6 @@ where
 
                         raygen_entry_count += 1;
                         stage = stage.stage(vk::ShaderStageFlags::RAYGEN_KHR);
-                        group = group
-                            .ty(vk::RayTracingShaderGroupTypeKHR::GENERAL)
-                            .general_shader(group_idx as _);
                     }
                     vk::ShaderStageFlags::MISS_KHR => {
                         assert!(
@@ -678,9 +247,6 @@ where
 
                         miss_entry_count += 1;
                         stage = stage.stage(vk::ShaderStageFlags::MISS_KHR);
-                        group = group
-                            .ty(vk::RayTracingShaderGroupTypeKHR::GENERAL)
-                            .general_shader(group_idx as _);
                     }
                     vk::ShaderStageFlags::CLOSEST_HIT_KHR => {
                         assert!(
@@ -690,15 +256,11 @@ where
 
                         hit_entry_count += 1;
                         stage = stage.stage(vk::ShaderStageFlags::CLOSEST_HIT_KHR);
-                        group = group
-                            .ty(vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP)
-                            .general_shader(group_idx as _);
                     }
                     _ => unimplemented!(),
                 }
 
                 shader_stages.push(stage.build());
-                shader_groups.push(group.build());
 
                 prev_stage = Some(shader.stage);
             }
@@ -726,15 +288,16 @@ where
 
                     DriverError::Unsupported
                 })?[0];
-            let shader_bindings = RayTraceShaderBindings::create(
-                device,
-                RayTraceShaderBindingsInfo {
-                    raygen_count: raygen_entry_count,
-                    hit_count: hit_entry_count,
-                    miss_count: miss_entry_count,
-                },
-                pipeline,
-            )?;
+            let shader_bindings = ();
+            // ShaderBindingTable::create(
+            //     device,
+            //     RayTraceShaderBindingsInfo {
+            //         raygen_count: raygen_entry_count,
+            //         hit_count: hit_entry_count,
+            //         miss_count: miss_entry_count,
+            //     },
+            //     pipeline,
+            // )?;
             let device = SharedPointer::clone(device);
 
             Ok(Self {
@@ -806,126 +369,120 @@ impl RayTracePipelineInfoBuilder {
     }
 }
 
-// TODO: Give this a nice impl so it's not constructed "bare"
-#[derive(Clone, Debug)]
-pub struct RayTraceTopAccelerationInfo<P>
-where
-    P: SharedPointerKind,
-{
-    pub instances: Vec<RayTraceInstanceInfo<P>>,
-    pub preallocate_bytes: vk::DeviceSize,
-}
-
 #[derive(Debug)]
-pub struct RayTraceShaderBindings<P>
-where
-    P: SharedPointerKind,
-{
-    pub raygen_buf: Option<Buffer<P>>,
-    pub raygen: vk::StridedDeviceAddressRegionKHR,
-    pub miss_buf: Option<Buffer<P>>,
-    pub miss: vk::StridedDeviceAddressRegionKHR,
-    pub hit_buf: Option<Buffer<P>>,
-    pub hit: vk::StridedDeviceAddressRegionKHR,
-    pub callable_buf: Option<Buffer<P>>,
-    pub callable: vk::StridedDeviceAddressRegionKHR,
+pub struct RayTraceShaderGroup {
+    pub any_hit_shader: Option<u32>,
+    pub closest_hit_shader: Option<u32>,
+    pub general_shader: Option<u32>,
+    pub intersection_shader: Option<u32>,
+    pub ty: RayTraceShaderGroupType,
 }
 
-impl<P> RayTraceShaderBindings<P>
-where
-    P: SharedPointerKind,
-{
-    fn create(
-        device: &SharedPointer<Device<P>, P>,
-        info: RayTraceShaderBindingsInfo,
-        pipeline: vk::Pipeline,
-    ) -> Result<RayTraceShaderBindings<P>, DriverError> {
-        let device = Shared::clone(device);
-        let shader_group_handle_size = device
-            .ray_trace_pipeline_properties
-            .shader_group_handle_size as usize;
-        let group_count = info.raygen_count + info.miss_count + info.hit_count;
-        let group_handles_size = shader_group_handle_size * group_count as usize;
-        let group_handles: Vec<u8> = unsafe {
-            device
-                .ray_trace_pipeline_ext
-                .get_ray_tracing_shader_group_handles(pipeline, 0, group_count, group_handles_size)
-                .map_err(|err| {warn!("{err}");DriverError::Unsupported})?
-        };
-        let prog_size = shader_group_handle_size;
-        let create_binding_table =
-            |entry_offset: u32, entry_count: u32| -> Result<Option<Buffer<P>>, Error> {
-                if entry_count == 0 {
-                    return Ok(None);
-                }
+impl RayTraceShaderGroup {
+    fn new(
+        ty: RayTraceShaderGroupType,
+        general_shader: impl Into<Option<u32>>,
+        intersection_shader: impl Into<Option<u32>>,
+        any_hit_shader: impl Into<Option<u32>>,
+        closest_hit_shader: impl Into<Option<u32>>,
+    ) -> Self {
+        let any_hit_shader = any_hit_shader.into();
+        let closest_hit_shader = closest_hit_shader.into();
+        let general_shader = general_shader.into();
+        let intersection_shader = intersection_shader.into();
 
-                let mut sbt_data = vec![0u8; entry_count as usize * prog_size];
+        Self {
+            any_hit_shader,
+            closest_hit_shader,
+            general_shader,
+            intersection_shader,
+            ty,
+        }
+    }
 
-                for dst in 0..entry_count as usize {
-                    let src = dst + entry_offset as usize;
-                    sbt_data[dst * prog_size..dst * prog_size + shader_group_handle_size]
-                        .copy_from_slice(
-                            &group_handles[src * shader_group_handle_size
-                                ..src * shader_group_handle_size + shader_group_handle_size],
-                        );
-                }
+    pub fn new_general(
+        general_shader: impl Into<Option<u32>>,
+        intersection_shader: impl Into<Option<u32>>,
+        any_hit_shader: impl Into<Option<u32>>,
+        closest_hit_shader: impl Into<Option<u32>>,
+    ) -> Self {
+        Self::new(
+            RayTraceShaderGroupType::General,
+            general_shader,
+            intersection_shader,
+            any_hit_shader,
+            closest_hit_shader,
+        )
+    }
 
-                Ok(Some(Buffer::create_with_data(
-                    &device,
-                    BufferDesc::new(
-                        sbt_data.len() ,
-                        vk::BufferUsageFlags::TRANSFER_SRC
-                            | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
-                            | vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR,
-                    )
-                    .build()
-                    .unwrap(),
-                    Some(&sbt_data),
-                )?))
-            };
+    pub fn new_procedural(
+        general_shader: impl Into<Option<u32>>,
+        intersection_shader: impl Into<Option<u32>>,
+        any_hit_shader: impl Into<Option<u32>>,
+        closest_hit_shader: impl Into<Option<u32>>,
+    ) -> Self {
+        Self::new(
+            RayTraceShaderGroupType::ProceduralHitGroup,
+            general_shader,
+            intersection_shader,
+            any_hit_shader,
+            closest_hit_shader,
+        )
+    }
 
-        let raygen = create_binding_table(0, desc.raygen_count)?;
-        let miss = create_binding_table(desc.raygen_count, desc.miss_count)?;
-        let hit = create_binding_table(desc.raygen_count + desc.miss_count, desc.hit_count)?;
-
-        Ok(Self {
-            raygen: vk::StridedDeviceAddressRegionKHR {
-                device_address: raygen
-                    .as_ref()
-                    .map(|b| Buffer::device_address(b))
-                    .unwrap_or(0),
-                stride: prog_size ,
-                size: (prog_size * desc.raygen_count as usize) ,
-            },
-            raygen_buf: raygen,
-            miss: vk::StridedDeviceAddressRegionKHR {
-                device_address: miss
-                    .as_ref()
-                    .map(|b| Buffer::device_address(b))
-                    .unwrap_or(0),
-                stride: prog_size,
-                size: (prog_size * desc.miss_count as usize) ,
-            },
-            miss_buf: miss,
-            hit: vk::StridedDeviceAddressRegionKHR {
-                device_address: hit.as_ref().map(|b| Buffer::device_address(b)).unwrap_or(0),
-                stride: prog_size ,
-                size: (prog_size * desc.hit_count as usize) ,
-            },
-            hit_buf: hit,
-            callable_buf: None,
-            callable: vk::StridedDeviceAddressRegionKHR {
-                device_address: Default::default(),
-                stride: 0,
-                size: 0,
-            },
-        })
+    pub fn new_triangles(
+        general_shader: impl Into<Option<u32>>,
+        intersection_shader: impl Into<Option<u32>>,
+        any_hit_shader: impl Into<Option<u32>>,
+        closest_hit_shader: impl Into<Option<u32>>,
+    ) -> Self {
+        Self::new(
+            RayTraceShaderGroupType::TrianglesHitGroup,
+            general_shader,
+            intersection_shader,
+            any_hit_shader,
+            closest_hit_shader,
+        )
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct RayTraceShaderBindingsInfo {
-    pub raygen_count: u32,
-    pub hit_count: u32,
-    pub miss_count: u32,
+impl From<RayTraceShaderGroup> for vk::RayTracingShaderGroupCreateInfoKHR {
+    fn from(shader_group: RayTraceShaderGroup) -> Self {
+        vk::RayTracingShaderGroupCreateInfoKHR::builder()
+            .ty(shader_group.ty.into())
+            .any_hit_shader(shader_group.any_hit_shader.unwrap_or(vk::SHADER_UNUSED_KHR))
+            .closest_hit_shader(
+                shader_group
+                    .closest_hit_shader
+                    .unwrap_or(vk::SHADER_UNUSED_KHR),
+            )
+            .general_shader(shader_group.general_shader.unwrap_or(vk::SHADER_UNUSED_KHR))
+            .intersection_shader(
+                shader_group
+                    .intersection_shader
+                    .unwrap_or(vk::SHADER_UNUSED_KHR),
+            )
+            .build()
+    }
+}
+
+#[derive(Debug)]
+pub enum RayTraceShaderGroupType {
+    General,
+    ProceduralHitGroup,
+    TrianglesHitGroup,
+}
+
+impl From<RayTraceShaderGroupType> for vk::RayTracingShaderGroupTypeKHR {
+    fn from(ty: RayTraceShaderGroupType) -> Self {
+        match ty {
+            RayTraceShaderGroupType::General => vk::RayTracingShaderGroupTypeKHR::GENERAL,
+            RayTraceShaderGroupType::ProceduralHitGroup => {
+                vk::RayTracingShaderGroupTypeKHR::PROCEDURAL_HIT_GROUP
+            }
+            RayTraceShaderGroupType::TrianglesHitGroup => {
+                vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP
+            }
+        }
+    }
 }

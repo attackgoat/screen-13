@@ -1,5 +1,6 @@
+mod accel_struct;
 mod buffer;
-mod command_buf;
+mod cmd_buf;
 mod compute;
 mod descriptor_set;
 mod descriptor_set_layout;
@@ -16,8 +17,9 @@ mod swapchain;
 
 pub use {
     self::{
+        accel_struct::AccelerationStructure,
         buffer::{Buffer, BufferInfo, BufferInfoBuilder, BufferSubresource},
-        command_buf::CommandBuffer,
+        cmd_buf::CommandBuffer,
         compute::{ComputePipeline, ComputePipelineInfo, ComputePipelineInfoBuilder},
         descriptor_set::{
             DescriptorPool, DescriptorPoolInfo, DescriptorPoolInfoBuilder, DescriptorPoolSize,
@@ -35,10 +37,7 @@ pub use {
         },
         instance::Instance,
         physical_device::{PhysicalDevice, QueueFamily, QueueFamilyProperties},
-        ray_trace::{
-            RayTraceAcceleration, RayTraceAccelerationScratchBuffer, RayTraceInstanceInfo,
-            RayTracePipeline, RayTracePipelineInfo, RayTraceTopAccelerationInfo,
-        },
+        ray_trace::{RayTracePipeline, RayTracePipelineInfo, RayTraceShaderGroup},
         render_pass::{
             AttachmentInfo, AttachmentInfoBuilder, AttachmentRef, FramebufferKey,
             FramebufferKeyAttachment, RenderPass, RenderPassInfo, RenderPassInfoBuilder,

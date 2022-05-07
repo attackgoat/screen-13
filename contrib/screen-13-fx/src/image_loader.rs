@@ -7,6 +7,10 @@ use {
     screen_13::prelude_all::*,
 };
 
+fn align_up_u32(val: u32, atom: u32) -> u32 {
+    (val + atom - 1) & !(atom - 1)
+}
+
 /// Describes the channels and pixel stride of an image format
 #[derive(Clone, Copy, Debug)]
 pub enum ImageFormat {

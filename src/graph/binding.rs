@@ -1,10 +1,9 @@
 use {
     super::{
-        BufferLeaseNode, BufferNode, ImageLeaseNode, ImageNode, RayTraceAccelerationLeaseNode,
-        RayTraceAccelerationNode, RenderGraph, SwapchainImageBinding,
+        BufferLeaseNode, BufferNode, ImageLeaseNode, ImageNode, RenderGraph, SwapchainImageBinding,
     },
     crate::{
-        driver::{Buffer, BufferInfo, Image, ImageInfo, RayTraceAcceleration},
+        driver::{Buffer, BufferInfo, Image, ImageInfo},
         Lease,
     },
     archery::{SharedPointer, SharedPointerKind},
@@ -115,8 +114,8 @@ where
     BufferLease(BufferLeaseBinding<P>, bool),
     Image(ImageBinding<P>, bool),
     ImageLease(ImageLeaseBinding<P>, bool),
-    RayTraceAcceleration(RayTraceAccelerationBinding<P>, bool),
-    RayTraceAccelerationLease(RayTraceAccelerationLeaseBinding<P>, bool),
+    // RayTraceAcceleration(RayTraceAccelerationBinding<P>, bool),
+    // RayTraceAccelerationLease(RayTraceAccelerationLeaseBinding<P>, bool),
     SwapchainImage(SwapchainImageBinding<P>, bool),
 }
 
@@ -130,8 +129,8 @@ where
             Self::BufferLease(binding, _) => binding.access_mut(access),
             Self::Image(binding, _) => binding.access_mut(access),
             Self::ImageLease(binding, _) => binding.access_mut(access),
-            Self::RayTraceAcceleration(binding, _) => binding.access_mut(access),
-            Self::RayTraceAccelerationLease(binding, _) => binding.access_mut(access),
+            // Self::RayTraceAcceleration(binding, _) => binding.access_mut(access),
+            // Self::RayTraceAccelerationLease(binding, _) => binding.access_mut(access),
             Self::SwapchainImage(binding, _) => binding.access_mut(access),
         }
     }
@@ -168,8 +167,8 @@ where
             Self::BufferLease(_, is_bound) => *is_bound,
             Self::Image(_, is_bound) => *is_bound,
             Self::ImageLease(_, is_bound) => *is_bound,
-            Self::RayTraceAcceleration(_, is_bound) => *is_bound,
-            Self::RayTraceAccelerationLease(_, is_bound) => *is_bound,
+            // Self::RayTraceAcceleration(_, is_bound) => *is_bound,
+            // Self::RayTraceAccelerationLease(_, is_bound) => *is_bound,
             Self::SwapchainImage(_, is_bound) => *is_bound,
         }
     }
@@ -180,8 +179,8 @@ where
             Self::BufferLease(_, is_bound) => is_bound,
             Self::Image(_, is_bound) => is_bound,
             Self::ImageLease(_, is_bound) => is_bound,
-            Self::RayTraceAcceleration(_, is_bound) => is_bound,
-            Self::RayTraceAccelerationLease(_, is_bound) => is_bound,
+            // Self::RayTraceAcceleration(_, is_bound) => is_bound,
+            // Self::RayTraceAccelerationLease(_, is_bound) => is_bound,
             Self::SwapchainImage(_, is_bound) => is_bound,
         } = false;
     }
@@ -301,7 +300,7 @@ macro_rules! bind {
 
 bind!(Image);
 bind!(Buffer);
-bind!(RayTraceAcceleration);
+// bind!(RayTraceAcceleration);
 
 macro_rules! bind_lease {
     ($name:ident) => {
@@ -407,7 +406,7 @@ macro_rules! bind_lease {
 
 bind_lease!(Image);
 bind_lease!(Buffer);
-bind_lease!(RayTraceAcceleration);
+// bind_lease!(RayTraceAcceleration);
 
 impl<P> BufferBinding<P>
 where
