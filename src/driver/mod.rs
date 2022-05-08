@@ -17,7 +17,8 @@ mod swapchain;
 
 pub use {
     self::{
-        accel_struct::AccelerationStructure,
+        accel_struct::{AccelerationStructure,DeviceOrHostAddress, AccelerationStructureGeometryTrianglesData, AccelerationStructureGeometryInstancesData, AccelerationStructureGeometryAABBData,
+            AccelerationStructureGeometry, AccelerationStructureGeometryData, AccelerationStructureInfo,AccelerationStructureInfoBuilder},
         buffer::{Buffer, BufferInfo, BufferInfoBuilder, BufferSubresource},
         cmd_buf::CommandBuffer,
         compute::{ComputePipeline, ComputePipelineInfo, ComputePipelineInfoBuilder},

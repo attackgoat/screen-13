@@ -1,5 +1,5 @@
 use {
-    bytemuck::bytes_of,
+    bytemuck::{bytes_of, cast_slice},
     inline_spirv::inline_spirv,
     screen_13::prelude_arc::*,
     std::io::BufReader,
@@ -344,55 +344,122 @@ fn create_ray_trace_pipeline(
     )?))
 }
 
+fn load_scene_buffers(
+    device: &Shared<Device>,
+) -> Result<(BufferBinding, u32, BufferBinding, u32), DriverError> {
+    let (mut models, ..) = load_obj_buf(
+        &mut BufReader::new(include_bytes!("res/cube_scene.obj").as_slice()),
+        &LoadOptions {
+            triangulate: true,
+            single_index: true,
+            ..Default::default()
+        },
+        |_| {
+            load_mtl_buf(&mut BufReader::new(
+                include_bytes!("res/cube_scene.mtl").as_slice(),
+            ))
+        },
+    )
+    .map_err(|err| {
+        warn!("{err}");
+
+        DriverError::InvalidData
+    })?;
+
+    let indices = models
+        .iter()
+        .map(|model| model.mesh.indices.iter().copied())
+        .flatten()
+        .collect::<Vec<_>>();
+    let indices_slice = cast_slice(indices.as_slice());
+    let index_buf = BufferBinding::new({
+        let mut buf = Buffer::create(
+            device,
+            BufferInfo::new_mappable(
+                indices_slice.len() as _,
+                vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                    | vk::BufferUsageFlags::STORAGE_BUFFER,
+            ),
+        )?;
+        Buffer::copy_from_slice(&mut buf, 0, indices_slice);
+        buf
+    });
+    let index_count = indices.len() as u32;
+
+    let positions = models
+        .iter()
+        .map(|model| model.mesh.positions.iter().copied())
+        .flatten()
+        .collect::<Vec<_>>();
+    let positions_slice = cast_slice(positions.as_slice());
+    let vertex_buf = BufferBinding::new({
+        let mut buf = Buffer::create(
+            device,
+            BufferInfo::new_mappable(
+                positions_slice.len() as _,
+                vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                    | vk::BufferUsageFlags::STORAGE_BUFFER,
+            ),
+        )?;
+        Buffer::copy_from_slice(&mut buf, 0, positions_slice);
+        buf
+    });
+    let vertex_count = positions.len() as u32;
+
+    Ok((index_buf, index_count, vertex_buf, vertex_count))
+}
+
 /// Copied from http://williamlewww.com/showcase_website/vk_khr_ray_tracing_tutorial/index.html
 fn main() -> anyhow::Result<()> {
+    use std::slice::from_ref;
+
     pretty_env_logger::init();
 
     let event_loop = EventLoop::new().ray_tracing(true).build()?;
     let mut cache = HashPool::new(&event_loop.device);
 
-    let cube_scene = {
-        let (mut models, ..) = load_obj_buf(
-            &mut BufReader::new(include_bytes!("res/cube_scene.obj").as_slice()),
-            &LoadOptions {
-                triangulate: true,
-                single_index: true,
-                ..Default::default()
-            },
-            |_| {
-                load_mtl_buf(&mut BufReader::new(
-                    include_bytes!("res/cube_scene.mtl").as_slice(),
-                ))
-            },
-        )?;
-
-        models.pop().unwrap()
-    };
-
-    let index_buf = BufferBinding::new({
-        let mut buf = Buffer::create(
-            &event_loop.device,
-            BufferInfo::new_mappable(
-                123,
-                vk::BufferUsageFlags::INDEX_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-            ),
-        )?;
-        Buffer::copy_from_slice(&mut buf, 0, &[]);
-        buf
-    });
-    let vertex_buf = BufferBinding::new({
-        let mut buf = Buffer::create(
-            &event_loop.device,
-            BufferInfo::new_mappable(
-                123,
-                vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | vk::BufferUsageFlags::VERTEX_BUFFER,
-            ),
-        )?;
-        Buffer::copy_from_slice(&mut buf, 0, &[]);
-        buf
-    });
-
+    let (index_buf, index_count, vertex_buf, vertex_count) =
+        load_scene_buffers(&event_loop.device)?;
     let ray_trace_pipeline = create_ray_trace_pipeline(&event_loop.device)?;
+
+    let blas = AccelerationStructure::create_blas(
+        &event_loop.device,
+        &vk::AccelerationStructureBuildGeometryInfoKHR::builder()
+            .ty(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)
+            .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
+            .scratch_data(vk::DeviceOrHostAddressKHR { device_address: 0 })
+            .geometries(from_ref(&vk::AccelerationStructureGeometryKHR {
+                flags: vk::GeometryFlagsKHR::OPAQUE,
+                geometry_type: vk::GeometryTypeKHR::TRIANGLES,
+                geometry: vk::AccelerationStructureGeometryDataKHR {
+                    triangles: vk::AccelerationStructureGeometryTrianglesDataKHR {
+                        index_type: vk::IndexType::UINT32,
+                        index_data: vk::DeviceOrHostAddressConstKHR {
+                            device_address: Buffer::device_address(index_buf.as_ref()),
+                        },
+                        vertex_format: vk::Format::R32G32B32_SFLOAT,
+                        vertex_data: vk::DeviceOrHostAddressConstKHR {
+                            device_address: Buffer::device_address(vertex_buf.as_ref()),
+                        },
+                        vertex_stride: 24,
+                        max_vertex: vertex_count,
+                        transform_data: vk::DeviceOrHostAddressConstKHR { device_address: 0 },
+                        ..Default::default()
+                    },
+                },
+                ..Default::default()
+            })),
+        from_ref(&index_count),
+    )?;
+
+    {
+        let cmd_buf = cache.lease(event_loop.device.queue.family)?;
+        let mut render_graph = RenderGraph::new();
+        let blas = render_graph.bind_node(blas);
+        render_graph.build_acceleration_structure(blas);
+    }
 
     //   std::vector<uint32_t> materialIndexList;
     //   for (tinyobj::shape_t shape : shapes) {

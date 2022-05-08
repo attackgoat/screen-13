@@ -9,12 +9,14 @@ mod swapchain;
 pub use {
     self::{
         binding::{
-            AnyBufferBinding, AnyImageBinding, Bind, BufferBinding, BufferLeaseBinding,
-            ImageBinding, ImageLeaseBinding,
+            AccelerationStructureBinding, AccelerationStructureLeaseBinding, AnyBufferBinding,
+            AnyImageBinding, Bind, BufferBinding, BufferLeaseBinding, ImageBinding,
+            ImageLeaseBinding,
         },
         node::{
-            AnyBufferNode, AnyImageNode, BufferLeaseNode, BufferNode, ImageLeaseNode, ImageNode,
-            SwapchainImageNode, Unbind, View, ViewType,
+            AccelerationStructureLeaseNode, AccelerationStructureNode,
+            AnyAccelerationStructureNode, AnyBufferNode, AnyImageNode, BufferLeaseNode, BufferNode,
+            ImageLeaseNode, ImageNode, SwapchainImageNode, Unbind, View, ViewType,
         },
         pass_ref::{Bindings, Compute, Draw, PassRef, PipelinePassRef, RayTrace},
         resolver::Resolver,
@@ -595,6 +597,36 @@ where
                 );
             })
             .submit_pass()
+    }
+
+    pub fn build_acceleration_structure(
+        &mut self,
+        accel_struct_node: impl Into<AnyAccelerationStructureNode<P>>,
+        infos: &vk::AccelerationStructureBuildGeometryInfoKHR,
+        build_range_infos: &[vk::AccelerationStructureBuildRangeInfoKHR],
+    ) -> &mut Self {
+        use std::slice::from_ref;
+
+        let accel_struct_node = accel_struct_node.into();
+
+        self.begin_pass("build acceleration structure")
+            .access_node(
+                accel_struct_node,
+                AccessType::AccelerationStructureBuildWrite,
+            )
+            .submit_pass()
+
+        // unsafe {
+        //     self.device
+        //         .accel_struct_ext
+        //         .as_ref()
+        //         .unwrap()
+        //         .cmd_build_acceleration_structures(
+        //             self.cmd_buf,
+        //             from_ref(infos),
+        //             from_ref(&build_range_infos),
+        //         )
+        // };
     }
 
     /// Clears a color image as part of a render graph but outside of any graphic render pass

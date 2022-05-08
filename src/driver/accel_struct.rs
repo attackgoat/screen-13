@@ -2,6 +2,7 @@ use {
     super::{Buffer, BufferInfo, Device, DriverError},
     archery::{SharedPointer, SharedPointerKind},
     ash::vk,
+    derive_builder::Builder,
     log::{info, warn},
     std::{ops::Deref, thread::panicking},
 };
@@ -216,8 +217,9 @@ where
 {
     accel_struct: vk::AccelerationStructureKHR,
     buffer: Buffer<P>,
-    build_scratch_size: vk::DeviceSize,
+    pub scratch_size: vk::DeviceSize,
     device: SharedPointer<Device<P>, P>,
+    pub info: AccelerationStructureInfo,
 }
 
 impl<P> AccelerationStructure<P>
@@ -280,12 +282,13 @@ where
                 })
         }?;
 
-        Ok(AccelerationStructure {
-            accel_struct,
-            buffer,
-            build_scratch_size,
-            device,
-        })
+        todo!();
+        // Ok(AccelerationStructure {
+        //     accel_struct,
+        //     buffer,
+        //     device,
+        //     scratch_size: build_scratch_size,
+        // })
     }
 
     pub fn create_blas(
@@ -293,12 +296,13 @@ where
         build_info: &vk::AccelerationStructureBuildGeometryInfoKHR,
         max_primitive_counts: &[u32],
     ) -> Result<Self, DriverError> {
-        Self::create(
-            device,
-            vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
-            build_info,
-            max_primitive_counts,
-        )
+        // Self::create(
+        //     device,
+        //     vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
+        //     build_info,
+        //     max_primitive_counts,
+        // )
+        todo!();
     }
 
     pub fn create_tlas(
@@ -306,12 +310,13 @@ where
         build_info: &vk::AccelerationStructureBuildGeometryInfoKHR,
         max_primitive_counts: &[u32],
     ) -> Result<Self, DriverError> {
-        Self::create(
-            device,
-            vk::AccelerationStructureTypeKHR::TOP_LEVEL,
-            build_info,
-            max_primitive_counts,
-        )
+        // Self::create(
+        //     device,
+        //     vk::AccelerationStructureTypeKHR::TOP_LEVEL,
+        //     build_info,
+        //     max_primitive_counts,
+        // )
+        todo!();
     }
 }
 
@@ -343,4 +348,84 @@ where
                 .destroy_acceleration_structure(self.accel_struct, None);
         }
     }
+}
+
+#[derive(Builder, Clone, Debug, Eq, Hash, PartialEq)]
+#[builder(
+    build_fn(private, name = "fallible_build"),
+    derive(Debug),
+    pattern = "owned"
+)]
+pub struct AccelerationStructureInfo {
+    pub ty: vk::AccelerationStructureTypeKHR,
+    pub flags: vk::BuildAccelerationStructureFlagsKHR,
+    pub mode: vk::BuildAccelerationStructureModeKHR,
+    pub src_acceleration_structure: vk::AccelerationStructureKHR,
+    pub dst_acceleration_structure: vk::AccelerationStructureKHR,
+    pub geometries: Vec<AccelerationStructureGeometry>,
+    pub scratch_data: DeviceOrHostAddress,
+}
+
+// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
+impl AccelerationStructureInfoBuilder {
+    pub fn build(self) -> AccelerationStructureInfo {
+        self.fallible_build()
+            .expect("All required fields set at initialization")
+    }
+}
+
+impl<'a> From<&'a AccelerationStructureInfo> for vk::AccelerationStructureBuildGeometryInfoKHR {
+    fn from(info: &'a AccelerationStructureInfo) -> Self {
+        Self {
+            ty: info.ty,
+            flags: info.flags,
+            mode: info.mode,
+            src_acceleration_structure: info.src_acceleration_structure,
+            dst_acceleration_structure: info.dst_acceleration_structure,
+            ..Default::default()
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct AccelerationStructureGeometry {
+    pub geometry_type: vk::GeometryTypeKHR,
+    pub geometry: AccelerationStructureGeometryData,
+    pub flags: vk::GeometryFlagsKHR,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum AccelerationStructureGeometryData {
+    AABBs(AccelerationStructureGeometryAABBData),
+    Instances(AccelerationStructureGeometryInstancesData),
+    Triangles(AccelerationStructureGeometryTrianglesData),
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct AccelerationStructureGeometryAABBData {
+    pub data: DeviceOrHostAddress,
+    pub stride: vk::DeviceSize,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct AccelerationStructureGeometryInstancesData {
+    pub array_of_pointers: bool,
+    pub data: DeviceOrHostAddress,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct AccelerationStructureGeometryTrianglesData {
+    pub vertex_format: vk::Format,
+    pub vertex_data: DeviceOrHostAddress,
+    pub vertex_stride: vk::DeviceSize,
+    pub max_vertex: u32,
+    pub index_type: vk::IndexType,
+    pub index_data: DeviceOrHostAddress,
+    pub transform_data: DeviceOrHostAddress,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum DeviceOrHostAddress {
+    DeviceAddress(vk::DeviceAddress),
+    HostAddress(/* *const std::os::raw::c_void */), // TODO
 }

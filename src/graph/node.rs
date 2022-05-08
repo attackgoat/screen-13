@@ -1,14 +1,62 @@
 use {
     super::{
-        BufferBinding, BufferLeaseBinding, ImageBinding, ImageLeaseBinding, Information, NodeIndex,
-        RenderGraph, Subresource,
+        AccelerationStructureBinding, AccelerationStructureLeaseBinding, BufferBinding,
+        BufferLeaseBinding, ImageBinding, ImageLeaseBinding, Information, NodeIndex, RenderGraph,
+        Subresource,
     },
     crate::driver::{
+        AccelerationStructureInfo,
         vk, BufferInfo, BufferSubresource, ImageInfo, ImageSubresource, ImageViewInfo,
     },
     archery::{SharedPointer, SharedPointerKind},
     std::{marker::PhantomData, ops::Range},
 };
+
+#[derive(Debug)]
+pub enum AnyAccelerationStructureNode<P> {
+    AccelerationStructure(AccelerationStructureNode<P>),
+    AccelerationStructureLease(AccelerationStructureLeaseNode<P>),
+}
+
+impl<P> Clone for AnyAccelerationStructureNode<P> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<P> Copy for AnyAccelerationStructureNode<P> {}
+
+impl<P> Information for AnyAccelerationStructureNode<P> {
+    type Info = AccelerationStructureInfo;
+
+    fn get(self, graph: &RenderGraph<impl SharedPointerKind + Send>) -> Self::Info {
+        match self {
+            Self::AccelerationStructure(node) => node.get(graph),
+            Self::AccelerationStructureLease(node) => node.get(graph),
+        }
+    }
+}
+
+impl<P> From<AccelerationStructureNode<P>> for AnyAccelerationStructureNode<P> {
+    fn from(node: AccelerationStructureNode<P>) -> Self {
+        Self::AccelerationStructure(node)
+    }
+}
+
+impl<P> From<AccelerationStructureLeaseNode<P>> for AnyAccelerationStructureNode<P> {
+    fn from(node: AccelerationStructureLeaseNode<P>) -> Self {
+        Self::AccelerationStructureLease(node)
+    }
+}
+
+impl<P> Node<P> for AnyAccelerationStructureNode<P> {
+    fn index(self) -> NodeIndex {
+        match self {
+            Self::AccelerationStructure(node) => node.index(),
+            Self::AccelerationStructureLease(node) => node.index(),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum AnyBufferNode<P> {
@@ -150,12 +198,12 @@ macro_rules! node {
     };
 }
 
+node!(AccelerationStructure);
+node!(AccelerationStructureLease);
 node!(Buffer);
 node!(BufferLease);
 node!(Image);
 node!(ImageLease);
-// node!(RayTraceAcceleration);
-// node!(RayTraceAccelerationLease);
 node!(SwapchainImage);
 
 macro_rules! node_unbind {
@@ -188,9 +236,9 @@ macro_rules! node_unbind {
     };
 }
 
+node_unbind!(AccelerationStructure);
 node_unbind!(Buffer);
 node_unbind!(Image);
-// node_unbind!(RayTraceAcceleration);
 
 macro_rules! node_unbind_lease {
     ($name:ident) => {
@@ -230,9 +278,9 @@ macro_rules! node_unbind_lease {
     };
 }
 
+node_unbind_lease!(AccelerationStructure);
 node_unbind_lease!(Buffer);
 node_unbind_lease!(Image);
-// node_unbind_lease!(RayTraceAcceleration);
 
 pub trait Unbind<Graph, Binding> {
     fn unbind(self, graph: &mut Graph) -> Binding;
