@@ -17,8 +17,11 @@ mod swapchain;
 
 pub use {
     self::{
-        accel_struct::{AccelerationStructure,DeviceOrHostAddress, AccelerationStructureGeometryTrianglesData, AccelerationStructureGeometryInstancesData, AccelerationStructureGeometryAABBData,
-            AccelerationStructureGeometry, AccelerationStructureGeometryData, AccelerationStructureInfo,AccelerationStructureInfoBuilder},
+        accel_struct::{
+            AccelerationStructure, AccelerationStructureGeometry,
+            AccelerationStructureGeometryData, AccelerationStructureGeometryInfo,
+            AccelerationStructureInfo, AccelerationStructureInfoBuilder, DeviceOrHostAddress,
+        },
         buffer::{Buffer, BufferInfo, BufferInfoBuilder, BufferSubresource},
         cmd_buf::CommandBuffer,
         compute::{ComputePipeline, ComputePipelineInfo, ComputePipelineInfoBuilder},
@@ -555,6 +558,33 @@ impl Display for DriverError {
 }
 
 impl Error for DriverError {}
+
+#[derive(Debug)]
+pub struct PhysicalDeviceRayTracePipelineProperties {
+    pub shader_group_handle_size: u32,
+    pub max_ray_recursion_depth: u32,
+    pub max_shader_group_stride: u32,
+    pub shader_group_base_alignment: u32,
+    pub shader_group_handle_capture_replay_size: u32,
+    pub max_ray_dispatch_invocation_count: u32,
+    pub shader_group_handle_alignment: u32,
+    pub max_ray_hit_attribute_size: u32,
+}
+
+impl From<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR> for PhysicalDeviceRayTracePipelineProperties {
+    fn from(props: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR) -> Self {
+        Self {
+            shader_group_handle_size: props.shader_group_handle_size,
+            max_ray_recursion_depth: props.max_ray_recursion_depth,
+            max_shader_group_stride: props.max_shader_group_stride,
+            shader_group_base_alignment: props.shader_group_base_alignment,
+            shader_group_handle_capture_replay_size: props.shader_group_handle_capture_replay_size,
+            max_ray_dispatch_invocation_count: props.max_ray_dispatch_invocation_count,
+            shader_group_handle_alignment: props.shader_group_handle_alignment,
+            max_ray_hit_attribute_size: props.max_ray_hit_attribute_size,
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct SamplerDesc {

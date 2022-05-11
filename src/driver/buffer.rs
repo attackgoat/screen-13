@@ -113,7 +113,7 @@ where
     pub fn device_address(this: &Self) -> vk::DeviceAddress {
         unsafe {
             this.device.get_buffer_device_address(
-                &ash::vk::BufferDeviceAddressInfo::builder().buffer(this.buffer),
+                &vk::BufferDeviceAddressInfo::builder().buffer(this.buffer),
             )
         }
     }

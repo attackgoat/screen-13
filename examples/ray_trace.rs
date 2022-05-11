@@ -1,8 +1,9 @@
 use {
-    bytemuck::{bytes_of, cast_slice},
+    bytemuck::cast_slice,
     inline_spirv::inline_spirv,
     screen_13::prelude_arc::*,
     std::io::BufReader,
+    std::mem::size_of,
     tobj::{load_mtl_buf, load_obj_buf, LoadOptions},
 };
 
@@ -346,8 +347,20 @@ fn create_ray_trace_pipeline(
 
 fn load_scene_buffers(
     device: &Shared<Device>,
-) -> Result<(BufferBinding, u32, BufferBinding, u32), DriverError> {
-    let (mut models, ..) = load_obj_buf(
+) -> Result<
+    (
+        Option<BufferBinding>,
+        u32,
+        Option<BufferBinding>,
+        u32,
+        Option<BufferBinding>,
+        Option<BufferBinding>,
+    ),
+    DriverError,
+> {
+    use std::slice::from_raw_parts;
+
+    let (mut models, materials, ..) = load_obj_buf(
         &mut BufReader::new(include_bytes!("res/cube_scene.obj").as_slice()),
         &LoadOptions {
             triangulate: true,
@@ -365,24 +378,29 @@ fn load_scene_buffers(
 
         DriverError::InvalidData
     })?;
+    let materials = materials.map_err(|err| {
+        warn!("{err}");
+
+        DriverError::InvalidData
+    })?;
 
     let indices = models
         .iter()
         .map(|model| model.mesh.indices.iter().copied())
         .flatten()
         .collect::<Vec<_>>();
-    let indices_slice = cast_slice(indices.as_slice());
     let index_buf = BufferBinding::new({
+        let data = cast_slice(indices.as_slice());
         let mut buf = Buffer::create(
             device,
             BufferInfo::new_mappable(
-                indices_slice.len() as _,
+                data.len() as _,
                 vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                     | vk::BufferUsageFlags::STORAGE_BUFFER,
             ),
         )?;
-        Buffer::copy_from_slice(&mut buf, 0, indices_slice);
+        Buffer::copy_from_slice(&mut buf, 0, data);
         buf
     });
     let index_count = indices.len() as u32;
@@ -392,74 +410,262 @@ fn load_scene_buffers(
         .map(|model| model.mesh.positions.iter().copied())
         .flatten()
         .collect::<Vec<_>>();
-    let positions_slice = cast_slice(positions.as_slice());
     let vertex_buf = BufferBinding::new({
+        let data = cast_slice(positions.as_slice());
         let mut buf = Buffer::create(
             device,
             BufferInfo::new_mappable(
-                positions_slice.len() as _,
+                data.len() as _,
                 vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                     | vk::BufferUsageFlags::STORAGE_BUFFER,
             ),
         )?;
-        Buffer::copy_from_slice(&mut buf, 0, positions_slice);
+        Buffer::copy_from_slice(&mut buf, 0, data);
         buf
     });
     let vertex_count = positions.len() as u32;
 
-    Ok((index_buf, index_count, vertex_buf, vertex_count))
+    let material_id_buf = BufferBinding::new({
+        let material_ids = models
+            .iter()
+            .map(|model| model.mesh.material_id.unwrap_or_default())
+            .collect::<Vec<_>>();
+        let data = cast_slice(material_ids.as_slice());
+        let mut buf = Buffer::create(
+            device,
+            BufferInfo::new_mappable(data.len() as _, vk::BufferUsageFlags::STORAGE_BUFFER),
+        )?;
+        Buffer::copy_from_slice(&mut buf, 0, data);
+        buf
+    });
+
+    let material_buf = BufferBinding::new({
+        #[repr(C)]
+        struct Material {
+            ambient: [f32; 4],
+            diffuse: [f32; 4],
+            specular: [f32; 4],
+            emission: [f32; 4],
+        }
+
+        let materials = models
+            .iter()
+            .map(|model| {
+                let material = &materials[model.mesh.material_id.unwrap_or_default()];
+
+                Material {
+                    ambient: [
+                        material.ambient[0],
+                        material.ambient[1],
+                        material.ambient[2],
+                        0.0,
+                    ],
+                    diffuse: [
+                        material.diffuse[0],
+                        material.diffuse[1],
+                        material.diffuse[2],
+                        0.0,
+                    ],
+                    specular: [
+                        material.specular[0],
+                        material.specular[1],
+                        material.specular[2],
+                        0.0,
+                    ],
+                    emission: [1.0, 0.0, 0.0, 0.0],
+                }
+            })
+            .collect::<Vec<_>>();
+        let data = unsafe { from_raw_parts(materials.as_ptr() as *const _, size_of::<Material>()) };
+        let mut buf = Buffer::create(
+            device,
+            BufferInfo::new_mappable(
+                (size_of::<Material>() * materials.len()) as _,
+                vk::BufferUsageFlags::STORAGE_BUFFER,
+            ),
+        )?;
+        Buffer::copy_from_slice(&mut buf, 0, data);
+        buf
+    });
+
+    Ok((
+        Some(index_buf),
+        index_count,
+        Some(vertex_buf),
+        vertex_count,
+        Some(material_id_buf),
+        Some(material_buf),
+    ))
 }
 
 /// Copied from http://williamlewww.com/showcase_website/vk_khr_ray_tracing_tutorial/index.html
 fn main() -> anyhow::Result<()> {
-    use std::slice::from_ref;
+    use std::slice::{from_raw_parts, from_ref};
 
     pretty_env_logger::init();
 
     let event_loop = EventLoop::new().ray_tracing(true).build()?;
     let mut cache = HashPool::new(&event_loop.device);
 
-    let (index_buf, index_count, vertex_buf, vertex_count) =
-        load_scene_buffers(&event_loop.device)?;
-    let ray_trace_pipeline = create_ray_trace_pipeline(&event_loop.device)?;
+    let (
+        mut index_buf,
+        index_count,
+        mut vertex_buf,
+        vertex_count,
+        mut material_id_buf,
+        mut material_buf,
+    ) = load_scene_buffers(&event_loop.device)?;
 
-    let blas = AccelerationStructure::create_blas(
-        &event_loop.device,
-        &vk::AccelerationStructureBuildGeometryInfoKHR::builder()
-            .ty(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)
-            .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
-            .scratch_data(vk::DeviceOrHostAddressKHR { device_address: 0 })
-            .geometries(from_ref(&vk::AccelerationStructureGeometryKHR {
-                flags: vk::GeometryFlagsKHR::OPAQUE,
-                geometry_type: vk::GeometryTypeKHR::TRIANGLES,
-                geometry: vk::AccelerationStructureGeometryDataKHR {
-                    triangles: vk::AccelerationStructureGeometryTrianglesDataKHR {
-                        index_type: vk::IndexType::UINT32,
-                        index_data: vk::DeviceOrHostAddressConstKHR {
-                            device_address: Buffer::device_address(index_buf.as_ref()),
-                        },
-                        vertex_format: vk::Format::R32G32B32_SFLOAT,
-                        vertex_data: vk::DeviceOrHostAddressConstKHR {
-                            device_address: Buffer::device_address(vertex_buf.as_ref()),
-                        },
-                        vertex_stride: 24,
-                        max_vertex: vertex_count,
-                        transform_data: vk::DeviceOrHostAddressConstKHR { device_address: 0 },
-                        ..Default::default()
+    let ray_trace_pipeline = create_ray_trace_pipeline(&event_loop.device)?;
+    let mut sbt_buf = Some(BufferBinding::new({
+        #[repr(C)]
+        struct Camera {
+            position: [f32; 4],
+            right: [f32; 4],
+            up: [f32; 4],
+            forward: [f32; 4],
+            frame_count: u32,
+        }
+        let ray_tracing_pipeline_properties = event_loop.device.ray_tracing_pipeline_properties.as_ref().unwrap();
+        let mut buf = Buffer::create(&event_loop.device, BufferInfo::new_mappable(
+                4 * ray_tracing_pipeline_properties.shader_group_handle_size as _,
+                vk::BufferUsageFlags::UNIFORM_BUFFER,
+            ))
+            .unwrap();
+        Buffer::copy_from_slice(&mut buf, 0, unsafe {
+            from_raw_parts(
+                &Camera {
+                    position: [0f32, 0.0, 0.0, 1.0],
+                    right: [1f32, 0.0, 0.0, 1.0],
+                    up: [0f32, 1.0, 0.0, 1.0],
+                    forward: [0f32, 0.0, 1.0, 1.0],
+                    frame_count: 0,
+                } as *const _ as *const u8,
+                size_of::<vk::AccelerationStructureInstanceKHR>(),
+            )
+        });
+
+        buf
+    }));
+
+    let blas_geometry_info = AccelerationStructureGeometryInfo {
+        ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
+        flags: vk::BuildAccelerationStructureFlagsKHR::empty(),
+        geometries: vec![AccelerationStructureGeometry {
+            count: 1,
+            flags: vk::GeometryFlagsKHR::OPAQUE,
+            geometry: AccelerationStructureGeometryData::Triangles {
+                index_type: vk::IndexType::UINT32,
+                max_vertex: vertex_count,
+                transform_data: Default::default(),
+                vertex_format: vk::Format::R32G32B32_SFLOAT,
+                vertex_stride: 24,
+            },
+        }],
+    };
+    let blas_size = AccelerationStructure::size_of(&event_loop.device, &blas_geometry_info);
+    let mut blas = Some(AccelerationStructureBinding::new(
+        AccelerationStructure::create(
+            &event_loop.device,
+            AccelerationStructureInfo {
+                ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
+                size: blas_size.create_size,
+            },
+        )?,
+    ));
+
+    let tlas_geometry_info = AccelerationStructureGeometryInfo {
+        ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
+        flags: vk::BuildAccelerationStructureFlagsKHR::empty(),
+        geometries: vec![AccelerationStructureGeometry {
+            count: 1,
+            flags: vk::GeometryFlagsKHR::OPAQUE,
+            geometry: AccelerationStructureGeometryData::Instances {
+                array_of_pointers: false,
+            },
+        }],
+    };
+    let tlas_size = AccelerationStructure::size_of(&event_loop.device, &tlas_geometry_info);
+    let mut tlas = Some(AccelerationStructureBinding::new({
+        let mut accel_struct = AccelerationStructure::create(
+            &event_loop.device,
+            AccelerationStructureInfo {
+                ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
+                size: tlas_size.create_size,
+            },
+        )?;
+        let device_handle = AccelerationStructure::device_address(&accel_struct);
+        Buffer::copy_from_slice(&mut accel_struct.buffer, 0, unsafe {
+            from_raw_parts(
+                &vk::AccelerationStructureInstanceKHR {
+                    transform: vk::TransformMatrixKHR { matrix: [0.0; 12] },
+                    instance_custom_index_and_mask: vk::Packed24_8::new(0, 0xff),
+                    instance_shader_binding_table_record_offset_and_flags: vk::Packed24_8::new(
+                        0,
+                        vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE.as_raw() as _,
+                    ),
+                    acceleration_structure_reference: vk::AccelerationStructureReferenceKHR {
+                        device_handle,
                     },
-                },
-                ..Default::default()
-            })),
-        from_ref(&index_count),
-    )?;
+                } as *const _ as *const u8,
+                size_of::<vk::AccelerationStructureInstanceKHR>(),
+            )
+        });
+
+        accel_struct
+    }));
+
+
+    let mut render_graph = RenderGraph::new();
 
     {
-        let cmd_buf = cache.lease(event_loop.device.queue.family)?;
-        let mut render_graph = RenderGraph::new();
-        let blas = render_graph.bind_node(blas);
-        render_graph.build_acceleration_structure(blas);
+        let scratch_buf = render_graph.bind_node(Buffer::create(
+            &event_loop.device,
+            BufferInfo::new(
+                blas_size.build_size,
+                vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | vk::BufferUsageFlags::STORAGE_BUFFER,
+            ),
+        )?);
+        let blas_node = render_graph.bind_node(blas.take().unwrap());
+        render_graph.build_acceleration_structure(
+            blas_node,
+            scratch_buf,
+            blas_geometry_info,
+            [vk::AccelerationStructureBuildRangeInfoKHR {
+                first_vertex: 0,
+                primitive_count: index_count / 3,
+                primitive_offset: 0,
+                transform_offset: 0,
+            }],
+        );
+        blas = Some(render_graph.unbind_node(blas_node));
     }
+
+    {
+        let scratch_buf = render_graph.bind_node(Buffer::create(
+            &event_loop.device,
+            BufferInfo::new(
+                tlas_size.build_size,
+                vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | vk::BufferUsageFlags::STORAGE_BUFFER,
+            ),
+        )?);
+        let tlas_node = render_graph.bind_node(tlas.take().unwrap());
+        render_graph.build_acceleration_structure(
+            tlas_node,
+            scratch_buf,
+            tlas_geometry_info,
+            [vk::AccelerationStructureBuildRangeInfoKHR {
+                first_vertex: 0,
+                primitive_count: 1,
+                primitive_offset: 0,
+                transform_offset: 0,
+            }],
+        );
+        tlas = Some(render_graph.unbind_node(tlas_node));
+    }
+
+    render_graph.resolve().submit(&mut cache)?;
 
     //   std::vector<uint32_t> materialIndexList;
     //   for (tinyobj::shape_t shape : shapes) {
@@ -507,6 +713,37 @@ fn main() -> anyhow::Result<()> {
     //       .pQueueFamilyIndices = &queueFamilyIndex};
 
     event_loop.run(|frame| {
+        let camera_buf = frame.render_graph.bind_node({
+            #[repr(C)]
+            struct Camera {
+                position: [f32; 4],
+                right: [f32; 4],
+                up: [f32; 4],
+                forward: [f32; 4],
+                frame_count: u32,
+            }
+
+            let mut buf = cache
+                .lease(BufferInfo::new_mappable(
+                    70,
+                    vk::BufferUsageFlags::UNIFORM_BUFFER,
+                ))
+                .unwrap();
+            Buffer::copy_from_slice(buf.get_mut().unwrap(), 0, unsafe {
+                from_raw_parts(
+                    &Camera {
+                        position: [0f32, 0.0, 0.0, 1.0],
+                        right: [1f32, 0.0, 0.0, 1.0],
+                        up: [0f32, 1.0, 0.0, 1.0],
+                        forward: [0f32, 0.0, 1.0, 1.0],
+                        frame_count: 0,
+                    } as *const _ as *const u8,
+                    size_of::<vk::AccelerationStructureInstanceKHR>(),
+                )
+            });
+
+            buf
+        });
         let image = frame.render_graph.bind_node(
             cache
                 .lease(ImageInfo::new_2d(
@@ -517,32 +754,43 @@ fn main() -> anyhow::Result<()> {
                 ))
                 .unwrap(),
         );
-        let uniform_buf = frame.render_graph.bind_node({
-            let mut buf = cache
-                .lease(BufferInfo::new_mappable(
-                    70,
-                    vk::BufferUsageFlags::UNIFORM_BUFFER,
-                ))
-                .unwrap();
-            let data = Buffer::mapped_slice_mut(buf.get_mut().unwrap());
-            data[0..16].copy_from_slice(bytes_of(&[0f32, 0.0, 0.0, 1.0]));
-            data[16..32].copy_from_slice(bytes_of(&[1f32, 0.0, 0.0, 1.0]));
-            data[32..48].copy_from_slice(bytes_of(&[0f32, 1.0, 0.0, 1.0]));
-            data[48..64].copy_from_slice(bytes_of(&[0f32, 0.0, 1.0, 1.0]));
-            data[64..70].copy_from_slice(&0u32.to_ne_bytes());
-            buf
-        });
+        let tlas_node = frame.render_graph.bind_node(tlas.take().unwrap());
+        let index_buf_node = frame.render_graph.bind_node(index_buf.take().unwrap());
+        let vertex_buf_node = frame.render_graph.bind_node(vertex_buf.take().unwrap());
+        let material_id_buf_node = frame
+            .render_graph
+            .bind_node(material_id_buf.take().unwrap());
+        let material_buf_node = frame
+            .render_graph
+            .bind_node(material_buf.take().unwrap());
 
         frame
             .render_graph
             .begin_pass("basic ray tracer")
             .bind_pipeline(&ray_trace_pipeline)
-            .read_descriptor(0, uniform_buf)
+            .access_node()
+            .access_descriptor(
+                0,
+                tlas_node,
+                AccessType::RayTracingShaderReadAccelerationStructure,
+            )
+            .access_descriptor(1, camera_buf, AccessType::RayTracingShaderReadOther)
+            .access_descriptor(2, index_buf_node, AccessType::RayTracingShaderReadOther)
+            .access_descriptor(3, vertex_buf_node, AccessType::RayTracingShaderReadOther)
+            .write_descriptor(4, image)
+            .access_descriptor(5, material_id_buf_node, AccessType::RayTracingShaderReadOther)
+            .access_descriptor(6, material_buf_node, AccessType::RayTracingShaderReadOther)
             .record_ray_trace(|ray_trace| {
-                //ray_trace.trace_rays(frame.width, frame.height, 1);
+                ray_trace.trace_rays(frame.width, frame.height, 1);
             })
             .submit_pass()
             .copy_image(image, frame.swapchain_image);
+
+        tlas = Some(frame.render_graph.unbind_node(tlas_node));
+        index_buf = Some(frame.render_graph.unbind_node(index_buf_node));
+        vertex_buf = Some(frame.render_graph.unbind_node(vertex_buf_node));
+        material_id_buf = Some(frame.render_graph.unbind_node(material_id_buf_node));
+        material_buf = Some(frame.render_graph.unbind_node(material_buf_node));
     })?;
 
     Ok(())

@@ -1,6 +1,6 @@
 use {
     super::{
-        DriverConfig, DriverError, Instance, PhysicalDevice, QueueFamily, SamplerDesc, Surface,
+        PhysicalDeviceRayTracePipelineProperties,DriverConfig, DriverError, Instance, PhysicalDevice, QueueFamily, SamplerDesc, Surface,
     },
     archery::{SharedPointer, SharedPointerKind},
     ash::{extensions::khr, vk},
@@ -35,6 +35,7 @@ where
     pub physical_device: PhysicalDevice,
     pub queue: Queue,
     pub ray_tracing_pipeline_ext: Option<khr::RayTracingPipeline>,
+    pub ray_tracing_pipeline_properties: Option<PhysicalDeviceRayTracePipelineProperties>,
     pub surface_ext: Option<khr::Surface>,
     pub swapchain_ext: Option<khr::Swapchain>,
 }
@@ -78,6 +79,10 @@ where
         cfg: DriverConfig,
     ) -> Result<Self, DriverError> {
         let instance = SharedPointer::clone(instance);
+        let fp_v1_1 = instance.fp_v1_1();
+        let get_physical_device_features2 = fp_v1_1.get_physical_device_features2;
+        let get_physical_device_properties2 = fp_v1_1.get_physical_device_properties2;
+
         let features = cfg.features();
         let device_extension_names = features.extension_names();
 
@@ -177,7 +182,7 @@ where
 
             let mut features2 = features2.build();
 
-            (instance.fp_v1_1().get_physical_device_features2)(*physical_device, &mut features2);
+            get_physical_device_features2(*physical_device, &mut features2);
 
             if features2.features.multi_draw_indirect != vk::TRUE {
                 warn!("device does not support multi draw indirect");
@@ -277,6 +282,24 @@ where
                 }
             }
 
+            let mut ray_tracing_pipeline_properties =
+                vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
+
+            let mut physical_properties = vk::PhysicalDeviceProperties2::builder();
+
+            if features.ray_tracing {
+                physical_properties = physical_properties.push_next(&mut ray_tracing_pipeline_properties);
+            }
+    
+            let mut physical_properties = physical_properties.build();
+            get_physical_device_properties2(*physical_device, &mut physical_properties);
+
+            let ray_tracing_pipeline_properties = if features.ray_tracing {
+                Some(ray_tracing_pipeline_properties.into())
+            } else {
+                None
+            };
+
             let device_create_info = vk::DeviceCreateInfo::builder()
                 .queue_create_infos(&queue_info)
                 .enabled_extension_names(&device_extension_names)
@@ -339,6 +362,7 @@ where
                 physical_device,
                 queue,
                 ray_tracing_pipeline_ext,
+                ray_tracing_pipeline_properties,
                 surface_ext,
                 swapchain_ext,
             })

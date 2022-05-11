@@ -29,9 +29,10 @@ use {
     self::{binding::Binding, edge::Edge, info::Information, node::Node},
     crate::driver::{
         buffer_copy_subresources, buffer_image_copy_subresource, format_aspect_mask,
-        is_write_access, BufferSubresource, ComputePipeline, DepthStencilMode,
-        DescriptorBindingMap, Device, GraphicPipeline, ImageSubresource, ImageType,
-        PipelineDescriptorInfo, RayTracePipeline, SampleCount,
+        is_write_access, AccelerationStructureGeometry, AccelerationStructureGeometryData,
+        AccelerationStructureGeometryInfo, Buffer, BufferSubresource, ComputePipeline,
+        DepthStencilMode, DescriptorBindingMap, Device, DeviceOrHostAddress, GraphicPipeline,
+        ImageSubresource, ImageType, PipelineDescriptorInfo, RayTracePipeline, SampleCount,
     },
     archery::{SharedPointer, SharedPointerKind},
     ash::vk,
@@ -499,6 +500,10 @@ where
         }
     }
 
+    pub fn begin_pass(&mut self, name: impl AsRef<str>) -> PassRef<'_, P> {
+        PassRef::new(self, name.as_ref().to_string())
+    }
+
     pub fn bind_node<'a, B>(&'a mut self, binding: B) -> <B as Edge<Self>>::Result
     where
         B: Edge<Self>,
@@ -602,31 +607,132 @@ where
     pub fn build_acceleration_structure(
         &mut self,
         accel_struct_node: impl Into<AnyAccelerationStructureNode<P>>,
-        infos: &vk::AccelerationStructureBuildGeometryInfoKHR,
-        build_range_infos: &[vk::AccelerationStructureBuildRangeInfoKHR],
+        scratch_buf_node: impl Into<AnyBufferNode<P>>,
+        build_info: AccelerationStructureGeometryInfo,
+        build_range: impl IntoIterator<Item = vk::AccelerationStructureBuildRangeInfoKHR>,
     ) -> &mut Self {
-        use std::slice::from_ref;
-
         let accel_struct_node = accel_struct_node.into();
+        let scratch_buf_node = scratch_buf_node.into();
+        let build_range = build_range.into_iter().collect::<Vec<_>>();
 
         self.begin_pass("build acceleration structure")
             .access_node(
                 accel_struct_node,
                 AccessType::AccelerationStructureBuildWrite,
             )
-            .submit_pass()
+            .access_node(
+                scratch_buf_node,
+                AccessType::AccelerationStructureBufferWrite,
+            )
+            .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
+                use std::cell::RefCell;
 
-        // unsafe {
-        //     self.device
-        //         .accel_struct_ext
-        //         .as_ref()
-        //         .unwrap()
-        //         .cmd_build_acceleration_structures(
-        //             self.cmd_buf,
-        //             from_ref(infos),
-        //             from_ref(&build_range_infos),
-        //         )
-        // };
+                #[derive(Default)]
+                struct Tls {
+                    geometries: Vec<vk::AccelerationStructureGeometryKHR>,
+                    max_primitive_counts: Vec<u32>,
+                }
+
+                thread_local! {
+                    static TLS: RefCell<Tls> = Default::default();
+                }
+
+                TLS.with(|tls| {
+                    use std::slice::from_ref;
+
+                    let mut tls = tls.borrow_mut();
+                    tls.geometries.clear();
+
+                    for info in build_info.geometries.iter() {
+                        let flags = info.flags;
+                        let (geometry_type, geometry) = match &info.geometry {
+                            &AccelerationStructureGeometryData::AABBs { stride } => (
+                                vk::GeometryTypeKHR::AABBS,
+                                vk::AccelerationStructureGeometryDataKHR {
+                                    aabbs: vk::AccelerationStructureGeometryAabbsDataKHR {
+                                        stride,
+                                        ..Default::default()
+                                    },
+                                },
+                            ),
+                            &AccelerationStructureGeometryData::Instances { array_of_pointers } => {
+                                (
+                                    vk::GeometryTypeKHR::INSTANCES,
+                                    vk::AccelerationStructureGeometryDataKHR {
+                                        instances:
+                                            vk::AccelerationStructureGeometryInstancesDataKHR {
+                                                array_of_pointers: array_of_pointers as _,
+                                                ..Default::default()
+                                            },
+                                    },
+                                )
+                            }
+                            &AccelerationStructureGeometryData::Triangles {
+                                index_type,
+                                max_vertex,
+                                transform_data,
+                                vertex_format,
+                                vertex_stride,
+                            } => (
+                                vk::GeometryTypeKHR::TRIANGLES,
+                                vk::AccelerationStructureGeometryDataKHR {
+                                    triangles: vk::AccelerationStructureGeometryTrianglesDataKHR {
+                                        vertex_format,
+                                        vertex_stride,
+                                        max_vertex,
+                                        index_type,
+                                        transform_data: match transform_data {
+                                            Some(DeviceOrHostAddress::DeviceAddress(
+                                                device_address,
+                                            )) => {
+                                                vk::DeviceOrHostAddressConstKHR { device_address }
+                                            }
+                                            Some(DeviceOrHostAddress::HostAddress()) => {
+                                                vk::DeviceOrHostAddressConstKHR {
+                                                    host_address: std::ptr::null(),
+                                                }
+                                            } // TODO
+                                            None => vk::DeviceOrHostAddressConstKHR {
+                                                device_address: 0,
+                                            },
+                                        },
+                                        ..Default::default()
+                                    },
+                                },
+                            ),
+                        };
+
+                        tls.geometries.push(vk::AccelerationStructureGeometryKHR {
+                            flags,
+                            geometry_type,
+                            geometry,
+                            ..Default::default()
+                        });
+                        tls.max_primitive_counts.push(info.count);
+                    }
+
+                    let info = vk::AccelerationStructureBuildGeometryInfoKHR::builder()
+                        .ty(build_info.ty)
+                        .flags(build_info.flags)
+                        .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
+                        .geometries(&tls.geometries)
+                        .dst_acceleration_structure(*bindings[accel_struct_node])
+                        .scratch_data(vk::DeviceOrHostAddressKHR {
+                            device_address: Buffer::device_address(&bindings[scratch_buf_node]),
+                        });
+
+                    device
+                        .accel_struct_ext
+                        .as_ref()
+                        .unwrap()
+                        .cmd_build_acceleration_structures(
+                            cmd_buf,
+                            from_ref(&info),
+                            from_ref(&build_range.as_slice()),
+                        );
+                });
+            })
+            .submit_pass()
     }
 
     /// Clears a color image as part of a render graph but outside of any graphic render pass
@@ -1085,10 +1191,6 @@ where
         N: Information,
     {
         node.get(self)
-    }
-
-    pub fn begin_pass(&mut self, name: impl AsRef<str>) -> PassRef<'_, P> {
-        PassRef::new(self, name.as_ref().to_string())
     }
 
     pub fn resolve(mut self) -> Resolver<P> {

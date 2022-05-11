@@ -15,7 +15,7 @@ pub use self::{
     hash_pool::{HashPool, Lease},
 };
 
-/// Things, particularly traits, which are used in almost every single _Screen 13_ program.
+/// Things which are used in almost every single _Screen 13_ program.
 pub mod prelude {
     pub use {
         super::{
@@ -44,9 +44,12 @@ pub mod prelude_all {
     pub use super::{
         driver::*,
         graph::{
-            AnyBufferBinding, AnyBufferNode, AnyImageBinding, AnyImageNode, BufferBinding,
-            BufferLeaseBinding, BufferLeaseNode, BufferNode, ImageBinding, ImageLeaseBinding,
-            ImageLeaseNode, ImageNode, PassRef, PipelinePassRef, RenderGraph, SwapchainImageNode,
+            AccelerationStructureBinding, AccelerationStructureLeaseBinding,
+            AccelerationStructureLeaseNode, AccelerationStructureNode,
+            AnyAccelerationStructureNode, AnyBufferBinding, AnyBufferNode, AnyImageBinding,
+            AnyImageNode, BufferBinding, BufferLeaseBinding, BufferLeaseNode, BufferNode,
+            ImageBinding, ImageLeaseBinding, ImageLeaseNode, ImageNode, PassRef, PipelinePassRef,
+            RenderGraph, SwapchainImageNode,
         },
         prelude::*,
         Display, DisplayError, HashPool, Lease,

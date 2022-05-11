@@ -1,13 +1,14 @@
 use {
     super::{
+        AccelerationStructureLeaseNode, AccelerationStructureNode, AnyAccelerationStructureNode,
         AnyBufferNode, AnyImageNode, Area, AttachmentIndex, Bind, Binding, BufferLeaseNode,
         BufferNode, Color, Descriptor, Edge, Execution, ExecutionFunction, ExecutionPipeline,
         ImageLeaseNode, ImageNode, Information, Node, NodeIndex, Pass, RenderGraph, SampleCount,
         Subresource, SubresourceAccess, SwapchainImageNode, View, ViewType,
     },
     crate::driver::{
-        Buffer, ComputePipeline, DepthStencilMode, Device, GraphicPipeline, Image, ImageViewInfo,
-        RayTracePipeline,
+        AccelerationStructure, Buffer, ComputePipeline, DepthStencilMode, Device, GraphicPipeline,
+        Image, ImageViewInfo, RayTracePipeline,
     },
     archery::{SharedPointer, SharedPointerKind},
     ash::vk,
@@ -50,7 +51,7 @@ where
 {
     const DEFAULT_READ: AccessType =
         AccessType::RayTracingShaderReadSampledImageOrUniformTexelBuffer;
-    const DEFAULT_WRITE: AccessType = AccessType::Nothing;
+    const DEFAULT_WRITE: AccessType = AccessType::AnyShaderWrite;
 }
 
 macro_rules! bind {
@@ -147,31 +148,34 @@ macro_rules! index {
 
 // Allow indexing the Bindings data during command execution:
 // (This gets you access to the driver images or other resources)
+index!(AccelerationStructure, AccelerationStructure);
+index!(AccelerationStructureLease, AccelerationStructure);
 index!(Buffer, Buffer);
 index!(BufferLease, Buffer);
 index!(Image, Image);
 index!(ImageLease, Image);
-// index!(RayTraceAcceleration, RayTraceAcceleration);
 index!(SwapchainImage, Image);
 
-impl<'a, P> Index<AnyImageNode<P>> for Bindings<'a, P>
+impl<'a, P> Index<AnyAccelerationStructureNode<P>> for Bindings<'a, P>
 where
     P: SharedPointerKind,
 {
-    type Output = Image<P>;
+    type Output = AccelerationStructure<P>;
 
-    fn index(&self, node: AnyImageNode<P>) -> &Self::Output {
+    fn index(&self, node: AnyAccelerationStructureNode<P>) -> &Self::Output {
         let node_idx = match node {
-            AnyImageNode::Image(node) => node.idx,
-            AnyImageNode::ImageLease(node) => node.idx,
-            AnyImageNode::SwapchainImage(node) => node.idx,
+            AnyAccelerationStructureNode::AccelerationStructure(node) => node.idx,
+            AnyAccelerationStructureNode::AccelerationStructureLease(node) => node.idx,
         };
         let binding = self.binding_ref(node_idx);
 
         match node {
-            AnyImageNode::Image(_) => &binding.as_image().unwrap().item,
-            AnyImageNode::ImageLease(_) => &binding.as_image_lease().unwrap().item,
-            AnyImageNode::SwapchainImage(_) => &binding.as_swapchain_image().unwrap().item,
+            AnyAccelerationStructureNode::AccelerationStructure(_) => {
+                &binding.as_acceleration_structure().unwrap().item
+            }
+            AnyAccelerationStructureNode::AccelerationStructureLease(_) => {
+                &binding.as_acceleration_structure_lease().unwrap().item
+            }
         }
     }
 }
@@ -192,6 +196,28 @@ where
         match node {
             AnyBufferNode::Buffer(_) => &binding.as_buffer().unwrap().item,
             AnyBufferNode::BufferLease(_) => &binding.as_buffer_lease().unwrap().item,
+        }
+    }
+}
+
+impl<'a, P> Index<AnyImageNode<P>> for Bindings<'a, P>
+where
+    P: SharedPointerKind,
+{
+    type Output = Image<P>;
+
+    fn index(&self, node: AnyImageNode<P>) -> &Self::Output {
+        let node_idx = match node {
+            AnyImageNode::Image(node) => node.idx,
+            AnyImageNode::ImageLease(node) => node.idx,
+            AnyImageNode::SwapchainImage(node) => node.idx,
+        };
+        let binding = self.binding_ref(node_idx);
+
+        match node {
+            AnyImageNode::Image(_) => &binding.as_image().unwrap().item,
+            AnyImageNode::ImageLease(_) => &binding.as_image_lease().unwrap().item,
+            AnyImageNode::SwapchainImage(_) => &binding.as_swapchain_image().unwrap().item,
         }
     }
 }

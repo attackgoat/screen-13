@@ -295,6 +295,21 @@ where
     type Subresource;
 }
 
+impl<P> View<P> for AccelerationStructureNode<P> {
+    type Information = BufferSubresource;
+    type Subresource = BufferSubresource;
+}
+
+impl<P> View<P> for AccelerationStructureLeaseNode<P> {
+    type Information = BufferSubresource;
+    type Subresource = BufferSubresource;
+}
+
+impl<P> View<P> for AnyAccelerationStructureNode<P> {
+    type Information = BufferSubresource;
+    type Subresource = BufferSubresource;
+}
+
 impl<P> View<P> for AnyBufferNode<P> {
     type Information = BufferSubresource;
     type Subresource = BufferSubresource;
