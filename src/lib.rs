@@ -1,3 +1,6 @@
+// HACK: I'm having trouble supressing the lint at src/graph/mod.rs:650
+#![allow(clippy::match_ref_pats)]
+
 pub mod driver;
 pub mod graph;
 

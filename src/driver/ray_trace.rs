@@ -141,7 +141,6 @@ where
     pub info: RayTracePipelineInfo,
     pub layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
-    pub shader_bindings: (), //ShaderBindingTable<P>,
 }
 
 impl<P> RayTracePipeline<P>
@@ -200,7 +199,6 @@ where
             let mut prev_stage: Option<vk::ShaderStageFlags> = None;
             let mut raygen_entry_count = 0;
             let mut miss_entry_count = 0;
-            let mut hit_entry_count = 0;
             let create_shader_module =
                 |info: &Shader| -> Result<(vk::ShaderModule, String), DriverError> {
                     let shader_module_create_info = vk::ShaderModuleCreateInfo {
@@ -220,8 +218,6 @@ where
                 };
 
             for shader in &shaders {
-                let group_idx = shader_stages.len();
-
                 let (module, entry_point) = create_shader_module(shader)?;
                 entry_points.push(CString::new(entry_point).unwrap());
 
@@ -254,7 +250,6 @@ where
                                 || prev_stage == Some(vk::ShaderStageFlags::CLOSEST_HIT_KHR)
                         );
 
-                        hit_entry_count += 1;
                         stage = stage.stage(vk::ShaderStageFlags::CLOSEST_HIT_KHR);
                     }
                     _ => unimplemented!(),
@@ -288,16 +283,6 @@ where
 
                     DriverError::Unsupported
                 })?[0];
-            let shader_bindings = ();
-            // ShaderBindingTable::create(
-            //     device,
-            //     RayTraceShaderBindingsInfo {
-            //         raygen_count: raygen_entry_count,
-            //         hit_count: hit_entry_count,
-            //         miss_count: miss_entry_count,
-            //     },
-            //     pipeline,
-            // )?;
             let device = SharedPointer::clone(device);
 
             Ok(Self {
@@ -307,7 +292,6 @@ where
                 info,
                 layout,
                 pipeline,
-                shader_bindings,
             })
         }
     }

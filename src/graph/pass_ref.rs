@@ -2000,10 +2000,10 @@ where
 
         self.pass.push_execute(move |device, cmd_buf, bindings| {
             func(RayTrace {
-                bindings,
+                _bindings: bindings,
                 cmd_buf,
                 device,
-                pipeline,
+                _pipeline: pipeline,
             });
         });
 
@@ -2015,10 +2015,10 @@ pub struct RayTrace<'a, P>
 where
     P: SharedPointerKind,
 {
-    bindings: Bindings<'a, P>,
+    _bindings: Bindings<'a, P>,
     cmd_buf: vk::CommandBuffer,
     device: &'a Device<P>,
-    pipeline: SharedPointer<RayTracePipeline<P>, P>,
+    _pipeline: SharedPointer<RayTracePipeline<P>, P>,
 }
 
 impl<'a, P> RayTrace<'a, P>
@@ -2047,6 +2047,7 @@ where
 
     // TODO: If the rayTraversalPrimitiveCulling or rayQuery features are enabled, the SkipTrianglesKHR and SkipAABBsKHR ray flags can be specified when tracing a ray. SkipTrianglesKHR and SkipAABBsKHR are mutually exclusive.
 
+    #[allow(clippy::too_many_arguments)]
     pub fn trace_rays(
         &self,
         raygen_shader_binding_tables: &vk::StridedDeviceAddressRegionKHR,

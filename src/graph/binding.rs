@@ -4,7 +4,9 @@ use {
         ImageLeaseNode, ImageNode, RenderGraph, SwapchainImageBinding,
     },
     crate::{
-        driver::{AccelerationStructure,AccelerationStructureInfo, Buffer, BufferInfo, Image, ImageInfo},
+        driver::{
+            AccelerationStructure, AccelerationStructureInfo, Buffer, BufferInfo, Image, ImageInfo,
+        },
         Lease,
     },
     archery::{SharedPointer, SharedPointerKind},
@@ -224,7 +226,7 @@ macro_rules! bind {
                 }
 
                 /// Returns a borrow.
-                pub fn as_ref(&self) -> &$name<P> {
+                pub fn get(&self) -> &$name<P> {
                     &self.item
                 }
 

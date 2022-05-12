@@ -571,7 +571,9 @@ pub struct PhysicalDeviceRayTracePipelineProperties {
     pub max_ray_hit_attribute_size: u32,
 }
 
-impl From<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR> for PhysicalDeviceRayTracePipelineProperties {
+impl From<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>
+    for PhysicalDeviceRayTracePipelineProperties
+{
     fn from(props: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR) -> Self {
         Self {
             shader_group_handle_size: props.shader_group_handle_size,

@@ -517,37 +517,69 @@ fn main() -> anyhow::Result<()> {
         mut material_buf,
     ) = load_scene_buffers(&event_loop.device)?;
 
+    let &PhysicalDeviceRayTracePipelineProperties {
+        shader_group_base_alignment,
+        shader_group_handle_size,
+        ..
+    } = event_loop
+        .device
+        .ray_tracing_pipeline_properties
+        .as_ref()
+        .unwrap();
     let ray_trace_pipeline = create_ray_trace_pipeline(&event_loop.device)?;
     let mut sbt_buf = Some(BufferBinding::new({
-        #[repr(C)]
-        struct Camera {
-            position: [f32; 4],
-            right: [f32; 4],
-            up: [f32; 4],
-            forward: [f32; 4],
-            frame_count: u32,
-        }
-        let ray_tracing_pipeline_properties = event_loop.device.ray_tracing_pipeline_properties.as_ref().unwrap();
-        let mut buf = Buffer::create(&event_loop.device, BufferInfo::new_mappable(
-                4 * ray_tracing_pipeline_properties.shader_group_handle_size as _,
+        let mut buf = Buffer::create(
+            &event_loop.device,
+            BufferInfo::new_mappable(
+                4 * shader_group_handle_size as vk::DeviceSize,
                 vk::BufferUsageFlags::UNIFORM_BUFFER,
-            ))
-            .unwrap();
-        Buffer::copy_from_slice(&mut buf, 0, unsafe {
-            from_raw_parts(
-                &Camera {
-                    position: [0f32, 0.0, 0.0, 1.0],
-                    right: [1f32, 0.0, 0.0, 1.0],
-                    up: [0f32, 1.0, 0.0, 1.0],
-                    forward: [0f32, 0.0, 1.0, 1.0],
-                    frame_count: 0,
-                } as *const _ as *const u8,
-                size_of::<vk::AccelerationStructureInstanceKHR>(),
-            )
-        });
+            ),
+        )
+        .unwrap();
+
+        let shader_handle_buf = unsafe {
+            event_loop
+                .device
+                .ray_tracing_pipeline_ext
+                .as_ref()
+                .unwrap()
+                .get_ray_tracing_shader_group_handles(
+                    **ray_trace_pipeline,
+                    0,
+                    4,
+                    buf.info.size as _,
+                )
+        }?;
+
+        let data = Buffer::mapped_slice_mut(&mut buf);
+        for idx in 0..4 {
+            let data_start = idx * shader_group_handle_size as usize;
+            let data_end = data_start + shader_group_handle_size as usize;
+            let buf_start = idx * shader_group_base_alignment as usize;
+            let buf_end = buf_start + shader_group_handle_size as usize;
+            data[data_start..data_end].copy_from_slice(&shader_handle_buf[buf_start..buf_end]);
+        }
 
         buf
     }));
+    let sbt_address = Buffer::device_address(sbt_buf.as_ref().unwrap().as_ref());
+    let sbt_size = 4 * shader_group_base_alignment as vk::DeviceSize;
+    let sbt_rchit = vk::StridedDeviceAddressRegionKHR {
+        device_address: sbt_address,
+        stride: shader_group_base_alignment as _,
+        size: sbt_size,
+    };
+    let sbt_rgen = vk::StridedDeviceAddressRegionKHR {
+        device_address: sbt_address + shader_group_base_alignment as vk::DeviceAddress,
+        stride: sbt_size,
+        size: sbt_size,
+    };
+    let sbt_rmiss = vk::StridedDeviceAddressRegionKHR {
+        device_address: sbt_address + 2 * shader_group_base_alignment as vk::DeviceAddress,
+        stride: shader_group_base_alignment as _,
+        size: 2 * sbt_size,
+    };
+    let sbt_callable = vk::StridedDeviceAddressRegionKHR::default();
 
     let blas_geometry_info = AccelerationStructureGeometryInfo {
         ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
@@ -616,7 +648,6 @@ fn main() -> anyhow::Result<()> {
         accel_struct
     }));
 
-
     let mut render_graph = RenderGraph::new();
 
     {
@@ -667,51 +698,6 @@ fn main() -> anyhow::Result<()> {
 
     render_graph.resolve().submit(&mut cache)?;
 
-    //   std::vector<uint32_t> materialIndexList;
-    //   for (tinyobj::shape_t shape : shapes) {
-    //     for (int index : shape.mesh.material_ids) {
-    //       materialIndexList.push_back(index);
-    //     }
-    //   }
-
-    //   VkBufferCreateInfo materialIndexBufferCreateInfo = {
-    //       .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-    //       .pNext = NULL,
-    //       .flags = 0,
-    //       .size = sizeof(uint32_t) * materialIndexList.size(),
-    //       .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-    //       .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-    //       .queueFamilyIndexCount = 1,
-    //       .pQueueFamilyIndices = &queueFamilyIndex};
-
-    // // =========================================================================
-    //   // Material Buffer
-
-    //   struct Material {
-    //     float ambient[4] = {0, 0, 0, 0};
-    //     float diffuse[4] = {0, 0, 0, 0};
-    //     float specular[4] = {0, 0, 0, 0};
-    //     float emission[4] = {0, 0, 0, 0};
-    //   };
-
-    //   std::vector<Material> materialList(materials.size());
-    //   for (uint32_t x = 0; x < materials.size(); x++) {
-    //     memcpy(materialList[x].ambient, materials[x].ambient, sizeof(float) * 3);
-    //     memcpy(materialList[x].diffuse, materials[x].diffuse, sizeof(float) * 3);
-    //     memcpy(materialList[x].specular, materials[x].specular, sizeof(float) * 3);
-    //     memcpy(materialList[x].emission, materials[x].emission, sizeof(float) * 3);
-    //   }
-
-    //   VkBufferCreateInfo materialBufferCreateInfo = {
-    //       .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-    //       .pNext = NULL,
-    //       .flags = 0,
-    //       .size = sizeof(Material) * materialList.size(),
-    //       .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-    //       .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-    //       .queueFamilyIndexCount = 1,
-    //       .pQueueFamilyIndices = &queueFamilyIndex};
-
     event_loop.run(|frame| {
         let camera_buf = frame.render_graph.bind_node({
             #[repr(C)]
@@ -738,7 +724,7 @@ fn main() -> anyhow::Result<()> {
                         forward: [0f32, 0.0, 1.0, 1.0],
                         frame_count: 0,
                     } as *const _ as *const u8,
-                    size_of::<vk::AccelerationStructureInstanceKHR>(),
+                    size_of::<Camera>(),
                 )
             });
 
@@ -754,21 +740,20 @@ fn main() -> anyhow::Result<()> {
                 ))
                 .unwrap(),
         );
+        let blas_node = frame.render_graph.bind_node(blas.take().unwrap());
         let tlas_node = frame.render_graph.bind_node(tlas.take().unwrap());
         let index_buf_node = frame.render_graph.bind_node(index_buf.take().unwrap());
         let vertex_buf_node = frame.render_graph.bind_node(vertex_buf.take().unwrap());
         let material_id_buf_node = frame
             .render_graph
             .bind_node(material_id_buf.take().unwrap());
-        let material_buf_node = frame
-            .render_graph
-            .bind_node(material_buf.take().unwrap());
+        let material_buf_node = frame.render_graph.bind_node(material_buf.take().unwrap());
 
         frame
             .render_graph
             .begin_pass("basic ray tracer")
             .bind_pipeline(&ray_trace_pipeline)
-            .access_node()
+            .access_node(blas_node, AccessType::AnyShaderReadOther)
             .access_descriptor(
                 0,
                 tlas_node,
@@ -778,14 +763,27 @@ fn main() -> anyhow::Result<()> {
             .access_descriptor(2, index_buf_node, AccessType::RayTracingShaderReadOther)
             .access_descriptor(3, vertex_buf_node, AccessType::RayTracingShaderReadOther)
             .write_descriptor(4, image)
-            .access_descriptor(5, material_id_buf_node, AccessType::RayTracingShaderReadOther)
+            .access_descriptor(
+                5,
+                material_id_buf_node,
+                AccessType::RayTracingShaderReadOther,
+            )
             .access_descriptor(6, material_buf_node, AccessType::RayTracingShaderReadOther)
-            .record_ray_trace(|ray_trace| {
-                ray_trace.trace_rays(frame.width, frame.height, 1);
+            .record_ray_trace(move |ray_trace| {
+                ray_trace.trace_rays(
+                    &sbt_rgen,
+                    &sbt_rmiss,
+                    &sbt_rchit,
+                    &sbt_callable,
+                    frame.width,
+                    frame.height,
+                    1,
+                );
             })
             .submit_pass()
             .copy_image(image, frame.swapchain_image);
 
+        blas = Some(frame.render_graph.unbind_node(blas_node));
         tlas = Some(frame.render_graph.unbind_node(tlas_node));
         index_buf = Some(frame.render_graph.unbind_node(index_buf_node));
         vertex_buf = Some(frame.render_graph.unbind_node(vertex_buf_node));

@@ -2,7 +2,7 @@ use {
     super::{
         driver::{
             Buffer, BufferInfo, ComputePipeline, ComputePipelineInfo, GraphicPipeline,
-            GraphicPipelineInfo, Image, ImageInfo, RayTracePipeline, RayTracePipelineInfo, Shader,
+            GraphicPipelineInfo, Image, ImageInfo, Shader,
         },
         graph::ImageBinding,
         EventLoop,

@@ -419,8 +419,8 @@ functions:
 Where:
 
 - `node` is any type of buffer or image node
-- `view_info` is an `ImageViewInfo { .. }` for images or `Range<u64>` for buffers
-- `subresource` is an `ImageSubresource { .. }` for images or `Range<u64>` for buffers
+- `view_info` is an `ImageViewInfo { .. }` for images or `Range<vk::DeviceSize>` for buffers
+- `subresource` is an `ImageSubresource { .. }` for images or `Range<vk::DeviceSize>` for buffers
 - `descriptor` is a GLSL or HLSL shader binding point, as described below
 
 These functions work like the `access`, `read`, and `write` functions on `PassRef`/`PipelinePassRef`

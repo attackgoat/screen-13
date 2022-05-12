@@ -76,7 +76,7 @@ where
                 .unwrap()
                 .acquire_next_image(
                     self.swapchain,
-                    Duration::from_secs_f32(10.0).as_nanos() as u64,
+                    Duration::from_secs_f32(10.0).as_nanos() as _,
                     acquired,
                     vk::Fence::null(),
                 )

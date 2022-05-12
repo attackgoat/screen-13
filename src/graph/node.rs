@@ -5,8 +5,8 @@ use {
         Subresource,
     },
     crate::driver::{
-        AccelerationStructureInfo,
-        vk, BufferInfo, BufferSubresource, ImageInfo, ImageSubresource, ImageViewInfo,
+        vk, AccelerationStructureInfo, BufferInfo, BufferSubresource, ImageInfo, ImageSubresource,
+        ImageViewInfo,
     },
     archery::{SharedPointer, SharedPointerKind},
     std::{marker::PhantomData, ops::Range},
@@ -296,18 +296,18 @@ where
 }
 
 impl<P> View<P> for AccelerationStructureNode<P> {
-    type Information = BufferSubresource;
-    type Subresource = BufferSubresource;
+    type Information = ();
+    type Subresource = ();
 }
 
 impl<P> View<P> for AccelerationStructureLeaseNode<P> {
-    type Information = BufferSubresource;
-    type Subresource = BufferSubresource;
+    type Information = ();
+    type Subresource = ();
 }
 
 impl<P> View<P> for AnyAccelerationStructureNode<P> {
-    type Information = BufferSubresource;
-    type Subresource = BufferSubresource;
+    type Information = ();
+    type Subresource = ();
 }
 
 impl<P> View<P> for AnyBufferNode<P> {
@@ -346,6 +346,7 @@ impl<P> View<P> for SwapchainImageNode<P> {
 }
 
 pub enum ViewType {
+    AccelerationStructure,
     Image(ImageViewInfo),
     Buffer(Range<vk::DeviceSize>),
 }
@@ -363,6 +364,13 @@ impl ViewType {
             Self::Image(view_info) => Some(view_info),
             _ => None,
         }
+    }
+}
+
+// TODO: Remove this
+impl From<()> for ViewType {
+    fn from(_: ()) -> Self {
+        Self::AccelerationStructure
     }
 }
 

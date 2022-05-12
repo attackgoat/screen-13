@@ -1,7 +1,7 @@
 use {
     super::{
-        AccelerationStructureNode, AccelerationStructureLeaseNode,
-        BufferLeaseNode, BufferNode, ImageLeaseNode, ImageNode, RenderGraph, SwapchainImageNode,
+        AccelerationStructureLeaseNode, AccelerationStructureNode, BufferLeaseNode, BufferNode,
+        ImageLeaseNode, ImageNode, RenderGraph, SwapchainImageNode,
     },
     crate::driver::{AccelerationStructureInfo, BufferInfo, ImageInfo},
     archery::SharedPointerKind,

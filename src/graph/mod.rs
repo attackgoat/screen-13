@@ -29,10 +29,10 @@ use {
     self::{binding::Binding, edge::Edge, info::Information, node::Node},
     crate::driver::{
         buffer_copy_subresources, buffer_image_copy_subresource, format_aspect_mask,
-        is_write_access, AccelerationStructureGeometry, AccelerationStructureGeometryData,
-        AccelerationStructureGeometryInfo, Buffer, BufferSubresource, ComputePipeline,
-        DepthStencilMode, DescriptorBindingMap, Device, DeviceOrHostAddress, GraphicPipeline,
-        ImageSubresource, ImageType, PipelineDescriptorInfo, RayTracePipeline, SampleCount,
+        is_write_access, AccelerationStructureGeometryData, AccelerationStructureGeometryInfo,
+        Buffer, BufferSubresource, ComputePipeline, DepthStencilMode, DescriptorBindingMap, Device,
+        DeviceOrHostAddress, GraphicPipeline, ImageSubresource, ImageType, PipelineDescriptorInfo,
+        RayTracePipeline, SampleCount,
     },
     archery::{SharedPointer, SharedPointerKind},
     ash::vk,
@@ -645,6 +645,7 @@ where
 
                     for info in build_info.geometries.iter() {
                         let flags = info.flags;
+
                         let (geometry_type, geometry) = match &info.geometry {
                             &AccelerationStructureGeometryData::AABBs { stride } => (
                                 vk::GeometryTypeKHR::AABBS,
@@ -687,7 +688,7 @@ where
                                             )) => {
                                                 vk::DeviceOrHostAddressConstKHR { device_address }
                                             }
-                                            Some(DeviceOrHostAddress::HostAddress()) => {
+                                            Some(DeviceOrHostAddress::HostAddress) => {
                                                 vk::DeviceOrHostAddressConstKHR {
                                                     host_address: std::ptr::null(),
                                                 }
@@ -1241,6 +1242,7 @@ where
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Subresource {
+    AccelerationStructure,
     Image(ImageSubresource),
     Buffer(BufferSubresource),
 }
@@ -1260,6 +1262,12 @@ impl Subresource {
         } else {
             unreachable!();
         }
+    }
+}
+
+impl From<()> for Subresource {
+    fn from(_: ()) -> Self {
+        Self::AccelerationStructure
     }
 }
 

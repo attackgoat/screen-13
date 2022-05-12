@@ -1,7 +1,7 @@
 use {
     crate::{
         driver::{
-            AccelerationStructure, AccelerationStructureInfo,
+            AccelerationStructure, AccelerationStructureInfo, AccelerationStructureInfoBuilder,
             Buffer, BufferInfo, BufferInfoBuilder, CommandBuffer, DescriptorPool,
             DescriptorPoolInfo, DescriptorPoolInfoBuilder, Device, DriverError, Image, ImageInfo,
             ImageInfoBuilder, QueueFamily, RenderPass, RenderPassInfo, RenderPassInfoBuilder,
@@ -30,7 +30,8 @@ pub struct HashPool<P>
 where
     P: SharedPointerKind,
 {
-    acceleration_structure_binding_cache: HashMap<AccelerationStructureInfo, Cache<AccelerationStructureBinding<P>, P>>,
+    acceleration_structure_binding_cache:
+        HashMap<AccelerationStructureInfo, Cache<AccelerationStructureBinding<P>, P>>,
     buffer_binding_cache: HashMap<BufferInfo, Cache<BufferBinding<P>, P>>,
     command_buffer_cache: HashMap<QueueFamily, Cache<CommandBuffer<P>, P>>,
     descriptor_pool_cache:
@@ -310,7 +311,7 @@ macro_rules! lease_info_binding {
     };
 }
 
-// lease_info_binding!(AccelerationStructureInfo -> AccelerationStructure);
+lease_info_binding!(AccelerationStructureInfo -> AccelerationStructure);
 lease_info_binding!(BufferInfo -> Buffer);
 lease_info_binding!(ImageInfo -> Image);
 

@@ -1,6 +1,7 @@
 use {
     super::{
-        PhysicalDeviceRayTracePipelineProperties,DriverConfig, DriverError, Instance, PhysicalDevice, QueueFamily, SamplerDesc, Surface,
+        DriverConfig, DriverError, Instance, PhysicalDevice,
+        PhysicalDeviceRayTracePipelineProperties, QueueFamily, SamplerDesc, Surface,
     },
     archery::{SharedPointer, SharedPointerKind},
     ash::{extensions::khr, vk},
@@ -288,9 +289,10 @@ where
             let mut physical_properties = vk::PhysicalDeviceProperties2::builder();
 
             if features.ray_tracing {
-                physical_properties = physical_properties.push_next(&mut ray_tracing_pipeline_properties);
+                physical_properties =
+                    physical_properties.push_next(&mut ray_tracing_pipeline_properties);
             }
-    
+
             let mut physical_properties = physical_properties.build();
             get_physical_device_properties2(*physical_device, &mut physical_properties);
 
