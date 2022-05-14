@@ -233,7 +233,11 @@ impl<P> EventLoopBuilder<P> {
         self
     }
 
-    /// Enables Vulkan graphics debugging layers and tools such as RenderDoc.
+    /// Enables Vulkan graphics debugging layers.
+    ///
+    /// _NOTE:_ Any valdation warnings or errors will cause the current thread to park itself after
+    /// describing the error using the `log` crate. This makes it easy to attach a debugger and see
+    /// what is causing the issue directly.
     pub fn debug(mut self, debug: bool) -> Self {
         self.driver_cfg = self.driver_cfg.debug(debug);
         self

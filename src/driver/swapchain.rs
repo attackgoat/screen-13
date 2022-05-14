@@ -194,15 +194,12 @@ where
 
         self.destroy();
 
+        let surface_ext = self.device.surface_ext.as_ref().unwrap();
         let surface_capabilities = unsafe {
-            self.device
-                .surface_ext
-                .as_ref()
-                .unwrap()
-                .get_physical_device_surface_capabilities(
-                    *self.device.physical_device,
-                    *self.surface,
-                )
+            surface_ext.get_physical_device_surface_capabilities(
+                *self.device.physical_device,
+                *self.surface,
+            )
         }
         .map_err(|err| {
             warn!("{err}");
@@ -251,14 +248,10 @@ where
         };
 
         let present_modes = unsafe {
-            self.device
-                .surface_ext
-                .as_ref()
-                .unwrap()
-                .get_physical_device_surface_present_modes(
-                    *self.device.physical_device,
-                    *self.surface,
-                )
+            surface_ext.get_physical_device_surface_present_modes(
+                *self.device.physical_device,
+                *self.surface,
+            )
         }
         .map_err(|err| {
             warn!("{err}");
@@ -301,23 +294,15 @@ where
             .clipped(true)
             .image_array_layers(1)
             .build();
-        let swapchain = unsafe {
-            self.device
-                .swapchain_ext
-                .as_ref()
-                .unwrap()
-                .create_swapchain(&swapchain_create_info, None)
-        }
-        .unwrap();
+        let swapchain_ext = self.device.swapchain_ext.as_ref().unwrap();
+        let swapchain = unsafe { swapchain_ext.create_swapchain(&swapchain_create_info, None) }
+            .map_err(|err| {
+                warn!("{err}");
 
-        let vk_images = unsafe {
-            self.device
-                .swapchain_ext
-                .as_ref()
-                .unwrap()
-                .get_swapchain_images(swapchain)
-        }
-        .unwrap();
+                DriverError::Unsupported
+            })?;
+
+        let vk_images = unsafe { swapchain_ext.get_swapchain_images(swapchain) }.unwrap();
         let images: Vec<Option<Image<_>>> = vk_images
             .into_iter()
             .enumerate()

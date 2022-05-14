@@ -2,8 +2,7 @@ use {
     bytemuck::cast_slice,
     inline_spirv::inline_spirv,
     screen_13::prelude_arc::*,
-    std::io::BufReader,
-    std::mem::size_of,
+    std::{io::BufReader, mem::size_of},
     tobj::{load_mtl_buf, load_obj_buf, LoadOptions},
 };
 
@@ -360,7 +359,7 @@ fn load_scene_buffers(
 > {
     use std::slice::from_raw_parts;
 
-    let (mut models, materials, ..) = load_obj_buf(
+    let (models, materials, ..) = load_obj_buf(
         &mut BufReader::new(include_bytes!("res/cube_scene.obj").as_slice()),
         &LoadOptions {
             triangulate: true,
@@ -388,9 +387,9 @@ fn load_scene_buffers(
         .iter()
         .map(|model| model.mesh.indices.iter().copied())
         .flatten()
-        .collect::<Vec<_>>();
+        .collect::<Box<[_]>>();
     let index_buf = BufferBinding::new({
-        let data = cast_slice(indices.as_slice());
+        let data = cast_slice(&indices);
         let mut buf = Buffer::create(
             device,
             BufferInfo::new_mappable(
@@ -409,9 +408,9 @@ fn load_scene_buffers(
         .iter()
         .map(|model| model.mesh.positions.iter().copied())
         .flatten()
-        .collect::<Vec<_>>();
+        .collect::<Box<[_]>>();
     let vertex_buf = BufferBinding::new({
-        let data = cast_slice(positions.as_slice());
+        let data = cast_slice(&positions);
         let mut buf = Buffer::create(
             device,
             BufferInfo::new_mappable(
@@ -430,8 +429,8 @@ fn load_scene_buffers(
         let material_ids = models
             .iter()
             .map(|model| model.mesh.material_id.unwrap_or_default())
-            .collect::<Vec<_>>();
-        let data = cast_slice(material_ids.as_slice());
+            .collect::<Box<[_]>>();
+        let data = cast_slice(&material_ids);
         let mut buf = Buffer::create(
             device,
             BufferInfo::new_mappable(data.len() as _, vk::BufferUsageFlags::STORAGE_BUFFER),
@@ -476,8 +475,7 @@ fn load_scene_buffers(
                     emission: [1.0, 0.0, 0.0, 0.0],
                 }
             })
-            .collect::<Vec<_>>();
-        let data = unsafe { from_raw_parts(materials.as_ptr() as *const _, size_of::<Material>()) };
+            .collect::<Box<[_]>>();
         let mut buf = Buffer::create(
             device,
             BufferInfo::new_mappable(
@@ -485,7 +483,9 @@ fn load_scene_buffers(
                 vk::BufferUsageFlags::STORAGE_BUFFER,
             ),
         )?;
-        Buffer::copy_from_slice(&mut buf, 0, data);
+        Buffer::copy_from_slice(&mut buf, 0, unsafe {
+            from_raw_parts(materials.as_ptr() as *const _, size_of::<Material>())
+        });
         buf
     });
 
@@ -499,13 +499,11 @@ fn load_scene_buffers(
     ))
 }
 
-/// Copied from http://williamlewww.com/showcase_website/vk_khr_ray_tracing_tutorial/index.html
+/// Copied from http://williamlewww.com/showcase_website/vk_khr_r ay_tracing_tutorial/index.html
 fn main() -> anyhow::Result<()> {
-    use std::slice::{from_raw_parts, from_ref};
-
     pretty_env_logger::init();
 
-    let event_loop = EventLoop::new().ray_tracing(true).build()?;
+    let event_loop = EventLoop::new().debug(true).ray_tracing(true).build()?;
     let mut cache = HashPool::new(&event_loop.device);
 
     let (
@@ -527,7 +525,7 @@ fn main() -> anyhow::Result<()> {
         .as_ref()
         .unwrap();
     let ray_trace_pipeline = create_ray_trace_pipeline(&event_loop.device)?;
-    let mut sbt_buf = Some(BufferBinding::new({
+    let sbt_buf = Some(BufferBinding::new({
         let mut buf = Buffer::create(
             &event_loop.device,
             BufferInfo::new_mappable(
@@ -555,14 +553,14 @@ fn main() -> anyhow::Result<()> {
         for idx in 0..4 {
             let data_start = idx * shader_group_handle_size as usize;
             let data_end = data_start + shader_group_handle_size as usize;
-            let buf_start = idx * shader_group_base_alignment as usize;
+            let buf_start = idx * shader_group_handle_size as usize;
             let buf_end = buf_start + shader_group_handle_size as usize;
             data[data_start..data_end].copy_from_slice(&shader_handle_buf[buf_start..buf_end]);
         }
 
         buf
     }));
-    let sbt_address = Buffer::device_address(sbt_buf.as_ref().unwrap().as_ref());
+    let sbt_address = Buffer::device_address(sbt_buf.as_ref().unwrap().get());
     let sbt_size = 4 * shader_group_base_alignment as vk::DeviceSize;
     let sbt_rchit = vk::StridedDeviceAddressRegionKHR {
         device_address: sbt_address,
@@ -629,7 +627,7 @@ fn main() -> anyhow::Result<()> {
         )?;
         let device_handle = AccelerationStructure::device_address(&accel_struct);
         Buffer::copy_from_slice(&mut accel_struct.buffer, 0, unsafe {
-            from_raw_parts(
+            std::slice::from_raw_parts(
                 &vk::AccelerationStructureInstanceKHR {
                     transform: vk::TransformMatrixKHR { matrix: [0.0; 12] },
                     instance_custom_index_and_mask: vk::Packed24_8::new(0, 0xff),
@@ -640,7 +638,7 @@ fn main() -> anyhow::Result<()> {
                     acceleration_structure_reference: vk::AccelerationStructureReferenceKHR {
                         device_handle,
                     },
-                } as *const _ as *const u8,
+                } as *const _ as *const _,
                 size_of::<vk::AccelerationStructureInstanceKHR>(),
             )
         });
@@ -649,6 +647,7 @@ fn main() -> anyhow::Result<()> {
     }));
 
     let mut render_graph = RenderGraph::new();
+    /*
 
     {
         let scratch_buf = render_graph.bind_node(Buffer::create(
@@ -696,9 +695,11 @@ fn main() -> anyhow::Result<()> {
         tlas = Some(render_graph.unbind_node(tlas_node));
     }
 
+    */
     render_graph.resolve().submit(&mut cache)?;
 
     event_loop.run(|frame| {
+        /*
         let camera_buf = frame.render_graph.bind_node({
             #[repr(C)]
             struct Camera {
@@ -716,14 +717,14 @@ fn main() -> anyhow::Result<()> {
                 ))
                 .unwrap();
             Buffer::copy_from_slice(buf.get_mut().unwrap(), 0, unsafe {
-                from_raw_parts(
+                std::slice::from_raw_parts(
                     &Camera {
                         position: [0f32, 0.0, 0.0, 1.0],
                         right: [1f32, 0.0, 0.0, 1.0],
                         up: [0f32, 1.0, 0.0, 1.0],
                         forward: [0f32, 0.0, 1.0, 1.0],
                         frame_count: 0,
-                    } as *const _ as *const u8,
+                    } as *const _ as *const _,
                     size_of::<Camera>(),
                 )
             });
@@ -789,6 +790,9 @@ fn main() -> anyhow::Result<()> {
         vertex_buf = Some(frame.render_graph.unbind_node(vertex_buf_node));
         material_id_buf = Some(frame.render_graph.unbind_node(material_id_buf_node));
         material_buf = Some(frame.render_graph.unbind_node(material_buf_node));
+         */
+
+        frame.render_graph.clear_color_image(frame.swapchain_image);
     })?;
 
     Ok(())
