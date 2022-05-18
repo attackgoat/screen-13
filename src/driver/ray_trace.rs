@@ -18,6 +18,7 @@ where
     pub info: RayTracePipelineInfo,
     pub layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
+    shader_modules: Vec<vk::ShaderModule>,
 }
 
 impl<P> RayTracePipeline<P>
@@ -91,9 +92,20 @@ where
                     Ok((shader_module, info.entry_name.clone()))
                 };
 
+            let mut shader_modules = Vec::with_capacity(shaders.len());
             for shader in &shaders {
-                let (module, entry_point) = create_shader_module(shader)?;
+                let res = create_shader_module(shader);
+                if res.is_err() {
+                    device.destroy_pipeline_layout(layout, None);
+
+                    for shader_module in &shader_modules {
+                        device.destroy_shader_module(*shader_module, None);
+                    }
+                }
+
+                let (module, entry_point) = res?;
                 entry_points.push(CString::new(entry_point).unwrap());
+                shader_modules.push(module);
 
                 shader_stages.push(
                     vk::PipelineShaderStageCreateInfo::builder()
@@ -130,6 +142,12 @@ where
                 .map_err(|err| {
                     warn!("{err}");
 
+                    device.destroy_pipeline_layout(layout, None);
+
+                    for shader_module in &shader_modules {
+                        device.destroy_shader_module(*shader_module, None);
+                    }
+
                     DriverError::Unsupported
                 })?[0];
             let device = SharedPointer::clone(device);
@@ -141,6 +159,7 @@ where
                 info,
                 layout,
                 pipeline,
+                shader_modules,
             })
         }
     }
@@ -167,8 +186,14 @@ where
         }
 
         unsafe {
-            // TODO: Drop other resources
             self.device.destroy_pipeline(self.pipeline, None);
+            self.device.destroy_pipeline_layout(self.layout, None);
+        }
+
+        for shader_module in self.shader_modules.drain(..) {
+            unsafe {
+                self.device.destroy_shader_module(shader_module, None);
+            }
         }
     }
 }
@@ -233,30 +258,24 @@ impl RayTraceShaderGroup {
         }
     }
 
-    pub fn new_general(
-        general_shader: impl Into<Option<u32>>,
-        intersection_shader: impl Into<Option<u32>>,
-        any_hit_shader: impl Into<Option<u32>>,
-        closest_hit_shader: impl Into<Option<u32>>,
-    ) -> Self {
+    pub fn new_general(general_shader: impl Into<Option<u32>>) -> Self {
         Self::new(
             RayTraceShaderGroupType::General,
             general_shader,
-            intersection_shader,
-            any_hit_shader,
-            closest_hit_shader,
+            None,
+            None,
+            None,
         )
     }
 
     pub fn new_procedural(
-        general_shader: impl Into<Option<u32>>,
         intersection_shader: impl Into<Option<u32>>,
         any_hit_shader: impl Into<Option<u32>>,
         closest_hit_shader: impl Into<Option<u32>>,
     ) -> Self {
         Self::new(
             RayTraceShaderGroupType::ProceduralHitGroup,
-            general_shader,
+            None,
             intersection_shader,
             any_hit_shader,
             closest_hit_shader,
@@ -264,14 +283,13 @@ impl RayTraceShaderGroup {
     }
 
     pub fn new_triangles(
-        general_shader: impl Into<Option<u32>>,
         intersection_shader: impl Into<Option<u32>>,
         any_hit_shader: impl Into<Option<u32>>,
         closest_hit_shader: impl Into<Option<u32>>,
     ) -> Self {
         Self::new(
             RayTraceShaderGroupType::TrianglesHitGroup,
-            general_shader,
+            None,
             intersection_shader,
             any_hit_shader,
             closest_hit_shader,

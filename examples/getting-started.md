@@ -34,7 +34,7 @@ let driver = Driver::new(&my_winit_window, DriverConfig {
     desired_swapchain_image_count: 3,
     presentation: true, // require operating system window swapchain support
     ray_tracing: true,  // require KHR ray tracing support
-    sync_display: true, // v-sync
+    sync_display: true, // v-synceE
 });
 let driver = driver.expect("Oh no I don't support debug/presentation/ray_tracing if set!");
 let device: Shared<Device> = driver.device;

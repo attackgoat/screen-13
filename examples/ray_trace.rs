@@ -330,16 +330,16 @@ fn create_ray_trace_pipeline(
         device,
         RayTracePipelineInfo::default(),
         [
-            Shader::new_ray_gen(SHADER_RAY_GEN),
             Shader::new_closest_hit(SHADER_CLOSEST_HIT),
+            Shader::new_ray_gen(SHADER_RAY_GEN),
             Shader::new_miss(SHADER_MISS),
             Shader::new_miss(SHADER_SHADOW_MISS),
         ],
         [
-            RayTraceShaderGroup::new_triangles(None, None, None, 0),
-            RayTraceShaderGroup::new_general(1, None, None, None),
-            RayTraceShaderGroup::new_general(2, None, None, None),
-            RayTraceShaderGroup::new_general(3, None, None, None),
+            RayTraceShaderGroup::new_triangles(None, None, 0),
+            RayTraceShaderGroup::new_general(1),
+            RayTraceShaderGroup::new_general(2),
+            RayTraceShaderGroup::new_general(3),
         ],
     )?))
 }
@@ -499,7 +499,7 @@ fn load_scene_buffers(
     ))
 }
 
-/// Copied from http://williamlewww.com/showcase_website/vk_khr_r ay_tracing_tutorial/index.html
+/// Copied from http://williamlewww.com/showcase_website/vk_khr_ray_tracing_tutorial/index.html
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
@@ -530,7 +530,7 @@ fn main() -> anyhow::Result<()> {
             &event_loop.device,
             BufferInfo::new_mappable(
                 4 * shader_group_handle_size as vk::DeviceSize,
-                vk::BufferUsageFlags::UNIFORM_BUFFER,
+                vk::BufferUsageFlags::UNIFORM_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             ),
         )
         .unwrap();
@@ -621,7 +621,7 @@ fn main() -> anyhow::Result<()> {
         let mut accel_struct = AccelerationStructure::create(
             &event_loop.device,
             AccelerationStructureInfo {
-                ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
+                ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
                 size: tlas_size.create_size,
             },
         )?;
@@ -647,7 +647,6 @@ fn main() -> anyhow::Result<()> {
     }));
 
     let mut render_graph = RenderGraph::new();
-    /*
 
     {
         let scratch_buf = render_graph.bind_node(Buffer::create(
@@ -695,7 +694,6 @@ fn main() -> anyhow::Result<()> {
         tlas = Some(render_graph.unbind_node(tlas_node));
     }
 
-    */
     render_graph.resolve().submit(&mut cache)?;
 
     event_loop.run(|frame| {

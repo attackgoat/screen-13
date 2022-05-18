@@ -483,10 +483,6 @@ where
 
             if elapsed_millis > 0 {
                 warn!("waited for {} ms", elapsed_millis);
-
-                //panic!();
-            } else {
-                trace!("...done")
             }
         }
 

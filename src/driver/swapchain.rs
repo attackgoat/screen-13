@@ -188,8 +188,8 @@ where
     fn recreate_swapchain(&mut self) -> Result<(), DriverError> {
         let res = unsafe { self.device.device_wait_idle() };
 
-        if res.is_err() {
-            warn!("device_wait_idle() failed");
+        if let Err(err) = res {
+            warn!("device_wait_idle() failed: {err:?}");
         }
 
         self.destroy();
