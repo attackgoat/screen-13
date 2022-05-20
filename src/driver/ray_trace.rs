@@ -223,6 +223,13 @@ pub struct RayTracePipelineInfo {
     pub name: Option<String>,
 }
 
+impl RayTracePipelineInfo {
+    #[allow(clippy::new_ret_no_self)]
+    pub fn new() -> RayTracePipelineInfoBuilder {
+        Default::default()
+    }
+}
+
 impl Default for RayTracePipelineInfo {
     fn default() -> Self {
         RayTracePipelineInfoBuilder::default().build()

@@ -188,8 +188,7 @@ static SHADER_CLOSEST_HIT: &[u32] = inline_spirv!(
         vec3 surfaceColor =
             materialBuffer.data[materialIndexBuffer.data[gl_PrimitiveID]].diffuse;
 
-        // HACK: Change back to 40 & 41! Also randomIndex, below
-        if (gl_PrimitiveID < 12) {
+        if (gl_PrimitiveID == 40 || gl_PrimitiveID == 41) {
             if (payload.rayDepth == 0) {
                 payload.directColor =
                     materialBuffer.data[materialIndexBuffer.data[gl_PrimitiveID]].emission;
@@ -200,7 +199,7 @@ static SHADER_CLOSEST_HIT: &[u32] = inline_spirv!(
             }
         } else {
             int randomIndex =
-                int(random(gl_LaunchIDEXT.xy, camera.frameCount) * 12 + 0); // HACK: 0 is light base, 12=size
+                int(random(gl_LaunchIDEXT.xy, camera.frameCount) * 2 + 40);
             vec3 lightColor = vec3(0.6, 0.6, 0.6);
 
             ivec3 lightIndices = ivec3(indexBuffer.data[3 * randomIndex + 0],
@@ -332,7 +331,9 @@ fn create_ray_trace_pipeline(
 ) -> Result<Shared<RayTracePipeline>, DriverError> {
     Ok(Shared::new(RayTracePipeline::create(
         device,
-        RayTracePipelineInfo::default(),
+        RayTracePipelineInfo::new()
+            .max_ray_recursion_depth(1)
+            .build(),
         [
             Shader::new_ray_gen(SHADER_RAY_GEN),
             Shader::new_closest_hit(SHADER_CLOSEST_HIT),
@@ -365,11 +366,11 @@ fn load_scene_buffers(
     use std::slice::from_raw_parts;
 
     let (models, materials, ..) = load_obj_buf(
-        &mut BufReader::new(include_bytes!("res/bear_box.obj").as_slice()),
+        &mut BufReader::new(include_bytes!("res/cube_scene.obj").as_slice()),
         &GPU_LOAD_OPTIONS,
         |_| {
             load_mtl_buf(&mut BufReader::new(
-                include_bytes!("res/bear_box.mtl").as_slice(),
+                include_bytes!("res/cube_scene.mtl").as_slice(),
             ))
         },
     )
@@ -387,18 +388,14 @@ fn load_scene_buffers(
     let mut indices = vec![];
     let mut positions = vec![];
     for model in &models {
-        let base_index = positions.len() as u32;
+        let base_index = positions.len() as u32 / 3;
         for index in &model.mesh.indices {
             indices.push(*index + base_index);
         }
 
-        assert_eq!(indices.len() % 3, 0);
-
         for position in &model.mesh.positions {
             positions.push(*position);
         }
-
-        assert_eq!(positions.len() % 3, 0);
     }
 
     let index_buf = BufferBinding::new({
@@ -432,10 +429,12 @@ fn load_scene_buffers(
     });
 
     let material_id_buf = BufferBinding::new({
-        let material_ids = models
-            .iter()
-            .map(|model| model.mesh.material_id.unwrap() as u32)
-            .collect::<Box<[_]>>();
+        let mut material_ids = vec![];
+        for model in &models {
+            for _ in 0..model.mesh.indices.len() / 3 {
+                material_ids.push(model.mesh.material_id.unwrap() as u32);
+            }
+        }
         let data = cast_slice(&material_ids);
         let mut buf = Buffer::create(
             device,
@@ -446,43 +445,30 @@ fn load_scene_buffers(
     });
 
     let material_buf = BufferBinding::new({
-        #[repr(C)]
-        struct Material {
-            ambient: [f32; 4],
-            diffuse: [f32; 4],
-            specular: [f32; 4],
-            emission: [f32; 4],
-        }
-
-        let materials = models
+        let materials = materials
             .iter()
-            .map(|model| {
-                let material = &materials[model.mesh.material_id.unwrap_or_default()];
-
-                Material {
-                    ambient: [
-                        material.ambient[0],
-                        material.ambient[1],
-                        material.ambient[2],
-                        0.0,
-                    ],
-                    diffuse: [
-                        material.diffuse[0],
-                        material.diffuse[1],
-                        material.diffuse[2],
-                        0.0,
-                    ],
-                    specular: [
-                        material.specular[0],
-                        material.specular[1],
-                        material.specular[2],
-                        0.0,
-                    ],
-                    emission: [1.0, 1.0, 1.0, 1.0],
-                }
+            .map(|material| {
+                [
+                    material.ambient[0],
+                    material.ambient[1],
+                    material.ambient[2],
+                    0.0,
+                    material.diffuse[0],
+                    material.diffuse[1],
+                    material.diffuse[2],
+                    0.0,
+                    material.specular[0],
+                    material.specular[1],
+                    material.specular[2],
+                    0.0,
+                    1.0,
+                    1.0,
+                    1.0,
+                    0.0,
+                ]
             })
             .collect::<Box<[_]>>();
-        let buf_len = materials.len() * size_of::<Material>();
+        let buf_len = materials.len() * 64;
         let mut buf = Buffer::create(
             device,
             BufferInfo::new_mappable(buf_len as _, vk::BufferUsageFlags::STORAGE_BUFFER),
@@ -510,14 +496,9 @@ fn main() -> anyhow::Result<()> {
     let event_loop = EventLoop::new().debug(true).ray_tracing(true).build()?;
     let mut cache = HashPool::new(&event_loop.device);
 
-    let (
-        mut index_buf,
-        mut vertex_buf,
-        triangle_count,
-        vertex_count,
-        mut material_id_buf,
-        mut material_buf,
-    ) = load_scene_buffers(&event_loop.device)?;
+    // ------------------------------------------------------------------------------------------ //
+    // Setup the ray tracing pipeline
+    // ------------------------------------------------------------------------------------------ //
 
     let &PhysicalDeviceRayTracePipelineProperties {
         shader_group_base_alignment,
@@ -530,6 +511,10 @@ fn main() -> anyhow::Result<()> {
         .as_ref()
         .unwrap();
     let ray_trace_pipeline = create_ray_trace_pipeline(&event_loop.device)?;
+
+    // ------------------------------------------------------------------------------------------ //
+    // Setup a shader binding table
+    // ------------------------------------------------------------------------------------------ //
 
     let sbt_handle_size = align_up(shader_group_handle_size, shader_group_handle_alignment);
     let sbt_rgen_size = align_up(sbt_handle_size, shader_group_base_alignment);
@@ -599,6 +584,23 @@ fn main() -> anyhow::Result<()> {
     };
     let sbt_callable = vk::StridedDeviceAddressRegionKHR::default();
 
+    // ------------------------------------------------------------------------------------------ //
+    // Load the .obj cube scene
+    // ------------------------------------------------------------------------------------------ //
+
+    let (
+        mut index_buf,
+        mut vertex_buf,
+        triangle_count,
+        vertex_count,
+        mut material_id_buf,
+        mut material_buf,
+    ) = load_scene_buffers(&event_loop.device)?;
+
+    // ------------------------------------------------------------------------------------------ //
+    // Create the bottom level acceleration structure
+    // ------------------------------------------------------------------------------------------ //
+
     let blas_geometry_info = AccelerationStructureGeometryInfo {
         ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
         flags: vk::BuildAccelerationStructureFlagsKHR::empty(),
@@ -631,6 +633,10 @@ fn main() -> anyhow::Result<()> {
         )?,
     ));
     let blas_device_address = AccelerationStructure::device_address(blas.as_ref().unwrap().get());
+
+    // ------------------------------------------------------------------------------------------ //
+    // Create an instance buffer, which is just one instance for the single BLAS
+    // ------------------------------------------------------------------------------------------ //
 
     let mut instance_buf = Some(BufferBinding::new({
         let mut buffer = Buffer::create(
@@ -667,6 +673,10 @@ fn main() -> anyhow::Result<()> {
         buffer
     }));
 
+    // ------------------------------------------------------------------------------------------ //
+    // Create the top level acceleration structure
+    // ------------------------------------------------------------------------------------------ //
+
     let tlas_geometry_info = AccelerationStructureGeometryInfo {
         ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
         flags: vk::BuildAccelerationStructureFlagsKHR::empty(),
@@ -691,6 +701,10 @@ fn main() -> anyhow::Result<()> {
             },
         )?,
     ));
+
+    // ------------------------------------------------------------------------------------------ //
+    // Build the BLAS and TLAS; note that we don't drop the cache and so there is no CPU stall
+    // ------------------------------------------------------------------------------------------ //
 
     {
         let mut render_graph = RenderGraph::new();
@@ -761,7 +775,6 @@ fn main() -> anyhow::Result<()> {
                     );
                 });
 
-            //instance_buf = Some(render_graph.unbind_node(instance_node));
             tlas = Some(render_graph.unbind_node(tlas_node));
         }
 
@@ -771,22 +784,30 @@ fn main() -> anyhow::Result<()> {
         render_graph.resolve().submit(&mut cache)?;
     }
 
-    let mut image = None;
+    // ------------------------------------------------------------------------------------------ //
+    // Setup some state variables to hold between frames
+    // ------------------------------------------------------------------------------------------ //
 
+    let mut frame_count = 0;
+    let mut image = None;
     let mut keyboard = KeyBuf::default();
-    let mut position = [1.72176003f32, 4.24000216, 7.41878128, 1.00000000];
+    let mut position = [1.39176035, 3.51999736, 5.59873962, 1f32];
     let right = [0.999987483f32, 0.00000000, -0.00499906437, 1.00000000];
     let up = [0f32, 1.0, 0.0, 1.0];
     let forward = [-0.00499906437f32, 0.00000000, -0.999987483, 1.00000000];
 
-    let mut frame_count = 0;
-
+    // The event loop consists of:
+    // - Lazy-init the storage image used to accumulate light
+    // - Handle input
+    // - Update the camera uniform buffer
+    // - Trace the image
+    // - Copy image to the swapchain
     event_loop.run(|frame| {
         if image.is_none() {
             image = Some(ImageLeaseBinding(
                 cache
                     .lease(ImageInfo::new_2d(
-                        vk::Format::R8G8B8A8_UNORM,
+                        frame.render_graph.node_info(frame.swapchain_image).fmt,
                         frame.width,
                         frame.height,
                         vk::ImageUsageFlags::STORAGE
