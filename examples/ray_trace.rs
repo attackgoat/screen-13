@@ -349,7 +349,6 @@ fn create_ray_trace_pipeline(
     )?))
 }
 
-// See https://github.com/swordigo1995/Awesome-box-Model
 fn load_scene_buffers(
     device: &Shared<Device>,
 ) -> Result<
