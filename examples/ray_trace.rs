@@ -188,8 +188,8 @@ static SHADER_CLOSEST_HIT: &[u32] = inline_spirv!(
         vec3 surfaceColor =
             materialBuffer.data[materialIndexBuffer.data[gl_PrimitiveID]].diffuse;
 
-        // 40 & 41 == light
-        if (true || gl_PrimitiveID == 40 || gl_PrimitiveID == 41) {
+        // HACK: Change back to 40 & 41! Also randomIndex, below
+        if (gl_PrimitiveID < 12) {
             if (payload.rayDepth == 0) {
                 payload.directColor =
                     materialBuffer.data[materialIndexBuffer.data[gl_PrimitiveID]].emission;
@@ -200,7 +200,7 @@ static SHADER_CLOSEST_HIT: &[u32] = inline_spirv!(
             }
         } else {
             int randomIndex =
-                int(random(gl_LaunchIDEXT.xy, camera.frameCount) * 2 + 40);
+                int(random(gl_LaunchIDEXT.xy, camera.frameCount) * 12 + 0); // HACK: 0 is light base, 12=size
             vec3 lightColor = vec3(0.6, 0.6, 0.6);
 
             ivec3 lightIndices = ivec3(indexBuffer.data[3 * randomIndex + 0],
@@ -348,13 +348,14 @@ fn create_ray_trace_pipeline(
     )?))
 }
 
+// See https://github.com/swordigo1995/Awesome-box-Model
 fn load_scene_buffers(
     device: &Shared<Device>,
 ) -> Result<
     (
         Option<BufferBinding>,
-        u32,
         Option<BufferBinding>,
+        u32,
         u32,
         Option<BufferBinding>,
         Option<BufferBinding>,
@@ -364,11 +365,11 @@ fn load_scene_buffers(
     use std::slice::from_raw_parts;
 
     let (models, materials, ..) = load_obj_buf(
-        &mut BufReader::new(include_bytes!("res/cube_scene.obj").as_slice()),
+        &mut BufReader::new(include_bytes!("res/bear_box.obj").as_slice()),
         &GPU_LOAD_OPTIONS,
         |_| {
             load_mtl_buf(&mut BufReader::new(
-                include_bytes!("res/cube_scene.mtl").as_slice(),
+                include_bytes!("res/bear_box.mtl").as_slice(),
             ))
         },
     )
@@ -385,15 +386,19 @@ fn load_scene_buffers(
 
     let mut indices = vec![];
     let mut positions = vec![];
-    for model in models.iter() {
+    for model in &models {
         let base_index = positions.len() as u32;
-        for index in model.mesh.indices.iter().copied() {
-            indices.push(index + base_index);
+        for index in &model.mesh.indices {
+            indices.push(*index + base_index);
         }
 
-        for position in model.mesh.positions.iter().copied() {
-            positions.push(position);
+        assert_eq!(indices.len() % 3, 0);
+
+        for position in &model.mesh.positions {
+            positions.push(*position);
         }
+
+        assert_eq!(positions.len() % 3, 0);
     }
 
     let index_buf = BufferBinding::new({
@@ -429,7 +434,7 @@ fn load_scene_buffers(
     let material_id_buf = BufferBinding::new({
         let material_ids = models
             .iter()
-            .map(|model| model.mesh.material_id.unwrap_or_default() as u32)
+            .map(|model| model.mesh.material_id.unwrap() as u32)
             .collect::<Box<[_]>>();
         let data = cast_slice(&material_ids);
         let mut buf = Buffer::create(
@@ -477,7 +482,7 @@ fn load_scene_buffers(
                 }
             })
             .collect::<Box<[_]>>();
-        let buf_len = size_of::<Material>() * materials.len();
+        let buf_len = materials.len() * size_of::<Material>();
         let mut buf = Buffer::create(
             device,
             BufferInfo::new_mappable(buf_len as _, vk::BufferUsageFlags::STORAGE_BUFFER),
@@ -490,8 +495,8 @@ fn load_scene_buffers(
 
     Ok((
         Some(index_buf),
-        indices.len() as _,
         Some(vertex_buf),
+        indices.len() as u32 / 3,
         positions.len() as u32 / 3,
         Some(material_id_buf),
         Some(material_buf),
@@ -507,8 +512,8 @@ fn main() -> anyhow::Result<()> {
 
     let (
         mut index_buf,
-        index_count,
         mut vertex_buf,
+        triangle_count,
         vertex_count,
         mut material_id_buf,
         mut material_buf,
@@ -598,7 +603,7 @@ fn main() -> anyhow::Result<()> {
         ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
         flags: vk::BuildAccelerationStructureFlagsKHR::empty(),
         geometries: vec![AccelerationStructureGeometry {
-            max_primitive_count: index_count / 3,
+            max_primitive_count: triangle_count,
             flags: vk::GeometryFlagsKHR::OPAQUE,
             geometry: AccelerationStructureGeometryData::Triangles {
                 index_data: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(
@@ -654,7 +659,7 @@ fn main() -> anyhow::Result<()> {
                     acceleration_structure_reference: vk::AccelerationStructureReferenceKHR {
                         device_handle: blas_device_address,
                     },
-                } as *const vk::AccelerationStructureInstanceKHR as *const u8,
+                } as *const _ as *const _,
                 size_of::<vk::AccelerationStructureInstanceKHR>(),
             )
         });
@@ -716,7 +721,7 @@ fn main() -> anyhow::Result<()> {
                         blas_geometry_info,
                         &[vk::AccelerationStructureBuildRangeInfoKHR {
                             first_vertex: 0,
-                            primitive_count: index_count / 3,
+                            primitive_count: triangle_count,
                             primitive_offset: 0,
                             transform_offset: 0,
                         }],
@@ -766,15 +771,34 @@ fn main() -> anyhow::Result<()> {
         render_graph.resolve().submit(&mut cache)?;
     }
 
+    let mut image = None;
+
     let mut keyboard = KeyBuf::default();
     let mut position = [1.72176003f32, 4.24000216, 7.41878128, 1.00000000];
-    let mut right = [0.999987483f32, 0.00000000, -0.00499906437, 1.00000000];
-    let mut up = [0f32, 1.0, 0.0, 1.0];
-    let mut forward = [-0.00499906437f32, 0.00000000, -0.999987483, 1.00000000];
+    let right = [0.999987483f32, 0.00000000, -0.00499906437, 1.00000000];
+    let up = [0f32, 1.0, 0.0, 1.0];
+    let forward = [-0.00499906437f32, 0.00000000, -0.999987483, 1.00000000];
 
     let mut frame_count = 0;
 
     event_loop.run(|frame| {
+        if image.is_none() {
+            image = Some(ImageLeaseBinding(
+                cache
+                    .lease(ImageInfo::new_2d(
+                        vk::Format::R8G8B8A8_UNORM,
+                        frame.width,
+                        frame.height,
+                        vk::ImageUsageFlags::STORAGE
+                            | vk::ImageUsageFlags::TRANSFER_DST
+                            | vk::ImageUsageFlags::TRANSFER_SRC,
+                    ))
+                    .unwrap(),
+            ));
+        }
+
+        let image_node = frame.render_graph.bind_node(image.take().unwrap());
+
         {
             update_keyboard(&mut keyboard, frame.events);
 
@@ -782,22 +806,21 @@ fn main() -> anyhow::Result<()> {
 
             if keyboard.is_pressed(&VirtualKeyCode::Left) {
                 position[0] -= SPEED;
-                frame_count = 0;
             } else if keyboard.is_pressed(&VirtualKeyCode::Right) {
                 position[0] += SPEED;
-                frame_count = 0;
             } else if keyboard.is_pressed(&VirtualKeyCode::Up) {
                 position[2] -= SPEED;
-                frame_count = 0;
             } else if keyboard.is_pressed(&VirtualKeyCode::Down) {
                 position[2] += SPEED;
-                frame_count = 0;
             } else if keyboard.is_pressed(&VirtualKeyCode::Space) {
                 position[1] -= SPEED;
-                frame_count = 0;
             } else if keyboard.is_pressed(&VirtualKeyCode::LAlt) {
                 position[1] += SPEED;
+            }
+
+            if keyboard.any_pressed() {
                 frame_count = 0;
+                frame.render_graph.clear_color_image(image_node);
             } else {
                 frame_count += 1;
             }
@@ -827,23 +850,13 @@ fn main() -> anyhow::Result<()> {
                         up,
                         forward,
                         frame_count,
-                    } as *const Camera as *const u8,
+                    } as *const _ as *const _,
                     size_of::<Camera>(),
                 )
             });
 
             buf
         });
-        let image = frame.render_graph.bind_node(
-            cache
-                .lease(ImageInfo::new_2d(
-                    vk::Format::R8G8B8A8_UNORM,
-                    frame.width,
-                    frame.height,
-                    vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::TRANSFER_SRC,
-                ))
-                .unwrap(),
-        );
         let blas_node = frame.render_graph.bind_node(blas.take().unwrap());
         let tlas_node = frame.render_graph.bind_node(tlas.take().unwrap());
         let index_buf_node = frame.render_graph.bind_node(index_buf.take().unwrap());
@@ -871,7 +884,7 @@ fn main() -> anyhow::Result<()> {
             .access_descriptor(1, camera_buf, AccessType::RayTracingShaderReadOther)
             .access_descriptor(2, index_buf_node, AccessType::RayTracingShaderReadOther)
             .access_descriptor(3, vertex_buf_node, AccessType::RayTracingShaderReadOther)
-            .write_descriptor(4, image)
+            .write_descriptor(4, image_node)
             .access_descriptor(
                 5,
                 material_id_buf_node,
@@ -890,8 +903,9 @@ fn main() -> anyhow::Result<()> {
                 );
             })
             .submit_pass()
-            .copy_image(image, frame.swapchain_image);
+            .copy_image(image_node, frame.swapchain_image);
 
+        image = Some(frame.render_graph.unbind_node(image_node));
         blas = Some(frame.render_graph.unbind_node(blas_node));
         tlas = Some(frame.render_graph.unbind_node(tlas_node));
         index_buf = Some(frame.render_graph.unbind_node(index_buf_node));
