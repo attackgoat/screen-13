@@ -1,14 +1,15 @@
-mod buf;
+mod accel_struct;
+mod buffer;
 mod cmd_buf;
-mod compute_pipeline;
+mod compute;
 mod descriptor_set;
 mod descriptor_set_layout;
 mod device;
-mod graphic_pipeline;
+mod graphic;
 mod image;
 mod instance;
 mod physical_device;
-mod ray_trace_pipeline;
+mod ray_trace;
 mod render_pass;
 mod shader;
 mod surface;
@@ -16,16 +17,21 @@ mod swapchain;
 
 pub use {
     self::{
-        buf::{Buffer, BufferInfo, BufferInfoBuilder, BufferSubresource},
+        accel_struct::{
+            AccelerationStructure, AccelerationStructureGeometry,
+            AccelerationStructureGeometryData, AccelerationStructureGeometryInfo,
+            AccelerationStructureInfo, AccelerationStructureInfoBuilder, DeviceOrHostAddress,
+        },
+        buffer::{Buffer, BufferInfo, BufferInfoBuilder, BufferSubresource},
         cmd_buf::CommandBuffer,
-        compute_pipeline::{ComputePipeline, ComputePipelineInfo, ComputePipelineInfoBuilder},
+        compute::{ComputePipeline, ComputePipelineInfo, ComputePipelineInfoBuilder},
         descriptor_set::{
             DescriptorPool, DescriptorPoolInfo, DescriptorPoolInfoBuilder, DescriptorPoolSize,
             DescriptorSet,
         },
         descriptor_set_layout::DescriptorSetLayout,
         device::{Device, FeatureFlags},
-        graphic_pipeline::{
+        graphic::{
             BlendMode, DepthStencilMode, GraphicPipeline, GraphicPipelineInfo,
             GraphicPipelineInfoBuilder, StencilMode, VertexInputState,
         },
@@ -35,9 +41,9 @@ pub use {
         },
         instance::Instance,
         physical_device::{PhysicalDevice, QueueFamily, QueueFamilyProperties},
-        ray_trace_pipeline::{
-            RayTraceAcceleration, RayTraceAccelerationScratchBuffer, RayTraceInstanceInfo,
-            RayTracePipeline, RayTracePipelineInfo, RayTraceTopAccelerationInfo,
+        ray_trace::{
+            RayTracePipeline, RayTracePipelineInfo, RayTracePipelineInfoBuilder,
+            RayTraceShaderGroup,
         },
         render_pass::{
             AttachmentInfo, AttachmentInfoBuilder, AttachmentRef, FramebufferKey,
@@ -533,17 +539,10 @@ impl DriverConfig {
     }
 
     fn features(self) -> FeatureFlags {
-        let mut res = FeatureFlags::PRESENTATION;
-
-        // if self.dlss {
-        //     res |= FeatureFlags::DLSS;
-        // }
-
-        if self.ray_tracing {
-            res |= FeatureFlags::RAY_TRACING;
+        FeatureFlags {
+            presentation: true,
+            ray_tracing: self.ray_tracing,
         }
-
-        res
     }
 }
 
@@ -562,6 +561,35 @@ impl Display for DriverError {
 }
 
 impl Error for DriverError {}
+
+#[derive(Debug)]
+pub struct PhysicalDeviceRayTracePipelineProperties {
+    pub shader_group_handle_size: u32,
+    pub max_ray_recursion_depth: u32,
+    pub max_shader_group_stride: u32,
+    pub shader_group_base_alignment: u32,
+    pub shader_group_handle_capture_replay_size: u32,
+    pub max_ray_dispatch_invocation_count: u32,
+    pub shader_group_handle_alignment: u32,
+    pub max_ray_hit_attribute_size: u32,
+}
+
+impl From<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>
+    for PhysicalDeviceRayTracePipelineProperties
+{
+    fn from(props: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR) -> Self {
+        Self {
+            shader_group_handle_size: props.shader_group_handle_size,
+            max_ray_recursion_depth: props.max_ray_recursion_depth,
+            max_shader_group_stride: props.max_shader_group_stride,
+            shader_group_base_alignment: props.shader_group_base_alignment,
+            shader_group_handle_capture_replay_size: props.shader_group_handle_capture_replay_size,
+            max_ray_dispatch_invocation_count: props.max_ray_dispatch_invocation_count,
+            shader_group_handle_alignment: props.shader_group_handle_alignment,
+            max_ray_hit_attribute_size: props.max_ray_hit_attribute_size,
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct SamplerDesc {

@@ -1,11 +1,12 @@
 use {
     crate::{
         driver::{
+            AccelerationStructure, AccelerationStructureInfo, AccelerationStructureInfoBuilder,
             Buffer, BufferInfo, BufferInfoBuilder, CommandBuffer, DescriptorPool,
             DescriptorPoolInfo, DescriptorPoolInfoBuilder, Device, DriverError, Image, ImageInfo,
             ImageInfoBuilder, QueueFamily, RenderPass, RenderPassInfo, RenderPassInfoBuilder,
         },
-        graph::{BufferBinding, ImageBinding},
+        graph::{AccelerationStructureBinding, BufferBinding, ImageBinding},
     },
     archery::{SharedPointer, SharedPointerKind},
     log::warn,
@@ -29,6 +30,8 @@ pub struct HashPool<P>
 where
     P: SharedPointerKind,
 {
+    acceleration_structure_binding_cache:
+        HashMap<AccelerationStructureInfo, Cache<AccelerationStructureBinding<P>, P>>,
     buffer_binding_cache: HashMap<BufferInfo, Cache<BufferBinding<P>, P>>,
     command_buffer_cache: HashMap<QueueFamily, Cache<CommandBuffer<P>, P>>,
     descriptor_pool_cache:
@@ -47,6 +50,7 @@ where
         let device = SharedPointer::clone(device);
 
         Self {
+            acceleration_structure_binding_cache: Default::default(),
             buffer_binding_cache: Default::default(),
             command_buffer_cache: Default::default(),
             descriptor_pool_cache: Default::default(),
@@ -307,6 +311,7 @@ macro_rules! lease_info_binding {
     };
 }
 
+lease_info_binding!(AccelerationStructureInfo -> AccelerationStructure);
 lease_info_binding!(BufferInfo -> Buffer);
 lease_info_binding!(ImageInfo -> Image);
 

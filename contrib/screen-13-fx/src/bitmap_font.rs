@@ -166,7 +166,7 @@ where
                 0.0,
             ));
 
-        let vertex_buf_len = text.chars().count() as u64 * 120;
+        let vertex_buf_len = 120 * text.chars().count() as vk::DeviceSize;
         let mut vertex_buf = self
             .cache
             .lease(BufferInfo {

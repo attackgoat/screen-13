@@ -1,10 +1,12 @@
 use {
     super::{
-        BufferLeaseNode, BufferNode, ImageLeaseNode, ImageNode, RayTraceAccelerationLeaseNode,
-        RayTraceAccelerationNode, RenderGraph, SwapchainImageBinding,
+        AccelerationStructureLeaseNode, AccelerationStructureNode, BufferLeaseNode, BufferNode,
+        ImageLeaseNode, ImageNode, RenderGraph, SwapchainImageBinding,
     },
     crate::{
-        driver::{Buffer, BufferInfo, Image, ImageInfo, RayTraceAcceleration},
+        driver::{
+            AccelerationStructure, AccelerationStructureInfo, Buffer, BufferInfo, Image, ImageInfo,
+        },
         Lease,
     },
     archery::{SharedPointer, SharedPointerKind},
@@ -111,12 +113,12 @@ pub enum Binding<P>
 where
     P: SharedPointerKind,
 {
+    AccelerationStructure(AccelerationStructureBinding<P>, bool),
+    AccelerationStructureLease(AccelerationStructureLeaseBinding<P>, bool),
     Buffer(BufferBinding<P>, bool),
     BufferLease(BufferLeaseBinding<P>, bool),
     Image(ImageBinding<P>, bool),
     ImageLease(ImageLeaseBinding<P>, bool),
-    RayTraceAcceleration(RayTraceAccelerationBinding<P>, bool),
-    RayTraceAccelerationLease(RayTraceAccelerationLeaseBinding<P>, bool),
     SwapchainImage(SwapchainImageBinding<P>, bool),
 }
 
@@ -126,14 +128,22 @@ where
 {
     pub(super) fn access_mut(&mut self, access: AccessType) -> AccessType {
         match self {
+            Self::AccelerationStructure(binding, _) => binding.access_mut(access),
+            Self::AccelerationStructureLease(binding, _) => binding.access_mut(access),
             Self::Buffer(binding, _) => binding.access_mut(access),
             Self::BufferLease(binding, _) => binding.access_mut(access),
             Self::Image(binding, _) => binding.access_mut(access),
             Self::ImageLease(binding, _) => binding.access_mut(access),
-            Self::RayTraceAcceleration(binding, _) => binding.access_mut(access),
-            Self::RayTraceAccelerationLease(binding, _) => binding.access_mut(access),
             Self::SwapchainImage(binding, _) => binding.access_mut(access),
         }
+    }
+
+    pub(super) fn as_driver_acceleration_structure(&self) -> Option<&AccelerationStructure<P>> {
+        Some(match self {
+            Self::AccelerationStructure(binding, _) => &binding.item,
+            Self::AccelerationStructureLease(binding, _) => &binding.item,
+            _ => return None,
+        })
     }
 
     pub(super) fn as_driver_buffer(&self) -> Option<&Buffer<P>> {
@@ -164,24 +174,24 @@ where
 
     pub(super) fn is_bound(&self) -> bool {
         match self {
+            Self::AccelerationStructure(_, is_bound) => *is_bound,
+            Self::AccelerationStructureLease(_, is_bound) => *is_bound,
             Self::Buffer(_, is_bound) => *is_bound,
             Self::BufferLease(_, is_bound) => *is_bound,
             Self::Image(_, is_bound) => *is_bound,
             Self::ImageLease(_, is_bound) => *is_bound,
-            Self::RayTraceAcceleration(_, is_bound) => *is_bound,
-            Self::RayTraceAccelerationLease(_, is_bound) => *is_bound,
             Self::SwapchainImage(_, is_bound) => *is_bound,
         }
     }
 
     pub(super) fn unbind(&mut self) {
         *match self {
+            Self::AccelerationStructure(_, is_bound) => is_bound,
+            Self::AccelerationStructureLease(_, is_bound) => is_bound,
             Self::Buffer(_, is_bound) => is_bound,
             Self::BufferLease(_, is_bound) => is_bound,
             Self::Image(_, is_bound) => is_bound,
             Self::ImageLease(_, is_bound) => is_bound,
-            Self::RayTraceAcceleration(_, is_bound) => is_bound,
-            Self::RayTraceAccelerationLease(_, is_bound) => is_bound,
             Self::SwapchainImage(_, is_bound) => is_bound,
         } = false;
     }
@@ -221,6 +231,11 @@ macro_rules! bind {
                     access: AccessType,
                 ) -> AccessType {
                     replace(&mut self.access, access)
+                }
+
+                /// Returns a borrow.
+                pub fn get(&self) -> &$name<P> {
+                    &self.item
                 }
 
                 /// Returns a mutable borrow only if no other clones of this shared item exist.
@@ -299,9 +314,9 @@ macro_rules! bind {
     };
 }
 
+bind!(AccelerationStructure);
 bind!(Image);
 bind!(Buffer);
-bind!(RayTraceAcceleration);
 
 macro_rules! bind_lease {
     ($name:ident) => {
@@ -381,8 +396,6 @@ macro_rules! bind_lease {
             where
                 P: SharedPointerKind,
             {
-                // TODO: Remove lint after ray tracing baked in
-                #[allow(dead_code)]
                 pub(super) fn [<as_ $name:snake _lease>](&self) -> Option<&Lease<[<$name Binding>]<P>, P>> {
                     if let Self::[<$name Lease>](binding, _) = self {
                         Some(&binding.0)
@@ -391,8 +404,6 @@ macro_rules! bind_lease {
                     }
                 }
 
-                // TODO: Remove lint after ray tracing baked in
-                #[allow(dead_code)]
                 pub(super) fn [<as_ $name:snake _lease_mut>](&mut self) -> Option<(&mut Lease<[<$name Binding>]<P>, P>, &mut bool)> {
                     if let Self::[<$name Lease>](ref mut binding, ref mut is_bound) = self {
                         Some((&mut binding.0, is_bound))
@@ -405,9 +416,27 @@ macro_rules! bind_lease {
     }
 }
 
+bind_lease!(AccelerationStructure);
 bind_lease!(Image);
 bind_lease!(Buffer);
-bind_lease!(RayTraceAcceleration);
+
+impl<P> AccelerationStructureBinding<P>
+where
+    P: SharedPointerKind,
+{
+    pub fn info(&self) -> &AccelerationStructureInfo {
+        &self.item.info
+    }
+}
+
+impl<P> BufferLeaseBinding<P>
+where
+    P: SharedPointerKind,
+{
+    pub fn info(&self) -> &BufferInfo {
+        &self.item.info
+    }
+}
 
 impl<P> BufferBinding<P>
 where

@@ -256,7 +256,7 @@ impl Instance {
 
 impl Debug for Instance {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Device")
+        f.write_str("Instance")
     }
 }
 

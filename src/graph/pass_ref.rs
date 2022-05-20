@@ -1,19 +1,21 @@
 use {
     super::{
+        AccelerationStructureLeaseNode, AccelerationStructureNode, AnyAccelerationStructureNode,
         AnyBufferNode, AnyImageNode, Area, AttachmentIndex, Bind, Binding, BufferLeaseNode,
         BufferNode, Color, Descriptor, Edge, Execution, ExecutionFunction, ExecutionPipeline,
-        ImageLeaseNode, ImageNode, Information, Node, NodeIndex, Pass, RayTraceAccelerationNode,
-        RenderGraph, SampleCount, Subresource, SubresourceAccess, SwapchainImageNode, View,
-        ViewType,
+        ImageLeaseNode, ImageNode, Information, Node, NodeIndex, Pass, RenderGraph, SampleCount,
+        Subresource, SubresourceAccess, SwapchainImageNode, View, ViewType,
     },
     crate::driver::{
-        Buffer, ComputePipeline, DepthStencilMode, GraphicPipeline, Image, ImageViewInfo,
-        RayTraceAcceleration, RayTracePipeline,
+        AccelerationStructure, AccelerationStructureGeometryData,
+        AccelerationStructureGeometryInfo, Buffer, ComputePipeline, DepthStencilMode, Device,
+        DeviceOrHostAddress, GraphicPipeline, Image, ImageViewInfo, RayTracePipeline,
     },
     archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     log::trace,
     std::{
+        cell::RefCell,
         marker::PhantomData,
         ops::{Index, Range},
     },
@@ -22,6 +24,154 @@ use {
 
 #[cfg(debug_assertions)]
 use super::Attachment;
+
+pub struct Acceleration<'a, P>
+where
+    P: SharedPointerKind,
+{
+    bindings: Bindings<'a, P>,
+    cmd_buf: vk::CommandBuffer,
+    device: &'a Device<P>,
+}
+
+impl<'a, P> Acceleration<'a, P>
+where
+    P: SharedPointerKind,
+{
+    pub fn build_structure(
+        &self,
+        accel_struct_node: impl Into<AnyAccelerationStructureNode<P>>,
+        scratch_buf_node: impl Into<AnyBufferNode<P>>,
+        build_info: AccelerationStructureGeometryInfo,
+        build_ranges: &[vk::AccelerationStructureBuildRangeInfoKHR],
+    ) {
+        use std::slice::from_ref;
+
+        let accel_struct_node = accel_struct_node.into();
+        let scratch_buf_node = scratch_buf_node.into();
+
+        unsafe {
+            #[derive(Default)]
+            struct Tls {
+                geometries: Vec<vk::AccelerationStructureGeometryKHR>,
+                max_primitive_counts: Vec<u32>,
+            }
+
+            thread_local! {
+                static TLS: RefCell<Tls> = Default::default();
+            }
+
+            TLS.with(|tls| {
+                let mut tls = tls.borrow_mut();
+                tls.geometries.clear();
+                tls.max_primitive_counts.clear();
+
+                for info in build_info.geometries.iter() {
+                    let flags = info.flags;
+
+                    let (geometry_type, geometry) = match &info.geometry {
+                        &AccelerationStructureGeometryData::AABBs { stride } => (
+                            vk::GeometryTypeKHR::AABBS,
+                            vk::AccelerationStructureGeometryDataKHR {
+                                aabbs: vk::AccelerationStructureGeometryAabbsDataKHR {
+                                    stride,
+                                    ..Default::default()
+                                },
+                            },
+                        ),
+                        &AccelerationStructureGeometryData::Instances {
+                            array_of_pointers,
+                            data,
+                        } => (
+                            vk::GeometryTypeKHR::INSTANCES,
+                            vk::AccelerationStructureGeometryDataKHR {
+                                instances: vk::AccelerationStructureGeometryInstancesDataKHR {
+                                    array_of_pointers: array_of_pointers as _,
+                                    data: match data {
+                                        DeviceOrHostAddress::DeviceAddress(device_address) => {
+                                            vk::DeviceOrHostAddressConstKHR { device_address }
+                                        }
+                                        DeviceOrHostAddress::HostAddress => todo!(),
+                                    },
+                                    ..Default::default()
+                                },
+                            },
+                        ),
+                        &AccelerationStructureGeometryData::Triangles {
+                            index_data,
+                            index_type,
+                            max_vertex,
+                            transform_data,
+                            vertex_data,
+                            vertex_format,
+                            vertex_stride,
+                        } => (
+                            vk::GeometryTypeKHR::TRIANGLES,
+                            vk::AccelerationStructureGeometryDataKHR {
+                                triangles: vk::AccelerationStructureGeometryTrianglesDataKHR {
+                                    index_data: match index_data {
+                                        DeviceOrHostAddress::DeviceAddress(device_address) => {
+                                            vk::DeviceOrHostAddressConstKHR { device_address }
+                                        }
+                                        DeviceOrHostAddress::HostAddress => todo!(),
+                                    },
+                                    index_type,
+                                    max_vertex,
+                                    transform_data: match transform_data {
+                                        Some(DeviceOrHostAddress::DeviceAddress(
+                                            device_address,
+                                        )) => vk::DeviceOrHostAddressConstKHR { device_address },
+                                        Some(DeviceOrHostAddress::HostAddress) => todo!(),
+                                        None => {
+                                            vk::DeviceOrHostAddressConstKHR { device_address: 0 }
+                                        }
+                                    },
+                                    vertex_data: match vertex_data {
+                                        DeviceOrHostAddress::DeviceAddress(device_address) => {
+                                            vk::DeviceOrHostAddressConstKHR { device_address }
+                                        }
+                                        DeviceOrHostAddress::HostAddress => todo!(),
+                                    },
+                                    vertex_format,
+                                    vertex_stride,
+                                    ..Default::default()
+                                },
+                            },
+                        ),
+                    };
+
+                    tls.geometries.push(vk::AccelerationStructureGeometryKHR {
+                        flags,
+                        geometry_type,
+                        geometry,
+                        ..Default::default()
+                    });
+                    tls.max_primitive_counts.push(info.max_primitive_count);
+                }
+
+                let info = vk::AccelerationStructureBuildGeometryInfoKHR::builder()
+                    .ty(build_info.ty)
+                    .flags(build_info.flags)
+                    .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
+                    .geometries(&tls.geometries)
+                    .dst_acceleration_structure(*self.bindings[accel_struct_node])
+                    .scratch_data(vk::DeviceOrHostAddressKHR {
+                        device_address: Buffer::device_address(&self.bindings[scratch_buf_node]),
+                    });
+
+                self.device
+                    .accel_struct_ext
+                    .as_ref()
+                    .unwrap()
+                    .cmd_build_acceleration_structures(
+                        self.cmd_buf,
+                        from_ref(&info),
+                        from_ref(&build_ranges),
+                    );
+            });
+        }
+    }
+}
 
 pub trait Access {
     const DEFAULT_READ: AccessType;
@@ -50,7 +200,7 @@ where
 {
     const DEFAULT_READ: AccessType =
         AccessType::RayTracingShaderReadSampledImageOrUniformTexelBuffer;
-    const DEFAULT_WRITE: AccessType = AccessType::Nothing;
+    const DEFAULT_WRITE: AccessType = AccessType::AnyShaderWrite;
 }
 
 macro_rules! bind {
@@ -147,31 +297,34 @@ macro_rules! index {
 
 // Allow indexing the Bindings data during command execution:
 // (This gets you access to the driver images or other resources)
+index!(AccelerationStructure, AccelerationStructure);
+index!(AccelerationStructureLease, AccelerationStructure);
 index!(Buffer, Buffer);
 index!(BufferLease, Buffer);
 index!(Image, Image);
 index!(ImageLease, Image);
-index!(RayTraceAcceleration, RayTraceAcceleration);
 index!(SwapchainImage, Image);
 
-impl<'a, P> Index<AnyImageNode<P>> for Bindings<'a, P>
+impl<'a, P> Index<AnyAccelerationStructureNode<P>> for Bindings<'a, P>
 where
     P: SharedPointerKind,
 {
-    type Output = Image<P>;
+    type Output = AccelerationStructure<P>;
 
-    fn index(&self, node: AnyImageNode<P>) -> &Self::Output {
+    fn index(&self, node: AnyAccelerationStructureNode<P>) -> &Self::Output {
         let node_idx = match node {
-            AnyImageNode::Image(node) => node.idx,
-            AnyImageNode::ImageLease(node) => node.idx,
-            AnyImageNode::SwapchainImage(node) => node.idx,
+            AnyAccelerationStructureNode::AccelerationStructure(node) => node.idx,
+            AnyAccelerationStructureNode::AccelerationStructureLease(node) => node.idx,
         };
         let binding = self.binding_ref(node_idx);
 
         match node {
-            AnyImageNode::Image(_) => &binding.as_image().unwrap().item,
-            AnyImageNode::ImageLease(_) => &binding.as_image_lease().unwrap().item,
-            AnyImageNode::SwapchainImage(_) => &binding.as_swapchain_image().unwrap().item,
+            AnyAccelerationStructureNode::AccelerationStructure(_) => {
+                &binding.as_acceleration_structure().unwrap().item
+            }
+            AnyAccelerationStructureNode::AccelerationStructureLease(_) => {
+                &binding.as_acceleration_structure_lease().unwrap().item
+            }
         }
     }
 }
@@ -196,13 +349,35 @@ where
     }
 }
 
+impl<'a, P> Index<AnyImageNode<P>> for Bindings<'a, P>
+where
+    P: SharedPointerKind,
+{
+    type Output = Image<P>;
+
+    fn index(&self, node: AnyImageNode<P>) -> &Self::Output {
+        let node_idx = match node {
+            AnyImageNode::Image(node) => node.idx,
+            AnyImageNode::ImageLease(node) => node.idx,
+            AnyImageNode::SwapchainImage(node) => node.idx,
+        };
+        let binding = self.binding_ref(node_idx);
+
+        match node {
+            AnyImageNode::Image(_) => &binding.as_image().unwrap().item,
+            AnyImageNode::ImageLease(_) => &binding.as_image_lease().unwrap().item,
+            AnyImageNode::SwapchainImage(_) => &binding.as_swapchain_image().unwrap().item,
+        }
+    }
+}
+
 pub struct Compute<'a, P>
 where
     P: SharedPointerKind,
 {
     bindings: Bindings<'a, P>,
     cmd_buf: vk::CommandBuffer,
-    device: &'a ash::Device,
+    device: &'a Device<P>,
     pipeline: SharedPointer<ComputePipeline<P>, P>,
 }
 
@@ -210,12 +385,7 @@ impl<'a, P> Compute<'a, P>
 where
     P: SharedPointerKind,
 {
-    pub fn dispatch(
-        &mut self,
-        group_count_x: u32,
-        group_count_y: u32,
-        group_count_z: u32,
-    ) -> &mut Self {
+    pub fn dispatch(&self, group_count_x: u32, group_count_y: u32, group_count_z: u32) -> &Self {
         unsafe {
             self.device
                 .cmd_dispatch(self.cmd_buf, group_count_x, group_count_y, group_count_z);
@@ -225,14 +395,14 @@ where
     }
 
     pub fn dispatch_base(
-        &mut self,
+        &self,
         base_group_x: u32,
         base_group_y: u32,
         base_group_z: u32,
         group_count_x: u32,
         group_count_y: u32,
         group_count_z: u32,
-    ) -> &mut Self {
+    ) -> &Self {
         unsafe {
             self.device.cmd_dispatch_base(
                 self.cmd_buf,
@@ -249,10 +419,10 @@ where
     }
 
     pub fn dispatch_indirect(
-        &mut self,
+        &self,
         args_buf: impl Into<AnyBufferNode<P>>,
         args_offset: vk::DeviceSize,
-    ) -> &mut Self {
+    ) -> &Self {
         let args_buf = args_buf.into();
 
         unsafe {
@@ -263,11 +433,11 @@ where
         self
     }
 
-    pub fn push_constants(&mut self, data: &[u8]) -> &mut Self {
+    pub fn push_constants(&self, data: &[u8]) -> &Self {
         self.push_constants_offset(0, data)
     }
 
-    pub fn push_constants_offset(&mut self, offset: u32, data: &[u8]) -> &mut Self {
+    pub fn push_constants_offset(&self, offset: u32, data: &[u8]) -> &Self {
         if let Some(push_const) = &self.pipeline.push_constants {
             // Determine the range of the overall pipline push constants which overlap with `data`
             let push_const_end = push_const.offset + push_const.size;
@@ -304,13 +474,13 @@ where
     P: SharedPointerKind,
 {
     bindings: Bindings<'a, P>,
-    buffers: &'a mut Vec<vk::Buffer>,
+    buffers: &'a RefCell<Vec<vk::Buffer>>,
     cmd_buf: vk::CommandBuffer,
-    device: &'a ash::Device,
-    offsets: &'a mut Vec<vk::DeviceSize>,
+    device: &'a Device<P>,
+    offsets: &'a RefCell<Vec<vk::DeviceSize>>,
     pipeline: SharedPointer<GraphicPipeline<P>, P>,
-    rects: &'a mut Vec<vk::Rect2D>,
-    viewports: &'a mut Vec<vk::Viewport>,
+    rects: &'a RefCell<Vec<vk::Rect2D>>,
+    viewports: &'a RefCell<Vec<vk::Viewport>>,
 }
 
 impl<'a, P> Draw<'a, P>
@@ -318,38 +488,42 @@ where
     P: SharedPointerKind,
 {
     pub fn bind_index_buffer(
-        &mut self,
-        buf: impl Into<AnyBufferNode<P>>,
+        &self,
+        buffer: impl Into<AnyBufferNode<P>>,
         index_ty: vk::IndexType,
-    ) -> &mut Self {
-        self.bind_index_buffer_offset(buf, index_ty, 0)
+    ) -> &Self {
+        self.bind_index_buffer_offset(buffer, index_ty, 0)
     }
 
     pub fn bind_index_buffer_offset(
-        &mut self,
-        buf: impl Into<AnyBufferNode<P>>,
+        &self,
+        buffer: impl Into<AnyBufferNode<P>>,
         index_ty: vk::IndexType,
         offset: vk::DeviceSize,
-    ) -> &mut Self {
-        let buf = buf.into();
+    ) -> &Self {
+        let buffer = buffer.into();
 
         unsafe {
-            self.device
-                .cmd_bind_index_buffer(self.cmd_buf, *self.bindings[buf], offset, index_ty);
+            self.device.cmd_bind_index_buffer(
+                self.cmd_buf,
+                *self.bindings[buffer],
+                offset,
+                index_ty,
+            );
         }
 
         self
     }
 
-    pub fn bind_vertex_buffer(&mut self, buffer: impl Into<AnyBufferNode<P>>) -> &mut Self {
+    pub fn bind_vertex_buffer(&self, buffer: impl Into<AnyBufferNode<P>>) -> &Self {
         self.bind_vertex_buffer_offset(buffer, 0)
     }
 
     pub fn bind_vertex_buffer_offset(
-        &mut self,
+        &self,
         buffer: impl Into<AnyBufferNode<P>>,
         offset: vk::DeviceSize,
-    ) -> &mut Self {
+    ) -> &Self {
         use std::slice::from_ref;
 
         let buffer = buffer.into();
@@ -367,29 +541,32 @@ where
     }
 
     pub fn bind_vertex_buffers<B>(
-        &mut self,
+        &self,
         first_binding: u32,
         buffers: impl IntoIterator<Item = (B, vk::DeviceSize)>,
-    ) -> &mut Self
+    ) -> &Self
     where
         B: Into<AnyBufferNode<P>>,
     {
-        self.buffers.clear();
-        self.offsets.clear();
+        let mut buffers_vec = self.buffers.borrow_mut();
+        buffers_vec.clear();
+
+        let mut offsets_vec = self.offsets.borrow_mut();
+        offsets_vec.clear();
 
         for (buffer, offset) in buffers {
             let buffer = buffer.into();
 
-            self.buffers.push(*self.bindings[buffer]);
-            self.offsets.push(offset);
+            buffers_vec.push(*self.bindings[buffer]);
+            offsets_vec.push(offset);
         }
 
         unsafe {
             self.device.cmd_bind_vertex_buffers(
                 self.cmd_buf,
                 first_binding,
-                self.buffers,
-                self.offsets,
+                buffers_vec.as_slice(),
+                offsets_vec.as_slice(),
             );
         }
 
@@ -397,12 +574,12 @@ where
     }
 
     pub fn draw(
-        &mut self,
+        &self,
         vertex_count: u32,
         instance_count: u32,
         first_vertex: u32,
         first_instance: u32,
-    ) -> &mut Self {
+    ) -> &Self {
         unsafe {
             self.device.cmd_draw(
                 self.cmd_buf,
@@ -417,13 +594,13 @@ where
     }
 
     pub fn draw_indexed(
-        &mut self,
+        &self,
         index_count: u32,
         instance_count: u32,
         first_index: u32,
         vertex_offset: i32,
         first_instance: u32,
-    ) -> &mut Self {
+    ) -> &Self {
         unsafe {
             self.device.cmd_draw_indexed(
                 self.cmd_buf,
@@ -434,16 +611,17 @@ where
                 first_instance,
             );
         }
+
         self
     }
 
     pub fn draw_indexed_indirect(
-        &mut self,
+        &self,
         buffer: impl Into<AnyBufferNode<P>>,
         offset: vk::DeviceSize,
         draw_count: u32,
         stride: u32,
-    ) -> &mut Self {
+    ) -> &Self {
         let buffer = buffer.into();
 
         unsafe {
@@ -455,18 +633,19 @@ where
                 stride,
             );
         }
+
         self
     }
 
     pub fn draw_indexed_indirect_count(
-        &mut self,
+        &self,
         buffer: impl Into<AnyBufferNode<P>>,
         offset: vk::DeviceSize,
         count_buf: impl Into<AnyBufferNode<P>>,
         count_buf_offset: vk::DeviceSize,
         max_draw_count: u32,
         stride: u32,
-    ) -> &mut Self {
+    ) -> &Self {
         let buffer = buffer.into();
         let count_buf = count_buf.into();
 
@@ -481,16 +660,17 @@ where
                 stride,
             );
         }
+
         self
     }
 
     pub fn draw_indirect(
-        &mut self,
+        &self,
         buffer: impl Into<AnyBufferNode<P>>,
         offset: vk::DeviceSize,
         draw_count: u32,
         stride: u32,
-    ) -> &mut Self {
+    ) -> &Self {
         let buffer = buffer.into();
 
         unsafe {
@@ -502,18 +682,19 @@ where
                 stride,
             );
         }
+
         self
     }
 
     pub fn draw_indirect_count(
-        &mut self,
+        &self,
         buffer: impl Into<AnyBufferNode<P>>,
         offset: vk::DeviceSize,
         count_buf: impl Into<AnyBufferNode<P>>,
         count_buf_offset: vk::DeviceSize,
         max_draw_count: u32,
         stride: u32,
-    ) -> &mut Self {
+    ) -> &Self {
         let buffer = buffer.into();
         let count_buf = count_buf.into();
 
@@ -528,14 +709,15 @@ where
                 stride,
             );
         }
+
         self
     }
 
-    pub fn push_constants(&mut self, data: &[u8]) -> &mut Self {
+    pub fn push_constants(&self, data: &[u8]) -> &Self {
         self.push_constants_offset(0, data)
     }
 
-    pub fn push_constants_offset(&mut self, offset: u32, data: &[u8]) -> &mut Self {
+    pub fn push_constants_offset(&self, offset: u32, data: &[u8]) -> &Self {
         for push_const in &self.pipeline.push_constants {
             // Determine the range of the overall pipline push constants which overlap with `data`
             let push_const_end = push_const.offset + push_const.size;
@@ -566,7 +748,7 @@ where
         self
     }
 
-    pub fn set_scissor(&mut self, x: i32, y: i32, width: u32, height: u32) -> &mut Self {
+    pub fn set_scissor(&self, x: i32, y: i32, width: u32, height: u32) -> &Self {
         unsafe {
             self.device.cmd_set_scissor(
                 self.cmd_buf,
@@ -582,35 +764,36 @@ where
     }
 
     pub fn set_scissors<S>(
-        &mut self,
+        &self,
         first_scissor: u32,
         scissors: impl IntoIterator<Item = S>,
-    ) -> &mut Self
+    ) -> &Self
     where
         S: Into<vk::Rect2D>,
     {
-        self.rects.clear();
+        let mut rects_vec = self.rects.borrow_mut();
+        rects_vec.clear();
 
         for scissor in scissors {
-            self.rects.push(scissor.into());
+            rects_vec.push(scissor.into());
         }
 
         unsafe {
             self.device
-                .cmd_set_scissor(self.cmd_buf, first_scissor, self.rects);
+                .cmd_set_scissor(self.cmd_buf, first_scissor, rects_vec.as_slice());
         }
 
         self
     }
 
     pub fn set_viewport(
-        &mut self,
+        &self,
         x: f32,
         y: f32,
         width: f32,
         height: f32,
         depth: Range<f32>,
-    ) -> &mut Self {
+    ) -> &Self {
         unsafe {
             self.device.cmd_set_viewport(
                 self.cmd_buf,
@@ -630,22 +813,23 @@ where
     }
 
     pub fn set_viewports<V>(
-        &mut self,
+        &self,
         first_viewport: u32,
         viewports: impl IntoIterator<Item = V>,
-    ) -> &mut Self
+    ) -> &Self
     where
         V: Into<vk::Viewport>,
     {
-        self.viewports.clear();
+        let mut viewports_vec = self.viewports.borrow_mut();
+        viewports_vec.clear();
 
         for viewport in viewports {
-            self.viewports.push(viewport.into());
+            viewports_vec.push(viewport.into());
         }
 
         unsafe {
             self.device
-                .cmd_set_viewport(self.cmd_buf, first_viewport, self.viewports);
+                .cmd_set_viewport(self.cmd_buf, first_viewport, viewports_vec.as_slice());
         }
 
         self
@@ -746,7 +930,7 @@ where
 
     fn push_execute(
         &mut self,
-        func: impl FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>) + Send + 'static,
+        func: impl FnOnce(&Device<P>, vk::CommandBuffer, Bindings<'_, P>) + Send + 'static,
     ) {
         let pass = self.as_mut();
         let exec = {
@@ -794,9 +978,24 @@ where
         self.access_node(node, access)
     }
 
+    pub fn record_acceleration(
+        mut self,
+        func: impl FnOnce(Acceleration<'_, P>) + Send + 'static,
+    ) -> Self {
+        self.push_execute(move |device, cmd_buf, bindings| {
+            func(Acceleration {
+                bindings,
+                cmd_buf,
+                device,
+            });
+        });
+
+        self
+    }
+
     pub fn record_cmd_buf(
         mut self,
-        func: impl FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>) + Send + 'static,
+        func: impl FnOnce(&Device<P>, vk::CommandBuffer, Bindings<'_, P>) + Send + 'static,
     ) -> Self {
         self.push_execute(func);
         self
@@ -1064,10 +1263,7 @@ impl<'a, P> PipelinePassRef<'a, ComputePipeline<P>, P>
 where
     P: SharedPointerKind + Send + 'static,
 {
-    pub fn record_compute(
-        mut self,
-        func: impl FnOnce(&mut Compute<'_, P>) + Send + 'static,
-    ) -> Self {
+    pub fn record_compute(mut self, func: impl FnOnce(Compute<'_, P>) + Send + 'static) -> Self {
         let pipeline = SharedPointer::clone(
             self.pass
                 .as_ref()
@@ -1081,7 +1277,7 @@ where
         );
 
         self.pass.push_execute(move |device, cmd_buf, bindings| {
-            func(&mut Compute {
+            func(Compute {
                 bindings,
                 cmd_buf,
                 device,
@@ -1438,7 +1634,7 @@ where
     }
 
     /// Append a graphic subpass onto the current pass of the parent render graph.
-    pub fn record_subpass(mut self, func: impl FnOnce(&mut Draw<'_, P>) + Send + 'static) -> Self {
+    pub fn record_subpass(mut self, func: impl FnOnce(Draw<'_, P>) + Send + 'static) -> Self {
         let pipeline = {
             let exec = self.pass.as_ref().execs.last().unwrap();
             let pipeline = exec.pipeline.as_ref().unwrap().unwrap_graphic();
@@ -1455,39 +1651,37 @@ where
         };
 
         self.pass.push_execute(move |device, cmd_buf, bindings| {
-            use std::cell::RefCell;
-
             #[derive(Default)]
             struct Tls {
-                buffers: Vec<vk::Buffer>,
-                offsets: Vec<vk::DeviceSize>,
-                rects: Vec<vk::Rect2D>,
-                viewports: Vec<vk::Viewport>,
+                buffers: RefCell<Vec<vk::Buffer>>,
+                offsets: RefCell<Vec<vk::DeviceSize>>,
+                rects: RefCell<Vec<vk::Rect2D>>,
+                viewports: RefCell<Vec<vk::Viewport>>,
             }
 
             thread_local! {
-                static TLS: RefCell<Tls> = Default::default();
+                static TLS: Tls = Default::default();
             }
 
-            TLS.with(|tls| {
-                let Tls {
-                    buffers,
-                    offsets,
-                    rects,
-                    viewports,
-                } = &mut *tls.borrow_mut();
-
-                func(&mut Draw {
-                    bindings,
-                    buffers,
-                    cmd_buf,
-                    device,
-                    offsets,
-                    pipeline,
-                    rects,
-                    viewports,
-                });
-            });
+            TLS.with(
+                |Tls {
+                     buffers,
+                     offsets,
+                     rects,
+                     viewports,
+                 }| {
+                    func(Draw {
+                        bindings,
+                        buffers,
+                        cmd_buf,
+                        device,
+                        offsets,
+                        pipeline,
+                        rects,
+                        viewports,
+                    });
+                },
+            );
         });
 
         self
@@ -1955,29 +2149,9 @@ impl<'a, P> PipelinePassRef<'a, RayTracePipeline<P>, P>
 where
     P: SharedPointerKind + Send + 'static,
 {
-    pub fn record_ray_trace(
-        mut self,
-        func: impl FnOnce(&mut RayTrace<'_, P>) + Send + 'static,
-    ) -> Self {
-        let pipeline = SharedPointer::clone(
-            self.pass
-                .as_ref()
-                .execs
-                .last()
-                .unwrap()
-                .pipeline
-                .as_ref()
-                .unwrap()
-                .unwrap_ray_trace(),
-        );
-
-        self.pass.push_execute(move |device, cmd_buf, bindings| {
-            func(&mut RayTrace {
-                _bindings: bindings,
-                _cmd_buf: cmd_buf,
-                _device: device,
-                _pipeline: pipeline,
-            });
+    pub fn record_ray_trace(mut self, func: impl FnOnce(RayTrace<'_, P>) + Send + 'static) -> Self {
+        self.pass.push_execute(move |device, cmd_buf, _bindings| {
+            func(RayTrace { cmd_buf, device });
         });
 
         self
@@ -1988,47 +2162,53 @@ pub struct RayTrace<'a, P>
 where
     P: SharedPointerKind,
 {
-    _bindings: Bindings<'a, P>,
-    _cmd_buf: vk::CommandBuffer,
-    _device: &'a ash::Device,
-    _pipeline: SharedPointer<RayTracePipeline<P>, P>,
+    cmd_buf: vk::CommandBuffer,
+    device: &'a Device<P>,
 }
 
 impl<'a, P> RayTrace<'a, P>
 where
     P: SharedPointerKind,
 {
-    pub fn trace_rays(self, _tlas: RayTraceAccelerationNode<P>, _extent: ()) -> Self {
-        // let mut pass = self.pass.as_mut();
-        // let push_consts = take(&mut pass.push_consts);
-        // let pipeline = Shared::clone(pass.pipelines.get(0).unwrap().unwrap_ray_trace());
-        // let layout = pipeline.layout;
+    // TODO: If the rayTraversalPrimitiveCulling or rayQuery features are enabled, the SkipTrianglesKHR and SkipAABBsKHR ray flags can be specified when tracing a ray. SkipTrianglesKHR and SkipAABBsKHR are mutually exclusive.
 
-        // // TODO: Bind op to get a descriptor?
+    #[allow(clippy::too_many_arguments)]
+    pub fn trace_rays(
+        &self,
+        raygen_shader_binding_tables: &vk::StridedDeviceAddressRegionKHR,
+        miss_shader_binding_tables: &vk::StridedDeviceAddressRegionKHR,
+        hit_shader_binding_tables: &vk::StridedDeviceAddressRegionKHR,
+        callable_shader_binding_tables: &vk::StridedDeviceAddressRegionKHR,
+        width: u32,
+        height: u32,
+        depth: u32,
+    ) -> &Self {
+        unsafe {
+            self.device
+                .ray_tracing_pipeline_ext
+                .as_ref()
+                .unwrap()
+                .cmd_trace_rays(
+                    self.cmd_buf,
+                    raygen_shader_binding_tables,
+                    miss_shader_binding_tables,
+                    hit_shader_binding_tables,
+                    callable_shader_binding_tables,
+                    width,
+                    height,
+                    depth,
+                );
+        }
 
-        // self.pass.push_execute(move |cmd_buf, bindings| unsafe {
-        //     push_constants(push_consts, cmd_buf, layout);
-
-        //     cmd_buf.device.ray_trace_pipeline_ext.cmd_trace_rays(
-        //         **cmd_buf,
-        //         &pipeline.shader_bindings.raygen,
-        //         &pipeline.shader_bindings.miss,
-        //         &pipeline.shader_bindings.hit,
-        //         &pipeline.shader_bindings.callable,
-        //         extent.x,
-        //         extent.y,
-        //         extent.z,
-        //     );
-        // });
         self
     }
 
     pub fn trace_rays_indirect(
-        self,
-        _tlas: RayTraceAccelerationNode<P>,
+        &self,
+        // _tlas: RayTraceAccelerationNode<P>,
         _args_buf: BufferNode<P>,
         _args_buf_offset: vk::DeviceSize,
-    ) -> Self {
+    ) -> &Self {
         // let mut pass = self.pass.as_mut();
         // let push_consts = take(&mut pass.push_consts);
         // let pipeline = Shared::clone(pass.pipelines.get(0).unwrap().unwrap_ray_trace());

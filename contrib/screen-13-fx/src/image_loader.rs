@@ -7,6 +7,10 @@ use {
     screen_13::prelude_all::*,
 };
 
+fn align_up_u32(val: u32, atom: u32) -> u32 {
+    (val + atom - 1) & !(atom - 1)
+}
+
 /// Describes the channels and pixel stride of an image format
 #[derive(Clone, Copy, Debug)]
 pub enum ImageFormat {
@@ -162,7 +166,7 @@ where
                 //trace!("{bitmap_width}x{bitmap_height} Stride={bitmap_stride}");
 
                 let pixel_buf_stride = align_up_u32(stride as u32, 12);
-                let pixel_buf_len = (pixel_buf_stride * height) as u64;
+                let pixel_buf_len = (pixel_buf_stride * height) as vk::DeviceSize;
 
                 //trace!("pixel_buf_len={pixel_buf_len} pixel_buf_stride={pixel_buf_stride}");
 

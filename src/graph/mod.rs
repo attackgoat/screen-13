@@ -9,14 +9,14 @@ mod swapchain;
 pub use {
     self::{
         binding::{
-            AnyBufferBinding, AnyImageBinding, Bind, BufferBinding, BufferLeaseBinding,
-            ImageBinding, ImageLeaseBinding, RayTraceAccelerationBinding,
-            RayTraceAccelerationLeaseBinding,
+            AccelerationStructureBinding, AccelerationStructureLeaseBinding, AnyBufferBinding,
+            AnyImageBinding, Bind, BufferBinding, BufferLeaseBinding, ImageBinding,
+            ImageLeaseBinding,
         },
         node::{
-            AnyBufferNode, AnyImageNode, BufferLeaseNode, BufferNode, ImageLeaseNode, ImageNode,
-            RayTraceAccelerationLeaseNode, RayTraceAccelerationNode, SwapchainImageNode, Unbind,
-            View, ViewType,
+            AccelerationStructureLeaseNode, AccelerationStructureNode,
+            AnyAccelerationStructureNode, AnyBufferNode, AnyImageNode, BufferLeaseNode, BufferNode,
+            ImageLeaseNode, ImageNode, SwapchainImageNode, Unbind, View, ViewType,
         },
         pass_ref::{Bindings, Compute, Draw, PassRef, PipelinePassRef, RayTrace},
         resolver::Resolver,
@@ -30,8 +30,8 @@ use {
     crate::driver::{
         buffer_copy_subresources, buffer_image_copy_subresource, format_aspect_mask,
         is_write_access, BufferSubresource, ComputePipeline, DepthStencilMode,
-        DescriptorBindingMap, GraphicPipeline, ImageSubresource, ImageType, PipelineDescriptorInfo,
-        RayTracePipeline, SampleCount,
+        DescriptorBindingMap, Device, GraphicPipeline, ImageSubresource, ImageType,
+        PipelineDescriptorInfo, RayTracePipeline, SampleCount,
     },
     archery::{SharedPointer, SharedPointerKind},
     ash::vk,
@@ -49,7 +49,7 @@ pub type BindingIndex = u32;
 pub type BindingOffset = u32;
 pub type DescriptorSetIndex = u32;
 
-type ExecFn<P> = Box<dyn FnOnce(&ash::Device, vk::CommandBuffer, Bindings<'_, P>) + Send>;
+type ExecFn<P> = Box<dyn FnOnce(&Device<P>, vk::CommandBuffer, Bindings<'_, P>) + Send>;
 type NodeIndex = usize;
 
 #[derive(Clone, Copy, Debug)]
@@ -497,6 +497,10 @@ where
             #[cfg(debug_assertions)]
             debug,
         }
+    }
+
+    pub fn begin_pass(&mut self, name: impl AsRef<str>) -> PassRef<'_, P> {
+        PassRef::new(self, name.as_ref().to_string())
     }
 
     pub fn bind_node<'a, B>(&'a mut self, binding: B) -> <B as Edge<Self>>::Result
@@ -1057,10 +1061,6 @@ where
         node.get(self)
     }
 
-    pub fn begin_pass(&mut self, name: impl AsRef<str>) -> PassRef<'_, P> {
-        PassRef::new(self, name.as_ref().to_string())
-    }
-
     pub fn resolve(mut self) -> Resolver<P> {
         // The final execution of each pass has no function
         for pass in &mut self.passes {
@@ -1109,6 +1109,7 @@ where
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Subresource {
+    AccelerationStructure,
     Image(ImageSubresource),
     Buffer(BufferSubresource),
 }
@@ -1128,6 +1129,12 @@ impl Subresource {
         } else {
             unreachable!();
         }
+    }
+}
+
+impl From<()> for Subresource {
+    fn from(_: ()) -> Self {
+        Self::AccelerationStructure
     }
 }
 

@@ -2,7 +2,7 @@ use {
     super::{
         driver::{
             Buffer, BufferInfo, ComputePipeline, ComputePipelineInfo, GraphicPipeline,
-            GraphicPipelineInfo, Image, ImageInfo, RayTracePipeline, RayTracePipelineInfo, Shader,
+            GraphicPipelineInfo, Image, ImageInfo, Shader,
         },
         graph::ImageBinding,
         EventLoop,
@@ -42,16 +42,5 @@ where
         S: Into<Shader>,
     {
         SharedPointer::new(GraphicPipeline::create(&self.device, info, shaders).unwrap())
-    }
-
-    pub fn new_ray_trace_pipeline<S>(
-        &self,
-        info: impl Into<RayTracePipelineInfo>,
-        shaders: impl IntoIterator<Item = S>,
-    ) -> SharedPointer<RayTracePipeline<P>, P>
-    where
-        S: Into<Shader>,
-    {
-        SharedPointer::new(RayTracePipeline::create(&self.device, info, shaders).unwrap())
     }
 }

@@ -38,8 +38,8 @@ itself is not tied to swapchain access and may be used to execute general comman
 
 Features of the render graph:
 
- - Compute, Graphic, and Ray-trace (WIP) pipelines
- - Automatic Vulkan management (Render passes, subpasses, descriptors, pools, _etc._)
+ - Compute, graphic, and ray-trace pipelines
+ - Automatic Vulkan management (render passes, subpasses, descriptors, pools, _etc._)
  - Automatic render pass scheduling, re-ordering, merging, with resource aliasing
  - Interoperable with exsting Vulkan code
 

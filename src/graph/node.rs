@@ -1,14 +1,62 @@
 use {
     super::{
-        BufferBinding, BufferLeaseBinding, ImageBinding, ImageLeaseBinding, Information, NodeIndex,
-        RayTraceAccelerationBinding, RayTraceAccelerationLeaseBinding, RenderGraph, Subresource,
+        AccelerationStructureBinding, AccelerationStructureLeaseBinding, BufferBinding,
+        BufferLeaseBinding, ImageBinding, ImageLeaseBinding, Information, NodeIndex, RenderGraph,
+        Subresource,
     },
     crate::driver::{
-        vk, BufferInfo, BufferSubresource, ImageInfo, ImageSubresource, ImageViewInfo,
+        vk, AccelerationStructureInfo, BufferInfo, BufferSubresource, ImageInfo, ImageSubresource,
+        ImageViewInfo,
     },
     archery::{SharedPointer, SharedPointerKind},
     std::{marker::PhantomData, ops::Range},
 };
+
+#[derive(Debug)]
+pub enum AnyAccelerationStructureNode<P> {
+    AccelerationStructure(AccelerationStructureNode<P>),
+    AccelerationStructureLease(AccelerationStructureLeaseNode<P>),
+}
+
+impl<P> Clone for AnyAccelerationStructureNode<P> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<P> Copy for AnyAccelerationStructureNode<P> {}
+
+impl<P> Information for AnyAccelerationStructureNode<P> {
+    type Info = AccelerationStructureInfo;
+
+    fn get(self, graph: &RenderGraph<impl SharedPointerKind + Send>) -> Self::Info {
+        match self {
+            Self::AccelerationStructure(node) => node.get(graph),
+            Self::AccelerationStructureLease(node) => node.get(graph),
+        }
+    }
+}
+
+impl<P> From<AccelerationStructureNode<P>> for AnyAccelerationStructureNode<P> {
+    fn from(node: AccelerationStructureNode<P>) -> Self {
+        Self::AccelerationStructure(node)
+    }
+}
+
+impl<P> From<AccelerationStructureLeaseNode<P>> for AnyAccelerationStructureNode<P> {
+    fn from(node: AccelerationStructureLeaseNode<P>) -> Self {
+        Self::AccelerationStructureLease(node)
+    }
+}
+
+impl<P> Node<P> for AnyAccelerationStructureNode<P> {
+    fn index(self) -> NodeIndex {
+        match self {
+            Self::AccelerationStructure(node) => node.index(),
+            Self::AccelerationStructureLease(node) => node.index(),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum AnyBufferNode<P> {
@@ -150,12 +198,12 @@ macro_rules! node {
     };
 }
 
+node!(AccelerationStructure);
+node!(AccelerationStructureLease);
 node!(Buffer);
 node!(BufferLease);
 node!(Image);
 node!(ImageLease);
-node!(RayTraceAcceleration);
-node!(RayTraceAccelerationLease);
 node!(SwapchainImage);
 
 macro_rules! node_unbind {
@@ -188,9 +236,9 @@ macro_rules! node_unbind {
     };
 }
 
+node_unbind!(AccelerationStructure);
 node_unbind!(Buffer);
 node_unbind!(Image);
-node_unbind!(RayTraceAcceleration);
 
 macro_rules! node_unbind_lease {
     ($name:ident) => {
@@ -230,9 +278,9 @@ macro_rules! node_unbind_lease {
     };
 }
 
+node_unbind_lease!(AccelerationStructure);
 node_unbind_lease!(Buffer);
 node_unbind_lease!(Image);
-node_unbind_lease!(RayTraceAcceleration);
 
 pub trait Unbind<Graph, Binding> {
     fn unbind(self, graph: &mut Graph) -> Binding;
@@ -245,6 +293,21 @@ where
 {
     type Information;
     type Subresource;
+}
+
+impl<P> View<P> for AccelerationStructureNode<P> {
+    type Information = ();
+    type Subresource = ();
+}
+
+impl<P> View<P> for AccelerationStructureLeaseNode<P> {
+    type Information = ();
+    type Subresource = ();
+}
+
+impl<P> View<P> for AnyAccelerationStructureNode<P> {
+    type Information = ();
+    type Subresource = ();
 }
 
 impl<P> View<P> for AnyBufferNode<P> {
@@ -283,6 +346,7 @@ impl<P> View<P> for SwapchainImageNode<P> {
 }
 
 pub enum ViewType {
+    AccelerationStructure,
     Image(ImageViewInfo),
     Buffer(Range<vk::DeviceSize>),
 }
@@ -300,6 +364,13 @@ impl ViewType {
             Self::Image(view_info) => Some(view_info),
             _ => None,
         }
+    }
+}
+
+// TODO: Remove this
+impl From<()> for ViewType {
+    fn from(_: ()) -> Self {
+        Self::AccelerationStructure
     }
 }
 

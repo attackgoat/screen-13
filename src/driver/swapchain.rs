@@ -61,8 +61,6 @@ where
     }
 
     pub fn acquire_next_image(&mut self) -> Result<SwapchainImage<P>, SwapchainError> {
-        puffin::profile_function!();
-
         if self.suboptimal {
             self.recreate_swapchain()
                 .map_err(|_| SwapchainError::SurfaceLost)?;
@@ -72,12 +70,16 @@ where
         let acquired = self.acquired_semaphores[self.next_semaphore];
         let rendered = self.rendered_semaphores[self.next_semaphore];
         let image_idx = unsafe {
-            Device::swapchain(&self.device).acquire_next_image(
-                self.swapchain,
-                Duration::from_secs_f32(10.0).as_nanos() as u64,
-                acquired,
-                vk::Fence::null(),
-            )
+            self.device
+                .swapchain_ext
+                .as_ref()
+                .unwrap()
+                .acquire_next_image(
+                    self.swapchain,
+                    Duration::from_secs_f32(10.0).as_nanos() as _,
+                    acquired,
+                    vk::Fence::null(),
+                )
         }
         .map(|(idx, suboptimal)| {
             if suboptimal {
@@ -137,21 +139,29 @@ where
     fn destroy(&self) {
         if self.swapchain != vk::SwapchainKHR::null() {
             unsafe {
-                Device::swapchain(&self.device).destroy_swapchain(self.swapchain, None);
+                self.device
+                    .swapchain_ext
+                    .as_ref()
+                    .unwrap()
+                    .destroy_swapchain(self.swapchain, None);
             }
         }
     }
 
     pub fn present_image(&mut self, image: SwapchainImage<P>) {
-        puffin::profile_function!();
-
         let present_info = vk::PresentInfoKHR::builder()
             .wait_semaphores(slice::from_ref(&image.rendered))
             .swapchains(slice::from_ref(&self.swapchain))
             .image_indices(slice::from_ref(&image.idx));
 
         unsafe {
-            match Device::swapchain(&self.device).queue_present(*self.device.queue, &present_info) {
+            match self
+                .device
+                .swapchain_ext
+                .as_ref()
+                .unwrap()
+                .queue_present(*self.device.queue, &present_info)
+            {
                 Ok(_) => (),
                 Err(err)
                     if err == vk::Result::ERROR_DEVICE_LOST
@@ -178,14 +188,15 @@ where
     fn recreate_swapchain(&mut self) -> Result<(), DriverError> {
         let res = unsafe { self.device.device_wait_idle() };
 
-        if res.is_err() {
-            warn!("device_wait_idle() failed");
+        if let Err(err) = res {
+            warn!("device_wait_idle() failed: {err:?}");
         }
 
         self.destroy();
 
+        let surface_ext = self.device.surface_ext.as_ref().unwrap();
         let surface_capabilities = unsafe {
-            Device::surface(&self.device).get_physical_device_surface_capabilities(
+            surface_ext.get_physical_device_surface_capabilities(
                 *self.device.physical_device,
                 *self.surface,
             )
@@ -237,7 +248,7 @@ where
         };
 
         let present_modes = unsafe {
-            Device::surface(&self.device).get_physical_device_surface_present_modes(
+            surface_ext.get_physical_device_surface_present_modes(
                 *self.device.physical_device,
                 *self.surface,
             )
@@ -283,13 +294,15 @@ where
             .clipped(true)
             .image_array_layers(1)
             .build();
-        let swapchain = unsafe {
-            Device::swapchain(&self.device).create_swapchain(&swapchain_create_info, None)
-        }
-        .unwrap();
+        let swapchain_ext = self.device.swapchain_ext.as_ref().unwrap();
+        let swapchain = unsafe { swapchain_ext.create_swapchain(&swapchain_create_info, None) }
+            .map_err(|err| {
+                warn!("{err}");
 
-        let vk_images =
-            unsafe { Device::swapchain(&self.device).get_swapchain_images(swapchain) }.unwrap();
+                DriverError::Unsupported
+            })?;
+
+        let vk_images = unsafe { swapchain_ext.get_swapchain_images(swapchain) }.unwrap();
         let images: Vec<Option<Image<_>>> = vk_images
             .into_iter()
             .enumerate()

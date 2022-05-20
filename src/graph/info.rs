@@ -1,8 +1,9 @@
 use {
     super::{
-        BufferLeaseNode, BufferNode, ImageLeaseNode, ImageNode, RenderGraph, SwapchainImageNode,
+        AccelerationStructureLeaseNode, AccelerationStructureNode, BufferLeaseNode, BufferNode,
+        ImageLeaseNode, ImageNode, RenderGraph, SwapchainImageNode,
     },
-    crate::driver::{BufferInfo, ImageInfo},
+    crate::driver::{AccelerationStructureInfo, BufferInfo, ImageInfo},
     archery::SharedPointerKind,
 };
 
@@ -26,6 +27,8 @@ macro_rules! information {
     };
 }
 
+information!(acceleration_structure: AccelerationStructureNode -> AccelerationStructureInfo);
+information!(acceleration_structure_lease: AccelerationStructureLeaseNode -> AccelerationStructureInfo);
 information!(buffer: BufferNode -> BufferInfo);
 information!(buffer_lease: BufferLeaseNode -> BufferInfo);
 information!(image: ImageNode -> ImageInfo);

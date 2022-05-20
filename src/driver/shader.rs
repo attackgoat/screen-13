@@ -247,6 +247,27 @@ impl Shader {
             .stage(stage)
     }
 
+    /// Creates a new ray trace shader.
+    ///
+    /// _NOTE:_ May panic if the shader code is invalid.
+    pub fn new_any_hit(spirv: impl ShaderCode) -> ShaderBuilder {
+        Self::new(vk::ShaderStageFlags::ANY_HIT_KHR, spirv)
+    }
+
+    /// Creates a new ray trace shader.
+    ///
+    /// _NOTE:_ May panic if the shader code is invalid.
+    pub fn new_callable(spirv: impl ShaderCode) -> ShaderBuilder {
+        Self::new(vk::ShaderStageFlags::CALLABLE_KHR, spirv)
+    }
+
+    /// Creates a new ray trace shader.
+    ///
+    /// _NOTE:_ May panic if the shader code is invalid.
+    pub fn new_closest_hit(spirv: impl ShaderCode) -> ShaderBuilder {
+        Self::new(vk::ShaderStageFlags::CLOSEST_HIT_KHR, spirv)
+    }
+
     /// Creates a new compute shader.
     ///
     /// _NOTE:_ May panic if the shader code is invalid.
@@ -266,6 +287,27 @@ impl Shader {
     /// _NOTE:_ May panic if the shader code is invalid.
     pub fn new_geometry(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::GEOMETRY, spirv)
+    }
+
+    /// Creates a new ray trace shader.
+    ///
+    /// _NOTE:_ May panic if the shader code is invalid.
+    pub fn new_intersection(spirv: impl ShaderCode) -> ShaderBuilder {
+        Self::new(vk::ShaderStageFlags::INTERSECTION_KHR, spirv)
+    }
+
+    /// Creates a new ray trace shader.
+    ///
+    /// _NOTE:_ May panic if the shader code is invalid.
+    pub fn new_miss(spirv: impl ShaderCode) -> ShaderBuilder {
+        Self::new(vk::ShaderStageFlags::MISS_KHR, spirv)
+    }
+
+    /// Creates a new ray trace shader.
+    ///
+    /// _NOTE:_ May panic if the shader code is invalid.
+    pub fn new_ray_gen(spirv: impl ShaderCode) -> ShaderBuilder {
+        Self::new(vk::ShaderStageFlags::RAYGEN_KHR, spirv)
     }
 
     /// Creates a new tesselation control shader.
@@ -360,9 +402,7 @@ impl Shader {
                 DescriptorType::StorageTexelBuffer(_access_ty) => {
                     DescriptorInfo::StorageTexelBuffer(binding_count)
                 }
-                DescriptorType::UniformBuffer() => {
-                    DescriptorInfo::UniformBufferDynamic(binding_count)
-                }
+                DescriptorType::UniformBuffer() => DescriptorInfo::UniformBuffer(binding_count),
                 DescriptorType::UniformTexelBuffer() => {
                     DescriptorInfo::UniformTexelBuffer(binding_count)
                 }

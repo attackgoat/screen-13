@@ -118,7 +118,9 @@ where
         }
 
         unsafe {
-            Device::wait_for_fence(&self.device, &self.fence).unwrap_or_default();
+            if Device::wait_for_fence(&self.device, &self.fence).is_err() {
+                return;
+            }
 
             self.device
                 .free_command_buffers(self.pool, from_ref(&self.cmd_buf));

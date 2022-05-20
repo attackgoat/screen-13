@@ -1,13 +1,14 @@
 use {
     super::{
-        BufferBinding, BufferLeaseBinding, BufferLeaseNode, BufferNode, ImageBinding,
-        ImageLeaseBinding, ImageLeaseNode, ImageNode, PassRef, PipelinePassRef,
-        RayTraceAccelerationBinding, RayTraceAccelerationLeaseNode, RayTraceAccelerationNode,
-        RenderGraph, Resolver, SwapchainImageBinding, SwapchainImageNode,
+        AccelerationStructureBinding, AccelerationStructureLeaseBinding,
+        AccelerationStructureLeaseNode, AccelerationStructureNode, BufferBinding,
+        BufferLeaseBinding, BufferLeaseNode, BufferNode, ImageBinding, ImageLeaseBinding,
+        ImageLeaseNode, ImageNode, PassRef, PipelinePassRef, RenderGraph, Resolver,
+        SwapchainImageBinding, SwapchainImageNode,
     },
     crate::{
         driver::{
-            Buffer, ComputePipeline, GraphicPipeline, Image, RayTraceAcceleration,
+            AccelerationStructure, Buffer, ComputePipeline, GraphicPipeline, Image,
             RayTracePipeline, SwapchainImage,
         },
         Lease,
@@ -35,24 +36,25 @@ macro_rules! graph_edge {
 
 // Edges that can be bound as nodes to the render graph:
 // Ex: RenderGraph::bind_node(&mut self, binding: X) -> Y
-graph_edge!(Image -> ImageNode);
-graph_edge!(ImageBinding -> ImageNode);
-graph_edge!(ImageLeaseBinding -> ImageLeaseNode);
+graph_edge!(AccelerationStructure -> AccelerationStructureNode);
+graph_edge!(AccelerationStructureBinding -> AccelerationStructureNode);
+graph_edge!(AccelerationStructureLeaseBinding -> AccelerationStructureLeaseNode);
 graph_edge!(Buffer -> BufferNode);
 graph_edge!(BufferBinding -> BufferNode);
 graph_edge!(BufferLeaseBinding -> BufferLeaseNode);
-graph_edge!(RayTraceAcceleration -> RayTraceAccelerationNode);
-graph_edge!(RayTraceAccelerationBinding -> RayTraceAccelerationNode);
+graph_edge!(Image -> ImageNode);
+graph_edge!(ImageBinding -> ImageNode);
+graph_edge!(ImageLeaseBinding -> ImageLeaseNode);
 graph_edge!(SwapchainImage -> SwapchainImageNode);
 graph_edge!(SwapchainImageBinding -> SwapchainImageNode);
 
 // Edges that can be unbound from the render graph:
 // Ex: RenderGraph::unbind_node(&mut self, node: X) -> Y
+graph_edge!(AccelerationStructureNode -> AccelerationStructureBinding);
 graph_edge!(BufferNode -> BufferBinding);
 graph_edge!(BufferLeaseNode -> BufferLeaseBinding);
 graph_edge!(ImageNode -> ImageBinding);
 graph_edge!(ImageLeaseNode -> ImageLeaseBinding);
-graph_edge!(RayTraceAccelerationNode -> RayTraceAccelerationBinding);
 graph_edge!(SwapchainImageNode -> SwapchainImageBinding);
 
 macro_rules! graph_lease_edge {
@@ -66,9 +68,9 @@ macro_rules! graph_lease_edge {
     };
 }
 
-graph_lease_edge!(ImageBinding -> ImageLeaseNode);
+graph_lease_edge!(AccelerationStructure -> AccelerationStructureNode);
 graph_lease_edge!(BufferBinding -> BufferLeaseNode);
-graph_lease_edge!(RayTraceAcceleration -> RayTraceAccelerationLeaseNode);
+graph_lease_edge!(ImageBinding -> ImageLeaseNode);
 
 // Specialized edges for pipelines added to a pass:
 // Ex: PassRef::bind_pipeline(&mut self, pipeline: X) -> PipelinePassRef

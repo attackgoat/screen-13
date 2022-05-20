@@ -16,14 +16,12 @@ description = "An easy-to-use Vulkan rendering engine in the spirit of QBasic."
 archery = "0.4"
 ash = "0.37"
 ash-window = "0.10"
-bitflags = "1.3"
 derive_builder = "0.11"
-gpu-allocator = { git = "https://github.com/Traverse-Research/gpu-allocator.git", branch = "ash-0.37" } # https://github.com/Traverse-Research/gpu-allocator/pull/104
+gpu-allocator = "0.18"
 log = "0.4"
 ordered-float = "3.0"
 parking_lot = "0.12"
 paste = "1.0"
-puffin = "0.13"
 raw-window-handle = "0.4"
 spirq = "0.5"
 vk-sync = { version = "0.4.0", package = "vk-sync-fork" }  # // SEE: https://github.com/gwihlidal/vk-sync-rs/pull/4 -> https://github.com/expenses/vk-sync-rs
@@ -45,4 +43,5 @@ pretty_env_logger = "0.4"
 rand = "0.8"
 screen-13-fx = { path = "contrib/screen-13-fx" }
 screen-13-imgui = { path = "contrib/screen-13-imgui" }
+tobj = "3.2"
 

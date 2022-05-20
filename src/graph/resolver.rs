@@ -4,7 +4,6 @@ use {
         ExecutionPipeline, Node, Pass, RenderGraph, Unbind,
     },
     crate::{
-        align_up_u32,
         driver::{
             format_aspect_mask, image_access_layout, is_read_access, is_write_access,
             pipeline_stage_access_flags, AttachmentInfo, AttachmentRef, CommandBuffer,
@@ -27,6 +26,10 @@ use {
     },
     vk_sync::{cmd::pipeline_barrier, AccessType, BufferBarrier, GlobalBarrier, ImageBarrier},
 };
+
+fn align_up(val: u32, atom: u32) -> u32 {
+    (val + atom - 1) & !(atom - 1)
+}
 
 #[derive(Debug)]
 struct PhysicalPass<P>
@@ -514,7 +517,7 @@ where
                     .map(|(descriptor_ty, descriptor_count)| DescriptorPoolSize {
                         ty: descriptor_ty,
                         // Trivially round up the descriptor counts to increase cache coherence
-                        descriptor_count: align_up_u32(descriptor_count, 1 << 5),
+                        descriptor_count: align_up(descriptor_count, 1 << 5),
                     })
                     .collect(),
             );
@@ -1537,9 +1540,6 @@ where
                                 })),
                             };
                         }
-
-                        // Ray tracing!
-                        todo!();
                     }
 
                     Barrier {
@@ -2165,6 +2165,8 @@ where
 
         #[derive(Default)]
         struct Writes {
+            accel_struct_infos: Vec<vk::WriteDescriptorSetAccelerationStructureKHR>,
+            accel_struct_writes: Vec<IndexWrite>,
             buffer_infos: Vec<vk::DescriptorBufferInfo>,
             buffer_writes: Vec<IndexWrite>,
             descriptors: Vec<vk::WriteDescriptorSet>,
@@ -2175,12 +2177,16 @@ where
         WRITES.with(|writes| {
             // Initialize TLS from a previous call
             let Writes {
+                accel_struct_infos,
+                accel_struct_writes,
                 buffer_infos,
                 buffer_writes,
                 descriptors,
                 image_infos,
                 image_writes,
             } = &mut *writes.borrow_mut();
+            accel_struct_infos.clear();
+            accel_struct_writes.clear();
             buffer_infos.clear();
             buffer_writes.clear();
             descriptors.clear();
@@ -2212,92 +2218,98 @@ where
                     let descriptor_type = descriptor_info.into();
                     let bound_node = &self.graph.bindings[*node_idx];
                     if let Some(image) = bound_node.as_driver_image() {
-                        if let Some(view_info) = view_info {
-                            let mut image_view_info = *view_info.as_image().unwrap();
+                        let view_info = view_info.as_ref().unwrap();
+                        let mut image_view_info = *view_info.as_image().unwrap();
 
-                            // Handle default views which did not specify a particaular aspect
-                            if image_view_info.aspect_mask.is_empty() {
-                                image_view_info.aspect_mask = format_aspect_mask(image.info.fmt);
-                            }
+                        // Handle default views which did not specify a particaular aspect
+                        if image_view_info.aspect_mask.is_empty() {
+                            image_view_info.aspect_mask = format_aspect_mask(image.info.fmt);
+                        }
 
-                            let sampler = descriptor_info.sampler().unwrap_or_default();
-                            let image_view = Image::view_ref(image, image_view_info)?;
-                            let image_layout = match descriptor_type {
-                                vk::DescriptorType::COMBINED_IMAGE_SAMPLER => {
-                                    if image_view_info.aspect_mask.contains(
-                                        vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL,
-                                    ) {
-                                        vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL
-                                    } else if image_view_info
-                                        .aspect_mask
-                                        .contains(vk::ImageAspectFlags::DEPTH)
-                                    {
-                                        vk::ImageLayout::DEPTH_READ_ONLY_OPTIMAL
-                                    } else if image_view_info
-                                        .aspect_mask
-                                        .contains(vk::ImageAspectFlags::STENCIL)
-                                    {
-                                        vk::ImageLayout::STENCIL_READ_ONLY_OPTIMAL
-                                    } else {
-                                        vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
-                                    }
+                        let sampler = descriptor_info.sampler().unwrap_or_default();
+                        let image_view = Image::view_ref(image, image_view_info)?;
+                        let image_layout = match descriptor_type {
+                            vk::DescriptorType::COMBINED_IMAGE_SAMPLER => {
+                                if image_view_info.aspect_mask.contains(
+                                    vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL,
+                                ) {
+                                    vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL
+                                } else if image_view_info
+                                    .aspect_mask
+                                    .contains(vk::ImageAspectFlags::DEPTH)
+                                {
+                                    vk::ImageLayout::DEPTH_READ_ONLY_OPTIMAL
+                                } else if image_view_info
+                                    .aspect_mask
+                                    .contains(vk::ImageAspectFlags::STENCIL)
+                                {
+                                    vk::ImageLayout::STENCIL_READ_ONLY_OPTIMAL
+                                } else {
+                                    vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
                                 }
-                                vk::DescriptorType::STORAGE_IMAGE => vk::ImageLayout::GENERAL,
-                                _ => unimplemented!(),
-                            };
-
-                            if binding_offset == 0 {
-                                image_writes.push(IndexWrite {
-                                    idx: image_infos.len(),
-                                    write: vk::WriteDescriptorSet {
-                                            dst_set: *descriptor_sets[descriptor_set_idx as usize],
-                                            dst_binding,
-                                            descriptor_type,
-                                            descriptor_count,
-                                            ..Default::default()
-                                        },
-                                    }
-                                );
                             }
+                            vk::DescriptorType::STORAGE_IMAGE => vk::ImageLayout::GENERAL,
+                            _ => unimplemented!(),
+                        };
 
-                            image_infos.push(vk::DescriptorImageInfo {
-                                image_layout,
-                                image_view,
-                                sampler,
-                            });
-                        } else {
-                            // Coming very soon!
-                            unimplemented!();
+                        if binding_offset == 0 {
+                            image_writes.push(IndexWrite {
+                                idx: image_infos.len(),
+                                write: vk::WriteDescriptorSet {
+                                        dst_set: *descriptor_sets[descriptor_set_idx as usize],
+                                        dst_binding,
+                                        descriptor_type,
+                                        descriptor_count,
+                                        ..Default::default()
+                                    },
+                                }
+                            );
                         }
+
+                        image_infos.push(vk::DescriptorImageInfo {
+                            image_layout,
+                            image_view,
+                            sampler,
+                        });
                     } else if let Some(buffer) = bound_node.as_driver_buffer() {
-                        if let Some(view_info) = view_info {
-                            let buffer_view_info = view_info.as_buffer().unwrap();
+                        let view_info = view_info.as_ref().unwrap();
+                        let buffer_view_info = view_info.as_buffer().unwrap();
 
-                            if binding_offset == 0 {
-                                buffer_writes.push(IndexWrite {
-                                    idx: buffer_infos.len(),
-                                    write: vk::WriteDescriptorSet {
-                                            dst_set: *descriptor_sets[descriptor_set_idx as usize],
-                                            dst_binding,
-                                            descriptor_type,
-                                            descriptor_count,
-                                            ..Default::default()
-                                        },
-                                    }
-                                );
-                            }
-
-                            buffer_infos.push(vk::DescriptorBufferInfo {
-                                buffer: **buffer,
-                                offset: buffer_view_info.start,
-                                range: buffer_view_info.end - buffer_view_info.start,
-                            });
-                        } else {
-                            // Coming very soon!
-                            unimplemented!();
+                        if binding_offset == 0 {
+                            buffer_writes.push(IndexWrite {
+                                idx: buffer_infos.len(),
+                                write: vk::WriteDescriptorSet {
+                                        dst_set: *descriptor_sets[descriptor_set_idx as usize],
+                                        dst_binding,
+                                        descriptor_type,
+                                        descriptor_count,
+                                        ..Default::default()
+                                    },
+                                }
+                            );
                         }
+
+                        buffer_infos.push(vk::DescriptorBufferInfo {
+                            buffer: **buffer,
+                            offset: buffer_view_info.start,
+                            range: buffer_view_info.end - buffer_view_info.start,
+                        });
+                    } else if let Some(accel_struct) = bound_node.as_driver_acceleration_structure() {
+                        if binding_offset == 0 {
+                            accel_struct_writes.push(IndexWrite {
+                                idx: accel_struct_infos.len(),
+                                write: vk::WriteDescriptorSet {
+                                    dst_set: *descriptor_sets[descriptor_set_idx as usize],
+                                    dst_binding,
+                                    descriptor_type,
+                                    descriptor_count,
+                                    ..Default::default()
+                                },
+                            });
+                        }
+
+                        accel_struct_infos.push(vk::WriteDescriptorSetAccelerationStructureKHR::builder().acceleration_structures(std::slice::from_ref(accel_struct)).build());
                     } else {
-                        // Coming very soon!
                         unimplemented!();
                     }
                 }
@@ -2376,6 +2388,10 @@ where
 
             // NOTE: We assign the below pointers after the above insertions so they remain stable!
 
+            descriptors.extend(accel_struct_writes.drain(..).map(|IndexWrite { idx, mut write }| unsafe {
+                write.p_next = accel_struct_infos.as_ptr().add(idx) as *const _;
+                write
+            }));
             descriptors.extend(buffer_writes.drain(..).map(|IndexWrite { idx, mut write }| unsafe {
                 write.p_buffer_info = buffer_infos.as_ptr().add(idx);
                 write

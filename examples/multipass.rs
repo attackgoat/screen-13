@@ -36,8 +36,8 @@ fn main() -> Result<(), DisplayError> {
     // (Note the event_loop height and width may change, and are provided in the frame context,
     // but we're not using that in this demo so the image won't resize with the window!
     let image_info = image_info_2d(event_loop.width(), event_loop.height());
-    let index_buf_info = index_buffer_info(indices.len() as u64);
-    let vertex_buf_info = vertex_buffer_info(vertices.len() as u64);
+    let index_buf_info = index_buffer_info(indices.len() as vk::DeviceSize);
+    let vertex_buf_info = vertex_buffer_info(vertices.len() as vk::DeviceSize);
 
     // Some colors for readability
     let red = [0xffu8, 0x00, 0x00, 0xff];

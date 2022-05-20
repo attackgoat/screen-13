@@ -34,7 +34,7 @@ let driver = Driver::new(&my_winit_window, DriverConfig {
     desired_swapchain_image_count: 3,
     presentation: true, // require operating system window swapchain support
     ray_tracing: true,  // require KHR ray tracing support
-    sync_display: true, // v-sync
+    sync_display: true, // v-synceE
 });
 let driver = driver.expect("Oh no I don't support debug/presentation/ray_tracing if set!");
 let device: Shared<Device> = driver.device;
@@ -419,8 +419,8 @@ functions:
 Where:
 
 - `node` is any type of buffer or image node
-- `view_info` is an `ImageViewInfo { .. }` for images or `Range<u64>` for buffers
-- `subresource` is an `ImageSubresource { .. }` for images or `Range<u64>` for buffers
+- `view_info` is an `ImageViewInfo { .. }` for images or `Range<vk::DeviceSize>` for buffers
+- `subresource` is an `ImageSubresource { .. }` for images or `Range<vk::DeviceSize>` for buffers
 - `descriptor` is a GLSL or HLSL shader binding point, as described below
 
 These functions work like the `access`, `read`, and `write` functions on `PassRef`/`PipelinePassRef`

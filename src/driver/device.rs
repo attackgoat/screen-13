@@ -1,10 +1,10 @@
 use {
     super::{
-        DriverConfig, DriverError, Instance, PhysicalDevice, QueueFamily, SamplerDesc, Surface,
+        DriverConfig, DriverError, Instance, PhysicalDevice,
+        PhysicalDeviceRayTracePipelineProperties, QueueFamily, SamplerDesc, Surface,
     },
     archery::{SharedPointer, SharedPointerKind},
     ash::{extensions::khr, vk},
-    bitflags::bitflags,
     gpu_allocator::{
         vulkan::{Allocator, AllocatorCreateDesc},
         AllocatorDebugSettings,
@@ -28,12 +28,17 @@ pub struct Device<P>
 where
     P: SharedPointerKind,
 {
+    pub accel_struct_ext: Option<khr::AccelerationStructure>,
     pub(super) allocator: Option<Mutex<Allocator>>,
     device: ash::Device,
     immutable_samplers: HashMap<SamplerDesc, vk::Sampler>,
     pub instance: SharedPointer<Instance, P>, // TODO: Need shared?
     pub physical_device: PhysicalDevice,
     pub queue: Queue,
+    pub ray_tracing_pipeline_ext: Option<khr::RayTracingPipeline>,
+    pub ray_tracing_pipeline_properties: Option<PhysicalDeviceRayTracePipelineProperties>,
+    pub surface_ext: Option<khr::Surface>,
+    pub swapchain_ext: Option<khr::Swapchain>,
 }
 
 impl<P> Device<P>
@@ -75,6 +80,10 @@ where
         cfg: DriverConfig,
     ) -> Result<Self, DriverError> {
         let instance = SharedPointer::clone(instance);
+        let fp_v1_1 = instance.fp_v1_1();
+        let get_physical_device_features2 = fp_v1_1.get_physical_device_features2;
+        let get_physical_device_properties2 = fp_v1_1.get_physical_device_properties2;
+
         let features = cfg.features();
         let device_extension_names = features.extension_names();
 
@@ -139,22 +148,22 @@ where
             vk::PhysicalDeviceImagelessFramebufferFeatures::builder();
         let mut buffer_device_address_features =
             vk::PhysicalDeviceBufferDeviceAddressFeatures::builder();
-        // let mut multi_draw_props = vk::PhysicalDeviceMultiDrawPropertiesEXT::builder();
 
         #[cfg(not(target_os = "macos"))]
         let mut separate_depth_stencil_layouts_features =
             vk::PhysicalDeviceSeparateDepthStencilLayoutsFeatures::builder();
-        // let mut acceleration_struct_features = if features.contains(FeatureFlags::RAY_TRACING) {
-        //     Some(ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default())
-        // } else {
-        //     None
-        // };
 
-        // let mut ray_tracing_pipeline_features = if features.contains(FeatureFlags::RAY_TRACING) {
-        //     Some(ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default())
-        // } else {
-        //     None
-        // };
+        let mut acceleration_struct_features = if features.ray_tracing {
+            Some(ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default())
+        } else {
+            None
+        };
+
+        let mut ray_tracing_pipeline_features = if features.ray_tracing {
+            Some(ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default())
+        } else {
+            None
+        };
 
         unsafe {
             let mut features2 = vk::PhysicalDeviceFeatures2::builder()
@@ -166,33 +175,40 @@ where
                 features2 = features2.push_next(&mut separate_depth_stencil_layouts_features);
             }
 
-            // if features.contains(FeatureFlags::RAY_TRACING) {
-            //     features2 = features2
-            //         .push_next(acceleration_struct_features.as_mut().unwrap())
-            //         .push_next(ray_tracing_pipeline_features.as_mut().unwrap());
-            // }
+            if features.ray_tracing {
+                features2 = features2
+                    .push_next(acceleration_struct_features.as_mut().unwrap())
+                    .push_next(ray_tracing_pipeline_features.as_mut().unwrap());
+            }
 
             let mut features2 = features2.build();
 
-            (instance.fp_v1_1().get_physical_device_features2)(*physical_device, &mut features2);
+            get_physical_device_features2(*physical_device, &mut features2);
 
-            assert_eq!(features2.features.multi_draw_indirect, vk::TRUE);
-            assert_eq!(features2.features.sampler_anisotropy, vk::TRUE);
+            if features2.features.multi_draw_indirect != vk::TRUE {
+                warn!("device does not support multi draw indirect");
 
-            assert_eq!(
-                imageless_framebuffer_features.imageless_framebuffer,
-                vk::TRUE
-            );
-            assert_eq!(
-                buffer_device_address_features.buffer_device_address,
-                vk::TRUE
-            );
+                return Err(DriverError::Unsupported);
+            }
+
+            if features2.features.sampler_anisotropy != vk::TRUE {
+                warn!("device does not support sampler anisotropy");
+
+                return Err(DriverError::Unsupported);
+            }
+
+            if imageless_framebuffer_features.imageless_framebuffer != vk::TRUE {
+                warn!("device does not support imageless framebuffer");
+
+                return Err(DriverError::Unsupported);
+            }
 
             #[cfg(not(target_os = "macos"))]
-            assert_eq!(
-                separate_depth_stencil_layouts_features.separate_depth_stencil_layouts,
-                vk::TRUE
-            );
+            if separate_depth_stencil_layouts_features.separate_depth_stencil_layouts != vk::TRUE {
+                warn!("device does not support separate depth stencil layouts");
+
+                return Err(DriverError::Unsupported);
+            }
 
             // debug!("{:#?}", &features2.features);
             // debug!("{:#?}", &scalar_block);
@@ -226,37 +242,65 @@ where
 
             //assert!(vulkan_memory_model.vulkan_memory_model != 0);
 
-            // if features.contains(FeatureFlags::RAY_TRACING) {
-            //     assert!(
-            //         acceleration_struct_features
-            //             .as_ref()
-            //             .unwrap()
-            //             .acceleration_structure
-            //             != 0
-            //     );
-            //     assert!(
-            //         acceleration_struct_features
-            //             .as_ref()
-            //             .unwrap()
-            //             .descriptor_binding_acceleration_structure_update_after_bind
-            //             != 0
-            //     );
+            if features.ray_tracing {
+                if buffer_device_address_features.buffer_device_address != vk::TRUE {
+                    warn!("device does not support buffer device address");
 
-            //     assert!(
-            //         ray_tracing_pipeline_features
-            //             .as_ref()
-            //             .unwrap()
-            //             .ray_tracing_pipeline
-            //             != 0
-            //     );
-            //     assert!(
-            //         ray_tracing_pipeline_features
-            //             .as_ref()
-            //             .unwrap()
-            //             .ray_tracing_pipeline_trace_rays_indirect
-            //             != 0
-            //     );
-            // }
+                    return Err(DriverError::Unsupported);
+                }
+
+                let acceleration_struct_features = acceleration_struct_features.as_ref().unwrap();
+
+                if acceleration_struct_features.acceleration_structure != vk::TRUE {
+                    warn!("device does not support acceleration structure");
+
+                    return Err(DriverError::Unsupported);
+                }
+
+                if acceleration_struct_features
+                    .descriptor_binding_acceleration_structure_update_after_bind
+                    != vk::TRUE
+                {
+                    warn!("device does not support descriptor binding acceleration structure update after bind");
+
+                    return Err(DriverError::Unsupported);
+                }
+
+                let ray_tracing_pipeline_features = ray_tracing_pipeline_features.as_ref().unwrap();
+
+                if ray_tracing_pipeline_features.ray_tracing_pipeline != vk::TRUE {
+                    warn!("device does not support ray tracing pipeline");
+
+                    return Err(DriverError::Unsupported);
+                }
+
+                if ray_tracing_pipeline_features.ray_tracing_pipeline_trace_rays_indirect
+                    != vk::TRUE
+                {
+                    warn!("device does not support ray tracing pipeline trace rays indirect");
+
+                    return Err(DriverError::Unsupported);
+                }
+            }
+
+            let mut ray_tracing_pipeline_properties =
+                vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
+
+            let mut physical_properties = vk::PhysicalDeviceProperties2::builder();
+
+            if features.ray_tracing {
+                physical_properties =
+                    physical_properties.push_next(&mut ray_tracing_pipeline_properties);
+            }
+
+            let mut physical_properties = physical_properties.build();
+            get_physical_device_properties2(*physical_device, &mut physical_properties);
+
+            let ray_tracing_pipeline_properties = if features.ray_tracing {
+                Some(ray_tracing_pipeline_properties.into())
+            } else {
+                None
+            };
 
             let device_create_info = vk::DeviceCreateInfo::builder()
                 .queue_create_infos(&queue_info)
@@ -293,19 +337,38 @@ where
 
             let immutable_samplers = Self::create_immutable_samplers(&device)?;
 
+            let (surface_ext, swapchain_ext) = if cfg.presentation {
+                (
+                    Some(khr::Surface::new(&instance.entry, &instance)),
+                    Some(khr::Swapchain::new(&instance, &device)),
+                )
+            } else {
+                (None, None)
+            };
+
+            let (accel_struct_ext, ray_tracing_pipeline_ext) = if cfg.ray_tracing {
+                (
+                    Some(khr::AccelerationStructure::new(&instance, &device)),
+                    Some(khr::RayTracingPipeline::new(&instance, &device)),
+                )
+            } else {
+                (None, None)
+            };
+
             Ok(Self {
+                accel_struct_ext,
                 allocator: Some(Mutex::new(allocator)),
                 device,
                 immutable_samplers,
                 instance,
                 physical_device,
                 queue,
+                ray_tracing_pipeline_ext,
+                ray_tracing_pipeline_properties,
+                surface_ext,
+                swapchain_ext,
             })
         }
-    }
-
-    pub fn accel_struct(this: &Self) -> khr::AccelerationStructure {
-        khr::AccelerationStructure::new(&this.instance, &this.device)
     }
 
     fn create_immutable_samplers(
@@ -373,20 +436,14 @@ where
             .unwrap_or_else(|| unimplemented!("{:?}", info))
     }
 
-    pub fn ray_trace_pipeline(this: &Self) -> khr::RayTracingPipeline {
-        khr::RayTracingPipeline::new(&this.instance, &this.device)
-    }
-
-    pub fn surface(this: &Self) -> khr::Surface {
-        khr::Surface::new(&this.instance.entry, &this.instance)
-    }
-
     pub fn surface_formats(
         this: &Self,
         surface: &Surface<impl SharedPointerKind>,
     ) -> Result<Vec<vk::SurfaceFormatKHR>, DriverError> {
         unsafe {
-            Device::surface(this)
+            this.surface_ext
+                .as_ref()
+                .unwrap()
                 .get_physical_device_surface_formats(*this.physical_device, **surface)
                 .map_err(|err| {
                     warn!("{err}");
@@ -394,10 +451,6 @@ where
                     DriverError::Unsupported
                 })
         }
-    }
-
-    pub fn swapchain(this: &Self) -> khr::Swapchain {
-        khr::Swapchain::new(&this.instance, &this.device)
     }
 
     pub fn wait_for_fence(this: &Self, fence: &vk::Fence) -> Result<(), DriverError> {
@@ -430,10 +483,6 @@ where
 
             if elapsed_millis > 0 {
                 warn!("waited for {} ms", elapsed_millis);
-
-                //panic!();
-            } else {
-                trace!("...done")
             }
         }
 
@@ -477,8 +526,8 @@ where
 
         let res = unsafe { self.device.device_wait_idle() };
 
-        if res.is_err() {
-            warn!("device_wait_idle() failed");
+        if let Err(err) = res {
+            warn!("device_wait_idle() failed: {err}");
         }
 
         self.allocator.take().unwrap();
@@ -495,12 +544,9 @@ where
     }
 }
 
-bitflags! {
-    pub struct FeatureFlags: u32 {
-        // const DLSS = 1 << 0;
-        const PRESENTATION = 1 << 1;
-        const RAY_TRACING = 1 << 2;
-    }
+pub struct FeatureFlags {
+    pub presentation: bool,
+    pub ray_tracing: bool,
 }
 
 impl FeatureFlags {
@@ -518,30 +564,16 @@ impl FeatureFlags {
             ]);
         }
 
-        // if self.contains(FeatureFlags::DLSS) {
-        //     device_extension_names_raw.extend(
-        //         [
-        //             b"VK_NVX_binary_import\0" as *const i8,
-        //             b"VK_KHR_push_descriptor\0" as *const i8,
-        //             vk::NvxImageViewHandleFn::name(),
-        //         ]
-        //         .iter(),
-        //     );
-        // }
-
-        if self.contains(FeatureFlags::PRESENTATION) {
+        if self.presentation {
             res.push(khr::Swapchain::name());
         }
 
-        if self.contains(FeatureFlags::RAY_TRACING) {
+        if self.ray_tracing {
             res.extend(
                 [
-                    vk::KhrPipelineLibraryFn::name(),        // rt dep
-                    vk::KhrDeferredHostOperationsFn::name(), // rt dep
-                    vk::KhrBufferDeviceAddressFn::name(),    // rt dep
                     vk::KhrAccelerationStructureFn::name(),
+                    vk::KhrDeferredHostOperationsFn::name(),
                     vk::KhrRayTracingPipelineFn::name(),
-                    //vk::KhrRayQueryFn::name(),
                 ]
                 .iter(),
             );

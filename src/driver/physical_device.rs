@@ -84,7 +84,7 @@ impl PhysicalDevice {
 
     pub fn has_ray_tracing_support(_this: &Self) -> bool {
         // TODO!
-        false
+        true
     }
 
     pub fn queue_families(this: &Self) -> impl Iterator<Item = QueueFamily> + '_ {

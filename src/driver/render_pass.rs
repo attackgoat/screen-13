@@ -363,7 +363,7 @@ where
             .rasterization_samples(pipeline.state.multisample.rasterization_samples.into_vk())
             .sample_shading_enable(pipeline.state.multisample.sample_shading_enable)
             .sample_mask(&pipeline.state.multisample.sample_mask);
-        let mut specializations = vec![];
+        let mut specializations = Vec::with_capacity(pipeline.state.stages.len());
         let stages = pipeline
             .state
             .stages
