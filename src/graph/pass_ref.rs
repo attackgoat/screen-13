@@ -64,6 +64,7 @@ where
             TLS.with(|tls| {
                 let mut tls = tls.borrow_mut();
                 tls.geometries.clear();
+                tls.max_primitive_counts.clear();
 
                 for info in build_info.geometries.iter() {
                     let flags = info.flags;
@@ -120,11 +121,7 @@ where
                                         Some(DeviceOrHostAddress::DeviceAddress(
                                             device_address,
                                         )) => vk::DeviceOrHostAddressConstKHR { device_address },
-                                        Some(DeviceOrHostAddress::HostAddress) => {
-                                            vk::DeviceOrHostAddressConstKHR {
-                                                host_address: std::ptr::null(),
-                                            }
-                                        } // TODO
+                                        Some(DeviceOrHostAddress::HostAddress) => todo!(),
                                         None => {
                                             vk::DeviceOrHostAddressConstKHR { device_address: 0 }
                                         }
@@ -2153,25 +2150,8 @@ where
     P: SharedPointerKind + Send + 'static,
 {
     pub fn record_ray_trace(mut self, func: impl FnOnce(RayTrace<'_, P>) + Send + 'static) -> Self {
-        let pipeline = SharedPointer::clone(
-            self.pass
-                .as_ref()
-                .execs
-                .last()
-                .unwrap()
-                .pipeline
-                .as_ref()
-                .unwrap()
-                .unwrap_ray_trace(),
-        );
-
-        self.pass.push_execute(move |device, cmd_buf, bindings| {
-            func(RayTrace {
-                bindings,
-                cmd_buf,
-                device,
-                _pipeline: pipeline,
-            });
+        self.pass.push_execute(move |device, cmd_buf, _bindings| {
+            func(RayTrace { cmd_buf, device });
         });
 
         self
@@ -2182,10 +2162,8 @@ pub struct RayTrace<'a, P>
 where
     P: SharedPointerKind,
 {
-    bindings: Bindings<'a, P>,
     cmd_buf: vk::CommandBuffer,
     device: &'a Device<P>,
-    _pipeline: SharedPointer<RayTracePipeline<P>, P>,
 }
 
 impl<'a, P> RayTrace<'a, P>

@@ -29,10 +29,9 @@ use {
     self::{binding::Binding, edge::Edge, info::Information, node::Node},
     crate::driver::{
         buffer_copy_subresources, buffer_image_copy_subresource, format_aspect_mask,
-        is_write_access, AccelerationStructureGeometryData, AccelerationStructureGeometryInfo,
-        Buffer, BufferSubresource, ComputePipeline, DepthStencilMode, DescriptorBindingMap, Device,
-        DeviceOrHostAddress, GraphicPipeline, ImageSubresource, ImageType, PipelineDescriptorInfo,
-        RayTracePipeline, SampleCount,
+        is_write_access, BufferSubresource, ComputePipeline, DepthStencilMode,
+        DescriptorBindingMap, Device, GraphicPipeline, ImageSubresource, ImageType,
+        PipelineDescriptorInfo, RayTracePipeline, SampleCount,
     },
     archery::{SharedPointer, SharedPointerKind},
     ash::vk,

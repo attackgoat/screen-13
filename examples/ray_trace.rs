@@ -606,7 +606,7 @@ fn main() -> anyhow::Result<()> {
                 )),
                 index_type: vk::IndexType::UINT32,
                 max_vertex: vertex_count,
-                transform_data: Default::default(),
+                transform_data: None,
                 vertex_data: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(
                     vertex_buf.as_ref().unwrap().get(),
                 )),
@@ -767,7 +767,11 @@ fn main() -> anyhow::Result<()> {
     }
 
     let mut keyboard = KeyBuf::default();
-    let mut position = [0f32, 0.0, 0.0, 1.0];
+    let mut position = [1.72176003f32, 4.24000216, 7.41878128, 1.00000000];
+    let mut right = [0.999987483f32, 0.00000000, -0.00499906437, 1.00000000];
+    let mut up = [0f32, 1.0, 0.0, 1.0];
+    let mut forward = [-0.00499906437f32, 0.00000000, -0.999987483, 1.00000000];
+
     let mut frame_count = 0;
 
     event_loop.run(|frame| {
@@ -819,9 +823,9 @@ fn main() -> anyhow::Result<()> {
                 std::slice::from_raw_parts(
                     &Camera {
                         position,
-                        right: [1f32, 0.0, 0.0, 1.0],
-                        up: [0f32, 1.0, 0.0, 1.0],
-                        forward: [0f32, 0.0, 1.0, 1.0],
+                        right,
+                        up,
+                        forward,
                         frame_count,
                     } as *const Camera as *const u8,
                     size_of::<Camera>(),
