@@ -7,8 +7,9 @@ use {
         Subresource, SubresourceAccess, SwapchainImageNode, View, ViewType,
     },
     crate::driver::{
-        AccelerationStructure, Buffer, ComputePipeline, DepthStencilMode, Device, GraphicPipeline,
-        Image, ImageViewInfo, RayTracePipeline,
+        AccelerationStructure, AccelerationStructureGeometryData,
+        AccelerationStructureGeometryInfo, Buffer, ComputePipeline, DepthStencilMode, Device,
+        DeviceOrHostAddress, GraphicPipeline, Image, ImageViewInfo, RayTracePipeline,
     },
     archery::{SharedPointer, SharedPointerKind},
     ash::vk,
@@ -23,6 +24,157 @@ use {
 
 #[cfg(debug_assertions)]
 use super::Attachment;
+
+pub struct Acceleration<'a, P>
+where
+    P: SharedPointerKind,
+{
+    bindings: Bindings<'a, P>,
+    cmd_buf: vk::CommandBuffer,
+    device: &'a Device<P>,
+}
+
+impl<'a, P> Acceleration<'a, P>
+where
+    P: SharedPointerKind,
+{
+    pub fn build_structure(
+        &self,
+        accel_struct_node: impl Into<AnyAccelerationStructureNode<P>>,
+        scratch_buf_node: impl Into<AnyBufferNode<P>>,
+        build_info: AccelerationStructureGeometryInfo,
+        build_ranges: &[vk::AccelerationStructureBuildRangeInfoKHR],
+    ) {
+        use std::slice::from_ref;
+
+        let accel_struct_node = accel_struct_node.into();
+        let scratch_buf_node = scratch_buf_node.into();
+
+        unsafe {
+            #[derive(Default)]
+            struct Tls {
+                geometries: Vec<vk::AccelerationStructureGeometryKHR>,
+                max_primitive_counts: Vec<u32>,
+            }
+
+            thread_local! {
+                static TLS: RefCell<Tls> = Default::default();
+            }
+
+            TLS.with(|tls| {
+                let mut tls = tls.borrow_mut();
+                tls.geometries.clear();
+
+                for info in build_info.geometries.iter() {
+                    let flags = info.flags;
+
+                    let (geometry_type, geometry) = match &info.geometry {
+                        &AccelerationStructureGeometryData::AABBs { stride } => (
+                            vk::GeometryTypeKHR::AABBS,
+                            vk::AccelerationStructureGeometryDataKHR {
+                                aabbs: vk::AccelerationStructureGeometryAabbsDataKHR {
+                                    stride,
+                                    ..Default::default()
+                                },
+                            },
+                        ),
+                        &AccelerationStructureGeometryData::Instances {
+                            array_of_pointers,
+                            data,
+                        } => (
+                            vk::GeometryTypeKHR::INSTANCES,
+                            vk::AccelerationStructureGeometryDataKHR {
+                                instances: vk::AccelerationStructureGeometryInstancesDataKHR {
+                                    array_of_pointers: array_of_pointers as _,
+                                    data: match data {
+                                        DeviceOrHostAddress::DeviceAddress(device_address) => {
+                                            vk::DeviceOrHostAddressConstKHR { device_address }
+                                        }
+                                        DeviceOrHostAddress::HostAddress => todo!(),
+                                    },
+                                    ..Default::default()
+                                },
+                            },
+                        ),
+                        &AccelerationStructureGeometryData::Triangles {
+                            index_data,
+                            index_type,
+                            max_vertex,
+                            transform_data,
+                            vertex_data,
+                            vertex_format,
+                            vertex_stride,
+                        } => (
+                            vk::GeometryTypeKHR::TRIANGLES,
+                            vk::AccelerationStructureGeometryDataKHR {
+                                triangles: vk::AccelerationStructureGeometryTrianglesDataKHR {
+                                    index_data: match index_data {
+                                        DeviceOrHostAddress::DeviceAddress(device_address) => {
+                                            vk::DeviceOrHostAddressConstKHR { device_address }
+                                        }
+                                        DeviceOrHostAddress::HostAddress => todo!(),
+                                    },
+                                    index_type,
+                                    max_vertex,
+                                    transform_data: match transform_data {
+                                        Some(DeviceOrHostAddress::DeviceAddress(
+                                            device_address,
+                                        )) => vk::DeviceOrHostAddressConstKHR { device_address },
+                                        Some(DeviceOrHostAddress::HostAddress) => {
+                                            vk::DeviceOrHostAddressConstKHR {
+                                                host_address: std::ptr::null(),
+                                            }
+                                        } // TODO
+                                        None => {
+                                            vk::DeviceOrHostAddressConstKHR { device_address: 0 }
+                                        }
+                                    },
+                                    vertex_data: match vertex_data {
+                                        DeviceOrHostAddress::DeviceAddress(device_address) => {
+                                            vk::DeviceOrHostAddressConstKHR { device_address }
+                                        }
+                                        DeviceOrHostAddress::HostAddress => todo!(),
+                                    },
+                                    vertex_format,
+                                    vertex_stride,
+                                    ..Default::default()
+                                },
+                            },
+                        ),
+                    };
+
+                    tls.geometries.push(vk::AccelerationStructureGeometryKHR {
+                        flags,
+                        geometry_type,
+                        geometry,
+                        ..Default::default()
+                    });
+                    tls.max_primitive_counts.push(info.max_primitive_count);
+                }
+
+                let info = vk::AccelerationStructureBuildGeometryInfoKHR::builder()
+                    .ty(build_info.ty)
+                    .flags(build_info.flags)
+                    .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
+                    .geometries(&tls.geometries)
+                    .dst_acceleration_structure(*self.bindings[accel_struct_node])
+                    .scratch_data(vk::DeviceOrHostAddressKHR {
+                        device_address: Buffer::device_address(&self.bindings[scratch_buf_node]),
+                    });
+
+                self.device
+                    .accel_struct_ext
+                    .as_ref()
+                    .unwrap()
+                    .cmd_build_acceleration_structures(
+                        self.cmd_buf,
+                        from_ref(&info),
+                        from_ref(&build_ranges),
+                    );
+            });
+        }
+    }
+}
 
 pub trait Access {
     const DEFAULT_READ: AccessType;
@@ -827,6 +979,21 @@ where
     pub fn read_node(self, node: impl Node<P> + Information) -> Self {
         let access = AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer;
         self.access_node(node, access)
+    }
+
+    pub fn record_acceleration(
+        mut self,
+        func: impl FnOnce(Acceleration<'_, P>) + Send + 'static,
+    ) -> Self {
+        self.push_execute(move |device, cmd_buf, bindings| {
+            func(Acceleration {
+                bindings,
+                cmd_buf,
+                device,
+            });
+        });
+
+        self
     }
 
     pub fn record_cmd_buf(
@@ -2000,7 +2167,7 @@ where
 
         self.pass.push_execute(move |device, cmd_buf, bindings| {
             func(RayTrace {
-                _bindings: bindings,
+                bindings,
                 cmd_buf,
                 device,
                 _pipeline: pipeline,
@@ -2015,7 +2182,7 @@ pub struct RayTrace<'a, P>
 where
     P: SharedPointerKind,
 {
-    _bindings: Bindings<'a, P>,
+    bindings: Bindings<'a, P>,
     cmd_buf: vk::CommandBuffer,
     device: &'a Device<P>,
     _pipeline: SharedPointer<RayTracePipeline<P>, P>,
@@ -2025,26 +2192,6 @@ impl<'a, P> RayTrace<'a, P>
 where
     P: SharedPointerKind,
 {
-    pub fn build_acceleration_structure(
-        &self,
-        infos: &vk::AccelerationStructureBuildGeometryInfoKHR,
-        build_range_infos: &[vk::AccelerationStructureBuildRangeInfoKHR],
-    ) {
-        use std::slice::from_ref;
-
-        unsafe {
-            self.device
-                .accel_struct_ext
-                .as_ref()
-                .unwrap()
-                .cmd_build_acceleration_structures(
-                    self.cmd_buf,
-                    from_ref(infos),
-                    from_ref(&build_range_infos),
-                )
-        };
-    }
-
     // TODO: If the rayTraversalPrimitiveCulling or rayQuery features are enabled, the SkipTrianglesKHR and SkipAABBsKHR ray flags can be specified when tracing a ray. SkipTrianglesKHR and SkipAABBsKHR are mutually exclusive.
 
     #[allow(clippy::too_many_arguments)]

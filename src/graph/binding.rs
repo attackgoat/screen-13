@@ -138,6 +138,14 @@ where
         }
     }
 
+    pub(super) fn as_driver_acceleration_structure(&self) -> Option<&AccelerationStructure<P>> {
+        Some(match self {
+            Self::AccelerationStructure(binding, _) => &binding.item,
+            Self::AccelerationStructureLease(binding, _) => &binding.item,
+            _ => return None,
+        })
+    }
+
     pub(super) fn as_driver_buffer(&self) -> Option<&Buffer<P>> {
         Some(match self {
             Self::Buffer(binding, _) => &binding.item,

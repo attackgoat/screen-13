@@ -92,6 +92,7 @@ where
                     Ok((shader_module, info.entry_name.clone()))
                 };
 
+            let mut specializations = Vec::with_capacity(shaders.len());
             let mut shader_modules = Vec::with_capacity(shaders.len());
             for shader in &shaders {
                 let res = create_shader_module(shader);
@@ -107,13 +108,22 @@ where
                 entry_points.push(CString::new(entry_point).unwrap());
                 shader_modules.push(module);
 
-                shader_stages.push(
-                    vk::PipelineShaderStageCreateInfo::builder()
-                        .module(module)
-                        .name(entry_points.last().unwrap().as_ref())
-                        .stage(shader.stage)
-                        .build(),
-                );
+                let mut stage = vk::PipelineShaderStageCreateInfo::builder()
+                    .module(module)
+                    .name(entry_points.last().unwrap().as_ref())
+                    .stage(shader.stage);
+
+                if let Some(spec_info) = &shader.specialization_info {
+                    specializations.push(
+                        vk::SpecializationInfo::builder()
+                            .data(&spec_info.data)
+                            .map_entries(&spec_info.map_entries)
+                            .build(),
+                    );
+                    stage = stage.specialization_info(specializations.last().unwrap());
+                }
+
+                shader_stages.push(stage.build());
             }
 
             let pipeline = device
@@ -241,8 +251,8 @@ impl RayTraceShaderGroup {
         ty: RayTraceShaderGroupType,
         general_shader: impl Into<Option<u32>>,
         intersection_shader: impl Into<Option<u32>>,
-        any_hit_shader: impl Into<Option<u32>>,
         closest_hit_shader: impl Into<Option<u32>>,
+        any_hit_shader: impl Into<Option<u32>>,
     ) -> Self {
         let any_hit_shader = any_hit_shader.into();
         let closest_hit_shader = closest_hit_shader.into();
@@ -269,30 +279,26 @@ impl RayTraceShaderGroup {
     }
 
     pub fn new_procedural(
-        intersection_shader: impl Into<Option<u32>>,
-        any_hit_shader: impl Into<Option<u32>>,
+        intersection_shader: u32,
         closest_hit_shader: impl Into<Option<u32>>,
+        any_hit_shader: impl Into<Option<u32>>,
     ) -> Self {
         Self::new(
             RayTraceShaderGroupType::ProceduralHitGroup,
             None,
             intersection_shader,
-            any_hit_shader,
             closest_hit_shader,
+            any_hit_shader,
         )
     }
 
-    pub fn new_triangles(
-        intersection_shader: impl Into<Option<u32>>,
-        any_hit_shader: impl Into<Option<u32>>,
-        closest_hit_shader: impl Into<Option<u32>>,
-    ) -> Self {
+    pub fn new_triangles(closest_hit_shader: u32, any_hit_shader: impl Into<Option<u32>>) -> Self {
         Self::new(
             RayTraceShaderGroupType::TrianglesHitGroup,
             None,
-            intersection_shader,
-            any_hit_shader,
+            None,
             closest_hit_shader,
+            any_hit_shader,
         )
     }
 }

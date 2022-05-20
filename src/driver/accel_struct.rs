@@ -113,7 +113,9 @@ where
                             },
                         },
                     ),
-                    &AccelerationStructureGeometryData::Instances { array_of_pointers } => (
+                    &AccelerationStructureGeometryData::Instances {
+                        array_of_pointers, ..
+                    } => (
                         vk::GeometryTypeKHR::INSTANCES,
                         vk::AccelerationStructureGeometryDataKHR {
                             instances: vk::AccelerationStructureGeometryInstancesDataKHR {
@@ -128,6 +130,7 @@ where
                         transform_data,
                         vertex_format,
                         vertex_stride,
+                        ..
                     } => (
                         vk::GeometryTypeKHR::TRIANGLES,
                         vk::AccelerationStructureGeometryDataKHR {
@@ -159,7 +162,7 @@ where
                     geometry,
                     ..Default::default()
                 });
-                tls.max_primitive_counts.push(info.count);
+                tls.max_primitive_counts.push(info.max_primitive_count);
             }
 
             let info = vk::AccelerationStructureBuildGeometryInfoKHR::builder()
@@ -219,7 +222,7 @@ where
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct AccelerationStructureGeometry {
-    pub count: u32,
+    pub max_primitive_count: u32,
     pub flags: vk::GeometryFlagsKHR,
     pub geometry: AccelerationStructureGeometryData,
 }
@@ -238,11 +241,14 @@ pub enum AccelerationStructureGeometryData {
     },
     Instances {
         array_of_pointers: bool,
+        data: DeviceOrHostAddress,
     },
     Triangles {
+        index_data: DeviceOrHostAddress,
         index_type: vk::IndexType,
         max_vertex: u32,
-        transform_data: Option<DeviceOrHostAddress>, // could be a bool during size call
+        transform_data: Option<DeviceOrHostAddress>,
+        vertex_data: DeviceOrHostAddress,
         vertex_format: vk::Format,
         vertex_stride: vk::DeviceSize,
     },
@@ -283,4 +289,10 @@ pub struct AccelerationStructureSize {
 pub enum DeviceOrHostAddress {
     DeviceAddress(vk::DeviceAddress),
     HostAddress, // TODO
+}
+
+impl From<vk::DeviceAddress> for DeviceOrHostAddress {
+    fn from(device_addr: vk::DeviceAddress) -> Self {
+        Self::DeviceAddress(device_addr)
+    }
 }

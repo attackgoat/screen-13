@@ -3,7 +3,7 @@ use {
     inline_spirv::inline_spirv,
     screen_13::prelude_arc::*,
     std::{io::BufReader, mem::size_of},
-    tobj::{load_mtl_buf, load_obj_buf, LoadOptions},
+    tobj::{load_mtl_buf, load_obj_buf, GPU_LOAD_OPTIONS},
 };
 
 static SHADER_RAY_GEN: &[u32] = inline_spirv!(
@@ -130,10 +130,10 @@ static SHADER_CLOSEST_HIT: &[u32] = inline_spirv!(
         float data[];
     } vertexBuffer;
 
-    layout(binding = 0, set = 1) buffer MaterialIndexBuffer {
+    layout(binding = 5, set = 0) buffer MaterialIndexBuffer {
         uint data[];
     } materialIndexBuffer;
-    layout(binding = 1, set = 1) buffer MaterialBuffer {
+    layout(binding = 6, set = 0) buffer MaterialBuffer {
         Material data[];
     } materialBuffer;
 
@@ -189,7 +189,7 @@ static SHADER_CLOSEST_HIT: &[u32] = inline_spirv!(
             materialBuffer.data[materialIndexBuffer.data[gl_PrimitiveID]].diffuse;
 
         // 40 & 41 == light
-        if (gl_PrimitiveID == 40 || gl_PrimitiveID == 41) {
+        if (true || gl_PrimitiveID == 40 || gl_PrimitiveID == 41) {
             if (payload.rayDepth == 0) {
                 payload.directColor =
                     materialBuffer.data[materialIndexBuffer.data[gl_PrimitiveID]].emission;
@@ -323,6 +323,10 @@ static SHADER_SHADOW_MISS: &[u32] = inline_spirv!(
 )
 .as_slice();
 
+fn align_up(val: u32, atom: u32) -> u32 {
+    (val + atom - 1) & !(atom - 1)
+}
+
 fn create_ray_trace_pipeline(
     device: &Shared<Device>,
 ) -> Result<Shared<RayTracePipeline>, DriverError> {
@@ -330,14 +334,14 @@ fn create_ray_trace_pipeline(
         device,
         RayTracePipelineInfo::default(),
         [
-            Shader::new_closest_hit(SHADER_CLOSEST_HIT),
             Shader::new_ray_gen(SHADER_RAY_GEN),
+            Shader::new_closest_hit(SHADER_CLOSEST_HIT),
             Shader::new_miss(SHADER_MISS),
             Shader::new_miss(SHADER_SHADOW_MISS),
         ],
         [
-            RayTraceShaderGroup::new_triangles(None, None, 0),
-            RayTraceShaderGroup::new_general(1),
+            RayTraceShaderGroup::new_general(0),
+            RayTraceShaderGroup::new_triangles(1, None),
             RayTraceShaderGroup::new_general(2),
             RayTraceShaderGroup::new_general(3),
         ],
@@ -361,11 +365,7 @@ fn load_scene_buffers(
 
     let (models, materials, ..) = load_obj_buf(
         &mut BufReader::new(include_bytes!("res/cube_scene.obj").as_slice()),
-        &LoadOptions {
-            triangulate: true,
-            single_index: true,
-            ..Default::default()
-        },
+        &GPU_LOAD_OPTIONS,
         |_| {
             load_mtl_buf(&mut BufReader::new(
                 include_bytes!("res/cube_scene.mtl").as_slice(),
@@ -383,11 +383,19 @@ fn load_scene_buffers(
         DriverError::InvalidData
     })?;
 
-    let indices = models
-        .iter()
-        .map(|model| model.mesh.indices.iter().copied())
-        .flatten()
-        .collect::<Box<[_]>>();
+    let mut indices = vec![];
+    let mut positions = vec![];
+    for model in models.iter() {
+        let base_index = positions.len() as u32;
+        for index in model.mesh.indices.iter().copied() {
+            indices.push(index + base_index);
+        }
+
+        for position in model.mesh.positions.iter().copied() {
+            positions.push(position);
+        }
+    }
+
     let index_buf = BufferBinding::new({
         let data = cast_slice(&indices);
         let mut buf = Buffer::create(
@@ -402,13 +410,7 @@ fn load_scene_buffers(
         Buffer::copy_from_slice(&mut buf, 0, data);
         buf
     });
-    let index_count = indices.len() as u32;
 
-    let positions = models
-        .iter()
-        .map(|model| model.mesh.positions.iter().copied())
-        .flatten()
-        .collect::<Box<[_]>>();
     let vertex_buf = BufferBinding::new({
         let data = cast_slice(&positions);
         let mut buf = Buffer::create(
@@ -423,12 +425,11 @@ fn load_scene_buffers(
         Buffer::copy_from_slice(&mut buf, 0, data);
         buf
     });
-    let vertex_count = positions.len() as u32;
 
     let material_id_buf = BufferBinding::new({
         let material_ids = models
             .iter()
-            .map(|model| model.mesh.material_id.unwrap_or_default())
+            .map(|model| model.mesh.material_id.unwrap_or_default() as u32)
             .collect::<Box<[_]>>();
         let data = cast_slice(&material_ids);
         let mut buf = Buffer::create(
@@ -472,34 +473,32 @@ fn load_scene_buffers(
                         material.specular[2],
                         0.0,
                     ],
-                    emission: [1.0, 0.0, 0.0, 0.0],
+                    emission: [1.0, 1.0, 1.0, 1.0],
                 }
             })
             .collect::<Box<[_]>>();
+        let buf_len = size_of::<Material>() * materials.len();
         let mut buf = Buffer::create(
             device,
-            BufferInfo::new_mappable(
-                (size_of::<Material>() * materials.len()) as _,
-                vk::BufferUsageFlags::STORAGE_BUFFER,
-            ),
+            BufferInfo::new_mappable(buf_len as _, vk::BufferUsageFlags::STORAGE_BUFFER),
         )?;
         Buffer::copy_from_slice(&mut buf, 0, unsafe {
-            from_raw_parts(materials.as_ptr() as *const _, size_of::<Material>())
+            from_raw_parts(materials.as_ptr() as *const _, buf_len)
         });
         buf
     });
 
     Ok((
         Some(index_buf),
-        index_count,
+        indices.len() as _,
         Some(vertex_buf),
-        vertex_count,
+        positions.len() as u32 / 3,
         Some(material_id_buf),
         Some(material_buf),
     ))
 }
 
-/// Copied from http://williamlewww.com/showcase_website/vk_khr_ray_tracing_tutorial/index.html
+/// Adapted from http://williamlewww.com/showcase_website/vk_khr_ray_tracing_tutorial/index.html
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
@@ -517,6 +516,7 @@ fn main() -> anyhow::Result<()> {
 
     let &PhysicalDeviceRayTracePipelineProperties {
         shader_group_base_alignment,
+        shader_group_handle_alignment,
         shader_group_handle_size,
         ..
     } = event_loop
@@ -525,12 +525,18 @@ fn main() -> anyhow::Result<()> {
         .as_ref()
         .unwrap();
     let ray_trace_pipeline = create_ray_trace_pipeline(&event_loop.device)?;
-    let sbt_buf = Some(BufferBinding::new({
+
+    let sbt_handle_size = align_up(shader_group_handle_size, shader_group_handle_alignment);
+    let sbt_rgen_size = align_up(sbt_handle_size, shader_group_base_alignment);
+    let sbt_hit_size = align_up(1 * sbt_handle_size, shader_group_base_alignment);
+    let sbt_miss_size = align_up(2 * sbt_handle_size, shader_group_base_alignment);
+    let mut sbt_buf = Some(BufferBinding::new({
         let mut buf = Buffer::create(
             &event_loop.device,
             BufferInfo::new_mappable(
-                4 * shader_group_handle_size as vk::DeviceSize,
-                vk::BufferUsageFlags::UNIFORM_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                (sbt_rgen_size + sbt_hit_size + sbt_miss_size) as _,
+                vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             ),
         )
         .unwrap();
@@ -545,37 +551,46 @@ fn main() -> anyhow::Result<()> {
                     **ray_trace_pipeline,
                     0,
                     4,
-                    buf.info.size as _,
+                    4 * shader_group_handle_size as usize,
                 )
         }?;
+        let handle = |idx: usize| -> &[u8] {
+            let start = idx * shader_group_handle_size as usize;
+            let end = start + shader_group_handle_size as usize;
+            &shader_handle_buf[start..end]
+        };
 
-        let data = Buffer::mapped_slice_mut(&mut buf);
-        for idx in 0..4 {
-            let data_start = idx * shader_group_handle_size as usize;
-            let data_end = data_start + shader_group_handle_size as usize;
-            let buf_start = idx * shader_group_handle_size as usize;
-            let buf_end = buf_start + shader_group_handle_size as usize;
-            data[data_start..data_end].copy_from_slice(&shader_handle_buf[buf_start..buf_end]);
+        let mut data = Buffer::mapped_slice_mut(&mut buf);
+        data.fill(0);
+
+        let rgen_handle = handle(0);
+        data[0..rgen_handle.len()].copy_from_slice(rgen_handle);
+        data = &mut data[sbt_rgen_size as _..];
+
+        // If hit/miss had different strides we would need to iterate each here
+        for idx in 1..4 {
+            let handle = handle(idx);
+            data[0..handle.len()].copy_from_slice(handle);
+            data = &mut data[sbt_handle_size as _..];
         }
 
         buf
     }));
     let sbt_address = Buffer::device_address(sbt_buf.as_ref().unwrap().get());
-    let sbt_size = 4 * shader_group_base_alignment as vk::DeviceSize;
-    let sbt_rchit = vk::StridedDeviceAddressRegionKHR {
-        device_address: sbt_address,
-        stride: shader_group_base_alignment as _,
-        size: sbt_size,
-    };
     let sbt_rgen = vk::StridedDeviceAddressRegionKHR {
-        device_address: sbt_address + shader_group_base_alignment as vk::DeviceAddress,
-        stride: sbt_size,
-        size: sbt_size,
+        device_address: sbt_address,
+        stride: sbt_rgen_size as _,
+        size: sbt_rgen_size as _,
     };
-    let sbt_rmiss = vk::StridedDeviceAddressRegionKHR {
-        device_address: sbt_address + 2 * shader_group_base_alignment as vk::DeviceAddress,
-        stride: shader_group_base_alignment as _,
-        size: 2 * sbt_size,
+    let sbt_hit = vk::StridedDeviceAddressRegionKHR {
+        device_address: sbt_rgen.device_address + sbt_rgen_size as vk::DeviceAddress,
+        stride: sbt_handle_size as _,
+        size: sbt_hit_size as _,
+    };
+    let sbt_miss = vk::StridedDeviceAddressRegionKHR {
+        device_address: sbt_hit.device_address + sbt_hit_size as vk::DeviceAddress,
+        stride: sbt_handle_size as _,
+        size: sbt_miss_size as _,
     };
     let sbt_callable = vk::StridedDeviceAddressRegionKHR::default();
 
@@ -583,14 +598,20 @@ fn main() -> anyhow::Result<()> {
         ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
         flags: vk::BuildAccelerationStructureFlagsKHR::empty(),
         geometries: vec![AccelerationStructureGeometry {
-            count: 1,
+            max_primitive_count: index_count / 3,
             flags: vk::GeometryFlagsKHR::OPAQUE,
             geometry: AccelerationStructureGeometryData::Triangles {
+                index_data: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(
+                    index_buf.as_ref().unwrap().get(),
+                )),
                 index_type: vk::IndexType::UINT32,
                 max_vertex: vertex_count,
                 transform_data: Default::default(),
+                vertex_data: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(
+                    vertex_buf.as_ref().unwrap().get(),
+                )),
                 vertex_format: vk::Format::R32G32B32_SFLOAT,
-                vertex_stride: 24,
+                vertex_stride: 12,
             },
         }],
     };
@@ -604,100 +625,180 @@ fn main() -> anyhow::Result<()> {
             },
         )?,
     ));
+    let blas_device_address = AccelerationStructure::device_address(blas.as_ref().unwrap().get());
 
-    let tlas_geometry_info = AccelerationStructureGeometryInfo {
-        ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
-        flags: vk::BuildAccelerationStructureFlagsKHR::empty(),
-        geometries: vec![AccelerationStructureGeometry {
-            count: 1,
-            flags: vk::GeometryFlagsKHR::OPAQUE,
-            geometry: AccelerationStructureGeometryData::Instances {
-                array_of_pointers: false,
-            },
-        }],
-    };
-    let tlas_size = AccelerationStructure::size_of(&event_loop.device, &tlas_geometry_info);
-    let mut tlas = Some(AccelerationStructureBinding::new({
-        let mut accel_struct = AccelerationStructure::create(
+    let mut instance_buf = Some(BufferBinding::new({
+        let mut buffer = Buffer::create(
             &event_loop.device,
-            AccelerationStructureInfo {
-                ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
-                size: tlas_size.create_size,
-            },
+            BufferInfo::new_mappable(
+                size_of::<vk::AccelerationStructureInstanceKHR>() as _,
+                vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+            ),
         )?;
-        let device_handle = AccelerationStructure::device_address(&accel_struct);
-        Buffer::copy_from_slice(&mut accel_struct.buffer, 0, unsafe {
+        Buffer::copy_from_slice(&mut buffer, 0, unsafe {
             std::slice::from_raw_parts(
                 &vk::AccelerationStructureInstanceKHR {
-                    transform: vk::TransformMatrixKHR { matrix: [0.0; 12] },
+                    transform: vk::TransformMatrixKHR {
+                        matrix: [
+                            1.0, 0.0, 0.0, 0.0, //
+                            0.0, 1.0, 0.0, 0.0, //
+                            0.0, 0.0, 1.0, 0.0, //
+                        ],
+                    },
                     instance_custom_index_and_mask: vk::Packed24_8::new(0, 0xff),
                     instance_shader_binding_table_record_offset_and_flags: vk::Packed24_8::new(
                         0,
                         vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE.as_raw() as _,
                     ),
                     acceleration_structure_reference: vk::AccelerationStructureReferenceKHR {
-                        device_handle,
+                        device_handle: blas_device_address,
                     },
-                } as *const _ as *const _,
+                } as *const vk::AccelerationStructureInstanceKHR as *const u8,
                 size_of::<vk::AccelerationStructureInstanceKHR>(),
             )
         });
 
-        accel_struct
+        buffer
     }));
 
-    let mut render_graph = RenderGraph::new();
+    let tlas_geometry_info = AccelerationStructureGeometryInfo {
+        ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
+        flags: vk::BuildAccelerationStructureFlagsKHR::empty(),
+        geometries: vec![AccelerationStructureGeometry {
+            max_primitive_count: 1,
+            flags: vk::GeometryFlagsKHR::OPAQUE,
+            geometry: AccelerationStructureGeometryData::Instances {
+                array_of_pointers: false,
+                data: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(
+                    instance_buf.as_ref().unwrap().get(),
+                )),
+            },
+        }],
+    };
+    let tlas_size = AccelerationStructure::size_of(&event_loop.device, &tlas_geometry_info);
+    let mut tlas = Some(AccelerationStructureBinding::new(
+        AccelerationStructure::create(
+            &event_loop.device,
+            AccelerationStructureInfo {
+                ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
+                size: tlas_size.create_size,
+            },
+        )?,
+    ));
 
     {
-        let scratch_buf = render_graph.bind_node(Buffer::create(
-            &event_loop.device,
-            BufferInfo::new(
-                blas_size.build_size,
-                vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | vk::BufferUsageFlags::STORAGE_BUFFER,
-            ),
-        )?);
+        let mut render_graph = RenderGraph::new();
+        let index_node = render_graph.bind_node(index_buf.take().unwrap());
+        let vertex_node = render_graph.bind_node(vertex_buf.take().unwrap());
         let blas_node = render_graph.bind_node(blas.take().unwrap());
-        render_graph.build_acceleration_structure(
-            blas_node,
-            scratch_buf,
-            blas_geometry_info,
-            [vk::AccelerationStructureBuildRangeInfoKHR {
-                first_vertex: 0,
-                primitive_count: index_count / 3,
-                primitive_offset: 0,
-                transform_offset: 0,
-            }],
-        );
+
+        {
+            let scratch_buf = render_graph.bind_node(Buffer::create(
+                &event_loop.device,
+                BufferInfo::new(
+                    blas_size.build_size,
+                    vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                        | vk::BufferUsageFlags::STORAGE_BUFFER,
+                ),
+            )?);
+
+            render_graph
+                .begin_pass("Build BLAS")
+                .read_node(index_node)
+                .read_node(vertex_node)
+                .write_node(blas_node)
+                .write_node(scratch_buf)
+                .record_acceleration(move |accel| {
+                    accel.build_structure(
+                        blas_node,
+                        scratch_buf,
+                        blas_geometry_info,
+                        &[vk::AccelerationStructureBuildRangeInfoKHR {
+                            first_vertex: 0,
+                            primitive_count: index_count / 3,
+                            primitive_offset: 0,
+                            transform_offset: 0,
+                        }],
+                    )
+                });
+        }
+
+        {
+            let scratch_buf = render_graph.bind_node(Buffer::create(
+                &event_loop.device,
+                BufferInfo::new(
+                    tlas_size.build_size,
+                    vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                        | vk::BufferUsageFlags::STORAGE_BUFFER,
+                ),
+            )?);
+            let instance_node = render_graph.bind_node(instance_buf.take().unwrap());
+            let tlas_node = render_graph.bind_node(tlas.take().unwrap());
+
+            render_graph
+                .begin_pass("Build TLAS")
+                .read_node(blas_node)
+                .read_node(instance_node)
+                .write_node(scratch_buf)
+                .write_node(tlas_node)
+                .record_acceleration(move |accel| {
+                    accel.build_structure(
+                        tlas_node,
+                        scratch_buf,
+                        tlas_geometry_info,
+                        &[vk::AccelerationStructureBuildRangeInfoKHR {
+                            first_vertex: 0,
+                            primitive_count: 1,
+                            primitive_offset: 0,
+                            transform_offset: 0,
+                        }],
+                    );
+                });
+
+            //instance_buf = Some(render_graph.unbind_node(instance_node));
+            tlas = Some(render_graph.unbind_node(tlas_node));
+        }
+
         blas = Some(render_graph.unbind_node(blas_node));
+        index_buf = Some(render_graph.unbind_node(index_node));
+        vertex_buf = Some(render_graph.unbind_node(vertex_node));
+        render_graph.resolve().submit(&mut cache)?;
     }
 
-    {
-        let scratch_buf = render_graph.bind_node(Buffer::create(
-            &event_loop.device,
-            BufferInfo::new(
-                tlas_size.build_size,
-                vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | vk::BufferUsageFlags::STORAGE_BUFFER,
-            ),
-        )?);
-        let tlas_node = render_graph.bind_node(tlas.take().unwrap());
-        render_graph.build_acceleration_structure(
-            tlas_node,
-            scratch_buf,
-            tlas_geometry_info,
-            [vk::AccelerationStructureBuildRangeInfoKHR {
-                first_vertex: 0,
-                primitive_count: 1,
-                primitive_offset: 0,
-                transform_offset: 0,
-            }],
-        );
-        tlas = Some(render_graph.unbind_node(tlas_node));
-    }
-
-    render_graph.resolve().submit(&mut cache)?;
+    let mut keyboard = KeyBuf::default();
+    let mut position = [0f32, 0.0, 0.0, 1.0];
+    let mut frame_count = 0;
 
     event_loop.run(|frame| {
-        /*
+        {
+            update_keyboard(&mut keyboard, frame.events);
+
+            const SPEED: f32 = 0.01f32;
+
+            if keyboard.is_pressed(&VirtualKeyCode::Left) {
+                position[0] -= SPEED;
+                frame_count = 0;
+            } else if keyboard.is_pressed(&VirtualKeyCode::Right) {
+                position[0] += SPEED;
+                frame_count = 0;
+            } else if keyboard.is_pressed(&VirtualKeyCode::Up) {
+                position[2] -= SPEED;
+                frame_count = 0;
+            } else if keyboard.is_pressed(&VirtualKeyCode::Down) {
+                position[2] += SPEED;
+                frame_count = 0;
+            } else if keyboard.is_pressed(&VirtualKeyCode::Space) {
+                position[1] -= SPEED;
+                frame_count = 0;
+            } else if keyboard.is_pressed(&VirtualKeyCode::LAlt) {
+                position[1] += SPEED;
+                frame_count = 0;
+            } else {
+                frame_count += 1;
+            }
+        }
+
         let camera_buf = frame.render_graph.bind_node({
             #[repr(C)]
             struct Camera {
@@ -710,19 +811,19 @@ fn main() -> anyhow::Result<()> {
 
             let mut buf = cache
                 .lease(BufferInfo::new_mappable(
-                    70,
+                    size_of::<Camera>() as _,
                     vk::BufferUsageFlags::UNIFORM_BUFFER,
                 ))
                 .unwrap();
             Buffer::copy_from_slice(buf.get_mut().unwrap(), 0, unsafe {
                 std::slice::from_raw_parts(
                     &Camera {
-                        position: [0f32, 0.0, 0.0, 1.0],
+                        position,
                         right: [1f32, 0.0, 0.0, 1.0],
                         up: [0f32, 1.0, 0.0, 1.0],
                         forward: [0f32, 0.0, 1.0, 1.0],
-                        frame_count: 0,
-                    } as *const _ as *const _,
+                        frame_count,
+                    } as *const Camera as *const u8,
                     size_of::<Camera>(),
                 )
             });
@@ -747,12 +848,17 @@ fn main() -> anyhow::Result<()> {
             .render_graph
             .bind_node(material_id_buf.take().unwrap());
         let material_buf_node = frame.render_graph.bind_node(material_buf.take().unwrap());
+        let sbt_node = frame.render_graph.bind_node(sbt_buf.take().unwrap());
 
         frame
             .render_graph
             .begin_pass("basic ray tracer")
             .bind_pipeline(&ray_trace_pipeline)
-            .access_node(blas_node, AccessType::AnyShaderReadOther)
+            .access_node(
+                blas_node,
+                AccessType::RayTracingShaderReadAccelerationStructure,
+            )
+            .access_node(sbt_node, AccessType::RayTracingShaderReadOther)
             .access_descriptor(
                 0,
                 tlas_node,
@@ -771,8 +877,8 @@ fn main() -> anyhow::Result<()> {
             .record_ray_trace(move |ray_trace| {
                 ray_trace.trace_rays(
                     &sbt_rgen,
-                    &sbt_rmiss,
-                    &sbt_rchit,
+                    &sbt_miss,
+                    &sbt_hit,
                     &sbt_callable,
                     frame.width,
                     frame.height,
@@ -788,9 +894,7 @@ fn main() -> anyhow::Result<()> {
         vertex_buf = Some(frame.render_graph.unbind_node(vertex_buf_node));
         material_id_buf = Some(frame.render_graph.unbind_node(material_id_buf_node));
         material_buf = Some(frame.render_graph.unbind_node(material_buf_node));
-         */
-
-        frame.render_graph.clear_color_image(frame.swapchain_image);
+        sbt_buf = Some(frame.render_graph.unbind_node(sbt_node));
     })?;
 
     Ok(())

@@ -526,8 +526,8 @@ where
 
         let res = unsafe { self.device.device_wait_idle() };
 
-        if res.is_err() {
-            warn!("device_wait_idle() failed");
+        if let Err(err) = res {
+            warn!("device_wait_idle() failed: {err}");
         }
 
         self.allocator.take().unwrap();
@@ -572,9 +572,7 @@ impl FeatureFlags {
             res.extend(
                 [
                     vk::KhrAccelerationStructureFn::name(),
-                    vk::KhrBufferDeviceAddressFn::name(),
                     vk::KhrDeferredHostOperationsFn::name(),
-                    vk::ExtDescriptorIndexingFn::name(),
                     vk::KhrRayTracingPipelineFn::name(),
                 ]
                 .iter(),
