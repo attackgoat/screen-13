@@ -320,8 +320,8 @@ where
                         flags: vk::ImageCreateFlags::empty(), // MUTABLE_FORMAT | SPARSE_ALIASED | CUBE_COMPATIBLE
                         fmt: vk::Format::B8G8R8A8_UNORM,      // TODO: Allow configuration!
                         depth: 0,                             // TODO: 1?
-                        height: self.info.height,
-                        width: self.info.width,
+                        height: surface_height,
+                        width: surface_width,
                         sample_count: SampleCount::X1,
                         linear_tiling: false,
                         mip_level_count: 1,
@@ -335,6 +335,8 @@ where
 
         assert_eq!(desired_image_count, images.len() as u32);
 
+        self.info.height = surface_height;
+        self.info.width = surface_width;
         self.next_semaphore = 0;
         self.images = images;
         self.swapchain = swapchain;
