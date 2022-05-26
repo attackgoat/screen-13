@@ -148,6 +148,8 @@ where
             vk::PhysicalDeviceImagelessFramebufferFeatures::builder();
         let mut buffer_device_address_features =
             vk::PhysicalDeviceBufferDeviceAddressFeatures::builder();
+        let mut descriptor_indexing_features =
+            vk::PhysicalDeviceDescriptorIndexingFeatures::builder();
 
         #[cfg(not(target_os = "macos"))]
         let mut separate_depth_stencil_layouts_features =
@@ -168,6 +170,7 @@ where
         unsafe {
             let mut features2 = vk::PhysicalDeviceFeatures2::builder()
                 .push_next(&mut buffer_device_address_features)
+                .push_next(&mut descriptor_indexing_features)
                 .push_next(&mut imageless_framebuffer_features);
 
             #[cfg(not(target_os = "macos"))]
