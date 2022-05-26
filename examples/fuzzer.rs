@@ -38,7 +38,7 @@ fn main() -> Result<(), DisplayError> {
 
         // We fuzz a random amount of randomly selected operations per frame
         let operations_per_frame = 1;
-        let operation: u8 = 3; //random();
+        let operation: u8 = 1; //random();
         for _ in 0..operations_per_frame {
             match operation % 7 {
                 0 => record_compute_array_bind(&mut frame, &mut cache),
@@ -146,12 +146,24 @@ fn record_compute_bindless(frame: &mut FrameContext, cache: &mut HashPool) {
             inline_spirv!(
                 r#"
                 #version 460 core
+                #extension GL_EXT_nonuniform_qualifier: require
                 
                 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+                layout(push_constant) uniform PushConstants {
+                    layout(offset = 0) uint count;
+                } push_const;
                 
                 layout(set = 0, binding = 0, rgba8) writeonly uniform image2D dst[];
                 
                 void main() {
+                    for (uint idx = 0; idx < push_const.count; idx++) {
+                        imageStore(
+                            dst[idx],
+                            ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y),
+                            vec4(0)
+                        );
+                    }
                 }
                 "#,
                 comp
