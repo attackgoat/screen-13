@@ -180,22 +180,7 @@ where
         let mut layouts = BTreeMap::new();
         let mut pool_sizes = BTreeMap::new();
 
-        // trace!("descriptor_bindings: {:#?}", &descriptor_bindings);
-
-        let mut bindless_flags = if device
-            .descriptor_indexing_features
-            .descriptor_binding_partially_bound
-        {
-            static BINDLESS_FLAGS: &[vk::DescriptorBindingFlags] =
-                &[vk::DescriptorBindingFlags::PARTIALLY_BOUND];
-
-            Some(
-                vk::DescriptorSetLayoutBindingFlagsCreateInfo::builder()
-                    .binding_flags(BINDLESS_FLAGS),
-            )
-        } else {
-            None
-        };
+        //trace!("descriptor_bindings: {:#?}", &descriptor_bindings);
 
         for descriptor_set_idx in 0..descriptor_set_count {
             // HACK: We need to keep the immutable samplers alive until create, could be cleaner..
@@ -234,10 +219,25 @@ where
                 *pool_size.entry(descriptor_ty).or_default() += binding_count;
             }
 
-            // trace!("bindings: {:#?}", &bindings);
+            //trace!("bindings: {:#?}", &bindings);
 
             let mut create_info =
                 vk::DescriptorSetLayoutCreateInfo::builder().bindings(bindings.as_slice());
+
+            // The binless flags have to be created for every descriptor set layout binding.
+            // [vulkan spec](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkDescriptorSetLayoutBindingFlagsCreateInfo.html)
+            // Maybe using one vector and updating it would be more efficient.
+            let bindless_flags = vec![vk::DescriptorBindingFlags::PARTIALLY_BOUND; bindings.len()];
+            let mut bindless_flags = if device
+                .descriptor_indexing_features
+                    .descriptor_binding_partially_bound
+            {
+                let bindless_flags = vk::DescriptorSetLayoutBindingFlagsCreateInfo::builder()
+                    .binding_flags(&bindless_flags);
+                Some(bindless_flags)
+            }else{
+                None
+            };
 
             if let Some(bindless_flags) = bindless_flags.as_mut() {
                 create_info = create_info.push_next(bindless_flags);
@@ -249,7 +249,7 @@ where
             );
         }
 
-        // trace!("layouts {:#?}", &layouts);
+        //trace!("layouts {:#?}", &layouts);
         // trace!("pool_sizes {:#?}", &pool_sizes);
 
         Ok(Self {
