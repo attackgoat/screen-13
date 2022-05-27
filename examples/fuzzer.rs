@@ -37,8 +37,8 @@ fn main() -> Result<(), DisplayError> {
         }
 
         // We fuzz a random amount of randomly selected operations per frame
-        let operations_per_frame = 1;
-        let operation: u8 = 1; //random();
+        let operations_per_frame = 16;
+        let operation: u8 = random();
         for _ in 0..operations_per_frame {
             match operation % 7 {
                 0 => record_compute_array_bind(&mut frame, &mut cache),
@@ -47,7 +47,7 @@ fn main() -> Result<(), DisplayError> {
                 3 => record_graphic_bindless(&mut frame, &mut cache),
                 4 => record_graphic_load_store(&mut frame),
                 5 => record_graphic_will_merge_subpass_input(&mut frame, &mut cache),
-                6 => record_graphic_wont_merge(&mut frame),
+                6 => record_graphic_wont_merge(&mut frame, &mut cache),
                 _ => unreachable!(),
             }
         }
@@ -146,7 +146,7 @@ fn record_compute_bindless(frame: &mut FrameContext, cache: &mut HashPool) {
             inline_spirv!(
                 r#"
                 #version 460 core
-                #extension GL_EXT_nonuniform_qualifier: require
+                #extension GL_EXT_nonuniform_qualifier : require
                 
                 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
@@ -201,13 +201,15 @@ fn record_compute_bindless(frame: &mut FrameContext, cache: &mut HashPool) {
         .render_graph
         .begin_pass("no-op")
         .bind_pipeline(&pipeline)
-        .read_descriptor((0, [0]), images[0])
-        .read_descriptor((0, [1]), images[1])
-        .read_descriptor((0, [2]), images[2])
-        .read_descriptor((0, [3]), images[3])
-        .read_descriptor((0, [4]), images[4])
+        .write_descriptor((0, [0]), images[0])
+        .write_descriptor((0, [1]), images[1])
+        .write_descriptor((0, [2]), images[2])
+        .write_descriptor((0, [3]), images[3])
+        .write_descriptor((0, [4]), images[4])
         .record_compute(|compute| {
-            compute.dispatch(64, 64, 1);
+            compute
+                .push_constants(&5u32.to_ne_bytes())
+                .dispatch(64, 64, 1);
         });
 }
 
@@ -252,13 +254,23 @@ fn record_graphic_bindless(frame: &mut FrameContext, cache: &mut HashPool) {
         inline_spirv!(
             r#"
             #version 460 core
+            #extension GL_EXT_nonuniform_qualifier : require
 
-            layout(set = 0, binding = 0, rgba8) writeonly uniform image2D dst[];
+            layout(push_constant) uniform PushConstants {
+                layout(offset = 0) uint count;
+            } push_const;
+
+            layout(set = 0, binding = 0) uniform sampler2D images_sampler_llr[];
 
             layout(location = 0) out vec4 color_out;
 
             void main() {
-                color_out = vec4(0);
+                for (uint idx = 0; idx < push_const.count; idx++) {
+                    color_out += texture(
+                        images_sampler_llr[idx],
+                        vec2(0)
+                    );
+                }
             }
             "#,
             frag
@@ -305,15 +317,15 @@ fn record_graphic_bindless(frame: &mut FrameContext, cache: &mut HashPool) {
         .render_graph
         .begin_pass("a")
         .bind_pipeline(&pipeline)
-        .write_descriptor((0, [0]), images[0])
-        .write_descriptor((0, [1]), images[1])
-        .write_descriptor((0, [2]), images[2])
-        .write_descriptor((0, [3]), images[3])
-        .write_descriptor((0, [4]), images[4])
+        .read_descriptor((0, [0]), images[0])
+        .read_descriptor((0, [1]), images[1])
+        .read_descriptor((0, [2]), images[2])
+        .read_descriptor((0, [3]), images[3])
+        .read_descriptor((0, [4]), images[4])
         .clear_color(0)
         .store_color(0, image)
         .record_subpass(|subpass| {
-            subpass.draw(1, 1, 0, 0);
+            subpass.push_constants(&5u32.to_ne_bytes()).draw(1, 1, 0, 0);
         });
 }
 
@@ -436,7 +448,7 @@ fn record_graphic_will_merge_subpass_input(frame: &mut FrameContext, cache: &mut
         });
 }
 
-fn record_graphic_wont_merge(frame: &mut FrameContext) {
+fn record_graphic_wont_merge(frame: &mut FrameContext, cache: &mut HashPool) {
     let pipeline = graphic_vert_frag_pipeline(
         frame.device,
         GraphicPipelineInfo::default(),
@@ -464,12 +476,23 @@ fn record_graphic_wont_merge(frame: &mut FrameContext) {
         .as_slice(),
     );
 
+    let image = frame.render_graph.bind_node(
+        cache
+            .lease(ImageInfo::new_2d(
+                vk::Format::R8G8B8A8_UNORM,
+                256,
+                256,
+                vk::ImageUsageFlags::COLOR_ATTACHMENT,
+            ))
+            .unwrap(),
+    );
+
     // These two passes have common writes but are otherwise regular - they won't get merged
     frame
         .render_graph
         .begin_pass("c")
         .bind_pipeline(&pipeline)
-        .store_color(0, frame.swapchain_image)
+        .store_color(0, image)
         .record_subpass(|subpass| {
             subpass.draw(0, 0, 0, 0);
         });
@@ -477,7 +500,7 @@ fn record_graphic_wont_merge(frame: &mut FrameContext) {
         .render_graph
         .begin_pass("d")
         .bind_pipeline(&pipeline)
-        .store_color(0, frame.swapchain_image)
+        .store_color(0, image)
         .record_subpass(|subpass| {
             subpass.draw(0, 0, 0, 0);
         });

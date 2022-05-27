@@ -113,6 +113,23 @@ impl DescriptorInfo {
             _ => None,
         }
     }
+
+    pub fn set_binding_count(&mut self, binding_count: u32) {
+        *match self {
+            Self::AccelerationStructure(binding_count) => binding_count,
+            Self::CombinedImageSampler(binding_count, _) => binding_count,
+            Self::InputAttachment(binding_count, _) => binding_count,
+            Self::SampledImage(binding_count) => binding_count,
+            Self::Sampler(binding_count) => binding_count,
+            Self::StorageBuffer(binding_count) => binding_count,
+            Self::StorageBufferDynamic(binding_count) => binding_count,
+            Self::StorageImage(binding_count) => binding_count,
+            Self::StorageTexelBuffer(binding_count) => binding_count,
+            Self::UniformBuffer(binding_count) => binding_count,
+            Self::UniformBufferDynamic(binding_count) => binding_count,
+            Self::UniformTexelBuffer(binding_count) => binding_count,
+        } = binding_count;
+    }
 }
 
 impl From<DescriptorInfo> for vk::DescriptorType {
@@ -165,6 +182,21 @@ where
 
         // trace!("descriptor_bindings: {:#?}", &descriptor_bindings);
 
+        let mut bindless_flags = if device
+            .descriptor_indexing_features
+            .descriptor_binding_partially_bound
+        {
+            static BINDLESS_FLAGS: &[vk::DescriptorBindingFlags] =
+                &[vk::DescriptorBindingFlags::PARTIALLY_BOUND];
+
+            Some(
+                vk::DescriptorSetLayoutBindingFlagsCreateInfo::builder()
+                    .binding_flags(BINDLESS_FLAGS),
+            )
+        } else {
+            None
+        };
+
         for descriptor_set_idx in 0..descriptor_set_count {
             // HACK: We need to keep the immutable samplers alive until create, could be cleaner..
             let mut immutable_samplers = vec![];
@@ -204,9 +236,12 @@ where
 
             // trace!("bindings: {:#?}", &bindings);
 
-            let create_info = vk::DescriptorSetLayoutCreateInfo::builder()
-                .bindings(bindings.as_slice())
-                .build();
+            let mut create_info =
+                vk::DescriptorSetLayoutCreateInfo::builder().bindings(bindings.as_slice());
+
+            if let Some(bindless_flags) = bindless_flags.as_mut() {
+                create_info = create_info.push_next(bindless_flags);
+            }
 
             layouts.insert(
                 descriptor_set_idx,

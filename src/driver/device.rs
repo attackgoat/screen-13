@@ -1,7 +1,8 @@
 use {
     super::{
         DriverConfig, DriverError, Instance, PhysicalDevice,
-        PhysicalDeviceRayTracePipelineProperties, QueueFamily, SamplerDesc, Surface,
+        PhysicalDeviceDescriptorIndexingFeatures, PhysicalDeviceRayTracePipelineProperties,
+        QueueFamily, SamplerDesc, Surface,
     },
     archery::{SharedPointer, SharedPointerKind},
     ash::{extensions::khr, vk},
@@ -30,6 +31,7 @@ where
 {
     pub accel_struct_ext: Option<khr::AccelerationStructure>,
     pub(super) allocator: Option<Mutex<Allocator>>,
+    pub descriptor_indexing_features: PhysicalDeviceDescriptorIndexingFeatures,
     device: ash::Device,
     immutable_samplers: HashMap<SamplerDesc, vk::Sampler>,
     pub instance: SharedPointer<Instance, P>, // TODO: Need shared?
@@ -358,9 +360,12 @@ where
                 (None, None)
             };
 
+            let descriptor_indexing_features = descriptor_indexing_features.build().into();
+
             Ok(Self {
                 accel_struct_ext,
                 allocator: Some(Mutex::new(allocator)),
+                descriptor_indexing_features,
                 device,
                 immutable_samplers,
                 instance,

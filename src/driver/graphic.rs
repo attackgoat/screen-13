@@ -223,11 +223,17 @@ where
             "invalid shader stage combination"
         );
 
-        let descriptor_bindings = shaders
-            .iter()
-            .map(|shader| shader.descriptor_bindings(&device))
-            .collect::<Vec<_>>();
-        let descriptor_bindings = Shader::merge_descriptor_bindings(descriptor_bindings);
+        let mut descriptor_bindings = Shader::merge_descriptor_bindings(
+            shaders
+                .iter()
+                .map(|shader| shader.descriptor_bindings(&device)),
+        );
+        for (descriptor_info, _) in descriptor_bindings.values_mut() {
+            if descriptor_info.binding_count() == 0 {
+                descriptor_info.set_binding_count(info.bindless_descriptor_count);
+            }
+        }
+
         let descriptor_info = PipelineDescriptorInfo::create(&device, &descriptor_bindings)?;
         let descriptor_sets_layouts = descriptor_info
             .layouts
@@ -433,6 +439,9 @@ pub struct GraphicPipelineInfo {
     #[builder(default)]
     pub blend: BlendMode,
 
+    #[builder(default = "8192")]
+    pub bindless_descriptor_count: u32,
+
     #[builder(default = "vk::CullModeFlags::BACK")]
     pub cull_mode: vk::CullModeFlags,
 
@@ -473,16 +482,7 @@ impl GraphicPipelineInfoBuilder {
 
 impl Default for GraphicPipelineInfo {
     fn default() -> Self {
-        Self {
-            blend: BlendMode::default(),
-            cull_mode: vk::CullModeFlags::BACK,
-            depth_stencil: None,
-            front_face: vk::FrontFace::COUNTER_CLOCKWISE,
-            name: None,
-            polygon_mode: vk::PolygonMode::FILL,
-            samples: SampleCount::X1,
-            two_sided: false,
-        }
+        Self::new().build()
     }
 }
 

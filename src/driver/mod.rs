@@ -562,6 +562,95 @@ impl Display for DriverError {
 
 impl Error for DriverError {}
 
+pub struct PhysicalDeviceDescriptorIndexingFeatures {
+    pub shader_input_attachment_array_dynamic_indexing: bool,
+    pub shader_uniform_texel_buffer_array_dynamic_indexing: bool,
+    pub shader_storage_texel_buffer_array_dynamic_indexing: bool,
+    pub shader_uniform_buffer_array_non_uniform_indexing: bool,
+    pub shader_sampled_image_array_non_uniform_indexing: bool,
+    pub shader_storage_buffer_array_non_uniform_indexing: bool,
+    pub shader_storage_image_array_non_uniform_indexing: bool,
+    pub shader_input_attachment_array_non_uniform_indexing: bool,
+    pub shader_uniform_texel_buffer_array_non_uniform_indexing: bool,
+    pub shader_storage_texel_buffer_array_non_uniform_indexing: bool,
+    pub descriptor_binding_uniform_buffer_update_after_bind: bool,
+    pub descriptor_binding_sampled_image_update_after_bind: bool,
+    pub descriptor_binding_storage_image_update_after_bind: bool,
+    pub descriptor_binding_storage_buffer_update_after_bind: bool,
+    pub descriptor_binding_uniform_texel_buffer_update_after_bind: bool,
+    pub descriptor_binding_storage_texel_buffer_update_after_bind: bool,
+    pub descriptor_binding_update_unused_while_pending: bool,
+    pub descriptor_binding_partially_bound: bool,
+    pub descriptor_binding_variable_descriptor_count: bool,
+    pub runtime_descriptor_array: bool,
+}
+
+impl From<vk::PhysicalDeviceDescriptorIndexingFeatures>
+    for PhysicalDeviceDescriptorIndexingFeatures
+{
+    fn from(features: vk::PhysicalDeviceDescriptorIndexingFeatures) -> Self {
+        Self {
+            shader_input_attachment_array_dynamic_indexing: features
+                .shader_input_attachment_array_dynamic_indexing
+                == vk::TRUE,
+            shader_uniform_texel_buffer_array_dynamic_indexing: features
+                .shader_uniform_texel_buffer_array_dynamic_indexing
+                == vk::TRUE,
+            shader_storage_texel_buffer_array_dynamic_indexing: features
+                .shader_storage_texel_buffer_array_dynamic_indexing
+                == vk::TRUE,
+            shader_uniform_buffer_array_non_uniform_indexing: features
+                .shader_uniform_buffer_array_non_uniform_indexing
+                == vk::TRUE,
+            shader_sampled_image_array_non_uniform_indexing: features
+                .shader_sampled_image_array_non_uniform_indexing
+                == vk::TRUE,
+            shader_storage_buffer_array_non_uniform_indexing: features
+                .shader_storage_buffer_array_non_uniform_indexing
+                == vk::TRUE,
+            shader_storage_image_array_non_uniform_indexing: features
+                .shader_storage_image_array_non_uniform_indexing
+                == vk::TRUE,
+            shader_input_attachment_array_non_uniform_indexing: features
+                .shader_input_attachment_array_non_uniform_indexing
+                == vk::TRUE,
+            shader_uniform_texel_buffer_array_non_uniform_indexing: features
+                .shader_uniform_texel_buffer_array_non_uniform_indexing
+                == vk::TRUE,
+            shader_storage_texel_buffer_array_non_uniform_indexing: features
+                .shader_storage_texel_buffer_array_non_uniform_indexing
+                == vk::TRUE,
+            descriptor_binding_uniform_buffer_update_after_bind: features
+                .descriptor_binding_uniform_buffer_update_after_bind
+                == vk::TRUE,
+            descriptor_binding_sampled_image_update_after_bind: features
+                .descriptor_binding_sampled_image_update_after_bind
+                == vk::TRUE,
+            descriptor_binding_storage_image_update_after_bind: features
+                .descriptor_binding_storage_image_update_after_bind
+                == vk::TRUE,
+            descriptor_binding_storage_buffer_update_after_bind: features
+                .descriptor_binding_storage_buffer_update_after_bind
+                == vk::TRUE,
+            descriptor_binding_uniform_texel_buffer_update_after_bind: features
+                .descriptor_binding_uniform_texel_buffer_update_after_bind
+                == vk::TRUE,
+            descriptor_binding_storage_texel_buffer_update_after_bind: features
+                .descriptor_binding_storage_texel_buffer_update_after_bind
+                == vk::TRUE,
+            descriptor_binding_update_unused_while_pending: features
+                .descriptor_binding_update_unused_while_pending
+                == vk::TRUE,
+            descriptor_binding_partially_bound: features.descriptor_binding_partially_bound
+                == vk::TRUE,
+            descriptor_binding_variable_descriptor_count: features
+                .descriptor_binding_variable_descriptor_count
+                == vk::TRUE,
+            runtime_descriptor_array: features.runtime_descriptor_array == vk::TRUE,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct PhysicalDeviceRayTracePipelineProperties {
     pub shader_group_handle_size: u32,

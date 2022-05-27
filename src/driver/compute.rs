@@ -41,7 +41,13 @@ where
         let shader = info.clone().into_shader();
 
         // Use SPIR-V reflection to get the types and counts of all descriptors
-        let descriptor_bindings = shader.descriptor_bindings(&device);
+        let mut descriptor_bindings = shader.descriptor_bindings(&device);
+        for (descriptor_info, _) in descriptor_bindings.values_mut() {
+            if descriptor_info.binding_count() == 0 {
+                descriptor_info.set_binding_count(info.bindless_descriptor_count);
+            }
+        }
+
         let descriptor_info = PipelineDescriptorInfo::create(&device, &descriptor_bindings)?;
         let descriptor_set_layouts = descriptor_info
             .layouts
@@ -153,6 +159,9 @@ where
 #[derive(Builder, Clone, Debug)]
 #[builder(pattern = "owned")]
 pub struct ComputePipelineInfo {
+    #[builder(default = "8192")]
+    pub bindless_descriptor_count: u32,
+
     /// The GLSL or HLSL shader entry point name, or `main` by default.
     #[builder(setter(strip_option), default = "String::from(\"main\")")]
     pub entry_name: String,

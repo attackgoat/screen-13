@@ -2214,7 +2214,6 @@ where
                         .descriptor_bindings()
                         .get(&DescriptorBinding(descriptor_set_idx, dst_binding))
                         .unwrap_or_else(|| panic!("descriptor {descriptor_set_idx}.{dst_binding}[{binding_offset}] specified in recorded execution of pass \"{}\" was not discovered through shader reflection", &pass.name));
-                    let descriptor_count = descriptor_info.binding_count();
                     let descriptor_type = descriptor_info.into();
                     let bound_node = &self.graph.bindings[*node_idx];
                     if let Some(image) = bound_node.as_driver_image() {
@@ -2259,11 +2258,13 @@ where
                                         dst_set: *descriptor_sets[descriptor_set_idx as usize],
                                         dst_binding,
                                         descriptor_type,
-                                        descriptor_count,
+                                        descriptor_count: 1,
                                         ..Default::default()
                                     },
                                 }
                             );
+                        } else {
+                            image_writes.last_mut().unwrap().write.descriptor_count += 1;
                         }
 
                         image_infos.push(vk::DescriptorImageInfo {
@@ -2282,11 +2283,13 @@ where
                                         dst_set: *descriptor_sets[descriptor_set_idx as usize],
                                         dst_binding,
                                         descriptor_type,
-                                        descriptor_count,
+                                        descriptor_count: 1,
                                         ..Default::default()
                                     },
                                 }
                             );
+                        } else {
+                            buffer_writes.last_mut().unwrap().write.descriptor_count += 1;
                         }
 
                         buffer_infos.push(vk::DescriptorBufferInfo {
@@ -2302,10 +2305,12 @@ where
                                     dst_set: *descriptor_sets[descriptor_set_idx as usize],
                                     dst_binding,
                                     descriptor_type,
-                                    descriptor_count,
+                                    descriptor_count: 1,
                                     ..Default::default()
                                 },
                             });
+                        } else {
+                            accel_struct_writes.last_mut().unwrap().write.descriptor_count += 1;
                         }
 
                         accel_struct_infos.push(vk::WriteDescriptorSetAccelerationStructureKHR::builder().acceleration_structures(std::slice::from_ref(accel_struct)).build());

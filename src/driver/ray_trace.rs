@@ -46,11 +46,16 @@ where
             .collect::<Vec<Shader>>();
 
         // Use SPIR-V reflection to get the types and counts of all descriptors
-        let descriptor_bindings = Shader::merge_descriptor_bindings(
+        let mut descriptor_bindings = Shader::merge_descriptor_bindings(
             shaders
                 .iter()
                 .map(|shader| shader.descriptor_bindings(device)),
         );
+        for (descriptor_info, _) in descriptor_bindings.values_mut() {
+            if descriptor_info.binding_count() == 0 {
+                descriptor_info.set_binding_count(info.bindless_descriptor_count);
+            }
+        }
 
         let descriptor_info = PipelineDescriptorInfo::create(device, &descriptor_bindings)?;
         let descriptor_set_layout_handles = descriptor_info
@@ -215,6 +220,9 @@ where
     pattern = "owned"
 )]
 pub struct RayTracePipelineInfo {
+    #[builder(default = "8192")]
+    pub bindless_descriptor_count: u32,
+
     #[builder(default = "16")]
     pub max_ray_recursion_depth: u32,
 
