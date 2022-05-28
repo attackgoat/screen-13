@@ -38,7 +38,7 @@ fn main() -> Result<(), DisplayError> {
 
         // We fuzz a random amount of randomly selected operations per frame
         let operations_per_frame = 16;
-        let operation: u8 = random();
+        let operation: u8 = 1;
         for _ in 0..operations_per_frame {
             match operation % 7 {
                 0 => record_compute_array_bind(&mut frame, &mut cache),
@@ -156,7 +156,20 @@ fn record_compute_bindless(frame: &mut FrameContext, cache: &mut HashPool) {
                 
                 layout(set = 0, binding = 0, rgba8) writeonly uniform image2D dst[];
                 
+                layout(set = 1, binding = 0) buffer BVH{
+                    vec4 nodes[];
+                }bvh[];
+                layout(set = 1, binding = 1) buffer Verts{
+                    vec4 verts[];
+                }verts;
+                layout(set = 1, binding = 2) buffer Indices{
+                    uint indices[];
+                }indices;
+
                 void main() {
+                    uint x = 0;
+                    uint y = 0;
+                    vec4 i = bvh[0].nodes[y];
                     for (uint idx = 0; idx < push_const.count; idx++) {
                         imageStore(
                             dst[idx],
@@ -166,7 +179,7 @@ fn record_compute_bindless(frame: &mut FrameContext, cache: &mut HashPool) {
                     }
                 }
                 "#,
-                comp
+                comp, vulkan1_2
             )
             .as_slice(),
         ),
@@ -176,7 +189,7 @@ fn record_compute_bindless(frame: &mut FrameContext, cache: &mut HashPool) {
         vk::Format::R8G8B8A8_UNORM,
         64,
         64,
-        vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE,
+        vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::TRANSFER_SRC,
     )
     .build();
     let images = [
@@ -197,6 +210,20 @@ fn record_compute_bindless(frame: &mut FrameContext, cache: &mut HashPool) {
             .bind_node(cache.lease(image_info).unwrap()),
     ];
 
+    let buffer = frame
+        .render_graph
+        .bind_node(cache.lease(BufferInfo::new_mappable(100, vk::BufferUsageFlags::STORAGE_BUFFER)).unwrap());
+    let verts = frame
+        .render_graph
+        .bind_node(cache.lease(BufferInfo::new_mappable(100, vk::BufferUsageFlags::STORAGE_BUFFER)).unwrap());
+    let indices = frame
+        .render_graph
+        .bind_node(cache.lease(BufferInfo::new_mappable(100, vk::BufferUsageFlags::STORAGE_BUFFER)).unwrap());
+
+    let image_buffer = frame
+        .render_graph
+        .bind_node(cache.lease(BufferInfo::new_mappable(64 * 64 * 4, vk::BufferUsageFlags::TRANSFER_DST)).unwrap());
+
     frame
         .render_graph
         .begin_pass("no-op")
@@ -206,11 +233,18 @@ fn record_compute_bindless(frame: &mut FrameContext, cache: &mut HashPool) {
         .write_descriptor((0, [2]), images[2])
         .write_descriptor((0, [3]), images[3])
         .write_descriptor((0, [4]), images[4])
+        .read_descriptor((1, 0, [0]), buffer)
+        .read_descriptor((1, 1), verts)
+        .read_descriptor((1, 2), indices)
         .record_compute(|compute| {
             compute
                 .push_constants(&5u32.to_ne_bytes())
                 .dispatch(64, 64, 1);
         });
+
+    frame
+        .render_graph
+        .copy_image_to_buffer(images[0], image_buffer);
 }
 
 fn record_compute_no_op(frame: &mut FrameContext) {
@@ -332,7 +366,10 @@ fn record_graphic_bindless(frame: &mut FrameContext, cache: &mut HashPool) {
 fn record_graphic_load_store(frame: &mut FrameContext) {
     let pipeline = graphic_vert_frag_pipeline(
         frame.device,
-        GraphicPipelineInfo::default(),
+        GraphicPipelineInfo{
+            ..Default::default()
+        },
+        //GraphicPipelineInfo::default(),
         inline_spirv!(
             r#"
             #version 460 core
