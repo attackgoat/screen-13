@@ -40,12 +40,14 @@ fn main() -> Result<(), DisplayError> {
         let operations_per_frame = 16;
         let operation: u8 = random();
         for _ in 0..operations_per_frame {
-            match operation % 4 {
+            match operation % 7 {
                 0 => record_compute_array_bind(&mut frame, &mut cache),
-                1 => record_compute_no_op(&mut frame),
-                2 => record_graphic_load_store(&mut frame),
-                3 => record_graphic_will_merge_subpass_input(&mut frame, &mut cache),
-                4 => record_graphic_wont_merge(&mut frame),
+                1 => record_compute_bindless(&mut frame, &mut cache),
+                2 => record_compute_no_op(&mut frame),
+                3 => record_graphic_bindless(&mut frame, &mut cache),
+                4 => record_graphic_load_store(&mut frame),
+                5 => record_graphic_will_merge_subpass_input(&mut frame, &mut cache),
+                6 => record_graphic_wont_merge(&mut frame, &mut cache),
                 _ => unreachable!(),
             }
         }
@@ -136,6 +138,81 @@ fn record_compute_array_bind(frame: &mut FrameContext, cache: &mut HashPool) {
         });
 }
 
+fn record_compute_bindless(frame: &mut FrameContext, cache: &mut HashPool) {
+    let pipeline = compute_pipeline(
+        "bindless",
+        frame.device,
+        ComputePipelineInfo::new(
+            inline_spirv!(
+                r#"
+                #version 460 core
+                #extension GL_EXT_nonuniform_qualifier : require
+                
+                layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+                layout(push_constant) uniform PushConstants {
+                    layout(offset = 0) uint count;
+                } push_const;
+                
+                layout(set = 0, binding = 0, rgba8) writeonly uniform image2D dst[];
+                
+                void main() {
+                    for (uint idx = 0; idx < push_const.count; idx++) {
+                        imageStore(
+                            dst[idx],
+                            ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y),
+                            vec4(0)
+                        );
+                    }
+                }
+                "#,
+                comp
+            )
+            .as_slice(),
+        ),
+    );
+
+    let image_info = ImageInfo::new_2d(
+        vk::Format::R8G8B8A8_UNORM,
+        64,
+        64,
+        vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE,
+    )
+    .build();
+    let images = [
+        frame
+            .render_graph
+            .bind_node(cache.lease(image_info).unwrap()),
+        frame
+            .render_graph
+            .bind_node(cache.lease(image_info).unwrap()),
+        frame
+            .render_graph
+            .bind_node(cache.lease(image_info).unwrap()),
+        frame
+            .render_graph
+            .bind_node(cache.lease(image_info).unwrap()),
+        frame
+            .render_graph
+            .bind_node(cache.lease(image_info).unwrap()),
+    ];
+
+    frame
+        .render_graph
+        .begin_pass("no-op")
+        .bind_pipeline(&pipeline)
+        .write_descriptor((0, [0]), images[0])
+        .write_descriptor((0, [1]), images[1])
+        .write_descriptor((0, [2]), images[2])
+        .write_descriptor((0, [3]), images[3])
+        .write_descriptor((0, [4]), images[4])
+        .record_compute(|compute| {
+            compute
+                .push_constants(&5u32.to_ne_bytes())
+                .dispatch(64, 64, 1);
+        });
+}
+
 fn record_compute_no_op(frame: &mut FrameContext) {
     let pipeline = compute_pipeline(
         "no_op",
@@ -157,6 +234,98 @@ fn record_compute_no_op(frame: &mut FrameContext) {
         .bind_pipeline(&pipeline)
         .record_compute(|compute| {
             compute.dispatch(1, 1, 1);
+        });
+}
+
+fn record_graphic_bindless(frame: &mut FrameContext, cache: &mut HashPool) {
+    let pipeline = graphic_vert_frag_pipeline(
+        frame.device,
+        GraphicPipelineInfo::default(),
+        inline_spirv!(
+            r#"
+            #version 460 core
+    
+            void main() {
+            }
+            "#,
+            vert
+        )
+        .as_slice(),
+        inline_spirv!(
+            r#"
+            #version 460 core
+            #extension GL_EXT_nonuniform_qualifier : require
+
+            layout(push_constant) uniform PushConstants {
+                layout(offset = 0) uint count;
+            } push_const;
+
+            layout(set = 0, binding = 0) uniform sampler2D images_sampler_llr[];
+
+            layout(location = 0) out vec4 color_out;
+
+            void main() {
+                for (uint idx = 0; idx < push_const.count; idx++) {
+                    color_out += texture(
+                        images_sampler_llr[idx],
+                        vec2(0)
+                    );
+                }
+            }
+            "#,
+            frag
+        )
+        .as_slice(),
+    );
+
+    let image = frame.render_graph.bind_node(
+        cache
+            .lease(ImageInfo::new_2d(
+                vk::Format::R8G8B8A8_UNORM,
+                256,
+                256,
+                vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::INPUT_ATTACHMENT,
+            ))
+            .unwrap(),
+    );
+    let image_info = ImageInfo::new_2d(
+        vk::Format::R8G8B8A8_UNORM,
+        64,
+        64,
+        vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE,
+    )
+    .build();
+    let images = [
+        frame
+            .render_graph
+            .bind_node(cache.lease(image_info).unwrap()),
+        frame
+            .render_graph
+            .bind_node(cache.lease(image_info).unwrap()),
+        frame
+            .render_graph
+            .bind_node(cache.lease(image_info).unwrap()),
+        frame
+            .render_graph
+            .bind_node(cache.lease(image_info).unwrap()),
+        frame
+            .render_graph
+            .bind_node(cache.lease(image_info).unwrap()),
+    ];
+
+    frame
+        .render_graph
+        .begin_pass("a")
+        .bind_pipeline(&pipeline)
+        .read_descriptor((0, [0]), images[0])
+        .read_descriptor((0, [1]), images[1])
+        .read_descriptor((0, [2]), images[2])
+        .read_descriptor((0, [3]), images[3])
+        .read_descriptor((0, [4]), images[4])
+        .clear_color(0)
+        .store_color(0, image)
+        .record_subpass(|subpass| {
+            subpass.push_constants(&5u32.to_ne_bytes()).draw(1, 1, 0, 0);
         });
 }
 
@@ -279,7 +448,7 @@ fn record_graphic_will_merge_subpass_input(frame: &mut FrameContext, cache: &mut
         });
 }
 
-fn record_graphic_wont_merge(frame: &mut FrameContext) {
+fn record_graphic_wont_merge(frame: &mut FrameContext, cache: &mut HashPool) {
     let pipeline = graphic_vert_frag_pipeline(
         frame.device,
         GraphicPipelineInfo::default(),
@@ -307,12 +476,23 @@ fn record_graphic_wont_merge(frame: &mut FrameContext) {
         .as_slice(),
     );
 
+    let image = frame.render_graph.bind_node(
+        cache
+            .lease(ImageInfo::new_2d(
+                vk::Format::R8G8B8A8_UNORM,
+                256,
+                256,
+                vk::ImageUsageFlags::COLOR_ATTACHMENT,
+            ))
+            .unwrap(),
+    );
+
     // These two passes have common writes but are otherwise regular - they won't get merged
     frame
         .render_graph
         .begin_pass("c")
         .bind_pipeline(&pipeline)
-        .store_color(0, frame.swapchain_image)
+        .store_color(0, image)
         .record_subpass(|subpass| {
             subpass.draw(0, 0, 0, 0);
         });
@@ -320,7 +500,7 @@ fn record_graphic_wont_merge(frame: &mut FrameContext) {
         .render_graph
         .begin_pass("d")
         .bind_pipeline(&pipeline)
-        .store_color(0, frame.swapchain_image)
+        .store_color(0, image)
         .record_subpass(|subpass| {
             subpass.draw(0, 0, 0, 0);
         });

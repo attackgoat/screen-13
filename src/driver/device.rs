@@ -1,7 +1,8 @@
 use {
     super::{
         DriverConfig, DriverError, Instance, PhysicalDevice,
-        PhysicalDeviceRayTracePipelineProperties, QueueFamily, SamplerDesc, Surface,
+        PhysicalDeviceDescriptorIndexingFeatures, PhysicalDeviceRayTracePipelineProperties,
+        QueueFamily, SamplerDesc, Surface,
     },
     archery::{SharedPointer, SharedPointerKind},
     ash::{extensions::khr, vk},
@@ -30,6 +31,7 @@ where
 {
     pub accel_struct_ext: Option<khr::AccelerationStructure>,
     pub(super) allocator: Option<Mutex<Allocator>>,
+    pub descriptor_indexing_features: PhysicalDeviceDescriptorIndexingFeatures,
     device: ash::Device,
     immutable_samplers: HashMap<SamplerDesc, vk::Sampler>,
     pub instance: SharedPointer<Instance, P>, // TODO: Need shared?
@@ -148,6 +150,8 @@ where
             vk::PhysicalDeviceImagelessFramebufferFeatures::builder();
         let mut buffer_device_address_features =
             vk::PhysicalDeviceBufferDeviceAddressFeatures::builder();
+        let mut descriptor_indexing_features =
+            vk::PhysicalDeviceDescriptorIndexingFeatures::builder();
 
         #[cfg(not(target_os = "macos"))]
         let mut separate_depth_stencil_layouts_features =
@@ -168,6 +172,7 @@ where
         unsafe {
             let mut features2 = vk::PhysicalDeviceFeatures2::builder()
                 .push_next(&mut buffer_device_address_features)
+                .push_next(&mut descriptor_indexing_features)
                 .push_next(&mut imageless_framebuffer_features);
 
             #[cfg(not(target_os = "macos"))]
@@ -355,9 +360,12 @@ where
                 (None, None)
             };
 
+            let descriptor_indexing_features = descriptor_indexing_features.build().into();
+
             Ok(Self {
                 accel_struct_ext,
                 allocator: Some(Mutex::new(allocator)),
+                descriptor_indexing_features,
                 device,
                 immutable_samplers,
                 instance,
