@@ -230,12 +230,12 @@ where
             let bindless_flags = vec![vk::DescriptorBindingFlags::PARTIALLY_BOUND; bindings.len()];
             let mut bindless_flags = if device
                 .descriptor_indexing_features
-                    .descriptor_binding_partially_bound
+                .descriptor_binding_partially_bound
             {
                 let bindless_flags = vk::DescriptorSetLayoutBindingFlagsCreateInfo::builder()
                     .binding_flags(&bindless_flags);
                 Some(bindless_flags)
-            }else{
+            } else {
                 None
             };
 
