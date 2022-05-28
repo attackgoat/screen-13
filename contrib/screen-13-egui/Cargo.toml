@@ -1,0 +1,13 @@
+[package]
+name = "screen-13-egui"
+version = "0.1.0"
+authors = ["Christian Döring <christian.doering@tum.de>"]
+licence = "MIT OR Apache-2.0"
+readme = "README.md"
+
+[dependencies]
+archery = "0.4"
+bytemuck = "1.9"
+screen-13 = { path = "../.." }
+screen-13-fx = { path = "../screen-13-fx" }
+
