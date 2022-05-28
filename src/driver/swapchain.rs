@@ -312,14 +312,10 @@ where
                     vk_image,
                     ImageInfo {
                         ty: ImageType::Texture2D,
-                        usage: vk::ImageUsageFlags::COLOR_ATTACHMENT
-                            | vk::ImageUsageFlags::SAMPLED
-                            | vk::ImageUsageFlags::STORAGE // TODO: Conditionally enable! When SRGB is supported for it!
-                            | vk::ImageUsageFlags::TRANSFER_DST
-                            | vk::ImageUsageFlags::TRANSFER_SRC,
-                        flags: vk::ImageCreateFlags::empty(), // MUTABLE_FORMAT | SPARSE_ALIASED | CUBE_COMPATIBLE
-                        fmt: vk::Format::B8G8R8A8_UNORM,      // TODO: Allow configuration!
-                        depth: 0,                             // TODO: 1?
+                        usage: surface_capabilities.supported_usage_flags,
+                        flags: vk::ImageCreateFlags::empty(),
+                        fmt: self.info.format.format,
+                        depth: 1,
                         height: surface_height,
                         width: surface_width,
                         sample_count: SampleCount::X1,
