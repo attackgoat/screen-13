@@ -87,6 +87,7 @@ impl BlendMode {
         color_write_mask: vk::ColorComponentFlags::from_raw(0b1111),
     };
 
+    #[allow(clippy::new_ret_no_self)]
     pub fn new() -> BlendModeBuilder{
         BlendModeBuilder::default()
     }
