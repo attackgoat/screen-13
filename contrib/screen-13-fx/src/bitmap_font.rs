@@ -46,7 +46,7 @@ where
         let pipeline = SharedPointer::new(
             GraphicPipeline::create(
                 device,
-                GraphicPipelineInfo::new().blend(BlendMode::Alpha),
+                GraphicPipelineInfo::new().blend(BlendMode::ALPHA),
                 [
                     Shader::new_vertex(
                         include_spirv!("res/shader/graphic/font.vert", vert).as_slice(),

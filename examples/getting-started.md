@@ -119,7 +119,7 @@ Here we specify the full `GraphicPipelineInfo`, but you may provide `Default::de
 
 ```rust
 let info = GraphicPipelineInfo {
-    blend: BlendMode::Replace,
+    blend: BlendMode::REPLACE,
     cull_mode: vk::CullModeFlags::BACK,
     depth_stencil: Some(DepthStencilMode {
         back: StencilMode::Noop,
