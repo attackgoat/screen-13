@@ -12,63 +12,103 @@ use {
     std::{cmp::Ordering, collections::HashSet, ffi::CString, thread::panicking},
 };
 
-// TODO: Finally make this into a full struct and offer full features....
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum BlendMode {
-    Alpha,
-    PreMultipliedAlpha,
-    Replace,
+#[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[builder(
+    build_fn(private, name = "fallible_build"),
+    derive(Debug),
+    pattern = "owned"
+)]
+pub struct BlendMode {
+    #[builder(default = "vk::FALSE")]
+    pub blend_enable: vk::Bool32,
+    #[builder(default = "vk::BlendFactor::SRC_COLOR")]
+    pub src_color_blend_factor: vk::BlendFactor,
+    #[builder(default = "vk::BlendFactor::ONE_MINUS_DST_COLOR")]
+    pub dst_color_blend_factor: vk::BlendFactor,
+    #[builder(default = "vk::BlendOp::ADD")]
+    pub color_blend_op: vk::BlendOp,
+    #[builder(default = "vk::BlendFactor::ZERO")]
+    pub src_alpha_blend_factor: vk::BlendFactor,
+    #[builder(default = "vk::BlendFactor::ZERO")]
+    pub dst_alpha_blend_factor: vk::BlendFactor,
+    #[builder(default = "vk::BlendOp::ADD")]
+    pub alpha_blend_op: vk::BlendOp,
+    // Have to construct it from raw bits since | operator is not const.
+    #[builder(default = "vk::ColorComponentFlags::from_raw(0b1111)")]
+    pub color_write_mask: vk::ColorComponentFlags,
+}
+
+impl BlendModeBuilder{
+    pub fn build(self) -> BlendMode{
+        self.fallible_build().unwrap()
+    }
 }
 
 impl BlendMode {
+    // For backwards compatibility redefine the constants in camel case:
+    #[allow(non_upper_case_globals)]
+    pub const Replace: Self = Self::REPLACE;
+    #[allow(non_upper_case_globals)]
+    pub const Alpha: Self = Self::ALPHA;
+    #[allow(non_upper_case_globals)]
+    pub const PreMultipliedAlpha: Self = Self::PRE_MULTIPLIED_ALPHA;
+
+    pub const REPLACE: Self = Self {
+        blend_enable: vk::FALSE,
+        src_color_blend_factor: vk::BlendFactor::SRC_COLOR,
+        dst_color_blend_factor: vk::BlendFactor::ONE_MINUS_DST_COLOR,
+        color_blend_op: vk::BlendOp::ADD,
+        src_alpha_blend_factor: vk::BlendFactor::ZERO,
+        dst_alpha_blend_factor: vk::BlendFactor::ZERO,
+        alpha_blend_op: vk::BlendOp::ADD,
+        // Have to construct it from raw bits since | operator is not const.
+        color_write_mask: vk::ColorComponentFlags::from_raw(0b1111),
+    };
+    pub const ALPHA: Self = Self {
+        blend_enable: vk::TRUE,
+        src_color_blend_factor: vk::BlendFactor::SRC_ALPHA,
+        dst_color_blend_factor: vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
+        color_blend_op: vk::BlendOp::ADD,
+        src_alpha_blend_factor: vk::BlendFactor::SRC_ALPHA,
+        dst_alpha_blend_factor: vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
+        alpha_blend_op: vk::BlendOp::ADD,
+        // Have to construct it from raw bits since | operator is not const.
+        color_write_mask: vk::ColorComponentFlags::from_raw(0b1111),
+    };
+    pub const PRE_MULTIPLIED_ALPHA: Self = Self {
+        blend_enable: vk::TRUE,
+        src_color_blend_factor: vk::BlendFactor::SRC_ALPHA,
+        dst_color_blend_factor: vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
+        color_blend_op: vk::BlendOp::ADD,
+        src_alpha_blend_factor: vk::BlendFactor::ONE,
+        dst_alpha_blend_factor: vk::BlendFactor::ONE,
+        alpha_blend_op: vk::BlendOp::ADD,
+        // Have to construct it from raw bits since | operator is not const.
+        color_write_mask: vk::ColorComponentFlags::from_raw(0b1111),
+    };
+
+    pub fn new() -> BlendModeBuilder{
+        BlendModeBuilder::default()
+    }
+
     pub fn into_vk(&self) -> vk::PipelineColorBlendAttachmentState {
-        match self {
-            Self::Alpha => vk::PipelineColorBlendAttachmentState {
-                blend_enable: 1,
-                src_color_blend_factor: vk::BlendFactor::SRC_ALPHA,
-                dst_color_blend_factor: vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
-                color_blend_op: vk::BlendOp::ADD,
-                src_alpha_blend_factor: vk::BlendFactor::SRC_ALPHA,
-                dst_alpha_blend_factor: vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
-                alpha_blend_op: vk::BlendOp::ADD,
-                color_write_mask: vk::ColorComponentFlags::R
-                    | vk::ColorComponentFlags::G
-                    | vk::ColorComponentFlags::B
-                    | vk::ColorComponentFlags::A,
-            },
-            Self::PreMultipliedAlpha => vk::PipelineColorBlendAttachmentState {
-                blend_enable: vk::TRUE,
-                src_color_blend_factor: vk::BlendFactor::SRC_ALPHA,
-                dst_color_blend_factor: vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
-                color_blend_op: vk::BlendOp::ADD,
-                src_alpha_blend_factor: vk::BlendFactor::ONE,
-                dst_alpha_blend_factor: vk::BlendFactor::ONE,
-                alpha_blend_op: vk::BlendOp::ADD,
-                color_write_mask: vk::ColorComponentFlags::R
-                    | vk::ColorComponentFlags::G
-                    | vk::ColorComponentFlags::B
-                    | vk::ColorComponentFlags::A,
-            },
-            Self::Replace => vk::PipelineColorBlendAttachmentState {
-                blend_enable: 0,
-                src_color_blend_factor: vk::BlendFactor::SRC_COLOR,
-                dst_color_blend_factor: vk::BlendFactor::ONE_MINUS_DST_COLOR,
-                color_blend_op: vk::BlendOp::ADD,
-                src_alpha_blend_factor: vk::BlendFactor::ZERO,
-                dst_alpha_blend_factor: vk::BlendFactor::ZERO,
-                alpha_blend_op: vk::BlendOp::ADD,
-                color_write_mask: vk::ColorComponentFlags::R
-                    | vk::ColorComponentFlags::G
-                    | vk::ColorComponentFlags::B
-                    | vk::ColorComponentFlags::A,
-            },
+        vk::PipelineColorBlendAttachmentState {
+            blend_enable: self.blend_enable,
+            src_color_blend_factor: self.src_color_blend_factor,
+            dst_color_blend_factor: self.dst_color_blend_factor,
+            color_blend_op: self.color_blend_op,
+            src_alpha_blend_factor: self.src_alpha_blend_factor,
+            dst_alpha_blend_factor: self.dst_alpha_blend_factor,
+            alpha_blend_op: self.alpha_blend_op,
+            color_write_mask: self.color_write_mask,
         }
     }
 }
 
-impl Default for BlendMode {
+// the Builder derive Macro wants Default to be implemented for BlendMode
+impl Default for BlendMode{
     fn default() -> Self {
-        Self::Replace
+        Self::REPLACE
     }
 }
 
@@ -225,8 +265,8 @@ where
 
         let mut descriptor_bindings = Shader::merge_descriptor_bindings(
             shaders
-                .iter()
-                .map(|shader| shader.descriptor_bindings(&device)),
+            .iter()
+            .map(|shader| shader.descriptor_bindings(&device)),
         );
         for (descriptor_info, _) in descriptor_bindings.values_mut() {
             if descriptor_info.binding_count() == 0 {
@@ -270,8 +310,8 @@ where
             let layout = device
                 .create_pipeline_layout(
                     &vk::PipelineLayoutCreateInfo::builder()
-                        .set_layouts(&descriptor_sets_layouts)
-                        .push_constant_ranges(&push_constants),
+                    .set_layouts(&descriptor_sets_layouts)
+                    .push_constant_ranges(&push_constants),
                     None,
                 )
                 .map_err(|err| {
@@ -303,7 +343,7 @@ where
 
                     Result::<_, DriverError>::Ok((shader_module, shader_stage))
                 })
-                .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<Vec<_>, _>>()?;
             let mut shader_modules = vec![];
             let mut stages = vec![];
             shader_info
