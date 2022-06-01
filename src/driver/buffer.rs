@@ -118,6 +118,22 @@ where
         }
     }
 
+    /// Returns a valid mapped pointer if the memory is host visible, otherwise it will panic.
+    pub fn mapped_ptr<T>(this: &Self) -> *mut T {
+        this.allocation
+            .as_ref()
+            .unwrap()
+            .mapped_ptr()
+            .unwrap()
+            .as_ptr() as *mut _
+    }
+
+    /// Returns a valid mapped slice if the memory is host visible, otherwise it will panic.
+    pub fn mapped_slice(this: &Self) -> &[u8] {
+        &this.allocation.as_ref().unwrap().mapped_slice().unwrap()[0..this.info.size as usize]
+    }
+
+    /// Returns a valid mapped mutable slice if the memory is host visible, otherwise it will panic.
     pub fn mapped_slice_mut(this: &mut Self) -> &mut [u8] {
         &mut this
             .allocation
@@ -185,6 +201,7 @@ pub struct BufferInfo {
     pub size: vk::DeviceSize,
     pub usage: vk::BufferUsageFlags,
 
+    /// Specifies a buffer whose memory is host visible.
     #[builder(default)]
     pub can_map: bool,
 }
