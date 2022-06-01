@@ -38,8 +38,8 @@ pub struct BlendMode {
     pub color_write_mask: vk::ColorComponentFlags,
 }
 
-impl BlendModeBuilder{
-    pub fn build(self) -> BlendMode{
+impl BlendModeBuilder {
+    pub fn build(self) -> BlendMode {
         self.fallible_build().unwrap()
     }
 }
@@ -88,7 +88,7 @@ impl BlendMode {
     };
 
     #[allow(clippy::new_ret_no_self)]
-    pub fn new() -> BlendModeBuilder{
+    pub fn new() -> BlendModeBuilder {
         BlendModeBuilder::default()
     }
 
@@ -107,7 +107,7 @@ impl BlendMode {
 }
 
 // the Builder derive Macro wants Default to be implemented for BlendMode
-impl Default for BlendMode{
+impl Default for BlendMode {
     fn default() -> Self {
         Self::REPLACE
     }
@@ -266,8 +266,8 @@ where
 
         let mut descriptor_bindings = Shader::merge_descriptor_bindings(
             shaders
-            .iter()
-            .map(|shader| shader.descriptor_bindings(&device)),
+                .iter()
+                .map(|shader| shader.descriptor_bindings(&device)),
         );
         for (descriptor_info, _) in descriptor_bindings.values_mut() {
             if descriptor_info.binding_count() == 0 {
@@ -311,8 +311,8 @@ where
             let layout = device
                 .create_pipeline_layout(
                     &vk::PipelineLayoutCreateInfo::builder()
-                    .set_layouts(&descriptor_sets_layouts)
-                    .push_constant_ranges(&push_constants),
+                        .set_layouts(&descriptor_sets_layouts)
+                        .push_constant_ranges(&push_constants),
                     None,
                 )
                 .map_err(|err| {
@@ -344,7 +344,7 @@ where
 
                     Result::<_, DriverError>::Ok((shader_module, shader_stage))
                 })
-            .collect::<Result<Vec<_>, _>>()?;
+                .collect::<Result<Vec<_>, _>>()?;
             let mut shader_modules = vec![];
             let mut stages = vec![];
             shader_info
