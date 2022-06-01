@@ -508,7 +508,6 @@ where
         if max_pool_sizes.is_empty() {
             return Ok(None);
         }
-        trace!("max_pool_sizes: {:#?}", max_pool_sizes);
 
         // Notice how all sets are big enough for any other set; TODO: efficiently dont
         let info = DescriptorPoolInfo::new(pass.execs.len() as u32 * (max_descriptor_set_idx + 1))
