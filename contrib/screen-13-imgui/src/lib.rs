@@ -50,7 +50,7 @@ where
             GraphicPipeline::create(
                 device,
                 GraphicPipelineInfo::new()
-                    .blend(BlendMode::PreMultipliedAlpha)
+                    .blend(BlendMode::PRE_MULTIPLIED_ALPHA)
                     .cull_mode(vk::CullModeFlags::NONE),
                 [
                     Shader::new_vertex(include_spirv!("res/shader/imgui.vert", vert).as_slice()),

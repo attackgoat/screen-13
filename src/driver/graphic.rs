@@ -12,6 +12,13 @@ use {
     std::{cmp::Ordering, collections::HashSet, ffi::CString, thread::panicking},
 };
 
+const RGBA_COLOR_COMPONENTS: vk::ColorComponentFlags = vk::ColorComponentFlags::from_raw(
+    vk::ColorComponentFlags::R.as_raw()
+        | vk::ColorComponentFlags::G.as_raw()
+        | vk::ColorComponentFlags::B.as_raw()
+        | vk::ColorComponentFlags::A.as_raw(),
+);
+
 #[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[builder(
     build_fn(private, name = "fallible_build"),
@@ -19,8 +26,8 @@ use {
     pattern = "owned"
 )]
 pub struct BlendMode {
-    #[builder(default = "vk::FALSE")]
-    pub blend_enable: vk::Bool32,
+    #[builder(default = "false")]
+    pub blend_enable: bool,
     #[builder(default = "vk::BlendFactor::SRC_COLOR")]
     pub src_color_blend_factor: vk::BlendFactor,
     #[builder(default = "vk::BlendFactor::ONE_MINUS_DST_COLOR")]
@@ -33,8 +40,7 @@ pub struct BlendMode {
     pub dst_alpha_blend_factor: vk::BlendFactor,
     #[builder(default = "vk::BlendOp::ADD")]
     pub alpha_blend_op: vk::BlendOp,
-    // Have to construct it from raw bits since | operator is not const.
-    #[builder(default = "vk::ColorComponentFlags::from_raw(0b1111)")]
+    #[builder(default = "RGBA_COLOR_COMPONENTS")]
     pub color_write_mask: vk::ColorComponentFlags,
 }
 
@@ -47,44 +53,44 @@ impl BlendModeBuilder {
 impl BlendMode {
     // For backwards compatibility redefine the constants in camel case:
     #[allow(non_upper_case_globals)]
+    #[deprecated = "use uppercase const"]
     pub const Replace: Self = Self::REPLACE;
     #[allow(non_upper_case_globals)]
+    #[deprecated = "use uppercase const"]
     pub const Alpha: Self = Self::ALPHA;
     #[allow(non_upper_case_globals)]
+    #[deprecated = "use uppercase const"]
     pub const PreMultipliedAlpha: Self = Self::PRE_MULTIPLIED_ALPHA;
 
     pub const REPLACE: Self = Self {
-        blend_enable: vk::FALSE,
+        blend_enable: false,
         src_color_blend_factor: vk::BlendFactor::SRC_COLOR,
         dst_color_blend_factor: vk::BlendFactor::ONE_MINUS_DST_COLOR,
         color_blend_op: vk::BlendOp::ADD,
         src_alpha_blend_factor: vk::BlendFactor::ZERO,
         dst_alpha_blend_factor: vk::BlendFactor::ZERO,
         alpha_blend_op: vk::BlendOp::ADD,
-        // Have to construct it from raw bits since | operator is not const.
-        color_write_mask: vk::ColorComponentFlags::from_raw(0b1111),
+        color_write_mask: RGBA_COLOR_COMPONENTS,
     };
     pub const ALPHA: Self = Self {
-        blend_enable: vk::TRUE,
+        blend_enable: true,
         src_color_blend_factor: vk::BlendFactor::SRC_ALPHA,
         dst_color_blend_factor: vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
         color_blend_op: vk::BlendOp::ADD,
         src_alpha_blend_factor: vk::BlendFactor::SRC_ALPHA,
         dst_alpha_blend_factor: vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
         alpha_blend_op: vk::BlendOp::ADD,
-        // Have to construct it from raw bits since | operator is not const.
-        color_write_mask: vk::ColorComponentFlags::from_raw(0b1111),
+        color_write_mask: RGBA_COLOR_COMPONENTS,
     };
     pub const PRE_MULTIPLIED_ALPHA: Self = Self {
-        blend_enable: vk::TRUE,
+        blend_enable: true,
         src_color_blend_factor: vk::BlendFactor::SRC_ALPHA,
         dst_color_blend_factor: vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
         color_blend_op: vk::BlendOp::ADD,
         src_alpha_blend_factor: vk::BlendFactor::ONE,
         dst_alpha_blend_factor: vk::BlendFactor::ONE,
         alpha_blend_op: vk::BlendOp::ADD,
-        // Have to construct it from raw bits since | operator is not const.
-        color_write_mask: vk::ColorComponentFlags::from_raw(0b1111),
+        color_write_mask: RGBA_COLOR_COMPONENTS,
     };
 
     #[allow(clippy::new_ret_no_self)]
@@ -94,7 +100,11 @@ impl BlendMode {
 
     pub fn into_vk(&self) -> vk::PipelineColorBlendAttachmentState {
         vk::PipelineColorBlendAttachmentState {
-            blend_enable: self.blend_enable,
+            blend_enable: if self.blend_enable {
+                vk::TRUE
+            } else {
+                vk::FALSE
+            },
             src_color_blend_factor: self.src_color_blend_factor,
             dst_color_blend_factor: self.dst_color_blend_factor,
             color_blend_op: self.color_blend_op,

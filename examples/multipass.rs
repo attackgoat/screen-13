@@ -253,7 +253,7 @@ fn create_fill_quad_linear_gradient_pipeline(device: &Shared<Device>) -> Shared<
     Shared::new(
         GraphicPipeline::create(
             device,
-            GraphicPipelineInfo::new().blend(BlendMode::Alpha),
+            GraphicPipelineInfo::new().blend(BlendMode::ALPHA),
             [vertex_shader, fragment_shader],
         )
         .unwrap(),
