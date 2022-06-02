@@ -43,5 +43,7 @@ pretty_env_logger = "0.4"
 rand = "0.8"
 screen-13-fx = { path = "contrib/screen-13-fx" }
 screen-13-imgui = { path = "contrib/screen-13-imgui" }
+screen-13-egui = { path = "contrib/screen-13-egui" }
+egui = "0.18.0"
 tobj = "3.2"
 
