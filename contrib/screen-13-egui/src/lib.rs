@@ -210,6 +210,8 @@ where P: SharedPointerKind + Send + 'static{
     ) {
         let target = target.into();
         let target_info = render_graph.node_info(target);
+        trace!("\n\n\n");
+        trace!("width: {}, height: {}", target_info.width as f32 / self.ctx.pixels_per_point(), target_info.height as f32 / self.ctx.pixels_per_point());
         for egui::ClippedPrimitive {
             clip_rect,
             primitive,
@@ -265,14 +267,22 @@ where P: SharedPointerKind + Send + 'static{
                         screen_size: [f32; 2],
                     }
 
+                    let pixels_per_point = self.ctx.pixels_per_point();
+
                     let push_constants = PushConstants {
                         screen_size: [
-                            target_info.width as f32 / self.ctx.pixels_per_point(),
-                            target_info.height as f32 / self.ctx.pixels_per_point(),
+                            target_info.width as f32 / pixels_per_point,
+                            target_info.height as f32 / pixels_per_point,
                         ],
                     };
 
                     let num_indices = mesh.indices.len() as u32;
+
+                    let clip_x = (clip_rect.min.x as f32 * pixels_per_point) as i32;
+                    let clip_y = (clip_rect.min.y as f32 * pixels_per_point) as i32;
+
+                    let clip_width = ((clip_rect.max.x - clip_rect.min.x) as f32 * pixels_per_point) as u32;
+                    let clip_height = ((clip_rect.max.y - clip_rect.min.y) as f32 * pixels_per_point) as u32;
 
                     render_graph
                         .begin_pass("Egui pass")
@@ -287,10 +297,10 @@ where P: SharedPointerKind + Send + 'static{
                             subpass.bind_vertex_buffer(vert_buf);
                             subpass.push_constants(cast_slice(&[push_constants]));
                             subpass.set_scissor(
-                                clip_rect.min.x as i32,
-                                clip_rect.min.y as i32,
-                                (clip_rect.max.x - clip_rect.min.x) as u32,
-                                (clip_rect.max.y - clip_rect.min.y) as u32,
+                                clip_x,
+                                clip_y,
+                                clip_width,
+                                clip_height,
                             );
                             subpass.draw_indexed(num_indices, 1, 0, 0, 0);
                         });
