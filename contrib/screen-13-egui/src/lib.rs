@@ -1,25 +1,42 @@
-use std::{borrow::Cow, collections::HashMap};
+pub mod prelude_arc{
+    pub use super::*;
 
-use screen_13::graph::Bind;
+    use archery::ArcK;
 
-pub use {
-    archery::{ArcK, SharedPointer, SharedPointerKind},
-    bytemuck::cast_slice,
-    screen_13::prelude_arc::*,
-};
-
-pub struct Egui {
-    pub ctx: egui::Context,
-    egui_winit: egui_winit::State,
-    textures: HashMap<egui::TextureId, ImageLeaseBinding<ArcK>>,
-    cache: HashPool,
-    ppl: SharedPointer<GraphicPipeline, ArcK>,
-    next_tex_id: u64,
-    user_textures: HashMap<egui::TextureId, AnyImageNode>,
+    pub type Egui = super::Egui<ArcK>;
 }
 
-impl Egui {
-    pub fn new(device: &SharedPointer<Device, ArcK>, window: &Window) -> Self {
+pub mod prelude_rc{
+    pub use super::*;
+
+    use archery::RcK;
+
+    pub type Egui = super::Egui<RcK>;
+}
+
+use {
+    std::{borrow::Cow, collections::HashMap},
+    archery::{SharedPointer, SharedPointerKind},
+    bytemuck::cast_slice,
+    screen_13::prelude_all::*,
+    screen_13::graph::Bind,
+};
+
+
+pub struct Egui<P> 
+where P: SharedPointerKind{
+    pub ctx: egui::Context,
+    egui_winit: egui_winit::State,
+    textures: HashMap<egui::TextureId, ImageLeaseBinding<P>>,
+    cache: HashPool<P>,
+    ppl: SharedPointer<GraphicPipeline<P>, P>,
+    next_tex_id: u64,
+    user_textures: HashMap<egui::TextureId, AnyImageNode<P>>,
+}
+
+impl<P> Egui<P> 
+where P: SharedPointerKind + Send + 'static{
+    pub fn new(device: &SharedPointer<Device<P>, P>, window: &Window) -> Self {
         let ppl = SharedPointer::new(
             GraphicPipeline::create(
                 device,
@@ -65,8 +82,8 @@ impl Egui {
     fn bind_and_update_textures(
         &mut self,
         deltas: &egui::TexturesDelta,
-        render_graph: &mut RenderGraph,
-    ) -> HashMap<egui::TextureId, AnyImageNode> {
+        render_graph: &mut RenderGraph<P>,
+    ) -> HashMap<egui::TextureId, AnyImageNode<P>> {
         let mut bound_tex = deltas
             .set
             .iter()
@@ -163,8 +180,8 @@ impl Egui {
 
     fn unbind_and_free(
         &mut self,
-        bound_tex: HashMap<egui::TextureId, AnyImageNode>,
-        render_graph: &mut RenderGraph,
+        bound_tex: HashMap<egui::TextureId, AnyImageNode<P>>,
+        render_graph: &mut RenderGraph<P>,
         deltas: &egui::TexturesDelta,
     ) {
         // Unbind textures
@@ -187,9 +204,9 @@ impl Egui {
     fn draw_primitive(
         &mut self,
         shapes: Vec<egui::epaint::ClippedShape>,
-        bound_tex: &HashMap<egui::TextureId, AnyImageNode>,
-        render_graph: &mut RenderGraph,
-        target: impl Into<AnyImageNode>,
+        bound_tex: &HashMap<egui::TextureId, AnyImageNode<P>>,
+        render_graph: &mut RenderGraph<P>,
+        target: impl Into<AnyImageNode<P>>,
     ) {
         let target = target.into();
         let target_info = render_graph.node_info(target);
@@ -287,8 +304,8 @@ impl Egui {
         &mut self,
         window: &Window,
         events: &[Event<()>],
-        target: impl Into<AnyImageNode>,
-        render_graph: &mut RenderGraph,
+        target: impl Into<AnyImageNode<P>>,
+        render_graph: &mut RenderGraph<P>,
         ui_fn: impl FnMut(&egui::Context),
     ) {
         // Update events and generate shapes and texture deltas.
@@ -312,7 +329,7 @@ impl Egui {
         self.unbind_and_free(bound_tex, render_graph, &deltas);
     }
 
-    pub fn register_texture(&mut self, tex: impl Into<AnyImageNode>) -> egui::TextureId {
+    pub fn register_texture(&mut self, tex: impl Into<AnyImageNode<P>>) -> egui::TextureId {
         let id = egui::TextureId::User(self.next_tex_id);
         self.next_tex_id += 1;
         self.user_textures.insert(id, tex.into());

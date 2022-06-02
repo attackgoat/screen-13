@@ -1,4 +1,5 @@
 use screen_13_egui::*;
+use screen_13::prelude_arc::*;
 
 fn main() -> Result<(), DisplayError> {
     pretty_env_logger::init();
