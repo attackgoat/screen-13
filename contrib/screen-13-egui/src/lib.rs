@@ -210,8 +210,6 @@ where P: SharedPointerKind + Send + 'static{
     ) {
         let target = target.into();
         let target_info = render_graph.node_info(target);
-        trace!("\n\n\n");
-        trace!("width: {}, height: {}", target_info.width as f32 / self.ctx.pixels_per_point(), target_info.height as f32 / self.ctx.pixels_per_point());
         for egui::ClippedPrimitive {
             clip_rect,
             primitive,
