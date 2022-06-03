@@ -68,10 +68,11 @@ where P: SharedPointerKind + Send + 'static{
             )
             .unwrap(),
         );
+        let max_image_side = device.physical_device.props.limits.max_image_dimension2_d;
         Self {
             ppl,
             ctx: egui::Context::default(),
-            egui_winit: egui_winit::State::new(10000, window),
+            egui_winit: egui_winit::State::new(max_image_side as usize, window),
             textures: HashMap::default(),
             cache: HashPool::new(device),
             next_tex_id: 0,
