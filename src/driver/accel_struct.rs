@@ -1,29 +1,22 @@
 use {
     super::{Buffer, BufferInfo, Device, DriverError},
-    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     derive_builder::Builder,
     log::warn,
-    std::{ops::Deref, thread::panicking},
+    std::{ops::Deref, sync::Arc, thread::panicking},
 };
 
 #[derive(Debug)]
-pub struct AccelerationStructure<P>
-where
-    P: SharedPointerKind,
-{
+pub struct AccelerationStructure {
     accel_struct: vk::AccelerationStructureKHR,
-    pub buffer: Buffer<P>,
-    device: SharedPointer<Device<P>, P>,
+    pub buffer: Buffer,
+    device: Arc<Device>,
     pub info: AccelerationStructureInfo,
 }
 
-impl<P> AccelerationStructure<P>
-where
-    P: SharedPointerKind,
-{
+impl AccelerationStructure {
     pub fn create(
-        device: &SharedPointer<Device<P>, P>,
+        device: &Arc<Device>,
         info: impl Into<AccelerationStructureInfo>,
     ) -> Result<Self, DriverError> {
         let info = info.into();
@@ -57,7 +50,7 @@ where
             }
         };
 
-        let device = SharedPointer::clone(device);
+        let device = Arc::clone(device);
 
         Ok(AccelerationStructure {
             accel_struct,
@@ -81,7 +74,7 @@ where
     }
 
     pub fn size_of(
-        device: &SharedPointer<Device<P>, P>,
+        device: &Arc<Device>,
         info: &AccelerationStructureGeometryInfo,
     ) -> AccelerationStructureSize {
         use std::cell::RefCell;
@@ -190,10 +183,7 @@ where
     }
 }
 
-impl<P> Deref for AccelerationStructure<P>
-where
-    P: SharedPointerKind,
-{
+impl Deref for AccelerationStructure {
     type Target = vk::AccelerationStructureKHR;
 
     fn deref(&self) -> &Self::Target {
@@ -201,10 +191,7 @@ where
     }
 }
 
-impl<P> Drop for AccelerationStructure<P>
-where
-    P: SharedPointerKind,
-{
+impl Drop for AccelerationStructure {
     fn drop(&mut self) {
         if panicking() {
             return;

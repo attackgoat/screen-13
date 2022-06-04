@@ -3,40 +3,33 @@ use {
         shader::ShaderCode, DescriptorBindingMap, Device, DriverError, PipelineDescriptorInfo,
         Shader, SpecializationInfo,
     },
-    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     derive_builder::Builder,
     log::{trace, warn},
-    std::{ffi::CString, ops::Deref, thread::panicking},
+    std::{ffi::CString, ops::Deref, sync::Arc, thread::panicking},
 };
 
 #[derive(Debug)]
-pub struct ComputePipeline<P>
-where
-    P: SharedPointerKind,
-{
+pub struct ComputePipeline {
     pub descriptor_bindings: DescriptorBindingMap,
-    pub descriptor_info: PipelineDescriptorInfo<P>,
-    pub device: SharedPointer<Device<P>, P>,
+    pub descriptor_info: PipelineDescriptorInfo,
+    pub device: Arc<Device>,
     pub layout: vk::PipelineLayout,
     pub info: ComputePipelineInfo,
     pipeline: vk::Pipeline,
     pub push_constants: Option<vk::PushConstantRange>,
 }
 
-impl<P> ComputePipeline<P>
-where
-    P: SharedPointerKind,
-{
+impl ComputePipeline {
     pub fn create(
-        device: &SharedPointer<Device<P>, P>,
+        device: &Arc<Device>,
         info: impl Into<ComputePipelineInfo>,
     ) -> Result<Self, DriverError> {
         use std::slice::from_ref;
 
         trace!("create");
 
-        let device = SharedPointer::clone(device);
+        let device = Arc::clone(device);
         let info: ComputePipelineInfo = info.into();
         let shader = info.clone().into_shader();
 
@@ -129,10 +122,7 @@ where
     }
 }
 
-impl<P> Deref for ComputePipeline<P>
-where
-    P: SharedPointerKind,
-{
+impl Deref for ComputePipeline {
     type Target = vk::Pipeline;
 
     fn deref(&self) -> &Self::Target {
@@ -140,10 +130,7 @@ where
     }
 }
 
-impl<P> Drop for ComputePipeline<P>
-where
-    P: SharedPointerKind,
-{
+impl Drop for ComputePipeline {
     fn drop(&mut self) {
         if panicking() {
             return;

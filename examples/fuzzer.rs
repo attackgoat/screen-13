@@ -19,7 +19,7 @@ Also helpful to run with valgrind:
     cargo build --example fuzzer && valgrind target/debug/examples/fuzzer
 
 */
-use {inline_spirv::inline_spirv, rand::random, screen_13::prelude_arc::*};
+use {inline_spirv::inline_spirv, rand::random, screen_13::prelude::*, std::sync::Arc};
 
 fn main() -> Result<(), DisplayError> {
     pretty_env_logger::init();
@@ -510,30 +510,30 @@ fn record_graphic_wont_merge(frame: &mut FrameContext, cache: &mut HashPool) {
 
 fn compute_pipeline(
     key: &'static str,
-    device: &Shared<Device>,
+    device: &Arc<Device>,
     info: impl Into<ComputePipelineInfo>,
-) -> Shared<ComputePipeline> {
+) -> Arc<ComputePipeline> {
     use std::{cell::RefCell, collections::HashMap};
 
     thread_local! {
-        static TLS: RefCell<HashMap<&'static str, Shared<ComputePipeline>>> = Default::default();
+        static TLS: RefCell<HashMap<&'static str, Arc<ComputePipeline>>> = Default::default();
     }
 
     TLS.with(|tls| {
-        Shared::clone(
+        Arc::clone(
             tls.borrow_mut()
                 .entry(key)
-                .or_insert_with(|| Shared::new(ComputePipeline::create(device, info).unwrap())),
+                .or_insert_with(|| Arc::new(ComputePipeline::create(device, info).unwrap())),
         )
     })
 }
 
 fn graphic_vert_frag_pipeline(
-    device: &Shared<Device>,
+    device: &Arc<Device>,
     info: impl Into<GraphicPipelineInfo>,
     vert_source: &'static [u32],
     frag_source: &'static [u32],
-) -> Shared<GraphicPipeline> {
+) -> Arc<GraphicPipeline> {
     use std::{cell::RefCell, collections::HashMap};
 
     #[derive(Eq, Hash, PartialEq)]
@@ -544,13 +544,13 @@ fn graphic_vert_frag_pipeline(
     }
 
     thread_local! {
-        static TLS: RefCell<HashMap<Key, Shared<GraphicPipeline>>> = Default::default();
+        static TLS: RefCell<HashMap<Key, Arc<GraphicPipeline>>> = Default::default();
     }
 
     let info = info.into();
 
     TLS.with(|tls| {
-        Shared::clone(
+        Arc::clone(
             tls.borrow_mut()
                 .entry(Key {
                     info: info.clone(),
@@ -558,7 +558,7 @@ fn graphic_vert_frag_pipeline(
                     frag_source,
                 })
                 .or_insert_with(move || {
-                    Shared::new(
+                    Arc::new(
                         GraphicPipeline::create(
                             device,
                             info,

@@ -1,31 +1,24 @@
 use {
     super::{DescriptorSetLayout, Device, DriverError},
-    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     derive_builder::Builder,
     log::{trace, warn},
-    std::{ops::Deref, thread::panicking},
+    std::{ops::Deref, sync::Arc, thread::panicking},
 };
 
 #[derive(Debug)]
-pub struct DescriptorPool<P>
-where
-    P: SharedPointerKind,
-{
+pub struct DescriptorPool {
     pub info: DescriptorPoolInfo,
     descriptor_pool: vk::DescriptorPool,
-    pub device: SharedPointer<Device<P>, P>,
+    pub device: Arc<Device>,
 }
 
-impl<P> DescriptorPool<P>
-where
-    P: SharedPointerKind,
-{
+impl DescriptorPool {
     pub fn create(
-        device: &SharedPointer<Device<P>, P>,
+        device: &Arc<Device>,
         info: impl Into<DescriptorPoolInfo>,
     ) -> Result<Self, DriverError> {
-        let device = SharedPointer::clone(device);
+        let device = Arc::clone(device);
         let info = info.into();
         let descriptor_pool = unsafe {
             device.create_descriptor_pool(
@@ -59,28 +52,22 @@ where
     }
 
     pub fn allocate_descriptor_set(
-        this: &SharedPointer<Self, P>,
-        layout: &DescriptorSetLayout<P>,
-    ) -> Result<DescriptorSet<P>, DriverError>
-    where
-        P: 'static,
-    {
+        this: &Arc<Self>,
+        layout: &DescriptorSetLayout,
+    ) -> Result<DescriptorSet, DriverError> {
         Ok(Self::allocate_descriptor_sets(this, layout, 1)?
             .next()
             .unwrap())
     }
 
     pub fn allocate_descriptor_sets(
-        this: &SharedPointer<Self, P>,
-        layout: &DescriptorSetLayout<P>,
+        this: &Arc<Self>,
+        layout: &DescriptorSetLayout,
         count: u32,
-    ) -> Result<impl Iterator<Item = DescriptorSet<P>>, DriverError>
-    where
-        P: 'static,
-    {
+    ) -> Result<impl Iterator<Item = DescriptorSet>, DriverError> {
         use std::slice::from_ref;
 
-        let descriptor_pool = SharedPointer::clone(this);
+        let descriptor_pool = Arc::clone(this);
         let mut create_info = vk::DescriptorSetAllocateInfo::builder()
             .descriptor_pool(this.descriptor_pool)
             .set_layouts(from_ref(layout));
@@ -107,17 +94,14 @@ where
                 })?
                 .into_iter()
                 .map(move |descriptor_set| DescriptorSet {
-                    descriptor_pool: SharedPointer::clone(&descriptor_pool),
+                    descriptor_pool: Arc::clone(&descriptor_pool),
                     descriptor_set,
                 })
         })
     }
 }
 
-impl<P> Deref for DescriptorPool<P>
-where
-    P: SharedPointerKind,
-{
+impl Deref for DescriptorPool {
     type Target = vk::DescriptorPool;
 
     fn deref(&self) -> &Self::Target {
@@ -125,10 +109,7 @@ where
     }
 }
 
-impl<P> Drop for DescriptorPool<P>
-where
-    P: SharedPointerKind,
-{
+impl Drop for DescriptorPool {
     fn drop(&mut self) {
         if panicking() {
             return;
@@ -169,18 +150,12 @@ pub struct DescriptorPoolSize {
 }
 
 #[derive(Debug)]
-pub struct DescriptorSet<P>
-where
-    P: SharedPointerKind,
-{
-    descriptor_pool: SharedPointer<DescriptorPool<P>, P>,
+pub struct DescriptorSet {
+    descriptor_pool: Arc<DescriptorPool>,
     descriptor_set: vk::DescriptorSet,
 }
 
-impl<P> Deref for DescriptorSet<P>
-where
-    P: SharedPointerKind,
-{
+impl Deref for DescriptorSet {
     type Target = vk::DescriptorSet;
 
     fn deref(&self) -> &Self::Target {
@@ -188,10 +163,7 @@ where
     }
 }
 
-impl<P> Drop for DescriptorSet<P>
-where
-    P: SharedPointerKind,
-{
+impl Drop for DescriptorSet {
     fn drop(&mut self) {
         use std::slice::from_ref;
 

@@ -1,4 +1,4 @@
-use screen_13::prelude_arc::{run, DisplayError};
+use screen_13::prelude::{run, DisplayError};
 
 /// This example requires a color graphics adapter.
 fn main() -> Result<(), DisplayError> {

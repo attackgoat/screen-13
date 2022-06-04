@@ -1,34 +1,28 @@
 use {
     super::{DriverError, Instance},
-    archery::{SharedPointer, SharedPointerKind},
     ash::{extensions::khr, vk},
     log::warn,
     raw_window_handle::HasRawWindowHandle,
     std::{
         fmt::{Debug, Formatter},
         ops::Deref,
+        sync::Arc,
         thread::panicking,
     },
 };
 
-pub struct Surface<P>
-where
-    P: SharedPointerKind,
-{
-    _instance: SharedPointer<Instance, P>,
+pub struct Surface {
+    _instance: Arc<Instance>,
     surface: vk::SurfaceKHR,
     surface_ext: khr::Surface,
 }
 
-impl<P> Surface<P>
-where
-    P: SharedPointerKind,
-{
+impl Surface {
     pub fn new(
-        instance: &SharedPointer<Instance, P>,
+        instance: &Arc<Instance>,
         window: &impl HasRawWindowHandle,
     ) -> Result<Self, DriverError> {
-        let instance = SharedPointer::clone(instance);
+        let instance = Arc::clone(instance);
         let surface_ext = khr::Surface::new(&instance.entry, &instance);
         let surface =
             unsafe { ash_window::create_surface(&instance.entry, &instance, window, None) }
@@ -46,19 +40,13 @@ where
     }
 }
 
-impl<P> Debug for Surface<P>
-where
-    P: SharedPointerKind,
-{
+impl Debug for Surface {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_str("Surface")
     }
 }
 
-impl<P> Deref for Surface<P>
-where
-    P: SharedPointerKind,
-{
+impl Deref for Surface {
     type Target = vk::SurfaceKHR;
 
     fn deref(&self) -> &Self::Target {
@@ -66,10 +54,7 @@ where
     }
 }
 
-impl<P> Drop for Surface<P>
-where
-    P: SharedPointerKind,
-{
+impl Drop for Surface {
     fn drop(&mut self) {
         if panicking() {
             return;

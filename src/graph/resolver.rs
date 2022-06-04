@@ -12,9 +12,8 @@ use {
             FramebufferKey, FramebufferKeyAttachment, Image, ImageViewInfo, RenderPass,
             RenderPassInfo, SampleCount, SubpassDependency, SubpassInfo,
         },
-        HashPool, Lease,
+        hash_pool::{HashPool, Lease},
     },
-    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     log::{debug, trace},
     std::{
@@ -23,6 +22,7 @@ use {
         iter::repeat,
         mem::take,
         ops::Range,
+        sync::Arc,
     },
     vk_sync::{cmd::pipeline_barrier, AccessType, BufferBarrier, GlobalBarrier, ImageBarrier},
 };
@@ -32,13 +32,10 @@ fn align_up(val: u32, atom: u32) -> u32 {
 }
 
 #[derive(Debug)]
-struct PhysicalPass<P>
-where
-    P: SharedPointerKind,
-{
-    _descriptor_pool: Option<Lease<SharedPointer<DescriptorPool<P>, P>, P>>,
-    exec_descriptor_sets: HashMap<usize, Vec<DescriptorSet<P>>>,
-    render_pass: Option<Lease<RenderPass<P>, P>>,
+struct PhysicalPass {
+    _descriptor_pool: Option<Lease<Arc<DescriptorPool>>>,
+    exec_descriptor_sets: HashMap<usize, Vec<DescriptorSet>>,
+    render_pass: Option<Lease<RenderPass>>,
 }
 
 /// A structure which can read and execute render graphs. This pattern was derived from:
@@ -46,19 +43,13 @@ where
 /// <http://themaister.net/blog/2017/08/15/render-graphs-and-vulkan-a-deep-dive/>
 /// <https://github.com/EmbarkStudios/kajiya>
 #[derive(Debug)]
-pub struct Resolver<P>
-where
-    P: SharedPointerKind + Send,
-{
-    pub(super) graph: RenderGraph<P>,
-    physical_passes: Vec<PhysicalPass<P>>,
+pub struct Resolver {
+    pub(super) graph: RenderGraph,
+    physical_passes: Vec<PhysicalPass>,
 }
 
-impl<P> Resolver<P>
-where
-    P: SharedPointerKind + Send + 'static,
-{
-    pub(super) fn new(graph: RenderGraph<P>) -> Self {
+impl Resolver {
+    pub(super) fn new(graph: RenderGraph) -> Self {
         let physical_passes = Vec::with_capacity(graph.passes.len());
 
         Self {
@@ -67,7 +58,7 @@ where
         }
     }
 
-    fn allow_merge_passes(lhs: &Pass<P>, rhs: &Pass<P>) -> bool {
+    fn allow_merge_passes(lhs: &Pass, rhs: &Pass) -> bool {
         let lhs_pipeline = lhs
             .execs
             .get(0)
@@ -202,8 +193,8 @@ where
 
     fn begin_render_pass(
         &mut self,
-        cmd_buf: &CommandBuffer<P>,
-        pass: &Pass<P>,
+        cmd_buf: &CommandBuffer,
+        pass: &Pass,
         pass_idx: usize,
         render_area: Area,
     ) -> Result<(), DriverError> {
@@ -313,9 +304,9 @@ where
 
     fn bind_descriptor_sets(
         &self,
-        cmd_buf: &CommandBuffer<P>,
-        pipeline: &ExecutionPipeline<P>,
-        physical_pass: &PhysicalPass<P>,
+        cmd_buf: &CommandBuffer,
+        pipeline: &ExecutionPipeline,
+        physical_pass: &PhysicalPass,
         exec_idx: usize,
     ) {
         let descriptor_sets =
@@ -353,10 +344,10 @@ where
 
     fn bind_pipeline(
         &self,
-        cmd_buf: &mut CommandBuffer<P>,
+        cmd_buf: &mut CommandBuffer,
         pass_idx: usize,
         exec_idx: usize,
-        pipeline: &mut ExecutionPipeline<P>,
+        pipeline: &mut ExecutionPipeline,
         depth_stencil: Option<DepthStencilMode>,
     ) -> Result<(), DriverError> {
         let (ty, name, vk_pipeline) = match pipeline {
@@ -381,11 +372,11 @@ where
         let pipeline_bind_point = pipeline.bind_point();
         let pipeline = match pipeline {
             ExecutionPipeline::Compute(pipeline) => {
-                CommandBuffer::push_fenced_drop(cmd_buf, SharedPointer::clone(pipeline));
+                CommandBuffer::push_fenced_drop(cmd_buf, Arc::clone(pipeline));
                 ***pipeline
             }
             ExecutionPipeline::Graphic(pipeline) => {
-                CommandBuffer::push_fenced_drop(cmd_buf, SharedPointer::clone(pipeline));
+                CommandBuffer::push_fenced_drop(cmd_buf, Arc::clone(pipeline));
                 physical_pass
                     .render_pass
                     .as_ref()
@@ -393,7 +384,7 @@ where
                     .graphic_pipeline_ref(pipeline, depth_stencil, exec_idx as _)?
             }
             ExecutionPipeline::RayTrace(pipeline) => {
-                CommandBuffer::push_fenced_drop(cmd_buf, SharedPointer::clone(pipeline));
+                CommandBuffer::push_fenced_drop(cmd_buf, Arc::clone(pipeline));
                 ***pipeline
             }
         };
@@ -449,7 +440,7 @@ where
             })
     }
 
-    fn end_render_pass(&mut self, cmd_buf: &CommandBuffer<P>) {
+    fn end_render_pass(&mut self, cmd_buf: &CommandBuffer) {
         trace!("  end render pass");
 
         unsafe {
@@ -481,9 +472,9 @@ where
 
     #[allow(clippy::type_complexity)]
     fn lease_descriptor_pool(
-        cache: &mut HashPool<P>,
-        pass: &Pass<P>,
-    ) -> Result<Option<Lease<SharedPointer<DescriptorPool<P>, P>, P>>, DriverError> {
+        cache: &mut HashPool,
+        pass: &Pass,
+    ) -> Result<Option<Lease<Arc<DescriptorPool>>>, DriverError> {
         let mut max_pool_sizes = BTreeMap::new();
         let max_descriptor_set_idx = pass
             .execs
@@ -531,9 +522,9 @@ where
 
     fn lease_render_pass(
         &self,
-        cache: &mut HashPool<P>,
+        cache: &mut HashPool,
         pass_idx: usize,
-    ) -> Result<Lease<RenderPass<P>, P>, DriverError> {
+    ) -> Result<Lease<RenderPass>, DriverError> {
         // TODO: We're building a RenderPassInfo here (the 3x Vec<_>s), but we could use TLS if:
         // - leasing used impl Into instead of an instance
         // - RenderPass didn't require an Info instance: who cares it's OURS for like five seconds
@@ -1235,7 +1226,7 @@ where
 
     fn lease_scheduled_resources(
         &mut self,
-        cache: &mut HashPool<P>,
+        cache: &mut HashPool,
         schedule: &[usize],
     ) -> Result<(), DriverError> {
         for pass_idx in schedule.iter().copied() {
@@ -1387,7 +1378,7 @@ where
         schedule
     }
 
-    fn next_subpass(cmd_buf: &CommandBuffer<P>) {
+    fn next_subpass(cmd_buf: &CommandBuffer) {
         trace!("next_subpass");
 
         unsafe {
@@ -1401,7 +1392,7 @@ where
     ///
     /// Note that this value must be retrieved before resolving a node as there will be no
     /// data left to inspect afterwards!
-    pub fn node_pipeline_stages(&self, node: impl Node<P>) -> vk::PipelineStageFlags {
+    pub fn node_pipeline_stages(&self, node: impl Node) -> vk::PipelineStageFlags {
         let node_idx = node.index();
         let mut res = Default::default();
 
@@ -1433,9 +1424,9 @@ where
 
     fn record_execution_barriers(
         trace_pad: &'static str,
-        cmd_buf: &CommandBuffer<P>,
-        bindings: &mut [Binding<P>],
-        pass: &mut Pass<P>,
+        cmd_buf: &CommandBuffer,
+        bindings: &mut [Binding],
+        pass: &mut Pass,
         exec_idx: usize,
     ) {
         use std::slice::from_ref;
@@ -1659,13 +1650,10 @@ where
     /// multiple images out and you care - in that case pull the "most important" image first.
     pub fn record_node_dependencies(
         &mut self,
-        cache: &mut HashPool<P>,
-        cmd_buf: &mut CommandBuffer<P>,
-        node: impl Node<P>,
-    ) -> Result<(), DriverError>
-    where
-        P: 'static,
-    {
+        cache: &mut HashPool,
+        cmd_buf: &mut CommandBuffer,
+        node: impl Node,
+    ) -> Result<(), DriverError> {
         let node_idx = node.index();
 
         assert!(self.graph.bindings.get(node_idx).is_some());
@@ -1684,13 +1672,10 @@ where
     /// Records any pending render graph passes that the given node requires.
     pub fn record_node(
         &mut self,
-        cache: &mut HashPool<P>,
-        cmd_buf: &mut CommandBuffer<P>,
-        node: impl Node<P>,
-    ) -> Result<(), DriverError>
-    where
-        P: 'static,
-    {
+        cache: &mut HashPool,
+        cmd_buf: &mut CommandBuffer,
+        node: impl Node,
+    ) -> Result<(), DriverError> {
         let node_idx = node.index();
 
         assert!(self.graph.bindings.get(node_idx).is_some());
@@ -1703,8 +1688,8 @@ where
 
     fn record_node_passes(
         &mut self,
-        cache: &mut HashPool<P>,
-        cmd_buf: &mut CommandBuffer<P>,
+        cache: &mut HashPool,
+        cmd_buf: &mut CommandBuffer,
         node_idx: usize,
         end_pass_idx: usize,
     ) -> Result<(), DriverError> {
@@ -1716,8 +1701,8 @@ where
 
     fn record_scheduled_passes(
         &mut self,
-        cache: &mut HashPool<P>,
-        cmd_buf: &mut CommandBuffer<P>,
+        cache: &mut HashPool,
+        cmd_buf: &mut CommandBuffer,
         mut schedule: &mut [usize],
         end_pass_idx: usize,
     ) -> Result<(), DriverError> {
@@ -1861,12 +1846,9 @@ where
     /// Records any pending render graph passes that have not been previously scheduled.
     pub fn record_unscheduled_passes(
         &mut self,
-        cache: &mut HashPool<P>,
-        cmd_buf: &mut CommandBuffer<P>,
-    ) -> Result<(), DriverError>
-    where
-        P: 'static,
-    {
+        cache: &mut HashPool,
+        cmd_buf: &mut CommandBuffer,
+    ) -> Result<(), DriverError> {
         if self.graph.passes.is_empty() {
             return Ok(());
         }
@@ -1876,7 +1858,7 @@ where
         self.record_scheduled_passes(cache, cmd_buf, &mut schedule, self.graph.passes.len())
     }
 
-    fn render_area(&self, pass: &Pass<P>) -> Area {
+    fn render_area(&self, pass: &Pass) -> Area {
         pass.render_area.unwrap_or_else(|| {
             // set_render_area was not specified so we're going to guess using the extent
             // of the first attachment we find, by lowest attachment index order
@@ -2047,7 +2029,7 @@ where
         schedule
     }
 
-    fn set_scissor(cmd_buf: &CommandBuffer<P>, width: u32, height: u32) {
+    fn set_scissor(cmd_buf: &CommandBuffer, width: u32, height: u32) {
         use std::slice::from_ref;
 
         unsafe {
@@ -2062,7 +2044,7 @@ where
         }
     }
 
-    fn set_viewport(cmd_buf: &CommandBuffer<P>, width: f32, height: f32, depth: Range<f32>) {
+    fn set_viewport(cmd_buf: &CommandBuffer, width: f32, height: f32, depth: Range<f32>) {
         use std::slice::from_ref;
 
         unsafe {
@@ -2081,10 +2063,7 @@ where
         }
     }
 
-    pub fn submit(mut self, cache: &mut HashPool<P>) -> Result<(), DriverError>
-    where
-        P: 'static,
-    {
+    pub fn submit(mut self, cache: &mut HashPool) -> Result<(), DriverError> {
         use std::slice::from_ref;
 
         trace!("submit");
@@ -2150,8 +2129,8 @@ where
 
     fn write_descriptor_sets(
         &self,
-        cmd_buf: &CommandBuffer<P>,
-        pass: &Pass<P>,
+        cmd_buf: &CommandBuffer,
+        pass: &Pass,
         pass_idx: usize,
     ) -> Result<(), DriverError> {
         thread_local! {

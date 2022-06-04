@@ -1,6 +1,5 @@
 use {
     super::{DescriptorSetLayout, Device, DriverError, SamplerDesc, VertexInputState},
-    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     derive_builder::Builder,
     log::{debug, error, info, trace},
@@ -12,15 +11,13 @@ use {
         collections::{btree_map::BTreeMap, HashMap},
         fmt::{Debug, Formatter},
         iter::repeat,
+        sync::Arc,
     },
 };
 
 pub type DescriptorBindingMap = BTreeMap<DescriptorBinding, (DescriptorInfo, vk::ShaderStageFlags)>;
 
-fn guess_immutable_sampler(
-    device: &Device<impl SharedPointerKind>,
-    binding_name: &str,
-) -> vk::Sampler {
+fn guess_immutable_sampler(device: &Device, binding_name: &str) -> vk::Sampler {
     const INVALID_ERR: &str = "Invalid sampler specification";
 
     let (texel_filter, mipmap_mode, address_modes) = if binding_name.contains("_sampler_") {
@@ -152,25 +149,16 @@ impl From<DescriptorInfo> for vk::DescriptorType {
 }
 
 #[derive(Debug)]
-pub struct PipelineDescriptorInfo<P>
-where
-    P: SharedPointerKind,
-{
-    pub layouts: BTreeMap<u32, DescriptorSetLayout<P>>,
+pub struct PipelineDescriptorInfo {
+    pub layouts: BTreeMap<u32, DescriptorSetLayout>,
     pub pool_sizes: BTreeMap<u32, BTreeMap<vk::DescriptorType, u32>>,
 }
 
-impl<P> PipelineDescriptorInfo<P>
-where
-    P: SharedPointerKind,
-{
+impl PipelineDescriptorInfo {
     pub fn create(
-        device: &SharedPointer<Device<P>, P>,
+        device: &Arc<Device>,
         descriptor_bindings: &DescriptorBindingMap,
-    ) -> Result<Self, DriverError>
-    where
-        P: SharedPointerKind,
-    {
+    ) -> Result<Self, DriverError> {
         let descriptor_set_count = descriptor_bindings
             .keys()
             .max()
@@ -388,10 +376,7 @@ impl Shader {
         )
     }
 
-    pub fn descriptor_bindings(
-        &self,
-        device: &Device<impl SharedPointerKind>,
-    ) -> DescriptorBindingMap {
+    pub fn descriptor_bindings(&self, device: &Device) -> DescriptorBindingMap {
         let mut res = DescriptorBindingMap::default();
 
         for (name, binding, desc_ty, binding_count) in

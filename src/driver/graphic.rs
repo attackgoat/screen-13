@@ -3,13 +3,11 @@ use {
         DescriptorBindingMap, Device, DriverError, PipelineDescriptorInfo, SampleCount, Shader,
         SpecializationInfo,
     },
-    crate::graph::AttachmentIndex,
-    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     derive_builder::Builder,
     log::{trace, warn},
     ordered_float::OrderedFloat,
-    std::{cmp::Ordering, collections::HashSet, ffi::CString, thread::panicking},
+    std::{cmp::Ordering, collections::HashSet, ffi::CString, sync::Arc, thread::panicking},
 };
 
 const RGBA_COLOR_COMPONENTS: vk::ColorComponentFlags = vk::ColorComponentFlags::from_raw(
@@ -208,29 +206,23 @@ impl DepthStencilModeBuilder {
 }
 
 #[derive(Debug)]
-pub struct GraphicPipeline<P>
-where
-    P: SharedPointerKind,
-{
+pub struct GraphicPipeline {
     pub descriptor_bindings: DescriptorBindingMap,
-    pub descriptor_info: PipelineDescriptorInfo<P>,
-    device: SharedPointer<Device<P>, P>,
+    pub descriptor_info: PipelineDescriptorInfo,
+    device: Arc<Device>,
     pub info: GraphicPipelineInfo,
-    pub input_attachments: HashSet<AttachmentIndex>,
+    pub input_attachments: HashSet<u32>,
     pub layout: vk::PipelineLayout,
     pub push_constants: Vec<vk::PushConstantRange>,
     shader_modules: Vec<vk::ShaderModule>,
     stage_flags: vk::ShaderStageFlags,
     pub state: GraphicPipelineState,
-    pub write_attachments: HashSet<AttachmentIndex>,
+    pub write_attachments: HashSet<u32>,
 }
 
-impl<P> GraphicPipeline<P>
-where
-    P: SharedPointerKind,
-{
+impl GraphicPipeline {
     pub fn create<S>(
-        device: &SharedPointer<Device<P>, P>,
+        device: &Arc<Device>,
         info: impl Into<GraphicPipelineInfo>,
         shaders: impl IntoIterator<Item = S>,
     ) -> Result<Self, DriverError>
@@ -239,7 +231,7 @@ where
     {
         trace!("create");
 
-        let device = SharedPointer::clone(device);
+        let device = Arc::clone(device);
         let info = info.into();
         let shaders = shaders
             .into_iter()
@@ -459,10 +451,7 @@ where
     }
 }
 
-impl<P> Drop for GraphicPipeline<P>
-where
-    P: SharedPointerKind,
-{
+impl Drop for GraphicPipeline {
     fn drop(&mut self) {
         if panicking() {
             return;

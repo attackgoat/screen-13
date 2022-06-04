@@ -1,4 +1,4 @@
-use screen_13::prelude_arc::*;
+use screen_13::prelude::*;
 use screen_13_egui::*;
 
 fn main() -> Result<(), DisplayError> {

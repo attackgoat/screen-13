@@ -1,6 +1,5 @@
 use {
     super::{format_aspect_mask, Device, DriverError},
-    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     derive_builder::Builder,
     gpu_allocator::{
@@ -14,31 +13,23 @@ use {
         fmt::{Debug, Formatter},
         ops::Deref,
         ptr::null,
+        sync::Arc,
         thread::panicking,
     },
 };
 
-pub struct Image<P>
-where
-    P: SharedPointerKind,
-{
+pub struct Image {
     pub allocation: Option<Allocation>, // None when we don't own the image (Swapchain images)
-    device: SharedPointer<Device<P>, P>,
+    device: Arc<Device>,
     image: vk::Image,
     #[allow(clippy::type_complexity)]
-    image_view_cache: SharedPointer<Mutex<HashMap<ImageViewInfo, ImageView<P>>>, P>,
+    image_view_cache: Arc<Mutex<HashMap<ImageViewInfo, ImageView>>>,
     pub info: ImageInfo,
     pub name: Option<String>,
 }
 
-impl<P> Image<P>
-where
-    P: SharedPointerKind,
-{
-    pub fn create(
-        device: &SharedPointer<Device<P>, P>,
-        info: impl Into<ImageInfo>,
-    ) -> Result<Self, DriverError> {
+impl Image {
+    pub fn create(device: &Arc<Device>, info: impl Into<ImageInfo>) -> Result<Self, DriverError> {
         let mut info: ImageInfo = info.into();
 
         //trace!("create: {:?}", &info);
@@ -96,7 +87,7 @@ where
                 .unwrap();
         }
 
-        let device = SharedPointer::clone(device);
+        let device = Arc::clone(device);
         let create_info = info.image_create_info();
         let image = unsafe {
             device.create_image(&create_info, None).map_err(|err| {
@@ -137,7 +128,7 @@ where
             allocation: Some(allocation),
             device,
             image,
-            image_view_cache: SharedPointer::new(Mutex::new(Default::default())),
+            image_view_cache: Arc::new(Mutex::new(Default::default())),
             info,
             name: None,
         })
@@ -147,30 +138,26 @@ where
     pub(super) fn clone_raw(this: &Self) -> Self {
         Self {
             allocation: None,
-            device: SharedPointer::clone(&this.device),
+            device: Arc::clone(&this.device),
             image: this.image,
-            image_view_cache: SharedPointer::new(Mutex::new(Default::default())),
+            image_view_cache: Arc::new(Mutex::new(Default::default())),
             info: this.info,
             name: this.name.clone(),
         }
     }
 
-    pub fn create_view(this: &Self, info: ImageViewInfo) -> Result<ImageView<P>, DriverError> {
+    pub fn create_view(this: &Self, info: ImageViewInfo) -> Result<ImageView, DriverError> {
         ImageView::create(&this.device, info, this)
     }
 
-    pub fn from_raw(
-        device: &SharedPointer<Device<P>, P>,
-        image: vk::Image,
-        info: ImageInfo,
-    ) -> Self {
-        let device = SharedPointer::clone(device);
+    pub fn from_raw(device: &Arc<Device>, image: vk::Image, info: ImageInfo) -> Self {
+        let device = Arc::clone(device);
 
         Self {
             allocation: None,
             device,
             image,
-            image_view_cache: SharedPointer::new(Mutex::new(Default::default())),
+            image_view_cache: Arc::new(Mutex::new(Default::default())),
             info,
             name: None,
         }
@@ -186,10 +173,7 @@ where
     }
 }
 
-impl<P> Debug for Image<P>
-where
-    P: SharedPointerKind,
-{
+impl Debug for Image {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         if let Some(name) = &self.name {
             write!(f, "{} ({:?})", name, self.image)
@@ -199,10 +183,7 @@ where
     }
 }
 
-impl<P> Deref for Image<P>
-where
-    P: SharedPointerKind,
-{
+impl Deref for Image {
     type Target = vk::Image;
 
     fn deref(&self) -> &Self::Target {
@@ -210,10 +191,7 @@ where
     }
 }
 
-impl<P> Drop for Image<P>
-where
-    P: SharedPointerKind,
-{
+impl Drop for Image {
     fn drop(&mut self) {
         if panicking() {
             return;
@@ -559,26 +537,20 @@ impl From<ImageViewInfo> for ImageSubresource {
 }
 
 #[derive(Debug)]
-pub struct ImageView<P>
-where
-    P: SharedPointerKind,
-{
-    device: SharedPointer<Device<P>, P>,
+pub struct ImageView {
+    device: Arc<Device>,
     image_view: vk::ImageView,
     pub info: ImageViewInfo,
 }
 
-impl<P> ImageView<P>
-where
-    P: SharedPointerKind,
-{
+impl ImageView {
     pub fn create(
-        device: &SharedPointer<Device<P>, P>,
+        device: &Arc<Device>,
         info: impl Into<ImageViewInfo>,
-        image: &Image<P>,
+        image: &Image,
     ) -> Result<Self, DriverError> {
         let info = info.into();
-        let device = SharedPointer::clone(device);
+        let device = Arc::clone(device);
         let create_info = vk::ImageViewCreateInfo {
             s_type: vk::StructureType::IMAGE_VIEW_CREATE_INFO,
             p_next: null(),
@@ -616,10 +588,7 @@ where
     }
 }
 
-impl<P> Deref for ImageView<P>
-where
-    P: SharedPointerKind,
-{
+impl Deref for ImageView {
     type Target = vk::ImageView;
 
     fn deref(&self) -> &Self::Target {
@@ -627,10 +596,7 @@ where
     }
 }
 
-impl<P> Drop for ImageView<P>
-where
-    P: SharedPointerKind,
-{
+impl Drop for ImageView {
     fn drop(&mut self) {
         if panicking() {
             return;
