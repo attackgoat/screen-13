@@ -64,7 +64,6 @@ pub use {
 };
 
 use {
-    archery::{SharedPointer, SharedPointerKind},
     derive_builder::Builder,
     log::{debug, info, trace, warn},
     raw_window_handle::HasRawWindowHandle,
@@ -74,6 +73,7 @@ use {
         fmt::{Display, Formatter},
         ops::Range,
         os::raw::c_char,
+        sync::Arc,
     },
 };
 
@@ -387,18 +387,12 @@ pub const fn pipeline_stage_access_flags(
 }
 
 #[derive(Debug)]
-pub struct Driver<P>
-where
-    P: SharedPointerKind,
-{
-    pub device: SharedPointer<Device<P>, P>,
-    pub swapchain: Swapchain<P>,
+pub struct Driver {
+    pub device: Arc<Device>,
+    pub swapchain: Swapchain,
 }
 
-impl<P> Driver<P>
-where
-    P: SharedPointerKind,
-{
+impl Driver {
     pub fn new(
         window: &impl HasRawWindowHandle,
         cfg: DriverConfig,
@@ -415,7 +409,7 @@ where
             })?
             .iter()
             .map(|ext| unsafe { CStr::from_ptr(*ext as *const _) });
-        let instance = SharedPointer::new(Instance::new(cfg.debug, required_extensions)?);
+        let instance = Arc::new(Instance::new(cfg.debug, required_extensions)?);
         let surface = Surface::new(&instance, window)?;
         let physical_devices = Instance::physical_devices(&instance)?
             .filter(|physical_device| {
@@ -462,7 +456,7 @@ where
 
         debug!("selected: {:?}", physical_device);
 
-        let device = SharedPointer::new(Device::create(&instance, physical_device, cfg)?);
+        let device = Arc::new(Device::create(&instance, physical_device, cfg)?);
         let surface_formats = Device::surface_formats(&device, &surface)?;
 
         for fmt in &surface_formats {

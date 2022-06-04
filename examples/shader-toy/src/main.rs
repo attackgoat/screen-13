@@ -36,9 +36,9 @@ use {
     anyhow::Context,
     bytemuck::{bytes_of, Pod, Zeroable},
     pak::{buf::PakBuf, Pak},
-    screen_13::prelude_arc::*,
+    screen_13::prelude::*,
     screen_13_fx::*,
-    std::time::Instant,
+    std::{sync::Arc, time::Instant},
 };
 
 fn main() -> anyhow::Result<()> {
@@ -87,7 +87,7 @@ fn main() -> anyhow::Result<()> {
     // no depth/stencil
     // 1x sample count
     // one-sided
-    let buffer_pipeline = Shared::new(
+    let buffer_pipeline = Arc::new(
         GraphicPipeline::create(
             &event_loop.device,
             GraphicPipelineInfo::default(),
@@ -98,7 +98,7 @@ fn main() -> anyhow::Result<()> {
         )
         .context("FLOCKAROO_BUF_FRAG")?,
     );
-    let image_pipeline = Shared::new(
+    let image_pipeline = Arc::new(
         GraphicPipeline::create(
             &event_loop.device,
             GraphicPipelineInfo::default(),

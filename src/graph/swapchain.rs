@@ -1,29 +1,22 @@
 use {
     super::{Bind, Binding, RenderGraph, Resolver, SwapchainImageNode, Unbind},
     crate::driver::SwapchainImage,
-    archery::SharedPointerKind,
     std::{fmt::Debug, mem::replace},
     vk_sync::AccessType,
 };
 
 #[derive(Debug)]
-pub struct SwapchainImageBinding<P>
-where
-    P: SharedPointerKind,
-{
-    pub(super) item: SwapchainImage<P>,
+pub struct SwapchainImageBinding {
+    pub(super) item: SwapchainImage,
     pub(super) access: AccessType,
 }
 
-impl<P> SwapchainImageBinding<P>
-where
-    P: SharedPointerKind,
-{
-    pub(super) fn new(item: SwapchainImage<P>) -> Self {
+impl SwapchainImageBinding {
+    pub(super) fn new(item: SwapchainImage) -> Self {
         Self::new_unbind(item, AccessType::Nothing)
     }
 
-    pub(super) fn new_unbind(item: SwapchainImage<P>, access: AccessType) -> Self {
+    pub(super) fn new_unbind(item: SwapchainImage, access: AccessType) -> Self {
         Self { item, access }
     }
 
@@ -34,11 +27,8 @@ where
     }
 }
 
-impl<P> Bind<&mut RenderGraph<P>, SwapchainImageNode<P>, P> for SwapchainImage<P>
-where
-    P: SharedPointerKind,
-{
-    fn bind(self, graph: &mut RenderGraph<P>) -> SwapchainImageNode<P> {
+impl Bind<&mut RenderGraph, SwapchainImageNode> for SwapchainImage {
+    fn bind(self, graph: &mut RenderGraph) -> SwapchainImageNode {
         // We will return a new node
         let res = SwapchainImageNode::new(graph.bindings.len());
 
@@ -51,11 +41,8 @@ where
     }
 }
 
-impl<P> Bind<&mut RenderGraph<P>, SwapchainImageNode<P>, P> for SwapchainImageBinding<P>
-where
-    P: SharedPointerKind,
-{
-    fn bind(self, graph: &mut RenderGraph<P>) -> SwapchainImageNode<P> {
+impl Bind<&mut RenderGraph, SwapchainImageNode> for SwapchainImageBinding {
+    fn bind(self, graph: &mut RenderGraph) -> SwapchainImageNode {
         // We will return a new node
         let res = SwapchainImageNode::new(graph.bindings.len());
 
@@ -65,11 +52,8 @@ where
     }
 }
 
-impl<P> Binding<P>
-where
-    P: SharedPointerKind,
-{
-    pub(super) fn as_swapchain_image(&self) -> Option<&SwapchainImageBinding<P>> {
+impl Binding {
+    pub(super) fn as_swapchain_image(&self) -> Option<&SwapchainImageBinding> {
         if let Self::SwapchainImage(binding, true) = self {
             Some(binding)
         } else if let Self::SwapchainImage(_, false) = self {
@@ -83,12 +67,9 @@ where
     }
 }
 
-impl<P> Unbind<Resolver<P>, SwapchainImage<P>> for SwapchainImageNode<P>
-where
-    P: SharedPointerKind + Send,
-{
+impl Unbind<Resolver, SwapchainImage> for SwapchainImageNode {
     // We allow the resolver to unbind a swapchain node directly into a shared image
-    fn unbind(self, graph: &mut Resolver<P>) -> SwapchainImage<P> {
+    fn unbind(self, graph: &mut Resolver) -> SwapchainImage {
         graph.graph.bindings[self.idx]
             .as_swapchain_image()
             .unwrap()

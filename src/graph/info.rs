@@ -4,22 +4,21 @@ use {
         ImageLeaseNode, ImageNode, RenderGraph, SwapchainImageNode,
     },
     crate::driver::{AccelerationStructureInfo, BufferInfo, ImageInfo},
-    archery::SharedPointerKind,
 };
 
 pub trait Information {
     type Info;
 
-    fn get(self, graph: &RenderGraph<impl SharedPointerKind + Send>) -> Self::Info;
+    fn get(self, graph: &RenderGraph) -> Self::Info;
 }
 
 macro_rules! information {
     ($name:ident: $src:ident -> $dst:ident) => {
         paste::paste! {
-            impl<P> Information for $src<P> {
+            impl Information for $src {
                 type Info = $dst;
 
-                fn get(self, graph: &RenderGraph<impl SharedPointerKind>) -> $dst {
+                fn get(self, graph: &RenderGraph) -> $dst {
                     graph.bindings[self.idx].[<as_ $name>]().unwrap().info().clone()
                 }
             }

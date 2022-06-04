@@ -19,8 +19,7 @@ pointers. The driver may be created manually for headless rendering or automatic
 built-in event loop abstraction:
 
 ```rust
-// For multi-threaded programs
-use screen_13::prelude_arc::*;
+use screen_13::prelude::*;
 
 fn main() -> Result<(), DisplayError> {
     EventLoop::new().build()?.run(|frame| {

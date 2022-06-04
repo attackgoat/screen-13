@@ -1,32 +1,22 @@
 use {
     super::{Device, DriverError},
-    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     log::warn,
-    std::{ops::Deref, thread::panicking},
+    std::{ops::Deref, sync::Arc, thread::panicking},
 };
 
 #[derive(Debug)]
-pub struct DescriptorSetLayout<P>
-where
-    P: SharedPointerKind,
-{
-    device: SharedPointer<Device<P>, P>,
+pub struct DescriptorSetLayout {
+    device: Arc<Device>,
     descriptor_set_layout: vk::DescriptorSetLayout,
 }
 
-impl<P> DescriptorSetLayout<P>
-where
-    P: SharedPointerKind,
-{
+impl DescriptorSetLayout {
     pub fn create(
-        device: &SharedPointer<Device<P>, P>,
+        device: &Arc<Device>,
         info: &vk::DescriptorSetLayoutCreateInfo,
-    ) -> Result<Self, DriverError>
-    where
-        P: SharedPointerKind,
-    {
-        let device = SharedPointer::clone(device);
+    ) -> Result<Self, DriverError> {
+        let device = Arc::clone(device);
         let descriptor_set_layout = unsafe {
             device
                 .create_descriptor_set_layout(info, None)
@@ -44,10 +34,7 @@ where
     }
 }
 
-impl<P> Deref for DescriptorSetLayout<P>
-where
-    P: SharedPointerKind,
-{
+impl Deref for DescriptorSetLayout {
     type Target = vk::DescriptorSetLayout;
 
     fn deref(&self) -> &Self::Target {
@@ -55,10 +42,7 @@ where
     }
 }
 
-impl<P> Drop for DescriptorSetLayout<P>
-where
-    P: SharedPointerKind,
-{
+impl Drop for DescriptorSetLayout {
     fn drop(&mut self) {
         if panicking() {
             return;

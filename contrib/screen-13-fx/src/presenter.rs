@@ -1,25 +1,20 @@
 use {
-    archery::{SharedPointer, SharedPointerKind},
     bytemuck::cast_slice,
     glam::{vec3, Mat4},
     inline_spirv::include_spirv,
-    screen_13::prelude_all::*,
+    screen_13::prelude::*,
+    std::sync::Arc,
 };
 
-pub struct ComputePresenter<P>([SharedPointer<ComputePipeline<P>, P>; 2])
-where
-    P: SharedPointerKind;
+pub struct ComputePresenter([Arc<ComputePipeline>; 2]);
 
-impl<P> ComputePresenter<P>
-where
-    P: SharedPointerKind + Send + 'static,
-{
-    pub fn new(device: &SharedPointer<Device<P>, P>) -> Result<Self, DriverError> {
-        let pipeline1 = SharedPointer::new(ComputePipeline::create(
+impl ComputePresenter {
+    pub fn new(device: &Arc<Device>) -> Result<Self, DriverError> {
+        let pipeline1 = Arc::new(ComputePipeline::create(
             device,
             include_spirv!("res/shader/compute/present1.comp", comp).as_slice(),
         )?);
-        let pipeline2 = SharedPointer::new(ComputePipeline::create(
+        let pipeline2 = Arc::new(ComputePipeline::create(
             device,
             include_spirv!("res/shader/compute/present2.comp", comp).as_slice(),
         )?);
@@ -29,9 +24,9 @@ where
 
     pub fn present_image(
         &self,
-        graph: &mut RenderGraph<P>,
-        image: impl Into<AnyImageNode<P>>,
-        swapchain: SwapchainImageNode<P>,
+        graph: &mut RenderGraph,
+        image: impl Into<AnyImageNode>,
+        swapchain: SwapchainImageNode,
     ) {
         let image = image.into();
         // let image_info = graph.node_info(image);
@@ -51,13 +46,11 @@ where
 
     pub fn present_images(
         &self,
-        graph: &mut RenderGraph<P>,
-        top_image: impl Into<AnyImageNode<P>>,
-        bottom_image: impl Into<AnyImageNode<P>>,
-        swapchain: SwapchainImageNode<P>,
-    ) where
-        P: 'static,
-    {
+        graph: &mut RenderGraph,
+        top_image: impl Into<AnyImageNode>,
+        bottom_image: impl Into<AnyImageNode>,
+        swapchain: SwapchainImageNode,
+    ) {
         let top_image = top_image.into();
         let bottom_image = bottom_image.into();
         // let top_image_info = graph.node_info(top_image);
@@ -78,20 +71,14 @@ where
     }
 }
 
-pub struct GraphicPresenter<P>
-where
-    P: SharedPointerKind,
-{
-    pipeline: SharedPointer<GraphicPipeline<P>, P>,
+pub struct GraphicPresenter {
+    pipeline: Arc<GraphicPipeline>,
 }
 
-impl<P> GraphicPresenter<P>
-where
-    P: SharedPointerKind + Send + 'static,
-{
-    pub fn new(device: &SharedPointer<Device<P>, P>) -> Result<Self, DriverError> {
+impl GraphicPresenter {
+    pub fn new(device: &Arc<Device>) -> Result<Self, DriverError> {
         Ok(Self {
-            pipeline: SharedPointer::new(GraphicPipeline::create(
+            pipeline: Arc::new(GraphicPipeline::create(
                 device,
                 GraphicPipelineInfo::new(),
                 [
@@ -108,9 +95,9 @@ where
 
     pub fn present_image(
         &self,
-        graph: &mut RenderGraph<P>,
-        image: impl Into<AnyImageNode<P>>,
-        swapchain: SwapchainImageNode<P>,
+        graph: &mut RenderGraph,
+        image: impl Into<AnyImageNode>,
+        swapchain: SwapchainImageNode,
     ) {
         let image = image.into();
         let image_info = graph.node_info(image);

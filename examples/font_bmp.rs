@@ -3,8 +3,8 @@ use inline_spirv::inline_spirv;
 use {
     bmfont::{BMFont, OrdinateOrientation},
     image::io::Reader,
-    screen_13::prelude_arc::*,
-    screen_13_fx::prelude_arc::*,
+    screen_13::prelude::*,
+    screen_13_fx::*,
     std::{io::Cursor, time::Instant},
 };
 

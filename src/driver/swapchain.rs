@@ -1,38 +1,31 @@
 use {
     super::{Device, DriverError, Image, ImageInfo, ImageType, SampleCount, Surface},
-    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     derive_builder::Builder,
     log::{debug, warn},
-    std::{ops::Deref, slice, thread::panicking, time::Duration},
+    std::{ops::Deref, slice, sync::Arc, thread::panicking, time::Duration},
 };
 
 #[derive(Debug)]
-pub struct Swapchain<P>
-where
-    P: SharedPointerKind,
-{
-    device: SharedPointer<Device<P>, P>,
-    images: Vec<Option<Image<P>>>,
+pub struct Swapchain {
+    device: Arc<Device>,
+    images: Vec<Option<Image>>,
     pub info: SwapchainInfo,
     next_semaphore: usize,
     acquired_semaphores: Vec<vk::Semaphore>,
     rendered_semaphores: Vec<vk::Semaphore>, // TODO: make a single semaphore
     suboptimal: bool,
-    surface: Surface<P>,
+    surface: Surface,
     swapchain: vk::SwapchainKHR,
 }
 
-impl<P> Swapchain<P>
-where
-    P: SharedPointerKind,
-{
+impl Swapchain {
     pub fn new(
-        device: &SharedPointer<Device<P>, P>,
-        surface: Surface<P>,
+        device: &Arc<Device>,
+        surface: Surface,
         info: SwapchainInfo,
     ) -> Result<Self, DriverError> {
-        let device = SharedPointer::clone(device);
+        let device = Arc::clone(device);
         let acquired_semaphores = (0..info.desired_image_count)
             .map(|_| {
                 unsafe { device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None) }
@@ -60,7 +53,7 @@ where
         })
     }
 
-    pub fn acquire_next_image(&mut self) -> Result<SwapchainImage<P>, SwapchainError> {
+    pub fn acquire_next_image(&mut self) -> Result<SwapchainImage, SwapchainError> {
         if self.suboptimal {
             self.recreate_swapchain()
                 .map_err(|_| SwapchainError::SurfaceLost)?;
@@ -148,7 +141,7 @@ where
         }
     }
 
-    pub fn present_image(&mut self, image: SwapchainImage<P>) {
+    pub fn present_image(&mut self, image: SwapchainImage) {
         let present_info = vk::PresentInfoKHR::builder()
             .wait_semaphores(slice::from_ref(&image.rendered))
             .swapchains(slice::from_ref(&self.swapchain))
@@ -303,7 +296,7 @@ where
             })?;
 
         let vk_images = unsafe { swapchain_ext.get_swapchain_images(swapchain) }.unwrap();
-        let images: Vec<Option<Image<_>>> = vk_images
+        let images: Vec<Option<Image>> = vk_images
             .into_iter()
             .enumerate()
             .map(|(idx, vk_image)| {
@@ -341,10 +334,7 @@ where
     }
 }
 
-impl<P> Drop for Swapchain<P>
-where
-    P: SharedPointerKind,
-{
+impl Drop for Swapchain {
     fn drop(&mut self) {
         if panicking() {
             return;
@@ -365,20 +355,14 @@ where
 }
 
 #[derive(Debug)]
-pub struct SwapchainImage<P>
-where
-    P: SharedPointerKind,
-{
+pub struct SwapchainImage {
     pub acquired: vk::Semaphore,
-    pub image: Image<P>,
+    pub image: Image,
     pub idx: u32,
     pub rendered: vk::Semaphore,
 }
 
-impl<P> Clone for SwapchainImage<P>
-where
-    P: SharedPointerKind,
-{
+impl Clone for SwapchainImage {
     fn clone(&self) -> Self {
         Self {
             acquired: self.acquired,
@@ -389,11 +373,8 @@ where
     }
 }
 
-impl<P> Deref for SwapchainImage<P>
-where
-    P: SharedPointerKind,
-{
-    type Target = Image<P>;
+impl Deref for SwapchainImage {
+    type Target = Image;
 
     fn deref(&self) -> &Self::Target {
         &self.image

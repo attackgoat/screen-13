@@ -1,14 +1,13 @@
 use {
     super::{
+        display::{Display, DisplayError},
         driver::{Device, Driver, DriverConfigBuilder, DriverError},
         frame::FrameContext,
-        Display, DisplayError,
     },
-    archery::{ArcK, SharedPointer, SharedPointerKind},
     log::{debug, info, trace, warn},
     std::{
-        marker::PhantomData,
         mem::take,
+        sync::Arc,
         time::{Duration, Instant},
     },
     winit::{
@@ -22,7 +21,7 @@ use {
 
 pub fn run<FrameFn>(frame_fn: FrameFn) -> Result<(), DisplayError>
 where
-    FrameFn: FnMut(FrameContext<ArcK>),
+    FrameFn: FnMut(FrameContext),
 {
     EventLoop::new().build()?.run(frame_fn)
 }
@@ -37,22 +36,16 @@ pub enum FullscreenMode {
 // Pumps an operating system event loop in order to handle input and other events
 // while drawing to the screen, continuously.
 #[derive(Debug)]
-pub struct EventLoop<P>
-where
-    P: SharedPointerKind + Send,
-{
-    pub device: SharedPointer<Device<P>, P>,
-    display: Display<P>,
+pub struct EventLoop {
+    pub device: Arc<Device>,
+    display: Display,
     event_loop: winit::event_loop::EventLoop<()>,
     pub window: Window,
 }
 
-impl<P> EventLoop<P>
-where
-    P: SharedPointerKind + Send,
-{
+impl EventLoop {
     #[allow(clippy::new_ret_no_self)]
-    pub fn new() -> EventLoopBuilder<P> {
+    pub fn new() -> EventLoopBuilder {
         Default::default()
     }
 
@@ -62,8 +55,7 @@ where
 
     pub fn run<FrameFn>(mut self, mut frame_fn: FrameFn) -> Result<(), DisplayError>
     where
-        FrameFn: FnMut(FrameContext<P>),
-        P: 'static,
+        FrameFn: FnMut(FrameContext),
     {
         let mut events = Vec::new();
         let mut will_exit = false;
@@ -168,17 +160,15 @@ where
 }
 
 #[derive(Debug)]
-pub struct EventLoopBuilder<P> {
-    __: PhantomData<P>,
+pub struct EventLoopBuilder {
     driver_cfg: DriverConfigBuilder,
     event_loop: winit::event_loop::EventLoop<()>,
     window: WindowBuilder,
 }
 
-impl<P> Default for EventLoopBuilder<P> {
+impl Default for EventLoopBuilder {
     fn default() -> Self {
         Self {
-            __: PhantomData,
             driver_cfg: DriverConfigBuilder::default(),
             event_loop: winit::event_loop::EventLoop::new(),
             window: Default::default(),
@@ -186,7 +176,7 @@ impl<P> Default for EventLoopBuilder<P> {
     }
 }
 
-impl<P> EventLoopBuilder<P> {
+impl EventLoopBuilder {
     /// Returns the list of all the monitors available on the system.
     pub fn available_monitors(&self) -> impl Iterator<Item = MonitorHandle> {
         self.event_loop.available_monitors()
@@ -275,11 +265,8 @@ impl<P> EventLoopBuilder<P> {
     }
 }
 
-impl<P> EventLoopBuilder<P>
-where
-    P: SharedPointerKind + Send + 'static,
-{
-    pub fn build(self) -> Result<EventLoop<P>, DriverError> {
+impl EventLoopBuilder {
+    pub fn build(self) -> Result<EventLoop, DriverError> {
         let cfg = self
             .driver_cfg
             .build()
@@ -308,7 +295,7 @@ where
         );
 
         Ok(EventLoop {
-            device: SharedPointer::clone(&driver.device),
+            device: Arc::clone(&driver.device),
             display,
             event_loop: self.event_loop,
             window,

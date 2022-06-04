@@ -11,9 +11,9 @@ use {
             AccelerationStructure, Buffer, ComputePipeline, GraphicPipeline, Image,
             RayTracePipeline, SwapchainImage,
         },
-        Lease,
+        hash_pool::Lease,
     },
-    archery::{SharedPointer, SharedPointerKind},
+    std::sync::Arc,
 };
 
 /// A marker trait that says some graph object can transition into a different
@@ -25,11 +25,8 @@ pub trait Edge<Graph> {
 
 macro_rules! graph_edge {
     ($src:ident -> $dst:ident) => {
-        impl<P> Edge<RenderGraph<P>> for $src<P>
-        where
-            P: SharedPointerKind,
-        {
-            type Result = $dst<P>;
+        impl Edge<RenderGraph> for $src {
+            type Result = $dst;
         }
     };
 }
@@ -59,11 +56,8 @@ graph_edge!(SwapchainImageNode -> SwapchainImageBinding);
 
 macro_rules! graph_lease_edge {
     ($src:ident -> $dst:ident) => {
-        impl<P> Edge<RenderGraph<P>> for Lease<$src<P>, P>
-        where
-            P: SharedPointerKind,
-        {
-            type Result = $dst<P>;
+        impl Edge<RenderGraph> for Lease<$src> {
+            type Result = $dst;
         }
     };
 }
@@ -77,11 +71,8 @@ graph_lease_edge!(ImageBinding -> ImageLeaseNode);
 macro_rules! pipeline_edge {
     ($name:ident) => {
         paste::paste! {
-            impl<'a, P> Edge<PassRef<'a, P>> for &'a SharedPointer<[<$name Pipeline>]<P>, P>
-            where
-                P: SharedPointerKind + Send,
-            {
-                type Result = PipelinePassRef<'a, [<$name Pipeline>]<P>, P>;
+            impl<'a> Edge<PassRef<'a>> for &'a Arc<[<$name Pipeline>]> {
+                type Result = PipelinePassRef<'a, [<$name Pipeline>]>;
             }
         }
     };
@@ -93,11 +84,8 @@ pipeline_edge!(RayTrace);
 
 macro_rules! resolver_edge {
     ($src:ident -> $dst:ident) => {
-        impl<P> Edge<Resolver<P>> for $src<P>
-        where
-            P: SharedPointerKind + Send,
-        {
-            type Result = $dst<P>;
+        impl Edge<Resolver> for $src {
+            type Result = $dst;
         }
     };
 }

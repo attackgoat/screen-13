@@ -3,17 +3,13 @@
 // use.
 
 use {
-    archery::{SharedPointer, SharedPointerKind},
     inline_spirv::include_spirv,
-    screen_13::prelude_all::*,
-    std::collections::HashMap,
+    screen_13::prelude::*,
+    std::{collections::HashMap, sync::Arc},
 };
 
 #[derive(Clone, Debug)]
-pub enum Transition<P>
-where
-    P: SharedPointerKind,
-{
+pub enum Transition {
     Angular {
         starting_angle: f32,
     },
@@ -91,7 +87,7 @@ where
         direction: [f32; 2],
     },
     Displacement {
-        displacement_map: AnyImageNode<P>,
+        displacement_map: AnyImageNode,
         strength: f32,
     },
     DoomScreen {
@@ -167,7 +163,7 @@ where
         intensity: f32,
     },
     Luma {
-        luma_map: AnyImageNode<P>,
+        luma_map: AnyImageNode,
     },
     LuminanceMelt {
         /// Direction of movement :  0 : up, 1, down
@@ -295,10 +291,7 @@ where
     },
 }
 
-impl<P> Transition<P>
-where
-    P: SharedPointerKind,
-{
+impl Transition {
     fn ty(&self) -> TransitionType {
         match self {
             Self::Angular { .. } => TransitionType::Angular,
@@ -387,19 +380,13 @@ where
     }
 }
 
-pub struct TransitionPipeline<P>
-where
-    P: SharedPointerKind,
-{
-    cache: HashPool<P>,
-    pipelines: HashMap<TransitionType, SharedPointer<ComputePipeline<P>, P>>,
+pub struct TransitionPipeline {
+    cache: HashPool,
+    pipelines: HashMap<TransitionType, Arc<ComputePipeline>>,
 }
 
-impl<P> TransitionPipeline<P>
-where
-    P: SharedPointerKind + Send + 'static,
-{
-    pub fn new(device: &SharedPointer<Device<P>, P>) -> Self {
+impl TransitionPipeline {
+    pub fn new(device: &Arc<Device>) -> Self {
         let cache = HashPool::new(device);
         let pipelines = Default::default();
 
@@ -408,12 +395,12 @@ where
 
     pub fn apply(
         &mut self,
-        render_graph: &mut RenderGraph<P>,
-        a_image: impl Into<AnyImageNode<P>>,
-        b_image: impl Into<AnyImageNode<P>>,
-        transition: &Transition<P>,
+        render_graph: &mut RenderGraph,
+        a_image: impl Into<AnyImageNode>,
+        b_image: impl Into<AnyImageNode>,
+        transition: &Transition,
         progress: f32,
-    ) -> ImageLeaseNode<P> {
+    ) -> ImageLeaseNode {
         let a_image = a_image.into();
         let b_image = b_image.into();
         let progress = progress.max(0.0).min(1.0);
@@ -438,7 +425,7 @@ where
         let pipeline = self.pipelines.entry(transition_ty).or_insert_with(|| {
             trace!("creating {transition_ty:?}");
 
-            SharedPointer::new(
+            Arc::new(
                 ComputePipeline::create(
                     &self.cache.device,
                     match transition_ty {

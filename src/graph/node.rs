@@ -8,28 +8,27 @@ use {
         vk, AccelerationStructureInfo, BufferInfo, BufferSubresource, ImageInfo, ImageSubresource,
         ImageViewInfo,
     },
-    archery::{SharedPointer, SharedPointerKind},
-    std::{marker::PhantomData, ops::Range},
+    std::{ops::Range, sync::Arc},
 };
 
 #[derive(Debug)]
-pub enum AnyAccelerationStructureNode<P> {
-    AccelerationStructure(AccelerationStructureNode<P>),
-    AccelerationStructureLease(AccelerationStructureLeaseNode<P>),
+pub enum AnyAccelerationStructureNode {
+    AccelerationStructure(AccelerationStructureNode),
+    AccelerationStructureLease(AccelerationStructureLeaseNode),
 }
 
-impl<P> Clone for AnyAccelerationStructureNode<P> {
+impl Clone for AnyAccelerationStructureNode {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<P> Copy for AnyAccelerationStructureNode<P> {}
+impl Copy for AnyAccelerationStructureNode {}
 
-impl<P> Information for AnyAccelerationStructureNode<P> {
+impl Information for AnyAccelerationStructureNode {
     type Info = AccelerationStructureInfo;
 
-    fn get(self, graph: &RenderGraph<impl SharedPointerKind + Send>) -> Self::Info {
+    fn get(self, graph: &RenderGraph) -> Self::Info {
         match self {
             Self::AccelerationStructure(node) => node.get(graph),
             Self::AccelerationStructureLease(node) => node.get(graph),
@@ -37,19 +36,19 @@ impl<P> Information for AnyAccelerationStructureNode<P> {
     }
 }
 
-impl<P> From<AccelerationStructureNode<P>> for AnyAccelerationStructureNode<P> {
-    fn from(node: AccelerationStructureNode<P>) -> Self {
+impl From<AccelerationStructureNode> for AnyAccelerationStructureNode {
+    fn from(node: AccelerationStructureNode) -> Self {
         Self::AccelerationStructure(node)
     }
 }
 
-impl<P> From<AccelerationStructureLeaseNode<P>> for AnyAccelerationStructureNode<P> {
-    fn from(node: AccelerationStructureLeaseNode<P>) -> Self {
+impl From<AccelerationStructureLeaseNode> for AnyAccelerationStructureNode {
+    fn from(node: AccelerationStructureLeaseNode) -> Self {
         Self::AccelerationStructureLease(node)
     }
 }
 
-impl<P> Node<P> for AnyAccelerationStructureNode<P> {
+impl Node for AnyAccelerationStructureNode {
     fn index(self) -> NodeIndex {
         match self {
             Self::AccelerationStructure(node) => node.index(),
@@ -59,23 +58,23 @@ impl<P> Node<P> for AnyAccelerationStructureNode<P> {
 }
 
 #[derive(Debug)]
-pub enum AnyBufferNode<P> {
-    Buffer(BufferNode<P>),
-    BufferLease(BufferLeaseNode<P>),
+pub enum AnyBufferNode {
+    Buffer(BufferNode),
+    BufferLease(BufferLeaseNode),
 }
 
-impl<P> Clone for AnyBufferNode<P> {
+impl Clone for AnyBufferNode {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<P> Copy for AnyBufferNode<P> {}
+impl Copy for AnyBufferNode {}
 
-impl<P> Information for AnyBufferNode<P> {
+impl Information for AnyBufferNode {
     type Info = BufferInfo;
 
-    fn get(self, graph: &RenderGraph<impl SharedPointerKind + Send>) -> Self::Info {
+    fn get(self, graph: &RenderGraph) -> Self::Info {
         match self {
             Self::Buffer(node) => node.get(graph),
             Self::BufferLease(node) => node.get(graph),
@@ -83,19 +82,19 @@ impl<P> Information for AnyBufferNode<P> {
     }
 }
 
-impl<P> From<BufferNode<P>> for AnyBufferNode<P> {
-    fn from(node: BufferNode<P>) -> Self {
+impl From<BufferNode> for AnyBufferNode {
+    fn from(node: BufferNode) -> Self {
         Self::Buffer(node)
     }
 }
 
-impl<P> From<BufferLeaseNode<P>> for AnyBufferNode<P> {
-    fn from(node: BufferLeaseNode<P>) -> Self {
+impl From<BufferLeaseNode> for AnyBufferNode {
+    fn from(node: BufferLeaseNode) -> Self {
         Self::BufferLease(node)
     }
 }
 
-impl<P> Node<P> for AnyBufferNode<P> {
+impl Node for AnyBufferNode {
     fn index(self) -> NodeIndex {
         match self {
             Self::Buffer(node) => node.index(),
@@ -105,24 +104,24 @@ impl<P> Node<P> for AnyBufferNode<P> {
 }
 
 #[derive(Debug)]
-pub enum AnyImageNode<P> {
-    Image(ImageNode<P>),
-    ImageLease(ImageLeaseNode<P>),
-    SwapchainImage(SwapchainImageNode<P>),
+pub enum AnyImageNode {
+    Image(ImageNode),
+    ImageLease(ImageLeaseNode),
+    SwapchainImage(SwapchainImageNode),
 }
 
-impl<P> Clone for AnyImageNode<P> {
+impl Clone for AnyImageNode {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<P> Copy for AnyImageNode<P> {}
+impl Copy for AnyImageNode {}
 
-impl<P> Information for AnyImageNode<P> {
+impl Information for AnyImageNode {
     type Info = ImageInfo;
 
-    fn get(self, graph: &RenderGraph<impl SharedPointerKind + Send>) -> Self::Info {
+    fn get(self, graph: &RenderGraph) -> Self::Info {
         match self {
             Self::Image(node) => node.get(graph),
             Self::ImageLease(node) => node.get(graph),
@@ -131,25 +130,25 @@ impl<P> Information for AnyImageNode<P> {
     }
 }
 
-impl<P> From<ImageNode<P>> for AnyImageNode<P> {
-    fn from(node: ImageNode<P>) -> Self {
+impl From<ImageNode> for AnyImageNode {
+    fn from(node: ImageNode) -> Self {
         Self::Image(node)
     }
 }
 
-impl<P> From<ImageLeaseNode<P>> for AnyImageNode<P> {
-    fn from(node: ImageLeaseNode<P>) -> Self {
+impl From<ImageLeaseNode> for AnyImageNode {
+    fn from(node: ImageLeaseNode) -> Self {
         Self::ImageLease(node)
     }
 }
 
-impl<P> From<SwapchainImageNode<P>> for AnyImageNode<P> {
-    fn from(node: SwapchainImageNode<P>) -> Self {
+impl From<SwapchainImageNode> for AnyImageNode {
+    fn from(node: SwapchainImageNode) -> Self {
         Self::SwapchainImage(node)
     }
 }
 
-impl<P> Node<P> for AnyImageNode<P> {
+impl Node for AnyImageNode {
     fn index(self) -> NodeIndex {
         match self {
             Self::Image(node) => node.index(),
@@ -159,7 +158,7 @@ impl<P> Node<P> for AnyImageNode<P> {
     }
 }
 
-pub trait Node<P>: Copy {
+pub trait Node: Copy {
     fn index(self) -> NodeIndex;
 }
 
@@ -167,29 +166,27 @@ macro_rules! node {
     ($name:ident) => {
         paste::paste! {
             #[derive(Debug)]
-            pub struct [<$name Node>]<P> {
-                __: PhantomData<P>,
+            pub struct [<$name Node>] {
                 pub(super) idx: NodeIndex,
             }
 
-            impl<P> [<$name Node>]<P> {
+            impl [<$name Node>] {
                 pub(super) fn new(idx: NodeIndex) -> Self {
                     Self {
-                        __: PhantomData,
                         idx,
                     }
                 }
             }
 
-            impl<P> Clone for [<$name Node>]<P> {
+            impl Clone for [<$name Node>] {
                 fn clone(&self) -> Self {
                     *self
                 }
             }
 
-            impl<P> Copy for [<$name Node>]<P> {}
+            impl Copy for [<$name Node>] {}
 
-            impl<P> Node<P> for [<$name Node>]<P>  {
+            impl Node for [<$name Node>] {
                 fn index(self) -> NodeIndex {
                     self.idx
                 }
@@ -209,14 +206,11 @@ node!(SwapchainImage);
 macro_rules! node_unbind {
     ($name:ident) => {
         paste::paste! {
-            impl<P> Unbind<RenderGraph<P>, [<$name Binding>]<P>> for [<$name Node>]<P>
-            where
-                P: SharedPointerKind + Send + 'static,
-            {
-                fn unbind(self, graph: &mut RenderGraph<P>) -> [<$name Binding>]<P> {
+            impl Unbind<RenderGraph, [<$name Binding>]> for [<$name Node>] {
+                fn unbind(self, graph: &mut RenderGraph) -> [<$name Binding>] {
                     let binding = {
                         let binding = graph.bindings[self.idx].[<as_ $name:snake>]().unwrap();
-                        let item = SharedPointer::clone(&binding.item);
+                        let item = Arc::clone(&binding.item);
 
                         // When unbinding we return a binding that has the last access type set to
                         // whatever the last acccess in the graph was (because it will be valid once
@@ -243,11 +237,8 @@ node_unbind!(Image);
 macro_rules! node_unbind_lease {
     ($name:ident) => {
         paste::paste! {
-            impl<P> Unbind<RenderGraph<P>, [<$name LeaseBinding>]<P>> for [<$name LeaseNode>]<P>
-            where
-                P: SharedPointerKind + Send + 'static,
-            {
-                fn unbind(self, graph: &mut RenderGraph<P>) -> [<$name LeaseBinding>]<P> {
+            impl Unbind<RenderGraph, [<$name LeaseBinding>]> for [<$name LeaseNode>] {
+                fn unbind(self, graph: &mut RenderGraph) -> [<$name LeaseBinding>] {
                     let binding = {
                         let last_access = graph.last_access(self);
                         let (binding, _) = graph.bindings[self.idx].[<as_ $name:snake _lease_mut>]().unwrap();
@@ -286,7 +277,7 @@ pub trait Unbind<Graph, Binding> {
     fn unbind(self, graph: &mut Graph) -> Binding;
 }
 
-pub trait View<P>: Node<P>
+pub trait View: Node
 where
     Self::Information: Clone,
     Self::Subresource: Into<Subresource>,
@@ -295,52 +286,52 @@ where
     type Subresource;
 }
 
-impl<P> View<P> for AccelerationStructureNode<P> {
+impl View for AccelerationStructureNode {
     type Information = ();
     type Subresource = ();
 }
 
-impl<P> View<P> for AccelerationStructureLeaseNode<P> {
+impl View for AccelerationStructureLeaseNode {
     type Information = ();
     type Subresource = ();
 }
 
-impl<P> View<P> for AnyAccelerationStructureNode<P> {
+impl View for AnyAccelerationStructureNode {
     type Information = ();
     type Subresource = ();
 }
 
-impl<P> View<P> for AnyBufferNode<P> {
+impl View for AnyBufferNode {
     type Information = BufferSubresource;
     type Subresource = BufferSubresource;
 }
 
-impl<P> View<P> for AnyImageNode<P> {
+impl View for AnyImageNode {
     type Information = ImageViewInfo;
     type Subresource = ImageSubresource;
 }
 
-impl<P> View<P> for BufferLeaseNode<P> {
+impl View for BufferLeaseNode {
     type Information = BufferSubresource;
     type Subresource = BufferSubresource;
 }
 
-impl<P> View<P> for BufferNode<P> {
+impl View for BufferNode {
     type Information = BufferSubresource;
     type Subresource = BufferSubresource;
 }
 
-impl<P> View<P> for ImageLeaseNode<P> {
+impl View for ImageLeaseNode {
     type Information = ImageViewInfo;
     type Subresource = ImageSubresource;
 }
 
-impl<P> View<P> for ImageNode<P> {
+impl View for ImageNode {
     type Information = ImageViewInfo;
     type Subresource = ImageSubresource;
 }
 
-impl<P> View<P> for SwapchainImageNode<P> {
+impl View for SwapchainImageNode {
     type Information = ImageViewInfo;
     type Subresource = ImageSubresource;
 }

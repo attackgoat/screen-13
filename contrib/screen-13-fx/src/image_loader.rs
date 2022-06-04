@@ -1,10 +1,6 @@
 use {
-    super::BitmapFont,
-    anyhow::Context,
-    archery::{SharedPointer, SharedPointerKind},
-    bmfont::BMFont,
-    inline_spirv::include_spirv,
-    screen_13::prelude_all::*,
+    super::BitmapFont, anyhow::Context, bmfont::BMFont, inline_spirv::include_spirv,
+    screen_13::prelude::*, std::sync::Arc,
 };
 
 fn align_up_u32(val: u32, atom: u32) -> u32 {
@@ -32,32 +28,26 @@ impl ImageFormat {
 }
 
 #[derive(Debug)]
-pub struct ImageLoader<P>
-where
-    P: SharedPointerKind,
-{
-    cache: HashPool<P>,
-    _decode_r_rg: SharedPointer<ComputePipeline<P>, P>,
-    decode_rgb_rgba: SharedPointer<ComputePipeline<P>, P>,
-    pub device: SharedPointer<Device<P>, P>,
+pub struct ImageLoader {
+    cache: HashPool,
+    _decode_r_rg: Arc<ComputePipeline>,
+    decode_rgb_rgba: Arc<ComputePipeline>,
+    pub device: Arc<Device>,
 }
 
-impl<P> ImageLoader<P>
-where
-    P: SharedPointerKind + Send + 'static,
-{
-    pub fn new(device: &SharedPointer<Device<P>, P>) -> Result<Self, DriverError> {
+impl ImageLoader {
+    pub fn new(device: &Arc<Device>) -> Result<Self, DriverError> {
         Ok(Self {
             cache: HashPool::new(device),
-            _decode_r_rg: SharedPointer::new(ComputePipeline::create(
+            _decode_r_rg: Arc::new(ComputePipeline::create(
                 device,
                 include_spirv!("res/shader/compute/decode_bitmap_r_rg.comp", comp).as_slice(),
             )?),
-            decode_rgb_rgba: SharedPointer::new(ComputePipeline::create(
+            decode_rgb_rgba: Arc::new(ComputePipeline::create(
                 device,
                 include_spirv!("res/shader/compute/decode_bitmap_rgb_rgba.comp", comp).as_slice(),
             )?),
-            device: SharedPointer::clone(device),
+            device: Arc::clone(device),
         })
     }
 
@@ -68,7 +58,7 @@ where
         height: u32,
         is_srgb: bool,
         is_temporary: bool,
-    ) -> anyhow::Result<ImageBinding<P>> {
+    ) -> anyhow::Result<ImageBinding> {
         Ok(ImageBinding::new(
             Image::create(
                 &self.device,
@@ -124,10 +114,7 @@ where
         width: u32,
         height: u32,
         is_srgb: bool,
-    ) -> anyhow::Result<ImageBinding<P>>
-    where
-        P: SharedPointerKind + Send + 'static,
-    {
+    ) -> anyhow::Result<ImageBinding> {
         info!(
             "decoding {}x{} {:?} bitmap ({} K)",
             width,
@@ -252,10 +239,7 @@ where
         format: ImageFormat,
         width: u32,
         height: u32,
-    ) -> anyhow::Result<ImageBinding<P>>
-    where
-        P: SharedPointerKind + Send + 'static,
-    {
+    ) -> anyhow::Result<ImageBinding> {
         self.decode_bitmap(pixels, format, width, height, false)
     }
 
@@ -265,10 +249,7 @@ where
         format: ImageFormat,
         width: u32,
         height: u32,
-    ) -> anyhow::Result<ImageBinding<P>>
-    where
-        P: SharedPointerKind + Send + 'static,
-    {
+    ) -> anyhow::Result<ImageBinding> {
         self.decode_bitmap(pixels, format, width, height, true)
     }
 
@@ -276,7 +257,7 @@ where
         &mut self,
         font: BMFont,
         pages: impl IntoIterator<Item = (&'a [u8], u32, u32)>,
-    ) -> anyhow::Result<BitmapFont<P>> {
+    ) -> anyhow::Result<BitmapFont> {
         let pages = pages
             .into_iter()
             .map(|(pixels, width, height)| {

@@ -1,32 +1,22 @@
 use {
     super::{Device, DriverError, QueueFamily},
-    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     log::{trace, warn},
-    std::{fmt::Debug, ops::Deref, thread::panicking},
+    std::{fmt::Debug, ops::Deref, sync::Arc, thread::panicking},
 };
 
 #[derive(Debug)]
-pub struct CommandBuffer<P>
-where
-    P: SharedPointerKind,
-{
+pub struct CommandBuffer {
     cmd_buf: vk::CommandBuffer,
-    pub(crate) device: SharedPointer<Device<P>, P>,
+    pub device: Arc<Device>,
     droppables: Vec<Box<dyn Debug + Send + 'static>>,
     pub fence: vk::Fence, // Keeps state because everyone wants this
     pub pool: vk::CommandPool,
 }
 
-impl<P> CommandBuffer<P>
-where
-    P: SharedPointerKind,
-{
-    pub fn create(
-        device: &SharedPointer<Device<P>, P>,
-        queue_family: QueueFamily,
-    ) -> Result<Self, DriverError> {
-        let device = SharedPointer::clone(device);
+impl CommandBuffer {
+    pub fn create(device: &Arc<Device>, queue_family: QueueFamily) -> Result<Self, DriverError> {
+        let device = Arc::clone(device);
         let cmd_pool_info = vk::CommandPoolCreateInfo::builder()
             .flags(vk::CommandPoolCreateFlags::empty())
             .queue_family_index(queue_family.idx);
@@ -95,10 +85,7 @@ where
     }
 }
 
-impl<P> Deref for CommandBuffer<P>
-where
-    P: SharedPointerKind,
-{
+impl Deref for CommandBuffer {
     type Target = vk::CommandBuffer;
 
     fn deref(&self) -> &Self::Target {
@@ -106,10 +93,7 @@ where
     }
 }
 
-impl<P> Drop for CommandBuffer<P>
-where
-    P: SharedPointerKind,
-{
+impl Drop for CommandBuffer {
     fn drop(&mut self) {
         use std::slice::from_ref;
 

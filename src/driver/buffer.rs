@@ -1,6 +1,5 @@
 use {
     super::{Device, DriverError},
-    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     derive_builder::Builder,
     gpu_allocator::{
@@ -12,34 +11,26 @@ use {
     std::{
         fmt::{Debug, Formatter},
         ops::{Deref, Range},
+        sync::Arc,
         thread::panicking,
     },
 };
 
-pub struct Buffer<P>
-where
-    P: SharedPointerKind,
-{
+pub struct Buffer {
     allocation: Option<Allocation>,
     buffer: vk::Buffer,
-    device: SharedPointer<Device<P>, P>,
+    pub device: Arc<Device>,
     pub info: BufferInfo,
     pub name: Option<String>,
 }
 
-impl<P> Buffer<P>
-where
-    P: SharedPointerKind,
-{
-    pub fn create(
-        device: &SharedPointer<Device<P>, P>,
-        info: impl Into<BufferInfo>,
-    ) -> Result<Self, DriverError> {
+impl Buffer {
+    pub fn create(device: &Arc<Device>, info: impl Into<BufferInfo>) -> Result<Self, DriverError> {
         let info = info.into();
 
         trace!("create: {:?}", info);
 
-        let device = SharedPointer::clone(device);
+        let device = Arc::clone(device);
         let buffer_info = vk::BufferCreateInfo {
             size: info.size,
             usage: info.usage,
@@ -144,10 +135,7 @@ where
     }
 }
 
-impl<P> Debug for Buffer<P>
-where
-    P: SharedPointerKind,
-{
+impl Debug for Buffer {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         if let Some(name) = &self.name {
             write!(f, "{} ({:?})", name, self.buffer)
@@ -157,10 +145,7 @@ where
     }
 }
 
-impl<P> Deref for Buffer<P>
-where
-    P: SharedPointerKind,
-{
+impl Deref for Buffer {
     type Target = vk::Buffer;
 
     fn deref(&self) -> &Self::Target {
@@ -168,10 +153,7 @@ where
     }
 }
 
-impl<P> Drop for Buffer<P>
-where
-    P: SharedPointerKind,
-{
+impl Drop for Buffer {
     fn drop(&mut self) {
         if panicking() {
             return;

@@ -4,7 +4,6 @@ use {
         PhysicalDeviceDescriptorIndexingFeatures, PhysicalDeviceRayTracePipelineProperties,
         QueueFamily, SamplerDesc, Surface,
     },
-    archery::{SharedPointer, SharedPointerKind},
     ash::{extensions::khr, vk},
     gpu_allocator::{
         vulkan::{Allocator, AllocatorCreateDesc},
@@ -20,21 +19,19 @@ use {
         mem::forget,
         ops::Deref,
         os::raw::c_char,
+        sync::Arc,
         thread::panicking,
         time::Instant,
     },
 };
 
-pub struct Device<P>
-where
-    P: SharedPointerKind,
-{
+pub struct Device {
     pub accel_struct_ext: Option<khr::AccelerationStructure>,
     pub(super) allocator: Option<Mutex<Allocator>>,
     pub descriptor_indexing_features: PhysicalDeviceDescriptorIndexingFeatures,
     device: ash::Device,
     immutable_samplers: HashMap<SamplerDesc, vk::Sampler>,
-    pub instance: SharedPointer<Instance, P>, // TODO: Need shared?
+    pub instance: Arc<Instance>, // TODO: Need shared?
     pub physical_device: PhysicalDevice,
     pub queue: Queue,
     pub ray_tracing_pipeline_ext: Option<khr::RayTracingPipeline>,
@@ -43,14 +40,11 @@ where
     pub swapchain_ext: Option<khr::Swapchain>,
 }
 
-impl<P> Device<P>
-where
-    P: SharedPointerKind,
-{
+impl Device {
     pub fn new(cfg: DriverConfig) -> Result<Self, DriverError> {
         trace!("new {:?}", cfg);
 
-        let instance = SharedPointer::new(Instance::new(cfg.debug, empty())?);
+        let instance = Arc::new(Instance::new(cfg.debug, empty())?);
         let physical_device = Instance::physical_devices(&instance)?
             .filter(|physical_device| {
                 if cfg.ray_tracing && !PhysicalDevice::has_ray_tracing_support(physical_device) {
@@ -77,11 +71,11 @@ where
     }
 
     pub fn create(
-        instance: &SharedPointer<Instance, P>,
+        instance: &Arc<Instance>,
         physical_device: PhysicalDevice,
         cfg: DriverConfig,
     ) -> Result<Self, DriverError> {
-        let instance = SharedPointer::clone(instance);
+        let instance = Arc::clone(instance);
         let fp_v1_1 = instance.fp_v1_1();
         let get_physical_device_features2 = fp_v1_1.get_physical_device_features2;
         let get_physical_device_properties2 = fp_v1_1.get_physical_device_properties2;
@@ -446,7 +440,7 @@ where
 
     pub fn surface_formats(
         this: &Self,
-        surface: &Surface<impl SharedPointerKind>,
+        surface: &Surface,
     ) -> Result<Vec<vk::SurfaceFormatKHR>, DriverError> {
         unsafe {
             this.surface_ext
@@ -498,19 +492,13 @@ where
     }
 }
 
-impl<P> Debug for Device<P>
-where
-    P: SharedPointerKind,
-{
+impl Debug for Device {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_str("Device")
     }
 }
 
-impl<P> Deref for Device<P>
-where
-    P: SharedPointerKind,
-{
+impl Deref for Device {
     type Target = ash::Device;
 
     fn deref(&self) -> &Self::Target {
@@ -518,10 +506,7 @@ where
     }
 }
 
-impl<P> Drop for Device<P>
-where
-    P: SharedPointerKind,
-{
+impl Drop for Device {
     fn drop(&mut self) {
         if panicking() {
             // When panicking we don't want the GPU allocator to complain about leaks

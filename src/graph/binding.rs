@@ -7,125 +7,90 @@ use {
         driver::{
             AccelerationStructure, AccelerationStructureInfo, Buffer, BufferInfo, Image, ImageInfo,
         },
-        Lease,
+        hash_pool::Lease,
     },
-    archery::{SharedPointer, SharedPointerKind},
     std::{
         fmt::Debug,
         mem::replace,
         ops::{Deref, DerefMut},
+        sync::Arc,
     },
     vk_sync::AccessType,
 };
 
 #[derive(Debug)]
-pub enum AnyBufferBinding<'a, P>
-where
-    P: SharedPointerKind,
-{
-    Buffer(&'a mut BufferBinding<P>),
-    BufferLeaseBound(&'a mut BufferLeaseBinding<P>),
-    BufferLeaseUnbound(&'a mut Lease<BufferBinding<P>, P>),
+pub enum AnyBufferBinding<'a> {
+    Buffer(&'a mut BufferBinding),
+    BufferLeaseBound(&'a mut BufferLeaseBinding),
+    BufferLeaseUnbound(&'a mut Lease<BufferBinding>),
 }
 
-impl<'a, P> From<&'a mut BufferBinding<P>> for AnyBufferBinding<'a, P>
-where
-    P: SharedPointerKind,
-{
-    fn from(binding: &'a mut BufferBinding<P>) -> Self {
+impl<'a> From<&'a mut BufferBinding> for AnyBufferBinding<'a> {
+    fn from(binding: &'a mut BufferBinding) -> Self {
         Self::Buffer(binding)
     }
 }
 
-impl<'a, P> From<&'a mut BufferLeaseBinding<P>> for AnyBufferBinding<'a, P>
-where
-    P: SharedPointerKind,
-{
-    fn from(binding: &'a mut BufferLeaseBinding<P>) -> Self {
+impl<'a> From<&'a mut BufferLeaseBinding> for AnyBufferBinding<'a> {
+    fn from(binding: &'a mut BufferLeaseBinding) -> Self {
         Self::BufferLeaseBound(binding)
     }
 }
 
-impl<'a, P> From<&'a mut Lease<BufferBinding<P>, P>> for AnyBufferBinding<'a, P>
-where
-    P: SharedPointerKind,
-{
-    fn from(binding: &'a mut Lease<BufferBinding<P>, P>) -> Self {
+impl<'a> From<&'a mut Lease<BufferBinding>> for AnyBufferBinding<'a> {
+    fn from(binding: &'a mut Lease<BufferBinding>) -> Self {
         Self::BufferLeaseUnbound(binding)
     }
 }
 
 #[derive(Debug)]
-pub enum AnyImageBinding<'a, P>
-where
-    P: SharedPointerKind,
-{
-    Image(&'a mut ImageBinding<P>),
-    ImageLeaseBound(&'a mut ImageLeaseBinding<P>),
-    ImageLeaseUnbound(&'a mut Lease<ImageBinding<P>, P>),
-    SwapchainImage(&'a mut SwapchainImageBinding<P>),
+pub enum AnyImageBinding<'a> {
+    Image(&'a mut ImageBinding),
+    ImageLeaseBound(&'a mut ImageLeaseBinding),
+    ImageLeaseUnbound(&'a mut Lease<ImageBinding>),
+    SwapchainImage(&'a mut SwapchainImageBinding),
 }
 
-impl<'a, P> From<&'a mut ImageBinding<P>> for AnyImageBinding<'a, P>
-where
-    P: SharedPointerKind,
-{
-    fn from(binding: &'a mut ImageBinding<P>) -> Self {
+impl<'a> From<&'a mut ImageBinding> for AnyImageBinding<'a> {
+    fn from(binding: &'a mut ImageBinding) -> Self {
         Self::Image(binding)
     }
 }
 
-impl<'a, P> From<&'a mut ImageLeaseBinding<P>> for AnyImageBinding<'a, P>
-where
-    P: SharedPointerKind,
-{
-    fn from(binding: &'a mut ImageLeaseBinding<P>) -> Self {
+impl<'a> From<&'a mut ImageLeaseBinding> for AnyImageBinding<'a> {
+    fn from(binding: &'a mut ImageLeaseBinding) -> Self {
         Self::ImageLeaseBound(binding)
     }
 }
 
-impl<'a, P> From<&'a mut Lease<ImageBinding<P>, P>> for AnyImageBinding<'a, P>
-where
-    P: SharedPointerKind,
-{
-    fn from(binding: &'a mut Lease<ImageBinding<P>, P>) -> Self {
+impl<'a> From<&'a mut Lease<ImageBinding>> for AnyImageBinding<'a> {
+    fn from(binding: &'a mut Lease<ImageBinding>) -> Self {
         Self::ImageLeaseUnbound(binding)
     }
 }
 
-impl<'a, P> From<&'a mut SwapchainImageBinding<P>> for AnyImageBinding<'a, P>
-where
-    P: SharedPointerKind,
-{
-    fn from(binding: &'a mut SwapchainImageBinding<P>) -> Self {
+impl<'a> From<&'a mut SwapchainImageBinding> for AnyImageBinding<'a> {
+    fn from(binding: &'a mut SwapchainImageBinding) -> Self {
         Self::SwapchainImage(binding)
     }
 }
 
-pub trait Bind<Graph, Node, P> {
-    fn bind(self, graph: Graph) -> Node
-    where
-        P: SharedPointerKind;
+pub trait Bind<Graph, Node> {
+    fn bind(self, graph: Graph) -> Node;
 }
 
 #[derive(Debug)]
-pub enum Binding<P>
-where
-    P: SharedPointerKind,
-{
-    AccelerationStructure(AccelerationStructureBinding<P>, bool),
-    AccelerationStructureLease(AccelerationStructureLeaseBinding<P>, bool),
-    Buffer(BufferBinding<P>, bool),
-    BufferLease(BufferLeaseBinding<P>, bool),
-    Image(ImageBinding<P>, bool),
-    ImageLease(ImageLeaseBinding<P>, bool),
-    SwapchainImage(SwapchainImageBinding<P>, bool),
+pub enum Binding {
+    AccelerationStructure(AccelerationStructureBinding, bool),
+    AccelerationStructureLease(AccelerationStructureLeaseBinding, bool),
+    Buffer(BufferBinding, bool),
+    BufferLease(BufferLeaseBinding, bool),
+    Image(ImageBinding, bool),
+    ImageLease(ImageLeaseBinding, bool),
+    SwapchainImage(SwapchainImageBinding, bool),
 }
 
-impl<P> Binding<P>
-where
-    P: SharedPointerKind,
-{
+impl Binding {
     pub(super) fn access_mut(&mut self, access: AccessType) -> AccessType {
         match self {
             Self::AccelerationStructure(binding, _) => binding.access_mut(access),
@@ -138,7 +103,7 @@ where
         }
     }
 
-    pub(super) fn as_driver_acceleration_structure(&self) -> Option<&AccelerationStructure<P>> {
+    pub(super) fn as_driver_acceleration_structure(&self) -> Option<&AccelerationStructure> {
         Some(match self {
             Self::AccelerationStructure(binding, _) => &binding.item,
             Self::AccelerationStructureLease(binding, _) => &binding.item,
@@ -146,7 +111,7 @@ where
         })
     }
 
-    pub(super) fn as_driver_buffer(&self) -> Option<&Buffer<P>> {
+    pub(super) fn as_driver_buffer(&self) -> Option<&Buffer> {
         Some(match self {
             Self::Buffer(binding, _) => &binding.item,
             Self::BufferLease(binding, _) => &binding.item,
@@ -154,7 +119,7 @@ where
         })
     }
 
-    pub(super) fn as_driver_image(&self) -> Option<&Image<P>> {
+    pub(super) fn as_driver_image(&self) -> Option<&Image> {
         Some(match self {
             Self::Image(binding, _) => &binding.item,
             Self::ImageLease(binding, _) => &binding.item,
@@ -201,24 +166,19 @@ macro_rules! bind {
     ($name:ident) => {
         paste::paste! {
             #[derive(Debug)]
-            pub struct [<$name Binding>]<P>
-            where
-                P: SharedPointerKind,
-            {
-                pub(super) item: SharedPointer<$name<P>, P>,
+            pub struct [<$name Binding>] {
+                pub(super) item: Arc<$name>,
                 pub(super) access: AccessType,
             }
 
-            impl<P> [<$name Binding>]<P>
-            where
-                P: SharedPointerKind {
-                pub fn new(item: $name<P>) -> Self {
-                    let item = SharedPointer::new(item);
+            impl [<$name Binding>] {
+                pub fn new(item: $name) -> Self {
+                    let item = Arc::new(item);
 
                     Self::new_unbind(item, AccessType::Nothing)
                 }
 
-                pub(super) fn new_unbind(item: SharedPointer<$name<P>, P>, access: AccessType) -> Self {
+                pub(super) fn new_unbind(item: Arc<$name>, access: AccessType) -> Self {
                     Self {
                         item,
                         access,
@@ -234,21 +194,18 @@ macro_rules! bind {
                 }
 
                 /// Returns a borrow.
-                pub fn get(&self) -> &$name<P> {
+                pub fn get(&self) -> &$name {
                     &self.item
                 }
 
                 /// Returns a mutable borrow only if no other clones of this shared item exist.
-                pub fn get_mut(&mut self) -> Option<&mut $name<P>> {
-                    SharedPointer::get_mut(&mut self.item)
+                pub fn get_mut(&mut self) -> Option<&mut $name> {
+                    Arc::get_mut(&mut self.item)
                 }
             }
 
-            impl<P> Bind<&mut RenderGraph<P>, [<$name Node>]<P>, P> for $name<P>
-            where
-                P: SharedPointerKind,
-            {
-                fn bind(self, graph: &mut RenderGraph<P>) -> [<$name Node>]<P> {
+            impl Bind<&mut RenderGraph, [<$name Node>]> for $name {
+                fn bind(self, graph: &mut RenderGraph) -> [<$name Node>] {
                     // In this function we are binding a new item (Image or Buffer or etc)
 
                     // We will return a new node
@@ -260,11 +217,8 @@ macro_rules! bind {
                 }
             }
 
-            impl<P> Bind<&mut RenderGraph<P>, [<$name Node>]<P>, P> for [<$name Binding>]<P>
-            where
-                P: SharedPointerKind,
-            {
-                fn bind(self, graph: &mut RenderGraph<P>) -> [<$name Node>]<P> {
+            impl Bind<&mut RenderGraph, [<$name Node>]> for [<$name Binding>] {
+                fn bind(self, graph: &mut RenderGraph) -> [<$name Node>] {
                     // In this function we are binding an existing binding (ImageBinding or
                     // BufferBinding or etc)
 
@@ -290,11 +244,8 @@ macro_rules! bind {
                 }
             }
 
-            impl<P> Binding<P>
-            where
-                P: SharedPointerKind,
-            {
-                pub(super) fn [<as_ $name:snake>](&self) -> Option<&[<$name Binding>]<P>> {
+            impl Binding {
+                pub(super) fn [<as_ $name:snake>](&self) -> Option<&[<$name Binding>]> {
                     if let Self::$name(binding, _) = self {
                         Some(&binding)
                     } else {
@@ -302,7 +253,7 @@ macro_rules! bind {
                     }
                 }
 
-                pub(super) fn [<as_ $name:snake _mut>](&mut self) -> Option<(&mut [<$name Binding>]<P>, &mut bool)> {
+                pub(super) fn [<as_ $name:snake _mut>](&mut self) -> Option<(&mut [<$name Binding>], &mut bool)> {
                     if let Self::$name(ref mut binding, ref mut is_bound) = self {
                         Some((binding, is_bound))
                     } else {
@@ -322,15 +273,10 @@ macro_rules! bind_lease {
     ($name:ident) => {
         paste::paste! {
             #[derive(Debug)]
-            pub struct [<$name LeaseBinding>]<P>(pub Lease<[<$name Binding>]<P>, P>)
-            where
-                P: SharedPointerKind;
+            pub struct [<$name LeaseBinding>](pub Lease<[<$name Binding>]>);
 
-            impl<P> Bind<&mut RenderGraph<P>, [<$name LeaseNode>]<P>, P> for [<$name LeaseBinding>]<P>
-            where
-                P: SharedPointerKind,
-            {
-                fn bind(self, graph: &mut RenderGraph<P>) -> [<$name LeaseNode>]<P> {
+            impl Bind<&mut RenderGraph, [<$name LeaseNode>]> for [<$name LeaseBinding>] {
+                fn bind(self, graph: &mut RenderGraph) -> [<$name LeaseNode>] {
                     // In this function we are binding an existing lease binding
                     // (ImageLeaseBinding or BufferLeaseBinding or etc)
 
@@ -356,11 +302,8 @@ macro_rules! bind_lease {
                 }
             }
 
-            impl<P> Bind<&mut RenderGraph<P>, [<$name LeaseNode>]<P>, P> for Lease<[<$name Binding>]<P>, P>
-            where
-                P: SharedPointerKind,
-            {
-                fn bind(self, graph: &mut RenderGraph<P>) -> [<$name LeaseNode>]<P> {
+            impl Bind<&mut RenderGraph, [<$name LeaseNode>]> for Lease<[<$name Binding>]> {
+                fn bind(self, graph: &mut RenderGraph) -> [<$name LeaseNode>] {
                     // In this function we are binding a new lease (Lease<ImageBinding> or etc)
 
                     // We will return a new node
@@ -372,31 +315,22 @@ macro_rules! bind_lease {
                 }
             }
 
-            impl<P> Deref for [<$name LeaseBinding>]<P>
-            where
-                P: SharedPointerKind,
-            {
-                type Target = [<$name Binding>]<P>;
+            impl Deref for [<$name LeaseBinding>] {
+                type Target = [<$name Binding>];
 
                 fn deref(&self) -> &Self::Target {
                     &self.0
                 }
             }
 
-            impl<P> DerefMut for [<$name LeaseBinding>]<P>
-            where
-                P: SharedPointerKind,
-            {
+            impl DerefMut for [<$name LeaseBinding>] {
                 fn deref_mut(&mut self) -> &mut Self::Target {
                     &mut self.0
                 }
             }
 
-            impl<P> Binding<P>
-            where
-                P: SharedPointerKind,
-            {
-                pub(super) fn [<as_ $name:snake _lease>](&self) -> Option<&Lease<[<$name Binding>]<P>, P>> {
+            impl Binding {
+                pub(super) fn [<as_ $name:snake _lease>](&self) -> Option<&Lease<[<$name Binding>]>> {
                     if let Self::[<$name Lease>](binding, _) = self {
                         Some(&binding.0)
                     } else {
@@ -404,7 +338,7 @@ macro_rules! bind_lease {
                     }
                 }
 
-                pub(super) fn [<as_ $name:snake _lease_mut>](&mut self) -> Option<(&mut Lease<[<$name Binding>]<P>, P>, &mut bool)> {
+                pub(super) fn [<as_ $name:snake _lease_mut>](&mut self) -> Option<(&mut Lease<[<$name Binding>]>, &mut bool)> {
                     if let Self::[<$name Lease>](ref mut binding, ref mut is_bound) = self {
                         Some((&mut binding.0, is_bound))
                     } else {
@@ -420,55 +354,37 @@ bind_lease!(AccelerationStructure);
 bind_lease!(Image);
 bind_lease!(Buffer);
 
-impl<P> AccelerationStructureBinding<P>
-where
-    P: SharedPointerKind,
-{
+impl AccelerationStructureBinding {
     pub fn info(&self) -> &AccelerationStructureInfo {
         &self.item.info
     }
 }
 
-impl<P> BufferLeaseBinding<P>
-where
-    P: SharedPointerKind,
-{
+impl BufferLeaseBinding {
     pub fn info(&self) -> &BufferInfo {
         &self.item.info
     }
 }
 
-impl<P> BufferBinding<P>
-where
-    P: SharedPointerKind,
-{
+impl BufferBinding {
     pub fn info(&self) -> &BufferInfo {
         &self.item.info
     }
 }
 
-impl<P> ImageBinding<P>
-where
-    P: SharedPointerKind,
-{
+impl ImageBinding {
     pub fn info(&self) -> &ImageInfo {
         &self.item.info
     }
 }
 
-impl<P> ImageLeaseBinding<P>
-where
-    P: SharedPointerKind,
-{
+impl ImageLeaseBinding {
     pub fn info(&self) -> &ImageInfo {
         &self.0.item.info
     }
 }
 
-impl<P> SwapchainImageBinding<P>
-where
-    P: SharedPointerKind,
-{
+impl SwapchainImageBinding {
     pub fn info(&self) -> &ImageInfo {
         &self.item.info
     }

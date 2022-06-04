@@ -2,7 +2,8 @@ use {
     bytemuck::cast_slice,
     glam::{Mat4, Vec4},
     inline_spirv::inline_spirv,
-    screen_13::prelude_arc::*,
+    screen_13::prelude::*,
+    std::sync::Arc,
 };
 
 // NOTE: When this example runs, there will be a blank screen - that's OK!
@@ -204,7 +205,7 @@ fn image_info_2d(width: u32, height: u32) -> ImageInfo {
     // .sample_count(SampleCount::X1)
 }
 
-fn create_fill_quad_linear_gradient_pipeline(device: &Shared<Device>) -> Shared<GraphicPipeline> {
+fn create_fill_quad_linear_gradient_pipeline(device: &Arc<Device>) -> Arc<GraphicPipeline> {
     let vertex_shader = Shader::new_vertex(
         inline_spirv!(
             r#"
@@ -250,7 +251,7 @@ fn create_fill_quad_linear_gradient_pipeline(device: &Shared<Device>) -> Shared<
         .as_slice(),
     );
 
-    Shared::new(
+    Arc::new(
         GraphicPipeline::create(
             device,
             GraphicPipelineInfo::new().blend(BlendMode::ALPHA),
@@ -261,7 +262,7 @@ fn create_fill_quad_linear_gradient_pipeline(device: &Shared<Device>) -> Shared<
 }
 
 // Oh please somebody PR a really nice shader here
-fn create_draw_funky_shape_deferred_pipeline(device: &Shared<Device>) -> Shared<GraphicPipeline> {
+fn create_draw_funky_shape_deferred_pipeline(device: &Arc<Device>) -> Arc<GraphicPipeline> {
     let vertex_shader = Shader::new_vertex(
         inline_spirv!(
             r#"
@@ -309,7 +310,7 @@ fn create_draw_funky_shape_deferred_pipeline(device: &Shared<Device>) -> Shared<
         .as_slice(),
     );
 
-    Shared::new(
+    Arc::new(
         GraphicPipeline::create(
             device,
             GraphicPipelineInfo::new()
