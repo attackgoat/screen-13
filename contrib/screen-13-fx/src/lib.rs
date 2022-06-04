@@ -1,3 +1,11 @@
+#[deprecated]
+pub mod prelude_arc {
+    pub use super::{
+        BitmapFont, BitmapGlyphColor, ComputePresenter, GraphicPresenter, ImageFormat, ImageLoader,
+        Transition, TransitionPipeline,
+    };
+}
+
 mod bitmap_font;
 mod image_loader;
 mod presenter;

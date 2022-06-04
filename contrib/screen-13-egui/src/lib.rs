@@ -1,3 +1,8 @@
+#[deprecated]
+pub mod prelude_arc {
+    pub use super::Egui;
+}
+
 use {
     std::{borrow::Cow, collections::HashMap, sync::Arc},
     bytemuck::cast_slice,

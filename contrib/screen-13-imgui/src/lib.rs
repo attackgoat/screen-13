@@ -1,3 +1,8 @@
+#[deprecated]
+pub mod prelude_arc {
+    pub use super::{imgui, Condition, ImGui, Ui};
+}
+
 pub use imgui::{self, Condition, Ui};
 
 use {
