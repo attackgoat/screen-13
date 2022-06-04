@@ -41,18 +41,20 @@ impl AttachmentInfo {
             final_layout: Some(vk::ImageLayout::UNDEFINED),
         }
     }
+}
 
-    pub fn into_vk(self) -> vk::AttachmentDescription2 {
-        vk::AttachmentDescription2::builder()
-            .flags(self.flags)
-            .format(self.fmt)
-            .samples(self.sample_count.into_vk())
-            .load_op(self.load_op)
-            .store_op(self.store_op)
-            .stencil_load_op(self.stencil_load_op)
-            .stencil_store_op(self.stencil_store_op)
-            .initial_layout(self.initial_layout)
-            .final_layout(self.final_layout)
+impl From<AttachmentInfo> for vk::AttachmentDescription2 {
+    fn from(info: AttachmentInfo) -> Self {
+        Self::builder()
+            .flags(info.flags)
+            .format(info.fmt)
+            .samples(info.sample_count.into())
+            .load_op(info.load_op)
+            .store_op(info.store_op)
+            .stencil_load_op(info.stencil_load_op)
+            .stencil_store_op(info.stencil_store_op)
+            .initial_layout(info.initial_layout)
+            .final_layout(info.final_layout)
             .build()
     }
 }
@@ -73,11 +75,18 @@ pub struct AttachmentRef {
 }
 
 impl AttachmentRef {
-    fn into_vk(self) -> vk::AttachmentReference2Builder<'static> {
-        vk::AttachmentReference2::builder()
-            .attachment(self.attachment)
-            .aspect_mask(self.aspect_mask)
-            .layout(self.layout)
+    fn into_vk(self) -> vk::AttachmentReference2 {
+        self.into()
+    }
+}
+
+impl From<AttachmentRef> for vk::AttachmentReference2 {
+    fn from(attachment: AttachmentRef) -> Self {
+        Self::builder()
+            .attachment(attachment.attachment)
+            .aspect_mask(attachment.aspect_mask)
+            .layout(attachment.layout)
+            .build()
     }
 }
 
@@ -149,12 +158,12 @@ where
         let attachments = info
             .attachments
             .iter()
-            .map(|attachment| attachment.into_vk())
+            .map(|&attachment| attachment.into())
             .collect::<Box<[_]>>();
         let dependencies = info
             .dependencies
             .iter()
-            .map(|dependency| dependency.into_vk())
+            .map(|&dependency| dependency.into())
             .collect::<Box<[_]>>();
 
         // This vec must stay alive until the create function completes; it holds the attachments that
@@ -174,7 +183,7 @@ where
                         .color_attachments
                         .iter()
                         .copied()
-                        .map(|attachment| attachment.into_vk().build()),
+                        .map(|attachment| attachment.into_vk()),
                 );
             }
 
@@ -187,7 +196,7 @@ where
                         .input_attachments
                         .iter()
                         .copied()
-                        .map(|attachment| attachment.into_vk().build()),
+                        .map(|attachment| attachment.into_vk()),
                 );
             }
 
@@ -200,7 +209,7 @@ where
                         .resolve_attachments
                         .iter()
                         .copied()
-                        .map(|attachment| attachment.into_vk().build()),
+                        .map(|attachment| attachment.into_vk()),
                 );
             }
 
@@ -209,7 +218,7 @@ where
 
             if let Some(depth_stencil_attachment) = subpass.depth_stencil_attachment {
                 let idx = attachments.len();
-                attachments.push(depth_stencil_attachment.into_vk().build());
+                attachments.push(depth_stencil_attachment.into());
                 subpass_desc = subpass_desc.depth_stencil_attachment(&attachments[idx]);
             }
 
@@ -348,7 +357,7 @@ where
             .info
             .attachments
             .iter()
-            .map(|_| pipeline.info.blend.into_vk())
+            .map(|_| pipeline.info.blend.into())
             .collect::<Box<[_]>>();
         let color_blend_state = vk::PipelineColorBlendStateCreateInfo::builder()
             .attachments(&color_blend_attachment_states);
@@ -360,7 +369,7 @@ where
             .alpha_to_one_enable(pipeline.state.multisample.alpha_to_one_enable)
             .flags(pipeline.state.multisample.flags)
             .min_sample_shading(pipeline.state.multisample.min_sample_shading)
-            .rasterization_samples(pipeline.state.multisample.rasterization_samples.into_vk())
+            .rasterization_samples(pipeline.state.multisample.rasterization_samples.into())
             .sample_shading_enable(pipeline.state.multisample.sample_shading_enable)
             .sample_mask(&pipeline.state.multisample.sample_mask);
         let mut specializations = Vec::with_capacity(pipeline.state.stages.len());
@@ -401,7 +410,7 @@ where
             ..Default::default()
         };
         let depth_stencil = depth_stencil
-            .map(|depth_stencil| depth_stencil.into_vk())
+            .map(|depth_stencil| depth_stencil.into())
             .unwrap_or_default();
         let rasterization_state = vk::PipelineRasterizationStateCreateInfo {
             front_face: pipeline.info.front_face,
@@ -504,16 +513,18 @@ impl SubpassDependency {
             dependency_flags: vk::DependencyFlags::empty(),
         }
     }
+}
 
-    pub fn into_vk(self) -> vk::SubpassDependency2 {
-        vk::SubpassDependency2::builder()
-            .src_subpass(self.src_subpass)
-            .dst_subpass(self.dst_subpass)
-            .src_stage_mask(self.src_stage_mask)
-            .dst_stage_mask(self.dst_stage_mask)
-            .src_access_mask(self.src_access_mask)
-            .dst_access_mask(self.dst_access_mask)
-            .dependency_flags(self.dependency_flags)
+impl From<SubpassDependency> for vk::SubpassDependency2 {
+    fn from(subpass: SubpassDependency) -> Self {
+        Self::builder()
+            .src_subpass(subpass.src_subpass)
+            .dst_subpass(subpass.dst_subpass)
+            .src_stage_mask(subpass.src_stage_mask)
+            .dst_stage_mask(subpass.dst_stage_mask)
+            .src_access_mask(subpass.src_access_mask)
+            .dst_access_mask(subpass.dst_access_mask)
+            .dependency_flags(subpass.dependency_flags)
             .build()
     }
 }

@@ -56,7 +56,7 @@ where
                 .props
                 .limits
                 .framebuffer_color_sample_counts
-                .contains(info.sample_count.into_vk())
+                .contains(info.sample_count.into())
         {
             info.sample_count = info
                 .sample_count
@@ -80,7 +80,7 @@ where
                 .props
                 .limits
                 .framebuffer_depth_sample_counts
-                .contains(info.sample_count.into_vk())
+                .contains(info.sample_count.into())
         {
             info.sample_count = info
                 .sample_count
@@ -252,14 +252,20 @@ pub enum ImageType {
 
 impl ImageType {
     pub fn into_vk(self) -> vk::ImageViewType {
-        match self {
-            Self::Cube => vk::ImageViewType::CUBE,
-            Self::CubeArray => vk::ImageViewType::CUBE_ARRAY,
-            Self::Texture1D => vk::ImageViewType::TYPE_1D,
-            Self::Texture2D => vk::ImageViewType::TYPE_2D,
-            Self::Texture3D => vk::ImageViewType::TYPE_3D,
-            Self::TextureArray1D => vk::ImageViewType::TYPE_1D_ARRAY,
-            Self::TextureArray2D => vk::ImageViewType::TYPE_2D_ARRAY,
+        self.into()
+    }
+}
+
+impl From<ImageType> for vk::ImageViewType {
+    fn from(ty: ImageType) -> Self {
+        match ty {
+            ImageType::Cube => Self::CUBE,
+            ImageType::CubeArray => Self::CUBE_ARRAY,
+            ImageType::Texture1D => Self::TYPE_1D,
+            ImageType::Texture2D => Self::TYPE_2D,
+            ImageType::Texture3D => Self::TYPE_3D,
+            ImageType::TextureArray1D => Self::TYPE_1D_ARRAY,
+            ImageType::TextureArray2D => Self::TYPE_2D_ARRAY,
         }
     }
 }
@@ -437,7 +443,7 @@ impl ImageInfo {
             extent,
             mip_levels: self.mip_level_count,
             array_layers,
-            samples: self.sample_count.into_vk(),
+            samples: self.sample_count.into(),
             tiling: if self.linear_tiling {
                 vk::ImageTiling::LINEAR
             } else {
@@ -532,12 +538,22 @@ pub struct ImageSubresource {
 
 impl ImageSubresource {
     pub fn into_vk(self) -> vk::ImageSubresourceRange {
-        vk::ImageSubresourceRange {
-            aspect_mask: self.aspect_mask,
-            base_mip_level: self.base_mip_level,
-            base_array_layer: self.base_array_layer,
-            layer_count: self.array_layer_count.unwrap_or(vk::REMAINING_ARRAY_LAYERS),
-            level_count: self.mip_level_count.unwrap_or(vk::REMAINING_MIP_LEVELS),
+        self.into()
+    }
+}
+
+impl From<ImageSubresource> for vk::ImageSubresourceRange {
+    fn from(subresource: ImageSubresource) -> Self {
+        Self {
+            aspect_mask: subresource.aspect_mask,
+            base_mip_level: subresource.base_mip_level,
+            base_array_layer: subresource.base_array_layer,
+            layer_count: subresource
+                .array_layer_count
+                .unwrap_or(vk::REMAINING_ARRAY_LAYERS),
+            level_count: subresource
+                .mip_level_count
+                .unwrap_or(vk::REMAINING_MIP_LEVELS),
         }
     }
 }
@@ -583,7 +599,7 @@ where
             s_type: vk::StructureType::IMAGE_VIEW_CREATE_INFO,
             p_next: null(),
             flags: vk::ImageViewCreateFlags::empty(),
-            view_type: info.ty.into_vk(),
+            view_type: info.ty.into(),
             format: info.fmt,
             components: vk::ComponentMapping {
                 r: vk::ComponentSwizzle::R,
@@ -710,14 +726,20 @@ impl SampleCount {
     }
 
     pub fn into_vk(self) -> vk::SampleCountFlags {
-        match self {
-            Self::X1 => vk::SampleCountFlags::TYPE_1,
-            Self::X2 => vk::SampleCountFlags::TYPE_2,
-            Self::X4 => vk::SampleCountFlags::TYPE_4,
-            Self::X8 => vk::SampleCountFlags::TYPE_8,
-            Self::X16 => vk::SampleCountFlags::TYPE_16,
-            Self::X32 => vk::SampleCountFlags::TYPE_32,
-            Self::X64 => vk::SampleCountFlags::TYPE_64,
+        self.into()
+    }
+}
+
+impl From<SampleCount> for vk::SampleCountFlags {
+    fn from(sample_count: SampleCount) -> Self {
+        match sample_count {
+            SampleCount::X1 => Self::TYPE_1,
+            SampleCount::X2 => Self::TYPE_2,
+            SampleCount::X4 => Self::TYPE_4,
+            SampleCount::X8 => Self::TYPE_8,
+            SampleCount::X16 => Self::TYPE_16,
+            SampleCount::X32 => Self::TYPE_32,
+            SampleCount::X64 => Self::TYPE_64,
         }
     }
 }

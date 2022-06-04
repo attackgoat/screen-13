@@ -1520,7 +1520,7 @@ where
                                 })),
                             };
                         } else if let Some(image) = binding.as_driver_image() {
-                            let range = subresource.unwrap_image().into_vk();
+                            let range = subresource.unwrap_image().into();
 
                             trace!(
                                 "{trace_pad}image {:?} {:?}-{:?} -> {:?}-{:?}",
