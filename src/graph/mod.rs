@@ -212,6 +212,7 @@ impl AttachmentMap {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct Color(pub [f32; 4]);
 
 impl From<[f32; 4]> for Color {
@@ -294,12 +295,34 @@ impl From<(DescriptorSetIndex, BindingIndex, [BindingOffset; 1])> for Descriptor
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+enum ClearValue {
+    Color(Color),
+    DepthStencil(vk::ClearDepthStencilValue),
+}
+
+impl From<ClearValue> for vk::ClearValue{
+    fn from(src: ClearValue) -> Self {
+        match src{
+            ClearValue::Color(color) => vk::ClearValue{
+                color: vk::ClearColorValue{
+                    float32: color.0,
+                },
+            },
+            ClearValue::DepthStencil(depth_stencil) => vk::ClearValue{
+                depth_stencil,
+            }
+        }
+    }
+}
+
 #[derive(Default)]
 struct Execution {
     accesses: BTreeMap<NodeIndex, [SubresourceAccess; 2]>,
     bindings: BTreeMap<Descriptor, (NodeIndex, Option<ViewType>)>,
 
-    clears: BTreeMap<AttachmentIndex, vk::ClearValue>,
+    //clears: BTreeMap<AttachmentIndex, vk::ClearValue>,
+    clears: BTreeMap<AttachmentIndex, ClearValue>,
     loads: AttachmentMap,
     resolves: AttachmentMap,
     stores: AttachmentMap,

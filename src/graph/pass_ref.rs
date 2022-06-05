@@ -22,6 +22,8 @@ use {
     vk_sync::AccessType,
 };
 
+use crate::graph::ClearValue;
+
 #[cfg(debug_assertions)]
 use super::Attachment;
 
@@ -1311,12 +1313,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             "cleared attachment uses subpass input"
         );
 
-        exec.clears.insert(
-            attachment,
-            vk::ClearValue {
-                color: vk::ClearColorValue { float32: color.0 },
-            },
-        );
+        exec.clears.insert(attachment, ClearValue::Color(color));
 
         self
     }
@@ -1349,12 +1346,10 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
 
         exec.clears.insert(
             attachment,
-            vk::ClearValue {
-                depth_stencil: vk::ClearDepthStencilValue {
-                    depth: depth_value,
-                    stencil: stencil_value,
-                },
-            },
+            ClearValue::DepthStencil(vk::ClearDepthStencilValue {
+                depth: depth_value,
+                stencil: stencil_value,
+            }),
         );
 
         self
