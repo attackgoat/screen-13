@@ -301,17 +301,13 @@ enum ClearValue {
     DepthStencil(vk::ClearDepthStencilValue),
 }
 
-impl From<ClearValue> for vk::ClearValue{
+impl From<ClearValue> for vk::ClearValue {
     fn from(src: ClearValue) -> Self {
-        match src{
-            ClearValue::Color(color) => vk::ClearValue{
-                color: vk::ClearColorValue{
-                    float32: color.0,
-                },
+        match src {
+            ClearValue::Color(color) => vk::ClearValue {
+                color: vk::ClearColorValue { float32: color.0 },
             },
-            ClearValue::DepthStencil(depth_stencil) => vk::ClearValue{
-                depth_stencil,
-            }
+            ClearValue::DepthStencil(depth_stencil) => vk::ClearValue { depth_stencil },
         }
     }
 }
@@ -321,7 +317,6 @@ struct Execution {
     accesses: BTreeMap<NodeIndex, [SubresourceAccess; 2]>,
     bindings: BTreeMap<Descriptor, (NodeIndex, Option<ViewType>)>,
 
-    //clears: BTreeMap<AttachmentIndex, vk::ClearValue>,
     clears: BTreeMap<AttachmentIndex, ClearValue>,
     loads: AttachmentMap,
     resolves: AttachmentMap,
