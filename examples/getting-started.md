@@ -251,10 +251,13 @@ println!("{:?}", image); // ImageNode
 let buffer = graph.unbind_node(buffer);
 let image = graph.unbind_node(image);
 
-// Magically, they return to the correct types!
-println!("{:?}", buffer); // Buffer
-println!("{:?}", image); // Image
+// Magically, they return to the correct types! (the graph wrapped them in Arc for us)
+println!("{:?}", buffer); // Arc<Buffer>
+println!("{:?}", image); // Arc<Image>
 ```
+
+_Note:_ See [this code](https://github.com/attackgoat/screen-13/blob/a7a467e2128fcab7d4edc0d6e547e51909107ae4/src/graph/edge.rs#L34)
+for all the things that can be bound or unbound from a graph.
 
 _Note:_ Once unbound, the node struct is invalid and should be dropped. There is no compile-time
 warning for this condition.
