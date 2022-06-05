@@ -283,6 +283,7 @@ impl Resolver {
                             .clears
                             .values()
                             .copied()
+                            .map(|c| c.into())
                             .chain(repeat(Default::default()))
                             .take(render_pass.info.attachments.len())
                             .collect::<Box<[_]>>(),

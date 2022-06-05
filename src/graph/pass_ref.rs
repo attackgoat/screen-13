@@ -2,9 +2,10 @@ use {
     super::{
         AccelerationStructureLeaseNode, AccelerationStructureNode, AnyAccelerationStructureNode,
         AnyBufferNode, AnyImageNode, Area, AttachmentIndex, Bind, Binding, BufferLeaseNode,
-        BufferNode, Color, Descriptor, Edge, Execution, ExecutionFunction, ExecutionPipeline,
-        ImageLeaseNode, ImageNode, Information, Node, NodeIndex, Pass, RenderGraph, SampleCount,
-        Subresource, SubresourceAccess, SwapchainImageNode, View, ViewType,
+        BufferNode, ClearValue, Color, Descriptor, Edge, Execution, ExecutionFunction,
+        ExecutionPipeline, ImageLeaseNode, ImageNode, Information, Node, NodeIndex, Pass,
+        RenderGraph, SampleCount, Subresource, SubresourceAccess, SwapchainImageNode, View,
+        ViewType,
     },
     crate::driver::{
         AccelerationStructure, AccelerationStructureGeometryData,
@@ -1311,12 +1312,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             "cleared attachment uses subpass input"
         );
 
-        exec.clears.insert(
-            attachment,
-            vk::ClearValue {
-                color: vk::ClearColorValue { float32: color.0 },
-            },
-        );
+        exec.clears.insert(attachment, ClearValue::Color(color));
 
         self
     }
@@ -1349,12 +1345,10 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
 
         exec.clears.insert(
             attachment,
-            vk::ClearValue {
-                depth_stencil: vk::ClearDepthStencilValue {
-                    depth: depth_value,
-                    stencil: stencil_value,
-                },
-            },
+            ClearValue::DepthStencil(vk::ClearDepthStencilValue {
+                depth: depth_value,
+                stencil: stencil_value,
+            }),
         );
 
         self
