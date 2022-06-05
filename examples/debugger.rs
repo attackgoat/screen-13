@@ -24,7 +24,7 @@
     To continue, uncomment line 30.
 */
 fn main() -> Result<(), screen_13::DisplayError> {
-    use screen_13::prelude_arc::*;
+    use {screen_13::prelude::*, std::sync::Arc};
 
     // 👋, 🌎!
     //pretty_env_logger::init();
@@ -126,7 +126,7 @@ fn main() -> Result<(), screen_13::DisplayError> {
         );
 
         // Note: This is just for example
-        let compute_pipeline = Shared::new(
+        let compute_pipeline = Arc::new(
             ComputePipeline::create(
                 frame.device,
                 inline_spirv::inline_spirv!(

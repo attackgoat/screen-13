@@ -1,4 +1,4 @@
-use {bytemuck::cast_slice, inline_spirv::inline_spirv, screen_13::prelude_arc::*};
+use {bytemuck::cast_slice, inline_spirv::inline_spirv, screen_13::prelude::*};
 
 // A Vulkan triangle using a graphic pipeline, vertex/fragment shaders, and index/vertex buffers.
 fn main() -> Result<(), DisplayError> {

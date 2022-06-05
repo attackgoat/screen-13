@@ -1,7 +1,7 @@
 use {
     image::io::Reader,
-    screen_13::prelude_arc::*,
-    screen_13_fx::prelude_arc::*,
+    screen_13::prelude::*,
+    screen_13_fx::*,
     screen_13_imgui::*,
     std::{io::Cursor, time::Instant},
 };
@@ -197,7 +197,7 @@ const TRANSITIONS: [Transition; 80] = [
         direction: [1.0, -1.0],
     },
     // Transition::Displacement {
-    //     displacement_map: AnyImageNode<P>,
+    //     displacement_map: AnyImageNode,
     //     strength: f32,
     // },
     Transition::DoomScreen {
@@ -252,7 +252,7 @@ const TRANSITIONS: [Transition; 80] = [
     Transition::LeftRight,
     Transition::LinearBlur { intensity: 0.1 },
     // Transition::Luma {
-    //     luma_map: AnyImageNode<P>,
+    //     luma_map: AnyImageNode,
     // },
     Transition::LuminanceMelt {
         direction: true,

@@ -11,13 +11,13 @@ use {
         AccelerationStructureGeometryInfo, Buffer, ComputePipeline, DepthStencilMode, Device,
         DeviceOrHostAddress, GraphicPipeline, Image, ImageViewInfo, RayTracePipeline,
     },
-    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     log::trace,
     std::{
         cell::RefCell,
         marker::PhantomData,
         ops::{Index, Range},
+        sync::Arc,
     },
     vk_sync::AccessType,
 };
@@ -25,23 +25,17 @@ use {
 #[cfg(debug_assertions)]
 use super::Attachment;
 
-pub struct Acceleration<'a, P>
-where
-    P: SharedPointerKind,
-{
-    bindings: Bindings<'a, P>,
+pub struct Acceleration<'a> {
+    bindings: Bindings<'a>,
     cmd_buf: vk::CommandBuffer,
-    device: &'a Device<P>,
+    device: &'a Device,
 }
 
-impl<'a, P> Acceleration<'a, P>
-where
-    P: SharedPointerKind,
-{
+impl<'a> Acceleration<'a> {
     pub fn build_structure(
         &self,
-        accel_struct_node: impl Into<AnyAccelerationStructureNode<P>>,
-        scratch_buf_node: impl Into<AnyBufferNode<P>>,
+        accel_struct_node: impl Into<AnyAccelerationStructureNode>,
+        scratch_buf_node: impl Into<AnyBufferNode>,
         build_info: AccelerationStructureGeometryInfo,
         build_ranges: &[vk::AccelerationStructureBuildRangeInfoKHR],
     ) {
@@ -178,26 +172,17 @@ pub trait Access {
     const DEFAULT_WRITE: AccessType;
 }
 
-impl<P> Access for ComputePipeline<P>
-where
-    P: SharedPointerKind,
-{
+impl Access for ComputePipeline {
     const DEFAULT_READ: AccessType = AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer;
     const DEFAULT_WRITE: AccessType = AccessType::ComputeShaderWrite;
 }
 
-impl<P> Access for GraphicPipeline<P>
-where
-    P: SharedPointerKind,
-{
+impl Access for GraphicPipeline {
     const DEFAULT_READ: AccessType = AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer;
     const DEFAULT_WRITE: AccessType = AccessType::AnyShaderWrite;
 }
 
-impl<P> Access for RayTracePipeline<P>
-where
-    P: SharedPointerKind,
-{
+impl Access for RayTracePipeline {
     const DEFAULT_READ: AccessType =
         AccessType::RayTracingShaderReadSampledImageOrUniformTexelBuffer;
     const DEFAULT_WRITE: AccessType = AccessType::AnyShaderWrite;
@@ -206,19 +191,16 @@ where
 macro_rules! bind {
     ($name:ident) => {
         paste::paste! {
-            impl<'a, P> Bind<PassRef<'a, P>, PipelinePassRef<'a, [<$name Pipeline>]<P>, P>, P> for &'a SharedPointer<[<$name Pipeline>]<P>, P>
-            where
-                P: SharedPointerKind + Send + 'static,
-            {
+            impl<'a> Bind<PassRef<'a>, PipelinePassRef<'a, [<$name Pipeline>]>> for &'a Arc<[<$name Pipeline>]> {
                 // TODO: Allow binding as explicit secondary command buffers? like with compute/raytrace stuff
-                fn bind(self, mut pass: PassRef<'a, P>) -> PipelinePassRef<'_, [<$name Pipeline>]<P>, P> {
+                fn bind(self, mut pass: PassRef<'a>) -> PipelinePassRef<'_, [<$name Pipeline>]> {
                     let pass_ref = pass.as_mut();
                     if pass_ref.execs.last().unwrap().pipeline.is_some() {
                         // Binding from PipelinePass -> PipelinePass (changing shaders)
                         pass_ref.execs.push(Default::default());
                     }
 
-                    pass_ref.execs.last_mut().unwrap().pipeline = Some(ExecutionPipeline::$name(SharedPointer::clone(self)));
+                    pass_ref.execs.last_mut().unwrap().pipeline = Some(ExecutionPipeline::$name(Arc::clone(self)));
 
                     PipelinePassRef {
                         __: PhantomData,
@@ -227,17 +209,14 @@ macro_rules! bind {
                 }
             }
 
-            impl<P> ExecutionPipeline<P>
-            where
-                P: SharedPointerKind,
-            {
+            impl ExecutionPipeline {
                 #[allow(unused)]
                 pub(super) fn [<is_ $name:snake>](&self) -> bool {
                     matches!(self, Self::$name(_))
                 }
 
                 #[allow(unused)]
-                pub(super) fn [<unwrap_ $name:snake>](&self) -> &SharedPointer<[<$name Pipeline>]<P>, P> {
+                pub(super) fn [<unwrap_ $name:snake>](&self) -> &Arc<[<$name Pipeline>]> {
                     if let Self::$name(binding) = self {
                         &binding
                     } else {
@@ -254,19 +233,13 @@ bind!(Compute);
 bind!(Graphic);
 bind!(RayTrace);
 
-pub struct Bindings<'a, P>
-where
-    P: SharedPointerKind,
-{
-    pub(super) exec: &'a Execution<P>,
-    pub(super) graph: &'a RenderGraph<P>,
+pub struct Bindings<'a> {
+    pub(super) exec: &'a Execution,
+    pub(super) graph: &'a RenderGraph,
 }
 
-impl<'a, P> Bindings<'a, P>
-where
-    P: SharedPointerKind,
-{
-    fn binding_ref(&self, node_idx: usize) -> &Binding<P> {
+impl<'a> Bindings<'a> {
+    fn binding_ref(&self, node_idx: usize) -> &Binding {
         // You must have called read or write for this node on this execution before indexing
         // into the bindings data!
         debug_assert!(
@@ -281,13 +254,11 @@ where
 macro_rules! index {
     ($name:ident, $handle:ident) => {
         paste::paste! {
-            impl<'a, P> Index<[<$name Node>]<P>> for Bindings<'a, P>
-            where
-                P: SharedPointerKind,
+            impl<'a> Index<[<$name Node>]> for Bindings<'a>
             {
-                type Output = $handle<P>;
+                type Output = $handle;
 
-                fn index(&self, node: [<$name Node>]<P>) -> &Self::Output {
+                fn index(&self, node: [<$name Node>]) -> &Self::Output {
                     &*self.binding_ref(node.idx).[<as_ $name:snake>]().unwrap().item
                 }
             }
@@ -305,13 +276,10 @@ index!(Image, Image);
 index!(ImageLease, Image);
 index!(SwapchainImage, Image);
 
-impl<'a, P> Index<AnyAccelerationStructureNode<P>> for Bindings<'a, P>
-where
-    P: SharedPointerKind,
-{
-    type Output = AccelerationStructure<P>;
+impl<'a> Index<AnyAccelerationStructureNode> for Bindings<'a> {
+    type Output = AccelerationStructure;
 
-    fn index(&self, node: AnyAccelerationStructureNode<P>) -> &Self::Output {
+    fn index(&self, node: AnyAccelerationStructureNode) -> &Self::Output {
         let node_idx = match node {
             AnyAccelerationStructureNode::AccelerationStructure(node) => node.idx,
             AnyAccelerationStructureNode::AccelerationStructureLease(node) => node.idx,
@@ -329,13 +297,10 @@ where
     }
 }
 
-impl<'a, P> Index<AnyBufferNode<P>> for Bindings<'a, P>
-where
-    P: SharedPointerKind,
-{
-    type Output = Buffer<P>;
+impl<'a> Index<AnyBufferNode> for Bindings<'a> {
+    type Output = Buffer;
 
-    fn index(&self, node: AnyBufferNode<P>) -> &Self::Output {
+    fn index(&self, node: AnyBufferNode) -> &Self::Output {
         let node_idx = match node {
             AnyBufferNode::Buffer(node) => node.idx,
             AnyBufferNode::BufferLease(node) => node.idx,
@@ -349,13 +314,10 @@ where
     }
 }
 
-impl<'a, P> Index<AnyImageNode<P>> for Bindings<'a, P>
-where
-    P: SharedPointerKind,
-{
-    type Output = Image<P>;
+impl<'a> Index<AnyImageNode> for Bindings<'a> {
+    type Output = Image;
 
-    fn index(&self, node: AnyImageNode<P>) -> &Self::Output {
+    fn index(&self, node: AnyImageNode) -> &Self::Output {
         let node_idx = match node {
             AnyImageNode::Image(node) => node.idx,
             AnyImageNode::ImageLease(node) => node.idx,
@@ -371,20 +333,14 @@ where
     }
 }
 
-pub struct Compute<'a, P>
-where
-    P: SharedPointerKind,
-{
-    bindings: Bindings<'a, P>,
+pub struct Compute<'a> {
+    bindings: Bindings<'a>,
     cmd_buf: vk::CommandBuffer,
-    device: &'a Device<P>,
-    pipeline: SharedPointer<ComputePipeline<P>, P>,
+    device: &'a Device,
+    pipeline: Arc<ComputePipeline>,
 }
 
-impl<'a, P> Compute<'a, P>
-where
-    P: SharedPointerKind,
-{
+impl<'a> Compute<'a> {
     pub fn dispatch(&self, group_count_x: u32, group_count_y: u32, group_count_z: u32) -> &Self {
         unsafe {
             self.device
@@ -420,7 +376,7 @@ where
 
     pub fn dispatch_indirect(
         &self,
-        args_buf: impl Into<AnyBufferNode<P>>,
+        args_buf: impl Into<AnyBufferNode>,
         args_offset: vk::DeviceSize,
     ) -> &Self {
         let args_buf = args_buf.into();
@@ -469,27 +425,21 @@ where
     }
 }
 
-pub struct Draw<'a, P>
-where
-    P: SharedPointerKind,
-{
-    bindings: Bindings<'a, P>,
+pub struct Draw<'a> {
+    bindings: Bindings<'a>,
     buffers: &'a RefCell<Vec<vk::Buffer>>,
     cmd_buf: vk::CommandBuffer,
-    device: &'a Device<P>,
+    device: &'a Device,
     offsets: &'a RefCell<Vec<vk::DeviceSize>>,
-    pipeline: SharedPointer<GraphicPipeline<P>, P>,
+    pipeline: Arc<GraphicPipeline>,
     rects: &'a RefCell<Vec<vk::Rect2D>>,
     viewports: &'a RefCell<Vec<vk::Viewport>>,
 }
 
-impl<'a, P> Draw<'a, P>
-where
-    P: SharedPointerKind,
-{
+impl<'a> Draw<'a> {
     pub fn bind_index_buffer(
         &self,
-        buffer: impl Into<AnyBufferNode<P>>,
+        buffer: impl Into<AnyBufferNode>,
         index_ty: vk::IndexType,
     ) -> &Self {
         self.bind_index_buffer_offset(buffer, index_ty, 0)
@@ -497,7 +447,7 @@ where
 
     pub fn bind_index_buffer_offset(
         &self,
-        buffer: impl Into<AnyBufferNode<P>>,
+        buffer: impl Into<AnyBufferNode>,
         index_ty: vk::IndexType,
         offset: vk::DeviceSize,
     ) -> &Self {
@@ -515,13 +465,13 @@ where
         self
     }
 
-    pub fn bind_vertex_buffer(&self, buffer: impl Into<AnyBufferNode<P>>) -> &Self {
+    pub fn bind_vertex_buffer(&self, buffer: impl Into<AnyBufferNode>) -> &Self {
         self.bind_vertex_buffer_offset(buffer, 0)
     }
 
     pub fn bind_vertex_buffer_offset(
         &self,
-        buffer: impl Into<AnyBufferNode<P>>,
+        buffer: impl Into<AnyBufferNode>,
         offset: vk::DeviceSize,
     ) -> &Self {
         use std::slice::from_ref;
@@ -546,7 +496,7 @@ where
         buffers: impl IntoIterator<Item = (B, vk::DeviceSize)>,
     ) -> &Self
     where
-        B: Into<AnyBufferNode<P>>,
+        B: Into<AnyBufferNode>,
     {
         let mut buffers_vec = self.buffers.borrow_mut();
         buffers_vec.clear();
@@ -617,7 +567,7 @@ where
 
     pub fn draw_indexed_indirect(
         &self,
-        buffer: impl Into<AnyBufferNode<P>>,
+        buffer: impl Into<AnyBufferNode>,
         offset: vk::DeviceSize,
         draw_count: u32,
         stride: u32,
@@ -639,9 +589,9 @@ where
 
     pub fn draw_indexed_indirect_count(
         &self,
-        buffer: impl Into<AnyBufferNode<P>>,
+        buffer: impl Into<AnyBufferNode>,
         offset: vk::DeviceSize,
-        count_buf: impl Into<AnyBufferNode<P>>,
+        count_buf: impl Into<AnyBufferNode>,
         count_buf_offset: vk::DeviceSize,
         max_draw_count: u32,
         stride: u32,
@@ -666,7 +616,7 @@ where
 
     pub fn draw_indirect(
         &self,
-        buffer: impl Into<AnyBufferNode<P>>,
+        buffer: impl Into<AnyBufferNode>,
         offset: vk::DeviceSize,
         draw_count: u32,
         stride: u32,
@@ -688,9 +638,9 @@ where
 
     pub fn draw_indirect_count(
         &self,
-        buffer: impl Into<AnyBufferNode<P>>,
+        buffer: impl Into<AnyBufferNode>,
         offset: vk::DeviceSize,
-        count_buf: impl Into<AnyBufferNode<P>>,
+        count_buf: impl Into<AnyBufferNode>,
         count_buf_offset: vk::DeviceSize,
         max_draw_count: u32,
         stride: u32,
@@ -836,20 +786,14 @@ where
     }
 }
 
-pub struct PassRef<'a, P>
-where
-    P: SharedPointerKind + Send,
-{
+pub struct PassRef<'a> {
     pub(super) exec_idx: usize,
-    pub(super) graph: &'a mut RenderGraph<P>,
+    pub(super) graph: &'a mut RenderGraph,
     pub(super) pass_idx: usize,
 }
 
-impl<'a, P> PassRef<'a, P>
-where
-    P: SharedPointerKind + Send + 'static,
-{
-    pub(super) fn new(graph: &'a mut RenderGraph<P>, name: String) -> PassRef<'a, P> {
+impl<'a> PassRef<'a> {
+    pub(super) fn new(graph: &'a mut RenderGraph, name: String) -> PassRef<'a> {
         let pass_idx = graph.passes.len();
         graph.passes.push(Pass {
             depth_stencil: None,
@@ -870,7 +814,7 @@ where
     /// The resolver will insert an execution barrier into the command buffer as required using
     /// the provided access type. This allows you to do whatever was declared here inside an
     /// excution callback registered after this call.
-    pub fn access_node(mut self, node: impl Node<P> + Information, access: AccessType) -> Self {
+    pub fn access_node(mut self, node: impl Node + Information, access: AccessType) -> Self {
         self.assert_bound_graph_node(node);
 
         let idx = node.index();
@@ -900,21 +844,21 @@ where
         subresource: impl Into<N::Subresource>,
     ) -> Self
     where
-        N: View<P>,
+        N: View,
     {
         self.push_node_access(node, access, Some(subresource.into().into()));
         self
     }
 
-    fn as_mut(&mut self) -> &mut Pass<P> {
+    fn as_mut(&mut self) -> &mut Pass {
         &mut self.graph.passes[self.pass_idx]
     }
 
-    fn as_ref(&self) -> &Pass<P> {
+    fn as_ref(&self) -> &Pass {
         &self.graph.passes[self.pass_idx]
     }
 
-    fn assert_bound_graph_node<N>(&self, node: impl Node<N>) {
+    fn assert_bound_graph_node(&self, node: impl Node) {
         let idx = node.index();
 
         assert!(self.graph.bindings[idx].is_bound());
@@ -923,14 +867,14 @@ where
     pub fn bind_pipeline<B>(self, binding: B) -> <B as Edge<Self>>::Result
     where
         B: Edge<Self>,
-        B: Bind<Self, <B as Edge<Self>>::Result, P>,
+        B: Bind<Self, <B as Edge<Self>>::Result>,
     {
         binding.bind(self)
     }
 
     fn push_execute(
         &mut self,
-        func: impl FnOnce(&Device<P>, vk::CommandBuffer, Bindings<'_, P>) + Send + 'static,
+        func: impl FnOnce(&Device, vk::CommandBuffer, Bindings<'_>) + Send + 'static,
     ) {
         let pass = self.as_mut();
         let exec = {
@@ -952,7 +896,7 @@ where
 
     fn push_node_access(
         &mut self,
-        node: impl Node<P>,
+        node: impl Node,
         access: AccessType,
         subresource: Option<Subresource>,
     ) {
@@ -973,14 +917,14 @@ where
             .or_insert([access, access]);
     }
 
-    pub fn read_node(self, node: impl Node<P> + Information) -> Self {
+    pub fn read_node(self, node: impl Node + Information) -> Self {
         let access = AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer;
         self.access_node(node, access)
     }
 
     pub fn record_acceleration(
         mut self,
-        func: impl FnOnce(Acceleration<'_, P>) + Send + 'static,
+        func: impl FnOnce(Acceleration<'_>) + Send + 'static,
     ) -> Self {
         self.push_execute(move |device, cmd_buf, bindings| {
             func(Acceleration {
@@ -995,13 +939,13 @@ where
 
     pub fn record_cmd_buf(
         mut self,
-        func: impl FnOnce(&Device<P>, vk::CommandBuffer, Bindings<'_, P>) + Send + 'static,
+        func: impl FnOnce(&Device, vk::CommandBuffer, Bindings<'_>) + Send + 'static,
     ) -> Self {
         self.push_execute(func);
         self
     }
 
-    pub fn submit_pass(self) -> &'a mut RenderGraph<P> {
+    pub fn submit_pass(self) -> &'a mut RenderGraph {
         // If nothing was done in this pass we can just ignore it
         if self.exec_idx == 0 {
             self.graph.passes.pop();
@@ -1010,25 +954,23 @@ where
         self.graph
     }
 
-    pub fn write_node(self, node: impl Node<P> + Information) -> Self {
+    pub fn write_node(self, node: impl Node + Information) -> Self {
         let access = AccessType::AnyShaderWrite;
         self.access_node(node, access)
     }
 }
 
-pub struct PipelinePassRef<'a, T, P>
+pub struct PipelinePassRef<'a, T>
 where
     T: Access,
-    P: SharedPointerKind + Send,
 {
     __: PhantomData<T>,
-    pass: PassRef<'a, P>,
+    pass: PassRef<'a>,
 }
 
-impl<'a, T, P> PipelinePassRef<'a, T, P>
+impl<'a, T> PipelinePassRef<'a, T>
 where
     T: Access,
-    P: SharedPointerKind + Send + 'static,
 {
     pub fn access_descriptor<N>(
         self,
@@ -1038,10 +980,10 @@ where
     ) -> Self
     where
         N: Information,
-        N: View<P>,
-        ViewType: From<<N as View<P>>::Information>,
-        <N as View<P>>::Information: From<<N as Information>::Info>,
-        <N as View<P>>::Subresource: From<<N as View<P>>::Information>,
+        N: View,
+        ViewType: From<<N as View>::Information>,
+        <N as View>::Information: From<<N as Information>::Info>,
+        <N as View>::Subresource: From<<N as View>::Information>,
     {
         let view_info = node.get(self.pass.graph);
         self.access_descriptor_as(descriptor, node, access, view_info)
@@ -1055,13 +997,13 @@ where
         view_info: impl Into<N::Information>,
     ) -> Self
     where
-        N: View<P>,
-        <N as View<P>>::Information: Into<ViewType>,
-        <N as View<P>>::Subresource: From<<N as View<P>>::Information>,
+        N: View,
+        <N as View>::Information: Into<ViewType>,
+        <N as View>::Subresource: From<<N as View>::Information>,
     {
         let view_info = view_info.into();
         let subresource =
-            <N as View<P>>::Subresource::from(<N as View<P>>::Information::clone(&view_info));
+            <N as View>::Subresource::from(<N as View>::Information::clone(&view_info));
 
         self.access_descriptor_subrange(descriptor, node, access, view_info, subresource)
     }
@@ -1075,8 +1017,8 @@ where
         subresource: impl Into<N::Subresource>,
     ) -> Self
     where
-        N: View<P>,
-        <N as View<P>>::Information: Into<ViewType>,
+        N: View,
+        <N as View>::Information: Into<ViewType>,
     {
         self.pass
             .push_node_access(node, access, Some(subresource.into().into()));
@@ -1085,7 +1027,7 @@ where
         self
     }
 
-    pub fn access_node(mut self, node: impl Node<P> + Information, access: AccessType) -> Self {
+    pub fn access_node(mut self, node: impl Node + Information, access: AccessType) -> Self {
         self.pass.assert_bound_graph_node(node);
 
         let idx = node.index();
@@ -1109,7 +1051,7 @@ where
         subresource: impl Into<N::Subresource>,
     ) -> Self
     where
-        N: View<P>,
+        N: View,
     {
         self.pass
             .push_node_access(node, access, Some(subresource.into().into()));
@@ -1118,7 +1060,7 @@ where
 
     fn push_node_view_bind(
         &mut self,
-        node: impl Node<P>,
+        node: impl Node,
         view_info: impl Into<ViewType>,
         binding: Descriptor,
     ) {
@@ -1141,10 +1083,10 @@ where
     pub fn read_descriptor<N>(self, descriptor: impl Into<Descriptor>, node: N) -> Self
     where
         N: Information,
-        N: View<P>,
-        ViewType: From<<N as View<P>>::Information>,
-        <N as View<P>>::Information: From<<N as Information>::Info>,
-        <N as View<P>>::Subresource: From<<N as View<P>>::Information>,
+        N: View,
+        ViewType: From<<N as View>::Information>,
+        <N as View>::Information: From<<N as Information>::Info>,
+        <N as View>::Subresource: From<<N as View>::Information>,
     {
         let view_info = node.get(self.pass.graph);
         self.read_descriptor_as(descriptor, node, view_info)
@@ -1157,13 +1099,13 @@ where
         view_info: impl Into<N::Information>,
     ) -> Self
     where
-        N: View<P>,
-        <N as View<P>>::Information: Into<ViewType>,
-        <N as View<P>>::Subresource: From<<N as View<P>>::Information>,
+        N: View,
+        <N as View>::Information: Into<ViewType>,
+        <N as View>::Subresource: From<<N as View>::Information>,
     {
         let view_info = view_info.into();
         let subresource =
-            <N as View<P>>::Subresource::from(<N as View<P>>::Information::clone(&view_info));
+            <N as View>::Subresource::from(<N as View>::Information::clone(&view_info));
 
         self.read_descriptor_subrange(descriptor, node, view_info, subresource)
     }
@@ -1176,37 +1118,37 @@ where
         subresource: impl Into<N::Subresource>,
     ) -> Self
     where
-        N: View<P>,
-        <N as View<P>>::Information: Into<ViewType>,
+        N: View,
+        <N as View>::Information: Into<ViewType>,
     {
         let access = <T as Access>::DEFAULT_READ;
         self.access_descriptor_subrange(descriptor, node, access, view_info, subresource)
     }
 
-    pub fn read_node(self, node: impl Node<P> + Information) -> Self {
+    pub fn read_node(self, node: impl Node + Information) -> Self {
         let access = <T as Access>::DEFAULT_READ;
         self.access_node(node, access)
     }
 
     pub fn read_node_subrange<N>(self, node: N, subresource: impl Into<N::Subresource>) -> Self
     where
-        N: View<P>,
+        N: View,
     {
         let access = <T as Access>::DEFAULT_READ;
         self.access_node_subrange(node, access, subresource)
     }
 
-    pub fn submit_pass(self) -> &'a mut RenderGraph<P> {
+    pub fn submit_pass(self) -> &'a mut RenderGraph {
         self.pass.submit_pass()
     }
 
     pub fn write_descriptor<N>(self, descriptor: impl Into<Descriptor>, node: N) -> Self
     where
         N: Information,
-        N: View<P>,
-        <N as View<P>>::Information: Into<ViewType>,
-        <N as View<P>>::Information: From<<N as Information>::Info>,
-        <N as View<P>>::Subresource: From<<N as View<P>>::Information>,
+        N: View,
+        <N as View>::Information: Into<ViewType>,
+        <N as View>::Information: From<<N as Information>::Info>,
+        <N as View>::Subresource: From<<N as View>::Information>,
     {
         let view_info = node.get(self.pass.graph);
         self.write_descriptor_as(descriptor, node, view_info)
@@ -1219,13 +1161,13 @@ where
         view_info: impl Into<N::Information>,
     ) -> Self
     where
-        N: View<P>,
-        <N as View<P>>::Information: Into<ViewType>,
-        <N as View<P>>::Subresource: From<<N as View<P>>::Information>,
+        N: View,
+        <N as View>::Information: Into<ViewType>,
+        <N as View>::Subresource: From<<N as View>::Information>,
     {
         let view_info = view_info.into();
         let subresource =
-            <N as View<P>>::Subresource::from(<N as View<P>>::Information::clone(&view_info));
+            <N as View>::Subresource::from(<N as View>::Information::clone(&view_info));
 
         self.write_descriptor_subrange(descriptor, node, view_info, subresource)
     }
@@ -1238,33 +1180,30 @@ where
         subresource: impl Into<N::Subresource>,
     ) -> Self
     where
-        N: View<P>,
-        <N as View<P>>::Information: Into<ViewType>,
+        N: View,
+        <N as View>::Information: Into<ViewType>,
     {
         let access = <T as Access>::DEFAULT_WRITE;
         self.access_descriptor_subrange(descriptor, node, access, view_info, subresource)
     }
 
-    pub fn write_node(self, node: impl Node<P> + Information) -> Self {
+    pub fn write_node(self, node: impl Node + Information) -> Self {
         let access = <T as Access>::DEFAULT_WRITE;
         self.access_node(node, access)
     }
 
     pub fn write_node_subrange<N>(self, node: N, subresource: impl Into<N::Subresource>) -> Self
     where
-        N: View<P>,
+        N: View,
     {
         let access = <T as Access>::DEFAULT_WRITE;
         self.access_node_subrange(node, access, subresource)
     }
 }
 
-impl<'a, P> PipelinePassRef<'a, ComputePipeline<P>, P>
-where
-    P: SharedPointerKind + Send + 'static,
-{
-    pub fn record_compute(mut self, func: impl FnOnce(Compute<'_, P>) + Send + 'static) -> Self {
-        let pipeline = SharedPointer::clone(
+impl<'a> PipelinePassRef<'a, ComputePipeline> {
+    pub fn record_compute(mut self, func: impl FnOnce(Compute<'_>) + Send + 'static) -> Self {
+        let pipeline = Arc::clone(
             self.pass
                 .as_ref()
                 .execs
@@ -1289,20 +1228,13 @@ where
     }
 }
 
-impl<'a, P> PipelinePassRef<'a, GraphicPipeline<P>, P>
-where
-    P: SharedPointerKind + Send + 'static,
-{
+impl<'a> PipelinePassRef<'a, GraphicPipeline> {
     /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` and `VK_ATTACHMENT_STORE_OP_STORE` for the render
     /// pass attachment.
     ///
     /// The image is
-    pub fn attach_color(
-        self,
-        attachment: AttachmentIndex,
-        image: impl Into<AnyImageNode<P>>,
-    ) -> Self {
-        let image: AnyImageNode<P> = image.into();
+    pub fn attach_color(self, attachment: AttachmentIndex, image: impl Into<AnyImageNode>) -> Self {
+        let image: AnyImageNode = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
 
@@ -1314,7 +1246,7 @@ where
     pub fn attach_color_as(
         self,
         attachment: AttachmentIndex,
-        image: impl Into<AnyImageNode<P>>,
+        image: impl Into<AnyImageNode>,
         view_info: impl Into<ImageViewInfo>,
     ) -> Self {
         let image = image.into();
@@ -1329,9 +1261,9 @@ where
     pub fn attach_depth_stencil(
         self,
         attachment: AttachmentIndex,
-        image: impl Into<AnyImageNode<P>>,
+        image: impl Into<AnyImageNode>,
     ) -> Self {
-        let image: AnyImageNode<P> = image.into();
+        let image: AnyImageNode = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
 
@@ -1343,7 +1275,7 @@ where
     pub fn attach_depth_stencil_as(
         self,
         attachment: AttachmentIndex,
-        image: impl Into<AnyImageNode<P>>,
+        image: impl Into<AnyImageNode>,
         image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
         let image = image.into();
@@ -1438,12 +1370,8 @@ where
     /// into the framebuffer.
     ///
     /// _NOTE:_ Order matters, call load before resolve or store.
-    pub fn load_color(
-        self,
-        attachment: AttachmentIndex,
-        image: impl Into<AnyImageNode<P>>,
-    ) -> Self {
-        let image: AnyImageNode<P> = image.into();
+    pub fn load_color(self, attachment: AttachmentIndex, image: impl Into<AnyImageNode>) -> Self {
+        let image: AnyImageNode = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
 
@@ -1457,7 +1385,7 @@ where
     pub fn load_color_as(
         mut self,
         attachment: AttachmentIndex,
-        image: impl Into<AnyImageNode<P>>,
+        image: impl Into<AnyImageNode>,
         image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
         let image = image.into();
@@ -1543,9 +1471,9 @@ where
     pub fn load_depth_stencil(
         self,
         attachment: AttachmentIndex,
-        image: impl Into<AnyImageNode<P>>,
+        image: impl Into<AnyImageNode>,
     ) -> Self {
-        let image: AnyImageNode<P> = image.into();
+        let image: AnyImageNode = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
 
@@ -1559,7 +1487,7 @@ where
     pub fn load_depth_stencil_as(
         mut self,
         attachment: AttachmentIndex,
-        image: impl Into<AnyImageNode<P>>,
+        image: impl Into<AnyImageNode>,
         image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
         let image = image.into();
@@ -1634,7 +1562,7 @@ where
     }
 
     /// Append a graphic subpass onto the current pass of the parent render graph.
-    pub fn record_subpass(mut self, func: impl FnOnce(Draw<'_, P>) + Send + 'static) -> Self {
+    pub fn record_subpass(mut self, func: impl FnOnce(Draw<'_>) + Send + 'static) -> Self {
         let pipeline = {
             let exec = self.pass.as_ref().execs.last().unwrap();
             let pipeline = exec.pipeline.as_ref().unwrap().unwrap_graphic();
@@ -1647,7 +1575,7 @@ where
                 );
             }
 
-            SharedPointer::clone(pipeline)
+            Arc::clone(pipeline)
         };
 
         self.pass.push_execute(move |device, cmd_buf, bindings| {
@@ -1694,9 +1622,9 @@ where
     pub fn resolve_color(
         self,
         attachment: AttachmentIndex,
-        image: impl Into<AnyImageNode<P>>,
+        image: impl Into<AnyImageNode>,
     ) -> Self {
-        let image: AnyImageNode<P> = image.into();
+        let image: AnyImageNode = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
 
@@ -1710,7 +1638,7 @@ where
     pub fn resolve_color_as(
         mut self,
         attachment: AttachmentIndex,
-        image: impl Into<AnyImageNode<P>>,
+        image: impl Into<AnyImageNode>,
         image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
         let image = image.into();
@@ -1794,9 +1722,9 @@ where
     pub fn resolve_depth_stencil(
         self,
         attachment: AttachmentIndex,
-        image: impl Into<AnyImageNode<P>>,
+        image: impl Into<AnyImageNode>,
     ) -> Self {
-        let image: AnyImageNode<P> = image.into();
+        let image: AnyImageNode = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
 
@@ -1810,7 +1738,7 @@ where
     pub fn resolve_depth_stencil_as(
         mut self,
         attachment: AttachmentIndex,
-        image: impl Into<AnyImageNode<P>>,
+        image: impl Into<AnyImageNode>,
         image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
         let image = image.into();
@@ -1945,12 +1873,8 @@ where
     /// rendered pixels into an image.
     ///
     /// _NOTE:_ Order matters, call store after load.
-    pub fn store_color(
-        self,
-        attachment: AttachmentIndex,
-        image: impl Into<AnyImageNode<P>>,
-    ) -> Self {
-        let image: AnyImageNode<P> = image.into();
+    pub fn store_color(self, attachment: AttachmentIndex, image: impl Into<AnyImageNode>) -> Self {
+        let image: AnyImageNode = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
 
@@ -1964,7 +1888,7 @@ where
     pub fn store_color_as(
         mut self,
         attachment: AttachmentIndex,
-        image: impl Into<AnyImageNode<P>>,
+        image: impl Into<AnyImageNode>,
         image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
         let image = image.into();
@@ -2048,9 +1972,9 @@ where
     pub fn store_depth_stencil(
         self,
         attachment: AttachmentIndex,
-        image: impl Into<AnyImageNode<P>>,
+        image: impl Into<AnyImageNode>,
     ) -> Self {
-        let image: AnyImageNode<P> = image.into();
+        let image: AnyImageNode = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
 
@@ -2064,7 +1988,7 @@ where
     pub fn store_depth_stencil_as(
         mut self,
         attachment: AttachmentIndex,
-        image: impl Into<AnyImageNode<P>>,
+        image: impl Into<AnyImageNode>,
         image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
         let image = image.into();
@@ -2145,11 +2069,8 @@ where
     }
 }
 
-impl<'a, P> PipelinePassRef<'a, RayTracePipeline<P>, P>
-where
-    P: SharedPointerKind + Send + 'static,
-{
-    pub fn record_ray_trace(mut self, func: impl FnOnce(RayTrace<'_, P>) + Send + 'static) -> Self {
+impl<'a> PipelinePassRef<'a, RayTracePipeline> {
+    pub fn record_ray_trace(mut self, func: impl FnOnce(RayTrace<'_>) + Send + 'static) -> Self {
         self.pass.push_execute(move |device, cmd_buf, _bindings| {
             func(RayTrace { cmd_buf, device });
         });
@@ -2158,18 +2079,12 @@ where
     }
 }
 
-pub struct RayTrace<'a, P>
-where
-    P: SharedPointerKind,
-{
+pub struct RayTrace<'a> {
     cmd_buf: vk::CommandBuffer,
-    device: &'a Device<P>,
+    device: &'a Device,
 }
 
-impl<'a, P> RayTrace<'a, P>
-where
-    P: SharedPointerKind,
-{
+impl<'a> RayTrace<'a> {
     // TODO: If the rayTraversalPrimitiveCulling or rayQuery features are enabled, the SkipTrianglesKHR and SkipAABBsKHR ray flags can be specified when tracing a ray. SkipTrianglesKHR and SkipAABBsKHR are mutually exclusive.
 
     #[allow(clippy::too_many_arguments)]
@@ -2205,8 +2120,8 @@ where
 
     pub fn trace_rays_indirect(
         &self,
-        // _tlas: RayTraceAccelerationNode<P>,
-        _args_buf: BufferNode<P>,
+        // _tlas: RayTraceAccelerationNode,
+        _args_buf: BufferNode,
         _args_buf_offset: vk::DeviceSize,
     ) -> &Self {
         // let mut pass = self.pass.as_mut();

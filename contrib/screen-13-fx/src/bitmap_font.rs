@@ -1,11 +1,11 @@
 use {
     anyhow::Context,
-    archery::{SharedPointer, SharedPointerKind},
     bmfont::BMFont,
     bytemuck::{cast, cast_slice},
     glam::{vec3, Mat4},
     inline_spirv::include_spirv,
-    screen_13::prelude_all::*,
+    screen_13::prelude::*,
+    std::sync::Arc,
 };
 
 type Color = [u8; 4];
@@ -21,29 +21,23 @@ fn color_to_unorm(color: Color) -> [u8; 16] {
 
 /// Holds a decoded bitmap Font.
 #[derive(Debug)]
-pub struct BitmapFont<P>
-where
-    P: SharedPointerKind,
-{
-    cache: HashPool<P>,
+pub struct BitmapFont {
+    cache: HashPool,
     font: BMFont,
-    pages: Vec<ImageBinding<P>>,
-    pipeline: SharedPointer<GraphicPipeline<P>, P>,
+    pages: Vec<ImageBinding>,
+    pipeline: Arc<GraphicPipeline>,
 }
 
-impl<P> BitmapFont<P>
-where
-    P: SharedPointerKind + Send + 'static,
-{
+impl BitmapFont {
     pub fn new(
-        device: &SharedPointer<Device<P>, P>,
+        device: &Arc<Device>,
         font: BMFont,
-        pages: impl Into<Vec<ImageBinding<P>>>,
+        pages: impl Into<Vec<ImageBinding>>,
     ) -> anyhow::Result<Self> {
         let cache = HashPool::new(device);
         let pages = pages.into();
         let num_pages = pages.len() as u32;
-        let pipeline = SharedPointer::new(
+        let pipeline = Arc::new(
             GraphicPipeline::create(
                 device,
                 GraphicPipelineInfo::new().blend(BlendMode::ALPHA),
@@ -116,8 +110,8 @@ where
 
     pub fn print(
         &mut self,
-        graph: &mut RenderGraph<P>,
-        image: impl Into<AnyImageNode<P>>,
+        graph: &mut RenderGraph,
+        image: impl Into<AnyImageNode>,
         x: f32,
         y: f32,
         color: impl Into<BitmapGlyphColor>,
@@ -130,8 +124,8 @@ where
     #[allow(clippy::too_many_arguments)]
     pub fn print_scale(
         &mut self,
-        graph: &mut RenderGraph<P>,
-        image: impl Into<AnyImageNode<P>>,
+        graph: &mut RenderGraph,
+        image: impl Into<AnyImageNode>,
         x: f32,
         y: f32,
         color: impl Into<BitmapGlyphColor>,
@@ -145,8 +139,8 @@ where
     #[allow(clippy::too_many_arguments)]
     pub fn print_scale_scissor(
         &mut self,
-        graph: &mut RenderGraph<P>,
-        image: impl Into<AnyImageNode<P>>,
+        graph: &mut RenderGraph,
+        image: impl Into<AnyImageNode>,
         x: f32,
         y: f32,
         color: impl Into<BitmapGlyphColor>,
@@ -207,7 +201,7 @@ where
 
         let vertex_buf = graph.bind_node(vertex_buf);
 
-        let mut page_nodes: Vec<ImageNode<P>> = Vec::with_capacity(self.pages.len());
+        let mut page_nodes: Vec<ImageNode> = Vec::with_capacity(self.pages.len());
         for page in self.pages.drain(..) {
             page_nodes.push(graph.bind_node(page));
         }

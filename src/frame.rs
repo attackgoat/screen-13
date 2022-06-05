@@ -3,7 +3,7 @@ use {
         driver::Device,
         graph::{RenderGraph, SwapchainImageNode},
     },
-    archery::{SharedPointer, SharedPointerKind},
+    std::sync::Arc,
     winit::{dpi::PhysicalPosition, event::Event, window::Window},
 };
 
@@ -19,25 +19,19 @@ pub fn set_cursor_position(window: &Window, x: u32, y: u32) {
     window.set_cursor_position(position).unwrap_or_default();
 }
 
-pub struct FrameContext<'a, P>
-where
-    P: SharedPointerKind,
-{
-    pub device: &'a SharedPointer<Device<P>, P>,
+pub struct FrameContext<'a> {
+    pub device: &'a Arc<Device>,
     pub dt: f32,
     pub events: &'a [Event<'a, ()>],
     pub height: u32,
-    pub render_graph: &'a mut RenderGraph<P>,
-    pub swapchain_image: SwapchainImageNode<P>,
+    pub render_graph: &'a mut RenderGraph,
+    pub swapchain_image: SwapchainImageNode,
     pub will_exit: &'a mut bool,
     pub width: u32,
     pub window: &'a Window,
 }
 
-impl<P> FrameContext<'_, P>
-where
-    P: SharedPointerKind,
-{
+impl FrameContext<'_> {
     pub fn exit(&mut self) {
         *self.will_exit = true;
     }

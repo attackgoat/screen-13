@@ -33,13 +33,13 @@ use {
         DescriptorBindingMap, Device, GraphicPipeline, ImageSubresource, ImageType,
         PipelineDescriptorInfo, RayTracePipeline, SampleCount,
     },
-    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     std::{
         cmp::Ord,
         collections::{BTreeMap, BTreeSet},
         fmt::{Debug, Formatter},
         ops::Range,
+        sync::Arc,
     },
 };
 
@@ -49,7 +49,7 @@ pub type BindingIndex = u32;
 pub type BindingOffset = u32;
 pub type DescriptorSetIndex = u32;
 
-type ExecFn<P> = Box<dyn FnOnce(&Device<P>, vk::CommandBuffer, Bindings<'_, P>) + Send>;
+type ExecFn = Box<dyn FnOnce(&Device, vk::CommandBuffer, Bindings<'_>) + Send>;
 type NodeIndex = usize;
 
 #[derive(Clone, Copy, Debug)]
@@ -294,10 +294,8 @@ impl From<(DescriptorSetIndex, BindingIndex, [BindingOffset; 1])> for Descriptor
     }
 }
 
-struct Execution<P>
-where
-    P: SharedPointerKind,
-{
+#[derive(Default)]
+struct Execution {
     accesses: BTreeMap<NodeIndex, [SubresourceAccess; 2]>,
     bindings: BTreeMap<Descriptor, (NodeIndex, Option<ViewType>)>,
 
@@ -306,14 +304,11 @@ where
     resolves: AttachmentMap,
     stores: AttachmentMap,
 
-    func: Option<ExecutionFunction<P>>,
-    pipeline: Option<ExecutionPipeline<P>>,
+    func: Option<ExecutionFunction>,
+    pipeline: Option<ExecutionPipeline>,
 }
 
-impl<P> Execution<P>
-where
-    P: SharedPointerKind,
-{
+impl Execution {
     fn attachment(&self, attachment_idx: AttachmentIndex) -> Option<Attachment> {
         self.loads.get(attachment_idx).or_else(|| {
             self.resolves
@@ -340,53 +335,22 @@ where
     }
 }
 
-impl<P> Debug for Execution<P>
-where
-    P: SharedPointerKind,
-{
+impl Debug for Execution {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_str("Execution")
     }
 }
 
-impl<P> Default for Execution<P>
-where
-    P: SharedPointerKind,
-{
-    fn default() -> Self {
-        Self {
-            accesses: Default::default(),
-            bindings: Default::default(),
-
-            clears: Default::default(),
-            loads: Default::default(),
-            resolves: Default::default(),
-            stores: Default::default(),
-
-            func: None,
-            pipeline: None,
-        }
-    }
-}
-
-struct ExecutionFunction<P>(ExecFn<P>)
-where
-    P: SharedPointerKind;
+struct ExecutionFunction(ExecFn);
 
 #[derive(Debug)]
-enum ExecutionPipeline<P>
-where
-    P: SharedPointerKind,
-{
-    Compute(SharedPointer<ComputePipeline<P>, P>),
-    Graphic(SharedPointer<GraphicPipeline<P>, P>),
-    RayTrace(SharedPointer<RayTracePipeline<P>, P>),
+enum ExecutionPipeline {
+    Compute(Arc<ComputePipeline>),
+    Graphic(Arc<GraphicPipeline>),
+    RayTrace(Arc<RayTracePipeline>),
 }
 
-impl<P> ExecutionPipeline<P>
-where
-    P: SharedPointerKind,
-{
+impl ExecutionPipeline {
     fn bind_point(&self) -> vk::PipelineBindPoint {
         match self {
             ExecutionPipeline::Compute(_) => vk::PipelineBindPoint::COMPUTE,
@@ -403,7 +367,7 @@ where
         }
     }
 
-    fn descriptor_info(&self) -> &PipelineDescriptorInfo<P> {
+    fn descriptor_info(&self) -> &PipelineDescriptorInfo {
         match self {
             ExecutionPipeline::Compute(pipeline) => &pipeline.descriptor_info,
             ExecutionPipeline::Graphic(pipeline) => &pipeline.descriptor_info,
@@ -428,34 +392,25 @@ where
     }
 }
 
-impl<P> Clone for ExecutionPipeline<P>
-where
-    P: SharedPointerKind,
-{
+impl Clone for ExecutionPipeline {
     fn clone(&self) -> Self {
         match self {
-            Self::Compute(pipeline) => Self::Compute(SharedPointer::clone(pipeline)),
-            Self::Graphic(pipeline) => Self::Graphic(SharedPointer::clone(pipeline)),
-            Self::RayTrace(pipeline) => Self::RayTrace(SharedPointer::clone(pipeline)),
+            Self::Compute(pipeline) => Self::Compute(Arc::clone(pipeline)),
+            Self::Graphic(pipeline) => Self::Graphic(Arc::clone(pipeline)),
+            Self::RayTrace(pipeline) => Self::RayTrace(Arc::clone(pipeline)),
         }
     }
 }
 
 #[derive(Debug)]
-struct Pass<P>
-where
-    P: SharedPointerKind,
-{
+struct Pass {
     depth_stencil: Option<DepthStencilMode>,
-    execs: Vec<Execution<P>>,
+    execs: Vec<Execution>,
     name: String,
     render_area: Option<Area>,
 }
 
-impl<P> Pass<P>
-where
-    P: SharedPointerKind,
-{
+impl Pass {
     fn descriptor_pools_sizes(
         &self,
     ) -> impl Iterator<Item = &BTreeMap<u32, BTreeMap<vk::DescriptorType, u32>>> {
@@ -467,22 +422,16 @@ where
 }
 
 #[derive(Debug)]
-pub struct RenderGraph<P>
-where
-    P: SharedPointerKind,
-{
-    bindings: Vec<Binding<P>>,
-    passes: Vec<Pass<P>>,
+pub struct RenderGraph {
+    bindings: Vec<Binding>,
+    passes: Vec<Pass>,
 
     /// Set to true (when in debug mode) in order to get a breakpoint hit where you want.
     #[cfg(debug_assertions)]
     pub debug: bool,
 }
 
-impl<P> RenderGraph<P>
-where
-    P: SharedPointerKind + Send + 'static,
-{
+impl RenderGraph {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         let bindings = vec![];
@@ -499,23 +448,22 @@ where
         }
     }
 
-    pub fn begin_pass(&mut self, name: impl AsRef<str>) -> PassRef<'_, P> {
+    pub fn begin_pass(&mut self, name: impl AsRef<str>) -> PassRef<'_> {
         PassRef::new(self, name.as_ref().to_string())
     }
 
     pub fn bind_node<'a, B>(&'a mut self, binding: B) -> <B as Edge<Self>>::Result
     where
         B: Edge<Self>,
-        B: Bind<&'a mut Self, <B as Edge<Self>>::Result, P>,
-        P: 'static,
+        B: Bind<&'a mut Self, <B as Edge<Self>>::Result>,
     {
         binding.bind(self)
     }
 
     pub fn blit_image(
         &mut self,
-        src_node: impl Into<AnyImageNode<P>>,
-        dst_node: impl Into<AnyImageNode<P>>,
+        src_node: impl Into<AnyImageNode>,
+        dst_node: impl Into<AnyImageNode>,
         filter: vk::Filter,
     ) -> &mut Self {
         let src_node = src_node.into();
@@ -563,8 +511,8 @@ where
 
     pub fn blit_image_region(
         &mut self,
-        src_node: impl Into<AnyImageNode<P>>,
-        dst_node: impl Into<AnyImageNode<P>>,
+        src_node: impl Into<AnyImageNode>,
+        dst_node: impl Into<AnyImageNode>,
         region: &vk::ImageBlit,
         filter: vk::Filter,
     ) -> &mut Self {
@@ -575,8 +523,8 @@ where
 
     pub fn blit_image_regions(
         &mut self,
-        src_node: impl Into<AnyImageNode<P>>,
-        dst_node: impl Into<AnyImageNode<P>>,
+        src_node: impl Into<AnyImageNode>,
+        dst_node: impl Into<AnyImageNode>,
         regions: impl Into<Box<[vk::ImageBlit]>>,
         filter: vk::Filter,
     ) -> &mut Self {
@@ -604,21 +552,15 @@ where
     }
 
     /// Clears a color image as part of a render graph but outside of any graphic render pass
-    pub fn clear_color_image(&mut self, image_node: impl Into<AnyImageNode<P>>) -> &mut Self
-    where
-        P: SharedPointerKind + 'static,
-    {
+    pub fn clear_color_image(&mut self, image_node: impl Into<AnyImageNode>) -> &mut Self {
         self.clear_color_image_value(image_node, [0, 0, 0, 0])
     }
 
     pub fn clear_color_image_value(
         &mut self,
-        image_node: impl Into<AnyImageNode<P>>,
+        image_node: impl Into<AnyImageNode>,
         color_value: impl Into<Color>,
-    ) -> &mut Self
-    where
-        P: SharedPointerKind + 'static,
-    {
+    ) -> &mut Self {
         let color_value = color_value.into();
         let image_node = image_node.into();
         let image_info = self.node_info(image_node);
@@ -646,22 +588,16 @@ where
     }
 
     /// Clears a depth/stencil image as part of a render graph but outside of any graphic render pass
-    pub fn clear_depth_stencil_image(&mut self, image_node: impl Into<AnyImageNode<P>>) -> &mut Self
-    where
-        P: SharedPointerKind + 'static,
-    {
+    pub fn clear_depth_stencil_image(&mut self, image_node: impl Into<AnyImageNode>) -> &mut Self {
         self.clear_depth_stencil_image_value(image_node, 0.0, 0)
     }
 
     pub fn clear_depth_stencil_image_value(
         &mut self,
-        image_node: impl Into<AnyImageNode<P>>,
+        image_node: impl Into<AnyImageNode>,
         depth: f32,
         stencil: u32,
-    ) -> &mut Self
-    where
-        P: SharedPointerKind + 'static,
-    {
+    ) -> &mut Self {
         let image_node = image_node.into();
         let image_info = self.node_info(image_node);
         let image_access_range = image_info.default_view_info();
@@ -687,8 +623,8 @@ where
 
     pub fn copy_buffer(
         &mut self,
-        src_node: impl Into<AnyBufferNode<P>>,
-        dst_node: impl Into<AnyBufferNode<P>>,
+        src_node: impl Into<AnyBufferNode>,
+        dst_node: impl Into<AnyBufferNode>,
     ) -> &mut Self {
         let src_node = src_node.into();
         let dst_node = dst_node.into();
@@ -708,8 +644,8 @@ where
 
     pub fn copy_buffer_region(
         &mut self,
-        src_node: impl Into<AnyBufferNode<P>>,
-        dst_node: impl Into<AnyBufferNode<P>>,
+        src_node: impl Into<AnyBufferNode>,
+        dst_node: impl Into<AnyBufferNode>,
         region: &vk::BufferCopy,
     ) -> &mut Self {
         use std::slice::from_ref;
@@ -719,8 +655,8 @@ where
 
     pub fn copy_buffer_regions(
         &mut self,
-        src_node: impl Into<AnyBufferNode<P>>,
-        dst_node: impl Into<AnyBufferNode<P>>,
+        src_node: impl Into<AnyBufferNode>,
+        dst_node: impl Into<AnyBufferNode>,
         regions: impl Into<Box<[vk::BufferCopy]>>,
     ) -> &mut Self {
         let src_node = src_node.into();
@@ -739,8 +675,8 @@ where
 
     pub fn copy_buffer_to_image(
         &mut self,
-        src_node: impl Into<AnyBufferNode<P>>,
-        dst_node: impl Into<AnyImageNode<P>>,
+        src_node: impl Into<AnyBufferNode>,
+        dst_node: impl Into<AnyImageNode>,
     ) -> &mut Self {
         let dst_node = dst_node.into();
         let dst_info = self.node_info(dst_node);
@@ -770,8 +706,8 @@ where
 
     pub fn copy_buffer_to_image_region(
         &mut self,
-        src_node: impl Into<AnyBufferNode<P>>,
-        dst_node: impl Into<AnyImageNode<P>>,
+        src_node: impl Into<AnyBufferNode>,
+        dst_node: impl Into<AnyImageNode>,
         region: &vk::BufferImageCopy,
     ) -> &mut Self {
         use std::slice::from_ref;
@@ -781,8 +717,8 @@ where
 
     pub fn copy_buffer_to_image_regions(
         &mut self,
-        src_node: impl Into<AnyBufferNode<P>>,
-        dst_node: impl Into<AnyImageNode<P>>,
+        src_node: impl Into<AnyBufferNode>,
+        dst_node: impl Into<AnyImageNode>,
         regions: impl Into<Box<[vk::BufferImageCopy]>>,
     ) -> &mut Self {
         let src_node = src_node.into();
@@ -808,8 +744,8 @@ where
 
     pub fn copy_image(
         &mut self,
-        src_node: impl Into<AnyImageNode<P>>,
-        dst_node: impl Into<AnyImageNode<P>>,
+        src_node: impl Into<AnyImageNode>,
+        dst_node: impl Into<AnyImageNode>,
     ) -> &mut Self {
         let src_node = src_node.into();
         let dst_node = dst_node.into();
@@ -854,8 +790,8 @@ where
 
     pub fn copy_image_region(
         &mut self,
-        src_node: impl Into<AnyImageNode<P>>,
-        dst_node: impl Into<AnyImageNode<P>>,
+        src_node: impl Into<AnyImageNode>,
+        dst_node: impl Into<AnyImageNode>,
         region: &vk::ImageCopy,
     ) -> &mut Self {
         use std::slice::from_ref;
@@ -865,8 +801,8 @@ where
 
     pub fn copy_image_regions(
         &mut self,
-        src_node: impl Into<AnyImageNode<P>>,
-        dst_node: impl Into<AnyImageNode<P>>,
+        src_node: impl Into<AnyImageNode>,
+        dst_node: impl Into<AnyImageNode>,
         regions: impl Into<Box<[vk::ImageCopy]>>,
     ) -> &mut Self {
         let src_node = src_node.into();
@@ -893,8 +829,8 @@ where
 
     pub fn copy_image_to_buffer(
         &mut self,
-        src_node: impl Into<AnyImageNode<P>>,
-        dst_node: impl Into<AnyBufferNode<P>>,
+        src_node: impl Into<AnyImageNode>,
+        dst_node: impl Into<AnyBufferNode>,
     ) -> &mut Self {
         let src_node = src_node.into();
         let dst_node = dst_node.into();
@@ -926,8 +862,8 @@ where
 
     pub fn copy_image_to_buffer_region(
         &mut self,
-        src_node: impl Into<AnyImageNode<P>>,
-        dst_node: impl Into<AnyBufferNode<P>>,
+        src_node: impl Into<AnyImageNode>,
+        dst_node: impl Into<AnyBufferNode>,
         region: &vk::BufferImageCopy,
     ) -> &mut Self {
         use std::slice::from_ref;
@@ -937,8 +873,8 @@ where
 
     pub fn copy_image_to_buffer_regions(
         &mut self,
-        src_node: impl Into<AnyImageNode<P>>,
-        dst_node: impl Into<AnyBufferNode<P>>,
+        src_node: impl Into<AnyImageNode>,
+        dst_node: impl Into<AnyBufferNode>,
         regions: impl Into<Box<[vk::BufferImageCopy]>>,
     ) -> &mut Self {
         let src_node = src_node.into();
@@ -962,11 +898,7 @@ where
             .submit_pass()
     }
 
-    pub fn fill_buffer(
-        &mut self,
-        buffer_node: impl Into<AnyBufferNode<P>>,
-        data: u32,
-    ) -> &mut Self {
+    pub fn fill_buffer(&mut self, buffer_node: impl Into<AnyBufferNode>, data: u32) -> &mut Self {
         let buffer_node = buffer_node.into();
 
         let buffer_info = self.node_info(buffer_node);
@@ -976,7 +908,7 @@ where
 
     pub fn fill_buffer_region(
         &mut self,
-        buffer_node: impl Into<AnyBufferNode<P>>,
+        buffer_node: impl Into<AnyBufferNode>,
         data: u32,
         region: Range<vk::DeviceSize>,
     ) -> &mut Self {
@@ -999,11 +931,11 @@ where
     }
 
     /// Returns the index of the first pass which accesses a given node
-    fn first_node_access_pass_index(&self, node: impl Node<P>) -> Option<usize> {
+    fn first_node_access_pass_index(&self, node: impl Node) -> Option<usize> {
         self.node_access_pass_index(node, self.passes.iter())
     }
 
-    pub(super) fn last_access(&self, node: impl Node<P>) -> Option<AccessType> {
+    pub(super) fn last_access(&self, node: impl Node) -> Option<AccessType> {
         let node_idx = node.index();
 
         self.passes
@@ -1017,7 +949,7 @@ where
             })
     }
 
-    pub(super) fn last_write(&self, node: impl Node<P>) -> Option<AccessType> {
+    pub(super) fn last_write(&self, node: impl Node) -> Option<AccessType> {
         let node_idx = node.index();
 
         self.passes
@@ -1038,8 +970,8 @@ where
     /// Returns the index of the first pass in a list of passes which accesses a given node
     fn node_access_pass_index<'a>(
         &self,
-        node: impl Node<P>,
-        passes: impl Iterator<Item = &'a Pass<P>>,
+        node: impl Node,
+        passes: impl Iterator<Item = &'a Pass>,
     ) -> Option<usize> {
         let node_idx = node.index();
 
@@ -1061,7 +993,7 @@ where
         node.get(self)
     }
 
-    pub fn resolve(mut self) -> Resolver<P> {
+    pub fn resolve(mut self) -> Resolver {
         // The final execution of each pass has no function
         for pass in &mut self.passes {
             pass.execs.pop();
@@ -1081,7 +1013,7 @@ where
     /// Note: `data` must not exceed 65536 bytes.
     pub fn update_buffer(
         &mut self,
-        buffer_node: impl Into<AnyBufferNode<P>>,
+        buffer_node: impl Into<AnyBufferNode>,
         data: &'static [u8],
     ) -> &mut Self {
         self.update_buffer_offset(buffer_node, data, 0)
@@ -1090,7 +1022,7 @@ where
     /// Note: `data` must not exceed 65536 bytes.
     pub fn update_buffer_offset(
         &mut self,
-        buffer_node: impl Into<AnyBufferNode<P>>,
+        buffer_node: impl Into<AnyBufferNode>,
         data: &'static [u8],
         offset: vk::DeviceSize,
     ) -> &mut Self {

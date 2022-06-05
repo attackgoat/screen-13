@@ -1,11 +1,11 @@
 use {
     super::{Instance, Surface},
-    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     std::{
         ffi::CStr,
         fmt::{Debug, Formatter},
         ops::Deref,
+        sync::Arc,
     },
 };
 
@@ -46,14 +46,11 @@ impl PhysicalDevice {
         }
     }
 
-    pub fn has_presentation_support<P>(
+    pub fn has_presentation_support(
         _this: &Self,
-        _instance: &SharedPointer<Instance, P>,
-        _surface: &Surface<P>,
-    ) -> bool
-    where
-        P: SharedPointerKind,
-    {
+        _instance: &Arc<Instance>,
+        _surface: &Surface,
+    ) -> bool {
         // if let Ok(device) = Device::create(
         //     instance,
         //     this.clone(),

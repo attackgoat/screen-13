@@ -1,32 +1,25 @@
 use {
     super::{DescriptorBindingMap, Device, DriverError, PipelineDescriptorInfo, Shader},
-    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     derive_builder::Builder,
     log::warn,
-    std::{ffi::CString, ops::Deref, thread::panicking},
+    std::{ffi::CString, ops::Deref, sync::Arc, thread::panicking},
 };
 
 #[derive(Debug)]
-pub struct RayTracePipeline<P>
-where
-    P: SharedPointerKind,
-{
+pub struct RayTracePipeline {
     pub descriptor_bindings: DescriptorBindingMap,
-    pub descriptor_info: PipelineDescriptorInfo<P>,
-    device: SharedPointer<Device<P>, P>,
+    pub descriptor_info: PipelineDescriptorInfo,
+    device: Arc<Device>,
     pub info: RayTracePipelineInfo,
     pub layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
     shader_modules: Vec<vk::ShaderModule>,
 }
 
-impl<P> RayTracePipeline<P>
-where
-    P: SharedPointerKind,
-{
+impl RayTracePipeline {
     pub fn create<S>(
-        device: &SharedPointer<Device<P>, P>,
+        device: &Arc<Device>,
         info: impl Into<RayTracePipelineInfo>,
         shaders: impl IntoIterator<Item = S>,
         shader_groups: impl IntoIterator<Item = RayTraceShaderGroup>,
@@ -165,7 +158,7 @@ where
 
                     DriverError::Unsupported
                 })?[0];
-            let device = SharedPointer::clone(device);
+            let device = Arc::clone(device);
 
             Ok(Self {
                 descriptor_bindings,
@@ -180,10 +173,7 @@ where
     }
 }
 
-impl<P> Deref for RayTracePipeline<P>
-where
-    P: SharedPointerKind,
-{
+impl Deref for RayTracePipeline {
     type Target = vk::Pipeline;
 
     fn deref(&self) -> &Self::Target {
@@ -191,10 +181,7 @@ where
     }
 }
 
-impl<P> Drop for RayTracePipeline<P>
-where
-    P: SharedPointerKind,
-{
+impl Drop for RayTracePipeline {
     fn drop(&mut self) {
         if panicking() {
             return;

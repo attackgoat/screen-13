@@ -3,7 +3,7 @@
 This guide is intended for developers who are new to _Screen 13_ and want a step-by-step introduction. For further details on these
 topics refer to the online [documentation](https://docs.rs/screen-13).
 
-All sample code in this guide is assuming a `use screen_13::prelude_arc::*`.
+All sample code in this guide is assuming `use screen_13::prelude::*`.
 
 ## Required Packages
 
@@ -21,10 +21,7 @@ _Windows_:
 
 The `driver` module provides a `Driver` struct which provides a ready-to-use Ash Vulkan instance/device/swapchain. The driver itself,
 as well as any buffers, images, or other resources created from them, use shared reference tracking to keep pointers alive. _Screen 13_
-uses a generic type parameter to determine what type of reference tracking to use: `std::rc::Rc` or `std::sync::Arc`.
-
-Most programs will use the `screen_13::prelude_arc::*` prelude because it provides concrete type aliases which do not
-have generic parameters for shared references.
+uses `std::sync::Arc` to track references.
 
 Creating a driver uses a configuration struct to enable or disable features:
 

@@ -4,32 +4,25 @@ use {
             image_access_layout, CommandBuffer, Device, DriverError, Swapchain, SwapchainError,
         },
         graph::{RenderGraph, SwapchainImageNode},
-        HashPool,
+        hash_pool::HashPool,
     },
-    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     log::trace,
-    std::{error::Error, fmt::Formatter, time::Instant},
+    std::{error::Error, fmt::Formatter, sync::Arc, time::Instant},
     vk_sync::{cmd::pipeline_barrier, AccessType, ImageBarrier, ImageLayout},
 };
 
 #[derive(Debug)]
-pub struct Display<P>
-where
-    P: SharedPointerKind + Send,
-{
-    cache: HashPool<P>,
-    cmd_bufs: Vec<[CommandBuffer<P>; 3]>,
-    device: SharedPointer<Device<P>, P>,
-    swapchain: Swapchain<P>,
+pub struct Display {
+    cache: HashPool,
+    cmd_bufs: Vec<[CommandBuffer; 3]>,
+    device: Arc<Device>,
+    swapchain: Swapchain,
 }
 
-impl<P> Display<P>
-where
-    P: SharedPointerKind + Send + 'static,
-{
-    pub fn new(device: &SharedPointer<Device<P>, P>, swapchain: Swapchain<P>) -> Self {
-        let device = SharedPointer::clone(device);
+impl Display {
+    pub fn new(device: &Arc<Device>, swapchain: Swapchain) -> Self {
+        let device = Arc::clone(device);
 
         Self {
             cache: HashPool::new(&device),
@@ -41,10 +34,7 @@ where
 
     pub fn acquire_next_image(
         &mut self,
-    ) -> Result<(SwapchainImageNode<P>, RenderGraph<P>), SwapchainError>
-    where
-        P: 'static,
-    {
+    ) -> Result<(SwapchainImageNode, RenderGraph), SwapchainError> {
         trace!("acquire_next_image");
 
         let swapchain_image = self.swapchain.acquire_next_image()?;
@@ -54,7 +44,7 @@ where
         Ok((swapchain, render_graph))
     }
 
-    unsafe fn begin(cmd_buf: &mut CommandBuffer<P>) -> Result<(), ()> {
+    unsafe fn begin(cmd_buf: &mut CommandBuffer) -> Result<(), ()> {
         cmd_buf
             .device
             .reset_command_pool(cmd_buf.pool, vk::CommandPoolResetFlags::RELEASE_RESOURCES)
@@ -71,8 +61,8 @@ where
 
     pub fn present_image(
         &mut self,
-        render_graph: RenderGraph<P>,
-        swapchain_image: SwapchainImageNode<P>,
+        render_graph: RenderGraph,
+        swapchain_image: SwapchainImageNode,
     ) -> Result<(), DisplayError> {
         use std::slice::from_ref;
 
@@ -226,7 +216,7 @@ where
     }
 
     unsafe fn submit(
-        cmd_buf: &CommandBuffer<P>,
+        cmd_buf: &CommandBuffer,
         submit_info: vk::SubmitInfoBuilder<'_>,
     ) -> Result<(), ()> {
         use std::slice::from_ref;
@@ -249,7 +239,7 @@ where
             .map_err(|_| ())
     }
 
-    unsafe fn wait_for_fence(cmd_buf: &mut CommandBuffer<P>) -> Result<(), ()> {
+    unsafe fn wait_for_fence(cmd_buf: &mut CommandBuffer) -> Result<(), ()> {
         Device::wait_for_fence(&cmd_buf.device, &cmd_buf.fence).map_err(|_| ())?;
         CommandBuffer::drop_fenced(cmd_buf);
 

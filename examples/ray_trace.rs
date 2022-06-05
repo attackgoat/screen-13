@@ -1,8 +1,8 @@
 use {
     bytemuck::cast_slice,
     inline_spirv::inline_spirv,
-    screen_13::prelude_arc::*,
-    std::{io::BufReader, mem::size_of},
+    screen_13::prelude::*,
+    std::{io::BufReader, mem::size_of, sync::Arc},
     tobj::{load_mtl_buf, load_obj_buf, GPU_LOAD_OPTIONS},
 };
 
@@ -326,10 +326,8 @@ fn align_up(val: u32, atom: u32) -> u32 {
     (val + atom - 1) & !(atom - 1)
 }
 
-fn create_ray_trace_pipeline(
-    device: &Shared<Device>,
-) -> Result<Shared<RayTracePipeline>, DriverError> {
-    Ok(Shared::new(RayTracePipeline::create(
+fn create_ray_trace_pipeline(device: &Arc<Device>) -> Result<Arc<RayTracePipeline>, DriverError> {
+    Ok(Arc::new(RayTracePipeline::create(
         device,
         RayTracePipelineInfo::new()
             .max_ray_recursion_depth(1)
@@ -350,7 +348,7 @@ fn create_ray_trace_pipeline(
 }
 
 fn load_scene_buffers(
-    device: &Shared<Device>,
+    device: &Arc<Device>,
 ) -> Result<
     (
         Option<BufferBinding>,

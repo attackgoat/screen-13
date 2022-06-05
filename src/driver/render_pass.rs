@@ -1,6 +1,5 @@
 use {
     super::{DepthStencilMode, Device, DriverError, GraphicPipeline, SampleCount},
-    archery::{SharedPointer, SharedPointerKind},
     ash::vk,
     derive_builder::Builder,
     log::{trace, warn},
@@ -8,6 +7,7 @@ use {
     std::{
         collections::{btree_map::Entry, BTreeMap},
         ops::Deref,
+        sync::Arc,
         thread::panicking,
     },
 };
@@ -121,31 +121,19 @@ impl RenderPassInfo {
 }
 
 #[derive(Debug)]
-pub struct RenderPass<P>
-where
-    P: SharedPointerKind,
-{
-    device: SharedPointer<Device<P>, P>,
+pub struct RenderPass {
+    device: Arc<Device>,
     framebuffer_cache: Mutex<BTreeMap<FramebufferKey, vk::Framebuffer>>,
     graphic_pipeline_cache: Mutex<BTreeMap<GraphicPipelineKey, vk::Pipeline>>,
     pub info: RenderPassInfo,
     render_pass: vk::RenderPass,
 }
 
-impl<P> RenderPass<P>
-where
-    P: SharedPointerKind,
-{
-    pub fn create(
-        device: &SharedPointer<Device<P>, P>,
-        info: RenderPassInfo,
-    ) -> Result<Self, DriverError>
-    where
-        P: SharedPointerKind,
-    {
+impl RenderPass {
+    pub fn create(device: &Arc<Device>, info: RenderPassInfo) -> Result<Self, DriverError> {
         trace!("create");
 
-        let device = SharedPointer::clone(device);
+        let device = Arc::clone(device);
         let attachments = info
             .attachments
             .iter()
@@ -323,7 +311,7 @@ where
 
     pub fn graphic_pipeline_ref(
         &self,
-        pipeline: &SharedPointer<GraphicPipeline<P>, P>,
+        pipeline: &Arc<GraphicPipeline>,
         depth_stencil: Option<DepthStencilMode>,
         subpass_idx: u32,
     ) -> Result<vk::Pipeline, DriverError> {
@@ -446,10 +434,7 @@ where
     }
 }
 
-impl<P> Deref for RenderPass<P>
-where
-    P: SharedPointerKind,
-{
+impl Deref for RenderPass {
     type Target = vk::RenderPass;
 
     fn deref(&self) -> &Self::Target {
@@ -457,10 +442,7 @@ where
     }
 }
 
-impl<P> Drop for RenderPass<P>
-where
-    P: SharedPointerKind,
-{
+impl Drop for RenderPass {
     fn drop(&mut self) {
         if panicking() {
             return;

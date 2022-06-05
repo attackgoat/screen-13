@@ -1,52 +1,34 @@
+#[deprecated]
 pub mod prelude_arc {
-    pub use super::*;
-
-    use archery::ArcK;
-
-    pub type ImGui = super::ImGui<ArcK>;
-}
-
-pub mod prelude_rc {
-    pub use super::*;
-
-    use archery::RcK;
-
-    pub type ImGui = super::ImGui<RcK>;
+    pub use super::{imgui, Condition, ImGui, Ui};
 }
 
 pub use imgui::{self, Condition, Ui};
 
 use {
-    archery::{SharedPointer, SharedPointerKind},
     bytemuck::cast_slice,
     imgui::{Context, DrawCmd, DrawCmdParams},
     imgui_winit_support::{HiDpiMode, WinitPlatform},
     inline_spirv::include_spirv,
-    screen_13::prelude_all::*,
-    std::time::Duration,
+    screen_13::prelude::*,
+    std::{sync::Arc, time::Duration},
 };
 
 #[derive(Debug)]
-pub struct ImGui<P>
-where
-    P: SharedPointerKind,
-{
+pub struct ImGui {
     context: Context,
-    font_atlas_image: Option<ImageLeaseBinding<P>>,
-    pipeline: SharedPointer<GraphicPipeline<P>, P>,
+    font_atlas_image: Option<ImageLeaseBinding>,
+    pipeline: Arc<GraphicPipeline>,
     platform: WinitPlatform,
-    pool: HashPool<P>,
+    pool: HashPool,
 }
 
-impl<P> ImGui<P>
-where
-    P: SharedPointerKind + Send + 'static,
-{
-    pub fn new(device: &SharedPointer<Device<P>, P>) -> Self {
+impl ImGui {
+    pub fn new(device: &Arc<Device>) -> Self {
         let mut context = Context::create();
         let platform = WinitPlatform::init(&mut context);
         let pool = HashPool::new(device);
-        let pipeline = SharedPointer::new(
+        let pipeline = Arc::new(
             GraphicPipeline::create(
                 device,
                 GraphicPipelineInfo::new()
@@ -75,9 +57,9 @@ where
         dt: f32,
         events: &[Event<'_, ()>],
         window: &Window,
-        render_graph: &mut RenderGraph<P>,
+        render_graph: &mut RenderGraph,
         ui_func: impl FnOnce(&mut Ui),
-    ) -> ImageLeaseNode<P> {
+    ) -> ImageLeaseNode {
         let hidpi = self.platform.hidpi_factor();
 
         self.platform
@@ -231,9 +213,9 @@ where
 
     pub fn draw_frame(
         &mut self,
-        frame: &mut FrameContext<'_, P>,
+        frame: &mut FrameContext<'_>,
         ui_func: impl FnOnce(&mut Ui),
-    ) -> ImageLeaseNode<P> {
+    ) -> ImageLeaseNode {
         self.draw(
             frame.dt,
             frame.events,
@@ -243,7 +225,7 @@ where
         )
     }
 
-    fn lease_font_atlas_image(&mut self, render_graph: &mut RenderGraph<P>) {
+    fn lease_font_atlas_image(&mut self, render_graph: &mut RenderGraph) {
         use imgui::{FontConfig, FontGlyphRanges, FontSource};
 
         let hidpi_factor = self.platform.hidpi_factor();
