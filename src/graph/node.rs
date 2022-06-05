@@ -336,6 +336,7 @@ impl View for SwapchainImageNode {
     type Subresource = ImageSubresource;
 }
 
+#[derive(Debug)]
 pub enum ViewType {
     AccelerationStructure,
     Image(ImageViewInfo),

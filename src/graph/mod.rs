@@ -360,7 +360,17 @@ impl Execution {
 
 impl Debug for Execution {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Execution")
+        // The only field missing is func which cannot easily be implemented because it is a
+        // FnOnce.
+        f.debug_struct("Execution")
+            .field("accesses", &self.accesses)
+            .field("bindings", &self.bindings)
+            .field("clears", &self.clears)
+            .field("loads", &self.loads)
+            .field("resolves", &self.resolves)
+            .field("stores", &self.stores)
+            .field("pipeline", &self.pipeline)
+            .finish()
     }
 }
 
