@@ -101,7 +101,7 @@ impl ImGui {
                 ))
                 .unwrap(),
         );
-        let font_atlas_image = render_graph.bind_node(self.font_atlas_image.take().unwrap());
+        let font_atlas_image = render_graph.bind_node(self.font_atlas_image.as_ref().unwrap());
         let display_pos = draw_data.display_pos;
         let framebuffer_scale = draw_data.framebuffer_scale;
 
@@ -117,8 +117,7 @@ impl ImGui {
                 .unwrap();
 
             {
-                Buffer::mapped_slice_mut(&mut index_buf)[0..indices.len()]
-                    .copy_from_slice(indices);
+                Buffer::mapped_slice_mut(&mut index_buf)[0..indices.len()].copy_from_slice(indices);
             }
 
             let index_buf = render_graph.bind_node(index_buf);
@@ -205,8 +204,6 @@ impl ImGui {
                     }
                 });
         }
-
-        self.font_atlas_image = Some(render_graph.unbind_node(font_atlas_image));
 
         image
     }

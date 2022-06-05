@@ -202,7 +202,7 @@ impl BitmapFont {
         let vertex_buf = graph.bind_node(vertex_buf);
 
         let mut page_nodes: Vec<ImageNode> = Vec::with_capacity(self.pages.len());
-        for page in self.pages.drain(..) {
+        for page in self.pages.iter() {
             page_nodes.push(graph.bind_node(page));
         }
 
@@ -231,10 +231,6 @@ impl BitmapFont {
                 .bind_vertex_buffer(vertex_buf)
                 .draw(vertex_count, 1, 0, 0);
         });
-
-        for page_node in page_nodes {
-            self.pages.push(graph.unbind_node(page_node));
-        }
     }
 }
 

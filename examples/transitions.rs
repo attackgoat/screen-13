@@ -19,32 +19,28 @@ fn main() -> anyhow::Result<()> {
     let mut transition_pipeline = TransitionPipeline::new(&event_loop.device);
 
     // Load two images for the demo to blend between
-    let mut bart_image_binding = Some(
-        image_loader.decode_linear(
-            Reader::new(Cursor::new(include_bytes!("res/image/bart.jpg").as_slice()))
-                .with_guessed_format()?
-                .decode()?
-                .into_rgb8()
-                .to_vec()
-                .as_slice(),
-            ImageFormat::R8G8B8,
-            1024,
-            768,
-        )?,
-    );
-    let mut gulf_image_binding = Some(
-        image_loader.decode_linear(
-            Reader::new(Cursor::new(include_bytes!("res/image/gulf.jpg").as_slice()))
-                .with_guessed_format()?
-                .decode()?
-                .into_rgb8()
-                .to_vec()
-                .as_slice(),
-            ImageFormat::R8G8B8,
-            1024,
-            768,
-        )?,
-    );
+    let bart_image = image_loader.decode_linear(
+        Reader::new(Cursor::new(include_bytes!("res/image/bart.jpg").as_slice()))
+            .with_guessed_format()?
+            .decode()?
+            .into_rgb8()
+            .to_vec()
+            .as_slice(),
+        ImageFormat::R8G8B8,
+        1024,
+        768,
+    )?;
+    let gulf_image = image_loader.decode_linear(
+        Reader::new(Cursor::new(include_bytes!("res/image/gulf.jpg").as_slice()))
+            .with_guessed_format()?
+            .decode()?
+            .into_rgb8()
+            .to_vec()
+            .as_slice(),
+        ImageFormat::R8G8B8,
+        1024,
+        768,
+    )?;
 
     // Hold some app state which is displayed/mutated by imgui each frame
     let mut curr_transition_idx = 0;
@@ -68,12 +64,8 @@ fn main() -> anyhow::Result<()> {
         };
 
         // Bind images so we can graph them
-        let bart_image = frame
-            .render_graph
-            .bind_node(bart_image_binding.take().unwrap());
-        let gulf_image = frame
-            .render_graph
-            .bind_node(gulf_image_binding.take().unwrap());
+        let bart_image = frame.render_graph.bind_node(&bart_image);
+        let gulf_image = frame.render_graph.bind_node(&gulf_image);
 
         // Apply the current transition to the images and get a resultant image out; "blend_image"
         let transition = &TRANSITIONS[curr_transition_idx];
@@ -114,10 +106,6 @@ fn main() -> anyhow::Result<()> {
             blend_image,
             frame.swapchain_image,
         );
-
-        // Reclaim these bindings so we can graph them on the following frame
-        bart_image_binding = Some(frame.render_graph.unbind_node(bart_image));
-        gulf_image_binding = Some(frame.render_graph.unbind_node(gulf_image));
     })?;
 
     Ok(())

@@ -480,7 +480,7 @@ fn load_scene_buffers(
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
-    let event_loop = EventLoop::new().debug(true).ray_tracing(true).build()?;
+    let event_loop = EventLoop::new().ray_tracing(true).build()?;
     let mut cache = HashPool::new(&event_loop.device);
 
     // ------------------------------------------------------------------------------------------ //
