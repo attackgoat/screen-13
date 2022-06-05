@@ -33,7 +33,7 @@ fn align_up(val: u32, atom: u32) -> u32 {
 
 #[derive(Debug)]
 struct PhysicalPass {
-    _descriptor_pool: Option<Lease<Arc<DescriptorPool>>>,
+    _descriptor_pool: Option<Lease<DescriptorPool>>,
     exec_descriptor_sets: HashMap<usize, Vec<DescriptorSet>>,
     render_pass: Option<Lease<RenderPass>>,
 }
@@ -474,7 +474,7 @@ impl Resolver {
     fn lease_descriptor_pool(
         cache: &mut HashPool,
         pass: &Pass,
-    ) -> Result<Option<Lease<Arc<DescriptorPool>>>, DriverError> {
+    ) -> Result<Option<Lease<DescriptorPool>>, DriverError> {
         let mut max_pool_sizes = BTreeMap::new();
         let max_descriptor_set_idx = pass
             .execs
@@ -1883,8 +1883,8 @@ impl Resolver {
                 .filter_map(|attachment| attachment.as_ref())
                 .find_map(|attachment| {
                     self.graph.bindings[attachment.target]
-                        .image_info()
-                        .map(|image_info| (image_info.width, image_info.height))
+                        .as_driver_image()
+                        .map(|image| (image.info.width, image.info.height))
                 })
                 .expect("invalid attachments");
 

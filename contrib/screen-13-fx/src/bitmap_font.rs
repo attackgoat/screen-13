@@ -24,7 +24,7 @@ fn color_to_unorm(color: Color) -> [u8; 16] {
 pub struct BitmapFont {
     cache: HashPool,
     font: BMFont,
-    pages: Vec<ImageBinding>,
+    pages: Vec<Arc<Image>>,
     pipeline: Arc<GraphicPipeline>,
 }
 
@@ -32,7 +32,7 @@ impl BitmapFont {
     pub fn new(
         device: &Arc<Device>,
         font: BMFont,
-        pages: impl Into<Vec<ImageBinding>>,
+        pages: impl Into<Vec<Arc<Image>>>,
     ) -> anyhow::Result<Self> {
         let cache = HashPool::new(device);
         let pages = pages.into();
@@ -173,7 +173,7 @@ impl BitmapFont {
         let mut vertex_count = 0;
 
         {
-            let vertex_buf = &mut Buffer::mapped_slice_mut(vertex_buf.get_mut().unwrap())
+            let vertex_buf = &mut Buffer::mapped_slice_mut(&mut vertex_buf)
                 [0..vertex_buf_len as usize];
 
             let mut offset = 0;

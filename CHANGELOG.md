@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2022-06-??
+
+_See [#25](https://github.com/attackgoat/screen-13/pull/25) for migration details_
+
+### Added
+
+- Resources may now be bound using `Arc<T>` of `driver` smart pointers: _`Buffer`, `Image`, etc_
+
+### Changed
+
+- Resource state is now held in the `driver` smart pointers instead of the current graph
+
+### Removed
+
+- "Binding" types, such as `ImageBinding` and `ImageLeaseBinding`: _use `Arc<Image>` instead_
+- Dependency on the `archery` crate; _see [rationale](https://github.com/attackgoat/screen-13/pull/24)_
+
 ## [0.3.2] - 2022-06-01
 
 ### Added
@@ -104,3 +121,4 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 [0.3.0]: https://crates.io/crates/screen-13/0.3.0
 [0.3.1]: https://crates.io/crates/screen-13/0.3.1
 [0.3.2]: https://crates.io/crates/screen-13/0.3.2
+[0.4.0]: https://crates.io/crates/screen-13/0.4.0

@@ -8,11 +8,7 @@ mod swapchain;
 
 pub use {
     self::{
-        binding::{
-            AccelerationStructureBinding, AccelerationStructureLeaseBinding, AnyBufferBinding,
-            AnyImageBinding, Bind, BufferBinding, BufferLeaseBinding, ImageBinding,
-            ImageLeaseBinding,
-        },
+        binding::{AnyBufferBinding, AnyImageBinding, Bind},
         node::{
             AccelerationStructureLeaseNode, AccelerationStructureNode,
             AnyAccelerationStructureNode, AnyBufferNode, AnyImageNode, BufferLeaseNode, BufferNode,
@@ -20,7 +16,6 @@ pub use {
         },
         pass_ref::{Bindings, Compute, Draw, PassRef, PipelinePassRef, RayTrace},
         resolver::Resolver,
-        swapchain::SwapchainImageBinding,
     },
     vk_sync::AccessType,
 };
@@ -933,20 +928,6 @@ impl RenderGraph {
     /// Returns the index of the first pass which accesses a given node
     fn first_node_access_pass_index(&self, node: impl Node) -> Option<usize> {
         self.node_access_pass_index(node, self.passes.iter())
-    }
-
-    pub(super) fn last_access(&self, node: impl Node) -> Option<AccessType> {
-        let node_idx = node.index();
-
-        self.passes
-            .iter()
-            .rev()
-            .flat_map(|pass| pass.execs.iter().rev())
-            .find_map(|exec| {
-                exec.accesses
-                    .get(&node_idx)
-                    .map(|[_early, late]| late.access)
-            })
     }
 
     pub(super) fn last_write(&self, node: impl Node) -> Option<AccessType> {

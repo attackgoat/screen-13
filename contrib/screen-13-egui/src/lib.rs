@@ -13,7 +13,7 @@ use {
 pub struct Egui {
     pub ctx: egui::Context,
     egui_winit: egui_winit::State,
-    textures: HashMap<egui::TextureId, ImageLeaseBinding>,
+    textures: HashMap<egui::TextureId, Arc<Lease<Image>>>,
     cache: HashPool,
     ppl: Arc<GraphicPipeline>,
     next_tex_id: u64,
@@ -93,7 +93,7 @@ impl Egui {
                             vk::BufferUsageFlags::TRANSFER_SRC,
                         ))
                         .unwrap();
-                    Buffer::copy_from_slice(buf.get_mut().unwrap(), 0, cast_slice(&pixels));
+                    Buffer::copy_from_slice(&mut buf, 0, cast_slice(&pixels));
                     render_graph.bind_node(buf)
                 };
 
@@ -219,7 +219,7 @@ impl Egui {
                             ))
                             .unwrap();
                         Buffer::copy_from_slice(
-                            buf.get_mut().unwrap(),
+                            &mut buf,
                             0,
                             cast_slice(&mesh.indices),
                         );
@@ -237,7 +237,7 @@ impl Egui {
                             ))
                             .unwrap();
                         Buffer::copy_from_slice(
-                            buf.get_mut().unwrap(),
+                            &mut buf,
                             0,
                             cast_slice(&mesh.vertices),
                         );

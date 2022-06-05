@@ -58,8 +58,8 @@ impl ImageLoader {
         height: u32,
         is_srgb: bool,
         is_temporary: bool,
-    ) -> anyhow::Result<ImageBinding> {
-        Ok(ImageBinding::new(
+    ) -> anyhow::Result<Arc<Image>> {
+        Ok(Arc::new(
             Image::create(
                 &self.device,
                 ImageInfo {
@@ -114,7 +114,7 @@ impl ImageLoader {
         width: u32,
         height: u32,
         is_srgb: bool,
-    ) -> anyhow::Result<ImageBinding> {
+    ) -> anyhow::Result<Arc<Image>> {
         info!(
             "decoding {}x{} {:?} bitmap ({} K)",
             width,
@@ -165,9 +165,8 @@ impl ImageLoader {
                 })?;
 
                 {
-                    let pixel_buf = pixel_buf.get_mut().unwrap();
                     let pixel_buf =
-                        &mut Buffer::mapped_slice_mut(pixel_buf)[0..pixel_buf_len as usize];
+                        &mut Buffer::mapped_slice_mut(&mut pixel_buf)[0..pixel_buf_len as usize];
 
                     // Fill the temporary buffer with the bitmap pixels - it has a different stride
                     for y in 0..height {
@@ -216,8 +215,7 @@ impl ImageLoader {
 
                 {
                     // Fill the temporary buffer with the bitmap pixels
-                    let pixel_buf = pixel_buf.get_mut().unwrap();
-                    let pixel_buf = &mut Buffer::mapped_slice_mut(pixel_buf)[0..pixels.len()];
+                    let pixel_buf = &mut Buffer::mapped_slice_mut(&mut pixel_buf)[0..pixels.len()];
                     pixel_buf.copy_from_slice(pixels);
                 }
 
@@ -239,7 +237,7 @@ impl ImageLoader {
         format: ImageFormat,
         width: u32,
         height: u32,
-    ) -> anyhow::Result<ImageBinding> {
+    ) -> anyhow::Result<Arc<Image>> {
         self.decode_bitmap(pixels, format, width, height, false)
     }
 
@@ -249,7 +247,7 @@ impl ImageLoader {
         format: ImageFormat,
         width: u32,
         height: u32,
-    ) -> anyhow::Result<ImageBinding> {
+    ) -> anyhow::Result<Arc<Image>> {
         self.decode_bitmap(pixels, format, width, height, true)
     }
 

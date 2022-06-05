@@ -52,7 +52,7 @@ impl DescriptorPool {
     }
 
     pub fn allocate_descriptor_set(
-        this: &Arc<Self>,
+        this: &Self,
         layout: &DescriptorSetLayout,
     ) -> Result<DescriptorSet, DriverError> {
         Ok(Self::allocate_descriptor_sets(this, layout, 1)?
@@ -60,19 +60,17 @@ impl DescriptorPool {
             .unwrap())
     }
 
-    pub fn allocate_descriptor_sets(
-        this: &Arc<Self>,
+    pub fn allocate_descriptor_sets<'a>(
+        this: &'a Self,
         layout: &DescriptorSetLayout,
         count: u32,
-    ) -> Result<impl Iterator<Item = DescriptorSet>, DriverError> {
+    ) -> Result<impl Iterator<Item = DescriptorSet> + 'a, DriverError> {
         use std::slice::from_ref;
 
-        let descriptor_pool = Arc::clone(this);
         let mut create_info = vk::DescriptorSetAllocateInfo::builder()
             .descriptor_pool(this.descriptor_pool)
             .set_layouts(from_ref(layout));
         create_info.descriptor_set_count = count;
-        let create_info = create_info.build();
 
         trace!("allocate_descriptor_sets");
 
@@ -94,8 +92,9 @@ impl DescriptorPool {
                 })?
                 .into_iter()
                 .map(move |descriptor_set| DescriptorSet {
-                    descriptor_pool: Arc::clone(&descriptor_pool),
+                    descriptor_pool: this.descriptor_pool,
                     descriptor_set,
+                    device: Arc::clone(&this.device),
                 })
         })
     }
@@ -151,8 +150,9 @@ pub struct DescriptorPoolSize {
 
 #[derive(Debug)]
 pub struct DescriptorSet {
-    descriptor_pool: Arc<DescriptorPool>,
+    descriptor_pool: vk::DescriptorPool,
     descriptor_set: vk::DescriptorSet,
+    device: Arc<Device>,
 }
 
 impl Deref for DescriptorSet {
@@ -172,9 +172,8 @@ impl Drop for DescriptorSet {
         }
 
         unsafe {
-            self.descriptor_pool
-                .device
-                .free_descriptor_sets(**self.descriptor_pool, from_ref(&self.descriptor_set))
+            self.device
+                .free_descriptor_sets(self.descriptor_pool, from_ref(&self.descriptor_set))
                 .unwrap_or_else(|_| warn!("Unable to free descriptor set"))
         }
     }

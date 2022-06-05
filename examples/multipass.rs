@@ -60,14 +60,13 @@ fn main() -> Result<(), DisplayError> {
 
         // Lease + fill + bind a buffer: the questionably-readable three line way
         let mut index_buf = cache.lease(index_buf_info).unwrap();
-        Buffer::mapped_slice_mut(index_buf.get_mut().unwrap())[0..indices.len()]
-            .copy_from_slice(indices);
+        Buffer::mapped_slice_mut(&mut index_buf)[0..indices.len()].copy_from_slice(indices);
         let index_buf = graph.bind_node(index_buf);
 
         // Lease + fill + bind a buffer: maybe a more sane looking way of doing it
         let vertex_buf = graph.bind_node({
             let mut buf = cache.lease(vertex_buf_info).unwrap();
-            let data = Buffer::mapped_slice_mut(buf.get_mut().unwrap());
+            let data = Buffer::mapped_slice_mut(&mut buf);
             data[0..vertices.len()].copy_from_slice(vertices);
             buf
         });
@@ -81,17 +80,17 @@ fn main() -> Result<(), DisplayError> {
         // You can instead do this:
         let image1 = graph.bind_node({
             let mut img = cache.lease(image_info).unwrap();
-            img.get_mut().unwrap().name = Some("image1".to_owned());
+            img.name = Some("image1".to_owned());
             img
         });
         let image2 = graph.bind_node({
             let mut img = cache.lease(image_info).unwrap();
-            img.get_mut().unwrap().name = Some("image2".to_owned());
+            img.name = Some("image2".to_owned());
             img
         });
         let image3 = graph.bind_node({
             let mut img = cache.lease(image_info).unwrap();
-            img.get_mut().unwrap().name = Some("image3".to_owned());
+            img.name = Some("image3".to_owned());
             img
         });
 

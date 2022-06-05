@@ -1,19 +1,7 @@
 use {
     super::{Bind, Binding, RenderGraph, Resolver, SwapchainImageNode, Unbind},
     crate::driver::SwapchainImage,
-    std::fmt::Debug,
 };
-
-#[derive(Debug)]
-pub struct SwapchainImageBinding {
-    pub(super) item: SwapchainImage,
-}
-
-impl SwapchainImageBinding {
-    pub(super) fn new(item: SwapchainImage) -> Self {
-        Self { item }
-    }
-}
 
 impl Bind<&mut RenderGraph, SwapchainImageNode> for SwapchainImage {
     fn bind(self, graph: &mut RenderGraph) -> SwapchainImageNode {
@@ -22,26 +10,15 @@ impl Bind<&mut RenderGraph, SwapchainImageNode> for SwapchainImage {
 
         //trace!("Node {}: {:?}", res.idx, &self);
 
-        let binding = Binding::SwapchainImage(SwapchainImageBinding::new(self), true);
+        let binding = Binding::SwapchainImage(self, true);
         graph.bindings.push(binding);
 
         res
     }
 }
 
-impl Bind<&mut RenderGraph, SwapchainImageNode> for SwapchainImageBinding {
-    fn bind(self, graph: &mut RenderGraph) -> SwapchainImageNode {
-        // We will return a new node
-        let res = SwapchainImageNode::new(graph.bindings.len());
-
-        graph.bindings.push(Binding::SwapchainImage(self, true));
-
-        res
-    }
-}
-
 impl Binding {
-    pub(super) fn as_swapchain_image(&self) -> Option<&SwapchainImageBinding> {
+    pub(super) fn as_swapchain_image(&self) -> Option<&SwapchainImage> {
         if let Self::SwapchainImage(binding, true) = self {
             Some(binding)
         } else if let Self::SwapchainImage(_, false) = self {
@@ -61,7 +38,6 @@ impl Unbind<Resolver, SwapchainImage> for SwapchainImageNode {
         graph.graph.bindings[self.idx]
             .as_swapchain_image()
             .unwrap()
-            .item
             .clone()
     }
 }

@@ -5,7 +5,6 @@ use {
             GraphicPipelineInfo, Image, ImageInfo, Shader,
         },
         event_loop::EventLoop,
-        graph::ImageBinding,
     },
     std::sync::Arc,
 };
@@ -22,8 +21,8 @@ impl EventLoop {
         Arc::new(ComputePipeline::create(&self.device, info).unwrap())
     }
 
-    pub fn new_image(&self, info: impl Into<ImageInfo>) -> ImageBinding {
-        ImageBinding::new(self.new_image_raw(info))
+    pub fn new_image(&self, info: impl Into<ImageInfo>) -> Arc<Image> {
+        Arc::new(self.new_image_raw(info))
     }
 
     pub fn new_image_raw(&self, info: impl Into<ImageInfo>) -> Image {

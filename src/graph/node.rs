@@ -1,12 +1,11 @@
 use {
-    super::{
-        AccelerationStructureBinding, AccelerationStructureLeaseBinding, BufferBinding,
-        BufferLeaseBinding, ImageBinding, ImageLeaseBinding, Information, NodeIndex, RenderGraph,
-        Subresource,
-    },
-    crate::driver::{
-        vk, AccelerationStructureInfo, BufferInfo, BufferSubresource, ImageInfo, ImageSubresource,
-        ImageViewInfo,
+    super::{Information, NodeIndex, RenderGraph, Subresource},
+    crate::{
+        driver::{
+            vk, AccelerationStructure, AccelerationStructureInfo, Buffer, BufferInfo,
+            BufferSubresource, Image, ImageInfo, ImageSubresource, ImageViewInfo,
+        },
+        hash_pool::Lease,
     },
     std::{ops::Range, sync::Arc},
 };
@@ -206,16 +205,13 @@ node!(SwapchainImage);
 macro_rules! node_unbind {
     ($name:ident) => {
         paste::paste! {
-            impl Unbind<RenderGraph, [<$name Binding>]> for [<$name Node>] {
-                fn unbind(self, graph: &mut RenderGraph) -> [<$name Binding>] {
-                    let binding = {
-                        let binding = graph.bindings[self.idx].[<as_ $name:snake>]().unwrap();
-                        let item = Arc::clone(&binding.item);
-
-                        [<$name Binding>] {
-                            item,
-                        }
-                    };
+            impl Unbind<RenderGraph, Arc<$name>> for [<$name Node>] {
+                fn unbind(self, graph: &mut RenderGraph) -> Arc<$name> {
+                    let binding = Arc::clone(
+                        graph.bindings[self.idx]
+                            .[<as_ $name:snake>]()
+                            .unwrap()
+                    );
                     graph.bindings[self.idx].unbind();
 
                     binding
@@ -232,19 +228,11 @@ node_unbind!(Image);
 macro_rules! node_unbind_lease {
     ($name:ident) => {
         paste::paste! {
-            impl Unbind<RenderGraph, [<$name LeaseBinding>]> for [<$name LeaseNode>] {
-                fn unbind(self, graph: &mut RenderGraph) -> [<$name LeaseBinding>] {
+            impl Unbind<RenderGraph, Arc<Lease<$name>>> for [<$name LeaseNode>] {
+                fn unbind(self, graph: &mut RenderGraph) -> Arc<Lease<$name>> {
                     let binding = {
                         let (binding, _) = graph.bindings[self.idx].[<as_ $name:snake _lease_mut>]().unwrap();
-                        let item = binding.item.clone();
-                        let item_binding = [<$name Binding>] {
-                            item,
-                        };
-
-                        // Move the return-to-pool-on-drop behavior to a new lease
-                        let lease = binding.transfer(item_binding);
-
-                        [<$name LeaseBinding>](lease)
+                        Arc::clone(binding)
                     };
                     graph.bindings[self.idx].unbind();
 

@@ -1,10 +1,8 @@
 use {
     super::{
-        AccelerationStructureBinding, AccelerationStructureLeaseBinding,
-        AccelerationStructureLeaseNode, AccelerationStructureNode, BufferBinding,
-        BufferLeaseBinding, BufferLeaseNode, BufferNode, ImageBinding, ImageLeaseBinding,
+        AccelerationStructureLeaseNode, AccelerationStructureNode, BufferLeaseNode, BufferNode,
         ImageLeaseNode, ImageNode, PassRef, PipelinePassRef, RenderGraph, Resolver,
-        SwapchainImageBinding, SwapchainImageNode,
+        SwapchainImageNode,
     },
     crate::{
         driver::{
@@ -24,7 +22,7 @@ pub trait Edge<Graph> {
 }
 
 macro_rules! graph_edge {
-    ($src:ident -> $dst:ident) => {
+    ($src:ty => $dst:ty) => {
         impl Edge<RenderGraph> for $src {
             type Result = $dst;
         }
@@ -33,38 +31,44 @@ macro_rules! graph_edge {
 
 // Edges that can be bound as nodes to the render graph:
 // Ex: RenderGraph::bind_node(&mut self, binding: X) -> Y
-graph_edge!(AccelerationStructure -> AccelerationStructureNode);
-graph_edge!(AccelerationStructureBinding -> AccelerationStructureNode);
-graph_edge!(AccelerationStructureLeaseBinding -> AccelerationStructureLeaseNode);
-graph_edge!(Buffer -> BufferNode);
-graph_edge!(BufferBinding -> BufferNode);
-graph_edge!(BufferLeaseBinding -> BufferLeaseNode);
-graph_edge!(Image -> ImageNode);
-graph_edge!(ImageBinding -> ImageNode);
-graph_edge!(ImageLeaseBinding -> ImageLeaseNode);
-graph_edge!(SwapchainImage -> SwapchainImageNode);
-graph_edge!(SwapchainImageBinding -> SwapchainImageNode);
+graph_edge!(AccelerationStructure => AccelerationStructureNode);
+graph_edge!(Arc<AccelerationStructure> => AccelerationStructureNode);
+graph_edge!(Lease<AccelerationStructure> => AccelerationStructureLeaseNode);
+graph_edge!(Arc<Lease<AccelerationStructure>> => AccelerationStructureLeaseNode);
+graph_edge!(Buffer => BufferNode);
+graph_edge!(Arc<Buffer> => BufferNode);
+graph_edge!(Lease<Buffer> => BufferLeaseNode);
+graph_edge!(Arc<Lease<Buffer>> => BufferLeaseNode);
+graph_edge!(Image => ImageNode);
+graph_edge!(Arc<Image> => ImageNode);
+graph_edge!(Lease<Image> => ImageLeaseNode);
+graph_edge!(Arc<Lease<Image>> => ImageLeaseNode);
+graph_edge!(SwapchainImage => SwapchainImageNode);
 
 // Edges that can be unbound from the render graph:
 // Ex: RenderGraph::unbind_node(&mut self, node: X) -> Y
-graph_edge!(AccelerationStructureNode -> AccelerationStructureBinding);
-graph_edge!(BufferNode -> BufferBinding);
-graph_edge!(BufferLeaseNode -> BufferLeaseBinding);
-graph_edge!(ImageNode -> ImageBinding);
-graph_edge!(ImageLeaseNode -> ImageLeaseBinding);
-graph_edge!(SwapchainImageNode -> SwapchainImageBinding);
+graph_edge!(AccelerationStructureNode => Arc<AccelerationStructure>);
+graph_edge!(AccelerationStructureLeaseNode => Arc<Lease<AccelerationStructure>>);
+graph_edge!(BufferNode => Arc<Buffer>);
+graph_edge!(BufferLeaseNode => Arc<Lease<Buffer>>);
+graph_edge!(ImageNode => Arc<Image>);
+graph_edge!(ImageLeaseNode => Arc<Lease<Image>>);
+graph_edge!(SwapchainImageNode => SwapchainImage);
 
-macro_rules! graph_lease_edge {
-    ($src:ident -> $dst:ident) => {
-        impl Edge<RenderGraph> for Lease<$src> {
+macro_rules! graph_edge_borrow {
+    ($src:ty => $dst:ty) => {
+        impl<'a> Edge<RenderGraph> for &'a $src {
             type Result = $dst;
         }
     };
 }
 
-graph_lease_edge!(AccelerationStructure -> AccelerationStructureNode);
-graph_lease_edge!(BufferBinding -> BufferLeaseNode);
-graph_lease_edge!(ImageBinding -> ImageLeaseNode);
+graph_edge_borrow!(Arc<AccelerationStructure> => AccelerationStructureNode);
+graph_edge_borrow!(Arc<Lease<AccelerationStructure>> => AccelerationStructureLeaseNode);
+graph_edge_borrow!(Arc<Buffer> => BufferNode);
+graph_edge_borrow!(Arc<Lease<Buffer>> => BufferLeaseNode);
+graph_edge_borrow!(Arc<Image> => ImageNode);
+graph_edge_borrow!(Arc<Lease<Image>> => ImageLeaseNode);
 
 // Specialized edges for pipelines added to a pass:
 // Ex: PassRef::bind_pipeline(&mut self, pipeline: X) -> PipelinePassRef

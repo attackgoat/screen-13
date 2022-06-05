@@ -17,7 +17,7 @@ use {
 #[derive(Debug)]
 pub struct ImGui {
     context: Context,
-    font_atlas_image: Option<ImageLeaseBinding>,
+    font_atlas_image: Option<Arc<Lease<Image>>>,
     pipeline: Arc<GraphicPipeline>,
     platform: WinitPlatform,
     pool: HashPool,
@@ -117,7 +117,7 @@ impl ImGui {
                 .unwrap();
 
             {
-                Buffer::mapped_slice_mut(index_buf.get_mut().unwrap())[0..indices.len()]
+                Buffer::mapped_slice_mut(&mut index_buf)[0..indices.len()]
                     .copy_from_slice(indices);
             }
 
@@ -135,7 +135,7 @@ impl ImGui {
                 .unwrap();
 
             {
-                let vertex_buf = Buffer::mapped_slice_mut(vertex_buf.get_mut().unwrap());
+                let vertex_buf = Buffer::mapped_slice_mut(&mut vertex_buf);
                 for (idx, vertex) in vertices.iter().enumerate() {
                     let offset = idx * 20;
                     vertex_buf[offset..offset + 8].copy_from_slice(cast_slice(&vertex.pos));
@@ -269,8 +269,7 @@ impl ImGui {
             .unwrap();
 
         {
-            let temp_buf = temp_buf.get_mut().unwrap();
-            let temp_buf = Buffer::mapped_slice_mut(temp_buf);
+            let temp_buf = Buffer::mapped_slice_mut(&mut temp_buf);
             temp_buf[0..temp_buf_len].copy_from_slice(texture.data);
         }
 

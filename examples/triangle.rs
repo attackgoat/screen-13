@@ -1,12 +1,10 @@
-use {bytemuck::cast_slice, inline_spirv::inline_spirv, screen_13::prelude::*};
+use {bytemuck::cast_slice, inline_spirv::inline_spirv, screen_13::prelude::*, std::sync::Arc};
 
 // A Vulkan triangle using a graphic pipeline, vertex/fragment shaders, and index/vertex buffers.
 fn main() -> Result<(), DisplayError> {
     pretty_env_logger::init();
 
     let screen_13 = EventLoop::new().build()?;
-    let mut cache = HashPool::new(&screen_13.device);
-
     let triangle_pipeline = screen_13.new_graphic_pipeline(
         GraphicPipelineInfo::default(),
         [
@@ -49,22 +47,22 @@ fn main() -> Result<(), DisplayError> {
         ],
     );
 
-    let mut index_buf = Some(BufferLeaseBinding({
-        let mut buf = cache.lease(BufferInfo::new_mappable(
-            6,
-            vk::BufferUsageFlags::INDEX_BUFFER,
-        ))?;
-        Buffer::copy_from_slice(buf.get_mut().unwrap(), 0, cast_slice(&[0u16, 1, 2]));
+    let index_buf = Arc::new({
+        let mut buf = Buffer::create(
+            &screen_13.device,
+            BufferInfo::new_mappable(6, vk::BufferUsageFlags::INDEX_BUFFER),
+        )?;
+        Buffer::copy_from_slice(&mut buf, 0, cast_slice(&[0u16, 1, 2]));
         buf
-    }));
+    });
 
-    let mut vertex_buf = Some(BufferLeaseBinding({
-        let mut buf = cache.lease(BufferInfo::new_mappable(
-            72,
-            vk::BufferUsageFlags::VERTEX_BUFFER,
-        ))?;
+    let vertex_buf = Arc::new({
+        let mut buf = Buffer::create(
+            &screen_13.device,
+            BufferInfo::new_mappable(72, vk::BufferUsageFlags::VERTEX_BUFFER),
+        )?;
         Buffer::copy_from_slice(
-            buf.get_mut().unwrap(),
+            &mut buf,
             0,
             cast_slice(&[
                 1.0f32, 1.0, 0.0, // v1
@@ -76,11 +74,11 @@ fn main() -> Result<(), DisplayError> {
             ]),
         );
         buf
-    }));
+    });
 
     screen_13.run(|frame| {
-        let index_node = frame.render_graph.bind_node(index_buf.take().unwrap());
-        let vertex_node = frame.render_graph.bind_node(vertex_buf.take().unwrap());
+        let index_node = frame.render_graph.bind_node(&index_buf);
+        let vertex_node = frame.render_graph.bind_node(&vertex_buf);
 
         frame
             .render_graph
@@ -95,8 +93,5 @@ fn main() -> Result<(), DisplayError> {
                 subpass.bind_vertex_buffer(vertex_node);
                 subpass.draw_indexed(3, 1, 0, 0, 0);
             });
-
-        index_buf = Some(frame.render_graph.unbind_node(index_node));
-        vertex_buf = Some(frame.render_graph.unbind_node(vertex_node));
     })
 }
