@@ -772,7 +772,7 @@ fn main() -> anyhow::Result<()> {
     // - Copy image to the swapchain
     event_loop.run(|frame| {
         if image.is_none() {
-            image = Some(
+            image = Some(Arc::new(
                 cache
                     .lease(ImageInfo::new_2d(
                         frame.render_graph.node_info(frame.swapchain_image).fmt,
@@ -783,10 +783,10 @@ fn main() -> anyhow::Result<()> {
                             | vk::ImageUsageFlags::TRANSFER_SRC,
                     ))
                     .unwrap(),
-            );
+            ));
         }
 
-        let image_node = frame.render_graph.bind_node(image.take().unwrap());
+        let image_node = frame.render_graph.bind_node(image.as_ref().unwrap());
 
         {
             update_keyboard(&mut keyboard, frame.events);
