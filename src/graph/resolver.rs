@@ -33,9 +33,16 @@ fn align_up(val: u32, atom: u32) -> u32 {
 
 #[derive(Debug)]
 struct PhysicalPass {
-    _descriptor_pool: Option<Lease<DescriptorPool>>,
+    descriptor_pool: Option<Lease<DescriptorPool>>,
     exec_descriptor_sets: HashMap<usize, Vec<DescriptorSet>>,
     render_pass: Option<Lease<RenderPass>>,
+}
+
+impl Drop for PhysicalPass {
+    fn drop(&mut self) {
+        self.exec_descriptor_sets.clear();
+        self.descriptor_pool = None;
+    }
 }
 
 /// A structure which can read and execute render graphs. This pattern was derived from:
@@ -1299,7 +1306,7 @@ impl Resolver {
             };
 
             self.physical_passes.push(PhysicalPass {
-                _descriptor_pool: descriptor_pool, // Used above; but we must keep until done
+                descriptor_pool,
                 exec_descriptor_sets,
                 render_pass,
             });
