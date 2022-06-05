@@ -1,29 +1,17 @@
 use {
     super::{Bind, Binding, RenderGraph, Resolver, SwapchainImageNode, Unbind},
     crate::driver::SwapchainImage,
-    std::{fmt::Debug, mem::replace},
-    vk_sync::AccessType,
+    std::fmt::Debug,
 };
 
 #[derive(Debug)]
 pub struct SwapchainImageBinding {
     pub(super) item: SwapchainImage,
-    pub(super) access: AccessType,
 }
 
 impl SwapchainImageBinding {
     pub(super) fn new(item: SwapchainImage) -> Self {
-        Self::new_unbind(item, AccessType::Nothing)
-    }
-
-    pub(super) fn new_unbind(item: SwapchainImage, access: AccessType) -> Self {
-        Self { item, access }
-    }
-
-    /// Returns the previous access type and subresource access which you should use to create a
-    /// barrier for whatever access is actually being done.
-    pub(super) fn access_mut(&mut self, access: AccessType) -> AccessType {
-        replace(&mut self.access, access)
+        Self { item }
     }
 }
 

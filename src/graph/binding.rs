@@ -11,11 +11,9 @@ use {
     },
     std::{
         fmt::Debug,
-        mem::replace,
         ops::{Deref, DerefMut},
         sync::Arc,
     },
-    vk_sync::AccessType,
 };
 
 #[derive(Debug)]
@@ -91,18 +89,6 @@ pub enum Binding {
 }
 
 impl Binding {
-    pub(super) fn access_mut(&mut self, access: AccessType) -> AccessType {
-        match self {
-            Self::AccelerationStructure(binding, _) => binding.access_mut(access),
-            Self::AccelerationStructureLease(binding, _) => binding.access_mut(access),
-            Self::Buffer(binding, _) => binding.access_mut(access),
-            Self::BufferLease(binding, _) => binding.access_mut(access),
-            Self::Image(binding, _) => binding.access_mut(access),
-            Self::ImageLease(binding, _) => binding.access_mut(access),
-            Self::SwapchainImage(binding, _) => binding.access_mut(access),
-        }
-    }
-
     pub(super) fn as_driver_acceleration_structure(&self) -> Option<&AccelerationStructure> {
         Some(match self {
             Self::AccelerationStructure(binding, _) => &binding.item,
@@ -168,29 +154,15 @@ macro_rules! bind {
             #[derive(Debug)]
             pub struct [<$name Binding>] {
                 pub(super) item: Arc<$name>,
-                pub(super) access: AccessType,
             }
 
             impl [<$name Binding>] {
                 pub fn new(item: $name) -> Self {
                     let item = Arc::new(item);
 
-                    Self::new_unbind(item, AccessType::Nothing)
-                }
-
-                pub(super) fn new_unbind(item: Arc<$name>, access: AccessType) -> Self {
                     Self {
                         item,
-                        access,
                     }
-                }
-
-                /// Returns the previous access type and subresource access which you should use to
-                /// create a barrier for whatever access is actually being done.
-                pub(super) fn access_mut(&mut self,
-                    access: AccessType,
-                ) -> AccessType {
-                    replace(&mut self.access, access)
                 }
 
                 /// Returns a borrow.

@@ -6,11 +6,11 @@ use {
     crate::{
         driver::{
             format_aspect_mask, image_access_layout, is_read_access, is_write_access,
-            pipeline_stage_access_flags, AttachmentInfo, AttachmentRef, CommandBuffer,
-            DepthStencilMode, DescriptorBinding, DescriptorInfo, DescriptorPool,
-            DescriptorPoolInfo, DescriptorPoolSize, DescriptorSet, Device, DriverError,
-            FramebufferKey, FramebufferKeyAttachment, Image, ImageViewInfo, RenderPass,
-            RenderPassInfo, SampleCount, SubpassDependency, SubpassInfo,
+            pipeline_stage_access_flags, AccelerationStructure, AttachmentInfo, AttachmentRef,
+            Buffer, CommandBuffer, DepthStencilMode, DescriptorBinding, DescriptorInfo,
+            DescriptorPool, DescriptorPoolInfo, DescriptorPoolSize, DescriptorSet, Device,
+            DriverError, FramebufferKey, FramebufferKeyAttachment, Image, ImageViewInfo,
+            RenderPass, RenderPassInfo, SampleCount, SubpassDependency, SubpassInfo,
         },
         hash_pool::{HashPool, Lease},
     },
@@ -1485,7 +1485,15 @@ impl Resolver {
                 .map(|(node_idx, [early, late])| {
                     let binding = &mut bindings[*node_idx];
                     let next_access = early.access;
-                    let prev_access = binding.access_mut(late.access);
+                    let prev_access = if let Some(buffer) = binding.as_driver_buffer() {
+                        Buffer::access(buffer, late.access)
+                    } else if let Some(image) = binding.as_driver_image() {
+                        Image::access(image, late.access)
+                    } else if let Some(accel_struct) = binding.as_driver_acceleration_structure() {
+                        AccelerationStructure::access(accel_struct, late.access)
+                    } else {
+                        unimplemented!();
+                    };
 
                     // If we find a subresource then it must have a resource attached
                     if let Some(subresource) = early.subresource {

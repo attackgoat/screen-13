@@ -212,14 +212,9 @@ macro_rules! node_unbind {
                         let binding = graph.bindings[self.idx].[<as_ $name:snake>]().unwrap();
                         let item = Arc::clone(&binding.item);
 
-                        // When unbinding we return a binding that has the last access type set to
-                        // whatever the last acccess in the graph was (because it will be valid once
-                        // the graph is resolved and you should not use an unbound binding before
-                        // the graph is resolved. Resolve it and then use said binding on a
-                        // different graph.)
-                        let previous_access = graph.last_access(self)
-                            .unwrap_or(binding.access).clone();
-                        [<$name Binding>]::new_unbind(item, previous_access)
+                        [<$name Binding>] {
+                            item,
+                        }
                     };
                     graph.bindings[self.idx].unbind();
 
@@ -240,20 +235,11 @@ macro_rules! node_unbind_lease {
             impl Unbind<RenderGraph, [<$name LeaseBinding>]> for [<$name LeaseNode>] {
                 fn unbind(self, graph: &mut RenderGraph) -> [<$name LeaseBinding>] {
                     let binding = {
-                        let last_access = graph.last_access(self);
                         let (binding, _) = graph.bindings[self.idx].[<as_ $name:snake _lease_mut>]().unwrap();
                         let item = binding.item.clone();
-
-                        // When unbinding we return a binding that has the last access type set to
-                        // whatever the last acccess in the graph was (because it will be valid once
-                        // the graph is resolved and you should not use an unbound binding before
-                        // the graph is resolved. Resolve it and then use said binding on a
-                        // different graph.)
-                        let previous_access = last_access.unwrap_or(binding.access);
-                        let item_binding = [<$name Binding>]::new_unbind(
+                        let item_binding = [<$name Binding>] {
                             item,
-                            previous_access,
-                        );
+                        };
 
                         // Move the return-to-pool-on-drop behavior to a new lease
                         let lease = binding.transfer(item_binding);

@@ -1,5 +1,5 @@
 use {
-    super::{format_aspect_mask, Device, DriverError},
+    super::{access_type_from_u8, access_type_into_u8, format_aspect_mask, Device, DriverError},
     ash::vk,
     derive_builder::Builder,
     gpu_allocator::{
@@ -13,19 +13,24 @@ use {
         fmt::{Debug, Formatter},
         ops::Deref,
         ptr::null,
-        sync::Arc,
+        sync::{
+            atomic::{AtomicU8, Ordering},
+            Arc,
+        },
         thread::panicking,
     },
+    vk_sync::AccessType,
 };
 
 pub struct Image {
-    pub allocation: Option<Allocation>, // None when we don't own the image (Swapchain images)
+    allocation: Option<Allocation>, // None when we don't own the image (Swapchain images)
     device: Arc<Device>,
     image: vk::Image,
     #[allow(clippy::type_complexity)]
-    image_view_cache: Arc<Mutex<HashMap<ImageViewInfo, ImageView>>>,
+    image_view_cache: Mutex<HashMap<ImageViewInfo, ImageView>>,
     pub info: ImageInfo,
     pub name: Option<String>,
+    prev_access: AtomicU8,
 }
 
 impl Image {
@@ -128,21 +133,31 @@ impl Image {
             allocation: Some(allocation),
             device,
             image,
-            image_view_cache: Arc::new(Mutex::new(Default::default())),
+            image_view_cache: Mutex::new(Default::default()),
             info,
             name: None,
+            prev_access: AtomicU8::new(access_type_into_u8(AccessType::Nothing)),
         })
     }
 
+    pub fn access(this: &Self, next_access: AccessType) -> AccessType {
+        access_type_from_u8(
+            this.prev_access
+                .swap(access_type_into_u8(next_access), Ordering::Relaxed),
+        )
+    }
+
     /// Suprisingly this isn't at all dangerous but it may not be what you want
+    #[deprecated]
     pub(super) fn clone_raw(this: &Self) -> Self {
         Self {
             allocation: None,
             device: Arc::clone(&this.device),
             image: this.image,
-            image_view_cache: Arc::new(Mutex::new(Default::default())),
+            image_view_cache: Mutex::new(Default::default()),
             info: this.info,
             name: this.name.clone(),
+            prev_access: AtomicU8::new(access_type_into_u8(AccessType::Nothing)),
         }
     }
 
@@ -157,9 +172,10 @@ impl Image {
             allocation: None,
             device,
             image,
-            image_view_cache: Arc::new(Mutex::new(Default::default())),
+            image_view_cache: Mutex::new(Default::default()),
             info,
             name: None,
+            prev_access: AtomicU8::new(access_type_into_u8(AccessType::Nothing)),
         }
     }
 
