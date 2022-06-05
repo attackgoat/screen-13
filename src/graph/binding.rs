@@ -65,7 +65,7 @@ pub enum Binding {
     BufferLease(Arc<Lease<Buffer>>, bool),
     Image(Arc<Image>, bool),
     ImageLease(Arc<Lease<Image>>, bool),
-    SwapchainImage(SwapchainImage, bool),
+    SwapchainImage(Box<SwapchainImage>, bool),
 }
 
 impl Binding {

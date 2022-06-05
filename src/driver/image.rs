@@ -147,8 +147,6 @@ impl Image {
         )
     }
 
-    /// Suprisingly this isn't at all dangerous but it may not be what you want
-    #[deprecated]
     pub(super) fn clone_raw(this: &Self) -> Self {
         Self {
             allocation: None,

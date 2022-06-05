@@ -10,7 +10,7 @@ impl Bind<&mut RenderGraph, SwapchainImageNode> for SwapchainImage {
 
         //trace!("Node {}: {:?}", res.idx, &self);
 
-        let binding = Binding::SwapchainImage(self, true);
+        let binding = Binding::SwapchainImage(Box::new(self), true);
         graph.bindings.push(binding);
 
         res
