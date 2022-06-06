@@ -1,12 +1,11 @@
 use {
-    super::{
-        AccelerationStructureBinding, AccelerationStructureLeaseBinding, BufferBinding,
-        BufferLeaseBinding, ImageBinding, ImageLeaseBinding, Information, NodeIndex, RenderGraph,
-        Subresource,
-    },
-    crate::driver::{
-        vk, AccelerationStructureInfo, BufferInfo, BufferSubresource, ImageInfo, ImageSubresource,
-        ImageViewInfo,
+    super::{Information, NodeIndex, RenderGraph, Subresource},
+    crate::{
+        driver::{
+            vk, AccelerationStructure, AccelerationStructureInfo, Buffer, BufferInfo,
+            BufferSubresource, Image, ImageInfo, ImageSubresource, ImageViewInfo,
+        },
+        hash_pool::Lease,
     },
     std::{ops::Range, sync::Arc},
 };
@@ -206,21 +205,13 @@ node!(SwapchainImage);
 macro_rules! node_unbind {
     ($name:ident) => {
         paste::paste! {
-            impl Unbind<RenderGraph, [<$name Binding>]> for [<$name Node>] {
-                fn unbind(self, graph: &mut RenderGraph) -> [<$name Binding>] {
-                    let binding = {
-                        let binding = graph.bindings[self.idx].[<as_ $name:snake>]().unwrap();
-                        let item = Arc::clone(&binding.item);
-
-                        // When unbinding we return a binding that has the last access type set to
-                        // whatever the last acccess in the graph was (because it will be valid once
-                        // the graph is resolved and you should not use an unbound binding before
-                        // the graph is resolved. Resolve it and then use said binding on a
-                        // different graph.)
-                        let previous_access = graph.last_access(self)
-                            .unwrap_or(binding.access).clone();
-                        [<$name Binding>]::new_unbind(item, previous_access)
-                    };
+            impl Unbind<RenderGraph, Arc<$name>> for [<$name Node>] {
+                fn unbind(self, graph: &mut RenderGraph) -> Arc<$name> {
+                    let binding = Arc::clone(
+                        graph.bindings[self.idx]
+                            .[<as_ $name:snake>]()
+                            .unwrap()
+                    );
                     graph.bindings[self.idx].unbind();
 
                     binding
@@ -237,28 +228,11 @@ node_unbind!(Image);
 macro_rules! node_unbind_lease {
     ($name:ident) => {
         paste::paste! {
-            impl Unbind<RenderGraph, [<$name LeaseBinding>]> for [<$name LeaseNode>] {
-                fn unbind(self, graph: &mut RenderGraph) -> [<$name LeaseBinding>] {
+            impl Unbind<RenderGraph, Arc<Lease<$name>>> for [<$name LeaseNode>] {
+                fn unbind(self, graph: &mut RenderGraph) -> Arc<Lease<$name>> {
                     let binding = {
-                        let last_access = graph.last_access(self);
                         let (binding, _) = graph.bindings[self.idx].[<as_ $name:snake _lease_mut>]().unwrap();
-                        let item = binding.item.clone();
-
-                        // When unbinding we return a binding that has the last access type set to
-                        // whatever the last acccess in the graph was (because it will be valid once
-                        // the graph is resolved and you should not use an unbound binding before
-                        // the graph is resolved. Resolve it and then use said binding on a
-                        // different graph.)
-                        let previous_access = last_access.unwrap_or(binding.access);
-                        let item_binding = [<$name Binding>]::new_unbind(
-                            item,
-                            previous_access,
-                        );
-
-                        // Move the return-to-pool-on-drop behavior to a new lease
-                        let lease = binding.transfer(item_binding);
-
-                        [<$name LeaseBinding>](lease)
+                        Arc::clone(binding)
                     };
                     graph.bindings[self.idx].unbind();
 

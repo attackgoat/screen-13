@@ -4,16 +4,15 @@ pub mod prelude_arc {
 }
 
 use {
-    std::{borrow::Cow, collections::HashMap, sync::Arc},
     bytemuck::cast_slice,
     screen_13::prelude::*,
+    std::{borrow::Cow, collections::HashMap, sync::Arc},
 };
-
 
 pub struct Egui {
     pub ctx: egui::Context,
     egui_winit: egui_winit::State,
-    textures: HashMap<egui::TextureId, ImageLeaseBinding>,
+    textures: HashMap<egui::TextureId, Arc<Lease<Image>>>,
     cache: HashPool,
     ppl: Arc<GraphicPipeline>,
     next_tex_id: u64,
@@ -93,7 +92,7 @@ impl Egui {
                             vk::BufferUsageFlags::TRANSFER_SRC,
                         ))
                         .unwrap();
-                    Buffer::copy_from_slice(buf.get_mut().unwrap(), 0, cast_slice(&pixels));
+                    Buffer::copy_from_slice(&mut buf, 0, cast_slice(&pixels));
                     render_graph.bind_node(buf)
                 };
 
@@ -172,8 +171,8 @@ impl Egui {
     ) {
         // Unbind textures
         for (id, tex) in bound_tex.iter() {
-            if let AnyImageNode::ImageLease(tex) = tex{
-                if let egui::TextureId::Managed(_) = *id{
+            if let AnyImageNode::ImageLease(tex) = tex {
+                if let egui::TextureId::Managed(_) = *id {
                     self.textures.insert(*id, render_graph.unbind_node(*tex));
                 }
             }
@@ -218,11 +217,7 @@ impl Egui {
                                 vk::BufferUsageFlags::INDEX_BUFFER,
                             ))
                             .unwrap();
-                        Buffer::copy_from_slice(
-                            buf.get_mut().unwrap(),
-                            0,
-                            cast_slice(&mesh.indices),
-                        );
+                        Buffer::copy_from_slice(&mut buf, 0, cast_slice(&mesh.indices));
                         buf
                     };
                     let idx_buf = render_graph.bind_node(idx_buf);
@@ -236,11 +231,7 @@ impl Egui {
                                 vk::BufferUsageFlags::VERTEX_BUFFER,
                             ))
                             .unwrap();
-                        Buffer::copy_from_slice(
-                            buf.get_mut().unwrap(),
-                            0,
-                            cast_slice(&mesh.vertices),
-                        );
+                        Buffer::copy_from_slice(&mut buf, 0, cast_slice(&mesh.vertices));
                         buf
                     };
                     let vert_buf = render_graph.bind_node(vert_buf);
@@ -265,8 +256,10 @@ impl Egui {
                     let clip_x = (clip_rect.min.x as f32 * pixels_per_point) as i32;
                     let clip_y = (clip_rect.min.y as f32 * pixels_per_point) as i32;
 
-                    let clip_width = ((clip_rect.max.x - clip_rect.min.x) as f32 * pixels_per_point) as u32;
-                    let clip_height = ((clip_rect.max.y - clip_rect.min.y) as f32 * pixels_per_point) as u32;
+                    let clip_width =
+                        ((clip_rect.max.x - clip_rect.min.x) as f32 * pixels_per_point) as u32;
+                    let clip_height =
+                        ((clip_rect.max.y - clip_rect.min.y) as f32 * pixels_per_point) as u32;
 
                     render_graph
                         .begin_pass("Egui pass")
@@ -280,12 +273,7 @@ impl Egui {
                             subpass.bind_index_buffer(idx_buf, vk::IndexType::UINT32);
                             subpass.bind_vertex_buffer(vert_buf);
                             subpass.push_constants(cast_slice(&[push_constants]));
-                            subpass.set_scissor(
-                                clip_x,
-                                clip_y,
-                                clip_width,
-                                clip_height,
-                            );
+                            subpass.set_scissor(clip_x, clip_y, clip_width, clip_height);
                             subpass.draw_indexed(num_indices, 1, 0, 0, 0);
                         });
                 }
@@ -304,7 +292,7 @@ impl Egui {
     ) {
         // Update events and generate shapes and texture deltas.
         for event in events {
-            if let Event::WindowEvent{event, ..} = event{
+            if let Event::WindowEvent { event, .. } = event {
                 self.egui_winit.on_event(&self.ctx, event);
             }
         }

@@ -20,14 +20,12 @@ pub mod prelude {
             event_loop::{run, EventLoop, EventLoopBuilder, FullscreenMode},
             frame::{center_cursor, set_cursor_position, FrameContext},
             graph::{
-                AccelerationStructureBinding, AccelerationStructureLeaseBinding,
                 AccelerationStructureLeaseNode, AccelerationStructureNode,
                 AnyAccelerationStructureNode, AnyBufferBinding, AnyBufferNode, AnyImageBinding,
-                AnyImageNode, Bind, BufferBinding, BufferLeaseBinding, BufferLeaseNode, BufferNode,
-                ImageBinding, ImageLeaseBinding, ImageLeaseNode, ImageNode, PassRef,
-                PipelinePassRef, RenderGraph, SwapchainImageNode,
+                AnyImageNode, Bind, BufferLeaseNode, BufferNode, ImageLeaseNode, ImageNode,
+                PassRef, PipelinePassRef, RenderGraph, SwapchainImageNode,
             },
-            hash_pool::HashPool,
+            hash_pool::{HashPool, Lease},
             input::{
                 update_input, update_keyboard, update_mouse, KeyBuf, KeyMap, MouseBuf, MouseButton,
             },

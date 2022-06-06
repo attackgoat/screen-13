@@ -17,7 +17,7 @@ use {
 #[derive(Debug)]
 pub struct ImGui {
     context: Context,
-    font_atlas_image: Option<ImageLeaseBinding>,
+    font_atlas_image: Option<Arc<Lease<Image>>>,
     pipeline: Arc<GraphicPipeline>,
     platform: WinitPlatform,
     pool: HashPool,
@@ -101,7 +101,7 @@ impl ImGui {
                 ))
                 .unwrap(),
         );
-        let font_atlas_image = render_graph.bind_node(self.font_atlas_image.take().unwrap());
+        let font_atlas_image = render_graph.bind_node(self.font_atlas_image.as_ref().unwrap());
         let display_pos = draw_data.display_pos;
         let framebuffer_scale = draw_data.framebuffer_scale;
 
@@ -117,8 +117,7 @@ impl ImGui {
                 .unwrap();
 
             {
-                Buffer::mapped_slice_mut(index_buf.get_mut().unwrap())[0..indices.len()]
-                    .copy_from_slice(indices);
+                Buffer::mapped_slice_mut(&mut index_buf)[0..indices.len()].copy_from_slice(indices);
             }
 
             let index_buf = render_graph.bind_node(index_buf);
@@ -135,7 +134,7 @@ impl ImGui {
                 .unwrap();
 
             {
-                let vertex_buf = Buffer::mapped_slice_mut(vertex_buf.get_mut().unwrap());
+                let vertex_buf = Buffer::mapped_slice_mut(&mut vertex_buf);
                 for (idx, vertex) in vertices.iter().enumerate() {
                     let offset = idx * 20;
                     vertex_buf[offset..offset + 8].copy_from_slice(cast_slice(&vertex.pos));
@@ -206,8 +205,6 @@ impl ImGui {
                 });
         }
 
-        self.font_atlas_image = Some(render_graph.unbind_node(font_atlas_image));
-
         image
     }
 
@@ -269,8 +266,7 @@ impl ImGui {
             .unwrap();
 
         {
-            let temp_buf = temp_buf.get_mut().unwrap();
-            let temp_buf = Buffer::mapped_slice_mut(temp_buf);
+            let temp_buf = Buffer::mapped_slice_mut(&mut temp_buf);
             temp_buf[0..temp_buf_len].copy_from_slice(texture.data);
         }
 

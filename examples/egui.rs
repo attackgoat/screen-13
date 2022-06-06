@@ -48,7 +48,5 @@ fn main() -> Result<(), DisplayError> {
                     });
             },
         );
-
-        frame.render_graph.unbind_node(img);
     })
 }

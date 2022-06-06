@@ -349,17 +349,7 @@ fn create_ray_trace_pipeline(device: &Arc<Device>) -> Result<Arc<RayTracePipelin
 
 fn load_scene_buffers(
     device: &Arc<Device>,
-) -> Result<
-    (
-        Option<BufferBinding>,
-        Option<BufferBinding>,
-        u32,
-        u32,
-        Option<BufferBinding>,
-        Option<BufferBinding>,
-    ),
-    DriverError,
-> {
+) -> Result<(Arc<Buffer>, Arc<Buffer>, u32, u32, Arc<Buffer>, Arc<Buffer>), DriverError> {
     use std::slice::from_raw_parts;
 
     let (models, materials, ..) = load_obj_buf(
@@ -395,7 +385,7 @@ fn load_scene_buffers(
         }
     }
 
-    let index_buf = BufferBinding::new({
+    let index_buf = {
         let data = cast_slice(&indices);
         let mut buf = Buffer::create(
             device,
@@ -408,9 +398,9 @@ fn load_scene_buffers(
         )?;
         Buffer::copy_from_slice(&mut buf, 0, data);
         buf
-    });
+    };
 
-    let vertex_buf = BufferBinding::new({
+    let vertex_buf = {
         let data = cast_slice(&positions);
         let mut buf = Buffer::create(
             device,
@@ -423,9 +413,9 @@ fn load_scene_buffers(
         )?;
         Buffer::copy_from_slice(&mut buf, 0, data);
         buf
-    });
+    };
 
-    let material_id_buf = BufferBinding::new({
+    let material_id_buf = {
         let mut material_ids = vec![];
         for model in &models {
             for _ in 0..model.mesh.indices.len() / 3 {
@@ -439,9 +429,9 @@ fn load_scene_buffers(
         )?;
         Buffer::copy_from_slice(&mut buf, 0, data);
         buf
-    });
+    };
 
-    let material_buf = BufferBinding::new({
+    let material_buf = {
         let materials = materials
             .iter()
             .map(|material| {
@@ -474,15 +464,15 @@ fn load_scene_buffers(
             from_raw_parts(materials.as_ptr() as *const _, buf_len)
         });
         buf
-    });
+    };
 
     Ok((
-        Some(index_buf),
-        Some(vertex_buf),
+        Arc::new(index_buf),
+        Arc::new(vertex_buf),
         indices.len() as u32 / 3,
         positions.len() as u32 / 3,
-        Some(material_id_buf),
-        Some(material_buf),
+        Arc::new(material_id_buf),
+        Arc::new(material_buf),
     ))
 }
 
@@ -490,7 +480,7 @@ fn load_scene_buffers(
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
-    let event_loop = EventLoop::new().debug(true).ray_tracing(true).build()?;
+    let event_loop = EventLoop::new().ray_tracing(true).build()?;
     let mut cache = HashPool::new(&event_loop.device);
 
     // ------------------------------------------------------------------------------------------ //
@@ -517,7 +507,7 @@ fn main() -> anyhow::Result<()> {
     let sbt_rgen_size = align_up(sbt_handle_size, shader_group_base_alignment);
     let sbt_hit_size = align_up(1 * sbt_handle_size, shader_group_base_alignment);
     let sbt_miss_size = align_up(2 * sbt_handle_size, shader_group_base_alignment);
-    let mut sbt_buf = Some(BufferBinding::new({
+    let sbt_buf = Arc::new({
         let mut buf = Buffer::create(
             &event_loop.device,
             BufferInfo::new_mappable(
@@ -562,8 +552,8 @@ fn main() -> anyhow::Result<()> {
         }
 
         buf
-    }));
-    let sbt_address = Buffer::device_address(sbt_buf.as_ref().unwrap().get());
+    });
+    let sbt_address = Buffer::device_address(&sbt_buf);
     let sbt_rgen = vk::StridedDeviceAddressRegionKHR {
         device_address: sbt_address,
         stride: sbt_rgen_size as _,
@@ -585,14 +575,8 @@ fn main() -> anyhow::Result<()> {
     // Load the .obj cube scene
     // ------------------------------------------------------------------------------------------ //
 
-    let (
-        mut index_buf,
-        mut vertex_buf,
-        triangle_count,
-        vertex_count,
-        mut material_id_buf,
-        mut material_buf,
-    ) = load_scene_buffers(&event_loop.device)?;
+    let (index_buf, vertex_buf, triangle_count, vertex_count, material_id_buf, material_buf) =
+        load_scene_buffers(&event_loop.device)?;
 
     // ------------------------------------------------------------------------------------------ //
     // Create the bottom level acceleration structure
@@ -605,14 +589,12 @@ fn main() -> anyhow::Result<()> {
             max_primitive_count: triangle_count,
             flags: vk::GeometryFlagsKHR::OPAQUE,
             geometry: AccelerationStructureGeometryData::Triangles {
-                index_data: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(
-                    index_buf.as_ref().unwrap().get(),
-                )),
+                index_data: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(&index_buf)),
                 index_type: vk::IndexType::UINT32,
                 max_vertex: vertex_count,
                 transform_data: None,
                 vertex_data: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(
-                    vertex_buf.as_ref().unwrap().get(),
+                    &vertex_buf,
                 )),
                 vertex_format: vk::Format::R32G32B32_SFLOAT,
                 vertex_stride: 12,
@@ -620,22 +602,20 @@ fn main() -> anyhow::Result<()> {
         }],
     };
     let blas_size = AccelerationStructure::size_of(&event_loop.device, &blas_geometry_info);
-    let mut blas = Some(AccelerationStructureBinding::new(
-        AccelerationStructure::create(
-            &event_loop.device,
-            AccelerationStructureInfo {
-                ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
-                size: blas_size.create_size,
-            },
-        )?,
-    ));
-    let blas_device_address = AccelerationStructure::device_address(blas.as_ref().unwrap().get());
+    let blas = Arc::new(AccelerationStructure::create(
+        &event_loop.device,
+        AccelerationStructureInfo {
+            ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
+            size: blas_size.create_size,
+        },
+    )?);
+    let blas_device_address = AccelerationStructure::device_address(&blas);
 
     // ------------------------------------------------------------------------------------------ //
     // Create an instance buffer, which is just one instance for the single BLAS
     // ------------------------------------------------------------------------------------------ //
 
-    let mut instance_buf = Some(BufferBinding::new({
+    let instance_buf = Arc::new({
         let mut buffer = Buffer::create(
             &event_loop.device,
             BufferInfo::new_mappable(
@@ -668,7 +648,7 @@ fn main() -> anyhow::Result<()> {
         });
 
         buffer
-    }));
+    });
 
     // ------------------------------------------------------------------------------------------ //
     // Create the top level acceleration structure
@@ -682,22 +662,18 @@ fn main() -> anyhow::Result<()> {
             flags: vk::GeometryFlagsKHR::OPAQUE,
             geometry: AccelerationStructureGeometryData::Instances {
                 array_of_pointers: false,
-                data: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(
-                    instance_buf.as_ref().unwrap().get(),
-                )),
+                data: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(&instance_buf)),
             },
         }],
     };
     let tlas_size = AccelerationStructure::size_of(&event_loop.device, &tlas_geometry_info);
-    let mut tlas = Some(AccelerationStructureBinding::new(
-        AccelerationStructure::create(
-            &event_loop.device,
-            AccelerationStructureInfo {
-                ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
-                size: tlas_size.create_size,
-            },
-        )?,
-    ));
+    let tlas = Arc::new(AccelerationStructure::create(
+        &event_loop.device,
+        AccelerationStructureInfo {
+            ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
+            size: tlas_size.create_size,
+        },
+    )?);
 
     // ------------------------------------------------------------------------------------------ //
     // Build the BLAS and TLAS; note that we don't drop the cache and so there is no CPU stall
@@ -705,9 +681,9 @@ fn main() -> anyhow::Result<()> {
 
     {
         let mut render_graph = RenderGraph::new();
-        let index_node = render_graph.bind_node(index_buf.take().unwrap());
-        let vertex_node = render_graph.bind_node(vertex_buf.take().unwrap());
-        let blas_node = render_graph.bind_node(blas.take().unwrap());
+        let index_node = render_graph.bind_node(&index_buf);
+        let vertex_node = render_graph.bind_node(&vertex_buf);
+        let blas_node = render_graph.bind_node(&blas);
 
         {
             let scratch_buf = render_graph.bind_node(Buffer::create(
@@ -749,8 +725,8 @@ fn main() -> anyhow::Result<()> {
                         | vk::BufferUsageFlags::STORAGE_BUFFER,
                 ),
             )?);
-            let instance_node = render_graph.bind_node(instance_buf.take().unwrap());
-            let tlas_node = render_graph.bind_node(tlas.take().unwrap());
+            let instance_node = render_graph.bind_node(&instance_buf);
+            let tlas_node = render_graph.bind_node(&tlas);
 
             render_graph
                 .begin_pass("Build TLAS")
@@ -771,13 +747,8 @@ fn main() -> anyhow::Result<()> {
                         }],
                     );
                 });
-
-            tlas = Some(render_graph.unbind_node(tlas_node));
         }
 
-        blas = Some(render_graph.unbind_node(blas_node));
-        index_buf = Some(render_graph.unbind_node(index_node));
-        vertex_buf = Some(render_graph.unbind_node(vertex_node));
         render_graph.resolve().submit(&mut cache)?;
     }
 
@@ -801,7 +772,7 @@ fn main() -> anyhow::Result<()> {
     // - Copy image to the swapchain
     event_loop.run(|frame| {
         if image.is_none() {
-            image = Some(ImageLeaseBinding(
+            image = Some(Arc::new(
                 cache
                     .lease(ImageInfo::new_2d(
                         frame.render_graph.node_info(frame.swapchain_image).fmt,
@@ -815,7 +786,7 @@ fn main() -> anyhow::Result<()> {
             ));
         }
 
-        let image_node = frame.render_graph.bind_node(image.take().unwrap());
+        let image_node = frame.render_graph.bind_node(image.as_ref().unwrap());
 
         {
             update_keyboard(&mut keyboard, frame.events);
@@ -860,7 +831,7 @@ fn main() -> anyhow::Result<()> {
                     vk::BufferUsageFlags::UNIFORM_BUFFER,
                 ))
                 .unwrap();
-            Buffer::copy_from_slice(buf.get_mut().unwrap(), 0, unsafe {
+            Buffer::copy_from_slice(&mut buf, 0, unsafe {
                 std::slice::from_raw_parts(
                     &Camera {
                         position,
@@ -875,15 +846,13 @@ fn main() -> anyhow::Result<()> {
 
             buf
         });
-        let blas_node = frame.render_graph.bind_node(blas.take().unwrap());
-        let tlas_node = frame.render_graph.bind_node(tlas.take().unwrap());
-        let index_buf_node = frame.render_graph.bind_node(index_buf.take().unwrap());
-        let vertex_buf_node = frame.render_graph.bind_node(vertex_buf.take().unwrap());
-        let material_id_buf_node = frame
-            .render_graph
-            .bind_node(material_id_buf.take().unwrap());
-        let material_buf_node = frame.render_graph.bind_node(material_buf.take().unwrap());
-        let sbt_node = frame.render_graph.bind_node(sbt_buf.take().unwrap());
+        let blas_node = frame.render_graph.bind_node(&blas);
+        let tlas_node = frame.render_graph.bind_node(&tlas);
+        let index_buf_node = frame.render_graph.bind_node(&index_buf);
+        let vertex_buf_node = frame.render_graph.bind_node(&vertex_buf);
+        let material_id_buf_node = frame.render_graph.bind_node(&material_id_buf);
+        let material_buf_node = frame.render_graph.bind_node(&material_buf);
+        let sbt_node = frame.render_graph.bind_node(&sbt_buf);
 
         frame
             .render_graph
@@ -922,15 +891,6 @@ fn main() -> anyhow::Result<()> {
             })
             .submit_pass()
             .copy_image(image_node, frame.swapchain_image);
-
-        image = Some(frame.render_graph.unbind_node(image_node));
-        blas = Some(frame.render_graph.unbind_node(blas_node));
-        tlas = Some(frame.render_graph.unbind_node(tlas_node));
-        index_buf = Some(frame.render_graph.unbind_node(index_buf_node));
-        vertex_buf = Some(frame.render_graph.unbind_node(vertex_buf_node));
-        material_id_buf = Some(frame.render_graph.unbind_node(material_id_buf_node));
-        material_buf = Some(frame.render_graph.unbind_node(material_buf_node));
-        sbt_buf = Some(frame.render_graph.unbind_node(sbt_node));
     })?;
 
     Ok(())

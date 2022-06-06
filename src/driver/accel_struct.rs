@@ -1,9 +1,17 @@
 use {
-    super::{Buffer, BufferInfo, Device, DriverError},
+    super::{access_type_from_u8, access_type_into_u8, Buffer, BufferInfo, Device, DriverError},
     ash::vk,
     derive_builder::Builder,
     log::warn,
-    std::{ops::Deref, sync::Arc, thread::panicking},
+    std::{
+        ops::Deref,
+        sync::{
+            atomic::{AtomicU8, Ordering},
+            Arc,
+        },
+        thread::panicking,
+    },
+    vk_sync::AccessType,
 };
 
 #[derive(Debug)]
@@ -12,6 +20,7 @@ pub struct AccelerationStructure {
     pub buffer: Buffer,
     device: Arc<Device>,
     pub info: AccelerationStructureInfo,
+    prev_access: AtomicU8,
 }
 
 impl AccelerationStructure {
@@ -57,7 +66,15 @@ impl AccelerationStructure {
             buffer,
             device,
             info,
+            prev_access: AtomicU8::new(access_type_into_u8(AccessType::Nothing)),
         })
+    }
+
+    pub fn access(this: &Self, next_access: AccessType) -> AccessType {
+        access_type_from_u8(
+            this.prev_access
+                .swap(access_type_into_u8(next_access), Ordering::Relaxed),
+        )
     }
 
     pub fn device_address(this: &Self) -> vk::DeviceAddress {

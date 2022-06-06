@@ -1,5 +1,5 @@
 use {
-    super::{Device, DriverError},
+    super::{access_type_from_u8, access_type_into_u8, Device, DriverError},
     ash::vk,
     derive_builder::Builder,
     gpu_allocator::{
@@ -11,17 +11,22 @@ use {
     std::{
         fmt::{Debug, Formatter},
         ops::{Deref, Range},
-        sync::Arc,
+        sync::{
+            atomic::{AtomicU8, Ordering},
+            Arc,
+        },
         thread::panicking,
     },
+    vk_sync::AccessType,
 };
 
 pub struct Buffer {
     allocation: Option<Allocation>,
     buffer: vk::Buffer,
-    pub device: Arc<Device>,
+    device: Arc<Device>,
     pub info: BufferInfo,
     pub name: Option<String>,
+    prev_access: AtomicU8,
 }
 
 impl Buffer {
@@ -93,7 +98,15 @@ impl Buffer {
             device,
             info,
             name: None,
+            prev_access: AtomicU8::new(access_type_into_u8(AccessType::Nothing)),
         })
+    }
+
+    pub fn access(this: &Self, next_access: AccessType) -> AccessType {
+        access_type_from_u8(
+            this.prev_access
+                .swap(access_type_into_u8(next_access), Ordering::Relaxed),
+        )
     }
 
     pub fn copy_from_slice(this: &mut Self, offset: vk::DeviceSize, slice: &[u8]) {

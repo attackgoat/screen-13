@@ -164,10 +164,10 @@ fn main() -> anyhow::Result<()> {
     let started_at = Instant::now();
     let mut mouse_buf = MouseBuf::default();
     let mut count = 0i32;
-    let framebuffer_info = *framebuffer_image_binding.as_ref().unwrap().info();
-    let flowers_image_info = *flowers_image_binding.as_ref().unwrap().info();
-    let noise_image_info = *noise_image_binding.as_ref().unwrap().info();
-    let blank_image_info = *blank_image_binding.as_ref().unwrap().info();
+    let framebuffer_info = framebuffer_image_binding.as_ref().unwrap().info;
+    let flowers_image_info = flowers_image_binding.as_ref().unwrap().info;
+    let noise_image_info = noise_image_binding.as_ref().unwrap().info;
+    let blank_image_info = blank_image_binding.as_ref().unwrap().info;
 
     event_loop
         .run(|frame| {

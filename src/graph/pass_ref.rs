@@ -260,7 +260,7 @@ macro_rules! index {
                 type Output = $handle;
 
                 fn index(&self, node: [<$name Node>]) -> &Self::Output {
-                    &*self.binding_ref(node.idx).[<as_ $name:snake>]().unwrap().item
+                    &*self.binding_ref(node.idx).[<as_ $name:snake>]().unwrap()
                 }
             }
         }
@@ -289,10 +289,10 @@ impl<'a> Index<AnyAccelerationStructureNode> for Bindings<'a> {
 
         match node {
             AnyAccelerationStructureNode::AccelerationStructure(_) => {
-                &binding.as_acceleration_structure().unwrap().item
+                binding.as_acceleration_structure().unwrap()
             }
             AnyAccelerationStructureNode::AccelerationStructureLease(_) => {
-                &binding.as_acceleration_structure_lease().unwrap().item
+                binding.as_acceleration_structure_lease().unwrap()
             }
         }
     }
@@ -309,8 +309,8 @@ impl<'a> Index<AnyBufferNode> for Bindings<'a> {
         let binding = self.binding_ref(node_idx);
 
         match node {
-            AnyBufferNode::Buffer(_) => &binding.as_buffer().unwrap().item,
-            AnyBufferNode::BufferLease(_) => &binding.as_buffer_lease().unwrap().item,
+            AnyBufferNode::Buffer(_) => binding.as_buffer().unwrap(),
+            AnyBufferNode::BufferLease(_) => binding.as_buffer_lease().unwrap(),
         }
     }
 }
@@ -327,9 +327,9 @@ impl<'a> Index<AnyImageNode> for Bindings<'a> {
         let binding = self.binding_ref(node_idx);
 
         match node {
-            AnyImageNode::Image(_) => &binding.as_image().unwrap().item,
-            AnyImageNode::ImageLease(_) => &binding.as_image_lease().unwrap().item,
-            AnyImageNode::SwapchainImage(_) => &binding.as_swapchain_image().unwrap().item,
+            AnyImageNode::Image(_) => binding.as_image().unwrap(),
+            AnyImageNode::ImageLease(_) => binding.as_image_lease().unwrap(),
+            AnyImageNode::SwapchainImage(_) => binding.as_swapchain_image().unwrap(),
         }
     }
 }
@@ -1355,7 +1355,10 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
     }
 
     fn image_info(&self, node_idx: NodeIndex) -> (vk::Format, SampleCount) {
-        let image_info = &self.pass.graph.bindings[node_idx].image_info().unwrap();
+        let image_info = self.pass.graph.bindings[node_idx]
+            .as_driver_image()
+            .unwrap()
+            .info;
 
         (image_info.fmt, image_info.sample_count)
     }

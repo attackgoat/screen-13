@@ -1,12 +1,9 @@
 use {
-    crate::{
-        driver::{
-            AccelerationStructure, AccelerationStructureInfo, AccelerationStructureInfoBuilder,
-            Buffer, BufferInfo, BufferInfoBuilder, CommandBuffer, DescriptorPool,
-            DescriptorPoolInfo, DescriptorPoolInfoBuilder, Device, DriverError, Image, ImageInfo,
-            ImageInfoBuilder, QueueFamily, RenderPass, RenderPassInfo, RenderPassInfoBuilder,
-        },
-        graph::{AccelerationStructureBinding, BufferBinding, ImageBinding},
+    crate::driver::{
+        AccelerationStructure, AccelerationStructureInfo, AccelerationStructureInfoBuilder, Buffer,
+        BufferInfo, BufferInfoBuilder, CommandBuffer, DescriptorPool, DescriptorPoolInfo,
+        DescriptorPoolInfoBuilder, Device, DriverError, Image, ImageInfo, ImageInfoBuilder,
+        QueueFamily, RenderPass, RenderPassInfo, RenderPassInfoBuilder,
     },
     log::warn,
     parking_lot::Mutex,
@@ -27,13 +24,12 @@ pub trait Contract {
 
 #[derive(Debug)]
 pub struct HashPool {
-    acceleration_structure_binding_cache:
-        HashMap<AccelerationStructureInfo, Cache<AccelerationStructureBinding>>,
-    buffer_binding_cache: HashMap<BufferInfo, Cache<BufferBinding>>,
+    acceleration_structure_cache: HashMap<AccelerationStructureInfo, Cache<AccelerationStructure>>,
+    buffer_cache: HashMap<BufferInfo, Cache<Buffer>>,
     command_buffer_cache: HashMap<QueueFamily, Cache<CommandBuffer>>,
-    descriptor_pool_cache: HashMap<DescriptorPoolInfo, Cache<Arc<DescriptorPool>>>,
+    descriptor_pool_cache: HashMap<DescriptorPoolInfo, Cache<DescriptorPool>>,
     pub device: Arc<Device>,
-    image_binding_cache: HashMap<ImageInfo, Cache<ImageBinding>>,
+    image_cache: HashMap<ImageInfo, Cache<Image>>,
     render_pass_cache: HashMap<RenderPassInfo, Cache<RenderPass>>,
 }
 
@@ -43,12 +39,12 @@ impl HashPool {
         let device = Arc::clone(device);
 
         Self {
-            acceleration_structure_binding_cache: Default::default(),
-            buffer_binding_cache: Default::default(),
+            acceleration_structure_cache: Default::default(),
+            buffer_cache: Default::default(),
             command_buffer_cache: Default::default(),
             descriptor_pool_cache: Default::default(),
             device,
-            image_binding_cache: Default::default(),
+            image_cache: Default::default(),
             render_pass_cache: Default::default(),
         }
     }
@@ -66,17 +62,6 @@ impl HashPool {
 pub struct Lease<T> {
     cache: Option<Cache<T>>,
     item: Option<T>,
-}
-
-impl<T> Lease<T> {
-    /// Moves the cache reference into a new lease. The old lease will retain the item reference but
-    /// will no longer have any return-to-pool-when-dropped behavior.
-    pub(super) fn transfer(&mut self, item: T) -> Self {
-        Self {
-            cache: self.cache.take(),
-            item: Some(item),
-        }
-    }
 }
 
 impl<T> AsRef<T> for Lease<T> {
@@ -132,7 +117,7 @@ pub trait Pooled<T> {
 
 // Enable the basic leasing of items
 macro_rules! lease {
-    ($src:ident -> $dst:ident) => {
+    ($src:ident => $dst:ident) => {
         impl Contract for $src {
             type Term = $dst;
         }
@@ -169,8 +154,8 @@ macro_rules! lease {
 
 // Enable leasing items using their basic info as the entire request
 macro_rules! lease_info {
-    ($src:ident -> $dst:ident) => {
-        lease!($src -> $dst);
+    ($src:ident => $dst:ident) => {
+        lease!($src => $dst);
 
         paste::paste! {
             // Called by the lease macro
@@ -184,7 +169,7 @@ macro_rules! lease_info {
     };
 }
 
-lease_info!(QueueFamily -> CommandBuffer);
+lease_info!(QueueFamily => CommandBuffer);
 
 // Used by macro invocation, above
 fn can_lease_command_buffer(cmd_buf: &mut CommandBuffer) -> bool {
@@ -207,8 +192,8 @@ fn can_lease_command_buffer(cmd_buf: &mut CommandBuffer) -> bool {
 
 // Enable leasing items as above, but also using their info builder type for convenience
 macro_rules! lease_info_builder {
-    ($src:ident -> $dst:ident) => {
-        lease_info!($src -> $dst);
+    ($src:ident => $dst:ident) => {
+        lease_info!($src => $dst);
 
         paste::paste! {
             // Called by the lease macro, via the lease_info macro
@@ -234,32 +219,62 @@ macro_rules! lease_info_builder {
     };
 }
 
-lease_info_builder!(RenderPassInfo -> RenderPass);
+lease_info_builder!(RenderPassInfo => RenderPass);
 
 macro_rules! lease_info_binding {
-    ($src:ident -> $dst:ident) => {
+    ($src:ident => $dst:ident) => {
         paste::paste! {
-            lease!($src -> [<$dst Binding>]);
+            impl Contract for $src {
+                type Term = $dst;
+            }
 
-            // Called by the lease macro
-            fn [<create_ $dst:snake _binding>](
-                device: &Arc<Device>,
-                info: $src
-            ) -> Result<[<$dst Binding>], DriverError> {
-                Ok([<$dst Binding>]::new($dst::create(device, info)?))
+            paste::paste! {
+                impl Pooled<Lease<$dst>> for $src {
+                    fn lease(self, pool: &mut HashPool) -> Result<Lease<$dst>, DriverError> {
+                        let cache = pool.[<$dst:snake _cache>].entry(self.clone())
+                            .or_insert_with(|| {
+                                Arc::new(Mutex::new(VecDeque::new()))
+                            });
+                        let cache_ref = Arc::clone(cache);
+                        let mut cache = cache.lock();
+
+                        if cache.is_empty() || ![<can_lease_ $dst:snake>](cache.front_mut().unwrap()) {
+                            // Calls the function defined in the other macros
+                            let item = [<create_ $dst:snake>](&pool.device, self)?;
+
+                            return Ok(Lease {
+                                cache: Some(cache_ref),
+                                item: Some(item),
+                            });
+                        }
+
+                        Ok(Lease {
+                            cache: Some(cache_ref),
+                            item: cache.pop_front(),
+                        })
+                    }
+                }
             }
 
             // Called by the lease macro
-            fn [<can_lease_ $dst:snake _binding>]<T>(_: &mut T) -> bool {
+            fn [<create_ $dst:snake>](
+                device: &Arc<Device>,
+                info: $src
+            ) -> Result<$dst, DriverError> {
+                $dst::create(device, info)
+            }
+
+            // Called by the lease macro
+            fn [<can_lease_ $dst:snake>]<T>(_: &mut T) -> bool {
                 true
             }
 
             impl Contract for [<$src Builder>] {
-                type Term = [<$dst Binding>];
+                type Term = $dst;
             }
 
-            impl Pooled<Lease<[<$dst Binding>]>> for [<$src Builder>] {
-                fn lease(self, pool: &mut HashPool) -> Result<Lease<[<$dst Binding>]>, DriverError> {
+            impl Pooled<Lease<$dst>> for [<$src Builder>] {
+                fn lease(self, pool: &mut HashPool) -> Result<Lease<$dst>, DriverError> {
                     self.build().lease(pool)
                 }
             }
@@ -267,20 +282,20 @@ macro_rules! lease_info_binding {
     };
 }
 
-lease_info_binding!(AccelerationStructureInfo -> AccelerationStructure);
-lease_info_binding!(BufferInfo -> Buffer);
-lease_info_binding!(ImageInfo -> Image);
+lease_info_binding!(AccelerationStructureInfo => AccelerationStructure);
+lease_info_binding!(BufferInfo => Buffer);
+lease_info_binding!(ImageInfo => Image);
 
 // Enable types of leases where the item is a shared item (these can be dangerous!!)
 macro_rules! shared_lease {
     ($src:ident -> $dst:ident) => {
         impl Contract for $src {
-            type Term = Arc<$dst>;
+            type Term = $dst;
         }
 
         paste::paste! {
-            impl Pooled<Lease<Arc<$dst>>> for $src {
-                fn lease(self, pool: &mut HashPool) -> Result<Lease<Arc<$dst>>, DriverError> {
+            impl Pooled<Lease<$dst>> for $src {
+                fn lease(self, pool: &mut HashPool) -> Result<Lease<$dst>, DriverError> {
                     let cache = pool.[<$dst:snake _cache>].entry(self.clone())
                         .or_insert_with(|| {
                             Arc::new(Mutex::new(VecDeque::new()))
@@ -296,18 +311,18 @@ macro_rules! shared_lease {
                     } else {
                         Lease {
                             cache: Some(cache_ref),
-                            item: Some(Arc::new($dst::create(&pool.device, self)?)),
+                            item: Some($dst::create(&pool.device, self)?),
                         }
                     })
                 }
             }
 
             impl Contract for [<$src Builder>] {
-                type Term = Arc<$dst>;
+                type Term = $dst;
             }
 
-            impl Pooled<Lease<Arc<$dst>>> for [<$src Builder>] {
-                fn lease(self, pool: &mut HashPool) -> Result<Lease<Arc<$dst>>, DriverError> {
+            impl Pooled<Lease<$dst>> for [<$src Builder>] {
+                fn lease(self, pool: &mut HashPool) -> Result<Lease<$dst>, DriverError> {
                     let desc = self.build();
 
                     // We will unwrap the description builder - it may panic!

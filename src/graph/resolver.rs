@@ -6,11 +6,11 @@ use {
     crate::{
         driver::{
             format_aspect_mask, image_access_layout, is_read_access, is_write_access,
-            pipeline_stage_access_flags, AttachmentInfo, AttachmentRef, CommandBuffer,
-            DepthStencilMode, DescriptorBinding, DescriptorInfo, DescriptorPool,
-            DescriptorPoolInfo, DescriptorPoolSize, DescriptorSet, Device, DriverError,
-            FramebufferKey, FramebufferKeyAttachment, Image, ImageViewInfo, RenderPass,
-            RenderPassInfo, SampleCount, SubpassDependency, SubpassInfo,
+            pipeline_stage_access_flags, AccelerationStructure, AttachmentInfo, AttachmentRef,
+            Buffer, CommandBuffer, DepthStencilMode, DescriptorBinding, DescriptorInfo,
+            DescriptorPool, DescriptorPoolInfo, DescriptorPoolSize, DescriptorSet, Device,
+            DriverError, FramebufferKey, FramebufferKeyAttachment, Image, ImageViewInfo,
+            RenderPass, RenderPassInfo, SampleCount, SubpassDependency, SubpassInfo,
         },
         hash_pool::{HashPool, Lease},
     },
@@ -33,9 +33,16 @@ fn align_up(val: u32, atom: u32) -> u32 {
 
 #[derive(Debug)]
 struct PhysicalPass {
-    _descriptor_pool: Option<Lease<Arc<DescriptorPool>>>,
+    descriptor_pool: Option<Lease<DescriptorPool>>,
     exec_descriptor_sets: HashMap<usize, Vec<DescriptorSet>>,
     render_pass: Option<Lease<RenderPass>>,
+}
+
+impl Drop for PhysicalPass {
+    fn drop(&mut self) {
+        self.exec_descriptor_sets.clear();
+        self.descriptor_pool = None;
+    }
 }
 
 /// A structure which can read and execute render graphs. This pattern was derived from:
@@ -475,7 +482,7 @@ impl Resolver {
     fn lease_descriptor_pool(
         cache: &mut HashPool,
         pass: &Pass,
-    ) -> Result<Option<Lease<Arc<DescriptorPool>>>, DriverError> {
+    ) -> Result<Option<Lease<DescriptorPool>>, DriverError> {
         let mut max_pool_sizes = BTreeMap::new();
         let max_descriptor_set_idx = pass
             .execs
@@ -1300,7 +1307,7 @@ impl Resolver {
             };
 
             self.physical_passes.push(PhysicalPass {
-                _descriptor_pool: descriptor_pool, // Used above; but we must keep until done
+                descriptor_pool,
                 exec_descriptor_sets,
                 render_pass,
             });
@@ -1486,7 +1493,15 @@ impl Resolver {
                 .map(|(node_idx, [early, late])| {
                     let binding = &mut bindings[*node_idx];
                     let next_access = early.access;
-                    let prev_access = binding.access_mut(late.access);
+                    let prev_access = if let Some(buffer) = binding.as_driver_buffer() {
+                        Buffer::access(buffer, late.access)
+                    } else if let Some(image) = binding.as_driver_image() {
+                        Image::access(image, late.access)
+                    } else if let Some(accel_struct) = binding.as_driver_acceleration_structure() {
+                        AccelerationStructure::access(accel_struct, late.access)
+                    } else {
+                        unimplemented!();
+                    };
 
                     // If we find a subresource then it must have a resource attached
                     if let Some(subresource) = early.subresource {
@@ -1876,8 +1891,8 @@ impl Resolver {
                 .filter_map(|attachment| attachment.as_ref())
                 .find_map(|attachment| {
                     self.graph.bindings[attachment.target]
-                        .image_info()
-                        .map(|image_info| (image_info.width, image_info.height))
+                        .as_driver_image()
+                        .map(|image| (image.info.width, image.info.height))
                 })
                 .expect("invalid attachments");
 

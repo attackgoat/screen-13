@@ -31,10 +31,10 @@ let driver = Driver::new(&my_winit_window, DriverConfig {
     desired_swapchain_image_count: 3,
     presentation: true, // require operating system window swapchain support
     ray_tracing: true,  // require KHR ray tracing support
-    sync_display: true, // v-synceE
+    sync_display: true, // v-sync
 });
 let driver = driver.expect("Oh no I don't support debug/presentation/ray_tracing if set!");
-let device: Shared<Device> = driver.device;
+let device: Arc<Device> = driver.device;
 let ffi_device: ash::Device = **device;
 ```
 
@@ -228,31 +228,16 @@ Some notes about the awesome render pass optimization which was _totally stolen_
 graph should complete within ~250 μs. This is currently true for known-size graphs and I'm thinking
 about how to bench this in the future.
 
-### Bindings
-
-Before we can use anything on a graph, we need to know about "bindings". The purpose of a binding is
-to track resource state before and after interacting with a render graph. The `Buffer` and `Image`
-structs we created need an `Arc<>` and extra `usize` in order to track this state. A "Binding" provides
-those.
-
-```rust
-let buffer = BufferBinding::new(buffer);
-let image = ImageBinding::new(image);
-```
-
-_Note:_ You cannot clone a binding, and the enclosed resource cannot be taken out. You may access
-a mutable borrow using `get_mut()` if no shared references are alive.
-
 ### Nodes
 
-Bindings may be directly "bound" to a single render graph, and may be later unbound as well - although
+Resources may be directly "bound" to a single render graph, and may be later unbound as well - although
 that step is optional. During the time a binding is bound we refer to it as a "node". Bound nodes
 may only be used with the graphs they were bound to. Nodes implement `Copy` to make using them
 easier.
 
 ```rust
-println!("{:?}", buffer); // BufferBinding
-println!("{:?}", image); // ImageBinding
+println!("{:?}", buffer); // Buffer
+println!("{:?}", image); // Image
 
 // Bind our resources into opaque "usize" nodes
 let buffer = graph.bind_node(buffer);
@@ -262,19 +247,17 @@ let image = graph.bind_node(image);
 println!("{:?}", buffer); // BufferNode
 println!("{:?}", image); // ImageNode
 
-// Unbind "node" back into the "binding" so we can use it again
+// Unbind "node" back into the "binding" (Optional!)
 let buffer = graph.unbind_node(buffer);
 let image = graph.unbind_node(image);
 
-// Magically, they return to the correct types!
-println!("{:?}", buffer); // BufferBinding
-println!("{:?}", image); // ImageBinding
+// Magically, they return to the correct types! (the graph wrapped them in Arc for us)
+println!("{:?}", buffer); // Arc<Buffer>
+println!("{:?}", image); // Arc<Image>
 ```
 
-_Note:_ Once unbound, a binding may be used immediately on other graphs or discarded. Later we will
-discuss resolving a graph, and it does have an impact on the order our render graph passes execute,
-so reusing a binding within the same frame is considered somewhat advanced as a use case. It is
-however, safe to do.
+_Note:_ See [this code](https://github.com/attackgoat/screen-13/blob/a7a467e2128fcab7d4edc0d6e547e51909107ae4/src/graph/edge.rs#L34)
+for all the things that can be bound or unbound from a graph.
 
 _Note:_ Once unbound, the node struct is invalid and should be dropped. There is no compile-time
 warning for this condition.
@@ -287,8 +270,8 @@ when you might want to quickly clear an image, for instance:
 
 ```rust
 let mut graph = RenderGraph::new();
-let buffer = graph.bind_node(some_buffer_binding);
-let image = graph.bind_node(some_image_binding);
+let buffer = graph.bind_node(some_buffer);
+let image = graph.bind_node(some_image);
 let (r, g, b, a) = (1.0, 0.0, 1.0, 1.0);
 graph
     .clear_color_image(image, r, g, b, a)
@@ -343,8 +326,8 @@ Example:
 
 ```rust
 let mut graph = RenderGraph::new();
-let buffer_node = graph.bind_node(buffer_binding);
-let image_node = graph.bind_node(image_binding);
+let buffer_node = graph.bind_node(buffer);
+let image_node = graph.bind_node(image);
 graph
     .begin_pass("Do some Vulkan")
     .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
@@ -384,7 +367,7 @@ RenderGraph::new()
     .record_compute(|compute| {
         // This FnOnce is where the commands are executed
         // (Make this a move-closure and Send it 'static things if you want!)
-        compute.push_constants(42u32)
+        compute.push_constants(&42u32.to_ne_bytes())
                .dispatch(128, 1, 1);
         ...
     })
@@ -398,7 +381,7 @@ let pass: PassRef = graph.record("My compute pass");
 let pass: PipelinePassRef = pass.bind_pipeline(&pipeline);
 pass.record_compute(|compute| {
     // Mutable builder pattern so this works too
-    compute.push_constants(42u32);
+    compute.push_constants(&[42u8, 0, 0, 0]);
     compute.dispatch(128, 1, 1);
     ...
 })
@@ -570,24 +553,21 @@ make this path easier. Further, an `EventLoop` type is available to make all of 
 let event_loop = EventLoop::new().build().unwrap();
 let display = GraphicPresenter::new(&event_loop.device)?;
 let mut cache = HashPool::new(&event_loop.device);
-let mut img_binding = Some(cache.lease(ImageInfo { ... }).unwrap());
+let image = Arc::new(cache.lease(ImageInfo { ... }).unwrap());
 
 event_loop.run(|frame| {
-    // Bind "img_binding" to graph
-    let img_node = frame.render_graph.bind_node(img_binding.take().unwrap());
+    // Bind "image" to graph
+    let image_node = frame.render_graph.bind_node(&image);
 
-    // Record passes and do stuff to "img_node"
+    // Record passes and do stuff to "image_node"
     frame.render_graph
-        .begin_pass("Do something with img_node")
+        .begin_pass("Do something with image_node")
         .bind_pipeline(&pipeline)
         ...
 
-    // Record the swapchain presentation pass (draw "img_node" to screen!)
+    // Record the swapchain presentation pass (draw "image_node" to screen!)
     // (See the present pass recorded in ~20 lines: https://bit.ly/3L6cn8U!)
-    display.present_image(frame.render_graph, img_node, frame.swapchain);
-
-    // Unbind img from graph so we have it for the next frame
-    img_binding = Some(frame.render_graph.unbind_node(img_node));
+    display.present_image(frame.render_graph, image_node, frame.swapchain);
 }).unwrap();
 ```
 
