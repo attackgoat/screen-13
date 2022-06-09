@@ -213,7 +213,7 @@ impl RayTracePipeline {
     /// Function returning a handle to a shader group of this pipeline.
     /// This can be used to construct a sbt.
     ///
-    pub fn get_group_handle(&self, idx: usize) -> Result<&[u8], DriverError> {
+    pub fn group_handle(&self, idx: usize) -> Result<&[u8], DriverError> {
         let &PhysicalDeviceRayTracePipelineProperties {
             shader_group_handle_size,
             ..
