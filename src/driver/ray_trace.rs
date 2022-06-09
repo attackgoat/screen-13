@@ -1,5 +1,10 @@
+use std::ops::{Bound, RangeBounds};
+
 use {
-    super::{DescriptorBindingMap, Device, DriverError, PipelineDescriptorInfo, Shader},
+    super::{
+        DescriptorBindingMap, Device, DriverError, PhysicalDeviceRayTracePipelineProperties,
+        PipelineDescriptorInfo, Shader,
+    },
     ash::vk,
     derive_builder::Builder,
     log::warn,
@@ -15,6 +20,7 @@ pub struct RayTracePipeline {
     pub layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
     shader_modules: Vec<vk::ShaderModule>,
+    num_shader_groups: u32,
 }
 
 impl RayTracePipeline {
@@ -32,6 +38,7 @@ impl RayTracePipeline {
             .into_iter()
             .map(|shader_group| shader_group.into())
             .collect::<Vec<_>>();
+        let num_shader_groups = shader_groups.len() as u32;
 
         let shaders = shaders
             .into_iter()
@@ -168,8 +175,66 @@ impl RayTracePipeline {
                 layout,
                 pipeline,
                 shader_modules,
+                num_shader_groups,
             })
         }
+    }
+    pub fn get_ray_tracing_shader_group_handles(
+        &self,
+        bounds: impl RangeBounds<u32>,
+    ) -> Result<Vec<u8>, DriverError> {
+        let &PhysicalDeviceRayTracePipelineProperties {
+            shader_group_handle_size,
+            ..
+        } = self
+            .device
+            .ray_tracing_pipeline_properties
+            .as_ref()
+            .ok_or(DriverError::Unsupported)?;
+
+        let start = match bounds.start_bound() {
+            Bound::Included(b) => *b,
+            Bound::Excluded(b) => *b + 1,
+            Bound::Unbounded => 0,
+        };
+        let end = match bounds.end_bound() {
+            Bound::Included(b) => *b + 1,
+            Bound::Excluded(b) => *b,
+            Bound::Unbounded => self.num_shader_groups,
+        };
+
+        if end <= start || end > self.num_shader_groups {
+            return Err(DriverError::InvalidData);
+        }
+        let first_group = start;
+        let group_count = end - start;
+
+        // SAFETY:
+        // According to [vulkan spec](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/vkGetRayTracingShaderGroupHandlesKHR.html)
+        // Valid usage of this function requires:
+        // 1. pipeline must be raytracing pipeline.
+        // 2. first_group must be less than the number of shader groups in the pipeline.
+        // 3. the sum of first group and group_count must be less or equal to the number of shader
+        //    modules in the pipeline.
+        // 4. data_size must be at least shader_group_handle_size * group_count.
+        // 5. pipeline must not have been created with VK_PIPELINE_CREATE_LIBRARY_BIT_KHR.
+        //
+        let shader_handle_buf = unsafe {
+            self.device
+                .ray_tracing_pipeline_ext
+                .as_ref()
+                .ok_or(DriverError::Unsupported)?
+                .get_ray_tracing_shader_group_handles(
+                    self.pipeline,
+                    first_group,
+                    group_count,
+                    (group_count * shader_group_handle_size) as usize,
+                )
+        }
+        .ok()
+        .ok_or(DriverError::Unsupported)?;
+
+        Ok(shader_handle_buf)
     }
 }
 
