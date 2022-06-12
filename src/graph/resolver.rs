@@ -12,7 +12,7 @@ use {
             DriverError, FramebufferKey, FramebufferKeyAttachment, Image, ImageViewInfo,
             RenderPass, RenderPassInfo, SampleCount, SubpassDependency, SubpassInfo,
         },
-        hash_pool::{HashPool, Lease},
+        pool::{hash::HashPool, Lease},
     },
     ash::vk,
     log::{debug, trace},

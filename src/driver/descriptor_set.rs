@@ -122,7 +122,11 @@ impl Drop for DescriptorPool {
 }
 
 #[derive(Builder, Clone, Debug, Eq, Hash, PartialEq)]
-#[builder(pattern = "owned", derive(Debug))]
+#[builder(
+    build_fn(private, name = "fallible_build"),
+    pattern = "owned",
+    derive(Debug)
+)]
 pub struct DescriptorPoolInfo {
     pub max_sets: u32,
     pub pool_sizes: Vec<DescriptorPoolSize>,
@@ -135,9 +139,17 @@ impl DescriptorPoolInfo {
     }
 }
 
+// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
+impl DescriptorPoolInfoBuilder {
+    pub fn build(self) -> DescriptorPoolInfo {
+        self.fallible_build()
+            .expect("All required fields set at initialization")
+    }
+}
+
 impl From<DescriptorPoolInfoBuilder> for DescriptorPoolInfo {
     fn from(info: DescriptorPoolInfoBuilder) -> Self {
-        info.build().unwrap()
+        info.build()
     }
 }
 

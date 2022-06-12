@@ -1,26 +1,18 @@
 use {
+    super::{Cache, Contract, Lease},
     crate::driver::{
         AccelerationStructure, AccelerationStructureInfo, AccelerationStructureInfoBuilder, Buffer,
         BufferInfo, BufferInfoBuilder, CommandBuffer, DescriptorPool, DescriptorPoolInfo,
         DescriptorPoolInfoBuilder, Device, DriverError, Image, ImageInfo, ImageInfoBuilder,
         QueueFamily, RenderPass, RenderPassInfo, RenderPassInfoBuilder,
     },
-    log::warn,
     parking_lot::Mutex,
     std::{
         collections::{HashMap, VecDeque},
         fmt::Debug,
-        ops::{Deref, DerefMut},
         sync::Arc,
-        thread::panicking,
     },
 };
-
-type Cache<T> = Arc<Mutex<VecDeque<T>>>;
-
-pub trait Contract {
-    type Term;
-}
 
 #[derive(Debug)]
 pub struct HashPool {
@@ -55,59 +47,6 @@ impl HashPool {
         C: Contract + Debug,
     {
         info.lease(self)
-    }
-}
-
-#[derive(Debug)]
-pub struct Lease<T> {
-    cache: Option<Cache<T>>,
-    item: Option<T>,
-}
-
-impl<T> AsRef<T> for Lease<T> {
-    fn as_ref(&self) -> &T {
-        &*self
-    }
-}
-
-impl<T> AsMut<T> for Lease<T> {
-    fn as_mut(&mut self) -> &mut T {
-        &mut *self
-    }
-}
-
-impl<T> Deref for Lease<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        self.item.as_ref().unwrap()
-    }
-}
-
-impl<T> DerefMut for Lease<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.item.as_mut().unwrap()
-    }
-}
-
-impl<T> Drop for Lease<T> {
-    fn drop(&mut self) {
-        if panicking() {
-            return;
-        }
-
-        if let Some(cache) = self.cache.as_ref() {
-            let mut cache = cache.lock();
-
-            // TODO: I'm sure some better logic would be handy
-            if cache.len() < 8 {
-                cache.push_back(self.item.take().unwrap());
-            } else {
-                // TODO: Better design for this - we are dropping these extra resources to avoid
-                // bigger issues - but this is just a symptom really - hasn't been a priority yet
-                warn!("hash pool build-up");
-            }
-        }
     }
 }
 
@@ -285,56 +224,4 @@ macro_rules! lease_info_binding {
 lease_info_binding!(AccelerationStructureInfo => AccelerationStructure);
 lease_info_binding!(BufferInfo => Buffer);
 lease_info_binding!(ImageInfo => Image);
-
-// Enable types of leases where the item is a shared item (these can be dangerous!!)
-macro_rules! shared_lease {
-    ($src:ident -> $dst:ident) => {
-        impl Contract for $src {
-            type Term = $dst;
-        }
-
-        paste::paste! {
-            impl Pooled<Lease<$dst>> for $src {
-                fn lease(self, pool: &mut HashPool) -> Result<Lease<$dst>, DriverError> {
-                    let cache = pool.[<$dst:snake _cache>].entry(self.clone())
-                        .or_insert_with(|| {
-                            Arc::new(Mutex::new(VecDeque::new()))
-                        });
-                    let cache_ref = Arc::clone(cache);
-                    let mut cache = cache.lock();
-
-                    Ok(if let item @ Some(_) = cache.pop_front() {
-                        Lease {
-                            cache: Some(cache_ref),
-                            item,
-                        }
-                    } else {
-                        Lease {
-                            cache: Some(cache_ref),
-                            item: Some($dst::create(&pool.device, self)?),
-                        }
-                    })
-                }
-            }
-
-            impl Contract for [<$src Builder>] {
-                type Term = $dst;
-            }
-
-            impl Pooled<Lease<$dst>> for [<$src Builder>] {
-                fn lease(self, pool: &mut HashPool) -> Result<Lease<$dst>, DriverError> {
-                    let desc = self.build();
-
-                    // We will unwrap the description builder - it may panic!
-                    assert!(desc.is_ok(), "Invalid pool resource description: {:#?}", desc);
-
-                    desc.unwrap().lease(pool)
-                }
-            }
-        }
-    };
-}
-
-// These items need to be leased and then shared around - don't drop the lease while there are still
-// shares floating around out there or their new lease owner may do something like reset the pool.
-shared_lease!(DescriptorPoolInfo -> DescriptorPool);
+lease_info_binding!(DescriptorPoolInfo => DescriptorPool);

@@ -9,7 +9,7 @@ use {
             AccelerationStructure, Buffer, ComputePipeline, GraphicPipeline, Image,
             RayTracePipeline, SwapchainImage,
         },
-        hash_pool::Lease,
+        pool::Lease,
     },
     std::sync::Arc,
 };

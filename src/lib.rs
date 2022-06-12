@@ -3,12 +3,12 @@
 
 pub mod driver;
 pub mod graph;
+pub mod pool;
 
 mod device_api;
 mod display;
 mod event_loop;
 mod frame;
-mod hash_pool;
 mod input;
 
 /// Things which are used in almost every single _Screen 13_ program.
@@ -25,10 +25,10 @@ pub mod prelude {
                 AnyImageNode, Bind, BufferLeaseNode, BufferNode, ImageLeaseNode, ImageNode,
                 PassRef, PipelinePassRef, RenderGraph, SwapchainImageNode,
             },
-            hash_pool::{HashPool, Lease},
             input::{
                 update_input, update_keyboard, update_mouse, KeyBuf, KeyMap, MouseBuf, MouseButton,
             },
+            pool::{hash::HashPool, Lease},
         },
         log::{debug, error, info, logger, trace, warn}, // Everyone wants a log
         winit::{
@@ -49,5 +49,4 @@ pub use self::{
     display::{Display, DisplayError},
     event_loop::{run, EventLoop, EventLoopBuilder, FullscreenMode},
     frame::FrameContext,
-    hash_pool::{HashPool, Lease},
 };
