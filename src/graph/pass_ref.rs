@@ -35,15 +35,15 @@ pub struct Acceleration<'a> {
 impl<'a> Acceleration<'a> {
     pub fn update_structure(
         &self,
-        src_node: impl Into<AnyAccelerationStructureNode>,
-        dst_node: impl Into<AnyAccelerationStructureNode>,
+        src_accel_node: impl Into<AnyAccelerationStructureNode>,
+        dst_accel_node: impl Into<AnyAccelerationStructureNode>,
         scratch_buf_node: impl Into<AnyBufferNode>,
         build_info: AccelerationStructureGeometryInfo,
         build_ranges: &[vk::AccelerationStructureBuildRangeInfoKHR],
     ) {
         use std::slice::from_ref;
-        let src_node = src_node.into();
-        let dst_node = dst_node.into();
+        let src_accel_node = src_accel_node.into();
+        let dst_accel_node = dst_accel_node.into();
         let scratch_buf_node = scratch_buf_node.into();
 
         unsafe {
@@ -150,8 +150,8 @@ impl<'a> Acceleration<'a> {
                     .flags(build_info.flags)
                     .mode(vk::BuildAccelerationStructureModeKHR::UPDATE)
                     .geometries(&tls.geometries)
-                    .dst_acceleration_structure(*self.bindings[dst_node])
-                    .src_acceleration_structure(*self.bindings[src_node])
+                    .dst_acceleration_structure(*self.bindings[dst_accel_node])
+                    .src_acceleration_structure(*self.bindings[src_accel_node])
                     .scratch_data(vk::DeviceOrHostAddressKHR {
                         device_address: Buffer::device_address(&self.bindings[scratch_buf_node]),
                     });
