@@ -518,35 +518,16 @@ fn main() -> anyhow::Result<()> {
         )
         .unwrap();
 
-        let shader_handle_buf = unsafe {
-            event_loop
-                .device
-                .ray_tracing_pipeline_ext
-                .as_ref()
-                .unwrap()
-                .get_ray_tracing_shader_group_handles(
-                    **ray_trace_pipeline,
-                    0,
-                    4,
-                    4 * shader_group_handle_size as usize,
-                )
-        }?;
-        let handle = |idx: usize| -> &[u8] {
-            let start = idx * shader_group_handle_size as usize;
-            let end = start + shader_group_handle_size as usize;
-            &shader_handle_buf[start..end]
-        };
-
         let mut data = Buffer::mapped_slice_mut(&mut buf);
         data.fill(0);
 
-        let rgen_handle = handle(0);
+        let rgen_handle = ray_trace_pipeline.group_handle(0)?;
         data[0..rgen_handle.len()].copy_from_slice(rgen_handle);
         data = &mut data[sbt_rgen_size as _..];
 
         // If hit/miss had different strides we would need to iterate each here
         for idx in 1..4 {
-            let handle = handle(idx);
+            let handle = ray_trace_pipeline.group_handle(idx)?;
             data[0..handle.len()].copy_from_slice(handle);
             data = &mut data[sbt_handle_size as _..];
         }
