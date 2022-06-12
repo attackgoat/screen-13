@@ -20,7 +20,8 @@ pub use {
         accel_struct::{
             AccelerationStructure, AccelerationStructureGeometry,
             AccelerationStructureGeometryData, AccelerationStructureGeometryInfo,
-            AccelerationStructureInfo, AccelerationStructureInfoBuilder, DeviceOrHostAddress,
+            AccelerationStructureInfo, AccelerationStructureInfoBuilder, AccelerationStructureSize,
+            DeviceOrHostAddress,
         },
         buffer::{Buffer, BufferInfo, BufferInfoBuilder, BufferSubresource},
         cmd_buf::CommandBuffer,

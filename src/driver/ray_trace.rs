@@ -1,5 +1,8 @@
 use {
-    super::{DescriptorBindingMap, Device, DriverError, PipelineDescriptorInfo, Shader},
+    super::{
+        DescriptorBindingMap, Device, DriverError, PhysicalDeviceRayTracePipelineProperties,
+        PipelineDescriptorInfo, Shader,
+    },
     ash::vk,
     derive_builder::Builder,
     log::warn,
@@ -15,6 +18,7 @@ pub struct RayTracePipeline {
     pub layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
     shader_modules: Vec<vk::ShaderModule>,
+    shader_group_handles: Vec<u8>,
 }
 
 impl RayTracePipeline {
@@ -32,6 +36,7 @@ impl RayTracePipeline {
             .into_iter()
             .map(|shader_group| shader_group.into())
             .collect::<Vec<_>>();
+        let group_count = shader_groups.len();
 
         let shaders = shaders
             .into_iter()
@@ -160,6 +165,38 @@ impl RayTracePipeline {
                 })?[0];
             let device = Arc::clone(device);
 
+            let &PhysicalDeviceRayTracePipelineProperties {
+                shader_group_handle_size,
+                ..
+            } = device
+                .ray_tracing_pipeline_properties
+                .as_ref()
+                .ok_or(DriverError::Unsupported)?;
+
+            let ray_tracing_pipeline_ext = device
+                .ray_tracing_pipeline_ext
+                .as_ref()
+                .ok_or(DriverError::Unsupported)?;
+            // SAFETY:
+            // According to [vulkan spec](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/vkGetRayTracingShaderGroupHandlesKHR.html)
+            // Valid usage of this function requires:
+            // 1. pipeline must be raytracing pipeline.
+            // 2. first_group must be less than the number of shader groups in the pipeline.
+            // 3. the sum of first group and group_count must be less or equal to the number of shader
+            //    modules in the pipeline.
+            // 4. data_size must be at least shader_group_handle_size * group_count.
+            // 5. pipeline must not have been created with VK_PIPELINE_CREATE_LIBRARY_BIT_KHR.
+            //
+            let shader_group_handles = {
+                ray_tracing_pipeline_ext.get_ray_tracing_shader_group_handles(
+                    pipeline,
+                    0,
+                    group_count as u32,
+                    group_count * shader_group_handle_size as usize,
+                )
+            }
+            .map_err(|_| DriverError::InvalidData)?;
+
             Ok(Self {
                 descriptor_bindings,
                 descriptor_info,
@@ -168,8 +205,26 @@ impl RayTracePipeline {
                 layout,
                 pipeline,
                 shader_modules,
+                shader_group_handles,
             })
         }
+    }
+    ///
+    /// Function returning a handle to a shader group of this pipeline.
+    /// This can be used to construct a sbt.
+    ///
+    pub fn group_handle(&self, idx: usize) -> Result<&[u8], DriverError> {
+        let &PhysicalDeviceRayTracePipelineProperties {
+            shader_group_handle_size,
+            ..
+        } = self
+            .device
+            .ray_tracing_pipeline_properties
+            .as_ref()
+            .ok_or(DriverError::Unsupported)?;
+        let start = idx * shader_group_handle_size as usize;
+        let end = start + shader_group_handle_size as usize;
+        Ok(&self.shader_group_handles[start..end])
     }
 }
 
