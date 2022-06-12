@@ -33,6 +33,141 @@ pub struct Acceleration<'a> {
 }
 
 impl<'a> Acceleration<'a> {
+    pub fn update_structure(
+        &self,
+        src_node: impl Into<AnyAccelerationStructureNode>,
+        dst_node: impl Into<AnyAccelerationStructureNode>,
+        scratch_buf_node: impl Into<AnyBufferNode>,
+        build_info: AccelerationStructureGeometryInfo,
+        build_ranges: &[vk::AccelerationStructureBuildRangeInfoKHR],
+    ) {
+        use std::slice::from_ref;
+        let src_node = src_node.into();
+        let dst_node = dst_node.into();
+        let scratch_buf_node = scratch_buf_node.into();
+
+        unsafe {
+            #[derive(Default)]
+            struct Tls {
+                geometries: Vec<vk::AccelerationStructureGeometryKHR>,
+                max_primitive_counts: Vec<u32>,
+            }
+
+            thread_local! {
+                static TLS: RefCell<Tls> = Default::default();
+            }
+
+            TLS.with(|tls| {
+                let mut tls = tls.borrow_mut();
+                tls.geometries.clear();
+                tls.max_primitive_counts.clear();
+
+                for info in build_info.geometries.iter() {
+                    let flags = info.flags;
+
+                    let (geometry_type, geometry) = match &info.geometry {
+                        &AccelerationStructureGeometryData::AABBs { stride } => (
+                            vk::GeometryTypeKHR::AABBS,
+                            vk::AccelerationStructureGeometryDataKHR {
+                                aabbs: vk::AccelerationStructureGeometryAabbsDataKHR {
+                                    stride,
+                                    ..Default::default()
+                                },
+                            },
+                        ),
+                        &AccelerationStructureGeometryData::Instances {
+                            array_of_pointers,
+                            data,
+                        } => (
+                            vk::GeometryTypeKHR::INSTANCES,
+                            vk::AccelerationStructureGeometryDataKHR {
+                                instances: vk::AccelerationStructureGeometryInstancesDataKHR {
+                                    array_of_pointers: array_of_pointers as _,
+                                    data: match data {
+                                        DeviceOrHostAddress::DeviceAddress(device_address) => {
+                                            vk::DeviceOrHostAddressConstKHR { device_address }
+                                        }
+                                        DeviceOrHostAddress::HostAddress => todo!(),
+                                    },
+                                    ..Default::default()
+                                },
+                            },
+                        ),
+                        &AccelerationStructureGeometryData::Triangles {
+                            index_data,
+                            index_type,
+                            max_vertex,
+                            transform_data,
+                            vertex_data,
+                            vertex_format,
+                            vertex_stride,
+                        } => (
+                            vk::GeometryTypeKHR::TRIANGLES,
+                            vk::AccelerationStructureGeometryDataKHR {
+                                triangles: vk::AccelerationStructureGeometryTrianglesDataKHR {
+                                    index_data: match index_data {
+                                        DeviceOrHostAddress::DeviceAddress(device_address) => {
+                                            vk::DeviceOrHostAddressConstKHR { device_address }
+                                        }
+                                        DeviceOrHostAddress::HostAddress => todo!(),
+                                    },
+                                    index_type,
+                                    max_vertex,
+                                    transform_data: match transform_data {
+                                        Some(DeviceOrHostAddress::DeviceAddress(
+                                            device_address,
+                                        )) => vk::DeviceOrHostAddressConstKHR { device_address },
+                                        Some(DeviceOrHostAddress::HostAddress) => todo!(),
+                                        None => {
+                                            vk::DeviceOrHostAddressConstKHR { device_address: 0 }
+                                        }
+                                    },
+                                    vertex_data: match vertex_data {
+                                        DeviceOrHostAddress::DeviceAddress(device_address) => {
+                                            vk::DeviceOrHostAddressConstKHR { device_address }
+                                        }
+                                        DeviceOrHostAddress::HostAddress => todo!(),
+                                    },
+                                    vertex_format,
+                                    vertex_stride,
+                                    ..Default::default()
+                                },
+                            },
+                        ),
+                    };
+
+                    tls.geometries.push(vk::AccelerationStructureGeometryKHR {
+                        flags,
+                        geometry_type,
+                        geometry,
+                        ..Default::default()
+                    });
+                    tls.max_primitive_counts.push(info.max_primitive_count);
+                }
+
+                let info = vk::AccelerationStructureBuildGeometryInfoKHR::builder()
+                    .ty(build_info.ty)
+                    .flags(build_info.flags)
+                    .mode(vk::BuildAccelerationStructureModeKHR::UPDATE)
+                    .geometries(&tls.geometries)
+                    .dst_acceleration_structure(*self.bindings[dst_node])
+                    .src_acceleration_structure(*self.bindings[src_node])
+                    .scratch_data(vk::DeviceOrHostAddressKHR {
+                        device_address: Buffer::device_address(&self.bindings[scratch_buf_node]),
+                    });
+
+                self.device
+                    .accel_struct_ext
+                    .as_ref()
+                    .unwrap()
+                    .cmd_build_acceleration_structures(
+                        self.cmd_buf,
+                        from_ref(&info),
+                        from_ref(&build_ranges),
+                    );
+            });
+        }
+    }
     pub fn build_structure(
         &self,
         accel_struct_node: impl Into<AnyAccelerationStructureNode>,
