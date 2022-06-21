@@ -2203,8 +2203,14 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
 
 impl<'a> PipelinePassRef<'a, RayTracePipeline> {
     pub fn record_ray_trace(mut self, func: impl FnOnce(RayTrace<'_>) + Send + 'static) -> Self {
+        let exec = self.pass.as_ref().execs.last().unwrap();
+        let pipeline = exec.pipeline.as_ref().unwrap().unwrap_ray_trace().clone();
         self.pass.push_execute(move |device, cmd_buf, _bindings| {
-            func(RayTrace { cmd_buf, device });
+            func(RayTrace {
+                cmd_buf,
+                device,
+                pipeline,
+            });
         });
 
         self
@@ -2214,9 +2220,42 @@ impl<'a> PipelinePassRef<'a, RayTracePipeline> {
 pub struct RayTrace<'a> {
     cmd_buf: vk::CommandBuffer,
     device: &'a Device,
+    pipeline: Arc<RayTracePipeline>,
 }
 
 impl<'a> RayTrace<'a> {
+    pub fn push_constants(&self, data: &[u8]) -> &Self {
+        self.push_constants_offset(0, data)
+    }
+    pub fn push_constants_offset(&self, offset: u32, data: &[u8]) -> &Self {
+        for push_const in &self.pipeline.push_constants {
+            let push_const_end = push_const.offset + push_const.size;
+            let data_end = offset + data.len() as u32;
+            let end = data_end.min(push_const_end);
+            let start = offset.max(push_const.offset);
+
+            if end > start {
+                trace!(
+                    "      push constants {:?} {}..{}",
+                    push_const.stage_flags,
+                    start,
+                    end
+                );
+                trace!("data: {:#?}", data);
+
+                unsafe {
+                    self.device.cmd_push_constants(
+                        self.cmd_buf,
+                        self.pipeline.layout,
+                        push_const.stage_flags,
+                        start,
+                        &data[(start - offset) as usize..(end - offset) as usize],
+                    );
+                }
+            }
+        }
+        self
+    }
     // TODO: If the rayTraversalPrimitiveCulling or rayQuery features are enabled, the SkipTrianglesKHR and SkipAABBsKHR ray flags can be specified when tracing a ray. SkipTrianglesKHR and SkipAABBsKHR are mutually exclusive.
 
     #[allow(clippy::too_many_arguments)]

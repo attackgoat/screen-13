@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use {
     super::{
         DescriptorBindingMap, Device, DriverError, PhysicalDeviceRayTracePipelineProperties,
@@ -5,7 +7,7 @@ use {
     },
     ash::vk,
     derive_builder::Builder,
-    log::warn,
+    log::{trace, warn},
     std::{ffi::CString, ops::Deref, sync::Arc, thread::panicking},
 };
 
@@ -16,6 +18,7 @@ pub struct RayTracePipeline {
     device: Arc<Device>,
     pub info: RayTracePipelineInfo,
     pub layout: vk::PipelineLayout,
+    pub push_constants: Vec<vk::PushConstantRange>,
     pipeline: vk::Pipeline,
     shader_modules: Vec<vk::ShaderModule>,
     shader_group_handles: Vec<u8>,
@@ -42,6 +45,11 @@ impl RayTracePipeline {
             .into_iter()
             .map(|shader| shader.into())
             .collect::<Vec<Shader>>();
+        let mut push_constants = shaders
+            .iter()
+            .map(|shader| shader.push_constant_range())
+            .filter_map(|mut push_const| push_const.take())
+            .collect::<Vec<_>>();
 
         // Use SPIR-V reflection to get the types and counts of all descriptors
         let mut descriptor_bindings = Shader::merge_descriptor_bindings(
@@ -66,7 +74,8 @@ impl RayTracePipeline {
             let layout = device
                 .create_pipeline_layout(
                     &vk::PipelineLayoutCreateInfo::builder()
-                        .set_layouts(&descriptor_set_layout_handles),
+                        .set_layouts(&descriptor_set_layout_handles)
+                        .push_constant_ranges(&push_constants),
                     None,
                 )
                 .map_err(|err| {
@@ -177,6 +186,51 @@ impl RayTracePipeline {
                 .ray_tracing_pipeline_ext
                 .as_ref()
                 .ok_or(DriverError::Unsupported)?;
+
+            if push_constants.len() > 1 {
+                push_constants.sort_unstable_by(|lhs, rhs| match lhs.offset.cmp(&rhs.offset) {
+                    Ordering::Equal => lhs.size.cmp(&rhs.size),
+                    res => res,
+                });
+
+                let mut idx = 0;
+                while idx + 1 < push_constants.len() {
+                    let curr = push_constants[idx];
+                    let next = push_constants[idx + 1];
+                    let curr_end = curr.offset + curr.size;
+
+                    // Check for overlapping push constant ranges; combine them and move the next
+                    // one so it no longer overlaps
+                    if curr_end > next.offset {
+                        push_constants[idx].stage_flags |= next.stage_flags;
+
+                        idx += 1;
+                        push_constants[idx].offset = curr_end;
+                        push_constants[idx].size -= curr_end - next.offset;
+                    }
+
+                    idx += 1;
+                }
+
+                for pcr in &push_constants {
+                    trace!(
+                        "effective push constants: {:?} {}..{}",
+                        pcr.stage_flags,
+                        pcr.offset,
+                        pcr.offset + pcr.size
+                    );
+                }
+            } else {
+                for pcr in &push_constants {
+                    trace!(
+                        "detected push constants: {:?} {}..{}",
+                        pcr.stage_flags,
+                        pcr.offset,
+                        pcr.offset + pcr.size
+                    );
+                }
+            }
+
             // SAFETY:
             // According to [vulkan spec](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/vkGetRayTracingShaderGroupHandlesKHR.html)
             // Valid usage of this function requires:
@@ -203,6 +257,7 @@ impl RayTracePipeline {
                 device,
                 info,
                 layout,
+                push_constants,
                 pipeline,
                 shader_modules,
                 shader_group_handles,
