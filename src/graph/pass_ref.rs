@@ -61,15 +61,7 @@ impl<'a> Acceleration<'a> {
                 tls.max_primitive_counts.clear();
 
                 for info in build_info.geometries.iter() {
-                    let flags = info.flags;
-                    let (geometry_type, geometry) = info.into_vk();
-
-                    tls.geometries.push(vk::AccelerationStructureGeometryKHR {
-                        flags,
-                        geometry_type,
-                        geometry,
-                        ..Default::default()
-                    });
+                    tls.geometries.push(info.into_vk());
                     tls.max_primitive_counts.push(info.max_primitive_count);
                 }
 
@@ -127,15 +119,7 @@ impl<'a> Acceleration<'a> {
                 tls.max_primitive_counts.clear();
 
                 for info in build_info.geometries.iter() {
-                    let flags = info.flags;
-                    let (geometry_type, geometry) = info.into_vk();
-
-                    tls.geometries.push(vk::AccelerationStructureGeometryKHR {
-                        flags,
-                        geometry_type,
-                        geometry,
-                        ..Default::default()
-                    });
+                    tls.geometries.push(info.into_vk());
                     tls.max_primitive_counts.push(info.max_primitive_count);
                 }
 

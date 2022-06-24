@@ -232,12 +232,7 @@ pub struct AccelerationStructureGeometry {
 }
 
 impl AccelerationStructureGeometry {
-    pub fn into_vk(
-        &self,
-    ) -> (
-        vk::GeometryTypeKHR,
-        vk::AccelerationStructureGeometryDataKHR,
-    ) {
+    pub fn into_vk(&self) -> vk::AccelerationStructureGeometryKHR {
         let (geometry_type, geometry) = match &self.geometry {
             &AccelerationStructureGeometryData::AABBs { stride } => (
                 vk::GeometryTypeKHR::AABBS,
@@ -306,7 +301,14 @@ impl AccelerationStructureGeometry {
                 },
             ),
         };
-        (geometry_type, geometry)
+        let flags = self.flags;
+
+        vk::AccelerationStructureGeometryKHR {
+            flags,
+            geometry_type,
+            geometry,
+            ..Default::default()
+        }
     }
 }
 
