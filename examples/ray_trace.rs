@@ -125,7 +125,7 @@ static SHADER_CLOSEST_HIT: &[u32] = inline_spirv!(
 
     layout(binding = 2, set = 0) buffer IndexBuffer {
         uint data[];
-    } indexBuffer[];
+    } indexBuffer;
     layout(binding = 3, set = 0) buffer VertexBuffer {
         float data[];
     } vertexBuffer;
@@ -162,9 +162,9 @@ static SHADER_CLOSEST_HIT: &[u32] = inline_spirv!(
             return;
         }
 
-        ivec3 indices = ivec3(indexBuffer[0].data[3 * gl_PrimitiveID + 0],
-                              indexBuffer[0].data[3 * gl_PrimitiveID + 1],
-                              indexBuffer[0].data[3 * gl_PrimitiveID + 2]);
+        ivec3 indices = ivec3(indexBuffer.data[3 * gl_PrimitiveID + 0],
+                              indexBuffer.data[3 * gl_PrimitiveID + 1],
+                              indexBuffer.data[3 * gl_PrimitiveID + 2]);
 
         vec3 barycentric = vec3(1.0 - hitCoordinate.x - hitCoordinate.y,
                                 hitCoordinate.x,
@@ -202,9 +202,9 @@ static SHADER_CLOSEST_HIT: &[u32] = inline_spirv!(
                 int(random(gl_LaunchIDEXT.xy, camera.frameCount) * 2 + 40);
             vec3 lightColor = vec3(0.6, 0.6, 0.6);
 
-            ivec3 lightIndices = ivec3(indexBuffer[0].data[3 * randomIndex + 0],
-                                       indexBuffer[0].data[3 * randomIndex + 1],
-                                       indexBuffer[0].data[3 * randomIndex + 2]);
+            ivec3 lightIndices = ivec3(indexBuffer.data[3 * randomIndex + 0],
+                                       indexBuffer.data[3 * randomIndex + 1],
+                                       indexBuffer.data[3 * randomIndex + 2]);
 
             vec3 lightVertexA = vec3(vertexBuffer.data[3 * lightIndices.x + 0],
                                      vertexBuffer.data[3 * lightIndices.x + 1],
@@ -850,11 +850,7 @@ fn main() -> anyhow::Result<()> {
                 AccessType::RayTracingShaderReadAccelerationStructure,
             )
             .access_descriptor(1, camera_buf, AccessType::RayTracingShaderReadOther)
-            .access_descriptor(
-                (0, 2, [0]),
-                index_buf_node,
-                AccessType::RayTracingShaderReadOther,
-            )
+            .access_descriptor(2, index_buf_node, AccessType::RayTracingShaderReadOther)
             .access_descriptor(3, vertex_buf_node, AccessType::RayTracingShaderReadOther)
             .write_descriptor(4, image_node)
             .access_descriptor(
