@@ -231,6 +231,85 @@ pub struct AccelerationStructureGeometry {
     pub geometry: AccelerationStructureGeometryData,
 }
 
+impl AccelerationStructureGeometry {
+    pub fn into_vk(
+        &self,
+    ) -> (
+        vk::GeometryTypeKHR,
+        vk::AccelerationStructureGeometryDataKHR,
+    ) {
+        let (geometry_type, geometry) = match &self.geometry {
+            &AccelerationStructureGeometryData::AABBs { stride } => (
+                vk::GeometryTypeKHR::AABBS,
+                vk::AccelerationStructureGeometryDataKHR {
+                    aabbs: vk::AccelerationStructureGeometryAabbsDataKHR {
+                        stride,
+                        ..Default::default()
+                    },
+                },
+            ),
+            &AccelerationStructureGeometryData::Instances {
+                array_of_pointers,
+                data,
+            } => (
+                vk::GeometryTypeKHR::INSTANCES,
+                vk::AccelerationStructureGeometryDataKHR {
+                    instances: vk::AccelerationStructureGeometryInstancesDataKHR {
+                        array_of_pointers: array_of_pointers as _,
+                        data: match data {
+                            DeviceOrHostAddress::DeviceAddress(device_address) => {
+                                vk::DeviceOrHostAddressConstKHR { device_address }
+                            }
+                            DeviceOrHostAddress::HostAddress => todo!(),
+                        },
+                        ..Default::default()
+                    },
+                },
+            ),
+            &AccelerationStructureGeometryData::Triangles {
+                index_data,
+                index_type,
+                max_vertex,
+                transform_data,
+                vertex_data,
+                vertex_format,
+                vertex_stride,
+            } => (
+                vk::GeometryTypeKHR::TRIANGLES,
+                vk::AccelerationStructureGeometryDataKHR {
+                    triangles: vk::AccelerationStructureGeometryTrianglesDataKHR {
+                        index_data: match index_data {
+                            DeviceOrHostAddress::DeviceAddress(device_address) => {
+                                vk::DeviceOrHostAddressConstKHR { device_address }
+                            }
+                            DeviceOrHostAddress::HostAddress => todo!(),
+                        },
+                        index_type,
+                        max_vertex,
+                        transform_data: match transform_data {
+                            Some(DeviceOrHostAddress::DeviceAddress(device_address)) => {
+                                vk::DeviceOrHostAddressConstKHR { device_address }
+                            }
+                            Some(DeviceOrHostAddress::HostAddress) => todo!(),
+                            None => vk::DeviceOrHostAddressConstKHR { device_address: 0 },
+                        },
+                        vertex_data: match vertex_data {
+                            DeviceOrHostAddress::DeviceAddress(device_address) => {
+                                vk::DeviceOrHostAddressConstKHR { device_address }
+                            }
+                            DeviceOrHostAddress::HostAddress => todo!(),
+                        },
+                        vertex_format,
+                        vertex_stride,
+                        ..Default::default()
+                    },
+                },
+            ),
+        };
+        (geometry_type, geometry)
+    }
+}
+
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct AccelerationStructureGeometryInfo {
     pub ty: vk::AccelerationStructureTypeKHR,
