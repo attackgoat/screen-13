@@ -1,13 +1,11 @@
-use std::cmp::Ordering;
-
 use {
     super::{
-        DescriptorBindingMap, Device, DriverError, PhysicalDeviceRayTracePipelineProperties,
-        PipelineDescriptorInfo, Shader,
+        merge_push_constant_ranges, DescriptorBindingMap, Device, DriverError,
+        PhysicalDeviceRayTracePipelineProperties, PipelineDescriptorInfo, Shader,
     },
     ash::vk,
     derive_builder::Builder,
-    log::{trace, warn},
+    log::warn,
     std::{ffi::CString, ops::Deref, sync::Arc, thread::panicking},
 };
 
@@ -187,49 +185,7 @@ impl RayTracePipeline {
                 .as_ref()
                 .ok_or(DriverError::Unsupported)?;
 
-            if push_constants.len() > 1 {
-                push_constants.sort_unstable_by(|lhs, rhs| match lhs.offset.cmp(&rhs.offset) {
-                    Ordering::Equal => lhs.size.cmp(&rhs.size),
-                    res => res,
-                });
-
-                let mut idx = 0;
-                while idx + 1 < push_constants.len() {
-                    let curr = push_constants[idx];
-                    let next = push_constants[idx + 1];
-                    let curr_end = curr.offset + curr.size;
-
-                    // Check for overlapping push constant ranges; combine them and move the next
-                    // one so it no longer overlaps
-                    if curr_end > next.offset {
-                        push_constants[idx].stage_flags |= next.stage_flags;
-
-                        idx += 1;
-                        push_constants[idx].offset = curr_end;
-                        push_constants[idx].size -= curr_end - next.offset;
-                    }
-
-                    idx += 1;
-                }
-
-                for pcr in &push_constants {
-                    trace!(
-                        "effective push constants: {:?} {}..{}",
-                        pcr.stage_flags,
-                        pcr.offset,
-                        pcr.offset + pcr.size
-                    );
-                }
-            } else {
-                for pcr in &push_constants {
-                    trace!(
-                        "detected push constants: {:?} {}..{}",
-                        pcr.stage_flags,
-                        pcr.offset,
-                        pcr.offset + pcr.size
-                    );
-                }
-            }
+            merge_push_constant_ranges(&mut push_constants);
 
             // SAFETY:
             // According to [vulkan spec](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/vkGetRayTracingShaderGroupHandlesKHR.html)
