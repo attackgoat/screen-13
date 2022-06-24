@@ -487,8 +487,7 @@ impl Resolver {
         let max_descriptor_set_idx = pass
             .execs
             .iter()
-            .map(|exec| exec.bindings.keys())
-            .flatten()
+            .flat_map(|exec| exec.bindings.keys())
             .map(|descriptor| descriptor.set())
             .max()
             .unwrap_or_default();
