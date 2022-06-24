@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2022-06-24
+
+### Added
+
+- `update_structure` function for acceleration structures
+- `group_handle` function for ray trace pipelines
+
 ## [0.4.0] - 2022-06-06
 
 _See [#25](https://github.com/attackgoat/screen-13/pull/25) for migration details_
@@ -122,3 +129,4 @@ _See [#25](https://github.com/attackgoat/screen-13/pull/25) for migration detail
 [0.3.1]: https://crates.io/crates/screen-13/0.3.1
 [0.3.2]: https://crates.io/crates/screen-13/0.3.2
 [0.4.0]: https://crates.io/crates/screen-13/0.4.0
+[0.4.1]: https://github.com/attackgoat/screen-13/commit/9b739ac4652fa1326e6d54e7bae9e58050d7c290
