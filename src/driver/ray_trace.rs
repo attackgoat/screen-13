@@ -1,7 +1,7 @@
 use {
     super::{
-        DescriptorBindingMap, Device, DriverError, PhysicalDeviceRayTracePipelineProperties,
-        PipelineDescriptorInfo, Shader,
+        merge_push_constant_ranges, DescriptorBindingMap, Device, DriverError,
+        PhysicalDeviceRayTracePipelineProperties, PipelineDescriptorInfo, Shader,
     },
     ash::vk,
     derive_builder::Builder,
@@ -16,6 +16,7 @@ pub struct RayTracePipeline {
     device: Arc<Device>,
     pub info: RayTracePipelineInfo,
     pub layout: vk::PipelineLayout,
+    pub push_constants: Vec<vk::PushConstantRange>,
     pipeline: vk::Pipeline,
     shader_modules: Vec<vk::ShaderModule>,
     shader_group_handles: Vec<u8>,
@@ -42,6 +43,11 @@ impl RayTracePipeline {
             .into_iter()
             .map(|shader| shader.into())
             .collect::<Vec<Shader>>();
+        let mut push_constants = shaders
+            .iter()
+            .map(|shader| shader.push_constant_range())
+            .filter_map(|mut push_const| push_const.take())
+            .collect::<Vec<_>>();
 
         // Use SPIR-V reflection to get the types and counts of all descriptors
         let mut descriptor_bindings = Shader::merge_descriptor_bindings(
@@ -66,7 +72,8 @@ impl RayTracePipeline {
             let layout = device
                 .create_pipeline_layout(
                     &vk::PipelineLayoutCreateInfo::builder()
-                        .set_layouts(&descriptor_set_layout_handles),
+                        .set_layouts(&descriptor_set_layout_handles)
+                        .push_constant_ranges(&push_constants),
                     None,
                 )
                 .map_err(|err| {
@@ -177,6 +184,9 @@ impl RayTracePipeline {
                 .ray_tracing_pipeline_ext
                 .as_ref()
                 .ok_or(DriverError::Unsupported)?;
+
+            merge_push_constant_ranges(&mut push_constants);
+
             // SAFETY:
             // According to [vulkan spec](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/vkGetRayTracingShaderGroupHandlesKHR.html)
             // Valid usage of this function requires:
@@ -203,6 +213,7 @@ impl RayTracePipeline {
                 device,
                 info,
                 layout,
+                push_constants,
                 pipeline,
                 shader_modules,
                 shader_group_handles,

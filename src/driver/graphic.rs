@@ -1,13 +1,13 @@
 use {
     super::{
-        DescriptorBindingMap, Device, DriverError, PipelineDescriptorInfo, SampleCount, Shader,
-        SpecializationInfo,
+        merge_push_constant_ranges, DescriptorBindingMap, Device, DriverError,
+        PipelineDescriptorInfo, SampleCount, Shader, SpecializationInfo,
     },
     ash::vk,
     derive_builder::Builder,
     log::{trace, warn},
     ordered_float::OrderedFloat,
-    std::{cmp::Ordering, collections::HashSet, ffi::CString, sync::Arc, thread::panicking},
+    std::{collections::HashSet, ffi::CString, sync::Arc, thread::panicking},
 };
 
 const RGBA_COLOR_COMPONENTS: vk::ColorComponentFlags = vk::ColorComponentFlags::from_raw(
@@ -370,59 +370,7 @@ impl GraphicPipeline {
                 .reduce(|j, k| j | k)
                 .unwrap_or_default();
 
-            // Convert overlapping push constant regions such as this:
-            // VERTEX 0..64
-            // FRAGMENT 0..80
-            //
-            // To this:
-            // VERTEX | FRAGMENT 0..64
-            // FRAGMENT 64..80
-            //
-            // We do this now so that submission doesn't need to check for overlaps
-            // See https://github.com/KhronosGroup/Vulkan-Docs/issues/609
-            if push_constants.len() > 1 {
-                push_constants.sort_unstable_by(|lhs, rhs| match lhs.offset.cmp(&rhs.offset) {
-                    Ordering::Equal => lhs.size.cmp(&rhs.size),
-                    res => res,
-                });
-
-                let mut idx = 0;
-                while idx + 1 < push_constants.len() {
-                    let curr = push_constants[idx];
-                    let next = push_constants[idx + 1];
-                    let curr_end = curr.offset + curr.size;
-
-                    // Check for overlapping push constant ranges; combine them and move the next
-                    // one so it no longer overlaps
-                    if curr_end > next.offset {
-                        push_constants[idx].stage_flags |= next.stage_flags;
-
-                        idx += 1;
-                        push_constants[idx].offset = curr_end;
-                        push_constants[idx].size -= curr_end - next.offset;
-                    }
-
-                    idx += 1;
-                }
-
-                for pcr in &push_constants {
-                    trace!(
-                        "effective push constants: {:?} {}..{}",
-                        pcr.stage_flags,
-                        pcr.offset,
-                        pcr.offset + pcr.size
-                    );
-                }
-            } else {
-                for pcr in &push_constants {
-                    trace!(
-                        "detected push constants: {:?} {}..{}",
-                        pcr.stage_flags,
-                        pcr.offset,
-                        pcr.offset + pcr.size
-                    );
-                }
-            }
+            merge_push_constant_ranges(&mut push_constants);
 
             Ok(Self {
                 descriptor_bindings,

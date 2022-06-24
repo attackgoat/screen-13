@@ -8,9 +8,8 @@ use {
         ViewType,
     },
     crate::driver::{
-        AccelerationStructure, AccelerationStructureGeometryData,
-        AccelerationStructureGeometryInfo, Buffer, ComputePipeline, DepthStencilMode, Device,
-        DeviceOrHostAddress, GraphicPipeline, Image, ImageViewInfo, RayTracePipeline,
+        AccelerationStructure, AccelerationStructureGeometryInfo, Buffer, ComputePipeline,
+        DepthStencilMode, Device, GraphicPipeline, Image, ImageViewInfo, RayTracePipeline,
     },
     ash::vk,
     log::trace,
@@ -62,85 +61,7 @@ impl<'a> Acceleration<'a> {
                 tls.max_primitive_counts.clear();
 
                 for info in build_info.geometries.iter() {
-                    let flags = info.flags;
-
-                    let (geometry_type, geometry) = match &info.geometry {
-                        &AccelerationStructureGeometryData::AABBs { stride } => (
-                            vk::GeometryTypeKHR::AABBS,
-                            vk::AccelerationStructureGeometryDataKHR {
-                                aabbs: vk::AccelerationStructureGeometryAabbsDataKHR {
-                                    stride,
-                                    ..Default::default()
-                                },
-                            },
-                        ),
-                        &AccelerationStructureGeometryData::Instances {
-                            array_of_pointers,
-                            data,
-                        } => (
-                            vk::GeometryTypeKHR::INSTANCES,
-                            vk::AccelerationStructureGeometryDataKHR {
-                                instances: vk::AccelerationStructureGeometryInstancesDataKHR {
-                                    array_of_pointers: array_of_pointers as _,
-                                    data: match data {
-                                        DeviceOrHostAddress::DeviceAddress(device_address) => {
-                                            vk::DeviceOrHostAddressConstKHR { device_address }
-                                        }
-                                        DeviceOrHostAddress::HostAddress => todo!(),
-                                    },
-                                    ..Default::default()
-                                },
-                            },
-                        ),
-                        &AccelerationStructureGeometryData::Triangles {
-                            index_data,
-                            index_type,
-                            max_vertex,
-                            transform_data,
-                            vertex_data,
-                            vertex_format,
-                            vertex_stride,
-                        } => (
-                            vk::GeometryTypeKHR::TRIANGLES,
-                            vk::AccelerationStructureGeometryDataKHR {
-                                triangles: vk::AccelerationStructureGeometryTrianglesDataKHR {
-                                    index_data: match index_data {
-                                        DeviceOrHostAddress::DeviceAddress(device_address) => {
-                                            vk::DeviceOrHostAddressConstKHR { device_address }
-                                        }
-                                        DeviceOrHostAddress::HostAddress => todo!(),
-                                    },
-                                    index_type,
-                                    max_vertex,
-                                    transform_data: match transform_data {
-                                        Some(DeviceOrHostAddress::DeviceAddress(
-                                            device_address,
-                                        )) => vk::DeviceOrHostAddressConstKHR { device_address },
-                                        Some(DeviceOrHostAddress::HostAddress) => todo!(),
-                                        None => {
-                                            vk::DeviceOrHostAddressConstKHR { device_address: 0 }
-                                        }
-                                    },
-                                    vertex_data: match vertex_data {
-                                        DeviceOrHostAddress::DeviceAddress(device_address) => {
-                                            vk::DeviceOrHostAddressConstKHR { device_address }
-                                        }
-                                        DeviceOrHostAddress::HostAddress => todo!(),
-                                    },
-                                    vertex_format,
-                                    vertex_stride,
-                                    ..Default::default()
-                                },
-                            },
-                        ),
-                    };
-
-                    tls.geometries.push(vk::AccelerationStructureGeometryKHR {
-                        flags,
-                        geometry_type,
-                        geometry,
-                        ..Default::default()
-                    });
+                    tls.geometries.push(info.into_vk());
                     tls.max_primitive_counts.push(info.max_primitive_count);
                 }
 
@@ -150,6 +71,65 @@ impl<'a> Acceleration<'a> {
                     .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
                     .geometries(&tls.geometries)
                     .dst_acceleration_structure(*self.bindings[accel_struct_node])
+                    .scratch_data(vk::DeviceOrHostAddressKHR {
+                        device_address: Buffer::device_address(&self.bindings[scratch_buf_node]),
+                    });
+
+                self.device
+                    .accel_struct_ext
+                    .as_ref()
+                    .unwrap()
+                    .cmd_build_acceleration_structures(
+                        self.cmd_buf,
+                        from_ref(&info),
+                        from_ref(&build_ranges),
+                    );
+            });
+        }
+    }
+
+    pub fn update_structure(
+        &self,
+        src_accel_node: impl Into<AnyAccelerationStructureNode>,
+        dst_accel_node: impl Into<AnyAccelerationStructureNode>,
+        scratch_buf_node: impl Into<AnyBufferNode>,
+        build_info: AccelerationStructureGeometryInfo,
+        build_ranges: &[vk::AccelerationStructureBuildRangeInfoKHR],
+    ) {
+        use std::slice::from_ref;
+
+        let src_accel_node = src_accel_node.into();
+        let dst_accel_node = dst_accel_node.into();
+        let scratch_buf_node = scratch_buf_node.into();
+
+        unsafe {
+            #[derive(Default)]
+            struct Tls {
+                geometries: Vec<vk::AccelerationStructureGeometryKHR>,
+                max_primitive_counts: Vec<u32>,
+            }
+
+            thread_local! {
+                static TLS: RefCell<Tls> = Default::default();
+            }
+
+            TLS.with(|tls| {
+                let mut tls = tls.borrow_mut();
+                tls.geometries.clear();
+                tls.max_primitive_counts.clear();
+
+                for info in build_info.geometries.iter() {
+                    tls.geometries.push(info.into_vk());
+                    tls.max_primitive_counts.push(info.max_primitive_count);
+                }
+
+                let info = vk::AccelerationStructureBuildGeometryInfoKHR::builder()
+                    .ty(build_info.ty)
+                    .flags(build_info.flags)
+                    .mode(vk::BuildAccelerationStructureModeKHR::UPDATE)
+                    .geometries(&tls.geometries)
+                    .dst_acceleration_structure(*self.bindings[dst_accel_node])
+                    .src_acceleration_structure(*self.bindings[src_accel_node])
                     .scratch_data(vk::DeviceOrHostAddressKHR {
                         device_address: Buffer::device_address(&self.bindings[scratch_buf_node]),
                     });
@@ -2068,8 +2048,14 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
 
 impl<'a> PipelinePassRef<'a, RayTracePipeline> {
     pub fn record_ray_trace(mut self, func: impl FnOnce(RayTrace<'_>) + Send + 'static) -> Self {
+        let exec = self.pass.as_ref().execs.last().unwrap();
+        let pipeline = exec.pipeline.as_ref().unwrap().unwrap_ray_trace().clone();
         self.pass.push_execute(move |device, cmd_buf, _bindings| {
-            func(RayTrace { cmd_buf, device });
+            func(RayTrace {
+                cmd_buf,
+                device,
+                pipeline,
+            });
         });
 
         self
@@ -2079,9 +2065,42 @@ impl<'a> PipelinePassRef<'a, RayTracePipeline> {
 pub struct RayTrace<'a> {
     cmd_buf: vk::CommandBuffer,
     device: &'a Device,
+    pipeline: Arc<RayTracePipeline>,
 }
 
 impl<'a> RayTrace<'a> {
+    pub fn push_constants(&self, data: &[u8]) -> &Self {
+        self.push_constants_offset(0, data)
+    }
+    pub fn push_constants_offset(&self, offset: u32, data: &[u8]) -> &Self {
+        for push_const in &self.pipeline.push_constants {
+            let push_const_end = push_const.offset + push_const.size;
+            let data_end = offset + data.len() as u32;
+            let end = data_end.min(push_const_end);
+            let start = offset.max(push_const.offset);
+
+            if end > start {
+                trace!(
+                    "      push constants {:?} {}..{}",
+                    push_const.stage_flags,
+                    start,
+                    end
+                );
+                trace!("data: {:#?}", data);
+
+                unsafe {
+                    self.device.cmd_push_constants(
+                        self.cmd_buf,
+                        self.pipeline.layout,
+                        push_const.stage_flags,
+                        start,
+                        &data[(start - offset) as usize..(end - offset) as usize],
+                    );
+                }
+            }
+        }
+        self
+    }
     // TODO: If the rayTraversalPrimitiveCulling or rayQuery features are enabled, the SkipTrianglesKHR and SkipAABBsKHR ray flags can be specified when tracing a ray. SkipTrianglesKHR and SkipAABBsKHR are mutually exclusive.
 
     #[allow(clippy::too_many_arguments)]
