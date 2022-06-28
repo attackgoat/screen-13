@@ -102,6 +102,23 @@ impl Buffer {
         })
     }
 
+    pub fn create_from_slice(
+        device: &Arc<Device>,
+        usage: vk::BufferUsageFlags,
+        slice: &[u8],
+    ) -> Result<Self, DriverError> {
+        let info = BufferInfo {
+            can_map: true,
+            size: slice.len() as vk::DeviceSize,
+            usage,
+        };
+        let mut buffer = Self::create(device, info)?;
+
+        Self::copy_from_slice(&mut buffer, 0, slice);
+
+        Ok(buffer)
+    }
+
     pub fn access(this: &Self, next_access: AccessType) -> AccessType {
         access_type_from_u8(
             this.prev_access

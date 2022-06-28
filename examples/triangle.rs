@@ -47,34 +47,24 @@ fn main() -> Result<(), DisplayError> {
         ],
     );
 
-    let index_buf = Arc::new({
-        let mut buf = Buffer::create(
-            &screen_13.device,
-            BufferInfo::new_mappable(6, vk::BufferUsageFlags::INDEX_BUFFER),
-        )?;
-        Buffer::copy_from_slice(&mut buf, 0, cast_slice(&[0u16, 1, 2]));
-        buf
-    });
+    let index_buf = Arc::new(Buffer::create_from_slice(
+        &screen_13.device,
+        vk::BufferUsageFlags::INDEX_BUFFER,
+        cast_slice(&[0u16, 1, 2]),
+    )?);
 
-    let vertex_buf = Arc::new({
-        let mut buf = Buffer::create(
-            &screen_13.device,
-            BufferInfo::new_mappable(72, vk::BufferUsageFlags::VERTEX_BUFFER),
-        )?;
-        Buffer::copy_from_slice(
-            &mut buf,
-            0,
-            cast_slice(&[
-                1.0f32, 1.0, 0.0, // v1
-                1.0, 0.0, 0.0, // red
-                0.0, -1.0, 0.0, // v2
-                0.0, 1.0, 0.0, // green
-                -1.0, 1.0, 0.0, // v3
-                0.0, 0.0, 1.0, // blue
-            ]),
-        );
-        buf
-    });
+    let vertex_buf = Arc::new(Buffer::create_from_slice(
+        &screen_13.device,
+        vk::BufferUsageFlags::VERTEX_BUFFER,
+        cast_slice(&[
+            1.0f32, 1.0, 0.0, // v1
+            1.0, 0.0, 0.0, // red
+            0.0, -1.0, 0.0, // v2
+            0.0, 1.0, 0.0, // green
+            -1.0, 1.0, 0.0, // v3
+            0.0, 0.0, 1.0, // blue
+        ]),
+    )?);
 
     screen_13.run(|frame| {
         let index_node = frame.render_graph.bind_node(&index_buf);
