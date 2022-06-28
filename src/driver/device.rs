@@ -1,8 +1,8 @@
 use {
     super::{
         DriverConfig, DriverError, Instance, PhysicalDevice,
-        PhysicalDeviceDescriptorIndexingFeatures, PhysicalDeviceRayTracePipelineProperties,
-        QueueFamily, SamplerDesc, Surface,
+        PhysicalDeviceDescriptorIndexingFeatures, PhysicalDeviceRayTracePipelineProperties, Queue,
+        SamplerDesc, Surface,
     },
     ash::{extensions::khr, vk},
     gpu_allocator::{
@@ -573,18 +573,5 @@ impl FeatureFlags {
         }
 
         res.iter().map(|name| name.as_ptr()).collect()
-    }
-}
-
-pub struct Queue {
-    queue: vk::Queue,
-    pub family: QueueFamily,
-}
-
-impl Deref for Queue {
-    type Target = vk::Queue;
-
-    fn deref(&self) -> &Self::Target {
-        &self.queue
     }
 }

@@ -9,10 +9,10 @@ use {
             pipeline_stage_access_flags, AccelerationStructure, AttachmentInfo, AttachmentRef,
             Buffer, CommandBuffer, DepthStencilMode, DescriptorBinding, DescriptorInfo,
             DescriptorPool, DescriptorPoolInfo, DescriptorPoolSize, DescriptorSet, Device,
-            DriverError, FramebufferKey, FramebufferKeyAttachment, Image, ImageViewInfo,
-            RenderPass, RenderPassInfo, SampleCount, SubpassDependency, SubpassInfo,
+            DriverError, FramebufferKey, FramebufferKeyAttachment, Image, ImageViewInfo, Queue,
+            QueueFamily, RenderPass, RenderPassInfo, SampleCount, SubpassDependency, SubpassInfo,
         },
-        pool::{hash::HashPool, Lease},
+        pool::{hash::HashPool, Lease, Pool},
     },
     ash::vk,
     log::{debug, trace},
@@ -480,7 +480,7 @@ impl Resolver {
 
     #[allow(clippy::type_complexity)]
     fn lease_descriptor_pool(
-        cache: &mut HashPool,
+        cache: &mut dyn ResolverPool,
         pass: &Pass,
     ) -> Result<Option<Lease<DescriptorPool>>, DriverError> {
         let mut max_pool_sizes = BTreeMap::new();
@@ -519,7 +519,8 @@ impl Resolver {
                         descriptor_count: align_up(descriptor_count, 1 << 5),
                     })
                     .collect(),
-            );
+            )
+            .build();
 
         // debug!("{:#?}", info);
 
@@ -530,7 +531,7 @@ impl Resolver {
 
     fn lease_render_pass(
         &self,
-        cache: &mut HashPool,
+        cache: &mut dyn ResolverPool,
         pass_idx: usize,
     ) -> Result<Lease<RenderPass>, DriverError> {
         // TODO: We're building a RenderPassInfo here (the 3x Vec<_>s), but we could use TLS if:
@@ -1228,13 +1229,15 @@ impl Resolver {
             RenderPassInfo::new()
                 .attachments(attachments)
                 .dependencies(dependencies)
-                .subpasses(subpasses),
+                .subpasses(subpasses)
+                .build()
+                .unwrap(), // TODO: Don't unwrap, probably make infalliable if it is
         )
     }
 
     fn lease_scheduled_resources(
         &mut self,
-        cache: &mut HashPool,
+        cache: &mut dyn ResolverPool,
         schedule: &[usize],
     ) -> Result<(), DriverError> {
         for pass_idx in schedule.iter().copied() {
@@ -1666,7 +1669,7 @@ impl Resolver {
     /// multiple images out and you care - in that case pull the "most important" image first.
     pub fn record_node_dependencies(
         &mut self,
-        cache: &mut HashPool,
+        cache: &mut dyn ResolverPool,
         cmd_buf: &mut CommandBuffer,
         node: impl Node,
     ) -> Result<(), DriverError> {
@@ -1688,7 +1691,7 @@ impl Resolver {
     /// Records any pending render graph passes that the given node requires.
     pub fn record_node(
         &mut self,
-        cache: &mut HashPool,
+        cache: &mut dyn ResolverPool,
         cmd_buf: &mut CommandBuffer,
         node: impl Node,
     ) -> Result<(), DriverError> {
@@ -1704,7 +1707,7 @@ impl Resolver {
 
     fn record_node_passes(
         &mut self,
-        cache: &mut HashPool,
+        cache: &mut dyn ResolverPool,
         cmd_buf: &mut CommandBuffer,
         node_idx: usize,
         end_pass_idx: usize,
@@ -1717,7 +1720,7 @@ impl Resolver {
 
     fn record_scheduled_passes(
         &mut self,
-        cache: &mut HashPool,
+        cache: &mut dyn ResolverPool,
         cmd_buf: &mut CommandBuffer,
         mut schedule: &mut [usize],
         end_pass_idx: usize,
@@ -1862,7 +1865,7 @@ impl Resolver {
     /// Records any pending render graph passes that have not been previously scheduled.
     pub fn record_unscheduled_passes(
         &mut self,
-        cache: &mut HashPool,
+        cache: &mut dyn ResolverPool,
         cmd_buf: &mut CommandBuffer,
     ) -> Result<(), DriverError> {
         if self.graph.passes.is_empty() {
@@ -2079,22 +2082,26 @@ impl Resolver {
         }
     }
 
-    pub fn submit(mut self, cache: &mut HashPool) -> Result<(), DriverError> {
+    pub fn submit(
+        mut self,
+        queue: Queue,
+        cache: &mut impl ResolverPool,
+    ) -> Result<(), DriverError> {
         use std::slice::from_ref;
 
         trace!("submit");
 
-        let mut cmd_buf = cache.lease(cache.device.queue.family)?;
+        let mut cmd_buf = cache.lease(queue.family)?;
 
         unsafe {
-            Device::wait_for_fence(&cache.device, &cmd_buf.fence)
+            Device::wait_for_fence(&cmd_buf.device, &cmd_buf.fence)
                 .map_err(|_| DriverError::OutOfMemory)?;
 
-            cache
+            cmd_buf
                 .device
                 .reset_command_pool(cmd_buf.pool, vk::CommandPoolResetFlags::RELEASE_RESOURCES)
                 .map_err(|_| DriverError::OutOfMemory)?;
-            cache
+            cmd_buf
                 .device
                 .begin_command_buffer(
                     **cmd_buf,
@@ -2107,18 +2114,18 @@ impl Resolver {
         self.record_unscheduled_passes(cache, &mut cmd_buf)?;
 
         unsafe {
-            cache
+            cmd_buf
                 .device
                 .end_command_buffer(**cmd_buf)
                 .map_err(|_| DriverError::OutOfMemory)?;
-            cache
+            cmd_buf
                 .device
                 .reset_fences(from_ref(&cmd_buf.fence))
                 .map_err(|_| DriverError::OutOfMemory)?;
-            cache
+            cmd_buf
                 .device
                 .queue_submit(
-                    *cache.device.queue,
+                    *queue,
                     from_ref(&vk::SubmitInfo::builder().command_buffers(from_ref(&cmd_buf))),
                     cmd_buf.fence,
                 )
@@ -2415,3 +2422,12 @@ impl Resolver {
         })
     }
 }
+
+pub trait ResolverPool:
+    Pool<DescriptorPoolInfo, DescriptorPool>
+    + Pool<RenderPassInfo, RenderPass>
+    + Pool<QueueFamily, CommandBuffer>
+{
+}
+
+impl ResolverPool for HashPool {}

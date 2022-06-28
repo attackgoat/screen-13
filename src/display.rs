@@ -3,31 +3,35 @@ use {
         driver::{
             image_access_layout, CommandBuffer, Device, DriverError, Swapchain, SwapchainError,
         },
-        graph::{RenderGraph, SwapchainImageNode},
+        graph::{RenderGraph, ResolverPool, SwapchainImageNode},
         pool::hash::HashPool,
     },
     ash::vk,
     log::trace,
-    std::{error::Error, fmt::Formatter, sync::Arc, time::Instant},
+    std::{
+        error::Error,
+        fmt::{Debug, Formatter},
+        sync::Arc,
+        time::Instant,
+    },
     vk_sync::{cmd::pipeline_barrier, AccessType, ImageBarrier, ImageLayout},
 };
 
-#[derive(Debug)]
 pub struct Display {
-    cache: HashPool,
     cmd_bufs: Vec<[CommandBuffer; 3]>,
     device: Arc<Device>,
+    pool: Box<dyn ResolverPool>,
     swapchain: Swapchain,
 }
 
 impl Display {
-    pub fn new(device: &Arc<Device>, swapchain: Swapchain) -> Self {
+    pub fn new(device: &Arc<Device>, pool: Box<dyn ResolverPool>, swapchain: Swapchain) -> Self {
         let device = Arc::clone(device);
 
         Self {
-            cache: HashPool::new(&device),
-            cmd_bufs: Default::default(),
             device,
+            cmd_bufs: Default::default(),
+            pool,
             swapchain,
         }
     }
@@ -101,7 +105,7 @@ impl Display {
             Self::begin(cmd_buf)?;
         }
 
-        resolver.record_node_dependencies(&mut self.cache, cmd_buf, swapchain_node)?;
+        resolver.record_node_dependencies(&mut *self.pool, cmd_buf, swapchain_node)?;
 
         unsafe {
             trace!("submitting swapchain dependencies");
@@ -129,7 +133,7 @@ impl Display {
             Self::begin(cmd_buf)?;
         }
 
-        resolver.record_node(&mut self.cache, cmd_buf, swapchain_node)?;
+        resolver.record_node(&mut *self.pool, cmd_buf, swapchain_node)?;
 
         pipeline_barrier(
             &cmd_buf.device,
@@ -187,7 +191,7 @@ impl Display {
                 Self::begin(cmd_buf)?;
             }
 
-            resolver.record_unscheduled_passes(&mut self.cache, cmd_buf)?;
+            resolver.record_unscheduled_passes(&mut *self.pool, cmd_buf)?;
 
             unsafe {
                 trace!("submitting unscheduled passes");
@@ -244,6 +248,12 @@ impl Display {
         CommandBuffer::drop_fenced(cmd_buf);
 
         Ok(())
+    }
+}
+
+impl Debug for Display {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Display")
     }
 }
 

@@ -1,6 +1,7 @@
 pub mod hash;
 
 use {
+    crate::driver::{Device, DriverError},
     log::warn,
     parking_lot::Mutex,
     std::{
@@ -69,4 +70,8 @@ impl<T> Drop for Lease<T> {
             }
         }
     }
+}
+
+pub trait Pool<Contract, T> {
+    fn lease(&mut self, contract: Contract) -> Result<Lease<T>, DriverError>;
 }

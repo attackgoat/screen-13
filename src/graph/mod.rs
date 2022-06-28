@@ -15,7 +15,7 @@ pub use {
             ImageLeaseNode, ImageNode, SwapchainImageNode, Unbind, View, ViewType,
         },
         pass_ref::{Bindings, Compute, Draw, PassRef, PipelinePassRef, RayTrace},
-        resolver::Resolver,
+        resolver::{Resolver, ResolverPool},
     },
     vk_sync::AccessType,
 };

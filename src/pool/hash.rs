@@ -1,5 +1,5 @@
 use {
-    super::{Cache, Contract, Lease},
+    super::{Cache, Contract, Lease, Pool},
     crate::driver::{
         AccelerationStructure, AccelerationStructureInfo, AccelerationStructureInfoBuilder, Buffer,
         BufferInfo, BufferInfoBuilder, CommandBuffer, DescriptorPool, DescriptorPoolInfo,
@@ -40,20 +40,30 @@ impl HashPool {
             render_pass_cache: Default::default(),
         }
     }
+}
 
-    pub fn lease<C>(&mut self, info: C) -> Result<Lease<<C as Contract>::Term>, DriverError>
-    where
-        C: Pooled<Lease<<C as Contract>::Term>>,
-        C: Contract + Debug,
-    {
-        info.lease(self)
+impl Pool<DescriptorPoolInfo, DescriptorPool> for HashPool {
+    fn lease(
+        &mut self,
+        contract: DescriptorPoolInfo,
+    ) -> Result<Lease<DescriptorPool>, DriverError> {
+        todo!();
     }
 }
 
-pub trait Pooled<T> {
-    fn lease(self, pool: &mut HashPool) -> Result<T, DriverError>;
+impl Pool<RenderPassInfo, RenderPass> for HashPool {
+    fn lease(&mut self, contract: RenderPassInfo) -> Result<Lease<RenderPass>, DriverError> {
+        todo!();
+    }
 }
 
+impl Pool<QueueFamily, CommandBuffer> for HashPool {
+    fn lease(&mut self, contract: QueueFamily) -> Result<Lease<CommandBuffer>, DriverError> {
+        todo!();
+    }
+}
+
+/*
 // Enable the basic leasing of items
 macro_rules! lease {
     ($src:ident => $dst:ident) => {
@@ -62,7 +72,7 @@ macro_rules! lease {
         }
 
         paste::paste! {
-            impl Pooled<Lease<$dst>> for $src {
+            impl Pool<Lease<$dst>, HashPool> for $src {
                 fn lease(self, pool: &mut HashPool) -> Result<Lease<$dst>, DriverError> {
                     let cache = pool.[<$dst:snake _cache>].entry(self.clone())
                         .or_insert_with(|| {
@@ -144,7 +154,7 @@ macro_rules! lease_info_builder {
                 type Term = $dst;
             }
 
-            impl Pooled<Lease<$dst>> for [<$src Builder>] {
+            impl Pool<Lease<$dst>, HashPool> for [<$src Builder>] {
                 fn lease(self, pool: &mut HashPool) -> Result<Lease<$dst>, DriverError> {
                     let info = self.build();
 
@@ -168,7 +178,7 @@ macro_rules! lease_info_binding {
             }
 
             paste::paste! {
-                impl Pooled<Lease<$dst>> for $src {
+                impl Pool<Lease<$dst>, HashPool> for $src {
                     fn lease(self, pool: &mut HashPool) -> Result<Lease<$dst>, DriverError> {
                         let cache = pool.[<$dst:snake _cache>].entry(self.clone())
                             .or_insert_with(|| {
@@ -212,7 +222,7 @@ macro_rules! lease_info_binding {
                 type Term = $dst;
             }
 
-            impl Pooled<Lease<$dst>> for [<$src Builder>] {
+            impl Pool<Lease<$dst>, HashPool> for [<$src Builder>] {
                 fn lease(self, pool: &mut HashPool) -> Result<Lease<$dst>, DriverError> {
                     self.build().lease(pool)
                 }
@@ -225,3 +235,4 @@ lease_info_binding!(AccelerationStructureInfo => AccelerationStructure);
 lease_info_binding!(BufferInfo => Buffer);
 lease_info_binding!(ImageInfo => Image);
 lease_info_binding!(DescriptorPoolInfo => DescriptorPool);
+ */
