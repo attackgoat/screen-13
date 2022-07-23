@@ -33,7 +33,7 @@ ash-molten = "0.12"
 anyhow = "1.0"
 bmfont = { version = "0.3", default-features = false }
 bytemuck = "1.9"
-glam = "0.20"
+glam = "0.21"
 image = "0.24"
 inline-spirv = "0.1"
 log = "0.4"

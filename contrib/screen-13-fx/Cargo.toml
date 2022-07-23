@@ -30,4 +30,4 @@ parking_lot = "0.12"
 inline-spirv = "0.1"
 screen-13 = { path = "../.."}
 anyhow = "1.0"
-glam = "0.20"
+glam = "0.21"
