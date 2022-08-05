@@ -509,18 +509,17 @@ impl Resolver {
         }
 
         // Notice how all sets are big enough for any other set; TODO: efficiently dont
-        let info = DescriptorPoolInfo::new(pass.execs.len() as u32 * (max_descriptor_set_idx + 1))
-            .pool_sizes(
-                max_pool_sizes
-                    .into_iter()
-                    .map(|(descriptor_ty, descriptor_count)| DescriptorPoolSize {
-                        ty: descriptor_ty,
-                        // Trivially round up the descriptor counts to increase cache coherence
-                        descriptor_count: align_up(descriptor_count, 1 << 5),
-                    })
-                    .collect(),
-            )
-            .build();
+        let info = DescriptorPoolInfo {
+            max_sets: pass.execs.len() as u32 * (max_descriptor_set_idx + 1),
+            pool_sizes: max_pool_sizes
+                .into_iter()
+                .map(|(descriptor_ty, descriptor_count)| DescriptorPoolSize {
+                    ty: descriptor_ty,
+                    // Trivially round up the descriptor counts to increase cache coherence
+                    descriptor_count: align_up(descriptor_count, 1 << 5),
+                })
+                .collect(),
+        };
 
         // debug!("{:#?}", info);
 
@@ -1225,14 +1224,11 @@ impl Resolver {
                 dependencies.into_values().collect::<Vec<_>>()
             };
 
-        cache.lease(
-            RenderPassInfo::new()
-                .attachments(attachments)
-                .dependencies(dependencies)
-                .subpasses(subpasses)
-                .build()
-                .unwrap(), // TODO: Don't unwrap, probably make infalliable if it is
-        )
+        cache.lease(RenderPassInfo {
+            attachments,
+            dependencies,
+            subpasses,
+        })
     }
 
     fn lease_scheduled_resources(
@@ -2084,7 +2080,7 @@ impl Resolver {
 
     pub fn submit(
         mut self,
-        queue: Queue,
+        queue: &Queue,
         cache: &mut impl ResolverPool,
     ) -> Result<(), DriverError> {
         use std::slice::from_ref;
@@ -2125,7 +2121,7 @@ impl Resolver {
             cmd_buf
                 .device
                 .queue_submit(
-                    *queue,
+                    **queue,
                     from_ref(&vk::SubmitInfo::builder().command_buffers(from_ref(&cmd_buf))),
                     cmd_buf.fence,
                 )

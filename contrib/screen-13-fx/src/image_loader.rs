@@ -226,7 +226,9 @@ impl ImageLoader {
 
         let image = render_graph.unbind_node(image);
 
-        render_graph.resolve().submit(&mut self.cache)?;
+        render_graph
+            .resolve()
+            .submit(&self.device.queue, &mut self.cache)?;
 
         Ok(image)
     }

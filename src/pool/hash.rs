@@ -1,10 +1,9 @@
 use {
-    super::{Cache, Contract, Lease, Pool},
+    super::{Cache, Lease, Pool},
     crate::driver::{
         AccelerationStructure, AccelerationStructureInfo, AccelerationStructureInfoBuilder, Buffer,
-        BufferInfo, BufferInfoBuilder, CommandBuffer, DescriptorPool, DescriptorPoolInfo,
-        DescriptorPoolInfoBuilder, Device, DriverError, Image, ImageInfo, ImageInfoBuilder,
-        QueueFamily, RenderPass, RenderPassInfo, RenderPassInfoBuilder,
+        BufferInfo, BufferInfoBuilder, CommandBuffer, DescriptorPool, DescriptorPoolInfo, Device,
+        DriverError, Image, ImageInfo, ImageInfoBuilder, QueueFamily, RenderPass, RenderPassInfo,
     },
     parking_lot::Mutex,
     std::{
@@ -42,48 +41,21 @@ impl HashPool {
     }
 }
 
-impl Pool<DescriptorPoolInfo, DescriptorPool> for HashPool {
-    fn lease(
-        &mut self,
-        contract: DescriptorPoolInfo,
-    ) -> Result<Lease<DescriptorPool>, DriverError> {
-        todo!();
-    }
-}
-
-impl Pool<RenderPassInfo, RenderPass> for HashPool {
-    fn lease(&mut self, contract: RenderPassInfo) -> Result<Lease<RenderPass>, DriverError> {
-        todo!();
-    }
-}
-
-impl Pool<QueueFamily, CommandBuffer> for HashPool {
-    fn lease(&mut self, contract: QueueFamily) -> Result<Lease<CommandBuffer>, DriverError> {
-        todo!();
-    }
-}
-
-/*
-// Enable the basic leasing of items
+// Enable leasing items using their basic info
 macro_rules! lease {
-    ($src:ident => $dst:ident) => {
-        impl Contract for $src {
-            type Term = $dst;
-        }
-
+    ($info:ident => $item:ident) => {
         paste::paste! {
-            impl Pool<Lease<$dst>, HashPool> for $src {
-                fn lease(self, pool: &mut HashPool) -> Result<Lease<$dst>, DriverError> {
-                    let cache = pool.[<$dst:snake _cache>].entry(self.clone())
+            impl Pool<$info, $item> for HashPool {
+                fn lease(&mut self, info: $info) -> Result<Lease<$item>, DriverError> {
+                    let cache = self.[<$item:snake _cache>].entry(info.clone())
                         .or_insert_with(|| {
                             Arc::new(Mutex::new(VecDeque::new()))
                         });
                     let cache_ref = Arc::clone(cache);
                     let mut cache = cache.lock();
 
-                    if cache.is_empty() || ![<can_lease_ $dst:snake>](cache.front_mut().unwrap()) {
-                        // Calls the function defined in the other macros
-                        let item = [<create_ $dst:snake>](&pool.device, self)?;
+                    if cache.is_empty() || ![<can_lease_ $item:snake>](cache.front_mut().unwrap()) {
+                        let item = $item::create(&self.device, info)?;
 
                         return Ok(Lease {
                             cache: Some(cache_ref),
@@ -101,26 +73,7 @@ macro_rules! lease {
     };
 }
 
-// Enable leasing items using their basic info as the entire request
-macro_rules! lease_info {
-    ($src:ident => $dst:ident) => {
-        lease!($src => $dst);
-
-        paste::paste! {
-            // Called by the lease macro
-            fn [<create_ $dst:snake>](
-                device: &Arc<Device>,
-                info: $src
-            ) -> Result<$dst, DriverError> {
-                $dst::create(device, info)
-            }
-        }
-    };
-}
-
-lease_info!(QueueFamily => CommandBuffer);
-
-// Used by macro invocation, above
+// Called by the lease macro
 fn can_lease_command_buffer(cmd_buf: &mut CommandBuffer) -> bool {
     let can_lease = unsafe {
         // Don't lease this command buffer if it is unsignalled; we'll create a new one
@@ -139,100 +92,42 @@ fn can_lease_command_buffer(cmd_buf: &mut CommandBuffer) -> bool {
     can_lease
 }
 
+// Called by the lease macro
+fn can_lease_render_pass(_: &mut RenderPass) -> bool {
+    true
+}
+
+// Called by the lease macro
+fn can_lease_descriptor_pool(_: &mut DescriptorPool) -> bool {
+    true
+}
+
+lease!(QueueFamily => CommandBuffer);
+lease!(RenderPassInfo => RenderPass);
+lease!(DescriptorPoolInfo => DescriptorPool);
+
 // Enable leasing items as above, but also using their info builder type for convenience
-macro_rules! lease_info_builder {
-    ($src:ident => $dst:ident) => {
-        lease_info!($src => $dst);
+macro_rules! lease_builder {
+    ($info:ident => $item:ident) => {
+        lease!($info => $item);
 
         paste::paste! {
-            // Called by the lease macro, via the lease_info macro
-            const fn [<can_lease_ $dst:snake>]<T>(_: &T) -> bool {
+            // Called by the lease macro
+            const fn [<can_lease_ $item:snake>]<T>(_: &T) -> bool {
                 true
             }
 
-            impl Contract for [<$src Builder>] {
-                type Term = $dst;
-            }
+            impl Pool<[<$info Builder>], $item> for HashPool {
+                fn lease(&mut self, builder: [<$info Builder>]) -> Result<Lease<$item>, DriverError> {
+                    let info = builder.build();
 
-            impl Pool<Lease<$dst>, HashPool> for [<$src Builder>] {
-                fn lease(self, pool: &mut HashPool) -> Result<Lease<$dst>, DriverError> {
-                    let info = self.build();
-
-                    // We will unwrap the info builder - it may panic!
-                    assert!(info.is_ok(), "Invalid pool resource info: {:#?}", info);
-
-                    info.unwrap().lease(pool)
+                    self.lease(info)
                 }
             }
         }
     };
 }
 
-lease_info_builder!(RenderPassInfo => RenderPass);
-
-macro_rules! lease_info_binding {
-    ($src:ident => $dst:ident) => {
-        paste::paste! {
-            impl Contract for $src {
-                type Term = $dst;
-            }
-
-            paste::paste! {
-                impl Pool<Lease<$dst>, HashPool> for $src {
-                    fn lease(self, pool: &mut HashPool) -> Result<Lease<$dst>, DriverError> {
-                        let cache = pool.[<$dst:snake _cache>].entry(self.clone())
-                            .or_insert_with(|| {
-                                Arc::new(Mutex::new(VecDeque::new()))
-                            });
-                        let cache_ref = Arc::clone(cache);
-                        let mut cache = cache.lock();
-
-                        if cache.is_empty() || ![<can_lease_ $dst:snake>](cache.front_mut().unwrap()) {
-                            // Calls the function defined in the other macros
-                            let item = [<create_ $dst:snake>](&pool.device, self)?;
-
-                            return Ok(Lease {
-                                cache: Some(cache_ref),
-                                item: Some(item),
-                            });
-                        }
-
-                        Ok(Lease {
-                            cache: Some(cache_ref),
-                            item: cache.pop_front(),
-                        })
-                    }
-                }
-            }
-
-            // Called by the lease macro
-            fn [<create_ $dst:snake>](
-                device: &Arc<Device>,
-                info: $src
-            ) -> Result<$dst, DriverError> {
-                $dst::create(device, info)
-            }
-
-            // Called by the lease macro
-            fn [<can_lease_ $dst:snake>]<T>(_: &mut T) -> bool {
-                true
-            }
-
-            impl Contract for [<$src Builder>] {
-                type Term = $dst;
-            }
-
-            impl Pool<Lease<$dst>, HashPool> for [<$src Builder>] {
-                fn lease(self, pool: &mut HashPool) -> Result<Lease<$dst>, DriverError> {
-                    self.build().lease(pool)
-                }
-            }
-        }
-    };
-}
-
-lease_info_binding!(AccelerationStructureInfo => AccelerationStructure);
-lease_info_binding!(BufferInfo => Buffer);
-lease_info_binding!(ImageInfo => Image);
-lease_info_binding!(DescriptorPoolInfo => DescriptorPool);
- */
+lease_builder!(AccelerationStructureInfo => AccelerationStructure);
+lease_builder!(BufferInfo => Buffer);
+lease_builder!(ImageInfo => Image);

@@ -1,7 +1,7 @@
 pub mod hash;
 
 use {
-    crate::driver::{Device, DriverError},
+    crate::driver::DriverError,
     log::warn,
     parking_lot::Mutex,
     std::{
@@ -14,10 +14,6 @@ use {
 };
 
 type Cache<T> = Arc<Mutex<VecDeque<T>>>;
-
-pub trait Contract {
-    type Term;
-}
 
 #[derive(Debug)]
 pub struct Lease<T> {
@@ -72,6 +68,6 @@ impl<T> Drop for Lease<T> {
     }
 }
 
-pub trait Pool<Contract, T> {
-    fn lease(&mut self, contract: Contract) -> Result<Lease<T>, DriverError>;
+pub trait Pool<I, T> {
+    fn lease(&mut self, info: I) -> Result<Lease<T>, DriverError>;
 }

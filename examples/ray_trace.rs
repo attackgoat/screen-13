@@ -730,7 +730,9 @@ fn main() -> anyhow::Result<()> {
                 });
         }
 
-        render_graph.resolve().submit(&mut cache)?;
+        render_graph
+            .resolve()
+            .submit(&event_loop.device.queue, &mut cache)?;
     }
 
     // ------------------------------------------------------------------------------------------ //

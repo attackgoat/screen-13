@@ -106,7 +106,11 @@ struct GraphicPipelineKey {
 }
 
 #[derive(Builder, Clone, Debug, Default, Eq, Hash, PartialEq)]
-#[builder(pattern = "owned", derive(Debug))]
+#[builder(
+    build_fn(private, name = "fallible_build"),
+    pattern = "owned",
+    derive(Debug)
+)]
 pub struct RenderPassInfo {
     pub attachments: Vec<AttachmentInfo>,
     pub subpasses: Vec<SubpassInfo>,
@@ -115,8 +119,24 @@ pub struct RenderPassInfo {
 
 impl RenderPassInfo {
     #[allow(clippy::new_ret_no_self)]
-    pub fn new() -> RenderPassInfoBuilder {
-        Default::default()
+    pub fn new(
+        attachments: Vec<AttachmentInfo>,
+        subpasses: Vec<SubpassInfo>,
+        dependencies: Vec<SubpassDependency>,
+    ) -> RenderPassInfoBuilder {
+        RenderPassInfoBuilder {
+            attachments: Some(attachments),
+            subpasses: Some(subpasses),
+            dependencies: Some(dependencies),
+        }
+    }
+}
+
+// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
+impl RenderPassInfoBuilder {
+    pub fn build(self) -> RenderPassInfo {
+        self.fallible_build()
+            .expect("All required fields set at initialization")
     }
 }
 

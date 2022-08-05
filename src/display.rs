@@ -4,7 +4,6 @@ use {
             image_access_layout, CommandBuffer, Device, DriverError, Swapchain, SwapchainError,
         },
         graph::{RenderGraph, ResolverPool, SwapchainImageNode},
-        pool::hash::HashPool,
     },
     ash::vk,
     log::trace,
