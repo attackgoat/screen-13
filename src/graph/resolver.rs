@@ -8,9 +8,9 @@ use {
             format_aspect_mask, image_access_layout, is_read_access, is_write_access,
             pipeline_stage_access_flags, AccelerationStructure, AttachmentInfo, AttachmentRef,
             Buffer, CommandBuffer, DepthStencilMode, DescriptorBinding, DescriptorInfo,
-            DescriptorPool, DescriptorPoolInfo, DescriptorPoolSize, DescriptorSet, Device,
-            DriverError, FramebufferKey, FramebufferKeyAttachment, Image, ImageViewInfo, Queue,
-            QueueFamily, RenderPass, RenderPassInfo, SampleCount, SubpassDependency, SubpassInfo,
+            DescriptorPool, DescriptorPoolInfo, DescriptorSet, Device, DriverError, FramebufferKey,
+            FramebufferKeyAttachment, Image, ImageViewInfo, Queue, QueueFamily, RenderPass,
+            RenderPassInfo, SampleCount, SubpassDependency, SubpassInfo,
         },
         pool::{hash::HashPool, Lease, Pool},
     },
@@ -18,7 +18,7 @@ use {
     log::{debug, trace},
     std::{
         cell::RefCell,
-        collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
+        collections::{BTreeSet, HashMap, VecDeque},
         iter::repeat,
         mem::take,
         ops::Range,
@@ -483,43 +483,72 @@ impl Resolver {
         cache: &mut dyn ResolverPool,
         pass: &Pass,
     ) -> Result<Option<Lease<DescriptorPool>>, DriverError> {
-        let mut max_pool_sizes = BTreeMap::new();
-        let max_descriptor_set_idx = pass
+        let max_set_idx = pass
             .execs
             .iter()
             .filter_map(|exec| exec.bindings.keys().last())
             .map(|descriptor| descriptor.set())
             .max()
             .unwrap_or_default();
+        let max_sets = pass.execs.len() as u32 * (max_set_idx + 1);
+        let mut info = DescriptorPoolInfo {
+            max_sets,
+            ..Default::default()
+        };
 
         // Find the total count of descriptors per type (there may be multiple pipelines!)
         for pool_sizes in pass.descriptor_pools_sizes() {
             for pool_size in pool_sizes.values() {
-                for (descriptor_ty, descriptor_count) in pool_size.iter() {
-                    assert_ne!(*descriptor_count, 0);
+                for (descriptor_ty, descriptor_count) in pool_size {
+                    debug_assert_ne!(*descriptor_count, 0);
 
-                    *max_pool_sizes.entry(*descriptor_ty).or_default() += descriptor_count;
+                    let info_descriptor_count = &mut match *descriptor_ty {
+                        vk::DescriptorType::ACCELERATION_STRUCTURE_KHR => {
+                            info.acceleration_structure_count
+                        }
+                        vk::DescriptorType::COMBINED_IMAGE_SAMPLER => {
+                            info.combined_image_sampler_count
+                        }
+                        vk::DescriptorType::INPUT_ATTACHMENT => info.input_attachment_count,
+                        vk::DescriptorType::SAMPLED_IMAGE => info.sampled_image_count,
+                        vk::DescriptorType::STORAGE_BUFFER => info.storage_buffer_count,
+                        vk::DescriptorType::STORAGE_BUFFER_DYNAMIC => {
+                            info.storage_buffer_dynamic_count
+                        }
+                        vk::DescriptorType::STORAGE_IMAGE => info.storage_image_count,
+                        vk::DescriptorType::STORAGE_TEXEL_BUFFER => info.storage_texel_buffer_count,
+                        vk::DescriptorType::UNIFORM_BUFFER => info.uniform_buffer_count,
+                        vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC => {
+                            info.uniform_buffer_dynamic_count
+                        }
+                        vk::DescriptorType::UNIFORM_TEXEL_BUFFER => info.uniform_texel_buffer_count,
+                        _ => unimplemented!(),
+                    };
+                    *info_descriptor_count += descriptor_count;
                 }
             }
         }
 
         // It's possible to execute a command-only pipeline
-        if max_pool_sizes.is_empty() {
+        if info.is_empty() {
             return Ok(None);
         }
 
+        // Trivially round up the descriptor counts to increase cache coherence
+        const ATOM: u32 = 1 << 5;
+        info.acceleration_structure_count = align_up(info.acceleration_structure_count, ATOM);
+        info.combined_image_sampler_count = align_up(info.combined_image_sampler_count, ATOM);
+        info.input_attachment_count = align_up(info.input_attachment_count, ATOM);
+        info.sampled_image_count = align_up(info.sampled_image_count, ATOM);
+        info.storage_buffer_count = align_up(info.storage_buffer_count, ATOM);
+        info.storage_buffer_dynamic_count = align_up(info.storage_buffer_dynamic_count, ATOM);
+        info.storage_image_count = align_up(info.storage_image_count, ATOM);
+        info.storage_texel_buffer_count = align_up(info.storage_texel_buffer_count, ATOM);
+        info.uniform_buffer_count = align_up(info.uniform_buffer_count, ATOM);
+        info.uniform_buffer_dynamic_count = align_up(info.uniform_buffer_dynamic_count, ATOM);
+        info.uniform_texel_buffer_count = align_up(info.uniform_texel_buffer_count, ATOM);
+
         // Notice how all sets are big enough for any other set; TODO: efficiently dont
-        let info = DescriptorPoolInfo {
-            max_sets: pass.execs.len() as u32 * (max_descriptor_set_idx + 1),
-            pool_sizes: max_pool_sizes
-                .into_iter()
-                .map(|(descriptor_ty, descriptor_count)| DescriptorPoolSize {
-                    ty: descriptor_ty,
-                    // Trivially round up the descriptor counts to increase cache coherence
-                    descriptor_count: align_up(descriptor_count, 1 << 5),
-                })
-                .collect(),
-        };
 
         // debug!("{:#?}", info);
 

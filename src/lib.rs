@@ -28,7 +28,7 @@ pub mod prelude {
             input::{
                 update_input, update_keyboard, update_mouse, KeyBuf, KeyMap, MouseBuf, MouseButton,
             },
-            pool::{hash::HashPool, Lease, Pool},
+            pool::{hash::HashPool, lazy::LazyPool, Lease, Pool},
         },
         log::{debug, error, info, logger, trace, warn}, // Everyone wants a log
         winit::{

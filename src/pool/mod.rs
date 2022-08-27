@@ -1,4 +1,5 @@
 pub mod hash;
+pub mod lazy;
 
 use {
     crate::driver::DriverError,
@@ -23,13 +24,13 @@ pub struct Lease<T> {
 
 impl<T> AsRef<T> for Lease<T> {
     fn as_ref(&self) -> &T {
-        &*self
+        self.item.as_ref().unwrap()
     }
 }
 
 impl<T> AsMut<T> for Lease<T> {
     fn as_mut(&mut self) -> &mut T {
-        &mut *self
+        self.item.as_mut().unwrap()
     }
 }
 

@@ -12,7 +12,7 @@ fn main() -> Result<(), DisplayError> {
     let event_loop = EventLoop::new().build()?;
     let display = ComputePresenter::new(&event_loop.device)?;
     let mut imgui = ImGui::new(&event_loop.device);
-    let mut pool = HashPool::new(&event_loop.device);
+    let mut pool = LazyPool::new(&event_loop.device);
 
     // Some example state to make the demo more interesting
     let mut value = 0;

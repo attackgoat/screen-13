@@ -26,10 +26,7 @@ pub use {
         buffer::{Buffer, BufferInfo, BufferInfoBuilder, BufferSubresource},
         cmd_buf::CommandBuffer,
         compute::{ComputePipeline, ComputePipelineInfo, ComputePipelineInfoBuilder},
-        descriptor_set::{
-            DescriptorPool, DescriptorPoolInfo, DescriptorPoolInfoBuilder, DescriptorPoolSize,
-            DescriptorSet,
-        },
+        descriptor_set::{DescriptorPool, DescriptorPoolInfo, DescriptorSet},
         descriptor_set_layout::DescriptorSetLayout,
         device::{Device, FeatureFlags},
         graphic::{

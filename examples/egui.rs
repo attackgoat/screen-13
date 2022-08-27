@@ -9,7 +9,7 @@ fn main() -> Result<(), DisplayError> {
         .build()?;
     let mut egui = Egui::new(&event_loop.device, &event_loop.window);
 
-    let mut cache = HashPool::new(&event_loop.device);
+    let mut cache = LazyPool::new(&event_loop.device);
 
     event_loop.run(|frame| {
         let img = frame.render_graph.bind_node(
