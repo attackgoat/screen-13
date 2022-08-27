@@ -51,7 +51,7 @@ fn main() -> anyhow::Result<()> {
         .build()
         .context("Event loop")?;
     let display = GraphicPresenter::new(&event_loop.device).context("Presenter")?;
-    let mut cache = HashPool::new(&event_loop.device);
+    let mut cache = LazyPool::new(&event_loop.device);
     let mut image_loader = ImageLoader::new(&event_loop.device).context("Loader")?;
 
     // Load source images: PakBuf -> BitmapBuf -> ImageBinding (here) -> ImageNode (during loop)

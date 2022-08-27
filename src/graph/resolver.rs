@@ -12,7 +12,7 @@ use {
             FramebufferKeyAttachment, Image, ImageViewInfo, Queue, QueueFamily, RenderPass,
             RenderPassInfo, SampleCount, SubpassDependency, SubpassInfo,
         },
-        pool::{hash::HashPool, Lease, Pool},
+        pool::{hash::HashPool, lazy::LazyPool, Lease, Pool},
     },
     ash::vk,
     log::{debug, trace},
@@ -502,29 +502,42 @@ impl Resolver {
                 for (descriptor_ty, descriptor_count) in pool_size {
                     debug_assert_ne!(*descriptor_count, 0);
 
-                    let info_descriptor_count = &mut match *descriptor_ty {
+                    match *descriptor_ty {
                         vk::DescriptorType::ACCELERATION_STRUCTURE_KHR => {
-                            info.acceleration_structure_count
+                            info.acceleration_structure_count += descriptor_count;
                         }
                         vk::DescriptorType::COMBINED_IMAGE_SAMPLER => {
-                            info.combined_image_sampler_count
+                            info.combined_image_sampler_count += descriptor_count;
                         }
-                        vk::DescriptorType::INPUT_ATTACHMENT => info.input_attachment_count,
-                        vk::DescriptorType::SAMPLED_IMAGE => info.sampled_image_count,
-                        vk::DescriptorType::STORAGE_BUFFER => info.storage_buffer_count,
+                        vk::DescriptorType::INPUT_ATTACHMENT => {
+                            info.input_attachment_count += descriptor_count;
+                        }
+                        vk::DescriptorType::SAMPLED_IMAGE => {
+                            info.sampled_image_count += descriptor_count;
+                        }
+                        vk::DescriptorType::STORAGE_BUFFER => {
+                            info.storage_buffer_count += descriptor_count;
+                        }
                         vk::DescriptorType::STORAGE_BUFFER_DYNAMIC => {
-                            info.storage_buffer_dynamic_count
+                            info.storage_buffer_dynamic_count += descriptor_count;
                         }
-                        vk::DescriptorType::STORAGE_IMAGE => info.storage_image_count,
-                        vk::DescriptorType::STORAGE_TEXEL_BUFFER => info.storage_texel_buffer_count,
-                        vk::DescriptorType::UNIFORM_BUFFER => info.uniform_buffer_count,
+                        vk::DescriptorType::STORAGE_IMAGE => {
+                            info.storage_image_count += descriptor_count;
+                        }
+                        vk::DescriptorType::STORAGE_TEXEL_BUFFER => {
+                            info.storage_texel_buffer_count += descriptor_count;
+                        }
+                        vk::DescriptorType::UNIFORM_BUFFER => {
+                            info.uniform_buffer_count += descriptor_count;
+                        }
                         vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC => {
-                            info.uniform_buffer_dynamic_count
+                            info.uniform_buffer_dynamic_count += descriptor_count;
                         }
-                        vk::DescriptorType::UNIFORM_TEXEL_BUFFER => info.uniform_texel_buffer_count,
+                        vk::DescriptorType::UNIFORM_TEXEL_BUFFER => {
+                            info.uniform_texel_buffer_count += descriptor_count;
+                        }
                         _ => unimplemented!(),
                     };
-                    *info_descriptor_count += descriptor_count;
                 }
             }
         }
@@ -2456,3 +2469,5 @@ pub trait ResolverPool:
 }
 
 impl ResolverPool for HashPool {}
+
+impl ResolverPool for LazyPool {}
