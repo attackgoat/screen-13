@@ -208,6 +208,10 @@ impl Display {
 
         self.swapchain.present_image(swapchain_image);
 
+        // Store the resolved graph because it contains bindings, leases, and other shared resources
+        // that need to be kept alive until the fence is waited upon.
+        CommandBuffer::push_fenced_drop(&mut self.cmd_bufs[swapchain_image_idx][2], resolver);
+
         Ok(())
     }
 
