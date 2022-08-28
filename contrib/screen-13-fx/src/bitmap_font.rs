@@ -173,8 +173,8 @@ impl BitmapFont {
         let mut vertex_count = 0;
 
         {
-            let vertex_buf = &mut Buffer::mapped_slice_mut(&mut vertex_buf)
-                [0..vertex_buf_len as usize];
+            let vertex_buf =
+                &mut Buffer::mapped_slice_mut(&mut vertex_buf)[0..vertex_buf_len as usize];
 
             let mut offset = 0;
             for (data, char) in self.font.parse(text).map(|char| (char.tessellate(), char)) {
