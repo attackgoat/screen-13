@@ -22,7 +22,6 @@ use {
         iter::repeat,
         mem::take,
         ops::Range,
-        sync::Arc,
     },
     vk_sync::{cmd::pipeline_barrier, AccessType, BufferBarrier, GlobalBarrier, ImageBarrier},
 };
@@ -379,22 +378,13 @@ impl Resolver {
         let physical_pass = &self.physical_passes[pass_idx];
         let pipeline_bind_point = pipeline.bind_point();
         let pipeline = match pipeline {
-            ExecutionPipeline::Compute(pipeline) => {
-                CommandBuffer::push_fenced_drop(cmd_buf, Arc::clone(pipeline));
-                ***pipeline
-            }
-            ExecutionPipeline::Graphic(pipeline) => {
-                CommandBuffer::push_fenced_drop(cmd_buf, Arc::clone(pipeline));
-                physical_pass
-                    .render_pass
-                    .as_ref()
-                    .unwrap()
-                    .graphic_pipeline_ref(pipeline, depth_stencil, exec_idx as _)?
-            }
-            ExecutionPipeline::RayTrace(pipeline) => {
-                CommandBuffer::push_fenced_drop(cmd_buf, Arc::clone(pipeline));
-                ***pipeline
-            }
+            ExecutionPipeline::Compute(pipeline) => ***pipeline,
+            ExecutionPipeline::Graphic(pipeline) => physical_pass
+                .render_pass
+                .as_ref()
+                .unwrap()
+                .graphic_pipeline_ref(pipeline, depth_stencil, exec_idx as _)?,
+            ExecutionPipeline::RayTrace(pipeline) => ***pipeline,
         };
 
         unsafe {
