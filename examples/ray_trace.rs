@@ -347,6 +347,7 @@ fn create_ray_trace_pipeline(device: &Arc<Device>) -> Result<Arc<RayTracePipelin
     )?))
 }
 
+#[allow(clippy::type_complexity)]
 fn load_scene_buffers(
     device: &Arc<Device>,
 ) -> Result<(Arc<Buffer>, Arc<Buffer>, u32, u32, Arc<Buffer>, Arc<Buffer>), DriverError> {
@@ -505,7 +506,7 @@ fn main() -> anyhow::Result<()> {
 
     let sbt_handle_size = align_up(shader_group_handle_size, shader_group_handle_alignment);
     let sbt_rgen_size = align_up(sbt_handle_size, shader_group_base_alignment);
-    let sbt_hit_size = align_up(1 * sbt_handle_size, shader_group_base_alignment);
+    let sbt_hit_size = align_up(sbt_handle_size, shader_group_base_alignment);
     let sbt_miss_size = align_up(2 * sbt_handle_size, shader_group_base_alignment);
     let sbt_buf = Arc::new({
         let mut buf = Buffer::create(
@@ -736,10 +737,10 @@ fn main() -> anyhow::Result<()> {
     let mut frame_count = 0;
     let mut image = None;
     let mut keyboard = KeyBuf::default();
-    let mut position = [1.39176035, 3.51999736, 5.59873962, 1f32];
-    let right = [0.999987483f32, 0.00000000, -0.00499906437, 1.00000000];
+    let mut position = [1.391_760_3, 3.519_997_4, 5.598_739_6, 1f32];
+    let right = [0.999_987_5_f32, 0.00000000, -0.004_999_064_4, 1.00000000];
     let up = [0f32, 1.0, 0.0, 1.0];
-    let forward = [-0.00499906437f32, 0.00000000, -0.999987483, 1.00000000];
+    let forward = [-0.004_999_064_4_f32, 0.00000000, -0.999_987_5, 1.00000000];
 
     // The event loop consists of:
     // - Lazy-init the storage image used to accumulate light

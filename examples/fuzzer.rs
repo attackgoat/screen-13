@@ -137,12 +137,12 @@ fn record_accel_struct_builds(frame: &mut FrameContext, cache: &mut HashPool) {
             },
         }],
     };
-    let blas_size = AccelerationStructure::size_of(&frame.device, &blas_geometry_info);
+    let blas_size = AccelerationStructure::size_of(frame.device, &blas_geometry_info);
     let blas_info = AccelerationStructureInfo::new_blas(blas_size.create_size);
 
     let instance_len = size_of::<vk::AccelerationStructureInstanceKHR>() as vk::DeviceSize;
     let mut instance_buf = Buffer::create(
-        &frame.device,
+        frame.device,
         BufferInfo::new_mappable(
             instance_len * BLAS_COUNT,
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
@@ -205,7 +205,7 @@ fn record_accel_struct_builds(frame: &mut FrameContext, cache: &mut HashPool) {
             },
         }],
     };
-    let tlas_size = AccelerationStructure::size_of(&frame.device, &tlas_geometry_info);
+    let tlas_size = AccelerationStructure::size_of(frame.device, &tlas_geometry_info);
     let tlas = cache
         .lease(AccelerationStructureInfo {
             ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
