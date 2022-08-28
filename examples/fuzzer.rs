@@ -19,12 +19,18 @@ Also helpful to run with valgrind:
     cargo build --example fuzzer && valgrind target/debug/examples/fuzzer
 
 */
-use {inline_spirv::inline_spirv, rand::random, screen_13::prelude::*, std::sync::Arc};
+use {
+    inline_spirv::inline_spirv,
+    rand::random,
+    screen_13::prelude::*,
+    std::{mem::size_of, sync::Arc},
+};
 
 fn main() -> Result<(), DisplayError> {
     pretty_env_logger::init();
 
-    let screen_13 = EventLoop::new().debug(true).build()?;
+    // If ray tracing is unsupported then set that to false and remove the associated operations
+    let screen_13 = EventLoop::new().debug(true).ray_tracing(true).build()?;
     let mut cache = HashPool::new(&screen_13.device);
 
     let mut frame_count = 0;
@@ -39,8 +45,9 @@ fn main() -> Result<(), DisplayError> {
         // We fuzz a random amount of randomly selected operations per frame
         let operations_per_frame = 16;
         let operation: u8 = random();
+        let operation: u8 = 7;
         for _ in 0..operations_per_frame {
-            match operation % 7 {
+            match operation % 8 {
                 0 => record_compute_array_bind(&mut frame, &mut cache),
                 1 => record_compute_bindless(&mut frame, &mut cache),
                 2 => record_compute_no_op(&mut frame),
@@ -48,6 +55,7 @@ fn main() -> Result<(), DisplayError> {
                 4 => record_graphic_load_store(&mut frame),
                 5 => record_graphic_will_merge_subpass_input(&mut frame, &mut cache),
                 6 => record_graphic_wont_merge(&mut frame, &mut cache),
+                7 => record_accel_struct_builds(&mut frame, &mut cache),
                 _ => unreachable!(),
             }
         }
@@ -59,6 +67,223 @@ fn main() -> Result<(), DisplayError> {
     debug!("OK");
 
     Ok(())
+}
+
+fn record_accel_struct_builds(frame: &mut FrameContext, cache: &mut HashPool) {
+    const BLAS_COUNT: vk::DeviceSize = 64;
+
+    // Vertex buffer for a triangle
+    let vertex_buf = {
+        let mut buf = cache
+            .lease(BufferInfo::new_mappable(
+                36,
+                vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                    | vk::BufferUsageFlags::STORAGE_BUFFER,
+            ))
+            .unwrap();
+
+        // Vertex 1
+        Buffer::copy_from_slice(&mut buf, 0, &0f32.to_ne_bytes());
+        Buffer::copy_from_slice(&mut buf, 4, &0f32.to_ne_bytes());
+        Buffer::copy_from_slice(&mut buf, 8, &0f32.to_ne_bytes());
+
+        // Vertex 2
+        Buffer::copy_from_slice(&mut buf, 12, &1f32.to_ne_bytes());
+        Buffer::copy_from_slice(&mut buf, 16, &1f32.to_ne_bytes());
+        Buffer::copy_from_slice(&mut buf, 20, &0f32.to_ne_bytes());
+
+        // Vertex 3
+        Buffer::copy_from_slice(&mut buf, 24, &2f32.to_ne_bytes());
+        Buffer::copy_from_slice(&mut buf, 28, &0f32.to_ne_bytes());
+        Buffer::copy_from_slice(&mut buf, 32, &0f32.to_ne_bytes());
+
+        buf
+    };
+
+    // Index buffer for a single triangle
+    let index_buf = {
+        let mut buf = cache
+            .lease(BufferInfo::new_mappable(
+                6,
+                vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                    | vk::BufferUsageFlags::STORAGE_BUFFER,
+            ))
+            .unwrap();
+
+        Buffer::copy_from_slice(&mut buf, 0, &0u16.to_ne_bytes());
+        Buffer::copy_from_slice(&mut buf, 2, &1u16.to_ne_bytes());
+        Buffer::copy_from_slice(&mut buf, 4, &2u16.to_ne_bytes());
+
+        buf
+    };
+
+    let blas_geometry_info = AccelerationStructureGeometryInfo {
+        ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
+        flags: vk::BuildAccelerationStructureFlagsKHR::empty(),
+        geometries: vec![AccelerationStructureGeometry {
+            max_primitive_count: 1,
+            flags: vk::GeometryFlagsKHR::OPAQUE,
+            geometry: AccelerationStructureGeometryData::Triangles {
+                index_data: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(&index_buf)),
+                index_type: vk::IndexType::UINT16,
+                max_vertex: 3,
+                transform_data: None,
+                vertex_data: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(
+                    &vertex_buf,
+                )),
+                vertex_format: vk::Format::R32G32B32_SFLOAT,
+                vertex_stride: 12,
+            },
+        }],
+    };
+    let blas_size = AccelerationStructure::size_of(&frame.device, &blas_geometry_info);
+    let blas_info = AccelerationStructureInfo::new_blas(blas_size.create_size);
+
+    let instance_len = size_of::<vk::AccelerationStructureInstanceKHR>() as vk::DeviceSize;
+    let mut instance_buf = Buffer::create(
+        &frame.device,
+        BufferInfo::new_mappable(
+            instance_len * BLAS_COUNT,
+            vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
+                | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+        ),
+    )
+    .unwrap();
+
+    // Lease and bind a bunch of bottom-level acceleration structures and add to instance buffer
+    let mut blas_nodes = Vec::with_capacity(BLAS_COUNT as _);
+    for idx in 0..BLAS_COUNT {
+        let blas = cache.lease(blas_info).unwrap();
+
+        Buffer::copy_from_slice(
+            &mut instance_buf,
+            idx * instance_len,
+            AccelerationStructure::instance_slice(vk::AccelerationStructureInstanceKHR {
+                transform: vk::TransformMatrixKHR {
+                    matrix: [
+                        1.0, 0.0, 0.0, 0.0, //
+                        0.0, 1.0, 0.0, 0.0, //
+                        0.0, 0.0, 1.0, 0.0, //
+                    ],
+                },
+                instance_custom_index_and_mask: vk::Packed24_8::new(0, 0xff),
+                instance_shader_binding_table_record_offset_and_flags: vk::Packed24_8::new(
+                    0,
+                    vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE.as_raw() as _,
+                ),
+                acceleration_structure_reference: vk::AccelerationStructureReferenceKHR {
+                    device_handle: AccelerationStructure::device_address(&blas),
+                },
+            }),
+        );
+
+        let blas_node = frame.render_graph.bind_node(blas);
+        let scratch_buf = frame.render_graph.bind_node(
+            cache
+                .lease(BufferInfo::new(
+                    blas_size.build_size,
+                    vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                        | vk::BufferUsageFlags::STORAGE_BUFFER,
+                ))
+                .unwrap(),
+        );
+
+        blas_nodes.push((scratch_buf, blas_node));
+    }
+
+    // Lease and bind a single top-level acceleration structure
+    let tlas_geometry_info = AccelerationStructureGeometryInfo {
+        ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
+        flags: vk::BuildAccelerationStructureFlagsKHR::empty(),
+        geometries: vec![AccelerationStructureGeometry {
+            max_primitive_count: 1,
+            flags: vk::GeometryFlagsKHR::OPAQUE,
+            geometry: AccelerationStructureGeometryData::Instances {
+                array_of_pointers: false,
+                data: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(&instance_buf)),
+            },
+        }],
+    };
+    let tlas_size = AccelerationStructure::size_of(&frame.device, &tlas_geometry_info);
+    let tlas = cache
+        .lease(AccelerationStructureInfo {
+            ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
+            size: tlas_size.create_size,
+        })
+        .unwrap();
+    let tlas_node = frame.render_graph.bind_node(tlas);
+    let tlas_scratch_buf = frame.render_graph.bind_node(
+        cache
+            .lease(BufferInfo::new(
+                tlas_size.build_size,
+                vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | vk::BufferUsageFlags::STORAGE_BUFFER,
+            ))
+            .unwrap(),
+    );
+
+    let index_node = frame.render_graph.bind_node(index_buf);
+    let vertex_node = frame.render_graph.bind_node(vertex_buf);
+
+    let pass = frame
+        .render_graph
+        .begin_pass("build acceleration structures");
+
+    // TODO: AccessType for these is funky, should be access_node?
+    let mut pass = pass.read_node(index_node).read_node(vertex_node);
+
+    // TODO: Like this:
+    for (scratch_buf, blas_node) in &blas_nodes {
+        pass.access_node_mut(*scratch_buf, AccessType::AccelerationStructureBufferWrite);
+        pass.access_node_mut(*blas_node, AccessType::AccelerationStructureBuildWrite);
+    }
+
+    // Ugly copy of the nodes that I want to figure out a way around while not being confusing
+    let blas_nodes_copy = blas_nodes
+        .iter()
+        .map(|(_, blas_node)| *blas_node)
+        .collect::<Vec<_>>();
+
+    let mut pass = pass.record_acceleration(move |accel| {
+        for (scratch_buf, blas_node) in blas_nodes {
+            accel.build_structure(
+                blas_node,
+                scratch_buf,
+                &blas_geometry_info,
+                &[vk::AccelerationStructureBuildRangeInfoKHR {
+                    first_vertex: 0,
+                    primitive_count: 1,
+                    primitive_offset: 0,
+                    transform_offset: 0,
+                }],
+            );
+        }
+    });
+
+    for blas_node in blas_nodes_copy {
+        pass.access_node_mut(blas_node, AccessType::AccelerationStructureBuildRead);
+    }
+
+    pass.access_node_mut(
+        tlas_scratch_buf,
+        AccessType::AccelerationStructureBufferWrite,
+    );
+    pass.access_node_mut(tlas_node, AccessType::AccelerationStructureBuildWrite);
+
+    pass.record_acceleration(move |accel| {
+        accel.build_structure(
+            tlas_node,
+            tlas_scratch_buf,
+            &tlas_geometry_info,
+            &[vk::AccelerationStructureBuildRangeInfoKHR {
+                first_vertex: 0,
+                primitive_count: 1,
+                primitive_offset: 0,
+                transform_offset: 0,
+            }],
+        );
+    });
 }
 
 fn record_compute_array_bind(frame: &mut FrameContext, cache: &mut HashPool) {

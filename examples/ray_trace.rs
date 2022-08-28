@@ -596,37 +596,33 @@ fn main() -> anyhow::Result<()> {
     // Create an instance buffer, which is just one instance for the single BLAS
     // ------------------------------------------------------------------------------------------ //
 
+    let instance = AccelerationStructure::instance_slice(vk::AccelerationStructureInstanceKHR {
+        transform: vk::TransformMatrixKHR {
+            matrix: [
+                1.0, 0.0, 0.0, 0.0, //
+                0.0, 1.0, 0.0, 0.0, //
+                0.0, 0.0, 1.0, 0.0, //
+            ],
+        },
+        instance_custom_index_and_mask: vk::Packed24_8::new(0, 0xff),
+        instance_shader_binding_table_record_offset_and_flags: vk::Packed24_8::new(
+            0,
+            vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE.as_raw() as _,
+        ),
+        acceleration_structure_reference: vk::AccelerationStructureReferenceKHR {
+            device_handle: blas_device_address,
+        },
+    });
     let instance_buf = Arc::new({
         let mut buffer = Buffer::create(
             &event_loop.device,
             BufferInfo::new_mappable(
-                size_of::<vk::AccelerationStructureInstanceKHR>() as _,
+                instance.len() as _,
                 vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             ),
         )?;
-        Buffer::copy_from_slice(&mut buffer, 0, unsafe {
-            std::slice::from_raw_parts(
-                &vk::AccelerationStructureInstanceKHR {
-                    transform: vk::TransformMatrixKHR {
-                        matrix: [
-                            1.0, 0.0, 0.0, 0.0, //
-                            0.0, 1.0, 0.0, 0.0, //
-                            0.0, 0.0, 1.0, 0.0, //
-                        ],
-                    },
-                    instance_custom_index_and_mask: vk::Packed24_8::new(0, 0xff),
-                    instance_shader_binding_table_record_offset_and_flags: vk::Packed24_8::new(
-                        0,
-                        vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE.as_raw() as _,
-                    ),
-                    acceleration_structure_reference: vk::AccelerationStructureReferenceKHR {
-                        device_handle: blas_device_address,
-                    },
-                } as *const _ as *const _,
-                size_of::<vk::AccelerationStructureInstanceKHR>(),
-            )
-        });
+        Buffer::copy_from_slice(&mut buffer, 0, instance);
 
         buffer
     });
@@ -686,7 +682,7 @@ fn main() -> anyhow::Result<()> {
                     accel.build_structure(
                         blas_node,
                         scratch_buf,
-                        blas_geometry_info,
+                        &blas_geometry_info,
                         &[vk::AccelerationStructureBuildRangeInfoKHR {
                             first_vertex: 0,
                             primitive_count: triangle_count,
@@ -719,7 +715,7 @@ fn main() -> anyhow::Result<()> {
                     accel.build_structure(
                         tlas_node,
                         scratch_buf,
-                        tlas_geometry_info,
+                        &tlas_geometry_info,
                         &[vk::AccelerationStructureBuildRangeInfoKHR {
                             first_vertex: 0,
                             primitive_count: 1,

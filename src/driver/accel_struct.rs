@@ -4,6 +4,7 @@ use {
     derive_builder::Builder,
     log::warn,
     std::{
+        mem::size_of,
         ops::Deref,
         sync::{
             atomic::{AtomicU8, Ordering},
@@ -87,6 +88,15 @@ impl AccelerationStructure {
                     &vk::AccelerationStructureDeviceAddressInfoKHR::builder()
                         .acceleration_structure(this.accel_struct),
                 )
+        }
+    }
+
+    pub fn instance_slice<'a>(instance: vk::AccelerationStructureInstanceKHR) -> &'a [u8] {
+        unsafe {
+            std::slice::from_raw_parts(
+                &instance as *const _ as *const _,
+                size_of::<vk::AccelerationStructureInstanceKHR>(),
+            )
         }
     }
 
@@ -183,7 +193,7 @@ impl AccelerationStructure {
                 device
                     .accel_struct_ext
                     .as_ref()
-                    .unwrap()
+                    .expect("ray tracing feature must be enabled")
                     .get_acceleration_structure_build_sizes(
                         vk::AccelerationStructureBuildTypeKHR::HOST_OR_DEVICE,
                         &info,
@@ -348,6 +358,22 @@ pub enum AccelerationStructureGeometryData {
 pub struct AccelerationStructureInfo {
     pub ty: vk::AccelerationStructureTypeKHR,
     pub size: vk::DeviceSize,
+}
+
+impl AccelerationStructureInfo {
+    pub const fn new_blas(size: vk::DeviceSize) -> Self {
+        Self {
+            ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
+            size,
+        }
+    }
+
+    pub const fn new_tlas(size: vk::DeviceSize) -> Self {
+        Self {
+            ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
+            size,
+        }
+    }
 }
 
 // HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56

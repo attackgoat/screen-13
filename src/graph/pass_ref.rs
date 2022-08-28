@@ -36,7 +36,7 @@ impl<'a> Acceleration<'a> {
         &self,
         accel_struct_node: impl Into<AnyAccelerationStructureNode>,
         scratch_buf_node: impl Into<AnyBufferNode>,
-        build_info: AccelerationStructureGeometryInfo,
+        build_info: &AccelerationStructureGeometryInfo,
         build_ranges: &[vk::AccelerationStructureBuildRangeInfoKHR],
     ) {
         use std::slice::from_ref;
@@ -93,7 +93,7 @@ impl<'a> Acceleration<'a> {
         src_accel_node: impl Into<AnyAccelerationStructureNode>,
         dst_accel_node: impl Into<AnyAccelerationStructureNode>,
         scratch_buf_node: impl Into<AnyBufferNode>,
-        build_info: AccelerationStructureGeometryInfo,
+        build_info: &AccelerationStructureGeometryInfo,
         build_ranges: &[vk::AccelerationStructureBuildRangeInfoKHR],
     ) {
         use std::slice::from_ref;
@@ -796,6 +796,17 @@ impl<'a> PassRef<'a> {
     /// the provided access type. This allows you to do whatever was declared here inside an
     /// excution callback registered after this call.
     pub fn access_node(mut self, node: impl Node + Information, access: AccessType) -> Self {
+        self.access_node_mut(node, access);
+
+        self
+    }
+
+    /// Instruct the graph to provide vulkan barriers around access to the given node.
+    ///
+    /// The resolver will insert an execution barrier into the command buffer as required using
+    /// the provided access type. This allows you to do whatever was declared here inside an
+    /// excution callback registered after this call.
+    pub fn access_node_mut(&mut self, node: impl Node + Information, access: AccessType) {
         self.assert_bound_graph_node(node);
 
         let idx = node.index();
@@ -809,7 +820,6 @@ impl<'a> PassRef<'a> {
         }
 
         self.push_node_access(node, access, node_access_range);
-        self
     }
 
     /// Instruct the graph to provide vulkan barriers around access to the given node with
@@ -827,8 +837,26 @@ impl<'a> PassRef<'a> {
     where
         N: View,
     {
-        self.push_node_access(node, access, Some(subresource.into().into()));
+        self.access_node_subrange_mut(node, access, subresource);
+
         self
+    }
+
+    /// Instruct the graph to provide vulkan barriers around access to the given node with
+    /// specific information about the subresource being accessed.
+    ///
+    /// The resolver will insert an execution barrier into the command buffer as required using
+    /// the provided access type. This allows you to do whatever was declared here inside an
+    /// excution callback registered after this call.
+    pub fn access_node_subrange_mut<N>(
+        &mut self,
+        node: N,
+        access: AccessType,
+        subresource: impl Into<N::Subresource>,
+    ) where
+        N: View,
+    {
+        self.push_node_access(node, access, Some(subresource.into().into()));
     }
 
     fn as_mut(&mut self) -> &mut Pass {
@@ -898,9 +926,17 @@ impl<'a> PassRef<'a> {
             .or_insert([access, access]);
     }
 
-    pub fn read_node(self, node: impl Node + Information) -> Self {
-        let access = AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer;
-        self.access_node(node, access)
+    pub fn read_node(mut self, node: impl Node + Information) -> Self {
+        self.read_node_mut(node);
+
+        self
+    }
+
+    pub fn read_node_mut(&mut self, node: impl Node + Information) {
+        self.access_node_mut(
+            node,
+            AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
+        );
     }
 
     pub fn record_acceleration(
@@ -923,6 +959,7 @@ impl<'a> PassRef<'a> {
         func: impl FnOnce(&Device, vk::CommandBuffer, Bindings<'_>) + Send + 'static,
     ) -> Self {
         self.push_execute(func);
+
         self
     }
 
@@ -935,9 +972,14 @@ impl<'a> PassRef<'a> {
         self.graph
     }
 
-    pub fn write_node(self, node: impl Node + Information) -> Self {
-        let access = AccessType::AnyShaderWrite;
-        self.access_node(node, access)
+    pub fn write_node(mut self, node: impl Node + Information) -> Self {
+        self.write_node_mut(node);
+
+        self
+    }
+
+    pub fn write_node_mut(&mut self, node: impl Node + Information) {
+        self.access_node_mut(node, AccessType::AnyShaderWrite);
     }
 }
 
@@ -1009,6 +1051,12 @@ where
     }
 
     pub fn access_node(mut self, node: impl Node + Information, access: AccessType) -> Self {
+        self.access_node_mut(node, access);
+
+        self
+    }
+
+    pub fn access_node_mut(&mut self, node: impl Node + Information, access: AccessType) {
         self.pass.assert_bound_graph_node(node);
 
         let idx = node.index();
@@ -1022,7 +1070,6 @@ where
         }
 
         self.pass.push_node_access(node, access, node_access_range);
-        self
     }
 
     pub fn access_node_subrange<N>(
@@ -1034,9 +1081,21 @@ where
     where
         N: View,
     {
+        self.access_node_subrange_mut(node, access, subresource);
+
+        self
+    }
+
+    pub fn access_node_subrange_mut<N>(
+        &mut self,
+        node: N,
+        access: AccessType,
+        subresource: impl Into<N::Subresource>,
+    ) where
+        N: View,
+    {
         self.pass
             .push_node_access(node, access, Some(subresource.into().into()));
-        self
     }
 
     fn push_node_view_bind(
@@ -1106,17 +1165,32 @@ where
         self.access_descriptor_subrange(descriptor, node, access, view_info, subresource)
     }
 
-    pub fn read_node(self, node: impl Node + Information) -> Self {
-        let access = <T as Access>::DEFAULT_READ;
-        self.access_node(node, access)
+    pub fn read_node(mut self, node: impl Node + Information) -> Self {
+        self.read_node_mut(node);
+
+        self
     }
 
-    pub fn read_node_subrange<N>(self, node: N, subresource: impl Into<N::Subresource>) -> Self
+    pub fn read_node_mut(&mut self, node: impl Node + Information) {
+        let access = <T as Access>::DEFAULT_READ;
+        self.access_node_mut(node, access);
+    }
+
+    pub fn read_node_subrange<N>(mut self, node: N, subresource: impl Into<N::Subresource>) -> Self
+    where
+        N: View,
+    {
+        self.read_node_subrange_mut(node, subresource);
+
+        self
+    }
+
+    pub fn read_node_subrange_mut<N>(&mut self, node: N, subresource: impl Into<N::Subresource>)
     where
         N: View,
     {
         let access = <T as Access>::DEFAULT_READ;
-        self.access_node_subrange(node, access, subresource)
+        self.access_node_subrange_mut(node, access, subresource);
     }
 
     pub fn submit_pass(self) -> &'a mut RenderGraph {
@@ -1168,17 +1242,32 @@ where
         self.access_descriptor_subrange(descriptor, node, access, view_info, subresource)
     }
 
-    pub fn write_node(self, node: impl Node + Information) -> Self {
-        let access = <T as Access>::DEFAULT_WRITE;
-        self.access_node(node, access)
+    pub fn write_node(mut self, node: impl Node + Information) -> Self {
+        self.write_node_mut(node);
+
+        self
     }
 
-    pub fn write_node_subrange<N>(self, node: N, subresource: impl Into<N::Subresource>) -> Self
+    pub fn write_node_mut(&mut self, node: impl Node + Information) {
+        let access = <T as Access>::DEFAULT_WRITE;
+        self.access_node_mut(node, access);
+    }
+
+    pub fn write_node_subrange<N>(mut self, node: N, subresource: impl Into<N::Subresource>) -> Self
+    where
+        N: View,
+    {
+        self.write_node_subrange_mut(node, subresource);
+
+        self
+    }
+
+    pub fn write_node_subrange_mut<N>(&mut self, node: N, subresource: impl Into<N::Subresource>)
     where
         N: View,
     {
         let access = <T as Access>::DEFAULT_WRITE;
-        self.access_node_subrange(node, access, subresource)
+        self.access_node_subrange_mut(node, access, subresource);
     }
 }
 
