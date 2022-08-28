@@ -45,7 +45,6 @@ fn main() -> Result<(), DisplayError> {
         // We fuzz a random amount of randomly selected operations per frame
         let operations_per_frame = 16;
         let operation: u8 = random();
-        let operation: u8 = 7;
         for _ in 0..operations_per_frame {
             match operation % 8 {
                 0 => record_compute_array_bind(&mut frame, &mut cache),
@@ -70,7 +69,7 @@ fn main() -> Result<(), DisplayError> {
 }
 
 fn record_accel_struct_builds(frame: &mut FrameContext, cache: &mut HashPool) {
-    const BLAS_COUNT: vk::DeviceSize = 64;
+    const BLAS_COUNT: vk::DeviceSize = 32;
 
     // Vertex buffer for a triangle
     let vertex_buf = {
