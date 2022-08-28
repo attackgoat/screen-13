@@ -55,16 +55,7 @@ impl<T> Drop for Lease<T> {
         }
 
         if let Some(cache) = self.cache.as_ref() {
-            let mut cache = cache.lock();
-
-            // TODO: I'm sure some better logic would be handy
-            if cache.len() < 8 {
-                cache.push_back(self.item.take().unwrap());
-            } else {
-                // TODO: Better design for this - we are dropping these extra resources to avoid
-                // bigger issues - but this is just a symptom really - hasn't been a priority yet
-                warn!("hash pool build-up");
-            }
+            cache.lock().push_back(self.item.take().unwrap());
         }
     }
 }
