@@ -3,7 +3,6 @@ pub mod lazy;
 
 use {
     crate::driver::DriverError,
-    log::warn,
     parking_lot::Mutex,
     std::{
         collections::VecDeque,
