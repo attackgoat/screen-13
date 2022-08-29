@@ -1,6 +1,6 @@
 use {super::KeyBuf, winit::event::VirtualKeyCode};
 
-#[derive(Default, PartialEq)]
+#[derive(Default, Eq, PartialEq)]
 pub struct Typing {
     buf: String,
     pos: usize,

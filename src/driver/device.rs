@@ -9,7 +9,7 @@ use {
         vulkan::{Allocator, AllocatorCreateDesc},
         AllocatorDebugSettings,
     },
-    log::{debug, info, trace, warn},
+    log::{debug, error, info, trace, warn},
     parking_lot::Mutex,
     std::{
         collections::{HashMap, HashSet},
@@ -465,7 +465,11 @@ impl Device {
         unsafe {
             match this.device.wait_for_fences(fences, true, 100) {
                 Ok(_) => return Ok(()),
-                Err(err) if err == vk::Result::ERROR_DEVICE_LOST => (),
+                Err(err) if err == vk::Result::ERROR_DEVICE_LOST => {
+                    error!("Device lost");
+
+                    return Err(DriverError::InvalidData);
+                }
                 Err(err) if err == vk::Result::TIMEOUT => {
                     trace!("waiting...");
                 }
@@ -476,7 +480,11 @@ impl Device {
 
             match this.device.wait_for_fences(fences, true, u64::MAX) {
                 Ok(_) => (),
-                Err(err) if err == vk::Result::ERROR_DEVICE_LOST => (),
+                Err(err) if err == vk::Result::ERROR_DEVICE_LOST => {
+                    error!("Device lost");
+
+                    return Err(DriverError::InvalidData);
+                }
                 _ => return Err(DriverError::OutOfMemory),
             }
 
