@@ -19,57 +19,107 @@ impl DescriptorPool {
     ) -> Result<Self, DriverError> {
         let device = Arc::clone(device);
         let info = info.into();
+
+        let mut pool_sizes = [vk::DescriptorPoolSize {
+            ty: Default::default(),
+            descriptor_count: 0,
+        }; 11];
+        let mut pool_size_count = 0;
+
+        if info.acceleration_structure_count > 0 {
+            pool_sizes[pool_size_count] = vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::ACCELERATION_STRUCTURE_KHR,
+                descriptor_count: info.acceleration_structure_count,
+            };
+            pool_size_count += 1;
+        }
+
+        if info.combined_image_sampler_count > 0 {
+            pool_sizes[pool_size_count] = vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+                descriptor_count: info.combined_image_sampler_count,
+            };
+            pool_size_count += 1;
+        }
+
+        if info.input_attachment_count > 0 {
+            pool_sizes[pool_size_count] = vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::INPUT_ATTACHMENT,
+                descriptor_count: info.input_attachment_count,
+            };
+            pool_size_count += 1;
+        }
+
+        if info.sampled_image_count > 0 {
+            pool_sizes[pool_size_count] = vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::SAMPLED_IMAGE,
+                descriptor_count: info.sampled_image_count,
+            };
+            pool_size_count += 1;
+        }
+
+        if info.storage_buffer_count > 0 {
+            pool_sizes[pool_size_count] = vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::STORAGE_BUFFER,
+                descriptor_count: info.storage_buffer_count,
+            };
+            pool_size_count += 1;
+        }
+
+        if info.storage_buffer_dynamic_count > 0 {
+            pool_sizes[pool_size_count] = vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::STORAGE_BUFFER_DYNAMIC,
+                descriptor_count: info.storage_buffer_dynamic_count,
+            };
+            pool_size_count += 1;
+        }
+
+        if info.storage_image_count > 0 {
+            pool_sizes[pool_size_count] = vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::STORAGE_IMAGE,
+                descriptor_count: info.storage_image_count,
+            };
+            pool_size_count += 1;
+        }
+
+        if info.storage_texel_buffer_count > 0 {
+            pool_sizes[pool_size_count] = vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::STORAGE_TEXEL_BUFFER,
+                descriptor_count: info.storage_texel_buffer_count,
+            };
+            pool_size_count += 1;
+        }
+
+        if info.uniform_buffer_count > 0 {
+            pool_sizes[pool_size_count] = vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::UNIFORM_BUFFER,
+                descriptor_count: info.uniform_buffer_count,
+            };
+            pool_size_count += 1;
+        }
+
+        if info.uniform_buffer_dynamic_count > 0 {
+            pool_sizes[pool_size_count] = vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
+                descriptor_count: info.uniform_buffer_dynamic_count,
+            };
+            pool_size_count += 1;
+        }
+
+        if info.uniform_texel_buffer_count > 0 {
+            pool_sizes[pool_size_count] = vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::UNIFORM_TEXEL_BUFFER,
+                descriptor_count: info.uniform_texel_buffer_count,
+            };
+            pool_size_count += 1;
+        }
+
         let descriptor_pool = unsafe {
             device.create_descriptor_pool(
                 &vk::DescriptorPoolCreateInfo::builder()
                     .flags(vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET)
                     .max_sets(info.max_sets)
-                    .pool_sizes(&[
-                        vk::DescriptorPoolSize {
-                            ty: vk::DescriptorType::ACCELERATION_STRUCTURE_KHR,
-                            descriptor_count: info.acceleration_structure_count,
-                        },
-                        vk::DescriptorPoolSize {
-                            ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                            descriptor_count: info.combined_image_sampler_count,
-                        },
-                        vk::DescriptorPoolSize {
-                            ty: vk::DescriptorType::INPUT_ATTACHMENT,
-                            descriptor_count: info.input_attachment_count,
-                        },
-                        vk::DescriptorPoolSize {
-                            ty: vk::DescriptorType::SAMPLED_IMAGE,
-                            descriptor_count: info.sampled_image_count,
-                        },
-                        vk::DescriptorPoolSize {
-                            ty: vk::DescriptorType::STORAGE_BUFFER,
-                            descriptor_count: info.storage_buffer_count,
-                        },
-                        vk::DescriptorPoolSize {
-                            ty: vk::DescriptorType::STORAGE_BUFFER_DYNAMIC,
-                            descriptor_count: info.storage_buffer_dynamic_count,
-                        },
-                        vk::DescriptorPoolSize {
-                            ty: vk::DescriptorType::STORAGE_IMAGE,
-                            descriptor_count: info.storage_image_count,
-                        },
-                        vk::DescriptorPoolSize {
-                            ty: vk::DescriptorType::STORAGE_TEXEL_BUFFER,
-                            descriptor_count: info.storage_texel_buffer_count,
-                        },
-                        vk::DescriptorPoolSize {
-                            ty: vk::DescriptorType::UNIFORM_BUFFER,
-                            descriptor_count: info.uniform_buffer_count,
-                        },
-                        vk::DescriptorPoolSize {
-                            ty: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
-                            descriptor_count: info.uniform_buffer_dynamic_count,
-                        },
-                        vk::DescriptorPoolSize {
-                            ty: vk::DescriptorType::UNIFORM_TEXEL_BUFFER,
-                            descriptor_count: info.uniform_texel_buffer_count,
-                        },
-                    ]),
+                    .pool_sizes(&pool_sizes[0..pool_size_count]),
                 None,
             )
         }
