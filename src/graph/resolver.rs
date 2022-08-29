@@ -8,17 +8,17 @@ use {
             format_aspect_mask, image_access_layout, is_read_access, is_write_access,
             pipeline_stage_access_flags, AccelerationStructure, AttachmentInfo, AttachmentRef,
             Buffer, CommandBuffer, DepthStencilMode, DescriptorBinding, DescriptorInfo,
-            DescriptorPool, DescriptorPoolInfo, DescriptorPoolSize, DescriptorSet, Device,
-            DriverError, FramebufferKey, FramebufferKeyAttachment, Image, ImageViewInfo,
-            RenderPass, RenderPassInfo, SampleCount, SubpassDependency, SubpassInfo,
+            DescriptorPool, DescriptorPoolInfo, DescriptorSet, Device, DriverError, FramebufferKey,
+            FramebufferKeyAttachment, Image, ImageViewInfo, Queue, QueueFamily, RenderPass,
+            RenderPassInfo, SampleCount, SubpassDependency, SubpassInfo,
         },
-        hash_pool::{HashPool, Lease},
+        pool::{hash::HashPool, lazy::LazyPool, Lease, Pool},
     },
     ash::vk,
     log::{debug, trace},
     std::{
         cell::RefCell,
-        collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
+        collections::{BTreeSet, HashMap, VecDeque},
         iter::repeat,
         mem::take,
         ops::Range,
@@ -470,46 +470,88 @@ impl Resolver {
 
     #[allow(clippy::type_complexity)]
     fn lease_descriptor_pool(
-        cache: &mut HashPool,
+        cache: &mut dyn ResolverPool,
         pass: &Pass,
     ) -> Result<Option<Lease<DescriptorPool>>, DriverError> {
-        let mut max_pool_sizes = BTreeMap::new();
-        let max_descriptor_set_idx = pass
+        let max_set_idx = pass
             .execs
             .iter()
             .flat_map(|exec| exec.bindings.keys())
             .map(|descriptor| descriptor.set())
             .max()
             .unwrap_or_default();
+        let max_sets = pass.execs.len() as u32 * (max_set_idx + 1);
+        let mut info = DescriptorPoolInfo {
+            max_sets,
+            ..Default::default()
+        };
 
         // Find the total count of descriptors per type (there may be multiple pipelines!)
         for pool_sizes in pass.descriptor_pools_sizes() {
             for pool_size in pool_sizes.values() {
-                for (descriptor_ty, descriptor_count) in pool_size.iter() {
-                    assert_ne!(*descriptor_count, 0);
+                for (descriptor_ty, descriptor_count) in pool_size {
+                    debug_assert_ne!(*descriptor_count, 0);
 
-                    *max_pool_sizes.entry(*descriptor_ty).or_default() += descriptor_count;
+                    match *descriptor_ty {
+                        vk::DescriptorType::ACCELERATION_STRUCTURE_KHR => {
+                            info.acceleration_structure_count += descriptor_count;
+                        }
+                        vk::DescriptorType::COMBINED_IMAGE_SAMPLER => {
+                            info.combined_image_sampler_count += descriptor_count;
+                        }
+                        vk::DescriptorType::INPUT_ATTACHMENT => {
+                            info.input_attachment_count += descriptor_count;
+                        }
+                        vk::DescriptorType::SAMPLED_IMAGE => {
+                            info.sampled_image_count += descriptor_count;
+                        }
+                        vk::DescriptorType::STORAGE_BUFFER => {
+                            info.storage_buffer_count += descriptor_count;
+                        }
+                        vk::DescriptorType::STORAGE_BUFFER_DYNAMIC => {
+                            info.storage_buffer_dynamic_count += descriptor_count;
+                        }
+                        vk::DescriptorType::STORAGE_IMAGE => {
+                            info.storage_image_count += descriptor_count;
+                        }
+                        vk::DescriptorType::STORAGE_TEXEL_BUFFER => {
+                            info.storage_texel_buffer_count += descriptor_count;
+                        }
+                        vk::DescriptorType::UNIFORM_BUFFER => {
+                            info.uniform_buffer_count += descriptor_count;
+                        }
+                        vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC => {
+                            info.uniform_buffer_dynamic_count += descriptor_count;
+                        }
+                        vk::DescriptorType::UNIFORM_TEXEL_BUFFER => {
+                            info.uniform_texel_buffer_count += descriptor_count;
+                        }
+                        _ => unimplemented!(),
+                    };
                 }
             }
         }
 
         // It's possible to execute a command-only pipeline
-        if max_pool_sizes.is_empty() {
+        if info.is_empty() {
             return Ok(None);
         }
 
+        // Trivially round up the descriptor counts to increase cache coherence
+        const ATOM: u32 = 1 << 5;
+        info.acceleration_structure_count = align_up(info.acceleration_structure_count, ATOM);
+        info.combined_image_sampler_count = align_up(info.combined_image_sampler_count, ATOM);
+        info.input_attachment_count = align_up(info.input_attachment_count, ATOM);
+        info.sampled_image_count = align_up(info.sampled_image_count, ATOM);
+        info.storage_buffer_count = align_up(info.storage_buffer_count, ATOM);
+        info.storage_buffer_dynamic_count = align_up(info.storage_buffer_dynamic_count, ATOM);
+        info.storage_image_count = align_up(info.storage_image_count, ATOM);
+        info.storage_texel_buffer_count = align_up(info.storage_texel_buffer_count, ATOM);
+        info.uniform_buffer_count = align_up(info.uniform_buffer_count, ATOM);
+        info.uniform_buffer_dynamic_count = align_up(info.uniform_buffer_dynamic_count, ATOM);
+        info.uniform_texel_buffer_count = align_up(info.uniform_texel_buffer_count, ATOM);
+
         // Notice how all sets are big enough for any other set; TODO: efficiently dont
-        let info = DescriptorPoolInfo::new(pass.execs.len() as u32 * (max_descriptor_set_idx + 1))
-            .pool_sizes(
-                max_pool_sizes
-                    .into_iter()
-                    .map(|(descriptor_ty, descriptor_count)| DescriptorPoolSize {
-                        ty: descriptor_ty,
-                        // Trivially round up the descriptor counts to increase cache coherence
-                        descriptor_count: align_up(descriptor_count, 1 << 5),
-                    })
-                    .collect(),
-            );
 
         // debug!("{:#?}", info);
 
@@ -520,7 +562,7 @@ impl Resolver {
 
     fn lease_render_pass(
         &self,
-        cache: &mut HashPool,
+        cache: &mut dyn ResolverPool,
         pass_idx: usize,
     ) -> Result<Lease<RenderPass>, DriverError> {
         // TODO: We're building a RenderPassInfo here (the 3x Vec<_>s), but we could use TLS if:
@@ -1214,17 +1256,16 @@ impl Resolver {
                 dependencies.into_values().collect::<Vec<_>>()
             };
 
-        cache.lease(
-            RenderPassInfo::new()
-                .attachments(attachments)
-                .dependencies(dependencies)
-                .subpasses(subpasses),
-        )
+        cache.lease(RenderPassInfo {
+            attachments,
+            dependencies,
+            subpasses,
+        })
     }
 
     fn lease_scheduled_resources(
         &mut self,
-        cache: &mut HashPool,
+        cache: &mut dyn ResolverPool,
         schedule: &[usize],
     ) -> Result<(), DriverError> {
         for pass_idx in schedule.iter().copied() {
@@ -1656,7 +1697,7 @@ impl Resolver {
     /// multiple images out and you care - in that case pull the "most important" image first.
     pub fn record_node_dependencies(
         &mut self,
-        cache: &mut HashPool,
+        cache: &mut dyn ResolverPool,
         cmd_buf: &mut CommandBuffer,
         node: impl Node,
     ) -> Result<(), DriverError> {
@@ -1678,7 +1719,7 @@ impl Resolver {
     /// Records any pending render graph passes that the given node requires.
     pub fn record_node(
         &mut self,
-        cache: &mut HashPool,
+        cache: &mut dyn ResolverPool,
         cmd_buf: &mut CommandBuffer,
         node: impl Node,
     ) -> Result<(), DriverError> {
@@ -1694,7 +1735,7 @@ impl Resolver {
 
     fn record_node_passes(
         &mut self,
-        cache: &mut HashPool,
+        cache: &mut dyn ResolverPool,
         cmd_buf: &mut CommandBuffer,
         node_idx: usize,
         end_pass_idx: usize,
@@ -1707,7 +1748,7 @@ impl Resolver {
 
     fn record_scheduled_passes(
         &mut self,
-        cache: &mut HashPool,
+        cache: &mut dyn ResolverPool,
         cmd_buf: &mut CommandBuffer,
         mut schedule: &mut [usize],
         end_pass_idx: usize,
@@ -1852,7 +1893,7 @@ impl Resolver {
     /// Records any pending render graph passes that have not been previously scheduled.
     pub fn record_unscheduled_passes(
         &mut self,
-        cache: &mut HashPool,
+        cache: &mut dyn ResolverPool,
         cmd_buf: &mut CommandBuffer,
     ) -> Result<(), DriverError> {
         if self.graph.passes.is_empty() {
@@ -2069,22 +2110,26 @@ impl Resolver {
         }
     }
 
-    pub fn submit(mut self, cache: &mut HashPool) -> Result<(), DriverError> {
+    pub fn submit(
+        mut self,
+        queue: &Queue,
+        cache: &mut impl ResolverPool,
+    ) -> Result<(), DriverError> {
         use std::slice::from_ref;
 
         trace!("submit");
 
-        let mut cmd_buf = cache.lease(cache.device.queue.family)?;
+        let mut cmd_buf = cache.lease(queue.family)?;
 
         unsafe {
-            Device::wait_for_fence(&cache.device, &cmd_buf.fence)
+            Device::wait_for_fence(&cmd_buf.device, &cmd_buf.fence)
                 .map_err(|_| DriverError::OutOfMemory)?;
 
-            cache
+            cmd_buf
                 .device
                 .reset_command_pool(cmd_buf.pool, vk::CommandPoolResetFlags::RELEASE_RESOURCES)
                 .map_err(|_| DriverError::OutOfMemory)?;
-            cache
+            cmd_buf
                 .device
                 .begin_command_buffer(
                     **cmd_buf,
@@ -2097,18 +2142,18 @@ impl Resolver {
         self.record_unscheduled_passes(cache, &mut cmd_buf)?;
 
         unsafe {
-            cache
+            cmd_buf
                 .device
                 .end_command_buffer(**cmd_buf)
                 .map_err(|_| DriverError::OutOfMemory)?;
-            cache
+            cmd_buf
                 .device
                 .reset_fences(from_ref(&cmd_buf.fence))
                 .map_err(|_| DriverError::OutOfMemory)?;
-            cache
+            cmd_buf
                 .device
                 .queue_submit(
-                    *cache.device.queue,
+                    **queue,
                     from_ref(&vk::SubmitInfo::builder().command_buffers(from_ref(&cmd_buf))),
                     cmd_buf.fence,
                 )
@@ -2405,3 +2450,14 @@ impl Resolver {
         })
     }
 }
+
+pub trait ResolverPool:
+    Pool<DescriptorPoolInfo, DescriptorPool>
+    + Pool<RenderPassInfo, RenderPass>
+    + Pool<QueueFamily, CommandBuffer>
+{
+}
+
+impl ResolverPool for HashPool {}
+
+impl ResolverPool for LazyPool {}

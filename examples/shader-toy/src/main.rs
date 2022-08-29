@@ -51,7 +51,7 @@ fn main() -> anyhow::Result<()> {
         .build()
         .context("Event loop")?;
     let display = GraphicPresenter::new(&event_loop.device).context("Presenter")?;
-    let mut cache = HashPool::new(&event_loop.device);
+    let mut cache = LazyPool::new(&event_loop.device);
     let mut image_loader = ImageLoader::new(&event_loop.device).context("Loader")?;
 
     // Load source images: PakBuf -> BitmapBuf -> ImageBinding (here) -> ImageNode (during loop)
@@ -159,7 +159,9 @@ fn main() -> anyhow::Result<()> {
     let mut blank_image_binding = Some(render_graph.unbind_node(blank_image));
     let mut temp_image_binding = Some(render_graph.unbind_node(temp_image));
 
-    render_graph.resolve().submit(&mut cache)?;
+    render_graph
+        .resolve()
+        .submit(&event_loop.device.queue, &mut cache)?;
 
     let started_at = Instant::now();
     let mut mouse_buf = MouseBuf::default();

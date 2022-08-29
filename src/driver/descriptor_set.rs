@@ -1,7 +1,6 @@
 use {
     super::{DescriptorSetLayout, Device, DriverError},
     ash::vk,
-    derive_builder::Builder,
     log::{trace, warn},
     std::{ops::Deref, sync::Arc, thread::panicking},
 };
@@ -25,16 +24,52 @@ impl DescriptorPool {
                 &vk::DescriptorPoolCreateInfo::builder()
                     .flags(vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET)
                     .max_sets(info.max_sets)
-                    .pool_sizes(
-                        &info
-                            .pool_sizes
-                            .iter()
-                            .map(|pool_size| vk::DescriptorPoolSize {
-                                ty: pool_size.ty,
-                                descriptor_count: pool_size.descriptor_count,
-                            })
-                            .collect::<Box<[_]>>(),
-                    ),
+                    .pool_sizes(&[
+                        vk::DescriptorPoolSize {
+                            ty: vk::DescriptorType::ACCELERATION_STRUCTURE_KHR,
+                            descriptor_count: info.acceleration_structure_count,
+                        },
+                        vk::DescriptorPoolSize {
+                            ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+                            descriptor_count: info.combined_image_sampler_count,
+                        },
+                        vk::DescriptorPoolSize {
+                            ty: vk::DescriptorType::INPUT_ATTACHMENT,
+                            descriptor_count: info.input_attachment_count,
+                        },
+                        vk::DescriptorPoolSize {
+                            ty: vk::DescriptorType::SAMPLED_IMAGE,
+                            descriptor_count: info.sampled_image_count,
+                        },
+                        vk::DescriptorPoolSize {
+                            ty: vk::DescriptorType::STORAGE_BUFFER,
+                            descriptor_count: info.storage_buffer_count,
+                        },
+                        vk::DescriptorPoolSize {
+                            ty: vk::DescriptorType::STORAGE_BUFFER_DYNAMIC,
+                            descriptor_count: info.storage_buffer_dynamic_count,
+                        },
+                        vk::DescriptorPoolSize {
+                            ty: vk::DescriptorType::STORAGE_IMAGE,
+                            descriptor_count: info.storage_image_count,
+                        },
+                        vk::DescriptorPoolSize {
+                            ty: vk::DescriptorType::STORAGE_TEXEL_BUFFER,
+                            descriptor_count: info.storage_texel_buffer_count,
+                        },
+                        vk::DescriptorPoolSize {
+                            ty: vk::DescriptorType::UNIFORM_BUFFER,
+                            descriptor_count: info.uniform_buffer_count,
+                        },
+                        vk::DescriptorPoolSize {
+                            ty: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
+                            descriptor_count: info.uniform_buffer_dynamic_count,
+                        },
+                        vk::DescriptorPoolSize {
+                            ty: vk::DescriptorType::UNIFORM_TEXEL_BUFFER,
+                            descriptor_count: info.uniform_texel_buffer_count,
+                        },
+                    ]),
                 None,
             )
         }
@@ -121,31 +156,37 @@ impl Drop for DescriptorPool {
     }
 }
 
-#[derive(Builder, Clone, Debug, Eq, Hash, PartialEq)]
-#[builder(pattern = "owned", derive(Debug))]
+#[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
 pub struct DescriptorPoolInfo {
+    pub acceleration_structure_count: u32,
+    pub combined_image_sampler_count: u32,
+    pub input_attachment_count: u32,
     pub max_sets: u32,
-    pub pool_sizes: Vec<DescriptorPoolSize>,
+    pub sampled_image_count: u32,
+    pub storage_buffer_count: u32,
+    pub storage_buffer_dynamic_count: u32,
+    pub storage_image_count: u32,
+    pub storage_texel_buffer_count: u32,
+    pub uniform_buffer_count: u32,
+    pub uniform_buffer_dynamic_count: u32,
+    pub uniform_texel_buffer_count: u32,
 }
 
 impl DescriptorPoolInfo {
-    #[allow(clippy::new_ret_no_self)]
-    pub fn new(max_sets: u32) -> DescriptorPoolInfoBuilder {
-        DescriptorPoolInfoBuilder::default().max_sets(max_sets)
+    pub fn is_empty(&self) -> bool {
+        self.acceleration_structure_count
+            + self.combined_image_sampler_count
+            + self.input_attachment_count
+            + self.sampled_image_count
+            + self.storage_buffer_count
+            + self.storage_buffer_dynamic_count
+            + self.storage_image_count
+            + self.storage_texel_buffer_count
+            + self.uniform_buffer_count
+            + self.uniform_buffer_dynamic_count
+            + self.uniform_texel_buffer_count
+            == 0
     }
-}
-
-impl From<DescriptorPoolInfoBuilder> for DescriptorPoolInfo {
-    fn from(info: DescriptorPoolInfoBuilder) -> Self {
-        info.build().unwrap()
-    }
-}
-
-#[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
-#[builder(pattern = "owned")]
-pub struct DescriptorPoolSize {
-    pub ty: vk::DescriptorType,
-    pub descriptor_count: u32,
 }
 
 #[derive(Debug)]

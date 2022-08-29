@@ -26,10 +26,7 @@ pub use {
         buffer::{Buffer, BufferInfo, BufferInfoBuilder, BufferSubresource},
         cmd_buf::CommandBuffer,
         compute::{ComputePipeline, ComputePipelineInfo, ComputePipelineInfoBuilder},
-        descriptor_set::{
-            DescriptorPool, DescriptorPoolInfo, DescriptorPoolInfoBuilder, DescriptorPoolSize,
-            DescriptorSet,
-        },
+        descriptor_set::{DescriptorPool, DescriptorPoolInfo, DescriptorSet},
         descriptor_set_layout::DescriptorSetLayout,
         device::{Device, FeatureFlags},
         graphic::{
@@ -73,7 +70,7 @@ use {
         error::Error,
         ffi::CStr,
         fmt::{Display, Formatter},
-        ops::Range,
+        ops::{Deref, Range},
         os::raw::c_char,
         sync::Arc,
     },
@@ -856,6 +853,19 @@ impl From<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>
             shader_group_handle_alignment: props.shader_group_handle_alignment,
             max_ray_hit_attribute_size: props.max_ray_hit_attribute_size,
         }
+    }
+}
+
+pub struct Queue {
+    queue: vk::Queue,
+    pub family: QueueFamily,
+}
+
+impl Deref for Queue {
+    type Target = vk::Queue;
+
+    fn deref(&self) -> &Self::Target {
+        &self.queue
     }
 }
 

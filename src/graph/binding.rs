@@ -5,7 +5,7 @@ use {
     },
     crate::{
         driver::{AccelerationStructure, Buffer, Image, SwapchainImage},
-        hash_pool::Lease,
+        pool::Lease,
     },
     std::{fmt::Debug, sync::Arc},
 };

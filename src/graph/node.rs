@@ -5,7 +5,7 @@ use {
             vk, AccelerationStructure, AccelerationStructureInfo, Buffer, BufferInfo,
             BufferSubresource, Image, ImageInfo, ImageSubresource, ImageViewInfo,
         },
-        hash_pool::Lease,
+        pool::Lease,
     },
     std::{ops::Range, sync::Arc},
 };

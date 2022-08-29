@@ -23,7 +23,6 @@ fn main() -> Result<(), DisplayError> {
     let draw_funky_shape_deferred = create_draw_funky_shape_deferred_pipeline(&event_loop.device);
 
     // We also need a cache (this one is backed by a hashmap of resource info, fast but basic)
-    // There will be more cache types later and traits exposed
     let mut cache = HashPool::new(&event_loop.device);
 
     // Static index/vertex data courtesy of the polyhedron-ops library

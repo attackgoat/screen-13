@@ -3,9 +3,12 @@ use {
         display::{Display, DisplayError},
         driver::{Device, Driver, DriverConfigBuilder, DriverError},
         frame::FrameContext,
+        graph::ResolverPool,
+        pool::hash::HashPool,
     },
     log::{debug, info, trace, warn},
     std::{
+        fmt::{Debug, Formatter},
         mem::take,
         sync::Arc,
         time::{Duration, Instant},
@@ -159,11 +162,17 @@ impl EventLoop {
     }
 }
 
-#[derive(Debug)]
 pub struct EventLoopBuilder {
     driver_cfg: DriverConfigBuilder,
     event_loop: winit::event_loop::EventLoop<()>,
+    resolver_pool: Option<Box<dyn ResolverPool>>,
     window: WindowBuilder,
+}
+
+impl Debug for EventLoopBuilder {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str("EventLoopBuilder")
+    }
 }
 
 impl Default for EventLoopBuilder {
@@ -171,6 +180,7 @@ impl Default for EventLoopBuilder {
         Self {
             driver_cfg: DriverConfigBuilder::default(),
             event_loop: winit::event_loop::EventLoop::new(),
+            resolver_pool: None,
             window: Default::default(),
         }
     }
@@ -249,6 +259,11 @@ impl EventLoopBuilder {
         self
     }
 
+    pub fn resolver_pool(mut self, pool: Box<dyn ResolverPool>) -> Self {
+        self.resolver_pool = Some(pool);
+        self
+    }
+
     /// Allows deeper customization of the window, if needed.
     pub fn window<WindowFn>(mut self, window_fn: WindowFn) -> Self
     where
@@ -283,9 +298,14 @@ impl EventLoopBuilder {
             (inner_size.width, inner_size.height)
         };
 
-        // Load the GPU driver (thin Vulkan device and swapchain smart pointers) and swapchain presenter/displayer
+        // Load the GPU driver (thin Vulkan device and swapchain smart pointers)
         let driver = Driver::new(&window, cfg, width, height)?;
-        let display = Display::new(&driver.device, driver.swapchain);
+
+        // Create a display that is cached using the given pool implementation
+        let pool = self
+            .resolver_pool
+            .unwrap_or_else(|| Box::new(HashPool::new(&driver.device)));
+        let display = Display::new(&driver.device, pool, driver.swapchain);
 
         info!(
             "display resolution: {}x{} ({}x scale)",
