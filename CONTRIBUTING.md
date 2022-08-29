@@ -14,7 +14,7 @@ access to make changes within this project and you may be banned entirely.
 
 ## Licesnsing Requirements
 
-All contributions, ideas, issues, or other efforts you expend on this project must be providing
+All contributions, ideas, issues, or other efforts you expend on this project must be provided
 using the existing MIT or Apache 2.0 license agreements applied to this project. This means that
 anything you do for this project will be provided to the public without any strings or conditions
 attached. You must also have the right to provide any code or ideas under these licenses as you will
@@ -24,9 +24,9 @@ retain no ownership or control after contribution.
 
 All code must:
 
-- Be modern Rust code (currently 2018 edition, latest stable compiler) _or_ GLSL.
-- Pass `cargo fmt` and `cargo clippy` (debug and release, all features) with no warnings
-- Support required platforms: Linux, Mac, Windows, Web Assembly
+- Be modern Rust code (currently 2021 edition, latest stable compiler) _or_ GLSL.
+- Pass `cargo fmt` and `cargo clippy` (debug and release) with no warnings
+- Support required platforms: Linux, Mac, Windows
 - Use only `crates.io`-published crates
 
 ### Recommentations
@@ -35,43 +35,7 @@ All code should:
 
 - Follow the [guidelines](https://rust-lang.github.io/api-guidelines/)
 - Provide useful documentation and comments, including private code
-- Expect future platforms: Android, iOS
-
-Most code should:
-
-- Create a new file for `struct`'s with non-trait `impl` blocks
-- Group all `use` statements into one nested `use` statement; except for visibility modifiers and
-  conditional compilation attributes
-- No star-style `use` statements except in demo code which is intended to be concise
-- No `super::super` paths in `use` statements, search by `crate::` for those
-- Prefer alphabetical sorting of code items unless there is a well-known non-alpha context
-- Use `// TODO` or `// HACK` comments as needed when breaking these guidelines
-- Make small `unsafe` blocks as needed, separating the safe and unsafe parts for clarity
-
-### Layout
-
-If you are wondering what logic is used to order and layout the code, you might be interested in
-this list. These *totally optional* and *completely silly* details should probably be ignored but I
-am including them for future-me and to give more context. In some cases the code doesn't follow
-these guidelines and _that's okay_.
-
-Order each file:
-
-- Package-level attributes
-- `pub mod` then `pub(modifier) mod` then `mod`
-- `pub use` then `pub(modifier) use` then `use`, with the itmes of each group listing attributed
-  `use` statements after the non-attributed one
-- `const` then `static` bindings
-- `type` aliases
-- `fn` implementations
-- `enum` and `struct` and `trait` blocks
-- `#[cfg(test)]` modules
-
-Special cases:
-
-- `impl` blocks - Always in the same file directly after their `struct` definition, ordered by
-  generics then alphabetically
-- macro invocations are placed where the items created by the macro output should otherwise appear
+- Support other platforms: Android, iOS
 
 ## How do I get started
 

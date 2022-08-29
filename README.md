@@ -40,7 +40,7 @@ Features of the render graph:
  - Compute, graphic, and ray-trace pipelines
  - Automatic Vulkan management (render passes, subpasses, descriptors, pools, _etc._)
  - Automatic render pass scheduling, re-ordering, merging, with resource aliasing
- - Interoperable with exsting Vulkan code
+ - Interoperable with existing Vulkan code
 
 ```rust
 render_graph

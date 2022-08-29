@@ -1,6 +1,6 @@
 [package]
 name = "screen-13"
-version = "0.4.2"
+version = "0.5.0"
 authors = ["John Wells <john@attackgoat.com>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"

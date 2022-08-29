@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5] - Unreleased
+
+### Addded
+
+- `LazyPool` resource pool which tries to find acceptable resources before creating new ones
+- `instance_slice` function for acceleration structures
+- `new_blas` and `new_tlas` helper functions for acceleration structure info
+- Node-`_mut` functions for `PassRef`: enables clearer code patterns when building passes
+
+### Changed
+
+- `build_structure` and `update_structure` now take geometry info as a borrow instead of by value
+
 ## [0.4.2] - 2022-06-28
 
 ### Added
@@ -128,7 +141,7 @@ _See [#25](https://github.com/attackgoat/screen-13/pull/25) for migration detail
   platforms and require no bare-metal graphics API knowledge
 - "Hello, world!" example using a bitmapped font
 
-[Unreleased]: https://github.com/attackgoat/screen-13/compare/0200335...HEAD
+[Unreleased]: https://github.com/attackgoat/screen-13/compare/b546772ad0283ffc1a296b56a955ef6a1203e7b7...HEAD
 [0.1.0]: https://crates.io/crates/screen-13/0.1.0
 [0.2.0]: https://crates.io/crates/screen-13/0.2.0
 [0.3.0]: https://crates.io/crates/screen-13/0.3.0
