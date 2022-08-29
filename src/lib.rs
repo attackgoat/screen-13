@@ -40,11 +40,6 @@ pub mod prelude {
     };
 }
 
-#[deprecated]
-pub mod prelude_arc {
-    pub use super::prelude::*;
-}
-
 pub use self::{
     display::{Display, DisplayError},
     event_loop::{run, EventLoop, EventLoopBuilder, FullscreenMode},

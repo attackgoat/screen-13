@@ -1,5 +1,4 @@
-#[deprecated]
-pub mod prelude_arc {
+pub mod prelude {
     pub use super::{imgui, Condition, ImGui, Ui};
 }
 

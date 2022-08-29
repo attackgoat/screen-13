@@ -49,17 +49,6 @@ impl BlendModeBuilder {
 }
 
 impl BlendMode {
-    // For backwards compatibility redefine the constants in camel case:
-    #[allow(non_upper_case_globals)]
-    #[deprecated = "use uppercase const"]
-    pub const Replace: Self = Self::REPLACE;
-    #[allow(non_upper_case_globals)]
-    #[deprecated = "use uppercase const"]
-    pub const Alpha: Self = Self::ALPHA;
-    #[allow(non_upper_case_globals)]
-    #[deprecated = "use uppercase const"]
-    pub const PreMultipliedAlpha: Self = Self::PRE_MULTIPLIED_ALPHA;
-
     pub const REPLACE: Self = Self {
         blend_enable: false,
         src_color_blend_factor: vk::BlendFactor::SRC_COLOR,
