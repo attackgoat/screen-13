@@ -7,6 +7,7 @@ mod typing;
 
 use winit::event::Event;
 
+#[allow(deprecated)]
 pub use self::{
     key_buf::KeyBuf,
     key_map::KeyMap,

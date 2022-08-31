@@ -1,11 +1,13 @@
 use {super::KeyBuf, winit::event::VirtualKeyCode};
 
+#[deprecated]
 #[derive(Default, Eq, PartialEq)]
 pub struct Typing {
     buf: String,
     pos: usize,
 }
 
+#[allow(deprecated)]
 impl Typing {
     /// TODO
     #[allow(unused)]
