@@ -1,10 +1,4 @@
-use {
-    bytemuck::cast_slice,
-    inline_spirv::inline_spirv,
-    screen_13::prelude::*,
-    std::{io::BufReader, mem::size_of, sync::Arc},
-    tobj::{load_mtl_buf, load_obj_buf, GPU_LOAD_OPTIONS},
-};
+use {bytemuck::cast_slice, inline_spirv::inline_spirv, screen_13::prelude::*, std::sync::Arc};
 
 static SHADER_RAY_GEN: &[u32] = inline_spirv!(
     r#"
@@ -101,136 +95,6 @@ fn create_ray_trace_pipeline(device: &Arc<Device>) -> Result<Arc<RayTracePipelin
     )?))
 }
 
-#[allow(clippy::type_complexity)]
-fn load_scene_buffers(
-    device: &Arc<Device>,
-) -> Result<(Arc<Buffer>, Arc<Buffer>, u32, u32, Arc<Buffer>, Arc<Buffer>), DriverError> {
-    use std::slice::from_raw_parts;
-
-    let (models, materials, ..) = load_obj_buf(
-        &mut BufReader::new(include_bytes!("res/cube_scene.obj").as_slice()),
-        &GPU_LOAD_OPTIONS,
-        |_| {
-            load_mtl_buf(&mut BufReader::new(
-                include_bytes!("res/cube_scene.mtl").as_slice(),
-            ))
-        },
-    )
-    .map_err(|err| {
-        warn!("{err}");
-
-        DriverError::InvalidData
-    })?;
-    let materials = materials.map_err(|err| {
-        warn!("{err}");
-
-        DriverError::InvalidData
-    })?;
-
-    let mut indices = vec![];
-    let mut positions = vec![];
-    for model in &models {
-        let base_index = positions.len() as u32 / 3;
-        for index in &model.mesh.indices {
-            indices.push(*index + base_index);
-        }
-
-        for position in &model.mesh.positions {
-            positions.push(*position);
-        }
-    }
-
-    let index_buf = {
-        let data = cast_slice(&indices);
-        let mut buf = Buffer::create(
-            device,
-            BufferInfo::new_mappable(
-                data.len() as _,
-                vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
-                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
-                    | vk::BufferUsageFlags::STORAGE_BUFFER,
-            ),
-        )?;
-        Buffer::copy_from_slice(&mut buf, 0, data);
-        buf
-    };
-
-    let vertex_buf = {
-        let data = cast_slice(&positions);
-        let mut buf = Buffer::create(
-            device,
-            BufferInfo::new_mappable(
-                data.len() as _,
-                vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
-                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
-                    | vk::BufferUsageFlags::STORAGE_BUFFER,
-            ),
-        )?;
-        Buffer::copy_from_slice(&mut buf, 0, data);
-        buf
-    };
-
-    let material_id_buf = {
-        let mut material_ids = vec![];
-        for model in &models {
-            for _ in 0..model.mesh.indices.len() / 3 {
-                material_ids.push(model.mesh.material_id.unwrap() as u32);
-            }
-        }
-        let data = cast_slice(&material_ids);
-        let mut buf = Buffer::create(
-            device,
-            BufferInfo::new_mappable(data.len() as _, vk::BufferUsageFlags::STORAGE_BUFFER),
-        )?;
-        Buffer::copy_from_slice(&mut buf, 0, data);
-        buf
-    };
-
-    let material_buf = {
-        let materials = materials
-            .iter()
-            .map(|material| {
-                [
-                    material.ambient[0],
-                    material.ambient[1],
-                    material.ambient[2],
-                    0.0,
-                    material.diffuse[0],
-                    material.diffuse[1],
-                    material.diffuse[2],
-                    0.0,
-                    material.specular[0],
-                    material.specular[1],
-                    material.specular[2],
-                    0.0,
-                    1.0,
-                    1.0,
-                    1.0,
-                    0.0,
-                ]
-            })
-            .collect::<Box<[_]>>();
-        let buf_len = materials.len() * 64;
-        let mut buf = Buffer::create(
-            device,
-            BufferInfo::new_mappable(buf_len as _, vk::BufferUsageFlags::STORAGE_BUFFER),
-        )?;
-        Buffer::copy_from_slice(&mut buf, 0, unsafe {
-            from_raw_parts(materials.as_ptr() as *const _, buf_len)
-        });
-        buf
-    };
-
-    Ok((
-        Arc::new(index_buf),
-        Arc::new(vertex_buf),
-        indices.len() as u32 / 3,
-        positions.len() as u32 / 3,
-        Arc::new(material_id_buf),
-        Arc::new(material_buf),
-    ))
-}
-
 /// Adapted from http://williamlewww.com/showcase_website/vk_khr_ray_tracing_tutorial/index.html
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
@@ -323,7 +187,6 @@ fn main() -> anyhow::Result<()> {
     unsafe impl bytemuck::Pod for Vertex {}
     unsafe impl bytemuck::Zeroable for Vertex {}
 
-    const VERTEX_COUNT: usize = 3;
     const VERTICES: [Vertex; 3] = [
         Vertex {
             pos: [-1.0, 1.0, 0.0],
