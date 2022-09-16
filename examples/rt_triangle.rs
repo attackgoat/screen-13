@@ -12,7 +12,7 @@ static SHADER_RAY_GEN: &[u32] = inline_spirv!(
     
     void main() {
         const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
-        const vec2 inUV = pixelCenter/vec2(gl_LaunchSizeEXT.xy);
+        const vec2 inUV = pixelCenter / vec2(gl_LaunchSizeEXT.xy);
         vec2 d = inUV * 2.0 - 1.0;
     
         vec4 origin = vec4(d.x, d.y, -1,1);
@@ -21,8 +21,6 @@ static SHADER_RAY_GEN: &[u32] = inline_spirv!(
     
         float tmin = 0.001;
         float tmax = 10000.0;
-    
-        // hitValue = vec3(0.1);
     
         traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, origin.xyz, tmin, direction.xyz, tmax, 0);
     
