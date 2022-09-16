@@ -90,7 +90,7 @@ fn create_ray_trace_pipeline(device: &Arc<Device>) -> Result<Arc<RayTracePipelin
     )?))
 }
 
-/// Adapted from http://williamlewww.com/showcase_website/vk_khr_ray_tracing_tutorial/index.html
+/// Adapted from https://iorange.github.io/p01/HappyTriangle.html
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
@@ -169,6 +169,7 @@ fn main() -> anyhow::Result<()> {
     // ------------------------------------------------------------------------------------------ //
     // Generate the geometry and load it into buffers
     // ------------------------------------------------------------------------------------------ //
+
     let triangle_count = 1;
     let vertex_count = triangle_count * 3;
 
@@ -203,8 +204,7 @@ fn main() -> anyhow::Result<()> {
             BufferInfo::new_mappable(
                 data.len() as _,
                 vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
-                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
-                    | vk::BufferUsageFlags::STORAGE_BUFFER,
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             ),
         )?;
         Buffer::copy_from_slice(&mut buf, 0, data);
@@ -218,8 +218,7 @@ fn main() -> anyhow::Result<()> {
             BufferInfo::new_mappable(
                 data.len() as _,
                 vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
-                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
-                    | vk::BufferUsageFlags::STORAGE_BUFFER,
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             ),
         )?;
         Buffer::copy_from_slice(&mut buf, 0, data);
@@ -334,8 +333,7 @@ fn main() -> anyhow::Result<()> {
                 &event_loop.device,
                 BufferInfo::new(
                     blas_size.build_size,
-                    vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
-                        | vk::BufferUsageFlags::STORAGE_BUFFER,
+                    vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
                 ),
             )?);
 
@@ -365,8 +363,7 @@ fn main() -> anyhow::Result<()> {
                 &event_loop.device,
                 BufferInfo::new(
                     tlas_size.build_size,
-                    vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
-                        | vk::BufferUsageFlags::STORAGE_BUFFER,
+                    vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
                 ),
             )?);
             let instance_node = render_graph.bind_node(&instance_buf);
@@ -402,34 +399,17 @@ fn main() -> anyhow::Result<()> {
     // Setup some state variables to hold between frames
     // ------------------------------------------------------------------------------------------ //
 
-    let mut image = None;
-
     // The event loop consists of:
     // - Trace the image
     // - Copy image to the swapchain
     event_loop.run(|frame| {
-        image = Some(Arc::new(
-            cache
-                .lease(ImageInfo::new_2d(
-                    frame.render_graph.node_info(frame.swapchain_image).fmt,
-                    frame.width,
-                    frame.height,
-                    vk::ImageUsageFlags::STORAGE
-                        | vk::ImageUsageFlags::TRANSFER_DST
-                        | vk::ImageUsageFlags::TRANSFER_SRC,
-                ))
-                .unwrap(),
-        ));
-
-        let image_node = frame.render_graph.bind_node(image.as_ref().unwrap());
-
         let blas_node = frame.render_graph.bind_node(&blas);
         let tlas_node = frame.render_graph.bind_node(&tlas);
         let sbt_node = frame.render_graph.bind_node(&sbt_buf);
 
         frame
             .render_graph
-            .begin_pass("basic ray tracer")
+            .begin_pass("ray-traced triangle")
             .bind_pipeline(&ray_trace_pipeline)
             .access_node(
                 blas_node,
@@ -441,7 +421,7 @@ fn main() -> anyhow::Result<()> {
                 tlas_node,
                 AccessType::RayTracingShaderReadAccelerationStructure,
             )
-            .write_descriptor(1, image_node)
+            .write_descriptor(1, frame.swapchain_image)
             .record_ray_trace(move |ray_trace| {
                 ray_trace.trace_rays(
                     &sbt_rgen,
@@ -453,8 +433,7 @@ fn main() -> anyhow::Result<()> {
                     1,
                 );
             })
-            .submit_pass()
-            .copy_image(image_node, frame.swapchain_image);
+            .submit_pass();
     })?;
 
     Ok(())
