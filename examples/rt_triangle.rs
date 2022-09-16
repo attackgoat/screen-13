@@ -44,10 +44,7 @@ static SHADER_CLOSEST_HIT: &[u32] = inline_spirv!(
     hitAttributeEXT vec2 attribs;
     
     void main() {
-      float x = attribs.x * 1.0f;
-      float y = attribs.y * 1.0f;
-    
-      const vec3 barycentricCoords = vec3(x, y + y, 0.0f);
+      const vec3 barycentricCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
       resultColor = barycentricCoords;
     }
     "#,
@@ -413,20 +410,18 @@ fn main() -> anyhow::Result<()> {
     // - Trace the image
     // - Copy image to the swapchain
     event_loop.run(|frame| {
-        if image.is_none() {
-            image = Some(Arc::new(
-                cache
-                    .lease(ImageInfo::new_2d(
-                        frame.render_graph.node_info(frame.swapchain_image).fmt,
-                        frame.width,
-                        frame.height,
-                        vk::ImageUsageFlags::STORAGE
-                            | vk::ImageUsageFlags::TRANSFER_DST
-                            | vk::ImageUsageFlags::TRANSFER_SRC,
-                    ))
-                    .unwrap(),
-            ));
-        }
+        image = Some(Arc::new(
+            cache
+                .lease(ImageInfo::new_2d(
+                    frame.render_graph.node_info(frame.swapchain_image).fmt,
+                    frame.width,
+                    frame.height,
+                    vk::ImageUsageFlags::STORAGE
+                        | vk::ImageUsageFlags::TRANSFER_DST
+                        | vk::ImageUsageFlags::TRANSFER_SRC,
+                ))
+                .unwrap(),
+        ));
 
         let image_node = frame.render_graph.bind_node(image.as_ref().unwrap());
 
