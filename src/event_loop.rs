@@ -125,7 +125,14 @@ impl EventLoop {
                 dt_filtered = dt_filtered + (dt_raw - dt_filtered) / 10.0;
             };
 
-            let (swapchain, mut render_graph) = self.display.acquire_next_image()?;
+            let swapchain = self.display.acquire_next_image();
+            if swapchain.is_err() {
+                events.clear();
+
+                continue;
+            }
+
+            let (swapchain, mut render_graph) = swapchain.unwrap();
 
             frame_fn(FrameContext {
                 device: &self.device,
