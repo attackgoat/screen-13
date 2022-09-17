@@ -127,6 +127,8 @@ impl EventLoop {
 
             let swapchain = self.display.acquire_next_image();
             if swapchain.is_err() {
+                events.clear();
+
                 continue;
             }
 
