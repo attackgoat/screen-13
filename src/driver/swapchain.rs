@@ -129,7 +129,7 @@ impl Swapchain {
         }
     }
 
-    fn destroy(&self) {
+    fn destroy(&mut self) {
         if self.swapchain != vk::SwapchainKHR::null() {
             unsafe {
                 self.device
@@ -138,6 +138,8 @@ impl Swapchain {
                     .unwrap()
                     .destroy_swapchain(self.swapchain, None);
             }
+
+            self.swapchain = vk::SwapchainKHR::null();
         }
     }
 
