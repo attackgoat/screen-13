@@ -5,18 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5] - Unreleased
+## [0.5] - 2022-09-17
 
-### Addded
+### Added
 
 - `LazyPool` resource pool which tries to find acceptable resources before creating new ones
 - `instance_slice` function for acceleration structures
 - `new_blas` and `new_tlas` helper functions for acceleration structure info
 - Node-`_mut` functions for `PassRef`: enables clearer code patterns when building passes
+- `rt_triangle.rs` example; similar to `triangle.rs` but uses a ray trace pipeline
 
 ### Changed
 
 - `build_structure` and `update_structure` now take geometry info as a borrow instead of by value
+
+### Deprecated
+
+- `input::Typing` struct; it has use valid cases but is not within the scope of this crate
+
+### Removed
+
+- `prelude_arc`: Use `prelude` module instead
+- `driver::BlendMode::Replace` and other camel-case constants; use screaming-snake versions, i.e. `driver::BlendMode::REPLACE`
+
+### Fixed
+
+- Windows platform: `EventLoop` no longer panics if the window is minimized
 
 ## [0.4.2] - 2022-06-28
 
@@ -150,3 +164,4 @@ _See [#25](https://github.com/attackgoat/screen-13/pull/25) for migration detail
 [0.4.0]: https://crates.io/crates/screen-13/0.4.0
 [0.4.1]: https://github.com/attackgoat/screen-13/commit/9b739ac4652fa1326e6d54e7bae9e58050d7c290
 [0.4.2]: https://github.com/attackgoat/screen-13/commit/a3f675b5018ac8d9dbc29c6f462813149b5f05ab
+[0.5.0]: https://github.com/attackgoat/screen-13/commit/80248b68e016b6922271a42d423023341d481e17
