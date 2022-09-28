@@ -129,6 +129,19 @@ pub struct DepthStencilMode {
 }
 
 impl DepthStencilMode {
+    // TODO: Probably remove
+    pub const DEPTH: Self = Self {
+        back: StencilMode::Noop,
+        bounds_test: true,
+        compare_op: vk::CompareOp::LESS,
+        depth_test: true,
+        depth_write: true,
+        front: StencilMode::Noop,
+        min: OrderedFloat(0.0),
+        max: OrderedFloat(1.0),
+        stencil_test: false,
+    };
+
     #[allow(clippy::new_ret_no_self)]
     pub fn new() -> DepthStencilModeBuilder {
         DepthStencilModeBuilder::default()
@@ -421,9 +434,6 @@ pub struct GraphicPipelineInfo {
 
     #[builder(default = "vk::CullModeFlags::BACK")]
     pub cull_mode: vk::CullModeFlags,
-
-    #[builder(default, setter(strip_option))]
-    pub depth_stencil: Option<DepthStencilMode>,
 
     #[builder(default = "vk::FrontFace::COUNTER_CLOCKWISE")]
     pub front_face: vk::FrontFace,
