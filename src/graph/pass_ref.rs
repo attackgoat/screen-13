@@ -1414,7 +1414,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
 
-        self.attach_color_as(attachment, image, image_view_info)
+        self.load_color_as(attachment, image, image_view_info)
     }
 
     /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` for the render pass attachment, and loads an image
@@ -1538,11 +1538,11 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             #[cfg(debug_assertions)]
             {
                 // Unwrap the attachment we inserted above
-                let loaded_attachment = exec.loads.depth_stencil.unwrap();
+                let loaded_attachment = exec.loads.depth_stencil().unwrap();
 
                 assert!(
                     exec.stores
-                        .depth_stencil
+                        .depth_stencil()
                         .map(|stored_attachment| Attachment::are_identical(
                             stored_attachment,
                             loaded_attachment
@@ -1552,7 +1552,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
                 );
                 assert!(
                     exec.resolves
-                        .depth_stencil
+                        .depth_stencil()
                         .map(|resolved_attachment| Attachment::are_identical(
                             resolved_attachment,
                             loaded_attachment
@@ -1761,13 +1761,13 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             #[cfg(debug_assertions)]
             {
                 // Unwrap the attachment we inserted above
-                let resolved_attachment = exec.resolves.depth_stencil.unwrap();
+                let resolved_attachment = exec.resolves.depth_stencil().unwrap();
 
                 assert!(
                     exec.depth_stencil_clear.is_some()
                         || exec
                             .loads
-                            .depth_stencil
+                            .depth_stencil()
                             .map(|loaded_attachment| Attachment::are_identical(
                                 loaded_attachment,
                                 resolved_attachment
@@ -1777,7 +1777,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
                 );
                 assert!(
                     exec.stores
-                        .depth_stencil
+                        .depth_stencil()
                         .map(|stored_attachment| Attachment::are_identical(
                             stored_attachment,
                             resolved_attachment
@@ -1986,13 +1986,13 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             #[cfg(debug_assertions)]
             {
                 // Unwrap the attachment we inserted above
-                let stored_attachment = exec.stores.depth_stencil.unwrap();
+                let stored_attachment = exec.stores.depth_stencil().unwrap();
 
                 assert!(
                     exec.depth_stencil_clear.is_some()
                         || exec
                             .loads
-                            .depth_stencil
+                            .depth_stencil()
                             .map(|loaded_attachment| {
                                 Attachment::are_identical(loaded_attachment, stored_attachment)
                             })
@@ -2001,7 +2001,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
                 );
                 assert!(
                     exec.resolves
-                        .depth_stencil
+                        .depth_stencil()
                         .map(|resolved_attachment| Attachment::are_identical(
                             resolved_attachment,
                             stored_attachment
