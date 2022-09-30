@@ -145,8 +145,8 @@ struct Execution {
     accesses: BTreeMap<NodeIndex, [SubresourceAccess; 2]>,
     bindings: BTreeMap<Descriptor, (NodeIndex, Option<ViewType>)>,
 
-    color_clears: BTreeMap<AttachmentIndex, ClearColorValue>,
-    depth_stencil_clear: Option<vk::ClearDepthStencilValue>,
+    color_clears: BTreeMap<AttachmentIndex, (Attachment, ClearColorValue)>,
+    depth_stencil_clear: Option<(Attachment, vk::ClearDepthStencilValue)>,
     loads: AttachmentMap,
     resolves: AttachmentMap,
     stores: AttachmentMap,
@@ -469,7 +469,7 @@ impl RenderGraph {
 
     /// Clears a depth/stencil image as part of a render graph but outside of any graphic render pass
     pub fn clear_depth_stencil_image(&mut self, image_node: impl Into<AnyImageNode>) -> &mut Self {
-        self.clear_depth_stencil_image_value(image_node, 0.0, 0)
+        self.clear_depth_stencil_image_value(image_node, 1.0, 0)
     }
 
     pub fn clear_depth_stencil_image_value(

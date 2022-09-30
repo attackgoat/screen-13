@@ -1,224 +1,268 @@
 use {
     bytemuck::cast_slice,
-    glam::{Mat4, Vec4},
+    glam::{vec3, Mat4, Vec3, Vec4},
     inline_spirv::inline_spirv,
     screen_13::prelude::*,
     std::sync::Arc,
 };
 
-// NOTE: When this example runs, there will be a blank screen - that's OK!
+#[derive(Clone, Copy)]
+struct Camera {
+    position: Vec3,
+    projection: Mat4,
+    view: Mat4,
+}
 
-/// This example does no real work, but rather just uses the api in order to call a few
-/// shader pipelines in a fun and realistic manner.
+#[derive(Clone, Copy)]
+struct Material {
+    color: Vec3,
+    metallic: f32,
+    roughness: f32,
+}
+
+struct Shape {
+    index_buf: Arc<Buffer>,
+    index_count: u32,
+    vertex_buf: Arc<Buffer>,
+}
+
+#[allow(dead_code)]
+const COPPER: Material = Material {
+    color: vec3(0.96, 0.64, 0.54),
+    metallic: 1.0,
+    roughness: 0.4,
+};
+
+const GOLD: Material = Material {
+    color: vec3(1.0, 0.76, 0.33),
+    metallic: 1.0,
+    roughness: 0.3,
+};
+
+#[allow(dead_code)]
+const RUBBER: Material = Material {
+    color: vec3(0.1, 0.1, 0.1),
+    metallic: 0.01,
+    roughness: 0.9,
+};
+
+/// The example demonstrates leasing resources (images and buffers) and composing rendering
+/// operations with just a few lines of RenderGraph builder-pattern code.
 ///
-/// The key principle is that you can lease resources (images and buffers) and compose
-/// rendering operations with just a few lines of RenderGraph builder-pattern code.
+/// Also shown:
+/// - Basic PBR rendering (from Sascha Willems)
+/// - Depth/stencil buffer usage
+/// - Multiple rendering passes
 fn main() -> Result<(), DisplayError> {
     pretty_env_logger::init();
 
-    // Create a bunch of "pipelines" (shader code setup to run on the GPU) - we keep these
-    // around and just switch between which one we're using at any one point during a frame
     let event_loop = EventLoop::new().build().unwrap();
-    let fill_quad_linear_gradient = create_fill_quad_linear_gradient_pipeline(&event_loop.device);
-    let draw_funky_shape_deferred = create_draw_funky_shape_deferred_pipeline(&event_loop.device);
+    let mut cache = LazyPool::new(&event_loop.device);
+    let pbr = create_pbr_pipeline(&event_loop.device);
+    let funky_shape = create_funky_shape(&event_loop, &mut cache)?;
 
-    // We also need a cache (this one is backed by a hashmap of resource info, fast but basic)
-    let mut cache = HashPool::new(&event_loop.device);
+    let mut t = 0.0;
+    event_loop.run(|mut frame| {
+        t += frame.dt;
 
-    // Static index/vertex data courtesy of the polyhedron-ops library
-    let (indices, vertices) = funky_shape_triangle_mesh_buffers();
-    let index_count = indices.len() as u32;
-    let indices = cast_slice(&indices);
-    let vertices = cast_slice(&vertices);
+        let index_buf = frame.render_graph.bind_node(&funky_shape.index_buf);
+        let vertex_buf = frame.render_graph.bind_node(&funky_shape.vertex_buf);
 
-    // Pre-define some basic information structs we'll repeatedly use to acquire leased resources
-    // (Usually we would do this at the place of use, but for clarity its outside the loop here)
-    // (Note the event_loop height and width may change, and are provided in the frame context,
-    // but we're not using that in this demo so the image won't resize with the window!
-    let image_info = image_info_2d(event_loop.width(), event_loop.height());
-    let index_buf_info = index_buffer_info(indices.len() as vk::DeviceSize);
-    let vertex_buf_info = vertex_buffer_info(vertices.len() as vk::DeviceSize);
+        let depth_stencil = frame.render_graph.bind_node(
+            cache
+                .lease(ImageInfo::new_2d(
+                    vk::Format::D24_UNORM_S8_UINT,
+                    frame.width,
+                    frame.height,
+                    vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+                ))
+                .unwrap(),
+        );
 
-    // Some colors for readability
-    let red = [0xffu8, 0x00, 0x00, 0xff];
-    let green = [0x00u8, 0xff, 0x00, 0xff];
-    let blue = [0x00u8, 0x00, 0xff, 0xff];
-    let magenta = [0xffu8, 0x00, 0xff, 0xff];
-    let white = [0xffu8, 0xff, 0xff, 0xff];
+        let camera = camera(frame.width, frame.height);
+        let model = Mat4::from_rotation_y(t * 0.4);
+        let obj_pos = Vec3::ZERO;
+        let material = GOLD;
 
-    // Event loop runs the frame callback on the current thread
-    event_loop.run(|frame| {
-        // We are now rendering a frame for the provided swapchain image node and render graph.
-        let graph = frame.render_graph;
-        let swapchain_image = frame.swapchain_image;
+        let camera_buf = bind_camera_buf(&mut frame, &mut cache, camera, model);
+        let light_buf = bind_light_buf(&mut frame, &mut cache);
+        let push_const_data = write_push_consts(obj_pos, material);
 
-        // Part 1: Get and prepare some resources - you could have Binding instances that are
-        // bound to, used on, and then later unbound from a graph and repeated like that each
-        // frame, or, you could lease things and let the magic of Arc<T> just handle it. Here
-        // We lease things, and so we have to fill them freshly each time.
-
-        // Lease + fill + bind a buffer: the questionably-readable three line way
-        let mut index_buf = cache.lease(index_buf_info).unwrap();
-        Buffer::mapped_slice_mut(&mut index_buf)[0..indices.len()].copy_from_slice(indices);
-        let index_buf = graph.bind_node(index_buf);
-
-        // Lease + fill + bind a buffer: maybe a more sane looking way of doing it
-        let vertex_buf = graph.bind_node({
-            let mut buf = cache.lease(vertex_buf_info).unwrap();
-            let data = Buffer::mapped_slice_mut(&mut buf);
-            data[0..vertices.len()].copy_from_slice(vertices);
-            buf
-        });
-
-        // Lease a couple images (they may be blank or have pictures of cats in them but they are
-        // valid/ready)
-        let _image1 = graph.bind_node(cache.lease(image_info).unwrap());
-        let _image2 = graph.bind_node(cache.lease(image_info).unwrap());
-        let _image3 = graph.bind_node(cache.lease(image_info).unwrap());
-
-        // You can instead do this:
-        let image1 = graph.bind_node({
-            let mut img = cache.lease(image_info).unwrap();
-            img.name = Some("image1".to_owned());
-            img
-        });
-        let image2 = graph.bind_node({
-            let mut img = cache.lease(image_info).unwrap();
-            img.name = Some("image2".to_owned());
-            img
-        });
-        let image3 = graph.bind_node({
-            let mut img = cache.lease(image_info).unwrap();
-            img.name = Some("image3".to_owned());
-            img
-        });
-
-        // Part 2: Do things to the graph! Build passes where each pass contains:
-        // - Access to nodes: declare either read/write/or specific access
-        // - Pipeline configuration: tell it what depth settings and push constants to send
-        // - Read descriptor bindings and load/store color values, have fun, yay!!
-
-        // You can record two or more draws in a single pass; they inherit the draw state
-        // from above calls. In this case we reset the "store" between draws but we do not
-        // bother resetting the "clear" state as you can see image2 will be cleared with
-        // white also.
-        graph
-            .begin_pass("gradients")
-            .bind_pipeline(&fill_quad_linear_gradient)
-            .clear_color_value(0, white)
-            .store_color(0, image1)
-            .record_subpass(move |subpass| {
-                subpass.push_constants_offset(0, &red);
-                subpass.push_constants_offset(4, &blue);
-                subpass.draw(6, 1, 0, 0);
-            })
-            .store_color(0, image2)
-            .record_subpass(move |subpass| {
-                // We updated the constants and which attachment is getting stored, but otherwise
-                // same pipeline config here
-                subpass.push_constants_offset(0, &magenta);
-                subpass.push_constants_offset(4, &green);
-                subpass.draw(6, 1, 0, 0);
-            });
-
-        // The above is "one pass" which logically happens first but physically may happen later
-        // once the hardware schedules it - but it can't do that until we hand the graph over
-        // at the bottom of the closure -> Screen 13 takes the graph and presents it to the
-        // swapchain so long as we do something (transfer/write/compute) to the swapchain the
-        // correct operations will be sent to the display. You just need to record some passes to
-        // the graph.
-
-        // Alternatively to the above, you might just record two passes, bind two pipelines, etc. As
-        // long as they're setup the same they will be trivially merged together or moved apart -
-        // whatever ends up being best. In the above case because we didn't start a second
-        // "begin_pass" call, we are not allowing the GPU to break up this unit of work. Maybe in
-        // general it's a good idea to record lots of short passes so the resolver code has more to
-        // work with.
-
-        // Let's do some more work... This draws the funky shape into image3.
-        graph
-            .begin_pass("This text shows up in debuggers like RenderDoc")
-            .bind_pipeline(&draw_funky_shape_deferred)
-            .access_node(index_buf, AccessType::IndexBuffer) // We must call access on the buffers
-            .access_node(vertex_buf, AccessType::VertexBuffer) // because we use them in a subpass
-            .clear_color(0)
-            .read_descriptor((0, [0]), image1) // We are declaring the read on image1 here
-            .read_descriptor((0, [1]), image2) // and the second array item will be image2
-            .store_color(0, image3) // and we declare we're writing the results to image3
+        frame
+            .render_graph
+            .clear_depth_stencil_image(depth_stencil) // HACK: Remove
+            .begin_pass("funky shape PBR")
+            .bind_pipeline(&pbr)
+            .set_depth_stencil(DepthStencilMode::DEPTH)
+            .read_descriptor(0, camera_buf)
+            .read_descriptor(1, light_buf)
+            .access_node(index_buf, AccessType::IndexBuffer)
+            .access_node(vertex_buf, AccessType::VertexBuffer)
+            //.clear_depth_stencil(depth_stencil) // HACK: uncomment
+            .load_depth_stencil(depth_stencil) // HACK: Remove
+            .clear_color(0, frame.swapchain_image)
+            .store_color(0, frame.swapchain_image)
             .record_subpass(move |subpass| {
                 subpass
-                    .push_constants_offset(0, cast_slice(&Mat4::IDENTITY.to_cols_array()))
-                    .push_constants_offset(64, cast_slice(&Vec4::ONE.to_array()))
-                    .bind_index_buffer(index_buf, vk::IndexType::UINT32)
+                    .bind_index_buffer(index_buf, vk::IndexType::UINT16)
                     .bind_vertex_buffer(vertex_buf)
-                    .draw(index_count, 1, 0, 0);
+                    .push_constants(&push_const_data)
+                    .draw_indexed(funky_shape.index_count, 1, 0, 0, 0);
             });
-
-        // This will suffice as a way to get image3 presented - although you might want to check out the
-        // included presenter types for more advanced display techniques. This issues a copy command at this
-        // logical point in the graph - nothing is copied "yet" - it copies when the graph resolves later
-        graph.copy_image(image3, swapchain_image);
-
-        // Uncomment the last line if you want to instead draw a magenta screen.
-        // NOTE: This will not cancel the above render passes; they will still run.
-        //graph.clear_color_image(swapchain_image, 1.0, 0.0, 1.0, 1.0);
     })
 }
 
-const fn index_buffer_info(size: vk::DeviceSize) -> BufferInfo {
-    BufferInfo {
-        size,
-        usage: vk::BufferUsageFlags::INDEX_BUFFER,
-        can_map: true,
+fn bind_camera_buf(
+    frame: &mut FrameContext,
+    cache: &mut LazyPool,
+    camera: Camera,
+    model: Mat4,
+) -> BufferLeaseNode {
+    let mut buf = cache
+        .lease(BufferInfo::new_mappable(
+            204,
+            vk::BufferUsageFlags::UNIFORM_BUFFER,
+        ))
+        .unwrap();
+    write_camera_buf(&mut buf, camera, model);
+
+    frame.render_graph.bind_node(buf)
+}
+
+fn bind_light_buf(frame: &mut FrameContext, cache: &mut LazyPool) -> BufferLeaseNode {
+    let mut buf = cache
+        .lease(BufferInfo::new_mappable(
+            64,
+            vk::BufferUsageFlags::UNIFORM_BUFFER,
+        ))
+        .unwrap();
+    write_light_buf(&mut buf);
+
+    frame.render_graph.bind_node(buf)
+}
+
+fn write_push_consts(obj_pos: Vec3, material: Material) -> [u8; 32] {
+    let mut data = [0u8; 32];
+
+    write_vec3_to_slice(obj_pos, &mut data[0..]);
+    write_f32_to_slice(material.roughness, &mut data[12..]);
+    write_f32_to_slice(material.metallic, &mut data[16..]);
+    write_vec3_to_slice(material.color, &mut data[20..]);
+
+    data
+}
+
+fn camera(width: u32, height: u32) -> Camera {
+    let aspect_ratio = width as f32 / height as f32;
+    let fov_y_degrees = 45f32;
+    let z_near = 0.1f32;
+    let z_far = 100f32;
+    let projection = Mat4::perspective_rh(fov_y_degrees.to_radians(), aspect_ratio, z_near, z_far);
+
+    let position = vec3(0.0, 0.0, -5.0);
+    let view = Mat4::look_at_rh(position, Vec3::ZERO, Vec3::Y);
+
+    Camera {
+        position,
+        projection,
+        view,
     }
 }
 
-const fn vertex_buffer_info(size: vk::DeviceSize) -> BufferInfo {
-    BufferInfo {
-        size,
-        usage: vk::BufferUsageFlags::VERTEX_BUFFER,
-        can_map: true,
-    }
+/// Returns ready-to-use index and vertex buffers. Index count is also returned. The shape data uses
+/// temporary staging buffers which are not required but are fun.
+fn create_funky_shape(event_loop: &EventLoop, cache: &mut LazyPool) -> Result<Shape, DriverError> {
+    // Static index/vertex data courtesy of the polyhedron-ops library
+    let (indices, vertices) = funky_shape_data();
+    let index_count = indices.len() as u32;
+
+    // Create host-accessible buffers
+    let index_buf_host = Buffer::create_from_slice(
+        &event_loop.device,
+        vk::BufferUsageFlags::TRANSFER_SRC,
+        cast_slice(&indices),
+    )?;
+    let vertex_buf_host = Buffer::create_from_slice(
+        &event_loop.device,
+        vk::BufferUsageFlags::TRANSFER_SRC,
+        cast_slice(&vertices),
+    )?;
+
+    // Create GPU-only buffers
+    let index_buf = Arc::new(Buffer::create(
+        &event_loop.device,
+        BufferInfo::new(index_buf_host.info.size, vk::BufferUsageFlags::INDEX_BUFFER),
+    )?);
+    let vertex_buf = Arc::new(Buffer::create(
+        &event_loop.device,
+        BufferInfo::new(
+            vertex_buf_host.info.size,
+            vk::BufferUsageFlags::VERTEX_BUFFER,
+        ),
+    )?);
+
+    // We will use a temporary render graph to copy host data to the GPU
+    let mut graph = RenderGraph::new();
+
+    // Bind things to the graph
+    let index_buf_host = graph.bind_node(index_buf_host);
+    let vertex_buf_host = graph.bind_node(vertex_buf_host);
+    let index_buf_gpu = graph.bind_node(&index_buf);
+    let vertex_buf_gpu = graph.bind_node(&vertex_buf);
+
+    // Add operations to the graph which copy host-accessible data to GPU
+    graph
+        .copy_buffer(index_buf_host, index_buf_gpu)
+        .copy_buffer(vertex_buf_host, vertex_buf_gpu);
+
+    // Submit the graph, which runs the operations on the GPU
+    graph.resolve().submit(&event_loop.device.queue, cache)?;
+
+    // (We drop the graph here; it's okay the cache keeps things alive until they're done)
+
+    Ok(Shape {
+        index_buf,
+        index_count,
+        vertex_buf,
+    })
 }
 
-fn image_info_2d(width: u32, height: u32) -> ImageInfo {
-    // Currently this is bad API you MUST specify usage of the image, but it's not part of the ctor
-    ImageInfo::new_2d(
-        vk::Format::R8G8B8A8_UNORM,
-        width,
-        height,
-        vk::ImageUsageFlags::SAMPLED
-            | vk::ImageUsageFlags::STORAGE
-            | vk::ImageUsageFlags::COLOR_ATTACHMENT
-            | vk::ImageUsageFlags::INPUT_ATTACHMENT
-            | vk::ImageUsageFlags::TRANSFER_DST
-            | vk::ImageUsageFlags::TRANSFER_SRC,
-    )
-    .build()
-
-    // Additional builder functions that might be of interest:
-    // .tiling(vk::ImageTiling::OPTIMAL)) <- Thinking about removing - LEAVE AT OPTIMAL ALWAYS
-    // .mip_level_count(1)
-    // .array_elements(1)
-    // .sample_count(SampleCount::X1)
-}
-
-fn create_fill_quad_linear_gradient_pipeline(device: &Arc<Device>) -> Arc<GraphicPipeline> {
+fn create_pbr_pipeline(device: &Arc<Device>) -> Arc<GraphicPipeline> {
+    // See: https://github.com/SaschaWillems/Vulkan/blob/master/data/shaders/glsl/pbrbasic/pbr.vert
     let vertex_shader = Shader::new_vertex(
         inline_spirv!(
             r#"
-            #version 460 core
+            #version 450
 
-            const vec2 POSITION[6] = vec2[6](
-                vec2(-1, -1), vec2(-1,  1), vec2( 1, -1),
-                vec2( 1,  1), vec2( 1, -1), vec2(-1,  1)
-            );
+            layout (location = 0) in vec3 inPos;
+            layout (location = 1) in vec3 inNormal;
 
-            layout(location = 0) out float vk_Blend;
+            layout (binding = 0) uniform UBO
+            {
+                mat4 projection;
+                mat4 model;
+                mat4 view;
+                vec3 camPos;
+            } ubo;
 
-            void main() {
-                gl_Position = vec4(POSITION[gl_VertexIndex], 0, 1);
-                vk_Blend = gl_Position.x * -0.5 + 0.5;
+            layout (location = 0) out vec3 outWorldPos;
+            layout (location = 1) out vec3 outNormal;
+
+            layout(push_constant) uniform PushConsts {
+                vec3 objPos;
+            } pushConsts;
+
+            out gl_PerVertex 
+            {
+                vec4 gl_Position;
+            };
+
+            void main() 
+            {
+                vec3 locPos = vec3(ubo.model * vec4(inPos, 1.0));
+                outWorldPos = locPos + pushConsts.objPos;
+                outNormal = mat3(ubo.model) * inNormal;
+                gl_Position =  ubo.projection * ubo.view * vec4(outWorldPos, 1.0);
             }
             "#,
             vert
@@ -226,22 +270,135 @@ fn create_fill_quad_linear_gradient_pipeline(device: &Arc<Device>) -> Arc<Graphi
         .as_slice(),
     );
 
+    // See: https://github.com/SaschaWillems/Vulkan/blob/master/data/shaders/glsl/pbrbasic/pbr.frag
     let fragment_shader = Shader::new_fragment(
         inline_spirv!(
             r#"
-            #version 460 core
+            #version 450
 
-            layout(push_constant) uniform PushConstants {
-                layout(offset = 0) vec4 start_color;
-                layout(offset = 16) vec4 end_color;
-            } push_constants;
-            
-            layout(location = 0) in float blend;
+            layout (location = 0) in vec3 inWorldPos;
+            layout (location = 1) in vec3 inNormal;
 
-            layout(location = 0) out vec4 vk_Color;
-            
-            void main() {
-                vk_Color = mix(push_constants.start_color, push_constants.end_color, blend);
+            layout (binding = 0) uniform UBO 
+            {
+                mat4 projection;
+                mat4 model;
+                mat4 view;
+                vec3 camPos;
+            } ubo;
+
+            layout (binding = 1) uniform UBOShared {
+                vec4 lights[4];
+            } uboParams;
+
+            layout (location = 0) out vec4 outColor;
+
+            layout(push_constant) uniform PushConsts {
+                layout(offset = 12) float roughness;
+                layout(offset = 16) float metallic;
+                layout(offset = 20) float r;
+                layout(offset = 24) float g;
+                layout(offset = 28) float b;
+            } material;
+
+            const float PI = 3.14159265359;
+
+            //#define ROUGHNESS_PATTERN 1
+
+            vec3 materialcolor()
+            {
+                return vec3(material.r, material.g, material.b);
+            }
+
+            // Normal Distribution function --------------------------------------
+            float D_GGX(float dotNH, float roughness)
+            {
+                float alpha = roughness * roughness;
+                float alpha2 = alpha * alpha;
+                float denom = dotNH * dotNH * (alpha2 - 1.0) + 1.0;
+                return (alpha2)/(PI * denom*denom); 
+            }
+
+            // Geometric Shadowing function --------------------------------------
+            float G_SchlicksmithGGX(float dotNL, float dotNV, float roughness)
+            {
+                float r = (roughness + 1.0);
+                float k = (r*r) / 8.0;
+                float GL = dotNL / (dotNL * (1.0 - k) + k);
+                float GV = dotNV / (dotNV * (1.0 - k) + k);
+                return GL * GV;
+            }
+
+            // Fresnel function ----------------------------------------------------
+            vec3 F_Schlick(float cosTheta, float metallic)
+            {
+                vec3 F0 = mix(vec3(0.04), materialcolor(), metallic); // * material.specular
+                vec3 F = F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0); 
+                return F;
+            }
+
+            // Specular BRDF composition --------------------------------------------
+
+            vec3 BRDF(vec3 L, vec3 V, vec3 N, float metallic, float roughness)
+            {
+                // Precalculate vectors and dot products	
+                vec3 H = normalize (V + L);
+                float dotNV = clamp(dot(N, V), 0.0, 1.0);
+                float dotNL = clamp(dot(N, L), 0.0, 1.0);
+                float dotLH = clamp(dot(L, H), 0.0, 1.0);
+                float dotNH = clamp(dot(N, H), 0.0, 1.0);
+
+                // Light color fixed
+                vec3 lightColor = vec3(1.0);
+
+                vec3 color = vec3(0.0);
+
+                if (dotNL > 0.0)
+                {
+                    float rroughness = max(0.05, roughness);
+                    // D = Normal distribution (Distribution of the microfacets)
+                    float D = D_GGX(dotNH, roughness); 
+                    // G = Geometric shadowing term (Microfacets shadowing)
+                    float G = G_SchlicksmithGGX(dotNL, dotNV, rroughness);
+                    // F = Fresnel factor (Reflectance depending on angle of incidence)
+                    vec3 F = F_Schlick(dotNV, metallic);
+
+                    vec3 spec = D * F * G / (4.0 * dotNL * dotNV);
+
+                    color += spec * dotNL * lightColor;
+                }
+
+                return color;
+            }
+
+            // ----------------------------------------------------------------------------
+            void main()
+            {
+                vec3 N = normalize(inNormal);
+                vec3 V = normalize(ubo.camPos - inWorldPos);
+
+                float roughness = material.roughness;
+
+                // Add striped pattern to roughness based on vertex position
+            #ifdef ROUGHNESS_PATTERN
+                roughness = max(roughness, step(fract(inWorldPos.y * 2.02), 0.5));
+            #endif
+
+                // Specular contribution
+                vec3 Lo = vec3(0.0);
+                for (int i = 0; i < uboParams.lights.length(); i++) {
+                    vec3 L = normalize(uboParams.lights[i].xyz - inWorldPos);
+                    Lo += BRDF(L, V, N, material.metallic, roughness);
+                };
+
+                // Combine with ambient
+                vec3 color = materialcolor() * 0.02;
+                color += Lo;
+
+                // Gamma correct
+                color = pow(color, vec3(0.4545));
+
+                outColor = vec4(color, 1.0);
             }
             "#,
             frag
@@ -252,83 +409,23 @@ fn create_fill_quad_linear_gradient_pipeline(device: &Arc<Device>) -> Arc<Graphi
     Arc::new(
         GraphicPipeline::create(
             device,
-            GraphicPipelineInfo::new().blend(BlendMode::ALPHA),
+            GraphicPipelineInfo::new(),
             [vertex_shader, fragment_shader],
         )
         .unwrap(),
     )
 }
 
-// Oh please somebody PR a really nice shader here
-fn create_draw_funky_shape_deferred_pipeline(device: &Arc<Device>) -> Arc<GraphicPipeline> {
-    let vertex_shader = Shader::new_vertex(
-        inline_spirv!(
-            r#"
-            #version 460 core
-            
-            layout(push_constant) uniform PushConstants {
-                layout(offset = 0) mat4 transform;
-            } push_constants;
-            
-            layout(location = 0) in vec3 position;
-            layout(location = 1) in vec3 normal;
-            
-            layout(location = 0) out vec3 vk_Normal;
-            
-            void main() {
-                gl_Position = push_constants.transform * vec4(position, 1);
-                vk_Normal = normal;
-            }
-            "#,
-            vert
-        )
-        .as_slice(),
-    );
-
-    let fragment_shader = Shader::new_fragment(
-        inline_spirv!(
-            r#"
-            #version 460 core
-
-            layout(push_constant) uniform PushConstants {
-                layout(offset = 0) mat4 transform;
-                layout(offset = 64) vec4 coolness_factor;
-            } push_constants;
-            
-            layout(location = 0) in vec3 normal;
-
-            layout(location = 0) out vec4 vk_Color;
-            
-            void main() {
-                vk_Color = push_constants.coolness_factor * vec4(normal, 1);
-            }
-            "#,
-            frag
-        )
-        .as_slice(),
-    );
-
-    Arc::new(
-        GraphicPipeline::create(
-            device,
-            GraphicPipelineInfo::new()
-                .cull_mode(vk::CullModeFlags::NONE)
-                .two_sided(true),
-            [vertex_shader, fragment_shader],
-        )
-        .unwrap(),
-    )
-}
-
-/// Returns index buffer and position/normal buffer (polyhedron_ops you are 🥇🏆🥂💯)
-fn funky_shape_triangle_mesh_buffers() -> (Vec<u32>, Vec<[f32; 6]>) {
+/// Returns index and position/normal data (polyhedron_ops you are 🥇🏆🥂💯)
+fn funky_shape_data() -> (Vec<u16>, Vec<[f32; 6]>) {
     let (indices, positions, normals) = polyhedron_ops::Polyhedron::dodecahedron()
-        .chamfer(None, true)
-        .propeller(None, true)
-        .ambo(None, true)
-        .gyro(None, None, true)
+        .chamfer(None, false)
+        .bevel(None, None, None, None, false)
+        .catmull_clark_subdivide(false)
+        .bevel(None, None, None, None, false)
         .finalize()
         .to_triangle_mesh_buffers();
+    let indices = indices.into_iter().map(|idx| idx as u16).collect();
     let vertices = positions
         .into_iter()
         .zip(normals.into_iter())
@@ -340,4 +437,66 @@ fn funky_shape_triangle_mesh_buffers() -> (Vec<u32>, Vec<[f32; 6]>) {
         .collect();
 
     (indices, vertices)
+}
+
+fn write_cols_to_slice(data: Mat4, slice: &mut [u8]) -> usize {
+    let mut start = 0;
+    for data in data.to_cols_array() {
+        let data = data.to_ne_bytes();
+        let end = start + data.len();
+        slice[start..end].clone_from_slice(&data);
+        start = end;
+    }
+
+    start
+}
+
+fn write_f32_to_slice(data: f32, slice: &mut [u8]) -> usize {
+    slice[0..4].clone_from_slice(&data.to_ne_bytes());
+
+    4
+}
+
+fn write_vec3_to_slice(data: Vec3, slice: &mut [u8]) -> usize {
+    let mut start = 0;
+    for data in data.to_array() {
+        let data = data.to_ne_bytes();
+        let end = start + data.len();
+        slice[start..end].clone_from_slice(&data);
+        start = end;
+    }
+
+    start
+}
+
+fn write_vec4_to_slice(data: Vec4, slice: &mut [u8]) -> usize {
+    let mut start = 0;
+    for data in data.to_array() {
+        let data = data.to_ne_bytes();
+        let end = start + data.len();
+        slice[start..end].clone_from_slice(&data);
+        start = end;
+    }
+
+    start
+}
+
+fn write_camera_buf(buf: &mut Lease<Buffer>, camera: Camera, model: Mat4) {
+    let data = Buffer::mapped_slice_mut(buf);
+
+    write_cols_to_slice(camera.projection, &mut data[0..]);
+    write_cols_to_slice(model, &mut data[64..]);
+    write_cols_to_slice(camera.view, &mut data[128..]);
+
+    write_vec3_to_slice(camera.position, &mut data[192..]);
+}
+
+fn write_light_buf(buf: &mut Lease<Buffer>) {
+    let data = Buffer::mapped_slice_mut(buf);
+
+    let p = 4.0;
+    write_vec4_to_slice(vec3(0.0, -p, -p).extend(1.0), &mut data[0..]);
+    write_vec4_to_slice(vec3(p * 0.5, p, -p).extend(1.0), &mut data[16..]);
+    write_vec4_to_slice(vec3(-p, -p * 0.5, -p).extend(1.0), &mut data[32..]);
+    write_vec4_to_slice(vec3(p, -p * 0.5, -p).extend(1.0), &mut data[48..]);
 }

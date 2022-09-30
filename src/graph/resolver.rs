@@ -1,7 +1,7 @@
 use {
     super::{
-        Area, Attachment, Binding, Bindings, ClearColorValue, Edge,
-        ExecutionPipeline, Node, Pass, RenderGraph, Unbind,
+        Area, Attachment, Binding, Bindings, ClearColorValue, Edge, ExecutionPipeline, Node, Pass,
+        RenderGraph, Unbind,
     },
     crate::{
         driver::{
@@ -311,7 +311,7 @@ impl Resolver {
                             .color_clears
                             .values()
                             .copied()
-                            .map(|ClearColorValue(float32)| vk::ClearValue {
+                            .map(|(_, ClearColorValue(float32))| vk::ClearValue {
                                 color: vk::ClearColorValue { float32 },
                             })
                             .chain(repeat(Default::default()))

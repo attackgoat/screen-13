@@ -892,9 +892,6 @@ impl<'a> PassRef<'a> {
 
             Execution {
                 pipeline: last_exec.pipeline.clone(),
-                loads: last_exec.loads.clone(),
-                resolves: last_exec.resolves.clone(),
-                stores: last_exec.stores.clone(),
                 ..Default::default()
             }
         };
@@ -1299,68 +1296,42 @@ impl<'a> PipelinePassRef<'a, ComputePipeline> {
 }
 
 impl<'a> PipelinePassRef<'a, GraphicPipeline> {
-    /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` and `VK_ATTACHMENT_STORE_OP_STORE` for the render
-    /// pass attachment.
-    ///
-    /// The image is
-    pub fn attach_color(self, attachment: AttachmentIndex, image: impl Into<AnyImageNode>) -> Self {
-        let image: AnyImageNode = image.into();
-        let image_info = image.get(self.pass.graph);
-        let image_view_info: ImageViewInfo = image_info.into();
-
-        self.attach_color_as(attachment, image, image_view_info)
-    }
-
-    /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` and `VK_ATTACHMENT_STORE_OP_STORE` for the render
-    /// pass attachment.
-    pub fn attach_color_as(
-        self,
-        attachment: AttachmentIndex,
-        image: impl Into<AnyImageNode>,
-        view_info: impl Into<ImageViewInfo>,
-    ) -> Self {
-        let image = image.into();
-        let image_view_info = view_info.into();
-
-        self.load_color_as(attachment, image, image_view_info)
-            .store_color_as(attachment, image, image_view_info)
-    }
-
-    /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` and `VK_ATTACHMENT_STORE_OP_STORE` for the render
-    /// pass attachment.
-    pub fn attach_depth_stencil(self, image: impl Into<AnyImageNode>) -> Self {
-        let image: AnyImageNode = image.into();
-        let image_info = image.get(self.pass.graph);
-        let image_view_info: ImageViewInfo = image_info.into();
-
-        self.attach_depth_stencil_as(image, image_view_info)
-    }
-
-    /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` and `VK_ATTACHMENT_STORE_OP_STORE` for the render
-    /// pass attachment.
-    pub fn attach_depth_stencil_as(
-        self,
-        image: impl Into<AnyImageNode>,
-        image_view_info: impl Into<ImageViewInfo>,
-    ) -> Self {
-        let image = image.into();
-        let image_view_info = image_view_info.into();
-
-        self.load_depth_stencil_as(image, image_view_info)
-            .store_depth_stencil_as(image, image_view_info)
-    }
-
     /// Clears the render pass attachment of any existing data.
-    pub fn clear_color(self, attachment: AttachmentIndex) -> Self {
-        self.clear_color_value(attachment, [0.0, 0.0, 0.0, 0.0])
+    pub fn clear_color(
+        self,
+        attachment_idx: AttachmentIndex,
+        image: impl Into<AnyImageNode>,
+    ) -> Self {
+        self.clear_color_value(attachment_idx, image, [0.0, 0.0, 0.0, 0.0])
     }
 
     /// Clears the render pass attachment of any existing data.
     pub fn clear_color_value(
-        mut self,
-        attachment: AttachmentIndex,
+        self,
+        attachment_idx: AttachmentIndex,
+        image: impl Into<AnyImageNode>,
         color: impl Into<ClearColorValue>,
     ) -> Self {
+        let image: AnyImageNode = image.into();
+        let image_info = image.get(self.pass.graph);
+        let image_view_info: ImageViewInfo = image_info.into();
+
+        self.clear_color_value_as(attachment_idx, image, color, image_view_info)
+    }
+
+    /// Clears the render pass attachment of any existing data.
+    pub fn clear_color_value_as(
+        mut self,
+        attachment_idx: AttachmentIndex,
+        image: impl Into<AnyImageNode>,
+        color: impl Into<ClearColorValue>,
+        image_view_info: impl Into<ImageViewInfo>,
+    ) -> Self {
+        let image = image.into();
+        let image_view_info = image_view_info.into();
+        let node_idx = image.index();
+        let (_, sample_count) = self.image_info(node_idx);
+
         let color = color.into();
         let pass = self.pass.as_mut();
         let exec = pass.execs.last_mut().unwrap();
@@ -1372,26 +1343,65 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
                 .unwrap()
                 .unwrap_graphic()
                 .input_attachments
-                .contains(&attachment),
-            "cleared color attachment index {attachment} also uses subpass input"
+                .contains(&attachment_idx),
+            "cleared color attachment index {attachment_idx} also uses subpass input"
         );
 
-        exec.color_clears.insert(attachment, color);
+        let attachment = Attachment {
+            aspect_mask: image_view_info.aspect_mask,
+            fmt: image_view_info.fmt,
+            sample_count,
+            target: node_idx,
+        };
+        exec.color_clears
+            .insert(attachment_idx, (attachment, color));
 
         self
     }
 
     /// Clears the render pass attachment of any existing data.
-    pub fn clear_depth_stencil(self) -> Self {
-        self.clear_depth_stencil_value(1.0, 0)
+    pub fn clear_depth_stencil(self, image: impl Into<AnyImageNode>) -> Self {
+        self.clear_depth_stencil_value(image, 1.0, 0)
     }
 
     /// Clears the render pass attachment of any existing data.
-    pub fn clear_depth_stencil_value(mut self, depth: f32, stencil: u32) -> Self {
+    pub fn clear_depth_stencil_value(
+        self,
+        image: impl Into<AnyImageNode>,
+        depth: f32,
+        stencil: u32,
+    ) -> Self {
+        let image: AnyImageNode = image.into();
+        let image_info = image.get(self.pass.graph);
+        let image_view_info: ImageViewInfo = image_info.into();
+
+        self.clear_depth_stencil_value_as(image, depth, stencil, image_view_info)
+    }
+
+    /// Clears the render pass attachment of any existing data.
+    pub fn clear_depth_stencil_value_as(
+        mut self,
+        image: impl Into<AnyImageNode>,
+        depth: f32,
+        stencil: u32,
+        image_view_info: impl Into<ImageViewInfo>,
+    ) -> Self {
+        let image = image.into();
+        let image_view_info = image_view_info.into();
+        let node_idx = image.index();
+        let (_, sample_count) = self.image_info(node_idx);
+
         let pass = self.pass.as_mut();
         let exec = pass.execs.last_mut().unwrap();
 
-        exec.depth_stencil_clear = Some(vk::ClearDepthStencilValue { depth, stencil });
+        let attachment = Attachment {
+            aspect_mask: image_view_info.aspect_mask,
+            fmt: image_view_info.fmt,
+            sample_count,
+            target: node_idx,
+        };
+        exec.depth_stencil_clear =
+            Some((attachment, vk::ClearDepthStencilValue { depth, stencil }));
 
         self
     }
@@ -1409,12 +1419,16 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
     /// into the framebuffer.
     ///
     /// _NOTE:_ Order matters, call load before resolve or store.
-    pub fn load_color(self, attachment: AttachmentIndex, image: impl Into<AnyImageNode>) -> Self {
+    pub fn load_color(
+        self,
+        attachment_idx: AttachmentIndex,
+        image: impl Into<AnyImageNode>,
+    ) -> Self {
         let image: AnyImageNode = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
 
-        self.load_color_as(attachment, image, image_view_info)
+        self.load_color_as(attachment_idx, image, image_view_info)
     }
 
     /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` for the render pass attachment, and loads an image
@@ -1423,7 +1437,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
     /// _NOTE:_ Order matters, call load before resolve or store.
     pub fn load_color_as(
         mut self,
-        attachment: AttachmentIndex,
+        attachment_idx: AttachmentIndex,
         image: impl Into<AnyImageNode>,
         image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
@@ -1443,45 +1457,45 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
                     .unwrap()
                     .unwrap_graphic()
                     .input_attachments
-                    .contains(&attachment),
-                "loaded color attachment index {attachment} also uses subpass input"
+                    .contains(&attachment_idx),
+                "loaded color attachment index {attachment_idx} also uses subpass input"
             );
 
             assert!(
                 exec.loads.insert_color(
-                    attachment,
+                    attachment_idx,
                     image_view_info.aspect_mask,
                     image_view_info.fmt,
                     sample_count,
                     node_idx,
                 ),
-                "loaded color attachment index {attachment} incompatible with previous load"
+                "loaded color attachment index {attachment_idx} incompatible with previous load"
             );
 
             #[cfg(debug_assertions)]
             {
                 // Unwrap the attachment we inserted above
-                let color_attachment = exec.loads.color(attachment).unwrap();
+                let color_attachment = exec.loads.color(attachment_idx).unwrap();
 
                 assert!(
                     exec.stores
-                        .color(attachment)
+                        .color(attachment_idx)
                         .map(|stored_attachment| Attachment::are_identical(
                             stored_attachment,
                             color_attachment
                         ))
                         .unwrap_or(true),
-                    "loaded color attachment index {attachment} incompatible with previous store"
+                    "loaded color attachment index {attachment_idx} incompatible with previous store"
                 );
                 assert!(
                     exec.resolves
-                        .color(attachment)
+                        .color(attachment_idx)
                         .map(|resolved_attachment| Attachment::are_identical(
                             resolved_attachment,
                             color_attachment
                         ))
                         .unwrap_or(true),
-                    "loaded color attachment index {attachment} incompatible with previous resolve"
+                    "loaded color attachment index {attachment_idx} incompatible with previous resolve"
                 );
             }
         }
@@ -1632,14 +1646,14 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
     /// _NOTE:_ Order matters, call resolve after load.
     pub fn resolve_color(
         self,
-        attachment: AttachmentIndex,
+        attachment_idx: AttachmentIndex,
         image: impl Into<AnyImageNode>,
     ) -> Self {
         let image: AnyImageNode = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
 
-        self.resolve_color_as(attachment, image, image_view_info)
+        self.resolve_color_as(attachment_idx, image, image_view_info)
     }
 
     /// Resolves a multisample framebuffer to a non-multisample image for the render pass
@@ -1648,7 +1662,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
     /// _NOTE:_ Order matters, call resolve after load.
     pub fn resolve_color_as(
         mut self,
-        attachment: AttachmentIndex,
+        attachment_idx: AttachmentIndex,
         image: impl Into<AnyImageNode>,
         image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
@@ -1663,25 +1677,25 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
 
             assert!(
                 exec.resolves.insert_color(
-                    attachment,
+                    attachment_idx,
                     image_view_info.aspect_mask,
                     image_view_info.fmt,
                     sample_count,
                     node_idx,
                 ),
-                "resolved color attachment index {attachment} incompatible with previous resolve"
+                "resolved color attachment index {attachment_idx} incompatible with previous resolve"
             );
 
             #[cfg(debug_assertions)]
             {
                 // Unwrap the attachment we inserted above
-                let resolved_attachment = exec.resolves.color(attachment).unwrap();
+                let resolved_attachment = exec.resolves.color(attachment_idx).unwrap();
 
                 assert!(
-                    exec.color_clears.contains_key(&attachment)
+                    exec.color_clears.contains_key(&attachment_idx)
                         || exec
                             .loads
-                            .color(attachment)
+                            .color(attachment_idx)
                             .map(|loaded_attachment| Attachment::are_identical(
                                 loaded_attachment,
                                 resolved_attachment
@@ -1693,18 +1707,18 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
                             .unwrap()
                             .unwrap_graphic()
                             .input_attachments
-                            .contains(&attachment),
-                    "color attachment index {attachment} resolved without clear, or compatible load, or subpass input"
+                            .contains(&attachment_idx),
+                    "color attachment index {attachment_idx} resolved without clear, or compatible load, or subpass input"
                 );
                 assert!(
                     exec.stores
-                        .color(attachment)
+                        .color(attachment_idx)
                         .map(|stored_attachment| Attachment::are_identical(
                             stored_attachment,
                             resolved_attachment
                         ))
                         .unwrap_or(true),
-                    "resolved color attachment index {attachment} incompatible with previous store"
+                    "resolved color attachment index {attachment_idx} incompatible with previous store"
                 );
             }
         }
@@ -1859,12 +1873,16 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
     /// rendered pixels into an image.
     ///
     /// _NOTE:_ Order matters, call store after load.
-    pub fn store_color(self, attachment: AttachmentIndex, image: impl Into<AnyImageNode>) -> Self {
+    pub fn store_color(
+        self,
+        attachment_idx: AttachmentIndex,
+        image: impl Into<AnyImageNode>,
+    ) -> Self {
         let image: AnyImageNode = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
 
-        self.store_color_as(attachment, image, image_view_info)
+        self.store_color_as(attachment_idx, image, image_view_info)
     }
 
     /// Specifies `VK_ATTACHMENT_STORE_OP_STORE` for the render pass attachment, and stores the
@@ -1873,7 +1891,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
     /// _NOTE:_ Order matters, call store after load.
     pub fn store_color_as(
         mut self,
-        attachment: AttachmentIndex,
+        attachment_idx: AttachmentIndex,
         image: impl Into<AnyImageNode>,
         image_view_info: impl Into<ImageViewInfo>,
     ) -> Self {
@@ -1888,25 +1906,25 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
 
             assert!(
                 exec.stores.insert_color(
-                    attachment,
+                    attachment_idx,
                     image_view_info.aspect_mask,
                     image_view_info.fmt,
                     sample_count,
                     node_idx,
                 ),
-                "stored color attachment index {attachment} incompatible with previous store"
+                "stored color attachment index {attachment_idx} incompatible with previous store"
             );
 
             #[cfg(debug_assertions)]
             {
                 // Unwrap the attachment we inserted above
-                let stored_attachment = exec.stores.color(attachment).unwrap();
+                let stored_attachment = exec.stores.color(attachment_idx).unwrap();
 
                 assert!(
-                    exec.color_clears.contains_key(&attachment)
+                    exec.color_clears.contains_key(&attachment_idx)
                         || exec
                             .loads
-                            .color(attachment)
+                            .color(attachment_idx)
                             .map(|loaded_attachment| Attachment::are_identical(
                                 loaded_attachment,
                                 stored_attachment
@@ -1918,18 +1936,18 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
                             .unwrap()
                             .unwrap_graphic()
                             .input_attachments
-                            .contains(&attachment),
-                    "color attachment index {attachment} stored without clear, compatible load, or subpass input"
+                            .contains(&attachment_idx),
+                    "color attachment index {attachment_idx} stored without clear, compatible load, or subpass input"
                 );
                 assert!(
                     exec.resolves
-                        .color(attachment)
+                        .color(attachment_idx)
                         .map(|resolved_attachment| Attachment::are_identical(
                             resolved_attachment,
                             stored_attachment
                         ))
                         .unwrap_or(true),
-                    "stored color attachment index {attachment} incompatible with previous resolve"
+                    "stored color attachment index {attachment_idx} incompatible with previous resolve"
                 );
             }
         }

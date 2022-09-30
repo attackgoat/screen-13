@@ -546,7 +546,7 @@ fn record_graphic_bindless(frame: &mut FrameContext, cache: &mut HashPool) {
         .read_descriptor((0, [2]), images[2])
         .read_descriptor((0, [3]), images[3])
         .read_descriptor((0, [4]), images[4])
-        .clear_color(0)
+        .clear_color(0, image)
         .store_color(0, image)
         .record_subpass(|subpass| {
             subpass.push_constants(&5u32.to_ne_bytes()).draw(1, 1, 0, 0);
@@ -657,7 +657,7 @@ fn record_graphic_will_merge_subpass_input(frame: &mut FrameContext, cache: &mut
         .render_graph
         .begin_pass("a")
         .bind_pipeline(&pipeline_a)
-        .clear_color(0)
+        .clear_color(0, image)
         .store_color(0, image)
         .record_subpass(|subpass| {
             subpass.draw(1, 1, 0, 0);
