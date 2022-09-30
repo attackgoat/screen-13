@@ -322,11 +322,11 @@ impl ImageInfo {
         }
     }
 
-    pub fn new_1d(fmt: vk::Format, len: u32, usage: vk::ImageUsageFlags) -> ImageInfoBuilder {
+    pub const fn new_1d(fmt: vk::Format, len: u32, usage: vk::ImageUsageFlags) -> ImageInfoBuilder {
         Self::new(fmt, ImageType::Texture1D, len, 1, 1, usage)
     }
 
-    pub fn new_2d(
+    pub const fn new_2d(
         fmt: vk::Format,
         width: u32,
         height: u32,
@@ -335,7 +335,7 @@ impl ImageInfo {
         Self::new(fmt, ImageType::Texture2D, width, height, 1, usage)
     }
 
-    pub fn new_3d(
+    pub const fn new_3d(
         fmt: vk::Format,
         width: u32,
         height: u32,

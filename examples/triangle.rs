@@ -76,7 +76,7 @@ fn main() -> Result<(), DisplayError> {
             .bind_pipeline(&triangle_pipeline)
             .access_node(index_node, AccessType::IndexBuffer)
             .access_node(vertex_node, AccessType::VertexBuffer)
-            .clear_color(0)
+            .clear_color(0, frame.swapchain_image)
             .store_color(0, frame.swapchain_image)
             .record_subpass(move |subpass| {
                 subpass.bind_index_buffer(index_node, vk::IndexType::UINT16);

@@ -5,7 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5] - 2022-09-17
+## [0.6.0] - Unreleased
+
+### Changed
+
+- `clear_color` and `clear_depth_stencil` functions now take the image being cleared: it is now possible to clear and attach, but not store or resolve, an image
+
+### Removed
+
+- `attach_color` and `attach_depth_stencil` functions: replace with the `load_` and `store_` functions for color or depth/stencil attachments
+
+### Fixed
+
+- Depth/stencil attachment clear requests are properly handled in cases where the image used is transient
+
+## [0.5.0] - 2022-09-17
 
 ### Added
 
@@ -165,3 +179,4 @@ _See [#25](https://github.com/attackgoat/screen-13/pull/25) for migration detail
 [0.4.1]: https://github.com/attackgoat/screen-13/commit/9b739ac4652fa1326e6d54e7bae9e58050d7c290
 [0.4.2]: https://github.com/attackgoat/screen-13/commit/a3f675b5018ac8d9dbc29c6f462813149b5f05ab
 [0.5.0]: https://github.com/attackgoat/screen-13/commit/80248b68e016b6922271a42d423023341d481e17
+[0.6.0]: https://github.com/attackgoat/screen-13

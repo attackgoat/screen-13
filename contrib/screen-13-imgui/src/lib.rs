@@ -172,7 +172,7 @@ impl ImGui {
                 .access_node(index_buf, AccessType::IndexBuffer)
                 .access_node(vertex_buf, AccessType::IndexBuffer)
                 .read_descriptor(0, font_atlas_image)
-                .clear_color(0)
+                .clear_color(0, image)
                 .store_color(0, image)
                 .record_subpass(move |subpass| {
                     subpass

@@ -1,3 +1,4 @@
+mod attachment;
 mod binding;
 mod edge;
 mod info;
@@ -8,6 +9,7 @@ mod swapchain;
 
 pub use {
     self::{
+        attachment::{Attachment, AttachmentMap},
         binding::{AnyBufferBinding, AnyImageBinding, Bind},
         node::{
             AccelerationStructureLeaseNode, AccelerationStructureNode,
@@ -31,7 +33,7 @@ use {
     ash::vk,
     std::{
         cmp::Ord,
-        collections::{BTreeMap, BTreeSet},
+        collections::BTreeMap,
         fmt::{Debug, Formatter},
         ops::Range,
         sync::Arc,
@@ -55,168 +57,16 @@ struct Area {
     y: i32,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct Attachment {
-    aspect_mask: vk::ImageAspectFlags,
-    fmt: vk::Format,
-    sample_count: SampleCount,
-    target: NodeIndex,
-}
-
-impl Attachment {
-    fn are_compatible(lhs: Option<Self>, rhs: Option<Self>) -> bool {
-        // Two attachment references are compatible if they have matching format and sample
-        // count, or are both VK_ATTACHMENT_UNUSED or the pointer that would contain the
-        // reference is NULL.
-        if lhs.is_none() || rhs.is_none() {
-            return true;
-        }
-
-        Self::are_identical(lhs.unwrap(), rhs.unwrap())
-    }
-
-    fn are_identical(lhs: Self, rhs: Self) -> bool {
-        lhs.fmt == rhs.fmt && lhs.sample_count == rhs.sample_count
-    }
-}
-
-#[derive(Clone, Debug, Default)]
-struct AttachmentMap {
-    attached: Vec<Option<Attachment>>,
-    attached_count: usize,
-    depth_stencil: Option<AttachmentIndex>,
-}
-
-impl AttachmentMap {
-    fn attached(&self) -> impl Iterator<Item = AttachmentIndex> + '_ {
-        self.attached
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, opt)| opt.map(|_| idx as AttachmentIndex))
-    }
-
-    fn are_compatible(&self, other: &Self) -> bool {
-        // Count of the color attachments may differ, the extras are VK_ATTACHMENT_UNUSED
-        self.attached
-            .iter()
-            .zip(other.attached.iter())
-            .all(|(lhs, rhs)| Attachment::are_compatible(*lhs, *rhs))
-    }
-
-    fn contains_attachment(&self, attachment: AttachmentIndex) -> bool {
-        self.attached.get(attachment as usize).is_some()
-    }
-
-    fn contains_image(&self, node_idx: NodeIndex) -> bool {
-        self.attached
-            .iter()
-            .any(|attachment| matches!(attachment, Some(Attachment { target, .. }) if *target == node_idx))
-    }
-
-    fn depth_stencil(&self) -> Option<(AttachmentIndex, Attachment)> {
-        self.depth_stencil.map(|attachment_idx| {
-            (
-                attachment_idx as AttachmentIndex,
-                self.attached[attachment_idx as usize].unwrap(),
-            )
-        })
-    }
-
-    fn get(&self, attachment: AttachmentIndex) -> Option<Attachment> {
-        self.attached.get(attachment as usize).copied().flatten()
-    }
-
-    /// Returns true if the previous attachment was compatible
-    fn insert_color(
-        &mut self,
-        attachment: AttachmentIndex,
-        aspect_mask: vk::ImageAspectFlags,
-        fmt: vk::Format,
-        sample_count: SampleCount,
-        target: NodeIndex,
-    ) -> bool {
-        // Extend the data as needed
-        self.extend_attached(attachment);
-
-        if self.attached[attachment as usize].is_none() {
-            self.attached_count += 1;
-        }
-
-        Self::set_attachment(
-            &mut self.attached[attachment as usize],
-            Attachment {
-                aspect_mask,
-                fmt,
-                sample_count,
-                target,
-            },
-        )
-    }
-
-    fn extend_attached(&mut self, attachment_idx: u32) {
-        let attachment_count = attachment_idx as usize + 1;
-        if attachment_count > self.attached.len() {
-            self.attached
-                .reserve(attachment_count - self.attached.len());
-            while self.attached.len() < attachment_count {
-                self.attached.push(None);
-            }
-        }
-    }
-
-    // Returns the unique targets of this instance.
-    fn images(&self) -> impl Iterator<Item = NodeIndex> + '_ {
-        let mut already_seen = BTreeSet::new();
-        self.attached
-            .iter()
-            .filter_map(|attachment| attachment.as_ref().map(|attachment| attachment.target))
-            .filter(move |target| already_seen.insert(*target))
-    }
-
-    fn set_attachment(curr: &mut Option<Attachment>, next: Attachment) -> bool {
-        curr.replace(next)
-            .map(|curr| Attachment::are_identical(curr, next))
-            .unwrap_or(true)
-    }
-
-    fn set_depth_stencil(
-        &mut self,
-        attachment: AttachmentIndex,
-        aspect_mask: vk::ImageAspectFlags,
-        fmt: vk::Format,
-        sample_count: SampleCount,
-        target: NodeIndex,
-    ) -> bool {
-        // Extend the data as needed
-        self.extend_attached(attachment);
-
-        assert!(self.depth_stencil.is_none());
-
-        self.attached_count += 1;
-        self.depth_stencil = Some(attachment);
-
-        Self::set_attachment(
-            &mut self.attached[attachment as usize],
-            Attachment {
-                aspect_mask,
-                fmt,
-                sample_count,
-                target,
-            },
-        )
-    }
-}
-
 #[derive(Clone, Copy, Debug)]
-pub struct Color(pub [f32; 4]);
+pub struct ClearColorValue(pub [f32; 4]);
 
-impl From<[f32; 4]> for Color {
+impl From<[f32; 4]> for ClearColorValue {
     fn from(color: [f32; 4]) -> Self {
         Self(color)
     }
 }
 
-impl From<[u8; 4]> for Color {
+impl From<[u8; 4]> for ClearColorValue {
     fn from(color: [u8; 4]) -> Self {
         Self([
             color[0] as f32 / u8::MAX as f32,
@@ -290,29 +140,15 @@ impl From<(DescriptorSetIndex, BindingIndex, [BindingOffset; 1])> for Descriptor
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-enum ClearValue {
-    Color(Color),
-    DepthStencil(vk::ClearDepthStencilValue),
-}
-
-impl From<ClearValue> for vk::ClearValue {
-    fn from(src: ClearValue) -> Self {
-        match src {
-            ClearValue::Color(color) => vk::ClearValue {
-                color: vk::ClearColorValue { float32: color.0 },
-            },
-            ClearValue::DepthStencil(depth_stencil) => vk::ClearValue { depth_stencil },
-        }
-    }
-}
-
 #[derive(Default)]
 struct Execution {
     accesses: BTreeMap<NodeIndex, [SubresourceAccess; 2]>,
     bindings: BTreeMap<Descriptor, (NodeIndex, Option<ViewType>)>,
 
-    clears: BTreeMap<AttachmentIndex, ClearValue>,
+    depth_stencil: Option<DepthStencilMode>,
+
+    color_clears: BTreeMap<AttachmentIndex, (Attachment, ClearColorValue)>,
+    depth_stencil_clear: Option<(Attachment, vk::ClearDepthStencilValue)>,
     loads: AttachmentMap,
     resolves: AttachmentMap,
     stores: AttachmentMap,
@@ -322,29 +158,50 @@ struct Execution {
 }
 
 impl Execution {
-    fn attachment(&self, attachment_idx: AttachmentIndex) -> Option<Attachment> {
-        self.loads.get(attachment_idx).or_else(|| {
+    fn color_attachment(&self, attachment_idx: AttachmentIndex) -> Option<Attachment> {
+        self.loads.color(attachment_idx).or_else(|| {
             self.resolves
-                .get(attachment_idx)
-                .or_else(|| self.stores.get(attachment_idx))
+                .color(attachment_idx)
+                .or_else(|| self.stores.color(attachment_idx))
         })
     }
 
-    fn attachment_count(&self) -> usize {
+    fn color_attachment_count(&self) -> usize {
         self.loads
-            .attached
-            .len()
-            .max(self.resolves.attached.len())
-            .max(self.stores.attached.len())
+            .colors()
+            .count()
+            .max(self.resolves.colors().count())
+            .max(self.stores.colors().count())
+    }
+
+    fn depth_stencil_attachment(&self) -> Option<Attachment> {
+        self.depth_stencil_clear
+            .map(|(attachment, _)| attachment)
+            .or_else(|| self.loads.depth_stencil())
+            .or_else(|| self.resolves.depth_stencil())
+            .or_else(|| self.stores.depth_stencil())
+    }
+
+    fn has_depth_stencil_attachment(&self) -> bool {
+        (self.depth_stencil_clear.is_some() || self.loads.depth_stencil().is_some())
+            || (self.resolves.depth_stencil().is_some() || self.stores.depth_stencil().is_some())
     }
 
     #[cfg(debug_assertions)]
-    fn attached_written(&self) -> impl Iterator<Item = AttachmentIndex> + '_ {
-        self.clears
+    fn written_color_attachments(&self) -> impl Iterator<Item = AttachmentIndex> + '_ {
+        self.color_clears
             .keys()
             .copied()
-            .chain(self.resolves.attached())
-            .chain(self.stores.attached())
+            .chain(
+                self.resolves
+                    .colors()
+                    .map(|(attachment_idx, _)| attachment_idx),
+            )
+            .chain(
+                self.stores
+                    .colors()
+                    .map(|(attachment_idx, _)| attachment_idx),
+            )
     }
 }
 
@@ -355,7 +212,8 @@ impl Debug for Execution {
         f.debug_struct("Execution")
             .field("accesses", &self.accesses)
             .field("bindings", &self.bindings)
-            .field("clears", &self.clears)
+            .field("color_clears", &self.color_clears)
+            .field("depth_stencil_clear", &self.depth_stencil_clear)
             .field("loads", &self.loads)
             .field("resolves", &self.resolves)
             .field("stores", &self.stores)
@@ -427,7 +285,6 @@ impl Clone for ExecutionPipeline {
 
 #[derive(Debug)]
 struct Pass {
-    depth_stencil: Option<DepthStencilMode>,
     execs: Vec<Execution>,
     name: String,
     render_area: Option<Area>,
@@ -582,7 +439,7 @@ impl RenderGraph {
     pub fn clear_color_image_value(
         &mut self,
         image_node: impl Into<AnyImageNode>,
-        color_value: impl Into<Color>,
+        color_value: impl Into<ClearColorValue>,
     ) -> &mut Self {
         let color_value = color_value.into();
         let image_node = image_node.into();
@@ -612,7 +469,7 @@ impl RenderGraph {
 
     /// Clears a depth/stencil image as part of a render graph but outside of any graphic render pass
     pub fn clear_depth_stencil_image(&mut self, image_node: impl Into<AnyImageNode>) -> &mut Self {
-        self.clear_depth_stencil_image_value(image_node, 0.0, 0)
+        self.clear_depth_stencil_image_value(image_node, 1.0, 0)
     }
 
     pub fn clear_depth_stencil_image_value(

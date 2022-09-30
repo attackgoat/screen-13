@@ -119,12 +119,12 @@ let info = GraphicPipelineInfo {
     blend: BlendMode::REPLACE,
     cull_mode: vk::CullModeFlags::BACK,
     depth_stencil: Some(DepthStencilMode {
-        back: StencilMode::Noop,
+        back: StencilMode::IGNORE,
         bounds_test: false,
         compare_op: vk::CompareOp::NEVER,
         depth_test: false,
         depth_write: false,
-        front: StencilMode::Noop,
+        front: StencilMode::IGNORE,
         min: OrderedFloat(0.0f32),
         max: OrderedFloat(1.0f32),
         stencil_test: false,
@@ -454,8 +454,8 @@ Attachment functions:
 
 - `attach_color(idx, image_node)` - Synonym for `load_color` + `store_color`
 - `attach_depth_stencil(idx, image_node)`
-- `clear_color(idx)` / `clear_color_value(idx, value)`
-- `clear_depth_stencil(idx)` / `clear_depth_stencil_value(idx, value)`
+- `clear_color(idx, image_node)` / `clear_color_value(idx, image_node, value)`
+- `clear_depth_stencil(image_node)` / `clear_depth_stencil_value(image_node, value)`
 - `load_color(idx, image_node)` (and `depth_stencil`)
 - `resolve_color(idx, image_node)` (and `depth_stencil`)
 - `store_color(idx, image_node)` (and `depth_stencil`)
