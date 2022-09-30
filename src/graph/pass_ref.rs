@@ -1,11 +1,11 @@
 use {
     super::{
         AccelerationStructureLeaseNode, AccelerationStructureNode, AnyAccelerationStructureNode,
-        AnyBufferNode, AnyImageNode, Area, AttachmentIndex, Bind, Binding, BufferLeaseNode,
-        BufferNode, ClearColorValue, Descriptor, Edge, Execution, ExecutionFunction,
-        ExecutionPipeline, ImageLeaseNode, ImageNode, Information, Node, NodeIndex, Pass,
-        RenderGraph, SampleCount, Subresource, SubresourceAccess, SwapchainImageNode, View,
-        ViewType,
+        AnyBufferNode, AnyImageNode, Area, Attachment, AttachmentIndex, Bind, Binding,
+        BufferLeaseNode, BufferNode, ClearColorValue, Descriptor, Edge, Execution,
+        ExecutionFunction, ExecutionPipeline, ImageLeaseNode, ImageNode, Information, Node,
+        NodeIndex, Pass, RenderGraph, SampleCount, Subresource, SubresourceAccess,
+        SwapchainImageNode, View, ViewType,
     },
     crate::driver::{
         AccelerationStructure, AccelerationStructureGeometryInfo, Buffer, ComputePipeline,
@@ -21,9 +21,6 @@ use {
     },
     vk_sync::AccessType,
 };
-
-#[cfg(debug_assertions)]
-use super::Attachment;
 
 pub struct Acceleration<'a> {
     bindings: Bindings<'a>,
@@ -777,7 +774,6 @@ impl<'a> PassRef<'a> {
     pub(super) fn new(graph: &'a mut RenderGraph, name: String) -> PassRef<'a> {
         let pass_idx = graph.passes.len();
         graph.passes.push(Pass {
-            depth_stencil: None,
             execs: vec![Default::default()], // We start off with a default execution!
             name,
             render_area: None,
@@ -1819,32 +1815,13 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
     }
 
     /// Sets a particular depth/stencil mode.
-    ///
-    /// The default depth/stencil mode is:
-    ///
-    /// ```
-    /// # use ash::vk;
-    /// # use ordered_float::OrderedFloat;
-    /// # use screen_13::driver::{DepthStencilMode, StencilMode};
-    /// DepthStencilMode {
-    ///     back: StencilMode::Noop,
-    ///     front: StencilMode::Noop,
-    ///     bounds_test: false,
-    ///     depth_test: true,
-    ///     depth_write: true,
-    ///     stencil_test: false,
-    ///     compare_op: vk::CompareOp::GREATER_OR_EQUAL,
-    ///     min: OrderedFloat(0.0),
-    ///     max: OrderedFloat(1.0),
-    /// }
-    /// # ;()
-    /// ```
     pub fn set_depth_stencil(mut self, depth_stencil: DepthStencilMode) -> Self {
         let pass = self.pass.as_mut();
+        let exec = pass.execs.last_mut().unwrap();
 
-        assert!(pass.depth_stencil.is_none());
+        assert!(exec.depth_stencil.is_none());
 
-        pass.depth_stencil = Some(depth_stencil);
+        exec.depth_stencil = Some(depth_stencil);
 
         self
     }

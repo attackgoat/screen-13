@@ -123,22 +123,49 @@ pub struct DepthStencilMode {
     pub depth_test: bool,
     pub depth_write: bool,
     pub front: StencilMode,
+
+    // Note: Using setter(into) so caller does not need our version of OrderedFloat
+    #[builder(setter(into))]
     pub min: OrderedFloat<f32>,
+    #[builder(setter(into))]
     pub max: OrderedFloat<f32>,
+
     pub stencil_test: bool,
 }
 
 impl DepthStencilMode {
-    // TODO: Probably remove
-    pub const DEPTH: Self = Self {
-        back: StencilMode::Noop,
+    pub const DEPTH_READ: Self = Self {
+        back: StencilMode::IGNORE,
+        bounds_test: true,
+        compare_op: vk::CompareOp::LESS,
+        depth_test: true,
+        depth_write: false,
+        front: StencilMode::IGNORE,
+        min: OrderedFloat(0.0),
+        max: OrderedFloat(1.0),
+        stencil_test: false,
+    };
+    pub const DEPTH_WRITE: Self = Self {
+        back: StencilMode::IGNORE,
         bounds_test: true,
         compare_op: vk::CompareOp::LESS,
         depth_test: true,
         depth_write: true,
-        front: StencilMode::Noop,
+        front: StencilMode::IGNORE,
         min: OrderedFloat(0.0),
         max: OrderedFloat(1.0),
+        stencil_test: false,
+    };
+
+    pub const IGNORE: Self = Self {
+        back: StencilMode::IGNORE,
+        bounds_test: false,
+        compare_op: vk::CompareOp::NEVER,
+        depth_test: false,
+        depth_write: false,
+        front: StencilMode::IGNORE,
+        min: OrderedFloat(0.0),
+        max: OrderedFloat(0.0),
         stencil_test: false,
     };
 
@@ -513,27 +540,43 @@ pub struct Stage {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum StencilMode {
-    Noop, // TODO: Provide some sensible modes
+pub struct StencilMode {
+    pub fail_op: vk::StencilOp,
+    pub pass_op: vk::StencilOp,
+    pub depth_fail_op: vk::StencilOp,
+    pub compare_op: vk::CompareOp,
+    pub compare_mask: u32,
+    pub write_mask: u32,
+    pub reference: u32,
 }
 
 impl StencilMode {
+    pub const IGNORE: Self = Self {
+        fail_op: vk::StencilOp::KEEP,
+        pass_op: vk::StencilOp::KEEP,
+        depth_fail_op: vk::StencilOp::KEEP,
+        compare_op: vk::CompareOp::NEVER,
+        compare_mask: 0,
+        write_mask: 0,
+        reference: 0,
+    };
+
     fn into_vk(self) -> vk::StencilOpState {
-        match self {
-            Self::Noop => vk::StencilOpState {
-                fail_op: vk::StencilOp::KEEP,
-                pass_op: vk::StencilOp::KEEP,
-                depth_fail_op: vk::StencilOp::KEEP,
-                compare_op: vk::CompareOp::ALWAYS,
-                ..Default::default()
-            },
+        vk::StencilOpState {
+            fail_op: self.fail_op,
+            pass_op: self.pass_op,
+            depth_fail_op: self.depth_fail_op,
+            compare_op: self.compare_op,
+            compare_mask: self.compare_mask,
+            write_mask: self.write_mask,
+            reference: self.reference,
         }
     }
 }
 
 impl Default for StencilMode {
     fn default() -> Self {
-        Self::Noop
+        Self::IGNORE
     }
 }
 

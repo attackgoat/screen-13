@@ -26,24 +26,10 @@ struct Shape {
     vertex_buf: Arc<Buffer>,
 }
 
-#[allow(dead_code)]
-const COPPER: Material = Material {
-    color: vec3(0.96, 0.64, 0.54),
-    metallic: 1.0,
-    roughness: 0.4,
-};
-
 const GOLD: Material = Material {
     color: vec3(1.0, 0.76, 0.33),
     metallic: 1.0,
     roughness: 0.3,
-};
-
-#[allow(dead_code)]
-const RUBBER: Material = Material {
-    color: vec3(0.1, 0.1, 0.1),
-    metallic: 0.01,
-    roughness: 0.9,
 };
 
 /// The example demonstrates leasing resources (images and buffers) and composing rendering
@@ -52,12 +38,13 @@ const RUBBER: Material = Material {
 /// Also shown:
 /// - Basic PBR rendering (from Sascha Willems)
 /// - Depth/stencil buffer usage
-/// - Multiple rendering passes
+/// - Multiple rendering passes with a transient image
 fn main() -> Result<(), DisplayError> {
     pretty_env_logger::init();
 
     let event_loop = EventLoop::new().build().unwrap();
     let mut cache = LazyPool::new(&event_loop.device);
+    let fill_background = create_fill_background_pipeline(&event_loop.device);
     let pbr = create_pbr_pipeline(&event_loop.device);
     let funky_shape = create_funky_shape(&event_loop, &mut cache)?;
 
@@ -74,7 +61,8 @@ fn main() -> Result<(), DisplayError> {
                     vk::Format::D24_UNORM_S8_UINT,
                     frame.width,
                     frame.height,
-                    vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+                    vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
+                        | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
                 ))
                 .unwrap(),
         );
@@ -88,19 +76,30 @@ fn main() -> Result<(), DisplayError> {
         let light_buf = bind_light_buf(&mut frame, &mut cache);
         let push_const_data = write_push_consts(obj_pos, material);
 
+        let mut write = DepthStencilMode::DEPTH_WRITE;
+        write.stencil_test = true;
+        write.depth_test = false;
+        write.front.compare_op = vk::CompareOp::ALWAYS;
+        write.front.compare_mask = 0xff;
+        write.front.write_mask = 0xff;
+        write.front.reference = 0x01;
+        write.front.pass_op = vk::StencilOp::REPLACE;
+        write.front.fail_op = vk::StencilOp::REPLACE;
+        write.front.depth_fail_op = vk::StencilOp::REPLACE;
+        write.back = write.front;
+
+        // Renders a golden orb on an un-cleared swapchain image
         frame
             .render_graph
-            .clear_depth_stencil_image(depth_stencil) // HACK: Remove
             .begin_pass("funky shape PBR")
             .bind_pipeline(&pbr)
-            .set_depth_stencil(DepthStencilMode::DEPTH)
+            .set_depth_stencil(write)
             .read_descriptor(0, camera_buf)
             .read_descriptor(1, light_buf)
             .access_node(index_buf, AccessType::IndexBuffer)
             .access_node(vertex_buf, AccessType::VertexBuffer)
-            //.clear_depth_stencil(depth_stencil) // HACK: uncomment
-            .load_depth_stencil(depth_stencil) // HACK: Remove
-            .clear_color(0, frame.swapchain_image)
+            .clear_depth_stencil(depth_stencil)
+            .store_depth_stencil(depth_stencil)
             .store_color(0, frame.swapchain_image)
             .record_subpass(move |subpass| {
                 subpass
@@ -108,6 +107,26 @@ fn main() -> Result<(), DisplayError> {
                     .bind_vertex_buffer(vertex_buf)
                     .push_constants(&push_const_data)
                     .draw_indexed(funky_shape.index_count, 1, 0, 0, 0);
+            });
+
+        let mut read = write;
+        read.stencil_test = true;
+        read.front.compare_op = vk::CompareOp::NOT_EQUAL;
+        read.front.pass_op = vk::StencilOp::REPLACE;
+        read.front.fail_op = vk::StencilOp::KEEP;
+        read.front.depth_fail_op = vk::StencilOp::KEEP;
+
+        // Renders a solid color wherever the golden orb did not draw
+        frame
+            .render_graph
+            .begin_pass("fill background")
+            .bind_pipeline(&fill_background)
+            .set_depth_stencil(read)
+            .load_depth_stencil(depth_stencil)
+            .load_color(0, frame.swapchain_image)
+            .store_color(0, frame.swapchain_image)
+            .record_subpass(move |subpass| {
+                subpass.draw(6, 1, 0, 0);
             });
     })
 }
@@ -225,6 +244,60 @@ fn create_funky_shape(event_loop: &EventLoop, cache: &mut LazyPool) -> Result<Sh
         index_count,
         vertex_buf,
     })
+}
+
+fn create_fill_background_pipeline(device: &Arc<Device>) -> Arc<GraphicPipeline> {
+    let vertex_shader = Shader::new_vertex(
+        inline_spirv!(
+            r#"
+            #version 450 core
+
+            const float X[6] = {-1, -1, 1, 1, 1, -1};
+            const float Y[6] = {-1, 1, -1, 1, -1, 1};
+
+            vec2 vertex_pos()
+            {
+                float x = X[gl_VertexIndex];
+                float y = Y[gl_VertexIndex];
+
+                return vec2(x, y);
+            }
+
+            void main()
+            {
+                gl_Position = vec4(vertex_pos(), 0, 1);
+            }
+            "#,
+            vert
+        )
+        .as_slice(),
+    );
+
+    let fragment_shader = Shader::new_fragment(
+        inline_spirv!(
+            r#"
+            #version 450
+
+            layout(location = 0) out vec4 color;
+
+            void main()
+            {
+                color = vec4(vec3(0.75), 1.0);
+            }
+            "#,
+            frag
+        )
+        .as_slice(),
+    );
+
+    Arc::new(
+        GraphicPipeline::create(
+            device,
+            GraphicPipelineInfo::new(),
+            [vertex_shader, fragment_shader],
+        )
+        .unwrap(),
+    )
 }
 
 fn create_pbr_pipeline(device: &Arc<Device>) -> Arc<GraphicPipeline> {

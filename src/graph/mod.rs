@@ -145,6 +145,8 @@ struct Execution {
     accesses: BTreeMap<NodeIndex, [SubresourceAccess; 2]>,
     bindings: BTreeMap<Descriptor, (NodeIndex, Option<ViewType>)>,
 
+    depth_stencil: Option<DepthStencilMode>,
+
     color_clears: BTreeMap<AttachmentIndex, (Attachment, ClearColorValue)>,
     depth_stencil_clear: Option<(Attachment, vk::ClearDepthStencilValue)>,
     loads: AttachmentMap,
@@ -173,17 +175,16 @@ impl Execution {
     }
 
     fn depth_stencil_attachment(&self) -> Option<Attachment> {
-        self.loads
-            .depth_stencil()
+        self.depth_stencil_clear
+            .map(|(attachment, _)| attachment)
+            .or_else(|| self.loads.depth_stencil())
             .or_else(|| self.resolves.depth_stencil())
             .or_else(|| self.stores.depth_stencil())
     }
 
-    // TODO: Remove?
     fn has_depth_stencil_attachment(&self) -> bool {
-        self.loads.depth_stencil().is_some()
-            || self.resolves.depth_stencil().is_some()
-            || self.stores.depth_stencil().is_some()
+        (self.depth_stencil_clear.is_some() || self.loads.depth_stencil().is_some())
+            || (self.resolves.depth_stencil().is_some() || self.stores.depth_stencil().is_some())
     }
 
     #[cfg(debug_assertions)]
@@ -284,7 +285,6 @@ impl Clone for ExecutionPipeline {
 
 #[derive(Debug)]
 struct Pass {
-    depth_stencil: Option<DepthStencilMode>,
     execs: Vec<Execution>,
     name: String,
     render_area: Option<Area>,
