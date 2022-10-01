@@ -8,11 +8,12 @@ All sample code in this guide is assuming `use screen_13::prelude::*`.
 ## Required Packages
 
 _Linux (Debian-like)_:
-- `sudo apt install cmake uuid-dev`
+- `sudo apt install cmake uuid-dev libfontconfig-dev`
 
-_Mac OS_:
-- `brew install cmake`
-- `brew install ossp-uuid`
+_Mac OS (10.15 or later)_:
+- Xcode 12
+- Python 2.7
+- `brew install cmake ossp-uuid`
 
 _Windows_:
 - TODO (works but I haven't gathered the requirements)

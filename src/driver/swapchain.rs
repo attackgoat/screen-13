@@ -26,27 +26,14 @@ impl Swapchain {
         info: SwapchainInfo,
     ) -> Result<Self, DriverError> {
         let device = Arc::clone(device);
-        let acquired_semaphores = (0..info.desired_image_count)
-            .map(|_| {
-                unsafe { device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None) }
-                    .unwrap()
-            })
-            .collect();
-
-        let rendered_semaphores = (0..info.desired_image_count)
-            .map(|_| {
-                unsafe { device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None) }
-                    .unwrap()
-            })
-            .collect();
 
         Ok(Swapchain {
             device,
             images: vec![],
             info,
             next_semaphore: 0,
-            acquired_semaphores,
-            rendered_semaphores,
+            acquired_semaphores: vec![],
+            rendered_semaphores: vec![],
             suboptimal: true,
             surface,
             swapchain: vk::SwapchainKHR::null(),
@@ -204,13 +191,8 @@ impl Swapchain {
 
         // Triple-buffer so that acquiring an image doesn't stall for >16.6ms at 60Hz on AMD
         // when frames take >16.6ms to render. Also allows MAILBOX to work.
-        let mut desired_image_count = self
-            .info
-            .desired_image_count
-            .max(surface_capabilities.min_image_count);
-        if surface_capabilities.max_image_count != 0 {
-            desired_image_count = desired_image_count.min(surface_capabilities.max_image_count);
-        }
+        let desired_image_count =
+            Self::clamp_desired_image_count(self.info.desired_image_count, surface_capabilities);
 
         debug!("Swapchain image count: {}", desired_image_count);
 
@@ -332,7 +314,37 @@ impl Swapchain {
         self.images = images;
         self.swapchain = swapchain;
 
+        while self.acquired_semaphores.len() < self.images.len() {
+            self.acquired_semaphores.push(
+                unsafe {
+                    self.device
+                        .create_semaphore(&vk::SemaphoreCreateInfo::default(), None)
+                }
+                .unwrap(),
+            );
+            self.rendered_semaphores.push(
+                unsafe {
+                    self.device
+                        .create_semaphore(&vk::SemaphoreCreateInfo::default(), None)
+                }
+                .unwrap(),
+            );
+        }
+
         Ok(())
+    }
+
+    fn clamp_desired_image_count(
+        desired_image_count: u32,
+        surface_capabilities: vk::SurfaceCapabilitiesKHR,
+    ) -> u32 {
+        let mut desired_image_count = desired_image_count.max(surface_capabilities.min_image_count);
+
+        if surface_capabilities.max_image_count != 0 {
+            desired_image_count = desired_image_count.min(surface_capabilities.max_image_count);
+        }
+
+        desired_image_count
     }
 }
 

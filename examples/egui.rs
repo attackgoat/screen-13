@@ -1,13 +1,13 @@
-use screen_13::prelude::*;
-use screen_13_egui::*;
+use {screen_13::prelude::*, screen_13_egui::prelude::*};
 
 fn main() -> Result<(), DisplayError> {
     pretty_env_logger::init();
 
     let event_loop = EventLoop::new()
+        .desired_swapchain_image_count(2)
         .window(|window| window.with_transparent(false))
         .build()?;
-    let mut egui = Egui::new(&event_loop.device, &event_loop.window);
+    let mut egui = Egui::new(&event_loop.device, event_loop.as_ref());
 
     let mut cache = LazyPool::new(&event_loop.device);
 

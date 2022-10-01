@@ -1,6 +1,8 @@
 pub mod prelude {
-    pub use super::Egui;
+    pub use super::{egui, Egui};
 }
+
+pub use egui;
 
 use {
     bytemuck::cast_slice,
@@ -19,7 +21,10 @@ pub struct Egui {
 }
 
 impl Egui {
-    pub fn new(device: &Arc<Device>, window: &Window) -> Self {
+    pub fn new(
+        device: &Arc<Device>,
+        event_loop: &egui_winit::winit::event_loop::EventLoopWindowTarget<()>,
+    ) -> Self {
         let ppl = Arc::new(
             GraphicPipeline::create(
                 device,
@@ -51,11 +56,11 @@ impl Egui {
             )
             .unwrap(),
         );
-        let max_image_side = device.physical_device.props.limits.max_image_dimension2_d;
+
         Self {
             ppl,
             ctx: egui::Context::default(),
-            egui_winit: egui_winit::State::new(max_image_side as usize, window),
+            egui_winit: egui_winit::State::new(event_loop),
             textures: HashMap::default(),
             cache: HashPool::new(device),
             next_tex_id: 0,

@@ -65,21 +65,22 @@ impl EventLoop {
 
         // Use the same delta-time smoothing as Kajiya; but start it off with a reasonable
         // guess so the following updates are even smoother
-        const STANDARD_REFRESH_RATE: u16 = 60;
-        let refresh_rate =
-            self.window
-                .fullscreen()
-                .map(|mode| match mode {
-                    Fullscreen::Exclusive(mode) => mode.refresh_rate(),
-                    Fullscreen::Borderless(Some(monitor)) => monitor
-                        .video_modes()
-                        .next()
-                        .map(|mode| mode.refresh_rate())
-                        .unwrap_or(STANDARD_REFRESH_RATE),
-                    _ => STANDARD_REFRESH_RATE,
-                })
-                .unwrap_or(STANDARD_REFRESH_RATE)
-                .clamp(STANDARD_REFRESH_RATE, STANDARD_REFRESH_RATE << 2) as f32;
+        const STANDARD_REFRESH_RATE_MHZ: u32 = 60_000;
+        let refresh_rate = (self
+            .window
+            .fullscreen()
+            .map(|mode| match mode {
+                Fullscreen::Exclusive(mode) => mode.refresh_rate_millihertz(),
+                Fullscreen::Borderless(Some(monitor)) => monitor
+                    .video_modes()
+                    .next()
+                    .map(|mode| mode.refresh_rate_millihertz())
+                    .unwrap_or(STANDARD_REFRESH_RATE_MHZ),
+                _ => STANDARD_REFRESH_RATE_MHZ,
+            })
+            .unwrap_or(STANDARD_REFRESH_RATE_MHZ)
+            .clamp(STANDARD_REFRESH_RATE_MHZ, STANDARD_REFRESH_RATE_MHZ << 2)
+            / 1_000) as f32;
         let mut last_frame = Instant::now();
         let mut dt_filtered = 1.0 / refresh_rate;
         last_frame -= Duration::from_secs_f32(dt_filtered);
@@ -166,6 +167,12 @@ impl EventLoop {
 
     pub fn window(&self) -> &Window {
         &self.window
+    }
+}
+
+impl AsRef<winit::event_loop::EventLoop<()>> for EventLoop {
+    fn as_ref(&self) -> &winit::event_loop::EventLoop<()> {
+        &self.event_loop
     }
 }
 

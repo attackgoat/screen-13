@@ -1,7 +1,7 @@
 use {
     screen_13::prelude::*,
     screen_13_fx::*,
-    screen_13_imgui::{imgui, Condition, ImGui},
+    screen_13_imgui::{Condition, ImGui},
 };
 
 fn main() -> Result<(), DisplayError> {
@@ -9,7 +9,7 @@ fn main() -> Result<(), DisplayError> {
     pretty_env_logger::init();
 
     // Screen 13 things we need for this demo
-    let event_loop = EventLoop::new().build()?;
+    let event_loop = EventLoop::new().desired_swapchain_image_count(2).build()?;
     let display = ComputePresenter::new(&event_loop.device)?;
     let mut imgui = ImGui::new(&event_loop.device);
     let mut pool = LazyPool::new(&event_loop.device);
@@ -37,10 +37,10 @@ fn main() -> Result<(), DisplayError> {
 
         // Use the draw function callback to do some fun meant-for-debug-mode GUI stuff
         let gui_image = imgui.draw_frame(&mut frame, |ui| {
-            imgui::Window::new("Hello world")
+            ui.window("Hello world")
                 .position([10.0, 10.0], Condition::FirstUseEver)
                 .size([340.0, 250.0], Condition::FirstUseEver)
-                .build(ui, || {
+                .build(|| {
                     ui.text_wrapped("Hello world!");
                     ui.text_wrapped("こんにちは世界！");
                     if ui.button(choices[value]) {

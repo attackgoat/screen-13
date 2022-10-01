@@ -85,7 +85,7 @@ impl ImGui {
         ui_func(&mut ui);
 
         self.platform.prepare_render(&ui, window);
-        let draw_data = ui.render();
+        let draw_data = self.context.render();
 
         let image = render_graph.bind_node(
             self.pool
@@ -228,7 +228,7 @@ impl ImGui {
         self.context.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
 
         let font_size = (14.0 * hidpi_factor) as f32;
-        let mut fonts = self.context.fonts();
+        let fonts = self.context.fonts();
         fonts.clear_fonts();
         fonts.add_font(&[
             FontSource::TtfData {
