@@ -2,7 +2,7 @@ use {
     image::io::Reader,
     screen_13::prelude::*,
     screen_13_fx::*,
-    screen_13_imgui::*,
+    screen_13_imgui::prelude::*,
     std::{io::Cursor, time::Instant},
 };
 
@@ -79,11 +79,11 @@ fn main() -> anyhow::Result<()> {
 
         // Draw UI: TODO: Sliders and value setters? That would be fun.
         let gui_image = imgui.draw_frame(&mut frame, |ui| {
-            imgui::Window::new("Transitions example")
+            ui.window("Transitions example")
                 .position([10.0, 10.0], Condition::FirstUseEver)
                 .size([340.0, 250.0], Condition::FirstUseEver)
                 .no_decoration()
-                .build(ui, || {
+                .build(|| {
                     if ui.button("Next") {
                         curr_transition_idx += 1;
                         if curr_transition_idx == TRANSITIONS.len() {
