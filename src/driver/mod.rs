@@ -1,3 +1,31 @@
+//! [Vulkan 1.2](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/index.html) interface
+//! based on smart pointers.
+//!
+//! # Resources
+//!
+//! Each resource contains an opaque Vulkan object handle and an information structure which
+//! describes the object. Resources also contain an atomic [AccessType] state value which is used to
+//! maintain consistency in any system which accesses the resource.
+//!
+//! The following resources are available:
+//!
+//! - [AccelerationStructure]
+//! - [Buffer]
+//! - [Image]
+//!
+//! # Pipelines
+//!
+//! Pipelines allow you to run shader code which read and write resources using graphics hardware.
+//!
+//! Each pipeline contains an opaque Vulkan object handle and an information structure which
+//! describes the configuration and shaders. They are immutable once created.
+//!
+//! The following pipelines are available:
+//!
+//! - [ComputePipeline]
+//! - [GraphicPipeline]
+//! - [RayTracePipeline]
+
 mod accel_struct;
 mod buffer;
 mod cmd_buf;
@@ -57,11 +85,12 @@ pub use {
             Swapchain, SwapchainError, SwapchainImage, SwapchainInfo, SwapchainInfoBuilder,
         },
     },
-    ash::{self, vk},
+    ash::{self},
     vk_sync::{AccessType, ImageLayout},
 };
 
 use {
+    ash::vk,
     derive_builder::Builder,
     log::{debug, info, trace, warn},
     raw_window_handle::HasRawWindowHandle,

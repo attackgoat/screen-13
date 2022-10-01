@@ -15,6 +15,35 @@ use {
     vk_sync::AccessType,
 };
 
+/// Smart pointer handle to an [acceleration structure] object.
+///
+/// Also contains the backing buffer and information about the object.
+///
+/// ## `Deref` behavior
+///
+/// `AccelerationStructure` automatically dereferences to [`vk::AccelerationStructureKHR`] (via the
+/// [`Deref`][deref] trait), so you can call `vk::AccelerationStructureKHR`'s methods on a value of
+/// type `AccelerationStructure`. To avoid name clashes with `vk::AccelerationStructureKHR`'s
+/// methods, the methods of `AccelerationStructure` itself are associated functions, called using
+/// [fully qualified syntax]:
+///
+/// ```
+/// # use std::sync::Arc;
+/// # use ash::vk;
+/// # use screen_13::driver::{AccessType, Device, DriverConfig, DriverError};
+/// # use screen_13::driver::{AccelerationStructure, AccelerationStructureInfo};
+/// # fn main() -> Result<(), DriverError> {
+/// # let device = Arc::new(Device::new(DriverConfig::new().ray_tracing(true).build().unwrap())?);
+/// # const SIZE: vk::DeviceSize = 1024;
+/// # let info = AccelerationStructureInfo::new_blas(SIZE);
+/// # let my_accel_struct = AccelerationStructure::create(&device, info)?;
+/// let addr = AccelerationStructure::device_address(&my_accel_struct);
+/// # Ok(()) }
+/// ```
+/// 
+/// [acceleration structure]: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkAccelerationStructureKHR.html
+/// [deref]: core::ops::Deref
+/// [fully qualified syntax]: https://doc.rust-lang.org/book/ch19-03-advanced-traits.html#fully-qualified-syntax-for-disambiguation-calling-methods-with-the-same-name
 #[derive(Debug)]
 pub struct AccelerationStructure {
     accel_struct: vk::AccelerationStructureKHR,
@@ -25,6 +54,27 @@ pub struct AccelerationStructure {
 }
 
 impl AccelerationStructure {
+    /// Creates a new acceleration structure on the given device.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use std::sync::Arc;
+    /// # use ash::vk;
+    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::{AccelerationStructure, AccelerationStructureInfo};
+    /// # fn main() -> Result<(), DriverError> {
+    /// # let device = Arc::new(Device::new(DriverConfig::new().ray_tracing(true).build().unwrap())?);
+    /// const SIZE: vk::DeviceSize = 1024;
+    /// let info = AccelerationStructureInfo::new_blas(SIZE);
+    /// let accel_struct = AccelerationStructure::create(&device, info)?;
+    ///
+    /// assert_eq!(accel_struct.info.size, SIZE);
+    /// assert_ne!(*accel_struct, vk::AccelerationStructureKHR::null());
+    /// # Ok(()) }
+    /// ```
     pub fn create(
         device: &Arc<Device>,
         info: impl Into<AccelerationStructureInfo>,
@@ -71,6 +121,49 @@ impl AccelerationStructure {
         })
     }
 
+    /// Keeps track of some `next_access` which affects this object.
+    /// 
+    /// Returns the previous access for which a pipeline barrier should be used to prevent data
+    /// corruption.
+    /// 
+    /// # Note
+    /// 
+    /// Used to maintain object state when passing a _Screen 13_-created
+    /// `vk::AccelerationStructureKHR` handle to external code such as [_Ash_] or [_Erupt_]
+    /// bindings.
+    /// 
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use std::sync::Arc;
+    /// # use ash::vk;
+    /// # use screen_13::driver::{AccessType, Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::{AccelerationStructure, AccelerationStructureInfo};
+    /// # fn main() -> Result<(), DriverError> {
+    /// # let device = Arc::new(Device::new(DriverConfig::new().ray_tracing(true).build().unwrap())?);
+    /// # const SIZE: vk::DeviceSize = 1024;
+    /// # let info = AccelerationStructureInfo::new_blas(SIZE);
+    /// # let my_accel_struct = AccelerationStructure::create(&device, info)?;
+    /// // Initially we want to "Build Write"
+    /// let next = AccessType::AccelerationStructureBuildWrite;
+    /// let prev = AccelerationStructure::access(&my_accel_struct, next);
+    /// assert_eq!(prev, AccessType::Nothing);
+    /// 
+    /// // External code may now "Build Write"; no barrier required
+    /// 
+    /// // Subsequently we want to "Build Read"
+    /// let next = AccessType::AccelerationStructureBuildRead;
+    /// let prev = AccelerationStructure::access(&my_accel_struct, next);
+    /// assert_eq!(prev, AccessType::AccelerationStructureBuildWrite);
+    /// 
+    /// // A barrier on "Build Write" is required!
+    /// # Ok(()) }
+    /// ```
+    /// 
+    /// [_Ash_]: https://crates.io/crates/ash
+    /// [_Erupt_]: https://crates.io/crates/erupt
     pub fn access(this: &Self, next_access: AccessType) -> AccessType {
         access_type_from_u8(
             this.prev_access
@@ -78,6 +171,27 @@ impl AccelerationStructure {
         )
     }
 
+    /// Returns the device address of this object.
+    /// 
+    /// # Examples
+    ///
+    /// Basic usage:
+    /// 
+    /// ```
+    /// # use std::sync::Arc;
+    /// # use ash::vk;
+    /// # use screen_13::driver::{AccessType, Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::{AccelerationStructure, AccelerationStructureInfo};
+    /// # fn main() -> Result<(), DriverError> {
+    /// # let device = Arc::new(Device::new(DriverConfig::new().ray_tracing(true).build().unwrap())?);
+    /// # const SIZE: vk::DeviceSize = 1024;
+    /// # let info = AccelerationStructureInfo::new_blas(SIZE);
+    /// # let my_accel_struct = AccelerationStructure::create(&device, info)?;
+    /// let addr = AccelerationStructure::device_address(&my_accel_struct);
+    /// 
+    /// assert_ne!(addr, 0);
+    /// # Ok(()) }
+    /// ```
     pub fn device_address(this: &Self) -> vk::DeviceAddress {
         unsafe {
             this.device
@@ -91,6 +205,7 @@ impl AccelerationStructure {
         }
     }
 
+    /// Helper function which is used to prepare instance buffers.
     pub fn instance_slice<'a>(instance: vk::AccelerationStructureInstanceKHR) -> &'a [u8] {
         unsafe {
             std::slice::from_raw_parts(
@@ -100,6 +215,45 @@ impl AccelerationStructure {
         }
     }
 
+    /// Returns the size of some geometry info which is then used to create a new
+    /// [AccelerationStructure] instance or update an existing instance.
+    /// 
+    /// # Examples
+    ///
+    /// Basic usage:
+    /// 
+    /// ```
+    /// # use std::sync::Arc;
+    /// # use ash::vk;
+    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::{AccelerationStructure, AccelerationStructureGeometry, AccelerationStructureGeometryData, AccelerationStructureGeometryInfo, DeviceOrHostAddress};
+    /// # fn main() -> Result<(), DriverError> {
+    /// # let device = Arc::new(Device::new(DriverConfig::new().ray_tracing(true).build().unwrap())?);
+    /// # let my_geom = AccelerationStructureGeometryData::Triangles {
+    /// #     index_data: DeviceOrHostAddress::DeviceAddress(0),
+    /// #     index_type: vk::IndexType::UINT32,
+    /// #     max_vertex: 1,
+    /// #     transform_data: None,
+    /// #     vertex_data: DeviceOrHostAddress::DeviceAddress(0),
+    /// #     vertex_format: vk::Format::R32G32B32_SFLOAT,
+    /// #     vertex_stride: 12,
+    /// # };
+    /// let my_info = AccelerationStructureGeometryInfo {
+    ///     ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
+    ///     flags: vk::BuildAccelerationStructureFlagsKHR::empty(),
+    ///     geometries: vec![AccelerationStructureGeometry {
+    ///         max_primitive_count: 1,
+    ///         flags: vk::GeometryFlagsKHR::OPAQUE,
+    ///         geometry: my_geom,
+    ///     }],
+    /// };
+    /// let res = AccelerationStructure::size_of(&device, &my_info);
+    /// 
+    /// assert_eq!(res.create_size, 2432);
+    /// assert_eq!(res.build_size, 640);
+    /// assert_eq!(res.update_size, 0);
+    /// # Ok(()) }
+    /// ```
     pub fn size_of(
         device: &Arc<Device>,
         info: &AccelerationStructureGeometryInfo,

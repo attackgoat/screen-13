@@ -3,16 +3,13 @@
 mod key_buf;
 mod key_map;
 mod mouse_buf;
-mod typing;
 
 use winit::event::Event;
 
-#[allow(deprecated)]
 pub use self::{
     key_buf::KeyBuf,
     key_map::KeyMap,
     mouse_buf::{MouseBuf, MouseButton},
-    typing::Typing,
 };
 
 // Handles keyboard and mouse `Event`s while updating the provided buffers.

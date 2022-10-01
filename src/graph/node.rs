@@ -2,11 +2,12 @@ use {
     super::{Information, NodeIndex, RenderGraph, Subresource},
     crate::{
         driver::{
-            vk, AccelerationStructure, AccelerationStructureInfo, Buffer, BufferInfo,
+            AccelerationStructure, AccelerationStructureInfo, Buffer, BufferInfo,
             BufferSubresource, Image, ImageInfo, ImageSubresource, ImageViewInfo,
         },
         pool::Lease,
     },
+    ash::vk,
     std::{ops::Range, sync::Arc},
 };
 

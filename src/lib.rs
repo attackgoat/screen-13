@@ -3,13 +3,13 @@
 
 pub mod driver;
 pub mod graph;
+pub mod input;
 pub mod pool;
 
 mod device_api;
 mod display;
 mod event_loop;
 mod frame;
-mod input;
 
 /// Things which are used in almost every single _Screen 13_ program.
 pub mod prelude {
@@ -30,6 +30,7 @@ pub mod prelude {
             },
             pool::{hash::HashPool, lazy::LazyPool, Lease, Pool},
         },
+        ash::vk,
         log::{debug, error, info, logger, trace, warn}, // Everyone wants a log
         winit::{
             dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize},
@@ -45,3 +46,7 @@ pub use self::{
     event_loop::{run, EventLoop, EventLoopBuilder, FullscreenMode},
     frame::FrameContext,
 };
+
+// #[doc = include_str!("../README.md")]
+// #[cfg(doctest)]
+// pub struct ReadmeDoctests;
