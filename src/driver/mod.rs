@@ -59,7 +59,7 @@ pub use {
         device::{Device, FeatureFlags},
         graphic::{
             BlendMode, DepthStencilMode, GraphicPipeline, GraphicPipelineInfo,
-            GraphicPipelineInfoBuilder, StencilMode, VertexInputState,
+            GraphicPipelineInfoBuilder, StencilMode,
         },
         image::{Image, ImageInfo, ImageInfoBuilder, ImageSubresource, ImageType, SampleCount},
         instance::Instance,
@@ -89,6 +89,7 @@ pub use {
 pub(crate) use self::image::ImageViewInfo;
 
 use {
+    self::graphic::VertexInputState,
     ash::vk,
     derive_builder::Builder,
     log::{debug, info, trace, warn},

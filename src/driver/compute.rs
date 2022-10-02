@@ -180,7 +180,7 @@ impl Drop for ComputePipeline {
     }
 }
 
-/// Information used to create a [`ComputePipelineInfo`] instance.
+/// Information used to create a [`ComputePipeline`] instance.
 #[derive(Builder, Clone, Debug)]
 #[builder(pattern = "owned")]
 pub struct ComputePipelineInfo {
