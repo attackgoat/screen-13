@@ -247,22 +247,74 @@ impl PipelineDescriptorInfo {
     }
 }
 
+/// Describes a shader program which runs on some pipeline stage.
 #[derive(Builder, Clone)]
 #[builder(build_fn(private, name = "fallible_build"), pattern = "owned")]
 pub struct Shader {
+    /// The name of the entrypoint which will be executed by this shader.
+    ///
+    /// The default value is `main`.
     #[builder(default = "\"main\".to_owned()")]
     pub entry_name: String,
 
+    /// Data about Vulkan specialization constants.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage (GLSL):
+    ///
+    /// ```glsl
+    /// #version 460 core
+    ///
+    /// // Defaults to 6 if not set using ComputePipelineInfo.specialization_info!
+    /// layout(constant_id = 0) const uint MY_COUNT = 6;
+    ///
+    /// layout(set = 0, binding = 0) uniform sampler2D my_samplers[MY_COUNT];
+    ///
+    /// void main()
+    /// {
+    ///     // Code uses MY_COUNT number of my_samplers here
+    /// }
+    /// ```
+    ///
+    /// ```no_run
+    /// # use std::sync::Arc;
+    /// # use ash::vk;
+    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::{Shader, SpecializationInfo};
+    /// # fn main() -> Result<(), DriverError> {
+    /// # let device = Arc::new(Device::new(DriverConfig::new().build().unwrap())?);
+    /// # let my_shader_code = [0u8; 1];
+    /// // We instead specify 42 for MY_COUNT:
+    /// let shader = Shader::new_fragment(my_shader_code.as_slice())
+    ///     .specialization_info(SpecializationInfo::new(
+    ///         [vk::SpecializationMapEntry {
+    ///             constant_id: 0,
+    ///             offset: 0,
+    ///             size: 4,
+    ///         }],
+    ///         42u32.to_ne_bytes()
+    ///     ));
+    /// # Ok(()) }
+    /// ```
     #[builder(default, setter(strip_option))]
     pub specialization_info: Option<SpecializationInfo>,
 
+    /// Shader code.
+    ///
+    /// Although SPIR-V code is specified as `u32` values, this field uses `u8` in order to make
+    /// loading from file simpler. You should always have a SPIR-V code length which is a multiple
+    /// of four bytes, or a panic will happen during pipeline creation.
     pub spirv: Vec<u8>,
+
+    /// The shader stage this structure applies to.
     pub stage: vk::ShaderStageFlags,
 
     entry_point: EntryPoint,
 }
 
 impl Shader {
+    /// Specifies a shader with the given `stage` and shader code values.
     #[allow(clippy::new_ret_no_self)]
     pub fn new(stage: vk::ShaderStageFlags, spirv: impl ShaderCode) -> ShaderBuilder {
         ShaderBuilder::default()
@@ -272,63 +324,81 @@ impl Shader {
 
     /// Creates a new ray trace shader.
     ///
-    /// _NOTE:_ May panic if the shader code is invalid.
+    /// # Panics
+    ///
+    /// If the shader code is invalid or not a multiple of four bytes in length.
     pub fn new_any_hit(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::ANY_HIT_KHR, spirv)
     }
 
     /// Creates a new ray trace shader.
     ///
-    /// _NOTE:_ May panic if the shader code is invalid.
+    /// # Panics
+    ///
+    /// If the shader code is invalid or not a multiple of four bytes in length.
     pub fn new_callable(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::CALLABLE_KHR, spirv)
     }
 
     /// Creates a new ray trace shader.
     ///
-    /// _NOTE:_ May panic if the shader code is invalid.
+    /// # Panics
+    ///
+    /// If the shader code is invalid or not a multiple of four bytes in length.
     pub fn new_closest_hit(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::CLOSEST_HIT_KHR, spirv)
     }
 
     /// Creates a new compute shader.
     ///
-    /// _NOTE:_ May panic if the shader code is invalid.
+    /// # Panics
+    ///
+    /// If the shader code is invalid or not a multiple of four bytes in length.
     pub fn new_compute(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::COMPUTE, spirv)
     }
 
     /// Creates a new fragment shader.
     ///
-    /// _NOTE:_ May panic if the shader code is invalid.
+    /// # Panics
+    ///
+    /// If the shader code is invalid or not a multiple of four bytes in length.
     pub fn new_fragment(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::FRAGMENT, spirv)
     }
 
     /// Creates a new geometry shader.
     ///
-    /// _NOTE:_ May panic if the shader code is invalid.
+    /// # Panics
+    ///
+    /// If the shader code is invalid or not a multiple of four bytes in length.
     pub fn new_geometry(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::GEOMETRY, spirv)
     }
 
     /// Creates a new ray trace shader.
     ///
-    /// _NOTE:_ May panic if the shader code is invalid.
+    /// # Panics
+    ///
+    /// If the shader code is invalid or not a multiple of four bytes in length.
     pub fn new_intersection(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::INTERSECTION_KHR, spirv)
     }
 
     /// Creates a new ray trace shader.
     ///
-    /// _NOTE:_ May panic if the shader code is invalid.
+    /// # Panics
+    ///
+    /// If the shader code is invalid or not a multiple of four bytes in length.
     pub fn new_miss(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::MISS_KHR, spirv)
     }
 
     /// Creates a new ray trace shader.
     ///
-    /// _NOTE:_ May panic if the shader code is invalid.
+    /// # Panics
+    ///
+    /// If the shader code is invalid or not a multiple of four bytes in length.
     pub fn new_ray_gen(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::RAYGEN_KHR, spirv)
     }
@@ -342,20 +412,24 @@ impl Shader {
 
     /// Creates a new tesselation evaluation shader.
     ///
-    /// _NOTE:_ May panic if the shader code is invalid.
+    /// # Panics
+    ///
+    /// If the shader code is invalid or not a multiple of four bytes in length.
     pub fn new_tesselation_eval(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::TESSELLATION_EVALUATION, spirv)
     }
 
     /// Creates a new vertex shader.
     ///
-    /// _NOTE:_ May panic if the shader code is invalid.
+    /// # Panics
+    ///
+    /// If the shader code is invalid or not a multiple of four bytes in length.
     pub fn new_vertex(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::VERTEX, spirv)
     }
 
     /// Returns the input and write attachments of a shader.
-    pub fn attachments(
+    pub(super) fn attachments(
         &self,
     ) -> (
         impl Iterator<Item = u32> + '_,
@@ -376,7 +450,7 @@ impl Shader {
         )
     }
 
-    pub fn descriptor_bindings(&self, device: &Device) -> DescriptorBindingMap {
+    pub(super) fn descriptor_bindings(&self, device: &Device) -> DescriptorBindingMap {
         let mut res = DescriptorBindingMap::default();
 
         for (name, binding, desc_ty, binding_count) in
@@ -436,7 +510,7 @@ impl Shader {
         res
     }
 
-    pub fn merge_descriptor_bindings(
+    pub(super) fn merge_descriptor_bindings(
         descriptor_bindings: impl IntoIterator<Item = DescriptorBindingMap>,
     ) -> DescriptorBindingMap {
         fn merge_info(lhs: &mut DescriptorInfo, rhs: DescriptorInfo) {
@@ -561,7 +635,7 @@ impl Shader {
         res
     }
 
-    pub fn push_constant_range(&self) -> Option<vk::PushConstantRange> {
+    pub(super) fn push_constant_range(&self) -> Option<vk::PushConstantRange> {
         self.entry_point
             .vars
             .iter()
@@ -620,7 +694,7 @@ impl Shader {
         Ok(entry_point)
     }
 
-    pub fn vertex_input(&self) -> VertexInputState {
+    pub(super) fn vertex_input(&self) -> VertexInputState {
         fn scalar_format(ty: &ScalarType, byte_len: u32) -> vk::Format {
             match ty {
                 ScalarType::Float(_) => match byte_len {
@@ -744,10 +818,12 @@ impl Shader {
 
 // HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
 impl ShaderBuilder {
+    /// Specifies a shader with the given `stage` and shader code values.
     pub fn new(stage: vk::ShaderStageFlags, spirv: Vec<u8>) -> Self {
         Self::default().stage(stage).spirv(spirv)
     }
 
+    /// Builds a new `Shader`.
     pub fn build(mut self) -> Shader {
         self.entry_point = Some(
             Shader::reflect_entry_point(
@@ -781,6 +857,7 @@ impl From<ShaderBuilder> for Shader {
 }
 
 pub trait ShaderCode {
+    /// Converts the instance into SPIR-V shader code specified as a byte array.
     fn into_vec(self) -> Vec<u8>;
 }
 
@@ -821,13 +898,18 @@ impl ShaderCode for Vec<u32> {
     }
 }
 
+/// Describes specialized constant values.
 #[derive(Clone, Debug)]
 pub struct SpecializationInfo {
+    /// A buffer of data which holds the constant values.
     pub data: Vec<u8>,
+
+    /// Mapping of locations within the constant value data which describe each individual constant.
     pub map_entries: Vec<vk::SpecializationMapEntry>,
 }
 
 impl SpecializationInfo {
+    /// Constructs a new `SpecializationInfo`.
     pub fn new(
         map_entries: impl Into<Vec<vk::SpecializationMapEntry>>,
         data: impl Into<Vec<u8>>,

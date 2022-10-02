@@ -608,7 +608,7 @@ impl Resolver {
         let mut subpasses = Vec::<SubpassInfo>::with_capacity(pass.execs.len());
 
         while attachments.len() < attachment_count {
-            attachments.push(AttachmentInfo::new(vk::Format::UNDEFINED, SampleCount::X1).build());
+            attachments.push(AttachmentInfo::new(vk::Format::UNDEFINED, SampleCount::X1));
         }
 
         // Add attachments: format, sample count, initial layout, and load ops (using the first

@@ -113,7 +113,7 @@ impl BlendMode {
         BlendModeBuilder::default()
     }
 
-    pub(super) fn into_vk(&self) -> vk::PipelineColorBlendAttachmentState {
+    pub(super) fn into_vk(self) -> vk::PipelineColorBlendAttachmentState {
         vk::PipelineColorBlendAttachmentState {
             blend_enable: if self.blend_enable {
                 vk::TRUE

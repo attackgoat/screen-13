@@ -1,7 +1,6 @@
 use {
     super::{Device, DriverError, Image, ImageInfo, ImageType, SampleCount, Surface},
     ash::vk,
-    derive_builder::Builder,
     log::{debug, warn},
     std::{ops::Deref, slice, sync::Arc, thread::panicking, time::Duration},
 };
@@ -405,19 +404,11 @@ pub enum SwapchainError {
     SurfaceLost,
 }
 
-#[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
-#[builder(pattern = "owned")]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct SwapchainInfo {
     pub desired_image_count: u32,
     pub format: vk::SurfaceFormatKHR,
     pub height: u32,
     pub sync_display: bool,
     pub width: u32,
-}
-
-impl SwapchainInfo {
-    #[allow(clippy::new_ret_no_self)]
-    pub fn new() -> SwapchainInfoBuilder {
-        Default::default()
-    }
 }

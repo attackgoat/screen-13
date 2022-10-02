@@ -9,30 +9,51 @@ use {
     },
 };
 
+/// Execution queue selected by the current device.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub struct QueueFamily {
+    /// Physical queue index.
     pub idx: u32,
+
+    /// Properties of the selected execution queue.
     pub props: QueueFamilyProperties,
 }
 
+/// Describes additional propeties of the current execution queue.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub struct QueueFamilyProperties {
+    /// Bitmask specifying capabilities of queues in a queue family.
     pub queue_flags: vk::QueueFlags,
+
+    /// Number of queues which are available.
     pub queue_count: u32,
+
+    /// The unsigned integer count of meaningful bits in the timestamps written via
+    /// `vkCmdWriteTimestamp2` or `vkCmdWriteTimestamp`.
+    ///
+    /// The valid range for the count is 36 to 64 bits, or a value of 0, indicating no support for
+    /// timestamps. Bits outside the valid range are guaranteed to be zeros.
     pub timestamp_valid_bits: u32,
+
+    /// The minimum granularity supported for image transfer operations on the queues in this queue
+    /// family.
     pub min_image_transfer_granularity: [u32; 3],
 }
 
+/// Structure which holds data about the physical hardware selected by the current device.
 #[derive(Clone)]
 pub struct PhysicalDevice {
+    /// Memory properties of the physical device.
     pub mem_props: vk::PhysicalDeviceMemoryProperties,
     physical_device: vk::PhysicalDevice,
+
+    /// Device properties of the physical device.
     pub props: vk::PhysicalDeviceProperties,
     queue_families: Vec<QueueFamily>,
 }
 
 impl PhysicalDevice {
-    pub fn new(
+    pub(super) fn new(
         physical_device: vk::PhysicalDevice,
         mem_props: vk::PhysicalDeviceMemoryProperties,
         props: vk::PhysicalDeviceProperties,
@@ -46,7 +67,7 @@ impl PhysicalDevice {
         }
     }
 
-    pub fn has_presentation_support(
+    pub(super) fn has_presentation_support(
         _this: &Self,
         _instance: &Arc<Instance>,
         _surface: &Surface,
@@ -79,12 +100,12 @@ impl PhysicalDevice {
         true
     }
 
-    pub fn has_ray_tracing_support(_this: &Self) -> bool {
+    pub(super) fn has_ray_tracing_support(_this: &Self) -> bool {
         // TODO!
         true
     }
 
-    pub fn queue_families(this: &Self) -> impl Iterator<Item = QueueFamily> + '_ {
+    pub(super) fn queue_families(this: &Self) -> impl Iterator<Item = QueueFamily> + '_ {
         this.queue_families.iter().copied()
     }
 

@@ -393,7 +393,7 @@ impl Drop for AccelerationStructure {
 /// See
 /// [VkAccelerationStructureGeometryKHR](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkAccelerationStructureGeometryKHR.html)
 /// for more information.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct AccelerationStructureGeometry {
     /// The number of primitives built into each geometry.
     pub max_primitive_count: u32,
@@ -406,7 +406,7 @@ pub struct AccelerationStructureGeometry {
 }
 
 impl AccelerationStructureGeometry {
-    pub(crate) fn into_vk(&self) -> vk::AccelerationStructureGeometryKHR {
+    pub(crate) fn into_vk(self) -> vk::AccelerationStructureGeometryKHR {
         let (geometry_type, geometry) = match &self.geometry {
             &AccelerationStructureGeometryData::AABBs { stride } => (
                 vk::GeometryTypeKHR::AABBS,
@@ -508,7 +508,7 @@ pub struct AccelerationStructureGeometryInfo {
 /// See
 /// [VkAccelerationStructureGeometryDataKHR](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkAccelerationStructureGeometryDataKHR.html)
 /// for more information.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum AccelerationStructureGeometryData {
     /// Axis-aligned bounding box geometry in a bottom-level acceleration structure.
     ///
