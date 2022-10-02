@@ -9,18 +9,55 @@ use {
     std::{ffi::CString, ops::Deref, sync::Arc, thread::panicking},
 };
 
+/// Smart pointer handle to a [pipeline] object.
+///
+/// Also contains information about the object.
+///
+/// ## `Deref` behavior
+///
+/// `ComputePipeline` automatically dereferences to [`vk::Pipeline`] (via the [`Deref`][deref]
+/// trait), so you can call `vk::Pipeline`'s methods on a value of type `ComputePipeline`.
+///
+/// [pipeline]: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkPipeline.html
+/// [deref]: core::ops::Deref
 #[derive(Debug)]
 pub struct ComputePipeline {
-    pub descriptor_bindings: DescriptorBindingMap,
-    pub descriptor_info: PipelineDescriptorInfo,
-    pub device: Arc<Device>,
-    pub layout: vk::PipelineLayout,
+    pub(crate) descriptor_bindings: DescriptorBindingMap,
+    pub(crate) descriptor_info: PipelineDescriptorInfo,
+    device: Arc<Device>,
+    pub(crate) layout: vk::PipelineLayout,
     pub info: ComputePipelineInfo,
     pipeline: vk::Pipeline,
-    pub push_constants: Option<vk::PushConstantRange>,
+    pub(crate) push_constants: Option<vk::PushConstantRange>,
 }
 
 impl ComputePipeline {
+    /// Creates a new compute pipeline on the given device.
+    ///
+    /// # Panics
+    ///
+    /// If shader code is not a multiple of four bytes.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```no_run
+    /// # use std::sync::Arc;
+    /// # use ash::vk;
+    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::{ComputePipeline, ComputePipelineInfo};
+    /// # fn main() -> Result<(), DriverError> {
+    /// # let device = Arc::new(Device::new(DriverConfig::new().build().unwrap())?);
+    /// # let my_shader_code = [0u8; 1];
+    /// // my_shader_code is raw SPIR-V code as bytes
+    /// let info = ComputePipelineInfo::new(my_shader_code.as_slice());
+    /// let pipeline = ComputePipeline::create(&device, info)?;
+    ///
+    /// assert_ne!(*pipeline, vk::Pipeline::null());
+    /// assert_eq!(pipeline.info.entry_name.as_str(), "main");
+    /// # Ok(()) }
+    /// ```
     pub fn create(
         device: &Arc<Device>,
         info: impl Into<ComputePipelineInfo>,
@@ -143,9 +180,30 @@ impl Drop for ComputePipeline {
     }
 }
 
+/// Information used to create a [`ComputePipelineInfo`] instance.
 #[derive(Builder, Clone, Debug)]
 #[builder(pattern = "owned")]
 pub struct ComputePipelineInfo {
+    /// The number of descriptors to allocate for a given binding when using bindless (unbounded)
+    /// syntax.
+    ///
+    /// The default is `8192`.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage (GLSL):
+    ///
+    /// ```glsl
+    /// #version 460 core
+    /// #extension GL_EXT_nonuniform_qualifier : require
+    ///
+    /// layout(set = 0, binding = 0, rgba8) writeonly uniform image2D my_binding[];
+    ///
+    /// void main()
+    /// {
+    ///     // my_binding will have space for 8,192 images by default
+    /// }
+    /// ```
     #[builder(default = "8192")]
     pub bindless_descriptor_count: u32,
 
@@ -158,20 +216,69 @@ pub struct ComputePipelineInfo {
     pub name: Option<String>,
 
     /// Data about Vulkan specialization constants.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage (GLSL):
+    ///
+    /// ```glsl
+    /// #version 460 core
+    ///
+    /// // Defaults to 6 if not set using ComputePipelineInfo.specialization_info!
+    /// layout(constant_id = 0) const uint MY_COUNT = 6;
+    ///
+    /// layout(set = 0, binding = 0) uniform sampler2D my_samplers[MY_COUNT];
+    ///
+    /// void main()
+    /// {
+    ///     // Code uses MY_COUNT number of my_samplers here
+    /// }
+    /// ```
+    ///
+    /// ```no_run
+    /// # use std::sync::Arc;
+    /// # use ash::vk;
+    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::{ComputePipeline, ComputePipelineInfo, SpecializationInfo};
+    /// # fn main() -> Result<(), DriverError> {
+    /// # let device = Arc::new(Device::new(DriverConfig::new().build().unwrap())?);
+    /// # let my_shader_code = [0u8; 1];
+    /// // We instead specify 42 for MY_COUNT:
+    /// let info = ComputePipelineInfo::new(my_shader_code.as_slice())
+    ///     .specialization_info(SpecializationInfo::new(
+    ///         [vk::SpecializationMapEntry {
+    ///             constant_id: 0,
+    ///             offset: 0,
+    ///             size: 4,
+    ///         }],
+    ///         42u32.to_ne_bytes()
+    ///     ));
+    /// let pipeline = ComputePipeline::create(&device, info)?;
+    /// # Ok(()) }
+    /// ```
     #[builder(default, setter(strip_option))]
     pub specialization_info: Option<SpecializationInfo>,
 
     /// Shader code.
+    ///
+    /// Although SPIR-V code is specified as `u32` values, this field uses `u8` in order to make
+    /// loading from file simpler. You should always have a SPIR-V code length which is a multiple
+    /// of four bytes, or a panic will happen during [`ComputePipeline::create`].
     pub spirv: Vec<u8>,
 }
 
 impl ComputePipelineInfo {
+    /// Specifies a compute pipeline with the given shader code.
+    ///
+    /// # Panics
+    ///
+    /// If shader code is not a multiple of four bytes.
     #[allow(clippy::new_ret_no_self)]
     pub fn new(spirv: impl ShaderCode) -> ComputePipelineInfoBuilder {
         ComputePipelineInfoBuilder::default().spirv(spirv.into_vec())
     }
 
-    pub fn into_shader(self) -> Shader {
+    fn into_shader(self) -> Shader {
         let mut shader =
             Shader::new(vk::ShaderStageFlags::COMPUTE, self.spirv).entry_name(self.entry_name);
 
