@@ -4,14 +4,14 @@
 //! # Resources
 //!
 //! Each resource contains an opaque Vulkan object handle and an information structure which
-//! describes the object. Resources also contain an atomic [AccessType] state value which is used to
+//! describes the object. Resources also contain an atomic [`AccessType`] state value which is used to
 //! maintain consistency in any system which accesses the resource.
 //!
 //! The following resources are available:
 //!
-//! - [AccelerationStructure]
-//! - [Buffer]
-//! - [Image]
+//! - [`AccelerationStructure`]
+//! - [`Buffer`]
+//! - [`Image`]
 //!
 //! # Pipelines
 //!
@@ -22,9 +22,9 @@
 //!
 //! The following pipelines are available:
 //!
-//! - [ComputePipeline]
-//! - [GraphicPipeline]
-//! - [RayTracePipeline]
+//! - [`ComputePipeline`]
+//! - [`GraphicPipeline`]
+//! - [`RayTracePipeline`]
 
 mod accel_struct;
 mod buffer;
@@ -61,10 +61,7 @@ pub use {
             BlendMode, DepthStencilMode, GraphicPipeline, GraphicPipelineInfo,
             GraphicPipelineInfoBuilder, StencilMode, VertexInputState,
         },
-        image::{
-            Image, ImageInfo, ImageInfoBuilder, ImageSubresource, ImageType, ImageView,
-            ImageViewInfo, ImageViewInfoBuilder, SampleCount,
-        },
+        image::{Image, ImageInfo, ImageInfoBuilder, ImageSubresource, ImageType, SampleCount},
         instance::Instance,
         physical_device::{PhysicalDevice, QueueFamily, QueueFamilyProperties},
         ray_trace::{
@@ -88,6 +85,8 @@ pub use {
     ash::{self},
     vk_sync::{AccessType, ImageLayout},
 };
+
+pub(crate) use self::image::ImageViewInfo;
 
 use {
     ash::vk,

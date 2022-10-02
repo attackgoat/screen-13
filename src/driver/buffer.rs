@@ -195,7 +195,7 @@ impl Buffer {
     ///
     /// # Note
     ///
-    /// Used to maintain object state when passing a _Screen 13_-created `vk:Buffer` handle to
+    /// Used to maintain object state when passing a _Screen 13_-created `vk::Buffer` handle to
     /// external code such as [_Ash_] or [_Erupt_] bindings.
     ///
     /// # Examples
@@ -224,7 +224,7 @@ impl Buffer {
     /// let prev = Buffer::access(&my_buf, next);
     /// assert_eq!(prev, AccessType::ComputeShaderReadOther);
     ///
-    /// // A barrier on "Read Other" is required!
+    /// // A barrier on "Read Other" before "Write" is required!
     /// # Ok(()) }
     /// ```
     ///
@@ -404,7 +404,7 @@ impl Drop for Buffer {
     }
 }
 
-/// Information used to create an [`Buffer`] instance.
+/// Information used to create a [`Buffer`] instance.
 #[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[builder(
     build_fn(private, name = "fallible_build"),

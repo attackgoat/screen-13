@@ -22,6 +22,33 @@ use {
     vk_sync::AccessType,
 };
 
+/// Smart pointer handle to an [image] object.
+///
+/// Also contains information about the object.
+///
+/// ## `Deref` behavior
+///
+/// `Image` automatically dereferences to [`vk::Image`] (via the [`Deref`][deref] trait), so you can
+/// call `vk::Image`'s methods on a value of type `Image`. To avoid name clashes with `vk::Image`'s
+/// methods, the methods of `Image` itself are associated functions, called using
+/// [fully qualified syntax]:
+///
+/// ```no_run
+/// # use std::sync::Arc;
+/// # use ash::vk;
+/// # use screen_13::driver::{AccessType, Device, DriverConfig, DriverError};
+/// # use screen_13::driver::{Image, ImageInfo};
+/// # fn main() -> Result<(), DriverError> {
+/// # let device = Arc::new(Device::new(DriverConfig::new().build().unwrap())?);
+/// # let info = ImageInfo::new_1d(vk::Format::R8_UINT, 1, vk::ImageUsageFlags::STORAGE);
+/// # let my_image = Image::create(&device, info)?;
+/// let prev = Image::access(&my_image, AccessType::AnyShaderWrite);
+/// # Ok(()) }
+/// ```
+///
+/// [image]: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkImage.html
+/// [deref]: core::ops::Deref
+/// [fully qualified syntax]: https://doc.rust-lang.org/book/ch19-03-advanced-traits.html#fully-qualified-syntax-for-disambiguation-calling-methods-with-the-same-name
 pub struct Image {
     allocation: Option<Allocation>, // None when we don't own the image (Swapchain images)
     device: Arc<Device>,
@@ -34,6 +61,27 @@ pub struct Image {
 }
 
 impl Image {
+    /// Creates a new image on the given device.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```no_run
+    /// # use std::sync::Arc;
+    /// # use ash::vk;
+    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::{Image, ImageInfo};
+    /// # fn main() -> Result<(), DriverError> {
+    /// # let device = Arc::new(Device::new(DriverConfig::new().build().unwrap())?);
+    /// let info = ImageInfo::new_2d(vk::Format::R8G8B8A8_UNORM, 32, 32, vk::ImageUsageFlags::SAMPLED);
+    /// let image = Image::create(&device, info)?;
+    ///
+    /// assert_ne!(*image, vk::Image::null());
+    /// assert_eq!(image.info.width, 32);
+    /// assert_eq!(image.info.height, 32);
+    /// # Ok(()) }
+    /// ```
     pub fn create(device: &Arc<Device>, info: impl Into<ImageInfo>) -> Result<Self, DriverError> {
         let mut info: ImageInfo = info.into();
 
@@ -140,6 +188,47 @@ impl Image {
         })
     }
 
+    /// Keeps track of some `next_access` which affects this object.
+    ///
+    /// Returns the previous access for which a pipeline barrier should be used to prevent data
+    /// corruption.
+    ///
+    /// # Note
+    ///
+    /// Used to maintain object state when passing a _Screen 13_-created `vk::Image` handle to
+    /// external code such as [_Ash_] or [_Erupt_] bindings.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```no_run
+    /// # use std::sync::Arc;
+    /// # use ash::vk;
+    /// # use screen_13::driver::{AccessType, Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::{Image, ImageInfo};
+    /// # fn main() -> Result<(), DriverError> {
+    /// # let device = Arc::new(Device::new(DriverConfig::new().build().unwrap())?);
+    /// # let info = ImageInfo::new_1d(vk::Format::R8_UINT, 1, vk::ImageUsageFlags::STORAGE);
+    /// # let my_image = Image::create(&device, info)?;
+    /// // Initially we want to "Read Other"
+    /// let next = AccessType::AnyShaderReadOther;
+    /// let prev = Image::access(&my_image, next);
+    /// assert_eq!(prev, AccessType::Nothing);
+    ///
+    /// // External code may now "Read Other"; no barrier required
+    ///
+    /// // Subsequently we want to "Write"
+    /// let next = AccessType::FragmentShaderWrite;
+    /// let prev = Image::access(&my_image, next);
+    /// assert_eq!(prev, AccessType::AnyShaderReadOther);
+    ///
+    /// // A barrier on "Read Other" before "Write" is required!
+    /// # Ok(()) }
+    /// ```
+    ///
+    /// [_Ash_]: https://crates.io/crates/ash
+    /// [_Erupt_]: https://crates.io/crates/erupt
     pub fn access(this: &Self, next_access: AccessType) -> AccessType {
         access_type_from_u8(
             this.prev_access
@@ -159,11 +248,11 @@ impl Image {
         }
     }
 
-    pub fn create_view(this: &Self, info: ImageViewInfo) -> Result<ImageView, DriverError> {
+    fn create_view(this: &Self, info: ImageViewInfo) -> Result<ImageView, DriverError> {
         ImageView::create(&this.device, info, this)
     }
 
-    pub fn from_raw(device: &Arc<Device>, image: vk::Image, info: ImageInfo) -> Self {
+    pub(super) fn from_raw(device: &Arc<Device>, image: vk::Image, info: ImageInfo) -> Self {
         let device = Arc::clone(device);
 
         Self {
@@ -177,12 +266,12 @@ impl Image {
         }
     }
 
-    pub fn view_ref(this: &Self, info: ImageViewInfo) -> Result<vk::ImageView, DriverError> {
+    pub(crate) fn view_ref(this: &Self, info: ImageViewInfo) -> Result<vk::ImageView, DriverError> {
         let mut image_view_cache = this.image_view_cache.lock();
 
         Ok(match image_view_cache.entry(info) {
-            Entry::Occupied(entry) => **entry.get(),
-            Entry::Vacant(entry) => **entry.insert(Self::create_view(this, info)?),
+            Entry::Occupied(entry) => entry.get().image_view,
+            Entry::Vacant(entry) => entry.insert(Self::create_view(this, info)?).image_view,
         })
     }
 }
@@ -231,19 +320,27 @@ impl Drop for Image {
     }
 }
 
+/// Describes the number of dimensions and array elements of an image.
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum ImageType {
+    /// One dimensional (linear) image.
     Texture1D = 0,
+    /// One dimensional (linear) image with multiple array elements.
     TextureArray1D = 1,
+    /// Two dimensional (planar) image.
     Texture2D = 2,
+    /// Two dimensional (planar) image with multiple array elements.
     TextureArray2D = 3,
+    /// Three dimensional (volume) image.
     Texture3D = 4,
+    /// Six two-dimensional images.
     Cube = 5,
+    /// Six two-dimensional images with multiple array elements.
     CubeArray = 6,
 }
 
 impl ImageType {
-    pub fn into_vk(self) -> vk::ImageViewType {
+    pub(crate) fn into_vk(self) -> vk::ImageViewType {
         match self {
             Self::Cube => vk::ImageViewType::CUBE,
             Self::CubeArray => vk::ImageViewType::CUBE_ARRAY,
@@ -256,6 +353,7 @@ impl ImageType {
     }
 }
 
+/// Information used to create an [`Image`] instance.
 #[derive(Builder, Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[builder(
     build_fn(private, name = "fallible_build"),
@@ -263,36 +361,53 @@ impl ImageType {
     pattern = "owned"
 )]
 pub struct ImageInfo {
+    /// The number of layers in the image.
     #[builder(default = "1", setter(strip_option))]
     pub array_elements: u32,
 
+    /// Image extent of the Z axis, when describing a three dimensional image.
     #[builder(setter(strip_option))]
     pub depth: u32,
 
+    /// A bitmask of describing additional parameters of the image.
     #[builder(default, setter(strip_option))]
     pub flags: vk::ImageCreateFlags,
 
+    /// The format and type of the texel blocks that will be contained in the image.
     #[builder(setter(strip_option))]
     pub fmt: vk::Format,
 
+    /// Image extent of the Y axis, when describing a two or three dimensional image.
     #[builder(setter(strip_option))]
     pub height: u32,
 
+    /// Specifies the tiling arrangement of the texel blocks in memory.
+    ///
+    /// The default value of `false` indicates a `VK_IMAGE_TILING_OPTIMAL` image.
     #[builder(default, setter(strip_option))]
     pub linear_tiling: bool,
 
+    /// The number of levels of detail available for minified sampling of the image.
     #[builder(default = "1", setter(strip_option))]
     pub mip_level_count: u32,
 
+    /// Specifies the number of [samples per texel].
+    ///
+    /// [samples per texel]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#primsrast-multisampling
     #[builder(default = "SampleCount::X1", setter(strip_option))]
     pub sample_count: SampleCount,
 
+    /// The basic dimensionality of the image.
+    ///
+    /// Layers in array textures do not count as a dimension for the purposes of the image type.
     #[builder(setter(strip_option))]
     pub ty: ImageType,
 
+    /// A bitmask of describing the intended usage of the image.
     #[builder(default, setter(strip_option))]
     pub usage: vk::ImageUsageFlags,
 
+    /// Image extent of the X axis.
     #[builder(setter(strip_option))]
     pub width: u32,
 }
@@ -322,10 +437,12 @@ impl ImageInfo {
         }
     }
 
+    /// Specifies a one-dimensional image.
     pub const fn new_1d(fmt: vk::Format, len: u32, usage: vk::ImageUsageFlags) -> ImageInfoBuilder {
         Self::new(fmt, ImageType::Texture1D, len, 1, 1, usage)
     }
 
+    /// Specifies a two-dimensional image.
     pub const fn new_2d(
         fmt: vk::Format,
         width: u32,
@@ -335,6 +452,7 @@ impl ImageInfo {
         Self::new(fmt, ImageType::Texture2D, width, height, 1, usage)
     }
 
+    /// Specifies a three-dimensional image.
     pub const fn new_3d(
         fmt: vk::Format,
         width: u32,
@@ -345,13 +463,14 @@ impl ImageInfo {
         Self::new(fmt, ImageType::Texture3D, width, height, depth, usage)
     }
 
+    /// Specifies a cube image.
     pub fn new_cube(fmt: vk::Format, width: u32, usage: vk::ImageUsageFlags) -> ImageInfoBuilder {
         Self::new(fmt, ImageType::Cube, width, width, 1, usage)
             .array_elements(6)
             .flags(vk::ImageCreateFlags::CUBE_COMPATIBLE)
     }
 
-    pub fn default_view_info(self) -> ImageViewInfo {
+    pub(crate) fn default_view_info(self) -> ImageViewInfo {
         self.into()
     }
 
@@ -441,70 +560,15 @@ impl ImageInfo {
             ..Default::default()
         }
     }
-
-    pub fn fmt(mut self, fmt: vk::Format) -> Self {
-        self.fmt = fmt;
-        self
-    }
-
-    pub fn into_builder(self) -> ImageInfoBuilder {
-        ImageInfoBuilder {
-            array_elements: Some(self.array_elements),
-            depth: Some(self.depth),
-            height: Some(self.height),
-            width: Some(self.width),
-            flags: Some(self.flags),
-            fmt: Some(self.fmt),
-            mip_level_count: Some(self.mip_level_count),
-            sample_count: None,
-            linear_tiling: Some(self.linear_tiling),
-            ty: Some(self.ty),
-            usage: Some(self.usage),
-        }
-    }
 }
 
 // HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
 impl ImageInfoBuilder {
+    /// Builds a new `ImageInfo`.
     pub fn build(self) -> ImageInfo {
         self.fallible_build()
             .expect("All required fields set at initialization")
     }
-}
-
-impl ImageInfoBuilder {
-    // pub fn all_mip_levels(self) -> Self {
-    //     assert!(self.extent.is_some());
-
-    //     let extent = self.extent.unwrap();
-
-    //     self.mip_level_count(
-    //         Self::mip_count_1d(width)
-    //             .max(Self::mip_count_1d(height).max(Self::mip_count_1d(extent.z))),
-    //     )
-    // }
-
-    // pub fn extent_div(mut self, denom: UVec3) -> Self {
-    //     assert!(self.extent.is_some());
-
-    //     self.extent = Some(self.extent.unwrap() / denom);
-    //     self
-    // }
-
-    // pub fn extent_div_up(mut self, denom: UVec3) -> Self {
-    //     assert!(self.extent.is_some());
-
-    //     self.extent = Some((self.extent.unwrap() + denom - UVec3::ONE) / denom);
-    //     self
-    // }
-
-    // pub fn half_res(self) -> Self {
-    //     self.extent_div_up(uvec3(2, 2, 2))
-    // }
-
-    // fn mip_count_1d(extent: u32) -> u32 {
-    //     32 - extent.leading_zeros()
-    // }
 }
 
 impl From<ImageInfoBuilder> for ImageInfo {
@@ -513,17 +577,27 @@ impl From<ImageInfoBuilder> for ImageInfo {
     }
 }
 
+/// Describes a subset of an image.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ImageSubresource {
+    /// The number of layers for which this subset applies.
     pub array_layer_count: Option<u32>,
+
+    /// The portion of the image for which this subset applies.
     pub aspect_mask: vk::ImageAspectFlags,
+
+    /// The first array layer for which this subset applies.
     pub base_array_layer: u32,
+
+    /// The first mip level for which this subset applies.
     pub base_mip_level: u32,
+
+    /// The number of mip levels for which this subset applies.
     pub mip_level_count: Option<u32>,
 }
 
 impl ImageSubresource {
-    pub fn into_vk(self) -> vk::ImageSubresourceRange {
+    pub(crate) fn into_vk(self) -> vk::ImageSubresourceRange {
         vk::ImageSubresourceRange {
             aspect_mask: self.aspect_mask,
             base_mip_level: self.base_mip_level,
@@ -550,15 +624,13 @@ impl From<ImageViewInfo> for ImageSubresource {
     }
 }
 
-#[derive(Debug)]
-pub struct ImageView {
+struct ImageView {
     device: Arc<Device>,
     image_view: vk::ImageView,
-    pub info: ImageViewInfo,
 }
 
 impl ImageView {
-    pub fn create(
+    fn create(
         device: &Arc<Device>,
         info: impl Into<ImageViewInfo>,
         image: &Image,
@@ -594,19 +666,7 @@ impl ImageView {
                 DriverError::Unsupported
             })?;
 
-        Ok(Self {
-            device,
-            image_view,
-            info,
-        })
-    }
-}
-
-impl Deref for ImageView {
-    type Target = vk::ImageView;
-
-    fn deref(&self) -> &Self::Target {
-        &self.image_view
+        Ok(Self { device, image_view })
     }
 }
 
@@ -622,19 +682,36 @@ impl Drop for ImageView {
     }
 }
 
+/// Information used to reinterpret an existing [`Image`] instance.
 #[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[builder(build_fn(private, name = "fallible_build"), pattern = "owned")]
 pub struct ImageViewInfo {
+    /// The number of layers that will be contained in the view.
     pub array_layer_count: Option<u32>,
+
+    /// The portion of the image that will be contained in the view.
     pub aspect_mask: vk::ImageAspectFlags,
+
+    /// The first array layer that will be contained in the view.
     pub base_array_layer: u32,
+
+    /// The first mip level that will be contained in the view.
     pub base_mip_level: u32,
+
+    /// The format and type of the texel blocks that will be contained in the view.
     pub fmt: vk::Format,
+
+    /// The number of mip levels that will be contained in the view.
     pub mip_level_count: Option<u32>,
+
+    /// The basic dimensionality of the view.
+    ///
+    /// Layers in array textures do not count as a dimension for the purposes of the image type.
     pub ty: ImageType,
 }
 
 impl ImageViewInfo {
+    /// Specifies a default view with the given `fmt` and `ty` values.
     #[allow(clippy::new_ret_no_self)]
     pub fn new(format: vk::Format, ty: ImageType) -> ImageViewInfoBuilder {
         ImageViewInfoBuilder::new(format, ty)
@@ -643,10 +720,12 @@ impl ImageViewInfo {
 
 // HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
 impl ImageViewInfoBuilder {
-    pub fn new(format: vk::Format, ty: ImageType) -> Self {
-        Self::default().fmt(format).ty(ty)
+    /// Specifies a default view with the given `fmt` and `ty` values.
+    pub fn new(fmt: vk::Format, ty: ImageType) -> Self {
+        Self::default().fmt(fmt).ty(ty)
     }
 
+    /// Builds a new 'ImageViewInfo'.
     pub fn build(self) -> ImageViewInfo {
         self.fallible_build()
             .expect("All required fields set at initialization")
@@ -673,23 +752,39 @@ impl From<ImageViewInfoBuilder> for ImageViewInfo {
     }
 }
 
+/// Specifies sample counts supported for an image used for storage operation.
+///
+/// Values must not exceed the device limits specified by [Device.physical_device.props.limits].
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum SampleCount {
+    /// Single image sample. This is the usual mode.
     X1,
+
+    /// Multiple image samples.
     X2,
+
+    /// Multiple image samples.
     X4,
+
+    /// Multiple image samples.
     X8,
+
+    /// Multiple image samples.
     X16,
+
+    /// Multiple image samples.
     X32,
+
+    /// Multiple image samples.
     X64,
 }
 
 impl SampleCount {
-    pub fn compatible_items(self) -> impl Iterator<Item = Self> {
+    fn compatible_items(self) -> impl Iterator<Item = Self> {
         SampleCountCompatibilityIter(self)
     }
 
-    pub fn into_vk(self) -> vk::SampleCountFlags {
+    pub(super) fn into_vk(self) -> vk::SampleCountFlags {
         match self {
             Self::X1 => vk::SampleCountFlags::TYPE_1,
             Self::X2 => vk::SampleCountFlags::TYPE_2,

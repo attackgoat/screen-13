@@ -158,7 +158,7 @@ impl AccelerationStructure {
     /// let prev = AccelerationStructure::access(&my_accel_struct, next);
     /// assert_eq!(prev, AccessType::AccelerationStructureBuildWrite);
     ///
-    /// // A barrier on "Build Write" is required!
+    /// // A barrier on "Build Write" before "Build Read" is required!
     /// # Ok(()) }
     /// ```
     ///
@@ -406,7 +406,7 @@ pub struct AccelerationStructureGeometry {
 }
 
 impl AccelerationStructureGeometry {
-    pub fn into_vk(&self) -> vk::AccelerationStructureGeometryKHR {
+    pub(crate) fn into_vk(&self) -> vk::AccelerationStructureGeometryKHR {
         let (geometry_type, geometry) = match &self.geometry {
             &AccelerationStructureGeometryData::AABBs { stride } => (
                 vk::GeometryTypeKHR::AABBS,
@@ -614,6 +614,7 @@ impl AccelerationStructureInfo {
 
 // HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
 impl AccelerationStructureInfoBuilder {
+    /// Builds a new `AccelerationStructureInfo`.
     pub fn build(self) -> AccelerationStructureInfo {
         self.fallible_build()
             .expect("All required fields set at initialization")
