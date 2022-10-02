@@ -27,7 +27,7 @@ use {
 /// methods, the methods of `AccelerationStructure` itself are associated functions, called using
 /// [fully qualified syntax]:
 ///
-/// ```text
+/// ```no_run
 /// # use std::sync::Arc;
 /// # use ash::vk;
 /// # use screen_13::driver::{AccessType, Device, DriverConfig, DriverError};
@@ -60,7 +60,7 @@ impl AccelerationStructure {
     ///
     /// Basic usage:
     ///
-    /// ```text
+    /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
     /// # use screen_13::driver::{Device, DriverConfig, DriverError};
@@ -136,7 +136,7 @@ impl AccelerationStructure {
     ///
     /// Basic usage:
     ///
-    /// ```text
+    /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
     /// # use screen_13::driver::{AccessType, Device, DriverConfig, DriverError};
@@ -177,7 +177,7 @@ impl AccelerationStructure {
     ///
     /// Basic usage:
     ///
-    /// ```text
+    /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
     /// # use screen_13::driver::{AccessType, Device, DriverConfig, DriverError};
@@ -222,7 +222,7 @@ impl AccelerationStructure {
     ///
     /// Basic usage:
     ///
-    /// ```text
+    /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
     /// # use screen_13::driver::{Device, DriverConfig, DriverError};
