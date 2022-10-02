@@ -71,8 +71,8 @@ impl AccelerationStructure {
     /// let info = AccelerationStructureInfo::new_blas(SIZE);
     /// let accel_struct = AccelerationStructure::create(&device, info)?;
     ///
-    /// assert_eq!(accel_struct.info.size, SIZE);
     /// assert_ne!(*accel_struct, vk::AccelerationStructureKHR::null());
+    /// assert_eq!(accel_struct.info.size, SIZE);
     /// # Ok(()) }
     /// ```
     pub fn create(
@@ -595,7 +595,7 @@ pub struct AccelerationStructureInfo {
 }
 
 impl AccelerationStructureInfo {
-    /// Creates a bottom-level acceleration structure of the given size.
+    /// Specifies a bottom-level acceleration structure of the given size.
     pub const fn new_blas(size: vk::DeviceSize) -> Self {
         Self {
             ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
@@ -603,7 +603,7 @@ impl AccelerationStructureInfo {
         }
     }
 
-    /// Creates a top-level acceleration structure of the given size.
+    /// Specifies a top-level acceleration structure of the given size.
     pub const fn new_tlas(size: vk::DeviceSize) -> Self {
         Self {
             ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
