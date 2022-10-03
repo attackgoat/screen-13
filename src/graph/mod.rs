@@ -1,34 +1,42 @@
+pub mod node;
+pub mod pass_ref;
+
 mod attachment;
 mod binding;
 mod edge;
 mod info;
-mod node;
-mod pass_ref;
 mod resolver;
 mod swapchain;
 
-pub use {
-    self::{
-        attachment::{Attachment, AttachmentMap},
-        binding::{AnyBufferBinding, AnyImageBinding, Bind},
-        node::{
-            AccelerationStructureLeaseNode, AccelerationStructureNode,
-            AnyAccelerationStructureNode, AnyBufferNode, AnyImageNode, BufferLeaseNode, BufferNode,
-            ImageLeaseNode, ImageNode, SwapchainImageNode, Unbind, View, ViewType,
-        },
-        pass_ref::{Acceleration, Bindings, Compute, Draw, PassRef, PipelinePassRef, RayTrace},
-        resolver::{Resolver, ResolverPool},
-    },
-    vk_sync::AccessType,
+pub use self::{
+    binding::{Bind, Unbind},
+    resolver::{Resolver, ResolverPool},
 };
 
 use {
-    self::{binding::Binding, edge::Edge, info::Information, node::Node},
+    self::{
+        attachment::{Attachment, AttachmentMap},
+        binding::Binding,
+        edge::Edge,
+        info::Information,
+        node::Node,
+        node::{
+            AccelerationStructureLeaseNode, AccelerationStructureNode,
+            AnyAccelerationStructureNode, AnyBufferNode, AnyImageNode, BufferLeaseNode, BufferNode,
+            ImageLeaseNode, ImageNode, SwapchainImageNode,
+        },
+        pass_ref::{AttachmentIndex, Bindings, Descriptor, PassRef, SubresourceAccess, ViewType},
+    },
     crate::driver::{
-        buffer_copy_subresources, buffer_image_copy_subresource, format_aspect_mask,
-        is_write_access, BufferSubresource, ComputePipeline, DepthStencilMode,
-        DescriptorBindingMap, Device, GraphicPipeline, ImageSubresource, ImageType,
-        PipelineDescriptorInfo, RayTracePipeline, SampleCount,
+        buffer_copy_subresources, buffer_image_copy_subresource,
+        compute::ComputePipeline,
+        format_aspect_mask,
+        graphic::{DepthStencilMode, GraphicPipeline},
+        image::{ImageType, SampleCount},
+        is_write_access,
+        ray_trace::RayTracePipeline,
+        shader::PipelineDescriptorInfo,
+        DescriptorBindingMap, Device,
     },
     ash::vk,
     std::{
@@ -38,13 +46,8 @@ use {
         ops::Range,
         sync::Arc,
     },
+    vk_sync::AccessType,
 };
-
-// Aliases for clarity
-pub type AttachmentIndex = u32;
-pub type BindingIndex = u32;
-pub type BindingOffset = u32;
-pub type DescriptorSetIndex = u32;
 
 type ExecFn = Box<dyn FnOnce(&Device, vk::CommandBuffer, Bindings<'_>) + Send>;
 type NodeIndex = usize;
@@ -74,69 +77,6 @@ impl From<[u8; 4]> for ClearColorValue {
             color[2] as f32 / u8::MAX as f32,
             color[3] as f32 / u8::MAX as f32,
         ])
-    }
-}
-
-/// Describes the SPIR-V binding index, and optionally a specific descriptor set
-/// and array index.
-///
-/// Generally you might pass a function a descriptor using a simple integer:
-///
-/// ```rust
-/// # fn my_func(_: usize, _: ()) {}
-/// # let image = ();
-/// let descriptor = 42;
-/// my_func(descriptor, image);
-/// ```
-///
-/// But also:
-///
-/// - `(0, 42)` for descriptor set `0` and binding index `42`
-/// - `(42, [8])` for the same binding, but the 8th element
-/// - `(0, 42, [8])` same as the previous example
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum Descriptor {
-    ArrayBinding(DescriptorSetIndex, BindingIndex, BindingOffset),
-    Binding(DescriptorSetIndex, BindingIndex),
-}
-
-impl Descriptor {
-    fn into_tuple(self) -> (DescriptorSetIndex, BindingIndex, BindingOffset) {
-        match self {
-            Self::ArrayBinding(descriptor_set_idx, binding_idx, binding_offset) => {
-                (descriptor_set_idx, binding_idx, binding_offset)
-            }
-            Self::Binding(descriptor_set_idx, binding_idx) => (descriptor_set_idx, binding_idx, 0),
-        }
-    }
-
-    fn set(self) -> DescriptorSetIndex {
-        let (res, _, _) = self.into_tuple();
-        res
-    }
-}
-
-impl From<BindingIndex> for Descriptor {
-    fn from(val: BindingIndex) -> Self {
-        Self::Binding(0, val)
-    }
-}
-
-impl From<(DescriptorSetIndex, BindingIndex)> for Descriptor {
-    fn from(tuple: (DescriptorSetIndex, BindingIndex)) -> Self {
-        Self::Binding(tuple.0, tuple.1)
-    }
-}
-
-impl From<(BindingIndex, [BindingOffset; 1])> for Descriptor {
-    fn from(tuple: (BindingIndex, [BindingOffset; 1])) -> Self {
-        Self::ArrayBinding(0, tuple.0, tuple.1[0])
-    }
-}
-
-impl From<(DescriptorSetIndex, BindingIndex, [BindingOffset; 1])> for Descriptor {
-    fn from(tuple: (DescriptorSetIndex, BindingIndex, [BindingOffset; 1])) -> Self {
-        Self::ArrayBinding(tuple.0, tuple.1, tuple.2[0])
     }
 }
 
@@ -903,53 +843,4 @@ impl RenderGraph {
             })
             .submit_pass()
     }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Subresource {
-    AccelerationStructure,
-    Image(ImageSubresource),
-    Buffer(BufferSubresource),
-}
-
-impl Subresource {
-    fn unwrap_buffer(self) -> BufferSubresource {
-        if let Self::Buffer(subresource) = self {
-            subresource
-        } else {
-            unreachable!();
-        }
-    }
-
-    fn unwrap_image(self) -> ImageSubresource {
-        if let Self::Image(subresource) = self {
-            subresource
-        } else {
-            unreachable!();
-        }
-    }
-}
-
-impl From<()> for Subresource {
-    fn from(_: ()) -> Self {
-        Self::AccelerationStructure
-    }
-}
-
-impl From<ImageSubresource> for Subresource {
-    fn from(subresource: ImageSubresource) -> Self {
-        Self::Image(subresource)
-    }
-}
-
-impl From<BufferSubresource> for Subresource {
-    fn from(subresource: BufferSubresource) -> Self {
-        Self::Buffer(subresource)
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-struct SubresourceAccess {
-    access: AccessType,
-    subresource: Option<Subresource>,
 }

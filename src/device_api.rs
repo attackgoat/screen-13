@@ -1,8 +1,11 @@
 use {
     super::{
         driver::{
-            Buffer, BufferInfo, ComputePipeline, ComputePipelineInfo, GraphicPipeline,
-            GraphicPipelineInfo, Image, ImageInfo, Shader,
+            buffer::{Buffer, BufferInfo},
+            compute::{ComputePipeline, ComputePipelineInfo},
+            graphic::{GraphicPipeline, GraphicPipelineInfo},
+            image::{Image, ImageInfo},
+            shader::Shader,
         },
         event_loop::EventLoop,
     },

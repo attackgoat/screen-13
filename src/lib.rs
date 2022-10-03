@@ -16,14 +16,43 @@ pub mod prelude {
     pub use {
         super::{
             display::{Display, DisplayError},
-            driver::*,
+            driver::{
+                accel_struct::{
+                    AccelerationStructure, AccelerationStructureGeometry,
+                    AccelerationStructureGeometryData, AccelerationStructureGeometryInfo,
+                    AccelerationStructureInfo, AccelerationStructureInfoBuilder,
+                    AccelerationStructureSize, DeviceOrHostAddress,
+                },
+                buffer::{Buffer, BufferInfo, BufferInfoBuilder, BufferSubresource},
+                compute::{ComputePipeline, ComputePipelineInfo, ComputePipelineInfoBuilder},
+                graphic::{
+                    BlendMode, BlendModeBuilder, DepthStencilMode, DepthStencilModeBuilder,
+                    GraphicPipeline, GraphicPipelineInfo, GraphicPipelineInfoBuilder, StencilMode,
+                },
+                image::{
+                    Image, ImageInfo, ImageInfoBuilder, ImageSubresource, ImageType, ImageViewInfo,
+                    ImageViewInfoBuilder, SampleCount,
+                },
+                ray_trace::{
+                    RayTracePipeline, RayTracePipelineInfo, RayTracePipelineInfoBuilder,
+                    RayTraceShaderGroup, RayTraceShaderGroupType,
+                },
+                shader::{Shader, ShaderBuilder, ShaderCode, SpecializationInfo},
+                AccessType, Device, Driver, DriverConfig, DriverConfigBuilder, DriverError,
+                FeatureFlags, PhysicalDevice, PhysicalDeviceDescriptorIndexingFeatures,
+                PhysicalDeviceRayTracePipelineProperties, Queue, QueueFamily,
+                QueueFamilyProperties,
+            },
             event_loop::{run, EventLoop, EventLoopBuilder, FullscreenMode},
             frame::{center_cursor, set_cursor_position, FrameContext},
             graph::{
-                AccelerationStructureLeaseNode, AccelerationStructureNode,
-                AnyAccelerationStructureNode, AnyBufferBinding, AnyBufferNode, AnyImageBinding,
-                AnyImageNode, Bind, BufferLeaseNode, BufferNode, ImageLeaseNode, ImageNode,
-                PassRef, PipelinePassRef, RenderGraph, SwapchainImageNode,
+                node::{
+                    AccelerationStructureLeaseNode, AccelerationStructureNode,
+                    AnyAccelerationStructureNode, AnyBufferNode, AnyImageNode, BufferLeaseNode,
+                    BufferNode, ImageLeaseNode, ImageNode, SwapchainImageNode,
+                },
+                pass_ref::{PassRef, PipelinePassRef},
+                Bind, RenderGraph,
             },
             input::{
                 update_input, update_keyboard, update_mouse, KeyBuf, KeyMap, MouseBuf, MouseButton,

@@ -1,10 +1,12 @@
 use {
     super::{
-        shader::ShaderCode, DescriptorBindingMap, Device, DriverError, PipelineDescriptorInfo,
-        Shader, SpecializationInfo,
+        shader::{
+            DescriptorBindingMap, PipelineDescriptorInfo, Shader, ShaderCode, SpecializationInfo,
+        },
+        Device, DriverError,
     },
     ash::vk,
-    derive_builder::Builder,
+    derive_builder::{Builder, UninitializedFieldError},
     log::{trace, warn},
     std::{ffi::CString, ops::Deref, sync::Arc, thread::panicking},
 };
@@ -46,9 +48,9 @@ impl ComputePipeline {
     /// # use std::sync::Arc;
     /// # use ash::vk;
     /// # use screen_13::driver::{Device, DriverConfig, DriverError};
-    /// # use screen_13::driver::{ComputePipeline, ComputePipelineInfo};
+    /// # use screen_13::driver::compute::{ComputePipeline, ComputePipelineInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build().unwrap())?);
+    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
     /// # let my_shader_code = [0u8; 1];
     /// // my_shader_code is raw SPIR-V code as bytes
     /// let info = ComputePipelineInfo::new(my_shader_code.as_slice());
@@ -182,7 +184,14 @@ impl Drop for ComputePipeline {
 
 /// Information used to create a [`ComputePipeline`] instance.
 #[derive(Builder, Clone, Debug)]
-#[builder(pattern = "owned")]
+#[builder(
+    pattern = "owned",
+    build_fn(
+        private,
+        name = "fallible_build",
+        error = "ComputePipelineInfoBuilderError"
+    )
+)]
 pub struct ComputePipelineInfo {
     /// The number of descriptors to allocate for a given binding when using bindless (unbounded)
     /// syntax.
@@ -239,9 +248,10 @@ pub struct ComputePipelineInfo {
     /// # use std::sync::Arc;
     /// # use ash::vk;
     /// # use screen_13::driver::{Device, DriverConfig, DriverError};
-    /// # use screen_13::driver::{ComputePipeline, ComputePipelineInfo, SpecializationInfo};
+    /// # use screen_13::driver::compute::{ComputePipeline, ComputePipelineInfo};
+    /// # use screen_13::driver::shader::{SpecializationInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build().unwrap())?);
+    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
     /// # let my_shader_code = [0u8; 1];
     /// // We instead specify 42 for MY_COUNT:
     /// let info = ComputePipelineInfo::new(my_shader_code.as_slice())
@@ -295,12 +305,30 @@ where
     S: ShaderCode,
 {
     fn from(spirv: S) -> Self {
-        Self::new(spirv).build().unwrap()
+        Self::new(spirv).build()
     }
 }
 
 impl From<ComputePipelineInfoBuilder> for ComputePipelineInfo {
     fn from(info: ComputePipelineInfoBuilder) -> Self {
-        info.build().unwrap()
+        info.build()
+    }
+}
+
+// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
+impl ComputePipelineInfoBuilder {
+    /// Builds a new `ComputePipelineInfo`.
+    pub fn build(self) -> ComputePipelineInfo {
+        self.fallible_build()
+            .expect("All required fields set at initialization")
+    }
+}
+
+#[derive(Debug)]
+struct ComputePipelineInfoBuilderError;
+
+impl From<UninitializedFieldError> for ComputePipelineInfoBuilderError {
+    fn from(_: UninitializedFieldError) -> Self {
+        Self
     }
 }

@@ -4,54 +4,56 @@ use {
         ImageLeaseNode, ImageNode, RenderGraph,
     },
     crate::{
-        driver::{AccelerationStructure, Buffer, Image, SwapchainImage},
+        driver::{
+            accel_struct::AccelerationStructure, buffer::Buffer, image::Image, SwapchainImage,
+        },
         pool::Lease,
     },
     std::{fmt::Debug, sync::Arc},
 };
 
-#[derive(Debug)]
-pub enum AnyBufferBinding<'a> {
-    Buffer(&'a Arc<Buffer>),
-    BufferLease(&'a Lease<Buffer>),
-}
+// #[derive(Debug)]
+// pub enum AnyBufferBinding<'a> {
+//     Buffer(&'a Arc<Buffer>),
+//     BufferLease(&'a Lease<Buffer>),
+// }
 
-impl<'a> From<&'a Arc<Buffer>> for AnyBufferBinding<'a> {
-    fn from(buffer: &'a Arc<Buffer>) -> Self {
-        Self::Buffer(buffer)
-    }
-}
+// impl<'a> From<&'a Arc<Buffer>> for AnyBufferBinding<'a> {
+//     fn from(buffer: &'a Arc<Buffer>) -> Self {
+//         Self::Buffer(buffer)
+//     }
+// }
 
-impl<'a> From<&'a Lease<Buffer>> for AnyBufferBinding<'a> {
-    fn from(buffer: &'a Lease<Buffer>) -> Self {
-        Self::BufferLease(buffer)
-    }
-}
+// impl<'a> From<&'a Lease<Buffer>> for AnyBufferBinding<'a> {
+//     fn from(buffer: &'a Lease<Buffer>) -> Self {
+//         Self::BufferLease(buffer)
+//     }
+// }
 
-#[derive(Debug)]
-pub enum AnyImageBinding<'a> {
-    Image(&'a Arc<Image>),
-    ImageLease(&'a Lease<Image>),
-    SwapchainImage(&'a SwapchainImage),
-}
+// #[derive(Debug)]
+// pub enum AnyImageBinding<'a> {
+//     Image(&'a Arc<Image>),
+//     ImageLease(&'a Lease<Image>),
+//     SwapchainImage(&'a SwapchainImage),
+// }
 
-impl<'a> From<&'a Arc<Image>> for AnyImageBinding<'a> {
-    fn from(image: &'a Arc<Image>) -> Self {
-        Self::Image(image)
-    }
-}
+// impl<'a> From<&'a Arc<Image>> for AnyImageBinding<'a> {
+//     fn from(image: &'a Arc<Image>) -> Self {
+//         Self::Image(image)
+//     }
+// }
 
-impl<'a> From<&'a Lease<Image>> for AnyImageBinding<'a> {
-    fn from(image: &'a Lease<Image>) -> Self {
-        Self::ImageLease(image)
-    }
-}
+// impl<'a> From<&'a Lease<Image>> for AnyImageBinding<'a> {
+//     fn from(image: &'a Lease<Image>) -> Self {
+//         Self::ImageLease(image)
+//     }
+// }
 
-impl<'a> From<&'a SwapchainImage> for AnyImageBinding<'a> {
-    fn from(image: &'a SwapchainImage) -> Self {
-        Self::SwapchainImage(image)
-    }
-}
+// impl<'a> From<&'a SwapchainImage> for AnyImageBinding<'a> {
+//     fn from(image: &'a SwapchainImage) -> Self {
+//         Self::SwapchainImage(image)
+//     }
+// }
 
 pub trait Bind<Graph, Node> {
     fn bind(self, graph: Graph) -> Node;
@@ -271,3 +273,7 @@ macro_rules! bind_lease {
 bind_lease!(AccelerationStructure);
 bind_lease!(Image);
 bind_lease!(Buffer);
+
+pub trait Unbind<Graph, Binding> {
+    fn unbind(self, graph: &mut Graph) -> Binding;
+}

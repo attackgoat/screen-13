@@ -1,7 +1,7 @@
 use {
     super::{access_type_from_u8, access_type_into_u8, format_aspect_mask, Device, DriverError},
     ash::vk,
-    derive_builder::Builder,
+    derive_builder::{Builder, UninitializedFieldError},
     gpu_allocator::{
         vulkan::{Allocation, AllocationCreateDesc},
         MemoryLocation,
@@ -37,9 +37,9 @@ use {
 /// # use std::sync::Arc;
 /// # use ash::vk;
 /// # use screen_13::driver::{AccessType, Device, DriverConfig, DriverError};
-/// # use screen_13::driver::{Image, ImageInfo};
+/// # use screen_13::driver::image::{Image, ImageInfo};
 /// # fn main() -> Result<(), DriverError> {
-/// # let device = Arc::new(Device::new(DriverConfig::new().build().unwrap())?);
+/// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
 /// # let info = ImageInfo::new_1d(vk::Format::R8_UINT, 1, vk::ImageUsageFlags::STORAGE);
 /// # let my_image = Image::create(&device, info)?;
 /// let prev = Image::access(&my_image, AccessType::AnyShaderWrite);
@@ -71,9 +71,9 @@ impl Image {
     /// # use std::sync::Arc;
     /// # use ash::vk;
     /// # use screen_13::driver::{Device, DriverConfig, DriverError};
-    /// # use screen_13::driver::{Image, ImageInfo};
+    /// # use screen_13::driver::image::{Image, ImageInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build().unwrap())?);
+    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
     /// let info = ImageInfo::new_2d(vk::Format::R8G8B8A8_UNORM, 32, 32, vk::ImageUsageFlags::SAMPLED);
     /// let image = Image::create(&device, info)?;
     ///
@@ -206,9 +206,9 @@ impl Image {
     /// # use std::sync::Arc;
     /// # use ash::vk;
     /// # use screen_13::driver::{AccessType, Device, DriverConfig, DriverError};
-    /// # use screen_13::driver::{Image, ImageInfo};
+    /// # use screen_13::driver::image::{Image, ImageInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build().unwrap())?);
+    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
     /// # let info = ImageInfo::new_1d(vk::Format::R8_UINT, 1, vk::ImageUsageFlags::STORAGE);
     /// # let my_image = Image::create(&device, info)?;
     /// // Initially we want to "Read Other"
@@ -320,43 +320,10 @@ impl Drop for Image {
     }
 }
 
-/// Describes the number of dimensions and array elements of an image.
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub enum ImageType {
-    /// One dimensional (linear) image.
-    Texture1D = 0,
-    /// One dimensional (linear) image with multiple array elements.
-    TextureArray1D = 1,
-    /// Two dimensional (planar) image.
-    Texture2D = 2,
-    /// Two dimensional (planar) image with multiple array elements.
-    TextureArray2D = 3,
-    /// Three dimensional (volume) image.
-    Texture3D = 4,
-    /// Six two-dimensional images.
-    Cube = 5,
-    /// Six two-dimensional images with multiple array elements.
-    CubeArray = 6,
-}
-
-impl ImageType {
-    pub(crate) fn into_vk(self) -> vk::ImageViewType {
-        match self {
-            Self::Cube => vk::ImageViewType::CUBE,
-            Self::CubeArray => vk::ImageViewType::CUBE_ARRAY,
-            Self::Texture1D => vk::ImageViewType::TYPE_1D,
-            Self::Texture2D => vk::ImageViewType::TYPE_2D,
-            Self::Texture3D => vk::ImageViewType::TYPE_3D,
-            Self::TextureArray1D => vk::ImageViewType::TYPE_1D_ARRAY,
-            Self::TextureArray2D => vk::ImageViewType::TYPE_2D_ARRAY,
-        }
-    }
-}
-
 /// Information used to create an [`Image`] instance.
 #[derive(Builder, Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[builder(
-    build_fn(private, name = "fallible_build"),
+    build_fn(private, name = "fallible_build", error = "ImageInfoBuilderError"),
     derive(Debug),
     pattern = "owned"
 )]
@@ -562,6 +529,12 @@ impl ImageInfo {
     }
 }
 
+impl From<ImageInfoBuilder> for ImageInfo {
+    fn from(info: ImageInfoBuilder) -> Self {
+        info.build()
+    }
+}
+
 // HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
 impl ImageInfoBuilder {
     /// Builds a new `ImageInfo`.
@@ -571,9 +544,12 @@ impl ImageInfoBuilder {
     }
 }
 
-impl From<ImageInfoBuilder> for ImageInfo {
-    fn from(info: ImageInfoBuilder) -> Self {
-        info.build()
+#[derive(Debug)]
+struct ImageInfoBuilderError;
+
+impl From<UninitializedFieldError> for ImageInfoBuilderError {
+    fn from(_: UninitializedFieldError) -> Self {
+        Self
     }
 }
 
@@ -620,6 +596,39 @@ impl From<ImageViewInfo> for ImageSubresource {
                 ImageType::TextureArray1D | ImageType::TextureArray2D => 1,
             }),
             mip_level_count: info.mip_level_count,
+        }
+    }
+}
+
+/// Describes the number of dimensions and array elements of an image.
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub enum ImageType {
+    /// One dimensional (linear) image.
+    Texture1D = 0,
+    /// One dimensional (linear) image with multiple array elements.
+    TextureArray1D = 1,
+    /// Two dimensional (planar) image.
+    Texture2D = 2,
+    /// Two dimensional (planar) image with multiple array elements.
+    TextureArray2D = 3,
+    /// Three dimensional (volume) image.
+    Texture3D = 4,
+    /// Six two-dimensional images.
+    Cube = 5,
+    /// Six two-dimensional images with multiple array elements.
+    CubeArray = 6,
+}
+
+impl ImageType {
+    pub(crate) fn into_vk(self) -> vk::ImageViewType {
+        match self {
+            Self::Cube => vk::ImageViewType::CUBE,
+            Self::CubeArray => vk::ImageViewType::CUBE_ARRAY,
+            Self::Texture1D => vk::ImageViewType::TYPE_1D,
+            Self::Texture2D => vk::ImageViewType::TYPE_2D,
+            Self::Texture3D => vk::ImageViewType::TYPE_3D,
+            Self::TextureArray1D => vk::ImageViewType::TYPE_1D_ARRAY,
+            Self::TextureArray2D => vk::ImageViewType::TYPE_2D_ARRAY,
         }
     }
 }
@@ -684,7 +693,10 @@ impl Drop for ImageView {
 
 /// Information used to reinterpret an existing [`Image`] instance.
 #[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
-#[builder(build_fn(private, name = "fallible_build"), pattern = "owned")]
+#[builder(
+    build_fn(private, name = "fallible_build", error = "ImageViewInfoBuilderError"),
+    pattern = "owned"
+)]
 pub struct ImageViewInfo {
     /// The number of layers that will be contained in the view.
     pub array_layer_count: Option<u32>,
@@ -718,20 +730,6 @@ impl ImageViewInfo {
     }
 }
 
-// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
-impl ImageViewInfoBuilder {
-    /// Specifies a default view with the given `fmt` and `ty` values.
-    pub fn new(fmt: vk::Format, ty: ImageType) -> Self {
-        Self::default().fmt(fmt).ty(ty)
-    }
-
-    /// Builds a new 'ImageViewInfo'.
-    pub fn build(self) -> ImageViewInfo {
-        self.fallible_build()
-            .expect("All required fields set at initialization")
-    }
-}
-
 impl From<ImageInfo> for ImageViewInfo {
     fn from(info: ImageInfo) -> Self {
         Self {
@@ -749,6 +747,29 @@ impl From<ImageInfo> for ImageViewInfo {
 impl From<ImageViewInfoBuilder> for ImageViewInfo {
     fn from(info: ImageViewInfoBuilder) -> Self {
         info.build()
+    }
+}
+
+// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
+impl ImageViewInfoBuilder {
+    /// Specifies a default view with the given `fmt` and `ty` values.
+    pub fn new(fmt: vk::Format, ty: ImageType) -> Self {
+        Self::default().fmt(fmt).ty(ty)
+    }
+
+    /// Builds a new 'ImageViewInfo'.
+    pub fn build(self) -> ImageViewInfo {
+        self.fallible_build()
+            .expect("All required fields set at initialization")
+    }
+}
+
+#[derive(Debug)]
+struct ImageViewInfoBuilderError;
+
+impl From<UninitializedFieldError> for ImageViewInfoBuilderError {
+    fn from(_: UninitializedFieldError) -> Self {
+        Self
     }
 }
 

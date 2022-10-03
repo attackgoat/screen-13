@@ -3,7 +3,7 @@ use {
         driver::{
             image_access_layout, CommandBuffer, Device, DriverError, Swapchain, SwapchainError,
         },
-        graph::{RenderGraph, ResolverPool, SwapchainImageNode},
+        graph::{node::SwapchainImageNode, RenderGraph, ResolverPool},
     },
     ash::vk,
     log::trace,

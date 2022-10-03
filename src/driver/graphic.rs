@@ -1,10 +1,12 @@
 use {
     super::{
-        merge_push_constant_ranges, DescriptorBindingMap, Device, DriverError,
-        PipelineDescriptorInfo, SampleCount, Shader, SpecializationInfo,
+        image::SampleCount,
+        merge_push_constant_ranges,
+        shader::{DescriptorBindingMap, PipelineDescriptorInfo, Shader, SpecializationInfo},
+        Device, DriverError,
     },
     ash::vk,
-    derive_builder::Builder,
+    derive_builder::{Builder, UninitializedFieldError},
     log::{trace, warn},
     ordered_float::OrderedFloat,
     std::{collections::HashSet, ffi::CString, sync::Arc, thread::panicking},
@@ -24,7 +26,7 @@ const RGBA_COLOR_COMPONENTS: vk::ColorComponentFlags = vk::ColorComponentFlags::
 /// [VkPipelineColorBlendAttachmentState](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkPipelineColorBlendAttachmentState.html).
 #[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[builder(
-    build_fn(private, name = "fallible_build"),
+    build_fn(private, name = "fallible_build", error = "BlendModeBuilderError"),
     derive(Debug),
     pattern = "owned"
 )]
@@ -146,6 +148,15 @@ impl BlendModeBuilder {
     }
 }
 
+#[derive(Debug)]
+struct BlendModeBuilderError;
+
+impl From<UninitializedFieldError> for BlendModeBuilderError {
+    fn from(_: UninitializedFieldError) -> Self {
+        Self
+    }
+}
+
 /// Specifies the [depth bounds tests], [stencil test], and [depth test] pipeline state.
 ///
 /// [depth bounds tests]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#fragops-dbt
@@ -153,7 +164,11 @@ impl BlendModeBuilder {
 /// [depth test]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#fragops-depth
 #[derive(Builder, Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[builder(
-    build_fn(private, name = "fallible_build"),
+    build_fn(
+        private,
+        name = "fallible_build",
+        error = "DepthStencilModeBuilderError"
+    ),
     derive(Debug),
     pattern = "owned"
 )]
@@ -315,6 +330,15 @@ impl DepthStencilModeBuilder {
     }
 }
 
+#[derive(Debug)]
+struct DepthStencilModeBuilderError;
+
+impl From<UninitializedFieldError> for DepthStencilModeBuilderError {
+    fn from(_: UninitializedFieldError) -> Self {
+        Self
+    }
+}
+
 /// Smart pointer handle to a [pipeline] object.
 ///
 /// Also contains information about the object.
@@ -331,6 +355,9 @@ pub struct GraphicPipeline {
     pub(crate) push_constants: Vec<vk::PushConstantRange>,
     shader_modules: Vec<vk::ShaderModule>,
     pub(super) state: GraphicPipelineState,
+
+    // Used in debug mode
+    #[allow(dead_code)]
     pub(crate) write_attachments: HashSet<u32>,
 }
 
@@ -352,9 +379,10 @@ impl GraphicPipeline {
     /// # use std::sync::Arc;
     /// # use ash::vk;
     /// # use screen_13::driver::{Device, DriverConfig, DriverError};
-    /// # use screen_13::driver::{GraphicPipeline, GraphicPipelineInfo, Shader};
+    /// # use screen_13::driver::graphic::{GraphicPipeline, GraphicPipelineInfo};
+    /// # use screen_13::driver::shader::Shader;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build().unwrap())?);
+    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
     /// # let my_frag_code = [0u8; 1];
     /// # let my_vert_code = [0u8; 1];
     /// // shader code is raw SPIR-V code as bytes
@@ -550,7 +578,11 @@ impl Drop for GraphicPipeline {
 /// Information used to create a [`GraphicPipeline`] instance.
 #[derive(Builder, Clone, Debug, Eq, Hash, PartialEq)]
 #[builder(
-    build_fn(private, name = "fallible_build"),
+    build_fn(
+        private,
+        name = "fallible_build",
+        error = "GraphicPipelineInfoBuilderError"
+    ),
     derive(Clone, Debug),
     pattern = "owned"
 )]
@@ -624,15 +656,6 @@ impl GraphicPipelineInfo {
     }
 }
 
-// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
-impl GraphicPipelineInfoBuilder {
-    /// Builds a new `GraphicPipelineInfo`.
-    pub fn build(self) -> GraphicPipelineInfo {
-        self.fallible_build()
-            .expect("All required fields set at initialization")
-    }
-}
-
 impl Default for GraphicPipelineInfo {
     fn default() -> Self {
         Self::new().build()
@@ -642,6 +665,24 @@ impl Default for GraphicPipelineInfo {
 impl From<GraphicPipelineInfoBuilder> for GraphicPipelineInfo {
     fn from(info: GraphicPipelineInfoBuilder) -> Self {
         info.build()
+    }
+}
+
+// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
+impl GraphicPipelineInfoBuilder {
+    /// Builds a new `GraphicPipelineInfo`.
+    pub fn build(self) -> GraphicPipelineInfo {
+        self.fallible_build()
+            .expect("All required fields set at initialization")
+    }
+}
+
+#[derive(Debug)]
+struct GraphicPipelineInfoBuilderError;
+
+impl From<UninitializedFieldError> for GraphicPipelineInfoBuilderError {
+    fn from(_: UninitializedFieldError) -> Self {
+        Self
     }
 }
 
@@ -733,7 +774,7 @@ impl Default for StencilMode {
 }
 
 #[derive(Debug, Default)]
-pub struct VertexInputState {
+pub(super) struct VertexInputState {
     pub vertex_binding_descriptions: Vec<vk::VertexInputBindingDescription>,
     pub vertex_attribute_descriptions: Vec<vk::VertexInputAttributeDescription>,
 }

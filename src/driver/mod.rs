@@ -9,9 +9,9 @@
 //!
 //! The following resources are available:
 //!
-//! - [`AccelerationStructure`]
-//! - [`Buffer`]
-//! - [`Image`]
+//! - [`AccelerationStructure`](accel_struct::AccelerationStructure)
+//! - [`Buffer`](buffer::Buffer)
+//! - [`Image`](image::Image)
 //!
 //! # Pipelines
 //!
@@ -22,49 +22,32 @@
 //!
 //! The following pipelines are available:
 //!
-//! - [`ComputePipeline`]
-//! - [`GraphicPipeline`]
-//! - [`RayTracePipeline`]
+//! - [`ComputePipeline`](compute::ComputePipeline)
+//! - [`GraphicPipeline`](graphic::GraphicPipeline)
+//! - [`RayTracePipeline`](ray_trace::RayTracePipeline)
 
-mod accel_struct;
-mod buffer;
+pub mod accel_struct;
+pub mod buffer;
+pub mod compute;
+pub mod graphic;
+pub mod image;
+pub mod ray_trace;
+pub mod shader;
+
 mod cmd_buf;
-mod compute;
 mod descriptor_set;
 mod descriptor_set_layout;
 mod device;
-mod graphic;
-mod image;
 mod instance;
 mod physical_device;
-mod ray_trace;
 mod render_pass;
-mod shader;
 mod surface;
 mod swapchain;
 
 pub use {
     self::{
-        accel_struct::{
-            AccelerationStructure, AccelerationStructureGeometry,
-            AccelerationStructureGeometryData, AccelerationStructureGeometryInfo,
-            AccelerationStructureInfo, AccelerationStructureInfoBuilder, AccelerationStructureSize,
-            DeviceOrHostAddress,
-        },
-        buffer::{Buffer, BufferInfo, BufferInfoBuilder, BufferSubresource},
-        compute::{ComputePipeline, ComputePipelineInfo, ComputePipelineInfoBuilder},
         device::{Device, FeatureFlags},
-        graphic::{
-            BlendMode, DepthStencilMode, GraphicPipeline, GraphicPipelineInfo,
-            GraphicPipelineInfoBuilder, StencilMode,
-        },
-        image::{Image, ImageInfo, ImageInfoBuilder, ImageSubresource, ImageType, SampleCount},
         physical_device::{PhysicalDevice, QueueFamily, QueueFamilyProperties},
-        ray_trace::{
-            RayTracePipeline, RayTracePipelineInfo, RayTracePipelineInfoBuilder,
-            RayTraceShaderGroup, RayTraceShaderGroupType,
-        },
-        shader::{Shader, ShaderBuilder, SpecializationInfo},
     },
     ash::{self},
     vk_sync::AccessType,
@@ -74,21 +57,24 @@ pub(crate) use self::{
     cmd_buf::CommandBuffer,
     descriptor_set::{DescriptorPool, DescriptorPoolInfo, DescriptorSet},
     descriptor_set_layout::DescriptorSetLayout,
-    image::ImageViewInfo,
     instance::Instance,
     render_pass::{
         AttachmentInfo, AttachmentRef, FramebufferKey, FramebufferKeyAttachment, RenderPass,
         RenderPassInfo, SubpassDependency, SubpassInfo,
     },
-    shader::{DescriptorBinding, DescriptorBindingMap, DescriptorInfo, PipelineDescriptorInfo},
+    shader::{DescriptorBinding, DescriptorBindingMap, DescriptorInfo},
     surface::Surface,
     swapchain::{Swapchain, SwapchainError, SwapchainImage, SwapchainInfo},
 };
 
 use {
-    self::graphic::VertexInputState,
+    self::{
+        buffer::{Buffer, BufferInfo},
+        graphic::{DepthStencilMode, GraphicPipeline, VertexInputState},
+        image::{Image, ImageInfo, ImageType, SampleCount},
+    },
     ash::vk,
-    derive_builder::Builder,
+    derive_builder::{Builder, UninitializedFieldError},
     log::{debug, info, trace, warn},
     raw_window_handle::HasRawWindowHandle,
     std::{
@@ -708,7 +694,11 @@ impl Driver {
 /// A list of required features. Features that are supported but not required will not be
 /// available.
 #[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
-#[builder(pattern = "owned", derive(Debug))]
+#[builder(
+    pattern = "owned",
+    build_fn(private, name = "fallible_build", error = "DriverConfigBuilderError"),
+    derive(Debug)
+)]
 pub struct DriverConfig {
     /// Enables Vulkan validation layers.
     ///
@@ -760,6 +750,23 @@ impl DriverConfig {
             presentation: true,
             ray_tracing: self.ray_tracing,
         }
+    }
+}
+
+// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
+impl DriverConfigBuilder {
+    /// Builds a new `DriverConfig`.
+    pub fn build(self) -> DriverConfig {
+        self.fallible_build().unwrap()
+    }
+}
+
+#[derive(Debug)]
+struct DriverConfigBuilderError;
+
+impl From<UninitializedFieldError> for DriverConfigBuilderError {
+    fn from(_: UninitializedFieldError) -> Self {
+        Self
     }
 }
 

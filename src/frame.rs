@@ -1,7 +1,7 @@
 use {
     crate::{
         driver::Device,
-        graph::{RenderGraph, SwapchainImageNode},
+        graph::{node::SwapchainImageNode, RenderGraph},
     },
     std::sync::Arc,
     winit::{dpi::PhysicalPosition, event::Event, window::Window},

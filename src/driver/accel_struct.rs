@@ -1,7 +1,7 @@
 use {
     super::{access_type_from_u8, access_type_into_u8, Buffer, BufferInfo, Device, DriverError},
     ash::vk,
-    derive_builder::Builder,
+    derive_builder::{Builder, UninitializedFieldError},
     log::warn,
     std::{
         mem::size_of,
@@ -31,9 +31,9 @@ use {
 /// # use std::sync::Arc;
 /// # use ash::vk;
 /// # use screen_13::driver::{AccessType, Device, DriverConfig, DriverError};
-/// # use screen_13::driver::{AccelerationStructure, AccelerationStructureInfo};
+/// # use screen_13::driver::accel_struct::{AccelerationStructure, AccelerationStructureInfo};
 /// # fn main() -> Result<(), DriverError> {
-/// # let device = Arc::new(Device::new(DriverConfig::new().ray_tracing(true).build().unwrap())?);
+/// # let device = Arc::new(Device::new(DriverConfig::new().ray_tracing(true).build())?);
 /// # const SIZE: vk::DeviceSize = 1024;
 /// # let info = AccelerationStructureInfo::new_blas(SIZE);
 /// # let my_accel_struct = AccelerationStructure::create(&device, info)?;
@@ -64,9 +64,9 @@ impl AccelerationStructure {
     /// # use std::sync::Arc;
     /// # use ash::vk;
     /// # use screen_13::driver::{Device, DriverConfig, DriverError};
-    /// # use screen_13::driver::{AccelerationStructure, AccelerationStructureInfo};
+    /// # use screen_13::driver::accel_struct::{AccelerationStructure, AccelerationStructureInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().ray_tracing(true).build().unwrap())?);
+    /// # let device = Arc::new(Device::new(DriverConfig::new().ray_tracing(true).build())?);
     /// const SIZE: vk::DeviceSize = 1024;
     /// let info = AccelerationStructureInfo::new_blas(SIZE);
     /// let accel_struct = AccelerationStructure::create(&device, info)?;
@@ -140,9 +140,9 @@ impl AccelerationStructure {
     /// # use std::sync::Arc;
     /// # use ash::vk;
     /// # use screen_13::driver::{AccessType, Device, DriverConfig, DriverError};
-    /// # use screen_13::driver::{AccelerationStructure, AccelerationStructureInfo};
+    /// # use screen_13::driver::accel_struct::{AccelerationStructure, AccelerationStructureInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().ray_tracing(true).build().unwrap())?);
+    /// # let device = Arc::new(Device::new(DriverConfig::new().ray_tracing(true).build())?);
     /// # const SIZE: vk::DeviceSize = 1024;
     /// # let info = AccelerationStructureInfo::new_blas(SIZE);
     /// # let my_accel_struct = AccelerationStructure::create(&device, info)?;
@@ -181,9 +181,9 @@ impl AccelerationStructure {
     /// # use std::sync::Arc;
     /// # use ash::vk;
     /// # use screen_13::driver::{AccessType, Device, DriverConfig, DriverError};
-    /// # use screen_13::driver::{AccelerationStructure, AccelerationStructureInfo};
+    /// # use screen_13::driver::accel_struct::{AccelerationStructure, AccelerationStructureInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().ray_tracing(true).build().unwrap())?);
+    /// # let device = Arc::new(Device::new(DriverConfig::new().ray_tracing(true).build())?);
     /// # const SIZE: vk::DeviceSize = 1024;
     /// # let info = AccelerationStructureInfo::new_blas(SIZE);
     /// # let my_accel_struct = AccelerationStructure::create(&device, info)?;
@@ -226,9 +226,9 @@ impl AccelerationStructure {
     /// # use std::sync::Arc;
     /// # use ash::vk;
     /// # use screen_13::driver::{Device, DriverConfig, DriverError};
-    /// # use screen_13::driver::{AccelerationStructure, AccelerationStructureGeometry, AccelerationStructureGeometryData, AccelerationStructureGeometryInfo, DeviceOrHostAddress};
+    /// # use screen_13::driver::accel_struct::{AccelerationStructure, AccelerationStructureGeometry, AccelerationStructureGeometryData, AccelerationStructureGeometryInfo, DeviceOrHostAddress};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().ray_tracing(true).build().unwrap())?);
+    /// # let device = Arc::new(Device::new(DriverConfig::new().ray_tracing(true).build())?);
     /// # let my_geom = AccelerationStructureGeometryData::Triangles {
     /// #     index_data: DeviceOrHostAddress::DeviceAddress(0),
     /// #     index_type: vk::IndexType::UINT32,
@@ -580,7 +580,11 @@ pub enum AccelerationStructureGeometryData {
 /// Information used to create an [`AccelerationStructure`] instance.
 #[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[builder(
-    build_fn(private, name = "fallible_build"),
+    build_fn(
+        private,
+        name = "fallible_build",
+        error = "AccelerationStructureInfoBuilderError"
+    ),
     derive(Debug),
     pattern = "owned"
 )]
@@ -612,6 +616,10 @@ impl AccelerationStructureInfo {
     }
 }
 
+impl From<AccelerationStructureInfo> for () {
+    fn from(_: AccelerationStructureInfo) -> Self {}
+}
+
 // HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
 impl AccelerationStructureInfoBuilder {
     /// Builds a new `AccelerationStructureInfo`.
@@ -621,15 +629,20 @@ impl AccelerationStructureInfoBuilder {
     }
 }
 
-impl From<AccelerationStructureInfo> for () {
-    fn from(_: AccelerationStructureInfo) -> Self {}
+#[derive(Debug)]
+struct AccelerationStructureInfoBuilderError;
+
+impl From<UninitializedFieldError> for AccelerationStructureInfoBuilderError {
+    fn from(_: UninitializedFieldError) -> Self {
+        Self
+    }
 }
 
 /// Holds the results of the [`AccelerationStructure::size_of`] function.
 #[derive(Clone, Copy, Debug)]
 pub struct AccelerationStructureSize {
     /// The size of the scratch buffer required when updating an acceleration structure using the
-    /// [`Acceleration::build_structure`](super::super::graph::Acceleration::build_structure)
+    /// [`Acceleration::build_structure`](super::super::graph::pass_ref::Acceleration::build_structure)
     /// function.
     pub build_size: vk::DeviceSize,
 
@@ -638,7 +651,7 @@ pub struct AccelerationStructureSize {
     pub create_size: vk::DeviceSize,
 
     /// The size of the scratch buffer required when updating an acceleration structure using the
-    /// [`Acceleration::update_structure`](super::super::graph::Acceleration::update_structure)
+    /// [`Acceleration::update_structure`](super::super::graph::pass_ref::Acceleration::update_structure)
     /// function.
     pub update_size: vk::DeviceSize,
 }

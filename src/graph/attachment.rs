@@ -1,5 +1,5 @@
 use {
-    super::{super::driver::SampleCount, AttachmentIndex, NodeIndex},
+    super::{super::driver::image::SampleCount, AttachmentIndex, NodeIndex},
     ash::vk,
     std::collections::BTreeSet,
 };

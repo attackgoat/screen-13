@@ -1,0 +1,23 @@
+#!/bin/sh
+
+set -e
+
+# Build everything
+cargo build --examples
+
+# Run the "test" example first
+cargo run --example fuzzer
+
+# Run all regular examples, in debug mode, next
+cargo run --example hello_world
+cargo run --example font_bmp
+cargo run --example egui
+cargo run --example imgui
+cargo run --example multipass
+cargo run --example triangle
+cargo run --example rt_triangle
+cargo run --example ray_trace
+cargo run --example transitions
+
+# Run this one in release mode
+cargo run --manifest-path examples/shader-toy/Cargo.toml --release

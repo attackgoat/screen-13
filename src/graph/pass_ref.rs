@@ -1,15 +1,19 @@
 use {
     super::{
         AccelerationStructureLeaseNode, AccelerationStructureNode, AnyAccelerationStructureNode,
-        AnyBufferNode, AnyImageNode, Area, Attachment, AttachmentIndex, Bind, Binding,
-        BufferLeaseNode, BufferNode, ClearColorValue, Descriptor, Edge, Execution,
-        ExecutionFunction, ExecutionPipeline, ImageLeaseNode, ImageNode, Information, Node,
-        NodeIndex, Pass, RenderGraph, SampleCount, Subresource, SubresourceAccess,
-        SwapchainImageNode, View, ViewType,
+        AnyBufferNode, AnyImageNode, Area, Attachment, Bind, Binding, BufferLeaseNode, BufferNode,
+        ClearColorValue, Edge, Execution, ExecutionFunction, ExecutionPipeline, ImageLeaseNode,
+        ImageNode, Information, Node, NodeIndex, Pass, RenderGraph, SampleCount,
+        SwapchainImageNode,
     },
     crate::driver::{
-        AccelerationStructure, AccelerationStructureGeometryInfo, Buffer, ComputePipeline,
-        DepthStencilMode, Device, GraphicPipeline, Image, ImageViewInfo, RayTracePipeline,
+        accel_struct::{AccelerationStructure, AccelerationStructureGeometryInfo},
+        buffer::{Buffer, BufferSubresource},
+        compute::ComputePipeline,
+        graphic::{DepthStencilMode, GraphicPipeline},
+        image::{Image, ImageSubresource, ImageViewInfo},
+        ray_trace::RayTracePipeline,
+        Device,
     },
     ash::vk,
     log::trace,
@@ -21,6 +25,12 @@ use {
     },
     vk_sync::AccessType,
 };
+
+// Aliases for clarity
+pub type AttachmentIndex = u32;
+pub type BindingIndex = u32;
+pub type BindingOffset = u32;
+pub type DescriptorSetIndex = u32;
 
 pub struct Acceleration<'a> {
     bindings: Bindings<'a>,
@@ -400,6 +410,69 @@ impl<'a> Compute<'a> {
         }
 
         self
+    }
+}
+
+/// Describes the SPIR-V binding index, and optionally a specific descriptor set
+/// and array index.
+///
+/// Generally you might pass a function a descriptor using a simple integer:
+///
+/// ```rust
+/// # fn my_func(_: usize, _: ()) {}
+/// # let image = ();
+/// let descriptor = 42;
+/// my_func(descriptor, image);
+/// ```
+///
+/// But also:
+///
+/// - `(0, 42)` for descriptor set `0` and binding index `42`
+/// - `(42, [8])` for the same binding, but the 8th element
+/// - `(0, 42, [8])` same as the previous example
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum Descriptor {
+    ArrayBinding(DescriptorSetIndex, BindingIndex, BindingOffset),
+    Binding(DescriptorSetIndex, BindingIndex),
+}
+
+impl Descriptor {
+    pub(super) fn into_tuple(self) -> (DescriptorSetIndex, BindingIndex, BindingOffset) {
+        match self {
+            Self::ArrayBinding(descriptor_set_idx, binding_idx, binding_offset) => {
+                (descriptor_set_idx, binding_idx, binding_offset)
+            }
+            Self::Binding(descriptor_set_idx, binding_idx) => (descriptor_set_idx, binding_idx, 0),
+        }
+    }
+
+    pub(super) fn set(self) -> DescriptorSetIndex {
+        let (res, _, _) = self.into_tuple();
+        res
+    }
+}
+
+impl From<BindingIndex> for Descriptor {
+    fn from(val: BindingIndex) -> Self {
+        Self::Binding(0, val)
+    }
+}
+
+impl From<(DescriptorSetIndex, BindingIndex)> for Descriptor {
+    fn from(tuple: (DescriptorSetIndex, BindingIndex)) -> Self {
+        Self::Binding(tuple.0, tuple.1)
+    }
+}
+
+impl From<(BindingIndex, [BindingOffset; 1])> for Descriptor {
+    fn from(tuple: (BindingIndex, [BindingOffset; 1])) -> Self {
+        Self::ArrayBinding(0, tuple.0, tuple.1[0])
+    }
+}
+
+impl From<(DescriptorSetIndex, BindingIndex, [BindingOffset; 1])> for Descriptor {
+    fn from(tuple: (DescriptorSetIndex, BindingIndex, [BindingOffset; 1])) -> Self {
+        Self::ArrayBinding(tuple.0, tuple.1, tuple.2[0])
     }
 }
 
@@ -2142,5 +2215,161 @@ impl<'a> RayTrace<'a> {
         //         );
         // });
         self
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Subresource {
+    AccelerationStructure,
+    Image(ImageSubresource),
+    Buffer(BufferSubresource),
+}
+
+impl Subresource {
+    pub(super) fn unwrap_buffer(self) -> BufferSubresource {
+        if let Self::Buffer(subresource) = self {
+            subresource
+        } else {
+            unreachable!();
+        }
+    }
+
+    pub(super) fn unwrap_image(self) -> ImageSubresource {
+        if let Self::Image(subresource) = self {
+            subresource
+        } else {
+            unreachable!();
+        }
+    }
+}
+
+impl From<()> for Subresource {
+    fn from(_: ()) -> Self {
+        Self::AccelerationStructure
+    }
+}
+
+impl From<ImageSubresource> for Subresource {
+    fn from(subresource: ImageSubresource) -> Self {
+        Self::Image(subresource)
+    }
+}
+
+impl From<BufferSubresource> for Subresource {
+    fn from(subresource: BufferSubresource) -> Self {
+        Self::Buffer(subresource)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(super) struct SubresourceAccess {
+    pub access: AccessType,
+    pub subresource: Option<Subresource>,
+}
+
+pub trait View: Node
+where
+    Self::Information: Clone,
+    Self::Subresource: Into<Subresource>,
+{
+    type Information;
+    type Subresource;
+}
+
+impl View for AccelerationStructureNode {
+    type Information = ();
+    type Subresource = ();
+}
+
+impl View for AccelerationStructureLeaseNode {
+    type Information = ();
+    type Subresource = ();
+}
+
+impl View for AnyAccelerationStructureNode {
+    type Information = ();
+    type Subresource = ();
+}
+
+impl View for AnyBufferNode {
+    type Information = BufferSubresource;
+    type Subresource = BufferSubresource;
+}
+
+impl View for AnyImageNode {
+    type Information = ImageViewInfo;
+    type Subresource = ImageSubresource;
+}
+
+impl View for BufferLeaseNode {
+    type Information = BufferSubresource;
+    type Subresource = BufferSubresource;
+}
+
+impl View for BufferNode {
+    type Information = BufferSubresource;
+    type Subresource = BufferSubresource;
+}
+
+impl View for ImageLeaseNode {
+    type Information = ImageViewInfo;
+    type Subresource = ImageSubresource;
+}
+
+impl View for ImageNode {
+    type Information = ImageViewInfo;
+    type Subresource = ImageSubresource;
+}
+
+impl View for SwapchainImageNode {
+    type Information = ImageViewInfo;
+    type Subresource = ImageSubresource;
+}
+
+#[derive(Debug)]
+pub enum ViewType {
+    AccelerationStructure,
+    Image(ImageViewInfo),
+    Buffer(Range<vk::DeviceSize>),
+}
+
+impl ViewType {
+    pub(super) fn as_buffer(&self) -> Option<&Range<vk::DeviceSize>> {
+        match self {
+            Self::Buffer(view_info) => Some(view_info),
+            _ => None,
+        }
+    }
+
+    pub(super) fn as_image(&self) -> Option<&ImageViewInfo> {
+        match self {
+            Self::Image(view_info) => Some(view_info),
+            _ => None,
+        }
+    }
+}
+
+// TODO: Remove this
+impl From<()> for ViewType {
+    fn from(_: ()) -> Self {
+        Self::AccelerationStructure
+    }
+}
+
+impl From<BufferSubresource> for ViewType {
+    fn from(subresource: BufferSubresource) -> Self {
+        Self::Buffer(subresource.start..subresource.end)
+    }
+}
+
+impl From<ImageViewInfo> for ViewType {
+    fn from(info: ImageViewInfo) -> Self {
+        Self::Image(info)
+    }
+}
+
+impl From<Range<vk::DeviceSize>> for ViewType {
+    fn from(range: Range<vk::DeviceSize>) -> Self {
+        Self::Buffer(range)
     }
 }

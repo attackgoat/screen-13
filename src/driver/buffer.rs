@@ -1,7 +1,7 @@
 use {
     super::{access_type_from_u8, access_type_into_u8, Device, DriverError},
     ash::vk,
-    derive_builder::Builder,
+    derive_builder::{Builder, UninitializedFieldError},
     gpu_allocator::{
         vulkan::{Allocation, AllocationCreateDesc},
         MemoryLocation,
@@ -35,9 +35,9 @@ use {
 /// # use std::sync::Arc;
 /// # use ash::vk;
 /// # use screen_13::driver::{AccessType, Device, DriverConfig, DriverError};
-/// # use screen_13::driver::{Buffer, BufferInfo};
+/// # use screen_13::driver::buffer::{Buffer, BufferInfo};
 /// # fn main() -> Result<(), DriverError> {
-/// # let device = Arc::new(Device::new(DriverConfig::new().build().unwrap())?);
+/// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
 /// # let info = BufferInfo::new(8, vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS);
 /// # let my_buf = Buffer::create(&device, info)?;
 /// let addr = Buffer::device_address(&my_buf);
@@ -67,9 +67,9 @@ impl Buffer {
     /// # use std::sync::Arc;
     /// # use ash::vk;
     /// # use screen_13::driver::{Device, DriverConfig, DriverError};
-    /// # use screen_13::driver::{Buffer, BufferInfo};
+    /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build().unwrap())?);
+    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
     /// const SIZE: vk::DeviceSize = 1024;
     /// let info = BufferInfo::new_mappable(SIZE, vk::BufferUsageFlags::UNIFORM_BUFFER);
     /// let buf = Buffer::create(&device, info)?;
@@ -160,9 +160,9 @@ impl Buffer {
     /// # use std::sync::Arc;
     /// # use ash::vk;
     /// # use screen_13::driver::{Device, DriverConfig, DriverError};
-    /// # use screen_13::driver::{Buffer, BufferInfo};
+    /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build().unwrap())?);
+    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
     /// const DATA: [u8; 4] = [0xfe, 0xed, 0xbe, 0xef];
     /// let buf = Buffer::create_from_slice(&device, vk::BufferUsageFlags::UNIFORM_BUFFER, &DATA)?;
     ///
@@ -206,9 +206,9 @@ impl Buffer {
     /// # use std::sync::Arc;
     /// # use ash::vk;
     /// # use screen_13::driver::{AccessType, Device, DriverConfig, DriverError};
-    /// # use screen_13::driver::{Buffer, BufferInfo};
+    /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build().unwrap())?);
+    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
     /// # const SIZE: vk::DeviceSize = 1024;
     /// # let info = BufferInfo::new(SIZE, vk::BufferUsageFlags::STORAGE_BUFFER);
     /// # let my_buf = Buffer::create(&device, info)?;
@@ -251,9 +251,9 @@ impl Buffer {
     /// # use std::sync::Arc;
     /// # use ash::vk;
     /// # use screen_13::driver::{Device, DriverConfig, DriverError};
-    /// # use screen_13::driver::{Buffer, BufferInfo};
+    /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build().unwrap())?);
+    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
     /// # let info = BufferInfo::new_mappable(4, vk::BufferUsageFlags::empty());
     /// # let mut my_buf = Buffer::create(&device, info)?;
     /// const DATA: [u8; 4] = [0xde, 0xad, 0xc0, 0xde];
@@ -281,9 +281,9 @@ impl Buffer {
     /// # use std::sync::Arc;
     /// # use ash::vk;
     /// # use screen_13::driver::{Device, DriverConfig, DriverError};
-    /// # use screen_13::driver::{Buffer, BufferInfo};
+    /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build().unwrap())?);
+    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
     /// # let info = BufferInfo::new_mappable(4, vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS);
     /// # let my_buf = Buffer::create(&device, info)?;
     /// let addr = Buffer::device_address(&my_buf);
@@ -313,9 +313,9 @@ impl Buffer {
     /// # use std::sync::Arc;
     /// # use ash::vk;
     /// # use screen_13::driver::{Device, DriverConfig, DriverError};
-    /// # use screen_13::driver::{Buffer, BufferInfo};
+    /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build().unwrap())?);
+    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
     /// # const DATA: [u8; 4] = [0; 4];
     /// # let my_buf = Buffer::create_from_slice(&device, vk::BufferUsageFlags::empty(), &DATA)?;
     /// // my_buf is mappable and filled with four zeroes
@@ -344,9 +344,9 @@ impl Buffer {
     /// # use ash::vk;
     /// # use glam::Mat4;
     /// # use screen_13::driver::{Device, DriverConfig, DriverError};
-    /// # use screen_13::driver::{Buffer, BufferInfo};
+    /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build().unwrap())?);
+    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
     /// # const DATA: [u8; 4] = [0; 4];
     /// # let mut my_buf = Buffer::create_from_slice(&device, vk::BufferUsageFlags::empty(), &DATA)?;
     /// let mut data = Buffer::mapped_slice_mut(&mut my_buf);
@@ -407,15 +407,17 @@ impl Drop for Buffer {
 /// Information used to create a [`Buffer`] instance.
 #[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[builder(
-    build_fn(private, name = "fallible_build"),
+    build_fn(private, name = "fallible_build", error = "BufferInfoBuilderError"),
     derive(Debug),
     pattern = "owned"
 )]
 pub struct BufferInfo {
     /// Size in bytes of the buffer to be created.
+    #[builder(default)]
     pub size: vk::DeviceSize,
 
     /// A bitmask of specifying allowed usages of the buffer.
+    #[builder(default)]
     pub usage: vk::BufferUsageFlags,
 
     /// Specifies a buffer whose memory is host visible and may be mapped.
@@ -457,6 +459,15 @@ impl BufferInfoBuilder {
 impl From<BufferInfoBuilder> for BufferInfo {
     fn from(info: BufferInfoBuilder) -> Self {
         info.build()
+    }
+}
+
+#[derive(Debug)]
+struct BufferInfoBuilderError;
+
+impl From<UninitializedFieldError> for BufferInfoBuilderError {
+    fn from(_: UninitializedFieldError) -> Self {
+        Self
     }
 }
 

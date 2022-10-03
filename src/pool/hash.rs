@@ -1,9 +1,13 @@
 use {
     super::{Cache, Lease, Pool},
     crate::driver::{
-        AccelerationStructure, AccelerationStructureInfo, AccelerationStructureInfoBuilder, Buffer,
-        BufferInfo, BufferInfoBuilder, CommandBuffer, DescriptorPool, DescriptorPoolInfo, Device,
-        DriverError, Image, ImageInfo, ImageInfoBuilder, QueueFamily, RenderPass, RenderPassInfo,
+        accel_struct::{
+            AccelerationStructure, AccelerationStructureInfo, AccelerationStructureInfoBuilder,
+        },
+        buffer::{Buffer, BufferInfo, BufferInfoBuilder},
+        image::{Image, ImageInfo, ImageInfoBuilder},
+        CommandBuffer, DescriptorPool, DescriptorPoolInfo, Device, DriverError, QueueFamily,
+        RenderPass, RenderPassInfo,
     },
     parking_lot::Mutex,
     std::{

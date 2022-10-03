@@ -1,10 +1,13 @@
 use {
     super::{Cache, Lease, Pool},
     crate::driver::{
-        AccelerationStructure, AccelerationStructureInfo, AccelerationStructureInfoBuilder, Buffer,
-        BufferInfo, BufferInfoBuilder, CommandBuffer, DescriptorPool, DescriptorPoolInfo, Device,
-        DriverError, Image, ImageInfo, ImageInfoBuilder, ImageType, QueueFamily, RenderPass,
-        RenderPassInfo, SampleCount,
+        accel_struct::{
+            AccelerationStructure, AccelerationStructureInfo, AccelerationStructureInfoBuilder,
+        },
+        buffer::{Buffer, BufferInfo, BufferInfoBuilder},
+        image::{Image, ImageInfo, ImageInfoBuilder, ImageType, SampleCount},
+        CommandBuffer, DescriptorPool, DescriptorPoolInfo, Device, DriverError, QueueFamily,
+        RenderPass, RenderPassInfo,
     },
     ash::vk,
     parking_lot::Mutex,

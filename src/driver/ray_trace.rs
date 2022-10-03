@@ -1,10 +1,11 @@
 use {
     super::{
-        merge_push_constant_ranges, DescriptorBindingMap, Device, DriverError,
-        PhysicalDeviceRayTracePipelineProperties, PipelineDescriptorInfo, Shader,
+        merge_push_constant_ranges,
+        shader::{DescriptorBindingMap, PipelineDescriptorInfo, Shader},
+        Device, DriverError, PhysicalDeviceRayTracePipelineProperties,
     },
     ash::vk,
-    derive_builder::Builder,
+    derive_builder::{Builder, UninitializedFieldError},
     log::warn,
     std::{ffi::CString, ops::Deref, sync::Arc, thread::panicking},
 };
@@ -57,9 +58,10 @@ impl RayTracePipeline {
     /// # use std::sync::Arc;
     /// # use ash::vk;
     /// # use screen_13::driver::{Device, DriverConfig, DriverError};
-    /// # use screen_13::driver::{RayTracePipeline, RayTracePipelineInfo, RayTraceShaderGroup, Shader};
+    /// # use screen_13::driver::ray_trace::{RayTracePipeline, RayTracePipelineInfo, RayTraceShaderGroup};
+    /// # use screen_13::driver::shader::Shader;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build().unwrap())?);
+    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
     /// # let my_rgen_code = [0u8; 1];
     /// # let my_chit_code = [0u8; 1];
     /// # let my_miss_code = [0u8; 1];
@@ -339,7 +341,11 @@ impl Drop for RayTracePipeline {
 /// Information used to create a [`RayTracePipeline`] instance.
 #[derive(Builder, Clone, Debug, Eq, Hash, PartialEq)]
 #[builder(
-    build_fn(private, name = "fallible_build"),
+    build_fn(
+        private,
+        name = "fallible_build",
+        error = "RayTracePipelineInfoBuilderError"
+    ),
     derive(Clone, Debug),
     pattern = "owned"
 )]
@@ -404,6 +410,15 @@ impl RayTracePipelineInfoBuilder {
     pub fn build(self) -> RayTracePipelineInfo {
         self.fallible_build()
             .expect("All required fields set at initialization")
+    }
+}
+
+#[derive(Debug)]
+struct RayTracePipelineInfoBuilderError;
+
+impl From<UninitializedFieldError> for RayTracePipelineInfoBuilderError {
+    fn from(_: UninitializedFieldError) -> Self {
+        Self
     }
 }
 

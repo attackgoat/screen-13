@@ -296,10 +296,7 @@ impl EventLoopBuilder {
 
 impl EventLoopBuilder {
     pub fn build(self) -> Result<EventLoop, DriverError> {
-        let cfg = self
-            .driver_cfg
-            .build()
-            .map_err(|_| DriverError::InvalidData)?; // TODO: More like invalid input
+        let cfg = self.driver_cfg.build();
 
         // Create an operating system window via Winit
         let window = self.window.build(&self.event_loop).map_err(|err| {

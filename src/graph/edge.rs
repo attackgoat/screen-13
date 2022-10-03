@@ -1,13 +1,13 @@
 use {
     super::{
+        pass_ref::{PassRef, PipelinePassRef},
         AccelerationStructureLeaseNode, AccelerationStructureNode, BufferLeaseNode, BufferNode,
-        ImageLeaseNode, ImageNode, PassRef, PipelinePassRef, RenderGraph, Resolver,
-        SwapchainImageNode,
+        ImageLeaseNode, ImageNode, RenderGraph, Resolver, SwapchainImageNode,
     },
     crate::{
         driver::{
-            AccelerationStructure, Buffer, ComputePipeline, GraphicPipeline, Image,
-            RayTracePipeline, SwapchainImage,
+            accel_struct::AccelerationStructure, buffer::Buffer, compute::ComputePipeline,
+            graphic::GraphicPipeline, image::Image, ray_trace::RayTracePipeline, SwapchainImage,
         },
         pool::Lease,
     },

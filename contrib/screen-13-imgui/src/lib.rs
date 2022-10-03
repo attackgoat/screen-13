@@ -80,11 +80,11 @@ impl ImGui {
             .expect("Unable to prepare ImGui frame");
 
         // Let the caller draw the GUI
-        let mut ui = self.context.frame();
+        let ui = self.context.frame();
 
-        ui_func(&mut ui);
+        ui_func(ui);
 
-        self.platform.prepare_render(&ui, window);
+        self.platform.prepare_render(ui, window);
         let draw_data = self.context.render();
 
         let image = render_graph.bind_node(
