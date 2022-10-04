@@ -71,8 +71,6 @@ impl Swapchain {
 
         match image_idx {
             Ok(image_idx) => {
-                assert_eq!(image_idx as usize, self.next_semaphore);
-
                 self.next_semaphore += 1;
                 self.next_semaphore %= self.images.len();
 
