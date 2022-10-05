@@ -1,5 +1,8 @@
+//! Documentation TODO
+
 // HACK: I'm having trouble supressing the lint at src/graph/mod.rs:650
 #![allow(clippy::match_ref_pats)]
+#![warn(missing_docs)]
 
 pub mod driver;
 pub mod graph;
@@ -52,7 +55,7 @@ pub mod prelude {
                     BufferNode, ImageLeaseNode, ImageNode, SwapchainImageNode,
                 },
                 pass_ref::{PassRef, PipelinePassRef},
-                Bind, RenderGraph,
+                Bind, RenderGraph, ResolverPool, Unbind,
             },
             input::{
                 update_input, update_keyboard, update_mouse, KeyBuf, KeyMap, MouseBuf, MouseButton,

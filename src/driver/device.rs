@@ -568,7 +568,7 @@ pub struct FeatureFlags {
 }
 
 impl FeatureFlags {
-    pub fn extension_names(&self) -> Vec<*const i8> {
+    pub(super) fn extension_names(&self) -> Vec<*const i8> {
         let mut res = vec![];
 
         #[cfg(target_os = "macos")]

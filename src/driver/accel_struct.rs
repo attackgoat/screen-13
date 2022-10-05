@@ -1,3 +1,5 @@
+//! Acceleration structure resource types
+
 use {
     super::{access_type_from_u8, access_type_into_u8, Buffer, BufferInfo, Device, DriverError},
     ash::vk,
@@ -47,9 +49,15 @@ use {
 #[derive(Debug)]
 pub struct AccelerationStructure {
     accel_struct: vk::AccelerationStructureKHR,
+
+    /// Backing storage buffer for this object.
     pub buffer: Buffer,
+
     device: Arc<Device>,
+
+    /// Information used to create this object.
     pub info: AccelerationStructureInfo,
+
     prev_access: AtomicU8,
 }
 

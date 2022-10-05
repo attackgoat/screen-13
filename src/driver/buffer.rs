@@ -1,3 +1,5 @@
+//! Buffer resource types
+
 use {
     super::{access_type_from_u8, access_type_into_u8, Device, DriverError},
     ash::vk,
@@ -51,8 +53,13 @@ pub struct Buffer {
     allocation: Option<Allocation>,
     buffer: vk::Buffer,
     device: Arc<Device>,
+
+    /// Information used to create this object.
     pub info: BufferInfo,
+
+    /// A name for debugging purposes.
     pub name: Option<String>,
+
     prev_access: AtomicU8,
 }
 

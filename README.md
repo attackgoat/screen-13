@@ -49,8 +49,8 @@ render_graph
     .read_descriptor(0, some_image)
     .read_descriptor(1, another_image)
     .read_descriptor(3, some_buf)
-    .clear_color(0)
-    .store_color(0, also_an_image)
+    .clear_color(0, swapchain_image)
+    .store_color(0, swapchain_image)
     .record_subpass(move |subpass| {
         subpass.push_constants(some_u8_slice);
         subpass.draw(6, 1, 0, 0);

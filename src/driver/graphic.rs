@@ -1,3 +1,5 @@
+//! Graphics pipeline types
+
 use {
     super::{
         image::SampleCount,
@@ -339,7 +341,7 @@ impl From<UninitializedFieldError> for DepthStencilModeBuilderError {
     }
 }
 
-/// Smart pointer handle to a [pipeline] object.
+/// Opaque representation of a [pipeline] object.
 ///
 /// Also contains information about the object.
 ///
@@ -349,7 +351,10 @@ pub struct GraphicPipeline {
     pub(crate) descriptor_bindings: DescriptorBindingMap,
     pub(crate) descriptor_info: PipelineDescriptorInfo,
     device: Arc<Device>,
+
+    /// Information used to create this object.
     pub info: GraphicPipelineInfo,
+
     pub(crate) input_attachments: HashSet<u32>,
     pub(crate) layout: vk::PipelineLayout,
     pub(crate) push_constants: Vec<vk::PushConstantRange>,
@@ -603,7 +608,8 @@ pub struct GraphicPipelineInfo {
     ///
     /// Basic usage (GLSL):
     ///
-    /// ```glsl
+    /// ```
+    /// # inline_spirv::inline_spirv!(r#"
     /// #version 460 core
     /// #extension GL_EXT_nonuniform_qualifier : require
     ///
@@ -613,6 +619,7 @@ pub struct GraphicPipelineInfo {
     /// {
     ///     // my_binding will have space for 8,192 images by default
     /// }
+    /// # "#, frag);
     /// ```
     #[builder(default = "8192")]
     pub bindless_descriptor_count: u32,

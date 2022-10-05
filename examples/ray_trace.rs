@@ -679,7 +679,7 @@ fn main() -> anyhow::Result<()> {
                 .read_node(vertex_node)
                 .write_node(blas_node)
                 .write_node(scratch_buf)
-                .record_acceleration(move |accel| {
+                .record_acceleration(move |accel, _| {
                     accel.build_structure(
                         blas_node,
                         scratch_buf,
@@ -712,7 +712,7 @@ fn main() -> anyhow::Result<()> {
                 .read_node(instance_node)
                 .write_node(scratch_buf)
                 .write_node(tlas_node)
-                .record_acceleration(move |accel| {
+                .record_acceleration(move |accel, _| {
                     accel.build_structure(
                         tlas_node,
                         scratch_buf,
@@ -858,7 +858,7 @@ fn main() -> anyhow::Result<()> {
                 AccessType::RayTracingShaderReadOther,
             )
             .access_descriptor(6, material_buf_node, AccessType::RayTracingShaderReadOther)
-            .record_ray_trace(move |ray_trace| {
+            .record_ray_trace(move |ray_trace, _| {
                 ray_trace.trace_rays(
                     &sbt_rgen,
                     &sbt_miss,

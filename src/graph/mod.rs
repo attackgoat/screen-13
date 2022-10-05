@@ -1,3 +1,7 @@
+//! Rendering operations and command submission.
+//!
+//!
+
 pub mod node;
 pub mod pass_ref;
 

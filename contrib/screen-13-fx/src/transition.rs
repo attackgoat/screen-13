@@ -1128,7 +1128,7 @@ impl TransitionPipeline {
             .read_descriptor(0, a_image)
             .read_descriptor(1, b_image)
             .write_descriptor(2, dest_image)
-            .record_compute(move |compute| {
+            .record_compute(move |compute, _| {
                 compute.push_constants(push_consts.as_slice());
                 compute.dispatch(dest_info.width, dest_info.height, 1);
             });

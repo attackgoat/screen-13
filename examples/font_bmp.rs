@@ -124,7 +124,7 @@ fn main() -> anyhow::Result<()> {
             .begin_pass("smoke")
             .bind_pipeline(&smoke_pipeline)
             .write_descriptor(0, image_node)
-            .record_compute(move |compute| {
+            .record_compute(move |compute, _| {
                 compute
                     .push_constants(&elapsed_time.as_secs_f32().to_ne_bytes())
                     .dispatch(frame.width, frame.height, 1);

@@ -913,6 +913,10 @@ pub struct PhysicalDeviceDescriptorIndexingFeatures {
     /// binding. If this feature is not enabled, VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT
     /// must not be used.
     pub descriptor_binding_variable_descriptor_count: bool,
+
+    /// Indicates whether the implementation supports the SPIR-V RuntimeDescriptorArray capability.
+    ///
+    /// If this feature is not enabled, descriptors must not be declared in runtime arrays.
     pub runtime_descriptor_array: bool,
 }
 

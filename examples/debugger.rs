@@ -178,7 +178,7 @@ fn main() -> Result<(), screen_13::DisplayError> {
             .begin_pass("This doesn't look good...")
             .bind_pipeline(&compute_pipeline)
             .write_descriptor(42, image)
-            .record_compute(|compute| {
+            .record_compute(|compute, _| {
                 compute.dispatch(1024, 1024, 1);
             });
 

@@ -217,7 +217,7 @@ impl BitmapFont {
             pass = pass.read_descriptor((0, [idx as _]), *page_node);
         }
 
-        pass.record_subpass(move |subpass| {
+        pass.record_subpass(move |subpass, _| {
             if let Some((x, y, width, height)) = scissor {
                 subpass.set_scissor(x, y, width, height);
             }

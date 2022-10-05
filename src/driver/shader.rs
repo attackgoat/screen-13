@@ -1,3 +1,5 @@
+//! Shader resource types
+
 use {
     super::{DescriptorSetLayout, Device, DriverError, SamplerDesc, VertexInputState},
     ash::vk,
@@ -267,7 +269,8 @@ pub struct Shader {
     ///
     /// Basic usage (GLSL):
     ///
-    /// ```glsl
+    /// ```
+    /// # inline_spirv::inline_spirv!(r#"
     /// #version 460 core
     ///
     /// // Defaults to 6 if not set using ComputePipelineInfo.specialization_info!
@@ -279,6 +282,7 @@ pub struct Shader {
     /// {
     ///     // Code uses MY_COUNT number of my_samplers here
     /// }
+    /// # "#, comp);
     /// ```
     ///
     /// ```no_run

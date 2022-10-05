@@ -1,3 +1,5 @@
+//! Computing pipeline types
+
 use {
     super::{
         shader::{
@@ -28,7 +30,10 @@ pub struct ComputePipeline {
     pub(crate) descriptor_info: PipelineDescriptorInfo,
     device: Arc<Device>,
     pub(crate) layout: vk::PipelineLayout,
+
+    /// Information used to create this object.
     pub info: ComputePipelineInfo,
+
     pipeline: vk::Pipeline,
     pub(crate) push_constants: Option<vk::PushConstantRange>,
 }
@@ -202,7 +207,8 @@ pub struct ComputePipelineInfo {
     ///
     /// Basic usage (GLSL):
     ///
-    /// ```glsl
+    /// ```
+    /// # inline_spirv::inline_spirv!(r#"
     /// #version 460 core
     /// #extension GL_EXT_nonuniform_qualifier : require
     ///
@@ -212,6 +218,7 @@ pub struct ComputePipelineInfo {
     /// {
     ///     // my_binding will have space for 8,192 images by default
     /// }
+    /// # "#, comp);
     /// ```
     #[builder(default = "8192")]
     pub bindless_descriptor_count: u32,
@@ -230,7 +237,8 @@ pub struct ComputePipelineInfo {
     ///
     /// Basic usage (GLSL):
     ///
-    /// ```glsl
+    /// ```
+    /// # inline_spirv::inline_spirv!(r#"
     /// #version 460 core
     ///
     /// // Defaults to 6 if not set using ComputePipelineInfo.specialization_info!
@@ -242,6 +250,7 @@ pub struct ComputePipelineInfo {
     /// {
     ///     // Code uses MY_COUNT number of my_samplers here
     /// }
+    /// # "#, comp);
     /// ```
     ///
     /// ```no_run

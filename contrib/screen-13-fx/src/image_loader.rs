@@ -198,7 +198,7 @@ impl ImageLoader {
                     .bind_pipeline(&self.decode_rgb_rgba)
                     .read_descriptor(0, pixel_buf)
                     .write_descriptor(1, temp_image)
-                    .record_compute(move |compute| {
+                    .record_compute(move |compute, _| {
                         compute
                             .push_constants(&(pixel_buf_stride >> 2).to_ne_bytes())
                             .dispatch(dispatch_x, dispatch_y, 1);

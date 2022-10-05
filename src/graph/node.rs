@@ -1,3 +1,5 @@
+//! Bindings for Vulkan smart-pointer resources.
+
 use {
     super::{Information, NodeIndex, RenderGraph, Unbind},
     crate::{
@@ -11,9 +13,14 @@ use {
     std::sync::Arc,
 };
 
+/// Specifies either an owned acceleration structure or an acceleration structure leased from a
+/// pool.
 #[derive(Debug)]
 pub enum AnyAccelerationStructureNode {
+    /// An owned acceleration structure.
     AccelerationStructure(AccelerationStructureNode),
+
+    /// An acceleration structure leased from a pool.
     AccelerationStructureLease(AccelerationStructureLeaseNode),
 }
 
@@ -57,9 +64,13 @@ impl Node for AnyAccelerationStructureNode {
     }
 }
 
+/// Specifies either an owned buffer or a buffer leased from a pool.
 #[derive(Debug)]
 pub enum AnyBufferNode {
+    /// An owned buffer.
     Buffer(BufferNode),
+
+    /// A buffer leased from a pool.
     BufferLease(BufferLeaseNode),
 }
 
@@ -103,10 +114,18 @@ impl Node for AnyBufferNode {
     }
 }
 
+/// Specifies either an owned image or an image leased from a pool.
+///
+/// The image may also be a special swapchain type of image.
 #[derive(Debug)]
 pub enum AnyImageNode {
+    /// An owned image.
     Image(ImageNode),
+
+    /// An image leased from a pool.
     ImageLease(ImageLeaseNode),
+
+    /// A special swapchain image.
     SwapchainImage(SwapchainImageNode),
 }
 

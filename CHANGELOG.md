@@ -10,6 +10,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - `clear_color` and `clear_depth_stencil` functions now take the image being cleared: it is now possible to clear and attach, but not store or resolve, an image
+- `record_`-* methods now also provide a `Bindings` parameter to the recording closure
 - `RayTracePipeline::group_handle` is now an associated function where previously it was a method
 
 ### Removed

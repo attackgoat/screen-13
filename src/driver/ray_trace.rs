@@ -1,3 +1,5 @@
+//! Ray tracing pipeline types
+
 use {
     super::{
         merge_push_constant_ranges,
@@ -29,7 +31,10 @@ pub struct RayTracePipeline {
     pub(crate) descriptor_bindings: DescriptorBindingMap,
     pub(crate) descriptor_info: PipelineDescriptorInfo,
     device: Arc<Device>,
+
+    /// Information used to create this object.
     pub info: RayTracePipelineInfo,
+
     pub(crate) layout: vk::PipelineLayout,
     pub(crate) push_constants: Vec<vk::PushConstantRange>,
     pipeline: vk::Pipeline,
@@ -359,7 +364,8 @@ pub struct RayTracePipelineInfo {
     ///
     /// Basic usage (GLSL):
     ///
-    /// ```glsl
+    /// ```
+    /// # inline_spirv::inline_spirv!(r#"
     /// #version 460 core
     /// #extension GL_EXT_nonuniform_qualifier : require
     ///
@@ -369,6 +375,7 @@ pub struct RayTracePipelineInfo {
     /// {
     ///     // my_binding will have space for 8,192 images by default
     /// }
+    /// # "#, rchit, vulkan1_2);
     /// ```
     #[builder(default = "8192")]
     pub bindless_descriptor_count: u32,

@@ -101,7 +101,7 @@ fn main() -> Result<(), DisplayError> {
             .clear_depth_stencil(depth_stencil)
             .store_depth_stencil(depth_stencil)
             .store_color(0, frame.swapchain_image)
-            .record_subpass(move |subpass| {
+            .record_subpass(move |subpass, _| {
                 subpass
                     .bind_index_buffer(index_buf, vk::IndexType::UINT16)
                     .bind_vertex_buffer(vertex_buf)
@@ -125,7 +125,7 @@ fn main() -> Result<(), DisplayError> {
             .load_depth_stencil(depth_stencil)
             .load_color(0, frame.swapchain_image)
             .store_color(0, frame.swapchain_image)
-            .record_subpass(move |subpass| {
+            .record_subpass(move |subpass, _| {
                 subpass.draw(6, 1, 0, 0);
             });
     })

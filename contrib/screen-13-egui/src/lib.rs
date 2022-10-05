@@ -273,7 +273,7 @@ impl Egui {
                         .access_descriptor((0, 0), *texture, AccessType::FragmentShaderReadOther)
                         .load_color(0, target)
                         .store_color(0, target)
-                        .record_subpass(move |subpass| {
+                        .record_subpass(move |subpass, _| {
                             subpass.bind_index_buffer(idx_buf, vk::IndexType::UINT32);
                             subpass.bind_vertex_buffer(vert_buf);
                             subpass.push_constants(cast_slice(&[push_constants]));

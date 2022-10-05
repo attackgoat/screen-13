@@ -39,7 +39,7 @@ impl ComputePresenter {
             .bind_pipeline(&self.0[0])
             .read_descriptor(0, image)
             .write_descriptor(1, swapchain)
-            .record_compute(move |compute| {
+            .record_compute(move |compute, _| {
                 compute.dispatch(swapchain_info.width, swapchain_info.height, 1);
             });
     }
@@ -65,7 +65,7 @@ impl ComputePresenter {
             .read_descriptor((0, [0]), top_image)
             .read_descriptor((0, [1]), bottom_image)
             .write_descriptor(1, swapchain)
-            .record_compute(move |compute| {
+            .record_compute(move |compute, _| {
                 compute.dispatch(swapchain_info.width, swapchain_info.height, 1);
             });
     }
@@ -119,7 +119,7 @@ impl GraphicPresenter {
             .bind_pipeline(&self.pipeline)
             .read_descriptor(0, image)
             .store_color(0, swapchain)
-            .record_subpass(move |subpass| {
+            .record_subpass(move |subpass, _| {
                 // Draw a quad with implicit vertices (no buffer)
                 subpass.push_constants(cast_slice(&transform.to_cols_array()));
                 subpass.draw(6, 1, 0, 0);

@@ -78,7 +78,7 @@ fn main() -> Result<(), DisplayError> {
             .access_node(vertex_node, AccessType::VertexBuffer)
             .clear_color(0, frame.swapchain_image)
             .store_color(0, frame.swapchain_image)
-            .record_subpass(move |subpass| {
+            .record_subpass(move |subpass, _| {
                 subpass.bind_index_buffer(index_node, vk::IndexType::UINT16);
                 subpass.bind_vertex_buffer(vertex_node);
                 subpass.draw_indexed(3, 1, 0, 0, 0);

@@ -1,3 +1,5 @@
+//! Image resource types
+
 use {
     super::{access_type_from_u8, access_type_into_u8, format_aspect_mask, Device, DriverError},
     ash::vk,
@@ -55,8 +57,13 @@ pub struct Image {
     image: vk::Image,
     #[allow(clippy::type_complexity)]
     image_view_cache: Mutex<HashMap<ImageViewInfo, ImageView>>,
+
+    /// Information used to create this object.
     pub info: ImageInfo,
+
+    /// A name for debugging purposes.
     pub name: Option<String>,
+
     prev_access: AtomicU8,
 }
 
