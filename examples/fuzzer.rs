@@ -244,7 +244,7 @@ fn record_accel_struct_builds(frame: &mut FrameContext, cache: &mut HashPool) {
         .map(|(_, blas_node)| *blas_node)
         .collect::<Vec<_>>();
 
-    let mut pass = pass.record_acceleration(move |accel| {
+    let mut pass = pass.record_acceleration(move |accel, _| {
         for (scratch_buf, blas_node) in blas_nodes {
             accel.build_structure(
                 blas_node,
@@ -270,7 +270,7 @@ fn record_accel_struct_builds(frame: &mut FrameContext, cache: &mut HashPool) {
     );
     pass.access_node_mut(tlas_node, AccessType::AccelerationStructureBuildWrite);
 
-    pass.record_acceleration(move |accel| {
+    pass.record_acceleration(move |accel, _| {
         accel.build_structure(
             tlas_node,
             tlas_scratch_buf,
@@ -355,7 +355,7 @@ fn record_compute_array_bind(frame: &mut FrameContext, cache: &mut HashPool) {
         .read_descriptor((0, [2]), images[2])
         .read_descriptor((0, [3]), images[3])
         .read_descriptor((0, [4]), images[4])
-        .record_compute(|compute| {
+        .record_compute(|compute, _| {
             compute
                 .push_constants(&0f32.to_ne_bytes())
                 .dispatch(64, 64, 1);
@@ -430,7 +430,7 @@ fn record_compute_bindless(frame: &mut FrameContext, cache: &mut HashPool) {
         .write_descriptor((0, [2]), images[2])
         .write_descriptor((0, [3]), images[3])
         .write_descriptor((0, [4]), images[4])
-        .record_compute(|compute| {
+        .record_compute(|compute, _| {
             compute
                 .push_constants(&5u32.to_ne_bytes())
                 .dispatch(64, 64, 1);
@@ -456,7 +456,7 @@ fn record_compute_no_op(frame: &mut FrameContext) {
         .render_graph
         .begin_pass("no-op")
         .bind_pipeline(&pipeline)
-        .record_compute(|compute| {
+        .record_compute(|compute, _| {
             compute.dispatch(1, 1, 1);
         });
 }
@@ -548,7 +548,7 @@ fn record_graphic_bindless(frame: &mut FrameContext, cache: &mut HashPool) {
         .read_descriptor((0, [4]), images[4])
         .clear_color(0, image)
         .store_color(0, image)
-        .record_subpass(|subpass| {
+        .record_subpass(|subpass, _| {
             subpass.push_constants(&5u32.to_ne_bytes()).draw(1, 1, 0, 0);
         });
 }
@@ -588,7 +588,7 @@ fn record_graphic_load_store(frame: &mut FrameContext) {
         .bind_pipeline(&pipeline)
         .load_color(0, frame.swapchain_image)
         .store_color(0, frame.swapchain_image)
-        .record_subpass(|subpass| {
+        .record_subpass(|subpass, _| {
             subpass.draw(1, 1, 0, 0);
         });
 }
@@ -659,7 +659,7 @@ fn record_graphic_will_merge_subpass_input(frame: &mut FrameContext, cache: &mut
         .bind_pipeline(&pipeline_a)
         .clear_color(0, image)
         .store_color(0, image)
-        .record_subpass(|subpass| {
+        .record_subpass(|subpass, _| {
             subpass.draw(1, 1, 0, 0);
         });
     frame
@@ -667,7 +667,7 @@ fn record_graphic_will_merge_subpass_input(frame: &mut FrameContext, cache: &mut
         .begin_pass("b")
         .bind_pipeline(&pipeline_b)
         .store_color(0, image)
-        .record_subpass(|subpass| {
+        .record_subpass(|subpass, _| {
             subpass.draw(1, 1, 0, 0);
         });
 }
@@ -717,7 +717,7 @@ fn record_graphic_wont_merge(frame: &mut FrameContext, cache: &mut HashPool) {
         .begin_pass("c")
         .bind_pipeline(&pipeline)
         .store_color(0, image)
-        .record_subpass(|subpass| {
+        .record_subpass(|subpass, _| {
             subpass.draw(0, 0, 0, 0);
         });
     frame
@@ -725,7 +725,7 @@ fn record_graphic_wont_merge(frame: &mut FrameContext, cache: &mut HashPool) {
         .begin_pass("d")
         .bind_pipeline(&pipeline)
         .store_color(0, image)
-        .record_subpass(|subpass| {
+        .record_subpass(|subpass, _| {
             subpass.draw(0, 0, 0, 0);
         });
 }

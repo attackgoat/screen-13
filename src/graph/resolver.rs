@@ -5,12 +5,16 @@ use {
     },
     crate::{
         driver::{
-            format_aspect_mask, image_access_layout, is_read_access, is_write_access,
-            pipeline_stage_access_flags, AccelerationStructure, AttachmentInfo, AttachmentRef,
-            Buffer, CommandBuffer, DepthStencilMode, DescriptorBinding, DescriptorInfo,
+            accel_struct::AccelerationStructure,
+            buffer::Buffer,
+            format_aspect_mask,
+            graphic::DepthStencilMode,
+            image::{Image, ImageViewInfo, SampleCount},
+            image_access_layout, is_read_access, is_write_access, pipeline_stage_access_flags,
+            AttachmentInfo, AttachmentRef, CommandBuffer, DescriptorBinding, DescriptorInfo,
             DescriptorPool, DescriptorPoolInfo, DescriptorSet, Device, DriverError, FramebufferKey,
-            FramebufferKeyAttachment, Image, ImageViewInfo, Queue, QueueFamily, RenderPass,
-            RenderPassInfo, SampleCount, SubpassDependency, SubpassInfo,
+            FramebufferKeyAttachment, Queue, QueueFamily, RenderPass, RenderPassInfo,
+            SubpassDependency, SubpassInfo,
         },
         pool::{hash::HashPool, lazy::LazyPool, Lease, Pool},
     },
@@ -608,7 +612,7 @@ impl Resolver {
         let mut subpasses = Vec::<SubpassInfo>::with_capacity(pass.execs.len());
 
         while attachments.len() < attachment_count {
-            attachments.push(AttachmentInfo::new(vk::Format::UNDEFINED, SampleCount::X1).build());
+            attachments.push(AttachmentInfo::new(vk::Format::UNDEFINED, SampleCount::X1));
         }
 
         // Add attachments: format, sample count, initial layout, and load ops (using the first
@@ -2197,6 +2201,7 @@ impl Resolver {
         }
     }
 
+    /// Submits the remaining commands stored in this instance.
     pub fn submit(
         mut self,
         queue: &Queue,
@@ -2257,7 +2262,7 @@ impl Resolver {
         Ok(())
     }
 
-    pub fn unbind_node<N>(&mut self, node: N) -> <N as Edge<Self>>::Result
+    pub(crate) fn unbind_node<N>(&mut self, node: N) -> <N as Edge<Self>>::Result
     where
         N: Edge<Self>,
         N: Unbind<Self, <N as Edge<Self>>::Result>,
@@ -2535,6 +2540,8 @@ impl Resolver {
     }
 }
 
+/// Combination trait which groups together all [`Pool`] traits required for a [`Resolver`]
+/// instance.
 pub trait ResolverPool:
     Pool<DescriptorPoolInfo, DescriptorPool>
     + Pool<RenderPassInfo, RenderPass>

@@ -382,15 +382,21 @@ impl Transition {
 
 pub struct TransitionPipeline {
     cache: HashPool,
+    device: Arc<Device>,
     pipelines: HashMap<TransitionType, Arc<ComputePipeline>>,
 }
 
 impl TransitionPipeline {
     pub fn new(device: &Arc<Device>) -> Self {
         let cache = HashPool::new(device);
+        let device = Arc::clone(device);
         let pipelines = Default::default();
 
-        Self { cache, pipelines }
+        Self {
+            cache,
+            device,
+            pipelines,
+        }
     }
 
     pub fn apply(
@@ -427,7 +433,7 @@ impl TransitionPipeline {
 
             Arc::new(
                 ComputePipeline::create(
-                    &self.cache.device,
+                    &self.device,
                     match transition_ty {
                         TransitionType::Angular => {
                             include_spirv!("res/shader/transition/angular.comp", comp).as_slice()
@@ -1128,7 +1134,7 @@ impl TransitionPipeline {
             .read_descriptor(0, a_image)
             .read_descriptor(1, b_image)
             .write_descriptor(2, dest_image)
-            .record_compute(move |compute| {
+            .record_compute(move |compute, _| {
                 compute.push_constants(push_consts.as_slice());
                 compute.dispatch(dest_info.width, dest_info.height, 1);
             });

@@ -1,18 +1,26 @@
+//! Bindings for Vulkan smart-pointer resources.
+
 use {
-    super::{Information, NodeIndex, RenderGraph, Subresource},
+    super::{Information, NodeIndex, RenderGraph, Unbind},
     crate::{
         driver::{
-            vk, AccelerationStructure, AccelerationStructureInfo, Buffer, BufferInfo,
-            BufferSubresource, Image, ImageInfo, ImageSubresource, ImageViewInfo,
+            accel_struct::{AccelerationStructure, AccelerationStructureInfo},
+            buffer::{Buffer, BufferInfo},
+            image::{Image, ImageInfo},
         },
         pool::Lease,
     },
-    std::{ops::Range, sync::Arc},
+    std::sync::Arc,
 };
 
+/// Specifies either an owned acceleration structure or an acceleration structure leased from a
+/// pool.
 #[derive(Debug)]
 pub enum AnyAccelerationStructureNode {
+    /// An owned acceleration structure.
     AccelerationStructure(AccelerationStructureNode),
+
+    /// An acceleration structure leased from a pool.
     AccelerationStructureLease(AccelerationStructureLeaseNode),
 }
 
@@ -56,9 +64,13 @@ impl Node for AnyAccelerationStructureNode {
     }
 }
 
+/// Specifies either an owned buffer or a buffer leased from a pool.
 #[derive(Debug)]
 pub enum AnyBufferNode {
+    /// An owned buffer.
     Buffer(BufferNode),
+
+    /// A buffer leased from a pool.
     BufferLease(BufferLeaseNode),
 }
 
@@ -102,10 +114,18 @@ impl Node for AnyBufferNode {
     }
 }
 
+/// Specifies either an owned image or an image leased from a pool.
+///
+/// The image may also be a special swapchain type of image.
 #[derive(Debug)]
 pub enum AnyImageNode {
+    /// An owned image.
     Image(ImageNode),
+
+    /// An image leased from a pool.
     ImageLease(ImageLeaseNode),
+
+    /// A special swapchain image.
     SwapchainImage(SwapchainImageNode),
 }
 
@@ -157,13 +177,16 @@ impl Node for AnyImageNode {
     }
 }
 
+/// A Vulkan resource which has been bound to a [`RenderGraph`] using [`RenderGraph::bind_node`].
 pub trait Node: Copy {
+    /// The internal node index of this bound resource.
     fn index(self) -> NodeIndex;
 }
 
 macro_rules! node {
     ($name:ident) => {
         paste::paste! {
+            /// Resource node.
             #[derive(Debug)]
             pub struct [<$name Node>] {
                 pub(super) idx: NodeIndex,
@@ -246,114 +269,3 @@ macro_rules! node_unbind_lease {
 node_unbind_lease!(AccelerationStructure);
 node_unbind_lease!(Buffer);
 node_unbind_lease!(Image);
-
-pub trait Unbind<Graph, Binding> {
-    fn unbind(self, graph: &mut Graph) -> Binding;
-}
-
-pub trait View: Node
-where
-    Self::Information: Clone,
-    Self::Subresource: Into<Subresource>,
-{
-    type Information;
-    type Subresource;
-}
-
-impl View for AccelerationStructureNode {
-    type Information = ();
-    type Subresource = ();
-}
-
-impl View for AccelerationStructureLeaseNode {
-    type Information = ();
-    type Subresource = ();
-}
-
-impl View for AnyAccelerationStructureNode {
-    type Information = ();
-    type Subresource = ();
-}
-
-impl View for AnyBufferNode {
-    type Information = BufferSubresource;
-    type Subresource = BufferSubresource;
-}
-
-impl View for AnyImageNode {
-    type Information = ImageViewInfo;
-    type Subresource = ImageSubresource;
-}
-
-impl View for BufferLeaseNode {
-    type Information = BufferSubresource;
-    type Subresource = BufferSubresource;
-}
-
-impl View for BufferNode {
-    type Information = BufferSubresource;
-    type Subresource = BufferSubresource;
-}
-
-impl View for ImageLeaseNode {
-    type Information = ImageViewInfo;
-    type Subresource = ImageSubresource;
-}
-
-impl View for ImageNode {
-    type Information = ImageViewInfo;
-    type Subresource = ImageSubresource;
-}
-
-impl View for SwapchainImageNode {
-    type Information = ImageViewInfo;
-    type Subresource = ImageSubresource;
-}
-
-#[derive(Debug)]
-pub enum ViewType {
-    AccelerationStructure,
-    Image(ImageViewInfo),
-    Buffer(Range<vk::DeviceSize>),
-}
-
-impl ViewType {
-    pub(super) fn as_buffer(&self) -> Option<&Range<vk::DeviceSize>> {
-        match self {
-            Self::Buffer(view_info) => Some(view_info),
-            _ => None,
-        }
-    }
-
-    pub(super) fn as_image(&self) -> Option<&ImageViewInfo> {
-        match self {
-            Self::Image(view_info) => Some(view_info),
-            _ => None,
-        }
-    }
-}
-
-// TODO: Remove this
-impl From<()> for ViewType {
-    fn from(_: ()) -> Self {
-        Self::AccelerationStructure
-    }
-}
-
-impl From<BufferSubresource> for ViewType {
-    fn from(subresource: BufferSubresource) -> Self {
-        Self::Buffer(subresource.start..subresource.end)
-    }
-}
-
-impl From<ImageViewInfo> for ViewType {
-    fn from(info: ImageViewInfo) -> Self {
-        Self::Image(info)
-    }
-}
-
-impl From<Range<vk::DeviceSize>> for ViewType {
-    fn from(range: Range<vk::DeviceSize>) -> Self {
-        Self::Buffer(range)
-    }
-}

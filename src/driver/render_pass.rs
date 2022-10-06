@@ -1,7 +1,6 @@
 use {
     super::{DepthStencilMode, Device, DriverError, GraphicPipeline, SampleCount},
     ash::vk,
-    derive_builder::Builder,
     log::{trace, warn},
     parking_lot::Mutex,
     std::{
@@ -12,8 +11,7 @@ use {
     },
 };
 
-#[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
-#[builder(build_fn(private, name = "fallible_build"), pattern = "owned")]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct AttachmentInfo {
     pub flags: vk::AttachmentDescriptionFlags,
     pub fmt: vk::Format,
@@ -27,18 +25,17 @@ pub struct AttachmentInfo {
 }
 
 impl AttachmentInfo {
-    #[allow(clippy::new_ret_no_self)]
-    pub fn new(fmt: vk::Format, sample_count: SampleCount) -> AttachmentInfoBuilder {
-        AttachmentInfoBuilder {
-            flags: Some(vk::AttachmentDescriptionFlags::MAY_ALIAS),
-            fmt: Some(fmt),
-            sample_count: Some(sample_count),
-            initial_layout: Some(vk::ImageLayout::UNDEFINED),
-            load_op: Some(vk::AttachmentLoadOp::DONT_CARE),
-            stencil_load_op: Some(vk::AttachmentLoadOp::DONT_CARE),
-            store_op: Some(vk::AttachmentStoreOp::DONT_CARE),
-            stencil_store_op: Some(vk::AttachmentStoreOp::DONT_CARE),
-            final_layout: Some(vk::ImageLayout::UNDEFINED),
+    pub fn new(fmt: vk::Format, sample_count: SampleCount) -> Self {
+        AttachmentInfo {
+            flags: vk::AttachmentDescriptionFlags::MAY_ALIAS,
+            fmt,
+            sample_count,
+            initial_layout: vk::ImageLayout::UNDEFINED,
+            load_op: vk::AttachmentLoadOp::DONT_CARE,
+            stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
+            store_op: vk::AttachmentStoreOp::DONT_CARE,
+            stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
+            final_layout: vk::ImageLayout::UNDEFINED,
         }
     }
 
@@ -54,14 +51,6 @@ impl AttachmentInfo {
             .initial_layout(self.initial_layout)
             .final_layout(self.final_layout)
             .build()
-    }
-}
-
-// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
-impl AttachmentInfoBuilder {
-    pub fn build(self) -> AttachmentInfo {
-        self.fallible_build()
-            .expect("All required fields set at initialization")
     }
 }
 
@@ -105,39 +94,11 @@ struct GraphicPipelineKey {
     subpass_idx: u32,
 }
 
-#[derive(Builder, Clone, Debug, Default, Eq, Hash, PartialEq)]
-#[builder(
-    build_fn(private, name = "fallible_build"),
-    pattern = "owned",
-    derive(Debug)
-)]
+#[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
 pub struct RenderPassInfo {
     pub attachments: Vec<AttachmentInfo>,
     pub subpasses: Vec<SubpassInfo>,
     pub dependencies: Vec<SubpassDependency>,
-}
-
-impl RenderPassInfo {
-    #[allow(clippy::new_ret_no_self)]
-    pub fn new(
-        attachments: Vec<AttachmentInfo>,
-        subpasses: Vec<SubpassInfo>,
-        dependencies: Vec<SubpassDependency>,
-    ) -> RenderPassInfoBuilder {
-        RenderPassInfoBuilder {
-            attachments: Some(attachments),
-            subpasses: Some(subpasses),
-            dependencies: Some(dependencies),
-        }
-    }
-}
-
-// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
-impl RenderPassInfoBuilder {
-    pub fn build(self) -> RenderPassInfo {
-        self.fallible_build()
-            .expect("All required fields set at initialization")
-    }
 }
 
 #[derive(Debug)]
@@ -482,8 +443,7 @@ impl Drop for RenderPass {
     }
 }
 
-#[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
-#[builder(pattern = "owned")]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct SubpassDependency {
     pub src_subpass: u32,
     pub dst_subpass: u32,

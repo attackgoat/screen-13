@@ -80,11 +80,11 @@ impl ImGui {
             .expect("Unable to prepare ImGui frame");
 
         // Let the caller draw the GUI
-        let mut ui = self.context.frame();
+        let ui = self.context.frame();
 
-        ui_func(&mut ui);
+        ui_func(ui);
 
-        self.platform.prepare_render(&ui, window);
+        self.platform.prepare_render(ui, window);
         let draw_data = self.context.render();
 
         let image = render_graph.bind_node(
@@ -174,7 +174,7 @@ impl ImGui {
                 .read_descriptor(0, font_atlas_image)
                 .clear_color(0, image)
                 .store_color(0, image)
-                .record_subpass(move |subpass| {
+                .record_subpass(move |subpass, _| {
                     subpass
                         .push_constants_offset(0, &window_width.to_ne_bytes())
                         .push_constants_offset(4, &window_height.to_ne_bytes())

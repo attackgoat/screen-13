@@ -9,7 +9,7 @@ _[QBasic](https://en.wikipedia.org/wiki/QBasic)_.
 
 ```toml
 [dependencies]
-screen-13 = "0.5"
+screen-13 = "0.6"
 ```
 
 ## Overview
@@ -49,8 +49,8 @@ render_graph
     .read_descriptor(0, some_image)
     .read_descriptor(1, another_image)
     .read_descriptor(3, some_buf)
-    .clear_color(0)
-    .store_color(0, also_an_image)
+    .clear_color(0, swapchain_image)
+    .store_color(0, swapchain_image)
     .record_subpass(move |subpass| {
         subpass.push_constants(some_u8_slice);
         subpass.draw(6, 1, 0, 0);
@@ -66,8 +66,9 @@ Included are some examples you might find helpful:
 - [`shader-toy/`](examples/shader-toy) — Recreation of a two-pass shader toy using the original
   shader code.
 
-See the [example code](examples/README.md) for more information, including a helpful
-[getting started guide](examples/getting-started.md).
+See the [example code](examples/README.md), 
+[documentation](https://docs.rs/screen-13/latest/screen_13/), or helpful
+[getting started guide](examples/getting-started.md) for more information.
 
 **_NOTE:_** Required development packages and libraries are listed in the _getting started guide_.
 All new users should read and understand the guide.

@@ -25,22 +25,35 @@ use {
     },
 };
 
+/// Opaque handle to a device object.
 pub struct Device {
-    pub accel_struct_ext: Option<khr::AccelerationStructure>,
+    pub(crate) accel_struct_ext: Option<khr::AccelerationStructure>,
     pub(super) allocator: Option<Mutex<Allocator>>,
+
+    /// Describes the features of the device which relate to descriptor indexing.
     pub descriptor_indexing_features: PhysicalDeviceDescriptorIndexingFeatures,
+
     device: ash::Device,
     immutable_samplers: HashMap<SamplerDesc, vk::Sampler>,
-    pub instance: Arc<Instance>, // TODO: Need shared?
+    pub(super) _instance: Arc<Instance>, // TODO: Need shared?
+
+    /// The physical device, which contains useful property and limit data.
     pub physical_device: PhysicalDevice,
+
+    /// The physical execution queue which all work will be submitted to.
     pub queue: Queue,
-    pub ray_tracing_pipeline_ext: Option<khr::RayTracingPipeline>,
+
+    pub(crate) ray_tracing_pipeline_ext: Option<khr::RayTracingPipeline>,
+
+    /// Describes the features of the device which relate to ray tracing, if available.
     pub ray_tracing_pipeline_properties: Option<PhysicalDeviceRayTracePipelineProperties>,
-    pub surface_ext: Option<khr::Surface>,
-    pub swapchain_ext: Option<khr::Swapchain>,
+
+    pub(super) surface_ext: Option<khr::Surface>,
+    pub(super) swapchain_ext: Option<khr::Swapchain>,
 }
 
 impl Device {
+    /// Constructs a new device using the given configuration.
     pub fn new(cfg: DriverConfig) -> Result<Self, DriverError> {
         trace!("new {:?}", cfg);
 
@@ -70,7 +83,7 @@ impl Device {
         Device::create(&instance, physical_device, cfg)
     }
 
-    pub fn create(
+    pub(super) fn create(
         instance: &Arc<Instance>,
         physical_device: PhysicalDevice,
         cfg: DriverConfig,
@@ -362,7 +375,7 @@ impl Device {
                 descriptor_indexing_features,
                 device,
                 immutable_samplers,
-                instance,
+                _instance: instance,
                 physical_device,
                 queue,
                 ray_tracing_pipeline_ext,
@@ -431,14 +444,14 @@ impl Device {
         Ok(res)
     }
 
-    pub fn immutable_sampler(this: &Self, info: SamplerDesc) -> vk::Sampler {
+    pub(super) fn immutable_sampler(this: &Self, info: SamplerDesc) -> vk::Sampler {
         this.immutable_samplers
             .get(&info)
             .copied()
             .unwrap_or_else(|| unimplemented!("{:?}", info))
     }
 
-    pub fn surface_formats(
+    pub(super) fn surface_formats(
         this: &Self,
         surface: &Surface,
     ) -> Result<Vec<vk::SurfaceFormatKHR>, DriverError> {
@@ -455,13 +468,13 @@ impl Device {
         }
     }
 
-    pub fn wait_for_fence(this: &Self, fence: &vk::Fence) -> Result<(), DriverError> {
+    pub(crate) fn wait_for_fence(this: &Self, fence: &vk::Fence) -> Result<(), DriverError> {
         use std::slice::from_ref;
 
         Device::wait_for_fences(this, from_ref(fence))
     }
 
-    pub fn wait_for_fences(this: &Self, fences: &[vk::Fence]) -> Result<(), DriverError> {
+    pub(crate) fn wait_for_fences(this: &Self, fences: &[vk::Fence]) -> Result<(), DriverError> {
         unsafe {
             match this.device.wait_for_fences(fences, true, 100) {
                 Ok(_) => return Ok(()),
@@ -545,13 +558,17 @@ impl Drop for Device {
     }
 }
 
+/// Describes optional features of a device.
 pub struct FeatureFlags {
+    /// The ability to present to the display.
     pub presentation: bool,
+
+    /// The ability to use ray tracing.
     pub ray_tracing: bool,
 }
 
 impl FeatureFlags {
-    pub fn extension_names(&self) -> Vec<*const i8> {
+    pub(super) fn extension_names(&self) -> Vec<*const i8> {
         let mut res = vec![];
 
         #[cfg(target_os = "macos")]

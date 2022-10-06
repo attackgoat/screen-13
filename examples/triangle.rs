@@ -4,8 +4,9 @@ use {bytemuck::cast_slice, inline_spirv::inline_spirv, screen_13::prelude::*, st
 fn main() -> Result<(), DisplayError> {
     pretty_env_logger::init();
 
-    let screen_13 = EventLoop::new().build()?;
-    let triangle_pipeline = screen_13.new_graphic_pipeline(
+    let event_loop = EventLoop::new().build()?;
+    let triangle_pipeline = Arc::new(GraphicPipeline::create(
+        &event_loop.device,
         GraphicPipelineInfo::default(),
         [
             Shader::new_vertex(
@@ -45,16 +46,16 @@ fn main() -> Result<(), DisplayError> {
                 .as_slice(),
             ),
         ],
-    );
+    )?);
 
     let index_buf = Arc::new(Buffer::create_from_slice(
-        &screen_13.device,
+        &event_loop.device,
         vk::BufferUsageFlags::INDEX_BUFFER,
         cast_slice(&[0u16, 1, 2]),
     )?);
 
     let vertex_buf = Arc::new(Buffer::create_from_slice(
-        &screen_13.device,
+        &event_loop.device,
         vk::BufferUsageFlags::VERTEX_BUFFER,
         cast_slice(&[
             1.0f32, 1.0, 0.0, // v1
@@ -66,7 +67,7 @@ fn main() -> Result<(), DisplayError> {
         ]),
     )?);
 
-    screen_13.run(|frame| {
+    event_loop.run(|frame| {
         let index_node = frame.render_graph.bind_node(&index_buf);
         let vertex_node = frame.render_graph.bind_node(&vertex_buf);
 
@@ -78,7 +79,7 @@ fn main() -> Result<(), DisplayError> {
             .access_node(vertex_node, AccessType::VertexBuffer)
             .clear_color(0, frame.swapchain_image)
             .store_color(0, frame.swapchain_image)
-            .record_subpass(move |subpass| {
+            .record_subpass(move |subpass, _| {
                 subpass.bind_index_buffer(index_node, vk::IndexType::UINT16);
                 subpass.bind_vertex_buffer(vertex_node);
                 subpass.draw_indexed(3, 1, 0, 0, 0);

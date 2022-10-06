@@ -3,19 +3,16 @@
 mod key_buf;
 mod key_map;
 mod mouse_buf;
-mod typing;
 
 use winit::event::Event;
 
-#[allow(deprecated)]
 pub use self::{
     key_buf::KeyBuf,
     key_map::KeyMap,
     mouse_buf::{MouseBuf, MouseButton},
-    typing::Typing,
 };
 
-// Handles keyboard and mouse `Event`s while updating the provided buffers.
+/// Handles keyboard and mouse `Event`s while updating the provided buffers.
 pub fn update_input<'a>(
     keyboard: &'a mut KeyBuf,
     mouse: &'a mut MouseBuf,
@@ -24,7 +21,7 @@ pub fn update_input<'a>(
     update_input_opt(Some(keyboard), Some(mouse), events);
 }
 
-// Handles keyboard `Event`s while updating the provided buffer.
+/// Handles keyboard `Event`s while updating the provided buffer.
 pub fn update_keyboard<'a>(
     keyboard: &'a mut KeyBuf,
     events: impl IntoIterator<Item = &'a Event<'a, ()>>,
@@ -32,7 +29,7 @@ pub fn update_keyboard<'a>(
     update_input_opt(Some(keyboard), None, events);
 }
 
-// Handles mouse `Event`s while updating the provided buffer.
+/// Handles mouse `Event`s while updating the provided buffer.
 pub fn update_mouse<'a>(
     mouse: &'a mut MouseBuf,
     events: impl IntoIterator<Item = &'a Event<'a, ()>>,

@@ -1,9 +1,18 @@
+//! Pool which leases by exactly matching the information before creating new resources.
+//!
+//! The information for each lease request is placed into a `HashMap`. If no resources exist for
+//! the exact information provided then a new resource is created and returned.
+
 use {
     super::{Cache, Lease, Pool},
     crate::driver::{
-        AccelerationStructure, AccelerationStructureInfo, AccelerationStructureInfoBuilder, Buffer,
-        BufferInfo, BufferInfoBuilder, CommandBuffer, DescriptorPool, DescriptorPoolInfo, Device,
-        DriverError, Image, ImageInfo, ImageInfoBuilder, QueueFamily, RenderPass, RenderPassInfo,
+        accel_struct::{
+            AccelerationStructure, AccelerationStructureInfo, AccelerationStructureInfoBuilder,
+        },
+        buffer::{Buffer, BufferInfo, BufferInfoBuilder},
+        image::{Image, ImageInfo, ImageInfoBuilder},
+        CommandBuffer, DescriptorPool, DescriptorPoolInfo, Device, DriverError, QueueFamily,
+        RenderPass, RenderPassInfo,
     },
     parking_lot::Mutex,
     std::{
@@ -13,19 +22,21 @@ use {
     },
 };
 
+/// A high-performance resource allocator.
 #[derive(Debug)]
 pub struct HashPool {
     acceleration_structure_cache: HashMap<AccelerationStructureInfo, Cache<AccelerationStructure>>,
     buffer_cache: HashMap<BufferInfo, Cache<Buffer>>,
     command_buffer_cache: HashMap<QueueFamily, Cache<CommandBuffer>>,
     descriptor_pool_cache: HashMap<DescriptorPoolInfo, Cache<DescriptorPool>>,
-    pub device: Arc<Device>,
+    device: Arc<Device>,
     image_cache: HashMap<ImageInfo, Cache<Image>>,
     render_pass_cache: HashMap<RenderPassInfo, Cache<RenderPass>>,
 }
 
 // TODO: Add some sort of manager features (like, I dunno, "Clear Some Memory For me")
 impl HashPool {
+    /// Constructs a new `HashPool`.
     pub fn new(device: &Arc<Device>) -> Self {
         let device = Arc::clone(device);
 

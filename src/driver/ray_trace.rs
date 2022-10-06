@@ -1,28 +1,99 @@
+//! Ray tracing pipeline types
+
 use {
     super::{
-        merge_push_constant_ranges, DescriptorBindingMap, Device, DriverError,
-        PhysicalDeviceRayTracePipelineProperties, PipelineDescriptorInfo, Shader,
+        merge_push_constant_ranges,
+        shader::{DescriptorBindingMap, PipelineDescriptorInfo, Shader},
+        Device, DriverError, PhysicalDeviceRayTracePipelineProperties,
     },
     ash::vk,
-    derive_builder::Builder,
+    derive_builder::{Builder, UninitializedFieldError},
     log::warn,
     std::{ffi::CString, ops::Deref, sync::Arc, thread::panicking},
 };
 
+/// Smart pointer handle to a [pipeline] object.
+///
+/// Also contains information about the object.
+///
+/// ## `Deref` behavior
+///
+/// `RayTracePipeline` automatically dereferences to [`vk::Pipeline`] (via the [`Deref`][deref]
+/// trait), so you can call `vk::Pipeline`'s methods on a value of type `RayTracePipeline`. To avoid
+/// name clashes with `vk::Pipeline`'s methods, the methods of `RayTracePipeline` itself are
+/// associated functions, called using [fully qualified syntax]:
+///
+/// [pipeline]: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkPipeline.html
+/// [deref]: core::ops::Deref
+/// [fully qualified syntax]: https://doc.rust-lang.org/book/ch19-03-advanced-traits.html#fully-qualified-syntax-for-disambiguation-calling-methods-with-the-same-name
 #[derive(Debug)]
 pub struct RayTracePipeline {
-    pub descriptor_bindings: DescriptorBindingMap,
-    pub descriptor_info: PipelineDescriptorInfo,
+    pub(crate) descriptor_bindings: DescriptorBindingMap,
+    pub(crate) descriptor_info: PipelineDescriptorInfo,
     device: Arc<Device>,
+
+    /// Information used to create this object.
     pub info: RayTracePipelineInfo,
-    pub layout: vk::PipelineLayout,
-    pub push_constants: Vec<vk::PushConstantRange>,
+
+    pub(crate) layout: vk::PipelineLayout,
+    pub(crate) push_constants: Vec<vk::PushConstantRange>,
     pipeline: vk::Pipeline,
     shader_modules: Vec<vk::ShaderModule>,
     shader_group_handles: Vec<u8>,
 }
 
 impl RayTracePipeline {
+    /// Creates a new ray trace pipeline on the given device.
+    ///
+    /// The correct pipeline stages will be enabled based on the provided shaders. See [Shader] for
+    /// details on all available stages.
+    ///
+    /// The number and composition of the `shader_groups` parameter must match the actual shaders
+    /// provided.
+    ///
+    /// # Panics
+    ///
+    /// If shader code is not a multiple of four bytes.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```no_run
+    /// # use std::sync::Arc;
+    /// # use ash::vk;
+    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::ray_trace::{RayTracePipeline, RayTracePipelineInfo, RayTraceShaderGroup};
+    /// # use screen_13::driver::shader::Shader;
+    /// # fn main() -> Result<(), DriverError> {
+    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let my_rgen_code = [0u8; 1];
+    /// # let my_chit_code = [0u8; 1];
+    /// # let my_miss_code = [0u8; 1];
+    /// # let my_shadow_code = [0u8; 1];
+    /// // shader code is raw SPIR-V code as bytes
+    /// let info = RayTracePipelineInfo::new().max_ray_recursion_depth(1);
+    /// let pipeline = RayTracePipeline::create(
+    ///     &device,
+    ///     info,
+    ///     [
+    ///         Shader::new_ray_gen(my_rgen_code.as_slice()),
+    ///         Shader::new_closest_hit(my_chit_code.as_slice()),
+    ///         Shader::new_miss(my_miss_code.as_slice()),
+    ///         Shader::new_miss(my_shadow_code.as_slice()),
+    ///     ],
+    ///     [
+    ///         RayTraceShaderGroup::new_general(0),
+    ///         RayTraceShaderGroup::new_triangles(1, None),
+    ///         RayTraceShaderGroup::new_general(2),
+    ///         RayTraceShaderGroup::new_general(3),
+    ///     ],
+    /// )?;
+    ///
+    /// assert_ne!(*pipeline, vk::Pipeline::null());
+    /// assert_eq!(pipeline.info.max_ray_recursion_depth, 1);
+    /// # Ok(()) }
+    /// ```
     pub fn create<S>(
         device: &Arc<Device>,
         info: impl Into<RayTracePipelineInfo>,
@@ -220,22 +291,28 @@ impl RayTracePipeline {
             })
         }
     }
-    ///
+
     /// Function returning a handle to a shader group of this pipeline.
     /// This can be used to construct a sbt.
     ///
-    pub fn group_handle(&self, idx: usize) -> Result<&[u8], DriverError> {
+    /// # Examples
+    ///
+    /// See
+    /// [ray_trace.rs](https://github.com/attackgoat/screen-13/blob/master/examples/ray_trace.rs)
+    /// for a detail example which constructs a shader binding table buffer using this function.
+    pub fn group_handle(this: &Self, idx: usize) -> Result<&[u8], DriverError> {
         let &PhysicalDeviceRayTracePipelineProperties {
             shader_group_handle_size,
             ..
-        } = self
+        } = this
             .device
             .ray_tracing_pipeline_properties
             .as_ref()
             .ok_or(DriverError::Unsupported)?;
         let start = idx * shader_group_handle_size as usize;
         let end = start + shader_group_handle_size as usize;
-        Ok(&self.shader_group_handles[start..end])
+
+        Ok(&this.shader_group_handles[start..end])
     }
 }
 
@@ -266,16 +343,46 @@ impl Drop for RayTracePipeline {
     }
 }
 
+/// Information used to create a [`RayTracePipeline`] instance.
 #[derive(Builder, Clone, Debug, Eq, Hash, PartialEq)]
 #[builder(
-    build_fn(private, name = "fallible_build"),
+    build_fn(
+        private,
+        name = "fallible_build",
+        error = "RayTracePipelineInfoBuilderError"
+    ),
     derive(Clone, Debug),
     pattern = "owned"
 )]
 pub struct RayTracePipelineInfo {
+    /// The number of descriptors to allocate for a given binding when using bindless (unbounded)
+    /// syntax.
+    ///
+    /// The default is `8192`.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage (GLSL):
+    ///
+    /// ```
+    /// # inline_spirv::inline_spirv!(r#"
+    /// #version 460 core
+    /// #extension GL_EXT_nonuniform_qualifier : require
+    ///
+    /// layout(set = 0, binding = 0, rgba8) readonly uniform image2D my_binding[];
+    ///
+    /// void main()
+    /// {
+    ///     // my_binding will have space for 8,192 images by default
+    /// }
+    /// # "#, rchit, vulkan1_2);
+    /// ```
     #[builder(default = "8192")]
     pub bindless_descriptor_count: u32,
 
+    /// The [maximum recursion depth] of shaders executed by this pipeline.
+    ///
+    /// [maximum recursion depth]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#ray-tracing-recursion-depth
     #[builder(default = "16")]
     pub max_ray_recursion_depth: u32,
 
@@ -285,6 +392,7 @@ pub struct RayTracePipelineInfo {
 }
 
 impl RayTracePipelineInfo {
+    /// Specifies a ray trace pipeline.
     #[allow(clippy::new_ret_no_self)]
     pub fn new() -> RayTracePipelineInfoBuilder {
         Default::default()
@@ -297,8 +405,15 @@ impl Default for RayTracePipelineInfo {
     }
 }
 
+impl From<RayTracePipelineInfoBuilder> for RayTracePipelineInfo {
+    fn from(info: RayTracePipelineInfoBuilder) -> Self {
+        info.build()
+    }
+}
+
 // HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
 impl RayTracePipelineInfoBuilder {
+    /// Builds a new `RayTracePipelineInfo`.
     pub fn build(self) -> RayTracePipelineInfo {
         self.fallible_build()
             .expect("All required fields set at initialization")
@@ -306,11 +421,40 @@ impl RayTracePipelineInfoBuilder {
 }
 
 #[derive(Debug)]
+struct RayTracePipelineInfoBuilderError;
+
+impl From<UninitializedFieldError> for RayTracePipelineInfoBuilderError {
+    fn from(_: UninitializedFieldError) -> Self {
+        Self
+    }
+}
+
+/// Describes the set of the shader stages to be included in each shader group in the ray trace
+/// pipeline.
+///
+/// See
+/// [VkRayTracingShaderGroupCreateInfoKHR](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VkRayTracingShaderGroupCreateInfoKHR).
+#[derive(Debug)]
 pub struct RayTraceShaderGroup {
+    /// The optional index of the any-hit shader in the group if the shader group has type of
+    /// [RayTraceShaderGroupType::TrianglesHitGroup] or
+    /// [RayTraceShaderGroupType::ProceduralHitGroup].
     pub any_hit_shader: Option<u32>,
+
+    /// The optional index of the closest hit shader in the group if the shader group has type of
+    /// [RayTraceShaderGroupType::TrianglesHitGroup] or
+    /// [RayTraceShaderGroupType::ProceduralHitGroup].
     pub closest_hit_shader: Option<u32>,
+
+    /// The index of the ray generation, miss, or callable shader in the group if the shader group
+    /// has type of [RayTraceShaderGroupType::General].
     pub general_shader: Option<u32>,
+
+    /// The index of the intersection shader in the group if the shader group has type of
+    /// [RayTraceShaderGroupType::ProceduralHitGroup].
     pub intersection_shader: Option<u32>,
+
+    /// The type of hit group specified in this structure.
     pub ty: RayTraceShaderGroupType,
 }
 
@@ -336,6 +480,7 @@ impl RayTraceShaderGroup {
         }
     }
 
+    /// Creates a new general-type shader group with the given general shader.
     pub fn new_general(general_shader: impl Into<Option<u32>>) -> Self {
         Self::new(
             RayTraceShaderGroupType::General,
@@ -346,6 +491,8 @@ impl RayTraceShaderGroup {
         )
     }
 
+    /// Creates a new procedural-type shader group with the given intersection shader, and optional
+    /// closest-hit and any-hit shaders.
     pub fn new_procedural(
         intersection_shader: u32,
         closest_hit_shader: impl Into<Option<u32>>,
@@ -360,6 +507,8 @@ impl RayTraceShaderGroup {
         )
     }
 
+    /// Creates a new triangles-type shader group with the given closest-hit shader and optional any-hit
+    /// shader.
     pub fn new_triangles(closest_hit_shader: u32, any_hit_shader: impl Into<Option<u32>>) -> Self {
         Self::new(
             RayTraceShaderGroupType::TrianglesHitGroup,
@@ -391,10 +540,17 @@ impl From<RayTraceShaderGroup> for vk::RayTracingShaderGroupCreateInfoKHR {
     }
 }
 
+/// Describes a type of ray tracing shader group, which is a collection of shaders which run in the
+/// specified mode.
 #[derive(Debug)]
 pub enum RayTraceShaderGroupType {
+    /// A shader group with a general shader.
     General,
+
+    /// A shader group with an intersection shader, and optional closest-hit and any-hit shaders.
     ProceduralHitGroup,
+
+    /// A shader group with a closest-hit shader and optional any-hit shader.
     TrianglesHitGroup,
 }
 

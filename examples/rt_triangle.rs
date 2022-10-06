@@ -135,13 +135,13 @@ fn main() -> anyhow::Result<()> {
         let mut data = Buffer::mapped_slice_mut(&mut buf);
         data.fill(0);
 
-        let rgen_handle = ray_trace_pipeline.group_handle(0)?;
+        let rgen_handle = RayTracePipeline::group_handle(&ray_trace_pipeline, 0)?;
         data[0..rgen_handle.len()].copy_from_slice(rgen_handle);
         data = &mut data[sbt_rgen_size as _..];
 
         // If hit/miss had different strides we would need to iterate each here
         for idx in 1..3 {
-            let handle = ray_trace_pipeline.group_handle(idx)?;
+            let handle = RayTracePipeline::group_handle(&ray_trace_pipeline, idx)?;
             data[0..handle.len()].copy_from_slice(handle);
             data = &mut data[sbt_handle_size as _..];
         }
@@ -343,7 +343,7 @@ fn main() -> anyhow::Result<()> {
                 .read_node(vertex_node)
                 .write_node(blas_node)
                 .write_node(scratch_buf)
-                .record_acceleration(move |accel| {
+                .record_acceleration(move |accel, _| {
                     accel.build_structure(
                         blas_node,
                         scratch_buf,
@@ -375,7 +375,7 @@ fn main() -> anyhow::Result<()> {
                 .read_node(instance_node)
                 .write_node(scratch_buf)
                 .write_node(tlas_node)
-                .record_acceleration(move |accel| {
+                .record_acceleration(move |accel, _| {
                     accel.build_structure(
                         tlas_node,
                         scratch_buf,
@@ -422,7 +422,7 @@ fn main() -> anyhow::Result<()> {
                 AccessType::RayTracingShaderReadAccelerationStructure,
             )
             .write_descriptor(1, frame.swapchain_image)
-            .record_ray_trace(move |ray_trace| {
+            .record_ray_trace(move |ray_trace, _| {
                 ray_trace.trace_rays(
                     &sbt_rgen,
                     &sbt_miss,

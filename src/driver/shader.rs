@@ -1,7 +1,9 @@
+//! Shader resource types
+
 use {
     super::{DescriptorSetLayout, Device, DriverError, SamplerDesc, VertexInputState},
     ash::vk,
-    derive_builder::Builder,
+    derive_builder::{Builder, UninitializedFieldError},
     log::{debug, error, info, trace},
     spirq::{
         ty::{ScalarType, Type},
@@ -15,7 +17,8 @@ use {
     },
 };
 
-pub type DescriptorBindingMap = BTreeMap<DescriptorBinding, (DescriptorInfo, vk::ShaderStageFlags)>;
+pub(crate) type DescriptorBindingMap =
+    BTreeMap<DescriptorBinding, (DescriptorInfo, vk::ShaderStageFlags)>;
 
 fn guess_immutable_sampler(device: &Device, binding_name: &str) -> vk::Sampler {
     const INVALID_ERR: &str = "Invalid sampler specification";
@@ -68,21 +71,21 @@ fn guess_immutable_sampler(device: &Device, binding_name: &str) -> vk::Sampler {
 /// This is a generic representation of the descriptor binding point within the shader and not a
 /// bound descriptor reference.
 #[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
-pub struct DescriptorBinding(pub u32, pub u32);
+pub(crate) struct DescriptorBinding(pub u32, pub u32);
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum DescriptorInfo {
+pub(crate) enum DescriptorInfo {
     AccelerationStructure(u32),
     CombinedImageSampler(u32, vk::Sampler),
     InputAttachment(u32, u32), //count, input index,
     SampledImage(u32),
     Sampler(u32),
     StorageBuffer(u32),
-    StorageBufferDynamic(u32),
+    //StorageBufferDynamic(u32),
     StorageImage(u32),
     StorageTexelBuffer(u32),
     UniformBuffer(u32),
-    UniformBufferDynamic(u32),
+    //UniformBufferDynamic(u32),
     UniformTexelBuffer(u32),
 }
 
@@ -95,11 +98,11 @@ impl DescriptorInfo {
             Self::SampledImage(binding_count) => binding_count,
             Self::Sampler(binding_count) => binding_count,
             Self::StorageBuffer(binding_count) => binding_count,
-            Self::StorageBufferDynamic(binding_count) => binding_count,
+            //Self::StorageBufferDynamic(binding_count) => binding_count,
             Self::StorageImage(binding_count) => binding_count,
             Self::StorageTexelBuffer(binding_count) => binding_count,
             Self::UniformBuffer(binding_count) => binding_count,
-            Self::UniformBufferDynamic(binding_count) => binding_count,
+            //Self::UniformBufferDynamic(binding_count) => binding_count,
             Self::UniformTexelBuffer(binding_count) => binding_count,
         }
     }
@@ -119,11 +122,11 @@ impl DescriptorInfo {
             Self::SampledImage(binding_count) => binding_count,
             Self::Sampler(binding_count) => binding_count,
             Self::StorageBuffer(binding_count) => binding_count,
-            Self::StorageBufferDynamic(binding_count) => binding_count,
+            // Self::StorageBufferDynamic(binding_count) => binding_count,
             Self::StorageImage(binding_count) => binding_count,
             Self::StorageTexelBuffer(binding_count) => binding_count,
             Self::UniformBuffer(binding_count) => binding_count,
-            Self::UniformBufferDynamic(binding_count) => binding_count,
+            // Self::UniformBufferDynamic(binding_count) => binding_count,
             Self::UniformTexelBuffer(binding_count) => binding_count,
         } = binding_count;
     }
@@ -138,18 +141,18 @@ impl From<DescriptorInfo> for vk::DescriptorType {
             DescriptorInfo::SampledImage(_) => Self::SAMPLED_IMAGE,
             DescriptorInfo::Sampler(_) => Self::SAMPLER,
             DescriptorInfo::StorageBuffer(_) => Self::STORAGE_BUFFER,
-            DescriptorInfo::StorageBufferDynamic(_) => Self::STORAGE_BUFFER_DYNAMIC,
+            // DescriptorInfo::StorageBufferDynamic(_) => Self::STORAGE_BUFFER_DYNAMIC,
             DescriptorInfo::StorageImage(_) => Self::STORAGE_IMAGE,
             DescriptorInfo::StorageTexelBuffer(_) => Self::STORAGE_TEXEL_BUFFER,
             DescriptorInfo::UniformBuffer(_) => Self::UNIFORM_BUFFER,
-            DescriptorInfo::UniformBufferDynamic(_) => Self::UNIFORM_BUFFER_DYNAMIC,
+            // DescriptorInfo::UniformBufferDynamic(_) => Self::UNIFORM_BUFFER_DYNAMIC,
             DescriptorInfo::UniformTexelBuffer(_) => Self::UNIFORM_TEXEL_BUFFER,
         }
     }
 }
 
 #[derive(Debug)]
-pub struct PipelineDescriptorInfo {
+pub(crate) struct PipelineDescriptorInfo {
     pub layouts: BTreeMap<u32, DescriptorSetLayout>,
     pub pool_sizes: BTreeMap<u32, BTreeMap<vk::DescriptorType, u32>>,
 }
@@ -247,22 +250,80 @@ impl PipelineDescriptorInfo {
     }
 }
 
+/// Describes a shader program which runs on some pipeline stage.
+#[allow(missing_docs)]
 #[derive(Builder, Clone)]
-#[builder(build_fn(private, name = "fallible_build"), pattern = "owned")]
+#[builder(
+    build_fn(private, name = "fallible_build", error = "ShaderBuilderError"),
+    pattern = "owned"
+)]
 pub struct Shader {
+    /// The name of the entrypoint which will be executed by this shader.
+    ///
+    /// The default value is `main`.
     #[builder(default = "\"main\".to_owned()")]
     pub entry_name: String,
 
+    /// Data about Vulkan specialization constants.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage (GLSL):
+    ///
+    /// ```
+    /// # inline_spirv::inline_spirv!(r#"
+    /// #version 460 core
+    ///
+    /// // Defaults to 6 if not set using ComputePipelineInfo.specialization_info!
+    /// layout(constant_id = 0) const uint MY_COUNT = 6;
+    ///
+    /// layout(set = 0, binding = 0) uniform sampler2D my_samplers[MY_COUNT];
+    ///
+    /// void main()
+    /// {
+    ///     // Code uses MY_COUNT number of my_samplers here
+    /// }
+    /// # "#, comp);
+    /// ```
+    ///
+    /// ```no_run
+    /// # use std::sync::Arc;
+    /// # use ash::vk;
+    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::shader::{Shader, SpecializationInfo};
+    /// # fn main() -> Result<(), DriverError> {
+    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let my_shader_code = [0u8; 1];
+    /// // We instead specify 42 for MY_COUNT:
+    /// let shader = Shader::new_fragment(my_shader_code.as_slice())
+    ///     .specialization_info(SpecializationInfo::new(
+    ///         [vk::SpecializationMapEntry {
+    ///             constant_id: 0,
+    ///             offset: 0,
+    ///             size: 4,
+    ///         }],
+    ///         42u32.to_ne_bytes()
+    ///     ));
+    /// # Ok(()) }
+    /// ```
     #[builder(default, setter(strip_option))]
     pub specialization_info: Option<SpecializationInfo>,
 
+    /// Shader code.
+    ///
+    /// Although SPIR-V code is specified as `u32` values, this field uses `u8` in order to make
+    /// loading from file simpler. You should always have a SPIR-V code length which is a multiple
+    /// of four bytes, or a panic will happen during pipeline creation.
     pub spirv: Vec<u8>,
+
+    /// The shader stage this structure applies to.
     pub stage: vk::ShaderStageFlags,
 
     entry_point: EntryPoint,
 }
 
 impl Shader {
+    /// Specifies a shader with the given `stage` and shader code values.
     #[allow(clippy::new_ret_no_self)]
     pub fn new(stage: vk::ShaderStageFlags, spirv: impl ShaderCode) -> ShaderBuilder {
         ShaderBuilder::default()
@@ -272,63 +333,81 @@ impl Shader {
 
     /// Creates a new ray trace shader.
     ///
-    /// _NOTE:_ May panic if the shader code is invalid.
+    /// # Panics
+    ///
+    /// If the shader code is invalid or not a multiple of four bytes in length.
     pub fn new_any_hit(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::ANY_HIT_KHR, spirv)
     }
 
     /// Creates a new ray trace shader.
     ///
-    /// _NOTE:_ May panic if the shader code is invalid.
+    /// # Panics
+    ///
+    /// If the shader code is invalid or not a multiple of four bytes in length.
     pub fn new_callable(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::CALLABLE_KHR, spirv)
     }
 
     /// Creates a new ray trace shader.
     ///
-    /// _NOTE:_ May panic if the shader code is invalid.
+    /// # Panics
+    ///
+    /// If the shader code is invalid or not a multiple of four bytes in length.
     pub fn new_closest_hit(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::CLOSEST_HIT_KHR, spirv)
     }
 
     /// Creates a new compute shader.
     ///
-    /// _NOTE:_ May panic if the shader code is invalid.
+    /// # Panics
+    ///
+    /// If the shader code is invalid or not a multiple of four bytes in length.
     pub fn new_compute(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::COMPUTE, spirv)
     }
 
     /// Creates a new fragment shader.
     ///
-    /// _NOTE:_ May panic if the shader code is invalid.
+    /// # Panics
+    ///
+    /// If the shader code is invalid or not a multiple of four bytes in length.
     pub fn new_fragment(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::FRAGMENT, spirv)
     }
 
     /// Creates a new geometry shader.
     ///
-    /// _NOTE:_ May panic if the shader code is invalid.
+    /// # Panics
+    ///
+    /// If the shader code is invalid or not a multiple of four bytes in length.
     pub fn new_geometry(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::GEOMETRY, spirv)
     }
 
     /// Creates a new ray trace shader.
     ///
-    /// _NOTE:_ May panic if the shader code is invalid.
+    /// # Panics
+    ///
+    /// If the shader code is invalid or not a multiple of four bytes in length.
     pub fn new_intersection(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::INTERSECTION_KHR, spirv)
     }
 
     /// Creates a new ray trace shader.
     ///
-    /// _NOTE:_ May panic if the shader code is invalid.
+    /// # Panics
+    ///
+    /// If the shader code is invalid or not a multiple of four bytes in length.
     pub fn new_miss(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::MISS_KHR, spirv)
     }
 
     /// Creates a new ray trace shader.
     ///
-    /// _NOTE:_ May panic if the shader code is invalid.
+    /// # Panics
+    ///
+    /// If the shader code is invalid or not a multiple of four bytes in length.
     pub fn new_ray_gen(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::RAYGEN_KHR, spirv)
     }
@@ -342,20 +421,24 @@ impl Shader {
 
     /// Creates a new tesselation evaluation shader.
     ///
-    /// _NOTE:_ May panic if the shader code is invalid.
+    /// # Panics
+    ///
+    /// If the shader code is invalid or not a multiple of four bytes in length.
     pub fn new_tesselation_eval(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::TESSELLATION_EVALUATION, spirv)
     }
 
     /// Creates a new vertex shader.
     ///
-    /// _NOTE:_ May panic if the shader code is invalid.
+    /// # Panics
+    ///
+    /// If the shader code is invalid or not a multiple of four bytes in length.
     pub fn new_vertex(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::VERTEX, spirv)
     }
 
     /// Returns the input and write attachments of a shader.
-    pub fn attachments(
+    pub(super) fn attachments(
         &self,
     ) -> (
         impl Iterator<Item = u32> + '_,
@@ -376,7 +459,7 @@ impl Shader {
         )
     }
 
-    pub fn descriptor_bindings(&self, device: &Device) -> DescriptorBindingMap {
+    pub(super) fn descriptor_bindings(&self, device: &Device) -> DescriptorBindingMap {
         let mut res = DescriptorBindingMap::default();
 
         for (name, binding, desc_ty, binding_count) in
@@ -436,7 +519,7 @@ impl Shader {
         res
     }
 
-    pub fn merge_descriptor_bindings(
+    pub(super) fn merge_descriptor_bindings(
         descriptor_bindings: impl IntoIterator<Item = DescriptorBindingMap>,
     ) -> DescriptorBindingMap {
         fn merge_info(lhs: &mut DescriptorInfo, rhs: DescriptorInfo) {
@@ -496,13 +579,13 @@ impl Shader {
                         panic!("{INVALID_ERR}");
                     }
                 }
-                DescriptorInfo::StorageBufferDynamic(lhs) => {
-                    if let DescriptorInfo::StorageBufferDynamic(rhs) = rhs {
-                        *lhs = rhs.max(*lhs);
-                    } else {
-                        panic!("{INVALID_ERR}");
-                    }
-                }
+                // DescriptorInfo::StorageBufferDynamic(lhs) => {
+                //     if let DescriptorInfo::StorageBufferDynamic(rhs) = rhs {
+                //         *lhs = rhs.max(*lhs);
+                //     } else {
+                //         panic!("{INVALID_ERR}");
+                //     }
+                // }
                 DescriptorInfo::StorageImage(lhs) => {
                     if let DescriptorInfo::StorageImage(rhs) = rhs {
                         *lhs = rhs.max(*lhs);
@@ -524,13 +607,13 @@ impl Shader {
                         panic!("{INVALID_ERR}");
                     }
                 }
-                DescriptorInfo::UniformBufferDynamic(lhs) => {
-                    if let DescriptorInfo::UniformBufferDynamic(rhs) = rhs {
-                        *lhs = rhs.max(*lhs);
-                    } else {
-                        panic!("{INVALID_ERR}");
-                    }
-                }
+                // DescriptorInfo::UniformBufferDynamic(lhs) => {
+                //     if let DescriptorInfo::UniformBufferDynamic(rhs) = rhs {
+                //         *lhs = rhs.max(*lhs);
+                //     } else {
+                //         panic!("{INVALID_ERR}");
+                //     }
+                // }
                 DescriptorInfo::UniformTexelBuffer(lhs) => {
                     if let DescriptorInfo::UniformTexelBuffer(rhs) = rhs {
                         *lhs = rhs.max(*lhs);
@@ -561,7 +644,7 @@ impl Shader {
         res
     }
 
-    pub fn push_constant_range(&self) -> Option<vk::PushConstantRange> {
+    pub(super) fn push_constant_range(&self) -> Option<vk::PushConstantRange> {
         self.entry_point
             .vars
             .iter()
@@ -620,7 +703,7 @@ impl Shader {
         Ok(entry_point)
     }
 
-    pub fn vertex_input(&self) -> VertexInputState {
+    pub(super) fn vertex_input(&self) -> VertexInputState {
         fn scalar_format(ty: &ScalarType, byte_len: u32) -> vk::Format {
             match ty {
                 ScalarType::Float(_) => match byte_len {
@@ -742,12 +825,28 @@ impl Shader {
     }
 }
 
+impl Debug for Shader {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        // We don't want the default formatter bc vec u8
+        // TODO: Better output message
+        f.write_str("Shader")
+    }
+}
+
+impl From<ShaderBuilder> for Shader {
+    fn from(shader: ShaderBuilder) -> Self {
+        shader.build()
+    }
+}
+
 // HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
 impl ShaderBuilder {
+    /// Specifies a shader with the given `stage` and shader code values.
     pub fn new(stage: vk::ShaderStageFlags, spirv: Vec<u8>) -> Self {
         Self::default().stage(stage).spirv(spirv)
     }
 
+    /// Builds a new `Shader`.
     pub fn build(mut self) -> Shader {
         self.entry_point = Some(
             Shader::reflect_entry_point(
@@ -766,21 +865,18 @@ impl ShaderBuilder {
     }
 }
 
-impl Debug for Shader {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        // We don't want the default formatter bc vec u8
-        // TODO: Better output message
-        f.write_str("Shader")
+#[derive(Debug)]
+struct ShaderBuilderError;
+
+impl From<UninitializedFieldError> for ShaderBuilderError {
+    fn from(_: UninitializedFieldError) -> Self {
+        Self
     }
 }
 
-impl From<ShaderBuilder> for Shader {
-    fn from(shader: ShaderBuilder) -> Self {
-        shader.build()
-    }
-}
-
+/// Trait for types which can be converted into shader code.
 pub trait ShaderCode {
+    /// Converts the instance into SPIR-V shader code specified as a byte array.
     fn into_vec(self) -> Vec<u8>;
 }
 
@@ -821,13 +917,18 @@ impl ShaderCode for Vec<u32> {
     }
 }
 
+/// Describes specialized constant values.
 #[derive(Clone, Debug)]
 pub struct SpecializationInfo {
+    /// A buffer of data which holds the constant values.
     pub data: Vec<u8>,
+
+    /// Mapping of locations within the constant value data which describe each individual constant.
     pub map_entries: Vec<vk::SpecializationMapEntry>,
 }
 
 impl SpecializationInfo {
+    /// Constructs a new `SpecializationInfo`.
     pub fn new(
         map_entries: impl Into<Vec<vk::SpecializationMapEntry>>,
         data: impl Into<Vec<u8>>,

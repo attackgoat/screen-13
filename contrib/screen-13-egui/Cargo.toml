@@ -3,7 +3,7 @@ name = "screen-13-egui"
 version = "0.1.0"
 authors = ["Christian Döring <christian.doering@tum.de>"]
 edition = "2021"
-licence = "MIT OR Apache-2.0"
+license = "MIT OR Apache-2.0"
 readme = "README.md"
 
 [dependencies]

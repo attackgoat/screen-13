@@ -1,68 +1,80 @@
-mod accel_struct;
-mod buffer;
+//! [Vulkan 1.2](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/index.html) interface
+//! based on smart pointers.
+//!
+//! # Resources
+//!
+//! Each resource contains an opaque Vulkan object handle and an information structure which
+//! describes the object. Resources also contain an atomic [`AccessType`] state value which is used to
+//! maintain consistency in any system which accesses the resource.
+//!
+//! The following resources are available:
+//!
+//! - [`AccelerationStructure`](accel_struct::AccelerationStructure)
+//! - [`Buffer`](buffer::Buffer)
+//! - [`Image`](image::Image)
+//!
+//! # Pipelines
+//!
+//! Pipelines allow you to run shader code which read and write resources using graphics hardware.
+//!
+//! Each pipeline contains an opaque Vulkan object handle and an information structure which
+//! describes the configuration and shaders. They are immutable once created.
+//!
+//! The following pipelines are available:
+//!
+//! - [`ComputePipeline`](compute::ComputePipeline)
+//! - [`GraphicPipeline`](graphic::GraphicPipeline)
+//! - [`RayTracePipeline`](ray_trace::RayTracePipeline)
+
+pub mod accel_struct;
+pub mod buffer;
+pub mod compute;
+pub mod graphic;
+pub mod image;
+pub mod ray_trace;
+pub mod shader;
+
 mod cmd_buf;
-mod compute;
 mod descriptor_set;
 mod descriptor_set_layout;
 mod device;
-mod graphic;
-mod image;
 mod instance;
 mod physical_device;
-mod ray_trace;
 mod render_pass;
-mod shader;
 mod surface;
 mod swapchain;
 
 pub use {
     self::{
-        accel_struct::{
-            AccelerationStructure, AccelerationStructureGeometry,
-            AccelerationStructureGeometryData, AccelerationStructureGeometryInfo,
-            AccelerationStructureInfo, AccelerationStructureInfoBuilder, AccelerationStructureSize,
-            DeviceOrHostAddress,
-        },
-        buffer::{Buffer, BufferInfo, BufferInfoBuilder, BufferSubresource},
-        cmd_buf::CommandBuffer,
-        compute::{ComputePipeline, ComputePipelineInfo, ComputePipelineInfoBuilder},
-        descriptor_set::{DescriptorPool, DescriptorPoolInfo, DescriptorSet},
-        descriptor_set_layout::DescriptorSetLayout,
         device::{Device, FeatureFlags},
-        graphic::{
-            BlendMode, DepthStencilMode, GraphicPipeline, GraphicPipelineInfo,
-            GraphicPipelineInfoBuilder, StencilMode, VertexInputState,
-        },
-        image::{
-            Image, ImageInfo, ImageInfoBuilder, ImageSubresource, ImageType, ImageView,
-            ImageViewInfo, ImageViewInfoBuilder, SampleCount,
-        },
-        instance::Instance,
         physical_device::{PhysicalDevice, QueueFamily, QueueFamilyProperties},
-        ray_trace::{
-            RayTracePipeline, RayTracePipelineInfo, RayTracePipelineInfoBuilder,
-            RayTraceShaderGroup,
-        },
-        render_pass::{
-            AttachmentInfo, AttachmentInfoBuilder, AttachmentRef, FramebufferKey,
-            FramebufferKeyAttachment, RenderPass, RenderPassInfo, RenderPassInfoBuilder,
-            SubpassDependency, SubpassDependencyBuilder, SubpassInfo,
-        },
-        shader::{
-            DescriptorBinding, DescriptorBindingMap, DescriptorInfo, PipelineDescriptorInfo,
-            Shader, ShaderBuilder, SpecializationInfo,
-        },
-        surface::Surface,
-        swapchain::{
-            Swapchain, SwapchainError, SwapchainImage, SwapchainInfo, SwapchainInfoBuilder,
-        },
     },
-    ash::{self, vk},
-    vk_sync::{AccessType, ImageLayout},
+    ash::{self},
+    vk_sync::AccessType,
+};
+
+pub(crate) use self::{
+    cmd_buf::CommandBuffer,
+    descriptor_set::{DescriptorPool, DescriptorPoolInfo, DescriptorSet},
+    descriptor_set_layout::DescriptorSetLayout,
+    instance::Instance,
+    render_pass::{
+        AttachmentInfo, AttachmentRef, FramebufferKey, FramebufferKeyAttachment, RenderPass,
+        RenderPassInfo, SubpassDependency, SubpassInfo,
+    },
+    shader::{DescriptorBinding, DescriptorBindingMap, DescriptorInfo},
+    surface::Surface,
+    swapchain::{Swapchain, SwapchainError, SwapchainImage, SwapchainInfo},
 };
 
 use {
-    derive_builder::Builder,
+    self::{
+        buffer::{Buffer, BufferInfo},
+        graphic::{DepthStencilMode, GraphicPipeline, VertexInputState},
+        image::{Image, ImageInfo, ImageType, SampleCount},
+    },
+    ash::vk,
+    derive_builder::{Builder, UninitializedFieldError},
     log::{debug, info, trace, warn},
     raw_window_handle::HasRawWindowHandle,
     std::{
@@ -74,9 +86,8 @@ use {
         os::raw::c_char,
         sync::Arc,
     },
+    vk_sync::ImageLayout,
 };
-
-pub type QueueFamilyBuilder = QueueFamily;
 
 const fn access_type_from_u8(access: u8) -> AccessType {
     match access {
@@ -206,7 +217,7 @@ const fn access_type_into_u8(access: AccessType) -> u8 {
 }
 
 #[allow(clippy::reversed_empty_ranges)]
-pub fn buffer_copy_subresources(
+pub(super) fn buffer_copy_subresources(
     regions: &[vk::BufferCopy],
 ) -> (Range<vk::DeviceSize>, Range<vk::DeviceSize>) {
     let mut src = vk::DeviceSize::MAX..vk::DeviceSize::MIN;
@@ -226,7 +237,9 @@ pub fn buffer_copy_subresources(
 }
 
 #[allow(clippy::reversed_empty_ranges)]
-pub fn buffer_image_copy_subresource(regions: &[vk::BufferImageCopy]) -> Range<vk::DeviceSize> {
+pub(super) fn buffer_image_copy_subresource(
+    regions: &[vk::BufferImageCopy],
+) -> Range<vk::DeviceSize> {
     debug_assert!(!regions.is_empty());
 
     let mut res = vk::DeviceSize::MAX..vk::DeviceSize::MIN;
@@ -243,7 +256,7 @@ pub fn buffer_image_copy_subresource(regions: &[vk::BufferImageCopy]) -> Range<v
     res
 }
 
-pub const fn format_aspect_mask(fmt: vk::Format) -> vk::ImageAspectFlags {
+pub(super) const fn format_aspect_mask(fmt: vk::Format) -> vk::ImageAspectFlags {
     match fmt {
         vk::Format::D16_UNORM => vk::ImageAspectFlags::DEPTH,
         vk::Format::X8_D24_UNORM_PACK32 => vk::ImageAspectFlags::DEPTH,
@@ -262,7 +275,7 @@ pub const fn format_aspect_mask(fmt: vk::Format) -> vk::ImageAspectFlags {
     }
 }
 
-pub const fn image_access_layout(access: AccessType) -> ImageLayout {
+pub(super) const fn image_access_layout(access: AccessType) -> ImageLayout {
     if matches!(access, AccessType::Present | AccessType::ComputeShaderWrite) {
         ImageLayout::General
     } else {
@@ -270,11 +283,11 @@ pub const fn image_access_layout(access: AccessType) -> ImageLayout {
     }
 }
 
-pub const fn is_read_access(ty: AccessType) -> bool {
+pub(super) const fn is_read_access(ty: AccessType) -> bool {
     !is_write_access(ty)
 }
 
-pub const fn is_write_access(ty: AccessType) -> bool {
+pub(super) const fn is_write_access(ty: AccessType) -> bool {
     use AccessType::*;
     match ty {
         Nothing
@@ -394,7 +407,7 @@ fn merge_push_constant_ranges(push_constants: &mut Vec<vk::PushConstantRange>) {
     }
 }
 
-pub const fn pipeline_stage_access_flags(
+pub(super) const fn pipeline_stage_access_flags(
     access_type: AccessType,
 ) -> (vk::PipelineStageFlags, vk::AccessFlags) {
     use {
@@ -568,13 +581,17 @@ pub const fn pipeline_stage_access_flags(
     }
 }
 
+/// Holds a constructed graphics driver.
 #[derive(Debug)]
 pub struct Driver {
+    /// The current device.
     pub device: Arc<Device>,
-    pub swapchain: Swapchain,
+
+    pub(crate) swapchain: Swapchain,
 }
 
 impl Driver {
+    /// Constructs a new `Driver` from the given configuration.
     pub fn new(
         window: &impl HasRawWindowHandle,
         cfg: DriverConfig,
@@ -677,7 +694,11 @@ impl Driver {
 /// A list of required features. Features that are supported but not required will not be
 /// available.
 #[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
-#[builder(pattern = "owned", derive(Debug))]
+#[builder(
+    pattern = "owned",
+    build_fn(private, name = "fallible_build", error = "DriverConfigBuilderError"),
+    derive(Debug)
+)]
 pub struct DriverConfig {
     /// Enables Vulkan validation layers.
     ///
@@ -691,6 +712,7 @@ pub struct DriverConfig {
     #[builder(default)]
     pub debug: bool,
 
+    /// The desired, but not garunteed, number of images that will be in the created swapchain.
     #[builder(default = "3")]
     pub desired_swapchain_image_count: u32,
 
@@ -701,14 +723,23 @@ pub struct DriverConfig {
     #[builder(default = "true")]
     pub sync_display: bool,
 
+    /// Used to select devices which support presentation to the display.
+    ///
+    /// The default value is `true`.
     #[builder(default = "true")]
     pub presentation: bool,
 
+    /// Used to select devices which support the [KHR ray tracing] extension.
+    ///
+    /// The default is `false`.
+    ///
+    /// [KHR ray tracing]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#ray-tracing
     #[builder(default)]
     pub ray_tracing: bool,
 }
 
 impl DriverConfig {
+    /// Specifies a default driver configuration.
     #[allow(clippy::new_ret_no_self)]
     pub fn new() -> DriverConfigBuilder {
         Default::default()
@@ -722,11 +753,43 @@ impl DriverConfig {
     }
 }
 
-// TODO: A more robust error type and some proper vk error mapping
+// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
+impl DriverConfigBuilder {
+    /// Builds a new `DriverConfig`.
+    pub fn build(self) -> DriverConfig {
+        self.fallible_build().unwrap()
+    }
+}
+
+#[derive(Debug)]
+struct DriverConfigBuilderError;
+
+impl From<UninitializedFieldError> for DriverConfigBuilderError {
+    fn from(_: UninitializedFieldError) -> Self {
+        Self
+    }
+}
+
+/// Describes the general category of all graphics driver failure cases.
+///
+/// In the event of a failure you should follow the _Screen 13_ code to the responsible Vulkan API
+/// and then to the `Ash` stub call; it will generally contain a link to the appropriate
+/// specification. The specifications provide a table of possible error conditions which can be a
+/// good starting point to debug the issue.
+///
+/// Feel free to open an issue on GitHub, [here](https://github.com/attackgoat/screen-13/issues) for
+/// help debugging the issue.
 #[derive(Debug)]
 pub enum DriverError {
+    /// The input data, or referenced data, is not valid for the current state.
     InvalidData,
+
+    /// The requested feature, or input configuration, is not supported for the current state.
     Unsupported,
+
+    /// The device has run out of physical memory.
+    ///
+    /// Many drivers return this value for generic or unhandled error conditions.
     OutOfMemory,
 }
 
@@ -738,26 +801,122 @@ impl Display for DriverError {
 
 impl Error for DriverError {}
 
+/// Structure describing descriptor indexing features that can be supported by an implementation.
 pub struct PhysicalDeviceDescriptorIndexingFeatures {
+    /// Indicates whether arrays of input attachments can be indexed by dynamically uniform integer
+    /// expressions in shader code.
+    ///
+    /// If this feature is not enabled, resources with a descriptor type of
+    /// VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT must be indexed only by constant integral expressions
+    /// when aggregated into arrays in shader code. This also indicates whether shader modules can
+    /// declare the InputAttachmentArrayDynamicIndexing capability.
     pub shader_input_attachment_array_dynamic_indexing: bool,
+
+    /// Indicates whether arrays of uniform texel buffers can be indexed by dynamically uniform
+    /// integer expressions in shader code.
+    ///
+    /// If this feature is not enabled, resources with a descriptor type of
+    /// VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER must be indexed only by constant integral
+    /// expressions when aggregated into arrays in shader code. This also indicates whether shader
+    /// modules can declare the UniformTexelBufferArrayDynamicIndexing capability.
     pub shader_uniform_texel_buffer_array_dynamic_indexing: bool,
+
+    /// Indicates whether arrays of storage texel buffers can be indexed by dynamically uniform
+    /// integer expressions in shader code.
+    ///
+    /// If this feature is not enabled, resources with a descriptor type of
+    /// VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER must be indexed only by constant integral
+    /// expressions when aggregated into arrays in shader code. This also indicates whether shader
+    /// modules can declare the StorageTexelBufferArrayDynamicIndexing capability.
     pub shader_storage_texel_buffer_array_dynamic_indexing: bool,
+
+    /// Indicates whether arrays of uniform buffers can be indexed by non-uniform integer
+    /// expressions in shader code.
+    ///
+    /// If this feature is not enabled, resources with a descriptor type of
+    /// VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER or VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC must not be
+    /// indexed by non-uniform integer expressions when aggregated into arrays in shader code. This
+    /// also indicates whether shader modules can declare the UniformBufferArrayNonUniformIndexing
+    /// capability.
     pub shader_uniform_buffer_array_non_uniform_indexing: bool,
+
+    /// Indicates whether arrays of samplers or sampled images can be indexed by non-uniform integer
+    /// expressions in shader code.
+    ///
+    /// If this feature is not enabled, resources with a descriptor type of
+    /// VK_DESCRIPTOR_TYPE_SAMPLER, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, or
+    /// VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE must not be indexed by non-uniform integer expressions when
+    /// aggregated into arrays in shader code. This also indicates whether shader modules can
+    /// declare the SampledImageArrayNonUniformIndexing capability.
     pub shader_sampled_image_array_non_uniform_indexing: bool,
+
+    /// Indicates whether arrays of storage buffers can be indexed by non-uniform integer
+    /// expressions in shader code.
+    ///
+    /// If this feature is not enabled, resources with a descriptor type of
+    /// VK_DESCRIPTOR_TYPE_STORAGE_BUFFER or VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC must not be
+    /// indexed by non-uniform integer expressions when aggregated into arrays in shader code. This
+    /// also indicates whether shader modules can declare the StorageBufferArrayNonUniformIndexing
+    /// capability.
     pub shader_storage_buffer_array_non_uniform_indexing: bool,
+
+    /// Indicates whether arrays of storage images can be indexed by non-uniform integer expressions
+    /// in shader code.
+    ///
+    /// If this feature is not enabled, resources with a descriptor type of
+    /// VK_DESCRIPTOR_TYPE_STORAGE_IMAGE must not be indexed by non-uniform integer expressions when
+    /// aggregated into arrays in shader code. This also indicates whether shader modules can
+    /// declare the StorageImageArrayNonUniformIndexing capability.
     pub shader_storage_image_array_non_uniform_indexing: bool,
+
+    /// Indicates whether arrays of input attachments can be indexed by non-uniform integer
+    /// expressions in shader code.
+    ///
+    /// If this feature is not enabled, resources with a descriptor type of
+    /// VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT must not be indexed by non-uniform integer expressions
+    /// when aggregated into arrays in shader code. This also indicates whether shader modules can
+    /// declare the InputAttachmentArrayNonUniformIndexing capability.
     pub shader_input_attachment_array_non_uniform_indexing: bool,
+
+    /// Indicates whether arrays of uniform texel buffers can be indexed by non-uniform integer
+    /// expressions in shader code.
+    ///
+    /// If this feature is not enabled, resources with a descriptor type of
+    /// VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER must not be indexed by non-uniform integer
+    /// expressions when aggregated into arrays in shader code. This also indicates whether shader
+    /// modules can declare the UniformTexelBufferArrayNonUniformIndexing capability.
     pub shader_uniform_texel_buffer_array_non_uniform_indexing: bool,
+
+    /// Indicates whether arrays of storage texel buffers can be indexed by non-uniform integer
+    /// expressions in shader code.
+    ///
+    /// If this feature is not enabled, resources with a descriptor type of
+    /// VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER must not be indexed by non-uniform integer
+    /// expressions when aggregated into arrays in shader code. This also indicates whether shader
+    /// modules can declare the StorageTexelBufferArrayNonUniformIndexing capability.
     pub shader_storage_texel_buffer_array_non_uniform_indexing: bool,
-    pub descriptor_binding_uniform_buffer_update_after_bind: bool,
-    pub descriptor_binding_sampled_image_update_after_bind: bool,
-    pub descriptor_binding_storage_image_update_after_bind: bool,
-    pub descriptor_binding_storage_buffer_update_after_bind: bool,
-    pub descriptor_binding_uniform_texel_buffer_update_after_bind: bool,
-    pub descriptor_binding_storage_texel_buffer_update_after_bind: bool,
-    pub descriptor_binding_update_unused_while_pending: bool,
+
+    // Unused:
+    // pub descriptor_binding_uniform_buffer_update_after_bind: bool,
+    // pub descriptor_binding_sampled_image_update_after_bind: bool,
+    // pub descriptor_binding_storage_image_update_after_bind: bool,
+    // pub descriptor_binding_storage_buffer_update_after_bind: bool,
+    // pub descriptor_binding_uniform_texel_buffer_update_after_bind: bool,
+    // pub descriptor_binding_storage_texel_buffer_update_after_bind: bool,
+    // pub descriptor_binding_update_unused_while_pending: bool,
+    /// Indicates whether the implementation supports statically using a descriptor set binding in
+    /// which some descriptors are not valid. If this feature is not enabled,
+    /// VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT must not be used.
     pub descriptor_binding_partially_bound: bool,
+
+    /// Indicates whether the implementation supports descriptor sets with a variable-sized last
+    /// binding. If this feature is not enabled, VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT
+    /// must not be used.
     pub descriptor_binding_variable_descriptor_count: bool,
+
+    /// Indicates whether the implementation supports the SPIR-V RuntimeDescriptorArray capability.
+    ///
+    /// If this feature is not enabled, descriptors must not be declared in runtime arrays.
     pub runtime_descriptor_array: bool,
 }
 
@@ -796,27 +955,27 @@ impl From<vk::PhysicalDeviceDescriptorIndexingFeatures>
             shader_storage_texel_buffer_array_non_uniform_indexing: features
                 .shader_storage_texel_buffer_array_non_uniform_indexing
                 == vk::TRUE,
-            descriptor_binding_uniform_buffer_update_after_bind: features
-                .descriptor_binding_uniform_buffer_update_after_bind
-                == vk::TRUE,
-            descriptor_binding_sampled_image_update_after_bind: features
-                .descriptor_binding_sampled_image_update_after_bind
-                == vk::TRUE,
-            descriptor_binding_storage_image_update_after_bind: features
-                .descriptor_binding_storage_image_update_after_bind
-                == vk::TRUE,
-            descriptor_binding_storage_buffer_update_after_bind: features
-                .descriptor_binding_storage_buffer_update_after_bind
-                == vk::TRUE,
-            descriptor_binding_uniform_texel_buffer_update_after_bind: features
-                .descriptor_binding_uniform_texel_buffer_update_after_bind
-                == vk::TRUE,
-            descriptor_binding_storage_texel_buffer_update_after_bind: features
-                .descriptor_binding_storage_texel_buffer_update_after_bind
-                == vk::TRUE,
-            descriptor_binding_update_unused_while_pending: features
-                .descriptor_binding_update_unused_while_pending
-                == vk::TRUE,
+            // descriptor_binding_uniform_buffer_update_after_bind: features
+            //     .descriptor_binding_uniform_buffer_update_after_bind
+            //     == vk::TRUE,
+            // descriptor_binding_sampled_image_update_after_bind: features
+            //     .descriptor_binding_sampled_image_update_after_bind
+            //     == vk::TRUE,
+            // descriptor_binding_storage_image_update_after_bind: features
+            //     .descriptor_binding_storage_image_update_after_bind
+            //     == vk::TRUE,
+            // descriptor_binding_storage_buffer_update_after_bind: features
+            //     .descriptor_binding_storage_buffer_update_after_bind
+            //     == vk::TRUE,
+            // descriptor_binding_uniform_texel_buffer_update_after_bind: features
+            //     .descriptor_binding_uniform_texel_buffer_update_after_bind
+            //     == vk::TRUE,
+            // descriptor_binding_storage_texel_buffer_update_after_bind: features
+            //     .descriptor_binding_storage_texel_buffer_update_after_bind
+            //     == vk::TRUE,
+            // descriptor_binding_update_unused_while_pending: features
+            //     .descriptor_binding_update_unused_while_pending
+            //     == vk::TRUE,
             descriptor_binding_partially_bound: features.descriptor_binding_partially_bound
                 == vk::TRUE,
             descriptor_binding_variable_descriptor_count: features
@@ -827,15 +986,35 @@ impl From<vk::PhysicalDeviceDescriptorIndexingFeatures>
     }
 }
 
+/// Properties of the physical device for ray tracing.
 #[derive(Debug)]
 pub struct PhysicalDeviceRayTracePipelineProperties {
+    /// The size in bytes of the shader header.
     pub shader_group_handle_size: u32,
+
+    /// The maximum number of levels of ray recursion allowed in a trace command.
     pub max_ray_recursion_depth: u32,
+
+    /// The maximum stride in bytes allowed between shader groups in the shader binding table.
     pub max_shader_group_stride: u32,
+
+    /// The required alignment in bytes for the base of the shader binding table.
     pub shader_group_base_alignment: u32,
+
+    /// The number of bytes for the information required to do capture and replay for shader group
+    /// handles.
     pub shader_group_handle_capture_replay_size: u32,
+
+    /// The maximum number of ray generation shader invocations which may be produced by a single
+    /// vkCmdTraceRaysIndirectKHR or vkCmdTraceRaysKHR command.
     pub max_ray_dispatch_invocation_count: u32,
+
+    /// The required alignment in bytes for each shader binding table entry.
+    ///
+    /// The value must be a power of two.
     pub shader_group_handle_alignment: u32,
+
+    /// The maximum size in bytes for a ray attribute structure.
     pub max_ray_hit_attribute_size: u32,
 }
 
@@ -856,8 +1035,11 @@ impl From<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>
     }
 }
 
+/// An execution queue.
 pub struct Queue {
     queue: vk::Queue,
+
+    /// Properties of the family which this queue belongs to.
     pub family: QueueFamily,
 }
 
@@ -870,7 +1052,7 @@ impl Deref for Queue {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct SamplerDesc {
+pub(super) struct SamplerDesc {
     pub address_modes: vk::SamplerAddressMode,
     pub mipmap_mode: vk::SamplerMipmapMode,
     pub texel_filter: vk::Filter,

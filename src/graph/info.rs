@@ -3,7 +3,9 @@ use {
         AccelerationStructureLeaseNode, AccelerationStructureNode, BufferLeaseNode, BufferNode,
         ImageLeaseNode, ImageNode, RenderGraph, SwapchainImageNode,
     },
-    crate::driver::{AccelerationStructureInfo, BufferInfo, ImageInfo},
+    crate::driver::{
+        accel_struct::AccelerationStructureInfo, buffer::BufferInfo, image::ImageInfo,
+    },
 };
 
 pub trait Information {
