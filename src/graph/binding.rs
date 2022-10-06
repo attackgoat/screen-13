@@ -55,7 +55,14 @@ use {
 //     }
 // }
 
+/// A trait for resources which may be bound to a `RenderGraph`.
+///
+/// See [`RenderGraph::bind_node`] and
+/// [`PassRef::bind_pipeline`](super::pass_ref::PassRef::bind_pipeline) for details.
 pub trait Bind<Graph, Node> {
+    /// Binds the resource to a graph-like object.
+    ///
+    /// Returns a reference Node object.
     fn bind(self, graph: Graph) -> Node;
 }
 
@@ -274,6 +281,12 @@ bind_lease!(AccelerationStructure);
 bind_lease!(Image);
 bind_lease!(Buffer);
 
+/// A trait for resources which may be unbound from a `RenderGraph`.
+///
+/// See [`RenderGraph::unbind_node`] for details.
 pub trait Unbind<Graph, Binding> {
+    /// Unbinds the resource from a graph-like object.
+    ///
+    /// Returns the original Binding object.
     fn unbind(self, graph: &mut Graph) -> Binding;
 }

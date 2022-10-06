@@ -251,6 +251,7 @@ impl PipelineDescriptorInfo {
 }
 
 /// Describes a shader program which runs on some pipeline stage.
+#[allow(missing_docs)]
 #[derive(Builder, Clone)]
 #[builder(
     build_fn(private, name = "fallible_build", error = "ShaderBuilderError"),

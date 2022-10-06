@@ -2201,6 +2201,7 @@ impl Resolver {
         }
     }
 
+    /// Submits the remaining commands stored in this instance.
     pub fn submit(
         mut self,
         queue: &Queue,
@@ -2261,7 +2262,7 @@ impl Resolver {
         Ok(())
     }
 
-    pub fn unbind_node<N>(&mut self, node: N) -> <N as Edge<Self>>::Result
+    pub(crate) fn unbind_node<N>(&mut self, node: N) -> <N as Edge<Self>>::Result
     where
         N: Edge<Self>,
         N: Unbind<Self, <N as Edge<Self>>::Result>,
@@ -2539,6 +2540,8 @@ impl Resolver {
     }
 }
 
+/// Combination trait which groups together all [`Pool`] traits required for a [`Resolver`]
+/// instance.
 pub trait ResolverPool:
     Pool<DescriptorPoolInfo, DescriptorPool>
     + Pool<RenderPassInfo, RenderPass>

@@ -16,6 +16,7 @@ use {
     vk_sync::{cmd::pipeline_barrier, AccessType, ImageBarrier, ImageLayout},
 };
 
+/// A physical display interface.
 pub struct Display {
     cmd_bufs: Vec<[CommandBuffer; 3]>,
     device: Arc<Device>,
@@ -24,6 +25,7 @@ pub struct Display {
 }
 
 impl Display {
+    /// Constructs a new `Display` object.
     pub fn new(device: &Arc<Device>, pool: Box<dyn ResolverPool>, swapchain: Swapchain) -> Self {
         let device = Arc::clone(device);
 
@@ -35,6 +37,7 @@ impl Display {
         }
     }
 
+    /// Returns a new `RenderGraph` with a bound swapchain image, if possible.
     pub fn acquire_next_image(
         &mut self,
     ) -> Result<(SwapchainImageNode, RenderGraph), SwapchainError> {
@@ -62,6 +65,7 @@ impl Display {
             .map_err(|_| ())
     }
 
+    /// Displays the given swapchain image using passes specified in `render_graph`, if possible.
     pub fn present_image(
         &mut self,
         render_graph: RenderGraph,
@@ -256,6 +260,7 @@ impl Debug for Display {
     }
 }
 
+/// Describes error conditions relating to physical displays.
 #[derive(Debug)]
 pub enum DisplayError {
     /// Unrecoverable device error; must destroy this device and display and start a new one

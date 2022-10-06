@@ -1,11 +1,10 @@
-use inline_spirv::inline_spirv;
-
 use {
     bmfont::{BMFont, OrdinateOrientation},
     image::io::Reader,
+    inline_spirv::inline_spirv,
     screen_13::prelude::*,
     screen_13_fx::*,
-    std::{io::Cursor, time::Instant},
+    std::{io::Cursor, sync::Arc, time::Instant},
 };
 
 fn main() -> anyhow::Result<()> {
@@ -40,7 +39,7 @@ fn main() -> anyhow::Result<()> {
 
     // A neato smoke effect just for fun
     let start_time = Instant::now();
-    let smoke_pipeline = event_loop.new_compute_pipeline(
+    let smoke_pipeline = Arc::new(ComputePipeline::create(&event_loop.device,
         inline_spirv!(
             r#"
             // Derived from https://www.shadertoy.com/view/Xl2XWz
@@ -101,7 +100,7 @@ fn main() -> anyhow::Result<()> {
             comp
         )
         .as_slice(),
-    );
+    )?);
 
     event_loop.run(|frame| {
         let image_node = frame.render_graph.bind_node(

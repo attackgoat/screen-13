@@ -177,13 +177,16 @@ impl Node for AnyImageNode {
     }
 }
 
+/// A Vulkan resource which has been bound to a [`RenderGraph`] using [`RenderGraph::bind_node`].
 pub trait Node: Copy {
+    /// The internal node index of this bound resource.
     fn index(self) -> NodeIndex;
 }
 
 macro_rules! node {
     ($name:ident) => {
         paste::paste! {
+            /// Resource node.
             #[derive(Debug)]
             pub struct [<$name Node>] {
                 pub(super) idx: NodeIndex,

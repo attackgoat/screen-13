@@ -297,7 +297,7 @@ fn main() -> anyhow::Result<()> {
                 .read_descriptor(2, flowers_image)
                 .read_descriptor(3, blank_image)
                 .store_color(0, output)
-                .record_subpass(move |subpass| {
+                .record_subpass(move |subpass, _| {
                     subpass.push_constants(bytes_of(&push_consts));
                     subpass.draw(6, 1, 0, 0);
                 });
@@ -309,7 +309,7 @@ fn main() -> anyhow::Result<()> {
                 .bind_pipeline(&image_pipeline)
                 .read_descriptor(0, output)
                 .store_color(0, input)
-                .record_subpass(move |subpass| {
+                .record_subpass(move |subpass, _| {
                     subpass.push_constants(bytes_of(&push_consts));
                     subpass.draw(6, 1, 0, 0);
                 });

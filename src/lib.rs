@@ -9,7 +9,6 @@ pub mod graph;
 pub mod input;
 pub mod pool;
 
-mod device_api;
 mod display;
 mod event_loop;
 mod frame;
@@ -46,7 +45,7 @@ pub mod prelude {
                 PhysicalDeviceRayTracePipelineProperties, Queue, QueueFamily,
                 QueueFamilyProperties,
             },
-            event_loop::{run, EventLoop, EventLoopBuilder, FullscreenMode},
+            event_loop::{EventLoop, EventLoopBuilder, FullscreenMode},
             frame::{center_cursor, set_cursor_position, FrameContext},
             graph::{
                 node::{
@@ -75,7 +74,7 @@ pub mod prelude {
 
 pub use self::{
     display::{Display, DisplayError},
-    event_loop::{run, EventLoop, EventLoopBuilder, FullscreenMode},
+    event_loop::{EventLoop, EventLoopBuilder, FullscreenMode},
     frame::FrameContext,
 };
 

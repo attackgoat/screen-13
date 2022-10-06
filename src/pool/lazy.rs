@@ -1,3 +1,13 @@
+//! Pool which leases by looking for compatibile information before creating new resources.
+//!
+//! The information for each lease request is loosely bucketed by compatibility. If no acceptable
+//! resources exist for the information provided then a new resource is created and returned.
+//!
+//! # Details
+//! * Acceleration structures may be larger than requested
+//! * Buffers may be larger than request or have additional usage flags
+//! * Images may have additional usage flags
+
 use {
     super::{Cache, Lease, Pool},
     crate::driver::{
@@ -31,6 +41,7 @@ struct ImageKey {
     width: u32,
 }
 
+/// A high-efficiency resource allocator.
 #[derive(Debug)]
 pub struct LazyPool {
     acceleration_structure_cache:
@@ -38,13 +49,14 @@ pub struct LazyPool {
     buffer_cache: HashMap<bool, Cache<Buffer>>,
     command_buffer_cache: HashMap<u32, Cache<CommandBuffer>>,
     descriptor_pool_cache: Cache<DescriptorPool>,
-    pub device: Arc<Device>,
+    device: Arc<Device>,
     image_cache: HashMap<ImageKey, Cache<Image>>,
     render_pass_cache: HashMap<RenderPassInfo, Cache<RenderPass>>,
 }
 
 // TODO: Add some sort of manager features (like, I dunno, "Clear Some Memory For me")
 impl LazyPool {
+    /// Constructs a new `LazyPool`.
     pub fn new(device: &Arc<Device>) -> Self {
         let device = Arc::clone(device);
 

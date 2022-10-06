@@ -28,10 +28,16 @@ use {
     vk_sync::AccessType,
 };
 
-// Aliases for clarity
+/// Alias for the index of a framebuffer attachment.
 pub type AttachmentIndex = u32;
+
+/// Alias for the binding index of a shader descriptor.
 pub type BindingIndex = u32;
+
+/// Alias for the binding offset of a shader descriptor array element.
 pub type BindingOffset = u32;
+
+/// Alias for the descriptor set index of a shader descriptor.
 pub type DescriptorSetIndex = u32;
 
 /// Recording interface for acceleration structure commands.
@@ -845,7 +851,10 @@ impl<'a> Compute<'a> {
 /// - `(0, 42, [8])` same as the previous example
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Descriptor {
+    /// An array binding which includes an `offset` argument for the bound element.
     ArrayBinding(DescriptorSetIndex, BindingIndex, BindingOffset),
+
+    /// A single binding.
     Binding(DescriptorSetIndex, BindingIndex),
 }
 
@@ -1647,22 +1656,23 @@ impl<'a> PassRef<'a> {
         }
     }
 
-    /// Instruct the graph to provide Vulkan barriers around access to the given node.
+    /// Informs the pass that the next recorded command buffer will read or write the given `node`
+    /// using `access`.
     ///
-    /// The resolver will insert an execution barrier into the command buffer as required using
-    /// the provided access type. This allows you to do whatever was declared here inside an
-    /// excution callback registered after this call.
+    /// This function must be called for `node` before it is read or written within a `record`
+    /// function. For general purpose access, see [`PassRef::read_node`] or [`PassRef::write_node`].
     pub fn access_node(mut self, node: impl Node + Information, access: AccessType) -> Self {
         self.access_node_mut(node, access);
 
         self
     }
 
-    /// Instruct the graph to provide Vulkan barriers around access to the given node.
+    /// Informs the pass that the next recorded command buffer will read or write the given `node`
+    /// using `access`.
     ///
-    /// The resolver will insert an execution barrier into the command buffer as required using
-    /// the provided access type. This allows you to do whatever was declared here inside an
-    /// excution callback registered after this call.
+    /// This function must be called for `node` before it is read or written within a `record`
+    /// function. For general purpose access, see [`PassRef::read_node_mut`] or
+    /// [`PassRef::write_node_mut`].
     pub fn access_node_mut(&mut self, node: impl Node + Information, access: AccessType) {
         self.assert_bound_graph_node(node);
 
@@ -1679,12 +1689,11 @@ impl<'a> PassRef<'a> {
         self.push_node_access(node, access, node_access_range);
     }
 
-    /// Instruct the graph to provide Vulkan barriers around access to the given node with
-    /// specific information about the subresource being accessed.
+    /// Informs the pass that the next recorded command buffer will read or write the `subresource`
+    /// of `node` using `access`.
     ///
-    /// The resolver will insert an execution barrier into the command buffer as required using
-    /// the provided access type. This allows you to do whatever was declared here inside an
-    /// excution callback registered after this call.
+    /// This function must be called for `node` before it is read or written within a `record`
+    /// function. For general purpose access, see [`PassRef::read_node`] or [`PassRef::write_node`].
     pub fn access_node_subrange<N>(
         mut self,
         node: N,
@@ -1699,12 +1708,11 @@ impl<'a> PassRef<'a> {
         self
     }
 
-    /// Instruct the graph to provide Vulkan barriers around access to the given node with
-    /// specific information about the subresource being accessed.
+    /// Informs the pass that the next recorded command buffer will read or write the `subresource`
+    /// of `node` using `access`.
     ///
-    /// The resolver will insert an execution barrier into the command buffer as required using
-    /// the provided access type. This allows you to do whatever was declared here inside an
-    /// excution callback registered after this call.
+    /// This function must be called for `node` before it is read or written within a `record`
+    /// function. For general purpose access, see [`PassRef::read_node`] or [`PassRef::write_node`].
     pub fn access_node_subrange_mut<N>(
         &mut self,
         node: N,
@@ -1782,12 +1790,22 @@ impl<'a> PassRef<'a> {
             .or_insert([access, access]);
     }
 
+    /// Informs the pass that the next recorded command buffer will read the given `node` using
+    /// [`AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer`].
+    ///
+    /// This function must be called for `node` before it is read within a `record` function. For
+    /// more specific access, see [`PassRef::access_node`].
     pub fn read_node(mut self, node: impl Node + Information) -> Self {
         self.read_node_mut(node);
 
         self
     }
 
+    /// Informs the pass that the next recorded command buffer will read the given `node` using
+    /// [`AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer`].
+    ///
+    /// This function must be called for `node` before it is read within a `record` function. For
+    /// more specific access, see [`PassRef::access_node`].
     pub fn read_node_mut(&mut self, node: impl Node + Information) {
         self.access_node_mut(
             node,
@@ -1840,12 +1858,22 @@ impl<'a> PassRef<'a> {
         self.graph
     }
 
+    /// Informs the pass that the next recorded command buffer will write the given `node` using
+    /// [`AccessType::AnyShaderWrite`].
+    ///
+    /// This function must be called for `node` before it is written within a `record` function. For
+    /// more specific access, see [`PassRef::access_node`].
     pub fn write_node(mut self, node: impl Node + Information) -> Self {
         self.write_node_mut(node);
 
         self
     }
 
+    /// Informs the pass that the next recorded command buffer will write the given `node` using
+    /// [`AccessType::AnyShaderWrite`].
+    ///
+    /// This function must be called for `node` before it is written within a `record` function. For
+    /// more specific access, see [`PassRef::access_node`].
     pub fn write_node_mut(&mut self, node: impl Node + Information) {
         self.access_node_mut(node, AccessType::AnyShaderWrite);
     }
@@ -1864,6 +1892,12 @@ impl<'a, T> PipelinePassRef<'a, T>
 where
     T: Access,
 {
+    /// Informs the pass that the next recorded command buffer will read or write the given `node`
+    /// at the specified shader descriptor using `access`.
+    ///
+    /// This function must be called for `node` before it is read or written within a `record`
+    /// function. For general purpose access, see [`PipelinePassRef::read_descriptor`] or
+    /// [`PipelinePassRef::write_descriptor`].
     pub fn access_descriptor<N>(
         self,
         descriptor: impl Into<Descriptor>,
@@ -1881,6 +1915,13 @@ where
         self.access_descriptor_as(descriptor, node, access, view_info)
     }
 
+    /// Informs the pass that the next recorded command buffer will read or write the given `node`
+    /// at the specified shader descriptor using `access`. The node will be interpreted using
+    /// `view_info`.
+    ///
+    /// This function must be called for `node` before it is read or written within a `record`
+    /// function. For general purpose access, see [`PipelinePassRef::read_descriptor_as`] or
+    /// [`PipelinePassRef::write_descriptor_as`].
     pub fn access_descriptor_as<N>(
         self,
         descriptor: impl Into<Descriptor>,
@@ -1900,6 +1941,13 @@ where
         self.access_descriptor_subrange(descriptor, node, access, view_info, subresource)
     }
 
+    /// Informs the pass that the next recorded command buffer will read or write the `subresource`
+    /// of `node` at the specified shader descriptor using `access`. The node will be interpreted
+    /// using `view_info`.
+    ///
+    /// This function must be called for `node` before it is read or written within a `record`
+    /// function. For general purpose access, see [`PipelinePassRef::read_descriptor_subrange`] or
+    /// [`PipelinePassRef::write_descriptor_subrange`].
     pub fn access_descriptor_subrange<N>(
         mut self,
         descriptor: impl Into<Descriptor>,
@@ -1919,12 +1967,24 @@ where
         self
     }
 
+    /// Informs the pass that the next recorded command buffer will read or write the given `node`
+    /// using `access`.
+    ///
+    /// This function must be called for `node` before it is read or written within a `record`
+    /// function. For general purpose access, see [`PipelinePassRef::read_node`] or
+    /// [`PipelinePassRef::write_node`].
     pub fn access_node(mut self, node: impl Node + Information, access: AccessType) -> Self {
         self.access_node_mut(node, access);
 
         self
     }
 
+    /// Informs the pass that the next recorded command buffer will read or write the given `node`
+    /// using `access`.
+    ///
+    /// This function must be called for `node` before it is read or written within a `record`
+    /// function. For general purpose access, see [`PipelinePassRef::read_node_mut`] or
+    /// [`PipelinePassRef::write_node_mut`].
     pub fn access_node_mut(&mut self, node: impl Node + Information, access: AccessType) {
         self.pass.assert_bound_graph_node(node);
 
@@ -1941,6 +2001,12 @@ where
         self.pass.push_node_access(node, access, node_access_range);
     }
 
+    /// Informs the pass that the next recorded command buffer will read or write the `subresource`
+    /// of `node` using `access`.
+    ///
+    /// This function must be called for `node` before it is read or written within a `record`
+    /// function. For general purpose access, see [`PipelinePassRef::read_node_subrange`] or
+    /// [`PipelinePassRef::write_node_subrange`].
     pub fn access_node_subrange<N>(
         mut self,
         node: N,
@@ -1955,6 +2021,12 @@ where
         self
     }
 
+    /// Informs the pass that the next recorded command buffer will read or write the `subresource`
+    /// of `node` using `access`.
+    ///
+    /// This function must be called for `node` before it is read or written within a `record`
+    /// function. For general purpose access, see [`PipelinePassRef::read_node_subrange_mut`] or
+    /// [`PipelinePassRef::write_node_subrange_mut`].
     pub fn access_node_subrange_mut<N>(
         &mut self,
         node: N,
@@ -1989,6 +2061,13 @@ where
         );
     }
 
+    /// Informs the pass that the next recorded command buffer will read the given `node` at the
+    /// specified shader descriptor.
+    ///
+    /// The [`AccessType`] is inferred by the currently bound pipeline. See [`Access`] for details.
+    ///
+    /// This function must be called for `node` before it is read within a `record` function. For
+    /// more specific access, see [`PipelinePassRef::access_descriptor`].
     pub fn read_descriptor<N>(self, descriptor: impl Into<Descriptor>, node: N) -> Self
     where
         N: Information,
@@ -2001,6 +2080,13 @@ where
         self.read_descriptor_as(descriptor, node, view_info)
     }
 
+    /// Informs the pass that the next recorded command buffer will read the given `node` at the
+    /// specified shader descriptor. The node will be interpreted using `view_info`.
+    ///
+    /// The [`AccessType`] is inferred by the currently bound pipeline. See [`Access`] for details.
+    ///
+    /// This function must be called for `node` before it is read within a `record` function. For
+    /// more specific access, see [`PipelinePassRef::access_descriptor_as`].
     pub fn read_descriptor_as<N>(
         self,
         descriptor: impl Into<Descriptor>,
@@ -2019,6 +2105,13 @@ where
         self.read_descriptor_subrange(descriptor, node, view_info, subresource)
     }
 
+    /// Informs the pass that the next recorded command buffer will read the `subresource` of `node`
+    /// at the specified shader descriptor. The node will be interpreted using `view_info`.
+    ///
+    /// The [`AccessType`] is inferred by the currently bound pipeline. See [`Access`] for details.
+    ///
+    /// This function must be called for `node` before it is read within a `record` function. For
+    /// more specific access, see [`PipelinePassRef::access_descriptor_subrange`].
     pub fn read_descriptor_subrange<N>(
         self,
         descriptor: impl Into<Descriptor>,
@@ -2034,17 +2127,36 @@ where
         self.access_descriptor_subrange(descriptor, node, access, view_info, subresource)
     }
 
+    /// Informs the pass that the next recorded command buffer will read the given `node`.
+    ///
+    /// The [`AccessType`] is inferred by the currently bound pipeline. See [`Access`] for details.
+    ///
+    /// This function must be called for `node` before it is read within a `record` function. For
+    /// more specific access, see [`PipelinePassRef::access_node`].
     pub fn read_node(mut self, node: impl Node + Information) -> Self {
         self.read_node_mut(node);
 
         self
     }
 
+    /// Informs the pass that the next recorded command buffer will read the given `node`.
+    ///
+    /// The [`AccessType`] is inferred by the currently bound pipeline. See [`Access`] for details.
+    ///
+    /// This function must be called for `node` before it is read within a `record` function. For
+    /// more specific access, see [`PipelinePassRef::access_node_mut`].
     pub fn read_node_mut(&mut self, node: impl Node + Information) {
         let access = <T as Access>::DEFAULT_READ;
         self.access_node_mut(node, access);
     }
 
+    /// Informs the pass that the next recorded command buffer will read the `subresource` of
+    /// `node`.
+    ///
+    /// The [`AccessType`] is inferred by the currently bound pipeline. See [`Access`] for details.
+    ///
+    /// This function must be called for `node` before it is read within a `record` function. For
+    /// more specific access, see [`PipelinePassRef::access_node_subrange`].
     pub fn read_node_subrange<N>(mut self, node: N, subresource: impl Into<N::Subresource>) -> Self
     where
         N: View,
@@ -2054,6 +2166,13 @@ where
         self
     }
 
+    /// Informs the pass that the next recorded command buffer will read the `subresource` of
+    /// `node`.
+    ///
+    /// The [`AccessType`] is inferred by the currently bound pipeline. See [`Access`] for details.
+    ///
+    /// This function must be called for `node` before it is read within a `record` function. For
+    /// more specific access, see [`PipelinePassRef::access_node_subrange_mut`].
     pub fn read_node_subrange_mut<N>(&mut self, node: N, subresource: impl Into<N::Subresource>)
     where
         N: View,
@@ -2062,10 +2181,18 @@ where
         self.access_node_subrange_mut(node, access, subresource);
     }
 
+    /// Finalizes a pass and returns the render graph so that additional passes may be added.
     pub fn submit_pass(self) -> &'a mut RenderGraph {
         self.pass.submit_pass()
     }
 
+    /// Informs the pass that the next recorded command buffer will write the given `node` at the
+    /// specified shader descriptor.
+    ///
+    /// The [`AccessType`] is inferred by the currently bound pipeline. See [`Access`] for details.
+    ///
+    /// This function must be called for `node` before it is written within a `record` function. For
+    /// more specific access, see [`PipelinePassRef::access_descriptor`].
     pub fn write_descriptor<N>(self, descriptor: impl Into<Descriptor>, node: N) -> Self
     where
         N: Information,
@@ -2078,6 +2205,13 @@ where
         self.write_descriptor_as(descriptor, node, view_info)
     }
 
+    /// Informs the pass that the next recorded command buffer will write the given `node` at the
+    /// specified shader descriptor. The node will be interpreted using `view_info`.
+    ///
+    /// The [`AccessType`] is inferred by the currently bound pipeline. See [`Access`] for details.
+    ///
+    /// This function must be called for `node` before it is written within a `record` function. For
+    /// more specific access, see [`PipelinePassRef::access_descriptor_as`].
     pub fn write_descriptor_as<N>(
         self,
         descriptor: impl Into<Descriptor>,
@@ -2096,6 +2230,13 @@ where
         self.write_descriptor_subrange(descriptor, node, view_info, subresource)
     }
 
+    /// Informs the pass that the next recorded command buffer will write the `subresource` of
+    /// `node` at the specified shader descriptor. The node will be interpreted using `view_info`.
+    ///
+    /// The [`AccessType`] is inferred by the currently bound pipeline. See [`Access`] for details.
+    ///
+    /// This function must be called for `node` before it is written within a `record` function. For
+    /// more specific access, see [`PipelinePassRef::access_descriptor_subrange`].
     pub fn write_descriptor_subrange<N>(
         self,
         descriptor: impl Into<Descriptor>,
@@ -2111,17 +2252,36 @@ where
         self.access_descriptor_subrange(descriptor, node, access, view_info, subresource)
     }
 
+    /// Informs the pass that the next recorded command buffer will write the given `node`.
+    ///
+    /// The [`AccessType`] is inferred by the currently bound pipeline. See [`Access`] for details.
+    ///
+    /// This function must be called for `node` before it is written within a `record` function. For
+    /// more specific access, see [`PipelinePassRef::access_node`].
     pub fn write_node(mut self, node: impl Node + Information) -> Self {
         self.write_node_mut(node);
 
         self
     }
 
+    /// Informs the pass that the next recorded command buffer will write the given `node`.
+    ///
+    /// The [`AccessType`] is inferred by the currently bound pipeline. See [`Access`] for details.
+    ///
+    /// This function must be called for `node` before it is written within a `record` function. For
+    /// more specific access, see [`PipelinePassRef::access_node_mut`].
     pub fn write_node_mut(&mut self, node: impl Node + Information) {
         let access = <T as Access>::DEFAULT_WRITE;
         self.access_node_mut(node, access);
     }
 
+    /// Informs the pass that the next recorded command buffer will write the `subresource` of
+    /// `node`.
+    ///
+    /// The [`AccessType`] is inferred by the currently bound pipeline. See [`Access`] for details.
+    ///
+    /// This function must be called for `node` before it is written within a `record` function. For
+    /// more specific access, see [`PipelinePassRef::access_node_subrange`].
     pub fn write_node_subrange<N>(mut self, node: N, subresource: impl Into<N::Subresource>) -> Self
     where
         N: View,
@@ -2131,6 +2291,13 @@ where
         self
     }
 
+    /// Informs the pass that the next recorded command buffer will write the `subresource` of
+    /// `node`.
+    ///
+    /// The [`AccessType`] is inferred by the currently bound pipeline. See [`Access`] for details.
+    ///
+    /// This function must be called for `node` before it is written within a `record` function. For
+    /// more specific access, see [`PipelinePassRef::access_node_subrange_mut`].
     pub fn write_node_subrange_mut<N>(&mut self, node: N, subresource: impl Into<N::Subresource>)
     where
         N: View,
@@ -2999,17 +3166,17 @@ impl<'a> RayTrace<'a> {
     ///
     /// ```
     /// # inline_spirv::inline_spirv!(r#"
-    /// #version 450
+    /// #version 460
     ///
     /// layout(push_constant) uniform PushConstants {
-    ///     layout(offset = 0) uint the_answer;
+    ///     layout(offset = 0) uint some_val;
     /// } push_constants;
     ///
     /// void main()
     /// {
-    ///     // TODO: Add bindings to read/write things!
+    ///     // TODO: Add bindings to write things!
     /// }
-    /// # "#, comp);
+    /// # "#, rchit, vulkan1_2);
     /// ```
     ///
     /// ```no_run
@@ -3017,19 +3184,28 @@ impl<'a> RayTrace<'a> {
     /// # use ash::vk;
     /// # use screen_13::driver::{Device, DriverConfig, DriverError};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
-    /// # use screen_13::driver::compute::{ComputePipeline, ComputePipelineInfo};
+    /// # use screen_13::driver::ray_trace::{RayTracePipeline, RayTracePipelineInfo, RayTraceShaderGroup};
+    /// # use screen_13::driver::shader::Shader;
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
     /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
     /// # let shader = [0u8; 1];
-    /// # let pipeline_info = ComputePipelineInfo::new(shader.as_slice());
-    /// # let my_compute_pipeline = Arc::new(ComputePipeline::create(&device, pipeline_info)?);
+    /// # let info = RayTracePipelineInfo::new();
+    /// # let my_miss_code = [0u8; 1];
+    /// # let my_ray_trace_pipeline = Arc::new(RayTracePipeline::create(&device, info,
+    /// #     [Shader::new_miss(my_miss_code.as_slice())],
+    /// #     [RayTraceShaderGroup::new_general(0)],
+    /// # )?);
+    /// # let rgen_sbt = vk::StridedDeviceAddressRegionKHR { device_address: 0, stride: 0, size: 0 };
+    /// # let hit_sbt = vk::StridedDeviceAddressRegionKHR { device_address: 0, stride: 0, size: 0 };
+    /// # let miss_sbt = vk::StridedDeviceAddressRegionKHR { device_address: 0, stride: 0, size: 0 };
+    /// # let call_sbt = vk::StridedDeviceAddressRegionKHR { device_address: 0, stride: 0, size: 0 };
     /// # let mut my_graph = RenderGraph::new();
-    /// my_graph.begin_pass("compute the ultimate question")
-    ///         .bind_pipeline(&my_compute_pipeline)
-    ///         .record_compute(move |compute, bindings| {
-    ///             compute.push_constants(&[42])
-    ///                    .dispatch(1, 1, 1);
+    /// my_graph.begin_pass("draw a cornell box")
+    ///         .bind_pipeline(&my_ray_trace_pipeline)
+    ///         .record_ray_trace(move |ray_trace, bindings| {
+    ///             ray_trace.push_constants(&[0xcb])
+    ///                      .trace_rays(&rgen_sbt, &hit_sbt, &miss_sbt, &call_sbt, 320, 200, 1);
     ///         });
     /// # Ok(()) }
     /// ```
@@ -3039,6 +3215,73 @@ impl<'a> RayTrace<'a> {
         self.push_constants_offset(0, data)
     }
 
+    /// Updates push constants starting at the given `offset`.
+    ///
+    /// Behaves similary to [`RayTrace::push_constants`] except that `offset` describes the position
+    /// at which `data` updates the push constants of the currently bound pipeline. This may be used
+    /// to update a subset or single field of previously set push constant data.
+    ///
+    /// # Device limitations
+    ///
+    /// See
+    /// [`device.physical_device.props.limits.max_push_constants_size`](vk::PhysicalDeviceLimits)
+    /// for the limits of the current device. You may also check [gpuinfo.org] for a listing of
+    /// reported limits on other devices.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # inline_spirv::inline_spirv!(r#"
+    /// #version 460
+    ///
+    /// layout(push_constant) uniform PushConstants {
+    ///     layout(offset = 0) uint some_val1;
+    ///     layout(offset = 4) uint some_val2;
+    /// } push_constants;
+    ///
+    /// void main()
+    /// {
+    ///     // TODO: Add bindings to write things!
+    /// }
+    /// # "#, rchit, vulkan1_2);
+    /// ```
+    ///
+    /// ```no_run
+    /// # use std::sync::Arc;
+    /// # use ash::vk;
+    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
+    /// # use screen_13::driver::ray_trace::{RayTracePipeline, RayTracePipelineInfo, RayTraceShaderGroup};
+    /// # use screen_13::driver::shader::Shader;
+    /// # use screen_13::graph::RenderGraph;
+    /// # fn main() -> Result<(), DriverError> {
+    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let shader = [0u8; 1];
+    /// # let info = RayTracePipelineInfo::new();
+    /// # let my_miss_code = [0u8; 1];
+    /// # let my_ray_trace_pipeline = Arc::new(RayTracePipeline::create(&device, info,
+    /// #     [Shader::new_miss(my_miss_code.as_slice())],
+    /// #     [RayTraceShaderGroup::new_general(0)],
+    /// # )?);
+    /// # let rgen_sbt = vk::StridedDeviceAddressRegionKHR { device_address: 0, stride: 0, size: 0 };
+    /// # let hit_sbt = vk::StridedDeviceAddressRegionKHR { device_address: 0, stride: 0, size: 0 };
+    /// # let miss_sbt = vk::StridedDeviceAddressRegionKHR { device_address: 0, stride: 0, size: 0 };
+    /// # let call_sbt = vk::StridedDeviceAddressRegionKHR { device_address: 0, stride: 0, size: 0 };
+    /// # let mut my_graph = RenderGraph::new();
+    /// my_graph.begin_pass("draw a cornell box")
+    ///         .bind_pipeline(&my_ray_trace_pipeline)
+    ///         .record_ray_trace(move |ray_trace, bindings| {
+    ///             ray_trace.push_constants(&[0xcb, 0xff])
+    ///                      .trace_rays(&rgen_sbt, &hit_sbt, &miss_sbt, &call_sbt, 320, 200, 1)
+    ///                      .push_constants_offset(4, &[0xae])
+    ///                      .trace_rays(&rgen_sbt, &hit_sbt, &miss_sbt, &call_sbt, 320, 200, 1);
+    ///         });
+    /// # Ok(()) }
+    /// ```
+    ///
+    /// [gpuinfo.org]: https://vulkan.gpuinfo.org/displaydevicelimit.php?name=maxPushConstantsSize&platform=all
     pub fn push_constants_offset(&self, offset: u32, data: &[u8]) -> &Self {
         for push_const in &self.pipeline.push_constants {
             let push_const_end = push_const.offset + push_const.size;
@@ -3068,8 +3311,49 @@ impl<'a> RayTrace<'a> {
         }
         self
     }
+
     // TODO: If the rayTraversalPrimitiveCulling or rayQuery features are enabled, the SkipTrianglesKHR and SkipAABBsKHR ray flags can be specified when tracing a ray. SkipTrianglesKHR and SkipAABBsKHR are mutually exclusive.
 
+    /// Ray traces using the currently-bound [`RayTracePipeline`] and the given shader binding
+    /// tables.
+    ///
+    /// Shader binding tables must be constructed according to this [example].
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```no_run
+    /// # use std::sync::Arc;
+    /// # use ash::vk;
+    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
+    /// # use screen_13::driver::ray_trace::{RayTracePipeline, RayTracePipelineInfo, RayTraceShaderGroup};
+    /// # use screen_13::driver::shader::Shader;
+    /// # use screen_13::graph::RenderGraph;
+    /// # fn main() -> Result<(), DriverError> {
+    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let shader = [0u8; 1];
+    /// # let info = RayTracePipelineInfo::new();
+    /// # let my_miss_code = [0u8; 1];
+    /// # let my_ray_trace_pipeline = Arc::new(RayTracePipeline::create(&device, info,
+    /// #     [Shader::new_miss(my_miss_code.as_slice())],
+    /// #     [RayTraceShaderGroup::new_general(0)],
+    /// # )?);
+    /// # let rgen_sbt = vk::StridedDeviceAddressRegionKHR { device_address: 0, stride: 0, size: 0 };
+    /// # let hit_sbt = vk::StridedDeviceAddressRegionKHR { device_address: 0, stride: 0, size: 0 };
+    /// # let miss_sbt = vk::StridedDeviceAddressRegionKHR { device_address: 0, stride: 0, size: 0 };
+    /// # let call_sbt = vk::StridedDeviceAddressRegionKHR { device_address: 0, stride: 0, size: 0 };
+    /// # let mut my_graph = RenderGraph::new();
+    /// my_graph.begin_pass("draw a cornell box")
+    ///         .bind_pipeline(&my_ray_trace_pipeline)
+    ///         .record_ray_trace(move |ray_trace, bindings| {
+    ///             ray_trace.trace_rays(&rgen_sbt, &hit_sbt, &miss_sbt, &call_sbt, 320, 200, 1);
+    ///         });
+    /// # Ok(()) }
+    /// ```
+    ///
+    /// [example]: https://github.com/attackgoat/screen-13/blob/master/examples/ray_trace.rs
     #[allow(clippy::too_many_arguments)]
     pub fn trace_rays(
         &self,

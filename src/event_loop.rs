@@ -22,40 +22,43 @@ use {
     },
 };
 
-pub fn run<FrameFn>(frame_fn: FrameFn) -> Result<(), DisplayError>
-where
-    FrameFn: FnMut(FrameContext),
-{
-    EventLoop::new().build()?.run(frame_fn)
-}
-
+/// Describes a screen mode for display.
 pub enum FullscreenMode {
+    /// A display mode which retains other operating system windows behind the current window.
     Borderless,
 
     /// Seems to be the only way for stutter-free rendering on Nvidia + Win10.
     Exclusive,
 }
 
-// Pumps an operating system event loop in order to handle input and other events
-// while drawing to the screen, continuously.
+/// Pumps an operating system event loop in order to handle input and other events
+/// while drawing to the screen, continuously.
 #[derive(Debug)]
 pub struct EventLoop {
+    /// Provides access to the current graphics device.
     pub device: Arc<Device>,
+
     display: Display,
     event_loop: winit::event_loop::EventLoop<()>,
+
+    /// Provides access to the current operating system window.
     pub window: Window,
 }
 
 impl EventLoop {
+    /// Specifies an event loop.
     #[allow(clippy::new_ret_no_self)]
     pub fn new() -> EventLoopBuilder {
         Default::default()
     }
 
+    /// Current window height, in pixels.
     pub fn height(&self) -> u32 {
         self.window.inner_size().height
     }
 
+    /// Begins running a windowed event loop, providing `frame_fn` with a context of the current
+    /// frame.
     pub fn run<FrameFn>(mut self, mut frame_fn: FrameFn) -> Result<(), DisplayError>
     where
         FrameFn: FnMut(FrameContext),
@@ -161,10 +164,12 @@ impl EventLoop {
         Ok(())
     }
 
+    /// Current window width, in pixels.
     pub fn width(&self) -> u32 {
         self.window.inner_size().width
     }
 
+    /// Current window.
     pub fn window(&self) -> &Window {
         &self.window
     }
@@ -176,6 +181,7 @@ impl AsRef<winit::event_loop::EventLoop<()>> for EventLoop {
     }
 }
 
+/// Builder for `EventLoop`.
 pub struct EventLoopBuilder {
     driver_cfg: DriverConfigBuilder,
     event_loop: winit::event_loop::EventLoop<()>,
@@ -206,6 +212,7 @@ impl EventLoopBuilder {
         self.event_loop.available_monitors()
     }
 
+    /// Provides a closure which configures the `DriverConfig` instance.
     pub fn configure<ConfigureFn>(mut self, configure_fn: ConfigureFn) -> Self
     where
         ConfigureFn: FnOnce(DriverConfigBuilder) -> DriverConfigBuilder,
@@ -214,6 +221,9 @@ impl EventLoopBuilder {
         self
     }
 
+    /// A request to the driver to use a certain number of swapchain images.
+    ///
+    /// More images introduces more display lag, but smoother animation.
     pub fn desired_swapchain_image_count(mut self, desired_swapchain_image_count: u32) -> Self {
         self.driver_cfg = self
             .driver_cfg
@@ -221,6 +231,7 @@ impl EventLoopBuilder {
         self
     }
 
+    /// Set to `true` to enable vsync in exclusive fullscreen video modes.
     pub fn sync_display(mut self, sync_display: bool) -> Self {
         self.driver_cfg = self.driver_cfg.sync_display(sync_display);
         self
@@ -268,11 +279,15 @@ impl EventLoopBuilder {
         self.event_loop.primary_monitor()
     }
 
+    /// Pass `true` to this method to enable hardware ray tracing, if supported.
     pub fn ray_tracing(mut self, ray_tracing: bool) -> Self {
         self.driver_cfg = self.driver_cfg.ray_tracing(ray_tracing);
         self
     }
 
+    /// Allows for specification of a custom pool implementation.
+    ///
+    /// This pool will hold leases for Vulkan objects needed by [`Display`].
     pub fn resolver_pool(mut self, pool: Box<dyn ResolverPool>) -> Self {
         self.resolver_pool = Some(pool);
         self
@@ -295,6 +310,7 @@ impl EventLoopBuilder {
 }
 
 impl EventLoopBuilder {
+    /// Builds a new `EventLoop`.
     pub fn build(self) -> Result<EventLoop, DriverError> {
         let cfg = self.driver_cfg.build();
 

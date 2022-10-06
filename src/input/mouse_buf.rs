@@ -26,25 +26,34 @@ const fn idx_mouse_button(button: u16) -> MouseButton {
 pub struct MouseBuf {
     /// Amount of mouse movement detected since the last update.
     pub delta: (f32, f32),
+
     held: u16,
     position: Option<(f32, f32)>,
     pressed: u16,
     released: u16,
+
     /// Amount of wheel scroll detected since the last update.
     pub wheel: (f32, f32),
+
+    /// The x-axis mouse position in pixels.
     pub x: f32,
+
+    /// The y-axis mouse position in pixels.
     pub y: f32,
 }
 
 impl MouseBuf {
+    /// Returns `true` if any buttons have been pressed for multiple frames.
     pub fn any_held(&self) -> bool {
         self.held != 0
     }
 
+    /// Returns `true` if any buttons have been pressed since the last frame.
     pub fn any_pressed(&self) -> bool {
         self.pressed != 0
     }
 
+    /// Returns `true` if any buttons have been released since the last frame.
     pub fn any_released(&self) -> bool {
         self.released != 0
     }
@@ -53,6 +62,7 @@ impl MouseBuf {
         1 << mouse_button_idx(button)
     }
 
+    /// Call this before handling events.
     pub fn update(&mut self) {
         self.delta = (0.0, 0.0);
         self.pressed = 0;
@@ -107,14 +117,17 @@ impl MouseBuf {
         }
     }
 
+    /// Returns `true` if the given button has been pressed for multiple frames.
     pub fn is_held(&self, button: MouseButton) -> bool {
         self.held & Self::bit(button) != 0
     }
 
+    /// Returns `true` if the given button has been pressed since the last frame.
     pub fn is_pressed(&self, button: MouseButton) -> bool {
         self.pressed & Self::bit(button) != 0
     }
 
+    /// Returns `true` if the given button has been released since the last frame.
     pub fn is_released(&self, button: MouseButton) -> bool {
         self.released & Self::bit(button) != 0
     }

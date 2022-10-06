@@ -4,6 +4,7 @@ use {
     winit::event::VirtualKeyCode,
 };
 
+/// A binding between key and axis activation values.
 #[derive(Clone, Debug)]
 pub struct Binding<A> {
     axis: A,
@@ -34,6 +35,7 @@ impl<A> Binding<A> {
     }
 }
 
+/// A basic key input mapping.
 #[derive(Clone, Debug)]
 pub struct KeyMap<A> {
     axis: Vec<(A, f32)>,
@@ -61,10 +63,12 @@ where
         res.unwrap_or_default()
     }
 
+    /// Binds a key to an axis.
     pub fn bind(self, key: VirtualKeyCode, axis: A, multiplier: f32) -> Self {
         self.binding(Binding::new(key, axis, multiplier))
     }
 
+    /// Binds a key.
     pub fn binding(mut self, binding: Binding<A>) -> Self {
         if let Err(idx) = self.axis.binary_search_by(|(a, _)| a.cmp(&binding.axis)) {
             self.axis.insert(idx, (binding.axis, 0.0));
@@ -73,6 +77,7 @@ where
         self
     }
 
+    /// Updates the key axis values.
     pub fn update(&mut self, keyboard: &KeyBuf) {
         let now = Instant::now();
         let dt = (now - self.last_update).as_secs_f32().max(1.0 / 60.0);

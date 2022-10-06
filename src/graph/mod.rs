@@ -64,6 +64,7 @@ struct Area {
     y: i32,
 }
 
+/// Specifies a color attachment clear value which can be used to initliaze an image.
 #[derive(Clone, Copy, Debug)]
 pub struct ClearColorValue(pub [f32; 4]);
 
@@ -245,6 +246,7 @@ impl Pass {
     }
 }
 
+/// A composable graph of render pass operations.
 #[derive(Debug)]
 pub struct RenderGraph {
     bindings: Vec<Binding>,
@@ -256,6 +258,7 @@ pub struct RenderGraph {
 }
 
 impl RenderGraph {
+    /// Constructs a new `RenderGraph`.
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         let bindings = vec![];
@@ -272,10 +275,14 @@ impl RenderGraph {
         }
     }
 
+    /// Begins a new pass.
     pub fn begin_pass(&mut self, name: impl AsRef<str>) -> PassRef<'_> {
         PassRef::new(self, name.as_ref().to_string())
     }
 
+    /// Binds a Vulkan acceleration structure, buffer, or image to this graph.
+    ///
+    /// Bound nodes may be used in passes for pipeline and shader operations.
     pub fn bind_node<'a, B>(&'a mut self, binding: B) -> <B as Edge<Self>>::Result
     where
         B: Edge<Self>,
@@ -284,6 +291,7 @@ impl RenderGraph {
         binding.bind(self)
     }
 
+    /// Copy an image, potentially performing format conversion.
     pub fn blit_image(
         &mut self,
         src_node: impl Into<AnyImageNode>,
@@ -333,6 +341,7 @@ impl RenderGraph {
         )
     }
 
+    /// Copy a region of an image, potentially performing format conversion.
     pub fn blit_image_region(
         &mut self,
         src_node: impl Into<AnyImageNode>,
@@ -345,6 +354,7 @@ impl RenderGraph {
         self.blit_image_regions(src_node, dst_node, from_ref(region), filter)
     }
 
+    /// Copy regions of an image, potentially performing format conversion.
     pub fn blit_image_regions(
         &mut self,
         src_node: impl Into<AnyImageNode>,
@@ -375,11 +385,12 @@ impl RenderGraph {
             .submit_pass()
     }
 
-    /// Clears a color image as part of a render graph but outside of any graphic render pass
+    /// Clear a color image.
     pub fn clear_color_image(&mut self, image_node: impl Into<AnyImageNode>) -> &mut Self {
         self.clear_color_image_value(image_node, [0, 0, 0, 0])
     }
 
+    /// Clear a color image.
     pub fn clear_color_image_value(
         &mut self,
         image_node: impl Into<AnyImageNode>,
@@ -411,11 +422,12 @@ impl RenderGraph {
             .submit_pass()
     }
 
-    /// Clears a depth/stencil image as part of a render graph but outside of any graphic render pass
+    /// Clears a depth/stencil image.
     pub fn clear_depth_stencil_image(&mut self, image_node: impl Into<AnyImageNode>) -> &mut Self {
         self.clear_depth_stencil_image_value(image_node, 1.0, 0)
     }
 
+    /// Clears a depth/stencil image.
     pub fn clear_depth_stencil_image_value(
         &mut self,
         image_node: impl Into<AnyImageNode>,
@@ -445,6 +457,7 @@ impl RenderGraph {
             .submit_pass()
     }
 
+    /// Copy data between buffers
     pub fn copy_buffer(
         &mut self,
         src_node: impl Into<AnyBufferNode>,
@@ -466,6 +479,7 @@ impl RenderGraph {
         )
     }
 
+    /// Copy data between buffer regions.
     pub fn copy_buffer_region(
         &mut self,
         src_node: impl Into<AnyBufferNode>,
@@ -477,6 +491,7 @@ impl RenderGraph {
         self.copy_buffer_regions(src_node, dst_node, from_ref(region))
     }
 
+    /// Copy data between buffer regions.
     pub fn copy_buffer_regions(
         &mut self,
         src_node: impl Into<AnyBufferNode>,
@@ -497,6 +512,7 @@ impl RenderGraph {
             .submit_pass()
     }
 
+    /// Copy data from a buffer into an image.
     pub fn copy_buffer_to_image(
         &mut self,
         src_node: impl Into<AnyBufferNode>,
@@ -528,6 +544,7 @@ impl RenderGraph {
         )
     }
 
+    /// Copy data from a buffer into an image.
     pub fn copy_buffer_to_image_region(
         &mut self,
         src_node: impl Into<AnyBufferNode>,
@@ -539,6 +556,7 @@ impl RenderGraph {
         self.copy_buffer_to_image_regions(src_node, dst_node, from_ref(region))
     }
 
+    /// Copy data from a buffer into an image.
     pub fn copy_buffer_to_image_regions(
         &mut self,
         src_node: impl Into<AnyBufferNode>,
@@ -566,6 +584,7 @@ impl RenderGraph {
             .submit_pass()
     }
 
+    /// Copy data between images.
     pub fn copy_image(
         &mut self,
         src_node: impl Into<AnyImageNode>,
@@ -612,6 +631,7 @@ impl RenderGraph {
         )
     }
 
+    /// Copy data between images.
     pub fn copy_image_region(
         &mut self,
         src_node: impl Into<AnyImageNode>,
@@ -623,6 +643,7 @@ impl RenderGraph {
         self.copy_image_regions(src_node, dst_node, from_ref(region))
     }
 
+    /// Copy data between images.
     pub fn copy_image_regions(
         &mut self,
         src_node: impl Into<AnyImageNode>,
@@ -651,6 +672,7 @@ impl RenderGraph {
             .submit_pass()
     }
 
+    /// Copy image data into a buffer.
     pub fn copy_image_to_buffer(
         &mut self,
         src_node: impl Into<AnyImageNode>,
@@ -684,6 +706,7 @@ impl RenderGraph {
         )
     }
 
+    /// Copy image data into a buffer.
     pub fn copy_image_to_buffer_region(
         &mut self,
         src_node: impl Into<AnyImageNode>,
@@ -695,6 +718,7 @@ impl RenderGraph {
         self.copy_image_to_buffer_regions(src_node, dst_node, from_ref(region))
     }
 
+    /// Copy image data into a buffer.
     pub fn copy_image_to_buffer_regions(
         &mut self,
         src_node: impl Into<AnyImageNode>,
@@ -722,6 +746,7 @@ impl RenderGraph {
             .submit_pass()
     }
 
+    /// Fill a region of a buffer with a fixed value.
     pub fn fill_buffer(&mut self, buffer_node: impl Into<AnyBufferNode>, data: u32) -> &mut Self {
         let buffer_node = buffer_node.into();
 
@@ -730,6 +755,7 @@ impl RenderGraph {
         self.fill_buffer_region(buffer_node, data, 0..buffer_info.size)
     }
 
+    /// Fill a region of a buffer with a fixed value.
     pub fn fill_buffer_region(
         &mut self,
         buffer_node: impl Into<AnyBufferNode>,
@@ -796,6 +822,7 @@ impl RenderGraph {
         None
     }
 
+    /// Returns information used to crate a node.
     pub fn node_info<N>(&self, node: N) -> <N as Information>::Info
     where
         N: Information,
@@ -803,6 +830,8 @@ impl RenderGraph {
         node.get(self)
     }
 
+    /// Finalizes the graph and provides an object with functions for submitting the resulting
+    /// commands.
     pub fn resolve(mut self) -> Resolver {
         // The final execution of each pass has no function
         for pass in &mut self.passes {
@@ -812,6 +841,9 @@ impl RenderGraph {
         Resolver::new(self)
     }
 
+    /// Removes a node from this graph.
+    ///
+    /// Future access to `node` on this graph will return invalid results.
     pub fn unbind_node<N>(&mut self, node: N) -> <N as Edge<Self>>::Result
     where
         N: Edge<Self>,
