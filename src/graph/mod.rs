@@ -247,6 +247,13 @@ impl Pass {
 }
 
 /// A composable graph of render pass operations.
+///
+/// `RenderGraph` instances are are intended for one-time use.
+///
+/// The design of this code originated with a combination of
+/// [`PassBuilder`](https://github.com/EmbarkStudios/kajiya/blob/main/crates/lib/kajiya-rg/src/pass_builder.rs)
+/// and
+/// [`render_graph.cpp`](https://github.com/Themaister/Granite/blob/master/renderer/render_graph.cpp).
 #[derive(Debug)]
 pub struct RenderGraph {
     bindings: Vec<Binding>,

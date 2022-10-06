@@ -9,7 +9,7 @@ _[QBasic](https://en.wikipedia.org/wiki/QBasic)_.
 
 ```toml
 [dependencies]
-screen-13 = "0.5"
+screen-13 = "0.6"
 ```
 
 ## Overview
@@ -66,8 +66,9 @@ Included are some examples you might find helpful:
 - [`shader-toy/`](examples/shader-toy) — Recreation of a two-pass shader toy using the original
   shader code.
 
-See the [example code](examples/README.md) for more information, including a helpful
-[getting started guide](examples/getting-started.md).
+See the [example code](examples/README.md), 
+[documentation](https://docs.rs/screen-13/latest/screen_13/), or helpful
+[getting started guide](examples/getting-started.md) for more information.
 
 **_NOTE:_** Required development packages and libraries are listed in the _getting started guide_.
 All new users should read and understand the guide.
