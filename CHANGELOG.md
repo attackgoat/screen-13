@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.6.0] - Unreleased
+## [0.6.0] - 2022-10-06
 
 ### Changed
 
@@ -185,4 +185,4 @@ _See [#25](https://github.com/attackgoat/screen-13/pull/25) for migration detail
 [0.4.1]: https://github.com/attackgoat/screen-13/commit/9b739ac4652fa1326e6d54e7bae9e58050d7c290
 [0.4.2]: https://github.com/attackgoat/screen-13/commit/a3f675b5018ac8d9dbc29c6f462813149b5f05ab
 [0.5.0]: https://github.com/attackgoat/screen-13/commit/80248b68e016b6922271a42d423023341d481e17
-[0.6.0]: https://github.com/attackgoat/screen-13
+[0.6.0]: https://github.com/attackgoat/screen-13/commit/002800ab68413599713157c805654bb9b5621646
