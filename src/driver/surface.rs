@@ -2,7 +2,7 @@ use {
     super::{DriverError, Instance},
     ash::{extensions::khr, vk},
     log::warn,
-    raw_window_handle::HasRawWindowHandle,
+    raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle},
     std::{
         fmt::{Debug, Formatter},
         ops::Deref,
@@ -20,17 +20,24 @@ pub struct Surface {
 impl Surface {
     pub fn new(
         instance: &Arc<Instance>,
-        window: &impl HasRawWindowHandle,
+        display_window: &(impl HasRawDisplayHandle + HasRawWindowHandle),
     ) -> Result<Self, DriverError> {
         let instance = Arc::clone(instance);
         let surface_ext = khr::Surface::new(&instance.entry, &instance);
-        let surface =
-            unsafe { ash_window::create_surface(&instance.entry, &instance, window, None) }
-                .map_err(|err| {
-                    warn!("{err}");
+        let surface = unsafe {
+            ash_window::create_surface(
+                &instance.entry,
+                &instance,
+                display_window.raw_display_handle(),
+                display_window.raw_window_handle(),
+                None,
+            )
+        }
+        .map_err(|err| {
+            warn!("{err}");
 
-                    DriverError::Unsupported
-                })?;
+            DriverError::Unsupported
+        })?;
 
         Ok(Self {
             _instance: instance,
