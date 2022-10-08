@@ -224,7 +224,7 @@ impl Resolver {
                             .as_driver_image()
                             .unwrap();
                         let view_info = ImageViewInfo {
-                            array_layer_count: Some(1),
+                            array_layer_count: Some(image.info.array_elements),
                             aspect_mask: attachment.aspect_mask,
                             base_array_layer: 0,
                             base_mip_level: 0,
@@ -242,7 +242,7 @@ impl Resolver {
                             .as_driver_image()
                             .unwrap();
                         let view_info = ImageViewInfo {
-                            array_layer_count: Some(1),
+                            array_layer_count: Some(image.info.array_elements),
                             aspect_mask: attachment.aspect_mask,
                             base_array_layer: 0,
                             base_mip_level: 0,

@@ -475,7 +475,11 @@ impl ImageInfo {
                     height: self.height,
                     depth: 1,
                 },
-                1,
+                if self.flags.contains(vk::ImageCreateFlags::CUBE_COMPATIBLE) {
+                    self.array_elements
+                } else {
+                    1
+                },
             ),
             ImageType::TextureArray2D => (
                 vk::ImageType::TYPE_2D,

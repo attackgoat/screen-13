@@ -6,7 +6,7 @@ topics refer to the online [documentation](https://docs.rs/screen-13/latest/scre
 ## Required Packages
 
 _Linux (Debian-like)_:
-- `sudo apt install cmake uuid-dev libfontconfig-dev`
+- `sudo apt install cmake uuid-dev libfontconfig-dev libssl-dev`
 
 _Mac OS (10.15 or later)_:
 - Xcode 12

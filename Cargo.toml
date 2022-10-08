@@ -33,13 +33,15 @@ ash-molten = "0.12"
 anyhow = "1.0"
 bmfont = { version = "0.3", default-features = false }
 bytemuck = "1.9"
-glam = "0.21"
+glam = { version = "0.21", features = ["bytemuck"] }
 image = "0.24"
 inline-spirv = "0.1"
 log = "0.4"
+meshopt = "0.1"
 polyhedron-ops = "0.2"
 pretty_env_logger = "0.4"
 rand = "0.8"
+reqwest = { version = "0.11", features = ["blocking"] }
 screen-13-fx = { path = "contrib/screen-13-fx" }
 screen-13-imgui = { path = "contrib/screen-13-imgui" }
 screen-13-egui = { path = "contrib/screen-13-egui" }
