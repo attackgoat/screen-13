@@ -318,7 +318,13 @@ impl Resolver {
                             .map(|(_, ClearColorValue(float32))| vk::ClearValue {
                                 color: vk::ClearColorValue { float32 },
                             })
-                            .chain(repeat(Default::default()))
+                            .chain(
+                                pass.execs
+                                    .get(0)
+                                    .unwrap()
+                                    .depth_stencil_clear
+                                    .map(|(_, depth_stencil)| vk::ClearValue { depth_stencil }),
+                            )
                             .take(render_pass.info.attachments.len())
                             .collect::<Box<[_]>>(),
                     )

@@ -27,7 +27,7 @@ fn main() -> anyhow::Result<()> {
 
     let model_mesh = load_model_mesh(&event_loop.device, &model_path)?;
     let model_shadow = load_model_shadow(&event_loop.device, &model_path)?;
-    let cube = load_cube(&event_loop.device);
+    let cube = load_cube(&event_loop.device)?;
     let debug_pipeline = create_debug_pipeline(&event_loop.device)?;
     let blur_x_pipeline = create_blur_x_pipeline(&event_loop.device)?;
     let blur_y_pipeline = create_blur_y_pipeline(&event_loop.device)?;
@@ -81,6 +81,8 @@ fn main() -> anyhow::Result<()> {
             }
         };
 
+        let cube_index_buf = frame.render_graph.bind_node(&cube.index_buf);
+        let cube_vertex_buf = frame.render_graph.bind_node(&cube.vertex_buf);
         let model_mesh_index_buf = frame.render_graph.bind_node(&model_mesh.index_buf);
         let model_mesh_vertex_buf = frame.render_graph.bind_node(&model_mesh.vertex_buf);
         let model_shadow_index_buf = frame.render_graph.bind_node(&model_shadow.index_buf);
@@ -118,20 +120,25 @@ fn main() -> anyhow::Result<()> {
             .render_graph
             .begin_pass("DEBUG")
             .bind_pipeline(&debug_pipeline)
+            .set_depth_stencil(DepthStencilMode::DEPTH_WRITE)
             .access_descriptor(0, mesh_uniform_buf, AccessType::AnyShaderReadUniformBuffer)
             .access_descriptor(1, light_uniform_buf, AccessType::AnyShaderReadUniformBuffer)
             .access_node(model_mesh_index_buf, AccessType::IndexBuffer)
             .access_node(model_mesh_vertex_buf, AccessType::VertexBuffer)
+            .access_node(cube_index_buf, AccessType::IndexBuffer)
+            .access_node(cube_vertex_buf, AccessType::VertexBuffer)
             .clear_color(0, frame.swapchain_image)
             .store_color(0, frame.swapchain_image)
             .clear_depth_stencil(depth_image)
             .store_depth_stencil(depth_image)
-            //.set_depth_stencil(DepthStencilMode::DEPTH_WRITE)
             .record_subpass(move |subpass, _| {
                 subpass
                     .bind_index_buffer(model_mesh_index_buf, vk::IndexType::UINT32)
                     .bind_vertex_buffer(model_mesh_vertex_buf)
-                    .draw_indexed(model_mesh.index_count, 1, 0, 0, 0);
+                    .draw_indexed(model_mesh.index_count, 1, 0, 0, 0)
+                    .bind_index_buffer(cube_index_buf, vk::IndexType::UINT32)
+                    .bind_vertex_buffer(cube_vertex_buf)
+                    .draw_indexed(cube.index_count, 1, 0, 0, 0);
             });
 
         // frame
@@ -661,8 +668,8 @@ fn lease_uniform_buffer(
 fn load_cube(device: &Arc<Device>) -> Result<Model, DriverError> {
     // The index buffer here isn't optimal and *that's okay* its legible
 
-    const N: f32 = -1f32;
-    const P: f32 = 1f32;
+    const N: f32 = -300f32;
+    const P: f32 = 300f32;
     const Z: f32 = 0f32;
 
     const TOP_LEFT_BACK: [f32; 3] = [N, P, N];
@@ -698,7 +705,7 @@ fn load_cube(device: &Arc<Device>) -> Result<Model, DriverError> {
         cast_slice(
             [
                 0u32, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
-                22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+                22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36,
             ]
             .as_slice(),
         ),
