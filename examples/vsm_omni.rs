@@ -1,6 +1,6 @@
 use {
     bytemuck::{bytes_of, cast_slice, NoUninit, Pod, Zeroable},
-    glam::{vec3, Mat4, Vec3},
+    glam::{vec3, Mat4, Quat, Vec3},
     inline_spirv::inline_spirv,
     meshopt::remap::{generate_vertex_remap, remap_index_buffer, remap_vertex_buffer},
     screen_13::prelude::*,
@@ -23,7 +23,7 @@ fn main() -> anyhow::Result<()> {
 
     let model_path = download_model_from_github()?;
 
-    let event_loop = EventLoop::new().build()?;
+    let event_loop = EventLoop::new().debug(true).build()?;
 
     let model_mesh = load_model_mesh(&event_loop.device, &model_path)?;
     let model_shadow = load_model_shadow(&event_loop.device, &model_path)?;
@@ -36,10 +36,16 @@ fn main() -> anyhow::Result<()> {
 
     let mut pool = LazyPool::new(&event_loop.device);
 
+    let mut elapsed = 0f32;
+
     event_loop.run(|frame| {
+        elapsed += frame.dt;
+
         let light_data = {
             let fov_y = 90f32.to_radians();
-            let position = vec3(8.0, 5.0, 0.0);
+            let radius = 8f32;
+            let speed = elapsed / 2.0;
+            let position = vec3(speed.cos() * radius, 5.0, speed.sin() * radius);
             let range = 1000f32;
 
             LightUniformBuffer {
@@ -52,13 +58,25 @@ fn main() -> anyhow::Result<()> {
         let mesh_data = {
             let aspect_ratio = frame.width as f32 / frame.height as f32;
             let fov_y = 45f32.to_radians();
-            let position = vec3(5.0, 5.0, 5.0);
+            let projection = Mat4::perspective_lh(fov_y, aspect_ratio, 0.1, 100.0);
+
+            let position = vec3(0.0, 0.0, 10.0);
+            let view = Mat4::look_at_lh(position, position - Vec3::Z, Vec3::Y);
+
+            let model = Mat4::from_scale_rotation_translation(
+                Vec3::splat(0.01),
+                Quat::from_rotation_y(180f32.to_radians())
+                    * Quat::from_rotation_x(90f32.to_radians()),
+                Vec3::ZERO,
+            );
+
+            let normal = (view * model).transpose().inverse();
 
             MeshUniformBuffer {
-                view: Mat4::look_at_lh(position, position - Vec3::Z, Vec3::Y),
-                model: Mat4::IDENTITY,
-                normal: Mat4::IDENTITY,
-                projection: Mat4::perspective_lh(fov_y, aspect_ratio, 0.1, 100.0),
+                view,
+                model,
+                normal,
+                projection,
                 clip: Mat4::IDENTITY,
             }
         };
@@ -86,15 +104,29 @@ fn main() -> anyhow::Result<()> {
             )
             .unwrap(),
         );
+        let depth_image = frame.render_graph.bind_node(
+            pool.lease(ImageInfo::new_2d(
+                vk::Format::D32_SFLOAT,
+                frame.width,
+                frame.height,
+                vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+            ))
+            .unwrap(),
+        );
 
         frame
             .render_graph
             .begin_pass("DEBUG")
             .bind_pipeline(&debug_pipeline)
+            .access_descriptor(0, mesh_uniform_buf, AccessType::AnyShaderReadUniformBuffer)
+            .access_descriptor(1, light_uniform_buf, AccessType::AnyShaderReadUniformBuffer)
             .access_node(model_mesh_index_buf, AccessType::IndexBuffer)
             .access_node(model_mesh_vertex_buf, AccessType::VertexBuffer)
             .clear_color(0, frame.swapchain_image)
             .store_color(0, frame.swapchain_image)
+            .clear_depth_stencil(depth_image)
+            .store_depth_stencil(depth_image)
+            //.set_depth_stencil(DepthStencilMode::DEPTH_WRITE)
             .record_subpass(move |subpass, _| {
                 subpass
                     .bind_index_buffer(model_mesh_index_buf, vk::IndexType::UINT32)
@@ -131,7 +163,7 @@ fn main() -> anyhow::Result<()> {
         //     .unwrap(),
         // );
 
-        frame.render_graph.clear_color_image(frame.swapchain_image);
+        // *frame.will_exit = true;
     })?;
 
     Ok(())
@@ -289,11 +321,25 @@ fn create_debug_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, D
         r#"
         #version 450 core
 
-        layout (location = 0) in vec3 pos_in;
+        layout(set = 0, binding = 0) uniform UBO
+        {
+            mat4 view;
+            mat4 model;
+            mat4 normal;
+            mat4 projection;
+            mat4 clip;
+        } ubo_in;
+
+        layout (location = 0) in vec3 position_in;
         layout (location = 1) in vec3 normal_in;
 
+        layout (location = 0) out vec3 position_out;
+        layout (location = 1) out vec3 normal_out;
+
         void main() {
-            gl_Position = vec4(pos_in, 1);
+            position_out = (ubo_in.model * vec4(position_in, 1)).xyz;
+            normal_out = normalize((ubo_in.normal * vec4(normal_in, 1)).xyz);
+            gl_Position = ubo_in.clip * ubo_in.projection * ubo_in.view * vec4(position_out, 1);
         }
         "#,
         vert
@@ -302,10 +348,23 @@ fn create_debug_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, D
         r#"
         #version 450 core
 
-        layout(location = 0) out vec4 frag_color;
+        layout(set = 0, binding = 1) uniform PLight_info
+        {
+            vec3 position;
+            float range;
+            mat4 view0;
+            mat4 projection;
+        } light_info_in;
+
+        layout (location = 0) in vec3 position_in;
+        layout (location = 1) in vec3 normal_in;
+
+        layout (location = 0) out vec4 color_out;
 
         void main() {
-            frag_color = vec4(0.f, 0.f, 0.f, 1.f);
+            vec3 light_dir = normalize(vec3(light_info_in.position));
+            float intensity = max(dot(normal_in, -light_dir), 0.01);
+            color_out = vec4(intensity.xxx, 1);
         }
         "#,
         frag
@@ -744,15 +803,15 @@ where
     // let indices = remap_index_buffer(Some(&indices), vertex_count, &remap);
     // let vertices = remap_vertex_buffer(&vertices, vertex_count, &remap);
 
+    let index_buf = Arc::new(Buffer::create_from_slice(
+        device,
+        vk::BufferUsageFlags::INDEX_BUFFER | vk::BufferUsageFlags::VERTEX_BUFFER,
+        cast_slice(&indices),
+    )?);
     let vertex_buf = Arc::new(Buffer::create_from_slice(
         device,
         vk::BufferUsageFlags::VERTEX_BUFFER,
         cast_slice(&vertices),
-    )?);
-    let index_buf = Arc::new(Buffer::create_from_slice(
-        device,
-        vk::BufferUsageFlags::INDEX_BUFFER,
-        cast_slice(&indices),
     )?);
 
     Ok(Model {
