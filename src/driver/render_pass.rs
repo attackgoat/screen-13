@@ -250,6 +250,7 @@ impl RenderPass {
         };
 
         let key = entry.key();
+        let layers = key.attachments.iter().map(|attachment| attachment.layer_count).max().unwrap_or(1);
         let attachments = key
             .attachments
             .iter()
@@ -271,7 +272,7 @@ impl RenderPass {
             .render_pass(self.render_pass)
             .width(key.extent_x)
             .height(key.extent_y)
-            .layers(1) // TODO!
+            .layers(layers)
             .push_next(&mut imageless_info);
         create_info.attachment_count = self.info.attachments.len() as _;
 
