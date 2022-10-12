@@ -462,7 +462,8 @@ impl ImageInfo {
         Self::new(fmt, ImageType::Cube, width, width, 1, 1, usage)
     }
 
-    pub(crate) fn default_view_info(self) -> ImageViewInfo {
+    /// Provides an `ImageViewInfo` for this format, type, aspect, array elements, and mip levels.
+    pub fn default_view_info(self) -> ImageViewInfo {
         self.into()
     }
 
@@ -750,8 +751,6 @@ pub struct ImageViewInfo {
     pub mip_level_count: Option<u32>,
 
     /// The basic dimensionality of the view.
-    ///
-    /// Layers in array textures do not count as a dimension for the purposes of the image type.
     pub ty: ImageType,
 }
 
@@ -760,6 +759,13 @@ impl ImageViewInfo {
     #[allow(clippy::new_ret_no_self)]
     pub fn new(format: vk::Format, ty: ImageType) -> ImageViewInfoBuilder {
         ImageViewInfoBuilder::new(format, ty)
+    }
+
+    /// Takes this instance and returns it with a newly specified `ImageType`.
+    pub fn with_ty(mut self: Self, ty: ImageType) -> Self {
+        self.ty = ty;
+
+        self
     }
 }
 
