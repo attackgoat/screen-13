@@ -14,9 +14,7 @@ use {
 };
 
 const CUBEMAP_SIZE: u32 = 512;
-const RANGE: f32 = 100.0f32;
 const RENDER_DEBUG: bool = false;
-const SCALE: f32 = 10.0f32;
 
 /// Adapted from https://github.com/sydneyzh/variance_shadow_mapping_vk
 ///
@@ -24,18 +22,7 @@ const SCALE: f32 = 10.0f32;
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
-    let shadow_cube_faces_info = ImageInfo::new_2d_array(
-        vk::Format::R32G32_SFLOAT,
-        CUBEMAP_SIZE,
-        CUBEMAP_SIZE,
-        6,
-        vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED,
-    )
-    .flags(vk::ImageCreateFlags::CUBE_COMPATIBLE)
-    .build();
-
-    // Change the source of this function if you want different models
-    let model_path = download_model_from_github()?;
+    let model_path = download_model_from_github("nefertiti.obj")?;
 
     let event_loop = EventLoop::new().debug(true).build()?;
 
@@ -52,35 +39,34 @@ fn main() -> anyhow::Result<()> {
     // A pool will be used for per-frame resources
     let mut pool = LazyPool::new(&event_loop.device);
 
-    let mut elapsed = 0f32;
-
+    let mut elapsed = 0.0;
     event_loop.run(|frame| {
         elapsed += frame.dt;
 
         // Calculate values for and fill some plain-old-data structs we will bind as UBO's
         let light_data = {
             let fov_y = 90f32.to_radians();
-            let radius = SCALE * 0.95f32;
-            let speed = elapsed / 2.0;
-            let position = vec3(speed.cos() * radius, SCALE * 0.25, speed.sin() * radius);
+            let radius = 8f32;
+            let t = elapsed / 2.0;
+            let position = vec3(radius * t.cos(), 0.0, radius * t.sin());
 
             LightUniformBuffer {
                 position,
-                range: RANGE,
-                view: Mat4::look_at_lh(position, position - Vec3::Z, Vec3::Y),
-                projection: Mat4::perspective_lh(fov_y, 1.0, 0.01, SCALE),
+                range: 1000.0,
+                view: Mat4::look_at_lh(position, position - Vec3::X, Vec3::Y),
+                projection: Mat4::perspective_lh(fov_y, 1.0, 0.1, 100.0),
             }
         };
         let mesh_data = {
             let aspect_ratio = frame.width as f32 / frame.height as f32;
             let fov_y = 45f32.to_radians();
-            let projection = Mat4::perspective_lh(fov_y, aspect_ratio, 0.01, SCALE);
+            let projection = Mat4::perspective_lh(fov_y, aspect_ratio, 0.1, 100.0);
 
-            let position = vec3(0.0, 0.0, SCALE * 2.5);
-            let view = Mat4::look_at_lh(position, position - Vec3::Z, Vec3::Y);
+            let eye = vec3(0.0, 0.0, 25.0);
+            let view = Mat4::look_at_lh(eye, eye - Vec3::Z, Vec3::Y);
 
             let model = Mat4::from_scale_rotation_translation(
-                Vec3::splat(SCALE),
+                Vec3::splat(10.0),
                 Quat::from_rotation_y(180f32.to_radians())
                     * Quat::from_rotation_x(90f32.to_radians()),
                 Vec3::ZERO,
@@ -94,9 +80,9 @@ fn main() -> anyhow::Result<()> {
                 normal,
                 projection,
                 clip: Mat4::from_scale_rotation_translation(
-                    Vec3::splat(0.5),
+                    vec3(1.0, 1.0, 0.5),
                     Quat::IDENTITY,
-                    vec3(-0.0, -0.0, 0.0),
+                    vec3(0.0, 0.0, 0.5),
                 ),
             }
         };
@@ -114,9 +100,33 @@ fn main() -> anyhow::Result<()> {
         let mesh_uniform_buf = frame
             .render_graph
             .bind_node(lease_uniform_buffer(&mut pool, &mesh_data).unwrap());
-        let shadow_cube_faces_image = frame
-            .render_graph
-            .bind_node(pool.lease(shadow_cube_faces_info).unwrap());
+
+        // Bind the cube-compatible shadow 2d image array to the graph of the current frame
+        let shadow_faces_image = pool
+            .lease(
+                ImageInfo::new_2d_array(
+                    vk::Format::R32G32_SFLOAT,
+                    CUBEMAP_SIZE,
+                    CUBEMAP_SIZE,
+                    6,
+                    vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED,
+                )
+                .flags(vk::ImageCreateFlags::CUBE_COMPATIBLE),
+            )
+            .unwrap();
+        let shadow_faces_info = shadow_faces_image.info;
+        let shadow_faces_node = frame.render_graph.bind_node(shadow_faces_image);
+
+        let depth_cube = frame.render_graph.bind_node(
+            pool.lease(ImageInfo::new_2d_array(
+                vk::Format::D32_SFLOAT,
+                frame.width,
+                frame.height,
+                6,
+                vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+            ))
+            .unwrap(),
+        );
         let depth_image = frame.render_graph.bind_node(
             pool.lease(ImageInfo::new_2d(
                 vk::Format::D32_SFLOAT,
@@ -163,10 +173,10 @@ fn main() -> anyhow::Result<()> {
                 .access_descriptor(1, light_uniform_buf, AccessType::AnyShaderReadUniformBuffer)
                 .access_node(model_shadow_index_buf, AccessType::IndexBuffer)
                 .access_node(model_shadow_vertex_buf, AccessType::VertexBuffer)
-                .clear_color_value(0, shadow_cube_faces_image, [0.0f32, 0.0, 0.0, 0.0])
-                .store_color(0, shadow_cube_faces_image)
-                // .clear_depth_stencil(depth_image)
-                // .store_depth_stencil(depth_image)
+                .clear_color_value(0, shadow_faces_node, [f32::MAX, 0.0, 0.0, 0.0])
+                .store_color(0, shadow_faces_node)
+                // .clear_depth_stencil(depth_cube)
+                // .store_depth_stencil(depth_cube)
                 .record_subpass(move |subpass, _| {
                     subpass
                         .bind_index_buffer(model_shadow_index_buf, vk::IndexType::UINT32)
@@ -184,8 +194,8 @@ fn main() -> anyhow::Result<()> {
                 .access_descriptor(1, light_uniform_buf, AccessType::AnyShaderReadUniformBuffer)
                 .read_descriptor_as(
                     2,
-                    shadow_cube_faces_image,
-                    shadow_cube_faces_info
+                    shadow_faces_node,
+                    shadow_faces_info
                         .default_view_info()
                         .with_ty(ImageType::Cube),
                 )
@@ -406,9 +416,9 @@ fn create_mesh_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, Dr
                 atten = 1.f - atten * atten;
                 float shadow = sample_shadow(shadow_map, l, d);
                 frag_color.xyz += vec3(atten * lambertian * shadow);
+           } else {
+                frag_color = vec4(1.0, 0.0, 1.0, 1.0);
            }
-
-        //    frag_color = vec4(1.0, 0.0, 1.0, 1.0);
         }
         "#,
         frag
@@ -433,9 +443,12 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
 
         #define TAN_HALF_FOVY 1.0f // tan(45deg)
         #define ASP 1.0f
-        #define LIGHT_FRUSTUM_NEAR 0.01f
-        
-        layout (location= 0) in vec3 pos_in;
+        #define LIGHT_FRUSTUM_NEAR 0.1f
+
+        struct ViewPositions
+        {
+            vec4 positions[6];
+        };
 
         layout(set = 0, binding = 0) uniform UBO
         {
@@ -454,14 +467,11 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
             mat4 projection;
         } light_info_in;
 
+        layout (location= 0) in vec3 pos_in;
+
         layout (location = 0) out vec3 world_pos_out;
         layout (location = 1) out uint layer_mask_out;
-
-        struct View_positions
-        {
-            vec4 positions[6];
-        };
-        layout (location = 2) out View_positions view_positions_out;
+        layout (location = 2) out ViewPositions view_positions_out;
 
         uint get_layer_flag(vec4 view_pos, uint flag)
         {
@@ -484,7 +494,7 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
 
         void main(void)
         {
-            vec4 world_pos = ubo_in.model * vec4(pos_in, 1.0f);
+            vec4 world_pos = ubo_in.model * vec4(pos_in, 1.0);
             world_pos_out = world_pos.xyz;
 
             // posx
@@ -670,17 +680,17 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
     )?))
 }
 
-fn download_model_from_github() -> anyhow::Result<PathBuf> {
-    const MODEL_NAME: &str = "nefertiti.obj";
-    const REPO_URL: &str = "https://github.com/alecjacobson/common-3d-test-models/raw/master/data/";
+fn download_model_from_github(model_name: &str) -> anyhow::Result<PathBuf> {
+    const REPO_URL: &str =
+        "https://raw.githubusercontent.com/alecjacobson/common-3d-test-models/master/data/";
 
-    let model_path = current_exe()?.parent().unwrap().join(MODEL_NAME);
+    let model_path = current_exe()?.parent().unwrap().join(model_name);
     let model_metadata = metadata(&model_path);
 
     if model_metadata.is_err() {
         info!("Downloading model from github");
 
-        let data = reqwest::blocking::get(REPO_URL.to_owned() + MODEL_NAME)?.bytes()?;
+        let data = reqwest::blocking::get(REPO_URL.to_owned() + model_name)?.bytes()?;
         write(&model_path, data)?;
 
         info!("Download complete");
