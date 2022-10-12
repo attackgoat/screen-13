@@ -979,11 +979,6 @@ impl Resolver {
                                     dep.dependency_flags |= vk::DependencyFlags::BY_REGION;
                                 }
 
-                                // Does the execution have more than one view?
-                                if subpasses[exec_idx].has_multiple_attachments() {
-                                    dep.dependency_flags |= vk::DependencyFlags::VIEW_LOCAL;
-                                }
-
                                 curr_stages &= !common_stages;
                                 curr_access &= !prev_access;
 
@@ -1038,11 +1033,6 @@ impl Resolver {
                                         | vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
                                 ) {
                                     dep.dependency_flags |= vk::DependencyFlags::BY_REGION;
-                                }
-
-                                // If the subpass has more than one view we need the VIEW_LOCAL flag
-                                if subpasses[exec_idx].has_multiple_attachments() {
-                                    dep.dependency_flags |= vk::DependencyFlags::VIEW_LOCAL;
                                 }
 
                                 curr_stages &= !common_stages;
