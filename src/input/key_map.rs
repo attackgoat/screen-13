@@ -85,14 +85,14 @@ where
 
         for binding in &mut self.bindings {
             if binding.activation_time > 1e-10 {
-                let change = if keyboard.is_pressed(&binding.key) {
+                let change = if keyboard.is_pressed(binding.key) {
                     dt
                 } else {
                     -dt
                 };
                 binding.activation =
                     (binding.activation + change / binding.activation_time).clamp(0.0, 1.0);
-            } else if keyboard.is_pressed(&binding.key) {
+            } else if keyboard.is_pressed(binding.key) {
                 binding.activation = 1.0;
             } else {
                 binding.activation = 0.0;

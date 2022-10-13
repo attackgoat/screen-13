@@ -1,6 +1,6 @@
 use {
     bytemuck::{bytes_of, cast_slice, NoUninit, Pod, Zeroable},
-    glam::{vec3, Mat4, Quat, Vec3},
+    glam::{vec3, Mat3, Mat4, Quat, Vec3},
     inline_spirv::inline_spirv,
     meshopt::remap::{generate_vertex_remap, remap_index_buffer, remap_vertex_buffer},
     screen_13::prelude::*,
@@ -14,7 +14,6 @@ use {
 };
 
 const CUBEMAP_SIZE: u32 = 512;
-const RENDER_DEBUG: bool = false;
 
 /// Adapted from https://github.com/sydneyzh/variance_shadow_mapping_vk
 ///
@@ -23,8 +22,18 @@ fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
     let model_path = download_model_from_github("nefertiti.obj")?;
+    let model_transform = Mat4::from_scale_rotation_translation(
+        Vec3::splat(10.0),
+        Quat::from_rotation_z(180f32.to_radians()) * Quat::from_rotation_x(90f32.to_radians()),
+        Vec3::ZERO,
+    );
+    let cube_transform = Mat4::from_scale(Vec3::splat(10.0));
 
-    let event_loop = EventLoop::new().debug(true).build()?;
+    let mut keyboard = KeyBuf::default();
+    let event_loop = EventLoop::new()
+        .debug(true)
+        .window(|window| window.with_inner_size(LogicalSize::new(800, 600)))
+        .build()?;
 
     // Load all the immutable graphics data we will need
     let model_mesh = load_model_mesh(&event_loop.device, &model_path)?;
@@ -43,6 +52,8 @@ fn main() -> anyhow::Result<()> {
     event_loop.run(|frame| {
         elapsed += frame.dt;
 
+        update_keyboard(&mut keyboard, frame.events);
+
         // Calculate values for and fill some plain-old-data structs we will bind as UBO's
         let light_data = {
             let fov_y = 90f32.to_radians();
@@ -53,23 +64,23 @@ fn main() -> anyhow::Result<()> {
             LightUniformBuffer {
                 position,
                 range: 1000.0,
-                view: Mat4::look_at_lh(position, position - Vec3::X, Vec3::Y),
-                projection: Mat4::perspective_lh(fov_y, 1.0, 0.1, 100.0),
+                view: Mat4::look_at_rh(position, position + Vec3::X, Vec3::Y),
+                projection: Mat4::perspective_rh(fov_y, 1.0, 0.1, 100.0),
             }
         };
         let mesh_data = {
             let aspect_ratio = frame.width as f32 / frame.height as f32;
             let fov_y = 45f32.to_radians();
-            let projection = Mat4::perspective_lh(fov_y, aspect_ratio, 0.1, 100.0);
+            let projection = Mat4::perspective_rh(fov_y, aspect_ratio, 0.1, 100.0);
 
-            let eye = vec3(0.0, 0.0, 25.0);
-            let view = Mat4::look_at_lh(eye, eye - Vec3::Z, Vec3::Y);
+            let eye = vec3(0.0, 0.0, -25.0);
+            let view = Mat4::look_at_rh(eye, eye + Vec3::Z, -Vec3::Y);
 
             let model = Mat4::from_scale_rotation_translation(
                 Vec3::splat(10.0),
-                Quat::from_rotation_y(180f32.to_radians())
+                Quat::from_rotation_z(180f32.to_radians())
                     * Quat::from_rotation_x(90f32.to_radians()),
-                Vec3::ZERO,
+                Vec3::new(0.0, 0.0, 0.0),
             );
 
             let normal = (view * model).transpose().inverse();
@@ -79,11 +90,8 @@ fn main() -> anyhow::Result<()> {
                 model,
                 normal,
                 projection,
-                clip: Mat4::from_scale_rotation_translation(
-                    vec3(1.0, 1.0, 0.5),
-                    Quat::IDENTITY,
-                    vec3(0.0, 0.0, 0.5),
-                ),
+                clip: Mat4::from_translation(vec3(0.0, 0.0, 0.5))
+                    * Mat4::from_scale(vec3(1.0, -1.0, 0.5)),
             }
         };
 
@@ -137,7 +145,8 @@ fn main() -> anyhow::Result<()> {
             .unwrap(),
         );
 
-        if RENDER_DEBUG {
+        // Hold tab to view a debug mode
+        if keyboard.is_held(VirtualKeyCode::Tab) {
             frame
                 .render_graph
                 .begin_pass("DEBUG")
@@ -157,9 +166,11 @@ fn main() -> anyhow::Result<()> {
                     subpass
                         .bind_index_buffer(model_mesh_index_buf, vk::IndexType::UINT32)
                         .bind_vertex_buffer(model_mesh_vertex_buf)
+                        .push_constants(cast_slice(&model_transform.to_cols_array()))
                         .draw_indexed(model_mesh.index_count, 1, 0, 0, 0)
                         .bind_index_buffer(cube_index_buf, vk::IndexType::UINT32)
                         .bind_vertex_buffer(cube_vertex_buf)
+                        .push_constants(cast_slice(&cube_transform.to_cols_array()))
                         .draw_indexed(cube.index_count, 1, 0, 0, 0);
                 });
         } else {
@@ -168,15 +179,15 @@ fn main() -> anyhow::Result<()> {
                 .render_graph
                 .begin_pass("Shadow")
                 .bind_pipeline(&shadow_pipeline)
-                // .set_depth_stencil(DepthStencilMode::DEPTH_WRITE)
+                .set_depth_stencil(DepthStencilMode::DEPTH_WRITE)
                 .access_descriptor(0, mesh_uniform_buf, AccessType::AnyShaderReadUniformBuffer)
                 .access_descriptor(1, light_uniform_buf, AccessType::AnyShaderReadUniformBuffer)
                 .access_node(model_shadow_index_buf, AccessType::IndexBuffer)
                 .access_node(model_shadow_vertex_buf, AccessType::VertexBuffer)
-                .clear_color_value(0, shadow_faces_node, [f32::MAX, 0.0, 0.0, 0.0])
+                .clear_color(0, shadow_faces_node)
                 .store_color(0, shadow_faces_node)
-                // .clear_depth_stencil(depth_cube)
-                // .store_depth_stencil(depth_cube)
+                .clear_depth_stencil(depth_cube)
+                .store_depth_stencil(depth_cube)
                 .record_subpass(move |subpass, _| {
                     subpass
                         .bind_index_buffer(model_shadow_index_buf, vk::IndexType::UINT32)
@@ -257,6 +268,10 @@ fn create_debug_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, D
         r#"
         #version 450 core
 
+        layout(push_constant) uniform PushConstants {
+            layout(offset = 0) mat4 model;
+        } push_const;
+
         layout(set = 0, binding = 0) uniform UBO
         {
             mat4 view;
@@ -269,13 +284,13 @@ fn create_debug_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, D
         layout (location = 0) in vec3 position_in;
         layout (location = 1) in vec3 normal_in;
 
-        layout (location = 0) out vec3 position_out;
-        layout (location = 1) out vec3 normal_out;
+        layout (location = 0) out vec3 world_position_out;
+        layout (location = 1) out vec3 world_normal_out;
 
         void main() {
-            position_out = (ubo_in.model * vec4(position_in, 1)).xyz;
-            normal_out = normalize((ubo_in.normal * vec4(normal_in, 1)).xyz);
-            gl_Position = ubo_in.clip * ubo_in.projection * ubo_in.view * vec4(position_out, 1);
+            world_position_out = (push_const.model * vec4(position_in, 1)).xyz;
+            world_normal_out = normalize((push_const.model * vec4(normal_in, 1)).xyz);
+            gl_Position = ubo_in.projection * ubo_in.view * vec4(world_position_out, 1);
         }
         "#,
         vert
@@ -284,7 +299,7 @@ fn create_debug_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, D
         r#"
         #version 450 core
 
-        layout(set = 0, binding = 1) uniform PLight_info
+        layout(set = 0, binding = 1) uniform LightInfo
         {
             vec3 position;
             float range;
@@ -292,15 +307,25 @@ fn create_debug_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, D
             mat4 projection;
         } light_info_in;
 
-        layout (location = 0) in vec3 position_in;
-        layout (location = 1) in vec3 normal_in;
+        layout (location = 0) in vec3 world_position_in;
+        layout (location = 1) in vec3 world_normal_in;
 
         layout (location = 0) out vec4 color_out;
 
         void main() {
-            vec3 light_dir = normalize(vec3(light_info_in.position));
-            float intensity = max(dot(normal_in, -light_dir), 0.01);
-            color_out = vec4(intensity.xxx, 1);
+            vec3 light = light_info_in.position - world_position_in.xyz;
+            float light_dist = length(light);
+
+            color_out = vec4(vec3(0.0), 1);
+
+            if (light_dist < light_info_in.range)
+            {
+                float lambertian = max(0.01, dot(world_normal_in, normalize(light)));
+                float attenuation = max(0.0, min(1.0, light_dist / light_info_in.range));
+                attenuation = 1.f - attenuation * attenuation;
+
+                color_out.xyz = vec3(lambertian * attenuation);
+            }
         }
         "#,
         frag
@@ -346,7 +371,7 @@ fn create_mesh_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, Dr
         void main() {
             world_normal_out = (ubo_in.normal * vec4(normal_in, 1.f)).xyz;
             world_pos_out = ubo_in.model * vec4(pos_in, 1.f);
-            gl_Position = ubo_in.clip * ubo_in.projection * ubo_in.view * world_pos_out;
+            gl_Position = ubo_in.projection * ubo_in.view * world_pos_out;
         }
         "#,
         vert
@@ -411,14 +436,13 @@ fn create_mesh_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, Dr
             l = normalize(l);
             if (d < light_info_in.range) {
                 float lambertian = max(0.0, dot(world_normal_in, -l));
-                lambertian = 1.0;
                 float atten = max(0.0, min(1.0, d / light_info_in.range));
                 atten = 1.f - atten * atten;
                 float shadow = sample_shadow(shadow_map, l, d);
                 frag_color.xyz += vec3(atten * lambertian * shadow);
-           } else {
+            } else {
                 frag_color = vec4(1.0, 0.0, 1.0, 1.0);
-           }
+            }
         }
         "#,
         frag
@@ -441,9 +465,9 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
         r#"
         #version 450 core
 
-        #define TAN_HALF_FOVY 1.0f // tan(45deg)
-        #define ASP 1.0f
-        #define LIGHT_FRUSTUM_NEAR 0.1f
+        #define TAN_HALF_FOVY 1.0 // tan(45deg)
+        #define ASP 1.0
+        #define LIGHT_FRUSTUM_NEAR 0.1
 
         struct ViewPositions
         {
@@ -482,7 +506,7 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
             res *= uint(step(LIGHT_FRUSTUM_NEAR, -view_pos.z));
             res *= uint(step(-light_info_in.range, view_pos.z));
 
-            float ymax = - TAN_HALF_FOVY * view_pos.z;
+            float ymax = -TAN_HALF_FOVY * view_pos.z;
             float xmax = ymax * ASP;
             res *= uint(step(-xmax, view_pos.x));
             res *= uint(step(view_pos.x, xmax));
@@ -499,22 +523,22 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
 
             // posx
             vec4 view0_pos = light_info_in.view0 * world_pos;
-            view0_pos.x *= -1.0f;
+            view0_pos.x *= -1.0;
 
             // negx
-            vec4 view1_pos = vec4(-view0_pos.x, view0_pos.y, -view0_pos.z, 1.0f);
+            vec4 view1_pos = vec4(-view0_pos.x, view0_pos.y, -view0_pos.z, 1.0);
 
             // posy
-            vec4 view2_pos = vec4(-view0_pos.z, view0_pos.x, -view0_pos.y, 1.0f);
+            vec4 view2_pos = vec4(-view0_pos.z, view0_pos.x, -view0_pos.y, 1.0);
 
             // negy
-            vec4 view3_pos = vec4(-view0_pos.z, -view0_pos.x, view0_pos.y, 1.0f);
+            vec4 view3_pos = vec4(-view0_pos.z, -view0_pos.x, view0_pos.y, 1.0);
 
             // posz
-            vec4 view4_pos = vec4(-view0_pos.z, view0_pos.y, view0_pos.x, 1.0f);
+            vec4 view4_pos = vec4(-view0_pos.z, view0_pos.y, view0_pos.x, 1.0);
 
             // negz
-            vec4 view5_pos = vec4(view0_pos.z, view0_pos.y, -view0_pos.x, 1.0f);
+            vec4 view5_pos = vec4(view0_pos.z, view0_pos.y, -view0_pos.x, 1.0);
 
             layer_mask_out = get_layer_flag(view0_pos, 1)
                            | get_layer_flag(view1_pos, 2)
@@ -537,6 +561,10 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
         r#"
         #version 450 core
 
+        struct ViewPositions {
+            vec4 positions[6];
+        };
+
         layout(triangles) in;
 
         layout(set = 0, binding = 0) uniform UBO
@@ -548,7 +576,7 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
             mat4 clip;
         } ubo_in;
 
-        layout(set = 0, binding = 1) uniform Light_info
+        layout(set = 0, binding = 1) uniform LightInfo
         {
             vec3 pos;
             float range;
@@ -558,12 +586,7 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
 
         layout(location = 0) in vec3 world_pos_in[];
         layout(location = 1) in uint layer_mask_in[];
-
-        struct View_positions
-        {
-            vec4 positions[6];
-        };
-        layout (location = 2) in View_positions view_positions_in[];
+        layout(location = 2) in ViewPositions view_positions_in[];
 
         layout(triangle_strip, max_vertices = 18) out;
         out gl_PerVertex
@@ -578,7 +601,7 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
             vec4 pos1 = ubo_in.clip * light_info_in.projection * view_positions_in[1].positions[view_idx];
             vec4 pos2 = ubo_in.clip * light_info_in.projection * view_positions_in[2].positions[view_idx];
 
-            if (flag > 0) {
+            // if (flag > 0) {
                 gl_Position = pos0;
                 world_pos_out = world_pos_in[0];
                 EmitVertex();
@@ -592,7 +615,7 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
                 EmitVertex();
 
                 EndPrimitive();
-            }
+            // }
         }
 
         void main()
@@ -646,7 +669,7 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
         r#"
         #version 450 core
 
-        layout(set = 0, binding = 1) uniform Light_info
+        layout(set = 0, binding = 1) uniform LightInfo
         {
             vec3 pos;
             float range;
@@ -721,21 +744,21 @@ fn load_cube(device: &Arc<Device>) -> Result<Model, DriverError> {
     const P: f32 = 1f32;
     const Z: f32 = 0f32;
 
-    const TOP_LEFT_BACK: [f32; 3] = [N, P, N];
-    const TOP_LEFT_FRONT: [f32; 3] = [N, P, P];
-    const TOP_RIGHT_BACK: [f32; 3] = [P, P, N];
-    const TOP_RIGHT_FRONT: [f32; 3] = [P, P, P];
-    const BOTTOM_LEFT_BACK: [f32; 3] = [N, N, N];
-    const BOTTOM_LEFT_FRONT: [f32; 3] = [N, N, P];
-    const BOTTOM_RIGHT_BACK: [f32; 3] = [P, N, N];
-    const BOTTOM_RIGHT_FRONT: [f32; 3] = [P, N, P];
+    const LEFT_BOTTOM_BACK: [f32; 3] = [N, N, P];
+    const LEFT_BOTTOM_FRONT: [f32; 3] = [N, N, N];
+    const LEFT_TOP_BACK: [f32; 3] = [N, P, P];
+    const LEFT_TOP_FRONT: [f32; 3] = [N, P, N];
+    const RIGHT_BOTTOM_BACK: [f32; 3] = [P, N, P];
+    const RIGHT_BOTTOM_FRONT: [f32; 3] = [P, N, N];
+    const RIGHT_TOP_BACK: [f32; 3] = [P, P, P];
+    const RIGHT_TOP_FRONT: [f32; 3] = [P, P, N];
 
     const FORWARD: [f32; 3] = [Z, Z, P];
     const BACKWARD: [f32; 3] = [Z, Z, N];
-    const LEFT: [f32; 3] = [P, Z, Z];
-    const RIGHT: [f32; 3] = [N, Z, Z];
-    const UP: [f32; 3] = [Z, P, Z];
-    const DOWN: [f32; 3] = [Z, N, Z];
+    const LEFTWARD: [f32; 3] = [N, Z, Z];
+    const RIGHTWARD: [f32; 3] = [P, Z, Z];
+    const UPWARD: [f32; 3] = [Z, P, Z];
+    const DOWNWARD: [f32; 3] = [Z, N, Z];
 
     const fn vertex(position: [f32; 3], normal: [f32; 3]) -> [f32; 6] {
         [
@@ -765,53 +788,53 @@ fn load_cube(device: &Arc<Device>) -> Result<Model, DriverError> {
         cast_slice(
             [
                 // Triangle 0
-                vertex(TOP_LEFT_BACK, FORWARD),
-                vertex(BOTTOM_LEFT_BACK, FORWARD),
-                vertex(TOP_RIGHT_BACK, FORWARD),
+                vertex(LEFT_TOP_BACK, BACKWARD),
+                vertex(LEFT_BOTTOM_BACK, BACKWARD),
+                vertex(RIGHT_TOP_BACK, BACKWARD),
                 // Triangle 1
-                vertex(TOP_RIGHT_BACK, FORWARD),
-                vertex(BOTTOM_LEFT_BACK, FORWARD),
-                vertex(BOTTOM_RIGHT_BACK, FORWARD),
+                vertex(RIGHT_TOP_BACK, BACKWARD),
+                vertex(LEFT_BOTTOM_BACK, BACKWARD),
+                vertex(RIGHT_BOTTOM_BACK, BACKWARD),
                 // // Triangle 2
-                vertex(TOP_RIGHT_FRONT, BACKWARD),
-                vertex(BOTTOM_RIGHT_FRONT, BACKWARD),
-                vertex(TOP_LEFT_FRONT, BACKWARD),
+                vertex(RIGHT_TOP_FRONT, FORWARD),
+                vertex(RIGHT_BOTTOM_FRONT, FORWARD),
+                vertex(LEFT_TOP_FRONT, FORWARD),
                 // Triangle 3
-                vertex(TOP_LEFT_FRONT, BACKWARD),
-                vertex(BOTTOM_RIGHT_FRONT, BACKWARD),
-                vertex(BOTTOM_LEFT_FRONT, BACKWARD),
+                vertex(LEFT_TOP_FRONT, FORWARD),
+                vertex(RIGHT_BOTTOM_FRONT, FORWARD),
+                vertex(LEFT_BOTTOM_FRONT, FORWARD),
                 // Triangle 4
-                vertex(TOP_LEFT_FRONT, LEFT),
-                vertex(BOTTOM_LEFT_FRONT, LEFT),
-                vertex(TOP_LEFT_BACK, LEFT),
+                vertex(LEFT_TOP_FRONT, RIGHTWARD),
+                vertex(LEFT_BOTTOM_FRONT, RIGHTWARD),
+                vertex(LEFT_TOP_BACK, RIGHTWARD),
                 // Triangle 5
-                vertex(TOP_LEFT_BACK, LEFT),
-                vertex(BOTTOM_LEFT_FRONT, LEFT),
-                vertex(BOTTOM_LEFT_BACK, LEFT),
+                vertex(LEFT_TOP_BACK, RIGHTWARD),
+                vertex(LEFT_BOTTOM_FRONT, RIGHTWARD),
+                vertex(LEFT_BOTTOM_BACK, RIGHTWARD),
                 // Triangle 6
-                vertex(TOP_RIGHT_BACK, RIGHT),
-                vertex(BOTTOM_RIGHT_BACK, RIGHT),
-                vertex(TOP_RIGHT_FRONT, RIGHT),
+                vertex(RIGHT_TOP_BACK, LEFTWARD),
+                vertex(RIGHT_BOTTOM_BACK, LEFTWARD),
+                vertex(RIGHT_TOP_FRONT, LEFTWARD),
                 // Triangle 7
-                vertex(TOP_RIGHT_FRONT, RIGHT),
-                vertex(BOTTOM_RIGHT_BACK, RIGHT),
-                vertex(BOTTOM_RIGHT_FRONT, RIGHT),
+                vertex(RIGHT_TOP_FRONT, LEFTWARD),
+                vertex(RIGHT_BOTTOM_BACK, LEFTWARD),
+                vertex(RIGHT_BOTTOM_FRONT, LEFTWARD),
                 // Triangle 8
-                vertex(BOTTOM_LEFT_BACK, UP),
-                vertex(BOTTOM_LEFT_FRONT, UP),
-                vertex(BOTTOM_RIGHT_BACK, UP),
+                vertex(LEFT_BOTTOM_BACK, UPWARD),
+                vertex(LEFT_BOTTOM_FRONT, UPWARD),
+                vertex(RIGHT_BOTTOM_BACK, UPWARD),
                 // Triangle 9
-                vertex(BOTTOM_RIGHT_BACK, UP),
-                vertex(BOTTOM_LEFT_FRONT, UP),
-                vertex(BOTTOM_RIGHT_FRONT, UP),
+                vertex(RIGHT_BOTTOM_BACK, UPWARD),
+                vertex(LEFT_BOTTOM_FRONT, UPWARD),
+                vertex(RIGHT_BOTTOM_FRONT, UPWARD),
                 // Triangle 10
-                vertex(TOP_LEFT_FRONT, DOWN),
-                vertex(TOP_LEFT_BACK, DOWN),
-                vertex(TOP_RIGHT_FRONT, DOWN),
+                vertex(LEFT_TOP_FRONT, DOWNWARD),
+                vertex(LEFT_TOP_BACK, DOWNWARD),
+                vertex(RIGHT_TOP_FRONT, DOWNWARD),
                 // Triangle 11
-                vertex(TOP_RIGHT_FRONT, DOWN),
-                vertex(TOP_LEFT_BACK, DOWN),
-                vertex(TOP_RIGHT_BACK, DOWN),
+                vertex(RIGHT_TOP_FRONT, DOWNWARD),
+                vertex(LEFT_TOP_BACK, DOWNWARD),
+                vertex(RIGHT_TOP_BACK, DOWNWARD),
             ]
             .as_slice(),
         ),
@@ -914,19 +937,21 @@ fn load_model_mesh(device: &Arc<Device>, path: impl AsRef<Path>) -> anyhow::Resu
             u.y * v.z - u.z * v.y,
             u.z * v.x - u.x * v.z,
             u.x * v.y - u.y * v.x,
-        );
+        )
+        .normalize();
 
+        // Make faces CCW
         [
             Vertex {
                 position: a,
                 normal,
             },
             Vertex {
-                position: b,
+                position: c,
                 normal,
             },
             Vertex {
-                position: c,
+                position: b,
                 normal,
             },
         ]
@@ -946,10 +971,11 @@ fn load_model_shadow(device: &Arc<Device>, path: impl AsRef<Path>) -> anyhow::Re
     unsafe impl Zeroable for Vertex {}
 
     load_model(device, path, |a, b, c| {
+        // Make faces CCW
         [
             Vertex { position: a },
-            Vertex { position: b },
             Vertex { position: c },
+            Vertex { position: b },
         ]
     })
 }
