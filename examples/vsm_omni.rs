@@ -26,8 +26,9 @@ fn main() -> anyhow::Result<()> {
         Vec3::splat(10.0),
         Quat::from_rotation_z(180f32.to_radians()) * Quat::from_rotation_x(90f32.to_radians()),
         Vec3::ZERO,
-    );
-    let cube_transform = Mat4::from_scale(Vec3::splat(10.0));
+    )
+    .to_cols_array();
+    let cube_transform = Mat4::from_scale(Vec3::splat(10.0)).to_cols_array();
 
     let mut keyboard = KeyBuf::default();
     let event_loop = EventLoop::new()
@@ -76,23 +77,7 @@ fn main() -> anyhow::Result<()> {
             let eye = vec3(0.0, 0.0, -25.0);
             let view = Mat4::look_at_rh(eye, eye + Vec3::Z, -Vec3::Y);
 
-            let model = Mat4::from_scale_rotation_translation(
-                Vec3::splat(10.0),
-                Quat::from_rotation_z(180f32.to_radians())
-                    * Quat::from_rotation_x(90f32.to_radians()),
-                Vec3::new(0.0, 0.0, 0.0),
-            );
-
-            let normal = (view * model).transpose().inverse();
-
-            MeshUniformBuffer {
-                view,
-                model,
-                normal,
-                projection,
-                clip: Mat4::from_translation(vec3(0.0, 0.0, 0.5))
-                    * Mat4::from_scale(vec3(1.0, -1.0, 0.5)),
-            }
+            MeshUniformBuffer { view, projection }
         };
 
         // Bind resources to the render graph of the current frame
@@ -166,11 +151,11 @@ fn main() -> anyhow::Result<()> {
                     subpass
                         .bind_index_buffer(model_mesh_index_buf, vk::IndexType::UINT32)
                         .bind_vertex_buffer(model_mesh_vertex_buf)
-                        .push_constants(cast_slice(&model_transform.to_cols_array()))
+                        .push_constants(cast_slice(&model_transform))
                         .draw_indexed(model_mesh.index_count, 1, 0, 0, 0)
                         .bind_index_buffer(cube_index_buf, vk::IndexType::UINT32)
                         .bind_vertex_buffer(cube_vertex_buf)
-                        .push_constants(cast_slice(&cube_transform.to_cols_array()))
+                        .push_constants(cast_slice(&cube_transform))
                         .draw_indexed(cube.index_count, 1, 0, 0, 0);
                 });
         } else {
@@ -192,6 +177,7 @@ fn main() -> anyhow::Result<()> {
                     subpass
                         .bind_index_buffer(model_shadow_index_buf, vk::IndexType::UINT32)
                         .bind_vertex_buffer(model_shadow_vertex_buf)
+                        .push_constants(cast_slice(&model_transform))
                         .draw_indexed(model_shadow.index_count, 1, 0, 0, 0);
                 });
 
@@ -222,9 +208,11 @@ fn main() -> anyhow::Result<()> {
                     subpass
                         .bind_index_buffer(model_mesh_index_buf, vk::IndexType::UINT32)
                         .bind_vertex_buffer(model_mesh_vertex_buf)
+                        .push_constants(cast_slice(&model_transform))
                         .draw_indexed(model_mesh.index_count, 1, 0, 0, 0)
                         .bind_index_buffer(cube_index_buf, vk::IndexType::UINT32)
                         .bind_vertex_buffer(cube_vertex_buf)
+                        .push_constants(cast_slice(&cube_transform))
                         .draw_indexed(cube.index_count, 1, 0, 0, 0);
                 });
         }
@@ -268,26 +256,25 @@ fn create_debug_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, D
         r#"
         #version 450 core
 
-        layout(push_constant) uniform PushConstants {
+        layout(push_constant) uniform PushConstants
+        {
             layout(offset = 0) mat4 model;
         } push_const;
 
         layout(set = 0, binding = 0) uniform UBO
         {
             mat4 view;
-            mat4 model;
-            mat4 normal;
             mat4 projection;
-            mat4 clip;
         } ubo_in;
 
-        layout (location = 0) in vec3 position_in;
-        layout (location = 1) in vec3 normal_in;
+        layout(location = 0) in vec3 position_in;
+        layout(location = 1) in vec3 normal_in;
 
-        layout (location = 0) out vec3 world_position_out;
-        layout (location = 1) out vec3 world_normal_out;
+        layout(location = 0) out vec3 world_position_out;
+        layout(location = 1) out vec3 world_normal_out;
 
-        void main() {
+        void main()
+        {
             world_position_out = (push_const.model * vec4(position_in, 1)).xyz;
             world_normal_out = normalize((push_const.model * vec4(normal_in, 1)).xyz);
             gl_Position = ubo_in.projection * ubo_in.view * vec4(world_position_out, 1);
@@ -307,24 +294,27 @@ fn create_debug_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, D
             mat4 projection;
         } light_info_in;
 
-        layout (location = 0) in vec3 world_position_in;
-        layout (location = 1) in vec3 world_normal_in;
+        layout(location = 0) in vec3 world_position_in;
+        layout(location = 1) in vec3 world_normal_in;
 
-        layout (location = 0) out vec4 color_out;
+        layout(location = 0) out vec4 color_out;
 
-        void main() {
+        void main()
+        {
+            color_out = vec4(vec3(0.0), 1.0);
+
             vec3 light = light_info_in.position - world_position_in.xyz;
             float light_dist = length(light);
 
-            color_out = vec4(vec3(0.0), 1);
-
             if (light_dist < light_info_in.range)
             {
-                float lambertian = max(0.01, dot(world_normal_in, normalize(light)));
-                float attenuation = max(0.0, min(1.0, light_dist / light_info_in.range));
-                attenuation = 1.f - attenuation * attenuation;
+                light = normalize(light);
 
-                color_out.xyz = vec3(lambertian * attenuation);
+                float lambertian = max(0.01, dot(world_normal_in, light));
+                float attenuation = max(0.0, min(1.0, light_dist / light_info_in.range));
+                attenuation = 1.0 - attenuation * attenuation;
+
+                color_out.rgb = vec3(lambertian * attenuation);
             }
         }
         "#,
@@ -348,16 +338,15 @@ fn create_mesh_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, Dr
         r#"
         #version 450 core
 
-        layout (location= 0) in vec3 pos_in;
-        layout (location= 1) in vec3 normal_in;
+        layout(push_constant) uniform PushConstants
+        {
+            layout(offset = 0) mat4 model;
+        } push_const;
 
         layout(set = 0, binding = 0) uniform UBO
         {
             mat4 view;
-            mat4 model;
-            mat4 normal;
             mat4 projection;
-            mat4 clip;
         } ubo_in;
 
         out gl_PerVertex
@@ -365,12 +354,16 @@ fn create_mesh_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, Dr
             vec4 gl_Position;
         };
 
-        layout (location = 0) out vec4 world_pos_out;
-        layout (location = 1) out vec3 world_normal_out;
+        layout(location = 0) in vec3 pos_in;
+        layout(location = 1) in vec3 normal_in;
 
-        void main() {
-            world_normal_out = (ubo_in.normal * vec4(normal_in, 1.f)).xyz;
-            world_pos_out = ubo_in.model * vec4(pos_in, 1.f);
+        layout(location = 0) out vec4 world_pos_out;
+        layout(location = 1) out vec3 world_normal_out;
+
+        void main()
+        {
+            world_normal_out = normalize((push_const.model * vec4(normal_in, 1.0)).xyz);
+            world_pos_out = push_const.model * vec4(pos_in, 1.0);
             gl_Position = ubo_in.projection * ubo_in.view * world_pos_out;
         }
         "#,
@@ -379,16 +372,8 @@ fn create_mesh_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, Dr
     let frag = inline_spirv!(
         r#"
         #version 450 core
-        #define BIAS 0.15f
 
-        layout(set = 0, binding = 0) uniform UBO
-        {
-            mat4 view;
-            mat4 model;
-            mat4 normal;
-            mat4 projection;
-            mat4 clip;
-        } ubo_in;
+        #define BIAS 0.15f
 
         layout(set = 0, binding = 1) uniform LightInfo
         {
@@ -413,35 +398,37 @@ fn create_mesh_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, Dr
             // depth^2 - mean^2
             // ensure it as a denominator is not zero
 
-            float d = scene_depth - moments.x;
-
-            float p_max = variance / (variance + d * d);
-            // from the theorem
+            float dist = scene_depth - moments.x;
+            float p_max = variance / (variance + dist * dist);
 
             return max(p, p_max);
         }
 
         float sample_shadow(samplerCube shadow_map, vec3 l, float scene_depth)
         {
-            vec2 moments = texture(shadow_map, l).xy;
+            vec2 moments = texture(shadow_map, l).rg;
             // moments.x is mean, moments.y is depth^2
 
             return upper_bound_shadow(moments, scene_depth);
         }
 
-        void main() {
+        void main()
+        {
             frag_color = vec4(0.0, 0.0, 0.0, 1.0);
-            vec3 l = world_pos_in.xyz - light_info_in.pos;
-            float d = length(l);
-            l = normalize(l);
-            if (d < light_info_in.range) {
-                float lambertian = max(0.0, dot(world_normal_in, -l));
-                float atten = max(0.0, min(1.0, d / light_info_in.range));
-                atten = 1.f - atten * atten;
-                float shadow = sample_shadow(shadow_map, l, d);
-                frag_color.xyz += vec3(atten * lambertian * shadow);
-            } else {
-                frag_color = vec4(1.0, 0.0, 1.0, 1.0);
+
+            vec3 light = light_info_in.pos - world_pos_in.xyz;
+            float light_dist = length(light);
+
+            if (light_dist < light_info_in.range)
+            {
+                light = normalize(light);
+
+                float shadow = sample_shadow(shadow_map, -light, light_dist);
+                float lambertian = max(0.01, dot(world_normal_in, light));
+                float attenuation = max(0.0, min(1.0, light_dist / light_info_in.range));
+                attenuation = 1.0 - attenuation * attenuation;
+
+                frag_color.rgb = vec3(attenuation * lambertian * shadow);
             }
         }
         "#,
@@ -474,13 +461,14 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
             vec4 positions[6];
         };
 
+        layout(push_constant) uniform PushConstants {
+            layout(offset = 0) mat4 model;
+        } push_const;
+
         layout(set = 0, binding = 0) uniform UBO
         {
             mat4 view;
-            mat4 model;
-            mat4 normal;
             mat4 projection;
-            mat4 clip;
         } ubo_in;
 
         layout(set = 0, binding = 1) uniform LightInfo
@@ -491,11 +479,11 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
             mat4 projection;
         } light_info_in;
 
-        layout (location= 0) in vec3 pos_in;
+        layout(location= 0) in vec3 pos_in;
 
-        layout (location = 0) out vec3 world_pos_out;
-        layout (location = 1) out uint layer_mask_out;
-        layout (location = 2) out ViewPositions view_positions_out;
+        layout(location = 0) out vec3 world_pos_out;
+        layout(location = 1) out uint layer_mask_out;
+        layout(location = 2) out ViewPositions view_positions_out;
 
         uint get_layer_flag(vec4 view_pos, uint flag)
         {
@@ -518,7 +506,7 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
 
         void main(void)
         {
-            vec4 world_pos = ubo_in.model * vec4(pos_in, 1.0);
+            vec4 world_pos = push_const.model * vec4(pos_in, 1.0);
             world_pos_out = world_pos.xyz;
 
             // posx
@@ -561,7 +549,10 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
         r#"
         #version 450 core
 
-        struct ViewPositions {
+        #define CLIP mat4(1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.5, 1.0)
+
+        struct ViewPositions
+        {
             vec4 positions[6];
         };
 
@@ -570,10 +561,7 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
         layout(set = 0, binding = 0) uniform UBO
         {
             mat4 view;
-            mat4 model;
-            mat4 normal;
             mat4 projection;
-            mat4 clip;
         } ubo_in;
 
         layout(set = 0, binding = 1) uniform LightInfo
@@ -597,9 +585,9 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
 
         void emit(uint flag, int view_idx)
         {
-            vec4 pos0 = ubo_in.clip * light_info_in.projection * view_positions_in[0].positions[view_idx];
-            vec4 pos1 = ubo_in.clip * light_info_in.projection * view_positions_in[1].positions[view_idx];
-            vec4 pos2 = ubo_in.clip * light_info_in.projection * view_positions_in[2].positions[view_idx];
+            vec4 pos0 = CLIP * light_info_in.projection * view_positions_in[0].positions[view_idx];
+            vec4 pos1 = CLIP * light_info_in.projection * view_positions_in[1].positions[view_idx];
+            vec4 pos2 = CLIP * light_info_in.projection * view_positions_in[2].positions[view_idx];
 
             // if (flag > 0) {
                 gl_Position = pos0;
@@ -679,12 +667,13 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
 
         layout(location = 0) in vec3 world_pos_in;
 
-        layout (location = 0) out vec4 frag_color;
+        layout(location = 0) out vec4 frag_color;
 
-        void main() {
-            float d = distance(world_pos_in.xyz, light_info_in.pos);
-            frag_color.x = d;
-            frag_color.y = d * d;
+        void main()
+        {
+            float dist = distance(world_pos_in.xyz, light_info_in.pos);
+            frag_color.x = dist;
+            frag_color.y = dist * dist;
         }
         "#,
         frag
@@ -1001,10 +990,7 @@ unsafe impl NoUninit for LightUniformBuffer {}
 #[derive(Clone, Copy)]
 struct MeshUniformBuffer {
     view: Mat4,
-    model: Mat4,
-    normal: Mat4,
     projection: Mat4,
-    clip: Mat4,
 }
 
 unsafe impl NoUninit for MeshUniformBuffer {}
