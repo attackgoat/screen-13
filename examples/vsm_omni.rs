@@ -1,6 +1,6 @@
 use {
     bytemuck::{bytes_of, cast_slice, NoUninit, Pod, Zeroable},
-    glam::{vec3, Mat3, Mat4, Quat, Vec3},
+    glam::{vec3, Mat4, Quat, Vec3},
     inline_spirv::inline_spirv,
     meshopt::remap::{generate_vertex_remap, remap_index_buffer, remap_vertex_buffer},
     screen_13::prelude::*,
@@ -18,6 +18,11 @@ const CUBEMAP_SIZE: u32 = 512;
 /// Adapted from https://github.com/sydneyzh/variance_shadow_mapping_vk
 ///
 /// This example does an HTTPS GET to acquire model data!
+/// Model data courtesy: https://github.com/alecjacobson/common-3d-test-models/
+///
+/// Also, see similar techniques here:
+/// https://github.com/SaschaWillems/Vulkan/blob/ae3c1325f8c7a55941dc5b325db58bb482dce04c/examples/shadowmappingomni/shadowmappingomni.cpp
+/// https://github.com/SaschaWillems/Vulkan/pull/783
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
@@ -59,7 +64,7 @@ fn main() -> anyhow::Result<()> {
         let light_data = {
             let fov_y = 90f32.to_radians();
             let radius = 8f32;
-            let t = elapsed / 2.0;
+            let t = elapsed / 2.0 + 3.5;
             let position = vec3(radius * t.cos(), 0.0, radius * t.sin());
 
             LightUniformBuffer {
@@ -169,10 +174,10 @@ fn main() -> anyhow::Result<()> {
                 .access_descriptor(1, light_uniform_buf, AccessType::AnyShaderReadUniformBuffer)
                 .access_node(model_shadow_index_buf, AccessType::IndexBuffer)
                 .access_node(model_shadow_vertex_buf, AccessType::VertexBuffer)
-                .clear_color(0, shadow_faces_node)
+                .clear_color_value(0, shadow_faces_node, [f32::MAX, f32::MAX, 0.0, 0.0])
                 .store_color(0, shadow_faces_node)
                 .clear_depth_stencil(depth_cube)
-                .store_depth_stencil(depth_cube)
+                .store_depth_stencil(depth_cube) // TODO: Not required, bug
                 .record_subpass(move |subpass, _| {
                     subpass
                         .bind_index_buffer(model_shadow_index_buf, vk::IndexType::UINT32)
@@ -203,7 +208,7 @@ fn main() -> anyhow::Result<()> {
                 .clear_color(0, frame.swapchain_image)
                 .store_color(0, frame.swapchain_image)
                 .clear_depth_stencil(depth_image)
-                .store_depth_stencil(depth_image)
+                .store_depth_stencil(depth_image) // TODO: Not required, bug
                 .record_subpass(move |subpass, _| {
                     subpass
                         .bind_index_buffer(model_mesh_index_buf, vk::IndexType::UINT32)
@@ -404,10 +409,10 @@ fn create_mesh_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, Dr
             return max(p, p_max);
         }
 
-        float sample_shadow(samplerCube shadow_map, vec3 l, float scene_depth)
+        float sample_shadow(samplerCube shadow_map, vec3 light, float scene_depth)
         {
-            vec2 moments = texture(shadow_map, l).rg;
-            // moments.x is mean, moments.y is depth^2
+            vec2 moments = texture(shadow_map, light).rg;
+            // moments.r is mean, moments.g is depth^2
 
             return upper_bound_shadow(moments, scene_depth);
         }
