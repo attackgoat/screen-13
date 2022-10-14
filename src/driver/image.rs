@@ -762,7 +762,7 @@ impl ImageViewInfo {
     }
 
     /// Takes this instance and returns it with a newly specified `ImageType`.
-    pub fn with_ty(mut self: Self, ty: ImageType) -> Self {
+    pub fn with_ty(mut self, ty: ImageType) -> Self {
         self.ty = ty;
 
         self
