@@ -594,7 +594,7 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
             vec4 pos1 = CLIP * light_info_in.projection * view_positions_in[1].positions[view_idx];
             vec4 pos2 = CLIP * light_info_in.projection * view_positions_in[2].positions[view_idx];
 
-            // if (flag > 0) {
+            if (flag > 0) {
                 gl_Position = pos0;
                 world_pos_out = world_pos_in[0];
                 EmitVertex();
@@ -608,7 +608,7 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
                 EmitVertex();
 
                 EndPrimitive();
-            // }
+            }
         }
 
         void main()
