@@ -28,9 +28,9 @@ fn main() -> anyhow::Result<()> {
 
     let model_path = download_model_from_github("nefertiti.obj")?;
     let model_transform = Mat4::from_scale_rotation_translation(
-        Vec3::splat(10.0),
+        Vec3::splat(15.0),
         Quat::from_rotation_z(180f32.to_radians()) * Quat::from_rotation_x(90f32.to_radians()),
-        Vec3::ZERO,
+        vec3(0.0, -2.0, 0.0),
     )
     .to_cols_array();
     let cube_transform = Mat4::from_scale(Vec3::splat(10.0)).to_cols_array();
@@ -56,25 +56,15 @@ fn main() -> anyhow::Result<()> {
 
     let mut elapsed = 0.0;
     event_loop.run(|frame| {
-        elapsed += frame.dt;
-
         update_keyboard(&mut keyboard, frame.events);
 
-        // Calculate values for and fill some plain-old-data structs we will bind as UBO's
-        let light_data = {
-            let fov_y = 90f32.to_radians();
-            let radius = 8f32;
-            let t = elapsed / 2.0 + 3.5;
-            let position = vec3(radius * t.cos(), 0.0, radius * t.sin());
+        // Hold spacebar to stop the light
+        if !keyboard.is_held(VirtualKeyCode::Space) {
+            elapsed += frame.dt;
+        }
 
-            LightUniformBuffer {
-                position,
-                range: 1000.0,
-                view: Mat4::look_at_rh(position, position + Vec3::X, Vec3::Y),
-                projection: Mat4::perspective_rh(fov_y, 1.0, 0.1, 100.0),
-            }
-        };
-        let mesh_data = {
+        // Calculate values for and fill some plain-old-data structs we will bind as UBO's
+        let camera = {
             let aspect_ratio = frame.width as f32 / frame.height as f32;
             let fov_y = 45f32.to_radians();
             let projection = Mat4::perspective_rh(fov_y, aspect_ratio, 0.1, 100.0);
@@ -82,7 +72,20 @@ fn main() -> anyhow::Result<()> {
             let eye = vec3(0.0, 0.0, -25.0);
             let view = Mat4::look_at_rh(eye, eye + Vec3::Z, -Vec3::Y);
 
-            MeshUniformBuffer { view, projection }
+            Camera { view, projection }
+        };
+        let light = {
+            let fov_y = 90f32.to_radians();
+            let radius = 8f32;
+            let t = elapsed / 2.0 + 3.5;
+            let position = vec3(radius * t.cos(), 0.0, radius * t.sin());
+
+            Light {
+                position,
+                range: 1000.0,
+                view: Mat4::look_at_rh(position, position + Vec3::X, Vec3::Y),
+                projection: Mat4::perspective_rh(fov_y, 1.0, 0.1, 100.0),
+            }
         };
 
         // Bind resources to the render graph of the current frame
@@ -92,12 +95,12 @@ fn main() -> anyhow::Result<()> {
         let model_mesh_vertex_buf = frame.render_graph.bind_node(&model_mesh.vertex_buf);
         let model_shadow_index_buf = frame.render_graph.bind_node(&model_shadow.index_buf);
         let model_shadow_vertex_buf = frame.render_graph.bind_node(&model_shadow.vertex_buf);
+        let camera_uniform_buf = frame
+            .render_graph
+            .bind_node(lease_uniform_buffer(&mut pool, &camera).unwrap());
         let light_uniform_buf = frame
             .render_graph
-            .bind_node(lease_uniform_buffer(&mut pool, &light_data).unwrap());
-        let mesh_uniform_buf = frame
-            .render_graph
-            .bind_node(lease_uniform_buffer(&mut pool, &mesh_data).unwrap());
+            .bind_node(lease_uniform_buffer(&mut pool, &light).unwrap());
 
         // Bind the cube-compatible shadow 2d image array to the graph of the current frame
         let shadow_faces_image = pool
@@ -142,7 +145,11 @@ fn main() -> anyhow::Result<()> {
                 .begin_pass("DEBUG")
                 .bind_pipeline(&debug_pipeline)
                 .set_depth_stencil(DepthStencilMode::DEPTH_WRITE)
-                .access_descriptor(0, mesh_uniform_buf, AccessType::AnyShaderReadUniformBuffer)
+                .access_descriptor(
+                    0,
+                    camera_uniform_buf,
+                    AccessType::AnyShaderReadUniformBuffer,
+                )
                 .access_descriptor(1, light_uniform_buf, AccessType::AnyShaderReadUniformBuffer)
                 .access_node(model_mesh_index_buf, AccessType::IndexBuffer)
                 .access_node(model_mesh_vertex_buf, AccessType::VertexBuffer)
@@ -170,8 +177,7 @@ fn main() -> anyhow::Result<()> {
                 .begin_pass("Shadow")
                 .bind_pipeline(&shadow_pipeline)
                 .set_depth_stencil(DepthStencilMode::DEPTH_WRITE)
-                .access_descriptor(0, mesh_uniform_buf, AccessType::AnyShaderReadUniformBuffer)
-                .access_descriptor(1, light_uniform_buf, AccessType::AnyShaderReadUniformBuffer)
+                .access_descriptor(0, light_uniform_buf, AccessType::AnyShaderReadUniformBuffer)
                 .access_node(model_shadow_index_buf, AccessType::IndexBuffer)
                 .access_node(model_shadow_vertex_buf, AccessType::VertexBuffer)
                 .clear_color_value(0, shadow_faces_node, [f32::MAX, f32::MAX, 0.0, 0.0])
@@ -192,7 +198,11 @@ fn main() -> anyhow::Result<()> {
                 .begin_pass("Mesh objects")
                 .bind_pipeline(&mesh_pipeline)
                 .set_depth_stencil(DepthStencilMode::DEPTH_WRITE)
-                .access_descriptor(0, mesh_uniform_buf, AccessType::AnyShaderReadUniformBuffer)
+                .access_descriptor(
+                    0,
+                    camera_uniform_buf,
+                    AccessType::AnyShaderReadUniformBuffer,
+                )
                 .access_descriptor(1, light_uniform_buf, AccessType::AnyShaderReadUniformBuffer)
                 .read_descriptor_as(
                     2,
@@ -261,28 +271,26 @@ fn create_debug_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, D
         r#"
         #version 450 core
 
-        layout(push_constant) uniform PushConstants
-        {
+        layout(push_constant) uniform PushConstants {
             layout(offset = 0) mat4 model;
         } push_const;
 
-        layout(set = 0, binding = 0) uniform UBO
-        {
+        layout(set = 0, binding = 0) uniform Camera {
             mat4 view;
             mat4 projection;
-        } ubo_in;
+        } camera;
 
-        layout(location = 0) in vec3 position_in;
-        layout(location = 1) in vec3 normal_in;
+        layout(location = 0) in vec3 position;
+        layout(location = 1) in vec3 normal;
 
         layout(location = 0) out vec3 world_position_out;
         layout(location = 1) out vec3 world_normal_out;
 
         void main()
         {
-            world_position_out = (push_const.model * vec4(position_in, 1)).xyz;
-            world_normal_out = normalize((push_const.model * vec4(normal_in, 1)).xyz);
-            gl_Position = ubo_in.projection * ubo_in.view * vec4(world_position_out, 1);
+            world_position_out = (push_const.model * vec4(position, 1)).xyz;
+            world_normal_out = normalize((push_const.model * vec4(normal, 1)).xyz);
+            gl_Position = camera.projection * camera.view * vec4(world_position_out, 1);
         }
         "#,
         vert
@@ -291,16 +299,15 @@ fn create_debug_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, D
         r#"
         #version 450 core
 
-        layout(set = 0, binding = 1) uniform LightInfo
-        {
+        layout(set = 0, binding = 1) uniform Light {
             vec3 position;
             float range;
             mat4 view0;
             mat4 projection;
-        } light_info_in;
+        } light;
 
-        layout(location = 0) in vec3 world_position_in;
-        layout(location = 1) in vec3 world_normal_in;
+        layout(location = 0) in vec3 world_position;
+        layout(location = 1) in vec3 world_normal;
 
         layout(location = 0) out vec4 color_out;
 
@@ -308,15 +315,15 @@ fn create_debug_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, D
         {
             color_out = vec4(vec3(0.0), 1.0);
 
-            vec3 light = light_info_in.position - world_position_in.xyz;
-            float light_dist = length(light);
+            vec3 light_dir = light.position - world_position.xyz;
+            float light_dist = length(light_dir);
 
-            if (light_dist < light_info_in.range)
+            if (light_dist < light.range)
             {
-                light = normalize(light);
+                light_dir = normalize(light_dir);
 
-                float lambertian = max(0.01, dot(world_normal_in, light));
-                float attenuation = max(0.0, min(1.0, light_dist / light_info_in.range));
+                float lambertian = max(0.0, dot(world_normal, light_dir));
+                float attenuation = max(0.0, min(1.0, light_dist / light.range));
                 attenuation = 1.0 - attenuation * attenuation;
 
                 color_out.rgb = vec3(lambertian * attenuation);
@@ -343,33 +350,30 @@ fn create_mesh_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, Dr
         r#"
         #version 450 core
 
-        layout(push_constant) uniform PushConstants
-        {
+        layout(push_constant) uniform PushConstants {
             layout(offset = 0) mat4 model;
         } push_const;
 
-        layout(set = 0, binding = 0) uniform UBO
-        {
+        layout(set = 0, binding = 0) uniform Camera {
             mat4 view;
             mat4 projection;
-        } ubo_in;
+        } camera;
 
-        out gl_PerVertex
-        {
+        layout(location = 0) in vec3 position;
+        layout(location = 1) in vec3 normal;
+
+        out gl_PerVertex {
             vec4 gl_Position;
         };
 
-        layout(location = 0) in vec3 pos_in;
-        layout(location = 1) in vec3 normal_in;
-
-        layout(location = 0) out vec4 world_pos_out;
+        layout(location = 0) out vec4 world_position_out;
         layout(location = 1) out vec3 world_normal_out;
 
         void main()
         {
-            world_normal_out = normalize((push_const.model * vec4(normal_in, 1.0)).xyz);
-            world_pos_out = push_const.model * vec4(pos_in, 1.0);
-            gl_Position = ubo_in.projection * ubo_in.view * world_pos_out;
+            world_normal_out = normalize((push_const.model * vec4(normal, 1.0)).xyz);
+            world_position_out = push_const.model * vec4(position, 1.0);
+            gl_Position = camera.projection * camera.view * world_position_out;
         }
         "#,
         vert
@@ -380,19 +384,19 @@ fn create_mesh_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, Dr
 
         #define BIAS 0.15f
 
-        layout(set = 0, binding = 1) uniform LightInfo
-        {
+        layout(set = 0, binding = 1) uniform Light {
             vec3 pos;
             float range;
             mat4 view0;
             mat4 projection;
-        } light_info_in;
+        } light;
 
         layout(set = 0, binding = 2) uniform samplerCube shadow_map;
 
-        layout(location = 0) in vec4 world_pos_in;
-        layout(location = 1) in vec3 world_normal_in;
-        layout(location = 0) out vec4 frag_color;
+        layout(location = 0) in vec4 world_position;
+        layout(location = 1) in vec3 world_normal;
+
+        layout(location = 0) out vec4 color_out;
 
         float upper_bound_shadow(vec2 moments, float scene_depth)
         {
@@ -419,21 +423,21 @@ fn create_mesh_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, Dr
 
         void main()
         {
-            frag_color = vec4(0.0, 0.0, 0.0, 1.0);
+            color_out = vec4(0.0, 0.0, 0.0, 1.0);
 
-            vec3 light = light_info_in.pos - world_pos_in.xyz;
-            float light_dist = length(light);
+            vec3 light_dir = light.pos - world_position.xyz;
+            float light_dist = length(light_dir);
 
-            if (light_dist < light_info_in.range)
+            if (light_dist < light.range)
             {
-                light = normalize(light);
+                light_dir = normalize(light_dir);
 
-                float shadow = sample_shadow(shadow_map, -light, light_dist);
-                float lambertian = max(0.01, dot(world_normal_in, light));
-                float attenuation = max(0.0, min(1.0, light_dist / light_info_in.range));
+                float shadow = sample_shadow(shadow_map, -light_dir, light_dist);
+                float lambertian = max(0.0, dot(world_normal, light_dir));
+                float attenuation = max(0.0, min(1.0, light_dist / light.range));
                 attenuation = 1.0 - attenuation * attenuation;
 
-                frag_color.rgb = vec3(attenuation * lambertian * shadow);
+                color_out.rgb = vec3(attenuation * lambertian * shadow);
             }
         }
         "#,
@@ -461,8 +465,7 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
         #define ASP 1.0
         #define LIGHT_FRUSTUM_NEAR 0.1
 
-        struct ViewPositions
-        {
+        struct ViewPositions {
             vec4 positions[6];
         };
 
@@ -470,23 +473,16 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
             layout(offset = 0) mat4 model;
         } push_const;
 
-        layout(set = 0, binding = 0) uniform UBO
-        {
-            mat4 view;
-            mat4 projection;
-        } ubo_in;
-
-        layout(set = 0, binding = 1) uniform LightInfo
-        {
+        layout(set = 0, binding = 0) uniform Light {
             vec3 pos;
             float range;
             mat4 view0;
             mat4 projection;
-        } light_info_in;
+        } light;
 
-        layout(location= 0) in vec3 pos_in;
+        layout(location= 0) in vec3 position;
 
-        layout(location = 0) out vec3 world_pos_out;
+        layout(location = 0) out vec3 world_position_out;
         layout(location = 1) out uint layer_mask_out;
         layout(location = 2) out ViewPositions view_positions_out;
 
@@ -497,7 +493,7 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
 
             uint res = 1;
             res *= uint(step(LIGHT_FRUSTUM_NEAR, -view_pos.z));
-            res *= uint(step(-light_info_in.range, view_pos.z));
+            res *= uint(step(-light.range, view_pos.z));
 
             float ymax = -TAN_HALF_FOVY * view_pos.z;
             float xmax = ymax * ASP;
@@ -511,11 +507,11 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
 
         void main(void)
         {
-            vec4 world_pos = push_const.model * vec4(pos_in, 1.0);
-            world_pos_out = world_pos.xyz;
+            vec4 world_position = push_const.model * vec4(position, 1.0);
+            world_position_out = world_position.xyz;
 
             // posx
-            vec4 view0_pos = light_info_in.view0 * world_pos;
+            vec4 view0_pos = light.view0 * world_position;
             view0_pos.x *= -1.0;
 
             // negx
@@ -556,55 +552,47 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
 
         #define CLIP mat4(1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.5, 1.0)
 
-        struct ViewPositions
-        {
+        struct ViewPositions {
             vec4 positions[6];
         };
 
-        layout(triangles) in;
-
-        layout(set = 0, binding = 0) uniform UBO
-        {
-            mat4 view;
-            mat4 projection;
-        } ubo_in;
-
-        layout(set = 0, binding = 1) uniform LightInfo
-        {
+        layout(set = 0, binding = 0) uniform Light {
             vec3 pos;
             float range;
             mat4 view0;
             mat4 projection;
-        } light_info_in;
+        } light;
 
-        layout(location = 0) in vec3 world_pos_in[];
-        layout(location = 1) in uint layer_mask_in[];
-        layout(location = 2) in ViewPositions view_positions_in[];
+        layout(triangles) in;
+        layout(location = 0) in vec3 world_positions[];
+        layout(location = 1) in uint layer_mask[];
+        layout(location = 2) in ViewPositions view_positions[];
 
-        layout(triangle_strip, max_vertices = 18) out;
         out gl_PerVertex
         {
             vec4 gl_Position;
         };
-        layout(location = 0) out vec3 world_pos_out;
+
+        layout(triangle_strip, max_vertices = 18) out;
+        layout(location = 0) out vec3 world_position_out;
 
         void emit(uint flag, int view_idx)
         {
-            vec4 pos0 = CLIP * light_info_in.projection * view_positions_in[0].positions[view_idx];
-            vec4 pos1 = CLIP * light_info_in.projection * view_positions_in[1].positions[view_idx];
-            vec4 pos2 = CLIP * light_info_in.projection * view_positions_in[2].positions[view_idx];
+            vec4 pos0 = CLIP * light.projection * view_positions[0].positions[view_idx];
+            vec4 pos1 = CLIP * light.projection * view_positions[1].positions[view_idx];
+            vec4 pos2 = CLIP * light.projection * view_positions[2].positions[view_idx];
 
             if (flag > 0) {
                 gl_Position = pos0;
-                world_pos_out = world_pos_in[0];
+                world_position_out = world_positions[0];
                 EmitVertex();
 
                 gl_Position = pos1;
-                world_pos_out = world_pos_in[1];
+                world_position_out = world_positions[1];
                 EmitVertex();
 
                 gl_Position = pos2;
-                world_pos_out = world_pos_in[2];
+                world_position_out = world_positions[2];
                 EmitVertex();
 
                 EndPrimitive();
@@ -613,29 +601,29 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
 
         void main()
         {
-            uint layer_flag_0 = (layer_mask_in[0] & 1)
-                              | (layer_mask_in[1] & 1)
-                              | (layer_mask_in[2] & 1);
+            uint layer_flag_0 = (layer_mask[0] & 1)
+                              | (layer_mask[1] & 1)
+                              | (layer_mask[2] & 1);
 
-            uint layer_flag_1 = (layer_mask_in[0] & 2)
-                              | (layer_mask_in[1] & 2)
-                              | (layer_mask_in[2] & 2);
+            uint layer_flag_1 = (layer_mask[0] & 2)
+                              | (layer_mask[1] & 2)
+                              | (layer_mask[2] & 2);
 
-            uint layer_flag_2 = (layer_mask_in[0] & 4)
-                              | (layer_mask_in[1] & 4)
-                              | (layer_mask_in[2] & 4);
+            uint layer_flag_2 = (layer_mask[0] & 4)
+                              | (layer_mask[1] & 4)
+                              | (layer_mask[2] & 4);
 
-            uint layer_flag_3 = (layer_mask_in[0] & 8)
-                              | (layer_mask_in[1] & 8)
-                              | (layer_mask_in[2] & 8);
+            uint layer_flag_3 = (layer_mask[0] & 8)
+                              | (layer_mask[1] & 8)
+                              | (layer_mask[2] & 8);
 
-            uint layer_flag_4 = (layer_mask_in[0] & 16)
-                              | (layer_mask_in[1] & 16)
-                              | (layer_mask_in[2] & 16);
+            uint layer_flag_4 = (layer_mask[0] & 16)
+                              | (layer_mask[1] & 16)
+                              | (layer_mask[2] & 16);
 
-            uint layer_flag_5 = (layer_mask_in[0] & 32)
-                              | (layer_mask_in[1] & 32)
-                              | (layer_mask_in[2] & 32);
+            uint layer_flag_5 = (layer_mask[0] & 32)
+                              | (layer_mask[1] & 32)
+                              | (layer_mask[2] & 32);
 
             gl_Layer = 0;
             emit(layer_flag_0, 0);
@@ -662,23 +650,22 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
         r#"
         #version 450 core
 
-        layout(set = 0, binding = 1) uniform LightInfo
-        {
+        layout(set = 0, binding = 0) uniform Light {
             vec3 pos;
             float range;
             mat4 view0;
             mat4 projection;
-        } light_info_in;
+        } light;
 
-        layout(location = 0) in vec3 world_pos_in;
+        layout(location = 0) in vec3 world_position;
 
-        layout(location = 0) out vec4 frag_color;
+        layout(location = 0) out vec4 color_out;
 
         void main()
         {
-            float dist = distance(world_pos_in.xyz, light_info_in.pos);
-            frag_color.x = dist;
-            frag_color.y = dist * dist;
+            float dist = distance(world_position.xyz, light.pos);
+            color_out.x = dist;
+            color_out.y = dist * dist;
         }
         "#,
         frag
@@ -974,28 +961,28 @@ fn load_model_shadow(device: &Arc<Device>, path: impl AsRef<Path>) -> anyhow::Re
     })
 }
 
-struct Model {
-    index_buf: Arc<Buffer>,
-    index_count: u32,
-    vertex_buf: Arc<Buffer>,
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct Camera {
+    view: Mat4,
+    projection: Mat4,
 }
+
+unsafe impl NoUninit for Camera {}
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-struct LightUniformBuffer {
+struct Light {
     position: Vec3,
     range: f32,
     view: Mat4,
     projection: Mat4,
 }
 
-unsafe impl NoUninit for LightUniformBuffer {}
+unsafe impl NoUninit for Light {}
 
-#[repr(C)]
-#[derive(Clone, Copy)]
-struct MeshUniformBuffer {
-    view: Mat4,
-    projection: Mat4,
+struct Model {
+    index_buf: Arc<Buffer>,
+    index_count: u32,
+    vertex_buf: Arc<Buffer>,
 }
-
-unsafe impl NoUninit for MeshUniformBuffer {}
