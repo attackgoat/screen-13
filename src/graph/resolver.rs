@@ -1825,7 +1825,10 @@ impl Resolver {
         end_pass_idx: usize,
     ) -> Result<(), DriverError> {
         // Build a schedule for this node
-        let mut schedule = self.schedule_node_passes(node_idx, end_pass_idx);
+        let mut schedule = self
+            .schedule_node_passes(node_idx, end_pass_idx)
+            .into_iter()
+            .collect::<Vec<_>>();
 
         self.record_scheduled_passes(cache, cmd_buf, &mut schedule, end_pass_idx)
     }
@@ -2064,16 +2067,16 @@ impl Resolver {
 
     /// Returns a vec of pass indexes that are required to be executed, in order, for the given
     /// node.
-    fn schedule_node_passes(&self, node_idx: usize, end_pass_idx: usize) -> Vec<usize> {
-        let mut schedule = vec![];
-        let mut unscheduled = self.graph.passes[0..end_pass_idx]
-            .iter()
+    fn schedule_node_passes(&self, node_idx: usize, end_pass_idx: usize) -> BTreeSet<usize> {
+        let mut schedule = BTreeSet::new();
+        let mut unscheduled = repeat(())
             .enumerate()
             .map(|(idx, _)| idx)
+            .take(end_pass_idx)
             .collect::<BTreeSet<_>>();
         let mut unresolved = VecDeque::new();
 
-        //trace!("scheduling node {node_idx}");
+        // trace!("scheduling node {node_idx}");
 
         // Schedule the first set of passes for the node we're trying to resolve
         for pass_idx in self.dependent_passes(node_idx, end_pass_idx) {
@@ -2082,7 +2085,7 @@ impl Resolver {
             //     self.graph.passes[pass_idx].name
             // );
 
-            schedule.push(pass_idx);
+            schedule.insert(pass_idx);
             unscheduled.remove(&pass_idx);
             for node_idx in self.dependent_nodes(pass_idx) {
                 // trace!("    node {node_idx} is dependent");
@@ -2091,18 +2094,20 @@ impl Resolver {
             }
         }
 
-        //trace!("secondary passes below");
+        // trace!("secondary passes below");
 
         // Now schedule all nodes that are required, going through the tree to find them
         while let Some((node_idx, end_pass_idx)) = unresolved.pop_front() {
-            for pass_idx in self.dependent_passes(node_idx, end_pass_idx) {
-                // trace!(
-                //     "  pass [{pass_idx}: {}] is dependent",
-                //     self.graph.passes[pass_idx].name
-                // );
+            // trace!("  node {node_idx} is unresolved");
 
+            for pass_idx in self.dependent_passes(node_idx, end_pass_idx) {
                 if unscheduled.remove(&pass_idx) {
-                    schedule.push(pass_idx);
+                    // trace!(
+                    //     "  pass [{pass_idx}: {}] is dependent",
+                    //     self.graph.passes[pass_idx].name
+                    // );
+
+                    schedule.insert(pass_idx);
                     for node_idx in self.dependent_nodes(pass_idx) {
                         // trace!("    node {node_idx} is dependent");
 
@@ -2111,8 +2116,6 @@ impl Resolver {
                 }
             }
         }
-
-        schedule.reverse();
 
         if !schedule.is_empty() {
             // These are the indexes of the passes this thread is about to resolve
@@ -2154,11 +2157,6 @@ impl Resolver {
                 );
             }
         }
-
-        // if schedule.is_empty() && unscheduled.is_empty() && end_pass_idx < self.graph.passes.len() {
-        //     // This may be totally normal in some situations, not sure if this will stay
-        //     warn!("Unable to schedule any render passes");
-        // }
 
         schedule
     }
