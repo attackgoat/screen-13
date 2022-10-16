@@ -426,17 +426,17 @@ fn create_blur_y_pipeline(device: &Arc<Device>) -> Result<Arc<ComputePipeline>, 
 
             switch (face) {
                 case POS_X:
-                    return ivec3(x, y, POS_Z);
+                    return ivec3(y, IMAGE_SIZE - (x + 1), POS_Y);
                 case NEG_X:
-                    return ivec3(x, y, NEG_Z);
+                    return ivec3(IMAGE_SIZE - (y + 1), x, POS_Y);
                 case POS_Y:
-                    return ivec3(y, IMAGE_SIZE - (x + 1), NEG_X);
+                    return ivec3(IMAGE_SIZE - (x + 1), IMAGE_SIZE - (y + 1), NEG_Z);
                 case NEG_Y:
-                    return ivec3(IMAGE_SIZE - (y + 1), x, NEG_X);
+                    return ivec3(x, y, POS_Z);
                 case POS_Z:
-                    return ivec3(x, y, NEG_X);
+                    return ivec3(x, y, POS_Y);
                 default:
-                    return ivec3(x, y, POS_X);
+                    return ivec3(IMAGE_SIZE - (x + 1), IMAGE_SIZE - (y + 1), POS_Y);
             }
         }
 
@@ -446,17 +446,17 @@ fn create_blur_y_pipeline(device: &Arc<Device>) -> Result<Arc<ComputePipeline>, 
 
             switch (face) {
                 case POS_X:
-                    return ivec3(x, y, NEG_Z);
+                    return ivec3(IMAGE_SIZE - (y + 1), x, NEG_Y);
                 case NEG_X:
-                    return ivec3(x, y, POS_Z);
+                    return ivec3(y, IMAGE_SIZE - (x + 1), NEG_Y);
                 case POS_Y:
-                    return ivec3(IMAGE_SIZE - (y + 1), x, POS_X);
+                    return ivec3(x, y, POS_Z);
                 case NEG_Y:
-                    return ivec3(y, IMAGE_SIZE - (x + 1), POS_X);
+                    return ivec3(IMAGE_SIZE - (x + 1), IMAGE_SIZE - (y + 1), NEG_Z);
                 case POS_Z:
-                    return ivec3(x, y, POS_X);
+                    return ivec3(x, y, NEG_Y);
                 default:
-                    return ivec3(x, y, NEG_X);
+                    return ivec3(IMAGE_SIZE - (x + 1), IMAGE_SIZE - (y + 1), NEG_Y);
             }
         }
 
