@@ -81,18 +81,18 @@ impl KeyBuf {
     }
 
     /// Returns `true` if the given key has been pressed for multiple frames.
-    pub fn is_held(&self, key: impl AsRef<VirtualKeyCode>) -> bool {
-        self.held.binary_search(key.as_ref()).is_ok()
+    pub fn is_held(&self, key: VirtualKeyCode) -> bool {
+        self.held.binary_search(&key).is_ok()
     }
 
     /// Returns `true` if the given key has been pressed since the last frame.
-    pub fn is_pressed(&self, key: impl AsRef<VirtualKeyCode>) -> bool {
-        self.pressed.binary_search(key.as_ref()).is_ok()
+    pub fn is_pressed(&self, key: VirtualKeyCode) -> bool {
+        self.pressed.binary_search(&key).is_ok()
     }
 
     /// Returns `true` if the given key has been released since the last frame.
-    pub fn is_released(&self, key: impl AsRef<VirtualKeyCode>) -> bool {
-        self.released.binary_search(key.as_ref()).is_ok()
+    pub fn is_released(&self, key: VirtualKeyCode) -> bool {
+        self.released.binary_search(&key).is_ok()
     }
 
     /// Returns an iterator of keys pressed for multiple frames.
