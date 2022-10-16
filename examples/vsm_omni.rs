@@ -843,7 +843,7 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
         {
             uint layer_flag = (layer_mask[0] | layer_mask[1] | layer_mask[2]) & flag;
 
-            //if (layer_flag > 0) {
+            if (layer_flag > 0) {
                 gl_Position = CLIP * light.projection * view_positions[0].positions[view_idx];
                 world_position_out = world_positions[0];
                 EmitVertex();
@@ -857,7 +857,7 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
                 EmitVertex();
 
                 EndPrimitive();
-            //}
+            }
         }
 
         void main()
