@@ -13,7 +13,9 @@ use {
     tobj::{load_obj, GPU_LOAD_OPTIONS},
 };
 
-const CUBEMAP_SIZE: u32 = 512;
+const BLUR_PASSES: usize = 1;
+const BLUR_RADIUS: u32 = 8;
+const CUBEMAP_SIZE: u32 = 1024;
 
 /// Adapted from https://github.com/sydneyzh/variance_shadow_mapping_vk
 ///
@@ -44,7 +46,8 @@ fn main() -> anyhow::Result<()> {
     // Load all the immutable graphics data we will need
     let model_mesh = load_model_mesh(&event_loop.device, &model_path)?;
     let model_shadow = load_model_shadow(&event_loop.device, &model_path)?;
-    let cube = load_cube(&event_loop.device)?;
+    let cube_mesh = load_cube_mesh(&event_loop.device)?;
+    let cube_shadow = load_cube_shadow(&event_loop.device)?;
     let debug_pipeline = create_debug_pipeline(&event_loop.device)?;
     let blur_x_pipeline = create_blur_x_pipeline(&event_loop.device)?;
     let blur_y_pipeline = create_blur_y_pipeline(&event_loop.device)?;
@@ -76,7 +79,7 @@ fn main() -> anyhow::Result<()> {
         };
         let light = {
             let fov_y = 90f32.to_radians();
-            let radius = 8f32;
+            let radius = 7f32;
             let t = elapsed / 2.0 + 3.5;
             let position = vec3(radius * t.cos(), 0.0, radius * t.sin());
 
@@ -89,8 +92,10 @@ fn main() -> anyhow::Result<()> {
         };
 
         // Bind resources to the render graph of the current frame
-        let cube_index_buf = frame.render_graph.bind_node(&cube.index_buf);
-        let cube_vertex_buf = frame.render_graph.bind_node(&cube.vertex_buf);
+        let cube_mesh_index_buf = frame.render_graph.bind_node(&cube_mesh.index_buf);
+        let cube_mesh_vertex_buf = frame.render_graph.bind_node(&cube_mesh.vertex_buf);
+        let cube_shadow_index_buf = frame.render_graph.bind_node(&cube_shadow.index_buf);
+        let cube_shadow_vertex_buf = frame.render_graph.bind_node(&cube_shadow.vertex_buf);
         let model_mesh_index_buf = frame.render_graph.bind_node(&model_mesh.index_buf);
         let model_mesh_vertex_buf = frame.render_graph.bind_node(&model_mesh.vertex_buf);
         let model_shadow_index_buf = frame.render_graph.bind_node(&model_shadow.index_buf);
@@ -102,7 +107,7 @@ fn main() -> anyhow::Result<()> {
             .render_graph
             .bind_node(lease_uniform_buffer(&mut pool, &light).unwrap());
 
-        // Bind the cube-compatible shadow 2d image array to the graph of the current frame
+        // Lease and bind a cube-compatible shadow 2D image array to the graph of the current frame
         let shadow_faces_image = pool
             .lease(
                 ImageInfo::new_2d_array(
@@ -110,7 +115,9 @@ fn main() -> anyhow::Result<()> {
                     CUBEMAP_SIZE,
                     CUBEMAP_SIZE,
                     6,
-                    vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED,
+                    vk::ImageUsageFlags::COLOR_ATTACHMENT
+                        | vk::ImageUsageFlags::SAMPLED
+                        | vk::ImageUsageFlags::STORAGE,
                 )
                 .flags(vk::ImageCreateFlags::CUBE_COMPATIBLE),
             )
@@ -118,6 +125,12 @@ fn main() -> anyhow::Result<()> {
         let shadow_faces_info = shadow_faces_image.info;
         let shadow_faces_node = frame.render_graph.bind_node(shadow_faces_image);
 
+        // Lease and bind a temporary image we'll use during blur passes
+        let temp_image = frame
+            .render_graph
+            .bind_node(pool.lease(shadow_faces_info).unwrap());
+
+        // Lastly we lease and bind depth images needed for rendering
         let depth_cube = frame.render_graph.bind_node(
             pool.lease(ImageInfo::new_2d_array(
                 vk::Format::D32_SFLOAT,
@@ -138,6 +151,9 @@ fn main() -> anyhow::Result<()> {
             .unwrap(),
         );
 
+        debug!("shadow_faces_node = {:?}", shadow_faces_node);
+        debug!("temp_image = {:?}", temp_image);
+
         // Hold tab to view a debug mode
         if keyboard.is_held(VirtualKeyCode::Tab) {
             frame
@@ -153,8 +169,8 @@ fn main() -> anyhow::Result<()> {
                 .access_descriptor(1, light_uniform_buf, AccessType::AnyShaderReadUniformBuffer)
                 .access_node(model_mesh_index_buf, AccessType::IndexBuffer)
                 .access_node(model_mesh_vertex_buf, AccessType::VertexBuffer)
-                .access_node(cube_index_buf, AccessType::IndexBuffer)
-                .access_node(cube_vertex_buf, AccessType::VertexBuffer)
+                .access_node(cube_mesh_index_buf, AccessType::IndexBuffer)
+                .access_node(cube_mesh_vertex_buf, AccessType::VertexBuffer)
                 .clear_color(0, frame.swapchain_image)
                 .store_color(0, frame.swapchain_image)
                 .clear_depth_stencil(depth_image)
@@ -165,10 +181,10 @@ fn main() -> anyhow::Result<()> {
                         .bind_vertex_buffer(model_mesh_vertex_buf)
                         .push_constants(cast_slice(&model_transform))
                         .draw_indexed(model_mesh.index_count, 1, 0, 0, 0)
-                        .bind_index_buffer(cube_index_buf, vk::IndexType::UINT32)
-                        .bind_vertex_buffer(cube_vertex_buf)
+                        .bind_index_buffer(cube_mesh_index_buf, vk::IndexType::UINT32)
+                        .bind_vertex_buffer(cube_mesh_vertex_buf)
                         .push_constants(cast_slice(&cube_transform))
-                        .draw_indexed(cube.index_count, 1, 0, 0, 0);
+                        .draw_indexed(cube_mesh.index_count, 1, 0, 0, 0);
                 });
         } else {
             // Render the omni light point of view into the six-layer image we leased above
@@ -180,7 +196,9 @@ fn main() -> anyhow::Result<()> {
                 .access_descriptor(0, light_uniform_buf, AccessType::AnyShaderReadUniformBuffer)
                 .access_node(model_shadow_index_buf, AccessType::IndexBuffer)
                 .access_node(model_shadow_vertex_buf, AccessType::VertexBuffer)
-                .clear_color_value(0, shadow_faces_node, [f32::MAX, f32::MAX, 0.0, 0.0])
+                .access_node(cube_shadow_index_buf, AccessType::IndexBuffer)
+                .access_node(cube_shadow_vertex_buf, AccessType::VertexBuffer)
+                .clear_color_value(0, shadow_faces_node, [light.range, light.range, 0.0, 0.0])
                 .store_color(0, shadow_faces_node)
                 .clear_depth_stencil(depth_cube)
                 .store_depth_stencil(depth_cube) // TODO: Not required, bug
@@ -189,8 +207,34 @@ fn main() -> anyhow::Result<()> {
                         .bind_index_buffer(model_shadow_index_buf, vk::IndexType::UINT32)
                         .bind_vertex_buffer(model_shadow_vertex_buf)
                         .push_constants(cast_slice(&model_transform))
-                        .draw_indexed(model_shadow.index_count, 1, 0, 0, 0);
+                        .draw_indexed(model_shadow.index_count, 1, 0, 0, 0)
+                        .bind_index_buffer(cube_shadow_index_buf, vk::IndexType::UINT32)
+                        .bind_vertex_buffer(cube_shadow_vertex_buf)
+                        .push_constants(cast_slice(&cube_transform))
+                        .draw_indexed(cube_shadow.index_count, 1, 0, 0, 0);
                 });
+
+            if BLUR_RADIUS > 0 {
+                for _ in 0..BLUR_PASSES {
+                    frame
+                        .render_graph
+                        .begin_pass("Blur X")
+                        .bind_pipeline(&blur_x_pipeline)
+                        .read_descriptor(0, shadow_faces_node)
+                        .write_descriptor(1, temp_image)
+                        .record_compute(move |compute, _| {
+                            compute.dispatch(1, CUBEMAP_SIZE, 6);
+                        })
+                        .submit_pass()
+                        .begin_pass("Blur Y")
+                        .bind_pipeline(&blur_y_pipeline)
+                        .read_descriptor(0, temp_image)
+                        .write_descriptor(1, shadow_faces_node)
+                        .record_compute(move |compute, _| {
+                            compute.dispatch(CUBEMAP_SIZE, 1, 6);
+                        });
+                }
+            }
 
             // Render the scene directly to the swapchain using the shadow map from the above pass
             frame
@@ -213,8 +257,8 @@ fn main() -> anyhow::Result<()> {
                 )
                 .access_node(model_mesh_index_buf, AccessType::IndexBuffer)
                 .access_node(model_mesh_vertex_buf, AccessType::VertexBuffer)
-                .access_node(cube_index_buf, AccessType::IndexBuffer)
-                .access_node(cube_vertex_buf, AccessType::VertexBuffer)
+                .access_node(cube_mesh_index_buf, AccessType::IndexBuffer)
+                .access_node(cube_mesh_vertex_buf, AccessType::VertexBuffer)
                 .clear_color(0, frame.swapchain_image)
                 .store_color(0, frame.swapchain_image)
                 .clear_depth_stencil(depth_image)
@@ -225,10 +269,10 @@ fn main() -> anyhow::Result<()> {
                         .bind_vertex_buffer(model_mesh_vertex_buf)
                         .push_constants(cast_slice(&model_transform))
                         .draw_indexed(model_mesh.index_count, 1, 0, 0, 0)
-                        .bind_index_buffer(cube_index_buf, vk::IndexType::UINT32)
-                        .bind_vertex_buffer(cube_vertex_buf)
+                        .bind_index_buffer(cube_mesh_index_buf, vk::IndexType::UINT32)
+                        .bind_vertex_buffer(cube_mesh_vertex_buf)
                         .push_constants(cast_slice(&cube_transform))
-                        .draw_indexed(cube.index_count, 1, 0, 0, 0);
+                        .draw_indexed(cube_mesh.index_count, 1, 0, 0, 0);
                 });
         }
     })?;
@@ -241,14 +285,119 @@ fn create_blur_x_pipeline(device: &Arc<Device>) -> Result<Arc<ComputePipeline>, 
         r#"
         #version 450 core
 
+        #define POS_X 0
+        #define NEG_X 1
+        #define POS_Y 2
+        #define NEG_Y 3
+        #define POS_Z 4
+        #define NEG_Z 5
+
+        layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+        layout(constant_id = 0) const uint IMAGE_SIZE = 512;
+        layout(constant_id = 1) const uint RADIUS = 4;
+
+        layout (set = 0, binding = 0, rg32f) restrict readonly uniform image2DArray image;
+        layout (set = 0, binding = 1, rg32f) restrict writeonly uniform image2DArray image_out;
+
+        ivec3 leading_face(uint x) {
+            uint face = gl_GlobalInvocationID.z;
+            uint y = gl_GlobalInvocationID.y;
+
+            switch (face) {
+                case POS_X:
+                    return ivec3(x, y, POS_Z);
+                case NEG_X:
+                    return ivec3(x, y, NEG_Z);
+                case POS_Y:
+                    return ivec3(y, IMAGE_SIZE - (x + 1), NEG_X);
+                case NEG_Y:
+                    return ivec3(IMAGE_SIZE - (y + 1), x, NEG_X);
+                case POS_Z:
+                    return ivec3(x, y, NEG_X);
+                default:
+                    return ivec3(x, y, POS_X);
+            }
+        }
+
+        ivec3 trailing_face(uint x) {
+            uint face = gl_GlobalInvocationID.z;
+            uint y = gl_GlobalInvocationID.y;
+
+            switch (face) {
+                case POS_X:
+                    return ivec3(x, y, NEG_Z);
+                case NEG_X:
+                    return ivec3(x, y, POS_Z);
+                case POS_Y:
+                    return ivec3(IMAGE_SIZE - (y + 1), x, POS_X);
+                case NEG_Y:
+                    return ivec3(y, IMAGE_SIZE - (x + 1), POS_X);
+                case POS_Z:
+                    return ivec3(x, y, POS_X);
+                default:
+                    return ivec3(x, y, NEG_X);
+            }
+        }
+
         void main() {
-           
+            uint face = gl_GlobalInvocationID.z;
+            uint y = gl_GlobalInvocationID.y;
+
+            vec2 accumulator = vec2(0.0);
+            float per_texel = 1.0 / float((RADIUS << 1) + 1);
+
+            for (uint x = IMAGE_SIZE - RADIUS; x < IMAGE_SIZE; x++) {
+                accumulator += imageLoad(image, leading_face(x)).rg;
+            }
+
+            for (uint x = 0; x < RADIUS; x++) {
+                accumulator += imageLoad(image, ivec3(x, y, face)).rg;
+            }
+
+            for (uint x = 0; x < RADIUS; x++) {
+                accumulator += imageLoad(image, ivec3(x + RADIUS, y, face)).rg;
+                imageStore(image_out, ivec3(x, y, face), vec4(accumulator * per_texel, 0.0, 0.0));
+                accumulator -= imageLoad(image, leading_face((IMAGE_SIZE - RADIUS) + x)).rg;
+            }
+
+            for (uint x = RADIUS; x < IMAGE_SIZE - RADIUS; x++) {
+                accumulator += imageLoad(image, ivec3(x + RADIUS, y, face)).rg;
+                imageStore(image_out, ivec3(x, y, face), vec4(accumulator * per_texel, 0.0, 0.0));
+                accumulator -= imageLoad(image, ivec3(x - RADIUS, y, face)).rg;
+            }
+
+            for (uint x = IMAGE_SIZE - RADIUS; x < IMAGE_SIZE; x++) {
+                accumulator += imageLoad(image, trailing_face((x + RADIUS) - IMAGE_SIZE)).rg;
+                imageStore(image_out, ivec3(x, y, face), vec4(accumulator * per_texel, 0.0, 0.0));
+                accumulator -= imageLoad(image, ivec3(x - RADIUS, y, face)).rg;
+            }
         }
         "#,
         comp
     );
 
-    Ok(Arc::new(ComputePipeline::create(device, comp.as_slice())?))
+    let info =
+        ComputePipelineInfo::new(comp.as_slice()).specialization_info(SpecializationInfo::new(
+            vec![
+                vk::SpecializationMapEntry {
+                    constant_id: 0,
+                    offset: 0,
+                    size: 4,
+                },
+                vk::SpecializationMapEntry {
+                    constant_id: 1,
+                    offset: 4,
+                    size: 4,
+                },
+            ],
+            bytes_of(&Blur {
+                image_size: CUBEMAP_SIZE,
+                radius: BLUR_RADIUS,
+            }),
+        ));
+
+    Ok(Arc::new(ComputePipeline::create(device, info)?))
 }
 
 fn create_blur_y_pipeline(device: &Arc<Device>) -> Result<Arc<ComputePipeline>, DriverError> {
@@ -256,14 +405,119 @@ fn create_blur_y_pipeline(device: &Arc<Device>) -> Result<Arc<ComputePipeline>, 
         r#"
         #version 450 core
 
+        #define POS_X 0
+        #define NEG_X 1
+        #define POS_Y 2
+        #define NEG_Y 3
+        #define POS_Z 4
+        #define NEG_Z 5
+
+        layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+        layout(constant_id = 0) const uint IMAGE_SIZE = 512;
+        layout(constant_id = 1) const uint RADIUS = 4;
+
+        layout (set = 0, binding = 0, rg32f) restrict readonly uniform image2DArray image;
+        layout (set = 0, binding = 1, rg32f) restrict writeonly uniform image2DArray image_out;
+
+        ivec3 leading_face(uint y) {
+            uint face = gl_GlobalInvocationID.z;
+            uint x = gl_GlobalInvocationID.x;
+
+            switch (face) {
+                case POS_X:
+                    return ivec3(x, y, POS_Z);
+                case NEG_X:
+                    return ivec3(x, y, NEG_Z);
+                case POS_Y:
+                    return ivec3(y, IMAGE_SIZE - (x + 1), NEG_X);
+                case NEG_Y:
+                    return ivec3(IMAGE_SIZE - (y + 1), x, NEG_X);
+                case POS_Z:
+                    return ivec3(x, y, NEG_X);
+                default:
+                    return ivec3(x, y, POS_X);
+            }
+        }
+
+        ivec3 trailing_face(uint y) {
+            uint face = gl_GlobalInvocationID.z;
+            uint x = gl_GlobalInvocationID.x;
+
+            switch (face) {
+                case POS_X:
+                    return ivec3(x, y, NEG_Z);
+                case NEG_X:
+                    return ivec3(x, y, POS_Z);
+                case POS_Y:
+                    return ivec3(IMAGE_SIZE - (y + 1), x, POS_X);
+                case NEG_Y:
+                    return ivec3(y, IMAGE_SIZE - (x + 1), POS_X);
+                case POS_Z:
+                    return ivec3(x, y, POS_X);
+                default:
+                    return ivec3(x, y, NEG_X);
+            }
+        }
+
         void main() {
-           
+            uint face = gl_GlobalInvocationID.z;
+            uint x = gl_GlobalInvocationID.x;
+
+            vec2 accumulator = vec2(0.0);
+            float per_texel = 1.0 / float((RADIUS << 1) + 1);
+
+            for (uint y = IMAGE_SIZE - RADIUS; y < IMAGE_SIZE; y++) {
+                accumulator += imageLoad(image, leading_face(y)).rg;
+            }
+
+            for (uint y = 0; x < RADIUS; y++) {
+                accumulator += imageLoad(image, ivec3(x, y, face)).rg;
+            }
+
+            for (uint y = 0; y < RADIUS; y++) {
+                accumulator += imageLoad(image, ivec3(x, y + RADIUS, face)).rg;
+                imageStore(image_out, ivec3(x, y, face), vec4(accumulator * per_texel, 0.0, 0.0));
+                accumulator -= imageLoad(image, leading_face((IMAGE_SIZE - RADIUS) + y)).rg;
+            }
+
+            for (uint y = RADIUS; y < IMAGE_SIZE - RADIUS; y++) {
+                accumulator += imageLoad(image, ivec3(x, y + RADIUS, face)).rg;
+                imageStore(image_out, ivec3(x, y, face), vec4(accumulator * per_texel, 0.0, 0.0));
+                accumulator -= imageLoad(image, ivec3(x, y - RADIUS, face)).rg;
+            }
+
+            for (uint y = IMAGE_SIZE - RADIUS; y < IMAGE_SIZE; y++) {
+                accumulator += imageLoad(image, trailing_face((y + RADIUS) - IMAGE_SIZE)).rg;
+                imageStore(image_out, ivec3(x, y, face), vec4(accumulator * per_texel, 0.0, 0.0));
+                accumulator -= imageLoad(image, ivec3(x, y - RADIUS, face)).rg;
+            }
         }
         "#,
         comp
     );
 
-    Ok(Arc::new(ComputePipeline::create(device, comp.as_slice())?))
+    let info =
+        ComputePipelineInfo::new(comp.as_slice()).specialization_info(SpecializationInfo::new(
+            vec![
+                vk::SpecializationMapEntry {
+                    constant_id: 0,
+                    offset: 0,
+                    size: 4,
+                },
+                vk::SpecializationMapEntry {
+                    constant_id: 1,
+                    offset: 4,
+                    size: 4,
+                },
+            ],
+            bytes_of(&Blur {
+                image_size: CUBEMAP_SIZE,
+                radius: BLUR_RADIUS,
+            }),
+        ));
+
+    Ok(Arc::new(ComputePipeline::create(device, info)?))
 }
 
 fn create_debug_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, DriverError> {
@@ -382,7 +636,7 @@ fn create_mesh_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, Dr
         r#"
         #version 450 core
 
-        #define BIAS 0.15f
+        #define BIAS 0.25
 
         layout(set = 0, binding = 1) uniform Light {
             vec3 pos;
@@ -436,6 +690,9 @@ fn create_mesh_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, Dr
                 float lambertian = max(0.0, dot(world_normal, light_dir));
                 float attenuation = max(0.0, min(1.0, light_dist / light.range));
                 attenuation = 1.0 - attenuation * attenuation;
+
+                // Make shadows not fully dark
+                shadow = max(0.1, shadow);
 
                 color_out.rgb = vec3(attenuation * lambertian * shadow);
             }
@@ -529,12 +786,12 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
             // negz
             vec4 view5_pos = vec4(view0_pos.z, view0_pos.y, -view0_pos.x, 1.0);
 
-            layer_mask_out = get_layer_flag(view0_pos, 1)
-                           | get_layer_flag(view1_pos, 2)
-                           | get_layer_flag(view2_pos, 4)
-                           | get_layer_flag(view3_pos, 8)
-                           | get_layer_flag(view4_pos, 16)
-                           | get_layer_flag(view5_pos, 32);
+            layer_mask_out = get_layer_flag(view0_pos, 0x01)
+                           | get_layer_flag(view1_pos, 0x02)
+                           | get_layer_flag(view2_pos, 0x04)
+                           | get_layer_flag(view3_pos, 0x08)
+                           | get_layer_flag(view4_pos, 0x16)
+                           | get_layer_flag(view5_pos, 0x64);
 
             view_positions_out.positions[0] = view0_pos;
             view_positions_out.positions[1] = view1_pos;
@@ -578,70 +835,44 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
 
         void emit(uint flag, int view_idx)
         {
-            vec4 pos0 = CLIP * light.projection * view_positions[0].positions[view_idx];
-            vec4 pos1 = CLIP * light.projection * view_positions[1].positions[view_idx];
-            vec4 pos2 = CLIP * light.projection * view_positions[2].positions[view_idx];
+            uint layer_flag = (layer_mask[0] | layer_mask[1] | layer_mask[2]) & flag;
 
-            if (flag > 0) {
-                gl_Position = pos0;
+            //if (layer_flag > 0) {
+                gl_Position = CLIP * light.projection * view_positions[0].positions[view_idx];
                 world_position_out = world_positions[0];
                 EmitVertex();
 
-                gl_Position = pos1;
+                gl_Position = CLIP * light.projection * view_positions[1].positions[view_idx];
                 world_position_out = world_positions[1];
                 EmitVertex();
 
-                gl_Position = pos2;
+                gl_Position = CLIP * light.projection * view_positions[2].positions[view_idx];
                 world_position_out = world_positions[2];
                 EmitVertex();
 
                 EndPrimitive();
-            }
+            //}
         }
 
         void main()
         {
-            uint layer_flag_0 = (layer_mask[0] & 1)
-                              | (layer_mask[1] & 1)
-                              | (layer_mask[2] & 1);
-
-            uint layer_flag_1 = (layer_mask[0] & 2)
-                              | (layer_mask[1] & 2)
-                              | (layer_mask[2] & 2);
-
-            uint layer_flag_2 = (layer_mask[0] & 4)
-                              | (layer_mask[1] & 4)
-                              | (layer_mask[2] & 4);
-
-            uint layer_flag_3 = (layer_mask[0] & 8)
-                              | (layer_mask[1] & 8)
-                              | (layer_mask[2] & 8);
-
-            uint layer_flag_4 = (layer_mask[0] & 16)
-                              | (layer_mask[1] & 16)
-                              | (layer_mask[2] & 16);
-
-            uint layer_flag_5 = (layer_mask[0] & 32)
-                              | (layer_mask[1] & 32)
-                              | (layer_mask[2] & 32);
-
             gl_Layer = 0;
-            emit(layer_flag_0, 0);
+            emit(0x01, 0);
 
             gl_Layer = 1;
-            emit(layer_flag_1, 1);
+            emit(0x02, 1);
 
             gl_Layer = 2;
-            emit(layer_flag_2, 2);
+            emit(0x04, 2);
 
             gl_Layer = 3;
-            emit(layer_flag_3, 3);
+            emit(0x08, 3);
 
             gl_Layer = 4;
-            emit(layer_flag_4, 4);
+            emit(0x16, 4);
 
             gl_Layer = 5;
-            emit(layer_flag_5, 5);
+            emit(0x64, 5);
         }
         "#,
         geom
@@ -718,9 +949,7 @@ fn lease_uniform_buffer(
 }
 
 /// Loads a cube where the faces face inside
-fn load_cube(device: &Arc<Device>) -> Result<Model, DriverError> {
-    // The index buffer here isn't optimal and *that's okay* its legible
-
+fn load_cube_data() -> [([f32; 6]); 36] {
     const N: f32 = -1f32;
     const P: f32 = 1f32;
     const Z: f32 = 0f32;
@@ -752,78 +981,101 @@ fn load_cube(device: &Arc<Device>) -> Result<Model, DriverError> {
         ]
     }
 
+    [
+        // Triangle 0
+        vertex(LEFT_TOP_BACK, BACKWARD),
+        vertex(LEFT_BOTTOM_BACK, BACKWARD),
+        vertex(RIGHT_TOP_BACK, BACKWARD),
+        // Triangle 1
+        vertex(RIGHT_TOP_BACK, BACKWARD),
+        vertex(LEFT_BOTTOM_BACK, BACKWARD),
+        vertex(RIGHT_BOTTOM_BACK, BACKWARD),
+        // // Triangle 2
+        vertex(RIGHT_TOP_FRONT, FORWARD),
+        vertex(RIGHT_BOTTOM_FRONT, FORWARD),
+        vertex(LEFT_TOP_FRONT, FORWARD),
+        // Triangle 3
+        vertex(LEFT_TOP_FRONT, FORWARD),
+        vertex(RIGHT_BOTTOM_FRONT, FORWARD),
+        vertex(LEFT_BOTTOM_FRONT, FORWARD),
+        // Triangle 4
+        vertex(LEFT_TOP_FRONT, RIGHTWARD),
+        vertex(LEFT_BOTTOM_FRONT, RIGHTWARD),
+        vertex(LEFT_TOP_BACK, RIGHTWARD),
+        // Triangle 5
+        vertex(LEFT_TOP_BACK, RIGHTWARD),
+        vertex(LEFT_BOTTOM_FRONT, RIGHTWARD),
+        vertex(LEFT_BOTTOM_BACK, RIGHTWARD),
+        // Triangle 6
+        vertex(RIGHT_TOP_BACK, LEFTWARD),
+        vertex(RIGHT_BOTTOM_BACK, LEFTWARD),
+        vertex(RIGHT_TOP_FRONT, LEFTWARD),
+        // Triangle 7
+        vertex(RIGHT_TOP_FRONT, LEFTWARD),
+        vertex(RIGHT_BOTTOM_BACK, LEFTWARD),
+        vertex(RIGHT_BOTTOM_FRONT, LEFTWARD),
+        // Triangle 8
+        vertex(LEFT_BOTTOM_BACK, UPWARD),
+        vertex(LEFT_BOTTOM_FRONT, UPWARD),
+        vertex(RIGHT_BOTTOM_BACK, UPWARD),
+        // Triangle 9
+        vertex(RIGHT_BOTTOM_BACK, UPWARD),
+        vertex(LEFT_BOTTOM_FRONT, UPWARD),
+        vertex(RIGHT_BOTTOM_FRONT, UPWARD),
+        // Triangle 10
+        vertex(LEFT_TOP_FRONT, DOWNWARD),
+        vertex(LEFT_TOP_BACK, DOWNWARD),
+        vertex(RIGHT_TOP_FRONT, DOWNWARD),
+        // Triangle 11
+        vertex(RIGHT_TOP_FRONT, DOWNWARD),
+        vertex(LEFT_TOP_BACK, DOWNWARD),
+        vertex(RIGHT_TOP_BACK, DOWNWARD),
+    ]
+}
+
+fn load_cube_mesh(device: &Arc<Device>) -> Result<Model, DriverError> {
+    let vertices = load_cube_data();
+    let indices = (0u32..vertices.len() as u32).collect::<Vec<_>>();
+
     let index_buf = Arc::new(Buffer::create_from_slice(
         device,
         vk::BufferUsageFlags::INDEX_BUFFER,
-        cast_slice(
-            [
-                0u32, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
-                22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36,
-            ]
-            .as_slice(),
-        ),
+        cast_slice(indices.as_slice()),
     )?);
     let vertex_buf = Arc::new(Buffer::create_from_slice(
         device,
         vk::BufferUsageFlags::VERTEX_BUFFER,
-        cast_slice(
-            [
-                // Triangle 0
-                vertex(LEFT_TOP_BACK, BACKWARD),
-                vertex(LEFT_BOTTOM_BACK, BACKWARD),
-                vertex(RIGHT_TOP_BACK, BACKWARD),
-                // Triangle 1
-                vertex(RIGHT_TOP_BACK, BACKWARD),
-                vertex(LEFT_BOTTOM_BACK, BACKWARD),
-                vertex(RIGHT_BOTTOM_BACK, BACKWARD),
-                // // Triangle 2
-                vertex(RIGHT_TOP_FRONT, FORWARD),
-                vertex(RIGHT_BOTTOM_FRONT, FORWARD),
-                vertex(LEFT_TOP_FRONT, FORWARD),
-                // Triangle 3
-                vertex(LEFT_TOP_FRONT, FORWARD),
-                vertex(RIGHT_BOTTOM_FRONT, FORWARD),
-                vertex(LEFT_BOTTOM_FRONT, FORWARD),
-                // Triangle 4
-                vertex(LEFT_TOP_FRONT, RIGHTWARD),
-                vertex(LEFT_BOTTOM_FRONT, RIGHTWARD),
-                vertex(LEFT_TOP_BACK, RIGHTWARD),
-                // Triangle 5
-                vertex(LEFT_TOP_BACK, RIGHTWARD),
-                vertex(LEFT_BOTTOM_FRONT, RIGHTWARD),
-                vertex(LEFT_BOTTOM_BACK, RIGHTWARD),
-                // Triangle 6
-                vertex(RIGHT_TOP_BACK, LEFTWARD),
-                vertex(RIGHT_BOTTOM_BACK, LEFTWARD),
-                vertex(RIGHT_TOP_FRONT, LEFTWARD),
-                // Triangle 7
-                vertex(RIGHT_TOP_FRONT, LEFTWARD),
-                vertex(RIGHT_BOTTOM_BACK, LEFTWARD),
-                vertex(RIGHT_BOTTOM_FRONT, LEFTWARD),
-                // Triangle 8
-                vertex(LEFT_BOTTOM_BACK, UPWARD),
-                vertex(LEFT_BOTTOM_FRONT, UPWARD),
-                vertex(RIGHT_BOTTOM_BACK, UPWARD),
-                // Triangle 9
-                vertex(RIGHT_BOTTOM_BACK, UPWARD),
-                vertex(LEFT_BOTTOM_FRONT, UPWARD),
-                vertex(RIGHT_BOTTOM_FRONT, UPWARD),
-                // Triangle 10
-                vertex(LEFT_TOP_FRONT, DOWNWARD),
-                vertex(LEFT_TOP_BACK, DOWNWARD),
-                vertex(RIGHT_TOP_FRONT, DOWNWARD),
-                // Triangle 11
-                vertex(RIGHT_TOP_FRONT, DOWNWARD),
-                vertex(LEFT_TOP_BACK, DOWNWARD),
-                vertex(RIGHT_TOP_BACK, DOWNWARD),
-            ]
-            .as_slice(),
-        ),
+        cast_slice(vertices.as_slice()),
     )?);
 
     Ok(Model {
         index_buf,
-        index_count: 36,
+        index_count: indices.len() as _,
+        vertex_buf,
+    })
+}
+
+fn load_cube_shadow(device: &Arc<Device>) -> Result<Model, DriverError> {
+    let vertices = load_cube_data()
+        .iter()
+        .map(|vertex| [vertex[0], vertex[1], vertex[2]])
+        .collect::<Vec<_>>();
+    let indices = (0u32..vertices.len() as u32).collect::<Vec<_>>();
+
+    let index_buf = Arc::new(Buffer::create_from_slice(
+        device,
+        vk::BufferUsageFlags::INDEX_BUFFER,
+        cast_slice(indices.as_slice()),
+    )?);
+    let vertex_buf = Arc::new(Buffer::create_from_slice(
+        device,
+        vk::BufferUsageFlags::VERTEX_BUFFER,
+        cast_slice(vertices.as_slice()),
+    )?);
+
+    Ok(Model {
+        index_buf,
+        index_count: indices.len() as _,
         vertex_buf,
     })
 }
@@ -960,6 +1212,17 @@ fn load_model_shadow(device: &Arc<Device>, path: impl AsRef<Path>) -> anyhow::Re
         ]
     })
 }
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct Blur {
+    image_size: u32,
+    radius: u32,
+}
+
+unsafe impl Pod for Blur {}
+
+unsafe impl Zeroable for Blur {}
 
 #[repr(C)]
 #[derive(Clone, Copy)]
