@@ -62,7 +62,7 @@ fn main() -> anyhow::Result<()> {
         update_keyboard(&mut keyboard, frame.events);
 
         // Hold spacebar to stop the light
-        if !keyboard.is_held(VirtualKeyCode::Space) {
+        if !keyboard.is_held(&VirtualKeyCode::Space) {
             elapsed += frame.dt;
         }
 
@@ -152,7 +152,7 @@ fn main() -> anyhow::Result<()> {
         );
 
         // Hold tab to view a debug mode
-        if keyboard.is_held(VirtualKeyCode::Tab) {
+        if keyboard.is_held(&VirtualKeyCode::Tab) {
             frame
                 .render_graph
                 .begin_pass("DEBUG")

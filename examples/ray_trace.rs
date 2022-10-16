@@ -773,17 +773,17 @@ fn main() -> anyhow::Result<()> {
 
             const SPEED: f32 = 0.01f32;
 
-            if keyboard.is_pressed(VirtualKeyCode::Left) {
+            if keyboard.is_pressed(&VirtualKeyCode::Left) {
                 position[0] -= SPEED;
-            } else if keyboard.is_pressed(VirtualKeyCode::Right) {
+            } else if keyboard.is_pressed(&VirtualKeyCode::Right) {
                 position[0] += SPEED;
-            } else if keyboard.is_pressed(VirtualKeyCode::Up) {
+            } else if keyboard.is_pressed(&VirtualKeyCode::Up) {
                 position[2] -= SPEED;
-            } else if keyboard.is_pressed(VirtualKeyCode::Down) {
+            } else if keyboard.is_pressed(&VirtualKeyCode::Down) {
                 position[2] += SPEED;
-            } else if keyboard.is_pressed(VirtualKeyCode::Space) {
+            } else if keyboard.is_pressed(&VirtualKeyCode::Space) {
                 position[1] -= SPEED;
-            } else if keyboard.is_pressed(VirtualKeyCode::LAlt) {
+            } else if keyboard.is_pressed(&VirtualKeyCode::LAlt) {
                 position[1] += SPEED;
             }
 
