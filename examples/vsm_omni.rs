@@ -471,7 +471,7 @@ fn create_blur_y_pipeline(device: &Arc<Device>) -> Result<Arc<ComputePipeline>, 
                 accumulator += imageLoad(image, leading_face(y)).rg;
             }
 
-            for (uint y = 0; x < RADIUS; y++) {
+            for (uint y = 0; y < RADIUS; y++) {
                 accumulator += imageLoad(image, ivec3(x, y, face)).rg;
             }
 
