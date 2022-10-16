@@ -18,6 +18,6 @@ Example | Instructions | Preview
 [multipass.rs](multipass.rs) | <pre>cargo run --example multipass</pre> | <image alt="Preview" src="../.github/img/multipass.png" height=149 width=176>
 [rt_triangle.rs](rt_triangle.rs) | <pre>cargo run --example rt_triangle</pre> | <image alt="Preview" src="../.github/img/rt_triangle.png" height=149 width=176>
 [ray_trace.rs](ray_trace.rs) | <pre>cargo run --example ray_trace</pre> | <image alt="Preview" src="../.github/img/ray_trace.png" height=149 width=176>
-[vs_omni.rs](vs_omni.rs) | <pre>cargo run --example vs_omni</pre> Variance shadow mapping for omni/point lights | <image alt="Preview" src="../.github/img/vs_omni.png" height=149 width=176>
+[vsm_omni.rs](vs_omni.rs) | <pre>cargo run --example vsm_omni</pre> Variance shadow mapping for omni/point lights | <image alt="Preview" src="../.github/img/vsm_omni.png" height=149 width=176>
 [transitions.rs](transitions.rs) | <pre>cargo run --example transitions</pre> | <image alt="Preview" src="../.github/img/transitions.png" height=149 width=176>
 [shader-toy/](shader-toy/src/main.rs) | <pre>cargo run --manifest-path examples/shader-toy/Cargo.toml</pre> | <image alt="Preview" src="../.github/img/shader-toy.png" height=105 width=176>

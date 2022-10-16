@@ -13,9 +13,10 @@ use {
     tobj::{load_obj, GPU_LOAD_OPTIONS},
 };
 
-const BLUR_PASSES: usize = 1;
-const BLUR_RADIUS: u32 = 8;
+const BLUR_PASSES: usize = 2;
+const BLUR_RADIUS: u32 = 5;
 const CUBEMAP_SIZE: u32 = 1024;
+const SHADOW_BIAS: f32 = 0.3;
 
 /// Adapted from https://github.com/sydneyzh/variance_shadow_mapping_vk
 ///
@@ -39,7 +40,6 @@ fn main() -> anyhow::Result<()> {
 
     let mut keyboard = KeyBuf::default();
     let event_loop = EventLoop::new()
-        .debug(true)
         .window(|window| window.with_inner_size(LogicalSize::new(800, 600)))
         .build()?;
 
@@ -151,9 +151,6 @@ fn main() -> anyhow::Result<()> {
             .unwrap(),
         );
 
-        debug!("shadow_faces_node = {:?}", shadow_faces_node);
-        debug!("temp_image = {:?}", temp_image);
-
         // Hold tab to view a debug mode
         if keyboard.is_held(VirtualKeyCode::Tab) {
             frame
@@ -216,6 +213,8 @@ fn main() -> anyhow::Result<()> {
 
             if BLUR_RADIUS > 0 {
                 for _ in 0..BLUR_PASSES {
+                    // Flip-flop between the shadow image and a temporary image using a
+                    // separable box blur filter which approximates a gaussian blur
                     frame
                         .render_graph
                         .begin_pass("Blur X")
@@ -636,7 +635,7 @@ fn create_mesh_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, Dr
         r#"
         #version 450 core
 
-        #define BIAS 0.25
+        layout(constant_id = 0) const float BIAS = 0.15;
 
         layout(set = 0, binding = 1) uniform Light {
             vec3 pos;
@@ -708,7 +707,14 @@ fn create_mesh_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, Dr
         info,
         [
             Shader::new_vertex(vert.as_slice()),
-            Shader::new_fragment(frag.as_slice()),
+            Shader::new_fragment(frag.as_slice()).specialization_info(SpecializationInfo::new(
+                vec![vk::SpecializationMapEntry {
+                    constant_id: 0,
+                    offset: 0,
+                    size: 4,
+                }],
+                bytes_of(&SHADOW_BIAS),
+            )),
         ],
     )?))
 }
@@ -719,7 +725,7 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
         #version 450 core
 
         #define TAN_HALF_FOVY 1.0 // tan(45deg)
-        #define ASP 1.0
+        #define ASPECT_RATIO 1.0
         #define LIGHT_FRUSTUM_NEAR 0.1
 
         struct ViewPositions {
@@ -753,7 +759,7 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
             res *= uint(step(-light.range, view_pos.z));
 
             float ymax = -TAN_HALF_FOVY * view_pos.z;
-            float xmax = ymax * ASP;
+            float xmax = ymax * ASPECT_RATIO;
             res *= uint(step(-xmax, view_pos.x));
             res *= uint(step(view_pos.x, xmax));
             res *- uint(step(-ymax, view_pos.y));
@@ -948,7 +954,7 @@ fn lease_uniform_buffer(
     Ok(buf)
 }
 
-/// Loads a cube where the faces face inside
+/// Returns vertices of a cube where the faces face inside
 fn load_cube_data() -> [([f32; 6]); 36] {
     const N: f32 = -1f32;
     const P: f32 = 1f32;
@@ -1033,6 +1039,7 @@ fn load_cube_data() -> [([f32; 6]); 36] {
     ]
 }
 
+/// Loads a cube as indexed position and normal vertices
 fn load_cube_mesh(device: &Arc<Device>) -> Result<Model, DriverError> {
     let vertices = load_cube_data();
     let indices = (0u32..vertices.len() as u32).collect::<Vec<_>>();
@@ -1055,6 +1062,7 @@ fn load_cube_mesh(device: &Arc<Device>) -> Result<Model, DriverError> {
     })
 }
 
+/// Loads a cube as indexed position vertices
 fn load_cube_shadow(device: &Arc<Device>) -> Result<Model, DriverError> {
     let vertices = load_cube_data()
         .iter()
