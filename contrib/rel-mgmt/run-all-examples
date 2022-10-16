@@ -18,6 +18,7 @@ cargo run --example triangle
 cargo run --example rt_triangle
 cargo run --example ray_trace
 cargo run --example transitions
+cargo run --example vsm_omni
 
 # Run this one in release mode
 cargo run --manifest-path examples/shader-toy/Cargo.toml --release

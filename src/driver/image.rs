@@ -394,6 +394,7 @@ impl ImageInfo {
         width: u32,
         height: u32,
         depth: u32,
+        array_elements: u32,
         usage: vk::ImageUsageFlags,
     ) -> ImageInfoBuilder {
         ImageInfoBuilder {
@@ -406,14 +407,14 @@ impl ImageInfo {
             flags: None,
             linear_tiling: None,
             mip_level_count: None,
-            array_elements: None,
+            array_elements: Some(array_elements),
             sample_count: None,
         }
     }
 
     /// Specifies a one-dimensional image.
     pub const fn new_1d(fmt: vk::Format, len: u32, usage: vk::ImageUsageFlags) -> ImageInfoBuilder {
-        Self::new(fmt, ImageType::Texture1D, len, 1, 1, usage)
+        Self::new(fmt, ImageType::Texture1D, len, 1, 1, 1, usage)
     }
 
     /// Specifies a two-dimensional image.
@@ -423,7 +424,26 @@ impl ImageInfo {
         height: u32,
         usage: vk::ImageUsageFlags,
     ) -> ImageInfoBuilder {
-        Self::new(fmt, ImageType::Texture2D, width, height, 1, usage)
+        Self::new(fmt, ImageType::Texture2D, width, height, 1, 1, usage)
+    }
+
+    /// Specifies a two-dimensional image array.
+    pub const fn new_2d_array(
+        fmt: vk::Format,
+        width: u32,
+        height: u32,
+        array_elements: u32,
+        usage: vk::ImageUsageFlags,
+    ) -> ImageInfoBuilder {
+        Self::new(
+            fmt,
+            ImageType::TextureArray2D,
+            width,
+            height,
+            1,
+            array_elements,
+            usage,
+        )
     }
 
     /// Specifies a three-dimensional image.
@@ -434,17 +454,16 @@ impl ImageInfo {
         depth: u32,
         usage: vk::ImageUsageFlags,
     ) -> ImageInfoBuilder {
-        Self::new(fmt, ImageType::Texture3D, width, height, depth, usage)
+        Self::new(fmt, ImageType::Texture3D, width, height, depth, 1, usage)
     }
 
     /// Specifies a cube image.
     pub fn new_cube(fmt: vk::Format, width: u32, usage: vk::ImageUsageFlags) -> ImageInfoBuilder {
-        Self::new(fmt, ImageType::Cube, width, width, 1, usage)
-            .array_elements(6)
-            .flags(vk::ImageCreateFlags::CUBE_COMPATIBLE)
+        Self::new(fmt, ImageType::Cube, width, width, 1, 1, usage)
     }
 
-    pub(crate) fn default_view_info(self) -> ImageViewInfo {
+    /// Provides an `ImageViewInfo` for this format, type, aspect, array elements, and mip levels.
+    pub fn default_view_info(self) -> ImageViewInfo {
         self.into()
     }
 
@@ -475,7 +494,11 @@ impl ImageInfo {
                     height: self.height,
                     depth: 1,
                 },
-                1,
+                if self.flags.contains(vk::ImageCreateFlags::CUBE_COMPATIBLE) {
+                    self.array_elements
+                } else {
+                    1
+                },
             ),
             ImageType::TextureArray2D => (
                 vk::ImageType::TYPE_2D,
@@ -598,9 +621,13 @@ impl From<ImageViewInfo> for ImageSubresource {
             base_mip_level: info.base_mip_level,
             base_array_layer: info.base_array_layer,
             array_layer_count: Some(match info.ty {
-                ImageType::Texture1D | ImageType::Texture2D | ImageType::Texture3D => 1,
-                ImageType::Cube | ImageType::CubeArray => 6,
-                ImageType::TextureArray1D | ImageType::TextureArray2D => 1,
+                ImageType::Cube
+                | ImageType::Texture1D
+                | ImageType::Texture2D
+                | ImageType::Texture3D => 1,
+                ImageType::CubeArray | ImageType::TextureArray1D | ImageType::TextureArray2D => {
+                    info.array_layer_count.unwrap_or(1)
+                }
             }),
             mip_level_count: info.mip_level_count,
         }
@@ -724,8 +751,6 @@ pub struct ImageViewInfo {
     pub mip_level_count: Option<u32>,
 
     /// The basic dimensionality of the view.
-    ///
-    /// Layers in array textures do not count as a dimension for the purposes of the image type.
     pub ty: ImageType,
 }
 
@@ -734,6 +759,13 @@ impl ImageViewInfo {
     #[allow(clippy::new_ret_no_self)]
     pub fn new(format: vk::Format, ty: ImageType) -> ImageViewInfoBuilder {
         ImageViewInfoBuilder::new(format, ty)
+    }
+
+    /// Takes this instance and returns it with a newly specified `ImageType`.
+    pub fn with_ty(mut self, ty: ImageType) -> Self {
+        self.ty = ty;
+
+        self
     }
 }
 

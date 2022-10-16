@@ -224,7 +224,7 @@ impl Resolver {
                             .as_driver_image()
                             .unwrap();
                         let view_info = ImageViewInfo {
-                            array_layer_count: Some(1),
+                            array_layer_count: Some(image.info.array_elements),
                             aspect_mask: attachment.aspect_mask,
                             base_array_layer: 0,
                             base_mip_level: 0,
@@ -242,7 +242,7 @@ impl Resolver {
                             .as_driver_image()
                             .unwrap();
                         let view_info = ImageViewInfo {
-                            array_layer_count: Some(1),
+                            array_layer_count: Some(image.info.array_elements),
                             aspect_mask: attachment.aspect_mask,
                             base_array_layer: 0,
                             base_mip_level: 0,
@@ -318,7 +318,13 @@ impl Resolver {
                             .map(|(_, ClearColorValue(float32))| vk::ClearValue {
                                 color: vk::ClearColorValue { float32 },
                             })
-                            .chain(repeat(Default::default()))
+                            .chain(
+                                pass.execs
+                                    .get(0)
+                                    .unwrap()
+                                    .depth_stencil_clear
+                                    .map(|(_, depth_stencil)| vk::ClearValue { depth_stencil }),
+                            )
                             .take(render_pass.info.attachments.len())
                             .collect::<Box<[_]>>(),
                     )
@@ -973,11 +979,6 @@ impl Resolver {
                                     dep.dependency_flags |= vk::DependencyFlags::BY_REGION;
                                 }
 
-                                // Does the execution have more than one view?
-                                if subpasses[exec_idx].has_multiple_attachments() {
-                                    dep.dependency_flags |= vk::DependencyFlags::VIEW_LOCAL;
-                                }
-
                                 curr_stages &= !common_stages;
                                 curr_access &= !prev_access;
 
@@ -1032,11 +1033,6 @@ impl Resolver {
                                         | vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
                                 ) {
                                     dep.dependency_flags |= vk::DependencyFlags::BY_REGION;
-                                }
-
-                                // If the subpass has more than one view we need the VIEW_LOCAL flag
-                                if subpasses[exec_idx].has_multiple_attachments() {
-                                    dep.dependency_flags |= vk::DependencyFlags::VIEW_LOCAL;
                                 }
 
                                 curr_stages &= !common_stages;
@@ -1829,7 +1825,10 @@ impl Resolver {
         end_pass_idx: usize,
     ) -> Result<(), DriverError> {
         // Build a schedule for this node
-        let mut schedule = self.schedule_node_passes(node_idx, end_pass_idx);
+        let mut schedule = self
+            .schedule_node_passes(node_idx, end_pass_idx)
+            .into_iter()
+            .collect::<Vec<_>>();
 
         self.record_scheduled_passes(cache, cmd_buf, &mut schedule, end_pass_idx)
     }
@@ -2068,16 +2067,16 @@ impl Resolver {
 
     /// Returns a vec of pass indexes that are required to be executed, in order, for the given
     /// node.
-    fn schedule_node_passes(&self, node_idx: usize, end_pass_idx: usize) -> Vec<usize> {
-        let mut schedule = vec![];
-        let mut unscheduled = self.graph.passes[0..end_pass_idx]
-            .iter()
+    fn schedule_node_passes(&self, node_idx: usize, end_pass_idx: usize) -> BTreeSet<usize> {
+        let mut schedule = BTreeSet::new();
+        let mut unscheduled = repeat(())
             .enumerate()
             .map(|(idx, _)| idx)
+            .take(end_pass_idx)
             .collect::<BTreeSet<_>>();
         let mut unresolved = VecDeque::new();
 
-        //trace!("scheduling node {node_idx}");
+        // trace!("scheduling node {node_idx}");
 
         // Schedule the first set of passes for the node we're trying to resolve
         for pass_idx in self.dependent_passes(node_idx, end_pass_idx) {
@@ -2086,7 +2085,7 @@ impl Resolver {
             //     self.graph.passes[pass_idx].name
             // );
 
-            schedule.push(pass_idx);
+            schedule.insert(pass_idx);
             unscheduled.remove(&pass_idx);
             for node_idx in self.dependent_nodes(pass_idx) {
                 // trace!("    node {node_idx} is dependent");
@@ -2095,18 +2094,20 @@ impl Resolver {
             }
         }
 
-        //trace!("secondary passes below");
+        // trace!("secondary passes below");
 
         // Now schedule all nodes that are required, going through the tree to find them
         while let Some((node_idx, end_pass_idx)) = unresolved.pop_front() {
-            for pass_idx in self.dependent_passes(node_idx, end_pass_idx) {
-                // trace!(
-                //     "  pass [{pass_idx}: {}] is dependent",
-                //     self.graph.passes[pass_idx].name
-                // );
+            // trace!("  node {node_idx} is unresolved");
 
+            for pass_idx in self.dependent_passes(node_idx, end_pass_idx) {
                 if unscheduled.remove(&pass_idx) {
-                    schedule.push(pass_idx);
+                    // trace!(
+                    //     "  pass [{pass_idx}: {}] is dependent",
+                    //     self.graph.passes[pass_idx].name
+                    // );
+
+                    schedule.insert(pass_idx);
                     for node_idx in self.dependent_nodes(pass_idx) {
                         // trace!("    node {node_idx} is dependent");
 
@@ -2115,8 +2116,6 @@ impl Resolver {
                 }
             }
         }
-
-        schedule.reverse();
 
         if !schedule.is_empty() {
             // These are the indexes of the passes this thread is about to resolve
@@ -2158,11 +2157,6 @@ impl Resolver {
                 );
             }
         }
-
-        // if schedule.is_empty() && unscheduled.is_empty() && end_pass_idx < self.graph.passes.len() {
-        //     // This may be totally normal in some situations, not sure if this will stay
-        //     warn!("Unable to schedule any render passes");
-        // }
 
         schedule
     }
