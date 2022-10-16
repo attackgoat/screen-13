@@ -250,7 +250,12 @@ impl RenderPass {
         };
 
         let key = entry.key();
-        let layers = key.attachments.iter().map(|attachment| attachment.layer_count).max().unwrap_or(1);
+        let layers = key
+            .attachments
+            .iter()
+            .map(|attachment| attachment.layer_count)
+            .max()
+            .unwrap_or(1);
         let attachments = key
             .attachments
             .iter()
