@@ -427,7 +427,7 @@ impl ImageInfo {
         Self::new(fmt, ImageType::Texture2D, width, height, 1, 1, usage)
     }
 
-    /// Specifies a two-dimensional image.
+    /// Specifies a two-dimensional image array.
     pub const fn new_2d_array(
         fmt: vk::Format,
         width: u32,

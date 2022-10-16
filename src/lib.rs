@@ -249,7 +249,7 @@ graph
 
 By default, _Screen 13_ will use "linear repeat-mode" samplers unless a special suffix appears as
 part of the name within GLSL or HLSL shader code. The `_sampler_123` suffix should be used where
-`1`, `2`, and `2` are replaced with:
+`1`, `2`, and `3` are replaced with:
 
 1. `l` for `LINEAR` texel filtering (default) or `n` for `NEAREST`
 1. `l` (default) or `n`, as above, but for mipmap filtering

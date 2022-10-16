@@ -93,7 +93,7 @@ ability to get things done quickly while using modern tools.
 
 ### Insipirations
 
-_`Screen 13`_ was built from the learnings and lessons shared by others throughout our community. In
+_Screen 13_ was built from the learnings and lessons shared by others throughout our community. In
 particular, here are some of the repositories I found useful:
 
  - [Bevy](https://bevyengine.org/): A refreshingly simple data-driven game engine built in Rust
