@@ -54,10 +54,11 @@ needed.
 ## Release checklist
 
 - Run `cargo update` to ensure you have the latest dependencies
-- Double-check `cargo clippy --release` and `cargo fmt`
-- Double-check all examples compile and run as intended
+- Double-check `cargo clippy --release` and `cargo fmt` _(use `contrib/rel-mgmt/check`)_
+- Double-check all examples compile and run as intended _(use `contrib/rel-mgmt/run-all-examples`)_
 - Double-check the above on all supported platforms
-- Github: Add a tag for the version
 - Change log: Add a section for the new version
 - Change log: Transfer unreleased details to the new version
-- Change log: Add diff links (they are at the bottom)
+- Change log: Add diff link (they are at the bottom)
+- Run `cargo publish`
+- Github: Add a tag for the version

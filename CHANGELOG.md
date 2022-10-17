@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2022-10-16
+
+### Fixed
+
+- Depth/stencil images are now cleared properly
+- Multi-layer framebuffers work as intended
+- Render graph resolver orders renderpasses correctly
+
+### Added
+
+- `default_view_info()` helper on `ImageInfo` to assist in defining new views
+- Variance shadow mapping example using a filtered cubemap
+
 ## [0.6.0] - 2022-10-06
 
 ### Changed
@@ -175,14 +188,15 @@ _See [#25](https://github.com/attackgoat/screen-13/pull/25) for migration detail
   platforms and require no bare-metal graphics API knowledge
 - "Hello, world!" example using a bitmapped font
 
-[Unreleased]: https://github.com/attackgoat/screen-13/compare/b546772ad0283ffc1a296b56a955ef6a1203e7b7...HEAD
+[Unreleased]: https://github.com/attackgoat/screen-13/compare/92f069e851db7fc8e4f58649dbfc362dbb6aec0f...HEAD
 [0.1.0]: https://crates.io/crates/screen-13/0.1.0
 [0.2.0]: https://crates.io/crates/screen-13/0.2.0
 [0.3.0]: https://crates.io/crates/screen-13/0.3.0
 [0.3.1]: https://crates.io/crates/screen-13/0.3.1
 [0.3.2]: https://crates.io/crates/screen-13/0.3.2
 [0.4.0]: https://crates.io/crates/screen-13/0.4.0
-[0.4.1]: https://github.com/attackgoat/screen-13/commit/9b739ac4652fa1326e6d54e7bae9e58050d7c290
-[0.4.2]: https://github.com/attackgoat/screen-13/commit/a3f675b5018ac8d9dbc29c6f462813149b5f05ab
-[0.5.0]: https://github.com/attackgoat/screen-13/commit/80248b68e016b6922271a42d423023341d481e17
-[0.6.0]: https://github.com/attackgoat/screen-13/commit/002800ab68413599713157c805654bb9b5621646
+[0.4.1]: https://crates.io/crates/screen-13/0.4.1
+[0.4.2]: https://crates.io/crates/screen-13/0.4.2
+[0.5.0]: https://crates.io/crates/screen-13/0.5.0
+[0.6.0]: https://crates.io/crates/screen-13/0.6.0
+[0.6.1]: https://crates.io/crates/screen-13/0.6.1
