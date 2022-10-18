@@ -318,13 +318,13 @@ fn create_blur_x_pipeline(device: &Arc<Device>) -> Result<Arc<ComputePipeline>, 
         #define POS_Z 4
         #define NEG_Z 5
 
-        layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+        layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
         layout(constant_id = 0) const uint IMAGE_SIZE = 512;
         layout(constant_id = 1) const uint RADIUS = 4;
 
-        layout (set = 0, binding = 0, rg32f) restrict readonly uniform image2DArray image;
-        layout (set = 0, binding = 1, rg32f) restrict writeonly uniform image2DArray image_out;
+        layout(set = 0, binding = 0, rg32f) restrict readonly uniform image2DArray image;
+        layout(set = 0, binding = 1, rg32f) restrict writeonly uniform image2DArray image_out;
 
         ivec3 leading_face(uint x) {
             uint face = gl_GlobalInvocationID.z;
@@ -438,13 +438,13 @@ fn create_blur_y_pipeline(device: &Arc<Device>) -> Result<Arc<ComputePipeline>, 
         #define POS_Z 4
         #define NEG_Z 5
 
-        layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+        layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
         layout(constant_id = 0) const uint IMAGE_SIZE = 512;
         layout(constant_id = 1) const uint RADIUS = 4;
 
-        layout (set = 0, binding = 0, rg32f) restrict readonly uniform image2DArray image;
-        layout (set = 0, binding = 1, rg32f) restrict writeonly uniform image2DArray image_out;
+        layout(set = 0, binding = 0, rg32f) restrict readonly uniform image2DArray image;
+        layout(set = 0, binding = 1, rg32f) restrict writeonly uniform image2DArray image_out;
 
         ivec3 leading_face(uint y) {
             uint face = gl_GlobalInvocationID.z;
@@ -566,8 +566,7 @@ fn create_debug_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, D
         layout(location = 0) out vec3 world_position_out;
         layout(location = 1) out vec3 world_normal_out;
 
-        void main()
-        {
+        void main() {
             world_position_out = (push_const.model * vec4(position, 1)).xyz;
             world_normal_out = normalize((push_const.model * vec4(normal, 1)).xyz);
             gl_Position = camera.projection * camera.view * vec4(world_position_out, 1);
@@ -591,15 +590,13 @@ fn create_debug_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, D
 
         layout(location = 0) out vec4 color_out;
 
-        void main()
-        {
+        void main() {
             color_out = vec4(vec3(0.0), 1.0);
 
             vec3 light_dir = light.position - world_position.xyz;
             float light_dist = length(light_dir);
 
-            if (light_dist < light.range)
-            {
+            if (light_dist < light.range) {
                 light_dir = normalize(light_dir);
 
                 float lambertian = max(0.0, dot(world_normal, light_dir));
@@ -649,8 +646,7 @@ fn create_mesh_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, Dr
         layout(location = 0) out vec4 world_position_out;
         layout(location = 1) out vec3 world_normal_out;
 
-        void main()
-        {
+        void main() {
             world_normal_out = normalize((push_const.model * vec4(normal, 1.0)).xyz);
             world_position_out = push_const.model * vec4(position, 1.0);
             gl_Position = camera.projection * camera.view * world_position_out;
@@ -681,8 +677,7 @@ fn create_mesh_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, Dr
 
         layout(location = 0) out vec4 color_out;
 
-        float upper_bound_shadow(vec2 moments, float scene_depth)
-        {
+        float upper_bound_shadow(vec2 moments, float scene_depth) {
             float p = step(scene_depth, moments.x + BIAS); // eliminates cubemap boundary thin line
             // 0 if moments.x < scene_depth; 1 if otherwise
 
@@ -696,23 +691,20 @@ fn create_mesh_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, Dr
             return max(p, p_max);
         }
 
-        float sample_shadow(samplerCube shadow_map, vec3 light, float scene_depth)
-        {
+        float sample_shadow(samplerCube shadow_map, vec3 light, float scene_depth) {
             vec2 moments = texture(shadow_map, light).rg;
             // moments.r is mean, moments.g is depth^2
 
             return upper_bound_shadow(moments, scene_depth);
         }
 
-        void main()
-        {
+        void main() {
             color_out = vec4(0.0, 0.0, 0.0, 1.0);
 
             vec3 light_dir = light.pos - world_position.xyz;
             float light_dist = length(light_dir);
 
-            if (light_dist < light.range)
-            {
+            if (light_dist < light.range) {
                 light_dir = normalize(light_dir);
 
                 float shadow = sample_shadow(shadow_map, -light_dir, light_dist);
@@ -779,8 +771,7 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
         layout(location = 1) out uint layer_mask_out;
         layout(location = 2) out ViewPositions view_positions_out;
 
-        uint get_layer_flag(vec4 view_pos, uint flag)
-        {
+        uint get_layer_flag(vec4 view_pos, uint flag) {
             // if view_pos is in frustum, return flag
             // otherwise return 0
 
@@ -798,8 +789,7 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
             return res * flag;
         }
 
-        void main(void)
-        {
+        void main(void) {
             vec4 world_position = push_const.model * vec4(position, 1.0);
             world_position_out = world_position.xyz;
 
@@ -869,8 +859,7 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
         layout(triangle_strip, max_vertices = 18) out;
         layout(location = 0) out vec3 world_position_out;
 
-        void emit(uint flag, int view_idx)
-        {
+        void emit(uint flag, int view_idx) {
             uint layer_flag = (layer_mask[0] | layer_mask[1] | layer_mask[2]) & flag;
 
             if (layer_flag > 0) {
@@ -890,8 +879,7 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
             }
         }
 
-        void main()
-        {
+        void main() {
             gl_Layer = 0;
             emit(0x01, 0);
 
@@ -928,8 +916,7 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
 
         layout(location = 0) out vec4 color_out;
 
-        void main()
-        {
+        void main() {
             float dist = distance(world_position.xyz, light.pos);
             color_out.x = dist;
             color_out.y = dist * dist;
