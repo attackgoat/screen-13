@@ -2,6 +2,7 @@ use {
     super::{
         driver::{
             image_access_layout, CommandBuffer, Device, DriverError, Swapchain, SwapchainError,
+            SwapchainImage,
         },
         graph::{node::SwapchainImageNode, RenderGraph, ResolverPool},
     },
@@ -38,16 +39,10 @@ impl Display {
     }
 
     /// Returns a new `RenderGraph` with a bound swapchain image, if possible.
-    pub fn acquire_next_image(
-        &mut self,
-    ) -> Result<(SwapchainImageNode, RenderGraph), SwapchainError> {
+    pub fn acquire_next_image(&mut self) -> Result<SwapchainImage, SwapchainError> {
         trace!("acquire_next_image");
 
-        let swapchain_image = self.swapchain.acquire_next_image()?;
-        let mut render_graph = RenderGraph::new();
-        let swapchain = render_graph.bind_node(swapchain_image);
-
-        Ok((swapchain, render_graph))
+        self.swapchain.acquire_next_image()
     }
 
     unsafe fn begin(cmd_buf: &mut CommandBuffer) -> Result<(), ()> {

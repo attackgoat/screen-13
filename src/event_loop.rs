@@ -3,7 +3,7 @@ use {
         display::{Display, DisplayError},
         driver::{Device, Driver, DriverConfigBuilder, DriverError},
         frame::FrameContext,
-        graph::ResolverPool,
+        graph::{RenderGraph, ResolverPool},
         pool::hash::HashPool,
     },
     log::{debug, info, trace, warn},
@@ -129,23 +129,27 @@ impl EventLoop {
                 dt_filtered = dt_filtered + (dt_raw - dt_filtered) / 10.0;
             };
 
-            let swapchain = self.display.acquire_next_image();
-            if swapchain.is_err() {
+            let swapchain_image = self.display.acquire_next_image();
+            if swapchain_image.is_err() {
                 events.clear();
 
                 continue;
             }
 
-            let (swapchain, mut render_graph) = swapchain.unwrap();
+            let swapchain_image = swapchain_image.unwrap();
+            let height = swapchain_image.info.height;
+            let width = swapchain_image.info.width;
+            let mut render_graph = RenderGraph::new();
+            let swapchain_image = render_graph.bind_node(swapchain_image);
 
             frame_fn(FrameContext {
                 device: &self.device,
                 dt: dt_filtered,
-                height: self.height(),
+                height,
                 render_graph: &mut render_graph,
                 events: take(&mut events).as_slice(),
-                swapchain_image: swapchain,
-                width: self.width(),
+                swapchain_image,
+                width,
                 window: &self.window,
                 will_exit: &mut will_exit,
             });
@@ -158,7 +162,7 @@ impl EventLoop {
                 ((elapsed.as_secs_f32() / refresh_rate) * 100.0) as usize,
             );
 
-            self.display.present_image(render_graph, swapchain)?;
+            self.display.present_image(render_graph, swapchain_image)?;
         }
 
         Ok(())

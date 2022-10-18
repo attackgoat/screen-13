@@ -1,7 +1,7 @@
 use {
     super::{Device, DriverError, Image, ImageInfo, ImageType, SampleCount, Surface},
     ash::vk,
-    log::{debug, warn},
+    log::{debug, info, warn},
     std::{ops::Deref, slice, sync::Arc, thread::panicking, time::Duration},
 };
 
@@ -310,6 +310,11 @@ impl Swapchain {
         self.next_semaphore = 0;
         self.images = images;
         self.swapchain = swapchain;
+
+        info!(
+            "Swapchain dimensions: {}x{}",
+            self.info.width, self.info.height
+        );
 
         while self.acquired_semaphores.len() < self.images.len() {
             self.acquired_semaphores.push(
