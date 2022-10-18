@@ -14,8 +14,8 @@ use {
 };
 
 const BLUR_PASSES: usize = 2;
-const BLUR_RADIUS: u32 = 5;
-const CUBEMAP_SIZE: u32 = 1024;
+const BLUR_RADIUS: u32 = 2;
+const CUBEMAP_SIZE: u32 = 512;
 const SHADOW_BIAS: f32 = 0.3;
 
 /// Adapted from https://github.com/sydneyzh/variance_shadow_mapping_vk
@@ -662,6 +662,9 @@ fn create_mesh_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, Dr
         r#"
         #version 450 core
 
+        #define EPSILON 0.0001
+        #define MIN_SHADOW 0.1
+
         layout(constant_id = 0) const float BIAS = 0.15;
 
         layout(set = 0, binding = 1) uniform Light {
@@ -683,7 +686,7 @@ fn create_mesh_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, Dr
             float p = step(scene_depth, moments.x + BIAS); // eliminates cubemap boundary thin line
             // 0 if moments.x < scene_depth; 1 if otherwise
 
-            float variance = max(moments.y - moments.x * moments.x, 0.0001);
+            float variance = max(moments.y - moments.x * moments.x, EPSILON);
             // depth^2 - mean^2
             // ensure it as a denominator is not zero
 
@@ -718,7 +721,7 @@ fn create_mesh_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, Dr
                 attenuation = 1.0 - attenuation * attenuation;
 
                 // Make shadows not fully dark
-                shadow = max(0.1, shadow);
+                shadow = max(MIN_SHADOW, shadow);
 
                 color_out.rgb = vec3(attenuation * lambertian * shadow);
             }
