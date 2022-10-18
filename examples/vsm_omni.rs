@@ -66,6 +66,33 @@ fn main() -> anyhow::Result<()> {
             elapsed += frame.dt;
         }
 
+        // Hit F11 to enable borderless fullscreen
+        if keyboard.is_pressed(&VirtualKeyCode::F11) {
+            frame
+                .window
+                .set_fullscreen(Some(Fullscreen::Borderless(None)));
+        }
+
+        // Hit F12 to enable exclusive fullscreen
+        if keyboard.is_pressed(&VirtualKeyCode::F12) {
+            if let Some(monitor) = frame.window.current_monitor() {
+                if let Some(video_mode) = monitor.video_modes().next() {
+                    frame
+                        .window
+                        .set_fullscreen(Some(Fullscreen::Exclusive(video_mode)));
+                }
+            }
+        }
+
+        // Hit Escape to cancel fullscreen or exit
+        if keyboard.is_pressed(&VirtualKeyCode::Escape) {
+            if frame.window.fullscreen().is_some() {
+                frame.window.set_fullscreen(None);
+            } else {
+                *frame.will_exit = true;
+            }
+        }
+
         // Calculate values for and fill some plain-old-data structs we will bind as UBO's
         let camera = {
             let aspect_ratio = frame.width as f32 / frame.height as f32;

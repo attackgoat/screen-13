@@ -366,7 +366,7 @@ pub mod prelude {
             dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize},
             event::{Event, VirtualKeyCode},
             monitor::{MonitorHandle, VideoMode},
-            window::{Window, WindowBuilder},
+            window::{Fullscreen, Window, WindowBuilder},
         },
     };
 }

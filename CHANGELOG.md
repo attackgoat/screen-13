@@ -11,6 +11,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Crash/device lost while resizing the window
 
+### Added
+
+- Fullscreen demostration in `vsm_omni` example using F11 and F12 keys
+
 ## [0.6.1] - 2022-10-16
 
 ### Fixed
