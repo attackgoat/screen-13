@@ -64,7 +64,7 @@ pub(crate) use self::{
     },
     shader::{DescriptorBinding, DescriptorBindingMap, DescriptorInfo},
     surface::Surface,
-    swapchain::{Swapchain, SwapchainError, SwapchainImage, SwapchainInfo},
+    swapchain::{Swapchain, SwapchainImage, SwapchainInfo},
 };
 
 use {

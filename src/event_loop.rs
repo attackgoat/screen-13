@@ -1,7 +1,7 @@
 use {
     super::{
         display::{Display, DisplayError},
-        driver::{Device, Driver, DriverConfigBuilder, DriverError},
+        driver::{Device, Driver, DriverConfigBuilder, DriverError, Swapchain},
         frame::FrameContext,
         graph::{RenderGraph, ResolverPool},
         pool::hash::HashPool,
@@ -40,6 +40,7 @@ pub struct EventLoop {
 
     display: Display,
     event_loop: winit::event_loop::EventLoop<()>,
+    swapchain: Swapchain,
 
     /// Provides access to the current operating system window.
     pub window: Window,
@@ -129,7 +130,14 @@ impl EventLoop {
                 dt_filtered = dt_filtered + (dt_raw - dt_filtered) / 10.0;
             };
 
-            let swapchain_image = self.display.acquire_next_image();
+            // Update the window size if it changes
+            let window_size = self.window.inner_size();
+            let mut swapchain_info = self.swapchain.info();
+            swapchain_info.width = window_size.width;
+            swapchain_info.height = window_size.height;
+            self.swapchain.set_info(swapchain_info);
+
+            let swapchain_image = self.swapchain.acquire_next_image();
             if swapchain_image.is_err() {
                 events.clear();
 
@@ -162,7 +170,8 @@ impl EventLoop {
                 ((elapsed.as_secs_f32() / refresh_rate) * 100.0) as usize,
             );
 
-            self.display.present_image(render_graph, swapchain_image)?;
+            let swapchain_image = self.display.resolve_image(render_graph, swapchain_image)?;
+            self.swapchain.present_image(swapchain_image);
         }
 
         Ok(())
@@ -351,19 +360,20 @@ impl EventLoopBuilder {
         let pool = self
             .resolver_pool
             .unwrap_or_else(|| Box::new(HashPool::new(&driver.device)));
-        let display = Display::new(&driver.device, pool, driver.swapchain, self.cmd_buf_count);
+        let display = Display::new(&driver.device, pool, self.cmd_buf_count);
 
         info!(
-            "display resolution: {}x{} ({}x scale)",
+            "Window dimensions: {}x{} ({}x scale)",
             width,
             height,
             window.scale_factor() as f32,
         );
 
         Ok(EventLoop {
-            device: Arc::clone(&driver.device),
+            device: driver.device,
             display,
             event_loop: self.event_loop,
+            swapchain: driver.swapchain,
             window,
         })
     }

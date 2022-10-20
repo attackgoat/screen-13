@@ -9,7 +9,7 @@ use {
 pub struct Swapchain {
     device: Arc<Device>,
     images: Vec<Option<Image>>,
-    pub info: SwapchainInfo,
+    info: SwapchainInfo,
     next_semaphore: usize,
     acquired_semaphores: Vec<vk::Semaphore>,
     rendered_semaphores: Vec<vk::Semaphore>, // TODO: make a single semaphore
@@ -125,6 +125,10 @@ impl Swapchain {
 
             self.swapchain = vk::SwapchainKHR::null();
         }
+    }
+
+    pub fn info(&self) -> SwapchainInfo {
+        self.info
     }
 
     pub fn present_image(&mut self, image: SwapchainImage) {
@@ -336,6 +340,13 @@ impl Swapchain {
         Ok(())
     }
 
+    pub fn set_info(&mut self, info: SwapchainInfo) {
+        if self.info != info {
+            self.info = info;
+            self.suboptimal = true;
+        }
+    }
+
     fn clamp_desired_image_count(
         desired_image_count: u32,
         surface_capabilities: vk::SurfaceCapabilitiesKHR,
@@ -401,8 +412,10 @@ impl Deref for SwapchainImage {
 pub enum SwapchainError {
     /// This frame is lost but more may be acquired later.
     DeviceLost,
+
     /// This frame is not lost but there may be a delay while the next frame is recreated.
     Suboptimal,
+
     /// The surface was lost and must be recreated, which includes any operating system window.
     SurfaceLost,
 }

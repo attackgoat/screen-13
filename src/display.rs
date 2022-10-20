@@ -1,9 +1,6 @@
 use {
     super::{
-        driver::{
-            image_access_layout, CommandBuffer, Device, DriverError, Swapchain, SwapchainError,
-            SwapchainImage,
-        },
+        driver::{image_access_layout, CommandBuffer, Device, DriverError, SwapchainImage},
         graph::{node::SwapchainImageNode, RenderGraph, ResolverPool},
     },
     ash::vk,
@@ -22,17 +19,11 @@ pub struct Display {
     cmd_buf_idx: usize,
     cmd_bufs: Vec<CommandBuffer>,
     pool: Box<dyn ResolverPool>,
-    swapchain: Swapchain,
 }
 
 impl Display {
     /// Constructs a new `Display` object.
-    pub fn new(
-        device: &Arc<Device>,
-        pool: Box<dyn ResolverPool>,
-        swapchain: Swapchain,
-        cmd_buf_count: usize,
-    ) -> Self {
+    pub fn new(device: &Arc<Device>, pool: Box<dyn ResolverPool>, cmd_buf_count: usize) -> Self {
         let mut cmd_bufs = Vec::with_capacity(cmd_buf_count);
         for _ in 0..cmd_buf_count {
             cmd_bufs.push(CommandBuffer::create(device, device.queue.family).unwrap());
@@ -42,15 +33,7 @@ impl Display {
             cmd_buf_idx: 0,
             cmd_bufs,
             pool,
-            swapchain,
         }
-    }
-
-    /// Returns a new `RenderGraph` with a bound swapchain image, if possible.
-    pub fn acquire_next_image(&mut self) -> Result<SwapchainImage, SwapchainError> {
-        trace!("acquire_next_image");
-
-        self.swapchain.acquire_next_image()
     }
 
     unsafe fn begin(cmd_buf: &mut CommandBuffer) -> Result<(), ()> {
@@ -69,11 +52,11 @@ impl Display {
     }
 
     /// Displays the given swapchain image using passes specified in `render_graph`, if possible.
-    pub fn present_image(
+    pub fn resolve_image(
         &mut self,
         render_graph: RenderGraph,
         swapchain_image: SwapchainImageNode,
-    ) -> Result<(), DisplayError> {
+    ) -> Result<SwapchainImage, DisplayError> {
         use std::slice::from_ref;
 
         trace!("present_image");
@@ -149,13 +132,11 @@ impl Display {
         let elapsed = Instant::now() - started;
         trace!("🔜🔜🔜 vkQueueSubmit took {} μs", elapsed.as_micros(),);
 
-        self.swapchain.present_image(swapchain_image);
-
         // Store the resolved graph because it contains bindings, leases, and other shared resources
         // that need to be kept alive until the fence is waited upon.
         CommandBuffer::push_fenced_drop(cmd_buf, resolver);
 
-        Ok(())
+        Ok(swapchain_image)
     }
 
     unsafe fn submit(
@@ -218,12 +199,6 @@ impl From<()> for DisplayError {
 impl From<DriverError> for DisplayError {
     fn from(err: DriverError) -> Self {
         Self::Driver(err)
-    }
-}
-
-impl From<SwapchainError> for DisplayError {
-    fn from(_: SwapchainError) -> Self {
-        Self::DeviceLost
     }
 }
 
