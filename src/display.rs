@@ -19,20 +19,28 @@ use {
 
 /// A physical display interface.
 pub struct Display {
-    cmd_bufs: Vec<[CommandBuffer; 3]>,
-    device: Arc<Device>,
+    cmd_buf_idx: usize,
+    cmd_bufs: Vec<CommandBuffer>,
     pool: Box<dyn ResolverPool>,
     swapchain: Swapchain,
 }
 
 impl Display {
     /// Constructs a new `Display` object.
-    pub fn new(device: &Arc<Device>, pool: Box<dyn ResolverPool>, swapchain: Swapchain) -> Self {
-        let device = Arc::clone(device);
+    pub fn new(
+        device: &Arc<Device>,
+        pool: Box<dyn ResolverPool>,
+        swapchain: Swapchain,
+        cmd_buf_count: usize,
+    ) -> Self {
+        let mut cmd_bufs = Vec::with_capacity(cmd_buf_count);
+        for _ in 0..cmd_buf_count {
+            cmd_bufs.push(CommandBuffer::create(device, device.queue.family).unwrap());
+        }
 
         Self {
-            device,
-            cmd_bufs: Default::default(),
+            cmd_buf_idx: 0,
+            cmd_bufs,
             pool,
             swapchain,
         }
@@ -76,20 +84,11 @@ impl Display {
             .expect("uninitialized swapchain image: write something each frame!");
         let mut resolver = render_graph.resolve();
         let wait_dst_stage_mask = resolver.node_pipeline_stages(swapchain_image);
-        let swapchain_node = swapchain_image;
-        let swapchain_image = resolver.unbind_node(swapchain_node);
-        let swapchain_image_idx = swapchain_image.idx as usize;
 
-        while self.cmd_bufs.len() <= swapchain_image_idx {
-            self.cmd_bufs.push([
-                CommandBuffer::create(&self.device, self.device.queue.family)?,
-                CommandBuffer::create(&self.device, self.device.queue.family)?,
-                CommandBuffer::create(&self.device, self.device.queue.family)?,
-            ]);
-        }
+        self.cmd_buf_idx += 1;
+        self.cmd_buf_idx %= self.cmd_bufs.len();
 
-        let cmd_bufs = &mut self.cmd_bufs[swapchain_image_idx];
-        let cmd_buf = &mut cmd_bufs[0];
+        let cmd_buf = &mut self.cmd_bufs[self.cmd_buf_idx];
 
         let started = Instant::now();
 
@@ -97,41 +96,14 @@ impl Display {
             Self::wait_for_fence(cmd_buf)?;
         }
 
-        let mut wait_elapsed = Instant::now() - started;
-
         unsafe {
             Self::begin(cmd_buf)?;
         }
 
-        resolver.record_node_dependencies(&mut *self.pool, cmd_buf, swapchain_node)?;
+        // resolver.record_node_dependencies(&mut *self.pool, cmd_buf, swapchain_image)?;
+        resolver.record_node(&mut *self.pool, cmd_buf, swapchain_image)?;
 
-        unsafe {
-            trace!("submitting swapchain dependencies");
-
-            // Record up to but not including the swapchain work
-            Self::submit(
-                cmd_buf,
-                vk::SubmitInfo::builder().command_buffers(from_ref(cmd_buf)),
-            )?;
-        }
-
-        // Switch commnd buffers because we're going to be submitting with a wait semaphore on the
-        // swapchain image before we get access to record commands that use it
-        let cmd_buf = &mut cmd_bufs[1];
-
-        let wait_started = Instant::now();
-
-        unsafe {
-            Self::wait_for_fence(cmd_buf)?;
-        }
-
-        wait_elapsed += Instant::now() - wait_started;
-
-        unsafe {
-            Self::begin(cmd_buf)?;
-        }
-
-        resolver.record_node(&mut *self.pool, cmd_buf, swapchain_node)?;
+        let swapchain_image = resolver.unbind_node(swapchain_image);
 
         pipeline_barrier(
             &cmd_buf.device,
@@ -157,9 +129,13 @@ impl Display {
             }),
         );
 
-        unsafe {
-            trace!("submitting swapchain passes");
+        // We may have unresolved nodes; things like copies that happen after present or operations
+        // before present which use nodes that are unused in the remainder of the graph.
+        // These operations are still important, but they don't need to wait for any of the above
+        // things so we do them last
+        resolver.record_unscheduled_passes(&mut *self.pool, cmd_buf)?;
 
+        unsafe {
             Self::submit(
                 cmd_buf,
                 vk::SubmitInfo::builder()
@@ -170,49 +146,14 @@ impl Display {
             )?;
         }
 
-        let cmd_buf = &mut cmd_bufs[2];
-
-        let wait_started = Instant::now();
-
-        unsafe {
-            Self::wait_for_fence(cmd_buf)?;
-        }
-
-        wait_elapsed += Instant::now() - wait_started;
-
-        // We may have unresolved nodes; things like copies that happen after present or operations
-        // before present which use nodes that are unused in the remainder of the graph.
-        // These operations are still important, but they don't need to wait for any of the above
-        // things so we do them last
-        if !resolver.is_resolved() {
-            unsafe {
-                Self::begin(cmd_buf)?;
-            }
-
-            resolver.record_unscheduled_passes(&mut *self.pool, cmd_buf)?;
-
-            unsafe {
-                trace!("submitting unscheduled passes");
-
-                Self::submit(
-                    cmd_buf,
-                    vk::SubmitInfo::builder().command_buffers(from_ref(cmd_buf)),
-                )
-            }?;
-        }
-
-        let elapsed = Instant::now() - started - wait_elapsed;
-        trace!(
-            "🔜🔜🔜 vkQueueSubmit took {} μs (delay {} μs)",
-            elapsed.as_micros(),
-            wait_elapsed.as_micros()
-        );
+        let elapsed = Instant::now() - started;
+        trace!("🔜🔜🔜 vkQueueSubmit took {} μs", elapsed.as_micros(),);
 
         self.swapchain.present_image(swapchain_image);
 
         // Store the resolved graph because it contains bindings, leases, and other shared resources
         // that need to be kept alive until the fence is waited upon.
-        CommandBuffer::push_fenced_drop(&mut self.cmd_bufs[swapchain_image_idx][2], resolver);
+        CommandBuffer::push_fenced_drop(cmd_buf, resolver);
 
         Ok(())
     }
@@ -229,10 +170,6 @@ impl Display {
             .map_err(|_| ())?;
         cmd_buf
             .device
-            .reset_fences(from_ref(&cmd_buf.fence))
-            .map_err(|_| ())?;
-        cmd_buf
-            .device
             .queue_submit(
                 *cmd_buf.device.queue,
                 from_ref(&*submit_info),
@@ -242,10 +179,15 @@ impl Display {
     }
 
     unsafe fn wait_for_fence(cmd_buf: &mut CommandBuffer) -> Result<(), ()> {
+        use std::slice::from_ref;
+
         Device::wait_for_fence(&cmd_buf.device, &cmd_buf.fence).map_err(|_| ())?;
         CommandBuffer::drop_fenced(cmd_buf);
 
-        Ok(())
+        cmd_buf
+            .device
+            .reset_fences(from_ref(&cmd_buf.fence))
+            .map_err(|_| ())
     }
 }
 

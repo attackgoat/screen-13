@@ -13,6 +13,7 @@ use {
     std::{
         collections::{hash_map::Entry, HashMap},
         fmt::{Debug, Formatter},
+        mem::take,
         ops::Deref,
         ptr::null,
         sync::{
@@ -244,11 +245,15 @@ impl Image {
     }
 
     pub(super) fn clone_raw(this: &Self) -> Self {
+        // Moves the image view cache from the current instance to the clone!
+        let mut image_view_cache = this.image_view_cache.lock();
+        let image_view_cache = take(&mut *image_view_cache);
+
         Self {
             allocation: None,
             device: Arc::clone(&this.device),
             image: this.image,
-            image_view_cache: Mutex::new(Default::default()),
+            image_view_cache: Mutex::new(image_view_cache),
             info: this.info,
             name: this.name.clone(),
             prev_access: AtomicU8::new(access_type_into_u8(AccessType::Nothing)),
@@ -307,11 +312,11 @@ impl Drop for Image {
             return;
         }
 
-        self.image_view_cache.lock().clear();
-
         // When our allocation is some we allocated ourself; otherwise somebody
         // else owns this image and we should not destroy it. Usually it's the swapchain...
         if let Some(allocation) = self.allocation.take() {
+            self.image_view_cache.lock().clear();
+
             unsafe {
                 self.device.destroy_image(self.image, None);
             }

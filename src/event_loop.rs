@@ -187,6 +187,7 @@ impl AsRef<winit::event_loop::EventLoop<()>> for EventLoop {
 
 /// Builder for `EventLoop`.
 pub struct EventLoopBuilder {
+    cmd_buf_count: usize,
     driver_cfg: DriverConfigBuilder,
     event_loop: winit::event_loop::EventLoop<()>,
     resolver_pool: Option<Box<dyn ResolverPool>>,
@@ -202,6 +203,7 @@ impl Debug for EventLoopBuilder {
 impl Default for EventLoopBuilder {
     fn default() -> Self {
         Self {
+            cmd_buf_count: 5,
             driver_cfg: DriverConfigBuilder::default(),
             event_loop: winit::event_loop::EventLoop::new(),
             resolver_pool: None,
@@ -214,6 +216,19 @@ impl EventLoopBuilder {
     /// Returns the list of all the monitors available on the system.
     pub fn available_monitors(&self) -> impl Iterator<Item = MonitorHandle> {
         self.event_loop.available_monitors()
+    }
+
+    /// Specifies the number of in-flight command buffers, which should be greater
+    /// than or equal to the desired swapchain image count.
+    ///
+    /// More command buffers mean less time waiting for previously submitted frames to complete, but
+    /// more memory in use.
+    ///
+    /// Generally a value of one or two greater than desired image count produces the smoothest
+    /// animation.
+    pub fn command_buffer_count(mut self, cmd_buf_count: usize) -> Self {
+        self.cmd_buf_count = cmd_buf_count;
+        self
     }
 
     /// Provides a closure which configures the `DriverConfig` instance.
@@ -336,7 +351,7 @@ impl EventLoopBuilder {
         let pool = self
             .resolver_pool
             .unwrap_or_else(|| Box::new(HashPool::new(&driver.device)));
-        let display = Display::new(&driver.device, pool, driver.swapchain);
+        let display = Display::new(&driver.device, pool, driver.swapchain, self.cmd_buf_count);
 
         info!(
             "display resolution: {}x{} ({}x scale)",

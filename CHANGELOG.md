@@ -10,10 +10,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - Crash/device lost while resizing the window
+- Inconsistent frame timing on certain drivers
 
 ### Added
 
 - Fullscreen demostration in `vsm_omni` example using F11 and F12 keys
+- Configurable frames-in-flight setting
 
 ## [0.6.1] - 2022-10-16
 

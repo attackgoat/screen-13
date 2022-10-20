@@ -1,7 +1,7 @@
 use {
     super::{DescriptorSetLayout, Device, DriverError},
     ash::vk,
-    log::{trace, warn},
+    log::warn,
     std::{ops::Deref, sync::Arc, thread::panicking},
 };
 
@@ -156,8 +156,6 @@ impl DescriptorPool {
             .descriptor_pool(this.descriptor_pool)
             .set_layouts(from_ref(layout));
         create_info.descriptor_set_count = count;
-
-        trace!("allocate_descriptor_sets");
 
         Ok(unsafe {
             this.device
