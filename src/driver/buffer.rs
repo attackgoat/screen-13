@@ -443,7 +443,7 @@ impl BufferInfo {
     ///
     /// # Note
     ///
-    /// For conveience the given usage value will be bitwise OR'd with
+    /// For convenience the given usage value will be bitwise OR'd with
     /// `TRANSFER_DST | TRANSFER_SRC`.
     pub fn new_mappable(size: vk::DeviceSize, usage: vk::BufferUsageFlags) -> BufferInfoBuilder {
         Self::new(
