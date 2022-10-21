@@ -270,15 +270,35 @@ impl EventLoopBuilder {
     /// the `with` function.
     pub fn fullscreen_mode(mut self, mode: FullscreenMode) -> Self {
         self.window = self.window.with_fullscreen(Some(match mode {
-            FullscreenMode::Borderless => Fullscreen::Borderless(None),
+            FullscreenMode::Borderless => {
+                info!("Using borderless fullscreen");
+
+                Fullscreen::Borderless(None)
+            }
             FullscreenMode::Exclusive => {
-                if let Some(video_mode) = self
-                    .event_loop
-                    .primary_monitor()
-                    .and_then(|monitor| monitor.video_modes().next())
-                {
+                if let Some(video_mode) = self.event_loop.primary_monitor().and_then(|monitor| {
+                    let monitor_size = monitor.size();
+                    monitor.video_modes().find(|mode| {
+                        let mode_size = mode.size();
+
+                        // Don't pick a mode which has greater resolution than the monitor is
+                        // currently using: it causes a panic on x11 in winit
+                        mode_size.height <= monitor_size.height
+                            && mode_size.width <= monitor_size.width
+                    })
+                }) {
+                    info!(
+                        "Using {}x{} {}bpp @ {}hz exclusive fullscreen",
+                        video_mode.size().width,
+                        video_mode.size().height,
+                        video_mode.bit_depth(),
+                        video_mode.refresh_rate_millihertz() / 1_000
+                    );
+
                     Fullscreen::Exclusive(video_mode)
                 } else {
+                    warn!("Using borderless fullscreen");
+
                     Fullscreen::Borderless(None)
                 }
             }
