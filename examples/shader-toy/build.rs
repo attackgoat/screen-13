@@ -57,7 +57,7 @@ fn join_strings(strings: impl IntoIterator<Item = String>, separator: &str) -> S
 fn compile_glsl(path: impl AsRef<Path>, kind: ShaderKind) -> anyhow::Result<(PathBuf, PathBuf)> {
     let source_path = path.as_ref().to_path_buf();
     let source = read_shader_source(&source_path);
-    let mut compiler = Compiler::new().unwrap();
+    let compiler = Compiler::new().unwrap();
     let spirv = compiler
         .compile_into_spirv(
             &source,
@@ -153,7 +153,10 @@ fn remove_common_path(
 
 fn read_shader_source(path: impl AsRef<Path>) -> String {
     use {
-        shader_prepper::{process_file, BoxedIncludeProviderError, IncludeProvider},
+        shader_prepper::{
+            process_file, BoxedIncludeProviderError, IncludeProvider, ResolvedInclude,
+            ResolvedIncludePath,
+        },
         std::fs::read_to_string,
     };
 
@@ -164,15 +167,27 @@ fn read_shader_source(path: impl AsRef<Path>) -> String {
 
         fn get_include(
             &mut self,
+            path: &ResolvedIncludePath,
+        ) -> Result<String, BoxedIncludeProviderError> {
+            println!("cargo:rerun-if-changed={}", &path.0);
+
+            Ok(read_to_string(&path.0)?)
+        }
+
+        fn resolve_path(
+            &self,
             path: &str,
             context: &Self::IncludeContext,
-        ) -> Result<(String, Self::IncludeContext), BoxedIncludeProviderError> {
+        ) -> Result<ResolvedInclude<Self::IncludeContext>, BoxedIncludeProviderError> {
             let path = context.join(path);
-            println!("cargo:rerun-if-changed={}", path.display());
-            Ok((
-                read_to_string(&path).unwrap(),
-                path.parent().unwrap().to_path_buf(),
-            ))
+
+            Ok(ResolvedInclude {
+                resolved_path: ResolvedIncludePath(path.to_str().unwrap_or_default().to_string()),
+                context: path
+                    .parent()
+                    .map(|path| path.to_path_buf())
+                    .unwrap_or_else(PathBuf::new),
+            })
         }
     }
 

@@ -23,5 +23,5 @@ screen-13-fx = { path = "../../contrib/screen-13-fx" }
 anyhow = "1.0"
 lazy_static = "1.4"
 pak = { version = "0.0", features = ["bake"] }
-shader-prepper = "0.3.0-pre.1"  
-shaderc = "0.7"
+shader-prepper = "0.3.0-pre.3"  
+shaderc = "0.8"
