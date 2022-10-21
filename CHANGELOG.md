@@ -11,6 +11,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Panic when setting exclusive fullscreen if the monitor is set to less than maximum resolution
 
+### Changed
+
+- Improved fullscreen experience: no extra decoration or briefly display small window
+
 ## [0.6.2] - 2022-10-20
 
 ### Fixed

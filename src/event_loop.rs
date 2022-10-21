@@ -91,6 +91,8 @@ impl EventLoop {
 
         debug!("first frame dt: {}", dt_filtered);
 
+        self.window.set_visible(true);
+
         while !will_exit {
             trace!("🟥🟩🟦 Event::RedrawRequested");
 
@@ -173,6 +175,8 @@ impl EventLoop {
             let swapchain_image = self.display.resolve_image(render_graph, swapchain_image)?;
             self.swapchain.present_image(swapchain_image);
         }
+
+        self.window.set_visible(false);
 
         Ok(())
     }
@@ -265,44 +269,71 @@ impl EventLoopBuilder {
         self
     }
 
-    /// Sets up fullscreen mode using a conveience function. There are
-    /// additional options offered by `winit` which can be accessed using
-    /// the `with` function.
+    /// Sets up fullscreen mode. In addition, decorations are set to `false` and maximized is set to
+    /// `true`.
+    ///
+    /// # Note
+    ///
+    /// There are additional options offered by `winit` which can be accessed using the `window`
+    /// function.
     pub fn fullscreen_mode(mut self, mode: FullscreenMode) -> Self {
-        self.window = self.window.with_fullscreen(Some(match mode {
-            FullscreenMode::Borderless => {
-                info!("Using borderless fullscreen");
+        let inner_size;
+        self.window = self
+            .window
+            .with_decorations(false)
+            .with_maximized(true)
+            .with_fullscreen(Some(match mode {
+                FullscreenMode::Borderless => {
+                    info!("Using borderless fullscreen");
 
-                Fullscreen::Borderless(None)
-            }
-            FullscreenMode::Exclusive => {
-                if let Some(video_mode) = self.event_loop.primary_monitor().and_then(|monitor| {
-                    let monitor_size = monitor.size();
-                    monitor.video_modes().find(|mode| {
-                        let mode_size = mode.size();
-
-                        // Don't pick a mode which has greater resolution than the monitor is
-                        // currently using: it causes a panic on x11 in winit
-                        mode_size.height <= monitor_size.height
-                            && mode_size.width <= monitor_size.width
-                    })
-                }) {
-                    info!(
-                        "Using {}x{} {}bpp @ {}hz exclusive fullscreen",
-                        video_mode.size().width,
-                        video_mode.size().height,
-                        video_mode.bit_depth(),
-                        video_mode.refresh_rate_millihertz() / 1_000
-                    );
-
-                    Fullscreen::Exclusive(video_mode)
-                } else {
-                    warn!("Using borderless fullscreen");
+                    inner_size = None;
 
                     Fullscreen::Borderless(None)
                 }
-            }
-        }));
+                FullscreenMode::Exclusive => {
+                    if let Some(video_mode) =
+                        self.event_loop.primary_monitor().and_then(|monitor| {
+                            let monitor_size = monitor.size();
+                            monitor.video_modes().find(|mode| {
+                                let mode_size = mode.size();
+
+                                // Don't pick a mode which has greater resolution than the monitor is
+                                // currently using: it causes a panic on x11 in winit
+                                mode_size.height <= monitor_size.height
+                                    && mode_size.width <= monitor_size.width
+                            })
+                        })
+                    {
+                        info!(
+                            "Using {}x{} {}bpp @ {}hz exclusive fullscreen",
+                            video_mode.size().width,
+                            video_mode.size().height,
+                            video_mode.bit_depth(),
+                            video_mode.refresh_rate_millihertz() / 1_000
+                        );
+
+                        inner_size = Some(video_mode.size());
+
+                        Fullscreen::Exclusive(video_mode)
+                    } else {
+                        warn!("Using borderless fullscreen");
+
+                        inner_size = None;
+
+                        Fullscreen::Borderless(None)
+                    }
+                }
+            }));
+
+        
+        if let Some(inner_size) = inner_size.or_else(|| {
+            self.event_loop
+                .primary_monitor()
+                .map(|monitor| monitor.size())
+        }) {
+            self.window = self.window.with_inner_size(inner_size);
+        }
+
         self
     }
 
@@ -351,6 +382,11 @@ impl EventLoopBuilder {
     }
 
     /// Sets up "windowed" mode, which is the opposite of fullscreen.
+    ///
+    /// # Note
+    ///
+    /// There are additional options offered by `winit` which can be accessed using the `window`
+    /// function.
     pub fn window_mode(mut self) -> Self {
         self.window = self.window.with_fullscreen(None);
         self
@@ -363,11 +399,15 @@ impl EventLoopBuilder {
         let cfg = self.driver_cfg.build();
 
         // Create an operating system window via Winit
-        let window = self.window.build(&self.event_loop).map_err(|err| {
-            warn!("{err}");
+        let window = self
+            .window
+            .with_visible(false)
+            .build(&self.event_loop)
+            .map_err(|err| {
+                warn!("{err}");
 
-            DriverError::Unsupported
-        })?;
+                DriverError::Unsupported
+            })?;
         let (width, height) = {
             let inner_size = window.inner_size();
             (inner_size.width, inner_size.height)
