@@ -351,58 +351,102 @@ pub(super) const fn is_write_access(ty: AccessType) -> bool {
     }
 }
 
-fn merge_push_constant_ranges(push_constants: &mut Vec<vk::PushConstantRange>) {
-    // Convert overlapping push constant regions such as this:
-    // VERTEX 0..64
-    // FRAGMENT 0..80
-    //
-    // To this:
-    // VERTEX | FRAGMENT 0..64
-    // FRAGMENT 64..80
-    //
-    // We do this now so that submission doesn't need to check for overlaps
-    // See https://github.com/KhronosGroup/Vulkan-Docs/issues/609
-    if push_constants.len() > 1 {
-        push_constants.sort_unstable_by(|lhs, rhs| match lhs.offset.cmp(&rhs.offset) {
-            Ordering::Equal => lhs.size.cmp(&rhs.size),
-            res => res,
-        });
+// Convert overlapping push constant regions such as this:
+// VERTEX 0..64
+// FRAGMENT 0..80
+//
+// To this:
+// VERTEX | FRAGMENT 0..64
+// FRAGMENT 64..80
+//
+// We do this so that submission doesn't need to check for overlaps
+// See https://github.com/KhronosGroup/Vulkan-Docs/issues/609
+fn merge_push_constant_ranges(pcr: &[vk::PushConstantRange]) -> Vec<vk::PushConstantRange> {
+    // Each specified range must be for a single stage and each stage must be specified once
+    #[cfg(debug_assertions)]
+    {
+        let mut stage_flags = vk::ShaderStageFlags::empty();
+        for item in pcr.iter() {
+            assert_eq!(item.stage_flags.as_raw().count_ones(), 1);
+            assert!(!stage_flags.contains(item.stage_flags));
+            assert!(item.size > 0);
 
-        let mut idx = 0;
-        while idx + 1 < push_constants.len() {
-            let curr = push_constants[idx];
-            let next = push_constants[idx + 1];
-            let curr_end = curr.offset + curr.size;
+            stage_flags |= item.stage_flags;
+        }
+    }
 
-            // Check for overlapping push constant ranges; combine them and move the next
-            // one so it no longer overlaps
-            if curr_end > next.offset {
-                push_constants[idx].stage_flags |= next.stage_flags;
+    match pcr.len() {
+        0 => vec![],
+        1 => vec![pcr[0]],
+        _ => {
+            let mut res = pcr.to_vec();
+            let sort_fn = |lhs: &vk::PushConstantRange, rhs: &vk::PushConstantRange| match lhs
+                .offset
+                .cmp(&rhs.offset)
+            {
+                Ordering::Equal => lhs.size.cmp(&rhs.size),
+                res => res,
+            };
 
-                idx += 1;
-                push_constants[idx].offset = curr_end;
-                push_constants[idx].size -= curr_end - next.offset;
+            res.sort_unstable_by(sort_fn);
+
+            let mut i = 0;
+            let mut j = 1;
+
+            while j < res.len() {
+                let lhs = res[i];
+                let rhs = res[j];
+
+                if lhs.offset == rhs.offset && lhs.size == rhs.size {
+                    res[i].stage_flags |= rhs.stage_flags;
+                    res.remove(j);
+                } else if lhs.offset == rhs.offset {
+                    res[i].stage_flags |= rhs.stage_flags;
+                    res[j].offset += lhs.size;
+                    res[j].size -= lhs.size;
+                    res[j..].sort_unstable_by(sort_fn);
+                } else if lhs.offset + lhs.size > rhs.offset + rhs.size {
+                    res[i].size = rhs.offset - lhs.offset;
+                    res[j].stage_flags = lhs.stage_flags;
+                    res[j].offset += rhs.size;
+                    res[j].size = (lhs.offset + lhs.size) - (rhs.offset + rhs.size);
+                    res.insert(
+                        j,
+                        vk::PushConstantRange {
+                            stage_flags: lhs.stage_flags | rhs.stage_flags,
+                            offset: rhs.offset,
+                            size: rhs.size,
+                        },
+                    );
+                    i += 1;
+                    j += 1;
+                } else if lhs.offset + lhs.size == rhs.offset + rhs.size {
+                    res[i].size -= rhs.size;
+                    res[j].stage_flags |= lhs.stage_flags;
+                    i += 1;
+                    j += 1;
+                } else if lhs.offset + lhs.size > rhs.offset
+                    && lhs.offset + lhs.size < rhs.offset + rhs.size
+                {
+                    res[i].size = rhs.offset - lhs.offset;
+                    res[j].offset = lhs.offset + lhs.size;
+                    res[j].size = (rhs.offset + rhs.size) - (lhs.offset + lhs.size);
+                    res.insert(
+                        j,
+                        vk::PushConstantRange {
+                            stage_flags: lhs.stage_flags | rhs.stage_flags,
+                            offset: rhs.offset,
+                            size: (lhs.offset + lhs.size) - rhs.offset,
+                        },
+                    );
+                    res[j..].sort_unstable_by(sort_fn);
+                } else {
+                    i += 1;
+                    j += 1;
+                }
             }
 
-            idx += 1;
-        }
-
-        for pcr in &*push_constants {
-            trace!(
-                "effective push constants: {:?} {}..{}",
-                pcr.stage_flags,
-                pcr.offset,
-                pcr.offset + pcr.size
-            );
-        }
-    } else {
-        for pcr in &*push_constants {
-            trace!(
-                "detected push constants: {:?} {}..{}",
-                pcr.stage_flags,
-                pcr.offset,
-                pcr.offset + pcr.size
-            );
+            res
         }
     }
 }
@@ -1056,4 +1100,321 @@ pub(super) struct SamplerDesc {
     pub address_modes: vk::SamplerAddressMode,
     pub mipmap_mode: vk::SamplerMipmapMode,
     pub texel_filter: vk::Filter,
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::merge_push_constant_ranges, ash::vk};
+
+    macro_rules! assert_pcr_eq {
+        ($lhs: expr, $rhs: expr,) => {
+            assert_eq!($lhs.stage_flags, $rhs.stage_flags, "Stages flags not equal");
+            assert_eq!($lhs.offset, $rhs.offset, "Offset not equal");
+            assert_eq!($lhs.size, $rhs.size, "Size not equal");
+        };
+    }
+
+    #[test]
+    pub fn push_constant_ranges_complex() {
+        let res = merge_push_constant_ranges(&mut [
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::VERTEX,
+                offset: 8,
+                size: 16,
+            },
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::GEOMETRY,
+                offset: 20,
+                size: 48,
+            },
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::TESSELLATION_CONTROL,
+                offset: 24,
+                size: 8,
+            },
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::TESSELLATION_EVALUATION,
+                offset: 28,
+                size: 32,
+            },
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::FRAGMENT,
+                offset: 40,
+                size: 128,
+            },
+        ]);
+
+        assert_eq!(res.len(), 8);
+        assert_pcr_eq!(
+            res[0],
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::VERTEX,
+                offset: 8,
+                size: 12,
+            },
+        );
+        assert_pcr_eq!(
+            res[1],
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::GEOMETRY,
+                offset: 20,
+                size: 4,
+            },
+        );
+        assert_pcr_eq!(
+            res[2],
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::TESSELLATION_CONTROL
+                    | vk::ShaderStageFlags::GEOMETRY,
+                offset: 24,
+                size: 4,
+            },
+        );
+        assert_pcr_eq!(
+            res[3],
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::TESSELLATION_CONTROL
+                    | vk::ShaderStageFlags::TESSELLATION_EVALUATION
+                    | vk::ShaderStageFlags::GEOMETRY,
+                offset: 28,
+                size: 4,
+            },
+        );
+        assert_pcr_eq!(
+            res[4],
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::GEOMETRY
+                    | vk::ShaderStageFlags::TESSELLATION_EVALUATION,
+                offset: 32,
+                size: 8,
+            },
+        );
+        assert_pcr_eq!(
+            res[5],
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::GEOMETRY
+                    | vk::ShaderStageFlags::TESSELLATION_EVALUATION
+                    | vk::ShaderStageFlags::FRAGMENT,
+                offset: 40,
+                size: 20,
+            },
+        );
+        assert_pcr_eq!(
+            res[6],
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::GEOMETRY,
+                offset: 60,
+                size: 8,
+            },
+        );
+        assert_pcr_eq!(
+            res[7],
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::FRAGMENT,
+                offset: 68,
+                size: 100,
+            },
+        );
+    }
+
+    #[test]
+    pub fn push_constant_ranges_disjoint() {
+        let res = merge_push_constant_ranges(&mut [
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::VERTEX,
+                offset: 0,
+                size: 32,
+            },
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::FRAGMENT,
+                offset: 32,
+                size: 64,
+            },
+        ]);
+
+        assert_eq!(res.len(), 2);
+        assert_pcr_eq!(
+            res[0],
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::VERTEX,
+                offset: 0,
+                size: 32,
+            },
+        );
+        assert_pcr_eq!(
+            res[1],
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::FRAGMENT,
+                offset: 32,
+                size: 64,
+            },
+        );
+    }
+
+    #[test]
+    pub fn push_constant_ranges_equal() {
+        let res = merge_push_constant_ranges(&mut [
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::VERTEX,
+                offset: 0,
+                size: 32,
+            },
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::FRAGMENT,
+                offset: 0,
+                size: 32,
+            },
+        ]);
+
+        assert_eq!(res.len(), 1);
+        assert_pcr_eq!(
+            res[0],
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                offset: 0,
+                size: 32,
+            },
+        );
+    }
+
+    #[test]
+    pub fn push_constant_ranges_overlap() {
+        let res = merge_push_constant_ranges(&mut [
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::VERTEX,
+                offset: 0,
+                size: 24,
+            },
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::GEOMETRY,
+                offset: 8,
+                size: 24,
+            },
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::FRAGMENT,
+                offset: 20,
+                size: 28,
+            },
+        ]);
+
+        assert_eq!(res.len(), 5);
+        assert_pcr_eq!(
+            res[0],
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::VERTEX,
+                offset: 0,
+                size: 8,
+            },
+        );
+        assert_pcr_eq!(
+            res[1],
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::GEOMETRY,
+                offset: 8,
+                size: 12,
+            },
+        );
+        assert_pcr_eq!(
+            res[2],
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::VERTEX
+                    | vk::ShaderStageFlags::GEOMETRY
+                    | vk::ShaderStageFlags::FRAGMENT,
+                offset: 20,
+                size: 4,
+            },
+        );
+        assert_pcr_eq!(
+            res[3],
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::GEOMETRY | vk::ShaderStageFlags::FRAGMENT,
+                offset: 24,
+                size: 8,
+            },
+        );
+        assert_pcr_eq!(
+            res[4],
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::FRAGMENT,
+                offset: 32,
+                size: 16,
+            },
+        );
+    }
+
+    #[test]
+    pub fn push_constant_ranges_subset() {
+        let res = merge_push_constant_ranges(&mut [
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::VERTEX,
+                offset: 0,
+                size: 64,
+            },
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::FRAGMENT,
+                offset: 16,
+                size: 8,
+            },
+        ]);
+
+        assert_eq!(res.len(), 3);
+        assert_pcr_eq!(
+            res[0],
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::VERTEX,
+                offset: 0,
+                size: 16,
+            },
+        );
+        assert_pcr_eq!(
+            res[1],
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                offset: 16,
+                size: 8,
+            },
+        );
+        assert_pcr_eq!(
+            res[2],
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::VERTEX,
+                offset: 24,
+                size: 40,
+            },
+        );
+    }
+
+    #[test]
+    pub fn push_constant_ranges_superset() {
+        let res = merge_push_constant_ranges(&mut [
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::VERTEX,
+                offset: 0,
+                size: 64,
+            },
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::FRAGMENT,
+                offset: 0,
+                size: 80,
+            },
+        ]);
+
+        assert_eq!(res.len(), 2);
+        assert_pcr_eq!(
+            res[0],
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                offset: 0,
+                size: 64,
+            },
+        );
+        assert_pcr_eq!(
+            res[1],
+            vk::PushConstantRange {
+                stage_flags: vk::ShaderStageFlags::FRAGMENT,
+                offset: 64,
+                size: 16,
+            },
+        );
+    }
 }

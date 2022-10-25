@@ -10,6 +10,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - Panic when setting exclusive fullscreen if the monitor is set to less than maximum resolution
+- Panic when overlapping push constant ranges in graphic and ray trace pipelines
 
 ### Changed
 

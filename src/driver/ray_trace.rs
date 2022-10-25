@@ -114,7 +114,7 @@ impl RayTracePipeline {
             .into_iter()
             .map(|shader| shader.into())
             .collect::<Vec<Shader>>();
-        let mut push_constants = shaders
+        let push_constants = shaders
             .iter()
             .map(|shader| shader.push_constant_range())
             .filter_map(|mut push_const| push_const.take())
@@ -256,7 +256,7 @@ impl RayTracePipeline {
                 .as_ref()
                 .ok_or(DriverError::Unsupported)?;
 
-            merge_push_constant_ranges(&mut push_constants);
+            let push_constants = merge_push_constant_ranges(&push_constants);
 
             // SAFETY:
             // According to [vulkan spec](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/vkGetRayTracingShaderGroupHandlesKHR.html)

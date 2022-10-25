@@ -462,7 +462,7 @@ impl GraphicPipeline {
             .map(|(_, descriptor_set_layout)| **descriptor_set_layout)
             .collect::<Box<[_]>>();
 
-        let mut push_constants = shaders
+        let push_constants = shaders
             .iter()
             .map(|shader| shader.push_constant_range())
             .filter_map(|mut push_const| push_const.take())
@@ -539,7 +539,7 @@ impl GraphicPipeline {
                 ..Default::default()
             };
 
-            merge_push_constant_ranges(&mut push_constants);
+            let push_constants = merge_push_constant_ranges(&push_constants);
 
             Ok(Self {
                 descriptor_bindings,
