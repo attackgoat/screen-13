@@ -12,6 +12,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Panic when setting exclusive fullscreen if the monitor is set to less than maximum resolution
 - Panic when overlapping push constant ranges in graphic and ray trace pipelines
 
+### Added
+
+- `bind_node` functions on `PassRef` and `PipelinePassRef` which may be accessed while recording passes
+
 ### Changed
 
 - Improved fullscreen experience: no extra decoration or briefly display small window

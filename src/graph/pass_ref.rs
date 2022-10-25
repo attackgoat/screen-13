@@ -1738,6 +1738,18 @@ impl<'a> PassRef<'a> {
         assert!(self.graph.bindings[idx].is_bound());
     }
 
+    /// Binds a Vulkan acceleration structure, buffer, or image to the graph associated with this
+    /// pass.
+    ///
+    /// Bound nodes may be used in passes for pipeline and shader operations.
+    pub fn bind_node<'b, B>(&'b mut self, binding: B) -> <B as Edge<RenderGraph>>::Result
+    where
+        B: Edge<RenderGraph>,
+        B: Bind<&'b mut RenderGraph, <B as Edge<RenderGraph>>::Result>,
+    {
+        self.graph.bind_node(binding)
+    }
+
     /// Binds a [`ComputePipeline`], [`GraphicPipeline`], or [`RayTracePipeline`] to the current
     /// pass, allowing for strongly typed access to the related functions.
     pub fn bind_pipeline<B>(self, binding: B) -> <B as Edge<Self>>::Result
@@ -2037,6 +2049,18 @@ where
     {
         self.pass
             .push_node_access(node, access, Some(subresource.into().into()));
+    }
+
+    /// Binds a Vulkan acceleration structure, buffer, or image to the graph associated with this
+    /// pass.
+    ///
+    /// Bound nodes may be used in passes for pipeline and shader operations.
+    pub fn bind_node<'b, B>(&'b mut self, binding: B) -> <B as Edge<RenderGraph>>::Result
+    where
+        B: Edge<RenderGraph>,
+        B: Bind<&'b mut RenderGraph, <B as Edge<RenderGraph>>::Result>,
+    {
+        self.pass.graph.bind_node(binding)
     }
 
     fn push_node_view_bind(
