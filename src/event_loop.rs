@@ -105,6 +105,10 @@ impl EventLoop {
                         *control_flow = ControlFlow::Exit;
                         will_exit = true;
                     }
+                    Event::WindowEvent {
+                        event: WindowEvent::Focused(false),
+                        ..
+                    } => self.window.set_cursor_visible(true),
                     Event::MainEventsCleared => *control_flow = ControlFlow::Exit,
                     _ => *control_flow = ControlFlow::Poll,
                 }
@@ -325,7 +329,6 @@ impl EventLoopBuilder {
                 }
             }));
 
-        
         if let Some(inner_size) = inner_size.or_else(|| {
             self.event_loop
                 .primary_monitor()

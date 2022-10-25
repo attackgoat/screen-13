@@ -15,6 +15,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - Improved fullscreen experience: no extra decoration or briefly display small window
+- Cursor re-displayed, if hidden, when event loop window loses focus
 
 ## [0.6.2] - 2022-10-20
 
