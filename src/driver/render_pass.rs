@@ -4,7 +4,7 @@ use {
     log::{trace, warn},
     parking_lot::Mutex,
     std::{
-        collections::{btree_map::Entry, BTreeMap},
+        collections::{hash_map::Entry, HashMap},
         ops::Deref,
         sync::Arc,
         thread::panicking,
@@ -25,20 +25,6 @@ pub struct AttachmentInfo {
 }
 
 impl AttachmentInfo {
-    pub fn new(fmt: vk::Format, sample_count: SampleCount) -> Self {
-        AttachmentInfo {
-            flags: vk::AttachmentDescriptionFlags::MAY_ALIAS,
-            fmt,
-            sample_count,
-            initial_layout: vk::ImageLayout::UNDEFINED,
-            load_op: vk::AttachmentLoadOp::DONT_CARE,
-            stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
-            store_op: vk::AttachmentStoreOp::DONT_CARE,
-            stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
-            final_layout: vk::ImageLayout::UNDEFINED,
-        }
-    }
-
     pub fn into_vk(self) -> vk::AttachmentDescription2 {
         vk::AttachmentDescription2::builder()
             .flags(self.flags)
@@ -51,6 +37,22 @@ impl AttachmentInfo {
             .initial_layout(self.initial_layout)
             .final_layout(self.final_layout)
             .build()
+    }
+}
+
+impl Default for AttachmentInfo {
+    fn default() -> Self {
+        AttachmentInfo {
+            flags: vk::AttachmentDescriptionFlags::MAY_ALIAS,
+            fmt: vk::Format::UNDEFINED,
+            sample_count: SampleCount::X1,
+            initial_layout: vk::ImageLayout::UNDEFINED,
+            load_op: vk::AttachmentLoadOp::DONT_CARE,
+            stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
+            store_op: vk::AttachmentStoreOp::DONT_CARE,
+            stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
+            final_layout: vk::ImageLayout::UNDEFINED,
+        }
     }
 }
 
@@ -70,24 +72,24 @@ impl AttachmentRef {
     }
 }
 
-#[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct FramebufferKey {
-    pub attachments: Vec<FramebufferKeyAttachment>,
-    pub extent_x: u32,
-    pub extent_y: u32,
-}
-
-#[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct FramebufferKeyAttachment {
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct FramebufferAttachmentImageInfo {
     pub flags: vk::ImageCreateFlags,
     pub usage: vk::ImageUsageFlags,
-    pub extent_x: u32,
-    pub extent_y: u32,
+    pub width: u32,
+    pub height: u32,
     pub layer_count: u32,
-    pub view_fmts: Vec<vk::Format>,
+    pub view_formats: Vec<vk::Format>,
 }
 
-#[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct FramebufferInfo {
+    pub attachments: Vec<FramebufferAttachmentImageInfo>,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Debug, Eq, Hash, PartialEq)]
 struct GraphicPipelineKey {
     depth_stencil: Option<DepthStencilMode>,
     layout: vk::PipelineLayout,
@@ -104,8 +106,8 @@ pub struct RenderPassInfo {
 #[derive(Debug)]
 pub struct RenderPass {
     device: Arc<Device>,
-    framebuffer_cache: Mutex<BTreeMap<FramebufferKey, vk::Framebuffer>>,
-    graphic_pipeline_cache: Mutex<BTreeMap<GraphicPipelineKey, vk::Pipeline>>,
+    framebuffer_cache: Mutex<HashMap<FramebufferInfo, vk::Framebuffer>>,
+    graphic_pipeline_cache: Mutex<HashMap<GraphicPipelineKey, vk::Pipeline>>,
     pub info: RenderPassInfo,
     render_pass: vk::RenderPass,
 }
@@ -235,7 +237,7 @@ impl RenderPass {
         })
     }
 
-    pub fn framebuffer_ref(&self, info: FramebufferKey) -> Result<vk::Framebuffer, DriverError> {
+    pub fn framebuffer(&self, info: FramebufferInfo) -> Result<vk::Framebuffer, DriverError> {
         debug_assert!(!info.attachments.is_empty());
 
         let mut cache = self.framebuffer_cache.lock();
@@ -262,11 +264,11 @@ impl RenderPass {
             .map(|attachment| {
                 vk::FramebufferAttachmentImageInfo::builder()
                     .flags(attachment.flags)
-                    .width(attachment.extent_x)
-                    .height(attachment.extent_y)
+                    .width(attachment.width)
+                    .height(attachment.height)
                     .layer_count(attachment.layer_count)
                     .usage(attachment.usage)
-                    .view_formats(attachment.view_fmts.as_slice())
+                    .view_formats(&attachment.view_formats)
                     .build()
             })
             .collect::<Box<[_]>>();
@@ -275,8 +277,8 @@ impl RenderPass {
         let mut create_info = vk::FramebufferCreateInfo::builder()
             .flags(vk::FramebufferCreateFlags::IMAGELESS)
             .render_pass(self.render_pass)
-            .width(key.extent_x)
-            .height(key.extent_y)
+            .width(key.width)
+            .height(key.height)
             .layers(layers)
             .push_next(&mut imageless_info);
         create_info.attachment_count = self.info.attachments.len() as _;
@@ -296,7 +298,7 @@ impl RenderPass {
         Ok(framebuffer)
     }
 
-    pub fn graphic_pipeline_ref(
+    pub fn graphic_pipeline(
         &self,
         pipeline: &Arc<GraphicPipeline>,
         depth_stencil: Option<DepthStencilMode>,

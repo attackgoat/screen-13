@@ -59,7 +59,7 @@ pub(crate) use self::{
     descriptor_set_layout::DescriptorSetLayout,
     instance::Instance,
     render_pass::{
-        AttachmentInfo, AttachmentRef, FramebufferKey, FramebufferKeyAttachment, RenderPass,
+        AttachmentInfo, AttachmentRef, FramebufferInfo, FramebufferAttachmentImageInfo, RenderPass,
         RenderPassInfo, SubpassDependency, SubpassInfo,
     },
     shader::{DescriptorBinding, DescriptorBindingMap, DescriptorInfo},
