@@ -1092,6 +1092,24 @@ impl<'a> Draw<'a> {
         self
     }
 
+    /// TEMPORARY
+    pub fn bind_null_vertex_buffer(
+        &self,
+    ) -> &Self {
+        use std::slice::from_ref;
+
+        unsafe {
+            self.device.cmd_bind_vertex_buffers(
+                self.cmd_buf,
+                0,
+                from_ref(&vk::Buffer::null()),
+                from_ref(&0),
+            );
+        }
+
+        self
+    }
+
     /// Binds multiple vertex buffers to the current pass, starting at the given `first_binding`.
     ///
     /// Each vertex input binding in `buffers` specifies an offset from the start of the

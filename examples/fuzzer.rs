@@ -46,15 +46,16 @@ fn main() -> Result<(), DisplayError> {
         let operations_per_frame = 16;
         let operation: u8 = random();
         for _ in 0..operations_per_frame {
-            match operation % 8 {
+            match operation % 9 {
                 0 => record_compute_array_bind(&mut frame, &mut cache),
                 1 => record_compute_bindless(&mut frame, &mut cache),
                 2 => record_compute_no_op(&mut frame),
                 3 => record_graphic_bindless(&mut frame, &mut cache),
                 4 => record_graphic_load_store(&mut frame),
-                5 => record_graphic_will_merge_subpass_input(&mut frame, &mut cache),
-                6 => record_graphic_wont_merge(&mut frame, &mut cache),
-                7 => record_accel_struct_builds(&mut frame, &mut cache),
+                5 => record_graphic_no_vertex_buffer(&mut frame, &mut cache),
+                6 => record_graphic_will_merge_subpass_input(&mut frame, &mut cache),
+                7 => record_graphic_wont_merge(&mut frame, &mut cache),
+                8 => record_accel_struct_builds(&mut frame, &mut cache),
                 _ => unreachable!(),
             }
         }
@@ -590,6 +591,59 @@ fn record_graphic_load_store(frame: &mut FrameContext) {
         .store_color(0, frame.swapchain_image)
         .record_subpass(|subpass, _| {
             subpass.draw(1, 1, 0, 0);
+        });
+}
+
+fn record_graphic_no_vertex_buffer(frame: &mut FrameContext, cache: &mut HashPool) {
+    let pipeline = graphic_vert_frag_pipeline(
+        frame.device,
+        GraphicPipelineInfo::default(),
+        inline_spirv!(
+            r#"
+            #version 460 core
+
+            layout(location = 0) in vec3 position;
+
+            void main() {
+                gl_Position = vec4(position, 1.0);
+            }
+            "#,
+            vert
+        )
+        .as_slice(),
+        inline_spirv!(
+            r#"
+            #version 460 core
+
+            layout(location = 0) out vec4 color_out;
+
+            void main() {
+                color_out = vec4(0);
+            }
+            "#,
+            frag
+        )
+        .as_slice(),
+    );
+
+    let index_buf = frame.render_graph.bind_node(
+        cache
+            .lease(BufferInfo::new(96, vk::BufferUsageFlags::INDEX_BUFFER))
+            .unwrap(),
+    );
+
+    frame
+        .render_graph
+        .begin_pass("no-vertex-buffer")
+        .bind_pipeline(&pipeline)
+        .access_node(index_buf, AccessType::IndexBuffer)
+        .load_color(0, frame.swapchain_image)
+        .store_color(0, frame.swapchain_image)
+        .record_subpass(move |subpass, _| {
+            subpass
+                .bind_null_vertex_buffer()
+                .bind_index_buffer(index_buf, vk::IndexType::UINT32)
+                .draw_indexed(3, 1, 0, 0, 0);
         });
 }
 
