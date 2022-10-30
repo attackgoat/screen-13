@@ -680,9 +680,9 @@ impl Resolver {
         pass_idx: usize,
     ) -> Result<Lease<RenderPass>, DriverError> {
         let pass = &self.graph.passes[pass_idx];
-        let (mut attachment_count, mut has_depth) = (0, false);
+        let (mut color_attachment_count, mut has_depth) = (0, false);
         for exec in &pass.execs {
-            attachment_count = attachment_count
+            color_attachment_count = color_attachment_count
                 .max(
                     exec.color_attachments
                         .keys()
@@ -724,7 +724,7 @@ impl Resolver {
                 || exec.depth_stencil_store.is_some();
         }
 
-        attachment_count += has_depth as usize;
+        let attachment_count = color_attachment_count + has_depth as usize;
         let mut attachments = Vec::with_capacity(attachment_count);
         attachments.resize_with(attachment_count, AttachmentInfo::default);
 
@@ -980,7 +980,7 @@ impl Resolver {
             }
 
             // Color attachments
-            for attachment_idx in 0..attachment_count as u32 {
+            for attachment_idx in 0..color_attachment_count as u32 {
                 let is_input = subpass_info
                     .input_attachments
                     .iter()
@@ -1001,7 +1001,7 @@ impl Resolver {
             {
                 let is_random_access = exec.depth_stencil_store.is_some();
                 subpass_info.depth_stencil_attachment = Some(AttachmentRef {
-                    attachment: attachment_count as u32 - 1,
+                    attachment: color_attachment_count as u32,
                     aspect_mask: depth_stencil.aspect_mask,
                     layout: Self::attachment_layout(
                         depth_stencil.aspect_mask,
@@ -1029,8 +1029,8 @@ impl Resolver {
                     .input_attachments
                     .iter()
                     .any(|input| input.attachment == *dst_attachment_idx);
-                subpass_info.resolve_attachments[*dst_attachment_idx as usize] = AttachmentRef {
-                    attachment: *src_attachment_idx,
+                subpass_info.resolve_attachments[*src_attachment_idx as usize] = AttachmentRef {
+                    attachment: *dst_attachment_idx,
                     aspect_mask: resolved_attachment.aspect_mask,
                     layout: Self::attachment_layout(
                         resolved_attachment.aspect_mask,

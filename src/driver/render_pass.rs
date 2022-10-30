@@ -114,7 +114,7 @@ pub struct RenderPass {
 
 impl RenderPass {
     pub fn create(device: &Arc<Device>, info: RenderPassInfo) -> Result<Self, DriverError> {
-        trace!("create");
+        trace!("create: \n{:#?}", &info);
 
         let device = Arc::clone(device);
         let attachments = info

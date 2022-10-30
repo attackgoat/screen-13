@@ -10,9 +10,9 @@ fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
     let mut keyboard = KeyBuf::default();
-    let event_loop = EventLoop::new().build()?;
-    let sample_count = max_supported_sample_count(&event_loop);
-    let mesh_pipeline = create_mesh_pipeline(&event_loop.device)?;
+    let event_loop = EventLoop::new().debug(true).build()?;
+    let samples = max_supported_samples(&event_loop);
+    let mesh_pipeline = create_mesh_pipeline(&event_loop.device, samples)?;
     let cube_mesh = load_cube_mesh(&event_loop.device)?;
     let mut pool = HashPool::new(&event_loop.device);
 
@@ -47,16 +47,40 @@ fn main() -> anyhow::Result<()> {
             }),
         );
 
-        let msaa_image = frame.render_graph.bind_node(
+        let msaa_color_image = frame.render_graph.bind_node(
             pool.lease(
                 ImageInfo::new_2d(
-                    vk::Format::R8G8B8A8_UNORM,
+                    frame.render_graph.node_info(frame.swapchain_image).fmt,
                     frame.width,
                     frame.height,
-                    vk::ImageUsageFlags::COLOR_ATTACHMENT,
+                    vk::ImageUsageFlags::COLOR_ATTACHMENT
+                        | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
                 )
-                .sample_count(sample_count),
+                .sample_count(samples),
             )
+            .unwrap(),
+        );
+        let msaa_depth_image = frame.render_graph.bind_node(
+            pool.lease(
+                ImageInfo::new_2d(
+                    vk::Format::D32_SFLOAT,
+                    frame.width,
+                    frame.height,
+                    vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
+                        | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
+                )
+                .sample_count(samples),
+            )
+            .unwrap(),
+        );
+        let depth_image = frame.render_graph.bind_node(
+            pool.lease(ImageInfo::new_2d(
+                vk::Format::D32_SFLOAT,
+                frame.width,
+                frame.height,
+                vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
+                    | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
+            ))
             .unwrap(),
         );
 
@@ -67,19 +91,22 @@ fn main() -> anyhow::Result<()> {
             .render_graph
             .begin_pass("cube")
             .bind_pipeline(&mesh_pipeline)
+            .set_depth_stencil(DepthStencilMode::DEPTH_WRITE)
             .access_node(cube_vertex_buf, AccessType::VertexBuffer)
             .access_descriptor(0, scene_uniform_buf, AccessType::AnyShaderReadUniformBuffer);
 
         if !keyboard.any_held() {
             // Render in multisample mode
             pass = pass
-                .clear_color_value(0, msaa_image, [1.0, 1.0, 1.0, 1.0])
-                .resolve_color(0, frame.swapchain_image);
+                .clear_color_value(0, msaa_color_image, [1.0, 1.0, 1.0, 1.0])
+                .resolve_color(0, 1, frame.swapchain_image)
+                .clear_depth_stencil(msaa_depth_image);
         } else {
             // Render in non-multisample mode
             pass = pass
                 .clear_color_value(0, frame.swapchain_image, [1.0, 1.0, 1.0, 1.0])
-                .store_color(0, frame.swapchain_image);
+                .store_color(0, frame.swapchain_image)
+                .clear_depth_stencil(depth_image);
         }
 
         pass.record_subpass(move |subpass, _| {
@@ -93,7 +120,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn max_supported_sample_count(event_loop: &EventLoop) -> SampleCount {
+fn max_supported_samples(event_loop: &EventLoop) -> SampleCount {
     let limit = event_loop
         .device
         .physical_device
@@ -224,7 +251,10 @@ fn load_cube_mesh(device: &Arc<Device>) -> Result<Model, DriverError> {
     })
 }
 
-fn create_mesh_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, DriverError> {
+fn create_mesh_pipeline(
+    device: &Arc<Device>,
+    samples: SampleCount,
+) -> Result<Arc<GraphicPipeline>, DriverError> {
     let vert = inline_spirv!(
         r#"
         #version 460 core
@@ -279,7 +309,7 @@ fn create_mesh_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, Dr
         frag
     );
 
-    let info = GraphicPipelineInfo::default();
+    let info = GraphicPipelineInfo::new().samples(samples);
 
     Ok(Arc::new(GraphicPipeline::create(
         device,

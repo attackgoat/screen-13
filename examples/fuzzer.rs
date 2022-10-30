@@ -26,6 +26,18 @@ use {
     std::{mem::size_of, sync::Arc},
 };
 
+const OPERATIONS_PER_FRAME: usize = 16;
+const OPERATIONS: [fn(&mut FrameContext, &mut HashPool); 8] = [
+    record_compute_array_bind,
+    record_compute_bindless,
+    record_compute_no_op,
+    record_graphic_bindless,
+    record_graphic_load_store,
+    record_graphic_will_merge_subpass_input,
+    record_graphic_wont_merge,
+    record_accel_struct_builds,
+];
+
 fn main() -> Result<(), DisplayError> {
     pretty_env_logger::init();
 
@@ -43,20 +55,9 @@ fn main() -> Result<(), DisplayError> {
         }
 
         // We fuzz a random amount of randomly selected operations per frame
-        let operations_per_frame = 16;
-        let operation: u8 = random();
-        for _ in 0..operations_per_frame {
-            match operation % 8 {
-                0 => record_compute_array_bind(&mut frame, &mut cache),
-                1 => record_compute_bindless(&mut frame, &mut cache),
-                2 => record_compute_no_op(&mut frame),
-                3 => record_graphic_bindless(&mut frame, &mut cache),
-                4 => record_graphic_load_store(&mut frame),
-                5 => record_graphic_will_merge_subpass_input(&mut frame, &mut cache),
-                6 => record_graphic_wont_merge(&mut frame, &mut cache),
-                7 => record_accel_struct_builds(&mut frame, &mut cache),
-                _ => unreachable!(),
-            }
+        for _ in 0..OPERATIONS_PER_FRAME {
+            let operation_idx = random::<usize>() % OPERATIONS.len();
+            OPERATIONS[operation_idx](&mut frame, &mut cache);
         }
 
         // We are not testing the swapchain - so always clear it
@@ -437,7 +438,7 @@ fn record_compute_bindless(frame: &mut FrameContext, cache: &mut HashPool) {
         });
 }
 
-fn record_compute_no_op(frame: &mut FrameContext) {
+fn record_compute_no_op(frame: &mut FrameContext, _: &mut HashPool) {
     let pipeline = compute_pipeline(
         "no_op",
         frame.device,
@@ -553,7 +554,7 @@ fn record_graphic_bindless(frame: &mut FrameContext, cache: &mut HashPool) {
         });
 }
 
-fn record_graphic_load_store(frame: &mut FrameContext) {
+fn record_graphic_load_store(frame: &mut FrameContext, _: &mut HashPool) {
     let pipeline = graphic_vert_frag_pipeline(
         frame.device,
         GraphicPipelineInfo::default(),
