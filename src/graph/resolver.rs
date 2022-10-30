@@ -98,18 +98,17 @@ impl Resolver {
         let lhs_pipeline = lhs_pipeline.unwrap().unwrap_graphic();
         let rhs_pipeline = rhs_pipeline.unwrap().unwrap_graphic();
 
-        // TODO: Is this needed?
-        // // Must be same general rasterization modes
-        // if lhs_pipeline.info.blend != rhs_pipeline.info.blend
-        //     || lhs_pipeline.info.cull_mode != rhs_pipeline.info.cull_mode
-        //     || lhs_pipeline.info.front_face != rhs_pipeline.info.front_face
-        //     || lhs_pipeline.info.polygon_mode != rhs_pipeline.info.polygon_mode
-        //     || lhs_pipeline.info.samples != rhs_pipeline.info.samples
-        // {
-        //     trace!("  different rasterization modes",);
+        // Must be same general rasterization modes
+        if lhs_pipeline.info.blend != rhs_pipeline.info.blend
+            || lhs_pipeline.info.cull_mode != rhs_pipeline.info.cull_mode
+            || lhs_pipeline.info.front_face != rhs_pipeline.info.front_face
+            || lhs_pipeline.info.polygon_mode != rhs_pipeline.info.polygon_mode
+            || lhs_pipeline.info.samples != rhs_pipeline.info.samples
+        {
+            trace!("  different rasterization modes",);
 
-        //     return false;
-        // }
+            return false;
+        }
 
         let rhs_first_exec = rhs.execs.first().unwrap();
 
@@ -756,9 +755,7 @@ impl Resolver {
             }
 
             // Resolved color attachments
-            for (dst_attachment_idx, (resolved_attachment, _)) in
-                &first_exec.color_resolves
-            {
+            for (dst_attachment_idx, (resolved_attachment, _)) in &first_exec.color_resolves {
                 let attachment = &mut attachments[*dst_attachment_idx as usize];
                 attachment.fmt = resolved_attachment.format;
                 attachment.sample_count = resolved_attachment.sample_count;
@@ -938,7 +935,6 @@ impl Resolver {
                 .unwrap();
             let mut subpass_info = SubpassInfo::with_capacity(attachment_count);
 
-            // TODO: TLS a sorted vec so we don't need to iter.find the input attachments later!
             // Add input attachments
             for (_, (descriptor_info, _)) in pipeline.descriptor_bindings.iter() {
                 if let &DescriptorInfo::InputAttachment(_, attachment_idx) = descriptor_info {
@@ -979,17 +975,28 @@ impl Resolver {
                 }
             }
 
-            // Color attachments
+            // Set color attachments to defaults
             for attachment_idx in 0..color_attachment_count as u32 {
                 let is_input = subpass_info
                     .input_attachments
                     .iter()
                     .any(|input| input.attachment == attachment_idx);
                 subpass_info.color_attachments.push(AttachmentRef {
-                    attachment: attachment_idx,
+                    attachment: vk::ATTACHMENT_UNUSED,
                     aspect_mask: vk::ImageAspectFlags::COLOR,
                     layout: Self::attachment_layout(vk::ImageAspectFlags::COLOR, true, is_input),
                 });
+            }
+
+            for attachment_idx in exec
+                .color_attachments
+                .keys()
+                .chain(exec.color_clears.keys())
+                .chain(exec.color_loads.keys())
+                .chain(exec.color_stores.keys())
+            {
+                subpass_info.color_attachments[*attachment_idx as usize].attachment =
+                    *attachment_idx;
             }
 
             // Set depth/stencil attachment
@@ -1018,7 +1025,7 @@ impl Resolver {
                     aspect_mask: vk::ImageAspectFlags::empty(),
                     layout: vk::ImageLayout::UNDEFINED,
                 })
-                .take(attachment_count),
+                .take(color_attachment_count),
             );
 
             // Set any used color resolve attachments now
@@ -1188,7 +1195,8 @@ impl Resolver {
 
                             // ... before we:
                             dep.dst_stage_mask |= vk::PipelineStageFlags::TOP_OF_PIPE;
-                            dep.dst_access_mask = vk::AccessFlags::empty();
+                            dep.dst_access_mask =
+                                vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE;
                         }
                     }
 

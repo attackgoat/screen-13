@@ -6,13 +6,16 @@ use {
     std::{mem::size_of, sync::Arc},
 };
 
+const WHITE: ClearColorValue = ClearColorValue([1.0, 1.0, 1.0, 1.0]);
+
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
     let mut keyboard = KeyBuf::default();
     let event_loop = EventLoop::new().debug(true).build()?;
     let samples = max_supported_samples(&event_loop);
-    let mesh_pipeline = create_mesh_pipeline(&event_loop.device, samples)?;
+    let mesh_msaa_pipeline = create_mesh_pipeline(&event_loop.device, samples)?;
+    let mesh_noaa_pipeline = create_mesh_pipeline(&event_loop.device, SampleCount::X1)?;
     let cube_mesh = load_cube_mesh(&event_loop.device)?;
     let mut pool = HashPool::new(&event_loop.device);
 
@@ -20,6 +23,9 @@ fn main() -> anyhow::Result<()> {
 
     event_loop.run(|frame| {
         update_keyboard(&mut keyboard, frame.events);
+
+        // Hold any key to render in non-multisample mode
+        let will_render_msaa = !keyboard.any_held();
 
         angle += frame.dt * 0.1;
         let world_transform = Mat4::from_rotation_x(angle)
@@ -73,7 +79,7 @@ fn main() -> anyhow::Result<()> {
             )
             .unwrap(),
         );
-        let depth_image = frame.render_graph.bind_node(
+        let noaa_depth_image = frame.render_graph.bind_node(
             pool.lease(ImageInfo::new_2d(
                 vk::Format::D32_SFLOAT,
                 frame.width,
@@ -90,23 +96,27 @@ fn main() -> anyhow::Result<()> {
         let mut pass = frame
             .render_graph
             .begin_pass("cube")
-            .bind_pipeline(&mesh_pipeline)
+            .bind_pipeline(if will_render_msaa {
+                &mesh_msaa_pipeline
+            } else {
+                &mesh_noaa_pipeline
+            })
             .set_depth_stencil(DepthStencilMode::DEPTH_WRITE)
             .access_node(cube_vertex_buf, AccessType::VertexBuffer)
             .access_descriptor(0, scene_uniform_buf, AccessType::AnyShaderReadUniformBuffer);
 
-        if !keyboard.any_held() {
+        if will_render_msaa {
             // Render in multisample mode
             pass = pass
-                .clear_color_value(0, msaa_color_image, [1.0, 1.0, 1.0, 1.0])
+                .clear_color_value(0, msaa_color_image, WHITE)
                 .resolve_color(0, 1, frame.swapchain_image)
                 .clear_depth_stencil(msaa_depth_image);
         } else {
             // Render in non-multisample mode
             pass = pass
-                .clear_color_value(0, frame.swapchain_image, [1.0, 1.0, 1.0, 1.0])
+                .clear_color_value(0, frame.swapchain_image, WHITE)
                 .store_color(0, frame.swapchain_image)
-                .clear_depth_stencil(depth_image);
+                .clear_depth_stencil(noaa_depth_image);
         }
 
         pass.record_subpass(move |subpass, _| {

@@ -2608,19 +2608,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
 
         self.pass.push_node_access(
             image,
-            if image_view_info
-                .aspect_mask
-                .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
-            {
-                AccessType::DepthStencilAttachmentWrite
-            } else if image_view_info
-                .aspect_mask
-                .contains(vk::ImageAspectFlags::DEPTH)
-            {
-                AccessType::DepthAttachmentWriteStencilReadOnly
-            } else {
-                AccessType::StencilAttachmentWriteDepthReadOnly
-            },
+            AccessType::DepthStencilAttachmentWrite,
             Some(Subresource::Image(image_view_info.into())),
         );
 
@@ -2805,7 +2793,12 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
 
-        self.resolve_color_as(src_attachment_idx, dst_attachment_idx,image, image_view_info)
+        self.resolve_color_as(
+            src_attachment_idx,
+            dst_attachment_idx,
+            image,
+            image_view_info,
+        )
     }
 
     /// Resolves a multisample framebuffer to a non-multisample image for the render pass
@@ -2830,15 +2823,18 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             .last_mut()
             .unwrap()
             .color_resolves
-            .insert(dst_attachment_idx, (
-                Attachment {
-                    aspect_mask: image_view_info.aspect_mask,
-                    format: image_view_info.fmt,
-                    sample_count: sample_count,
-                    target: node_idx,
-                },
-                src_attachment_idx,
-            ));
+            .insert(
+                dst_attachment_idx,
+                (
+                    Attachment {
+                        aspect_mask: image_view_info.aspect_mask,
+                        format: image_view_info.fmt,
+                        sample_count: sample_count,
+                        target: node_idx,
+                    },
+                    src_attachment_idx,
+                ),
+            );
 
         self.pass.push_node_access(
             image,

@@ -11,6 +11,8 @@ mod info;
 mod resolver;
 mod swapchain;
 
+use std::collections::BTreeMap;
+
 pub use self::{
     binding::{Bind, Unbind},
     resolver::{Resolver, ResolverPool},
@@ -111,7 +113,7 @@ impl From<[u8; 4]> for ClearColorValue {
 #[derive(Default)]
 struct Execution {
     accesses: HashMap<NodeIndex, [SubresourceAccess; 2]>,
-    bindings: HashMap<Descriptor, (NodeIndex, Option<ViewType>)>,
+    bindings: BTreeMap<Descriptor, (NodeIndex, Option<ViewType>)>,
 
     depth_stencil: Option<DepthStencilMode>,
 

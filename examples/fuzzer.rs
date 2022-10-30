@@ -27,7 +27,8 @@ use {
 };
 
 const OPERATIONS_PER_FRAME: usize = 16;
-const OPERATIONS: [fn(&mut FrameContext, &mut HashPool); 8] = [
+
+static OPERATIONS: &[fn(&mut FrameContext, &mut HashPool)] = &[
     record_compute_array_bind,
     record_compute_bindless,
     record_compute_no_op,

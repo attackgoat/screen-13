@@ -353,7 +353,7 @@ pub mod prelude {
                     BufferNode, ImageLeaseNode, ImageNode, SwapchainImageNode,
                 },
                 pass_ref::{PassRef, PipelinePassRef},
-                Bind, RenderGraph, ResolverPool, Unbind,
+                Bind, ClearColorValue, RenderGraph, ResolverPool, Unbind,
             },
             input::{
                 update_input, update_keyboard, update_mouse, KeyBuf, KeyMap, MouseBuf, MouseButton,
