@@ -40,7 +40,6 @@ fn main() -> anyhow::Result<()> {
 
     let mut keyboard = KeyBuf::default();
     let event_loop = EventLoop::new()
-    .debug(true)
         .window(|window| window.with_inner_size(LogicalSize::new(800, 600)))
         .build()?;
 

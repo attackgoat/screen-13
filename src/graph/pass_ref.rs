@@ -2408,7 +2408,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
                 Attachment {
                     aspect_mask: image_view_info.aspect_mask,
                     format: image_view_info.fmt,
-                    sample_count: sample_count,
+                    sample_count,
                     target: node_idx,
                 },
             );
@@ -2456,7 +2456,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             .depth_stencil_load = Some(Attachment {
             aspect_mask: image_view_info.aspect_mask,
             format: image_view_info.fmt,
-            sample_count: sample_count,
+            sample_count,
             target: node_idx,
         });
 
@@ -2537,7 +2537,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
                     Attachment {
                         aspect_mask: image_view_info.aspect_mask,
                         format: image_view_info.fmt,
-                        sample_count: sample_count,
+                        sample_count,
                         target: node_idx,
                     },
                     color,
@@ -2600,7 +2600,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             Attachment {
                 aspect_mask: image_view_info.aspect_mask,
                 format: image_view_info.fmt,
-                sample_count: sample_count,
+                sample_count,
                 target: node_idx,
             },
             vk::ClearDepthStencilValue { depth, stencil },
@@ -2666,7 +2666,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
                 Attachment {
                     aspect_mask: image_view_info.aspect_mask,
                     format: image_view_info.fmt,
-                    sample_count: sample_count,
+                    sample_count,
                     target: node_idx,
                 },
             );
@@ -2714,7 +2714,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             .depth_stencil_load = Some(Attachment {
             aspect_mask: image_view_info.aspect_mask,
             format: image_view_info.fmt,
-            sample_count: sample_count,
+            sample_count,
             target: node_idx,
         });
 
@@ -2829,7 +2829,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
                     Attachment {
                         aspect_mask: image_view_info.aspect_mask,
                         format: image_view_info.fmt,
-                        sample_count: sample_count,
+                        sample_count,
                         target: node_idx,
                     },
                     src_attachment_idx,
@@ -2879,7 +2879,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             .depth_stencil_resolve = Some(Attachment {
             aspect_mask: image_view_info.aspect_mask,
             format: image_view_info.fmt,
-            sample_count: sample_count,
+            sample_count,
             target: node_idx,
         });
 
@@ -2978,7 +2978,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
                 Attachment {
                     aspect_mask: image_view_info.aspect_mask,
                     format: image_view_info.fmt,
-                    sample_count: sample_count,
+                    sample_count,
                     target: node_idx,
                 },
             );
@@ -3026,7 +3026,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             .depth_stencil_store = Some(Attachment {
             aspect_mask: image_view_info.aspect_mask,
             format: image_view_info.fmt,
-            sample_count: sample_count,
+            sample_count,
             target: node_idx,
         });
 

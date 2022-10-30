@@ -144,7 +144,10 @@ impl RenderPass {
 
         let mut subpasses = Vec::with_capacity(info.subpasses.len());
         for subpass in &info.subpasses {
-            debug_assert_eq!(subpass.color_attachments.len(), subpass.resolve_attachments.len());
+            debug_assert_eq!(
+                subpass.color_attachments.len(),
+                subpass.resolve_attachments.len()
+            );
 
             let color_attachments_idx = subpass_attachments.len();
             let input_attachments_idx = color_attachments_idx + subpass.color_attachments.len();

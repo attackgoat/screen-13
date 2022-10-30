@@ -1,7 +1,7 @@
 use {
     super::{
-        Area, Attachment, Binding, Bindings, ClearColorValue, Edge, Execution, ExecutionPipeline,
-        Node, Pass, RenderGraph, Unbind,
+        Area, Binding, Bindings, Edge, Execution, ExecutionPipeline, Node, Pass, RenderGraph,
+        Unbind,
     },
     crate::{
         driver::{
@@ -9,7 +9,7 @@ use {
             buffer::Buffer,
             format_aspect_mask,
             graphic::DepthStencilMode,
-            image::{Image, ImageInfo, ImageViewInfo, SampleCount},
+            image::{Image, ImageViewInfo},
             image_access_layout, is_read_access, is_write_access, pipeline_stage_access_flags,
             AttachmentInfo, AttachmentRef, CommandBuffer, DescriptorBinding, DescriptorInfo,
             DescriptorPool, DescriptorPoolInfo, DescriptorSet, Device, DriverError,
@@ -258,7 +258,7 @@ impl Resolver {
                     attachment_image.view_formats.insert(idx, attachment.format);
 
                     image_views[*attachment_idx as usize] = Image::view(
-                        &image,
+                        image,
                         ImageViewInfo {
                             array_layer_count: Some(image.info.array_elements),
                             aspect_mask: attachment.aspect_mask,
@@ -298,7 +298,7 @@ impl Resolver {
                     attachment_image.view_formats.insert(idx, attachment.format);
 
                     image_views[*attachment_idx as usize] = Image::view(
-                        &image,
+                        image,
                         ImageViewInfo {
                             array_layer_count: Some(image.info.array_elements),
                             aspect_mask: attachment.aspect_mask,
@@ -335,7 +335,7 @@ impl Resolver {
                     attachment_image.view_formats.insert(idx, attachment.format);
 
                     image_views[attachment_idx] = Image::view(
-                        &image,
+                        image,
                         ImageViewInfo {
                             array_layer_count: Some(image.info.array_elements),
                             aspect_mask: attachment.aspect_mask,
@@ -373,7 +373,7 @@ impl Resolver {
                     attachment_image.view_formats.insert(idx, attachment.format);
 
                     image_views[attachment_idx] = Image::view(
-                        &image,
+                        image,
                         ImageViewInfo {
                             array_layer_count: Some(image.info.array_elements),
                             aspect_mask: attachment.aspect_mask,
@@ -1204,11 +1204,11 @@ impl Resolver {
                     // same pass
                     for (other_idx, other) in pass.execs[0..exec_idx].iter().enumerate() {
                         // Look for color attachments we're reading
-                        for (attachment_idx, _) in &exec.color_loads {
+                        for attachment_idx in exec.color_loads.keys() {
                             // Look for writes in the other exec
-                            if other.color_clears.contains_key(&attachment_idx)
-                                || other.color_stores.contains_key(&attachment_idx)
-                                || other.color_resolves.contains_key(&attachment_idx)
+                            if other.color_clears.contains_key(attachment_idx)
+                                || other.color_stores.contains_key(attachment_idx)
+                                || other.color_resolves.contains_key(attachment_idx)
                             {
                                 let dep = dependencies.entry((other_idx, exec_idx)).or_insert_with(
                                     || SubpassDependency::new(other_idx as _, exec_idx as _),
@@ -1225,7 +1225,7 @@ impl Resolver {
                             }
 
                             // look for reads in the other exec
-                            if other.color_loads.contains_key(&attachment_idx) {
+                            if other.color_loads.contains_key(attachment_idx) {
                                 let dep = dependencies.entry((other_idx, exec_idx)).or_insert_with(
                                     || SubpassDependency::new(other_idx as _, exec_idx as _),
                                 );
@@ -1383,12 +1383,14 @@ impl Resolver {
                         if let Some(aspect_mask) = exec
                             .depth_stencil_clear
                             .map(|(attachment, _)| attachment.aspect_mask)
-                            .or(exec
-                                .depth_stencil_store
-                                .map(|attachment| attachment.aspect_mask))
-                            .or(exec
-                                .depth_stencil_resolve
-                                .map(|attachment| attachment.aspect_mask))
+                            .or_else(|| {
+                                exec.depth_stencil_store
+                                    .map(|attachment| attachment.aspect_mask)
+                            })
+                            .or_else(|| {
+                                exec.depth_stencil_resolve
+                                    .map(|attachment| attachment.aspect_mask)
+                            })
                         {
                             let stage = match aspect_mask {
                                 mask if mask.contains(vk::ImageAspectFlags::COLOR) => {
