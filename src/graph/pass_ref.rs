@@ -2413,6 +2413,29 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
         let node_idx = image.index();
         let (_, sample_count) = self.image_info(node_idx);
 
+        debug_assert!(
+            !self
+                .pass
+                .as_ref()
+                .execs
+                .last()
+                .unwrap()
+                .color_clears
+                .contains_key(&attachment_idx),
+            "color attachment {attachment_idx} already attached via clear"
+        );
+        debug_assert!(
+            !self
+                .pass
+                .as_ref()
+                .execs
+                .last()
+                .unwrap()
+                .color_loads
+                .contains_key(&attachment_idx),
+            "color attachment {attachment_idx} already attached via load"
+        );
+
         self.pass
             .as_mut()
             .execs
@@ -2428,6 +2451,49 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
                     target: node_idx,
                 },
             );
+
+        debug_assert!(
+            Attachment::are_compatible(
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .color_resolves
+                    .get(&attachment_idx)
+                    .map(|(attachment, _)| *attachment),
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .color_attachments
+                    .get(&attachment_idx)
+                    .copied()
+            ),
+            "color attachment {attachment_idx} incompatible with existing resolve"
+        );
+        debug_assert!(
+            Attachment::are_compatible(
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .color_stores
+                    .get(&attachment_idx)
+                    .copied(),
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .color_attachments
+                    .get(&attachment_idx)
+                    .copied()
+            ),
+            "color attachment {attachment_idx} incompatible with existing store"
+        );
 
         self.pass.push_node_access(
             image,
@@ -2464,17 +2530,68 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
         let node_idx = image.index();
         let (_, sample_count) = self.image_info(node_idx);
 
+        debug_assert!(
+            self.pass
+                .as_ref()
+                .execs
+                .last()
+                .unwrap()
+                .depth_stencil_clear
+                .is_none(),
+            "depth/stencil attachment already attached via clear"
+        );
+        debug_assert!(
+            self.pass
+                .as_ref()
+                .execs
+                .last()
+                .unwrap()
+                .depth_stencil_load
+                .is_none(),
+            "depth/stencil attachment already attached via load"
+        );
+
         self.pass
             .as_mut()
             .execs
             .last_mut()
             .unwrap()
-            .depth_stencil_load = Some(Attachment {
+            .depth_stencil_attachment = Some(Attachment {
             aspect_mask: image_view_info.aspect_mask,
             format: image_view_info.fmt,
             sample_count,
             target: node_idx,
         });
+
+        debug_assert!(
+            Attachment::are_compatible(
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .depth_stencil_resolve,
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .depth_stencil_attachment
+            ),
+            "depth/stencil attachment incompatible with existing resolve"
+        );
+        debug_assert!(
+            Attachment::are_compatible(
+                self.pass.as_ref().execs.last().unwrap().depth_stencil_store,
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .depth_stencil_attachment
+            ),
+            "depth/stencil attachment incompatible with existing store"
+        );
 
         self.pass.push_node_access(
             image,
@@ -2541,6 +2658,29 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
 
         let color = color.into();
 
+        debug_assert!(
+            !self
+                .pass
+                .as_ref()
+                .execs
+                .last()
+                .unwrap()
+                .color_attachments
+                .contains_key(&attachment_idx),
+            "color attachment {attachment_idx} already attached"
+        );
+        debug_assert!(
+            !self
+                .pass
+                .as_ref()
+                .execs
+                .last()
+                .unwrap()
+                .color_loads
+                .contains_key(&attachment_idx),
+            "color attachment {attachment_idx} already attached via load"
+        );
+
         self.pass
             .as_mut()
             .execs
@@ -2559,6 +2699,49 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
                     color,
                 ),
             );
+
+        debug_assert!(
+            Attachment::are_compatible(
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .color_resolves
+                    .get(&attachment_idx)
+                    .map(|(attachment, _)| *attachment),
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .color_clears
+                    .get(&attachment_idx)
+                    .map(|(attachment, _)| *attachment)
+            ),
+            "color attachment {attachment_idx} clear incompatible with existing resolve"
+        );
+        debug_assert!(
+            Attachment::are_compatible(
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .color_stores
+                    .get(&attachment_idx)
+                    .copied(),
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .color_clears
+                    .get(&attachment_idx)
+                    .map(|(attachment, _)| *attachment)
+            ),
+            "color attachment {attachment_idx} clear incompatible with existing store"
+        );
 
         self.pass.push_node_access(
             image,
@@ -2607,6 +2790,27 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
         let node_idx = image.index();
         let (_, sample_count) = self.image_info(node_idx);
 
+        debug_assert!(
+            self.pass
+                .as_ref()
+                .execs
+                .last()
+                .unwrap()
+                .depth_stencil_attachment
+                .is_none(),
+            "depth/stencil attachment already attached"
+        );
+        debug_assert!(
+            self.pass
+                .as_ref()
+                .execs
+                .last()
+                .unwrap()
+                .depth_stencil_load
+                .is_none(),
+            "depth/stencil attachment already attached via load"
+        );
+
         self.pass
             .as_mut()
             .execs
@@ -2621,6 +2825,38 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             },
             vk::ClearDepthStencilValue { depth, stencil },
         ));
+
+        debug_assert!(
+            Attachment::are_compatible(
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .depth_stencil_resolve,
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .depth_stencil_clear
+                    .map(|(attachment, _)| attachment)
+            ),
+            "depth/stencil attachment clear incompatible with existing resolve"
+        );
+        debug_assert!(
+            Attachment::are_compatible(
+                self.pass.as_ref().execs.last().unwrap().depth_stencil_store,
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .depth_stencil_clear
+                    .map(|(attachment, _)| attachment)
+            ),
+            "depth/stencil attachment clear incompatible with existing store"
+        );
 
         self.pass.push_node_access(
             image,
@@ -2671,6 +2907,29 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
         let node_idx = image.index();
         let (_, sample_count) = self.image_info(node_idx);
 
+        debug_assert!(
+            !self
+                .pass
+                .as_ref()
+                .execs
+                .last()
+                .unwrap()
+                .color_attachments
+                .contains_key(&attachment_idx),
+            "color attachment {attachment_idx} already attached"
+        );
+        debug_assert!(
+            !self
+                .pass
+                .as_ref()
+                .execs
+                .last()
+                .unwrap()
+                .color_clears
+                .contains_key(&attachment_idx),
+            "color attachment {attachment_idx} already attached via clear"
+        );
+
         self.pass
             .as_mut()
             .execs
@@ -2686,6 +2945,49 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
                     target: node_idx,
                 },
             );
+
+        debug_assert!(
+            Attachment::are_compatible(
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .color_resolves
+                    .get(&attachment_idx)
+                    .map(|(attachment, _)| *attachment),
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .color_loads
+                    .get(&attachment_idx)
+                    .copied()
+            ),
+            "color attachment {attachment_idx} load incompatible with existing resolve"
+        );
+        debug_assert!(
+            Attachment::are_compatible(
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .color_stores
+                    .get(&attachment_idx)
+                    .copied(),
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .color_loads
+                    .get(&attachment_idx)
+                    .copied()
+            ),
+            "color attachment {attachment_idx} load incompatible with existing store"
+        );
 
         self.pass.push_node_access(
             image,
@@ -2722,6 +3024,27 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
         let node_idx = image.index();
         let (_, sample_count) = self.image_info(node_idx);
 
+        debug_assert!(
+            self.pass
+                .as_ref()
+                .execs
+                .last()
+                .unwrap()
+                .depth_stencil_attachment
+                .is_none(),
+            "depth/stencil attachment already attached"
+        );
+        debug_assert!(
+            self.pass
+                .as_ref()
+                .execs
+                .last()
+                .unwrap()
+                .depth_stencil_clear
+                .is_none(),
+            "depth/stencil attachment already attached via clear"
+        );
+
         self.pass
             .as_mut()
             .execs
@@ -2733,6 +3056,26 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             sample_count,
             target: node_idx,
         });
+
+        debug_assert!(
+            Attachment::are_compatible(
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .depth_stencil_resolve,
+                self.pass.as_ref().execs.last().unwrap().depth_stencil_load
+            ),
+            "depth/stencil attachment load incompatible with existing resolve"
+        );
+        debug_assert!(
+            Attachment::are_compatible(
+                self.pass.as_ref().execs.last().unwrap().depth_stencil_store,
+                self.pass.as_ref().execs.last().unwrap().depth_stencil_load
+            ),
+            "depth/stencil attachment load incompatible with existing store"
+        );
 
         self.pass.push_node_access(
             image,
@@ -2852,6 +3195,70 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
                 ),
             );
 
+        debug_assert!(
+            Attachment::are_compatible(
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .color_attachments
+                    .get(&dst_attachment_idx)
+                    .copied(),
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .color_resolves
+                    .get(&dst_attachment_idx)
+                    .map(|(attachment, _)| *attachment)
+            ),
+            "color attachment {dst_attachment_idx} resolve incompatible with existing attachment"
+        );
+        debug_assert!(
+            Attachment::are_compatible(
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .color_clears
+                    .get(&dst_attachment_idx)
+                    .map(|(attachment, _)| *attachment),
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .color_resolves
+                    .get(&dst_attachment_idx)
+                    .map(|(attachment, _)| *attachment)
+            ),
+            "color attachment {dst_attachment_idx} resolve incompatible with existing clear"
+        );
+        debug_assert!(
+            Attachment::are_compatible(
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .color_loads
+                    .get(&dst_attachment_idx)
+                    .copied(),
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .color_resolves
+                    .get(&dst_attachment_idx)
+                    .map(|(attachment, _)| *attachment)
+            ),
+            "color attachment {dst_attachment_idx} resolve incompatible with existing load"
+        );
+
         self.pass.push_node_access(
             image,
             AccessType::ColorAttachmentWrite,
@@ -2898,6 +3305,54 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             sample_count,
             target: node_idx,
         });
+
+        debug_assert!(
+            Attachment::are_compatible(
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .depth_stencil_attachment,
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .depth_stencil_resolve
+            ),
+            "depth/stencil attachment resolve incompatible with existing attachment"
+        );
+        debug_assert!(
+            Attachment::are_compatible(
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .depth_stencil_clear
+                    .map(|(attachment, _)| attachment),
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .depth_stencil_resolve
+            ),
+            "depth/stencil attachment resolve incompatible with existing clear"
+        );
+        debug_assert!(
+            Attachment::are_compatible(
+                self.pass.as_ref().execs.last().unwrap().depth_stencil_load,
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .depth_stencil_resolve
+            ),
+            "depth/stencil attachment resolve incompatible with existing load"
+        );
 
         self.pass.push_node_access(
             image,
@@ -2999,6 +3454,70 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
                 },
             );
 
+        debug_assert!(
+            Attachment::are_compatible(
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .color_attachments
+                    .get(&attachment_idx)
+                    .copied(),
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .color_stores
+                    .get(&attachment_idx)
+                    .copied()
+            ),
+            "color attachment {attachment_idx} store incompatible with existing attachment"
+        );
+        debug_assert!(
+            Attachment::are_compatible(
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .color_clears
+                    .get(&attachment_idx)
+                    .map(|(attachment, _)| *attachment),
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .color_stores
+                    .get(&attachment_idx)
+                    .copied()
+            ),
+            "color attachment {attachment_idx} store incompatible with existing clear"
+        );
+        debug_assert!(
+            Attachment::are_compatible(
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .color_loads
+                    .get(&attachment_idx)
+                    .copied(),
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .color_stores
+                    .get(&attachment_idx)
+                    .copied()
+            ),
+            "color attachment {attachment_idx} store incompatible with existing load"
+        );
+
         self.pass.push_node_access(
             image,
             AccessType::ColorAttachmentWrite,
@@ -3045,6 +3564,39 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             sample_count,
             target: node_idx,
         });
+
+        debug_assert!(
+            Attachment::are_compatible(
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .depth_stencil_attachment,
+                self.pass.as_ref().execs.last().unwrap().depth_stencil_store
+            ),
+            "depth/stencil attachment store incompatible with existing attachment"
+        );
+        debug_assert!(
+            Attachment::are_compatible(
+                self.pass
+                    .as_ref()
+                    .execs
+                    .last()
+                    .unwrap()
+                    .depth_stencil_clear
+                    .map(|(attachment, _)| attachment),
+                self.pass.as_ref().execs.last().unwrap().depth_stencil_store
+            ),
+            "depth/stencil attachment store incompatible with existing clear"
+        );
+        debug_assert!(
+            Attachment::are_compatible(
+                self.pass.as_ref().execs.last().unwrap().depth_stencil_load,
+                self.pass.as_ref().execs.last().unwrap().depth_stencil_store
+            ),
+            "depth/stencil attachment store incompatible with existing load"
+        );
 
         self.pass.push_node_access(
             image,

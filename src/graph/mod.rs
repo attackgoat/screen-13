@@ -11,8 +11,6 @@ mod info;
 mod resolver;
 mod swapchain;
 
-use std::collections::BTreeMap;
-
 pub use self::{
     binding::{Bind, Unbind},
     resolver::{Resolver, ResolverPool},
@@ -45,7 +43,7 @@ use {
     ash::vk,
     std::{
         cmp::Ord,
-        collections::HashMap,
+        collections::{BTreeMap, HashMap},
         fmt::{Debug, Formatter},
         ops::Range,
         sync::Arc,

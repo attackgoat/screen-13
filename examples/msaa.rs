@@ -18,8 +18,8 @@ fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
     let mut keyboard = KeyBuf::default();
-    let event_loop = EventLoop::new().debug(true).build()?;
-    let sample_count = max_supported_sample_count(&event_loop);
+    let event_loop = EventLoop::new().build()?;
+    let sample_count = max_supported_sample_count(&event_loop.device);
     let mesh_msaa_pipeline = create_mesh_pipeline(&event_loop.device, sample_count)?;
     let mesh_noaa_pipeline = create_mesh_pipeline(&event_loop.device, SampleCount::X1)?;
     let cube_mesh = load_cube_mesh(&event_loop.device)?;
@@ -137,9 +137,8 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn max_supported_sample_count(event_loop: &EventLoop) -> SampleCount {
-    let limit = event_loop
-        .device
+fn max_supported_sample_count(device: &Device) -> SampleCount {
+    let limit = device
         .physical_device
         .props
         .limits
