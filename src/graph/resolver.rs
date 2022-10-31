@@ -1,7 +1,7 @@
 use {
     super::{
-        Area, Binding, Bindings, Edge, Execution, ExecutionPipeline, Node, Pass, RenderGraph,
-        Unbind,
+        Area, Attachment, Binding, Bindings, Edge, Execution, ExecutionPipeline, Node, Pass,
+        RenderGraph, Unbind,
     },
     crate::{
         driver::{
@@ -84,13 +84,16 @@ impl Resolver {
 
         // Both must have graphic pipelines
         if lhs_pipeline.is_none() || rhs_pipeline.is_none() {
-            if lhs_pipeline.is_none() {
-                trace!("  {} is not graphic", lhs.name);
-            }
-
-            if rhs_pipeline.is_none() {
-                trace!("  {} is not graphic", rhs.name);
-            }
+            trace!(
+                "  {} is {}graphic",
+                lhs.name,
+                if lhs_pipeline.is_none() { "not " } else { "" }
+            );
+            trace!(
+                "  {} is {}graphic",
+                rhs.name,
+                if rhs_pipeline.is_none() { "not " } else { "" }
+            );
 
             return false;
         }
@@ -110,39 +113,99 @@ impl Resolver {
             return false;
         }
 
-        let rhs_first_exec = rhs.execs.first().unwrap();
+        let rhs_exec = rhs.execs.first().unwrap();
+        let rhs_depth_stencil = rhs_exec
+            .depth_stencil_attachment
+            .or(rhs_exec.depth_stencil_load)
+            .or(rhs_exec.depth_stencil_resolve)
+            .or(rhs_exec.depth_stencil_store)
+            .or_else(|| {
+                rhs_exec
+                    .depth_stencil_clear
+                    .map(|(attachment, _)| attachment)
+            });
 
         // Now we need to know what the subpasses (we may have prior merges) wrote
         for lhs_exec in lhs.execs.iter().rev() {
-            // // Compare individual color/depth+stencil attachments for compatibility
-            // if !lhs_resolves.are_compatible(&rhs_first_exec.loads)
-            //     || !lhs_stores.are_compatible(&rhs_first_exec.loads)
-            // {
-            //     trace!("  incompatible attachments");
+            let mut common_color_attachment = false;
 
-            //     return false;
-            // }
+            // Compare individual color attachments for compatibility
+            for (attachment_idx, lhs_attachment) in lhs_exec
+                .color_attachments
+                .iter()
+                .chain(lhs_exec.color_loads.iter())
+                .chain(lhs_exec.color_stores.iter())
+                .chain(
+                    lhs_exec
+                        .color_clears
+                        .iter()
+                        .map(|(attachment_idx, (attachment, _))| (attachment_idx, attachment)),
+                )
+                .chain(
+                    lhs_exec
+                        .color_resolves
+                        .iter()
+                        .map(|(attachment_idx, (attachment, _))| (attachment_idx, attachment)),
+                )
+            {
+                let rhs_attachment = rhs_exec
+                    .color_attachments
+                    .get(attachment_idx)
+                    .or_else(|| rhs_exec.color_loads.get(attachment_idx))
+                    .or_else(|| rhs_exec.color_stores.get(attachment_idx))
+                    .or_else(|| {
+                        rhs_exec
+                            .color_clears
+                            .get(attachment_idx)
+                            .map(|(attachment, _)| attachment)
+                    })
+                    .or_else(|| {
+                        rhs_exec
+                            .color_resolves
+                            .get(attachment_idx)
+                            .map(|(attachment, _)| attachment)
+                    });
 
-            // // Keep color and depth on tile.
-            // for node_idx in rhs_first_exec.loads.images() {
-            //     if lhs_resolves.contains_image(node_idx) || lhs_stores.contains_image(node_idx) {
-            //         trace!("  merging due to common image");
+                if !Attachment::are_compatible(Some(*lhs_attachment), rhs_attachment.copied()) {
+                    trace!("  incompatible color attachments");
 
-            //         return true;
-            //     }
-            // }
+                    return false;
+                } else {
+                    common_color_attachment = true;
+                }
+            }
+
+            // Compare depth/stencil attachments for compatibility
+            let lhs_depth_stencil = lhs_exec
+                .depth_stencil_attachment
+                .or(lhs_exec.depth_stencil_load)
+                .or(lhs_exec.depth_stencil_resolve)
+                .or(lhs_exec.depth_stencil_store)
+                .or_else(|| {
+                    lhs_exec
+                        .depth_stencil_clear
+                        .map(|(attachment, _)| attachment)
+                });
+            if !Attachment::are_compatible(lhs_depth_stencil, rhs_depth_stencil) {
+                trace!("  incompatible depth/stencil attachments");
+
+                return false;
+            }
+
+            let common_depth_attachment =
+                lhs_depth_stencil.is_some() && rhs_depth_stencil.is_some();
+
+            // Keep color and depth on tile.
+            if common_color_attachment || common_depth_attachment {
+                trace!("  merging due to common image");
+
+                return true;
+            }
         }
 
         // Keep input on tile
-        if rhs_pipeline
-            .descriptor_info
-            .pool_sizes
-            .values()
-            .filter_map(|pool_size| pool_size.get(&vk::DescriptorType::INPUT_ATTACHMENT))
-            .next()
-            .is_some()
-        {
-            trace!("  merging due to input");
+        if !rhs_pipeline.input_attachments.is_empty() {
+            trace!("  merging due to subpass input");
 
             return true;
         }

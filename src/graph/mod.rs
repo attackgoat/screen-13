@@ -72,22 +72,22 @@ struct Attachment {
     target: NodeIndex,
 }
 
-// impl Attachment {
-//     fn are_compatible(lhs: Option<Self>, rhs: Option<Self>) -> bool {
-//         // Two attachment references are compatible if they have matching format and sample
-//         // count, or are both VK_ATTACHMENT_UNUSED or the pointer that would contain the
-//         // reference is NULL.
-//         if lhs.is_none() || rhs.is_none() {
-//             return true;
-//         }
+impl Attachment {
+    fn are_compatible(lhs: Option<Self>, rhs: Option<Self>) -> bool {
+        // Two attachment references are compatible if they have matching format and sample
+        // count, or are both VK_ATTACHMENT_UNUSED or the pointer that would contain the
+        // reference is NULL.
+        if lhs.is_none() || rhs.is_none() {
+            return true;
+        }
 
-//         Self::are_identical(lhs.unwrap(), rhs.unwrap())
-//     }
+        Self::are_identical(lhs.unwrap(), rhs.unwrap())
+    }
 
-//     pub fn are_identical(lhs: Self, rhs: Self) -> bool {
-//         lhs.fmt == rhs.fmt && lhs.sample_count == rhs.sample_count && lhs.target == rhs.target
-//     }
-// }
+    pub fn are_identical(lhs: Self, rhs: Self) -> bool {
+        lhs.format == rhs.format && lhs.sample_count == rhs.sample_count && lhs.target == rhs.target
+    }
+}
 
 /// Specifies a color attachment clear value which can be used to initliaze an image.
 #[derive(Clone, Copy, Debug)]
