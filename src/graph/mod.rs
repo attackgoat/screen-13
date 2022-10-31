@@ -38,7 +38,7 @@ use {
         is_write_access,
         ray_trace::RayTracePipeline,
         shader::PipelineDescriptorInfo,
-        DescriptorBindingMap, Device,
+        DescriptorBindingMap, Device, ResolveMode,
     },
     ash::vk,
     std::{
@@ -123,7 +123,12 @@ struct Execution {
     depth_stencil_attachment: Option<Attachment>,
     depth_stencil_clear: Option<(Attachment, vk::ClearDepthStencilValue)>,
     depth_stencil_load: Option<Attachment>,
-    depth_stencil_resolve: Option<Attachment>,
+    depth_stencil_resolve: Option<(
+        Attachment,
+        AttachmentIndex,
+        Option<ResolveMode>,
+        Option<ResolveMode>,
+    )>,
     depth_stencil_store: Option<Attachment>,
 
     func: Option<ExecutionFunction>,

@@ -117,8 +117,12 @@ impl Resolver {
         let rhs_depth_stencil = rhs_exec
             .depth_stencil_attachment
             .or(rhs_exec.depth_stencil_load)
-            .or(rhs_exec.depth_stencil_resolve)
             .or(rhs_exec.depth_stencil_store)
+            .or_else(|| {
+                rhs_exec
+                    .depth_stencil_resolve
+                    .map(|(attachment, ..)| attachment)
+            })
             .or_else(|| {
                 rhs_exec
                     .depth_stencil_clear
@@ -179,8 +183,12 @@ impl Resolver {
             let lhs_depth_stencil = lhs_exec
                 .depth_stencil_attachment
                 .or(lhs_exec.depth_stencil_load)
-                .or(lhs_exec.depth_stencil_resolve)
                 .or(lhs_exec.depth_stencil_store)
+                .or_else(|| {
+                    lhs_exec
+                        .depth_stencil_resolve
+                        .map(|(attachment, ..)| attachment)
+                })
                 .or_else(|| {
                     lhs_exec
                         .depth_stencil_clear
@@ -376,7 +384,8 @@ impl Resolver {
             }
 
             if let Some((attachment, clear_value)) = &exec.depth_stencil_clear {
-                let attachment_idx = attachments.len() - 1;
+                let attachment_idx =
+                    attachments.len() - 1 - exec.depth_stencil_resolve.is_some() as usize;
                 let attachment_image = &mut attachments[attachment_idx];
                 if let Err(idx) = attachment_image
                     .view_formats
@@ -416,7 +425,43 @@ impl Resolver {
                 .depth_stencil_attachment
                 .or(exec.depth_stencil_load)
                 .or(exec.depth_stencil_store)
-                .or(exec.depth_stencil_resolve)
+            {
+                let attachment_idx =
+                    attachments.len() - 1 - exec.depth_stencil_resolve.is_some() as usize;
+                let attachment_image = &mut attachments[attachment_idx];
+                if let Err(idx) = attachment_image
+                    .view_formats
+                    .binary_search(&attachment.format)
+                {
+                    let image = self.graph.bindings[attachment.target]
+                        .as_driver_image()
+                        .unwrap();
+
+                    attachment_image.flags = image.info.flags;
+                    attachment_image.usage = image.info.usage;
+                    attachment_image.width = image.info.width;
+                    attachment_image.height = image.info.height;
+                    attachment_image.layer_count = image.info.array_elements;
+                    attachment_image.view_formats.insert(idx, attachment.format);
+
+                    image_views[attachment_idx] = Image::view(
+                        image,
+                        ImageViewInfo {
+                            array_layer_count: Some(image.info.array_elements),
+                            aspect_mask: attachment.aspect_mask,
+                            base_array_layer: 0,
+                            base_mip_level: 0,
+                            fmt: attachment.format,
+                            mip_level_count: Some(1),
+                            ty: image.info.ty,
+                        },
+                    )?;
+                }
+            }
+
+            if let Some(attachment) = exec
+                .depth_stencil_resolve
+                .map(|(attachment, ..)| attachment)
             {
                 let attachment_idx = attachments.len() - 1;
                 let attachment_image = &mut attachments[attachment_idx];
@@ -742,7 +787,7 @@ impl Resolver {
         pass_idx: usize,
     ) -> Result<Lease<RenderPass>, DriverError> {
         let pass = &self.graph.passes[pass_idx];
-        let (mut color_attachment_count, mut has_depth) = (0, false);
+        let (mut color_attachment_count, mut depth_stencil_attachment_count) = (0, 0);
         for exec in &pass.execs {
             color_attachment_count = color_attachment_count
                 .max(
@@ -780,13 +825,17 @@ impl Resolver {
                         .map(|attachment_idx| attachment_idx + 1)
                         .unwrap_or_default() as usize,
                 );
-            has_depth |= exec.depth_stencil_attachment.is_some()
+            let has_depth_stencil_attachment = exec.depth_stencil_attachment.is_some()
                 || exec.depth_stencil_clear.is_some()
                 || exec.depth_stencil_load.is_some()
                 || exec.depth_stencil_store.is_some();
+            let has_depth_stencil_resolve = exec.depth_stencil_resolve.is_some();
+
+            depth_stencil_attachment_count = depth_stencil_attachment_count
+                .max(has_depth_stencil_attachment as usize + has_depth_stencil_resolve as usize);
         }
 
-        let attachment_count = color_attachment_count + has_depth as usize;
+        let attachment_count = color_attachment_count + depth_stencil_attachment_count;
         let mut attachments = Vec::with_capacity(attachment_count);
         attachments.resize_with(attachment_count, AttachmentInfo::default);
 
@@ -837,7 +886,7 @@ impl Resolver {
 
             // Cleared depth/stencil attachment
             if let Some((cleared_attachment, _)) = first_exec.depth_stencil_clear {
-                let attachment = attachments.last_mut().unwrap();
+                let attachment = &mut attachments[color_attachment_count];
                 attachment.fmt = cleared_attachment.format;
                 attachment.sample_count = cleared_attachment.sample_count;
                 attachment.initial_layout = if cleared_attachment
@@ -863,7 +912,7 @@ impl Resolver {
                 attachment.final_layout = attachment.initial_layout;
             } else if let Some(loaded_attachment) = first_exec.depth_stencil_load {
                 // Loaded depth/stencil attachment
-                let attachment = attachments.last_mut().unwrap();
+                let attachment = &mut attachments[color_attachment_count];
                 attachment.fmt = loaded_attachment.format;
                 attachment.sample_count = loaded_attachment.sample_count;
                 attachment.initial_layout = if loaded_attachment
@@ -889,8 +938,29 @@ impl Resolver {
                 attachment.final_layout = attachment.initial_layout;
             }
 
+            // Stored depth/stencil attachment
+            if let Some(stored_attachment) = first_exec.depth_stencil_store {
+                let attachment = &mut attachments[color_attachment_count];
+                attachment.fmt = stored_attachment.format;
+                attachment.sample_count = stored_attachment.sample_count;
+                attachment.initial_layout = if stored_attachment
+                    .aspect_mask
+                    .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
+                {
+                    vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                } else if stored_attachment
+                    .aspect_mask
+                    .contains(vk::ImageAspectFlags::DEPTH)
+                {
+                    vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
+                } else {
+                    vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
+                };
+                attachment.final_layout = attachment.initial_layout;
+            }
+
             // Resolved depth/stencil attachment
-            if let Some(resolved_attachment) = first_exec.depth_stencil_resolve {
+            if let Some((resolved_attachment, ..)) = first_exec.depth_stencil_resolve {
                 let attachment = attachments.last_mut().unwrap();
                 attachment.fmt = resolved_attachment.format;
                 attachment.sample_count = resolved_attachment.sample_count;
@@ -900,25 +970,6 @@ impl Resolver {
                 {
                     vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
                 } else if resolved_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH)
-                {
-                    vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
-                } else {
-                    vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
-                };
-                attachment.final_layout = attachment.initial_layout;
-            } else if let Some(stored_attachment) = first_exec.depth_stencil_store {
-                // Stored depth/stencil attachment
-                let attachment = attachments.last_mut().unwrap();
-                attachment.fmt = stored_attachment.format;
-                attachment.sample_count = stored_attachment.sample_count;
-                attachment.initial_layout = if stored_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
-                {
-                    vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                } else if stored_attachment
                     .aspect_mask
                     .contains(vk::ImageAspectFlags::DEPTH)
                 {
@@ -947,25 +998,9 @@ impl Resolver {
                 attachment.final_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
             }
 
-            // Resolved depth/stencil attachment
-            if let Some(resolved_attachment) = last_exec.depth_stencil_resolve {
-                let attachment = attachments.last_mut().unwrap();
-                attachment.final_layout = if resolved_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
-                {
-                    vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                } else if resolved_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH)
-                {
-                    vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
-                } else {
-                    vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
-                };
-            } else if let Some(stored_attachment) = last_exec.depth_stencil_store {
-                // Stored depth/stencil attachment
-                let attachment = attachments.last_mut().unwrap();
+            // Stored depth/stencil attachment
+            if let Some(stored_attachment) = last_exec.depth_stencil_store {
+                let attachment = &mut attachments[color_attachment_count];
                 attachment.final_layout = if stored_attachment
                     .aspect_mask
                     .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
@@ -984,6 +1019,24 @@ impl Resolver {
                 } else {
                     attachment.stencil_store_op = vk::AttachmentStoreOp::STORE;
 
+                    vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
+                };
+            }
+
+            // Resolved depth/stencil attachment
+            if let Some((resolved_attachment, ..)) = last_exec.depth_stencil_resolve {
+                let attachment = attachments.last_mut().unwrap();
+                attachment.final_layout = if resolved_attachment
+                    .aspect_mask
+                    .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
+                {
+                    vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                } else if resolved_attachment
+                    .aspect_mask
+                    .contains(vk::ImageAspectFlags::DEPTH)
+                {
+                    vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
+                } else {
                     vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
                 };
             }
@@ -1069,7 +1122,9 @@ impl Resolver {
                 .or(exec.depth_stencil_store)
                 .or_else(|| exec.depth_stencil_clear.map(|(attachment, _)| attachment))
             {
-                let is_random_access = exec.depth_stencil_store.is_some();
+                let is_random_access = exec.depth_stencil_clear.is_some()
+                    || exec.depth_stencil_load.is_some()
+                    || exec.depth_stencil_store.is_some();
                 subpass_info.depth_stencil_attachment = Some(AttachmentRef {
                     attachment: color_attachment_count as u32,
                     aspect_mask: depth_stencil.aspect_mask,
@@ -1082,7 +1137,7 @@ impl Resolver {
             }
 
             // Set color resolves to defaults
-            subpass_info.resolve_attachments.extend(
+            subpass_info.color_resolve_attachments.extend(
                 repeat(AttachmentRef {
                     attachment: vk::ATTACHMENT_UNUSED,
                     aspect_mask: vk::ImageAspectFlags::empty(),
@@ -1099,15 +1154,38 @@ impl Resolver {
                     .input_attachments
                     .iter()
                     .any(|input| input.attachment == *dst_attachment_idx);
-                subpass_info.resolve_attachments[*src_attachment_idx as usize] = AttachmentRef {
-                    attachment: *dst_attachment_idx,
-                    aspect_mask: resolved_attachment.aspect_mask,
-                    layout: Self::attachment_layout(
-                        resolved_attachment.aspect_mask,
-                        true,
-                        is_input,
-                    ),
-                };
+                subpass_info.color_resolve_attachments[*src_attachment_idx as usize] =
+                    AttachmentRef {
+                        attachment: *dst_attachment_idx,
+                        aspect_mask: resolved_attachment.aspect_mask,
+                        layout: Self::attachment_layout(
+                            resolved_attachment.aspect_mask,
+                            true,
+                            is_input,
+                        ),
+                    };
+            }
+
+            if let Some((
+                resolved_attachment,
+                dst_attachment_idx,
+                depth_resolve_mode,
+                stencil_resolve_mode,
+            )) = exec.depth_stencil_resolve
+            {
+                subpass_info.depth_stencil_resolve_attachment = Some((
+                    AttachmentRef {
+                        attachment: dst_attachment_idx + 1,
+                        aspect_mask: resolved_attachment.aspect_mask,
+                        layout: Self::attachment_layout(
+                            resolved_attachment.aspect_mask,
+                            true,
+                            false,
+                        ),
+                    },
+                    depth_resolve_mode,
+                    stencil_resolve_mode,
+                ))
             }
 
             subpasses.push(subpass_info);
@@ -1452,7 +1530,7 @@ impl Resolver {
                             })
                             .or_else(|| {
                                 exec.depth_stencil_resolve
-                                    .map(|attachment| attachment.aspect_mask)
+                                    .map(|(attachment, ..)| attachment.aspect_mask)
                             })
                         {
                             let stage = match aspect_mask {

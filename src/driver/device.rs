@@ -1,8 +1,8 @@
 use {
     super::{
         DriverConfig, DriverError, Instance, PhysicalDevice,
-        PhysicalDeviceDescriptorIndexingFeatures, PhysicalDeviceRayTracePipelineProperties, Queue,
-        SamplerDesc, Surface,
+        PhysicalDeviceDepthStencilResolveProperties, PhysicalDeviceDescriptorIndexingFeatures,
+        PhysicalDeviceRayTracePipelineProperties, Queue, SamplerDesc, Surface,
     },
     ash::{extensions::khr, vk},
     gpu_allocator::{
@@ -30,6 +30,9 @@ pub struct Device {
     pub(crate) accel_struct_ext: Option<khr::AccelerationStructure>,
     pub(super) allocator: Option<Mutex<Allocator>>,
 
+    /// Describes the properties of the device which relate to depth/stencil resolve operations.
+    pub depth_stencil_resolve_properties: PhysicalDeviceDepthStencilResolveProperties,
+
     /// Describes the features of the device which relate to descriptor indexing.
     pub descriptor_indexing_features: PhysicalDeviceDescriptorIndexingFeatures,
 
@@ -45,7 +48,7 @@ pub struct Device {
 
     pub(crate) ray_tracing_pipeline_ext: Option<khr::RayTracingPipeline>,
 
-    /// Describes the features of the device which relate to ray tracing, if available.
+    /// Describes the properties of the device which relate to ray tracing, if available.
     pub ray_tracing_pipeline_properties: Option<PhysicalDeviceRayTracePipelineProperties>,
 
     pub(super) surface_ext: Option<khr::Surface>,
@@ -300,6 +303,11 @@ impl Device {
 
             let mut physical_properties = vk::PhysicalDeviceProperties2::builder();
 
+            let mut depth_stencil_resolve_properties =
+                vk::PhysicalDeviceDepthStencilResolveProperties::default();
+            physical_properties =
+                physical_properties.push_next(&mut depth_stencil_resolve_properties);
+
             if features.ray_tracing {
                 physical_properties =
                     physical_properties.push_next(&mut ray_tracing_pipeline_properties);
@@ -307,6 +315,8 @@ impl Device {
 
             let mut physical_properties = physical_properties.build();
             get_physical_device_properties2(*physical_device, &mut physical_properties);
+
+            let depth_stencil_resolve_properties = depth_stencil_resolve_properties.into();
 
             let ray_tracing_pipeline_properties = if features.ray_tracing {
                 Some(ray_tracing_pipeline_properties.into())
@@ -372,6 +382,7 @@ impl Device {
             Ok(Self {
                 accel_struct_ext,
                 allocator: Some(Mutex::new(allocator)),
+                depth_stencil_resolve_properties,
                 descriptor_indexing_features,
                 device,
                 immutable_samplers,

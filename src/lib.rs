@@ -342,7 +342,7 @@ pub mod prelude {
                 AccessType, Device, Driver, DriverConfig, DriverConfigBuilder, DriverError,
                 FeatureFlags, PhysicalDevice, PhysicalDeviceDescriptorIndexingFeatures,
                 PhysicalDeviceRayTracePipelineProperties, Queue, QueueFamily,
-                QueueFamilyProperties,
+                QueueFamilyProperties, ResolveMode,
             },
             event_loop::{EventLoop, EventLoopBuilder, FullscreenMode},
             frame::{center_cursor, set_cursor_position, FrameContext},

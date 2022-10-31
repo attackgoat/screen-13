@@ -15,7 +15,7 @@ use {
         graphic::{DepthStencilMode, GraphicPipeline},
         image::{Image, ImageSubresource, ImageViewInfo},
         ray_trace::RayTracePipeline,
-        Device,
+        Device, ResolveMode,
     },
     ash::vk,
     log::trace,
@@ -2570,7 +2570,8 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
                     .execs
                     .last()
                     .unwrap()
-                    .depth_stencil_resolve,
+                    .depth_stencil_resolve
+                    .map(|(attachment, ..)| attachment),
                 self.pass
                     .as_ref()
                     .execs
@@ -2833,7 +2834,8 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
                     .execs
                     .last()
                     .unwrap()
-                    .depth_stencil_resolve,
+                    .depth_stencil_resolve
+                    .map(|(attachment, ..)| attachment),
                 self.pass
                     .as_ref()
                     .execs
@@ -3064,7 +3066,8 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
                     .execs
                     .last()
                     .unwrap()
-                    .depth_stencil_resolve,
+                    .depth_stencil_resolve
+                    .map(|(attachment, ..)| attachment),
                 self.pass.as_ref().execs.last().unwrap().depth_stencil_load
             ),
             "depth/stencil attachment load incompatible with existing resolve"
@@ -3272,12 +3275,24 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
     /// attachment.
     ///
     /// _NOTE:_ Order matters, call resolve after clear or load.
-    pub fn resolve_depth_stencil(self, image: impl Into<AnyImageNode>) -> Self {
+    pub fn resolve_depth_stencil(
+        self,
+        dst_attachment_idx: AttachmentIndex,
+        image: impl Into<AnyImageNode>,
+        depth_mode: Option<ResolveMode>,
+        stencil_mode: Option<ResolveMode>,
+    ) -> Self {
         let image: AnyImageNode = image.into();
         let image_info = image.get(self.pass.graph);
         let image_view_info: ImageViewInfo = image_info.into();
 
-        self.resolve_depth_stencil_as(image, image_view_info)
+        self.resolve_depth_stencil_as(
+            dst_attachment_idx,
+            image,
+            image_view_info,
+            depth_mode,
+            stencil_mode,
+        )
     }
 
     /// Resolves a multisample framebuffer to a non-multisample image for the render pass
@@ -3286,8 +3301,11 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
     /// _NOTE:_ Order matters, call resolve after clear or load.
     pub fn resolve_depth_stencil_as(
         mut self,
+        dst_attachment_idx: AttachmentIndex,
         image: impl Into<AnyImageNode>,
         image_view_info: impl Into<ImageViewInfo>,
+        depth_mode: Option<ResolveMode>,
+        stencil_mode: Option<ResolveMode>,
     ) -> Self {
         let image = image.into();
         let image_view_info = image_view_info.into();
@@ -3299,60 +3317,17 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             .execs
             .last_mut()
             .unwrap()
-            .depth_stencil_resolve = Some(Attachment {
-            aspect_mask: image_view_info.aspect_mask,
-            format: image_view_info.fmt,
-            sample_count,
-            target: node_idx,
-        });
-
-        debug_assert!(
-            Attachment::are_compatible(
-                self.pass
-                    .as_ref()
-                    .execs
-                    .last()
-                    .unwrap()
-                    .depth_stencil_attachment,
-                self.pass
-                    .as_ref()
-                    .execs
-                    .last()
-                    .unwrap()
-                    .depth_stencil_resolve
-            ),
-            "depth/stencil attachment resolve incompatible with existing attachment"
-        );
-        debug_assert!(
-            Attachment::are_compatible(
-                self.pass
-                    .as_ref()
-                    .execs
-                    .last()
-                    .unwrap()
-                    .depth_stencil_clear
-                    .map(|(attachment, _)| attachment),
-                self.pass
-                    .as_ref()
-                    .execs
-                    .last()
-                    .unwrap()
-                    .depth_stencil_resolve
-            ),
-            "depth/stencil attachment resolve incompatible with existing clear"
-        );
-        debug_assert!(
-            Attachment::are_compatible(
-                self.pass.as_ref().execs.last().unwrap().depth_stencil_load,
-                self.pass
-                    .as_ref()
-                    .execs
-                    .last()
-                    .unwrap()
-                    .depth_stencil_resolve
-            ),
-            "depth/stencil attachment resolve incompatible with existing load"
-        );
+            .depth_stencil_resolve = Some((
+            Attachment {
+                aspect_mask: image_view_info.aspect_mask,
+                format: image_view_info.fmt,
+                sample_count,
+                target: node_idx,
+            },
+            dst_attachment_idx,
+            depth_mode,
+            stencil_mode,
+        ));
 
         self.pass.push_node_access(
             image,

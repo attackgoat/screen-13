@@ -845,6 +845,49 @@ impl Display for DriverError {
 
 impl Error for DriverError {}
 
+/// Structure describing depth/stencil resolve properties that can be supported by an
+/// implementation.
+#[derive(Debug)]
+pub struct PhysicalDeviceDepthStencilResolveProperties {
+    /// A bitmask indicating the set of supported depth resolve modes.
+    ///
+    /// `VK_RESOLVE_MODE_SAMPLE_ZERO_BIT` must be included in the set but implementations may
+    /// support additional modes.
+    pub supported_depth_resolve_modes: vk::ResolveModeFlags,
+
+    /// A bitmask of indicating the set of supported stencil resolve modes.
+    ///
+    /// `VK_RESOLVE_MODE_SAMPLE_ZERO_BIT` must be included in the set but implementations may
+    /// support additional modes. `VK_RESOLVE_MODE_AVERAGE_BIT` must not be included in the set.
+    pub supported_stencil_resolve_modes: vk::ResolveModeFlags,
+
+    /// `true` if the implementation supports setting the depth and stencil resolve modes to
+    /// different values when one of those modes is `VK_RESOLVE_MODE_NONE`. Otherwise the
+    /// implementation only supports setting both modes to the same value.
+    pub independent_resolve_none: bool,
+
+    /// `true` if the implementation supports all combinations of the supported depth and stencil
+    /// resolve modes, including setting either depth or stencil resolve mode to
+    /// `VK_RESOLVE_MODE_NONE`.
+    ///
+    /// An implementation that supports `independent_resolve` must also support
+    /// `independent_resolve_none`.
+    pub independent_resolve: bool,
+}
+
+impl From<vk::PhysicalDeviceDepthStencilResolveProperties>
+    for PhysicalDeviceDepthStencilResolveProperties
+{
+    fn from(props: vk::PhysicalDeviceDepthStencilResolveProperties) -> Self {
+        Self {
+            supported_depth_resolve_modes: props.supported_depth_resolve_modes,
+            supported_stencil_resolve_modes: props.supported_stencil_resolve_modes,
+            independent_resolve_none: props.independent_resolve_none == vk::TRUE,
+            independent_resolve: props.independent_resolve == vk::TRUE,
+        }
+    }
+}
+
 /// Structure describing descriptor indexing features that can be supported by an implementation.
 pub struct PhysicalDeviceDescriptorIndexingFeatures {
     /// Indicates whether arrays of input attachments can be indexed by dynamically uniform integer
@@ -1092,6 +1135,34 @@ impl Deref for Queue {
 
     fn deref(&self) -> &Self::Target {
         &self.queue
+    }
+}
+
+/// Specifying depth and stencil resolve modes.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum ResolveMode {
+    /// The result of the resolve operation is the average of the sample values.
+    Average,
+
+    /// The result of the resolve operation is the maximum of the sample values.
+    Maximum,
+
+    /// The result of the resolve operation is the minimum of the sample values.
+    Minimum,
+
+    /// The result of the resolve operation is equal to the value of sample `0`.
+    SampleZero,
+}
+
+impl ResolveMode {
+    fn into_vk(mode: Option<ResolveMode>) -> vk::ResolveModeFlags {
+        match mode {
+            None => vk::ResolveModeFlags::NONE,
+            Some(ResolveMode::Average) => vk::ResolveModeFlags::AVERAGE,
+            Some(ResolveMode::Maximum) => vk::ResolveModeFlags::MAX,
+            Some(ResolveMode::Minimum) => vk::ResolveModeFlags::MIN,
+            Some(ResolveMode::SampleZero) => vk::ResolveModeFlags::SAMPLE_ZERO,
+        }
     }
 }
 

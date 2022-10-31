@@ -1,5 +1,5 @@
 use {
-    super::{DepthStencilMode, Device, DriverError, GraphicPipeline, SampleCount},
+    super::{DepthStencilMode, Device, DriverError, GraphicPipeline, ResolveMode, SampleCount},
     ash::vk,
     log::{trace, warn},
     parking_lot::Mutex,
@@ -129,7 +129,7 @@ impl RenderPass {
             .map(|dependency| dependency.into_vk())
             .collect::<Box<[_]>>();
 
-        // This vec must stay alive and not be resized until the create function completes!
+        // These vecs must stay alive and not be resized until the create function completes!
         let mut subpass_attachments = Vec::with_capacity(
             info.subpasses
                 .iter()
@@ -137,37 +137,56 @@ impl RenderPass {
                     subpass.color_attachments.len() * 2
                         + subpass.input_attachments.len()
                         + subpass.depth_stencil_attachment.is_some() as usize
+                        + subpass.depth_stencil_resolve_attachment.is_some() as usize
                 })
                 .sum(),
         );
-
         let mut subpasses = Vec::with_capacity(info.subpasses.len());
+        let mut subpass_depth_stencil_resolves = Vec::with_capacity(info.subpasses.len());
+
         for subpass in &info.subpasses {
+            let mut subpass_desc = vk::SubpassDescription2::builder()
+                .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS);
+
             debug_assert_eq!(
                 subpass.color_attachments.len(),
-                subpass.resolve_attachments.len()
+                subpass.color_resolve_attachments.len()
             );
 
             let color_attachments_idx = subpass_attachments.len();
             let input_attachments_idx = color_attachments_idx + subpass.color_attachments.len();
-            let resolve_attachments_idx = input_attachments_idx + subpass.input_attachments.len();
+            let resolve_color_attachments_idx =
+                input_attachments_idx + subpass.input_attachments.len();
             subpass_attachments.extend(
                 subpass
                     .color_attachments
                     .iter()
                     .chain(subpass.input_attachments.iter())
-                    .chain(subpass.resolve_attachments.iter())
+                    .chain(subpass.color_resolve_attachments.iter())
                     .map(|attachment| attachment.into_vk().build()),
             );
-            let depth_stencil_attachment_idx = subpass_attachments.len();
 
-            let mut subpass_desc = vk::SubpassDescription2::builder()
-                .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS);
+            let resolve_depth_stencil_attachment_idx = subpass_attachments.len();
+            if let Some((resolve_attachment, depth_resolve_mode, stencil_resolve_mode)) =
+                subpass.depth_stencil_resolve_attachment
+            {
+                subpass_attachments.push(resolve_attachment.into_vk().build());
+                subpass_depth_stencil_resolves.push(
+                    vk::SubpassDescriptionDepthStencilResolve::builder()
+                        .depth_stencil_resolve_attachment(subpass_attachments.last().unwrap())
+                        .depth_resolve_mode(ResolveMode::into_vk(depth_resolve_mode))
+                        .stencil_resolve_mode(ResolveMode::into_vk(stencil_resolve_mode))
+                        .build(),
+                );
+
+                subpass_desc =
+                    subpass_desc.push_next(subpass_depth_stencil_resolves.last_mut().unwrap());
+            }
 
             if let Some(depth_stencil_attachment) = subpass.depth_stencil_attachment {
                 subpass_attachments.push(depth_stencil_attachment.into_vk().build());
-                subpass_desc = subpass_desc
-                    .depth_stencil_attachment(&subpass_attachments[depth_stencil_attachment_idx]);
+                subpass_desc =
+                    subpass_desc.depth_stencil_attachment(subpass_attachments.last().unwrap());
             }
 
             subpasses.push(
@@ -176,10 +195,11 @@ impl RenderPass {
                         &subpass_attachments[color_attachments_idx..input_attachments_idx],
                     )
                     .input_attachments(
-                        &subpass_attachments[input_attachments_idx..resolve_attachments_idx],
+                        &subpass_attachments[input_attachments_idx..resolve_color_attachments_idx],
                     )
                     .resolve_attachments(
-                        &subpass_attachments[resolve_attachments_idx..depth_stencil_attachment_idx],
+                        &subpass_attachments
+                            [resolve_color_attachments_idx..resolve_depth_stencil_attachment_idx],
                     )
                     .preserve_attachments(&subpass.preserve_attachments)
                     .build(),
@@ -461,20 +481,23 @@ impl SubpassDependency {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct SubpassInfo {
     pub color_attachments: Vec<AttachmentRef>,
+    pub color_resolve_attachments: Vec<AttachmentRef>,
     pub depth_stencil_attachment: Option<AttachmentRef>,
+    pub depth_stencil_resolve_attachment:
+        Option<(AttachmentRef, Option<ResolveMode>, Option<ResolveMode>)>,
     pub input_attachments: Vec<AttachmentRef>,
     pub preserve_attachments: Vec<u32>,
-    pub resolve_attachments: Vec<AttachmentRef>,
 }
 
 impl SubpassInfo {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             color_attachments: Vec::with_capacity(capacity),
+            color_resolve_attachments: Vec::with_capacity(capacity),
             depth_stencil_attachment: None,
+            depth_stencil_resolve_attachment: None,
             input_attachments: Vec::with_capacity(capacity),
             preserve_attachments: Vec::with_capacity(capacity),
-            resolve_attachments: Vec::with_capacity(capacity),
         }
     }
 }
