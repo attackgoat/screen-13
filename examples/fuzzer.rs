@@ -21,14 +21,17 @@ Also helpful to run with valgrind:
 */
 use {
     inline_spirv::inline_spirv,
-    rand::random,
+    rand::{seq::SliceRandom, thread_rng},
     screen_13::prelude::*,
     std::{mem::size_of, sync::Arc},
 };
 
+type Operation = fn(&mut FrameContext, &mut HashPool);
+
+const FRAME_COUNT: usize = 10;
 const OPERATIONS_PER_FRAME: usize = 16;
 
-static OPERATIONS: &[fn(&mut FrameContext, &mut HashPool)] = &[
+static OPERATIONS: &[Operation] = &[
     record_compute_array_bind,
     record_compute_bindless,
     record_compute_no_op,
@@ -42,6 +45,8 @@ static OPERATIONS: &[fn(&mut FrameContext, &mut HashPool)] = &[
 fn main() -> Result<(), DisplayError> {
     pretty_env_logger::init();
 
+    let mut rng = thread_rng();
+
     // If ray tracing is unsupported then set that to false and remove the associated operations
     let screen_13 = EventLoop::new().debug(true).ray_tracing(true).build()?;
     let mut cache = HashPool::new(&screen_13.device);
@@ -51,14 +56,13 @@ fn main() -> Result<(), DisplayError> {
     screen_13.run(|mut frame| {
         // We stop fuzzing after 10 frames
         frame_count += 1;
-        if frame_count == 10 {
+        if frame_count == FRAME_COUNT {
             *frame.will_exit = true;
         }
 
-        // We fuzz a random amount of randomly selected operations per frame
+        // We fuzz a set amount of randomly selected operations per frame
         for _ in 0..OPERATIONS_PER_FRAME {
-            let operation_idx = random::<usize>() % OPERATIONS.len();
-            OPERATIONS[operation_idx](&mut frame, &mut cache);
+            OPERATIONS.choose(&mut rng).unwrap()(&mut frame, &mut cache);
         }
 
         // We are not testing the swapchain - so always clear it

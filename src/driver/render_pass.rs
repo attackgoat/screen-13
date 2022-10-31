@@ -133,13 +133,11 @@ impl RenderPass {
             info.subpasses
                 .iter()
                 .map(|subpass| {
-                    subpass.color_attachments.len()
+                    subpass.color_attachments.len() * 2
                         + subpass.input_attachments.len()
-                        + subpass.resolve_attachments.len()
                         + subpass.depth_stencil_attachment.is_some() as usize
                 })
-                .max()
-                .unwrap_or_default(),
+                .sum(),
         );
 
         let mut subpasses = Vec::with_capacity(info.subpasses.len());
@@ -187,7 +185,6 @@ impl RenderPass {
             );
         }
 
-        #[cfg(not(target_os = "macos"))]
         let render_pass = unsafe {
             device.create_render_pass2(
                 &vk::RenderPassCreateInfo2::builder()
@@ -198,23 +195,6 @@ impl RenderPass {
                 None,
             )
         };
-
-        // TODO: This needs some help, above, to get the correct types - also needs fixes in resolver!!!
-        #[cfg(target_os = "macos")]
-        let render_pass = unsafe {
-            device.create_render_pass(
-                &vk::RenderPassCreateInfo::builder()
-                    .flags(vk::RenderPassCreateFlags::empty())
-                    .attachments(&attachments)
-                    .dependencies(&dependencies)
-                    .subpasses(&subpasses),
-                None,
-            )
-        };
-
-        // Needs contributors (or hardware!) MoltenVK is about to goto 1.2 which makes this better
-        #[cfg(target_os = "macos")]
-        todo!("There is a description of this issue in the source code that caused this panic");
 
         let render_pass = render_pass.map_err(|_| DriverError::InvalidData)?;
 
