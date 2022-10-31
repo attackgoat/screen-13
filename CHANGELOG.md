@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.4] - Unreleased
+
+### Fixed
+
+- Framebuffer resolve functionality was implemented incorrectly, did not work
+- Synchronization error when using compute written-resources in fragment shaders
+- Validation error in `multipass.rs` example
+- Unnecessary depth buffer store operations in `vsm_omni.rs` example
+
+### Added
+
+- Mutlisampled anti-aliasing example (MSAA)
+- `attach_color` and `attach_depth_stencil` functions on `PipelinePassRef` when bound to a `GraphicPipeline` for attachments which would otherwise use `VK_ATTACHMENT_LOAD_OP_DONT_CARE`
+- `node_info` function on `PassRef` and `PipelinePassRef` which may be accessed while recording passes
+
 ## [0.6.3] - 2022-10-25
 
 ### Fixed
@@ -14,7 +29,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- `bind_node` functions on `PassRef` and `PipelinePassRef` which may be accessed while recording passes
+- `bind_node` function on `PassRef` and `PipelinePassRef` which may be accessed while recording passes
 
 ### Changed
 
@@ -231,3 +246,4 @@ _See [#25](https://github.com/attackgoat/screen-13/pull/25) for migration detail
 [0.6.1]: https://crates.io/crates/screen-13/0.6.1
 [0.6.2]: https://crates.io/crates/screen-13/0.6.2
 [0.6.3]: https://crates.io/crates/screen-13/0.6.3
+[0.6.4]: https://crates.io/crates/screen-13/0.6.4

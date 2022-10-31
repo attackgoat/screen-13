@@ -278,7 +278,7 @@ impl Image {
         }
     }
 
-    pub(crate) fn view_ref(this: &Self, info: ImageViewInfo) -> Result<vk::ImageView, DriverError> {
+    pub(crate) fn view(this: &Self, info: ImageViewInfo) -> Result<vk::ImageView, DriverError> {
         let mut image_view_cache = this.image_view_cache.lock();
 
         Ok(match image_view_cache.entry(info) {

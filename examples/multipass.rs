@@ -210,13 +210,16 @@ fn create_funky_shape(event_loop: &EventLoop, cache: &mut LazyPool) -> Result<Sh
     // Create GPU-only buffers
     let index_buf = Arc::new(Buffer::create(
         &event_loop.device,
-        BufferInfo::new(index_buf_host.info.size, vk::BufferUsageFlags::INDEX_BUFFER),
+        BufferInfo::new(
+            index_buf_host.info.size,
+            vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::INDEX_BUFFER,
+        ),
     )?);
     let vertex_buf = Arc::new(Buffer::create(
         &event_loop.device,
         BufferInfo::new(
             vertex_buf_host.info.size,
-            vk::BufferUsageFlags::VERTEX_BUFFER,
+            vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::VERTEX_BUFFER,
         ),
     )?);
 

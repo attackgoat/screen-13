@@ -5,7 +5,6 @@
 pub mod node;
 pub mod pass_ref;
 
-mod attachment;
 mod binding;
 mod edge;
 mod info;
@@ -19,7 +18,6 @@ pub use self::{
 
 use {
     self::{
-        attachment::{Attachment, AttachmentMap},
         binding::Binding,
         edge::Edge,
         info::Information,
@@ -40,12 +38,12 @@ use {
         is_write_access,
         ray_trace::RayTracePipeline,
         shader::PipelineDescriptorInfo,
-        DescriptorBindingMap, Device,
+        DescriptorBindingMap, Device, ResolveMode,
     },
     ash::vk,
     std::{
         cmp::Ord,
-        collections::BTreeMap,
+        collections::{BTreeMap, HashMap},
         fmt::{Debug, Formatter},
         ops::Range,
         sync::Arc,
@@ -62,6 +60,31 @@ struct Area {
     width: u32,
     x: i32,
     y: i32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct Attachment {
+    aspect_mask: vk::ImageAspectFlags,
+    format: vk::Format,
+    sample_count: SampleCount,
+    target: NodeIndex,
+}
+
+impl Attachment {
+    fn are_compatible(lhs: Option<Self>, rhs: Option<Self>) -> bool {
+        // Two attachment references are compatible if they have matching format and sample
+        // count, or are both VK_ATTACHMENT_UNUSED or the pointer that would contain the
+        // reference is NULL.
+        if lhs.is_none() || rhs.is_none() {
+            return true;
+        }
+
+        Self::are_identical(lhs.unwrap(), rhs.unwrap())
+    }
+
+    pub fn are_identical(lhs: Self, rhs: Self) -> bool {
+        lhs.format == rhs.format && lhs.sample_count == rhs.sample_count && lhs.target == rhs.target
+    }
 }
 
 /// Specifies a color attachment clear value which can be used to initliaze an image.
@@ -87,67 +110,29 @@ impl From<[u8; 4]> for ClearColorValue {
 
 #[derive(Default)]
 struct Execution {
-    accesses: BTreeMap<NodeIndex, [SubresourceAccess; 2]>,
+    accesses: HashMap<NodeIndex, [SubresourceAccess; 2]>,
     bindings: BTreeMap<Descriptor, (NodeIndex, Option<ViewType>)>,
 
     depth_stencil: Option<DepthStencilMode>,
 
-    color_clears: BTreeMap<AttachmentIndex, (Attachment, ClearColorValue)>,
+    color_attachments: HashMap<AttachmentIndex, Attachment>,
+    color_clears: HashMap<AttachmentIndex, (Attachment, ClearColorValue)>,
+    color_loads: HashMap<AttachmentIndex, Attachment>,
+    color_resolves: HashMap<AttachmentIndex, (Attachment, AttachmentIndex)>,
+    color_stores: HashMap<AttachmentIndex, Attachment>,
+    depth_stencil_attachment: Option<Attachment>,
     depth_stencil_clear: Option<(Attachment, vk::ClearDepthStencilValue)>,
-    loads: AttachmentMap,
-    resolves: AttachmentMap,
-    stores: AttachmentMap,
+    depth_stencil_load: Option<Attachment>,
+    depth_stencil_resolve: Option<(
+        Attachment,
+        AttachmentIndex,
+        Option<ResolveMode>,
+        Option<ResolveMode>,
+    )>,
+    depth_stencil_store: Option<Attachment>,
 
     func: Option<ExecutionFunction>,
     pipeline: Option<ExecutionPipeline>,
-}
-
-impl Execution {
-    fn color_attachment(&self, attachment_idx: AttachmentIndex) -> Option<Attachment> {
-        self.loads.color(attachment_idx).or_else(|| {
-            self.resolves
-                .color(attachment_idx)
-                .or_else(|| self.stores.color(attachment_idx))
-        })
-    }
-
-    fn color_attachment_count(&self) -> usize {
-        self.loads
-            .colors()
-            .count()
-            .max(self.resolves.colors().count())
-            .max(self.stores.colors().count())
-    }
-
-    fn depth_stencil_attachment(&self) -> Option<Attachment> {
-        self.depth_stencil_clear
-            .map(|(attachment, _)| attachment)
-            .or_else(|| self.loads.depth_stencil())
-            .or_else(|| self.resolves.depth_stencil())
-            .or_else(|| self.stores.depth_stencil())
-    }
-
-    fn has_depth_stencil_attachment(&self) -> bool {
-        (self.depth_stencil_clear.is_some() || self.loads.depth_stencil().is_some())
-            || (self.resolves.depth_stencil().is_some() || self.stores.depth_stencil().is_some())
-    }
-
-    #[cfg(debug_assertions)]
-    fn written_color_attachments(&self) -> impl Iterator<Item = AttachmentIndex> + '_ {
-        self.color_clears
-            .keys()
-            .copied()
-            .chain(
-                self.resolves
-                    .colors()
-                    .map(|(attachment_idx, _)| attachment_idx),
-            )
-            .chain(
-                self.stores
-                    .colors()
-                    .map(|(attachment_idx, _)| attachment_idx),
-            )
-    }
 }
 
 impl Debug for Execution {
@@ -157,11 +142,17 @@ impl Debug for Execution {
         f.debug_struct("Execution")
             .field("accesses", &self.accesses)
             .field("bindings", &self.bindings)
+            .field("depth_stencil", &self.depth_stencil)
+            .field("color_attachments", &self.color_attachments)
             .field("color_clears", &self.color_clears)
+            .field("color_loads", &self.color_loads)
+            .field("color_resolves", &self.color_resolves)
+            .field("color_stores", &self.color_stores)
+            .field("depth_stencil_attachment", &self.depth_stencil_attachment)
             .field("depth_stencil_clear", &self.depth_stencil_clear)
-            .field("loads", &self.loads)
-            .field("resolves", &self.resolves)
-            .field("stores", &self.stores)
+            .field("depth_stencil_load", &self.depth_stencil_load)
+            .field("depth_stencil_resolve", &self.depth_stencil_resolve)
+            .field("depth_stencil_store", &self.depth_stencil_store)
             .field("pipeline", &self.pipeline)
             .finish()
     }
@@ -238,7 +229,7 @@ struct Pass {
 impl Pass {
     fn descriptor_pools_sizes(
         &self,
-    ) -> impl Iterator<Item = &BTreeMap<u32, BTreeMap<vk::DescriptorType, u32>>> {
+    ) -> impl Iterator<Item = &HashMap<u32, HashMap<vk::DescriptorType, u32>>> {
         self.execs
             .iter()
             .flat_map(|exec| exec.pipeline.as_ref())
