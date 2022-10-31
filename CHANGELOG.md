@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.6.4] - Unreleased
+## [0.6.4] - 2022-10-31
 
 ### Fixed
 
@@ -33,7 +33,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- Improved fullscreen experience: no extra decoration or briefly display small window
+- Improved fullscreen experience: no extra decoration or briefly displayed small window
 - Cursor re-displayed, if hidden, when event loop window loses focus
 
 ## [0.6.2] - 2022-10-20

@@ -1187,7 +1187,7 @@ mod tests {
 
     #[test]
     pub fn push_constant_ranges_complex() {
-        let res = merge_push_constant_ranges(&mut [
+        let res = merge_push_constant_ranges(&[
             vk::PushConstantRange {
                 stage_flags: vk::ShaderStageFlags::VERTEX,
                 offset: 8,
@@ -1290,7 +1290,7 @@ mod tests {
 
     #[test]
     pub fn push_constant_ranges_disjoint() {
-        let res = merge_push_constant_ranges(&mut [
+        let res = merge_push_constant_ranges(&[
             vk::PushConstantRange {
                 stage_flags: vk::ShaderStageFlags::VERTEX,
                 offset: 0,
@@ -1324,7 +1324,7 @@ mod tests {
 
     #[test]
     pub fn push_constant_ranges_equal() {
-        let res = merge_push_constant_ranges(&mut [
+        let res = merge_push_constant_ranges(&[
             vk::PushConstantRange {
                 stage_flags: vk::ShaderStageFlags::VERTEX,
                 offset: 0,
@@ -1350,7 +1350,7 @@ mod tests {
 
     #[test]
     pub fn push_constant_ranges_overlap() {
-        let res = merge_push_constant_ranges(&mut [
+        let res = merge_push_constant_ranges(&[
             vk::PushConstantRange {
                 stage_flags: vk::ShaderStageFlags::VERTEX,
                 offset: 0,
@@ -1415,7 +1415,7 @@ mod tests {
 
     #[test]
     pub fn push_constant_ranges_subset() {
-        let res = merge_push_constant_ranges(&mut [
+        let res = merge_push_constant_ranges(&[
             vk::PushConstantRange {
                 stage_flags: vk::ShaderStageFlags::VERTEX,
                 offset: 0,
@@ -1457,7 +1457,7 @@ mod tests {
 
     #[test]
     pub fn push_constant_ranges_superset() {
-        let res = merge_push_constant_ranges(&mut [
+        let res = merge_push_constant_ranges(&[
             vk::PushConstantRange {
                 stage_flags: vk::ShaderStageFlags::VERTEX,
                 offset: 0,
