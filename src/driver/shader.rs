@@ -10,7 +10,7 @@ use {
         DescriptorType, EntryPoint, ReflectConfig, Variable,
     },
     std::{
-        collections::{btree_map::BTreeMap, HashMap},
+        collections::HashMap,
         fmt::{Debug, Formatter},
         iter::repeat,
         sync::Arc,
@@ -18,7 +18,7 @@ use {
 };
 
 pub(crate) type DescriptorBindingMap =
-    BTreeMap<DescriptorBinding, (DescriptorInfo, vk::ShaderStageFlags)>;
+    HashMap<DescriptorBinding, (DescriptorInfo, vk::ShaderStageFlags)>;
 
 fn guess_immutable_sampler(device: &Device, binding_name: &str) -> vk::Sampler {
     const INVALID_ERR: &str = "Invalid sampler specification";
@@ -70,7 +70,7 @@ fn guess_immutable_sampler(device: &Device, binding_name: &str) -> vk::Sampler {
 ///
 /// This is a generic representation of the descriptor binding point within the shader and not a
 /// bound descriptor reference.
-#[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct DescriptorBinding(pub u32, pub u32);
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -153,8 +153,8 @@ impl From<DescriptorInfo> for vk::DescriptorType {
 
 #[derive(Debug)]
 pub(crate) struct PipelineDescriptorInfo {
-    pub layouts: BTreeMap<u32, DescriptorSetLayout>,
-    pub pool_sizes: BTreeMap<u32, BTreeMap<vk::DescriptorType, u32>>,
+    pub layouts: HashMap<u32, DescriptorSetLayout>,
+    pub pool_sizes: HashMap<u32, HashMap<vk::DescriptorType, u32>>,
 }
 
 impl PipelineDescriptorInfo {
@@ -168,15 +168,15 @@ impl PipelineDescriptorInfo {
             .copied()
             .map(|descriptor_binding| descriptor_binding.0 + 1)
             .unwrap_or_default();
-        let mut layouts = BTreeMap::new();
-        let mut pool_sizes = BTreeMap::new();
+        let mut layouts = HashMap::new();
+        let mut pool_sizes = HashMap::new();
 
         //trace!("descriptor_bindings: {:#?}", &descriptor_bindings);
 
         for descriptor_set_idx in 0..descriptor_set_count {
             // HACK: We need to keep the immutable samplers alive until create, could be cleaner..
             let mut immutable_samplers = vec![];
-            let mut binding_counts = BTreeMap::<vk::DescriptorType, u32>::new();
+            let mut binding_counts = HashMap::<vk::DescriptorType, u32>::new();
             let mut bindings = vec![];
 
             for (descriptor_binding, &(descriptor_info, stage_flags)) in descriptor_bindings
@@ -204,7 +204,7 @@ impl PipelineDescriptorInfo {
 
             let pool_size = pool_sizes
                 .entry(descriptor_set_idx)
-                .or_insert_with(BTreeMap::new);
+                .or_insert_with(HashMap::new);
 
             for (descriptor_ty, binding_count) in binding_counts.into_iter() {
                 *pool_size.entry(descriptor_ty).or_default() += binding_count;

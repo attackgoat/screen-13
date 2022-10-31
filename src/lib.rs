@@ -342,7 +342,7 @@ pub mod prelude {
                 AccessType, Device, Driver, DriverConfig, DriverConfigBuilder, DriverError,
                 FeatureFlags, PhysicalDevice, PhysicalDeviceDescriptorIndexingFeatures,
                 PhysicalDeviceRayTracePipelineProperties, Queue, QueueFamily,
-                QueueFamilyProperties,
+                QueueFamilyProperties, ResolveMode,
             },
             event_loop::{EventLoop, EventLoopBuilder, FullscreenMode},
             frame::{center_cursor, set_cursor_position, FrameContext},
@@ -353,7 +353,7 @@ pub mod prelude {
                     BufferNode, ImageLeaseNode, ImageNode, SwapchainImageNode,
                 },
                 pass_ref::{PassRef, PipelinePassRef},
-                Bind, RenderGraph, ResolverPool, Unbind,
+                Bind, ClearColorValue, RenderGraph, ResolverPool, Unbind,
             },
             input::{
                 update_input, update_keyboard, update_mouse, KeyBuf, KeyMap, MouseBuf, MouseButton,

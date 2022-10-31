@@ -14,6 +14,7 @@ cargo run --example font_bmp
 cargo run --example egui
 cargo run --example imgui
 cargo run --example multipass
+cargo run --example msaa
 cargo run --example triangle
 cargo run --example rt_triangle
 cargo run --example ray_trace

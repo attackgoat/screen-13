@@ -1,10 +1,10 @@
 use {
-    super::{DepthStencilMode, Device, DriverError, GraphicPipeline, SampleCount},
+    super::{DepthStencilMode, Device, DriverError, GraphicPipeline, ResolveMode, SampleCount},
     ash::vk,
     log::{trace, warn},
     parking_lot::Mutex,
     std::{
-        collections::{btree_map::Entry, BTreeMap},
+        collections::{hash_map::Entry, HashMap},
         ops::Deref,
         sync::Arc,
         thread::panicking,
@@ -25,20 +25,6 @@ pub struct AttachmentInfo {
 }
 
 impl AttachmentInfo {
-    pub fn new(fmt: vk::Format, sample_count: SampleCount) -> Self {
-        AttachmentInfo {
-            flags: vk::AttachmentDescriptionFlags::MAY_ALIAS,
-            fmt,
-            sample_count,
-            initial_layout: vk::ImageLayout::UNDEFINED,
-            load_op: vk::AttachmentLoadOp::DONT_CARE,
-            stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
-            store_op: vk::AttachmentStoreOp::DONT_CARE,
-            stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
-            final_layout: vk::ImageLayout::UNDEFINED,
-        }
-    }
-
     pub fn into_vk(self) -> vk::AttachmentDescription2 {
         vk::AttachmentDescription2::builder()
             .flags(self.flags)
@@ -51,6 +37,22 @@ impl AttachmentInfo {
             .initial_layout(self.initial_layout)
             .final_layout(self.final_layout)
             .build()
+    }
+}
+
+impl Default for AttachmentInfo {
+    fn default() -> Self {
+        AttachmentInfo {
+            flags: vk::AttachmentDescriptionFlags::MAY_ALIAS,
+            fmt: vk::Format::UNDEFINED,
+            sample_count: SampleCount::X1,
+            initial_layout: vk::ImageLayout::UNDEFINED,
+            load_op: vk::AttachmentLoadOp::DONT_CARE,
+            stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
+            store_op: vk::AttachmentStoreOp::DONT_CARE,
+            stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
+            final_layout: vk::ImageLayout::UNDEFINED,
+        }
     }
 }
 
@@ -70,24 +72,24 @@ impl AttachmentRef {
     }
 }
 
-#[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct FramebufferKey {
-    pub attachments: Vec<FramebufferKeyAttachment>,
-    pub extent_x: u32,
-    pub extent_y: u32,
-}
-
-#[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct FramebufferKeyAttachment {
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct FramebufferAttachmentImageInfo {
     pub flags: vk::ImageCreateFlags,
     pub usage: vk::ImageUsageFlags,
-    pub extent_x: u32,
-    pub extent_y: u32,
+    pub width: u32,
+    pub height: u32,
     pub layer_count: u32,
-    pub view_fmts: Vec<vk::Format>,
+    pub view_formats: Vec<vk::Format>,
 }
 
-#[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct FramebufferInfo {
+    pub attachments: Vec<FramebufferAttachmentImageInfo>,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Debug, Eq, Hash, PartialEq)]
 struct GraphicPipelineKey {
     depth_stencil: Option<DepthStencilMode>,
     layout: vk::PipelineLayout,
@@ -104,14 +106,15 @@ pub struct RenderPassInfo {
 #[derive(Debug)]
 pub struct RenderPass {
     device: Arc<Device>,
-    framebuffer_cache: Mutex<BTreeMap<FramebufferKey, vk::Framebuffer>>,
-    graphic_pipeline_cache: Mutex<BTreeMap<GraphicPipelineKey, vk::Pipeline>>,
+    framebuffer_cache: Mutex<HashMap<FramebufferInfo, vk::Framebuffer>>,
+    graphic_pipeline_cache: Mutex<HashMap<GraphicPipelineKey, vk::Pipeline>>,
     pub info: RenderPassInfo,
     render_pass: vk::RenderPass,
 }
 
 impl RenderPass {
     pub fn create(device: &Arc<Device>, info: RenderPassInfo) -> Result<Self, DriverError> {
+        //trace!("create: \n{:#?}", &info);
         trace!("create");
 
         let device = Arc::clone(device);
@@ -126,76 +129,83 @@ impl RenderPass {
             .map(|dependency| dependency.into_vk())
             .collect::<Box<[_]>>();
 
-        // This vec must stay alive until the create function completes; it holds the attachments that
-        // create info points to (ash builder lifetime)
-        let mut subpass_attachments_ref = vec![];
-
+        // These vecs must stay alive and not be resized until the create function completes!
+        let mut subpass_attachments = Vec::with_capacity(
+            info.subpasses
+                .iter()
+                .map(|subpass| {
+                    subpass.color_attachments.len() * 2
+                        + subpass.input_attachments.len()
+                        + subpass.depth_stencil_attachment.is_some() as usize
+                        + subpass.depth_stencil_resolve_attachment.is_some() as usize
+                })
+                .sum(),
+        );
         let mut subpasses = Vec::with_capacity(info.subpasses.len());
-        for (subpass, subpass_attachments) in info.subpasses.iter().map(move |subpass| {
-            let mut attachments = vec![];
+        let mut subpass_depth_stencil_resolves = Vec::with_capacity(info.subpasses.len());
 
-            let mut color_attachments = None;
-            if !subpass.color_attachments.is_empty() {
-                color_attachments =
-                    Some(attachments.len()..attachments.len() + subpass.color_attachments.len());
-                attachments.extend(
-                    subpass
-                        .color_attachments
-                        .iter()
-                        .copied()
-                        .map(|attachment| attachment.into_vk().build()),
-                );
-            }
-
-            let mut input_attachments = None;
-            if !subpass.input_attachments.is_empty() {
-                input_attachments =
-                    Some(attachments.len()..attachments.len() + subpass.input_attachments.len());
-                attachments.extend(
-                    subpass
-                        .input_attachments
-                        .iter()
-                        .copied()
-                        .map(|attachment| attachment.into_vk().build()),
-                );
-            }
-
-            let mut resolve_attachments = None;
-            if !subpass.resolve_attachments.is_empty() {
-                resolve_attachments =
-                    Some(attachments.len()..attachments.len() + subpass.resolve_attachments.len());
-                attachments.extend(
-                    subpass
-                        .resolve_attachments
-                        .iter()
-                        .copied()
-                        .map(|attachment| attachment.into_vk().build()),
-                );
-            }
-
+        for subpass in &info.subpasses {
             let mut subpass_desc = vk::SubpassDescription2::builder()
                 .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS);
 
-            if let Some(depth_stencil_attachment) = subpass.depth_stencil_attachment {
-                let idx = attachments.len();
-                attachments.push(depth_stencil_attachment.into_vk().build());
-                subpass_desc = subpass_desc.depth_stencil_attachment(&attachments[idx]);
+            debug_assert_eq!(
+                subpass.color_attachments.len(),
+                subpass.color_resolve_attachments.len()
+            );
+
+            let color_attachments_idx = subpass_attachments.len();
+            let input_attachments_idx = color_attachments_idx + subpass.color_attachments.len();
+            let resolve_color_attachments_idx =
+                input_attachments_idx + subpass.input_attachments.len();
+            subpass_attachments.extend(
+                subpass
+                    .color_attachments
+                    .iter()
+                    .chain(subpass.input_attachments.iter())
+                    .chain(subpass.color_resolve_attachments.iter())
+                    .map(|attachment| attachment.into_vk().build()),
+            );
+
+            let resolve_depth_stencil_attachment_idx = subpass_attachments.len();
+            if let Some((resolve_attachment, depth_resolve_mode, stencil_resolve_mode)) =
+                subpass.depth_stencil_resolve_attachment
+            {
+                subpass_attachments.push(resolve_attachment.into_vk().build());
+                subpass_depth_stencil_resolves.push(
+                    vk::SubpassDescriptionDepthStencilResolve::builder()
+                        .depth_stencil_resolve_attachment(subpass_attachments.last().unwrap())
+                        .depth_resolve_mode(ResolveMode::into_vk(depth_resolve_mode))
+                        .stencil_resolve_mode(ResolveMode::into_vk(stencil_resolve_mode))
+                        .build(),
+                );
+
+                subpass_desc =
+                    subpass_desc.push_next(subpass_depth_stencil_resolves.last_mut().unwrap());
             }
 
-            let subpass = subpass_desc
-                .color_attachments(&attachments[color_attachments.unwrap_or_default()])
-                .input_attachments(&attachments[input_attachments.unwrap_or_default()])
-                .resolve_attachments(&attachments[resolve_attachments.unwrap_or_default()])
-                .preserve_attachments(&subpass.preserve_attachments)
-                .build();
+            if let Some(depth_stencil_attachment) = subpass.depth_stencil_attachment {
+                subpass_attachments.push(depth_stencil_attachment.into_vk().build());
+                subpass_desc =
+                    subpass_desc.depth_stencil_attachment(subpass_attachments.last().unwrap());
+            }
 
-            (subpass, attachments)
-        }) {
-            subpasses.push(subpass);
-            subpass_attachments_ref.push(subpass_attachments);
+            subpasses.push(
+                subpass_desc
+                    .color_attachments(
+                        &subpass_attachments[color_attachments_idx..input_attachments_idx],
+                    )
+                    .input_attachments(
+                        &subpass_attachments[input_attachments_idx..resolve_color_attachments_idx],
+                    )
+                    .resolve_attachments(
+                        &subpass_attachments
+                            [resolve_color_attachments_idx..resolve_depth_stencil_attachment_idx],
+                    )
+                    .preserve_attachments(&subpass.preserve_attachments)
+                    .build(),
+            );
         }
 
-        #[cfg(not(target_os = "macos"))]
         let render_pass = unsafe {
             device.create_render_pass2(
                 &vk::RenderPassCreateInfo2::builder()
@@ -206,23 +216,6 @@ impl RenderPass {
                 None,
             )
         };
-
-        // TODO: This needs some help, above, to get the correct types - also needs fixes in resolver!!!
-        #[cfg(target_os = "macos")]
-        let render_pass = unsafe {
-            device.create_render_pass(
-                &vk::RenderPassCreateInfo::builder()
-                    .flags(vk::RenderPassCreateFlags::empty())
-                    .attachments(&attachments)
-                    .dependencies(&dependencies)
-                    .subpasses(&subpasses),
-                None,
-            )
-        };
-
-        // Needs contributors (or hardware!) MoltenVK is about to goto 1.2 which makes this better
-        #[cfg(target_os = "macos")]
-        todo!("There is a description of this issue in the source code that caused this panic");
 
         let render_pass = render_pass.map_err(|_| DriverError::InvalidData)?;
 
@@ -235,7 +228,7 @@ impl RenderPass {
         })
     }
 
-    pub fn framebuffer_ref(&self, info: FramebufferKey) -> Result<vk::Framebuffer, DriverError> {
+    pub fn framebuffer(&self, info: FramebufferInfo) -> Result<vk::Framebuffer, DriverError> {
         debug_assert!(!info.attachments.is_empty());
 
         let mut cache = self.framebuffer_cache.lock();
@@ -262,11 +255,11 @@ impl RenderPass {
             .map(|attachment| {
                 vk::FramebufferAttachmentImageInfo::builder()
                     .flags(attachment.flags)
-                    .width(attachment.extent_x)
-                    .height(attachment.extent_y)
+                    .width(attachment.width)
+                    .height(attachment.height)
                     .layer_count(attachment.layer_count)
                     .usage(attachment.usage)
-                    .view_formats(attachment.view_fmts.as_slice())
+                    .view_formats(&attachment.view_formats)
                     .build()
             })
             .collect::<Box<[_]>>();
@@ -275,8 +268,8 @@ impl RenderPass {
         let mut create_info = vk::FramebufferCreateInfo::builder()
             .flags(vk::FramebufferCreateFlags::IMAGELESS)
             .render_pass(self.render_pass)
-            .width(key.extent_x)
-            .height(key.extent_y)
+            .width(key.width)
+            .height(key.height)
             .layers(layers)
             .push_next(&mut imageless_info);
         create_info.attachment_count = self.info.attachments.len() as _;
@@ -296,7 +289,7 @@ impl RenderPass {
         Ok(framebuffer)
     }
 
-    pub fn graphic_pipeline_ref(
+    pub fn graphic_pipeline(
         &self,
         pipeline: &Arc<GraphicPipeline>,
         depth_stencil: Option<DepthStencilMode>,
@@ -319,9 +312,8 @@ impl RenderPass {
             _ => unreachable!(),
         };
 
-        let color_blend_attachment_states = self
-            .info
-            .attachments
+        let color_blend_attachment_states = self.info.subpasses[subpass_idx as usize]
+            .color_attachments
             .iter()
             .map(|_| pipeline.info.blend.into_vk())
             .collect::<Box<[_]>>();
@@ -489,20 +481,23 @@ impl SubpassDependency {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct SubpassInfo {
     pub color_attachments: Vec<AttachmentRef>,
+    pub color_resolve_attachments: Vec<AttachmentRef>,
     pub depth_stencil_attachment: Option<AttachmentRef>,
+    pub depth_stencil_resolve_attachment:
+        Option<(AttachmentRef, Option<ResolveMode>, Option<ResolveMode>)>,
     pub input_attachments: Vec<AttachmentRef>,
     pub preserve_attachments: Vec<u32>,
-    pub resolve_attachments: Vec<AttachmentRef>,
 }
 
 impl SubpassInfo {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             color_attachments: Vec::with_capacity(capacity),
+            color_resolve_attachments: Vec::with_capacity(capacity),
             depth_stencil_attachment: None,
+            depth_stencil_resolve_attachment: None,
             input_attachments: Vec::with_capacity(capacity),
             preserve_attachments: Vec::with_capacity(capacity),
-            resolve_attachments: Vec::with_capacity(capacity),
         }
     }
 }
