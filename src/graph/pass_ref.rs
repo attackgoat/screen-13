@@ -1760,6 +1760,14 @@ impl<'a> PassRef<'a> {
         binding.bind(self)
     }
 
+    /// Returns information used to crate a node.
+    pub fn node_info<N>(&self, node: N) -> <N as Information>::Info
+    where
+        N: Information,
+    {
+        node.get(self.graph)
+    }
+
     fn push_execute(
         &mut self,
         func: impl FnOnce(&Device, vk::CommandBuffer, Bindings<'_>) + Send + 'static,
@@ -2061,6 +2069,14 @@ where
         B: Bind<&'b mut RenderGraph, <B as Edge<RenderGraph>>::Result>,
     {
         self.pass.graph.bind_node(binding)
+    }
+
+    /// Returns information used to crate a node.
+    pub fn node_info<N>(&self, node: N) -> <N as Information>::Info
+    where
+        N: Information,
+    {
+        node.get(self.pass.graph)
     }
 
     fn push_node_view_bind(

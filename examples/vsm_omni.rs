@@ -225,7 +225,6 @@ fn main() -> anyhow::Result<()> {
                 .clear_color_value(0, shadow_faces_node, [light.range, light.range, 0.0, 0.0])
                 .store_color(0, shadow_faces_node)
                 .clear_depth_stencil(depth_cube)
-                .store_depth_stencil(depth_cube)
                 .record_subpass(move |subpass, _| {
                     subpass
                         .bind_index_buffer(model_shadow_index_buf, vk::IndexType::UINT32)
@@ -288,7 +287,6 @@ fn main() -> anyhow::Result<()> {
                 .clear_color(0, frame.swapchain_image)
                 .store_color(0, frame.swapchain_image)
                 .clear_depth_stencil(depth_image)
-                .store_depth_stencil(depth_image)
                 .record_subpass(move |subpass, _| {
                     subpass
                         .bind_index_buffer(model_mesh_index_buf, vk::IndexType::UINT32)

@@ -6,15 +6,21 @@ use {
     std::{mem::size_of, sync::Arc},
 };
 
+type CubeVertex = [[f32; 3]; 3];
+
 const WHITE: ClearColorValue = ClearColorValue([1.0, 1.0, 1.0, 1.0]);
 
+/// Draws a spinning cube with high-contrast edges; hold any key to display the cube in non-MSAA
+/// mode.
+///
+/// NOTE: The effect may be hard to see on high-DPI displays.
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
     let mut keyboard = KeyBuf::default();
     let event_loop = EventLoop::new().debug(true).build()?;
-    let samples = max_supported_samples(&event_loop);
-    let mesh_msaa_pipeline = create_mesh_pipeline(&event_loop.device, samples)?;
+    let sample_count = max_supported_sample_count(&event_loop);
+    let mesh_msaa_pipeline = create_mesh_pipeline(&event_loop.device, sample_count)?;
     let mesh_noaa_pipeline = create_mesh_pipeline(&event_loop.device, SampleCount::X1)?;
     let cube_mesh = load_cube_mesh(&event_loop.device)?;
     let mut pool = HashPool::new(&event_loop.device);
@@ -25,7 +31,7 @@ fn main() -> anyhow::Result<()> {
         update_keyboard(&mut keyboard, frame.events);
 
         // Hold any key to render in non-multisample mode
-        let will_render_msaa = !keyboard.any_held();
+        let will_render_msaa = !keyboard.any_held() && sample_count != SampleCount::X1;
 
         angle += frame.dt * 0.1;
         let world_transform = Mat4::from_rotation_x(angle)
@@ -53,43 +59,6 @@ fn main() -> anyhow::Result<()> {
             }),
         );
 
-        let msaa_color_image = frame.render_graph.bind_node(
-            pool.lease(
-                ImageInfo::new_2d(
-                    frame.render_graph.node_info(frame.swapchain_image).fmt,
-                    frame.width,
-                    frame.height,
-                    vk::ImageUsageFlags::COLOR_ATTACHMENT
-                        | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
-                )
-                .sample_count(samples),
-            )
-            .unwrap(),
-        );
-        let msaa_depth_image = frame.render_graph.bind_node(
-            pool.lease(
-                ImageInfo::new_2d(
-                    vk::Format::D32_SFLOAT,
-                    frame.width,
-                    frame.height,
-                    vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
-                        | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
-                )
-                .sample_count(samples),
-            )
-            .unwrap(),
-        );
-        let noaa_depth_image = frame.render_graph.bind_node(
-            pool.lease(ImageInfo::new_2d(
-                vk::Format::D32_SFLOAT,
-                frame.width,
-                frame.height,
-                vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
-                    | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
-            ))
-            .unwrap(),
-        );
-
         let cube_vertex_buf = frame.render_graph.bind_node(&cube_mesh.vertex_buf);
         let scene_uniform_buf = frame.render_graph.bind_node(scene_uniform_buf);
 
@@ -106,17 +75,55 @@ fn main() -> anyhow::Result<()> {
             .access_descriptor(0, scene_uniform_buf, AccessType::AnyShaderReadUniformBuffer);
 
         if will_render_msaa {
-            // Render in multisample mode
+            let msaa_color_image = pass.bind_node(
+                pool.lease(
+                    ImageInfo::new_2d(
+                        pass.node_info(frame.swapchain_image).fmt,
+                        frame.width,
+                        frame.height,
+                        vk::ImageUsageFlags::COLOR_ATTACHMENT
+                            | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
+                    )
+                    .sample_count(sample_count),
+                )
+                .unwrap(),
+            );
+            let msaa_depth_image = pass.bind_node(
+                pool.lease(
+                    ImageInfo::new_2d(
+                        vk::Format::D32_SFLOAT,
+                        frame.width,
+                        frame.height,
+                        vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
+                            | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
+                    )
+                    .sample_count(sample_count),
+                )
+                .unwrap(),
+            );
+
+            // Attachments for multisample mode
             pass = pass
                 .clear_color_value(0, msaa_color_image, WHITE)
-                .resolve_color(0, 1, frame.swapchain_image)
-                .clear_depth_stencil(msaa_depth_image);
+                .clear_depth_stencil(msaa_depth_image)
+                .resolve_color(0, 1, frame.swapchain_image);
         } else {
-            // Render in non-multisample mode
+            let noaa_depth_image = pass.bind_node(
+                pool.lease(ImageInfo::new_2d(
+                    vk::Format::D32_SFLOAT,
+                    frame.width,
+                    frame.height,
+                    vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
+                        | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
+                ))
+                .unwrap(),
+            );
+
+            // Attachments for non-multisample mode
             pass = pass
                 .clear_color_value(0, frame.swapchain_image, WHITE)
-                .store_color(0, frame.swapchain_image)
-                .clear_depth_stencil(noaa_depth_image);
+                .clear_depth_stencil(noaa_depth_image)
+                .store_color(0, frame.swapchain_image);
         }
 
         pass.record_subpass(move |subpass, _| {
@@ -130,7 +137,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn max_supported_samples(event_loop: &EventLoop) -> SampleCount {
+fn max_supported_sample_count(event_loop: &EventLoop) -> SampleCount {
     let limit = event_loop
         .device
         .physical_device
@@ -263,7 +270,7 @@ fn load_cube_mesh(device: &Arc<Device>) -> Result<Model, DriverError> {
 
 fn create_mesh_pipeline(
     device: &Arc<Device>,
-    samples: SampleCount,
+    sample_count: SampleCount,
 ) -> Result<Arc<GraphicPipeline>, DriverError> {
     let vert = inline_spirv!(
         r#"
@@ -319,7 +326,7 @@ fn create_mesh_pipeline(
         frag
     );
 
-    let info = GraphicPipelineInfo::new().samples(samples);
+    let info = GraphicPipelineInfo::new().samples(sample_count);
 
     Ok(Arc::new(GraphicPipeline::create(
         device,
@@ -330,8 +337,6 @@ fn create_mesh_pipeline(
         ],
     )?))
 }
-
-type CubeVertex = [[f32; 3]; 3];
 
 struct Model {
     vertex_buf: Arc<Buffer>,
