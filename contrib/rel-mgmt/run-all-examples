@@ -10,6 +10,7 @@ cargo run --example fuzzer
 
 # Run all regular examples, in debug mode, next
 cargo run --example hello_world
+cargo run --example bindless
 cargo run --example font_bmp
 cargo run --example egui
 cargo run --example imgui
