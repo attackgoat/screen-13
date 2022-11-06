@@ -132,7 +132,7 @@ fn main() -> anyhow::Result<()> {
         // Print some text onto the image
         let text = "Screen 13";
         let (_offset, [width, height]) = small_10px_font.measure(text);
-        let scale = 3.0;
+        let scale = 4.0;
         let x = 320f32 * 0.5 / scale - width as f32 * 0.5;
         let y = 200f32 * 0.5 / scale - height as f32 * 0.5;
         let color = [196, 172, 230u8];

@@ -1211,19 +1211,6 @@ impl Resolver {
                                 let (prev_stages, prev_access) =
                                     pipeline_stage_access_flags(late.access);
 
-                                // This happens if you specfiy too broard of a read/write access in
-                                // a secondary pass. Maybe that should not be possible. For now just
-                                // specify the actual stages used with AccessType::Fragement*, etc.
-                                // Optionally we could detect this and break the pass up - but no...
-                                debug_assert!(
-                                    !curr_stages.contains(vk::PipelineStageFlags::ALL_COMMANDS)
-                                        && !prev_stages
-                                            .contains(vk::PipelineStageFlags::ALL_COMMANDS),
-                                    "exec {prev_exec_idx} {:?} -> {exec_idx} {:?}",
-                                    late.access,
-                                    early.access
-                                );
-
                                 let common_stages = curr_stages & prev_stages;
                                 if common_stages.is_empty() {
                                     // No common dependencies

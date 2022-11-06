@@ -7,6 +7,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+### Fixed
+
+- Validation error caused by back-to-back image reads in auto-merged fragment shader passes
+
 ### Added
 
 - `bindless.rs` example using an unbounded image sampler array and draw indirect call

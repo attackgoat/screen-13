@@ -87,8 +87,9 @@ impl ImGui {
         self.platform.prepare_render(ui, window);
         let draw_data = self.context.render();
 
-        let image = render_graph.bind_node(
-            self.pool
+        let image = render_graph.bind_node({
+            let mut image = self
+                .pool
                 .lease(ImageInfo::new_2d(
                     vk::Format::R8G8B8A8_UNORM,
                     window.inner_size().width,
@@ -98,11 +99,20 @@ impl ImGui {
                         | vk::ImageUsageFlags::STORAGE
                         | vk::ImageUsageFlags::TRANSFER_SRC, // TODO: Make TRANSFER_SRC an "extra flags"
                 ))
-                .unwrap(),
-        );
+                .unwrap();
+            image.as_mut().name = Some("ImGui Output".to_string());
+
+            image
+        });
         let font_atlas_image = render_graph.bind_node(self.font_atlas_image.as_ref().unwrap());
         let display_pos = draw_data.display_pos;
         let framebuffer_scale = draw_data.framebuffer_scale;
+
+        if draw_data.draw_lists_count() == 0 {
+            render_graph.clear_color_image(image);
+
+            return image;
+        }
 
         for draw_list in draw_data.draw_lists() {
             let indices = cast_slice(draw_list.idx_buffer());
@@ -170,7 +180,7 @@ impl ImGui {
                 .begin_pass("imgui")
                 .bind_pipeline(&self.pipeline)
                 .access_node(index_buf, AccessType::IndexBuffer)
-                .access_node(vertex_buf, AccessType::IndexBuffer)
+                .access_node(vertex_buf, AccessType::VertexBuffer)
                 .read_descriptor(0, font_atlas_image)
                 .clear_color(0, image)
                 .store_color(0, image)
@@ -270,8 +280,9 @@ impl ImGui {
         }
 
         let temp_buf = render_graph.bind_node(temp_buf);
-        let image = render_graph.bind_node(
-            self.pool
+        let image = render_graph.bind_node({
+            let mut image = self
+                .pool
                 .lease(ImageInfo::new_2d(
                     vk::Format::R8G8B8A8_UNORM,
                     texture.width,
@@ -280,8 +291,11 @@ impl ImGui {
                         | vk::ImageUsageFlags::STORAGE
                         | vk::ImageUsageFlags::TRANSFER_DST,
                 ))
-                .unwrap(),
-        );
+                .unwrap();
+            image.as_mut().name = Some("ImGui Font Atlas".to_string());
+
+            image
+        });
 
         render_graph.copy_buffer_to_image(temp_buf, image);
 

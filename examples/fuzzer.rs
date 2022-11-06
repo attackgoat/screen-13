@@ -352,6 +352,11 @@ fn record_compute_array_bind(frame: &mut FrameContext, pool: &mut HashPool) {
 
     frame
         .render_graph
+        .clear_color_image(images[0])
+        .clear_color_image(images[1])
+        .clear_color_image(images[2])
+        .clear_color_image(images[3])
+        .clear_color_image(images[4])
         .begin_pass("no-op")
         .bind_pipeline(&pipeline)
         .read_descriptor((0, [0]), images[0])
@@ -542,6 +547,11 @@ fn record_graphic_bindless(frame: &mut FrameContext, pool: &mut HashPool) {
 
     frame
         .render_graph
+        .clear_color_image(images[0])
+        .clear_color_image(images[1])
+        .clear_color_image(images[2])
+        .clear_color_image(images[3])
+        .clear_color_image(images[4])
         .begin_pass("a")
         .bind_pipeline(&pipeline)
         .read_descriptor((0, [0]), images[0])
@@ -830,7 +840,7 @@ fn record_graphic_wont_merge(frame: &mut FrameContext, pool: &mut HashPool) {
         .bind_pipeline(&pipeline)
         .store_color(0, image)
         .record_subpass(|subpass, _| {
-            subpass.draw(0, 0, 0, 0);
+            subpass.draw(1, 1, 0, 0);
         });
     frame
         .render_graph
@@ -838,7 +848,7 @@ fn record_graphic_wont_merge(frame: &mut FrameContext, pool: &mut HashPool) {
         .bind_pipeline(&pipeline)
         .store_color(0, image)
         .record_subpass(|subpass, _| {
-            subpass.draw(0, 0, 0, 0);
+            subpass.draw(1, 1, 0, 0);
         });
 }
 
