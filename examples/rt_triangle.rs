@@ -333,7 +333,8 @@ fn main() -> anyhow::Result<()> {
                 &event_loop.device,
                 BufferInfo::new(
                     blas_size.build_size,
-                    vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                    vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                        | vk::BufferUsageFlags::STORAGE_BUFFER,
                 ),
             )?);
 
@@ -363,7 +364,8 @@ fn main() -> anyhow::Result<()> {
                 &event_loop.device,
                 BufferInfo::new(
                     tlas_size.build_size,
-                    vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                    vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                        | vk::BufferUsageFlags::STORAGE_BUFFER,
                 ),
             )?);
             let instance_node = render_graph.bind_node(&instance_buf);
