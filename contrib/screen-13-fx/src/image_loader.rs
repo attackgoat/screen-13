@@ -191,7 +191,7 @@ impl ImageLoader {
                 // Copy host-local data in the buffer to the temporary buffer on the GPU and then
                 // use a compute shader to decode it before copying it over the output image
 
-                let dispatch_x = (width >> 2) - 1 + (width % 3); // HACK: -1 FOR NOW but do fix
+                let dispatch_x = width.max(4) >> 2;
                 let dispatch_y = height;
                 render_graph
                     .begin_pass("Decode RGB image")
