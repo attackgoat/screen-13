@@ -8,7 +8,7 @@ use {
     std::{collections::HashMap, sync::Arc},
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum Transition {
     Angular {
         starting_angle: f32,
@@ -404,12 +404,11 @@ impl TransitionPipeline {
         render_graph: &mut RenderGraph,
         a_image: impl Into<AnyImageNode>,
         b_image: impl Into<AnyImageNode>,
-        transition: &Transition,
+        transition: Transition,
         progress: f32,
     ) -> ImageLeaseNode {
         let a_image = a_image.into();
         let b_image = b_image.into();
-        let progress = progress.max(0.0).min(1.0);
 
         let a_info = render_graph.node_info(a_image);
         let b_info = render_graph.node_info(b_image);
@@ -426,8 +425,57 @@ impl TransitionPipeline {
         .build();
         let dest_image = render_graph.bind_node(self.cache.lease(dest_info).unwrap());
 
+        self.apply_to(
+            render_graph,
+            a_image,
+            b_image,
+            dest_image,
+            transition,
+            progress,
+        );
+
+        dest_image
+    }
+
+    pub fn apply_to(
+        &mut self,
+        render_graph: &mut RenderGraph,
+        a_image: impl Into<AnyImageNode>,
+        b_image: impl Into<AnyImageNode>,
+        dest_image: impl Into<AnyImageNode>,
+        transition: Transition,
+        progress: f32,
+    ) {
+        let a_image = a_image.into();
+        let b_image = b_image.into();
+        let dest_image = dest_image.into();
+        let progress = progress.max(0.0).min(1.0);
+
+        let dest_info = render_graph.node_info(dest_image);
+
         // Lazy-initialize the compute pipeline for this transition
         let transition_ty = transition.ty();
+        let pipeline = self.pipeline(transition_ty);
+
+        let mut push_consts = Vec::with_capacity(128);
+        push_consts.extend_from_slice(&progress.to_ne_bytes());
+
+        extend_push_constants(transition, &mut push_consts);
+
+        // TODO: Handle displacement and luma in an if case, below
+        render_graph
+            .begin_pass(format!("transition {transition_ty:?}"))
+            .bind_pipeline(&pipeline)
+            .read_descriptor(0, a_image)
+            .read_descriptor(1, b_image)
+            .write_descriptor(2, dest_image)
+            .record_compute(move |compute, _| {
+                compute.push_constants(push_consts.as_slice());
+                compute.dispatch(dest_info.width, dest_info.height, 1);
+            });
+    }
+
+    fn pipeline(&mut self, transition_ty: TransitionType) -> Arc<ComputePipeline> {
         let pipeline = self.pipelines.entry(transition_ty).or_insert_with(|| {
             trace!("creating {transition_ty:?}");
 
@@ -732,415 +780,402 @@ impl TransitionPipeline {
             )
         });
 
-        let mut push_consts = Vec::with_capacity(128);
-        push_consts.extend_from_slice(&progress.to_ne_bytes());
-
-        match transition {
-            &Transition::Angular { starting_angle } => {
-                push_consts.extend_from_slice(&starting_angle.to_ne_bytes());
-            }
-            &Transition::Bounce {
-                shadow_height,
-                bounces,
-                shadow_colour,
-            } => {
-                push_consts.extend_from_slice(&shadow_height.to_ne_bytes());
-                push_consts.extend_from_slice(&bounces.to_ne_bytes());
-                push_consts.extend_from_slice(&[0u8; 4]); // padding
-                push_consts.extend_from_slice(&shadow_colour[0].to_ne_bytes());
-                push_consts.extend_from_slice(&shadow_colour[1].to_ne_bytes());
-                push_consts.extend_from_slice(&shadow_colour[2].to_ne_bytes());
-                push_consts.extend_from_slice(&shadow_colour[3].to_ne_bytes());
-            }
-            &Transition::BowTieWithParameter { adjust, reverse } => {
-                push_consts.extend_from_slice(&adjust.to_ne_bytes());
-                push_consts.extend_from_slice(&(reverse as u32).to_ne_bytes());
-            }
-            &Transition::Burn { color } => {
-                push_consts.extend_from_slice(&[0u8; 12]); // padding
-                push_consts.extend_from_slice(&color[0].to_ne_bytes());
-                push_consts.extend_from_slice(&color[1].to_ne_bytes());
-                push_consts.extend_from_slice(&color[2].to_ne_bytes());
-            }
-            &Transition::ButterflyWaveScrawler {
-                amplitude,
-                waves,
-                color_separation,
-            } => {
-                push_consts.extend_from_slice(&amplitude.to_ne_bytes());
-                push_consts.extend_from_slice(&waves.to_ne_bytes());
-                push_consts.extend_from_slice(&color_separation.to_ne_bytes());
-            }
-            &Transition::Circle {
-                center,
-                background_color,
-            } => {
-                push_consts.extend_from_slice(&[0u8; 4]); // padding
-                push_consts.extend_from_slice(&center[0].to_ne_bytes());
-                push_consts.extend_from_slice(&center[1].to_ne_bytes());
-                push_consts.extend_from_slice(&background_color[0].to_ne_bytes());
-                push_consts.extend_from_slice(&background_color[1].to_ne_bytes());
-                push_consts.extend_from_slice(&background_color[2].to_ne_bytes());
-                push_consts.extend_from_slice(&[0u8; 4]); // padding
-            }
-            &Transition::CircleCrop { background_color } => {
-                push_consts.extend_from_slice(&[0u8; 12]); // padding
-                push_consts.extend_from_slice(&background_color[0].to_ne_bytes());
-                push_consts.extend_from_slice(&background_color[1].to_ne_bytes());
-                push_consts.extend_from_slice(&background_color[2].to_ne_bytes());
-                push_consts.extend_from_slice(&background_color[3].to_ne_bytes());
-                push_consts.extend_from_slice(&[0u8; 4]); // padding
-            }
-            &Transition::CircleOpen {
-                smoothness,
-                opening,
-            } => {
-                push_consts.extend_from_slice(&smoothness.to_ne_bytes());
-                push_consts.extend_from_slice(&(opening as u32).to_ne_bytes());
-            }
-            &Transition::ColorDistance { power } => {
-                push_consts.extend_from_slice(&power.to_ne_bytes());
-            }
-            &Transition::ColorPhase { from_step, to_step } => {
-                push_consts.extend_from_slice(&[0u8; 12]); // padding
-                push_consts.extend_from_slice(&from_step[0].to_ne_bytes());
-                push_consts.extend_from_slice(&from_step[1].to_ne_bytes());
-                push_consts.extend_from_slice(&from_step[2].to_ne_bytes());
-                push_consts.extend_from_slice(&from_step[3].to_ne_bytes());
-                push_consts.extend_from_slice(&to_step[0].to_ne_bytes());
-                push_consts.extend_from_slice(&to_step[1].to_ne_bytes());
-                push_consts.extend_from_slice(&to_step[2].to_ne_bytes());
-                push_consts.extend_from_slice(&to_step[3].to_ne_bytes());
-            }
-            &Transition::CrazyParametricFun {
-                a,
-                b,
-                amplitude,
-                smoothness,
-            } => {
-                push_consts.extend_from_slice(&a.to_ne_bytes());
-                push_consts.extend_from_slice(&b.to_ne_bytes());
-                push_consts.extend_from_slice(&amplitude.to_ne_bytes());
-                push_consts.extend_from_slice(&smoothness.to_ne_bytes());
-            }
-            &Transition::Crosshatch {
-                center,
-                threshold,
-                fade_edge,
-            } => {
-                push_consts.extend_from_slice(&[0u8; 4]); // padding
-                push_consts.extend_from_slice(&center[0].to_ne_bytes());
-                push_consts.extend_from_slice(&center[1].to_ne_bytes());
-                push_consts.extend_from_slice(&threshold.to_ne_bytes());
-                push_consts.extend_from_slice(&fade_edge.to_ne_bytes());
-            }
-            &Transition::CrossZoom { strength } => {
-                push_consts.extend_from_slice(&strength.to_ne_bytes());
-            }
-            &Transition::Cube {
-                perspective,
-                unzoom,
-                reflection,
-                floating,
-            } => {
-                push_consts.extend_from_slice(&perspective.to_ne_bytes());
-                push_consts.extend_from_slice(&unzoom.to_ne_bytes());
-                push_consts.extend_from_slice(&reflection.to_ne_bytes());
-                push_consts.extend_from_slice(&floating.to_ne_bytes());
-            }
-            &Transition::Directional { direction } => {
-                push_consts.extend_from_slice(&[0u8; 4]); // padding
-                push_consts.extend_from_slice(&direction[0].to_ne_bytes());
-                push_consts.extend_from_slice(&direction[1].to_ne_bytes());
-            }
-            &Transition::DirectionalEasing { direction } => {
-                push_consts.extend_from_slice(&[0u8; 4]); // padding
-                push_consts.extend_from_slice(&direction[0].to_ne_bytes());
-                push_consts.extend_from_slice(&direction[1].to_ne_bytes());
-            }
-            &Transition::DirectionalWarp { direction } => {
-                push_consts.extend_from_slice(&[0u8; 4]); // padding
-                push_consts.extend_from_slice(&direction[0].to_ne_bytes());
-                push_consts.extend_from_slice(&direction[1].to_ne_bytes());
-            }
-            &Transition::DirectionalWipe {
-                smoothness,
-                direction,
-            } => {
-                push_consts.extend_from_slice(&smoothness.to_ne_bytes());
-                push_consts.extend_from_slice(&direction[0].to_ne_bytes());
-                push_consts.extend_from_slice(&direction[1].to_ne_bytes());
-            }
-            &Transition::Displacement { strength, .. } => {
-                push_consts.extend_from_slice(&strength.to_ne_bytes());
-            }
-            &Transition::DoomScreen {
-                bars,
-                amplitude,
-                noise,
-                frequency,
-                drip_scale,
-            } => {
-                push_consts.extend_from_slice(&bars.to_ne_bytes());
-                push_consts.extend_from_slice(&amplitude.to_ne_bytes());
-                push_consts.extend_from_slice(&noise.to_ne_bytes());
-                push_consts.extend_from_slice(&frequency.to_ne_bytes());
-                push_consts.extend_from_slice(&drip_scale.to_ne_bytes());
-            }
-            &Transition::Doorway {
-                reflection,
-                perspective,
-                depth,
-            } => {
-                push_consts.extend_from_slice(&reflection.to_ne_bytes());
-                push_consts.extend_from_slice(&perspective.to_ne_bytes());
-                push_consts.extend_from_slice(&depth.to_ne_bytes());
-            }
-            &Transition::DreamyZoom { rotation, scale } => {
-                push_consts.extend_from_slice(&rotation.to_ne_bytes());
-                push_consts.extend_from_slice(&scale.to_ne_bytes());
-            }
-            &Transition::FadeColor { color_phase, color } => {
-                push_consts.extend_from_slice(&color_phase.to_ne_bytes());
-                push_consts.extend_from_slice(&[0u8; 8]); // padding
-                push_consts.extend_from_slice(&color[0].to_ne_bytes());
-                push_consts.extend_from_slice(&color[1].to_ne_bytes());
-                push_consts.extend_from_slice(&color[2].to_ne_bytes());
-            }
-            &Transition::FadeGrayscale { intensity } => {
-                push_consts.extend_from_slice(&intensity.to_ne_bytes());
-            }
-            &Transition::FilmBurn { seed } => {
-                push_consts.extend_from_slice(&seed.to_ne_bytes());
-            }
-            &Transition::Flyeye {
-                size,
-                zoom,
-                color_separation,
-            } => {
-                push_consts.extend_from_slice(&size.to_ne_bytes());
-                push_consts.extend_from_slice(&zoom.to_ne_bytes());
-                push_consts.extend_from_slice(&color_separation.to_ne_bytes());
-            }
-            &Transition::GridFlip {
-                pause,
-                size,
-                background_color,
-                divider_width,
-                randomness,
-            } => {
-                push_consts.extend_from_slice(&pause.to_ne_bytes());
-                push_consts.extend_from_slice(&size[0].to_ne_bytes());
-                push_consts.extend_from_slice(&size[1].to_ne_bytes());
-                push_consts.extend_from_slice(&background_color[0].to_ne_bytes());
-                push_consts.extend_from_slice(&background_color[1].to_ne_bytes());
-                push_consts.extend_from_slice(&background_color[2].to_ne_bytes());
-                push_consts.extend_from_slice(&background_color[3].to_ne_bytes());
-                push_consts.extend_from_slice(&divider_width.to_ne_bytes());
-                push_consts.extend_from_slice(&randomness.to_ne_bytes());
-            }
-            &Transition::Hexagonalize {
-                steps,
-                horizontal_hexagons,
-            } => {
-                push_consts.extend_from_slice(&steps.to_ne_bytes());
-                push_consts.extend_from_slice(&horizontal_hexagons.to_ne_bytes());
-            }
-            &Transition::Kaleidoscope {
-                speed,
-                angle,
-                power,
-            } => {
-                push_consts.extend_from_slice(&speed.to_ne_bytes());
-                push_consts.extend_from_slice(&angle.to_ne_bytes());
-                push_consts.extend_from_slice(&power.to_ne_bytes());
-            }
-            &Transition::LinearBlur { intensity } => {
-                push_consts.extend_from_slice(&intensity.to_ne_bytes());
-            }
-            &Transition::LuminanceMelt {
-                direction,
-                threshold,
-                above,
-            } => {
-                push_consts.extend_from_slice(&(direction as u32).to_ne_bytes());
-                push_consts.extend_from_slice(&threshold.to_ne_bytes());
-                push_consts.extend_from_slice(&(above as u32).to_ne_bytes());
-            }
-            &Transition::Morph { strength } => {
-                push_consts.extend_from_slice(&strength.to_ne_bytes());
-            }
-            &Transition::Mosaic { end } => {
-                push_consts.extend_from_slice(&end[0].to_ne_bytes());
-                push_consts.extend_from_slice(&end[1].to_ne_bytes());
-            }
-            &Transition::Overexposure { strength } => {
-                push_consts.extend_from_slice(&strength.to_ne_bytes());
-            }
-            &Transition::Perlin {
-                scale,
-                smoothness,
-                seed,
-            } => {
-                push_consts.extend_from_slice(&scale.to_ne_bytes());
-                push_consts.extend_from_slice(&smoothness.to_ne_bytes());
-                push_consts.extend_from_slice(&seed.to_ne_bytes());
-            }
-            &Transition::Pinwheel { speed } => {
-                push_consts.extend_from_slice(&speed.to_ne_bytes());
-            }
-            &Transition::Pixelize { steps, squares_min } => {
-                push_consts.extend_from_slice(&steps.to_ne_bytes());
-                push_consts.extend_from_slice(&squares_min[0].to_ne_bytes());
-                push_consts.extend_from_slice(&squares_min[1].to_ne_bytes());
-            }
-            &Transition::PolarFunction { segments } => {
-                push_consts.extend_from_slice(&segments.to_ne_bytes());
-            }
-            &Transition::PolkaDotsCurtain { dots, center } => {
-                push_consts.extend_from_slice(&dots.to_ne_bytes());
-                push_consts.extend_from_slice(&center[0].to_ne_bytes());
-                push_consts.extend_from_slice(&center[1].to_ne_bytes());
-            }
-            &Transition::PowerKaleido { scale, z, speed } => {
-                push_consts.extend_from_slice(&scale.to_ne_bytes());
-                push_consts.extend_from_slice(&z.to_ne_bytes());
-                push_consts.extend_from_slice(&speed.to_ne_bytes());
-            }
-            &Transition::Radial { smoothness } => {
-                push_consts.extend_from_slice(&smoothness.to_ne_bytes());
-            }
-            &Transition::RandomSquares { smoothness, size } => {
-                push_consts.extend_from_slice(&smoothness.to_ne_bytes());
-                push_consts.extend_from_slice(&size[0].to_ne_bytes());
-                push_consts.extend_from_slice(&size[1].to_ne_bytes());
-            }
-            &Transition::Ripple { amplitude, speed } => {
-                push_consts.extend_from_slice(&amplitude.to_ne_bytes());
-                push_consts.extend_from_slice(&speed.to_ne_bytes());
-            }
-            &Transition::RotateScale {
-                rotations,
-                center,
-                background_color,
-                scale,
-            } => {
-                push_consts.extend_from_slice(&rotations.to_ne_bytes());
-                push_consts.extend_from_slice(&center[0].to_ne_bytes());
-                push_consts.extend_from_slice(&center[1].to_ne_bytes());
-                push_consts.extend_from_slice(&background_color[0].to_ne_bytes());
-                push_consts.extend_from_slice(&background_color[1].to_ne_bytes());
-                push_consts.extend_from_slice(&background_color[2].to_ne_bytes());
-                push_consts.extend_from_slice(&background_color[3].to_ne_bytes());
-                push_consts.extend_from_slice(&scale.to_ne_bytes());
-            }
-            &Transition::SimpleZoom { zoom_quickness } => {
-                push_consts.extend_from_slice(&zoom_quickness.to_ne_bytes());
-            }
-            &Transition::SquaresWire {
-                smoothness,
-                squares,
-                direction,
-            } => {
-                push_consts.extend_from_slice(&smoothness.to_ne_bytes());
-                push_consts.extend_from_slice(&squares[0].to_ne_bytes());
-                push_consts.extend_from_slice(&squares[1].to_ne_bytes());
-                push_consts.extend_from_slice(&direction[0].to_ne_bytes());
-                push_consts.extend_from_slice(&direction[1].to_ne_bytes());
-            }
-            &Transition::Squeeze { color_separation } => {
-                push_consts.extend_from_slice(&color_separation.to_ne_bytes());
-            }
-            &Transition::StereoViewer {
-                zoom,
-                corner_radius,
-            } => {
-                push_consts.extend_from_slice(&zoom.to_ne_bytes());
-                push_consts.extend_from_slice(&corner_radius.to_ne_bytes());
-            }
-            &Transition::Swap {
-                reflection,
-                perspective,
-                depth,
-            } => {
-                push_consts.extend_from_slice(&reflection.to_ne_bytes());
-                push_consts.extend_from_slice(&perspective.to_ne_bytes());
-                push_consts.extend_from_slice(&depth.to_ne_bytes());
-            }
-            &Transition::TvStatic { offset } => {
-                push_consts.extend_from_slice(&offset.to_ne_bytes());
-            }
-            &Transition::UndulatingBurnOut {
-                smoothness,
-                center,
-                color,
-            } => {
-                push_consts.extend_from_slice(&smoothness.to_ne_bytes());
-                push_consts.extend_from_slice(&center[0].to_ne_bytes());
-                push_consts.extend_from_slice(&center[1].to_ne_bytes());
-                push_consts.extend_from_slice(&color[0].to_ne_bytes());
-                push_consts.extend_from_slice(&color[1].to_ne_bytes());
-                push_consts.extend_from_slice(&color[2].to_ne_bytes());
-            }
-            &Transition::WaterDrop { amplitude, speed } => {
-                push_consts.extend_from_slice(&amplitude.to_ne_bytes());
-                push_consts.extend_from_slice(&speed.to_ne_bytes());
-            }
-            &Transition::Wind { size } => {
-                push_consts.extend_from_slice(&size.to_ne_bytes());
-            }
-            &Transition::WindowSlice { count, smoothness } => {
-                push_consts.extend_from_slice(&count.to_ne_bytes());
-                push_consts.extend_from_slice(&smoothness.to_ne_bytes());
-            }
-            &Transition::ZoomLeftWipe { zoom_quickness } => {
-                push_consts.extend_from_slice(&zoom_quickness.to_ne_bytes());
-            }
-            &Transition::ZoomRightWipe { zoom_quickness } => {
-                push_consts.extend_from_slice(&zoom_quickness.to_ne_bytes());
-            }
-            Transition::BowTieHorizontal
-            | Transition::BowTieVertical
-            | Transition::CannabisLeaf
-            | Transition::CoordFromIn
-            | Transition::CrossWarp
-            | Transition::Dreamy
-            | Transition::Fade
-            | Transition::GlitchDisplace
-            | Transition::GlitchMemories
-            | Transition::Heart
-            | Transition::InvertedPageCurl
-            | Transition::Luma { .. }
-            | Transition::LeftRight
-            | Transition::Multiply
-            | Transition::RandomNoisex
-            | Transition::Rotate
-            | Transition::ScaleIn
-            | Transition::Swirl
-            | Transition::TangentMotionBlur
-            | Transition::TopBottom
-            | Transition::WindowBlinds
-            | Transition::WipeDown
-            | Transition::WipeLeft
-            | Transition::WipeRight
-            | Transition::WipeUp
-            | Transition::ZoomInCircles => {}
-        };
-
-        // TODO: Handle displacement and luma in an if case, below
-        render_graph
-            .begin_pass(format!("transition {transition_ty:?}"))
-            .bind_pipeline(&*pipeline)
-            .read_descriptor(0, a_image)
-            .read_descriptor(1, b_image)
-            .write_descriptor(2, dest_image)
-            .record_compute(move |compute, _| {
-                compute.push_constants(push_consts.as_slice());
-                compute.dispatch(dest_info.width, dest_info.height, 1);
-            });
-
-        dest_image
+        Arc::clone(pipeline)
     }
+}
+
+fn extend_push_constants(transition: Transition, push_consts: &mut Vec<u8>) {
+    match transition {
+        Transition::Angular { starting_angle } => {
+            push_consts.extend_from_slice(&starting_angle.to_ne_bytes());
+        }
+        Transition::Bounce {
+            shadow_height,
+            bounces,
+            shadow_colour,
+        } => {
+            push_consts.extend_from_slice(&shadow_height.to_ne_bytes());
+            push_consts.extend_from_slice(&bounces.to_ne_bytes());
+            push_consts.extend_from_slice(&[0u8; 4]); // padding
+            push_consts.extend_from_slice(&shadow_colour[0].to_ne_bytes());
+            push_consts.extend_from_slice(&shadow_colour[1].to_ne_bytes());
+            push_consts.extend_from_slice(&shadow_colour[2].to_ne_bytes());
+            push_consts.extend_from_slice(&shadow_colour[3].to_ne_bytes());
+        }
+        Transition::BowTieWithParameter { adjust, reverse } => {
+            push_consts.extend_from_slice(&adjust.to_ne_bytes());
+            push_consts.extend_from_slice(&(reverse as u32).to_ne_bytes());
+        }
+        Transition::Burn { color } => {
+            push_consts.extend_from_slice(&[0u8; 12]); // padding
+            push_consts.extend_from_slice(&color[0].to_ne_bytes());
+            push_consts.extend_from_slice(&color[1].to_ne_bytes());
+            push_consts.extend_from_slice(&color[2].to_ne_bytes());
+        }
+        Transition::ButterflyWaveScrawler {
+            amplitude,
+            waves,
+            color_separation,
+        } => {
+            push_consts.extend_from_slice(&amplitude.to_ne_bytes());
+            push_consts.extend_from_slice(&waves.to_ne_bytes());
+            push_consts.extend_from_slice(&color_separation.to_ne_bytes());
+        }
+        Transition::Circle {
+            center,
+            background_color,
+        } => {
+            push_consts.extend_from_slice(&[0u8; 4]); // padding
+            push_consts.extend_from_slice(&center[0].to_ne_bytes());
+            push_consts.extend_from_slice(&center[1].to_ne_bytes());
+            push_consts.extend_from_slice(&background_color[0].to_ne_bytes());
+            push_consts.extend_from_slice(&background_color[1].to_ne_bytes());
+            push_consts.extend_from_slice(&background_color[2].to_ne_bytes());
+            push_consts.extend_from_slice(&[0u8; 4]); // padding
+        }
+        Transition::CircleCrop { background_color } => {
+            push_consts.extend_from_slice(&[0u8; 12]); // padding
+            push_consts.extend_from_slice(&background_color[0].to_ne_bytes());
+            push_consts.extend_from_slice(&background_color[1].to_ne_bytes());
+            push_consts.extend_from_slice(&background_color[2].to_ne_bytes());
+            push_consts.extend_from_slice(&background_color[3].to_ne_bytes());
+            push_consts.extend_from_slice(&[0u8; 4]); // padding
+        }
+        Transition::CircleOpen {
+            smoothness,
+            opening,
+        } => {
+            push_consts.extend_from_slice(&smoothness.to_ne_bytes());
+            push_consts.extend_from_slice(&(opening as u32).to_ne_bytes());
+        }
+        Transition::ColorDistance { power } => {
+            push_consts.extend_from_slice(&power.to_ne_bytes());
+        }
+        Transition::ColorPhase { from_step, to_step } => {
+            push_consts.extend_from_slice(&[0u8; 12]); // padding
+            push_consts.extend_from_slice(&from_step[0].to_ne_bytes());
+            push_consts.extend_from_slice(&from_step[1].to_ne_bytes());
+            push_consts.extend_from_slice(&from_step[2].to_ne_bytes());
+            push_consts.extend_from_slice(&from_step[3].to_ne_bytes());
+            push_consts.extend_from_slice(&to_step[0].to_ne_bytes());
+            push_consts.extend_from_slice(&to_step[1].to_ne_bytes());
+            push_consts.extend_from_slice(&to_step[2].to_ne_bytes());
+            push_consts.extend_from_slice(&to_step[3].to_ne_bytes());
+        }
+        Transition::CrazyParametricFun {
+            a,
+            b,
+            amplitude,
+            smoothness,
+        } => {
+            push_consts.extend_from_slice(&a.to_ne_bytes());
+            push_consts.extend_from_slice(&b.to_ne_bytes());
+            push_consts.extend_from_slice(&amplitude.to_ne_bytes());
+            push_consts.extend_from_slice(&smoothness.to_ne_bytes());
+        }
+        Transition::Crosshatch {
+            center,
+            threshold,
+            fade_edge,
+        } => {
+            push_consts.extend_from_slice(&[0u8; 4]); // padding
+            push_consts.extend_from_slice(&center[0].to_ne_bytes());
+            push_consts.extend_from_slice(&center[1].to_ne_bytes());
+            push_consts.extend_from_slice(&threshold.to_ne_bytes());
+            push_consts.extend_from_slice(&fade_edge.to_ne_bytes());
+        }
+        Transition::CrossZoom { strength } => {
+            push_consts.extend_from_slice(&strength.to_ne_bytes());
+        }
+        Transition::Cube {
+            perspective,
+            unzoom,
+            reflection,
+            floating,
+        } => {
+            push_consts.extend_from_slice(&perspective.to_ne_bytes());
+            push_consts.extend_from_slice(&unzoom.to_ne_bytes());
+            push_consts.extend_from_slice(&reflection.to_ne_bytes());
+            push_consts.extend_from_slice(&floating.to_ne_bytes());
+        }
+        Transition::Directional { direction } => {
+            push_consts.extend_from_slice(&[0u8; 4]); // padding
+            push_consts.extend_from_slice(&direction[0].to_ne_bytes());
+            push_consts.extend_from_slice(&direction[1].to_ne_bytes());
+        }
+        Transition::DirectionalEasing { direction } => {
+            push_consts.extend_from_slice(&[0u8; 4]); // padding
+            push_consts.extend_from_slice(&direction[0].to_ne_bytes());
+            push_consts.extend_from_slice(&direction[1].to_ne_bytes());
+        }
+        Transition::DirectionalWarp { direction } => {
+            push_consts.extend_from_slice(&[0u8; 4]); // padding
+            push_consts.extend_from_slice(&direction[0].to_ne_bytes());
+            push_consts.extend_from_slice(&direction[1].to_ne_bytes());
+        }
+        Transition::DirectionalWipe {
+            smoothness,
+            direction,
+        } => {
+            push_consts.extend_from_slice(&smoothness.to_ne_bytes());
+            push_consts.extend_from_slice(&direction[0].to_ne_bytes());
+            push_consts.extend_from_slice(&direction[1].to_ne_bytes());
+        }
+        Transition::Displacement { strength, .. } => {
+            push_consts.extend_from_slice(&strength.to_ne_bytes());
+        }
+        Transition::DoomScreen {
+            bars,
+            amplitude,
+            noise,
+            frequency,
+            drip_scale,
+        } => {
+            push_consts.extend_from_slice(&bars.to_ne_bytes());
+            push_consts.extend_from_slice(&amplitude.to_ne_bytes());
+            push_consts.extend_from_slice(&noise.to_ne_bytes());
+            push_consts.extend_from_slice(&frequency.to_ne_bytes());
+            push_consts.extend_from_slice(&drip_scale.to_ne_bytes());
+        }
+        Transition::Doorway {
+            reflection,
+            perspective,
+            depth,
+        } => {
+            push_consts.extend_from_slice(&reflection.to_ne_bytes());
+            push_consts.extend_from_slice(&perspective.to_ne_bytes());
+            push_consts.extend_from_slice(&depth.to_ne_bytes());
+        }
+        Transition::DreamyZoom { rotation, scale } => {
+            push_consts.extend_from_slice(&rotation.to_ne_bytes());
+            push_consts.extend_from_slice(&scale.to_ne_bytes());
+        }
+        Transition::FadeColor { color_phase, color } => {
+            push_consts.extend_from_slice(&color_phase.to_ne_bytes());
+            push_consts.extend_from_slice(&[0u8; 8]); // padding
+            push_consts.extend_from_slice(&color[0].to_ne_bytes());
+            push_consts.extend_from_slice(&color[1].to_ne_bytes());
+            push_consts.extend_from_slice(&color[2].to_ne_bytes());
+        }
+        Transition::FadeGrayscale { intensity } => {
+            push_consts.extend_from_slice(&intensity.to_ne_bytes());
+        }
+        Transition::FilmBurn { seed } => {
+            push_consts.extend_from_slice(&seed.to_ne_bytes());
+        }
+        Transition::Flyeye {
+            size,
+            zoom,
+            color_separation,
+        } => {
+            push_consts.extend_from_slice(&size.to_ne_bytes());
+            push_consts.extend_from_slice(&zoom.to_ne_bytes());
+            push_consts.extend_from_slice(&color_separation.to_ne_bytes());
+        }
+        Transition::GridFlip {
+            pause,
+            size,
+            background_color,
+            divider_width,
+            randomness,
+        } => {
+            push_consts.extend_from_slice(&pause.to_ne_bytes());
+            push_consts.extend_from_slice(&size[0].to_ne_bytes());
+            push_consts.extend_from_slice(&size[1].to_ne_bytes());
+            push_consts.extend_from_slice(&background_color[0].to_ne_bytes());
+            push_consts.extend_from_slice(&background_color[1].to_ne_bytes());
+            push_consts.extend_from_slice(&background_color[2].to_ne_bytes());
+            push_consts.extend_from_slice(&background_color[3].to_ne_bytes());
+            push_consts.extend_from_slice(&divider_width.to_ne_bytes());
+            push_consts.extend_from_slice(&randomness.to_ne_bytes());
+        }
+        Transition::Hexagonalize {
+            steps,
+            horizontal_hexagons,
+        } => {
+            push_consts.extend_from_slice(&steps.to_ne_bytes());
+            push_consts.extend_from_slice(&horizontal_hexagons.to_ne_bytes());
+        }
+        Transition::Kaleidoscope {
+            speed,
+            angle,
+            power,
+        } => {
+            push_consts.extend_from_slice(&speed.to_ne_bytes());
+            push_consts.extend_from_slice(&angle.to_ne_bytes());
+            push_consts.extend_from_slice(&power.to_ne_bytes());
+        }
+        Transition::LinearBlur { intensity } => {
+            push_consts.extend_from_slice(&intensity.to_ne_bytes());
+        }
+        Transition::LuminanceMelt {
+            direction,
+            threshold,
+            above,
+        } => {
+            push_consts.extend_from_slice(&(direction as u32).to_ne_bytes());
+            push_consts.extend_from_slice(&threshold.to_ne_bytes());
+            push_consts.extend_from_slice(&(above as u32).to_ne_bytes());
+        }
+        Transition::Morph { strength } => {
+            push_consts.extend_from_slice(&strength.to_ne_bytes());
+        }
+        Transition::Mosaic { end } => {
+            push_consts.extend_from_slice(&end[0].to_ne_bytes());
+            push_consts.extend_from_slice(&end[1].to_ne_bytes());
+        }
+        Transition::Overexposure { strength } => {
+            push_consts.extend_from_slice(&strength.to_ne_bytes());
+        }
+        Transition::Perlin {
+            scale,
+            smoothness,
+            seed,
+        } => {
+            push_consts.extend_from_slice(&scale.to_ne_bytes());
+            push_consts.extend_from_slice(&smoothness.to_ne_bytes());
+            push_consts.extend_from_slice(&seed.to_ne_bytes());
+        }
+        Transition::Pinwheel { speed } => {
+            push_consts.extend_from_slice(&speed.to_ne_bytes());
+        }
+        Transition::Pixelize { steps, squares_min } => {
+            push_consts.extend_from_slice(&steps.to_ne_bytes());
+            push_consts.extend_from_slice(&squares_min[0].to_ne_bytes());
+            push_consts.extend_from_slice(&squares_min[1].to_ne_bytes());
+        }
+        Transition::PolarFunction { segments } => {
+            push_consts.extend_from_slice(&segments.to_ne_bytes());
+        }
+        Transition::PolkaDotsCurtain { dots, center } => {
+            push_consts.extend_from_slice(&dots.to_ne_bytes());
+            push_consts.extend_from_slice(&center[0].to_ne_bytes());
+            push_consts.extend_from_slice(&center[1].to_ne_bytes());
+        }
+        Transition::PowerKaleido { scale, z, speed } => {
+            push_consts.extend_from_slice(&scale.to_ne_bytes());
+            push_consts.extend_from_slice(&z.to_ne_bytes());
+            push_consts.extend_from_slice(&speed.to_ne_bytes());
+        }
+        Transition::Radial { smoothness } => {
+            push_consts.extend_from_slice(&smoothness.to_ne_bytes());
+        }
+        Transition::RandomSquares { smoothness, size } => {
+            push_consts.extend_from_slice(&smoothness.to_ne_bytes());
+            push_consts.extend_from_slice(&size[0].to_ne_bytes());
+            push_consts.extend_from_slice(&size[1].to_ne_bytes());
+        }
+        Transition::Ripple { amplitude, speed } => {
+            push_consts.extend_from_slice(&amplitude.to_ne_bytes());
+            push_consts.extend_from_slice(&speed.to_ne_bytes());
+        }
+        Transition::RotateScale {
+            rotations,
+            center,
+            background_color,
+            scale,
+        } => {
+            push_consts.extend_from_slice(&rotations.to_ne_bytes());
+            push_consts.extend_from_slice(&center[0].to_ne_bytes());
+            push_consts.extend_from_slice(&center[1].to_ne_bytes());
+            push_consts.extend_from_slice(&background_color[0].to_ne_bytes());
+            push_consts.extend_from_slice(&background_color[1].to_ne_bytes());
+            push_consts.extend_from_slice(&background_color[2].to_ne_bytes());
+            push_consts.extend_from_slice(&background_color[3].to_ne_bytes());
+            push_consts.extend_from_slice(&scale.to_ne_bytes());
+        }
+        Transition::SimpleZoom { zoom_quickness } => {
+            push_consts.extend_from_slice(&zoom_quickness.to_ne_bytes());
+        }
+        Transition::SquaresWire {
+            smoothness,
+            squares,
+            direction,
+        } => {
+            push_consts.extend_from_slice(&smoothness.to_ne_bytes());
+            push_consts.extend_from_slice(&squares[0].to_ne_bytes());
+            push_consts.extend_from_slice(&squares[1].to_ne_bytes());
+            push_consts.extend_from_slice(&direction[0].to_ne_bytes());
+            push_consts.extend_from_slice(&direction[1].to_ne_bytes());
+        }
+        Transition::Squeeze { color_separation } => {
+            push_consts.extend_from_slice(&color_separation.to_ne_bytes());
+        }
+        Transition::StereoViewer {
+            zoom,
+            corner_radius,
+        } => {
+            push_consts.extend_from_slice(&zoom.to_ne_bytes());
+            push_consts.extend_from_slice(&corner_radius.to_ne_bytes());
+        }
+        Transition::Swap {
+            reflection,
+            perspective,
+            depth,
+        } => {
+            push_consts.extend_from_slice(&reflection.to_ne_bytes());
+            push_consts.extend_from_slice(&perspective.to_ne_bytes());
+            push_consts.extend_from_slice(&depth.to_ne_bytes());
+        }
+        Transition::TvStatic { offset } => {
+            push_consts.extend_from_slice(&offset.to_ne_bytes());
+        }
+        Transition::UndulatingBurnOut {
+            smoothness,
+            center,
+            color,
+        } => {
+            push_consts.extend_from_slice(&smoothness.to_ne_bytes());
+            push_consts.extend_from_slice(&center[0].to_ne_bytes());
+            push_consts.extend_from_slice(&center[1].to_ne_bytes());
+            push_consts.extend_from_slice(&color[0].to_ne_bytes());
+            push_consts.extend_from_slice(&color[1].to_ne_bytes());
+            push_consts.extend_from_slice(&color[2].to_ne_bytes());
+        }
+        Transition::WaterDrop { amplitude, speed } => {
+            push_consts.extend_from_slice(&amplitude.to_ne_bytes());
+            push_consts.extend_from_slice(&speed.to_ne_bytes());
+        }
+        Transition::Wind { size } => {
+            push_consts.extend_from_slice(&size.to_ne_bytes());
+        }
+        Transition::WindowSlice { count, smoothness } => {
+            push_consts.extend_from_slice(&count.to_ne_bytes());
+            push_consts.extend_from_slice(&smoothness.to_ne_bytes());
+        }
+        Transition::ZoomLeftWipe { zoom_quickness } => {
+            push_consts.extend_from_slice(&zoom_quickness.to_ne_bytes());
+        }
+        Transition::ZoomRightWipe { zoom_quickness } => {
+            push_consts.extend_from_slice(&zoom_quickness.to_ne_bytes());
+        }
+        Transition::BowTieHorizontal
+        | Transition::BowTieVertical
+        | Transition::CannabisLeaf
+        | Transition::CoordFromIn
+        | Transition::CrossWarp
+        | Transition::Dreamy
+        | Transition::Fade
+        | Transition::GlitchDisplace
+        | Transition::GlitchMemories
+        | Transition::Heart
+        | Transition::InvertedPageCurl
+        | Transition::Luma { .. }
+        | Transition::LeftRight
+        | Transition::Multiply
+        | Transition::RandomNoisex
+        | Transition::Rotate
+        | Transition::ScaleIn
+        | Transition::Swirl
+        | Transition::TangentMotionBlur
+        | Transition::TopBottom
+        | Transition::WindowBlinds
+        | Transition::WipeDown
+        | Transition::WipeLeft
+        | Transition::WipeRight
+        | Transition::WipeUp
+        | Transition::ZoomInCircles => {}
+    };
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

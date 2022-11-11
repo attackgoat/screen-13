@@ -68,7 +68,7 @@ fn main() -> anyhow::Result<()> {
         let gulf_image = frame.render_graph.bind_node(&gulf_image);
 
         // Apply the current transition to the images and get a resultant image out; "blend_image"
-        let transition = &TRANSITIONS[curr_transition_idx];
+        let transition = TRANSITIONS[curr_transition_idx];
         let blend_image = transition_pipeline.apply(
             frame.render_graph,
             bart_image,
