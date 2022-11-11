@@ -85,11 +85,7 @@ fn create_pak_bindings(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> anyhow::
         bindings.push_str("pub const ");
         bindings.push_str(
             key.to_ascii_uppercase()
-                .replace('\\', "_")
-                .replace('/', "_")
-                .replace('-', "_")
-                .replace('.', "_")
-                .replace('!', "_")
+                .replace(['\\', '/', '-', '.', '!'], "_")
                 .as_str(),
         );
         bindings.push_str(": &str = r#\"");
@@ -113,11 +109,7 @@ fn create_shader_bindings(
         bindings.push_str(
             join_strings(remove_common_path(shader_path.as_ref(), &shader.0), "_")
                 .to_ascii_uppercase()
-                .replace('\\', "_")
-                .replace('/', "_")
-                .replace('-', "_")
-                .replace('.', "_")
-                .replace('!', "_")
+                .replace(['\\', '/', '-', '.', '!'], "_")
                 .as_str(),
         );
         bindings.push_str(": &[u8] = include_bytes!(concat!(env!(\"OUT_DIR\"), \"/");
