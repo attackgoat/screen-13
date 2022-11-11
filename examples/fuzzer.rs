@@ -28,7 +28,7 @@ use {
 
 type Operation = fn(&mut FrameContext, &mut HashPool);
 
-const FRAME_COUNT: usize = 10;
+const FRAME_COUNT: usize = 100;
 const OPERATIONS_PER_FRAME: usize = 16;
 
 static OPERATIONS: &[Operation] = &[
@@ -41,6 +41,7 @@ static OPERATIONS: &[Operation] = &[
     record_graphic_will_merge_subpass_input,
     record_graphic_wont_merge,
     record_accel_struct_builds,
+    record_transfer_graphic_multipass,
 ];
 
 fn main() -> Result<(), DisplayError> {
@@ -329,7 +330,7 @@ fn record_compute_array_bind(frame: &mut FrameContext, pool: &mut HashPool) {
         vk::Format::R8G8B8A8_UNORM,
         64,
         64,
-        vk::ImageUsageFlags::SAMPLED,
+        vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
     )
     .build();
     let images = [
@@ -524,7 +525,9 @@ fn record_graphic_bindless(frame: &mut FrameContext, pool: &mut HashPool) {
         vk::Format::R8G8B8A8_UNORM,
         64,
         64,
-        vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE,
+        vk::ImageUsageFlags::SAMPLED
+            | vk::ImageUsageFlags::STORAGE
+            | vk::ImageUsageFlags::TRANSFER_DST,
     )
     .build();
     let images = [
@@ -770,7 +773,9 @@ fn record_graphic_will_merge_subpass_input(frame: &mut FrameContext, pool: &mut 
             vk::Format::R8G8B8A8_UNORM,
             256,
             256,
-            vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::INPUT_ATTACHMENT,
+            vk::ImageUsageFlags::COLOR_ATTACHMENT
+                | vk::ImageUsageFlags::INPUT_ATTACHMENT
+                | vk::ImageUsageFlags::TRANSFER_DST,
         ))
         .unwrap(),
     );
@@ -847,6 +852,84 @@ fn record_graphic_wont_merge(frame: &mut FrameContext, pool: &mut HashPool) {
         .begin_pass("d")
         .bind_pipeline(&pipeline)
         .store_color(0, image)
+        .record_subpass(|subpass, _| {
+            subpass.draw(1, 1, 0, 0);
+        });
+}
+
+fn record_transfer_graphic_multipass(frame: &mut FrameContext, pool: &mut HashPool) {
+    let pipeline = graphic_vert_frag_pipeline(
+        frame.device,
+        GraphicPipelineInfo::default(),
+        inline_spirv!(
+            r#"
+            #version 460 core
+
+            void main() {
+            }
+            "#,
+            vert
+        )
+        .as_slice(),
+        inline_spirv!(
+            r#"
+            #version 460 core
+
+            layout(binding = 0) uniform sampler2D my_sampler_lle;
+
+            layout(location = 0) out vec4 color_out;
+
+            void main() {
+                color_out = texture(my_sampler_lle, vec2(0));
+            }
+            "#,
+            frag
+        )
+        .as_slice(),
+    );
+    let images = [
+        frame.render_graph.bind_node(
+            pool.lease(ImageInfo::new_2d(
+                vk::Format::R8G8B8A8_UNORM,
+                256,
+                256,
+                vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
+            ))
+            .unwrap(),
+        ),
+        frame.render_graph.bind_node(
+            pool.lease(ImageInfo::new_2d(
+                vk::Format::R8G8B8A8_UNORM,
+                256,
+                256,
+                vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
+            ))
+            .unwrap(),
+        ),
+    ];
+
+    frame.render_graph.clear_color_image(images[0]);
+    frame.render_graph.clear_color_image(images[1]);
+
+    // a and b should merge into one renderpass with two subpasses; however the use of images[1] in
+    // b should have a pipeline barrier (on the clear we just did) before the pass starts.
+    frame
+        .render_graph
+        .begin_pass("a")
+        .bind_pipeline(&pipeline)
+        .clear_color(0, frame.swapchain_image)
+        .store_color(0, frame.swapchain_image)
+        .read_descriptor(0, images[0])
+        .record_subpass(|subpass, _| {
+            subpass.draw(1, 1, 0, 0);
+        });
+    frame
+        .render_graph
+        .begin_pass("b")
+        .bind_pipeline(&pipeline)
+        .load_color(0, frame.swapchain_image)
+        .store_color(0, frame.swapchain_image)
+        .read_descriptor(0, images[1])
         .record_subpass(|subpass, _| {
             subpass.draw(1, 1, 0, 0);
         });
