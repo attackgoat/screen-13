@@ -1200,6 +1200,10 @@ impl Resolver {
                     'accesses: for (node_idx, [early, _]) in exec.accesses.iter() {
                         let (mut curr_stages, mut curr_access) =
                             pipeline_stage_access_flags(early.access);
+                        if curr_stages.contains(vk::PipelineStageFlags::ALL_COMMANDS) {
+                            curr_stages |= vk::PipelineStageFlags::ALL_GRAPHICS;
+                            curr_stages &= !vk::PipelineStageFlags::ALL_COMMANDS;
+                        }
 
                         // First look for through earlier executions of this pass (in reverse order)
                         for (prev_exec_idx, prev_exec) in
@@ -1208,8 +1212,12 @@ impl Resolver {
                             if let Some([_, late]) = prev_exec.accesses.get(node_idx) {
                                 // Is this previous execution access dependent on anything the current
                                 // execution access is dependent upon?
-                                let (prev_stages, prev_access) =
+                                let (mut prev_stages, prev_access) =
                                     pipeline_stage_access_flags(late.access);
+                                if prev_stages.contains(vk::PipelineStageFlags::ALL_COMMANDS) {
+                                    prev_stages |= vk::PipelineStageFlags::ALL_GRAPHICS;
+                                    prev_stages &= !vk::PipelineStageFlags::ALL_COMMANDS;
+                                }
 
                                 let common_stages = curr_stages & prev_stages;
                                 if common_stages.is_empty() {
