@@ -62,7 +62,7 @@ macro_rules! lease {
                         .or_insert_with(|| {
                             Arc::new(Mutex::new(VecDeque::new()))
                         });
-                    let cache_ref = Arc::clone(cache);
+                    let cache_ref = Arc::downgrade(cache);
                     let mut cache = cache.lock();
 
                     if cache.is_empty() || ![<can_lease_ $item:snake>](cache.front_mut().unwrap()) {

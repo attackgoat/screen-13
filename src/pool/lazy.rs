@@ -99,7 +99,7 @@ impl Pool<AccelerationStructureInfo, AccelerationStructure> for LazyPool {
             .acceleration_structure_cache
             .entry(info.ty)
             .or_default();
-        let cache_ref = Arc::clone(acceleration_structure_cache);
+        let cache_ref = Arc::downgrade(acceleration_structure_cache);
         let mut cache = acceleration_structure_cache.lock();
 
         if cache.is_empty() {
@@ -145,7 +145,7 @@ impl Pool<AccelerationStructureInfoBuilder, AccelerationStructure> for LazyPool 
 impl Pool<BufferInfo, Buffer> for LazyPool {
     fn lease(&mut self, info: BufferInfo) -> Result<Lease<Buffer>, DriverError> {
         let buffer_cache = self.buffer_cache.entry(info.can_map).or_default();
-        let cache_ref = Arc::clone(buffer_cache);
+        let cache_ref = Arc::downgrade(buffer_cache);
         let mut cache = buffer_cache.lock();
 
         if cache.is_empty() {
@@ -190,7 +190,7 @@ impl Pool<BufferInfoBuilder, Buffer> for LazyPool {
 
 impl Pool<DescriptorPoolInfo, DescriptorPool> for LazyPool {
     fn lease(&mut self, info: DescriptorPoolInfo) -> Result<Lease<DescriptorPool>, DriverError> {
-        let cache_ref = Arc::clone(&self.descriptor_pool_cache);
+        let cache_ref = Arc::downgrade(&self.descriptor_pool_cache);
         let mut cache = self.descriptor_pool_cache.lock();
 
         if cache.is_empty() {
@@ -252,7 +252,7 @@ impl Pool<ImageInfo, Image> for LazyPool {
                 width: info.width,
             })
             .or_default();
-        let cache_ref = Arc::clone(image_cache);
+        let cache_ref = Arc::downgrade(image_cache);
         let mut cache = image_cache.lock();
 
         if cache.is_empty() {
@@ -302,17 +302,18 @@ impl Pool<RenderPassInfo, RenderPass> for LazyPool {
             };
 
             Ok(Lease {
-                cache: Some(cache.clone()),
+                cache: Some(Arc::downgrade(cache)),
                 item: Some(item),
             })
         } else {
             let cache = Arc::new(Mutex::new(VecDeque::new()));
-            self.render_pass_cache.insert(info.clone(), cache.clone());
+            let cache_ref = Arc::downgrade(&cache);
+            self.render_pass_cache.insert(info.clone(), cache);
 
             let item = RenderPass::create(&self.device, info)?;
 
             Ok(Lease {
-                cache: Some(cache),
+                cache: Some(cache_ref),
                 item: Some(item),
             })
         }
@@ -325,7 +326,7 @@ impl Pool<QueueFamily, CommandBuffer> for LazyPool {
             .command_buffer_cache
             .entry(queue_family.idx)
             .or_insert_with(|| Arc::new(Mutex::new(VecDeque::new())));
-        let cache_ref = Arc::clone(cache);
+        let cache_ref = Arc::downgrade(cache);
         let mut cache = cache.lock();
 
         if cache.is_empty() || !Self::can_lease_command_buffer(cache.front_mut().unwrap()) {

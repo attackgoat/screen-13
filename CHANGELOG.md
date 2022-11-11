@@ -16,6 +16,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - `bindless.rs` example using an unbounded image sampler array and draw indirect call
 
+### Changed
+
+- Leased resources now reference their pool using `Weak` reference counting to improve drop ordering
+
 ## [0.6.4] - 2022-10-31
 
 ### Fixed

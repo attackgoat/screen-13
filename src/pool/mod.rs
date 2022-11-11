@@ -53,12 +53,13 @@ use {
         collections::VecDeque,
         fmt::Debug,
         ops::{Deref, DerefMut},
-        sync::Arc,
+        sync::{Arc, Weak},
         thread::panicking,
     },
 };
 
 type Cache<T> = Arc<Mutex<VecDeque<T>>>;
+type CacheRef<T> = Weak<Mutex<VecDeque<T>>>;
 
 /// Holds a leased resource and implements `Drop` in order to return the resource.
 ///
@@ -67,7 +68,7 @@ type Cache<T> = Arc<Mutex<VecDeque<T>>>;
 /// owners and may be mutably accessed.
 #[derive(Debug)]
 pub struct Lease<T> {
-    cache: Option<Cache<T>>,
+    cache: Option<CacheRef<T>>,
     item: Option<T>,
 }
 
@@ -104,7 +105,9 @@ impl<T> Drop for Lease<T> {
         }
 
         if let Some(cache) = self.cache.as_ref() {
-            cache.lock().push_back(self.item.take().unwrap());
+            if let Some(cache) = cache.upgrade() {
+                cache.lock().push_back(self.item.take().unwrap());
+            }
         }
     }
 }
