@@ -375,7 +375,7 @@ impl RenderGraph {
                     *bindings[src_node],
                     vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
                     *bindings[dst_node],
-                    vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                     &regions,
                     filter,
                 );
