@@ -367,6 +367,10 @@ impl Drop for Swapchain {
             return;
         }
 
+        unsafe {
+            self.device.device_wait_idle().unwrap_or_default();
+        };
+
         for semaphore in self
             .acquired_semaphores
             .drain(..)

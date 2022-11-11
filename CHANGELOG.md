@@ -10,6 +10,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - Validation error caused by back-to-back image reads in auto-merged fragment shader passes
+- Semaphore in-use validation error when dropping swapchain
 
 ### Added
 
