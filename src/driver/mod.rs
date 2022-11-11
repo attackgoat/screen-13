@@ -283,6 +283,21 @@ pub(super) const fn image_access_layout(access: AccessType) -> ImageLayout {
     }
 }
 
+pub(super) const fn is_framebuffer_access(ty: AccessType) -> bool {
+    match ty {
+        AccessType::ColorAttachmentRead
+        | AccessType::ColorAttachmentReadWrite
+        | AccessType::ColorAttachmentWrite
+        | AccessType::DepthAttachmentWriteStencilReadOnly
+        | AccessType::DepthStencilAttachmentRead
+        | AccessType::DepthStencilAttachmentWrite
+        | AccessType::FragmentShaderReadColorInputAttachment
+        | AccessType::FragmentShaderReadDepthStencilInputAttachment
+        | AccessType::StencilAttachmentWriteDepthReadOnly => true,
+        _ => false,
+    }
+}
+
 pub(super) const fn is_read_access(ty: AccessType) -> bool {
     !is_write_access(ty)
 }

@@ -10,11 +10,11 @@ use {
             format_aspect_mask,
             graphic::DepthStencilMode,
             image::{Image, ImageViewInfo},
-            image_access_layout, is_read_access, is_write_access, pipeline_stage_access_flags,
-            AttachmentInfo, AttachmentRef, CommandBuffer, DescriptorBinding, DescriptorInfo,
-            DescriptorPool, DescriptorPoolInfo, DescriptorSet, Device, DriverError,
-            FramebufferAttachmentImageInfo, FramebufferInfo, Queue, QueueFamily, RenderPass,
-            RenderPassInfo, SubpassDependency, SubpassInfo,
+            image_access_layout, is_framebuffer_access, is_read_access, is_write_access,
+            pipeline_stage_access_flags, AttachmentInfo, AttachmentRef, CommandBuffer,
+            DescriptorBinding, DescriptorInfo, DescriptorPool, DescriptorPoolInfo, DescriptorSet,
+            Device, DriverError, FramebufferAttachmentImageInfo, FramebufferInfo, Queue,
+            QueueFamily, RenderPass, RenderPassInfo, SubpassDependency, SubpassInfo,
         },
         pool::{hash::HashPool, lazy::LazyPool, Lease, Pool},
     },
@@ -1827,6 +1827,7 @@ impl Resolver {
         cmd_buf: &CommandBuffer,
         bindings: &mut [Binding],
         exec: &mut Execution,
+        record_framebuffer_access: bool,
     ) {
         use std::slice::from_ref;
 
@@ -1881,7 +1882,7 @@ impl Resolver {
             let barriers = exec
                 .accesses
                 .iter()
-                .map(|(node_idx, [early, late])| {
+                .filter_map(|(node_idx, [early, late])| {
                     let binding = &mut bindings[*node_idx];
                     let next_access = early.access;
                     let prev_access = if let Some(buffer) = binding.as_driver_buffer() {
@@ -1908,7 +1909,7 @@ impl Resolver {
                                 prev_access,
                             );
 
-                            return Barrier {
+                            return Some(Barrier {
                                 next_access,
                                 prev_access,
                                 resource: Some(Resource::Buffer(BufferResource {
@@ -1916,9 +1917,13 @@ impl Resolver {
                                     offset: range.start as _,
                                     size: (range.end - range.start) as _,
                                 })),
-                            };
+                            });
                         } else if let Some(image) = binding.as_driver_image() {
                             let range = subresource.unwrap_image().into_vk();
+
+                            if !record_framebuffer_access && is_framebuffer_access(next_access) {
+                                return None;
+                            }
 
                             trace!(
                                 "{trace_pad}image {:?} {:?}-{:?} -> {:?}-{:?}",
@@ -1929,22 +1934,22 @@ impl Resolver {
                                 image_access_layout(next_access),
                             );
 
-                            return Barrier {
+                            return Some(Barrier {
                                 next_access,
                                 prev_access,
                                 resource: Some(Resource::Image(ImageResource {
                                     image: **image,
                                     range,
                                 })),
-                            };
+                            });
                         }
                     }
 
-                    Barrier {
+                    Some(Barrier {
                         next_access,
                         prev_access,
                         resource: None,
-                    }
+                    })
                 })
                 .fold(barriers, |mut barriers, barrier| {
                     let Barrier {
@@ -2150,9 +2155,20 @@ impl Resolver {
                 cmd_buf,
                 &mut self.graph.bindings,
                 &mut pass.execs[0],
+                true,
             );
 
             let render_area = if is_graphic {
+                for exec_idx in 1..pass.execs.len() {
+                    Self::record_execution_barriers(
+                        "  ",
+                        cmd_buf,
+                        &mut self.graph.bindings,
+                        &mut pass.execs[exec_idx],
+                        false,
+                    );
+                }
+
                 let render_area = self.render_area(pass);
                 self.begin_render_pass(cmd_buf, pass, pass_idx, render_area)?;
                 Some(render_area)
@@ -2202,6 +2218,7 @@ impl Resolver {
                         cmd_buf,
                         &mut self.graph.bindings,
                         exec,
+                        true,
                     );
                 }
 
