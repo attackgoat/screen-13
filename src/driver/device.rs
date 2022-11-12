@@ -38,7 +38,9 @@ pub struct Device {
 
     device: ash::Device,
     immutable_samplers: HashMap<SamplerDesc, vk::Sampler>,
-    pub(super) _instance: Arc<Instance>, // TODO: Need shared?
+
+    /// Vulkan instance pointer, which includes useful functions.
+    pub instance: Arc<Instance>,
 
     /// The physical device, which contains useful property and limit data.
     pub physical_device: PhysicalDevice,
@@ -386,7 +388,7 @@ impl Device {
                 descriptor_indexing_features,
                 device,
                 immutable_samplers,
-                _instance: instance,
+                instance,
                 physical_device,
                 queue,
                 ray_tracing_pipeline_ext,

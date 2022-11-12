@@ -10,6 +10,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - Validation error caused by image blit operations
+- `multipass.rs` and other examples use unsupported image formats without checking for fallbacks
 
 ## [0.6.5] - 2022-11-11
 

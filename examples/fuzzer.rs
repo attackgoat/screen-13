@@ -610,9 +610,80 @@ fn record_graphic_load_store(frame: &mut FrameContext, _: &mut HashPool) {
 }
 
 fn record_graphic_msaa_depth_stencil(frame: &mut FrameContext, pool: &mut HashPool) {
+    let sample_count = {
+        let vk::PhysicalDeviceLimits {
+            framebuffer_color_sample_counts,
+            framebuffer_depth_sample_counts,
+            framebuffer_stencil_sample_counts,
+            ..
+        } = frame.device.physical_device.props.limits;
+        match framebuffer_color_sample_counts
+            & framebuffer_depth_sample_counts
+            & framebuffer_stencil_sample_counts
+        {
+            s if s.contains(vk::SampleCountFlags::TYPE_64) => SampleCount::X64,
+            s if s.contains(vk::SampleCountFlags::TYPE_32) => SampleCount::X32,
+            s if s.contains(vk::SampleCountFlags::TYPE_16) => SampleCount::X16,
+            s if s.contains(vk::SampleCountFlags::TYPE_8) => SampleCount::X8,
+            s if s.contains(vk::SampleCountFlags::TYPE_4) => SampleCount::X4,
+            s if s.contains(vk::SampleCountFlags::TYPE_2) => SampleCount::X2,
+            s if s.contains(vk::SampleCountFlags::TYPE_1) => SampleCount::X1,
+            _ => panic!("unsupported depth/stencil msaa"),
+        }
+    };
+    let depth_stencil_format = {
+        let mut best_format = None;
+        for format in [
+            vk::Format::D24_UNORM_S8_UINT,
+            vk::Format::D16_UNORM_S8_UINT,
+            vk::Format::D32_SFLOAT_S8_UINT,
+        ] {
+            let format_props = unsafe {
+                frame
+                    .device
+                    .instance
+                    .get_physical_device_image_format_properties(
+                        *frame.device.physical_device,
+                        format,
+                        vk::ImageType::TYPE_2D,
+                        vk::ImageTiling::OPTIMAL,
+                        vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
+                            | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
+                        vk::ImageCreateFlags::empty(),
+                    )
+            };
+
+            if format_props.is_ok() {
+                best_format = Some(format);
+                break;
+            }
+        }
+
+        best_format.expect("Unsupported depth/stencil format")
+    };
+    let depth_resolve_mode = {
+        let mut best_mode = None;
+        for (resolve_flags, resolve_mode) in [
+            (vk::ResolveModeFlags::AVERAGE, ResolveMode::Average),
+            (vk::ResolveModeFlags::SAMPLE_ZERO, ResolveMode::SampleZero),
+        ] {
+            if frame
+                .device
+                .depth_stencil_resolve_properties
+                .supported_depth_resolve_modes
+                .contains(resolve_flags)
+            {
+                best_mode = Some(resolve_mode);
+                break;
+            }
+        }
+
+        best_mode.expect("Unsupported depth resolve mode")
+    };
+
     let pipeline = graphic_vert_frag_pipeline(
         frame.device,
-        GraphicPipelineInfo::new().samples(SampleCount::X8),
+        GraphicPipelineInfo::new().samples(sample_count),
         inline_spirv!(
             r#"
             #version 460 core
@@ -654,26 +725,26 @@ fn record_graphic_msaa_depth_stencil(frame: &mut FrameContext, pool: &mut HashPo
                 frame.height,
                 vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
             )
-            .sample_count(SampleCount::X8),
+            .sample_count(sample_count),
         )
         .unwrap(),
     );
     let msaa_depth_stencil_image = frame.render_graph.bind_node(
         pool.lease(
             ImageInfo::new_2d(
-                vk::Format::D24_UNORM_S8_UINT,
+                depth_stencil_format,
                 frame.width,
                 frame.height,
                 vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
                     | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
             )
-            .sample_count(SampleCount::X8),
+            .sample_count(sample_count),
         )
         .unwrap(),
     );
     let depth_stencil_image = frame.render_graph.bind_node(
         pool.lease(ImageInfo::new_2d(
-            vk::Format::D24_UNORM_S8_UINT,
+            depth_stencil_format,
             frame.width,
             frame.height,
             vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
@@ -712,7 +783,7 @@ fn record_graphic_msaa_depth_stencil(frame: &mut FrameContext, pool: &mut HashPo
         .resolve_depth_stencil(
             2,
             depth_stencil_image,
-            Some(ResolveMode::Average),
+            Some(depth_resolve_mode),
             Some(ResolveMode::SampleZero),
         )
         .record_subpass(|subpass, _| {

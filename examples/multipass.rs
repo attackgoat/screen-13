@@ -43,10 +43,11 @@ fn main() -> Result<(), DisplayError> {
     pretty_env_logger::init();
 
     let event_loop = EventLoop::new().build().unwrap();
-    let mut cache = LazyPool::new(&event_loop.device);
+    let depth_stencil_format = best_depth_stencil_format(&event_loop.device);
+    let mut pool = LazyPool::new(&event_loop.device);
     let fill_background = create_fill_background_pipeline(&event_loop.device);
     let pbr = create_pbr_pipeline(&event_loop.device);
-    let funky_shape = create_funky_shape(&event_loop, &mut cache)?;
+    let funky_shape = create_funky_shape(&event_loop, &mut pool)?;
 
     let mut t = 0.0;
     event_loop.run(|mut frame| {
@@ -56,15 +57,14 @@ fn main() -> Result<(), DisplayError> {
         let vertex_buf = frame.render_graph.bind_node(&funky_shape.vertex_buf);
 
         let depth_stencil = frame.render_graph.bind_node(
-            cache
-                .lease(ImageInfo::new_2d(
-                    vk::Format::D24_UNORM_S8_UINT,
-                    frame.width,
-                    frame.height,
-                    vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
-                        | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
-                ))
-                .unwrap(),
+            pool.lease(ImageInfo::new_2d(
+                depth_stencil_format,
+                frame.width,
+                frame.height,
+                vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
+                    | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
+            ))
+            .unwrap(),
         );
 
         let camera = camera(frame.width, frame.height);
@@ -72,8 +72,8 @@ fn main() -> Result<(), DisplayError> {
         let obj_pos = Vec3::ZERO;
         let material = GOLD;
 
-        let camera_buf = bind_camera_buf(&mut frame, &mut cache, camera, model);
-        let light_buf = bind_light_buf(&mut frame, &mut cache);
+        let camera_buf = bind_camera_buf(&mut frame, &mut pool, camera, model);
+        let light_buf = bind_light_buf(&mut frame, &mut pool);
         let push_const_data = write_push_consts(obj_pos, material);
 
         let mut write = DepthStencilMode::DEPTH_WRITE;
@@ -131,13 +131,39 @@ fn main() -> Result<(), DisplayError> {
     })
 }
 
+fn best_depth_stencil_format(device: &Device) -> vk::Format {
+    for format in [
+        vk::Format::D24_UNORM_S8_UINT,
+        vk::Format::D16_UNORM_S8_UINT,
+        vk::Format::D32_SFLOAT_S8_UINT,
+    ] {
+        let format_props = unsafe {
+            device.instance.get_physical_device_image_format_properties(
+                *device.physical_device,
+                format,
+                vk::ImageType::TYPE_2D,
+                vk::ImageTiling::OPTIMAL,
+                vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
+                    | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
+                vk::ImageCreateFlags::empty(),
+            )
+        };
+
+        if format_props.is_ok() {
+            return format;
+        }
+    }
+
+    panic!("Unsupported depth/stencil format");
+}
+
 fn bind_camera_buf(
     frame: &mut FrameContext,
-    cache: &mut LazyPool,
+    pool: &mut LazyPool,
     camera: Camera,
     model: Mat4,
 ) -> BufferLeaseNode {
-    let mut buf = cache
+    let mut buf = pool
         .lease(BufferInfo::new_mappable(
             204,
             vk::BufferUsageFlags::UNIFORM_BUFFER,
@@ -148,8 +174,8 @@ fn bind_camera_buf(
     frame.render_graph.bind_node(buf)
 }
 
-fn bind_light_buf(frame: &mut FrameContext, cache: &mut LazyPool) -> BufferLeaseNode {
-    let mut buf = cache
+fn bind_light_buf(frame: &mut FrameContext, pool: &mut LazyPool) -> BufferLeaseNode {
+    let mut buf = pool
         .lease(BufferInfo::new_mappable(
             64,
             vk::BufferUsageFlags::UNIFORM_BUFFER,
@@ -190,7 +216,7 @@ fn camera(width: u32, height: u32) -> Camera {
 
 /// Returns ready-to-use index and vertex buffers. Index count is also returned. The shape data uses
 /// temporary staging buffers which are not required but are fun.
-fn create_funky_shape(event_loop: &EventLoop, cache: &mut LazyPool) -> Result<Shape, DriverError> {
+fn create_funky_shape(event_loop: &EventLoop, pool: &mut LazyPool) -> Result<Shape, DriverError> {
     // Static index/vertex data courtesy of the polyhedron-ops library
     let (indices, vertices) = funky_shape_data();
     let index_count = indices.len() as u32;
@@ -238,7 +264,7 @@ fn create_funky_shape(event_loop: &EventLoop, cache: &mut LazyPool) -> Result<Sh
         .copy_buffer(vertex_buf_host, vertex_buf_gpu);
 
     // Submit the graph, which runs the operations on the GPU
-    graph.resolve().submit(&event_loop.device.queue, cache)?;
+    graph.resolve().submit(&event_loop.device.queue, pool)?;
 
     // (We drop the graph here; it's okay the cache keeps things alive until they're done)
 

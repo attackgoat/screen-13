@@ -19,6 +19,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut keyboard = KeyBuf::default();
     let event_loop = EventLoop::new().build()?;
+    let depth_format = best_depth_format(&event_loop.device);
     let sample_count = max_supported_sample_count(&event_loop.device);
     let mesh_msaa_pipeline = create_mesh_pipeline(&event_loop.device, sample_count)?;
     let mesh_noaa_pipeline = create_mesh_pipeline(&event_loop.device, SampleCount::X1)?;
@@ -91,7 +92,7 @@ fn main() -> anyhow::Result<()> {
             let msaa_depth_image = pass.bind_node(
                 pool.lease(
                     ImageInfo::new_2d(
-                        vk::Format::D32_SFLOAT,
+                        depth_format,
                         frame.width,
                         frame.height,
                         vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
@@ -110,7 +111,7 @@ fn main() -> anyhow::Result<()> {
         } else {
             let noaa_depth_image = pass.bind_node(
                 pool.lease(ImageInfo::new_2d(
-                    vk::Format::D32_SFLOAT,
+                    depth_format,
                     frame.width,
                     frame.height,
                     vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
@@ -137,28 +138,47 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn max_supported_sample_count(device: &Device) -> SampleCount {
-    let limit = device
-        .physical_device
-        .props
-        .limits
-        .sampled_image_color_sample_counts;
-    if limit.contains(vk::SampleCountFlags::TYPE_64) {
-        SampleCount::X64
-    } else if limit.contains(vk::SampleCountFlags::TYPE_32) {
-        SampleCount::X32
-    } else if limit.contains(vk::SampleCountFlags::TYPE_16) {
-        SampleCount::X16
-    } else if limit.contains(vk::SampleCountFlags::TYPE_8) {
-        SampleCount::X8
-    } else if limit.contains(vk::SampleCountFlags::TYPE_4) {
-        SampleCount::X4
-    } else if limit.contains(vk::SampleCountFlags::TYPE_2) {
-        SampleCount::X2
-    } else {
-        warn!("MSAA not supported");
+fn best_depth_format(device: &Device) -> vk::Format {
+    for format in [vk::Format::D32_SFLOAT, vk::Format::D16_UNORM] {
+        let format_props = unsafe {
+            device.instance.get_physical_device_image_format_properties(
+                *device.physical_device,
+                format,
+                vk::ImageType::TYPE_2D,
+                vk::ImageTiling::OPTIMAL,
+                vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
+                    | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
+                vk::ImageCreateFlags::empty(),
+            )
+        };
 
-        SampleCount::X1
+        if format_props.is_ok() {
+            return format;
+        }
+    }
+
+    panic!("Unsupported depth format");
+}
+
+fn max_supported_sample_count(device: &Device) -> SampleCount {
+    let vk::PhysicalDeviceLimits {
+        framebuffer_color_sample_counts,
+        framebuffer_depth_sample_counts,
+        ..
+    } = device.physical_device.props.limits;
+    match framebuffer_color_sample_counts & framebuffer_depth_sample_counts {
+        s if s.contains(vk::SampleCountFlags::TYPE_64) => SampleCount::X64,
+        s if s.contains(vk::SampleCountFlags::TYPE_32) => SampleCount::X32,
+        s if s.contains(vk::SampleCountFlags::TYPE_16) => SampleCount::X16,
+        s if s.contains(vk::SampleCountFlags::TYPE_8) => SampleCount::X8,
+        s if s.contains(vk::SampleCountFlags::TYPE_4) => SampleCount::X4,
+        s if s.contains(vk::SampleCountFlags::TYPE_2) => SampleCount::X2,
+        s if s.contains(vk::SampleCountFlags::TYPE_1) => {
+            warn!("MSAA not supported");
+
+            SampleCount::X1
+        }
+        _ => panic!("unsupported color/depth msaa"),
     }
 }
 

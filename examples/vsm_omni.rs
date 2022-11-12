@@ -44,6 +44,30 @@ fn main() -> anyhow::Result<()> {
         .build()?;
 
     // Load all the immutable graphics data we will need
+    let cubemap_format = best_2d_optimal_format(
+        &event_loop.device,
+        &[
+            vk::Format::R32G32_SFLOAT,
+            vk::Format::R16G16_SFLOAT,
+            vk::Format::R64G64_SFLOAT,
+            vk::Format::R32G32B32_SFLOAT,
+            vk::Format::R16G16B16_SFLOAT,
+            vk::Format::R64G64B64_SFLOAT,
+            vk::Format::R32G32B32A32_SFLOAT,
+            vk::Format::R16G16B16A16_SFLOAT,
+            vk::Format::R64G64B64A64_SFLOAT,
+        ],
+        vk::ImageUsageFlags::COLOR_ATTACHMENT
+            | vk::ImageUsageFlags::SAMPLED
+            | vk::ImageUsageFlags::STORAGE,
+        vk::ImageCreateFlags::CUBE_COMPATIBLE,
+    );
+    let depth_format = best_2d_optimal_format(
+        &event_loop.device,
+        &[vk::Format::D32_SFLOAT, vk::Format::D16_UNORM],
+        vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+        vk::ImageCreateFlags::empty(),
+    );
     let model_mesh = load_model_mesh(&event_loop.device, &model_path)?;
     let model_shadow = load_model_shadow(&event_loop.device, &model_path)?;
     let cube_mesh = load_cube_mesh(&event_loop.device)?;
@@ -138,7 +162,7 @@ fn main() -> anyhow::Result<()> {
         let shadow_faces_image = pool
             .lease(
                 ImageInfo::new_2d_array(
-                    vk::Format::R32G32_SFLOAT,
+                    cubemap_format,
                     CUBEMAP_SIZE,
                     CUBEMAP_SIZE,
                     6,
@@ -160,7 +184,7 @@ fn main() -> anyhow::Result<()> {
         // Lastly we lease and bind depth images needed for rendering
         let depth_cube = frame.render_graph.bind_node(
             pool.lease(ImageInfo::new_2d_array(
-                vk::Format::D32_SFLOAT,
+                depth_format,
                 frame.width,
                 frame.height,
                 6,
@@ -170,7 +194,7 @@ fn main() -> anyhow::Result<()> {
         );
         let depth_image = frame.render_graph.bind_node(
             pool.lease(ImageInfo::new_2d(
-                vk::Format::D32_SFLOAT,
+                depth_format,
                 frame.width,
                 frame.height,
                 vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
@@ -302,6 +326,32 @@ fn main() -> anyhow::Result<()> {
     })?;
 
     Ok(())
+}
+
+fn best_2d_optimal_format(
+    device: &Device,
+    formats: &[vk::Format],
+    usage: vk::ImageUsageFlags,
+    flags: vk::ImageCreateFlags,
+) -> vk::Format {
+    for format in formats {
+        let format_props = unsafe {
+            device.instance.get_physical_device_image_format_properties(
+                *device.physical_device,
+                *format,
+                vk::ImageType::TYPE_2D,
+                vk::ImageTiling::OPTIMAL,
+                usage,
+                flags,
+            )
+        };
+
+        if format_props.is_ok() {
+            return *format;
+        }
+    }
+
+    panic!("Unsupported format");
 }
 
 fn create_blur_x_pipeline(device: &Arc<Device>) -> Result<Arc<ComputePipeline>, DriverError> {
