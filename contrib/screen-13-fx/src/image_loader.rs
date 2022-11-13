@@ -29,7 +29,7 @@ impl ImageFormat {
 
 #[derive(Debug)]
 pub struct ImageLoader {
-    cache: HashPool,
+    pool: HashPool,
     _decode_r_rg: Arc<ComputePipeline>,
     decode_rgb_rgba: Arc<ComputePipeline>,
     pub device: Arc<Device>,
@@ -38,7 +38,7 @@ pub struct ImageLoader {
 impl ImageLoader {
     pub fn new(device: &Arc<Device>) -> Result<Self, DriverError> {
         Ok(Self {
-            cache: HashPool::new(device),
+            pool: HashPool::new(device),
             _decode_r_rg: Arc::new(ComputePipeline::create(
                 device,
                 include_spirv!("res/shader/compute/decode_bitmap_r_rg.comp", comp).as_slice(),
@@ -109,6 +109,7 @@ impl ImageLoader {
 
     pub fn decode_bitmap(
         &mut self,
+        queue_index: usize,
         pixels: &[u8],
         format: ImageFormat,
         width: u32,
@@ -158,7 +159,7 @@ impl ImageLoader {
                 //trace!("pixel_buf_len={pixel_buf_len} pixel_buf_stride={pixel_buf_stride}");
 
                 // Lease a temporary buffer from the cache pool
-                let mut pixel_buf = self.cache.lease(BufferInfo {
+                let mut pixel_buf = self.pool.lease(BufferInfo {
                     size: pixel_buf_len,
                     usage: vk::BufferUsageFlags::STORAGE_BUFFER,
                     can_map: true,
@@ -208,7 +209,7 @@ impl ImageLoader {
             }
             ImageFormat::R8G8 | ImageFormat::R8G8B8A8 => {
                 // Lease a temporary buffer from the pool
-                let mut pixel_buf = self.cache.lease(BufferInfo::new_mappable(
+                let mut pixel_buf = self.pool.lease(BufferInfo::new_mappable(
                     pixels.len() as _,
                     vk::BufferUsageFlags::TRANSFER_SRC,
                 ))?;
@@ -226,42 +227,43 @@ impl ImageLoader {
 
         let image = render_graph.unbind_node(image);
 
-        render_graph
-            .resolve()
-            .submit(&self.device.queue, &mut self.cache)?;
+        render_graph.resolve().submit(&mut self.pool, queue_index)?;
 
         Ok(image)
     }
 
     pub fn decode_linear(
         &mut self,
+        queue_index: usize,
         pixels: &[u8],
         format: ImageFormat,
         width: u32,
         height: u32,
     ) -> anyhow::Result<Arc<Image>> {
-        self.decode_bitmap(pixels, format, width, height, false)
+        self.decode_bitmap(queue_index, pixels, format, width, height, false)
     }
 
     pub fn decode_srgb(
         &mut self,
+        queue_index: usize,
         pixels: &[u8],
         format: ImageFormat,
         width: u32,
         height: u32,
     ) -> anyhow::Result<Arc<Image>> {
-        self.decode_bitmap(pixels, format, width, height, true)
+        self.decode_bitmap(queue_index, pixels, format, width, height, true)
     }
 
     pub fn load_bitmap_font<'a>(
         &mut self,
+        queue_index: usize,
         font: BMFont,
         pages: impl IntoIterator<Item = (&'a [u8], u32, u32)>,
     ) -> anyhow::Result<BitmapFont> {
         let pages = pages
             .into_iter()
             .map(|(pixels, width, height)| {
-                self.decode_linear(pixels, ImageFormat::R8G8B8, width, height)
+                self.decode_linear(queue_index, pixels, ImageFormat::R8G8B8, width, height)
             })
             .collect::<Result<Vec<_>, _>>()?;
 

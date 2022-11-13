@@ -12,9 +12,9 @@ use {
             image::{Image, ImageViewInfo},
             image_access_layout, is_framebuffer_access, is_read_access, is_write_access,
             pipeline_stage_access_flags, AttachmentInfo, AttachmentRef, CommandBuffer,
-            DescriptorBinding, DescriptorInfo, DescriptorPool, DescriptorPoolInfo, DescriptorSet,
-            Device, DriverError, FramebufferAttachmentImageInfo, FramebufferInfo, Queue,
-            QueueFamily, RenderPass, RenderPassInfo, SubpassDependency, SubpassInfo,
+            CommandBufferInfo, DescriptorBinding, DescriptorInfo, DescriptorPool,
+            DescriptorPoolInfo, DescriptorSet, Device, DriverError, FramebufferAttachmentImageInfo,
+            FramebufferInfo, RenderPass, RenderPassInfo, SubpassDependency, SubpassInfo,
         },
         pool::{hash::HashPool, lazy::LazyPool, Lease, Pool},
     },
@@ -691,7 +691,7 @@ impl Resolver {
 
     #[allow(clippy::type_complexity)]
     fn lease_descriptor_pool(
-        cache: &mut dyn ResolverPool,
+        pool: &mut dyn ResolverPool,
         pass: &Pass,
     ) -> Result<Option<Lease<DescriptorPool>>, DriverError> {
         let max_set_idx = pass
@@ -776,14 +776,12 @@ impl Resolver {
 
         // debug!("{:#?}", info);
 
-        let pool = cache.lease(info)?;
-
-        Ok(Some(pool))
+        Ok(Some(pool.lease(info)?))
     }
 
     fn lease_render_pass(
         &self,
-        cache: &mut dyn ResolverPool,
+        pool: &mut dyn ResolverPool,
         pass_idx: usize,
     ) -> Result<Lease<RenderPass>, DriverError> {
         let pass = &self.graph.passes[pass_idx];
@@ -1617,7 +1615,7 @@ impl Resolver {
                 dependencies.into_values().collect::<Vec<_>>()
             };
 
-        cache.lease(RenderPassInfo {
+        pool.lease(RenderPassInfo {
             attachments,
             dependencies,
             subpasses,
@@ -1626,7 +1624,7 @@ impl Resolver {
 
     fn lease_scheduled_resources(
         &mut self,
-        cache: &mut dyn ResolverPool,
+        pool: &mut dyn ResolverPool,
         schedule: &[usize],
     ) -> Result<(), DriverError> {
         for pass_idx in schedule.iter().copied() {
@@ -1637,7 +1635,7 @@ impl Resolver {
 
             trace!("leasing [{pass_idx}: {}]", pass.name);
 
-            let descriptor_pool = Self::lease_descriptor_pool(cache, pass)?;
+            let descriptor_pool = Self::lease_descriptor_pool(pool, pass)?;
             let mut exec_descriptor_sets = HashMap::with_capacity(
                 descriptor_pool
                     .as_ref()
@@ -1693,7 +1691,7 @@ impl Resolver {
                 .map(|pipeline| pipeline.is_graphic())
                 .unwrap_or_default()
             {
-                Some(self.lease_render_pass(cache, pass_idx)?)
+                Some(self.lease_render_pass(pool, pass_idx)?)
             } else {
                 None
             };
@@ -2000,6 +1998,7 @@ impl Resolver {
             } else {
                 None
             };
+            let queue_family_index = cmd_buf.device.queues[0].family.idx;
             let buffer_barriers = barriers.buffers.iter().map(
                 |Barrier {
                      next_access,
@@ -2014,8 +2013,8 @@ impl Resolver {
                     BufferBarrier {
                         next_accesses: from_ref(next_access),
                         previous_accesses: from_ref(prev_access),
-                        src_queue_family_index: cmd_buf.device.queue.family.idx,
-                        dst_queue_family_index: cmd_buf.device.queue.family.idx,
+                        src_queue_family_index: queue_family_index,
+                        dst_queue_family_index: queue_family_index,
                         buffer,
                         offset,
                         size,
@@ -2036,8 +2035,8 @@ impl Resolver {
                         previous_layout: image_access_layout(*prev_access),
                         discard_contents: *prev_access == AccessType::Nothing
                             || is_write_access(*next_access),
-                        src_queue_family_index: cmd_buf.device.queue.family.idx,
-                        dst_queue_family_index: cmd_buf.device.queue.family.idx,
+                        src_queue_family_index: queue_family_index,
+                        dst_queue_family_index: queue_family_index,
                         image,
                         range,
                     }
@@ -2062,7 +2061,7 @@ impl Resolver {
     /// multiple images out and you care - in that case pull the "most important" image first.
     pub fn record_node_dependencies(
         &mut self,
-        cache: &mut dyn ResolverPool,
+        pool: &mut dyn ResolverPool,
         cmd_buf: &mut CommandBuffer,
         node: impl Node,
     ) -> Result<(), DriverError> {
@@ -2076,7 +2075,7 @@ impl Resolver {
             .first_node_access_pass_index(node)
             .unwrap_or_default()
             .min(self.graph.passes.len());
-        self.record_node_passes(cache, cmd_buf, node_idx, end_pass_idx)?;
+        self.record_node_passes(pool, cmd_buf, node_idx, end_pass_idx)?;
 
         Ok(())
     }
@@ -2084,7 +2083,7 @@ impl Resolver {
     /// Records any pending render graph passes that the given node requires.
     pub fn record_node(
         &mut self,
-        cache: &mut dyn ResolverPool,
+        pool: &mut dyn ResolverPool,
         cmd_buf: &mut CommandBuffer,
         node: impl Node,
     ) -> Result<(), DriverError> {
@@ -2093,14 +2092,14 @@ impl Resolver {
         assert!(self.graph.bindings.get(node_idx).is_some());
 
         let end_pass_idx = self.graph.passes.len();
-        self.record_node_passes(cache, cmd_buf, node_idx, end_pass_idx)?;
+        self.record_node_passes(pool, cmd_buf, node_idx, end_pass_idx)?;
 
         Ok(())
     }
 
     fn record_node_passes(
         &mut self,
-        cache: &mut dyn ResolverPool,
+        pool: &mut dyn ResolverPool,
         cmd_buf: &mut CommandBuffer,
         node_idx: usize,
         end_pass_idx: usize,
@@ -2111,12 +2110,12 @@ impl Resolver {
             .into_iter()
             .collect::<Vec<_>>();
 
-        self.record_scheduled_passes(cache, cmd_buf, &mut schedule, end_pass_idx)
+        self.record_scheduled_passes(pool, cmd_buf, &mut schedule, end_pass_idx)
     }
 
     fn record_scheduled_passes(
         &mut self,
-        cache: &mut dyn ResolverPool,
+        pool: &mut dyn ResolverPool,
         cmd_buf: &mut CommandBuffer,
         mut schedule: &mut [usize],
         end_pass_idx: usize,
@@ -2134,7 +2133,7 @@ impl Resolver {
         // Optimize the schedule; leasing the required stuff it needs
         self.reorder_scheduled_passes(schedule, end_pass_idx);
         schedule = self.merge_scheduled_passes(schedule);
-        self.lease_scheduled_resources(cache, schedule)?;
+        self.lease_scheduled_resources(pool, schedule)?;
 
         let mut passes = take(&mut self.graph.passes);
         for pass_idx in schedule.iter().copied() {
@@ -2278,7 +2277,7 @@ impl Resolver {
     /// Records any pending render graph passes that have not been previously scheduled.
     pub fn record_unscheduled_passes(
         &mut self,
-        cache: &mut dyn ResolverPool,
+        pool: &mut dyn ResolverPool,
         cmd_buf: &mut CommandBuffer,
     ) -> Result<(), DriverError> {
         if self.graph.passes.is_empty() {
@@ -2287,7 +2286,7 @@ impl Resolver {
 
         let mut schedule = (0..self.graph.passes.len()).collect::<Vec<_>>();
 
-        self.record_scheduled_passes(cache, cmd_buf, &mut schedule, self.graph.passes.len())
+        self.record_scheduled_passes(pool, cmd_buf, &mut schedule, self.graph.passes.len())
     }
 
     fn render_area(&self, pass: &Pass) -> Area {
@@ -2500,14 +2499,20 @@ impl Resolver {
     /// Submits the remaining commands stored in this instance.
     pub fn submit(
         mut self,
-        queue: &Queue,
-        cache: &mut impl ResolverPool,
+        pool: &mut impl ResolverPool,
+        queue_index: usize,
     ) -> Result<(), DriverError> {
         use std::slice::from_ref;
 
         trace!("submit");
 
-        let mut cmd_buf = cache.lease(queue.family)?;
+        let mut cmd_buf = pool.lease(CommandBufferInfo)?;
+
+        // See: DriverConfig.desired_queue_count and also Driver::queue_count
+        debug_assert!(
+            queue_index < cmd_buf.device.queues.len(),
+            "Queue index must be within the range of the available queues created by the device."
+        );
 
         unsafe {
             Device::wait_for_fence(&cmd_buf.device, &cmd_buf.fence)
@@ -2527,7 +2532,7 @@ impl Resolver {
                 .map_err(|_| DriverError::OutOfMemory)?;
         }
 
-        self.record_unscheduled_passes(cache, &mut cmd_buf)?;
+        self.record_unscheduled_passes(pool, &mut cmd_buf)?;
 
         unsafe {
             cmd_buf
@@ -2541,7 +2546,7 @@ impl Resolver {
             cmd_buf
                 .device
                 .queue_submit(
-                    **queue,
+                    *cmd_buf.device.queues[queue_index],
                     from_ref(&vk::SubmitInfo::builder().command_buffers(from_ref(&cmd_buf))),
                     cmd_buf.fence,
                 )
@@ -2841,7 +2846,7 @@ impl Resolver {
 pub trait ResolverPool:
     Pool<DescriptorPoolInfo, DescriptorPool>
     + Pool<RenderPassInfo, RenderPass>
-    + Pool<QueueFamily, CommandBuffer>
+    + Pool<CommandBufferInfo, CommandBuffer>
 {
 }
 

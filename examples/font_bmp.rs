@@ -22,6 +22,7 @@ fn main() -> anyhow::Result<()> {
         OrdinateOrientation::TopToBottom,
     )?;
     let mut small_10px_font = image_loader.load_bitmap_font(
+        0,
         small_10px_font,
         [(
             Reader::new(Cursor::new(

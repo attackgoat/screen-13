@@ -95,7 +95,7 @@ fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
     let event_loop = EventLoop::new().ray_tracing(true).build()?;
-    let mut cache = HashPool::new(&event_loop.device);
+    let mut pool = HashPool::new(&event_loop.device);
 
     // ------------------------------------------------------------------------------------------ //
     // Setup the ray tracing pipeline
@@ -392,9 +392,7 @@ fn main() -> anyhow::Result<()> {
                 });
         }
 
-        render_graph
-            .resolve()
-            .submit(&event_loop.device.queue, &mut cache)?;
+        render_graph.resolve().submit(&mut pool, 0)?;
     }
 
     // ------------------------------------------------------------------------------------------ //

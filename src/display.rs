@@ -1,6 +1,9 @@
 use {
     super::{
-        driver::{image_access_layout, CommandBuffer, Device, DriverError, SwapchainImage},
+        driver::{
+            image_access_layout, CommandBuffer, CommandBufferInfo, Device, DriverError,
+            SwapchainImage,
+        },
         graph::{node::SwapchainImageNode, RenderGraph, ResolverPool},
     },
     ash::vk,
@@ -26,7 +29,7 @@ impl Display {
     pub fn new(device: &Arc<Device>, pool: Box<dyn ResolverPool>, cmd_buf_count: usize) -> Self {
         let mut cmd_bufs = Vec::with_capacity(cmd_buf_count);
         for _ in 0..cmd_buf_count {
-            cmd_bufs.push(CommandBuffer::create(device, device.queue.family).unwrap());
+            cmd_bufs.push(CommandBuffer::create(device, CommandBufferInfo).unwrap());
         }
 
         Self {
@@ -99,8 +102,8 @@ impl Display {
                 previous_layout: image_access_layout(last_swapchain_access),
                 next_layout: ImageLayout::General,
                 discard_contents: false,
-                src_queue_family_index: cmd_buf.device.queue.family.idx,
-                dst_queue_family_index: cmd_buf.device.queue.family.idx,
+                src_queue_family_index: cmd_buf.device.queues[0].family.idx,
+                dst_queue_family_index: cmd_buf.device.queues[0].family.idx,
                 image: **swapchain_image,
                 range: vk::ImageSubresourceRange {
                     layer_count: 1,
@@ -152,7 +155,7 @@ impl Display {
         cmd_buf
             .device
             .queue_submit(
-                *cmd_buf.device.queue,
+                *cmd_buf.device.queues[0],
                 from_ref(&*submit_info),
                 cmd_buf.fence,
             )

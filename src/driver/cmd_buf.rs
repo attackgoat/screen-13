@@ -1,5 +1,5 @@
 use {
-    super::{Device, DriverError, QueueFamily},
+    super::{Device, DriverError},
     ash::vk,
     log::{trace, warn},
     std::{fmt::Debug, ops::Deref, sync::Arc, thread::panicking},
@@ -15,11 +15,11 @@ pub struct CommandBuffer {
 }
 
 impl CommandBuffer {
-    pub fn create(device: &Arc<Device>, queue_family: QueueFamily) -> Result<Self, DriverError> {
+    pub fn create(device: &Arc<Device>, _: CommandBufferInfo) -> Result<Self, DriverError> {
         let device = Arc::clone(device);
         let cmd_pool_info = vk::CommandPoolCreateInfo::builder()
             .flags(vk::CommandPoolCreateFlags::empty())
-            .queue_family_index(queue_family.idx);
+            .queue_family_index(device.queues[0].family.idx); // All queues have the same family!
         let cmd_pool = unsafe {
             device
                 .create_command_pool(&cmd_pool_info, None)
@@ -79,10 +79,6 @@ impl CommandBuffer {
     pub(crate) fn push_fenced_drop(this: &mut Self, thing_to_drop: impl Debug + Send + 'static) {
         this.droppables.push(Box::new(thing_to_drop));
     }
-
-    pub fn queue_family_index(this: &Self) -> u32 {
-        this.device.queue.family.idx
-    }
 }
 
 impl Deref for CommandBuffer {
@@ -113,3 +109,6 @@ impl Drop for CommandBuffer {
         }
     }
 }
+
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub struct CommandBufferInfo;

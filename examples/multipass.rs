@@ -264,7 +264,7 @@ fn create_funky_shape(event_loop: &EventLoop, pool: &mut LazyPool) -> Result<Sha
         .copy_buffer(vertex_buf_host, vertex_buf_gpu);
 
     // Submit the graph, which runs the operations on the GPU
-    graph.resolve().submit(&event_loop.device.queue, pool)?;
+    graph.resolve().submit(pool, 0)?;
 
     // (We drop the graph here; it's okay the cache keeps things alive until they're done)
 
