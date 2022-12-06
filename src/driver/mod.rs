@@ -77,7 +77,7 @@ use {
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
     log::{debug, info, trace, warn},
-    raw_window_handle::HasRawWindowHandle,
+    raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle},
     std::{
         cmp::Ordering,
         error::Error,
@@ -653,23 +653,24 @@ pub struct Driver {
 impl Driver {
     /// Constructs a new `Driver` from the given configuration.
     pub fn new(
-        window: &impl HasRawWindowHandle,
+        display_window: &(impl HasRawDisplayHandle + HasRawWindowHandle),
         cfg: DriverConfig,
         width: u32,
         height: u32,
     ) -> Result<Self, DriverError> {
         trace!("new {:?}", cfg);
 
-        let required_extensions = ash_window::enumerate_required_extensions(window)
-            .map_err(|err| {
-                warn!("{err}");
+        let required_extensions =
+            ash_window::enumerate_required_extensions(display_window.raw_display_handle())
+                .map_err(|err| {
+                    warn!("{err}");
 
-                DriverError::Unsupported
-            })?
-            .iter()
-            .map(|ext| unsafe { CStr::from_ptr(*ext as *const _) });
+                    DriverError::Unsupported
+                })?
+                .iter()
+                .map(|ext| unsafe { CStr::from_ptr(*ext as *const _) });
         let instance = Arc::new(Instance::new(cfg.debug, required_extensions)?);
-        let surface = Surface::new(&instance, window)?;
+        let surface = Surface::new(&instance, display_window)?;
         let physical_devices = Instance::physical_devices(&instance)?
             .filter(|physical_device| {
                 // Filters this list down to only supported devices

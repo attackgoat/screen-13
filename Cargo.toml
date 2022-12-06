@@ -14,14 +14,14 @@ description = "An easy-to-use Vulkan rendering engine in the spirit of QBasic."
 
 [dependencies]
 ash = "0.37"
-ash-window = "0.10"
+ash-window = "0.12"
 derive_builder = "0.11"
 gpu-allocator = "0.20"
 log = "0.4"
 ordered-float = "3.0"
 parking_lot = "0.12"
 paste = "1.0"
-raw-window-handle = "0.4"
+raw-window-handle = "0.5"
 spirq = "0.6"
 vk-sync = { version = "0.4.0", package = "vk-sync-fork" }  # // SEE: https://github.com/gwihlidal/vk-sync-rs/pull/4 -> https://github.com/expenses/vk-sync-rs
 winit = { version = "0.27" }
