@@ -9,7 +9,7 @@ _[QBasic](https://en.wikipedia.org/wiki/QBasic)_.
 
 ```toml
 [dependencies]
-screen-13 = "0.6"
+screen-13 = "0.7"
 ```
 
 ## Overview
