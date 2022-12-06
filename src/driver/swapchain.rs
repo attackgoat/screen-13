@@ -131,7 +131,7 @@ impl Swapchain {
         self.info
     }
 
-    pub fn present_image(&mut self, image: SwapchainImage) {
+    pub fn present_image(&mut self, image: SwapchainImage, queue_index: usize) {
         let present_info = vk::PresentInfoKHR::builder()
             .wait_semaphores(slice::from_ref(&image.rendered))
             .swapchains(slice::from_ref(&self.swapchain))
@@ -143,7 +143,7 @@ impl Swapchain {
                 .swapchain_ext
                 .as_ref()
                 .unwrap()
-                .queue_present(*self.device.queue, &present_info)
+                .queue_present(*self.device.queues[queue_index], &present_info)
             {
                 Ok(_) => (),
                 Err(err)

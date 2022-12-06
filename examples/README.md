@@ -17,6 +17,7 @@ Example | Instructions | Preview
 [imgui.rs](imgui.rs) | <pre>cargo run --example imgui</pre> | <image alt="Preview" src="../.github/img/imgui.png" height=149 width=176>
 [font_bmp.rs](font_bmp.rs) | <pre>cargo run --example font_bmp</pre> | <image alt="Preview" src="../.github/img/font_bmp.png" height=149 width=176>
 [multipass.rs](multipass.rs) | <pre>cargo run --example multipass</pre> | <image alt="Preview" src="../.github/img/multipass.png" height=149 width=176>
+[multithread.rs](multithread.rs) | <pre>cargo run --example multithread --release</pre> | <image alt="Preview" src="../.github/img/multithread.png" height=149 width=176>
 [msaa.rs](msaa.rs) | <pre>cargo run --example msaa</pre> Multisample anti-aliasing | <image alt="Preview" src="../.github/img/msaa.png" height=149 width=176>
 [rt_triangle.rs](rt_triangle.rs) | <pre>cargo run --example rt_triangle</pre> | <image alt="Preview" src="../.github/img/rt_triangle.png" height=149 width=176>
 [ray_trace.rs](ray_trace.rs) | <pre>cargo run --example ray_trace</pre> | <image alt="Preview" src="../.github/img/ray_trace.png" height=149 width=176>

@@ -177,7 +177,7 @@ impl EventLoop {
             );
 
             let swapchain_image = self.display.resolve_image(render_graph, swapchain_image)?;
-            self.swapchain.present_image(swapchain_image);
+            self.swapchain.present_image(swapchain_image, 0);
         }
 
         self.window.set_visible(false);
@@ -257,7 +257,15 @@ impl EventLoopBuilder {
         self
     }
 
-    /// A request to the driver to use a certain number of swapchain images.
+    /// The desired, but not guaranteed, number of queues that will be available.
+    ///
+    /// Additional queues are useful for submission from secondary threads.
+    pub fn desired_queue_count(mut self, desired_queue_count: usize) -> Self {
+        self.driver_cfg = self.driver_cfg.desired_queue_count(desired_queue_count);
+        self
+    }
+
+    /// The desired, but not guaranteed, number of images that will be in the created swapchain.
     ///
     /// More images introduces more display lag, but smoother animation.
     pub fn desired_swapchain_image_count(mut self, desired_swapchain_image_count: u32) -> Self {

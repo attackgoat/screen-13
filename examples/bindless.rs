@@ -63,7 +63,7 @@ fn create_images(device: &Arc<Device>) -> Result<Vec<Arc<Image>>, DisplayError> 
 
     let mut pool = LazyPool::new(device);
 
-    graph.resolve().submit(&device.queue, &mut pool)?;
+    graph.resolve().submit(&mut pool, 0)?;
 
     Ok(textures)
 }

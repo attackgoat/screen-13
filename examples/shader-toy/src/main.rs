@@ -62,6 +62,7 @@ fn main() -> anyhow::Result<()> {
             .context("Unable to read flowers bitmap")?;
         image_loader
             .decode_linear(
+                0,
                 data.pixels(),
                 ImageFormat::R8G8B8,
                 data.width(),
@@ -75,6 +76,7 @@ fn main() -> anyhow::Result<()> {
             .context("Unable to read noise bitmap")?;
         image_loader
             .decode_linear(
+                0,
                 data.pixels(),
                 ImageFormat::R8G8B8A8,
                 data.width(),
@@ -159,9 +161,7 @@ fn main() -> anyhow::Result<()> {
     let mut blank_image_binding = Some(render_graph.unbind_node(blank_image));
     let mut temp_image_binding = Some(render_graph.unbind_node(temp_image));
 
-    render_graph
-        .resolve()
-        .submit(&event_loop.device.queue, &mut cache)?;
+    render_graph.resolve().submit(&mut cache, 0)?;
 
     let started_at = Instant::now();
     let mut mouse_buf = MouseBuf::default();

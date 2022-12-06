@@ -47,17 +47,18 @@ mod swapchain;
 pub use {
     self::{
         device::{Device, FeatureFlags},
-        physical_device::{PhysicalDevice, QueueFamily, QueueFamilyProperties},
+        physical_device::PhysicalDevice,
     },
     ash::{self},
     vk_sync::AccessType,
 };
 
 pub(crate) use self::{
-    cmd_buf::CommandBuffer,
+    cmd_buf::{CommandBuffer, CommandBufferInfo},
     descriptor_set::{DescriptorPool, DescriptorPoolInfo, DescriptorSet},
     descriptor_set_layout::DescriptorSetLayout,
     instance::Instance,
+    physical_device::{QueueFamily, QueueFamilyProperties},
     render_pass::{
         AttachmentInfo, AttachmentRef, FramebufferAttachmentImageInfo, FramebufferInfo, RenderPass,
         RenderPassInfo, SubpassDependency, SubpassInfo,
@@ -771,7 +772,15 @@ pub struct DriverConfig {
     #[builder(default)]
     pub debug: bool,
 
-    /// The desired, but not garunteed, number of images that will be in the created swapchain.
+    /// The desired, but not guaranteed, number of queues that will be available.
+    ///
+    /// Additional queues are useful for submission from secondary threads.
+    #[builder(default = "1")]
+    pub desired_queue_count: usize,
+
+    /// The desired, but not guaranteed, number of images that will be in the created swapchain.
+    ///
+    /// More images introduces more display lag, but smoother animation.
     #[builder(default = "3")]
     pub desired_swapchain_image_count: u32,
 

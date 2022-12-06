@@ -522,17 +522,13 @@ impl Shader {
     pub(super) fn merge_descriptor_bindings(
         descriptor_bindings: impl IntoIterator<Item = DescriptorBindingMap>,
     ) -> DescriptorBindingMap {
-        fn merge_info(lhs: &mut DescriptorInfo, rhs: DescriptorInfo) {
-            // All references to a descriptor in a pipeline must be of the same type across all
-            // pipeline stages
-            const INVALID_ERR: &str = "invalid shader descriptor type";
-
-            match lhs {
+        fn merge_info(lhs: &mut DescriptorInfo, rhs: DescriptorInfo) -> bool {
+            let (lhs_count, rhs_count) = match lhs {
                 DescriptorInfo::AccelerationStructure(lhs) => {
                     if let DescriptorInfo::AccelerationStructure(rhs) = rhs {
-                        *lhs = rhs.max(*lhs);
+                        (lhs, rhs)
                     } else {
-                        panic!("{INVALID_ERR}");
+                        return false;
                     }
                 }
                 DescriptorInfo::CombinedImageSampler(lhs, lhs_sampler) => {
@@ -542,92 +538,89 @@ impl Shader {
                             *lhs_sampler = rhs_sampler;
                         }
 
-                        debug_assert_ne!(*lhs_sampler, vk::Sampler::null());
+                        if *lhs_sampler == vk::Sampler::null() {
+                            return false;
+                        }
 
-                        *lhs = rhs.max(*lhs);
+                        (lhs, rhs)
                     } else {
-                        panic!("{INVALID_ERR}");
+                        return false;
                     }
                 }
                 DescriptorInfo::InputAttachment(lhs, lhs_idx) => {
                     if let DescriptorInfo::InputAttachment(rhs, rhs_idx) = rhs {
-                        debug_assert_eq!(*lhs_idx, rhs_idx);
+                        if *lhs_idx != rhs_idx {
+                            return false;
+                        }
 
-                        *lhs = rhs.max(*lhs);
+                        (lhs, rhs)
                     } else {
-                        panic!("{INVALID_ERR}");
+                        return false;
                     }
                 }
                 DescriptorInfo::SampledImage(lhs) => {
                     if let DescriptorInfo::SampledImage(rhs) = rhs {
-                        *lhs = rhs.max(*lhs);
+                        (lhs, rhs)
                     } else {
-                        panic!("{INVALID_ERR}");
+                        return false;
                     }
                 }
                 DescriptorInfo::Sampler(lhs) => {
                     if let DescriptorInfo::Sampler(rhs) = rhs {
-                        *lhs = rhs.max(*lhs);
+                        (lhs, rhs)
                     } else {
-                        panic!("{INVALID_ERR}");
+                        return false;
                     }
                 }
                 DescriptorInfo::StorageBuffer(lhs) => {
                     if let DescriptorInfo::StorageBuffer(rhs) = rhs {
-                        *lhs = rhs.max(*lhs);
+                        (lhs, rhs)
                     } else {
-                        panic!("{INVALID_ERR}");
+                        return false;
                     }
                 }
-                // DescriptorInfo::StorageBufferDynamic(lhs) => {
-                //     if let DescriptorInfo::StorageBufferDynamic(rhs) = rhs {
-                //         *lhs = rhs.max(*lhs);
-                //     } else {
-                //         panic!("{INVALID_ERR}");
-                //     }
-                // }
                 DescriptorInfo::StorageImage(lhs) => {
                     if let DescriptorInfo::StorageImage(rhs) = rhs {
-                        *lhs = rhs.max(*lhs);
+                        (lhs, rhs)
                     } else {
-                        panic!("{INVALID_ERR}");
+                        return false;
                     }
                 }
                 DescriptorInfo::StorageTexelBuffer(lhs) => {
                     if let DescriptorInfo::StorageTexelBuffer(rhs) = rhs {
-                        *lhs = rhs.max(*lhs);
+                        (lhs, rhs)
                     } else {
-                        panic!("{INVALID_ERR}");
+                        return false;
                     }
                 }
                 DescriptorInfo::UniformBuffer(lhs) => {
                     if let DescriptorInfo::UniformBuffer(rhs) = rhs {
-                        *lhs = rhs.max(*lhs);
+                        (lhs, rhs)
                     } else {
-                        panic!("{INVALID_ERR}");
+                        return false;
                     }
                 }
-                // DescriptorInfo::UniformBufferDynamic(lhs) => {
-                //     if let DescriptorInfo::UniformBufferDynamic(rhs) = rhs {
-                //         *lhs = rhs.max(*lhs);
-                //     } else {
-                //         panic!("{INVALID_ERR}");
-                //     }
-                // }
                 DescriptorInfo::UniformTexelBuffer(lhs) => {
                     if let DescriptorInfo::UniformTexelBuffer(rhs) = rhs {
-                        *lhs = rhs.max(*lhs);
+                        (lhs, rhs)
                     } else {
-                        panic!("{INVALID_ERR}");
+                        return false;
                     }
                 }
-            }
+            };
+
+            *lhs_count = rhs_count.max(*lhs_count);
+
+            true
         }
 
         fn merge_pair(src: DescriptorBindingMap, dst: &mut DescriptorBindingMap) {
             for (descriptor_binding, (descriptor_info, descriptor_flags)) in src.into_iter() {
                 if let Some((existing_info, existing_flags)) = dst.get_mut(&descriptor_binding) {
-                    merge_info(existing_info, descriptor_info);
+                    if !merge_info(existing_info, descriptor_info) {
+                        panic!("Inconsistent shader descriptors ({descriptor_binding:?})");
+                    }
+
                     *existing_flags |= descriptor_flags;
                 } else {
                     dst.insert(descriptor_binding, (descriptor_info, descriptor_flags));

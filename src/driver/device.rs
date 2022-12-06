@@ -15,7 +15,7 @@ use {
         collections::{HashMap, HashSet},
         ffi::CStr,
         fmt::{Debug, Formatter},
-        iter::empty,
+        iter::{empty, repeat},
         mem::forget,
         ops::Deref,
         os::raw::c_char,
@@ -45,8 +45,8 @@ pub struct Device {
     /// The physical device, which contains useful property and limit data.
     pub physical_device: PhysicalDevice,
 
-    /// The physical execution queue which all work will be submitted to.
-    pub queue: Queue,
+    /// The physical execution queues which all work will be submitted to.
+    pub(crate) queues: Box<[Queue]>,
 
     pub(crate) ray_tracing_pipeline_ext: Option<khr::RayTracingPipeline>,
 
@@ -138,25 +138,31 @@ impl Device {
             }
         };
 
-        let priorities = [1.0];
-        let queue = PhysicalDevice::queue_families(&physical_device).find(|qf| {
+        let queue_family = PhysicalDevice::queue_families(&physical_device).find(|qf| {
             qf.props.queue_flags.contains(
                 vk::QueueFlags::COMPUTE & vk::QueueFlags::GRAPHICS & vk::QueueFlags::TRANSFER,
             )
         });
 
-        let queue = if let Some(queue) = queue {
-            queue
+        let queue_family = if let Some(queue_family) = queue_family {
+            queue_family
         } else {
-            warn!("no suitable presentation queue found");
+            warn!("no suitable queue family found");
 
             return Err(DriverError::Unsupported);
         };
 
-        let queue_info = [vk::DeviceQueueCreateInfo::builder()
-            .queue_family_index(queue.idx)
+        let priorities = repeat(1.0)
+            .take(
+                cfg.desired_queue_count
+                    .clamp(1, queue_family.props.queue_count as _),
+            )
+            .collect::<Box<_>>();
+        let mut queue_info = vk::DeviceQueueCreateInfo::builder()
+            .queue_family_index(queue_family.idx)
             .queue_priorities(&priorities)
-            .build()];
+            .build();
+        queue_info.queue_count = priorities.len() as _;
 
         let mut imageless_framebuffer_features =
             vk::PhysicalDeviceImagelessFramebufferFeatures::builder();
@@ -326,8 +332,9 @@ impl Device {
                 None
             };
 
+            let queue_infos = [queue_info];
             let device_create_info = vk::DeviceCreateInfo::builder()
-                .queue_create_infos(&queue_info)
+                .queue_create_infos(&queue_infos)
                 .enabled_extension_names(&device_extension_names)
                 .push_next(&mut features2);
             let device = instance
@@ -354,10 +361,14 @@ impl Device {
 
                 DriverError::Unsupported
             })?;
-            let queue = Queue {
-                queue: device.get_device_queue(queue.idx, 0),
-                family: queue,
-            };
+            let queues = repeat(queue_family)
+                .take(priorities.len())
+                .enumerate()
+                .map(|(queue_index, queue_family)| Queue {
+                    queue: device.get_device_queue(queue_family.idx, queue_index as _),
+                    family: queue_family,
+                })
+                .collect();
 
             let immutable_samplers = Self::create_immutable_samplers(&device)?;
 
@@ -390,7 +401,7 @@ impl Device {
                 immutable_samplers,
                 instance,
                 physical_device,
-                queue,
+                queues,
                 ray_tracing_pipeline_ext,
                 ray_tracing_pipeline_properties,
                 surface_ext,
@@ -462,6 +473,13 @@ impl Device {
             .get(&info)
             .copied()
             .unwrap_or_else(|| unimplemented!("{:?}", info))
+    }
+
+    /// Returns the count of available queues created by the device.
+    ///
+    /// See [`DriverConfig.desired_queue_count`].
+    pub fn queue_count(this: &Self) -> usize {
+        this.queues.len()
     }
 
     pub(super) fn surface_formats(
