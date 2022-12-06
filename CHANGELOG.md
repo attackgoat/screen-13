@@ -12,6 +12,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Validation error caused by image blit operations
 - `multipass.rs` and other examples use unsupported image formats without checking for fallbacks
 
+### Added
+
+- `EventLoop` may be constructed with multiple hardware queues, see `desired_queue_count` and the
+  new `multithread.rs` example
+
+### Changed
+
+- `Resolver::submit()` now takes a queue index instead of an instance; `Device::queue_count`
+  provides the total number of queues available
+
 ## [0.6.5] - 2022-11-11
 
 ### Fixed
