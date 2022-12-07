@@ -35,7 +35,7 @@ mod res {
 use {
     anyhow::Context,
     bytemuck::{bytes_of, Pod, Zeroable},
-    pak::{buf::PakBuf, Pak},
+    pak::{Pak, PakBuf},
     screen_13::prelude::*,
     screen_13_fx::*,
     std::{sync::Arc, time::Instant},

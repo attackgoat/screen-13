@@ -1,3 +1,5 @@
+<image alt="Preview" src="../../.github/img/shader-toy.png">
+
 # Shader Toy Example
 
 This example uses computational fluid dynamics to create an effect like spilled paint. The original

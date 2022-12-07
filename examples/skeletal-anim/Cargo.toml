@@ -1,0 +1,21 @@
+[package]
+name = "animation"
+version = "0.1.0"
+authors = ["John Wells <john@attackgoat.com>"]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+
+[dependencies]
+bytemuck = "1.12"
+glam = { version = "0.22", features = ["bytemuck"] }
+pak = "0.0"
+pretty_env_logger = "0.4"
+screen-13 = { path = "../.." }
+
+[build-dependencies]
+anyhow = "1.0"
+log = "0.4"
+pak = { version = "0.0", features = ["bake"] }
+shaderc = "0.8"
+simplelog = "0.12"

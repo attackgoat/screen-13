@@ -1,0 +1,8 @@
+[content]
+compression = "snap"
+
+[[content.group]]
+assets = [
+    "animated_characters_3/*.toml",
+    "shader/*.spirv",
+]

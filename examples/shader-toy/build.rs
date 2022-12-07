@@ -1,7 +1,7 @@
 use {
     anyhow::Context,
     lazy_static::lazy_static,
-    pak::buf::PakBuf,
+    pak::PakBuf,
     shaderc::{Compiler, ShaderKind},
     std::{
         env::var,
