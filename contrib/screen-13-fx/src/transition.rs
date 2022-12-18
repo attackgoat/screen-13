@@ -449,7 +449,7 @@ impl TransitionPipeline {
         let a_image = a_image.into();
         let b_image = b_image.into();
         let dest_image = dest_image.into();
-        let progress = progress.max(0.0).min(1.0);
+        let progress = progress.clamp(0.0, 1.0);
 
         let dest_info = render_graph.node_info(dest_image);
 

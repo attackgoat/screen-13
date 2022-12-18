@@ -74,7 +74,7 @@ fn compile_glsl(path: impl AsRef<Path>, kind: ShaderKind) -> anyhow::Result<(Pat
         "{}.spirv",
         source_path.extension().unwrap().to_string_lossy()
     ));
-    write(&spirv_path, &spirv).context("Unable to write SPIR-V binary")?;
+    write(&spirv_path, spirv).context("Unable to write SPIR-V binary")?;
 
     Ok((source_path, spirv_path))
 }

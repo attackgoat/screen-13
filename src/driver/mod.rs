@@ -870,6 +870,55 @@ impl Display for DriverError {
 
 impl Error for DriverError {}
 
+/// Properties of the physical device for acceleration structures.
+#[derive(Debug)]
+pub struct PhysicalDeviceAccelerationStructureProperties {
+    /// The maximum number of geometries in a bottom level acceleration structure.
+    pub max_geometry_count: u64,
+
+    /// The maximum number of instances in a top level acceleration structure.
+    pub max_instance_count: u64,
+
+    /// The maximum number of triangles or AABBs in all geometries in a bottom level acceleration
+    /// structure.
+    pub max_primitive_count: u64,
+
+    /// The maximum number of acceleration structure bindings that can be accessible to a single
+    /// shader stage in a pipeline layout.
+    ///
+    /// Descriptor bindings with a descriptor type of
+    /// `VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR` count against this limit.
+    pub max_per_stage_descriptor_accel_structs: u32,
+
+    /// The maximum number of acceleration structure descriptors that can be included in descriptor
+    /// bindings in a pipeline layout across all pipeline shader stages and descriptor set numbers.
+    ///
+    /// Descriptor bindings with a descriptor type of
+    /// `VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR` count against this limit.
+    pub max_descriptor_set_accel_structs: u32,
+
+    /// The minimum required alignment, in bytes, for scratch data passed in to an acceleration
+    /// structure build command.
+    pub min_accel_struct_scratch_offset_alignment: u32,
+}
+
+impl From<vk::PhysicalDeviceAccelerationStructurePropertiesKHR>
+    for PhysicalDeviceAccelerationStructureProperties
+{
+    fn from(props: vk::PhysicalDeviceAccelerationStructurePropertiesKHR) -> Self {
+        Self {
+            max_geometry_count: props.max_geometry_count,
+            max_instance_count: props.max_instance_count,
+            max_primitive_count: props.max_primitive_count,
+            max_per_stage_descriptor_accel_structs: props
+                .max_per_stage_descriptor_acceleration_structures,
+            max_descriptor_set_accel_structs: props.max_descriptor_set_acceleration_structures,
+            min_accel_struct_scratch_offset_alignment: props
+                .min_acceleration_structure_scratch_offset_alignment,
+        }
+    }
+}
+
 /// Structure describing depth/stencil resolve properties that can be supported by an
 /// implementation.
 #[derive(Debug)]

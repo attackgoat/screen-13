@@ -159,6 +159,13 @@ fn record_accel_struct_builds(frame: &mut FrameContext, pool: &mut HashPool) {
     )
     .unwrap();
 
+    let scratch_buf_padding = frame
+        .device
+        .accel_struct_properties
+        .as_ref()
+        .unwrap()
+        .min_accel_struct_scratch_offset_alignment as vk::DeviceSize;
+
     // Lease and bind a bunch of bottom-level acceleration structures and add to instance buffer
     let mut blas_nodes = Vec::with_capacity(BLAS_COUNT as _);
     for idx in 0..BLAS_COUNT {
@@ -167,7 +174,7 @@ fn record_accel_struct_builds(frame: &mut FrameContext, pool: &mut HashPool) {
         Buffer::copy_from_slice(
             &mut instance_buf,
             idx * instance_len,
-            AccelerationStructure::instance_slice(vk::AccelerationStructureInstanceKHR {
+            AccelerationStructure::instance_slice(&[vk::AccelerationStructureInstanceKHR {
                 transform: vk::TransformMatrixKHR {
                     matrix: [
                         1.0, 0.0, 0.0, 0.0, //
@@ -183,13 +190,13 @@ fn record_accel_struct_builds(frame: &mut FrameContext, pool: &mut HashPool) {
                 acceleration_structure_reference: vk::AccelerationStructureReferenceKHR {
                     device_handle: AccelerationStructure::device_address(&blas),
                 },
-            }),
+            }]),
         );
 
         let blas_node = frame.render_graph.bind_node(blas);
         let scratch_buf = frame.render_graph.bind_node(
             pool.lease(BufferInfo::new(
-                blas_size.build_size,
+                blas_size.build_size + scratch_buf_padding,
                 vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | vk::BufferUsageFlags::STORAGE_BUFFER,
             ))
             .unwrap(),
@@ -211,6 +218,7 @@ fn record_accel_struct_builds(frame: &mut FrameContext, pool: &mut HashPool) {
             },
         }],
     };
+    let instance_buf = frame.render_graph.bind_node(instance_buf);
     let tlas_size = AccelerationStructure::size_of(frame.device, &tlas_geometry_info);
     let tlas = pool
         .lease(AccelerationStructureInfo {
@@ -221,7 +229,7 @@ fn record_accel_struct_builds(frame: &mut FrameContext, pool: &mut HashPool) {
     let tlas_node = frame.render_graph.bind_node(tlas);
     let tlas_scratch_buf = frame.render_graph.bind_node(
         pool.lease(BufferInfo::new(
-            tlas_size.build_size,
+            tlas_size.build_size + scratch_buf_padding,
             vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | vk::BufferUsageFlags::STORAGE_BUFFER,
         ))
         .unwrap(),
@@ -269,6 +277,7 @@ fn record_accel_struct_builds(frame: &mut FrameContext, pool: &mut HashPool) {
         pass.access_node_mut(blas_node, AccessType::AccelerationStructureBuildRead);
     }
 
+    pass.access_node_mut(instance_buf, AccessType::AccelerationStructureBuildRead);
     pass.access_node_mut(
         tlas_scratch_buf,
         AccessType::AccelerationStructureBufferWrite,

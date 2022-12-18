@@ -153,7 +153,7 @@ impl ImageLoader {
 
                 //trace!("{bitmap_width}x{bitmap_height} Stride={bitmap_stride}");
 
-                let pixel_buf_stride = align_up_u32(stride as u32, 12);
+                let pixel_buf_stride = align_up_u32(stride, 12);
                 let pixel_buf_len = (pixel_buf_stride * height) as vk::DeviceSize;
 
                 //trace!("pixel_buf_len={pixel_buf_len} pixel_buf_stride={pixel_buf_stride}");

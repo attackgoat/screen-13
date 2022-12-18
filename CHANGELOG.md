@@ -5,7 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.7.1] - 2022-12-17
+
+### Fixed
+
+- Soundness issue in `AccelerationStructure::instance_slice` helper function
 
 ### Added
 
@@ -290,3 +294,4 @@ _See [#25](https://github.com/attackgoat/screen-13/pull/25) for migration detail
 [0.6.4]: https://crates.io/crates/screen-13/0.6.4
 [0.6.5]: https://crates.io/crates/screen-13/0.6.5
 [0.7.0]: https://crates.io/crates/screen-13/0.7.0
+[0.7.1]: https://crates.io/crates/screen-13/0.7.1
