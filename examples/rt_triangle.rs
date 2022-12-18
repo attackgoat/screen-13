@@ -94,7 +94,7 @@ fn create_ray_trace_pipeline(device: &Arc<Device>) -> Result<Arc<RayTracePipelin
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
-    let event_loop = EventLoop::new().debug(true).ray_tracing(true).build()?;
+    let event_loop = EventLoop::new().ray_tracing(true).build()?;
     let mut pool = HashPool::new(&event_loop.device);
 
     // ------------------------------------------------------------------------------------------ //
@@ -324,6 +324,13 @@ fn main() -> anyhow::Result<()> {
     // ------------------------------------------------------------------------------------------ //
 
     {
+        let scratch_buf_padding = event_loop
+            .device
+            .accel_struct_properties
+            .as_ref()
+            .unwrap()
+            .min_acceleration_structure_scratch_offset_alignment
+            as vk::DeviceSize;
         let mut render_graph = RenderGraph::new();
         let index_node = render_graph.bind_node(&index_buf);
         let vertex_node = render_graph.bind_node(&vertex_buf);
@@ -333,7 +340,7 @@ fn main() -> anyhow::Result<()> {
             let scratch_buf = render_graph.bind_node(Buffer::create(
                 &event_loop.device,
                 BufferInfo::new(
-                    blas_size.build_size,
+                    blas_size.build_size + scratch_buf_padding,
                     vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                         | vk::BufferUsageFlags::STORAGE_BUFFER,
                 ),
@@ -365,7 +372,7 @@ fn main() -> anyhow::Result<()> {
             let scratch_buf = render_graph.bind_node(Buffer::create(
                 &event_loop.device,
                 BufferInfo::new(
-                    tlas_size.build_size,
+                    tlas_size.build_size + scratch_buf_padding,
                     vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                         | vk::BufferUsageFlags::STORAGE_BUFFER,
                 ),
