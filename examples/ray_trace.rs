@@ -597,7 +597,7 @@ fn main() -> anyhow::Result<()> {
     // Create an instance buffer, which is just one instance for the single BLAS
     // ------------------------------------------------------------------------------------------ //
 
-    let instance = AccelerationStructure::instance_slice(vk::AccelerationStructureInstanceKHR {
+    let instances = [vk::AccelerationStructureInstanceKHR {
         transform: vk::TransformMatrixKHR {
             matrix: [
                 1.0, 0.0, 0.0, 0.0, //
@@ -613,17 +613,18 @@ fn main() -> anyhow::Result<()> {
         acceleration_structure_reference: vk::AccelerationStructureReferenceKHR {
             device_handle: blas_device_address,
         },
-    });
+    }];
+    let instance_data = AccelerationStructure::instance_slice(&instances);
     let instance_buf = Arc::new({
         let mut buffer = Buffer::create(
             &event_loop.device,
             BufferInfo::new_mappable(
-                instance.len() as _,
+                instance_data.len() as _,
                 vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             ),
         )?;
-        Buffer::copy_from_slice(&mut buffer, 0, instance);
+        Buffer::copy_from_slice(&mut buffer, 0, instance_data);
 
         buffer
     });
@@ -675,10 +676,10 @@ fn main() -> anyhow::Result<()> {
 
             render_graph
                 .begin_pass("Build BLAS")
-                .read_node(index_node)
-                .read_node(vertex_node)
-                .write_node(blas_node)
-                .write_node(scratch_buf)
+                .access_node(index_node, AccessType::AccelerationStructureBuildRead)
+                .access_node(vertex_node, AccessType::AccelerationStructureBuildRead)
+                .access_node(scratch_buf, AccessType::AccelerationStructureBufferWrite)
+                .access_node(blas_node, AccessType::AccelerationStructureBuildWrite)
                 .record_acceleration(move |accel, _| {
                     accel.build_structure(
                         blas_node,
@@ -708,10 +709,10 @@ fn main() -> anyhow::Result<()> {
 
             render_graph
                 .begin_pass("Build TLAS")
-                .read_node(blas_node)
-                .read_node(instance_node)
-                .write_node(scratch_buf)
-                .write_node(tlas_node)
+                .access_node(blas_node, AccessType::AccelerationStructureBuildRead)
+                .access_node(instance_node, AccessType::AccelerationStructureBuildRead)
+                .access_node(scratch_buf, AccessType::AccelerationStructureBufferWrite)
+                .access_node(tlas_node, AccessType::AccelerationStructureBuildWrite)
                 .record_acceleration(move |accel, _| {
                     accel.build_structure(
                         tlas_node,
