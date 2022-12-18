@@ -621,8 +621,8 @@ impl RenderGraph {
                 },
                 dst_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
                 extent: vk::Extent3D {
-                    depth: src_info.depth.min(dst_info.depth).max(1),
-                    height: src_info.height.min(dst_info.height).max(1),
+                    depth: src_info.depth.clamp(1, dst_info.depth),
+                    height: src_info.height.clamp(1, dst_info.height),
                     width: src_info.width.min(dst_info.width),
                 },
             },

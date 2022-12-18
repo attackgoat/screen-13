@@ -888,18 +888,18 @@ pub struct PhysicalDeviceAccelerationStructureProperties {
     ///
     /// Descriptor bindings with a descriptor type of
     /// `VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR` count against this limit.
-    pub max_per_stage_descriptor_acceleration_structures: u32,
+    pub max_per_stage_descriptor_accel_structs: u32,
 
     /// The maximum number of acceleration structure descriptors that can be included in descriptor
     /// bindings in a pipeline layout across all pipeline shader stages and descriptor set numbers.
     ///
     /// Descriptor bindings with a descriptor type of
     /// `VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR` count against this limit.
-    pub max_descriptor_set_acceleration_structures: u32,
+    pub max_descriptor_set_accel_structs: u32,
 
     /// The minimum required alignment, in bytes, for scratch data passed in to an acceleration
     /// structure build command.
-    pub min_acceleration_structure_scratch_offset_alignment: u32,
+    pub min_accel_struct_scratch_offset_alignment: u32,
 }
 
 impl From<vk::PhysicalDeviceAccelerationStructurePropertiesKHR>
@@ -910,11 +910,10 @@ impl From<vk::PhysicalDeviceAccelerationStructurePropertiesKHR>
             max_geometry_count: props.max_geometry_count,
             max_instance_count: props.max_instance_count,
             max_primitive_count: props.max_primitive_count,
-            max_per_stage_descriptor_acceleration_structures: props
+            max_per_stage_descriptor_accel_structs: props
                 .max_per_stage_descriptor_acceleration_structures,
-            max_descriptor_set_acceleration_structures: props
-                .max_descriptor_set_acceleration_structures,
-            min_acceleration_structure_scratch_offset_alignment: props
+            max_descriptor_set_accel_structs: props.max_descriptor_set_acceleration_structures,
+            min_accel_struct_scratch_offset_alignment: props
                 .min_acceleration_structure_scratch_offset_alignment,
         }
     }

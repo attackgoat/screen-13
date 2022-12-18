@@ -164,8 +164,7 @@ fn record_accel_struct_builds(frame: &mut FrameContext, pool: &mut HashPool) {
         .accel_struct_properties
         .as_ref()
         .unwrap()
-        .min_acceleration_structure_scratch_offset_alignment
-        as vk::DeviceSize;
+        .min_accel_struct_scratch_offset_alignment as vk::DeviceSize;
 
     // Lease and bind a bunch of bottom-level acceleration structures and add to instance buffer
     let mut blas_nodes = Vec::with_capacity(BLAS_COUNT as _);

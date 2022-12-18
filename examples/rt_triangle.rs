@@ -329,7 +329,7 @@ fn main() -> anyhow::Result<()> {
             .accel_struct_properties
             .as_ref()
             .unwrap()
-            .min_acceleration_structure_scratch_offset_alignment
+            .min_accel_struct_scratch_offset_alignment
             as vk::DeviceSize;
         let mut render_graph = RenderGraph::new();
         let index_node = render_graph.bind_node(&index_buf);

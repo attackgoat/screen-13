@@ -214,7 +214,7 @@ impl AccelerationStructure {
     }
 
     /// Helper function which is used to prepare instance buffers.
-    pub fn instance_slice<'a>(instances: &'a [vk::AccelerationStructureInstanceKHR]) -> &'a [u8] {
+    pub fn instance_slice(instances: &[vk::AccelerationStructureInstanceKHR]) -> &[u8] {
         unsafe {
             std::slice::from_raw_parts(
                 instances.as_ptr() as *const _,

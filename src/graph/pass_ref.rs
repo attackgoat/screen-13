@@ -85,8 +85,7 @@ impl<'a> Acceleration<'a> {
     /// - Flags must include [`vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS`]
     /// - Size must be equal to or greater than the `build_size` value returned by
     ///   [`AccelerationStructure::size_of`] plus
-    ///   `min_acceleration_structure_scratch_offset_alignment` of
-    ///   [`Device.accel_struct_properties`].
+    ///   `min_accel_struct_scratch_offset_alignment` of [`Device::accel_struct_properties`].
     ///
     /// # Examples
     ///
@@ -199,7 +198,7 @@ impl<'a> Acceleration<'a> {
                                 .accel_struct_properties
                                 .as_ref()
                                 .expect("ray tracing feature must be enabled")
-                                .min_acceleration_structure_scratch_offset_alignment
+                                .min_accel_struct_scratch_offset_alignment
                                 as _,
                         ),
                     });
@@ -224,8 +223,7 @@ impl<'a> Acceleration<'a> {
     /// - Flags must include [`vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS`]
     /// - Size must be equal to or greater than the `update_size` value returned by
     ///   [`AccelerationStructure::size_of`] plus
-    ///   `min_acceleration_structure_scratch_offset_alignment` of
-    ///   [`Device.accel_struct_properties`].
+    ///   `min_accel_struct_scratch_offset_alignment` of [`Device::accel_struct_properties`].
     pub fn update_structure(
         &self,
         src_accel_node: impl Into<AnyAccelerationStructureNode>,
@@ -275,7 +273,7 @@ impl<'a> Acceleration<'a> {
                                 .accel_struct_properties
                                 .as_ref()
                                 .expect("ray tracing feature must be enabled")
-                                .min_acceleration_structure_scratch_offset_alignment
+                                .min_accel_struct_scratch_offset_alignment
                                 as _,
                         ),
                     });

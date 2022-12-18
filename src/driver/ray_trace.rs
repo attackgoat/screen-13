@@ -135,8 +135,8 @@ impl RayTracePipeline {
         let descriptor_info = PipelineDescriptorInfo::create(device, &descriptor_bindings)?;
         let descriptor_set_layout_handles = descriptor_info
             .layouts
-            .iter()
-            .map(|(_, descriptor_set_layout)| **descriptor_set_layout)
+            .values()
+            .map(|descriptor_set_layout| **descriptor_set_layout)
             .collect::<Box<[_]>>();
 
         unsafe {

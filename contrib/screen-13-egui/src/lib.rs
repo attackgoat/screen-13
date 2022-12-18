@@ -257,13 +257,13 @@ impl Egui {
 
                     let num_indices = mesh.indices.len() as u32;
 
-                    let clip_x = (clip_rect.min.x as f32 * pixels_per_point) as i32;
-                    let clip_y = (clip_rect.min.y as f32 * pixels_per_point) as i32;
+                    let clip_x = (clip_rect.min.x * pixels_per_point) as i32;
+                    let clip_y = (clip_rect.min.y * pixels_per_point) as i32;
 
                     let clip_width =
-                        ((clip_rect.max.x - clip_rect.min.x) as f32 * pixels_per_point) as u32;
+                        ((clip_rect.max.x - clip_rect.min.x) * pixels_per_point) as u32;
                     let clip_height =
-                        ((clip_rect.max.y - clip_rect.min.y) as f32 * pixels_per_point) as u32;
+                        ((clip_rect.max.y - clip_rect.min.y) * pixels_per_point) as u32;
 
                     render_graph
                         .begin_pass("Egui pass")
