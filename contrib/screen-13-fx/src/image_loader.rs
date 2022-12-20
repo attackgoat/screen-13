@@ -159,11 +159,10 @@ impl ImageLoader {
                 //trace!("pixel_buf_len={pixel_buf_len} pixel_buf_stride={pixel_buf_stride}");
 
                 // Lease a temporary buffer from the cache pool
-                let mut pixel_buf = self.pool.lease(BufferInfo {
-                    size: pixel_buf_len,
-                    usage: vk::BufferUsageFlags::STORAGE_BUFFER,
-                    can_map: true,
-                })?;
+                let mut pixel_buf = self.pool.lease(BufferInfo::new_mappable(
+                    pixel_buf_len,
+                    vk::BufferUsageFlags::STORAGE_BUFFER,
+                ))?;
 
                 {
                     let pixel_buf =

@@ -40,10 +40,6 @@ pub type BindingOffset = u32;
 /// Alias for the descriptor set index of a shader descriptor.
 pub type DescriptorSetIndex = u32;
 
-fn align_up_device_size(val: vk::DeviceSize, atom: vk::DeviceSize) -> vk::DeviceSize {
-    (val + atom - 1) & !(atom - 1)
-}
-
 /// Recording interface for acceleration structure commands.
 ///
 /// This structure provides a strongly-typed set of methods which allow acceleration structures to
@@ -192,15 +188,7 @@ impl<'a> Acceleration<'a> {
                     .geometries(&tls.geometries)
                     .dst_acceleration_structure(*self.bindings[accel_struct_node])
                     .scratch_data(vk::DeviceOrHostAddressKHR {
-                        device_address: align_up_device_size(
-                            Buffer::device_address(&self.bindings[scratch_buf_node]),
-                            self.device
-                                .accel_struct_properties
-                                .as_ref()
-                                .expect("ray tracing feature must be enabled")
-                                .min_accel_struct_scratch_offset_alignment
-                                as _,
-                        ),
+                        device_address: Buffer::device_address(&self.bindings[scratch_buf_node]),
                     });
 
                 self.device
@@ -267,15 +255,7 @@ impl<'a> Acceleration<'a> {
                     .dst_acceleration_structure(*self.bindings[dst_accel_node])
                     .src_acceleration_structure(*self.bindings[src_accel_node])
                     .scratch_data(vk::DeviceOrHostAddressKHR {
-                        device_address: align_up_device_size(
-                            Buffer::device_address(&self.bindings[scratch_buf_node]),
-                            self.device
-                                .accel_struct_properties
-                                .as_ref()
-                                .expect("ray tracing feature must be enabled")
-                                .min_accel_struct_scratch_offset_alignment
-                                as _,
-                        ),
+                        device_address: Buffer::device_address(&self.bindings[scratch_buf_node]),
                     });
 
                 self.device

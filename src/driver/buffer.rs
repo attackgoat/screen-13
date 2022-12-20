@@ -105,14 +105,7 @@ impl Buffer {
             })?
         };
         let mut requirements = unsafe { device.get_buffer_memory_requirements(buffer) };
-
-        if info
-            .usage
-            .contains(vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR)
-        {
-            // TODO: query device props
-            requirements.alignment = requirements.alignment.max(64);
-        }
+        requirements.alignment = requirements.alignment.max(info.alignment);
 
         let memory_location = if info.can_map {
             MemoryLocation::CpuToGpu
@@ -183,11 +176,7 @@ impl Buffer {
         usage: vk::BufferUsageFlags,
         slice: &[u8],
     ) -> Result<Self, DriverError> {
-        let info = BufferInfo {
-            can_map: true,
-            size: slice.len() as vk::DeviceSize,
-            usage,
-        };
+        let info = BufferInfo::new_mappable(slice.len() as _, usage);
         let mut buffer = Self::create(device, info)?;
 
         Self::copy_from_slice(&mut buffer, 0, slice);
@@ -419,6 +408,12 @@ impl Drop for Buffer {
     pattern = "owned"
 )]
 pub struct BufferInfo {
+    /// Byte alignment of the base device address of the buffer.
+    ///
+    /// Must be a power of two.
+    #[builder(default)]
+    pub alignment: vk::DeviceSize,
+
     /// Size in bytes of the buffer to be created.
     #[builder(default)]
     pub size: vk::DeviceSize,

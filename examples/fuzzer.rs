@@ -159,12 +159,13 @@ fn record_accel_struct_builds(frame: &mut FrameContext, pool: &mut HashPool) {
     )
     .unwrap();
 
-    let scratch_buf_padding = frame
+    let accel_struct_scratch_offset_alignment = frame
         .device
         .accel_struct_properties
         .as_ref()
         .unwrap()
-        .min_accel_struct_scratch_offset_alignment as vk::DeviceSize;
+        .min_accel_struct_scratch_offset_alignment
+        as vk::DeviceSize;
 
     // Lease and bind a bunch of bottom-level acceleration structures and add to instance buffer
     let mut blas_nodes = Vec::with_capacity(BLAS_COUNT as _);
@@ -195,10 +196,14 @@ fn record_accel_struct_builds(frame: &mut FrameContext, pool: &mut HashPool) {
 
         let blas_node = frame.render_graph.bind_node(blas);
         let scratch_buf = frame.render_graph.bind_node(
-            pool.lease(BufferInfo::new(
-                blas_size.build_size + scratch_buf_padding,
-                vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | vk::BufferUsageFlags::STORAGE_BUFFER,
-            ))
+            pool.lease(
+                BufferInfo::new(
+                    blas_size.build_size,
+                    vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                        | vk::BufferUsageFlags::STORAGE_BUFFER,
+                )
+                .alignment(accel_struct_scratch_offset_alignment),
+            )
             .unwrap(),
         );
 
@@ -228,10 +233,13 @@ fn record_accel_struct_builds(frame: &mut FrameContext, pool: &mut HashPool) {
         .unwrap();
     let tlas_node = frame.render_graph.bind_node(tlas);
     let tlas_scratch_buf = frame.render_graph.bind_node(
-        pool.lease(BufferInfo::new(
-            tlas_size.build_size + scratch_buf_padding,
-            vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | vk::BufferUsageFlags::STORAGE_BUFFER,
-        ))
+        pool.lease(
+            BufferInfo::new(
+                tlas_size.build_size,
+                vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | vk::BufferUsageFlags::STORAGE_BUFFER,
+            )
+            .alignment(accel_struct_scratch_offset_alignment),
+        )
         .unwrap(),
     );
 

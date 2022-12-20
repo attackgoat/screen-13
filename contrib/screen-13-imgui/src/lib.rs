@@ -119,11 +119,7 @@ impl ImGui {
             let indices = cast_slice(draw_list.idx_buffer());
             let mut index_buf = self
                 .pool
-                .lease(BufferInfo {
-                    size: indices.len() as _,
-                    usage: vk::BufferUsageFlags::INDEX_BUFFER,
-                    can_map: true,
-                })
+                .lease(BufferInfo::new_mappable(indices.len() as _, vk::BufferUsageFlags::INDEX_BUFFER))
                 .unwrap();
 
             {
@@ -136,11 +132,7 @@ impl ImGui {
             let vertex_buf_len = vertices.len() * 20;
             let mut vertex_buf = self
                 .pool
-                .lease(BufferInfo {
-                    size: vertex_buf_len as _,
-                    usage: vk::BufferUsageFlags::VERTEX_BUFFER,
-                    can_map: true,
-                })
+                .lease(BufferInfo::new_mappable(vertex_buf_len as _, vk::BufferUsageFlags::VERTEX_BUFFER))
                 .unwrap();
 
             {
@@ -268,11 +260,7 @@ impl ImGui {
         let temp_buf_len = texture.data.len();
         let mut temp_buf = self
             .pool
-            .lease(BufferInfo {
-                size: temp_buf_len as _,
-                usage: vk::BufferUsageFlags::TRANSFER_SRC,
-                can_map: true,
-            })
+            .lease(BufferInfo::new_mappable(temp_buf_len as _, vk::BufferUsageFlags::TRANSFER_SRC))
             .unwrap();
 
         {

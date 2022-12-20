@@ -118,9 +118,9 @@ fn main() -> anyhow::Result<()> {
     // ------------------------------------------------------------------------------------------ //
 
     let sbt_handle_size = align_up(shader_group_handle_size, shader_group_handle_alignment);
-    let sbt_rgen_size = align_up(sbt_handle_size, shader_group_base_alignment);
-    let sbt_hit_size = align_up(sbt_handle_size, shader_group_base_alignment);
-    let sbt_miss_size = align_up(2 * sbt_handle_size, shader_group_base_alignment);
+    let sbt_rgen_size = sbt_handle_size;
+    let sbt_hit_size = sbt_handle_size;
+    let sbt_miss_size = 2 * sbt_handle_size;
     let sbt_buf = Arc::new({
         let mut buf = Buffer::create(
             &event_loop.device,
@@ -128,7 +128,8 @@ fn main() -> anyhow::Result<()> {
                 (sbt_rgen_size + sbt_hit_size + sbt_miss_size) as _,
                 vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-            ),
+            )
+            .alignment(shader_group_base_alignment as _),
         )
         .unwrap();
 
@@ -324,7 +325,7 @@ fn main() -> anyhow::Result<()> {
     // ------------------------------------------------------------------------------------------ //
 
     {
-        let scratch_buf_padding = event_loop
+        let accel_struct_scratch_offset_alignment = event_loop
             .device
             .accel_struct_properties
             .as_ref()
@@ -340,10 +341,11 @@ fn main() -> anyhow::Result<()> {
             let scratch_buf = render_graph.bind_node(Buffer::create(
                 &event_loop.device,
                 BufferInfo::new(
-                    blas_size.build_size + scratch_buf_padding,
+                    blas_size.build_size,
                     vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                         | vk::BufferUsageFlags::STORAGE_BUFFER,
-                ),
+                )
+                .alignment(accel_struct_scratch_offset_alignment),
             )?);
 
             render_graph
@@ -372,10 +374,11 @@ fn main() -> anyhow::Result<()> {
             let scratch_buf = render_graph.bind_node(Buffer::create(
                 &event_loop.device,
                 BufferInfo::new(
-                    tlas_size.build_size + scratch_buf_padding,
+                    tlas_size.build_size,
                     vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                         | vk::BufferUsageFlags::STORAGE_BUFFER,
-                ),
+                )
+                .alignment(accel_struct_scratch_offset_alignment),
             )?);
             let tlas_node = render_graph.bind_node(&tlas);
 
