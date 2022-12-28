@@ -24,5 +24,9 @@ cargo run --example transitions
 cargo run --example vsm_omni
 cargo run --manifest-path examples/skeletal-anim/Cargo.toml
 
+# Hot-reload examples
+cargo run --manifest-path contrib/screen-13-hot/Cargo.toml --example glsl
+cargo run --manifest-path contrib/screen-13-hot/Cargo.toml --example hlsl
+
 # Run this one in release mode
 cargo run --manifest-path examples/shader-toy/Cargo.toml --release

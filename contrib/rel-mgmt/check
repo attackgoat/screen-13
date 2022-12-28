@@ -18,6 +18,7 @@ diff || fail "Uncommitted changes"
 cargo fmt && diff || fail "Unformatted rust code"
 cargo fmt --manifest-path contrib/screen-13-egui/Cargo.toml && diff || fail "Unformatted rust code (screen-13-egui)"
 cargo fmt --manifest-path contrib/screen-13-fx/Cargo.toml && diff || fail "Unformatted rust code (screen-13-fx)"
+cargo fmt --manifest-path contrib/screen-13-hot/Cargo.toml && diff || fail "Unformatted rust code (screen-13-hot)"
 cargo fmt --manifest-path contrib/screen-13-imgui/Cargo.toml && diff || fail "Unformatted rust code (screen-13-imgui)"
 cargo fmt --manifest-path examples/shader-toy/Cargo.toml && diff || fail "Unformatted rust code (shader-toy)"
 cargo fmt --manifest-path examples/skeletal-anim/Cargo.toml && diff || fail "Unformatted rust code (skeletal-anim)"
@@ -26,6 +27,7 @@ cargo fmt --manifest-path examples/skeletal-anim/Cargo.toml && diff || fail "Unf
 cargo check --all-targets --all-features
 cargo check --manifest-path contrib/screen-13-egui/Cargo.toml --all-targets --all-features
 cargo check --manifest-path contrib/screen-13-fx/Cargo.toml --all-targets --all-features
+cargo check --manifest-path contrib/screen-13-hot/Cargo.toml --all-targets --all-features
 cargo check --manifest-path contrib/screen-13-imgui/Cargo.toml --all-targets --all-features
 cargo check --manifest-path examples/shader-toy/Cargo.toml --all-targets --all-features
 cargo check --manifest-path examples/skeletal-anim/Cargo.toml --all-targets --all-features
@@ -34,6 +36,7 @@ cargo check --manifest-path examples/skeletal-anim/Cargo.toml --all-targets --al
 cargo clippy --all-targets --all-features
 cargo clippy --manifest-path contrib/screen-13-egui/Cargo.toml --all-targets --all-features
 cargo clippy --manifest-path contrib/screen-13-fx/Cargo.toml --all-targets --all-features
+cargo clippy --manifest-path contrib/screen-13-hot/Cargo.toml --all-targets --all-features
 cargo clippy --manifest-path contrib/screen-13-imgui/Cargo.toml --all-targets --all-features
 cargo clippy --manifest-path examples/shader-toy/Cargo.toml --all-targets --all-features
 cargo clippy --manifest-path examples/skeletal-anim/Cargo.toml --all-targets --all-features

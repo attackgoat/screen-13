@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2022-12-28
+
+### Added
+
+- Shader hot-reload feature for compute, graphic and ray-trace pipelines (see examples)
+- `Buffer` objects may be created with an alignment specified in `BufferInfo` (useful for shader
+  binding tables)
+
+### Changed
+
+- `ComputePipeline::create` now takes three arguments: the device, info, and shader
+- `ComputePipelineInfo` no longer contains shader information; use `Shader::new_compute` for that
+  instead
+
 ## [0.7.1] - 2022-12-17
 
 ### Fixed
@@ -295,3 +309,4 @@ _See [#25](https://github.com/attackgoat/screen-13/pull/25) for migration detail
 [0.6.5]: https://crates.io/crates/screen-13/0.6.5
 [0.7.0]: https://crates.io/crates/screen-13/0.7.0
 [0.7.1]: https://crates.io/crates/screen-13/0.7.1
+[0.8.0]: https://crates.io/crates/screen-13/0.8.0

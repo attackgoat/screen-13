@@ -496,12 +496,13 @@ impl<'a> Index<AnyImageNode> for Bindings<'a> {
 /// # use ash::vk;
 /// # use screen_13::driver::{Device, DriverConfig, DriverError};
 /// # use screen_13::driver::compute::{ComputePipeline, ComputePipelineInfo};
+/// # use screen_13::driver::shader::{Shader};
 /// # use screen_13::graph::RenderGraph;
 /// # fn main() -> Result<(), DriverError> {
 /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
-/// # let shader = [0u8; 1];
-/// # let info = ComputePipelineInfo::new(shader.as_slice());
-/// # let my_compute_pipeline = Arc::new(ComputePipeline::create(&device, info)?);
+/// # let info = ComputePipelineInfo::default();
+/// # let shader = Shader::new_compute([0u8; 1].as_slice());
+/// # let my_compute_pipeline = Arc::new(ComputePipeline::create(&device, info, shader)?);
 /// # let mut my_graph = RenderGraph::new();
 /// my_graph.begin_pass("my compute pass")
 ///         .bind_pipeline(&my_compute_pipeline)
@@ -548,14 +549,15 @@ impl<'a> Compute<'a> {
     /// # use screen_13::driver::{Device, DriverConfig, DriverError};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # use screen_13::driver::compute::{ComputePipeline, ComputePipelineInfo};
+    /// # use screen_13::driver::shader::{Shader};
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
     /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
     /// # let buf_info = BufferInfo::new(8, vk::BufferUsageFlags::STORAGE_BUFFER);
     /// # let my_buf = Buffer::create(&device, buf_info)?;
-    /// # let shader = [0u8; 1];
-    /// # let pipeline_info = ComputePipelineInfo::new(shader.as_slice());
-    /// # let my_compute_pipeline = Arc::new(ComputePipeline::create(&device, pipeline_info)?);
+    /// # let info = ComputePipelineInfo::default();
+    /// # let shader = Shader::new_compute([0u8; 1].as_slice());
+    /// # let my_compute_pipeline = Arc::new(ComputePipeline::create(&device, info, shader)?);
     /// # let mut my_graph = RenderGraph::new();
     /// # let my_buf_node = my_graph.bind_node(my_buf);
     /// my_graph.begin_pass("fill my_buf_node with data")
@@ -630,14 +632,15 @@ impl<'a> Compute<'a> {
     /// # use screen_13::driver::{Device, DriverConfig, DriverError};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # use screen_13::driver::compute::{ComputePipeline, ComputePipelineInfo};
+    /// # use screen_13::driver::shader::{Shader};
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
     /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
     /// # let buf_info = BufferInfo::new(8, vk::BufferUsageFlags::STORAGE_BUFFER);
     /// # let my_buf = Buffer::create(&device, buf_info)?;
-    /// # let shader = [0u8; 1];
-    /// # let pipeline_info = ComputePipelineInfo::new(shader.as_slice());
-    /// # let my_compute_pipeline = Arc::new(ComputePipeline::create(&device, pipeline_info)?);
+    /// # let info = ComputePipelineInfo::default();
+    /// # let shader = Shader::new_compute([0u8; 1].as_slice());
+    /// # let my_compute_pipeline = Arc::new(ComputePipeline::create(&device, info, shader)?);
     /// # let mut my_graph = RenderGraph::new();
     /// # let my_buf_node = my_graph.bind_node(my_buf);
     /// const CMD_SIZE: usize = size_of::<vk::DispatchIndirectCommand>();
@@ -723,12 +726,13 @@ impl<'a> Compute<'a> {
     /// # use screen_13::driver::{Device, DriverConfig, DriverError};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # use screen_13::driver::compute::{ComputePipeline, ComputePipelineInfo};
+    /// # use screen_13::driver::shader::{Shader};
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
     /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
-    /// # let shader = [0u8; 1];
-    /// # let pipeline_info = ComputePipelineInfo::new(shader.as_slice());
-    /// # let my_compute_pipeline = Arc::new(ComputePipeline::create(&device, pipeline_info)?);
+    /// # let info = ComputePipelineInfo::default();
+    /// # let shader = Shader::new_compute([0u8; 1].as_slice());
+    /// # let my_compute_pipeline = Arc::new(ComputePipeline::create(&device, info, shader)?);
     /// # let mut my_graph = RenderGraph::new();
     /// my_graph.begin_pass("compute the ultimate question")
     ///         .bind_pipeline(&my_compute_pipeline)
@@ -783,12 +787,13 @@ impl<'a> Compute<'a> {
     /// # use screen_13::driver::{Device, DriverConfig, DriverError};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # use screen_13::driver::compute::{ComputePipeline, ComputePipelineInfo};
+    /// # use screen_13::driver::shader::{Shader};
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
     /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
-    /// # let shader = [0u8; 1];
-    /// # let pipeline_info = ComputePipelineInfo::new(shader.as_slice());
-    /// # let my_compute_pipeline = Arc::new(ComputePipeline::create(&device, pipeline_info)?);
+    /// # let info = ComputePipelineInfo::default();
+    /// # let shader = Shader::new_compute([0u8; 1].as_slice());
+    /// # let my_compute_pipeline = Arc::new(ComputePipeline::create(&device, info, shader)?);
     /// # let mut my_graph = RenderGraph::new();
     /// my_graph.begin_pass("calculate the wow factor")
     ///         .bind_pipeline(&my_compute_pipeline)

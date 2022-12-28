@@ -311,7 +311,8 @@ fn record_compute_array_bind(frame: &mut FrameContext, pool: &mut HashPool) {
     let pipeline = compute_pipeline(
         "array_bind",
         frame.device,
-        ComputePipelineInfo::new(
+        ComputePipelineInfo::default(),
+        Shader::new_compute(
             inline_spirv!(
                 r#"
                 #version 460 core
@@ -375,7 +376,7 @@ fn record_compute_array_bind(frame: &mut FrameContext, pool: &mut HashPool) {
         .clear_color_image(images[2])
         .clear_color_image(images[3])
         .clear_color_image(images[4])
-        .begin_pass("no-op")
+        .begin_pass("array-bind")
         .bind_pipeline(&pipeline)
         .read_descriptor((0, [0]), images[0])
         .read_descriptor((0, [1]), images[1])
@@ -393,7 +394,8 @@ fn record_compute_bindless(frame: &mut FrameContext, pool: &mut HashPool) {
     let pipeline = compute_pipeline(
         "bindless",
         frame.device,
-        ComputePipelineInfo::new(
+        ComputePipelineInfo::default(),
+        Shader::new_compute(
             inline_spirv!(
                 r#"
                 #version 460 core
@@ -450,7 +452,7 @@ fn record_compute_bindless(frame: &mut FrameContext, pool: &mut HashPool) {
 
     frame
         .render_graph
-        .begin_pass("no-op")
+        .begin_pass("compute-bindless")
         .bind_pipeline(&pipeline)
         .write_descriptor((0, [0]), images[0])
         .write_descriptor((0, [1]), images[1])
@@ -468,16 +470,19 @@ fn record_compute_no_op(frame: &mut FrameContext, _: &mut HashPool) {
     let pipeline = compute_pipeline(
         "no_op",
         frame.device,
-        inline_spirv!(
-            r#"
-            #version 460 core
+        ComputePipelineInfo::default(),
+        Shader::new_compute(
+            inline_spirv!(
+                r#"
+                #version 460 core
 
-            void main() {
-            }
-            "#,
-            comp
-        )
-        .as_slice(),
+                void main() {
+                }
+                "#,
+                comp
+            )
+            .as_slice(),
+        ),
     );
     frame
         .render_graph
@@ -572,7 +577,7 @@ fn record_graphic_bindless(frame: &mut FrameContext, pool: &mut HashPool) {
         .clear_color_image(images[2])
         .clear_color_image(images[3])
         .clear_color_image(images[4])
-        .begin_pass("a")
+        .begin_pass("graphic-bindless")
         .bind_pipeline(&pipeline)
         .read_descriptor((0, [0]), images[0])
         .read_descriptor((0, [1]), images[1])
@@ -1029,6 +1034,7 @@ fn compute_pipeline(
     key: &'static str,
     device: &Arc<Device>,
     info: impl Into<ComputePipelineInfo>,
+    shader: impl Into<Shader>,
 ) -> Arc<ComputePipeline> {
     use std::{cell::RefCell, collections::HashMap};
 
@@ -1038,9 +1044,9 @@ fn compute_pipeline(
 
     TLS.with(|tls| {
         Arc::clone(
-            tls.borrow_mut()
-                .entry(key)
-                .or_insert_with(|| Arc::new(ComputePipeline::create(device, info).unwrap())),
+            tls.borrow_mut().entry(key).or_insert_with(|| {
+                Arc::new(ComputePipeline::create(device, info, shader).unwrap())
+            }),
         )
     })
 }

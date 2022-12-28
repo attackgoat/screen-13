@@ -258,7 +258,7 @@ impl PipelineDescriptorInfo {
     pattern = "owned"
 )]
 pub struct Shader {
-    /// The name of the entrypoint which will be executed by this shader.
+    /// The name of the entry point which will be executed by this shader.
     ///
     /// The default value is `main`.
     #[builder(default = "\"main\".to_owned()")]
@@ -274,7 +274,7 @@ pub struct Shader {
     /// # inline_spirv::inline_spirv!(r#"
     /// #version 460 core
     ///
-    /// // Defaults to 6 if not set using ComputePipelineInfo.specialization_info!
+    /// // Defaults to 6 if not set using Shader specialization_info!
     /// layout(constant_id = 0) const uint MY_COUNT = 6;
     ///
     /// layout(set = 0, binding = 0) uniform sampler2D my_samplers[MY_COUNT];
@@ -394,6 +394,15 @@ impl Shader {
         Self::new(vk::ShaderStageFlags::INTERSECTION_KHR, spirv)
     }
 
+    /// Creates a new mesh shader.
+    ///
+    /// # Panics
+    ///
+    /// If the shader code is invalid.
+    pub fn new_mesh(spirv: impl ShaderCode) -> ShaderBuilder {
+        Self::new(vk::ShaderStageFlags::MESH_EXT, spirv)
+    }
+
     /// Creates a new ray trace shader.
     ///
     /// # Panics
@@ -412,9 +421,20 @@ impl Shader {
         Self::new(vk::ShaderStageFlags::RAYGEN_KHR, spirv)
     }
 
+    /// Creates a new mesh task shader.
+    ///
+    /// # Panics
+    ///
+    /// If the shader code is invalid.
+    pub fn new_task(spirv: impl ShaderCode) -> ShaderBuilder {
+        Self::new(vk::ShaderStageFlags::TASK_EXT, spirv)
+    }
+
     /// Creates a new tesselation control shader.
     ///
-    /// _NOTE:_ May panic if the shader code is invalid.
+    /// # Panics
+    ///
+    /// If the shader code is invalid or not a multiple of four bytes in length.
     pub fn new_tesselation_ctrl(spirv: impl ShaderCode) -> ShaderBuilder {
         Self::new(vk::ShaderStageFlags::TESSELLATION_CONTROL, spirv)
     }
@@ -841,16 +861,17 @@ impl ShaderBuilder {
 
     /// Builds a new `Shader`.
     pub fn build(mut self) -> Shader {
+        let entry_name = self.entry_name.as_deref().unwrap_or("main");
         self.entry_point = Some(
             Shader::reflect_entry_point(
-                self.entry_name.as_deref().unwrap_or("main"),
+                entry_name,
                 self.spirv.as_deref().unwrap(),
                 self.specialization_info
                     .as_ref()
                     .map(|opt| opt.as_ref())
                     .unwrap_or_default(),
             )
-            .expect("invalid shader code"),
+            .unwrap_or_else(|_| panic!("invalid shader code for entry name \'{entry_name}\'")),
         );
 
         self.fallible_build()

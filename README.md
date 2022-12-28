@@ -9,7 +9,7 @@ _[QBasic](https://en.wikipedia.org/wiki/QBasic)_.
 
 ```toml
 [dependencies]
-screen-13 = "0.7"
+screen-13 = "0.8"
 ```
 
 ## Overview
@@ -41,6 +41,7 @@ Features of the render graph:
  - Automatic Vulkan management (render passes, subpasses, descriptors, pools, _etc._)
  - Automatic render pass scheduling, re-ordering, merging, with resource aliasing
  - Interoperable with existing Vulkan code
+ - Optional [shader hot-reload](contrib/screen-13-hot/README.md) from disk
 
 ```rust
 render_graph

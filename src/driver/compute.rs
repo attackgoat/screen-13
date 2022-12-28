@@ -2,9 +2,7 @@
 
 use {
     super::{
-        shader::{
-            DescriptorBindingMap, PipelineDescriptorInfo, Shader, ShaderCode, SpecializationInfo,
-        },
+        shader::{DescriptorBindingMap, PipelineDescriptorInfo, Shader},
         Device, DriverError,
     },
     ash::vk,
@@ -54,20 +52,21 @@ impl ComputePipeline {
     /// # use ash::vk;
     /// # use screen_13::driver::{Device, DriverConfig, DriverError};
     /// # use screen_13::driver::compute::{ComputePipeline, ComputePipelineInfo};
+    /// # use screen_13::driver::shader::{Shader};
     /// # fn main() -> Result<(), DriverError> {
     /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
     /// # let my_shader_code = [0u8; 1];
     /// // my_shader_code is raw SPIR-V code as bytes
-    /// let info = ComputePipelineInfo::new(my_shader_code.as_slice());
-    /// let pipeline = ComputePipeline::create(&device, info)?;
+    /// let shader = Shader::new_compute(my_shader_code.as_slice());
+    /// let pipeline = ComputePipeline::create(&device, ComputePipelineInfo::default(), shader)?;
     ///
     /// assert_ne!(*pipeline, vk::Pipeline::null());
-    /// assert_eq!(pipeline.info.entry_name.as_str(), "main");
     /// # Ok(()) }
     /// ```
     pub fn create(
         device: &Arc<Device>,
         info: impl Into<ComputePipelineInfo>,
+        shader: impl Into<Shader>,
     ) -> Result<Self, DriverError> {
         use std::slice::from_ref;
 
@@ -75,7 +74,7 @@ impl ComputePipeline {
 
         let device = Arc::clone(device);
         let info: ComputePipelineInfo = info.into();
-        let shader = info.clone().into_shader();
+        let shader = shader.into();
 
         // Use SPIR-V reflection to get the types and counts of all descriptors
         let mut descriptor_bindings = shader.descriptor_bindings(&device);
@@ -94,8 +93,8 @@ impl ComputePipeline {
 
         unsafe {
             let shader_module_create_info = vk::ShaderModuleCreateInfo {
-                code_size: info.spirv.len(),
-                p_code: info.spirv.as_ptr() as *const u32,
+                code_size: shader.spirv.len(),
+                p_code: shader.spirv.as_ptr() as *const u32,
                 ..Default::default()
             };
             let shader_module = device
@@ -105,12 +104,12 @@ impl ComputePipeline {
 
                     DriverError::Unsupported
                 })?;
-            let entry_name = CString::new(info.entry_name.as_bytes()).unwrap();
+            let entry_name = CString::new(shader.entry_name.as_bytes()).unwrap();
             let mut stage_create_info = vk::PipelineShaderStageCreateInfo::builder()
                 .module(shader_module)
                 .stage(shader.stage)
                 .name(&entry_name);
-            let specialization_info = info.specialization_info.as_ref().map(|info| {
+            let specialization_info = shader.specialization_info.as_ref().map(|info| {
                 vk::SpecializationInfo::builder()
                     .map_entries(&info.map_entries)
                     .data(&info.data)
@@ -188,7 +187,7 @@ impl Drop for ComputePipeline {
 }
 
 /// Information used to create a [`ComputePipeline`] instance.
-#[derive(Builder, Clone, Debug)]
+#[derive(Builder, Clone, Debug, Default)]
 #[builder(
     pattern = "owned",
     build_fn(
@@ -223,99 +222,9 @@ pub struct ComputePipelineInfo {
     #[builder(default = "8192")]
     pub bindless_descriptor_count: u32,
 
-    /// The GLSL or HLSL shader entry point name, or `main` by default.
-    #[builder(setter(strip_option), default = "String::from(\"main\")")]
-    pub entry_name: String,
-
     /// A descriptive name used in debugging messages.
     #[builder(default, setter(strip_option))]
     pub name: Option<String>,
-
-    /// Data about Vulkan specialization constants.
-    ///
-    /// # Examples
-    ///
-    /// Basic usage (GLSL):
-    ///
-    /// ```
-    /// # inline_spirv::inline_spirv!(r#"
-    /// #version 460 core
-    ///
-    /// // Defaults to 6 if not set using ComputePipelineInfo.specialization_info!
-    /// layout(constant_id = 0) const uint MY_COUNT = 6;
-    ///
-    /// layout(set = 0, binding = 0) uniform sampler2D my_samplers[MY_COUNT];
-    ///
-    /// void main()
-    /// {
-    ///     // Code uses MY_COUNT number of my_samplers here
-    /// }
-    /// # "#, comp);
-    /// ```
-    ///
-    /// ```no_run
-    /// # use std::sync::Arc;
-    /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
-    /// # use screen_13::driver::compute::{ComputePipeline, ComputePipelineInfo};
-    /// # use screen_13::driver::shader::{SpecializationInfo};
-    /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
-    /// # let my_shader_code = [0u8; 1];
-    /// // We instead specify 42 for MY_COUNT:
-    /// let info = ComputePipelineInfo::new(my_shader_code.as_slice())
-    ///     .specialization_info(SpecializationInfo::new(
-    ///         [vk::SpecializationMapEntry {
-    ///             constant_id: 0,
-    ///             offset: 0,
-    ///             size: 4,
-    ///         }],
-    ///         42u32.to_ne_bytes()
-    ///     ));
-    /// let pipeline = ComputePipeline::create(&device, info)?;
-    /// # Ok(()) }
-    /// ```
-    #[builder(default, setter(strip_option))]
-    pub specialization_info: Option<SpecializationInfo>,
-
-    /// Shader code.
-    ///
-    /// Although SPIR-V code is specified as `u32` values, this field uses `u8` in order to make
-    /// loading from file simpler. You should always have a SPIR-V code length which is a multiple
-    /// of four bytes, or a panic will happen during [`ComputePipeline::create`].
-    pub spirv: Vec<u8>,
-}
-
-impl ComputePipelineInfo {
-    /// Specifies a compute pipeline with the given shader code.
-    ///
-    /// # Panics
-    ///
-    /// If shader code is not a multiple of four bytes.
-    #[allow(clippy::new_ret_no_self)]
-    pub fn new(spirv: impl ShaderCode) -> ComputePipelineInfoBuilder {
-        ComputePipelineInfoBuilder::default().spirv(spirv.into_vec())
-    }
-
-    fn into_shader(self) -> Shader {
-        let mut shader =
-            Shader::new(vk::ShaderStageFlags::COMPUTE, self.spirv).entry_name(self.entry_name);
-
-        if let Some(specialization_info) = self.specialization_info {
-            shader = shader.specialization_info(specialization_info);
-        }
-
-        shader.build()
-    }
-}
-
-impl<S> From<S> for ComputePipelineInfo
-where
-    S: ShaderCode,
-{
-    fn from(spirv: S) -> Self {
-        Self::new(spirv).build()
-    }
 }
 
 impl From<ComputePipelineInfoBuilder> for ComputePipelineInfo {

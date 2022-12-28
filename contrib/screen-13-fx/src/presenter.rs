@@ -12,11 +12,17 @@ impl ComputePresenter {
     pub fn new(device: &Arc<Device>) -> Result<Self, DriverError> {
         let pipeline1 = Arc::new(ComputePipeline::create(
             device,
-            include_spirv!("res/shader/compute/present1.comp", comp).as_slice(),
+            ComputePipelineInfo::default(),
+            Shader::new_compute(
+                include_spirv!("res/shader/compute/present1.comp", comp).as_slice(),
+            ),
         )?);
         let pipeline2 = Arc::new(ComputePipeline::create(
             device,
-            include_spirv!("res/shader/compute/present2.comp", comp).as_slice(),
+            ComputePipelineInfo::default(),
+            Shader::new_compute(
+                include_spirv!("res/shader/compute/present2.comp", comp).as_slice(),
+            ),
         )?);
 
         Ok(Self([pipeline1, pipeline2]))

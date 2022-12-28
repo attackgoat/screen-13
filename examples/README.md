@@ -5,6 +5,8 @@
 A helpful [getting started](getting-started.md) guide is available which describes basic _Screen 13_
 types and functions.
 
+See the [README](../README.md) for more information.
+
 ## Example Code
 
 Example | Instructions | Preview
@@ -25,3 +27,9 @@ Example | Instructions | Preview
 [transitions.rs](transitions.rs) | <pre>cargo run --example transitions</pre> | <image alt="Preview" src="../.github/img/transitions.png" height=149 width=176>
 [skeletal-anim/](skeletal-anim/src/main.rs) | <pre>cargo run --manifest-path examples/skeletal-anim/Cargo.toml</pre> Skeletal mesh animation using GLTF | <image alt="Preview" src="../.github/img/skeletal-anim.png" height=149 width=176>
 [shader-toy/](shader-toy/src/main.rs) | <pre>cargo run --manifest-path examples/shader-toy/Cargo.toml</pre> | <image alt="Preview" src="../.github/img/shader-toy.png" height=105 width=176>
+
+## Additional Examples
+
+The following packages offer examples for specific cases not listed here:
+
+- [contrib/screen-13-hot](../contrib/screen-13-hot/examples/README.md): Shader pipeline hot-reload

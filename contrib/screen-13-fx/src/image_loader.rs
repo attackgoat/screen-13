@@ -41,11 +41,18 @@ impl ImageLoader {
             pool: HashPool::new(device),
             _decode_r_rg: Arc::new(ComputePipeline::create(
                 device,
-                include_spirv!("res/shader/compute/decode_bitmap_r_rg.comp", comp).as_slice(),
+                ComputePipelineInfo::default(),
+                Shader::new_compute(
+                    include_spirv!("res/shader/compute/decode_bitmap_r_rg.comp", comp).as_slice(),
+                ),
             )?),
             decode_rgb_rgba: Arc::new(ComputePipeline::create(
                 device,
-                include_spirv!("res/shader/compute/decode_bitmap_rgb_rgba.comp", comp).as_slice(),
+                ComputePipelineInfo::default(),
+                Shader::new_compute(
+                    include_spirv!("res/shader/compute/decode_bitmap_rgb_rgba.comp", comp)
+                        .as_slice(),
+                ),
             )?),
             device: Arc::clone(device),
         })

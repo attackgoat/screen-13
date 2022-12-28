@@ -41,6 +41,8 @@ fn main() -> anyhow::Result<()> {
     // A neato smoke effect just for fun
     let start_time = Instant::now();
     let smoke_pipeline = Arc::new(ComputePipeline::create(&event_loop.device,
+        ComputePipelineInfo::default(),
+        Shader::new_compute(
         inline_spirv!(
             r#"
             // Derived from https://www.shadertoy.com/view/Xl2XWz
@@ -100,7 +102,7 @@ fn main() -> anyhow::Result<()> {
             "#,
             comp
         )
-        .as_slice(),
+        .as_slice()),
     )?);
 
     event_loop.run(|frame| {

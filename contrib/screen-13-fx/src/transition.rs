@@ -482,7 +482,8 @@ impl TransitionPipeline {
             Arc::new(
                 ComputePipeline::create(
                     &self.device,
-                    match transition_ty {
+                    ComputePipelineInfo::default(),
+                    Shader::new_compute(match transition_ty {
                         TransitionType::Angular => {
                             include_spirv!("res/shader/transition/angular.comp", comp).as_slice()
                         }
@@ -774,7 +775,7 @@ impl TransitionPipeline {
                             include_spirv!("res/shader/transition/zoom_right_wipe.comp", comp)
                                 .as_slice()
                         }
-                    },
+                    }),
                 )
                 .unwrap(),
             )

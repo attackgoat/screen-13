@@ -18,17 +18,21 @@ debugging.
 A script which exercises all test cases and build conditions which must succeed prior to merging new
 code into the main branch.
 
-### [`screen-13-egui/`](screen-13-egui/)
+### [`screen-13-egui/`](screen-13-egui/README.md)
 
 Renderer for [egui](https://github.com/emilk/egui); a simple, fast, and highly portable immediate
 mode GUI library.
 
-### [`screen-13-fx/`](screen-13-fx/)
+### [`screen-13-fx/`](screen-13-fx/README.md)
 
 Pre-defined effects and tools built using _Screen 13_ features. Generally anything that requires
 shaders or other physical data which shouldn't be part of the main library.
 
-### [`screen-13-imgui/`](screen-13-imgui/)
+### [`screen-13-hot/`](screen-13-hot/README.md)
+
+Adds a hot-reload feature to compute, graphic and ray-trace shader pipelines.
+
+### [`screen-13-imgui/`](screen-13-imgui/README.md)
 
 Renderer for [Dear ImGui](https://github.com/imgui-rs/imgui-rs). Provides a graphical user interface
 useful for debug purposes.

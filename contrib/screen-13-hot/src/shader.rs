@@ -1,0 +1,334 @@
+pub use shaderc::{OptimizationLevel, SourceLanguage, SpirvVersion};
+
+use {
+    super::{compile_shader, guess_shader_source_language},
+    derive_builder::{Builder, UninitializedFieldError},
+    notify::{INotifyWatcher, RecursiveMode, Watcher},
+    screen_13::prelude::*,
+    shaderc::{CompileOptions, EnvVersion, ShaderKind, TargetEnv},
+    std::path::{Path, PathBuf},
+};
+
+/// Describes a shader program which runs on some pipeline stage.
+#[allow(missing_docs)]
+#[derive(Builder, Clone, Debug)]
+#[builder(
+    build_fn(private, name = "fallible_build", error = "HotShaderBuilderError"),
+    pattern = "owned"
+)]
+pub struct HotShader {
+    /// The name of the entry point which will be executed by this shader.
+    ///
+    /// The default value is `main`.
+    #[builder(default = "\"main\".to_owned()")]
+    pub entry_name: String,
+
+    /// Sets the optimization level.
+    #[builder(default, setter(strip_option))]
+    pub optimization_level: Option<OptimizationLevel>,
+
+    /// Shader source code path.
+    pub path: PathBuf,
+
+    /// Sets the source language.
+    #[builder(default, setter(strip_option))]
+    pub source_language: Option<SourceLanguage>,
+
+    /// Data about Vulkan specialization constants.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage (GLSL):
+    ///
+    /// ```
+    /// # inline_spirv::inline_spirv!(r#"
+    /// #version 460 core
+    ///
+    /// // Defaults to 6 if not set using HotShader specialization_info!
+    /// layout(constant_id = 0) const uint MY_COUNT = 6;
+    ///
+    /// layout(set = 0, binding = 0) uniform sampler2D my_samplers[MY_COUNT];
+    ///
+    /// void main()
+    /// {
+    ///     // Code uses MY_COUNT number of my_samplers here
+    /// }
+    /// # "#, comp);
+    /// ```
+    ///
+    /// ```no_run
+    /// # use std::sync::Arc;
+    /// # use ash::vk;
+    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::shader::{SpecializationInfo};
+    /// # use screen_13_hot::shader::HotShader;
+    /// # fn main() -> Result<(), DriverError> {
+    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let my_shader_code = [0u8; 1];
+    /// // We instead specify 42 for MY_COUNT:
+    /// let shader = HotShader::new_fragment(my_shader_code.as_slice())
+    ///     .specialization_info(SpecializationInfo::new(
+    ///         [vk::SpecializationMapEntry {
+    ///             constant_id: 0,
+    ///             offset: 0,
+    ///             size: 4,
+    ///         }],
+    ///         42u32.to_ne_bytes()
+    ///     ));
+    /// # Ok(()) }
+    /// ```
+    #[builder(default, setter(strip_option))]
+    pub specialization_info: Option<SpecializationInfo>,
+
+    /// The shader stage this structure applies to.
+    pub stage: vk::ShaderStageFlags,
+
+    /// Sets the target SPIR-V version.
+    #[builder(default, setter(strip_option))]
+    pub target_spirv: Option<SpirvVersion>,
+
+    /// Sets the compiler mode to treat all warnings as errors.
+    #[builder(default)]
+    pub warnings_as_errors: bool,
+}
+
+impl HotShader {
+    /// Specifies a shader with the given `stage` and shader code values.
+    #[allow(clippy::new_ret_no_self)]
+    pub fn new(stage: vk::ShaderStageFlags, path: impl AsRef<Path>) -> HotShaderBuilder {
+        HotShaderBuilder::new(stage, path)
+    }
+
+    /// Creates a new ray trace shader.
+    ///
+    /// # Panics
+    ///
+    /// If the shader code is invalid.
+    pub fn new_any_hit(path: impl AsRef<Path>) -> HotShaderBuilder {
+        Self::new(vk::ShaderStageFlags::ANY_HIT_KHR, path)
+    }
+
+    /// Creates a new ray trace shader.
+    ///
+    /// # Panics
+    ///
+    /// If the shader code is invalid.
+    pub fn new_callable(path: impl AsRef<Path>) -> HotShaderBuilder {
+        Self::new(vk::ShaderStageFlags::CALLABLE_KHR, path)
+    }
+
+    /// Creates a new ray trace shader.
+    ///
+    /// # Panics
+    ///
+    /// If the shader code is invalid.
+    pub fn new_closest_hit(path: impl AsRef<Path>) -> HotShaderBuilder {
+        Self::new(vk::ShaderStageFlags::CLOSEST_HIT_KHR, path)
+    }
+
+    /// Creates a new compute shader.
+    ///
+    /// # Panics
+    ///
+    /// If the shader code is invalid.
+    pub fn new_compute(path: impl AsRef<Path>) -> HotShaderBuilder {
+        Self::new(vk::ShaderStageFlags::COMPUTE, path)
+    }
+
+    /// Creates a new fragment shader.
+    ///
+    /// # Panics
+    ///
+    /// If the shader code is invalid.
+    pub fn new_fragment(path: impl AsRef<Path>) -> HotShaderBuilder {
+        Self::new(vk::ShaderStageFlags::FRAGMENT, path)
+    }
+
+    /// Creates a new geometry shader.
+    ///
+    /// # Panics
+    ///
+    /// If the shader code is invalid.
+    pub fn new_geometry(path: impl AsRef<Path>) -> HotShaderBuilder {
+        Self::new(vk::ShaderStageFlags::GEOMETRY, path)
+    }
+
+    /// Creates a new ray trace shader.
+    ///
+    /// # Panics
+    ///
+    /// If the shader code is invalid.
+    pub fn new_intersection(path: impl AsRef<Path>) -> HotShaderBuilder {
+        Self::new(vk::ShaderStageFlags::INTERSECTION_KHR, path)
+    }
+
+    /// Creates a new mesh shader.
+    ///
+    /// # Panics
+    ///
+    /// If the shader code is invalid.
+    pub fn new_mesh(path: impl AsRef<Path>) -> HotShaderBuilder {
+        Self::new(vk::ShaderStageFlags::MESH_EXT, path)
+    }
+
+    /// Creates a new ray trace shader.
+    ///
+    /// # Panics
+    ///
+    /// If the shader code is invalid.
+    pub fn new_miss(path: impl AsRef<Path>) -> HotShaderBuilder {
+        Self::new(vk::ShaderStageFlags::MISS_KHR, path)
+    }
+
+    /// Creates a new ray trace shader.
+    ///
+    /// # Panics
+    ///
+    /// If the shader code is invalid.
+    pub fn new_ray_gen(path: impl AsRef<Path>) -> HotShaderBuilder {
+        Self::new(vk::ShaderStageFlags::RAYGEN_KHR, path)
+    }
+
+    /// Creates a new mesh task shader.
+    ///
+    /// # Panics
+    ///
+    /// If the shader code is invalid.
+    pub fn new_task(path: impl AsRef<Path>) -> HotShaderBuilder {
+        Self::new(vk::ShaderStageFlags::TASK_EXT, path)
+    }
+
+    /// Creates a new tesselation control shader.
+    ///
+    /// # Panics
+    ///
+    /// If the shader code is invalid.
+    pub fn new_tesselation_ctrl(path: impl AsRef<Path>) -> HotShaderBuilder {
+        Self::new(vk::ShaderStageFlags::TESSELLATION_CONTROL, path)
+    }
+
+    /// Creates a new tesselation evaluation shader.
+    ///
+    /// # Panics
+    ///
+    /// If the shader code is invalid.
+    pub fn new_tesselation_eval(spirv: impl AsRef<Path>) -> HotShaderBuilder {
+        Self::new(vk::ShaderStageFlags::TESSELLATION_EVALUATION, spirv)
+    }
+
+    /// Creates a new vertex shader.
+    ///
+    /// # Panics
+    ///
+    /// If the shader code is invalid.
+    pub fn new_vertex(path: impl AsRef<Path>) -> HotShaderBuilder {
+        Self::new(vk::ShaderStageFlags::VERTEX, path)
+    }
+
+    pub(super) fn compile_and_watch(
+        &self,
+        watcher: &mut INotifyWatcher,
+    ) -> Result<Vec<u8>, DriverError> {
+        let shader_kind = match self.stage {
+            vk::ShaderStageFlags::ANY_HIT_KHR => ShaderKind::AnyHit,
+            vk::ShaderStageFlags::CALLABLE_KHR => ShaderKind::Callable,
+            vk::ShaderStageFlags::CLOSEST_HIT_KHR => ShaderKind::ClosestHit,
+            vk::ShaderStageFlags::COMPUTE => ShaderKind::Compute,
+            vk::ShaderStageFlags::FRAGMENT => ShaderKind::Fragment,
+            vk::ShaderStageFlags::GEOMETRY => ShaderKind::Geometry,
+            vk::ShaderStageFlags::INTERSECTION_KHR => ShaderKind::Intersection,
+            vk::ShaderStageFlags::MISS_KHR => ShaderKind::Miss,
+            vk::ShaderStageFlags::RAYGEN_KHR => ShaderKind::RayGeneration,
+            vk::ShaderStageFlags::TASK_EXT => ShaderKind::Task,
+            vk::ShaderStageFlags::TESSELLATION_CONTROL => ShaderKind::TessControl,
+            vk::ShaderStageFlags::TESSELLATION_EVALUATION => ShaderKind::TessEvaluation,
+            vk::ShaderStageFlags::VERTEX => ShaderKind::Vertex,
+            _ => unimplemented!("{:?}", self.stage),
+        };
+
+        let mut additional_opts = CompileOptions::new().ok_or_else(|| {
+            warn!("Unable to initialize compiler options");
+
+            DriverError::Unsupported
+        })?;
+
+        additional_opts.set_target_env(TargetEnv::Vulkan, EnvVersion::Vulkan1_2 as _);
+
+        if let Some(language) = self.source_language.or_else(|| {
+            let language = guess_shader_source_language(&self.path);
+
+            debug!("Guessed source language: {:?}", language);
+
+            language
+        }) {
+            additional_opts.set_source_language(language);
+        }
+
+        if let Some(target_spirv) = self.target_spirv {
+            additional_opts.set_target_spirv(target_spirv);
+        }
+
+        if let Some(level) = self.optimization_level {
+            additional_opts.set_optimization_level(level);
+        }
+
+        if self.warnings_as_errors {
+            additional_opts.set_warnings_as_errors();
+        }
+
+        let res = compile_shader(
+            &self.path,
+            &self.entry_name,
+            Some(shader_kind),
+            Some(&additional_opts),
+        )
+        .map_err(|err| {
+            warn!("Unable to compile shader {}: {err}", self.path.display());
+
+            DriverError::InvalidData
+        })?;
+
+        for path in res.files_included {
+            watcher
+                .watch(&path, RecursiveMode::NonRecursive)
+                .map_err(|err| {
+                    warn!("Unable to watch file: {err}");
+
+                    DriverError::Unsupported
+                })?;
+        }
+
+        Ok(res.spirv_code)
+    }
+}
+
+impl From<HotShaderBuilder> for HotShader {
+    fn from(builder: HotShaderBuilder) -> HotShader {
+        builder.build()
+    }
+}
+
+// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
+impl HotShaderBuilder {
+    /// Specifies a shader with the given `stage` and shader path values.
+    pub fn new(stage: vk::ShaderStageFlags, path: impl AsRef<Path>) -> Self {
+        Self::default()
+            .stage(stage)
+            .path(path.as_ref().to_path_buf())
+    }
+
+    /// Builds a new `HotShader`.
+    pub fn build(self) -> HotShader {
+        self.fallible_build()
+            .expect("All required fields set at initialization")
+    }
+}
+
+#[derive(Debug)]
+struct HotShaderBuilderError;
+
+impl From<UninitializedFieldError> for HotShaderBuilderError {
+    fn from(_: UninitializedFieldError) -> Self {
+        Self
+    }
+}

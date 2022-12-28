@@ -228,12 +228,14 @@ Pipeline instances may be bound to a [`PassRef`] in order to execute the associa
 # use ash::vk;
 # use screen_13::driver::{Device, DriverConfig, DriverError};
 # use screen_13::driver::compute::{ComputePipeline, ComputePipelineInfo};
+# use screen_13::driver::shader::{Shader};
 # use screen_13::graph::RenderGraph;
 # fn main() -> Result<(), DriverError> {
 # let device = Arc::new(Device::new(DriverConfig::new().build())?);
 # let my_shader_code = [0u8; 1];
-# let info = ComputePipelineInfo::new(my_shader_code.as_slice());
-# let my_compute_pipeline = Arc::new(ComputePipeline::create(&device, info)?);
+# let info = ComputePipelineInfo::default();
+# let shader = Shader::new_compute(my_shader_code.as_slice());
+# let my_compute_pipeline = Arc::new(ComputePipeline::create(&device, info, shader)?);
 # let mut graph = RenderGraph::new();
 graph
     .begin_pass("My compute pass")

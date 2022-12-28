@@ -434,7 +434,7 @@ impl From<UninitializedFieldError> for RayTracePipelineInfoBuilderError {
 ///
 /// See
 /// [VkRayTracingShaderGroupCreateInfoKHR](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VkRayTracingShaderGroupCreateInfoKHR).
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct RayTraceShaderGroup {
     /// The optional index of the any-hit shader in the group if the shader group has type of
     /// [RayTraceShaderGroupType::TrianglesHitGroup] or
@@ -542,7 +542,7 @@ impl From<RayTraceShaderGroup> for vk::RayTracingShaderGroupCreateInfoKHR {
 
 /// Describes a type of ray tracing shader group, which is a collection of shaders which run in the
 /// specified mode.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum RayTraceShaderGroupType {
     /// A shader group with a general shader.
     General,

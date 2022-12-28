@@ -451,27 +451,30 @@ fn create_blur_x_pipeline(device: &Arc<Device>) -> Result<Arc<ComputePipeline>, 
         comp
     );
 
-    let info =
-        ComputePipelineInfo::new(comp.as_slice()).specialization_info(SpecializationInfo::new(
-            vec![
-                vk::SpecializationMapEntry {
-                    constant_id: 0,
-                    offset: 0,
-                    size: 4,
-                },
-                vk::SpecializationMapEntry {
-                    constant_id: 1,
-                    offset: 4,
-                    size: 4,
-                },
-            ],
-            bytes_of(&Blur {
-                image_size: CUBEMAP_SIZE,
-                radius: BLUR_RADIUS,
-            }),
-        ));
+    let shader = Shader::new_compute(comp.as_slice()).specialization_info(SpecializationInfo::new(
+        vec![
+            vk::SpecializationMapEntry {
+                constant_id: 0,
+                offset: 0,
+                size: 4,
+            },
+            vk::SpecializationMapEntry {
+                constant_id: 1,
+                offset: 4,
+                size: 4,
+            },
+        ],
+        bytes_of(&Blur {
+            image_size: CUBEMAP_SIZE,
+            radius: BLUR_RADIUS,
+        }),
+    ));
 
-    Ok(Arc::new(ComputePipeline::create(device, info)?))
+    Ok(Arc::new(ComputePipeline::create(
+        device,
+        ComputePipelineInfo::default(),
+        shader,
+    )?))
 }
 
 fn create_blur_y_pipeline(device: &Arc<Device>) -> Result<Arc<ComputePipeline>, DriverError> {
@@ -571,27 +574,30 @@ fn create_blur_y_pipeline(device: &Arc<Device>) -> Result<Arc<ComputePipeline>, 
         comp
     );
 
-    let info =
-        ComputePipelineInfo::new(comp.as_slice()).specialization_info(SpecializationInfo::new(
-            vec![
-                vk::SpecializationMapEntry {
-                    constant_id: 0,
-                    offset: 0,
-                    size: 4,
-                },
-                vk::SpecializationMapEntry {
-                    constant_id: 1,
-                    offset: 4,
-                    size: 4,
-                },
-            ],
-            bytes_of(&Blur {
-                image_size: CUBEMAP_SIZE,
-                radius: BLUR_RADIUS,
-            }),
-        ));
+    let shader = Shader::new_compute(comp.as_slice()).specialization_info(SpecializationInfo::new(
+        vec![
+            vk::SpecializationMapEntry {
+                constant_id: 0,
+                offset: 0,
+                size: 4,
+            },
+            vk::SpecializationMapEntry {
+                constant_id: 1,
+                offset: 4,
+                size: 4,
+            },
+        ],
+        bytes_of(&Blur {
+            image_size: CUBEMAP_SIZE,
+            radius: BLUR_RADIUS,
+        }),
+    ));
 
-    Ok(Arc::new(ComputePipeline::create(device, info)?))
+    Ok(Arc::new(ComputePipeline::create(
+        device,
+        ComputePipelineInfo::default(),
+        shader,
+    )?))
 }
 
 fn create_debug_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, DriverError> {
