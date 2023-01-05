@@ -9,10 +9,10 @@ readme = "README.md"
 [dependencies]
 archery = "0.4"
 bytemuck = "1.9"
-egui = { version = "0.19", features = [
+egui = { version = "0.20", features = [
     "bytemuck"
 ] }
-egui-winit = "0.19"
+egui-winit = "0.20"
 inline-spirv = "0.1"
 screen-13 = { path = "../.." }
 screen-13-fx = { path = "../screen-13-fx" }

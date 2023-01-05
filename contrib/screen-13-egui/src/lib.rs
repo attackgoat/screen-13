@@ -83,8 +83,7 @@ impl Egui {
                         Cow::Borrowed(&image.pixels)
                     }
                     egui::ImageData::Font(image) => {
-                        let gamma = 1.0;
-                        Cow::Owned(image.srgba_pixels(gamma).collect::<Vec<_>>())
+                        Cow::Owned(image.srgba_pixels(Some(1.)).collect::<Vec<_>>())
                     }
                 };
 
@@ -297,7 +296,10 @@ impl Egui {
         // Update events and generate shapes and texture deltas.
         for event in events {
             if let Event::WindowEvent { event, .. } = event {
-                self.egui_winit.on_event(&self.ctx, event);
+                #[allow(unused_must_use)]
+                {
+                    self.egui_winit.on_event(&self.ctx, event);
+                }
             }
         }
         let raw_input = self.egui_winit.take_egui_input(window);
