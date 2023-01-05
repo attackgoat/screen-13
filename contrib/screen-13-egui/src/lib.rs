@@ -294,10 +294,12 @@ impl Egui {
         ui_fn: impl FnMut(&egui::Context),
     ) {
         // Update events and generate shapes and texture deltas.
-        #[allow(unused_must_use)]
         for event in events {
             if let Event::WindowEvent { event, .. } = event {
-                self.egui_winit.on_event(&self.ctx, event);
+                #[allow(unused_must_use)]
+                {
+                    self.egui_winit.on_event(&self.ctx, event);
+                }
             }
         }
         let raw_input = self.egui_winit.take_egui_input(window);
