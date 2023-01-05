@@ -83,8 +83,7 @@ impl Egui {
                         Cow::Borrowed(&image.pixels)
                     }
                     egui::ImageData::Font(image) => {
-                        let gamma = 1.0;
-                        Cow::Owned(image.srgba_pixels(gamma).collect::<Vec<_>>())
+                        Cow::Owned(image.srgba_pixels(Some(1.)).collect::<Vec<_>>())
                     }
                 };
 
