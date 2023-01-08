@@ -91,7 +91,7 @@ impl Egui {
                     let mut buf = self
                         .cache
                         .lease(BufferInfo::new_mappable(
-                            (pixels.len() * 4) as u64,
+                            (pixels.len() * delta.image.bytes_per_pixel()) as u64,
                             vk::BufferUsageFlags::TRANSFER_SRC,
                         ))
                         .unwrap();
@@ -112,8 +112,8 @@ impl Egui {
                         image,
                         &vk::BufferImageCopy {
                             buffer_offset: 0,
-                            buffer_row_length: 0,
-                            buffer_image_height: 0,
+                            buffer_row_length: delta.image.width() as u32,
+                            buffer_image_height: delta.image.height() as u32,
                             image_offset: vk::Offset3D {
                                 x: pos[0] as i32,
                                 y: pos[1] as i32,

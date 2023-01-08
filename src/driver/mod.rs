@@ -245,6 +245,9 @@ pub(super) fn buffer_image_copy_subresource(
 
     let mut res = vk::DeviceSize::MAX..vk::DeviceSize::MIN;
     for region in regions.iter() {
+        debug_assert_ne!(0, region.buffer_row_length);
+        debug_assert_ne!(0, region.buffer_image_height);
+
         res.start = res.start.min(region.buffer_offset);
         res.end = res.end.max(
             region.buffer_offset
