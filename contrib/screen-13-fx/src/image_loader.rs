@@ -137,7 +137,7 @@ impl ImageLoader {
         );
 
         #[cfg(debug_assertions)]
-        if pixels.len() >= format.stride() * (width * height) as usize {
+        if pixels.len() > align_up_u32(format.stride() as u32 * width * height, 4) as usize {
             warn!("unused data");
         }
 

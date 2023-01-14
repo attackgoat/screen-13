@@ -3818,7 +3818,6 @@ impl<'a> RayTrace<'a> {
                     start,
                     end
                 );
-                trace!("data: {:#?}", data);
 
                 unsafe {
                     self.device.cmd_push_constants(
