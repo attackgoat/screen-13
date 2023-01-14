@@ -257,16 +257,16 @@ impl HotShader {
         if let Some(language) = self.source_language.or_else(|| {
             let language = guess_shader_source_language(&self.path);
 
-            debug!("Guessed source language: {:?}", language);
+            if let Some(language) = language {
+                debug!("Guessed source language: {:?}", language);
+            }
 
             language
         }) {
             additional_opts.set_source_language(language);
         }
 
-        if let Some(target_spirv) = self.target_spirv {
-            additional_opts.set_target_spirv(target_spirv);
-        }
+        additional_opts.set_target_spirv(self.target_spirv.unwrap_or(SpirvVersion::V1_5));
 
         if let Some(level) = self.optimization_level {
             additional_opts.set_optimization_level(level);
