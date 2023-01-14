@@ -7,6 +7,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## 0.8.1 - [Unreleased]
 
+### Fixed
+
+- Pipelines which use multiple descriptor sets (different `set =` values) sometimes trigger
+  validation errors
+
 ### Added
 
 - Enabled full set of Vulkan 1.1 and Vulkan 1.2 core features during device creation

@@ -10,7 +10,7 @@ use {
         DescriptorType, EntryPoint, ReflectConfig, Variable,
     },
     std::{
-        collections::HashMap,
+        collections::{BTreeMap, HashMap},
         fmt::{Debug, Formatter},
         iter::repeat,
         sync::Arc,
@@ -153,7 +153,7 @@ impl From<DescriptorInfo> for vk::DescriptorType {
 
 #[derive(Debug)]
 pub(crate) struct PipelineDescriptorInfo {
-    pub layouts: HashMap<u32, DescriptorSetLayout>,
+    pub layouts: BTreeMap<u32, DescriptorSetLayout>,
     pub pool_sizes: HashMap<u32, HashMap<vk::DescriptorType, u32>>,
 }
 
@@ -168,7 +168,7 @@ impl PipelineDescriptorInfo {
             .copied()
             .map(|descriptor_binding| descriptor_binding.0 + 1)
             .unwrap_or_default();
-        let mut layouts = HashMap::new();
+        let mut layouts = BTreeMap::new();
         let mut pool_sizes = HashMap::new();
 
         //trace!("descriptor_bindings: {:#?}", &descriptor_bindings);
