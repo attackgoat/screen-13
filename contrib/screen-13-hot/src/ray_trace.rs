@@ -71,6 +71,8 @@ impl HotRayTracePipeline {
         let has_changes = self.has_changes.swap(false, Ordering::Relaxed);
 
         if has_changes {
+            info!("Shader change detected");
+
             let (mut watcher, has_changes) = create_watcher();
             if let Ok(compiled_shaders) = self
                 .shaders
@@ -92,5 +94,11 @@ impl HotRayTracePipeline {
         }
 
         self.cold()
+    }
+}
+
+impl AsRef<RayTracePipeline> for HotRayTracePipeline {
+    fn as_ref(&self) -> &RayTracePipeline {
+        self.instance.as_ref()
     }
 }

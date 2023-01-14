@@ -62,6 +62,8 @@ impl HotGraphicPipeline {
         let has_changes = self.has_changes.swap(false, Ordering::Relaxed);
 
         if has_changes {
+            info!("Shader change detected");
+
             let (mut watcher, has_changes) = create_watcher();
             if let Ok(compiled_shaders) = self
                 .shaders
@@ -82,5 +84,11 @@ impl HotGraphicPipeline {
         }
 
         self.cold()
+    }
+}
+
+impl AsRef<GraphicPipeline> for HotGraphicPipeline {
+    fn as_ref(&self) -> &GraphicPipeline {
+        self.instance.as_ref()
     }
 }

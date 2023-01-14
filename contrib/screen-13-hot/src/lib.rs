@@ -153,8 +153,6 @@ fn create_watcher() -> (INotifyWatcher, Arc<AtomicBool>) {
             event.kind,
             EventKind::Any | EventKind::Modify(_) | EventKind::Other
         ) {
-            info!("Shader change detected");
-
             has_changes_clone.store(true, Ordering::Relaxed);
         }
     })

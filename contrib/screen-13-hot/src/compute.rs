@@ -53,6 +53,8 @@ impl HotComputePipeline {
         let has_changes = self.has_changes.swap(false, Ordering::Relaxed);
 
         if has_changes {
+            info!("Shader change detected");
+
             let (mut watcher, has_changes) = create_watcher();
             if let Ok(compiled_shader) = compile_shader_and_watch(&self.shader, &mut watcher) {
                 if let Ok(instance) = ComputePipeline::create(
@@ -68,5 +70,11 @@ impl HotComputePipeline {
         }
 
         self.cold()
+    }
+}
+
+impl AsRef<ComputePipeline> for HotComputePipeline {
+    fn as_ref(&self) -> &ComputePipeline {
+        self.instance.as_ref()
     }
 }
