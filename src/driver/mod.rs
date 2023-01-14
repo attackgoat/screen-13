@@ -1060,14 +1060,6 @@ pub struct PhysicalDeviceDescriptorIndexingFeatures {
     /// modules can declare the StorageTexelBufferArrayNonUniformIndexing capability.
     pub shader_storage_texel_buffer_array_non_uniform_indexing: bool,
 
-    // Unused:
-    // pub descriptor_binding_uniform_buffer_update_after_bind: bool,
-    // pub descriptor_binding_sampled_image_update_after_bind: bool,
-    // pub descriptor_binding_storage_image_update_after_bind: bool,
-    // pub descriptor_binding_storage_buffer_update_after_bind: bool,
-    // pub descriptor_binding_uniform_texel_buffer_update_after_bind: bool,
-    // pub descriptor_binding_storage_texel_buffer_update_after_bind: bool,
-    // pub descriptor_binding_update_unused_while_pending: bool,
     /// Indicates whether the implementation supports statically using a descriptor set binding in
     /// which some descriptors are not valid. If this feature is not enabled,
     /// VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT must not be used.
@@ -1119,33 +1111,43 @@ impl From<vk::PhysicalDeviceDescriptorIndexingFeatures>
             shader_storage_texel_buffer_array_non_uniform_indexing: features
                 .shader_storage_texel_buffer_array_non_uniform_indexing
                 == vk::TRUE,
-            // descriptor_binding_uniform_buffer_update_after_bind: features
-            //     .descriptor_binding_uniform_buffer_update_after_bind
-            //     == vk::TRUE,
-            // descriptor_binding_sampled_image_update_after_bind: features
-            //     .descriptor_binding_sampled_image_update_after_bind
-            //     == vk::TRUE,
-            // descriptor_binding_storage_image_update_after_bind: features
-            //     .descriptor_binding_storage_image_update_after_bind
-            //     == vk::TRUE,
-            // descriptor_binding_storage_buffer_update_after_bind: features
-            //     .descriptor_binding_storage_buffer_update_after_bind
-            //     == vk::TRUE,
-            // descriptor_binding_uniform_texel_buffer_update_after_bind: features
-            //     .descriptor_binding_uniform_texel_buffer_update_after_bind
-            //     == vk::TRUE,
-            // descriptor_binding_storage_texel_buffer_update_after_bind: features
-            //     .descriptor_binding_storage_texel_buffer_update_after_bind
-            //     == vk::TRUE,
-            // descriptor_binding_update_unused_while_pending: features
-            //     .descriptor_binding_update_unused_while_pending
-            //     == vk::TRUE,
             descriptor_binding_partially_bound: features.descriptor_binding_partially_bound
                 == vk::TRUE,
             descriptor_binding_variable_descriptor_count: features
                 .descriptor_binding_variable_descriptor_count
                 == vk::TRUE,
             runtime_descriptor_array: features.runtime_descriptor_array == vk::TRUE,
+        }
+    }
+}
+
+impl<'a> From<&'a PhysicalDeviceVulkan12Features> for PhysicalDeviceDescriptorIndexingFeatures {
+    fn from(features: &'a PhysicalDeviceVulkan12Features) -> Self {
+        Self {
+            shader_input_attachment_array_dynamic_indexing: features
+                .shader_input_attachment_array_dynamic_indexing,
+            shader_uniform_texel_buffer_array_dynamic_indexing: features
+                .shader_uniform_texel_buffer_array_dynamic_indexing,
+            shader_storage_texel_buffer_array_dynamic_indexing: features
+                .shader_storage_texel_buffer_array_dynamic_indexing,
+            shader_uniform_buffer_array_non_uniform_indexing: features
+                .shader_uniform_buffer_array_non_uniform_indexing,
+            shader_sampled_image_array_non_uniform_indexing: features
+                .shader_sampled_image_array_non_uniform_indexing,
+            shader_storage_buffer_array_non_uniform_indexing: features
+                .shader_storage_buffer_array_non_uniform_indexing,
+            shader_storage_image_array_non_uniform_indexing: features
+                .shader_storage_image_array_non_uniform_indexing,
+            shader_input_attachment_array_non_uniform_indexing: features
+                .shader_input_attachment_array_non_uniform_indexing,
+            shader_uniform_texel_buffer_array_non_uniform_indexing: features
+                .shader_uniform_texel_buffer_array_non_uniform_indexing,
+            shader_storage_texel_buffer_array_non_uniform_indexing: features
+                .shader_storage_texel_buffer_array_non_uniform_indexing,
+            descriptor_binding_partially_bound: features.descriptor_binding_partially_bound,
+            descriptor_binding_variable_descriptor_count: features
+                .descriptor_binding_variable_descriptor_count,
+            runtime_descriptor_array: features.runtime_descriptor_array,
         }
     }
 }
@@ -1195,6 +1197,541 @@ impl From<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>
             max_ray_dispatch_invocation_count: props.max_ray_dispatch_invocation_count,
             shader_group_handle_alignment: props.shader_group_handle_alignment,
             max_ray_hit_attribute_size: props.max_ray_hit_attribute_size,
+        }
+    }
+}
+
+/// Description of Vulkan 1.1 features.
+pub struct PhysicalDeviceVulkan11Features {
+    /// Specifies whether objects in the StorageBuffer, ShaderRecordBufferKHR, or
+    /// PhysicalStorageBuffer storage class with the Block decoration can have 16-bit integer and
+    /// 16-bit floating-point members.
+    ///
+    /// If this feature is not enabled, 16-bit integer or 16-bit floating-point members must not be
+    /// used in such objects. This also specifies whether shader modules can declare the
+    /// StorageBuffer16BitAccess capability.
+    pub storage_buffer16_bit_access: bool,
+
+    /// Specifies whether objects in the Uniform storage class with the Block decoration can have
+    /// 16-bit integer and 16-bit floating-point members.
+    ///
+    /// If this feature is not enabled, 16-bit integer or 16-bit floating-point members must not be
+    /// used in such objects. This also specifies whether shader modules can declare the
+    /// UniformAndStorageBuffer16BitAccess capability.
+    pub uniform_and_storage_buffer16_bit_access: bool,
+
+    /// Specifies whether objects in the PushConstant storage class can have 16-bit integer and
+    /// 16-bit floating-point members.
+    ///
+    /// If this feature is not enabled, 16-bit integer or floating-point members must not be used in
+    /// such objects. This also specifies whether shader modules can declare the
+    /// StoragePushConstant16 capability.
+    pub storage_push_constant16: bool,
+
+    /// Specifies whether objects in the Input and Output storage classes can have 16-bit integer
+    /// and 16-bit floating-point members.
+    ///
+    /// If this feature is not enabled, 16-bit integer or 16-bit floating-point members must not be
+    /// used in such objects. This also specifies whether shader modules can declare the
+    /// StorageInputOutput16 capability.
+    pub storage_input_output16: bool,
+
+    /// Specifies whether the implementation supports multiview rendering within a render pass.
+    ///
+    /// If this feature is not enabled, the view mask of each subpass must always be zero.
+    pub multiview: bool,
+
+    /// Specifies whether the implementation supports multiview rendering within a render pass, with
+    /// geometry shaders.
+    ///
+    /// If this feature is not enabled, then a pipeline compiled against a subpass with a non-zero
+    /// view mask must not include a geometry shader.
+    pub multiview_geometry_shader: bool,
+
+    /// Specifies whether the implementation supports multiview rendering within a render pass, with
+    /// tessellation shaders.
+    ///
+    /// If this feature is not enabled, then a pipeline compiled against a subpass with a non-zero
+    /// view mask must not include any tessellation shaders.
+    pub multiview_tessellation_shader: bool,
+
+    /// Specifies whether the implementation supports the SPIR-V VariablePointersStorageBuffer
+    /// capability.
+    ///
+    /// When this feature is not enabled, shader modules must not declare the
+    /// SPV_KHR_variable_pointers extension or the VariablePointersStorageBuffer capability.
+    pub variable_pointers_storage_buffer: bool,
+
+    /// Specifies whether the implementation supports the SPIR-V VariablePointers capability.
+    ///
+    /// When this feature is not enabled, shader modules must not declare the VariablePointers
+    /// capability.
+    pub variable_pointers: bool,
+
+    /// Specifies whether protected memory is supported.
+    pub protected_memory: bool,
+
+    /// Specifies whether the implementation supports sampler Y′CBCR conversion.
+    ///
+    /// If `sampler_ycbcr_conversion` is `false`, sampler Y′CBCR conversion is not supported, and
+    /// samplers using sampler Y′CBCR conversion must not be used.
+    pub sampler_ycbcr_conversion: bool,
+
+    /// Specifies whether the implementation supports the SPIR-V DrawParameters capability.
+    ///
+    /// When this feature is not enabled, shader modules must not declare the
+    /// SPV_KHR_shader_draw_parameters extension or the DrawParameters capability.
+    pub shader_draw_parameters: bool,
+}
+
+impl From<vk::PhysicalDeviceVulkan11Features> for PhysicalDeviceVulkan11Features {
+    fn from(features: vk::PhysicalDeviceVulkan11Features) -> Self {
+        Self {
+            storage_buffer16_bit_access: features.storage_buffer16_bit_access == vk::TRUE,
+            uniform_and_storage_buffer16_bit_access: features
+                .uniform_and_storage_buffer16_bit_access
+                == vk::TRUE,
+            storage_push_constant16: features.storage_push_constant16 == vk::TRUE,
+            storage_input_output16: features.storage_input_output16 == vk::TRUE,
+            multiview: features.multiview == vk::TRUE,
+            multiview_geometry_shader: features.multiview_geometry_shader == vk::TRUE,
+            multiview_tessellation_shader: features.multiview_tessellation_shader == vk::TRUE,
+            variable_pointers_storage_buffer: features.variable_pointers_storage_buffer == vk::TRUE,
+            variable_pointers: features.variable_pointers == vk::TRUE,
+            protected_memory: features.protected_memory == vk::TRUE,
+            sampler_ycbcr_conversion: features.sampler_ycbcr_conversion == vk::TRUE,
+            shader_draw_parameters: features.shader_draw_parameters == vk::TRUE,
+        }
+    }
+}
+
+/// Description of Vulkan 1.2 features.
+pub struct PhysicalDeviceVulkan12Features {
+    /// Indicates whether the implementation supports the
+    /// `VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE` sampler address mode.
+    ///
+    /// If this feature is not enabled, the `VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE` sampler
+    /// address mode must not be used.
+    pub sampler_mirror_clamp_to_edge: bool,
+
+    /// Indicates whether the implementation supports the vkCmdDrawIndirectCount and
+    /// vkCmdDrawIndexedIndirectCount functions.
+    ///
+    /// If this feature is not enabled, these functions must not be used.
+    pub draw_indirect_count: bool,
+
+    /// Indicates whether objects in the StorageBuffer, ShaderRecordBufferKHR, or
+    /// PhysicalStorageBuffer storage class with the Block decoration can have 8-bit integer
+    /// members.
+    ///
+    /// If this feature is not enabled, 8-bit integer members must not be used in such objects. This
+    /// also indicates whether shader modules can declare the StorageBuffer8BitAccess capability.
+    pub storage_buffer8_bit_access: bool,
+
+    /// Indicates whether objects in the Uniform storage class with the Block decoration can have
+    /// 8-bit integer members.
+    ///
+    /// If this feature is not enabled, 8-bit integer members must not be used in such objects. This
+    /// also indicates whether shader modules can declare the UniformAndStorageBuffer8BitAccess
+    /// capability.
+    pub uniform_and_storage_buffer8_bit_access: bool,
+
+    /// Indicates whether objects in the PushConstant storage class can have 8-bit integer members.
+    ///
+    /// If this feature is not enabled, 8-bit integer members must not be used in such objects. This
+    /// also indicates whether shader modules can declare the StoragePushConstant8 capability.
+    pub storage_push_constant8: bool,
+
+    /// Indicates whether shaders can perform 64-bit unsigned and signed integer atomic operations
+    /// on buffers.
+    pub shader_buffer_int64_atomics: bool,
+
+    /// Indicates whether shaders can perform 64-bit unsigned and signed integer atomic operations
+    /// on shared and payload memory.
+    pub shader_shared_int64_atomics: bool,
+
+    /// Indicates whether 16-bit floats (halfs) are supported in shader code.
+    ///
+    /// This also indicates whether shader modules can declare the Float16 capability. However, this
+    /// only enables a subset of the storage classes that SPIR-V allows for the Float16 SPIR-V
+    /// capability: Declaring and using 16-bit floats in the Private, Workgroup (for non-Block
+    /// variables), and Function storage classes is enabled, while declaring them in the interface
+    /// storage classes (e.g., UniformConstant, Uniform, StorageBuffer, Input, Output, and
+    /// PushConstant) is not enabled.
+    pub shader_float16: bool,
+
+    /// Indicates whether 8-bit integers (signed and unsigned) are supported in shader code.
+    ///
+    /// This also indicates whether shader modules can declare the Int8 capability. However, this
+    /// only enables a subset of the storage classes that SPIR-V allows for the Int8 SPIR-V
+    /// capability: Declaring and using 8-bit integers in the Private, Workgroup (for non-Block
+    /// variables), and Function storage classes is enabled, while declaring them in the interface
+    /// storage classes (e.g., UniformConstant, Uniform, StorageBuffer, Input, Output, and
+    /// PushConstant) is not enabled.
+    pub shader_int8: bool,
+
+    /// Indicates whether the implementation supports the minimum set of descriptor indexing
+    /// features as described in the [Feature Requirements] section. Enabling the descriptorIndexing
+    /// member when vkCreateDevice is called does not imply the other minimum descriptor indexing
+    /// features are also enabled. Those other descriptor indexing features must be enabled
+    /// individually as needed by the application.
+    ///
+    /// [Feature Requirements]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#features-requirements
+    pub descriptor_indexing: bool,
+
+    /// Indicates whether arrays of input attachments can be indexed by dynamically uniform integer
+    /// expressions in shader code.
+    ///
+    /// If this feature is not enabled, resources with a descriptor type of
+    /// VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT must be indexed only by constant integral expressions
+    /// when aggregated into arrays in shader code. This also indicates whether shader modules can
+    /// declare the InputAttachmentArrayDynamicIndexing capability.
+    pub shader_input_attachment_array_dynamic_indexing: bool,
+
+    /// Indicates whether arrays of uniform texel buffers can be indexed by dynamically uniform
+    /// integer expressions in shader code.
+    ///
+    /// If this feature is not enabled, resources with a descriptor type of
+    /// VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER must be indexed only by constant integral
+    /// expressions when aggregated into arrays in shader code. This also indicates whether shader
+    /// modules can declare the UniformTexelBufferArrayDynamicIndexing capability.
+    pub shader_uniform_texel_buffer_array_dynamic_indexing: bool,
+
+    /// Indicates whether arrays of storage texel buffers can be indexed by dynamically uniform
+    /// integer expressions in shader code.
+    ///
+    /// If this feature is not enabled, resources with a descriptor type of
+    /// VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER must be indexed only by constant integral
+    /// expressions when aggregated into arrays in shader code. This also indicates whether shader
+    /// modules can declare the StorageTexelBufferArrayDynamicIndexing capability.
+    pub shader_storage_texel_buffer_array_dynamic_indexing: bool,
+
+    /// Indicates whether arrays of uniform buffers can be indexed by non-uniform integer
+    /// expressions in shader code.
+    ///
+    /// If this feature is not enabled, resources with a descriptor type of
+    /// VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER or VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC must not be
+    /// indexed by non-uniform integer expressions when aggregated into arrays in shader code. This
+    /// also indicates whether shader modules can declare the UniformBufferArrayNonUniformIndexing
+    /// capability.
+    pub shader_uniform_buffer_array_non_uniform_indexing: bool,
+
+    /// Indicates whether arrays of samplers or sampled images can be indexed by non-uniform integer
+    /// expressions in shader code.
+    ///
+    /// If this feature is not enabled, resources with a descriptor type of
+    /// VK_DESCRIPTOR_TYPE_SAMPLER, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, or
+    /// VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE must not be indexed by non-uniform integer expressions when
+    /// aggregated into arrays in shader code. This also indicates whether shader modules can
+    /// declare the SampledImageArrayNonUniformIndexing capability.
+    pub shader_sampled_image_array_non_uniform_indexing: bool,
+
+    /// Indicates whether arrays of storage buffers can be indexed by non-uniform integer
+    /// expressions in shader code.
+    ///
+    /// If this feature is not enabled, resources with a descriptor type of
+    /// VK_DESCRIPTOR_TYPE_STORAGE_BUFFER or VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC must not be
+    /// indexed by non-uniform integer expressions when aggregated into arrays in shader code. This
+    /// also indicates whether shader modules can declare the StorageBufferArrayNonUniformIndexing
+    /// capability.
+    pub shader_storage_buffer_array_non_uniform_indexing: bool,
+
+    /// Indicates whether arrays of storage images can be indexed by non-uniform integer expressions
+    /// in shader code.
+    ///
+    /// If this feature is not enabled, resources with a descriptor type of
+    /// VK_DESCRIPTOR_TYPE_STORAGE_IMAGE must not be indexed by non-uniform integer expressions when
+    /// aggregated into arrays in shader code. This also indicates whether shader modules can
+    /// declare the StorageImageArrayNonUniformIndexing capability.
+    pub shader_storage_image_array_non_uniform_indexing: bool,
+
+    /// Indicates whether arrays of input attachments can be indexed by non-uniform integer
+    /// expressions in shader code.
+    ///
+    /// If this feature is not enabled, resources with a descriptor type of
+    /// VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT must not be indexed by non-uniform integer expressions
+    /// when aggregated into arrays in shader code. This also indicates whether shader modules can
+    /// declare the InputAttachmentArrayNonUniformIndexing capability.
+    pub shader_input_attachment_array_non_uniform_indexing: bool,
+
+    /// Indicates whether arrays of uniform texel buffers can be indexed by non-uniform integer
+    /// expressions in shader code.
+    ///
+    /// If this feature is not enabled, resources with a descriptor type of
+    /// VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER must not be indexed by non-uniform integer
+    /// expressions when aggregated into arrays in shader code. This also indicates whether shader
+    /// modules can declare the UniformTexelBufferArrayNonUniformIndexing capability.
+    pub shader_uniform_texel_buffer_array_non_uniform_indexing: bool,
+
+    /// Indicates whether arrays of storage texel buffers can be indexed by non-uniform integer
+    /// expressions in shader code.
+    ///
+    /// If this feature is not enabled, resources with a descriptor type of
+    /// VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER must not be indexed by non-uniform integer
+    /// expressions when aggregated into arrays in shader code. This also indicates whether shader
+    /// modules can declare the StorageTexelBufferArrayNonUniformIndexing capability.
+    pub shader_storage_texel_buffer_array_non_uniform_indexing: bool,
+
+    /// Indicates whether the implementation supports updating uniform buffer descriptors after a
+    /// set is bound.
+    ///
+    /// If this feature is not enabled, VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT must not be used
+    /// with VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER.
+    pub descriptor_binding_uniform_buffer_update_after_bind: bool,
+
+    /// Indicates whether the implementation supports updating sampled image descriptors after a set
+    /// is bound.
+    ///
+    /// If this feature is not enabled, VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT must not be used
+    /// with VK_DESCRIPTOR_TYPE_SAMPLER, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, or
+    /// VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE.
+    pub descriptor_binding_sampled_image_update_after_bind: bool,
+
+    /// Indicates whether the implementation supports updating storage image descriptors after a set
+    /// is bound.
+    ///
+    /// If this feature is not enabled, VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT must not be used
+    /// with VK_DESCRIPTOR_TYPE_STORAGE_IMAGE.
+    pub descriptor_binding_storage_image_update_after_bind: bool,
+
+    /// Indicates whether the implementation supports updating storage buffer descriptors after a
+    /// set is bound.
+    ///
+    /// If this feature is not enabled, VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT must not be used
+    /// with VK_DESCRIPTOR_TYPE_STORAGE_BUFFER.
+    pub descriptor_binding_storage_buffer_update_after_bind: bool,
+
+    /// Indicates whether the implementation supports updating uniform texel buffer descriptors
+    /// after a set is bound.
+    ///
+    /// If this feature is not enabled, VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT must not be used
+    /// with VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER.
+    pub descriptor_binding_uniform_texel_buffer_update_after_bind: bool,
+
+    /// Indicates whether the implementation supports updating storage texel buffer descriptors
+    /// after a set is bound.
+    ///
+    /// If this feature is not enabled, VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT must not be used
+    /// with VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER.
+    pub descriptor_binding_storage_texel_buffer_update_after_bind: bool,
+
+    /// Indicates whether the implementation supports updating descriptors while the set is in use.
+    ///
+    /// If this feature is not enabled, VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT must
+    /// not be used.
+    pub descriptor_binding_update_unused_while_pending: bool,
+
+    /// Indicates whether the implementation supports statically using a descriptor set binding in
+    /// which some descriptors are not valid. If this feature is not enabled,
+    /// VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT must not be used.
+    pub descriptor_binding_partially_bound: bool,
+
+    /// Indicates whether the implementation supports descriptor sets with a variable-sized last
+    /// binding. If this feature is not enabled, VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT
+    /// must not be used.
+    pub descriptor_binding_variable_descriptor_count: bool,
+
+    /// Indicates whether the implementation supports the SPIR-V RuntimeDescriptorArray capability.
+    ///
+    /// If this feature is not enabled, descriptors must not be declared in runtime arrays.
+    pub runtime_descriptor_array: bool,
+
+    /// Indicates whether the implementation supports a minimum set of required formats supporting
+    /// min/max filtering as defined by the filterMinmaxSingleComponentFormats property minimum
+    /// requirements.
+    ///
+    /// If this feature is not enabled, then VkSamplerReductionModeCreateInfo must only use
+    /// VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE.
+    pub sampler_filter_minmax: bool,
+
+    /// Indicates that the implementation supports the layout of resource blocks in shaders using
+    /// scalar alignment.
+    pub scalar_block_layout: bool,
+
+    /// Indicates that the implementation supports specifying the image view for attachments at
+    /// render pass begin time via VkRenderPassAttachmentBeginInfo.
+    pub imageless_framebuffer: bool,
+
+    /// Indicates that the implementation supports the same layouts for uniform buffers as for
+    /// storage and other kinds of buffers.
+    ///
+    /// See [Standard Buffer Layout].
+    ///
+    /// [Standard Buffer Layout]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#interfaces-resources-layout
+    pub uniform_buffer_standard_layout: bool,
+
+    /// A boolean specifying whether subgroup operations can use 8-bit integer, 16-bit integer,
+    /// 64-bit integer, 16-bit floating-point, and vectors of these types in group operations with
+    /// subgroup scope, if the implementation supports the types.
+    pub shader_subgroup_extended_types: bool,
+
+    /// Indicates whether the implementation supports a VkImageMemoryBarrier for a depth/stencil
+    /// image with only one of VK_IMAGE_ASPECT_DEPTH_BIT or VK_IMAGE_ASPECT_STENCIL_BIT set, and
+    /// whether VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
+    /// VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL, or VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL can
+    /// be used.
+    pub separate_depth_stencil_layouts: bool,
+
+    /// Indicates that the implementation supports resetting queries from the host with
+    /// vkResetQueryPool.
+    pub host_query_reset: bool,
+
+    /// Indicates whether semaphores created with a VkSemaphoreType of VK_SEMAPHORE_TYPE_TIMELINE
+    /// are supported.
+    pub timeline_semaphore: bool,
+
+    /// Indicates that the implementation supports accessing buffer memory in shaders as storage
+    /// buffers via an address queried from vkGetBufferDeviceAddress.
+    pub buffer_device_address: bool,
+
+    /// Indicates that the implementation supports saving and reusing buffer and device addresses,
+    /// e.g. for trace capture and replay.
+    pub buffer_device_address_capture_replay: bool,
+
+    /// Indicates that the implementation supports the bufferDeviceAddress, rayTracingPipeline and
+    /// rayQuery features for logical devices created with multiple physical devices.
+    ///
+    /// If this feature is not supported, buffer and acceleration structure addresses must not be
+    /// queried on a logical device created with more than one physical device.
+    pub buffer_device_address_multi_device: bool,
+
+    /// Indicates whether the [Vulkan Memory Model] is supported.
+    ///
+    /// This also indicates whether shader modules can declare the VulkanMemoryModel capability.
+    ///
+    /// [Vulkan Memory Model]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#memory-model
+    pub vulkan_memory_model: bool,
+
+    /// Indicates whether the [Vulkan Memory Model] can use Device scope synchronization.
+    ///
+    /// This also indicates whether shader modules can declare the VulkanMemoryModelDeviceScope
+    /// capability.
+    ///
+    /// [Vulkan Memory Model]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#memory-model
+    pub vulkan_memory_model_device_scope: bool,
+
+    /// Indicates whether the [Vulkan Memory Model] can use availability and visibility chains with
+    /// more than one element.
+    ///
+    /// [Vulkan Memory Model]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#memory-model
+    pub vulkan_memory_model_availability_visibility_chains: bool,
+
+    /// Indicates whether the implementation supports the ShaderViewportIndex SPIR-V capability
+    /// enabling variables decorated with the ViewportIndex built-in to be exported from mesh,
+    /// vertex or tessellation evaluation shaders.
+    ///
+    /// If this feature is not enabled, the ViewportIndex built-in decoration must not be used on
+    /// outputs in mesh, vertex or tessellation evaluation shaders.
+    pub shader_output_viewport_index: bool,
+
+    /// Indicates whether the implementation supports the ShaderLayer SPIR-V capability enabling
+    /// variables decorated with the Layer built-in to be exported from mesh, vertex or tessellation
+    /// evaluation shaders.
+    ///
+    /// If this feature is not enabled, the Layer built-in decoration must not be used on outputs in
+    /// mesh, vertex or tessellation evaluation shaders.
+    pub shader_output_layer: bool,
+
+    /// If `true`, the “Id” operand of OpGroupNonUniformBroadcast can be dynamically uniform within
+    /// a subgroup, and the “Index” operand of OpGroupNonUniformQuadBroadcast can be dynamically
+    /// uniform within the derivative group.
+    ///
+    /// If `false`, these operands must be constants.
+    pub subgroup_broadcast_dynamic_id: bool,
+}
+
+impl From<vk::PhysicalDeviceVulkan12Features> for PhysicalDeviceVulkan12Features {
+    fn from(features: vk::PhysicalDeviceVulkan12Features) -> Self {
+        Self {
+            sampler_mirror_clamp_to_edge: features.sampler_mirror_clamp_to_edge == vk::TRUE,
+            draw_indirect_count: features.draw_indirect_count == vk::TRUE,
+            storage_buffer8_bit_access: features.storage_buffer8_bit_access == vk::TRUE,
+            uniform_and_storage_buffer8_bit_access: features.uniform_and_storage_buffer8_bit_access
+                == vk::TRUE,
+            storage_push_constant8: features.storage_push_constant8 == vk::TRUE,
+            shader_buffer_int64_atomics: features.shader_buffer_int64_atomics == vk::TRUE,
+            shader_shared_int64_atomics: features.shader_shared_int64_atomics == vk::TRUE,
+            shader_float16: features.shader_float16 == vk::TRUE,
+            shader_int8: features.shader_int8 == vk::TRUE,
+            descriptor_indexing: features.descriptor_indexing == vk::TRUE,
+            shader_input_attachment_array_dynamic_indexing: features
+                .shader_input_attachment_array_dynamic_indexing
+                == vk::TRUE,
+            shader_uniform_texel_buffer_array_dynamic_indexing: features
+                .shader_uniform_texel_buffer_array_dynamic_indexing
+                == vk::TRUE,
+            shader_storage_texel_buffer_array_dynamic_indexing: features
+                .shader_storage_texel_buffer_array_dynamic_indexing
+                == vk::TRUE,
+            shader_uniform_buffer_array_non_uniform_indexing: features
+                .shader_uniform_buffer_array_non_uniform_indexing
+                == vk::TRUE,
+            shader_sampled_image_array_non_uniform_indexing: features
+                .shader_sampled_image_array_non_uniform_indexing
+                == vk::TRUE,
+            shader_storage_buffer_array_non_uniform_indexing: features
+                .shader_storage_buffer_array_non_uniform_indexing
+                == vk::TRUE,
+            shader_storage_image_array_non_uniform_indexing: features
+                .shader_storage_image_array_non_uniform_indexing
+                == vk::TRUE,
+            shader_input_attachment_array_non_uniform_indexing: features
+                .shader_input_attachment_array_non_uniform_indexing
+                == vk::TRUE,
+            shader_uniform_texel_buffer_array_non_uniform_indexing: features
+                .shader_uniform_texel_buffer_array_non_uniform_indexing
+                == vk::TRUE,
+            shader_storage_texel_buffer_array_non_uniform_indexing: features
+                .shader_storage_texel_buffer_array_non_uniform_indexing
+                == vk::TRUE,
+            descriptor_binding_uniform_buffer_update_after_bind: features
+                .descriptor_binding_uniform_buffer_update_after_bind
+                == vk::TRUE,
+            descriptor_binding_sampled_image_update_after_bind: features
+                .descriptor_binding_sampled_image_update_after_bind
+                == vk::TRUE,
+            descriptor_binding_storage_image_update_after_bind: features
+                .descriptor_binding_storage_image_update_after_bind
+                == vk::TRUE,
+            descriptor_binding_storage_buffer_update_after_bind: features
+                .descriptor_binding_storage_buffer_update_after_bind
+                == vk::TRUE,
+            descriptor_binding_uniform_texel_buffer_update_after_bind: features
+                .descriptor_binding_uniform_texel_buffer_update_after_bind
+                == vk::TRUE,
+            descriptor_binding_storage_texel_buffer_update_after_bind: features
+                .descriptor_binding_storage_texel_buffer_update_after_bind
+                == vk::TRUE,
+            descriptor_binding_update_unused_while_pending: features
+                .descriptor_binding_update_unused_while_pending
+                == vk::TRUE,
+            descriptor_binding_partially_bound: features.descriptor_binding_partially_bound
+                == vk::TRUE,
+            descriptor_binding_variable_descriptor_count: features
+                .descriptor_binding_variable_descriptor_count
+                == vk::TRUE,
+            runtime_descriptor_array: features.runtime_descriptor_array == vk::TRUE,
+            sampler_filter_minmax: features.sampler_filter_minmax == vk::TRUE,
+            scalar_block_layout: features.scalar_block_layout == vk::TRUE,
+            imageless_framebuffer: features.imageless_framebuffer == vk::TRUE,
+            uniform_buffer_standard_layout: features.uniform_buffer_standard_layout == vk::TRUE,
+            shader_subgroup_extended_types: features.shader_subgroup_extended_types == vk::TRUE,
+            separate_depth_stencil_layouts: features.separate_depth_stencil_layouts == vk::TRUE,
+            host_query_reset: features.host_query_reset == vk::TRUE,
+            timeline_semaphore: features.timeline_semaphore == vk::TRUE,
+            buffer_device_address: features.buffer_device_address == vk::TRUE,
+            buffer_device_address_capture_replay: features.buffer_device_address_capture_replay
+                == vk::TRUE,
+            buffer_device_address_multi_device: features.buffer_device_address_multi_device
+                == vk::TRUE,
+            vulkan_memory_model: features.vulkan_memory_model == vk::TRUE,
+            vulkan_memory_model_device_scope: features.vulkan_memory_model_device_scope == vk::TRUE,
+            vulkan_memory_model_availability_visibility_chains: features
+                .vulkan_memory_model_availability_visibility_chains
+                == vk::TRUE,
+            shader_output_viewport_index: features.shader_output_viewport_index == vk::TRUE,
+            shader_output_layer: features.shader_output_layer == vk::TRUE,
+            subgroup_broadcast_dynamic_id: features.subgroup_broadcast_dynamic_id == vk::TRUE,
         }
     }
 }

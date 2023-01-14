@@ -215,12 +215,12 @@ impl PipelineDescriptorInfo {
             let mut create_info =
                 vk::DescriptorSetLayoutCreateInfo::builder().bindings(bindings.as_slice());
 
-            // The binless flags have to be created for every descriptor set layout binding.
+            // The bindless flags have to be created for every descriptor set layout binding.
             // [vulkan spec](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkDescriptorSetLayoutBindingFlagsCreateInfo.html)
             // Maybe using one vector and updating it would be more efficient.
             let bindless_flags = vec![vk::DescriptorBindingFlags::PARTIALLY_BOUND; bindings.len()];
             let mut bindless_flags = if device
-                .descriptor_indexing_features
+                .vulkan_1_2_features
                 .descriptor_binding_partially_bound
             {
                 let bindless_flags = vk::DescriptorSetLayoutBindingFlagsCreateInfo::builder()

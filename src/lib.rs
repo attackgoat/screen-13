@@ -344,7 +344,7 @@ pub mod prelude {
                 AccessType, Device, Driver, DriverConfig, DriverConfigBuilder, DriverError,
                 FeatureFlags, PhysicalDevice, PhysicalDeviceAccelerationStructureProperties,
                 PhysicalDeviceDescriptorIndexingFeatures, PhysicalDeviceRayTracePipelineProperties,
-                ResolveMode,
+                PhysicalDeviceVulkan11Features, PhysicalDeviceVulkan12Features, ResolveMode,
             },
             event_loop::{EventLoop, EventLoopBuilder, FullscreenMode},
             frame::{center_cursor, set_cursor_position, FrameContext},

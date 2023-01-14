@@ -2,8 +2,9 @@ use {
     super::{
         DriverConfig, DriverError, Instance, PhysicalDevice,
         PhysicalDeviceAccelerationStructureProperties, PhysicalDeviceDepthStencilResolveProperties,
-        PhysicalDeviceDescriptorIndexingFeatures, PhysicalDeviceRayTracePipelineProperties, Queue,
-        SamplerDesc, Surface,
+        PhysicalDeviceDescriptorIndexingFeatures, PhysicalDeviceRayTracePipelineProperties,
+        PhysicalDeviceVulkan11Features, PhysicalDeviceVulkan12Features, Queue, SamplerDesc,
+        Surface,
     },
     ash::{extensions::khr, vk},
     gpu_allocator::{
@@ -40,6 +41,7 @@ pub struct Device {
     pub depth_stencil_resolve_properties: PhysicalDeviceDepthStencilResolveProperties,
 
     /// Describes the features of the device which relate to descriptor indexing.
+    #[deprecated(since = "0.8.1", note = "use vulkan_1_2_features member instead")]
     pub descriptor_indexing_features: PhysicalDeviceDescriptorIndexingFeatures,
 
     device: ash::Device,
@@ -61,6 +63,12 @@ pub struct Device {
 
     pub(super) surface_ext: Option<khr::Surface>,
     pub(super) swapchain_ext: Option<khr::Swapchain>,
+
+    /// Describes the features of the device which are part of the Vulkan 1.1 base feature set.
+    pub vulkan_1_1_features: PhysicalDeviceVulkan11Features,
+
+    /// Describes the features of the device which are part of the Vulkan 1.2 base feature set.
+    pub vulkan_1_2_features: PhysicalDeviceVulkan12Features,
 }
 
 impl Device {
@@ -170,16 +178,8 @@ impl Device {
             .build();
         queue_info.queue_count = priorities.len() as _;
 
-        let mut imageless_framebuffer_features =
-            vk::PhysicalDeviceImagelessFramebufferFeatures::builder();
-        let mut buffer_device_address_features =
-            vk::PhysicalDeviceBufferDeviceAddressFeatures::builder();
-        let mut descriptor_indexing_features =
-            vk::PhysicalDeviceDescriptorIndexingFeatures::builder();
-
-        #[cfg(not(target_os = "macos"))]
-        let mut separate_depth_stencil_layouts_features =
-            vk::PhysicalDeviceSeparateDepthStencilLayoutsFeatures::builder();
+        let mut vulkan_1_1_features = vk::PhysicalDeviceVulkan11Features::builder();
+        let mut vulkan_1_2_features = vk::PhysicalDeviceVulkan12Features::builder();
 
         let mut acceleration_struct_features = if features.ray_tracing {
             Some(ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default())
@@ -195,14 +195,8 @@ impl Device {
 
         unsafe {
             let mut features2 = vk::PhysicalDeviceFeatures2::builder()
-                .push_next(&mut buffer_device_address_features)
-                .push_next(&mut descriptor_indexing_features)
-                .push_next(&mut imageless_framebuffer_features);
-
-            #[cfg(not(target_os = "macos"))]
-            {
-                features2 = features2.push_next(&mut separate_depth_stencil_layouts_features);
-            }
+                .push_next(&mut vulkan_1_1_features)
+                .push_next(&mut vulkan_1_2_features);
 
             if features.ray_tracing {
                 features2 = features2
@@ -226,53 +220,21 @@ impl Device {
                 return Err(DriverError::Unsupported);
             }
 
-            if imageless_framebuffer_features.imageless_framebuffer != vk::TRUE {
+            if vulkan_1_2_features.imageless_framebuffer != vk::TRUE {
                 warn!("device does not support imageless framebuffer");
 
                 return Err(DriverError::Unsupported);
             }
 
             #[cfg(not(target_os = "macos"))]
-            if separate_depth_stencil_layouts_features.separate_depth_stencil_layouts != vk::TRUE {
+            if vulkan_1_2_features.separate_depth_stencil_layouts != vk::TRUE {
                 warn!("device does not support separate depth stencil layouts");
 
                 return Err(DriverError::Unsupported);
             }
 
-            // debug!("{:#?}", &features2.features);
-            // debug!("{:#?}", &scalar_block);
-            // debug!("{:#?}", &descriptor_indexing);
-            // debug!("{:#?}", &imageless_framebuffer);
-            // debug!("{:#?}", &shader_float16_int8);
-            // debug!("{:#?}", &vulkan_memory_model);
-            // debug!("{:#?}", &get_buffer_device_address_features);
-
-            // assert!(scalar_block.scalar_block_layout != 0);
-
-            //assert!(descriptor_indexing.shader_uniform_texel_buffer_array_dynamic_indexing != 0);
-            //assert!(descriptor_indexing.shader_storage_texel_buffer_array_dynamic_indexing != 0);
-            //assert!(descriptor_indexing.shader_uniform_buffer_array_non_uniform_indexing != 0);
-            //assert!(descriptor_indexing.shader_sampled_image_array_non_uniform_indexing != 0);
-            //assert!(descriptor_indexing.shader_storage_buffer_array_non_uniform_indexing != 0);
-            //assert!(descriptor_indexing.shader_storage_image_array_non_uniform_indexing != 0);
-            // assert!(
-            //     descriptor_indexing.shader_uniform_texel_buffer_array_non_uniform_indexing != 0
-            // );
-            // assert!(
-            //     descriptor_indexing.shader_storage_texel_buffer_array_non_uniform_indexing != 0
-            // );
-            // assert!(descriptor_indexing.descriptor_binding_sampled_image_update_after_bind != 0);
-            // assert!(descriptor_indexing.descriptor_binding_update_unused_while_pending != 0);
-            // assert!(descriptor_indexing.descriptor_binding_partially_bound != 0);
-            // assert!(descriptor_indexing.descriptor_binding_variable_descriptor_count != 0);
-            // assert!(descriptor_indexing.runtime_descriptor_array != 0);
-
-            // assert!(shader_float16_int8.shader_int8 != 0);
-
-            //assert!(vulkan_memory_model.vulkan_memory_model != 0);
-
             if features.ray_tracing {
-                if buffer_device_address_features.buffer_device_address != vk::TRUE {
+                if vulkan_1_2_features.buffer_device_address != vk::TRUE {
                     warn!("device does not support buffer device address");
 
                     return Err(DriverError::Unsupported);
@@ -403,24 +365,32 @@ impl Device {
                 (None, None)
             };
 
-            let descriptor_indexing_features = descriptor_indexing_features.build().into();
+            let vulkan_1_1_features = vulkan_1_1_features.build().into();
+            let vulkan_1_2_features: PhysicalDeviceVulkan12Features =
+                vulkan_1_2_features.build().into();
+            let descriptor_indexing_features = (&vulkan_1_2_features).into();
 
-            Ok(Self {
-                accel_struct_ext,
-                accel_struct_properties,
-                allocator: Some(Mutex::new(allocator)),
-                depth_stencil_resolve_properties,
-                descriptor_indexing_features,
-                device,
-                immutable_samplers,
-                instance,
-                physical_device,
-                queues,
-                ray_tracing_pipeline_ext,
-                ray_tracing_pipeline_properties,
-                surface_ext,
-                swapchain_ext,
-            })
+            Ok(
+                #[allow(deprecated)]
+                Self {
+                    accel_struct_ext,
+                    accel_struct_properties,
+                    allocator: Some(Mutex::new(allocator)),
+                    depth_stencil_resolve_properties,
+                    descriptor_indexing_features,
+                    device,
+                    immutable_samplers,
+                    instance,
+                    physical_device,
+                    queues,
+                    ray_tracing_pipeline_ext,
+                    ray_tracing_pipeline_properties,
+                    surface_ext,
+                    swapchain_ext,
+                    vulkan_1_1_features,
+                    vulkan_1_2_features,
+                },
+            )
         }
     }
 
