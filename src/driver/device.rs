@@ -193,6 +193,12 @@ impl Device {
             None
         };
 
+        let mut ray_query_features = if features.ray_tracing {
+            Some(ash::vk::PhysicalDeviceRayQueryFeaturesKHR::default())
+        } else {
+            None
+        };
+
         unsafe {
             let mut features2 = vk::PhysicalDeviceFeatures2::builder()
                 .push_next(&mut vulkan_1_1_features)
@@ -201,7 +207,8 @@ impl Device {
             if features.ray_tracing {
                 features2 = features2
                     .push_next(acceleration_struct_features.as_mut().unwrap())
-                    .push_next(ray_tracing_pipeline_features.as_mut().unwrap());
+                    .push_next(ray_tracing_pipeline_features.as_mut().unwrap())
+                    .push_next(ray_query_features.as_mut().unwrap());
             }
 
             let mut features2 = features2.build();
@@ -607,6 +614,7 @@ impl FeatureFlags {
                     vk::KhrAccelerationStructureFn::name(),
                     vk::KhrDeferredHostOperationsFn::name(),
                     vk::KhrRayTracingPipelineFn::name(),
+                    vk::KhrRayQueryFn::name(),
                 ]
                 .iter(),
             );
