@@ -11,6 +11,7 @@ See the [README](../README.md) for more information.
 
 Example | Instructions | Preview
  --- | --- | :---:
+[cpu_readback.rs](cpu_readback.rs) | <pre>cargo run --example cpu_readback</pre> | _See console output_
 [debugger.rs](debugger.rs) | <pre>cargo run --example debugger</pre> | _See console output_
 [hello_world.rs](hello_world.rs) | <pre>cargo run --example hello_world</pre> | <image alt="Preview" src="../.github/img/hello_world.png" height=149 width=176>
 [triangle.rs](triangle.rs) | <pre>cargo run --example triangle</pre> | <image alt="Preview" src="../.github/img/triangle.png" height=149 width=176>

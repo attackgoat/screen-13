@@ -46,6 +46,7 @@ mod swapchain;
 
 pub use {
     self::{
+        cmd_buf::CommandBuffer,
         device::{Device, FeatureFlags},
         physical_device::PhysicalDevice,
     },
@@ -54,7 +55,7 @@ pub use {
 };
 
 pub(crate) use self::{
-    cmd_buf::{CommandBuffer, CommandBufferInfo},
+    cmd_buf::CommandBufferInfo,
     descriptor_set::{DescriptorPool, DescriptorPoolInfo, DescriptorSet},
     descriptor_set_layout::DescriptorSetLayout,
     instance::Instance,
