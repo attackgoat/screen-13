@@ -319,7 +319,11 @@ pub struct Shader {
     /// The shader stage this structure applies to.
     pub stage: vk::ShaderStageFlags,
 
+    #[builder(private)]
     entry_point: EntryPoint,
+
+    #[builder(default, private, setter(strip_option))]
+    vertex_input: Option<VertexInputState>,
 }
 
 impl Shader {
@@ -717,6 +721,11 @@ impl Shader {
     }
 
     pub(super) fn vertex_input(&self) -> VertexInputState {
+        // Check for manually-specified vertex layout descriptions
+        if let Some(vertex_input) = &self.vertex_input {
+            return vertex_input.clone();
+        }
+
         fn scalar_format(ty: &ScalarType, byte_len: u32) -> vk::Format {
             match ty {
                 ScalarType::Float(_) => match byte_len {
@@ -876,6 +885,29 @@ impl ShaderBuilder {
 
         self.fallible_build()
             .expect("All required fields set at initialization")
+    }
+
+    /// Specifies a manually-defined vertex layout.
+    ///
+    /// The vertex layout, by default, uses reflection to automatically define vertex binding and
+    /// attribute descriptions. Each vertex location is inferred to have 32-bit channels and be
+    /// tightly packed in the vertex buffer. In this mode, a location with `_ibind_0` or `_vbind3`
+    /// suffixes is inferred to use instance-rate on vertex buffer binding `0` or vertex rate on
+    /// binding `3`, respectively.
+    ///
+    /// See the [main documentation] for more information about automatic vertex layout.
+    ///
+    /// [main documentation]: screen_13#Vertex input
+    pub fn vertex_layout(
+        mut self,
+        bindings: &[vk::VertexInputBindingDescription],
+        attributes: &[vk::VertexInputAttributeDescription],
+    ) -> Self {
+        self.vertex_input = Some(Some(VertexInputState {
+            vertex_binding_descriptions: bindings.iter().copied().collect(),
+            vertex_attribute_descriptions: attributes.iter().copied().collect(),
+        }));
+        self
     }
 }
 
