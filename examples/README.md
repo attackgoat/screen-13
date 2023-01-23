@@ -15,6 +15,7 @@ Example | Instructions | Preview
 [debugger.rs](debugger.rs) | <pre>cargo run --example debugger</pre> | _See console output_
 [hello_world.rs](hello_world.rs) | <pre>cargo run --example hello_world</pre> | <image alt="Preview" src="../.github/img/hello_world.png" height=149 width=176>
 [triangle.rs](triangle.rs) | <pre>cargo run --example triangle</pre> | <image alt="Preview" src="../.github/img/triangle.png" height=149 width=176>
+[vertex_layout.rs](vertex_layout.rs) | <pre>cargo run --example vertex_layout</pre> | <image alt="Preview" src="../.github/img/vertex_layout.png" height=149 width=176>
 [bindless.rs](bindless.rs) | <pre>cargo run --example bindless</pre> | <image alt="Preview" src="../.github/img/bindless.png" height=149 width=140>
 [egui.rs](egui.rs) | <pre>cargo run --example egui</pre> | <image alt="Preview" src="../.github/img/egui.png" height=149 width=176>
 [imgui.rs](imgui.rs) | <pre>cargo run --example imgui</pre> | <image alt="Preview" src="../.github/img/imgui.png" height=149 width=176>

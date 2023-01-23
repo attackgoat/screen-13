@@ -14,6 +14,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Custom vertex layout support - see `examples/vertex_layout.rs`
 - Enabled full set of Vulkan 1.1 and Vulkan 1.2 core features during device creation
 - Exposed existing command buffer implementation so that programs may wait for render graph GPU
   submissions to finish executing before reading the results with the CPU - see

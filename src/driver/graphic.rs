@@ -780,7 +780,7 @@ impl Default for StencilMode {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub(super) struct VertexInputState {
     pub vertex_binding_descriptions: Vec<vk::VertexInputBindingDescription>,
     pub vertex_attribute_descriptions: Vec<vk::VertexInputAttributeDescription>,

@@ -83,18 +83,18 @@ impl CommandBuffer {
         let res = unsafe { self.device.get_fence_status(self.fence) };
 
         match res {
-            Ok(status) => return Ok(status),
+            Ok(status) => Ok(status),
             Err(err) if err == vk::Result::ERROR_DEVICE_LOST => {
                 error!("Device lost");
 
-                return Err(DriverError::InvalidData);
+                Err(DriverError::InvalidData)
             }
             Err(err) => {
                 // VK_SUCCESS and VK_NOT_READY handled by get_fence_status in ash
                 // VK_ERROR_DEVICE_LOST already handled above, so no idea what happened
                 error!("{}", err);
 
-                return Err(DriverError::InvalidData);
+                Err(DriverError::InvalidData)
             }
         }
     }
