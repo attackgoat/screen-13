@@ -904,8 +904,8 @@ impl ShaderBuilder {
         attributes: &[vk::VertexInputAttributeDescription],
     ) -> Self {
         self.vertex_input = Some(Some(VertexInputState {
-            vertex_binding_descriptions: bindings.iter().copied().collect(),
-            vertex_attribute_descriptions: attributes.iter().copied().collect(),
+            vertex_binding_descriptions: bindings.to_vec(),
+            vertex_attribute_descriptions: attributes.to_vec(),
         }));
         self
     }
