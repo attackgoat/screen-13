@@ -618,7 +618,7 @@ impl AccelerationStructureInfo {
     /// Specifies a top-level acceleration structure of the given size.
     pub const fn new_tlas(size: vk::DeviceSize) -> Self {
         Self {
-            ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
+            ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
             size,
         }
     }
