@@ -85,18 +85,24 @@ fn assert_64bit_supported(device: &Arc<Device>) {
     }
 }
 
-fn create_vertex_shader() -> ShaderBuilder {
+fn create_vertex_shader(is_f64: bool) -> ShaderBuilder {
     // From the specs: Input attributes which have three- or four-component 64-bit formats will
     // consume two consecutive locations
     //
     // To support a vec3 64-bit case this means color_in needs to be on location 2
 
-    Shader::new_vertex(
-        inline_spirv!(
+    // This shader is compiled with a macro because we want to be able to switch the vec2 type to a
+    // dvec2 when using 64-bit positions; and for the purposes of this example we don't want to
+    // duplicate this shader code. You probably don't want to do this, or you may have different
+    // facilities for generating SPIR-V code - either way ignore the macro unless you're interested
+    // in the inline_spirv! wizardry it contains which is unrelated to this example.
+    macro_rules! compile_vert {
+        ($vec2_ty:literal) => {
+            inline_spirv!(
             r#"
             #version 460 core
 
-            layout(location = 0) in vec2 position_in;
+            layout(location = 0) in VEC2_TY position_in;
             layout(location = 1) in vec3 color_in;
 
             layout(location = 0) out vec3 color_out;
@@ -107,15 +113,23 @@ fn create_vertex_shader() -> ShaderBuilder {
             }
             "#,
             vert,
-        )
-        .as_slice(),
-    )
+            D VEC2_TY = $vec2_ty,
+        )};
+    }
+
+    let spirv = if is_f64 {
+        compile_vert!("dvec2").as_slice()
+    } else {
+        compile_vert!("vec2").as_slice()
+    };
+
+    Shader::new_vertex(spirv)
 }
 
 fn create_automatic_layout_pipeline(
     device: &Arc<Device>,
 ) -> Result<Arc<GraphicPipeline>, DriverError> {
-    let vertex = create_vertex_shader();
+    let vertex = create_vertex_shader(false);
 
     create_pipeline(device, vertex)
 }
@@ -129,7 +143,7 @@ fn create_manual_layout_pipeline(
     let color_size = 3 * size_of::<f32>() as u32;
     let pad_size = size_of::<u32>() as u32;
 
-    let vertex = create_vertex_shader().vertex_layout(
+    let vertex = create_vertex_shader(true).vertex_layout(
         &[vk::VertexInputBindingDescription {
             binding: 0,
             stride: position_size + color_size + pad_size,
