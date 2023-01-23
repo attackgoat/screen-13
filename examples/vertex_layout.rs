@@ -11,7 +11,7 @@ fn main() -> Result<(), DisplayError> {
     // NOTE: This example uses the 64-bit rules defined in the Vulkan spec, they're not obvious:
     // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#fxvertex-attrib
 
-    let event_loop = EventLoop::new().debug(true).build()?;
+    let event_loop = EventLoop::new().build()?;
 
     let automatic_layout_pipeline = create_automatic_layout_pipeline(&event_loop.device)?;
     let manual_layout_pipeline = create_manual_layout_pipeline(&event_loop.device)?;
@@ -55,6 +55,7 @@ fn main() -> Result<(), DisplayError> {
             .store_color(0, frame.swapchain_image)
             .access_node(f32_vertex_buf, AccessType::VertexBuffer)
             .record_subpass(move |subpass, _| {
+                // Draw a triangle on the left/bottom
                 subpass.bind_vertex_buffer(f32_vertex_buf).draw(3, 1, 0, 0);
             });
 
@@ -67,6 +68,7 @@ fn main() -> Result<(), DisplayError> {
             .store_color(0, frame.swapchain_image)
             .access_node(f64_vertex_buf, AccessType::VertexBuffer)
             .record_subpass(move |subpass, _| {
+                // Draw a triangle on the top/right
                 subpass.bind_vertex_buffer(f64_vertex_buf).draw(3, 1, 0, 0);
             });
     })

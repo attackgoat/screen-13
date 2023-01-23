@@ -897,7 +897,7 @@ impl ShaderBuilder {
     ///
     /// See the [main documentation] for more information about automatic vertex layout.
     ///
-    /// [main documentation]: screen_13#Vertex input
+    /// [main documentation]: crate
     pub fn vertex_layout(
         mut self,
         bindings: &[vk::VertexInputBindingDescription],
