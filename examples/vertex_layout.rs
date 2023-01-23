@@ -145,7 +145,7 @@ fn create_manual_layout_pipeline(
     let color_size = 3 * size_of::<f32>() as u32;
     let pad_size = size_of::<u32>() as u32;
 
-    let vertex = create_vertex_shader(true).vertex_layout(
+    let vertex = create_vertex_shader(true).vertex_input(
         &[vk::VertexInputBindingDescription {
             binding: 0,
             stride: position_size + color_size + pad_size,

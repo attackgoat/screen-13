@@ -279,7 +279,7 @@ The data for vertex input is assumed to be per-vertex and bound to vertex buffer
 Add `_ibindX` for per-instance data, or the matching `_vbindX` for per-vertex data where `X` is
 replaced with the vertex buffer binding index in each case.
 
-See [`ShaderBuilder::vertex_layout`].
+See [`ShaderBuilder::vertex_input`].
 
 [`AccelerationStructureInfo`]: driver::accel_struct::AccelerationStructureInfo
 [`AccelerationStructure::create`]: driver::accel_struct::AccelerationStructure::create
@@ -300,7 +300,7 @@ See [`ShaderBuilder::vertex_layout`].
 [`RayTracePipeline::create`]: driver::ray_trace::RayTracePipeline::create
 [`RayTracePipelineInfo`]: driver::ray_trace::RayTracePipelineInfo
 [`RenderGraph`]: graph::RenderGraph
-[`ShaderBuilder::vertex_layout`]: driver::shader::ShaderBuilder::vertex_layout
+[`ShaderBuilder::vertex_input`]: driver::shader::ShaderBuilder::vertex_input
 
 */
 
