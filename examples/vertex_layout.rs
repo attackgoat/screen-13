@@ -38,8 +38,8 @@ fn main() -> Result<(), DisplayError> {
         vk::BufferUsageFlags::VERTEX_BUFFER,
         cast_slice(&[
             Vertex64([-1.0, -1.0], [1.0, 0.0, 0.0], 0), // vec2 position + vec3 color + pad
-            Vertex64([1.0, 1.0], [0.0, 1.0, 0.0], 0),   // vec2 position + vec3 color + pad
-            Vertex64([1.0, -1.0], [0.0, 0.0, 1.0], 0),  // vec2 position + vec3 color + pad
+            Vertex64([1.0, 1.0], [0.0, 0.0, 1.0], 0),   // vec2 position + vec3 color + pad
+            Vertex64([1.0, -1.0], [0.0, 1.0, 0.0], 0),  // vec2 position + vec3 color + pad
         ]),
     )?);
 
