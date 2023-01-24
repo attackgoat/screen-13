@@ -19,12 +19,12 @@ use {
 // TODO: make sure derive macro handles padding fields
 
 pub trait ShaderBuilderExt {
-    fn vertex_layout(self, layout: impl VertexLayout) -> Shader;
+    fn with_vertex_layout(self, layout: impl VertexLayout) -> Shader;
 }
 
 impl ShaderBuilderExt for ShaderBuilder {
     #[inline]
-    fn vertex_layout(self, layout: impl VertexLayout) -> Shader {
+    fn with_vertex_layout(self, layout: impl VertexLayout) -> Shader {
         let mut shader = self.build();
 
         let entry_point = Shader::reflect_entry_point(
@@ -33,7 +33,7 @@ impl ShaderBuilderExt for ShaderBuilder {
             shader.specialization_info.as_ref(),
         )
         .unwrap(); // TODO: expect
-                   //
+
         let state = layout.specialize(&entry_point.vars).unwrap(); // expect
         shader.vertex_input_state = Some(state);
         shader

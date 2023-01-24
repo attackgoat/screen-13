@@ -45,7 +45,7 @@ fn main() -> Result<(), DisplayError> {
                 )
                 .as_slice(),
             )
-            .vertex_layout(Vertex::layout(vk::VertexInputRate::VERTEX)),
+            .with_vertex_layout(Vertex::layout(vk::VertexInputRate::VERTEX)),
             Shader::new_fragment(
                 inline_spirv!(
                     r#"
@@ -63,7 +63,7 @@ fn main() -> Result<(), DisplayError> {
                 )
                 .as_slice(),
             )
-            .into(),
+            .build(),
         ],
     )?);
 
