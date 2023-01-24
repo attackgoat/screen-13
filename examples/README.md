@@ -35,3 +35,4 @@ Example | Instructions | Preview
 The following packages offer examples for specific cases not listed here:
 
 - [contrib/screen-13-hot](../contrib/screen-13-hot/examples/README.md): Shader pipeline hot-reload
+- [contrib/screen-13-macros](../contrib/screen-13-macros/examples): Optional `#[derive(Vertex)]` for advanced input layout

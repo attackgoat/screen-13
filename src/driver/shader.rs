@@ -320,8 +320,14 @@ pub struct Shader {
     pub stage: vk::ShaderStageFlags,
 
     #[builder(private)]
-    pub entry_point: EntryPoint,
+    entry_point: EntryPoint,
 
+    /// Vertex input state.
+    ///
+    /// When set, this value overrides the automatic vertex input layout system. Only applies to
+    /// vertex shaders used in a graphic pipeline.
+    ///
+    /// See [`ShaderBuilder::vertex_input`] for manual vertex input layout.
     #[builder(default, private, setter(strip_option))]
     pub vertex_input_state: Option<VertexInputState>,
 }
@@ -481,6 +487,11 @@ impl Shader {
                 _ => None,
             }),
         )
+    }
+
+    /// Returns the reflected entry point of this shader.
+    pub fn entry_point(&self) -> &EntryPoint {
+        &self.entry_point
     }
 
     pub(super) fn descriptor_bindings(&self, device: &Device) -> DescriptorBindingMap {
@@ -684,7 +695,7 @@ impl Shader {
             })
     }
 
-    pub fn reflect_entry_point(
+    fn reflect_entry_point(
         entry_name: &str,
         spirv: &[u8],
         specialization_info: Option<&SpecializationInfo>,

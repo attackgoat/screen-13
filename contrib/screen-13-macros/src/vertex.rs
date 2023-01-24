@@ -27,14 +27,7 @@ impl ShaderBuilderExt for ShaderBuilder {
     fn with_vertex_layout(self, layout: impl VertexLayout) -> Shader {
         let mut shader = self.build();
 
-        let entry_point = Shader::reflect_entry_point(
-            &shader.entry_name,
-            &shader.spirv,
-            shader.specialization_info.as_ref(),
-        )
-        .unwrap(); // TODO: expect
-
-        let state = layout.specialize(&entry_point.vars).unwrap(); // expect
+        let state = layout.specialize(&shader.entry_point().vars).unwrap(); // expect
         shader.vertex_input_state = Some(state);
         shader
     }
