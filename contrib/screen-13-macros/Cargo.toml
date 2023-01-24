@@ -1,0 +1,17 @@
+[package]
+name = "screen-13-macros"
+version = "0.1.0"
+authors = ["Niklas Voss <niklas.voss@gmail.com>"]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/attackgoat/screen-13"
+homepage = "https://github.com/attackgoat/screen-13/contrib/screen-13-macros"
+keywords = ["gamedev", "vulkan"]
+categories = ["game-development", "rendering::engine"]
+description = "Macros for use with Screen-13, e.g. to derive vertex layouts from structs."
+
+[dependencies]
+screen-13 = { path = "../.." }
+proc_macros = { path = "src/proc_macros" }
+spirq = "0.6"
