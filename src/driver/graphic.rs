@@ -780,8 +780,11 @@ impl Default for StencilMode {
     }
 }
 
+/// The state of the vertex input stage of the graphics pipeline.
 #[derive(Clone, Debug, Default)]
-pub(super) struct VertexInputState {
+pub struct VertexInputState {
+    /// List of vertex input bindings describing how input buffers will be read.
     pub vertex_binding_descriptions: Vec<vk::VertexInputBindingDescription>,
+    /// List of attribute descriptions specifying formats and locations for buffer inputs.
     pub vertex_attribute_descriptions: Vec<vk::VertexInputAttributeDescription>,
 }

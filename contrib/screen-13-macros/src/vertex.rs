@@ -2,18 +2,42 @@
 
 pub use proc_macros::Vertex;
 use {
-    screen_13::driver::{ash::vk, DriverError},
+    screen_13::driver::{
+        ash::vk,
+        graphic::VertexInputState,
+        shader::{Shader, ShaderBuilder},
+        DriverError,
+    },
     spirq::Variable,
     std::collections::HashMap,
 };
 
-/// The state of the vertex input stage of the graphics pipeline.
-#[derive(Debug, Default, Clone)]
-pub struct VertexInputState {
-    /// List of vertex input bindings describing how input buffers will be read.
-    pub vertex_binding_descriptions: Vec<vk::VertexInputBindingDescription>,
-    /// List of attribute descriptions specifying formats and locations for buffer inputs.
-    pub vertex_attribute_descriptions: Vec<vk::VertexInputAttributeDescription>,
+// TODO: maybe return tuple instead of `VertexInputState`
+// TODO: infer block-size from format
+// TODO: make sure doubles are handled correctly
+// TODO: validate as much as sensible
+// TODO: make sure derive macro handles padding fields
+
+pub trait ShaderBuilderExt {
+    fn vertex_layout(self, layout: impl VertexLayout) -> Shader;
+}
+
+impl ShaderBuilderExt for ShaderBuilder {
+    #[inline]
+    fn vertex_layout(self, layout: impl VertexLayout) -> Shader {
+        let mut shader = self.build();
+
+        let entry_point = Shader::reflect_entry_point(
+            &shader.entry_name,
+            &shader.spirv,
+            shader.specialization_info.as_ref(),
+        )
+        .unwrap(); // TODO: expect
+                   //
+        let state = layout.specialize(&entry_point.vars).unwrap(); // expect
+        shader.vertex_input_state = Some(state);
+        shader
+    }
 }
 
 /// Trait used to specialize an defined VertexLayouts.

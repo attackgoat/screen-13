@@ -15,3 +15,9 @@ description = "Macros for use with Screen-13, e.g. to derive vertex layouts from
 screen-13 = { path = "../.." }
 proc_macros = { path = "src/proc_macros" }
 spirq = "0.6"
+
+[dev-dependencies]
+bytemuck = { version = "1.9", features = ["derive"] }
+glam = { version = "0.22", features = ["bytemuck"] }
+inline-spirv = "0.1"
+pretty_env_logger = "0.4"

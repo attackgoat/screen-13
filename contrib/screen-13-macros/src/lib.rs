@@ -9,3 +9,7 @@ extern crate self as screen_13_macros;
 
 pub mod vertex;
 pub use screen_13::driver::ash;
+
+pub mod prelude {
+    pub use super::vertex::{ShaderBuilderExt, Vertex};
+}

@@ -320,10 +320,10 @@ pub struct Shader {
     pub stage: vk::ShaderStageFlags,
 
     #[builder(private)]
-    entry_point: EntryPoint,
+    pub entry_point: EntryPoint,
 
     #[builder(default, private, setter(strip_option))]
-    vertex_input_state: Option<VertexInputState>,
+    pub vertex_input_state: Option<VertexInputState>,
 }
 
 impl Shader {
@@ -684,7 +684,7 @@ impl Shader {
             })
     }
 
-    fn reflect_entry_point(
+    pub fn reflect_entry_point(
         entry_name: &str,
         spirv: &[u8],
         specialization_info: Option<&SpecializationInfo>,
