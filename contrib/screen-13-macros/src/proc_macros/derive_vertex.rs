@@ -82,10 +82,8 @@ pub fn derive_vertex(ast: syn::DeriveInput) -> Result<TokenStream> {
         }
 
         if format.is_empty() {
-            return Err(Error::new(
-                field_name.span(),
-                "each field of the struct requires `format`-attribute with valid `vk::Format`",
-            ));
+            // no format is specified, so we treat it as padding
+            names = Vec::new();
         }
 
         for name in &names {
@@ -96,7 +94,7 @@ pub fn derive_vertex(ast: syn::DeriveInput) -> Result<TokenStream> {
                     attributes.insert(
                         #name.to_string(),
                         DerivedVertexAttribute {
-                            offset_inc: std::mem::size_of::<#field_ty>() as u32 / num_locations,
+                            block_size: std::mem::size_of::<#field_ty>() as u32 / num_locations,
                             offset,
                             format,
                             num_locations,

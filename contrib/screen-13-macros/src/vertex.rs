@@ -12,11 +12,7 @@ use {
     std::collections::HashMap,
 };
 
-// TODO: maybe return tuple instead of `VertexInputState`
-// TODO: infer block-size from format
-// TODO: make sure doubles are handled correctly
 // TODO: validate as much as sensible
-// TODO: make sure derive macro handles padding fields
 
 pub trait ShaderBuilderExt {
     fn with_vertex_layout(self, layout: impl VertexLayout) -> Shader;
@@ -116,7 +112,9 @@ pub struct DerivedVertexLayout {
 
 pub struct DerivedVertexAttribute {
     pub offset: u32,
-    pub offset_inc: u32,
+    // The block-size of the format. The derive-macro will calculate it by dividing
+    // `size_of::<T>()` by `num_locations`.
+    pub block_size: u32,
     pub format: vk::Format,
     pub num_locations: u32,
 }
@@ -140,14 +138,21 @@ impl VertexLayout for DerivedVertexLayout {
                     .attributes
                     .get(&name.to_owned().unwrap_or("".to_string()))
                     .map(|attribute| {
-                        (location.loc()..location.loc() + attribute.num_locations)
-                            .enumerate()
-                            .map(|(i, location)| vk::VertexInputAttributeDescription {
+                        // Formats such as R64G64B64A64_SFLOAT exceed the 16-byte limit of a location and therefore require two
+                        let locations = if attribute.block_size > 16 {
+                            (location.loc()..location.loc() + 2 * attribute.num_locations)
+                                .step_by(2)
+                        } else {
+                            (location.loc()..location.loc() + attribute.num_locations).step_by(1)
+                        };
+                        locations.enumerate().map(|(i, location)| {
+                            vk::VertexInputAttributeDescription {
                                 binding: 0,
                                 location,
                                 format: attribute.format,
-                                offset: attribute.offset + i as u32 * attribute.offset_inc,
-                            })
+                                offset: attribute.offset + i as u32 * attribute.block_size,
+                            }
+                        })
                     }),
                 _ => None,
             })
@@ -203,27 +208,41 @@ mod tests {
         struct MyVertex {
             #[format(R16G16B16_SNORM)]
             normal: [i32; 3],
+            _padding: u32,
             #[name("in_proj", "cam_proj")]
             #[format(R32G32B32A32_SFLOAT, 4)]
             proj: [f32; 16],
+            #[format(R64G64B64A64_SFLOAT, 2)]
+            double: [f64; 8],
         }
         let layout = MyVertex::layout(vk::VertexInputRate::VERTEX);
-        assert_eq!(layout.attributes.len(), 3);
-        let inputs = [Variable::Input {
-            name: Some("in_proj".to_string()),
-            location: InterfaceLocation::new(0, 0),
-            ty: Type::Scalar(spirq::ty::ScalarType::Float(1)), // unused in impl
-        }];
+        assert_eq!(layout.attributes.len(), 4);
+        // Only contains "in_proj" and "double"
+        let inputs = [
+            Variable::Input {
+                name: Some("in_proj".to_string()),
+                location: InterfaceLocation::new(0, 0),
+                ty: Type::Scalar(spirq::ty::ScalarType::Float(1)), // unused in impl
+            },
+            Variable::Input {
+                name: Some("double".to_string()),
+                location: InterfaceLocation::new(1, 0),
+                ty: Type::Scalar(spirq::ty::ScalarType::Float(1)), // unused in impl
+            },
+        ];
         let state = layout.specialize(&inputs).unwrap();
         let bindings = &state.vertex_binding_descriptions;
         let attributes = &state.vertex_attribute_descriptions;
         assert_eq!(bindings.len(), 1);
-        assert_eq!(attributes.len(), 4);
+        assert_eq!(attributes.len(), 6);
         // Let's check if the offset for the multiple locations for the array was incremented
         // correctly:
-        assert_eq!(attributes[0].offset, 12);
-        assert_eq!(attributes[1].offset, 28);
-        assert_eq!(attributes[2].offset, 44);
-        assert_eq!(attributes[3].offset, 60);
+        assert_eq!(attributes[0].offset, 16);
+        assert_eq!(attributes[1].offset, 32);
+        assert_eq!(attributes[2].offset, 48);
+        assert_eq!(attributes[3].offset, 64);
+        // Let's check if the location was incremented by two for double
+        assert_eq!(attributes[4].location, 1);
+        assert_eq!(attributes[5].location, 3);
     }
 }
