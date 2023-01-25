@@ -12,8 +12,6 @@ use {
     std::collections::HashMap,
 };
 
-// TODO: validate as much as sensible
-
 pub trait ShaderBuilderExt {
     fn with_vertex_layout(self, layout: impl VertexLayout) -> Shader;
 }
