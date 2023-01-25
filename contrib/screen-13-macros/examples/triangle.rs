@@ -13,12 +13,13 @@ fn main() -> Result<(), DisplayError> {
     pretty_env_logger::init();
 
     #[repr(C)]
-    #[derive(Vertex, Pod, Zeroable, Copy, Clone)]
+    #[derive(Vertex, Pod, Zeroable, Copy, Clone, Default)]
     struct Vertex {
         #[format(R32G32B32_SFLOAT)]
         position: Vec3,
         #[format(R8G8B8_UNORM)]
-        color: [u8; 4], // last is padding
+        color: [u8; 3],
+        _padding: u8,
     }
 
     let event_loop = EventLoop::new().build()?;
@@ -79,15 +80,18 @@ fn main() -> Result<(), DisplayError> {
         cast_slice(&[
             Vertex {
                 position: Vec3::new(1.0f32, 1.0, 0.0),
-                color: [255, 0, 0, 0],
+                color: [255, 0, 0],
+                ..Default::default()
             },
             Vertex {
                 position: Vec3::new(0.0, -1.0, 0.0),
-                color: [0, 255, 0, 0],
+                color: [0, 255, 0],
+                ..Default::default()
             },
             Vertex {
                 position: Vec3::new(-1.0, 1.0, 0.0),
-                color: [0, 0, 255, 0],
+                color: [0, 0, 255],
+                ..Default::default()
             },
         ]),
     )?);
