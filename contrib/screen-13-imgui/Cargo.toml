@@ -7,7 +7,7 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 
 [dependencies]
-bytemuck = "1.9"
+bytemuck = "1.13"
 
 # HACK: https://github.com/imgui-rs/imgui-rs/issues/665
 imgui = { git = "https://github.com/imgui-rs/imgui-rs", rev = "45c2d28" }

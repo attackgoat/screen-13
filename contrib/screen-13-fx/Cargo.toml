@@ -24,7 +24,7 @@ matte-modes = []
 
 [dependencies]
 bmfont = { version = "0.3", default-features = false }
-bytemuck = "1.9"
+bytemuck = "1.13"
 lazy_static = "1.4"
 parking_lot = "0.12"
 inline-spirv = "0.1"

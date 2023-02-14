@@ -5,7 +5,7 @@ use {
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
     gpu_allocator::{
-        vulkan::{Allocation, AllocationCreateDesc},
+        vulkan::{Allocation, AllocationCreateDesc, AllocationScheme},
         MemoryLocation,
     },
     log::{trace, warn},
@@ -168,6 +168,7 @@ impl Image {
                 requirements,
                 location: MemoryLocation::GpuOnly,
                 linear: false,
+                allocation_scheme: AllocationScheme::GpuAllocatorManaged,
             })
             .map_err(|err| {
                 warn!("{err}");

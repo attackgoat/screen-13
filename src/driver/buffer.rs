@@ -5,7 +5,7 @@ use {
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
     gpu_allocator::{
-        vulkan::{Allocation, AllocationCreateDesc},
+        vulkan::{Allocation, AllocationCreateDesc, AllocationScheme},
         MemoryLocation,
     },
     log::trace,
@@ -122,6 +122,7 @@ impl Buffer {
                 requirements,
                 location: memory_location,
                 linear: true, // Buffers are always linear
+                allocation_scheme: AllocationScheme::GpuAllocatorManaged,
             })
             .map_err(|err| {
                 warn!("{err}");
