@@ -19,6 +19,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exposed existing command buffer implementation so that programs may wait for render graph GPU
   submissions to finish executing before reading the results with the CPU - see
   `examples/cpu_readback.rs`
+- `KeyBuf::is_down` helper function
 
 ### Changed
 

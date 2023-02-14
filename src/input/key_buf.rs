@@ -80,6 +80,12 @@ impl KeyBuf {
         }
     }
 
+    /// Returns `true` if the given key has been pressed since the last frame or held for multiple
+    /// frames.
+    pub fn is_down(&self, key: VirtualKeyCode) -> bool {
+        self.is_held(&key) || self.is_pressed(&key)
+    }
+
     /// Returns `true` if the given key has been pressed for multiple frames.
     pub fn is_held(&self, key: &VirtualKeyCode) -> bool {
         self.held.binary_search(key).is_ok()
