@@ -15,7 +15,7 @@ pub mod prelude {
 use {
     self::shader::HotShader,
     lazy_static::lazy_static,
-    notify::{recommended_watcher, Event, EventKind, INotifyWatcher},
+    notify::{recommended_watcher, Event, EventKind, RecommendedWatcher},
     screen_13::prelude::*,
     shader_prepper::{
         process_file, BoxedIncludeProviderError, IncludeProvider, ResolvedInclude,
@@ -131,7 +131,7 @@ fn compile_shader(
 
 fn compile_shader_and_watch(
     shader: &HotShader,
-    watcher: &mut INotifyWatcher,
+    watcher: &mut RecommendedWatcher,
 ) -> Result<ShaderBuilder, DriverError> {
     let mut base_shader = Shader::new(shader.stage, shader.compile_and_watch(watcher)?.as_slice());
 
@@ -144,7 +144,7 @@ fn compile_shader_and_watch(
     Ok(base_shader)
 }
 
-fn create_watcher() -> (INotifyWatcher, Arc<AtomicBool>) {
+fn create_watcher() -> (RecommendedWatcher, Arc<AtomicBool>) {
     let has_changes = Arc::new(AtomicBool::new(false));
     let has_changes_clone = Arc::clone(&has_changes);
     let watcher = recommended_watcher(move |event: notify::Result<Event>| {

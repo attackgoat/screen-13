@@ -11,6 +11,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Pipelines which use multiple descriptor sets (different `set =` values) sometimes trigger
   validation errors
+- `contrib/screen-13-hot`: build error on Windows platform
 
 ### Added
 

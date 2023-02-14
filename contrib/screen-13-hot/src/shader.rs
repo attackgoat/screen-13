@@ -3,7 +3,7 @@ pub use shaderc::{OptimizationLevel, SourceLanguage, SpirvVersion};
 use {
     super::{compile_shader, guess_shader_source_language},
     derive_builder::{Builder, UninitializedFieldError},
-    notify::{INotifyWatcher, RecursiveMode, Watcher},
+    notify::{RecommendedWatcher, RecursiveMode, Watcher},
     screen_13::prelude::*,
     shaderc::{CompileOptions, EnvVersion, ShaderKind, TargetEnv},
     std::path::{Path, PathBuf},
@@ -227,7 +227,7 @@ impl HotShader {
 
     pub(super) fn compile_and_watch(
         &self,
-        watcher: &mut INotifyWatcher,
+        watcher: &mut RecommendedWatcher,
     ) -> Result<Vec<u8>, DriverError> {
         let shader_kind = match self.stage {
             vk::ShaderStageFlags::ANY_HIT_KHR => ShaderKind::AnyHit,

@@ -1,6 +1,6 @@
 use {
     super::{compile_shader_and_watch, create_watcher, shader::HotShader},
-    notify::INotifyWatcher,
+    notify::RecommendedWatcher,
     screen_13::prelude::*,
     std::sync::{
         atomic::{AtomicBool, Ordering},
@@ -15,7 +15,7 @@ pub struct HotRayTracePipeline {
     instance: Arc<RayTracePipeline>,
     shader_groups: Box<[RayTraceShaderGroup]>,
     shaders: Box<[HotShader]>,
-    watcher: INotifyWatcher,
+    watcher: RecommendedWatcher,
 }
 
 impl HotRayTracePipeline {
