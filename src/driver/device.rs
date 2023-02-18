@@ -3,7 +3,8 @@ use {
         DriverConfig, DriverError, Instance, PhysicalDevice,
         PhysicalDeviceAccelerationStructureProperties, PhysicalDeviceDepthStencilResolveProperties,
         PhysicalDeviceDescriptorIndexingFeatures, PhysicalDeviceRayTracePipelineProperties,
-        PhysicalDeviceVulkan11Features, PhysicalDeviceVulkan12Features, Queue, SamplerDesc,
+        PhysicalDeviceVulkan11Features, PhysicalDeviceVulkan11Properties,
+        PhysicalDeviceVulkan12Features, PhysicalDeviceVulkan12Properties, Queue, SamplerDesc,
         Surface,
     },
     ash::{extensions::khr, vk},
@@ -67,8 +68,14 @@ pub struct Device {
     /// Describes the features of the device which are part of the Vulkan 1.1 base feature set.
     pub vulkan_1_1_features: PhysicalDeviceVulkan11Features,
 
+    /// Describes the properties of the device which are part of the Vulkan 1.1 base feature set.
+    pub vulkan_1_1_properties: PhysicalDeviceVulkan11Properties,
+
     /// Describes the features of the device which are part of the Vulkan 1.2 base feature set.
     pub vulkan_1_2_features: PhysicalDeviceVulkan12Features,
+
+    /// Describes the properties of the device which are part of the Vulkan 1.2 base feature set.
+    pub vulkan_1_2_properties: PhysicalDeviceVulkan12Properties,
 }
 
 impl Device {
@@ -278,13 +285,14 @@ impl Device {
                 vk::PhysicalDeviceAccelerationStructurePropertiesKHR::default();
             let mut ray_tracing_pipeline_properties =
                 vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
-
-            let mut physical_properties = vk::PhysicalDeviceProperties2::builder();
-
             let mut depth_stencil_resolve_properties =
                 vk::PhysicalDeviceDepthStencilResolveProperties::default();
-            physical_properties =
-                physical_properties.push_next(&mut depth_stencil_resolve_properties);
+            let mut vulkan_1_1_properties = vk::PhysicalDeviceVulkan11Properties::default();
+            let mut vulkan_1_2_properties = vk::PhysicalDeviceVulkan12Properties::default();
+            let mut physical_properties = vk::PhysicalDeviceProperties2::builder()
+                .push_next(&mut depth_stencil_resolve_properties)
+                .push_next(&mut vulkan_1_1_properties)
+                .push_next(&mut vulkan_1_2_properties);
 
             if features.ray_tracing {
                 physical_properties = physical_properties
@@ -366,8 +374,10 @@ impl Device {
             };
 
             let vulkan_1_1_features = vulkan_1_1_features.build().into();
+            let vulkan_1_1_properties = vulkan_1_1_properties.into();
             let vulkan_1_2_features: PhysicalDeviceVulkan12Features =
                 vulkan_1_2_features.build().into();
+            let vulkan_1_2_properties = vulkan_1_2_properties.into();
             let descriptor_indexing_features = (&vulkan_1_2_features).into();
 
             Ok(
@@ -388,7 +398,9 @@ impl Device {
                     surface_ext,
                     swapchain_ext,
                     vulkan_1_1_features,
+                    vulkan_1_1_properties,
                     vulkan_1_2_features,
+                    vulkan_1_2_properties,
                 },
             )
         }
