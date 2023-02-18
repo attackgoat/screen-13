@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## 0.8.1 - [Unreleased]
+## [0.8.1] - 2023-02-18
 
 ### Fixed
 
@@ -313,7 +313,7 @@ _See [#25](https://github.com/attackgoat/screen-13/pull/25) for migration detail
   platforms and require no bare-metal graphics API knowledge
 - "Hello, world!" example using a bitmapped font
 
-[Unreleased]: https://github.com/attackgoat/screen-13/compare/6926769b01e276d2a08fa53096f854204aefef40...HEAD
+[Unreleased]: https://github.com/attackgoat/screen-13/compare/5acb1257fcdc4505a2a4e264c5e64a0558bf68aa...HEAD
 [0.1.0]: https://crates.io/crates/screen-13/0.1.0
 [0.2.0]: https://crates.io/crates/screen-13/0.2.0
 [0.3.0]: https://crates.io/crates/screen-13/0.3.0
@@ -332,3 +332,4 @@ _See [#25](https://github.com/attackgoat/screen-13/pull/25) for migration detail
 [0.7.0]: https://crates.io/crates/screen-13/0.7.0
 [0.7.1]: https://crates.io/crates/screen-13/0.7.1
 [0.8.0]: https://crates.io/crates/screen-13/0.8.0
+[0.8.1]: https://crates.io/crates/screen-13/0.8.1
