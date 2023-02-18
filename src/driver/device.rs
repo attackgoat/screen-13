@@ -2,7 +2,8 @@ use {
     super::{
         DriverConfig, DriverError, Instance, PhysicalDevice,
         PhysicalDeviceAccelerationStructureProperties, PhysicalDeviceDepthStencilResolveProperties,
-        PhysicalDeviceDescriptorIndexingFeatures, PhysicalDeviceRayTracePipelineProperties,
+        PhysicalDeviceDescriptorIndexingFeatures, PhysicalDeviceRayQueryFeatures,
+        PhysicalDeviceRayTracePipelineProperties, PhysicalDeviceRayTracingPipelineFeatures,
         PhysicalDeviceVulkan11Features, PhysicalDeviceVulkan11Properties,
         PhysicalDeviceVulkan12Features, PhysicalDeviceVulkan12Properties, Queue, SamplerDesc,
         Surface,
@@ -57,7 +58,13 @@ pub struct Device {
     /// The physical execution queues which all work will be submitted to.
     pub(crate) queues: Box<[Queue]>,
 
+    /// Describes the features of the device which relate to ray query, if available.
+    pub ray_query_features: Option<PhysicalDeviceRayQueryFeatures>,
+
     pub(crate) ray_tracing_pipeline_ext: Option<khr::RayTracingPipeline>,
+
+    /// Describes the features of the device which relate to ray tracing, if available.
+    pub ray_tracing_pipeline_features: Option<PhysicalDeviceRayTracingPipelineFeatures>,
 
     /// Describes the properties of the device which relate to ray tracing, if available.
     pub ray_tracing_pipeline_properties: Option<PhysicalDeviceRayTracePipelineProperties>,
@@ -200,6 +207,12 @@ impl Device {
             None
         };
 
+        let mut ray_query_features = if features.ray_tracing {
+            Some(ash::vk::PhysicalDeviceRayQueryFeaturesKHR::default())
+        } else {
+            None
+        };
+
         unsafe {
             let mut features2 = vk::PhysicalDeviceFeatures2::builder()
                 .push_next(&mut vulkan_1_1_features)
@@ -208,7 +221,8 @@ impl Device {
             if features.ray_tracing {
                 features2 = features2
                     .push_next(acceleration_struct_features.as_mut().unwrap())
-                    .push_next(ray_tracing_pipeline_features.as_mut().unwrap());
+                    .push_next(ray_tracing_pipeline_features.as_mut().unwrap())
+                    .push_next(ray_query_features.as_mut().unwrap());
             }
 
             let mut features2 = features2.build();
@@ -305,14 +319,20 @@ impl Device {
 
             let depth_stencil_resolve_properties = depth_stencil_resolve_properties.into();
 
-            let (accel_struct_properties, ray_tracing_pipeline_properties) = if features.ray_tracing
-            {
+            let (
+                accel_struct_properties,
+                ray_query_features,
+                ray_tracing_pipeline_features,
+                ray_tracing_pipeline_properties,
+            ) = if features.ray_tracing {
                 (
                     Some(accel_struct_properties.into()),
+                    Some(ray_query_features.unwrap().into()),
+                    Some(ray_tracing_pipeline_features.unwrap().into()),
                     Some(ray_tracing_pipeline_properties.into()),
                 )
             } else {
-                (None, None)
+                (None, None, None, None)
             };
 
             let queue_infos = [queue_info];
@@ -393,7 +413,9 @@ impl Device {
                     instance,
                     physical_device,
                     queues,
+                    ray_query_features,
                     ray_tracing_pipeline_ext,
+                    ray_tracing_pipeline_features,
                     ray_tracing_pipeline_properties,
                     surface_ext,
                     swapchain_ext,
@@ -619,6 +641,7 @@ impl FeatureFlags {
                     vk::KhrAccelerationStructureFn::name(),
                     vk::KhrDeferredHostOperationsFn::name(),
                     vk::KhrRayTracingPipelineFn::name(),
+                    vk::KhrRayQueryFn::name(),
                 ]
                 .iter(),
             );

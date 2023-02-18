@@ -1153,6 +1153,68 @@ impl<'a> From<&'a PhysicalDeviceVulkan12Features> for PhysicalDeviceDescriptorIn
     }
 }
 
+/// Features of the physical device for ray query.
+pub struct PhysicalDeviceRayQueryFeatures {
+    /// Indicates whether the implementation supports ray query (`OpRayQueryProceedKHR`)
+    /// functionality.
+    pub ray_query: bool,
+}
+
+impl From<vk::PhysicalDeviceRayQueryFeaturesKHR> for PhysicalDeviceRayQueryFeatures {
+    fn from(features: vk::PhysicalDeviceRayQueryFeaturesKHR) -> Self {
+        Self {
+            ray_query: features.ray_query == vk::TRUE,
+        }
+    }
+}
+
+/// Features of the physical device for ray tracing.
+pub struct PhysicalDeviceRayTracingPipelineFeatures {
+    /// Indicates whether the implementation supports the ray tracing pipeline functionality.
+    ///
+    /// See
+    /// [Ray Tracing](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#ray-tracing).
+    pub ray_tracing_pipeline: bool,
+
+    /// Indicates whether the implementation supports saving and reusing shader group handles, e.g.
+    /// for trace capture and replay.
+    pub ray_tracing_pipeline_shader_group_handle_capture_replay: bool,
+
+    /// Indicates whether the implementation supports reuse of shader group handles being
+    /// arbitrarily mixed with creation of non-reused shader group handles.
+    ///
+    /// If this is `false`, all reused shader group handles must be specified before any non-reused
+    /// handles may be created.
+    pub ray_tracing_pipeline_shader_group_handle_capture_replay_mixed: bool,
+
+    /// Indicates whether the implementation supports indirect ray tracing commands, e.g.
+    /// `vkCmdTraceRaysIndirectKHR`.
+    pub ray_tracing_pipeline_trace_rays_indirect: bool,
+
+    /// Indicates whether the implementation supports primitive culling during ray traversal.
+    pub ray_traversal_primitive_culling: bool,
+}
+
+impl From<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>
+    for PhysicalDeviceRayTracingPipelineFeatures
+{
+    fn from(features: vk::PhysicalDeviceRayTracingPipelineFeaturesKHR) -> Self {
+        Self {
+            ray_tracing_pipeline: features.ray_tracing_pipeline == vk::TRUE,
+            ray_tracing_pipeline_shader_group_handle_capture_replay: features
+                .ray_tracing_pipeline_shader_group_handle_capture_replay
+                == vk::TRUE,
+            ray_tracing_pipeline_shader_group_handle_capture_replay_mixed: features
+                .ray_tracing_pipeline_shader_group_handle_capture_replay_mixed
+                == vk::TRUE,
+            ray_tracing_pipeline_trace_rays_indirect: features
+                .ray_tracing_pipeline_trace_rays_indirect
+                == vk::TRUE,
+            ray_traversal_primitive_culling: features.ray_traversal_primitive_culling == vk::TRUE,
+        }
+    }
+}
+
 /// Properties of the physical device for ray tracing.
 #[derive(Debug)]
 pub struct PhysicalDeviceRayTracePipelineProperties {
