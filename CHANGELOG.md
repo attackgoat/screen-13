@@ -15,6 +15,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - Enabled full set of Vulkan 1.1 and Vulkan 1.2 core features during device creation
+- Ray query support with `ray_omni.rs` example
 
 ### Changed
 
