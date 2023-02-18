@@ -2501,7 +2501,7 @@ impl Resolver {
         mut self,
         pool: &mut impl ResolverPool,
         queue_index: usize,
-    ) -> Result<(), DriverError> {
+    ) -> Result<Lease<CommandBuffer>, DriverError> {
         use std::slice::from_ref;
 
         trace!("submit");
@@ -2560,7 +2560,7 @@ impl Resolver {
         // has been signalled.
         CommandBuffer::push_fenced_drop(&mut cmd_buf, self);
 
-        Ok(())
+        Ok(cmd_buf)
     }
 
     pub(crate) fn unbind_node<N>(&mut self, node: N) -> <N as Edge<Self>>::Result

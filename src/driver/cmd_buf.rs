@@ -1,21 +1,22 @@
 use {
     super::{Device, DriverError},
     ash::vk,
-    log::{trace, warn},
+    log::{error, trace, warn},
     std::{fmt::Debug, ops::Deref, sync::Arc, thread::panicking},
 };
 
+/// Represents a Vulkan command buffer to which some work has been submitted.
 #[derive(Debug)]
 pub struct CommandBuffer {
     cmd_buf: vk::CommandBuffer,
-    pub device: Arc<Device>,
+    pub(crate) device: Arc<Device>,
     droppables: Vec<Box<dyn Debug + Send + 'static>>,
-    pub fence: vk::Fence, // Keeps state because everyone wants this
-    pub pool: vk::CommandPool,
+    pub(crate) fence: vk::Fence, // Keeps state because everyone wants this
+    pub(crate) pool: vk::CommandPool,
 }
 
 impl CommandBuffer {
-    pub fn create(device: &Arc<Device>, _: CommandBufferInfo) -> Result<Self, DriverError> {
+    pub(crate) fn create(device: &Arc<Device>, _: CommandBufferInfo) -> Result<Self, DriverError> {
         let device = Arc::clone(device);
         let cmd_pool_info = vk::CommandPoolCreateInfo::builder()
             .flags(vk::CommandPoolCreateFlags::empty())
@@ -75,9 +76,40 @@ impl CommandBuffer {
         this.droppables.clear();
     }
 
+    /// Returns `true` after the GPU has executed the previous submission to this command buffer.
+    ///
+    /// See [`Self::wait_until_executed`] to block while checking.
+    pub fn has_executed(&self) -> Result<bool, DriverError> {
+        let res = unsafe { self.device.get_fence_status(self.fence) };
+
+        match res {
+            Ok(status) => Ok(status),
+            Err(err) if err == vk::Result::ERROR_DEVICE_LOST => {
+                error!("Device lost");
+
+                Err(DriverError::InvalidData)
+            }
+            Err(err) => {
+                // VK_SUCCESS and VK_NOT_READY handled by get_fence_status in ash
+                // VK_ERROR_DEVICE_LOST already handled above, so no idea what happened
+                error!("{}", err);
+
+                Err(DriverError::InvalidData)
+            }
+        }
+    }
+
     /// Drops an item after execution has been completed
     pub(crate) fn push_fenced_drop(this: &mut Self, thing_to_drop: impl Debug + Send + 'static) {
         this.droppables.push(Box::new(thing_to_drop));
+    }
+
+    /// Stalls by blocking the current thread until the GPU has executed the previous submission to
+    /// this command buffer.
+    ///
+    /// See [`Self::has_executed`] to check without blocking.
+    pub fn wait_until_executed(&self) -> Result<(), DriverError> {
+        Device::wait_for_fence(&self.device, &self.fence)
     }
 }
 

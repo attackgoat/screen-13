@@ -7,7 +7,7 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 
 [dependencies]
-bytemuck = "1.12"
+bytemuck = "1.13"
 glam = { version = "0.22", features = ["bytemuck"] }
 pak = "0.0"
 pretty_env_logger = "0.4"

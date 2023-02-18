@@ -1,6 +1,6 @@
 use {
     super::{compile_shader_and_watch, create_watcher, shader::HotShader},
-    notify::INotifyWatcher,
+    notify::RecommendedWatcher,
     screen_13::prelude::*,
     std::sync::{
         atomic::{AtomicBool, Ordering},
@@ -14,7 +14,7 @@ pub struct HotComputePipeline {
     has_changes: Arc<AtomicBool>,
     instance: Arc<ComputePipeline>,
     shader: HotShader,
-    watcher: INotifyWatcher,
+    watcher: RecommendedWatcher,
 }
 
 impl HotComputePipeline {

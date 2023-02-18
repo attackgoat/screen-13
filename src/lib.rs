@@ -279,6 +279,8 @@ The data for vertex input is assumed to be per-vertex and bound to vertex buffer
 Add `_ibindX` for per-instance data, or the matching `_vbindX` for per-vertex data where `X` is
 replaced with the vertex buffer binding index in each case.
 
+See [`ShaderBuilder::vertex_input`].
+
 [`AccelerationStructureInfo`]: driver::accel_struct::AccelerationStructureInfo
 [`AccelerationStructure::create`]: driver::accel_struct::AccelerationStructure::create
 [`Buffer::create`]: driver::buffer::Buffer::create
@@ -298,6 +300,7 @@ replaced with the vertex buffer binding index in each case.
 [`RayTracePipeline::create`]: driver::ray_trace::RayTracePipeline::create
 [`RayTracePipelineInfo`]: driver::ray_trace::RayTracePipelineInfo
 [`RenderGraph`]: graph::RenderGraph
+[`ShaderBuilder::vertex_input`]: driver::shader::ShaderBuilder::vertex_input
 
 */
 
@@ -341,11 +344,13 @@ pub mod prelude {
                     RayTraceShaderGroup, RayTraceShaderGroupType,
                 },
                 shader::{Shader, ShaderBuilder, ShaderCode, SpecializationInfo},
-                AccessType, Device, Driver, DriverConfig, DriverConfigBuilder, DriverError,
-                FeatureFlags, PhysicalDevice, PhysicalDeviceAccelerationStructureProperties,
+                AccessType, CommandBuffer, Device, Driver, DriverConfig, DriverConfigBuilder,
+                DriverError, FeatureFlags, PhysicalDevice,
+                PhysicalDeviceAccelerationStructureProperties,
                 PhysicalDeviceDescriptorIndexingFeatures, PhysicalDeviceRayQueryFeatures,
                 PhysicalDeviceRayTracePipelineProperties, PhysicalDeviceRayTracingPipelineFeatures,
-                PhysicalDeviceVulkan11Features, PhysicalDeviceVulkan12Features, ResolveMode,
+                PhysicalDeviceVulkan11Features, PhysicalDeviceVulkan11Properties,
+                PhysicalDeviceVulkan12Features, PhysicalDeviceVulkan12Properties, ResolveMode,
             },
             event_loop::{EventLoop, EventLoopBuilder, FullscreenMode},
             frame::{center_cursor, set_cursor_position, FrameContext},
