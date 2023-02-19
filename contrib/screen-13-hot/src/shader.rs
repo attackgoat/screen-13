@@ -23,6 +23,10 @@ pub struct HotShader {
     #[builder(default = "\"main\".to_owned()")]
     pub entry_name: String,
 
+    /// Macro definitions.
+    #[builder(default, setter(strip_option))]
+    pub macro_definitions: Option<Vec<(String, Option<String>)>>,
+
     /// Sets the optimization level.
     #[builder(default, setter(strip_option))]
     pub optimization_level: Option<OptimizationLevel>,
@@ -251,6 +255,12 @@ impl HotShader {
 
             DriverError::Unsupported
         })?;
+
+        if let Some(macro_definitions) = &self.macro_definitions {
+            for (name, value) in macro_definitions {
+                additional_opts.add_macro_definition(name, value.as_deref());
+            }
+        }
 
         additional_opts.set_target_env(TargetEnv::Vulkan, EnvVersion::Vulkan1_2 as _);
 
