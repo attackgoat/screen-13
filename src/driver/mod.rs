@@ -820,9 +820,15 @@ impl DriverConfig {
 
     fn features(self) -> FeatureFlags {
         FeatureFlags {
-            presentation: true,
+            presentation: self.presentation,
             ray_tracing: self.ray_tracing,
         }
+    }
+}
+
+impl From<DriverConfigBuilder> for DriverConfig {
+    fn from(cfg: DriverConfigBuilder) -> Self {
+        cfg.build()
     }
 }
 

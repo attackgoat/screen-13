@@ -7,6 +7,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+### Fixed
+
+- Validation error related to `VK_KHR_surface` when using headless devices
+
 ### Added
 
 - `contrib/screen-13-hot`: Shader compilation macro definition support

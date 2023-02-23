@@ -19,7 +19,7 @@ use {
         collections::{HashMap, HashSet},
         ffi::CStr,
         fmt::{Debug, Formatter},
-        iter::{empty, repeat},
+        iter::repeat,
         mem::forget,
         ops::Deref,
         os::raw::c_char,
@@ -87,10 +87,18 @@ pub struct Device {
 
 impl Device {
     /// Constructs a new device using the given configuration.
-    pub fn new(cfg: DriverConfig) -> Result<Self, DriverError> {
+    pub fn new(cfg: impl Into<DriverConfig>) -> Result<Self, DriverError> {
+        let cfg = cfg.into();
+
         trace!("new {:?}", cfg);
 
-        let instance = Arc::new(Instance::new(cfg.debug, empty())?);
+        let mut instance_extensions = vec![];
+
+        if cfg.presentation {
+            instance_extensions.push(khr::Surface::name());
+        }
+
+        let instance = Arc::new(Instance::new(cfg.debug, instance_extensions.into_iter())?);
         let physical_device = Instance::physical_devices(&instance)?
             .filter(|physical_device| {
                 if cfg.ray_tracing && !PhysicalDevice::has_ray_tracing_support(physical_device) {
