@@ -30,6 +30,7 @@ use {
         pass_ref::{AttachmentIndex, Bindings, Descriptor, PassRef, SubresourceAccess, ViewType},
     },
     crate::driver::{
+        buffer::Buffer,
         buffer_copy_subresources, buffer_image_copy_subresource,
         compute::ComputePipeline,
         format_aspect_mask,
@@ -305,6 +306,7 @@ impl RenderGraph {
         self.blit_image_region(
             src_node,
             dst_node,
+            filter,
             &vk::ImageBlit {
                 src_subresource: vk::ImageSubresourceLayers {
                     aspect_mask: format_aspect_mask(src_info.fmt),
@@ -335,7 +337,6 @@ impl RenderGraph {
                     vk::Offset3D { x: 0, y: 0, z: 0 },
                 ],
             },
-            filter,
         )
     }
 
@@ -344,12 +345,12 @@ impl RenderGraph {
         &mut self,
         src_node: impl Into<AnyImageNode>,
         dst_node: impl Into<AnyImageNode>,
-        region: &vk::ImageBlit,
         filter: vk::Filter,
+        region: &vk::ImageBlit,
     ) -> &mut Self {
         use std::slice::from_ref;
 
-        self.blit_image_regions(src_node, dst_node, from_ref(region), filter)
+        self.blit_image_regions(src_node, dst_node, filter, from_ref(region))
     }
 
     /// Copy regions of an image, potentially performing format conversion.
@@ -357,8 +358,8 @@ impl RenderGraph {
         &mut self,
         src_node: impl Into<AnyImageNode>,
         dst_node: impl Into<AnyImageNode>,
-        regions: impl Into<Box<[vk::ImageBlit]>>,
         filter: vk::Filter,
+        regions: impl Into<Box<[vk::ImageBlit]>>,
     ) -> &mut Self {
         let src_node = src_node.into();
         let dst_node = dst_node.into();
@@ -820,6 +821,19 @@ impl RenderGraph {
         None
     }
 
+    /// Returns the device address of a buffer node.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the buffer is not currently bound or was not created with the
+    /// `SHADER_DEVICE_ADDRESS` usage flag.
+    pub fn node_device_address(&self, node: impl Into<AnyBufferNode>) -> vk::DeviceAddress {
+        let node: AnyBufferNode = node.into();
+        let buffer = self.bindings[node.index()].as_driver_buffer().unwrap();
+
+        Buffer::device_address(buffer)
+    }
+
     /// Returns information used to crate a node.
     pub fn node_info<N>(&self, node: N) -> <N as Information>::Info
     where
@@ -856,15 +870,15 @@ impl RenderGraph {
         buffer_node: impl Into<AnyBufferNode>,
         data: &'static [u8],
     ) -> &mut Self {
-        self.update_buffer_offset(buffer_node, data, 0)
+        self.update_buffer_offset(buffer_node, 0, data)
     }
 
     /// Note: `data` must not exceed 65536 bytes.
     pub fn update_buffer_offset(
         &mut self,
         buffer_node: impl Into<AnyBufferNode>,
-        data: &'static [u8],
         offset: vk::DeviceSize,
+        data: &'static [u8],
     ) -> &mut Self {
         let buffer_node = buffer_node.into();
         let buffer_info = self.node_info(buffer_node);

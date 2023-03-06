@@ -13,7 +13,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `RenderGraph::node_device_address` function
 - `contrib/screen-13-hot`: Shader compilation macro definition support
+
+### Changed
+
+- Re-ordered parameters of `RenderGraph` functions: `blit_image_region`, `blit_image_regions`, and
+  `update_buffer_offset`
 
 ## [0.8.1] - 2023-02-18
 
