@@ -412,7 +412,7 @@ impl EventLoopBuilder {
         // Create an operating system window via Winit
         let window = self
             .window
-            .with_visible(false)
+            //.with_visible(false)
             .build(&self.event_loop)
             .map_err(|err| {
                 warn!("{err}");

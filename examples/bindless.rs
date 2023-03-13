@@ -9,7 +9,6 @@ fn main() -> Result<(), DisplayError> {
     pretty_env_logger::init();
 
     let event_loop = EventLoop::new()
-        .debug(true)
         .window(|window| window.with_inner_size(LogicalSize::new(512, 512)))
         .build()?;
     let images = create_images(&event_loop.device)?;
@@ -135,7 +134,7 @@ fn create_graphic_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>,
                     layout(location = 0) out vec4 color_out;
 
                     void main() {
-                        color_out = texture(sampler_nnr[instance_index], vec2(0.5, 0.5));
+                        color_out = texture(sampler_nnr[nonuniformEXT(instance_index)], vec2(0.5, 0.5));
                     }
                     "#,
                     frag
