@@ -1,10 +1,17 @@
 use {
     bytemuck::{cast_slice, Pod, Zeroable},
+    half::f16,
     inline_spirv::inline_spirv,
     screen_13::prelude::*,
     std::{mem::size_of, sync::Arc},
 };
 
+/// This example draws two triangles using two different vertex formats.
+///
+/// All hardware should support 32 bit position values, so those are used without checking.
+///
+/// Most hardware will support 64 bit values, so we first check for support and if that fails
+/// we fall back to 16 bit values.
 fn main() -> Result<(), DisplayError> {
     pretty_env_logger::init();
 
@@ -13,81 +20,166 @@ fn main() -> Result<(), DisplayError> {
 
     let event_loop = EventLoop::new().build()?;
 
-    let automatic_layout_pipeline = create_automatic_layout_pipeline(&event_loop.device)?;
-    let manual_layout_pipeline = create_manual_layout_pipeline(&event_loop.device)?;
+    let f16_pipeline = create_f16_pipeline(&event_loop.device).ok();
+    let f16_vertex_buf = {
+        #[repr(C)]
+        #[derive(Clone, Copy, Pod, Zeroable)]
+        struct Vertex([f16; 2], [f32; 3]);
 
-    let f32_vertex_buf = Arc::new(Buffer::create_from_slice(
-        &event_loop.device,
-        vk::BufferUsageFlags::VERTEX_BUFFER,
-        cast_slice(&[
-            // Vertex 0
-            -1f32, -1.0, 1.0, 0.0, 0.0, // vec2 position + vec3 color
-            // Vertex 1
-            -1.0, 1.0, 0.0, 1.0, 0.0, // vec2 position + vec3 color
-            // Vertex 2
-            1.0, 1.0, 0.0, 0.0, 1.0, // vec2 position + vec3 color
-        ]),
-    )?);
+        let vec2 = |x, y| [f16::from_f32(x), f16::from_f32(y)];
 
-    #[repr(C)]
-    #[derive(Clone, Copy, Pod, Zeroable)]
-    struct Vertex64([f64; 2], [f32; 3], u32);
+        Arc::new(Buffer::create_from_slice(
+            &event_loop.device,
+            vk::BufferUsageFlags::VERTEX_BUFFER,
+            cast_slice(&[
+                Vertex(vec2(-1.0, -1.0), [1.0, 0.0, 0.0]),
+                Vertex(vec2(1.0, 1.0), [0.0, 0.0, 1.0]),
+                Vertex(vec2(1.0, -1.0), [0.0, 1.0, 0.0]),
+            ]),
+        )?)
+    };
 
-    let f64_vertex_buf = Arc::new(Buffer::create_from_slice(
-        &event_loop.device,
-        vk::BufferUsageFlags::VERTEX_BUFFER,
-        cast_slice(&[
-            Vertex64([-1.0, -1.0], [1.0, 0.0, 0.0], 0), // vec2 position + vec3 color + pad
-            Vertex64([1.0, 1.0], [0.0, 0.0, 1.0], 0),   // vec2 position + vec3 color + pad
-            Vertex64([1.0, -1.0], [0.0, 1.0, 0.0], 0),  // vec2 position + vec3 color + pad
-        ]),
-    )?);
+    let f32_pipeline = create_f32_pipeline(&event_loop.device)?;
+    let f32_vertex_buf = {
+        #[repr(C)]
+        #[derive(Clone, Copy, Pod, Zeroable)]
+        struct Vertex([f32; 2], [f32; 3]);
 
-    event_loop.run(|frame| {
-        let f32_vertex_buf = frame.render_graph.bind_node(&f32_vertex_buf);
-        let f64_vertex_buf = frame.render_graph.bind_node(&f64_vertex_buf);
+        Arc::new(Buffer::create_from_slice(
+            &event_loop.device,
+            vk::BufferUsageFlags::VERTEX_BUFFER,
+            cast_slice(&[
+                Vertex([-1f32, -1.0], [1.0, 0.0, 0.0]),
+                Vertex([-1.0, 1.0], [0.0, 1.0, 0.0]),
+                Vertex([1.0, 1.0], [0.0, 0.0, 1.0]),
+            ]),
+        )?)
+    };
 
-        frame
-            .render_graph
-            .begin_pass("Automatically-defined 32-bit vertex layout")
-            .bind_pipeline(&automatic_layout_pipeline)
-            .clear_color(0, frame.swapchain_image)
-            .store_color(0, frame.swapchain_image)
-            .access_node(f32_vertex_buf, AccessType::VertexBuffer)
-            .record_subpass(move |subpass, _| {
-                // Draw a triangle on the left/bottom
-                subpass.bind_vertex_buffer(f32_vertex_buf).draw(3, 1, 0, 0);
-            });
+    let f64_pipeline = create_f64_pipeline(&event_loop.device).ok();
+    let f64_vertex_buf = {
+        #[repr(C)]
+        #[derive(Clone, Copy, Pod, Zeroable)]
+        struct Vertex([f64; 2], [f32; 3], u32);
+
+        Arc::new(Buffer::create_from_slice(
+            &event_loop.device,
+            vk::BufferUsageFlags::VERTEX_BUFFER,
+            cast_slice(&[
+                Vertex([-1.0, -1.0], [1.0, 0.0, 0.0], 0),
+                Vertex([1.0, 1.0], [0.0, 0.0, 1.0], 0),
+                Vertex([1.0, -1.0], [0.0, 1.0, 0.0], 0),
+            ]),
+        )?)
+    };
+
+    event_loop.run(|mut frame| {
+        draw_triangle(&mut frame, &f32_pipeline, &f32_vertex_buf);
 
         // (Fun fact: Screen 13 turns these two passes into one renderpass with a second subpass!)
 
-        frame
-            .render_graph
-            .begin_pass("Manually-defined 64-bit vertex layout")
-            .bind_pipeline(&manual_layout_pipeline)
-            .store_color(0, frame.swapchain_image)
-            .access_node(f64_vertex_buf, AccessType::VertexBuffer)
-            .record_subpass(move |subpass, _| {
-                // Draw a triangle on the top/right
-                subpass.bind_vertex_buffer(f64_vertex_buf).draw(3, 1, 0, 0);
-            });
+        if let Some(f64_pipeline) = &f64_pipeline {
+            draw_triangle(&mut frame, f64_pipeline, &f64_vertex_buf);
+        } else if let Some(f16_pipeline) = &f16_pipeline {
+            draw_triangle(&mut frame, f16_pipeline, &f16_vertex_buf);
+        }
     })
 }
 
-fn assert_64bit_supported(device: &Arc<Device>) {
-    unsafe {
-        assert!(device
-            .instance
-            .get_physical_device_format_properties(
-                *device.physical_device,
-                vk::Format::R64G64_SFLOAT
-            )
-            .buffer_features
-            .contains(vk::FormatFeatureFlags::VERTEX_BUFFER));
-    }
+fn draw_triangle(
+    frame: &mut FrameContext,
+    pipeline: &Arc<GraphicPipeline>,
+    vertex_buf: &Arc<Buffer>,
+) {
+    let vertex_buf = frame.render_graph.bind_node(vertex_buf);
+
+    frame
+        .render_graph
+        .begin_pass("Triangle")
+        .bind_pipeline(pipeline)
+        .clear_color(0, frame.swapchain_image)
+        .store_color(0, frame.swapchain_image)
+        .access_node(vertex_buf, AccessType::VertexBuffer)
+        .record_subpass(move |subpass, _| {
+            subpass.bind_vertex_buffer(vertex_buf).draw(3, 1, 0, 0);
+        });
 }
 
-fn create_vertex_shader(is_f64: bool) -> ShaderBuilder {
+fn create_f16_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, DriverError> {
+    if !supports_vertex_buffer(device, vk::Format::R16G16_SFLOAT) {
+        return Err(DriverError::Unsupported);
+    }
+
+    const POSITION_SIZE: u32 = 2 * size_of::<f16>() as u32;
+    const COLOR_SIZE: u32 = 3 * size_of::<f32>() as u32;
+
+    let vertex = create_vertex_shader(false).vertex_input(
+        &[vk::VertexInputBindingDescription {
+            binding: 0,
+            stride: POSITION_SIZE + COLOR_SIZE,
+            input_rate: vk::VertexInputRate::VERTEX,
+        }],
+        &[
+            vk::VertexInputAttributeDescription {
+                binding: 0,
+                location: 0,
+                format: vk::Format::R16G16_SFLOAT,
+                offset: 0,
+            },
+            vk::VertexInputAttributeDescription {
+                binding: 0,
+                location: 1,
+                format: vk::Format::R32G32B32_SFLOAT,
+                offset: POSITION_SIZE,
+            },
+        ],
+    );
+
+    create_pipeline(device, vertex)
+}
+
+fn create_f32_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, DriverError> {
+    // Uses automatic vertex input layout
+    let vertex = create_vertex_shader(false);
+
+    create_pipeline(device, vertex)
+}
+
+fn create_f64_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, DriverError> {
+    if !supports_vertex_buffer(device, vk::Format::R64G64_SFLOAT) {
+        return Err(DriverError::Unsupported);
+    }
+
+    const POSITION_SIZE: u32 = 2 * size_of::<f64>() as u32;
+    const COLOR_SIZE: u32 = 3 * size_of::<f32>() as u32;
+    const PAD_SIZE: u32 = size_of::<u32>() as u32;
+
+    let vertex = create_vertex_shader(true).vertex_input(
+        &[vk::VertexInputBindingDescription {
+            binding: 0,
+            stride: POSITION_SIZE + COLOR_SIZE + PAD_SIZE,
+            input_rate: vk::VertexInputRate::VERTEX,
+        }],
+        &[
+            vk::VertexInputAttributeDescription {
+                binding: 0,
+                location: 0,
+                format: vk::Format::R64G64_SFLOAT,
+                offset: 0,
+            },
+            vk::VertexInputAttributeDescription {
+                binding: 0,
+                location: 1,
+                format: vk::Format::R32G32B32_SFLOAT,
+                offset: POSITION_SIZE,
+            },
+        ],
+    );
+
+    create_pipeline(device, vertex)
+}
+
+fn create_vertex_shader(is_double: bool) -> ShaderBuilder {
     // From the specs: Input attributes which have three- or four-component 64-bit formats will
     // consume two consecutive locations
     //
@@ -119,55 +211,13 @@ fn create_vertex_shader(is_f64: bool) -> ShaderBuilder {
         )};
     }
 
-    let spirv = if is_f64 {
+    let spirv = if is_double {
         compile_vert!("dvec2").as_slice()
     } else {
         compile_vert!("vec2").as_slice()
     };
 
     Shader::new_vertex(spirv)
-}
-
-fn create_automatic_layout_pipeline(
-    device: &Arc<Device>,
-) -> Result<Arc<GraphicPipeline>, DriverError> {
-    let vertex = create_vertex_shader(false);
-
-    create_pipeline(device, vertex)
-}
-
-fn create_manual_layout_pipeline(
-    device: &Arc<Device>,
-) -> Result<Arc<GraphicPipeline>, DriverError> {
-    assert_64bit_supported(device);
-
-    let position_size = 2 * size_of::<f64>() as u32;
-    let color_size = 3 * size_of::<f32>() as u32;
-    let pad_size = size_of::<u32>() as u32;
-
-    let vertex = create_vertex_shader(true).vertex_input(
-        &[vk::VertexInputBindingDescription {
-            binding: 0,
-            stride: position_size + color_size + pad_size,
-            input_rate: vk::VertexInputRate::VERTEX,
-        }],
-        &[
-            vk::VertexInputAttributeDescription {
-                binding: 0,
-                location: 0,
-                format: vk::Format::R64G64_SFLOAT,
-                offset: 0,
-            },
-            vk::VertexInputAttributeDescription {
-                binding: 0,
-                location: 1,
-                format: vk::Format::R32G32B32_SFLOAT,
-                offset: position_size,
-            },
-        ],
-    );
-
-    create_pipeline(device, vertex)
 }
 
 fn create_pipeline(
@@ -194,4 +244,14 @@ fn create_pipeline(
         GraphicPipelineInfo::default(),
         [vertex, Shader::new_fragment(fragment_spirv.as_slice())],
     )?))
+}
+
+fn supports_vertex_buffer(device: &Device, format: vk::Format) -> bool {
+    unsafe {
+        device
+            .instance
+            .get_physical_device_format_properties(*device.physical_device, format)
+            .buffer_features
+            .contains(vk::FormatFeatureFlags::VERTEX_BUFFER)
+    }
 }
