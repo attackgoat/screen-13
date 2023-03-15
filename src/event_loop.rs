@@ -410,15 +410,16 @@ impl EventLoopBuilder {
         let cfg = self.driver_cfg.build();
 
         // Create an operating system window via Winit
-        let window = self
-            .window
-            //.with_visible(false)
-            .build(&self.event_loop)
-            .map_err(|err| {
-                warn!("{err}");
+        let window = self.window;
 
-                DriverError::Unsupported
-            })?;
+        #[cfg(not(target_os = "macos"))]
+        let window = window.with_visible(false);
+
+        let window = window.build(&self.event_loop).map_err(|err| {
+            warn!("{err}");
+
+            DriverError::Unsupported
+        })?;
         let (width, height) = {
             let inner_size = window.inner_size();
             (inner_size.width, inner_size.height)
