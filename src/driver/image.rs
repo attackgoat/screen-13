@@ -630,9 +630,11 @@ impl From<ImageViewInfo> for ImageSubresource {
                 ImageType::Cube
                 | ImageType::Texture1D
                 | ImageType::Texture2D
-                | ImageType::Texture3D => 1,
+                | ImageType::Texture3D => {
+                    info.array_layer_count.unwrap_or(vk::REMAINING_ARRAY_LAYERS)
+                }
                 ImageType::CubeArray | ImageType::TextureArray1D | ImageType::TextureArray2D => {
-                    info.array_layer_count.unwrap_or(1)
+                    info.array_layer_count.unwrap_or(vk::REMAINING_ARRAY_LAYERS)
                 }
             }),
             mip_level_count: info.mip_level_count,

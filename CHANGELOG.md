@@ -9,6 +9,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Incorrect handling of images with multiple array layers during render passes
 - Validation error related to `VK_KHR_surface` when using headless devices
 
 ### Added

@@ -2451,12 +2451,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             .color_attachments
             .insert(
                 attachment_idx,
-                Attachment {
-                    aspect_mask: image_view_info.aspect_mask,
-                    format: image_view_info.fmt,
-                    sample_count,
-                    target: node_idx,
-                },
+                Attachment::new(image_view_info, sample_count, node_idx),
             );
 
         debug_assert!(
@@ -2563,12 +2558,8 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             .execs
             .last_mut()
             .unwrap()
-            .depth_stencil_attachment = Some(Attachment {
-            aspect_mask: image_view_info.aspect_mask,
-            format: image_view_info.fmt,
-            sample_count,
-            target: node_idx,
-        });
+            .depth_stencil_attachment =
+            Some(Attachment::new(image_view_info, sample_count, node_idx));
 
         debug_assert!(
             Attachment::are_compatible(
@@ -2698,12 +2689,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             .insert(
                 attachment_idx,
                 (
-                    Attachment {
-                        aspect_mask: image_view_info.aspect_mask,
-                        format: image_view_info.fmt,
-                        sample_count,
-                        target: node_idx,
-                    },
+                    Attachment::new(image_view_info, sample_count, node_idx),
                     color,
                 ),
             );
@@ -2825,12 +2811,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             .last_mut()
             .unwrap()
             .depth_stencil_clear = Some((
-            Attachment {
-                aspect_mask: image_view_info.aspect_mask,
-                format: image_view_info.fmt,
-                sample_count,
-                target: node_idx,
-            },
+            Attachment::new(image_view_info, sample_count, node_idx),
             vk::ClearDepthStencilValue { depth, stencil },
         ));
 
@@ -2947,12 +2928,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             .color_loads
             .insert(
                 attachment_idx,
-                Attachment {
-                    aspect_mask: image_view_info.aspect_mask,
-                    format: image_view_info.fmt,
-                    sample_count,
-                    target: node_idx,
-                },
+                Attachment::new(image_view_info, sample_count, node_idx),
             );
 
         debug_assert!(
@@ -3059,12 +3035,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             .execs
             .last_mut()
             .unwrap()
-            .depth_stencil_load = Some(Attachment {
-            aspect_mask: image_view_info.aspect_mask,
-            format: image_view_info.fmt,
-            sample_count,
-            target: node_idx,
-        });
+            .depth_stencil_load = Some(Attachment::new(image_view_info, sample_count, node_idx));
 
         debug_assert!(
             Attachment::are_compatible(
@@ -3195,12 +3166,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             .insert(
                 dst_attachment_idx,
                 (
-                    Attachment {
-                        aspect_mask: image_view_info.aspect_mask,
-                        format: image_view_info.fmt,
-                        sample_count,
-                        target: node_idx,
-                    },
+                    Attachment::new(image_view_info, sample_count, node_idx),
                     src_attachment_idx,
                 ),
             );
@@ -3325,12 +3291,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             .last_mut()
             .unwrap()
             .depth_stencil_resolve = Some((
-            Attachment {
-                aspect_mask: image_view_info.aspect_mask,
-                format: image_view_info.fmt,
-                sample_count,
-                target: node_idx,
-            },
+            Attachment::new(image_view_info, sample_count, node_idx),
             dst_attachment_idx,
             depth_mode,
             stencil_mode,
@@ -3428,12 +3389,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             .color_stores
             .insert(
                 attachment_idx,
-                Attachment {
-                    aspect_mask: image_view_info.aspect_mask,
-                    format: image_view_info.fmt,
-                    sample_count,
-                    target: node_idx,
-                },
+                Attachment::new(image_view_info, sample_count, node_idx),
             );
 
         debug_assert!(
@@ -3540,12 +3496,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             .execs
             .last_mut()
             .unwrap()
-            .depth_stencil_store = Some(Attachment {
-            aspect_mask: image_view_info.aspect_mask,
-            format: image_view_info.fmt,
-            sample_count,
-            target: node_idx,
-        });
+            .depth_stencil_store = Some(Attachment::new(image_view_info, sample_count, node_idx));
 
         debug_assert!(
             Attachment::are_compatible(

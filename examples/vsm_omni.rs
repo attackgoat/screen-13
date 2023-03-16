@@ -279,12 +279,12 @@ fn main() -> anyhow::Result<()> {
 
                     let mut light = light;
                     light.view = match array_layer {
-                        0 => Mat4::look_at_rh(light.position, light.position + Vec3::X, Vec3::Y),
-                        1 => Mat4::look_at_rh(light.position, light.position - Vec3::X, Vec3::Y),
-                        2 => Mat4::look_at_rh(light.position, light.position + Vec3::Y, Vec3::Y),
-                        3 => Mat4::look_at_rh(light.position, light.position - Vec3::Y, Vec3::Y),
-                        4 => Mat4::look_at_rh(light.position, light.position + Vec3::Z, Vec3::Y),
-                        _ => Mat4::look_at_rh(light.position, light.position - Vec3::Z, Vec3::Y),
+                        0 => Mat4::look_at_rh(light.position, light.position + Vec3::X, -Vec3::Y),
+                        1 => Mat4::look_at_rh(light.position, light.position - Vec3::X, -Vec3::Y),
+                        2 => Mat4::look_at_rh(light.position, light.position + Vec3::Y, Vec3::Z),
+                        3 => Mat4::look_at_rh(light.position, light.position - Vec3::Y, -Vec3::Z),
+                        4 => Mat4::look_at_rh(light.position, light.position + Vec3::Z, -Vec3::Y),
+                        _ => Mat4::look_at_rh(light.position, light.position - Vec3::Z, -Vec3::Y),
                     };
 
                     let light_uniform_buf = frame
