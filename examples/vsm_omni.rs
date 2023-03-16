@@ -17,6 +17,7 @@ const BLUR_PASSES: usize = 2;
 const BLUR_RADIUS: u32 = 2;
 const CUBEMAP_SIZE: u32 = 512;
 const SHADOW_BIAS: f32 = 0.3;
+const USE_GEOMETRY_SHADER: bool = true;
 
 /// Adapted from https://github.com/sydneyzh/variance_shadow_mapping_vk
 ///
@@ -43,19 +44,24 @@ fn main() -> anyhow::Result<()> {
         .window(|window| window.with_inner_size(LogicalSize::new(800, 600)))
         .build()?;
 
+    // We may use a geometry shader on supported devices
+    let use_geometry_shader = {
+        let PhysicalDeviceVulkan10Features {
+            geometry_shader, ..
+        } = event_loop.device.vulkan_1_0_features;
+        USE_GEOMETRY_SHADER && geometry_shader
+    };
+
     // Load all the immutable graphics data we will need
     let cubemap_format = best_2d_optimal_format(
         &event_loop.device,
         &[
             vk::Format::R32G32_SFLOAT,
             vk::Format::R16G16_SFLOAT,
-            vk::Format::R64G64_SFLOAT,
             vk::Format::R32G32B32_SFLOAT,
             vk::Format::R16G16B16_SFLOAT,
-            vk::Format::R64G64B64_SFLOAT,
             vk::Format::R32G32B32A32_SFLOAT,
             vk::Format::R16G16B16A16_SFLOAT,
-            vk::Format::R64G64B64A64_SFLOAT,
         ],
         vk::ImageUsageFlags::COLOR_ATTACHMENT
             | vk::ImageUsageFlags::SAMPLED
@@ -76,7 +82,11 @@ fn main() -> anyhow::Result<()> {
     let blur_x_pipeline = create_blur_x_pipeline(&event_loop.device)?;
     let blur_y_pipeline = create_blur_y_pipeline(&event_loop.device)?;
     let mesh_pipeline = create_mesh_pipeline(&event_loop.device)?;
-    let shadow_pipeline = create_shadow_pipeline(&event_loop.device)?;
+    let shadow_pipeline = if use_geometry_shader {
+        create_shadow_pipeline_with_geometry_shader(&event_loop.device)
+    } else {
+        create_shadow_pipeline(&event_loop.device)
+    }?;
 
     // A pool will be used for per-frame resources
     let mut pool = LazyPool::new(&event_loop.device);
@@ -182,12 +192,12 @@ fn main() -> anyhow::Result<()> {
             .bind_node(pool.lease(shadow_faces_info).unwrap());
 
         // Lastly we lease and bind depth images needed for rendering
-        let depth_cube = frame.render_graph.bind_node(
+        let shadow_depth_image = frame.render_graph.bind_node(
             pool.lease(ImageInfo::new_2d_array(
                 depth_format,
                 frame.width,
                 frame.height,
-                6,
+                if use_geometry_shader { 6 } else { 1 },
                 vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
             ))
             .unwrap(),
@@ -236,30 +246,86 @@ fn main() -> anyhow::Result<()> {
                 });
         } else {
             // Render the omni light point of view into the six-layer image we leased above
-            frame
-                .render_graph
-                .begin_pass("Shadow")
-                .bind_pipeline(&shadow_pipeline)
-                .set_depth_stencil(DepthStencilMode::DEPTH_WRITE)
-                .access_descriptor(0, light_uniform_buf, AccessType::AnyShaderReadUniformBuffer)
-                .access_node(model_shadow_index_buf, AccessType::IndexBuffer)
-                .access_node(model_shadow_vertex_buf, AccessType::VertexBuffer)
-                .access_node(cube_shadow_index_buf, AccessType::IndexBuffer)
-                .access_node(cube_shadow_vertex_buf, AccessType::VertexBuffer)
-                .clear_color_value(0, shadow_faces_node, [light.range, light.range, 0.0, 0.0])
-                .store_color(0, shadow_faces_node)
-                .clear_depth_stencil(depth_cube)
-                .record_subpass(move |subpass, _| {
-                    subpass
-                        .bind_index_buffer(model_shadow_index_buf, vk::IndexType::UINT32)
-                        .bind_vertex_buffer(model_shadow_vertex_buf)
-                        .push_constants(cast_slice(&model_transform))
-                        .draw_indexed(model_shadow.index_count, 1, 0, 0, 0)
-                        .bind_index_buffer(cube_shadow_index_buf, vk::IndexType::UINT32)
-                        .bind_vertex_buffer(cube_shadow_vertex_buf)
-                        .push_constants(cast_slice(&cube_transform))
-                        .draw_indexed(cube_shadow.index_count, 1, 0, 0, 0);
-                });
+            if use_geometry_shader {
+                frame
+                    .render_graph
+                    .begin_pass("Shadow (Using geometry shader)")
+                    .bind_pipeline(&shadow_pipeline)
+                    .set_depth_stencil(DepthStencilMode::DEPTH_WRITE)
+                    .access_descriptor(0, light_uniform_buf, AccessType::AnyShaderReadUniformBuffer)
+                    .access_node(model_shadow_index_buf, AccessType::IndexBuffer)
+                    .access_node(model_shadow_vertex_buf, AccessType::VertexBuffer)
+                    .access_node(cube_shadow_index_buf, AccessType::IndexBuffer)
+                    .access_node(cube_shadow_vertex_buf, AccessType::VertexBuffer)
+                    .clear_color_value(0, shadow_faces_node, [light.range, light.range, 0.0, 0.0])
+                    .store_color(0, shadow_faces_node)
+                    .clear_depth_stencil(shadow_depth_image)
+                    .record_subpass(move |subpass, _| {
+                        subpass
+                            .bind_index_buffer(model_shadow_index_buf, vk::IndexType::UINT32)
+                            .bind_vertex_buffer(model_shadow_vertex_buf)
+                            .push_constants(cast_slice(&model_transform))
+                            .draw_indexed(model_shadow.index_count, 1, 0, 0, 0)
+                            .bind_index_buffer(cube_shadow_index_buf, vk::IndexType::UINT32)
+                            .bind_vertex_buffer(cube_shadow_vertex_buf)
+                            .push_constants(cast_slice(&cube_transform))
+                            .draw_indexed(cube_shadow.index_count, 1, 0, 0, 0);
+                    });
+            } else {
+                for array_layer in 0..6 {
+                    let mut shadow_faces_view_info = shadow_faces_info.default_view_info();
+                    shadow_faces_view_info.array_layer_count = Some(1);
+                    shadow_faces_view_info.base_array_layer = array_layer;
+
+                    let mut light = light;
+                    light.view = match array_layer {
+                        0 => Mat4::look_at_rh(light.position, light.position + Vec3::X, Vec3::Y),
+                        1 => Mat4::look_at_rh(light.position, light.position - Vec3::X, Vec3::Y),
+                        2 => Mat4::look_at_rh(light.position, light.position + Vec3::Y, Vec3::Y),
+                        3 => Mat4::look_at_rh(light.position, light.position - Vec3::Y, Vec3::Y),
+                        4 => Mat4::look_at_rh(light.position, light.position + Vec3::Z, Vec3::Y),
+                        _ => Mat4::look_at_rh(light.position, light.position - Vec3::Z, Vec3::Y),
+                    };
+
+                    let light_uniform_buf = frame
+                        .render_graph
+                        .bind_node(lease_uniform_buffer(&mut pool, &light).unwrap());
+
+                    frame
+                        .render_graph
+                        .begin_pass("Shadow")
+                        .bind_pipeline(&shadow_pipeline)
+                        .set_depth_stencil(DepthStencilMode::DEPTH_WRITE)
+                        .access_descriptor(
+                            0,
+                            light_uniform_buf,
+                            AccessType::AnyShaderReadUniformBuffer,
+                        )
+                        .access_node(model_shadow_index_buf, AccessType::IndexBuffer)
+                        .access_node(model_shadow_vertex_buf, AccessType::VertexBuffer)
+                        .access_node(cube_shadow_index_buf, AccessType::IndexBuffer)
+                        .access_node(cube_shadow_vertex_buf, AccessType::VertexBuffer)
+                        .clear_color_value_as(
+                            0,
+                            shadow_faces_node,
+                            [light.range, light.range, 0.0, 0.0],
+                            shadow_faces_view_info,
+                        )
+                        .store_color_as(0, shadow_faces_node, shadow_faces_view_info)
+                        .clear_depth_stencil(shadow_depth_image)
+                        .record_subpass(move |subpass, _| {
+                            subpass
+                                .bind_index_buffer(model_shadow_index_buf, vk::IndexType::UINT32)
+                                .bind_vertex_buffer(model_shadow_vertex_buf)
+                                .push_constants(cast_slice(&model_transform))
+                                .draw_indexed(model_shadow.index_count, 1, 0, 0, 0)
+                                .bind_index_buffer(cube_shadow_index_buf, vk::IndexType::UINT32)
+                                .bind_vertex_buffer(cube_shadow_vertex_buf)
+                                .push_constants(cast_slice(&cube_transform))
+                                .draw_indexed(cube_shadow.index_count, 1, 0, 0, 0);
+                        });
+                }
+            }
 
             if BLUR_RADIUS > 0 {
                 for _ in 0..BLUR_PASSES {
@@ -371,8 +437,8 @@ fn create_blur_x_pipeline(device: &Arc<Device>) -> Result<Arc<ComputePipeline>, 
         layout(constant_id = 0) const uint IMAGE_SIZE = 512;
         layout(constant_id = 1) const uint RADIUS = 4;
 
-        layout(set = 0, binding = 0, rg32f) restrict readonly uniform image2DArray image;
-        layout(set = 0, binding = 1, rg32f) restrict writeonly uniform image2DArray image_out;
+        layout(binding = 0, rg32f) restrict readonly uniform image2DArray image;
+        layout(binding = 1, rg32f) restrict writeonly uniform image2DArray image_out;
 
         ivec3 leading_face(uint x) {
             uint face = gl_GlobalInvocationID.z;
@@ -494,8 +560,8 @@ fn create_blur_y_pipeline(device: &Arc<Device>) -> Result<Arc<ComputePipeline>, 
         layout(constant_id = 0) const uint IMAGE_SIZE = 512;
         layout(constant_id = 1) const uint RADIUS = 4;
 
-        layout(set = 0, binding = 0, rg32f) restrict readonly uniform image2DArray image;
-        layout(set = 0, binding = 1, rg32f) restrict writeonly uniform image2DArray image_out;
+        layout(binding = 0, rg32f) restrict readonly uniform image2DArray image;
+        layout(binding = 1, rg32f) restrict writeonly uniform image2DArray image_out;
 
         ivec3 leading_face(uint y) {
             uint face = gl_GlobalInvocationID.z;
@@ -609,7 +675,7 @@ fn create_debug_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, D
             layout(offset = 0) mat4 model;
         } push_const;
 
-        layout(set = 0, binding = 0) uniform Camera {
+        layout(binding = 0) uniform Camera {
             mat4 view;
             mat4 projection;
         } camera;
@@ -632,10 +698,10 @@ fn create_debug_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, D
         r#"
         #version 450 core
 
-        layout(set = 0, binding = 1) uniform Light {
+        layout(binding = 1) uniform Light {
             vec3 position;
             float range;
-            mat4 view0;
+            mat4 view;
             mat4 projection;
         } light;
 
@@ -685,7 +751,7 @@ fn create_mesh_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, Dr
             layout(offset = 0) mat4 model;
         } push_const;
 
-        layout(set = 0, binding = 0) uniform Camera {
+        layout(binding = 0) uniform Camera {
             mat4 view;
             mat4 projection;
         } camera;
@@ -717,14 +783,14 @@ fn create_mesh_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, Dr
 
         layout(constant_id = 0) const float BIAS = 0.15;
 
-        layout(set = 0, binding = 1) uniform Light {
-            vec3 pos;
+        layout(binding = 1) uniform Light {
+            vec3 position;
             float range;
-            mat4 view0;
+            mat4 view;
             mat4 projection;
         } light;
 
-        layout(set = 0, binding = 2) uniform samplerCube shadow_map;
+        layout(binding = 2) uniform samplerCube shadow_map;
 
         layout(location = 0) in vec4 world_position;
         layout(location = 1) in vec3 world_normal;
@@ -755,7 +821,7 @@ fn create_mesh_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, Dr
         void main() {
             color_out = vec4(0.0, 0.0, 0.0, 1.0);
 
-            vec3 light_dir = light.pos - world_position.xyz;
+            vec3 light_dir = light.position - world_position.xyz;
             float light_dist = length(light_dir);
 
             if (light_dist < light.range) {
@@ -800,6 +866,77 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
         r#"
         #version 450 core
 
+        layout(push_constant) uniform PushConstants {
+            layout(offset = 0) mat4 model;
+        } push_const;
+
+        layout(binding = 0) uniform Light {
+            vec3 position;
+            float range;
+            mat4 view;
+            mat4 projection;
+        } light;
+
+        layout(location = 0) in vec3 position;
+
+        layout(location = 0) out vec3 world_position_out;
+
+        out gl_PerVertex {
+            vec4 gl_Position;
+        };
+
+        void main(void) {
+            vec4 world_position = push_const.model * vec4(position, 1.0);
+
+            gl_Position = light.projection * light.view * world_position;
+            world_position_out = world_position.xyz;
+        }
+        "#,
+        vert
+    );
+    let frag = inline_spirv!(
+        r#"
+        #version 450 core
+
+        layout(binding = 0) uniform Light {
+            vec3 position;
+            float range;
+            mat4 view;
+            mat4 projection;
+        } light;
+
+        layout(location = 0) in vec3 world_position;
+
+        layout(location = 0) out vec4 color_out;
+
+        void main() {
+            float dist = distance(world_position.xyz, light.position);
+            color_out.x = dist;
+            color_out.y = dist * dist;
+        }
+        "#,
+        frag
+    );
+
+    let info = GraphicPipelineInfo::default();
+
+    Ok(Arc::new(GraphicPipeline::create(
+        device,
+        info,
+        [
+            Shader::new_vertex(vert.as_slice()),
+            Shader::new_fragment(frag.as_slice()),
+        ],
+    )?))
+}
+
+fn create_shadow_pipeline_with_geometry_shader(
+    device: &Arc<Device>,
+) -> Result<Arc<GraphicPipeline>, DriverError> {
+    let vert = inline_spirv!(
+        r#"
+        #version 450 core
+
         #define TAN_HALF_FOVY 1.0 // tan(45deg)
         #define ASPECT_RATIO 1.0
         #define LIGHT_FRUSTUM_NEAR 0.1
@@ -812,14 +949,14 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
             layout(offset = 0) mat4 model;
         } push_const;
 
-        layout(set = 0, binding = 0) uniform Light {
-            vec3 pos;
+        layout(binding = 0) uniform Light {
+            vec3 position;
             float range;
-            mat4 view0;
+            mat4 view;
             mat4 projection;
         } light;
 
-        layout(location= 0) in vec3 position;
+        layout(location = 0) in vec3 position;
 
         layout(location = 0) out vec3 world_position_out;
         layout(location = 1) out uint layer_mask_out;
@@ -848,7 +985,7 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
             world_position_out = world_position.xyz;
 
             // posx
-            vec4 view0_pos = light.view0 * world_position;
+            vec4 view0_pos = light.view * world_position;
             view0_pos.x *= -1.0;
 
             // negx
@@ -893,10 +1030,10 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
             vec4 positions[6];
         };
 
-        layout(set = 0, binding = 0) uniform Light {
-            vec3 pos;
+        layout(binding = 0) uniform Light {
+            vec3 position;
             float range;
-            mat4 view0;
+            mat4 view;
             mat4 projection;
         } light;
 
@@ -905,8 +1042,7 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
         layout(location = 1) in uint layer_mask[];
         layout(location = 2) in ViewPositions view_positions[];
 
-        out gl_PerVertex
-        {
+        out gl_PerVertex {
             vec4 gl_Position;
         };
 
@@ -959,10 +1095,10 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
         r#"
         #version 450 core
 
-        layout(set = 0, binding = 0) uniform Light {
-            vec3 pos;
+        layout(binding = 0) uniform Light {
+            vec3 position;
             float range;
-            mat4 view0;
+            mat4 view;
             mat4 projection;
         } light;
 
@@ -971,7 +1107,7 @@ fn create_shadow_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, 
         layout(location = 0) out vec4 color_out;
 
         void main() {
-            float dist = distance(world_position.xyz, light.pos);
+            float dist = distance(world_position.xyz, light.position);
             color_out.x = dist;
             color_out.y = dist * dist;
         }
@@ -1026,7 +1162,7 @@ fn lease_uniform_buffer(
 }
 
 /// Returns vertices of a cube where the faces face inside
-fn load_cube_data() -> [([f32; 6]); 36] {
+fn load_cube_data() -> [[f32; 6]; 36] {
     const N: f32 = -1f32;
     const P: f32 = 1f32;
     const Z: f32 = 0f32;
@@ -1293,35 +1429,27 @@ fn load_model_shadow(device: &Arc<Device>, path: impl AsRef<Path>) -> anyhow::Re
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Pod, Zeroable)]
 struct Blur {
     image_size: u32,
     radius: u32,
 }
 
-unsafe impl Pod for Blur {}
-
-unsafe impl Zeroable for Blur {}
-
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Pod, Zeroable)]
 struct Camera {
     view: Mat4,
     projection: Mat4,
 }
 
-unsafe impl NoUninit for Camera {}
-
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Pod, Zeroable)]
 struct Light {
     position: Vec3,
     range: f32,
     view: Mat4,
     projection: Mat4,
 }
-
-unsafe impl NoUninit for Light {}
 
 struct Model {
     index_buf: Arc<Buffer>,

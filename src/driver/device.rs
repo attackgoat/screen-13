@@ -4,9 +4,9 @@ use {
         PhysicalDeviceAccelerationStructureProperties, PhysicalDeviceDepthStencilResolveProperties,
         PhysicalDeviceDescriptorIndexingFeatures, PhysicalDeviceRayQueryFeatures,
         PhysicalDeviceRayTracePipelineProperties, PhysicalDeviceRayTracingPipelineFeatures,
-        PhysicalDeviceVulkan11Features, PhysicalDeviceVulkan11Properties,
-        PhysicalDeviceVulkan12Features, PhysicalDeviceVulkan12Properties, Queue, SamplerDesc,
-        Surface,
+        PhysicalDeviceVulkan10Features, PhysicalDeviceVulkan11Features,
+        PhysicalDeviceVulkan11Properties, PhysicalDeviceVulkan12Features,
+        PhysicalDeviceVulkan12Properties, Queue, SamplerDesc, Surface,
     },
     ash::{extensions::khr, vk},
     gpu_allocator::{
@@ -71,6 +71,9 @@ pub struct Device {
 
     pub(super) surface_ext: Option<khr::Surface>,
     pub(super) swapchain_ext: Option<khr::Swapchain>,
+
+    /// Describes the features of the device which are part of the Vulkan 1.0 base feature set.
+    pub vulkan_1_0_features: PhysicalDeviceVulkan10Features,
 
     /// Describes the features of the device which are part of the Vulkan 1.1 base feature set.
     pub vulkan_1_1_features: PhysicalDeviceVulkan11Features,
@@ -401,6 +404,7 @@ impl Device {
                 (None, None)
             };
 
+            let vulkan_1_0_features = features2.features.into();
             let vulkan_1_1_features = vulkan_1_1_features.build().into();
             let vulkan_1_1_properties = vulkan_1_1_properties.into();
             let vulkan_1_2_features: PhysicalDeviceVulkan12Features =
@@ -427,6 +431,7 @@ impl Device {
                     ray_tracing_pipeline_properties,
                     surface_ext,
                     swapchain_ext,
+                    vulkan_1_0_features,
                     vulkan_1_1_features,
                     vulkan_1_1_properties,
                     vulkan_1_2_features,
