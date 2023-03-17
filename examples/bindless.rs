@@ -1,5 +1,5 @@
 use {
-    bytemuck::{cast_slice, NoUninit},
+    bytemuck::{cast_slice, Pod, Zeroable},
     inline_spirv::inline_spirv,
     screen_13::prelude::*,
     std::sync::Arc,
@@ -29,7 +29,8 @@ fn main() -> Result<(), DisplayError> {
             pass = pass.read_descriptor((0, [idx as u32]), image_node);
         }
 
-        pass.store_color(0, frame.swapchain_image)
+        pass.clear_color(0, frame.swapchain_image)
+            .store_color(0, frame.swapchain_image)
             .record_subpass(move |subpass, _| {
                 subpass.draw_indirect(draw_buf_node, 0, 64, 16);
             });
@@ -146,12 +147,10 @@ fn create_graphic_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>,
 }
 
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Pod, Zeroable)]
 struct DrawIndirectCommand {
     vertex_count: u32,
     instance_count: u32,
     first_vertex: u32,
     first_instance: u32,
 }
-
-unsafe impl NoUninit for DrawIndirectCommand {}
