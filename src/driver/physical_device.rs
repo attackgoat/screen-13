@@ -1,11 +1,9 @@
 use {
-    super::{Instance, Surface},
     ash::vk,
     std::{
         ffi::CStr,
         fmt::{Debug, Formatter},
         ops::Deref,
-        sync::Arc,
     },
 };
 
@@ -67,43 +65,38 @@ impl PhysicalDevice {
         }
     }
 
-    pub(super) fn has_presentation_support(
-        _this: &Self,
-        _instance: &Arc<Instance>,
-        _surface: &Surface,
-    ) -> bool {
-        // if let Ok(device) = Device::create(
-        //     instance,
-        //     this.clone(),
-        //     DriverConfig::new().presentation(true).build().unwrap(),
-        // ) {
-        //     this.queue_families
-        //         .iter()
-        //         .enumerate()
-        //         .any(|(queue_idx, info)| unsafe {
-        //             info.props.queue_flags.contains(vk::QueueFlags::GRAPHICS)
-        //                 && device
-        //                     .surface_ext
-        //                     .get_physical_device_surface_support(
-        //                         this.physical_device,
-        //                         queue_idx as _,
-        //                         **surface,
-        //                     )
-        //                     .ok()
-        //                     .unwrap_or_default()
-        //         })
-        // } else {
-        //     false
-        // }
+    // pub(super) fn has_presentation_support(
+    //     _this: &Self,
+    //     _instance: &Arc<Instance>,
+    //     _surface: &Surface,
+    // ) -> bool {
+    // if let Ok(device) = Device::create(
+    //     instance,
+    //     this.clone(),
+    //     DriverConfig::new().presentation(true).build().unwrap(),
+    // ) {
+    //     this.queue_families
+    //         .iter()
+    //         .enumerate()
+    //         .any(|(queue_idx, info)| unsafe {
+    //             info.props.queue_flags.contains(vk::QueueFlags::GRAPHICS)
+    //                 && device
+    //                     .surface_ext
+    //                     .get_physical_device_surface_support(
+    //                         this.physical_device,
+    //                         queue_idx as _,
+    //                         **surface,
+    //                     )
+    //                     .ok()
+    //                     .unwrap_or_default()
+    //         })
+    // } else {
+    //     false
+    // }
 
-        // TODO!
-        true
-    }
-
-    pub(super) fn has_ray_tracing_support(_this: &Self) -> bool {
-        // TODO!
-        true
-    }
+    // TODO!
+    // true
+    // }
 
     pub(super) fn queue_families(this: &Self) -> impl Iterator<Item = QueueFamily> + '_ {
         this.queue_families.iter().copied()

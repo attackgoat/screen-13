@@ -345,7 +345,7 @@ pub mod prelude {
                 },
                 shader::{Shader, ShaderBuilder, ShaderCode, SpecializationInfo},
                 AccessType, CommandBuffer, Device, Driver, DriverConfig, DriverConfigBuilder,
-                DriverError, PhysicalDevice, PhysicalDeviceAccelerationStructureProperties,
+                DriverError, PhysicalDeviceAccelerationStructureProperties,
                 PhysicalDeviceRayQueryFeatures, PhysicalDeviceRayTracePipelineProperties,
                 PhysicalDeviceRayTracingPipelineFeatures, PhysicalDeviceVulkan10Features,
                 PhysicalDeviceVulkan11Features, PhysicalDeviceVulkan11Properties,

@@ -15,6 +15,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - Expose all Vulkan 1.0 properties via `Device::vulkan_1_0_features`
+- `Device::get_format_properties` and `Device::get_image_format_properties` so user code may avoid
+  calling unsafe `ash` functions
 - `RenderGraph::node_device_address` function
 - `contrib/screen-13-hot`: Shader compilation macro definition support
 

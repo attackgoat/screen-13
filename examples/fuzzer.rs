@@ -50,7 +50,7 @@ fn main() -> Result<(), DisplayError> {
     let mut rng = thread_rng();
 
     // If ray tracing is unsupported then set that to false and remove the associated operations
-    let screen_13 = EventLoop::new().debug(true).ray_tracing(true).build()?;
+    let screen_13 = EventLoop::new().debug(true).build()?;
     let mut pool = HashPool::new(&screen_13.device);
 
     let mut frame_count = 0;
@@ -660,20 +660,15 @@ fn record_graphic_msaa_depth_stencil(frame: &mut FrameContext, pool: &mut HashPo
             vk::Format::D16_UNORM_S8_UINT,
             vk::Format::D32_SFLOAT_S8_UINT,
         ] {
-            let format_props = unsafe {
-                frame
-                    .device
-                    .instance
-                    .get_physical_device_image_format_properties(
-                        *frame.device.physical_device,
-                        format,
-                        vk::ImageType::TYPE_2D,
-                        vk::ImageTiling::OPTIMAL,
-                        vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
-                            | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
-                        vk::ImageCreateFlags::empty(),
-                    )
-            };
+            let format_props = Device::get_image_format_properties(
+                frame.device,
+                format,
+                vk::ImageType::TYPE_2D,
+                vk::ImageTiling::OPTIMAL,
+                vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
+                    | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
+                vk::ImageCreateFlags::empty(),
+            );
 
             if format_props.is_ok() {
                 best_format = Some(format);

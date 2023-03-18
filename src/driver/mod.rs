@@ -671,26 +671,7 @@ impl Driver {
                 .map(|ext| unsafe { CStr::from_ptr(*ext as *const _) });
         let instance = Arc::new(Instance::new(cfg.debug, required_extensions)?);
         let surface = Surface::new(&instance, display_window)?;
-        let physical_devices = Instance::physical_devices(&instance)?
-            .filter(|physical_device| {
-                // Filters this list down to only supported devices
-                if cfg.presentation
-                    && !PhysicalDevice::has_presentation_support(
-                        physical_device,
-                        &instance,
-                        &surface,
-                    )
-                {
-                    info!("{:?} lacks presentation support", unsafe {
-                        CStr::from_ptr(physical_device.props.device_name.as_ptr() as *const c_char)
-                    });
-
-                    return false;
-                }
-
-                true
-            })
-            .collect::<Vec<_>>();
+        let physical_devices = Instance::physical_devices(&instance)?.collect::<Vec<_>>();
 
         for physical_device in &physical_devices {
             debug!("supported: {:?}", physical_device);
@@ -709,8 +690,11 @@ impl Driver {
         let device = Arc::new(Device::create(&instance, physical_device, cfg)?);
         let surface_formats = Device::surface_formats(&device, &surface)?;
 
-        for fmt in &surface_formats {
-            debug!("surface: {:#?} ({:#?})", fmt.format, fmt.color_space);
+        for surface in &surface_formats {
+            debug!(
+                "surface: {:#?} ({:#?})",
+                surface.format, surface.color_space
+            );
         }
 
         // TODO: Explicitly fallback to BGRA_UNORM
@@ -781,12 +765,6 @@ pub struct DriverConfig {
     /// Turn on to eliminate visual tearing at the expense of latency.
     #[builder(default = "true")]
     pub sync_display: bool,
-
-    /// Used to select devices which support presentation to the display.
-    ///
-    /// The default value is `true`.
-    #[builder(default = "true")]
-    pub presentation: bool,
 }
 
 impl DriverConfig {

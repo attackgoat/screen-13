@@ -137,17 +137,15 @@ fn best_depth_stencil_format(device: &Device) -> vk::Format {
         vk::Format::D16_UNORM_S8_UINT,
         vk::Format::D32_SFLOAT_S8_UINT,
     ] {
-        let format_props = unsafe {
-            device.instance.get_physical_device_image_format_properties(
-                *device.physical_device,
-                format,
-                vk::ImageType::TYPE_2D,
-                vk::ImageTiling::OPTIMAL,
-                vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
-                    | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
-                vk::ImageCreateFlags::empty(),
-            )
-        };
+        let format_props = Device::get_image_format_properties(
+            device,
+            format,
+            vk::ImageType::TYPE_2D,
+            vk::ImageTiling::OPTIMAL,
+            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
+                | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
+            vk::ImageCreateFlags::empty(),
+        );
 
         if format_props.is_ok() {
             return format;

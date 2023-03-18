@@ -122,16 +122,14 @@ fn best_2d_optimal_format(
     flags: vk::ImageCreateFlags,
 ) -> vk::Format {
     for format in formats {
-        let format_props = unsafe {
-            device.instance.get_physical_device_image_format_properties(
-                *device.physical_device,
-                *format,
-                vk::ImageType::TYPE_2D,
-                vk::ImageTiling::OPTIMAL,
-                usage,
-                flags,
-            )
-        };
+        let format_props = Device::get_image_format_properties(
+            device,
+            *format,
+            vk::ImageType::TYPE_2D,
+            vk::ImageTiling::OPTIMAL,
+            usage,
+            flags,
+        );
 
         if format_props.is_ok() {
             return *format;

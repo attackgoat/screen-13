@@ -22,7 +22,7 @@ use {
         collections::{HashMap, HashSet},
         ffi::CStr,
         fmt::{Debug, Formatter},
-        iter::repeat,
+        iter::{empty, repeat},
         mem::forget,
         ops::Deref,
         sync::Arc,
@@ -48,7 +48,7 @@ pub struct Device {
     immutable_samplers: HashMap<SamplerDesc, vk::Sampler>,
 
     /// Vulkan instance pointer, which includes useful functions.
-    pub instance: Arc<Instance>,
+    pub(crate) instance: Arc<Instance>,
 
     /// The physical device, which contains useful property and limit data.
     pub physical_device: PhysicalDevice,
@@ -93,13 +93,7 @@ impl Device {
 
         trace!("new {:?}", cfg);
 
-        let mut instance_extensions = vec![];
-
-        if cfg.presentation {
-            instance_extensions.push(vk::KhrSurfaceFn::name());
-        }
-
-        let instance = Arc::new(Instance::new(cfg.debug, instance_extensions.into_iter())?);
+        let instance = Arc::new(Instance::new(cfg.debug, empty())?);
         let physical_device = Instance::physical_devices(&instance)?
             .collect::<Vec<_>>()
             .into_iter()
@@ -123,8 +117,6 @@ impl Device {
             get_physical_device_properties2,
             ..
         } = instance.fp_v1_1();
-
-        let enabled_ext_names;
 
         let accel_struct_ext;
         let ray_query_ext;
@@ -153,16 +145,31 @@ impl Device {
                 .map(|prop| CStr::from_ptr(prop.extension_name.as_ptr() as *const _))
                 .collect::<HashSet<_>>();
 
-            accel_struct_ext = supported_exts.contains(vk::KhrAccelerationStructureFn::name());
+            accel_struct_ext = supported_exts.contains(vk::KhrAccelerationStructureFn::name())
+                && supported_exts.contains(vk::KhrDeferredHostOperationsFn::name());
             ray_query_ext = supported_exts.contains(vk::KhrRayQueryFn::name());
             ray_tracing_pipeline_ext = supported_exts.contains(vk::KhrRayTracingPipelineFn::name());
             swapchain_ext = supported_exts.contains(vk::KhrSwapchainFn::name());
-
-            enabled_ext_names = supported_exts
-                .into_iter()
-                .map(|ext| ext.as_ptr())
-                .collect::<Box<_>>();
         };
+
+        let mut enabled_ext_names = vec![];
+
+        if accel_struct_ext {
+            enabled_ext_names.push(vk::KhrAccelerationStructureFn::name().as_ptr());
+            enabled_ext_names.push(vk::KhrDeferredHostOperationsFn::name().as_ptr());
+        }
+
+        if ray_query_ext {
+            enabled_ext_names.push(vk::KhrRayQueryFn::name().as_ptr());
+        }
+
+        if ray_tracing_pipeline_ext {
+            enabled_ext_names.push(vk::KhrRayTracingPipelineFn::name().as_ptr());
+        }
+
+        if swapchain_ext {
+            enabled_ext_names.push(vk::KhrSwapchainFn::name().as_ptr());
+        }
 
         let queue_family = PhysicalDevice::queue_families(&physical_device).find(|qf| {
             qf.props.queue_flags.contains(
@@ -194,11 +201,11 @@ impl Device {
         let mut vulkan_1_2_features = vk::PhysicalDeviceVulkan12Features::builder();
 
         let mut accel_struct_features =
-            accel_struct_ext.then(|| vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default());
+            accel_struct_ext.then(vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default);
         let mut ray_query_features =
-            ray_query_ext.then(|| vk::PhysicalDeviceRayQueryFeaturesKHR::default());
-        let mut ray_tracing_pipeline_features = ray_tracing_pipeline_ext
-            .then(|| vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default());
+            ray_query_ext.then(vk::PhysicalDeviceRayQueryFeaturesKHR::default);
+        let mut ray_tracing_pipeline_features =
+            ray_tracing_pipeline_ext.then(vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default);
 
         unsafe {
             let mut features = vk::PhysicalDeviceFeatures2::builder()
@@ -317,7 +324,7 @@ impl Device {
 
             let immutable_samplers = Self::create_immutable_samplers(&device)?;
 
-            let (surface_ext, swapchain_ext) = if cfg.presentation {
+            let (surface_ext, swapchain_ext) = if swapchain_ext {
                 (
                     Some(khr::Surface::new(&instance.entry, &instance)),
                     Some(khr::Swapchain::new(&instance, &device)),
@@ -325,7 +332,6 @@ impl Device {
             } else {
                 (None, None)
             };
-
             let accel_struct_ext =
                 accel_struct_ext.then(|| khr::AccelerationStructure::new(&instance, &device));
             let ray_tracing_pipeline_ext =
@@ -422,6 +428,43 @@ impl Device {
         }
 
         Ok(res)
+    }
+
+    /// Lists the physical device's format capabilities.
+    pub fn get_format_properties(this: &Self, format: vk::Format) -> vk::FormatProperties {
+        unsafe {
+            this.instance
+                .get_physical_device_format_properties(*this.physical_device, format)
+        }
+    }
+
+    /// Lists the physical device's image format capabilities.
+    pub fn get_image_format_properties(
+        this: &Self,
+        format: vk::Format,
+        ty: vk::ImageType,
+        tiling: vk::ImageTiling,
+        usage: vk::ImageUsageFlags,
+        flags: vk::ImageCreateFlags,
+    ) -> Result<vk::ImageFormatProperties, DriverError> {
+        unsafe {
+            match this.instance.get_physical_device_image_format_properties(
+                *this.physical_device,
+                format,
+                ty,
+                tiling,
+                usage,
+                flags,
+            ) {
+                Ok(properties) => Ok(properties),
+                Err(err) if err == vk::Result::ERROR_FORMAT_NOT_SUPPORTED => {
+                    error!("Format not supported");
+
+                    Err(DriverError::Unsupported)
+                }
+                _ => Err(DriverError::OutOfMemory),
+            }
+        }
     }
 
     pub(super) fn immutable_sampler(this: &Self, info: SamplerDesc) -> vk::Sampler {

@@ -91,7 +91,7 @@ impl Image {
     /// # Ok(()) }
     /// ```
     pub fn create(device: &Arc<Device>, info: impl Into<ImageInfo>) -> Result<Self, DriverError> {
-        let mut info: ImageInfo = info.into();
+        let info: ImageInfo = info.into();
 
         //trace!("create: {:?}", &info);
         trace!("create");
@@ -101,52 +101,6 @@ impl Image {
             "Unspecified image usage {:?}",
             info.usage
         );
-
-        if info.usage.contains(vk::ImageUsageFlags::COLOR_ATTACHMENT)
-            && !device
-                .physical_device
-                .props
-                .limits
-                .framebuffer_color_sample_counts
-                .contains(info.sample_count.into_vk())
-        {
-            info.sample_count = info
-                .sample_count
-                .compatible_items()
-                .find(|sample_count| {
-                    device
-                        .physical_device
-                        .props
-                        .limits
-                        .framebuffer_color_sample_counts
-                        .contains(sample_count.into_vk())
-                })
-                .unwrap();
-        }
-
-        if info
-            .usage
-            .contains(vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT)
-            && !device
-                .physical_device
-                .props
-                .limits
-                .framebuffer_depth_sample_counts
-                .contains(info.sample_count.into_vk())
-        {
-            info.sample_count = info
-                .sample_count
-                .compatible_items()
-                .find(|sample_count| {
-                    device
-                        .physical_device
-                        .props
-                        .limits
-                        .framebuffer_depth_sample_counts
-                        .contains(sample_count.into_vk())
-                })
-                .unwrap();
-        }
 
         let device = Arc::clone(device);
         let create_info = info.image_create_info();
@@ -848,10 +802,6 @@ pub enum SampleCount {
 }
 
 impl SampleCount {
-    fn compatible_items(self) -> impl Iterator<Item = Self> {
-        SampleCountCompatibilityIter(self)
-    }
-
     pub(super) fn into_vk(self) -> vk::SampleCountFlags {
         match self {
             Self::X1 => vk::SampleCountFlags::TYPE_1,
@@ -868,23 +818,5 @@ impl SampleCount {
 impl Default for SampleCount {
     fn default() -> Self {
         Self::X1
-    }
-}
-
-struct SampleCountCompatibilityIter(SampleCount);
-
-impl Iterator for SampleCountCompatibilityIter {
-    type Item = SampleCount;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        Some(match self.0 {
-            SampleCount::X1 => return None,
-            SampleCount::X2 => SampleCount::X1,
-            SampleCount::X4 => SampleCount::X2,
-            SampleCount::X8 => SampleCount::X4,
-            SampleCount::X16 => SampleCount::X8,
-            SampleCount::X32 => SampleCount::X16,
-            SampleCount::X64 => SampleCount::X32,
-        })
     }
 }
