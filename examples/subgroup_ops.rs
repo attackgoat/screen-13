@@ -28,30 +28,30 @@ use {
 fn main() -> Result<(), DriverError> {
     pretty_env_logger::init();
 
-    let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    let device = Arc::new(Device::new(DriverConfig::new())?);
+    let PhysicalDeviceVulkan11Properties {
+        subgroup_size,
+        subgroup_supported_operations,
+        ..
+    } = device.vulkan_1_1_properties;
 
-    assert!(device
-        .vulkan_1_1_properties
-        .subgroup_supported_operations
-        .contains(vk::SubgroupFeatureFlags::ARITHMETIC));
-    assert!(device
-        .vulkan_1_1_properties
-        .subgroup_supported_operations
-        .contains(vk::SubgroupFeatureFlags::BALLOT));
+    assert!(subgroup_supported_operations.contains(vk::SubgroupFeatureFlags::ARITHMETIC));
+    assert!(subgroup_supported_operations.contains(vk::SubgroupFeatureFlags::BALLOT));
 
-    // We run a number of different workgroup sizes to be sure it works, but generally
-    // Nvidia and Intel prefer a workgroup size of 32 and AMD prefers 64.
-    for num_subgroups in [1, 2, 4, 8, 16, 32] {
-        let workgroup_size = device.vulkan_1_1_properties.subgroup_size * num_subgroups;
+    let reduce_pipeline = create_reduce_pipeline(&device)?;
+    let excl_sum_pipeline = create_exclusive_sum_pipeline(&device)?;
 
-        for data_len in [32, 64, 128, 256, 512, 1024, 2048, 4096, 16384] {
-            // Provided data must always be at least a full workgroup
-            if data_len < workgroup_size {
-                continue;
-            }
-
-            exclusive_sum(&device, data_len, workgroup_size)?;
+    for data_len in [32, 64, 128, 256, 512, 1024, 2048, 4096, 16384, 32768, 65536] {
+        // Provided data must always be at least a full workgroup
+        if data_len < subgroup_size {
+            continue;
         }
+
+        let input_data = generate_input_data(data_len);
+        let output_data =
+            exclusive_sum(&device, &reduce_pipeline, &excl_sum_pipeline, &input_data)?;
+
+        assert_output_data(&input_data, &output_data);
     }
 
     Ok(())
@@ -59,82 +59,58 @@ fn main() -> Result<(), DriverError> {
 
 fn exclusive_sum(
     device: &Arc<Device>,
-    data_len: u32,
-    workgroup_size: u32,
-) -> Result<(), DriverError> {
-    let workgroup_size = workgroup_size.max(device.vulkan_1_1_properties.subgroup_size);
-    let num_subgroups = workgroup_size / device.vulkan_1_1_properties.subgroup_size;
-
-    assert_eq!(
-        data_len % device.vulkan_1_1_properties.subgroup_size,
-        0,
-        "Data must always be a multiple of subgroup size"
-    );
-
+    reduce_pipeline: &Arc<ComputePipeline>,
+    scan_pipeline: &Arc<ComputePipeline>,
+    input_data: &[u32],
+) -> Result<Vec<u32>, DriverError> {
     let mut render_graph = RenderGraph::new();
 
-    let input_data = generate_input_data(data_len);
-    let input_bytes = cast_slice(&input_data);
     let input_buf = render_graph.bind_node(Buffer::create_from_slice(
         &device,
         vk::BufferUsageFlags::STORAGE_BUFFER,
-        input_bytes,
+        cast_slice(input_data),
     )?);
 
-    let reduce_buf_len = (size_of::<u32>() as u32 * data_len / workgroup_size) as _;
-    let reduce_buf = render_graph.bind_node(Buffer::create(
+    let output_buf = render_graph.bind_node(Arc::new(Buffer::create(
         &device,
         BufferInfo::new_mappable(
-            reduce_buf_len,
-            vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
+            input_data.len() as vk::DeviceSize * size_of::<u32>() as vk::DeviceSize,
+            vk::BufferUsageFlags::STORAGE_BUFFER,
+        ),
+    )?));
+
+    let workgroup_count = input_data.len() as u32 / device.vulkan_1_1_properties.subgroup_size;
+    let reduce_count = workgroup_count - 1;
+    let workgroup_buf = render_graph.bind_node(Buffer::create(
+        device,
+        BufferInfo::new(
+            reduce_count.max(1) as vk::DeviceSize * size_of::<u32>() as vk::DeviceSize,
+            vk::BufferUsageFlags::STORAGE_BUFFER,
         ),
     )?);
 
-    let output_buf = render_graph.bind_node(Buffer::create(
-        &device,
-        BufferInfo::new_mappable(input_bytes.len() as _, vk::BufferUsageFlags::STORAGE_BUFFER),
-    )?);
-
-    // This implementation uses a hard-coded zero as the first entry in the reduction buffer, but
-    // this could be avoided with minor changes to the compute shader code
-    render_graph.fill_buffer_region(reduce_buf, 0, 0..size_of::<u32>() as _);
-
-    let excl_sum_group_count = data_len / workgroup_size;
-    let reduce_group_count = excl_sum_group_count - 1;
-
-    // We only need to reduce the data if there is more than one workgroup
-    if reduce_group_count > 0 {
+    if reduce_count > 0 {
         render_graph
-            .begin_pass("reduce")
-            .bind_pipeline(&create_reduce_pipeline(
-                &device,
-                workgroup_size,
-                num_subgroups,
-            ))
+            .begin_pass("exclusive sum reduce")
+            .bind_pipeline(reduce_pipeline)
             .read_descriptor(0, input_buf)
-            .write_descriptor(1, reduce_buf)
+            .write_descriptor(1, workgroup_buf)
             .record_compute(move |compute, _| {
-                compute.dispatch(reduce_group_count, 1, 1);
+                compute.dispatch(reduce_count, 1, 1);
             });
     }
 
-    // Run the exclusive sum algorithm
     render_graph
-        .begin_pass("exclusive sum")
-        .bind_pipeline(&create_exclusive_sum_pipeline(
-            &device,
-            workgroup_size,
-            num_subgroups,
-        ))
-        .read_descriptor(0, reduce_buf)
+        .begin_pass("exclusive sum scan")
+        .bind_pipeline(scan_pipeline)
+        .read_descriptor(0, workgroup_buf)
         .read_descriptor(1, input_buf)
         .write_descriptor(2, output_buf)
         .record_compute(move |compute, _| {
-            compute.dispatch(excl_sum_group_count, 1, 1);
+            compute.dispatch(workgroup_count, 1, 1);
         });
 
-    let reduce_buf = render_graph.unbind_node(reduce_buf);
-    let dst_buf = render_graph.unbind_node(output_buf);
+    let output_buf = render_graph.unbind_node(output_buf);
     let cmd_buf = render_graph
         .resolve()
         .submit(&mut HashPool::new(&device), 0)?;
@@ -142,12 +118,13 @@ fn exclusive_sum(
     let started = Instant::now();
     cmd_buf.wait_until_executed()?;
 
-    println!("Waited {}μs", (Instant::now() - started).as_micros());
+    println!(
+        "Waited {}μs (len={})",
+        (Instant::now() - started).as_micros(),
+        input_data.len()
+    );
 
-    assert_reduce_data(reduce_buf, &input_data, workgroup_size);
-    assert_output_data(dst_buf, &input_data);
-
-    Ok(())
+    Ok(cast_slice(Buffer::mapped_slice(&output_buf)).to_vec())
 }
 
 fn generate_input_data(data_len: u32) -> Vec<u32> {
@@ -159,191 +136,119 @@ fn generate_input_data(data_len: u32) -> Vec<u32> {
     data
 }
 
-fn assert_reduce_data(reduce_buf: Arc<Buffer>, data: &[u32], workgroup_size: u32) {
-    let reduce_data: &[u32] = cast_slice(Buffer::mapped_slice(&reduce_buf));
-
-    for workgroup_idx in 1..data.len() / workgroup_size as usize {
-        let mut sum = 0;
-
-        for idx in 0..workgroup_size as usize {
-            sum += data[idx + (workgroup_idx - 1) * workgroup_size as usize];
-        }
-
-        assert_eq!(
-            sum, reduce_data[workgroup_idx],
-            "workgroup total at {workgroup_idx} not equal"
-        );
-    }
-}
-
-fn assert_output_data(output_buf: Arc<Buffer>, data: &[u32]) {
-    let output_data: &[u32] = cast_slice(Buffer::mapped_slice(&output_buf));
+fn assert_output_data(input_data: &[u32], output_data: &[u32]) {
     let mut sum = 0;
 
-    for idx in 0..data.len() {
+    for idx in 0..input_data.len() {
         assert_eq!(sum, output_data[idx], "exclusive sum at {idx} not equal");
 
-        sum += data[idx];
+        sum += input_data[idx];
     }
 }
 
-fn create_reduce_pipeline(
-    device: &Arc<Device>,
-    workgroup_size: u32,
-    num_subgroups: u32,
-) -> Arc<ComputePipeline> {
-    macro_rules! compile_comp {
-        ($workgroup_size:literal) => {
+fn create_reduce_pipeline(device: &Arc<Device>) -> Result<Arc<ComputePipeline>, DriverError> {
+    Ok(Arc::new(ComputePipeline::create(
+        device,
+        ComputePipelineInfo::default(),
+        Shader::new_compute(
             inline_spirv!(
                 r#"
                 #version 460 core
+                #extension GL_EXT_shader_explicit_arithmetic_types_int32 : require
                 #extension GL_KHR_shader_subgroup_arithmetic : require
 
-                layout(local_size_x = WORKGROUP_SIZE, local_size_y = 1, local_size_z = 1) in;
-                layout(constant_id = 0) const int NUM_SUBGROUPS = 1;
-                
+                layout(local_size_x_id = 0, local_size_y = 1, local_size_z = 1) in;
+
                 layout(binding = 0) restrict readonly buffer InputBuffer {
-                    uint input_buf[];
+                    uint32_t input_buf[];
                 };
 
                 layout(binding = 1) restrict writeonly buffer WorkgroupBuffer {
-                    uint workgroup_buf[];
+                    uint32_t workgroup_buf[];
                 };
-                
-                shared uint subgroup_buf[NUM_SUBGROUPS];
-                
+
                 void main() {
-                    uint sum = subgroupAdd(input_buf[gl_GlobalInvocationID.x]);
+                    uint32_t sum = subgroupAdd(input_buf[gl_GlobalInvocationID.x]);
 
                     if (subgroupElect()) {
-                        subgroup_buf[gl_SubgroupID] = sum;
+                        workgroup_buf[gl_WorkGroupID.x] = sum;
                     }
-
-                    barrier();
-
-                    if (gl_SubgroupID == 0 && gl_SubgroupInvocationID < NUM_SUBGROUPS) {
-                        sum = subgroupAdd(subgroup_buf[gl_SubgroupInvocationID]);
-
-                        if (subgroupElect()) {
-                            workgroup_buf[gl_WorkGroupID.x + 1] = sum;
-                        }
-                    }
-                }"#,
+                }
+                "#,
                 comp,
                 vulkan1_2,
-                D WORKGROUP_SIZE = $workgroup_size,
-        )};
-    }
-
-    Arc::new(
-        ComputePipeline::create(
-            device,
-            ComputePipelineInfo::default(),
-            Shader::new_compute(match workgroup_size {
-                32 => compile_comp!("32").as_slice(),
-                64 => compile_comp!("64").as_slice(),
-                128 => compile_comp!("128").as_slice(),
-                256 => compile_comp!("256").as_slice(),
-                512 => compile_comp!("512").as_slice(),
-                1024 => compile_comp!("1024").as_slice(),
-                _ => unimplemented!(),
-            })
-            .specialization_info(SpecializationInfo {
-                data: num_subgroups.to_ne_bytes().to_vec(),
-                map_entries: vec![vk::SpecializationMapEntry {
-                    constant_id: 0,
-                    offset: 0,
-                    size: size_of::<u32>(),
-                }],
-            }),
+            )
+            .as_slice(),
         )
-        .unwrap(),
-    )
+        .specialization_info(SpecializationInfo {
+            data: device
+                .vulkan_1_1_properties
+                .subgroup_size
+                .to_ne_bytes()
+                .to_vec(),
+            map_entries: vec![vk::SpecializationMapEntry {
+                constant_id: 0,
+                offset: 0,
+                size: size_of::<u32>(),
+            }],
+        }),
+    )?))
 }
 
 fn create_exclusive_sum_pipeline(
     device: &Arc<Device>,
-    workgroup_size: u32,
-    num_subgroups: u32,
-) -> Arc<ComputePipeline> {
-    macro_rules! compile_comp {
-        ($workgroup_size:literal) => {
-            inline_spirv!(
-                r#"
-                #version 460 core
-                #extension GL_KHR_shader_subgroup_arithmetic : require
-                #extension GL_KHR_shader_subgroup_ballot : require
-
-                layout(local_size_x = WORKGROUP_SIZE, local_size_y = 1, local_size_z = 1) in;
-                layout(constant_id = 0) const int NUM_SUBGROUPS = 1;
-                
-                layout(binding = 0) restrict readonly buffer WorkgroupBuffer {
-                    uint workgroup_buf[];
-                };
-
-                layout(binding = 1) restrict readonly buffer InputBuffer {
-                    uint input_buf[];
-                };
-
-                layout(binding = 2) restrict writeonly buffer OutputBuffer {
-                    uint output_buf[];
-                };
-                
-                shared uint subgroup_buf[NUM_SUBGROUPS];
-                
-                void main() {
-                    uint subgroup_value = input_buf[gl_GlobalInvocationID.x];
-                    uint subgroup_sum = subgroupExclusiveAdd(subgroup_value);
-
-                    if (gl_SubgroupInvocationID == gl_SubgroupSize - 1) {
-                        subgroup_buf[gl_SubgroupID] = subgroup_sum + subgroup_value;
-                    }
-
-                    barrier();
-
-                    uint workgroup_sum = 0;
-
-                    if (subgroupElect()) {
-                        for (uint subgroup_id = 0; subgroup_id < gl_SubgroupID; subgroup_id++) {
-                            workgroup_sum += subgroup_buf[subgroup_id];
-                        }
-
-                        for (uint workgroup_id = 1; workgroup_id <= gl_WorkGroupID.x; workgroup_id++) {
-                            workgroup_sum += workgroup_buf[workgroup_id];
-                        }
-                    }
-
-                    workgroup_sum = subgroupBroadcastFirst(workgroup_sum);
-                    output_buf[gl_GlobalInvocationID.x] = subgroup_sum + workgroup_sum;
-                }"#,
-                comp,
-                vulkan1_2,
-                D WORKGROUP_SIZE = $workgroup_size,
-        )};
-    }
-
-    Arc::new(
+) -> Result<Arc<ComputePipeline>, DriverError> {
+    Ok( Arc::new(
         ComputePipeline::create(
             device,
             ComputePipelineInfo::default(),
-            Shader::new_compute(match workgroup_size {
-                32 => compile_comp!("32").as_slice(),
-                64 => compile_comp!("64").as_slice(),
-                128 => compile_comp!("128").as_slice(),
-                256 => compile_comp!("256").as_slice(),
-                512 => compile_comp!("512").as_slice(),
-                1024 => compile_comp!("1024").as_slice(),
-                _ => unimplemented!(),
-            })
+            Shader::new_compute(inline_spirv!(
+                r#"
+                #version 460 core
+                #extension GL_EXT_shader_explicit_arithmetic_types_int32 : require
+                #extension GL_KHR_shader_subgroup_arithmetic : require
+
+                layout(local_size_x_id = 0, local_size_y = 1, local_size_z = 1) in;
+
+                layout(binding = 0) restrict readonly buffer WorkgroupBuffer {
+                    uint32_t workgroup_buf[];
+                };
+
+                layout(binding = 1) restrict readonly buffer InputBuffer {
+                    uint32_t input_buf[];
+                };
+
+                layout(binding = 2) restrict writeonly buffer OutputBuffer {
+                    uint32_t output_buf[];
+                };
+
+                void main() {
+                    uint32_t subgroup_sum = subgroupExclusiveAdd(input_buf[gl_GlobalInvocationID.x]);
+                    uint32_t workgroup_sum = 0;
+
+                    uint workgroups_per_subgroup_invocation = (gl_NumWorkGroups.x + gl_SubgroupSize - 1) / gl_SubgroupSize;
+                    uint start = gl_SubgroupInvocationID * workgroups_per_subgroup_invocation;
+                    uint end = min(start + workgroups_per_subgroup_invocation, gl_WorkGroupID.x);
+                    for (uint workgroup_id = start; workgroup_id < end; workgroup_id++) {
+                        workgroup_sum += workgroup_buf[workgroup_id];
+                    }
+
+                    workgroup_sum = subgroupAdd(workgroup_sum);
+
+                    output_buf[gl_GlobalInvocationID.x] = subgroup_sum + workgroup_sum;
+                }
+                "#,
+                comp,
+                vulkan1_2
+        ).as_slice())
             .specialization_info(SpecializationInfo {
-                data: num_subgroups.to_ne_bytes().to_vec(),
+                data: device.vulkan_1_1_properties.subgroup_size.to_ne_bytes().to_vec(),
                 map_entries: vec![vk::SpecializationMapEntry {
                     constant_id: 0,
                     offset: 0,
                     size: size_of::<u32>(),
                 }],
             }),
-        )
-        .unwrap(),
-    )
+        )?
+    ))
 }

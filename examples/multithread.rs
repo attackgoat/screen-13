@@ -132,6 +132,7 @@ fn main() -> anyhow::Result<()> {
             frame.render_graph.blit_image_region(
                 image,
                 frame.swapchain_image,
+                vk::Filter::NEAREST,
                 &vk::ImageBlit {
                     src_subresource: COLOR_SUBRESOURCE_LAYER,
                     src_offsets: [
@@ -152,7 +153,6 @@ fn main() -> anyhow::Result<()> {
                         },
                     ],
                 },
-                vk::Filter::NEAREST,
             );
         }
 

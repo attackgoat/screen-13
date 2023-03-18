@@ -325,18 +325,18 @@ impl Resolver {
                     attachment_image.usage = image.info.usage;
                     attachment_image.width = image.info.width;
                     attachment_image.height = image.info.height;
-                    attachment_image.layer_count = image.info.array_elements;
+                    attachment_image.layer_count = attachment.array_layer_count;
                     attachment_image.view_formats.insert(idx, attachment.format);
 
                     image_views[*attachment_idx as usize] = Image::view(
                         image,
                         ImageViewInfo {
-                            array_layer_count: Some(image.info.array_elements),
+                            array_layer_count: Some(attachment.array_layer_count),
                             aspect_mask: attachment.aspect_mask,
-                            base_array_layer: 0,
-                            base_mip_level: 0,
+                            base_array_layer: attachment.base_array_layer,
+                            base_mip_level: attachment.base_mip_level,
                             fmt: attachment.format,
-                            mip_level_count: Some(1),
+                            mip_level_count: Some(attachment.mip_level_count),
                             ty: image.info.ty,
                         },
                     )?;
@@ -365,18 +365,18 @@ impl Resolver {
                     attachment_image.usage = image.info.usage;
                     attachment_image.width = image.info.width;
                     attachment_image.height = image.info.height;
-                    attachment_image.layer_count = image.info.array_elements;
+                    attachment_image.layer_count = attachment.array_layer_count;
                     attachment_image.view_formats.insert(idx, attachment.format);
 
                     image_views[*attachment_idx as usize] = Image::view(
                         image,
                         ImageViewInfo {
-                            array_layer_count: Some(image.info.array_elements),
+                            array_layer_count: Some(attachment.array_layer_count),
                             aspect_mask: attachment.aspect_mask,
-                            base_array_layer: 0,
-                            base_mip_level: 0,
+                            base_array_layer: attachment.base_array_layer,
+                            base_mip_level: attachment.base_mip_level,
                             fmt: attachment.format,
-                            mip_level_count: Some(1),
+                            mip_level_count: Some(attachment.mip_level_count),
                             ty: image.info.ty,
                         },
                     )?;
@@ -403,18 +403,18 @@ impl Resolver {
                     attachment_image.usage = image.info.usage;
                     attachment_image.width = image.info.width;
                     attachment_image.height = image.info.height;
-                    attachment_image.layer_count = image.info.array_elements;
+                    attachment_image.layer_count = attachment.array_layer_count;
                     attachment_image.view_formats.insert(idx, attachment.format);
 
                     image_views[attachment_idx] = Image::view(
                         image,
                         ImageViewInfo {
-                            array_layer_count: Some(image.info.array_elements),
+                            array_layer_count: Some(attachment.array_layer_count),
                             aspect_mask: attachment.aspect_mask,
-                            base_array_layer: 0,
-                            base_mip_level: 0,
+                            base_array_layer: attachment.base_array_layer,
+                            base_mip_level: attachment.base_mip_level,
                             fmt: attachment.format,
-                            mip_level_count: Some(1),
+                            mip_level_count: Some(attachment.mip_level_count),
                             ty: image.info.ty,
                         },
                     )?;
@@ -441,18 +441,18 @@ impl Resolver {
                     attachment_image.usage = image.info.usage;
                     attachment_image.width = image.info.width;
                     attachment_image.height = image.info.height;
-                    attachment_image.layer_count = image.info.array_elements;
+                    attachment_image.layer_count = attachment.array_layer_count;
                     attachment_image.view_formats.insert(idx, attachment.format);
 
                     image_views[attachment_idx] = Image::view(
                         image,
                         ImageViewInfo {
-                            array_layer_count: Some(image.info.array_elements),
+                            array_layer_count: Some(attachment.array_layer_count),
                             aspect_mask: attachment.aspect_mask,
-                            base_array_layer: 0,
-                            base_mip_level: 0,
+                            base_array_layer: attachment.base_array_layer,
+                            base_mip_level: attachment.base_mip_level,
                             fmt: attachment.format,
-                            mip_level_count: Some(1),
+                            mip_level_count: Some(attachment.mip_level_count),
                             ty: image.info.ty,
                         },
                     )?;
@@ -477,18 +477,18 @@ impl Resolver {
                     attachment_image.usage = image.info.usage;
                     attachment_image.width = image.info.width;
                     attachment_image.height = image.info.height;
-                    attachment_image.layer_count = image.info.array_elements;
+                    attachment_image.layer_count = attachment.array_layer_count;
                     attachment_image.view_formats.insert(idx, attachment.format);
 
                     image_views[attachment_idx] = Image::view(
                         image,
                         ImageViewInfo {
-                            array_layer_count: Some(image.info.array_elements),
+                            array_layer_count: Some(attachment.array_layer_count),
                             aspect_mask: attachment.aspect_mask,
-                            base_array_layer: 0,
-                            base_mip_level: 0,
+                            base_array_layer: attachment.base_array_layer,
+                            base_mip_level: attachment.base_mip_level,
                             fmt: attachment.format,
-                            mip_level_count: Some(1),
+                            mip_level_count: Some(attachment.mip_level_count),
                             ty: image.info.ty,
                         },
                     )?;

@@ -10,6 +10,10 @@ use {
 };
 
 /// Describes a shader program which runs on some pipeline stage.
+///
+/// _NOTE:_ When compiled on Apple platforms the macro `MOLTEN_VK` will be defined automatically.
+/// This may be used to handle any differences introduced by SPIRV-Cross translation to Metal
+/// Shading Language (MSL) at runtime.
 #[allow(missing_docs)]
 #[derive(Builder, Clone, Debug)]
 #[builder(
@@ -329,8 +333,33 @@ impl HotShaderBuilder {
 
     /// Builds a new `HotShader`.
     pub fn build(self) -> HotShader {
-        self.fallible_build()
+        let this = self;
+
+        #[cfg(target_os = "macos")]
+        let this = this.macro_definition("MOLTEN_VK", Some("1".to_string()));
+
+        this.fallible_build()
             .expect("All required fields set at initialization")
+    }
+
+    /// Defines a single macro.
+    pub fn macro_definition(
+        mut self,
+        key: impl Into<String>,
+        value: impl Into<Option<String>>,
+    ) -> Self {
+        if self.macro_definitions.is_none() || self.macro_definitions.as_ref().unwrap().is_none() {
+            self.macro_definitions = Some(Some(vec![]));
+        }
+
+        self.macro_definitions
+            .as_mut()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .push((key.into(), value.into()));
+
+        self
     }
 }
 

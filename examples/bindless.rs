@@ -1,5 +1,5 @@
 use {
-    bytemuck::{cast_slice, NoUninit},
+    bytemuck::{cast_slice, Pod, Zeroable},
     inline_spirv::inline_spirv,
     screen_13::prelude::*,
     std::sync::Arc,
@@ -9,7 +9,6 @@ fn main() -> Result<(), DisplayError> {
     pretty_env_logger::init();
 
     let event_loop = EventLoop::new()
-        .debug(true)
         .window(|window| window.with_inner_size(LogicalSize::new(512, 512)))
         .build()?;
     let images = create_images(&event_loop.device)?;
@@ -30,7 +29,8 @@ fn main() -> Result<(), DisplayError> {
             pass = pass.read_descriptor((0, [idx as u32]), image_node);
         }
 
-        pass.store_color(0, frame.swapchain_image)
+        pass.clear_color(0, frame.swapchain_image)
+            .store_color(0, frame.swapchain_image)
             .record_subpass(move |subpass, _| {
                 subpass.draw_indirect(draw_buf_node, 0, 64, 16);
             });
@@ -135,7 +135,7 @@ fn create_graphic_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>,
                     layout(location = 0) out vec4 color_out;
 
                     void main() {
-                        color_out = texture(sampler_nnr[instance_index], vec2(0.5, 0.5));
+                        color_out = texture(sampler_nnr[nonuniformEXT(instance_index)], vec2(0.5, 0.5));
                     }
                     "#,
                     frag
@@ -147,12 +147,10 @@ fn create_graphic_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>,
 }
 
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Pod, Zeroable)]
 struct DrawIndirectCommand {
     vertex_count: u32,
     instance_count: u32,
     first_vertex: u32,
     first_instance: u32,
 }
-
-unsafe impl NoUninit for DrawIndirectCommand {}

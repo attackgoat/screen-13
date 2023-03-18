@@ -35,7 +35,7 @@ use {
         compute::ComputePipeline,
         format_aspect_mask,
         graphic::{DepthStencilMode, GraphicPipeline},
-        image::{ImageType, SampleCount},
+        image::{ImageType, ImageViewInfo, SampleCount},
         is_write_access,
         ray_trace::RayTracePipeline,
         shader::PipelineDescriptorInfo,
@@ -65,13 +65,34 @@ struct Area {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct Attachment {
+    array_layer_count: u32,
     aspect_mask: vk::ImageAspectFlags,
+    base_array_layer: u32,
+    base_mip_level: u32,
     format: vk::Format,
+    mip_level_count: u32,
     sample_count: SampleCount,
     target: NodeIndex,
 }
 
 impl Attachment {
+    fn new(image_view_info: ImageViewInfo, sample_count: SampleCount, target: NodeIndex) -> Self {
+        Self {
+            array_layer_count: image_view_info
+                .array_layer_count
+                .unwrap_or(vk::REMAINING_ARRAY_LAYERS),
+            aspect_mask: image_view_info.aspect_mask,
+            base_array_layer: image_view_info.base_array_layer,
+            base_mip_level: image_view_info.base_mip_level,
+            format: image_view_info.fmt,
+            mip_level_count: image_view_info
+                .mip_level_count
+                .unwrap_or(vk::REMAINING_MIP_LEVELS),
+            sample_count,
+            target,
+        }
+    }
+
     fn are_compatible(lhs: Option<Self>, rhs: Option<Self>) -> bool {
         // Two attachment references are compatible if they have matching format and sample
         // count, or are both VK_ATTACHMENT_UNUSED or the pointer that would contain the
@@ -84,7 +105,13 @@ impl Attachment {
     }
 
     pub fn are_identical(lhs: Self, rhs: Self) -> bool {
-        lhs.format == rhs.format && lhs.sample_count == rhs.sample_count && lhs.target == rhs.target
+        lhs.array_layer_count == rhs.array_layer_count
+            && lhs.base_array_layer == rhs.base_array_layer
+            && lhs.base_mip_level == rhs.base_mip_level
+            && lhs.format == rhs.format
+            && lhs.mip_level_count == rhs.mip_level_count
+            && lhs.sample_count == rhs.sample_count
+            && lhs.target == rhs.target
     }
 }
 

@@ -13,6 +13,9 @@ use {
     },
 };
 
+#[cfg(target_os = "macos")]
+use std::env::set_var;
+
 unsafe extern "system" fn vulkan_debug_callback(
     _flags: vk::DebugReportFlagsEXT,
     _obj_type: vk::DebugReportObjectTypeEXT,
@@ -90,26 +93,22 @@ impl Instance {
         debug: bool,
         required_extensions: impl Iterator<Item = &'a CStr>,
     ) -> Result<Self, DriverError> {
-        #[cfg(not(target_os = "macos"))]
-        let vulkan_api_version = vk::API_VERSION_1_2;
-
+        // Required to enable non-uniform descriptor indexing (bindless)
         #[cfg(target_os = "macos")]
-        // See https://github.com/KhronosGroup/MoltenVK/issues/1567
-        let vulkan_api_version = vk::API_VERSION_1_1;
+        set_var("MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS", "1");
 
+        #[cfg(not(target_os = "macos"))]
         let entry = unsafe {
-            #[cfg(not(target_os = "macos"))]
-            let entry = Entry::load().map_err(|_| {
-                error!("Vulkan driver not found");
+            Entry::load().map_err(|err| {
+                error!("Vulkan driver not found: {err}");
 
                 DriverError::Unsupported
-            })?;
-
-            #[cfg(target_os = "macos")]
-            let entry = ash_molten::load();
-
-            entry
+            })?
         };
+
+        #[cfg(target_os = "macos")]
+        let entry = ash_molten::load();
+
         let required_extensions = required_extensions.collect::<Vec<_>>();
         let instance_extensions = required_extensions
             .iter()
@@ -121,7 +120,7 @@ impl Instance {
             .iter()
             .map(|raw_name| raw_name.as_ptr())
             .collect();
-        let app_desc = vk::ApplicationInfo::builder().api_version(vulkan_api_version);
+        let app_desc = vk::ApplicationInfo::builder().api_version(vk::API_VERSION_1_2);
         let instance_desc = vk::InstanceCreateInfo::builder()
             .application_info(&app_desc)
             .enabled_layer_names(&layer_names)

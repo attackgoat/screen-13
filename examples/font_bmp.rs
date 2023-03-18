@@ -39,6 +39,8 @@ fn main() -> anyhow::Result<()> {
     )?;
 
     // A neato smoke effect just for fun
+    let PhysicalDeviceVulkan11Properties { subgroup_size, .. } =
+        event_loop.device.vulkan_1_1_properties;
     let start_time = Instant::now();
     let smoke_pipeline = Arc::new(ComputePipeline::create(&event_loop.device,
         ComputePipelineInfo::default(),
@@ -46,9 +48,9 @@ fn main() -> anyhow::Result<()> {
         inline_spirv!(
             r#"
             // Derived from https://www.shadertoy.com/view/Xl2XWz
-            #version 450
+            #version 460 core
 
-            layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+            layout(local_size_x_id = 0, local_size_y = 1, local_size_z = 1) in;
 
             layout(push_constant) uniform PushConstants {
                 layout(offset = 0) float time;
@@ -66,7 +68,7 @@ fn main() -> anyhow::Result<()> {
                     vec2(1 - p.x, p.x)
                 );
             }
-            
+
             float fractalNoise(vec2 p) {
                 return smoothNoise(p) * 0.57 + smoothNoise(p * 2.45) * 0.28 + smoothNoise(p * 6) * 0.15;
             }
@@ -80,7 +82,7 @@ fn main() -> anyhow::Result<()> {
 
                 return fractalNoise(p + w.xy + w.yz + w.zx + length(w) * 0.25);
             }
-            
+
             void main() {
                 vec2 uv = vec2(gl_GlobalInvocationID.xy) / imageSize(image).y;
                 float n1 = warpedNoise(uv * 5);
@@ -98,11 +100,18 @@ fn main() -> anyhow::Result<()> {
 
                 imageStore(image, ivec2(gl_GlobalInvocationID.xy), fragColor);
             }
-
             "#,
-            comp
+            comp,
+            vulkan1_2
         )
-        .as_slice()),
+        .as_slice()).specialization_info(SpecializationInfo {
+            data: subgroup_size.to_ne_bytes().to_vec(),
+            map_entries: vec![vk::SpecializationMapEntry {
+                constant_id: 0,
+                offset: 0,
+                size: 4,
+            }],
+        }),
     )?);
 
     event_loop.run(|frame| {
@@ -129,7 +138,11 @@ fn main() -> anyhow::Result<()> {
             .record_compute(move |compute, _| {
                 compute
                     .push_constants(&elapsed_time.as_secs_f32().to_ne_bytes())
-                    .dispatch(frame.width, frame.height, 1);
+                    .dispatch(
+                        (frame.width + subgroup_size - 1) / subgroup_size,
+                        frame.height,
+                        1,
+                    );
             });
 
         // Print some text onto the image
