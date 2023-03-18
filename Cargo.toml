@@ -13,7 +13,7 @@ categories = ["game-development", "multimedia::images", "rendering::engine"]
 description = "An easy-to-use Vulkan rendering engine in the spirit of QBasic."
 
 [dependencies]
-ash = "0.37"
+ash = ">=0.37.1"
 ash-window = "0.12"
 derive_builder = "0.12"
 gpu-allocator = "0.22"
