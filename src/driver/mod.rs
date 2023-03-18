@@ -45,11 +45,7 @@ mod surface;
 mod swapchain;
 
 pub use {
-    self::{
-        cmd_buf::CommandBuffer,
-        device::{Device, FeatureFlags},
-        physical_device::PhysicalDevice,
-    },
+    self::{cmd_buf::CommandBuffer, device::Device, physical_device::PhysicalDevice},
     ash::{self},
     vk_sync::AccessType,
 };
@@ -692,16 +688,6 @@ impl Driver {
                     return false;
                 }
 
-                if cfg.ray_tracing && !PhysicalDevice::has_ray_tracing_support(physical_device) {
-                    info!("{:?} lacks ray tracing support", unsafe {
-                        CStr::from_ptr(physical_device.props.device_name.as_ptr() as *const c_char)
-                    });
-
-                    return false;
-                }
-
-                // TODO: Check vkGetPhysicalDeviceFeatures for samplerAnisotropy (it should exist, but to be sure)
-
                 true
             })
             .collect::<Vec<_>>();
@@ -801,14 +787,6 @@ pub struct DriverConfig {
     /// The default value is `true`.
     #[builder(default = "true")]
     pub presentation: bool,
-
-    /// Used to select devices which support the [KHR ray tracing] extension.
-    ///
-    /// The default is `false`.
-    ///
-    /// [KHR ray tracing]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#ray-tracing
-    #[builder(default)]
-    pub ray_tracing: bool,
 }
 
 impl DriverConfig {
@@ -816,13 +794,6 @@ impl DriverConfig {
     #[allow(clippy::new_ret_no_self)]
     pub fn new() -> DriverConfigBuilder {
         Default::default()
-    }
-
-    fn features(self) -> FeatureFlags {
-        FeatureFlags {
-            presentation: self.presentation,
-            ray_tracing: self.ray_tracing,
-        }
     }
 }
 
@@ -968,193 +939,6 @@ impl From<vk::PhysicalDeviceDepthStencilResolveProperties>
             supported_stencil_resolve_modes: props.supported_stencil_resolve_modes,
             independent_resolve_none: props.independent_resolve_none == vk::TRUE,
             independent_resolve: props.independent_resolve == vk::TRUE,
-        }
-    }
-}
-
-/// Structure describing descriptor indexing features that can be supported by an implementation.
-pub struct PhysicalDeviceDescriptorIndexingFeatures {
-    /// Indicates whether arrays of input attachments can be indexed by dynamically uniform integer
-    /// expressions in shader code.
-    ///
-    /// If this feature is not enabled, resources with a descriptor type of
-    /// VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT must be indexed only by constant integral expressions
-    /// when aggregated into arrays in shader code. This also indicates whether shader modules can
-    /// declare the InputAttachmentArrayDynamicIndexing capability.
-    pub shader_input_attachment_array_dynamic_indexing: bool,
-
-    /// Indicates whether arrays of uniform texel buffers can be indexed by dynamically uniform
-    /// integer expressions in shader code.
-    ///
-    /// If this feature is not enabled, resources with a descriptor type of
-    /// VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER must be indexed only by constant integral
-    /// expressions when aggregated into arrays in shader code. This also indicates whether shader
-    /// modules can declare the UniformTexelBufferArrayDynamicIndexing capability.
-    pub shader_uniform_texel_buffer_array_dynamic_indexing: bool,
-
-    /// Indicates whether arrays of storage texel buffers can be indexed by dynamically uniform
-    /// integer expressions in shader code.
-    ///
-    /// If this feature is not enabled, resources with a descriptor type of
-    /// VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER must be indexed only by constant integral
-    /// expressions when aggregated into arrays in shader code. This also indicates whether shader
-    /// modules can declare the StorageTexelBufferArrayDynamicIndexing capability.
-    pub shader_storage_texel_buffer_array_dynamic_indexing: bool,
-
-    /// Indicates whether arrays of uniform buffers can be indexed by non-uniform integer
-    /// expressions in shader code.
-    ///
-    /// If this feature is not enabled, resources with a descriptor type of
-    /// VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER or VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC must not be
-    /// indexed by non-uniform integer expressions when aggregated into arrays in shader code. This
-    /// also indicates whether shader modules can declare the UniformBufferArrayNonUniformIndexing
-    /// capability.
-    pub shader_uniform_buffer_array_non_uniform_indexing: bool,
-
-    /// Indicates whether arrays of samplers or sampled images can be indexed by non-uniform integer
-    /// expressions in shader code.
-    ///
-    /// If this feature is not enabled, resources with a descriptor type of
-    /// VK_DESCRIPTOR_TYPE_SAMPLER, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, or
-    /// VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE must not be indexed by non-uniform integer expressions when
-    /// aggregated into arrays in shader code. This also indicates whether shader modules can
-    /// declare the SampledImageArrayNonUniformIndexing capability.
-    pub shader_sampled_image_array_non_uniform_indexing: bool,
-
-    /// Indicates whether arrays of storage buffers can be indexed by non-uniform integer
-    /// expressions in shader code.
-    ///
-    /// If this feature is not enabled, resources with a descriptor type of
-    /// VK_DESCRIPTOR_TYPE_STORAGE_BUFFER or VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC must not be
-    /// indexed by non-uniform integer expressions when aggregated into arrays in shader code. This
-    /// also indicates whether shader modules can declare the StorageBufferArrayNonUniformIndexing
-    /// capability.
-    pub shader_storage_buffer_array_non_uniform_indexing: bool,
-
-    /// Indicates whether arrays of storage images can be indexed by non-uniform integer expressions
-    /// in shader code.
-    ///
-    /// If this feature is not enabled, resources with a descriptor type of
-    /// VK_DESCRIPTOR_TYPE_STORAGE_IMAGE must not be indexed by non-uniform integer expressions when
-    /// aggregated into arrays in shader code. This also indicates whether shader modules can
-    /// declare the StorageImageArrayNonUniformIndexing capability.
-    pub shader_storage_image_array_non_uniform_indexing: bool,
-
-    /// Indicates whether arrays of input attachments can be indexed by non-uniform integer
-    /// expressions in shader code.
-    ///
-    /// If this feature is not enabled, resources with a descriptor type of
-    /// VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT must not be indexed by non-uniform integer expressions
-    /// when aggregated into arrays in shader code. This also indicates whether shader modules can
-    /// declare the InputAttachmentArrayNonUniformIndexing capability.
-    pub shader_input_attachment_array_non_uniform_indexing: bool,
-
-    /// Indicates whether arrays of uniform texel buffers can be indexed by non-uniform integer
-    /// expressions in shader code.
-    ///
-    /// If this feature is not enabled, resources with a descriptor type of
-    /// VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER must not be indexed by non-uniform integer
-    /// expressions when aggregated into arrays in shader code. This also indicates whether shader
-    /// modules can declare the UniformTexelBufferArrayNonUniformIndexing capability.
-    pub shader_uniform_texel_buffer_array_non_uniform_indexing: bool,
-
-    /// Indicates whether arrays of storage texel buffers can be indexed by non-uniform integer
-    /// expressions in shader code.
-    ///
-    /// If this feature is not enabled, resources with a descriptor type of
-    /// VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER must not be indexed by non-uniform integer
-    /// expressions when aggregated into arrays in shader code. This also indicates whether shader
-    /// modules can declare the StorageTexelBufferArrayNonUniformIndexing capability.
-    pub shader_storage_texel_buffer_array_non_uniform_indexing: bool,
-
-    /// Indicates whether the implementation supports statically using a descriptor set binding in
-    /// which some descriptors are not valid. If this feature is not enabled,
-    /// VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT must not be used.
-    pub descriptor_binding_partially_bound: bool,
-
-    /// Indicates whether the implementation supports descriptor sets with a variable-sized last
-    /// binding. If this feature is not enabled, VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT
-    /// must not be used.
-    pub descriptor_binding_variable_descriptor_count: bool,
-
-    /// Indicates whether the implementation supports the SPIR-V RuntimeDescriptorArray capability.
-    ///
-    /// If this feature is not enabled, descriptors must not be declared in runtime arrays.
-    pub runtime_descriptor_array: bool,
-}
-
-impl From<vk::PhysicalDeviceDescriptorIndexingFeatures>
-    for PhysicalDeviceDescriptorIndexingFeatures
-{
-    fn from(features: vk::PhysicalDeviceDescriptorIndexingFeatures) -> Self {
-        Self {
-            shader_input_attachment_array_dynamic_indexing: features
-                .shader_input_attachment_array_dynamic_indexing
-                == vk::TRUE,
-            shader_uniform_texel_buffer_array_dynamic_indexing: features
-                .shader_uniform_texel_buffer_array_dynamic_indexing
-                == vk::TRUE,
-            shader_storage_texel_buffer_array_dynamic_indexing: features
-                .shader_storage_texel_buffer_array_dynamic_indexing
-                == vk::TRUE,
-            shader_uniform_buffer_array_non_uniform_indexing: features
-                .shader_uniform_buffer_array_non_uniform_indexing
-                == vk::TRUE,
-            shader_sampled_image_array_non_uniform_indexing: features
-                .shader_sampled_image_array_non_uniform_indexing
-                == vk::TRUE,
-            shader_storage_buffer_array_non_uniform_indexing: features
-                .shader_storage_buffer_array_non_uniform_indexing
-                == vk::TRUE,
-            shader_storage_image_array_non_uniform_indexing: features
-                .shader_storage_image_array_non_uniform_indexing
-                == vk::TRUE,
-            shader_input_attachment_array_non_uniform_indexing: features
-                .shader_input_attachment_array_non_uniform_indexing
-                == vk::TRUE,
-            shader_uniform_texel_buffer_array_non_uniform_indexing: features
-                .shader_uniform_texel_buffer_array_non_uniform_indexing
-                == vk::TRUE,
-            shader_storage_texel_buffer_array_non_uniform_indexing: features
-                .shader_storage_texel_buffer_array_non_uniform_indexing
-                == vk::TRUE,
-            descriptor_binding_partially_bound: features.descriptor_binding_partially_bound
-                == vk::TRUE,
-            descriptor_binding_variable_descriptor_count: features
-                .descriptor_binding_variable_descriptor_count
-                == vk::TRUE,
-            runtime_descriptor_array: features.runtime_descriptor_array == vk::TRUE,
-        }
-    }
-}
-
-impl<'a> From<&'a PhysicalDeviceVulkan12Features> for PhysicalDeviceDescriptorIndexingFeatures {
-    fn from(features: &'a PhysicalDeviceVulkan12Features) -> Self {
-        Self {
-            shader_input_attachment_array_dynamic_indexing: features
-                .shader_input_attachment_array_dynamic_indexing,
-            shader_uniform_texel_buffer_array_dynamic_indexing: features
-                .shader_uniform_texel_buffer_array_dynamic_indexing,
-            shader_storage_texel_buffer_array_dynamic_indexing: features
-                .shader_storage_texel_buffer_array_dynamic_indexing,
-            shader_uniform_buffer_array_non_uniform_indexing: features
-                .shader_uniform_buffer_array_non_uniform_indexing,
-            shader_sampled_image_array_non_uniform_indexing: features
-                .shader_sampled_image_array_non_uniform_indexing,
-            shader_storage_buffer_array_non_uniform_indexing: features
-                .shader_storage_buffer_array_non_uniform_indexing,
-            shader_storage_image_array_non_uniform_indexing: features
-                .shader_storage_image_array_non_uniform_indexing,
-            shader_input_attachment_array_non_uniform_indexing: features
-                .shader_input_attachment_array_non_uniform_indexing,
-            shader_uniform_texel_buffer_array_non_uniform_indexing: features
-                .shader_uniform_texel_buffer_array_non_uniform_indexing,
-            shader_storage_texel_buffer_array_non_uniform_indexing: features
-                .shader_storage_texel_buffer_array_non_uniform_indexing,
-            descriptor_binding_partially_bound: features.descriptor_binding_partially_bound,
-            descriptor_binding_variable_descriptor_count: features
-                .descriptor_binding_variable_descriptor_count,
-            runtime_descriptor_array: features.runtime_descriptor_array,
         }
     }
 }

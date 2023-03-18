@@ -14,13 +14,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Expose all Vulkan 1.0 properties via `Device::vulkan_1_0_features`
 - `RenderGraph::node_device_address` function
 - `contrib/screen-13-hot`: Shader compilation macro definition support
 
 ### Changed
 
+- Device creation (and `EventLoop::build()`) no longer take a ray-tracing parameter; instead the
+  device will be created and you should use `device.ray_tracing.is_some()` to check for support
 - Re-ordered parameters of `RenderGraph` functions: `blit_image_region`, `blit_image_regions`, and
   `update_buffer_offset`
+
+### Removed
+
+- `PhysicalDeviceDescriptorIndexingFeatures` and `FeatureFlags` as they are no longer required
 
 ## [0.8.1] - 2023-02-18
 

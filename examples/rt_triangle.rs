@@ -94,7 +94,7 @@ fn create_ray_trace_pipeline(device: &Arc<Device>) -> Result<Arc<RayTracePipelin
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
-    let event_loop = EventLoop::new().ray_tracing(true).build()?;
+    let event_loop = EventLoop::new().build()?;
     let mut pool = HashPool::new(&event_loop.device);
 
     // ------------------------------------------------------------------------------------------ //

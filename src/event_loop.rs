@@ -369,12 +369,6 @@ impl EventLoopBuilder {
         self.event_loop.primary_monitor()
     }
 
-    /// Pass `true` to this method to enable hardware ray tracing, if supported.
-    pub fn ray_tracing(mut self, ray_tracing: bool) -> Self {
-        self.driver_cfg = self.driver_cfg.ray_tracing(ray_tracing);
-        self
-    }
-
     /// Allows for specification of a custom pool implementation.
     ///
     /// This pool will hold leases for Vulkan objects needed by [`Display`].

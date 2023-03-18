@@ -17,7 +17,7 @@ use {
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
-    let event_loop = EventLoop::new().ray_tracing(true).debug(true).build()?;
+    let event_loop = EventLoop::new().debug(true).build()?;
     let mut pool = LazyPool::new(&event_loop.device);
 
     let depth_fmt = best_2d_optimal_format(

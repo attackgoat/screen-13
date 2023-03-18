@@ -2,18 +2,21 @@ use {
     super::{
         DriverConfig, DriverError, Instance, PhysicalDevice,
         PhysicalDeviceAccelerationStructureProperties, PhysicalDeviceDepthStencilResolveProperties,
-        PhysicalDeviceDescriptorIndexingFeatures, PhysicalDeviceRayQueryFeatures,
-        PhysicalDeviceRayTracePipelineProperties, PhysicalDeviceRayTracingPipelineFeatures,
-        PhysicalDeviceVulkan10Features, PhysicalDeviceVulkan11Features,
-        PhysicalDeviceVulkan11Properties, PhysicalDeviceVulkan12Features,
-        PhysicalDeviceVulkan12Properties, Queue, SamplerDesc, Surface,
+        PhysicalDeviceRayQueryFeatures, PhysicalDeviceRayTracePipelineProperties,
+        PhysicalDeviceRayTracingPipelineFeatures, PhysicalDeviceVulkan10Features,
+        PhysicalDeviceVulkan11Features, PhysicalDeviceVulkan11Properties,
+        PhysicalDeviceVulkan12Features, PhysicalDeviceVulkan12Properties, Queue, SamplerDesc,
+        Surface,
     },
-    ash::{extensions::khr, vk},
+    ash::{
+        extensions::khr,
+        vk::{self, InstanceFnV1_1},
+    },
     gpu_allocator::{
         vulkan::{Allocator, AllocatorCreateDesc},
         AllocatorDebugSettings,
     },
-    log::{debug, error, info, trace, warn},
+    log::{debug, error, trace, warn},
     parking_lot::Mutex,
     std::{
         collections::{HashMap, HashSet},
@@ -22,7 +25,6 @@ use {
         iter::repeat,
         mem::forget,
         ops::Deref,
-        os::raw::c_char,
         sync::Arc,
         thread::panicking,
         time::Instant,
@@ -41,10 +43,6 @@ pub struct Device {
 
     /// Describes the properties of the device which relate to depth/stencil resolve operations.
     pub depth_stencil_resolve_properties: PhysicalDeviceDepthStencilResolveProperties,
-
-    /// Describes the features of the device which relate to descriptor indexing.
-    #[deprecated(since = "0.8.1", note = "use vulkan_1_2_features member instead")]
-    pub descriptor_indexing_features: PhysicalDeviceDescriptorIndexingFeatures,
 
     device: ash::Device,
     immutable_samplers: HashMap<SamplerDesc, vk::Sampler>,
@@ -98,24 +96,11 @@ impl Device {
         let mut instance_extensions = vec![];
 
         if cfg.presentation {
-            instance_extensions.push(khr::Surface::name());
+            instance_extensions.push(vk::KhrSurfaceFn::name());
         }
 
         let instance = Arc::new(Instance::new(cfg.debug, instance_extensions.into_iter())?);
         let physical_device = Instance::physical_devices(&instance)?
-            .filter(|physical_device| {
-                if cfg.ray_tracing && !PhysicalDevice::has_ray_tracing_support(physical_device) {
-                    info!("{:?} lacks ray tracing support", unsafe {
-                        CStr::from_ptr(physical_device.props.device_name.as_ptr() as *const c_char)
-                    });
-
-                    return false;
-                }
-
-                // TODO: Check vkGetPhysicalDeviceFeatures for samplerAnisotropy (it should exist, but to be sure)
-
-                true
-            })
             .collect::<Vec<_>>()
             .into_iter()
             // If there are multiple devices with the same score, `max_by_key` would choose the last,
@@ -133,48 +118,50 @@ impl Device {
         cfg: DriverConfig,
     ) -> Result<Self, DriverError> {
         let instance = Arc::clone(instance);
-        let fp_v1_1 = instance.fp_v1_1();
-        let get_physical_device_features2 = fp_v1_1.get_physical_device_features2;
-        let get_physical_device_properties2 = fp_v1_1.get_physical_device_properties2;
+        let InstanceFnV1_1 {
+            get_physical_device_features2,
+            get_physical_device_properties2,
+            ..
+        } = instance.fp_v1_1();
 
-        let features = cfg.features();
-        let device_extension_names = features.extension_names();
+        let enabled_ext_names;
+
+        let accel_struct_ext;
+        let ray_query_ext;
+        let ray_tracing_pipeline_ext;
+        let swapchain_ext;
 
         unsafe {
-            let extension_properties = instance
+            let ext_properties = instance
                 .enumerate_device_extension_properties(*physical_device)
                 .map_err(|err| {
-                    warn!("{err}");
+                    error!("{err}");
 
                     DriverError::Unsupported
                 })?;
 
-            for ext in &extension_properties {
+            for prop in &ext_properties {
                 debug!(
                     "extension {:?} v{}",
-                    CStr::from_ptr(ext.extension_name.as_ptr()),
-                    ext.spec_version
+                    CStr::from_ptr(prop.extension_name.as_ptr()),
+                    prop.spec_version
                 );
             }
 
-            let supported_extensions: HashSet<String> = extension_properties
+            let supported_exts = ext_properties
                 .iter()
-                .map(|ext| {
-                    CStr::from_ptr(ext.extension_name.as_ptr() as *const c_char)
-                        .to_string_lossy()
-                        .as_ref()
-                        .to_owned()
-                })
-                .collect();
+                .map(|prop| CStr::from_ptr(prop.extension_name.as_ptr() as *const _))
+                .collect::<HashSet<_>>();
 
-            for &ext in &device_extension_names {
-                let ext = CStr::from_ptr(ext).to_string_lossy();
-                if !supported_extensions.contains(ext.as_ref()) {
-                    warn!("unsupported: {}", ext);
+            accel_struct_ext = supported_exts.contains(vk::KhrAccelerationStructureFn::name());
+            ray_query_ext = supported_exts.contains(vk::KhrRayQueryFn::name());
+            ray_tracing_pipeline_ext = supported_exts.contains(vk::KhrRayTracingPipelineFn::name());
+            swapchain_ext = supported_exts.contains(vk::KhrSwapchainFn::name());
 
-                    return Err(DriverError::Unsupported);
-                }
-            }
+            enabled_ext_names = supported_exts
+                .into_iter()
+                .map(|ext| ext.as_ptr())
+                .collect::<Box<_>>();
         };
 
         let queue_family = PhysicalDevice::queue_families(&physical_device).find(|qf| {
@@ -206,47 +193,41 @@ impl Device {
         let mut vulkan_1_1_features = vk::PhysicalDeviceVulkan11Features::builder();
         let mut vulkan_1_2_features = vk::PhysicalDeviceVulkan12Features::builder();
 
-        let mut acceleration_struct_features = if features.ray_tracing {
-            Some(ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default())
-        } else {
-            None
-        };
-
-        let mut ray_tracing_pipeline_features = if features.ray_tracing {
-            Some(ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default())
-        } else {
-            None
-        };
-
-        let mut ray_query_features = if features.ray_tracing {
-            Some(ash::vk::PhysicalDeviceRayQueryFeaturesKHR::default())
-        } else {
-            None
-        };
+        let mut accel_struct_features =
+            accel_struct_ext.then(|| vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default());
+        let mut ray_query_features =
+            ray_query_ext.then(|| vk::PhysicalDeviceRayQueryFeaturesKHR::default());
+        let mut ray_tracing_pipeline_features = ray_tracing_pipeline_ext
+            .then(|| vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default());
 
         unsafe {
-            let mut features2 = vk::PhysicalDeviceFeatures2::builder()
+            let mut features = vk::PhysicalDeviceFeatures2::builder()
                 .push_next(&mut vulkan_1_1_features)
                 .push_next(&mut vulkan_1_2_features);
 
-            if features.ray_tracing {
-                features2 = features2
-                    .push_next(acceleration_struct_features.as_mut().unwrap())
-                    .push_next(ray_tracing_pipeline_features.as_mut().unwrap())
-                    .push_next(ray_query_features.as_mut().unwrap());
+            if let Some(ext) = &mut accel_struct_features {
+                features = features.push_next(ext);
             }
 
-            let mut features2 = features2.build();
+            if let Some(ext) = &mut ray_query_features {
+                features = features.push_next(ext);
+            }
 
-            get_physical_device_features2(*physical_device, &mut features2);
+            if let Some(ext) = &mut ray_tracing_pipeline_features {
+                features = features.push_next(ext);
+            }
 
-            if features2.features.multi_draw_indirect != vk::TRUE {
+            let mut features = features.build();
+
+            get_physical_device_features2(*physical_device, &mut features);
+
+            if features.features.multi_draw_indirect != vk::TRUE {
                 warn!("device does not support multi draw indirect");
 
                 return Err(DriverError::Unsupported);
             }
 
-            if features2.features.sampler_anisotropy != vk::TRUE {
+            if features.features.sampler_anisotropy != vk::TRUE {
                 warn!("device does not support sampler anisotropy");
 
                 return Err(DriverError::Unsupported);
@@ -265,47 +246,6 @@ impl Device {
                 return Err(DriverError::Unsupported);
             }
 
-            if features.ray_tracing {
-                if vulkan_1_2_features.buffer_device_address != vk::TRUE {
-                    warn!("device does not support buffer device address");
-
-                    return Err(DriverError::Unsupported);
-                }
-
-                let acceleration_struct_features = acceleration_struct_features.as_ref().unwrap();
-
-                if acceleration_struct_features.acceleration_structure != vk::TRUE {
-                    warn!("device does not support acceleration structure");
-
-                    return Err(DriverError::Unsupported);
-                }
-
-                if acceleration_struct_features
-                    .descriptor_binding_acceleration_structure_update_after_bind
-                    != vk::TRUE
-                {
-                    warn!("device does not support descriptor binding acceleration structure update after bind");
-
-                    return Err(DriverError::Unsupported);
-                }
-
-                let ray_tracing_pipeline_features = ray_tracing_pipeline_features.as_ref().unwrap();
-
-                if ray_tracing_pipeline_features.ray_tracing_pipeline != vk::TRUE {
-                    warn!("device does not support ray tracing pipeline");
-
-                    return Err(DriverError::Unsupported);
-                }
-
-                if ray_tracing_pipeline_features.ray_tracing_pipeline_trace_rays_indirect
-                    != vk::TRUE
-                {
-                    warn!("device does not support ray tracing pipeline trace rays indirect");
-
-                    return Err(DriverError::Unsupported);
-                }
-            }
-
             let mut accel_struct_properties =
                 vk::PhysicalDeviceAccelerationStructurePropertiesKHR::default();
             let mut ray_tracing_pipeline_properties =
@@ -319,7 +259,7 @@ impl Device {
                 .push_next(&mut vulkan_1_1_properties)
                 .push_next(&mut vulkan_1_2_properties);
 
-            if features.ray_tracing {
+            if accel_struct_ext {
                 physical_properties = physical_properties
                     .push_next(&mut accel_struct_properties)
                     .push_next(&mut ray_tracing_pipeline_properties);
@@ -330,27 +270,18 @@ impl Device {
 
             let depth_stencil_resolve_properties = depth_stencil_resolve_properties.into();
 
-            let (
-                accel_struct_properties,
-                ray_query_features,
-                ray_tracing_pipeline_features,
-                ray_tracing_pipeline_properties,
-            ) = if features.ray_tracing {
-                (
-                    Some(accel_struct_properties.into()),
-                    Some(ray_query_features.unwrap().into()),
-                    Some(ray_tracing_pipeline_features.unwrap().into()),
-                    Some(ray_tracing_pipeline_properties.into()),
-                )
-            } else {
-                (None, None, None, None)
-            };
+            let accel_struct_properties = accel_struct_ext.then(|| accel_struct_properties.into());
+            let ray_query_features = ray_query_ext.then(|| ray_query_features.unwrap().into());
+            let ray_tracing_pipeline_features =
+                ray_tracing_pipeline_ext.then(|| ray_tracing_pipeline_features.unwrap().into());
+            let ray_tracing_pipeline_properties =
+                ray_tracing_pipeline_ext.then(|| ray_tracing_pipeline_properties.into());
 
             let queue_infos = [queue_info];
             let device_create_info = vk::DeviceCreateInfo::builder()
                 .queue_create_infos(&queue_infos)
-                .enabled_extension_names(&device_extension_names)
-                .push_next(&mut features2);
+                .enabled_extension_names(&enabled_ext_names)
+                .push_next(&mut features);
             let device = instance
                 .create_device(*physical_device, &device_create_info, None)
                 .map_err(|err| {
@@ -395,22 +326,17 @@ impl Device {
                 (None, None)
             };
 
-            let (accel_struct_ext, ray_tracing_pipeline_ext) = if cfg.ray_tracing {
-                (
-                    Some(khr::AccelerationStructure::new(&instance, &device)),
-                    Some(khr::RayTracingPipeline::new(&instance, &device)),
-                )
-            } else {
-                (None, None)
-            };
+            let accel_struct_ext =
+                accel_struct_ext.then(|| khr::AccelerationStructure::new(&instance, &device));
+            let ray_tracing_pipeline_ext =
+                ray_tracing_pipeline_ext.then(|| khr::RayTracingPipeline::new(&instance, &device));
 
-            let vulkan_1_0_features = features2.features.into();
+            let vulkan_1_0_features = features.features.into();
             let vulkan_1_1_features = vulkan_1_1_features.build().into();
             let vulkan_1_1_properties = vulkan_1_1_properties.into();
             let vulkan_1_2_features: PhysicalDeviceVulkan12Features =
                 vulkan_1_2_features.build().into();
             let vulkan_1_2_properties = vulkan_1_2_properties.into();
-            let descriptor_indexing_features = (&vulkan_1_2_features).into();
 
             Ok(
                 #[allow(deprecated)]
@@ -419,7 +345,6 @@ impl Device {
                     accel_struct_properties,
                     allocator: Some(Mutex::new(allocator)),
                     depth_stencil_resolve_properties,
-                    descriptor_indexing_features,
                     device,
                     immutable_samplers,
                     instance,
@@ -617,49 +542,5 @@ impl Drop for Device {
         unsafe {
             self.device.destroy_device(None);
         }
-    }
-}
-
-/// Describes optional features of a device.
-pub struct FeatureFlags {
-    /// The ability to present to the display.
-    pub presentation: bool,
-
-    /// The ability to use ray tracing.
-    pub ray_tracing: bool,
-}
-
-impl FeatureFlags {
-    pub(super) fn extension_names(&self) -> Vec<*const i8> {
-        let mut res = vec![];
-
-        #[cfg(target_os = "macos")]
-        {
-            res.extend([
-                vk::KhrBufferDeviceAddressFn::name(),
-                vk::KhrCreateRenderpass2Fn::name(),
-                vk::KhrImagelessFramebufferFn::name(),
-                vk::KhrImageFormatListFn::name(),
-                vk::KhrSeparateDepthStencilLayoutsFn::name(),
-            ]);
-        }
-
-        if self.presentation {
-            res.push(khr::Swapchain::name());
-        }
-
-        if self.ray_tracing {
-            res.extend(
-                [
-                    vk::KhrAccelerationStructureFn::name(),
-                    vk::KhrDeferredHostOperationsFn::name(),
-                    vk::KhrRayTracingPipelineFn::name(),
-                    vk::KhrRayQueryFn::name(),
-                ]
-                .iter(),
-            );
-        }
-
-        res.iter().map(|name| name.as_ptr()).collect()
     }
 }
