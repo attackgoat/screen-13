@@ -2,9 +2,11 @@
 
 use {
     super::{
+        device::Device,
         merge_push_constant_ranges,
+        physical_device::RayTraceProperties,
         shader::{DescriptorBindingMap, PipelineDescriptorInfo, Shader},
-        Device, DriverError, PhysicalDeviceRayTracePipelineProperties,
+        DriverError,
     },
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
@@ -62,11 +64,12 @@ impl RayTracePipeline {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::ray_trace::{RayTracePipeline, RayTracePipelineInfo, RayTraceShaderGroup};
     /// # use screen_13::driver::shader::Shader;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # let my_rgen_code = [0u8; 1];
     /// # let my_chit_code = [0u8; 1];
     /// # let my_miss_code = [0u8; 1];
@@ -207,10 +210,8 @@ impl RayTracePipeline {
                 shader_stages.push(stage.build());
             }
 
-            let pipeline = device
-                .ray_tracing_pipeline_ext
-                .as_ref()
-                .unwrap()
+            let ray_trace_ext = device.ray_trace_ext.as_ref().unwrap();
+            let pipeline = ray_trace_ext
                 .create_ray_tracing_pipelines(
                     vk::DeferredOperationKHR::null(),
                     vk::PipelineCache::null(),
@@ -220,7 +221,8 @@ impl RayTracePipeline {
                         .max_pipeline_ray_recursion_depth(
                             info.max_ray_recursion_depth.min(
                                 device
-                                    .ray_tracing_pipeline_properties
+                                    .physical_device
+                                    .ray_trace_properties
                                     .as_ref()
                                     .unwrap()
                                     .max_ray_recursion_depth,
@@ -242,19 +244,14 @@ impl RayTracePipeline {
                     DriverError::Unsupported
                 })?[0];
             let device = Arc::clone(device);
-
-            let &PhysicalDeviceRayTracePipelineProperties {
+            let &RayTraceProperties {
                 shader_group_handle_size,
                 ..
             } = device
-                .ray_tracing_pipeline_properties
+                .physical_device
+                .ray_trace_properties
                 .as_ref()
-                .ok_or(DriverError::Unsupported)?;
-
-            let ray_tracing_pipeline_ext = device
-                .ray_tracing_pipeline_ext
-                .as_ref()
-                .ok_or(DriverError::Unsupported)?;
+                .unwrap();
 
             let push_constants = merge_push_constant_ranges(&push_constants);
 
@@ -269,7 +266,7 @@ impl RayTracePipeline {
             // 5. pipeline must not have been created with VK_PIPELINE_CREATE_LIBRARY_BIT_KHR.
             //
             let shader_group_handles = {
-                ray_tracing_pipeline_ext.get_ray_tracing_shader_group_handles(
+                ray_trace_ext.get_ray_tracing_shader_group_handles(
                     pipeline,
                     0,
                     group_count as u32,
@@ -301,12 +298,13 @@ impl RayTracePipeline {
     /// [ray_trace.rs](https://github.com/attackgoat/screen-13/blob/master/examples/ray_trace.rs)
     /// for a detail example which constructs a shader binding table buffer using this function.
     pub fn group_handle(this: &Self, idx: usize) -> Result<&[u8], DriverError> {
-        let &PhysicalDeviceRayTracePipelineProperties {
+        let &RayTraceProperties {
             shader_group_handle_size,
             ..
         } = this
             .device
-            .ray_tracing_pipeline_properties
+            .physical_device
+            .ray_trace_properties
             .as_ref()
             .ok_or(DriverError::Unsupported)?;
         let start = idx * shader_group_handle_size as usize;

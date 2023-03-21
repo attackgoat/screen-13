@@ -9,7 +9,7 @@ fn main() -> Result<(), DriverError> {
     pretty_env_logger::init();
 
     // For this example we directly create a device, but the same thing works using an event loop
-    let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
 
     let mut render_graph = RenderGraph::new();
 

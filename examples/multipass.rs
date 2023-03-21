@@ -137,7 +137,7 @@ fn best_depth_stencil_format(device: &Device) -> vk::Format {
         vk::Format::D16_UNORM_S8_UINT,
         vk::Format::D32_SFLOAT_S8_UINT,
     ] {
-        let format_props = Device::get_image_format_properties(
+        let format_props = Device::image_format_properties(
             device,
             format,
             vk::ImageType::TYPE_2D,

@@ -247,7 +247,7 @@ fn create_pipeline(
 }
 
 fn supports_vertex_buffer(device: &Device, format: vk::Format) -> bool {
-    Device::get_format_properties(device, format)
+    Device::format_properties(device, format)
         .buffer_features
         .contains(vk::FormatFeatureFlags::VERTEX_BUFFER)
 }

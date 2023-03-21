@@ -122,7 +122,7 @@ fn best_2d_optimal_format(
     flags: vk::ImageCreateFlags,
 ) -> vk::Format {
     for format in formats {
-        let format_props = Device::get_image_format_properties(
+        let format_props = Device::image_format_properties(
             device,
             *format,
             vk::ImageType::TYPE_2D,
@@ -176,6 +176,7 @@ fn create_blas(
     )?);
 
     let accel_struct_scratch_offset_alignment = device
+        .physical_device
         .accel_struct_properties
         .as_ref()
         .unwrap()
@@ -368,6 +369,7 @@ fn create_tlas(
         render_graph.bind_node(pool.lease(AccelerationStructureInfo::new_tlas(size.create_size))?);
 
     let accel_struct_scratch_offset_alignment = device
+        .physical_device
         .accel_struct_properties
         .as_ref()
         .unwrap()

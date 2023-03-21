@@ -1,11 +1,16 @@
 use {
     super::{
         display::{Display, DisplayError},
-        driver::{Device, Driver, DriverConfigBuilder, DriverError, Swapchain},
+        driver::{
+            device::{Device, DeviceInfoBuilder},
+            swapchain::{Swapchain, SwapchainInfoBuilder},
+            DriverError, Surface,
+        },
         frame::FrameContext,
         graph::{RenderGraph, ResolverPool},
         pool::hash::HashPool,
     },
+    ash::vk,
     log::{debug, info, trace, warn},
     std::{
         fmt::{Debug, Formatter},
@@ -205,9 +210,10 @@ impl AsRef<winit::event_loop::EventLoop<()>> for EventLoop {
 /// Builder for `EventLoop`.
 pub struct EventLoopBuilder {
     cmd_buf_count: usize,
-    driver_cfg: DriverConfigBuilder,
+    device_info: DeviceInfoBuilder,
     event_loop: winit::event_loop::EventLoop<()>,
     resolver_pool: Option<Box<dyn ResolverPool>>,
+    swapchain_info: SwapchainInfoBuilder,
     window: WindowBuilder,
 }
 
@@ -221,9 +227,10 @@ impl Default for EventLoopBuilder {
     fn default() -> Self {
         Self {
             cmd_buf_count: 5,
-            driver_cfg: DriverConfigBuilder::default(),
+            device_info: DeviceInfoBuilder::default(),
             event_loop: winit::event_loop::EventLoop::new(),
             resolver_pool: None,
+            swapchain_info: SwapchainInfoBuilder::default(),
             window: Default::default(),
         }
     }
@@ -248,36 +255,19 @@ impl EventLoopBuilder {
         self
     }
 
-    /// Provides a closure which configures the `DriverConfig` instance.
-    pub fn configure<ConfigureFn>(mut self, configure_fn: ConfigureFn) -> Self
-    where
-        ConfigureFn: FnOnce(DriverConfigBuilder) -> DriverConfigBuilder,
-    {
-        self.driver_cfg = configure_fn(self.driver_cfg);
-        self
-    }
-
-    /// The desired, but not guaranteed, number of queues that will be available.
-    ///
-    /// Additional queues are useful for submission from secondary threads.
-    pub fn desired_queue_count(mut self, desired_queue_count: usize) -> Self {
-        self.driver_cfg = self.driver_cfg.desired_queue_count(desired_queue_count);
-        self
-    }
-
     /// The desired, but not guaranteed, number of images that will be in the created swapchain.
     ///
     /// More images introduces more display lag, but smoother animation.
     pub fn desired_swapchain_image_count(mut self, desired_swapchain_image_count: u32) -> Self {
-        self.driver_cfg = self
-            .driver_cfg
-            .desired_swapchain_image_count(desired_swapchain_image_count);
+        self.swapchain_info = self
+            .swapchain_info
+            .desired_image_count(desired_swapchain_image_count);
         self
     }
 
     /// Set to `true` to enable vsync in exclusive fullscreen video modes.
     pub fn sync_display(mut self, sync_display: bool) -> Self {
-        self.driver_cfg = self.driver_cfg.sync_display(sync_display);
+        self.swapchain_info = self.swapchain_info.sync_display(sync_display);
         self
     }
 
@@ -353,8 +343,12 @@ impl EventLoopBuilder {
     /// _NOTE:_ Any valdation warnings or errors will cause the current thread to park itself after
     /// describing the error using the `log` crate. This makes it easy to attach a debugger and see
     /// what is causing the issue directly.
+    ///
+    /// ## Platform-specific
+    ///
+    /// **macOS:** Has no effect.
     pub fn debug(mut self, debug: bool) -> Self {
-        self.driver_cfg = self.driver_cfg.debug(debug);
+        self.device_info = self.device_info.debug(debug);
         self
     }
 
@@ -401,8 +395,6 @@ impl EventLoopBuilder {
 impl EventLoopBuilder {
     /// Builds a new `EventLoop`.
     pub fn build(self) -> Result<EventLoop, DriverError> {
-        let cfg = self.driver_cfg.build();
-
         // Create an operating system window via Winit
         let window = self.window;
 
@@ -420,13 +412,38 @@ impl EventLoopBuilder {
         };
 
         // Load the GPU driver (thin Vulkan device and swapchain smart pointers)
-        let driver = Driver::new(&window, cfg, width, height)?;
+        let device_info = self.device_info.build();
+        let device = Arc::new(Device::create_display_window(device_info, &window)?);
 
         // Create a display that is cached using the given pool implementation
         let pool = self
             .resolver_pool
-            .unwrap_or_else(|| Box::new(HashPool::new(&driver.device)));
-        let display = Display::new(&driver.device, pool, self.cmd_buf_count);
+            .unwrap_or_else(|| Box::new(HashPool::new(&device)));
+        let display = Display::new(&device, pool, self.cmd_buf_count);
+
+        let surface = Surface::new(&device, &window)?;
+        let surface_formats = Surface::formats(&surface)?;
+
+        for surface in &surface_formats {
+            debug!(
+                "surface: {:#?} ({:#?})",
+                surface.format, surface.color_space
+            );
+        }
+
+        // TODO: Explicitly fallback to BGRA_UNORM
+        let swapchain = Swapchain::new(
+            &device,
+            surface,
+            self.swapchain_info
+                .format(
+                    surface_formats
+                        .into_iter()
+                        .find(|format| Self::select_swapchain_format(*format))
+                        .ok_or(DriverError::Unsupported)?,
+                )
+                .build(),
+        )?;
 
         info!(
             "Window dimensions: {}x{} ({}x scale)",
@@ -436,11 +453,18 @@ impl EventLoopBuilder {
         );
 
         Ok(EventLoop {
-            device: driver.device,
+            device,
             display,
             event_loop: self.event_loop,
-            swapchain: driver.swapchain,
+            swapchain,
             window,
         })
+    }
+
+    fn select_swapchain_format(format: vk::SurfaceFormatKHR) -> bool {
+        // TODO: Properly handle the request for SRGB and swapchain image usage flags: The device
+        // may not support SRGB and only in that case do we fall back to UNORM
+        format.format == vk::Format::B8G8R8A8_UNORM
+            && format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
     }
 }

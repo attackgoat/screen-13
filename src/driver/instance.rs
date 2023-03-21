@@ -1,5 +1,5 @@
 use {
-    super::{DriverError, PhysicalDevice, QueueFamily, QueueFamilyProperties},
+    super::{physical_device::PhysicalDevice, DriverError},
     ash::{extensions::ext, vk, Entry},
     log::{debug, error, info, logger, trace, warn, Level, Metadata},
     std::{
@@ -129,7 +129,7 @@ impl Instance {
         let instance = unsafe {
             entry.create_instance(&instance_desc, None).map_err(|_| {
                 if debug {
-                    warn!("Debug may only be enabled with a valid Vulkan SDK installation");
+                    warn!("debug may only be enabled with a valid Vulkan SDK installation");
                 }
 
                 error!("Vulkan driver does not support API v1.2");
@@ -146,7 +146,7 @@ impl Instance {
             })?
         };
 
-        trace!("Created a Vulkan instance");
+        trace!("created a Vulkan instance");
 
         let (debug_loader, debug_callback, debug_utils) = if debug {
             let debug_info = vk::DebugReportCallbackCreateInfoEXT {
@@ -207,49 +207,40 @@ impl Instance {
         res
     }
 
-    pub fn physical_devices(
-        this: &Self,
-    ) -> Result<impl Iterator<Item = PhysicalDevice> + '_, DriverError> {
-        unsafe {
-            Ok(this
-                .enumerate_physical_devices()
-                .map_err(|err| {
-                    warn!("{err}");
+    pub fn physical_devices(this: &Self) -> Result<Vec<PhysicalDevice>, DriverError> {
+        let physical_devices = unsafe { this.enumerate_physical_devices() };
 
-                    DriverError::Unsupported
-                })?
-                .into_iter()
-                .map(|physical_device| {
-                    let props = this.get_physical_device_properties(physical_device);
-                    let queue_families = this
-                        .get_physical_device_queue_family_properties(physical_device)
-                        .into_iter()
-                        .enumerate()
-                        .map(|(idx, props)| QueueFamily {
-                            idx: idx as _,
-                            props: QueueFamilyProperties {
-                                queue_flags: props.queue_flags,
-                                queue_count: props.queue_count,
-                                timestamp_valid_bits: props.timestamp_valid_bits,
-                                min_image_transfer_granularity: [
-                                    props.min_image_transfer_granularity.width,
-                                    props.min_image_transfer_granularity.height,
-                                    props.min_image_transfer_granularity.depth,
-                                ],
-                            },
-                        })
-                        .collect();
-                    let mem_props = this.get_physical_device_memory_properties(physical_device);
+        Ok(physical_devices
+            .map_err(|err| {
+                error!("unable to enumerate physical devices: {err}");
 
-                    PhysicalDevice::new(physical_device, mem_props, props, queue_families)
+                DriverError::Unsupported
+            })?
+            .into_iter()
+            .enumerate()
+            .filter_map(|(idx, physical_device)| {
+                let res = unsafe { PhysicalDevice::new(this, physical_device) };
+
+                if let Err(err) = &res {
+                    warn!("unable to create physical device at index {idx}: {err}");
+                }
+
+                res.ok().filter(|physical_device| {
+                    let major = vk::api_version_major(physical_device.properties_v1_0.api_version);
+                    let minor = vk::api_version_minor(physical_device.properties_v1_0.api_version);
+                    let supports_vulkan_1_2 = major > 1 || (major == 1 && minor >= 2);
+
+                    if !supports_vulkan_1_2 {
+                        warn!(
+                            "physical device `{}` does not support Vulkan v1.2",
+                            physical_device.properties_v1_0.device_name
+                        );
+                    }
+
+                    supports_vulkan_1_2
                 })
-                .filter(|physical_device| {
-                    let major = vk::api_version_major(physical_device.props.api_version);
-                    let minor = vk::api_version_minor(physical_device.props.api_version);
-
-                    major == 1 && minor >= 1 || major > 1
-                }))
-        }
+            })
+            .collect())
     }
 }
 

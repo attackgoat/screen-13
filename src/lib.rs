@@ -52,10 +52,11 @@ For example, a typical host-mappable buffer:
 ```no_run
 # use std::sync::Arc;
 # use ash::vk;
-# use screen_13::driver::{Device, DriverConfig, DriverError};
+# use screen_13::driver::DriverError;
+# use screen_13::driver::device::{Device, DeviceInfo};
 # use screen_13::driver::buffer::{Buffer, BufferInfo};
 # fn main() -> Result<(), DriverError> {
-# let device = Arc::new(Device::new(DriverConfig::new().build())?);
+# let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
 let info = BufferInfo::new_mappable(1024, vk::BufferUsageFlags::STORAGE_BUFFER);
 let my_buf = Buffer::create(&device, info)?;
 # Ok(()) }
@@ -72,11 +73,12 @@ For example, a graphics pipeline:
 ```no_run
 # use std::sync::Arc;
 # use ash::vk;
-# use screen_13::driver::{Device, DriverConfig, DriverError};
+# use screen_13::driver::DriverError;
+# use screen_13::driver::device::{Device, DeviceInfo};
 # use screen_13::driver::graphic::{GraphicPipeline, GraphicPipelineInfo};
 # use screen_13::driver::shader::Shader;
 # fn main() -> Result<(), DriverError> {
-# let device = Arc::new(Device::new(DriverConfig::new().build())?);
+# let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
 # let my_frag_code = [0u8; 1];
 # let my_vert_code = [0u8; 1];
 // shader code is raw SPIR-V code as bytes
@@ -97,12 +99,13 @@ For example, leasing an image:
 ```no_run
 # use std::sync::Arc;
 # use ash::vk;
-# use screen_13::driver::{Device, DriverConfig, DriverError};
+# use screen_13::driver::DriverError;
+# use screen_13::driver::device::{Device, DeviceInfo};
 # use screen_13::driver::image::{ImageInfo};
 # use screen_13::pool::{Pool};
 # use screen_13::pool::lazy::{LazyPool};
 # fn main() -> Result<(), DriverError> {
-# let device = Arc::new(Device::new(DriverConfig::new().build())?);
+# let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
 let mut pool = LazyPool::new(&device);
 
 let info = ImageInfo::new_2d(vk::Format::R8G8B8A8_UNORM, 8, 8, vk::ImageUsageFlags::STORAGE);
@@ -134,14 +137,15 @@ it as a node. Bound nodes may only be used with the graphs they were bound to. N
 ```no_run
 # use std::sync::Arc;
 # use ash::vk;
-# use screen_13::driver::{Device, DriverConfig, DriverError};
+# use screen_13::driver::DriverError;
+# use screen_13::driver::device::{Device, DeviceInfo};
 # use screen_13::driver::buffer::{Buffer, BufferInfo};
 # use screen_13::driver::image::{Image, ImageInfo};
 # use screen_13::graph::RenderGraph;
 # use screen_13::pool::{Pool};
 # use screen_13::pool::lazy::{LazyPool};
 # fn main() -> Result<(), DriverError> {
-# let device = Arc::new(Device::new(DriverConfig::new().build())?);
+# let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
 # let info = BufferInfo::new_mappable(1024, vk::BufferUsageFlags::STORAGE_BUFFER);
 # let buffer = Buffer::create(&device, info)?;
 # let info = ImageInfo::new_2d(vk::Format::R8G8B8A8_UNORM, 8, 8, vk::ImageUsageFlags::STORAGE);
@@ -185,14 +189,15 @@ Example:
 ```no_run
 # use std::sync::Arc;
 # use ash::vk;
-# use screen_13::driver::{Device, DriverConfig, DriverError};
+# use screen_13::driver::DriverError;
+# use screen_13::driver::device::{Device, DeviceInfo};
 # use screen_13::driver::buffer::{Buffer, BufferInfo};
 # use screen_13::driver::image::{Image, ImageInfo};
 # use screen_13::graph::RenderGraph;
 # use screen_13::pool::{Pool};
 # use screen_13::pool::lazy::{LazyPool};
 # fn main() -> Result<(), DriverError> {
-# let device = Arc::new(Device::new(DriverConfig::new().build())?);
+# let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
 # let info = BufferInfo::new_mappable(1024, vk::BufferUsageFlags::STORAGE_BUFFER);
 # let buffer = Buffer::create(&device, info)?;
 # let info = ImageInfo::new_2d(vk::Format::R8G8B8A8_UNORM, 8, 8, vk::ImageUsageFlags::STORAGE);
@@ -226,12 +231,13 @@ Pipeline instances may be bound to a [`PassRef`] in order to execute the associa
 ```no_run
 # use std::sync::Arc;
 # use ash::vk;
-# use screen_13::driver::{Device, DriverConfig, DriverError};
+# use screen_13::driver::DriverError;
+# use screen_13::driver::device::{Device, DeviceInfo};
 # use screen_13::driver::compute::{ComputePipeline, ComputePipelineInfo};
 # use screen_13::driver::shader::{Shader};
 # use screen_13::graph::RenderGraph;
 # fn main() -> Result<(), DriverError> {
-# let device = Arc::new(Device::new(DriverConfig::new().build())?);
+# let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
 # let my_shader_code = [0u8; 1];
 # let info = ComputePipelineInfo::default();
 # let shader = Shader::new_compute(my_shader_code.as_slice());
@@ -288,7 +294,7 @@ See [`ShaderBuilder::vertex_input`].
 [`BufferInfo`]: driver::buffer::BufferInfo
 [`ComputePipeline::create`]: driver::compute::ComputePipeline::create
 [`ComputePipelineInfo`]: driver::compute::ComputePipelineInfo
-[`Device`]: driver::Device
+[`Device`]: driver::device::Device
 [`EventLoop`]: EventLoop
 [`FrameContext`]: FrameContext
 [Granite]: https://github.com/Themaister/Granite
@@ -331,6 +337,7 @@ pub mod prelude {
                 },
                 buffer::{Buffer, BufferInfo, BufferInfoBuilder, BufferSubresource},
                 compute::{ComputePipeline, ComputePipelineInfo, ComputePipelineInfoBuilder},
+                device::{Device, DeviceInfo, DeviceInfoBuilder},
                 graphic::{
                     BlendMode, BlendModeBuilder, DepthStencilMode, DepthStencilModeBuilder,
                     GraphicPipeline, GraphicPipelineInfo, GraphicPipelineInfoBuilder, StencilMode,
@@ -339,17 +346,17 @@ pub mod prelude {
                     Image, ImageInfo, ImageInfoBuilder, ImageSubresource, ImageType, ImageViewInfo,
                     ImageViewInfoBuilder, SampleCount,
                 },
+                physical_device::{
+                    AccelerationStructureProperties, Limits, PhysicalDevice, RayQueryFeatures,
+                    RayTraceFeatures, RayTraceProperties, Vulkan10Features, Vulkan10Properties,
+                    Vulkan11Features, Vulkan11Properties, Vulkan12Features, Vulkan12Properties,
+                },
                 ray_trace::{
                     RayTracePipeline, RayTracePipelineInfo, RayTracePipelineInfoBuilder,
                     RayTraceShaderGroup, RayTraceShaderGroupType,
                 },
                 shader::{Shader, ShaderBuilder, ShaderCode, SpecializationInfo},
-                AccessType, CommandBuffer, Device, Driver, DriverConfig, DriverConfigBuilder,
-                DriverError, PhysicalDeviceAccelerationStructureProperties,
-                PhysicalDeviceRayQueryFeatures, PhysicalDeviceRayTracePipelineProperties,
-                PhysicalDeviceRayTracingPipelineFeatures, PhysicalDeviceVulkan10Features,
-                PhysicalDeviceVulkan11Features, PhysicalDeviceVulkan11Properties,
-                PhysicalDeviceVulkan12Features, PhysicalDeviceVulkan12Properties, ResolveMode,
+                AccessType, CommandBuffer, DriverError, ResolveMode,
             },
             event_loop::{EventLoop, EventLoopBuilder, FullscreenMode},
             frame::{center_cursor, set_cursor_position, FrameContext},

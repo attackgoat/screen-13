@@ -46,9 +46,9 @@ fn main() -> anyhow::Result<()> {
 
     // We may use a geometry shader on supported devices
     let use_geometry_shader = {
-        let PhysicalDeviceVulkan10Features {
+        let Vulkan10Features {
             geometry_shader, ..
-        } = event_loop.device.vulkan_1_0_features;
+        } = event_loop.device.physical_device.features_v1_0;
         USE_GEOMETRY_SHADER && geometry_shader
     };
 
@@ -401,7 +401,7 @@ fn best_2d_optimal_format(
     flags: vk::ImageCreateFlags,
 ) -> vk::Format {
     for format in formats {
-        let format_props = Device::get_image_format_properties(
+        let format_props = Device::image_format_properties(
             device,
             *format,
             vk::ImageType::TYPE_2D,

@@ -1,8 +1,8 @@
 use {
     super::{
         driver::{
-            image_access_layout, CommandBuffer, CommandBufferInfo, Device, DriverError,
-            SwapchainImage,
+            device::Device, image_access_layout, swapchain::SwapchainImage, CommandBuffer,
+            CommandBufferInfo, DriverError,
         },
         graph::{node::SwapchainImageNode, RenderGraph, ResolverPool},
     },
@@ -102,8 +102,8 @@ impl Display {
                 previous_layout: image_access_layout(last_swapchain_access),
                 next_layout: ImageLayout::General,
                 discard_contents: false,
-                src_queue_family_index: cmd_buf.device.queues[0].family.idx,
-                dst_queue_family_index: cmd_buf.device.queues[0].family.idx,
+                src_queue_family_index: cmd_buf.device.queues[0].family_index as _,
+                dst_queue_family_index: cmd_buf.device.queues[0].family_index as _,
                 image: **swapchain_image,
                 range: vk::ImageSubresourceRange {
                     layer_count: 1,

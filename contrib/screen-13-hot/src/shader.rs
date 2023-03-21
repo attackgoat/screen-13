@@ -67,11 +67,12 @@ pub struct HotShader {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::shader::{SpecializationInfo};
     /// # use screen_13_hot::shader::HotShader;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # let my_shader_code = [0u8; 1];
     /// // We instead specify 42 for MY_COUNT:
     /// let shader = HotShader::new_fragment(my_shader_code.as_slice())

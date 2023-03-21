@@ -7,13 +7,14 @@ use {
         driver::{
             accel_struct::AccelerationStructure,
             buffer::Buffer,
+            device::Device,
             format_aspect_mask,
             graphic::DepthStencilMode,
             image::{Image, ImageViewInfo},
             image_access_layout, is_framebuffer_access, is_read_access, is_write_access,
             pipeline_stage_access_flags, AttachmentInfo, AttachmentRef, CommandBuffer,
             CommandBufferInfo, DescriptorBinding, DescriptorInfo, DescriptorPool,
-            DescriptorPoolInfo, DescriptorSet, Device, DriverError, FramebufferAttachmentImageInfo,
+            DescriptorPoolInfo, DescriptorSet, DriverError, FramebufferAttachmentImageInfo,
             FramebufferInfo, RenderPass, RenderPassInfo, SubpassDependency, SubpassInfo,
         },
         pool::{hash::HashPool, lazy::LazyPool, Lease, Pool},
@@ -1998,7 +1999,7 @@ impl Resolver {
             } else {
                 None
             };
-            let queue_family_index = cmd_buf.device.queues[0].family.idx;
+            let queue_family_index = cmd_buf.device.queues[0].family_index;
             let buffer_barriers = barriers.buffers.iter().map(
                 |Barrier {
                      next_access,
@@ -2013,8 +2014,8 @@ impl Resolver {
                     BufferBarrier {
                         next_accesses: from_ref(next_access),
                         previous_accesses: from_ref(prev_access),
-                        src_queue_family_index: queue_family_index,
-                        dst_queue_family_index: queue_family_index,
+                        src_queue_family_index: queue_family_index as _,
+                        dst_queue_family_index: queue_family_index as _,
                         buffer,
                         offset,
                         size,
@@ -2035,8 +2036,8 @@ impl Resolver {
                         previous_layout: image_access_layout(*prev_access),
                         discard_contents: *prev_access == AccessType::Nothing
                             || is_write_access(*next_access),
-                        src_queue_family_index: queue_family_index,
-                        dst_queue_family_index: queue_family_index,
+                        src_queue_family_index: queue_family_index as _,
+                        dst_queue_family_index: queue_family_index as _,
                         image,
                         range,
                     }

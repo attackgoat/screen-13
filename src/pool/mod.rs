@@ -14,12 +14,13 @@
 //! ```no_run
 //! # use std::sync::Arc;
 //! # use ash::vk;
-//! # use screen_13::driver::{Device, DriverConfig, DriverError};
+//! # use screen_13::driver::DriverError;
+//! # use screen_13::driver::device::{Device, DeviceInfo};
 //! # use screen_13::driver::image::{ImageInfo};
 //! # use screen_13::pool::{Pool};
 //! # use screen_13::pool::lazy::{LazyPool};
 //! # fn main() -> Result<(), DriverError> {
-//! # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+//! # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
 //! let mut pool = LazyPool::new(&device);
 //!
 //! let info = ImageInfo::new_2d(vk::Format::R8G8B8A8_UNORM, 8, 8, vk::ImageUsageFlags::STORAGE);

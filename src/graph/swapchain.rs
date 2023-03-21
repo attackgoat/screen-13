@@ -1,6 +1,6 @@
 use {
     super::{Bind, Binding, RenderGraph, Resolver, SwapchainImageNode, Unbind},
-    crate::driver::SwapchainImage,
+    crate::driver::swapchain::SwapchainImage,
 };
 
 impl Bind<&mut RenderGraph, SwapchainImageNode> for SwapchainImage {

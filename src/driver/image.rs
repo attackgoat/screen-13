@@ -1,7 +1,9 @@
 //! Image resource types
 
 use {
-    super::{access_type_from_u8, access_type_into_u8, format_aspect_mask, Device, DriverError},
+    super::{
+        access_type_from_u8, access_type_into_u8, device::Device, format_aspect_mask, DriverError,
+    },
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
     gpu_allocator::{
@@ -39,10 +41,11 @@ use {
 /// ```no_run
 /// # use std::sync::Arc;
 /// # use ash::vk;
-/// # use screen_13::driver::{AccessType, Device, DriverConfig, DriverError};
+/// # use screen_13::driver::{AccessType, DriverError};
+/// # use screen_13::driver::device::{Device, DeviceInfo};
 /// # use screen_13::driver::image::{Image, ImageInfo};
 /// # fn main() -> Result<(), DriverError> {
-/// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+/// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
 /// # let info = ImageInfo::new_1d(vk::Format::R8_UINT, 1, vk::ImageUsageFlags::STORAGE);
 /// # let my_image = Image::create(&device, info)?;
 /// let prev = Image::access(&my_image, AccessType::AnyShaderWrite);
@@ -78,10 +81,11 @@ impl Image {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::image::{Image, ImageInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// let info = ImageInfo::new_2d(vk::Format::R8G8B8A8_UNORM, 32, 32, vk::ImageUsageFlags::SAMPLED);
     /// let image = Image::create(&device, info)?;
     ///
@@ -168,10 +172,11 @@ impl Image {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{AccessType, Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::{AccessType, DriverError};
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::image::{Image, ImageInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # let info = ImageInfo::new_1d(vk::Format::R8_UINT, 1, vk::ImageUsageFlags::STORAGE);
     /// # let my_image = Image::create(&device, info)?;
     /// // Initially we want to "Read Other"

@@ -31,7 +31,7 @@ fn main() -> anyhow::Result<()> {
     let started_at = Instant::now();
 
     // We want to create one hardware queue for each CPU, or at least two
-    let desired_queue_count = available_parallelism()
+    let _desired_queue_count = available_parallelism()
         .map(|res| res.get())
         .unwrap_or_default()
         .clamp(2, 8);
@@ -39,10 +39,7 @@ fn main() -> anyhow::Result<()> {
     // For this example we don't use V-Sync so that we are able to submit work as often as possible
     let sync_display = false;
 
-    let event_loop = EventLoop::new()
-        .desired_queue_count(desired_queue_count)
-        .sync_display(sync_display)
-        .build()?;
+    let event_loop = EventLoop::new().sync_display(sync_display).build()?;
 
     // The hardware *should* support this, all normal GPUs do
     let queue_count = Device::queue_count(&event_loop.device);

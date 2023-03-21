@@ -1,5 +1,7 @@
 use {
-    super::{DepthStencilMode, Device, DriverError, GraphicPipeline, ResolveMode, SampleCount},
+    super::{
+        device::Device, DepthStencilMode, DriverError, GraphicPipeline, ResolveMode, SampleCount,
+    },
     ash::vk,
     log::{trace, warn},
     parking_lot::Mutex,

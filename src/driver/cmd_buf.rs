@@ -1,5 +1,5 @@
 use {
-    super::{Device, DriverError},
+    super::{device::Device, DriverError},
     ash::vk,
     log::{error, trace, warn},
     std::{fmt::Debug, ops::Deref, sync::Arc, thread::panicking},
@@ -20,7 +20,7 @@ impl CommandBuffer {
         let device = Arc::clone(device);
         let cmd_pool_info = vk::CommandPoolCreateInfo::builder()
             .flags(vk::CommandPoolCreateFlags::empty())
-            .queue_family_index(device.queues[0].family.idx); // All queues have the same family!
+            .queue_family_index(device.queues[0].family_index as _); // All queues have the same family!
         let cmd_pool = unsafe {
             device
                 .create_command_pool(&cmd_pool_info, None)

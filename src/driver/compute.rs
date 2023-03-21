@@ -2,8 +2,9 @@
 
 use {
     super::{
+        device::Device,
         shader::{DescriptorBindingMap, PipelineDescriptorInfo, Shader},
-        Device, DriverError,
+        DriverError,
     },
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
@@ -50,11 +51,12 @@ impl ComputePipeline {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::compute::{ComputePipeline, ComputePipelineInfo};
     /// # use screen_13::driver::shader::{Shader};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # let my_shader_code = [0u8; 1];
     /// // my_shader_code is raw SPIR-V code as bytes
     /// let shader = Shader::new_compute(my_shader_code.as_slice());

@@ -28,12 +28,12 @@ use {
 fn main() -> Result<(), DriverError> {
     pretty_env_logger::init();
 
-    let device = Arc::new(Device::new(DriverConfig::new())?);
-    let PhysicalDeviceVulkan11Properties {
+    let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    let Vulkan11Properties {
         subgroup_size,
         subgroup_supported_operations,
         ..
-    } = device.vulkan_1_1_properties;
+    } = device.physical_device.properties_v1_1;
 
     assert!(subgroup_supported_operations.contains(vk::SubgroupFeatureFlags::ARITHMETIC));
     assert!(subgroup_supported_operations.contains(vk::SubgroupFeatureFlags::BALLOT));
@@ -79,7 +79,8 @@ fn exclusive_sum(
         ),
     )?));
 
-    let workgroup_count = input_data.len() as u32 / device.vulkan_1_1_properties.subgroup_size;
+    let workgroup_count =
+        input_data.len() as u32 / device.physical_device.properties_v1_1.subgroup_size;
     let reduce_count = workgroup_count - 1;
     let workgroup_buf = render_graph.bind_node(Buffer::create(
         device,
@@ -182,7 +183,8 @@ fn create_reduce_pipeline(device: &Arc<Device>) -> Result<Arc<ComputePipeline>, 
         )
         .specialization_info(SpecializationInfo {
             data: device
-                .vulkan_1_1_properties
+                .physical_device
+                .properties_v1_1
                 .subgroup_size
                 .to_ne_bytes()
                 .to_vec(),
@@ -242,7 +244,7 @@ fn create_exclusive_sum_pipeline(
                 vulkan1_2
         ).as_slice())
             .specialization_info(SpecializationInfo {
-                data: device.vulkan_1_1_properties.subgroup_size.to_ne_bytes().to_vec(),
+                data: device.physical_device.properties_v1_1.subgroup_size.to_ne_bytes().to_vec(),
                 map_entries: vec![vk::SpecializationMapEntry {
                     constant_id: 0,
                     offset: 0,

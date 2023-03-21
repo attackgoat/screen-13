@@ -1,6 +1,11 @@
 use {
-    super::{Device, DriverError, Image, ImageInfo, ImageType, SampleCount, Surface},
+    super::{
+        device::Device,
+        image::{Image, ImageInfo, ImageType, SampleCount},
+        DriverError, Surface,
+    },
     ash::vk,
+    derive_builder::{Builder, UninitializedFieldError},
     log::{debug, info, warn},
     std::{ops::Deref, slice, sync::Arc, thread::panicking, time::Duration},
 };
@@ -22,9 +27,10 @@ impl Swapchain {
     pub fn new(
         device: &Arc<Device>,
         surface: Surface,
-        info: SwapchainInfo,
+        info: impl Into<SwapchainInfo>,
     ) -> Result<Self, DriverError> {
         let device = Arc::clone(device);
+        let info = info.into();
 
         Ok(Swapchain {
             device,
@@ -177,12 +183,15 @@ impl Swapchain {
 
         self.destroy();
 
-        let surface_ext = self.device.surface_ext.as_ref().unwrap();
         let surface_capabilities = unsafe {
-            surface_ext.get_physical_device_surface_capabilities(
-                *self.device.physical_device,
-                *self.surface,
-            )
+            self.device
+                .surface_ext
+                .as_ref()
+                .unwrap()
+                .get_physical_device_surface_capabilities(
+                    *self.device.physical_device,
+                    *self.surface,
+                )
         }
         .map_err(|err| {
             warn!("{err}");
@@ -190,8 +199,6 @@ impl Swapchain {
             DriverError::Unsupported
         })?;
 
-        // Triple-buffer so that acquiring an image doesn't stall for >16.6ms at 60Hz on AMD
-        // when frames take >16.6ms to render. Also allows MAILBOX to work.
         let desired_image_count =
             Self::clamp_desired_image_count(self.info.desired_image_count, surface_capabilities);
 
@@ -226,10 +233,14 @@ impl Swapchain {
         };
 
         let present_modes = unsafe {
-            surface_ext.get_physical_device_surface_present_modes(
-                *self.device.physical_device,
-                *self.surface,
-            )
+            self.device
+                .surface_ext
+                .as_ref()
+                .unwrap()
+                .get_physical_device_surface_present_modes(
+                    *self.device.physical_device,
+                    *self.surface,
+                )
         }
         .map_err(|err| {
             warn!("{err}");
@@ -272,15 +283,27 @@ impl Swapchain {
             .clipped(true)
             .image_array_layers(1)
             .build();
-        let swapchain_ext = self.device.swapchain_ext.as_ref().unwrap();
-        let swapchain = unsafe { swapchain_ext.create_swapchain(&swapchain_create_info, None) }
-            .map_err(|err| {
-                warn!("{err}");
+        let swapchain = unsafe {
+            self.device
+                .swapchain_ext
+                .as_ref()
+                .unwrap()
+                .create_swapchain(&swapchain_create_info, None)
+        }
+        .map_err(|err| {
+            warn!("{err}");
 
-                DriverError::Unsupported
-            })?;
+            DriverError::Unsupported
+        })?;
 
-        let vk_images = unsafe { swapchain_ext.get_swapchain_images(swapchain) }.unwrap();
+        let vk_images = unsafe {
+            self.device
+                .swapchain_ext
+                .as_ref()
+                .unwrap()
+                .get_swapchain_images(swapchain)
+        }
+        .unwrap();
         let images: Vec<Option<Image>> = vk_images
             .into_iter()
             .enumerate()
@@ -424,11 +447,69 @@ pub enum SwapchainError {
     SurfaceLost,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+/// Information used to create a [`Swapchain`] instance.
+#[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[builder(
+    build_fn(private, name = "fallible_build", error = "SwapchainInfoBuilderError"),
+    derive(Debug),
+    pattern = "owned"
+)]
 pub struct SwapchainInfo {
+    /// The desired, but not guaranteed, number of images that will be in the created swapchain.
+    ///
+    /// More images introduces more display lag, but smoother animation.
+    #[builder(default = "3")]
     pub desired_image_count: u32,
+
+    /// The format of the surface.
     pub format: vk::SurfaceFormatKHR,
+
+    /// The initial height of the surface.
+    #[builder(default = "8")]
     pub height: u32,
+
+    /// Determines if frames will be submitted to the display in a synchronous fashion or if they
+    /// should be displayed as fast as possible instead.
+    ///
+    /// Turn on to eliminate visual tearing at the expense of latency.
+    #[builder(default = "true")]
     pub sync_display: bool,
+
+    /// The initial width of the surface.
+    #[builder(default = "8")]
     pub width: u32,
+}
+
+impl SwapchainInfo {
+    /// Specifies default device information.
+    #[allow(clippy::new_ret_no_self, unused)]
+    pub fn new(width: u32, height: u32, format: vk::SurfaceFormatKHR) -> SwapchainInfoBuilder {
+        SwapchainInfoBuilder::default()
+            .width(width)
+            .height(height)
+            .format(format)
+    }
+}
+
+impl From<SwapchainInfoBuilder> for SwapchainInfo {
+    fn from(info: SwapchainInfoBuilder) -> Self {
+        info.build()
+    }
+}
+
+// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
+impl SwapchainInfoBuilder {
+    /// Builds a new `SwapchainInfo`.
+    pub fn build(self) -> SwapchainInfo {
+        self.fallible_build().unwrap()
+    }
+}
+
+#[derive(Debug)]
+struct SwapchainInfoBuilderError;
+
+impl From<UninitializedFieldError> for SwapchainInfoBuilderError {
+    fn from(_: UninitializedFieldError) -> Self {
+        Self
+    }
 }
