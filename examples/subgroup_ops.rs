@@ -114,7 +114,7 @@ fn exclusive_sum(
     let output_buf = render_graph.unbind_node(output_buf);
     let cmd_buf = render_graph
         .resolve()
-        .submit(&mut HashPool::new(&device), 0)?;
+        .submit(&mut HashPool::new(&device), 0, 0)?;
 
     let started = Instant::now();
     cmd_buf.wait_until_executed()?;

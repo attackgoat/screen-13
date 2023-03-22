@@ -93,12 +93,11 @@ impl Buffer {
         trace!("create: {:?}", info);
 
         let device = Arc::clone(device);
-        let buffer_info = vk::BufferCreateInfo {
-            size: info.size,
-            usage: info.usage,
-            sharing_mode: vk::SharingMode::EXCLUSIVE,
-            ..Default::default()
-        };
+        let buffer_info = vk::BufferCreateInfo::builder()
+            .size(info.size)
+            .usage(info.usage)
+            .sharing_mode(vk::SharingMode::CONCURRENT)
+            .queue_family_indices(&device.physical_device.queue_family_indices);
         let buffer = unsafe {
             device.create_buffer(&buffer_info, None).map_err(|err| {
                 warn!("{err}");

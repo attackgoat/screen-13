@@ -347,9 +347,10 @@ pub mod prelude {
                     ImageViewInfoBuilder, SampleCount,
                 },
                 physical_device::{
-                    AccelerationStructureProperties, Limits, PhysicalDevice, RayQueryFeatures,
-                    RayTraceFeatures, RayTraceProperties, Vulkan10Features, Vulkan10Properties,
-                    Vulkan11Features, Vulkan11Properties, Vulkan12Features, Vulkan12Properties,
+                    AccelerationStructureProperties, PhysicalDevice, RayQueryFeatures,
+                    RayTraceFeatures, RayTraceProperties, Vulkan10Features, Vulkan10Limits,
+                    Vulkan10Properties, Vulkan11Features, Vulkan11Properties, Vulkan12Features,
+                    Vulkan12Properties,
                 },
                 ray_trace::{
                     RayTracePipeline, RayTracePipelineInfo, RayTracePipelineInfoBuilder,

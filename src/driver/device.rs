@@ -44,7 +44,7 @@ pub struct Device {
     pub physical_device: PhysicalDevice,
 
     /// The physical execution queues which all work will be submitted to.
-    pub(crate) queues: Box<[Queue]>,
+    pub(crate) queues: Vec<Vec<vk::Queue>>,
 
     pub(crate) ray_trace_ext: Option<khr::RayTracingPipeline>,
 
@@ -177,24 +177,20 @@ impl Device {
                 DriverError::Unsupported
             })?;
 
-            let mut queues = Vec::with_capacity(
-                physical_device
-                    .queue_families
-                    .iter()
-                    .map(|family| family.queue_count)
-                    .sum::<u32>() as _,
-            );
+            let mut queues = Vec::with_capacity(physical_device.queue_families.len());
 
-            for (family_index, family) in physical_device.queue_families.iter().enumerate() {
-                for queue_index in 0..family.queue_count {
-                    queues.push(Queue {
-                        family_index,
-                        queue: device.get_device_queue(family_index as _, queue_index),
-                    });
+            for (queue_family_index, properties) in
+                physical_device.queue_families.iter().enumerate()
+            {
+                let mut queue_family = Vec::with_capacity(properties.queue_count as _);
+
+                for queue_index in 0..properties.queue_count {
+                    queue_family
+                        .push(device.get_device_queue(queue_family_index as _, queue_index));
                 }
-            }
 
-            let queues = queues.into_iter().collect();
+                queues.push(queue_family);
+            }
 
             let immutable_samplers = Self::create_immutable_samplers(&device)?;
 
@@ -358,13 +354,6 @@ impl Device {
             .get(&info)
             .copied()
             .unwrap_or_else(|| unimplemented!("{:?}", info))
-    }
-
-    /// Returns the count of available queues created by the device.
-    ///
-    /// See [`DriverConfig.desired_queue_count`].
-    pub fn queue_count(this: &Self) -> usize {
-        this.queues.len()
     }
 
     pub(crate) fn wait_for_fence(this: &Self, fence: &vk::Fence) -> Result<(), DriverError> {
@@ -594,22 +583,5 @@ struct DeviceInfoBuilderError;
 impl From<UninitializedFieldError> for DeviceInfoBuilderError {
     fn from(_: UninitializedFieldError) -> Self {
         Self
-    }
-}
-
-/// An execution queue.
-pub struct Queue {
-    /// The index into `PhysicalDevice::queue_families` describing the properties of the family of
-    /// this queue.
-    pub family_index: usize,
-
-    queue: vk::Queue,
-}
-
-impl Deref for Queue {
-    type Target = vk::Queue;
-
-    fn deref(&self) -> &Self::Target {
-        &self.queue
     }
 }

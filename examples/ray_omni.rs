@@ -220,7 +220,7 @@ fn create_blas(
 
     render_graph
         .resolve()
-        .submit(&mut LazyPool::new(device), 0)?;
+        .submit(&mut LazyPool::new(device), 0, 0)?;
 
     Ok(blas)
 }

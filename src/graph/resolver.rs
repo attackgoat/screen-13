@@ -1999,7 +1999,6 @@ impl Resolver {
             } else {
                 None
             };
-            let queue_family_index = cmd_buf.device.queues[0].family_index;
             let buffer_barriers = barriers.buffers.iter().map(
                 |Barrier {
                      next_access,
@@ -2014,8 +2013,8 @@ impl Resolver {
                     BufferBarrier {
                         next_accesses: from_ref(next_access),
                         previous_accesses: from_ref(prev_access),
-                        src_queue_family_index: queue_family_index as _,
-                        dst_queue_family_index: queue_family_index as _,
+                        src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+                        dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
                         buffer,
                         offset,
                         size,
@@ -2036,8 +2035,8 @@ impl Resolver {
                         previous_layout: image_access_layout(*prev_access),
                         discard_contents: *prev_access == AccessType::Nothing
                             || is_write_access(*next_access),
-                        src_queue_family_index: queue_family_index as _,
-                        dst_queue_family_index: queue_family_index as _,
+                        src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+                        dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
                         image,
                         range,
                     }
@@ -2501,17 +2500,23 @@ impl Resolver {
     pub fn submit(
         mut self,
         pool: &mut impl ResolverPool,
+        queue_family_index: usize,
         queue_index: usize,
     ) -> Result<Lease<CommandBuffer>, DriverError> {
         use std::slice::from_ref;
 
         trace!("submit");
 
-        let mut cmd_buf = pool.lease(CommandBufferInfo)?;
+        let mut cmd_buf = pool.lease(CommandBufferInfo::new(queue_family_index as _))?;
 
-        // See: DriverConfig.desired_queue_count and also Driver::queue_count
         debug_assert!(
-            queue_index < cmd_buf.device.queues.len(),
+            queue_family_index < cmd_buf.device.physical_device.queue_families.len(),
+            "Queue family index must be within the range of the available queues created by the device."
+        );
+        debug_assert!(
+            queue_index
+                < cmd_buf.device.physical_device.queue_families[queue_family_index].queue_count
+                    as usize,
             "Queue index must be within the range of the available queues created by the device."
         );
 
@@ -2547,7 +2552,7 @@ impl Resolver {
             cmd_buf
                 .device
                 .queue_submit(
-                    *cmd_buf.device.queues[queue_index],
+                    cmd_buf.device.queues[queue_family_index][queue_index],
                     from_ref(&vk::SubmitInfo::builder().command_buffers(from_ref(&cmd_buf))),
                     cmd_buf.fence,
                 )

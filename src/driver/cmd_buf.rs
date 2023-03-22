@@ -12,16 +12,23 @@ pub struct CommandBuffer {
     pub(crate) device: Arc<Device>,
     droppables: Vec<Box<dyn Debug + Send + 'static>>,
     pub(crate) fence: vk::Fence, // Keeps state because everyone wants this
+
+    /// Information used to create this object.
+    pub info: CommandBufferInfo,
+
     pub(crate) pool: vk::CommandPool,
 }
 
 impl CommandBuffer {
-    pub(crate) fn create(device: &Arc<Device>, _: CommandBufferInfo) -> Result<Self, DriverError> {
+    pub(crate) fn create(
+        device: &Arc<Device>,
+        info: CommandBufferInfo,
+    ) -> Result<Self, DriverError> {
         let device = Arc::clone(device);
         let cmd_pool_info = vk::CommandPoolCreateInfo::builder()
             .flags(vk::CommandPoolCreateFlags::empty())
-            .queue_family_index(device.queues[0].family_index as _); // All queues have the same family!
-        let cmd_pool = unsafe {
+            .queue_family_index(info.queue_family_index);
+        let pool = unsafe {
             device
                 .create_command_pool(&cmd_pool_info, None)
                 .map_err(|err| {
@@ -32,7 +39,7 @@ impl CommandBuffer {
         };
         let cmd_buf_info = vk::CommandBufferAllocateInfo::builder()
             .command_buffer_count(1)
-            .command_pool(cmd_pool)
+            .command_pool(pool)
             .level(vk::CommandBufferLevel::PRIMARY);
         let cmd_buf = unsafe {
             device
@@ -63,7 +70,8 @@ impl CommandBuffer {
             device,
             droppables: vec![],
             fence,
-            pool: cmd_pool,
+            info,
+            pool,
         })
     }
 
@@ -143,4 +151,12 @@ impl Drop for CommandBuffer {
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub struct CommandBufferInfo;
+pub struct CommandBufferInfo {
+    pub queue_family_index: u32,
+}
+
+impl CommandBufferInfo {
+    pub fn new(queue_family_index: u32) -> Self {
+        Self { queue_family_index }
+    }
+}

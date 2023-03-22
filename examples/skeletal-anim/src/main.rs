@@ -185,7 +185,7 @@ fn load_texture(
     render_graph.copy_buffer_to_image(buffer_node, image_node);
     render_graph
         .resolve()
-        .submit(&mut HashPool::new(device), 0)?;
+        .submit(&mut HashPool::new(device), 0, 0)?;
 
     Ok(image)
 }
@@ -423,7 +423,7 @@ impl Model {
         render_graph.copy_buffer(vertex_staging_buf_node, vertex_buf_node);
         render_graph
             .resolve()
-            .submit(&mut HashPool::new(device), 0)?;
+            .submit(&mut HashPool::new(device), 0, 0)?;
 
         Ok(Model {
             index_buf,

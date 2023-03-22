@@ -740,7 +740,7 @@ fn main() -> anyhow::Result<()> {
                 });
         }
 
-        render_graph.resolve().submit(&mut cache, 0)?;
+        render_graph.resolve().submit(&mut cache, 0, 0)?;
     }
 
     // ------------------------------------------------------------------------------------------ //

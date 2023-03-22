@@ -38,7 +38,7 @@ fn main() -> Result<(), DriverError> {
     // use device.queue_wait_idle(0) or device.device_wait_idle() - but those block on larger scopes
     let cmd_buf = render_graph
         .resolve()
-        .submit(&mut HashPool::new(&device), 0)?;
+        .submit(&mut HashPool::new(&device), 0, 0)?;
 
     println!("Has executed? {}", cmd_buf.has_executed()?);
     let started = Instant::now();

@@ -405,7 +405,7 @@ fn main() -> anyhow::Result<()> {
                 });
         }
 
-        render_graph.resolve().submit(&mut pool, 0)?;
+        render_graph.resolve().submit(&mut pool, 0, 0)?;
     }
 
     // ------------------------------------------------------------------------------------------ //

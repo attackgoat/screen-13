@@ -28,7 +28,7 @@ use {
 pub struct HashPool {
     acceleration_structure_cache: HashMap<AccelerationStructureInfo, Cache<AccelerationStructure>>,
     buffer_cache: HashMap<BufferInfo, Cache<Buffer>>,
-    command_buffer_cache: Cache<CommandBuffer>,
+    command_buffer_cache: HashMap<u32, Cache<CommandBuffer>>,
     descriptor_pool_cache: HashMap<DescriptorPoolInfo, Cache<DescriptorPool>>,
     device: Arc<Device>,
     image_cache: HashMap<ImageInfo, Cache<Image>>,
@@ -75,8 +75,12 @@ impl HashPool {
 
 impl Pool<CommandBufferInfo, CommandBuffer> for HashPool {
     fn lease(&mut self, info: CommandBufferInfo) -> Result<Lease<CommandBuffer>, DriverError> {
-        let cache_ref = Arc::downgrade(&self.command_buffer_cache);
-        let mut cache = self.command_buffer_cache.lock();
+        let command_buffer_cache = self
+            .command_buffer_cache
+            .entry(info.queue_family_index)
+            .or_default();
+        let cache_ref = Arc::downgrade(command_buffer_cache);
+        let mut cache = command_buffer_cache.lock();
 
         if cache.is_empty() || !Self::can_lease_command_buffer(cache.front_mut().unwrap()) {
             let item = CommandBuffer::create(&self.device, info)?;

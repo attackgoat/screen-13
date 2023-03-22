@@ -634,7 +634,7 @@ fn record_graphic_load_store(frame: &mut FrameContext, _: &mut HashPool) {
 
 fn record_graphic_msaa_depth_stencil(frame: &mut FrameContext, pool: &mut HashPool) {
     let sample_count = {
-        let Limits {
+        let Vulkan10Limits {
             framebuffer_color_sample_counts,
             framebuffer_depth_sample_counts,
             framebuffer_stencil_sample_counts,

@@ -107,7 +107,9 @@ impl Image {
         );
 
         let device = Arc::clone(device);
-        let create_info = info.image_create_info();
+        let create_info = info
+            .image_create_info()
+            .queue_family_indices(&device.physical_device.queue_family_indices);
         let image = unsafe {
             device.create_image(&create_info, None).map_err(|err| {
                 warn!("{err}");
@@ -432,7 +434,7 @@ impl ImageInfo {
         self.into()
     }
 
-    fn image_create_info(self) -> vk::ImageCreateInfo {
+    fn image_create_info<'a>(self) -> vk::ImageCreateInfoBuilder<'a> {
         let (ty, extent, array_layers) = match self.ty {
             ImageType::Texture1D => (
                 vk::ImageType::TYPE_1D,
@@ -503,24 +505,22 @@ impl ImageInfo {
             ),
         };
 
-        vk::ImageCreateInfo {
-            flags: self.flags,
-            image_type: ty,
-            format: self.fmt,
-            extent,
-            mip_levels: self.mip_level_count,
-            array_layers,
-            samples: self.sample_count.into_vk(),
-            tiling: if self.linear_tiling {
+        vk::ImageCreateInfo::builder()
+            .flags(self.flags)
+            .image_type(ty)
+            .format(self.fmt)
+            .extent(extent)
+            .mip_levels(self.mip_level_count)
+            .array_layers(array_layers)
+            .samples(self.sample_count.into_vk())
+            .tiling(if self.linear_tiling {
                 vk::ImageTiling::LINEAR
             } else {
                 vk::ImageTiling::OPTIMAL
-            },
-            usage: self.usage,
-            sharing_mode: vk::SharingMode::EXCLUSIVE,
-            initial_layout: vk::ImageLayout::UNDEFINED,
-            ..Default::default()
-        }
+            })
+            .usage(self.usage)
+            .sharing_mode(vk::SharingMode::CONCURRENT)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
     }
 }
 

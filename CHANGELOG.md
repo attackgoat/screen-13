@@ -14,6 +14,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Queue family index is now a part of the API and allows for submission of render graph work using 
+  secondary queue families
 - Expose all Vulkan 1.0 properties via `PhysicalDevice::features_v1_0`
 - `Device::format_properties` and `Device::image_format_properties` so user code may avoid
   calling unsafe `ash` functions

@@ -137,20 +137,33 @@ impl Swapchain {
         self.info
     }
 
-    pub fn present_image(&mut self, image: SwapchainImage, queue_index: usize) {
+    pub fn present_image(
+        &mut self,
+        image: SwapchainImage,
+        queue_family_index: usize,
+        queue_index: usize,
+    ) {
+        debug_assert!(
+            queue_family_index < self.device.physical_device.queue_families.len(),
+            "Queue family index must be within the range of the available queues created by the device."
+        );
+        debug_assert!(
+            queue_index
+                < self.device.physical_device.queue_families[queue_family_index].queue_count
+                    as usize,
+            "Queue index must be within the range of the available queues created by the device."
+        );
+
         let present_info = vk::PresentInfoKHR::builder()
             .wait_semaphores(slice::from_ref(&image.rendered))
             .swapchains(slice::from_ref(&self.swapchain))
             .image_indices(slice::from_ref(&image.idx));
 
         unsafe {
-            match self
-                .device
-                .swapchain_ext
-                .as_ref()
-                .unwrap()
-                .queue_present(*self.device.queues[queue_index], &present_info)
-            {
+            match self.device.swapchain_ext.as_ref().unwrap().queue_present(
+                self.device.queues[queue_family_index][queue_index],
+                &present_info,
+            ) {
                 Ok(_) => (),
                 Err(err)
                     if err == vk::Result::ERROR_DEVICE_LOST

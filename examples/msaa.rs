@@ -159,7 +159,7 @@ fn best_depth_format(device: &Device) -> vk::Format {
 }
 
 fn max_supported_sample_count(device: &Device) -> SampleCount {
-    let Limits {
+    let Vulkan10Limits {
         framebuffer_color_sample_counts,
         framebuffer_depth_sample_counts,
         ..

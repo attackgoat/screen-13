@@ -21,6 +21,7 @@ fn main() -> anyhow::Result<()> {
     // Load two images for the demo to blend between
     let bart_image = image_loader.decode_linear(
         0,
+        0,
         Reader::new(Cursor::new(include_bytes!("res/image/bart.jpg").as_slice()))
             .with_guessed_format()?
             .decode()?
@@ -32,6 +33,7 @@ fn main() -> anyhow::Result<()> {
         768,
     )?;
     let gulf_image = image_loader.decode_linear(
+        0,
         0,
         Reader::new(Cursor::new(include_bytes!("res/image/gulf.jpg").as_slice()))
             .with_guessed_format()?

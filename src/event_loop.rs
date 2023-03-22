@@ -182,7 +182,7 @@ impl EventLoop {
             );
 
             let swapchain_image = self.display.resolve_image(render_graph, swapchain_image)?;
-            self.swapchain.present_image(swapchain_image, 0);
+            self.swapchain.present_image(swapchain_image, 0, 0);
         }
 
         self.window.set_visible(false);
@@ -415,11 +415,14 @@ impl EventLoopBuilder {
         let device_info = self.device_info.build();
         let device = Arc::new(Device::create_display_window(device_info, &window)?);
 
+        // TODO: Select a better index
+        let queue_family_index = 0;
+
         // Create a display that is cached using the given pool implementation
         let pool = self
             .resolver_pool
             .unwrap_or_else(|| Box::new(HashPool::new(&device)));
-        let display = Display::new(&device, pool, self.cmd_buf_count);
+        let display = Display::new(&device, pool, self.cmd_buf_count, queue_family_index)?;
 
         let surface = Surface::new(&device, &window)?;
         let surface_formats = Surface::formats(&surface)?;

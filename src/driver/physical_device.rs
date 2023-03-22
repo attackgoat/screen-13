@@ -116,285 +116,6 @@ impl From<vk::PhysicalDeviceDepthStencilResolveProperties> for DepthStencilResol
     }
 }
 
-/// Description of Vulkan limitations.
-///
-/// See
-/// [`VkPhysicalDeviceLimits`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkPhysicalDeviceLimits.html)
-/// manual page.
-#[allow(missing_docs)] // TODO: Finish docs!
-pub struct Limits {
-    /// The largest dimension (width) that is guaranteed to be supported for all images created with
-    /// an image type of [`ImageType::Texture1D`](super::image::ImageType).
-    ///
-    /// Some combinations of image parameters (format, usage, etc.) may allow support for larger
-    /// dimensions, which can be queried using
-    /// [`Device::image_format_properties`](super::device::Device::image_format_properties).
-    pub max_image_dimension1_d: u32,
-
-    /// The largest dimension (width or height) that is guaranteed to be supported for all images
-    /// created with an image type of [`ImageType::Texture2D`](super::image::ImageType) and without
-    /// [`vk::ImageCreateFlags::CUBE_COMPATIBLE`] set in
-    /// [`ImageInfo::flags`](super::image::ImageInfo::flags).
-    ///
-    /// Some combinations of image parameters (format, usage, etc.) may allow support for larger
-    /// dimensions, which can be queried using
-    /// [`Device::image_format_properties`](super::device::Device::image_format_properties).
-    pub max_image_dimension2_d: u32,
-
-    /// The largest dimension (width, height, or depth) that is guaranteed to be supported for all
-    /// images created with an image type of [`ImageType::Texture3D`](super::image::ImageType).
-    ///
-    /// Some combinations of image parameters (format, usage, etc.) may allow support for larger
-    /// dimensions, which can be queried using
-    /// [`Device::image_format_properties`](super::device::Device::image_format_properties).
-    pub max_image_dimension3_d: u32,
-
-    /// The largest dimension (width or height) that is guaranteed to be supported for all images
-    /// created with an image type of [`ImageType::Texture2D`](super::image::ImageType) and with
-    /// [`vk::ImageCreateFlags::CUBE_COMPATIBLE`] set in
-    /// [`ImageInfo::flags`](super::image::ImageInfo::flags).
-    ///
-    /// Some combinations of image parameters (format, usage, etc.) may allow support for larger
-    /// dimensions, which can be queried using
-    /// [`Device::image_format_properties`](super::device::Device::image_format_properties).
-    pub max_image_dimension_cube: u32,
-
-    /// The maximum number of layers
-    /// ([`ImageInfo::array_elements`](super::image::ImageInfo::array_elements)) for an image.
-    pub max_image_array_layers: u32,
-
-    /// The maximum number of addressable texels for a buffer view created on a buffer which was
-    /// created with the [`vk::BufferUsageFlags::UNIFORM_TEXEL_BUFFER`] or
-    /// [`vk::BufferUsageFlags::STORAGE_TEXEL_BUFFER`] set in
-    /// [`BufferInfo::usage`](super::buffer::BufferInfo::usage).
-    pub max_texel_buffer_elements: u32,
-    pub max_uniform_buffer_range: u32,
-    pub max_storage_buffer_range: u32,
-    pub max_push_constants_size: u32,
-    pub max_memory_allocation_count: u32,
-    pub max_sampler_allocation_count: u32,
-    pub buffer_image_granularity: vk::DeviceSize,
-    pub sparse_address_space_size: vk::DeviceSize,
-    pub max_bound_descriptor_sets: u32,
-    pub max_per_stage_descriptor_samplers: u32,
-    pub max_per_stage_descriptor_uniform_buffers: u32,
-    pub max_per_stage_descriptor_storage_buffers: u32,
-    pub max_per_stage_descriptor_sampled_images: u32,
-    pub max_per_stage_descriptor_storage_images: u32,
-    pub max_per_stage_descriptor_input_attachments: u32,
-    pub max_per_stage_resources: u32,
-    pub max_descriptor_set_samplers: u32,
-    pub max_descriptor_set_uniform_buffers: u32,
-    pub max_descriptor_set_uniform_buffers_dynamic: u32,
-    pub max_descriptor_set_storage_buffers: u32,
-    pub max_descriptor_set_storage_buffers_dynamic: u32,
-    pub max_descriptor_set_sampled_images: u32,
-    pub max_descriptor_set_storage_images: u32,
-    pub max_descriptor_set_input_attachments: u32,
-    pub max_vertex_input_attributes: u32,
-    pub max_vertex_input_bindings: u32,
-    pub max_vertex_input_attribute_offset: u32,
-    pub max_vertex_input_binding_stride: u32,
-    pub max_vertex_output_components: u32,
-    pub max_tessellation_generation_level: u32,
-    pub max_tessellation_patch_size: u32,
-    pub max_tessellation_control_per_vertex_input_components: u32,
-    pub max_tessellation_control_per_vertex_output_components: u32,
-    pub max_tessellation_control_per_patch_output_components: u32,
-    pub max_tessellation_control_total_output_components: u32,
-    pub max_tessellation_evaluation_input_components: u32,
-    pub max_tessellation_evaluation_output_components: u32,
-    pub max_geometry_shader_invocations: u32,
-    pub max_geometry_input_components: u32,
-    pub max_geometry_output_components: u32,
-    pub max_geometry_output_vertices: u32,
-    pub max_geometry_total_output_components: u32,
-    pub max_fragment_input_components: u32,
-    pub max_fragment_output_attachments: u32,
-    pub max_fragment_dual_src_attachments: u32,
-    pub max_fragment_combined_output_resources: u32,
-    pub max_compute_shared_memory_size: u32,
-    pub max_compute_work_group_count: [u32; 3],
-    pub max_compute_work_group_invocations: u32,
-    pub max_compute_work_group_size: [u32; 3],
-    pub sub_pixel_precision_bits: u32,
-    pub sub_texel_precision_bits: u32,
-    pub mipmap_precision_bits: u32,
-    pub max_draw_indexed_index_value: u32,
-    pub max_draw_indirect_count: u32,
-    pub max_sampler_lod_bias: f32,
-    pub max_sampler_anisotropy: f32,
-    pub max_viewports: u32,
-    pub max_viewport_dimensions: [u32; 2],
-    pub viewport_bounds_range: [f32; 2],
-    pub viewport_sub_pixel_bits: u32,
-    pub min_memory_map_alignment: usize,
-    pub min_texel_buffer_offset_alignment: vk::DeviceSize,
-    pub min_uniform_buffer_offset_alignment: vk::DeviceSize,
-    pub min_storage_buffer_offset_alignment: vk::DeviceSize,
-    pub min_texel_offset: i32,
-    pub max_texel_offset: u32,
-    pub min_texel_gather_offset: i32,
-    pub max_texel_gather_offset: u32,
-    pub min_interpolation_offset: f32,
-    pub max_interpolation_offset: f32,
-    pub sub_pixel_interpolation_offset_bits: u32,
-    pub max_framebuffer_width: u32,
-    pub max_framebuffer_height: u32,
-    pub max_framebuffer_layers: u32,
-    pub framebuffer_color_sample_counts: vk::SampleCountFlags,
-    pub framebuffer_depth_sample_counts: vk::SampleCountFlags,
-    pub framebuffer_stencil_sample_counts: vk::SampleCountFlags,
-    pub framebuffer_no_attachments_sample_counts: vk::SampleCountFlags,
-    pub max_color_attachments: u32,
-    pub sampled_image_color_sample_counts: vk::SampleCountFlags,
-    pub sampled_image_integer_sample_counts: vk::SampleCountFlags,
-    pub sampled_image_depth_sample_counts: vk::SampleCountFlags,
-    pub sampled_image_stencil_sample_counts: vk::SampleCountFlags,
-    pub storage_image_sample_counts: vk::SampleCountFlags,
-    pub max_sample_mask_words: u32,
-    pub timestamp_compute_and_graphics: bool,
-    pub timestamp_period: f32,
-    pub max_clip_distances: u32,
-    pub max_cull_distances: u32,
-    pub max_combined_clip_and_cull_distances: u32,
-    pub discrete_queue_priorities: u32,
-    pub point_size_range: [f32; 2],
-    pub line_width_range: [f32; 2],
-    pub point_size_granularity: f32,
-    pub line_width_granularity: f32,
-    pub strict_lines: bool,
-    pub standard_sample_locations: bool,
-    pub optimal_buffer_copy_offset_alignment: vk::DeviceSize,
-    pub optimal_buffer_copy_row_pitch_alignment: vk::DeviceSize,
-    pub non_coherent_atom_size: vk::DeviceSize,
-}
-
-impl From<vk::PhysicalDeviceLimits> for Limits {
-    fn from(limits: vk::PhysicalDeviceLimits) -> Self {
-        Self {
-            max_image_dimension1_d: limits.max_image_dimension1_d,
-            max_image_dimension2_d: limits.max_image_dimension2_d,
-            max_image_dimension3_d: limits.max_image_dimension3_d,
-            max_image_dimension_cube: limits.max_image_dimension_cube,
-            max_image_array_layers: limits.max_image_array_layers,
-            max_texel_buffer_elements: limits.max_texel_buffer_elements,
-            max_uniform_buffer_range: limits.max_uniform_buffer_range,
-            max_storage_buffer_range: limits.max_storage_buffer_range,
-            max_push_constants_size: limits.max_push_constants_size,
-            max_memory_allocation_count: limits.max_memory_allocation_count,
-            max_sampler_allocation_count: limits.max_sampler_allocation_count,
-            buffer_image_granularity: limits.buffer_image_granularity,
-            sparse_address_space_size: limits.sparse_address_space_size,
-            max_bound_descriptor_sets: limits.max_bound_descriptor_sets,
-            max_per_stage_descriptor_samplers: limits.max_per_stage_descriptor_samplers,
-            max_per_stage_descriptor_uniform_buffers: limits
-                .max_per_stage_descriptor_uniform_buffers,
-            max_per_stage_descriptor_storage_buffers: limits
-                .max_per_stage_descriptor_storage_buffers,
-            max_per_stage_descriptor_sampled_images: limits.max_per_stage_descriptor_sampled_images,
-            max_per_stage_descriptor_storage_images: limits.max_per_stage_descriptor_storage_images,
-            max_per_stage_descriptor_input_attachments: limits
-                .max_per_stage_descriptor_input_attachments,
-            max_per_stage_resources: limits.max_per_stage_resources,
-            max_descriptor_set_samplers: limits.max_descriptor_set_samplers,
-            max_descriptor_set_uniform_buffers: limits.max_descriptor_set_uniform_buffers,
-            max_descriptor_set_uniform_buffers_dynamic: limits
-                .max_descriptor_set_uniform_buffers_dynamic,
-            max_descriptor_set_storage_buffers: limits.max_descriptor_set_storage_buffers,
-            max_descriptor_set_storage_buffers_dynamic: limits
-                .max_descriptor_set_storage_buffers_dynamic,
-            max_descriptor_set_sampled_images: limits.max_descriptor_set_sampled_images,
-            max_descriptor_set_storage_images: limits.max_descriptor_set_storage_images,
-            max_descriptor_set_input_attachments: limits.max_descriptor_set_input_attachments,
-            max_vertex_input_attributes: limits.max_vertex_input_attributes,
-            max_vertex_input_bindings: limits.max_vertex_input_bindings,
-            max_vertex_input_attribute_offset: limits.max_vertex_input_attribute_offset,
-            max_vertex_input_binding_stride: limits.max_vertex_input_binding_stride,
-            max_vertex_output_components: limits.max_vertex_output_components,
-            max_tessellation_generation_level: limits.max_tessellation_generation_level,
-            max_tessellation_patch_size: limits.max_tessellation_patch_size,
-            max_tessellation_control_per_vertex_input_components: limits
-                .max_tessellation_control_per_vertex_input_components,
-            max_tessellation_control_per_vertex_output_components: limits
-                .max_tessellation_control_per_vertex_output_components,
-            max_tessellation_control_per_patch_output_components: limits
-                .max_tessellation_control_per_patch_output_components,
-            max_tessellation_control_total_output_components: limits
-                .max_tessellation_control_total_output_components,
-            max_tessellation_evaluation_input_components: limits
-                .max_tessellation_evaluation_input_components,
-            max_tessellation_evaluation_output_components: limits
-                .max_tessellation_evaluation_output_components,
-            max_geometry_shader_invocations: limits.max_geometry_shader_invocations,
-            max_geometry_input_components: limits.max_geometry_input_components,
-            max_geometry_output_components: limits.max_geometry_output_components,
-            max_geometry_output_vertices: limits.max_geometry_output_vertices,
-            max_geometry_total_output_components: limits.max_geometry_total_output_components,
-            max_fragment_input_components: limits.max_fragment_input_components,
-            max_fragment_output_attachments: limits.max_fragment_output_attachments,
-            max_fragment_dual_src_attachments: limits.max_fragment_dual_src_attachments,
-            max_fragment_combined_output_resources: limits.max_fragment_combined_output_resources,
-            max_compute_shared_memory_size: limits.max_compute_shared_memory_size,
-            max_compute_work_group_count: limits.max_compute_work_group_count,
-            max_compute_work_group_invocations: limits.max_compute_work_group_invocations,
-            max_compute_work_group_size: limits.max_compute_work_group_size,
-            sub_pixel_precision_bits: limits.sub_pixel_precision_bits,
-            sub_texel_precision_bits: limits.sub_texel_precision_bits,
-            mipmap_precision_bits: limits.mipmap_precision_bits,
-            max_draw_indexed_index_value: limits.max_draw_indexed_index_value,
-            max_draw_indirect_count: limits.max_draw_indirect_count,
-            max_sampler_lod_bias: limits.max_sampler_lod_bias,
-            max_sampler_anisotropy: limits.max_sampler_anisotropy,
-            max_viewports: limits.max_viewports,
-            max_viewport_dimensions: limits.max_viewport_dimensions,
-            viewport_bounds_range: limits.viewport_bounds_range,
-            viewport_sub_pixel_bits: limits.viewport_sub_pixel_bits,
-            min_memory_map_alignment: limits.min_memory_map_alignment,
-            min_texel_buffer_offset_alignment: limits.min_texel_buffer_offset_alignment,
-            min_uniform_buffer_offset_alignment: limits.min_uniform_buffer_offset_alignment,
-            min_storage_buffer_offset_alignment: limits.min_storage_buffer_offset_alignment,
-            min_texel_offset: limits.min_texel_offset,
-            max_texel_offset: limits.max_texel_offset,
-            min_texel_gather_offset: limits.min_texel_gather_offset,
-            max_texel_gather_offset: limits.max_texel_gather_offset,
-            min_interpolation_offset: limits.min_interpolation_offset,
-            max_interpolation_offset: limits.max_interpolation_offset,
-            sub_pixel_interpolation_offset_bits: limits.sub_pixel_interpolation_offset_bits,
-            max_framebuffer_width: limits.max_framebuffer_width,
-            max_framebuffer_height: limits.max_framebuffer_height,
-            max_framebuffer_layers: limits.max_framebuffer_layers,
-            framebuffer_color_sample_counts: limits.framebuffer_color_sample_counts,
-            framebuffer_depth_sample_counts: limits.framebuffer_depth_sample_counts,
-            framebuffer_stencil_sample_counts: limits.framebuffer_stencil_sample_counts,
-            framebuffer_no_attachments_sample_counts: limits
-                .framebuffer_no_attachments_sample_counts,
-            max_color_attachments: limits.max_color_attachments,
-            sampled_image_color_sample_counts: limits.sampled_image_color_sample_counts,
-            sampled_image_integer_sample_counts: limits.sampled_image_integer_sample_counts,
-            sampled_image_depth_sample_counts: limits.sampled_image_depth_sample_counts,
-            sampled_image_stencil_sample_counts: limits.sampled_image_stencil_sample_counts,
-            storage_image_sample_counts: limits.storage_image_sample_counts,
-            max_sample_mask_words: limits.max_sample_mask_words,
-            timestamp_compute_and_graphics: limits.timestamp_compute_and_graphics == vk::TRUE,
-            timestamp_period: limits.timestamp_period,
-            max_clip_distances: limits.max_clip_distances,
-            max_cull_distances: limits.max_cull_distances,
-            max_combined_clip_and_cull_distances: limits.max_combined_clip_and_cull_distances,
-            discrete_queue_priorities: limits.discrete_queue_priorities,
-            point_size_range: limits.point_size_range,
-            line_width_range: limits.line_width_range,
-            point_size_granularity: limits.point_size_granularity,
-            line_width_granularity: limits.line_width_granularity,
-            strict_lines: limits.strict_lines == vk::TRUE,
-            standard_sample_locations: limits.standard_sample_locations == vk::TRUE,
-            optimal_buffer_copy_offset_alignment: limits.optimal_buffer_copy_offset_alignment,
-            optimal_buffer_copy_row_pitch_alignment: limits.optimal_buffer_copy_row_pitch_alignment,
-            non_coherent_atom_size: limits.non_coherent_atom_size,
-        }
-    }
-}
-
 /// Structure which holds data about the physical hardware selected by the current device.
 pub struct PhysicalDevice {
     /// Describes the properties of the device which relate to acceleration structures, if
@@ -432,6 +153,8 @@ pub struct PhysicalDevice {
     /// Describes the queues offered by this physical device.
     pub queue_families: Box<[vk::QueueFamilyProperties]>,
 
+    pub(crate) queue_family_indices: Box<[u32]>,
+
     /// Describes the features of the device which relate to ray query, if available.
     pub ray_query_features: Option<RayQueryFeatures>,
 
@@ -448,9 +171,15 @@ impl PhysicalDevice {
         physical_device: vk::PhysicalDevice,
     ) -> Result<Self, DriverError> {
         let memory_properties = instance.get_physical_device_memory_properties(physical_device);
-        let queue_families = instance
-            .get_physical_device_queue_family_properties(physical_device)
-            .into();
+        let queue_families = instance.get_physical_device_queue_family_properties(physical_device);
+
+        let mut queue_family_indices = Vec::with_capacity(queue_families.len());
+        for idx in 0..queue_families.len() as u32 {
+            queue_family_indices.push(idx);
+        }
+
+        let queue_families = queue_families.into();
+        let queue_family_indices = queue_family_indices.into();
 
         let vk::InstanceFnV1_1 {
             get_physical_device_features2,
@@ -544,6 +273,7 @@ impl PhysicalDevice {
             properties_v1_1,
             properties_v1_2,
             queue_families,
+            queue_family_indices,
             ray_query_features,
             ray_trace_features,
             ray_trace_properties,
@@ -1250,6 +980,285 @@ impl From<vk::PhysicalDeviceFeatures> for Vulkan10Features {
     }
 }
 
+/// Description of Vulkan limitations.
+///
+/// See
+/// [`VkPhysicalDeviceLimits`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkPhysicalDeviceLimits.html)
+/// manual page.
+#[allow(missing_docs)] // TODO: Finish docs!
+pub struct Vulkan10Limits {
+    /// The largest dimension (width) that is guaranteed to be supported for all images created with
+    /// an image type of [`ImageType::Texture1D`](super::image::ImageType).
+    ///
+    /// Some combinations of image parameters (format, usage, etc.) may allow support for larger
+    /// dimensions, which can be queried using
+    /// [`Device::image_format_properties`](super::device::Device::image_format_properties).
+    pub max_image_dimension1_d: u32,
+
+    /// The largest dimension (width or height) that is guaranteed to be supported for all images
+    /// created with an image type of [`ImageType::Texture2D`](super::image::ImageType) and without
+    /// [`vk::ImageCreateFlags::CUBE_COMPATIBLE`] set in
+    /// [`ImageInfo::flags`](super::image::ImageInfo::flags).
+    ///
+    /// Some combinations of image parameters (format, usage, etc.) may allow support for larger
+    /// dimensions, which can be queried using
+    /// [`Device::image_format_properties`](super::device::Device::image_format_properties).
+    pub max_image_dimension2_d: u32,
+
+    /// The largest dimension (width, height, or depth) that is guaranteed to be supported for all
+    /// images created with an image type of [`ImageType::Texture3D`](super::image::ImageType).
+    ///
+    /// Some combinations of image parameters (format, usage, etc.) may allow support for larger
+    /// dimensions, which can be queried using
+    /// [`Device::image_format_properties`](super::device::Device::image_format_properties).
+    pub max_image_dimension3_d: u32,
+
+    /// The largest dimension (width or height) that is guaranteed to be supported for all images
+    /// created with an image type of [`ImageType::Texture2D`](super::image::ImageType) and with
+    /// [`vk::ImageCreateFlags::CUBE_COMPATIBLE`] set in
+    /// [`ImageInfo::flags`](super::image::ImageInfo::flags).
+    ///
+    /// Some combinations of image parameters (format, usage, etc.) may allow support for larger
+    /// dimensions, which can be queried using
+    /// [`Device::image_format_properties`](super::device::Device::image_format_properties).
+    pub max_image_dimension_cube: u32,
+
+    /// The maximum number of layers
+    /// ([`ImageInfo::array_elements`](super::image::ImageInfo::array_elements)) for an image.
+    pub max_image_array_layers: u32,
+
+    /// The maximum number of addressable texels for a buffer view created on a buffer which was
+    /// created with the [`vk::BufferUsageFlags::UNIFORM_TEXEL_BUFFER`] or
+    /// [`vk::BufferUsageFlags::STORAGE_TEXEL_BUFFER`] set in
+    /// [`BufferInfo::usage`](super::buffer::BufferInfo::usage).
+    pub max_texel_buffer_elements: u32,
+    pub max_uniform_buffer_range: u32,
+    pub max_storage_buffer_range: u32,
+    pub max_push_constants_size: u32,
+    pub max_memory_allocation_count: u32,
+    pub max_sampler_allocation_count: u32,
+    pub buffer_image_granularity: vk::DeviceSize,
+    pub sparse_address_space_size: vk::DeviceSize,
+    pub max_bound_descriptor_sets: u32,
+    pub max_per_stage_descriptor_samplers: u32,
+    pub max_per_stage_descriptor_uniform_buffers: u32,
+    pub max_per_stage_descriptor_storage_buffers: u32,
+    pub max_per_stage_descriptor_sampled_images: u32,
+    pub max_per_stage_descriptor_storage_images: u32,
+    pub max_per_stage_descriptor_input_attachments: u32,
+    pub max_per_stage_resources: u32,
+    pub max_descriptor_set_samplers: u32,
+    pub max_descriptor_set_uniform_buffers: u32,
+    pub max_descriptor_set_uniform_buffers_dynamic: u32,
+    pub max_descriptor_set_storage_buffers: u32,
+    pub max_descriptor_set_storage_buffers_dynamic: u32,
+    pub max_descriptor_set_sampled_images: u32,
+    pub max_descriptor_set_storage_images: u32,
+    pub max_descriptor_set_input_attachments: u32,
+    pub max_vertex_input_attributes: u32,
+    pub max_vertex_input_bindings: u32,
+    pub max_vertex_input_attribute_offset: u32,
+    pub max_vertex_input_binding_stride: u32,
+    pub max_vertex_output_components: u32,
+    pub max_tessellation_generation_level: u32,
+    pub max_tessellation_patch_size: u32,
+    pub max_tessellation_control_per_vertex_input_components: u32,
+    pub max_tessellation_control_per_vertex_output_components: u32,
+    pub max_tessellation_control_per_patch_output_components: u32,
+    pub max_tessellation_control_total_output_components: u32,
+    pub max_tessellation_evaluation_input_components: u32,
+    pub max_tessellation_evaluation_output_components: u32,
+    pub max_geometry_shader_invocations: u32,
+    pub max_geometry_input_components: u32,
+    pub max_geometry_output_components: u32,
+    pub max_geometry_output_vertices: u32,
+    pub max_geometry_total_output_components: u32,
+    pub max_fragment_input_components: u32,
+    pub max_fragment_output_attachments: u32,
+    pub max_fragment_dual_src_attachments: u32,
+    pub max_fragment_combined_output_resources: u32,
+    pub max_compute_shared_memory_size: u32,
+    pub max_compute_work_group_count: [u32; 3],
+    pub max_compute_work_group_invocations: u32,
+    pub max_compute_work_group_size: [u32; 3],
+    pub sub_pixel_precision_bits: u32,
+    pub sub_texel_precision_bits: u32,
+    pub mipmap_precision_bits: u32,
+    pub max_draw_indexed_index_value: u32,
+    pub max_draw_indirect_count: u32,
+    pub max_sampler_lod_bias: f32,
+    pub max_sampler_anisotropy: f32,
+    pub max_viewports: u32,
+    pub max_viewport_dimensions: [u32; 2],
+    pub viewport_bounds_range: [f32; 2],
+    pub viewport_sub_pixel_bits: u32,
+    pub min_memory_map_alignment: usize,
+    pub min_texel_buffer_offset_alignment: vk::DeviceSize,
+    pub min_uniform_buffer_offset_alignment: vk::DeviceSize,
+    pub min_storage_buffer_offset_alignment: vk::DeviceSize,
+    pub min_texel_offset: i32,
+    pub max_texel_offset: u32,
+    pub min_texel_gather_offset: i32,
+    pub max_texel_gather_offset: u32,
+    pub min_interpolation_offset: f32,
+    pub max_interpolation_offset: f32,
+    pub sub_pixel_interpolation_offset_bits: u32,
+    pub max_framebuffer_width: u32,
+    pub max_framebuffer_height: u32,
+    pub max_framebuffer_layers: u32,
+    pub framebuffer_color_sample_counts: vk::SampleCountFlags,
+    pub framebuffer_depth_sample_counts: vk::SampleCountFlags,
+    pub framebuffer_stencil_sample_counts: vk::SampleCountFlags,
+    pub framebuffer_no_attachments_sample_counts: vk::SampleCountFlags,
+    pub max_color_attachments: u32,
+    pub sampled_image_color_sample_counts: vk::SampleCountFlags,
+    pub sampled_image_integer_sample_counts: vk::SampleCountFlags,
+    pub sampled_image_depth_sample_counts: vk::SampleCountFlags,
+    pub sampled_image_stencil_sample_counts: vk::SampleCountFlags,
+    pub storage_image_sample_counts: vk::SampleCountFlags,
+    pub max_sample_mask_words: u32,
+    pub timestamp_compute_and_graphics: bool,
+    pub timestamp_period: f32,
+    pub max_clip_distances: u32,
+    pub max_cull_distances: u32,
+    pub max_combined_clip_and_cull_distances: u32,
+    pub discrete_queue_priorities: u32,
+    pub point_size_range: [f32; 2],
+    pub line_width_range: [f32; 2],
+    pub point_size_granularity: f32,
+    pub line_width_granularity: f32,
+    pub strict_lines: bool,
+    pub standard_sample_locations: bool,
+    pub optimal_buffer_copy_offset_alignment: vk::DeviceSize,
+    pub optimal_buffer_copy_row_pitch_alignment: vk::DeviceSize,
+    pub non_coherent_atom_size: vk::DeviceSize,
+}
+
+impl From<vk::PhysicalDeviceLimits> for Vulkan10Limits {
+    fn from(limits: vk::PhysicalDeviceLimits) -> Self {
+        Self {
+            max_image_dimension1_d: limits.max_image_dimension1_d,
+            max_image_dimension2_d: limits.max_image_dimension2_d,
+            max_image_dimension3_d: limits.max_image_dimension3_d,
+            max_image_dimension_cube: limits.max_image_dimension_cube,
+            max_image_array_layers: limits.max_image_array_layers,
+            max_texel_buffer_elements: limits.max_texel_buffer_elements,
+            max_uniform_buffer_range: limits.max_uniform_buffer_range,
+            max_storage_buffer_range: limits.max_storage_buffer_range,
+            max_push_constants_size: limits.max_push_constants_size,
+            max_memory_allocation_count: limits.max_memory_allocation_count,
+            max_sampler_allocation_count: limits.max_sampler_allocation_count,
+            buffer_image_granularity: limits.buffer_image_granularity,
+            sparse_address_space_size: limits.sparse_address_space_size,
+            max_bound_descriptor_sets: limits.max_bound_descriptor_sets,
+            max_per_stage_descriptor_samplers: limits.max_per_stage_descriptor_samplers,
+            max_per_stage_descriptor_uniform_buffers: limits
+                .max_per_stage_descriptor_uniform_buffers,
+            max_per_stage_descriptor_storage_buffers: limits
+                .max_per_stage_descriptor_storage_buffers,
+            max_per_stage_descriptor_sampled_images: limits.max_per_stage_descriptor_sampled_images,
+            max_per_stage_descriptor_storage_images: limits.max_per_stage_descriptor_storage_images,
+            max_per_stage_descriptor_input_attachments: limits
+                .max_per_stage_descriptor_input_attachments,
+            max_per_stage_resources: limits.max_per_stage_resources,
+            max_descriptor_set_samplers: limits.max_descriptor_set_samplers,
+            max_descriptor_set_uniform_buffers: limits.max_descriptor_set_uniform_buffers,
+            max_descriptor_set_uniform_buffers_dynamic: limits
+                .max_descriptor_set_uniform_buffers_dynamic,
+            max_descriptor_set_storage_buffers: limits.max_descriptor_set_storage_buffers,
+            max_descriptor_set_storage_buffers_dynamic: limits
+                .max_descriptor_set_storage_buffers_dynamic,
+            max_descriptor_set_sampled_images: limits.max_descriptor_set_sampled_images,
+            max_descriptor_set_storage_images: limits.max_descriptor_set_storage_images,
+            max_descriptor_set_input_attachments: limits.max_descriptor_set_input_attachments,
+            max_vertex_input_attributes: limits.max_vertex_input_attributes,
+            max_vertex_input_bindings: limits.max_vertex_input_bindings,
+            max_vertex_input_attribute_offset: limits.max_vertex_input_attribute_offset,
+            max_vertex_input_binding_stride: limits.max_vertex_input_binding_stride,
+            max_vertex_output_components: limits.max_vertex_output_components,
+            max_tessellation_generation_level: limits.max_tessellation_generation_level,
+            max_tessellation_patch_size: limits.max_tessellation_patch_size,
+            max_tessellation_control_per_vertex_input_components: limits
+                .max_tessellation_control_per_vertex_input_components,
+            max_tessellation_control_per_vertex_output_components: limits
+                .max_tessellation_control_per_vertex_output_components,
+            max_tessellation_control_per_patch_output_components: limits
+                .max_tessellation_control_per_patch_output_components,
+            max_tessellation_control_total_output_components: limits
+                .max_tessellation_control_total_output_components,
+            max_tessellation_evaluation_input_components: limits
+                .max_tessellation_evaluation_input_components,
+            max_tessellation_evaluation_output_components: limits
+                .max_tessellation_evaluation_output_components,
+            max_geometry_shader_invocations: limits.max_geometry_shader_invocations,
+            max_geometry_input_components: limits.max_geometry_input_components,
+            max_geometry_output_components: limits.max_geometry_output_components,
+            max_geometry_output_vertices: limits.max_geometry_output_vertices,
+            max_geometry_total_output_components: limits.max_geometry_total_output_components,
+            max_fragment_input_components: limits.max_fragment_input_components,
+            max_fragment_output_attachments: limits.max_fragment_output_attachments,
+            max_fragment_dual_src_attachments: limits.max_fragment_dual_src_attachments,
+            max_fragment_combined_output_resources: limits.max_fragment_combined_output_resources,
+            max_compute_shared_memory_size: limits.max_compute_shared_memory_size,
+            max_compute_work_group_count: limits.max_compute_work_group_count,
+            max_compute_work_group_invocations: limits.max_compute_work_group_invocations,
+            max_compute_work_group_size: limits.max_compute_work_group_size,
+            sub_pixel_precision_bits: limits.sub_pixel_precision_bits,
+            sub_texel_precision_bits: limits.sub_texel_precision_bits,
+            mipmap_precision_bits: limits.mipmap_precision_bits,
+            max_draw_indexed_index_value: limits.max_draw_indexed_index_value,
+            max_draw_indirect_count: limits.max_draw_indirect_count,
+            max_sampler_lod_bias: limits.max_sampler_lod_bias,
+            max_sampler_anisotropy: limits.max_sampler_anisotropy,
+            max_viewports: limits.max_viewports,
+            max_viewport_dimensions: limits.max_viewport_dimensions,
+            viewport_bounds_range: limits.viewport_bounds_range,
+            viewport_sub_pixel_bits: limits.viewport_sub_pixel_bits,
+            min_memory_map_alignment: limits.min_memory_map_alignment,
+            min_texel_buffer_offset_alignment: limits.min_texel_buffer_offset_alignment,
+            min_uniform_buffer_offset_alignment: limits.min_uniform_buffer_offset_alignment,
+            min_storage_buffer_offset_alignment: limits.min_storage_buffer_offset_alignment,
+            min_texel_offset: limits.min_texel_offset,
+            max_texel_offset: limits.max_texel_offset,
+            min_texel_gather_offset: limits.min_texel_gather_offset,
+            max_texel_gather_offset: limits.max_texel_gather_offset,
+            min_interpolation_offset: limits.min_interpolation_offset,
+            max_interpolation_offset: limits.max_interpolation_offset,
+            sub_pixel_interpolation_offset_bits: limits.sub_pixel_interpolation_offset_bits,
+            max_framebuffer_width: limits.max_framebuffer_width,
+            max_framebuffer_height: limits.max_framebuffer_height,
+            max_framebuffer_layers: limits.max_framebuffer_layers,
+            framebuffer_color_sample_counts: limits.framebuffer_color_sample_counts,
+            framebuffer_depth_sample_counts: limits.framebuffer_depth_sample_counts,
+            framebuffer_stencil_sample_counts: limits.framebuffer_stencil_sample_counts,
+            framebuffer_no_attachments_sample_counts: limits
+                .framebuffer_no_attachments_sample_counts,
+            max_color_attachments: limits.max_color_attachments,
+            sampled_image_color_sample_counts: limits.sampled_image_color_sample_counts,
+            sampled_image_integer_sample_counts: limits.sampled_image_integer_sample_counts,
+            sampled_image_depth_sample_counts: limits.sampled_image_depth_sample_counts,
+            sampled_image_stencil_sample_counts: limits.sampled_image_stencil_sample_counts,
+            storage_image_sample_counts: limits.storage_image_sample_counts,
+            max_sample_mask_words: limits.max_sample_mask_words,
+            timestamp_compute_and_graphics: limits.timestamp_compute_and_graphics == vk::TRUE,
+            timestamp_period: limits.timestamp_period,
+            max_clip_distances: limits.max_clip_distances,
+            max_cull_distances: limits.max_cull_distances,
+            max_combined_clip_and_cull_distances: limits.max_combined_clip_and_cull_distances,
+            discrete_queue_priorities: limits.discrete_queue_priorities,
+            point_size_range: limits.point_size_range,
+            line_width_range: limits.line_width_range,
+            point_size_granularity: limits.point_size_granularity,
+            line_width_granularity: limits.line_width_granularity,
+            strict_lines: limits.strict_lines == vk::TRUE,
+            standard_sample_locations: limits.standard_sample_locations == vk::TRUE,
+            optimal_buffer_copy_offset_alignment: limits.optimal_buffer_copy_offset_alignment,
+            optimal_buffer_copy_row_pitch_alignment: limits.optimal_buffer_copy_row_pitch_alignment,
+            non_coherent_atom_size: limits.non_coherent_atom_size,
+        }
+    }
+}
+
 /// Description of Vulkan 1.0 properties.
 ///
 /// See
@@ -1283,10 +1292,11 @@ pub struct Vulkan10Properties {
     /// device.
     pub pipeline_cache_uuid: [u8; vk::UUID_SIZE],
 
-    /// The [`Limits`] structure specifying device-specific limits of the physical device. See
+    /// The [`Vulkan10Limits`] structure specifying device-specific limits of the physical device.
+    /// See
     /// [Limits](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#limits)
     /// for details.
-    pub limits: Limits,
+    pub limits: Vulkan10Limits,
     // Unsupported (sparse residency):
     // pub sparse_properties: vk::PhysicalDeviceSparseProperties,
 }

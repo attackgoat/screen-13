@@ -26,17 +26,25 @@ pub struct Display {
 
 impl Display {
     /// Constructs a new `Display` object.
-    pub fn new(device: &Arc<Device>, pool: Box<dyn ResolverPool>, cmd_buf_count: usize) -> Self {
+    pub fn new(
+        device: &Arc<Device>,
+        pool: Box<dyn ResolverPool>,
+        cmd_buf_count: usize,
+        queue_family_index: u32,
+    ) -> Result<Self, DriverError> {
         let mut cmd_bufs = Vec::with_capacity(cmd_buf_count);
         for _ in 0..cmd_buf_count {
-            cmd_bufs.push(CommandBuffer::create(device, CommandBufferInfo).unwrap());
+            cmd_bufs.push(CommandBuffer::create(
+                device,
+                CommandBufferInfo::new(queue_family_index),
+            )?);
         }
 
-        Self {
+        Ok(Self {
             cmd_buf_idx: 0,
             cmd_bufs,
             pool,
-        }
+        })
     }
 
     unsafe fn begin(cmd_buf: &mut CommandBuffer) -> Result<(), ()> {
@@ -102,8 +110,8 @@ impl Display {
                 previous_layout: image_access_layout(last_swapchain_access),
                 next_layout: ImageLayout::General,
                 discard_contents: false,
-                src_queue_family_index: cmd_buf.device.queues[0].family_index as _,
-                dst_queue_family_index: cmd_buf.device.queues[0].family_index as _,
+                src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+                dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
                 image: **swapchain_image,
                 range: vk::ImageSubresourceRange {
                     layer_count: 1,
@@ -155,7 +163,7 @@ impl Display {
         cmd_buf
             .device
             .queue_submit(
-                *cmd_buf.device.queues[0],
+                cmd_buf.device.queues[cmd_buf.info.queue_family_index as usize][0],
                 from_ref(&*submit_info),
                 cmd_buf.fence,
             )
