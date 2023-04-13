@@ -364,7 +364,7 @@ impl RenderPass {
             .viewport_count(1)
             .scissor_count(1);
         let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfo {
-            topology: vk::PrimitiveTopology::TRIANGLE_LIST,
+            topology: pipeline.info.topology,
             ..Default::default()
         };
         let depth_stencil = depth_stencil
