@@ -646,6 +646,12 @@ pub struct GraphicPipelineInfo {
     #[builder(default = "vk::PolygonMode::FILL")]
     pub polygon_mode: vk::PolygonMode,
 
+    /// Input primitive topology.
+    ///
+    /// The default value is `vk::PrimitiveTopology::TRIANGLE_LIST`.
+    #[builder(default = "vk::PrimitiveTopology::TRIANGLE_LIST")]
+    pub topology: vk::PrimitiveTopology,
+
     /// Multisampling antialias mode.
     ///
     /// The default value is `SampleCount::X1`.
