@@ -15,8 +15,9 @@ use {
             AccelerationStructure, AccelerationStructureInfo, AccelerationStructureInfoBuilder,
         },
         buffer::{Buffer, BufferInfo, BufferInfoBuilder},
+        device::Device,
         image::{Image, ImageInfo, ImageInfoBuilder, ImageType, SampleCount},
-        CommandBuffer, CommandBufferInfo, DescriptorPool, DescriptorPoolInfo, Device, DriverError,
+        CommandBuffer, CommandBufferInfo, DescriptorPool, DescriptorPoolInfo, DriverError,
         RenderPass, RenderPassInfo,
     },
     ash::vk,
@@ -47,7 +48,7 @@ pub struct LazyPool {
     acceleration_structure_cache:
         HashMap<vk::AccelerationStructureTypeKHR, Cache<AccelerationStructure>>,
     buffer_cache: HashMap<bool, Cache<Buffer>>,
-    command_buffer_cache: Cache<CommandBuffer>,
+    command_buffer_cache: HashMap<u32, Cache<CommandBuffer>>,
     descriptor_pool_cache: Cache<DescriptorPool>,
     device: Arc<Device>,
     image_cache: HashMap<ImageKey, Cache<Image>>,
@@ -322,8 +323,12 @@ impl Pool<RenderPassInfo, RenderPass> for LazyPool {
 
 impl Pool<CommandBufferInfo, CommandBuffer> for LazyPool {
     fn lease(&mut self, info: CommandBufferInfo) -> Result<Lease<CommandBuffer>, DriverError> {
-        let cache_ref = Arc::downgrade(&self.command_buffer_cache);
-        let mut cache = self.command_buffer_cache.lock();
+        let command_buffer_cache = self
+            .command_buffer_cache
+            .entry(info.queue_family_index)
+            .or_default();
+        let cache_ref = Arc::downgrade(command_buffer_cache);
+        let mut cache = command_buffer_cache.lock();
 
         if cache.is_empty() || !Self::can_lease_command_buffer(cache.front_mut().unwrap()) {
             let item = CommandBuffer::create(&self.device, info)?;

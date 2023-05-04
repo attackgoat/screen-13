@@ -1,5 +1,5 @@
 use {
-    super::{DescriptorSetLayout, Device, DriverError},
+    super::{device::Device, DescriptorSetLayout, DriverError},
     ash::vk,
     log::warn,
     std::{ops::Deref, sync::Arc, thread::panicking},

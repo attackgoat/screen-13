@@ -14,13 +14,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Queue family index is now a part of the API and allows for submission of render graph work using 
+  secondary queue families
+- Expose all Vulkan 1.0 properties via `PhysicalDevice::features_v1_0`
+- `Device::format_properties` and `Device::image_format_properties` so user code may avoid
+  calling unsafe `ash` functions
 - `RenderGraph::node_device_address` function
 - `contrib/screen-13-hot`: Shader compilation macro definition support
 
 ### Changed
 
+- Device creation (and `EventLoop::build()`) no longer take a ray-tracing parameter; instead the
+  device will be created and you should use `device.physical_device.ray_trace_properties.is_some()`
+  to check for support
+- Logical device (`Device`) structure has been moved to `screen_13::driver::device`
+- Physical device feature and property structures have been moved to
+  `screen_13::driver::physical_device`
 - Re-ordered parameters of `RenderGraph` functions: `blit_image_region`, `blit_image_regions`, and
   `update_buffer_offset`
+
+### Removed
+
+- `Driver` structure; use `Device::create_headless` directly
+- `PhysicalDeviceDescriptorIndexingFeatures` and `FeatureFlags` as they are no longer required
 
 ## [0.8.1] - 2023-02-18
 

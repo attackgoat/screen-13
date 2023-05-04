@@ -7,7 +7,8 @@ use {
     crate::{
         driver::{
             accel_struct::AccelerationStructure, buffer::Buffer, compute::ComputePipeline,
-            graphic::GraphicPipeline, image::Image, ray_trace::RayTracePipeline, SwapchainImage,
+            graphic::GraphicPipeline, image::Image, ray_trace::RayTracePipeline,
+            swapchain::SwapchainImage,
         },
         pool::Lease,
     },

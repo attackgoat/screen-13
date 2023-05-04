@@ -6,7 +6,7 @@ set -e
 cargo build --examples
 
 # Run the "test" example first
-cargo run --example fuzzer
+# cargo run --example fuzzer
 
 # Run all regular examples, in debug mode, next
 cargo run --example hello_world

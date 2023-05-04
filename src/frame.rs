@@ -1,6 +1,6 @@
 use {
     crate::{
-        driver::Device,
+        driver::device::Device,
         graph::{node::SwapchainImageNode, RenderGraph},
     },
     std::sync::Arc,

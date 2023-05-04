@@ -1,7 +1,9 @@
 //! Acceleration structure resource types
 
 use {
-    super::{access_type_from_u8, access_type_into_u8, Buffer, BufferInfo, Device, DriverError},
+    super::{
+        access_type_from_u8, access_type_into_u8, device::Device, Buffer, BufferInfo, DriverError,
+    },
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
     log::warn,
@@ -32,10 +34,11 @@ use {
 /// ```no_run
 /// # use std::sync::Arc;
 /// # use ash::vk;
-/// # use screen_13::driver::{AccessType, Device, DriverConfig, DriverError};
+/// # use screen_13::driver::{AccessType, DriverError};
+/// # use screen_13::driver::device::{Device, DeviceInfo};
 /// # use screen_13::driver::accel_struct::{AccelerationStructure, AccelerationStructureInfo};
 /// # fn main() -> Result<(), DriverError> {
-/// # let device = Arc::new(Device::new(DriverConfig::new().ray_tracing(true).build())?);
+/// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
 /// # const SIZE: vk::DeviceSize = 1024;
 /// # let info = AccelerationStructureInfo::new_blas(SIZE);
 /// # let my_accel_struct = AccelerationStructure::create(&device, info)?;
@@ -71,10 +74,11 @@ impl AccelerationStructure {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::accel_struct::{AccelerationStructure, AccelerationStructureInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().ray_tracing(true).build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// const SIZE: vk::DeviceSize = 1024;
     /// let info = AccelerationStructureInfo::new_blas(SIZE);
     /// let accel_struct = AccelerationStructure::create(&device, info)?;
@@ -147,10 +151,11 @@ impl AccelerationStructure {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{AccessType, Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::{AccessType, DriverError};
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::accel_struct::{AccelerationStructure, AccelerationStructureInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().ray_tracing(true).build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # const SIZE: vk::DeviceSize = 1024;
     /// # let info = AccelerationStructureInfo::new_blas(SIZE);
     /// # let my_accel_struct = AccelerationStructure::create(&device, info)?;
@@ -188,10 +193,11 @@ impl AccelerationStructure {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{AccessType, Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::{AccessType, DriverError};
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::accel_struct::{AccelerationStructure, AccelerationStructureInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().ray_tracing(true).build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # const SIZE: vk::DeviceSize = 1024;
     /// # let info = AccelerationStructureInfo::new_blas(SIZE);
     /// # let my_accel_struct = AccelerationStructure::create(&device, info)?;
@@ -233,10 +239,11 @@ impl AccelerationStructure {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::accel_struct::{AccelerationStructure, AccelerationStructureGeometry, AccelerationStructureGeometryData, AccelerationStructureGeometryInfo, DeviceOrHostAddress};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().ray_tracing(true).build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # let my_geom = AccelerationStructureGeometryData::Triangles {
     /// #     index_data: DeviceOrHostAddress::DeviceAddress(0),
     /// #     index_type: vk::IndexType::UINT32,

@@ -481,21 +481,22 @@ fn load_scene_buffers(
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
-    let event_loop = EventLoop::new().ray_tracing(true).build()?;
+    let event_loop = EventLoop::new().build()?;
     let mut cache = HashPool::new(&event_loop.device);
 
     // ------------------------------------------------------------------------------------------ //
     // Setup the ray tracing pipeline
     // ------------------------------------------------------------------------------------------ //
 
-    let &PhysicalDeviceRayTracePipelineProperties {
+    let &RayTraceProperties {
         shader_group_base_alignment,
         shader_group_handle_alignment,
         shader_group_handle_size,
         ..
     } = event_loop
         .device
-        .ray_tracing_pipeline_properties
+        .physical_device
+        .ray_trace_properties
         .as_ref()
         .unwrap();
     let ray_trace_pipeline = create_ray_trace_pipeline(&event_loop.device)?;
@@ -662,6 +663,7 @@ fn main() -> anyhow::Result<()> {
     {
         let accel_struct_scratch_offset_alignment = event_loop
             .device
+            .physical_device
             .accel_struct_properties
             .as_ref()
             .unwrap()
@@ -738,7 +740,7 @@ fn main() -> anyhow::Result<()> {
                 });
         }
 
-        render_graph.resolve().submit(&mut cache, 0)?;
+        render_graph.resolve().submit(&mut cache, 0, 0)?;
     }
 
     // ------------------------------------------------------------------------------------------ //

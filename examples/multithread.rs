@@ -30,28 +30,48 @@ fn main() -> anyhow::Result<()> {
 
     let started_at = Instant::now();
 
-    // We want to create one hardware queue for each CPU, or at least two
-    let desired_queue_count = available_parallelism()
-        .map(|res| res.get())
-        .unwrap_or_default()
-        .clamp(2, 8);
-
     // For this example we don't use V-Sync so that we are able to submit work as often as possible
     let sync_display = false;
+    let event_loop = EventLoop::new().sync_display(sync_display).build()?;
 
-    let event_loop = EventLoop::new()
-        .desired_queue_count(desired_queue_count)
-        .sync_display(sync_display)
-        .build()?;
+    // We want to create one hardware queue for each CPU, or at least two
+    let desired_queue_count = available_parallelism()
+        .map(|res| res.get() as u32)
+        .unwrap_or_default()
+        .min(8);
 
-    // The hardware *should* support this, all normal GPUs do
-    let queue_count = Device::queue_count(&event_loop.device);
-    assert!(queue_count > 1, "GPU does not support multiple queues");
+    let secondary_queue_family = event_loop
+        .device
+        .physical_device
+        .queue_families
+        .iter()
+        .enumerate()
+        .skip(1)
+        .find(|(_, queue_family_properties)| {
+            queue_family_properties
+                .queue_flags
+                .contains(vk::QueueFlags::COMPUTE)
+                || queue_family_properties
+                    .queue_flags
+                    .contains(vk::QueueFlags::GRAPHICS)
+        });
+
+    assert!(
+        secondary_queue_family.is_some(),
+        "GPU does not support secondary queue family"
+    );
+
+    let (secondary_queue_family_index, secondary_queue_family_properties) =
+        secondary_queue_family.unwrap();
+    let queue_count =
+        desired_queue_count.min(secondary_queue_family_properties.queue_count) as usize;
+
+    assert!(queue_count > 0, "GPU does not support secondary queues");
 
     info!("Using {queue_count} queues");
 
     let running = Arc::new(AtomicBool::new(true));
-    let thread_count = queue_count - 1;
+    let thread_count = queue_count;
     let mut threads = Vec::with_capacity(thread_count);
     let (tx, rx) = channel();
 
@@ -62,7 +82,7 @@ fn main() -> anyhow::Result<()> {
         let device = Arc::clone(&event_loop.device);
         let tx = tx.clone();
         threads.push(spawn(move || {
-            let queue_index = thread_index + 1;
+            let queue_index = thread_index;
             let mut pool = HashPool::new(&device);
 
             while running.load(Ordering::Relaxed) {
@@ -97,7 +117,7 @@ fn main() -> anyhow::Result<()> {
                 // Submit on a queue we are reserving for only this thread to use
                 render_graph
                     .resolve()
-                    .submit(&mut pool, queue_index)
+                    .submit(&mut pool, secondary_queue_family_index, queue_index)
                     .unwrap();
 
                 // After submit() is called we can safely use this image on another thread!
@@ -224,7 +244,7 @@ fn load_font(device: &Arc<Device>) -> anyhow::Result<BitmapFont> {
     // for the copy to happen first!
     render_graph
         .resolve()
-        .submit(&mut HashPool::new(device), 0)?;
+        .submit(&mut HashPool::new(device), 0, 0)?;
 
     BitmapFont::new(device, font, [page_0])
 }

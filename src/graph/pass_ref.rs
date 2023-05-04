@@ -12,10 +12,11 @@ use {
         accel_struct::{AccelerationStructure, AccelerationStructureGeometryInfo},
         buffer::{Buffer, BufferSubresource},
         compute::ComputePipeline,
+        device::Device,
         graphic::{DepthStencilMode, GraphicPipeline},
         image::{Image, ImageSubresource, ImageViewInfo},
         ray_trace::RayTracePipeline,
-        Device, ResolveMode,
+        ResolveMode,
     },
     ash::vk,
     log::trace,
@@ -54,11 +55,12 @@ pub type DescriptorSetIndex = u32;
 /// # use std::sync::Arc;
 /// # use ash::vk;
 /// # use screen_13::driver::accel_struct::{AccelerationStructure, AccelerationStructureInfo};
-/// # use screen_13::driver::{Device, DriverConfig, DriverError};
+/// # use screen_13::driver::DriverError;
+/// # use screen_13::driver::device::{Device, DeviceInfo};
 /// # use screen_13::graph::RenderGraph;
 /// # use screen_13::driver::shader::Shader;
 /// # fn main() -> Result<(), DriverError> {
-/// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+/// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
 /// # let mut my_graph = RenderGraph::new();
 /// # let info = AccelerationStructureInfo::new_blas(1);
 /// my_graph.begin_pass("my acceleration pass")
@@ -80,8 +82,8 @@ impl<'a> Acceleration<'a> {
     ///
     /// - Flags must include [`vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS`]
     /// - Size must be equal to or greater than the `build_size` value returned by
-    ///   [`AccelerationStructure::size_of`] plus
-    ///   `min_accel_struct_scratch_offset_alignment` of [`Device::accel_struct_properties`].
+    ///   [`AccelerationStructure::size_of`] plus `min_accel_struct_scratch_offset_alignment` of
+    ///   [`PhysicalDevice::accel_struct_properties`](crate::driver::physical_device::PhysicalDevice::accel_struct_properties).
     ///
     /// # Examples
     ///
@@ -90,13 +92,14 @@ impl<'a> Acceleration<'a> {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::accel_struct::{AccelerationStructure, AccelerationStructureGeometry, AccelerationStructureGeometryData, AccelerationStructureGeometryInfo, AccelerationStructureInfo, DeviceOrHostAddress};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # use screen_13::graph::RenderGraph;
     /// # use screen_13::driver::shader::Shader;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # let mut my_graph = RenderGraph::new();
     /// # let info = AccelerationStructureInfo::new_blas(1);
     /// # let blas_accel_struct = AccelerationStructure::create(&device, info)?;
@@ -210,8 +213,8 @@ impl<'a> Acceleration<'a> {
     ///
     /// - Flags must include [`vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS`]
     /// - Size must be equal to or greater than the `update_size` value returned by
-    ///   [`AccelerationStructure::size_of`] plus
-    ///   `min_accel_struct_scratch_offset_alignment` of [`Device::accel_struct_properties`].
+    ///   [`AccelerationStructure::size_of`] plus `min_accel_struct_scratch_offset_alignment` of
+    ///   [`PhysicalDevice::accel_struct_properties`](crate::driver::physical_device::PhysicalDevice::accel_struct_properties).
     pub fn update_structure(
         &self,
         src_accel_node: impl Into<AnyAccelerationStructureNode>,
@@ -360,12 +363,13 @@ bind!(RayTrace);
 /// ```no_run
 /// # use std::sync::Arc;
 /// # use ash::vk;
-/// # use screen_13::driver::{Device, DriverConfig, DriverError};
+/// # use screen_13::driver::DriverError;
+/// # use screen_13::driver::device::{Device, DeviceInfo};
 /// # use screen_13::driver::image::{Image, ImageInfo};
 /// # use screen_13::graph::RenderGraph;
 /// # use screen_13::graph::node::ImageNode;
 /// # fn main() -> Result<(), DriverError> {
-/// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+/// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
 /// # let info = ImageInfo::new_2d(vk::Format::R8G8B8A8_UNORM, 32, 32, vk::ImageUsageFlags::SAMPLED);
 /// # let image = Image::create(&device, info)?;
 /// # let mut my_graph = RenderGraph::new();
@@ -494,12 +498,13 @@ impl<'a> Index<AnyImageNode> for Bindings<'a> {
 /// ```no_run
 /// # use std::sync::Arc;
 /// # use ash::vk;
-/// # use screen_13::driver::{Device, DriverConfig, DriverError};
+/// # use screen_13::driver::DriverError;
+/// # use screen_13::driver::device::{Device, DeviceInfo};
 /// # use screen_13::driver::compute::{ComputePipeline, ComputePipelineInfo};
 /// # use screen_13::driver::shader::{Shader};
 /// # use screen_13::graph::RenderGraph;
 /// # fn main() -> Result<(), DriverError> {
-/// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+/// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
 /// # let info = ComputePipelineInfo::default();
 /// # let shader = Shader::new_compute([0u8; 1].as_slice());
 /// # let my_compute_pipeline = Arc::new(ComputePipeline::create(&device, info, shader)?);
@@ -546,13 +551,14 @@ impl<'a> Compute<'a> {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # use screen_13::driver::compute::{ComputePipeline, ComputePipelineInfo};
     /// # use screen_13::driver::shader::{Shader};
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # let buf_info = BufferInfo::new(8, vk::BufferUsageFlags::STORAGE_BUFFER);
     /// # let my_buf = Buffer::create(&device, buf_info)?;
     /// # let info = ComputePipelineInfo::default();
@@ -629,13 +635,14 @@ impl<'a> Compute<'a> {
     /// # use std::sync::Arc;
     /// # use std::mem::size_of;
     /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # use screen_13::driver::compute::{ComputePipeline, ComputePipelineInfo};
     /// # use screen_13::driver::shader::{Shader};
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # let buf_info = BufferInfo::new(8, vk::BufferUsageFlags::STORAGE_BUFFER);
     /// # let my_buf = Buffer::create(&device, buf_info)?;
     /// # let info = ComputePipelineInfo::default();
@@ -723,13 +730,14 @@ impl<'a> Compute<'a> {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # use screen_13::driver::compute::{ComputePipeline, ComputePipelineInfo};
     /// # use screen_13::driver::shader::{Shader};
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # let info = ComputePipelineInfo::default();
     /// # let shader = Shader::new_compute([0u8; 1].as_slice());
     /// # let my_compute_pipeline = Arc::new(ComputePipeline::create(&device, info, shader)?);
@@ -784,13 +792,14 @@ impl<'a> Compute<'a> {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # use screen_13::driver::compute::{ComputePipeline, ComputePipelineInfo};
     /// # use screen_13::driver::shader::{Shader};
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # let info = ComputePipelineInfo::default();
     /// # let shader = Shader::new_compute([0u8; 1].as_slice());
     /// # let my_compute_pipeline = Arc::new(ComputePipeline::create(&device, info, shader)?);
@@ -919,13 +928,14 @@ impl From<(DescriptorSetIndex, BindingIndex, [BindingOffset; 1])> for Descriptor
 /// ```no_run
 /// # use std::sync::Arc;
 /// # use ash::vk;
-/// # use screen_13::driver::{Device, DriverConfig, DriverError};
+/// # use screen_13::driver::DriverError;
+/// # use screen_13::driver::device::{Device, DeviceInfo};
 /// # use screen_13::driver::graphic::{GraphicPipeline, GraphicPipelineInfo};
 /// # use screen_13::driver::image::{Image, ImageInfo};
 /// # use screen_13::graph::RenderGraph;
 /// # use screen_13::driver::shader::Shader;
 /// # fn main() -> Result<(), DriverError> {
-/// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+/// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
 /// # let my_frag_code = [0u8; 1];
 /// # let my_vert_code = [0u8; 1];
 /// # let vert = Shader::new_vertex(my_vert_code.as_slice());
@@ -964,14 +974,15 @@ impl<'a> Draw<'a> {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # use screen_13::driver::graphic::{GraphicPipeline, GraphicPipelineInfo};
     /// # use screen_13::driver::image::{Image, ImageInfo};
     /// # use screen_13::driver::shader::Shader;
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # let my_frag_code = [0u8; 1];
     /// # let my_vert_code = [0u8; 1];
     /// # let vert = Shader::new_vertex(my_vert_code.as_slice());
@@ -1040,14 +1051,15 @@ impl<'a> Draw<'a> {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # use screen_13::driver::graphic::{GraphicPipeline, GraphicPipelineInfo};
     /// # use screen_13::driver::image::{Image, ImageInfo};
     /// # use screen_13::driver::shader::Shader;
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # let buf_info = BufferInfo::new(8, vk::BufferUsageFlags::VERTEX_BUFFER);
     /// # let my_vtx_buf = Buffer::create(&device, buf_info)?;
     /// # let my_frag_code = [0u8; 1];
@@ -1211,14 +1223,15 @@ impl<'a> Draw<'a> {
     /// # use std::sync::Arc;
     /// # use std::mem::size_of;
     /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # use screen_13::driver::graphic::{GraphicPipeline, GraphicPipelineInfo};
     /// # use screen_13::driver::image::{Image, ImageInfo};
     /// # use screen_13::driver::shader::Shader;
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # let my_frag_code = [0u8; 1];
     /// # let my_vert_code = [0u8; 1];
     /// # let vert = Shader::new_vertex(my_vert_code.as_slice());
@@ -1418,13 +1431,14 @@ impl<'a> Draw<'a> {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::graphic::{GraphicPipeline, GraphicPipelineInfo};
     /// # use screen_13::driver::image::{Image, ImageInfo};
     /// # use screen_13::graph::RenderGraph;
     /// # use screen_13::driver::shader::Shader;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # let my_frag_code = [0u8; 1];
     /// # let my_vert_code = [0u8; 1];
     /// # let vert = Shader::new_vertex(my_vert_code.as_slice());
@@ -1486,13 +1500,14 @@ impl<'a> Draw<'a> {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::graphic::{GraphicPipeline, GraphicPipelineInfo};
     /// # use screen_13::driver::image::{Image, ImageInfo};
     /// # use screen_13::graph::RenderGraph;
     /// # use screen_13::driver::shader::Shader;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # let my_frag_code = [0u8; 1];
     /// # let my_vert_code = [0u8; 1];
     /// # let vert = Shader::new_vertex(my_vert_code.as_slice());
@@ -3590,12 +3605,13 @@ impl<'a> PipelinePassRef<'a, RayTracePipeline> {
 /// ```no_run
 /// # use std::sync::Arc;
 /// # use ash::vk;
-/// # use screen_13::driver::{Device, DriverConfig, DriverError};
+/// # use screen_13::driver::DriverError;
+/// # use screen_13::driver::device::{Device, DeviceInfo};
 /// # use screen_13::driver::ray_trace::{RayTracePipeline, RayTracePipelineInfo, RayTraceShaderGroup};
 /// # use screen_13::driver::shader::Shader;
 /// # use screen_13::graph::RenderGraph;
 /// # fn main() -> Result<(), DriverError> {
-/// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+/// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
 /// # let info = RayTracePipelineInfo::new();
 /// # let my_miss_code = [0u8; 1];
 /// # let my_ray_trace_pipeline = Arc::new(RayTracePipeline::create(&device, info,
@@ -3655,13 +3671,14 @@ impl<'a> RayTrace<'a> {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # use screen_13::driver::ray_trace::{RayTracePipeline, RayTracePipelineInfo, RayTraceShaderGroup};
     /// # use screen_13::driver::shader::Shader;
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # let shader = [0u8; 1];
     /// # let info = RayTracePipelineInfo::new();
     /// # let my_miss_code = [0u8; 1];
@@ -3724,13 +3741,14 @@ impl<'a> RayTrace<'a> {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # use screen_13::driver::ray_trace::{RayTracePipeline, RayTracePipelineInfo, RayTraceShaderGroup};
     /// # use screen_13::driver::shader::Shader;
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # let shader = [0u8; 1];
     /// # let info = RayTracePipelineInfo::new();
     /// # let my_miss_code = [0u8; 1];
@@ -3798,13 +3816,14 @@ impl<'a> RayTrace<'a> {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # use screen_13::driver::ray_trace::{RayTracePipeline, RayTracePipelineInfo, RayTraceShaderGroup};
     /// # use screen_13::driver::shader::Shader;
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # let shader = [0u8; 1];
     /// # let info = RayTracePipelineInfo::new();
     /// # let my_miss_code = [0u8; 1];
@@ -3838,20 +3857,16 @@ impl<'a> RayTrace<'a> {
         depth: u32,
     ) -> &Self {
         unsafe {
-            self.device
-                .ray_tracing_pipeline_ext
-                .as_ref()
-                .unwrap()
-                .cmd_trace_rays(
-                    self.cmd_buf,
-                    raygen_shader_binding_tables,
-                    miss_shader_binding_tables,
-                    hit_shader_binding_tables,
-                    callable_shader_binding_tables,
-                    width,
-                    height,
-                    depth,
-                );
+            self.device.ray_trace_ext.as_ref().unwrap().cmd_trace_rays(
+                self.cmd_buf,
+                raygen_shader_binding_tables,
+                miss_shader_binding_tables,
+                hit_shader_binding_tables,
+                callable_shader_binding_tables,
+                width,
+                height,
+                depth,
+            );
         }
 
         self

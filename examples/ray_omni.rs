@@ -17,7 +17,7 @@ use {
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
-    let event_loop = EventLoop::new().ray_tracing(true).debug(true).build()?;
+    let event_loop = EventLoop::new().debug(true).build()?;
     let mut pool = LazyPool::new(&event_loop.device);
 
     let depth_fmt = best_2d_optimal_format(
@@ -122,16 +122,14 @@ fn best_2d_optimal_format(
     flags: vk::ImageCreateFlags,
 ) -> vk::Format {
     for format in formats {
-        let format_props = unsafe {
-            device.instance.get_physical_device_image_format_properties(
-                *device.physical_device,
-                *format,
-                vk::ImageType::TYPE_2D,
-                vk::ImageTiling::OPTIMAL,
-                usage,
-                flags,
-            )
-        };
+        let format_props = Device::image_format_properties(
+            device,
+            *format,
+            vk::ImageType::TYPE_2D,
+            vk::ImageTiling::OPTIMAL,
+            usage,
+            flags,
+        );
 
         if format_props.is_ok() {
             return *format;
@@ -178,6 +176,7 @@ fn create_blas(
     )?);
 
     let accel_struct_scratch_offset_alignment = device
+        .physical_device
         .accel_struct_properties
         .as_ref()
         .unwrap()
@@ -221,7 +220,7 @@ fn create_blas(
 
     render_graph
         .resolve()
-        .submit(&mut LazyPool::new(device), 0)?;
+        .submit(&mut LazyPool::new(device), 0, 0)?;
 
     Ok(blas)
 }
@@ -370,6 +369,7 @@ fn create_tlas(
         render_graph.bind_node(pool.lease(AccelerationStructureInfo::new_tlas(size.create_size))?);
 
     let accel_struct_scratch_offset_alignment = device
+        .physical_device
         .accel_struct_properties
         .as_ref()
         .unwrap()

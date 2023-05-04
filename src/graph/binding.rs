@@ -5,7 +5,8 @@ use {
     },
     crate::{
         driver::{
-            accel_struct::AccelerationStructure, buffer::Buffer, image::Image, SwapchainImage,
+            accel_struct::AccelerationStructure, buffer::Buffer, image::Image,
+            swapchain::SwapchainImage,
         },
         pool::Lease,
     },

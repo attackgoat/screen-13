@@ -247,11 +247,7 @@ fn create_pipeline(
 }
 
 fn supports_vertex_buffer(device: &Device, format: vk::Format) -> bool {
-    unsafe {
-        device
-            .instance
-            .get_physical_device_format_properties(*device.physical_device, format)
-            .buffer_features
-            .contains(vk::FormatFeatureFlags::VERTEX_BUFFER)
-    }
+    Device::format_properties(device, format)
+        .buffer_features
+        .contains(vk::FormatFeatureFlags::VERTEX_BUFFER)
 }

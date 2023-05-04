@@ -116,6 +116,7 @@ impl ImageLoader {
 
     pub fn decode_bitmap(
         &mut self,
+        queue_family_index: usize,
         queue_index: usize,
         pixels: &[u8],
         format: ImageFormat,
@@ -233,35 +234,56 @@ impl ImageLoader {
 
         let image = render_graph.unbind_node(image);
 
-        render_graph.resolve().submit(&mut self.pool, queue_index)?;
+        render_graph
+            .resolve()
+            .submit(&mut self.pool, queue_family_index, queue_index)?;
 
         Ok(image)
     }
 
     pub fn decode_linear(
         &mut self,
+        queue_family_index: usize,
         queue_index: usize,
         pixels: &[u8],
         format: ImageFormat,
         width: u32,
         height: u32,
     ) -> anyhow::Result<Arc<Image>> {
-        self.decode_bitmap(queue_index, pixels, format, width, height, false)
+        self.decode_bitmap(
+            queue_family_index,
+            queue_index,
+            pixels,
+            format,
+            width,
+            height,
+            false,
+        )
     }
 
     pub fn decode_srgb(
         &mut self,
+        queue_family_index: usize,
         queue_index: usize,
         pixels: &[u8],
         format: ImageFormat,
         width: u32,
         height: u32,
     ) -> anyhow::Result<Arc<Image>> {
-        self.decode_bitmap(queue_index, pixels, format, width, height, true)
+        self.decode_bitmap(
+            queue_family_index,
+            queue_index,
+            pixels,
+            format,
+            width,
+            height,
+            true,
+        )
     }
 
     pub fn load_bitmap_font<'a>(
         &mut self,
+        queue_family_index: usize,
         queue_index: usize,
         font: BMFont,
         pages: impl IntoIterator<Item = (&'a [u8], u32, u32)>,
@@ -269,7 +291,14 @@ impl ImageLoader {
         let pages = pages
             .into_iter()
             .map(|(pixels, width, height)| {
-                self.decode_linear(queue_index, pixels, ImageFormat::R8G8B8, width, height)
+                self.decode_linear(
+                    queue_family_index,
+                    queue_index,
+                    pixels,
+                    ImageFormat::R8G8B8,
+                    width,
+                    height,
+                )
             })
             .collect::<Result<Vec<_>, _>>()?;
 

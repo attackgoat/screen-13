@@ -1,7 +1,7 @@
 //! Shader resource types
 
 use {
-    super::{DescriptorSetLayout, Device, DriverError, SamplerDesc, VertexInputState},
+    super::{device::Device, DescriptorSetLayout, DriverError, SamplerDesc, VertexInputState},
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
     log::{debug, error, info, trace},
@@ -220,7 +220,8 @@ impl PipelineDescriptorInfo {
             // Maybe using one vector and updating it would be more efficient.
             let bindless_flags = vec![vk::DescriptorBindingFlags::PARTIALLY_BOUND; bindings.len()];
             let mut bindless_flags = if device
-                .vulkan_1_2_features
+                .physical_device
+                .features_v1_2
                 .descriptor_binding_partially_bound
             {
                 let bindless_flags = vk::DescriptorSetLayoutBindingFlagsCreateInfo::builder()
@@ -289,10 +290,11 @@ pub struct Shader {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::shader::{Shader, SpecializationInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # let my_shader_code = [0u8; 1];
     /// // We instead specify 42 for MY_COUNT:
     /// let shader = Shader::new_fragment(my_shader_code.as_slice())

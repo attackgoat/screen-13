@@ -1,7 +1,8 @@
 use {
-    super::{DriverError, Instance},
-    ash::{extensions::khr, vk},
-    log::warn,
+    super::{device::Device, DriverError},
+    ash::vk,
+    ash_window::create_surface,
+    log::error,
     raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle},
     std::{
         fmt::{Debug, Formatter},
@@ -12,38 +13,47 @@ use {
 };
 
 pub struct Surface {
-    _instance: Arc<Instance>,
+    device: Arc<Device>,
     surface: vk::SurfaceKHR,
-    surface_ext: khr::Surface,
 }
 
 impl Surface {
     pub fn new(
-        instance: &Arc<Instance>,
+        device: &Arc<Device>,
         display_window: &(impl HasRawDisplayHandle + HasRawWindowHandle),
     ) -> Result<Self, DriverError> {
-        let instance = Arc::clone(instance);
-        let surface_ext = khr::Surface::new(&instance.entry, &instance);
+        let device = Arc::clone(device);
         let surface = unsafe {
-            ash_window::create_surface(
-                &instance.entry,
-                &instance,
+            create_surface(
+                &device.instance.entry,
+                &device.instance,
                 display_window.raw_display_handle(),
                 display_window.raw_window_handle(),
                 None,
             )
         }
         .map_err(|err| {
-            warn!("{err}");
+            error!("unable to create surface: {err}");
 
             DriverError::Unsupported
         })?;
 
-        Ok(Self {
-            _instance: instance,
-            surface,
-            surface_ext,
-        })
+        Ok(Self { device, surface })
+    }
+
+    pub fn formats(this: &Self) -> Result<Vec<vk::SurfaceFormatKHR>, DriverError> {
+        unsafe {
+            this.device
+                .surface_ext
+                .as_ref()
+                .unwrap()
+                .get_physical_device_surface_formats(*this.device.physical_device, this.surface)
+                .map_err(|err| {
+                    error!("unable to get surface formats: {err}");
+
+                    DriverError::Unsupported
+                })
+        }
     }
 }
 
@@ -68,7 +78,11 @@ impl Drop for Surface {
         }
 
         unsafe {
-            self.surface_ext.destroy_surface(self.surface, None);
+            self.device
+                .surface_ext
+                .as_ref()
+                .unwrap()
+                .destroy_surface(self.surface, None);
         }
     }
 }

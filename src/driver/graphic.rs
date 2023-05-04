@@ -2,10 +2,11 @@
 
 use {
     super::{
+        device::Device,
         image::SampleCount,
         merge_push_constant_ranges,
         shader::{DescriptorBindingMap, PipelineDescriptorInfo, Shader, SpecializationInfo},
-        Device, DriverError,
+        DriverError,
     },
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
@@ -383,11 +384,12 @@ impl GraphicPipeline {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::graphic::{GraphicPipeline, GraphicPipelineInfo};
     /// # use screen_13::driver::shader::Shader;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # let my_frag_code = [0u8; 1];
     /// # let my_vert_code = [0u8; 1];
     /// // shader code is raw SPIR-V code as bytes

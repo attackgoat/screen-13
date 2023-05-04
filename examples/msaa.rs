@@ -140,17 +140,15 @@ fn main() -> anyhow::Result<()> {
 
 fn best_depth_format(device: &Device) -> vk::Format {
     for format in [vk::Format::D32_SFLOAT, vk::Format::D16_UNORM] {
-        let format_props = unsafe {
-            device.instance.get_physical_device_image_format_properties(
-                *device.physical_device,
-                format,
-                vk::ImageType::TYPE_2D,
-                vk::ImageTiling::OPTIMAL,
-                vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
-                    | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
-                vk::ImageCreateFlags::empty(),
-            )
-        };
+        let format_props = Device::image_format_properties(
+            device,
+            format,
+            vk::ImageType::TYPE_2D,
+            vk::ImageTiling::OPTIMAL,
+            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
+                | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
+            vk::ImageCreateFlags::empty(),
+        );
 
         if format_props.is_ok() {
             return format;
@@ -161,11 +159,11 @@ fn best_depth_format(device: &Device) -> vk::Format {
 }
 
 fn max_supported_sample_count(device: &Device) -> SampleCount {
-    let vk::PhysicalDeviceLimits {
+    let Vulkan10Limits {
         framebuffer_color_sample_counts,
         framebuffer_depth_sample_counts,
         ..
-    } = device.physical_device.props.limits;
+    } = device.physical_device.properties_v1_0.limits;
     match framebuffer_color_sample_counts & framebuffer_depth_sample_counts {
         s if s.contains(vk::SampleCountFlags::TYPE_64) => SampleCount::X64,
         s if s.contains(vk::SampleCountFlags::TYPE_32) => SampleCount::X32,

@@ -1,7 +1,9 @@
 //! Image resource types
 
 use {
-    super::{access_type_from_u8, access_type_into_u8, format_aspect_mask, Device, DriverError},
+    super::{
+        access_type_from_u8, access_type_into_u8, device::Device, format_aspect_mask, DriverError,
+    },
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
     gpu_allocator::{
@@ -39,10 +41,11 @@ use {
 /// ```no_run
 /// # use std::sync::Arc;
 /// # use ash::vk;
-/// # use screen_13::driver::{AccessType, Device, DriverConfig, DriverError};
+/// # use screen_13::driver::{AccessType, DriverError};
+/// # use screen_13::driver::device::{Device, DeviceInfo};
 /// # use screen_13::driver::image::{Image, ImageInfo};
 /// # fn main() -> Result<(), DriverError> {
-/// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+/// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
 /// # let info = ImageInfo::new_1d(vk::Format::R8_UINT, 1, vk::ImageUsageFlags::STORAGE);
 /// # let my_image = Image::create(&device, info)?;
 /// let prev = Image::access(&my_image, AccessType::AnyShaderWrite);
@@ -78,10 +81,11 @@ impl Image {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::image::{Image, ImageInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// let info = ImageInfo::new_2d(vk::Format::R8G8B8A8_UNORM, 32, 32, vk::ImageUsageFlags::SAMPLED);
     /// let image = Image::create(&device, info)?;
     ///
@@ -91,7 +95,7 @@ impl Image {
     /// # Ok(()) }
     /// ```
     pub fn create(device: &Arc<Device>, info: impl Into<ImageInfo>) -> Result<Self, DriverError> {
-        let mut info: ImageInfo = info.into();
+        let info: ImageInfo = info.into();
 
         //trace!("create: {:?}", &info);
         trace!("create");
@@ -102,54 +106,10 @@ impl Image {
             info.usage
         );
 
-        if info.usage.contains(vk::ImageUsageFlags::COLOR_ATTACHMENT)
-            && !device
-                .physical_device
-                .props
-                .limits
-                .framebuffer_color_sample_counts
-                .contains(info.sample_count.into_vk())
-        {
-            info.sample_count = info
-                .sample_count
-                .compatible_items()
-                .find(|sample_count| {
-                    device
-                        .physical_device
-                        .props
-                        .limits
-                        .framebuffer_color_sample_counts
-                        .contains(sample_count.into_vk())
-                })
-                .unwrap();
-        }
-
-        if info
-            .usage
-            .contains(vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT)
-            && !device
-                .physical_device
-                .props
-                .limits
-                .framebuffer_depth_sample_counts
-                .contains(info.sample_count.into_vk())
-        {
-            info.sample_count = info
-                .sample_count
-                .compatible_items()
-                .find(|sample_count| {
-                    device
-                        .physical_device
-                        .props
-                        .limits
-                        .framebuffer_depth_sample_counts
-                        .contains(sample_count.into_vk())
-                })
-                .unwrap();
-        }
-
         let device = Arc::clone(device);
-        let create_info = info.image_create_info();
+        let create_info = info
+            .image_create_info()
+            .queue_family_indices(&device.physical_device.queue_family_indices);
         let image = unsafe {
             device.create_image(&create_info, None).map_err(|err| {
                 warn!("{err}");
@@ -214,10 +174,11 @@ impl Image {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{AccessType, Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::{AccessType, DriverError};
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::image::{Image, ImageInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # let info = ImageInfo::new_1d(vk::Format::R8_UINT, 1, vk::ImageUsageFlags::STORAGE);
     /// # let my_image = Image::create(&device, info)?;
     /// // Initially we want to "Read Other"
@@ -473,7 +434,7 @@ impl ImageInfo {
         self.into()
     }
 
-    fn image_create_info(self) -> vk::ImageCreateInfo {
+    fn image_create_info<'a>(self) -> vk::ImageCreateInfoBuilder<'a> {
         let (ty, extent, array_layers) = match self.ty {
             ImageType::Texture1D => (
                 vk::ImageType::TYPE_1D,
@@ -544,24 +505,22 @@ impl ImageInfo {
             ),
         };
 
-        vk::ImageCreateInfo {
-            flags: self.flags,
-            image_type: ty,
-            format: self.fmt,
-            extent,
-            mip_levels: self.mip_level_count,
-            array_layers,
-            samples: self.sample_count.into_vk(),
-            tiling: if self.linear_tiling {
+        vk::ImageCreateInfo::builder()
+            .flags(self.flags)
+            .image_type(ty)
+            .format(self.fmt)
+            .extent(extent)
+            .mip_levels(self.mip_level_count)
+            .array_layers(array_layers)
+            .samples(self.sample_count.into_vk())
+            .tiling(if self.linear_tiling {
                 vk::ImageTiling::LINEAR
             } else {
                 vk::ImageTiling::OPTIMAL
-            },
-            usage: self.usage,
-            sharing_mode: vk::SharingMode::EXCLUSIVE,
-            initial_layout: vk::ImageLayout::UNDEFINED,
-            ..Default::default()
-        }
+            })
+            .usage(self.usage)
+            .sharing_mode(vk::SharingMode::CONCURRENT)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
     }
 }
 
@@ -848,10 +807,6 @@ pub enum SampleCount {
 }
 
 impl SampleCount {
-    fn compatible_items(self) -> impl Iterator<Item = Self> {
-        SampleCountCompatibilityIter(self)
-    }
-
     pub(super) fn into_vk(self) -> vk::SampleCountFlags {
         match self {
             Self::X1 => vk::SampleCountFlags::TYPE_1,
@@ -868,23 +823,5 @@ impl SampleCount {
 impl Default for SampleCount {
     fn default() -> Self {
         Self::X1
-    }
-}
-
-struct SampleCountCompatibilityIter(SampleCount);
-
-impl Iterator for SampleCountCompatibilityIter {
-    type Item = SampleCount;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        Some(match self.0 {
-            SampleCount::X1 => return None,
-            SampleCount::X2 => SampleCount::X1,
-            SampleCount::X4 => SampleCount::X2,
-            SampleCount::X8 => SampleCount::X4,
-            SampleCount::X16 => SampleCount::X8,
-            SampleCount::X32 => SampleCount::X16,
-            SampleCount::X64 => SampleCount::X32,
-        })
     }
 }

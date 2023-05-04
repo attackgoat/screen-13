@@ -23,6 +23,7 @@ fn main() -> anyhow::Result<()> {
     )?;
     let mut small_10px_font = image_loader.load_bitmap_font(
         0,
+        0,
         small_10px_font,
         [(
             Reader::new(Cursor::new(
@@ -39,8 +40,8 @@ fn main() -> anyhow::Result<()> {
     )?;
 
     // A neato smoke effect just for fun
-    let PhysicalDeviceVulkan11Properties { subgroup_size, .. } =
-        event_loop.device.vulkan_1_1_properties;
+    let Vulkan11Properties { subgroup_size, .. } =
+        event_loop.device.physical_device.properties_v1_1;
     let start_time = Instant::now();
     let smoke_pipeline = Arc::new(ComputePipeline::create(&event_loop.device,
         ComputePipelineInfo::default(),

@@ -1,7 +1,7 @@
 //! Buffer resource types
 
 use {
-    super::{access_type_from_u8, access_type_into_u8, Device, DriverError},
+    super::{access_type_from_u8, access_type_into_u8, device::Device, DriverError},
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
     gpu_allocator::{
@@ -36,10 +36,11 @@ use {
 /// ```no_run
 /// # use std::sync::Arc;
 /// # use ash::vk;
-/// # use screen_13::driver::{AccessType, Device, DriverConfig, DriverError};
+/// # use screen_13::driver::{AccessType, DriverError};
+/// # use screen_13::driver::device::{Device, DeviceInfo};
 /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
 /// # fn main() -> Result<(), DriverError> {
-/// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+/// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
 /// # let info = BufferInfo::new(8, vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS);
 /// # let my_buf = Buffer::create(&device, info)?;
 /// let addr = Buffer::device_address(&my_buf);
@@ -73,10 +74,11 @@ impl Buffer {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// const SIZE: vk::DeviceSize = 1024;
     /// let info = BufferInfo::new_mappable(SIZE, vk::BufferUsageFlags::UNIFORM_BUFFER);
     /// let buf = Buffer::create(&device, info)?;
@@ -91,12 +93,11 @@ impl Buffer {
         trace!("create: {:?}", info);
 
         let device = Arc::clone(device);
-        let buffer_info = vk::BufferCreateInfo {
-            size: info.size,
-            usage: info.usage,
-            sharing_mode: vk::SharingMode::EXCLUSIVE,
-            ..Default::default()
-        };
+        let buffer_info = vk::BufferCreateInfo::builder()
+            .size(info.size)
+            .usage(info.usage)
+            .sharing_mode(vk::SharingMode::CONCURRENT)
+            .queue_family_indices(&device.physical_device.queue_family_indices);
         let buffer = unsafe {
             device.create_buffer(&buffer_info, None).map_err(|err| {
                 warn!("{err}");
@@ -160,10 +161,11 @@ impl Buffer {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// const DATA: [u8; 4] = [0xfe, 0xed, 0xbe, 0xef];
     /// let buf = Buffer::create_from_slice(&device, vk::BufferUsageFlags::UNIFORM_BUFFER, &DATA)?;
     ///
@@ -202,10 +204,11 @@ impl Buffer {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{AccessType, Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::{AccessType, DriverError};
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # const SIZE: vk::DeviceSize = 1024;
     /// # let info = BufferInfo::new(SIZE, vk::BufferUsageFlags::STORAGE_BUFFER);
     /// # let my_buf = Buffer::create(&device, info)?;
@@ -247,10 +250,11 @@ impl Buffer {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # let info = BufferInfo::new_mappable(4, vk::BufferUsageFlags::empty());
     /// # let mut my_buf = Buffer::create(&device, info)?;
     /// const DATA: [u8; 4] = [0xde, 0xad, 0xc0, 0xde];
@@ -277,10 +281,11 @@ impl Buffer {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # let info = BufferInfo::new_mappable(4, vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS);
     /// # let my_buf = Buffer::create(&device, info)?;
     /// let addr = Buffer::device_address(&my_buf);
@@ -309,10 +314,11 @@ impl Buffer {
     /// ```no_run
     /// # use std::sync::Arc;
     /// # use ash::vk;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # const DATA: [u8; 4] = [0; 4];
     /// # let my_buf = Buffer::create_from_slice(&device, vk::BufferUsageFlags::empty(), &DATA)?;
     /// // my_buf is mappable and filled with four zeroes
@@ -340,10 +346,11 @@ impl Buffer {
     /// # use std::sync::Arc;
     /// # use ash::vk;
     /// # use glam::Mat4;
-    /// # use screen_13::driver::{Device, DriverConfig, DriverError};
+    /// # use screen_13::driver::DriverError;
+    /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::new(DriverConfig::new().build())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # const DATA: [u8; 4] = [0; 4];
     /// # let mut my_buf = Buffer::create_from_slice(&device, vk::BufferUsageFlags::empty(), &DATA)?;
     /// let mut data = Buffer::mapped_slice_mut(&mut my_buf);
