@@ -341,6 +341,7 @@ pub mod prelude {
                 graphic::{
                     BlendMode, BlendModeBuilder, DepthStencilMode, DepthStencilModeBuilder,
                     GraphicPipeline, GraphicPipelineInfo, GraphicPipelineInfoBuilder, StencilMode,
+                    VertexInputState,
                 },
                 image::{
                     Image, ImageInfo, ImageInfoBuilder, ImageSubresource, ImageType, ImageViewInfo,

@@ -1,0 +1,21 @@
+[package]
+name = "proc_macros"
+version = "0.1.0"
+authors = ["Niklas Voss <niklas.voss@gmail.com>"]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/attackgoat/screen-13"
+homepage = "https://github.com/attackgoat/screen-13/contrib/screen-13-macros"
+description = "Proc-Macros used by Screen-13-Macros"
+publish = false
+
+[lib]
+proc-macro = true
+path = "lib.rs"
+
+[dependencies]
+syn = "1.0"
+quote = "1.0"
+proc-macro2 = "1.0"
+proc-macro-crate = "1.2"
