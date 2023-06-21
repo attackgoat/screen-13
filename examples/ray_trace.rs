@@ -436,18 +436,22 @@ fn load_scene_buffers(
         let materials = materials
             .iter()
             .map(|material| {
+                let ambient = material.ambient.unwrap_or_default();
+                let diffuse = material.diffuse.unwrap_or([1.0, 0.0, 1.0]);
+                let specular = material.specular.unwrap_or_default();
+
                 [
-                    material.ambient[0],
-                    material.ambient[1],
-                    material.ambient[2],
+                    ambient[0],
+                    ambient[1],
+                    ambient[2],
                     0.0,
-                    material.diffuse[0],
-                    material.diffuse[1],
-                    material.diffuse[2],
+                    diffuse[0],
+                    diffuse[1],
+                    diffuse[2],
                     0.0,
-                    material.specular[0],
-                    material.specular[1],
-                    material.specular[2],
+                    specular[0],
+                    specular[1],
+                    specular[2],
                     0.0,
                     1.0,
                     1.0,

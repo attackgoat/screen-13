@@ -7,7 +7,6 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 
 [dependencies]
-archery = "0.4"
 bytemuck = "1.13"
 egui = { version = "0.20", features = [
     "bytemuck"

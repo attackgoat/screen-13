@@ -354,26 +354,26 @@ impl Model {
 
         // This obviously makes some assumptions about the input model!
 
-        let mesh = &model
+        let mesh = model
             .meshes()
             .iter()
             .find(|mesh| mesh.skin().is_some())
             .unwrap();
         let joints = mesh.skin().unwrap().joints().to_vec();
-        let primitives = mesh.primitives();
+        let parts = mesh.parts();
 
-        assert_eq!(primitives.len(), 1);
+        assert_eq!(parts.len(), 1);
 
-        let primitive = &mesh.primitives()[0];
-        let lods = primitive.lods();
+        let part = &parts[0];
+        let lods = part.lods();
 
         assert_eq!(
-            primitive.vertex(),
+            part.vertex(),
             Vertex::POSITION | Vertex::NORMAL | Vertex::TEXTURE0 | Vertex::JOINTS_WEIGHTS
         );
         assert!(!lods.is_empty());
 
-        let lod = &primitive.lods()[0];
+        let lod = &lods[0];
         let indices = lod.index_buffer();
 
         assert!(indices.len() < u16::MAX as usize);
@@ -383,7 +383,7 @@ impl Model {
             .map(|idx| idx as u16)
             .collect::<Box<_>>();
         let index_data = cast_slice(&indices);
-        let vertex_data = primitive.vertex_data();
+        let vertex_data = part.vertex_data();
 
         // Host-accessible staging buffers
         let index_staging_buf = Arc::new(Buffer::create_from_slice(
