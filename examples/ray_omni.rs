@@ -39,7 +39,7 @@ fn main() -> anyhow::Result<()> {
         angle += frame.dt;
 
         let scene_tlas =
-            create_tlas(&frame.device, &mut pool, frame.render_graph, &scene_blas).unwrap();
+            create_tlas(frame.device, &mut pool, frame.render_graph, &scene_blas).unwrap();
 
         let ground_mesh_index_buf = frame.render_graph.bind_node(&ground_mesh.index_buf);
         let ground_mesh_vertex_buf = frame.render_graph.bind_node(&ground_mesh.vertex_buf);

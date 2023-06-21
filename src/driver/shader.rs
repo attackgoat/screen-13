@@ -13,6 +13,7 @@ use {
         collections::{BTreeMap, HashMap},
         fmt::{Debug, Formatter},
         iter::repeat,
+        mem::size_of_val,
         sync::Arc,
     },
 };
@@ -942,9 +943,9 @@ impl ShaderCode for &[u32] {
         where
             T: Sized,
         {
-            use std::{mem::size_of, slice::from_raw_parts};
+            use std::slice::from_raw_parts;
 
-            unsafe { from_raw_parts(t.as_ptr() as *const _, t.len() * size_of::<T>()) }
+            unsafe { from_raw_parts(t.as_ptr() as *const _, size_of_val(t)) }
         }
 
         into_u8_slice(self).into_vec()

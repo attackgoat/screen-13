@@ -8,7 +8,7 @@ use {
     derive_builder::{Builder, UninitializedFieldError},
     log::warn,
     std::{
-        mem::size_of,
+        mem::size_of_val,
         ops::Deref,
         sync::{
             atomic::{AtomicU8, Ordering},
@@ -221,12 +221,9 @@ impl AccelerationStructure {
 
     /// Helper function which is used to prepare instance buffers.
     pub fn instance_slice(instances: &[vk::AccelerationStructureInstanceKHR]) -> &[u8] {
-        unsafe {
-            std::slice::from_raw_parts(
-                instances.as_ptr() as *const _,
-                instances.len() * size_of::<vk::AccelerationStructureInstanceKHR>(),
-            )
-        }
+        use std::slice::from_raw_parts;
+
+        unsafe { from_raw_parts(instances.as_ptr() as *const _, size_of_val(instances)) }
     }
 
     /// Returns the size of some geometry info which is then used to create a new

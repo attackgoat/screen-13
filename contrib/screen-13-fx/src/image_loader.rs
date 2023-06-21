@@ -114,6 +114,7 @@ impl ImageLoader {
         ))
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn decode_bitmap(
         &mut self,
         queue_family_index: usize,

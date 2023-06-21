@@ -66,13 +66,13 @@ fn exclusive_sum(
     let mut render_graph = RenderGraph::new();
 
     let input_buf = render_graph.bind_node(Buffer::create_from_slice(
-        &device,
+        device,
         vk::BufferUsageFlags::STORAGE_BUFFER,
         cast_slice(input_data),
     )?);
 
     let output_buf = render_graph.bind_node(Arc::new(Buffer::create(
-        &device,
+        device,
         BufferInfo::new_mappable(
             input_data.len() as vk::DeviceSize * size_of::<u32>() as vk::DeviceSize,
             vk::BufferUsageFlags::STORAGE_BUFFER,
@@ -114,7 +114,7 @@ fn exclusive_sum(
     let output_buf = render_graph.unbind_node(output_buf);
     let cmd_buf = render_graph
         .resolve()
-        .submit(&mut HashPool::new(&device), 0, 0)?;
+        .submit(&mut HashPool::new(device), 0, 0)?;
 
     let started = Instant::now();
     cmd_buf.wait_until_executed()?;
