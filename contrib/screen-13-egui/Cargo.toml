@@ -8,10 +8,10 @@ readme = "README.md"
 
 [dependencies]
 bytemuck = "1.13"
-egui = { version = "0.20", features = [
+egui = { version = "0.22", features = [
     "bytemuck"
 ] }
-egui-winit = "0.20"
+egui-winit = "0.22"
 inline-spirv = "0.1"
 screen-13 = { path = "../.." }
 screen-13-fx = { path = "../screen-13-fx" }
