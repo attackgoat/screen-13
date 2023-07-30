@@ -31,6 +31,7 @@ Example | Instructions | Preview
 [transitions.rs](transitions.rs) | <pre>cargo run --example transitions</pre> | <image alt="Preview" src="../.github/img/transitions.png" height=149 width=176>
 [skeletal-anim/](skeletal-anim/src/main.rs) | <pre>cargo run --manifest-path examples/skeletal-anim/Cargo.toml</pre> Skeletal mesh animation using GLTF | <image alt="Preview" src="../.github/img/skeletal-anim.png" height=149 width=176>
 [shader-toy/](shader-toy/src/main.rs) | <pre>cargo run --manifest-path examples/shader-toy/Cargo.toml</pre> | <image alt="Preview" src="../.github/img/shader-toy.png" height=105 width=176>
+[vr/](vr/src/main.rs) | <pre>cargo run --manifest-path examples/vr/Cargo.toml</pre> | <image alt="Preview" src="../.github/img/vr.png" height=105 width=176>
 
 ## Additional Examples
 

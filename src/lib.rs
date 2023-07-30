@@ -357,7 +357,7 @@ pub mod prelude {
                     RayTraceShaderGroup, RayTraceShaderGroupType,
                 },
                 shader::{Shader, ShaderBuilder, ShaderCode, SpecializationInfo},
-                AccessType, CommandBuffer, DriverError, ResolveMode,
+                AccessType, CommandBuffer, DriverError, Instance, ResolveMode,
             },
             event_loop::{EventLoop, EventLoopBuilder, FullscreenMode},
             frame::{center_cursor, set_cursor_position, FrameContext},

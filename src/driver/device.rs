@@ -38,7 +38,7 @@ pub struct Device {
     immutable_samplers: HashMap<SamplerDesc, vk::Sampler>,
 
     /// Vulkan instance pointer, which includes useful functions.
-    pub(super) instance: Instance,
+    instance: Instance,
 
     /// The physical device, which contains useful data about features, properties, and limits.
     pub physical_device: PhysicalDevice,
@@ -53,30 +53,15 @@ pub struct Device {
 }
 
 impl Device {
-    fn create(
-        instance: Instance,
-        select_physical_device: Box<SelectPhysicalDeviceFn>,
-        debug: bool,
+    pub unsafe fn create_ash_device<F>(
+        instance: &Instance,
+        physical_device: &PhysicalDevice,
         display_window: bool,
-    ) -> Result<Self, DriverError> {
-        let mut physical_devices = Instance::physical_devices(&instance)?;
-
-        if physical_devices.is_empty() {
-            error!("no supported devices found");
-
-            return Err(DriverError::Unsupported);
-        }
-
-        let mut phyical_device_idx = select_physical_device(&physical_devices);
-
-        if phyical_device_idx >= physical_devices.len() {
-            warn!("invalid device selected");
-
-            phyical_device_idx = 0;
-        }
-
-        let physical_device = physical_devices.remove(phyical_device_idx);
-
+        create_fn: F,
+    ) -> ash::prelude::VkResult<ash::Device>
+    where
+        F: FnOnce(vk::DeviceCreateInfo) -> ash::prelude::VkResult<ash::Device>,
+    {
         let mut enabled_ext_names = Vec::with_capacity(5);
 
         if display_window {
@@ -107,12 +92,6 @@ impl Device {
             )
             .collect::<Box<_>>();
 
-        if priorities.is_empty() {
-            error!("device contains no queues");
-
-            return Err(DriverError::Unsupported);
-        }
-
         let queue_infos = physical_device
             .queue_families
             .iter()
@@ -136,88 +115,68 @@ impl Device {
         let mut features_v1_2 = vk::PhysicalDeviceVulkan12Features::default();
         let mut acceleration_structure_features =
             vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
+        let mut multiview_features = vk::PhysicalDeviceMultiviewFeatures::default();
         let mut ray_query_features = vk::PhysicalDeviceRayQueryFeaturesKHR::default();
         let mut ray_trace_features = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
         let mut features = vk::PhysicalDeviceFeatures2::builder()
             .push_next(&mut features_v1_1)
             .push_next(&mut features_v1_2)
             .push_next(&mut acceleration_structure_features)
+            .push_next(&mut multiview_features)
             .push_next(&mut ray_query_features)
             .push_next(&mut ray_trace_features)
             .build();
-        unsafe { get_physical_device_features2(*physical_device, &mut features) };
+        unsafe { get_physical_device_features2(**physical_device, &mut features) };
 
-        unsafe {
-            let device_create_info = vk::DeviceCreateInfo::builder()
-                .queue_create_infos(&queue_infos)
-                .enabled_extension_names(&enabled_ext_names)
-                .push_next(&mut features);
-            let device = instance
-                .create_device(*physical_device, &device_create_info, None)
-                .map_err(|err| {
-                    error!("unable to create device: {err}");
+        let device_create_info = vk::DeviceCreateInfo::builder()
+            .queue_create_infos(&queue_infos)
+            .enabled_extension_names(&enabled_ext_names)
+            .push_next(&mut features)
+            .build();
 
-                    DriverError::Unsupported
-                })?;
-            let allocator = Allocator::new(&AllocatorCreateDesc {
-                instance: (*instance).clone(),
-                device: device.clone(),
-                physical_device: *physical_device,
-                debug_settings: AllocatorDebugSettings {
-                    log_leaks_on_shutdown: debug,
-                    log_memory_information: debug,
-                    log_allocations: debug,
-                    ..Default::default()
-                },
-                buffer_device_address: true,
-            })
-            .map_err(|err| {
-                warn!("{err}");
+        create_fn(device_create_info)
+    }
 
-                DriverError::Unsupported
-            })?;
+    fn create(
+        instance: Instance,
+        select_physical_device: Box<SelectPhysicalDeviceFn>,
+        display_window: bool,
+    ) -> Result<Self, DriverError> {
+        let mut physical_devices = Instance::physical_devices(&instance)?;
 
-            let mut queues = Vec::with_capacity(physical_device.queue_families.len());
+        if physical_devices.is_empty() {
+            error!("no supported devices found");
 
-            for (queue_family_index, properties) in
-                physical_device.queue_families.iter().enumerate()
-            {
-                let mut queue_family = Vec::with_capacity(properties.queue_count as _);
-
-                for queue_index in 0..properties.queue_count {
-                    queue_family
-                        .push(device.get_device_queue(queue_family_index as _, queue_index));
-                }
-
-                queues.push(queue_family);
-            }
-
-            let immutable_samplers = Self::create_immutable_samplers(&device)?;
-
-            let surface_ext = display_window.then(|| khr::Surface::new(&instance.entry, &instance));
-            let swapchain_ext = display_window.then(|| khr::Swapchain::new(&instance, &device));
-            let accel_struct_ext = physical_device
-                .accel_struct_properties
-                .is_some()
-                .then(|| khr::AccelerationStructure::new(&instance, &device));
-            let ray_trace_ext = physical_device
-                .ray_trace_features
-                .is_some()
-                .then(|| khr::RayTracingPipeline::new(&instance, &device));
-
-            Ok(Self {
-                accel_struct_ext,
-                allocator: Some(Mutex::new(allocator)),
-                device,
-                immutable_samplers,
-                instance,
-                physical_device,
-                queues,
-                ray_trace_ext,
-                surface_ext,
-                swapchain_ext,
-            })
+            return Err(DriverError::Unsupported);
         }
+
+        let mut phyical_device_idx = select_physical_device(&physical_devices);
+
+        if phyical_device_idx >= physical_devices.len() {
+            warn!("invalid device selected");
+
+            phyical_device_idx = 0;
+        }
+
+        let physical_device = physical_devices.remove(phyical_device_idx);
+
+        let device = unsafe {
+            Self::create_ash_device(
+                &instance,
+                &physical_device,
+                display_window,
+                |device_create_info| {
+                    instance.create_device(*physical_device, &device_create_info, None)
+                },
+            )
+        }
+        .map_err(|err| {
+            error!("unable to create device: {err}");
+
+            DriverError::Unsupported
+        })?;
+
+        Self::load(instance, physical_device, device, display_window)
     }
 
     /// Constructs a new device using the given configuration.
@@ -226,9 +185,9 @@ impl Device {
             debug,
             select_physical_device,
         } = info.into();
-        let instance = Instance::new(debug, empty())?;
+        let instance = Instance::create(debug, empty())?;
 
-        Self::create(instance, select_physical_device, debug, false)
+        Self::create(instance, select_physical_device, false)
     }
 
     /// Constructs a new device using the given configuration.
@@ -249,9 +208,75 @@ impl Device {
                 })?
                 .iter()
                 .map(|ext| unsafe { CStr::from_ptr(*ext as *const _) });
-        let instance = Instance::new(debug, required_extensions)?;
+        let instance = Instance::create(debug, required_extensions)?;
 
-        Self::create(instance, select_physical_device, debug, true)
+        Self::create(instance, select_physical_device, true)
+    }
+
+    pub fn load(
+        instance: Instance,
+        physical_device: PhysicalDevice,
+        device: ash::Device,
+        display_window: bool,
+    ) -> Result<Self, DriverError> {
+        let debug = Instance::is_debug(&instance);
+        let allocator = Allocator::new(&AllocatorCreateDesc {
+            instance: (*instance).clone(),
+            device: device.clone(),
+            physical_device: *physical_device,
+            debug_settings: AllocatorDebugSettings {
+                log_leaks_on_shutdown: debug,
+                log_memory_information: debug,
+                log_allocations: debug,
+                ..Default::default()
+            },
+            buffer_device_address: true,
+        })
+        .map_err(|err| {
+            warn!("{err}");
+
+            DriverError::Unsupported
+        })?;
+
+        let mut queues = Vec::with_capacity(physical_device.queue_families.len());
+
+        for (queue_family_index, properties) in physical_device.queue_families.iter().enumerate() {
+            let mut queue_family = Vec::with_capacity(properties.queue_count as _);
+
+            for queue_index in 0..properties.queue_count {
+                queue_family
+                    .push(unsafe { device.get_device_queue(queue_family_index as _, queue_index) });
+            }
+
+            queues.push(queue_family);
+        }
+
+        let immutable_samplers = Self::create_immutable_samplers(&device)?;
+
+        let surface_ext =
+            display_window.then(|| khr::Surface::new(Instance::entry(&instance), &instance));
+        let swapchain_ext = display_window.then(|| khr::Swapchain::new(&instance, &device));
+        let accel_struct_ext = physical_device
+            .accel_struct_properties
+            .is_some()
+            .then(|| khr::AccelerationStructure::new(&instance, &device));
+        let ray_trace_ext = physical_device
+            .ray_trace_features
+            .is_some()
+            .then(|| khr::RayTracingPipeline::new(&instance, &device));
+
+        Ok(Self {
+            accel_struct_ext,
+            allocator: Some(Mutex::new(allocator)),
+            device,
+            immutable_samplers,
+            instance,
+            physical_device,
+            queues,
+            ray_trace_ext,
+            surface_ext,
+            swapchain_ext,
+        })
     }
 
     fn create_immutable_samplers(
@@ -354,6 +379,10 @@ impl Device {
             .get(&info)
             .copied()
             .unwrap_or_else(|| unimplemented!("{:?}", info))
+    }
+
+    pub fn instance(this: &Self) -> &Instance {
+        &this.instance
     }
 
     pub(crate) fn wait_for_fence(this: &Self, fence: &vk::Fence) -> Result<(), DriverError> {

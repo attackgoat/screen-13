@@ -9,11 +9,14 @@ use {
         ffi::CStr,
         fmt::{Debug, Formatter},
         ops::Deref,
+        ptr::null,
     },
 };
 
+// TODO: There is a bunch of unsafe cstr handling here - does not check for null-termination
+
 fn vk_cstr_to_string_lossy(cstr: &[i8]) -> String {
-    unsafe { CStr::from_ptr(cstr.as_ptr() as *const _) }
+    unsafe { CStr::from_ptr(cstr.as_ptr()) }
         .to_string_lossy()
         .to_string()
 }
@@ -116,6 +119,42 @@ impl From<vk::PhysicalDeviceDepthStencilResolveProperties> for DepthStencilResol
     }
 }
 
+/// Features of the physical device for multiview.
+///
+/// See
+/// [`VkPhysicalDeviceMultiviewFeatures`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkPhysicalDeviceMultiviewFeaturesKHR.html)
+/// manual page.
+pub struct MultiviewFeatures {
+    /// Indicates whether the implementation supports multiview rendering within a render pass.
+    ///
+    /// If this feature is not enabled, the view mask of each subpass must always be zero.
+    pub multiview: bool,
+
+    /// Indicates whether the implementation supports multiview rendering within a render pass, with
+    /// geometry shaders.
+    ///
+    /// If this feature is not enabled, then a pipeline compiled against a subpass with a non-zero
+    /// view mask must not include a geometry shader.
+    pub multiview_geometry_shader: bool,
+
+    /// Indicates whether the implementation supports multiview rendering within a render pass, with
+    /// tessellation shaders.
+    ///
+    /// If this feature is not enabled, then a pipeline compiled against a subpass with a non-zero
+    /// view mask must not include any tessellation shaders.
+    pub multiview_tessellation_shader: bool,
+}
+
+impl From<vk::PhysicalDeviceMultiviewFeaturesKHR> for MultiviewFeatures {
+    fn from(features: vk::PhysicalDeviceMultiviewFeaturesKHR) -> Self {
+        Self {
+            multiview: features.multiview == vk::TRUE,
+            multiview_geometry_shader: features.multiview_geometry_shader == vk::TRUE,
+            multiview_tessellation_shader: features.multiview_tessellation_shader == vk::TRUE,
+        }
+    }
+}
+
 /// Structure which holds data about the physical hardware selected by the current device.
 pub struct PhysicalDevice {
     /// Describes the properties of the device which relate to acceleration structures, if
@@ -136,6 +175,9 @@ pub struct PhysicalDevice {
 
     /// Memory properties of the physical device.
     pub memory_properties: vk::PhysicalDeviceMemoryProperties,
+
+    /// Describes the features of the device which relate to multiview, if available.
+    pub multiview_features: Option<MultiviewFeatures>,
 
     /// Device properties of the physical device which are part of the Vulkan 1.0 base feature set.
     pub properties_v1_0: Vulkan10Properties,
@@ -166,12 +208,20 @@ pub struct PhysicalDevice {
 }
 
 impl PhysicalDevice {
-    pub(super) unsafe fn new(
+    pub fn new(
         instance: &Instance,
         physical_device: vk::PhysicalDevice,
     ) -> Result<Self, DriverError> {
-        let memory_properties = instance.get_physical_device_memory_properties(physical_device);
-        let queue_families = instance.get_physical_device_queue_family_properties(physical_device);
+        if physical_device == vk::PhysicalDevice::null() {
+            return Err(DriverError::InvalidData);
+        }
+
+        let (memory_properties, queue_families) = unsafe {
+            (
+                instance.get_physical_device_memory_properties(physical_device),
+                instance.get_physical_device_queue_family_properties(physical_device),
+            )
+        };
 
         let mut queue_family_indices = Vec::with_capacity(queue_families.len());
         for idx in 0..queue_families.len() as u32 {
@@ -192,16 +242,20 @@ impl PhysicalDevice {
         let mut features_v1_2 = vk::PhysicalDeviceVulkan12Features::default();
         let mut acceleration_structure_features =
             vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
+        let mut multiview_features = vk::PhysicalDeviceMultiviewFeatures::default();
         let mut ray_query_features = vk::PhysicalDeviceRayQueryFeaturesKHR::default();
         let mut ray_trace_features = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
         let mut features = vk::PhysicalDeviceFeatures2::builder()
             .push_next(&mut features_v1_1)
             .push_next(&mut features_v1_2)
             .push_next(&mut acceleration_structure_features)
+            .push_next(&mut multiview_features)
             .push_next(&mut ray_query_features)
             .push_next(&mut ray_trace_features)
             .build();
-        get_physical_device_features2(physical_device, &mut features);
+        unsafe {
+            get_physical_device_features2(physical_device, &mut features);
+        }
         let features_v1_0 = features.features.into();
         let features_v1_1 = features_v1_1.into();
         let features_v1_2 = features_v1_2.into();
@@ -221,43 +275,55 @@ impl PhysicalDevice {
             .push_next(&mut depth_stencil_resolve_properties)
             .push_next(&mut ray_trace_properties)
             .build();
-        get_physical_device_properties2(physical_device, &mut properties);
+        unsafe {
+            get_physical_device_properties2(physical_device, &mut properties);
+        }
         let properties_v1_0: Vulkan10Properties = properties.properties.into();
         let properties_v1_1 = properties_v1_1.into();
         let properties_v1_2 = properties_v1_2.into();
         let depth_stencil_resolve_properties = depth_stencil_resolve_properties.into();
 
-        let extensions = instance
-            .enumerate_device_extension_properties(physical_device)
-            .map_err(|err| {
-                error!("Unable to enumerate device extensions {err}");
+        let extensions = unsafe {
+            instance
+                .enumerate_device_extension_properties(physical_device)
+                .map_err(|err| {
+                    error!("Unable to enumerate device extensions {err}");
 
-                DriverError::Unsupported
-            })?;
+                    DriverError::Unsupported
+                })?
+        };
 
         debug!("physical device: {}", &properties_v1_0.device_name);
 
         for property in &extensions {
-            debug!(
-                "extension {:?} v{}",
-                CStr::from_ptr(property.extension_name.as_ptr()),
-                property.spec_version
-            );
+            let extension_name = property.extension_name.as_ptr();
+
+            if extension_name == null() {
+                return Err(DriverError::InvalidData);
+            }
+
+            let extension_name = unsafe { CStr::from_ptr(extension_name) };
+
+            debug!("extension {:?} v{}", extension_name, property.spec_version);
         }
 
         // Check for supported extensions
         let extensions = extensions
             .iter()
-            .map(|property| CStr::from_ptr(property.extension_name.as_ptr() as *const _))
+            .map(|property: &vk::ExtensionProperties| property.extension_name.as_ptr())
+            .filter(|&extension_name| extension_name != null())
+            .map(|extension_name| unsafe { CStr::from_ptr(extension_name) })
             .collect::<HashSet<_>>();
         let supports_accel_struct = extensions.contains(vk::KhrAccelerationStructureFn::name())
             && extensions.contains(vk::KhrDeferredHostOperationsFn::name());
+        let supports_multiview = extensions.contains(vk::KhrMultiviewFn::name());
         let supports_ray_query = extensions.contains(vk::KhrRayQueryFn::name());
         let supports_ray_trace = extensions.contains(vk::KhrRayTracingPipelineFn::name());
 
         // Gather optional features and properties of the physical device
         let ray_query_features = supports_ray_query.then(|| ray_query_features.into());
         let ray_trace_features = supports_ray_trace.then(|| ray_trace_features.into());
+        let multiview_features = supports_multiview.then(|| multiview_features.into());
         let accel_struct_properties = supports_accel_struct.then(|| accel_struct_properties.into());
         let ray_trace_properties = supports_ray_trace.then(|| ray_trace_properties.into());
 
@@ -268,6 +334,7 @@ impl PhysicalDevice {
             features_v1_1,
             features_v1_2,
             memory_properties,
+            multiview_features,
             physical_device,
             properties_v1_0,
             properties_v1_1,

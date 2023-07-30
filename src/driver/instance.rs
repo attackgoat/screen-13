@@ -83,13 +83,13 @@ pub struct Instance {
     _debug_callback: Option<vk::DebugReportCallbackEXT>,
     #[allow(deprecated)] // TODO: Remove? Look into this....
     _debug_loader: Option<ext::DebugReport>,
-    _debug_utils: Option<ext::DebugUtils>,
-    pub entry: Entry,
+    debug_utils: Option<ext::DebugUtils>,
+    entry: Entry,
     instance: ash::Instance,
 }
 
 impl Instance {
-    pub fn new<'a>(
+    pub fn create<'a>(
         debug: bool,
         required_extensions: impl Iterator<Item = &'a CStr>,
     ) -> Result<Self, DriverError> {
@@ -177,10 +177,30 @@ impl Instance {
         Ok(Self {
             _debug_callback: debug_callback,
             _debug_loader: debug_loader,
-            _debug_utils: debug_utils,
+            debug_utils,
             entry,
             instance,
         })
+    }
+
+    pub fn load(entry: Entry, instance: vk::Instance) -> Result<Self, DriverError> {
+        if instance == vk::Instance::null() {
+            return Err(DriverError::InvalidData);
+        }
+
+        let instance = unsafe { ash::Instance::load(entry.static_fn(), instance) };
+
+        Ok(Self {
+            _debug_callback: None,
+            _debug_loader: None,
+            debug_utils: None,
+            entry,
+            instance,
+        })
+    }
+
+    pub fn entry(this: &Self) -> &Entry {
+        &this.entry
     }
 
     unsafe fn extension_names(debug: bool) -> Vec<*const i8> {
@@ -193,6 +213,10 @@ impl Instance {
         }
 
         res
+    }
+
+    pub fn is_debug(this: &Self) -> bool {
+        this.debug_utils.is_some()
     }
 
     fn layer_names(debug: bool) -> Vec<CString> {
@@ -219,7 +243,7 @@ impl Instance {
             .into_iter()
             .enumerate()
             .filter_map(|(idx, physical_device)| {
-                let res = unsafe { PhysicalDevice::new(this, physical_device) };
+                let res = PhysicalDevice::new(this, physical_device);
 
                 if let Err(err) = &res {
                     warn!("unable to create physical device at index {idx}: {err}");

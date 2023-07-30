@@ -1,0 +1,25 @@
+[package]
+name = "vr"
+version = "0.1.0"
+authors = ["John Wells <john@attackgoat.com>"]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bytemuck = "1.13"
+ctrlc = "3.1"
+glam = { version = "0.24", features = ["bytemuck"] }
+openxr = { version = "0.17", features = ["static"] }
+pak = "0.1"
+pretty_env_logger = "0.4"
+screen-13 = { path = "../.." }
+
+[build-dependencies]
+anyhow = "1.0"
+log = "0.4"
+pak = { version = "0.1", features = ["bake"] }
+shaderc = "0.8"
+simplelog = "0.12"
