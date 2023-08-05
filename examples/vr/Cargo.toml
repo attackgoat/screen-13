@@ -9,17 +9,17 @@ readme = "README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bytemuck = "1.13"
+anyhow = "1.0"
+bytemuck = { version = "1.13", features = ["derive"] }
 ctrlc = "3.1"
-glam = { version = "0.24", features = ["bytemuck"] }
-openxr = { version = "0.17", features = ["static"] }
+glam = { version = "0.24", features = ["bytemuck", "mint"] }
+image = "0.24"
+meshopt = "0.1"
+mikktspace = "0.3"
+mint = "0.5"
+openxr = { version = "0.17", features = ["mint", "static"] }
 pak = "0.1"
 pretty_env_logger = "0.4"
 screen-13 = { path = "../.." }
-
-[build-dependencies]
-anyhow = "1.0"
-log = "0.4"
-pak = { version = "0.1", features = ["bake"] }
-shaderc = "0.8"
-simplelog = "0.12"
+screen-13-hot = { path = "../../contrib/screen-13-hot" }
+tobj = "4.0"

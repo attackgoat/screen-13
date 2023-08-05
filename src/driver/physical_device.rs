@@ -9,7 +9,6 @@ use {
         ffi::CStr,
         fmt::{Debug, Formatter},
         ops::Deref,
-        ptr::null,
     },
 };
 
@@ -176,8 +175,8 @@ pub struct PhysicalDevice {
     /// Memory properties of the physical device.
     pub memory_properties: vk::PhysicalDeviceMemoryProperties,
 
-    /// Describes the features of the device which relate to multiview, if available.
-    pub multiview_features: Option<MultiviewFeatures>,
+    /// Describes the features of the device which relate to multiview.
+    pub multiview_features: MultiviewFeatures,
 
     /// Device properties of the physical device which are part of the Vulkan 1.0 base feature set.
     pub properties_v1_0: Vulkan10Properties,
@@ -282,6 +281,7 @@ impl PhysicalDevice {
         let properties_v1_1 = properties_v1_1.into();
         let properties_v1_2 = properties_v1_2.into();
         let depth_stencil_resolve_properties = depth_stencil_resolve_properties.into();
+        let multiview_features = multiview_features.into();
 
         let extensions = unsafe {
             instance
@@ -298,7 +298,7 @@ impl PhysicalDevice {
         for property in &extensions {
             let extension_name = property.extension_name.as_ptr();
 
-            if extension_name == null() {
+            if extension_name.is_null() {
                 return Err(DriverError::InvalidData);
             }
 
@@ -311,19 +311,17 @@ impl PhysicalDevice {
         let extensions = extensions
             .iter()
             .map(|property: &vk::ExtensionProperties| property.extension_name.as_ptr())
-            .filter(|&extension_name| extension_name != null())
+            .filter(|&extension_name| !extension_name.is_null())
             .map(|extension_name| unsafe { CStr::from_ptr(extension_name) })
             .collect::<HashSet<_>>();
         let supports_accel_struct = extensions.contains(vk::KhrAccelerationStructureFn::name())
             && extensions.contains(vk::KhrDeferredHostOperationsFn::name());
-        let supports_multiview = extensions.contains(vk::KhrMultiviewFn::name());
         let supports_ray_query = extensions.contains(vk::KhrRayQueryFn::name());
         let supports_ray_trace = extensions.contains(vk::KhrRayTracingPipelineFn::name());
 
         // Gather optional features and properties of the physical device
         let ray_query_features = supports_ray_query.then(|| ray_query_features.into());
         let ray_trace_features = supports_ray_trace.then(|| ray_trace_features.into());
-        let multiview_features = supports_multiview.then(|| multiview_features.into());
         let accel_struct_properties = supports_accel_struct.then(|| accel_struct_properties.into());
         let ray_trace_properties = supports_ray_trace.then(|| ray_trace_properties.into());
 

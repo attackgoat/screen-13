@@ -21,6 +21,7 @@ use {
 
 pub struct Instance {
     device: Arc<Device>,
+    event_buf: xr::EventDataBuffer,
     instance: xr::Instance,
     system: xr::SystemId,
 }
@@ -202,17 +203,57 @@ impl Instance {
                     InstanceCreateError::VulkanUnsupported
                 })?,
             );
+            let event_buf = xr::EventDataBuffer::new();
 
             Ok(Self {
                 device,
+                event_buf,
                 instance: xr_instance,
                 system,
             })
         }
     }
 
+    #[inline]
+    pub fn create_session(
+        this: &Self,
+        queue_family_index: u32,
+        queue_index: u32,
+    ) -> xr::Result<(xr::Session<xr::Vulkan>, xr::FrameWaiter, xr::FrameStream<xr::Vulkan>)> {
+        let vk_instance = Device::instance(&this.device);
+
+        unsafe {
+            this.instance.create_session::<xr::Vulkan>(
+                this.system,
+                &xr::vulkan::SessionCreateInfo {
+                    instance: vk_instance.handle().as_raw() as _,
+                    physical_device: this.device.physical_device.as_raw() as _,
+                    device: this.device.handle().as_raw() as _,
+                    queue_family_index,
+                    queue_index,
+                },
+            )
+        }
+    }
+
     pub fn device(this: &Self) -> &Arc<Device> {
         &this.device
+    }
+
+    #[inline]
+    pub fn enumerate_view_configuration_views(
+        this: &Self,
+        ty: xr::ViewConfigurationType,
+    ) -> xr::Result<Vec<xr::ViewConfigurationView>> {
+        this.enumerate_view_configuration_views(this.system, ty)
+    }
+
+    /// Get the next event, if available
+    ///
+    /// Returns immediately regardless of whether an event was available.
+    #[inline]
+    pub fn poll_event(this: &mut Self) -> xr::Result<Option<xr::Event<'_>>> {
+        this.instance.poll_event(&mut this.event_buf)
     }
 
     pub fn system(this: &Self) -> xr::SystemId {
