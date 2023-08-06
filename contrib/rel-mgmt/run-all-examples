@@ -7,6 +7,7 @@ cargo update
 cargo update --manifest-path contrib/screen-13-hot/Cargo.toml
 cargo update --manifest-path examples/skeletal-anim/Cargo.toml
 cargo update --manifest-path examples/shader-toy/Cargo.toml
+cargo update --manifest-path examples/vr/Cargo.toml
 
 # Build everything
 cargo build --examples

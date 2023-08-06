@@ -22,6 +22,7 @@ cargo fmt --manifest-path contrib/screen-13-hot/Cargo.toml && diff || fail "Unfo
 cargo fmt --manifest-path contrib/screen-13-imgui/Cargo.toml && diff || fail "Unformatted rust code (screen-13-imgui)"
 cargo fmt --manifest-path examples/shader-toy/Cargo.toml && diff || fail "Unformatted rust code (shader-toy)"
 cargo fmt --manifest-path examples/skeletal-anim/Cargo.toml && diff || fail "Unformatted rust code (skeletal-anim)"
+cargo fmt --manifest-path examples/vr/Cargo.toml && diff || fail "Unformatted rust code (vr)"
 
 # Rust code errors
 cargo check --all-targets --all-features
@@ -31,6 +32,7 @@ cargo check --manifest-path contrib/screen-13-hot/Cargo.toml --all-targets --all
 cargo check --manifest-path contrib/screen-13-imgui/Cargo.toml --all-targets --all-features
 cargo check --manifest-path examples/shader-toy/Cargo.toml --all-targets --all-features
 cargo check --manifest-path examples/skeletal-anim/Cargo.toml --all-targets --all-features
+cargo check --manifest-path examples/vr/Cargo.toml --all-targets --all-features
 
 # Rust code lints
 cargo clippy --all-targets --all-features
@@ -40,6 +42,7 @@ cargo clippy --manifest-path contrib/screen-13-hot/Cargo.toml --all-targets --al
 cargo clippy --manifest-path contrib/screen-13-imgui/Cargo.toml --all-targets --all-features
 cargo clippy --manifest-path examples/shader-toy/Cargo.toml --all-targets --all-features
 cargo clippy --manifest-path examples/skeletal-anim/Cargo.toml --all-targets --all-features
+cargo clippy --manifest-path examples/vr/Cargo.toml --all-targets --all-features
 
 # Rust code tests
 cargo test

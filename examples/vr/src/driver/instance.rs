@@ -219,7 +219,11 @@ impl Instance {
         this: &Self,
         queue_family_index: u32,
         queue_index: u32,
-    ) -> xr::Result<(xr::Session<xr::Vulkan>, xr::FrameWaiter, xr::FrameStream<xr::Vulkan>)> {
+    ) -> xr::Result<(
+        xr::Session<xr::Vulkan>,
+        xr::FrameWaiter,
+        xr::FrameStream<xr::Vulkan>,
+    )> {
         let vk_instance = Device::instance(&this.device);
 
         unsafe {

@@ -55,7 +55,9 @@ fn main() -> anyhow::Result<()> {
     // Initialize OpenXR and Vulkan
     let mut instance = Instance::new().unwrap();
     let device = Instance::device(&instance);
-    let queue_family_index = device_queue_family_index(device, vk::QueueFlags::GRAPHICS | vk::QueueFlags::TRANSFER).unwrap();
+    let queue_family_index =
+        device_queue_family_index(device, vk::QueueFlags::GRAPHICS | vk::QueueFlags::TRANSFER)
+            .unwrap();
 
     // Start a VR session
     let (session, mut frame_wait, mut frame_stream) =
@@ -476,33 +478,32 @@ fn main() -> anyhow::Result<()> {
         swapchain.release_image().unwrap();
         graphs[swapchain_image_index as usize] = Some(cmd_buf);
 
-        frame_stream
-            .end(
-                xr_frame_state.predicted_display_time,
-                EnvironmentBlendMode::OPAQUE,
-                &[
-                    &xr::CompositionLayerProjection::new().space(&stage).views(&[
-                        xr::CompositionLayerProjectionView::new()
-                            .pose(views[0].pose)
-                            .fov(views[0].fov)
-                            .sub_image(
-                                xr::SwapchainSubImage::new()
-                                    .swapchain(&swapchain)
-                                    .image_array_index(0)
-                                    .image_rect(rect),
-                            ),
-                        xr::CompositionLayerProjectionView::new()
-                            .pose(views[1].pose)
-                            .fov(views[1].fov)
-                            .sub_image(
-                                xr::SwapchainSubImage::new()
-                                    .swapchain(&swapchain)
-                                    .image_array_index(1)
-                                    .image_rect(rect),
-                            ),
-                    ]),
-                ],
-            )?;
+        frame_stream.end(
+            xr_frame_state.predicted_display_time,
+            EnvironmentBlendMode::OPAQUE,
+            &[
+                &xr::CompositionLayerProjection::new().space(&stage).views(&[
+                    xr::CompositionLayerProjectionView::new()
+                        .pose(views[0].pose)
+                        .fov(views[0].fov)
+                        .sub_image(
+                            xr::SwapchainSubImage::new()
+                                .swapchain(&swapchain)
+                                .image_array_index(0)
+                                .image_rect(rect),
+                        ),
+                    xr::CompositionLayerProjectionView::new()
+                        .pose(views[1].pose)
+                        .fov(views[1].fov)
+                        .sub_image(
+                            xr::SwapchainSubImage::new()
+                                .swapchain(&swapchain)
+                                .image_array_index(1)
+                                .image_rect(rect),
+                        ),
+                ]),
+            ],
+        )?;
     }
 
     trace!("OK");
@@ -553,7 +554,7 @@ fn device_queue_family_index(device: &Device, flags: vk::QueueFlags) -> Option<u
 }
 
 /// Loads a .obj model from disk, reading position, normal and UV data.
-/// 
+///
 /// Tangent (and bitangent) data is calculated and the whole thing is re-indexed using meshopt.
 fn load_model(device: &Arc<Device>, path: impl AsRef<Path>) -> anyhow::Result<Model> {
     trace!("Loading model {}", path.as_ref().display());
@@ -748,12 +749,15 @@ fn load_texture(
         }
     }
 
-    let texture = Arc::new(Image::create(device, ImageInfo::new_2d(
-        fmt,
-        image.width(),
-        image.height(),
-        vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
-    ))?);
+    let texture = Arc::new(Image::create(
+        device,
+        ImageInfo::new_2d(
+            fmt,
+            image.width(),
+            image.height(),
+            vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
+        ),
+    )?);
 
     let mut render_graph = RenderGraph::new();
     let staging_buf = render_graph.bind_node(staging_buf);

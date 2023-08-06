@@ -1,8 +1,14 @@
 use {
     super::Instance,
     openxr as xr,
-    screen_13::driver::{ash::vk::{self, Handle as _}, image::{Image, ImageInfo}},
-    std::{sync::Arc,ops::{Deref,DerefMut}},
+    screen_13::driver::{
+        ash::vk::{self, Handle as _},
+        image::{Image, ImageInfo},
+    },
+    std::{
+        ops::{Deref, DerefMut},
+        sync::Arc,
+    },
 };
 
 pub struct Swapchain {
@@ -15,8 +21,11 @@ impl Swapchain {
     pub fn new(instance: &Instance, session: &xr::Session<xr::Vulkan>) -> Self {
         let device = Instance::device(instance);
 
-        let views = Instance::enumerate_view_configuration_views(instance, xr::ViewConfigurationType::PRIMARY_STEREO)
-            .unwrap();
+        let views = Instance::enumerate_view_configuration_views(
+            instance,
+            xr::ViewConfigurationType::PRIMARY_STEREO,
+        )
+        .unwrap();
         assert_eq!(views.len(), 2);
         assert_eq!(views[0], views[1]);
 
@@ -54,15 +63,11 @@ impl Swapchain {
                         vk::ImageUsageFlags::SAMPLED,
                     );
 
-                    Arc::new(Image::from_raw(
-                        device,
-                        image,
-                        info,
-                    ))
+                    Arc::new(Image::from_raw(device, image, info))
                 })
                 .collect(),
-                resolution,
-                swapchain,
+            resolution,
+            swapchain,
         }
     }
 

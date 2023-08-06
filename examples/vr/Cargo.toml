@@ -18,7 +18,6 @@ meshopt = "0.1"
 mikktspace = "0.3"
 mint = "0.5"
 openxr = { version = "0.17", features = ["mint", "static"] }
-pak = "0.1"
 pretty_env_logger = "0.4"
 screen-13 = { path = "../.." }
 screen-13-hot = { path = "../../contrib/screen-13-hot" }
