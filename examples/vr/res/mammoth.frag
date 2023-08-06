@@ -1,18 +1,42 @@
 #version 460 core
+#extension GL_EXT_multiview : require
 
-layout(push_constant) uniform PushConstants {
-    layout(offset = 64) vec3 light_Position;
-} push_const;
+#include "camera.glsl"
 
-layout(binding = 1) uniform sampler2D normal_Sampler;
-layout(binding = 2) uniform sampler2D occlusion_Sampler;
+layout(binding = 0) uniform CameraBuffer {
+    Camera cameras[2];
+} camera_buf;
 
-layout(location = 5) in vec2 model_TexCoord;
+layout(binding = 1) uniform LightBuffer {
+    vec3 light_Position;
+} light_buf;
+
+layout(binding = 2) uniform sampler2D normal_Sampler;
+layout(binding = 3) uniform sampler2D occlusion_Sampler;
+
+layout(location = 0) in vec3 world_Position;
+layout(location = 1) in vec4 world_Tangent;
+layout(location = 2) in vec3 world_Normal;
+layout(location = 3) in vec2 frag_TexCoord;
 
 layout(location = 0) out vec4 vk_Color;
 
 void main() {
-    vec3 normal_Value = texture(normal_Sampler, model_TexCoord).rgb;
-    float occlusion_Amount = texture(occlusion_Sampler, model_TexCoord).r;
-    vk_Color = vec4(vec3(occlusion_Amount), 1);
+    Camera camera = camera_buf.cameras[gl_ViewIndex];
+
+    vec3 tangent_Normal = texture(normal_Sampler, frag_TexCoord).rgb * 2.0 - 1.0;
+    vec3 world_Bitangent = cross(world_Normal, world_Tangent.xyz) * world_Tangent.w;
+    vec3 world_Normal = normalize(tangent_Normal.x * world_Tangent.xyz
+                                + tangent_Normal.y * world_Bitangent
+                                + tangent_Normal.z * world_Normal);
+
+    vec3 diffuse_Color = vec3(0.65, 0.45, 0.25);
+    vec3 light_Direction = normalize(light_buf.light_Position - world_Position);
+    light_Direction =  vec3(0.0, -1.0, 0.0);
+    float light_Amount = max(dot(world_Normal, light_Direction), 0.2);
+
+    float occlusion_Amount = texture(occlusion_Sampler, frag_TexCoord).r;
+
+    vk_Color.rgb = diffuse_Color * light_Amount * occlusion_Amount;
+    vk_Color.a = 1.0;
 }

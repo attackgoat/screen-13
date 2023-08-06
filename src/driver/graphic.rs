@@ -359,7 +359,7 @@ pub struct GraphicPipeline {
     pub(crate) input_attachments: HashSet<u32>,
     pub(crate) layout: vk::PipelineLayout,
     pub(crate) push_constants: Vec<vk::PushConstantRange>,
-    shader_modules: Vec<vk::ShaderModule>,
+    pub(crate) shader_modules: Vec<vk::ShaderModule>,
     pub(super) state: GraphicPipelineState,
 
     // Used in debug mode

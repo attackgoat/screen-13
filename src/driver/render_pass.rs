@@ -95,6 +95,7 @@ pub struct FramebufferInfo {
 struct GraphicPipelineKey {
     depth_stencil: Option<DepthStencilMode>,
     layout: vk::PipelineLayout,
+    shader_modules: Vec<vk::ShaderModule>,
     subpass_idx: u32,
 }
 
@@ -311,6 +312,7 @@ impl RenderPass {
         let entry = cache.entry(GraphicPipelineKey {
             depth_stencil,
             layout: pipeline.layout,
+            shader_modules: pipeline.shader_modules.clone(),
             subpass_idx,
         });
         if let Entry::Occupied(entry) = entry {

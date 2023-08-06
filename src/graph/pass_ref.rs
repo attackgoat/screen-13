@@ -3346,7 +3346,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
     }
 
     /// Sets multiview view and correlation masks.
-    /// 
+    ///
     /// See `[VkRenderPassMultiviewCreateInfo](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkRenderPassMultiviewCreateInfo.html#_description)`.
     pub fn set_multiview(mut self, view_mask: u32, correlated_view_mask: u32) -> Self {
         let pass = self.pass.as_mut();

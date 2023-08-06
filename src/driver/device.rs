@@ -53,6 +53,13 @@ pub struct Device {
 }
 
 impl Device {
+    /// Prepares device creation information and calls the provided callback to allow an application
+    /// to control the device creation process.
+    ///
+    /// # Safety
+    ///
+    /// This is only required for interoperting with other libraries and comes with all the caveats
+    /// of using `ash` builder types, which are inherently dangerous. Use with extreme caution.
     pub unsafe fn create_ash_device<F>(
         instance: &Instance,
         physical_device: &PhysicalDevice,
@@ -213,6 +220,7 @@ impl Device {
         Self::create(instance, select_physical_device, true)
     }
 
+    /// Loads and existing `ash` Vulkan device that may have been created by other means.
     pub fn load(
         instance: Instance,
         physical_device: PhysicalDevice,
@@ -381,6 +389,7 @@ impl Device {
             .unwrap_or_else(|| unimplemented!("{:?}", info))
     }
 
+    /// Provides a reference to the Vulkan instance used by this device.
     pub fn instance(this: &Self) -> &Instance {
         &this.instance
     }

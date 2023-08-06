@@ -79,6 +79,11 @@ unsafe extern "system" fn vulkan_debug_callback(
     vk::FALSE
 }
 
+/// There is no global state in Vulkan and all per-application state is stored in a VkInstance
+/// object.
+///
+/// Creating an Instance initializes the Vulkan library and allows the application to pass
+/// information about itself to the implementation.
 pub struct Instance {
     _debug_callback: Option<vk::DebugReportCallbackEXT>,
     #[allow(deprecated)] // TODO: Remove? Look into this....
@@ -89,6 +94,7 @@ pub struct Instance {
 }
 
 impl Instance {
+    /// Creates a new Vulkan instance.
     pub fn create<'a>(
         debug: bool,
         required_extensions: impl Iterator<Item = &'a CStr>,
@@ -183,6 +189,10 @@ impl Instance {
         })
     }
 
+    /// Loads an existing Vulkan instance that may have been created by other means.
+    ///
+    /// This is useful when you want to use a Vulkan instance created by some other library, such
+    /// as OpenXR.
     pub fn load(entry: Entry, instance: vk::Instance) -> Result<Self, DriverError> {
         if instance == vk::Instance::null() {
             return Err(DriverError::InvalidData);
@@ -199,6 +209,7 @@ impl Instance {
         })
     }
 
+    /// Returns the `ash` entrypoint for Vulkan functions.
     pub fn entry(this: &Self) -> &Entry {
         &this.entry
     }
@@ -215,6 +226,7 @@ impl Instance {
         res
     }
 
+    /// Returns `true` if this instance was created with debug layers enabled.
     pub fn is_debug(this: &Self) -> bool {
         this.debug_utils.is_some()
     }
@@ -231,6 +243,7 @@ impl Instance {
         res
     }
 
+    /// Returns the available physical devices of this instance.
     pub fn physical_devices(this: &Self) -> Result<Vec<PhysicalDevice>, DriverError> {
         let physical_devices = unsafe { this.enumerate_physical_devices() };
 

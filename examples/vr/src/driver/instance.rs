@@ -9,7 +9,7 @@ use {
             device::Device,
             physical_device::PhysicalDevice,
         },
-        prelude::{debug, error, warn},
+        prelude::{debug, error},
     },
     std::{
         fmt::{Debug, Formatter},
@@ -256,6 +256,7 @@ impl Instance {
         this.instance.poll_event(&mut this.event_buf)
     }
 
+    #[allow(dead_code)]
     pub fn system(this: &Self) -> xr::SystemId {
         this.system
     }

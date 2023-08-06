@@ -1,44 +1,54 @@
 #version 460 core
+#extension GL_EXT_multiview : require
 
-layout(push_constant) uniform PushConstants {
-    layout(offset = 64) vec3 light_Position;
-} push_const;
+#include "camera.glsl"
 
-layout(binding = 1) uniform sampler2D diffuse_Sampler;
-layout(binding = 2) uniform sampler2D normal_Sampler;
-layout(binding = 3) uniform sampler2D occlusion_Sampler;
+layout(binding = 0) uniform CameraBuffer {
+    Camera cameras[2];
+} camera_buf;
+
+layout(binding = 1) uniform LightBuffer {
+    vec3 light_Position;
+} light_buf;
+
+layout(binding = 2) uniform sampler2D diffuse_Sampler;
+layout(binding = 3) uniform sampler2D normal_Sampler;
+layout(binding = 4) uniform sampler2D occlusion_Sampler;
 
 layout(location = 0) in vec3 world_Position;
-layout(location = 1) in vec3 view_Position;
-layout(location = 2) in vec4 view_Tangent;
-layout(location = 4) in vec3 view_Normal;
-layout(location = 5) in vec2 model_TexCoord;
+layout(location = 1) in vec4 world_Tangent;
+layout(location = 2) in vec3 world_Normal;
+layout(location = 3) in vec2 frag_TexCoord;
 
 layout(location = 0) out vec4 vk_Color;
 
 void main() {
-    vec3 diffuse_Color = texture(diffuse_Sampler, model_TexCoord).rgb;
-    vec3 normal_Value = texture(normal_Sampler, model_TexCoord).rgb * 2.0 - 1.0;
-    float occlusion_Amount = texture(occlusion_Sampler, model_TexCoord).r;
+    Camera camera = camera_buf.cameras[gl_ViewIndex];
 
-    // vec3 view_LightPosition = transpose(mat3(view_Tangent, view_Bitangent, view_Normal)) * ;
-    vec3 normal_vector = normalize(mat3(view_Tangent, view_Bitangent, view_Normal) * normal_Value); 
-    vec3 light_vector = normalize(push_const.light_Position - view_Position); 
-    float diffuse_term = max(0.0, dot(normal_vector, light_vector))
-                       * max(0.0, dot(view_Normal, light_vector));
+    vec3 tangent_Normal = texture(normal_Sampler, frag_TexCoord).rgb * 2.0 - 1.0;
+    vec3 world_Bitangent = cross(world_Normal, world_Tangent.xyz) * world_Tangent.w;
+    vec3 world_Normal = normalize(tangent_Normal.x * world_Tangent.xyz
+                                + tangent_Normal.y * world_Bitangent
+                                + tangent_Normal.z * world_Normal);
 
-        vk_Color = vec4(  diffuse_term+0.1); 
-        if( diffuse_term > 0.0 ) { 
-          vec3 half_vector = normalize(normalize( -view_Position.xyz  ) 
-      + light_vector); 
-          float specular_term = pow( dot( half_vector, normal_vector ), 
-      70.0 ); 
-          vk_Color += vec4( specular_term ); 
-        } 
+    vec3 diffuse_Color = texture(diffuse_Sampler, frag_TexCoord).rgb;
+    vec3 light_Direction = normalize(light_buf.light_Position - world_Position);
+    light_Direction =  vec3(0.0, -1.0, 0.0);
+    float light_Amount = max(dot(world_Normal, light_Direction), 0.05);
+ 
+    vec3 specular_Color = diffuse_Color;
+    vec3 view_Direction = normalize(camera.position - world_Position);
+    vec3 reflect_Direction = reflect(light_Direction, world_Normal);
+    float specular_Amount = pow(max(dot(view_Direction, reflect_Direction), 0.0), 1.5);
+    
+    if (dot(light_Direction, world_Normal) < 0.0) {
+        specular_Amount = 0.0;
+    }
 
+    float occlusion_Amount = texture(occlusion_Sampler, frag_TexCoord).r;
 
-
-    // vk_Color.rgb *= occlusion_Amount;
-    // vk_Color.rgb *= diffuse_Color;
+    vk_Color.rgb = diffuse_Color * light_Amount * occlusion_Amount
+                 + specular_Color * specular_Amount;
     vk_Color.a = 1.0;
+
 }
