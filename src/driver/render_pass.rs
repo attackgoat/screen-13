@@ -95,6 +95,7 @@ pub struct FramebufferInfo {
 struct GraphicPipelineKey {
     depth_stencil: Option<DepthStencilMode>,
     layout: vk::PipelineLayout,
+    shader_modules: Vec<vk::ShaderModule>,
     subpass_idx: u32,
 }
 
@@ -204,9 +205,16 @@ impl RenderPass {
                             [resolve_color_attachments_idx..resolve_depth_stencil_attachment_idx],
                     )
                     .preserve_attachments(&subpass.preserve_attachments)
+                    .view_mask(subpass.view_mask)
                     .build(),
             );
         }
+
+        let correlated_view_masks = info
+            .subpasses
+            .iter()
+            .map(|subpass| subpass.correlated_view_mask)
+            .collect::<Box<_>>();
 
         let render_pass = unsafe {
             device.create_render_pass2(
@@ -214,7 +222,8 @@ impl RenderPass {
                     .flags(vk::RenderPassCreateFlags::empty())
                     .attachments(&attachments)
                     .dependencies(&dependencies)
-                    .subpasses(&subpasses),
+                    .subpasses(&subpasses)
+                    .correlated_view_masks(&correlated_view_masks),
                 None,
             )
         };
@@ -230,10 +239,10 @@ impl RenderPass {
         })
     }
 
-    pub fn framebuffer(&self, info: FramebufferInfo) -> Result<vk::Framebuffer, DriverError> {
+    pub fn framebuffer(this: &Self, info: FramebufferInfo) -> Result<vk::Framebuffer, DriverError> {
         debug_assert!(!info.attachments.is_empty());
 
-        let mut cache = self.framebuffer_cache.lock();
+        let mut cache = this.framebuffer_cache.lock();
         let entry = cache.entry(info);
         if let Entry::Occupied(entry) = entry {
             return Ok(*entry.get());
@@ -269,15 +278,15 @@ impl RenderPass {
             vk::FramebufferAttachmentsCreateInfoKHR::builder().attachment_image_infos(&attachments);
         let mut create_info = vk::FramebufferCreateInfo::builder()
             .flags(vk::FramebufferCreateFlags::IMAGELESS)
-            .render_pass(self.render_pass)
+            .render_pass(this.render_pass)
             .width(key.width)
             .height(key.height)
             .layers(layers)
             .push_next(&mut imageless_info);
-        create_info.attachment_count = self.info.attachments.len() as _;
+        create_info.attachment_count = this.info.attachments.len() as _;
 
         let framebuffer = unsafe {
-            self.device
+            this.device
                 .create_framebuffer(&create_info, None)
                 .map_err(|err| {
                     warn!("{err}");
@@ -292,17 +301,18 @@ impl RenderPass {
     }
 
     pub fn graphic_pipeline(
-        &self,
+        this: &Self,
         pipeline: &Arc<GraphicPipeline>,
         depth_stencil: Option<DepthStencilMode>,
         subpass_idx: u32,
     ) -> Result<vk::Pipeline, DriverError> {
         use std::slice::from_ref;
 
-        let mut cache = self.graphic_pipeline_cache.lock();
+        let mut cache = this.graphic_pipeline_cache.lock();
         let entry = cache.entry(GraphicPipelineKey {
             depth_stencil,
             layout: pipeline.layout,
+            shader_modules: pipeline.shader_modules.clone(),
             subpass_idx,
         });
         if let Entry::Occupied(entry) = entry {
@@ -314,7 +324,7 @@ impl RenderPass {
             _ => unreachable!(),
         };
 
-        let color_blend_attachment_states = self.info.subpasses[subpass_idx as usize]
+        let color_blend_attachment_states = this.info.subpasses[subpass_idx as usize]
             .color_attachments
             .iter()
             .map(|_| pipeline.info.blend.into_vk())
@@ -387,14 +397,14 @@ impl RenderPass {
             .layout(pipeline.state.layout)
             .multisample_state(&multisample_state)
             .rasterization_state(&rasterization_state)
-            .render_pass(self.render_pass)
+            .render_pass(this.render_pass)
             .stages(&stages)
             .subpass(subpass_idx)
             .vertex_input_state(&vertex_input_state)
             .viewport_state(&viewport_state);
 
         let pipeline = unsafe {
-            self.device.create_graphics_pipelines(
+            this.device.create_graphics_pipelines(
                 vk::PipelineCache::null(),
                 from_ref(&graphic_pipeline_info),
                 None,
@@ -484,11 +494,13 @@ impl SubpassDependency {
 pub struct SubpassInfo {
     pub color_attachments: Vec<AttachmentRef>,
     pub color_resolve_attachments: Vec<AttachmentRef>,
+    pub correlated_view_mask: u32,
     pub depth_stencil_attachment: Option<AttachmentRef>,
     pub depth_stencil_resolve_attachment:
         Option<(AttachmentRef, Option<ResolveMode>, Option<ResolveMode>)>,
     pub input_attachments: Vec<AttachmentRef>,
     pub preserve_attachments: Vec<u32>,
+    pub view_mask: u32,
 }
 
 impl SubpassInfo {
@@ -496,10 +508,12 @@ impl SubpassInfo {
         Self {
             color_attachments: Vec::with_capacity(capacity),
             color_resolve_attachments: Vec::with_capacity(capacity),
+            correlated_view_mask: 0,
             depth_stencil_attachment: None,
             depth_stencil_resolve_attachment: None,
             input_attachments: Vec::with_capacity(capacity),
             preserve_attachments: Vec::with_capacity(capacity),
+            view_mask: 0,
         }
     }
 }

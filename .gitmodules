@@ -1,0 +1,3 @@
+[submodule "examples/vr/res/example-assets"]
+	path = examples/vr/res/example-assets
+	url = https://github.com/attackgoat/example-assets.git

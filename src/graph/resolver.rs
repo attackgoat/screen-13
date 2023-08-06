@@ -134,6 +134,15 @@ impl Resolver {
         for lhs_exec in lhs.execs.iter().rev() {
             let mut common_color_attachment = false;
 
+            // Multiview subpasses cannot be combined with non-multiview subpasses
+            if (lhs_exec.view_mask == 0 && rhs_exec.view_mask != 0)
+                || (lhs_exec.view_mask != 0 && rhs_exec.view_mask == 0)
+            {
+                trace!("  incompatible multiview setting");
+
+                return false;
+            }
+
             // Compare individual color attachments for compatibility
             for (attachment_idx, lhs_attachment) in lhs_exec
                 .color_attachments
@@ -497,11 +506,14 @@ impl Resolver {
             }
         }
 
-        let framebuffer = render_pass.framebuffer(FramebufferInfo {
-            attachments,
-            width: render_area.width,
-            height: render_area.height,
-        })?;
+        let framebuffer = RenderPass::framebuffer(
+            render_pass,
+            FramebufferInfo {
+                attachments,
+                width: render_area.width,
+                height: render_area.height,
+            },
+        )?;
 
         unsafe {
             cmd_buf.device.cmd_begin_render_pass(
@@ -601,11 +613,12 @@ impl Resolver {
         let pipeline_bind_point = pipeline.bind_point();
         let pipeline = match pipeline {
             ExecutionPipeline::Compute(pipeline) => ***pipeline,
-            ExecutionPipeline::Graphic(pipeline) => physical_pass
-                .render_pass
-                .as_ref()
-                .unwrap()
-                .graphic_pipeline(pipeline, depth_stencil, exec_idx as _)?,
+            ExecutionPipeline::Graphic(pipeline) => RenderPass::graphic_pipeline(
+                physical_pass.render_pass.as_ref().unwrap(),
+                pipeline,
+                depth_stencil,
+                exec_idx as _,
+            )?,
             ExecutionPipeline::RayTrace(pipeline) => ***pipeline,
         };
 
@@ -1186,6 +1199,9 @@ impl Resolver {
                     stencil_resolve_mode,
                 ))
             }
+
+            subpass_info.view_mask = exec.view_mask;
+            subpass_info.correlated_view_mask = exec.correlated_view_mask;
 
             subpasses.push(subpass_info);
         }

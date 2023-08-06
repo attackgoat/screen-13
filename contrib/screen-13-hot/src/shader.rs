@@ -256,7 +256,7 @@ impl HotShader {
         };
 
         let mut additional_opts = CompileOptions::new().ok_or_else(|| {
-            warn!("Unable to initialize compiler options");
+            error!("Unable to initialize compiler options");
 
             DriverError::Unsupported
         })?;
@@ -298,7 +298,7 @@ impl HotShader {
             Some(&additional_opts),
         )
         .map_err(|err| {
-            warn!("Unable to compile shader {}: {err}", self.path.display());
+            error!("Unable to compile shader {}: {err}", self.path.display());
 
             DriverError::InvalidData
         })?;
@@ -307,7 +307,7 @@ impl HotShader {
             watcher
                 .watch(&path, RecursiveMode::NonRecursive)
                 .map_err(|err| {
-                    warn!("Unable to watch file: {err}");
+                    error!("Unable to watch file: {err}");
 
                     DriverError::Unsupported
                 })?;

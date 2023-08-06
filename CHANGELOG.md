@@ -11,6 +11,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Incorrect handling of images with multiple array layers during render passes
 - Validation error related to `VK_KHR_surface` when using headless devices
+- Shader modules of graphic pipelines cached by a render pass were not considered during lookup
 
 ### Added
 
@@ -21,6 +22,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   calling unsafe `ash` functions
 - `RenderGraph::node_device_address` function
 - `contrib/screen-13-hot`: Shader compilation macro definition support
+- Virtual reality example using OpenXR - see [`examples/vr/README.md`](examples/vr/README.md)
 
 ### Changed
 

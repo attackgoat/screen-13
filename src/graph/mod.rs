@@ -142,7 +142,9 @@ struct Execution {
     accesses: HashMap<NodeIndex, [SubresourceAccess; 2]>,
     bindings: BTreeMap<Descriptor, (NodeIndex, Option<ViewType>)>,
 
+    correlated_view_mask: u32,
     depth_stencil: Option<DepthStencilMode>,
+    view_mask: u32,
 
     color_attachments: HashMap<AttachmentIndex, Attachment>,
     color_clears: HashMap<AttachmentIndex, (Attachment, ClearColorValue)>,

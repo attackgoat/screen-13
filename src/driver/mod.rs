@@ -46,7 +46,7 @@ mod surface;
 pub(crate) mod swapchain;
 
 pub use {
-    self::cmd_buf::CommandBuffer,
+    self::{cmd_buf::CommandBuffer, instance::Instance},
     ash::{self},
     vk_sync::AccessType,
 };
@@ -55,7 +55,6 @@ pub(crate) use self::{
     cmd_buf::CommandBufferInfo,
     descriptor_set::{DescriptorPool, DescriptorPoolInfo, DescriptorSet},
     descriptor_set_layout::DescriptorSetLayout,
-    instance::Instance,
     render_pass::{
         AttachmentInfo, AttachmentRef, FramebufferAttachmentImageInfo, FramebufferInfo, RenderPass,
         RenderPassInfo, SubpassDependency, SubpassInfo,

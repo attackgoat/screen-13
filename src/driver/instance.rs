@@ -79,17 +79,23 @@ unsafe extern "system" fn vulkan_debug_callback(
     vk::FALSE
 }
 
+/// There is no global state in Vulkan and all per-application state is stored in a VkInstance
+/// object.
+///
+/// Creating an Instance initializes the Vulkan library and allows the application to pass
+/// information about itself to the implementation.
 pub struct Instance {
     _debug_callback: Option<vk::DebugReportCallbackEXT>,
     #[allow(deprecated)] // TODO: Remove? Look into this....
     _debug_loader: Option<ext::DebugReport>,
-    _debug_utils: Option<ext::DebugUtils>,
-    pub entry: Entry,
+    debug_utils: Option<ext::DebugUtils>,
+    entry: Entry,
     instance: ash::Instance,
 }
 
 impl Instance {
-    pub fn new<'a>(
+    /// Creates a new Vulkan instance.
+    pub fn create<'a>(
         debug: bool,
         required_extensions: impl Iterator<Item = &'a CStr>,
     ) -> Result<Self, DriverError> {
@@ -177,10 +183,35 @@ impl Instance {
         Ok(Self {
             _debug_callback: debug_callback,
             _debug_loader: debug_loader,
-            _debug_utils: debug_utils,
+            debug_utils,
             entry,
             instance,
         })
+    }
+
+    /// Loads an existing Vulkan instance that may have been created by other means.
+    ///
+    /// This is useful when you want to use a Vulkan instance created by some other library, such
+    /// as OpenXR.
+    pub fn load(entry: Entry, instance: vk::Instance) -> Result<Self, DriverError> {
+        if instance == vk::Instance::null() {
+            return Err(DriverError::InvalidData);
+        }
+
+        let instance = unsafe { ash::Instance::load(entry.static_fn(), instance) };
+
+        Ok(Self {
+            _debug_callback: None,
+            _debug_loader: None,
+            debug_utils: None,
+            entry,
+            instance,
+        })
+    }
+
+    /// Returns the `ash` entrypoint for Vulkan functions.
+    pub fn entry(this: &Self) -> &Entry {
+        &this.entry
     }
 
     unsafe fn extension_names(debug: bool) -> Vec<*const i8> {
@@ -195,6 +226,11 @@ impl Instance {
         res
     }
 
+    /// Returns `true` if this instance was created with debug layers enabled.
+    pub fn is_debug(this: &Self) -> bool {
+        this.debug_utils.is_some()
+    }
+
     fn layer_names(debug: bool) -> Vec<CString> {
         let mut res = Vec::new();
 
@@ -207,6 +243,7 @@ impl Instance {
         res
     }
 
+    /// Returns the available physical devices of this instance.
     pub fn physical_devices(this: &Self) -> Result<Vec<PhysicalDevice>, DriverError> {
         let physical_devices = unsafe { this.enumerate_physical_devices() };
 
@@ -219,7 +256,7 @@ impl Instance {
             .into_iter()
             .enumerate()
             .filter_map(|(idx, physical_device)| {
-                let res = unsafe { PhysicalDevice::new(this, physical_device) };
+                let res = PhysicalDevice::new(this, physical_device);
 
                 if let Err(err) = &res {
                     warn!("unable to create physical device at index {idx}: {err}");

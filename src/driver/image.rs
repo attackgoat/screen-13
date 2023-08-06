@@ -226,8 +226,13 @@ impl Image {
         ImageView::create(&this.device, info, this)
     }
 
-    pub(super) fn from_raw(device: &Arc<Device>, image: vk::Image, info: ImageInfo) -> Self {
+    /// Consumes a Vulkan image created by some other library.
+    ///
+    /// The image is not destroyed automatically on drop, unlike images created through the
+    /// [`Image::create`] function.
+    pub fn from_raw(device: &Arc<Device>, image: vk::Image, info: impl Into<ImageInfo>) -> Self {
         let device = Arc::clone(device);
+        let info = info.into();
 
         Self {
             allocation: None,

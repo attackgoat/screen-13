@@ -1,5 +1,5 @@
 use {
-    super::{device::Device, DriverError},
+    super::{device::Device, DriverError, Instance},
     ash::vk,
     ash_window::create_surface,
     log::error,
@@ -23,10 +23,11 @@ impl Surface {
         display_window: &(impl HasRawDisplayHandle + HasRawWindowHandle),
     ) -> Result<Self, DriverError> {
         let device = Arc::clone(device);
+        let instance = Device::instance(&device);
         let surface = unsafe {
             create_surface(
-                &device.instance.entry,
-                &device.instance,
+                Instance::entry(instance),
+                instance,
                 display_window.raw_display_handle(),
                 display_window.raw_window_handle(),
                 None,

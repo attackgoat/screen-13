@@ -31,9 +31,14 @@ Example | Instructions | Preview
 [transitions.rs](transitions.rs) | <pre>cargo run --example transitions</pre> | <image alt="Preview" src="../.github/img/transitions.png" height=149 width=176>
 [skeletal-anim/](skeletal-anim/src/main.rs) | <pre>cargo run --manifest-path examples/skeletal-anim/Cargo.toml</pre> Skeletal mesh animation using GLTF | <image alt="Preview" src="../.github/img/skeletal-anim.png" height=149 width=176>
 [shader-toy/](shader-toy/src/main.rs) | <pre>cargo run --manifest-path examples/shader-toy/Cargo.toml</pre> | <image alt="Preview" src="../.github/img/shader-toy.png" height=105 width=176>
+[vr/](vr/src/main.rs) | <pre>cargo run --manifest-path examples/vr/Cargo.toml</pre> | <image alt="Preview" src="../.github/img/vr.png" height=149 width=180>
 
 ## Additional Examples
 
 The following packages offer examples for specific cases not listed here:
 
 - [contrib/screen-13-hot](../contrib/screen-13-hot/examples/README.md): Shader pipeline hot-reload
+- [attackgoat/mood](https://github.com/attackgoat/mood): FPS game prototype with level loading and
+  multiple rendering backends
+- [attackgoat/jw-basic](https://github.com/attackgoat/jw-basic): BASIC interpreter with graphics
+  commands powered by _Screen 13_
