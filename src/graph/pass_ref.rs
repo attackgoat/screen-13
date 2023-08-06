@@ -3347,7 +3347,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
 
     /// Sets multiview view and correlation masks.
     ///
-    /// See `[VkRenderPassMultiviewCreateInfo](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkRenderPassMultiviewCreateInfo.html#_description)`.
+    /// See [`VkRenderPassMultiviewCreateInfo`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkRenderPassMultiviewCreateInfo.html#_description).
     pub fn set_multiview(mut self, view_mask: u32, correlated_view_mask: u32) -> Self {
         let pass = self.pass.as_mut();
         let exec = pass.execs.last_mut().unwrap();
@@ -3358,7 +3358,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
         self
     }
 
-    /// Sets the `[renderArea](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkRenderPassBeginInfo.html#_c_specification)`
+    /// Sets the [`renderArea`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkRenderPassBeginInfo.html#_c_specification)
     /// field when beginning a render pass.
     ///
     /// NOTE: Setting this value will cause the viewport and scissor to be unset, which is not the default
