@@ -72,6 +72,7 @@ impl LazyPool {
         }
     }
 
+    #[profiling::function]
     fn can_lease_command_buffer(cmd_buf: &mut CommandBuffer) -> bool {
         let can_lease = unsafe {
             // Don't lease this command buffer if it is unsignalled; we'll create a new one
@@ -92,6 +93,7 @@ impl LazyPool {
 }
 
 impl Pool<AccelerationStructureInfo, AccelerationStructure> for LazyPool {
+    #[profiling::function]
     fn lease(
         &mut self,
         info: AccelerationStructureInfo,
@@ -112,16 +114,20 @@ impl Pool<AccelerationStructureInfo, AccelerationStructure> for LazyPool {
             });
         }
 
-        // Look for a compatible acceleration structure (big enough)
-        for idx in 0..cache.len() {
-            let item = &cache[idx];
-            if item.info.size >= info.size {
-                let item = cache.remove(idx).unwrap();
+        {
+            profiling::scope!("Check cache");
 
-                return Ok(Lease {
-                    cache: Some(cache_ref),
-                    item: Some(item),
-                });
+            // Look for a compatible acceleration structure (big enough)
+            for idx in 0..cache.len() {
+                let item = &cache[idx];
+                if item.info.size >= info.size {
+                    let item = cache.remove(idx).unwrap();
+
+                    return Ok(Lease {
+                        cache: Some(cache_ref),
+                        item: Some(item),
+                    });
+                }
             }
         }
 
@@ -144,6 +150,7 @@ impl Pool<AccelerationStructureInfoBuilder, AccelerationStructure> for LazyPool 
 }
 
 impl Pool<BufferInfo, Buffer> for LazyPool {
+    #[profiling::function]
     fn lease(&mut self, info: BufferInfo) -> Result<Lease<Buffer>, DriverError> {
         let buffer_cache = self.buffer_cache.entry(info.can_map).or_default();
         let cache_ref = Arc::downgrade(buffer_cache);
@@ -158,19 +165,23 @@ impl Pool<BufferInfo, Buffer> for LazyPool {
             });
         }
 
-        // Look for a compatible buffer (same mapping mode, big enough, superset of usage flags)
-        for idx in 0..cache.len() {
-            let item = &cache[idx];
-            if item.info.can_map == info.can_map
-                && item.info.size >= info.size
-                && item.info.usage.contains(info.usage)
-            {
-                let item = cache.remove(idx).unwrap();
+        {
+            profiling::scope!("Check cache");
 
-                return Ok(Lease {
-                    cache: Some(cache_ref),
-                    item: Some(item),
-                });
+            // Look for a compatible buffer (same mapping mode, big enough, superset of usage flags)
+            for idx in 0..cache.len() {
+                let item = &cache[idx];
+                if item.info.can_map == info.can_map
+                    && item.info.size >= info.size
+                    && item.info.usage.contains(info.usage)
+                {
+                    let item = cache.remove(idx).unwrap();
+
+                    return Ok(Lease {
+                        cache: Some(cache_ref),
+                        item: Some(item),
+                    });
+                }
             }
         }
 
@@ -190,6 +201,7 @@ impl Pool<BufferInfoBuilder, Buffer> for LazyPool {
 }
 
 impl Pool<DescriptorPoolInfo, DescriptorPool> for LazyPool {
+    #[profiling::function]
     fn lease(&mut self, info: DescriptorPoolInfo) -> Result<Lease<DescriptorPool>, DriverError> {
         let cache_ref = Arc::downgrade(&self.descriptor_pool_cache);
         let mut cache = self.descriptor_pool_cache.lock();
@@ -203,28 +215,32 @@ impl Pool<DescriptorPoolInfo, DescriptorPool> for LazyPool {
             });
         }
 
-        // Look for a compatible descriptor pool (has enough sets and descriptors)
-        for idx in 0..cache.len() {
-            let item = &cache[idx];
-            if item.info.max_sets >= info.max_sets
-                && item.info.acceleration_structure_count >= info.acceleration_structure_count
-                && item.info.combined_image_sampler_count >= info.combined_image_sampler_count
-                && item.info.input_attachment_count >= info.input_attachment_count
-                && item.info.sampled_image_count >= info.sampled_image_count
-                && item.info.storage_buffer_count >= info.storage_buffer_count
-                && item.info.storage_buffer_dynamic_count >= info.storage_buffer_dynamic_count
-                && item.info.storage_image_count >= info.storage_image_count
-                && item.info.storage_texel_buffer_count >= info.storage_texel_buffer_count
-                && item.info.uniform_buffer_count >= info.uniform_buffer_count
-                && item.info.uniform_buffer_dynamic_count >= info.uniform_buffer_dynamic_count
-                && item.info.uniform_texel_buffer_count >= info.uniform_texel_buffer_count
-            {
-                let item = cache.remove(idx).unwrap();
+        {
+            profiling::scope!("Check cache");
 
-                return Ok(Lease {
-                    cache: Some(cache_ref),
-                    item: Some(item),
-                });
+            // Look for a compatible descriptor pool (has enough sets and descriptors)
+            for idx in 0..cache.len() {
+                let item = &cache[idx];
+                if item.info.max_sets >= info.max_sets
+                    && item.info.acceleration_structure_count >= info.acceleration_structure_count
+                    && item.info.combined_image_sampler_count >= info.combined_image_sampler_count
+                    && item.info.input_attachment_count >= info.input_attachment_count
+                    && item.info.sampled_image_count >= info.sampled_image_count
+                    && item.info.storage_buffer_count >= info.storage_buffer_count
+                    && item.info.storage_buffer_dynamic_count >= info.storage_buffer_dynamic_count
+                    && item.info.storage_image_count >= info.storage_image_count
+                    && item.info.storage_texel_buffer_count >= info.storage_texel_buffer_count
+                    && item.info.uniform_buffer_count >= info.uniform_buffer_count
+                    && item.info.uniform_buffer_dynamic_count >= info.uniform_buffer_dynamic_count
+                    && item.info.uniform_texel_buffer_count >= info.uniform_texel_buffer_count
+                {
+                    let item = cache.remove(idx).unwrap();
+
+                    return Ok(Lease {
+                        cache: Some(cache_ref),
+                        item: Some(item),
+                    });
+                }
             }
         }
 
@@ -238,6 +254,7 @@ impl Pool<DescriptorPoolInfo, DescriptorPool> for LazyPool {
 }
 
 impl Pool<ImageInfo, Image> for LazyPool {
+    #[profiling::function]
     fn lease(&mut self, info: ImageInfo) -> Result<Lease<Image>, DriverError> {
         let image_cache = self
             .image_cache
@@ -265,16 +282,20 @@ impl Pool<ImageInfo, Image> for LazyPool {
             });
         }
 
-        // Look for a compatible image (superset of creation flags and usage flags)
-        for idx in 0..cache.len() {
-            let item = &cache[idx];
-            if item.info.flags.contains(info.flags) && item.info.usage.contains(info.usage) {
-                let item = cache.remove(idx).unwrap();
+        {
+            profiling::scope!("Check cache");
 
-                return Ok(Lease {
-                    cache: Some(cache_ref),
-                    item: Some(item),
-                });
+            // Look for a compatible image (superset of creation flags and usage flags)
+            for idx in 0..cache.len() {
+                let item = &cache[idx];
+                if item.info.flags.contains(info.flags) && item.info.usage.contains(info.usage) {
+                    let item = cache.remove(idx).unwrap();
+
+                    return Ok(Lease {
+                        cache: Some(cache_ref),
+                        item: Some(item),
+                    });
+                }
             }
         }
 
@@ -294,6 +315,7 @@ impl Pool<ImageInfoBuilder, Image> for LazyPool {
 }
 
 impl Pool<RenderPassInfo, RenderPass> for LazyPool {
+    #[profiling::function]
     fn lease(&mut self, info: RenderPassInfo) -> Result<Lease<RenderPass>, DriverError> {
         if let Some(cache) = self.render_pass_cache.get(&info) {
             let item = if let Some(item) = cache.lock().pop_front() {
@@ -322,6 +344,7 @@ impl Pool<RenderPassInfo, RenderPass> for LazyPool {
 }
 
 impl Pool<CommandBufferInfo, CommandBuffer> for LazyPool {
+    #[profiling::function]
     fn lease(&mut self, info: CommandBufferInfo) -> Result<Lease<CommandBuffer>, DriverError> {
         let command_buffer_cache = self
             .command_buffer_cache

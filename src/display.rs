@@ -47,6 +47,7 @@ impl Display {
         })
     }
 
+    #[profiling::function]
     unsafe fn begin(cmd_buf: &mut CommandBuffer) -> Result<(), ()> {
         cmd_buf
             .device
@@ -63,6 +64,7 @@ impl Display {
     }
 
     /// Displays the given swapchain image using passes specified in `render_graph`, if possible.
+    #[profiling::function]
     pub fn resolve_image(
         &mut self,
         render_graph: RenderGraph,
@@ -150,6 +152,7 @@ impl Display {
         Ok(swapchain_image)
     }
 
+    #[profiling::function]
     unsafe fn submit(
         cmd_buf: &CommandBuffer,
         submit_info: vk::SubmitInfoBuilder<'_>,
@@ -170,6 +173,7 @@ impl Display {
             .map_err(|_| ())
     }
 
+    #[profiling::function]
     unsafe fn wait_for_fence(cmd_buf: &mut CommandBuffer) -> Result<(), ()> {
         use std::slice::from_ref;
 

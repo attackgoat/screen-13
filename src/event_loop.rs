@@ -100,25 +100,31 @@ impl EventLoop {
 
         while !will_exit {
             trace!("🟥🟩🟦 Event::RedrawRequested");
+            profiling::scope!("Frame");
 
-            self.event_loop.run_return(|event, _, control_flow| {
-                match event {
-                    Event::WindowEvent {
-                        event: WindowEvent::CloseRequested,
-                        ..
-                    } => {
-                        *control_flow = ControlFlow::Exit;
-                        will_exit = true;
+            {
+                profiling::scope!("Event loop");
+                self.event_loop.run_return(|event, _, control_flow| {
+                    profiling::scope!("Window event");
+
+                    match event {
+                        Event::WindowEvent {
+                            event: WindowEvent::CloseRequested,
+                            ..
+                        } => {
+                            *control_flow = ControlFlow::Exit;
+                            will_exit = true;
+                        }
+                        Event::WindowEvent {
+                            event: WindowEvent::Focused(false),
+                            ..
+                        } => self.window.set_cursor_visible(true),
+                        Event::MainEventsCleared => *control_flow = ControlFlow::Exit,
+                        _ => *control_flow = ControlFlow::Poll,
                     }
-                    Event::WindowEvent {
-                        event: WindowEvent::Focused(false),
-                        ..
-                    } => self.window.set_cursor_visible(true),
-                    Event::MainEventsCleared => *control_flow = ControlFlow::Exit,
-                    _ => *control_flow = ControlFlow::Poll,
-                }
-                events.extend(event.to_static());
-            });
+                    events.extend(event.to_static());
+                });
+            }
 
             if !events.is_empty() {
                 trace!("received {} events", events.len(),);
@@ -134,6 +140,8 @@ impl EventLoop {
             // it themselves, but it's good to pass the filtered time so users
             // don't need to worry about it.
             {
+                profiling::scope!("Calculate dt");
+
                 let dt_duration = now - last_frame;
                 last_frame = now;
 
@@ -141,12 +149,16 @@ impl EventLoop {
                 dt_filtered = dt_filtered + (dt_raw - dt_filtered) / 10.0;
             };
 
-            // Update the window size if it changes
-            let window_size = self.window.inner_size();
-            let mut swapchain_info = self.swapchain.info();
-            swapchain_info.width = window_size.width;
-            swapchain_info.height = window_size.height;
-            self.swapchain.set_info(swapchain_info);
+            {
+                profiling::scope!("Update swapchain");
+
+                // Update the window size if it changes
+                let window_size = self.window.inner_size();
+                let mut swapchain_info = self.swapchain.info();
+                swapchain_info.width = window_size.width;
+                swapchain_info.height = window_size.height;
+                self.swapchain.set_info(swapchain_info);
+            }
 
             let swapchain_image = self.swapchain.acquire_next_image();
             if swapchain_image.is_err() {
@@ -161,17 +173,21 @@ impl EventLoop {
             let mut render_graph = RenderGraph::new();
             let swapchain_image = render_graph.bind_node(swapchain_image);
 
-            frame_fn(FrameContext {
-                device: &self.device,
-                dt: dt_filtered,
-                height,
-                render_graph: &mut render_graph,
-                events: take(&mut events).as_slice(),
-                swapchain_image,
-                width,
-                window: &self.window,
-                will_exit: &mut will_exit,
-            });
+            {
+                profiling::scope!("Frame callback");
+
+                frame_fn(FrameContext {
+                    device: &self.device,
+                    dt: dt_filtered,
+                    height,
+                    render_graph: &mut render_graph,
+                    events: take(&mut events).as_slice(),
+                    swapchain_image,
+                    width,
+                    window: &self.window,
+                    will_exit: &mut will_exit,
+                });
+            }
 
             let elapsed = Instant::now() - now;
 
@@ -183,6 +199,8 @@ impl EventLoop {
 
             let swapchain_image = self.display.resolve_image(render_graph, swapchain_image)?;
             self.swapchain.present_image(swapchain_image, 0, 0);
+
+            profiling::finish_frame!();
         }
 
         self.window.set_visible(false);

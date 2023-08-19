@@ -45,6 +45,7 @@ impl Swapchain {
         })
     }
 
+    #[profiling::function]
     pub fn acquire_next_image(&mut self) -> Result<SwapchainImage, SwapchainError> {
         if self.suboptimal {
             self.recreate_swapchain()
@@ -137,6 +138,7 @@ impl Swapchain {
         self.info
     }
 
+    #[profiling::function]
     pub fn present_image(
         &mut self,
         image: SwapchainImage,

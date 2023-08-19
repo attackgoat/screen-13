@@ -69,6 +69,7 @@ impl Resolver {
         }
     }
 
+    #[profiling::function]
     fn allow_merge_passes(lhs: &Pass, rhs: &Pass) -> bool {
         let lhs_pipeline = lhs
             .execs
@@ -282,6 +283,7 @@ impl Resolver {
         }
     }
 
+    #[profiling::function]
     fn begin_render_pass(
         &mut self,
         cmd_buf: &CommandBuffer,
@@ -543,6 +545,7 @@ impl Resolver {
         Ok(())
     }
 
+    #[profiling::function]
     fn bind_descriptor_sets(
         &self,
         cmd_buf: &CommandBuffer,
@@ -583,6 +586,7 @@ impl Resolver {
         }
     }
 
+    #[profiling::function]
     fn bind_pipeline(
         &self,
         cmd_buf: &mut CommandBuffer,
@@ -636,6 +640,7 @@ impl Resolver {
     /// must be resolved in.
     ///
     /// Dependent upon means that the pass writes to the node.
+    #[profiling::function]
     fn dependent_passes(
         &self,
         node_idx: usize,
@@ -658,6 +663,7 @@ impl Resolver {
     /// returned in the opposite order the dependencies must be resolved in.
     ///
     /// Dependent upon means that the node is read from the pass.
+    #[profiling::function]
     fn dependent_nodes(&self, pass_idx: usize) -> impl Iterator<Item = usize> + '_ {
         let mut already_seen = BTreeSet::new();
         self.graph.passes[pass_idx]
@@ -682,6 +688,7 @@ impl Resolver {
     }
 
     /// Returns the unique indexes of the passes which are dependent on the given pass.
+    #[profiling::function]
     fn interdependent_passes(
         &self,
         pass_idx: usize,
@@ -704,6 +711,7 @@ impl Resolver {
     }
 
     #[allow(clippy::type_complexity)]
+    #[profiling::function]
     fn lease_descriptor_pool(
         pool: &mut dyn ResolverPool,
         pass: &Pass,
@@ -793,6 +801,7 @@ impl Resolver {
         Ok(Some(pool.lease(info)?))
     }
 
+    #[profiling::function]
     fn lease_render_pass(
         &self,
         pool: &mut dyn ResolverPool,
@@ -1639,6 +1648,7 @@ impl Resolver {
         })
     }
 
+    #[profiling::function]
     fn lease_scheduled_resources(
         &mut self,
         pool: &mut dyn ResolverPool,
@@ -1725,6 +1735,7 @@ impl Resolver {
 
     // Merges passes which are graphic with common-ish attachments - note that scheduled pass order
     // is final during this function and so we must merge contiguous groups of passes
+    #[profiling::function]
     fn merge_scheduled_passes<'s>(&mut self, mut schedule: &'s mut [usize]) -> &'s mut [usize] {
         let mut passes = self.graph.passes.drain(..).map(Some).collect::<Vec<_>>();
         let mut idx = 0;
@@ -1807,6 +1818,7 @@ impl Resolver {
     ///
     /// Note that this value must be retrieved before resolving a node as there will be no
     /// data left to inspect afterwards!
+    #[profiling::function]
     pub fn node_pipeline_stages(&self, node: impl Node) -> vk::PipelineStageFlags {
         let node_idx = node.index();
         let mut res = Default::default();
@@ -1837,6 +1849,7 @@ impl Resolver {
         res
     }
 
+    #[profiling::function]
     fn record_execution_barriers(
         trace_pad: &'static str,
         cmd_buf: &CommandBuffer,
@@ -2075,6 +2088,7 @@ impl Resolver {
     /// As a side effect, the graph is optimized for the given node. Future calls may further optimize
     /// the graph, but only on top of the existing optimizations. This only matters if you are pulling
     /// multiple images out and you care - in that case pull the "most important" image first.
+    #[profiling::function]
     pub fn record_node_dependencies(
         &mut self,
         pool: &mut dyn ResolverPool,
@@ -2097,6 +2111,7 @@ impl Resolver {
     }
 
     /// Records any pending render graph passes that the given node requires.
+    #[profiling::function]
     pub fn record_node(
         &mut self,
         pool: &mut dyn ResolverPool,
@@ -2113,6 +2128,7 @@ impl Resolver {
         Ok(())
     }
 
+    #[profiling::function]
     fn record_node_passes(
         &mut self,
         pool: &mut dyn ResolverPool,
@@ -2129,6 +2145,7 @@ impl Resolver {
         self.record_scheduled_passes(pool, cmd_buf, &mut schedule, end_pass_idx)
     }
 
+    #[profiling::function]
     fn record_scheduled_passes(
         &mut self,
         pool: &mut dyn ResolverPool,
@@ -2154,6 +2171,9 @@ impl Resolver {
         let mut passes = take(&mut self.graph.passes);
         for pass_idx in schedule.iter().copied() {
             let pass = &mut passes[pass_idx];
+
+            profiling::scope!("Pass", &pass.name);
+
             let is_graphic = self.physical_passes[pass_idx].render_pass.is_some();
 
             trace!("recording pass [{}: {}]", pass_idx, pass.name);
@@ -2239,15 +2259,19 @@ impl Resolver {
 
                 trace!("    > exec[{exec_idx}]");
 
-                let exec_func = exec.func.take().unwrap().0;
-                exec_func(
-                    &cmd_buf.device,
-                    **cmd_buf,
-                    Bindings {
-                        exec,
-                        graph: &self.graph,
-                    },
-                );
+                {
+                    profiling::scope!("Execute callback");
+
+                    let exec_func = exec.func.take().unwrap().0;
+                    exec_func(
+                        &cmd_buf.device,
+                        **cmd_buf,
+                        Bindings {
+                            exec,
+                            graph: &self.graph,
+                        },
+                    );
+                }
             }
 
             if is_graphic {
@@ -2291,6 +2315,7 @@ impl Resolver {
     }
 
     /// Records any pending render graph passes that have not been previously scheduled.
+    #[profiling::function]
     pub fn record_unscheduled_passes(
         &mut self,
         pool: &mut dyn ResolverPool,
@@ -2305,6 +2330,7 @@ impl Resolver {
         self.record_scheduled_passes(pool, cmd_buf, &mut schedule, self.graph.passes.len())
     }
 
+    #[profiling::function]
     fn render_area(&self, pass: &Pass) -> Area {
         pass.render_area.unwrap_or_else(|| {
             // set_render_area was not specified so we're going to guess using the minimum common
@@ -2343,6 +2369,7 @@ impl Resolver {
         })
     }
 
+    #[profiling::function]
     fn reorder_scheduled_passes(&mut self, schedule: &mut [usize], end_pass_idx: usize) {
         // It must be a party
         if schedule.len() < 3 {
@@ -2384,6 +2411,7 @@ impl Resolver {
 
     /// Returns a vec of pass indexes that are required to be executed, in order, for the given
     /// node.
+    #[profiling::function]
     fn schedule_node_passes(&self, node_idx: usize, end_pass_idx: usize) -> BTreeSet<usize> {
         let mut schedule = BTreeSet::new();
         let mut unscheduled = repeat(())
@@ -2513,6 +2541,7 @@ impl Resolver {
     }
 
     /// Submits the remaining commands stored in this instance.
+    #[profiling::function]
     pub fn submit(
         mut self,
         pool: &mut impl ResolverPool,
@@ -2593,6 +2622,7 @@ impl Resolver {
         node.unbind(self)
     }
 
+    #[profiling::function]
     fn write_descriptor_sets(
         &self,
         cmd_buf: &CommandBuffer,

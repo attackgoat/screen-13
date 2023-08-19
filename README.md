@@ -57,6 +57,45 @@ render_graph
         subpass.draw(6, 1, 0, 0);
     });
 ```
+### Debug Logging
+
+This crate uses [`log`](https://crates.io/crates/log) for low-overhead logging.
+
+To enable logging, set the `RUST_LOG` environment variable to `trace`, `debug`, `info`, `warn` or
+`error` and initialize the logging provider of your choice. Examples use
+[`pretty_env_logger`](https://docs.rs/pretty_env_logger/latest/pretty_env_logger/).
+
+_You may also filter messages, for example:_
+
+```bash
+RUST_LOG=screen_13::driver=trace,screen_13=warn cargo run --example ray_trace
+```
+
+```
+TRACE screen_13::driver::instance > created a Vulkan instance
+DEBUG screen_13::driver::physical_device > physical device: NVIDIA GeForce RTX 3090
+DEBUG screen_13::driver::physical_device > extension "VK_KHR_16bit_storage" v1
+DEBUG screen_13::driver::physical_device > extension "VK_KHR_8bit_storage" v1
+DEBUG screen_13::driver::physical_device > extension "VK_KHR_acceleration_structure" v13
+...
+```
+
+### Performance Profiling
+
+This crates uses [`profiling`](https://crates.io/crates/profiling) and supports multiple profiling
+providers. When not in use profiling has zero cost.
+
+To enable profiling, compile with one of the `profile-with-*` features enabled and initialize the
+profiling provider of your choice.
+
+_For example, [JW-Basic](https://github.com/attackgoat/jw-basic) uses
+[puffin](https://crates.io/crates/puffin):_
+
+```bash
+cargo run --features profile-with-puffin -- examples/raycast.bas
+```
+
+<img src=".github/img/profile.png" alt="Flamegraph of performance data" width=30%>
 
 ## Quick Start
 
@@ -92,7 +131,7 @@ because you didn't have to grok the entirety of compiling and linking. I think w
 options like this today, and so I started this project to allow future developers to have the
 ability to get things done quickly while using modern tools.
 
-### Insipirations
+### Inspirations
 
 _Screen 13_ was built from the learnings and lessons shared by others throughout our community. In
 particular, here are some of the repositories I found useful:

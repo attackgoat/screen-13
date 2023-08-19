@@ -74,6 +74,7 @@ impl HashPool {
 }
 
 impl Pool<CommandBufferInfo, CommandBuffer> for HashPool {
+    #[profiling::function]
     fn lease(&mut self, info: CommandBufferInfo) -> Result<Lease<CommandBuffer>, DriverError> {
         let command_buffer_cache = self
             .command_buffer_cache
@@ -103,6 +104,7 @@ macro_rules! lease {
     ($info:ident => $item:ident) => {
         paste::paste! {
             impl Pool<$info, $item> for HashPool {
+                #[profiling::function]
                 fn lease(&mut self, info: $info) -> Result<Lease<$item>, DriverError> {
                     let cache = self.[<$item:snake _cache>].entry(info.clone())
                         .or_insert_with(|| {
