@@ -118,42 +118,6 @@ impl From<vk::PhysicalDeviceDepthStencilResolveProperties> for DepthStencilResol
     }
 }
 
-/// Features of the physical device for multiview.
-///
-/// See
-/// [`VkPhysicalDeviceMultiviewFeatures`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkPhysicalDeviceMultiviewFeaturesKHR.html)
-/// manual page.
-pub struct MultiviewFeatures {
-    /// Indicates whether the implementation supports multiview rendering within a render pass.
-    ///
-    /// If this feature is not enabled, the view mask of each subpass must always be zero.
-    pub multiview: bool,
-
-    /// Indicates whether the implementation supports multiview rendering within a render pass, with
-    /// geometry shaders.
-    ///
-    /// If this feature is not enabled, then a pipeline compiled against a subpass with a non-zero
-    /// view mask must not include a geometry shader.
-    pub multiview_geometry_shader: bool,
-
-    /// Indicates whether the implementation supports multiview rendering within a render pass, with
-    /// tessellation shaders.
-    ///
-    /// If this feature is not enabled, then a pipeline compiled against a subpass with a non-zero
-    /// view mask must not include any tessellation shaders.
-    pub multiview_tessellation_shader: bool,
-}
-
-impl From<vk::PhysicalDeviceMultiviewFeaturesKHR> for MultiviewFeatures {
-    fn from(features: vk::PhysicalDeviceMultiviewFeaturesKHR) -> Self {
-        Self {
-            multiview: features.multiview == vk::TRUE,
-            multiview_geometry_shader: features.multiview_geometry_shader == vk::TRUE,
-            multiview_tessellation_shader: features.multiview_tessellation_shader == vk::TRUE,
-        }
-    }
-}
-
 /// Structure which holds data about the physical hardware selected by the current device.
 pub struct PhysicalDevice {
     /// Describes the properties of the device which relate to acceleration structures, if
@@ -174,9 +138,6 @@ pub struct PhysicalDevice {
 
     /// Memory properties of the physical device.
     pub memory_properties: vk::PhysicalDeviceMemoryProperties,
-
-    /// Describes the features of the device which relate to multiview.
-    pub multiview_features: MultiviewFeatures,
 
     /// Device properties of the physical device which are part of the Vulkan 1.0 base feature set.
     pub properties_v1_0: Vulkan10Properties,
@@ -242,14 +203,12 @@ impl PhysicalDevice {
         let mut features_v1_2 = vk::PhysicalDeviceVulkan12Features::default();
         let mut acceleration_structure_features =
             vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
-        let mut multiview_features = vk::PhysicalDeviceMultiviewFeatures::default();
         let mut ray_query_features = vk::PhysicalDeviceRayQueryFeaturesKHR::default();
         let mut ray_trace_features = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
         let mut features = vk::PhysicalDeviceFeatures2::builder()
             .push_next(&mut features_v1_1)
             .push_next(&mut features_v1_2)
             .push_next(&mut acceleration_structure_features)
-            .push_next(&mut multiview_features)
             .push_next(&mut ray_query_features)
             .push_next(&mut ray_trace_features)
             .build();
@@ -282,7 +241,6 @@ impl PhysicalDevice {
         let properties_v1_1 = properties_v1_1.into();
         let properties_v1_2 = properties_v1_2.into();
         let depth_stencil_resolve_properties = depth_stencil_resolve_properties.into();
-        let multiview_features = multiview_features.into();
 
         let extensions = unsafe {
             instance
@@ -333,7 +291,6 @@ impl PhysicalDevice {
             features_v1_1,
             features_v1_2,
             memory_properties,
-            multiview_features,
             physical_device,
             properties_v1_0,
             properties_v1_1,

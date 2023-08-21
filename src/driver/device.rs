@@ -122,14 +122,12 @@ impl Device {
         let mut features_v1_2 = vk::PhysicalDeviceVulkan12Features::default();
         let mut acceleration_structure_features =
             vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
-        let mut multiview_features = vk::PhysicalDeviceMultiviewFeatures::default();
         let mut ray_query_features = vk::PhysicalDeviceRayQueryFeaturesKHR::default();
         let mut ray_trace_features = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
         let mut features = vk::PhysicalDeviceFeatures2::builder()
             .push_next(&mut features_v1_1)
             .push_next(&mut features_v1_2)
             .push_next(&mut acceleration_structure_features)
-            .push_next(&mut multiview_features)
             .push_next(&mut ray_query_features)
             .push_next(&mut ray_trace_features)
             .build();

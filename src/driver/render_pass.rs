@@ -146,8 +146,11 @@ impl RenderPass {
         );
         let mut subpasses = Vec::with_capacity(info.subpasses.len());
         let mut subpass_depth_stencil_resolves = Vec::with_capacity(info.subpasses.len());
+        let mut has_viewmasks = false;
 
         for subpass in &info.subpasses {
+            has_viewmasks |= subpass.view_mask != 0;
+
             let mut subpass_desc = vk::SubpassDescription2::builder()
                 .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS);
 
@@ -210,11 +213,14 @@ impl RenderPass {
             );
         }
 
-        let correlated_view_masks = info
-            .subpasses
-            .iter()
-            .map(|subpass| subpass.correlated_view_mask)
-            .collect::<Box<_>>();
+        let correlated_view_masks = if has_viewmasks {
+            info.subpasses
+                .iter()
+                .map(|subpass| subpass.correlated_view_mask)
+                .collect::<Box<_>>()
+        } else {
+            Box::new([])
+        };
 
         let render_pass = unsafe {
             device.create_render_pass2(
