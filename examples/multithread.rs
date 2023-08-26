@@ -153,7 +153,7 @@ fn main() -> anyhow::Result<()> {
                 image,
                 frame.swapchain_image,
                 vk::Filter::NEAREST,
-                &vk::ImageBlit {
+                vk::ImageBlit {
                     src_subresource: COLOR_SUBRESOURCE_LAYER,
                     src_offsets: [
                         vk::Offset3D { x: 0, y: 0, z: 0 },

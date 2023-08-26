@@ -35,6 +35,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `screen_13::driver::physical_device`
 - Re-ordered parameters of `RenderGraph` functions: `blit_image_region`, `blit_image_regions`, and
   `update_buffer_offset`
+- Updated parameters of `RenderGraph` functions to be more efficient (`Into<Box<[_]>>` is now
+  `AsRef<[_]>` and take values of `Copy`-types instead of borrows)
 
 ### Removed
 

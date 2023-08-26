@@ -337,7 +337,7 @@ impl RenderGraph {
             src_node,
             dst_node,
             filter,
-            &vk::ImageBlit {
+            vk::ImageBlit {
                 src_subresource: vk::ImageSubresourceLayers {
                     aspect_mask: format_aspect_mask(src_info.fmt),
                     mip_level: 0,
@@ -376,11 +376,9 @@ impl RenderGraph {
         src_node: impl Into<AnyImageNode>,
         dst_node: impl Into<AnyImageNode>,
         filter: vk::Filter,
-        region: &vk::ImageBlit,
+        region: vk::ImageBlit,
     ) -> &mut Self {
-        use std::slice::from_ref;
-
-        self.blit_image_regions(src_node, dst_node, filter, from_ref(region))
+        self.blit_image_regions(src_node, dst_node, filter, vec![region])
     }
 
     /// Copy regions of an image, potentially performing format conversion.
@@ -389,11 +387,10 @@ impl RenderGraph {
         src_node: impl Into<AnyImageNode>,
         dst_node: impl Into<AnyImageNode>,
         filter: vk::Filter,
-        regions: impl Into<Box<[vk::ImageBlit]>>,
+        regions: impl AsRef<[vk::ImageBlit]> + 'static + Send,
     ) -> &mut Self {
         let src_node = src_node.into();
         let dst_node = dst_node.into();
-        let regions = regions.into();
         let src_access_range = self.node_info(src_node).default_view_info();
         let dst_access_range = self.node_info(dst_node).default_view_info();
 
@@ -407,7 +404,7 @@ impl RenderGraph {
                     vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
                     *bindings[dst_node],
                     vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                    &regions,
+                    regions.as_ref(),
                     filter,
                 );
             })
@@ -500,7 +497,7 @@ impl RenderGraph {
         self.copy_buffer_region(
             src_node,
             dst_node,
-            &vk::BufferCopy {
+            vk::BufferCopy {
                 src_offset: 0,
                 dst_offset: 0,
                 size: src_info.size.min(dst_info.size),
@@ -513,11 +510,9 @@ impl RenderGraph {
         &mut self,
         src_node: impl Into<AnyBufferNode>,
         dst_node: impl Into<AnyBufferNode>,
-        region: &vk::BufferCopy,
+        region: vk::BufferCopy,
     ) -> &mut Self {
-        use std::slice::from_ref;
-
-        self.copy_buffer_regions(src_node, dst_node, from_ref(region))
+        self.copy_buffer_regions(src_node, dst_node, vec![region])
     }
 
     /// Copy data between buffer regions.
@@ -525,18 +520,22 @@ impl RenderGraph {
         &mut self,
         src_node: impl Into<AnyBufferNode>,
         dst_node: impl Into<AnyBufferNode>,
-        regions: impl Into<Box<[vk::BufferCopy]>>,
+        regions: impl AsRef<[vk::BufferCopy]> + 'static + Send,
     ) -> &mut Self {
         let src_node = src_node.into();
         let dst_node = dst_node.into();
-        let regions: Box<[_]> = regions.into();
-        let (src_access_range, dst_access_range) = buffer_copy_subresources(&regions);
+        let (src_access_range, dst_access_range) = buffer_copy_subresources(regions.as_ref());
 
         self.begin_pass("copy buffer")
             .access_node_subrange(src_node, AccessType::TransferRead, src_access_range)
             .access_node_subrange(dst_node, AccessType::TransferWrite, dst_access_range)
             .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
-                device.cmd_copy_buffer(cmd_buf, *bindings[src_node], *bindings[dst_node], &regions);
+                device.cmd_copy_buffer(
+                    cmd_buf,
+                    *bindings[src_node],
+                    *bindings[dst_node],
+                    regions.as_ref(),
+                );
             })
             .submit_pass()
     }
@@ -553,7 +552,7 @@ impl RenderGraph {
         self.copy_buffer_to_image_region(
             src_node,
             dst_node,
-            &vk::BufferImageCopy {
+            vk::BufferImageCopy {
                 buffer_offset: 0,
                 buffer_row_length: dst_info.width,
                 buffer_image_height: dst_info.height,
@@ -578,11 +577,9 @@ impl RenderGraph {
         &mut self,
         src_node: impl Into<AnyBufferNode>,
         dst_node: impl Into<AnyImageNode>,
-        region: &vk::BufferImageCopy,
+        region: vk::BufferImageCopy,
     ) -> &mut Self {
-        use std::slice::from_ref;
-
-        self.copy_buffer_to_image_regions(src_node, dst_node, from_ref(region))
+        self.copy_buffer_to_image_regions(src_node, dst_node, vec![region])
     }
 
     /// Copy data from a buffer into an image.
@@ -590,13 +587,12 @@ impl RenderGraph {
         &mut self,
         src_node: impl Into<AnyBufferNode>,
         dst_node: impl Into<AnyImageNode>,
-        regions: impl Into<Box<[vk::BufferImageCopy]>>,
+        regions: impl AsRef<[vk::BufferImageCopy]> + 'static + Send,
     ) -> &mut Self {
         let src_node = src_node.into();
         let dst_node = dst_node.into();
         let dst_access_range = self.node_info(dst_node).default_view_info();
-        let regions = regions.into();
-        let src_access_range = buffer_image_copy_subresource(&regions);
+        let src_access_range = buffer_image_copy_subresource(regions.as_ref());
 
         self.begin_pass("copy buffer to image")
             .access_node_subrange(src_node, AccessType::TransferRead, src_access_range)
@@ -607,7 +603,7 @@ impl RenderGraph {
                     *bindings[src_node],
                     *bindings[dst_node],
                     vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                    &regions,
+                    regions.as_ref(),
                 );
             })
             .submit_pass()
@@ -628,7 +624,7 @@ impl RenderGraph {
         self.copy_image_region(
             src_node,
             dst_node,
-            &vk::ImageCopy {
+            vk::ImageCopy {
                 src_subresource: vk::ImageSubresourceLayers {
                     aspect_mask: format_aspect_mask(src_info.fmt),
                     mip_level: 0,
@@ -665,11 +661,9 @@ impl RenderGraph {
         &mut self,
         src_node: impl Into<AnyImageNode>,
         dst_node: impl Into<AnyImageNode>,
-        region: &vk::ImageCopy,
+        region: vk::ImageCopy,
     ) -> &mut Self {
-        use std::slice::from_ref;
-
-        self.copy_image_regions(src_node, dst_node, from_ref(region))
+        self.copy_image_regions(src_node, dst_node, vec![region])
     }
 
     /// Copy data between images.
@@ -677,13 +671,12 @@ impl RenderGraph {
         &mut self,
         src_node: impl Into<AnyImageNode>,
         dst_node: impl Into<AnyImageNode>,
-        regions: impl Into<Box<[vk::ImageCopy]>>,
+        regions: impl AsRef<[vk::ImageCopy]> + 'static + Send,
     ) -> &mut Self {
         let src_node = src_node.into();
         let dst_node = dst_node.into();
         let src_access_range = self.node_info(src_node).default_view_info();
         let dst_access_range = self.node_info(dst_node).default_view_info();
-        let regions = regions.into();
 
         self.begin_pass("copy image")
             .access_node_subrange(src_node, AccessType::TransferRead, src_access_range)
@@ -695,7 +688,7 @@ impl RenderGraph {
                     vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
                     *bindings[dst_node],
                     vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                    &regions,
+                    regions.as_ref(),
                 );
             })
             .submit_pass()
@@ -715,7 +708,7 @@ impl RenderGraph {
         self.copy_image_to_buffer_region(
             src_node,
             dst_node,
-            &vk::BufferImageCopy {
+            vk::BufferImageCopy {
                 buffer_offset: 0,
                 buffer_row_length: src_info.width,
                 buffer_image_height: src_info.height,
@@ -740,11 +733,9 @@ impl RenderGraph {
         &mut self,
         src_node: impl Into<AnyImageNode>,
         dst_node: impl Into<AnyBufferNode>,
-        region: &vk::BufferImageCopy,
+        region: vk::BufferImageCopy,
     ) -> &mut Self {
-        use std::slice::from_ref;
-
-        self.copy_image_to_buffer_regions(src_node, dst_node, from_ref(region))
+        self.copy_image_to_buffer_regions(src_node, dst_node, vec![region])
     }
 
     /// Copy image data into a buffer.
@@ -752,13 +743,12 @@ impl RenderGraph {
         &mut self,
         src_node: impl Into<AnyImageNode>,
         dst_node: impl Into<AnyBufferNode>,
-        regions: impl Into<Box<[vk::BufferImageCopy]>>,
+        regions: impl AsRef<[vk::BufferImageCopy]> + 'static + Send,
     ) -> &mut Self {
         let src_node = src_node.into();
         let dst_node = dst_node.into();
-        let regions = regions.into();
         let src_subresource = self.node_info(src_node).default_view_info();
-        let dst_subresource = buffer_image_copy_subresource(&regions);
+        let dst_subresource = buffer_image_copy_subresource(regions.as_ref());
 
         self.begin_pass("copy image to buffer")
             .access_node_subrange(src_node, AccessType::TransferRead, src_subresource)
@@ -769,7 +759,7 @@ impl RenderGraph {
                     *bindings[src_node],
                     vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
                     *bindings[dst_node],
-                    &regions,
+                    regions.as_ref(),
                 );
             })
             .submit_pass()
@@ -898,7 +888,7 @@ impl RenderGraph {
     pub fn update_buffer(
         &mut self,
         buffer_node: impl Into<AnyBufferNode>,
-        data: &'static [u8],
+        data: impl AsRef<[u8]> + 'static + Send,
     ) -> &mut Self {
         self.update_buffer_offset(buffer_node, 0, data)
     }
@@ -908,7 +898,7 @@ impl RenderGraph {
         &mut self,
         buffer_node: impl Into<AnyBufferNode>,
         offset: vk::DeviceSize,
-        data: &'static [u8],
+        data: impl AsRef<[u8]> + 'static + Send,
     ) -> &mut Self {
         let buffer_node = buffer_node.into();
         let buffer_info = self.node_info(buffer_node);
@@ -917,7 +907,7 @@ impl RenderGraph {
         self.begin_pass("update buffer")
             .access_node_subrange(buffer_node, AccessType::TransferWrite, buffer_access_range)
             .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
-                device.cmd_update_buffer(cmd_buf, *bindings[buffer_node], offset, data);
+                device.cmd_update_buffer(cmd_buf, *bindings[buffer_node], offset, data.as_ref());
             })
             .submit_pass()
     }

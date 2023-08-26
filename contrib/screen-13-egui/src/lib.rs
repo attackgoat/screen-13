@@ -110,7 +110,7 @@ impl Egui {
                     render_graph.copy_buffer_to_image_region(
                         tmp_buf,
                         image,
-                        &vk::BufferImageCopy {
+                        vk::BufferImageCopy {
                             buffer_offset: 0,
                             buffer_row_length: delta.image.width() as u32,
                             buffer_image_height: delta.image.height() as u32,
