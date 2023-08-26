@@ -528,7 +528,7 @@ fn funky_shape_data() -> (Vec<u16>, Vec<[f32; 6]>) {
     let indices = indices.into_iter().map(|idx| idx as u16).collect();
     let vertices = positions
         .into_iter()
-        .zip(normals.into_iter())
+        .zip(normals)
         .map(|(position, normal)| {
             [
                 position.x, position.y, position.z, normal.x, normal.y, normal.z,
