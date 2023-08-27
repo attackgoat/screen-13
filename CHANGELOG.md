@@ -24,12 +24,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `RenderGraph::node_device_address` function
 - `contrib/screen-13-hot`: Shader compilation macro definition support
 - Virtual reality example using OpenXR - see [`examples/vr/README.md`](examples/vr/README.md)
+- Support for `VK_EXT_index_type_uint8`; use `device.physical_device.index_type_uint8_features.index_type_uint8` to check for support
 
 ### Changed
 
 - Device creation (and `EventLoop::build()`) no longer take a ray-tracing parameter; instead the
-  device will be created and you should use `device.physical_device.ray_trace_properties.is_some()`
-  to check for support
+  device will be created and you should use
+  `device.physical_device.ray_trace_features.ray_tracing_pipeline` to check for support
 - Logical device (`Device`) structure has been moved to `screen_13::driver::device`
 - Physical device feature and property structures have been moved to
   `screen_13::driver::physical_device`

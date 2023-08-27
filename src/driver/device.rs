@@ -80,11 +80,11 @@ impl Device {
             enabled_ext_names.push(vk::KhrDeferredHostOperationsFn::name().as_ptr());
         }
 
-        if physical_device.ray_query_features.is_some() {
+        if physical_device.ray_query_features.ray_query {
             enabled_ext_names.push(vk::KhrRayQueryFn::name().as_ptr());
         }
 
-        if physical_device.ray_trace_features.is_some() {
+        if physical_device.ray_trace_features.ray_tracing_pipeline {
             enabled_ext_names.push(vk::KhrRayTracingPipelineFn::name().as_ptr());
         }
 
@@ -122,12 +122,14 @@ impl Device {
         let mut features_v1_2 = vk::PhysicalDeviceVulkan12Features::default();
         let mut acceleration_structure_features =
             vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
+        let mut index_type_uin8_feautres = vk::PhysicalDeviceIndexTypeUint8FeaturesEXT::default();
         let mut ray_query_features = vk::PhysicalDeviceRayQueryFeaturesKHR::default();
         let mut ray_trace_features = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
         let mut features = vk::PhysicalDeviceFeatures2::builder()
             .push_next(&mut features_v1_1)
             .push_next(&mut features_v1_2)
             .push_next(&mut acceleration_structure_features)
+            .push_next(&mut index_type_uin8_feautres)
             .push_next(&mut ray_query_features)
             .push_next(&mut ray_trace_features)
             .build();
@@ -268,7 +270,7 @@ impl Device {
             .then(|| khr::AccelerationStructure::new(&instance, &device));
         let ray_trace_ext = physical_device
             .ray_trace_features
-            .is_some()
+            .ray_tracing_pipeline
             .then(|| khr::RayTracingPipeline::new(&instance, &device));
 
         Ok(Self {

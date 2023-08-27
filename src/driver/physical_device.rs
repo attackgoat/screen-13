@@ -118,6 +118,26 @@ impl From<vk::PhysicalDeviceDepthStencilResolveProperties> for DepthStencilResol
     }
 }
 
+/// Features of the physical device for vertex indexing.
+///
+/// See
+/// [`VkPhysicalDeviceIndexTypeUint8FeaturesEXT`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkPhysicalDeviceIndexTypeUint8FeaturesEXT.html)
+/// manual page.
+#[derive(Debug, Default)]
+pub struct IndexTypeUint8Features {
+    /// Indicates that VK_INDEX_TYPE_UINT8_EXT can be used with vkCmdBindIndexBuffer2KHR and
+    /// vkCmdBindIndexBuffer.
+    pub index_type_uint8: bool,
+}
+
+impl From<vk::PhysicalDeviceIndexTypeUint8FeaturesEXT> for IndexTypeUint8Features {
+    fn from(features: vk::PhysicalDeviceIndexTypeUint8FeaturesEXT) -> Self {
+        Self {
+            index_type_uint8: features.index_type_uint8 == vk::TRUE,
+        }
+    }
+}
+
 /// Structure which holds data about the physical hardware selected by the current device.
 pub struct PhysicalDevice {
     /// Describes the properties of the device which relate to acceleration structures, if
@@ -135,6 +155,9 @@ pub struct PhysicalDevice {
 
     /// Describes the features of the physical device which are part of the Vulkan 1.2 base feature set.
     pub features_v1_2: Vulkan12Features,
+
+    /// Describes the features of the physical device which relate to vertex indexing.
+    pub index_type_uint8_features: IndexTypeUint8Features,
 
     /// Memory properties of the physical device.
     pub memory_properties: vk::PhysicalDeviceMemoryProperties,
@@ -158,10 +181,10 @@ pub struct PhysicalDevice {
     pub(crate) queue_family_indices: Box<[u32]>,
 
     /// Describes the features of the device which relate to ray query, if available.
-    pub ray_query_features: Option<RayQueryFeatures>,
+    pub ray_query_features: RayQueryFeatures,
 
     /// Describes the features of the device which relate to ray tracing, if available.
-    pub ray_trace_features: Option<RayTraceFeatures>,
+    pub ray_trace_features: RayTraceFeatures,
 
     /// Describes the properties of the device which relate to ray tracing, if available.
     pub ray_trace_properties: Option<RayTraceProperties>,
@@ -203,12 +226,14 @@ impl PhysicalDevice {
         let mut features_v1_2 = vk::PhysicalDeviceVulkan12Features::default();
         let mut acceleration_structure_features =
             vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
+        let mut index_type_u8_features = vk::PhysicalDeviceIndexTypeUint8FeaturesEXT::default();
         let mut ray_query_features = vk::PhysicalDeviceRayQueryFeaturesKHR::default();
         let mut ray_trace_features = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
         let mut features = vk::PhysicalDeviceFeatures2::builder()
             .push_next(&mut features_v1_1)
             .push_next(&mut features_v1_2)
             .push_next(&mut acceleration_structure_features)
+            .push_next(&mut index_type_u8_features)
             .push_next(&mut ray_query_features)
             .push_next(&mut ray_trace_features)
             .build();
@@ -275,12 +300,20 @@ impl PhysicalDevice {
             .collect::<HashSet<_>>();
         let supports_accel_struct = extensions.contains(vk::KhrAccelerationStructureFn::name())
             && extensions.contains(vk::KhrDeferredHostOperationsFn::name());
+        let supports_index_type_uint8 = extensions.contains(vk::ExtIndexTypeUint8Fn::name());
         let supports_ray_query = extensions.contains(vk::KhrRayQueryFn::name());
         let supports_ray_trace = extensions.contains(vk::KhrRayTracingPipelineFn::name());
 
         // Gather optional features and properties of the physical device
-        let ray_query_features = supports_ray_query.then(|| ray_query_features.into());
-        let ray_trace_features = supports_ray_trace.then(|| ray_trace_features.into());
+        let index_type_uint8_features = supports_index_type_uint8
+            .then(|| index_type_u8_features.into())
+            .unwrap_or_default();
+        let ray_query_features = supports_ray_query
+            .then(|| ray_query_features.into())
+            .unwrap_or_default();
+        let ray_trace_features = supports_ray_trace
+            .then(|| ray_trace_features.into())
+            .unwrap_or_default();
         let accel_struct_properties = supports_accel_struct.then(|| accel_struct_properties.into());
         let ray_trace_properties = supports_ray_trace.then(|| ray_trace_properties.into());
 
@@ -290,6 +323,7 @@ impl PhysicalDevice {
             features_v1_0,
             features_v1_1,
             features_v1_2,
+            index_type_uint8_features,
             memory_properties,
             physical_device,
             properties_v1_0,
@@ -327,6 +361,7 @@ impl Deref for PhysicalDevice {
 /// See
 /// [`VkPhysicalDeviceRayQueryFeaturesKHR`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkPhysicalDeviceRayQueryFeaturesKHR.html)
 /// manual page.
+#[derive(Debug, Default)]
 pub struct RayQueryFeatures {
     /// Indicates whether the implementation supports ray query (`OpRayQueryProceedKHR`)
     /// functionality.
@@ -346,6 +381,7 @@ impl From<vk::PhysicalDeviceRayQueryFeaturesKHR> for RayQueryFeatures {
 /// See
 /// [`VkPhysicalDeviceRayTracingPipelineFeaturesKHR`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkPhysicalDeviceRayTracingPipelineFeaturesKHR.html)
 /// manual page.
+#[derive(Debug, Default)]
 pub struct RayTraceFeatures {
     /// Indicates whether the implementation supports the ray tracing pipeline functionality.
     ///
@@ -446,6 +482,7 @@ impl From<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR> for RayTracePropert
 /// See
 /// [`VkPhysicalDeviceFeatures`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkPhysicalDeviceFeatures.html)
 /// manual page.
+#[derive(Debug)]
 pub struct Vulkan10Features {
     /// Specifies that accesses to buffers are bounds-checked against the range of the buffer
     /// descriptor.
@@ -1009,6 +1046,7 @@ impl From<vk::PhysicalDeviceFeatures> for Vulkan10Features {
 /// [`VkPhysicalDeviceLimits`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkPhysicalDeviceLimits.html)
 /// manual page.
 #[allow(missing_docs)] // TODO: Finish docs!
+#[derive(Debug)]
 pub struct Vulkan10Limits {
     /// The largest dimension (width) that is guaranteed to be supported for all images created with
     /// an image type of [`ImageType::Texture1D`](super::image::ImageType).
@@ -1287,6 +1325,7 @@ impl From<vk::PhysicalDeviceLimits> for Vulkan10Limits {
 /// See
 /// [`VkPhysicalDeviceProperties`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkPhysicalDeviceProperties.html)
 /// manual page.
+#[derive(Debug)]
 pub struct Vulkan10Properties {
     /// The version of Vulkan supported by the device, encoded as described
     /// [here](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#extendingvulkan-coreversions-versionnumbers).
@@ -1344,6 +1383,7 @@ impl From<vk::PhysicalDeviceProperties> for Vulkan10Properties {
 /// See
 /// [`VkPhysicalDeviceVulkan11Features`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkPhysicalDeviceVulkan11Features.html)
 /// manual page.
+#[derive(Debug)]
 pub struct Vulkan11Features {
     /// Specifies whether objects in the StorageBuffer, ShaderRecordBufferKHR, or
     /// PhysicalStorageBuffer storage class with the Block decoration can have 16-bit integer and
@@ -1452,6 +1492,7 @@ impl From<vk::PhysicalDeviceVulkan11Features> for Vulkan11Features {
 /// See
 /// [`VkPhysicalDeviceVulkan11Properties`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkPhysicalDeviceVulkan11Properties.html)
 /// manual page.
+#[derive(Debug)]
 pub struct Vulkan11Properties {
     /// An array of `VK_UUID_SIZE` `u8` values representing a universally unique identifier for
     /// the device
@@ -1560,6 +1601,7 @@ impl From<vk::PhysicalDeviceVulkan11Properties> for Vulkan11Properties {
 /// See
 /// [`VkPhysicalDeviceVulkan12Features`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkPhysicalDeviceVulkan12Features.html)
 /// manual page.
+#[derive(Debug)]
 pub struct Vulkan12Features {
     /// Indicates whether the implementation supports the
     /// `VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE` sampler address mode.
@@ -1995,6 +2037,7 @@ impl From<vk::PhysicalDeviceVulkan12Features> for Vulkan12Features {
 /// See
 /// [`VkPhysicalDeviceVulkan12Properties`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkPhysicalDeviceVulkan12Properties.html)
 /// manual page.
+#[derive(Debug)]
 pub struct Vulkan12Properties {
     /// A unique identifier for the driver of the physical device.
     pub driver_id: vk::DriverId,
