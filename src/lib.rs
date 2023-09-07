@@ -327,7 +327,7 @@ mod frame;
 pub mod prelude {
     pub use {
         super::{
-            display::{Display, DisplayError},
+            display::{Display, DisplayError, ResolverPool},
             driver::{
                 accel_struct::{
                     AccelerationStructure, AccelerationStructureGeometry,
@@ -368,7 +368,7 @@ pub mod prelude {
                     BufferNode, ImageLeaseNode, ImageNode, SwapchainImageNode,
                 },
                 pass_ref::{PassRef, PipelinePassRef},
-                Bind, ClearColorValue, RenderGraph, ResolverPool, Unbind,
+                Bind, ClearColorValue, RenderGraph, Unbind,
             },
             input::{
                 update_input, update_keyboard, update_mouse, KeyBuf, KeyMap, MouseBuf, MouseButton,
@@ -390,7 +390,7 @@ pub mod prelude {
 }
 
 pub use self::{
-    display::{Display, DisplayError},
+    display::{Display, DisplayError, ResolverPool},
     event_loop::{EventLoop, EventLoopBuilder, FullscreenMode},
     frame::FrameContext,
 };

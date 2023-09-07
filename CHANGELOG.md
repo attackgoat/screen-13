@@ -38,6 +38,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `update_buffer_offset`
 - Updated parameters of `RenderGraph` functions to be more efficient (`Into<Box<[_]>>` is now
   `AsRef<[_]>` and take values of `Copy`-types instead of borrows)
+- `ResolverPool` trait has been moved from the `screen_13::graph` module to `screen_13`
 
 ### Removed
 

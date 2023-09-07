@@ -17,7 +17,7 @@ use {
             DescriptorPoolInfo, DescriptorSet, DriverError, FramebufferAttachmentImageInfo,
             FramebufferInfo, RenderPass, RenderPassInfo, SubpassDependency, SubpassInfo,
         },
-        pool::{hash::HashPool, lazy::LazyPool, Lease, Pool},
+        pool::{Lease, Pool},
     },
     ash::vk,
     log::{debug, trace},
@@ -712,10 +712,13 @@ impl Resolver {
 
     #[allow(clippy::type_complexity)]
     #[profiling::function]
-    fn lease_descriptor_pool(
-        pool: &mut dyn ResolverPool,
+    fn lease_descriptor_pool<P>(
+        pool: &mut P,
         pass: &Pass,
-    ) -> Result<Option<Lease<DescriptorPool>>, DriverError> {
+    ) -> Result<Option<Lease<DescriptorPool>>, DriverError>
+    where
+        P: Pool<DescriptorPoolInfo, DescriptorPool> + ?Sized,
+    {
         let max_set_idx = pass
             .execs
             .iter()
@@ -802,11 +805,14 @@ impl Resolver {
     }
 
     #[profiling::function]
-    fn lease_render_pass(
+    fn lease_render_pass<P>(
         &self,
-        pool: &mut dyn ResolverPool,
+        pool: &mut P,
         pass_idx: usize,
-    ) -> Result<Lease<RenderPass>, DriverError> {
+    ) -> Result<Lease<RenderPass>, DriverError>
+    where
+        P: Pool<RenderPassInfo, RenderPass> + ?Sized,
+    {
         let pass = &self.graph.passes[pass_idx];
         let (mut color_attachment_count, mut depth_stencil_attachment_count) = (0, 0);
         for exec in &pass.execs {
@@ -1649,11 +1655,14 @@ impl Resolver {
     }
 
     #[profiling::function]
-    fn lease_scheduled_resources(
+    fn lease_scheduled_resources<P>(
         &mut self,
-        pool: &mut dyn ResolverPool,
+        pool: &mut P,
         schedule: &[usize],
-    ) -> Result<(), DriverError> {
+    ) -> Result<(), DriverError>
+    where
+        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass> + ?Sized,
+    {
         for pass_idx in schedule.iter().copied() {
             // At the time this function runs the pass will already have been optimized into a
             // larger pass made out of anything that might have been merged into it - so we
@@ -2089,12 +2098,15 @@ impl Resolver {
     /// the graph, but only on top of the existing optimizations. This only matters if you are pulling
     /// multiple images out and you care - in that case pull the "most important" image first.
     #[profiling::function]
-    pub fn record_node_dependencies(
+    pub fn record_node_dependencies<P>(
         &mut self,
-        pool: &mut dyn ResolverPool,
+        pool: &mut P,
         cmd_buf: &mut CommandBuffer,
         node: impl Node,
-    ) -> Result<(), DriverError> {
+    ) -> Result<(), DriverError>
+    where
+        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass>,
+    {
         let node_idx = node.index();
 
         assert!(self.graph.bindings.get(node_idx).is_some());
@@ -2112,12 +2124,15 @@ impl Resolver {
 
     /// Records any pending render graph passes that the given node requires.
     #[profiling::function]
-    pub fn record_node(
+    pub fn record_node<P>(
         &mut self,
-        pool: &mut dyn ResolverPool,
+        pool: &mut P,
         cmd_buf: &mut CommandBuffer,
         node: impl Node,
-    ) -> Result<(), DriverError> {
+    ) -> Result<(), DriverError>
+    where
+        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass> + ?Sized,
+    {
         let node_idx = node.index();
 
         assert!(self.graph.bindings.get(node_idx).is_some());
@@ -2129,13 +2144,16 @@ impl Resolver {
     }
 
     #[profiling::function]
-    fn record_node_passes(
+    fn record_node_passes<P>(
         &mut self,
-        pool: &mut dyn ResolverPool,
+        pool: &mut P,
         cmd_buf: &mut CommandBuffer,
         node_idx: usize,
         end_pass_idx: usize,
-    ) -> Result<(), DriverError> {
+    ) -> Result<(), DriverError>
+    where
+        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass> + ?Sized,
+    {
         // Build a schedule for this node
         let mut schedule = self
             .schedule_node_passes(node_idx, end_pass_idx)
@@ -2146,13 +2164,16 @@ impl Resolver {
     }
 
     #[profiling::function]
-    fn record_scheduled_passes(
+    fn record_scheduled_passes<P>(
         &mut self,
-        pool: &mut dyn ResolverPool,
+        pool: &mut P,
         cmd_buf: &mut CommandBuffer,
         mut schedule: &mut [usize],
         end_pass_idx: usize,
-    ) -> Result<(), DriverError> {
+    ) -> Result<(), DriverError>
+    where
+        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass> + ?Sized,
+    {
         if end_pass_idx == 0 {
             return Ok(());
         }
@@ -2316,11 +2337,14 @@ impl Resolver {
 
     /// Records any pending render graph passes that have not been previously scheduled.
     #[profiling::function]
-    pub fn record_unscheduled_passes(
+    pub fn record_unscheduled_passes<P>(
         &mut self,
-        pool: &mut dyn ResolverPool,
+        pool: &mut P,
         cmd_buf: &mut CommandBuffer,
-    ) -> Result<(), DriverError> {
+    ) -> Result<(), DriverError>
+    where
+        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass> + ?Sized,
+    {
         if self.graph.passes.is_empty() {
             return Ok(());
         }
@@ -2542,12 +2566,17 @@ impl Resolver {
 
     /// Submits the remaining commands stored in this instance.
     #[profiling::function]
-    pub fn submit(
+    pub fn submit<P>(
         mut self,
-        pool: &mut impl ResolverPool,
+        pool: &mut P,
         queue_family_index: usize,
         queue_index: usize,
-    ) -> Result<Lease<CommandBuffer>, DriverError> {
+    ) -> Result<Lease<CommandBuffer>, DriverError>
+    where
+        P: Pool<CommandBufferInfo, CommandBuffer>
+            + Pool<DescriptorPoolInfo, DescriptorPool>
+            + Pool<RenderPassInfo, RenderPass>,
+    {
         use std::slice::from_ref;
 
         trace!("submit");
@@ -2892,16 +2921,3 @@ impl Resolver {
         })
     }
 }
-
-/// Combination trait which groups together all [`Pool`] traits required for a [`Resolver`]
-/// instance.
-pub trait ResolverPool:
-    Pool<DescriptorPoolInfo, DescriptorPool>
-    + Pool<RenderPassInfo, RenderPass>
-    + Pool<CommandBufferInfo, CommandBuffer>
-{
-}
-
-impl ResolverPool for HashPool {}
-
-impl ResolverPool for LazyPool {}

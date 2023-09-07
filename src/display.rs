@@ -2,9 +2,11 @@ use {
     super::{
         driver::{
             device::Device, image_access_layout, swapchain::SwapchainImage, CommandBuffer,
-            CommandBufferInfo, DriverError,
+            CommandBufferInfo, DescriptorPool, DescriptorPoolInfo, DriverError, RenderPass,
+            RenderPassInfo,
         },
-        graph::{node::SwapchainImageNode, RenderGraph, ResolverPool},
+        graph::{node::SwapchainImageNode, RenderGraph},
+        pool::Pool,
     },
     ash::vk,
     log::trace,
@@ -221,4 +223,20 @@ impl std::fmt::Display for DisplayError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self)
     }
+}
+
+/// Combination trait which groups together all [`Pool`] traits required for a [`Resolver`]
+/// instance.
+pub trait ResolverPool:
+    Pool<DescriptorPoolInfo, DescriptorPool>
+    + Pool<RenderPassInfo, RenderPass>
+    + Pool<CommandBufferInfo, CommandBuffer>
+{
+}
+
+impl<T> ResolverPool for T where
+    T: Pool<DescriptorPoolInfo, DescriptorPool>
+        + Pool<RenderPassInfo, RenderPass>
+        + Pool<CommandBufferInfo, CommandBuffer>
+{
 }

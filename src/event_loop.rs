@@ -1,13 +1,13 @@
 use {
     super::{
-        display::{Display, DisplayError},
+        display::{Display, DisplayError, ResolverPool},
         driver::{
             device::{Device, DeviceInfoBuilder},
             swapchain::{Swapchain, SwapchainInfoBuilder},
             DriverError, Surface,
         },
         frame::FrameContext,
-        graph::{RenderGraph, ResolverPool},
+        graph::RenderGraph,
         pool::hash::HashPool,
     },
     ash::vk,

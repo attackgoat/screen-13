@@ -13,7 +13,7 @@ mod swapchain;
 
 pub use self::{
     binding::{Bind, Unbind},
-    resolver::{Resolver, ResolverPool},
+    resolver::Resolver,
 };
 
 use {
