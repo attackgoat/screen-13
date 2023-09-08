@@ -177,8 +177,9 @@ impl Buffer {
     pub fn create_from_slice(
         device: &Arc<Device>,
         usage: vk::BufferUsageFlags,
-        slice: &[u8],
+        slice: impl AsRef<[u8]>,
     ) -> Result<Self, DriverError> {
+        let slice = slice.as_ref();
         let info = BufferInfo::new_mappable(slice.len() as _, usage);
         let mut buffer = Self::create(device, info)?;
 
@@ -263,7 +264,8 @@ impl Buffer {
     /// assert_eq!(Buffer::mapped_slice(&my_buf), &DATA);
     /// # Ok(()) }
     /// ```
-    pub fn copy_from_slice(this: &mut Self, offset: vk::DeviceSize, slice: &[u8]) {
+    pub fn copy_from_slice(this: &mut Self, offset: vk::DeviceSize, slice: impl AsRef<[u8]>) {
+        let slice = slice.as_ref();
         Self::mapped_slice_mut(this)[offset as _..offset as usize + slice.len()]
             .copy_from_slice(slice);
     }

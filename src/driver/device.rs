@@ -1,7 +1,7 @@
 //! Logical device resource types
 
 use {
-    super::{physical_device::PhysicalDevice, DriverError, Instance, SamplerDesc},
+    super::{physical_device::PhysicalDevice, DriverError, Instance},
     ash::{extensions::khr, vk},
     ash_window::enumerate_required_extensions,
     derive_builder::{Builder, UninitializedFieldError},
@@ -14,7 +14,6 @@ use {
     raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle},
     std::{
         cmp::Ordering,
-        collections::HashMap,
         ffi::CStr,
         fmt::{Debug, Formatter},
         iter::{empty, repeat},
@@ -35,7 +34,6 @@ pub struct Device {
     pub(super) allocator: Option<Mutex<Allocator>>,
 
     device: ash::Device,
-    immutable_samplers: HashMap<SamplerDesc, vk::Sampler>,
 
     /// Vulkan instance pointer, which includes useful functions.
     instance: Instance,
@@ -259,8 +257,6 @@ impl Device {
             queues.push(queue_family);
         }
 
-        let immutable_samplers = Self::create_immutable_samplers(&device)?;
-
         let surface_ext =
             display_window.then(|| khr::Surface::new(Instance::entry(&instance), &instance));
         let swapchain_ext = display_window.then(|| khr::Swapchain::new(&instance, &device));
@@ -277,7 +273,6 @@ impl Device {
             accel_struct_ext,
             allocator: Some(Mutex::new(allocator)),
             device,
-            immutable_samplers,
             instance,
             physical_device,
             queues,
@@ -285,64 +280,6 @@ impl Device {
             surface_ext,
             swapchain_ext,
         })
-    }
-
-    fn create_immutable_samplers(
-        device: &ash::Device,
-    ) -> Result<HashMap<SamplerDesc, vk::Sampler>, DriverError> {
-        let texel_filters = [vk::Filter::LINEAR, vk::Filter::NEAREST];
-        let mipmap_modes = [
-            vk::SamplerMipmapMode::LINEAR,
-            vk::SamplerMipmapMode::NEAREST,
-        ];
-        let address_modes = [
-            vk::SamplerAddressMode::CLAMP_TO_BORDER,
-            vk::SamplerAddressMode::CLAMP_TO_EDGE,
-            vk::SamplerAddressMode::MIRRORED_REPEAT,
-            vk::SamplerAddressMode::REPEAT,
-        ];
-
-        let mut res = HashMap::new();
-
-        for texel_filter in texel_filters {
-            for mipmap_mode in mipmap_modes {
-                for address_modes in address_modes {
-                    let anisotropy_enable = texel_filter == vk::Filter::LINEAR;
-
-                    res.insert(
-                        SamplerDesc {
-                            texel_filter,
-                            mipmap_mode,
-                            address_modes,
-                        },
-                        unsafe {
-                            let mut info = vk::SamplerCreateInfo::builder()
-                                .mag_filter(texel_filter)
-                                .min_filter(texel_filter)
-                                .mipmap_mode(mipmap_mode)
-                                .address_mode_u(address_modes)
-                                .address_mode_v(address_modes)
-                                .address_mode_w(address_modes)
-                                .max_lod(vk::LOD_CLAMP_NONE)
-                                .anisotropy_enable(anisotropy_enable);
-
-                            if anisotropy_enable {
-                                info = info.max_anisotropy(16.0);
-                            }
-
-                            device.create_sampler(&info, None)
-                        }
-                        .map_err(|err| {
-                            warn!("{err}");
-
-                            DriverError::Unsupported
-                        })?,
-                    );
-                }
-            }
-        }
-
-        Ok(res)
     }
 
     /// Lists the physical device's format capabilities.
@@ -380,13 +317,6 @@ impl Device {
                 _ => Err(DriverError::OutOfMemory),
             }
         }
-    }
-
-    pub(super) fn immutable_sampler(this: &Self, info: SamplerDesc) -> vk::Sampler {
-        this.immutable_samplers
-            .get(&info)
-            .copied()
-            .unwrap_or_else(|| unimplemented!("{:?}", info))
     }
 
     /// Provides a reference to the Vulkan instance used by this device.
@@ -471,12 +401,6 @@ impl Drop for Device {
         }
 
         self.allocator.take().unwrap();
-
-        for (_, sampler) in self.immutable_samplers.drain() {
-            unsafe {
-                self.device.destroy_sampler(sampler, None);
-            }
-        }
 
         unsafe {
             self.device.destroy_device(None);

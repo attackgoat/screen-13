@@ -227,6 +227,8 @@ impl std::fmt::Display for DisplayError {
 
 /// Combination trait which groups together all [`Pool`] traits required for a [`Resolver`]
 /// instance.
+///
+/// [`Resolver`]: crate::graph::Resolver
 pub trait ResolverPool:
     Pool<DescriptorPoolInfo, DescriptorPool>
     + Pool<RenderPassInfo, RenderPass>

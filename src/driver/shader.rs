@@ -1,10 +1,11 @@
 //! Shader resource types
 
 use {
-    super::{device::Device, DescriptorSetLayout, DriverError, SamplerDesc, VertexInputState},
+    super::{device::Device, DescriptorSetLayout, DriverError, VertexInputState},
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
-    log::{debug, error, info, trace},
+    log::{debug, error, info, trace, warn},
+    ordered_float::OrderedFloat,
     spirq::{
         ty::{ScalarType, Type},
         DescriptorType, EntryPoint, ReflectConfig, Variable,
@@ -14,14 +15,16 @@ use {
         fmt::{Debug, Formatter},
         iter::repeat,
         mem::size_of_val,
+        ops::Deref,
         sync::Arc,
+        thread::panicking,
     },
 };
 
 pub(crate) type DescriptorBindingMap =
     HashMap<DescriptorBinding, (DescriptorInfo, vk::ShaderStageFlags)>;
 
-fn guess_immutable_sampler(device: &Device, binding_name: &str) -> vk::Sampler {
+fn guess_immutable_sampler(binding_name: &str) -> SamplerInfo {
     const INVALID_ERR: &str = "Invalid sampler specification";
 
     let (texel_filter, mipmap_mode, address_modes) = if binding_name.contains("_sampler_") {
@@ -56,15 +59,22 @@ fn guess_immutable_sampler(device: &Device, binding_name: &str) -> vk::Sampler {
             vk::SamplerAddressMode::REPEAT,
         )
     };
+    let anisotropy_enable = texel_filter == vk::Filter::LINEAR;
+    let mut info = SamplerInfo::new()
+        .mag_filter(texel_filter)
+        .min_filter(texel_filter)
+        .mipmap_mode(mipmap_mode)
+        .address_mode_u(address_modes)
+        .address_mode_v(address_modes)
+        .address_mode_w(address_modes)
+        .max_lod(vk::LOD_CLAMP_NONE)
+        .anisotropy_enable(anisotropy_enable);
 
-    Device::immutable_sampler(
-        device,
-        SamplerDesc {
-            texel_filter,
-            mipmap_mode,
-            address_modes,
-        },
-    )
+    if anisotropy_enable {
+        info = info.max_anisotropy(16.0);
+    }
+
+    info.build()
 }
 
 /// Tuple of descriptor set index and binding index.
@@ -72,45 +82,68 @@ fn guess_immutable_sampler(device: &Device, binding_name: &str) -> vk::Sampler {
 /// This is a generic representation of the descriptor binding point within the shader and not a
 /// bound descriptor reference.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub(crate) struct DescriptorBinding(pub u32, pub u32);
+pub struct DescriptorBinding(pub u32, pub u32);
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+impl From<u32> for DescriptorBinding {
+    fn from(binding_idx: u32) -> Self {
+        Self(0, binding_idx)
+    }
+}
+
+impl From<(u32, u32)> for DescriptorBinding {
+    fn from((descriptor_set_idx, binding_idx): (u32, u32)) -> Self {
+        Self(descriptor_set_idx, binding_idx)
+    }
+}
+
+#[derive(Debug)]
 pub(crate) enum DescriptorInfo {
     AccelerationStructure(u32),
-    CombinedImageSampler(u32, vk::Sampler),
-    InputAttachment(u32, u32), //count, input index,
+    CombinedImageSampler(u32, Sampler, bool), //count, sampler, is-manually-defined?
+    InputAttachment(u32, u32),                //count, input index,
     SampledImage(u32),
     Sampler(u32),
     StorageBuffer(u32),
-    //StorageBufferDynamic(u32),
     StorageImage(u32),
     StorageTexelBuffer(u32),
     UniformBuffer(u32),
-    //UniformBufferDynamic(u32),
     UniformTexelBuffer(u32),
 }
 
 impl DescriptorInfo {
-    pub fn binding_count(self) -> u32 {
+    pub fn binding_count(&self) -> u32 {
         match self {
-            Self::AccelerationStructure(binding_count) => binding_count,
-            Self::CombinedImageSampler(binding_count, _) => binding_count,
-            Self::InputAttachment(binding_count, _) => binding_count,
-            Self::SampledImage(binding_count) => binding_count,
-            Self::Sampler(binding_count) => binding_count,
-            Self::StorageBuffer(binding_count) => binding_count,
-            //Self::StorageBufferDynamic(binding_count) => binding_count,
-            Self::StorageImage(binding_count) => binding_count,
-            Self::StorageTexelBuffer(binding_count) => binding_count,
-            Self::UniformBuffer(binding_count) => binding_count,
-            //Self::UniformBufferDynamic(binding_count) => binding_count,
-            Self::UniformTexelBuffer(binding_count) => binding_count,
+            &Self::AccelerationStructure(binding_count) => binding_count,
+            &Self::CombinedImageSampler(binding_count, ..) => binding_count,
+            &Self::InputAttachment(binding_count, _) => binding_count,
+            &Self::SampledImage(binding_count) => binding_count,
+            &Self::Sampler(binding_count) => binding_count,
+            &Self::StorageBuffer(binding_count) => binding_count,
+            &Self::StorageImage(binding_count) => binding_count,
+            &Self::StorageTexelBuffer(binding_count) => binding_count,
+            &Self::UniformBuffer(binding_count) => binding_count,
+            &Self::UniformTexelBuffer(binding_count) => binding_count,
         }
     }
 
-    pub fn sampler(self) -> Option<vk::Sampler> {
+    pub fn descriptor_type(&self) -> vk::DescriptorType {
         match self {
-            Self::CombinedImageSampler(_, sampler) => Some(sampler),
+            Self::AccelerationStructure(_) => vk::DescriptorType::ACCELERATION_STRUCTURE_KHR,
+            Self::CombinedImageSampler(..) => vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+            Self::InputAttachment(..) => vk::DescriptorType::INPUT_ATTACHMENT,
+            Self::SampledImage(_) => vk::DescriptorType::SAMPLED_IMAGE,
+            Self::Sampler(_) => vk::DescriptorType::SAMPLER,
+            Self::StorageBuffer(_) => vk::DescriptorType::STORAGE_BUFFER,
+            Self::StorageImage(_) => vk::DescriptorType::STORAGE_IMAGE,
+            Self::StorageTexelBuffer(_) => vk::DescriptorType::STORAGE_TEXEL_BUFFER,
+            Self::UniformBuffer(_) => vk::DescriptorType::UNIFORM_BUFFER,
+            Self::UniformTexelBuffer(_) => vk::DescriptorType::UNIFORM_TEXEL_BUFFER,
+        }
+    }
+
+    pub fn sampler(&self) -> Option<&Sampler> {
+        match self {
+            Self::CombinedImageSampler(_, sampler, _) => Some(sampler),
             _ => None,
         }
     }
@@ -118,37 +151,16 @@ impl DescriptorInfo {
     pub fn set_binding_count(&mut self, binding_count: u32) {
         *match self {
             Self::AccelerationStructure(binding_count) => binding_count,
-            Self::CombinedImageSampler(binding_count, _) => binding_count,
+            Self::CombinedImageSampler(binding_count, ..) => binding_count,
             Self::InputAttachment(binding_count, _) => binding_count,
             Self::SampledImage(binding_count) => binding_count,
             Self::Sampler(binding_count) => binding_count,
             Self::StorageBuffer(binding_count) => binding_count,
-            // Self::StorageBufferDynamic(binding_count) => binding_count,
             Self::StorageImage(binding_count) => binding_count,
             Self::StorageTexelBuffer(binding_count) => binding_count,
             Self::UniformBuffer(binding_count) => binding_count,
-            // Self::UniformBufferDynamic(binding_count) => binding_count,
             Self::UniformTexelBuffer(binding_count) => binding_count,
         } = binding_count;
-    }
-}
-
-impl From<DescriptorInfo> for vk::DescriptorType {
-    fn from(descriptor_info: DescriptorInfo) -> Self {
-        match descriptor_info {
-            DescriptorInfo::AccelerationStructure(_) => Self::ACCELERATION_STRUCTURE_KHR,
-            DescriptorInfo::CombinedImageSampler(..) => Self::COMBINED_IMAGE_SAMPLER,
-            DescriptorInfo::InputAttachment(..) => Self::INPUT_ATTACHMENT,
-            DescriptorInfo::SampledImage(_) => Self::SAMPLED_IMAGE,
-            DescriptorInfo::Sampler(_) => Self::SAMPLER,
-            DescriptorInfo::StorageBuffer(_) => Self::STORAGE_BUFFER,
-            // DescriptorInfo::StorageBufferDynamic(_) => Self::STORAGE_BUFFER_DYNAMIC,
-            DescriptorInfo::StorageImage(_) => Self::STORAGE_IMAGE,
-            DescriptorInfo::StorageTexelBuffer(_) => Self::STORAGE_TEXEL_BUFFER,
-            DescriptorInfo::UniformBuffer(_) => Self::UNIFORM_BUFFER,
-            // DescriptorInfo::UniformBufferDynamic(_) => Self::UNIFORM_BUFFER_DYNAMIC,
-            DescriptorInfo::UniformTexelBuffer(_) => Self::UNIFORM_TEXEL_BUFFER,
-        }
     }
 }
 
@@ -180,23 +192,23 @@ impl PipelineDescriptorInfo {
             let mut binding_counts = HashMap::<vk::DescriptorType, u32>::new();
             let mut bindings = vec![];
 
-            for (descriptor_binding, &(descriptor_info, stage_flags)) in descriptor_bindings
+            for (descriptor_binding, (descriptor_info, stage_flags)) in descriptor_bindings
                 .iter()
                 .filter(|(descriptor_binding, _)| descriptor_binding.0 == descriptor_set_idx)
             {
-                let descriptor_ty: vk::DescriptorType = descriptor_info.into();
+                let descriptor_ty: vk::DescriptorType = descriptor_info.descriptor_type();
                 *binding_counts.entry(descriptor_ty).or_default() +=
                     descriptor_info.binding_count();
                 let mut binding = vk::DescriptorSetLayoutBinding::builder()
                     .binding(descriptor_binding.1)
                     .descriptor_count(descriptor_info.binding_count())
                     .descriptor_type(descriptor_ty)
-                    .stage_flags(stage_flags);
+                    .stage_flags(*stage_flags);
 
                 if let Some(sampler) = descriptor_info.sampler() {
                     let start = immutable_samplers.len();
                     immutable_samplers
-                        .extend(repeat(sampler).take(descriptor_info.binding_count() as _));
+                        .extend(repeat(**sampler).take(descriptor_info.binding_count() as _));
                     binding = binding.immutable_samplers(&immutable_samplers[start..]);
                 }
 
@@ -249,6 +261,207 @@ impl PipelineDescriptorInfo {
             layouts,
             pool_sizes,
         })
+    }
+}
+
+pub(crate) struct Sampler {
+    device: Arc<Device>,
+    sampler: vk::Sampler,
+}
+
+impl Sampler {
+    pub fn create(device: &Arc<Device>, info: impl Into<SamplerInfo>) -> Result<Self, DriverError> {
+        let device = Arc::clone(device);
+        let info = info.into();
+
+        let sampler = unsafe {
+            device
+                .create_sampler(
+                    &vk::SamplerCreateInfo::builder()
+                        .flags(info.flags)
+                        .mag_filter(info.mag_filter)
+                        .min_filter(info.min_filter)
+                        .mipmap_mode(info.mipmap_mode)
+                        .address_mode_u(info.address_mode_u)
+                        .address_mode_v(info.address_mode_v)
+                        .address_mode_w(info.address_mode_w)
+                        .mip_lod_bias(info.mip_lod_bias.0)
+                        .anisotropy_enable(info.anisotropy_enable)
+                        .max_anisotropy(info.max_anisotropy.0)
+                        .compare_enable(info.compare_enable)
+                        .compare_op(info.compare_op)
+                        .min_lod(info.min_lod.0)
+                        .max_lod(info.max_lod.0)
+                        .border_color(info.border_color)
+                        .unnormalized_coordinates(info.unnormalized_coordinates),
+                    None,
+                )
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    match err {
+                        vk::Result::ERROR_OUT_OF_HOST_MEMORY
+                        | vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => DriverError::OutOfMemory,
+                        _ => DriverError::Unsupported,
+                    }
+                })?
+        };
+
+        Ok(Self { device, sampler })
+    }
+}
+
+impl Debug for Sampler {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.sampler)
+    }
+}
+
+impl Deref for Sampler {
+    type Target = vk::Sampler;
+
+    fn deref(&self) -> &Self::Target {
+        &self.sampler
+    }
+}
+
+impl Drop for Sampler {
+    fn drop(&mut self) {
+        if panicking() {
+            return;
+        }
+
+        unsafe {
+            self.device.destroy_sampler(self.sampler, None);
+        }
+    }
+}
+
+/// Information used to create a [`vk::Sampler`] instance.
+#[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[builder(
+    build_fn(private, name = "fallible_build", error = "SamplerInfoBuilderError"),
+    derive(Debug),
+    pattern = "owned"
+)]
+pub struct SamplerInfo {
+    /// Bitmask specifying additional parameters of a sampler.
+    #[builder(default)]
+    pub flags: vk::SamplerCreateFlags,
+
+    /// Specify the magnification filter to apply to texture lookups.
+    #[builder(default)]
+    pub mag_filter: vk::Filter,
+
+    /// Specify the minification filter to apply to texture lookups.
+    #[builder(default)]
+    pub min_filter: vk::Filter,
+
+    /// A value specifying the mipmap filter to apply to lookups.
+    #[builder(default)]
+    pub mipmap_mode: vk::SamplerMipmapMode,
+
+    /// A value specifying the addressing mode for U coordinates outside `[0, 1)`.
+    #[builder(default)]
+    pub address_mode_u: vk::SamplerAddressMode,
+
+    /// A value specifying the addressing mode for V coordinates outside `[0, 1)`.
+    #[builder(default)]
+    pub address_mode_v: vk::SamplerAddressMode,
+
+    /// A value specifying the addressing mode for W coordinates outside `[0, 1)`.
+    #[builder(default)]
+    pub address_mode_w: vk::SamplerAddressMode,
+
+    /// The bias to be added to mipmap LOD calculation and bias provided by image sampling functions
+    /// in SPIR-V, as described in the
+    /// [LOD Operation](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#textures-level-of-detail-operation)
+    /// section.
+    #[builder(default, setter(into))]
+    pub mip_lod_bias: OrderedFloat<f32>,
+
+    /// Enables anisotropic filtering, as described in the
+    /// [Texel Anisotropic Filtering](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#textures-texel-anisotropic-filtering)
+    /// section
+    #[builder(default)]
+    pub anisotropy_enable: bool,
+
+    /// The anisotropy value clamp used by the sampler when `anisotropy_enable` is `true`.
+    ///
+    /// If `anisotropy_enable` is `false`, max_anisotropy is ignored.
+    #[builder(default, setter(into))]
+    pub max_anisotropy: OrderedFloat<f32>,
+
+    /// Enables comparison against a reference value during lookups.
+    #[builder(default)]
+    pub compare_enable: bool,
+
+    /// Specifies the comparison operator to apply to fetched data before filtering as described in
+    /// the
+    /// [Depth Compare Operation](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#textures-depth-compare-operation)
+    /// section.
+    #[builder(default)]
+    pub compare_op: vk::CompareOp,
+
+    /// Used to clamp the
+    /// [minimum of the computed LOD value](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#textures-level-of-detail-operation).
+    #[builder(default, setter(into))]
+    pub min_lod: OrderedFloat<f32>,
+
+    /// Used to clamp the
+    /// [maximum of the computed LOD value](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#textures-level-of-detail-operation).
+    ///
+    /// To avoid clamping the maximum value, set maxLod to the constant `vk::LOD_CLAMP_NONE`.
+    #[builder(default, setter(into))]
+    pub max_lod: OrderedFloat<f32>,
+
+    /// Secifies the predefined border color to use.
+    #[builder(default)]
+    pub border_color: vk::BorderColor,
+
+    /// Controls whether to use unnormalized or normalized texel coordinates to address texels of
+    /// the image.
+    ///
+    /// When set to `true`, the range of the image coordinates used to lookup the texel is in the
+    /// range of zero to the image size in each dimension.
+    ///
+    /// When set to `false` the range of image coordinates is zero to one.
+    ///
+    /// See
+    /// [requirements](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkSamplerCreateInfo.html).
+    #[builder(default)]
+    pub unnormalized_coordinates: bool,
+}
+
+impl SamplerInfo {
+    /// Specifies a default sampler.
+    #[allow(clippy::new_ret_no_self)]
+    pub fn new() -> SamplerInfoBuilder {
+        SamplerInfoBuilder::default()
+    }
+}
+
+// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
+impl SamplerInfoBuilder {
+    /// Builds a new `SamplerInfo`.
+    pub fn build(self) -> SamplerInfo {
+        self.fallible_build()
+            .expect("All required fields set at initialization")
+    }
+}
+
+impl From<SamplerInfoBuilder> for SamplerInfo {
+    fn from(info: SamplerInfoBuilder) -> Self {
+        info.build()
+    }
+}
+
+#[derive(Debug)]
+struct SamplerInfoBuilderError;
+
+impl From<UninitializedFieldError> for SamplerInfoBuilderError {
+    fn from(_: UninitializedFieldError) -> Self {
+        Self
     }
 }
 
@@ -324,6 +537,9 @@ pub struct Shader {
 
     #[builder(private)]
     entry_point: EntryPoint,
+
+    #[builder(default, private)]
+    image_samplers: HashMap<DescriptorBinding, SamplerInfo>,
 
     #[builder(default, private, setter(strip_option))]
     vertex_input_state: Option<VertexInputState>,
@@ -486,7 +702,10 @@ impl Shader {
         )
     }
 
-    pub(super) fn descriptor_bindings(&self, device: &Device) -> DescriptorBindingMap {
+    pub(super) fn descriptor_bindings(
+        &self,
+        device: &Arc<Device>,
+    ) -> Result<DescriptorBindingMap, DriverError> {
         let mut res = DescriptorBindingMap::default();
 
         for (name, binding, desc_ty, binding_count) in
@@ -514,10 +733,25 @@ impl Shader {
                 DescriptorType::AccelStruct() => {
                     DescriptorInfo::AccelerationStructure(binding_count)
                 }
-                DescriptorType::CombinedImageSampler() => DescriptorInfo::CombinedImageSampler(
-                    binding_count,
-                    guess_immutable_sampler(device, name.as_deref().expect("invalid binding name")),
-                ),
+                DescriptorType::CombinedImageSampler() => {
+                    let (sampler_info, is_manually_defined) = self
+                        .image_samplers
+                        .get(&DescriptorBinding(binding.set(), binding.bind()))
+                        .copied()
+                        .map(|sampler_info| (sampler_info, true))
+                        .unwrap_or_else(|| {
+                            (
+                                guess_immutable_sampler(name.as_deref().unwrap_or_default()),
+                                false,
+                            )
+                        });
+
+                    DescriptorInfo::CombinedImageSampler(
+                        binding_count,
+                        Sampler::create(device, sampler_info)?,
+                        is_manually_defined,
+                    )
+                }
                 DescriptorType::InputAttachment(attachment) => {
                     DescriptorInfo::InputAttachment(binding_count, *attachment)
                 }
@@ -543,7 +777,7 @@ impl Shader {
             );
         }
 
-        res
+        Ok(res)
     }
 
     pub(super) fn merge_descriptor_bindings(
@@ -558,15 +792,18 @@ impl Shader {
                         return false;
                     }
                 }
-                DescriptorInfo::CombinedImageSampler(lhs, lhs_sampler) => {
-                    if let DescriptorInfo::CombinedImageSampler(rhs, rhs_sampler) = rhs {
-                        // Allow one of the samplers to be null (only one!)
-                        if *lhs_sampler == vk::Sampler::null() {
-                            *lhs_sampler = rhs_sampler;
-                        }
-
-                        if *lhs_sampler == vk::Sampler::null() {
+                DescriptorInfo::CombinedImageSampler(lhs, lhs_sampler, lhs_is_manually_defined) => {
+                    if let DescriptorInfo::CombinedImageSampler(
+                        rhs,
+                        rhs_sampler,
+                        rhs_is_manually_defined,
+                    ) = rhs
+                    {
+                        // Allow one of the samplers to be manually defined (only one!)
+                        if *lhs_is_manually_defined && rhs_is_manually_defined {
                             return false;
+                        } else if rhs_is_manually_defined {
+                            *lhs_sampler = rhs_sampler;
                         }
 
                         (lhs, rhs)
@@ -888,6 +1125,42 @@ impl ShaderBuilder {
 
         self.fallible_build()
             .expect("All required fields set at initialization")
+    }
+
+    /// Specifies a manually-defined image sampler.
+    ///
+    /// Sampled images, by default, use reflection to automatically assign image samplers. Each
+    /// sampled image may use a suffix such as `_llr` or `_nne` for common linear/linear repeat or
+    /// nearest/nearest clamp-to-edge samplers, respectively.
+    ///
+    /// See the [main documentation] for more information about automatic image samplers.
+    ///
+    /// Descriptor bindings may be specified as `(1, 2)` for descriptor set index `1` and binding
+    /// index `2`, or if the descriptor set index is `0` simply specify `2` for the same case.
+    ///
+    /// _NOTE:_ When defining image samplers which are used in multiple stages of a single pipeline
+    /// you must only call this function on one of the shader stages, it does not matter which one.
+    ///
+    /// # Panics
+    ///
+    /// Panics if two shader stages of the same pipeline define individual calls to `image_sampler`.
+    ///
+    /// [main documentation]: crate
+    pub fn image_sampler(
+        mut self,
+        binding: impl Into<DescriptorBinding>,
+        info: impl Into<SamplerInfo>,
+    ) -> Self {
+        let binding = binding.into();
+        let info = info.into();
+
+        if self.image_samplers.is_none() {
+            self.image_samplers = Some(Default::default());
+        }
+
+        self.image_samplers.as_mut().unwrap().insert(binding, info);
+
+        self
     }
 
     /// Specifies a manually-defined vertex input layout.

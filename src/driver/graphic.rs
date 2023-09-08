@@ -449,7 +449,8 @@ impl GraphicPipeline {
         let mut descriptor_bindings = Shader::merge_descriptor_bindings(
             shaders
                 .iter()
-                .map(|shader| shader.descriptor_bindings(&device)),
+                .map(|shader| shader.descriptor_bindings(&device))
+                .collect::<Result<Vec<_>, _>>()?,
         );
         for (descriptor_info, _) in descriptor_bindings.values_mut() {
             if descriptor_info.binding_count() == 0 {

@@ -692,13 +692,6 @@ impl ResolveMode {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub(super) struct SamplerDesc {
-    pub address_modes: vk::SamplerAddressMode,
-    pub mipmap_mode: vk::SamplerMipmapMode,
-    pub texel_filter: vk::Filter,
-}
-
 #[cfg(test)]
 mod tests {
     use {super::merge_push_constant_ranges, ash::vk};

@@ -2714,11 +2714,11 @@ impl Resolver {
                 // Write the manually bound things (access, read, and write functions)
                 for (descriptor, (node_idx, view_info)) in exec.bindings.iter() {
                     let (descriptor_set_idx, dst_binding, binding_offset) = descriptor.into_tuple();
-                    let (descriptor_info, _) = *pipeline
+                    let (descriptor_info, _) = pipeline
                         .descriptor_bindings()
                         .get(&DescriptorBinding(descriptor_set_idx, dst_binding))
                         .unwrap_or_else(|| panic!("descriptor {descriptor_set_idx}.{dst_binding}[{binding_offset}] specified in recorded execution of pass \"{}\" was not discovered through shader reflection", &pass.name));
-                    let descriptor_type = descriptor_info.into();
+                    let descriptor_type = descriptor_info.descriptor_type();
                     let bound_node = &self.graph.bindings[*node_idx];
                     if let Some(image) = bound_node.as_driver_image() {
                         let view_info = view_info.as_ref().unwrap();
@@ -2729,7 +2729,7 @@ impl Resolver {
                             image_view_info.aspect_mask = format_aspect_mask(image.info.fmt);
                         }
 
-                        let sampler = descriptor_info.sampler().unwrap_or_default();
+                        let sampler = descriptor_info.sampler().map(|sampler| **sampler).unwrap_or_default();
                         let image_view = Image::view(image, image_view_info)?;
                         let image_layout = match descriptor_type {
                             vk::DescriptorType::COMBINED_IMAGE_SAMPLER => {
@@ -2864,7 +2864,7 @@ impl Resolver {
                                 ty: image.info.ty,
                             };
                             let image_view = Image::view(image, image_view_info)?;
-                            let sampler = descriptor_info.sampler().unwrap_or_else(vk::Sampler::null);
+                            let sampler = descriptor_info.sampler().map(|sampler| **sampler).unwrap_or_else(vk::Sampler::null);
 
                             image_writes.push(IndexWrite {
                                 idx: image_infos.len(),

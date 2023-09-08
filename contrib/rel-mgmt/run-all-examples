@@ -20,6 +20,7 @@ cargo run --example hello_world
 cargo run --example cpu_readback
 cargo run --example subgroup_ops
 cargo run --example bindless
+cargo run --example image_sampler
 cargo run --example vertex_layout
 cargo run --example font_bmp
 cargo run --example egui

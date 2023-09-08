@@ -79,7 +79,7 @@ impl ComputePipeline {
         let shader = shader.into();
 
         // Use SPIR-V reflection to get the types and counts of all descriptors
-        let mut descriptor_bindings = shader.descriptor_bindings(&device);
+        let mut descriptor_bindings = shader.descriptor_bindings(&device)?;
         for (descriptor_info, _) in descriptor_bindings.values_mut() {
             if descriptor_info.binding_count() == 0 {
                 descriptor_info.set_binding_count(info.bindless_descriptor_count);

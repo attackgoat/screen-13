@@ -273,6 +273,9 @@ For example, the following sampler named `pages_sampler_nnr` specifies nearest t
 layout(set = 0, binding = 0) uniform sampler2D pages_sampler_nnr[NUM_PAGES];
 ```
 
+For more complex image sampling, use [`ShaderBuilder::image_sampler`] to specify the exact image
+sampling mode.
+
 ## Vertex input
 
 Optional name suffixes are used in the same way with vertex input as with image samplers. The
@@ -285,7 +288,8 @@ The data for vertex input is assumed to be per-vertex and bound to vertex buffer
 Add `_ibindX` for per-instance data, or the matching `_vbindX` for per-vertex data where `X` is
 replaced with the vertex buffer binding index in each case.
 
-See [`ShaderBuilder::vertex_input`].
+For more complex vertex layouts, use the [`ShaderBuilder::vertex_input`] to specify the exact
+layout.
 
 [`AccelerationStructureInfo`]: driver::accel_struct::AccelerationStructureInfo
 [`AccelerationStructure::create`]: driver::accel_struct::AccelerationStructure::create
@@ -306,6 +310,7 @@ See [`ShaderBuilder::vertex_input`].
 [`RayTracePipeline::create`]: driver::ray_trace::RayTracePipeline::create
 [`RayTracePipelineInfo`]: driver::ray_trace::RayTracePipelineInfo
 [`RenderGraph`]: graph::RenderGraph
+[`ShaderBuilder::image_sampler`]: driver::shader::ShaderBuilder::image_sampler
 [`ShaderBuilder::vertex_input`]: driver::shader::ShaderBuilder::vertex_input
 
 */
@@ -356,7 +361,10 @@ pub mod prelude {
                     RayTracePipeline, RayTracePipelineInfo, RayTracePipelineInfoBuilder,
                     RayTraceShaderGroup, RayTraceShaderGroupType,
                 },
-                shader::{Shader, ShaderBuilder, ShaderCode, SpecializationInfo},
+                shader::{
+                    SamplerInfo, SamplerInfoBuilder, Shader, ShaderBuilder, ShaderCode,
+                    SpecializationInfo,
+                },
                 AccessType, CommandBuffer, DriverError, Instance, ResolveMode,
             },
             event_loop::{EventLoop, EventLoopBuilder, FullscreenMode},

@@ -91,19 +91,19 @@ fn record_accel_struct_builds(frame: &mut FrameContext, pool: &mut HashPool) {
             .unwrap();
 
         // Vertex 1
-        Buffer::copy_from_slice(&mut buf, 0, &0f32.to_ne_bytes());
-        Buffer::copy_from_slice(&mut buf, 4, &0f32.to_ne_bytes());
-        Buffer::copy_from_slice(&mut buf, 8, &0f32.to_ne_bytes());
+        Buffer::copy_from_slice(&mut buf, 0, 0f32.to_ne_bytes());
+        Buffer::copy_from_slice(&mut buf, 4, 0f32.to_ne_bytes());
+        Buffer::copy_from_slice(&mut buf, 8, 0f32.to_ne_bytes());
 
         // Vertex 2
-        Buffer::copy_from_slice(&mut buf, 12, &1f32.to_ne_bytes());
-        Buffer::copy_from_slice(&mut buf, 16, &1f32.to_ne_bytes());
-        Buffer::copy_from_slice(&mut buf, 20, &0f32.to_ne_bytes());
+        Buffer::copy_from_slice(&mut buf, 12, 1f32.to_ne_bytes());
+        Buffer::copy_from_slice(&mut buf, 16, 1f32.to_ne_bytes());
+        Buffer::copy_from_slice(&mut buf, 20, 0f32.to_ne_bytes());
 
         // Vertex 3
-        Buffer::copy_from_slice(&mut buf, 24, &2f32.to_ne_bytes());
-        Buffer::copy_from_slice(&mut buf, 28, &0f32.to_ne_bytes());
-        Buffer::copy_from_slice(&mut buf, 32, &0f32.to_ne_bytes());
+        Buffer::copy_from_slice(&mut buf, 24, 2f32.to_ne_bytes());
+        Buffer::copy_from_slice(&mut buf, 28, 0f32.to_ne_bytes());
+        Buffer::copy_from_slice(&mut buf, 32, 0f32.to_ne_bytes());
 
         buf
     };
@@ -119,9 +119,9 @@ fn record_accel_struct_builds(frame: &mut FrameContext, pool: &mut HashPool) {
             ))
             .unwrap();
 
-        Buffer::copy_from_slice(&mut buf, 0, &0u16.to_ne_bytes());
-        Buffer::copy_from_slice(&mut buf, 2, &1u16.to_ne_bytes());
-        Buffer::copy_from_slice(&mut buf, 4, &2u16.to_ne_bytes());
+        Buffer::copy_from_slice(&mut buf, 0, 0u16.to_ne_bytes());
+        Buffer::copy_from_slice(&mut buf, 2, 1u16.to_ne_bytes());
+        Buffer::copy_from_slice(&mut buf, 4, 2u16.to_ne_bytes());
 
         buf
     };
