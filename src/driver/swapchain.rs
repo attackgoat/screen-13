@@ -268,8 +268,6 @@ impl Swapchain {
             .find(|mode| present_modes.contains(mode))
             .unwrap_or(vk::PresentModeKHR::FIFO);
 
-        debug!("Presentation mode: {:?}", present_mode);
-
         let pre_transform = if surface_capabilities
             .supported_transforms
             .contains(vk::SurfaceTransformFlagsKHR::IDENTITY)
@@ -354,8 +352,8 @@ impl Swapchain {
         self.swapchain = swapchain;
 
         info!(
-            "Swapchain dimensions: {}x{}",
-            self.info.width, self.info.height
+            "Swapchain {}x{} {:?} {present_mode:?}",
+            self.info.width, self.info.height, self.info.format.format
         );
 
         while self.acquired_semaphores.len() < self.images.len() {

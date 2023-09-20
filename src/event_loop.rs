@@ -27,6 +27,9 @@ use {
     },
 };
 
+/// Function type for selection of swapchain surface image format.
+pub type SelectSurfaceFormatFn = dyn FnOnce(&[vk::SurfaceFormatKHR]) -> usize;
+
 /// Describes a screen mode for display.
 pub enum FullscreenMode {
     /// A display mode which retains other operating system windows behind the current window.
@@ -231,6 +234,7 @@ pub struct EventLoopBuilder {
     device_info: DeviceInfoBuilder,
     event_loop: winit::event_loop::EventLoop<()>,
     resolver_pool: Option<Box<dyn ResolverPool>>,
+    surface_format_fn: Option<Box<SelectSurfaceFormatFn>>,
     swapchain_info: SwapchainInfoBuilder,
     window: WindowBuilder,
 }
@@ -248,6 +252,7 @@ impl Default for EventLoopBuilder {
             device_info: DeviceInfoBuilder::default(),
             event_loop: winit::event_loop::EventLoop::new(),
             resolver_pool: None,
+            surface_format_fn: None,
             swapchain_info: SwapchainInfoBuilder::default(),
             window: Default::default(),
         }
@@ -270,6 +275,16 @@ impl EventLoopBuilder {
     /// animation.
     pub fn command_buffer_count(mut self, cmd_buf_count: usize) -> Self {
         self.cmd_buf_count = cmd_buf_count;
+        self
+    }
+
+    /// A function to select the desired swapchain surface image format.
+    pub fn desired_surface_format(
+        mut self,
+        surface_format_fn: impl Into<Box<SelectSurfaceFormatFn>>,
+    ) -> Self {
+        let surface_format_fn = surface_format_fn.into();
+        self.surface_format_fn = Some(surface_format_fn);
         self
     }
 
@@ -445,6 +460,12 @@ impl EventLoopBuilder {
         let surface = Surface::new(&device, &window)?;
         let surface_formats = Surface::formats(&surface)?;
 
+        if surface_formats.is_empty() {
+            warn!("invalid surface formats");
+
+            return Err(DriverError::Unsupported);
+        }
+
         for surface in &surface_formats {
             debug!(
                 "surface: {:#?} ({:#?})",
@@ -452,18 +473,22 @@ impl EventLoopBuilder {
             );
         }
 
-        // TODO: Explicitly fallback to BGRA_UNORM
+        let surface_format_fn = self
+            .surface_format_fn
+            .unwrap_or_else(|| Box::new(Self::select_swapchain_format));
+        let mut surface_format_idx = surface_format_fn(&surface_formats);
+
+        if surface_format_idx >= surface_formats.len() {
+            warn!("invalid surface format selected");
+
+            surface_format_idx = 0;
+        }
+
+        let surface_format = surface_formats[surface_format_idx];
         let swapchain = Swapchain::new(
             &device,
             surface,
-            self.swapchain_info
-                .format(
-                    surface_formats
-                        .into_iter()
-                        .find(|format| Self::select_swapchain_format(*format))
-                        .ok_or(DriverError::Unsupported)?,
-                )
-                .build(),
+            self.swapchain_info.format(surface_format).build(),
         )?;
 
         info!(
@@ -482,10 +507,29 @@ impl EventLoopBuilder {
         })
     }
 
-    fn select_swapchain_format(format: vk::SurfaceFormatKHR) -> bool {
-        // TODO: Properly handle the request for SRGB and swapchain image usage flags: The device
-        // may not support SRGB and only in that case do we fall back to UNORM
-        format.format == vk::Format::B8G8R8A8_UNORM
-            && format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
+    fn select_swapchain_format(formats: &[vk::SurfaceFormatKHR]) -> usize {
+        for (idx, format) in formats.iter().copied().enumerate() {
+            if format.color_space != vk::ColorSpaceKHR::SRGB_NONLINEAR {
+                continue;
+            }
+
+            if matches!(
+                format.format,
+                vk::Format::R8G8B8A8_SRGB | vk::Format::B8G8R8A8_SRGB
+            ) {
+                return idx;
+            }
+        }
+
+        for (idx, format) in formats.iter().copied().enumerate() {
+            if matches!(
+                format.format,
+                vk::Format::R8G8B8A8_UNORM | vk::Format::B8G8R8A8_UNORM
+            ) {
+                return idx;
+            }
+        }
+
+        0
     }
 }
