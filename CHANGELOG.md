@@ -29,9 +29,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   calling unsafe `ash` functions
 - `RenderGraph::node_device_address` function
 - `contrib/screen-13-hot`: Shader compilation macro definition support
-- Virtual reality example using OpenXR - see [`examples/vr/README.md`](examples/vr/README.md)
+- Virtual reality example using OpenXR - see [`examples/vr`](examples/vr/README.md)
 - Support for `VK_EXT_index_type_uint8`; use `device.physical_device.index_type_uint8_features.index_type_uint8` to check for support
-- Manually configurable image samplers - see `examples/image_sampler.rs`
+- Manually configurable image samplers - see [`examples/image_sampler.rs`](examples/image_sampler.rs)
 
 ### Changed
 
@@ -62,12 +62,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- Custom vertex layout support - see `examples/vertex_layout.rs`
+- Custom vertex layout support - see [`examples/vertex_layout.rs`](examples/vertex_layout.rs)
 - Enabled full set of Vulkan 1.1 and Vulkan 1.2 core features during device creation
 - Ray query support with `ray_omni.rs` example
 - Exposed existing command buffer implementation so that programs may wait for render graph GPU
   submissions to finish executing before reading the results with the CPU - see
-  `examples/cpu_readback.rs`
+  [`examples/cpu_readback.rs`](examples/cpu_readback.rs)
 - `KeyBuf::is_down` helper function
 
 ### Changed
@@ -96,7 +96,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- Skeletal mesh animation demonstration in `examples/skeletal-anim/`
+- Skeletal mesh animation demonstration in [`examples/skeletal-anim`](examples/skeletal-anim/README.md)
 
 ## [0.7.0] - 2022-12-05
 
