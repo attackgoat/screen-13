@@ -198,7 +198,7 @@ impl Swapchain {
 
         self.destroy();
 
-        let surface_capabilities = unsafe {
+        let mut surface_capabilities = unsafe {
             self.device
                 .surface_ext
                 .as_ref()
@@ -213,6 +213,52 @@ impl Swapchain {
 
             DriverError::Unsupported
         })?;
+
+        // TODO: When ash flags support iter() we can simplify this!
+        for usage in [
+            vk::ImageUsageFlags::ATTACHMENT_FEEDBACK_LOOP_EXT,
+            vk::ImageUsageFlags::COLOR_ATTACHMENT,
+            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+            vk::ImageUsageFlags::FRAGMENT_DENSITY_MAP_EXT,
+            vk::ImageUsageFlags::FRAGMENT_SHADING_RATE_ATTACHMENT_KHR,
+            vk::ImageUsageFlags::INPUT_ATTACHMENT,
+            vk::ImageUsageFlags::INVOCATION_MASK_HUAWEI,
+            vk::ImageUsageFlags::RESERVED_16_QCOM,
+            vk::ImageUsageFlags::RESERVED_17_QCOM,
+            vk::ImageUsageFlags::RESERVED_22_EXT,
+            // vk::ImageUsageFlags::RESERVED_23_EXT,
+            vk::ImageUsageFlags::SAMPLED,
+            vk::ImageUsageFlags::SAMPLE_BLOCK_MATCH_QCOM,
+            vk::ImageUsageFlags::SAMPLE_WEIGHT_QCOM,
+            vk::ImageUsageFlags::SHADING_RATE_IMAGE_NV,
+            vk::ImageUsageFlags::STORAGE,
+            vk::ImageUsageFlags::TRANSFER_DST,
+            vk::ImageUsageFlags::TRANSFER_SRC,
+            vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
+            vk::ImageUsageFlags::VIDEO_DECODE_DPB_KHR,
+            vk::ImageUsageFlags::VIDEO_DECODE_DST_KHR,
+            vk::ImageUsageFlags::VIDEO_DECODE_SRC_KHR,
+            vk::ImageUsageFlags::VIDEO_ENCODE_DPB_KHR,
+            vk::ImageUsageFlags::VIDEO_ENCODE_DST_KHR,
+            vk::ImageUsageFlags::VIDEO_ENCODE_SRC_KHR,
+        ] {
+            if !surface_capabilities.supported_usage_flags.contains(usage) {
+                continue;
+            }
+
+            if !Device::image_format_properties(
+                &self.device,
+                self.info.format.format,
+                vk::ImageType::TYPE_2D,
+                vk::ImageTiling::OPTIMAL,
+                usage,
+                vk::ImageCreateFlags::empty(),
+            )
+            .is_ok()
+            {
+                surface_capabilities.supported_usage_flags &= !usage;
+            }
+        }
 
         let desired_image_count =
             Self::clamp_desired_image_count(self.info.desired_image_count, surface_capabilities);
