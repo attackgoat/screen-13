@@ -304,8 +304,15 @@ impl Animation {
                 Mat4::from_scale_rotation_translation(scale, rotation, translation)
             };
 
+            // Uncomment to show how to manually target a bone (this twists the chest to the right)
+            // let animation_transform = if joint.name.as_str() == "Chest" {
+            //     self.joints[joint.parent_index].inverse_bind * joint.inverse_bind.inverse() * Mat4::from_rotation_y(90f32.to_radians())
+            // } else {
+            //     animation_transform
+            // };
+
             self.local_joints[idx] = parent_transform * animation_transform;
-            self.frame_joints[joint.index] = self.local_joints[idx] * joint.inverse_bind;
+            self.frame_joints[idx] = self.local_joints[idx] * joint.inverse_bind;
         }
 
         &self.frame_joints
@@ -374,14 +381,12 @@ impl Model {
         assert!(!lods.is_empty());
 
         let lod = &lods[0];
-        let indices = lod.index_buffer();
+        let indices = lod;
 
-        assert!(indices.len() < u16::MAX as usize);
+        assert!(indices.index_count() < u16::MAX as usize);
 
         let indices = indices
-            .into_iter()
-            .map(|idx| idx as u16)
-            .collect::<Box<_>>();
+            .as_u16().unwrap();
         let index_data = cast_slice(&indices);
         let vertex_data = part.vertex_data();
 
