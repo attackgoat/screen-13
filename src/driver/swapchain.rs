@@ -246,7 +246,7 @@ impl Swapchain {
                 continue;
             }
 
-            if !Device::image_format_properties(
+            if Device::image_format_properties(
                 &self.device,
                 self.info.format.format,
                 vk::ImageType::TYPE_2D,
@@ -254,7 +254,7 @@ impl Swapchain {
                 usage,
                 vk::ImageCreateFlags::empty(),
             )
-            .is_ok()
+            .is_err()
             {
                 surface_capabilities.supported_usage_flags &= !usage;
             }

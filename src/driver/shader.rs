@@ -4,7 +4,7 @@ use {
     super::{device::Device, DescriptorSetLayout, DriverError, VertexInputState},
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
-    log::{debug, error, info, trace, warn},
+    log::{debug, error, trace, warn},
     ordered_float::OrderedFloat,
     spirq::{
         ty::{ScalarType, Type},
@@ -1062,7 +1062,7 @@ impl Shader {
             vertex_attribute_description.offset = offset;
             offset += stride;
 
-            info!(
+            debug!(
                 "vertex attribute {}.{}: {:?} (offset={})",
                 vertex_attribute_description.binding,
                 vertex_attribute_description.location,
