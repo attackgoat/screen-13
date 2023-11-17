@@ -1,14 +1,14 @@
 use {
     super::KeyBuf,
     std::{fmt::Debug, time::Instant},
-    winit::event::VirtualKeyCode,
+    winit::keyboard::KeyCode,
 };
 
 /// A binding between key and axis activation values.
 #[derive(Clone, Debug)]
 pub struct Binding<A> {
     axis: A,
-    key: VirtualKeyCode,
+    key: KeyCode,
     multiplier: f32,
     activation: f32,
     activation_time: f32,
@@ -17,7 +17,7 @@ pub struct Binding<A> {
 impl<A> Binding<A> {
     pub const DEFAULT_ACTIVATION_TIME: f32 = 0.15;
 
-    pub fn new(key: VirtualKeyCode, axis: A, multiplier: f32) -> Self {
+    pub fn new(key: KeyCode, axis: A, multiplier: f32) -> Self {
         Self {
             axis,
             key,
@@ -64,7 +64,7 @@ where
     }
 
     /// Binds a key to an axis.
-    pub fn bind(self, key: VirtualKeyCode, axis: A, multiplier: f32) -> Self {
+    pub fn bind(self, key: KeyCode, axis: A, multiplier: f32) -> Self {
         self.binding(Binding::new(key, axis, multiplier))
     }
 
@@ -85,14 +85,14 @@ where
 
         for binding in &mut self.bindings {
             if binding.activation_time > 1e-10 {
-                let change = if keyboard.is_pressed(&binding.key) {
+                let change = if keyboard.is_pressed(binding.key) {
                     dt
                 } else {
                     -dt
                 };
                 binding.activation =
                     (binding.activation + change / binding.activation_time).clamp(0.0, 1.0);
-            } else if keyboard.is_pressed(&binding.key) {
+            } else if keyboard.is_pressed(binding.key) {
                 binding.activation = 1.0;
             } else {
                 binding.activation = 0.0;

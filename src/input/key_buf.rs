@@ -1,4 +1,7 @@
-use winit::event::{ElementState, Event, VirtualKeyCode, WindowEvent};
+use winit::{
+    event::{ElementState, Event, KeyEvent, WindowEvent},
+    keyboard::{KeyCode, PhysicalKey},
+};
 
 /// A container for Window-based keyboard input events.
 ///
@@ -7,9 +10,9 @@ use winit::event::{ElementState, Event, VirtualKeyCode, WindowEvent};
 #[derive(Clone, Debug, Default)]
 pub struct KeyBuf {
     chars: Vec<char>,
-    held: Vec<VirtualKeyCode>,
-    pressed: Vec<VirtualKeyCode>,
-    released: Vec<VirtualKeyCode>,
+    held: Vec<KeyCode>,
+    pressed: Vec<KeyCode>,
+    released: Vec<KeyCode>,
 }
 
 impl KeyBuf {
@@ -41,36 +44,43 @@ impl KeyBuf {
     }
 
     /// Handles a single event.
-    pub fn handle_event(&mut self, event: &Event<'_, ()>) -> bool {
+    pub fn handle_event(&mut self, event: &Event<()>) -> bool {
         match event {
             Event::WindowEvent { event, .. } => match event {
-                WindowEvent::KeyboardInput { input, .. } if input.virtual_keycode.is_some() => {
-                    let key = input.virtual_keycode.unwrap();
-                    match input.state {
+                WindowEvent::KeyboardInput {
+                    event:
+                        KeyEvent {
+                            physical_key: PhysicalKey::Code(key),
+                            state,
+                            text,
+                            ..
+                        },
+                    ..
+                } => {
+                    match state {
                         ElementState::Pressed => {
-                            if let Err(idx) = self.pressed.binary_search(&key) {
-                                self.pressed.insert(idx, key);
+                            if let Err(idx) = self.pressed.binary_search(key) {
+                                self.pressed.insert(idx, *key);
                             }
 
-                            if let Err(idx) = self.held.binary_search(&key) {
-                                self.held.insert(idx, key);
+                            if let Err(idx) = self.held.binary_search(key) {
+                                self.held.insert(idx, *key);
                             }
                         }
                         ElementState::Released => {
-                            if let Ok(idx) = self.held.binary_search(&key) {
+                            if let Ok(idx) = self.held.binary_search(key) {
                                 self.held.remove(idx);
                             }
 
-                            if let Err(idx) = self.released.binary_search(&key) {
-                                self.released.insert(idx, key);
+                            if let Err(idx) = self.released.binary_search(key) {
+                                self.released.insert(idx, *key);
                             }
                         }
                     }
 
-                    true
-                }
-                WindowEvent::ReceivedCharacter(char) => {
-                    self.chars.push(*char);
+                    if let Some(text) = text {
+                        self.chars.extend(text.as_str().chars());
+                    }
 
                     true
                 }
@@ -82,37 +92,37 @@ impl KeyBuf {
 
     /// Returns `true` if the given key has been pressed since the last frame or held for multiple
     /// frames.
-    pub fn is_down(&self, key: VirtualKeyCode) -> bool {
-        self.is_held(&key) || self.is_pressed(&key)
+    pub fn is_down(&self, key: KeyCode) -> bool {
+        self.is_held(key) || self.is_pressed(key)
     }
 
     /// Returns `true` if the given key has been pressed for multiple frames.
-    pub fn is_held(&self, key: &VirtualKeyCode) -> bool {
-        self.held.binary_search(key).is_ok()
+    pub fn is_held(&self, key: KeyCode) -> bool {
+        self.held.binary_search(&key).is_ok()
     }
 
     /// Returns `true` if the given key has been pressed since the last frame.
-    pub fn is_pressed(&self, key: &VirtualKeyCode) -> bool {
-        self.pressed.binary_search(key).is_ok()
+    pub fn is_pressed(&self, key: KeyCode) -> bool {
+        self.pressed.binary_search(&key).is_ok()
     }
 
     /// Returns `true` if the given key has been released since the last frame.
-    pub fn is_released(&self, key: &VirtualKeyCode) -> bool {
-        self.released.binary_search(key).is_ok()
+    pub fn is_released(&self, key: KeyCode) -> bool {
+        self.released.binary_search(&key).is_ok()
     }
 
     /// Returns an iterator of keys pressed for multiple frames.
-    pub fn held(&self) -> impl Iterator<Item = VirtualKeyCode> + '_ {
+    pub fn held(&self) -> impl Iterator<Item = KeyCode> + '_ {
         self.held.iter().copied()
     }
 
     /// Returns an iterator of keys pressed since the last frame.
-    pub fn pressed(&self) -> impl Iterator<Item = VirtualKeyCode> + '_ {
+    pub fn pressed(&self) -> impl Iterator<Item = KeyCode> + '_ {
         self.pressed.iter().copied()
     }
 
     /// Returns an iterator of keys released since the last frame.
-    pub fn released(&self) -> impl Iterator<Item = VirtualKeyCode> + '_ {
+    pub fn released(&self) -> impl Iterator<Item = KeyCode> + '_ {
         self.released.iter().copied()
     }
 }

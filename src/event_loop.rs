@@ -20,15 +20,10 @@ use {
     },
     winit::{
         event::{Event, WindowEvent},
-        event_loop::ControlFlow,
         monitor::MonitorHandle,
-        platform::run_return::EventLoopExtRunReturn,
         window::{Fullscreen, Window, WindowBuilder},
     },
 };
-
-/// Function type for selection of swapchain surface image format.
-pub type SelectSurfaceFormatFn = dyn FnOnce(&[vk::SurfaceFormatKHR]) -> usize;
 
 /// Describes a screen mode for display.
 pub enum FullscreenMode {
@@ -101,110 +96,122 @@ impl EventLoop {
 
         self.window.set_visible(true);
 
-        while !will_exit {
-            trace!("🟥🟩🟦 Event::RedrawRequested");
-            profiling::scope!("Frame");
-
-            {
-                profiling::scope!("Event loop");
-                self.event_loop.run_return(|event, _, control_flow| {
-                    profiling::scope!("Window event");
-
-                    match event {
-                        Event::WindowEvent {
-                            event: WindowEvent::CloseRequested,
-                            ..
-                        } => {
-                            *control_flow = ControlFlow::Exit;
-                            will_exit = true;
-                        }
-                        Event::WindowEvent {
-                            event: WindowEvent::Focused(false),
-                            ..
-                        } => self.window.set_cursor_visible(true),
-                        Event::MainEventsCleared => *control_flow = ControlFlow::Exit,
-                        _ => *control_flow = ControlFlow::Poll,
+        self.event_loop
+            .run(|event, window| {
+                match event {
+                    Event::WindowEvent {
+                        event: WindowEvent::CloseRequested,
+                        ..
+                    } => {
+                        window.exit();
                     }
-                    events.extend(event.to_static());
-                });
-            }
+                    Event::WindowEvent {
+                        event: WindowEvent::Focused(false),
+                        ..
+                    } => self.window.set_cursor_visible(true),
+                    Event::AboutToWait => {
+                        self.window.request_redraw();
 
-            if !events.is_empty() {
-                trace!("received {} events", events.len(),);
-            }
+                        return;
+                    }
+                    _ => (),
+                }
 
-            let now = Instant::now();
+                if !matches!(
+                    event,
+                    Event::WindowEvent {
+                        event: WindowEvent::RedrawRequested,
+                        ..
+                    }
+                ) {
+                    events.push(event.clone());
+                    return;
+                }
 
-            // Filter the frame time before passing it to the application and renderer.
-            // Fluctuations in frame rendering times cause stutter in animations,
-            // and time-dependent effects (such as motion blur).
-            //
-            // Should applications need unfiltered delta time, they can calculate
-            // it themselves, but it's good to pass the filtered time so users
-            // don't need to worry about it.
-            {
-                profiling::scope!("Calculate dt");
+                trace!("🟥🟩🟦 Event::RedrawRequested");
+                profiling::scope!("Frame");
 
-                let dt_duration = now - last_frame;
-                last_frame = now;
+                if !events.is_empty() {
+                    trace!("received {} events", events.len(),);
+                }
 
-                let dt_raw = dt_duration.as_secs_f32();
-                dt_filtered = dt_filtered + (dt_raw - dt_filtered) / 10.0;
-            };
+                let now = Instant::now();
 
-            {
-                profiling::scope!("Update swapchain");
+                // Filter the frame time before passing it to the application and renderer.
+                // Fluctuations in frame rendering times cause stutter in animations,
+                // and time-dependent effects (such as motion blur).
+                //
+                // Should applications need unfiltered delta time, they can calculate
+                // it themselves, but it's good to pass the filtered time so users
+                // don't need to worry about it.
+                {
+                    profiling::scope!("Calculate dt");
 
-                // Update the window size if it changes
-                let window_size = self.window.inner_size();
-                let mut swapchain_info = self.swapchain.info();
-                swapchain_info.width = window_size.width;
-                swapchain_info.height = window_size.height;
-                self.swapchain.set_info(swapchain_info);
-            }
+                    let dt_duration = now - last_frame;
+                    last_frame = now;
 
-            let swapchain_image = self.swapchain.acquire_next_image();
-            if swapchain_image.is_err() {
-                events.clear();
+                    let dt_raw = dt_duration.as_secs_f32();
+                    dt_filtered = dt_filtered + (dt_raw - dt_filtered) / 10.0;
+                };
 
-                continue;
-            }
+                {
+                    profiling::scope!("Update swapchain");
 
-            let swapchain_image = swapchain_image.unwrap();
-            let height = swapchain_image.info.height;
-            let width = swapchain_image.info.width;
-            let mut render_graph = RenderGraph::new();
-            let swapchain_image = render_graph.bind_node(swapchain_image);
+                    // Update the window size if it changes
+                    let window_size = self.window.inner_size();
+                    let mut swapchain_info = self.swapchain.info();
+                    swapchain_info.width = window_size.width;
+                    swapchain_info.height = window_size.height;
+                    self.swapchain.set_info(swapchain_info);
+                }
 
-            {
-                profiling::scope!("Frame callback");
+                let swapchain_image = self.swapchain.acquire_next_image();
+                if swapchain_image.is_err() {
+                    events.clear();
 
-                frame_fn(FrameContext {
-                    device: &self.device,
-                    dt: dt_filtered,
-                    height,
-                    render_graph: &mut render_graph,
-                    events: take(&mut events).as_slice(),
-                    swapchain_image,
-                    width,
-                    window: &self.window,
-                    will_exit: &mut will_exit,
-                });
-            }
+                    return;
+                }
 
-            let elapsed = Instant::now() - now;
+                let swapchain_image = swapchain_image.unwrap();
+                let height = swapchain_image.info.height;
+                let width = swapchain_image.info.width;
+                let mut render_graph = RenderGraph::new();
+                let swapchain_image = render_graph.bind_node(swapchain_image);
 
-            trace!(
-                "✅✅✅ render graph construction: {} μs ({}% load)",
-                elapsed.as_micros(),
-                ((elapsed.as_secs_f32() / refresh_rate) * 100.0) as usize,
-            );
+                {
+                    profiling::scope!("Frame callback");
 
-            let swapchain_image = self.display.resolve_image(render_graph, swapchain_image)?;
-            self.swapchain.present_image(swapchain_image, 0, 0);
+                    frame_fn(FrameContext {
+                        device: &self.device,
+                        dt: dt_filtered,
+                        height,
+                        render_graph: &mut render_graph,
+                        events: take(&mut events).as_slice(),
+                        swapchain_image,
+                        width,
+                        window: &self.window,
+                        will_exit: &mut will_exit,
+                    });
+                }
 
-            profiling::finish_frame!();
-        }
+                let elapsed = Instant::now() - now;
+
+                trace!(
+                    "✅✅✅ render graph construction: {} μs ({}% load)",
+                    elapsed.as_micros(),
+                    ((elapsed.as_secs_f32() / refresh_rate) * 100.0) as usize,
+                );
+
+                let swapchain_image = self
+                    .display
+                    .resolve_image(render_graph, swapchain_image)
+                    .unwrap();
+                self.window.pre_present_notify();
+                self.swapchain.present_image(swapchain_image, 0, 0);
+
+                profiling::finish_frame!();
+            })
+            .unwrap();
 
         self.window.set_visible(false);
 
@@ -234,7 +241,7 @@ pub struct EventLoopBuilder {
     device_info: DeviceInfoBuilder,
     event_loop: winit::event_loop::EventLoop<()>,
     resolver_pool: Option<Box<dyn ResolverPool>>,
-    surface_format_fn: Option<Box<SelectSurfaceFormatFn>>,
+    surface_format_fn: Option<Box<dyn FnOnce(&[vk::SurfaceFormatKHR]) -> usize>>,
     swapchain_info: SwapchainInfoBuilder,
     window: WindowBuilder,
 }
@@ -250,7 +257,7 @@ impl Default for EventLoopBuilder {
         Self {
             cmd_buf_count: 5,
             device_info: DeviceInfoBuilder::default(),
-            event_loop: winit::event_loop::EventLoop::new(),
+            event_loop: winit::event_loop::EventLoop::new().unwrap(),
             resolver_pool: None,
             surface_format_fn: None,
             swapchain_info: SwapchainInfoBuilder::default(),
@@ -279,11 +286,11 @@ impl EventLoopBuilder {
     }
 
     /// A function to select the desired swapchain surface image format.
-    pub fn desired_surface_format(
-        mut self,
-        surface_format_fn: impl Into<Box<SelectSurfaceFormatFn>>,
-    ) -> Self {
-        let surface_format_fn = surface_format_fn.into();
+    pub fn desired_surface_format<F>(mut self, surface_format_fn: F) -> Self
+    where
+        F: FnOnce(&[vk::SurfaceFormatKHR]) -> usize + 'static,
+    {
+        let surface_format_fn = Box::new(surface_format_fn);
         self.surface_format_fn = Some(surface_format_fn);
         self
     }

@@ -8,10 +8,13 @@ readme = "README.md"
 
 [dependencies]
 bytemuck = "1.13"
-egui = { version = "0.22", features = [
+
+# HACK: https://github.com/emilk/egui/pull/3496
+egui = { git = "https://github.com/emilk/egui", rev = "1ab700c3cd3f932cd0cf2e5b48a05d7bed4f2c54", features = [
     "bytemuck"
 ] }
-egui-winit = "0.22"
+egui-winit = { git = "https://github.com/emilk/egui", rev = "1ab700c3cd3f932cd0cf2e5b48a05d7bed4f2c54" }
+
 inline-spirv = "0.1"
 screen-13 = { path = "../.." }
 screen-13-fx = { path = "../screen-13-fx" }

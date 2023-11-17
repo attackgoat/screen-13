@@ -30,7 +30,7 @@ pub struct FrameContext<'a> {
     pub dt: f32,
 
     /// A slice of events that have occurred since the previous frame.
-    pub events: &'a [Event<'a, ()>],
+    pub events: &'a [Event<()>],
 
     /// The height, in pixels, of the current frame.
     pub height: u32,

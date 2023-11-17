@@ -44,7 +44,10 @@ fn main() -> Result<(), DisplayError> {
                     .show(ui, |ui| {
                         ui.add(egui::Button::new("Test"));
                         ui.add(egui::Link::new("Test"));
-                        ui.add(egui::Image::new(id, [50., 50.]));
+                        ui.add(egui::Image::new(egui::load::SizedTexture {
+                            id,
+                            size: egui::emath::Vec2 { x: 50., y: 50. },
+                        }));
                     });
             },
         );

@@ -9,7 +9,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- Ability to select from available swapchain surface formats when creating an `EventLoop`
+- Ability to select from available swapchain surface formats when creating an `EventLoop` (_needs
+  more work_)
+
+### Changed
+
+- Changed `KeyBuf` implementation functions to take values instead of borrows
+- Updated `winit` to v0.29
 
 ## [0.9.0] - 2023-09-07
 

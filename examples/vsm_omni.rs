@@ -96,19 +96,19 @@ fn main() -> anyhow::Result<()> {
         update_keyboard(&mut keyboard, frame.events);
 
         // Hold spacebar to stop the light
-        if !keyboard.is_held(&VirtualKeyCode::Space) {
+        if !keyboard.is_held(KeyCode::Space) {
             elapsed += frame.dt;
         }
 
         // Hit F11 to enable borderless fullscreen
-        if keyboard.is_pressed(&VirtualKeyCode::F11) {
+        if keyboard.is_pressed(KeyCode::F11) {
             frame
                 .window
                 .set_fullscreen(Some(Fullscreen::Borderless(None)));
         }
 
         // Hit F12 to enable exclusive fullscreen
-        if keyboard.is_pressed(&VirtualKeyCode::F12) {
+        if keyboard.is_pressed(KeyCode::F12) {
             if let Some(monitor) = frame.window.current_monitor() {
                 if let Some(video_mode) = monitor.video_modes().next() {
                     frame
@@ -119,7 +119,7 @@ fn main() -> anyhow::Result<()> {
         }
 
         // Hit Escape to cancel fullscreen or exit
-        if keyboard.is_pressed(&VirtualKeyCode::Escape) {
+        if keyboard.is_pressed(KeyCode::Escape) {
             if frame.window.fullscreen().is_some() {
                 frame.window.set_fullscreen(None);
             } else {
@@ -213,7 +213,7 @@ fn main() -> anyhow::Result<()> {
         );
 
         // Hold tab to view a debug mode
-        if keyboard.is_held(&VirtualKeyCode::Tab) {
+        if keyboard.is_held(KeyCode::Tab) {
             frame
                 .render_graph
                 .begin_pass("DEBUG")

@@ -387,7 +387,8 @@ pub mod prelude {
         log::{debug, error, info, logger, trace, warn}, // Everyone wants a log
         winit::{
             dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize},
-            event::{Event, VirtualKeyCode, WindowEvent},
+            event::{Event, WindowEvent},
+            keyboard::KeyCode,
             monitor::{MonitorHandle, VideoMode},
             window::{
                 BadIcon, CursorGrabMode, CursorIcon, Fullscreen, Icon, Theme, UserAttentionType,
