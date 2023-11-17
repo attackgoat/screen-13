@@ -23,7 +23,7 @@ profile-with-tracy = ["profiling/profile-with-tracy"]
 ash = ">=0.37.1"
 ash-window = "0.12"
 derive_builder = "0.12"
-gpu-allocator = "0.22"
+gpu-allocator = "0.24"
 log = "0.4"
 ordered-float = "4.1"
 parking_lot = "0.12"
