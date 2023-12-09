@@ -192,6 +192,11 @@ impl EventLoop {
                         window: &self.window,
                         will_exit: &mut will_exit,
                     });
+
+                    if will_exit {
+                        window.exit();
+                        return;
+                    }
                 }
 
                 let elapsed = Instant::now() - now;
