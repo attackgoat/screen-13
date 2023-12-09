@@ -386,6 +386,7 @@ pub mod prelude {
         ash::vk,
         log::{debug, error, info, logger, trace, warn}, // Everyone wants a log
         winit::{
+            self,
             dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize},
             event::{Event, WindowEvent},
             keyboard::KeyCode,
