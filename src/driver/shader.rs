@@ -7,8 +7,8 @@ use {
     log::{debug, error, trace, warn},
     ordered_float::OrderedFloat,
     spirq::{
-        ty::{ScalarType, Type},
-        DescriptorType, EntryPoint, ReflectConfig, Variable,
+        prelude::*,
+        ty::ScalarType,
     },
     std::{
         collections::{BTreeMap, HashMap},
@@ -914,7 +914,9 @@ impl Shader {
             })
             .flatten()
             .map(|push_const| {
-                push_const.offset..push_const.offset + push_const.ty.nbyte().unwrap_or_default()
+                let offset = push_const.offset.unwrap_or_default();
+                let size = push_const.ty.nbyte().unwrap_or_default();
+                offset..offset + size
             })
             .reduce(|a, b| a.start.min(b.start)..a.end.max(b.end))
             .map(|push_const| vk::PushConstantRange {
@@ -968,21 +970,21 @@ impl Shader {
 
         fn scalar_format(ty: &ScalarType, byte_len: u32) -> vk::Format {
             match ty {
-                ScalarType::Float(_) => match byte_len {
+                ScalarType::Float { .. } => match byte_len {
                     4 => vk::Format::R32_SFLOAT,
                     8 => vk::Format::R32G32_SFLOAT,
                     12 => vk::Format::R32G32B32_SFLOAT,
                     16 => vk::Format::R32G32B32A32_SFLOAT,
                     _ => unimplemented!("byte_len {byte_len}"),
                 },
-                ScalarType::Signed(_) => match byte_len {
+                ScalarType::Integer { is_signed: true, .. } => match byte_len {
                     4 => vk::Format::R32_SINT,
                     8 => vk::Format::R32G32_SINT,
                     12 => vk::Format::R32G32B32_SINT,
                     16 => vk::Format::R32G32B32A32_SINT,
                     _ => unimplemented!("byte_len {byte_len}"),
                 },
-                ScalarType::Unsigned(_) => match byte_len {
+                ScalarType::Integer { is_signed: false, ..} => match byte_len {
                     4 => vk::Format::R32_UINT,
                     8 => vk::Format::R32G32_UINT,
                     12 => vk::Format::R32G32B32_UINT,
@@ -1032,7 +1034,7 @@ impl Shader {
                 location,
                 binding,
                 format: match ty {
-                    Type::Scalar(ty) => scalar_format(ty, ty.nbyte() as _),
+                    Type::Scalar(ty) => scalar_format(ty, ty.nbyte().unwrap_or_default() as _),
                     Type::Vector(ty) => scalar_format(&ty.scalar_ty, byte_stride),
                     _ => unimplemented!("{:?}", ty),
                 },
