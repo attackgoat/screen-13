@@ -333,7 +333,10 @@ impl Buffer {
     /// # Ok(()) }
     /// ```
     pub fn mapped_slice(this: &Self) -> &[u8] {
-        debug_assert!(this.info.can_map, "Buffer is not mappable - create using can_map flag");
+        debug_assert!(
+            this.info.can_map,
+            "Buffer is not mappable - create using can_map flag"
+        );
 
         &this.allocation.as_ref().unwrap().mapped_slice().unwrap()[0..this.info.size as usize]
     }
@@ -367,7 +370,10 @@ impl Buffer {
     /// # Ok(()) }
     /// ```
     pub fn mapped_slice_mut(this: &mut Self) -> &mut [u8] {
-        debug_assert!(this.info.can_map, "Buffer is not mappable - create using can_map flag");
+        debug_assert!(
+            this.info.can_map,
+            "Buffer is not mappable - create using can_map flag"
+        );
 
         &mut this
             .allocation

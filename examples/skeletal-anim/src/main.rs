@@ -385,8 +385,7 @@ impl Model {
 
         assert!(indices.index_count() < u16::MAX as usize);
 
-        let indices = indices
-            .as_u16().unwrap();
+        let indices = indices.as_u16().unwrap();
         let index_data = cast_slice(&indices);
         let vertex_data = part.vertex_data();
 
