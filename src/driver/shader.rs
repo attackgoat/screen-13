@@ -940,13 +940,17 @@ impl Shader {
                     spec.constant_id,
                     spec_info.data[spec.offset as usize..spec.offset as usize + spec.size]
                         .try_into()
-                        .map_err(|_| DriverError::InvalidData)?,
+                        .map_err(|err| {
+                            error!("Unable to specialize spirv: {err}");
+
+                            DriverError::InvalidData
+                        })?,
                 );
             }
         }
 
-        let entry_points = config.reflect().map_err(|_| {
-            error!("Unable to reflect spirv");
+        let entry_points = config.reflect().map_err(|err| {
+            error!("Unable to reflect spirv: {err}");
 
             DriverError::InvalidData
         })?;
