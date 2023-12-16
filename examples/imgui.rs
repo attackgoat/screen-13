@@ -9,7 +9,10 @@ fn main() -> Result<(), DisplayError> {
     pretty_env_logger::init();
 
     // Screen 13 things we need for this demo
-    let event_loop = EventLoop::new().desired_swapchain_image_count(2).build()?;
+    let event_loop = EventLoop::new()
+        .desired_surface_format(|formats| EventLoopBuilder::linear_surface_format(formats).unwrap())
+        .desired_swapchain_image_count(2)
+        .build()?;
     let display = ComputePresenter::new(&event_loop.device)?;
     let mut imgui = ImGui::new(&event_loop.device);
     let mut pool = LazyPool::new(&event_loop.device);
