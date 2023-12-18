@@ -9,7 +9,7 @@ use {
     spirq::{
         entry_point::EntryPoint,
         ReflectConfig,
-        ty::{DescriptorType, ScalarType, Type},
+        ty::{DescriptorType, ScalarType, SpirvType, Type},
         var::Variable,
     },
     std::{
