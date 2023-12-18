@@ -7,8 +7,10 @@ use {
     log::{debug, error, trace, warn},
     ordered_float::OrderedFloat,
     spirq::{
-        prelude::*,
-        ty::ScalarType,
+        entry_point::EntryPoint,
+        ReflectConfig,
+        ty::{DescriptorType, ScalarType, Type},
+        var::Variable,
     },
     std::{
         collections::{BTreeMap, HashMap},
@@ -981,14 +983,18 @@ impl Shader {
                     16 => vk::Format::R32G32B32A32_SFLOAT,
                     _ => unimplemented!("byte_len {byte_len}"),
                 },
-                ScalarType::Integer { is_signed: true, .. } => match byte_len {
+                ScalarType::Integer {
+                    is_signed: true, ..
+                } => match byte_len {
                     4 => vk::Format::R32_SINT,
                     8 => vk::Format::R32G32_SINT,
                     12 => vk::Format::R32G32B32_SINT,
                     16 => vk::Format::R32G32B32A32_SINT,
                     _ => unimplemented!("byte_len {byte_len}"),
                 },
-                ScalarType::Integer { is_signed: false, ..} => match byte_len {
+                ScalarType::Integer {
+                    is_signed: false, ..
+                } => match byte_len {
                     4 => vk::Format::R32_UINT,
                     8 => vk::Format::R32G32_UINT,
                     12 => vk::Format::R32G32B32_UINT,
