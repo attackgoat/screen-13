@@ -11,6 +11,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Ability to select from available swapchain surface formats when creating an `EventLoop`
 
+### Changed
+
+- Upgraded to spirq v1.0.2
+
 ## [0.9.0] - 2023-09-07
 
 ### Fixed
