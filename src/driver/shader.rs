@@ -8,9 +8,9 @@ use {
     ordered_float::OrderedFloat,
     spirq::{
         entry_point::EntryPoint,
-        ReflectConfig,
         ty::{DescriptorType, ScalarType, SpirvType, Type},
         var::Variable,
+        ReflectConfig,
     },
     std::{
         collections::{BTreeMap, HashMap},
