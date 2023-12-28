@@ -13,7 +13,9 @@ lazy_static! {
 fn main() -> Result<(), DisplayError> {
     pretty_env_logger::init();
 
-    let event_loop = EventLoop::new().build()?;
+    let event_loop = EventLoop::new()
+        .desired_surface_format(|formats| EventLoopBuilder::linear_surface_format(formats).unwrap())
+        .build()?;
 
     // Create a compute pipeline - the same as normal except for "Hot" prefixes and we provide the
     // shader source code path instead of the shader source code bytes

@@ -237,6 +237,7 @@ impl Device {
                 ..Default::default()
             },
             buffer_device_address: true,
+            allocation_sizes: Default::default(),
         })
         .map_err(|err| {
             warn!("{err}");

@@ -25,6 +25,9 @@ use {
     },
 };
 
+/// Function type for selection of swapchain surface image format.
+pub type SelectSurfaceFormatFn = dyn FnOnce(&[vk::SurfaceFormatKHR]) -> vk::SurfaceFormatKHR;
+
 /// Describes a screen mode for display.
 pub enum FullscreenMode {
     /// A display mode which retains other operating system windows behind the current window.
@@ -246,7 +249,7 @@ pub struct EventLoopBuilder {
     device_info: DeviceInfoBuilder,
     event_loop: winit::event_loop::EventLoop<()>,
     resolver_pool: Option<Box<dyn ResolverPool>>,
-    surface_format_fn: Option<Box<dyn FnOnce(&[vk::SurfaceFormatKHR]) -> usize>>,
+    surface_format_fn: Option<Box<SelectSurfaceFormatFn>>,
     swapchain_info: SwapchainInfoBuilder,
     window: WindowBuilder,
 }
@@ -291,9 +294,11 @@ impl EventLoopBuilder {
     }
 
     /// A function to select the desired swapchain surface image format.
+    ///
+    /// By default sRGB will be selected unless it is not available.
     pub fn desired_surface_format<F>(mut self, surface_format_fn: F) -> Self
     where
-        F: FnOnce(&[vk::SurfaceFormatKHR]) -> usize + 'static,
+        F: 'static + FnOnce(&[vk::SurfaceFormatKHR]) -> vk::SurfaceFormatKHR,
     {
         let surface_format_fn = Box::new(surface_format_fn);
         self.surface_format_fn = Some(surface_format_fn);
@@ -485,18 +490,14 @@ impl EventLoopBuilder {
             );
         }
 
-        let surface_format_fn = self
-            .surface_format_fn
-            .unwrap_or_else(|| Box::new(Self::select_swapchain_format));
-        let mut surface_format_idx = surface_format_fn(&surface_formats);
-
-        if surface_format_idx >= surface_formats.len() {
-            warn!("invalid surface format selected");
-
-            surface_format_idx = 0;
-        }
-
-        let surface_format = surface_formats[surface_format_idx];
+        let surface_format_fn = self.surface_format_fn.unwrap_or_else(|| {
+            Box::new(|formats| {
+                Self::srgb_surface_format(formats)
+                    .or_else(|| Self::linear_surface_format(formats))
+                    .unwrap_or(formats[0])
+            })
+        });
+        let surface_format = surface_format_fn(&surface_formats);
         let swapchain = Swapchain::new(
             &device,
             surface,
@@ -519,29 +520,35 @@ impl EventLoopBuilder {
         })
     }
 
-    fn select_swapchain_format(formats: &[vk::SurfaceFormatKHR]) -> usize {
-        for (idx, format) in formats.iter().copied().enumerate() {
-            if format.color_space != vk::ColorSpaceKHR::SRGB_NONLINEAR {
+    /// Helper function to automatically select the best UNORM format.
+    pub fn linear_surface_format(formats: &[vk::SurfaceFormatKHR]) -> Option<vk::SurfaceFormatKHR> {
+        for swapchain in formats.iter().copied() {
+            if matches!(
+                swapchain.format,
+                vk::Format::R8G8B8A8_UNORM | vk::Format::B8G8R8A8_UNORM
+            ) {
+                return Some(swapchain);
+            }
+        }
+
+        None
+    }
+
+    /// Helper function to automatically select the best sRGB format.
+    pub fn srgb_surface_format(formats: &[vk::SurfaceFormatKHR]) -> Option<vk::SurfaceFormatKHR> {
+        for swapchain in formats.iter().copied() {
+            if swapchain.color_space != vk::ColorSpaceKHR::SRGB_NONLINEAR {
                 continue;
             }
 
             if matches!(
-                format.format,
+                swapchain.format,
                 vk::Format::R8G8B8A8_SRGB | vk::Format::B8G8R8A8_SRGB
             ) {
-                return idx;
+                return Some(swapchain);
             }
         }
 
-        for (idx, format) in formats.iter().copied().enumerate() {
-            if matches!(
-                format.format,
-                vk::Format::R8G8B8A8_UNORM | vk::Format::B8G8R8A8_UNORM
-            ) {
-                return idx;
-            }
-        }
-
-        0
+        None
     }
 }

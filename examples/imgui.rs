@@ -10,26 +10,7 @@ fn main() -> Result<(), DisplayError> {
 
     // Screen 13 things we need for this demo
     let event_loop = EventLoop::new()
-        .desired_surface_format(|formats| {
-            // HACK: Pick non-sRGB until the API for selecting it is reworked to include a device
-            // instance
-            for (
-                idx,
-                vk::SurfaceFormatKHR {
-                    color_space,
-                    format,
-                },
-            ) in formats.iter().copied().enumerate()
-            {
-                if format == vk::Format::R8G8B8A8_UNORM
-                    && color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
-                {
-                    return idx;
-                }
-            }
-
-            0
-        })
+        .desired_surface_format(|formats| EventLoopBuilder::linear_surface_format(formats).unwrap())
         .desired_swapchain_image_count(2)
         .build()?;
     let display = ComputePresenter::new(&event_loop.device)?;

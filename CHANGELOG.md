@@ -17,6 +17,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Changed `KeyBuf` implementation functions to take values instead of borrows
 - Updated `winit` to v0.29
 
+### Changed
+
+- Upgraded to spirq v1.0.2
+
 ## [0.9.0] - 2023-09-07
 
 ### Fixed
