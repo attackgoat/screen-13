@@ -73,13 +73,13 @@ impl Resolver {
     fn allow_merge_passes(lhs: &Pass, rhs: &Pass) -> bool {
         let lhs_pipeline = lhs
             .execs
-            .get(0)
+            .first()
             .map(|exec| exec.pipeline.as_ref())
             .filter(|pipeline| matches!(pipeline, Some(ExecutionPipeline::Graphic(_))))
             .flatten();
         let rhs_pipeline = rhs
             .execs
-            .get(0)
+            .first()
             .map(|exec| exec.pipeline.as_ref())
             .filter(|pipeline| matches!(pipeline, Some(ExecutionPipeline::Graphic(_))))
             .flatten();

@@ -940,13 +940,7 @@ impl Shader {
             for spec in &spec_info.map_entries {
                 config.specialize(
                     spec.constant_id,
-                    spec_info.data[spec.offset as usize..spec.offset as usize + spec.size]
-                        .try_into()
-                        .map_err(|err| {
-                            error!("Unable to specialize spirv: {err}");
-
-                            DriverError::InvalidData
-                        })?,
+                    spec_info.data[spec.offset as usize..spec.offset as usize + spec.size].into(),
                 );
             }
         }

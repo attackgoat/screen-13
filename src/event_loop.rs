@@ -507,33 +507,33 @@ impl EventLoopBuilder {
 
     /// Helper function to automatically select the best UNORM format.
     pub fn linear_surface_format(formats: &[vk::SurfaceFormatKHR]) -> Option<vk::SurfaceFormatKHR> {
-        for swapchain in formats.iter().copied() {
-            if matches!(
-                swapchain.format,
-                vk::Format::R8G8B8A8_UNORM | vk::Format::B8G8R8A8_UNORM
-            ) {
-                return Some(swapchain);
-            }
-        }
-
-        None
+        formats
+            .iter()
+            .find(|&&vk::SurfaceFormatKHR { format, .. }| {
+                matches!(
+                    format,
+                    vk::Format::R8G8B8A8_UNORM | vk::Format::B8G8R8A8_UNORM
+                )
+            })
+            .copied()
     }
 
     /// Helper function to automatically select the best sRGB format.
     pub fn srgb_surface_format(formats: &[vk::SurfaceFormatKHR]) -> Option<vk::SurfaceFormatKHR> {
-        for swapchain in formats.iter().copied() {
-            if swapchain.color_space != vk::ColorSpaceKHR::SRGB_NONLINEAR {
-                continue;
-            }
-
-            if matches!(
-                swapchain.format,
-                vk::Format::R8G8B8A8_SRGB | vk::Format::B8G8R8A8_SRGB
-            ) {
-                return Some(swapchain);
-            }
-        }
-
-        None
+        formats
+            .iter()
+            .find(
+                |&&vk::SurfaceFormatKHR {
+                     color_space,
+                     format,
+                 }| {
+                    matches!(color_space, vk::ColorSpaceKHR::SRGB_NONLINEAR)
+                        && matches!(
+                            format,
+                            vk::Format::R8G8B8A8_SRGB | vk::Format::B8G8R8A8_SRGB
+                        )
+                },
+            )
+            .copied()
     }
 }
