@@ -178,7 +178,7 @@ fn read_shader_source(path: impl AsRef<Path>) -> String {
                 context: path
                     .parent()
                     .map(|path| path.to_path_buf())
-                    .unwrap_or_else(PathBuf::new),
+                    .unwrap_or_default(),
             })
         }
     }
