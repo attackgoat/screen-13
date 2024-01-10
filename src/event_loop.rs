@@ -474,7 +474,7 @@ impl EventLoopBuilder {
             .unwrap_or_else(|| Box::new(HashPool::new(&device)));
         let display = Display::new(&device, pool, self.cmd_buf_count, queue_family_index)?;
 
-        let surface = Surface::new(&device, &window)?;
+        let surface = Surface::create(&device, &window)?;
         let surface_formats = Surface::formats(&surface)?;
 
         if surface_formats.is_empty() {
@@ -490,13 +490,9 @@ impl EventLoopBuilder {
             );
         }
 
-        let surface_format_fn = self.surface_format_fn.unwrap_or_else(|| {
-            Box::new(|formats| {
-                Self::srgb_surface_format(formats)
-                    .or_else(|| Self::linear_surface_format(formats))
-                    .unwrap_or(formats[0])
-            })
-        });
+        let surface_format_fn = self
+            .surface_format_fn
+            .unwrap_or_else(|| Box::new(Surface::srgb_or_default));
         let surface_format = surface_format_fn(&surface_formats);
         let swapchain = Swapchain::new(
             &device,
@@ -518,37 +514,5 @@ impl EventLoopBuilder {
             swapchain,
             window,
         })
-    }
-
-    /// Helper function to automatically select the best UNORM format.
-    pub fn linear_surface_format(formats: &[vk::SurfaceFormatKHR]) -> Option<vk::SurfaceFormatKHR> {
-        formats
-            .iter()
-            .find(|&&vk::SurfaceFormatKHR { format, .. }| {
-                matches!(
-                    format,
-                    vk::Format::R8G8B8A8_UNORM | vk::Format::B8G8R8A8_UNORM
-                )
-            })
-            .copied()
-    }
-
-    /// Helper function to automatically select the best sRGB format.
-    pub fn srgb_surface_format(formats: &[vk::SurfaceFormatKHR]) -> Option<vk::SurfaceFormatKHR> {
-        formats
-            .iter()
-            .find(
-                |&&vk::SurfaceFormatKHR {
-                     color_space,
-                     format,
-                 }| {
-                    matches!(color_space, vk::ColorSpaceKHR::SRGB_NONLINEAR)
-                        && matches!(
-                            format,
-                            vk::Format::R8G8B8A8_SRGB | vk::Format::B8G8R8A8_SRGB
-                        )
-                },
-            )
-            .copied()
     }
 }

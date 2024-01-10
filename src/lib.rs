@@ -365,6 +365,10 @@ pub mod prelude {
                     SamplerInfo, SamplerInfoBuilder, Shader, ShaderBuilder, ShaderCode,
                     SpecializationInfo,
                 },
+                surface::Surface,
+                swapchain::{
+                    Swapchain, SwapchainError, SwapchainImage, SwapchainInfo, SwapchainInfoBuilder,
+                },
                 AccessType, CommandBuffer, DriverError, Instance, ResolveMode,
             },
             event_loop::{EventLoop, EventLoopBuilder, FullscreenMode},
