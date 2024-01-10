@@ -41,7 +41,7 @@ impl Surface {
             )
         }
         .map_err(|err| {
-            error!("unable to create surface: {err}");
+            error!("Unable to create surface: {err}");
 
             DriverError::Unsupported
         })?;
@@ -58,7 +58,7 @@ impl Surface {
                 .unwrap()
                 .get_physical_device_surface_formats(*this.device.physical_device, this.surface)
                 .map_err(|err| {
-                    error!("unable to get surface formats: {err}");
+                    error!("Unable to get surface formats: {err}");
 
                     DriverError::Unsupported
                 })

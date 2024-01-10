@@ -509,7 +509,7 @@ impl Deref for SwapchainImage {
 }
 
 /// Describes the condition of a swapchain.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum SwapchainError {
     /// This frame is lost but more may be acquired later.
     DeviceLost,
