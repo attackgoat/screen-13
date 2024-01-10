@@ -5,6 +5,7 @@ fn main() -> Result<(), DisplayError> {
 
     let event_loop = EventLoop::new()
         .desired_swapchain_image_count(2)
+        .desired_surface_format(|formats| EventLoopBuilder::linear_surface_format(formats).unwrap())
         .window(|window| window.with_transparent(false))
         .build()?;
     let mut egui = Egui::new(&event_loop.device, event_loop.as_ref());

@@ -9,11 +9,10 @@ readme = "README.md"
 [dependencies]
 bytemuck = "1.13"
 
-# HACK: https://github.com/emilk/egui/pull/3496
-egui = { git = "https://github.com/emilk/egui", rev = "1ab700c3cd3f932cd0cf2e5b48a05d7bed4f2c54", features = [
+egui = { version = "0.25", features = [
     "bytemuck"
 ] }
-egui-winit = { git = "https://github.com/emilk/egui", rev = "1ab700c3cd3f932cd0cf2e5b48a05d7bed4f2c54" }
+egui-winit = "0.25"
 
 inline-spirv = "0.1"
 screen-13 = { path = "../.." }

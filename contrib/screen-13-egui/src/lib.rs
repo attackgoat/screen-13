@@ -57,10 +57,29 @@ impl Egui {
             .unwrap(),
         );
 
+        let ctx = egui::Context::default();
+        let native_pixels_per_point = event_loop
+            .primary_monitor()
+            .map(|monitor| monitor.scale_factor() as f32);
+        let max_texture_side = Some(
+            device
+                .physical_device
+                .properties_v1_0
+                .limits
+                .max_image_dimension2_d as usize,
+        );
+        let egui_winit = egui_winit::State::new(
+            ctx.clone(),
+            egui::ViewportId::ROOT,
+            event_loop,
+            native_pixels_per_point,
+            max_texture_side,
+        );
+
         Self {
             ppl,
-            ctx: egui::Context::default(),
-            egui_winit: egui_winit::State::new(event_loop),
+            ctx,
+            egui_winit,
             textures: HashMap::default(),
             cache: HashPool::new(device),
             next_tex_id: 0,
@@ -201,7 +220,7 @@ impl Egui {
         for egui::ClippedPrimitive {
             clip_rect,
             primitive,
-        } in self.ctx.tessellate(shapes)
+        } in self.ctx.tessellate(shapes, self.ctx.pixels_per_point())
         {
             match primitive {
                 egui::epaint::Primitive::Mesh(mesh) => {
@@ -298,7 +317,7 @@ impl Egui {
             if let Event::WindowEvent { event, .. } = event {
                 #[allow(unused_must_use)]
                 {
-                    self.egui_winit.on_event(&self.ctx, event);
+                    self.egui_winit.on_window_event(window, event);
                 }
             }
         }
@@ -306,7 +325,7 @@ impl Egui {
         let full_output = self.ctx.run(raw_input, ui_fn);
 
         self.egui_winit
-            .handle_platform_output(window, &self.ctx, full_output.platform_output);
+            .handle_platform_output(window, full_output.platform_output);
 
         let deltas = full_output.textures_delta;
 

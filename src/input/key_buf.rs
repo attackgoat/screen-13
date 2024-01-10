@@ -46,46 +46,47 @@ impl KeyBuf {
     /// Handles a single event.
     pub fn handle_event(&mut self, event: &Event<()>) -> bool {
         match event {
-            Event::WindowEvent { event, .. } => match event {
-                WindowEvent::KeyboardInput {
-                    event:
-                        KeyEvent {
-                            physical_key: PhysicalKey::Code(key),
-                            state,
-                            text,
-                            ..
-                        },
-                    ..
-                } => {
-                    match state {
-                        ElementState::Pressed => {
-                            if let Err(idx) = self.pressed.binary_search(key) {
-                                self.pressed.insert(idx, *key);
-                            }
-
-                            if let Err(idx) = self.held.binary_search(key) {
-                                self.held.insert(idx, *key);
-                            }
+            Event::WindowEvent {
+                event:
+                    WindowEvent::KeyboardInput {
+                        event:
+                            KeyEvent {
+                                physical_key: PhysicalKey::Code(key),
+                                state,
+                                text,
+                                ..
+                            },
+                        ..
+                    },
+                ..
+            } => {
+                match state {
+                    ElementState::Pressed => {
+                        if let Err(idx) = self.pressed.binary_search(key) {
+                            self.pressed.insert(idx, *key);
                         }
-                        ElementState::Released => {
-                            if let Ok(idx) = self.held.binary_search(key) {
-                                self.held.remove(idx);
-                            }
 
-                            if let Err(idx) = self.released.binary_search(key) {
-                                self.released.insert(idx, *key);
-                            }
+                        if let Err(idx) = self.held.binary_search(key) {
+                            self.held.insert(idx, *key);
                         }
                     }
+                    ElementState::Released => {
+                        if let Ok(idx) = self.held.binary_search(key) {
+                            self.held.remove(idx);
+                        }
 
-                    if let Some(text) = text {
-                        self.chars.extend(text.as_str().chars());
+                        if let Err(idx) = self.released.binary_search(key) {
+                            self.released.insert(idx, *key);
+                        }
                     }
-
-                    true
                 }
-                _ => false,
-            },
+
+                if let Some(text) = text {
+                    self.chars.extend(text.as_str().chars());
+                }
+
+                true
+            }
             _ => false,
         }
     }
