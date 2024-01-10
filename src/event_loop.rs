@@ -11,10 +11,9 @@ use {
         pool::hash::HashPool,
     },
     ash::vk,
-    log::{debug, info, trace, warn},
+    log::{debug, error, info, trace, warn},
     std::{
         fmt::{Debug, Formatter},
-        mem::take,
         sync::Arc,
         time::{Duration, Instant},
     },
@@ -72,6 +71,8 @@ impl EventLoop {
     {
         let mut events = Vec::new();
         let mut will_exit = false;
+        let mut last_swapchain_err = None;
+        let mut run_result = Ok(());
 
         // Use the same delta-time smoothing as Kajiya; but start it off with a reasonable
         // guess so the following updates are even smoother
@@ -114,10 +115,9 @@ impl EventLoop {
                     } => self.window.set_cursor_visible(true),
                     Event::AboutToWait => {
                         self.window.request_redraw();
-
                         return;
                     }
-                    _ => (),
+                    _ => {}
                 }
 
                 if !matches!(
@@ -127,7 +127,7 @@ impl EventLoop {
                         ..
                     }
                 ) {
-                    events.push(event.clone());
+                    events.push(event);
                     return;
                 }
 
@@ -168,58 +168,83 @@ impl EventLoop {
                     self.swapchain.set_info(swapchain_info);
                 }
 
-                let swapchain_image = self.swapchain.acquire_next_image();
-                if swapchain_image.is_err() {
-                    events.clear();
+                // Note: Errors when acquiring swapchain images are not considered fatal
+                match self.swapchain.acquire_next_image() {
+                    Err(err) => {
+                        if last_swapchain_err == Some(err) {
+                            // Generally ignore repeated errors as the window may take some time to get
+                            // back to a workable state
+                            debug!("Unable to acquire swapchain image: {err:?}");
+                        } else {
+                            // The error has changed - this may happen during some window events
+                            warn!("Unable to acquire swapchain image: {err:?}");
+                            last_swapchain_err = Some(err);
+                        }
+                    }
+                    Ok(swapchain_image) => {
+                        last_swapchain_err = None;
 
-                    return;
-                }
+                        let height = swapchain_image.info.height;
+                        let width = swapchain_image.info.width;
+                        let mut render_graph = RenderGraph::new();
+                        let swapchain_image = render_graph.bind_node(swapchain_image);
 
-                let swapchain_image = swapchain_image.unwrap();
-                let height = swapchain_image.info.height;
-                let width = swapchain_image.info.width;
-                let mut render_graph = RenderGraph::new();
-                let swapchain_image = render_graph.bind_node(swapchain_image);
+                        {
+                            profiling::scope!("Frame callback");
 
-                {
-                    profiling::scope!("Frame callback");
+                            frame_fn(FrameContext {
+                                device: &self.device,
+                                dt: dt_filtered,
+                                height,
+                                render_graph: &mut render_graph,
+                                events: &events,
+                                swapchain_image,
+                                width,
+                                window: &self.window,
+                                will_exit: &mut will_exit,
+                            });
 
-                    frame_fn(FrameContext {
-                        device: &self.device,
-                        dt: dt_filtered,
-                        height,
-                        render_graph: &mut render_graph,
-                        events: take(&mut events).as_slice(),
-                        swapchain_image,
-                        width,
-                        window: &self.window,
-                        will_exit: &mut will_exit,
-                    });
+                            if will_exit {
+                                window.exit();
+                                return;
+                            }
+                        }
 
-                    if will_exit {
-                        window.exit();
-                        return;
+                        let elapsed = Instant::now() - now;
+
+                        trace!(
+                            "✅✅✅ render graph construction: {} μs ({}% load)",
+                            elapsed.as_micros(),
+                            ((elapsed.as_secs_f32() / refresh_rate) * 100.0) as usize,
+                        );
+
+                        match self.display.resolve_image(render_graph, swapchain_image) {
+                            Err(err) => {
+                                // This is considered a fatal error and will be thrown back to the
+                                // caller
+                                error!("Unable to resolve swapchain image: {err}");
+                                run_result = Err(err);
+                                window.exit();
+                            }
+                            Ok(swapchain_image) => {
+                                self.window.pre_present_notify();
+                                self.swapchain.present_image(swapchain_image, 0, 0);
+
+                                profiling::finish_frame!();
+                            }
+                        }
                     }
                 }
 
-                let elapsed = Instant::now() - now;
-
-                trace!(
-                    "✅✅✅ render graph construction: {} μs ({}% load)",
-                    elapsed.as_micros(),
-                    ((elapsed.as_secs_f32() / refresh_rate) * 100.0) as usize,
-                );
-
-                let swapchain_image = self
-                    .display
-                    .resolve_image(render_graph, swapchain_image)
-                    .unwrap();
-                self.window.pre_present_notify();
-                self.swapchain.present_image(swapchain_image, 0, 0);
-
-                profiling::finish_frame!();
+                events.clear();
             })
-            .unwrap();
+            .map_err(|err| {
+                error!("Unable to run event loop: {err}");
+
+                DisplayError::Driver(DriverError::Unsupported)
+            })?;
+
+        run_result?;
 
         self.window.set_visible(false);
 
@@ -265,7 +290,7 @@ impl Default for EventLoopBuilder {
         Self {
             cmd_buf_count: 5,
             device_info: DeviceInfoBuilder::default(),
-            event_loop: winit::event_loop::EventLoop::new().unwrap(),
+            event_loop: winit::event_loop::EventLoop::new().expect("Unable to build event loop"),
             resolver_pool: None,
             surface_format_fn: None,
             swapchain_info: SwapchainInfoBuilder::default(),
