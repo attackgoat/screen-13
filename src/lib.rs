@@ -365,6 +365,10 @@ pub mod prelude {
                     SamplerInfo, SamplerInfoBuilder, Shader, ShaderBuilder, ShaderCode,
                     SpecializationInfo,
                 },
+                surface::Surface,
+                swapchain::{
+                    Swapchain, SwapchainError, SwapchainImage, SwapchainInfo, SwapchainInfoBuilder,
+                },
                 AccessType, CommandBuffer, DriverError, Instance, ResolveMode,
             },
             event_loop::{EventLoop, EventLoopBuilder, FullscreenMode},
@@ -386,8 +390,10 @@ pub mod prelude {
         ash::vk,
         log::{debug, error, info, logger, trace, warn}, // Everyone wants a log
         winit::{
+            self,
             dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize},
-            event::{Event, VirtualKeyCode, WindowEvent},
+            event::{Event, WindowEvent},
+            keyboard::KeyCode,
             monitor::{MonitorHandle, VideoMode},
             window::{
                 BadIcon, CursorGrabMode, CursorIcon, Fullscreen, Icon, Theme, UserAttentionType,

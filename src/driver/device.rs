@@ -311,7 +311,9 @@ impl Device {
             ) {
                 Ok(properties) => Ok(properties),
                 Err(err) if err == vk::Result::ERROR_FORMAT_NOT_SUPPORTED => {
-                    error!("Format not supported");
+                    // We don't log this condition because it is normal for unsupported
+                    // formats to be checked - we use the result to inform callers they
+                    // cannot use those formats. TODO: This may be better as an Option...
 
                     Err(DriverError::Unsupported)
                 }

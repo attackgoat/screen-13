@@ -9,9 +9,8 @@ readme = "README.md"
 [dependencies]
 bytemuck = "1.13"
 
-# HACK: https://github.com/imgui-rs/imgui-rs/pull/716
-imgui = { git = "https://github.com/imgui-rs/imgui-rs", rev = "4d0c9ebc0faaea421e59e0a58f712abbb18c3093" } 
-imgui-winit-support = { git = "https://github.com/imgui-rs/imgui-rs", rev = "4d0c9ebc0faaea421e59e0a58f712abbb18c3093" }
+imgui = { git = "https://github.com/imgui-rs/imgui-rs", rev = "ca05418cb449dadaabf014487c5c965908dfcbdd" } 
+imgui-winit-support = { git = "https://github.com/imgui-rs/imgui-rs", rev = "ca05418cb449dadaabf014487c5c965908dfcbdd" }
 
 inline-spirv = "0.1"
 screen-13 = { path = "../.." }

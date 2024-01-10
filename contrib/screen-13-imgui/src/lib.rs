@@ -54,7 +54,7 @@ impl ImGui {
     pub fn draw(
         &mut self,
         dt: f32,
-        events: &[Event<'_, ()>],
+        events: &[Event<()>],
         window: &Window,
         render_graph: &mut RenderGraph,
         ui_func: impl FnOnce(&mut Ui),

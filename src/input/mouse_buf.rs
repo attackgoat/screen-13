@@ -7,6 +7,8 @@ const fn mouse_button_idx(button: MouseButton) -> u16 {
         MouseButton::Left => 0,
         MouseButton::Right => 1,
         MouseButton::Middle => 2,
+        MouseButton::Back => 3,
+        MouseButton::Forward => 4,
         MouseButton::Other(idx) => idx,
     }
 }
@@ -17,6 +19,8 @@ const fn idx_mouse_button(button: u16) -> MouseButton {
         0 => MouseButton::Left,
         1 => MouseButton::Right,
         2 => MouseButton::Middle,
+        3 => MouseButton::Back,
+        4 => MouseButton::Forward,
         idx => MouseButton::Other(idx),
     }
 }
@@ -71,7 +75,7 @@ impl MouseBuf {
     }
 
     /// Handles a single event.
-    pub fn handle_event(&mut self, event: &Event<'_, ()>) -> bool {
+    pub fn handle_event(&mut self, event: &Event<()>) -> bool {
         match event {
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::CursorMoved { position, .. } => {

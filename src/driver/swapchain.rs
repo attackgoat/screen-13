@@ -1,3 +1,5 @@
+//! Native window presentation types.
+
 use {
     super::{
         device::Device,
@@ -10,6 +12,7 @@ use {
     std::{ops::Deref, slice, sync::Arc, thread::panicking, time::Duration},
 };
 
+/// Provides the ability to present rendering results to a [`Surface`].
 #[derive(Debug)]
 pub struct Swapchain {
     device: Arc<Device>,
@@ -24,6 +27,8 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
+    /// Prepares a [`vk::SwapchainKHR`] object which is lazily created after calling
+    /// [`acquire_next_image`][Self::acquire_next_image].
     pub fn new(
         device: &Arc<Device>,
         surface: Surface,
@@ -45,6 +50,8 @@ impl Swapchain {
         })
     }
 
+    /// Gets the next available swapchain image which should be rendered to and then presented using
+    /// [`present_image`][Self::present_image].
     #[profiling::function]
     pub fn acquire_next_image(&mut self) -> Result<SwapchainImage, SwapchainError> {
         if self.suboptimal {
@@ -134,10 +141,13 @@ impl Swapchain {
         }
     }
 
+    /// Gets information about this swapchain.
     pub fn info(&self) -> SwapchainInfo {
         self.info
     }
 
+    /// Presents an image which has been previously acquired using
+    /// [`acquire_next_image`][Self::acquire_next_image].
     #[profiling::function]
     pub fn present_image(
         &mut self,
@@ -422,6 +432,9 @@ impl Swapchain {
         Ok(())
     }
 
+    /// Sets information about this swapchain.
+    ///
+    /// Previously acquired swapchain images should be discarded after calling this function.
     pub fn set_info(&mut self, info: SwapchainInfo) {
         if self.info != info {
             self.info = info;
@@ -467,12 +480,13 @@ impl Drop for Swapchain {
     }
 }
 
+/// An opaque type representing a swapchain image.
 #[derive(Debug)]
 pub struct SwapchainImage {
-    pub acquired: vk::Semaphore,
-    pub image: Image,
-    pub idx: u32,
-    pub rendered: vk::Semaphore,
+    pub(crate) acquired: vk::Semaphore,
+    pub(crate) image: Image,
+    pub(crate) idx: u32,
+    pub(crate) rendered: vk::Semaphore,
 }
 
 impl Clone for SwapchainImage {
@@ -494,7 +508,8 @@ impl Deref for SwapchainImage {
     }
 }
 
-#[derive(Debug)]
+/// Describes the condition of a swapchain.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum SwapchainError {
     /// This frame is lost but more may be acquired later.
     DeviceLost,

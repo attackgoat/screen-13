@@ -10,7 +10,7 @@ fn main() -> Result<(), DisplayError> {
 
     // Screen 13 things we need for this demo
     let event_loop = EventLoop::new()
-        .desired_surface_format(|formats| EventLoopBuilder::linear_surface_format(formats).unwrap())
+        .desired_surface_format(Surface::linear_or_default)
         .desired_swapchain_image_count(2)
         .build()?;
     let display = ComputePresenter::new(&event_loop.device)?;

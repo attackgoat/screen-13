@@ -12,7 +12,7 @@ fn main() -> anyhow::Result<()> {
     // Create Screen 13 things any similar program might need
     let event_loop = EventLoop::new()
         .window(|builder| builder.with_inner_size(LogicalSize::new(1024.0f64, 768.0f64)))
-        .desired_surface_format(|formats| EventLoopBuilder::linear_surface_format(formats).unwrap())
+        .desired_surface_format(Surface::linear_or_default)
         .build()?;
     let display = ComputePresenter::new(&event_loop.device)?;
     let mut imgui = ImGui::new(&event_loop.device);

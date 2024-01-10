@@ -10,6 +10,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - Ability to select from available swapchain surface formats when creating an `EventLoop`
+- Driver `surface` and `swapchain` modules (_and their types_) are now public API
+
+### Changed
+
+- Changed `KeyBuf` implementation functions to take values instead of borrows
+- Updated `winit` to v0.29
+- Updated `egui` to v0.25
+- Updated `imgui-rs` to latest
+  [`main`](https://github.com/imgui-rs/imgui-rs/tree/ca05418cb449dadaabf014487c5c965908dfcbdd)
 
 ### Changed
 

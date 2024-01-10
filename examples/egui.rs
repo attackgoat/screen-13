@@ -5,6 +5,7 @@ fn main() -> Result<(), DisplayError> {
 
     let event_loop = EventLoop::new()
         .desired_swapchain_image_count(2)
+        .desired_surface_format(Surface::linear_or_default)
         .window(|window| window.with_transparent(false))
         .build()?;
     let mut egui = Egui::new(&event_loop.device, event_loop.as_ref());
@@ -44,7 +45,7 @@ fn main() -> Result<(), DisplayError> {
                     .show(ui, |ui| {
                         ui.add(egui::Button::new("Test"));
                         ui.add(egui::Link::new("Test"));
-                        ui.add(egui::Image::new(id, [50., 50.]));
+                        ui.add(egui::Image::new((id, egui::Vec2::new(50., 50.))));
                     });
             },
         );

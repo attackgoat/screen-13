@@ -35,15 +35,14 @@ pub mod image;
 pub mod physical_device;
 pub mod ray_trace;
 pub mod shader;
+pub mod surface;
+pub mod swapchain;
 
 mod cmd_buf;
 mod descriptor_set;
 mod descriptor_set_layout;
 mod instance;
 mod render_pass;
-mod surface;
-
-pub(crate) mod swapchain;
 
 pub use {
     self::{cmd_buf::CommandBuffer, instance::Instance},

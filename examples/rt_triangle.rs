@@ -95,7 +95,7 @@ fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
     let event_loop = EventLoop::new()
-        .desired_surface_format(|formats| EventLoopBuilder::linear_surface_format(formats).unwrap())
+        .desired_surface_format(Surface::linear_or_default)
         .build()?;
     let mut pool = HashPool::new(&event_loop.device);
 
