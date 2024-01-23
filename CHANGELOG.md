@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.2] - 2024-01-23
+
+### Changed
+
+- Deprecated `EventLoop` surface format functions
+- Updated `derive_builder` to v0.13
+- Updated `gpu-allocator` to v0.25
+
 ## [0.9.1] - 2023-12-29
 
 ### Added
@@ -19,10 +27,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Updated `egui` to v0.25
 - Updated `imgui-rs` to latest
   [`main`](https://github.com/imgui-rs/imgui-rs/tree/ca05418cb449dadaabf014487c5c965908dfcbdd)
-
-### Changed
-
-- Upgraded to spirq v1.0.2
+- Updated `spirq` to v1.0.2
 
 ## [0.9.0] - 2023-09-07
 
@@ -85,7 +90,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- `contrib/screen-13-egui`: Upgraded to egui v0.20
+- `contrib/screen-13-egui`: Updated `egui` to v0.20
 
 ## [0.8.0] - 2022-12-28
 
@@ -395,3 +400,4 @@ _See [#25](https://github.com/attackgoat/screen-13/pull/25) for migration detail
 [0.8.1]: https://crates.io/crates/screen-13/0.8.1
 [0.9.0]: https://crates.io/crates/screen-13/0.9.0
 [0.9.1]: https://crates.io/crates/screen-13/0.9.1
+[0.9.2]: https://crates.io/crates/screen-13/0.9.2

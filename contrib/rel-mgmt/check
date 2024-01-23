@@ -47,4 +47,7 @@ cargo clippy --manifest-path examples/vr/Cargo.toml --all-targets --all-features
 # Rust code tests
 cargo test
 
+# Check for semver breaking changes: if this fails you must update the crate version or fix the code
+cargo semver-checks check-release --default-features
+
 echo "OK"
