@@ -12,13 +12,13 @@ readme = "README.md"
 anyhow = "1.0"
 bytemuck = { version = "1.13", features = ["derive"] }
 ctrlc = "3.1"
-glam = { version = "0.24", features = ["bytemuck", "mint"] }
+glam = { version = "0.25", features = ["bytemuck", "mint"] }
 image = "0.24"
-meshopt = "0.1"
+meshopt = "0.2"
 mikktspace = "0.3"
 mint = "0.5"
 openxr = { version = "0.17", features = ["mint", "static"] }
-pretty_env_logger = "0.4"
+pretty_env_logger = "0.5"
 screen-13 = { path = "../.." }
 screen-13-hot = { path = "../../contrib/screen-13-hot" }
 tobj = "4.0"

@@ -13,15 +13,15 @@ include-pak = []
 
 [dependencies]
 anyhow = "1.0"
-bytemuck = "1.13"
-pak = "0.3"
-pretty_env_logger = "0.4"
+bytemuck = "1.14"
+pak = "0.4"
+pretty_env_logger = "0.5"
 screen-13 = { path = "../.." }
 screen-13-fx = { path = "../../contrib/screen-13-fx" }
 
 [build-dependencies]
 anyhow = "1.0"
 lazy_static = "1.4"
-pak = { version = "0.3", features = ["bake"] }
+pak = { version = "0.4", features = ["bake"] }
 shader-prepper = "0.3.0-pre.3"  
 shaderc = "0.8"

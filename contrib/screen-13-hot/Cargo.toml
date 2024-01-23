@@ -13,12 +13,12 @@ description = "Hot-reloading shader pipelines for Screen-13"
 
 [dependencies]
 anyhow = "1.0"
-derive_builder = "0.12"
+derive_builder = "0.13"
 lazy_static = "1.4"
-notify = "5.1"
+notify = "6.1"
 screen-13 = { path = "../.."}
 shader-prepper = "0.3.0-pre.3"
 shaderc = "0.8"
 
 [dev-dependencies]
-pretty_env_logger = "0.4"
+pretty_env_logger = "0.5"
