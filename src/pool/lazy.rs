@@ -50,7 +50,6 @@ pub struct LazyPool {
     render_pass_cache: HashMap<RenderPassInfo, Cache<RenderPass>>,
 }
 
-// TODO: Add some sort of manager features (like, I dunno, "Clear Some Memory For me")
 impl LazyPool {
     /// Constructs a new `LazyPool`.
     pub fn new(device: &Arc<Device>) -> Self {
@@ -65,6 +64,52 @@ impl LazyPool {
             image_cache: Default::default(),
             render_pass_cache: Default::default(),
         }
+    }
+
+    /// Clears the pool, removing all resources.
+    pub fn clear(&mut self) {
+        self.clear_accel_structs();
+        self.clear_buffers();
+        self.clear_images();
+    }
+
+    /// Clears the pool of acceleration structures, removing all resources.
+    pub fn clear_accel_structs(&mut self) {
+        self.acceleration_structure_cache.clear();
+    }
+
+    /// Clears the pool of acceleration structures, removing resources matching the given
+    /// type.
+    pub fn clear_accel_structs_by_ty(&mut self, ty: vk::AccelerationStructureTypeKHR) {
+        self.acceleration_structure_cache.remove(&ty);
+    }
+
+    /// Clears the pool of buffers, removing all resources.
+    pub fn clear_buffers(&mut self) {
+        self.buffer_cache.clear();
+    }
+
+    /// Clears the pool of images, removing all resources.
+    pub fn clear_images(&mut self) {
+        self.image_cache.clear();
+    }
+
+    /// Retains only the acceleration structures specified by the predicate.
+    ///
+    /// In other words, remove all resources for which `f(vk::AccelerationStructureTypeKHR)` returns
+    /// `false`.
+    ///
+    /// The elements are visited in unsorted (and unspecified) order.
+    ///
+    /// # Performance
+    ///
+    /// Provides the same performance guarantees as
+    /// [`HashMap::retain`](HashMap::retain).
+    pub fn retain_accel_structs<F>(&mut self, mut f: F)
+    where
+        F: FnMut(vk::AccelerationStructureTypeKHR) -> bool,
+    {
+        self.acceleration_structure_cache.retain(|&ty, _| f(ty))
     }
 }
 
@@ -123,10 +168,7 @@ impl Pool<BufferInfo, Buffer> for LazyPool {
             // Look for a compatible buffer (same mapping mode, big enough, superset of usage flags)
             for idx in 0..cache.len() {
                 let item = &cache[idx];
-                if item.info.can_map == info.can_map
-                    && item.info.size >= info.size
-                    && item.info.usage.contains(info.usage)
-                {
+                if item.info.size >= info.size && item.info.usage.contains(info.usage) {
                     let item = cache.remove(idx).unwrap();
 
                     return Ok(Lease::new(cache_ref, item));

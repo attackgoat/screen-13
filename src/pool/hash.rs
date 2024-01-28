@@ -16,6 +16,7 @@ use {
         RenderPass, RenderPassInfo,
     },
     parking_lot::Mutex,
+    paste::paste,
     std::{
         collections::{HashMap, VecDeque},
         sync::Arc,
@@ -34,7 +35,6 @@ pub struct HashPool {
     render_pass_cache: HashMap<RenderPassInfo, Cache<RenderPass>>,
 }
 
-// TODO: Add some sort of manager features (like, I dunno, "Clear Some Memory For me")
 impl HashPool {
     /// Constructs a new `HashPool`.
     pub fn new(device: &Arc<Device>) -> Self {
@@ -50,7 +50,60 @@ impl HashPool {
             render_pass_cache: Default::default(),
         }
     }
+
+    /// Clears the pool, removing all resources.
+    pub fn clear(&mut self) {
+        self.clear_accel_structs();
+        self.clear_buffers();
+        self.clear_images();
+    }
 }
+
+macro_rules! resource_mgmt_fns {
+    ($fn_plural:literal, $doc_plural:literal, $ty:ty, $field:ident) => {
+        paste! {
+            impl HashPool {
+                #[doc = "Clears the pool of " $doc_plural ", removing all resources."]
+                pub fn [<clear_ $fn_plural>](&mut self) {
+                    self.$field.clear();
+                }
+
+                #[doc = "Clears the pool of " $doc_plural ", removing resources matching the
+given information."]
+                pub fn [<clear_ $fn_plural _by_info>](
+                    &mut self,
+                    info: impl Into<$ty>,
+                ) {
+                    self.$field.remove(&info.into());
+                }
+
+                #[doc = "Retains only the " $doc_plural " specified by the predicate.\n\nIn other
+words, remove all resources for which `f(&" $ty ")` returns `false`.\n\n"]
+                /// The elements are visited in unsorted (and unspecified) order.
+                ///
+                /// # Performance
+                ///
+                /// Provides the same performance guarantees as
+                /// [`HashMap::retain`](HashMap::retain).
+                pub fn [<retain_ $fn_plural>]<F>(&mut self, mut f: F)
+                where
+                    F: FnMut(&$ty) -> bool,
+                {
+                    self.$field.retain(|info, _| f(info))
+                }
+            }
+        }
+    };
+}
+
+resource_mgmt_fns!(
+    "accel_structs",
+    "acceleration structures",
+    AccelerationStructureInfo,
+    acceleration_structure_cache
+);
+resource_mgmt_fns!("buffers", "buffers", BufferInfo, buffer_cache);
+resource_mgmt_fns!("images", "images", ImageInfo, image_cache);
 
 impl Pool<CommandBufferInfo, CommandBuffer> for HashPool {
     #[profiling::function]
