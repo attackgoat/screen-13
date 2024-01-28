@@ -18,7 +18,7 @@ use {
 ///
 /// ## `Deref` behavior
 ///
-/// `ComputePipeline` automatically dereferences to [`vk::Pipeline`] (via the [`Deref`][deref]
+/// `ComputePipeline` automatically dereferences to [`vk::Pipeline`] (via the [`Deref`]
 /// trait), so you can call `vk::Pipeline`'s methods on a value of type `ComputePipeline`.
 ///
 /// [pipeline]: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkPipeline.html

@@ -10,7 +10,7 @@
 //! The following resources are available:
 //!
 //! - [`AccelerationStructure`](accel_struct::AccelerationStructure)
-//! - [`Buffer`](buffer::Buffer)
+//! - [`Buffer`]
 //! - [`Image`](image::Image)
 //!
 //! # Pipelines
@@ -23,7 +23,7 @@
 //! The following pipelines are available:
 //!
 //! - [`ComputePipeline`](compute::ComputePipeline)
-//! - [`GraphicPipeline`](graphic::GraphicPipeline)
+//! - [`GraphicPipeline`]
 //! - [`RayTracePipeline`](ray_trace::RayTracePipeline)
 
 pub mod accel_struct;

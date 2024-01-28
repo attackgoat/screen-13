@@ -26,7 +26,7 @@ use {
 /// ## `Deref` behavior
 ///
 /// `AccelerationStructure` automatically dereferences to [`vk::AccelerationStructureKHR`] (via the
-/// [`Deref`][deref] trait), so you can call `vk::AccelerationStructureKHR`'s methods on a value of
+/// [`Deref`] trait), so you can call `vk::AccelerationStructureKHR`'s methods on a value of
 /// type `AccelerationStructure`. To avoid name clashes with `vk::AccelerationStructureKHR`'s
 /// methods, the methods of `AccelerationStructure` itself are associated functions, called using
 /// [fully qualified syntax]:

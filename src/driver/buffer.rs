@@ -28,7 +28,7 @@ use {
 ///
 /// ## `Deref` behavior
 ///
-/// `Buffer` automatically dereferences to [`vk::Buffer`] (via the [`Deref`][deref] trait), so you
+/// `Buffer` automatically dereferences to [`vk::Buffer`] (via the [`Deref`] trait), so you
 /// can call `vk::Buffer`'s methods on a value of type `Buffer`. To avoid name clashes with
 /// `vk::Buffer`'s methods, the methods of `Buffer` itself are associated functions, called using
 /// [fully qualified syntax]:

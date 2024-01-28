@@ -20,7 +20,7 @@ use {
 ///
 /// ## `Deref` behavior
 ///
-/// `RayTracePipeline` automatically dereferences to [`vk::Pipeline`] (via the [`Deref`][deref]
+/// `RayTracePipeline` automatically dereferences to [`vk::Pipeline`] (via the [`Deref`]
 /// trait), so you can call `vk::Pipeline`'s methods on a value of type `RayTracePipeline`. To avoid
 /// name clashes with `vk::Pipeline`'s methods, the methods of `RayTracePipeline` itself are
 /// associated functions, called using [fully qualified syntax]:

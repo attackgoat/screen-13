@@ -33,7 +33,7 @@ use {
 ///
 /// ## `Deref` behavior
 ///
-/// `Image` automatically dereferences to [`vk::Image`] (via the [`Deref`][deref] trait), so you can
+/// `Image` automatically dereferences to [`vk::Image`] (via the [`Deref`] trait), so you can
 /// call `vk::Image`'s methods on a value of type `Image`. To avoid name clashes with `vk::Image`'s
 /// methods, the methods of `Image` itself are associated functions, called using
 /// [fully qualified syntax]:
