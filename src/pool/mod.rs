@@ -44,11 +44,20 @@
 //! * Processor usage is most important
 //! * Resources have consistent attributes each frame
 
+pub mod fifo;
 pub mod hash;
 pub mod lazy;
 
 use {
-    crate::driver::{CommandBuffer, DriverError},
+    crate::driver::{
+        accel_struct::{
+            AccelerationStructure, AccelerationStructureInfo, AccelerationStructureInfoBuilder,
+        },
+        buffer::{Buffer, BufferInfo, BufferInfoBuilder},
+        image::{Image, ImageInfo, ImageInfoBuilder},
+        CommandBuffer, DriverError,
+    },
+    derive_builder::{Builder, UninitializedFieldError},
     parking_lot::Mutex,
     std::{
         collections::VecDeque,
@@ -129,9 +138,13 @@ impl<T> Drop for Lease<T> {
         // If the pool cache has been dropped we must manually drop the item, otherwise it goes back
         // into the pool.
         if let Some(cache) = self.cache_ref.upgrade() {
-            cache
-                .lock()
-                .push_back(unsafe { ManuallyDrop::take(&mut self.item) });
+            let mut cache = cache.lock();
+
+            if cache.len() >= cache.capacity() {
+                cache.pop_front();
+            }
+
+            cache.push_back(unsafe { ManuallyDrop::take(&mut self.item) });
         } else {
             unsafe {
                 ManuallyDrop::drop(&mut self.item);
@@ -144,4 +157,98 @@ impl<T> Drop for Lease<T> {
 pub trait Pool<I, T> {
     /// Lease a resource.
     fn lease(&mut self, info: I) -> Result<Lease<T>, DriverError>;
+}
+
+// Enable leasing items using their info builder type for convenience
+macro_rules! lease_builder {
+    ($info:ident => $item:ident) => {
+        paste::paste! {
+            impl<T> Pool<[<$info Builder>], $item> for T where T: Pool<$info, $item> {
+                fn lease(&mut self, builder: [<$info Builder>]) -> Result<Lease<$item>, DriverError> {
+                    let info = builder.build();
+
+                    self.lease(info)
+                }
+            }
+        }
+    };
+}
+
+lease_builder!(AccelerationStructureInfo => AccelerationStructure);
+lease_builder!(BufferInfo => Buffer);
+lease_builder!(ImageInfo => Image);
+
+/// TBD
+#[derive(Builder, Clone, Copy, Debug)]
+#[builder(
+    build_fn(private, name = "fallible_build", error = "PoolInfoBuilderError"),
+    derive(Debug),
+    pattern = "owned"
+)]
+pub struct PoolInfo {
+    /// TBD
+    #[builder(default = "PoolInfo::DEFAULT_RESOURCE_CAPACITY", setter(strip_option))]
+    pub accel_struct_capacity: usize,
+
+    /// TBD
+    #[builder(default = "PoolInfo::DEFAULT_RESOURCE_CAPACITY", setter(strip_option))]
+    pub buffer_capacity: usize,
+
+    /// TBD
+    #[builder(default = "PoolInfo::DEFAULT_RESOURCE_CAPACITY", setter(strip_option))]
+    pub image_capacity: usize,
+}
+
+impl PoolInfo {
+    /// TBD
+    pub const DEFAULT_RESOURCE_CAPACITY: usize = 4;
+
+    /// TBD
+    pub const fn with_capacity(resource_capacity: usize) -> Self {
+        Self {
+            accel_struct_capacity: resource_capacity,
+            buffer_capacity: resource_capacity,
+            image_capacity: resource_capacity,
+        }
+    }
+
+    fn default_cache<T>() -> Cache<T> {
+        Cache::new(Mutex::new(VecDeque::with_capacity(
+            Self::DEFAULT_RESOURCE_CAPACITY,
+        )))
+    }
+
+    fn explicit_cache<T>(capacity: usize) -> Cache<T> {
+        Cache::new(Mutex::new(VecDeque::with_capacity(capacity)))
+    }
+}
+
+impl Default for PoolInfo {
+    fn default() -> Self {
+        PoolInfoBuilder::default().into()
+    }
+}
+
+impl From<PoolInfoBuilder> for PoolInfo {
+    fn from(info: PoolInfoBuilder) -> Self {
+        info.build()
+    }
+}
+
+// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
+impl PoolInfoBuilder {
+    /// Builds a new `PoolInfo`.
+    pub fn build(self) -> PoolInfo {
+        self.fallible_build()
+            .expect("All required fields set at initialization")
+    }
+}
+
+#[derive(Debug)]
+struct PoolInfoBuilderError;
+
+impl From<UninitializedFieldError> for PoolInfoBuilderError {
+    fn from(_: UninitializedFieldError) -> Self {
+        Self
+    }
 }

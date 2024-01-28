@@ -385,7 +385,10 @@ pub mod prelude {
             input::{
                 update_input, update_keyboard, update_mouse, KeyBuf, KeyMap, MouseBuf, MouseButton,
             },
-            pool::{hash::HashPool, lazy::LazyPool, Lease, Pool},
+            pool::{
+                fifo::FifoPool, hash::HashPool, lazy::LazyPool, Lease, Pool, PoolInfo,
+                PoolInfoBuilder,
+            },
         },
         ash::vk,
         log::{debug, error, info, logger, trace, warn}, // Everyone wants a log

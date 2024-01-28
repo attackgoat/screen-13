@@ -4,14 +4,12 @@
 //! the exact information provided then a new resource is created and returned.
 
 use {
-    super::{can_lease_command_buffer, Cache, Lease, Pool},
+    super::{can_lease_command_buffer, Cache, Lease, Pool, PoolInfo},
     crate::driver::{
-        accel_struct::{
-            AccelerationStructure, AccelerationStructureInfo, AccelerationStructureInfoBuilder,
-        },
-        buffer::{Buffer, BufferInfo, BufferInfoBuilder},
+        accel_struct::{AccelerationStructure, AccelerationStructureInfo},
+        buffer::{Buffer, BufferInfo},
         device::Device,
-        image::{Image, ImageInfo, ImageInfoBuilder},
+        image::{Image, ImageInfo},
         CommandBuffer, CommandBufferInfo, DescriptorPool, DescriptorPoolInfo, DriverError,
         RenderPass, RenderPassInfo,
     },
@@ -32,12 +30,19 @@ pub struct HashPool {
     descriptor_pool_cache: HashMap<DescriptorPoolInfo, Cache<DescriptorPool>>,
     device: Arc<Device>,
     image_cache: HashMap<ImageInfo, Cache<Image>>,
+    info: PoolInfo,
     render_pass_cache: HashMap<RenderPassInfo, Cache<RenderPass>>,
 }
 
 impl HashPool {
     /// Constructs a new `HashPool`.
     pub fn new(device: &Arc<Device>) -> Self {
+        Self::with_capacity(device, PoolInfo::default())
+    }
+
+    /// Constructs a new `HashPool` with the given capacity information.
+    pub fn with_capacity(device: &Arc<Device>, info: impl Into<PoolInfo>) -> Self {
+        let info: PoolInfo = info.into();
         let device = Arc::clone(device);
 
         Self {
@@ -47,6 +52,7 @@ impl HashPool {
             descriptor_pool_cache: Default::default(),
             device,
             image_cache: Default::default(),
+            info,
             render_pass_cache: Default::default(),
         }
     }
@@ -111,7 +117,7 @@ impl Pool<CommandBufferInfo, CommandBuffer> for HashPool {
         let cache = self
             .command_buffer_cache
             .entry(info.queue_family_index)
-            .or_default();
+            .or_insert_with(PoolInfo::default_cache);
         let mut item = cache
             .lock()
             .pop_front()
@@ -126,6 +132,23 @@ impl Pool<CommandBufferInfo, CommandBuffer> for HashPool {
     }
 }
 
+impl Pool<DescriptorPoolInfo, DescriptorPool> for HashPool {
+    #[profiling::function]
+    fn lease(&mut self, info: DescriptorPoolInfo) -> Result<Lease<DescriptorPool>, DriverError> {
+        let cache = self
+            .descriptor_pool_cache
+            .entry(info.clone())
+            .or_insert_with(PoolInfo::default_cache);
+        let item = cache
+            .lock()
+            .pop_front()
+            .map(Ok)
+            .unwrap_or_else(|| DescriptorPool::create(&self.device, info))?;
+
+        Ok(Lease::new(Arc::downgrade(cache), item))
+    }
+}
+
 impl Pool<RenderPassInfo, RenderPass> for HashPool {
     #[profiling::function]
     fn lease(&mut self, info: RenderPassInfo) -> Result<Lease<RenderPass>, DriverError> {
@@ -133,7 +156,9 @@ impl Pool<RenderPassInfo, RenderPass> for HashPool {
             cache
         } else {
             // We tried to get the cache first in order to avoid this clone
-            self.render_pass_cache.entry(info.clone()).or_default()
+            self.render_pass_cache
+                .entry(info.clone())
+                .or_insert_with(PoolInfo::default_cache)
         };
         let item = cache
             .lock()
@@ -147,14 +172,14 @@ impl Pool<RenderPassInfo, RenderPass> for HashPool {
 
 // Enable leasing items using their basic info
 macro_rules! lease {
-    ($info:ident => $item:ident) => {
+    ($info:ident => $item:ident, $capacity:ident) => {
         paste::paste! {
             impl Pool<$info, $item> for HashPool {
                 #[profiling::function]
                 fn lease(&mut self, info: $info) -> Result<Lease<$item>, DriverError> {
                     let cache = self.[<$item:snake _cache>].entry(info.clone())
                         .or_insert_with(|| {
-                            Arc::new(Mutex::new(VecDeque::new()))
+                            Cache::new(Mutex::new(VecDeque::with_capacity(self.info.$capacity)))
                         });
                     let item = cache.lock().pop_front().map(Ok).unwrap_or_else(|| $item::create(&self.device, info))?;
 
@@ -165,25 +190,6 @@ macro_rules! lease {
     };
 }
 
-lease!(DescriptorPoolInfo => DescriptorPool);
-
-// Enable leasing items as above, but also using their info builder type for convenience
-macro_rules! lease_builder {
-    ($info:ident => $item:ident) => {
-        lease!($info => $item);
-
-        paste::paste! {
-            impl Pool<[<$info Builder>], $item> for HashPool {
-                fn lease(&mut self, builder: [<$info Builder>]) -> Result<Lease<$item>, DriverError> {
-                    let info = builder.build();
-
-                    self.lease(info)
-                }
-            }
-        }
-    };
-}
-
-lease_builder!(AccelerationStructureInfo => AccelerationStructure);
-lease_builder!(BufferInfo => Buffer);
-lease_builder!(ImageInfo => Image);
+lease!(AccelerationStructureInfo => AccelerationStructure, accel_struct_capacity);
+lease!(BufferInfo => Buffer, buffer_capacity);
+lease!(ImageInfo => Image, image_capacity);

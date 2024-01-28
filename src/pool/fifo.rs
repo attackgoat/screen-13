@@ -1,12 +1,4 @@
-//! Pool which leases by looking for compatibile information before creating new resources.
-//!
-//! The information for each lease request is loosely bucketed by compatibility. If no acceptable
-//! resources exist for the information provided then a new resource is created and returned.
-//!
-//! # Details
-//! * Acceleration structures may be larger than requested
-//! * Buffers may be larger than request or have additional usage flags
-//! * Images may have additional usage flags
+//! TODO
 
 use {
     super::{can_lease_command_buffer, Cache, Lease, Pool, PoolInfo},
@@ -14,130 +6,64 @@ use {
         accel_struct::{AccelerationStructure, AccelerationStructureInfo},
         buffer::{Buffer, BufferInfo},
         device::Device,
-        image::{Image, ImageInfo, ImageType, SampleCount},
+        image::{Image, ImageInfo},
         CommandBuffer, CommandBufferInfo, DescriptorPool, DescriptorPoolInfo, DriverError,
         RenderPass, RenderPassInfo,
     },
-    ash::vk,
     std::{collections::HashMap, sync::Arc},
 };
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-struct ImageKey {
-    array_elements: u32,
-    depth: u32,
-    fmt: vk::Format,
-    height: u32,
-    linear_tiling: bool,
-    mip_level_count: u32,
-    sample_count: SampleCount,
-    ty: ImageType,
-    width: u32,
-}
-
-/// A high-efficiency resource allocator.
+/// A space-efficient resource allocator.
 #[derive(Debug)]
-pub struct LazyPool {
-    accel_struct_cache: HashMap<vk::AccelerationStructureTypeKHR, Cache<AccelerationStructure>>,
-    buffer_cache: HashMap<(bool, vk::DeviceSize), Cache<Buffer>>,
+pub struct FifoPool {
+    accel_struct_cache: Cache<AccelerationStructure>,
+    buffer_cache: Cache<Buffer>,
     command_buffer_cache: HashMap<u32, Cache<CommandBuffer>>,
     descriptor_pool_cache: Cache<DescriptorPool>,
     device: Arc<Device>,
-    image_cache: HashMap<ImageKey, Cache<Image>>,
-    info: PoolInfo,
+    image_cache: Cache<Image>,
     render_pass_cache: HashMap<RenderPassInfo, Cache<RenderPass>>,
 }
 
-impl LazyPool {
-    /// Constructs a new `LazyPool`.
+impl FifoPool {
+    /// Constructs a new `FifoPool`.
     pub fn new(device: &Arc<Device>) -> Self {
         Self::with_capacity(device, PoolInfo::default())
     }
 
-    /// Constructs a new `LazyPool` with the given capacity information.
+    /// Constructs a new `FifoPool` with the given capacity information.
     pub fn with_capacity(device: &Arc<Device>, info: impl Into<PoolInfo>) -> Self {
         let info: PoolInfo = info.into();
         let device = Arc::clone(device);
 
         Self {
-            accel_struct_cache: Default::default(),
-            buffer_cache: Default::default(),
+            accel_struct_cache: PoolInfo::explicit_cache(info.accel_struct_capacity),
+            buffer_cache: PoolInfo::explicit_cache(info.buffer_capacity),
             command_buffer_cache: Default::default(),
             descriptor_pool_cache: PoolInfo::default_cache(),
             device,
-            image_cache: Default::default(),
-            info,
+            image_cache: PoolInfo::explicit_cache(info.image_capacity),
             render_pass_cache: Default::default(),
         }
     }
-
-    /// Clears the pool, removing all resources.
-    pub fn clear(&mut self) {
-        self.clear_accel_structs();
-        self.clear_buffers();
-        self.clear_images();
-    }
-
-    /// Clears the pool of acceleration structures, removing all resources.
-    pub fn clear_accel_structs(&mut self) {
-        self.accel_struct_cache.clear();
-    }
-
-    /// Clears the pool of acceleration structures, removing resources matching the given
-    /// type.
-    pub fn clear_accel_structs_by_ty(&mut self, ty: vk::AccelerationStructureTypeKHR) {
-        self.accel_struct_cache.remove(&ty);
-    }
-
-    /// Clears the pool of buffers, removing all resources.
-    pub fn clear_buffers(&mut self) {
-        self.buffer_cache.clear();
-    }
-
-    /// Clears the pool of images, removing all resources.
-    pub fn clear_images(&mut self) {
-        self.image_cache.clear();
-    }
-
-    /// Retains only the acceleration structures specified by the predicate.
-    ///
-    /// In other words, remove all resources for which `f(vk::AccelerationStructureTypeKHR)` returns
-    /// `false`.
-    ///
-    /// The elements are visited in unsorted (and unspecified) order.
-    ///
-    /// # Performance
-    ///
-    /// Provides the same performance guarantees as
-    /// [`HashMap::retain`](HashMap::retain).
-    pub fn retain_accel_structs<F>(&mut self, mut f: F)
-    where
-        F: FnMut(vk::AccelerationStructureTypeKHR) -> bool,
-    {
-        self.accel_struct_cache.retain(|&ty, _| f(ty))
-    }
 }
 
-impl Pool<AccelerationStructureInfo, AccelerationStructure> for LazyPool {
+impl Pool<AccelerationStructureInfo, AccelerationStructure> for FifoPool {
     #[profiling::function]
     fn lease(
         &mut self,
         info: AccelerationStructureInfo,
     ) -> Result<Lease<AccelerationStructure>, DriverError> {
-        let cache = self
-            .accel_struct_cache
-            .entry(info.ty)
-            .or_insert_with(|| PoolInfo::explicit_cache(self.info.accel_struct_capacity));
-        let cache_ref = Arc::downgrade(cache);
-        let mut cache = cache.lock();
+        let cache_ref = Arc::downgrade(&self.accel_struct_cache);
+        let mut cache = self.accel_struct_cache.lock();
 
         {
             profiling::scope!("Check cache");
 
-            // Look for a compatible acceleration structure (big enough)
+            // Look for a compatible acceleration structure (big enough and same type)
             for idx in 0..cache.len() {
                 let item = &cache[idx];
-                if item.info.size >= info.size {
+                if item.info.size >= info.size && item.info.ty == info.ty {
                     let item = cache.remove(idx).unwrap();
 
                     return Ok(Lease::new(cache_ref, item));
@@ -151,23 +77,24 @@ impl Pool<AccelerationStructureInfo, AccelerationStructure> for LazyPool {
     }
 }
 
-impl Pool<BufferInfo, Buffer> for LazyPool {
+impl Pool<BufferInfo, Buffer> for FifoPool {
     #[profiling::function]
     fn lease(&mut self, info: BufferInfo) -> Result<Lease<Buffer>, DriverError> {
-        let cache = self
-            .buffer_cache
-            .entry((info.can_map, info.alignment))
-            .or_insert_with(|| PoolInfo::explicit_cache(self.info.buffer_capacity));
-        let cache_ref = Arc::downgrade(cache);
-        let mut cache = cache.lock();
+        let cache_ref = Arc::downgrade(&self.buffer_cache);
+        let mut cache = self.buffer_cache.lock();
 
         {
             profiling::scope!("Check cache");
 
-            // Look for a compatible buffer (big enough and superset of usage flags)
+            // Look for a compatible buffer (compatible alignment, same mapping mode, big enough and
+            // superset of usage flags)
             for idx in 0..cache.len() {
                 let item = &cache[idx];
-                if item.info.size >= info.size && item.info.usage.contains(info.usage) {
+                if item.info.alignment >= info.alignment
+                    && item.info.can_map == info.can_map
+                    && item.info.size >= info.size
+                    && item.info.usage.contains(info.usage)
+                {
                     let item = cache.remove(idx).unwrap();
 
                     return Ok(Lease::new(cache_ref, item));
@@ -181,7 +108,7 @@ impl Pool<BufferInfo, Buffer> for LazyPool {
     }
 }
 
-impl Pool<CommandBufferInfo, CommandBuffer> for LazyPool {
+impl Pool<CommandBufferInfo, CommandBuffer> for FifoPool {
     #[profiling::function]
     fn lease(&mut self, info: CommandBufferInfo) -> Result<Lease<CommandBuffer>, DriverError> {
         let cache = self
@@ -202,7 +129,7 @@ impl Pool<CommandBufferInfo, CommandBuffer> for LazyPool {
     }
 }
 
-impl Pool<DescriptorPoolInfo, DescriptorPool> for LazyPool {
+impl Pool<DescriptorPoolInfo, DescriptorPool> for FifoPool {
     #[profiling::function]
     fn lease(&mut self, info: DescriptorPoolInfo) -> Result<Lease<DescriptorPool>, DriverError> {
         let cache_ref = Arc::downgrade(&self.descriptor_pool_cache);
@@ -240,33 +167,31 @@ impl Pool<DescriptorPoolInfo, DescriptorPool> for LazyPool {
     }
 }
 
-impl Pool<ImageInfo, Image> for LazyPool {
+impl Pool<ImageInfo, Image> for FifoPool {
     #[profiling::function]
     fn lease(&mut self, info: ImageInfo) -> Result<Lease<Image>, DriverError> {
-        let cache = self
-            .image_cache
-            .entry(ImageKey {
-                array_elements: info.array_elements,
-                depth: info.depth,
-                fmt: info.fmt,
-                height: info.height,
-                linear_tiling: info.linear_tiling,
-                mip_level_count: info.mip_level_count,
-                sample_count: info.sample_count,
-                ty: info.ty,
-                width: info.width,
-            })
-            .or_insert_with(|| PoolInfo::explicit_cache(self.info.image_capacity));
-        let cache_ref = Arc::downgrade(cache);
-        let mut cache = cache.lock();
+        let cache_ref = Arc::downgrade(&self.image_cache);
+        let mut cache = self.image_cache.lock();
 
         {
             profiling::scope!("Check cache");
 
-            // Look for a compatible image (superset of creation flags and usage flags)
+            // Look for a compatible image (same properties, superset of creation flags and usage
+            // flags)
             for idx in 0..cache.len() {
                 let item = &cache[idx];
-                if item.info.flags.contains(info.flags) && item.info.usage.contains(info.usage) {
+                if item.info.array_elements == info.array_elements
+                    && item.info.depth == info.depth
+                    && item.info.fmt == info.fmt
+                    && item.info.height == info.height
+                    && item.info.linear_tiling == info.linear_tiling
+                    && item.info.mip_level_count == info.mip_level_count
+                    && item.info.sample_count == info.sample_count
+                    && item.info.ty == info.ty
+                    && item.info.width == info.width
+                    && item.info.flags.contains(info.flags)
+                    && item.info.usage.contains(info.usage)
+                {
                     let item = cache.remove(idx).unwrap();
 
                     return Ok(Lease::new(cache_ref, item));
@@ -280,7 +205,7 @@ impl Pool<ImageInfo, Image> for LazyPool {
     }
 }
 
-impl Pool<RenderPassInfo, RenderPass> for LazyPool {
+impl Pool<RenderPassInfo, RenderPass> for FifoPool {
     #[profiling::function]
     fn lease(&mut self, info: RenderPassInfo) -> Result<Lease<RenderPass>, DriverError> {
         let cache = if let Some(cache) = self.render_pass_cache.get(&info) {

@@ -24,7 +24,7 @@ fn main() -> anyhow::Result<()> {
     let mesh_msaa_pipeline = create_mesh_pipeline(&event_loop.device, sample_count)?;
     let mesh_noaa_pipeline = create_mesh_pipeline(&event_loop.device, SampleCount::X1)?;
     let cube_mesh = load_cube_mesh(&event_loop.device)?;
-    let mut pool = HashPool::new(&event_loop.device);
+    let mut pool = FifoPool::new(&event_loop.device);
 
     let mut angle = 0f32;
 
