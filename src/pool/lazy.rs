@@ -9,7 +9,7 @@
 //! * Images may have additional usage flags
 
 use {
-    super::{Cache, Lease, Pool},
+    super::{can_lease_command_buffer, Cache, Lease, Pool},
     crate::driver::{
         accel_struct::{
             AccelerationStructure, AccelerationStructureInfo, AccelerationStructureInfoBuilder,
@@ -21,12 +21,7 @@ use {
         RenderPass, RenderPassInfo,
     },
     ash::vk,
-    parking_lot::Mutex,
-    std::{
-        collections::{HashMap, VecDeque},
-        fmt::Debug,
-        sync::Arc,
-    },
+    std::{collections::HashMap, sync::Arc},
 };
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -98,21 +93,12 @@ impl Pool<AccelerationStructureInfo, AccelerationStructure> for LazyPool {
         &mut self,
         info: AccelerationStructureInfo,
     ) -> Result<Lease<AccelerationStructure>, DriverError> {
-        let acceleration_structure_cache = self
+        let cache = self
             .acceleration_structure_cache
             .entry(info.ty)
             .or_default();
-        let cache_ref = Arc::downgrade(acceleration_structure_cache);
-        let mut cache = acceleration_structure_cache.lock();
-
-        if cache.is_empty() {
-            let item = AccelerationStructure::create(&self.device, info)?;
-
-            return Ok(Lease {
-                cache: Some(cache_ref),
-                item: Some(item),
-            });
-        }
+        let cache_ref = Arc::downgrade(cache);
+        let mut cache = cache.lock();
 
         {
             profiling::scope!("Check cache");
@@ -123,20 +109,14 @@ impl Pool<AccelerationStructureInfo, AccelerationStructure> for LazyPool {
                 if item.info.size >= info.size {
                     let item = cache.remove(idx).unwrap();
 
-                    return Ok(Lease {
-                        cache: Some(cache_ref),
-                        item: Some(item),
-                    });
+                    return Ok(Lease::new(cache_ref, item));
                 }
             }
         }
 
         let item = AccelerationStructure::create(&self.device, info)?;
 
-        Ok(Lease {
-            cache: Some(cache_ref),
-            item: Some(item),
-        })
+        Ok(Lease::new(cache_ref, item))
     }
 }
 
@@ -152,18 +132,9 @@ impl Pool<AccelerationStructureInfoBuilder, AccelerationStructure> for LazyPool 
 impl Pool<BufferInfo, Buffer> for LazyPool {
     #[profiling::function]
     fn lease(&mut self, info: BufferInfo) -> Result<Lease<Buffer>, DriverError> {
-        let buffer_cache = self.buffer_cache.entry(info.can_map).or_default();
-        let cache_ref = Arc::downgrade(buffer_cache);
-        let mut cache = buffer_cache.lock();
-
-        if cache.is_empty() {
-            let item = Buffer::create(&self.device, info)?;
-
-            return Ok(Lease {
-                cache: Some(cache_ref),
-                item: Some(item),
-            });
-        }
+        let cache = self.buffer_cache.entry(info.can_map).or_default();
+        let cache_ref = Arc::downgrade(cache);
+        let mut cache = cache.lock();
 
         {
             profiling::scope!("Check cache");
@@ -177,20 +148,14 @@ impl Pool<BufferInfo, Buffer> for LazyPool {
                 {
                     let item = cache.remove(idx).unwrap();
 
-                    return Ok(Lease {
-                        cache: Some(cache_ref),
-                        item: Some(item),
-                    });
+                    return Ok(Lease::new(cache_ref, item));
                 }
             }
         }
 
         let item = Buffer::create(&self.device, info)?;
 
-        Ok(Lease {
-            cache: Some(cache_ref),
-            item: Some(item),
-        })
+        Ok(Lease::new(cache_ref, item))
     }
 }
 
@@ -205,15 +170,6 @@ impl Pool<DescriptorPoolInfo, DescriptorPool> for LazyPool {
     fn lease(&mut self, info: DescriptorPoolInfo) -> Result<Lease<DescriptorPool>, DriverError> {
         let cache_ref = Arc::downgrade(&self.descriptor_pool_cache);
         let mut cache = self.descriptor_pool_cache.lock();
-
-        if cache.is_empty() {
-            let item = DescriptorPool::create(&self.device, info)?;
-
-            return Ok(Lease {
-                cache: Some(cache_ref),
-                item: Some(item),
-            });
-        }
 
         {
             profiling::scope!("Check cache");
@@ -236,27 +192,21 @@ impl Pool<DescriptorPoolInfo, DescriptorPool> for LazyPool {
                 {
                     let item = cache.remove(idx).unwrap();
 
-                    return Ok(Lease {
-                        cache: Some(cache_ref),
-                        item: Some(item),
-                    });
+                    return Ok(Lease::new(cache_ref, item));
                 }
             }
         }
 
         let item = DescriptorPool::create(&self.device, info)?;
 
-        Ok(Lease {
-            cache: Some(cache_ref),
-            item: Some(item),
-        })
+        Ok(Lease::new(cache_ref, item))
     }
 }
 
 impl Pool<ImageInfo, Image> for LazyPool {
     #[profiling::function]
     fn lease(&mut self, info: ImageInfo) -> Result<Lease<Image>, DriverError> {
-        let image_cache = self
+        let cache = self
             .image_cache
             .entry(ImageKey {
                 array_elements: info.array_elements,
@@ -270,17 +220,8 @@ impl Pool<ImageInfo, Image> for LazyPool {
                 width: info.width,
             })
             .or_default();
-        let cache_ref = Arc::downgrade(image_cache);
-        let mut cache = image_cache.lock();
-
-        if cache.is_empty() {
-            let item = Image::create(&self.device, info)?;
-
-            return Ok(Lease {
-                cache: Some(cache_ref),
-                item: Some(item),
-            });
-        }
+        let cache_ref = Arc::downgrade(cache);
+        let mut cache = cache.lock();
 
         {
             profiling::scope!("Check cache");
@@ -291,20 +232,14 @@ impl Pool<ImageInfo, Image> for LazyPool {
                 if item.info.flags.contains(info.flags) && item.info.usage.contains(info.usage) {
                     let item = cache.remove(idx).unwrap();
 
-                    return Ok(Lease {
-                        cache: Some(cache_ref),
-                        item: Some(item),
-                    });
+                    return Ok(Lease::new(cache_ref, item));
                 }
             }
         }
 
         let item = Image::create(&self.device, info)?;
 
-        Ok(Lease {
-            cache: Some(cache_ref),
-            item: Some(item),
-        })
+        Ok(Lease::new(cache_ref, item))
     }
 }
 
@@ -317,54 +252,39 @@ impl Pool<ImageInfoBuilder, Image> for LazyPool {
 impl Pool<RenderPassInfo, RenderPass> for LazyPool {
     #[profiling::function]
     fn lease(&mut self, info: RenderPassInfo) -> Result<Lease<RenderPass>, DriverError> {
-        if let Some(cache) = self.render_pass_cache.get(&info) {
-            let item = if let Some(item) = cache.lock().pop_front() {
-                item
-            } else {
-                RenderPass::create(&self.device, info)?
-            };
-
-            Ok(Lease {
-                cache: Some(Arc::downgrade(cache)),
-                item: Some(item),
-            })
+        let cache = if let Some(cache) = self.render_pass_cache.get(&info) {
+            cache
         } else {
-            let cache = Arc::new(Mutex::new(VecDeque::new()));
-            let cache_ref = Arc::downgrade(&cache);
-            self.render_pass_cache.insert(info.clone(), cache);
+            // We tried to get the cache first in order to avoid this clone
+            self.render_pass_cache.entry(info.clone()).or_default()
+        };
+        let item = cache
+            .lock()
+            .pop_front()
+            .map(Ok)
+            .unwrap_or_else(|| RenderPass::create(&self.device, info))?;
 
-            let item = RenderPass::create(&self.device, info)?;
-
-            Ok(Lease {
-                cache: Some(cache_ref),
-                item: Some(item),
-            })
-        }
+        Ok(Lease::new(Arc::downgrade(cache), item))
     }
 }
 
 impl Pool<CommandBufferInfo, CommandBuffer> for LazyPool {
     #[profiling::function]
     fn lease(&mut self, info: CommandBufferInfo) -> Result<Lease<CommandBuffer>, DriverError> {
-        let command_buffer_cache = self
+        let cache = self
             .command_buffer_cache
             .entry(info.queue_family_index)
             .or_default();
-        let cache_ref = Arc::downgrade(command_buffer_cache);
-        let mut cache = command_buffer_cache.lock();
+        let mut item = cache
+            .lock()
+            .pop_front()
+            .filter(can_lease_command_buffer)
+            .map(Ok)
+            .unwrap_or_else(|| CommandBuffer::create(&self.device, info))?;
 
-        if cache.is_empty() || !Self::can_lease_command_buffer(cache.front_mut().unwrap()) {
-            let item = CommandBuffer::create(&self.device, info)?;
+        // Drop anything we were holding from the last submission
+        CommandBuffer::drop_fenced(&mut item);
 
-            return Ok(Lease {
-                cache: Some(cache_ref),
-                item: Some(item),
-            });
-        }
-
-        Ok(Lease {
-            cache: Some(cache_ref),
-            item: cache.pop_front(),
-        })
+        Ok(Lease::new(Arc::downgrade(cache), item))
     }
 }

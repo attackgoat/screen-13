@@ -48,11 +48,12 @@ pub mod hash;
 pub mod lazy;
 
 use {
-    crate::driver::DriverError,
+    crate::driver::{CommandBuffer, DriverError},
     parking_lot::Mutex,
     std::{
         collections::VecDeque,
         fmt::Debug,
+        mem::ManuallyDrop,
         ops::{Deref, DerefMut},
         sync::{Arc, Weak},
         thread::panicking,
@@ -62,6 +63,17 @@ use {
 type Cache<T> = Arc<Mutex<VecDeque<T>>>;
 type CacheRef<T> = Weak<Mutex<VecDeque<T>>>;
 
+fn can_lease_command_buffer(cmd_buf: &CommandBuffer) -> bool {
+    unsafe {
+        // Don't lease this command buffer if it is unsignalled; we'll create a new one
+        // and wait for this, and those behind it, to signal.
+        cmd_buf
+            .device
+            .get_fence_status(cmd_buf.fence)
+            .unwrap_or_default()
+    }
+}
+
 /// Holds a leased resource and implements `Drop` in order to return the resource.
 ///
 /// This simple wrapper type implements only the `AsRef`, `AsMut`, `Deref` and `DerefMut` traits
@@ -69,19 +81,28 @@ type CacheRef<T> = Weak<Mutex<VecDeque<T>>>;
 /// owners and may be mutably accessed.
 #[derive(Debug)]
 pub struct Lease<T> {
-    cache: Option<CacheRef<T>>,
-    item: Option<T>,
+    cache_ref: CacheRef<T>,
+    item: ManuallyDrop<T>,
+}
+
+impl<T> Lease<T> {
+    fn new(cache_ref: CacheRef<T>, item: T) -> Self {
+        Self {
+            cache_ref,
+            item: ManuallyDrop::new(item),
+        }
+    }
 }
 
 impl<T> AsRef<T> for Lease<T> {
     fn as_ref(&self) -> &T {
-        self.item.as_ref().unwrap()
+        &self.item
     }
 }
 
 impl<T> AsMut<T> for Lease<T> {
     fn as_mut(&mut self) -> &mut T {
-        self.item.as_mut().unwrap()
+        &mut self.item
     }
 }
 
@@ -89,13 +110,13 @@ impl<T> Deref for Lease<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        self.item.as_ref().unwrap()
+        &self.item
     }
 }
 
 impl<T> DerefMut for Lease<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.item.as_mut().unwrap()
+        &mut self.item
     }
 }
 
@@ -105,9 +126,15 @@ impl<T> Drop for Lease<T> {
             return;
         }
 
-        if let Some(cache) = self.cache.as_ref() {
-            if let Some(cache) = cache.upgrade() {
-                cache.lock().push_back(self.item.take().unwrap());
+        // If the pool cache has been dropped we must manually drop the item, otherwise it goes back
+        // into the pool.
+        if let Some(cache) = self.cache_ref.upgrade() {
+            cache
+                .lock()
+                .push_back(unsafe { ManuallyDrop::take(&mut self.item) });
+        } else {
+            unsafe {
+                ManuallyDrop::drop(&mut self.item);
             }
         }
     }
