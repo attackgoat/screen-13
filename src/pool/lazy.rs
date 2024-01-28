@@ -66,25 +66,6 @@ impl LazyPool {
             render_pass_cache: Default::default(),
         }
     }
-
-    #[profiling::function]
-    fn can_lease_command_buffer(cmd_buf: &mut CommandBuffer) -> bool {
-        let can_lease = unsafe {
-            // Don't lease this command buffer if it is unsignalled; we'll create a new one
-            // and wait for this, and those behind it, to signal.
-            cmd_buf
-                .device
-                .get_fence_status(cmd_buf.fence)
-                .unwrap_or_default()
-        };
-
-        if can_lease {
-            // Drop anything we were holding from the last submission
-            CommandBuffer::drop_fenced(cmd_buf);
-        }
-
-        can_lease
-    }
 }
 
 impl Pool<AccelerationStructureInfo, AccelerationStructure> for LazyPool {
