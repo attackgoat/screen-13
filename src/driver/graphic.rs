@@ -477,7 +477,7 @@ impl GraphicPipeline {
                 .find(|shader| shader.stage == vk::ShaderStageFlags::FRAGMENT)
                 .expect("fragment shader not found")
                 .attachments();
-            let (input, write) = (input.collect(), write.collect());
+            let (input, write) = (input.collect::<HashSet<_>>(), write.collect::<HashSet<_>>());
 
             for input in &input {
                 trace!("detected input attachment {input}");
