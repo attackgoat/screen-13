@@ -235,6 +235,16 @@ impl From<PoolInfoBuilder> for PoolInfo {
     }
 }
 
+impl From<usize> for PoolInfo {
+    fn from(value: usize) -> Self {
+        Self {
+            accel_struct_capacity: value,
+            buffer_capacity: value,
+            image_capacity: value,
+        }
+    }
+}
+
 // HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
 impl PoolInfoBuilder {
     /// Builds a new `PoolInfo`.
