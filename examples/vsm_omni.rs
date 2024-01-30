@@ -89,7 +89,7 @@ fn main() -> anyhow::Result<()> {
     }?;
 
     // A pool will be used for per-frame resources
-    let mut pool = LazyPool::new(&event_loop.device);
+    let mut pool = FifoPool::new(&event_loop.device);
 
     let mut elapsed = 0.0;
     event_loop.run(|frame| {
