@@ -1,7 +1,4 @@
 //! Pool which leases by exactly matching the information before creating new resources.
-//!
-//! The information for each lease request is placed into a `HashMap`. If no resources exist for
-//! the exact information provided then a new resource is created and returned.
 
 use {
     super::{can_lease_command_buffer, Cache, Lease, Pool, PoolInfo},
@@ -22,6 +19,20 @@ use {
 };
 
 /// A high-performance resource allocator.
+///
+/// # Bucket Strategy
+///
+/// The information for each lease request is the key for a `HashMap` of buckets. If no bucket
+/// exists with the exact information provided a new bucket is created.
+///
+/// In practice this means that for a [`PoolInfo::image_capacity`] of `4`, requests for a 1024x1024
+/// image with certain attributes will store a maximum of `4` such images. Requests for any image
+/// having a different size or attributes will store an additional maximum of `4` images.
+///
+/// # Memory Management
+///
+/// If requests for varying resources is common [`HashPool::clear_images_by_info`] and other memory
+/// management functions are nessecery in order to avoid using all available device memory.
 #[derive(Debug)]
 pub struct HashPool {
     acceleration_structure_cache: HashMap<AccelerationStructureInfo, Cache<AccelerationStructure>>,
@@ -66,16 +77,16 @@ impl HashPool {
 }
 
 macro_rules! resource_mgmt_fns {
-    ($fn_plural:literal, $doc_plural:literal, $ty:ty, $field:ident) => {
+    ($fn_plural:literal, $doc_singular:literal, $ty:ty, $field:ident) => {
         paste! {
             impl HashPool {
-                #[doc = "Clears the pool of " $doc_plural ", removing all resources."]
+                #[doc = "Clears the pool of " $doc_singular " resources."]
                 pub fn [<clear_ $fn_plural>](&mut self) {
                     self.$field.clear();
                 }
 
-                #[doc = "Clears the pool of " $doc_plural ", removing resources matching the
-given information."]
+                #[doc = "Clears the pool of all " $doc_singular " resources matching the given
+information."]
                 pub fn [<clear_ $fn_plural _by_info>](
                     &mut self,
                     info: impl Into<$ty>,
@@ -83,8 +94,9 @@ given information."]
                     self.$field.remove(&info.into());
                 }
 
-                #[doc = "Retains only the " $doc_plural " specified by the predicate.\n\nIn other
-words, remove all resources for which `f(&" $ty ")` returns `false`.\n\n"]
+                #[doc = "Retains only the " $doc_singular " resources specified by the predicate.\n
+\nIn other words, remove all " $doc_singular " resources for which `f(" $ty ")` returns `false`.\n
+\n"]
                 /// The elements are visited in unsorted (and unspecified) order.
                 ///
                 /// # Performance
@@ -93,9 +105,9 @@ words, remove all resources for which `f(&" $ty ")` returns `false`.\n\n"]
                 /// [`HashMap::retain`](HashMap::retain).
                 pub fn [<retain_ $fn_plural>]<F>(&mut self, mut f: F)
                 where
-                    F: FnMut(&$ty) -> bool,
+                    F: FnMut($ty) -> bool,
                 {
-                    self.$field.retain(|info, _| f(info))
+                    self.$field.retain(|&info, _| f(info))
                 }
             }
         }
@@ -104,12 +116,12 @@ words, remove all resources for which `f(&" $ty ")` returns `false`.\n\n"]
 
 resource_mgmt_fns!(
     "accel_structs",
-    "acceleration structures",
+    "acceleration structure",
     AccelerationStructureInfo,
     acceleration_structure_cache
 );
-resource_mgmt_fns!("buffers", "buffers", BufferInfo, buffer_cache);
-resource_mgmt_fns!("images", "images", ImageInfo, image_cache);
+resource_mgmt_fns!("buffers", "buffer", BufferInfo, buffer_cache);
+resource_mgmt_fns!("images", "image", ImageInfo, image_cache);
 
 impl Pool<CommandBufferInfo, CommandBuffer> for HashPool {
     #[profiling::function]

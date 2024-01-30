@@ -1,11 +1,22 @@
 //! Resource leasing and pooling types.
 //!
-//! _Screen 13_ provides caching for acceleration structure, buffer, and image resources which may
-//! be leased from configurable pools using their corresponding information structure. Most programs
-//! will do fine with a single `LazyPool`.
+//! _Screen 13_ provides caching for acceleration structure, buffer and image resources which may be
+//! leased from configurable pools using their corresponding information structure. Most programs
+//! will do fine with a single [`FifoPool`](self::fifo::FifoPool).
 //!
 //! Leased resources may be bound directly to a render graph and used in the same manner as regular
 //! resources. After rendering has finished, the leased resources will return to the pool for reuse.
+//!
+//! # Buckets
+//!
+//! The provided [`Pool`] implementations store resources in buckets, with each implementation
+//! offering a different strategy which balances performance (_more buckets_) with memory efficiency
+//! (_fewer buckets_).
+//!
+//! _Screen 13_'s pools can be grouped into two major categories:
+//!
+//! * Single-bucket: [`FifoPool`](self::fifo::FifoPool)
+//! * Multi-bucket: [`LazyPool`](self::lazy::LazyPool), [`HashPool`](self::hash::HashPool)
 //!
 //! # Examples
 //!
@@ -33,15 +44,17 @@
 //! # When Should You Use Which Pool?
 //!
 //! These are fairly high-level break-downs of when each pool should be considered. You may need
-//! to investigate each type of pool individually or write your own implementation to provide the
-//! absolute best fit for your purpose.
+//! to investigate each type of pool individually to provide the absolute best fit for your purpose.
 //!
-//! ### Use a `LazyPool` when:
-//! * Memory usage is most important
+//! ### Use a [`FifoPool`](self::fifo::FifoPool) when:
+//! * Low memory usage is most important
+//! * Automatic bucket management is desired
+//!
+//! ### Use a [`LazyPool`](self::lazy::LazyPool) when:
 //! * Resources have different attributes each frame
 //!
-//! ### Use a `HashPool` when:
-//! * Processor usage is most important
+//! ### Use a [`HashPool`](self::hash::HashPool) when:
+//! * High performance is most important
 //! * Resources have consistent attributes each frame
 
 pub mod fifo;
@@ -178,7 +191,8 @@ lease_builder!(AccelerationStructureInfo => AccelerationStructure);
 lease_builder!(BufferInfo => Buffer);
 lease_builder!(ImageInfo => Image);
 
-/// TBD
+/// Information used to create a [`FifoPool`](self::fifo::FifoPool),
+/// [`HashPool`](self::hash::HashPool) or [`LazyPool`](self::lazy::LazyPool) instance.
 #[derive(Builder, Clone, Copy, Debug)]
 #[builder(
     build_fn(private, name = "fallible_build", error = "PoolInfoBuilderError"),
@@ -186,24 +200,46 @@ lease_builder!(ImageInfo => Image);
     pattern = "owned"
 )]
 pub struct PoolInfo {
-    /// TBD
+    /// The maximum size of a single bucket of acceleration structure resource instances. The
+    /// default value is [`PoolInfo::DEFAULT_RESOURCE_CAPACITY`].
+    ///
+    /// # Note
+    ///
+    /// Individual [`Pool`] implementations store varying numbers of buckets. Read the documentation
+    /// of each implementation to understand how this affects total number of stored acceleration
+    /// structure instances.
     #[builder(default = "PoolInfo::DEFAULT_RESOURCE_CAPACITY", setter(strip_option))]
     pub accel_struct_capacity: usize,
 
-    /// TBD
+    /// The maximum size of a single bucket of buffer resource instances. The default value is
+    /// [`PoolInfo::DEFAULT_RESOURCE_CAPACITY`].
+    ///
+    /// # Note
+    ///
+    /// Individual [`Pool`] implementations store varying numbers of buckets. Read the documentation
+    /// of each implementation to understand how this affects total number of stored buffer
+    /// instances.
     #[builder(default = "PoolInfo::DEFAULT_RESOURCE_CAPACITY", setter(strip_option))]
     pub buffer_capacity: usize,
 
-    /// TBD
+    /// The maximum size of a single bucket of image resource instances. The default value is
+    /// [`PoolInfo::DEFAULT_RESOURCE_CAPACITY`].
+    ///
+    /// # Note
+    ///
+    /// Individual [`Pool`] implementations store varying numbers of buckets. Read the documentation
+    /// of each implementation to understand how this affects total number of stored image
+    /// instances.
     #[builder(default = "PoolInfo::DEFAULT_RESOURCE_CAPACITY", setter(strip_option))]
     pub image_capacity: usize,
 }
 
 impl PoolInfo {
-    /// TBD
+    /// The maximum size of a single bucket of resource instances.
     pub const DEFAULT_RESOURCE_CAPACITY: usize = 4;
 
-    /// TBD
+    /// Constructs a new `PoolInfo` with the given acceleration structure, buffer and image resource
+    /// capacity for any single bucket.
     pub const fn with_capacity(resource_capacity: usize) -> Self {
         Self {
             accel_struct_capacity: resource_capacity,

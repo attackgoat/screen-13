@@ -1,12 +1,4 @@
 //! Pool which leases by looking for compatibile information before creating new resources.
-//!
-//! The information for each lease request is loosely bucketed by compatibility. If no acceptable
-//! resources exist for the information provided then a new resource is created and returned.
-//!
-//! # Details
-//! * Acceleration structures may be larger than requested
-//! * Buffers may be larger than request or have additional usage flags
-//! * Images may have additional usage flags
 
 use {
     super::{can_lease_command_buffer, Cache, Lease, Pool, PoolInfo},
@@ -35,7 +27,48 @@ struct ImageKey {
     width: u32,
 }
 
-/// A high-efficiency resource allocator.
+impl From<ImageInfo> for ImageKey {
+    fn from(info: ImageInfo) -> Self {
+        Self {
+            array_elements: info.array_elements,
+            depth: info.depth,
+            fmt: info.fmt,
+            height: info.height,
+            linear_tiling: info.linear_tiling,
+            mip_level_count: info.mip_level_count,
+            sample_count: info.sample_count,
+            ty: info.ty,
+            width: info.width,
+        }
+    }
+}
+
+/// A balanced resource allocator.
+///
+/// The information for each lease request is compared against the stored resources for
+/// compatibility. If no acceptable resources are stored for the information provided a new resource
+/// is created and returned.
+///
+/// # Details
+///
+/// * Acceleration structures may be larger than requested
+/// * Buffers may be larger than requested or have additional usage flags
+/// * Images may have additional usage flags
+///
+/// # Bucket Strategy
+///
+/// The information for each lease request is the key for a `HashMap` of buckets. If no bucket
+/// exists with compatible information a new bucket is created.
+///
+/// In practice this means that for a [`PoolInfo::image_capacity`] of `4`, requests for a 1024x1024
+/// image with certain attributes will store a maximum of `4` such images. Requests for any image
+/// having a different size or incompatible attributes will store an additional maximum of `4`
+/// images.
+///
+/// # Memory Management
+///
+/// If requests for varying resources is common [`LazyPool::clear_images_by_info`] and other memory
+/// management functions are nessecery in order to avoid using all available device memory.
 #[derive(Debug)]
 pub struct LazyPool {
     accel_struct_cache: HashMap<vk::AccelerationStructureTypeKHR, Cache<AccelerationStructure>>,
@@ -78,28 +111,32 @@ impl LazyPool {
         self.clear_images();
     }
 
-    /// Clears the pool of acceleration structures, removing all resources.
+    /// Clears the pool of acceleration structure resources.
     pub fn clear_accel_structs(&mut self) {
         self.accel_struct_cache.clear();
     }
 
-    /// Clears the pool of acceleration structures, removing resources matching the given
-    /// type.
+    /// Clears the pool of all acceleration structure resources matching the given type.
     pub fn clear_accel_structs_by_ty(&mut self, ty: vk::AccelerationStructureTypeKHR) {
         self.accel_struct_cache.remove(&ty);
     }
 
-    /// Clears the pool of buffers, removing all resources.
+    /// Clears the pool of buffer resources.
     pub fn clear_buffers(&mut self) {
         self.buffer_cache.clear();
     }
 
-    /// Clears the pool of images, removing all resources.
+    /// Clears the pool of image resources.
     pub fn clear_images(&mut self) {
         self.image_cache.clear();
     }
 
-    /// Retains only the acceleration structures specified by the predicate.
+    /// Clears the pool of image resources matching the given information.
+    pub fn clear_images_by_info(&mut self, info: impl Into<ImageInfo>) {
+        self.image_cache.remove(&info.into().into());
+    }
+
+    /// Retains only the acceleration structure resources specified by the predicate.
     ///
     /// In other words, remove all resources for which `f(vk::AccelerationStructureTypeKHR)` returns
     /// `false`.
@@ -245,17 +282,7 @@ impl Pool<ImageInfo, Image> for LazyPool {
     fn lease(&mut self, info: ImageInfo) -> Result<Lease<Image>, DriverError> {
         let cache = self
             .image_cache
-            .entry(ImageKey {
-                array_elements: info.array_elements,
-                depth: info.depth,
-                fmt: info.fmt,
-                height: info.height,
-                linear_tiling: info.linear_tiling,
-                mip_level_count: info.mip_level_count,
-                sample_count: info.sample_count,
-                ty: info.ty,
-                width: info.width,
-            })
+            .entry(info.into())
             .or_insert_with(|| PoolInfo::explicit_cache(self.info.image_capacity));
         let cache_ref = Arc::downgrade(cache);
         let mut cache = cache.lock();

@@ -1,4 +1,4 @@
-//! TODO
+//! Pool which leases from a single bucket per resource type.
 
 use {
     super::{can_lease_command_buffer, Cache, Lease, Pool, PoolInfo},
@@ -13,7 +13,32 @@ use {
     std::{collections::HashMap, sync::Arc},
 };
 
-/// A space-efficient resource allocator.
+/// A memory-efficient resource allocator.
+///
+/// The information for each lease request is compared against the stored resources for
+/// compatibility. If no acceptable resources are stored for the information provided a new resource
+/// is created and returned.
+///
+/// # Details
+///
+/// * Acceleration structures may be larger than requested
+/// * Buffers may be larger than requested or have additional usage flags
+/// * Images may have additional usage flags
+///
+/// # Bucket Strategy
+///
+/// All resources are stored in a single bucket per resource type, regardless of their individual
+/// attributes.
+///
+/// In practice this means that for a [`PoolInfo::image_capacity`] of `4`, a maximum of `4` images
+/// will be stored. Requests to lease an image or other resource will first look for a compatible
+/// resource in the bucket and create a new resource as needed.
+///
+/// # Memory Management
+///
+/// The single-bucket strategy means that there will always be a reasonable and predictable number
+/// of stored resources, however you may call [`FifoPool::clear`] or the other memory management
+/// functions at any time to discard stored resources.
 #[derive(Debug)]
 pub struct FifoPool {
     accel_struct_cache: Cache<AccelerationStructure>,
@@ -22,6 +47,7 @@ pub struct FifoPool {
     descriptor_pool_cache: Cache<DescriptorPool>,
     device: Arc<Device>,
     image_cache: Cache<Image>,
+    info: PoolInfo,
     render_pass_cache: HashMap<RenderPassInfo, Cache<RenderPass>>,
 }
 
@@ -43,8 +69,31 @@ impl FifoPool {
             descriptor_pool_cache: PoolInfo::default_cache(),
             device,
             image_cache: PoolInfo::explicit_cache(info.image_capacity),
+            info,
             render_pass_cache: Default::default(),
         }
+    }
+
+    /// Clears the pool, removing all resources.
+    pub fn clear(&mut self) {
+        self.clear_accel_structs();
+        self.clear_buffers();
+        self.clear_images();
+    }
+
+    /// Clears the pool of acceleration structure resources.
+    pub fn clear_accel_structs(&mut self) {
+        self.accel_struct_cache = PoolInfo::explicit_cache(self.info.accel_struct_capacity);
+    }
+
+    /// Clears the pool of buffer resources.
+    pub fn clear_buffers(&mut self) {
+        self.buffer_cache = PoolInfo::explicit_cache(self.info.buffer_capacity);
+    }
+
+    /// Clears the pool of image resources.
+    pub fn clear_images(&mut self) {
+        self.image_cache = PoolInfo::explicit_cache(self.info.image_capacity);
     }
 }
 
