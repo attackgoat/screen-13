@@ -1,29 +1,39 @@
 //! Pool which leases by exactly matching the information before creating new resources.
-//!
-//! The information for each lease request is placed into a `HashMap`. If no resources exist for
-//! the exact information provided then a new resource is created and returned.
 
 use {
-    super::{Cache, Lease, Pool},
+    super::{can_lease_command_buffer, Cache, Lease, Pool, PoolInfo},
     crate::driver::{
-        accel_struct::{
-            AccelerationStructure, AccelerationStructureInfo, AccelerationStructureInfoBuilder,
-        },
-        buffer::{Buffer, BufferInfo, BufferInfoBuilder},
+        accel_struct::{AccelerationStructure, AccelerationStructureInfo},
+        buffer::{Buffer, BufferInfo},
         device::Device,
-        image::{Image, ImageInfo, ImageInfoBuilder},
+        image::{Image, ImageInfo},
         CommandBuffer, CommandBufferInfo, DescriptorPool, DescriptorPoolInfo, DriverError,
         RenderPass, RenderPassInfo,
     },
+    log::debug,
     parking_lot::Mutex,
+    paste::paste,
     std::{
         collections::{HashMap, VecDeque},
-        fmt::Debug,
         sync::Arc,
     },
 };
 
 /// A high-performance resource allocator.
+///
+/// # Bucket Strategy
+///
+/// The information for each lease request is the key for a `HashMap` of buckets. If no bucket
+/// exists with the exact information provided a new bucket is created.
+///
+/// In practice this means that for a [`PoolInfo::image_capacity`] of `4`, requests for a 1024x1024
+/// image with certain attributes will store a maximum of `4` such images. Requests for any image
+/// having a different size or attributes will store an additional maximum of `4` images.
+///
+/// # Memory Management
+///
+/// If requests for varying resources is common [`HashPool::clear_images_by_info`] and other memory
+/// management functions are nessecery in order to avoid using all available device memory.
 #[derive(Debug)]
 pub struct HashPool {
     acceleration_structure_cache: HashMap<AccelerationStructureInfo, Cache<AccelerationStructure>>,
@@ -32,13 +42,19 @@ pub struct HashPool {
     descriptor_pool_cache: HashMap<DescriptorPoolInfo, Cache<DescriptorPool>>,
     device: Arc<Device>,
     image_cache: HashMap<ImageInfo, Cache<Image>>,
+    info: PoolInfo,
     render_pass_cache: HashMap<RenderPassInfo, Cache<RenderPass>>,
 }
 
-// TODO: Add some sort of manager features (like, I dunno, "Clear Some Memory For me")
 impl HashPool {
     /// Constructs a new `HashPool`.
     pub fn new(device: &Arc<Device>) -> Self {
+        Self::with_capacity(device, PoolInfo::default())
+    }
+
+    /// Constructs a new `HashPool` with the given capacity information.
+    pub fn with_capacity(device: &Arc<Device>, info: impl Into<PoolInfo>) -> Self {
+        let info: PoolInfo = info.into();
         let device = Arc::clone(device);
 
         Self {
@@ -48,110 +64,153 @@ impl HashPool {
             descriptor_pool_cache: Default::default(),
             device,
             image_cache: Default::default(),
+            info,
             render_pass_cache: Default::default(),
         }
     }
-}
 
-impl HashPool {
-    fn can_lease_command_buffer(cmd_buf: &mut CommandBuffer) -> bool {
-        let can_lease = unsafe {
-            // Don't lease this command buffer if it is unsignalled; we'll create a new one
-            // and wait for this, and those behind it, to signal.
-            cmd_buf
-                .device
-                .get_fence_status(cmd_buf.fence)
-                .unwrap_or_default()
-        };
-
-        if can_lease {
-            // Drop anything we were holding from the last submission
-            CommandBuffer::drop_fenced(cmd_buf);
-        }
-
-        can_lease
+    /// Clears the pool, removing all resources.
+    pub fn clear(&mut self) {
+        self.clear_accel_structs();
+        self.clear_buffers();
+        self.clear_images();
     }
 }
+
+macro_rules! resource_mgmt_fns {
+    ($fn_plural:literal, $doc_singular:literal, $ty:ty, $field:ident) => {
+        paste! {
+            impl HashPool {
+                #[doc = "Clears the pool of " $doc_singular " resources."]
+                pub fn [<clear_ $fn_plural>](&mut self) {
+                    self.$field.clear();
+                }
+
+                #[doc = "Clears the pool of all " $doc_singular " resources matching the given
+information."]
+                pub fn [<clear_ $fn_plural _by_info>](
+                    &mut self,
+                    info: impl Into<$ty>,
+                ) {
+                    self.$field.remove(&info.into());
+                }
+
+                #[doc = "Retains only the " $doc_singular " resources specified by the predicate.\n
+\nIn other words, remove all " $doc_singular " resources for which `f(" $ty ")` returns `false`.\n
+\n"]
+                /// The elements are visited in unsorted (and unspecified) order.
+                ///
+                /// # Performance
+                ///
+                /// Provides the same performance guarantees as
+                /// [`HashMap::retain`](HashMap::retain).
+                pub fn [<retain_ $fn_plural>]<F>(&mut self, mut f: F)
+                where
+                    F: FnMut($ty) -> bool,
+                {
+                    self.$field.retain(|&info, _| f(info))
+                }
+            }
+        }
+    };
+}
+
+resource_mgmt_fns!(
+    "accel_structs",
+    "acceleration structure",
+    AccelerationStructureInfo,
+    acceleration_structure_cache
+);
+resource_mgmt_fns!("buffers", "buffer", BufferInfo, buffer_cache);
+resource_mgmt_fns!("images", "image", ImageInfo, image_cache);
 
 impl Pool<CommandBufferInfo, CommandBuffer> for HashPool {
     #[profiling::function]
     fn lease(&mut self, info: CommandBufferInfo) -> Result<Lease<CommandBuffer>, DriverError> {
-        let command_buffer_cache = self
+        let cache = self
             .command_buffer_cache
             .entry(info.queue_family_index)
-            .or_default();
-        let cache_ref = Arc::downgrade(command_buffer_cache);
-        let mut cache = command_buffer_cache.lock();
+            .or_insert_with(PoolInfo::default_cache);
+        let mut item = cache
+            .lock()
+            .pop_front()
+            .filter(can_lease_command_buffer)
+            .map(Ok)
+            .unwrap_or_else(|| {
+                debug!("Creating new {}", stringify!(CommandBuffer));
 
-        if cache.is_empty() || !Self::can_lease_command_buffer(cache.front_mut().unwrap()) {
-            let item = CommandBuffer::create(&self.device, info)?;
+                CommandBuffer::create(&self.device, info)
+            })?;
 
-            return Ok(Lease {
-                cache: Some(cache_ref),
-                item: Some(item),
-            });
-        }
+        // Drop anything we were holding from the last submission
+        CommandBuffer::drop_fenced(&mut item);
 
-        Ok(Lease {
-            cache: Some(cache_ref),
-            item: cache.pop_front(),
-        })
+        Ok(Lease::new(Arc::downgrade(cache), item))
+    }
+}
+
+impl Pool<DescriptorPoolInfo, DescriptorPool> for HashPool {
+    #[profiling::function]
+    fn lease(&mut self, info: DescriptorPoolInfo) -> Result<Lease<DescriptorPool>, DriverError> {
+        let cache = self
+            .descriptor_pool_cache
+            .entry(info.clone())
+            .or_insert_with(PoolInfo::default_cache);
+        let item = cache.lock().pop_front().map(Ok).unwrap_or_else(|| {
+            debug!("Creating new {}", stringify!(DescriptorPool));
+
+            DescriptorPool::create(&self.device, info)
+        })?;
+
+        Ok(Lease::new(Arc::downgrade(cache), item))
+    }
+}
+
+impl Pool<RenderPassInfo, RenderPass> for HashPool {
+    #[profiling::function]
+    fn lease(&mut self, info: RenderPassInfo) -> Result<Lease<RenderPass>, DriverError> {
+        let cache = if let Some(cache) = self.render_pass_cache.get(&info) {
+            cache
+        } else {
+            // We tried to get the cache first in order to avoid this clone
+            self.render_pass_cache
+                .entry(info.clone())
+                .or_insert_with(PoolInfo::default_cache)
+        };
+        let item = cache.lock().pop_front().map(Ok).unwrap_or_else(|| {
+            debug!("Creating new {}", stringify!(RenderPass));
+
+            RenderPass::create(&self.device, info)
+        })?;
+
+        Ok(Lease::new(Arc::downgrade(cache), item))
     }
 }
 
 // Enable leasing items using their basic info
 macro_rules! lease {
-    ($info:ident => $item:ident) => {
+    ($info:ident => $item:ident, $capacity:ident) => {
         paste::paste! {
             impl Pool<$info, $item> for HashPool {
                 #[profiling::function]
                 fn lease(&mut self, info: $info) -> Result<Lease<$item>, DriverError> {
                     let cache = self.[<$item:snake _cache>].entry(info.clone())
                         .or_insert_with(|| {
-                            Arc::new(Mutex::new(VecDeque::new()))
+                            Cache::new(Mutex::new(VecDeque::with_capacity(self.info.$capacity)))
                         });
-                    let cache_ref = Arc::downgrade(cache);
-                    let mut cache = cache.lock();
+                    let item = cache.lock().pop_front().map(Ok).unwrap_or_else(|| {
+                        debug!("Creating new {}", stringify!($item));
 
-                    if cache.is_empty() {
-                        let item = $item::create(&self.device, info)?;
+                        $item::create(&self.device, info)
+                    })?;
 
-                        return Ok(Lease {
-                            cache: Some(cache_ref),
-                            item: Some(item),
-                        });
-                    }
-
-                    Ok(Lease {
-                        cache: Some(cache_ref),
-                        item: cache.pop_front(),
-                    })
+                    Ok(Lease::new(Arc::downgrade(cache), item))
                 }
             }
         }
     };
 }
 
-lease!(RenderPassInfo => RenderPass);
-lease!(DescriptorPoolInfo => DescriptorPool);
-
-// Enable leasing items as above, but also using their info builder type for convenience
-macro_rules! lease_builder {
-    ($info:ident => $item:ident) => {
-        lease!($info => $item);
-
-        paste::paste! {
-            impl Pool<[<$info Builder>], $item> for HashPool {
-                fn lease(&mut self, builder: [<$info Builder>]) -> Result<Lease<$item>, DriverError> {
-                    let info = builder.build();
-
-                    self.lease(info)
-                }
-            }
-        }
-    };
-}
-
-lease_builder!(AccelerationStructureInfo => AccelerationStructure);
-lease_builder!(BufferInfo => Buffer);
-lease_builder!(ImageInfo => Image);
+lease!(AccelerationStructureInfo => AccelerationStructure, accel_struct_capacity);
+lease!(BufferInfo => Buffer, buffer_capacity);
+lease!(ImageInfo => Image, image_capacity);
