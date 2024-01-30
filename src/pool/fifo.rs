@@ -10,6 +10,7 @@ use {
         CommandBuffer, CommandBufferInfo, DescriptorPool, DescriptorPoolInfo, DriverError,
         RenderPass, RenderPassInfo,
     },
+    log::debug,
     std::{collections::HashMap, sync::Arc},
 };
 
@@ -120,6 +121,8 @@ impl Pool<AccelerationStructureInfo, AccelerationStructure> for FifoPool {
             }
         }
 
+        debug!("Creating new {}", stringify!(AccelerationStructure));
+
         let item = AccelerationStructure::create(&self.device, info)?;
 
         Ok(Lease::new(cache_ref, item))
@@ -151,6 +154,8 @@ impl Pool<BufferInfo, Buffer> for FifoPool {
             }
         }
 
+        debug!("Creating new {}", stringify!(Buffer));
+
         let item = Buffer::create(&self.device, info)?;
 
         Ok(Lease::new(cache_ref, item))
@@ -169,7 +174,11 @@ impl Pool<CommandBufferInfo, CommandBuffer> for FifoPool {
             .pop_front()
             .filter(can_lease_command_buffer)
             .map(Ok)
-            .unwrap_or_else(|| CommandBuffer::create(&self.device, info))?;
+            .unwrap_or_else(|| {
+                debug!("Creating new {}", stringify!(CommandBuffer));
+
+                CommandBuffer::create(&self.device, info)
+            })?;
 
         // Drop anything we were holding from the last submission
         CommandBuffer::drop_fenced(&mut item);
@@ -210,6 +219,8 @@ impl Pool<DescriptorPoolInfo, DescriptorPool> for FifoPool {
             }
         }
 
+        debug!("Creating new {}", stringify!(DescriptorPool));
+
         let item = DescriptorPool::create(&self.device, info)?;
 
         Ok(Lease::new(cache_ref, item))
@@ -248,6 +259,8 @@ impl Pool<ImageInfo, Image> for FifoPool {
             }
         }
 
+        debug!("Creating new {}", stringify!(Image));
+
         let item = Image::create(&self.device, info)?;
 
         Ok(Lease::new(cache_ref, item))
@@ -265,11 +278,11 @@ impl Pool<RenderPassInfo, RenderPass> for FifoPool {
                 .entry(info.clone())
                 .or_insert_with(PoolInfo::default_cache)
         };
-        let item = cache
-            .lock()
-            .pop_front()
-            .map(Ok)
-            .unwrap_or_else(|| RenderPass::create(&self.device, info))?;
+        let item = cache.lock().pop_front().map(Ok).unwrap_or_else(|| {
+            debug!("Creating new {}", stringify!(RenderPass));
+
+            RenderPass::create(&self.device, info)
+        })?;
 
         Ok(Lease::new(Arc::downgrade(cache), item))
     }

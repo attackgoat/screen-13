@@ -10,6 +10,7 @@ use {
         CommandBuffer, CommandBufferInfo, DescriptorPool, DescriptorPoolInfo, DriverError,
         RenderPass, RenderPassInfo,
     },
+    log::debug,
     parking_lot::Mutex,
     paste::paste,
     std::{
@@ -135,7 +136,11 @@ impl Pool<CommandBufferInfo, CommandBuffer> for HashPool {
             .pop_front()
             .filter(can_lease_command_buffer)
             .map(Ok)
-            .unwrap_or_else(|| CommandBuffer::create(&self.device, info))?;
+            .unwrap_or_else(|| {
+                debug!("Creating new {}", stringify!(CommandBuffer));
+
+                CommandBuffer::create(&self.device, info)
+            })?;
 
         // Drop anything we were holding from the last submission
         CommandBuffer::drop_fenced(&mut item);
@@ -151,11 +156,11 @@ impl Pool<DescriptorPoolInfo, DescriptorPool> for HashPool {
             .descriptor_pool_cache
             .entry(info.clone())
             .or_insert_with(PoolInfo::default_cache);
-        let item = cache
-            .lock()
-            .pop_front()
-            .map(Ok)
-            .unwrap_or_else(|| DescriptorPool::create(&self.device, info))?;
+        let item = cache.lock().pop_front().map(Ok).unwrap_or_else(|| {
+            debug!("Creating new {}", stringify!(DescriptorPool));
+
+            DescriptorPool::create(&self.device, info)
+        })?;
 
         Ok(Lease::new(Arc::downgrade(cache), item))
     }
@@ -172,11 +177,11 @@ impl Pool<RenderPassInfo, RenderPass> for HashPool {
                 .entry(info.clone())
                 .or_insert_with(PoolInfo::default_cache)
         };
-        let item = cache
-            .lock()
-            .pop_front()
-            .map(Ok)
-            .unwrap_or_else(|| RenderPass::create(&self.device, info))?;
+        let item = cache.lock().pop_front().map(Ok).unwrap_or_else(|| {
+            debug!("Creating new {}", stringify!(RenderPass));
+
+            RenderPass::create(&self.device, info)
+        })?;
 
         Ok(Lease::new(Arc::downgrade(cache), item))
     }
@@ -193,7 +198,11 @@ macro_rules! lease {
                         .or_insert_with(|| {
                             Cache::new(Mutex::new(VecDeque::with_capacity(self.info.$capacity)))
                         });
-                    let item = cache.lock().pop_front().map(Ok).unwrap_or_else(|| $item::create(&self.device, info))?;
+                    let item = cache.lock().pop_front().map(Ok).unwrap_or_else(|| {
+                        debug!("Creating new {}", stringify!($item));
+
+                        $item::create(&self.device, info)
+                    })?;
 
                     Ok(Lease::new(Arc::downgrade(cache), item))
                 }
