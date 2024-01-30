@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.3] - 2024-01-30
+
+### Added
+
+- `FifoPool` resource pool implementation
+- Memory management functions and configurable bucket sizes for `Pool` implementations
+
+### Fixed
+
+- Compilation bug for `rustc` v1.75.0 on Mac OS
+
 ## [0.9.2] - 2024-01-23
 
 ### Changed
@@ -12,6 +23,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Deprecated `EventLoop` surface format functions
 - Updated `derive_builder` to v0.13
 - Updated `gpu-allocator` to v0.25
+- Updated `winit` to v0.29
+- Updated `egui` to v0.25
+- Updated `imgui-rs` to latest
+  [`main`](https://github.com/imgui-rs/imgui-rs/tree/ca05418cb449dadaabf014487c5c965908dfcbdd)
 
 ## [0.9.1] - 2023-12-29
 
@@ -23,10 +38,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - Changed `KeyBuf` implementation functions to take values instead of borrows
-- Updated `winit` to v0.29
-- Updated `egui` to v0.25
-- Updated `imgui-rs` to latest
-  [`main`](https://github.com/imgui-rs/imgui-rs/tree/ca05418cb449dadaabf014487c5c965908dfcbdd)
+- Updated `gpu-allocator` to v0.24
 - Updated `spirq` to v1.0.2
 
 ## [0.9.0] - 2023-09-07
@@ -401,3 +413,4 @@ _See [#25](https://github.com/attackgoat/screen-13/pull/25) for migration detail
 [0.9.0]: https://crates.io/crates/screen-13/0.9.0
 [0.9.1]: https://crates.io/crates/screen-13/0.9.1
 [0.9.2]: https://crates.io/crates/screen-13/0.9.2
+[0.9.3]: https://crates.io/crates/screen-13/0.9.3
