@@ -20,12 +20,14 @@ use {
         pool::{Lease, Pool},
     },
     ash::vk,
-    log::{debug, trace},
+    log::{
+        debug, log_enabled, trace,
+        Level::{Debug, Trace},
+    },
     std::{
         cell::RefCell,
-        collections::{BTreeSet, HashMap, VecDeque},
+        collections::{HashMap, VecDeque},
         iter::repeat,
-        mem::take,
         ops::Range,
     },
     vk_sync::{cmd::pipeline_barrier, AccessType, BufferBarrier, GlobalBarrier, ImageBarrier},
@@ -33,6 +35,106 @@ use {
 
 fn align_up(val: u32, atom: u32) -> u32 {
     (val + atom - 1) & !(atom - 1)
+}
+
+#[derive(Default)]
+struct AccessCache {
+    accesses: Vec<bool>,
+    binding_count: usize,
+    read_count: Vec<usize>,
+    reads: Vec<usize>,
+}
+
+impl AccessCache {
+    /// Finds the unique indexes of the node bindings which a given pass reads. Results are
+    /// returned in the opposite order the dependencies must be resolved in.
+    ///
+    /// Dependent upon means that the node is read from the pass.
+    #[profiling::function]
+    fn dependent_nodes(&self, pass_idx: usize) -> impl ExactSizeIterator<Item = usize> + '_ {
+        let pass_start = pass_idx * self.binding_count;
+        let pass_end = pass_start + self.read_count[pass_idx];
+        self.reads[pass_start..pass_end].iter().copied()
+    }
+
+    /// Finds the unique indexes of the passes which write to a given node; with the restriction
+    /// to not inspect later passes. Results are returned in the opposite order the dependencies
+    /// must be resolved in.
+    ///
+    /// Dependent upon means that the pass writes to the node.
+    #[profiling::function]
+    fn dependent_passes(
+        &self,
+        node_idx: usize,
+        end_pass_idx: usize,
+    ) -> impl Iterator<Item = usize> + '_ {
+        self.accesses[node_idx..end_pass_idx * self.binding_count]
+            .iter()
+            .step_by(self.binding_count)
+            .enumerate()
+            .rev()
+            .filter_map(|(pass_idx, write)| write.then_some(pass_idx))
+    }
+
+    /// Returns the unique indexes of the passes which are dependent on the given pass.
+    #[profiling::function]
+    fn interdependent_passes(
+        &self,
+        pass_idx: usize,
+        end_pass_idx: usize,
+    ) -> impl Iterator<Item = usize> + '_ {
+        self.dependent_nodes(pass_idx)
+            .flat_map(move |node_idx| self.dependent_passes(node_idx, end_pass_idx))
+    }
+
+    fn update(&mut self, graph: &RenderGraph, end_pass_idx: usize) {
+        self.binding_count = graph.bindings.len();
+
+        let cache_len = self.binding_count * end_pass_idx;
+
+        self.accesses.truncate(cache_len);
+        self.accesses.fill(false);
+        self.accesses.resize(cache_len, false);
+
+        self.read_count.clear();
+
+        self.reads.truncate(cache_len);
+        self.reads.fill(usize::MAX);
+        self.reads.resize(cache_len, usize::MAX);
+
+        thread_local! {
+            static NODES: RefCell<Vec<bool>> = Default::default();
+        }
+
+        NODES.with_borrow_mut(|nodes| {
+            nodes.truncate(self.binding_count);
+            nodes.fill(true);
+            nodes.resize(self.binding_count, true);
+
+            for (pass_idx, pass) in graph.passes[0..end_pass_idx].iter().enumerate() {
+                let pass_start = pass_idx * self.binding_count;
+                let mut read_count = 0;
+
+                for (&node_idx, [early, _]) in
+                    pass.execs.iter().flat_map(|exec| exec.accesses.iter())
+                {
+                    self.accesses[pass_start + node_idx] = true;
+
+                    if nodes[node_idx] && is_read_access(early.access) {
+                        self.reads[pass_start + read_count] = node_idx;
+                        nodes[node_idx] = false;
+                        read_count += 1;
+                    }
+                }
+
+                if pass_idx + 1 < end_pass_idx {
+                    nodes.fill(true);
+                }
+
+                self.read_count.push(read_count);
+            }
+        });
+    }
 }
 
 #[derive(Debug)]
@@ -285,15 +387,14 @@ impl Resolver {
 
     #[profiling::function]
     fn begin_render_pass(
-        &mut self,
         cmd_buf: &CommandBuffer,
+        bindings: &[Binding],
         pass: &Pass,
-        pass_idx: usize,
+        physical_pass: &PhysicalPass,
         render_area: Area,
     ) -> Result<(), DriverError> {
         trace!("  begin render pass");
 
-        let physical_pass = &self.physical_passes[pass_idx];
         let render_pass = physical_pass.render_pass.as_ref().unwrap();
         let attachment_count = render_pass.info.attachments.len();
 
@@ -310,287 +411,278 @@ impl Resolver {
             },
         );
 
-        let mut clear_values = Vec::with_capacity(attachment_count);
-        clear_values.resize_with(attachment_count, vk::ClearValue::default);
+        thread_local! {
+            static CLEARS_VIEWS: RefCell<(Vec<vk::ClearValue>, Vec<vk::ImageView>)> = Default::default();
+        }
 
-        let mut image_views = Vec::with_capacity(attachment_count);
-        image_views.resize(attachment_count, vk::ImageView::null());
+        CLEARS_VIEWS.with_borrow_mut(|(clear_values, image_views)| {
+            clear_values.resize_with(attachment_count, vk::ClearValue::default);
+            image_views.resize(attachment_count, vk::ImageView::null());
 
-        for exec in &pass.execs {
-            for (attachment_idx, (attachment, clear_value)) in &exec.color_clears {
-                let attachment_image = &mut attachments[*attachment_idx as usize];
-                if let Err(idx) = attachment_image
-                    .view_formats
-                    .binary_search(&attachment.format)
-                {
-                    clear_values[*attachment_idx as usize] = vk::ClearValue {
-                        color: vk::ClearColorValue {
-                            float32: clear_value.0,
-                        },
-                    };
+            for exec in &pass.execs {
+                for (attachment_idx, (attachment, clear_value)) in &exec.color_clears {
+                    let attachment_image = &mut attachments[*attachment_idx as usize];
+                    if let Err(idx) = attachment_image
+                        .view_formats
+                        .binary_search(&attachment.format)
+                    {
+                        clear_values[*attachment_idx as usize] = vk::ClearValue {
+                            color: vk::ClearColorValue {
+                                float32: clear_value.0,
+                            },
+                        };
 
-                    let image = self.graph.bindings[attachment.target]
-                        .as_driver_image()
-                        .unwrap();
+                        let image = bindings[attachment.target].as_driver_image().unwrap();
 
-                    attachment_image.flags = image.info.flags;
-                    attachment_image.usage = image.info.usage;
-                    attachment_image.width = image.info.width;
-                    attachment_image.height = image.info.height;
-                    attachment_image.layer_count = attachment.array_layer_count;
-                    attachment_image.view_formats.insert(idx, attachment.format);
+                        attachment_image.flags = image.info.flags;
+                        attachment_image.usage = image.info.usage;
+                        attachment_image.width = image.info.width;
+                        attachment_image.height = image.info.height;
+                        attachment_image.layer_count = attachment.array_layer_count;
+                        attachment_image.view_formats.insert(idx, attachment.format);
 
-                    image_views[*attachment_idx as usize] = Image::view(
-                        image,
-                        ImageViewInfo {
-                            array_layer_count: Some(attachment.array_layer_count),
-                            aspect_mask: attachment.aspect_mask,
-                            base_array_layer: attachment.base_array_layer,
-                            base_mip_level: attachment.base_mip_level,
-                            fmt: attachment.format,
-                            mip_level_count: Some(attachment.mip_level_count),
-                            ty: image.info.ty,
-                        },
-                    )?;
+                        image_views[*attachment_idx as usize] = Image::view(
+                            image,
+                            ImageViewInfo {
+                                array_layer_count: Some(attachment.array_layer_count),
+                                aspect_mask: attachment.aspect_mask,
+                                base_array_layer: attachment.base_array_layer,
+                                base_mip_level: attachment.base_mip_level,
+                                fmt: attachment.format,
+                                mip_level_count: Some(attachment.mip_level_count),
+                                ty: image.info.ty,
+                            },
+                        )?;
+                    }
                 }
-            }
 
-            for (attachment_idx, attachment) in
-                exec.color_attachments
+                for (attachment_idx, attachment) in exec
+                    .color_attachments
                     .iter()
                     .chain(&exec.color_loads)
                     .chain(&exec.color_stores)
                     .chain(exec.color_resolves.iter().map(
                         |(dst_attachment_idx, (attachment, _))| (dst_attachment_idx, attachment),
                     ))
-            {
-                let attachment_image = &mut attachments[*attachment_idx as usize];
-                if let Err(idx) = attachment_image
-                    .view_formats
-                    .binary_search(&attachment.format)
                 {
-                    let image = self.graph.bindings[attachment.target]
-                        .as_driver_image()
-                        .unwrap();
+                    let attachment_image = &mut attachments[*attachment_idx as usize];
+                    if let Err(idx) = attachment_image
+                        .view_formats
+                        .binary_search(&attachment.format)
+                    {
+                        let image = bindings[attachment.target].as_driver_image().unwrap();
 
-                    attachment_image.flags = image.info.flags;
-                    attachment_image.usage = image.info.usage;
-                    attachment_image.width = image.info.width;
-                    attachment_image.height = image.info.height;
-                    attachment_image.layer_count = attachment.array_layer_count;
-                    attachment_image.view_formats.insert(idx, attachment.format);
+                        attachment_image.flags = image.info.flags;
+                        attachment_image.usage = image.info.usage;
+                        attachment_image.width = image.info.width;
+                        attachment_image.height = image.info.height;
+                        attachment_image.layer_count = attachment.array_layer_count;
+                        attachment_image.view_formats.insert(idx, attachment.format);
 
-                    image_views[*attachment_idx as usize] = Image::view(
-                        image,
-                        ImageViewInfo {
-                            array_layer_count: Some(attachment.array_layer_count),
-                            aspect_mask: attachment.aspect_mask,
-                            base_array_layer: attachment.base_array_layer,
-                            base_mip_level: attachment.base_mip_level,
-                            fmt: attachment.format,
-                            mip_level_count: Some(attachment.mip_level_count),
-                            ty: image.info.ty,
-                        },
-                    )?;
+                        image_views[*attachment_idx as usize] = Image::view(
+                            image,
+                            ImageViewInfo {
+                                array_layer_count: Some(attachment.array_layer_count),
+                                aspect_mask: attachment.aspect_mask,
+                                base_array_layer: attachment.base_array_layer,
+                                base_mip_level: attachment.base_mip_level,
+                                fmt: attachment.format,
+                                mip_level_count: Some(attachment.mip_level_count),
+                                ty: image.info.ty,
+                            },
+                        )?;
+                    }
+                }
+
+                if let Some((attachment, clear_value)) = &exec.depth_stencil_clear {
+                    let attachment_idx =
+                        attachments.len() - 1 - exec.depth_stencil_resolve.is_some() as usize;
+                    let attachment_image = &mut attachments[attachment_idx];
+                    if let Err(idx) = attachment_image
+                        .view_formats
+                        .binary_search(&attachment.format)
+                    {
+                        clear_values[attachment_idx] = vk::ClearValue {
+                            depth_stencil: *clear_value,
+                        };
+
+                        let image = bindings[attachment.target].as_driver_image().unwrap();
+
+                        attachment_image.flags = image.info.flags;
+                        attachment_image.usage = image.info.usage;
+                        attachment_image.width = image.info.width;
+                        attachment_image.height = image.info.height;
+                        attachment_image.layer_count = attachment.array_layer_count;
+                        attachment_image.view_formats.insert(idx, attachment.format);
+
+                        image_views[attachment_idx] = Image::view(
+                            image,
+                            ImageViewInfo {
+                                array_layer_count: Some(attachment.array_layer_count),
+                                aspect_mask: attachment.aspect_mask,
+                                base_array_layer: attachment.base_array_layer,
+                                base_mip_level: attachment.base_mip_level,
+                                fmt: attachment.format,
+                                mip_level_count: Some(attachment.mip_level_count),
+                                ty: image.info.ty,
+                            },
+                        )?;
+                    }
+                }
+
+                if let Some(attachment) = exec
+                    .depth_stencil_attachment
+                    .or(exec.depth_stencil_load)
+                    .or(exec.depth_stencil_store)
+                {
+                    let attachment_idx =
+                        attachments.len() - 1 - exec.depth_stencil_resolve.is_some() as usize;
+                    let attachment_image = &mut attachments[attachment_idx];
+                    if let Err(idx) = attachment_image
+                        .view_formats
+                        .binary_search(&attachment.format)
+                    {
+                        let image = bindings[attachment.target].as_driver_image().unwrap();
+
+                        attachment_image.flags = image.info.flags;
+                        attachment_image.usage = image.info.usage;
+                        attachment_image.width = image.info.width;
+                        attachment_image.height = image.info.height;
+                        attachment_image.layer_count = attachment.array_layer_count;
+                        attachment_image.view_formats.insert(idx, attachment.format);
+
+                        image_views[attachment_idx] = Image::view(
+                            image,
+                            ImageViewInfo {
+                                array_layer_count: Some(attachment.array_layer_count),
+                                aspect_mask: attachment.aspect_mask,
+                                base_array_layer: attachment.base_array_layer,
+                                base_mip_level: attachment.base_mip_level,
+                                fmt: attachment.format,
+                                mip_level_count: Some(attachment.mip_level_count),
+                                ty: image.info.ty,
+                            },
+                        )?;
+                    }
+                }
+
+                if let Some(attachment) = exec
+                    .depth_stencil_resolve
+                    .map(|(attachment, ..)| attachment)
+                {
+                    let attachment_idx = attachments.len() - 1;
+                    let attachment_image = &mut attachments[attachment_idx];
+                    if let Err(idx) = attachment_image
+                        .view_formats
+                        .binary_search(&attachment.format)
+                    {
+                        let image = bindings[attachment.target].as_driver_image().unwrap();
+
+                        attachment_image.flags = image.info.flags;
+                        attachment_image.usage = image.info.usage;
+                        attachment_image.width = image.info.width;
+                        attachment_image.height = image.info.height;
+                        attachment_image.layer_count = attachment.array_layer_count;
+                        attachment_image.view_formats.insert(idx, attachment.format);
+
+                        image_views[attachment_idx] = Image::view(
+                            image,
+                            ImageViewInfo {
+                                array_layer_count: Some(attachment.array_layer_count),
+                                aspect_mask: attachment.aspect_mask,
+                                base_array_layer: attachment.base_array_layer,
+                                base_mip_level: attachment.base_mip_level,
+                                fmt: attachment.format,
+                                mip_level_count: Some(attachment.mip_level_count),
+                                ty: image.info.ty,
+                            },
+                        )?;
+                    }
                 }
             }
 
-            if let Some((attachment, clear_value)) = &exec.depth_stencil_clear {
-                let attachment_idx =
-                    attachments.len() - 1 - exec.depth_stencil_resolve.is_some() as usize;
-                let attachment_image = &mut attachments[attachment_idx];
-                if let Err(idx) = attachment_image
-                    .view_formats
-                    .binary_search(&attachment.format)
-                {
-                    clear_values[attachment_idx] = vk::ClearValue {
-                        depth_stencil: *clear_value,
-                    };
+            let framebuffer = RenderPass::framebuffer(
+                render_pass,
+                FramebufferInfo {
+                    attachments,
+                    width: render_area.width,
+                    height: render_area.height,
+                },
+            )?;
 
-                    let image = self.graph.bindings[attachment.target]
-                        .as_driver_image()
-                        .unwrap();
-
-                    attachment_image.flags = image.info.flags;
-                    attachment_image.usage = image.info.usage;
-                    attachment_image.width = image.info.width;
-                    attachment_image.height = image.info.height;
-                    attachment_image.layer_count = attachment.array_layer_count;
-                    attachment_image.view_formats.insert(idx, attachment.format);
-
-                    image_views[attachment_idx] = Image::view(
-                        image,
-                        ImageViewInfo {
-                            array_layer_count: Some(attachment.array_layer_count),
-                            aspect_mask: attachment.aspect_mask,
-                            base_array_layer: attachment.base_array_layer,
-                            base_mip_level: attachment.base_mip_level,
-                            fmt: attachment.format,
-                            mip_level_count: Some(attachment.mip_level_count),
-                            ty: image.info.ty,
-                        },
-                    )?;
-                }
+            unsafe {
+                cmd_buf.device.cmd_begin_render_pass(
+                    **cmd_buf,
+                    &vk::RenderPassBeginInfo::builder()
+                        .render_pass(***render_pass)
+                        .framebuffer(framebuffer)
+                        .render_area(vk::Rect2D {
+                            offset: vk::Offset2D {
+                                x: render_area.x,
+                                y: render_area.y,
+                            },
+                            extent: vk::Extent2D {
+                                width: render_area.width,
+                                height: render_area.height,
+                            },
+                        })
+                        .clear_values(clear_values)
+                        .push_next(
+                            &mut vk::RenderPassAttachmentBeginInfoKHR::builder()
+                                .attachments(image_views),
+                        ),
+                    vk::SubpassContents::INLINE,
+                );
             }
 
-            if let Some(attachment) = exec
-                .depth_stencil_attachment
-                .or(exec.depth_stencil_load)
-                .or(exec.depth_stencil_store)
-            {
-                let attachment_idx =
-                    attachments.len() - 1 - exec.depth_stencil_resolve.is_some() as usize;
-                let attachment_image = &mut attachments[attachment_idx];
-                if let Err(idx) = attachment_image
-                    .view_formats
-                    .binary_search(&attachment.format)
-                {
-                    let image = self.graph.bindings[attachment.target]
-                        .as_driver_image()
-                        .unwrap();
-
-                    attachment_image.flags = image.info.flags;
-                    attachment_image.usage = image.info.usage;
-                    attachment_image.width = image.info.width;
-                    attachment_image.height = image.info.height;
-                    attachment_image.layer_count = attachment.array_layer_count;
-                    attachment_image.view_formats.insert(idx, attachment.format);
-
-                    image_views[attachment_idx] = Image::view(
-                        image,
-                        ImageViewInfo {
-                            array_layer_count: Some(attachment.array_layer_count),
-                            aspect_mask: attachment.aspect_mask,
-                            base_array_layer: attachment.base_array_layer,
-                            base_mip_level: attachment.base_mip_level,
-                            fmt: attachment.format,
-                            mip_level_count: Some(attachment.mip_level_count),
-                            ty: image.info.ty,
-                        },
-                    )?;
-                }
-            }
-
-            if let Some(attachment) = exec
-                .depth_stencil_resolve
-                .map(|(attachment, ..)| attachment)
-            {
-                let attachment_idx = attachments.len() - 1;
-                let attachment_image = &mut attachments[attachment_idx];
-                if let Err(idx) = attachment_image
-                    .view_formats
-                    .binary_search(&attachment.format)
-                {
-                    let image = self.graph.bindings[attachment.target]
-                        .as_driver_image()
-                        .unwrap();
-
-                    attachment_image.flags = image.info.flags;
-                    attachment_image.usage = image.info.usage;
-                    attachment_image.width = image.info.width;
-                    attachment_image.height = image.info.height;
-                    attachment_image.layer_count = attachment.array_layer_count;
-                    attachment_image.view_formats.insert(idx, attachment.format);
-
-                    image_views[attachment_idx] = Image::view(
-                        image,
-                        ImageViewInfo {
-                            array_layer_count: Some(attachment.array_layer_count),
-                            aspect_mask: attachment.aspect_mask,
-                            base_array_layer: attachment.base_array_layer,
-                            base_mip_level: attachment.base_mip_level,
-                            fmt: attachment.format,
-                            mip_level_count: Some(attachment.mip_level_count),
-                            ty: image.info.ty,
-                        },
-                    )?;
-                }
-            }
-        }
-
-        let framebuffer = RenderPass::framebuffer(
-            render_pass,
-            FramebufferInfo {
-                attachments,
-                width: render_area.width,
-                height: render_area.height,
-            },
-        )?;
-
-        unsafe {
-            cmd_buf.device.cmd_begin_render_pass(
-                **cmd_buf,
-                &vk::RenderPassBeginInfo::builder()
-                    .render_pass(***render_pass)
-                    .framebuffer(framebuffer)
-                    .render_area(vk::Rect2D {
-                        offset: vk::Offset2D {
-                            x: render_area.x,
-                            y: render_area.y,
-                        },
-                        extent: vk::Extent2D {
-                            width: render_area.width,
-                            height: render_area.height,
-                        },
-                    })
-                    .clear_values(&clear_values)
-                    .push_next(
-                        &mut vk::RenderPassAttachmentBeginInfoKHR::builder()
-                            .attachments(&image_views),
-                    ),
-                vk::SubpassContents::INLINE,
-            );
-        }
-
-        Ok(())
+            Ok(())
+        })
     }
 
     #[profiling::function]
     fn bind_descriptor_sets(
-        &self,
         cmd_buf: &CommandBuffer,
         pipeline: &ExecutionPipeline,
         physical_pass: &PhysicalPass,
         exec_idx: usize,
     ) {
-        let descriptor_sets =
-            physical_pass
-                .exec_descriptor_sets
-                .get(&exec_idx)
-                .map(|exec_descriptor_sets| {
+        if let Some(exec_descriptor_sets) = physical_pass.exec_descriptor_sets.get(&exec_idx) {
+            thread_local! {
+                static DESCRIPTOR_SETS: RefCell<Vec<vk::DescriptorSet>> = Default::default();
+            }
+
+            if exec_descriptor_sets.is_empty() {
+                return;
+            }
+
+            DESCRIPTOR_SETS.with_borrow_mut(|descriptor_sets| {
+                descriptor_sets.clear();
+                descriptor_sets.extend(
                     exec_descriptor_sets
                         .iter()
-                        .map(|descriptor_set| **descriptor_set)
-                        .collect::<Box<[_]>>()
-                });
-        if descriptor_sets.is_none() {
-            return;
-        }
+                        .map(|descriptor_set| **descriptor_set),
+                );
 
-        let descriptor_sets = descriptor_sets.as_ref().unwrap();
-        if descriptor_sets.is_empty() {
-            return;
-        }
+                trace!("    bind descriptor sets {:?}", descriptor_sets);
 
-        trace!("    bind descriptor sets {:?}", descriptor_sets);
-
-        unsafe {
-            cmd_buf.device.cmd_bind_descriptor_sets(
-                **cmd_buf,
-                pipeline.bind_point(),
-                pipeline.layout(),
-                0,
-                descriptor_sets,
-                &[],
-            );
+                unsafe {
+                    cmd_buf.device.cmd_bind_descriptor_sets(
+                        **cmd_buf,
+                        pipeline.bind_point(),
+                        pipeline.layout(),
+                        0,
+                        descriptor_sets,
+                        &[],
+                    );
+                }
+            });
         }
     }
 
     #[profiling::function]
     fn bind_pipeline(
-        &self,
         cmd_buf: &mut CommandBuffer,
-        pass_idx: usize,
+        physical_pass: &PhysicalPass,
         exec_idx: usize,
         pipeline: &mut ExecutionPipeline,
         depth_stencil: Option<DepthStencilMode>,
@@ -613,7 +705,6 @@ impl Resolver {
         }
 
         // We store a shared reference to this pipeline inside the command buffer!
-        let physical_pass = &self.physical_passes[pass_idx];
         let pipeline_bind_point = pipeline.bind_point();
         let pipeline = match pipeline {
             ExecutionPipeline::Compute(pipeline) => ***pipeline,
@@ -635,70 +726,12 @@ impl Resolver {
         Ok(())
     }
 
-    /// Finds the unique indexes of the passes which write to a given node; with the restriction
-    /// to not inspect later passes. Results are returned in the opposite order the dependencies
-    /// must be resolved in.
-    ///
-    /// Dependent upon means that the pass writes to the node.
-    #[profiling::function]
-    fn dependent_passes(
-        &self,
-        node_idx: usize,
-        end_pass_idx: usize,
-    ) -> impl Iterator<Item = usize> + '_ {
-        // TODO: We could store the nodes of a pass so we don't need to do these horrible things
-        self.graph.passes.as_slice()[0..end_pass_idx]
-            .iter()
-            .enumerate()
-            .rev()
-            .filter(move |(_, pass)| {
-                pass.execs
-                    .iter() // <- This is the horrible part BENCHES!
-                    .any(|exec| exec.accesses.contains_key(&node_idx))
-            })
-            .map(|(pass_idx, _)| pass_idx)
-    }
-
-    /// Finds the unique indexes of the node bindings which a given pass reads. Results are
-    /// returned in the opposite order the dependencies must be resolved in.
-    ///
-    /// Dependent upon means that the node is read from the pass.
-    #[profiling::function]
-    fn dependent_nodes(&self, pass_idx: usize) -> impl Iterator<Item = usize> + '_ {
-        let mut already_seen = BTreeSet::new();
-        self.graph.passes[pass_idx]
-            .execs
-            .iter()
-            .flat_map(|exec| exec.accesses.iter())
-            .filter_map(move |(node_idx, [early, _])| {
-                if is_read_access(early.access) && already_seen.insert(*node_idx) {
-                    Some(*node_idx)
-                } else {
-                    None
-                }
-            })
-    }
-
     fn end_render_pass(&mut self, cmd_buf: &CommandBuffer) {
         trace!("  end render pass");
 
         unsafe {
             cmd_buf.device.cmd_end_render_pass(**cmd_buf);
         }
-    }
-
-    /// Returns the unique indexes of the passes which are dependent on the given pass.
-    #[profiling::function]
-    fn interdependent_passes(
-        &self,
-        pass_idx: usize,
-        end_pass_idx: usize,
-    ) -> impl Iterator<Item = usize> + '_ {
-        let mut already_seen = BTreeSet::new();
-        already_seen.insert(pass_idx);
-        self.dependent_nodes(pass_idx)
-            .flat_map(move |node_idx| self.dependent_passes(node_idx, end_pass_idx))
-            .filter(move |pass_idx| already_seen.insert(*pass_idx))
     }
 
     /// Returns `true` when all recorded passes have been submitted to a driver command buffer.
@@ -1292,9 +1325,10 @@ impl Resolver {
                         }
 
                         // Second look in previous passes of the entire render graph
-                        for prev_subpass in self
-                            .dependent_passes(*node_idx, pass_idx)
-                            .flat_map(|pass_idx| self.graph.passes[pass_idx].execs.iter().rev())
+                        for prev_subpass in self.graph.passes[0..pass_idx]
+                            .iter()
+                            .rev()
+                            .flat_map(|pass| pass.execs.iter().rev())
                         {
                             if let Some([_, late]) = prev_subpass.accesses.get(node_idx) {
                                 // Is this previous subpass access dependent on anything the current
@@ -1703,8 +1737,8 @@ impl Resolver {
             // be globbed onto their preceeding passes by now. This allows subpasses to use
             // input attachments without really doing anything, so we are provided a pass that
             // starts with input we just blow up b/c we can't provide it, or at least shouldn't.
-            assert!(!pass.execs.is_empty());
-            assert!(
+            debug_assert!(!pass.execs.is_empty());
+            debug_assert!(
                 pass.execs[0].pipeline.is_none()
                     || !pass.execs[0].pipeline.as_ref().unwrap().is_graphic()
                     || pass.execs[0]
@@ -1745,72 +1779,80 @@ impl Resolver {
     // Merges passes which are graphic with common-ish attachments - note that scheduled pass order
     // is final during this function and so we must merge contiguous groups of passes
     #[profiling::function]
-    fn merge_scheduled_passes<'s>(&mut self, mut schedule: &'s mut [usize]) -> &'s mut [usize] {
-        let mut passes = self.graph.passes.drain(..).map(Some).collect::<Vec<_>>();
-        let mut idx = 0;
+    fn merge_scheduled_passes(&mut self, schedule: &mut Vec<usize>) {
+        thread_local! {
+            static PASSES: RefCell<Vec<Option<Pass>>> = Default::default();
+        }
 
-        // debug!("attempting to merge {} passes", schedule.len(),);
+        PASSES.with_borrow_mut(|passes| {
+            debug_assert!(passes.is_empty());
 
-        while idx < schedule.len() {
-            let mut pass = passes[schedule[idx]].take().unwrap();
+            passes.extend(self.graph.passes.drain(..).map(Some));
 
-            // Find candidates
-            let start = idx + 1;
-            let mut end = start;
-            while end < schedule.len() {
-                let other = passes[schedule[end]].as_ref().unwrap();
-                debug!(
-                    "attempting to merge [{idx}: {}] with [{end}: {}]",
-                    pass.name, other.name
-                );
-                if Self::allow_merge_passes(&pass, other) {
-                    end += 1;
-                } else {
-                    break;
+            let mut idx = 0;
+
+            // debug!("attempting to merge {} passes", schedule.len(),);
+
+            while idx < schedule.len() {
+                let mut pass = passes[schedule[idx]].take().unwrap();
+
+                // Find candidates
+                let start = idx + 1;
+                let mut end = start;
+                while end < schedule.len() {
+                    let other = passes[schedule[end]].as_ref().unwrap();
+                    debug!(
+                        "attempting to merge [{idx}: {}] with [{end}: {}]",
+                        pass.name, other.name
+                    );
+                    if Self::allow_merge_passes(&pass, other) {
+                        end += 1;
+                    } else {
+                        break;
+                    }
                 }
-            }
 
-            if start != end {
-                trace!("merging {} passes into [{idx}: {}]", end - start, pass.name);
-            }
+                if log_enabled!(Trace) && start != end {
+                    trace!("merging {} passes into [{idx}: {}]", end - start, pass.name);
+                }
 
-            // Grow the merged pass once, not per merge
-            {
-                let mut name_additional = 0;
-                let mut execs_additional = 0;
+                // Grow the merged pass once, not per merge
+                {
+                    let mut name_additional = 0;
+                    let mut execs_additional = 0;
+                    for idx in start..end {
+                        let other = passes[schedule[idx]].as_ref().unwrap();
+                        name_additional += other.name.len() + 3;
+                        execs_additional += other.execs.len();
+                    }
+
+                    pass.name.reserve(name_additional);
+                    pass.execs.reserve(execs_additional);
+                }
+
                 for idx in start..end {
-                    let other = passes[schedule[idx]].as_ref().unwrap();
-                    name_additional += other.name.len();
-                    execs_additional += other.execs.len();
+                    let mut other = passes[schedule[idx]].take().unwrap();
+                    pass.name.push_str(" + ");
+                    pass.name.push_str(other.name.as_str());
+                    pass.execs.append(&mut other.execs);
                 }
 
-                pass.name.reserve(name_additional);
-                pass.execs.reserve(execs_additional);
+                self.graph.passes.push(pass);
+                idx += 1 + end - start;
             }
 
-            for idx in start..end {
-                let mut other = passes[schedule[idx]].take().unwrap();
-                pass.name.push_str(" + ");
-                pass.name.push_str(other.name.as_str());
-                pass.execs.append(&mut other.execs);
+            // Reschedule passes
+            schedule.truncate(self.graph.passes.len());
+
+            for (idx, pass_idx) in schedule.iter_mut().enumerate() {
+                *pass_idx = idx;
             }
 
-            self.graph.passes.push(pass);
-            idx += 1 + end - start;
-        }
-
-        // Reschedule passes
-        schedule = &mut schedule[0..self.graph.passes.len()];
-        for (idx, pass_idx) in schedule.iter_mut().enumerate() {
-            *pass_idx = idx;
-        }
-
-        // Add the remaining passes back into the graph for later
-        for pass in passes.into_iter().flatten() {
-            self.graph.passes.push(pass);
-        }
-
-        schedule
+            // Add the remaining passes back into the graph for later
+            for pass in passes.drain(..).flatten() {
+                self.graph.passes.push(pass);
+            }
+        });
     }
 
     fn next_subpass(cmd_buf: &CommandBuffer) {
@@ -1849,7 +1891,7 @@ impl Resolver {
             }
         }
 
-        assert_ne!(
+        debug_assert_ne!(
             res,
             Default::default(),
             "The given node was not accessed in this graph"
@@ -2109,15 +2151,12 @@ impl Resolver {
     {
         let node_idx = node.index();
 
-        assert!(self.graph.bindings.get(node_idx).is_some());
+        debug_assert!(self.graph.bindings.get(node_idx).is_some());
 
         // We record up to but not including the first pass which accesses the target node
-        let end_pass_idx = self
-            .graph
-            .first_node_access_pass_index(node)
-            .unwrap_or_default()
-            .min(self.graph.passes.len());
-        self.record_node_passes(pool, cmd_buf, node_idx, end_pass_idx)?;
+        if let Some(end_pass_idx) = self.graph.first_node_access_pass_index(node) {
+            self.record_node_passes(pool, cmd_buf, node_idx, end_pass_idx)?;
+        }
 
         Ok(())
     }
@@ -2135,12 +2174,14 @@ impl Resolver {
     {
         let node_idx = node.index();
 
-        assert!(self.graph.bindings.get(node_idx).is_some());
+        debug_assert!(self.graph.bindings.get(node_idx).is_some());
+
+        if self.graph.passes.is_empty() {
+            return Ok(());
+        }
 
         let end_pass_idx = self.graph.passes.len();
-        self.record_node_passes(pool, cmd_buf, node_idx, end_pass_idx)?;
-
-        Ok(())
+        self.record_node_passes(pool, cmd_buf, node_idx, end_pass_idx)
     }
 
     #[profiling::function]
@@ -2154,13 +2195,17 @@ impl Resolver {
     where
         P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass> + ?Sized,
     {
-        // Build a schedule for this node
-        let mut schedule = self
-            .schedule_node_passes(node_idx, end_pass_idx)
-            .into_iter()
-            .collect::<Vec<_>>();
+        thread_local! {
+            static SCHEDULE: RefCell<Schedule> = Default::default();
+        }
 
-        self.record_scheduled_passes(pool, cmd_buf, &mut schedule, end_pass_idx)
+        SCHEDULE.with_borrow_mut(|schedule| {
+            schedule.access_cache.update(&self.graph, end_pass_idx);
+            schedule.passes.clear();
+
+            self.schedule_node_passes(node_idx, end_pass_idx, schedule);
+            self.record_scheduled_passes(pool, cmd_buf, schedule, end_pass_idx)
+        })
     }
 
     #[profiling::function]
@@ -2168,42 +2213,44 @@ impl Resolver {
         &mut self,
         pool: &mut P,
         cmd_buf: &mut CommandBuffer,
-        mut schedule: &mut [usize],
+        schedule: &mut Schedule,
         end_pass_idx: usize,
     ) -> Result<(), DriverError>
     where
         P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass> + ?Sized,
     {
-        if end_pass_idx == 0 {
+        if schedule.passes.is_empty() {
             return Ok(());
         }
 
         // Print some handy details or hit a breakpoint if you set the flag
         #[cfg(debug_assertions)]
-        if self.graph.debug {
+        if log_enabled!(Debug) && self.graph.debug {
             debug!("resolving the following graph:\n\n{:#?}\n\n", self.graph);
         }
 
+        debug_assert!(
+            schedule.passes.windows(2).all(|w| w[0] <= w[1]),
+            "Unsorted schedule"
+        );
+
         // Optimize the schedule; leasing the required stuff it needs
         self.reorder_scheduled_passes(schedule, end_pass_idx);
-        schedule = self.merge_scheduled_passes(schedule);
-        self.lease_scheduled_resources(pool, schedule)?;
+        self.merge_scheduled_passes(&mut schedule.passes);
+        self.lease_scheduled_resources(pool, &schedule.passes)?;
 
-        let mut passes = take(&mut self.graph.passes);
-        for pass_idx in schedule.iter().copied() {
-            let pass = &mut passes[pass_idx];
+        for pass_idx in schedule.passes.iter().copied() {
+            let pass = &mut self.graph.passes[pass_idx];
 
             profiling::scope!("Pass", &pass.name);
 
-            let is_graphic = self.physical_passes[pass_idx].render_pass.is_some();
+            let physical_pass = &self.physical_passes[pass_idx];
+            let is_graphic = physical_pass.render_pass.is_some();
 
             trace!("recording pass [{}: {}]", pass_idx, pass.name);
 
-            if !self.physical_passes[pass_idx]
-                .exec_descriptor_sets
-                .is_empty()
-            {
-                self.write_descriptor_sets(cmd_buf, pass, pass_idx)?;
+            if !physical_pass.exec_descriptor_sets.is_empty() {
+                Self::write_descriptor_sets(cmd_buf, &self.graph.bindings, pass, physical_pass)?;
             }
 
             Self::record_execution_barriers(
@@ -2225,8 +2272,14 @@ impl Resolver {
                     );
                 }
 
-                let render_area = self.render_area(pass);
-                self.begin_render_pass(cmd_buf, pass, pass_idx, render_area)?;
+                let render_area = Self::render_area(&self.graph.bindings, pass);
+                Self::begin_render_pass(
+                    cmd_buf,
+                    &self.graph.bindings,
+                    pass,
+                    physical_pass,
+                    render_area,
+                )?;
                 Some(render_area)
             } else {
                 None
@@ -2240,7 +2293,13 @@ impl Resolver {
                 }
 
                 if let Some(pipeline) = exec.pipeline.as_mut() {
-                    self.bind_pipeline(cmd_buf, pass_idx, exec_idx, pipeline, exec.depth_stencil)?;
+                    Self::bind_pipeline(
+                        cmd_buf,
+                        physical_pass,
+                        exec_idx,
+                        pipeline,
+                        exec.depth_stencil,
+                    )?;
 
                     if is_graphic && pass.render_area.is_none() {
                         let render_area = render_area.unwrap();
@@ -2260,12 +2319,7 @@ impl Resolver {
                         Self::set_scissor(cmd_buf, render_area.width, render_area.height);
                     }
 
-                    self.bind_descriptor_sets(
-                        cmd_buf,
-                        pipeline,
-                        &self.physical_passes[pass_idx],
-                        exec_idx,
-                    );
+                    Self::bind_descriptor_sets(cmd_buf, pipeline, physical_pass, exec_idx);
                 }
 
                 if exec_idx > 0 && !is_graphic {
@@ -2287,10 +2341,7 @@ impl Resolver {
                     exec_func(
                         &cmd_buf.device,
                         **cmd_buf,
-                        Bindings {
-                            exec,
-                            graph: &self.graph,
-                        },
+                        Bindings::new(&self.graph.bindings, exec),
                     );
                 }
             }
@@ -2300,37 +2351,43 @@ impl Resolver {
             }
         }
 
-        // We have to keep the bindings and pipelines alive until the gpu is done
-        schedule.sort_unstable();
-        while let Some(schedule_idx) = schedule.last().copied() {
-            if passes.is_empty() {
-                break;
-            }
-
-            while let (Some(pass), pass_idx) = (passes.pop(), passes.len()) {
-                if pass_idx == schedule_idx {
-                    // This was a scheduled pass - store it!
-                    CommandBuffer::push_fenced_drop(cmd_buf, pass);
-                    CommandBuffer::push_fenced_drop(cmd_buf, self.physical_passes.pop().unwrap());
-                    let end = schedule.len() - 1;
-                    schedule = &mut schedule[0..end];
-                    break;
-                } else {
-                    debug_assert!(pass_idx > schedule_idx);
-
-                    self.graph.passes.push(pass);
-                }
-            }
+        thread_local! {
+            static PASSES: RefCell<Vec<Pass>> = Default::default();
         }
 
-        debug_assert!(self.physical_passes.is_empty());
+        PASSES.with_borrow_mut(|passes| {
+            debug_assert!(passes.is_empty());
 
-        // Put the other passes back for future resolves
-        passes.reverse();
-        self.graph.passes.extend(passes);
-        self.graph.passes.reverse();
+            // We have to keep the bindings and pipelines alive until the gpu is done
+            schedule.passes.sort_unstable();
+            while let Some(schedule_idx) = schedule.passes.pop() {
+                debug_assert!(!self.graph.passes.is_empty());
 
-        // log::trace!("OK");
+                while let Some(pass) = self.graph.passes.pop() {
+                    let pass_idx = self.graph.passes.len();
+
+                    if pass_idx == schedule_idx {
+                        // This was a scheduled pass - store it!
+                        CommandBuffer::push_fenced_drop(
+                            cmd_buf,
+                            (pass, self.physical_passes.pop().unwrap()),
+                        );
+                        break;
+                    } else {
+                        debug_assert!(pass_idx > schedule_idx);
+
+                        passes.push(pass);
+                    }
+                }
+            }
+
+            debug_assert!(self.physical_passes.is_empty());
+
+            // Put the other passes back for future resolves
+            self.graph.passes.extend(passes.drain(..).rev());
+        });
+
+        log::trace!("Recorded passes");
 
         Ok(())
     }
@@ -2349,13 +2406,23 @@ impl Resolver {
             return Ok(());
         }
 
-        let mut schedule = (0..self.graph.passes.len()).collect::<Vec<_>>();
+        thread_local! {
+            static SCHEDULE: RefCell<Schedule> = Default::default();
+        }
 
-        self.record_scheduled_passes(pool, cmd_buf, &mut schedule, self.graph.passes.len())
+        SCHEDULE.with_borrow_mut(|schedule| {
+            schedule
+                .access_cache
+                .update(&self.graph, self.graph.passes.len());
+            schedule.passes.clear();
+            schedule.passes.extend(0..self.graph.passes.len());
+
+            self.record_scheduled_passes(pool, cmd_buf, schedule, self.graph.passes.len())
+        })
     }
 
     #[profiling::function]
-    fn render_area(&self, pass: &Pass) -> Area {
+    fn render_area(bindings: &[Binding], pass: &Pass) -> Area {
         pass.render_area.unwrap_or_else(|| {
             // set_render_area was not specified so we're going to guess using the minimum common
             // attachment extents
@@ -2372,10 +2439,7 @@ impl Resolver {
                 .chain(first_exec.color_loads.values().copied())
                 .chain(first_exec.color_stores.values().copied())
                 .map(|attachment| {
-                    let info = self.graph.bindings[attachment.target]
-                        .as_driver_image()
-                        .unwrap()
-                        .info;
+                    let info = bindings[attachment.target].as_driver_image().unwrap().info;
 
                     (info.width, info.height)
                 })
@@ -2394,140 +2458,204 @@ impl Resolver {
     }
 
     #[profiling::function]
-    fn reorder_scheduled_passes(&mut self, schedule: &mut [usize], end_pass_idx: usize) {
+    //fn reorder_scheduled_passes(&mut self, schedule: &mut Schedule) {
+    fn reorder_scheduled_passes(&mut self, schedule: &mut Schedule, end_pass_idx: usize) {
         // It must be a party
-        if schedule.len() < 3 {
+        if schedule.passes.len() < 3 {
             return;
         }
 
         let mut scheduled = 0;
-        let mut unscheduled = schedule.iter().copied().collect::<BTreeSet<_>>();
 
-        // Re-order passes by maximizing the distance between dependent nodes
-        while !unscheduled.is_empty() {
-            let mut best_idx = scheduled;
-            let pass_idx = schedule[best_idx];
-            let mut best_overlap_factor =
-                self.interdependent_passes(pass_idx, end_pass_idx).count();
+        thread_local! {
+            static UNSCHEDULED: RefCell<Vec<bool>> = Default::default();
+        }
 
-            for (idx, pass_idx) in schedule.iter().enumerate().skip(scheduled + 1) {
-                let overlap_factor = self.interdependent_passes(*pass_idx, end_pass_idx).count();
-                if overlap_factor > best_overlap_factor {
-                    // TODO: These iterators double the work, could be like the schedule function does it
-                    if self
+        UNSCHEDULED.with_borrow_mut(|unscheduled| {
+            unscheduled.truncate(end_pass_idx);
+            unscheduled.fill(true);
+            unscheduled.resize(end_pass_idx, true);
+
+            // Re-order passes by maximizing the distance between dependent nodes
+            while scheduled < schedule.passes.len() {
+                let mut best_idx = scheduled;
+                let pass_idx = schedule.passes[best_idx];
+                let mut best_overlap_factor = schedule
+                    .access_cache
+                    .interdependent_passes(pass_idx, end_pass_idx)
+                    .count();
+
+                for (idx, pass_idx) in schedule.passes[best_idx + 1..schedule.passes.len()]
+                    .iter()
+                    .enumerate()
+                {
+                    let mut overlap_factor = 0;
+
+                    for other_pass_idx in schedule
+                        .access_cache
                         .interdependent_passes(*pass_idx, end_pass_idx)
-                        .any(|other_pass_idx| unscheduled.contains(&other_pass_idx))
                     {
-                        // This pass can't be the candidate because it depends on unfinished work
-                        continue;
+                        if unscheduled[other_pass_idx] {
+                            // This pass can't be the candidate because it depends on unfinished work
+                            break;
+                        }
+
+                        overlap_factor += 1;
                     }
 
-                    best_idx = idx;
-                    best_overlap_factor = overlap_factor;
+                    if overlap_factor > best_overlap_factor {
+                        best_idx += idx + 1;
+                        best_overlap_factor = overlap_factor;
+                    }
                 }
-            }
 
-            unscheduled.remove(&schedule[best_idx]);
-            schedule.swap(scheduled, best_idx);
-            scheduled += 1;
-        }
+                unscheduled[schedule.passes[best_idx]] = false;
+                schedule.passes.swap(scheduled, best_idx);
+                scheduled += 1;
+            }
+        });
     }
 
     /// Returns a vec of pass indexes that are required to be executed, in order, for the given
     /// node.
     #[profiling::function]
-    fn schedule_node_passes(&self, node_idx: usize, end_pass_idx: usize) -> BTreeSet<usize> {
-        let mut schedule = BTreeSet::new();
-        let mut unscheduled = repeat(())
-            .enumerate()
-            .map(|(idx, _)| idx)
-            .take(end_pass_idx)
-            .collect::<BTreeSet<_>>();
-        let mut unresolved = VecDeque::new();
+    fn schedule_node_passes(&self, node_idx: usize, end_pass_idx: usize, schedule: &mut Schedule) {
+        type UnscheduledUnresolvedUnchecked = (Vec<bool>, Vec<bool>, VecDeque<(usize, usize)>);
 
-        // trace!("scheduling node {node_idx}");
-
-        // Schedule the first set of passes for the node we're trying to resolve
-        for pass_idx in self.dependent_passes(node_idx, end_pass_idx) {
-            // trace!(
-            //     "  pass [{pass_idx}: {}] is dependent",
-            //     self.graph.passes[pass_idx].name
-            // );
-
-            schedule.insert(pass_idx);
-            unscheduled.remove(&pass_idx);
-            for node_idx in self.dependent_nodes(pass_idx) {
-                // trace!("    node {node_idx} is dependent");
-
-                unresolved.push_back((node_idx, pass_idx));
-            }
+        thread_local! {
+            static UNSCHEDULED_UNRESOLVED_UNCHECKED: RefCell<UnscheduledUnresolvedUnchecked> = Default::default();
         }
 
-        // trace!("secondary passes below");
+        UNSCHEDULED_UNRESOLVED_UNCHECKED.with_borrow_mut(|(unscheduled, unresolved, unchecked)| {
+            unscheduled.truncate(end_pass_idx);
+            unscheduled.fill(true);
+            unscheduled.resize(end_pass_idx, true);
 
-        // Now schedule all nodes that are required, going through the tree to find them
-        while let Some((node_idx, end_pass_idx)) = unresolved.pop_front() {
-            // trace!("  node {node_idx} is unresolved");
+            unresolved.truncate(self.graph.bindings.len());
+            unresolved.fill(true);
+            unresolved.resize(self.graph.bindings.len(), true);
 
-            for pass_idx in self.dependent_passes(node_idx, end_pass_idx) {
-                if unscheduled.remove(&pass_idx) {
-                    // trace!(
-                    //     "  pass [{pass_idx}: {}] is dependent",
-                    //     self.graph.passes[pass_idx].name
-                    // );
+            debug_assert!(unchecked.is_empty());
 
-                    schedule.insert(pass_idx);
-                    for node_idx in self.dependent_nodes(pass_idx) {
-                        // trace!("    node {node_idx} is dependent");
+            trace!("scheduling node {node_idx}");
 
-                        unresolved.push_back((node_idx, pass_idx));
+            unresolved[node_idx] = false;
+
+            // Schedule the first set of passes for the node we're trying to resolve
+            for pass_idx in schedule
+                .access_cache
+                .dependent_passes(node_idx, end_pass_idx)
+            {
+                trace!(
+                    "  pass [{pass_idx}: {}] is dependent",
+                    self.graph.passes[pass_idx].name
+                );
+
+                debug_assert!(unscheduled[pass_idx]);
+
+                unscheduled[pass_idx] = false;
+                schedule.passes.push(pass_idx);
+
+                for node_idx in schedule.access_cache.dependent_nodes(pass_idx) {
+                    trace!("    node {node_idx} is dependent");
+
+                    let unresolved = &mut unresolved[node_idx];
+                    if *unresolved {
+                        *unresolved = false;
+                        unchecked.push_back((node_idx, pass_idx));
                     }
                 }
             }
-        }
 
-        if !schedule.is_empty() {
-            // These are the indexes of the passes this thread is about to resolve
-            debug!(
-                "schedule: {}",
-                schedule
-                    .iter()
-                    .copied()
-                    .map(|idx| format!("[{}: {}]", idx, self.graph.passes[idx].name))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
+            trace!("secondary passes below");
 
-            if !unscheduled.is_empty() {
-                // These passes are within the range of passes we thought we had to do
-                // right now, but it turns out that nothing in "schedule" relies on them
-                trace!(
-                    "delaying: {}",
-                    unscheduled
-                        .iter()
-                        .copied()
-                        .map(|idx| format!("[{}: {}]", idx, self.graph.passes[idx].name))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
+            // Now schedule all nodes that are required, going through the tree to find them
+            while let Some((node_idx, pass_idx)) = unchecked.pop_front() {
+                trace!("  node {node_idx} is dependent");
+
+                for pass_idx in schedule
+                    .access_cache
+                    .dependent_passes(node_idx, pass_idx + 1)
+                {
+                    let unscheduled = &mut unscheduled[pass_idx];
+                    if *unscheduled {
+                        *unscheduled = false;
+                        schedule.passes.push(pass_idx);
+
+                        trace!(
+                            "  pass [{pass_idx}: {}] is dependent",
+                            self.graph.passes[pass_idx].name
+                        );
+
+                        for node_idx in schedule.access_cache.dependent_nodes(pass_idx) {
+                            trace!("    node {node_idx} is dependent");
+
+                            let unresolved = &mut unresolved[node_idx];
+                            if *unresolved {
+                                *unresolved = false;
+                                unchecked.push_back((node_idx, pass_idx));
+                            }
+                        }
+                    }
+                }
             }
 
-            if end_pass_idx < self.graph.passes.len() {
-                // These passes existing on the graph but are not being considered right
-                // now because we've been told to stop work at the "end_pass_idx" point
-                trace!(
-                    "ignoring: {}",
-                    self.graph.passes[end_pass_idx..]
-                        .iter()
-                        .enumerate()
-                        .map(|(idx, pass)| format!("[{}: {}]", idx + end_pass_idx, pass.name))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
-            }
-        }
+            schedule.passes.sort_unstable();
 
-        schedule
+            if log_enabled!(Debug) {
+                if !schedule.passes.is_empty() {
+                    // These are the indexes of the passes this thread is about to resolve
+                    debug!(
+                        "schedule: {}",
+                        schedule
+                            .passes
+                            .iter()
+                            .copied()
+                            .map(|idx| format!("[{}: {}]", idx, self.graph.passes[idx].name))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    );
+                }
+
+                if log_enabled!(Trace) {
+                    let unscheduled = (0..end_pass_idx)
+                        .filter(|&pass_idx| unscheduled[pass_idx])
+                        .collect::<Box<_>>();
+
+                    if !unscheduled.is_empty() {
+                        // These passes are within the range of passes we thought we had to do
+                        // right now, but it turns out that nothing in "schedule" relies on them
+                        trace!(
+                            "delaying: {}",
+                            unscheduled
+                                .iter()
+                                .copied()
+                                .map(|idx| format!("[{}: {}]", idx, self.graph.passes[idx].name))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        );
+                    }
+
+                    if end_pass_idx < self.graph.passes.len() {
+                        // These passes existing on the graph but are not being considered right
+                        // now because we've been told to stop work at the "end_pass_idx" point
+                        trace!(
+                            "ignoring: {}",
+                            self.graph.passes[end_pass_idx..]
+                                .iter()
+                                .enumerate()
+                                .map(|(idx, pass)| format!(
+                                    "[{}: {}]",
+                                    idx + end_pass_idx,
+                                    pass.name
+                                ))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        );
+                    }
+                }
+            }
+        });
     }
 
     fn set_scissor(cmd_buf: &CommandBuffer, width: u32, height: u32) {
@@ -2653,10 +2781,10 @@ impl Resolver {
 
     #[profiling::function]
     fn write_descriptor_sets(
-        &self,
         cmd_buf: &CommandBuffer,
+        bindings: &[Binding],
         pass: &Pass,
-        pass_idx: usize,
+        physical_pass: &PhysicalPass,
     ) -> Result<(), DriverError> {
         thread_local! {
             static WRITES: RefCell<Writes> = Default::default();
@@ -2697,7 +2825,6 @@ impl Resolver {
             image_infos.clear();
             image_writes.clear();
 
-            let descriptor_sets = &self.physical_passes[pass_idx].exec_descriptor_sets;
             for (exec_idx, exec, pipeline) in pass
                 .execs
                 .iter()
@@ -2709,7 +2836,7 @@ impl Resolver {
                 })
                 .filter(|(.., pipeline)| !pipeline.descriptor_info().layouts.is_empty())
             {
-                let descriptor_sets = &descriptor_sets[&exec_idx];
+                let descriptor_sets = &physical_pass.exec_descriptor_sets[&exec_idx];
 
                 // Write the manually bound things (access, read, and write functions)
                 for (descriptor, (node_idx, view_info)) in exec.bindings.iter() {
@@ -2719,7 +2846,7 @@ impl Resolver {
                         .get(&DescriptorBinding(descriptor_set_idx, dst_binding))
                         .unwrap_or_else(|| panic!("descriptor {descriptor_set_idx}.{dst_binding}[{binding_offset}] specified in recorded execution of pass \"{}\" was not discovered through shader reflection", &pass.name));
                     let descriptor_type = descriptor_info.descriptor_type();
-                    let bound_node = &self.graph.bindings[*node_idx];
+                    let bound_node = &bindings[*node_idx];
                     if let Some(image) = bound_node.as_driver_image() {
                         let view_info = view_info.as_ref().unwrap();
                         let mut image_view_info = *view_info.as_image().unwrap();
@@ -2852,7 +2979,7 @@ impl Resolver {
                                 .expect("input attachment not written");
                             let [_, late] = &write_exec.accesses[&attachment.target];
                             let image_subresource = late.subresource.as_ref().unwrap().unwrap_image();
-                            let image_binding = &self.graph.bindings[attachment.target];
+                            let image_binding = &bindings[attachment.target];
                             let image = image_binding.as_driver_image().unwrap();
                             let image_view_info = ImageViewInfo {
                                 array_layer_count: image_subresource.array_layer_count,
@@ -2920,4 +3047,10 @@ impl Resolver {
             Ok(())
         })
     }
+}
+
+#[derive(Default)]
+struct Schedule {
+    access_cache: AccessCache,
+    passes: Vec<usize>,
 }

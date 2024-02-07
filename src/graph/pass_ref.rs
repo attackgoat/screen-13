@@ -385,11 +385,15 @@ bind!(RayTrace);
 /// ```
 #[derive(Clone, Copy, Debug)]
 pub struct Bindings<'a> {
-    pub(super) exec: &'a Execution,
-    pub(super) graph: &'a RenderGraph,
+    bindings: &'a [Binding],
+    exec: &'a Execution,
 }
 
 impl<'a> Bindings<'a> {
+    pub(super) fn new(bindings: &'a [Binding], exec: &'a Execution) -> Self {
+        Self { bindings, exec }
+    }
+
     fn binding_ref(&self, node_idx: usize) -> &Binding {
         // You must have called read or write for this node on this execution before indexing
         // into the bindings data!
@@ -398,7 +402,7 @@ impl<'a> Bindings<'a> {
             "unexpected node access: call access, read, or write first"
         );
 
-        &self.graph.bindings[node_idx]
+        &self.bindings[node_idx]
     }
 }
 

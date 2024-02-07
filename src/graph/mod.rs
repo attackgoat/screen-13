@@ -799,11 +799,6 @@ impl RenderGraph {
             .submit_pass()
     }
 
-    /// Returns the index of the first pass which accesses a given node
-    fn first_node_access_pass_index(&self, node: impl Node) -> Option<usize> {
-        self.node_access_pass_index(node, self.passes.iter())
-    }
-
     pub(super) fn last_write(&self, node: impl Node) -> Option<AccessType> {
         let node_idx = node.index();
 
@@ -822,15 +817,11 @@ impl RenderGraph {
             })
     }
 
-    /// Returns the index of the first pass in a list of passes which accesses a given node
-    fn node_access_pass_index<'a>(
-        &self,
-        node: impl Node,
-        passes: impl Iterator<Item = &'a Pass>,
-    ) -> Option<usize> {
+    /// Returns the index of the first pass which accesses a given node
+    fn first_node_access_pass_index(&self, node: impl Node) -> Option<usize> {
         let node_idx = node.index();
 
-        for (pass_idx, pass) in passes.enumerate() {
+        for (pass_idx, pass) in self.passes.iter().enumerate() {
             for exec in pass.execs.iter() {
                 if exec.accesses.contains_key(&node_idx) {
                     return Some(pass_idx);
