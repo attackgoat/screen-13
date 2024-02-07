@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.4] - 2024-02-07
+
+### Changed
+
+- Improved performance during render graph resolution: `vsm_omni` example now records frames 10%
+  faster (~400 μs) and complex render graphs may be signifcantly more performant
+
 ## [0.9.3] - 2024-01-30
 
 ### Added
@@ -414,3 +421,4 @@ _See [#25](https://github.com/attackgoat/screen-13/pull/25) for migration detail
 [0.9.1]: https://crates.io/crates/screen-13/0.9.1
 [0.9.2]: https://crates.io/crates/screen-13/0.9.2
 [0.9.3]: https://crates.io/crates/screen-13/0.9.3
+[0.9.4]: https://crates.io/crates/screen-13/0.9.4
