@@ -194,7 +194,7 @@ macro_rules! lease {
             impl Pool<$info, $item> for HashPool {
                 #[profiling::function]
                 fn lease(&mut self, info: $info) -> Result<Lease<$item>, DriverError> {
-                    let cache = self.[<$item:snake _cache>].entry(info.clone())
+                    let cache = self.[<$item:snake _cache>].entry(info)
                         .or_insert_with(|| {
                             Cache::new(Mutex::new(VecDeque::with_capacity(self.info.$capacity)))
                         });
