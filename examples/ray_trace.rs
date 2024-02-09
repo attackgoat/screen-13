@@ -4,6 +4,7 @@ use {
     screen_13::prelude::*,
     std::{io::BufReader, mem::size_of, sync::Arc},
     tobj::{load_mtl_buf, load_obj_buf, GPU_LOAD_OPTIONS},
+    winit_input_helper::WinitInputHelper,
 };
 
 static SHADER_RAY_GEN: &[u32] = inline_spirv!(
@@ -747,7 +748,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut frame_count = 0;
     let mut image = None;
-    let mut keyboard = KeyBuf::default();
+    let mut input = WinitInputHelper::default();
     let mut position = [1.391_760_3, 3.519_997_4, 5.598_739_6, 1f32];
     let right = [0.999_987_5_f32, 0.00000000, -0.004_999_064_4, 1.00000000];
     let up = [0f32, 1.0, 0.0, 1.0];
@@ -778,25 +779,33 @@ fn main() -> anyhow::Result<()> {
         let image_node = frame.render_graph.bind_node(image.as_ref().unwrap());
 
         {
-            update_keyboard(&mut keyboard, frame.events);
+            for event in frame.events {
+                input.update(event);
+            }
 
-            const SPEED: f32 = 0.01f32;
+            const SPEED: f32 = 0.1f32;
 
-            if keyboard.is_pressed(KeyCode::ArrowLeft) {
+            if input.key_pressed(KeyCode::ArrowLeft) {
+                frame_count = 0;
                 position[0] -= SPEED;
-            } else if keyboard.is_pressed(KeyCode::ArrowRight) {
+            } else if input.key_pressed(KeyCode::ArrowRight) {
+                frame_count = 0;
                 position[0] += SPEED;
-            } else if keyboard.is_pressed(KeyCode::ArrowUp) {
+            } else if input.key_pressed(KeyCode::ArrowUp) {
+                frame_count = 0;
                 position[2] -= SPEED;
-            } else if keyboard.is_pressed(KeyCode::ArrowDown) {
+            } else if input.key_pressed(KeyCode::ArrowDown) {
+                frame_count = 0;
                 position[2] += SPEED;
-            } else if keyboard.is_pressed(KeyCode::Space) {
+            } else if input.key_pressed(KeyCode::Space) {
+                frame_count = 0;
                 position[1] -= SPEED;
-            } else if keyboard.is_pressed(KeyCode::AltLeft) {
+            } else if input.key_pressed(KeyCode::AltLeft) {
+                frame_count = 0;
                 position[1] += SPEED;
             }
 
-            if keyboard.any_pressed() {
+            if input.key_pressed(KeyCode::Escape) {
                 frame_count = 0;
                 frame.render_graph.clear_color_image(image_node);
             } else {

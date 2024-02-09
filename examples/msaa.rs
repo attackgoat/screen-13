@@ -4,6 +4,7 @@ use {
     inline_spirv::inline_spirv,
     screen_13::prelude::*,
     std::{mem::size_of, sync::Arc},
+    winit_input_helper::WinitInputHelper,
 };
 
 type CubeVertex = [[f32; 3]; 3];
@@ -17,7 +18,7 @@ const WHITE: ClearColorValue = ClearColorValue([1.0, 1.0, 1.0, 1.0]);
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
-    let mut keyboard = KeyBuf::default();
+    let mut input = WinitInputHelper::default();
     let event_loop = EventLoop::new().build()?;
     let depth_format = best_depth_format(&event_loop.device);
     let sample_count = max_supported_sample_count(&event_loop.device);
@@ -29,10 +30,12 @@ fn main() -> anyhow::Result<()> {
     let mut angle = 0f32;
 
     event_loop.run(|frame| {
-        update_keyboard(&mut keyboard, frame.events);
+        for event in frame.events {
+            input.update(event);
+        }
 
-        // Hold any key to render in non-multisample mode
-        let will_render_msaa = !keyboard.any_held() && sample_count != SampleCount::X1;
+        // Hold the tab key to render in non-multisample mode
+        let will_render_msaa = !input.key_held(KeyCode::Tab) && sample_count != SampleCount::X1;
 
         angle += frame.dt * 0.1;
         let world_transform = Mat4::from_rotation_x(angle)

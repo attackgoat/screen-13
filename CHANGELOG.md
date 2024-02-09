@@ -25,6 +25,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - `EventLoop`: Resize swapchain in response to events instead of each frame (_save 50 μs/frame_)
 
+### Removed
+
+- `input`: This module did not support functionality unique to _Screen 13_ and did not have higher
+  quality than existing solutions such as
+  [`winit_input_helper`](https://crates.io/crates/winit_input_helper)
+
 ## [0.9.4] - 2024-02-07
 
 ### Changed

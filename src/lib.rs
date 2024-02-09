@@ -321,7 +321,6 @@ layout.
 
 pub mod driver;
 pub mod graph;
-pub mod input;
 pub mod pool;
 
 mod display;
@@ -381,9 +380,6 @@ pub mod prelude {
                 },
                 pass_ref::{PassRef, PipelinePassRef},
                 Bind, ClearColorValue, RenderGraph, Unbind,
-            },
-            input::{
-                update_input, update_keyboard, update_mouse, KeyBuf, KeyMap, MouseBuf, MouseButton,
             },
             pool::{
                 fifo::FifoPool, hash::HashPool, lazy::LazyPool, Lease, Pool, PoolInfo,

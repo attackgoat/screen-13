@@ -55,3 +55,4 @@ screen-13-fx = { path = "contrib/screen-13-fx" }
 screen-13-imgui = { path = "contrib/screen-13-imgui" }
 screen-13-egui = { path = "contrib/screen-13-egui" }
 tobj = "4.0"
+winit_input_helper = "0.15"

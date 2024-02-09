@@ -11,6 +11,7 @@ use {
         sync::Arc,
     },
     tobj::{load_obj, GPU_LOAD_OPTIONS},
+    winit_input_helper::WinitInputHelper,
 };
 
 const BLUR_PASSES: usize = 2;
@@ -39,7 +40,7 @@ fn main() -> anyhow::Result<()> {
     .to_cols_array();
     let cube_transform = Mat4::from_scale(Vec3::splat(10.0)).to_cols_array();
 
-    let mut keyboard = KeyBuf::default();
+    let mut input = WinitInputHelper::default();
     let event_loop = EventLoop::new()
         .window(|window| window.with_inner_size(LogicalSize::new(800, 600)))
         .build()?;
@@ -93,22 +94,24 @@ fn main() -> anyhow::Result<()> {
 
     let mut elapsed = 0.0;
     event_loop.run(|frame| {
-        update_keyboard(&mut keyboard, frame.events);
+        for event in frame.events {
+            input.update(event);
+        }
 
         // Hold spacebar to stop the light
-        if !keyboard.is_held(KeyCode::Space) {
+        if !input.key_held(KeyCode::Space) {
             elapsed += frame.dt;
         }
 
         // Hit F11 to enable borderless fullscreen
-        if keyboard.is_pressed(KeyCode::F11) {
+        if input.key_pressed(KeyCode::F11) {
             frame
                 .window
                 .set_fullscreen(Some(Fullscreen::Borderless(None)));
         }
 
         // Hit F12 to enable exclusive fullscreen
-        if keyboard.is_pressed(KeyCode::F12) {
+        if input.key_pressed(KeyCode::F12) {
             if let Some(monitor) = frame.window.current_monitor() {
                 if let Some(video_mode) = monitor.video_modes().next() {
                     frame
@@ -119,7 +122,7 @@ fn main() -> anyhow::Result<()> {
         }
 
         // Hit Escape to cancel fullscreen or exit
-        if keyboard.is_pressed(KeyCode::Escape) {
+        if input.key_pressed(KeyCode::Escape) {
             if frame.window.fullscreen().is_some() {
                 frame.window.set_fullscreen(None);
             } else {
@@ -213,7 +216,7 @@ fn main() -> anyhow::Result<()> {
         );
 
         // Hold tab to view a debug mode
-        if keyboard.is_held(KeyCode::Tab) {
+        if input.key_held(KeyCode::Tab) {
             frame
                 .render_graph
                 .begin_pass("DEBUG")

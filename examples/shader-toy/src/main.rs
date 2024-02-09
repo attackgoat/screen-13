@@ -39,6 +39,7 @@ use {
     screen_13::prelude::*,
     screen_13_fx::*,
     std::{sync::Arc, time::Instant},
+    winit_input_helper::WinitInputHelper,
 };
 
 fn main() -> anyhow::Result<()> {
@@ -166,7 +167,7 @@ fn main() -> anyhow::Result<()> {
     render_graph.resolve().submit(&mut cache, 0, 0)?;
 
     let started_at = Instant::now();
-    let mut mouse_buf = MouseBuf::default();
+    let mut input = WinitInputHelper::default();
     let mut count = 0i32;
     let framebuffer_info = framebuffer_image_binding.as_ref().unwrap().info;
     let flowers_image_info = flowers_image_binding.as_ref().unwrap().info;
@@ -177,7 +178,11 @@ fn main() -> anyhow::Result<()> {
         .run(|frame| {
             // Update the stuff any shader toy shader would want to know each frame
             let elapsed = Instant::now() - started_at;
-            update_mouse(&mut mouse_buf, frame.events);
+
+            for event in frame.events {
+                input.update(event);
+            }
+
             count += 1;
 
             // Bind things to this graph (the graph will own our things until we unbind them)
@@ -235,23 +240,20 @@ fn main() -> anyhow::Result<()> {
             }
 
             // Each pipeline gets the same constant data
+            let (cursor_x, cursor_y) = input
+                .mouse_held(0)
+                .then(|| input.cursor())
+                .flatten()
+                .unwrap_or_default();
             let push_consts = PushConstants {
                 resolution: [frame.width as f32, frame.height as _, 1.0],
                 _pad_1: Default::default(),
                 date: [1970.0, 1.0, 1.0, elapsed.as_secs_f32()],
                 mouse: [
-                    if mouse_buf.any_held() {
-                        mouse_buf.x
-                    } else {
-                        0.0
-                    },
-                    if mouse_buf.any_held() {
-                        mouse_buf.y
-                    } else {
-                        0.0
-                    },
-                    mouse_buf.is_held(MouseButton::Left) as usize as f32,
-                    mouse_buf.is_held(MouseButton::Right) as usize as f32,
+                    cursor_x,
+                    cursor_y,
+                    input.mouse_held(0) as usize as f32,
+                    input.mouse_held(0) as usize as f32,
                 ],
                 time: elapsed.as_secs_f32(),
                 time_delta: frame.dt,
