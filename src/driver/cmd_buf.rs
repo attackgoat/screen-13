@@ -20,6 +20,7 @@ pub struct CommandBuffer {
 }
 
 impl CommandBuffer {
+    #[profiling::function]
     pub(crate) fn create(
         device: &Arc<Device>,
         info: CommandBufferInfo,
@@ -76,6 +77,7 @@ impl CommandBuffer {
     }
 
     /// Signals that execution has completed and it is time to drop anything we collected.
+    #[profiling::function]
     pub(crate) fn drop_fenced(this: &mut Self) {
         if !this.droppables.is_empty() {
             trace!("dropping {} shared references", this.droppables.len());
@@ -87,6 +89,7 @@ impl CommandBuffer {
     /// Returns `true` after the GPU has executed the previous submission to this command buffer.
     ///
     /// See [`Self::wait_until_executed`] to block while checking.
+    #[profiling::function]
     pub fn has_executed(&self) -> Result<bool, DriverError> {
         let res = unsafe { self.device.get_fence_status(self.fence) };
 
@@ -116,6 +119,7 @@ impl CommandBuffer {
     /// this command buffer.
     ///
     /// See [`Self::has_executed`] to check without blocking.
+    #[profiling::function]
     pub fn wait_until_executed(&self) -> Result<(), DriverError> {
         Device::wait_for_fence(&self.device, &self.fence)
     }
@@ -130,6 +134,7 @@ impl Deref for CommandBuffer {
 }
 
 impl Drop for CommandBuffer {
+    #[profiling::function]
     fn drop(&mut self) {
         use std::slice::from_ref;
 

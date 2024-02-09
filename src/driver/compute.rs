@@ -65,6 +65,7 @@ impl ComputePipeline {
     /// assert_ne!(*pipeline, vk::Pipeline::null());
     /// # Ok(()) }
     /// ```
+    #[profiling::function]
     pub fn create(
         device: &Arc<Device>,
         info: impl Into<ComputePipelineInfo>,
@@ -176,6 +177,7 @@ impl Deref for ComputePipeline {
 }
 
 impl Drop for ComputePipeline {
+    #[profiling::function]
     fn drop(&mut self) {
         if panicking() {
             return;

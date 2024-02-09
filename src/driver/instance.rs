@@ -95,6 +95,7 @@ pub struct Instance {
 
 impl Instance {
     /// Creates a new Vulkan instance.
+    #[profiling::function]
     pub fn create<'a>(
         debug: bool,
         required_extensions: impl Iterator<Item = &'a CStr>,
@@ -193,6 +194,7 @@ impl Instance {
     ///
     /// This is useful when you want to use a Vulkan instance created by some other library, such
     /// as OpenXR.
+    #[profiling::function]
     pub fn load(entry: Entry, instance: vk::Instance) -> Result<Self, DriverError> {
         if instance == vk::Instance::null() {
             return Err(DriverError::InvalidData);
@@ -244,6 +246,7 @@ impl Instance {
     }
 
     /// Returns the available physical devices of this instance.
+    #[profiling::function]
     pub fn physical_devices(this: &Self) -> Result<Vec<PhysicalDevice>, DriverError> {
         let physical_devices = unsafe { this.enumerate_physical_devices() };
 
@@ -296,6 +299,7 @@ impl Deref for Instance {
 }
 
 impl Drop for Instance {
+    #[profiling::function]
     fn drop(&mut self) {
         if panicking() {
             return;

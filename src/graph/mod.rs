@@ -382,6 +382,7 @@ impl RenderGraph {
     }
 
     /// Copy regions of an image, potentially performing format conversion.
+    #[profiling::function]
     pub fn blit_image_regions(
         &mut self,
         src_node: impl Into<AnyImageNode>,
@@ -417,6 +418,7 @@ impl RenderGraph {
     }
 
     /// Clear a color image.
+    #[profiling::function]
     pub fn clear_color_image_value(
         &mut self,
         image_node: impl Into<AnyImageNode>,
@@ -454,6 +456,7 @@ impl RenderGraph {
     }
 
     /// Clears a depth/stencil image.
+    #[profiling::function]
     pub fn clear_depth_stencil_image_value(
         &mut self,
         image_node: impl Into<AnyImageNode>,
@@ -516,6 +519,7 @@ impl RenderGraph {
     }
 
     /// Copy data between buffer regions.
+    #[profiling::function]
     pub fn copy_buffer_regions(
         &mut self,
         src_node: impl Into<AnyBufferNode>,
@@ -583,6 +587,7 @@ impl RenderGraph {
     }
 
     /// Copy data from a buffer into an image.
+    #[profiling::function]
     pub fn copy_buffer_to_image_regions(
         &mut self,
         src_node: impl Into<AnyBufferNode>,
@@ -667,6 +672,7 @@ impl RenderGraph {
     }
 
     /// Copy data between images.
+    #[profiling::function]
     pub fn copy_image_regions(
         &mut self,
         src_node: impl Into<AnyImageNode>,
@@ -739,6 +745,7 @@ impl RenderGraph {
     }
 
     /// Copy image data into a buffer.
+    #[profiling::function]
     pub fn copy_image_to_buffer_regions(
         &mut self,
         src_node: impl Into<AnyImageNode>,
@@ -775,6 +782,7 @@ impl RenderGraph {
     }
 
     /// Fill a region of a buffer with a fixed value.
+    #[profiling::function]
     pub fn fill_buffer_region(
         &mut self,
         buffer_node: impl Into<AnyBufferNode>,
@@ -799,6 +807,7 @@ impl RenderGraph {
             .submit_pass()
     }
 
+    #[profiling::function]
     pub(super) fn last_write(&self, node: impl Node) -> Option<AccessType> {
         let node_idx = node.index();
 
@@ -818,6 +827,7 @@ impl RenderGraph {
     }
 
     /// Returns the index of the first pass which accesses a given node
+    #[profiling::function]
     fn first_node_access_pass_index(&self, node: impl Node) -> Option<usize> {
         let node_idx = node.index();
 
@@ -855,6 +865,7 @@ impl RenderGraph {
 
     /// Finalizes the graph and provides an object with functions for submitting the resulting
     /// commands.
+    #[profiling::function]
     pub fn resolve(mut self) -> Resolver {
         // The final execution of each pass has no function
         for pass in &mut self.passes {
@@ -885,6 +896,7 @@ impl RenderGraph {
     }
 
     /// Note: `data` must not exceed 65536 bytes.
+    #[profiling::function]
     pub fn update_buffer_offset(
         &mut self,
         buffer_node: impl Into<AnyBufferNode>,

@@ -133,6 +133,7 @@ macro_rules! bind {
     ($name:ident) => {
         paste::paste! {
             impl Bind<&mut RenderGraph, [<$name Node>]> for $name {
+                #[profiling::function]
                 fn bind(self, graph: &mut RenderGraph) -> [<$name Node>] {
                     // In this function we are binding a new item (Image or Buffer or etc)
 
@@ -155,6 +156,7 @@ macro_rules! bind {
             }
 
             impl Bind<&mut RenderGraph, [<$name Node>]> for Arc<$name> {
+                #[profiling::function]
                 fn bind(self, graph: &mut RenderGraph) -> [<$name Node>] {
                     // In this function we are binding an existing binding (Arc<Image> or
                     // Arc<Buffer> or etc)
@@ -209,6 +211,7 @@ macro_rules! bind_lease {
     ($name:ident) => {
         paste::paste! {
             impl Bind<&mut RenderGraph, [<$name LeaseNode>]> for Lease<$name> {
+                #[profiling::function]
                 fn bind(self, graph: &mut RenderGraph) -> [<$name LeaseNode>] {
                     // In this function we are binding a new lease (Lease<Image> or Lease<Buffer> or
                     // etc)
@@ -232,6 +235,7 @@ macro_rules! bind_lease {
             }
 
             impl Bind<&mut RenderGraph, [<$name LeaseNode>]> for Arc<Lease<$name>> {
+                #[profiling::function]
                 fn bind(self, graph: &mut RenderGraph) -> [<$name LeaseNode>] {
                     // In this function we are binding an existing lease binding
                     // (Arc<Lease<Image>> or Arc<Lease<Buffer>> or etc)

@@ -167,10 +167,11 @@ impl Pool<AccelerationStructureInfo, AccelerationStructure> for LazyPool {
             .entry(info.ty)
             .or_insert_with(|| PoolInfo::explicit_cache(self.info.accel_struct_capacity));
         let cache_ref = Arc::downgrade(cache);
-        let mut cache = cache.lock();
 
         {
-            profiling::scope!("Check cache");
+            profiling::scope!("check cache");
+
+            let mut cache = cache.lock();
 
             // Look for a compatible acceleration structure (big enough)
             for idx in 0..cache.len() {
@@ -199,10 +200,11 @@ impl Pool<BufferInfo, Buffer> for LazyPool {
             .entry((info.can_map, info.alignment))
             .or_insert_with(|| PoolInfo::explicit_cache(self.info.buffer_capacity));
         let cache_ref = Arc::downgrade(cache);
-        let mut cache = cache.lock();
 
         {
-            profiling::scope!("Check cache");
+            profiling::scope!("check cache");
+
+            let mut cache = cache.lock();
 
             // Look for a compatible buffer (big enough and superset of usage flags)
             for idx in 0..cache.len() {
@@ -252,10 +254,11 @@ impl Pool<DescriptorPoolInfo, DescriptorPool> for LazyPool {
     #[profiling::function]
     fn lease(&mut self, info: DescriptorPoolInfo) -> Result<Lease<DescriptorPool>, DriverError> {
         let cache_ref = Arc::downgrade(&self.descriptor_pool_cache);
-        let mut cache = self.descriptor_pool_cache.lock();
 
         {
-            profiling::scope!("Check cache");
+            profiling::scope!("check cache");
+
+            let mut cache = self.descriptor_pool_cache.lock();
 
             // Look for a compatible descriptor pool (has enough sets and descriptors)
             for idx in 0..cache.len() {
@@ -296,10 +299,11 @@ impl Pool<ImageInfo, Image> for LazyPool {
             .entry(info.into())
             .or_insert_with(|| PoolInfo::explicit_cache(self.info.image_capacity));
         let cache_ref = Arc::downgrade(cache);
-        let mut cache = cache.lock();
 
         {
-            profiling::scope!("Check cache");
+            profiling::scope!("check cache");
+
+            let mut cache = cache.lock();
 
             // Look for a compatible image (superset of creation flags and usage flags)
             for idx in 0..cache.len() {

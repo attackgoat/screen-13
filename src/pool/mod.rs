@@ -143,6 +143,7 @@ impl<T> DerefMut for Lease<T> {
 }
 
 impl<T> Drop for Lease<T> {
+    #[profiling::function]
     fn drop(&mut self) {
         if panicking() {
             return;

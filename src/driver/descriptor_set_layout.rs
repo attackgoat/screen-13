@@ -12,6 +12,7 @@ pub struct DescriptorSetLayout {
 }
 
 impl DescriptorSetLayout {
+    #[profiling::function]
     pub fn create(
         device: &Arc<Device>,
         info: &vk::DescriptorSetLayoutCreateInfo,
@@ -43,6 +44,7 @@ impl Deref for DescriptorSetLayout {
 }
 
 impl Drop for DescriptorSetLayout {
+    #[profiling::function]
     fn drop(&mut self) {
         if panicking() {
             return;

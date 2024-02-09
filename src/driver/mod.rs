@@ -206,6 +206,7 @@ const fn access_type_into_u8(access: AccessType) -> u8 {
 }
 
 #[allow(clippy::reversed_empty_ranges)]
+#[profiling::function]
 pub(super) fn buffer_copy_subresources(
     regions: &[vk::BufferCopy],
 ) -> (Range<vk::DeviceSize>, Range<vk::DeviceSize>) {
@@ -226,6 +227,7 @@ pub(super) fn buffer_copy_subresources(
 }
 
 #[allow(clippy::reversed_empty_ranges)]
+#[profiling::function]
 pub(super) fn buffer_image_copy_subresource(
     regions: &[vk::BufferImageCopy],
 ) -> Range<vk::DeviceSize> {
@@ -368,6 +370,7 @@ pub(super) const fn is_write_access(ty: AccessType) -> bool {
 //
 // We do this so that submission doesn't need to check for overlaps
 // See https://github.com/KhronosGroup/Vulkan-Docs/issues/609
+#[profiling::function]
 fn merge_push_constant_ranges(pcr: &[vk::PushConstantRange]) -> Vec<vk::PushConstantRange> {
     // Each specified range must be for a single stage and each stage must be specified once
     #[cfg(debug_assertions)]

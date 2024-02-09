@@ -87,6 +87,7 @@ impl Buffer {
     /// assert_eq!(buf.info.size, SIZE);
     /// # Ok(()) }
     /// ```
+    #[profiling::function]
     pub fn create(device: &Arc<Device>, info: impl Into<BufferInfo>) -> Result<Self, DriverError> {
         let info = info.into();
 
@@ -115,23 +116,27 @@ impl Buffer {
         } else {
             MemoryLocation::GpuOnly
         };
-        let allocation = device
-            .allocator
-            .as_ref()
-            .unwrap()
-            .lock()
-            .allocate(&AllocationCreateDesc {
-                name: "buffer",
-                requirements,
-                location: memory_location,
-                linear: true, // Buffers are always linear
-                allocation_scheme: AllocationScheme::GpuAllocatorManaged,
-            })
-            .map_err(|err| {
-                warn!("{err}");
+        let allocation = {
+            profiling::scope!("allocate");
 
-                DriverError::Unsupported
-            })?;
+            device
+                .allocator
+                .as_ref()
+                .unwrap()
+                .lock()
+                .allocate(&AllocationCreateDesc {
+                    name: "buffer",
+                    requirements,
+                    location: memory_location,
+                    linear: true, // Buffers are always linear
+                    allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+                })
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })
+        }?;
 
         // Bind memory to the buffer
         unsafe {
@@ -176,6 +181,7 @@ impl Buffer {
     /// assert_eq!(Buffer::mapped_slice(&buf), &DATA);
     /// # Ok(()) }
     /// ```
+    #[profiling::function]
     pub fn create_from_slice(
         device: &Arc<Device>,
         usage: vk::BufferUsageFlags,
@@ -233,6 +239,7 @@ impl Buffer {
     ///
     /// [_Ash_]: https://crates.io/crates/ash
     /// [_Erupt_]: https://crates.io/crates/erupt
+    #[profiling::function]
     pub fn access(this: &Self, next_access: AccessType) -> AccessType {
         access_type_from_u8(
             this.prev_access
@@ -266,6 +273,7 @@ impl Buffer {
     /// assert_eq!(Buffer::mapped_slice(&my_buf), &DATA);
     /// # Ok(()) }
     /// ```
+    #[profiling::function]
     pub fn copy_from_slice(this: &mut Self, offset: vk::DeviceSize, slice: impl AsRef<[u8]>) {
         let slice = slice.as_ref();
         Self::mapped_slice_mut(this)[offset as _..offset as usize + slice.len()]
@@ -297,6 +305,7 @@ impl Buffer {
     /// assert_ne!(addr, 0);
     /// # Ok(()) }
     /// ```
+    #[profiling::function]
     pub fn device_address(this: &Self) -> vk::DeviceAddress {
         unsafe {
             this.device.get_buffer_device_address(
@@ -332,6 +341,7 @@ impl Buffer {
     /// assert_eq!(data[0], 0x00);
     /// # Ok(()) }
     /// ```
+    #[profiling::function]
     pub fn mapped_slice(this: &Self) -> &[u8] {
         debug_assert!(
             this.info.can_map,
@@ -369,6 +379,7 @@ impl Buffer {
     /// assert_eq!(data[0], 0x42);
     /// # Ok(()) }
     /// ```
+    #[profiling::function]
     pub fn mapped_slice_mut(this: &mut Self) -> &mut [u8] {
         debug_assert!(
             this.info.can_map,
@@ -403,18 +414,23 @@ impl Deref for Buffer {
 }
 
 impl Drop for Buffer {
+    #[profiling::function]
     fn drop(&mut self) {
         if panicking() {
             return;
         }
 
-        self.device
-            .allocator
-            .as_ref()
-            .unwrap()
-            .lock()
-            .free(self.allocation.take().unwrap())
-            .unwrap_or_else(|_| warn!("Unable to free buffer allocation"));
+        {
+            profiling::scope!("deallocate");
+
+            self.device
+                .allocator
+                .as_ref()
+                .unwrap()
+                .lock()
+                .free(self.allocation.take().unwrap())
+                .unwrap_or_else(|_| warn!("Unable to free buffer allocation"));
+        }
 
         unsafe {
             self.device.destroy_buffer(self.buffer, None);

@@ -29,6 +29,7 @@ pub struct Swapchain {
 impl Swapchain {
     /// Prepares a [`vk::SwapchainKHR`] object which is lazily created after calling
     /// [`acquire_next_image`][Self::acquire_next_image].
+    #[profiling::function]
     pub fn new(
         device: &Arc<Device>,
         surface: Surface,
@@ -127,6 +128,7 @@ impl Swapchain {
         }
     }
 
+    #[profiling::function]
     fn destroy(&mut self) {
         if self.swapchain != vk::SwapchainKHR::null() {
             unsafe {
@@ -199,6 +201,7 @@ impl Swapchain {
         self.images[image.idx as usize] = Some(image.image);
     }
 
+    #[profiling::function]
     fn recreate_swapchain(&mut self) -> Result<(), DriverError> {
         let res = unsafe { self.device.device_wait_idle() };
 
@@ -457,6 +460,7 @@ impl Swapchain {
 }
 
 impl Drop for Swapchain {
+    #[profiling::function]
     fn drop(&mut self) {
         if panicking() {
             return;

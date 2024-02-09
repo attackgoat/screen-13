@@ -580,6 +580,7 @@ impl<'a> Compute<'a> {
     /// ```
     ///
     /// [Dispatch]: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkCmdDispatch.html
+    #[profiling::function]
     pub fn dispatch(&self, group_count_x: u32, group_count_y: u32, group_count_z: u32) -> &Self {
         unsafe {
             self.device
@@ -600,6 +601,7 @@ impl<'a> Compute<'a> {
     /// `dispatch_base(0, 0, 0, group_count_x, group_count_y, group_count_z)`.
     ///
     /// [Dispatch]: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkCmdDispatchBase.html
+    #[profiling::function]
     pub fn dispatch_base(
         &self,
         base_group_x: u32,
@@ -681,6 +683,7 @@ impl<'a> Compute<'a> {
     ///
     /// [Dispatch]: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkCmdDispatchIndirect.html
     /// [VkDispatchIndirectCommand]: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkDispatchIndirectCommand.html
+    #[profiling::function]
     pub fn dispatch_indirect(
         &self,
         args_buf: impl Into<AnyBufferNode>,
@@ -820,6 +823,7 @@ impl<'a> Compute<'a> {
     /// ```
     ///
     /// [gpuinfo.org]: https://vulkan.gpuinfo.org/displaydevicelimit.php?name=maxPushConstantsSize&platform=all
+    #[profiling::function]
     pub fn push_constants_offset(&self, offset: u32, data: &[u8]) -> &Self {
         if let Some(push_const) = &self.pipeline.push_constants {
             // Determine the range of the overall pipline push constants which overlap with `data`
@@ -1026,6 +1030,7 @@ impl<'a> Draw<'a> {
     ///
     /// Behaves similarly to `bind_index_buffer` except that `offset` is the starting offset in
     /// bytes within `buffer` used in index buffer address calculations.
+    #[profiling::function]
     pub fn bind_index_buffer_offset(
         &self,
         buffer: impl Into<AnyBufferNode>,
@@ -1094,6 +1099,7 @@ impl<'a> Draw<'a> {
     ///
     /// Behaves similarly to `bind_vertex_buffer` except the vertex input binding is updated to
     /// start at `offset` from the start of `buffer`.
+    #[profiling::function]
     pub fn bind_vertex_buffer_offset(
         &self,
         buffer: impl Into<AnyBufferNode>,
@@ -1122,6 +1128,7 @@ impl<'a> Draw<'a> {
     ///
     /// The vertex input attributes that use each of these bindings will use these updated addresses
     /// in their address calculations for subsequent drawing commands.
+    #[profiling::function]
     pub fn bind_vertex_buffers<B>(
         &self,
         first_binding: u32,
@@ -1161,6 +1168,7 @@ impl<'a> Draw<'a> {
     /// and `vertex_count` consecutive vertex indices with the first `vertex_index` value equal to
     /// `first_vertex`. The primitives are drawn `instance_count` times with `instance_index`
     /// starting with `first_instance` and increasing sequentially for each instance.
+    #[profiling::function]
     pub fn draw(
         &self,
         vertex_count: u32,
@@ -1187,6 +1195,7 @@ impl<'a> Draw<'a> {
     /// and `index_count` vertices whose indices are retrieved from the index buffer. The index
     /// buffer is treated as an array of tightly packed unsigned integers of size defined by the
     /// `index_ty` parameter with which the buffer was bound.
+    #[profiling::function]
     pub fn draw_indexed(
         &self,
         index_count: u32,
@@ -1281,6 +1290,7 @@ impl<'a> Draw<'a> {
     ///         });
     /// # Ok(()) }
     /// ```
+    #[profiling::function]
     pub fn draw_indexed_indirect(
         &self,
         buffer: impl Into<AnyBufferNode>,
@@ -1315,6 +1325,7 @@ impl<'a> Draw<'a> {
     /// `max_draw_count`.
     ///
     /// `stride` is the byte stride between successive sets of draw parameters.
+    #[profiling::function]
     pub fn draw_indexed_indirect_count(
         &self,
         buffer: impl Into<AnyBufferNode>,
@@ -1345,6 +1356,7 @@ impl<'a> Draw<'a> {
     /// Draw primitives with indirect parameters and unindexed vertices.
     ///
     /// Behaves otherwise similar to [`Draw::draw_indexed_indirect`].
+    #[profiling::function]
     pub fn draw_indirect(
         &self,
         buffer: impl Into<AnyBufferNode>,
@@ -1370,6 +1382,7 @@ impl<'a> Draw<'a> {
     /// Draw primitives with indirect parameters, unindexed vertices, and draw count.
     ///
     /// Behaves otherwise similar to [`Draw::draw_indexed_indirect_count`].
+    #[profiling::function]
     pub fn draw_indirect_count(
         &self,
         buffer: impl Into<AnyBufferNode>,
@@ -1535,6 +1548,7 @@ impl<'a> Draw<'a> {
     /// ```
     ///
     /// [gpuinfo.org]: https://vulkan.gpuinfo.org/displaydevicelimit.php?name=maxPushConstantsSize&platform=all
+    #[profiling::function]
     pub fn push_constants_offset(&self, offset: u32, data: &[u8]) -> &Self {
         for push_const in &self.pipeline.push_constants {
             // Determine the range of the overall pipline push constants which overlap with `data`
@@ -1567,6 +1581,7 @@ impl<'a> Draw<'a> {
     }
 
     /// Set scissor rectangle dynamically for a pass.
+    #[profiling::function]
     pub fn set_scissor(&self, x: i32, y: i32, width: u32, height: u32) -> &Self {
         unsafe {
             self.device.cmd_set_scissor(
@@ -1583,6 +1598,7 @@ impl<'a> Draw<'a> {
     }
 
     /// Set scissor rectangles dynamically for a pass.
+    #[profiling::function]
     pub fn set_scissors<S>(
         &self,
         first_scissor: u32,
@@ -1607,6 +1623,7 @@ impl<'a> Draw<'a> {
     }
 
     /// Set the viewport dynamically for a pass.
+    #[profiling::function]
     pub fn set_viewport(
         &self,
         x: f32,
@@ -1634,6 +1651,7 @@ impl<'a> Draw<'a> {
     }
 
     /// Set the viewports dynamically for a pass.
+    #[profiling::function]
     pub fn set_viewports<V>(
         &self,
         first_viewport: u32,
@@ -3790,6 +3808,7 @@ impl<'a> RayTrace<'a> {
     /// ```
     ///
     /// [gpuinfo.org]: https://vulkan.gpuinfo.org/displaydevicelimit.php?name=maxPushConstantsSize&platform=all
+    #[profiling::function]
     pub fn push_constants_offset(&self, offset: u32, data: &[u8]) -> &Self {
         for push_const in &self.pipeline.push_constants {
             let push_const_end = push_const.offset + push_const.size;
@@ -3863,6 +3882,7 @@ impl<'a> RayTrace<'a> {
     ///
     /// [example]: https://github.com/attackgoat/screen-13/blob/master/examples/ray_trace.rs
     #[allow(clippy::too_many_arguments)]
+    #[profiling::function]
     pub fn trace_rays(
         &self,
         raygen_shader_binding_tables: &vk::StridedDeviceAddressRegionKHR,

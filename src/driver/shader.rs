@@ -26,6 +26,7 @@ use {
 pub(crate) type DescriptorBindingMap =
     HashMap<DescriptorBinding, (DescriptorInfo, vk::ShaderStageFlags)>;
 
+#[profiling::function]
 fn guess_immutable_sampler(binding_name: &str) -> SamplerInfo {
     const INVALID_ERR: &str = "Invalid sampler specification";
 
@@ -173,6 +174,7 @@ pub(crate) struct PipelineDescriptorInfo {
 }
 
 impl PipelineDescriptorInfo {
+    #[profiling::function]
     pub fn create(
         device: &Arc<Device>,
         descriptor_bindings: &DescriptorBindingMap,
@@ -272,6 +274,7 @@ pub(crate) struct Sampler {
 }
 
 impl Sampler {
+    #[profiling::function]
     pub fn create(device: &Arc<Device>, info: impl Into<SamplerInfo>) -> Result<Self, DriverError> {
         let device = Arc::clone(device);
         let info = info.into();
@@ -328,6 +331,7 @@ impl Deref for Sampler {
 }
 
 impl Drop for Sampler {
+    #[profiling::function]
     fn drop(&mut self) {
         if panicking() {
             return;
@@ -683,6 +687,7 @@ impl Shader {
     }
 
     /// Returns the input and write attachments of a shader.
+    #[profiling::function]
     pub(super) fn attachments(
         &self,
     ) -> (
@@ -704,6 +709,7 @@ impl Shader {
         )
     }
 
+    #[profiling::function]
     pub(super) fn descriptor_bindings(
         &self,
         device: &Arc<Device>,
@@ -782,6 +788,7 @@ impl Shader {
         Ok(res)
     }
 
+    #[profiling::function]
     pub(super) fn merge_descriptor_bindings(
         descriptor_bindings: impl IntoIterator<Item = DescriptorBindingMap>,
     ) -> DescriptorBindingMap {
@@ -880,6 +887,7 @@ impl Shader {
             true
         }
 
+        #[profiling::function]
         fn merge_pair(src: DescriptorBindingMap, dst: &mut DescriptorBindingMap) {
             for (descriptor_binding, (descriptor_info, descriptor_flags)) in src.into_iter() {
                 if let Some((existing_info, existing_flags)) = dst.get_mut(&descriptor_binding) {
@@ -903,6 +911,7 @@ impl Shader {
         res
     }
 
+    #[profiling::function]
     pub(super) fn push_constant_range(&self) -> Option<vk::PushConstantRange> {
         self.entry_point
             .vars
@@ -928,6 +937,7 @@ impl Shader {
             })
     }
 
+    #[profiling::function]
     fn reflect_entry_point(
         entry_name: &str,
         spirv: &[u8],
@@ -962,6 +972,7 @@ impl Shader {
         Ok(entry_point)
     }
 
+    #[profiling::function]
     pub(super) fn vertex_input(&self) -> VertexInputState {
         // Check for manually-specified vertex layout descriptions
         if let Some(vertex_input) = &self.vertex_input_state {
@@ -1152,6 +1163,7 @@ impl ShaderBuilder {
     /// Panics if two shader stages of the same pipeline define individual calls to `image_sampler`.
     ///
     /// [main documentation]: crate
+    #[profiling::function]
     pub fn image_sampler(
         mut self,
         binding: impl Into<DescriptorBinding>,
@@ -1180,6 +1192,7 @@ impl ShaderBuilder {
     /// See the [main documentation] for more information about automatic vertex input layout.
     ///
     /// [main documentation]: crate
+    #[profiling::function]
     pub fn vertex_input(
         mut self,
         bindings: &[vk::VertexInputBindingDescription],

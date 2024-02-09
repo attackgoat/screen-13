@@ -97,6 +97,7 @@ impl RayTracePipeline {
     /// assert_eq!(pipeline.info.max_ray_recursion_depth, 1);
     /// # Ok(()) }
     /// ```
+    #[profiling::function]
     pub fn create<S>(
         device: &Arc<Device>,
         info: impl Into<RayTracePipelineInfo>,
@@ -324,6 +325,7 @@ impl Deref for RayTracePipeline {
 }
 
 impl Drop for RayTracePipeline {
+    #[profiling::function]
     fn drop(&mut self) {
         if panicking() {
             return;

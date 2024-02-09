@@ -94,6 +94,7 @@ impl Image {
     /// assert_eq!(image.info.height, 32);
     /// # Ok(()) }
     /// ```
+    #[profiling::function]
     pub fn create(device: &Arc<Device>, info: impl Into<ImageInfo>) -> Result<Self, DriverError> {
         let info: ImageInfo = info.into();
 
@@ -118,23 +119,27 @@ impl Image {
             })?
         };
         let requirements = unsafe { device.get_image_memory_requirements(image) };
-        let allocation = device
-            .allocator
-            .as_ref()
-            .unwrap()
-            .lock()
-            .allocate(&AllocationCreateDesc {
-                name: "image",
-                requirements,
-                location: MemoryLocation::GpuOnly,
-                linear: false,
-                allocation_scheme: AllocationScheme::GpuAllocatorManaged,
-            })
-            .map_err(|err| {
-                warn!("{err}");
+        let allocation = {
+            profiling::scope!("allocate");
 
-                DriverError::Unsupported
-            })?;
+            device
+                .allocator
+                .as_ref()
+                .unwrap()
+                .lock()
+                .allocate(&AllocationCreateDesc {
+                    name: "image",
+                    requirements,
+                    location: MemoryLocation::GpuOnly,
+                    linear: false,
+                    allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+                })
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })
+        }?;
 
         unsafe {
             device
@@ -199,6 +204,7 @@ impl Image {
     ///
     /// [_Ash_]: https://crates.io/crates/ash
     /// [_Erupt_]: https://crates.io/crates/erupt
+    #[profiling::function]
     pub fn access(this: &Self, next_access: AccessType) -> AccessType {
         access_type_from_u8(
             this.prev_access
@@ -206,6 +212,7 @@ impl Image {
         )
     }
 
+    #[profiling::function]
     pub(super) fn clone_raw(this: &Self) -> Self {
         // Moves the image view cache from the current instance to the clone!
         let mut image_view_cache = this.image_view_cache.lock();
@@ -226,10 +233,36 @@ impl Image {
         ImageView::create(&this.device, info, this)
     }
 
+    #[profiling::function]
+    fn drop_allocation(this: &Self, allocation: Allocation) {
+        {
+            profiling::scope!("views");
+
+            this.image_view_cache.lock().clear();
+        }
+
+        unsafe {
+            this.device.destroy_image(this.image, None);
+        }
+
+        {
+            profiling::scope!("deallocate");
+
+            this.device
+                .allocator
+                .as_ref()
+                .unwrap()
+                .lock()
+                .free(allocation)
+                .unwrap_or_else(|_| warn!("Unable to free image allocation"));
+        }
+    }
+
     /// Consumes a Vulkan image created by some other library.
     ///
     /// The image is not destroyed automatically on drop, unlike images created through the
     /// [`Image::create`] function.
+    #[profiling::function]
     pub fn from_raw(device: &Arc<Device>, image: vk::Image, info: impl Into<ImageInfo>) -> Self {
         let device = Arc::clone(device);
         let info = info.into();
@@ -245,6 +278,7 @@ impl Image {
         }
     }
 
+    #[profiling::function]
     pub(crate) fn view(this: &Self, info: ImageViewInfo) -> Result<vk::ImageView, DriverError> {
         let mut image_view_cache = this.image_view_cache.lock();
 
@@ -274,6 +308,7 @@ impl Deref for Image {
 }
 
 impl Drop for Image {
+    // This function is not profiled because drop_allocation is
     fn drop(&mut self) {
         if panicking() {
             return;
@@ -282,19 +317,7 @@ impl Drop for Image {
         // When our allocation is some we allocated ourself; otherwise somebody
         // else owns this image and we should not destroy it. Usually it's the swapchain...
         if let Some(allocation) = self.allocation.take() {
-            self.image_view_cache.lock().clear();
-
-            unsafe {
-                self.device.destroy_image(self.image, None);
-            }
-
-            self.device
-                .allocator
-                .as_ref()
-                .unwrap()
-                .lock()
-                .free(allocation)
-                .unwrap_or_else(|_| warn!("Unable to free image allocation"));
+            Self::drop_allocation(self, allocation);
         }
     }
 }
@@ -645,6 +668,7 @@ struct ImageView {
 }
 
 impl ImageView {
+    #[profiling::function]
     fn create(
         device: &Arc<Device>,
         info: impl Into<ImageViewInfo>,
@@ -686,6 +710,7 @@ impl ImageView {
 }
 
 impl Drop for ImageView {
+    #[profiling::function]
     fn drop(&mut self) {
         if panicking() {
             return;

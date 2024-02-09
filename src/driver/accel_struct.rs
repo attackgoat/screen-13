@@ -87,6 +87,7 @@ impl AccelerationStructure {
     /// assert_eq!(accel_struct.info.size, SIZE);
     /// # Ok(()) }
     /// ```
+    #[profiling::function]
     pub fn create(
         device: &Arc<Device>,
         info: impl Into<AccelerationStructureInfo>,
@@ -177,6 +178,7 @@ impl AccelerationStructure {
     ///
     /// [_Ash_]: https://crates.io/crates/ash
     /// [_Erupt_]: https://crates.io/crates/erupt
+    #[profiling::function]
     pub fn access(this: &Self, next_access: AccessType) -> AccessType {
         access_type_from_u8(
             this.prev_access
@@ -206,6 +208,7 @@ impl AccelerationStructure {
     /// assert_ne!(addr, 0);
     /// # Ok(()) }
     /// ```
+    #[profiling::function]
     pub fn device_address(this: &Self) -> vk::DeviceAddress {
         unsafe {
             this.device
@@ -266,6 +269,7 @@ impl AccelerationStructure {
     /// assert_eq!(res.update_size, 0);
     /// # Ok(()) }
     /// ```
+    #[profiling::function]
     pub fn size_of(
         device: &Arc<Device>,
         info: &AccelerationStructureGeometryInfo,
@@ -385,6 +389,7 @@ impl Deref for AccelerationStructure {
 }
 
 impl Drop for AccelerationStructure {
+    #[profiling::function]
     fn drop(&mut self) {
         if panicking() {
             return;

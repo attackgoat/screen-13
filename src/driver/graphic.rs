@@ -401,6 +401,7 @@ impl GraphicPipeline {
     /// assert_eq!(pipeline.info.front_face, vk::FrontFace::COUNTER_CLOCKWISE);
     /// # Ok(()) }
     /// ```
+    #[profiling::function]
     pub fn create<S>(
         device: &Arc<Device>,
         info: impl Into<GraphicPipelineInfo>,
@@ -566,6 +567,7 @@ impl GraphicPipeline {
 }
 
 impl Drop for GraphicPipeline {
+    #[profiling::function]
     fn drop(&mut self) {
         if panicking() {
             return;

@@ -58,6 +58,7 @@ impl Device {
     ///
     /// This is only required for interoperting with other libraries and comes with all the caveats
     /// of using `ash` builder types, which are inherently dangerous. Use with extreme caution.
+    #[profiling::function]
     pub unsafe fn create_ash_device<F>(
         instance: &Instance,
         physical_device: &PhysicalDevice,
@@ -142,6 +143,7 @@ impl Device {
         create_fn(device_create_info)
     }
 
+    #[profiling::function]
     fn create(
         instance: Instance,
         select_physical_device: Box<SelectPhysicalDeviceFn>,
@@ -185,6 +187,7 @@ impl Device {
     }
 
     /// Constructs a new device using the given configuration.
+    #[profiling::function]
     pub fn create_headless(info: impl Into<DeviceInfo>) -> Result<Self, DriverError> {
         let DeviceInfo {
             debug,
@@ -196,6 +199,7 @@ impl Device {
     }
 
     /// Constructs a new device using the given configuration.
+    #[profiling::function]
     pub fn create_display_window(
         info: impl Into<DeviceInfo>,
         display_window: &(impl HasRawDisplayHandle + HasRawWindowHandle),
@@ -219,6 +223,7 @@ impl Device {
     }
 
     /// Loads and existing `ash` Vulkan device that may have been created by other means.
+    #[profiling::function]
     pub fn load(
         instance: Instance,
         physical_device: PhysicalDevice,
@@ -284,6 +289,7 @@ impl Device {
     }
 
     /// Lists the physical device's format capabilities.
+    #[profiling::function]
     pub fn format_properties(this: &Self, format: vk::Format) -> vk::FormatProperties {
         unsafe {
             this.instance
@@ -292,6 +298,7 @@ impl Device {
     }
 
     /// Lists the physical device's image format capabilities.
+    #[profiling::function]
     pub fn image_format_properties(
         this: &Self,
         format: vk::Format,
@@ -327,12 +334,14 @@ impl Device {
         &this.instance
     }
 
+    #[profiling::function]
     pub(crate) fn wait_for_fence(this: &Self, fence: &vk::Fence) -> Result<(), DriverError> {
         use std::slice::from_ref;
 
         Device::wait_for_fences(this, from_ref(fence))
     }
 
+    #[profiling::function]
     pub(crate) fn wait_for_fences(this: &Self, fences: &[vk::Fence]) -> Result<(), DriverError> {
         unsafe {
             match this.device.wait_for_fences(fences, true, 100) {
@@ -387,6 +396,7 @@ impl Deref for Device {
 }
 
 impl Drop for Device {
+    #[profiling::function]
     fn drop(&mut self) {
         if panicking() {
             // When panicking we don't want the GPU allocator to complain about leaks
@@ -449,6 +459,7 @@ impl DeviceInfo {
 
     /// A builtin [`DeviceInfo::select_physical_device`] function which prioritizes selection of
     /// lower-power integrated GPU devices.
+    #[profiling::function]
     pub fn integrated_gpu(physical_devices: &[PhysicalDevice]) -> usize {
         assert!(!physical_devices.is_empty());
 
@@ -489,6 +500,7 @@ impl DeviceInfo {
 
     /// A builtin [`DeviceInfo::select_physical_device`] function which prioritizes selection of
     /// higher-performance discrete GPU devices.
+    #[profiling::function]
     pub fn discrete_gpu(physical_devices: &[PhysicalDevice]) -> usize {
         assert!(!physical_devices.is_empty());
 

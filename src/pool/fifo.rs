@@ -105,10 +105,11 @@ impl Pool<AccelerationStructureInfo, AccelerationStructure> for FifoPool {
         info: AccelerationStructureInfo,
     ) -> Result<Lease<AccelerationStructure>, DriverError> {
         let cache_ref = Arc::downgrade(&self.accel_struct_cache);
-        let mut cache = self.accel_struct_cache.lock();
 
         {
-            profiling::scope!("Check cache");
+            profiling::scope!("check cache");
+
+            let mut cache = self.accel_struct_cache.lock();
 
             // Look for a compatible acceleration structure (big enough and same type)
             for idx in 0..cache.len() {
@@ -133,10 +134,11 @@ impl Pool<BufferInfo, Buffer> for FifoPool {
     #[profiling::function]
     fn lease(&mut self, info: BufferInfo) -> Result<Lease<Buffer>, DriverError> {
         let cache_ref = Arc::downgrade(&self.buffer_cache);
-        let mut cache = self.buffer_cache.lock();
 
         {
-            profiling::scope!("Check cache");
+            profiling::scope!("check cache");
+
+            let mut cache = self.buffer_cache.lock();
 
             // Look for a compatible buffer (compatible alignment, same mapping mode, big enough and
             // superset of usage flags)
@@ -191,10 +193,11 @@ impl Pool<DescriptorPoolInfo, DescriptorPool> for FifoPool {
     #[profiling::function]
     fn lease(&mut self, info: DescriptorPoolInfo) -> Result<Lease<DescriptorPool>, DriverError> {
         let cache_ref = Arc::downgrade(&self.descriptor_pool_cache);
-        let mut cache = self.descriptor_pool_cache.lock();
 
         {
-            profiling::scope!("Check cache");
+            profiling::scope!("check cache");
+
+            let mut cache = self.descriptor_pool_cache.lock();
 
             // Look for a compatible descriptor pool (has enough sets and descriptors)
             for idx in 0..cache.len() {
@@ -231,10 +234,11 @@ impl Pool<ImageInfo, Image> for FifoPool {
     #[profiling::function]
     fn lease(&mut self, info: ImageInfo) -> Result<Lease<Image>, DriverError> {
         let cache_ref = Arc::downgrade(&self.image_cache);
-        let mut cache = self.image_cache.lock();
 
         {
-            profiling::scope!("Check cache");
+            profiling::scope!("check cache");
+
+            let mut cache = self.image_cache.lock();
 
             // Look for a compatible image (same properties, superset of creation flags and usage
             // flags)

@@ -25,6 +25,7 @@ impl Surface {
     ///
     /// `device` must have been created with platform specific surface extensions enabled, acquired
     /// through [`Device::create_display_window`].
+    #[profiling::function]
     pub fn create(
         device: &Arc<Device>,
         display_window: &(impl HasRawDisplayHandle + HasRawWindowHandle),
@@ -50,6 +51,7 @@ impl Surface {
     }
 
     /// Lists the supported surface formats.
+    #[profiling::function]
     pub fn formats(this: &Self) -> Result<Vec<vk::SurfaceFormatKHR>, DriverError> {
         unsafe {
             this.device
@@ -66,6 +68,7 @@ impl Surface {
     }
 
     /// Helper function to automatically select the best UNORM format, if one is available.
+    #[profiling::function]
     pub fn linear(formats: &[vk::SurfaceFormatKHR]) -> Option<vk::SurfaceFormatKHR> {
         formats
             .iter()
@@ -88,6 +91,7 @@ impl Surface {
     }
 
     /// Helper function to automatically select the best sRGB format, if one is available.
+    #[profiling::function]
     pub fn srgb(formats: &[vk::SurfaceFormatKHR]) -> Option<vk::SurfaceFormatKHR> {
         formats
             .iter()
@@ -131,6 +135,7 @@ impl Deref for Surface {
 }
 
 impl Drop for Surface {
+    #[profiling::function]
     fn drop(&mut self) {
         if panicking() {
             return;

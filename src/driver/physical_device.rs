@@ -192,6 +192,7 @@ pub struct PhysicalDevice {
 
 impl PhysicalDevice {
     /// Creates a physical device wrapper which reports features and properties.
+    #[profiling::function]
     pub fn new(
         instance: &Instance,
         physical_device: vk::PhysicalDevice,

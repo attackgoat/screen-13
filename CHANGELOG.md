@@ -5,12 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Expanded the number of functions and scopes profiled by the `profiling` crate
+
 ## [0.9.4] - 2024-02-07
 
 ### Changed
 
 - Improved performance during render graph resolution: `vsm_omni` example now records frames 10%
-  faster (~400 μs) and complex render graphs may be signifcantly more performant
+  faster (~100 μs) and complex render graphs may be signifcantly more performant
 
 ## [0.9.3] - 2024-01-30
 
@@ -397,7 +403,7 @@ _See [#25](https://github.com/attackgoat/screen-13/pull/25) for migration detail
   platforms and require no bare-metal graphics API knowledge
 - "Hello, world!" example using a bitmapped font
 
-[Unreleased]: https://github.com/attackgoat/screen-13/compare/3997cc65b87cbcedbe380e3b23ce4a37f7c7c320...HEAD
+[Unreleased]: https://github.com/attackgoat/screen-13/compare/v0.9.4...HEAD
 [0.1.0]: https://crates.io/crates/screen-13/0.1.0
 [0.2.0]: https://crates.io/crates/screen-13/0.2.0
 [0.3.0]: https://crates.io/crates/screen-13/0.3.0

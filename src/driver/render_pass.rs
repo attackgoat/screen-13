@@ -116,6 +116,7 @@ pub struct RenderPass {
 }
 
 impl RenderPass {
+    #[profiling::function]
     pub fn create(device: &Arc<Device>, info: RenderPassInfo) -> Result<Self, DriverError> {
         //trace!("create: \n{:#?}", &info);
         trace!("create");
@@ -245,6 +246,7 @@ impl RenderPass {
         })
     }
 
+    #[profiling::function]
     pub fn framebuffer(this: &Self, info: FramebufferInfo) -> Result<vk::Framebuffer, DriverError> {
         debug_assert!(!info.attachments.is_empty());
 
@@ -306,6 +308,7 @@ impl RenderPass {
         Ok(framebuffer)
     }
 
+    #[profiling::function]
     pub fn graphic_pipeline(
         this: &Self,
         pipeline: &Arc<GraphicPipeline>,
@@ -440,6 +443,7 @@ impl Deref for RenderPass {
 }
 
 impl Drop for RenderPass {
+    #[profiling::function]
     fn drop(&mut self) {
         if panicking() {
             return;

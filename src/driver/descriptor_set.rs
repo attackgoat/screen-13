@@ -13,6 +13,7 @@ pub struct DescriptorPool {
 }
 
 impl DescriptorPool {
+    #[profiling::function]
     pub fn create(
         device: &Arc<Device>,
         info: impl Into<DescriptorPoolInfo>,
@@ -145,6 +146,7 @@ impl DescriptorPool {
             .unwrap())
     }
 
+    #[profiling::function]
     pub fn allocate_descriptor_sets<'a>(
         this: &'a Self,
         layout: &DescriptorSetLayout,
@@ -192,6 +194,7 @@ impl Deref for DescriptorPool {
 }
 
 impl Drop for DescriptorPool {
+    #[profiling::function]
     fn drop(&mut self) {
         if panicking() {
             return;
@@ -253,6 +256,7 @@ impl Deref for DescriptorSet {
 }
 
 impl Drop for DescriptorSet {
+    #[profiling::function]
     fn drop(&mut self) {
         use std::slice::from_ref;
 
