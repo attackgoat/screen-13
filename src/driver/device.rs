@@ -427,6 +427,7 @@ impl Drop for Device {
     build_fn(private, name = "fallible_build", error = "DeviceInfoBuilderError"),
     pattern = "owned"
 )]
+#[non_exhaustive]
 pub struct DeviceInfo {
     /// Enables Vulkan validation layers.
     ///

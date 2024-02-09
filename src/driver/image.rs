@@ -329,6 +329,7 @@ impl Drop for Image {
     derive(Debug),
     pattern = "owned"
 )]
+#[non_exhaustive]
 pub struct ImageInfo {
     /// The number of layers in the image.
     #[builder(default = "1", setter(strip_option))]

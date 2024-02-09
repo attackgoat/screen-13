@@ -3,7 +3,7 @@
 use {
     super::{
         device::Device,
-        image::{Image, ImageInfo, ImageType, SampleCount},
+        image::{Image, ImageInfo},
         DriverError, Surface,
     },
     ash::vk,
@@ -383,19 +383,12 @@ impl Swapchain {
                 let mut image = Image::from_raw(
                     &self.device,
                     vk_image,
-                    ImageInfo {
-                        ty: ImageType::Texture2D,
-                        usage: surface_capabilities.supported_usage_flags,
-                        flags: vk::ImageCreateFlags::empty(),
-                        fmt: self.info.format.format,
-                        depth: 1,
-                        height: surface_height,
-                        width: surface_width,
-                        sample_count: SampleCount::X1,
-                        linear_tiling: false,
-                        mip_level_count: 1,
-                        array_elements: 1,
-                    },
+                    ImageInfo::new_2d(
+                        self.info.format.format,
+                        surface_width,
+                        surface_height,
+                        surface_capabilities.supported_usage_flags,
+                    ),
                 );
                 image.name = Some(format!("swapchain{idx}"));
                 Some(image)
@@ -532,6 +525,7 @@ pub enum SwapchainError {
     derive(Debug),
     pattern = "owned"
 )]
+#[non_exhaustive]
 pub struct SwapchainInfo {
     /// The desired, but not guaranteed, number of images that will be in the created swapchain.
     ///

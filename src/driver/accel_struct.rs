@@ -605,6 +605,7 @@ pub enum AccelerationStructureGeometryData {
     derive(Debug),
     pattern = "owned"
 )]
+#[non_exhaustive]
 pub struct AccelerationStructureInfo {
     /// Type of acceleration structure.
     pub ty: vk::AccelerationStructureTypeKHR,

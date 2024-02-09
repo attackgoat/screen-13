@@ -388,6 +388,7 @@ impl Drop for RayTracePipeline {
     derive(Clone, Debug),
     pattern = "owned"
 )]
+#[non_exhaustive]
 pub struct RayTracePipelineInfo {
     /// The number of descriptors to allocate for a given binding when using bindless (unbounded)
     /// syntax.
@@ -424,6 +425,8 @@ pub struct RayTracePipelineInfo {
     pub dynamic_stack_size: bool,
 
     /// The [maximum recursion depth] of shaders executed by this pipeline.
+    ///
+    /// The default is `16`.
     ///
     /// [maximum recursion depth]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#ray-tracing-recursion-depth
     #[builder(default = "16")]

@@ -200,6 +200,7 @@ lease_builder!(ImageInfo => Image);
     derive(Debug),
     pattern = "owned"
 )]
+#[non_exhaustive]
 pub struct PoolInfo {
     /// The maximum size of a single bucket of acceleration structure resource instances. The
     /// default value is [`PoolInfo::DEFAULT_RESOURCE_CAPACITY`].

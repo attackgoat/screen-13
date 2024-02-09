@@ -200,6 +200,7 @@ impl Drop for ComputePipeline {
         error = "ComputePipelineInfoBuilderError"
     )
 )]
+#[non_exhaustive]
 pub struct ComputePipelineInfo {
     /// The number of descriptors to allocate for a given binding when using bindless (unbounded)
     /// syntax.

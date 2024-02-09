@@ -592,10 +592,7 @@ fn main() -> anyhow::Result<()> {
     let blas_size = AccelerationStructure::size_of(&event_loop.device, &blas_geometry_info);
     let blas = Arc::new(AccelerationStructure::create(
         &event_loop.device,
-        AccelerationStructureInfo {
-            ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
-            size: blas_size.create_size,
-        },
+        AccelerationStructureInfo::new_blas(blas_size.create_size),
     )?);
     let blas_device_address = AccelerationStructure::device_address(&blas);
 
@@ -654,10 +651,7 @@ fn main() -> anyhow::Result<()> {
     let tlas_size = AccelerationStructure::size_of(&event_loop.device, &tlas_geometry_info);
     let tlas = Arc::new(AccelerationStructure::create(
         &event_loop.device,
-        AccelerationStructureInfo {
-            ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
-            size: tlas_size.create_size,
-        },
+        AccelerationStructureInfo::new_tlas(tlas_size.create_size),
     )?);
 
     // ------------------------------------------------------------------------------------------ //

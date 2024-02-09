@@ -445,6 +445,7 @@ impl Drop for Buffer {
     derive(Debug),
     pattern = "owned"
 )]
+#[non_exhaustive]
 pub struct BufferInfo {
     /// Byte alignment of the base device address of the buffer.
     ///

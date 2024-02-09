@@ -66,49 +66,40 @@ impl ImageLoader {
         is_srgb: bool,
         is_temporary: bool,
     ) -> anyhow::Result<Arc<Image>> {
+        let format = match format {
+            ImageFormat::R8 | ImageFormat::R8G8 => {
+                if is_temporary {
+                    vk::Format::R8G8_UINT
+                } else if is_srgb {
+                    panic!("Unsupported format: R8G8_SRGB");
+                } else {
+                    vk::Format::R8G8_UNORM
+                }
+            }
+            ImageFormat::R8G8B8 | ImageFormat::R8G8B8A8 => {
+                if is_temporary {
+                    vk::Format::R8G8B8A8_UINT
+                } else if is_srgb {
+                    vk::Format::R8G8B8A8_SRGB
+                } else {
+                    vk::Format::R8G8B8A8_UNORM
+                }
+            }
+        };
+        let usage = if is_temporary {
+            vk::ImageUsageFlags::STORAGE
+                | vk::ImageUsageFlags::TRANSFER_DST
+                | vk::ImageUsageFlags::TRANSFER_SRC
+        } else {
+            vk::ImageUsageFlags::SAMPLED
+                | vk::ImageUsageFlags::TRANSFER_DST
+                | vk::ImageUsageFlags::TRANSFER_SRC
+        };
+
         Ok(Arc::new(
             Image::create(
                 &self.device,
-                ImageInfo {
-                    ty: ImageType::Texture2D,
-                    usage: if is_temporary {
-                        vk::ImageUsageFlags::STORAGE
-                            | vk::ImageUsageFlags::TRANSFER_DST
-                            | vk::ImageUsageFlags::TRANSFER_SRC
-                    } else {
-                        vk::ImageUsageFlags::SAMPLED
-                            | vk::ImageUsageFlags::TRANSFER_DST
-                            | vk::ImageUsageFlags::TRANSFER_SRC
-                    },
-                    flags: vk::ImageCreateFlags::empty(),
-                    fmt: match format {
-                        ImageFormat::R8 | ImageFormat::R8G8 => {
-                            if is_temporary {
-                                vk::Format::R8G8_UINT
-                            } else if is_srgb {
-                                panic!("Unsupported format: R8G8_SRGB");
-                            } else {
-                                vk::Format::R8G8_UNORM
-                            }
-                        }
-                        ImageFormat::R8G8B8 | ImageFormat::R8G8B8A8 => {
-                            if is_temporary {
-                                vk::Format::R8G8B8A8_UINT
-                            } else if is_srgb {
-                                vk::Format::R8G8B8A8_SRGB
-                            } else {
-                                vk::Format::R8G8B8A8_UNORM
-                            }
-                        }
-                    },
-                    width,
-                    height,
-                    depth: 1,
-                    linear_tiling: false,
-                    mip_level_count: 1,
-                    array_elements: 1,
-                    sample_count: SampleCount::X1,
-                },
+                ImageInfo::new_2d(format, width, height, usage),
             )
             .context("Unable to create new image")?,
         ))

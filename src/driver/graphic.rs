@@ -596,6 +596,7 @@ impl Drop for GraphicPipeline {
     derive(Clone, Debug),
     pattern = "owned"
 )]
+#[non_exhaustive]
 pub struct GraphicPipelineInfo {
     /// Specifies color blend state used when rasterization is enabled for any color attachments
     /// accessed during rendering.

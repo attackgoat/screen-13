@@ -227,10 +227,7 @@ fn record_accel_struct_builds(frame: &mut FrameContext, pool: &mut HashPool) {
     let instance_buf = frame.render_graph.bind_node(instance_buf);
     let tlas_size = AccelerationStructure::size_of(frame.device, &tlas_geometry_info);
     let tlas = pool
-        .lease(AccelerationStructureInfo {
-            ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
-            size: tlas_size.create_size,
-        })
+        .lease(AccelerationStructureInfo::new_tlas(tlas_size.create_size))
         .unwrap();
     let tlas_node = frame.render_graph.bind_node(tlas);
     let tlas_scratch_buf = frame.render_graph.bind_node(
