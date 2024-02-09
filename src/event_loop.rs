@@ -113,6 +113,15 @@ impl EventLoop {
                         event: WindowEvent::Focused(false),
                         ..
                     } => self.window.set_cursor_visible(true),
+                    Event::WindowEvent {
+                        event: WindowEvent::Resized(size),
+                        ..
+                    } => {
+                        let mut swapchain_info = self.swapchain.info();
+                        swapchain_info.width = size.width;
+                        swapchain_info.height = size.height;
+                        self.swapchain.set_info(swapchain_info);
+                    }
                     Event::AboutToWait => {
                         self.window.request_redraw();
                         return;
@@ -156,17 +165,6 @@ impl EventLoop {
                     let dt_raw = dt_duration.as_secs_f32();
                     dt_filtered = dt_filtered + (dt_raw - dt_filtered) / 10.0;
                 };
-
-                {
-                    profiling::scope!("Update swapchain");
-
-                    // Update the window size if it changes
-                    let window_size = self.window.inner_size();
-                    let mut swapchain_info = self.swapchain.info();
-                    swapchain_info.width = window_size.width;
-                    swapchain_info.height = window_size.height;
-                    self.swapchain.set_info(swapchain_info);
-                }
 
                 // Note: Errors when acquiring swapchain images are not considered fatal
                 match self.swapchain.acquire_next_image() {

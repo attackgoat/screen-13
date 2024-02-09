@@ -12,6 +12,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Expanded the number of functions and scopes profiled by the `profiling` crate
 - Increase `PoolInfo::DEFAULT_RESOURCE_CAPACITY` from 4 to 16 in order to prevent excess resource
   creation
+- `EventLoop`: Resize swapchain in response to events instead of each frame (saves 50 μs/frame)
 
 ## [0.9.4] - 2024-02-07
 
