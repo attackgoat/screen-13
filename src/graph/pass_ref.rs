@@ -3838,6 +3838,28 @@ impl<'a> RayTrace<'a> {
         self
     }
 
+    /// Set the stack size dynamically for a ray trace pipeline.
+    ///
+    /// See
+    /// [`RayTracePipelineInfo::dynamic_stack_size`](crate::driver::ray_trace::RayTracePipelineInfo::dynamic_stack_size)
+    /// and
+    /// [`vkCmdSetRayTracingPipelineStackSizeKHR`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkCmdSetRayTracingPipelineStackSizeKHR.html).
+    #[profiling::function]
+    pub fn set_stack_size(&self, pipeline_stack_size: u32) -> &Self {
+        debug_assert!(self.pipeline.info.dynamic_stack_size);
+
+        unsafe {
+            // Safely use unchecked because ray_trace_ext is checked during pipeline creation
+            self.device
+                .ray_trace_ext
+                .as_ref()
+                .unwrap_unchecked()
+                .cmd_set_ray_tracing_pipeline_stack_size(self.cmd_buf, pipeline_stack_size);
+        }
+
+        self
+    }
+
     // TODO: If the rayTraversalPrimitiveCulling or rayQuery features are enabled, the SkipTrianglesKHR and SkipAABBsKHR ray flags can be specified when tracing a ray. SkipTrianglesKHR and SkipAABBsKHR are mutually exclusive.
 
     /// Ray traces using the currently-bound [`RayTracePipeline`] and the given shader binding
@@ -3885,61 +3907,73 @@ impl<'a> RayTrace<'a> {
     #[profiling::function]
     pub fn trace_rays(
         &self,
-        raygen_shader_binding_tables: &vk::StridedDeviceAddressRegionKHR,
-        miss_shader_binding_tables: &vk::StridedDeviceAddressRegionKHR,
-        hit_shader_binding_tables: &vk::StridedDeviceAddressRegionKHR,
-        callable_shader_binding_tables: &vk::StridedDeviceAddressRegionKHR,
+        raygen_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        miss_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        hit_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        callable_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
         width: u32,
         height: u32,
         depth: u32,
     ) -> &Self {
         unsafe {
-            self.device.ray_trace_ext.as_ref().unwrap().cmd_trace_rays(
-                self.cmd_buf,
-                raygen_shader_binding_tables,
-                miss_shader_binding_tables,
-                hit_shader_binding_tables,
-                callable_shader_binding_tables,
-                width,
-                height,
-                depth,
-            );
+            // Safely use unchecked because ray_trace_ext is checked during pipeline creation
+            self.device
+                .ray_trace_ext
+                .as_ref()
+                .unwrap_unchecked()
+                .cmd_trace_rays(
+                    self.cmd_buf,
+                    raygen_shader_binding_table,
+                    miss_shader_binding_table,
+                    hit_shader_binding_table,
+                    callable_shader_binding_table,
+                    width,
+                    height,
+                    depth,
+                );
         }
 
         self
     }
 
-    // pub fn trace_rays_indirect(
-    //     &self,
-    //     // _tlas: RayTraceAccelerationNode,
-    //     _args_buf: BufferNode,
-    //     _args_buf_offset: vk::DeviceSize,
-    // ) -> &Self {
-    //     // let mut pass = self.pass.as_mut();
-    //     // let push_consts = take(&mut pass.push_consts);
-    //     // let pipeline = Shared::clone(pass.pipelines.get(0).unwrap().unwrap_ray_trace());
-    //     // let layout = pipeline.layout;
+    /// Ray traces using the currently-bound [`RayTracePipeline`] and the given shader binding
+    /// tables.
+    ///
+    /// `indirect_device_address` is a [buffer device address] which is a pointer to a
+    /// [`vk::TraceRaysIndirectCommandKHR`] structure containing the trace ray parameters.
+    ///
+    /// See [`vkCmdTraceRaysIndirectKHR`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/vkCmdTraceRaysIndirectKHR.html).
+    ///
+    /// [buffer device address]: Buffer::device_address
+    #[profiling::function]
+    pub fn trace_rays_indirect(
+        &self,
+        raygen_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        miss_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        hit_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        callable_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        indirect_device_address: vk::DeviceAddress,
+    ) -> &Self {
+        use std::slice::from_ref;
 
-    //     // // TODO: Bind op to get a descriptor?
+        unsafe {
+            // Safely use unchecked because ray_trace_ext is checked during pipeline creation
+            self.device
+                .ray_trace_ext
+                .as_ref()
+                .unwrap_unchecked()
+                .cmd_trace_rays_indirect(
+                    self.cmd_buf,
+                    from_ref(raygen_shader_binding_table),
+                    from_ref(miss_shader_binding_table),
+                    from_ref(hit_shader_binding_table),
+                    from_ref(callable_shader_binding_table),
+                    indirect_device_address,
+                )
+        }
 
-    //     // self.pass.push_execute(move |cmd_buf, bindings| unsafe {
-    //     //     push_constants(push_consts, cmd_buf, layout);
-
-    //     //     let args_buf_address = Buffer::device_address(&bindings[args_buf]) + args_buf_offset;
-    //     //     cmd_buf
-    //     //         .device
-    //     //         .ray_trace_pipeline_ext
-    //     //         .cmd_trace_rays_indirect(
-    //     //             **cmd_buf,
-    //     //             from_ref(&pipeline.shader_bindings.raygen),
-    //     //             from_ref(&pipeline.shader_bindings.miss),
-    //     //             from_ref(&pipeline.shader_bindings.hit),
-    //     //             from_ref(&pipeline.shader_bindings.callable),
-    //     //             args_buf_address,
-    //     //         );
-    //     // });
-    //     self
-    // }
+        self
+    }
 }
 
 /// Describes a portion of a resource which is bound.

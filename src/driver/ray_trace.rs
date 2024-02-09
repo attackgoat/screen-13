@@ -212,7 +212,16 @@ impl RayTracePipeline {
                 shader_stages.push(stage.build());
             }
 
-            let ray_trace_ext = device.ray_trace_ext.as_ref().unwrap();
+            let mut dynamic_states = Vec::with_capacity(1);
+
+            if info.dynamic_stack_size {
+                dynamic_states.push(vk::DynamicState::RAY_TRACING_PIPELINE_STACK_SIZE_KHR);
+            }
+
+            let ray_trace_ext = device
+                .ray_trace_ext
+                .as_ref()
+                .ok_or(DriverError::Unsupported)?;
             let pipeline = ray_trace_ext
                 .create_ray_tracing_pipelines(
                     vk::DeferredOperationKHR::null(),
@@ -231,6 +240,10 @@ impl RayTracePipeline {
                             ),
                         )
                         .layout(layout)
+                        .dynamic_state(
+                            &vk::PipelineDynamicStateCreateInfo::builder()
+                                .dynamic_states(&dynamic_states),
+                        )
                         .build()],
                     None,
                 )
@@ -314,6 +327,26 @@ impl RayTracePipeline {
 
         Ok(&this.shader_group_handles[start..end])
     }
+
+    /// Query ray trace pipeline shader group shader stack size.
+    ///
+    /// The return value is the ray tracing pipeline stack size in bytes for the specified shader as
+    /// called from the specified shader group.
+    #[profiling::function]
+    pub fn group_stack_size(
+        this: &Self,
+        group: u32,
+        group_shader: vk::ShaderGroupShaderKHR,
+    ) -> vk::DeviceSize {
+        unsafe {
+            // Safely use unchecked because ray_trace_ext is checked during pipeline creation
+            this.device
+                .ray_trace_ext
+                .as_ref()
+                .unwrap_unchecked()
+                .get_ray_tracing_shader_group_stack_size(this.pipeline, group, group_shader)
+        }
+    }
 }
 
 impl Deref for RayTracePipeline {
@@ -380,6 +413,15 @@ pub struct RayTracePipelineInfo {
     /// ```
     #[builder(default = "8192")]
     pub bindless_descriptor_count: u32,
+
+    /// Allow [setting the stack size dynamically] for a ray trace pipeline.
+    ///
+    /// When set, you must manually set the stack size during ray trace passes using
+    /// [`RayTrace::set_stack_size`](crate::graph::pass_ref::RayTrace::set_stack_size).
+    ///
+    /// [setting the stack size dynamically]: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkCmdSetRayTracingPipelineStackSizeKHR.html
+    #[builder(default)]
+    pub dynamic_stack_size: bool,
 
     /// The [maximum recursion depth] of shaders executed by this pipeline.
     ///
