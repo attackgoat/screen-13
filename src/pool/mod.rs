@@ -154,7 +154,7 @@ impl<T> Drop for Lease<T> {
         if let Some(cache) = self.cache_ref.upgrade() {
             let mut cache = cache.lock();
 
-            if cache.len() >= cache.capacity() {
+            if cache.len() == cache.capacity() {
                 cache.pop_front();
             }
 
@@ -237,7 +237,7 @@ pub struct PoolInfo {
 
 impl PoolInfo {
     /// The maximum size of a single bucket of resource instances.
-    pub const DEFAULT_RESOURCE_CAPACITY: usize = 4;
+    pub const DEFAULT_RESOURCE_CAPACITY: usize = 16;
 
     /// Constructs a new `PoolInfo` with the given acceleration structure, buffer and image resource
     /// capacity for any single bucket.
