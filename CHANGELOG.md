@@ -18,6 +18,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   update strategies:
   - Use `..Default::default()` syntax during struct creation
   - Use associated constructor functions such as `ImageInfo::new_2d(..)` 
+- `BufferInfo::can_map` renamed to `BufferInfo::mappable`
 - Increase `PoolInfo::DEFAULT_RESOURCE_CAPACITY` from 4 to 16 in order to prevent excess resource
   creation
 

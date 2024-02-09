@@ -145,7 +145,7 @@ impl Pool<BufferInfo, Buffer> for FifoPool {
             for idx in 0..cache.len() {
                 let item = &cache[idx];
                 if item.info.alignment >= info.alignment
-                    && item.info.can_map == info.can_map
+                    && item.info.mappable == info.mappable
                     && item.info.size >= info.size
                     && item.info.usage.contains(info.usage)
                 {

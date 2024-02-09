@@ -111,7 +111,7 @@ impl Buffer {
         let mut requirements = unsafe { device.get_buffer_memory_requirements(buffer) };
         requirements.alignment = requirements.alignment.max(info.alignment);
 
-        let memory_location = if info.can_map {
+        let memory_location = if info.mappable {
             MemoryLocation::CpuToGpu
         } else {
             MemoryLocation::GpuOnly
@@ -251,7 +251,7 @@ impl Buffer {
     ///
     /// # Panics
     ///
-    /// Panics if the buffer was not created with the `can_map` flag set to `true`.
+    /// Panics if the buffer was not created with the `mappable` flag set to `true`.
     ///
     /// # Examples
     ///
@@ -318,7 +318,7 @@ impl Buffer {
     ///
     /// # Panics
     ///
-    /// Panics if the buffer was not created with the `can_map` flag set to `true`.
+    /// Panics if the buffer was not created with the `mappable` flag set to `true`.
     ///
     /// # Examples
     ///
@@ -344,8 +344,8 @@ impl Buffer {
     #[profiling::function]
     pub fn mapped_slice(this: &Self) -> &[u8] {
         debug_assert!(
-            this.info.can_map,
-            "Buffer is not mappable - create using can_map flag"
+            this.info.mappable,
+            "Buffer is not mappable - create using mappable flag"
         );
 
         &this.allocation.as_ref().unwrap().mapped_slice().unwrap()[0..this.info.size as usize]
@@ -355,7 +355,7 @@ impl Buffer {
     ///
     /// # Panics
     ///
-    /// Panics if the buffer was not created with the `can_map` flag set to `true`.
+    /// Panics if the buffer was not created with the `mappable` flag set to `true`.
     ///
     /// # Examples
     ///
@@ -382,8 +382,8 @@ impl Buffer {
     #[profiling::function]
     pub fn mapped_slice_mut(this: &mut Self) -> &mut [u8] {
         debug_assert!(
-            this.info.can_map,
-            "Buffer is not mappable - create using can_map flag"
+            this.info.mappable,
+            "Buffer is not mappable - create using mappable flag"
         );
 
         &mut this
@@ -453,6 +453,10 @@ pub struct BufferInfo {
     #[builder(default)]
     pub alignment: vk::DeviceSize,
 
+    /// Specifies a buffer whose memory is host visible and may be mapped.
+    #[builder(default)]
+    pub mappable: bool,
+
     /// Size in bytes of the buffer to be created.
     #[builder(default)]
     pub size: vk::DeviceSize,
@@ -460,10 +464,6 @@ pub struct BufferInfo {
     /// A bitmask of specifying allowed usages of the buffer.
     #[builder(default)]
     pub usage: vk::BufferUsageFlags,
-
-    /// Specifies a buffer whose memory is host visible and may be mapped.
-    #[builder(default)]
-    pub can_map: bool,
 }
 
 impl BufferInfo {
@@ -484,7 +484,7 @@ impl BufferInfo {
             size,
             usage | vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::TRANSFER_SRC,
         )
-        .can_map(true)
+        .mappable(true)
     }
 }
 

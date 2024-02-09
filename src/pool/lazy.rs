@@ -197,7 +197,7 @@ impl Pool<BufferInfo, Buffer> for LazyPool {
     fn lease(&mut self, info: BufferInfo) -> Result<Lease<Buffer>, DriverError> {
         let cache = self
             .buffer_cache
-            .entry((info.can_map, info.alignment))
+            .entry((info.mappable, info.alignment))
             .or_insert_with(|| PoolInfo::explicit_cache(self.info.buffer_capacity));
         let cache_ref = Arc::downgrade(cache);
 
