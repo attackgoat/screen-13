@@ -538,16 +538,4 @@ impl EventLoopBuilder {
             window,
         })
     }
-
-    /// Helper function to automatically select the best UNORM format.
-    #[deprecated = "Use Surface::linear"]
-    pub fn linear_surface_format(formats: &[vk::SurfaceFormatKHR]) -> Option<vk::SurfaceFormatKHR> {
-        Surface::linear(formats)
-    }
-
-    /// Helper function to automatically select the best sRGB format.
-    #[deprecated = "Use Surface::srgb"]
-    pub fn srgb_surface_format(formats: &[vk::SurfaceFormatKHR]) -> Option<vk::SurfaceFormatKHR> {
-        Surface::srgb(formats)
-    }
 }

@@ -30,6 +30,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `input`: This module did not support functionality unique to _Screen 13_ and did not have higher
   quality than existing solutions such as
   [`winit_input_helper`](https://crates.io/crates/winit_input_helper)
+- `EventLoopBuilder::linear_surface_format`/`srgb_surface_format`: Use `Surface::linear`/`srgb`
+  instead
 
 ## [0.9.4] - 2024-02-07
 
