@@ -7,7 +7,7 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 
 [dependencies]
-bytemuck = "1.13"
+bytemuck = "1.14"
 
 imgui = { git = "https://github.com/imgui-rs/imgui-rs", rev = "ca05418cb449dadaabf014487c5c965908dfcbdd" } 
 imgui-winit-support = { git = "https://github.com/imgui-rs/imgui-rs", rev = "ca05418cb449dadaabf014487c5c965908dfcbdd" }
