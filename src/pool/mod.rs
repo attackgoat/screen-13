@@ -82,7 +82,7 @@
 //!
 //! * Non-zero cost: Atomic load and compatibility check per active alias
 //! * May cause GPU stalling if there is not enough work being submitted
-//! * Aliased resources are typed `Arc<Lease<T>>` and are not guaranteed to me mutable or unique
+//! * Aliased resources are typed `Arc<Lease<T>>` and are not guaranteed to be mutable or unique
 
 pub mod alias;
 pub mod fifo;
