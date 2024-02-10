@@ -30,7 +30,7 @@ const RGBA_COLOR_COMPONENTS: vk::ColorComponentFlags = vk::ColorComponentFlags::
 #[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[builder(
     build_fn(private, name = "fallible_build", error = "BlendModeBuilderError"),
-    derive(Debug),
+    derive(Clone, Copy, Debug),
     pattern = "owned"
 )]
 pub struct BlendMode {
@@ -172,7 +172,7 @@ impl From<UninitializedFieldError> for BlendModeBuilderError {
         name = "fallible_build",
         error = "DepthStencilModeBuilderError"
     ),
-    derive(Debug),
+    derive(Clone, Copy, Debug),
     pattern = "owned"
 )]
 pub struct DepthStencilMode {

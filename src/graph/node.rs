@@ -187,7 +187,7 @@ macro_rules! node {
     ($name:ident) => {
         paste::paste! {
             /// Resource node.
-            #[derive(Debug)]
+            #[derive(Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
             pub struct [<$name Node>] {
                 pub(super) idx: NodeIndex,
             }

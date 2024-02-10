@@ -602,7 +602,7 @@ pub enum AccelerationStructureGeometryData {
         name = "fallible_build",
         error = "AccelerationStructureInfoBuilderError"
     ),
-    derive(Debug),
+    derive(Clone, Copy, Debug),
     pattern = "owned"
 )]
 #[non_exhaustive]

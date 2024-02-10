@@ -197,7 +197,7 @@ lease_builder!(ImageInfo => Image);
 #[derive(Builder, Clone, Copy, Debug)]
 #[builder(
     build_fn(private, name = "fallible_build", error = "PoolInfoBuilderError"),
-    derive(Debug),
+    derive(Clone, Copy, Debug),
     pattern = "owned"
 )]
 #[non_exhaustive]

@@ -193,12 +193,13 @@ impl Drop for ComputePipeline {
 /// Information used to create a [`ComputePipeline`] instance.
 #[derive(Builder, Clone, Debug, Default)]
 #[builder(
-    pattern = "owned",
     build_fn(
         private,
         name = "fallible_build",
         error = "ComputePipelineInfoBuilderError"
-    )
+    ),
+    derive(Clone, Debug),
+    pattern = "owned"
 )]
 #[non_exhaustive]
 pub struct ComputePipelineInfo {

@@ -326,7 +326,7 @@ impl Drop for Image {
 #[derive(Builder, Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[builder(
     build_fn(private, name = "fallible_build", error = "ImageInfoBuilderError"),
-    derive(Debug),
+    derive(Copy, Clone, Debug),
     pattern = "owned"
 )]
 #[non_exhaustive]
@@ -727,6 +727,7 @@ impl Drop for ImageView {
 #[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[builder(
     build_fn(private, name = "fallible_build", error = "ImageViewInfoBuilderError"),
+    derive(Clone, Copy, Debug),
     pattern = "owned"
 )]
 pub struct ImageViewInfo {

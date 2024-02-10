@@ -18,6 +18,7 @@ use {
 #[derive(Builder, Clone, Debug)]
 #[builder(
     build_fn(private, name = "fallible_build", error = "HotShaderBuilderError"),
+    derive(Clone, Debug),
     pattern = "owned"
 )]
 pub struct HotShader {

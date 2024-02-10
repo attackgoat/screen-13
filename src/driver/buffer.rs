@@ -442,7 +442,7 @@ impl Drop for Buffer {
 #[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[builder(
     build_fn(private, name = "fallible_build", error = "BufferInfoBuilderError"),
-    derive(Debug),
+    derive(Clone, Copy, Debug),
     pattern = "owned"
 )]
 #[non_exhaustive]

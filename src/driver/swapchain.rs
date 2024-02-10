@@ -522,7 +522,7 @@ pub enum SwapchainError {
 #[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[builder(
     build_fn(private, name = "fallible_build", error = "SwapchainInfoBuilderError"),
-    derive(Debug),
+    derive(Clone, Copy, Debug),
     pattern = "owned"
 )]
 #[non_exhaustive]

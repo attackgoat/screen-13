@@ -347,7 +347,7 @@ impl Drop for Sampler {
 #[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[builder(
     build_fn(private, name = "fallible_build", error = "SamplerInfoBuilderError"),
-    derive(Debug),
+    derive(Clone, Copy, Debug),
     pattern = "owned"
 )]
 pub struct SamplerInfo {
@@ -476,6 +476,7 @@ impl From<UninitializedFieldError> for SamplerInfoBuilderError {
 #[derive(Builder, Clone)]
 #[builder(
     build_fn(private, name = "fallible_build", error = "ShaderBuilderError"),
+    derive(Clone, Debug),
     pattern = "owned"
 )]
 pub struct Shader {
