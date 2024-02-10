@@ -56,7 +56,35 @@
 //! ### Use a [`HashPool`](self::hash::HashPool) when:
 //! * High performance is most important
 //! * Resources have consistent attributes each frame
+//!
+//! # When Should You Use Resource Aliasing?
+//!
+//! Wrapping any pool using [`AliasPool::new`](self::alias::AliasPool::new) enables resource
+//! aliasing, which prevents excess resources from being created even when different parts of your
+//! code request new resources.
+//!
+//! **_NOTE:_** Render graph submission will automatically attempt to re-order submitted passes to
+//! reduce contention between individual resources.
+//!
+//! **_NOTE:_** In cases where multiple aliased resources using identical request information are
+//! used in the same render graph pass you must ensure the resources are aliased from different
+//! pools. There is currently no tagging or filter which would prevent "ping-pong" rendering of such
+//! resources from being the same actual resources; this causes Vulkan validation warnings when
+//! reading from and writing to the same images, or whatever your operations may be.
+//!
+//! ### Pros:
+//!
+//! * Fewer resources are created overall
+//! * Wrapped pools behave like and retain all functionality of unwrapped pools
+//! * Easy to experiment with and benchmark in your existing code
+//!
+//! ### Cons:
+//!
+//! * Non-zero cost: Atomic load and compatibility check per active alias
+//! * May cause GPU stalling if there is not enough work being submitted
+//! * Aliased resources are typed `Arc<Lease<T>>` and are not guaranteed to me mutable or unique
 
+pub mod alias;
 pub mod fifo;
 pub mod hash;
 pub mod lazy;

@@ -94,6 +94,9 @@ let my_pipeline = GraphicPipeline::create(&device, info, [vert, frag])?;
 Multiple [`pool`] types are available to reduce the impact of frequently creating and dropping
 resources. Leased resources behave identically to owned resources and can be used in a render graph.
 
+Resource aliasing is also availble as an optional way to reduce the number of concurrent resources
+that may be required.
+
 For example, leasing an image:
 
 ```no_run
@@ -382,8 +385,11 @@ pub mod prelude {
                 Bind, ClearColorValue, RenderGraph, Unbind,
             },
             pool::{
-                fifo::FifoPool, hash::HashPool, lazy::LazyPool, Lease, Pool, PoolInfo,
-                PoolInfoBuilder,
+                alias::{Alias, AliasPool},
+                fifo::FifoPool,
+                hash::HashPool,
+                lazy::LazyPool,
+                Lease, Pool, PoolInfo, PoolInfoBuilder,
             },
         },
         ash::vk,

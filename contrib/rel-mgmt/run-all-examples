@@ -17,6 +17,7 @@ cargo build --examples
 
 # Run all regular examples, in debug mode, next
 cargo run --example hello_world
+cargo run --example aliasing
 cargo run --example cpu_readback
 cargo run --example subgroup_ops
 cargo run --example bindless

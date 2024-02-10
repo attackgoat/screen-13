@@ -11,6 +11,7 @@ See the [README](../README.md) for more information.
 
 Example | Instructions | Preview
  --- | --- | :---:
+[aliasing.rs](aliasing.rs) | <pre>cargo run --example aliasing</pre> | _See console output_
 [cpu_readback.rs](cpu_readback.rs) | <pre>cargo run --example cpu_readback</pre> | _See console output_
 [debugger.rs](debugger.rs) | <pre>cargo run --example debugger</pre> | _See console output_
 [subgroup_ops.rs](subgroup_ops.rs) | <pre>cargo run --example subgroup_ops</pre> | _See console output_

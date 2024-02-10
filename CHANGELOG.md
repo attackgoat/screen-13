@@ -10,6 +10,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - Ray tracing support for `vkCmdTraceRaysIndirectKHR` and dynamic stack size
+- Resource aliasing re-introduced - see [`examples/aliasing.rs`](examples/aliasing.rs)
 - Expanded the number of functions and scopes profiled by the `profiling` crate
 
 ### Changed
