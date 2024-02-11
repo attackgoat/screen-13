@@ -217,20 +217,17 @@ impl Image {
         // Moves the image view cache from the current instance to the clone!
         let mut image_view_cache = this.image_view_cache.lock();
         let image_view_cache = take(&mut *image_view_cache);
+        let Self { image, info, .. } = *this;
 
         Self {
             allocation: None,
             device: Arc::clone(&this.device),
-            image: this.image,
+            image,
             image_view_cache: Mutex::new(image_view_cache),
-            info: this.info,
+            info,
             name: this.name.clone(),
             prev_access: AtomicU8::new(access_type_into_u8(AccessType::Nothing)),
         }
-    }
-
-    fn create_view(this: &Self, info: ImageViewInfo) -> Result<ImageView, DriverError> {
-        ImageView::create(&this.device, info, this)
     }
 
     #[profiling::function]
@@ -284,7 +281,11 @@ impl Image {
 
         Ok(match image_view_cache.entry(info) {
             Entry::Occupied(entry) => entry.get().image_view,
-            Entry::Vacant(entry) => entry.insert(Self::create_view(this, info)?).image_view,
+            Entry::Vacant(entry) => {
+                entry
+                    .insert(ImageView::create(&this.device, info, this.image)?)
+                    .image_view
+            }
         })
     }
 }
@@ -673,7 +674,7 @@ impl ImageView {
     fn create(
         device: &Arc<Device>,
         info: impl Into<ImageViewInfo>,
-        image: &Image,
+        image: vk::Image,
     ) -> Result<Self, DriverError> {
         let info = info.into();
         let device = Arc::clone(device);
@@ -689,7 +690,7 @@ impl ImageView {
                 b: vk::ComponentSwizzle::B,
                 a: vk::ComponentSwizzle::A,
             },
-            image: **image,
+            image,
             subresource_range: vk::ImageSubresourceRange {
                 aspect_mask: info.aspect_mask,
                 base_array_layer: info.base_array_layer,
