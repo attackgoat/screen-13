@@ -9,7 +9,7 @@ use {
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
     log::{debug, info, warn},
-    std::{ops::Deref, slice, sync::Arc, thread::panicking, time::Duration},
+    std::{ops::Deref, slice, sync::Arc, thread::panicking},
 };
 
 /// Provides the ability to present rendering results to a [`Surface`].
@@ -18,12 +18,11 @@ pub struct Swapchain {
     device: Arc<Device>,
     images: Vec<Option<Image>>,
     info: SwapchainInfo,
-    next_semaphore: usize,
-    acquired_semaphores: Vec<vk::Semaphore>,
-    rendered_semaphores: Vec<vk::Semaphore>, // TODO: make a single semaphore
     suboptimal: bool,
     surface: Surface,
     swapchain: vk::SwapchainKHR,
+    sync_idx: usize,
+    syncs: Vec<Synchronization>,
 }
 
 impl Swapchain {
@@ -40,14 +39,13 @@ impl Swapchain {
 
         Ok(Swapchain {
             device,
-            images: vec![],
+            images: Default::default(),
             info,
-            next_semaphore: 0,
-            acquired_semaphores: vec![],
-            rendered_semaphores: vec![],
             suboptimal: true,
             surface,
             swapchain: vk::SwapchainKHR::null(),
+            sync_idx: 0,
+            syncs: Default::default(),
         })
     }
 
@@ -61,19 +59,23 @@ impl Swapchain {
             self.suboptimal = false;
         }
 
-        let acquired = self.acquired_semaphores[self.next_semaphore];
-        let rendered = self.rendered_semaphores[self.next_semaphore];
+        let Synchronization {
+            acquired,
+            ready,
+            rendered,
+        } = self.syncs[self.sync_idx];
+
+        unsafe { self.device.reset_fences(slice::from_ref(&ready)) }.map_err(|err| {
+            warn!("{err}");
+
+            SwapchainError::SurfaceLost
+        })?;
+
         let image_idx = unsafe {
-            self.device
-                .swapchain_ext
-                .as_ref()
-                .unwrap()
-                .acquire_next_image(
-                    self.swapchain,
-                    Duration::from_secs_f32(10.0).as_nanos() as _,
-                    acquired,
-                    vk::Fence::null(),
-                )
+            // We checked during recreate_swapchain
+            let swapchain_ext = self.device.swapchain_ext.as_ref().unwrap_unchecked();
+
+            swapchain_ext.acquire_next_image(self.swapchain, u64::MAX, acquired, ready)
         }
         .map(|(idx, suboptimal)| {
             if suboptimal {
@@ -85,13 +87,20 @@ impl Swapchain {
 
         match image_idx {
             Ok(image_idx) => {
-                self.next_semaphore += 1;
-                self.next_semaphore %= self.images.len();
+                self.sync_idx += 1;
+                self.sync_idx %= self.syncs.len();
+
+                let image = self.images[image_idx as usize].take().ok_or_else(|| {
+                    self.suboptimal = true;
+
+                    SwapchainError::Suboptimal
+                })?;
 
                 Ok(SwapchainImage {
-                    image: self.images[image_idx as usize].take().unwrap(),
-                    idx: image_idx,
                     acquired,
+                    image,
+                    image_idx,
+                    ready,
                     rendered,
                 })
             }
@@ -128,15 +137,27 @@ impl Swapchain {
         }
     }
 
+    fn clamp_desired_image_count(
+        desired_image_count: u32,
+        surface_capabilities: vk::SurfaceCapabilitiesKHR,
+    ) -> u32 {
+        let mut desired_image_count = desired_image_count.max(surface_capabilities.min_image_count);
+
+        if surface_capabilities.max_image_count != 0 {
+            desired_image_count = desired_image_count.min(surface_capabilities.max_image_count);
+        }
+
+        desired_image_count
+    }
+
     #[profiling::function]
     fn destroy(&mut self) {
         if self.swapchain != vk::SwapchainKHR::null() {
             unsafe {
-                self.device
-                    .swapchain_ext
-                    .as_ref()
-                    .unwrap()
-                    .destroy_swapchain(self.swapchain, None);
+                // We checked when creating the swapchain
+                let swapchain_ext = self.device.swapchain_ext.as_ref().unwrap_unchecked();
+
+                swapchain_ext.destroy_swapchain(self.swapchain, None);
             }
 
             self.swapchain = vk::SwapchainKHR::null();
@@ -168,13 +189,22 @@ impl Swapchain {
             "Queue index must be within the range of the available queues created by the device."
         );
 
+        if let Err(err) = Device::wait_for_fence(&self.device, &image.ready) {
+            warn!("Unable to wait for presentation ready fence: {err}");
+
+            return;
+        }
+
+        // We checked when handling out the swapchain image
+        let swapchain_ext = unsafe { self.device.swapchain_ext.as_ref().unwrap_unchecked() };
+
         let present_info = vk::PresentInfoKHR::builder()
             .wait_semaphores(slice::from_ref(&image.rendered))
             .swapchains(slice::from_ref(&self.swapchain))
-            .image_indices(slice::from_ref(&image.idx));
+            .image_indices(slice::from_ref(&image.image_idx));
 
         unsafe {
-            match self.device.swapchain_ext.as_ref().unwrap().queue_present(
+            match swapchain_ext.queue_present(
                 self.device.queues[queue_family_index][queue_index],
                 &present_info,
             ) {
@@ -189,37 +219,39 @@ impl Swapchain {
                     // Handled in the next frame
                     self.suboptimal = true;
                 }
-                _ => {
+                Err(err) => {
                     // Probably:
                     // VK_ERROR_OUT_OF_HOST_MEMORY
                     // VK_ERROR_OUT_OF_DEVICE_MEMORY
-                    warn!("Unhandled error");
+                    warn!("{err}");
                 }
             }
         }
 
-        self.images[image.idx as usize] = Some(image.image);
+        debug_assert!(self.images[image.image_idx as usize].is_none());
+
+        self.images[image.image_idx as usize] = Some(image.image);
     }
 
     #[profiling::function]
     fn recreate_swapchain(&mut self) -> Result<(), DriverError> {
-        let res = unsafe { self.device.device_wait_idle() };
-
-        if let Err(err) = res {
-            warn!("device_wait_idle() failed: {err:?}");
+        if let Err(err) = unsafe { self.device.device_wait_idle() } {
+            warn!("device_wait_idle() failed: {err}");
         }
 
         self.destroy();
 
+        let surface_ext = self.device.surface_ext.as_ref().ok_or_else(|| {
+            warn!("Unsupported surface extension");
+
+            DriverError::Unsupported
+        })?;
+
         let mut surface_capabilities = unsafe {
-            self.device
-                .surface_ext
-                .as_ref()
-                .unwrap()
-                .get_physical_device_surface_capabilities(
-                    *self.device.physical_device,
-                    *self.surface,
-                )
+            surface_ext.get_physical_device_surface_capabilities(
+                *self.device.physical_device,
+                *self.surface,
+            )
         }
         .map_err(|err| {
             warn!("{err}");
@@ -307,14 +339,10 @@ impl Swapchain {
         };
 
         let present_modes = unsafe {
-            self.device
-                .surface_ext
-                .as_ref()
-                .unwrap()
-                .get_physical_device_surface_present_modes(
-                    *self.device.physical_device,
-                    *self.surface,
-                )
+            surface_ext.get_physical_device_surface_present_modes(
+                *self.device.physical_device,
+                *self.surface,
+            )
         }
         .map_err(|err| {
             warn!("{err}");
@@ -336,7 +364,16 @@ impl Swapchain {
             surface_capabilities.current_transform
         };
 
-        // info!("supported_usage_flags {:#?}", &surface_capabilities.supported_usage_flags);
+        info!(
+            "supported_usage_flags {:#?}",
+            &surface_capabilities.supported_usage_flags
+        );
+
+        let swapchain_ext = self.device.swapchain_ext.as_ref().ok_or_else(|| {
+            warn!("Unsupported swapchain extension");
+
+            DriverError::Unsupported
+        })?;
 
         let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
             .surface(*self.surface)
@@ -355,27 +392,21 @@ impl Swapchain {
             .clipped(true)
             .image_array_layers(1)
             .build();
-        let swapchain = unsafe {
-            self.device
-                .swapchain_ext
-                .as_ref()
-                .unwrap()
-                .create_swapchain(&swapchain_create_info, None)
-        }
-        .map_err(|err| {
-            warn!("{err}");
+        let swapchain = unsafe { swapchain_ext.create_swapchain(&swapchain_create_info, None) }
+            .map_err(|err| {
+                warn!("{err}");
 
-            DriverError::Unsupported
-        })?;
+                DriverError::Unsupported
+            })?;
 
-        let vk_images = unsafe {
-            self.device
-                .swapchain_ext
-                .as_ref()
-                .unwrap()
-                .get_swapchain_images(swapchain)
-        }
-        .unwrap();
+        let vk_images =
+            unsafe { swapchain_ext.get_swapchain_images(swapchain) }.map_err(|err| match err {
+                vk::Result::INCOMPLETE => DriverError::InvalidData,
+                vk::Result::ERROR_OUT_OF_DEVICE_MEMORY | vk::Result::ERROR_OUT_OF_HOST_MEMORY => {
+                    DriverError::OutOfMemory
+                }
+                _ => DriverError::Unsupported,
+            })?;
         let images: Vec<Option<Image>> = vk_images
             .into_iter()
             .enumerate()
@@ -395,34 +426,24 @@ impl Swapchain {
             })
             .collect();
 
-        assert_eq!(desired_image_count, images.len() as u32);
+        debug_assert_eq!(desired_image_count, images.len() as u32);
 
         self.info.height = surface_height;
         self.info.width = surface_width;
-        self.next_semaphore = 0;
         self.images = images;
         self.swapchain = swapchain;
+        self.sync_idx = 0;
 
         info!(
-            "Swapchain {}x{} {:?} {present_mode:?}",
-            self.info.width, self.info.height, self.info.format.format
+            "Swapchain {}x{} {:?} {present_mode:?}x{}",
+            self.info.width,
+            self.info.height,
+            self.info.format.format,
+            self.images.len(),
         );
 
-        while self.acquired_semaphores.len() < self.images.len() {
-            self.acquired_semaphores.push(
-                unsafe {
-                    self.device
-                        .create_semaphore(&vk::SemaphoreCreateInfo::default(), None)
-                }
-                .unwrap(),
-            );
-            self.rendered_semaphores.push(
-                unsafe {
-                    self.device
-                        .create_semaphore(&vk::SemaphoreCreateInfo::default(), None)
-                }
-                .unwrap(),
-            );
+        for _ in 0..self.images.len() {
+            self.syncs.push(Synchronization::create(&self.device)?);
         }
 
         Ok(())
@@ -437,19 +458,6 @@ impl Swapchain {
             self.suboptimal = true;
         }
     }
-
-    fn clamp_desired_image_count(
-        desired_image_count: u32,
-        surface_capabilities: vk::SurfaceCapabilitiesKHR,
-    ) -> u32 {
-        let mut desired_image_count = desired_image_count.max(surface_capabilities.min_image_count);
-
-        if surface_capabilities.max_image_count != 0 {
-            desired_image_count = desired_image_count.min(surface_capabilities.max_image_count);
-        }
-
-        desired_image_count
-    }
 }
 
 impl Drop for Swapchain {
@@ -459,17 +467,16 @@ impl Drop for Swapchain {
             return;
         }
 
-        unsafe {
-            self.device.device_wait_idle().unwrap_or_default();
-        };
-
-        for semaphore in self
-            .acquired_semaphores
-            .drain(..)
-            .chain(self.rendered_semaphores.drain(..))
+        for Synchronization {
+            acquired,
+            ready,
+            rendered,
+        } in self.syncs.drain(..)
         {
             unsafe {
-                self.device.destroy_semaphore(semaphore, None);
+                self.device.destroy_semaphore(acquired, None);
+                self.device.destroy_fence(ready, None);
+                self.device.destroy_semaphore(rendered, None);
             }
         }
 
@@ -481,18 +488,28 @@ impl Drop for Swapchain {
 #[derive(Debug)]
 pub struct SwapchainImage {
     pub(crate) acquired: vk::Semaphore,
-    pub(crate) image: Image,
-    pub(crate) idx: u32,
+    image: Image,
+    image_idx: u32,
+    ready: vk::Fence,
     pub(crate) rendered: vk::Semaphore,
 }
 
 impl Clone for SwapchainImage {
     fn clone(&self) -> Self {
+        let &Self {
+            acquired,
+            image_idx,
+            ready,
+            rendered,
+            ..
+        } = self;
+
         Self {
-            acquired: self.acquired,
+            acquired,
             image: Image::clone_raw(&self.image),
-            idx: self.idx,
-            rendered: self.rendered,
+            image_idx,
+            ready,
+            rendered,
         }
     }
 }
@@ -583,5 +600,26 @@ struct SwapchainInfoBuilderError;
 impl From<UninitializedFieldError> for SwapchainInfoBuilderError {
     fn from(_: UninitializedFieldError) -> Self {
         Self
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Synchronization {
+    acquired: vk::Semaphore,
+    ready: vk::Fence,
+    rendered: vk::Semaphore,
+}
+
+impl Synchronization {
+    fn create(device: &Device) -> Result<Self, DriverError> {
+        let acquired = Device::create_semaphore(device)?;
+        let ready = Device::create_fence(device, true)?;
+        let rendered = Device::create_semaphore(device)?;
+
+        Ok(Self {
+            acquired,
+            ready,
+            rendered,
+        })
     }
 }

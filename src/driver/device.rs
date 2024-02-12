@@ -222,6 +222,34 @@ impl Device {
         Self::create(instance, select_physical_device, true)
     }
 
+    pub(crate) fn create_fence(this: &Self, signaled: bool) -> Result<vk::Fence, DriverError> {
+        let mut flags = vk::FenceCreateFlags::empty();
+
+        if signaled {
+            flags |= vk::FenceCreateFlags::SIGNALED;
+        }
+
+        let create_info = vk::FenceCreateInfo::builder().flags(flags);
+        let allocation_callbacks = None;
+
+        unsafe { this.create_fence(&create_info, allocation_callbacks) }.map_err(|err| {
+            warn!("{err}");
+
+            DriverError::OutOfMemory
+        })
+    }
+
+    pub(crate) fn create_semaphore(this: &Self) -> Result<vk::Semaphore, DriverError> {
+        let create_info = vk::SemaphoreCreateInfo::builder();
+        let allocation_callbacks = None;
+
+        unsafe { this.create_semaphore(&create_info, allocation_callbacks) }.map_err(|err| {
+            warn!("{err}");
+
+            DriverError::OutOfMemory
+        })
+    }
+
     /// Loads and existing `ash` Vulkan device that may have been created by other means.
     #[profiling::function]
     pub fn load(

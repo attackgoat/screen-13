@@ -51,20 +51,7 @@ impl CommandBuffer {
                     DriverError::Unsupported
                 })?
         }[0];
-        let fence = unsafe {
-            device
-                .create_fence(
-                    &vk::FenceCreateInfo::builder()
-                        .flags(vk::FenceCreateFlags::SIGNALED)
-                        .build(),
-                    None,
-                )
-                .map_err(|err| {
-                    warn!("{err}");
-
-                    DriverError::Unsupported
-                })?
-        };
+        let fence = Device::create_fence(&device, true)?;
 
         Ok(Self {
             cmd_buf,
