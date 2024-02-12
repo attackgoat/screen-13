@@ -35,7 +35,7 @@ vk-sync = { version = "0.4.0", package = "vk-sync-fork" }  # // SEE: https://git
 winit = { version = "0.29", features = ["rwh_05"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-ash-molten = "0.15"
+ash-molten = "0.17"
 
 [dev-dependencies]
 anyhow = "1.0"

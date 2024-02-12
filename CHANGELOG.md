@@ -23,6 +23,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `EventLoop` now produces linear surfaces by default - use `desired_surface_format` to select sRGB
 - `Swapchain::present_image` now uses event-based waiting for rendering operations instead of
   polling, greatly reducing CPU usage
+- Updated `ash-molten` (Mac OS support) to v0.17 
 
 ## [0.10.0] - 2024-02-09
 
