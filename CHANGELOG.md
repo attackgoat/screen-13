@@ -20,6 +20,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `Device::image_format_properties` returns an `Option` so that unsupported formats may return
   `None` instead of relying on user code to detect `DriverError::Unsupported`
 - `ImageInfo::linear_tiling` renamed to `tiling` and type changed from `bool` to `vk::ImageTiling`
+- `EventLoop` now produces linear surfaces by default - use `desired_surface_format` to select sRGB
 
 ## [0.10.0] - 2024-02-09
 

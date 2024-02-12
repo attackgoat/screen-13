@@ -515,7 +515,7 @@ impl EventLoopBuilder {
 
         let surface_format_fn = self
             .surface_format_fn
-            .unwrap_or_else(|| Box::new(Surface::srgb_or_default));
+            .unwrap_or_else(|| Box::new(Surface::linear_or_default));
         let surface_format = surface_format_fn(&surface_formats);
         let swapchain = Swapchain::new(
             &device,
