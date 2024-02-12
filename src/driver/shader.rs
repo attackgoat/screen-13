@@ -298,7 +298,11 @@ impl Sampler {
                         .min_lod(info.min_lod.0)
                         .max_lod(info.max_lod.0)
                         .border_color(info.border_color)
-                        .unnormalized_coordinates(info.unnormalized_coordinates),
+                        .unnormalized_coordinates(info.unnormalized_coordinates)
+                        .push_next(
+                            &mut vk::SamplerReductionModeCreateInfo::builder()
+                                .reduction_mode(info.reduction_mode),
+                        ),
                     None,
                 )
                 .map_err(|err| {
@@ -350,32 +354,45 @@ impl Drop for Sampler {
     derive(Clone, Copy, Debug),
     pattern = "owned"
 )]
+#[non_exhaustive]
 pub struct SamplerInfo {
     /// Bitmask specifying additional parameters of a sampler.
     #[builder(default)]
     pub flags: vk::SamplerCreateFlags,
 
     /// Specify the magnification filter to apply to texture lookups.
+    ///
+    /// The default value is [`vk::Filter::NEAREST`]
     #[builder(default)]
     pub mag_filter: vk::Filter,
 
     /// Specify the minification filter to apply to texture lookups.
+    ///
+    /// The default value is [`vk::Filter::NEAREST`]
     #[builder(default)]
     pub min_filter: vk::Filter,
 
     /// A value specifying the mipmap filter to apply to lookups.
+    ///
+    /// The default value is [`vk::SamplerMipmapMode::NEAREST`]
     #[builder(default)]
     pub mipmap_mode: vk::SamplerMipmapMode,
 
     /// A value specifying the addressing mode for U coordinates outside `[0, 1)`.
+    ///
+    /// The default value is [`vk::SamplerAddressMode::REPEAT`]
     #[builder(default)]
     pub address_mode_u: vk::SamplerAddressMode,
 
     /// A value specifying the addressing mode for V coordinates outside `[0, 1)`.
+    ///
+    /// The default value is [`vk::SamplerAddressMode::REPEAT`]
     #[builder(default)]
     pub address_mode_v: vk::SamplerAddressMode,
 
     /// A value specifying the addressing mode for W coordinates outside `[0, 1)`.
+    ///
+    /// The default value is [`vk::SamplerAddressMode::REPEAT`]
     #[builder(default)]
     pub address_mode_w: vk::SamplerAddressMode,
 
@@ -422,6 +439,8 @@ pub struct SamplerInfo {
     pub max_lod: OrderedFloat<f32>,
 
     /// Secifies the predefined border color to use.
+    ///
+    /// The default value is [`vk::BorderColor::FLOAT_TRANSPARENT_BLACK`]
     #[builder(default)]
     pub border_color: vk::BorderColor,
 
@@ -437,9 +456,63 @@ pub struct SamplerInfo {
     /// [requirements](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkSamplerCreateInfo.html).
     #[builder(default)]
     pub unnormalized_coordinates: bool,
+
+    /// Specifies sampler reduction mode.
+    ///
+    /// Linear magnification ([`mag_filter`]) disables this setting.
+    ///
+    /// The default value is [`vk::SamplerReductionMode::WEIGHTED_AVERAGE`]
+    ///
+    /// See
+    /// [requirements](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkSamplerCreateInfo.html).
+    #[builder(default)]
+    pub reduction_mode: vk::SamplerReductionMode,
 }
 
 impl SamplerInfo {
+    /// Default sampler information with `mag_filter`, `min_filter` and `mipmap_mode` set to linear.
+    pub const LINEAR: SamplerInfoBuilder = SamplerInfoBuilder {
+        flags: None,
+        mag_filter: Some(vk::Filter::LINEAR),
+        min_filter: Some(vk::Filter::LINEAR),
+        mipmap_mode: Some(vk::SamplerMipmapMode::LINEAR),
+        address_mode_u: None,
+        address_mode_v: None,
+        address_mode_w: None,
+        mip_lod_bias: None,
+        anisotropy_enable: None,
+        max_anisotropy: None,
+        compare_enable: None,
+        compare_op: None,
+        min_lod: None,
+        max_lod: None,
+        border_color: None,
+        unnormalized_coordinates: None,
+        reduction_mode: None,
+    };
+
+    /// Default sampler information with `mag_filter`, `min_filter` and `mipmap_mode` set to
+    /// nearest.
+    pub const NEAREST: SamplerInfoBuilder = SamplerInfoBuilder {
+        flags: None,
+        mag_filter: Some(vk::Filter::NEAREST),
+        min_filter: Some(vk::Filter::NEAREST),
+        mipmap_mode: Some(vk::SamplerMipmapMode::NEAREST),
+        address_mode_u: None,
+        address_mode_v: None,
+        address_mode_w: None,
+        mip_lod_bias: None,
+        anisotropy_enable: None,
+        max_anisotropy: None,
+        compare_enable: None,
+        compare_op: None,
+        min_lod: None,
+        max_lod: None,
+        border_color: None,
+        unnormalized_coordinates: None,
+        reduction_mode: None,
+    };
+
     /// Specifies a default sampler.
     #[allow(clippy::new_ret_no_self)]
     pub fn new() -> SamplerInfoBuilder {

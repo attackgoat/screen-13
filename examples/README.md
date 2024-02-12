@@ -20,6 +20,7 @@ Example | Instructions | Preview
 [vertex_layout.rs](vertex_layout.rs) | <pre>cargo run --example vertex_layout</pre> | <image alt="Preview" src="../.github/img/vertex_layout.png" height=149 width=176>
 [bindless.rs](bindless.rs) | <pre>cargo run --example bindless</pre> | <image alt="Preview" src="../.github/img/bindless.png" height=149 width=140>
 [image_sampler.rs](image_sampler.rs) | <pre>cargo run --example image_sampler</pre> | <image alt="Preview" src="../.github/img/image_sampler.png" height=149 width=176>
+[min_max.rs](min_max.rs) | <pre>cargo run --example min_max</pre> | _See console output_
 [egui.rs](egui.rs) | <pre>cargo run --example egui</pre> | <image alt="Preview" src="../.github/img/egui.png" height=149 width=176>
 [imgui.rs](imgui.rs) | <pre>cargo run --example imgui</pre> | <image alt="Preview" src="../.github/img/imgui.png" height=149 width=176>
 [font_bmp.rs](font_bmp.rs) | <pre>cargo run --example font_bmp</pre> | <image alt="Preview" src="../.github/img/font_bmp.png" height=149 width=176>

@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Min/max image sampler reduction mode - see [`examples/min_max.rs`](examples/min_max.rs)
+  - `PhysicalDevice::sampler_filter_minmax_properties` added to report properties
+  - `SamplerInfo::reduction_mode` added to set mode
+- `SamplerInfo::LINEAR` and `NEAREST` to make sampler creation easier
+- `DeviceInfo` now implements `Default`
+
+## Changed
+
+- `Device::image_format_properties` returns an `Option` so that unsupported formats may return
+  `None` instead of relying on user code to detect `DriverError::Unsupported`
+- `ImageInfo::linear_tiling` renamed to `tiling` and type changed from `bool` to `vk::ImageTiling`
+
 ## [0.10.0] - 2024-02-09
 
 ### Added

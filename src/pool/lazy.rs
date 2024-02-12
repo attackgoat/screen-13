@@ -21,9 +21,9 @@ struct ImageKey {
     depth: u32,
     fmt: vk::Format,
     height: u32,
-    linear_tiling: bool,
     mip_level_count: u32,
     sample_count: SampleCount,
+    tiling: vk::ImageTiling,
     ty: ImageType,
     width: u32,
 }
@@ -35,9 +35,9 @@ impl From<ImageInfo> for ImageKey {
             depth: info.depth,
             fmt: info.fmt,
             height: info.height,
-            linear_tiling: info.linear_tiling,
             mip_level_count: info.mip_level_count,
             sample_count: info.sample_count,
+            tiling: info.tiling,
             ty: info.ty,
             width: info.width,
         }

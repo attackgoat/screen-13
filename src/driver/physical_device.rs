@@ -188,6 +188,9 @@ pub struct PhysicalDevice {
 
     /// Describes the properties of the device which relate to ray tracing, if available.
     pub ray_trace_properties: Option<RayTraceProperties>,
+
+    /// Describes the properties of the device which relate to min/max sampler filtering.
+    pub sampler_filter_minmax_properties: SamplerFilterMinmaxProperties,
 }
 
 impl PhysicalDevice {
@@ -253,12 +256,15 @@ impl PhysicalDevice {
         let mut depth_stencil_resolve_properties =
             vk::PhysicalDeviceDepthStencilResolveProperties::default();
         let mut ray_trace_properties = vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
+        let mut sampler_filter_minmax_properties =
+            vk::PhysicalDeviceSamplerFilterMinmaxProperties::default();
         let mut properties = vk::PhysicalDeviceProperties2::builder()
             .push_next(&mut properties_v1_1)
             .push_next(&mut properties_v1_2)
             .push_next(&mut accel_struct_properties)
             .push_next(&mut depth_stencil_resolve_properties)
             .push_next(&mut ray_trace_properties)
+            .push_next(&mut sampler_filter_minmax_properties)
             .build();
         unsafe {
             get_physical_device_properties2(physical_device, &mut properties);
@@ -267,6 +273,7 @@ impl PhysicalDevice {
         let properties_v1_1 = properties_v1_1.into();
         let properties_v1_2 = properties_v1_2.into();
         let depth_stencil_resolve_properties = depth_stencil_resolve_properties.into();
+        let sampler_filter_minmax_properties = sampler_filter_minmax_properties.into();
 
         let extensions = unsafe {
             instance
@@ -335,6 +342,7 @@ impl PhysicalDevice {
             ray_query_features,
             ray_trace_features,
             ray_trace_properties,
+            sampler_filter_minmax_properties,
         })
     }
 }
@@ -474,6 +482,51 @@ impl From<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR> for RayTracePropert
             max_ray_dispatch_invocation_count: props.max_ray_dispatch_invocation_count,
             shader_group_handle_alignment: props.shader_group_handle_alignment,
             max_ray_hit_attribute_size: props.max_ray_hit_attribute_size,
+        }
+    }
+}
+
+/// Properties of the physical device for min/max sampler filtering.
+///
+/// See
+/// [`VkPhysicalDeviceSamplerFilterMinmaxProperties`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkPhysicalDeviceSamplerFilterMinmaxPropertiesEXT.html)
+#[derive(Debug)]
+pub struct SamplerFilterMinmaxProperties {
+    /// When `false` the component mapping of the image view used with min/max filtering must have
+    /// been created with the r component set to the identity swizzle. Only the r component of the
+    /// sampled image value is defined and the other component values are undefined.
+    ///
+    /// When `true` this restriction does not apply and image component mapping works as normal.
+    pub image_component_mapping: bool,
+
+    /// When `true` the following formats support the
+    /// `VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_MINMAX_BIT` feature with `VK_IMAGE_TILING_OPTIMAL`,
+    /// if they support `VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT`:
+    ///
+    /// * [`vk::Format::R8_UNORM`]
+    /// * [`vk::Format::R8_SNORM`]
+    /// * [`vk::Format::R16_UNORM`]
+    /// * [`vk::Format::R16_SNORM`]
+    /// * [`vk::Format::R16_SFLOAT`]
+    /// * [`vk::Format::R32_SFLOAT`]
+    /// * [`vk::Format::D16_UNORM`]
+    /// * [`vk::Format::X8_D24_UNORM_PACK32`]
+    /// * [`vk::Format::D32_SFLOAT`]
+    /// * [`vk::Format::D16_UNORM_S8_UINT`]
+    /// * [`vk::Format::D24_UNORM_S8_UINT`]
+    /// * [`vk::Format::D32_SFLOAT_S8_UINT`]
+    ///
+    /// If the format is a depth/stencil format, this bit only specifies that the depth aspect (not
+    /// the stencil aspect) of an image of this format supports min/max filtering, and that min/max
+    /// filtering of the depth aspect is supported when depth compare is disabled in the sampler.
+    pub single_component_formats: bool,
+}
+
+impl From<vk::PhysicalDeviceSamplerFilterMinmaxProperties> for SamplerFilterMinmaxProperties {
+    fn from(value: vk::PhysicalDeviceSamplerFilterMinmaxProperties) -> Self {
+        Self {
+            image_component_mapping: value.filter_minmax_image_component_mapping == vk::TRUE,
+            single_component_formats: value.filter_minmax_single_component_formats == vk::TRUE,
         }
     }
 }

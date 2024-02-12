@@ -298,6 +298,8 @@ impl Device {
     }
 
     /// Lists the physical device's image format capabilities.
+    ///
+    /// A result of `None` indicates the format is not supported.
     #[profiling::function]
     pub fn image_format_properties(
         this: &Self,
@@ -306,7 +308,7 @@ impl Device {
         tiling: vk::ImageTiling,
         usage: vk::ImageUsageFlags,
         flags: vk::ImageCreateFlags,
-    ) -> Result<vk::ImageFormatProperties, DriverError> {
+    ) -> Result<Option<vk::ImageFormatProperties>, DriverError> {
         unsafe {
             match this.instance.get_physical_device_image_format_properties(
                 *this.physical_device,
@@ -316,13 +318,13 @@ impl Device {
                 usage,
                 flags,
             ) {
-                Ok(properties) => Ok(properties),
+                Ok(properties) => Ok(Some(properties)),
                 Err(err) if err == vk::Result::ERROR_FORMAT_NOT_SUPPORTED => {
                     // We don't log this condition because it is normal for unsupported
                     // formats to be checked - we use the result to inform callers they
-                    // cannot use those formats. TODO: This may be better as an Option...
+                    // cannot use those formats.
 
-                    Err(DriverError::Unsupported)
+                    Ok(None)
                 }
                 _ => Err(DriverError::OutOfMemory),
             }
@@ -538,6 +540,12 @@ impl DeviceInfo {
         let (idx, _) = physical_devices[0];
 
         idx
+    }
+}
+
+impl Default for DeviceInfo {
+    fn default() -> Self {
+        Self::new().build()
     }
 }
 

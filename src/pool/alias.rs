@@ -185,9 +185,9 @@ where
                     && item_info.depth == info.depth
                     && item_info.fmt == info.fmt
                     && item_info.height == info.height
-                    && item_info.linear_tiling == info.linear_tiling
                     && item_info.mip_level_count == info.mip_level_count
                     && item_info.sample_count == info.sample_count
+                    && item_info.tiling == info.tiling
                     && item_info.ty == info.ty
                     && item_info.width == info.width
                     && item_info.flags.contains(info.flags)

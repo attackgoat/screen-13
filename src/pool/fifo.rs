@@ -248,9 +248,9 @@ impl Pool<ImageInfo, Image> for FifoPool {
                     && item.info.depth == info.depth
                     && item.info.fmt == info.fmt
                     && item.info.height == info.height
-                    && item.info.linear_tiling == info.linear_tiling
                     && item.info.mip_level_count == info.mip_level_count
                     && item.info.sample_count == info.sample_count
+                    && item.info.tiling == info.tiling
                     && item.info.ty == info.ty
                     && item.info.width == info.width
                     && item.info.flags.contains(info.flags)

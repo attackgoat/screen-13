@@ -13,6 +13,8 @@ use {
 /// if they are not specified when creating the shader which uses them. Additionally, you could
 /// instead use use name suffixes such as _llr or _nne for linear/linear repeat or nearest/nearest
 /// clamp-to-edge.
+///
+/// See min_max.rs for more advanced image sampler usage.
 fn main() -> anyhow::Result<()> {
     let event_loop = EventLoop::new().build()?;
     let gulf_image = read_image(&event_loop.device, "examples/res/image/gulf.jpg")?;
