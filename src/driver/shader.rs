@@ -115,17 +115,17 @@ pub(crate) enum DescriptorInfo {
 
 impl DescriptorInfo {
     pub fn binding_count(&self) -> u32 {
-        match self {
-            &Self::AccelerationStructure(binding_count) => binding_count,
-            &Self::CombinedImageSampler(binding_count, ..) => binding_count,
-            &Self::InputAttachment(binding_count, _) => binding_count,
-            &Self::SampledImage(binding_count) => binding_count,
-            &Self::Sampler(binding_count) => binding_count,
-            &Self::StorageBuffer(binding_count) => binding_count,
-            &Self::StorageImage(binding_count) => binding_count,
-            &Self::StorageTexelBuffer(binding_count) => binding_count,
-            &Self::UniformBuffer(binding_count) => binding_count,
-            &Self::UniformTexelBuffer(binding_count) => binding_count,
+        match *self {
+            Self::AccelerationStructure(binding_count) => binding_count,
+            Self::CombinedImageSampler(binding_count, ..) => binding_count,
+            Self::InputAttachment(binding_count, _) => binding_count,
+            Self::SampledImage(binding_count) => binding_count,
+            Self::Sampler(binding_count) => binding_count,
+            Self::StorageBuffer(binding_count) => binding_count,
+            Self::StorageImage(binding_count) => binding_count,
+            Self::StorageTexelBuffer(binding_count) => binding_count,
+            Self::UniformBuffer(binding_count) => binding_count,
+            Self::UniformTexelBuffer(binding_count) => binding_count,
         }
     }
 

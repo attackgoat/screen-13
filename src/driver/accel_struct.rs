@@ -293,8 +293,8 @@ impl AccelerationStructure {
 
             for info in info.geometries.iter() {
                 let flags = info.flags;
-                let (geometry_type, geometry) = match &info.geometry {
-                    &AccelerationStructureGeometryData::AABBs { stride } => (
+                let (geometry_type, geometry) = match info.geometry {
+                    AccelerationStructureGeometryData::AABBs { stride } => (
                         vk::GeometryTypeKHR::AABBS,
                         vk::AccelerationStructureGeometryDataKHR {
                             aabbs: vk::AccelerationStructureGeometryAabbsDataKHR {
@@ -303,7 +303,7 @@ impl AccelerationStructure {
                             },
                         },
                     ),
-                    &AccelerationStructureGeometryData::Instances {
+                    AccelerationStructureGeometryData::Instances {
                         array_of_pointers, ..
                     } => (
                         vk::GeometryTypeKHR::INSTANCES,
@@ -314,7 +314,7 @@ impl AccelerationStructure {
                             },
                         },
                     ),
-                    &AccelerationStructureGeometryData::Triangles {
+                    AccelerationStructureGeometryData::Triangles {
                         index_type,
                         max_vertex,
                         transform_data,
@@ -424,8 +424,8 @@ pub struct AccelerationStructureGeometry {
 
 impl AccelerationStructureGeometry {
     pub(crate) fn into_vk(self) -> vk::AccelerationStructureGeometryKHR {
-        let (geometry_type, geometry) = match &self.geometry {
-            &AccelerationStructureGeometryData::AABBs { stride } => (
+        let (geometry_type, geometry) = match self.geometry {
+            AccelerationStructureGeometryData::AABBs { stride } => (
                 vk::GeometryTypeKHR::AABBS,
                 vk::AccelerationStructureGeometryDataKHR {
                     aabbs: vk::AccelerationStructureGeometryAabbsDataKHR {
@@ -434,7 +434,7 @@ impl AccelerationStructureGeometry {
                     },
                 },
             ),
-            &AccelerationStructureGeometryData::Instances {
+            AccelerationStructureGeometryData::Instances {
                 array_of_pointers,
                 data,
             } => (
@@ -452,7 +452,7 @@ impl AccelerationStructureGeometry {
                     },
                 },
             ),
-            &AccelerationStructureGeometryData::Triangles {
+            AccelerationStructureGeometryData::Triangles {
                 index_data,
                 index_type,
                 max_vertex,

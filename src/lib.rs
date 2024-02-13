@@ -318,8 +318,6 @@ layout.
 
 */
 
-// HACK: I'm having trouble supressing the lint at src/graph/mod.rs:650
-#![allow(clippy::match_ref_pats)]
 #![warn(missing_docs)]
 
 pub mod driver;
