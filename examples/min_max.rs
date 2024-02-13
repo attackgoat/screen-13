@@ -9,7 +9,8 @@ use {
 // visibility determination.
 //
 // Support for min/max sampling is core to Vulkan 1.2 however different graphics cards may have
-// varying supported properties which are detailed by the physical device property structures.
+// varying supported properties which are detailed by the physical device property structures. This
+// example checks for that support.
 //
 // Note that this example only reduces the sample "depth image" once, and it does not fully occupy
 // the compute units of the GPU by using larger local group sizes.
@@ -27,26 +28,55 @@ fn main() -> Result<(), DriverError> {
     //  12.0  13.0  14.0  15.0
     let depth_image = fill_depth_image(&device, &mut render_graph, size)?;
 
-    // The 2x2 reduced image has undefined data until we wait on the results later
-    let reduced_image = reduce_depth_image(&device, &mut render_graph, depth_image)?;
+    // These 2x2 reduced images have undefined data until we wait on the results later
+    let min_reduced_image = reduce_depth_image(
+        &device,
+        &mut render_graph,
+        depth_image,
+        vk::SamplerReductionMode::MIN,
+    )?;
+    let max_reduced_image = reduce_depth_image(
+        &device,
+        &mut render_graph,
+        depth_image,
+        vk::SamplerReductionMode::MAX,
+    )?;
 
-    // Create a result buffer so we can read back the results
-    let result_buf = wait_for_results(&device, render_graph, reduced_image)?;
+    // Create result buffers so we can read back the results
+    let min_result_buf = copy_image_to_buffer(&device, &mut render_graph, min_reduced_image)?;
+    let max_result_buf = copy_image_to_buffer(&device, &mut render_graph, max_reduced_image)?;
 
-    // The result data will look like this - we have reduced each 4x4 pixel group into the maximum
-    // value of each group:
+    render_graph
+        .resolve()
+        .submit(&mut HashPool::new(&device), 0, 0)?
+        .wait_until_executed()?;
+
+    // For each image we have reduced each 2x2 pixel group into the min/max values of each group
+    let min_result_data: &[f32] = cast_slice(Buffer::mapped_slice(&min_result_buf));
+    let max_result_data: &[f32] = cast_slice(Buffer::mapped_slice(&max_result_buf));
+
+    // The minimum result data should look like this:
+    //   0.0   2.0
+    //   8.0  10.0
+    println!("{min_result_data:?}");
+
+    // The maximum result data should look like this:
     //   5.0   7.0
     //  13.0  15.0
-    let result_data: &[f32] = cast_slice(Buffer::mapped_slice(&result_buf));
+    println!("{max_result_data:?}");
 
-    println!("{result_data:?}");
+    assert_eq!(min_result_data.len(), 4);
+    assert_eq!(max_result_data.len(), 4);
 
-    assert_eq!(result_data.len(), 4);
+    assert_eq!(min_result_data[0], 0.0);
+    assert_eq!(min_result_data[1], 2.0);
+    assert_eq!(min_result_data[2], 8.0);
+    assert_eq!(min_result_data[3], 10.0);
 
-    assert_eq!(result_data[0], 5.0);
-    assert_eq!(result_data[1], 7.0);
-    assert_eq!(result_data[2], 13.0);
-    assert_eq!(result_data[3], 15.0);
+    assert_eq!(max_result_data[0], 5.0);
+    assert_eq!(max_result_data[1], 7.0);
+    assert_eq!(max_result_data[2], 13.0);
+    assert_eq!(max_result_data[3], 15.0);
 
     Ok(())
 }
@@ -109,10 +139,11 @@ fn fill_depth_image(
     // You could check this if you needed to reduce multiple channel images:
     // device.physical_device.sampler_filter_minmax_properties.image_component_mapping
 
+    let depth_data = (0..size.pow(2)).map(|x| x as f32).collect::<Box<_>>();
     let depth_data = render_graph.bind_node(Buffer::create_from_slice(
         device,
         vk::BufferUsageFlags::TRANSFER_SRC,
-        cast_slice(&(0..size.pow(2)).map(|x| x as f32).collect::<Box<_>>()),
+        cast_slice(&depth_data),
     )?);
     let depth_image = render_graph.bind_node(Image::create(device, info)?);
     render_graph.copy_buffer_to_image(depth_data, depth_image);
@@ -124,6 +155,7 @@ fn reduce_depth_image(
     device: &Arc<Device>,
     render_graph: &mut RenderGraph,
     depth_image: ImageNode,
+    reduction_mode: vk::SamplerReductionMode,
 ) -> Result<ImageNode, DriverError> {
     let depth_info = render_graph.node_info(depth_image);
 
@@ -138,7 +170,7 @@ fn reduce_depth_image(
         vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::TRANSFER_SRC,
     )
     .build();
-    let reduced_image = render_graph.bind_node(Arc::new(Image::create(device, reduced_info)?));
+    let reduced_image = render_graph.bind_node(Image::create(device, reduced_info)?);
 
     render_graph
         .begin_pass("Reduce depth image")
@@ -164,10 +196,7 @@ fn reduce_depth_image(
                 )
                 .as_slice(),
             )
-            .image_sampler(
-                0,
-                SamplerInfo::LINEAR.reduction_mode(vk::SamplerReductionMode::MAX),
-            ),
+            .image_sampler(0, SamplerInfo::LINEAR.reduction_mode(reduction_mode)),
         )?))
         .read_descriptor(0, depth_image)
         .write_descriptor(1, reduced_image)
@@ -178,26 +207,20 @@ fn reduce_depth_image(
     Ok(reduced_image)
 }
 
-fn wait_for_results(
+fn copy_image_to_buffer(
     device: &Arc<Device>,
-    mut render_graph: RenderGraph,
+    render_graph: &mut RenderGraph,
     reduced_image: ImageNode,
 ) -> Result<Arc<Buffer>, DriverError> {
     let reduced_info = render_graph.node_info(reduced_image);
     let result_len = (reduced_info.width * reduced_info.height) as vk::DeviceSize
         * size_of::<f32>() as vk::DeviceSize;
-    let result_buf = render_graph.bind_node(Arc::new(Buffer::create(
+    let result_buf = render_graph.bind_node(Buffer::create(
         device,
         BufferInfo::new_mappable(result_len, vk::BufferUsageFlags::TRANSFER_DST),
-    )?));
+    )?);
 
     render_graph.copy_image_to_buffer(reduced_image, result_buf);
 
-    let result_buf = render_graph.unbind_node(result_buf);
-    render_graph
-        .resolve()
-        .submit(&mut HashPool::new(device), 0, 0)?
-        .wait_until_executed()?;
-
-    Ok(result_buf)
+    Ok(render_graph.unbind_node(result_buf))
 }
