@@ -459,7 +459,8 @@ pub struct SamplerInfo {
 
     /// Specifies sampler reduction mode.
     ///
-    /// Nearest magnification ([`mag_filter`]) disables this setting.
+    /// Setting magnification filter ([`mag_filter`](Self::mag_filter)) to [`vk::Filter::NEAREST`]
+    /// disables sampler reduction mode.
     ///
     /// The default value is [`vk::SamplerReductionMode::WEIGHTED_AVERAGE`]
     ///
