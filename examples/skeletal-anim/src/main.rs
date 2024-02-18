@@ -47,10 +47,10 @@ fn main() -> Result<(), DisplayError> {
         let index_buf = frame.render_graph.bind_node(&character.index_buf);
         let vertex_buf = frame.render_graph.bind_node(&character.vertex_buf);
         let depth_image = frame.render_graph.bind_node(
-            pool.lease(ImageInfo::new_2d(
-                vk::Format::D32_SFLOAT,
+            pool.lease(ImageInfo::image_2d(
                 frame.width,
                 frame.height,
+                vk::Format::D32_SFLOAT,
                 vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
             ))
             .unwrap(),
@@ -71,7 +71,7 @@ fn main() -> Result<(), DisplayError> {
             let projection = Mat4::perspective_rh(45.0, aspect_ratio, 0.1, 100.0);
             let view = Mat4::look_at_rh(position, Vec3::Y * 2.0, -Vec3::Y);
             let mut buf = pool
-                .lease(BufferInfo::new_mappable(
+                .lease(BufferInfo::host_mem(
                     size_of::<CameraUniform>() as _,
                     vk::BufferUsageFlags::UNIFORM_BUFFER,
                 ))
@@ -97,7 +97,7 @@ fn main() -> Result<(), DisplayError> {
             };
             let joints = animation.update(frame.dt);
             let mut buf = pool
-                .lease(BufferInfo::new_mappable(
+                .lease(BufferInfo::host_mem(
                     size_of_val(joints) as _,
                     vk::BufferUsageFlags::STORAGE_BUFFER,
                 ))
@@ -140,7 +140,7 @@ fn create_pipeline(
 
     Ok(Arc::new(GraphicPipeline::create(
         device,
-        GraphicPipelineInfo::new().front_face(vk::FrontFace::CLOCKWISE),
+        GraphicPipelineInfoBuilder::default().front_face(vk::FrontFace::CLOCKWISE),
         [
             Shader::new_vertex(vert_spirv.as_slice()),
             Shader::new_fragment(frag_spirv.as_slice()),
@@ -170,10 +170,10 @@ fn load_texture(
     )?);
     let image = Arc::new(Image::create(
         device,
-        ImageInfo::new_2d(
-            vk::Format::R8G8B8A8_UNORM,
+        ImageInfo::image_2d(
             bitmap.width(),
             bitmap.height(),
+            vk::Format::R8G8B8A8_UNORM,
             vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
         ),
     )?);
@@ -404,14 +404,14 @@ impl Model {
         // Device-only buffers
         let index_buf = Arc::new(Buffer::create(
             device,
-            BufferInfo::new(
+            BufferInfo::device_mem(
                 index_data.len() as _,
                 vk::BufferUsageFlags::INDEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
             ),
         )?);
         let vertex_buf = Arc::new(Buffer::create(
             device,
-            BufferInfo::new(
+            BufferInfo::device_mem(
                 vertex_data.len() as _,
                 vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
             ),

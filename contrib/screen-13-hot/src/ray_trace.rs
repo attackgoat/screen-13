@@ -82,7 +82,7 @@ impl HotRayTracePipeline {
             {
                 if let Ok(instance) = RayTracePipeline::create(
                     &self.device,
-                    self.instance.info.clone(),
+                    self.instance.info,
                     compiled_shaders,
                     self.shader_groups.iter().copied(),
                 ) {

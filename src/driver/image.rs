@@ -46,7 +46,7 @@ use {
 /// # use screen_13::driver::image::{Image, ImageInfo};
 /// # fn main() -> Result<(), DriverError> {
 /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
-/// # let info = ImageInfo::new_1d(vk::Format::R8_UINT, 1, vk::ImageUsageFlags::STORAGE);
+/// # let info = ImageInfo::image_1d(1, vk::Format::R8_UINT, vk::ImageUsageFlags::STORAGE);
 /// # let my_image = Image::create(&device, info)?;
 /// let prev = Image::access(&my_image, AccessType::AnyShaderWrite);
 /// # Ok(()) }
@@ -85,8 +85,8 @@ impl Image {
     /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::image::{Image, ImageInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
-    /// let info = ImageInfo::new_2d(vk::Format::R8G8B8A8_UNORM, 32, 32, vk::ImageUsageFlags::SAMPLED);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
+    /// let info = ImageInfo::image_2d(32, 32, vk::Format::R8G8B8A8_UNORM, vk::ImageUsageFlags::SAMPLED);
     /// let image = Image::create(&device, info)?;
     ///
     /// assert_ne!(*image, vk::Image::null());
@@ -184,7 +184,7 @@ impl Image {
     /// # use screen_13::driver::image::{Image, ImageInfo};
     /// # fn main() -> Result<(), DriverError> {
     /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
-    /// # let info = ImageInfo::new_1d(vk::Format::R8_UINT, 1, vk::ImageUsageFlags::STORAGE);
+    /// # let info = ImageInfo::image_1d(1, vk::Format::R8_UINT, vk::ImageUsageFlags::STORAGE);
     /// # let my_image = Image::create(&device, info)?;
     /// // Initially we want to "Read Other"
     /// let next = AccessType::AnyShaderReadOther;
@@ -384,79 +384,136 @@ pub struct ImageInfo {
 }
 
 impl ImageInfo {
-    #[allow(clippy::new_ret_no_self)]
-    const fn new(
-        fmt: vk::Format,
-        ty: ImageType,
-        width: u32,
-        height: u32,
-        depth: u32,
-        array_elements: u32,
-        usage: vk::ImageUsageFlags,
-    ) -> ImageInfoBuilder {
-        ImageInfoBuilder {
-            ty: Some(ty),
-            fmt: Some(fmt),
-            width: Some(width),
-            height: Some(height),
-            depth: Some(depth),
-            usage: Some(usage),
-            flags: None,
-            tiling: None,
-            mip_level_count: None,
-            array_elements: Some(array_elements),
-            sample_count: None,
-        }
+    /// Specifies a cube image.
+    #[inline(always)]
+    pub const fn cube(size: u32, fmt: vk::Format, usage: vk::ImageUsageFlags) -> ImageInfo {
+        Self::new(ImageType::Cube, size, size, 1, 1, fmt, usage)
     }
 
     /// Specifies a one-dimensional image.
-    pub const fn new_1d(fmt: vk::Format, len: u32, usage: vk::ImageUsageFlags) -> ImageInfoBuilder {
-        Self::new(fmt, ImageType::Texture1D, len, 1, 1, 1, usage)
+    #[inline(always)]
+    pub const fn image_1d(size: u32, fmt: vk::Format, usage: vk::ImageUsageFlags) -> ImageInfo {
+        Self::new(ImageType::Texture1D, size, 1, 1, 1, fmt, usage)
     }
 
     /// Specifies a two-dimensional image.
-    pub const fn new_2d(
-        fmt: vk::Format,
+    #[inline(always)]
+    pub const fn image_2d(
         width: u32,
         height: u32,
+        fmt: vk::Format,
         usage: vk::ImageUsageFlags,
-    ) -> ImageInfoBuilder {
-        Self::new(fmt, ImageType::Texture2D, width, height, 1, 1, usage)
+    ) -> ImageInfo {
+        Self::new(ImageType::Texture2D, width, height, 1, 1, fmt, usage)
     }
 
     /// Specifies a two-dimensional image array.
-    pub const fn new_2d_array(
-        fmt: vk::Format,
+    #[inline(always)]
+    pub const fn image_2d_array(
         width: u32,
         height: u32,
         array_elements: u32,
+        fmt: vk::Format,
         usage: vk::ImageUsageFlags,
-    ) -> ImageInfoBuilder {
+    ) -> ImageInfo {
         Self::new(
-            fmt,
             ImageType::TextureArray2D,
             width,
             height,
             1,
             array_elements,
+            fmt,
             usage,
         )
     }
 
     /// Specifies a three-dimensional image.
-    pub const fn new_3d(
+    #[inline(always)]
+    pub const fn image_3d(
+        width: u32,
+        height: u32,
+        depth: u32,
+        fmt: vk::Format,
+        usage: vk::ImageUsageFlags,
+    ) -> ImageInfo {
+        Self::new(ImageType::Texture3D, width, height, depth, 1, fmt, usage)
+    }
+
+    #[inline(always)]
+    const fn new(
+        ty: ImageType,
+        width: u32,
+        height: u32,
+        depth: u32,
+        array_elements: u32,
+        fmt: vk::Format,
+        usage: vk::ImageUsageFlags,
+    ) -> Self {
+        Self {
+            ty,
+            width,
+            height,
+            depth,
+            array_elements,
+            fmt,
+            usage,
+            flags: vk::ImageCreateFlags::empty(),
+            tiling: vk::ImageTiling::OPTIMAL,
+            mip_level_count: 1,
+            sample_count: SampleCount::X1,
+        }
+    }
+
+    /// Specifies a one-dimensional image.
+    #[deprecated = "Use ImageInfo::image_1d()"]
+    #[doc(hidden)]
+    pub fn new_1d(fmt: vk::Format, size: u32, usage: vk::ImageUsageFlags) -> ImageInfoBuilder {
+        Self::image_1d(size, fmt, usage).to_builder()
+    }
+
+    /// Specifies a two-dimensional image.
+    #[deprecated = "Use ImageInfo::image_2d()"]
+    #[doc(hidden)]
+    pub fn new_2d(
+        fmt: vk::Format,
+        width: u32,
+        height: u32,
+        usage: vk::ImageUsageFlags,
+    ) -> ImageInfoBuilder {
+        Self::image_2d(width, height, fmt, usage).to_builder()
+    }
+
+    /// Specifies a two-dimensional image array.
+    #[deprecated = "Use ImageInfo::image_2d_array()"]
+    #[doc(hidden)]
+    pub fn new_2d_array(
+        fmt: vk::Format,
+        width: u32,
+        height: u32,
+        array_elements: u32,
+        usage: vk::ImageUsageFlags,
+    ) -> ImageInfoBuilder {
+        Self::image_2d_array(width, height, array_elements, fmt, usage).to_builder()
+    }
+
+    /// Specifies a three-dimensional image.
+    #[deprecated = "Use ImageInfo::image_3d()"]
+    #[doc(hidden)]
+    pub fn new_3d(
         fmt: vk::Format,
         width: u32,
         height: u32,
         depth: u32,
         usage: vk::ImageUsageFlags,
     ) -> ImageInfoBuilder {
-        Self::new(fmt, ImageType::Texture3D, width, height, depth, 1, usage)
+        Self::image_3d(width, height, depth, fmt, usage).to_builder()
     }
 
     /// Specifies a cube image.
-    pub fn new_cube(fmt: vk::Format, width: u32, usage: vk::ImageUsageFlags) -> ImageInfoBuilder {
-        Self::new(fmt, ImageType::Cube, width, width, 1, 1, usage)
+    #[deprecated = "Use ImageInfo::cube()"]
+    #[doc(hidden)]
+    pub fn new_cube(fmt: vk::Format, size: u32, usage: vk::ImageUsageFlags) -> ImageInfoBuilder {
+        Self::cube(size, fmt, usage).to_builder()
     }
 
     /// Provides an `ImageViewInfo` for this format, type, aspect, array elements, and mip levels.
@@ -548,6 +605,24 @@ impl ImageInfo {
             .sharing_mode(vk::SharingMode::CONCURRENT)
             .initial_layout(vk::ImageLayout::UNDEFINED)
     }
+
+    /// Converts an `ImageInfo` into an `ImageInfoBuilder`.
+    #[inline(always)]
+    pub fn to_builder(self) -> ImageInfoBuilder {
+        ImageInfoBuilder {
+            array_elements: Some(self.array_elements),
+            depth: Some(self.depth),
+            flags: Some(self.flags),
+            fmt: Some(self.fmt),
+            height: Some(self.height),
+            mip_level_count: Some(self.mip_level_count),
+            sample_count: Some(self.sample_count),
+            tiling: Some(self.tiling),
+            ty: Some(self.ty),
+            usage: Some(self.usage),
+            width: Some(self.width),
+        }
+    }
 }
 
 impl From<ImageInfoBuilder> for ImageInfo {
@@ -556,21 +631,33 @@ impl From<ImageInfoBuilder> for ImageInfo {
     }
 }
 
-// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
 impl ImageInfoBuilder {
     /// Builds a new `ImageInfo`.
+    ///
+    /// # Panics
+    ///
+    /// If any of the following functions have not been called this function will panic:
+    ///
+    /// * `ty`
+    /// * `fmt`
+    /// * `width`
+    /// * `height`
+    /// * `depth`
+    #[inline(always)]
     pub fn build(self) -> ImageInfo {
-        self.fallible_build()
-            .expect("All required fields set at initialization")
+        match self.fallible_build() {
+            Err(ImageInfoBuilderError(err)) => panic!("{err}"),
+            Ok(info) => info,
+        }
     }
 }
 
 #[derive(Debug)]
-struct ImageInfoBuilderError;
+struct ImageInfoBuilderError(UninitializedFieldError);
 
 impl From<UninitializedFieldError> for ImageInfoBuilderError {
-    fn from(_: UninitializedFieldError) -> Self {
-        Self
+    fn from(err: UninitializedFieldError) -> Self {
+        Self(err)
     }
 }
 
@@ -769,15 +856,40 @@ pub struct ImageViewInfo {
 
 impl ImageViewInfo {
     /// Specifies a default view with the given `fmt` and `ty` values.
-    #[allow(clippy::new_ret_no_self)]
-    pub fn new(format: vk::Format, ty: ImageType) -> ImageViewInfoBuilder {
-        ImageViewInfoBuilder::new(format, ty).aspect_mask(format_aspect_mask(format))
+    ///
+    /// # Note
+    ///
+    /// Automatically sets [`aspect_mask`](Self::aspect_mask) to a suggested value.
+    #[inline(always)]
+    pub const fn new(fmt: vk::Format, ty: ImageType) -> ImageViewInfo {
+        Self {
+            array_layer_count: None,
+            aspect_mask: format_aspect_mask(fmt),
+            base_array_layer: 0,
+            base_mip_level: 0,
+            fmt,
+            mip_level_count: None,
+            ty,
+        }
+    }
+
+    /// Converts a `ImageViewInfo` into a `ImageViewInfoBuilder`.
+    #[inline(always)]
+    pub fn to_builder(self) -> ImageViewInfoBuilder {
+        ImageViewInfoBuilder {
+            array_layer_count: Some(self.array_layer_count),
+            aspect_mask: Some(self.aspect_mask),
+            base_array_layer: Some(self.base_array_layer),
+            base_mip_level: Some(self.base_mip_level),
+            fmt: Some(self.fmt),
+            mip_level_count: Some(self.mip_level_count),
+            ty: Some(self.ty),
+        }
     }
 
     /// Takes this instance and returns it with a newly specified `ImageType`.
     pub fn with_ty(mut self, ty: ImageType) -> Self {
         self.ty = ty;
-
         self
     }
 }
@@ -802,26 +914,38 @@ impl From<ImageViewInfoBuilder> for ImageViewInfo {
     }
 }
 
-// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
 impl ImageViewInfoBuilder {
     /// Specifies a default view with the given `fmt` and `ty` values.
+    #[deprecated = "Use ImageViewInfo::new()"]
+    #[doc(hidden)]
     pub fn new(fmt: vk::Format, ty: ImageType) -> Self {
         Self::default().fmt(fmt).ty(ty)
     }
 
     /// Builds a new 'ImageViewInfo'.
+    ///
+    /// # Panics
+    ///
+    /// If any of the following values have not been set this function will panic:
+    ///
+    /// * `ty`
+    /// * `fmt`
+    /// * `aspect_mask`
+    #[inline(always)]
     pub fn build(self) -> ImageViewInfo {
-        self.fallible_build()
-            .expect("All required fields set at initialization")
+        match self.fallible_build() {
+            Err(ImageViewInfoBuilderError(err)) => panic!("{err}"),
+            Ok(info) => info,
+        }
     }
 }
 
 #[derive(Debug)]
-struct ImageViewInfoBuilderError;
+struct ImageViewInfoBuilderError(UninitializedFieldError);
 
 impl From<UninitializedFieldError> for ImageViewInfoBuilderError {
-    fn from(_: UninitializedFieldError) -> Self {
-        Self
+    fn from(err: UninitializedFieldError) -> Self {
+        Self(err)
     }
 }
 
@@ -869,5 +993,232 @@ impl SampleCount {
 impl Default for SampleCount {
     fn default() -> Self {
         Self::X1
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    pub fn image_info_cube() {
+        let info = ImageInfo::cube(42, vk::Format::R32_SFLOAT, vk::ImageUsageFlags::empty());
+        let builder = info.to_builder().build();
+
+        assert_eq!(info, builder);
+    }
+
+    #[test]
+    pub fn image_info_cube_builder() {
+        let info = ImageInfo::cube(42, vk::Format::R32_SFLOAT, vk::ImageUsageFlags::empty());
+        let builder = ImageInfoBuilder::default()
+            .ty(ImageType::Cube)
+            .fmt(vk::Format::R32_SFLOAT)
+            .width(42)
+            .height(42)
+            .depth(1)
+            .build();
+
+        assert_eq!(info, builder);
+    }
+
+    #[test]
+    pub fn image_info_image_1d() {
+        let info = ImageInfo::image_1d(42, vk::Format::R32_SFLOAT, vk::ImageUsageFlags::empty());
+        let builder = info.to_builder().build();
+
+        assert_eq!(info, builder);
+    }
+
+    #[test]
+    pub fn image_info_image_1d_builder() {
+        let info = ImageInfo::image_1d(42, vk::Format::R32_SFLOAT, vk::ImageUsageFlags::empty());
+        let builder = ImageInfoBuilder::default()
+            .ty(ImageType::Texture1D)
+            .fmt(vk::Format::R32_SFLOAT)
+            .width(42)
+            .height(1)
+            .depth(1)
+            .build();
+
+        assert_eq!(info, builder);
+    }
+
+    #[test]
+    pub fn image_info_image_2d() {
+        let info =
+            ImageInfo::image_2d(42, 84, vk::Format::R32_SFLOAT, vk::ImageUsageFlags::empty());
+        let builder = info.to_builder().build();
+
+        assert_eq!(info, builder);
+    }
+
+    #[test]
+    pub fn image_info_image_2d_builder() {
+        let info =
+            ImageInfo::image_2d(42, 84, vk::Format::R32_SFLOAT, vk::ImageUsageFlags::empty());
+        let builder = ImageInfoBuilder::default()
+            .ty(ImageType::Texture2D)
+            .fmt(vk::Format::R32_SFLOAT)
+            .width(42)
+            .height(84)
+            .depth(1)
+            .build();
+
+        assert_eq!(info, builder);
+    }
+
+    #[test]
+    pub fn image_info_image_2d_array() {
+        let info = ImageInfo::image_2d_array(
+            42,
+            84,
+            100,
+            vk::Format::default(),
+            vk::ImageUsageFlags::empty(),
+        );
+        let builder = info.to_builder().build();
+
+        assert_eq!(info, builder);
+    }
+
+    #[test]
+    pub fn image_info_image_2d_array_builder() {
+        let info = ImageInfo::image_2d_array(
+            42,
+            84,
+            100,
+            vk::Format::R32_SFLOAT,
+            vk::ImageUsageFlags::empty(),
+        );
+        let builder = ImageInfoBuilder::default()
+            .ty(ImageType::TextureArray2D)
+            .fmt(vk::Format::R32_SFLOAT)
+            .width(42)
+            .height(84)
+            .depth(1)
+            .array_elements(100)
+            .build();
+
+        assert_eq!(info, builder);
+    }
+
+    #[test]
+    pub fn image_info_image_3d() {
+        let info = ImageInfo::image_3d(
+            42,
+            84,
+            100,
+            vk::Format::R32_SFLOAT,
+            vk::ImageUsageFlags::empty(),
+        );
+        let builder = info.to_builder().build();
+
+        assert_eq!(info, builder);
+    }
+
+    #[test]
+    pub fn image_info_image_3d_builder() {
+        let info = ImageInfo::image_3d(
+            42,
+            84,
+            100,
+            vk::Format::R32_SFLOAT,
+            vk::ImageUsageFlags::empty(),
+        );
+        let builder = ImageInfoBuilder::default()
+            .ty(ImageType::Texture3D)
+            .fmt(vk::Format::R32_SFLOAT)
+            .width(42)
+            .height(84)
+            .depth(100)
+            .build();
+
+        assert_eq!(info, builder);
+    }
+
+    #[test]
+    #[should_panic(expected = "Field not initialized: depth")]
+    pub fn image_info_builder_uninit_depth() {
+        ImageInfoBuilder::default().build();
+    }
+
+    #[test]
+    #[should_panic(expected = "Field not initialized: fmt")]
+    pub fn image_info_builder_uninit_fmt() {
+        ImageInfoBuilder::default().depth(1).build();
+    }
+
+    #[test]
+    #[should_panic(expected = "Field not initialized: height")]
+    pub fn image_info_builder_uninit_height() {
+        ImageInfoBuilder::default()
+            .depth(1)
+            .fmt(vk::Format::default())
+            .build();
+    }
+
+    #[test]
+    #[should_panic(expected = "Field not initialized: ty")]
+    pub fn image_info_builder_uninit_ty() {
+        ImageInfoBuilder::default()
+            .depth(1)
+            .fmt(vk::Format::default())
+            .height(2)
+            .build();
+    }
+
+    #[test]
+    #[should_panic(expected = "Field not initialized: width")]
+    pub fn image_info_builder_uninit_width() {
+        ImageInfoBuilder::default()
+            .depth(1)
+            .fmt(vk::Format::default())
+            .height(2)
+            .ty(ImageType::Texture2D)
+            .build();
+    }
+
+    #[test]
+    pub fn image_view_info() {
+        let info = ImageViewInfo::new(vk::Format::default(), ImageType::Texture1D);
+        let builder = info.to_builder().build();
+
+        assert_eq!(info, builder);
+    }
+
+    #[test]
+    pub fn image_view_info_builder() {
+        let info = ImageViewInfo::new(vk::Format::default(), ImageType::Texture1D);
+        let builder = ImageViewInfoBuilder::default()
+            .fmt(vk::Format::default())
+            .ty(ImageType::Texture1D)
+            .aspect_mask(vk::ImageAspectFlags::COLOR)
+            .build();
+
+        assert_eq!(info, builder);
+    }
+
+    #[test]
+    #[should_panic(expected = "Field not initialized: aspect_mask")]
+    pub fn image_view_info_builder_uninit_aspect_mask() {
+        ImageViewInfoBuilder::default().build();
+    }
+
+    #[test]
+    #[should_panic(expected = "Field not initialized: fmt")]
+    pub fn image_view_info_builder_unint_fmt() {
+        ImageViewInfoBuilder::default()
+            .aspect_mask(vk::ImageAspectFlags::empty())
+            .build();
+    }
+
+    #[test]
+    #[should_panic(expected = "Field not initialized: ty")]
+    pub fn image_view_info_builder_unint_ty() {
+        ImageViewInfoBuilder::default()
+            .aspect_mask(vk::ImageAspectFlags::empty())
+            .fmt(vk::Format::default())
+            .build();
     }
 }

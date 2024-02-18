@@ -174,15 +174,16 @@ fn main() -> anyhow::Result<()> {
         // Lease and bind a cube-compatible shadow 2D image array to the graph of the current frame
         let shadow_faces_image = pool
             .lease(
-                ImageInfo::new_2d_array(
-                    cubemap_format,
+                ImageInfo::image_2d_array(
                     CUBEMAP_SIZE,
                     CUBEMAP_SIZE,
                     6,
+                    cubemap_format,
                     vk::ImageUsageFlags::COLOR_ATTACHMENT
                         | vk::ImageUsageFlags::SAMPLED
                         | vk::ImageUsageFlags::STORAGE,
                 )
+                .to_builder()
                 .flags(vk::ImageCreateFlags::CUBE_COMPATIBLE),
             )
             .unwrap();
@@ -196,20 +197,20 @@ fn main() -> anyhow::Result<()> {
 
         // Lastly we lease and bind depth images needed for rendering
         let shadow_depth_image = frame.render_graph.bind_node(
-            pool.lease(ImageInfo::new_2d_array(
-                depth_format,
+            pool.lease(ImageInfo::image_2d_array(
                 frame.width,
                 frame.height,
                 if use_geometry_shader { 6 } else { 1 },
+                depth_format,
                 vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
             ))
             .unwrap(),
         );
         let depth_image = frame.render_graph.bind_node(
-            pool.lease(ImageInfo::new_2d(
-                depth_format,
+            pool.lease(ImageInfo::image_2d(
                 frame.width,
                 frame.height,
+                depth_format,
                 vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
             ))
             .unwrap(),
@@ -1149,11 +1150,11 @@ fn download_model_from_github(model_name: &str) -> anyhow::Result<PathBuf> {
 }
 
 fn lease_uniform_buffer(
-    pool: &mut impl Pool<BufferInfoBuilder, Buffer>,
+    pool: &mut impl Pool<BufferInfo, Buffer>,
     data: &impl NoUninit,
 ) -> Result<Lease<Buffer>, DriverError> {
     let data = bytes_of(data);
-    let mut buf = pool.lease(BufferInfo::new_mappable(
+    let mut buf = pool.lease(BufferInfo::host_mem(
         data.len() as _,
         vk::BufferUsageFlags::UNIFORM_BUFFER,
     ))?;

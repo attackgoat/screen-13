@@ -22,7 +22,7 @@ profile-with-tracy = ["profiling/profile-with-tracy"]
 [dependencies]
 ash = ">=0.37.1, <0.38"
 ash-window = "0.12"
-derive_builder = "0.13"
+derive_builder = "0.20"
 gpu-allocator = "0.25"
 log = "0.4"
 ordered-float = "4.1"

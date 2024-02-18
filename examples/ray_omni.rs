@@ -47,17 +47,17 @@ fn main() -> anyhow::Result<()> {
         let model_mesh_vertex_buf = frame.render_graph.bind_node(&model_mesh.vertex_buf);
 
         let depth_image = frame.render_graph.bind_node(
-            pool.lease(ImageInfo::new_2d(
-                depth_fmt,
+            pool.lease(ImageInfo::image_2d(
                 frame.width,
                 frame.height,
+                depth_fmt,
                 vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
             ))
             .unwrap(),
         );
         let camera_buf = frame.render_graph.bind_node({
             let mut buf = pool
-                .lease(BufferInfo::new_mappable(
+                .lease(BufferInfo::host_mem(
                     size_of::<Camera>() as _,
                     vk::BufferUsageFlags::UNIFORM_BUFFER,
                 ))
@@ -172,7 +172,7 @@ fn create_blas(
     let mut render_graph = RenderGraph::new();
     let blas = render_graph.bind_node(AccelerationStructure::create(
         device,
-        AccelerationStructureInfo::new_blas(size.create_size),
+        AccelerationStructureInfo::blas(size.create_size),
     )?);
 
     let accel_struct_scratch_offset_alignment = device
@@ -184,10 +184,11 @@ fn create_blas(
         as vk::DeviceSize;
     let scratch_buf = render_graph.bind_node(Buffer::create(
         device,
-        BufferInfo::new(
+        BufferInfo::device_mem(
             size.build_size,
             vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | vk::BufferUsageFlags::STORAGE_BUFFER,
         )
+        .to_builder()
         .alignment(accel_struct_scratch_offset_alignment),
     )?);
     let build_ranges = models
@@ -305,7 +306,7 @@ fn create_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, DriverE
 
     Ok(Arc::new(GraphicPipeline::create(
         device,
-        GraphicPipelineInfo::new(),
+        GraphicPipelineInfo::default(),
         [
             Shader::new_vertex(vert.as_slice()),
             Shader::new_fragment(frag.as_slice()),
@@ -340,7 +341,7 @@ fn create_tlas(
     let instance_buf = Arc::new({
         let mut buffer = Buffer::create(
             device,
-            BufferInfo::new_mappable(
+            BufferInfo::host_mem(
                 instance_data.len() as _,
                 vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
@@ -366,7 +367,7 @@ fn create_tlas(
     };
     let size = AccelerationStructure::size_of(device, &info);
     let tlas =
-        render_graph.bind_node(pool.lease(AccelerationStructureInfo::new_tlas(size.create_size))?);
+        render_graph.bind_node(pool.lease(AccelerationStructureInfo::tlas(size.create_size))?);
 
     let accel_struct_scratch_offset_alignment = device
         .physical_device
@@ -377,10 +378,11 @@ fn create_tlas(
         as vk::DeviceSize;
     let scratch_buf = render_graph.bind_node(
         pool.lease(
-            BufferInfo::new(
+            BufferInfo::device_mem(
                 size.build_size,
                 vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | vk::BufferUsageFlags::STORAGE_BUFFER,
             )
+            .to_builder()
             .alignment(accel_struct_scratch_offset_alignment),
         )?,
     );

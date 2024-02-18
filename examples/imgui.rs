@@ -24,10 +24,10 @@ fn main() -> Result<(), DisplayError> {
     event_loop.run(|mut frame| {
         // Lease and clear an image as a stand-in for some real game or program output
         let app_image = frame.render_graph.bind_node(
-            pool.lease(ImageInfo::new_2d(
-                vk::Format::R8G8B8A8_UNORM,
+            pool.lease(ImageInfo::image_2d(
                 frame.width,
                 frame.height,
+                vk::Format::R8G8B8A8_UNORM,
                 vk::ImageUsageFlags::SAMPLED
                     | vk::ImageUsageFlags::STORAGE
                     | vk::ImageUsageFlags::TRANSFER_DST,

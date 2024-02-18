@@ -18,7 +18,7 @@ fn main() -> Result<(), DriverError> {
     pretty_env_logger::init();
 
     let mut render_graph = RenderGraph::new();
-    let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     let size = 4;
 
     // The 4x4 depth image will have pixels that look like this:
@@ -86,13 +86,12 @@ fn fill_depth_image(
     render_graph: &mut RenderGraph,
     size: u32,
 ) -> Result<ImageNode, DriverError> {
-    let info = ImageInfo::new_2d(
+    let info = ImageInfo::image_2d(
+        size,
+        size,
         vk::Format::D32_SFLOAT,
-        size,
-        size,
         vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
-    )
-    .build();
+    );
     let ImageInfo {
         fmt,
         ty,
@@ -163,13 +162,12 @@ fn reduce_depth_image(
 
     // (We use R32_SFLOAT because D32_SFLOAT has very low support for the STORAGE usage and most
     // implementations would be reading the image elsewhere instead of using it as a depth image)
-    let reduced_info = ImageInfo::new_2d(
-        vk::Format::R32_SFLOAT,
+    let reduced_info = ImageInfo::image_2d(
         depth_info.width >> 1,
         depth_info.height >> 1,
+        vk::Format::R32_SFLOAT,
         vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::TRANSFER_SRC,
-    )
-    .build();
+    );
     let reduced_image = render_graph.bind_node(Image::create(device, reduced_info)?);
 
     render_graph
@@ -217,7 +215,7 @@ fn copy_image_to_buffer(
         * size_of::<f32>() as vk::DeviceSize;
     let result_buf = render_graph.bind_node(Buffer::create(
         device,
-        BufferInfo::new_mappable(result_len, vk::BufferUsageFlags::TRANSFER_DST),
+        BufferInfo::host_mem(result_len, vk::BufferUsageFlags::TRANSFER_DST),
     )?);
 
     render_graph.copy_image_to_buffer(reduced_image, result_buf);

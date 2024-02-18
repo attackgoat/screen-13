@@ -94,10 +94,10 @@ fn main() -> anyhow::Result<()> {
                 // Clear a new image to a cycling color
                 let mut render_graph = RenderGraph::new();
                 let image = render_graph.bind_node(
-                    pool.lease(ImageInfo::new_2d(
+                    pool.lease(ImageInfo::image_2d(
+                        10,
+                        10,
                         vk::Format::R8G8B8A8_UNORM,
-                        10,
-                        10,
                         vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::TRANSFER_SRC,
                     ))
                     .unwrap(),
@@ -223,10 +223,10 @@ fn load_font(device: &Arc<Device>) -> anyhow::Result<BitmapFont> {
     // This image will hold the font glyphs
     let page_0 = Image::create(
         device,
-        ImageInfo::new_2d(
+        ImageInfo::image_2d(
+            64,
+            64,
             vk::Format::R8G8B8A8_UNORM,
-            64,
-            64,
             vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
         ),
     )

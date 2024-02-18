@@ -484,6 +484,8 @@ pub struct DeviceInfo {
 impl DeviceInfo {
     /// Specifies default device information.
     #[allow(clippy::new_ret_no_self)]
+    #[deprecated = "Use DeviceInfo::default()"]
+    #[doc(hidden)]
     pub fn new() -> DeviceInfoBuilder {
         Default::default()
     }
@@ -569,11 +571,23 @@ impl DeviceInfo {
 
         idx
     }
+
+    /// Converts a `DeviceInfo` into a `DeviceInfoBuilder`.
+    #[inline(always)]
+    pub fn to_builder(self) -> DeviceInfoBuilder {
+        DeviceInfoBuilder {
+            debug: Some(self.debug),
+            select_physical_device: Some(self.select_physical_device),
+        }
+    }
 }
 
 impl Default for DeviceInfo {
     fn default() -> Self {
-        Self::new().build()
+        Self {
+            debug: false,
+            select_physical_device: Box::new(DeviceInfo::discrete_gpu),
+        }
     }
 }
 
@@ -583,11 +597,19 @@ impl From<DeviceInfoBuilder> for DeviceInfo {
     }
 }
 
-// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
 impl DeviceInfoBuilder {
     /// Builds a new `DeviceInfo`.
+    #[inline(always)]
     pub fn build(self) -> DeviceInfo {
-        self.fallible_build().unwrap()
+        let res = self.fallible_build();
+
+        #[cfg(test)]
+        let res = res.unwrap();
+
+        #[cfg(not(test))]
+        let res = unsafe { res.unwrap_unchecked() };
+
+        res
     }
 }
 
@@ -597,5 +619,23 @@ struct DeviceInfoBuilderError;
 impl From<UninitializedFieldError> for DeviceInfoBuilderError {
     fn from(_: UninitializedFieldError) -> Self {
         Self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    type Info = DeviceInfo;
+    type Builder = DeviceInfoBuilder;
+
+    #[test]
+    pub fn device_info() {
+        Info::default().to_builder().build();
+    }
+
+    #[test]
+    pub fn device_info_builder() {
+        Builder::default().build();
     }
 }

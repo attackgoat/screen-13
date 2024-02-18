@@ -40,7 +40,7 @@ impl BitmapFont {
         let pipeline = Arc::new(
             GraphicPipeline::create(
                 device,
-                GraphicPipelineInfo::new().blend(BlendMode::ALPHA),
+                GraphicPipelineInfoBuilder::default().blend(BlendMode::ALPHA),
                 [
                     Shader::new_vertex(
                         include_spirv!("res/shader/graphic/font.vert", vert).as_slice(),
@@ -163,7 +163,7 @@ impl BitmapFont {
         let vertex_buf_len = 120 * text.chars().count() as vk::DeviceSize;
         let mut vertex_buf = self
             .cache
-            .lease(BufferInfo::new_mappable(
+            .lease(BufferInfo::host_mem(
                 vertex_buf_len,
                 vk::BufferUsageFlags::VERTEX_BUFFER,
             ))

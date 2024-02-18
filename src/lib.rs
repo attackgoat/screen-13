@@ -57,7 +57,7 @@ For example, a typical host-mappable buffer:
 # use screen_13::driver::buffer::{Buffer, BufferInfo};
 # fn main() -> Result<(), DriverError> {
 # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
-let info = BufferInfo::new_mappable(1024, vk::BufferUsageFlags::STORAGE_BUFFER);
+let info = BufferInfo::host_mem(1024, vk::BufferUsageFlags::STORAGE_BUFFER);
 let my_buf = Buffer::create(&device, info)?;
 # Ok(()) }
 ```
@@ -108,10 +108,10 @@ For example, leasing an image:
 # use screen_13::pool::{Pool};
 # use screen_13::pool::lazy::{LazyPool};
 # fn main() -> Result<(), DriverError> {
-# let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+# let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
 let mut pool = LazyPool::new(&device);
 
-let info = ImageInfo::new_2d(vk::Format::R8G8B8A8_UNORM, 8, 8, vk::ImageUsageFlags::STORAGE);
+let info = ImageInfo::image_2d(8, 8, vk::Format::R8G8B8A8_UNORM, vk::ImageUsageFlags::STORAGE);
 let my_image = pool.lease(info)?;
 # Ok(()) }
 ```
@@ -148,10 +148,10 @@ it as a node. Bound nodes may only be used with the graphs they were bound to. N
 # use screen_13::pool::{Pool};
 # use screen_13::pool::lazy::{LazyPool};
 # fn main() -> Result<(), DriverError> {
-# let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
-# let info = BufferInfo::new_mappable(1024, vk::BufferUsageFlags::STORAGE_BUFFER);
+# let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
+# let info = BufferInfo::host_mem(1024, vk::BufferUsageFlags::STORAGE_BUFFER);
 # let buffer = Buffer::create(&device, info)?;
-# let info = ImageInfo::new_2d(vk::Format::R8G8B8A8_UNORM, 8, 8, vk::ImageUsageFlags::STORAGE);
+# let info = ImageInfo::image_2d(8, 8, vk::Format::R8G8B8A8_UNORM, vk::ImageUsageFlags::STORAGE);
 # let image = Image::create(&device, info)?;
 # let mut graph = RenderGraph::new();
 println!("{:?}", buffer); // Buffer
@@ -200,10 +200,10 @@ Example:
 # use screen_13::pool::{Pool};
 # use screen_13::pool::lazy::{LazyPool};
 # fn main() -> Result<(), DriverError> {
-# let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
-# let info = BufferInfo::new_mappable(1024, vk::BufferUsageFlags::STORAGE_BUFFER);
+# let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
+# let info = BufferInfo::host_mem(1024, vk::BufferUsageFlags::STORAGE_BUFFER);
 # let buffer = Buffer::create(&device, info)?;
-# let info = ImageInfo::new_2d(vk::Format::R8G8B8A8_UNORM, 8, 8, vk::ImageUsageFlags::STORAGE);
+# let info = ImageInfo::image_2d(8, 8, vk::Format::R8G8B8A8_UNORM, vk::ImageUsageFlags::STORAGE);
 # let image = Image::create(&device, info)?;
 let mut graph = RenderGraph::new();
 let buffer_node = graph.bind_node(buffer);

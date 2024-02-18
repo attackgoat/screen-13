@@ -30,7 +30,7 @@ impl ImGui {
         let pipeline = Arc::new(
             GraphicPipeline::create(
                 device,
-                GraphicPipelineInfo::new()
+                GraphicPipelineInfoBuilder::default()
                     .blend(BlendMode::PRE_MULTIPLIED_ALPHA)
                     .cull_mode(vk::CullModeFlags::NONE),
                 [
@@ -90,10 +90,10 @@ impl ImGui {
         let image = render_graph.bind_node({
             let mut image = self
                 .pool
-                .lease(ImageInfo::new_2d(
-                    vk::Format::R8G8B8A8_UNORM,
+                .lease(ImageInfo::image_2d(
                     window.inner_size().width,
                     window.inner_size().height,
+                    vk::Format::R8G8B8A8_UNORM,
                     vk::ImageUsageFlags::COLOR_ATTACHMENT
                         | vk::ImageUsageFlags::SAMPLED
                         | vk::ImageUsageFlags::STORAGE
@@ -119,7 +119,7 @@ impl ImGui {
             let indices = cast_slice(draw_list.idx_buffer());
             let mut index_buf = self
                 .pool
-                .lease(BufferInfo::new_mappable(
+                .lease(BufferInfo::host_mem(
                     indices.len() as _,
                     vk::BufferUsageFlags::INDEX_BUFFER,
                 ))
@@ -135,7 +135,7 @@ impl ImGui {
             let vertex_buf_len = vertices.len() * 20;
             let mut vertex_buf = self
                 .pool
-                .lease(BufferInfo::new_mappable(
+                .lease(BufferInfo::host_mem(
                     vertex_buf_len as _,
                     vk::BufferUsageFlags::VERTEX_BUFFER,
                 ))
@@ -266,7 +266,7 @@ impl ImGui {
         let temp_buf_len = texture.data.len();
         let mut temp_buf = self
             .pool
-            .lease(BufferInfo::new_mappable(
+            .lease(BufferInfo::host_mem(
                 temp_buf_len as _,
                 vk::BufferUsageFlags::TRANSFER_SRC,
             ))
@@ -281,10 +281,10 @@ impl ImGui {
         let image = render_graph.bind_node({
             let mut image = self
                 .pool
-                .lease(ImageInfo::new_2d(
-                    vk::Format::R8G8B8A8_UNORM,
+                .lease(ImageInfo::image_2d(
                     texture.width,
                     texture.height,
+                    vk::Format::R8G8B8A8_UNORM,
                     vk::ImageUsageFlags::SAMPLED
                         | vk::ImageUsageFlags::STORAGE
                         | vk::ImageUsageFlags::TRANSFER_DST,

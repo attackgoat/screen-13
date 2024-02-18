@@ -86,7 +86,7 @@ impl GraphicPresenter {
         Ok(Self {
             pipeline: Arc::new(GraphicPipeline::create(
                 device,
-                GraphicPipelineInfo::new(),
+                GraphicPipelineInfo::default(),
                 [
                     Shader::new_vertex(
                         include_spirv!("res/shader/graphic/present.vert", vert).as_slice(),

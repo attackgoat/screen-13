@@ -74,9 +74,7 @@ fn align_up(val: u32, atom: u32) -> u32 {
 fn create_ray_trace_pipeline(device: &Arc<Device>) -> Result<Arc<RayTracePipeline>, DriverError> {
     Ok(Arc::new(RayTracePipeline::create(
         device,
-        RayTracePipelineInfo::new()
-            .max_ray_recursion_depth(1)
-            .build(),
+        RayTracePipelineInfoBuilder::default().max_ray_recursion_depth(1),
         [
             Shader::new_ray_gen(SHADER_RAY_GEN),
             Shader::new_closest_hit(SHADER_CLOSEST_HIT),
@@ -127,11 +125,12 @@ fn main() -> anyhow::Result<()> {
     let sbt_buf = Arc::new({
         let mut buf = Buffer::create(
             &event_loop.device,
-            BufferInfo::new_mappable(
+            BufferInfo::host_mem(
                 (sbt_rgen_size + sbt_hit_size + sbt_miss_size) as _,
                 vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             )
+            .to_builder()
             .alignment(shader_group_base_alignment as _),
         )
         .unwrap();
@@ -205,7 +204,7 @@ fn main() -> anyhow::Result<()> {
         let data = cast_slice(&INDICES);
         let mut buf = Buffer::create(
             &event_loop.device,
-            BufferInfo::new_mappable(
+            BufferInfo::host_mem(
                 data.len() as _,
                 vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
@@ -219,7 +218,7 @@ fn main() -> anyhow::Result<()> {
         let data = cast_slice(&VERTICES);
         let mut buf = Buffer::create(
             &event_loop.device,
-            BufferInfo::new_mappable(
+            BufferInfo::host_mem(
                 data.len() as _,
                 vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
@@ -255,7 +254,7 @@ fn main() -> anyhow::Result<()> {
     let blas_size = AccelerationStructure::size_of(&event_loop.device, &blas_geometry_info);
     let blas = Arc::new(AccelerationStructure::create(
         &event_loop.device,
-        AccelerationStructureInfo::new_blas(blas_size.create_size),
+        AccelerationStructureInfo::blas(blas_size.create_size),
     )?);
     let blas_device_address = AccelerationStructure::device_address(&blas);
 
@@ -284,7 +283,7 @@ fn main() -> anyhow::Result<()> {
     let instance_buf = Arc::new({
         let mut buffer = Buffer::create(
             &event_loop.device,
-            BufferInfo::new_mappable(
+            BufferInfo::host_mem(
                 instance_data.len() as _,
                 vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
@@ -314,7 +313,7 @@ fn main() -> anyhow::Result<()> {
     let tlas_size = AccelerationStructure::size_of(&event_loop.device, &tlas_geometry_info);
     let tlas = Arc::new(AccelerationStructure::create(
         &event_loop.device,
-        AccelerationStructureInfo::new_tlas(tlas_size.create_size),
+        AccelerationStructureInfo::tlas(tlas_size.create_size),
     )?);
 
     // ------------------------------------------------------------------------------------------ //
@@ -338,11 +337,12 @@ fn main() -> anyhow::Result<()> {
         {
             let scratch_buf = render_graph.bind_node(Buffer::create(
                 &event_loop.device,
-                BufferInfo::new(
+                BufferInfo::device_mem(
                     blas_size.build_size,
                     vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                         | vk::BufferUsageFlags::STORAGE_BUFFER,
                 )
+                .to_builder()
                 .alignment(accel_struct_scratch_offset_alignment),
             )?);
 
@@ -371,11 +371,12 @@ fn main() -> anyhow::Result<()> {
             let instance_node = render_graph.bind_node(instance_buf);
             let scratch_buf = render_graph.bind_node(Buffer::create(
                 &event_loop.device,
-                BufferInfo::new(
+                BufferInfo::device_mem(
                     tlas_size.build_size,
                     vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                         | vk::BufferUsageFlags::STORAGE_BUFFER,
                 )
+                .to_builder()
                 .alignment(accel_struct_scratch_offset_alignment),
             )?);
             let tlas_node = render_graph.bind_node(&tlas);

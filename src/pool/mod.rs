@@ -34,7 +34,7 @@
 //! # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
 //! let mut pool = LazyPool::new(&device);
 //!
-//! let info = ImageInfo::new_2d(vk::Format::R8G8B8A8_UNORM, 8, 8, vk::ImageUsageFlags::STORAGE);
+//! let info = ImageInfo::image_2d(8, 8, vk::Format::R8G8B8A8_UNORM, vk::ImageUsageFlags::STORAGE);
 //! let my_image = pool.lease(info)?;
 //!
 //! assert!(my_image.info.usage.contains(vk::ImageUsageFlags::STORAGE));

@@ -71,11 +71,9 @@ impl HotGraphicPipeline {
                 .map(|shader| compile_shader_and_watch(shader, &mut watcher))
                 .collect::<Result<Vec<_>, DriverError>>()
             {
-                if let Ok(instance) = GraphicPipeline::create(
-                    &self.device,
-                    self.instance.info.clone(),
-                    compiled_shaders,
-                ) {
+                if let Ok(instance) =
+                    GraphicPipeline::create(&self.device, self.instance.info, compiled_shaders)
+                {
                     self.has_changes = has_changes;
                     self.watcher = watcher;
                     self.instance = Arc::new(instance);

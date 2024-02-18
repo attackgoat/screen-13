@@ -46,10 +46,10 @@ fn create_images(device: &Arc<Device>) -> Result<Vec<Arc<Image>>, DisplayError> 
         for x in 0..8 {
             let texture = Arc::new(Image::create(
                 device,
-                ImageInfo::new_2d(
+                ImageInfo::image_2d(
+                    100,
+                    100,
                     vk::Format::R8G8B8A8_UNORM,
-                    100,
-                    100,
                     vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
                 ),
             )?);

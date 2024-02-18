@@ -82,7 +82,7 @@ fn record_accel_struct_builds(frame: &mut FrameContext, pool: &mut HashPool) {
     // Vertex buffer for a triangle
     let vertex_buf = {
         let mut buf = pool
-            .lease(BufferInfo::new_mappable(
+            .lease(BufferInfo::host_mem(
                 36,
                 vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
@@ -111,7 +111,7 @@ fn record_accel_struct_builds(frame: &mut FrameContext, pool: &mut HashPool) {
     // Index buffer for a single triangle
     let index_buf = {
         let mut buf = pool
-            .lease(BufferInfo::new_mappable(
+            .lease(BufferInfo::host_mem(
                 6,
                 vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
@@ -146,12 +146,12 @@ fn record_accel_struct_builds(frame: &mut FrameContext, pool: &mut HashPool) {
         }],
     };
     let blas_size = AccelerationStructure::size_of(frame.device, &blas_geometry_info);
-    let blas_info = AccelerationStructureInfo::new_blas(blas_size.create_size);
+    let blas_info = AccelerationStructureInfo::blas(blas_size.create_size);
 
     let instance_len = size_of::<vk::AccelerationStructureInstanceKHR>() as vk::DeviceSize;
     let mut instance_buf = Buffer::create(
         frame.device,
-        BufferInfo::new_mappable(
+        BufferInfo::host_mem(
             instance_len * BLAS_COUNT,
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
@@ -198,11 +198,12 @@ fn record_accel_struct_builds(frame: &mut FrameContext, pool: &mut HashPool) {
         let blas_node = frame.render_graph.bind_node(blas);
         let scratch_buf = frame.render_graph.bind_node(
             pool.lease(
-                BufferInfo::new(
+                BufferInfo::device_mem(
                     blas_size.build_size,
                     vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                         | vk::BufferUsageFlags::STORAGE_BUFFER,
                 )
+                .to_builder()
                 .alignment(accel_struct_scratch_offset_alignment),
             )
             .unwrap(),
@@ -227,15 +228,16 @@ fn record_accel_struct_builds(frame: &mut FrameContext, pool: &mut HashPool) {
     let instance_buf = frame.render_graph.bind_node(instance_buf);
     let tlas_size = AccelerationStructure::size_of(frame.device, &tlas_geometry_info);
     let tlas = pool
-        .lease(AccelerationStructureInfo::new_tlas(tlas_size.create_size))
+        .lease(AccelerationStructureInfo::tlas(tlas_size.create_size))
         .unwrap();
     let tlas_node = frame.render_graph.bind_node(tlas);
     let tlas_scratch_buf = frame.render_graph.bind_node(
         pool.lease(
-            BufferInfo::new(
+            BufferInfo::device_mem(
                 tlas_size.build_size,
                 vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | vk::BufferUsageFlags::STORAGE_BUFFER,
             )
+            .to_builder()
             .alignment(accel_struct_scratch_offset_alignment),
         )
         .unwrap(),
@@ -342,13 +344,12 @@ fn record_compute_array_bind(frame: &mut FrameContext, pool: &mut HashPool) {
         )),
     );
 
-    let image_info = ImageInfo::new_2d(
+    let image_info = ImageInfo::image_2d(
+        64,
+        64,
         vk::Format::R8G8B8A8_UNORM,
-        64,
-        64,
         vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
-    )
-    .build();
+    );
     let images = [
         frame
             .render_graph
@@ -423,13 +424,12 @@ fn record_compute_bindless(frame: &mut FrameContext, pool: &mut HashPool) {
         ),
     );
 
-    let image_info = ImageInfo::new_2d(
+    let image_info = ImageInfo::image_2d(
+        64,
+        64,
         vk::Format::R8G8B8A8_UNORM,
-        64,
-        64,
         vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE,
-    )
-    .build();
+    );
     let images = [
         frame
             .render_graph
@@ -533,23 +533,22 @@ fn record_graphic_bindless(frame: &mut FrameContext, pool: &mut HashPool) {
     );
 
     let image = frame.render_graph.bind_node(
-        pool.lease(ImageInfo::new_2d(
+        pool.lease(ImageInfo::image_2d(
+            256,
+            256,
             vk::Format::R8G8B8A8_UNORM,
-            256,
-            256,
             vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::INPUT_ATTACHMENT,
         ))
         .unwrap(),
     );
-    let image_info = ImageInfo::new_2d(
+    let image_info = ImageInfo::image_2d(
+        64,
+        64,
         vk::Format::R8G8B8A8_UNORM,
-        64,
-        64,
         vk::ImageUsageFlags::SAMPLED
             | vk::ImageUsageFlags::STORAGE
             | vk::ImageUsageFlags::TRANSFER_DST,
-    )
-    .build();
+    );
     let images = [
         frame
             .render_graph
@@ -699,7 +698,7 @@ fn record_graphic_msaa_depth_stencil(frame: &mut FrameContext, pool: &mut HashPo
 
     let pipeline = graphic_vert_frag_pipeline(
         frame.device,
-        GraphicPipelineInfo::new().samples(sample_count),
+        GraphicPipelineInfoBuilder::default().samples(sample_count),
         inline_spirv!(
             r#"
             #version 460 core
@@ -735,34 +734,36 @@ fn record_graphic_msaa_depth_stencil(frame: &mut FrameContext, pool: &mut HashPo
     let swapchain_format = frame.render_graph.node_info(frame.swapchain_image).fmt;
     let msaa_color_image = frame.render_graph.bind_node(
         pool.lease(
-            ImageInfo::new_2d(
-                swapchain_format,
+            ImageInfo::image_2d(
                 frame.width,
                 frame.height,
+                swapchain_format,
                 vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
             )
+            .to_builder()
             .sample_count(sample_count),
         )
         .unwrap(),
     );
     let msaa_depth_stencil_image = frame.render_graph.bind_node(
         pool.lease(
-            ImageInfo::new_2d(
-                depth_stencil_format,
+            ImageInfo::image_2d(
                 frame.width,
                 frame.height,
+                depth_stencil_format,
                 vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
                     | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
             )
+            .to_builder()
             .sample_count(sample_count),
         )
         .unwrap(),
     );
     let depth_stencil_image = frame.render_graph.bind_node(
-        pool.lease(ImageInfo::new_2d(
-            depth_stencil_format,
+        pool.lease(ImageInfo::image_2d(
             frame.width,
             frame.height,
+            depth_stencil_format,
             vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
         ))
         .unwrap(),
@@ -856,10 +857,10 @@ fn record_graphic_will_merge_subpass_input(frame: &mut FrameContext, pool: &mut 
         .as_slice(),
     );
     let image = frame.render_graph.bind_node(
-        pool.lease(ImageInfo::new_2d(
+        pool.lease(ImageInfo::image_2d(
+            256,
+            256,
             vk::Format::R8G8B8A8_UNORM,
-            256,
-            256,
             vk::ImageUsageFlags::COLOR_ATTACHMENT
                 | vk::ImageUsageFlags::INPUT_ATTACHMENT
                 | vk::ImageUsageFlags::TRANSFER_DST,
@@ -916,10 +917,10 @@ fn record_graphic_wont_merge(frame: &mut FrameContext, pool: &mut HashPool) {
     );
 
     let image = frame.render_graph.bind_node(
-        pool.lease(ImageInfo::new_2d(
+        pool.lease(ImageInfo::image_2d(
+            256,
+            256,
             vk::Format::R8G8B8A8_UNORM,
-            256,
-            256,
             vk::ImageUsageFlags::COLOR_ATTACHMENT,
         ))
         .unwrap(),
@@ -976,19 +977,19 @@ fn record_transfer_graphic_multipass(frame: &mut FrameContext, pool: &mut HashPo
     );
     let images = [
         frame.render_graph.bind_node(
-            pool.lease(ImageInfo::new_2d(
+            pool.lease(ImageInfo::image_2d(
+                256,
+                256,
                 vk::Format::R8G8B8A8_UNORM,
-                256,
-                256,
                 vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
             ))
             .unwrap(),
         ),
         frame.render_graph.bind_node(
-            pool.lease(ImageInfo::new_2d(
+            pool.lease(ImageInfo::image_2d(
+                256,
+                256,
                 vk::Format::R8G8B8A8_UNORM,
-                256,
-                256,
                 vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
             ))
             .unwrap(),
@@ -1070,7 +1071,7 @@ fn graphic_vert_frag_pipeline(
         Arc::clone(
             tls.borrow_mut()
                 .entry(Key {
-                    info: info.clone(),
+                    info,
                     vert_source,
                     frag_source,
                 })

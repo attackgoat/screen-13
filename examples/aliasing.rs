@@ -22,16 +22,16 @@ use {
 fn main() -> Result<(), DriverError> {
     pretty_env_logger::init();
 
-    let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
 
     // We wrap HashPool in an AliasPool container to enable resource aliasing
     let mut pool = AliasPool::new(HashPool::new(&device));
 
     // This is the information we will use to alias image1 and image2
-    let image_info = ImageInfo::new_2d(
+    let image_info = ImageInfo::image_2d(
+        128,
+        128,
         vk::Format::R8G8B8A8_UNORM,
-        128,
-        128,
         vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST,
     );
 
@@ -48,11 +48,10 @@ fn main() -> Result<(), DriverError> {
     assert_eq!(image1, image2);
 
     // Let's make up some different, yet compatible, image information:
-    let image_info = image_info.build();
-    let image_info = ImageInfo::new_2d(
-        image_info.fmt,
+    let image_info = ImageInfo::image_2d(
         image_info.width,
         image_info.height,
+        image_info.fmt,
         vk::ImageUsageFlags::TRANSFER_DST,
     );
 

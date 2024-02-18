@@ -57,10 +57,10 @@ fn main() -> Result<(), DisplayError> {
         let vertex_buf = frame.render_graph.bind_node(&funky_shape.vertex_buf);
 
         let depth_stencil = frame.render_graph.bind_node(
-            pool.lease(ImageInfo::new_2d(
-                depth_stencil_format,
+            pool.lease(ImageInfo::image_2d(
                 frame.width,
                 frame.height,
+                depth_stencil_format,
                 vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
                     | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
             ))
@@ -162,7 +162,7 @@ fn bind_camera_buf(
     model: Mat4,
 ) -> BufferLeaseNode {
     let mut buf = pool
-        .lease(BufferInfo::new_mappable(
+        .lease(BufferInfo::host_mem(
             204,
             vk::BufferUsageFlags::UNIFORM_BUFFER,
         ))
@@ -174,7 +174,7 @@ fn bind_camera_buf(
 
 fn bind_light_buf(frame: &mut FrameContext, pool: &mut LazyPool) -> BufferLeaseNode {
     let mut buf = pool
-        .lease(BufferInfo::new_mappable(
+        .lease(BufferInfo::host_mem(
             64,
             vk::BufferUsageFlags::UNIFORM_BUFFER,
         ))
@@ -234,14 +234,14 @@ fn create_funky_shape(event_loop: &EventLoop, pool: &mut LazyPool) -> Result<Sha
     // Create GPU-only buffers
     let index_buf = Arc::new(Buffer::create(
         &event_loop.device,
-        BufferInfo::new(
+        BufferInfo::device_mem(
             index_buf_host.info.size,
             vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::INDEX_BUFFER,
         ),
     )?);
     let vertex_buf = Arc::new(Buffer::create(
         &event_loop.device,
-        BufferInfo::new(
+        BufferInfo::device_mem(
             vertex_buf_host.info.size,
             vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::VERTEX_BUFFER,
         ),
@@ -320,7 +320,7 @@ fn create_fill_background_pipeline(device: &Arc<Device>) -> Arc<GraphicPipeline>
     Arc::new(
         GraphicPipeline::create(
             device,
-            GraphicPipelineInfo::new(),
+            GraphicPipelineInfo::default(),
             [vertex_shader, fragment_shader],
         )
         .unwrap(),
@@ -509,7 +509,7 @@ fn create_pbr_pipeline(device: &Arc<Device>) -> Arc<GraphicPipeline> {
     Arc::new(
         GraphicPipeline::create(
             device,
-            GraphicPipelineInfo::new(),
+            GraphicPipelineInfo::default(),
             [vertex_shader, fragment_shader],
         )
         .unwrap(),

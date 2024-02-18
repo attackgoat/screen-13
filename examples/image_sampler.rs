@@ -20,14 +20,14 @@ fn main() -> anyhow::Result<()> {
     let gulf_image = read_image(&event_loop.device, "examples/res/image/gulf.jpg")?;
 
     // Sampler info contains the full definition of Vulkan sampler settings using a builder struct
-    let edge_edge = SamplerInfo::new()
+    let edge_edge = SamplerInfoBuilder::default()
         .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
         .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE);
-    let border_edge_black = SamplerInfo::new()
+    let border_edge_black = SamplerInfoBuilder::default()
         .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_BORDER)
         .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
         .border_color(vk::BorderColor::FLOAT_OPAQUE_BLACK);
-    let edge_border_white = SamplerInfo::new()
+    let edge_border_white = SamplerInfoBuilder::default()
         .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
         .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_BORDER)
         .border_color(vk::BorderColor::FLOAT_OPAQUE_WHITE);
@@ -71,7 +71,7 @@ fn create_pipeline(
 ) -> anyhow::Result<Arc<GraphicPipeline>> {
     Ok(Arc::new(GraphicPipeline::create(
         device,
-        GraphicPipelineInfo::new(),
+        GraphicPipelineInfo::default(),
         [
             Shader::new_vertex(
                 inline_spirv!(
@@ -122,10 +122,10 @@ fn read_image(device: &Arc<Device>, path: impl AsRef<Path>) -> anyhow::Result<Ar
     let gulf_jpg = image::open(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(path))?;
     let image = Arc::new(Image::create(
         device,
-        ImageInfo::new_2d(
-            vk::Format::R8G8B8A8_UNORM,
+        ImageInfo::image_2d(
             gulf_jpg.width(),
             gulf_jpg.height(),
+            vk::Format::R8G8B8A8_UNORM,
             vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
         ),
     )?);

@@ -467,7 +467,7 @@ impl EventLoopBuilder {
 
 impl EventLoopBuilder {
     /// Builds a new `EventLoop`.
-    pub fn build(self) -> Result<EventLoop, DriverError> {
+    pub fn build(mut self) -> Result<EventLoop, DriverError> {
         // Create an operating system window via Winit
         let window = self.window;
 
@@ -483,6 +483,7 @@ impl EventLoopBuilder {
             let inner_size = window.inner_size();
             (inner_size.width, inner_size.height)
         };
+        self.swapchain_info = self.swapchain_info.width(width).height(height);
 
         // Load the GPU driver (thin Vulkan device and swapchain smart pointers)
         let device_info = self.device_info.build();
@@ -520,7 +521,7 @@ impl EventLoopBuilder {
         let swapchain = Swapchain::new(
             &device,
             surface,
-            self.swapchain_info.format(surface_format).build(),
+            self.swapchain_info.surface(surface_format),
         )?;
 
         info!(

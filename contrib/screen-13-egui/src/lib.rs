@@ -28,7 +28,7 @@ impl Egui {
         let ppl = Arc::new(
             GraphicPipeline::create(
                 device,
-                GraphicPipelineInfo::new()
+                GraphicPipelineInfoBuilder::default()
                     .blend(BlendMode {
                         blend_enable: true,
                         src_color_blend_factor: vk::BlendFactor::ONE,
@@ -109,7 +109,7 @@ impl Egui {
                 let tmp_buf = {
                     let mut buf = self
                         .cache
-                        .lease(BufferInfo::new_mappable(
+                        .lease(BufferInfo::host_mem(
                             (pixels.len() * delta.image.bytes_per_pixel()) as u64,
                             vk::BufferUsageFlags::TRANSFER_SRC,
                         ))
@@ -155,10 +155,10 @@ impl Egui {
                 } else {
                     let image = AnyImageNode::ImageLease(
                         self.cache
-                            .lease(ImageInfo::new_2d(
-                                vk::Format::R8G8B8A8_UNORM,
+                            .lease(ImageInfo::image_2d(
                                 delta.image.width() as u32,
                                 delta.image.height() as u32,
+                                vk::Format::R8G8B8A8_UNORM,
                                 vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
                             ))
                             .unwrap()
@@ -234,7 +234,7 @@ impl Egui {
                     let idx_buf = {
                         let mut buf = self
                             .cache
-                            .lease(BufferInfo::new_mappable(
+                            .lease(BufferInfo::host_mem(
                                 (mesh.indices.len() * 4) as u64,
                                 vk::BufferUsageFlags::INDEX_BUFFER,
                             ))
@@ -247,7 +247,7 @@ impl Egui {
                     let vert_buf = {
                         let mut buf = self
                             .cache
-                            .lease(BufferInfo::new_mappable(
+                            .lease(BufferInfo::host_mem(
                                 (mesh.vertices.len() * std::mem::size_of::<egui::epaint::Vertex>())
                                     as u64,
                                 vk::BufferUsageFlags::VERTEX_BUFFER,

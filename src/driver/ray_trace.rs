@@ -38,6 +38,10 @@ pub struct RayTracePipeline {
     pub info: RayTracePipelineInfo,
 
     pub(crate) layout: vk::PipelineLayout,
+
+    /// A descriptive name used in debugging messages.
+    pub name: Option<String>,
+
     pub(crate) push_constants: Vec<vk::PushConstantRange>,
     pipeline: vk::Pipeline,
     shader_modules: Vec<vk::ShaderModule>,
@@ -296,6 +300,7 @@ impl RayTracePipeline {
                 device,
                 info,
                 layout,
+                name: None,
                 push_constants,
                 pipeline,
                 shader_modules,
@@ -347,6 +352,12 @@ impl RayTracePipeline {
                 .get_ray_tracing_shader_group_stack_size(this.pipeline, group, group_shader)
         }
     }
+
+    /// Sets the debugging name assigned to this pipeline.
+    pub fn with_name(mut this: Self, name: impl Into<String>) -> Self {
+        this.name = Some(name.into());
+        this
+    }
 }
 
 impl Deref for RayTracePipeline {
@@ -378,14 +389,14 @@ impl Drop for RayTracePipeline {
 }
 
 /// Information used to create a [`RayTracePipeline`] instance.
-#[derive(Builder, Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[builder(
     build_fn(
         private,
         name = "fallible_build",
         error = "RayTracePipelineInfoBuilderError"
     ),
-    derive(Clone, Debug),
+    derive(Clone, Copy, Debug),
     pattern = "owned"
 )]
 #[non_exhaustive]
@@ -431,23 +442,35 @@ pub struct RayTracePipelineInfo {
     /// [maximum recursion depth]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#ray-tracing-recursion-depth
     #[builder(default = "16")]
     pub max_ray_recursion_depth: u32,
-
-    /// A descriptive name used in debugging messages.
-    #[builder(default, setter(strip_option))]
-    pub name: Option<String>,
 }
 
 impl RayTracePipelineInfo {
-    /// Specifies a ray trace pipeline.
+    /// Creates a default `RayTracePipelineInfoBuilder`.
     #[allow(clippy::new_ret_no_self)]
+    #[deprecated = "Use RayTracePipelineInfo::default()"]
+    #[doc(hidden)]
     pub fn new() -> RayTracePipelineInfoBuilder {
         Default::default()
+    }
+
+    /// Converts a `RayTracePipelineInfo` into a `RayTracePipelineInfoBuilder`.
+    #[inline(always)]
+    pub fn to_builder(self) -> RayTracePipelineInfoBuilder {
+        RayTracePipelineInfoBuilder {
+            bindless_descriptor_count: Some(self.bindless_descriptor_count),
+            dynamic_stack_size: Some(self.dynamic_stack_size),
+            max_ray_recursion_depth: Some(self.max_ray_recursion_depth),
+        }
     }
 }
 
 impl Default for RayTracePipelineInfo {
     fn default() -> Self {
-        RayTracePipelineInfoBuilder::default().build()
+        Self {
+            bindless_descriptor_count: 8192,
+            dynamic_stack_size: false,
+            max_ray_recursion_depth: 16,
+        }
     }
 }
 
@@ -457,12 +480,19 @@ impl From<RayTracePipelineInfoBuilder> for RayTracePipelineInfo {
     }
 }
 
-// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
 impl RayTracePipelineInfoBuilder {
     /// Builds a new `RayTracePipelineInfo`.
+    #[inline(always)]
     pub fn build(self) -> RayTracePipelineInfo {
-        self.fallible_build()
-            .expect("All required fields set at initialization")
+        let res = self.fallible_build();
+
+        #[cfg(test)]
+        let res = res.unwrap();
+
+        #[cfg(not(test))]
+        let res = unsafe { res.unwrap_unchecked() };
+
+        res
     }
 }
 
@@ -611,5 +641,29 @@ impl From<RayTraceShaderGroupType> for vk::RayTracingShaderGroupTypeKHR {
                 vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    type Info = RayTracePipelineInfo;
+    type Builder = RayTracePipelineInfoBuilder;
+
+    #[test]
+    pub fn ray_trace_pipeline_info() {
+        let info = Info::default();
+        let builder = info.to_builder().build();
+
+        assert_eq!(info, builder);
+    }
+
+    #[test]
+    pub fn ray_trace_pipeline_info_builder() {
+        let info = Info::default();
+        let builder = Builder::default().build();
+
+        assert_eq!(info, builder);
     }
 }

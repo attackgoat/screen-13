@@ -13,17 +13,53 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   - `PhysicalDevice::sampler_filter_minmax_properties` added to report properties
   - `SamplerInfo::reduction_mode` added to set mode
 - `SamplerInfo::LINEAR` and `NEAREST` to make sampler creation easier
-- `DeviceInfo` now implements `Default`
+- `ComputePipeline::with_name`, `GraphicPipeline::with_name` and `RayTracePipeline::with_name`
+  debug helper functions
+- `AccelerationStructureInfo::generic` function
 
 ### Changed
 
 - `Device::image_format_properties` returns an `Option` so that unsupported formats may return
   `None` instead of relying on user code to detect `DriverError::Unsupported`
-- `ImageInfo::linear_tiling` renamed to `tiling` and type changed from `bool` to `vk::ImageTiling`
-- `EventLoop` now produces linear surfaces by default - use `desired_surface_format` to select sRGB
+- Information struct trait implementations, field and function naming normalized:
+  - Constructors no longer return builders
+    - Use `to_builder` to convert an info struct into a builder
+    - Use `build` to convert a builder into an info struct
+  - `AccelerationStructureInfo`
+    - Function `new_blas` renamed to `blas`
+    - Function `new_tlas` renamed to `tlas`
+  - `BufferInfo`
+    - Function `new` renamed to `device_mem`
+    - Function `new_mappable` renamed to `host_mem`
+  - `ComputePipelineInfo` now implements `Copy`, `Eq` and `Hash`
+  - `DeviceInfo` now implements `Default`
+  - `GraphicPipelineInfo` now implements `Copy`
+  - `ImageInfo`
+    - Constructor parameters reordered: `fmt` now after image size
+    - Function `new_2d` renamed to `image_2d` (_in addition to `cube`, `image_1d`, etc._)
+    - Field `linear_tiling` renamed to `tiling` (_type changed from `bool` to `vk::ImageTiling`_)
+  - `ImageViewInfo::new` function now `const`
+  - `RayTracePipelineInfo` now implements `Copy`
+  - `SwapchainInfo`
+    - Function `new` now returns `SwapchainInfo` (_previously returned `SwapchainInfoBuilder`_)
+    - Field `format` renamed to `surface`
+    - Default values for `width` and `height` fields removed
+- `ComputePipelineInfo::name`, `GraphicPipelineInfo::name` and `RayTracePipelineInfo::name` have
+  each been moved to their respective pipeline struct
+- `EventLoop` now produces linear surfaces by default - use `desired_surface_format` and `Surface::srgb` to select sRGB
 - `Swapchain::present_image` now uses event-based waiting for rendering operations instead of
   polling, greatly reducing CPU usage
-- Updated `ash-molten` (Mac OS support) to v0.17 
+- Updated `ash-molten` (_Mac OS support_) to v0.17 
+
+### Fixed
+
+- `ComputePipelineInfo::default` now properly sets a default value for `bindless_descriptor_count`
+
+### Removed
+
+- `GraphicPipelineInfo::new` function: Use `Default` implementation instead
+- `RayTracePipelineInfo::new` function: Use `Default` implementation instead
+- `SamplerInfo::new` function: Use `Default` implementation instead
 
 ## [0.10.0] - 2024-02-09
 
@@ -38,7 +74,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Information structs are now `#[non_exhaustive]` in order to make future additions minor changes -
   update strategies:
   - Use `..Default::default()` syntax during struct creation
-  - Use associated constructor functions such as `ImageInfo::new_2d(..)` 
+  - Use associated constructor functions such as `ImageInfo::new_2d(..)`
 - `BufferInfo::can_map` renamed to `BufferInfo::mappable`
 - Increase `PoolInfo::DEFAULT_RESOURCE_CAPACITY` from 4 to 16 in order to prevent excess resource
   creation

@@ -55,11 +55,11 @@ impl Swapchain {
                 .into_iter()
                 .map(|image| {
                     let image = vk::Image::from_raw(image);
-                    let info = ImageInfo::new_2d_array(
-                        vk::Format::R8G8B8A8_SRGB,
+                    let info = ImageInfo::image_2d_array(
                         resolution.width,
                         resolution.height,
                         2,
+                        vk::Format::R8G8B8A8_SRGB,
                         vk::ImageUsageFlags::SAMPLED,
                     );
 

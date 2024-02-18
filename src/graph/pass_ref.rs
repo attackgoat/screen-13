@@ -62,7 +62,7 @@ pub type DescriptorSetIndex = u32;
 /// # fn main() -> Result<(), DriverError> {
 /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
 /// # let mut my_graph = RenderGraph::new();
-/// # let info = AccelerationStructureInfo::new_blas(1);
+/// # let info = AccelerationStructureInfo::blas(1);
 /// my_graph.begin_pass("my acceleration pass")
 ///         .record_acceleration(move |acceleration, bindings| {
 ///             // During this closure we have access to the acceleration methods!
@@ -101,15 +101,15 @@ impl<'a> Acceleration<'a> {
     /// # fn main() -> Result<(), DriverError> {
     /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # let mut my_graph = RenderGraph::new();
-    /// # let info = AccelerationStructureInfo::new_blas(1);
+    /// # let info = AccelerationStructureInfo::blas(1);
     /// # let blas_accel_struct = AccelerationStructure::create(&device, info)?;
     /// # let blas_node = my_graph.bind_node(blas_accel_struct);
-    /// # let scratch_buf_info = BufferInfo::new(8, vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS);
+    /// # let scratch_buf_info = BufferInfo::device_mem(8, vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS);
     /// # let scratch_buf = Buffer::create(&device, scratch_buf_info)?;
     /// # let scratch_buf = my_graph.bind_node(scratch_buf);
-    /// # let buf_info = BufferInfo::new(8, vk::BufferUsageFlags::INDEX_BUFFER);
+    /// # let buf_info = BufferInfo::device_mem(8, vk::BufferUsageFlags::INDEX_BUFFER);
     /// # let my_idx_buf = Buffer::create(&device, buf_info)?;
-    /// # let buf_info = BufferInfo::new(8, vk::BufferUsageFlags::VERTEX_BUFFER);
+    /// # let buf_info = BufferInfo::device_mem(8, vk::BufferUsageFlags::VERTEX_BUFFER);
     /// # let my_vtx_buf = Buffer::create(&device, buf_info)?;
     /// # let index_node = my_graph.bind_node(my_idx_buf);
     /// # let vertex_node = my_graph.bind_node(my_vtx_buf);
@@ -370,7 +370,7 @@ bind!(RayTrace);
 /// # use screen_13::graph::node::ImageNode;
 /// # fn main() -> Result<(), DriverError> {
 /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
-/// # let info = ImageInfo::new_2d(vk::Format::R8G8B8A8_UNORM, 32, 32, vk::ImageUsageFlags::SAMPLED);
+/// # let info = ImageInfo::image_2d(32, 32, vk::Format::R8G8B8A8_UNORM, vk::ImageUsageFlags::SAMPLED);
 /// # let image = Image::create(&device, info)?;
 /// # let mut my_graph = RenderGraph::new();
 /// # let my_image_node = my_graph.bind_node(image);
@@ -563,7 +563,7 @@ impl<'a> Compute<'a> {
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
     /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
-    /// # let buf_info = BufferInfo::new(8, vk::BufferUsageFlags::STORAGE_BUFFER);
+    /// # let buf_info = BufferInfo::device_mem(8, vk::BufferUsageFlags::STORAGE_BUFFER);
     /// # let my_buf = Buffer::create(&device, buf_info)?;
     /// # let info = ComputePipelineInfo::default();
     /// # let shader = Shader::new_compute([0u8; 1].as_slice());
@@ -649,7 +649,7 @@ impl<'a> Compute<'a> {
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
     /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
-    /// # let buf_info = BufferInfo::new(8, vk::BufferUsageFlags::STORAGE_BUFFER);
+    /// # let buf_info = BufferInfo::device_mem(8, vk::BufferUsageFlags::STORAGE_BUFFER);
     /// # let my_buf = Buffer::create(&device, buf_info)?;
     /// # let info = ComputePipelineInfo::default();
     /// # let shader = Shader::new_compute([0u8; 1].as_slice());
@@ -951,7 +951,7 @@ impl From<(DescriptorSetIndex, BindingIndex, [BindingOffset; 1])> for Descriptor
 /// # let info = GraphicPipelineInfo::default();
 /// # let my_graphic_pipeline = Arc::new(GraphicPipeline::create(&device, info, [vert, frag])?);
 /// # let mut my_graph = RenderGraph::new();
-/// # let info = ImageInfo::new_2d(vk::Format::R8G8B8A8_UNORM, 32, 32, vk::ImageUsageFlags::SAMPLED);
+/// # let info = ImageInfo::image_2d(32, 32, vk::Format::R8G8B8A8_UNORM, vk::ImageUsageFlags::SAMPLED);
 /// # let swapchain_image = my_graph.bind_node(Image::create(&device, info)?);
 /// my_graph.begin_pass("my draw pass")
 ///         .bind_pipeline(&my_graphic_pipeline)
@@ -998,11 +998,11 @@ impl<'a> Draw<'a> {
     /// # let info = GraphicPipelineInfo::default();
     /// # let my_graphic_pipeline = Arc::new(GraphicPipeline::create(&device, info, [vert, frag])?);
     /// # let mut my_graph = RenderGraph::new();
-    /// # let info = ImageInfo::new_2d(vk::Format::R8G8B8A8_UNORM, 32, 32, vk::ImageUsageFlags::SAMPLED);
+    /// # let info = ImageInfo::image_2d(32, 32, vk::Format::R8G8B8A8_UNORM, vk::ImageUsageFlags::SAMPLED);
     /// # let swapchain_image = my_graph.bind_node(Image::create(&device, info)?);
-    /// # let buf_info = BufferInfo::new(8, vk::BufferUsageFlags::INDEX_BUFFER);
+    /// # let buf_info = BufferInfo::device_mem(8, vk::BufferUsageFlags::INDEX_BUFFER);
     /// # let my_idx_buf = Buffer::create(&device, buf_info)?;
-    /// # let buf_info = BufferInfo::new(8, vk::BufferUsageFlags::VERTEX_BUFFER);
+    /// # let buf_info = BufferInfo::device_mem(8, vk::BufferUsageFlags::VERTEX_BUFFER);
     /// # let my_vtx_buf = Buffer::create(&device, buf_info)?;
     /// # let my_idx_buf = my_graph.bind_node(my_idx_buf);
     /// # let my_vtx_buf = my_graph.bind_node(my_vtx_buf);
@@ -1069,7 +1069,7 @@ impl<'a> Draw<'a> {
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
     /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
-    /// # let buf_info = BufferInfo::new(8, vk::BufferUsageFlags::VERTEX_BUFFER);
+    /// # let buf_info = BufferInfo::device_mem(8, vk::BufferUsageFlags::VERTEX_BUFFER);
     /// # let my_vtx_buf = Buffer::create(&device, buf_info)?;
     /// # let my_frag_code = [0u8; 1];
     /// # let my_vert_code = [0u8; 1];
@@ -1078,7 +1078,7 @@ impl<'a> Draw<'a> {
     /// # let info = GraphicPipelineInfo::default();
     /// # let my_graphic_pipeline = Arc::new(GraphicPipeline::create(&device, info, [vert, frag])?);
     /// # let mut my_graph = RenderGraph::new();
-    /// # let info = ImageInfo::new_2d(vk::Format::R8G8B8A8_UNORM, 32, 32, vk::ImageUsageFlags::SAMPLED);
+    /// # let info = ImageInfo::image_2d(32, 32, vk::Format::R8G8B8A8_UNORM, vk::ImageUsageFlags::SAMPLED);
     /// # let swapchain_image = my_graph.bind_node(Image::create(&device, info)?);
     /// # let my_vtx_buf = my_graph.bind_node(my_vtx_buf);
     /// my_graph.begin_pass("my unindexed geometry draw pass")
@@ -1252,13 +1252,13 @@ impl<'a> Draw<'a> {
     /// # let info = GraphicPipelineInfo::default();
     /// # let my_graphic_pipeline = Arc::new(GraphicPipeline::create(&device, info, [vert, frag])?);
     /// # let mut my_graph = RenderGraph::new();
-    /// # let buf_info = BufferInfo::new(8, vk::BufferUsageFlags::INDEX_BUFFER);
+    /// # let buf_info = BufferInfo::device_mem(8, vk::BufferUsageFlags::INDEX_BUFFER);
     /// # let my_idx_buf = Buffer::create(&device, buf_info)?;
-    /// # let buf_info = BufferInfo::new(8, vk::BufferUsageFlags::VERTEX_BUFFER);
+    /// # let buf_info = BufferInfo::device_mem(8, vk::BufferUsageFlags::VERTEX_BUFFER);
     /// # let my_vtx_buf = Buffer::create(&device, buf_info)?;
     /// # let my_idx_buf = my_graph.bind_node(my_idx_buf);
     /// # let my_vtx_buf = my_graph.bind_node(my_vtx_buf);
-    /// # let info = ImageInfo::new_2d(vk::Format::R8G8B8A8_UNORM, 32, 32, vk::ImageUsageFlags::SAMPLED);
+    /// # let info = ImageInfo::image_2d(32, 32, vk::Format::R8G8B8A8_UNORM, vk::ImageUsageFlags::SAMPLED);
     /// # let swapchain_image = my_graph.bind_node(Image::create(&device, info)?);
     /// const CMD_SIZE: usize = size_of::<vk::DrawIndexedIndirectCommand>();
     ///
@@ -1462,7 +1462,7 @@ impl<'a> Draw<'a> {
     /// # let frag = Shader::new_fragment(my_frag_code.as_slice());
     /// # let info = GraphicPipelineInfo::default();
     /// # let my_graphic_pipeline = Arc::new(GraphicPipeline::create(&device, info, [vert, frag])?);
-    /// # let info = ImageInfo::new_2d(vk::Format::R8G8B8A8_UNORM, 32, 32, vk::ImageUsageFlags::SAMPLED);
+    /// # let info = ImageInfo::image_2d(32, 32, vk::Format::R8G8B8A8_UNORM, vk::ImageUsageFlags::SAMPLED);
     /// # let swapchain_image = Image::create(&device, info)?;
     /// # let mut my_graph = RenderGraph::new();
     /// # let swapchain_image = my_graph.bind_node(swapchain_image);
@@ -1531,7 +1531,7 @@ impl<'a> Draw<'a> {
     /// # let frag = Shader::new_fragment(my_frag_code.as_slice());
     /// # let info = GraphicPipelineInfo::default();
     /// # let my_graphic_pipeline = Arc::new(GraphicPipeline::create(&device, info, [vert, frag])?);
-    /// # let info = ImageInfo::new_2d(vk::Format::R8G8B8A8_UNORM, 32, 32, vk::ImageUsageFlags::SAMPLED);
+    /// # let info = ImageInfo::image_2d(32, 32, vk::Format::R8G8B8A8_UNORM, vk::ImageUsageFlags::SAMPLED);
     /// # let swapchain_image = Image::create(&device, info)?;
     /// # let mut my_graph = RenderGraph::new();
     /// # let swapchain_image = my_graph.bind_node(swapchain_image);

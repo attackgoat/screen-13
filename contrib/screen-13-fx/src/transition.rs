@@ -413,16 +413,15 @@ impl TransitionPipeline {
         let a_info = render_graph.node_info(a_image);
         let b_info = render_graph.node_info(b_image);
 
-        let dest_info = ImageInfo::new_2d(
-            vk::Format::R8G8B8A8_UNORM,
+        let dest_info = ImageInfo::image_2d(
             a_info.width.max(b_info.width),
             a_info.height.max(b_info.height),
+            vk::Format::R8G8B8A8_UNORM,
             vk::ImageUsageFlags::SAMPLED
                 | vk::ImageUsageFlags::STORAGE
                 | vk::ImageUsageFlags::TRANSFER_DST
                 | vk::ImageUsageFlags::TRANSFER_SRC,
-        )
-        .build();
+        );
         let dest_image = render_graph.bind_node(self.cache.lease(dest_info).unwrap());
 
         self.apply_to(

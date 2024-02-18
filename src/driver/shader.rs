@@ -63,7 +63,7 @@ fn guess_immutable_sampler(binding_name: &str) -> SamplerInfo {
         )
     };
     let anisotropy_enable = texel_filter == vk::Filter::LINEAR;
-    let mut info = SamplerInfo::new()
+    let mut info = SamplerInfoBuilder::default()
         .mag_filter(texel_filter)
         .min_filter(texel_filter)
         .mipmap_mode(mipmap_mode)
@@ -514,19 +514,76 @@ impl SamplerInfo {
         reduction_mode: None,
     };
 
-    /// Specifies a default sampler.
+    /// Creates a default `SamplerInfoBuilder`.
     #[allow(clippy::new_ret_no_self)]
+    #[deprecated = "Use SamplerInfo::default()"]
+    #[doc(hidden)]
     pub fn new() -> SamplerInfoBuilder {
-        SamplerInfoBuilder::default()
+        Self::default().to_builder()
+    }
+
+    /// Converts a `SamplerInfo` into a `SamplerInfoBuilder`.
+    #[inline(always)]
+    pub fn to_builder(self) -> SamplerInfoBuilder {
+        SamplerInfoBuilder {
+            flags: Some(self.flags),
+            mag_filter: Some(self.mag_filter),
+            min_filter: Some(self.min_filter),
+            mipmap_mode: Some(self.mipmap_mode),
+            address_mode_u: Some(self.address_mode_u),
+            address_mode_v: Some(self.address_mode_v),
+            address_mode_w: Some(self.address_mode_w),
+            mip_lod_bias: Some(self.mip_lod_bias),
+            anisotropy_enable: Some(self.anisotropy_enable),
+            max_anisotropy: Some(self.max_anisotropy),
+            compare_enable: Some(self.compare_enable),
+            compare_op: Some(self.compare_op),
+            min_lod: Some(self.min_lod),
+            max_lod: Some(self.max_lod),
+            border_color: Some(self.border_color),
+            unnormalized_coordinates: Some(self.unnormalized_coordinates),
+            reduction_mode: Some(self.reduction_mode),
+        }
     }
 }
 
-// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
+impl Default for SamplerInfo {
+    fn default() -> Self {
+        Self {
+            flags: vk::SamplerCreateFlags::empty(),
+            mag_filter: vk::Filter::NEAREST,
+            min_filter: vk::Filter::NEAREST,
+            mipmap_mode: vk::SamplerMipmapMode::NEAREST,
+            address_mode_u: vk::SamplerAddressMode::REPEAT,
+            address_mode_v: vk::SamplerAddressMode::REPEAT,
+            address_mode_w: vk::SamplerAddressMode::REPEAT,
+            mip_lod_bias: OrderedFloat(0.0),
+            anisotropy_enable: false,
+            max_anisotropy: OrderedFloat(0.0),
+            compare_enable: false,
+            compare_op: vk::CompareOp::NEVER,
+            min_lod: OrderedFloat(0.0),
+            max_lod: OrderedFloat(0.0),
+            border_color: vk::BorderColor::FLOAT_TRANSPARENT_BLACK,
+            unnormalized_coordinates: false,
+            reduction_mode: vk::SamplerReductionMode::WEIGHTED_AVERAGE,
+        }
+    }
+}
+
 impl SamplerInfoBuilder {
     /// Builds a new `SamplerInfo`.
+    #[inline(always)]
     pub fn build(self) -> SamplerInfo {
-        self.fallible_build()
-            .expect("All required fields set at initialization")
+        let res = self.fallible_build();
+
+        #[cfg(test)]
+        let res = res.unwrap();
+
+        #[cfg(not(test))]
+        let res = unsafe { res.unwrap_unchecked() };
+
+        res
     }
 }
 
@@ -1353,5 +1410,29 @@ impl SpecializationInfo {
             data: data.into(),
             map_entries: map_entries.into(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    type Info = SamplerInfo;
+    type Builder = SamplerInfoBuilder;
+
+    #[test]
+    pub fn sampler_info() {
+        let info = Info::default();
+        let builder = info.to_builder().build();
+
+        assert_eq!(info, builder);
+    }
+
+    #[test]
+    pub fn sampler_info_builder() {
+        let info = Info::default();
+        let builder = Builder::default().build();
+
+        assert_eq!(info, builder);
     }
 }

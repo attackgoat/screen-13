@@ -33,6 +33,9 @@ pub struct ComputePipeline {
     /// Information used to create this object.
     pub info: ComputePipelineInfo,
 
+    /// A descriptive name used in debugging messages.
+    pub name: Option<String>,
+
     pipeline: vk::Pipeline,
     pub(crate) push_constants: Option<vk::PushConstantRange>,
 }
@@ -161,10 +164,17 @@ impl ComputePipeline {
                 device,
                 info,
                 layout,
+                name: None,
                 pipeline,
                 push_constants,
             })
         }
+    }
+
+    /// Sets the debugging name assigned to this pipeline.
+    pub fn with_name(mut this: Self, name: impl Into<String>) -> Self {
+        this.name = Some(name.into());
+        this
     }
 }
 
@@ -191,14 +201,14 @@ impl Drop for ComputePipeline {
 }
 
 /// Information used to create a [`ComputePipeline`] instance.
-#[derive(Builder, Clone, Debug, Default)]
+#[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[builder(
     build_fn(
         private,
         name = "fallible_build",
         error = "ComputePipelineInfoBuilderError"
     ),
-    derive(Clone, Debug),
+    derive(Clone, Copy, Debug),
     pattern = "owned"
 )]
 #[non_exhaustive]
@@ -227,10 +237,24 @@ pub struct ComputePipelineInfo {
     /// ```
     #[builder(default = "8192")]
     pub bindless_descriptor_count: u32,
+}
 
-    /// A descriptive name used in debugging messages.
-    #[builder(default, setter(strip_option))]
-    pub name: Option<String>,
+impl ComputePipelineInfo {
+    /// Converts a `ComputePipelineInfo` into a `ComputePipelineInfoBuilder`.
+    #[inline(always)]
+    pub fn to_builder(self) -> ComputePipelineInfoBuilder {
+        ComputePipelineInfoBuilder {
+            bindless_descriptor_count: Some(self.bindless_descriptor_count),
+        }
+    }
+}
+
+impl Default for ComputePipelineInfo {
+    fn default() -> Self {
+        Self {
+            bindless_descriptor_count: 8192,
+        }
+    }
 }
 
 impl From<ComputePipelineInfoBuilder> for ComputePipelineInfo {
@@ -239,12 +263,19 @@ impl From<ComputePipelineInfoBuilder> for ComputePipelineInfo {
     }
 }
 
-// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
 impl ComputePipelineInfoBuilder {
     /// Builds a new `ComputePipelineInfo`.
+    #[inline(always)]
     pub fn build(self) -> ComputePipelineInfo {
-        self.fallible_build()
-            .expect("All required fields set at initialization")
+        let res = self.fallible_build();
+
+        #[cfg(test)]
+        let res = res.unwrap();
+
+        #[cfg(not(test))]
+        let res = unsafe { res.unwrap_unchecked() };
+
+        res
     }
 }
 
@@ -254,5 +285,29 @@ struct ComputePipelineInfoBuilderError;
 impl From<UninitializedFieldError> for ComputePipelineInfoBuilderError {
     fn from(_: UninitializedFieldError) -> Self {
         Self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    type Info = ComputePipelineInfo;
+    type Builder = ComputePipelineInfoBuilder;
+
+    #[test]
+    pub fn compute_pipeline_info() {
+        let info = Info::default();
+        let builder = info.to_builder().build();
+
+        assert_eq!(info, builder);
+    }
+
+    #[test]
+    pub fn compute_pipeline_info_builder() {
+        let info = Info::default();
+        let builder = Builder::default().build();
+
+        assert_eq!(info, builder);
     }
 }

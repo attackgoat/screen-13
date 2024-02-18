@@ -103,10 +103,10 @@ fn main() -> Result<(), screen_13::DisplayError> {
         let image = frame.render_graph.bind_node(
             Image::create(
                 frame.device,
-                ImageInfo::new_2d(
+                ImageInfo::image_2d(
+                    1024,
+                    1024,
                     vk::Format::R8G8B8A8_UNORM,
-                    1024,
-                    1024,
                     vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::TRANSFER_SRC,
                 ),
             )
@@ -115,10 +115,10 @@ fn main() -> Result<(), screen_13::DisplayError> {
         let image = frame.render_graph.bind_node(
             Image::create(
                 frame.device,
-                ImageInfo::new_2d(
+                ImageInfo::image_2d(
+                    u32::MAX,
+                    u32::MAX,
                     vk::Format::UNDEFINED,
-                    u32::MAX,
-                    u32::MAX,
                     vk::ImageUsageFlags::RESERVED_22_EXT,
                 ),
             )

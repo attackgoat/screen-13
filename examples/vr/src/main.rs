@@ -124,7 +124,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut hands_pipeline = HotGraphicPipeline::create(
         device,
-        GraphicPipelineInfo::new(),
+        GraphicPipelineInfo::default(),
         [
             HotShader::new_vertex(res_dir.join("model.vert")),
             HotShader::new_fragment(res_dir.join("hands.frag")),
@@ -132,7 +132,7 @@ fn main() -> anyhow::Result<()> {
     )?;
     let mut mammoth_pipeline = HotGraphicPipeline::create(
         device,
-        GraphicPipelineInfo::new(),
+        GraphicPipelineInfo::default(),
         [
             HotShader::new_vertex(res_dir.join("model.vert")),
             HotShader::new_fragment(res_dir.join("mammoth.frag")),
@@ -270,11 +270,11 @@ fn main() -> anyhow::Result<()> {
 
         let mut render_graph = RenderGraph::new();
         let depth_image = render_graph.bind_node(
-            pool.lease(ImageInfo::new_2d_array(
-                vk::Format::D32_SFLOAT,
+            pool.lease(ImageInfo::image_2d_array(
                 resolution.width,
                 resolution.height,
                 2,
+                vk::Format::D32_SFLOAT,
                 vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
             ))
             .unwrap(),
@@ -293,7 +293,7 @@ fn main() -> anyhow::Result<()> {
         let camera_buf = {
             let cameras = [CameraBuffer::new(views[0]), CameraBuffer::new(views[1])];
             let data = cast_slice(&cameras);
-            let mut buf = pool.lease(BufferInfo::new_mappable(
+            let mut buf = pool.lease(BufferInfo::host_mem(
                 data.len() as _,
                 vk::BufferUsageFlags::UNIFORM_BUFFER,
             ))?;
@@ -332,7 +332,7 @@ fn main() -> anyhow::Result<()> {
         let light_buf = {
             let light = LightBuffer::new(light_position);
             let data = bytes_of(&light);
-            let mut buf = pool.lease(BufferInfo::new_mappable(
+            let mut buf = pool.lease(BufferInfo::host_mem(
                 data.len() as _,
                 vk::BufferUsageFlags::UNIFORM_BUFFER,
             ))?;
@@ -732,7 +732,7 @@ fn load_texture(
 
     let staging_buf_size = image_rows * image_row_size;
     let staging_buf_info =
-        BufferInfo::new_mappable(staging_buf_size as _, vk::BufferUsageFlags::TRANSFER_SRC);
+        BufferInfo::host_mem(staging_buf_size as _, vk::BufferUsageFlags::TRANSFER_SRC);
     let mut staging_buf = Buffer::create(device, staging_buf_info)?;
     let staging_data = Buffer::mapped_slice_mut(&mut staging_buf);
 
@@ -751,10 +751,10 @@ fn load_texture(
 
     let texture = Arc::new(Image::create(
         device,
-        ImageInfo::new_2d(
-            fmt,
+        ImageInfo::image_2d(
             image.width(),
             image.height(),
+            fmt,
             vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
         ),
     )?);

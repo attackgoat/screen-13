@@ -358,6 +358,10 @@ pub struct GraphicPipeline {
 
     pub(crate) input_attachments: HashSet<u32>,
     pub(crate) layout: vk::PipelineLayout,
+
+    /// A descriptive name used in debugging messages.
+    pub name: Option<String>,
+
     pub(crate) push_constants: Vec<vk::PushConstantRange>,
     pub(crate) shader_modules: Vec<vk::ShaderModule>,
     pub(super) state: GraphicPipelineState,
@@ -552,6 +556,7 @@ impl GraphicPipeline {
                 info,
                 input_attachments,
                 layout,
+                name: None,
                 push_constants,
                 shader_modules,
                 state: GraphicPipelineState {
@@ -563,6 +568,12 @@ impl GraphicPipeline {
                 write_attachments,
             })
         }
+    }
+
+    /// Sets the debugging name assigned to this pipeline.
+    pub fn with_name(mut this: Self, name: impl Into<String>) -> Self {
+        this.name = Some(name.into());
+        this
     }
 }
 
@@ -586,25 +597,18 @@ impl Drop for GraphicPipeline {
 }
 
 /// Information used to create a [`GraphicPipeline`] instance.
-#[derive(Builder, Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[builder(
     build_fn(
         private,
         name = "fallible_build",
         error = "GraphicPipelineInfoBuilderError"
     ),
-    derive(Clone, Debug),
+    derive(Clone, Copy, Debug),
     pattern = "owned"
 )]
 #[non_exhaustive]
 pub struct GraphicPipelineInfo {
-    /// Specifies color blend state used when rasterization is enabled for any color attachments
-    /// accessed during rendering.
-    ///
-    /// The default value is [`BlendMode::REPLACE`].
-    #[builder(default)]
-    pub blend: BlendMode,
-
     /// The number of descriptors to allocate for a given binding when using bindless (unbounded)
     /// syntax.
     ///
@@ -630,6 +634,13 @@ pub struct GraphicPipelineInfo {
     #[builder(default = "8192")]
     pub bindless_descriptor_count: u32,
 
+    /// Specifies color blend state used when rasterization is enabled for any color attachments
+    /// accessed during rendering.
+    ///
+    /// The default value is [`BlendMode::REPLACE`].
+    #[builder(default)]
+    pub blend: BlendMode,
+
     /// Bitmask controlling triangle culling.
     ///
     /// The default value is `vk::CullModeFlags::BACK`.
@@ -641,10 +652,6 @@ pub struct GraphicPipelineInfo {
     /// The default value is `vk::FrontFace::COUNTER_CLOCKWISE`.
     #[builder(default = "vk::FrontFace::COUNTER_CLOCKWISE")]
     pub front_face: vk::FrontFace,
-
-    /// A descriptive name used in debugging messages.
-    #[builder(default, setter(strip_option))]
-    pub name: Option<String>,
 
     /// Control polygon rasterization mode.
     ///
@@ -668,16 +675,40 @@ pub struct GraphicPipelineInfo {
 }
 
 impl GraphicPipelineInfo {
-    /// Specifies a graphic pipeline.
+    /// Creates a default `GraphicPipelineInfoBuilder`.
     #[allow(clippy::new_ret_no_self)]
+    #[deprecated = "Use GraphicPipelineInfo::default()"]
+    #[doc(hidden)]
     pub fn new() -> GraphicPipelineInfoBuilder {
-        GraphicPipelineInfoBuilder::default()
+        Default::default()
+    }
+
+    /// Converts a `GraphicPipelineInfo` into a `GraphicPipelineInfoBuilder`.
+    #[inline(always)]
+    pub fn to_builder(self) -> GraphicPipelineInfoBuilder {
+        GraphicPipelineInfoBuilder {
+            bindless_descriptor_count: Some(self.bindless_descriptor_count),
+            blend: Some(self.blend),
+            cull_mode: Some(self.cull_mode),
+            front_face: Some(self.front_face),
+            polygon_mode: Some(self.polygon_mode),
+            topology: Some(self.topology),
+            samples: Some(self.samples),
+        }
     }
 }
 
 impl Default for GraphicPipelineInfo {
     fn default() -> Self {
-        Self::new().build()
+        Self {
+            bindless_descriptor_count: 8192,
+            blend: BlendMode::REPLACE,
+            cull_mode: vk::CullModeFlags::BACK,
+            front_face: vk::FrontFace::COUNTER_CLOCKWISE,
+            polygon_mode: vk::PolygonMode::FILL,
+            topology: vk::PrimitiveTopology::TRIANGLE_LIST,
+            samples: SampleCount::X1,
+        }
     }
 }
 
@@ -687,12 +718,19 @@ impl From<GraphicPipelineInfoBuilder> for GraphicPipelineInfo {
     }
 }
 
-// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
 impl GraphicPipelineInfoBuilder {
     /// Builds a new `GraphicPipelineInfo`.
+    #[inline(always)]
     pub fn build(self) -> GraphicPipelineInfo {
-        self.fallible_build()
-            .expect("All required fields set at initialization")
+        let res = self.fallible_build();
+
+        #[cfg(test)]
+        let res = res.unwrap();
+
+        #[cfg(not(test))]
+        let res = unsafe { res.unwrap_unchecked() };
+
+        res
     }
 }
 
@@ -796,4 +834,28 @@ impl Default for StencilMode {
 pub(super) struct VertexInputState {
     pub vertex_binding_descriptions: Vec<vk::VertexInputBindingDescription>,
     pub vertex_attribute_descriptions: Vec<vk::VertexInputAttributeDescription>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    type Info = GraphicPipelineInfo;
+    type Builder = GraphicPipelineInfoBuilder;
+
+    #[test]
+    pub fn graphic_pipeline_info() {
+        let info = Info::default();
+        let builder = info.to_builder().build();
+
+        assert_eq!(info, builder);
+    }
+
+    #[test]
+    pub fn graphic_pipeline_info_builder() {
+        let info = Info::default();
+        let builder = Builder::default().build();
+
+        assert_eq!(info, builder);
+    }
 }

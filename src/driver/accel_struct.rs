@@ -40,7 +40,7 @@ use {
 /// # fn main() -> Result<(), DriverError> {
 /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
 /// # const SIZE: vk::DeviceSize = 1024;
-/// # let info = AccelerationStructureInfo::new_blas(SIZE);
+/// # let info = AccelerationStructureInfo::blas(SIZE);
 /// # let my_accel_struct = AccelerationStructure::create(&device, info)?;
 /// let addr = AccelerationStructure::device_address(&my_accel_struct);
 /// # Ok(()) }
@@ -80,7 +80,7 @@ impl AccelerationStructure {
     /// # fn main() -> Result<(), DriverError> {
     /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// const SIZE: vk::DeviceSize = 1024;
-    /// let info = AccelerationStructureInfo::new_blas(SIZE);
+    /// let info = AccelerationStructureInfo::blas(SIZE);
     /// let accel_struct = AccelerationStructure::create(&device, info)?;
     ///
     /// assert_ne!(*accel_struct, vk::AccelerationStructureKHR::null());
@@ -96,7 +96,7 @@ impl AccelerationStructure {
 
         let buffer = Buffer::create(
             device,
-            BufferInfo::new_mappable(
+            BufferInfo::host_mem(
                 info.size,
                 vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
@@ -158,7 +158,7 @@ impl AccelerationStructure {
     /// # fn main() -> Result<(), DriverError> {
     /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # const SIZE: vk::DeviceSize = 1024;
-    /// # let info = AccelerationStructureInfo::new_blas(SIZE);
+    /// # let info = AccelerationStructureInfo::blas(SIZE);
     /// # let my_accel_struct = AccelerationStructure::create(&device, info)?;
     /// // Initially we want to "Build Write"
     /// let next = AccessType::AccelerationStructureBuildWrite;
@@ -201,7 +201,7 @@ impl AccelerationStructure {
     /// # fn main() -> Result<(), DriverError> {
     /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # const SIZE: vk::DeviceSize = 1024;
-    /// # let info = AccelerationStructureInfo::new_blas(SIZE);
+    /// # let info = AccelerationStructureInfo::blas(SIZE);
     /// # let my_accel_struct = AccelerationStructure::create(&device, info)?;
     /// let addr = AccelerationStructure::device_address(&my_accel_struct);
     ///
@@ -608,16 +608,40 @@ pub enum AccelerationStructureGeometryData {
 #[non_exhaustive]
 pub struct AccelerationStructureInfo {
     /// Type of acceleration structure.
+    #[builder(default = "vk::AccelerationStructureTypeKHR::GENERIC")]
     pub ty: vk::AccelerationStructureTypeKHR,
 
     /// The size of the backing buffer that will store the acceleration structure.
     ///
-    /// Use [AccelerationStructure::size_of] to calculate this value.
+    /// Use [`AccelerationStructure::size_of`] to calculate this value.
     pub size: vk::DeviceSize,
 }
 
 impl AccelerationStructureInfo {
-    /// Specifies a bottom-level acceleration structure of the given size.
+    /// Specifies a [`vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL`] acceleration structure of the
+    /// given size.
+    #[inline(always)]
+    pub const fn blas(size: vk::DeviceSize) -> Self {
+        Self {
+            ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
+            size,
+        }
+    }
+
+    /// Specifies a [`vk::AccelerationStructureTypeKHR::GENERIC`] acceleration structure of the
+    /// given size.
+    #[inline(always)]
+    pub const fn generic(size: vk::DeviceSize) -> Self {
+        Self {
+            ty: vk::AccelerationStructureTypeKHR::GENERIC,
+            size,
+        }
+    }
+
+    /// Specifies a [`vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL`] acceleration structure of the
+    /// given size.
+    #[deprecated = "Use AccelerationStructureInfo::blas()"]
+    #[doc(hidden)]
     pub const fn new_blas(size: vk::DeviceSize) -> Self {
         Self {
             ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
@@ -625,11 +649,33 @@ impl AccelerationStructureInfo {
         }
     }
 
-    /// Specifies a top-level acceleration structure of the given size.
+    /// Specifies a [`vk::AccelerationStructureTypeKHR::TOP_LEVEL`] acceleration structure of the
+    /// given size.
+    #[deprecated = "Use AccelerationStructureInfo::tlas()"]
+    #[doc(hidden)]
     pub const fn new_tlas(size: vk::DeviceSize) -> Self {
         Self {
             ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
             size,
+        }
+    }
+
+    /// Specifies a [`vk::AccelerationStructureTypeKHR::TOP_LEVEL`] acceleration structure of the
+    /// given size.
+    #[inline(always)]
+    pub const fn tlas(size: vk::DeviceSize) -> Self {
+        Self {
+            ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
+            size,
+        }
+    }
+
+    /// Converts an `AccelerationStructureInfo` into an `AccelerationStructureInfoBuilder`.
+    #[inline(always)]
+    pub fn to_builder(self) -> AccelerationStructureInfoBuilder {
+        AccelerationStructureInfoBuilder {
+            ty: Some(self.ty),
+            size: Some(self.size),
         }
     }
 }
@@ -638,21 +684,29 @@ impl From<AccelerationStructureInfo> for () {
     fn from(_: AccelerationStructureInfo) -> Self {}
 }
 
-// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
 impl AccelerationStructureInfoBuilder {
     /// Builds a new `AccelerationStructureInfo`.
+    ///
+    /// # Panics
+    ///
+    /// If any of the following values have not been set this function will panic:
+    ///
+    /// * `size`
+    #[inline(always)]
     pub fn build(self) -> AccelerationStructureInfo {
-        self.fallible_build()
-            .expect("All required fields set at initialization")
+        match self.fallible_build() {
+            Err(AccelerationStructureInfoBuilderError(err)) => panic!("{err}"),
+            Ok(info) => info,
+        }
     }
 }
 
 #[derive(Debug)]
-struct AccelerationStructureInfoBuilderError;
+struct AccelerationStructureInfoBuilderError(UninitializedFieldError);
 
 impl From<UninitializedFieldError> for AccelerationStructureInfoBuilderError {
-    fn from(_: UninitializedFieldError) -> Self {
-        Self
+    fn from(err: UninitializedFieldError) -> Self {
+        Self(err)
     }
 }
 
@@ -691,5 +745,35 @@ pub enum DeviceOrHostAddress {
 impl From<vk::DeviceAddress> for DeviceOrHostAddress {
     fn from(device_addr: vk::DeviceAddress) -> Self {
         Self::DeviceAddress(device_addr)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    type Info = AccelerationStructureInfo;
+    type Builder = AccelerationStructureInfoBuilder;
+
+    #[test]
+    pub fn accel_struct_info() {
+        let info = Info::generic(0);
+        let builder = info.to_builder().build();
+
+        assert_eq!(info, builder);
+    }
+
+    #[test]
+    pub fn accel_struct_info_builder() {
+        let info = Info::generic(0);
+        let builder = Builder::default().size(0).build();
+
+        assert_eq!(info, builder);
+    }
+
+    #[test]
+    #[should_panic(expected = "Field not initialized: size")]
+    pub fn accel_struct_info_builder_uninit_size() {
+        Builder::default().build();
     }
 }

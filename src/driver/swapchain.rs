@@ -293,7 +293,7 @@ impl Swapchain {
 
             if Device::image_format_properties(
                 &self.device,
-                self.info.format.format,
+                self.info.surface.format,
                 vk::ImageType::TYPE_2D,
                 vk::ImageTiling::OPTIMAL,
                 usage,
@@ -378,8 +378,8 @@ impl Swapchain {
         let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
             .surface(*self.surface)
             .min_image_count(desired_image_count)
-            .image_color_space(self.info.format.color_space)
-            .image_format(self.info.format.format)
+            .image_color_space(self.info.surface.color_space)
+            .image_format(self.info.surface.format)
             .image_extent(vk::Extent2D {
                 width: surface_width,
                 height: surface_height,
@@ -414,10 +414,10 @@ impl Swapchain {
                 let mut image = Image::from_raw(
                     &self.device,
                     vk_image,
-                    ImageInfo::new_2d(
-                        self.info.format.format,
+                    ImageInfo::image_2d(
                         surface_width,
                         surface_height,
+                        self.info.surface.format,
                         surface_capabilities.supported_usage_flags,
                     ),
                 );
@@ -438,7 +438,7 @@ impl Swapchain {
             "Swapchain {}x{} {:?} {present_mode:?}x{}",
             self.info.width,
             self.info.height,
-            self.info.format.format,
+            self.info.surface.format,
             self.images.len(),
         );
 
@@ -550,12 +550,11 @@ pub struct SwapchainInfo {
     #[builder(default = "3")]
     pub desired_image_count: u32,
 
-    /// The format of the surface.
-    pub format: vk::SurfaceFormatKHR,
-
     /// The initial height of the surface.
-    #[builder(default = "8")]
     pub height: u32,
+
+    /// The format and color space of the surface.
+    pub surface: vk::SurfaceFormatKHR,
 
     /// Determines if frames will be submitted to the display in a synchronous fashion or if they
     /// should be displayed as fast as possible instead.
@@ -565,18 +564,32 @@ pub struct SwapchainInfo {
     pub sync_display: bool,
 
     /// The initial width of the surface.
-    #[builder(default = "8")]
     pub width: u32,
 }
 
 impl SwapchainInfo {
-    /// Specifies default device information.
-    #[allow(clippy::new_ret_no_self, unused)]
-    pub fn new(width: u32, height: u32, format: vk::SurfaceFormatKHR) -> SwapchainInfoBuilder {
-        SwapchainInfoBuilder::default()
-            .width(width)
-            .height(height)
-            .format(format)
+    /// Specifies a default swapchain with the given `width`, `height` and `format` values.
+    #[inline(always)]
+    pub const fn new(width: u32, height: u32, surface: vk::SurfaceFormatKHR) -> SwapchainInfo {
+        Self {
+            width,
+            height,
+            surface,
+            desired_image_count: 3,
+            sync_display: true,
+        }
+    }
+
+    /// Converts a `SwapchainInfo` into a `SwapchainInfoBuilder`.
+    #[inline(always)]
+    pub fn to_builder(self) -> SwapchainInfoBuilder {
+        SwapchainInfoBuilder {
+            desired_image_count: Some(self.desired_image_count),
+            height: Some(self.height),
+            surface: Some(self.surface),
+            sync_display: Some(self.sync_display),
+            width: Some(self.width),
+        }
     }
 }
 
@@ -586,20 +599,31 @@ impl From<SwapchainInfoBuilder> for SwapchainInfo {
     }
 }
 
-// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
 impl SwapchainInfoBuilder {
     /// Builds a new `SwapchainInfo`.
+    ///
+    /// # Panics
+    ///
+    /// If any of the following values have not been set this function will panic:
+    ///
+    /// * `width`
+    /// * `height`
+    /// * `surface`
+    #[inline(always)]
     pub fn build(self) -> SwapchainInfo {
-        self.fallible_build().unwrap()
+        match self.fallible_build() {
+            Err(SwapchainInfoBuilderError(err)) => panic!("{err}"),
+            Ok(info) => info,
+        }
     }
 }
 
 #[derive(Debug)]
-struct SwapchainInfoBuilderError;
+struct SwapchainInfoBuilderError(UninitializedFieldError);
 
 impl From<UninitializedFieldError> for SwapchainInfoBuilderError {
-    fn from(_: UninitializedFieldError) -> Self {
-        Self
+    fn from(err: UninitializedFieldError) -> Self {
+        Self(err)
     }
 }
 
@@ -621,5 +645,54 @@ impl Synchronization {
             ready,
             rendered,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    type Info = SwapchainInfo;
+    type Builder = SwapchainInfoBuilder;
+
+    #[test]
+    pub fn swapchain_info() {
+        let info = Info::new(20, 24, vk::SurfaceFormatKHR::default());
+        let builder = info.to_builder().build();
+
+        assert_eq!(info, builder);
+    }
+
+    #[test]
+    pub fn swapchain_info_builder() {
+        let info = Info::new(23, 64, vk::SurfaceFormatKHR::default());
+        let builder = Builder::default()
+            .width(23)
+            .height(64)
+            .surface(vk::SurfaceFormatKHR::default())
+            .build();
+
+        assert_eq!(info, builder);
+    }
+
+    #[test]
+    #[should_panic(expected = "Field not initialized: height")]
+    pub fn accel_struct_info_builder_uninit_height() {
+        Builder::default().build();
+    }
+
+    #[test]
+    #[should_panic(expected = "Field not initialized: surface")]
+    pub fn accel_struct_info_builder_uninit_surface() {
+        Builder::default().height(42).build();
+    }
+
+    #[test]
+    #[should_panic(expected = "Field not initialized: width")]
+    pub fn accel_struct_info_builder_uninit_width() {
+        Builder::default()
+            .height(42)
+            .surface(vk::SurfaceFormatKHR::default())
+            .build();
     }
 }

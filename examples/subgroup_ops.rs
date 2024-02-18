@@ -28,7 +28,7 @@ use {
 fn main() -> Result<(), DriverError> {
     pretty_env_logger::init();
 
-    let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     let Vulkan11Properties {
         subgroup_size,
         subgroup_supported_operations,
@@ -73,7 +73,7 @@ fn exclusive_sum(
 
     let output_buf = render_graph.bind_node(Arc::new(Buffer::create(
         device,
-        BufferInfo::new_mappable(
+        BufferInfo::host_mem(
             input_data.len() as vk::DeviceSize * size_of::<u32>() as vk::DeviceSize,
             vk::BufferUsageFlags::STORAGE_BUFFER,
         ),
@@ -84,7 +84,7 @@ fn exclusive_sum(
     let reduce_count = workgroup_count - 1;
     let workgroup_buf = render_graph.bind_node(Buffer::create(
         device,
-        BufferInfo::new(
+        BufferInfo::device_mem(
             reduce_count.max(1) as vk::DeviceSize * size_of::<u32>() as vk::DeviceSize,
             vk::BufferUsageFlags::STORAGE_BUFFER,
         ),

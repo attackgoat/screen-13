@@ -41,7 +41,7 @@ use {
 /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
 /// # fn main() -> Result<(), DriverError> {
 /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
-/// # let info = BufferInfo::new(8, vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS);
+/// # let info = BufferInfo::device_mem(8, vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS);
 /// # let my_buf = Buffer::create(&device, info)?;
 /// let addr = Buffer::device_address(&my_buf);
 /// # Ok(()) }
@@ -80,7 +80,7 @@ impl Buffer {
     /// # fn main() -> Result<(), DriverError> {
     /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// const SIZE: vk::DeviceSize = 1024;
-    /// let info = BufferInfo::new_mappable(SIZE, vk::BufferUsageFlags::UNIFORM_BUFFER);
+    /// let info = BufferInfo::host_mem(SIZE, vk::BufferUsageFlags::UNIFORM_BUFFER);
     /// let buf = Buffer::create(&device, info)?;
     ///
     /// assert_ne!(*buf, vk::Buffer::null());
@@ -188,7 +188,7 @@ impl Buffer {
         slice: impl AsRef<[u8]>,
     ) -> Result<Self, DriverError> {
         let slice = slice.as_ref();
-        let info = BufferInfo::new_mappable(slice.len() as _, usage);
+        let info = BufferInfo::host_mem(slice.len() as _, usage);
         let mut buffer = Self::create(device, info)?;
 
         Self::copy_from_slice(&mut buffer, 0, slice);
@@ -219,7 +219,7 @@ impl Buffer {
     /// # fn main() -> Result<(), DriverError> {
     /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
     /// # const SIZE: vk::DeviceSize = 1024;
-    /// # let info = BufferInfo::new(SIZE, vk::BufferUsageFlags::STORAGE_BUFFER);
+    /// # let info = BufferInfo::device_mem(SIZE, vk::BufferUsageFlags::STORAGE_BUFFER);
     /// # let my_buf = Buffer::create(&device, info)?;
     /// // Initially we want to "Read Other"
     /// let next = AccessType::ComputeShaderReadOther;
@@ -265,7 +265,7 @@ impl Buffer {
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # fn main() -> Result<(), DriverError> {
     /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
-    /// # let info = BufferInfo::new_mappable(4, vk::BufferUsageFlags::empty());
+    /// # let info = BufferInfo::host_mem(4, vk::BufferUsageFlags::empty());
     /// # let mut my_buf = Buffer::create(&device, info)?;
     /// const DATA: [u8; 4] = [0xde, 0xad, 0xc0, 0xde];
     /// Buffer::copy_from_slice(&mut my_buf, 0, &DATA);
@@ -298,7 +298,7 @@ impl Buffer {
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # fn main() -> Result<(), DriverError> {
     /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
-    /// # let info = BufferInfo::new_mappable(4, vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS);
+    /// # let info = BufferInfo::host_mem(4, vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS);
     /// # let my_buf = Buffer::create(&device, info)?;
     /// let addr = Buffer::device_address(&my_buf);
     ///
@@ -450,7 +450,7 @@ pub struct BufferInfo {
     /// Byte alignment of the base device address of the buffer.
     ///
     /// Must be a power of two.
-    #[builder(default)]
+    #[builder(default = "1")]
     pub alignment: vk::DeviceSize,
 
     /// Specifies a buffer whose memory is host visible and may be mapped.
@@ -458,7 +458,6 @@ pub struct BufferInfo {
     pub mappable: bool,
 
     /// Size in bytes of the buffer to be created.
-    #[builder(default)]
     pub size: vk::DeviceSize,
 
     /// A bitmask of specifying allowed usages of the buffer.
@@ -468,9 +467,48 @@ pub struct BufferInfo {
 
 impl BufferInfo {
     /// Specifies a non-mappable buffer with the given `size` and `usage` values.
+    ///
+    /// Device-local memory (located on the GPU) is used.
+    #[inline(always)]
+    pub const fn device_mem(size: vk::DeviceSize, usage: vk::BufferUsageFlags) -> BufferInfo {
+        BufferInfo {
+            alignment: 1,
+            mappable: false,
+            size,
+            usage,
+        }
+    }
+
+    /// Specifies a mappable buffer with the given `size` and `usage` values.
+    ///
+    /// Host-local memory (located in CPU-accesible RAM) is used.
+    ///
+    /// # Note
+    ///
+    /// For convenience the given usage value will be bitwise OR'd with
+    /// `TRANSFER_DST | TRANSFER_SRC`.
+    #[inline(always)]
+    pub const fn host_mem(size: vk::DeviceSize, usage: vk::BufferUsageFlags) -> BufferInfo {
+        let usage = vk::BufferUsageFlags::from_raw(
+            usage.as_raw()
+                | vk::BufferUsageFlags::TRANSFER_DST.as_raw()
+                | vk::BufferUsageFlags::TRANSFER_SRC.as_raw(),
+        );
+
+        BufferInfo {
+            alignment: 1,
+            mappable: true,
+            size,
+            usage,
+        }
+    }
+
+    /// Specifies a non-mappable buffer with the given `size` and `usage` values.
     #[allow(clippy::new_ret_no_self)]
+    #[deprecated = "Use BufferInfo::device_mem()"]
+    #[doc(hidden)]
     pub fn new(size: vk::DeviceSize, usage: vk::BufferUsageFlags) -> BufferInfoBuilder {
-        BufferInfoBuilder::default().size(size).usage(usage)
+        Self::device_mem(size, usage).to_builder()
     }
 
     /// Specifies a mappable buffer with the given `size` and `usage` values.
@@ -479,21 +517,48 @@ impl BufferInfo {
     ///
     /// For convenience the given usage value will be bitwise OR'd with
     /// `TRANSFER_DST | TRANSFER_SRC`.
+    #[deprecated = "Use BufferInfo::host_mem()"]
+    #[doc(hidden)]
     pub fn new_mappable(size: vk::DeviceSize, usage: vk::BufferUsageFlags) -> BufferInfoBuilder {
-        Self::new(
-            size,
-            usage | vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::TRANSFER_SRC,
-        )
-        .mappable(true)
+        Self::host_mem(size, usage).to_builder()
+    }
+
+    /// Converts a `BufferInfo` into a `BufferInfoBuilder`.
+    #[inline(always)]
+    pub fn to_builder(self) -> BufferInfoBuilder {
+        BufferInfoBuilder {
+            alignment: Some(self.alignment),
+            mappable: Some(self.mappable),
+            size: Some(self.size),
+            usage: Some(self.usage),
+        }
     }
 }
 
-// HACK: https://github.com/colin-kiegel/rust-derive-builder/issues/56
 impl BufferInfoBuilder {
     /// Builds a new `BufferInfo`.
+    ///    
+    /// # Panics
+    ///
+    /// If any of the following values have not been set this function will panic:
+    ///
+    /// * `size`
+    ///
+    /// If `alignment` is not a power to two this function will panic.
+    #[inline(always)]
     pub fn build(self) -> BufferInfo {
-        self.fallible_build()
-            .expect("All required fields set at initialization")
+        let res = match self.fallible_build() {
+            Err(BufferInfoBuilderError(err)) => panic!("{err}"),
+            Ok(info) => info,
+        };
+
+        assert_eq!(
+            res.alignment.count_ones(),
+            1,
+            "Alignment must be a power of two"
+        );
+
+        res
     }
 }
 
@@ -504,11 +569,11 @@ impl From<BufferInfoBuilder> for BufferInfo {
 }
 
 #[derive(Debug)]
-struct BufferInfoBuilderError;
+struct BufferInfoBuilderError(UninitializedFieldError);
 
 impl From<UninitializedFieldError> for BufferInfoBuilderError {
-    fn from(_: UninitializedFieldError) -> Self {
-        Self
+    fn from(err: UninitializedFieldError) -> Self {
+        Self(err)
     }
 }
 
@@ -549,5 +614,64 @@ impl From<Option<Range<vk::DeviceSize>>> for BufferSubresource {
 impl From<BufferSubresource> for Range<vk::DeviceSize> {
     fn from(subresource: BufferSubresource) -> Self {
         subresource.start..subresource.end
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    type Info = BufferInfo;
+    type Builder = BufferInfoBuilder;
+
+    #[test]
+    pub fn buffer_info() {
+        let info = Info::device_mem(0, vk::BufferUsageFlags::empty());
+        let builder = info.to_builder().build();
+
+        assert_eq!(info, builder);
+    }
+
+    #[test]
+    pub fn buffer_info_alignment() {
+        let info = Info::device_mem(0, vk::BufferUsageFlags::empty());
+
+        assert_eq!(info.alignment, 1);
+    }
+
+    #[test]
+    pub fn buffer_info_builder() {
+        let info = Info::device_mem(0, vk::BufferUsageFlags::empty());
+        let builder = Builder::default().size(0).build();
+
+        assert_eq!(info, builder);
+    }
+
+    #[test]
+    #[should_panic(expected = "Alignment must be a power of two")]
+    pub fn buffer_info_builder_alignment_0() {
+        Builder::default().size(0).alignment(0).build();
+    }
+
+    #[test]
+    #[should_panic(expected = "Alignment must be a power of two")]
+    pub fn buffer_info_builder_alignment_42() {
+        Builder::default().size(0).alignment(42).build();
+    }
+
+    #[test]
+    pub fn buffer_info_builder_alignment_256() {
+        let mut info = Info::device_mem(42, vk::BufferUsageFlags::empty());
+        info.alignment = 256;
+
+        let builder = Builder::default().size(42).alignment(256).build();
+
+        assert_eq!(info, builder);
+    }
+
+    #[test]
+    #[should_panic(expected = "Field not initialized: size")]
+    pub fn buffer_info_builder_uninit_size() {
+        Builder::default().build();
     }
 }

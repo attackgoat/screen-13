@@ -99,7 +99,7 @@ impl ImageLoader {
         Ok(Arc::new(
             Image::create(
                 &self.device,
-                ImageInfo::new_2d(format, width, height, usage),
+                ImageInfo::image_2d(width, height, format, usage),
             )
             .context("Unable to create new image")?,
         ))
@@ -159,7 +159,7 @@ impl ImageLoader {
                 //trace!("pixel_buf_len={pixel_buf_len} pixel_buf_stride={pixel_buf_stride}");
 
                 // Lease a temporary buffer from the cache pool
-                let mut pixel_buf = self.pool.lease(BufferInfo::new_mappable(
+                let mut pixel_buf = self.pool.lease(BufferInfo::host_mem(
                     pixel_buf_len,
                     vk::BufferUsageFlags::STORAGE_BUFFER,
                 ))?;
@@ -208,7 +208,7 @@ impl ImageLoader {
             }
             ImageFormat::R8G8 | ImageFormat::R8G8B8A8 => {
                 // Lease a temporary buffer from the pool
-                let mut pixel_buf = self.pool.lease(BufferInfo::new_mappable(
+                let mut pixel_buf = self.pool.lease(BufferInfo::host_mem(
                     pixels.len() as _,
                     vk::BufferUsageFlags::TRANSFER_SRC,
                 ))?;

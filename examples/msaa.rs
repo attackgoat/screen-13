@@ -43,7 +43,7 @@ fn main() -> anyhow::Result<()> {
             * Mat4::from_rotation_z(angle * 0.22);
 
         let mut scene_uniform_buf = pool
-            .lease(BufferInfo::new_mappable(
+            .lease(BufferInfo::host_mem(
                 size_of::<SceneUniformBuffer>() as _,
                 vk::BufferUsageFlags::UNIFORM_BUFFER,
             ))
@@ -81,26 +81,28 @@ fn main() -> anyhow::Result<()> {
         if will_render_msaa {
             let msaa_color_image = pass.bind_node(
                 pool.lease(
-                    ImageInfo::new_2d(
-                        pass.node_info(frame.swapchain_image).fmt,
+                    ImageInfo::image_2d(
                         frame.width,
                         frame.height,
+                        pass.node_info(frame.swapchain_image).fmt,
                         vk::ImageUsageFlags::COLOR_ATTACHMENT
                             | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
                     )
+                    .to_builder()
                     .sample_count(sample_count),
                 )
                 .unwrap(),
             );
             let msaa_depth_image = pass.bind_node(
                 pool.lease(
-                    ImageInfo::new_2d(
-                        depth_format,
+                    ImageInfo::image_2d(
                         frame.width,
                         frame.height,
+                        depth_format,
                         vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
                             | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
                     )
+                    .to_builder()
                     .sample_count(sample_count),
                 )
                 .unwrap(),
@@ -113,10 +115,10 @@ fn main() -> anyhow::Result<()> {
                 .resolve_color(0, 1, frame.swapchain_image);
         } else {
             let noaa_depth_image = pass.bind_node(
-                pool.lease(ImageInfo::new_2d(
-                    depth_format,
+                pool.lease(ImageInfo::image_2d(
                     frame.width,
                     frame.height,
+                    depth_format,
                     vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
                         | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
                 ))
@@ -346,7 +348,7 @@ fn create_mesh_pipeline(
         frag
     );
 
-    let info = GraphicPipelineInfo::new().samples(sample_count);
+    let info = GraphicPipelineInfoBuilder::default().samples(sample_count);
 
     Ok(Arc::new(GraphicPipeline::create(
         device,

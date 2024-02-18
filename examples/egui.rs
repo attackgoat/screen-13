@@ -15,10 +15,10 @@ fn main() -> Result<(), DisplayError> {
     event_loop.run(|frame| {
         let img = frame.render_graph.bind_node(
             cache
-                .lease(ImageInfo::new_2d(
+                .lease(ImageInfo::image_2d(
+                    100,
+                    100,
                     vk::Format::R8G8B8A8_UNORM,
-                    100,
-                    100,
                     vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
                 ))
                 .unwrap(),

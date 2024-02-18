@@ -57,11 +57,9 @@ impl HotComputePipeline {
 
             let (mut watcher, has_changes) = create_watcher();
             if let Ok(compiled_shader) = compile_shader_and_watch(&self.shader, &mut watcher) {
-                if let Ok(instance) = ComputePipeline::create(
-                    &self.device,
-                    self.instance.info.clone(),
-                    compiled_shader,
-                ) {
+                if let Ok(instance) =
+                    ComputePipeline::create(&self.device, self.instance.info, compiled_shader)
+                {
                     self.has_changes = has_changes;
                     self.watcher = watcher;
                     self.instance = Arc::new(instance);

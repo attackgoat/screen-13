@@ -687,21 +687,23 @@ impl Resolver {
         pipeline: &mut ExecutionPipeline,
         depth_stencil: Option<DepthStencilMode>,
     ) -> Result<(), DriverError> {
-        let (ty, name, vk_pipeline) = match pipeline {
-            ExecutionPipeline::Compute(pipeline) => {
-                ("compute", pipeline.info.name.as_ref(), ***pipeline)
+        if log_enabled!(Trace) {
+            let (ty, name, vk_pipeline) = match pipeline {
+                ExecutionPipeline::Compute(pipeline) => {
+                    ("compute", pipeline.name.as_ref(), ***pipeline)
+                }
+                ExecutionPipeline::Graphic(pipeline) => {
+                    ("graphic", pipeline.name.as_ref(), vk::Pipeline::null())
+                }
+                ExecutionPipeline::RayTrace(pipeline) => {
+                    ("ray trace", pipeline.name.as_ref(), ***pipeline)
+                }
+            };
+            if let Some(name) = name {
+                trace!("    bind {} pipeline {} ({:?})", ty, name, vk_pipeline);
+            } else {
+                trace!("    bind {} pipeline {:?}", ty, vk_pipeline);
             }
-            ExecutionPipeline::Graphic(pipeline) => {
-                ("graphic", pipeline.info.name.as_ref(), vk::Pipeline::null())
-            }
-            ExecutionPipeline::RayTrace(pipeline) => {
-                ("ray trace", pipeline.info.name.as_ref(), ***pipeline)
-            }
-        };
-        if let Some(name) = name {
-            trace!("    bind {} pipeline {} ({:?})", ty, name, vk_pipeline);
-        } else {
-            trace!("    bind {} pipeline {:?}", ty, vk_pipeline);
         }
 
         // We store a shared reference to this pipeline inside the command buffer!
