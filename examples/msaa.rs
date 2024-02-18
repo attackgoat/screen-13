@@ -23,7 +23,7 @@ fn main() -> anyhow::Result<()> {
     let depth_format = best_depth_format(&event_loop.device);
     let sample_count = max_supported_sample_count(&event_loop.device);
     let mesh_msaa_pipeline = create_mesh_pipeline(&event_loop.device, sample_count)?;
-    let mesh_noaa_pipeline = create_mesh_pipeline(&event_loop.device, SampleCount::X1)?;
+    let mesh_noaa_pipeline = create_mesh_pipeline(&event_loop.device, SampleCount::Type1)?;
     let cube_mesh = load_cube_mesh(&event_loop.device)?;
     let mut pool = FifoPool::new(&event_loop.device);
 
@@ -35,7 +35,7 @@ fn main() -> anyhow::Result<()> {
         }
 
         // Hold the tab key to render in non-multisample mode
-        let will_render_msaa = !input.key_held(KeyCode::Tab) && sample_count != SampleCount::X1;
+        let will_render_msaa = !input.key_held(KeyCode::Tab) && sample_count != SampleCount::Type1;
 
         angle += frame.dt * 0.1;
         let world_transform = Mat4::from_rotation_x(angle)
@@ -170,16 +170,16 @@ fn max_supported_sample_count(device: &Device) -> SampleCount {
         ..
     } = device.physical_device.properties_v1_0.limits;
     match framebuffer_color_sample_counts & framebuffer_depth_sample_counts {
-        s if s.contains(vk::SampleCountFlags::TYPE_64) => SampleCount::X64,
-        s if s.contains(vk::SampleCountFlags::TYPE_32) => SampleCount::X32,
-        s if s.contains(vk::SampleCountFlags::TYPE_16) => SampleCount::X16,
-        s if s.contains(vk::SampleCountFlags::TYPE_8) => SampleCount::X8,
-        s if s.contains(vk::SampleCountFlags::TYPE_4) => SampleCount::X4,
-        s if s.contains(vk::SampleCountFlags::TYPE_2) => SampleCount::X2,
+        s if s.contains(vk::SampleCountFlags::TYPE_64) => SampleCount::Type64,
+        s if s.contains(vk::SampleCountFlags::TYPE_32) => SampleCount::Type32,
+        s if s.contains(vk::SampleCountFlags::TYPE_16) => SampleCount::Type16,
+        s if s.contains(vk::SampleCountFlags::TYPE_8) => SampleCount::Type8,
+        s if s.contains(vk::SampleCountFlags::TYPE_4) => SampleCount::Type4,
+        s if s.contains(vk::SampleCountFlags::TYPE_2) => SampleCount::Type2,
         s if s.contains(vk::SampleCountFlags::TYPE_1) => {
             warn!("MSAA not supported");
 
-            SampleCount::X1
+            SampleCount::Type1
         }
         _ => panic!("unsupported color/depth msaa"),
     }

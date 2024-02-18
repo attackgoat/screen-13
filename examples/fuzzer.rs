@@ -640,13 +640,13 @@ fn record_graphic_msaa_depth_stencil(frame: &mut FrameContext, pool: &mut HashPo
             & framebuffer_depth_sample_counts
             & framebuffer_stencil_sample_counts
         {
-            s if s.contains(vk::SampleCountFlags::TYPE_64) => SampleCount::X64,
-            s if s.contains(vk::SampleCountFlags::TYPE_32) => SampleCount::X32,
-            s if s.contains(vk::SampleCountFlags::TYPE_16) => SampleCount::X16,
-            s if s.contains(vk::SampleCountFlags::TYPE_8) => SampleCount::X8,
-            s if s.contains(vk::SampleCountFlags::TYPE_4) => SampleCount::X4,
-            s if s.contains(vk::SampleCountFlags::TYPE_2) => SampleCount::X2,
-            s if s.contains(vk::SampleCountFlags::TYPE_1) => SampleCount::X1,
+            s if s.contains(vk::SampleCountFlags::TYPE_64) => SampleCount::Type64,
+            s if s.contains(vk::SampleCountFlags::TYPE_32) => SampleCount::Type32,
+            s if s.contains(vk::SampleCountFlags::TYPE_16) => SampleCount::Type16,
+            s if s.contains(vk::SampleCountFlags::TYPE_8) => SampleCount::Type8,
+            s if s.contains(vk::SampleCountFlags::TYPE_4) => SampleCount::Type4,
+            s if s.contains(vk::SampleCountFlags::TYPE_2) => SampleCount::Type2,
+            s if s.contains(vk::SampleCountFlags::TYPE_1) => SampleCount::Type1,
             _ => panic!("unsupported depth/stencil msaa"),
         }
     };

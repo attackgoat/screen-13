@@ -667,10 +667,10 @@ pub struct GraphicPipelineInfo {
 
     /// Multisampling antialias mode.
     ///
-    /// The default value is `SampleCount::X1`.
+    /// The default value is `SampleCount::Type1`.
     ///
     /// See [multisampling](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#primsrast-multisampling).
-    #[builder(default = "SampleCount::X1")]
+    #[builder(default = "SampleCount::Type1")]
     pub samples: SampleCount,
 }
 
@@ -707,7 +707,7 @@ impl Default for GraphicPipelineInfo {
             front_face: vk::FrontFace::COUNTER_CLOCKWISE,
             polygon_mode: vk::PolygonMode::FILL,
             topology: vk::PrimitiveTopology::TRIANGLE_LIST,
-            samples: SampleCount::X1,
+            samples: SampleCount::Type1,
         }
     }
 }

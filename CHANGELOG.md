@@ -46,7 +46,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     - Default values for `width` and `height` fields removed
 - `ComputePipelineInfo::name`, `GraphicPipelineInfo::name` and `RayTracePipelineInfo::name` have
   each been moved to their respective pipeline struct
-- `EventLoop` now produces linear surfaces by default - use `desired_surface_format` and `Surface::srgb` to select sRGB
+- `SampleCount` enum members renamed from `X1` to `Type1` (_etc._) to match Vulkan spec
+- `EventLoop` now produces linear surfaces by default - use `desired_surface_format` and
+  `Surface::srgb` to select sRGB
 - `Swapchain::present_image` now uses event-based waiting for rendering operations instead of
   polling, greatly reducing CPU usage
 - Updated `ash-molten` (_Mac OS support_) to v0.17 

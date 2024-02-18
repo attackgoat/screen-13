@@ -47,7 +47,7 @@ impl Default for AttachmentInfo {
         AttachmentInfo {
             flags: vk::AttachmentDescriptionFlags::MAY_ALIAS,
             fmt: vk::Format::UNDEFINED,
-            sample_count: SampleCount::X1,
+            sample_count: SampleCount::Type1,
             initial_layout: vk::ImageLayout::UNDEFINED,
             load_op: vk::AttachmentLoadOp::DONT_CARE,
             stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,

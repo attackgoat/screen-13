@@ -359,7 +359,7 @@ pub struct ImageInfo {
     /// Specifies the number of [samples per texel].
     ///
     /// [samples per texel]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#primsrast-multisampling
-    #[builder(default = "SampleCount::X1", setter(strip_option))]
+    #[builder(default = "SampleCount::Type1", setter(strip_option))]
     pub sample_count: SampleCount,
 
     /// Specifies the tiling arrangement of the texel blocks in memory.
@@ -460,7 +460,7 @@ impl ImageInfo {
             flags: vk::ImageCreateFlags::empty(),
             tiling: vk::ImageTiling::OPTIMAL,
             mip_level_count: 1,
-            sample_count: SampleCount::X1,
+            sample_count: SampleCount::Type1,
         }
     }
 
@@ -955,44 +955,73 @@ impl From<UninitializedFieldError> for ImageViewInfoBuilderError {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum SampleCount {
     /// Single image sample. This is the usual mode.
+    Type1,
+
+    /// Multiple image samples.
+    Type2,
+
+    /// Multiple image samples.
+    Type4,
+
+    /// Multiple image samples.
+    Type8,
+
+    /// Multiple image samples.
+    Type16,
+
+    /// Multiple image samples.
+    Type32,
+
+    /// Multiple image samples.
+    Type64,
+
+    /// Single image sample. This is the usual mode.
+    #[deprecated = "Use Type1"]
     X1,
 
     /// Multiple image samples.
+    #[deprecated = "Use Type2"]
     X2,
 
     /// Multiple image samples.
+    #[deprecated = "Use Type4"]
     X4,
 
     /// Multiple image samples.
+    #[deprecated = "Use Type8"]
     X8,
 
     /// Multiple image samples.
+    #[deprecated = "Use Type16"]
     X16,
 
     /// Multiple image samples.
+    #[deprecated = "Use Type32"]
     X32,
 
     /// Multiple image samples.
+    #[deprecated = "Use Type64"]
     X64,
 }
 
 impl SampleCount {
     pub(super) fn into_vk(self) -> vk::SampleCountFlags {
+        #[allow(deprecated)]
         match self {
-            Self::X1 => vk::SampleCountFlags::TYPE_1,
-            Self::X2 => vk::SampleCountFlags::TYPE_2,
-            Self::X4 => vk::SampleCountFlags::TYPE_4,
-            Self::X8 => vk::SampleCountFlags::TYPE_8,
-            Self::X16 => vk::SampleCountFlags::TYPE_16,
-            Self::X32 => vk::SampleCountFlags::TYPE_32,
-            Self::X64 => vk::SampleCountFlags::TYPE_64,
+            Self::Type1 | Self::X1 => vk::SampleCountFlags::TYPE_1,
+            Self::Type2 | Self::X2 => vk::SampleCountFlags::TYPE_2,
+            Self::Type4 | Self::X4 => vk::SampleCountFlags::TYPE_4,
+            Self::Type8 | Self::X8 => vk::SampleCountFlags::TYPE_8,
+            Self::Type16 | Self::X16 => vk::SampleCountFlags::TYPE_16,
+            Self::Type32 | Self::X32 => vk::SampleCountFlags::TYPE_32,
+            Self::Type64 | Self::X64 => vk::SampleCountFlags::TYPE_64,
         }
     }
 }
 
 impl Default for SampleCount {
     fn default() -> Self {
-        Self::X1
+        Self::Type1
     }
 }
 
