@@ -2730,10 +2730,6 @@ impl Resolver {
 
             cmd_buf
                 .device
-                .reset_command_pool(cmd_buf.pool, vk::CommandPoolResetFlags::RELEASE_RESOURCES)
-                .map_err(|_| DriverError::OutOfMemory)?;
-            cmd_buf
-                .device
                 .begin_command_buffer(
                     **cmd_buf,
                     &vk::CommandBufferBeginInfo::builder()

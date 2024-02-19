@@ -50,11 +50,7 @@ impl Display {
     }
 
     #[profiling::function]
-    unsafe fn begin(cmd_buf: &mut CommandBuffer) -> Result<(), ()> {
-        cmd_buf
-            .device
-            .reset_command_pool(cmd_buf.pool, vk::CommandPoolResetFlags::RELEASE_RESOURCES)
-            .map_err(|_| ())?;
+    unsafe fn begin(cmd_buf: &CommandBuffer) -> Result<(), ()> {
         cmd_buf
             .device
             .begin_command_buffer(

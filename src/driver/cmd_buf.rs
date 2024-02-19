@@ -27,7 +27,10 @@ impl CommandBuffer {
     ) -> Result<Self, DriverError> {
         let device = Arc::clone(device);
         let cmd_pool_info = vk::CommandPoolCreateInfo::builder()
-            .flags(vk::CommandPoolCreateFlags::empty())
+            .flags(
+                vk::CommandPoolCreateFlags::TRANSIENT
+                    | vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER,
+            )
             .queue_family_index(info.queue_family_index);
         let pool = unsafe {
             device
