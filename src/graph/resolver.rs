@@ -390,12 +390,12 @@ impl Resolver {
         cmd_buf: &CommandBuffer,
         bindings: &[Binding],
         pass: &Pass,
-        physical_pass: &PhysicalPass,
+        physical_pass: &mut PhysicalPass,
         render_area: Area,
     ) -> Result<(), DriverError> {
         trace!("  begin render pass");
 
-        let render_pass = physical_pass.render_pass.as_ref().unwrap();
+        let render_pass = physical_pass.render_pass.as_mut().unwrap();
         let attachment_count = render_pass.info.attachments.len();
 
         let mut attachments = Vec::with_capacity(attachment_count);
@@ -682,7 +682,7 @@ impl Resolver {
     #[profiling::function]
     fn bind_pipeline(
         cmd_buf: &mut CommandBuffer,
-        physical_pass: &PhysicalPass,
+        physical_pass: &mut PhysicalPass,
         exec_idx: usize,
         pipeline: &mut ExecutionPipeline,
         depth_stencil: Option<DepthStencilMode>,
@@ -711,7 +711,7 @@ impl Resolver {
         let pipeline = match pipeline {
             ExecutionPipeline::Compute(pipeline) => ***pipeline,
             ExecutionPipeline::Graphic(pipeline) => RenderPass::graphic_pipeline(
-                physical_pass.render_pass.as_ref().unwrap(),
+                physical_pass.render_pass.as_mut().unwrap(),
                 pipeline,
                 depth_stencil,
                 exec_idx as _,
@@ -2244,7 +2244,7 @@ impl Resolver {
 
             profiling::scope!("Pass", &pass.name);
 
-            let physical_pass = &self.physical_passes[pass_idx];
+            let physical_pass = &mut self.physical_passes[pass_idx];
             let is_graphic = physical_pass.render_pass.is_some();
 
             trace!("recording pass [{}: {}]", pass_idx, pass.name);

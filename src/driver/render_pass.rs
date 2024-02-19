@@ -4,7 +4,6 @@ use {
     },
     ash::vk,
     log::{trace, warn},
-    parking_lot::Mutex,
     std::{
         collections::{hash_map::Entry, HashMap},
         ops::Deref,
@@ -109,8 +108,8 @@ pub struct RenderPassInfo {
 #[derive(Debug)]
 pub struct RenderPass {
     device: Arc<Device>,
-    framebuffer_cache: Mutex<HashMap<FramebufferInfo, vk::Framebuffer>>,
-    graphic_pipeline_cache: Mutex<HashMap<GraphicPipelineKey, vk::Pipeline>>,
+    framebuffers: HashMap<FramebufferInfo, vk::Framebuffer>,
+    graphic_pipelines: HashMap<GraphicPipelineKey, vk::Pipeline>,
     pub info: RenderPassInfo,
     render_pass: vk::RenderPass,
 }
@@ -240,18 +239,20 @@ impl RenderPass {
         Ok(Self {
             info,
             device,
-            framebuffer_cache: Mutex::new(Default::default()),
-            graphic_pipeline_cache: Mutex::new(Default::default()),
+            framebuffers: Default::default(),
+            graphic_pipelines: Default::default(),
             render_pass,
         })
     }
 
     #[profiling::function]
-    pub fn framebuffer(this: &Self, info: FramebufferInfo) -> Result<vk::Framebuffer, DriverError> {
+    pub fn framebuffer(
+        this: &mut Self,
+        info: FramebufferInfo,
+    ) -> Result<vk::Framebuffer, DriverError> {
         debug_assert!(!info.attachments.is_empty());
 
-        let mut cache = this.framebuffer_cache.lock();
-        let entry = cache.entry(info);
+        let entry = this.framebuffers.entry(info);
         if let Entry::Occupied(entry) = entry {
             return Ok(*entry.get());
         }
@@ -310,15 +311,14 @@ impl RenderPass {
 
     #[profiling::function]
     pub fn graphic_pipeline(
-        this: &Self,
+        this: &mut Self,
         pipeline: &Arc<GraphicPipeline>,
         depth_stencil: Option<DepthStencilMode>,
         subpass_idx: u32,
     ) -> Result<vk::Pipeline, DriverError> {
         use std::slice::from_ref;
 
-        let mut cache = this.graphic_pipeline_cache.lock();
-        let entry = cache.entry(GraphicPipelineKey {
+        let entry = this.graphic_pipelines.entry(GraphicPipelineKey {
             depth_stencil,
             layout: pipeline.layout,
             shader_modules: pipeline.shader_modules.clone(),
@@ -450,11 +450,11 @@ impl Drop for RenderPass {
         }
 
         unsafe {
-            for framebuffer in self.framebuffer_cache.lock().values().copied() {
+            for (_, framebuffer) in self.framebuffers.drain() {
                 self.device.destroy_framebuffer(framebuffer, None);
             }
 
-            for pipeline in self.graphic_pipeline_cache.lock().values().copied() {
+            for (_, pipeline) in self.graphic_pipelines.drain() {
                 self.device.destroy_pipeline(pipeline, None);
             }
 
