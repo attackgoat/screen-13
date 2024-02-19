@@ -356,7 +356,7 @@ pub struct GraphicPipeline {
     /// Information used to create this object.
     pub info: GraphicPipelineInfo,
 
-    pub(crate) input_attachments: HashSet<u32>,
+    pub(crate) input_attachments: Box<[u32]>,
     pub(crate) layout: vk::PipelineLayout,
 
     /// A descriptive name used in debugging messages.
@@ -365,10 +365,6 @@ pub struct GraphicPipeline {
     pub(crate) push_constants: Vec<vk::PushConstantRange>,
     pub(crate) shader_modules: Vec<vk::ShaderModule>,
     pub(super) state: GraphicPipelineState,
-
-    // Used in debug mode
-    #[allow(dead_code)]
-    pub(crate) write_attachments: HashSet<u32>,
 }
 
 impl GraphicPipeline {
@@ -476,15 +472,21 @@ impl GraphicPipeline {
             .filter_map(|mut push_const| push_const.take())
             .collect::<Vec<_>>();
 
-        let (input_attachments, write_attachments) = {
+        let input_attachments = {
             let (input, write) = shaders
                 .iter()
                 .find(|shader| shader.stage == vk::ShaderStageFlags::FRAGMENT)
                 .expect("fragment shader not found")
                 .attachments();
-            let (input, write) = (input.collect::<HashSet<_>>(), write.collect::<HashSet<_>>());
+            let (input, write) = (
+                input
+                    .collect::<HashSet<_>>()
+                    .into_iter()
+                    .collect::<Box<_>>(),
+                write.collect::<HashSet<_>>(),
+            );
 
-            for input in &input {
+            for input in input.iter() {
                 trace!("detected input attachment {input}");
             }
 
@@ -492,7 +494,7 @@ impl GraphicPipeline {
                 trace!("detected write attachment {write}");
             }
 
-            (input, write)
+            input
         };
 
         unsafe {
@@ -565,7 +567,6 @@ impl GraphicPipeline {
                     stages,
                     vertex_input,
                 },
-                write_attachments,
             })
         }
     }

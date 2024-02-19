@@ -1114,42 +1114,40 @@ impl Resolver {
             let mut subpass_info = SubpassInfo::with_capacity(attachment_count);
 
             // Add input attachments
-            for (_, (descriptor_info, _)) in pipeline.descriptor_bindings.iter() {
-                if let &DescriptorInfo::InputAttachment(_, attachment_idx) = descriptor_info {
-                    debug_assert!(
-                        !exec.color_clears.contains_key(&attachment_idx),
-                        "cannot clear color attachment index {attachment_idx} because it uses subpass input"
-                    );
+            for attachment_idx in pipeline.input_attachments.iter() {
+                debug_assert!(
+                    !exec.color_clears.contains_key(attachment_idx),
+                    "cannot clear color attachment index {attachment_idx} because it uses subpass input",
+                );
 
-                    let exec_attachment = exec
-                        .color_attachments
-                        .get(&attachment_idx)
-                        .or_else(|| exec.color_loads.get(&attachment_idx))
-                        .or_else(|| exec.color_stores.get(&attachment_idx))
-                        .expect("subpass input attachment index not attached, loaded, or stored");
-                    let is_random_access = exec.color_stores.contains_key(&attachment_idx);
-                    subpass_info.input_attachments.push(AttachmentRef {
-                        attachment: attachment_idx,
-                        aspect_mask: exec_attachment.aspect_mask,
-                        layout: Self::attachment_layout(
-                            exec_attachment.aspect_mask,
-                            is_random_access,
-                            true,
-                        ),
-                    });
+                let exec_attachment = exec
+                    .color_attachments
+                    .get(attachment_idx)
+                    .or_else(|| exec.color_loads.get(attachment_idx))
+                    .or_else(|| exec.color_stores.get(attachment_idx))
+                    .expect("subpass input attachment index not attached, loaded, or stored");
+                let is_random_access = exec.color_stores.contains_key(attachment_idx);
+                subpass_info.input_attachments.push(AttachmentRef {
+                    attachment: *attachment_idx,
+                    aspect_mask: exec_attachment.aspect_mask,
+                    layout: Self::attachment_layout(
+                        exec_attachment.aspect_mask,
+                        is_random_access,
+                        true,
+                    ),
+                });
 
-                    // We should preserve the attachment in the previous subpasses as needed
-                    // (We're asserting that any input renderpasses are actually real subpasses
-                    // here with prior passes..)
-                    for prev_exec_idx in (0..exec_idx - 1).rev() {
-                        let prev_exec = &pass.execs[prev_exec_idx];
-                        if prev_exec.color_stores.contains_key(&attachment_idx) {
-                            break;
-                        }
-
-                        let prev_subpass = &mut subpasses[prev_exec_idx];
-                        prev_subpass.preserve_attachments.push(attachment_idx);
+                // We should preserve the attachment in the previous subpasses as needed
+                // (We're asserting that any input renderpasses are actually real subpasses
+                // here with prior passes..)
+                for prev_exec_idx in (0..exec_idx - 1).rev() {
+                    let prev_exec = &pass.execs[prev_exec_idx];
+                    if prev_exec.color_stores.contains_key(attachment_idx) {
+                        break;
                     }
+
+                    let prev_subpass = &mut subpasses[prev_exec_idx];
+                    prev_subpass.preserve_attachments.push(*attachment_idx);
                 }
             }
 
