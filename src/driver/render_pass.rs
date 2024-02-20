@@ -1,7 +1,7 @@
+//! Render pass related types.
+
 use {
-    super::{
-        device::Device, DepthStencilMode, DriverError, GraphicPipeline, ResolveMode, SampleCount,
-    },
+    super::{device::Device, DepthStencilMode, DriverError, GraphicPipeline, SampleCount},
     ash::vk,
     log::{trace, warn},
     std::{
@@ -13,7 +13,7 @@ use {
 };
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct AttachmentInfo {
+pub(crate) struct AttachmentInfo {
     pub flags: vk::AttachmentDescriptionFlags,
     pub fmt: vk::Format,
     pub sample_count: SampleCount,
@@ -58,7 +58,7 @@ impl Default for AttachmentInfo {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct AttachmentRef {
+pub(crate) struct AttachmentRef {
     pub attachment: u32,
     pub aspect_mask: vk::ImageAspectFlags,
     pub layout: vk::ImageLayout,
@@ -74,7 +74,7 @@ impl AttachmentRef {
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct FramebufferAttachmentImageInfo {
+pub(crate) struct FramebufferAttachmentImageInfo {
     pub flags: vk::ImageCreateFlags,
     pub usage: vk::ImageUsageFlags,
     pub width: u32,
@@ -84,7 +84,7 @@ pub struct FramebufferAttachmentImageInfo {
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct FramebufferInfo {
+pub(crate) struct FramebufferInfo {
     pub attachments: Vec<FramebufferAttachmentImageInfo>,
     pub width: u32,
     pub height: u32,
@@ -99,14 +99,14 @@ struct GraphicPipelineKey {
 }
 
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
-pub struct RenderPassInfo {
+pub(crate) struct RenderPassInfo {
     pub attachments: Vec<AttachmentInfo>,
     pub subpasses: Vec<SubpassInfo>,
     pub dependencies: Vec<SubpassDependency>,
 }
 
 #[derive(Debug)]
-pub struct RenderPass {
+pub(crate) struct RenderPass {
     device: Arc<Device>,
     framebuffers: HashMap<FramebufferInfo, vk::Framebuffer>,
     graphic_pipelines: HashMap<GraphicPipelineKey, vk::Pipeline>,
@@ -463,8 +463,36 @@ impl Drop for RenderPass {
     }
 }
 
+/// Specifying depth and stencil resolve modes.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct SubpassDependency {
+pub enum ResolveMode {
+    /// The result of the resolve operation is the average of the sample values.
+    Average,
+
+    /// The result of the resolve operation is the maximum of the sample values.
+    Maximum,
+
+    /// The result of the resolve operation is the minimum of the sample values.
+    Minimum,
+
+    /// The result of the resolve operation is equal to the value of sample `0`.
+    SampleZero,
+}
+
+impl ResolveMode {
+    fn into_vk(mode: Option<ResolveMode>) -> vk::ResolveModeFlags {
+        match mode {
+            None => vk::ResolveModeFlags::NONE,
+            Some(ResolveMode::Average) => vk::ResolveModeFlags::AVERAGE,
+            Some(ResolveMode::Maximum) => vk::ResolveModeFlags::MAX,
+            Some(ResolveMode::Minimum) => vk::ResolveModeFlags::MIN,
+            Some(ResolveMode::SampleZero) => vk::ResolveModeFlags::SAMPLE_ZERO,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) struct SubpassDependency {
     pub src_subpass: u32,
     pub dst_subpass: u32,
     pub src_stage_mask: vk::PipelineStageFlags,
@@ -501,7 +529,7 @@ impl SubpassDependency {
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct SubpassInfo {
+pub(crate) struct SubpassInfo {
     pub color_attachments: Vec<AttachmentRef>,
     pub color_resolve_attachments: Vec<AttachmentRef>,
     pub correlated_view_mask: u32,

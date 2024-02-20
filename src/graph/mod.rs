@@ -39,8 +39,9 @@ use {
         image::{ImageType, ImageViewInfo, SampleCount},
         is_write_access,
         ray_trace::RayTracePipeline,
+        render_pass::ResolveMode,
         shader::PipelineDescriptorInfo,
-        DescriptorBindingMap, ResolveMode,
+        DescriptorBindingMap,
     },
     ash::vk,
     std::{

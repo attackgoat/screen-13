@@ -34,6 +34,7 @@ pub mod graphic;
 pub mod image;
 pub mod physical_device;
 pub mod ray_trace;
+pub mod render_pass;
 pub mod shader;
 pub mod surface;
 pub mod swapchain;
@@ -42,13 +43,16 @@ mod cmd_buf;
 mod descriptor_set;
 mod descriptor_set_layout;
 mod instance;
-mod render_pass;
 
 pub use {
     self::{cmd_buf::CommandBuffer, instance::Instance},
     ash::{self},
     vk_sync::AccessType,
 };
+
+/// Specifying depth and stencil resolve modes.
+#[deprecated = "Use driver::render_pass::ResolveMode instead"]
+pub type ResolveMode = self::render_pass::ResolveMode;
 
 pub(crate) use self::{
     cmd_buf::CommandBufferInfo,
@@ -665,34 +669,6 @@ impl Display for DriverError {
 }
 
 impl Error for DriverError {}
-
-/// Specifying depth and stencil resolve modes.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum ResolveMode {
-    /// The result of the resolve operation is the average of the sample values.
-    Average,
-
-    /// The result of the resolve operation is the maximum of the sample values.
-    Maximum,
-
-    /// The result of the resolve operation is the minimum of the sample values.
-    Minimum,
-
-    /// The result of the resolve operation is equal to the value of sample `0`.
-    SampleZero,
-}
-
-impl ResolveMode {
-    fn into_vk(mode: Option<ResolveMode>) -> vk::ResolveModeFlags {
-        match mode {
-            None => vk::ResolveModeFlags::NONE,
-            Some(ResolveMode::Average) => vk::ResolveModeFlags::AVERAGE,
-            Some(ResolveMode::Maximum) => vk::ResolveModeFlags::MAX,
-            Some(ResolveMode::Minimum) => vk::ResolveModeFlags::MIN,
-            Some(ResolveMode::SampleZero) => vk::ResolveModeFlags::SAMPLE_ZERO,
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {

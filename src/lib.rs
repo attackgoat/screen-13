@@ -361,6 +361,7 @@ pub mod prelude {
                     RayTracePipeline, RayTracePipelineInfo, RayTracePipelineInfoBuilder,
                     RayTraceShaderGroup, RayTraceShaderGroupType,
                 },
+                render_pass::ResolveMode,
                 shader::{
                     SamplerInfo, SamplerInfoBuilder, Shader, ShaderBuilder, ShaderCode,
                     SpecializationInfo,
@@ -369,7 +370,7 @@ pub mod prelude {
                 swapchain::{
                     Swapchain, SwapchainError, SwapchainImage, SwapchainInfo, SwapchainInfoBuilder,
                 },
-                AccessType, CommandBuffer, DriverError, Instance, ResolveMode,
+                AccessType, CommandBuffer, DriverError, Instance,
             },
             event_loop::{EventLoop, EventLoopBuilder, FullscreenMode},
             frame::{center_cursor, set_cursor_position, FrameContext},

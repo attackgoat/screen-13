@@ -16,7 +16,7 @@ use {
         graphic::{DepthStencilMode, GraphicPipeline},
         image::{Image, ImageSubresource, ImageViewInfo},
         ray_trace::RayTracePipeline,
-        ResolveMode,
+        render_pass::ResolveMode,
     },
     ash::vk,
     log::trace,

@@ -225,6 +225,7 @@ impl std::fmt::Display for DisplayError {
 /// instance.
 ///
 /// [`Resolver`]: crate::graph::Resolver
+#[allow(private_bounds)]
 pub trait ResolverPool:
     Pool<DescriptorPoolInfo, DescriptorPool>
     + Pool<RenderPassInfo, RenderPass>
