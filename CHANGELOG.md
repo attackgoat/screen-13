@@ -7,9 +7,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `puffin` profiling to most example code - see [getting started guide](examples/getting-started.md)
+  for more information
+
 ### Removed
 
 - Explicit reset of Vulkan command pools to reduce driver API calls
+- Unnecessary `Mutex` guarding `Framebuffer` and `GraphicPipeline` access
 
 ## [0.11.0] - 2024-02-18
 

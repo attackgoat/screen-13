@@ -318,7 +318,7 @@ impl EventLoopBuilder {
 
     /// A function to select the desired swapchain surface image format.
     ///
-    /// By default sRGB will be selected unless it is not available.
+    /// By default linear color space will be selected unless it is not available.
     pub fn desired_surface_format<F>(mut self, surface_format_fn: F) -> Self
     where
         F: 'static + FnOnce(&[vk::SurfaceFormatKHR]) -> vk::SurfaceFormatKHR,
