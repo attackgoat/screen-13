@@ -189,10 +189,19 @@ impl Swapchain {
             "Queue index must be within the range of the available queues created by the device."
         );
 
-        if let Err(err) = Device::wait_for_fence(&self.device, &image.ready) {
-            warn!("Unable to wait for presentation ready fence: {err}");
+        {
+            profiling::scope!("Wait for presentation ready");
 
-            return;
+            // This does not use Device::wait_for_fence because we don't want to spam the logs
+            // (This is expected to commonly take multiple milliseconds)
+            if let Err(err) = unsafe {
+                self.device
+                    .wait_for_fences(slice::from_ref(&image.ready), false, u64::MAX)
+            } {
+                warn!("Unable to wait for presentation ready fence: {err}");
+
+                return;
+            }
         }
 
         // We checked when handling out the swapchain image
