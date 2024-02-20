@@ -1,8 +1,11 @@
+mod profile_with_puffin;
+
 use {bytemuck::cast_slice, inline_spirv::inline_spirv, screen_13::prelude::*, std::sync::Arc};
 
 // A Vulkan triangle using a graphic pipeline, vertex/fragment shaders, and index/vertex buffers.
 fn main() -> Result<(), DisplayError> {
     pretty_env_logger::init();
+    profile_with_puffin::init();
 
     let event_loop = EventLoop::new().build()?;
     let triangle_pipeline = Arc::new(GraphicPipeline::create(

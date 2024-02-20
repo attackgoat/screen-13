@@ -1,3 +1,5 @@
+mod profile_with_puffin;
+
 use {
     bytemuck::{bytes_of, cast_slice, NoUninit},
     glam::{Mat4, Vec3},
@@ -17,6 +19,7 @@ const WHITE: ClearColorValue = ClearColorValue([1.0, 1.0, 1.0, 1.0]);
 /// NOTE: The effect may be hard to see on high-DPI displays.
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
+    profile_with_puffin::init();
 
     let mut input = WinitInputHelper::default();
     let event_loop = EventLoop::new().build()?;

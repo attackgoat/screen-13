@@ -1,3 +1,5 @@
+mod profile_with_puffin;
+
 /*
 
 Kind of an example, kind of a test - not good looking
@@ -46,6 +48,7 @@ static OPERATIONS: &[Operation] = &[
 
 fn main() -> Result<(), DisplayError> {
     pretty_env_logger::init();
+    profile_with_puffin::init();
 
     let mut rng = thread_rng();
 

@@ -1,3 +1,5 @@
+mod profile_with_puffin;
+
 use {
     bmfont::{BMFont, OrdinateOrientation},
     image::io::Reader,
@@ -9,6 +11,7 @@ use {
 
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
+    profile_with_puffin::init();
 
     // Standard Screen 13 stuff
     let event_loop = EventLoop::new().build()?;

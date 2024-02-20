@@ -1,3 +1,5 @@
+mod profile_with_puffin;
+
 use {
     bytemuck::cast_slice,
     inline_spirv::inline_spirv,
@@ -483,6 +485,7 @@ fn load_scene_buffers(
 /// Adapted from http://williamlewww.com/showcase_website/vk_khr_ray_tracing_tutorial/index.html
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
+    profile_with_puffin::init();
 
     let event_loop = EventLoop::new().build()?;
     let mut cache = HashPool::new(&event_loop.device);

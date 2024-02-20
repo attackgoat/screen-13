@@ -1,3 +1,5 @@
+mod profile_with_puffin;
+
 use {
     bytemuck::{bytes_of, cast_slice, Pod, Zeroable},
     glam::{vec3, vec4, Mat4, Vec3, Vec4},
@@ -16,6 +18,7 @@ use {
 
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
+    profile_with_puffin::init();
 
     let event_loop = EventLoop::new().debug(true).build()?;
     let mut pool = LazyPool::new(&event_loop.device);

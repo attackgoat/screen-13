@@ -1,3 +1,5 @@
+mod profile_with_puffin;
+
 use {
     bytemuck::{cast_slice, Pod, Zeroable},
     half::f16,
@@ -14,6 +16,7 @@ use {
 /// we fall back to 16 bit values.
 fn main() -> Result<(), DisplayError> {
     pretty_env_logger::init();
+    profile_with_puffin::init();
 
     // NOTE: This example uses the 64-bit rules defined in the Vulkan spec, they're not obvious:
     // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#fxvertex-attrib

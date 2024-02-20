@@ -1,3 +1,5 @@
+mod profile_with_puffin;
+
 use {
     bytemuck::{bytes_of, cast_slice, NoUninit, Pod, Zeroable},
     glam::{vec3, Mat4, Quat, Vec3},
@@ -30,6 +32,7 @@ const USE_GEOMETRY_SHADER: bool = true;
 /// https://github.com/SaschaWillems/Vulkan/pull/783
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
+    profile_with_puffin::init();
 
     let model_path = download_model_from_github("nefertiti.obj")?;
     let model_transform = Mat4::from_scale_rotation_translation(

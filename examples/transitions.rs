@@ -1,3 +1,5 @@
+mod profile_with_puffin;
+
 use {
     image::io::Reader,
     screen_13::prelude::*,
@@ -8,6 +10,7 @@ use {
 
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
+    profile_with_puffin::init();
 
     // Create Screen 13 things any similar program might need
     let event_loop = EventLoop::new()

@@ -1,3 +1,5 @@
+mod profile_with_puffin;
+
 use {
     screen_13::prelude::*,
     screen_13_fx::*,
@@ -5,8 +7,8 @@ use {
 };
 
 fn main() -> Result<(), DisplayError> {
-    // Set RUST_LOG=trace in your environment variables to see log output
     pretty_env_logger::init();
+    profile_with_puffin::init();
 
     // Screen 13 things we need for this demo
     let event_loop = EventLoop::new()

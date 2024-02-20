@@ -88,11 +88,10 @@ providers. When not in use profiling has zero cost.
 To enable profiling, compile with one of the `profile-with-*` features enabled and initialize the
 profiling provider of your choice.
 
-_For example, [JW-Basic](https://github.com/attackgoat/jw-basic) uses
-[puffin](https://crates.io/crates/puffin):_
+_Example code uses [puffin](https://crates.io/crates/puffin):_
 
 ```bash
-cargo run --features profile-with-puffin -- examples/raycast.bas
+cargo run --features profile-with-puffin --release --example vsm_omni
 ```
 
 <img src=".github/img/profile.png" alt="Flamegraph of performance data" width=30%>

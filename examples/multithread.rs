@@ -1,3 +1,5 @@
+mod profile_with_puffin;
+
 use {
     bmfont::{BMFont, OrdinateOrientation},
     image::io::Reader,
@@ -27,6 +29,7 @@ const COLOR_SUBRESOURCE_LAYER: vk::ImageSubresourceLayers = vk::ImageSubresource
 // threads
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
+    profile_with_puffin::init();
 
     let started_at = Instant::now();
 

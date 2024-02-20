@@ -1,7 +1,10 @@
+mod profile_with_puffin;
+
 use {screen_13::prelude::*, screen_13_egui::prelude::*};
 
 fn main() -> Result<(), DisplayError> {
     pretty_env_logger::init();
+    profile_with_puffin::init();
 
     let event_loop = EventLoop::new()
         .desired_swapchain_image_count(2)

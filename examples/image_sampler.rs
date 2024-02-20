@@ -1,3 +1,5 @@
+mod profile_with_puffin;
+
 use {
     inline_spirv::inline_spirv,
     screen_13::prelude::*,
@@ -16,6 +18,9 @@ use {
 ///
 /// See min_max.rs for more advanced image sampler usage.
 fn main() -> anyhow::Result<()> {
+    pretty_env_logger::init();
+    profile_with_puffin::init();
+
     let event_loop = EventLoop::new().build()?;
     let gulf_image = read_image(&event_loop.device, "examples/res/image/gulf.jpg")?;
 

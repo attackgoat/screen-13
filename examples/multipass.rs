@@ -1,3 +1,5 @@
+mod profile_with_puffin;
+
 use {
     bytemuck::cast_slice,
     glam::{vec3, Mat4, Vec3, Vec4},
@@ -41,6 +43,7 @@ const GOLD: Material = Material {
 /// - Multiple rendering passes with a transient image
 fn main() -> Result<(), DisplayError> {
     pretty_env_logger::init();
+    profile_with_puffin::init();
 
     let event_loop = EventLoop::new().build().unwrap();
     let depth_stencil_format = best_depth_stencil_format(&event_loop.device);

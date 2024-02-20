@@ -30,6 +30,22 @@ cargo doc --open
 Stay informed of recent changes to _Screen 13_ using the
 [change log](https://github.com/attackgoat/screen-13/blob/master/CHANGELOG.md) file.
 
+## Performance Profiling
+
+Most of the example code (_the ones which use an `EventLoop`_) support profiling using `puffin`. To
+use it, first install and run `puffin_viewer` and then run the example with the
+`--features profile-with-puffin` and `--release` flags.
+
+You may need to disable CPU thermal throttling in order to get consistent results on some platforms.
+The inconsistent results are certainly valid, but they do not help in accurately measuring potential
+changes. This may be done on Intel Linux machines by modifying the Intel P-State driver:
+
+```bash
+echo 100 | sudo tee /sys/devices/system/cpu/intel_pstate/min_perf_pct
+```
+
+(_[Source](https://www.kernel.org/doc/Documentation/cpu-freq/intel-pstate.txt)_)
+
 ## Helpful tools
 
 - [VulkanSDK](https://vulkan.lunarg.com/sdk/home) _(Required when calling `EventLoop::debug(true)`)_

@@ -1,3 +1,5 @@
+mod profile_with_puffin;
+
 use {bytemuck::cast_slice, inline_spirv::inline_spirv, screen_13::prelude::*, std::sync::Arc};
 
 static SHADER_RAY_GEN: &[u32] = inline_spirv!(
@@ -91,6 +93,7 @@ fn create_ray_trace_pipeline(device: &Arc<Device>) -> Result<Arc<RayTracePipelin
 /// Adapted from https://iorange.github.io/p01/HappyTriangle.html
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
+    profile_with_puffin::init();
 
     let event_loop = EventLoop::new()
         .desired_surface_format(Surface::linear_or_default)

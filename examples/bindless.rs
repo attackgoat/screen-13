@@ -1,3 +1,5 @@
+mod profile_with_puffin;
+
 use {
     bytemuck::{cast_slice, Pod, Zeroable},
     inline_spirv::inline_spirv,
@@ -7,6 +9,7 @@ use {
 
 fn main() -> Result<(), DisplayError> {
     pretty_env_logger::init();
+    profile_with_puffin::init();
 
     let event_loop = EventLoop::new()
         .window(|window| window.with_inner_size(LogicalSize::new(512, 512)))
