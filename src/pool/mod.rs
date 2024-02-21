@@ -100,7 +100,6 @@ use {
     },
     derive_builder::{Builder, UninitializedFieldError},
     std::{
-        collections::VecDeque,
         fmt::Debug,
         mem::ManuallyDrop,
         ops::{Deref, DerefMut},
@@ -115,18 +114,26 @@ use parking_lot::Mutex;
 #[cfg(not(feature = "parking_lot"))]
 use std::sync::Mutex;
 
-type Cache<T> = Arc<Mutex<VecDeque<T>>>;
-type CacheRef<T> = Weak<Mutex<VecDeque<T>>>;
+type Cache<T> = Arc<Mutex<Vec<T>>>;
+type CacheRef<T> = Weak<Mutex<Vec<T>>>;
 
-fn can_lease_command_buffer(cmd_buf: &CommandBuffer) -> bool {
-    unsafe {
-        // Don't lease this command buffer if it is unsignalled; we'll create a new one
-        // and wait for this, and those behind it, to signal.
-        cmd_buf
-            .device
-            .get_fence_status(cmd_buf.fence)
-            .unwrap_or_default()
+fn lease_command_buffer(cache: &mut Vec<CommandBuffer>) -> Option<CommandBuffer> {
+    for idx in 0..cache.len() {
+        if unsafe {
+            let cmd_buf = cache.get_unchecked(idx);
+
+            // Don't lease this command buffer if it is unsignalled; we'll create a new one
+            // and wait for this, and those behind it, to signal.
+            cmd_buf
+                .device
+                .get_fence_status(cmd_buf.fence)
+                .unwrap_or_default()
+        } {
+            return Some(cache.swap_remove(idx));
+        }
     }
+
+    None
 }
 
 /// Holds a leased resource and implements `Drop` in order to return the resource.
@@ -193,10 +200,10 @@ impl<T> Drop for Lease<T> {
             let mut cache = cache.unwrap();
 
             if cache.len() == cache.capacity() {
-                cache.pop_front();
+                cache.pop();
             }
 
-            cache.push_back(unsafe { ManuallyDrop::take(&mut self.item) });
+            cache.push(unsafe { ManuallyDrop::take(&mut self.item) });
         } else {
             unsafe {
                 ManuallyDrop::drop(&mut self.item);
@@ -289,13 +296,13 @@ impl PoolInfo {
     }
 
     fn default_cache<T>() -> Cache<T> {
-        Cache::new(Mutex::new(VecDeque::with_capacity(
+        Cache::new(Mutex::new(Vec::with_capacity(
             Self::DEFAULT_RESOURCE_CAPACITY,
         )))
     }
 
     fn explicit_cache<T>(capacity: usize) -> Cache<T> {
-        Cache::new(Mutex::new(VecDeque::with_capacity(capacity)))
+        Cache::new(Mutex::new(Vec::with_capacity(capacity)))
     }
 }
 

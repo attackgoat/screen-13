@@ -1,7 +1,7 @@
 //! Pool which leases by exactly matching the information before creating new resources.
 
 use {
-    super::{can_lease_command_buffer, Cache, Lease, Pool, PoolInfo},
+    super::{lease_command_buffer, Cache, Lease, Pool, PoolInfo},
     crate::driver::{
         accel_struct::{AccelerationStructure, AccelerationStructureInfo},
         buffer::{Buffer, BufferInfo},
@@ -12,10 +12,7 @@ use {
     },
     log::debug,
     paste::paste,
-    std::{
-        collections::{HashMap, VecDeque},
-        sync::Arc,
-    },
+    std::{collections::HashMap, sync::Arc},
 };
 
 #[cfg(feature = "parking_lot")]
@@ -143,7 +140,7 @@ impl Pool<CommandBufferInfo, CommandBuffer> for HashPool {
             #[cfg(not(feature = "parking_lot"))]
             let mut cache = cache.unwrap();
 
-            cache.pop_front().filter(can_lease_command_buffer)
+            lease_command_buffer(&mut cache)
         }
         .map(Ok)
         .unwrap_or_else(|| {
@@ -173,7 +170,7 @@ impl Pool<DescriptorPoolInfo, DescriptorPool> for HashPool {
             #[cfg(not(feature = "parking_lot"))]
             let mut cache = cache.unwrap();
 
-            cache.pop_front()
+            cache.pop()
         }
         .map(Ok)
         .unwrap_or_else(|| {
@@ -204,7 +201,7 @@ impl Pool<RenderPassInfo, RenderPass> for HashPool {
             #[cfg(not(feature = "parking_lot"))]
             let mut cache = cache.unwrap();
 
-            cache.pop_front()
+            cache.pop()
         }
         .map(Ok)
         .unwrap_or_else(|| {
@@ -226,7 +223,7 @@ macro_rules! lease {
                 fn lease(&mut self, info: $info) -> Result<Lease<$item>, DriverError> {
                     let cache_ref = self.[<$item:snake _cache>].entry(info)
                         .or_insert_with(|| {
-                            Cache::new(Mutex::new(VecDeque::with_capacity(self.info.$capacity)))
+                            Cache::new(Mutex::new(Vec::with_capacity(self.info.$capacity)))
                         });
                     let item = {
                         #[cfg_attr(not(feature = "parking_lot"), allow(unused_mut))]
@@ -235,7 +232,7 @@ macro_rules! lease {
                         #[cfg(not(feature = "parking_lot"))]
                         let mut cache = cache.unwrap();
 
-                        cache.pop_front()
+                        cache.pop()
                     }
                     .map(Ok)
                     .unwrap_or_else(|| {

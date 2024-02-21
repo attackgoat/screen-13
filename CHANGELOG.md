@@ -10,6 +10,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - `parking_lot::Mutex` is now an optional feature 
+- `pool` types now use more efficient internal caching
+
+### Fixed
+
+- `Resolver::submit` would sometimes drop and create command pools too often
 
 ## [0.11.1] - 2024-02-20
 

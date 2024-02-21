@@ -1,7 +1,7 @@
 //! Pool which leases from a single bucket per resource type.
 
 use {
-    super::{can_lease_command_buffer, Cache, Lease, Pool, PoolInfo},
+    super::{lease_command_buffer, Cache, Lease, Pool, PoolInfo},
     crate::driver::{
         accel_struct::{AccelerationStructure, AccelerationStructureInfo},
         buffer::{Buffer, BufferInfo},
@@ -117,9 +117,9 @@ impl Pool<AccelerationStructureInfo, AccelerationStructure> for FifoPool {
 
             // Look for a compatible acceleration structure (big enough and same type)
             for idx in 0..cache.len() {
-                let item = &cache[idx];
+                let item = unsafe { cache.get_unchecked(idx) };
                 if item.info.size >= info.size && item.info.ty == info.ty {
-                    let item = cache.remove(idx).unwrap();
+                    let item = cache.swap_remove(idx);
 
                     return Ok(Lease::new(cache_ref, item));
                 }
@@ -151,13 +151,13 @@ impl Pool<BufferInfo, Buffer> for FifoPool {
             // Look for a compatible buffer (compatible alignment, same mapping mode, big enough and
             // superset of usage flags)
             for idx in 0..cache.len() {
-                let item = &cache[idx];
+                let item = unsafe { cache.get_unchecked(idx) };
                 if item.info.alignment >= info.alignment
                     && item.info.mappable == info.mappable
                     && item.info.size >= info.size
                     && item.info.usage.contains(info.usage)
                 {
-                    let item = cache.remove(idx).unwrap();
+                    let item = cache.swap_remove(idx);
 
                     return Ok(Lease::new(cache_ref, item));
                 }
@@ -187,9 +187,8 @@ impl Pool<CommandBufferInfo, CommandBuffer> for FifoPool {
             #[cfg(not(feature = "parking_lot"))]
             let mut cache = cache.unwrap();
 
-            cache.pop_front()
+            lease_command_buffer(&mut cache)
         }
-        .filter(can_lease_command_buffer)
         .map(Ok)
         .unwrap_or_else(|| {
             debug!("Creating new {}", stringify!(CommandBuffer));
@@ -220,7 +219,7 @@ impl Pool<DescriptorPoolInfo, DescriptorPool> for FifoPool {
 
             // Look for a compatible descriptor pool (has enough sets and descriptors)
             for idx in 0..cache.len() {
-                let item = &cache[idx];
+                let item = unsafe { cache.get_unchecked(idx) };
                 if item.info.max_sets >= info.max_sets
                     && item.info.acceleration_structure_count >= info.acceleration_structure_count
                     && item.info.combined_image_sampler_count >= info.combined_image_sampler_count
@@ -234,7 +233,7 @@ impl Pool<DescriptorPoolInfo, DescriptorPool> for FifoPool {
                     && item.info.uniform_buffer_dynamic_count >= info.uniform_buffer_dynamic_count
                     && item.info.uniform_texel_buffer_count >= info.uniform_texel_buffer_count
                 {
-                    let item = cache.remove(idx).unwrap();
+                    let item = cache.swap_remove(idx);
 
                     return Ok(Lease::new(cache_ref, item));
                 }
@@ -266,7 +265,7 @@ impl Pool<ImageInfo, Image> for FifoPool {
             // Look for a compatible image (same properties, superset of creation flags and usage
             // flags)
             for idx in 0..cache.len() {
-                let item = &cache[idx];
+                let item = unsafe { cache.get_unchecked(idx) };
                 if item.info.array_elements == info.array_elements
                     && item.info.depth == info.depth
                     && item.info.fmt == info.fmt
@@ -279,7 +278,7 @@ impl Pool<ImageInfo, Image> for FifoPool {
                     && item.info.flags.contains(info.flags)
                     && item.info.usage.contains(info.usage)
                 {
-                    let item = cache.remove(idx).unwrap();
+                    let item = cache.swap_remove(idx);
 
                     return Ok(Lease::new(cache_ref, item));
                 }
@@ -312,7 +311,7 @@ impl Pool<RenderPassInfo, RenderPass> for FifoPool {
             #[cfg(not(feature = "parking_lot"))]
             let mut cache = cache.unwrap();
 
-            cache.pop_front()
+            cache.pop()
         }
         .map(Ok)
         .unwrap_or_else(|| {
