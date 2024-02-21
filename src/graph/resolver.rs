@@ -1948,9 +1948,8 @@ impl Resolver {
             Image(ImageResource),
         }
 
-        BARRIERS.with(|barriers| {
+        BARRIERS.with_borrow_mut(|barriers| {
             // Initialize TLS from a previous call
-            let mut barriers = barriers.borrow_mut();
             barriers.buffers.clear();
             barriers.images.clear();
             barriers.next_accesses.clear();
@@ -2030,7 +2029,7 @@ impl Resolver {
                         resource: None,
                     })
                 })
-                .fold(barriers, |mut barriers, barrier| {
+                .fold(barriers, |barriers, barrier| {
                     let Barrier {
                         next_access,
                         prev_access,

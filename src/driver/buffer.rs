@@ -12,6 +12,7 @@ use {
     log::warn,
     std::{
         fmt::{Debug, Formatter},
+        mem::ManuallyDrop,
         ops::{Deref, Range},
         sync::{
             atomic::{AtomicU8, Ordering},
@@ -51,7 +52,7 @@ use {
 /// [deref]: core::ops::Deref
 /// [fully qualified syntax]: https://doc.rust-lang.org/book/ch19-03-advanced-traits.html#fully-qualified-syntax-for-disambiguation-calling-methods-with-the-same-name
 pub struct Buffer {
-    allocation: Option<Allocation>,
+    allocation: ManuallyDrop<Allocation>,
     buffer: vk::Buffer,
     device: Arc<Device>,
 
@@ -120,7 +121,7 @@ impl Buffer {
             profiling::scope!("allocate");
 
             #[cfg_attr(not(feature = "parking_lot"), allow(unused_mut))]
-            let mut allocator = device.allocator.as_ref().unwrap().lock();
+            let mut allocator = device.allocator.lock();
 
             #[cfg(not(feature = "parking_lot"))]
             let mut allocator = allocator.unwrap();
@@ -152,7 +153,7 @@ impl Buffer {
         };
 
         Ok(Self {
-            allocation: Some(allocation),
+            allocation: ManuallyDrop::new(allocation),
             buffer,
             device,
             info,
@@ -350,7 +351,7 @@ impl Buffer {
             "Buffer is not mappable - create using mappable flag"
         );
 
-        &this.allocation.as_ref().unwrap().mapped_slice().unwrap()[0..this.info.size as usize]
+        &this.allocation.mapped_slice().unwrap()[0..this.info.size as usize]
     }
 
     /// Returns a mapped mutable slice.
@@ -388,12 +389,7 @@ impl Buffer {
             "Buffer is not mappable - create using mappable flag"
         );
 
-        &mut this
-            .allocation
-            .as_mut()
-            .unwrap()
-            .mapped_slice_mut()
-            .unwrap()[0..this.info.size as usize]
+        &mut this.allocation.mapped_slice_mut().unwrap()[0..this.info.size as usize]
     }
 }
 
@@ -426,12 +422,12 @@ impl Drop for Buffer {
             profiling::scope!("deallocate");
 
             #[cfg_attr(not(feature = "parking_lot"), allow(unused_mut))]
-            let mut allocator = self.device.allocator.as_ref().unwrap().lock();
+            let mut allocator = self.device.allocator.lock();
 
             #[cfg(not(feature = "parking_lot"))]
             let mut allocator = allocator.unwrap();
 
-            allocator.free(self.allocation.take().unwrap())
+            allocator.free(unsafe { ManuallyDrop::take(&mut self.allocation) })
         }
         .unwrap_or_else(|_| warn!("Unable to free buffer allocation"));
 

@@ -16,7 +16,7 @@ use {
         ffi::CStr,
         fmt::{Debug, Formatter},
         iter::{empty, repeat},
-        mem::forget,
+        mem::{forget, ManuallyDrop},
         ops::Deref,
         thread::panicking,
         time::Instant,
@@ -36,7 +36,7 @@ pub type SelectPhysicalDeviceFn = dyn FnOnce(&[PhysicalDevice]) -> usize;
 pub struct Device {
     pub(crate) accel_struct_ext: Option<khr::AccelerationStructure>,
 
-    pub(super) allocator: Option<Mutex<Allocator>>,
+    pub(super) allocator: ManuallyDrop<Mutex<Allocator>>,
 
     device: ash::Device,
 
@@ -310,7 +310,7 @@ impl Device {
 
         Ok(Self {
             accel_struct_ext,
-            allocator: Some(Mutex::new(allocator)),
+            allocator: ManuallyDrop::new(Mutex::new(allocator)),
             device,
             instance,
             physical_device,
@@ -435,20 +435,22 @@ impl Drop for Device {
     fn drop(&mut self) {
         if panicking() {
             // When panicking we don't want the GPU allocator to complain about leaks
-            forget(self.allocator.take().unwrap());
+            unsafe {
+                forget(ManuallyDrop::take(&mut self.allocator));
+            }
 
             return;
         }
 
         // trace!("drop");
 
-        let res = unsafe { self.device.device_wait_idle() };
-
-        if let Err(err) = res {
+        if let Err(err) = unsafe { self.device.device_wait_idle() } {
             warn!("device_wait_idle() failed: {err}");
         }
 
-        self.allocator.take().unwrap();
+        unsafe {
+            ManuallyDrop::drop(&mut self.allocator);
+        }
 
         unsafe {
             self.device.destroy_device(None);

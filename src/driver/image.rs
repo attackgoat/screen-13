@@ -128,7 +128,7 @@ impl Image {
             profiling::scope!("allocate");
 
             #[cfg_attr(not(feature = "parking_lot"), allow(unused_mut))]
-            let mut allocator = device.allocator.as_ref().unwrap().lock();
+            let mut allocator = device.allocator.lock();
 
             #[cfg(not(feature = "parking_lot"))]
             let mut allocator = allocator.unwrap();
@@ -264,7 +264,7 @@ impl Image {
             profiling::scope!("deallocate");
 
             #[cfg_attr(not(feature = "parking_lot"), allow(unused_mut))]
-            let mut allocator = this.device.allocator.as_ref().unwrap().lock();
+            let mut allocator = this.device.allocator.lock();
 
             #[cfg(not(feature = "parking_lot"))]
             let mut allocator = allocator.unwrap();

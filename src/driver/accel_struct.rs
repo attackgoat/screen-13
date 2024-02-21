@@ -286,8 +286,7 @@ impl AccelerationStructure {
             static TLS: RefCell<Tls> = Default::default();
         }
 
-        TLS.with(|tls| {
-            let mut tls = tls.borrow_mut();
+        TLS.with_borrow_mut(|tls| {
             tls.geometries.clear();
             tls.max_primitive_counts.clear();
 
