@@ -16,6 +16,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - `ResolveMode` moved from `driver` to `driver::render_pass`
 
+### Fixed
+
+- `Swapchain::present_image` change introduced in `v0.11` needlessly spammed the `WARN` log while
+  waiting for presentation images to be ready 
+- Vulkan validation error introduced in `v0.11`: "_All queue submission commands that refer to fence
+  must have completed execution_"
+
 ### Removed
 
 - Explicit reset of Vulkan command pools to reduce driver API calls

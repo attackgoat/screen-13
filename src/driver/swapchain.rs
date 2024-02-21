@@ -482,6 +482,10 @@ impl Drop for Swapchain {
             rendered,
         } in self.syncs.drain(..)
         {
+            if let Err(err) = Device::wait_for_fence(&self.device, &ready) {
+                warn!("{err}");
+            }
+
             unsafe {
                 self.device.destroy_semaphore(acquired, None);
                 self.device.destroy_fence(ready, None);
