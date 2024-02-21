@@ -230,14 +230,15 @@ macro_rules! node_unbind {
         paste::paste! {
             impl Unbind<RenderGraph, Arc<$name>> for [<$name Node>] {
                 fn unbind(self, graph: &mut RenderGraph) -> Arc<$name> {
-                    let binding = Arc::clone(
-                        graph.bindings[self.idx]
+                    let binding = &mut graph.bindings[self.idx];
+                    let res = Arc::clone(
+                        binding
                             .[<as_ $name:snake>]()
                             .unwrap()
                     );
-                    graph.bindings[self.idx].unbind();
+                    binding.unbind();
 
-                    binding
+                    res
                 }
             }
         }
@@ -253,13 +254,15 @@ macro_rules! node_unbind_lease {
         paste::paste! {
             impl Unbind<RenderGraph, Arc<Lease<$name>>> for [<$name LeaseNode>] {
                 fn unbind(self, graph: &mut RenderGraph) -> Arc<Lease<$name>> {
-                    let binding = {
-                        let (binding, _) = graph.bindings[self.idx].[<as_ $name:snake _lease_mut>]().unwrap();
-                        Arc::clone(binding)
-                    };
-                    graph.bindings[self.idx].unbind();
+                    let binding = &mut graph.bindings[self.idx];
+                    let res = Arc::clone(
+                        binding
+                            .[<as_ $name:snake _lease>]()
+                            .unwrap()
+                    );
+                    binding.unbind();
 
-                    binding
+                    res
                 }
             }
         }

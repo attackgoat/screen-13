@@ -22,7 +22,7 @@ use {
 /// A physical display interface.
 pub struct Display {
     cmd_buf_idx: usize,
-    cmd_bufs: Vec<CommandBuffer>,
+    cmd_bufs: Box<[CommandBuffer]>,
     pool: Box<dyn ResolverPool>,
 }
 
@@ -41,6 +41,7 @@ impl Display {
                 CommandBufferInfo::new(queue_family_index),
             )?);
         }
+        let cmd_bufs = cmd_bufs.into_boxed_slice();
 
         Ok(Self {
             cmd_buf_idx: 0,
@@ -82,7 +83,7 @@ impl Display {
         self.cmd_buf_idx += 1;
         self.cmd_buf_idx %= self.cmd_bufs.len();
 
-        let cmd_buf = &mut self.cmd_bufs[self.cmd_buf_idx];
+        let cmd_buf = unsafe { self.cmd_bufs.get_unchecked_mut(self.cmd_buf_idx) };
 
         let started = Instant::now();
 
@@ -127,7 +128,7 @@ impl Display {
         // before present which use nodes that are unused in the remainder of the graph.
         // These operations are still important, but they don't need to wait for any of the above
         // things so we do them last
-        resolver.record_unscheduled_passes(&mut *self.pool, cmd_buf)?;
+        resolver.record_unscheduled_passes(self.pool.as_mut(), cmd_buf)?;
 
         unsafe {
             Self::submit(

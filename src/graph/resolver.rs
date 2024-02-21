@@ -2782,7 +2782,7 @@ impl Resolver {
         physical_pass: &PhysicalPass,
     ) -> Result<(), DriverError> {
         thread_local! {
-            static WRITES: RefCell<Writes> = Default::default();
+            static TLS: RefCell<Tls> = Default::default();
         }
 
         struct IndexWrite {
@@ -2791,7 +2791,7 @@ impl Resolver {
         }
 
         #[derive(Default)]
-        struct Writes {
+        struct Tls {
             accel_struct_infos: Vec<vk::WriteDescriptorSetAccelerationStructureKHR>,
             accel_struct_writes: Vec<IndexWrite>,
             buffer_infos: Vec<vk::DescriptorBufferInfo>,
@@ -2801,24 +2801,15 @@ impl Resolver {
             image_writes: Vec<IndexWrite>,
         }
 
-        WRITES.with(|writes| {
+        TLS.with_borrow_mut(|tls| {
             // Initialize TLS from a previous call
-            let Writes {
-                accel_struct_infos,
-                accel_struct_writes,
-                buffer_infos,
-                buffer_writes,
-                descriptors,
-                image_infos,
-                image_writes,
-            } = &mut *writes.borrow_mut();
-            accel_struct_infos.clear();
-            accel_struct_writes.clear();
-            buffer_infos.clear();
-            buffer_writes.clear();
-            descriptors.clear();
-            image_infos.clear();
-            image_writes.clear();
+            tls.accel_struct_infos.clear();
+            tls.accel_struct_writes.clear();
+            tls.buffer_infos.clear();
+            tls.buffer_writes.clear();
+            tls.descriptors.clear();
+            tls.image_infos.clear();
+            tls.image_writes.clear();
 
             for (exec_idx, exec, pipeline) in pass
                 .execs
@@ -2878,8 +2869,8 @@ impl Resolver {
                         };
 
                         if binding_offset == 0 {
-                            image_writes.push(IndexWrite {
-                                idx: image_infos.len(),
+                            tls.image_writes.push(IndexWrite {
+                                idx: tls.image_infos.len(),
                                 write: vk::WriteDescriptorSet {
                                         dst_set: *descriptor_sets[descriptor_set_idx as usize],
                                         dst_binding,
@@ -2890,10 +2881,10 @@ impl Resolver {
                                 }
                             );
                         } else {
-                            image_writes.last_mut().unwrap().write.descriptor_count += 1;
+                            tls.image_writes.last_mut().unwrap().write.descriptor_count += 1;
                         }
 
-                        image_infos.push(vk::DescriptorImageInfo {
+                        tls.image_infos.push(vk::DescriptorImageInfo {
                             image_layout,
                             image_view,
                             sampler,
@@ -2903,8 +2894,8 @@ impl Resolver {
                         let buffer_view_info = view_info.as_buffer().unwrap();
 
                         if binding_offset == 0 {
-                            buffer_writes.push(IndexWrite {
-                                idx: buffer_infos.len(),
+                            tls.buffer_writes.push(IndexWrite {
+                                idx: tls.buffer_infos.len(),
                                 write: vk::WriteDescriptorSet {
                                         dst_set: *descriptor_sets[descriptor_set_idx as usize],
                                         dst_binding,
@@ -2915,18 +2906,18 @@ impl Resolver {
                                 }
                             );
                         } else {
-                            buffer_writes.last_mut().unwrap().write.descriptor_count += 1;
+                            tls.buffer_writes.last_mut().unwrap().write.descriptor_count += 1;
                         }
 
-                        buffer_infos.push(vk::DescriptorBufferInfo {
+                        tls.buffer_infos.push(vk::DescriptorBufferInfo {
                             buffer: **buffer,
                             offset: buffer_view_info.start,
                             range: buffer_view_info.end - buffer_view_info.start,
                         });
                     } else if let Some(accel_struct) = bound_node.as_driver_acceleration_structure() {
                         if binding_offset == 0 {
-                            accel_struct_writes.push(IndexWrite {
-                                idx: accel_struct_infos.len(),
+                            tls.accel_struct_writes.push(IndexWrite {
+                                idx: tls.accel_struct_infos.len(),
                                 write: vk::WriteDescriptorSet {
                                     dst_set: *descriptor_sets[descriptor_set_idx as usize],
                                     dst_binding,
@@ -2936,10 +2927,10 @@ impl Resolver {
                                 },
                             });
                         } else {
-                            accel_struct_writes.last_mut().unwrap().write.descriptor_count += 1;
+                            tls.accel_struct_writes.last_mut().unwrap().write.descriptor_count += 1;
                         }
 
-                        accel_struct_infos.push(vk::WriteDescriptorSetAccelerationStructureKHR::builder().acceleration_structures(std::slice::from_ref(accel_struct)).build());
+                        tls.accel_struct_infos.push(vk::WriteDescriptorSetAccelerationStructureKHR::builder().acceleration_structures(std::slice::from_ref(accel_struct)).build());
                     } else {
                         unimplemented!();
                     }
@@ -2988,8 +2979,8 @@ impl Resolver {
                             let image_view = Image::view(image, image_view_info)?;
                             let sampler = descriptor_info.sampler().map(|sampler| **sampler).unwrap_or_else(vk::Sampler::null);
 
-                            image_writes.push(IndexWrite {
-                                idx: image_infos.len(),
+                            tls.image_writes.push(IndexWrite {
+                                idx: tls.image_infos.len(),
                                 write: vk::WriteDescriptorSet {
                                         dst_set: *descriptor_sets[descriptor_set_idx as usize],
                                         dst_binding,
@@ -3000,7 +2991,7 @@ impl Resolver {
                                 }
                             );
 
-                            image_infos.push(vk::DescriptorImageInfo {
+                            tls.image_infos.push(vk::DescriptorImageInfo {
                                 image_layout: Self::attachment_layout(
                                     attachment.aspect_mask,
                                     is_random_access,
@@ -3016,26 +3007,26 @@ impl Resolver {
 
             // NOTE: We assign the below pointers after the above insertions so they remain stable!
 
-            descriptors.extend(accel_struct_writes.drain(..).map(|IndexWrite { idx, mut write }| unsafe {
-                write.p_next = accel_struct_infos.as_ptr().add(idx) as *const _;
+            tls.descriptors.extend(tls.accel_struct_writes.drain(..).map(|IndexWrite { idx, mut write }| unsafe {
+                write.p_next = tls.accel_struct_infos.as_ptr().add(idx) as *const _;
                 write
             }));
-            descriptors.extend(buffer_writes.drain(..).map(|IndexWrite { idx, mut write }| unsafe {
-                write.p_buffer_info = buffer_infos.as_ptr().add(idx);
+            tls.descriptors.extend(tls.buffer_writes.drain(..).map(|IndexWrite { idx, mut write }| unsafe {
+                write.p_buffer_info = tls.buffer_infos.as_ptr().add(idx);
                 write
             }));
-            descriptors.extend(image_writes.drain(..).map(|IndexWrite { idx, mut write }| unsafe {
-                write.p_image_info = image_infos.as_ptr().add(idx);
+            tls.descriptors.extend(tls.image_writes.drain(..).map(|IndexWrite { idx, mut write }| unsafe {
+                write.p_image_info = tls.image_infos.as_ptr().add(idx);
                 write
             }));
 
-            if !descriptors.is_empty() {
-                trace!("  writing {} descriptors ({} buffers, {} images)", descriptors.len(), buffer_infos.len(), image_infos.len());
+            if !tls.descriptors.is_empty() {
+                trace!("  writing {} descriptors ({} buffers, {} images)", tls.descriptors.len(), tls.buffer_infos.len(), tls.image_infos.len());
 
                 unsafe {
                     cmd_buf
                         .device
-                        .update_descriptor_sets(descriptors.as_slice(), &[]);
+                        .update_descriptor_sets(tls.descriptors.as_slice(), &[]);
                 }
             }
 
