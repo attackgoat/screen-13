@@ -99,7 +99,6 @@ use {
         CommandBuffer, DriverError,
     },
     derive_builder::{Builder, UninitializedFieldError},
-    parking_lot::Mutex,
     std::{
         collections::VecDeque,
         fmt::Debug,
@@ -109,6 +108,12 @@ use {
         thread::panicking,
     },
 };
+
+#[cfg(feature = "parking_lot")]
+use parking_lot::Mutex;
+
+#[cfg(not(feature = "parking_lot"))]
+use std::sync::Mutex;
 
 type Cache<T> = Arc<Mutex<VecDeque<T>>>;
 type CacheRef<T> = Weak<Mutex<VecDeque<T>>>;
@@ -136,6 +141,7 @@ pub struct Lease<T> {
 }
 
 impl<T> Lease<T> {
+    #[inline(always)]
     fn new(cache_ref: CacheRef<T>, item: T) -> Self {
         Self {
             cache_ref,
@@ -180,7 +186,11 @@ impl<T> Drop for Lease<T> {
         // If the pool cache has been dropped we must manually drop the item, otherwise it goes back
         // into the pool.
         if let Some(cache) = self.cache_ref.upgrade() {
+            #[cfg_attr(not(feature = "parking_lot"), allow(unused_mut))]
             let mut cache = cache.lock();
+
+            #[cfg(not(feature = "parking_lot"))]
+            let mut cache = cache.unwrap();
 
             if cache.len() == cache.capacity() {
                 cache.pop_front();

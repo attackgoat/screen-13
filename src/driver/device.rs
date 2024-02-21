@@ -10,7 +10,6 @@ use {
         AllocatorDebugSettings,
     },
     log::{error, trace, warn},
-    parking_lot::Mutex,
     raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle},
     std::{
         cmp::Ordering,
@@ -23,6 +22,12 @@ use {
         time::Instant,
     },
 };
+
+#[cfg(feature = "parking_lot")]
+use parking_lot::Mutex;
+
+#[cfg(not(feature = "parking_lot"))]
+use std::sync::Mutex;
 
 /// Function type for selection of physical devices.
 pub type SelectPhysicalDeviceFn = dyn FnOnce(&[PhysicalDevice]) -> usize;

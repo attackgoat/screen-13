@@ -11,7 +11,6 @@ use {
         MemoryLocation,
     },
     log::{trace, warn},
-    parking_lot::Mutex,
     std::{
         collections::{hash_map::Entry, HashMap},
         fmt::{Debug, Formatter},
@@ -26,6 +25,12 @@ use {
     },
     vk_sync::AccessType,
 };
+
+#[cfg(feature = "parking_lot")]
+use parking_lot::Mutex;
+
+#[cfg(not(feature = "parking_lot"))]
+use std::sync::Mutex;
 
 /// Smart pointer handle to an [image] object.
 ///
@@ -122,11 +127,13 @@ impl Image {
         let allocation = {
             profiling::scope!("allocate");
 
-            device
-                .allocator
-                .as_ref()
-                .unwrap()
-                .lock()
+            #[cfg_attr(not(feature = "parking_lot"), allow(unused_mut))]
+            let mut allocator = device.allocator.as_ref().unwrap().lock();
+
+            #[cfg(not(feature = "parking_lot"))]
+            let mut allocator = allocator.unwrap();
+
+            allocator
                 .allocate(&AllocationCreateDesc {
                     name: "image",
                     requirements,
@@ -215,7 +222,12 @@ impl Image {
     #[profiling::function]
     pub(super) fn clone_raw(this: &Self) -> Self {
         // Moves the image view cache from the current instance to the clone!
+        #[cfg_attr(not(feature = "parking_lot"), allow(unused_mut))]
         let mut image_view_cache = this.image_view_cache.lock();
+
+        #[cfg(not(feature = "parking_lot"))]
+        let mut image_view_cache = image_view_cache.unwrap();
+
         let image_view_cache = take(&mut *image_view_cache);
         let Self { image, info, .. } = *this;
 
@@ -235,7 +247,13 @@ impl Image {
         {
             profiling::scope!("views");
 
-            this.image_view_cache.lock().clear();
+            #[cfg_attr(not(feature = "parking_lot"), allow(unused_mut))]
+            let mut image_view_cache = this.image_view_cache.lock();
+
+            #[cfg(not(feature = "parking_lot"))]
+            let mut image_view_cache = image_view_cache.unwrap();
+
+            image_view_cache.clear();
         }
 
         unsafe {
@@ -245,14 +263,15 @@ impl Image {
         {
             profiling::scope!("deallocate");
 
-            this.device
-                .allocator
-                .as_ref()
-                .unwrap()
-                .lock()
-                .free(allocation)
-                .unwrap_or_else(|_| warn!("Unable to free image allocation"));
+            #[cfg_attr(not(feature = "parking_lot"), allow(unused_mut))]
+            let mut allocator = this.device.allocator.as_ref().unwrap().lock();
+
+            #[cfg(not(feature = "parking_lot"))]
+            let mut allocator = allocator.unwrap();
+
+            allocator.free(allocation)
         }
+        .unwrap_or_else(|_| warn!("Unable to free image allocation"));
     }
 
     /// Consumes a Vulkan image created by some other library.
@@ -277,7 +296,11 @@ impl Image {
 
     #[profiling::function]
     pub(crate) fn view(this: &Self, info: ImageViewInfo) -> Result<vk::ImageView, DriverError> {
+        #[cfg_attr(not(feature = "parking_lot"), allow(unused_mut))]
         let mut image_view_cache = this.image_view_cache.lock();
+
+        #[cfg(not(feature = "parking_lot"))]
+        let mut image_view_cache = image_view_cache.unwrap();
 
         Ok(match image_view_cache.entry(info) {
             Entry::Occupied(entry) => entry.get().image_view,

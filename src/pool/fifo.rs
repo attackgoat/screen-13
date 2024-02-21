@@ -109,7 +109,11 @@ impl Pool<AccelerationStructureInfo, AccelerationStructure> for FifoPool {
         {
             profiling::scope!("check cache");
 
+            #[cfg_attr(not(feature = "parking_lot"), allow(unused_mut))]
             let mut cache = self.accel_struct_cache.lock();
+
+            #[cfg(not(feature = "parking_lot"))]
+            let mut cache = cache.unwrap();
 
             // Look for a compatible acceleration structure (big enough and same type)
             for idx in 0..cache.len() {
@@ -138,7 +142,11 @@ impl Pool<BufferInfo, Buffer> for FifoPool {
         {
             profiling::scope!("check cache");
 
+            #[cfg_attr(not(feature = "parking_lot"), allow(unused_mut))]
             let mut cache = self.buffer_cache.lock();
+
+            #[cfg(not(feature = "parking_lot"))]
+            let mut cache = cache.unwrap();
 
             // Look for a compatible buffer (compatible alignment, same mapping mode, big enough and
             // superset of usage flags)
@@ -167,25 +175,32 @@ impl Pool<BufferInfo, Buffer> for FifoPool {
 impl Pool<CommandBufferInfo, CommandBuffer> for FifoPool {
     #[profiling::function]
     fn lease(&mut self, info: CommandBufferInfo) -> Result<Lease<CommandBuffer>, DriverError> {
-        let cache = self
+        let cache_ref = self
             .command_buffer_cache
             .entry(info.queue_family_index)
             .or_insert_with(PoolInfo::default_cache);
-        let mut item = cache
-            .lock()
-            .pop_front()
-            .filter(can_lease_command_buffer)
-            .map(Ok)
-            .unwrap_or_else(|| {
-                debug!("Creating new {}", stringify!(CommandBuffer));
 
-                CommandBuffer::create(&self.device, info)
-            })?;
+        let mut item = {
+            #[cfg_attr(not(feature = "parking_lot"), allow(unused_mut))]
+            let mut cache = cache_ref.lock();
+
+            #[cfg(not(feature = "parking_lot"))]
+            let mut cache = cache.unwrap();
+
+            cache.pop_front()
+        }
+        .filter(can_lease_command_buffer)
+        .map(Ok)
+        .unwrap_or_else(|| {
+            debug!("Creating new {}", stringify!(CommandBuffer));
+
+            CommandBuffer::create(&self.device, info)
+        })?;
 
         // Drop anything we were holding from the last submission
         CommandBuffer::drop_fenced(&mut item);
 
-        Ok(Lease::new(Arc::downgrade(cache), item))
+        Ok(Lease::new(Arc::downgrade(cache_ref), item))
     }
 }
 
@@ -197,7 +212,11 @@ impl Pool<DescriptorPoolInfo, DescriptorPool> for FifoPool {
         {
             profiling::scope!("check cache");
 
+            #[cfg_attr(not(feature = "parking_lot"), allow(unused_mut))]
             let mut cache = self.descriptor_pool_cache.lock();
+
+            #[cfg(not(feature = "parking_lot"))]
+            let mut cache = cache.unwrap();
 
             // Look for a compatible descriptor pool (has enough sets and descriptors)
             for idx in 0..cache.len() {
@@ -238,7 +257,11 @@ impl Pool<ImageInfo, Image> for FifoPool {
         {
             profiling::scope!("check cache");
 
+            #[cfg_attr(not(feature = "parking_lot"), allow(unused_mut))]
             let mut cache = self.image_cache.lock();
+
+            #[cfg(not(feature = "parking_lot"))]
+            let mut cache = cache.unwrap();
 
             // Look for a compatible image (same properties, superset of creation flags and usage
             // flags)
@@ -274,7 +297,7 @@ impl Pool<ImageInfo, Image> for FifoPool {
 impl Pool<RenderPassInfo, RenderPass> for FifoPool {
     #[profiling::function]
     fn lease(&mut self, info: RenderPassInfo) -> Result<Lease<RenderPass>, DriverError> {
-        let cache = if let Some(cache) = self.render_pass_cache.get(&info) {
+        let cache_ref = if let Some(cache) = self.render_pass_cache.get(&info) {
             cache
         } else {
             // We tried to get the cache first in order to avoid this clone
@@ -282,12 +305,22 @@ impl Pool<RenderPassInfo, RenderPass> for FifoPool {
                 .entry(info.clone())
                 .or_insert_with(PoolInfo::default_cache)
         };
-        let item = cache.lock().pop_front().map(Ok).unwrap_or_else(|| {
+        let item = {
+            #[cfg_attr(not(feature = "parking_lot"), allow(unused_mut))]
+            let mut cache = cache_ref.lock();
+
+            #[cfg(not(feature = "parking_lot"))]
+            let mut cache = cache.unwrap();
+
+            cache.pop_front()
+        }
+        .map(Ok)
+        .unwrap_or_else(|| {
             debug!("Creating new {}", stringify!(RenderPass));
 
             RenderPass::create(&self.device, info)
         })?;
 
-        Ok(Lease::new(Arc::downgrade(cache), item))
+        Ok(Lease::new(Arc::downgrade(cache_ref), item))
     }
 }

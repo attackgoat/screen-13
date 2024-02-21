@@ -26,7 +26,7 @@ derive_builder = "0.20"
 gpu-allocator = "0.25"
 log = "0.4"
 ordered-float = "4.1"
-parking_lot = "0.12"
+parking_lot = { version = "0.12", optional = true }
 paste = "1.0"
 profiling = "1.0"
 raw-window-handle = "0.5"

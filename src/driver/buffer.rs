@@ -119,11 +119,13 @@ impl Buffer {
         let allocation = {
             profiling::scope!("allocate");
 
-            device
-                .allocator
-                .as_ref()
-                .unwrap()
-                .lock()
+            #[cfg_attr(not(feature = "parking_lot"), allow(unused_mut))]
+            let mut allocator = device.allocator.as_ref().unwrap().lock();
+
+            #[cfg(not(feature = "parking_lot"))]
+            let mut allocator = allocator.unwrap();
+
+            allocator
                 .allocate(&AllocationCreateDesc {
                     name: "buffer",
                     requirements,
@@ -423,14 +425,15 @@ impl Drop for Buffer {
         {
             profiling::scope!("deallocate");
 
-            self.device
-                .allocator
-                .as_ref()
-                .unwrap()
-                .lock()
-                .free(self.allocation.take().unwrap())
-                .unwrap_or_else(|_| warn!("Unable to free buffer allocation"));
+            #[cfg_attr(not(feature = "parking_lot"), allow(unused_mut))]
+            let mut allocator = self.device.allocator.as_ref().unwrap().lock();
+
+            #[cfg(not(feature = "parking_lot"))]
+            let mut allocator = allocator.unwrap();
+
+            allocator.free(self.allocation.take().unwrap())
         }
+        .unwrap_or_else(|_| warn!("Unable to free buffer allocation"));
 
         unsafe {
             self.device.destroy_buffer(self.buffer, None);

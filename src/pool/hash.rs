@@ -11,13 +11,18 @@ use {
         RenderPass, RenderPassInfo,
     },
     log::debug,
-    parking_lot::Mutex,
     paste::paste,
     std::{
         collections::{HashMap, VecDeque},
         sync::Arc,
     },
 };
+
+#[cfg(feature = "parking_lot")]
+use parking_lot::Mutex;
+
+#[cfg(not(feature = "parking_lot"))]
+use std::sync::Mutex;
 
 /// A high-performance resource allocator.
 ///
@@ -127,49 +132,64 @@ resource_mgmt_fns!("images", "image", ImageInfo, image_cache);
 impl Pool<CommandBufferInfo, CommandBuffer> for HashPool {
     #[profiling::function]
     fn lease(&mut self, info: CommandBufferInfo) -> Result<Lease<CommandBuffer>, DriverError> {
-        let cache = self
+        let cache_ref = self
             .command_buffer_cache
             .entry(info.queue_family_index)
             .or_insert_with(PoolInfo::default_cache);
-        let mut item = cache
-            .lock()
-            .pop_front()
-            .filter(can_lease_command_buffer)
-            .map(Ok)
-            .unwrap_or_else(|| {
-                debug!("Creating new {}", stringify!(CommandBuffer));
+        let mut item = {
+            #[cfg_attr(not(feature = "parking_lot"), allow(unused_mut))]
+            let mut cache = cache_ref.lock();
 
-                CommandBuffer::create(&self.device, info)
-            })?;
+            #[cfg(not(feature = "parking_lot"))]
+            let mut cache = cache.unwrap();
+
+            cache.pop_front().filter(can_lease_command_buffer)
+        }
+        .map(Ok)
+        .unwrap_or_else(|| {
+            debug!("Creating new {}", stringify!(CommandBuffer));
+
+            CommandBuffer::create(&self.device, info)
+        })?;
 
         // Drop anything we were holding from the last submission
         CommandBuffer::drop_fenced(&mut item);
 
-        Ok(Lease::new(Arc::downgrade(cache), item))
+        Ok(Lease::new(Arc::downgrade(cache_ref), item))
     }
 }
 
 impl Pool<DescriptorPoolInfo, DescriptorPool> for HashPool {
     #[profiling::function]
     fn lease(&mut self, info: DescriptorPoolInfo) -> Result<Lease<DescriptorPool>, DriverError> {
-        let cache = self
+        let cache_ref = self
             .descriptor_pool_cache
             .entry(info.clone())
             .or_insert_with(PoolInfo::default_cache);
-        let item = cache.lock().pop_front().map(Ok).unwrap_or_else(|| {
+        let item = {
+            #[cfg_attr(not(feature = "parking_lot"), allow(unused_mut))]
+            let mut cache = cache_ref.lock();
+
+            #[cfg(not(feature = "parking_lot"))]
+            let mut cache = cache.unwrap();
+
+            cache.pop_front()
+        }
+        .map(Ok)
+        .unwrap_or_else(|| {
             debug!("Creating new {}", stringify!(DescriptorPool));
 
             DescriptorPool::create(&self.device, info)
         })?;
 
-        Ok(Lease::new(Arc::downgrade(cache), item))
+        Ok(Lease::new(Arc::downgrade(cache_ref), item))
     }
 }
 
 impl Pool<RenderPassInfo, RenderPass> for HashPool {
     #[profiling::function]
     fn lease(&mut self, info: RenderPassInfo) -> Result<Lease<RenderPass>, DriverError> {
-        let cache = if let Some(cache) = self.render_pass_cache.get(&info) {
+        let cache_ref = if let Some(cache) = self.render_pass_cache.get(&info) {
             cache
         } else {
             // We tried to get the cache first in order to avoid this clone
@@ -177,13 +197,23 @@ impl Pool<RenderPassInfo, RenderPass> for HashPool {
                 .entry(info.clone())
                 .or_insert_with(PoolInfo::default_cache)
         };
-        let item = cache.lock().pop_front().map(Ok).unwrap_or_else(|| {
+        let item = {
+            #[cfg_attr(not(feature = "parking_lot"), allow(unused_mut))]
+            let mut cache = cache_ref.lock();
+
+            #[cfg(not(feature = "parking_lot"))]
+            let mut cache = cache.unwrap();
+
+            cache.pop_front()
+        }
+        .map(Ok)
+        .unwrap_or_else(|| {
             debug!("Creating new {}", stringify!(RenderPass));
 
             RenderPass::create(&self.device, info)
         })?;
 
-        Ok(Lease::new(Arc::downgrade(cache), item))
+        Ok(Lease::new(Arc::downgrade(cache_ref), item))
     }
 }
 
@@ -194,17 +224,27 @@ macro_rules! lease {
             impl Pool<$info, $item> for HashPool {
                 #[profiling::function]
                 fn lease(&mut self, info: $info) -> Result<Lease<$item>, DriverError> {
-                    let cache = self.[<$item:snake _cache>].entry(info)
+                    let cache_ref = self.[<$item:snake _cache>].entry(info)
                         .or_insert_with(|| {
                             Cache::new(Mutex::new(VecDeque::with_capacity(self.info.$capacity)))
                         });
-                    let item = cache.lock().pop_front().map(Ok).unwrap_or_else(|| {
+                    let item = {
+                        #[cfg_attr(not(feature = "parking_lot"), allow(unused_mut))]
+                        let mut cache = cache_ref.lock();
+
+                        #[cfg(not(feature = "parking_lot"))]
+                        let mut cache = cache.unwrap();
+
+                        cache.pop_front()
+                    }
+                    .map(Ok)
+                    .unwrap_or_else(|| {
                         debug!("Creating new {}", stringify!($item));
 
                         $item::create(&self.device, info)
                     })?;
 
-                    Ok(Lease::new(Arc::downgrade(cache), item))
+                    Ok(Lease::new(Arc::downgrade(cache_ref), item))
                 }
             }
         }
