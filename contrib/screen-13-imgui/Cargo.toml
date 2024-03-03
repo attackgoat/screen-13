@@ -12,6 +12,6 @@ bytemuck = "1.14"
 imgui = { git = "https://github.com/imgui-rs/imgui-rs", rev = "ca05418cb449dadaabf014487c5c965908dfcbdd" } 
 imgui-winit-support = { git = "https://github.com/imgui-rs/imgui-rs", rev = "ca05418cb449dadaabf014487c5c965908dfcbdd" }
 
-inline-spirv = "0.1"
+inline-spirv = "0.2"
 screen-13 = { path = "../.." }
 screen-13-fx = { path = "../screen-13-fx" }

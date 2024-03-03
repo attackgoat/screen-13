@@ -26,7 +26,7 @@ matte-modes = []
 bmfont = { version = "0.3", default-features = false }
 bytemuck = "1.14"
 parking_lot = "0.12"
-inline-spirv = "0.1"
+inline-spirv = "0.2"
 screen-13 = { path = "../.."}
 anyhow = "1.0"
 glam = "0.25"
