@@ -1,6 +1,5 @@
 use {
     anyhow::Context,
-    lazy_static::lazy_static,
     pak::PakBuf,
     shaderc::{Compiler, ShaderKind},
     std::{
@@ -9,6 +8,30 @@ use {
         path::{Path, PathBuf},
     },
 };
+
+// lazy_static is being deprecated so this stand-in provides similar functionality
+macro_rules! lazy_static {
+    ($name: ident: $ty: ty = $expr: expr) => {
+        ::paste::paste! {
+            struct [<__ $name:camel>];
+
+            #[allow(unused)]
+            static [<$name:upper>]: [<__ $name:camel>] = [<__ $name:camel>];
+
+            impl ::std::ops::Deref for [<__ $name:camel>] {
+                type Target = $ty;
+                fn deref(&self) -> &Self::Target {
+                    static S: ::std::sync::OnceLock<$ty> = ::std::sync::OnceLock::new();
+                    S.get_or_init(|| $expr)
+                }
+            }
+        }
+    };
+
+    {$(static ref $name: ident: $ty: ty = $expr: expr;)+} => {
+        $(lazy_static!($name: $ty = $expr);)+
+    };
+}
 
 lazy_static! {
     static ref CARGO_MANIFEST_DIR: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

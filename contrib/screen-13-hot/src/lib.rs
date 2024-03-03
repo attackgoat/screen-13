@@ -14,7 +14,6 @@ pub mod prelude {
 
 use {
     self::shader::HotShader,
-    lazy_static::lazy_static,
     notify::{recommended_watcher, Event, EventKind, RecommendedWatcher},
     screen_13::prelude::*,
     shader_prepper::{
@@ -29,14 +28,10 @@ use {
         path::{Path, PathBuf},
         sync::{
             atomic::{AtomicBool, Ordering},
-            Arc,
+            Arc, OnceLock,
         },
     },
 };
-
-lazy_static! {
-    static ref COMPILER: Compiler = Compiler::new().expect("Unable to initialize shaderc");
-}
 
 struct CompiledShader {
     files_included: HashSet<PathBuf>,
@@ -102,7 +97,9 @@ fn compile_shader(
     .collect::<String>();
     let files_included = file_include_provider.0;
 
+    static COMPILER: OnceLock<Compiler> = OnceLock::new();
     let spirv_code = COMPILER
+        .get_or_init(|| Compiler::new().expect("Unable to initialize shaderc"))
         .compile_into_spirv(
             &source_code,
             shader_kind,

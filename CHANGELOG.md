@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Removed
+
+- `lazy_static` dependency
+
 ## [0.11.2] - 2024-02-26
 
 ### Changed
@@ -85,7 +91,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `Surface::srgb` to select sRGB
 - `Swapchain::present_image` now uses event-based waiting for rendering operations instead of
   polling, greatly reducing CPU usage
-- Updated `ash-molten` (_Mac OS support_) to v0.17 
+- Updated `ash-molten` (_Mac OS support_) to v0.17
 
 ### Fixed
 

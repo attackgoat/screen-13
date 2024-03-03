@@ -1,10 +1,4 @@
-use {
-    lazy_static::lazy_static, screen_13::prelude::*, screen_13_hot::prelude::*, std::path::PathBuf,
-};
-
-lazy_static! {
-    static ref CARGO_MANIFEST_DIR: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-}
+use {screen_13::prelude::*, screen_13_hot::prelude::*, std::path::PathBuf};
 
 /// This program draws a noise signal to the swapchain - make changes to fill_image.comp or the
 /// noise.glsl file it includes to see those changes update while the program is still running.
@@ -19,10 +13,11 @@ fn main() -> Result<(), DisplayError> {
 
     // Create a compute pipeline - the same as normal except for "Hot" prefixes and we provide the
     // shader source code path instead of the shader source code bytes
+    let cargo_manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut pipeline = HotComputePipeline::create(
         &event_loop.device,
         ComputePipelineInfo::default(),
-        HotShader::new_compute(CARGO_MANIFEST_DIR.join("examples/res/fill_image.comp")),
+        HotShader::new_compute(cargo_manifest_dir.join("examples/res/fill_image.comp")),
     )?;
 
     let mut frame_index: u32 = 0;
