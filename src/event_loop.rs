@@ -110,10 +110,6 @@ impl EventLoop {
                         window.exit();
                     }
                     Event::WindowEvent {
-                        event: WindowEvent::Focused(false),
-                        ..
-                    } => self.window.set_cursor_visible(true),
-                    Event::WindowEvent {
                         event: WindowEvent::Resized(size),
                         ..
                     } => {
