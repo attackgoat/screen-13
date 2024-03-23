@@ -54,7 +54,7 @@ pub struct FrameContext<'a> {
 }
 
 impl FrameContext<'_> {
-    /// Causes the program to exit after rendering this frame.
+    /// Causes the program to exit before displaying the current frame.
     pub fn exit(&mut self) {
         *self.will_exit = true;
     }
