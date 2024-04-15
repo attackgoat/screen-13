@@ -858,15 +858,20 @@ impl Shader {
                     desc_ty,
                     nbind,
                     ..
-                } => Some((name, desc_bind, desc_ty, *nbind)),
+                } => Some((
+                    name,
+                    DescriptorBinding(desc_bind.set(), desc_bind.bind()),
+                    desc_ty,
+                    *nbind,
+                )),
                 _ => None,
             })
         {
             trace!(
                 "binding {}: {}.{} = {:?}[{}]",
                 name.as_deref().unwrap_or_default(),
-                binding.set(),
-                binding.bind(),
+                binding.0,
+                binding.1,
                 *desc_ty,
                 binding_count
             );
@@ -876,17 +881,8 @@ impl Shader {
                     DescriptorInfo::AccelerationStructure(binding_count)
                 }
                 DescriptorType::CombinedImageSampler() => {
-                    let (sampler_info, is_manually_defined) = self
-                        .image_samplers
-                        .get(&DescriptorBinding(binding.set(), binding.bind()))
-                        .copied()
-                        .map(|sampler_info| (sampler_info, true))
-                        .unwrap_or_else(|| {
-                            (
-                                guess_immutable_sampler(name.as_deref().unwrap_or_default()),
-                                false,
-                            )
-                        });
+                    let (sampler_info, is_manually_defined) =
+                        self.image_sampler(binding, name.as_deref().unwrap_or_default());
 
                     DescriptorInfo::CombinedImageSampler(
                         binding_count,
@@ -899,17 +895,8 @@ impl Shader {
                 }
                 DescriptorType::SampledImage() => DescriptorInfo::SampledImage(binding_count),
                 DescriptorType::Sampler() => {
-                    let (sampler_info, is_manually_defined) = self
-                        .image_samplers
-                        .get(&DescriptorBinding(binding.set(), binding.bind()))
-                        .copied()
-                        .map(|sampler_info| (sampler_info, true))
-                        .unwrap_or_else(|| {
-                            (
-                                guess_immutable_sampler(name.as_deref().unwrap_or_default()),
-                                false,
-                            )
-                        });
+                    let (sampler_info, is_manually_defined) =
+                        self.image_sampler(binding, name.as_deref().unwrap_or_default());
 
                     DescriptorInfo::Sampler(
                         binding_count,
@@ -931,13 +918,18 @@ impl Shader {
                     DescriptorInfo::UniformTexelBuffer(binding_count)
                 }
             };
-            res.insert(
-                DescriptorBinding(binding.set(), binding.bind()),
-                (descriptor_info, self.stage),
-            );
+            res.insert(binding, (descriptor_info, self.stage));
         }
 
         Ok(res)
+    }
+
+    fn image_sampler(&self, binding: DescriptorBinding, name: &str) -> (SamplerInfo, bool) {
+        self.image_samplers
+            .get(&binding)
+            .copied()
+            .map(|sampler_info| (sampler_info, true))
+            .unwrap_or_else(|| (guess_immutable_sampler(name), false))
     }
 
     #[profiling::function]
