@@ -770,10 +770,10 @@ impl Resolver {
         // Find the total count of descriptors per type (there may be multiple pipelines!)
         for pool_sizes in pass.descriptor_pools_sizes() {
             for pool_size in pool_sizes.values() {
-                for (descriptor_ty, descriptor_count) in pool_size {
-                    debug_assert_ne!(*descriptor_count, 0);
+                for (&descriptor_ty, &descriptor_count) in pool_size {
+                    debug_assert_ne!(descriptor_count, 0);
 
-                    match *descriptor_ty {
+                    match descriptor_ty {
                         vk::DescriptorType::ACCELERATION_STRUCTURE_KHR => {
                             info.acceleration_structure_count += descriptor_count;
                         }
@@ -785,6 +785,9 @@ impl Resolver {
                         }
                         vk::DescriptorType::SAMPLED_IMAGE => {
                             info.sampled_image_count += descriptor_count;
+                        }
+                        vk::DescriptorType::SAMPLER => {
+                            info.sampler_count += descriptor_count;
                         }
                         vk::DescriptorType::STORAGE_BUFFER => {
                             info.storage_buffer_count += descriptor_count;
@@ -807,7 +810,7 @@ impl Resolver {
                         vk::DescriptorType::UNIFORM_TEXEL_BUFFER => {
                             info.uniform_texel_buffer_count += descriptor_count;
                         }
-                        _ => unimplemented!(),
+                        _ => unimplemented!("{descriptor_ty:?}"),
                     };
                 }
             }
@@ -824,6 +827,7 @@ impl Resolver {
         info.combined_image_sampler_count = align_up(info.combined_image_sampler_count, ATOM);
         info.input_attachment_count = align_up(info.input_attachment_count, ATOM);
         info.sampled_image_count = align_up(info.sampled_image_count, ATOM);
+        info.sampler_count = align_up(info.sampler_count, ATOM);
         info.storage_buffer_count = align_up(info.storage_buffer_count, ATOM);
         info.storage_buffer_dynamic_count = align_up(info.storage_buffer_dynamic_count, ATOM);
         info.storage_image_count = align_up(info.storage_image_count, ATOM);
@@ -2799,6 +2803,7 @@ impl Resolver {
             descriptors: Vec<vk::WriteDescriptorSet>,
             image_infos: Vec<vk::DescriptorImageInfo>,
             image_writes: Vec<IndexWrite>,
+            sampler_writes: Vec<IndexWrite>,
         }
 
         TLS.with_borrow_mut(|tls| {
@@ -2810,6 +2815,7 @@ impl Resolver {
             tls.descriptors.clear();
             tls.image_infos.clear();
             tls.image_writes.clear();
+            tls.sampler_writes.clear();
 
             for (exec_idx, exec, pipeline) in pass
                 .execs
@@ -2845,7 +2851,7 @@ impl Resolver {
                         let sampler = descriptor_info.sampler().map(|sampler| **sampler).unwrap_or_default();
                         let image_view = Image::view(image, image_view_info)?;
                         let image_layout = match descriptor_type {
-                            vk::DescriptorType::COMBINED_IMAGE_SAMPLER => {
+                            vk::DescriptorType::COMBINED_IMAGE_SAMPLER | vk::DescriptorType::SAMPLED_IMAGE => {
                                 if image_view_info.aspect_mask.contains(
                                     vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL,
                                 ) {
@@ -2865,7 +2871,7 @@ impl Resolver {
                                 }
                             }
                             vk::DescriptorType::STORAGE_IMAGE => vk::ImageLayout::GENERAL,
-                            _ => unimplemented!(),
+                            _ => unimplemented!("{descriptor_type:?}"),
                         };
 
                         if binding_offset == 0 {
@@ -2936,70 +2942,92 @@ impl Resolver {
                     }
                 }
 
-                // Write graphic render pass input attachments (they're automatic)
-                if exec_idx > 0 && pipeline.is_graphic() {
+                if pipeline.is_graphic() {
                     let pipeline = pipeline.unwrap_graphic();
-                    for (&DescriptorBinding(descriptor_set_idx, dst_binding), (descriptor_info, _)) in
-                        &pipeline.descriptor_bindings
-                    {
-                        if let DescriptorInfo::InputAttachment(_, attachment_idx) = *descriptor_info {
-                            let is_random_access =  exec.color_stores.contains_key(&attachment_idx)
-                                || exec.color_resolves.contains_key(&attachment_idx);
-                            let (attachment, write_exec) = pass.execs[0..exec_idx]
-                                .iter()
-                                .rev()
-                                .find_map(|exec| {
-                                    exec.color_stores.get(&attachment_idx).copied()
-                                        .map(|attachment| {
-                                            (attachment, exec)
-                                        })
-                                        .or_else(|| {
-                                            exec.color_resolves.get(&attachment_idx)
-                                            .map(
-                                                |(resolved_attachment, _)| {
-                                                    (*resolved_attachment, exec)
-                                                },
-                                            )
-                                        })
-                                })
-                                .expect("input attachment not written");
-                            let [_, late] = &write_exec.accesses[&attachment.target];
-                            let image_subresource = late.subresource.as_ref().unwrap().unwrap_image();
-                            let image_binding = &bindings[attachment.target];
-                            let image = image_binding.as_driver_image().unwrap();
-                            let image_view_info = ImageViewInfo {
-                                array_layer_count: image_subresource.array_layer_count,
-                                aspect_mask: attachment.aspect_mask,
-                                base_array_layer: image_subresource.base_array_layer,
-                                base_mip_level: image_subresource.base_mip_level,
-                                fmt: attachment.format,
-                                mip_level_count: image_subresource.mip_level_count,
-                                ty: image.info.ty,
-                            };
-                            let image_view = Image::view(image, image_view_info)?;
-                            let sampler = descriptor_info.sampler().map(|sampler| **sampler).unwrap_or_else(vk::Sampler::null);
 
-                            tls.image_writes.push(IndexWrite {
+                    for descriptor_binding @ DescriptorBinding(descriptor_set_idx, dst_binding) in pipeline.separate_samplers.iter().copied() {
+                            tls.sampler_writes.push(IndexWrite {
                                 idx: tls.image_infos.len(),
                                 write: vk::WriteDescriptorSet {
                                         dst_set: *descriptor_sets[descriptor_set_idx as usize],
                                         dst_binding,
-                                        descriptor_type: vk::DescriptorType::INPUT_ATTACHMENT,
+                                        descriptor_type: vk::DescriptorType::SAMPLER,
                                         descriptor_count: 1,
                                         ..Default::default()
                                     },
                                 }
                             );
+                        tls.image_infos.push(vk::DescriptorImageInfo {
+                            image_layout: Default::default(),
+                            image_view: Default::default(),
+                            sampler: **pipeline.descriptor_bindings[&descriptor_binding].0.sampler().unwrap(),
+                        });
+                    }
 
-                            tls.image_infos.push(vk::DescriptorImageInfo {
-                                image_layout: Self::attachment_layout(
-                                    attachment.aspect_mask,
-                                    is_random_access,
-                                    true,
-                                ),
-                                image_view,
-                                sampler,
-                            });
+                    // Write graphic render pass input attachments (they're automatic)
+                    if exec_idx > 0 {
+                        for (&DescriptorBinding(descriptor_set_idx, dst_binding), (descriptor_info, _)) in
+                            &pipeline.descriptor_bindings
+                        {
+                            if let DescriptorInfo::InputAttachment(_, attachment_idx) = *descriptor_info {
+                                let is_random_access =  exec.color_stores.contains_key(&attachment_idx)
+                                    || exec.color_resolves.contains_key(&attachment_idx);
+                                let (attachment, write_exec) = pass.execs[0..exec_idx]
+                                    .iter()
+                                    .rev()
+                                    .find_map(|exec| {
+                                        exec.color_stores.get(&attachment_idx).copied()
+                                            .map(|attachment| {
+                                                (attachment, exec)
+                                            })
+                                            .or_else(|| {
+                                                exec.color_resolves.get(&attachment_idx)
+                                                .map(
+                                                    |(resolved_attachment, _)| {
+                                                        (*resolved_attachment, exec)
+                                                    },
+                                                )
+                                            })
+                                    })
+                                    .expect("input attachment not written");
+                                let [_, late] = &write_exec.accesses[&attachment.target];
+                                let image_subresource = late.subresource.as_ref().unwrap().unwrap_image();
+                                let image_binding = &bindings[attachment.target];
+                                let image = image_binding.as_driver_image().unwrap();
+                                let image_view_info = ImageViewInfo {
+                                    array_layer_count: image_subresource.array_layer_count,
+                                    aspect_mask: attachment.aspect_mask,
+                                    base_array_layer: image_subresource.base_array_layer,
+                                    base_mip_level: image_subresource.base_mip_level,
+                                    fmt: attachment.format,
+                                    mip_level_count: image_subresource.mip_level_count,
+                                    ty: image.info.ty,
+                                };
+                                let image_view = Image::view(image, image_view_info)?;
+                                let sampler = descriptor_info.sampler().map(|sampler| **sampler).unwrap_or_else(vk::Sampler::null);
+
+                                tls.image_writes.push(IndexWrite {
+                                    idx: tls.image_infos.len(),
+                                    write: vk::WriteDescriptorSet {
+                                            dst_set: *descriptor_sets[descriptor_set_idx as usize],
+                                            dst_binding,
+                                            descriptor_type: vk::DescriptorType::INPUT_ATTACHMENT,
+                                            descriptor_count: 1,
+                                            ..Default::default()
+                                        },
+                                    }
+                                );
+
+                                tls.image_infos.push(vk::DescriptorImageInfo {
+                                    image_layout: Self::attachment_layout(
+                                        attachment.aspect_mask,
+                                        is_random_access,
+                                        true,
+                                    ),
+                                    image_view,
+                                    sampler,
+                                });
+                            }
                         }
                     }
                 }

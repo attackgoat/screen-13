@@ -1,6 +1,7 @@
 mod profile_with_puffin;
 
 use {
+    hassle_rs::compile_hlsl,
     inline_spirv::inline_spirv,
     screen_13::prelude::*,
     std::{
@@ -8,6 +9,9 @@ use {
         sync::Arc,
     },
 };
+
+const USE_HLSL_FRAG_SHADER: bool = false;
+const USE_SEPARATE_SAMPLER: bool = false;
 
 /// Displays a sequence of image samplers.
 ///
@@ -74,6 +78,107 @@ fn create_pipeline(
     device: &Arc<Device>,
     sampler_info: impl Into<SamplerInfo>,
 ) -> anyhow::Result<Arc<GraphicPipeline>> {
+    let mut frag_shader = if USE_HLSL_FRAG_SHADER && USE_SEPARATE_SAMPLER {
+        // HLSL separate image sampler
+        Shader::new_fragment(
+            inline_spirv!(
+                r#"
+                struct FullscreenVertexOutput
+                {
+                    float4 position : SV_Position;
+                    [[vk::location(0)]] float2 uv : TEXCOORD0;
+                };
+
+                [[vk::binding(0, 0)]] Texture2D screenTexture : register(t0);
+                [[vk::binding(1, 0)]] SamplerState textureSampler : register(s0);
+
+                float4 main(FullscreenVertexOutput input)
+                    : SV_Target
+                {
+                    return screenTexture.Sample(textureSampler, input.uv);
+                }
+                "#,
+                frag,
+                hlsl
+            )
+            .as_slice(),
+        )
+    } else if USE_HLSL_FRAG_SHADER {
+        // HLSL combined image sampler: inline_spirv uses shaderc which does not support this, so
+        // we are using hassle_rs which uses dxc. You must follow the instructions listed here to
+        // use hassle_rs:
+        // See: https://github.com/Traverse-Research/hassle-rs
+        // See: https://github.com/microsoft/DirectXShaderCompiler/wiki/Vulkan-combined-image-sampler-type
+        // See: https://github.com/google/shaderc/issues/1310
+        Shader::new_fragment(
+            compile_hlsl(
+                "fragment.hlsl",
+                r#"
+                struct FullscreenVertexOutput
+                {
+                    float4 position : SV_Position;
+                    [[vk::location(0)]] float2 uv : TEXCOORD0;
+                };
+
+                [[vk::combinedImageSampler]][[vk::binding(0, 0)]]  Texture2D<float4> screenTexture : register(t0);
+                [[vk::combinedImageSampler]][[vk::binding(0, 0)]]  SamplerState textureSampler : register(s0);
+
+                float4 main(FullscreenVertexOutput input)
+                    : SV_Target
+                {
+                    return screenTexture.Sample(textureSampler, input.uv);
+                }
+                "#,
+                "main", "ps_5_0", &["-spirv"], &[],
+            )?
+            .as_slice(),
+        )
+    } else if USE_SEPARATE_SAMPLER {
+        // GLSL separate image sampler
+        Shader::new_fragment(
+            inline_spirv!(
+                r#"
+                #version 460 core
+
+                layout(binding = 0) uniform texture2D image;
+                layout(binding = 1) uniform sampler image_sampler;
+                layout(location = 0) in vec2 vk_TexCoord;
+                layout(location = 0) out vec4 vk_Color;
+
+                void main() {
+                    vk_Color = texture(sampler2D(image, image_sampler), vk_TexCoord);
+                }
+                "#,
+                frag
+            )
+            .as_slice(),
+        )
+    } else {
+        // GLSL combined image sampler
+        Shader::new_fragment(
+            inline_spirv!(
+                r#"
+                #version 460 core
+
+                    layout(binding = 0) uniform sampler2D image;
+                    layout(location = 0) in vec2 vk_TexCoord;
+                    layout(location = 0) out vec4 vk_Color;
+
+                    void main() {
+                        vk_Color = texture(image, vk_TexCoord);
+                    }
+                "#,
+                frag
+            )
+            .as_slice(),
+        )
+    };
+
+    // Use the builder pattern to specify an image sampler at the combined binding index (0) or
+    // separate binding index (1).
+    let sampler_binding = USE_SEPARATE_SAMPLER as u32;
+    frag_shader = frag_shader.image_sampler(sampler_binding, sampler_info);
+
     Ok(Arc::new(GraphicPipeline::create(
         device,
         GraphicPipelineInfo::default(),
@@ -100,24 +205,7 @@ fn create_pipeline(
                 )
                 .as_slice(),
             ),
-            Shader::new_fragment(
-                inline_spirv!(
-                    r#"
-                    #version 460 core
-
-                    layout(binding = 0) uniform sampler2D image;
-                    layout(location = 0) in vec2 vk_TexCoord;
-                    layout(location = 0) out vec4 vk_Color;
-
-                    void main() {
-                        vk_Color = texture(image, vk_TexCoord);
-                    }
-                    "#,
-                    frag
-                )
-                .as_slice(),
-            )
-            .image_sampler(0, sampler_info),
+            frag_shader,
         ],
     )?))
 }

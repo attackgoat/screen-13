@@ -43,6 +43,7 @@ bmfont = { version = "0.3", default-features = false }
 bytemuck = "1.14"
 glam = { version = "0.25", features = ["bytemuck"] }
 half = { version = "2.3", features = ["bytemuck"] }
+hassle-rs = "0.11"
 image = "0.24"
 inline-spirv = "0.2"
 log = "0.4"

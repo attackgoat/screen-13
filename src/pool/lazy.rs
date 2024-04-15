@@ -285,6 +285,7 @@ impl Pool<DescriptorPoolInfo, DescriptorPool> for LazyPool {
                     && item.info.combined_image_sampler_count >= info.combined_image_sampler_count
                     && item.info.input_attachment_count >= info.input_attachment_count
                     && item.info.sampled_image_count >= info.sampled_image_count
+                    && item.info.sampler_count >= info.sampled_image_count
                     && item.info.storage_buffer_count >= info.storage_buffer_count
                     && item.info.storage_buffer_dynamic_count >= info.storage_buffer_dynamic_count
                     && item.info.storage_image_count >= info.storage_image_count

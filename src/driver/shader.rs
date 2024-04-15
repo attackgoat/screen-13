@@ -105,7 +105,7 @@ pub(crate) enum DescriptorInfo {
     CombinedImageSampler(u32, Sampler, bool), //count, sampler, is-manually-defined?
     InputAttachment(u32, u32),                //count, input index,
     SampledImage(u32),
-    Sampler(u32),
+    Sampler(u32, Sampler, bool), //count, sampler, is-manually-defined?
     StorageBuffer(u32),
     StorageImage(u32),
     StorageTexelBuffer(u32),
@@ -120,7 +120,7 @@ impl DescriptorInfo {
             Self::CombinedImageSampler(binding_count, ..) => binding_count,
             Self::InputAttachment(binding_count, _) => binding_count,
             Self::SampledImage(binding_count) => binding_count,
-            Self::Sampler(binding_count) => binding_count,
+            Self::Sampler(binding_count, ..) => binding_count,
             Self::StorageBuffer(binding_count) => binding_count,
             Self::StorageImage(binding_count) => binding_count,
             Self::StorageTexelBuffer(binding_count) => binding_count,
@@ -135,7 +135,7 @@ impl DescriptorInfo {
             Self::CombinedImageSampler(..) => vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
             Self::InputAttachment(..) => vk::DescriptorType::INPUT_ATTACHMENT,
             Self::SampledImage(_) => vk::DescriptorType::SAMPLED_IMAGE,
-            Self::Sampler(_) => vk::DescriptorType::SAMPLER,
+            Self::Sampler(..) => vk::DescriptorType::SAMPLER,
             Self::StorageBuffer(_) => vk::DescriptorType::STORAGE_BUFFER,
             Self::StorageImage(_) => vk::DescriptorType::STORAGE_IMAGE,
             Self::StorageTexelBuffer(_) => vk::DescriptorType::STORAGE_TEXEL_BUFFER,
@@ -146,7 +146,9 @@ impl DescriptorInfo {
 
     pub fn sampler(&self) -> Option<&Sampler> {
         match self {
-            Self::CombinedImageSampler(_, sampler, _) => Some(sampler),
+            Self::CombinedImageSampler(_, sampler, _) | Self::Sampler(_, sampler, _) => {
+                Some(sampler)
+            }
             _ => None,
         }
     }
@@ -157,7 +159,7 @@ impl DescriptorInfo {
             Self::CombinedImageSampler(binding_count, ..) => binding_count,
             Self::InputAttachment(binding_count, _) => binding_count,
             Self::SampledImage(binding_count) => binding_count,
-            Self::Sampler(binding_count) => binding_count,
+            Self::Sampler(binding_count, ..) => binding_count,
             Self::StorageBuffer(binding_count) => binding_count,
             Self::StorageImage(binding_count) => binding_count,
             Self::StorageTexelBuffer(binding_count) => binding_count,
@@ -896,7 +898,25 @@ impl Shader {
                     DescriptorInfo::InputAttachment(binding_count, *attachment)
                 }
                 DescriptorType::SampledImage() => DescriptorInfo::SampledImage(binding_count),
-                DescriptorType::Sampler() => DescriptorInfo::Sampler(binding_count),
+                DescriptorType::Sampler() => {
+                    let (sampler_info, is_manually_defined) = self
+                        .image_samplers
+                        .get(&DescriptorBinding(binding.set(), binding.bind()))
+                        .copied()
+                        .map(|sampler_info| (sampler_info, true))
+                        .unwrap_or_else(|| {
+                            (
+                                guess_immutable_sampler(name.as_deref().unwrap_or_default()),
+                                false,
+                            )
+                        });
+
+                    DescriptorInfo::Sampler(
+                        binding_count,
+                        Sampler::create(device, sampler_info)?,
+                        is_manually_defined,
+                    )
+                }
                 DescriptorType::StorageBuffer(_access_ty) => {
                     DescriptorInfo::StorageBuffer(binding_count)
                 }
@@ -970,8 +990,16 @@ impl Shader {
                         return false;
                     }
                 }
-                DescriptorInfo::Sampler(lhs) => {
-                    if let DescriptorInfo::Sampler(rhs) = rhs {
+                DescriptorInfo::Sampler(lhs, lhs_sampler, lhs_is_manually_defined) => {
+                    if let DescriptorInfo::Sampler(rhs, rhs_sampler, rhs_is_manually_defined) = rhs
+                    {
+                        // Allow one of the samplers to be manually defined (only one!)
+                        if *lhs_is_manually_defined && rhs_is_manually_defined {
+                            return false;
+                        } else if rhs_is_manually_defined {
+                            *lhs_sampler = rhs_sampler;
+                        }
+
                         (lhs, rhs)
                     } else {
                         return false;
