@@ -2803,7 +2803,6 @@ impl Resolver {
             descriptors: Vec<vk::WriteDescriptorSet>,
             image_infos: Vec<vk::DescriptorImageInfo>,
             image_writes: Vec<IndexWrite>,
-            sampler_writes: Vec<IndexWrite>,
         }
 
         TLS.with_borrow_mut(|tls| {
@@ -2815,7 +2814,6 @@ impl Resolver {
             tls.descriptors.clear();
             tls.image_infos.clear();
             tls.image_writes.clear();
-            tls.sampler_writes.clear();
 
             for (exec_idx, exec, pipeline) in pass
                 .execs
@@ -2942,21 +2940,19 @@ impl Resolver {
                     }
                 }
 
-                if pipeline.is_graphic() {
-                    let pipeline = pipeline.unwrap_graphic();
-
+                if let ExecutionPipeline::Graphic(pipeline) = pipeline {
                     for descriptor_binding @ DescriptorBinding(descriptor_set_idx, dst_binding) in pipeline.separate_samplers.iter().copied() {
-                            tls.sampler_writes.push(IndexWrite {
-                                idx: tls.image_infos.len(),
-                                write: vk::WriteDescriptorSet {
-                                        dst_set: *descriptor_sets[descriptor_set_idx as usize],
-                                        dst_binding,
-                                        descriptor_type: vk::DescriptorType::SAMPLER,
-                                        descriptor_count: 1,
-                                        ..Default::default()
-                                    },
-                                }
-                            );
+                        tls.image_writes.push(IndexWrite {
+                            idx: tls.image_infos.len(),
+                            write: vk::WriteDescriptorSet {
+                                    dst_set: *descriptor_sets[descriptor_set_idx as usize],
+                                    dst_binding,
+                                    descriptor_type: vk::DescriptorType::SAMPLER,
+                                    descriptor_count: 1,
+                                    ..Default::default()
+                                },
+                            }
+                        );
                         tls.image_infos.push(vk::DescriptorImageInfo {
                             image_layout: Default::default(),
                             image_view: Default::default(),
