@@ -1,6 +1,7 @@
 mod profile_with_puffin;
 
 use {
+    clap::Parser,
     hassle_rs::compile_hlsl,
     inline_spirv::inline_spirv,
     screen_13::prelude::*,
@@ -10,15 +11,18 @@ use {
     },
 };
 
-const USE_HLSL_FRAG_SHADER: bool = false;
-const USE_SEPARATE_SAMPLER: bool = false;
-
 /// Displays a sequence of image samplers.
 ///
 /// Note that manually specifying image samplers is completely optional, valid defaults will be used
 /// if they are not specified when creating the shader which uses them. Additionally, you could
 /// instead use use name suffixes such as _llr or _nne for linear/linear repeat or nearest/nearest
 /// clamp-to-edge.
+///
+/// You may run this example program with either --hlsl or --separate arguments as follows:
+///
+/// cargo run --example image_sampler -- --hlsl --separate
+///
+/// Run with --help for more information.
 ///
 /// See min_max.rs for more advanced image sampler usage.
 fn main() -> anyhow::Result<()> {
@@ -78,11 +82,14 @@ fn create_pipeline(
     device: &Arc<Device>,
     sampler_info: impl Into<SamplerInfo>,
 ) -> anyhow::Result<Arc<GraphicPipeline>> {
-    let mut frag_shader = if USE_HLSL_FRAG_SHADER && USE_SEPARATE_SAMPLER {
-        // HLSL separate image sampler
-        Shader::new_fragment(
-            inline_spirv!(
-                r#"
+    let args = Args::parse();
+
+    let mut frag_shader = match (args.hlsl, args.separate) {
+        (true, true) => {
+            // HLSL separate image sampler
+            Shader::new_fragment(
+                inline_spirv!(
+                    r#"
                 struct FullscreenVertexOutput
                 {
                     float4 position : SV_Position;
@@ -98,19 +105,20 @@ fn create_pipeline(
                     return screenTexture.Sample(textureSampler, input.uv);
                 }
                 "#,
-                frag,
-                hlsl
+                    frag,
+                    hlsl
+                )
+                .as_slice(),
             )
-            .as_slice(),
-        )
-    } else if USE_HLSL_FRAG_SHADER {
-        // HLSL combined image sampler: inline_spirv uses shaderc which does not support this, so
-        // we are using hassle_rs which uses dxc. You must follow the instructions listed here to
-        // use hassle_rs:
-        // See: https://github.com/Traverse-Research/hassle-rs
-        // See: https://github.com/microsoft/DirectXShaderCompiler/wiki/Vulkan-combined-image-sampler-type
-        // See: https://github.com/google/shaderc/issues/1310
-        Shader::new_fragment(
+        }
+        (true, false) => {
+            // HLSL combined image sampler: inline_spirv uses shaderc which does not support this, so
+            // we are using hassle_rs which uses dxc. You must follow the instructions listed here to
+            // use hassle_rs:
+            // See: https://github.com/Traverse-Research/hassle-rs
+            // See: https://github.com/microsoft/DirectXShaderCompiler/wiki/Vulkan-combined-image-sampler-type
+            // See: https://github.com/google/shaderc/issues/1310
+            Shader::new_fragment(
             compile_hlsl(
                 "fragment.hlsl",
                 r#"
@@ -133,11 +141,12 @@ fn create_pipeline(
             )?
             .as_slice(),
         )
-    } else if USE_SEPARATE_SAMPLER {
-        // GLSL separate image sampler
-        Shader::new_fragment(
-            inline_spirv!(
-                r#"
+        }
+        (false, true) => {
+            // GLSL separate image sampler
+            Shader::new_fragment(
+                inline_spirv!(
+                    r#"
                 #version 460 core
 
                 layout(binding = 0) uniform texture2D image;
@@ -149,15 +158,16 @@ fn create_pipeline(
                     vk_Color = texture(sampler2D(image, image_sampler), vk_TexCoord);
                 }
                 "#,
-                frag
+                    frag
+                )
+                .as_slice(),
             )
-            .as_slice(),
-        )
-    } else {
-        // GLSL combined image sampler
-        Shader::new_fragment(
-            inline_spirv!(
-                r#"
+        }
+        (false, false) => {
+            // GLSL combined image sampler
+            Shader::new_fragment(
+                inline_spirv!(
+                    r#"
                 #version 460 core
 
                     layout(binding = 0) uniform sampler2D image;
@@ -168,15 +178,16 @@ fn create_pipeline(
                         vk_Color = texture(image, vk_TexCoord);
                     }
                 "#,
-                frag
+                    frag
+                )
+                .as_slice(),
             )
-            .as_slice(),
-        )
+        }
     };
 
     // Use the builder pattern to specify an image sampler at the combined binding index (0) or
     // separate binding index (1).
-    let sampler_binding = USE_SEPARATE_SAMPLER as u32;
+    let sampler_binding = args.separate as u32;
     frag_shader = frag_shader.image_sampler(sampler_binding, sampler_info);
 
     Ok(Arc::new(GraphicPipeline::create(
@@ -240,4 +251,16 @@ fn read_image(device: &Arc<Device>, path: impl AsRef<Path>) -> anyhow::Result<Ar
     }
 
     Ok(image)
+}
+
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    /// Use HLSL fragment shaders instead of the default (GLSL).
+    #[arg(long)]
+    hlsl: bool,
+
+    /// Use separate image sampler objects instead of the default (combined image sampler objects).
+    #[arg(long)]
+    separate: bool,
 }
