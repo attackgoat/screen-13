@@ -22,6 +22,9 @@ cargo run --example cpu_readback
 cargo run --example subgroup_ops
 cargo run --example bindless
 cargo run --example image_sampler
+cargo run --example image_sampler -- --hlsl
+cargo run --example image_sampler -- --separate
+cargo run --example image_sampler -- --hlsl --separate
 cargo run --example vertex_layout
 cargo run --example font_bmp
 cargo run --example egui
