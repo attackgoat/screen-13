@@ -20,7 +20,7 @@ fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
     profile_with_puffin::init();
 
-    let event_loop = EventLoop::new().debug(true).build()?;
+    let event_loop = EventLoop::new().build()?;
     let mut pool = LazyPool::new(&event_loop.device);
 
     let depth_fmt = best_2d_optimal_format(
