@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.11.3] - 2024-05-29
 
 ### Added
 
@@ -14,6 +14,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - Updated `egui` to v0.26
+- Updated `gpu-allocator` to v0.26
+- Updated `spirq` to v1.2
+  * If you see errors such as `expected spirq_core::ty::Type, found spirq::prelude::Type` you will
+    need to run `cargo update` or remove your `Cargo.lock` file
 
 ### Removed
 
@@ -562,3 +566,4 @@ _See [#25](https://github.com/attackgoat/screen-13/pull/25) for migration detail
 [0.11.0]: https://crates.io/crates/screen-13/0.11.0
 [0.11.1]: https://crates.io/crates/screen-13/0.11.1
 [0.11.2]: https://crates.io/crates/screen-13/0.11.2
+[0.11.3]: https://crates.io/crates/screen-13/0.11.3
