@@ -396,7 +396,7 @@ pub mod prelude {
         winit::{
             self,
             dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize},
-            event::{Event, WindowEvent},
+            event::{Event, MouseButton, WindowEvent},
             keyboard::KeyCode,
             monitor::{MonitorHandle, VideoMode},
             window::{

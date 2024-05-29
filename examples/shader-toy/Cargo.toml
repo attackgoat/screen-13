@@ -14,15 +14,15 @@ include-pak = []
 [dependencies]
 anyhow = "1.0"
 bytemuck = "1.14"
-pak = "0.4"
+pak = "0.5"
 pretty_env_logger = "0.5"
 screen-13 = { path = "../.." }
 screen-13-fx = { path = "../../contrib/screen-13-fx" }
-winit_input_helper = "0.15"
+winit_input_helper = "0.16"
 
 [build-dependencies]
 anyhow = "1.0"
-pak = { version = "0.4", features = ["bake"] }
+pak = { version = "0.5", features = ["bake"] }
 paste = "1.0"
 shader-prepper = "0.3.0-pre.3"  
 shaderc = "0.8"

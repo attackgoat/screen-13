@@ -42,10 +42,10 @@ anyhow = "1.0"
 bmfont = { version = "0.3", default-features = false }
 bytemuck = "1.14"
 clap = { version = "4.5", features = ["derive"] }
-glam = { version = "0.25", features = ["bytemuck"] }
+glam = { version = "0.27", features = ["bytemuck"] }
 half = { version = "2.3", features = ["bytemuck"] }
 hassle-rs = "0.11"
-image = "0.24"
+image = "0.25"
 inline-spirv = "0.2"
 log = "0.4"
 meshopt = "0.2"
@@ -54,9 +54,9 @@ pretty_env_logger = "0.5"
 puffin = "0.19"
 puffin_http = "0.16"
 rand = "0.8"
-reqwest = { version = "0.11", features = ["blocking"] }
+reqwest = { version = "0.12", features = ["blocking"] }
 screen-13-fx = { path = "contrib/screen-13-fx" }
 screen-13-imgui = { path = "contrib/screen-13-imgui" }
 screen-13-egui = { path = "contrib/screen-13-egui" }
 tobj = "4.0"
-winit_input_helper = "0.15"
+winit_input_helper = "0.16"

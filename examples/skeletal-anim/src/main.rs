@@ -262,8 +262,10 @@ impl Animation {
                     })
                     .map(|(inputs, rotations)| {
                         let (a, b, ab) = self.pick_weighted_keyframes(inputs);
+                        let a = Quat::from_array(rotations[a]);
+                        let b = Quat::from_array(rotations[b]);
 
-                        Quat::slerp(rotations[a], rotations[b], ab)
+                        Quat::slerp(a, b, ab)
                     })
                     .unwrap_or(Quat::IDENTITY);
                 let scale = self
@@ -279,8 +281,10 @@ impl Animation {
                     })
                     .map(|(inputs, scales)| {
                         let (a, b, ab) = self.pick_weighted_keyframes(inputs);
+                        let a = Vec3::from_array(scales[a]);
+                        let b = Vec3::from_array(scales[b]);
 
-                        Vec3::lerp(scales[a], scales[b], ab)
+                        Vec3::lerp(a, b, ab)
                     })
                     .unwrap_or(Vec3::ONE);
                 let translation = self
@@ -296,8 +300,10 @@ impl Animation {
                     })
                     .map(|(inputs, translations)| {
                         let (a, b, ab) = self.pick_weighted_keyframes(inputs);
+                        let a = Vec3::from_array(translations[a]);
+                        let b = Vec3::from_array(translations[b]);
 
-                        Vec3::lerp(translations[a], translations[b], ab)
+                        Vec3::lerp(a, b, ab)
                     })
                     .unwrap_or(Vec3::ZERO);
 
@@ -312,7 +318,8 @@ impl Animation {
             // };
 
             self.local_joints[idx] = parent_transform * animation_transform;
-            self.frame_joints[idx] = self.local_joints[idx] * joint.inverse_bind;
+            self.frame_joints[idx] =
+                self.local_joints[idx] * Mat4::from_cols_array(&joint.inverse_bind);
         }
 
         &self.frame_joints

@@ -241,7 +241,7 @@ fn main() -> anyhow::Result<()> {
 
             // Each pipeline gets the same constant data
             let (cursor_x, cursor_y) = input
-                .mouse_held(0)
+                .mouse_held(MouseButton::Left)
                 .then(|| input.cursor())
                 .flatten()
                 .unwrap_or_default();
@@ -252,8 +252,8 @@ fn main() -> anyhow::Result<()> {
                 mouse: [
                     cursor_x,
                     cursor_y,
-                    input.mouse_held(0) as usize as f32,
-                    input.mouse_held(0) as usize as f32,
+                    input.mouse_held(MouseButton::Left) as usize as f32,
+                    input.mouse_held(MouseButton::Left) as usize as f32,
                 ],
                 time: elapsed.as_secs_f32(),
                 time_delta: frame.dt,
