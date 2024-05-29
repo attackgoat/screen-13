@@ -1,6 +1,8 @@
 mod profile_with_puffin;
 
 use {
+    clap::Parser,
+    hassle_rs::compile_hlsl,
     inline_spirv::inline_spirv,
     screen_13::prelude::*,
     std::{
@@ -15,6 +17,12 @@ use {
 /// if they are not specified when creating the shader which uses them. Additionally, you could
 /// instead use use name suffixes such as _llr or _nne for linear/linear repeat or nearest/nearest
 /// clamp-to-edge.
+///
+/// You may run this example program with either --hlsl or --separate arguments as follows:
+///
+/// cargo run --example image_sampler -- --hlsl --separate
+///
+/// Run with --help for more information.
 ///
 /// See min_max.rs for more advanced image sampler usage.
 fn main() -> anyhow::Result<()> {
@@ -74,6 +82,114 @@ fn create_pipeline(
     device: &Arc<Device>,
     sampler_info: impl Into<SamplerInfo>,
 ) -> anyhow::Result<Arc<GraphicPipeline>> {
+    let args = Args::parse();
+
+    let mut frag_shader = match (args.hlsl, args.separate) {
+        (true, true) => {
+            // HLSL separate image sampler
+            Shader::new_fragment(
+                inline_spirv!(
+                    r#"
+                struct FullscreenVertexOutput
+                {
+                    float4 position : SV_Position;
+                    [[vk::location(0)]] float2 uv : TEXCOORD0;
+                };
+
+                [[vk::binding(0, 0)]] Texture2D screenTexture : register(t0);
+                [[vk::binding(1, 0)]] SamplerState textureSampler : register(s0);
+
+                float4 main(FullscreenVertexOutput input)
+                    : SV_Target
+                {
+                    return screenTexture.Sample(textureSampler, input.uv);
+                }
+                "#,
+                    frag,
+                    hlsl
+                )
+                .as_slice(),
+            )
+        }
+        (true, false) => {
+            // HLSL combined image sampler: inline_spirv uses shaderc which does not support this, so
+            // we are using hassle_rs which uses dxc. You must follow the instructions listed here to
+            // use hassle_rs:
+            // See: https://github.com/Traverse-Research/hassle-rs
+            // See: https://github.com/microsoft/DirectXShaderCompiler/wiki/Vulkan-combined-image-sampler-type
+            // See: https://github.com/google/shaderc/issues/1310
+            Shader::new_fragment(
+            compile_hlsl(
+                "fragment.hlsl",
+                r#"
+                struct FullscreenVertexOutput
+                {
+                    float4 position : SV_Position;
+                    [[vk::location(0)]] float2 uv : TEXCOORD0;
+                };
+
+                [[vk::combinedImageSampler]][[vk::binding(0, 0)]]  Texture2D<float4> screenTexture : register(t0);
+                [[vk::combinedImageSampler]][[vk::binding(0, 0)]]  SamplerState textureSampler : register(s0);
+
+                float4 main(FullscreenVertexOutput input)
+                    : SV_Target
+                {
+                    return screenTexture.Sample(textureSampler, input.uv);
+                }
+                "#,
+                "main", "ps_5_0", &["-spirv"], &[],
+            )?
+            .as_slice(),
+        )
+        }
+        (false, true) => {
+            // GLSL separate image sampler
+            Shader::new_fragment(
+                inline_spirv!(
+                    r#"
+                #version 460 core
+
+                layout(binding = 0) uniform texture2D image;
+                layout(binding = 1) uniform sampler image_sampler;
+                layout(location = 0) in vec2 vk_TexCoord;
+                layout(location = 0) out vec4 vk_Color;
+
+                void main() {
+                    vk_Color = texture(sampler2D(image, image_sampler), vk_TexCoord);
+                }
+                "#,
+                    frag
+                )
+                .as_slice(),
+            )
+        }
+        (false, false) => {
+            // GLSL combined image sampler
+            Shader::new_fragment(
+                inline_spirv!(
+                    r#"
+                #version 460 core
+
+                    layout(binding = 0) uniform sampler2D image;
+                    layout(location = 0) in vec2 vk_TexCoord;
+                    layout(location = 0) out vec4 vk_Color;
+
+                    void main() {
+                        vk_Color = texture(image, vk_TexCoord);
+                    }
+                "#,
+                    frag
+                )
+                .as_slice(),
+            )
+        }
+    };
+
+    // Use the builder pattern to specify an image sampler at the combined binding index (0) or
+    // separate binding index (1).
+    let sampler_binding = args.separate as u32;
+    frag_shader = frag_shader.image_sampler(sampler_binding, sampler_info);
+
     Ok(Arc::new(GraphicPipeline::create(
         device,
         GraphicPipelineInfo::default(),
@@ -100,24 +216,7 @@ fn create_pipeline(
                 )
                 .as_slice(),
             ),
-            Shader::new_fragment(
-                inline_spirv!(
-                    r#"
-                    #version 460 core
-
-                    layout(binding = 0) uniform sampler2D image;
-                    layout(location = 0) in vec2 vk_TexCoord;
-                    layout(location = 0) out vec4 vk_Color;
-
-                    void main() {
-                        vk_Color = texture(image, vk_TexCoord);
-                    }
-                    "#,
-                    frag
-                )
-                .as_slice(),
-            )
-            .image_sampler(0, sampler_info),
+            frag_shader,
         ],
     )?))
 }
@@ -152,4 +251,16 @@ fn read_image(device: &Arc<Device>, path: impl AsRef<Path>) -> anyhow::Result<Ar
     }
 
     Ok(image)
+}
+
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    /// Use HLSL fragment shaders instead of the default (GLSL).
+    #[arg(long)]
+    hlsl: bool,
+
+    /// Use separate image sampler objects instead of the default (combined image sampler objects).
+    #[arg(long)]
+    separate: bool,
 }

@@ -59,6 +59,14 @@ impl DescriptorPool {
             pool_size_count += 1;
         }
 
+        if info.sampler_count > 0 {
+            pool_sizes[pool_size_count] = vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::SAMPLER,
+                descriptor_count: info.sampler_count,
+            };
+            pool_size_count += 1;
+        }
+
         if info.storage_buffer_count > 0 {
             pool_sizes[pool_size_count] = vk::DescriptorPoolSize {
                 ty: vk::DescriptorType::STORAGE_BUFFER,
@@ -214,6 +222,7 @@ pub struct DescriptorPoolInfo {
     pub input_attachment_count: u32,
     pub max_sets: u32,
     pub sampled_image_count: u32,
+    pub sampler_count: u32,
     pub storage_buffer_count: u32,
     pub storage_buffer_dynamic_count: u32,
     pub storage_image_count: u32,
@@ -229,6 +238,7 @@ impl DescriptorPoolInfo {
             + self.combined_image_sampler_count
             + self.input_attachment_count
             + self.sampled_image_count
+            + self.sampler_count
             + self.storage_buffer_count
             + self.storage_buffer_dynamic_count
             + self.storage_image_count

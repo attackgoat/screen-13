@@ -7,6 +7,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Support for separate image samplers (`SamplerState` in HLSL, `sampler` in GLSL)
+
 ### Changed
 
 - Updated `egui` to v0.26
