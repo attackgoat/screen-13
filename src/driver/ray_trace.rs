@@ -5,7 +5,7 @@ use {
         device::Device,
         merge_push_constant_ranges,
         physical_device::RayTraceProperties,
-        shader::{DescriptorBindingMap, PipelineDescriptorInfo, Shader},
+        shader::{align_spriv, DescriptorBindingMap, PipelineDescriptorInfo, Shader},
         DriverError,
     },
     ash::vk,
@@ -132,8 +132,7 @@ impl RayTracePipeline {
         let mut descriptor_bindings = Shader::merge_descriptor_bindings(
             shaders
                 .iter()
-                .map(|shader| shader.descriptor_bindings(device))
-                .collect::<Result<Vec<_>, _>>()?,
+                .map(|shader| shader.descriptor_bindings())
         );
         for (descriptor_info, _) in descriptor_bindings.values_mut() {
             if descriptor_info.binding_count() == 0 {
@@ -151,7 +150,7 @@ impl RayTracePipeline {
         unsafe {
             let layout = device
                 .create_pipeline_layout(
-                    &vk::PipelineLayoutCreateInfo::builder()
+                    &vk::PipelineLayoutCreateInfo::default()
                         .set_layouts(&descriptor_set_layout_handles)
                         .push_constant_ranges(&push_constants),
                     None,
@@ -161,59 +160,58 @@ impl RayTracePipeline {
 
                     DriverError::Unsupported
                 })?;
-            let mut entry_points: Vec<CString> = Vec::with_capacity(shaders.len()); // Keep entry point names alive, since build() forgets references.
+            let entry_points: Box<[CString]> = shaders
+                .iter()
+                .map(|shader| CString::new(shader.entry_name.as_str()))
+                .collect::<Result<_, _>>()
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::InvalidData
+                })?;
+            let specialization_infos: Box<[Option<vk::SpecializationInfo>]> = shaders
+                .iter()
+                .map(|shader| {
+                    shader.specialization_info.as_ref().map(|info| {
+                        vk::SpecializationInfo::default()
+                            .data(&info.data)
+                            .map_entries(&info.map_entries)
+                    })
+                })
+                .collect();
             let mut shader_stages: Vec<vk::PipelineShaderStageCreateInfo> =
                 Vec::with_capacity(shaders.len());
-            let create_shader_module =
-                |info: &Shader| -> Result<(vk::ShaderModule, String), DriverError> {
-                    let shader_module_create_info = vk::ShaderModuleCreateInfo {
-                        code_size: info.spirv.len(),
-                        p_code: info.spirv.as_ptr() as *const u32,
-                        ..Default::default()
-                    };
-                    let shader_module = device
-                        .create_shader_module(&shader_module_create_info, None)
-                        .map_err(|err| {
-                            warn!("{err}");
-
-                            DriverError::Unsupported
-                        })?;
-
-                    Ok((shader_module, info.entry_name.clone()))
-                };
-
-            let mut specializations = Vec::with_capacity(shaders.len());
             let mut shader_modules = Vec::with_capacity(shaders.len());
-            for shader in &shaders {
-                let res = create_shader_module(shader);
-                if res.is_err() {
-                    device.destroy_pipeline_layout(layout, None);
+            for (idx, shader) in shaders.iter().enumerate() {
+                let module = device
+                    .create_shader_module(
+                        &vk::ShaderModuleCreateInfo::default().code(align_spriv(&shader.spirv)?),
+                        None,
+                    )
+                    .map_err(|err| {
+                        warn!("{err}");
 
-                    for shader_module in &shader_modules {
-                        device.destroy_shader_module(*shader_module, None);
-                    }
-                }
+                        device.destroy_pipeline_layout(layout, None);
 
-                let (module, entry_point) = res?;
-                entry_points.push(CString::new(entry_point).unwrap());
+                        for module in shader_modules.drain(..) {
+                            device.destroy_shader_module(module, None);
+                        }
+
+                        DriverError::Unsupported
+                    })?;
+
                 shader_modules.push(module);
 
-                let mut stage = vk::PipelineShaderStageCreateInfo::builder()
+                let mut stage = vk::PipelineShaderStageCreateInfo::default()
                     .module(module)
-                    .name(entry_points.last().unwrap().as_ref())
+                    .name(entry_points[idx].as_ref())
                     .stage(shader.stage);
 
-                if let Some(spec_info) = &shader.specialization_info {
-                    specializations.push(
-                        vk::SpecializationInfo::builder()
-                            .data(&spec_info.data)
-                            .map_entries(&spec_info.map_entries)
-                            .build(),
-                    );
-                    stage = stage.specialization_info(specializations.last().unwrap());
+                if let Some(specialization_info) = &specialization_infos[idx] {
+                    stage = stage.specialization_info(specialization_info);
                 }
 
-                shader_stages.push(stage.build());
+                shader_stages.push(stage);
             }
 
             let mut dynamic_states = Vec::with_capacity(1);
@@ -230,7 +228,7 @@ impl RayTracePipeline {
                 .create_ray_tracing_pipelines(
                     vk::DeferredOperationKHR::null(),
                     vk::PipelineCache::null(),
-                    &[vk::RayTracingPipelineCreateInfoKHR::builder()
+                    &[vk::RayTracingPipelineCreateInfoKHR::default()
                         .stages(&shader_stages)
                         .groups(&shader_groups)
                         .max_pipeline_ray_recursion_depth(
@@ -245,19 +243,22 @@ impl RayTracePipeline {
                         )
                         .layout(layout)
                         .dynamic_state(
-                            &vk::PipelineDynamicStateCreateInfo::builder()
+                            &vk::PipelineDynamicStateCreateInfo::default()
                                 .dynamic_states(&dynamic_states),
-                        )
-                        .build()],
+                        )],
                     None,
                 )
-                .map_err(|err| {
+                .map_err(|(pipelines, err)| {
                     warn!("{err}");
+
+                    for pipeline in pipelines {
+                        device.destroy_pipeline(pipeline, None);
+                    }
 
                     device.destroy_pipeline_layout(layout, None);
 
-                    for shader_module in &shader_modules {
-                        device.destroy_shader_module(*shader_module, None);
+                    for shader_module in shader_modules.iter().copied() {
+                        device.destroy_shader_module(shader_module, None);
                     }
 
                     DriverError::Unsupported
@@ -596,9 +597,9 @@ impl RayTraceShaderGroup {
     }
 }
 
-impl From<RayTraceShaderGroup> for vk::RayTracingShaderGroupCreateInfoKHR {
+impl From<RayTraceShaderGroup> for vk::RayTracingShaderGroupCreateInfoKHR<'static> {
     fn from(shader_group: RayTraceShaderGroup) -> Self {
-        vk::RayTracingShaderGroupCreateInfoKHR::builder()
+        vk::RayTracingShaderGroupCreateInfoKHR::default()
             .ty(shader_group.ty.into())
             .any_hit_shader(shader_group.any_hit_shader.unwrap_or(vk::SHADER_UNUSED_KHR))
             .closest_hit_shader(
@@ -612,7 +613,6 @@ impl From<RayTraceShaderGroup> for vk::RayTracingShaderGroupCreateInfoKHR {
                     .intersection_shader
                     .unwrap_or(vk::SHADER_UNUSED_KHR),
             )
-            .build()
     }
 }
 

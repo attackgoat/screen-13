@@ -16,7 +16,6 @@ use {
         fmt::{Debug, Formatter},
         mem::take,
         ops::Deref,
-        ptr::null,
         sync::{
             atomic::{AtomicU8, Ordering},
             Arc,
@@ -544,7 +543,7 @@ impl ImageInfo {
         self.into()
     }
 
-    fn image_create_info<'a>(self) -> vk::ImageCreateInfoBuilder<'a> {
+    fn image_create_info<'a>(self) -> vk::ImageCreateInfo<'a> {
         let (ty, extent, array_layers) = match self.ty {
             ImageType::Texture1D => (
                 vk::ImageType::TYPE_1D,
@@ -615,14 +614,14 @@ impl ImageInfo {
             ),
         };
 
-        vk::ImageCreateInfo::builder()
+        vk::ImageCreateInfo::default()
             .flags(self.flags)
             .image_type(ty)
             .format(self.fmt)
             .extent(extent)
             .mip_levels(self.mip_level_count)
             .array_layers(array_layers)
-            .samples(self.sample_count.into_vk())
+            .samples(self.sample_count.into())
             .tiling(self.tiling)
             .usage(self.usage)
             .sharing_mode(vk::SharingMode::CONCURRENT)
@@ -792,27 +791,22 @@ impl ImageView {
     ) -> Result<Self, DriverError> {
         let info = info.into();
         let device = Arc::clone(device);
-        let create_info = vk::ImageViewCreateInfo {
-            s_type: vk::StructureType::IMAGE_VIEW_CREATE_INFO,
-            p_next: null(),
-            flags: vk::ImageViewCreateFlags::empty(),
-            view_type: info.ty.into_vk(),
-            format: info.fmt,
-            components: vk::ComponentMapping {
+        let create_info = vk::ImageViewCreateInfo::default().view_type(info.ty.into_vk()).
+            format(info.fmt).
+            components(vk::ComponentMapping {
                 r: vk::ComponentSwizzle::R,
                 g: vk::ComponentSwizzle::G,
                 b: vk::ComponentSwizzle::B,
                 a: vk::ComponentSwizzle::A,
-            },
-            image,
-            subresource_range: vk::ImageSubresourceRange {
+            }).
+            image(image).
+            subresource_range(vk::ImageSubresourceRange {
                 aspect_mask: info.aspect_mask,
                 base_array_layer: info.base_array_layer,
                 base_mip_level: info.base_mip_level,
                 level_count: info.mip_level_count.unwrap_or(vk::REMAINING_MIP_LEVELS),
                 layer_count: info.array_layer_count.unwrap_or(vk::REMAINING_ARRAY_LAYERS),
-            },
-        };
+            });
 
         let image_view =
             unsafe { device.create_image_view(&create_info, None) }.map_err(|err| {
@@ -997,47 +991,18 @@ pub enum SampleCount {
 
     /// Multiple image samples.
     Type64,
-
-    /// Single image sample. This is the usual mode.
-    #[deprecated = "Use Type1"]
-    X1,
-
-    /// Multiple image samples.
-    #[deprecated = "Use Type2"]
-    X2,
-
-    /// Multiple image samples.
-    #[deprecated = "Use Type4"]
-    X4,
-
-    /// Multiple image samples.
-    #[deprecated = "Use Type8"]
-    X8,
-
-    /// Multiple image samples.
-    #[deprecated = "Use Type16"]
-    X16,
-
-    /// Multiple image samples.
-    #[deprecated = "Use Type32"]
-    X32,
-
-    /// Multiple image samples.
-    #[deprecated = "Use Type64"]
-    X64,
 }
 
-impl SampleCount {
-    pub(super) fn into_vk(self) -> vk::SampleCountFlags {
-        #[allow(deprecated)]
-        match self {
-            Self::Type1 | Self::X1 => vk::SampleCountFlags::TYPE_1,
-            Self::Type2 | Self::X2 => vk::SampleCountFlags::TYPE_2,
-            Self::Type4 | Self::X4 => vk::SampleCountFlags::TYPE_4,
-            Self::Type8 | Self::X8 => vk::SampleCountFlags::TYPE_8,
-            Self::Type16 | Self::X16 => vk::SampleCountFlags::TYPE_16,
-            Self::Type32 | Self::X32 => vk::SampleCountFlags::TYPE_32,
-            Self::Type64 | Self::X64 => vk::SampleCountFlags::TYPE_64,
+impl From<SampleCount> for vk::SampleCountFlags {
+    fn from(sample_count: SampleCount) -> Self {
+        match sample_count {
+            SampleCount::Type1  => Self::TYPE_1,
+            SampleCount::Type2  => Self::TYPE_2,
+            SampleCount::Type4  => Self::TYPE_4,
+            SampleCount::Type8  => Self::TYPE_8,
+            SampleCount::Type16 => Self::TYPE_16,
+            SampleCount::Type32 => Self::TYPE_32,
+            SampleCount::Type64 => Self::TYPE_64,
         }
     }
 }

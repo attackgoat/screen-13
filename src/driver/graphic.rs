@@ -6,7 +6,7 @@ use {
         image::SampleCount,
         merge_push_constant_ranges,
         shader::{
-            DescriptorBindingMap, DescriptorInfo, PipelineDescriptorInfo, Shader,
+            align_spriv, DescriptorBindingMap, DescriptorInfo, PipelineDescriptorInfo, Shader,
             SpecializationInfo,
         },
         DescriptorBinding, DriverError,
@@ -275,7 +275,7 @@ impl DepthStencilMode {
         DepthStencilModeBuilder::default()
     }
 
-    pub(super) fn into_vk(self) -> vk::PipelineDepthStencilStateCreateInfo {
+    pub(super) fn into_vk(self) -> vk::PipelineDepthStencilStateCreateInfo<'static> {
         vk::PipelineDepthStencilStateCreateInfo {
             back: self.back.into_vk(),
             depth_bounds_test_enable: self.bounds_test as _,
@@ -454,8 +454,8 @@ impl GraphicPipeline {
         let mut descriptor_bindings = Shader::merge_descriptor_bindings(
             shaders
                 .iter()
-                .map(|shader| shader.descriptor_bindings(&device))
-                .collect::<Result<Vec<_>, _>>()?,
+                .map(|shader| shader.descriptor_bindings())
+                
         );
         for (descriptor_info, _) in descriptor_bindings.values_mut() {
             if descriptor_info.binding_count() == 0 {
@@ -511,7 +511,7 @@ impl GraphicPipeline {
         unsafe {
             let layout = device
                 .create_pipeline_layout(
-                    &vk::PipelineLayoutCreateInfo::builder()
+                    &vk::PipelineLayoutCreateInfo::default()
                         .set_layouts(&descriptor_sets_layouts)
                         .push_constant_ranges(&push_constants),
                     None,
@@ -524,13 +524,12 @@ impl GraphicPipeline {
             let shader_info = shaders
                 .into_iter()
                 .map(|shader| {
-                    let shader_module_create_info = vk::ShaderModuleCreateInfo {
-                        code_size: shader.spirv.len(),
-                        p_code: shader.spirv.as_ptr() as *const u32,
-                        ..Default::default()
-                    };
                     let shader_module = device
-                        .create_shader_module(&shader_module_create_info, None)
+                        .create_shader_module(
+                            &vk::ShaderModuleCreateInfo::default()
+                                .code(align_spriv(&shader.spirv)?),
+                            None,
+                        )
                         .map_err(|err| {
                             warn!("{err}");
 

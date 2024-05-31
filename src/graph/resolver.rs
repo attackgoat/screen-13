@@ -613,7 +613,7 @@ impl Resolver {
             unsafe {
                 cmd_buf.device.cmd_begin_render_pass(
                     **cmd_buf,
-                    &vk::RenderPassBeginInfo::builder()
+                    &vk::RenderPassBeginInfo::default()
                         .render_pass(***render_pass)
                         .framebuffer(framebuffer)
                         .render_area(vk::Rect2D {
@@ -628,7 +628,7 @@ impl Resolver {
                         })
                         .clear_values(clear_values)
                         .push_next(
-                            &mut vk::RenderPassAttachmentBeginInfoKHR::builder()
+                            &mut vk::RenderPassAttachmentBeginInfoKHR::default()
                                 .attachments(image_views),
                         ),
                     vk::SubpassContents::INLINE,
@@ -2733,7 +2733,7 @@ impl Resolver {
                 .device
                 .begin_command_buffer(
                     **cmd_buf,
-                    &vk::CommandBufferBeginInfo::builder()
+                    &vk::CommandBufferBeginInfo::default()
                         .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
                 )
                 .map_err(|_| DriverError::OutOfMemory)?;
@@ -2754,7 +2754,7 @@ impl Resolver {
                 .device
                 .queue_submit(
                     cmd_buf.device.queues[queue_family_index][queue_index],
-                    from_ref(&vk::SubmitInfo::builder().command_buffers(from_ref(&cmd_buf))),
+                    from_ref(&vk::SubmitInfo::default().command_buffers(from_ref(&cmd_buf))),
                     cmd_buf.fence,
                 )
                 .map_err(|_| DriverError::OutOfMemory)?;
@@ -2785,277 +2785,276 @@ impl Resolver {
         pass: &Pass,
         physical_pass: &PhysicalPass,
     ) -> Result<(), DriverError> {
-        thread_local! {
-            static TLS: RefCell<Tls> = Default::default();
-        }
-
-        struct IndexWrite {
+        struct IndexWrite<'a> {
             idx: usize,
-            write: vk::WriteDescriptorSet,
+            write: vk::WriteDescriptorSet<'a>,
         }
 
         #[derive(Default)]
-        struct Tls {
-            accel_struct_infos: Vec<vk::WriteDescriptorSetAccelerationStructureKHR>,
-            accel_struct_writes: Vec<IndexWrite>,
+        struct Tls<'a> {
+            accel_struct_infos: Vec<vk::WriteDescriptorSetAccelerationStructureKHR<'a>>,
+            accel_struct_writes: Vec<IndexWrite<'a>>,
             buffer_infos: Vec<vk::DescriptorBufferInfo>,
-            buffer_writes: Vec<IndexWrite>,
-            descriptors: Vec<vk::WriteDescriptorSet>,
+            buffer_writes: Vec<IndexWrite<'a>>,
+            descriptors: Vec<vk::WriteDescriptorSet<'a>>,
             image_infos: Vec<vk::DescriptorImageInfo>,
-            image_writes: Vec<IndexWrite>,
+            image_writes: Vec<IndexWrite<'a>>,
         }
 
-        TLS.with_borrow_mut(|tls| {
-            // Initialize TLS from a previous call
-            tls.accel_struct_infos.clear();
-            tls.accel_struct_writes.clear();
-            tls.buffer_infos.clear();
-            tls.buffer_writes.clear();
-            tls.descriptors.clear();
-            tls.image_infos.clear();
-            tls.image_writes.clear();
+        let mut tls = Tls::default();
 
-            for (exec_idx, exec, pipeline) in pass
-                .execs
-                .iter()
-                .enumerate()
-                .filter_map(|(exec_idx, exec)| {
-                    exec.pipeline
-                        .as_ref()
-                        .map(|pipeline| (exec_idx, exec, pipeline))
-                })
-                .filter(|(.., pipeline)| !pipeline.descriptor_info().layouts.is_empty())
-            {
-                let descriptor_sets = &physical_pass.exec_descriptor_sets[&exec_idx];
+        for (exec_idx, exec, pipeline) in pass
+            .execs
+            .iter()
+            .enumerate()
+            .filter_map(|(exec_idx, exec)| {
+                exec.pipeline
+                    .as_ref()
+                    .map(|pipeline| (exec_idx, exec, pipeline))
+            })
+            .filter(|(.., pipeline)| !pipeline.descriptor_info().layouts.is_empty())
+        {
+            let descriptor_sets = &physical_pass.exec_descriptor_sets[&exec_idx];
 
-                // Write the manually bound things (access, read, and write functions)
-                for (descriptor, (node_idx, view_info)) in exec.bindings.iter() {
-                    let (descriptor_set_idx, dst_binding, binding_offset) = descriptor.into_tuple();
-                    let (descriptor_info, _) = pipeline
+            // Write the manually bound things (access, read, and write functions)
+            for (descriptor, (node_idx, view_info)) in exec.bindings.iter() {
+                let (descriptor_set_idx, dst_binding, binding_offset) = descriptor.into_tuple();
+                let (descriptor_info, _) = pipeline
                         .descriptor_bindings()
                         .get(&DescriptorBinding(descriptor_set_idx, dst_binding))
                         .unwrap_or_else(|| panic!("descriptor {descriptor_set_idx}.{dst_binding}[{binding_offset}] specified in recorded execution of pass \"{}\" was not discovered through shader reflection", &pass.name));
-                    let descriptor_type = descriptor_info.descriptor_type();
-                    let bound_node = &bindings[*node_idx];
-                    if let Some(image) = bound_node.as_driver_image() {
-                        let view_info = view_info.as_ref().unwrap();
-                        let mut image_view_info = *view_info.as_image().unwrap();
+                let descriptor_type = descriptor_info.descriptor_type();
+                let bound_node = &bindings[*node_idx];
+                if let Some(image) = bound_node.as_driver_image() {
+                    let view_info = view_info.as_ref().unwrap();
+                    let mut image_view_info = *view_info.as_image().unwrap();
 
-                        // Handle default views which did not specify a particaular aspect
-                        if image_view_info.aspect_mask.is_empty() {
-                            image_view_info.aspect_mask = format_aspect_mask(image.info.fmt);
-                        }
+                    // Handle default views which did not specify a particaular aspect
+                    if image_view_info.aspect_mask.is_empty() {
+                        image_view_info.aspect_mask = format_aspect_mask(image.info.fmt);
+                    }
 
-                        let sampler = descriptor_info.sampler().map(|sampler| **sampler).unwrap_or_default();
-                        let image_view = Image::view(image, image_view_info)?;
-                        let image_layout = match descriptor_type {
-                            vk::DescriptorType::COMBINED_IMAGE_SAMPLER | vk::DescriptorType::SAMPLED_IMAGE => {
-                                if image_view_info.aspect_mask.contains(
-                                    vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL,
-                                ) {
-                                    vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL
-                                } else if image_view_info
-                                    .aspect_mask
-                                    .contains(vk::ImageAspectFlags::DEPTH)
-                                {
-                                    vk::ImageLayout::DEPTH_READ_ONLY_OPTIMAL
-                                } else if image_view_info
-                                    .aspect_mask
-                                    .contains(vk::ImageAspectFlags::STENCIL)
-                                {
-                                    vk::ImageLayout::STENCIL_READ_ONLY_OPTIMAL
-                                } else {
-                                    vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
-                                }
+                    let image_view = Image::view(image, image_view_info)?;
+                    let image_layout = match descriptor_type {
+                        vk::DescriptorType::COMBINED_IMAGE_SAMPLER
+                        | vk::DescriptorType::SAMPLED_IMAGE => {
+                            if image_view_info.aspect_mask.contains(
+                                vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL,
+                            ) {
+                                vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL
+                            } else if image_view_info
+                                .aspect_mask
+                                .contains(vk::ImageAspectFlags::DEPTH)
+                            {
+                                vk::ImageLayout::DEPTH_READ_ONLY_OPTIMAL
+                            } else if image_view_info
+                                .aspect_mask
+                                .contains(vk::ImageAspectFlags::STENCIL)
+                            {
+                                vk::ImageLayout::STENCIL_READ_ONLY_OPTIMAL
+                            } else {
+                                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
                             }
-                            vk::DescriptorType::STORAGE_IMAGE => vk::ImageLayout::GENERAL,
-                            _ => unimplemented!("{descriptor_type:?}"),
-                        };
+                        }
+                        vk::DescriptorType::STORAGE_IMAGE => vk::ImageLayout::GENERAL,
+                        _ => unimplemented!("{descriptor_type:?}"),
+                    };
 
-                        if binding_offset == 0 {
+                    if binding_offset == 0 {
+                        tls.image_writes.push(IndexWrite {
+                            idx: tls.image_infos.len(),
+                            write: vk::WriteDescriptorSet {
+                                dst_set: *descriptor_sets[descriptor_set_idx as usize],
+                                dst_binding,
+                                descriptor_type,
+                                descriptor_count: 1,
+                                ..Default::default()
+                            },
+                        });
+                    } else {
+                        tls.image_writes.last_mut().unwrap().write.descriptor_count += 1;
+                    }
+
+                    tls.image_infos.push(
+                        vk::DescriptorImageInfo::default()
+                            .image_layout(image_layout)
+                            .image_view(image_view),
+                    );
+                } else if let Some(buffer) = bound_node.as_driver_buffer() {
+                    let view_info = view_info.as_ref().unwrap();
+                    let buffer_view_info = view_info.as_buffer().unwrap();
+
+                    if binding_offset == 0 {
+                        tls.buffer_writes.push(IndexWrite {
+                            idx: tls.buffer_infos.len(),
+                            write: vk::WriteDescriptorSet {
+                                dst_set: *descriptor_sets[descriptor_set_idx as usize],
+                                dst_binding,
+                                descriptor_type,
+                                descriptor_count: 1,
+                                ..Default::default()
+                            },
+                        });
+                    } else {
+                        tls.buffer_writes.last_mut().unwrap().write.descriptor_count += 1;
+                    }
+
+                    tls.buffer_infos.push(
+                        vk::DescriptorBufferInfo::default()
+                            .buffer(**buffer)
+                            .offset(buffer_view_info.start)
+                            .range(buffer_view_info.end - buffer_view_info.start),
+                    );
+                } else if let Some(accel_struct) = bound_node.as_driver_acceleration_structure() {
+                    if binding_offset == 0 {
+                        tls.accel_struct_writes.push(IndexWrite {
+                            idx: tls.accel_struct_infos.len(),
+                            write: vk::WriteDescriptorSet::default()
+                                .dst_set(*descriptor_sets[descriptor_set_idx as usize])
+                                .dst_binding(dst_binding)
+                                .descriptor_type(descriptor_type)
+                                .descriptor_count(1),
+                        });
+                    } else {
+                        tls.accel_struct_writes
+                            .last_mut()
+                            .unwrap()
+                            .write
+                            .descriptor_count += 1;
+                    }
+
+                    tls.accel_struct_infos.push(
+                        vk::WriteDescriptorSetAccelerationStructureKHR::default()
+                            .acceleration_structures(std::slice::from_ref(accel_struct)),
+                    );
+                } else {
+                    unimplemented!();
+                }
+            }
+
+            if let ExecutionPipeline::Graphic(pipeline) = pipeline {
+                for descriptor_binding @ DescriptorBinding(descriptor_set_idx, dst_binding) in
+                    pipeline.separate_samplers.iter().copied()
+                {
+                    tls.image_writes.push(IndexWrite {
+                        idx: tls.image_infos.len(),
+                        write: vk::WriteDescriptorSet::default()
+                            .dst_set(*descriptor_sets[descriptor_set_idx as usize])
+                            .dst_binding(dst_binding)
+                            .descriptor_type(vk::DescriptorType::SAMPLER)
+                            .descriptor_count(1),
+                    });
+                    tls.image_infos.push(vk::DescriptorImageInfo::default());
+                }
+
+                // Write graphic render pass input attachments (they're automatic)
+                if exec_idx > 0 {
+                    for (
+                        &DescriptorBinding(descriptor_set_idx, dst_binding),
+                        (descriptor_info, _),
+                    ) in &pipeline.descriptor_bindings
+                    {
+                        if let DescriptorInfo::InputAttachment(_, attachment_idx) = *descriptor_info
+                        {
+                            let is_random_access = exec.color_stores.contains_key(&attachment_idx)
+                                || exec.color_resolves.contains_key(&attachment_idx);
+                            let (attachment, write_exec) = pass.execs[0..exec_idx]
+                                .iter()
+                                .rev()
+                                .find_map(|exec| {
+                                    exec.color_stores
+                                        .get(&attachment_idx)
+                                        .copied()
+                                        .map(|attachment| (attachment, exec))
+                                        .or_else(|| {
+                                            exec.color_resolves.get(&attachment_idx).map(
+                                                |(resolved_attachment, _)| {
+                                                    (*resolved_attachment, exec)
+                                                },
+                                            )
+                                        })
+                                })
+                                .expect("input attachment not written");
+                            let [_, late] = &write_exec.accesses[&attachment.target];
+                            let image_subresource =
+                                late.subresource.as_ref().unwrap().unwrap_image();
+                            let image_binding = &bindings[attachment.target];
+                            let image = image_binding.as_driver_image().unwrap();
+                            let image_view_info = ImageViewInfo {
+                                array_layer_count: image_subresource.array_layer_count,
+                                aspect_mask: attachment.aspect_mask,
+                                base_array_layer: image_subresource.base_array_layer,
+                                base_mip_level: image_subresource.base_mip_level,
+                                fmt: attachment.format,
+                                mip_level_count: image_subresource.mip_level_count,
+                                ty: image.info.ty,
+                            };
+                            let image_view = Image::view(image, image_view_info)?;
+
                             tls.image_writes.push(IndexWrite {
                                 idx: tls.image_infos.len(),
                                 write: vk::WriteDescriptorSet {
-                                        dst_set: *descriptor_sets[descriptor_set_idx as usize],
-                                        dst_binding,
-                                        descriptor_type,
-                                        descriptor_count: 1,
-                                        ..Default::default()
-                                    },
-                                }
-                            );
-                        } else {
-                            tls.image_writes.last_mut().unwrap().write.descriptor_count += 1;
-                        }
-
-                        tls.image_infos.push(vk::DescriptorImageInfo {
-                            image_layout,
-                            image_view,
-                            sampler,
-                        });
-                    } else if let Some(buffer) = bound_node.as_driver_buffer() {
-                        let view_info = view_info.as_ref().unwrap();
-                        let buffer_view_info = view_info.as_buffer().unwrap();
-
-                        if binding_offset == 0 {
-                            tls.buffer_writes.push(IndexWrite {
-                                idx: tls.buffer_infos.len(),
-                                write: vk::WriteDescriptorSet {
-                                        dst_set: *descriptor_sets[descriptor_set_idx as usize],
-                                        dst_binding,
-                                        descriptor_type,
-                                        descriptor_count: 1,
-                                        ..Default::default()
-                                    },
-                                }
-                            );
-                        } else {
-                            tls.buffer_writes.last_mut().unwrap().write.descriptor_count += 1;
-                        }
-
-                        tls.buffer_infos.push(vk::DescriptorBufferInfo {
-                            buffer: **buffer,
-                            offset: buffer_view_info.start,
-                            range: buffer_view_info.end - buffer_view_info.start,
-                        });
-                    } else if let Some(accel_struct) = bound_node.as_driver_acceleration_structure() {
-                        if binding_offset == 0 {
-                            tls.accel_struct_writes.push(IndexWrite {
-                                idx: tls.accel_struct_infos.len(),
-                                write: vk::WriteDescriptorSet {
                                     dst_set: *descriptor_sets[descriptor_set_idx as usize],
                                     dst_binding,
-                                    descriptor_type,
+                                    descriptor_type: vk::DescriptorType::INPUT_ATTACHMENT,
                                     descriptor_count: 1,
                                     ..Default::default()
                                 },
                             });
-                        } else {
-                            tls.accel_struct_writes.last_mut().unwrap().write.descriptor_count += 1;
-                        }
 
-                        tls.accel_struct_infos.push(vk::WriteDescriptorSetAccelerationStructureKHR::builder().acceleration_structures(std::slice::from_ref(accel_struct)).build());
-                    } else {
-                        unimplemented!();
-                    }
-                }
-
-                if let ExecutionPipeline::Graphic(pipeline) = pipeline {
-                    for descriptor_binding @ DescriptorBinding(descriptor_set_idx, dst_binding) in pipeline.separate_samplers.iter().copied() {
-                        tls.image_writes.push(IndexWrite {
-                            idx: tls.image_infos.len(),
-                            write: vk::WriteDescriptorSet {
-                                    dst_set: *descriptor_sets[descriptor_set_idx as usize],
-                                    dst_binding,
-                                    descriptor_type: vk::DescriptorType::SAMPLER,
-                                    descriptor_count: 1,
-                                    ..Default::default()
-                                },
-                            }
-                        );
-                        tls.image_infos.push(vk::DescriptorImageInfo {
-                            image_layout: Default::default(),
-                            image_view: Default::default(),
-                            sampler: **pipeline.descriptor_bindings[&descriptor_binding].0.sampler().unwrap(),
-                        });
-                    }
-
-                    // Write graphic render pass input attachments (they're automatic)
-                    if exec_idx > 0 {
-                        for (&DescriptorBinding(descriptor_set_idx, dst_binding), (descriptor_info, _)) in
-                            &pipeline.descriptor_bindings
-                        {
-                            if let DescriptorInfo::InputAttachment(_, attachment_idx) = *descriptor_info {
-                                let is_random_access =  exec.color_stores.contains_key(&attachment_idx)
-                                    || exec.color_resolves.contains_key(&attachment_idx);
-                                let (attachment, write_exec) = pass.execs[0..exec_idx]
-                                    .iter()
-                                    .rev()
-                                    .find_map(|exec| {
-                                        exec.color_stores.get(&attachment_idx).copied()
-                                            .map(|attachment| {
-                                                (attachment, exec)
-                                            })
-                                            .or_else(|| {
-                                                exec.color_resolves.get(&attachment_idx)
-                                                .map(
-                                                    |(resolved_attachment, _)| {
-                                                        (*resolved_attachment, exec)
-                                                    },
-                                                )
-                                            })
-                                    })
-                                    .expect("input attachment not written");
-                                let [_, late] = &write_exec.accesses[&attachment.target];
-                                let image_subresource = late.subresource.as_ref().unwrap().unwrap_image();
-                                let image_binding = &bindings[attachment.target];
-                                let image = image_binding.as_driver_image().unwrap();
-                                let image_view_info = ImageViewInfo {
-                                    array_layer_count: image_subresource.array_layer_count,
-                                    aspect_mask: attachment.aspect_mask,
-                                    base_array_layer: image_subresource.base_array_layer,
-                                    base_mip_level: image_subresource.base_mip_level,
-                                    fmt: attachment.format,
-                                    mip_level_count: image_subresource.mip_level_count,
-                                    ty: image.info.ty,
-                                };
-                                let image_view = Image::view(image, image_view_info)?;
-                                let sampler = descriptor_info.sampler().map(|sampler| **sampler).unwrap_or_else(vk::Sampler::null);
-
-                                tls.image_writes.push(IndexWrite {
-                                    idx: tls.image_infos.len(),
-                                    write: vk::WriteDescriptorSet {
-                                            dst_set: *descriptor_sets[descriptor_set_idx as usize],
-                                            dst_binding,
-                                            descriptor_type: vk::DescriptorType::INPUT_ATTACHMENT,
-                                            descriptor_count: 1,
-                                            ..Default::default()
-                                        },
-                                    }
-                                );
-
-                                tls.image_infos.push(vk::DescriptorImageInfo {
-                                    image_layout: Self::attachment_layout(
-                                        attachment.aspect_mask,
-                                        is_random_access,
-                                        true,
-                                    ),
-                                    image_view,
-                                    sampler,
-                                });
-                            }
+                            tls.image_infos.push(vk::DescriptorImageInfo {
+                                image_layout: Self::attachment_layout(
+                                    attachment.aspect_mask,
+                                    is_random_access,
+                                    true,
+                                ),
+                                image_view,
+                                sampler: vk::Sampler::null(),
+                            });
                         }
                     }
                 }
             }
+        }
 
-            // NOTE: We assign the below pointers after the above insertions so they remain stable!
+        // NOTE: We assign the below pointers after the above insertions so they remain stable!
 
-            tls.descriptors.extend(tls.accel_struct_writes.drain(..).map(|IndexWrite { idx, mut write }| unsafe {
-                write.p_next = tls.accel_struct_infos.as_ptr().add(idx) as *const _;
-                write
-            }));
-            tls.descriptors.extend(tls.buffer_writes.drain(..).map(|IndexWrite { idx, mut write }| unsafe {
+        tls.descriptors
+            .extend(tls.accel_struct_writes.drain(..).map(
+                |IndexWrite { idx, mut write }| unsafe {
+                    write.p_next = tls.accel_struct_infos.as_ptr().add(idx) as *const _;
+                    write
+                },
+            ));
+        tls.descriptors.extend(tls.buffer_writes.drain(..).map(
+            |IndexWrite { idx, mut write }| unsafe {
                 write.p_buffer_info = tls.buffer_infos.as_ptr().add(idx);
                 write
-            }));
-            tls.descriptors.extend(tls.image_writes.drain(..).map(|IndexWrite { idx, mut write }| unsafe {
+            },
+        ));
+        tls.descriptors.extend(tls.image_writes.drain(..).map(
+            |IndexWrite { idx, mut write }| unsafe {
                 write.p_image_info = tls.image_infos.as_ptr().add(idx);
                 write
-            }));
+            },
+        ));
 
-            if !tls.descriptors.is_empty() {
-                trace!("  writing {} descriptors ({} buffers, {} images)", tls.descriptors.len(), tls.buffer_infos.len(), tls.image_infos.len());
+        if !tls.descriptors.is_empty() {
+            trace!(
+                "  writing {} descriptors ({} buffers, {} images)",
+                tls.descriptors.len(),
+                tls.buffer_infos.len(),
+                tls.image_infos.len()
+            );
 
-                unsafe {
-                    cmd_buf
-                        .device
-                        .update_descriptor_sets(tls.descriptors.as_slice(), &[]);
-                }
+            unsafe {
+                cmd_buf
+                    .device
+                    .update_descriptor_sets(tls.descriptors.as_slice(), &[]);
             }
+        }
 
-            Ok(())
-        })
+        Ok(())
     }
 }
 

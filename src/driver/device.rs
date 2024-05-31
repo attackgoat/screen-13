@@ -2,7 +2,7 @@
 
 use {
     super::{physical_device::PhysicalDevice, DriverError, Instance},
-    ash::{extensions::khr, vk},
+    ash::{khr, vk},
     ash_window::enumerate_required_extensions,
     derive_builder::{Builder, UninitializedFieldError},
     gpu_allocator::{
@@ -10,7 +10,7 @@ use {
         AllocatorDebugSettings,
     },
     log::{error, trace, warn},
-    raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle},
+    raw_window_handle::HasDisplayHandle,
     std::{
         cmp::Ordering,
         ffi::CStr,
@@ -34,7 +34,7 @@ pub type SelectPhysicalDeviceFn = dyn FnOnce(&[PhysicalDevice]) -> usize;
 
 /// Opaque handle to a device object.
 pub struct Device {
-    pub(crate) accel_struct_ext: Option<khr::AccelerationStructure>,
+    pub(crate) accel_struct_ext: Option<khr::acceleration_structure::Device>,
 
     pub(super) allocator: ManuallyDrop<Mutex<Allocator>>,
 
@@ -49,10 +49,10 @@ pub struct Device {
     /// The physical execution queues which all work will be submitted to.
     pub(crate) queues: Vec<Vec<vk::Queue>>,
 
-    pub(crate) ray_trace_ext: Option<khr::RayTracingPipeline>,
+    pub(crate) ray_trace_ext: Option<khr::ray_tracing_pipeline::Device>,
 
-    pub(super) surface_ext: Option<khr::Surface>,
-    pub(super) swapchain_ext: Option<khr::Swapchain>,
+    pub(super) surface_ext: Option<khr::surface::Instance>,
+    pub(super) swapchain_ext: Option<khr::swapchain::Device>,
 }
 
 impl Device {
@@ -76,20 +76,20 @@ impl Device {
         let mut enabled_ext_names = Vec::with_capacity(5);
 
         if display_window {
-            enabled_ext_names.push(vk::KhrSwapchainFn::name().as_ptr());
+            enabled_ext_names.push(khr::swapchain::NAME.as_ptr());
         }
 
         if physical_device.accel_struct_properties.is_some() {
-            enabled_ext_names.push(vk::KhrAccelerationStructureFn::name().as_ptr());
-            enabled_ext_names.push(vk::KhrDeferredHostOperationsFn::name().as_ptr());
+            enabled_ext_names.push(khr::acceleration_structure::NAME.as_ptr());
+            enabled_ext_names.push(khr::deferred_host_operations::NAME.as_ptr());
         }
 
         if physical_device.ray_query_features.ray_query {
-            enabled_ext_names.push(vk::KhrRayQueryFn::name().as_ptr());
+            enabled_ext_names.push(khr::ray_query::NAME.as_ptr());
         }
 
         if physical_device.ray_trace_features.ray_tracing_pipeline {
-            enabled_ext_names.push(vk::KhrRayTracingPipelineFn::name().as_ptr());
+            enabled_ext_names.push(khr::ray_tracing_pipeline::NAME.as_ptr());
         }
 
         let priorities = repeat(1.0)
@@ -108,17 +108,16 @@ impl Device {
             .iter()
             .enumerate()
             .map(|(idx, family)| {
-                let mut queue_info = vk::DeviceQueueCreateInfo::builder()
+                let mut queue_info = vk::DeviceQueueCreateInfo::default()
                     .queue_family_index(idx as _)
-                    .queue_priorities(&priorities[0..family.queue_count as usize])
-                    .build();
+                    .queue_priorities(&priorities[0..family.queue_count as usize]);
                 queue_info.queue_count = family.queue_count;
 
                 queue_info
             })
             .collect::<Box<_>>();
 
-        let vk::InstanceFnV1_1 {
+        let ash::InstanceFnV1_1 {
             get_physical_device_features2,
             ..
         } = instance.fp_v1_1();
@@ -129,21 +128,19 @@ impl Device {
         let mut index_type_uin8_feautres = vk::PhysicalDeviceIndexTypeUint8FeaturesEXT::default();
         let mut ray_query_features = vk::PhysicalDeviceRayQueryFeaturesKHR::default();
         let mut ray_trace_features = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
-        let mut features = vk::PhysicalDeviceFeatures2::builder()
+        let mut features = vk::PhysicalDeviceFeatures2::default()
             .push_next(&mut features_v1_1)
             .push_next(&mut features_v1_2)
             .push_next(&mut acceleration_structure_features)
             .push_next(&mut index_type_uin8_feautres)
             .push_next(&mut ray_query_features)
-            .push_next(&mut ray_trace_features)
-            .build();
+            .push_next(&mut ray_trace_features);
         unsafe { get_physical_device_features2(**physical_device, &mut features) };
 
-        let device_create_info = vk::DeviceCreateInfo::builder()
+        let device_create_info = vk::DeviceCreateInfo::default()
             .queue_create_infos(&queue_infos)
             .enabled_extension_names(&enabled_ext_names)
-            .push_next(&mut features)
-            .build();
+            .push_next(&mut features);
 
         create_fn(device_create_info)
     }
@@ -205,23 +202,27 @@ impl Device {
 
     /// Constructs a new device using the given configuration.
     #[profiling::function]
-    pub fn create_display_window(
+    pub fn create_presentable(
         info: impl Into<DeviceInfo>,
-        display_window: &(impl HasRawDisplayHandle + HasRawWindowHandle),
+        display_handle: &impl HasDisplayHandle,
     ) -> Result<Self, DriverError> {
         let DeviceInfo {
             debug,
             select_physical_device,
         } = info.into();
-        let required_extensions =
-            enumerate_required_extensions(display_window.raw_display_handle())
-                .map_err(|err| {
-                    warn!("{err}");
+        let display_handle = display_handle.display_handle().map_err(|err| {
+            warn!("{err}");
 
-                    DriverError::Unsupported
-                })?
-                .iter()
-                .map(|ext| unsafe { CStr::from_ptr(*ext as *const _) });
+            DriverError::Unsupported
+        })?;
+        let required_extensions = enumerate_required_extensions(display_handle.as_raw())
+            .map_err(|err| {
+                warn!("{err}");
+
+                DriverError::Unsupported
+            })?
+            .iter()
+            .map(|ext| unsafe { CStr::from_ptr(*ext as *const _) });
         let instance = Instance::create(debug, required_extensions)?;
 
         Self::create(instance, select_physical_device, true)
@@ -234,7 +235,7 @@ impl Device {
             flags |= vk::FenceCreateFlags::SIGNALED;
         }
 
-        let create_info = vk::FenceCreateInfo::builder().flags(flags);
+        let create_info = vk::FenceCreateInfo::default().flags(flags);
         let allocation_callbacks = None;
 
         unsafe { this.create_fence(&create_info, allocation_callbacks) }.map_err(|err| {
@@ -245,7 +246,7 @@ impl Device {
     }
 
     pub(crate) fn create_semaphore(this: &Self) -> Result<vk::Semaphore, DriverError> {
-        let create_info = vk::SemaphoreCreateInfo::builder();
+        let create_info = vk::SemaphoreCreateInfo::default();
         let allocation_callbacks = None;
 
         unsafe { this.create_semaphore(&create_info, allocation_callbacks) }.map_err(|err| {
@@ -296,17 +297,17 @@ impl Device {
             queues.push(queue_family);
         }
 
-        let surface_ext =
-            display_window.then(|| khr::Surface::new(Instance::entry(&instance), &instance));
-        let swapchain_ext = display_window.then(|| khr::Swapchain::new(&instance, &device));
+        let surface_ext = display_window
+            .then(|| khr::surface::Instance::new(Instance::entry(&instance), &instance));
+        let swapchain_ext = display_window.then(|| khr::swapchain::Device::new(&instance, &device));
         let accel_struct_ext = physical_device
             .accel_struct_properties
             .is_some()
-            .then(|| khr::AccelerationStructure::new(&instance, &device));
+            .then(|| khr::acceleration_structure::Device::new(&instance, &device));
         let ray_trace_ext = physical_device
             .ray_trace_features
             .ray_tracing_pipeline
-            .then(|| khr::RayTracingPipeline::new(&instance, &device));
+            .then(|| khr::ray_tracing_pipeline::Device::new(&instance, &device));
 
         Ok(Self {
             accel_struct_ext,

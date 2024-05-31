@@ -20,7 +20,7 @@ use {
     winit::{
         event::{Event, WindowEvent},
         monitor::MonitorHandle,
-        window::{Fullscreen, Window, WindowBuilder},
+        window::{Fullscreen, Window, WindowAttributes},
     },
 };
 
@@ -270,7 +270,7 @@ pub struct EventLoopBuilder {
     resolver_pool: Option<Box<dyn ResolverPool>>,
     surface_format_fn: Option<Box<SelectSurfaceFormatFn>>,
     swapchain_info: SwapchainInfoBuilder,
-    window: WindowBuilder,
+    window: WindowAttributes,
 }
 
 impl Debug for EventLoopBuilder {
@@ -294,10 +294,10 @@ impl Default for EventLoopBuilder {
 }
 
 impl EventLoopBuilder {
-    /// Returns the list of all the monitors available on the system.
-    pub fn available_monitors(&self) -> impl Iterator<Item = MonitorHandle> {
-        self.event_loop.available_monitors()
-    }
+    // /// Returns the list of all the monitors available on the system.
+    // pub fn available_monitors(&self) -> impl Iterator<Item = MonitorHandle> {
+    //     self.event_loop.available_monitors()
+    // }
 
     /// Specifies the number of in-flight command buffers, which should be greater
     /// than or equal to the desired swapchain image count.
@@ -348,61 +348,61 @@ impl EventLoopBuilder {
     /// There are additional options offered by `winit` which can be accessed using the `window`
     /// function.
     pub fn fullscreen_mode(mut self, mode: FullscreenMode) -> Self {
-        let inner_size;
-        self.window = self
-            .window
-            .with_decorations(false)
-            .with_maximized(true)
-            .with_fullscreen(Some(match mode {
-                FullscreenMode::Borderless => {
-                    info!("Using borderless fullscreen");
+        // let inner_size;
+        // self.window = self
+        //     .window
+        //     .with_decorations(false)
+        //     .with_maximized(true)
+        //     .with_fullscreen(Some(match mode {
+        //         FullscreenMode::Borderless => {
+        //             info!("Using borderless fullscreen");
 
-                    inner_size = None;
+        //             inner_size = None;
 
-                    Fullscreen::Borderless(None)
-                }
-                FullscreenMode::Exclusive => {
-                    if let Some(video_mode) =
-                        self.event_loop.primary_monitor().and_then(|monitor| {
-                            let monitor_size = monitor.size();
-                            monitor.video_modes().find(|mode| {
-                                let mode_size = mode.size();
+        //             Fullscreen::Borderless(None)
+        //         }
+        //         FullscreenMode::Exclusive => {
+        //             if let Some(video_mode) =
+        //                 self.event_loop.primary_monitor().and_then(|monitor| {
+        //                     let monitor_size = monitor.size();
+        //                     monitor.video_modes().find(|mode| {
+        //                         let mode_size = mode.size();
 
-                                // Don't pick a mode which has greater resolution than the monitor is
-                                // currently using: it causes a panic on x11 in winit
-                                mode_size.height <= monitor_size.height
-                                    && mode_size.width <= monitor_size.width
-                            })
-                        })
-                    {
-                        info!(
-                            "Using {}x{} {}bpp @ {}hz exclusive fullscreen",
-                            video_mode.size().width,
-                            video_mode.size().height,
-                            video_mode.bit_depth(),
-                            video_mode.refresh_rate_millihertz() / 1_000
-                        );
+        //                         // Don't pick a mode which has greater resolution than the monitor is
+        //                         // currently using: it causes a panic on x11 in winit
+        //                         mode_size.height <= monitor_size.height
+        //                             && mode_size.width <= monitor_size.width
+        //                     })
+        //                 })
+        //             {
+        //                 info!(
+        //                     "Using {}x{} {}bpp @ {}hz exclusive fullscreen",
+        //                     video_mode.size().width,
+        //                     video_mode.size().height,
+        //                     video_mode.bit_depth(),
+        //                     video_mode.refresh_rate_millihertz() / 1_000
+        //                 );
 
-                        inner_size = Some(video_mode.size());
+        //                 inner_size = Some(video_mode.size());
 
-                        Fullscreen::Exclusive(video_mode)
-                    } else {
-                        warn!("Using borderless fullscreen");
+        //                 Fullscreen::Exclusive(video_mode)
+        //             } else {
+        //                 warn!("Using borderless fullscreen");
 
-                        inner_size = None;
+        //                 inner_size = None;
 
-                        Fullscreen::Borderless(None)
-                    }
-                }
-            }));
+        //                 Fullscreen::Borderless(None)
+        //             }
+        //         }
+        //     }));
 
-        if let Some(inner_size) = inner_size.or_else(|| {
-            self.event_loop
-                .primary_monitor()
-                .map(|monitor| monitor.size())
-        }) {
-            self.window = self.window.with_inner_size(inner_size);
-        }
+        // if let Some(inner_size) = inner_size.or_else(|| {
+        //     self.event_loop
+        //         .primary_monitor()
+        //         .map(|monitor| monitor.size())
+        // }) {
+        //     self.window = self.window.with_inner_size(inner_size);
+        // }
 
         self
     }
@@ -428,9 +428,9 @@ impl EventLoopBuilder {
     /// ## Platform-specific
     ///
     /// **Wayland:** Always returns `None`.
-    pub fn primary_monitor(&self) -> Option<MonitorHandle> {
-        self.event_loop.primary_monitor()
-    }
+    // pub fn primary_monitor(&self) -> Option<MonitorHandle> {
+    //     self.event_loop.primary_monitor()
+    // }
 
     /// Allows for specification of a custom pool implementation.
     ///
@@ -443,7 +443,7 @@ impl EventLoopBuilder {
     /// Allows deeper customization of the window, if needed.
     pub fn window<WindowFn>(mut self, window_fn: WindowFn) -> Self
     where
-        WindowFn: FnOnce(WindowBuilder) -> WindowBuilder,
+        WindowFn: FnOnce(WindowAttributes) -> WindowAttributes,
     {
         self.window = window_fn(self.window);
         self
@@ -464,75 +464,76 @@ impl EventLoopBuilder {
 impl EventLoopBuilder {
     /// Builds a new `EventLoop`.
     pub fn build(mut self) -> Result<EventLoop, DriverError> {
-        // Create an operating system window via Winit
-        let window = self.window;
+        // // Create an operating system window via Winit
+        // let window = self.window;
 
-        #[cfg(not(target_os = "macos"))]
-        let window = window.with_visible(false);
+        // #[cfg(not(target_os = "macos"))]
+        // let window = window.with_visible(false);
 
-        let window = window.build(&self.event_loop).map_err(|err| {
-            warn!("{err}");
+        // let window = window.build(&self.event_loop).map_err(|err| {
+        //     warn!("{err}");
 
-            DriverError::Unsupported
-        })?;
-        let (width, height) = {
-            let inner_size = window.inner_size();
-            (inner_size.width, inner_size.height)
-        };
-        self.swapchain_info = self.swapchain_info.width(width).height(height);
+        //     DriverError::Unsupported
+        // })?;
+        // let (width, height) = {
+        //     let inner_size = window.inner_size();
+        //     (inner_size.width, inner_size.height)
+        // };
+        // self.swapchain_info = self.swapchain_info.width(width).height(height);
 
-        // Load the GPU driver (thin Vulkan device and swapchain smart pointers)
-        let device_info = self.device_info.build();
-        let device = Arc::new(Device::create_display_window(device_info, &window)?);
+        // // Load the GPU driver (thin Vulkan device and swapchain smart pointers)
+        // let device_info = self.device_info.build();
+        // let device = Arc::new(Device::create_display_window(device_info, &window)?);
 
-        // TODO: Select a better index
-        let queue_family_index = 0;
+        // // TODO: Select a better index
+        // let queue_family_index = 0;
 
-        // Create a display that is cached using the given pool implementation
-        let pool = self
-            .resolver_pool
-            .unwrap_or_else(|| Box::new(HashPool::new(&device)));
-        let display = Display::new(&device, pool, self.cmd_buf_count, queue_family_index)?;
+        // // Create a display that is cached using the given pool implementation
+        // let pool = self
+        //     .resolver_pool
+        //     .unwrap_or_else(|| Box::new(HashPool::new(&device)));
+        // let display = Display::new(&device, pool, self.cmd_buf_count, queue_family_index)?;
 
-        let surface = Surface::create(&device, &window)?;
-        let surface_formats = Surface::formats(&surface)?;
+        // let surface = Surface::create(&device, &window)?;
+        // let surface_formats = Surface::formats(&surface)?;
 
-        if surface_formats.is_empty() {
-            warn!("invalid surface formats");
+        // if surface_formats.is_empty() {
+        //     warn!("invalid surface formats");
 
-            return Err(DriverError::Unsupported);
-        }
+        //     return Err(DriverError::Unsupported);
+        // }
 
-        for surface in &surface_formats {
-            debug!(
-                "surface: {:#?} ({:#?})",
-                surface.format, surface.color_space
-            );
-        }
+        // for surface in &surface_formats {
+        //     debug!(
+        //         "surface: {:#?} ({:#?})",
+        //         surface.format, surface.color_space
+        //     );
+        // }
 
-        let surface_format_fn = self
-            .surface_format_fn
-            .unwrap_or_else(|| Box::new(Surface::linear_or_default));
-        let surface_format = surface_format_fn(&surface_formats);
-        let swapchain = Swapchain::new(
-            &device,
-            surface,
-            self.swapchain_info.surface(surface_format),
-        )?;
+        // let surface_format_fn = self
+        //     .surface_format_fn
+        //     .unwrap_or_else(|| Box::new(Surface::linear_or_default));
+        // let surface_format = surface_format_fn(&surface_formats);
+        // let swapchain = Swapchain::new(
+        //     &device,
+        //     surface,
+        //     self.swapchain_info.surface(surface_format),
+        // )?;
 
-        info!(
-            "Window dimensions: {}x{} ({}x scale)",
-            width,
-            height,
-            window.scale_factor() as f32,
-        );
+        // info!(
+        //     "Window dimensions: {}x{} ({}x scale)",
+        //     width,
+        //     height,
+        //     window.scale_factor() as f32,
+        // );
 
-        Ok(EventLoop {
-            device,
-            display,
-            event_loop: self.event_loop,
-            swapchain,
-            window,
-        })
+        // Ok(EventLoop {
+        //     device,
+        //     display,
+        //     event_loop: self.event_loop,
+        //     swapchain,
+        //     window,
+        // })
+        todo!()
     }
 }

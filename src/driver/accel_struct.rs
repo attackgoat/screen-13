@@ -104,7 +104,7 @@ impl AccelerationStructure {
         )?;
 
         let accel_struct = {
-            let create_info = vk::AccelerationStructureCreateInfoKHR::builder()
+            let create_info = vk::AccelerationStructureCreateInfoKHR::default()
                 .ty(info.ty)
                 .buffer(*buffer)
                 .size(info.size);
@@ -216,7 +216,7 @@ impl AccelerationStructure {
                 .as_ref()
                 .unwrap()
                 .get_acceleration_structure_device_address(
-                    &vk::AccelerationStructureDeviceAddressInfoKHR::builder()
+                    &vk::AccelerationStructureDeviceAddressInfoKHR::default()
                         .acceleration_structure(this.accel_struct),
                 )
         }
@@ -278,7 +278,7 @@ impl AccelerationStructure {
 
         #[derive(Default)]
         struct Tls {
-            geometries: Vec<vk::AccelerationStructureGeometryKHR>,
+            geometries: Vec<vk::AccelerationStructureGeometryKHR<'static>>,
             max_primitive_counts: Vec<u32>,
         }
 
@@ -354,11 +354,13 @@ impl AccelerationStructure {
                 tls.max_primitive_counts.push(info.max_primitive_count);
             }
 
-            let info = vk::AccelerationStructureBuildGeometryInfoKHR::builder()
+            let info = vk::AccelerationStructureBuildGeometryInfoKHR::default()
                 .ty(info.ty)
                 .flags(info.flags)
                 .geometries(&tls.geometries);
-            let sizes = unsafe {
+            let mut sizes = vk::AccelerationStructureBuildSizesInfoKHR::default();
+
+            unsafe {
                 device
                     .accel_struct_ext
                     .as_ref()
@@ -367,6 +369,7 @@ impl AccelerationStructure {
                         vk::AccelerationStructureBuildTypeKHR::HOST_OR_DEVICE,
                         &info,
                         tls.max_primitive_counts.as_slice(),
+                        &mut sizes,
                     )
             };
 
@@ -422,7 +425,7 @@ pub struct AccelerationStructureGeometry {
 }
 
 impl AccelerationStructureGeometry {
-    pub(crate) fn into_vk(self) -> vk::AccelerationStructureGeometryKHR {
+    pub(crate) fn into_vk(self) -> vk::AccelerationStructureGeometryKHR<'static> {
         let (geometry_type, geometry) = match self.geometry {
             AccelerationStructureGeometryData::AABBs { stride } => (
                 vk::GeometryTypeKHR::AABBS,

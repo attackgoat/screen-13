@@ -207,7 +207,7 @@ impl Swapchain {
         // We checked when handling out the swapchain image
         let swapchain_ext = unsafe { self.device.swapchain_ext.as_ref().unwrap_unchecked() };
 
-        let present_info = vk::PresentInfoKHR::builder()
+        let present_info = vk::PresentInfoKHR::default()
             .wait_semaphores(slice::from_ref(&image.rendered))
             .swapchains(slice::from_ref(&self.swapchain))
             .image_indices(slice::from_ref(&image.image_idx));
@@ -277,9 +277,9 @@ impl Swapchain {
             vk::ImageUsageFlags::FRAGMENT_SHADING_RATE_ATTACHMENT_KHR,
             vk::ImageUsageFlags::INPUT_ATTACHMENT,
             vk::ImageUsageFlags::INVOCATION_MASK_HUAWEI,
-            vk::ImageUsageFlags::RESERVED_16_QCOM,
-            vk::ImageUsageFlags::RESERVED_17_QCOM,
-            vk::ImageUsageFlags::RESERVED_22_EXT,
+            // vk::ImageUsageFlags::RESERVED_16_QCOM,
+            // vk::ImageUsageFlags::RESERVED_17_QCOM,
+            // vk::ImageUsageFlags::RESERVED_22_EXT,
             // vk::ImageUsageFlags::RESERVED_23_EXT,
             vk::ImageUsageFlags::SAMPLED,
             vk::ImageUsageFlags::SAMPLE_BLOCK_MATCH_QCOM,
@@ -384,7 +384,7 @@ impl Swapchain {
             DriverError::Unsupported
         })?;
 
-        let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
+        let swapchain_create_info = vk::SwapchainCreateInfoKHR::default()
             .surface(*self.surface)
             .min_image_count(desired_image_count)
             .image_color_space(self.info.surface.color_space)
@@ -400,7 +400,7 @@ impl Swapchain {
             .present_mode(present_mode)
             .clipped(true)
             .image_array_layers(1)
-            .build();
+            ;
         let swapchain = unsafe { swapchain_ext.create_swapchain(&swapchain_create_info, None) }
             .map_err(|err| {
                 warn!("{err}");

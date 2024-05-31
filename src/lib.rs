@@ -398,10 +398,10 @@ pub mod prelude {
             dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize},
             event::{Event, MouseButton, WindowEvent},
             keyboard::KeyCode,
-            monitor::{MonitorHandle, VideoMode},
+            monitor::{MonitorHandle, VideoModeHandle},
             window::{
                 BadIcon, CursorGrabMode, CursorIcon, Fullscreen, Icon, Theme, UserAttentionType,
-                Window, WindowBuilder, WindowId,
+                Window, WindowAttributes, WindowId,
             },
         },
     };
