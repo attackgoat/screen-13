@@ -791,16 +791,17 @@ impl ImageView {
     ) -> Result<Self, DriverError> {
         let info = info.into();
         let device = Arc::clone(device);
-        let create_info = vk::ImageViewCreateInfo::default().view_type(info.ty.into_vk()).
-            format(info.fmt).
-            components(vk::ComponentMapping {
+        let create_info = vk::ImageViewCreateInfo::default()
+            .view_type(info.ty.into_vk())
+            .format(info.fmt)
+            .components(vk::ComponentMapping {
                 r: vk::ComponentSwizzle::R,
                 g: vk::ComponentSwizzle::G,
                 b: vk::ComponentSwizzle::B,
                 a: vk::ComponentSwizzle::A,
-            }).
-            image(image).
-            subresource_range(vk::ImageSubresourceRange {
+            })
+            .image(image)
+            .subresource_range(vk::ImageSubresourceRange {
                 aspect_mask: info.aspect_mask,
                 base_array_layer: info.base_array_layer,
                 base_mip_level: info.base_mip_level,
@@ -996,10 +997,10 @@ pub enum SampleCount {
 impl From<SampleCount> for vk::SampleCountFlags {
     fn from(sample_count: SampleCount) -> Self {
         match sample_count {
-            SampleCount::Type1  => Self::TYPE_1,
-            SampleCount::Type2  => Self::TYPE_2,
-            SampleCount::Type4  => Self::TYPE_4,
-            SampleCount::Type8  => Self::TYPE_8,
+            SampleCount::Type1 => Self::TYPE_1,
+            SampleCount::Type2 => Self::TYPE_2,
+            SampleCount::Type4 => Self::TYPE_4,
+            SampleCount::Type8 => Self::TYPE_8,
             SampleCount::Type16 => Self::TYPE_16,
             SampleCount::Type32 => Self::TYPE_32,
             SampleCount::Type64 => Self::TYPE_64,

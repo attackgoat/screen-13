@@ -152,10 +152,7 @@ impl Display {
     }
 
     #[profiling::function]
-    unsafe fn submit(
-        cmd_buf: &CommandBuffer,
-        submit_info: vk::SubmitInfo<'_>,
-    ) -> Result<(), ()> {
+    unsafe fn submit(cmd_buf: &CommandBuffer, submit_info: vk::SubmitInfo<'_>) -> Result<(), ()> {
         use std::slice::from_ref;
 
         cmd_buf

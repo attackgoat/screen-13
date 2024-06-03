@@ -2933,7 +2933,7 @@ impl Resolver {
             }
 
             if let ExecutionPipeline::Graphic(pipeline) = pipeline {
-                for descriptor_binding @ DescriptorBinding(descriptor_set_idx, dst_binding) in
+                for DescriptorBinding(descriptor_set_idx, dst_binding) in
                     pipeline.separate_samplers.iter().copied()
                 {
                     tls.image_writes.push(IndexWrite {

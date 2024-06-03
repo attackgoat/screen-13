@@ -6,6 +6,7 @@ use {
     inline_spirv::inline_spirv,
     screen_13::prelude::*,
     screen_13_fx::*,
+    screen_13_window::Window,
     std::{io::Cursor, sync::Arc, time::Instant},
 };
 
@@ -14,10 +15,10 @@ fn main() -> anyhow::Result<()> {
     profile_with_puffin::init();
 
     // Standard Screen 13 stuff
-    let event_loop = EventLoop::new().build()?;
-    let display = GraphicPresenter::new(&event_loop.device)?;
-    let mut image_loader = ImageLoader::new(&event_loop.device)?;
-    let mut pool = HashPool::new(&event_loop.device);
+    let window = Window::new()?;
+    let display = GraphicPresenter::new(&window.device)?;
+    let mut image_loader = ImageLoader::new(&window.device)?;
+    let mut pool = HashPool::new(&window.device);
 
     // Load a bitmapped font
     let small_10px_font = BMFont::new(
@@ -43,10 +44,9 @@ fn main() -> anyhow::Result<()> {
     )?;
 
     // A neato smoke effect just for fun
-    let Vulkan11Properties { subgroup_size, .. } =
-        event_loop.device.physical_device.properties_v1_1;
+    let Vulkan11Properties { subgroup_size, .. } = window.device.physical_device.properties_v1_1;
     let start_time = Instant::now();
-    let smoke_pipeline = Arc::new(ComputePipeline::create(&event_loop.device,
+    let smoke_pipeline = Arc::new(ComputePipeline::create(&window.device,
         ComputePipelineInfo::default(),
         Shader::new_compute(
         inline_spirv!(
@@ -118,7 +118,7 @@ fn main() -> anyhow::Result<()> {
         }),
     )?);
 
-    event_loop.run(|frame| {
+    window.run(|frame| {
         let image_node = frame.render_graph.bind_node(
             pool.lease(ImageInfo::image_2d(
                 320,
@@ -156,7 +156,7 @@ fn main() -> anyhow::Result<()> {
         let x = 320f32 * 0.5 / scale - width as f32 * 0.5;
         let y = 200f32 * 0.5 / scale - height as f32 * 0.5;
         let color = [196, 172, 230u8];
-        small_10px_font.print_scale(frame.render_graph, image_node, x, y, color, text, scale);
+        //small_10px_font.print_scale(frame.render_graph, image_node, x, y, color, text, scale);
 
         display.present_image(frame.render_graph, image_node, frame.swapchain_image);
     })?;

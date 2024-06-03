@@ -2,7 +2,7 @@
 
 use {
     super::{DriverError, Instance},
-    ash::{vk, khr, ext},
+    ash::{ext, khr, vk},
     log::{debug, error},
     std::{
         collections::HashSet,
@@ -263,8 +263,7 @@ impl PhysicalDevice {
             .push_next(&mut accel_struct_properties)
             .push_next(&mut depth_stencil_resolve_properties)
             .push_next(&mut ray_trace_properties)
-            .push_next(&mut sampler_filter_minmax_properties)
-            ;
+            .push_next(&mut sampler_filter_minmax_properties);
         unsafe {
             get_physical_device_properties2(physical_device, &mut properties);
         }

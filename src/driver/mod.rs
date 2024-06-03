@@ -413,7 +413,7 @@ fn merge_push_constant_ranges(pcr: &[vk::PushConstantRange]) -> Vec<vk::PushCons
 
                 if lhs.offset == rhs.offset && lhs.size == rhs.size {
                     res[i].stage_flags |= rhs.stage_flags;
-                    res.remove(j);
+                    let _ = res.remove(j);
                 } else if lhs.offset == rhs.offset {
                     res[i].stage_flags |= rhs.stage_flags;
                     res[j].offset += lhs.size;

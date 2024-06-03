@@ -286,8 +286,7 @@ impl PipelineDescriptorInfo {
 
             //trace!("bindings: {:#?}", &bindings);
 
-            let mut create_info =
-                vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
+            let mut create_info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
 
             // The bindless flags have to be created for every descriptor set layout binding.
             // [vulkan spec](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkDescriptorSetLayoutBindingFlagsCreateInfo.html)

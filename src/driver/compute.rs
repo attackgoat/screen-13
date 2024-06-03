@@ -99,7 +99,10 @@ impl ComputePipeline {
 
         unsafe {
             let shader_module = device
-                .create_shader_module(&vk::ShaderModuleCreateInfo::default().code(align_spriv(&shader.spirv)?), None)
+                .create_shader_module(
+                    &vk::ShaderModuleCreateInfo::default().code(align_spriv(&shader.spirv)?),
+                    None,
+                )
                 .map_err(|err| {
                     warn!("{err}");
 
@@ -139,11 +142,7 @@ impl ComputePipeline {
                 .stage(stage_create_info)
                 .layout(layout);
             let pipeline = device
-                .create_compute_pipelines(
-                    vk::PipelineCache::null(),
-                    from_ref(&pipeline_info),
-                    None,
-                )
+                .create_compute_pipelines(vk::PipelineCache::null(), from_ref(&pipeline_info), None)
                 .map_err(|(_, err)| {
                     warn!("{err}");
 

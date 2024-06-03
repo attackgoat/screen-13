@@ -34,7 +34,7 @@ impl ApplicationHandler for Application {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let window_attributes = Window::default_attributes().with_title("Screen 13");
         let window = event_loop.create_window(window_attributes).unwrap();
-        let device = Arc::new(Device::create_presentable(DeviceInfo::default(), &window).unwrap());
+        let device = Arc::new(Device::create_display(DeviceInfo::default(), &window).unwrap());
         let display_pool = Box::new(HashPool::new(&device));
         let display = Display::new(&device, display_pool, 3, 0).unwrap();
         let surface = Surface::create(&device, &window).unwrap();

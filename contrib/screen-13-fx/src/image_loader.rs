@@ -1,6 +1,11 @@
 use {
-    super::BitmapFont, anyhow::Context, bmfont::BMFont, inline_spirv::include_spirv,
-    screen_13::prelude::*, std::sync::Arc,
+    super::BitmapFont,
+    anyhow::Context,
+    bmfont::BMFont,
+    inline_spirv::include_spirv,
+    log::{info, warn},
+    screen_13::prelude::*,
+    std::sync::Arc,
 };
 
 fn align_up_u32(val: u32, atom: u32) -> u32 {

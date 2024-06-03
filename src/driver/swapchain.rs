@@ -399,8 +399,7 @@ impl Swapchain {
             .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
             .present_mode(present_mode)
             .clipped(true)
-            .image_array_layers(1)
-            ;
+            .image_array_layers(1);
         let swapchain = unsafe { swapchain_ext.create_swapchain(&swapchain_create_info, None) }
             .map_err(|err| {
                 warn!("{err}");

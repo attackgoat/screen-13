@@ -202,7 +202,7 @@ impl Device {
 
     /// Constructs a new device using the given configuration.
     #[profiling::function]
-    pub fn create_presentable(
+    pub fn create_display(
         info: impl Into<DeviceInfo>,
         display_handle: &impl HasDisplayHandle,
     ) -> Result<Self, DriverError> {
@@ -587,6 +587,15 @@ impl DeviceInfo {
             debug: Some(self.debug),
             select_physical_device: Some(self.select_physical_device),
         }
+    }
+}
+
+impl Debug for DeviceInfo {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DeviceInfo")
+            .field("debug", &self.debug)
+            .field("select_physical_device", &"fn")
+            .finish()
     }
 }
 

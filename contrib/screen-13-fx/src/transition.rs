@@ -5,6 +5,7 @@
 use {
     inline_spirv::include_spirv,
     screen_13::prelude::*,
+    log::trace,
     std::{collections::HashMap, sync::Arc},
 };
 
