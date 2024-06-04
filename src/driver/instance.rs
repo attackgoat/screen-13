@@ -1,6 +1,6 @@
 use {
     super::{physical_device::PhysicalDevice, DriverError},
-    ash::{extensions::ext, vk, Entry},
+    ash::{ext, vk, Entry},
     log::{debug, error, info, logger, trace, warn, Level, Metadata},
     std::{
         env::var,
@@ -87,8 +87,8 @@ unsafe extern "system" fn vulkan_debug_callback(
 pub struct Instance {
     _debug_callback: Option<vk::DebugReportCallbackEXT>,
     #[allow(deprecated)] // TODO: Remove? Look into this....
-    _debug_loader: Option<ext::DebugReport>,
-    debug_utils: Option<ext::DebugUtils>,
+    _debug_loader: Option<ext::debug_report::Instance>,
+    debug_utils: Option<ext::debug_utils::Instance>,
     entry: Entry,
     instance: ash::Instance,
 }
@@ -127,8 +127,8 @@ impl Instance {
             .iter()
             .map(|raw_name| raw_name.as_ptr())
             .collect();
-        let app_desc = vk::ApplicationInfo::builder().api_version(vk::API_VERSION_1_2);
-        let instance_desc = vk::InstanceCreateInfo::builder()
+        let app_desc = vk::ApplicationInfo::default().api_version(vk::API_VERSION_1_2);
+        let instance_desc = vk::InstanceCreateInfo::default()
             .application_info(&app_desc)
             .enabled_layer_names(&layer_names)
             .enabled_extension_names(&instance_extensions);
@@ -165,7 +165,7 @@ impl Instance {
             };
 
             #[allow(deprecated)]
-            let debug_loader = ext::DebugReport::new(&entry, &instance);
+            let debug_loader = ext::debug_report::Instance::new(&entry, &instance);
 
             let debug_callback = unsafe {
                 #[allow(deprecated)]
@@ -174,7 +174,7 @@ impl Instance {
                     .unwrap()
             };
 
-            let debug_utils = ext::DebugUtils::new(&entry, &instance);
+            let debug_utils = ext::debug_utils::Instance::new(&entry, &instance);
 
             (Some(debug_loader), Some(debug_callback), Some(debug_utils))
         } else {
@@ -221,8 +221,8 @@ impl Instance {
 
         if debug {
             #[allow(deprecated)]
-            res.push(ext::DebugReport::name().as_ptr());
-            res.push(vk::ExtDebugUtilsFn::name().as_ptr());
+            res.push(ext::debug_report::NAME.as_ptr());
+            res.push(ext::debug_utils::NAME.as_ptr());
         }
 
         res

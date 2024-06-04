@@ -121,20 +121,33 @@ impl Attachment {
 #[derive(Clone, Copy, Debug)]
 pub struct ClearColorValue(pub [f32; 4]);
 
+impl From<[f32; 3]> for ClearColorValue {
+    fn from(color: [f32; 3]) -> Self {
+        [color[0], color[1], color[2], 1.0].into()
+    }
+}
+
 impl From<[f32; 4]> for ClearColorValue {
     fn from(color: [f32; 4]) -> Self {
         Self(color)
     }
 }
 
+impl From<[u8; 3]> for ClearColorValue {
+    fn from(color: [u8; 3]) -> Self {
+        [color[0], color[1], color[2], u8::MAX].into()
+    }
+}
+
 impl From<[u8; 4]> for ClearColorValue {
     fn from(color: [u8; 4]) -> Self {
-        Self([
+        [
             color[0] as f32 / u8::MAX as f32,
             color[1] as f32 / u8::MAX as f32,
             color[2] as f32 / u8::MAX as f32,
             color[3] as f32 / u8::MAX as f32,
-        ])
+        ]
+        .into()
     }
 }
 

@@ -5,6 +5,7 @@ use {
     glam::{vec3, Mat4, Vec3, Vec4},
     inline_spirv::inline_spirv,
     screen_13::prelude::*,
+    screen_13_window::Window,
     std::sync::Arc,
 };
 
@@ -41,20 +42,20 @@ const GOLD: Material = Material {
 /// - Basic PBR rendering (from Sascha Willems)
 /// - Depth/stencil buffer usage
 /// - Multiple rendering passes with a transient image
-fn main() -> Result<(), DisplayError> {
+fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
     profile_with_puffin::init();
 
-    let event_loop = EventLoop::new().build().unwrap();
-    let depth_stencil_format = best_depth_stencil_format(&event_loop.device);
-    let mut pool = LazyPool::new(&event_loop.device);
-    let fill_background = create_fill_background_pipeline(&event_loop.device);
-    let pbr = create_pbr_pipeline(&event_loop.device);
-    let funky_shape = create_funky_shape(&event_loop, &mut pool)?;
+    let window = Window::new()?;
+    let depth_stencil_format = best_depth_stencil_format(&window.device);
+    let mut pool = LazyPool::new(&window.device);
+    let fill_background = create_fill_background_pipeline(&window.device);
+    let pbr = create_pbr_pipeline(&window.device);
+    let funky_shape = create_funky_shape(&window.device, &mut pool)?;
 
     let mut t = 0.0;
-    event_loop.run(|mut frame| {
-        t += frame.dt;
+    window.run(|frame| {
+        t += 0.016;
 
         let index_buf = frame.render_graph.bind_node(&funky_shape.index_buf);
         let vertex_buf = frame.render_graph.bind_node(&funky_shape.vertex_buf);
@@ -75,8 +76,8 @@ fn main() -> Result<(), DisplayError> {
         let obj_pos = Vec3::ZERO;
         let material = GOLD;
 
-        let camera_buf = bind_camera_buf(&mut frame, &mut pool, camera, model);
-        let light_buf = bind_light_buf(&mut frame, &mut pool);
+        let camera_buf = bind_camera_buf(frame.render_graph, &mut pool, camera, model);
+        let light_buf = bind_light_buf(frame.render_graph, &mut pool);
         let push_const_data = write_push_consts(obj_pos, material);
 
         let mut write = DepthStencilMode::DEPTH_WRITE;
@@ -131,7 +132,9 @@ fn main() -> Result<(), DisplayError> {
             .record_subpass(move |subpass, _| {
                 subpass.draw(6, 1, 0, 0);
             });
-    })
+    })?;
+
+    Ok(())
 }
 
 fn best_depth_stencil_format(device: &Device) -> vk::Format {
@@ -159,7 +162,7 @@ fn best_depth_stencil_format(device: &Device) -> vk::Format {
 }
 
 fn bind_camera_buf(
-    frame: &mut FrameContext,
+    render_graph: &mut RenderGraph,
     pool: &mut LazyPool,
     camera: Camera,
     model: Mat4,
@@ -172,10 +175,10 @@ fn bind_camera_buf(
         .unwrap();
     write_camera_buf(&mut buf, camera, model);
 
-    frame.render_graph.bind_node(buf)
+    render_graph.bind_node(buf)
 }
 
-fn bind_light_buf(frame: &mut FrameContext, pool: &mut LazyPool) -> BufferLeaseNode {
+fn bind_light_buf(render_graph: &mut RenderGraph, pool: &mut LazyPool) -> BufferLeaseNode {
     let mut buf = pool
         .lease(BufferInfo::host_mem(
             64,
@@ -184,7 +187,7 @@ fn bind_light_buf(frame: &mut FrameContext, pool: &mut LazyPool) -> BufferLeaseN
         .unwrap();
     write_light_buf(&mut buf);
 
-    frame.render_graph.bind_node(buf)
+    render_graph.bind_node(buf)
 }
 
 fn write_push_consts(obj_pos: Vec3, material: Material) -> [u8; 32] {
@@ -217,33 +220,33 @@ fn camera(width: u32, height: u32) -> Camera {
 
 /// Returns ready-to-use index and vertex buffers. Index count is also returned. The shape data uses
 /// temporary staging buffers which are not required but are fun.
-fn create_funky_shape(event_loop: &EventLoop, pool: &mut LazyPool) -> Result<Shape, DriverError> {
+fn create_funky_shape(device: &Arc<Device>, pool: &mut LazyPool) -> Result<Shape, DriverError> {
     // Static index/vertex data courtesy of the polyhedron-ops library
     let (indices, vertices) = funky_shape_data();
     let index_count = indices.len() as u32;
 
     // Create host-accessible buffers
     let index_buf_host = Buffer::create_from_slice(
-        &event_loop.device,
+        device,
         vk::BufferUsageFlags::TRANSFER_SRC,
         cast_slice(&indices),
     )?;
     let vertex_buf_host = Buffer::create_from_slice(
-        &event_loop.device,
+        device,
         vk::BufferUsageFlags::TRANSFER_SRC,
         cast_slice(&vertices),
     )?;
 
     // Create GPU-only buffers
     let index_buf = Arc::new(Buffer::create(
-        &event_loop.device,
+        device,
         BufferInfo::device_mem(
             index_buf_host.info.size,
             vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::INDEX_BUFFER,
         ),
     )?);
     let vertex_buf = Arc::new(Buffer::create(
-        &event_loop.device,
+        device,
         BufferInfo::device_mem(
             vertex_buf_host.info.size,
             vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::VERTEX_BUFFER,

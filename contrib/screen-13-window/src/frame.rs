@@ -1,5 +1,5 @@
 use {
-    crate::{
+    screen_13::{
         driver::device::Device,
         graph::{node::SwapchainImageNode, RenderGraph},
     },
@@ -25,9 +25,6 @@ pub fn set_cursor_position(window: &Window, x: u32, y: u32) {
 pub struct FrameContext<'a> {
     /// The device this frame belongs to.
     pub device: &'a Arc<Device>,
-
-    /// The elapsed seconds since the previous frame.
-    pub dt: f32,
 
     /// A slice of events that have occurred since the previous frame.
     pub events: &'a [Event<()>],

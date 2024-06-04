@@ -97,7 +97,7 @@ impl Buffer {
         debug_assert_ne!(info.size, 0, "Size must be non-zero");
 
         let device = Arc::clone(device);
-        let buffer_info = vk::BufferCreateInfo::builder()
+        let buffer_info = vk::BufferCreateInfo::default()
             .size(info.size)
             .usage(info.usage)
             .sharing_mode(vk::SharingMode::CONCURRENT)
@@ -312,7 +312,7 @@ impl Buffer {
     pub fn device_address(this: &Self) -> vk::DeviceAddress {
         unsafe {
             this.device.get_buffer_device_address(
-                &vk::BufferDeviceAddressInfo::builder().buffer(this.buffer),
+                &vk::BufferDeviceAddressInfo::default().buffer(this.buffer),
             )
         }
     }
