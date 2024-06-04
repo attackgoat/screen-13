@@ -156,7 +156,7 @@ fn main() -> anyhow::Result<()> {
         let x = 320f32 * 0.5 / scale - width as f32 * 0.5;
         let y = 200f32 * 0.5 / scale - height as f32 * 0.5;
         let color = [196, 172, 230u8];
-        //small_10px_font.print_scale(frame.render_graph, image_node, x, y, color, text, scale);
+        small_10px_font.print_scale(frame.render_graph, image_node, x, y, color, text, scale);
 
         display.present_image(frame.render_graph, image_node, frame.swapchain_image);
     })?;

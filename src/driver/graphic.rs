@@ -6,10 +6,10 @@ use {
         image::SampleCount,
         merge_push_constant_ranges,
         shader::{
-            align_spriv, DescriptorBindingMap, DescriptorInfo, PipelineDescriptorInfo, Shader,
-            SpecializationInfo,
+            align_spriv, Descriptor, DescriptorBindingMap, DescriptorInfo, PipelineDescriptorInfo,
+            Shader, SpecializationInfo,
         },
-        DescriptorBinding, DriverError,
+        DriverError,
     },
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
@@ -366,7 +366,7 @@ pub struct GraphicPipeline {
     pub name: Option<String>,
 
     pub(crate) push_constants: Vec<vk::PushConstantRange>,
-    pub(crate) separate_samplers: Box<[DescriptorBinding]>,
+    pub(crate) separate_samplers: Box<[Descriptor]>,
     pub(crate) shader_modules: Vec<vk::ShaderModule>,
     pub(super) state: GraphicPipelineState,
 }

@@ -1,7 +1,8 @@
 mod frame;
 
+pub use self::frame::FrameContext;
+
 use {
-    self::frame::FrameContext,
     log::{info, warn},
     screen_13::{
         driver::{
@@ -45,11 +46,11 @@ pub struct Window {
 
 impl Window {
     pub fn new() -> Result<Self, WindowError> {
-        Self::builder()?.build()
+        Self::builder().build()
     }
 
-    pub fn builder() -> Result<WindowBuilder, EventLoopError> {
-        WindowBuilder::new()
+    pub fn builder() -> WindowBuilder {
+        WindowBuilder::default()
     }
 
     pub fn run<F>(self, draw_fn: F) -> Result<(), WindowError>
@@ -176,8 +177,6 @@ impl Window {
             fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
                 if let Some(ActiveWindow { window, .. }) = self.active_window.as_ref() {
                     window.request_redraw();
-
-                    info!("Redraw requested");
                 }
             }
 
@@ -249,8 +248,6 @@ impl Window {
                 window_id: WindowId,
                 event: WindowEvent,
             ) {
-                info!("Window event: {event:?}");
-
                 if let Some(active_window) = self.active_window.as_mut() {
                     match &event {
                         WindowEvent::CloseRequested => {
@@ -330,6 +327,8 @@ impl Window {
                     warn!("Failed to acquire swapchain image");
                 }
 
+                profiling::finish_frame!();
+
                 self.window.request_redraw();
 
                 true
@@ -368,18 +367,6 @@ pub struct WindowBuilder {
 }
 
 impl WindowBuilder {
-    pub fn new() -> Result<Self, EventLoopError> {
-        Ok(Self {
-            attributes: Default::default(),
-            cmd_buf_count: 5,
-            device_info: Default::default(),
-            image_count: None,
-            surface_format_fn: None,
-            v_sync: None,
-            window_mode_override: None,
-        })
-    }
-
     pub fn build(self) -> Result<Window, WindowError> {
         let event_loop = EventLoop::new()?;
         let device = Arc::new(Device::create_display(self.device_info, &event_loop)?);
@@ -502,6 +489,20 @@ impl fmt::Debug for WindowBuilder {
             .field("v_sync", &self.v_sync)
             .field("window_mode_override", &self.window_mode_override)
             .finish()
+    }
+}
+
+impl Default for WindowBuilder {
+    fn default() -> Self {
+        Self {
+            attributes: Default::default(),
+            cmd_buf_count: 5,
+            device_info: Default::default(),
+            image_count: None,
+            surface_format_fn: None,
+            v_sync: None,
+            window_mode_override: None,
+        }
     }
 }
 

@@ -13,9 +13,9 @@ use {
             image::{Image, ImageViewInfo},
             image_access_layout, is_framebuffer_access, is_read_access, is_write_access,
             pipeline_stage_access_flags, AttachmentInfo, AttachmentRef, CommandBuffer,
-            CommandBufferInfo, DescriptorBinding, DescriptorInfo, DescriptorPool,
-            DescriptorPoolInfo, DescriptorSet, DriverError, FramebufferAttachmentImageInfo,
-            FramebufferInfo, RenderPass, RenderPassInfo, SubpassDependency, SubpassInfo,
+            CommandBufferInfo, Descriptor, DescriptorInfo, DescriptorPool, DescriptorPoolInfo,
+            DescriptorSet, DriverError, FramebufferAttachmentImageInfo, FramebufferInfo,
+            RenderPass, RenderPassInfo, SubpassDependency, SubpassInfo,
         },
         pool::{Lease, Pool},
     },
@@ -2821,7 +2821,7 @@ impl Resolver {
                 let (descriptor_set_idx, dst_binding, binding_offset) = descriptor.into_tuple();
                 let (descriptor_info, _) = pipeline
                         .descriptor_bindings()
-                        .get(&DescriptorBinding(descriptor_set_idx, dst_binding))
+                        .get(&Descriptor { set: descriptor_set_idx, binding: dst_binding })
                         .unwrap_or_else(|| panic!("descriptor {descriptor_set_idx}.{dst_binding}[{binding_offset}] specified in recorded execution of pass \"{}\" was not discovered through shader reflection", &pass.name));
                 let descriptor_type = descriptor_info.descriptor_type();
                 let bound_node = &bindings[*node_idx];
@@ -2933,14 +2933,12 @@ impl Resolver {
             }
 
             if let ExecutionPipeline::Graphic(pipeline) = pipeline {
-                for DescriptorBinding(descriptor_set_idx, dst_binding) in
-                    pipeline.separate_samplers.iter().copied()
-                {
+                for Descriptor { set, binding } in pipeline.separate_samplers.iter().copied() {
                     tls.image_writes.push(IndexWrite {
                         idx: tls.image_infos.len(),
                         write: vk::WriteDescriptorSet::default()
-                            .dst_set(*descriptor_sets[descriptor_set_idx as usize])
-                            .dst_binding(dst_binding)
+                            .dst_set(*descriptor_sets[set as usize])
+                            .dst_binding(binding)
                             .descriptor_type(vk::DescriptorType::SAMPLER)
                             .descriptor_count(1),
                     });
@@ -2950,7 +2948,10 @@ impl Resolver {
                 // Write graphic render pass input attachments (they're automatic)
                 if exec_idx > 0 {
                     for (
-                        &DescriptorBinding(descriptor_set_idx, dst_binding),
+                        &Descriptor {
+                            set: descriptor_set_idx,
+                            binding: dst_binding,
+                        },
                         (descriptor_info, _),
                     ) in &pipeline.descriptor_bindings
                     {

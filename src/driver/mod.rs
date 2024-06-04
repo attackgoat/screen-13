@@ -62,7 +62,7 @@ pub(crate) use self::{
         AttachmentInfo, AttachmentRef, FramebufferAttachmentImageInfo, FramebufferInfo, RenderPass,
         RenderPassInfo, SubpassDependency, SubpassInfo,
     },
-    shader::{DescriptorBinding, DescriptorBindingMap, DescriptorInfo},
+    shader::{Descriptor, DescriptorBindingMap, DescriptorInfo},
     surface::Surface,
 };
 

@@ -16,13 +16,13 @@ screen-13 = "0.11"
 
 _Screen 13_ provides a high performance [Vulkan](https://www.vulkan.org/) driver using smart
 pointers. The driver may be created manually for headless rendering or automatically using the
-built-in event loop abstraction:
+built-in window abstraction:
 
 ```rust
-use screen_13::prelude::*;
+use screen_13_window::{Window, WindowError};
 
-fn main() -> Result<(), DisplayError> {
-    EventLoop::new().build()?.run(|frame| {
+fn main() -> Result<(), WindowError> {
+    Window::new()?.run(|frame| {
         // It's time to do some graphics! 😲
     })
 }

@@ -8,6 +8,7 @@ readme = "README.md"
 
 [dependencies]
 log = "0.4"
+profiling = "1.0"
 screen-13 = { path = "../.." }
 winit = "0.30"
 

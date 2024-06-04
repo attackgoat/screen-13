@@ -4,8 +4,10 @@ use {
     bytemuck::{bytes_of, cast_slice, Pod, Zeroable},
     glam::{vec3, vec4, Mat4, Vec3, Vec4},
     inline_spirv::inline_spirv,
+    log::info,
     meshopt::remap::{generate_vertex_remap, remap_index_buffer, remap_vertex_buffer},
     screen_13::prelude::*,
+    screen_13_window::Window,
     std::{
         env::current_exe,
         fs::{metadata, write},
@@ -20,26 +22,26 @@ fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
     profile_with_puffin::init();
 
-    let event_loop = EventLoop::new().build()?;
-    let mut pool = LazyPool::new(&event_loop.device);
+    let window = Window::new()?;
+    let mut pool = LazyPool::new(&window.device);
 
     let depth_fmt = best_2d_optimal_format(
-        &event_loop.device,
+        &window.device,
         &[vk::Format::D32_SFLOAT, vk::Format::D16_UNORM],
         vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
         vk::ImageCreateFlags::empty(),
     );
 
-    let ground_mesh = load_ground_mesh(&event_loop.device)?;
+    let ground_mesh = load_ground_mesh(&window.device)?;
     let model_path = download_model_from_github("happy.obj")?;
-    let model_mesh = load_model_mesh(&event_loop.device, model_path)?;
-    let scene_blas = create_blas(&event_loop.device, &[&ground_mesh, &model_mesh])?;
-    let gfx_pipeline = create_pipeline(&event_loop.device)?;
+    let model_mesh = load_model_mesh(&window.device, model_path)?;
+    let scene_blas = create_blas(&window.device, &[&ground_mesh, &model_mesh])?;
+    let gfx_pipeline = create_pipeline(&window.device)?;
 
     let mut angle = 0f32;
 
-    event_loop.run(|frame| {
-        angle += frame.dt;
+    window.run(|frame| {
+        angle += 0.016;
 
         let scene_tlas =
             create_tlas(frame.device, &mut pool, frame.render_graph, &scene_blas).unwrap();

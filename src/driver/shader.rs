@@ -23,8 +23,7 @@ use {
     },
 };
 
-pub(crate) type DescriptorBindingMap =
-    HashMap<DescriptorBinding, (DescriptorInfo, vk::ShaderStageFlags)>;
+pub(crate) type DescriptorBindingMap = HashMap<Descriptor, (DescriptorInfo, vk::ShaderStageFlags)>;
 
 pub(crate) fn align_spriv(code: &[u8]) -> Result<&[u32], DriverError> {
     let (prefix, code, suffix) = unsafe { code.align_to() };
@@ -97,17 +96,23 @@ fn guess_immutable_sampler(binding_name: &str) -> SamplerInfo {
 /// This is a generic representation of the descriptor binding point within the shader and not a
 /// bound descriptor reference.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct DescriptorBinding(pub u32, pub u32);
+pub struct Descriptor {
+    /// Descriptor set index
+    pub set: u32,
 
-impl From<u32> for DescriptorBinding {
-    fn from(binding_idx: u32) -> Self {
-        Self(0, binding_idx)
+    /// Descriptor binding index
+    pub binding: u32,
+}
+
+impl From<u32> for Descriptor {
+    fn from(binding: u32) -> Self {
+        Self { set: 0, binding }
     }
 }
 
-impl From<(u32, u32)> for DescriptorBinding {
-    fn from((descriptor_set_idx, binding_idx): (u32, u32)) -> Self {
-        Self(descriptor_set_idx, binding_idx)
+impl From<(u32, u32)> for Descriptor {
+    fn from((set, binding): (u32, u32)) -> Self {
+        Self { set, binding }
     }
 }
 
@@ -185,6 +190,9 @@ impl DescriptorInfo {
 pub(crate) struct PipelineDescriptorInfo {
     pub layouts: BTreeMap<u32, DescriptorSetLayout>,
     pub pool_sizes: HashMap<u32, HashMap<vk::DescriptorType, u32>>,
+
+    #[allow(dead_code)]
+    samplers: Box<[Sampler]>,
 }
 
 impl PipelineDescriptorInfo {
@@ -195,9 +203,9 @@ impl PipelineDescriptorInfo {
     ) -> Result<Self, DriverError> {
         let descriptor_set_count = descriptor_bindings
             .keys()
+            .map(|descriptor| descriptor.set)
             .max()
-            .copied()
-            .map(|descriptor_binding| descriptor_binding.0 + 1)
+            .map(|set| set + 1)
             .unwrap_or_default();
         let mut layouts = BTreeMap::new();
         let mut pool_sizes = HashMap::new();
@@ -228,7 +236,7 @@ impl PipelineDescriptorInfo {
                 .or_insert(binding_count);
         }
 
-        let samplers = sampler_info_binding_count
+        let mut samplers = sampler_info_binding_count
             .keys()
             .copied()
             .map(|sampler_info| {
@@ -251,15 +259,15 @@ impl PipelineDescriptorInfo {
             let mut binding_counts = HashMap::<vk::DescriptorType, u32>::new();
             let mut bindings = vec![];
 
-            for (descriptor_binding, (descriptor_info, stage_flags)) in descriptor_bindings
+            for (descriptor, (descriptor_info, stage_flags)) in descriptor_bindings
                 .iter()
-                .filter(|(descriptor_binding, _)| descriptor_binding.0 == descriptor_set_idx)
+                .filter(|(descriptor, _)| descriptor.set == descriptor_set_idx)
             {
                 let descriptor_ty = descriptor_info.descriptor_type();
                 *binding_counts.entry(descriptor_ty).or_default() +=
                     descriptor_info.binding_count();
                 let mut binding = vk::DescriptorSetLayoutBinding::default()
-                    .binding(descriptor_binding.1)
+                    .binding(descriptor.binding)
                     .descriptor_count(descriptor_info.binding_count())
                     .descriptor_type(descriptor_ty)
                     .stage_flags(*stage_flags);
@@ -314,12 +322,18 @@ impl PipelineDescriptorInfo {
             );
         }
 
+        let samplers = samplers
+            .drain()
+            .map(|(_, sampler)| sampler)
+            .collect::<Box<_>>();
+
         //trace!("layouts {:#?}", &layouts);
         // trace!("pool_sizes {:#?}", &pool_sizes);
 
         Ok(Self {
             layouts,
             pool_sizes,
+            samplers,
         })
     }
 }
@@ -733,7 +747,7 @@ pub struct Shader {
     entry_point: EntryPoint,
 
     #[builder(default, private)]
-    image_samplers: HashMap<DescriptorBinding, SamplerInfo>,
+    image_samplers: HashMap<Descriptor, SamplerInfo>,
 
     #[builder(default, private, setter(strip_option))]
     vertex_input_state: Option<VertexInputState>,
@@ -901,7 +915,7 @@ impl Shader {
     pub(super) fn descriptor_bindings(&self) -> DescriptorBindingMap {
         let mut res = DescriptorBindingMap::default();
 
-        for (name, binding, desc_ty, binding_count) in
+        for (name, descriptor, desc_ty, binding_count) in
             self.entry_point.vars.iter().filter_map(|var| match var {
                 Variable::Descriptor {
                     name,
@@ -911,7 +925,10 @@ impl Shader {
                     ..
                 } => Some((
                     name,
-                    DescriptorBinding(desc_bind.set(), desc_bind.bind()),
+                    Descriptor {
+                        set: desc_bind.set(),
+                        binding: desc_bind.bind(),
+                    },
                     desc_ty,
                     *nbind,
                 )),
@@ -919,10 +936,10 @@ impl Shader {
             })
         {
             trace!(
-                "binding {}: {}.{} = {:?}[{}]",
+                "descriptor {}: {}.{} = {:?}[{}]",
                 name.as_deref().unwrap_or_default(),
-                binding.0,
-                binding.1,
+                descriptor.set,
+                descriptor.binding,
                 *desc_ty,
                 binding_count
             );
@@ -933,7 +950,7 @@ impl Shader {
                 }
                 DescriptorType::CombinedImageSampler() => {
                     let (sampler_info, is_manually_defined) =
-                        self.image_sampler(binding, name.as_deref().unwrap_or_default());
+                        self.image_sampler(descriptor, name.as_deref().unwrap_or_default());
 
                     DescriptorInfo::CombinedImageSampler(
                         binding_count,
@@ -947,7 +964,7 @@ impl Shader {
                 DescriptorType::SampledImage() => DescriptorInfo::SampledImage(binding_count),
                 DescriptorType::Sampler() => {
                     let (sampler_info, is_manually_defined) =
-                        self.image_sampler(binding, name.as_deref().unwrap_or_default());
+                        self.image_sampler(descriptor, name.as_deref().unwrap_or_default());
 
                     DescriptorInfo::Sampler(binding_count, sampler_info, is_manually_defined)
                 }
@@ -965,15 +982,15 @@ impl Shader {
                     DescriptorInfo::UniformTexelBuffer(binding_count)
                 }
             };
-            res.insert(binding, (descriptor_info, self.stage));
+            res.insert(descriptor, (descriptor_info, self.stage));
         }
 
         res
     }
 
-    fn image_sampler(&self, binding: DescriptorBinding, name: &str) -> (SamplerInfo, bool) {
+    fn image_sampler(&self, descriptor: Descriptor, name: &str) -> (SamplerInfo, bool) {
         self.image_samplers
-            .get(&binding)
+            .get(&descriptor)
             .copied()
             .map(|sampler_info| (sampler_info, true))
             .unwrap_or_else(|| (guess_immutable_sampler(name), false))
@@ -1365,17 +1382,20 @@ impl ShaderBuilder {
     #[profiling::function]
     pub fn image_sampler(
         mut self,
-        binding: impl Into<DescriptorBinding>,
+        descriptor: impl Into<Descriptor>,
         info: impl Into<SamplerInfo>,
     ) -> Self {
-        let binding = binding.into();
+        let descriptor = descriptor.into();
         let info = info.into();
 
         if self.image_samplers.is_none() {
             self.image_samplers = Some(Default::default());
         }
 
-        self.image_samplers.as_mut().unwrap().insert(binding, info);
+        self.image_samplers
+            .as_mut()
+            .unwrap()
+            .insert(descriptor, info);
 
         self
     }

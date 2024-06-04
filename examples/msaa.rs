@@ -4,6 +4,7 @@ use {
     bytemuck::{bytes_of, cast_slice, NoUninit},
     glam::{Mat4, Vec3},
     inline_spirv::inline_spirv,
+    log::warn,
     screen_13::prelude::*,
     screen_13_window::Window,
     std::{mem::size_of, sync::Arc},

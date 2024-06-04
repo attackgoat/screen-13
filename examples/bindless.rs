@@ -13,7 +13,7 @@ fn main() -> Result<(), WindowError> {
     pretty_env_logger::init();
     profile_with_puffin::init();
 
-    let window = Window::builder()?
+    let window = Window::builder()
         .window(|window| window.with_inner_size(LogicalSize::new(512, 512)))
         .build()?;
     let images = create_images(&window.device)?;

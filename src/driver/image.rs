@@ -61,7 +61,7 @@ use std::sync::Mutex;
 /// [fully qualified syntax]: https://doc.rust-lang.org/book/ch19-03-advanced-traits.html#fully-qualified-syntax-for-disambiguation-calling-methods-with-the-same-name
 pub struct Image {
     allocation: Option<Allocation>, // None when we don't own the image (Swapchain images)
-    device: Arc<Device>,
+    pub(super) device: Arc<Device>,
     image: vk::Image,
     #[allow(clippy::type_complexity)]
     image_view_cache: Mutex<HashMap<ImageViewInfo, ImageView>>,

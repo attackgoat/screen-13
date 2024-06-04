@@ -2,7 +2,7 @@
 
 use {
     super::{physical_device::PhysicalDevice, DriverError, Instance},
-    ash::{khr, vk},
+    ash::{ext, khr, vk},
     ash_window::enumerate_required_extensions,
     derive_builder::{Builder, UninitializedFieldError},
     gpu_allocator::{
@@ -73,7 +73,7 @@ impl Device {
     where
         F: FnOnce(vk::DeviceCreateInfo) -> ash::prelude::VkResult<ash::Device>,
     {
-        let mut enabled_ext_names = Vec::with_capacity(5);
+        let mut enabled_ext_names = Vec::with_capacity(6);
 
         if display_window {
             enabled_ext_names.push(khr::swapchain::NAME.as_ptr());
@@ -90,6 +90,10 @@ impl Device {
 
         if physical_device.ray_trace_features.ray_tracing_pipeline {
             enabled_ext_names.push(khr::ray_tracing_pipeline::NAME.as_ptr());
+        }
+
+        if physical_device.index_type_uint8_features.index_type_uint8 {
+            enabled_ext_names.push(ext::index_type_uint8::NAME.as_ptr());
         }
 
         let priorities = repeat(1.0)
@@ -125,14 +129,14 @@ impl Device {
         let mut features_v1_2 = vk::PhysicalDeviceVulkan12Features::default();
         let mut acceleration_structure_features =
             vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
-        let mut index_type_uin8_feautres = vk::PhysicalDeviceIndexTypeUint8FeaturesEXT::default();
+        let mut index_type_uint8_features = vk::PhysicalDeviceIndexTypeUint8FeaturesEXT::default();
         let mut ray_query_features = vk::PhysicalDeviceRayQueryFeaturesKHR::default();
         let mut ray_trace_features = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
         let mut features = vk::PhysicalDeviceFeatures2::default()
             .push_next(&mut features_v1_1)
             .push_next(&mut features_v1_2)
             .push_next(&mut acceleration_structure_features)
-            .push_next(&mut index_type_uin8_feautres)
+            .push_next(&mut index_type_uint8_features)
             .push_next(&mut ray_query_features)
             .push_next(&mut ray_trace_features);
         unsafe { get_physical_device_features2(**physical_device, &mut features) };
