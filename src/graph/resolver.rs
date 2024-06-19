@@ -33,10 +33,6 @@ use {
     vk_sync::{cmd::pipeline_barrier, AccessType, BufferBarrier, GlobalBarrier, ImageBarrier},
 };
 
-fn align_up(val: u32, atom: u32) -> u32 {
-    (val + atom - 1) & !(atom - 1)
-}
-
 #[derive(Default)]
 struct AccessCache {
     accesses: Vec<bool>,
@@ -823,18 +819,22 @@ impl Resolver {
 
         // Trivially round up the descriptor counts to increase cache coherence
         const ATOM: u32 = 1 << 5;
-        info.acceleration_structure_count = align_up(info.acceleration_structure_count, ATOM);
-        info.combined_image_sampler_count = align_up(info.combined_image_sampler_count, ATOM);
-        info.input_attachment_count = align_up(info.input_attachment_count, ATOM);
-        info.sampled_image_count = align_up(info.sampled_image_count, ATOM);
-        info.sampler_count = align_up(info.sampler_count, ATOM);
-        info.storage_buffer_count = align_up(info.storage_buffer_count, ATOM);
-        info.storage_buffer_dynamic_count = align_up(info.storage_buffer_dynamic_count, ATOM);
-        info.storage_image_count = align_up(info.storage_image_count, ATOM);
-        info.storage_texel_buffer_count = align_up(info.storage_texel_buffer_count, ATOM);
-        info.uniform_buffer_count = align_up(info.uniform_buffer_count, ATOM);
-        info.uniform_buffer_dynamic_count = align_up(info.uniform_buffer_dynamic_count, ATOM);
-        info.uniform_texel_buffer_count = align_up(info.uniform_texel_buffer_count, ATOM);
+        info.acceleration_structure_count =
+            info.acceleration_structure_count.next_multiple_of(ATOM);
+        info.combined_image_sampler_count =
+            info.combined_image_sampler_count.next_multiple_of(ATOM);
+        info.input_attachment_count = info.input_attachment_count.next_multiple_of(ATOM);
+        info.sampled_image_count = info.sampled_image_count.next_multiple_of(ATOM);
+        info.sampler_count = info.sampler_count.next_multiple_of(ATOM);
+        info.storage_buffer_count = info.storage_buffer_count.next_multiple_of(ATOM);
+        info.storage_buffer_dynamic_count =
+            info.storage_buffer_dynamic_count.next_multiple_of(ATOM);
+        info.storage_image_count = info.storage_image_count.next_multiple_of(ATOM);
+        info.storage_texel_buffer_count = info.storage_texel_buffer_count.next_multiple_of(ATOM);
+        info.uniform_buffer_count = info.uniform_buffer_count.next_multiple_of(ATOM);
+        info.uniform_buffer_dynamic_count =
+            info.uniform_buffer_dynamic_count.next_multiple_of(ATOM);
+        info.uniform_texel_buffer_count = info.uniform_texel_buffer_count.next_multiple_of(ATOM);
 
         // Notice how all sets are big enough for any other set; TODO: efficiently dont
 
