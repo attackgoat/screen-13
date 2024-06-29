@@ -75,10 +75,6 @@ static SHADER_MISS: &[u32] = inline_spirv!(
 )
 .as_slice();
 
-fn align_up(val: u32, atom: u32) -> u32 {
-    (val + atom - 1) & !(atom - 1)
-}
-
 fn create_ray_trace_pipeline(device: &Arc<Device>) -> Result<Arc<RayTracePipeline>, DriverError> {
     Ok(Arc::new(RayTracePipeline::create(
         device,
@@ -125,7 +121,7 @@ fn main() -> anyhow::Result<()> {
     // Setup a shader binding table
     // ------------------------------------------------------------------------------------------ //
 
-    let sbt_handle_size = align_up(shader_group_handle_size, shader_group_handle_alignment);
+    let sbt_handle_size = shader_group_handle_size.next_multiple_of(shader_group_handle_alignment);
     let sbt_rgen_size = sbt_handle_size;
     let sbt_hit_size = sbt_handle_size;
     let sbt_miss_size = 2 * sbt_handle_size;
@@ -236,25 +232,21 @@ fn main() -> anyhow::Result<()> {
     // Create the bottom level acceleration structure
     // ------------------------------------------------------------------------------------------ //
 
-    let blas_geometry_info = AccelerationStructureGeometryInfo {
-        ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
-        flags: vk::BuildAccelerationStructureFlagsKHR::empty(),
-        geometries: vec![AccelerationStructureGeometry {
-            max_primitive_count: triangle_count,
-            flags: vk::GeometryFlagsKHR::OPAQUE,
-            geometry: AccelerationStructureGeometryData::Triangles {
-                index_data: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(&index_buf)),
-                index_type: vk::IndexType::UINT32,
-                max_vertex: vertex_count,
-                transform_data: None,
-                vertex_data: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(
-                    &vertex_buf,
-                )),
-                vertex_format: vk::Format::R32G32B32_SFLOAT,
-                vertex_stride: 12,
-            },
-        }],
-    };
+    let blas_geometry_info = AccelerationStructureGeometryInfo::blas([(
+        AccelerationStructureGeometry::opaque(
+            triangle_count,
+            AccelerationStructureGeometryData::triangles(
+                Buffer::device_address(&index_buf),
+                vk::IndexType::UINT32,
+                vertex_count,
+                None,
+                Buffer::device_address(&vertex_buf),
+                vk::Format::R32G32B32_SFLOAT,
+                12,
+            ),
+        ),
+        vk::AccelerationStructureBuildRangeInfoKHR::default().primitive_count(triangle_count),
+    )]);
     let blas_size = AccelerationStructure::size_of(&window.device, &blas_geometry_info);
     let blas = Arc::new(AccelerationStructure::create(
         &window.device,
@@ -302,18 +294,13 @@ fn main() -> anyhow::Result<()> {
     // Create the top level acceleration structure
     // ------------------------------------------------------------------------------------------ //
 
-    let tlas_geometry_info = AccelerationStructureGeometryInfo {
-        ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
-        flags: vk::BuildAccelerationStructureFlagsKHR::empty(),
-        geometries: vec![AccelerationStructureGeometry {
-            max_primitive_count: 1,
-            flags: vk::GeometryFlagsKHR::OPAQUE,
-            geometry: AccelerationStructureGeometryData::Instances {
-                array_of_pointers: false,
-                data: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(&instance_buf)),
-            },
-        }],
-    };
+    let tlas_geometry_info = AccelerationStructureGeometryInfo::tlas([(
+        AccelerationStructureGeometry::opaque(
+            1,
+            AccelerationStructureGeometryData::instances(Buffer::device_address(&instance_buf)),
+        ),
+        vk::AccelerationStructureBuildRangeInfoKHR::default().primitive_count(1),
+    )]);
     let tlas_size = AccelerationStructure::size_of(&window.device, &tlas_geometry_info);
     let tlas = Arc::new(AccelerationStructure::create(
         &window.device,
@@ -349,6 +336,7 @@ fn main() -> anyhow::Result<()> {
                 .to_builder()
                 .alignment(accel_struct_scratch_offset_alignment),
             )?);
+            let scratch_data = render_graph.node_device_address(scratch_buf);
 
             render_graph
                 .begin_pass("Build BLAS")
@@ -357,17 +345,7 @@ fn main() -> anyhow::Result<()> {
                 .access_node(scratch_buf, AccessType::AccelerationStructureBufferWrite)
                 .access_node(blas_node, AccessType::AccelerationStructureBuildWrite)
                 .record_acceleration(move |accel, _| {
-                    accel.build_structure(
-                        blas_node,
-                        scratch_buf,
-                        &blas_geometry_info,
-                        &[vk::AccelerationStructureBuildRangeInfoKHR {
-                            first_vertex: 0,
-                            primitive_count: triangle_count,
-                            primitive_offset: 0,
-                            transform_offset: 0,
-                        }],
-                    );
+                    accel.build_structure(&blas_geometry_info, blas_node, scratch_data);
                 });
         }
 
@@ -383,6 +361,7 @@ fn main() -> anyhow::Result<()> {
                 .to_builder()
                 .alignment(accel_struct_scratch_offset_alignment),
             )?);
+            let scratch_data = render_graph.node_device_address(scratch_buf);
             let tlas_node = render_graph.bind_node(&tlas);
 
             render_graph
@@ -392,17 +371,7 @@ fn main() -> anyhow::Result<()> {
                 .access_node(scratch_buf, AccessType::AccelerationStructureBufferWrite)
                 .access_node(tlas_node, AccessType::AccelerationStructureBuildWrite)
                 .record_acceleration(move |accel, _| {
-                    accel.build_structure(
-                        tlas_node,
-                        scratch_buf,
-                        &tlas_geometry_info,
-                        &[vk::AccelerationStructureBuildRangeInfoKHR {
-                            first_vertex: 0,
-                            primitive_count: 1,
-                            primitive_offset: 0,
-                            transform_offset: 0,
-                        }],
-                    );
+                    accel.build_structure(&tlas_geometry_info, tlas_node, scratch_data);
                 });
         }
 

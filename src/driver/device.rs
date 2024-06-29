@@ -34,7 +34,7 @@ pub type SelectPhysicalDeviceFn = dyn FnOnce(&[PhysicalDevice]) -> usize;
 
 /// Opaque handle to a device object.
 pub struct Device {
-    pub(crate) accel_struct_ext: Option<khr::acceleration_structure::Device>,
+    accel_struct_ext: Option<khr::acceleration_structure::Device>,
 
     pub(super) allocator: ManuallyDrop<Mutex<Allocator>>,
 
@@ -258,6 +258,19 @@ impl Device {
 
             DriverError::OutOfMemory
         })
+    }
+
+    /// Helper for times when you already know that the device supports the acceleration
+    /// structure extension.
+    /// 
+    /// # Panics
+    /// 
+    /// Panics if [Self.physical_device.accel_struct_properties] is `None`.
+    pub(crate) fn expect_accel_struct_ext(this: &Self) -> &khr::acceleration_structure::Device {
+        this
+            .accel_struct_ext
+            .as_ref()
+            .expect("VK_KHR_acceleration_structure")
     }
 
     /// Loads and existing `ash` Vulkan device that may have been created by other means.

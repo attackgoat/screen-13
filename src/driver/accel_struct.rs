@@ -8,6 +8,7 @@ use {
     derive_builder::{Builder, UninitializedFieldError},
     log::warn,
     std::{
+        ffi::c_void,
         mem::size_of_val,
         ops::Deref,
         sync::{
@@ -51,11 +52,7 @@ use {
 /// [fully qualified syntax]: https://doc.rust-lang.org/book/ch19-03-advanced-traits.html#fully-qualified-syntax-for-disambiguation-calling-methods-with-the-same-name
 #[derive(Debug)]
 pub struct AccelerationStructure {
-    accel_struct: vk::AccelerationStructureKHR,
-
-    /// Backing storage buffer for this object.
-    pub buffer: Buffer,
-
+    accel_struct: (vk::AccelerationStructureKHR, Buffer),
     device: Arc<Device>,
 
     /// Information used to create this object.
@@ -92,11 +89,13 @@ impl AccelerationStructure {
         device: &Arc<Device>,
         info: impl Into<AccelerationStructureInfo>,
     ) -> Result<Self, DriverError> {
+        debug_assert!(device.physical_device.accel_struct_properties.is_some());
+
         let info = info.into();
 
         let buffer = Buffer::create(
             device,
-            BufferInfo::host_mem(
+            BufferInfo::device_mem(
                 info.size,
                 vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
@@ -109,25 +108,27 @@ impl AccelerationStructure {
                 .buffer(*buffer)
                 .size(info.size);
 
-            unsafe {
-                device
-                    .accel_struct_ext
-                    .as_ref()
-                    .unwrap()
-                    .create_acceleration_structure(&create_info, None)
-                    .map_err(|err| {
-                        warn!("{err}");
+            let accel_struct_ext = Device::expect_accel_struct_ext(device);
 
-                        DriverError::Unsupported
-                    })?
-            }
+            unsafe { accel_struct_ext.create_acceleration_structure(&create_info, None) }.map_err(
+                |err| {
+                    warn!("{err}");
+
+                    match err {
+                        vk::Result::ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS => {
+                            DriverError::InvalidData
+                        }
+                        vk::Result::ERROR_OUT_OF_HOST_MEMORY => DriverError::OutOfMemory,
+                        _ => DriverError::Unsupported,
+                    }
+                },
+            )?
         };
 
         let device = Arc::clone(device);
 
         Ok(AccelerationStructure {
-            accel_struct,
-            buffer,
+            accel_struct: (accel_struct, buffer),
             device,
             info,
             prev_access: AtomicU8::new(access_type_into_u8(AccessType::Nothing)),
@@ -210,15 +211,13 @@ impl AccelerationStructure {
     /// ```
     #[profiling::function]
     pub fn device_address(this: &Self) -> vk::DeviceAddress {
+        let accel_struct_ext = Device::expect_accel_struct_ext(&this.device);
+
         unsafe {
-            this.device
-                .accel_struct_ext
-                .as_ref()
-                .unwrap()
-                .get_acceleration_structure_device_address(
-                    &vk::AccelerationStructureDeviceAddressInfoKHR::default()
-                        .acceleration_structure(this.accel_struct),
-                )
+            accel_struct_ext.get_acceleration_structure_device_address(
+                &vk::AccelerationStructureDeviceAddressInfoKHR::default()
+                    .acceleration_structure(this.accel_struct.0),
+            )
         }
     }
 
@@ -271,8 +270,8 @@ impl AccelerationStructure {
     /// ```
     #[profiling::function]
     pub fn size_of(
-        device: &Arc<Device>,
-        info: &AccelerationStructureGeometryInfo,
+        device: &Device,
+        info: &AccelerationStructureGeometryInfo<impl AsRef<AccelerationStructureGeometry>>,
     ) -> AccelerationStructureSize {
         use std::cell::RefCell;
 
@@ -290,67 +289,8 @@ impl AccelerationStructure {
             tls.geometries.clear();
             tls.max_primitive_counts.clear();
 
-            for info in info.geometries.iter() {
-                let flags = info.flags;
-                let (geometry_type, geometry) = match info.geometry {
-                    AccelerationStructureGeometryData::AABBs { stride } => (
-                        vk::GeometryTypeKHR::AABBS,
-                        vk::AccelerationStructureGeometryDataKHR {
-                            aabbs: vk::AccelerationStructureGeometryAabbsDataKHR {
-                                stride,
-                                ..Default::default()
-                            },
-                        },
-                    ),
-                    AccelerationStructureGeometryData::Instances {
-                        array_of_pointers, ..
-                    } => (
-                        vk::GeometryTypeKHR::INSTANCES,
-                        vk::AccelerationStructureGeometryDataKHR {
-                            instances: vk::AccelerationStructureGeometryInstancesDataKHR {
-                                array_of_pointers: array_of_pointers as _,
-                                ..Default::default()
-                            },
-                        },
-                    ),
-                    AccelerationStructureGeometryData::Triangles {
-                        index_type,
-                        max_vertex,
-                        transform_data,
-                        vertex_format,
-                        vertex_stride,
-                        ..
-                    } => (
-                        vk::GeometryTypeKHR::TRIANGLES,
-                        vk::AccelerationStructureGeometryDataKHR {
-                            triangles: vk::AccelerationStructureGeometryTrianglesDataKHR {
-                                vertex_format,
-                                vertex_stride,
-                                max_vertex,
-                                index_type,
-                                transform_data: match transform_data {
-                                    Some(DeviceOrHostAddress::DeviceAddress(device_address)) => {
-                                        vk::DeviceOrHostAddressConstKHR { device_address }
-                                    }
-                                    Some(DeviceOrHostAddress::HostAddress) => {
-                                        vk::DeviceOrHostAddressConstKHR {
-                                            host_address: std::ptr::null(),
-                                        } // TODO
-                                    }
-                                    None => vk::DeviceOrHostAddressConstKHR { device_address: 0 },
-                                },
-                                ..Default::default()
-                            },
-                        },
-                    ),
-                };
-
-                tls.geometries.push(vk::AccelerationStructureGeometryKHR {
-                    flags,
-                    geometry_type,
-                    geometry,
-                    ..Default::default()
-                });
+            for info in info.geometries.iter().map(AsRef::as_ref) {
+                tls.geometries.push(info.into());
                 tls.max_primitive_counts.push(info.max_primitive_count);
             }
 
@@ -359,19 +299,16 @@ impl AccelerationStructure {
                 .flags(info.flags)
                 .geometries(&tls.geometries);
             let mut sizes = vk::AccelerationStructureBuildSizesInfoKHR::default();
+            let accel_struct_ext = Device::expect_accel_struct_ext(device);
 
             unsafe {
-                device
-                    .accel_struct_ext
-                    .as_ref()
-                    .expect("ray tracing feature must be enabled")
-                    .get_acceleration_structure_build_sizes(
-                        vk::AccelerationStructureBuildTypeKHR::HOST_OR_DEVICE,
-                        &info,
-                        tls.max_primitive_counts.as_slice(),
-                        &mut sizes,
-                    )
-            };
+                accel_struct_ext.get_acceleration_structure_build_sizes(
+                    vk::AccelerationStructureBuildTypeKHR::HOST_OR_DEVICE,
+                    &info,
+                    &tls.max_primitive_counts,
+                    &mut sizes,
+                );
+            }
 
             AccelerationStructureSize {
                 create_size: sizes.acceleration_structure_size,
@@ -386,7 +323,7 @@ impl Deref for AccelerationStructure {
     type Target = vk::AccelerationStructureKHR;
 
     fn deref(&self) -> &Self::Target {
-        &self.accel_struct
+        &self.accel_struct.0
     }
 }
 
@@ -397,12 +334,10 @@ impl Drop for AccelerationStructure {
             return;
         }
 
+        let accel_struct_ext = Device::expect_accel_struct_ext(&self.device);
+
         unsafe {
-            self.device
-                .accel_struct_ext
-                .as_ref()
-                .unwrap()
-                .destroy_acceleration_structure(self.accel_struct, None);
+            accel_struct_ext.destroy_acceleration_structure(self.accel_struct.0, None);
         }
     }
 }
@@ -412,7 +347,7 @@ impl Drop for AccelerationStructure {
 /// See
 /// [VkAccelerationStructureGeometryKHR](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkAccelerationStructureGeometryKHR.html)
 /// for more information.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct AccelerationStructureGeometry {
     /// The number of primitives built into each geometry.
     pub max_primitive_count: u32,
@@ -425,101 +360,50 @@ pub struct AccelerationStructureGeometry {
 }
 
 impl AccelerationStructureGeometry {
-    pub(crate) fn into_vk(self) -> vk::AccelerationStructureGeometryKHR<'static> {
-        let (geometry_type, geometry) = match self.geometry {
-            AccelerationStructureGeometryData::AABBs { stride } => (
-                vk::GeometryTypeKHR::AABBS,
-                vk::AccelerationStructureGeometryDataKHR {
-                    aabbs: vk::AccelerationStructureGeometryAabbsDataKHR {
-                        stride,
-                        ..Default::default()
-                    },
-                },
-            ),
-            AccelerationStructureGeometryData::Instances {
-                array_of_pointers,
-                data,
-            } => (
-                vk::GeometryTypeKHR::INSTANCES,
-                vk::AccelerationStructureGeometryDataKHR {
-                    instances: vk::AccelerationStructureGeometryInstancesDataKHR {
-                        array_of_pointers: array_of_pointers as _,
-                        data: match data {
-                            DeviceOrHostAddress::DeviceAddress(device_address) => {
-                                vk::DeviceOrHostAddressConstKHR { device_address }
-                            }
-                            DeviceOrHostAddress::HostAddress => todo!(),
-                        },
-                        ..Default::default()
-                    },
-                },
-            ),
-            AccelerationStructureGeometryData::Triangles {
-                index_data,
-                index_type,
-                max_vertex,
-                transform_data,
-                vertex_data,
-                vertex_format,
-                vertex_stride,
-            } => (
-                vk::GeometryTypeKHR::TRIANGLES,
-                vk::AccelerationStructureGeometryDataKHR {
-                    triangles: vk::AccelerationStructureGeometryTrianglesDataKHR {
-                        index_data: match index_data {
-                            DeviceOrHostAddress::DeviceAddress(device_address) => {
-                                vk::DeviceOrHostAddressConstKHR { device_address }
-                            }
-                            DeviceOrHostAddress::HostAddress => todo!(),
-                        },
-                        index_type,
-                        max_vertex,
-                        transform_data: match transform_data {
-                            Some(DeviceOrHostAddress::DeviceAddress(device_address)) => {
-                                vk::DeviceOrHostAddressConstKHR { device_address }
-                            }
-                            Some(DeviceOrHostAddress::HostAddress) => todo!(),
-                            None => vk::DeviceOrHostAddressConstKHR { device_address: 0 },
-                        },
-                        vertex_data: match vertex_data {
-                            DeviceOrHostAddress::DeviceAddress(device_address) => {
-                                vk::DeviceOrHostAddressConstKHR { device_address }
-                            }
-                            DeviceOrHostAddress::HostAddress => todo!(),
-                        },
-                        vertex_format,
-                        vertex_stride,
-                        ..Default::default()
-                    },
-                },
-            ),
-        };
-        let flags = self.flags;
+    /// Creates a new acceleration structure geometry instance.
+    pub fn new(max_primitive_count: u32, geometry: AccelerationStructureGeometryData) -> Self {
+        let flags = Default::default();
 
-        vk::AccelerationStructureGeometryKHR {
+        Self {
+            max_primitive_count,
             flags,
-            geometry_type,
             geometry,
-            ..Default::default()
         }
+    }
+
+    /// Creates a new acceleration structure geometry instance with the
+    /// [vk::GeometryFlagsKHR::OPAQUE] flag set.
+    pub fn opaque(max_primitive_count: u32, geometry: AccelerationStructureGeometryData) -> Self {
+        Self::new(max_primitive_count, geometry).flags(vk::GeometryFlagsKHR::OPAQUE)
+    }
+
+    /// Sets the instance flags.
+    pub fn flags(mut self, flags: vk::GeometryFlagsKHR) -> Self {
+        self.flags = flags;
+
+        self
     }
 }
 
-/// Specifies the geometry data used to build an acceleration structure.
-///
-/// See
-/// [VkAccelerationStructureBuildGeometryInfoKHR](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkAccelerationStructureBuildGeometryInfoKHR.html)
-/// for more information.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct AccelerationStructureGeometryInfo {
-    /// Type of acceleration structure.
-    pub ty: vk::AccelerationStructureTypeKHR,
+impl<T> AsRef<AccelerationStructureGeometry> for (AccelerationStructureGeometry, T) {
+    fn as_ref(&self) -> &AccelerationStructureGeometry {
+        &self.0
+    }
+}
 
-    /// Specifies additional parameters of the acceleration structure.
-    pub flags: vk::BuildAccelerationStructureFlagsKHR,
+impl<'a, 'b> From<&'b AccelerationStructureGeometry> for vk::AccelerationStructureGeometryKHR<'a> {
+    fn from(&value: &'b AccelerationStructureGeometry) -> Self {
+        value.into()
+    }
+}
 
-    /// An array of [AccelerationStructureGeometry] structures to be built.
-    pub geometries: Vec<AccelerationStructureGeometry>,
+impl<'a> From<AccelerationStructureGeometry> for vk::AccelerationStructureGeometryKHR<'a> {
+    fn from(value: AccelerationStructureGeometry) -> Self {
+        Self::default()
+            .flags(value.flags)
+            .geometry(value.geometry.into())
+            .geometry_type(value.geometry.into())
+    }
 }
 
 /// Specifies acceleration structure geometry data.
@@ -535,9 +419,13 @@ pub enum AccelerationStructureGeometryData {
     /// [VkAccelerationStructureGeometryAabbsDataKHR](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkAccelerationStructureGeometryAabbsDataKHR.html)
     /// for more information.
     AABBs {
+        /// A device or host address to memory containing [vk::AabbPositionsKHR] structures
+        /// containing position data for each axis-aligned bounding box in the geometry.
+        addr: DeviceOrHostAddress,
+
         /// Stride in bytes between each entry in data.
         ///
-        /// The stride must be a multiple of 8.
+        /// The stride must be a multiple of `8`.
         stride: vk::DeviceSize,
     },
 
@@ -546,9 +434,6 @@ pub enum AccelerationStructureGeometryData {
     /// See [VkAccelerationStructureGeometryInstancesDataKHR](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkAccelerationStructureGeometryInstancesDataKHR.html)
     /// for more information.
     Instances {
-        /// Specifies whether data is used as an array of addresses or just an array.
-        array_of_pointers: bool,
-
         /// Either the address of an array of device referencing individual
         /// VkAccelerationStructureInstanceKHR structures or packed motion instance information as
         /// described in
@@ -557,7 +442,10 @@ pub enum AccelerationStructureGeometryData {
         /// VkAccelerationStructureInstanceKHR structures.
         ///
         /// Addresses and VkAccelerationStructureInstanceKHR structures are tightly packed.
-        data: DeviceOrHostAddress,
+        addr: DeviceOrHostAddress,
+
+        /// Specifies whether data is used as an array of addresses or just an array.
+        array_of_pointers: bool,
     },
 
     /// A triangle geometry in a bottom-level acceleration structure.
@@ -567,7 +455,7 @@ pub enum AccelerationStructureGeometryData {
     /// for more information.
     Triangles {
         /// A device or host address to memory containing index data for this geometry.
-        index_data: DeviceOrHostAddress,
+        index_addr: DeviceOrHostAddress,
 
         /// The
         /// [VkIndexType](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkIndexType.html)
@@ -581,10 +469,10 @@ pub enum AccelerationStructureGeometryData {
         /// [VkTransformMatrixKHR](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkTransformMatrixKHR.html)
         /// structure describing a transformation from the space in which the vertices in this
         /// geometry are described to the space in which the acceleration structure is defined.
-        transform_data: Option<DeviceOrHostAddress>,
+        transform_addr: Option<DeviceOrHostAddress>,
 
         /// A device or host address to memory containing vertex data for this geometry.
-        vertex_data: DeviceOrHostAddress,
+        vertex_addr: DeviceOrHostAddress,
 
         /// The
         /// [VkFormat](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkFormat.html)
@@ -594,6 +482,152 @@ pub enum AccelerationStructureGeometryData {
         /// The stride in bytes between each vertex.
         vertex_stride: vk::DeviceSize,
     },
+}
+
+impl AccelerationStructureGeometryData {
+    /// Specifies acceleration structure geometry data as AABBs.
+    pub fn aabbs(addr: impl Into<DeviceOrHostAddress>, stride: vk::DeviceSize) -> Self {
+        let addr = addr.into();
+
+        Self::AABBs { addr, stride }
+    }
+
+    /// Specifies acceleration structure geometry data as instances.
+    pub fn instances(addr: impl Into<DeviceOrHostAddress>) -> Self {
+        let addr = addr.into();
+
+        Self::Instances {
+            addr,
+            array_of_pointers: false,
+        }
+    }
+
+    /// Specifies acceleration structure geometry data as an array of instance pointers.
+    pub fn instance_pointers(addr: impl Into<DeviceOrHostAddress>) -> Self {
+        let addr = addr.into();
+
+        Self::Instances {
+            addr,
+            array_of_pointers: true,
+        }
+    }
+
+    /// Specifies acceleration structure geometry data as triangles.
+    pub fn triangles(
+        index_addr: impl Into<DeviceOrHostAddress>,
+        index_type: vk::IndexType,
+        max_vertex: u32,
+        transform_addr: impl Into<Option<DeviceOrHostAddress>>,
+        vertex_addr: impl Into<DeviceOrHostAddress>,
+        vertex_format: vk::Format,
+        vertex_stride: vk::DeviceSize,
+    ) -> Self {
+        let index_addr = index_addr.into();
+        let transform_addr = transform_addr.into();
+        let vertex_addr = vertex_addr.into();
+
+        Self::Triangles {
+            index_addr,
+            index_type,
+            max_vertex,
+            transform_addr,
+            vertex_addr,
+            vertex_format,
+            vertex_stride,
+        }
+    }
+}
+
+impl From<AccelerationStructureGeometryData> for vk::GeometryTypeKHR {
+    fn from(value: AccelerationStructureGeometryData) -> Self {
+        match value {
+            AccelerationStructureGeometryData::AABBs { .. } => Self::AABBS,
+            AccelerationStructureGeometryData::Instances { .. } => Self::INSTANCES,
+            AccelerationStructureGeometryData::Triangles { .. } => Self::TRIANGLES,
+        }
+    }
+}
+
+impl<'a> From<AccelerationStructureGeometryData> for vk::AccelerationStructureGeometryDataKHR<'a> {
+    fn from(value: AccelerationStructureGeometryData) -> Self {
+        match value {
+            AccelerationStructureGeometryData::AABBs { addr, stride } => Self {
+                aabbs: vk::AccelerationStructureGeometryAabbsDataKHR::default()
+                    .data(addr.into())
+                    .stride(stride),
+            },
+            AccelerationStructureGeometryData::Instances {
+                addr,
+                array_of_pointers,
+            } => Self {
+                instances: vk::AccelerationStructureGeometryInstancesDataKHR::default()
+                    .array_of_pointers(array_of_pointers)
+                    .data(addr.into()),
+            },
+            AccelerationStructureGeometryData::Triangles {
+                index_addr,
+                index_type,
+                max_vertex,
+                transform_addr,
+                vertex_addr,
+                vertex_format,
+                vertex_stride,
+            } => Self {
+                triangles: vk::AccelerationStructureGeometryTrianglesDataKHR::default()
+                    .index_data(index_addr.into())
+                    .index_type(index_type)
+                    .max_vertex(max_vertex)
+                    .transform_data(transform_addr.map(Into::into).unwrap_or_default())
+                    .vertex_data(vertex_addr.into())
+                    .vertex_format(vertex_format)
+                    .vertex_stride(vertex_stride),
+            },
+        }
+    }
+}
+
+/// Specifies the geometry data of an acceleration structure.
+#[derive(Clone, Debug)]
+pub struct AccelerationStructureGeometryInfo<G> {
+    /// Type of acceleration structure.
+    pub ty: vk::AccelerationStructureTypeKHR,
+
+    /// Specifies additional parameters of the acceleration structure.
+    pub flags: vk::BuildAccelerationStructureFlagsKHR,
+
+    /// A slice of geometry structures.
+    pub geometries: Box<[G]>,
+}
+
+impl<G> AccelerationStructureGeometryInfo<G> {
+    /// A bottom-level acceleration structure containing the AABBs or geometry to be intersected.
+    pub fn blas(geometries: impl Into<Box<[G]>>) -> Self {
+        let geometries = geometries.into();
+
+        Self {
+            ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
+            flags: Default::default(),
+            geometries,
+        }
+    }
+
+    /// A top-level acceleration structure containing instance data referring to bottom-level
+    /// acceleration structures.
+    pub fn tlas(geometries: impl Into<Box<[G]>>) -> Self {
+        let geometries = geometries.into();
+
+        Self {
+            ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
+            flags: Default::default(),
+            geometries,
+        }
+    }
+
+    /// Sets the flags on this instance.
+    pub fn flags(mut self, flags: vk::BuildAccelerationStructureFlagsKHR) -> Self {
+        self.flags = flags;
+        self
+    }
 }
 
 /// Information used to create an [`AccelerationStructure`] instance.
@@ -626,38 +660,6 @@ impl AccelerationStructureInfo {
     pub const fn blas(size: vk::DeviceSize) -> Self {
         Self {
             ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
-            size,
-        }
-    }
-
-    /// Specifies a [`vk::AccelerationStructureTypeKHR::GENERIC`] acceleration structure of the
-    /// given size.
-    #[inline(always)]
-    pub const fn generic(size: vk::DeviceSize) -> Self {
-        Self {
-            ty: vk::AccelerationStructureTypeKHR::GENERIC,
-            size,
-        }
-    }
-
-    /// Specifies a [`vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL`] acceleration structure of the
-    /// given size.
-    #[deprecated = "Use AccelerationStructureInfo::blas()"]
-    #[doc(hidden)]
-    pub const fn new_blas(size: vk::DeviceSize) -> Self {
-        Self {
-            ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
-            size,
-        }
-    }
-
-    /// Specifies a [`vk::AccelerationStructureTypeKHR::TOP_LEVEL`] acceleration structure of the
-    /// given size.
-    #[deprecated = "Use AccelerationStructureInfo::tlas()"]
-    #[doc(hidden)]
-    pub const fn new_tlas(size: vk::DeviceSize) -> Self {
-        Self {
-            ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
             size,
         }
     }
@@ -733,20 +735,48 @@ pub struct AccelerationStructureSize {
 /// Specifies a constant device or host address.
 ///
 /// See
-/// [VkDeviceOrHostAddressConstKHR](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkDeviceOrHostAddressConstKHR.html)
+/// [VkDeviceOrHostAddressKHR](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkDeviceOrHostAddressKHR.html)
 /// for more information.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum DeviceOrHostAddress {
     /// An address value returned from [`AccelerationStructure::device_address`].
     DeviceAddress(vk::DeviceAddress),
 
-    /// TODO: Not yet supported
-    HostAddress,
+    /// A host memory address.
+    HostAddress(*mut c_void),
 }
 
 impl From<vk::DeviceAddress> for DeviceOrHostAddress {
-    fn from(device_addr: vk::DeviceAddress) -> Self {
-        Self::DeviceAddress(device_addr)
+    fn from(device_address: vk::DeviceAddress) -> Self {
+        Self::DeviceAddress(device_address)
+    }
+}
+
+impl From<*mut c_void> for DeviceOrHostAddress {
+    fn from(host_address: *mut c_void) -> Self {
+        Self::HostAddress(host_address)
+    }
+}
+
+// Safety: The entire purpose of DeviceOrHostAddress is to share memory with Vulkan
+unsafe impl Send for DeviceOrHostAddress {}
+unsafe impl Sync for DeviceOrHostAddress {}
+
+impl From<DeviceOrHostAddress> for vk::DeviceOrHostAddressConstKHR {
+    fn from(value: DeviceOrHostAddress) -> Self {
+        match value {
+            DeviceOrHostAddress::DeviceAddress(device_address) => Self { device_address },
+            DeviceOrHostAddress::HostAddress(host_address) => Self { host_address },
+        }
+    }
+}
+
+impl From<DeviceOrHostAddress> for vk::DeviceOrHostAddressKHR {
+    fn from(value: DeviceOrHostAddress) -> Self {
+        match value {
+            DeviceOrHostAddress::DeviceAddress(device_address) => Self { device_address },
+            DeviceOrHostAddress::HostAddress(host_address) => Self { host_address },
+        }
     }
 }
 
@@ -759,7 +789,7 @@ mod tests {
 
     #[test]
     pub fn accel_struct_info() {
-        let info = Info::generic(0);
+        let info = Info::blas(32);
         let builder = info.to_builder().build();
 
         assert_eq!(info, builder);
@@ -767,8 +797,8 @@ mod tests {
 
     #[test]
     pub fn accel_struct_info_builder() {
-        let info = Info::generic(0);
-        let builder = Builder::default().size(0).build();
+        let info = Info::tlas(32);
+        let builder = Builder::default().size(32).build();
 
         assert_eq!(info, builder);
     }
