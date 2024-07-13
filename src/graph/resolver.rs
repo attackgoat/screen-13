@@ -2941,18 +2941,7 @@ impl Resolver {
                 }
 
                 if let ExecutionPipeline::Graphic(pipeline) = pipeline {
-                    for descriptor_binding @ DescriptorBinding(descriptor_set_idx, dst_binding) in pipeline.separate_samplers.iter().copied() {
-                        tls.image_writes.push(IndexWrite {
-                            idx: tls.image_infos.len(),
-                            write: vk::WriteDescriptorSet {
-                                    dst_set: *descriptor_sets[descriptor_set_idx as usize],
-                                    dst_binding,
-                                    descriptor_type: vk::DescriptorType::SAMPLER,
-                                    descriptor_count: 1,
-                                    ..Default::default()
-                                },
-                            }
-                        );
+                    for descriptor_binding in pipeline.separate_samplers.iter().copied() {
                         tls.image_infos.push(vk::DescriptorImageInfo {
                             image_layout: Default::default(),
                             image_view: Default::default(),
