@@ -392,7 +392,7 @@ impl RenderGraph {
         filter: vk::Filter,
         region: vk::ImageBlit,
     ) -> &mut Self {
-        self.blit_image_regions(src_node, dst_node, filter, vec![region])
+        self.blit_image_regions(src_node, dst_node, filter, [region])
     }
 
     /// Copy regions of an image, potentially performing format conversion.
@@ -529,7 +529,7 @@ impl RenderGraph {
         dst_node: impl Into<AnyBufferNode>,
         region: vk::BufferCopy,
     ) -> &mut Self {
-        self.copy_buffer_regions(src_node, dst_node, vec![region])
+        self.copy_buffer_regions(src_node, dst_node, [region])
     }
 
     /// Copy data between buffer regions.
@@ -597,7 +597,7 @@ impl RenderGraph {
         dst_node: impl Into<AnyImageNode>,
         region: vk::BufferImageCopy,
     ) -> &mut Self {
-        self.copy_buffer_to_image_regions(src_node, dst_node, vec![region])
+        self.copy_buffer_to_image_regions(src_node, dst_node, [region])
     }
 
     /// Copy data from a buffer into an image.
@@ -682,7 +682,7 @@ impl RenderGraph {
         dst_node: impl Into<AnyImageNode>,
         region: vk::ImageCopy,
     ) -> &mut Self {
-        self.copy_image_regions(src_node, dst_node, vec![region])
+        self.copy_image_regions(src_node, dst_node, [region])
     }
 
     /// Copy data between images.
@@ -755,7 +755,7 @@ impl RenderGraph {
         dst_node: impl Into<AnyBufferNode>,
         region: vk::BufferImageCopy,
     ) -> &mut Self {
-        self.copy_image_to_buffer_regions(src_node, dst_node, vec![region])
+        self.copy_image_to_buffer_regions(src_node, dst_node, [region])
     }
 
     /// Copy image data into a buffer.

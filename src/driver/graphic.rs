@@ -686,9 +686,7 @@ pub struct GraphicPipelineInfo {
 impl GraphicPipelineInfo {
     /// Creates a default `GraphicPipelineInfoBuilder`.
     #[allow(clippy::new_ret_no_self)]
-    #[deprecated = "Use GraphicPipelineInfo::default()"]
-    #[doc(hidden)]
-    pub fn new() -> GraphicPipelineInfoBuilder {
+    pub fn builder() -> GraphicPipelineInfoBuilder {
         Default::default()
     }
 

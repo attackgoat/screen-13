@@ -664,6 +664,12 @@ impl AccelerationStructureInfo {
         }
     }
 
+    /// Creates a default `AccelerationStructureInfoBuilder`.
+    #[allow(clippy::new_ret_no_self)]
+    pub fn builder() -> AccelerationStructureInfoBuilder {
+        Default::default()
+    }
+
     /// Specifies a [`vk::AccelerationStructureTypeKHR::TOP_LEVEL`] acceleration structure of the
     /// given size.
     #[inline(always)]
@@ -717,7 +723,7 @@ impl From<UninitializedFieldError> for AccelerationStructureInfoBuilderError {
 /// Holds the results of the [`AccelerationStructure::size_of`] function.
 #[derive(Clone, Copy, Debug)]
 pub struct AccelerationStructureSize {
-    /// The size of the scratch buffer required when updating an acceleration structure using the
+    /// The size of the scratch buffer required when building an acceleration structure using the
     /// [`Acceleration::build_structure`](super::super::graph::pass_ref::Acceleration::build_structure)
     /// function.
     pub build_size: vk::DeviceSize,

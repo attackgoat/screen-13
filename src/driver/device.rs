@@ -262,13 +262,12 @@ impl Device {
 
     /// Helper for times when you already know that the device supports the acceleration
     /// structure extension.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// Panics if [Self.physical_device.accel_struct_properties] is `None`.
     pub(crate) fn expect_accel_struct_ext(this: &Self) -> &khr::acceleration_structure::Device {
-        this
-            .accel_struct_ext
+        this.accel_struct_ext
             .as_ref()
             .expect("VK_KHR_acceleration_structure")
     }

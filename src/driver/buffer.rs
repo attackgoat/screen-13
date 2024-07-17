@@ -310,7 +310,10 @@ impl Buffer {
     /// ```
     #[profiling::function]
     pub fn device_address(this: &Self) -> vk::DeviceAddress {
-        debug_assert!(this.info.usage.contains(vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS));
+        debug_assert!(this
+            .info
+            .usage
+            .contains(vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS));
 
         unsafe {
             this.device.get_buffer_device_address(

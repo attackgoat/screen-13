@@ -445,10 +445,7 @@ pub struct RayTracePipelineInfo {
 
 impl RayTracePipelineInfo {
     /// Creates a default `RayTracePipelineInfoBuilder`.
-    #[allow(clippy::new_ret_no_self)]
-    #[deprecated = "Use RayTracePipelineInfo::default()"]
-    #[doc(hidden)]
-    pub fn new() -> RayTracePipelineInfoBuilder {
+    pub fn builder() -> RayTracePipelineInfoBuilder {
         Default::default()
     }
 
