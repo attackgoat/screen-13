@@ -2933,18 +2933,6 @@ impl Resolver {
             }
 
             if let ExecutionPipeline::Graphic(pipeline) = pipeline {
-                for Descriptor { set, binding } in pipeline.separate_samplers.iter().copied() {
-                    tls.image_writes.push(IndexWrite {
-                        idx: tls.image_infos.len(),
-                        write: vk::WriteDescriptorSet::default()
-                            .dst_set(*descriptor_sets[set as usize])
-                            .dst_binding(binding)
-                            .descriptor_type(vk::DescriptorType::SAMPLER)
-                            .descriptor_count(1),
-                    });
-                    tls.image_infos.push(vk::DescriptorImageInfo::default());
-                }
-
                 // Write graphic render pass input attachments (they're automatic)
                 if exec_idx > 0 {
                     for (

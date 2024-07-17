@@ -4,8 +4,8 @@
 
 use {
     inline_spirv::include_spirv,
-    screen_13::prelude::*,
     log::trace,
+    screen_13::prelude::*,
     std::{collections::HashMap, sync::Arc},
 };
 
