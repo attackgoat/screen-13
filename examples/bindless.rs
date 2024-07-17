@@ -2,7 +2,10 @@ mod profile_with_puffin;
 
 use {
     bytemuck::{cast_slice, Pod, Zeroable},
+    clap::Parser,
+    hassle_rs::compile_hlsl,
     inline_spirv::inline_spirv,
+    jit_spirv::jit_spirv,
     screen_13::prelude::*,
     std::sync::Arc,
 };
@@ -90,6 +93,74 @@ fn create_indirect_buffer(device: &Arc<Device>) -> Result<Arc<Buffer>, DriverErr
 }
 
 fn create_graphic_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, DriverError> {
+    let args = Args::parse();
+    let frag = if args.hlsl {
+        let hlsl_source = r#"
+            struct FullscreenVertexOutput
+            {
+                uint instanceIndex : BLENDINDICES0;
+            };
+
+            [[vk::binding(0, 0)]] Texture2D Texture2DTable[] : register(t0, space0);
+
+            float4 main(FullscreenVertexOutput input)
+                : SV_Target
+            {
+                return Texture2DTable[input.instanceIndex].Load(0.0, 0.0);
+            }
+            "#;
+        if args.hassle_rs {
+            // You must follow the instructions listed here to use hassle_rs:
+            // See: https://github.com/Traverse-Research/hassle-rs
+            Shader::new_fragment(
+                compile_hlsl(
+                    "fragment.hlsl",
+                    hlsl_source,
+                    "main",
+                    "ps_5_0",
+                    &["-spirv"],
+                    &[],
+                )
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::InvalidData
+                })?,
+            )
+        } else {
+            Shader::new_fragment(
+                jit_spirv!(hlsl_source, vert, hlsl)
+                    .map_err(|err| {
+                        warn!("{err}");
+
+                        DriverError::InvalidData
+                    })?
+                    .spv,
+            )
+        }
+    } else {
+        Shader::new_fragment(
+            inline_spirv!(
+                r#"
+                #version 460 core
+                #extension GL_EXT_nonuniform_qualifier : require
+
+                layout(set = 0, binding = 0) uniform sampler2D sampler_nnr[];
+
+                layout(location = 0) in flat uint instance_index;
+
+                layout(location = 0) out vec4 color_out;
+
+                void main() {
+                    color_out = texture(sampler_nnr[nonuniformEXT(instance_index)], vec2(0.5, 0.5));
+                }
+                "#,
+                frag
+            )
+            .as_slice(),
+        )
+    };
+
     Ok(Arc::new(GraphicPipeline::create(
         device,
         GraphicPipelineInfo::default(),
@@ -125,28 +196,21 @@ fn create_graphic_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>,
                 )
                 .as_slice(),
             ),
-            Shader::new_fragment(
-                inline_spirv!(
-                    r#"
-                    #version 460 core
-                    #extension GL_EXT_nonuniform_qualifier : require
-
-                    layout(set = 0, binding = 0) uniform sampler2D sampler_nnr[];
-
-                    layout(location = 0) in flat uint instance_index;
-
-                    layout(location = 0) out vec4 color_out;
-
-                    void main() {
-                        color_out = texture(sampler_nnr[nonuniformEXT(instance_index)], vec2(0.5, 0.5));
-                    }
-                    "#,
-                    frag
-                )
-                .as_slice(),
-            ),
+            frag,
         ],
     )?))
+}
+
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    /// Use HLSL fragment shader instead of the default (GLSL).
+    #[arg(long)]
+    hlsl: bool,
+
+    /// Use hassle-rs when compiling HSLS instead of the default (shaderc).
+    #[arg(long)]
+    hassle_rs: bool,
 }
 
 #[repr(C)]

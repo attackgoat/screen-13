@@ -47,6 +47,7 @@ half = { version = "2.3", features = ["bytemuck"] }
 hassle-rs = "0.11"
 image = "0.25"
 inline-spirv = "0.2"
+jit-spirv = "0.1"
 log = "0.4"
 meshopt = "0.2"
 polyhedron-ops = ">=0.2, <=0.2.4"
