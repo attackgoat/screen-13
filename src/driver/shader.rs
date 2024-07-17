@@ -144,7 +144,7 @@ impl DescriptorInfo {
         }
     }
 
-    pub fn sampler(&self) -> Option<&Sampler> {
+    fn sampler(&self) -> Option<&Sampler> {
         match self {
             Self::CombinedImageSampler(_, sampler, _) | Self::Sampler(_, sampler, _) => {
                 Some(sampler)
