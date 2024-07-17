@@ -2846,7 +2846,6 @@ impl Resolver {
                             image_view_info.aspect_mask = format_aspect_mask(image.info.fmt);
                         }
 
-                        let sampler = descriptor_info.sampler().map(|sampler| **sampler).unwrap_or_default();
                         let image_view = Image::view(image, image_view_info)?;
                         let image_layout = match descriptor_type {
                             vk::DescriptorType::COMBINED_IMAGE_SAMPLER | vk::DescriptorType::SAMPLED_IMAGE => {
@@ -2891,7 +2890,7 @@ impl Resolver {
                         tls.image_infos.push(vk::DescriptorImageInfo {
                             image_layout,
                             image_view,
-                            sampler,
+                            sampler: vk::Sampler::null(),
                         });
                     } else if let Some(buffer) = bound_node.as_driver_buffer() {
                         let view_info = view_info.as_ref().unwrap();
@@ -2941,25 +2940,6 @@ impl Resolver {
                 }
 
                 if let ExecutionPipeline::Graphic(pipeline) = pipeline {
-                    for descriptor_binding @ DescriptorBinding(descriptor_set_idx, dst_binding) in pipeline.separate_samplers.iter().copied() {
-                        tls.image_writes.push(IndexWrite {
-                            idx: tls.image_infos.len(),
-                            write: vk::WriteDescriptorSet {
-                                    dst_set: *descriptor_sets[descriptor_set_idx as usize],
-                                    dst_binding,
-                                    descriptor_type: vk::DescriptorType::SAMPLER,
-                                    descriptor_count: 1,
-                                    ..Default::default()
-                                },
-                            }
-                        );
-                        tls.image_infos.push(vk::DescriptorImageInfo {
-                            image_layout: Default::default(),
-                            image_view: Default::default(),
-                            sampler: **pipeline.descriptor_bindings[&descriptor_binding].0.sampler().unwrap(),
-                        });
-                    }
-
                     // Write graphic render pass input attachments (they're automatic)
                     if exec_idx > 0 {
                         for (&DescriptorBinding(descriptor_set_idx, dst_binding), (descriptor_info, _)) in
@@ -3000,7 +2980,6 @@ impl Resolver {
                                     ty: image.info.ty,
                                 };
                                 let image_view = Image::view(image, image_view_info)?;
-                                let sampler = descriptor_info.sampler().map(|sampler| **sampler).unwrap_or_else(vk::Sampler::null);
 
                                 tls.image_writes.push(IndexWrite {
                                     idx: tls.image_infos.len(),
@@ -3021,7 +3000,7 @@ impl Resolver {
                                         true,
                                     ),
                                     image_view,
-                                    sampler,
+                                    sampler: vk::Sampler::null(),
                                 });
                             }
                         }
