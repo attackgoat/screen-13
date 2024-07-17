@@ -6,8 +6,7 @@ use {
         image::SampleCount,
         merge_push_constant_ranges,
         shader::{
-            align_spriv, Descriptor, DescriptorBindingMap, DescriptorInfo, PipelineDescriptorInfo,
-            Shader, SpecializationInfo,
+            align_spriv, DescriptorBindingMap, PipelineDescriptorInfo, Shader, SpecializationInfo,
         },
         DriverError,
     },
@@ -366,7 +365,6 @@ pub struct GraphicPipeline {
     pub name: Option<String>,
 
     pub(crate) push_constants: Vec<vk::PushConstantRange>,
-    pub(crate) separate_samplers: Box<[Descriptor]>,
     pub(crate) shader_modules: Vec<vk::ShaderModule>,
     pub(super) state: GraphicPipelineState,
 }
@@ -459,13 +457,6 @@ impl GraphicPipeline {
                 descriptor_info.set_binding_count(info.bindless_descriptor_count);
             }
         }
-
-        let separate_samplers = descriptor_bindings
-            .iter()
-            .filter_map(|(&descriptor_binding, (descriptor_info, _))| {
-                matches!(descriptor_info, DescriptorInfo::Sampler(..)).then_some(descriptor_binding)
-            })
-            .collect();
 
         let descriptor_info = PipelineDescriptorInfo::create(&device, &descriptor_bindings)?;
         let descriptor_sets_layouts = descriptor_info
@@ -567,7 +558,6 @@ impl GraphicPipeline {
                 layout,
                 name: None,
                 push_constants,
-                separate_samplers,
                 shader_modules,
                 state: GraphicPipelineState {
                     layout,

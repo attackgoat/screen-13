@@ -16,6 +16,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - `log` and `winit` are no longer exported by `use screen_13::prelude::*`
 
+## [0.11.4] - 2024-07-16
+
+### Fixed
+
+- Validation error: `Attempted write update to an immutable sampler descriptor`
+
 ## [0.11.3] - 2024-05-29
 
 ### Added
@@ -578,3 +584,4 @@ _See [#25](https://github.com/attackgoat/screen-13/pull/25) for migration detail
 [0.11.1]: https://crates.io/crates/screen-13/0.11.1
 [0.11.2]: https://crates.io/crates/screen-13/0.11.2
 [0.11.3]: https://crates.io/crates/screen-13/0.11.3
+[0.11.4]: https://crates.io/crates/screen-13/0.11.4
