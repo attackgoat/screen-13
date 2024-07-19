@@ -26,7 +26,7 @@ impl CommandBuffer {
         info: CommandBufferInfo,
     ) -> Result<Self, DriverError> {
         let device = Arc::clone(device);
-        let cmd_pool_info = vk::CommandPoolCreateInfo::builder()
+        let cmd_pool_info = vk::CommandPoolCreateInfo::default()
             .flags(
                 vk::CommandPoolCreateFlags::TRANSIENT
                     | vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER,
@@ -41,7 +41,7 @@ impl CommandBuffer {
                     DriverError::Unsupported
                 })?
         };
-        let cmd_buf_info = vk::CommandBufferAllocateInfo::builder()
+        let cmd_buf_info = vk::CommandBufferAllocateInfo::default()
             .command_buffer_count(1)
             .command_pool(pool)
             .level(vk::CommandBufferLevel::PRIMARY);

@@ -166,7 +166,7 @@ impl<'a> Acceleration<'a> {
         unsafe {
             #[derive(Default)]
             struct Tls {
-                geometries: Vec<vk::AccelerationStructureGeometryKHR>,
+                geometries: Vec<vk::AccelerationStructureGeometryKHR<'static>>,
                 max_primitive_counts: Vec<u32>,
             }
 
@@ -183,7 +183,7 @@ impl<'a> Acceleration<'a> {
                     tls.max_primitive_counts.push(info.max_primitive_count);
                 }
 
-                let info = vk::AccelerationStructureBuildGeometryInfoKHR::builder()
+                let info = vk::AccelerationStructureBuildGeometryInfoKHR::default()
                     .ty(build_info.ty)
                     .flags(build_info.flags)
                     .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
@@ -231,7 +231,7 @@ impl<'a> Acceleration<'a> {
         unsafe {
             #[derive(Default)]
             struct Tls {
-                geometries: Vec<vk::AccelerationStructureGeometryKHR>,
+                geometries: Vec<vk::AccelerationStructureGeometryKHR<'static>>,
                 max_primitive_counts: Vec<u32>,
             }
 
@@ -248,7 +248,7 @@ impl<'a> Acceleration<'a> {
                     tls.max_primitive_counts.push(info.max_primitive_count);
                 }
 
-                let info = vk::AccelerationStructureBuildGeometryInfoKHR::builder()
+                let info = vk::AccelerationStructureBuildGeometryInfoKHR::default()
                     .ty(build_info.ty)
                     .flags(build_info.flags)
                     .mode(vk::BuildAccelerationStructureModeKHR::UPDATE)
@@ -3975,8 +3975,6 @@ impl<'a> RayTrace<'a> {
         callable_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
         indirect_device_address: vk::DeviceAddress,
     ) -> &Self {
-        use std::slice::from_ref;
-
         unsafe {
             // Safely use unchecked because ray_trace_ext is checked during pipeline creation
             self.device
@@ -3985,10 +3983,10 @@ impl<'a> RayTrace<'a> {
                 .unwrap_unchecked()
                 .cmd_trace_rays_indirect(
                     self.cmd_buf,
-                    from_ref(raygen_shader_binding_table),
-                    from_ref(miss_shader_binding_table),
-                    from_ref(hit_shader_binding_table),
-                    from_ref(callable_shader_binding_table),
+                    raygen_shader_binding_table,
+                    miss_shader_binding_table,
+                    hit_shader_binding_table,
+                    callable_shader_binding_table,
                     indirect_device_address,
                 )
         }

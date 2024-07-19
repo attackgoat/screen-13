@@ -23,8 +23,19 @@ use {
     },
 };
 
-pub(crate) type DescriptorBindingMap =
-    HashMap<DescriptorBinding, (DescriptorInfo, vk::ShaderStageFlags)>;
+pub(crate) type DescriptorBindingMap = HashMap<Descriptor, (DescriptorInfo, vk::ShaderStageFlags)>;
+
+pub(crate) fn align_spriv(code: &[u8]) -> Result<&[u32], DriverError> {
+    let (prefix, code, suffix) = unsafe { code.align_to() };
+
+    if prefix.len() + suffix.len() == 0 {
+        Ok(code)
+    } else {
+        warn!("Invalid SPIR-V code");
+
+        Err(DriverError::InvalidData)
+    }
+}
 
 #[profiling::function]
 fn guess_immutable_sampler(binding_name: &str) -> SamplerInfo {
@@ -85,27 +96,33 @@ fn guess_immutable_sampler(binding_name: &str) -> SamplerInfo {
 /// This is a generic representation of the descriptor binding point within the shader and not a
 /// bound descriptor reference.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct DescriptorBinding(pub u32, pub u32);
+pub struct Descriptor {
+    /// Descriptor set index
+    pub set: u32,
 
-impl From<u32> for DescriptorBinding {
-    fn from(binding_idx: u32) -> Self {
-        Self(0, binding_idx)
+    /// Descriptor binding index
+    pub binding: u32,
+}
+
+impl From<u32> for Descriptor {
+    fn from(binding: u32) -> Self {
+        Self { set: 0, binding }
     }
 }
 
-impl From<(u32, u32)> for DescriptorBinding {
-    fn from((descriptor_set_idx, binding_idx): (u32, u32)) -> Self {
-        Self(descriptor_set_idx, binding_idx)
+impl From<(u32, u32)> for Descriptor {
+    fn from((set, binding): (u32, u32)) -> Self {
+        Self { set, binding }
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) enum DescriptorInfo {
     AccelerationStructure(u32),
-    CombinedImageSampler(u32, Sampler, bool), //count, sampler, is-manually-defined?
-    InputAttachment(u32, u32),                //count, input index,
+    CombinedImageSampler(u32, SamplerInfo, bool), //count, sampler, is-manually-defined?
+    InputAttachment(u32, u32),                    //count, input index,
     SampledImage(u32),
-    Sampler(u32, Sampler, bool), //count, sampler, is-manually-defined?
+    Sampler(u32, SamplerInfo, bool), //count, sampler, is-manually-defined?
     StorageBuffer(u32),
     StorageImage(u32),
     StorageTexelBuffer(u32),
@@ -114,8 +131,8 @@ pub(crate) enum DescriptorInfo {
 }
 
 impl DescriptorInfo {
-    pub fn binding_count(&self) -> u32 {
-        match *self {
+    pub fn binding_count(self) -> u32 {
+        match self {
             Self::AccelerationStructure(binding_count) => binding_count,
             Self::CombinedImageSampler(binding_count, ..) => binding_count,
             Self::InputAttachment(binding_count, _) => binding_count,
@@ -129,7 +146,7 @@ impl DescriptorInfo {
         }
     }
 
-    pub fn descriptor_type(&self) -> vk::DescriptorType {
+    pub fn descriptor_type(self) -> vk::DescriptorType {
         match self {
             Self::AccelerationStructure(_) => vk::DescriptorType::ACCELERATION_STRUCTURE_KHR,
             Self::CombinedImageSampler(..) => vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
@@ -144,10 +161,10 @@ impl DescriptorInfo {
         }
     }
 
-    fn sampler(&self) -> Option<&Sampler> {
+    fn sampler_info(self) -> Option<SamplerInfo> {
         match self {
-            Self::CombinedImageSampler(_, sampler, _) | Self::Sampler(_, sampler, _) => {
-                Some(sampler)
+            Self::CombinedImageSampler(_, sampler_info, _) | Self::Sampler(_, sampler_info, _) => {
+                Some(sampler_info)
             }
             _ => None,
         }
@@ -173,6 +190,9 @@ impl DescriptorInfo {
 pub(crate) struct PipelineDescriptorInfo {
     pub layouts: BTreeMap<u32, DescriptorSetLayout>,
     pub pool_sizes: HashMap<u32, HashMap<vk::DescriptorType, u32>>,
+
+    #[allow(dead_code)]
+    samplers: Box<[Sampler]>,
 }
 
 impl PipelineDescriptorInfo {
@@ -183,42 +203,85 @@ impl PipelineDescriptorInfo {
     ) -> Result<Self, DriverError> {
         let descriptor_set_count = descriptor_bindings
             .keys()
+            .map(|descriptor| descriptor.set)
             .max()
-            .copied()
-            .map(|descriptor_binding| descriptor_binding.0 + 1)
+            .map(|set| set + 1)
             .unwrap_or_default();
         let mut layouts = BTreeMap::new();
         let mut pool_sizes = HashMap::new();
 
         //trace!("descriptor_bindings: {:#?}", &descriptor_bindings);
 
+        let mut sampler_info_binding_count = HashMap::<_, u32>::with_capacity(
+            descriptor_bindings
+                .values()
+                .filter(|(descriptor_info, _)| descriptor_info.sampler_info().is_some())
+                .count(),
+        );
+
+        for (sampler_info, binding_count) in
+            descriptor_bindings
+                .values()
+                .filter_map(|(descriptor_info, _)| {
+                    descriptor_info
+                        .sampler_info()
+                        .map(|sampler_info| (sampler_info, descriptor_info.binding_count()))
+                })
+        {
+            sampler_info_binding_count
+                .entry(sampler_info)
+                .and_modify(|sampler_info_binding_count| {
+                    *sampler_info_binding_count = binding_count.max(*sampler_info_binding_count);
+                })
+                .or_insert(binding_count);
+        }
+
+        let mut samplers = sampler_info_binding_count
+            .keys()
+            .copied()
+            .map(|sampler_info| {
+                Sampler::create(device, sampler_info).map(|sampler| (sampler_info, sampler))
+            })
+            .collect::<Result<HashMap<_, _>, _>>()?;
+        let immutable_samplers = sampler_info_binding_count
+            .iter()
+            .map(|(sampler_info, &binding_count)| {
+                (
+                    *sampler_info,
+                    repeat(*samplers[sampler_info])
+                        .take(binding_count as _)
+                        .collect::<Box<_>>(),
+                )
+            })
+            .collect::<HashMap<_, _>>();
+
         for descriptor_set_idx in 0..descriptor_set_count {
-            // HACK: We need to keep the immutable samplers alive until create, could be cleaner..
-            let mut immutable_samplers = vec![];
             let mut binding_counts = HashMap::<vk::DescriptorType, u32>::new();
             let mut bindings = vec![];
 
-            for (descriptor_binding, (descriptor_info, stage_flags)) in descriptor_bindings
+            for (descriptor, (descriptor_info, stage_flags)) in descriptor_bindings
                 .iter()
-                .filter(|(descriptor_binding, _)| descriptor_binding.0 == descriptor_set_idx)
+                .filter(|(descriptor, _)| descriptor.set == descriptor_set_idx)
             {
-                let descriptor_ty: vk::DescriptorType = descriptor_info.descriptor_type();
+                let descriptor_ty = descriptor_info.descriptor_type();
                 *binding_counts.entry(descriptor_ty).or_default() +=
                     descriptor_info.binding_count();
-                let mut binding = vk::DescriptorSetLayoutBinding::builder()
-                    .binding(descriptor_binding.1)
+                let mut binding = vk::DescriptorSetLayoutBinding::default()
+                    .binding(descriptor.binding)
                     .descriptor_count(descriptor_info.binding_count())
                     .descriptor_type(descriptor_ty)
                     .stage_flags(*stage_flags);
 
-                if let Some(sampler) = descriptor_info.sampler() {
-                    let start = immutable_samplers.len();
-                    immutable_samplers
-                        .extend(repeat(**sampler).take(descriptor_info.binding_count() as _));
-                    binding = binding.immutable_samplers(&immutable_samplers[start..]);
+                if let Some(immutable_samplers) =
+                    descriptor_info.sampler_info().map(|sampler_info| {
+                        &immutable_samplers[&sampler_info]
+                            [0..descriptor_info.binding_count() as usize]
+                    })
+                {
+                    binding = binding.immutable_samplers(immutable_samplers);
                 }
 
-                bindings.push(binding.build());
+                bindings.push(binding);
             }
 
             let pool_size = pool_sizes
@@ -231,8 +294,7 @@ impl PipelineDescriptorInfo {
 
             //trace!("bindings: {:#?}", &bindings);
 
-            let mut create_info =
-                vk::DescriptorSetLayoutCreateInfo::builder().bindings(bindings.as_slice());
+            let mut create_info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
 
             // The bindless flags have to be created for every descriptor set layout binding.
             // [vulkan spec](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkDescriptorSetLayoutBindingFlagsCreateInfo.html)
@@ -243,7 +305,7 @@ impl PipelineDescriptorInfo {
                 .features_v1_2
                 .descriptor_binding_partially_bound
             {
-                let bindless_flags = vk::DescriptorSetLayoutBindingFlagsCreateInfo::builder()
+                let bindless_flags = vk::DescriptorSetLayoutBindingFlagsCreateInfo::default()
                     .binding_flags(&bindless_flags);
                 Some(bindless_flags)
             } else {
@@ -260,12 +322,18 @@ impl PipelineDescriptorInfo {
             );
         }
 
+        let samplers = samplers
+            .drain()
+            .map(|(_, sampler)| sampler)
+            .collect::<Box<_>>();
+
         //trace!("layouts {:#?}", &layouts);
         // trace!("pool_sizes {:#?}", &pool_sizes);
 
         Ok(Self {
             layouts,
             pool_sizes,
+            samplers,
         })
     }
 }
@@ -284,7 +352,7 @@ impl Sampler {
         let sampler = unsafe {
             device
                 .create_sampler(
-                    &vk::SamplerCreateInfo::builder()
+                    &vk::SamplerCreateInfo::default()
                         .flags(info.flags)
                         .mag_filter(info.mag_filter)
                         .min_filter(info.min_filter)
@@ -302,7 +370,7 @@ impl Sampler {
                         .border_color(info.border_color)
                         .unnormalized_coordinates(info.unnormalized_coordinates)
                         .push_next(
-                            &mut vk::SamplerReductionModeCreateInfo::builder()
+                            &mut vk::SamplerReductionModeCreateInfo::default()
                                 .reduction_mode(info.reduction_mode),
                         ),
                     None,
@@ -669,7 +737,7 @@ pub struct Shader {
     ///
     /// Although SPIR-V code is specified as `u32` values, this field uses `u8` in order to make
     /// loading from file simpler. You should always have a SPIR-V code length which is a multiple
-    /// of four bytes, or a panic will happen during pipeline creation.
+    /// of four bytes, or an error will be returned during pipeline creation.
     pub spirv: Vec<u8>,
 
     /// The shader stage this structure applies to.
@@ -679,7 +747,7 @@ pub struct Shader {
     entry_point: EntryPoint,
 
     #[builder(default, private)]
-    image_samplers: HashMap<DescriptorBinding, SamplerInfo>,
+    image_samplers: HashMap<Descriptor, SamplerInfo>,
 
     #[builder(default, private, setter(strip_option))]
     vertex_input_state: Option<VertexInputState>,
@@ -844,13 +912,10 @@ impl Shader {
     }
 
     #[profiling::function]
-    pub(super) fn descriptor_bindings(
-        &self,
-        device: &Arc<Device>,
-    ) -> Result<DescriptorBindingMap, DriverError> {
+    pub(super) fn descriptor_bindings(&self) -> DescriptorBindingMap {
         let mut res = DescriptorBindingMap::default();
 
-        for (name, binding, desc_ty, binding_count) in
+        for (name, descriptor, desc_ty, binding_count) in
             self.entry_point.vars.iter().filter_map(|var| match var {
                 Variable::Descriptor {
                     name,
@@ -860,7 +925,10 @@ impl Shader {
                     ..
                 } => Some((
                     name,
-                    DescriptorBinding(desc_bind.set(), desc_bind.bind()),
+                    Descriptor {
+                        set: desc_bind.set(),
+                        binding: desc_bind.bind(),
+                    },
                     desc_ty,
                     *nbind,
                 )),
@@ -868,10 +936,10 @@ impl Shader {
             })
         {
             trace!(
-                "binding {}: {}.{} = {:?}[{}]",
+                "descriptor {}: {}.{} = {:?}[{}]",
                 name.as_deref().unwrap_or_default(),
-                binding.0,
-                binding.1,
+                descriptor.set,
+                descriptor.binding,
                 *desc_ty,
                 binding_count
             );
@@ -882,11 +950,11 @@ impl Shader {
                 }
                 DescriptorType::CombinedImageSampler() => {
                     let (sampler_info, is_manually_defined) =
-                        self.image_sampler(binding, name.as_deref().unwrap_or_default());
+                        self.image_sampler(descriptor, name.as_deref().unwrap_or_default());
 
                     DescriptorInfo::CombinedImageSampler(
                         binding_count,
-                        Sampler::create(device, sampler_info)?,
+                        sampler_info,
                         is_manually_defined,
                     )
                 }
@@ -896,13 +964,9 @@ impl Shader {
                 DescriptorType::SampledImage() => DescriptorInfo::SampledImage(binding_count),
                 DescriptorType::Sampler() => {
                     let (sampler_info, is_manually_defined) =
-                        self.image_sampler(binding, name.as_deref().unwrap_or_default());
+                        self.image_sampler(descriptor, name.as_deref().unwrap_or_default());
 
-                    DescriptorInfo::Sampler(
-                        binding_count,
-                        Sampler::create(device, sampler_info)?,
-                        is_manually_defined,
-                    )
+                    DescriptorInfo::Sampler(binding_count, sampler_info, is_manually_defined)
                 }
                 DescriptorType::StorageBuffer(_access_ty) => {
                     DescriptorInfo::StorageBuffer(binding_count)
@@ -918,15 +982,15 @@ impl Shader {
                     DescriptorInfo::UniformTexelBuffer(binding_count)
                 }
             };
-            res.insert(binding, (descriptor_info, self.stage));
+            res.insert(descriptor, (descriptor_info, self.stage));
         }
 
-        Ok(res)
+        res
     }
 
-    fn image_sampler(&self, binding: DescriptorBinding, name: &str) -> (SamplerInfo, bool) {
+    fn image_sampler(&self, descriptor: Descriptor, name: &str) -> (SamplerInfo, bool) {
         self.image_samplers
-            .get(&binding)
+            .get(&descriptor)
             .copied()
             .map(|sampler_info| (sampler_info, true))
             .unwrap_or_else(|| (guess_immutable_sampler(name), false))
@@ -1318,17 +1382,20 @@ impl ShaderBuilder {
     #[profiling::function]
     pub fn image_sampler(
         mut self,
-        binding: impl Into<DescriptorBinding>,
+        descriptor: impl Into<Descriptor>,
         info: impl Into<SamplerInfo>,
     ) -> Self {
-        let binding = binding.into();
+        let descriptor = descriptor.into();
         let info = info.into();
 
         if self.image_samplers.is_none() {
             self.image_samplers = Some(Default::default());
         }
 
-        self.image_samplers.as_mut().unwrap().insert(binding, info);
+        self.image_samplers
+            .as_mut()
+            .unwrap()
+            .insert(descriptor, info);
 
         self
     }

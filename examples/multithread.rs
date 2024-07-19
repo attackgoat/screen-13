@@ -3,8 +3,10 @@ mod profile_with_puffin;
 use {
     bmfont::{BMFont, OrdinateOrientation},
     image::io::Reader,
+    log::info,
     screen_13::prelude::*,
     screen_13_fx::BitmapFont,
+    screen_13_window::Window,
     std::{
         collections::VecDeque,
         io::Cursor,
@@ -34,8 +36,7 @@ fn main() -> anyhow::Result<()> {
     let started_at = Instant::now();
 
     // For this example we don't use V-Sync so that we are able to submit work as often as possible
-    let sync_display = false;
-    let event_loop = EventLoop::new().sync_display(sync_display).build()?;
+    let event_loop = Window::builder().v_sync(false).build()?;
 
     // We want to create one hardware queue for each CPU, or at least two
     let desired_queue_count = available_parallelism()
@@ -132,7 +133,12 @@ fn main() -> anyhow::Result<()> {
     let mut font = load_font(&event_loop.device)?;
     let mut images = VecDeque::new();
 
+    let mut previous_frame = Instant::now();
     event_loop.run(|frame| {
+        let current_frame = Instant::now();
+        let elapsed = current_frame - previous_frame;
+        previous_frame = current_frame;
+
         if let Ok(image) = rx.recv_timeout(Duration::from_nanos(1)) {
             images.push_front(image);
 
@@ -179,7 +185,7 @@ fn main() -> anyhow::Result<()> {
             );
         }
 
-        let fps = (1.0 / frame.dt).round();
+        let fps = (1.0 / elapsed.as_secs_f32()).round();
         let message = format!("FPS: {fps}");
         font.print_scale(
             frame.render_graph,

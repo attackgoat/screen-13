@@ -5,6 +5,7 @@ use {
     hassle_rs::compile_hlsl,
     inline_spirv::inline_spirv,
     screen_13::prelude::*,
+    screen_13_window::Window,
     std::{
         path::{Path, PathBuf},
         sync::Arc,
@@ -29,8 +30,8 @@ fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
     profile_with_puffin::init();
 
-    let event_loop = EventLoop::new().build()?;
-    let gulf_image = read_image(&event_loop.device, "examples/res/image/gulf.jpg")?;
+    let window = Window::new()?;
+    let gulf_image = read_image(&window.device, "examples/res/image/gulf.jpg")?;
 
     // Sampler info contains the full definition of Vulkan sampler settings using a builder struct
     let edge_edge = SamplerInfoBuilder::default()
@@ -48,14 +49,14 @@ fn main() -> anyhow::Result<()> {
     // Image samplers are part of the shader pipeline and so we will create three pipelines total
     let pipelines = [edge_edge, border_edge_black, edge_border_white]
         .into_iter()
-        .map(|sampler_info| create_pipeline(&event_loop.device, sampler_info))
+        .map(|sampler_info| create_pipeline(&window.device, sampler_info))
         .collect::<Result<Box<_>, _>>()?;
     let mut pipeline_index = 0;
     let mut pipeline_time = 0.0;
 
-    event_loop.run(|frame| {
+    window.run(|frame| {
         // Periodically change the active pipeline index
-        pipeline_time += frame.dt;
+        pipeline_time += 0.016;
         if pipeline_time > 2.0 {
             pipeline_time = 0.0;
             pipeline_index += 1;

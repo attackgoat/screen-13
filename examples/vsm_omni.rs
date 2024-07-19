@@ -4,8 +4,10 @@ use {
     bytemuck::{bytes_of, cast_slice, NoUninit, Pod, Zeroable},
     glam::{vec3, Mat4, Quat, Vec3},
     inline_spirv::inline_spirv,
+    log::info,
     meshopt::remap::{generate_vertex_remap, remap_index_buffer, remap_vertex_buffer},
     screen_13::prelude::*,
+    screen_13_window::Window,
     std::{
         env::current_exe,
         fs::{metadata, write},
@@ -13,6 +15,7 @@ use {
         sync::Arc,
     },
     tobj::{load_obj, GPU_LOAD_OPTIONS},
+    winit::{dpi::LogicalSize, event::Event, keyboard::KeyCode, window::Fullscreen},
     winit_input_helper::WinitInputHelper,
 };
 
@@ -44,7 +47,7 @@ fn main() -> anyhow::Result<()> {
     let cube_transform = Mat4::from_scale(Vec3::splat(10.0)).to_cols_array();
 
     let mut input = WinitInputHelper::default();
-    let event_loop = EventLoop::new()
+    let event_loop = Window::builder()
         .window(|window| window.with_inner_size(LogicalSize::new(800, 600)))
         .build()?;
 
@@ -97,13 +100,26 @@ fn main() -> anyhow::Result<()> {
 
     let mut elapsed = 0.0;
     event_loop.run(|frame| {
-        for event in frame.events {
-            input.update(event);
-        }
+        input.step_with_window_events(
+            &frame
+                .events
+                .iter()
+                .filter_map(|event| {
+                    if let Event::WindowEvent { event, .. } = event {
+                        Some(event.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Box<_>>(),
+        );
 
         // Hold spacebar to stop the light
         if !input.key_held(KeyCode::Space) {
-            elapsed += frame.dt;
+            elapsed += input
+                .delta_time()
+                .map(|dt| dt.as_secs_f32())
+                .unwrap_or(0.016);
         }
 
         // Hit F11 to enable borderless fullscreen
@@ -1306,7 +1322,7 @@ fn load_model<T>(
     face_fn: fn(a: Vec3, b: Vec3, c: Vec3) -> [T; 3],
 ) -> anyhow::Result<Model>
 where
-    T: Default + Pod,
+    T: Default + NoUninit,
 {
     let (models, _) = load_obj(path.as_ref(), &GPU_LOAD_OPTIONS)?;
     let mut vertices =
@@ -1373,15 +1389,11 @@ where
 /// Loads an .obj model as indexed position and normal vertices
 fn load_model_mesh(device: &Arc<Device>, path: impl AsRef<Path>) -> anyhow::Result<Model> {
     #[repr(C)]
-    #[derive(Clone, Copy, Default)]
+    #[derive(Clone, Copy, Default, NoUninit)]
     struct Vertex {
         position: Vec3,
         normal: Vec3,
     }
-
-    unsafe impl Pod for Vertex {}
-
-    unsafe impl Zeroable for Vertex {}
 
     load_model(device, path, |a, b, c| {
         let u = b - a;
@@ -1414,14 +1426,10 @@ fn load_model_mesh(device: &Arc<Device>, path: impl AsRef<Path>) -> anyhow::Resu
 /// Loads an .obj model as indexed position vertices
 fn load_model_shadow(device: &Arc<Device>, path: impl AsRef<Path>) -> anyhow::Result<Model> {
     #[repr(C)]
-    #[derive(Clone, Copy, Default)]
+    #[derive(Clone, Copy, Default, NoUninit)]
     struct Vertex {
         position: Vec3,
     }
-
-    unsafe impl Pod for Vertex {}
-
-    unsafe impl Zeroable for Vertex {}
 
     load_model(device, path, |a, b, c| {
         // Make faces CCW
