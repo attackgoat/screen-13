@@ -2238,7 +2238,7 @@ impl Resolver {
         );
 
         // Optimize the schedule; leasing the required stuff it needs
-        self.reorder_scheduled_passes(schedule, end_pass_idx);
+        Self::reorder_scheduled_passes(schedule, end_pass_idx);
         self.merge_scheduled_passes(&mut schedule.passes);
         self.lease_scheduled_resources(pool, &schedule.passes)?;
 
@@ -2461,8 +2461,7 @@ impl Resolver {
     }
 
     #[profiling::function]
-    //fn reorder_scheduled_passes(&mut self, schedule: &mut Schedule) {
-    fn reorder_scheduled_passes(&mut self, schedule: &mut Schedule, end_pass_idx: usize) {
+    fn reorder_scheduled_passes(schedule: &mut Schedule, end_pass_idx: usize) {
         // It must be a party
         if schedule.passes.len() < 3 {
             return;
