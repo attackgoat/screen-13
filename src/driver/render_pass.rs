@@ -426,7 +426,7 @@ impl RenderPass {
 
         let pipeline = unsafe {
             this.device.create_graphics_pipelines(
-                vk::PipelineCache::null(),
+                Device::pipeline_cache(&this.device),
                 from_ref(&graphic_pipeline_info),
                 None,
             )

@@ -43,6 +43,8 @@ pub struct Device {
     /// Vulkan instance pointer, which includes useful functions.
     instance: Instance,
 
+    pipeline_cache: vk::PipelineCache,
+
     /// The physical device, which contains useful data about features, properties, and limits.
     pub physical_device: PhysicalDevice,
 
@@ -325,11 +327,20 @@ impl Device {
             .ray_tracing_pipeline
             .then(|| khr::ray_tracing_pipeline::Device::new(&instance, &device));
 
+        let pipeline_cache =
+            unsafe { device.create_pipeline_cache(&vk::PipelineCacheCreateInfo::default(), None) }
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?;
+
         Ok(Self {
             accel_struct_ext,
             allocator: ManuallyDrop::new(Mutex::new(allocator)),
             device,
             instance,
+            pipeline_cache,
             physical_device,
             queues,
             ray_trace_ext,
@@ -384,6 +395,10 @@ impl Device {
     /// Provides a reference to the Vulkan instance used by this device.
     pub fn instance(this: &Self) -> &Instance {
         &this.instance
+    }
+
+    pub(crate) fn pipeline_cache(this: &Self) -> vk::PipelineCache {
+        this.pipeline_cache
     }
 
     #[profiling::function]
@@ -466,6 +481,9 @@ impl Drop for Device {
         }
 
         unsafe {
+            self.device
+                .destroy_pipeline_cache(self.pipeline_cache, None);
+
             ManuallyDrop::drop(&mut self.allocator);
         }
 

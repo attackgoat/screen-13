@@ -225,7 +225,7 @@ impl RayTracePipeline {
             let pipeline = ray_trace_ext
                 .create_ray_tracing_pipelines(
                     vk::DeferredOperationKHR::null(),
-                    vk::PipelineCache::null(),
+                    Device::pipeline_cache(&device),
                     &[vk::RayTracingPipelineCreateInfoKHR::default()
                         .stages(&shader_stages)
                         .groups(&shader_groups)
