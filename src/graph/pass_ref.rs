@@ -1146,8 +1146,7 @@ pub struct Compute<'a> {
     bindings: Bindings<'a>,
     cmd_buf: vk::CommandBuffer,
     device: &'a Device,
-    layout: vk::PipelineLayout,
-    push_constants: Option<vk::PushConstantRange>,
+    pipeline: Arc<ComputePipeline>,
 }
 
 impl<'a> Compute<'a> {
@@ -1448,7 +1447,7 @@ impl<'a> Compute<'a> {
     /// [gpuinfo.org]: https://vulkan.gpuinfo.org/displaydevicelimit.php?name=maxPushConstantsSize&platform=all
     #[profiling::function]
     pub fn push_constants_offset(&self, offset: u32, data: &[u8]) -> &Self {
-        if let Some(push_const) = self.push_constants {
+        if let Some(push_const) = self.pipeline.push_constants {
             // Determine the range of the overall pipline push constants which overlap with `data`
             let push_const_end = push_const.offset + push_const.size;
             let data_end = offset + data.len() as u32;
@@ -1466,7 +1465,7 @@ impl<'a> Compute<'a> {
                 unsafe {
                     self.device.cmd_push_constants(
                         self.cmd_buf,
-                        self.layout,
+                        self.pipeline.layout,
                         vk::ShaderStageFlags::COMPUTE,
                         push_const.offset,
                         &data[(start - offset) as usize..(end - offset) as usize],
@@ -1588,8 +1587,7 @@ pub struct Draw<'a> {
     bindings: Bindings<'a>,
     cmd_buf: vk::CommandBuffer,
     device: &'a Device,
-    layout: vk::PipelineLayout,
-    push_constants: Box<[vk::PushConstantRange]>,
+    pipeline: Arc<GraphicPipeline>,
 }
 
 impl<'a> Draw<'a> {
@@ -2173,7 +2171,7 @@ impl<'a> Draw<'a> {
     /// [gpuinfo.org]: https://vulkan.gpuinfo.org/displaydevicelimit.php?name=maxPushConstantsSize&platform=all
     #[profiling::function]
     pub fn push_constants_offset(&self, offset: u32, data: &[u8]) -> &Self {
-        for push_const in self.push_constants.iter() {
+        for push_const in self.pipeline.push_constants.iter() {
             // Determine the range of the overall pipline push constants which overlap with `data`
             let push_const_end = push_const.offset + push_const.size;
             let data_end = offset + data.len() as u32;
@@ -2191,7 +2189,7 @@ impl<'a> Draw<'a> {
                 unsafe {
                     self.device.cmd_push_constants(
                         self.cmd_buf,
-                        self.layout,
+                        self.pipeline.layout,
                         push_const.stage_flags,
                         start,
                         &data[(start - offset) as usize..(end - offset) as usize],
@@ -3033,18 +3031,17 @@ impl<'a> PipelinePassRef<'a, ComputePipeline> {
         mut self,
         func: impl FnOnce(Compute<'_>, Bindings<'_>) + Send + 'static,
     ) -> Self {
-        let pipeline = self
-            .pass
-            .as_ref()
-            .execs
-            .last()
-            .unwrap()
-            .pipeline
-            .as_ref()
-            .unwrap()
-            .unwrap_compute();
-        let layout = pipeline.layout;
-        let push_constants = pipeline.push_constants;
+        let pipeline = Arc::clone(
+            self.pass
+                .as_ref()
+                .execs
+                .last()
+                .unwrap()
+                .pipeline
+                .as_ref()
+                .unwrap()
+                .unwrap_compute(),
+        );
 
         self.pass.push_execute(move |device, cmd_buf, bindings| {
             func(
@@ -3052,8 +3049,7 @@ impl<'a> PipelinePassRef<'a, ComputePipeline> {
                     bindings,
                     cmd_buf,
                     device,
-                    layout,
-                    push_constants,
+                    pipeline,
                 },
                 bindings,
             );
@@ -3747,18 +3743,17 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
         mut self,
         func: impl FnOnce(Draw<'_>, Bindings<'_>) + Send + 'static,
     ) -> Self {
-        let pipeline = self
-            .pass
-            .as_ref()
-            .execs
-            .last()
-            .unwrap()
-            .pipeline
-            .as_ref()
-            .unwrap()
-            .unwrap_graphic();
-        let layout = pipeline.layout;
-        let push_constants = pipeline.push_constants.clone().into_boxed_slice();
+        let pipeline = Arc::clone(
+            self.pass
+                .as_ref()
+                .execs
+                .last()
+                .unwrap()
+                .pipeline
+                .as_ref()
+                .unwrap()
+                .unwrap_graphic(),
+        );
 
         self.pass.push_execute(move |device, cmd_buf, bindings| {
             func(
@@ -3766,8 +3761,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
                     bindings,
                     cmd_buf,
                     device,
-                    layout,
-                    push_constants,
+                    pipeline,
                 },
                 bindings,
             );
@@ -4229,18 +4223,17 @@ impl<'a> PipelinePassRef<'a, RayTracePipeline> {
         mut self,
         func: impl FnOnce(RayTrace<'_>, Bindings<'_>) + Send + 'static,
     ) -> Self {
-        let pipeline = self
-            .pass
-            .as_ref()
-            .execs
-            .last()
-            .unwrap()
-            .pipeline
-            .as_ref()
-            .unwrap()
-            .unwrap_ray_trace();
-        let layout = pipeline.layout;
-        let push_constants = pipeline.push_constants.clone().into_boxed_slice();
+        let pipeline = Arc::clone(
+            self.pass
+                .as_ref()
+                .execs
+                .last()
+                .unwrap()
+                .pipeline
+                .as_ref()
+                .unwrap()
+                .unwrap_ray_trace(),
+        );
 
         #[cfg(debug_assertions)]
         let dynamic_stack_size = pipeline.info.dynamic_stack_size;
@@ -4254,8 +4247,7 @@ impl<'a> PipelinePassRef<'a, RayTracePipeline> {
                     #[cfg(debug_assertions)]
                     dynamic_stack_size,
 
-                    layout,
-                    push_constants,
+                    pipeline,
                 },
                 bindings,
             );
@@ -4307,8 +4299,7 @@ pub struct RayTrace<'a> {
     #[cfg(debug_assertions)]
     dynamic_stack_size: bool,
 
-    layout: vk::PipelineLayout,
-    push_constants: Box<[vk::PushConstantRange]>,
+    pipeline: Arc<RayTracePipeline>,
 }
 
 impl<'a> RayTrace<'a> {
@@ -4454,7 +4445,7 @@ impl<'a> RayTrace<'a> {
     /// [gpuinfo.org]: https://vulkan.gpuinfo.org/displaydevicelimit.php?name=maxPushConstantsSize&platform=all
     #[profiling::function]
     pub fn push_constants_offset(&self, offset: u32, data: &[u8]) -> &Self {
-        for push_const in self.push_constants.iter() {
+        for push_const in self.pipeline.push_constants.iter() {
             let push_const_end = push_const.offset + push_const.size;
             let data_end = offset + data.len() as u32;
             let end = data_end.min(push_const_end);
@@ -4471,7 +4462,7 @@ impl<'a> RayTrace<'a> {
                 unsafe {
                     self.device.cmd_push_constants(
                         self.cmd_buf,
-                        self.layout,
+                        self.pipeline.layout,
                         push_const.stage_flags,
                         start,
                         &data[(start - offset) as usize..(end - offset) as usize],
