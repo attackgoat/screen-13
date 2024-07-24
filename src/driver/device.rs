@@ -34,7 +34,7 @@ pub type SelectPhysicalDeviceFn = dyn FnOnce(&[PhysicalDevice]) -> usize;
 
 /// Opaque handle to a device object.
 pub struct Device {
-    pub(crate) accel_struct_ext: Option<khr::acceleration_structure::Device>,
+    accel_struct_ext: Option<khr::acceleration_structure::Device>,
 
     pub(super) allocator: ManuallyDrop<Mutex<Allocator>>,
 
@@ -42,6 +42,8 @@ pub struct Device {
 
     /// Vulkan instance pointer, which includes useful functions.
     instance: Instance,
+
+    pipeline_cache: vk::PipelineCache,
 
     /// The physical device, which contains useful data about features, properties, and limits.
     pub physical_device: PhysicalDevice,
@@ -260,6 +262,18 @@ impl Device {
         })
     }
 
+    /// Helper for times when you already know that the device supports the acceleration
+    /// structure extension.
+    ///
+    /// # Panics
+    ///
+    /// Panics if [Self.physical_device.accel_struct_properties] is `None`.
+    pub(crate) fn expect_accel_struct_ext(this: &Self) -> &khr::acceleration_structure::Device {
+        this.accel_struct_ext
+            .as_ref()
+            .expect("VK_KHR_acceleration_structure")
+    }
+
     /// Loads and existing `ash` Vulkan device that may have been created by other means.
     #[profiling::function]
     pub fn load(
@@ -313,11 +327,20 @@ impl Device {
             .ray_tracing_pipeline
             .then(|| khr::ray_tracing_pipeline::Device::new(&instance, &device));
 
+        let pipeline_cache =
+            unsafe { device.create_pipeline_cache(&vk::PipelineCacheCreateInfo::default(), None) }
+                .map_err(|err| {
+                    warn!("{err}");
+
+                    DriverError::Unsupported
+                })?;
+
         Ok(Self {
             accel_struct_ext,
             allocator: ManuallyDrop::new(Mutex::new(allocator)),
             device,
             instance,
+            pipeline_cache,
             physical_device,
             queues,
             ray_trace_ext,
@@ -372,6 +395,10 @@ impl Device {
     /// Provides a reference to the Vulkan instance used by this device.
     pub fn instance(this: &Self) -> &Instance {
         &this.instance
+    }
+
+    pub(crate) fn pipeline_cache(this: &Self) -> vk::PipelineCache {
+        this.pipeline_cache
     }
 
     #[profiling::function]
@@ -454,6 +481,9 @@ impl Drop for Device {
         }
 
         unsafe {
+            self.device
+                .destroy_pipeline_cache(self.pipeline_cache, None);
+
             ManuallyDrop::drop(&mut self.allocator);
         }
 

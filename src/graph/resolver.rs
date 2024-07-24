@@ -26,16 +26,12 @@ use {
     },
     std::{
         cell::RefCell,
-        collections::{HashMap, VecDeque},
+        collections::{BTreeMap, HashMap, VecDeque},
         iter::repeat,
         ops::Range,
     },
     vk_sync::{cmd::pipeline_barrier, AccessType, BufferBarrier, GlobalBarrier, ImageBarrier},
 };
-
-fn align_up(val: u32, atom: u32) -> u32 {
-    (val + atom - 1) & !(atom - 1)
-}
 
 #[derive(Default)]
 struct AccessCache {
@@ -823,18 +819,22 @@ impl Resolver {
 
         // Trivially round up the descriptor counts to increase cache coherence
         const ATOM: u32 = 1 << 5;
-        info.acceleration_structure_count = align_up(info.acceleration_structure_count, ATOM);
-        info.combined_image_sampler_count = align_up(info.combined_image_sampler_count, ATOM);
-        info.input_attachment_count = align_up(info.input_attachment_count, ATOM);
-        info.sampled_image_count = align_up(info.sampled_image_count, ATOM);
-        info.sampler_count = align_up(info.sampler_count, ATOM);
-        info.storage_buffer_count = align_up(info.storage_buffer_count, ATOM);
-        info.storage_buffer_dynamic_count = align_up(info.storage_buffer_dynamic_count, ATOM);
-        info.storage_image_count = align_up(info.storage_image_count, ATOM);
-        info.storage_texel_buffer_count = align_up(info.storage_texel_buffer_count, ATOM);
-        info.uniform_buffer_count = align_up(info.uniform_buffer_count, ATOM);
-        info.uniform_buffer_dynamic_count = align_up(info.uniform_buffer_dynamic_count, ATOM);
-        info.uniform_texel_buffer_count = align_up(info.uniform_texel_buffer_count, ATOM);
+        info.acceleration_structure_count =
+            info.acceleration_structure_count.next_multiple_of(ATOM);
+        info.combined_image_sampler_count =
+            info.combined_image_sampler_count.next_multiple_of(ATOM);
+        info.input_attachment_count = info.input_attachment_count.next_multiple_of(ATOM);
+        info.sampled_image_count = info.sampled_image_count.next_multiple_of(ATOM);
+        info.sampler_count = info.sampler_count.next_multiple_of(ATOM);
+        info.storage_buffer_count = info.storage_buffer_count.next_multiple_of(ATOM);
+        info.storage_buffer_dynamic_count =
+            info.storage_buffer_dynamic_count.next_multiple_of(ATOM);
+        info.storage_image_count = info.storage_image_count.next_multiple_of(ATOM);
+        info.storage_texel_buffer_count = info.storage_texel_buffer_count.next_multiple_of(ATOM);
+        info.uniform_buffer_count = info.uniform_buffer_count.next_multiple_of(ATOM);
+        info.uniform_buffer_dynamic_count =
+            info.uniform_buffer_dynamic_count.next_multiple_of(ATOM);
+        info.uniform_texel_buffer_count = info.uniform_texel_buffer_count.next_multiple_of(ATOM);
 
         // Notice how all sets are big enough for any other set; TODO: efficiently dont
 
@@ -1261,7 +1261,7 @@ impl Resolver {
         // Add dependencies
         let dependencies =
             {
-                let mut dependencies = HashMap::with_capacity(attachment_count);
+                let mut dependencies = BTreeMap::new();
                 for (exec_idx, exec) in pass.execs.iter().enumerate() {
                     // Check accesses
                     'accesses: for (node_idx, [early, _]) in exec.accesses.iter() {
@@ -1805,10 +1805,12 @@ impl Resolver {
                 let mut end = start;
                 while end < schedule.len() {
                     let other = passes[schedule[end]].as_ref().unwrap();
+
                     debug!(
                         "attempting to merge [{idx}: {}] with [{end}: {}]",
                         pass.name, other.name
                     );
+
                     if Self::allow_merge_passes(&pass, other) {
                         end += 1;
                     } else {
@@ -2238,7 +2240,7 @@ impl Resolver {
         );
 
         // Optimize the schedule; leasing the required stuff it needs
-        self.reorder_scheduled_passes(schedule, end_pass_idx);
+        Self::reorder_scheduled_passes(schedule, end_pass_idx);
         self.merge_scheduled_passes(&mut schedule.passes);
         self.lease_scheduled_resources(pool, &schedule.passes)?;
 
@@ -2461,8 +2463,7 @@ impl Resolver {
     }
 
     #[profiling::function]
-    //fn reorder_scheduled_passes(&mut self, schedule: &mut Schedule) {
-    fn reorder_scheduled_passes(&mut self, schedule: &mut Schedule, end_pass_idx: usize) {
+    fn reorder_scheduled_passes(schedule: &mut Schedule, end_pass_idx: usize) {
         // It must be a party
         if schedule.passes.len() < 3 {
             return;
