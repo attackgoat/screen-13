@@ -1805,10 +1805,12 @@ impl Resolver {
                 let mut end = start;
                 while end < schedule.len() {
                     let other = passes[schedule[end]].as_ref().unwrap();
+
                     debug!(
                         "attempting to merge [{idx}: {}] with [{end}: {}]",
                         pass.name, other.name
                     );
+
                     if Self::allow_merge_passes(&pass, other) {
                         end += 1;
                     } else {
