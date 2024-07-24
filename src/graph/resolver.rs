@@ -26,7 +26,7 @@ use {
     },
     std::{
         cell::RefCell,
-        collections::{HashMap, VecDeque},
+        collections::{BTreeMap, HashMap, VecDeque},
         iter::repeat,
         ops::Range,
     },
@@ -1261,7 +1261,7 @@ impl Resolver {
         // Add dependencies
         let dependencies =
             {
-                let mut dependencies = HashMap::with_capacity(attachment_count);
+                let mut dependencies = BTreeMap::new();
                 for (exec_idx, exec) in pass.execs.iter().enumerate() {
                     // Check accesses
                     'accesses: for (node_idx, [early, _]) in exec.accesses.iter() {
