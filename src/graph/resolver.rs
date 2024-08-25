@@ -246,49 +246,58 @@ impl Resolver {
                 return false;
             }
 
-            // Compare individual color attachments for compatibility
-            for (attachment_idx, lhs_attachment) in lhs_exec
-                .color_attachments
-                .iter()
-                .chain(lhs_exec.color_loads.iter())
-                .chain(lhs_exec.color_stores.iter())
-                .chain(
-                    lhs_exec
-                        .color_clears
-                        .iter()
-                        .map(|(attachment_idx, (attachment, _))| (attachment_idx, attachment)),
-                )
-                .chain(
-                    lhs_exec
-                        .color_resolves
-                        .iter()
-                        .map(|(attachment_idx, (attachment, _))| (attachment_idx, attachment)),
-                )
-            {
-                let rhs_attachment = rhs_exec
+            // Check attachment compatibility both ways since one may have a different quantity than the other
+            for (a_exec, b_exec) in [(lhs_exec, rhs_exec), (rhs_exec, lhs_exec)] {
+                // Compare individual color attachments for compatibility
+                for (attachment_idx, a_attachment) in a_exec
                     .color_attachments
-                    .get(attachment_idx)
-                    .or_else(|| rhs_exec.color_loads.get(attachment_idx))
-                    .or_else(|| rhs_exec.color_stores.get(attachment_idx))
-                    .or_else(|| {
-                        rhs_exec
+                    .iter()
+                    .chain(a_exec.color_loads.iter())
+                    .chain(a_exec.color_stores.iter())
+                    .chain(
+                        a_exec
                             .color_clears
-                            .get(attachment_idx)
-                            .map(|(attachment, _)| attachment)
-                    })
-                    .or_else(|| {
-                        rhs_exec
+                            .iter()
+                            .map(|(attachment_idx, (attachment, _))| (attachment_idx, attachment)),
+                    )
+                    .chain(
+                        a_exec
                             .color_resolves
-                            .get(attachment_idx)
-                            .map(|(attachment, _)| attachment)
-                    });
+                            .iter()
+                            .map(|(attachment_idx, (attachment, _))| (attachment_idx, attachment)),
+                    )
+                {
+                    let b_attachment = b_exec
+                        .color_attachments
+                        .get(attachment_idx)
+                        .or_else(|| b_exec.color_loads.get(attachment_idx))
+                        .or_else(|| b_exec.color_stores.get(attachment_idx))
+                        .or_else(|| {
+                            b_exec
+                                .color_clears
+                                .get(attachment_idx)
+                                .map(|(attachment, _)| attachment)
+                        })
+                        .or_else(|| {
+                            b_exec
+                                .color_resolves
+                                .get(attachment_idx)
+                                .map(|(attachment, _)| attachment)
+                        });
 
-                if !Attachment::are_compatible(Some(*lhs_attachment), rhs_attachment.copied()) {
-                    trace!("  incompatible color attachments");
+                    if b_attachment.is_none() {
+                        trace!("  incompatible color attachments");
 
-                    return false;
-                } else {
-                    common_color_attachment = true;
+                        return false;
+                    }
+
+                    if !Attachment::are_compatible(Some(*a_attachment), b_attachment.copied()) {
+                        trace!("  incompatible color attachments");
+
+                        return false;
+                    } else {
+                        common_color_attachment = true;
+                    }
                 }
             }
 
@@ -2447,6 +2456,20 @@ impl Resolver {
                     (info.width, info.height)
                 })
             {
+                width = width.min(attachment_width);
+                height = height.min(attachment_height);
+            }
+
+            if let Some((attachment_width, attachment_height)) =
+                first_exec.depth_stencil_clear.map(|(attachment, _)| {
+                    let info = bindings[attachment.target].as_driver_image().unwrap().info;
+                    (info.width, info.height)
+                })
+            {
+                if (width, height) != (u32::MAX, u32::MAX) {
+                    assert_eq!(width, attachment_width);
+                    assert_eq!(height, attachment_height);
+                }
                 width = width.min(attachment_width);
                 height = height.min(attachment_height);
             }
