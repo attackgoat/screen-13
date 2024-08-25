@@ -121,7 +121,7 @@ fn main() -> Result<(), DisplayError> {
             .read_descriptor(1, light_buf)
             .access_node(index_buf, AccessType::IndexBuffer)
             .access_node(vertex_buf, AccessType::VertexBuffer)
-            .clear_depth_stencil(depth_stencil)
+            .load_depth_stencil(depth_stencil)
             .store_depth_stencil(depth_stencil)
             .store_color(0, frame.swapchain_image)
             .record_subpass(move |subpass, _| {
