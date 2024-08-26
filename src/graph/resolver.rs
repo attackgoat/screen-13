@@ -218,24 +218,11 @@ impl Resolver {
         }
 
         let rhs_exec = rhs.execs.first().unwrap();
-        let rhs_depth_stencil = rhs_exec
-            .depth_stencil_attachment
-            .or(rhs_exec.depth_stencil_load)
-            .or(rhs_exec.depth_stencil_store)
-            .or_else(|| {
-                rhs_exec
-                    .depth_stencil_resolve
-                    .map(|(attachment, ..)| attachment)
-            })
-            .or_else(|| {
-                rhs_exec
-                    .depth_stencil_clear
-                    .map(|(attachment, _)| attachment)
-            });
 
         // Now we need to know what the subpasses (we may have prior merges) wrote
         for lhs_exec in lhs.execs.iter().rev() {
             let mut common_color_attachment = false;
+            let mut common_depth_attachment = false;
 
             // Multiview subpasses cannot be combined with non-multiview subpasses
             if (lhs_exec.view_mask == 0 && rhs_exec.view_mask != 0)
@@ -246,81 +233,101 @@ impl Resolver {
                 return false;
             }
 
-            // Compare individual color attachments for compatibility
-            for (attachment_idx, lhs_attachment) in lhs_exec
-                .color_attachments
-                .iter()
-                .chain(lhs_exec.color_loads.iter())
-                .chain(lhs_exec.color_stores.iter())
-                .chain(
-                    lhs_exec
-                        .color_clears
-                        .iter()
-                        .map(|(attachment_idx, (attachment, _))| (attachment_idx, attachment)),
-                )
-                .chain(
-                    lhs_exec
-                        .color_resolves
-                        .iter()
-                        .map(|(attachment_idx, (attachment, _))| (attachment_idx, attachment)),
-                )
-            {
-                let rhs_attachment = rhs_exec
+            // Check attachment compatibility both ways since one may have a different quantity than the other
+            for (a_exec, b_exec) in [(lhs_exec, rhs_exec), (rhs_exec, lhs_exec)] {
+                // Compare individual color attachments for compatibility
+                for (attachment_idx, a_attachment) in a_exec
                     .color_attachments
-                    .get(attachment_idx)
-                    .or_else(|| rhs_exec.color_loads.get(attachment_idx))
-                    .or_else(|| rhs_exec.color_stores.get(attachment_idx))
-                    .or_else(|| {
-                        rhs_exec
+                    .iter()
+                    .chain(a_exec.color_loads.iter())
+                    .chain(a_exec.color_stores.iter())
+                    .chain(
+                        a_exec
                             .color_clears
-                            .get(attachment_idx)
-                            .map(|(attachment, _)| attachment)
-                    })
-                    .or_else(|| {
-                        rhs_exec
+                            .iter()
+                            .map(|(attachment_idx, (attachment, _))| (attachment_idx, attachment)),
+                    )
+                    .chain(
+                        a_exec
                             .color_resolves
-                            .get(attachment_idx)
-                            .map(|(attachment, _)| attachment)
-                    });
+                            .iter()
+                            .map(|(attachment_idx, (attachment, _))| (attachment_idx, attachment)),
+                    )
+                {
+                    let b_attachment = b_exec
+                        .color_attachments
+                        .get(attachment_idx)
+                        .or_else(|| b_exec.color_loads.get(attachment_idx))
+                        .or_else(|| b_exec.color_stores.get(attachment_idx))
+                        .or_else(|| {
+                            b_exec
+                                .color_clears
+                                .get(attachment_idx)
+                                .map(|(attachment, _)| attachment)
+                        })
+                        .or_else(|| {
+                            b_exec
+                                .color_resolves
+                                .get(attachment_idx)
+                                .map(|(attachment, _)| attachment)
+                        });
 
-                if !Attachment::are_compatible(Some(*lhs_attachment), rhs_attachment.copied()) {
-                    trace!("  incompatible color attachments");
+                    if b_attachment.is_none() {
+                        trace!("  incompatible color attachments");
+
+                        return false;
+                    }
+
+                    if !Attachment::are_compatible(Some(*a_attachment), b_attachment.copied()) {
+                        trace!("  incompatible color attachments");
+
+                        return false;
+                    } else {
+                        common_color_attachment = true;
+                    }
+                }
+
+                // Compare depth/stencil attachments for compatibility
+                let a_depth_stencil = a_exec
+                    .depth_stencil_attachment
+                    .or(a_exec.depth_stencil_load)
+                    .or(a_exec.depth_stencil_store)
+                    .or_else(|| {
+                        a_exec
+                            .depth_stencil_resolve
+                            .map(|(attachment, ..)| attachment)
+                    })
+                    .or_else(|| a_exec.depth_stencil_clear.map(|(attachment, _)| attachment));
+
+                let b_depth_stencil = b_exec
+                    .depth_stencil_attachment
+                    .or(b_exec.depth_stencil_load)
+                    .or(b_exec.depth_stencil_store)
+                    .or_else(|| {
+                        b_exec
+                            .depth_stencil_resolve
+                            .map(|(attachment, ..)| attachment)
+                    })
+                    .or_else(|| b_exec.depth_stencil_clear.map(|(attachment, _)| attachment));
+
+                if !Attachment::are_compatible(a_depth_stencil, b_depth_stencil) {
+                    trace!("  incompatible depth/stencil attachments");
 
                     return false;
+                }
+
+                if a_depth_stencil.is_some() && b_depth_stencil.is_some() {
+                    common_depth_attachment = true;
                 } else {
-                    common_color_attachment = true;
+                    return false;
                 }
             }
 
-            // Compare depth/stencil attachments for compatibility
-            let lhs_depth_stencil = lhs_exec
-                .depth_stencil_attachment
-                .or(lhs_exec.depth_stencil_load)
-                .or(lhs_exec.depth_stencil_store)
-                .or_else(|| {
-                    lhs_exec
-                        .depth_stencil_resolve
-                        .map(|(attachment, ..)| attachment)
-                })
-                .or_else(|| {
-                    lhs_exec
-                        .depth_stencil_clear
-                        .map(|(attachment, _)| attachment)
-                });
-            if !Attachment::are_compatible(lhs_depth_stencil, rhs_depth_stencil) {
-                trace!("  incompatible depth/stencil attachments");
-
-                return false;
-            }
-
-            let common_depth_attachment =
-                lhs_depth_stencil.is_some() && rhs_depth_stencil.is_some();
-
             // Keep color and depth on tile.
-            if common_color_attachment || common_depth_attachment {
+            if common_color_attachment && common_depth_attachment {
                 trace!("  merging due to common image");
 
-                return true;
+                return true; // TODO is this returning true prematurely?
             }
         }
 
@@ -2447,6 +2454,20 @@ impl Resolver {
                     (info.width, info.height)
                 })
             {
+                width = width.min(attachment_width);
+                height = height.min(attachment_height);
+            }
+
+            if let Some((attachment_width, attachment_height)) =
+                first_exec.depth_stencil_clear.map(|(attachment, _)| {
+                    let info = bindings[attachment.target].as_driver_image().unwrap().info;
+                    (info.width, info.height)
+                })
+            {
+                if (width, height) != (u32::MAX, u32::MAX) {
+                    assert_eq!(width, attachment_width);
+                    assert_eq!(height, attachment_height);
+                }
                 width = width.min(attachment_width);
                 height = height.min(attachment_height);
             }
