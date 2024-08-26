@@ -218,24 +218,11 @@ impl Resolver {
         }
 
         let rhs_exec = rhs.execs.first().unwrap();
-        let rhs_depth_stencil = rhs_exec
-            .depth_stencil_attachment
-            .or(rhs_exec.depth_stencil_load)
-            .or(rhs_exec.depth_stencil_store)
-            .or_else(|| {
-                rhs_exec
-                    .depth_stencil_resolve
-                    .map(|(attachment, ..)| attachment)
-            })
-            .or_else(|| {
-                rhs_exec
-                    .depth_stencil_clear
-                    .map(|(attachment, _)| attachment)
-            });
 
         // Now we need to know what the subpasses (we may have prior merges) wrote
         for lhs_exec in lhs.execs.iter().rev() {
             let mut common_color_attachment = false;
+            let mut common_depth_attachment = false;
 
             // Multiview subpasses cannot be combined with non-multiview subpasses
             if (lhs_exec.view_mask == 0 && rhs_exec.view_mask != 0)
@@ -299,37 +286,48 @@ impl Resolver {
                         common_color_attachment = true;
                     }
                 }
+
+                // Compare depth/stencil attachments for compatibility
+                let a_depth_stencil = a_exec
+                    .depth_stencil_attachment
+                    .or(a_exec.depth_stencil_load)
+                    .or(a_exec.depth_stencil_store)
+                    .or_else(|| {
+                        a_exec
+                            .depth_stencil_resolve
+                            .map(|(attachment, ..)| attachment)
+                    })
+                    .or_else(|| a_exec.depth_stencil_clear.map(|(attachment, _)| attachment));
+
+                let b_depth_stencil = b_exec
+                    .depth_stencil_attachment
+                    .or(b_exec.depth_stencil_load)
+                    .or(b_exec.depth_stencil_store)
+                    .or_else(|| {
+                        b_exec
+                            .depth_stencil_resolve
+                            .map(|(attachment, ..)| attachment)
+                    })
+                    .or_else(|| b_exec.depth_stencil_clear.map(|(attachment, _)| attachment));
+
+                if !Attachment::are_compatible(a_depth_stencil, b_depth_stencil) {
+                    trace!("  incompatible depth/stencil attachments");
+
+                    return false;
+                }
+
+                if a_depth_stencil.is_some() && b_depth_stencil.is_some() {
+                    common_depth_attachment = true;
+                } else {
+                    return false;
+                }
             }
-
-            // Compare depth/stencil attachments for compatibility
-            let lhs_depth_stencil = lhs_exec
-                .depth_stencil_attachment
-                .or(lhs_exec.depth_stencil_load)
-                .or(lhs_exec.depth_stencil_store)
-                .or_else(|| {
-                    lhs_exec
-                        .depth_stencil_resolve
-                        .map(|(attachment, ..)| attachment)
-                })
-                .or_else(|| {
-                    lhs_exec
-                        .depth_stencil_clear
-                        .map(|(attachment, _)| attachment)
-                });
-            if !Attachment::are_compatible(lhs_depth_stencil, rhs_depth_stencil) {
-                trace!("  incompatible depth/stencil attachments");
-
-                return false;
-            }
-
-            let common_depth_attachment =
-                lhs_depth_stencil.is_some() && rhs_depth_stencil.is_some();
 
             // Keep color and depth on tile.
-            if common_color_attachment || common_depth_attachment {
+            if common_color_attachment && common_depth_attachment {
                 trace!("  merging due to common image");
 
-                return true;
+                return true; // TODO is this returning true prematurely?
             }
         }
 
