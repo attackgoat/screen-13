@@ -3,6 +3,7 @@ pub use shaderc::{OptimizationLevel, SourceLanguage, SpirvVersion};
 use {
     super::{compile_shader, guess_shader_source_language},
     derive_builder::{Builder, UninitializedFieldError},
+    log::{debug, error},
     notify::{RecommendedWatcher, RecursiveMode, Watcher},
     screen_13::prelude::*,
     shaderc::{CompileOptions, EnvVersion, ShaderKind, TargetEnv},

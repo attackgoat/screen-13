@@ -14,6 +14,7 @@ pub mod prelude {
 
 use {
     self::shader::HotShader,
+    log::{error, info},
     notify::{recommended_watcher, Event, EventKind, RecommendedWatcher},
     screen_13::prelude::*,
     shader_prepper::{
