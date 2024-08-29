@@ -18,7 +18,8 @@ pak = "0.5"
 pretty_env_logger = "0.5"
 screen-13 = { path = "../.." }
 screen-13-fx = { path = "../../contrib/screen-13-fx" }
-winit_input_helper = "0.16"
+screen-13-window = { path = "../../contrib/screen-13-window" }
+winit = "0.30"
 
 [build-dependencies]
 anyhow = "1.0"
