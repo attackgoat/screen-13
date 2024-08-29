@@ -7,7 +7,10 @@ pub use imgui::{self, Condition, Ui};
 use {
     bytemuck::cast_slice,
     imgui::{Context, DrawCmd, DrawCmdParams},
-    imgui_winit_support::{HiDpiMode, WinitPlatform},
+    imgui_winit_support::{
+        winit::{event::Event, window::Window},
+        {HiDpiMode, WinitPlatform},
+    },
     inline_spirv::include_spirv,
     screen_13::prelude::*,
     std::{sync::Arc, time::Duration},
@@ -214,20 +217,6 @@ impl ImGui {
         }
 
         image
-    }
-
-    pub fn draw_frame(
-        &mut self,
-        frame: &mut FrameContext<'_>,
-        ui_func: impl FnOnce(&mut Ui),
-    ) -> ImageLeaseNode {
-        self.draw(
-            frame.dt,
-            frame.events,
-            frame.window,
-            frame.render_graph,
-            ui_func,
-        )
     }
 
     fn lease_font_atlas_image(&mut self, render_graph: &mut RenderGraph) {
