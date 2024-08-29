@@ -1,6 +1,6 @@
 [package]
 name = "screen-13"
-version = "0.11.4"
+version = "0.12.0"
 authors = ["John Wells <john@attackgoat.com>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
@@ -20,22 +20,21 @@ profile-with-superluminal = ["profiling/profile-with-superluminal"]
 profile-with-tracy = ["profiling/profile-with-tracy"]
 
 [dependencies]
-ash = ">=0.37.1, <0.38"
-ash-window = "0.12"
+ash = "0.38"
+ash-window = "0.13"
 derive_builder = "0.20"
-gpu-allocator = "0.26"
+gpu-allocator = "0.27"
 log = "0.4"
 ordered-float = "4.1"
 parking_lot = { version = "0.12", optional = true }
 paste = "1.0"
 profiling = "1.0"
-raw-window-handle = "0.5"
+raw-window-handle = "0.6"
 spirq = "1.2"
-vk-sync = { version = "0.4.0", package = "vk-sync-fork" }  # // SEE: https://github.com/gwihlidal/vk-sync-rs/pull/4 -> https://github.com/expenses/vk-sync-rs
-winit = { version = "0.29", features = ["rwh_05"] }
+vk-sync = { git = "https://github.com/attackgoat/vk-sync-rs.git", rev = "19fc3f811cc1d38b2231cdb8840fddf271879ac1", package = "vk-sync-fork" } #version = "0.4.0", package = "vk-sync-fork" }  # // SEE: https://github.com/gwihlidal/vk-sync-rs/pull/4 -> https://github.com/expenses/vk-sync-rs
 
 [target.'cfg(target_os = "macos")'.dependencies]
-ash-molten = "0.17"
+ash-molten = "0.19"
 
 [dev-dependencies]
 anyhow = "1.0"
@@ -58,5 +57,7 @@ reqwest = { version = "0.12", features = ["blocking"] }
 screen-13-fx = { path = "contrib/screen-13-fx" }
 screen-13-imgui = { path = "contrib/screen-13-imgui" }
 screen-13-egui = { path = "contrib/screen-13-egui" }
+screen-13-window = { path = "contrib/screen-13-window" }
 tobj = "4.0"
-winit_input_helper = "0.16"
+winit = "0.30"
+winit_input_helper = { git = "https://github.com/stefnotch/winit_input_helper.git", rev = "6e76a79d01ce836c01b9cdeaa98846a6f0955dc4" } #"0.16"

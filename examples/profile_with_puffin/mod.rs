@@ -23,6 +23,7 @@ use {
 /// ```bash
 /// cargo install puffin_viewer
 /// ```
+#[allow(unused)]
 pub fn init() {
     #[cfg(feature = "profile-with-puffin")]
     {

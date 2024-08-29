@@ -21,6 +21,8 @@ Also helpful to run with valgrind:
     cargo build --example fuzzer && valgrind target/debug/examples/fuzzer
 
 */
+fn main() {}
+/* NEEDS UPDATES TO LATEST CRATE CHANGES
 use {
     inline_spirv::inline_spirv,
     rand::{seq::SliceRandom, thread_rng},
@@ -319,17 +321,17 @@ fn record_compute_array_bind(frame: &mut FrameContext, pool: &mut HashPool) {
             inline_spirv!(
                 r#"
                 #version 460 core
-                
+
                 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
-                
+
                 layout(constant_id = 0) const uint LAYER_COUNT = 1;
-                
+
                 layout(push_constant) uniform PushConstants {
                     layout(offset = 0) float offset;
                 } push_const;
-                
+
                 layout(set = 0, binding = 0) uniform sampler2D layer_images_sampler_llr[LAYER_COUNT];
-                
+
                 void main() {
                 }
                 "#,
@@ -402,15 +404,15 @@ fn record_compute_bindless(frame: &mut FrameContext, pool: &mut HashPool) {
                 r#"
                 #version 460 core
                 #extension GL_EXT_nonuniform_qualifier : require
-                
+
                 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
                 layout(push_constant) uniform PushConstants {
                     layout(offset = 0) uint count;
                 } push_const;
-                
+
                 layout(set = 0, binding = 0, rgba8) writeonly uniform image2D dst[];
-                
+
                 void main() {
                     for (uint idx = 0; idx < push_const.count; idx++) {
                         imageStore(
@@ -501,7 +503,7 @@ fn record_graphic_bindless(frame: &mut FrameContext, pool: &mut HashPool) {
         inline_spirv!(
             r#"
             #version 460 core
-    
+
             void main() {
             }
             "#,
@@ -598,7 +600,7 @@ fn record_graphic_load_store(frame: &mut FrameContext, _: &mut HashPool) {
         inline_spirv!(
             r#"
             #version 460 core
-    
+
             void main() {
             }
             "#,
@@ -1094,3 +1096,4 @@ fn graphic_vert_frag_pipeline(
         )
     })
 }
+*/

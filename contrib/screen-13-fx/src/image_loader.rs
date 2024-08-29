@@ -1,7 +1,10 @@
 use {
-    super::BitmapFont, anyhow::Context, bmfont::BMFont, inline_spirv::include_spirv,
+    super::BitmapFont, anyhow::Context, bmfont::BMFont, inline_spirv::include_spirv, log::info,
     screen_13::prelude::*, std::sync::Arc,
 };
+
+#[cfg(debug_assertions)]
+use log::warn;
 
 fn align_up_u32(val: u32, atom: u32) -> u32 {
     (val + atom - 1) & !(atom - 1)

@@ -16,7 +16,7 @@ use {
 #[derive(Debug)]
 pub struct Swapchain {
     device: Arc<Device>,
-    images: Vec<Option<Image>>,
+    images: Vec<Option<SwapchainImage>>,
     info: SwapchainInfo,
     suboptimal: bool,
     surface: Surface,
@@ -59,17 +59,61 @@ impl Swapchain {
             self.suboptimal = false;
         }
 
-        let Synchronization {
-            acquired,
-            ready,
-            rendered,
-        } = self.syncs[self.sync_idx];
+        let mut acquired = vk::Semaphore::null();
+        let mut ready = vk::Fence::null();
 
-        unsafe { self.device.reset_fences(slice::from_ref(&ready)) }.map_err(|err| {
-            warn!("{err}");
+        for idx in 0..self.syncs.len() {
+            self.sync_idx += 1;
+            self.sync_idx %= self.syncs.len();
+            let sync = &self.syncs[idx];
 
-            SwapchainError::SurfaceLost
-        })?;
+            unsafe {
+                match self.device.get_fence_status(sync.ready) {
+                    Ok(true) => {
+                        if self
+                            .device
+                            .reset_fences(slice::from_ref(&sync.ready))
+                            .is_err()
+                        {
+                            self.suboptimal = true;
+                            return Err(SwapchainError::DeviceLost);
+                        }
+
+                        acquired = sync.acquired;
+                        ready = sync.ready;
+
+                        // info!("Sync idx {}", self.sync_idx);
+                    }
+                    Ok(false) => continue,
+                    Err(_) => {
+                        self.suboptimal = true;
+                        return Err(SwapchainError::DeviceLost);
+                    }
+                }
+
+                if self
+                    .device
+                    .reset_fences(slice::from_ref(&sync.ready))
+                    .is_err()
+                {
+                    self.suboptimal = true;
+                    return Err(SwapchainError::DeviceLost);
+                }
+            }
+        }
+
+        if acquired == vk::Semaphore::null() {
+            let sync = Synchronization::create(&self.device).map_err(|err| {
+                warn!("{err}");
+
+                SwapchainError::DeviceLost
+            })?;
+            acquired = sync.acquired;
+            ready = sync.ready;
+
+            self.sync_idx = self.syncs.len();
+            self.syncs.push(sync);
+        }
 
         let image_idx = unsafe {
             // We checked during recreate_swapchain
@@ -87,22 +131,15 @@ impl Swapchain {
 
         match image_idx {
             Ok(image_idx) => {
-                self.sync_idx += 1;
-                self.sync_idx %= self.syncs.len();
-
-                let image = self.images[image_idx as usize].take().ok_or_else(|| {
+                let mut image = self.images[image_idx as usize].take().ok_or_else(|| {
                     self.suboptimal = true;
 
                     SwapchainError::Suboptimal
                 })?;
 
-                Ok(SwapchainImage {
-                    acquired,
-                    image,
-                    image_idx,
-                    ready,
-                    rendered,
-                })
+                image.acquired = acquired;
+
+                Ok(image)
             }
             Err(err)
                 if err == vk::Result::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT
@@ -162,6 +199,19 @@ impl Swapchain {
 
             self.swapchain = vk::SwapchainKHR::null();
         }
+
+        for Synchronization { acquired, ready } in self.syncs.drain(..) {
+            // if let Err(err) = Device::wait_for_fence(&self.device, &ready) {
+            //     warn!("{err}");
+            // }
+
+            unsafe {
+                self.device.destroy_semaphore(acquired, None);
+                self.device.destroy_fence(ready, None);
+            }
+        }
+
+        self.images.clear();
     }
 
     /// Gets information about this swapchain.
@@ -189,25 +239,10 @@ impl Swapchain {
             "Queue index must be within the range of the available queues created by the device."
         );
 
-        {
-            profiling::scope!("Wait for presentation ready");
-
-            // This does not use Device::wait_for_fence because we don't want to spam the logs
-            // (This is expected to commonly take multiple milliseconds)
-            if let Err(err) = unsafe {
-                self.device
-                    .wait_for_fences(slice::from_ref(&image.ready), false, u64::MAX)
-            } {
-                warn!("Unable to wait for presentation ready fence: {err}");
-
-                return;
-            }
-        }
-
         // We checked when handling out the swapchain image
         let swapchain_ext = unsafe { self.device.swapchain_ext.as_ref().unwrap_unchecked() };
 
-        let present_info = vk::PresentInfoKHR::builder()
+        let present_info = vk::PresentInfoKHR::default()
             .wait_semaphores(slice::from_ref(&image.rendered))
             .swapchains(slice::from_ref(&self.swapchain))
             .image_indices(slice::from_ref(&image.image_idx));
@@ -237,9 +272,11 @@ impl Swapchain {
             }
         }
 
-        debug_assert!(self.images[image.image_idx as usize].is_none());
+        let image_idx = image.image_idx as usize;
 
-        self.images[image.image_idx as usize] = Some(image.image);
+        debug_assert!(self.images[image_idx].is_none());
+
+        self.images[image_idx] = Some(image);
     }
 
     #[profiling::function]
@@ -277,10 +314,6 @@ impl Swapchain {
             vk::ImageUsageFlags::FRAGMENT_SHADING_RATE_ATTACHMENT_KHR,
             vk::ImageUsageFlags::INPUT_ATTACHMENT,
             vk::ImageUsageFlags::INVOCATION_MASK_HUAWEI,
-            vk::ImageUsageFlags::RESERVED_16_QCOM,
-            vk::ImageUsageFlags::RESERVED_17_QCOM,
-            vk::ImageUsageFlags::RESERVED_22_EXT,
-            // vk::ImageUsageFlags::RESERVED_23_EXT,
             vk::ImageUsageFlags::SAMPLED,
             vk::ImageUsageFlags::SAMPLE_BLOCK_MATCH_QCOM,
             vk::ImageUsageFlags::SAMPLE_WEIGHT_QCOM,
@@ -384,7 +417,7 @@ impl Swapchain {
             DriverError::Unsupported
         })?;
 
-        let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
+        let swapchain_create_info = vk::SwapchainCreateInfoKHR::default()
             .surface(*self.surface)
             .min_image_count(desired_image_count)
             .image_color_space(self.info.surface.color_space)
@@ -399,8 +432,7 @@ impl Swapchain {
             .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
             .present_mode(present_mode)
             .clipped(true)
-            .image_array_layers(1)
-            .build();
+            .image_array_layers(1);
         let swapchain = unsafe { swapchain_ext.create_swapchain(&swapchain_create_info, None) }
             .map_err(|err| {
                 warn!("{err}");
@@ -408,7 +440,7 @@ impl Swapchain {
                 DriverError::Unsupported
             })?;
 
-        let vk_images =
+        let images =
             unsafe { swapchain_ext.get_swapchain_images(swapchain) }.map_err(|err| match err {
                 vk::Result::INCOMPLETE => DriverError::InvalidData,
                 vk::Result::ERROR_OUT_OF_DEVICE_MEMORY | vk::Result::ERROR_OUT_OF_HOST_MEMORY => {
@@ -416,13 +448,13 @@ impl Swapchain {
                 }
                 _ => DriverError::Unsupported,
             })?;
-        let images: Vec<Option<Image>> = vk_images
+        let images = images
             .into_iter()
             .enumerate()
-            .map(|(idx, vk_image)| {
+            .map(|(image_idx, image)| {
                 let mut image = Image::from_raw(
                     &self.device,
-                    vk_image,
+                    image,
                     ImageInfo::image_2d(
                         surface_width,
                         surface_height,
@@ -430,10 +462,20 @@ impl Swapchain {
                         surface_capabilities.supported_usage_flags,
                     ),
                 );
-                image.name = Some(format!("swapchain{idx}"));
-                Some(image)
+
+                let image_idx = image_idx as u32;
+                image.name = Some(format!("swapchain{image_idx}"));
+
+                let rendered = Device::create_semaphore(&self.device)?;
+
+                Ok(Some(SwapchainImage {
+                    image,
+                    image_idx,
+                    acquired: vk::Semaphore::null(),
+                    rendered,
+                }))
             })
-            .collect();
+            .collect::<Result<Vec<_>, _>>()?;
 
         debug_assert_eq!(desired_image_count, images.len() as u32);
 
@@ -450,10 +492,6 @@ impl Swapchain {
             self.info.surface.format,
             self.images.len(),
         );
-
-        for _ in 0..self.images.len() {
-            self.syncs.push(Synchronization::create(&self.device)?);
-        }
 
         Ok(())
     }
@@ -476,23 +514,6 @@ impl Drop for Swapchain {
             return;
         }
 
-        for Synchronization {
-            acquired,
-            ready,
-            rendered,
-        } in self.syncs.drain(..)
-        {
-            if let Err(err) = Device::wait_for_fence(&self.device, &ready) {
-                warn!("{err}");
-            }
-
-            unsafe {
-                self.device.destroy_semaphore(acquired, None);
-                self.device.destroy_fence(ready, None);
-                self.device.destroy_semaphore(rendered, None);
-            }
-        }
-
         self.destroy();
     }
 }
@@ -503,26 +524,40 @@ pub struct SwapchainImage {
     pub(crate) acquired: vk::Semaphore,
     image: Image,
     image_idx: u32,
-    ready: vk::Fence,
     pub(crate) rendered: vk::Semaphore,
 }
 
-impl Clone for SwapchainImage {
-    fn clone(&self) -> Self {
-        let &Self {
+impl SwapchainImage {
+    pub(crate) fn unbind(&mut self) -> Self {
+        let &mut Self {
             acquired,
             image_idx,
-            ready,
             rendered,
             ..
         } = self;
+
+        self.rendered = vk::Semaphore::null();
 
         Self {
             acquired,
             image: Image::clone_raw(&self.image),
             image_idx,
-            ready,
             rendered,
+        }
+    }
+}
+
+impl Drop for SwapchainImage {
+    #[profiling::function]
+    fn drop(&mut self) {
+        if panicking() {
+            return;
+        }
+
+        if self.rendered != vk::Semaphore::null() {
+            unsafe {
+                self.image.device.destroy_semaphore(self.rendered, None);
+            }
         }
     }
 }
@@ -640,24 +675,18 @@ impl From<UninitializedFieldError> for SwapchainInfoBuilderError {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 struct Synchronization {
     acquired: vk::Semaphore,
     ready: vk::Fence,
-    rendered: vk::Semaphore,
 }
 
 impl Synchronization {
     fn create(device: &Device) -> Result<Self, DriverError> {
         let acquired = Device::create_semaphore(device)?;
-        let ready = Device::create_fence(device, true)?;
-        let rendered = Device::create_semaphore(device)?;
+        let ready = Device::create_fence(device, false)?;
 
-        Ok(Self {
-            acquired,
-            ready,
-            rendered,
-        })
+        Ok(Self { acquired, ready })
     }
 }
 

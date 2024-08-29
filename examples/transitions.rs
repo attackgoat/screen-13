@@ -1,11 +1,13 @@
 mod profile_with_puffin;
 
 use {
-    image::io::Reader,
-    screen_13::prelude::*,
+    image::ImageReader,
+    log::info,
     screen_13_fx::*,
     screen_13_imgui::prelude::*,
+    screen_13_window::Window,
     std::{io::Cursor, time::Instant},
+    winit::dpi::LogicalSize,
 };
 
 fn main() -> anyhow::Result<()> {
@@ -13,20 +15,19 @@ fn main() -> anyhow::Result<()> {
     profile_with_puffin::init();
 
     // Create Screen 13 things any similar program might need
-    let event_loop = EventLoop::new()
+    let window = Window::builder()
         .window(|builder| builder.with_inner_size(LogicalSize::new(1024.0f64, 768.0f64)))
-        .desired_surface_format(Surface::linear_or_default)
         .build()?;
-    let display = ComputePresenter::new(&event_loop.device)?;
-    let mut imgui = ImGui::new(&event_loop.device);
-    let mut image_loader = ImageLoader::new(&event_loop.device)?;
-    let mut transition_pipeline = TransitionPipeline::new(&event_loop.device);
+    let display = ComputePresenter::new(&window.device)?;
+    let mut imgui = ImGui::new(&window.device);
+    let mut image_loader = ImageLoader::new(&window.device)?;
+    let mut transition_pipeline = TransitionPipeline::new(&window.device);
 
     // Load two images for the demo to blend between
     let bart_image = image_loader.decode_linear(
         0,
         0,
-        Reader::new(Cursor::new(include_bytes!("res/image/bart.jpg").as_slice()))
+        ImageReader::new(Cursor::new(include_bytes!("res/image/bart.jpg").as_slice()))
             .with_guessed_format()?
             .decode()?
             .into_rgb8()
@@ -39,7 +40,7 @@ fn main() -> anyhow::Result<()> {
     let gulf_image = image_loader.decode_linear(
         0,
         0,
-        Reader::new(Cursor::new(include_bytes!("res/image/gulf.jpg").as_slice()))
+        ImageReader::new(Cursor::new(include_bytes!("res/image/gulf.jpg").as_slice()))
             .with_guessed_format()?
             .decode()?
             .into_rgb8()
@@ -54,7 +55,7 @@ fn main() -> anyhow::Result<()> {
     let mut curr_transition_idx = 0;
     let mut start_time = Instant::now();
 
-    event_loop.run(|mut frame| {
+    window.run(|frame| {
         // Update the demo "state"
         let now = Instant::now();
         let elapsed = (now - start_time).as_secs_f32();
@@ -86,26 +87,32 @@ fn main() -> anyhow::Result<()> {
         );
 
         // Draw UI: TODO: Sliders and value setters? That would be fun.
-        let gui_image = imgui.draw_frame(&mut frame, |ui| {
-            ui.window("Transitions example")
-                .position([10.0, 10.0], Condition::FirstUseEver)
-                .size([340.0, 250.0], Condition::FirstUseEver)
-                .no_decoration()
-                .build(|| {
-                    if ui.button("Next") {
-                        curr_transition_idx += 1;
-                        if curr_transition_idx == TRANSITIONS.len() {
-                            curr_transition_idx = 0;
-                        }
+        let gui_image = imgui.draw(
+            0.016,
+            frame.events,
+            frame.window,
+            frame.render_graph,
+            |ui| {
+                ui.window("Transitions example")
+                    .position([10.0, 10.0], Condition::FirstUseEver)
+                    .size([340.0, 250.0], Condition::FirstUseEver)
+                    .no_decoration()
+                    .build(|| {
+                        if ui.button("Next") {
+                            curr_transition_idx += 1;
+                            if curr_transition_idx == TRANSITIONS.len() {
+                                curr_transition_idx = 0;
+                            }
 
-                        info!(
-                            "{curr_transition_idx}: {:?}",
-                            TRANSITIONS[curr_transition_idx]
-                        );
-                    }
-                    ui.text_wrapped(format!("{:?}", TRANSITIONS[curr_transition_idx]));
-                });
-        });
+                            info!(
+                                "{curr_transition_idx}: {:?}",
+                                TRANSITIONS[curr_transition_idx]
+                            );
+                        }
+                        ui.text_wrapped(format!("{:?}", TRANSITIONS[curr_transition_idx]));
+                    });
+            },
+        );
 
         // Display the GUI + Blend images on screen
         display.present_images(

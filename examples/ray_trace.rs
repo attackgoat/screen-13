@@ -3,9 +3,12 @@ mod profile_with_puffin;
 use {
     bytemuck::cast_slice,
     inline_spirv::inline_spirv,
+    log::warn,
     screen_13::prelude::*,
+    screen_13_window::Window,
     std::{io::BufReader, mem::size_of, sync::Arc},
     tobj::{load_mtl_buf, load_obj_buf, GPU_LOAD_OPTIONS},
+    winit::{event::Event, keyboard::KeyCode},
     winit_input_helper::WinitInputHelper,
 };
 
@@ -487,8 +490,8 @@ fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
     profile_with_puffin::init();
 
-    let event_loop = EventLoop::new().build()?;
-    let mut cache = HashPool::new(&event_loop.device);
+    let window = Window::new()?;
+    let mut cache = HashPool::new(&window.device);
 
     // ------------------------------------------------------------------------------------------ //
     // Setup the ray tracing pipeline
@@ -499,13 +502,13 @@ fn main() -> anyhow::Result<()> {
         shader_group_handle_alignment,
         shader_group_handle_size,
         ..
-    } = event_loop
+    } = window
         .device
         .physical_device
         .ray_trace_properties
         .as_ref()
         .unwrap();
-    let ray_trace_pipeline = create_ray_trace_pipeline(&event_loop.device)?;
+    let ray_trace_pipeline = create_ray_trace_pipeline(&window.device)?;
 
     // ------------------------------------------------------------------------------------------ //
     // Setup a shader binding table
@@ -517,7 +520,7 @@ fn main() -> anyhow::Result<()> {
     let sbt_miss_size = 2 * sbt_handle_size;
     let sbt_buf = Arc::new({
         let mut buf = Buffer::create(
-            &event_loop.device,
+            &window.device,
             BufferInfo::host_mem(
                 (sbt_rgen_size + sbt_hit_size + sbt_miss_size) as _,
                 vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR
@@ -567,7 +570,7 @@ fn main() -> anyhow::Result<()> {
     // ------------------------------------------------------------------------------------------ //
 
     let (index_buf, vertex_buf, triangle_count, vertex_count, material_id_buf, material_buf) =
-        load_scene_buffers(&event_loop.device)?;
+        load_scene_buffers(&window.device)?;
 
     // ------------------------------------------------------------------------------------------ //
     // Create the bottom level acceleration structure
@@ -592,9 +595,9 @@ fn main() -> anyhow::Result<()> {
             },
         }],
     };
-    let blas_size = AccelerationStructure::size_of(&event_loop.device, &blas_geometry_info);
+    let blas_size = AccelerationStructure::size_of(&window.device, &blas_geometry_info);
     let blas = Arc::new(AccelerationStructure::create(
-        &event_loop.device,
+        &window.device,
         AccelerationStructureInfo::blas(blas_size.create_size),
     )?);
     let blas_device_address = AccelerationStructure::device_address(&blas);
@@ -623,7 +626,7 @@ fn main() -> anyhow::Result<()> {
     let instance_data = AccelerationStructure::instance_slice(&instances);
     let instance_buf = Arc::new({
         let mut buffer = Buffer::create(
-            &event_loop.device,
+            &window.device,
             BufferInfo::host_mem(
                 instance_data.len() as _,
                 vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
@@ -651,9 +654,9 @@ fn main() -> anyhow::Result<()> {
             },
         }],
     };
-    let tlas_size = AccelerationStructure::size_of(&event_loop.device, &tlas_geometry_info);
+    let tlas_size = AccelerationStructure::size_of(&window.device, &tlas_geometry_info);
     let tlas = Arc::new(AccelerationStructure::create(
-        &event_loop.device,
+        &window.device,
         AccelerationStructureInfo::tlas(tlas_size.create_size),
     )?);
 
@@ -662,7 +665,7 @@ fn main() -> anyhow::Result<()> {
     // ------------------------------------------------------------------------------------------ //
 
     {
-        let accel_struct_scratch_offset_alignment = event_loop
+        let accel_struct_scratch_offset_alignment = window
             .device
             .physical_device
             .accel_struct_properties
@@ -677,7 +680,7 @@ fn main() -> anyhow::Result<()> {
 
         {
             let scratch_buf = render_graph.bind_node(Buffer::create(
-                &event_loop.device,
+                &window.device,
                 BufferInfo::device_mem(
                     blas_size.build_size,
                     vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
@@ -710,7 +713,7 @@ fn main() -> anyhow::Result<()> {
 
         {
             let scratch_buf = render_graph.bind_node(Buffer::create(
-                &event_loop.device,
+                &window.device,
                 BufferInfo::device_mem(
                     tlas_size.build_size,
                     vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
@@ -764,7 +767,7 @@ fn main() -> anyhow::Result<()> {
     // - Update the camera uniform buffer
     // - Trace the image
     // - Copy image to the swapchain
-    event_loop.run(|frame| {
+    window.run(|frame| {
         if image.is_none() {
             image = Some(Arc::new(
                 cache
@@ -783,9 +786,19 @@ fn main() -> anyhow::Result<()> {
         let image_node = frame.render_graph.bind_node(image.as_ref().unwrap());
 
         {
-            for event in frame.events {
-                input.update(event);
-            }
+            input.step_with_window_events(
+                &frame
+                    .events
+                    .iter()
+                    .filter_map(|event| {
+                        if let Event::WindowEvent { event, .. } = event {
+                            Some(event.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Box<_>>(),
+            );
 
             const SPEED: f32 = 0.1f32;
 

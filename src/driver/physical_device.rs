@@ -2,7 +2,7 @@
 
 use {
     super::{DriverError, Instance},
-    ash::vk,
+    ash::{ext, khr, vk},
     log::{debug, error},
     std::{
         collections::HashSet,
@@ -56,10 +56,10 @@ pub struct AccelerationStructureProperties {
     pub min_accel_struct_scratch_offset_alignment: u32,
 }
 
-impl From<vk::PhysicalDeviceAccelerationStructurePropertiesKHR>
+impl From<vk::PhysicalDeviceAccelerationStructurePropertiesKHR<'_>>
     for AccelerationStructureProperties
 {
-    fn from(props: vk::PhysicalDeviceAccelerationStructurePropertiesKHR) -> Self {
+    fn from(props: vk::PhysicalDeviceAccelerationStructurePropertiesKHR<'_>) -> Self {
         Self {
             max_geometry_count: props.max_geometry_count,
             max_instance_count: props.max_instance_count,
@@ -107,8 +107,8 @@ pub struct DepthStencilResolveProperties {
     pub independent_resolve: bool,
 }
 
-impl From<vk::PhysicalDeviceDepthStencilResolveProperties> for DepthStencilResolveProperties {
-    fn from(props: vk::PhysicalDeviceDepthStencilResolveProperties) -> Self {
+impl From<vk::PhysicalDeviceDepthStencilResolveProperties<'_>> for DepthStencilResolveProperties {
+    fn from(props: vk::PhysicalDeviceDepthStencilResolveProperties<'_>) -> Self {
         Self {
             supported_depth_resolve_modes: props.supported_depth_resolve_modes,
             supported_stencil_resolve_modes: props.supported_stencil_resolve_modes,
@@ -130,8 +130,8 @@ pub struct IndexTypeUint8Features {
     pub index_type_uint8: bool,
 }
 
-impl From<vk::PhysicalDeviceIndexTypeUint8FeaturesEXT> for IndexTypeUint8Features {
-    fn from(features: vk::PhysicalDeviceIndexTypeUint8FeaturesEXT) -> Self {
+impl From<vk::PhysicalDeviceIndexTypeUint8FeaturesEXT<'_>> for IndexTypeUint8Features {
+    fn from(features: vk::PhysicalDeviceIndexTypeUint8FeaturesEXT<'_>) -> Self {
         Self {
             index_type_uint8: features.index_type_uint8 == vk::TRUE,
         }
@@ -219,7 +219,7 @@ impl PhysicalDevice {
         let queue_families = queue_families.into();
         let queue_family_indices = queue_family_indices.into();
 
-        let vk::InstanceFnV1_1 {
+        let ash::InstanceFnV1_1 {
             get_physical_device_features2,
             get_physical_device_properties2,
             ..
@@ -233,14 +233,13 @@ impl PhysicalDevice {
         let mut index_type_u8_features = vk::PhysicalDeviceIndexTypeUint8FeaturesEXT::default();
         let mut ray_query_features = vk::PhysicalDeviceRayQueryFeaturesKHR::default();
         let mut ray_trace_features = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
-        let mut features = vk::PhysicalDeviceFeatures2::builder()
+        let mut features = vk::PhysicalDeviceFeatures2::default()
             .push_next(&mut features_v1_1)
             .push_next(&mut features_v1_2)
             .push_next(&mut acceleration_structure_features)
             .push_next(&mut index_type_u8_features)
             .push_next(&mut ray_query_features)
-            .push_next(&mut ray_trace_features)
-            .build();
+            .push_next(&mut ray_trace_features);
         unsafe {
             get_physical_device_features2(physical_device, &mut features);
         }
@@ -258,14 +257,13 @@ impl PhysicalDevice {
         let mut ray_trace_properties = vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
         let mut sampler_filter_minmax_properties =
             vk::PhysicalDeviceSamplerFilterMinmaxProperties::default();
-        let mut properties = vk::PhysicalDeviceProperties2::builder()
+        let mut properties = vk::PhysicalDeviceProperties2::default()
             .push_next(&mut properties_v1_1)
             .push_next(&mut properties_v1_2)
             .push_next(&mut accel_struct_properties)
             .push_next(&mut depth_stencil_resolve_properties)
             .push_next(&mut ray_trace_properties)
-            .push_next(&mut sampler_filter_minmax_properties)
-            .build();
+            .push_next(&mut sampler_filter_minmax_properties);
         unsafe {
             get_physical_device_properties2(physical_device, &mut properties);
         }
@@ -306,11 +304,11 @@ impl PhysicalDevice {
             .filter(|&extension_name| !extension_name.is_null())
             .map(|extension_name| unsafe { CStr::from_ptr(extension_name) })
             .collect::<HashSet<_>>();
-        let supports_accel_struct = extensions.contains(vk::KhrAccelerationStructureFn::name())
-            && extensions.contains(vk::KhrDeferredHostOperationsFn::name());
-        let supports_index_type_uint8 = extensions.contains(vk::ExtIndexTypeUint8Fn::name());
-        let supports_ray_query = extensions.contains(vk::KhrRayQueryFn::name());
-        let supports_ray_trace = extensions.contains(vk::KhrRayTracingPipelineFn::name());
+        let supports_accel_struct = extensions.contains(khr::acceleration_structure::NAME)
+            && extensions.contains(khr::deferred_host_operations::NAME);
+        let supports_index_type_uint8 = extensions.contains(ext::index_type_uint8::NAME);
+        let supports_ray_query = extensions.contains(khr::ray_query::NAME);
+        let supports_ray_trace = extensions.contains(khr::ray_tracing_pipeline::NAME);
 
         // Gather optional features and properties of the physical device
         let index_type_uint8_features = supports_index_type_uint8
@@ -377,8 +375,8 @@ pub struct RayQueryFeatures {
     pub ray_query: bool,
 }
 
-impl From<vk::PhysicalDeviceRayQueryFeaturesKHR> for RayQueryFeatures {
-    fn from(features: vk::PhysicalDeviceRayQueryFeaturesKHR) -> Self {
+impl From<vk::PhysicalDeviceRayQueryFeaturesKHR<'_>> for RayQueryFeatures {
+    fn from(features: vk::PhysicalDeviceRayQueryFeaturesKHR<'_>) -> Self {
         Self {
             ray_query: features.ray_query == vk::TRUE,
         }
@@ -417,8 +415,8 @@ pub struct RayTraceFeatures {
     pub ray_traversal_primitive_culling: bool,
 }
 
-impl From<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR> for RayTraceFeatures {
-    fn from(features: vk::PhysicalDeviceRayTracingPipelineFeaturesKHR) -> Self {
+impl From<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR<'_>> for RayTraceFeatures {
+    fn from(features: vk::PhysicalDeviceRayTracingPipelineFeaturesKHR<'_>) -> Self {
         Self {
             ray_tracing_pipeline: features.ray_tracing_pipeline == vk::TRUE,
             ray_tracing_pipeline_shader_group_handle_capture_replay: features
@@ -471,8 +469,8 @@ pub struct RayTraceProperties {
     pub max_ray_hit_attribute_size: u32,
 }
 
-impl From<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR> for RayTraceProperties {
-    fn from(props: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR) -> Self {
+impl From<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR<'_>> for RayTraceProperties {
+    fn from(props: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR<'_>) -> Self {
         Self {
             shader_group_handle_size: props.shader_group_handle_size,
             max_ray_recursion_depth: props.max_ray_recursion_depth,
@@ -522,8 +520,8 @@ pub struct SamplerFilterMinmaxProperties {
     pub single_component_formats: bool,
 }
 
-impl From<vk::PhysicalDeviceSamplerFilterMinmaxProperties> for SamplerFilterMinmaxProperties {
-    fn from(value: vk::PhysicalDeviceSamplerFilterMinmaxProperties) -> Self {
+impl From<vk::PhysicalDeviceSamplerFilterMinmaxProperties<'_>> for SamplerFilterMinmaxProperties {
+    fn from(value: vk::PhysicalDeviceSamplerFilterMinmaxProperties<'_>) -> Self {
         Self {
             image_component_mapping: value.filter_minmax_image_component_mapping == vk::TRUE,
             single_component_formats: value.filter_minmax_single_component_formats == vk::TRUE,
@@ -1520,8 +1518,8 @@ pub struct Vulkan11Features {
     pub shader_draw_parameters: bool,
 }
 
-impl From<vk::PhysicalDeviceVulkan11Features> for Vulkan11Features {
-    fn from(features: vk::PhysicalDeviceVulkan11Features) -> Self {
+impl From<vk::PhysicalDeviceVulkan11Features<'_>> for Vulkan11Features {
+    fn from(features: vk::PhysicalDeviceVulkan11Features<'_>) -> Self {
         Self {
             storage_buffer16_bit_access: features.storage_buffer16_bit_access == vk::TRUE,
             uniform_and_storage_buffer16_bit_access: features
@@ -1627,8 +1625,8 @@ pub struct Vulkan11Properties {
     pub max_memory_allocation_size: vk::DeviceSize,
 }
 
-impl From<vk::PhysicalDeviceVulkan11Properties> for Vulkan11Properties {
-    fn from(props: vk::PhysicalDeviceVulkan11Properties) -> Self {
+impl From<vk::PhysicalDeviceVulkan11Properties<'_>> for Vulkan11Properties {
+    fn from(props: vk::PhysicalDeviceVulkan11Properties<'_>) -> Self {
         Self {
             device_uuid: props.device_uuid,
             driver_uuid: props.driver_uuid,
@@ -1990,8 +1988,8 @@ pub struct Vulkan12Features {
     pub subgroup_broadcast_dynamic_id: bool,
 }
 
-impl From<vk::PhysicalDeviceVulkan12Features> for Vulkan12Features {
-    fn from(features: vk::PhysicalDeviceVulkan12Features) -> Self {
+impl From<vk::PhysicalDeviceVulkan12Features<'_>> for Vulkan12Features {
+    fn from(features: vk::PhysicalDeviceVulkan12Features<'_>) -> Self {
         Self {
             sampler_mirror_clamp_to_edge: features.sampler_mirror_clamp_to_edge == vk::TRUE,
             draw_indirect_count: features.draw_indirect_count == vk::TRUE,
@@ -2413,8 +2411,8 @@ pub struct Vulkan12Properties {
     pub framebuffer_integer_color_sample_counts: vk::SampleCountFlags,
 }
 
-impl From<vk::PhysicalDeviceVulkan12Properties> for Vulkan12Properties {
-    fn from(properties: vk::PhysicalDeviceVulkan12Properties) -> Self {
+impl From<vk::PhysicalDeviceVulkan12Properties<'_>> for Vulkan12Properties {
+    fn from(properties: vk::PhysicalDeviceVulkan12Properties<'_>) -> Self {
         Self {
             driver_id: properties.driver_id,
             driver_name: vk_cstr_to_string_lossy(&properties.driver_name),

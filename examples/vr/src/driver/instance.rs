@@ -1,17 +1,16 @@
 use {
+    log::{debug, error},
     openxr as xr,
-    screen_13::{
-        driver::{
-            ash::{
-                self,
-                vk::{self, Handle as _},
-            },
-            device::Device,
-            physical_device::PhysicalDevice,
+    screen_13::driver::{
+        ash::{
+            self,
+            vk::{self, Handle as _},
         },
-        prelude::{debug, error},
+        device::Device,
+        physical_device::PhysicalDevice,
     },
     std::{
+        ffi::c_void,
         fmt::{Debug, Formatter},
         mem::transmute,
         ops::Deref,
@@ -119,8 +118,8 @@ impl Instance {
             return Err(InstanceCreateError::VulkanUnsupported);
         }
 
-        let app_info = vk::ApplicationInfo::builder().api_version(Self::VK_TARGET_VERSION);
-        let create_info = vk::InstanceCreateInfo::builder().application_info(&app_info);
+        let app_info = vk::ApplicationInfo::default().api_version(Self::VK_TARGET_VERSION);
+        let create_info = vk::InstanceCreateInfo::default().application_info(&app_info);
 
         unsafe {
             let vk_entry = ash::Entry::load().map_err(|err| {
@@ -128,7 +127,15 @@ impl Instance {
 
                 InstanceCreateError::VulkanUnsupported
             })?;
-            let get_instance_proc_addr = transmute(vk_entry.static_fn().get_instance_proc_addr);
+
+            let get_instance_proc_addr = {
+                type Fn<T> =
+                    unsafe extern "system" fn(T, *const i8) -> Option<unsafe extern "system" fn()>;
+                type AshFn = Fn<vk::Instance>;
+                type OpenXrFn = Fn<*const c_void>;
+                transmute::<AshFn, OpenXrFn>(vk_entry.static_fn().get_instance_proc_addr)
+            };
+
             let vk_instance = {
                 let vk_instance = xr_instance
                     .create_vulkan_instance(

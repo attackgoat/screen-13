@@ -38,22 +38,21 @@ use {
     pak::{Pak, PakBuf},
     screen_13::prelude::*,
     screen_13_fx::*,
+    screen_13_window::Window,
     std::{sync::Arc, time::Instant},
-    winit_input_helper::WinitInputHelper,
+    winit::dpi::PhysicalSize,
 };
 
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
-    let event_loop = EventLoop::new()
-        .debug(false)
-        .desired_swapchain_image_count(3)
-        .window(|builder| builder.with_inner_size(LogicalSize::new(1280.0f64, 720.0f64)))
-        .build()
-        .context("Event loop")?;
-    let display = GraphicPresenter::new(&event_loop.device).context("Presenter")?;
-    let mut cache = LazyPool::new(&event_loop.device);
-    let mut image_loader = ImageLoader::new(&event_loop.device).context("Loader")?;
+    let window = Window::builder()
+        .desired_image_count(3)
+        .window(|builder| builder.with_inner_size(PhysicalSize::new(1280.0f64, 720.0f64)))
+        .build()?;
+    let display = GraphicPresenter::new(&window.device).context("Presenter")?;
+    let mut cache = LazyPool::new(&window.device);
+    let mut image_loader = ImageLoader::new(&window.device).context("Loader")?;
 
     // Load source images: PakBuf -> BitmapBuf -> ImageBinding (here) -> ImageNode (during loop)
     let mut data = data::open().context("Pak")?;
@@ -94,7 +93,7 @@ fn main() -> anyhow::Result<()> {
     // one-sided
     let buffer_pipeline = Arc::new(
         GraphicPipeline::create(
-            &event_loop.device,
+            &window.device,
             GraphicPipelineInfo::default(),
             [
                 Shader::new_vertex(res::shader::QUAD_VERT),
@@ -105,7 +104,7 @@ fn main() -> anyhow::Result<()> {
     );
     let image_pipeline = Arc::new(
         GraphicPipeline::create(
-            &event_loop.device,
+            &window.device,
             GraphicPipelineInfo::default(),
             [
                 Shader::new_vertex(res::shader::QUAD_VERT),
@@ -127,7 +126,7 @@ fn main() -> anyhow::Result<()> {
             .context("Blank image")?,
     );
 
-    let (width, height) = (event_loop.width(), event_loop.height());
+    let (width, height) = (1280, 720);
     let framebuffer_image = render_graph.bind_node(
         cache
             .lease(ImageInfo::image_2d(
@@ -167,21 +166,16 @@ fn main() -> anyhow::Result<()> {
     render_graph.resolve().submit(&mut cache, 0, 0)?;
 
     let started_at = Instant::now();
-    let mut input = WinitInputHelper::default();
     let mut count = 0i32;
     let framebuffer_info = framebuffer_image_binding.as_ref().unwrap().info;
     let flowers_image_info = flowers_image_binding.as_ref().unwrap().info;
     let noise_image_info = noise_image_binding.as_ref().unwrap().info;
     let blank_image_info = blank_image_binding.as_ref().unwrap().info;
 
-    event_loop
+    window
         .run(|frame| {
             // Update the stuff any shader toy shader would want to know each frame
             let elapsed = Instant::now() - started_at;
-
-            for event in frame.events {
-                input.update(event);
-            }
 
             count += 1;
 
@@ -240,23 +234,13 @@ fn main() -> anyhow::Result<()> {
             }
 
             // Each pipeline gets the same constant data
-            let (cursor_x, cursor_y) = input
-                .mouse_held(MouseButton::Left)
-                .then(|| input.cursor())
-                .flatten()
-                .unwrap_or_default();
             let push_consts = PushConstants {
                 resolution: [frame.width as f32, frame.height as _, 1.0],
                 _pad_1: Default::default(),
                 date: [1970.0, 1.0, 1.0, elapsed.as_secs_f32()],
-                mouse: [
-                    cursor_x,
-                    cursor_y,
-                    input.mouse_held(MouseButton::Left) as usize as f32,
-                    input.mouse_held(MouseButton::Left) as usize as f32,
-                ],
+                mouse: [0.0, 0.0, 0.0, 0.0],
                 time: elapsed.as_secs_f32(),
-                time_delta: frame.dt,
+                time_delta: 0.016,
                 frame: count,
                 sample_rate: 44100.0,
                 channel_time: [

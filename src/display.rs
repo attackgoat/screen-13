@@ -56,7 +56,7 @@ impl Display {
             .device
             .begin_command_buffer(
                 **cmd_buf,
-                &vk::CommandBufferBeginInfo::builder()
+                &vk::CommandBufferBeginInfo::default()
                     .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
             )
             .map_err(|_| ())
@@ -133,7 +133,7 @@ impl Display {
         unsafe {
             Self::submit(
                 cmd_buf,
-                vk::SubmitInfo::builder()
+                vk::SubmitInfo::default()
                     .command_buffers(from_ref(cmd_buf))
                     .signal_semaphores(from_ref(&swapchain_image.rendered))
                     .wait_semaphores(from_ref(&swapchain_image.acquired))
@@ -152,10 +152,7 @@ impl Display {
     }
 
     #[profiling::function]
-    unsafe fn submit(
-        cmd_buf: &CommandBuffer,
-        submit_info: vk::SubmitInfoBuilder<'_>,
-    ) -> Result<(), ()> {
+    unsafe fn submit(cmd_buf: &CommandBuffer, submit_info: vk::SubmitInfo<'_>) -> Result<(), ()> {
         use std::slice::from_ref;
 
         cmd_buf
@@ -166,7 +163,7 @@ impl Display {
             .device
             .queue_submit(
                 cmd_buf.device.queues[cmd_buf.info.queue_family_index as usize][0],
-                from_ref(&*submit_info),
+                from_ref(&submit_info),
                 cmd_buf.fence,
             )
             .map_err(|_| ())

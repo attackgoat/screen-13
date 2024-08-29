@@ -1,5 +1,6 @@
 use {
     super::{compile_shader_and_watch, create_watcher, shader::HotShader},
+    log::info,
     notify::RecommendedWatcher,
     screen_13::prelude::*,
     std::sync::{
