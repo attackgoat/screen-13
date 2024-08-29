@@ -2,7 +2,7 @@ mod profile_with_puffin;
 
 use {
     bmfont::{BMFont, OrdinateOrientation},
-    image::io::Reader,
+    image::ImageReader,
     inline_spirv::inline_spirv,
     screen_13::prelude::*,
     screen_13_fx::*,
@@ -30,7 +30,7 @@ fn main() -> anyhow::Result<()> {
         0,
         small_10px_font,
         [(
-            Reader::new(Cursor::new(
+            ImageReader::new(Cursor::new(
                 include_bytes!("res/font/small/small_10px_0.png").as_slice(),
             ))
             .with_guessed_format()?

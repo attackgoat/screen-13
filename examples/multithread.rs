@@ -2,7 +2,7 @@ mod profile_with_puffin;
 
 use {
     bmfont::{BMFont, OrdinateOrientation},
-    image::io::Reader,
+    image::ImageReader,
     log::info,
     screen_13::prelude::*,
     screen_13_fx::BitmapFont,
@@ -219,7 +219,7 @@ fn load_font(device: &Arc<Device>) -> anyhow::Result<BitmapFont> {
     let temp_buf = Buffer::create_from_slice(
         device,
         vk::BufferUsageFlags::TRANSFER_SRC,
-        Reader::new(Cursor::new(
+        ImageReader::new(Cursor::new(
             include_bytes!("res/font/small/small_10px_0.png").as_slice(),
         ))
         .with_guessed_format()?
