@@ -16,15 +16,15 @@ using the provided [`FrameContext`] closure. The [`EventLoop`] builder handles c
 of the [`Device`] driver, however you may construct one manually for headless rendering.
 
 ```no_run
-use screen_13::prelude::*;
+use screen_13_window::{Window, WindowError};
 
-fn main() -> Result<(), DisplayError> {
-    let event_loop = EventLoop::new().build()?;
+fn main() -> Result<(), WindowError> {
+    let window = Window::new()?;
 
     // Use the device to create resources and pipelines before running
-    let device = &event_loop.device;
+    let device = &window.device;
 
-    event_loop.run(|frame| {
+    window.run(|frame| {
         // You may also create resources and pipelines while running
         let device = &frame.device;
     })
