@@ -9,7 +9,7 @@ readme = "README.md"
 [dependencies]
 bytemuck = "1.14"
 glam = { version = "0.27", features = ["bytemuck"] }
-pak = "0.5"
+pak = "=0.5.0"
 pretty_env_logger = "0.5"
 screen-13 = { path = "../.." }
 screen-13-window = { path = "../../contrib/screen-13-window" }
@@ -17,6 +17,6 @@ screen-13-window = { path = "../../contrib/screen-13-window" }
 [build-dependencies]
 anyhow = "1.0"
 log = "0.4"
-pak = { version = "0.5", features = ["bake"] }
+pak = { version = "=0.5.0", features = ["bake"] }
 shaderc = "0.8"
 simplelog = "0.12"
