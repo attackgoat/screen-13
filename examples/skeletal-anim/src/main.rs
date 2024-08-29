@@ -8,6 +8,7 @@ use {
         Pak, PakBuf,
     },
     screen_13::prelude::*,
+    screen_13_window::{Window, WindowError},
     std::{
         cmp::Ordering,
         env::current_exe,
@@ -20,14 +21,14 @@ use {
 
 // This blog has a really good overview of what is happening here:
 // https://vladh.net/game-engine-skeletal-animation
-fn main() -> Result<(), DisplayError> {
+fn main() -> Result<(), WindowError> {
     pretty_env_logger::init();
 
     let pak_path = current_exe().unwrap().parent().unwrap().join("res.pak");
     let mut pak = PakBuf::open(pak_path).unwrap();
 
-    let event_loop = EventLoop::new().build()?;
-    let device = &event_loop.device;
+    let window = Window::new()?;
+    let device = &window.device;
 
     let pipeline = create_pipeline(device, &mut pak)?;
     let human_female = load_texture(device, &mut pak, "animated_characters_3/human_female")?;
@@ -41,7 +42,7 @@ fn main() -> Result<(), DisplayError> {
     let mut pool = LazyPool::new(device);
     let started = Instant::now();
 
-    event_loop.run(|frame| {
+    window.run(|frame| {
         let elapsed = (Instant::now() - started).as_secs_f32();
 
         let index_buf = frame.render_graph.bind_node(&character.index_buf);
@@ -95,7 +96,7 @@ fn main() -> Result<(), DisplayError> {
                 t if t < 1.0 => &mut run,
                 _ => &mut idle,
             };
-            let joints = animation.update(frame.dt);
+            let joints = animation.update(0.016);
             let mut buf = pool
                 .lease(BufferInfo::host_mem(
                     size_of_val(joints) as _,

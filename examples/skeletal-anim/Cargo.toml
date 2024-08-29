@@ -12,6 +12,7 @@ glam = { version = "0.27", features = ["bytemuck"] }
 pak = "0.5"
 pretty_env_logger = "0.5"
 screen-13 = { path = "../.." }
+screen-13-window = { path = "../../contrib/screen-13-window" }
 
 [build-dependencies]
 anyhow = "1.0"
