@@ -1,15 +1,13 @@
 use {
+    log::{debug, error},
     openxr as xr,
-    screen_13::{
-        driver::{
-            ash::{
-                self,
-                vk::{self, Handle as _},
-            },
-            device::Device,
-            physical_device::PhysicalDevice,
+    screen_13::driver::{
+        ash::{
+            self,
+            vk::{self, Handle as _},
         },
-        prelude::{debug, error},
+        device::Device,
+        physical_device::PhysicalDevice,
     },
     std::{
         fmt::{Debug, Formatter},
@@ -119,8 +117,8 @@ impl Instance {
             return Err(InstanceCreateError::VulkanUnsupported);
         }
 
-        let app_info = vk::ApplicationInfo::builder().api_version(Self::VK_TARGET_VERSION);
-        let create_info = vk::InstanceCreateInfo::builder().application_info(&app_info);
+        let app_info = vk::ApplicationInfo::default().api_version(Self::VK_TARGET_VERSION);
+        let create_info = vk::InstanceCreateInfo::default().application_info(&app_info);
 
         unsafe {
             let vk_entry = ash::Entry::load().map_err(|err| {

@@ -4,6 +4,7 @@ use {
     self::driver::{Instance, Swapchain},
     bytemuck::{bytes_of, cast_slice, Pod, Zeroable},
     glam::{vec3, vec4, Mat3, Mat4, Quat, Vec2, Vec3},
+    log::{debug, error, trace},
     meshopt::{generate_vertex_remap, remap_index_buffer, remap_vertex_buffer},
     openxr::{self as xr, EnvironmentBlendMode, ViewConfigurationType},
     screen_13::{
@@ -17,7 +18,6 @@ use {
         },
         graph::RenderGraph,
         pool::{lazy::LazyPool, Pool as _},
-        prelude::{debug, error, trace},
     },
     screen_13_hot::{graphic::HotGraphicPipeline, shader::HotShader},
     std::{
