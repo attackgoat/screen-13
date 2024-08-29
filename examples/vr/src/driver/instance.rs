@@ -10,6 +10,7 @@ use {
         physical_device::PhysicalDevice,
     },
     std::{
+        ffi::c_void,
         fmt::{Debug, Formatter},
         mem::transmute,
         ops::Deref,
@@ -126,7 +127,15 @@ impl Instance {
 
                 InstanceCreateError::VulkanUnsupported
             })?;
-            let get_instance_proc_addr = transmute(vk_entry.static_fn().get_instance_proc_addr);
+
+            let get_instance_proc_addr = {
+                type Fn<T> =
+                    unsafe extern "system" fn(T, *const i8) -> Option<unsafe extern "system" fn()>;
+                type AshFn = Fn<vk::Instance>;
+                type OpenXrFn = Fn<*const c_void>;
+                transmute::<AshFn, OpenXrFn>(vk_entry.static_fn().get_instance_proc_addr)
+            };
+
             let vk_instance = {
                 let vk_instance = xr_instance
                     .create_vulkan_instance(
