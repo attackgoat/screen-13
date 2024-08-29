@@ -1,21 +1,23 @@
 mod profile_with_puffin;
 
-use {screen_13::prelude::*, screen_13_egui::prelude::*};
+use {
+    screen_13::prelude::*, screen_13_egui::prelude::*, screen_13_window::Window,
+    winit::dpi::LogicalSize,
+};
 
-fn main() -> Result<(), DisplayError> {
+fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
     profile_with_puffin::init();
 
-    let event_loop = EventLoop::new()
-        .desired_swapchain_image_count(2)
-        .desired_surface_format(Surface::linear_or_default)
-        .window(|window| window.with_transparent(false))
+    let window = Window::builder()
+        .v_sync(false)
+        .window(|window| window.with_inner_size(LogicalSize::new(1024, 768)))
         .build()?;
-    let mut egui = Egui::new(&event_loop.device, event_loop.as_ref());
+    let mut egui = Egui::new(&window.device, window.as_ref());
 
-    let mut cache = LazyPool::new(&event_loop.device);
+    let mut cache = LazyPool::new(&window.device);
 
-    event_loop.run(|frame| {
+    window.run(|frame| {
         let img = frame.render_graph.bind_node(
             cache
                 .lease(ImageInfo::image_2d(
@@ -52,5 +54,7 @@ fn main() -> Result<(), DisplayError> {
                     });
             },
         );
-    })
+    })?;
+
+    Ok(())
 }
