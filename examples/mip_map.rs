@@ -52,14 +52,12 @@ fn main() -> Result<(), WindowError> {
         let swapchain_info = frame.render_graph.node_info(frame.swapchain_image);
         let stripe_width = swapchain_info.width / mip_level_count;
 
-        let mut pass = frame
-            .render_graph
-            .begin_pass("splat mips")
-            .bind_pipeline(&splat);
-
         for mip_level in 0..mip_level_count {
             let stripe_x = mip_level * stripe_width;
-            pass = pass
+            frame
+                .render_graph
+                .begin_pass("splat mips")
+                .bind_pipeline(&splat)
                 .read_descriptor_as(
                     0,
                     image,
@@ -69,6 +67,7 @@ fn main() -> Result<(), WindowError> {
                         .base_mip_level(mip_level)
                         .mip_level_count(Some(1)),
                 )
+                .load_color(0, frame.swapchain_image)
                 .store_color(0, frame.swapchain_image)
                 .set_render_area(stripe_x as _, 0, stripe_width, swapchain_info.height)
                 .record_subpass(|subpass, _| {
@@ -141,14 +140,13 @@ fn fill_mip_levels(device: &Arc<Device>, image: &Arc<Image>) -> Result<(), Drive
     )?);
 
     let mut render_graph = RenderGraph::new();
-    let mut pass = render_graph
-        .begin_pass("fill mip levels")
-        .bind_pipeline(&vertical_gradient);
     let image_info = image.info;
-    let image = pass.bind_node(image);
+    let image = render_graph.bind_node(image);
 
     for mip_level in 0..image_info.mip_level_count {
-        pass = pass
+        render_graph
+            .begin_pass("fill mip levels")
+            .bind_pipeline(&vertical_gradient)
             .store_color_as(
                 0,
                 image,
@@ -244,6 +242,10 @@ fn splat(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, DriverError> {
                     frag
                 )
                 .as_slice(),
+            )
+            .image_sampler(
+                0,
+                SamplerInfoBuilder::default().mipmap_mode(vk::SamplerMipmapMode::LINEAR),
             ),
         ],
     )?))

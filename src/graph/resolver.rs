@@ -173,6 +173,7 @@ impl Resolver {
 
     #[profiling::function]
     fn allow_merge_passes(lhs: &Pass, rhs: &Pass) -> bool {
+        return false;
         let lhs_pipeline = lhs
             .execs
             .first()
@@ -436,8 +437,8 @@ impl Resolver {
 
                         attachment_image.flags = image.info.flags;
                         attachment_image.usage = image.info.usage;
-                        attachment_image.width = image.info.width;
-                        attachment_image.height = image.info.height;
+                        attachment_image.width = image.info.width >> attachment.base_mip_level;
+                        attachment_image.height = image.info.height >> attachment.base_mip_level;
                         attachment_image.layer_count = attachment.array_layer_count;
                         attachment_image.view_formats.insert(idx, attachment.format);
 
@@ -474,8 +475,8 @@ impl Resolver {
 
                         attachment_image.flags = image.info.flags;
                         attachment_image.usage = image.info.usage;
-                        attachment_image.width = image.info.width;
-                        attachment_image.height = image.info.height;
+                        attachment_image.width = image.info.width >> attachment.base_mip_level;
+                        attachment_image.height = image.info.height >> attachment.base_mip_level;
                         attachment_image.layer_count = attachment.array_layer_count;
                         attachment_image.view_formats.insert(idx, attachment.format);
 
@@ -510,8 +511,8 @@ impl Resolver {
 
                         attachment_image.flags = image.info.flags;
                         attachment_image.usage = image.info.usage;
-                        attachment_image.width = image.info.width;
-                        attachment_image.height = image.info.height;
+                        attachment_image.width = image.info.width >> attachment.base_mip_level;
+                        attachment_image.height = image.info.height >> attachment.base_mip_level;
                         attachment_image.layer_count = attachment.array_layer_count;
                         attachment_image.view_formats.insert(idx, attachment.format);
 
@@ -546,8 +547,8 @@ impl Resolver {
 
                         attachment_image.flags = image.info.flags;
                         attachment_image.usage = image.info.usage;
-                        attachment_image.width = image.info.width;
-                        attachment_image.height = image.info.height;
+                        attachment_image.width = image.info.width >> attachment.base_mip_level;
+                        attachment_image.height = image.info.height >> attachment.base_mip_level;
                         attachment_image.layer_count = attachment.array_layer_count;
                         attachment_image.view_formats.insert(idx, attachment.format);
 
@@ -580,8 +581,8 @@ impl Resolver {
 
                         attachment_image.flags = image.info.flags;
                         attachment_image.usage = image.info.usage;
-                        attachment_image.width = image.info.width;
-                        attachment_image.height = image.info.height;
+                        attachment_image.width = image.info.width >> attachment.base_mip_level;
+                        attachment_image.height = image.info.height >> attachment.base_mip_level;
                         attachment_image.layer_count = attachment.array_layer_count;
                         attachment_image.view_formats.insert(idx, attachment.format);
 
@@ -601,14 +602,8 @@ impl Resolver {
                 }
             }
 
-            let framebuffer = RenderPass::framebuffer(
-                render_pass,
-                FramebufferInfo {
-                    attachments,
-                    width: render_area.width,
-                    height: render_area.height,
-                },
-            )?;
+            let framebuffer =
+                RenderPass::framebuffer(render_pass, FramebufferInfo { attachments })?;
 
             unsafe {
                 cmd_buf.device.cmd_begin_render_pass(
@@ -1984,7 +1979,7 @@ impl Resolver {
 
                             trace!(
                                 "{trace_pad}buffer {:?} {}..{} {:?} -> {:?}",
-                                binding.as_driver_buffer().unwrap(),
+                                buf,
                                 range.start,
                                 range.end,
                                 next_access,
@@ -2009,7 +2004,7 @@ impl Resolver {
 
                             trace!(
                                 "{trace_pad}image {:?} {:?}-{:?} -> {:?}-{:?}",
-                                binding.as_driver_image().unwrap(),
+                                image,
                                 prev_access,
                                 image_access_layout(prev_access),
                                 next_access,
@@ -2304,11 +2299,14 @@ impl Resolver {
                         exec.depth_stencil,
                     )?;
 
-                    if is_graphic && pass.render_area.is_none() {
+                    if is_graphic {
                         let render_area = render_area.unwrap();
+
                         // In this case we set the viewport and scissor for the user
                         Self::set_viewport(
                             cmd_buf,
+                            render_area.x as _,
+                            render_area.y as _,
                             render_area.width as _,
                             render_area.height as _,
                             exec.depth_stencil
@@ -2319,7 +2317,13 @@ impl Resolver {
                                 })
                                 .unwrap_or(0.0..1.0),
                         );
-                        Self::set_scissor(cmd_buf, render_area.width, render_area.height);
+                        Self::set_scissor(
+                            cmd_buf,
+                            render_area.x,
+                            render_area.y,
+                            render_area.width,
+                            render_area.height,
+                        );
                     }
 
                     Self::bind_descriptor_sets(cmd_buf, pipeline, physical_pass, exec_idx);
@@ -2444,7 +2448,10 @@ impl Resolver {
                 .map(|attachment| {
                     let info = bindings[attachment.target].as_driver_image().unwrap().info;
 
-                    (info.width, info.height)
+                    (
+                        info.width >> attachment.base_mip_level,
+                        info.height >> attachment.base_mip_level,
+                    )
                 })
             {
                 width = width.min(attachment_width);
@@ -2661,7 +2668,7 @@ impl Resolver {
         });
     }
 
-    fn set_scissor(cmd_buf: &CommandBuffer, width: u32, height: u32) {
+    fn set_scissor(cmd_buf: &CommandBuffer, x: i32, y: i32, width: u32, height: u32) {
         use std::slice::from_ref;
 
         unsafe {
@@ -2670,13 +2677,20 @@ impl Resolver {
                 0,
                 from_ref(&vk::Rect2D {
                     extent: vk::Extent2D { width, height },
-                    offset: vk::Offset2D { x: 0, y: 0 },
+                    offset: vk::Offset2D { x, y },
                 }),
             );
         }
     }
 
-    fn set_viewport(cmd_buf: &CommandBuffer, width: f32, height: f32, depth: Range<f32>) {
+    fn set_viewport(
+        cmd_buf: &CommandBuffer,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        depth: Range<f32>,
+    ) {
         use std::slice::from_ref;
 
         unsafe {
@@ -2684,8 +2698,8 @@ impl Resolver {
                 **cmd_buf,
                 0,
                 from_ref(&vk::Viewport {
-                    x: 0.0,
-                    y: 0.0,
+                    x,
+                    y,
                     width,
                     height,
                     min_depth: depth.start,
