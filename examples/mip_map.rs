@@ -2,11 +2,12 @@ mod profile_with_puffin;
 
 use {
     bytemuck::{bytes_of, Pod, Zeroable},
+    clap::Parser,
     core::f32,
     glam::{vec3, Vec4},
     inline_spirv::inline_spirv,
     screen_13::prelude::*,
-    screen_13_window::{Window, WindowError},
+    screen_13_window::{WindowBuilder, WindowError},
     std::sync::Arc,
 };
 
@@ -16,7 +17,16 @@ fn main() -> Result<(), WindowError> {
     pretty_env_logger::init();
     profile_with_puffin::init();
 
-    let window = Window::builder().debug(true).build()?;
+    #[derive(Parser, Debug)]
+    #[command(version, about, long_about = None)]
+    struct Args {
+        /// Enable Vulkan graphics debugging layers.
+        #[arg(long)]
+        debug: bool,
+    }
+
+    let args = Args::parse();
+    let window = WindowBuilder::default().debug(args.debug).build()?;
 
     let size = 237u32;
     let mip_level_count = size.ilog2();
@@ -38,7 +48,7 @@ fn main() -> Result<(), WindowError> {
 
     let splat = splat(&window.device)?;
 
-    window.run(|mut frame| {
+    window.run(|frame| {
         // It is 100% certain that the swapchain supports color attachment usage, so this is shown
         // for completeness only
         // https://vulkan.gpuinfo.org/listsurfaceusageflags.php
@@ -161,7 +171,7 @@ fn fill_mip_levels(device: &Arc<Device>, image: &Arc<Image>) -> Result<(), Drive
             .record_subpass(|subpass, _| {
                 subpass
                     .push_constants(bytes_of(&PushConstants {
-                        a: vec3(1.0, 1.0, 0.0).extend(f32::NAN),
+                        a: vec3(0.0, 1.0, 1.0).extend(f32::NAN),
                         b: vec3(1.0, 0.0, 1.0).extend(f32::NAN),
                     }))
                     .draw(6, 1, 0, 0);

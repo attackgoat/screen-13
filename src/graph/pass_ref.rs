@@ -4005,14 +4005,6 @@ pub enum Subresource {
 }
 
 impl Subresource {
-    pub(super) fn unwrap_buffer(self) -> BufferSubresource {
-        if let Self::Buffer(subresource) = self {
-            subresource
-        } else {
-            unreachable!();
-        }
-    }
-
     pub(super) fn as_image_range(&self) -> Option<&vk::ImageSubresourceRange> {
         if let Self::Image(subresource) = self {
             Some(subresource)

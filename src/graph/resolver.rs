@@ -12,11 +12,11 @@ use {
             format_aspect_mask,
             graphic::DepthStencilMode,
             image::{Image, ImageViewInfo},
-            image_access_layout, is_framebuffer_access, is_read_access, is_write_access,
-            pipeline_stage_access_flags, AttachmentInfo, AttachmentRef, CommandBuffer,
-            CommandBufferInfo, Descriptor, DescriptorInfo, DescriptorPool, DescriptorPoolInfo,
-            DescriptorSet, DriverError, FramebufferAttachmentImageInfo, FramebufferInfo,
-            RenderPass, RenderPassInfo, SubpassDependency, SubpassInfo,
+            image_access_layout, is_read_access, is_write_access, pipeline_stage_access_flags,
+            AttachmentInfo, AttachmentRef, CommandBuffer, CommandBufferInfo, Descriptor,
+            DescriptorInfo, DescriptorPool, DescriptorPoolInfo, DescriptorSet, DriverError,
+            FramebufferAttachmentImageInfo, FramebufferInfo, RenderPass, RenderPassInfo,
+            SubpassDependency, SubpassInfo,
         },
         pool::{Lease, Pool},
     },
@@ -1911,7 +1911,6 @@ impl Resolver {
         cmd_buf: &CommandBuffer,
         bindings: &mut [Binding],
         accesses: impl IntoIterator<Item = (&'a NodeIndex, &'a Vec<SubresourceAccess>)>,
-        record_framebuffer_access: bool,
     ) {
         use std::slice::from_ref;
 
@@ -2252,28 +2251,21 @@ impl Resolver {
             if is_graphic && pass.execs.len() > 1 {
                 let mut accesses = HashMap::<usize, Vec<SubresourceAccess>>::new();
                 for exec_idx in 0..pass.execs.len() {
-                    for (node_idx, mut exec_accesses) in pass.execs[exec_idx].accesses.drain() {
+                    for (node_idx, exec_accesses) in pass.execs[exec_idx].accesses.iter() {
                         accesses
-                            .entry(node_idx)
-                            .and_modify(|accesses| accesses.append(&mut exec_accesses))
-                            .or_insert(exec_accesses);
+                            .entry(*node_idx)
+                            .and_modify(|accesses| accesses.extend(exec_accesses))
+                            .or_insert(exec_accesses.clone());
                     }
                 }
 
-                Self::record_execution_barriers(
-                    "  ",
-                    cmd_buf,
-                    &mut self.graph.bindings,
-                    &accesses,
-                    true,
-                );
+                Self::record_execution_barriers("  ", cmd_buf, &mut self.graph.bindings, &accesses);
             } else {
                 Self::record_execution_barriers(
                     "  ",
                     cmd_buf,
                     &mut self.graph.bindings,
                     &pass.execs[0].accesses,
-                    true,
                 );
             }
 
@@ -2351,7 +2343,6 @@ impl Resolver {
                         cmd_buf,
                         &mut self.graph.bindings,
                         &exec.accesses,
-                        true,
                     );
                 }
 
