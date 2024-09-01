@@ -16,7 +16,7 @@ fn main() -> Result<(), WindowError> {
     pretty_env_logger::init();
     profile_with_puffin::init();
 
-    let window = Window::new()?;
+    let window = Window::builder().debug(true).build()?;
 
     let size = 237u32;
     let mip_level_count = size.ilog2();
@@ -38,7 +38,7 @@ fn main() -> Result<(), WindowError> {
 
     let splat = splat(&window.device)?;
 
-    window.run(|frame| {
+    window.run(|mut frame| {
         // It is 100% certain that the swapchain supports color attachment usage, so this is shown
         // for completeness only
         // https://vulkan.gpuinfo.org/listsurfaceusageflags.php
@@ -52,12 +52,14 @@ fn main() -> Result<(), WindowError> {
         let swapchain_info = frame.render_graph.node_info(frame.swapchain_image);
         let stripe_width = swapchain_info.width / mip_level_count;
 
+        let mut pass = frame
+            .render_graph
+            .begin_pass("splat mips")
+            .bind_pipeline(&splat);
+
         for mip_level in 0..mip_level_count {
             let stripe_x = mip_level * stripe_width;
-            frame
-                .render_graph
-                .begin_pass("splat mips")
-                .bind_pipeline(&splat)
+            pass = pass
                 .read_descriptor_as(
                     0,
                     image,
@@ -159,7 +161,7 @@ fn fill_mip_levels(device: &Arc<Device>, image: &Arc<Image>) -> Result<(), Drive
             .record_subpass(|subpass, _| {
                 subpass
                     .push_constants(bytes_of(&PushConstants {
-                        a: vec3(0.0, 1.0, 0.0).extend(f32::NAN),
+                        a: vec3(1.0, 1.0, 0.0).extend(f32::NAN),
                         b: vec3(1.0, 0.0, 1.0).extend(f32::NAN),
                     }))
                     .draw(6, 1, 0, 0);

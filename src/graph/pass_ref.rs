@@ -1702,7 +1702,6 @@ impl<'a> PassRef<'a> {
         graph.passes.push(Pass {
             execs: vec![Default::default()], // We start off with a default execution!
             name,
-            render_area: None,
         });
 
         Self {
@@ -1858,8 +1857,8 @@ impl<'a> PassRef<'a> {
             .unwrap()
             .accesses
             .entry(node_idx)
-            .and_modify(|accesses| accesses[1] = access)
-            .or_insert([access, access]);
+            .and_modify(|accesses| accesses.push(access))
+            .or_insert(vec![access]);
     }
 
     /// Informs the pass that the next recorded command buffer will read the given `node` using
@@ -3383,7 +3382,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
     /// sets the viewport and scissor to the same values, with a `0..1` depth if not specified by
     /// `set_depth_stencil`.
     pub fn set_render_area(mut self, x: i32, y: i32, width: u32, height: u32) -> Self {
-        self.pass.as_mut().render_area = Some(Area {
+        self.pass.as_mut().execs.last_mut().unwrap().render_area = Some(Area {
             height,
             width,
             x,

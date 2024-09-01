@@ -1,7 +1,8 @@
 use {
     super::{
-        pass_ref::Subresource, Area, Attachment, Binding, Bindings, Edge, Execution,
-        ExecutionPipeline, Node, Pass, RenderGraph, Unbind,
+        pass_ref::{Subresource, SubresourceAccess},
+        Area, Attachment, Binding, Bindings, Edge, ExecutionPipeline, Node, NodeIndex, Pass,
+        RenderGraph, Unbind,
     },
     crate::{
         driver::{
@@ -115,12 +116,11 @@ impl AccessCache {
                 let pass_start = pass_idx * self.binding_count;
                 let mut read_count = 0;
 
-                for (&node_idx, [early, _]) in
-                    pass.execs.iter().flat_map(|exec| exec.accesses.iter())
+                for (&node_idx, accesses) in pass.execs.iter().flat_map(|exec| exec.accesses.iter())
                 {
                     self.accesses[pass_start + node_idx] = true;
 
-                    if nodes[node_idx] && is_read_access(early.access) {
+                    if nodes[node_idx] && is_read_access(accesses.first().unwrap().access) {
                         self.reads[pass_start + read_count] = node_idx;
                         nodes[node_idx] = false;
                         read_count += 1;
@@ -1258,9 +1258,9 @@ impl Resolver {
                 let mut dependencies = HashMap::with_capacity(attachment_count);
                 for (exec_idx, exec) in pass.execs.iter().enumerate() {
                     // Check accesses
-                    'accesses: for (node_idx, [early, _]) in exec.accesses.iter() {
+                    'accesses: for (node_idx, accesses) in exec.accesses.iter() {
                         let (mut curr_stages, mut curr_access) =
-                            pipeline_stage_access_flags(early.access);
+                            pipeline_stage_access_flags(accesses.first().unwrap().access);
                         if curr_stages.contains(vk::PipelineStageFlags::ALL_COMMANDS) {
                             curr_stages |= vk::PipelineStageFlags::ALL_GRAPHICS;
                             curr_stages &= !vk::PipelineStageFlags::ALL_COMMANDS;
@@ -1270,54 +1270,59 @@ impl Resolver {
                         for (prev_exec_idx, prev_exec) in
                             pass.execs[0..exec_idx].iter().enumerate().rev()
                         {
-                            if let Some([_, late]) = prev_exec.accesses.get(node_idx) {
-                                // Is this previous execution access dependent on anything the current
-                                // execution access is dependent upon?
-                                let (mut prev_stages, prev_access) =
-                                    pipeline_stage_access_flags(late.access);
-                                if prev_stages.contains(vk::PipelineStageFlags::ALL_COMMANDS) {
-                                    prev_stages |= vk::PipelineStageFlags::ALL_GRAPHICS;
-                                    prev_stages &= !vk::PipelineStageFlags::ALL_COMMANDS;
-                                }
+                            if let Some(accesses) = prev_exec.accesses.get(node_idx) {
+                                for &SubresourceAccess { access, .. } in accesses {
+                                    // Is this previous execution access dependent on anything the current
+                                    // execution access is dependent upon?
+                                    let (mut prev_stages, prev_access) =
+                                        pipeline_stage_access_flags(access);
+                                    if prev_stages.contains(vk::PipelineStageFlags::ALL_COMMANDS) {
+                                        prev_stages |= vk::PipelineStageFlags::ALL_GRAPHICS;
+                                        prev_stages &= !vk::PipelineStageFlags::ALL_COMMANDS;
+                                    }
 
-                                let common_stages = curr_stages & prev_stages;
-                                if common_stages.is_empty() {
-                                    // No common dependencies
-                                    continue;
-                                }
+                                    let common_stages = curr_stages & prev_stages;
+                                    if common_stages.is_empty() {
+                                        // No common dependencies
+                                        continue;
+                                    }
 
-                                let dep = dependencies
-                                    .entry((prev_exec_idx, exec_idx))
-                                    .or_insert_with(|| {
-                                        SubpassDependency::new(prev_exec_idx as _, exec_idx as _)
-                                    });
+                                    let dep = dependencies
+                                        .entry((prev_exec_idx, exec_idx))
+                                        .or_insert_with(|| {
+                                            SubpassDependency::new(
+                                                prev_exec_idx as _,
+                                                exec_idx as _,
+                                            )
+                                        });
 
-                                // Wait for ...
-                                dep.src_stage_mask |= common_stages;
-                                dep.src_access_mask |= prev_access;
+                                    // Wait for ...
+                                    dep.src_stage_mask |= common_stages;
+                                    dep.src_access_mask |= prev_access;
 
-                                // ... before we:
-                                dep.dst_stage_mask |= curr_stages;
-                                dep.dst_access_mask |= curr_access;
+                                    // ... before we:
+                                    dep.dst_stage_mask |= curr_stages;
+                                    dep.dst_access_mask |= curr_access;
 
-                                // Do the source and destination stage masks both include
-                                // framebuffer-space stages?
-                                if (prev_stages | curr_stages).intersects(
-                                    vk::PipelineStageFlags::FRAGMENT_SHADER
-                                        | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
-                                        | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS
-                                        | vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                                ) {
-                                    dep.dependency_flags |= vk::DependencyFlags::BY_REGION;
-                                }
+                                    // Do the source and destination stage masks both include
+                                    // framebuffer-space stages?
+                                    if (prev_stages | curr_stages).intersects(
+                                        vk::PipelineStageFlags::FRAGMENT_SHADER
+                                            | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
+                                            | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS
+                                            | vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                                    ) {
+                                        dep.dependency_flags |= vk::DependencyFlags::BY_REGION;
+                                    }
 
-                                curr_stages &= !common_stages;
-                                curr_access &= !prev_access;
+                                    curr_stages &= !common_stages;
+                                    curr_access &= !prev_access;
 
-                                // Have we found all dependencies for this stage? If so no need to
-                                // check external passes
-                                if curr_stages.is_empty() {
-                                    continue 'accesses;
+                                    // Have we found all dependencies for this stage? If so no need to
+                                    // check external passes
+                                    if curr_stages.is_empty() {
+                                        continue 'accesses;
+                                    }
                                 }
                             }
                         }
@@ -1328,53 +1333,55 @@ impl Resolver {
                             .rev()
                             .flat_map(|pass| pass.execs.iter().rev())
                         {
-                            if let Some([_, late]) = prev_subpass.accesses.get(node_idx) {
-                                // Is this previous subpass access dependent on anything the current
-                                // subpass access is dependent upon?
-                                let (prev_stages, prev_access) =
-                                    pipeline_stage_access_flags(late.access);
-                                let common_stages = curr_stages & prev_stages;
-                                if common_stages.is_empty() {
-                                    // No common dependencies
-                                    continue;
-                                }
+                            if let Some(accesses) = prev_subpass.accesses.get(node_idx) {
+                                for &SubresourceAccess { access, .. } in accesses {
+                                    // Is this previous subpass access dependent on anything the current
+                                    // subpass access is dependent upon?
+                                    let (prev_stages, prev_access) =
+                                        pipeline_stage_access_flags(access);
+                                    let common_stages = curr_stages & prev_stages;
+                                    if common_stages.is_empty() {
+                                        // No common dependencies
+                                        continue;
+                                    }
 
-                                let dep = dependencies
-                                    .entry((vk::SUBPASS_EXTERNAL as _, exec_idx))
-                                    .or_insert_with(|| {
-                                        SubpassDependency::new(
-                                            vk::SUBPASS_EXTERNAL as _,
-                                            exec_idx as _,
-                                        )
-                                    });
+                                    let dep = dependencies
+                                        .entry((vk::SUBPASS_EXTERNAL as _, exec_idx))
+                                        .or_insert_with(|| {
+                                            SubpassDependency::new(
+                                                vk::SUBPASS_EXTERNAL as _,
+                                                exec_idx as _,
+                                            )
+                                        });
 
-                                // Wait for ...
-                                dep.src_stage_mask |= common_stages;
-                                dep.src_access_mask |= prev_access;
+                                    // Wait for ...
+                                    dep.src_stage_mask |= common_stages;
+                                    dep.src_access_mask |= prev_access;
 
-                                // ... before we:
-                                dep.dst_stage_mask |=
-                                    curr_stages.min(vk::PipelineStageFlags::ALL_GRAPHICS);
-                                dep.dst_access_mask |= curr_access;
+                                    // ... before we:
+                                    dep.dst_stage_mask |=
+                                        curr_stages.min(vk::PipelineStageFlags::ALL_GRAPHICS);
+                                    dep.dst_access_mask |= curr_access;
 
-                                // If the source and destination stage masks both include
-                                // framebuffer-space stages then we need the BY_REGION flag
-                                if (prev_stages | curr_stages).intersects(
-                                    vk::PipelineStageFlags::FRAGMENT_SHADER
-                                        | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
-                                        | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS
-                                        | vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                                ) {
-                                    dep.dependency_flags |= vk::DependencyFlags::BY_REGION;
-                                }
+                                    // If the source and destination stage masks both include
+                                    // framebuffer-space stages then we need the BY_REGION flag
+                                    if (prev_stages | curr_stages).intersects(
+                                        vk::PipelineStageFlags::FRAGMENT_SHADER
+                                            | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
+                                            | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS
+                                            | vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                                    ) {
+                                        dep.dependency_flags |= vk::DependencyFlags::BY_REGION;
+                                    }
 
-                                curr_stages &= !common_stages;
-                                curr_access &= !prev_access;
+                                    curr_stages &= !common_stages;
+                                    curr_access &= !prev_access;
 
-                                // If we found all dependencies for this stage there is no need to check
-                                // external passes
-                                if curr_stages.is_empty() {
-                                    continue 'accesses;
+                                    // If we found all dependencies for this stage there is no need to check
+                                    // external passes
+                                    if curr_stages.is_empty() {
+                                        continue 'accesses;
+                                    }
                                 }
                             }
                         }
@@ -1899,11 +1906,11 @@ impl Resolver {
     }
 
     #[profiling::function]
-    fn record_execution_barriers(
+    fn record_execution_barriers<'a>(
         trace_pad: &'static str,
         cmd_buf: &CommandBuffer,
         bindings: &mut [Binding],
-        exec: &mut Execution,
+        accesses: impl IntoIterator<Item = (&'a NodeIndex, &'a Vec<SubresourceAccess>)>,
         record_framebuffer_access: bool,
     ) {
         use std::slice::from_ref;
@@ -1941,11 +1948,6 @@ impl Resolver {
             range: vk::ImageSubresourceRange,
         }
 
-        enum Resource {
-            Buffer(BufferResource),
-            Image(ImageResource),
-        }
-
         BARRIERS.with_borrow_mut(|barriers| {
             // Initialize TLS from a previous call
             barriers.buffers.clear();
@@ -1955,110 +1957,98 @@ impl Resolver {
 
             // Map remaining accesses into vk_sync barriers (some accesses may have been removed by the
             // render pass leasing function)
-            let barriers = exec
-                .accesses
-                .iter()
-                .filter_map(|(node_idx, [early, late])| {
-                    let binding = &mut bindings[*node_idx];
-                    let next_access = early.access;
 
-                    match early.subresource {
-                        Subresource::AccelerationStructure => {
-                            let accel_struct = binding.as_driver_acceleration_structure().unwrap();
-                            let prev_access =
-                                AccelerationStructure::access(accel_struct, late.access);
+            for (node_idx, accesses) in accesses {
+                let binding = &mut bindings[*node_idx];
 
-                            Some(Barrier {
-                                next_access,
-                                prev_access,
-                                resource: None,
-                            })
-                        }
-                        Subresource::Buffer(range) => {
-                            let buffer = binding.as_driver_buffer().unwrap();
-                            let prev_access = Buffer::access(buffer, late.access);
+                match accesses.first().unwrap().subresource {
+                    Subresource::AccelerationStructure => {
+                        let accel_struct = binding.as_driver_acceleration_structure().unwrap();
+
+                        let prev_access = AccelerationStructure::access(
+                            accel_struct,
+                            accesses.last().unwrap().access,
+                        );
+
+                        barriers.next_accesses.extend(
+                            accesses
+                                .iter()
+                                .map(|&SubresourceAccess { access, .. }| access),
+                        );
+                        barriers.prev_accesses.push(prev_access);
+                    }
+                    Subresource::Buffer(_) => {
+                        let buffer = binding.as_driver_buffer().unwrap();
+                        let prev_access = Buffer::access(buffer, accesses.last().unwrap().access);
+
+                        for &SubresourceAccess {
+                            access,
+                            subresource,
+                        } in accesses
+                        {
+                            let Subresource::Buffer(range) = subresource else {
+                                unreachable!()
+                            };
 
                             trace!(
                                 "{trace_pad}buffer {:?} {}..{} {:?} -> {:?}",
                                 buffer,
                                 range.start,
                                 range.end,
-                                next_access,
+                                access,
                                 prev_access,
                             );
 
-                            Some(Barrier {
-                                next_access,
+                            barriers.buffers.push(Barrier {
+                                next_access: access,
                                 prev_access,
-                                resource: Some(Resource::Buffer(BufferResource {
+                                resource: BufferResource {
                                     buffer: **buffer,
                                     offset: range.start as _,
                                     size: (range.end - range.start) as _,
-                                })),
-                            })
+                                },
+                            });
                         }
-                        Subresource::Image(range) => {
-                            if !record_framebuffer_access && is_framebuffer_access(next_access) {
-                                return None;
-                            }
+                    }
+                    Subresource::Image(_) => {
+                        let image = binding.as_driver_image().unwrap();
+                        let prev_access = Image::access(image, accesses.last().unwrap().access);
 
-                            let image = binding.as_driver_image().unwrap();
-                            let prev_access = Image::access(image, late.access);
+                        for &SubresourceAccess {
+                            access,
+                            subresource,
+                        } in accesses
+                        {
+                            // if !record_framebuffer_access && is_framebuffer_access(access) {
+                            //     continue;
+                            // }
+
+                            let Subresource::Image(range) = subresource else {
+                                unreachable!()
+                            };
 
                             trace!(
                                 "{trace_pad}image {:?} {:?}-{:?} -> {:?}-{:?}",
                                 image,
                                 prev_access,
                                 image_access_layout(prev_access),
-                                next_access,
-                                image_access_layout(next_access),
+                                access,
+                                image_access_layout(access),
                             );
 
-                            Some(Barrier {
-                                next_access,
+                            barriers.images.push(Barrier {
+                                next_access: access,
                                 prev_access,
-                                resource: Some(Resource::Image(ImageResource {
+                                resource: ImageResource {
                                     image: **image,
                                     range,
-                                })),
+                                },
                             })
                         }
                     }
-                })
-                .fold(barriers, |barriers, barrier| {
-                    let Barrier {
-                        next_access,
-                        prev_access,
-                        resource,
-                    } = barrier;
-                    match resource {
-                        Some(Resource::Buffer(resource)) => {
-                            barriers.buffers.push(Barrier {
-                                next_access,
-                                prev_access,
-                                resource,
-                            });
-                        }
-                        Some(Resource::Image(resource)) => {
-                            barriers.images.push(Barrier {
-                                next_access,
-                                prev_access,
-                                resource,
-                            });
-                        }
-                        None => {
-                            // HACK: It would be nice if AccessType was PartialOrd..
-                            if !barriers.next_accesses.contains(&next_access) {
-                                barriers.next_accesses.push(next_access);
-                            }
+                }
+            }
 
-                            if !barriers.prev_accesses.contains(&prev_access) {
-                                barriers.prev_accesses.push(prev_access);
-                            }
-                        }
-                    }
-                    barriers
-                });
             let global_barrier = if !barriers.next_accesses.is_empty() {
                 // No resource attached - we use a global barrier for these
                 trace!(
@@ -2104,7 +2094,15 @@ impl Resolver {
                  }| {
                     let ImageResource { image, range } = *resource;
 
-                    trace!("Image barrier {:?} {:?}", image, range);
+                    trace!(
+                        "    barrier {:?} {:?} {:?}-{:?}->{:?}-{:?}",
+                        image,
+                        range,
+                        prev_access,
+                        image_access_layout(*prev_access),
+                        next_access,
+                        image_access_layout(*next_access),
+                    );
 
                     ImageBarrier {
                         next_accesses: from_ref(next_access),
@@ -2251,26 +2249,37 @@ impl Resolver {
                 Self::write_descriptor_sets(cmd_buf, &self.graph.bindings, pass, physical_pass)?;
             }
 
-            Self::record_execution_barriers(
-                "  ",
-                cmd_buf,
-                &mut self.graph.bindings,
-                &mut pass.execs[0],
-                true,
-            );
-
-            let render_area = if is_graphic {
-                for exec_idx in 1..pass.execs.len() {
-                    Self::record_execution_barriers(
-                        "  ",
-                        cmd_buf,
-                        &mut self.graph.bindings,
-                        &mut pass.execs[exec_idx],
-                        false,
-                    );
+            if is_graphic && pass.execs.len() > 1 {
+                let mut accesses = HashMap::<usize, Vec<SubresourceAccess>>::new();
+                for exec_idx in 0..pass.execs.len() {
+                    for (node_idx, mut exec_accesses) in pass.execs[exec_idx].accesses.drain() {
+                        accesses
+                            .entry(node_idx)
+                            .and_modify(|accesses| accesses.append(&mut exec_accesses))
+                            .or_insert(exec_accesses);
+                    }
                 }
 
+                Self::record_execution_barriers(
+                    "  ",
+                    cmd_buf,
+                    &mut self.graph.bindings,
+                    &accesses,
+                    true,
+                );
+            } else {
+                Self::record_execution_barriers(
+                    "  ",
+                    cmd_buf,
+                    &mut self.graph.bindings,
+                    &pass.execs[0].accesses,
+                    true,
+                );
+            }
+
+            let render_area = if is_graphic {
                 let render_area = Self::render_area(&self.graph.bindings, pass);
+
                 Self::begin_render_pass(
                     cmd_buf,
                     &self.graph.bindings,
@@ -2278,12 +2287,19 @@ impl Resolver {
                     physical_pass,
                     render_area,
                 )?;
+
                 Some(render_area)
             } else {
                 None
             };
 
             for exec_idx in 0..pass.execs.len() {
+                let render_area = is_graphic.then(|| {
+                    pass.execs[exec_idx]
+                        .render_area
+                        .unwrap_or(render_area.unwrap())
+                });
+
                 let exec = &mut pass.execs[exec_idx];
 
                 if is_graphic && exec_idx > 0 {
@@ -2334,7 +2350,7 @@ impl Resolver {
                         "    ",
                         cmd_buf,
                         &mut self.graph.bindings,
-                        exec,
+                        &exec.accesses,
                         true,
                     );
                 }
@@ -2430,41 +2446,39 @@ impl Resolver {
 
     #[profiling::function]
     fn render_area(bindings: &[Binding], pass: &Pass) -> Area {
-        pass.render_area.unwrap_or_else(|| {
-            // set_render_area was not specified so we're going to guess using the minimum common
-            // attachment extents
-            let first_exec = pass.execs.first().unwrap();
+        // set_render_area was not specified so we're going to guess using the minimum common
+        // attachment extents
+        let first_exec = pass.execs.first().unwrap();
 
-            // We must be able to find the render area because render passes require at least one
-            // image to be attached
-            let (mut width, mut height) = (u32::MAX, u32::MAX);
-            for (attachment_width, attachment_height) in first_exec
-                .color_clears
-                .values()
-                .copied()
-                .map(|(attachment, _)| attachment)
-                .chain(first_exec.color_loads.values().copied())
-                .chain(first_exec.color_stores.values().copied())
-                .map(|attachment| {
-                    let info = bindings[attachment.target].as_driver_image().unwrap().info;
+        // We must be able to find the render area because render passes require at least one
+        // image to be attached
+        let (mut width, mut height) = (u32::MAX, u32::MAX);
+        for (attachment_width, attachment_height) in first_exec
+            .color_clears
+            .values()
+            .copied()
+            .map(|(attachment, _)| attachment)
+            .chain(first_exec.color_loads.values().copied())
+            .chain(first_exec.color_stores.values().copied())
+            .map(|attachment| {
+                let info = bindings[attachment.target].as_driver_image().unwrap().info;
 
-                    (
-                        info.width >> attachment.base_mip_level,
-                        info.height >> attachment.base_mip_level,
-                    )
-                })
-            {
-                width = width.min(attachment_width);
-                height = height.min(attachment_height);
-            }
+                (
+                    info.width >> attachment.base_mip_level,
+                    info.height >> attachment.base_mip_level,
+                )
+            })
+        {
+            width = width.min(attachment_width);
+            height = height.min(attachment_height);
+        }
 
-            Area {
-                height,
-                width,
-                x: 0,
-                y: 0,
-            }
-        })
+        Area {
+            height,
+            width,
+            x: 0,
+            y: 0,
+        }
     }
 
     #[profiling::function]
@@ -2978,7 +2992,7 @@ impl Resolver {
                                         })
                                 })
                                 .expect("input attachment not written");
-                            let [_, late] = &write_exec.accesses[&attachment.target];
+                            let late = &write_exec.accesses[&attachment.target].last().unwrap();
                             let image_subresource = late.subresource.as_image_range().unwrap();
                             let image_binding = &bindings[attachment.target];
                             let image = image_binding.as_driver_image().unwrap();

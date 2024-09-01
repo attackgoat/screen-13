@@ -153,11 +153,12 @@ impl From<[u8; 4]> for ClearColorValue {
 
 #[derive(Default)]
 struct Execution {
-    accesses: HashMap<NodeIndex, [SubresourceAccess; 2]>,
+    accesses: HashMap<NodeIndex, Vec<SubresourceAccess>>,
     bindings: BTreeMap<Descriptor, (NodeIndex, Option<ViewType>)>,
 
     correlated_view_mask: u32,
     depth_stencil: Option<DepthStencilMode>,
+    render_area: Option<Area>,
     view_mask: u32,
 
     color_attachments: HashMap<AttachmentIndex, Attachment>,
@@ -268,7 +269,6 @@ impl Clone for ExecutionPipeline {
 struct Pass {
     execs: Vec<Execution>,
     name: String,
-    render_area: Option<Area>,
 }
 
 impl Pass {
@@ -830,12 +830,11 @@ impl RenderGraph {
             .rev()
             .flat_map(|pass| pass.execs.iter().rev())
             .find_map(|exec| {
-                exec.accesses.get(&node_idx).and_then(|[_early, late]| {
-                    if is_write_access(late.access) {
-                        Some(late.access)
-                    } else {
-                        None
-                    }
+                exec.accesses.get(&node_idx).and_then(|accesses| {
+                    accesses
+                        .iter()
+                        .map(|access| access.access)
+                        .find(|access| is_write_access(*access))
                 })
             })
     }
