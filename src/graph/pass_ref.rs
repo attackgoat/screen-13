@@ -1735,12 +1735,13 @@ impl<'a> PassRef<'a> {
         let idx = node.index();
         let binding = &self.graph.bindings[idx];
 
-        let mut node_access_range = None;
-        if let Some(buf) = binding.as_driver_buffer() {
-            node_access_range = Some(Subresource::Buffer((0..buf.info.size).into()));
+        let node_access_range = if let Some(buf) = binding.as_driver_buffer() {
+            Subresource::Buffer((0..buf.info.size).into())
         } else if let Some(image) = binding.as_driver_image() {
-            node_access_range = Some(Subresource::Image(image.info.default_view_info().into()))
-        }
+            Subresource::Image(image.info.default_view_info().into())
+        } else {
+            Subresource::AccelerationStructure
+        };
 
         self.push_node_access(node, access, node_access_range);
     }
@@ -1777,7 +1778,7 @@ impl<'a> PassRef<'a> {
     ) where
         N: View,
     {
-        self.push_node_access(node, access, Some(subresource.into().into()));
+        self.push_node_access(node, access, subresource.into().into());
     }
 
     fn as_mut(&mut self) -> &mut Pass {
@@ -1843,12 +1844,7 @@ impl<'a> PassRef<'a> {
         self.exec_idx += 1;
     }
 
-    fn push_node_access(
-        &mut self,
-        node: impl Node,
-        access: AccessType,
-        subresource: Option<Subresource>,
-    ) {
+    fn push_node_access(&mut self, node: impl Node, access: AccessType, subresource: Subresource) {
         let node_idx = node.index();
         self.assert_bound_graph_node(node);
 
@@ -2037,7 +2033,7 @@ where
         <N as View>::Information: Into<ViewType>,
     {
         self.pass
-            .push_node_access(node, access, Some(subresource.into().into()));
+            .push_node_access(node, access, subresource.into().into());
         self.push_node_view_bind(node, view_info.into(), descriptor.into());
 
         self
@@ -2067,12 +2063,13 @@ where
         let idx = node.index();
         let binding = &self.pass.graph.bindings[idx];
 
-        let mut node_access_range = None;
-        if let Some(buf) = binding.as_driver_buffer() {
-            node_access_range = Some(Subresource::Buffer((0..buf.info.size).into()));
+        let node_access_range = if let Some(buf) = binding.as_driver_buffer() {
+            Subresource::Buffer((0..buf.info.size).into())
         } else if let Some(image) = binding.as_driver_image() {
-            node_access_range = Some(Subresource::Image(image.info.default_view_info().into()))
-        }
+            Subresource::Image(image.info.default_view_info().into())
+        } else {
+            Subresource::AccelerationStructure
+        };
 
         self.pass.push_node_access(node, access, node_access_range);
     }
@@ -2112,7 +2109,7 @@ where
         N: View,
     {
         self.pass
-            .push_node_access(node, access, Some(subresource.into().into()));
+            .push_node_access(node, access, subresource.into().into());
     }
 
     /// Binds a Vulkan acceleration structure, buffer, or image to the graph associated with this
@@ -2551,7 +2548,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
         self.pass.push_node_access(
             image,
             AccessType::ColorAttachmentWrite,
-            Some(Subresource::Image(image_view_info.into())),
+            Subresource::Image(image_view_info.into()),
         );
 
         self
@@ -2658,7 +2655,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             } else {
                 AccessType::StencilAttachmentWriteDepthReadOnly
             },
-            Some(Subresource::Image(image_view_info.into())),
+            Subresource::Image(image_view_info.into()),
         );
 
         self
@@ -2791,7 +2788,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
         self.pass.push_node_access(
             image,
             AccessType::ColorAttachmentWrite,
-            Some(Subresource::Image(image_view_info.into())),
+            Subresource::Image(image_view_info.into()),
         );
 
         self
@@ -2902,7 +2899,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
         self.pass.push_node_access(
             image,
             AccessType::DepthStencilAttachmentWrite,
-            Some(Subresource::Image(image_view_info.into())),
+            Subresource::Image(image_view_info.into()),
         );
 
         self
@@ -3028,7 +3025,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
         self.pass.push_node_access(
             image,
             AccessType::ColorAttachmentRead,
-            Some(Subresource::Image(image_view_info.into())),
+            Subresource::Image(image_view_info.into()),
         );
 
         self
@@ -3112,7 +3109,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
         self.pass.push_node_access(
             image,
             AccessType::DepthStencilAttachmentRead,
-            Some(Subresource::Image(image_view_info.into())),
+            Subresource::Image(image_view_info.into()),
         );
 
         self
@@ -3271,7 +3268,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
         self.pass.push_node_access(
             image,
             AccessType::ColorAttachmentWrite,
-            Some(Subresource::Image(image_view_info.into())),
+            Subresource::Image(image_view_info.into()),
         );
 
         self
@@ -3345,7 +3342,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             } else {
                 AccessType::StencilAttachmentWriteDepthReadOnly
             },
-            Some(Subresource::Image(image_view_info.into())),
+            Subresource::Image(image_view_info.into()),
         );
 
         self
@@ -3505,7 +3502,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
         self.pass.push_node_access(
             image,
             AccessType::ColorAttachmentWrite,
-            Some(Subresource::Image(image_view_info.into())),
+            Subresource::Image(image_view_info.into()),
         );
 
         self
@@ -3592,7 +3589,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             } else {
                 AccessType::StencilAttachmentWriteDepthReadOnly
             },
-            Some(Subresource::Image(image_view_info.into())),
+            Subresource::Image(image_view_info.into()),
         );
 
         self
@@ -4047,7 +4044,7 @@ impl From<BufferSubresource> for Subresource {
 #[derive(Clone, Copy, Debug)]
 pub(super) struct SubresourceAccess {
     pub access: AccessType,
-    pub subresource: Option<Subresource>,
+    pub subresource: Subresource,
 }
 
 /// Allows for a resource to be reinterpreted as differently formatted data.

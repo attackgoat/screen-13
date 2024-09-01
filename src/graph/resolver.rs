@@ -1,7 +1,7 @@
 use {
     super::{
-        Area, Attachment, Binding, Bindings, Edge, Execution, ExecutionPipeline, Node, Pass,
-        RenderGraph, Unbind,
+        pass_ref::Subresource, Area, Attachment, Binding, Bindings, Edge, Execution,
+        ExecutionPipeline, Node, Pass, RenderGraph, Unbind,
     },
     crate::{
         driver::{
@@ -173,7 +173,6 @@ impl Resolver {
 
     #[profiling::function]
     fn allow_merge_passes(lhs: &Pass, rhs: &Pass) -> bool {
-        return false;
         let lhs_pipeline = lhs
             .execs
             .first()
@@ -1962,45 +1961,49 @@ impl Resolver {
                 .filter_map(|(node_idx, [early, late])| {
                     let binding = &mut bindings[*node_idx];
                     let next_access = early.access;
-                    let prev_access = if let Some(buffer) = binding.as_driver_buffer() {
-                        Buffer::access(buffer, late.access)
-                    } else if let Some(image) = binding.as_driver_image() {
-                        Image::access(image, late.access)
-                    } else if let Some(accel_struct) = binding.as_driver_acceleration_structure() {
-                        AccelerationStructure::access(accel_struct, late.access)
-                    } else {
-                        unimplemented!();
-                    };
 
-                    // If we find a subresource then it must have a resource attached
-                    if let Some(subresource) = early.subresource {
-                        if let Some(buf) = binding.as_driver_buffer() {
-                            let range = subresource.unwrap_buffer();
+                    match early.subresource {
+                        Subresource::AccelerationStructure => {
+                            let accel_struct = binding.as_driver_acceleration_structure().unwrap();
+                            let prev_access =
+                                AccelerationStructure::access(accel_struct, late.access);
+
+                            Some(Barrier {
+                                next_access,
+                                prev_access,
+                                resource: None,
+                            })
+                        }
+                        Subresource::Buffer(range) => {
+                            let buffer = binding.as_driver_buffer().unwrap();
+                            let prev_access = Buffer::access(buffer, late.access);
 
                             trace!(
                                 "{trace_pad}buffer {:?} {}..{} {:?} -> {:?}",
-                                buf,
+                                buffer,
                                 range.start,
                                 range.end,
                                 next_access,
                                 prev_access,
                             );
 
-                            return Some(Barrier {
+                            Some(Barrier {
                                 next_access,
                                 prev_access,
                                 resource: Some(Resource::Buffer(BufferResource {
-                                    buffer: **buf,
+                                    buffer: **buffer,
                                     offset: range.start as _,
                                     size: (range.end - range.start) as _,
                                 })),
-                            });
-                        } else if let Some(image) = binding.as_driver_image() {
-                            let range = subresource.unwrap_image().into_vk();
-
+                            })
+                        }
+                        Subresource::Image(range) => {
                             if !record_framebuffer_access && is_framebuffer_access(next_access) {
                                 return None;
                             }
+
+                            let image = binding.as_driver_image().unwrap();
+                            let prev_access = Image::access(image, late.access);
 
                             trace!(
                                 "{trace_pad}image {:?} {:?}-{:?} -> {:?}-{:?}",
@@ -2011,22 +2014,16 @@ impl Resolver {
                                 image_access_layout(next_access),
                             );
 
-                            return Some(Barrier {
+                            Some(Barrier {
                                 next_access,
                                 prev_access,
                                 resource: Some(Resource::Image(ImageResource {
                                     image: **image,
-                                    range,
+                                    range: range.into_vk(),
                                 })),
-                            });
+                            })
                         }
                     }
-
-                    Some(Barrier {
-                        next_access,
-                        prev_access,
-                        resource: None,
-                    })
                 })
                 .fold(barriers, |barriers, barrier| {
                     let Barrier {
@@ -2106,6 +2103,9 @@ impl Resolver {
                      resource,
                  }| {
                     let ImageResource { image, range } = *resource;
+
+                    trace!("Image barrier {:?} {:?}", image, range);
+
                     ImageBarrier {
                         next_accesses: from_ref(next_access),
                         next_layout: image_access_layout(*next_access),
@@ -2979,8 +2979,7 @@ impl Resolver {
                                 })
                                 .expect("input attachment not written");
                             let [_, late] = &write_exec.accesses[&attachment.target];
-                            let image_subresource =
-                                late.subresource.as_ref().unwrap().unwrap_image();
+                            let image_subresource = late.subresource.unwrap_image();
                             let image_binding = &bindings[attachment.target];
                             let image = image_binding.as_driver_image().unwrap();
                             let image_view_info = ImageViewInfo {
