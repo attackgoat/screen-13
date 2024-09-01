@@ -14,7 +14,7 @@ use {
         compute::ComputePipeline,
         device::Device,
         graphic::{DepthStencilMode, GraphicPipeline},
-        image::{Image, ImageSubresource, ImageViewInfo},
+        image::{Image, ImageViewInfo},
         ray_trace::RayTracePipeline,
         render_pass::ResolveMode,
     },
@@ -1702,7 +1702,6 @@ impl<'a> PassRef<'a> {
         graph.passes.push(Pass {
             execs: vec![Default::default()], // We start off with a default execution!
             name,
-            render_area: None,
         });
 
         Self {
@@ -1735,12 +1734,13 @@ impl<'a> PassRef<'a> {
         let idx = node.index();
         let binding = &self.graph.bindings[idx];
 
-        let mut node_access_range = None;
-        if let Some(buf) = binding.as_driver_buffer() {
-            node_access_range = Some(Subresource::Buffer((0..buf.info.size).into()));
+        let node_access_range = if let Some(buf) = binding.as_driver_buffer() {
+            Subresource::Buffer((0..buf.info.size).into())
         } else if let Some(image) = binding.as_driver_image() {
-            node_access_range = Some(Subresource::Image(image.info.default_view_info().into()))
-        }
+            Subresource::Image(image.info.default_view_info().into())
+        } else {
+            Subresource::AccelerationStructure
+        };
 
         self.push_node_access(node, access, node_access_range);
     }
@@ -1777,7 +1777,7 @@ impl<'a> PassRef<'a> {
     ) where
         N: View,
     {
-        self.push_node_access(node, access, Some(subresource.into().into()));
+        self.push_node_access(node, access, subresource.into().into());
     }
 
     fn as_mut(&mut self) -> &mut Pass {
@@ -1843,12 +1843,7 @@ impl<'a> PassRef<'a> {
         self.exec_idx += 1;
     }
 
-    fn push_node_access(
-        &mut self,
-        node: impl Node,
-        access: AccessType,
-        subresource: Option<Subresource>,
-    ) {
+    fn push_node_access(&mut self, node: impl Node, access: AccessType, subresource: Subresource) {
         let node_idx = node.index();
         self.assert_bound_graph_node(node);
 
@@ -1862,8 +1857,8 @@ impl<'a> PassRef<'a> {
             .unwrap()
             .accesses
             .entry(node_idx)
-            .and_modify(|accesses| accesses[1] = access)
-            .or_insert([access, access]);
+            .and_modify(|accesses| accesses.push(access))
+            .or_insert(vec![access]);
     }
 
     /// Informs the pass that the next recorded command buffer will read the given `node` using
@@ -2037,7 +2032,7 @@ where
         <N as View>::Information: Into<ViewType>,
     {
         self.pass
-            .push_node_access(node, access, Some(subresource.into().into()));
+            .push_node_access(node, access, subresource.into().into());
         self.push_node_view_bind(node, view_info.into(), descriptor.into());
 
         self
@@ -2067,12 +2062,13 @@ where
         let idx = node.index();
         let binding = &self.pass.graph.bindings[idx];
 
-        let mut node_access_range = None;
-        if let Some(buf) = binding.as_driver_buffer() {
-            node_access_range = Some(Subresource::Buffer((0..buf.info.size).into()));
+        let node_access_range = if let Some(buf) = binding.as_driver_buffer() {
+            Subresource::Buffer((0..buf.info.size).into())
         } else if let Some(image) = binding.as_driver_image() {
-            node_access_range = Some(Subresource::Image(image.info.default_view_info().into()))
-        }
+            Subresource::Image(image.info.default_view_info().into())
+        } else {
+            Subresource::AccelerationStructure
+        };
 
         self.pass.push_node_access(node, access, node_access_range);
     }
@@ -2112,7 +2108,7 @@ where
         N: View,
     {
         self.pass
-            .push_node_access(node, access, Some(subresource.into().into()));
+            .push_node_access(node, access, subresource.into().into());
     }
 
     /// Binds a Vulkan acceleration structure, buffer, or image to the graph associated with this
@@ -2551,7 +2547,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
         self.pass.push_node_access(
             image,
             AccessType::ColorAttachmentWrite,
-            Some(Subresource::Image(image_view_info.into())),
+            Subresource::Image(image_view_info.into()),
         );
 
         self
@@ -2658,7 +2654,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             } else {
                 AccessType::StencilAttachmentWriteDepthReadOnly
             },
-            Some(Subresource::Image(image_view_info.into())),
+            Subresource::Image(image_view_info.into()),
         );
 
         self
@@ -2791,7 +2787,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
         self.pass.push_node_access(
             image,
             AccessType::ColorAttachmentWrite,
-            Some(Subresource::Image(image_view_info.into())),
+            Subresource::Image(image_view_info.into()),
         );
 
         self
@@ -2902,7 +2898,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
         self.pass.push_node_access(
             image,
             AccessType::DepthStencilAttachmentWrite,
-            Some(Subresource::Image(image_view_info.into())),
+            Subresource::Image(image_view_info.into()),
         );
 
         self
@@ -3028,7 +3024,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
         self.pass.push_node_access(
             image,
             AccessType::ColorAttachmentRead,
-            Some(Subresource::Image(image_view_info.into())),
+            Subresource::Image(image_view_info.into()),
         );
 
         self
@@ -3112,7 +3108,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
         self.pass.push_node_access(
             image,
             AccessType::DepthStencilAttachmentRead,
-            Some(Subresource::Image(image_view_info.into())),
+            Subresource::Image(image_view_info.into()),
         );
 
         self
@@ -3271,7 +3267,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
         self.pass.push_node_access(
             image,
             AccessType::ColorAttachmentWrite,
-            Some(Subresource::Image(image_view_info.into())),
+            Subresource::Image(image_view_info.into()),
         );
 
         self
@@ -3345,7 +3341,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             } else {
                 AccessType::StencilAttachmentWriteDepthReadOnly
             },
-            Some(Subresource::Image(image_view_info.into())),
+            Subresource::Image(image_view_info.into()),
         );
 
         self
@@ -3386,7 +3382,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
     /// sets the viewport and scissor to the same values, with a `0..1` depth if not specified by
     /// `set_depth_stencil`.
     pub fn set_render_area(mut self, x: i32, y: i32, width: u32, height: u32) -> Self {
-        self.pass.as_mut().render_area = Some(Area {
+        self.pass.as_mut().execs.last_mut().unwrap().render_area = Some(Area {
             height,
             width,
             x,
@@ -3505,7 +3501,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
         self.pass.push_node_access(
             image,
             AccessType::ColorAttachmentWrite,
-            Some(Subresource::Image(image_view_info.into())),
+            Subresource::Image(image_view_info.into()),
         );
 
         self
@@ -3592,7 +3588,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
             } else {
                 AccessType::StencilAttachmentWriteDepthReadOnly
             },
-            Some(Subresource::Image(image_view_info.into())),
+            Subresource::Image(image_view_info.into()),
         );
 
         self
@@ -3996,32 +3992,24 @@ impl<'a> RayTrace<'a> {
 }
 
 /// Describes a portion of a resource which is bound.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub enum Subresource {
     /// Acceleration structures are bound whole.
     AccelerationStructure,
 
     /// Images may be partially bound.
-    Image(ImageSubresource),
+    Image(vk::ImageSubresourceRange),
 
     /// Buffers may be partially bound.
     Buffer(BufferSubresource),
 }
 
 impl Subresource {
-    pub(super) fn unwrap_buffer(self) -> BufferSubresource {
-        if let Self::Buffer(subresource) = self {
-            subresource
-        } else {
-            unreachable!();
-        }
-    }
-
-    pub(super) fn unwrap_image(self) -> ImageSubresource {
+    pub(super) fn as_image_range(&self) -> Option<&vk::ImageSubresourceRange> {
         if let Self::Image(subresource) = self {
-            subresource
+            Some(subresource)
         } else {
-            unreachable!();
+            None
         }
     }
 }
@@ -4032,8 +4020,8 @@ impl From<()> for Subresource {
     }
 }
 
-impl From<ImageSubresource> for Subresource {
-    fn from(subresource: ImageSubresource) -> Self {
+impl From<vk::ImageSubresourceRange> for Subresource {
+    fn from(subresource: vk::ImageSubresourceRange) -> Self {
         Self::Image(subresource)
     }
 }
@@ -4047,7 +4035,7 @@ impl From<BufferSubresource> for Subresource {
 #[derive(Clone, Copy, Debug)]
 pub(super) struct SubresourceAccess {
     pub access: AccessType,
-    pub subresource: Option<Subresource>,
+    pub subresource: Subresource,
 }
 
 /// Allows for a resource to be reinterpreted as differently formatted data.
@@ -4085,7 +4073,7 @@ impl View for AnyBufferNode {
 
 impl View for AnyImageNode {
     type Information = ImageViewInfo;
-    type Subresource = ImageSubresource;
+    type Subresource = vk::ImageSubresourceRange;
 }
 
 impl View for BufferLeaseNode {
@@ -4100,17 +4088,17 @@ impl View for BufferNode {
 
 impl View for ImageLeaseNode {
     type Information = ImageViewInfo;
-    type Subresource = ImageSubresource;
+    type Subresource = vk::ImageSubresourceRange;
 }
 
 impl View for ImageNode {
     type Information = ImageViewInfo;
-    type Subresource = ImageSubresource;
+    type Subresource = vk::ImageSubresourceRange;
 }
 
 impl View for SwapchainImageNode {
     type Information = ImageViewInfo;
-    type Subresource = ImageSubresource;
+    type Subresource = vk::ImageSubresourceRange;
 }
 
 /// Describes the interpretation of a resource.
