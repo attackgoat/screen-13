@@ -683,49 +683,14 @@ impl From<UninitializedFieldError> for ImageInfoBuilderError {
     }
 }
 
-/// Describes a subset of an image.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ImageSubresource {
-    /// The number of layers for which this subset applies.
-    ///
-    /// The default value of `None` equates to `vk::REMAINING_ARRAY_LAYERS`.
-    pub array_layer_count: Option<u32>,
-
-    /// The portion of the image for which this subset applies.
-    pub aspect_mask: vk::ImageAspectFlags,
-
-    /// The first array layer for which this subset applies.
-    pub base_array_layer: u32,
-
-    /// The first mip level for which this subset applies.
-    pub base_mip_level: u32,
-
-    /// The number of mip levels for which this subset applies.
-    ///
-    /// The default value of `None` equates to `vk::REMAINING_MIP_LEVELS`.
-    pub mip_level_count: Option<u32>,
-}
-
-impl ImageSubresource {
-    pub(crate) fn into_vk(self) -> vk::ImageSubresourceRange {
-        vk::ImageSubresourceRange {
-            aspect_mask: self.aspect_mask,
-            base_mip_level: self.base_mip_level,
-            base_array_layer: self.base_array_layer,
-            layer_count: self.array_layer_count.unwrap_or(vk::REMAINING_ARRAY_LAYERS),
-            level_count: self.mip_level_count.unwrap_or(vk::REMAINING_MIP_LEVELS),
-        }
-    }
-}
-
-impl From<ImageViewInfo> for ImageSubresource {
+impl From<ImageViewInfo> for vk::ImageSubresourceRange {
     fn from(info: ImageViewInfo) -> Self {
         Self {
             aspect_mask: info.aspect_mask,
             base_mip_level: info.base_mip_level,
             base_array_layer: info.base_array_layer,
-            array_layer_count: Some(info.array_layer_count.unwrap_or(vk::REMAINING_ARRAY_LAYERS)),
-            mip_level_count: Some(info.mip_level_count.unwrap_or(vk::REMAINING_MIP_LEVELS)),
+            layer_count: info.array_layer_count.unwrap_or(vk::REMAINING_ARRAY_LAYERS),
+            level_count: info.mip_level_count.unwrap_or(vk::REMAINING_MIP_LEVELS),
         }
     }
 }

@@ -14,7 +14,7 @@ use {
         compute::ComputePipeline,
         device::Device,
         graphic::{DepthStencilMode, GraphicPipeline},
-        image::{Image, ImageSubresource, ImageViewInfo},
+        image::{Image, ImageViewInfo},
         ray_trace::RayTracePipeline,
         render_pass::ResolveMode,
     },
@@ -3993,13 +3993,13 @@ impl<'a> RayTrace<'a> {
 }
 
 /// Describes a portion of a resource which is bound.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub enum Subresource {
     /// Acceleration structures are bound whole.
     AccelerationStructure,
 
     /// Images may be partially bound.
-    Image(ImageSubresource),
+    Image(vk::ImageSubresourceRange),
 
     /// Buffers may be partially bound.
     Buffer(BufferSubresource),
@@ -4014,11 +4014,11 @@ impl Subresource {
         }
     }
 
-    pub(super) fn unwrap_image(self) -> ImageSubresource {
+    pub(super) fn as_image_range(&self) -> Option<&vk::ImageSubresourceRange> {
         if let Self::Image(subresource) = self {
-            subresource
+            Some(subresource)
         } else {
-            unreachable!();
+            None
         }
     }
 }
@@ -4029,8 +4029,8 @@ impl From<()> for Subresource {
     }
 }
 
-impl From<ImageSubresource> for Subresource {
-    fn from(subresource: ImageSubresource) -> Self {
+impl From<vk::ImageSubresourceRange> for Subresource {
+    fn from(subresource: vk::ImageSubresourceRange) -> Self {
         Self::Image(subresource)
     }
 }
@@ -4082,7 +4082,7 @@ impl View for AnyBufferNode {
 
 impl View for AnyImageNode {
     type Information = ImageViewInfo;
-    type Subresource = ImageSubresource;
+    type Subresource = vk::ImageSubresourceRange;
 }
 
 impl View for BufferLeaseNode {
@@ -4097,17 +4097,17 @@ impl View for BufferNode {
 
 impl View for ImageLeaseNode {
     type Information = ImageViewInfo;
-    type Subresource = ImageSubresource;
+    type Subresource = vk::ImageSubresourceRange;
 }
 
 impl View for ImageNode {
     type Information = ImageViewInfo;
-    type Subresource = ImageSubresource;
+    type Subresource = vk::ImageSubresourceRange;
 }
 
 impl View for SwapchainImageNode {
     type Information = ImageViewInfo;
-    type Subresource = ImageSubresource;
+    type Subresource = vk::ImageSubresourceRange;
 }
 
 /// Describes the interpretation of a resource.

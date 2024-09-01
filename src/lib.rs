@@ -346,8 +346,8 @@ pub mod prelude {
                 GraphicPipeline, GraphicPipelineInfo, GraphicPipelineInfoBuilder, StencilMode,
             },
             image::{
-                Image, ImageInfo, ImageInfoBuilder, ImageSubresource, ImageType, ImageViewInfo,
-                ImageViewInfoBuilder, SampleCount,
+                Image, ImageInfo, ImageInfoBuilder, ImageType, ImageViewInfo, ImageViewInfoBuilder,
+                SampleCount,
             },
             physical_device::{
                 AccelerationStructureProperties, PhysicalDevice, RayQueryFeatures,

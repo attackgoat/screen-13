@@ -2019,7 +2019,7 @@ impl Resolver {
                                 prev_access,
                                 resource: Some(Resource::Image(ImageResource {
                                     image: **image,
-                                    range: range.into_vk(),
+                                    range,
                                 })),
                             })
                         }
@@ -2979,16 +2979,16 @@ impl Resolver {
                                 })
                                 .expect("input attachment not written");
                             let [_, late] = &write_exec.accesses[&attachment.target];
-                            let image_subresource = late.subresource.unwrap_image();
+                            let image_subresource = late.subresource.as_image_range().unwrap();
                             let image_binding = &bindings[attachment.target];
                             let image = image_binding.as_driver_image().unwrap();
                             let image_view_info = ImageViewInfo {
-                                array_layer_count: image_subresource.array_layer_count,
+                                array_layer_count: Some(image_subresource.layer_count),
                                 aspect_mask: attachment.aspect_mask,
                                 base_array_layer: image_subresource.base_array_layer,
                                 base_mip_level: image_subresource.base_mip_level,
                                 fmt: attachment.format,
-                                mip_level_count: image_subresource.mip_level_count,
+                                mip_level_count: Some(image_subresource.level_count),
                                 ty: image.info.ty,
                             };
                             let image_view = Image::view(image, image_view_info)?;
