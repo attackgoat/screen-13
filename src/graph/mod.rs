@@ -544,6 +544,26 @@ impl RenderGraph {
         let dst_node = dst_node.into();
         let (src_access_range, dst_access_range) = buffer_copy_subresources(regions.as_ref());
 
+        #[cfg(debug_assertions)]
+        {
+            let src_node: AnyBufferNode = src_node;
+            let src_size = self.node_info(src_node).size;
+
+            let dst_node: AnyBufferNode = dst_node;
+            let dst_size = self.node_info(dst_node).size;
+
+            debug_assert!(
+                src_size >= src_access_range.end,
+                "source range end ({}) exceeds source size ({src_size})",
+                src_access_range.end
+            );
+            debug_assert!(
+                dst_size >= dst_access_range.end,
+                "destination range end ({}) exceeds destination size ({dst_size})",
+                dst_access_range.end
+            );
+        };
+
         self.begin_pass("copy buffer")
             .access_node_subrange(src_node, AccessType::TransferRead, src_access_range)
             .access_node_subrange(dst_node, AccessType::TransferWrite, dst_access_range)
@@ -920,6 +940,13 @@ impl RenderGraph {
         let buffer_node = buffer_node.into();
         let buffer_info = self.node_info(buffer_node);
         let buffer_access_range = 0..buffer_info.size;
+
+        debug_assert!(
+            buffer_info.size >= buffer_access_range.end,
+            "buffer range end ({}) exceeds buffer size ({})",
+            buffer_access_range.end,
+            buffer_info.size
+        );
 
         self.begin_pass("update buffer")
             .access_node_subrange(buffer_node, AccessType::TransferWrite, buffer_access_range)
